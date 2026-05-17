@@ -177,8 +177,8 @@ Both stay. `nros <verb>` is the documented user verb; `cargo nano-ros <verb>` al
 
 ### B — Rust crates.io publish
 
-- [ ] **111.B.1** — Audit every crate in `packages/core/`, `packages/zpico/`, `packages/xrce/`, `packages/dds/`, `packages/codegen/`. List authors, license, descriptions, repository links — every crate Cargo.toml must have these for crates.io.
-- [ ] **111.B.2** — Decide naming. Crates.io has no namespacing; reserve `nros`, `nros-core`, `nros-serdes`, `nros-rmw`, `nros-rmw-zenoh`, `nros-rmw-xrce`, `nros-rmw-dds`, `nros-node`, `nros-c`, `nros-cpp`, `zpico-sys`, `cargo-nano-ros`, `nros-cli` immediately. Verify each is unclaimed.
+- [x] **111.B.1** — Audit every crate in `packages/core/`, `packages/zpico/`, `packages/xrce/`, `packages/dds/`, `packages/codegen/`. List authors, license, descriptions, repository links — every crate Cargo.toml must have these for crates.io. (2026-05-17 — `docs/development/crates-io-metadata-audit.md`: 35 crates audited, 26 ready, 9 need workspace inheritance for missing fields.)
+- [x] **111.B.2** — Decide naming. Crates.io has no namespacing; reserve `nros`, `nros-core`, `nros-serdes`, `nros-rmw`, `nros-rmw-zenoh`, `nros-rmw-xrce`, `nros-rmw-dds`, `nros-node`, `nros-c`, `nros-cpp`, `zpico-sys`, `cargo-nano-ros`, `nros-cli` immediately. Verify each is unclaimed. (2026-05-17 — verified availability: 13/13 names returned 404 on crates.io. Reservation publish pending.)
 - [ ] **111.B.3** — Implement `nros release detect`. Plan format: `{ "to_publish": [{ "name": ..., "current": ..., "published": ..., "deps": [...] }, ...], "errors": [...] }`. Topo-sort verified by unit test against a known-good workspace.
 - [ ] **111.B.4** — Implement `nros release publish` with `--dry-run` default. Calls `cargo publish -p <name> --dry-run`/`--no-verify` as appropriate; sleeps between crates.
 - [ ] **111.B.5** — Implement `nros release tag` (creates `v<ver>`, requires clean tree, pushes to `origin`).

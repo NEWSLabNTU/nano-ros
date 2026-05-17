@@ -37,9 +37,9 @@ Starting with Iron, ROS 2 computes actual RIHS01 SHA-256 hashes per REP-2011. Wi
 
 ### 41.1: Research REP-2011 canonical format
 
-- [ ] Research exact canonical type description format (REP-2011 normalization rules)
-- [ ] Document the normalization algorithm (field ordering, nested type expansion, bounded types)
-- [ ] Collect reference hashes from ROS 2 Iron/Jazzy for common types (`std_msgs/Int32`, `example_interfaces/AddTwoInts`, etc.)
+- [x] Research exact canonical type description format (REP-2011 normalization rules) — `docs/research/rep-2011-type-hash.md` (2026-05-17)
+- [x] Document the normalization algorithm (field ordering, nested type expansion, bounded types) — same doc
+- [ ] Collect reference hashes from ROS 2 Iron/Jazzy for common types — canonical inputs for `std_msgs/msg/Int32` + `example_interfaces/srv/AddTwoInts` derived in the research doc, but the `RIHS01_...` values are flagged TODO; `/opt/ros/humble` predates REP-2011 (`ros2 interface hash` is Iron+). Verify on a Jazzy host before 41.3 lands a fixture.
 
 ### 41.2: Add `ros-iron` feature flag to code generator
 

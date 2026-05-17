@@ -209,6 +209,10 @@ if (srv.try_recv_goal(goal, goal_id)) {
 
 ### Action Client
 
+`ActionClient<A>` is an arena-storage handle: the goal, feedback, and result buffers (plus the four underlying transport channels) live in fixed-size storage inside the `ActionClient<A>` instance itself. Nothing is heap-allocated per `send_goal` call, and the type is move-only — moves go through `nros_cpp_action_client_relocate` so the trampoline `context` pointer follows the new `this`.
+
+**Blocking convenience.** `send_goal()` and `get_result()` spin the executor internally until the server replies or the per-call timeout expires:
+
 ```cpp
 nros::ActionClient<Fibonacci> client;
 NROS_TRY(node.create_action_client(client, "/fibonacci"));
@@ -221,6 +225,62 @@ NROS_TRY(client.send_goal(goal, goal_id));
 Fibonacci::Result result;
 NROS_TRY(client.get_result(goal_id, result));
 ```
+
+These helpers are syntactic sugar over `send_goal_async()` + `spin_once()`; they cannot be called from inside a dispatch callback (returns `NROS_RET_REENTRANT`).
+
+**Future-based async.** `send_goal_future()` / `get_result_future()` return a `Future<T>` that polls the same arena slot:
+
+```cpp
+auto fut = client.send_goal_future(goal);
+typename decltype(client)::GoalAccept accept;
+NROS_TRY(fut.wait(executor.handle(), 5000, accept));
+if (accept.accepted) {
+    auto rfut = client.get_result_future(accept.goal_id);
+    Fibonacci::Result result;
+    NROS_TRY(rfut.wait(executor.handle(), 10000, result));
+}
+```
+
+`GoalAccept` is a nested type on `ActionClient<A>` (16-byte UUID + `bool accepted`).
+
+**Feedback.** Feedback is not goal-scoped at the stream layer — `feedback_stream()` yields `FeedbackType` across every active goal for this client:
+
+```cpp
+auto& fb_stream = client.feedback_stream();
+Fibonacci::Feedback fb;
+while (fb_stream.try_next(fb).ok()) { /* ... */ }
+// Or blocking:
+NROS_TRY(fb_stream.wait_next(executor.handle(), 500, fb));
+```
+
+For per-goal feedback dispatch, use the callback API.
+
+**Callback API: `SendGoalOptions` + `set_callbacks()`.** This is the rclcpp-style entry point. `SendGoalOptions` is a nested POD on `ActionClient<A>`; populate the three function-pointer fields (`goal_response`, `feedback`, `result`) plus an optional `context` pointer, then install once. Callbacks fire from `spin_once()`:
+
+```cpp
+typename decltype(client)::SendGoalOptions opts;
+opts.goal_response = [](bool accepted, const uint8_t id[16], void* ctx) {
+    auto* state = static_cast<MyState*>(ctx);
+    state->accepted = accepted;
+    std::memcpy(state->goal_id, id, 16);
+};
+opts.feedback = [](const uint8_t id[16], const uint8_t* data, size_t len, void* ctx) {
+    Fibonacci::Feedback fb;
+    if (Fibonacci::Feedback::ffi_deserialize(data, len, &fb) == 0) {
+        // dispatch on `id`
+    }
+};
+opts.result = [](const uint8_t id[16], int32_t status, const uint8_t* data, size_t len, void* ctx) {
+    // status: 4=Succeeded, 5=Canceled, 6=Aborted
+};
+opts.context = &my_state;
+NROS_TRY(client.set_callbacks(opts));
+
+NROS_TRY(client.send_goal_async(goal, goal_id));  // fire-and-forget
+while (!my_state.done) { nros::spin_once(10); }
+```
+
+Because callback storage lives in the arena, `set_callbacks()` may be called before or after `send_goal_async()` — the executor's trampoline reads the latest pointers on each dispatch. The C++-side trampoline always stashes the most recent feedback / result bytes too, so the same `ActionClient` can drive `feedback_stream().try_next()` and `get_result_future().wait()` even with callbacks installed.
 
 ### Timer
 

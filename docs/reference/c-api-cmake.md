@@ -48,6 +48,73 @@ Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMEN
 
 Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_type_t`) are all defined in `nros/types.h`.
 
+## Async Action Client (Executor-Driven)
+
+Action and service client entrypoints split into two families:
+
+- `nros_action_send_goal_async()`, `nros_action_get_result_async()`,
+  `nros_action_cancel_goal()`, `nros_client_send_request_async()` — non-blocking,
+  return immediately. Replies arrive via callbacks invoked from
+  `nros_executor_spin_some()`.
+- `nros_action_send_goal()`, `nros_action_get_result()`, `nros_client_call()` —
+  blocking convenience wrappers. They call the async variant and then drive the
+  executor (`nros_executor_spin_some` internally in a wall-clock budgeted loop)
+  until the reply lands or timeout. They never call `zpico_get` directly — all
+  I/O still flows through the registered executor. Calling any of them from
+  inside a dispatch callback returns `NROS_RET_REENTRANT`.
+
+The action-client blocking helpers (`nros_action_send_goal`,
+`nros_action_get_result`) take the executor as an explicit `executor`
+parameter because the action client stores its arena handle as an opaque
+pointer into the executor's `_opaque` storage (set up by
+`nros_executor_register_action_client`) rather than a wrapper pointer.
+`nros_action_client_wait_for_action_server()` and
+`nros_action_client_action_server_is_ready()` take the same explicit
+executor argument for the same reason. `nros_client_call()` does not —
+the service client stashes the executor pointer on
+`nros_executor_register_client()` and recovers it internally.
+
+Canonical call pattern (C):
+
+```c
+nros_support_init(&support, locator, domain_id);
+nros_node_init(&node, &support, "c_action_client", "/");
+nros_action_client_init(&client, &node, "/fibonacci", &type_info);
+nros_action_client_set_feedback_callback(&client, on_feedback, NULL);
+nros_action_client_set_result_callback(&client, on_result, NULL);
+
+nros_executor_init(&executor, &support, /*pool=*/4);
+nros_executor_register_action_client(&executor, &client);
+
+/* Warm-up: let zenoh discover the action server. */
+for (int i = 0; i < 300; ++i) {
+    nros_executor_spin_some(&executor, 10000000ULL); /* 10 ms */
+}
+
+/* Async path: returns immediately; goal_response_callback fires during spin. */
+nros_goal_uuid_t goal_uuid;
+nros_action_send_goal_async(&client, goal_buf, goal_len, &goal_uuid);
+while (!state.goal_responded) {
+    nros_executor_spin_some(&executor, 10000000ULL);
+}
+
+/* Blocking convenience: same async-then-spin pattern, packaged. */
+nros_goal_status_t status;
+uint8_t result_buf[512];
+size_t result_len = 0;
+nros_action_get_result(&client, &executor, &goal_uuid,
+                       &status, result_buf, sizeof(result_buf), &result_len);
+```
+
+Phase 122.3 added a separate **L1 polling** family
+(`nros_action_client_init_polling` + `nros_action_client_send_goal_raw` /
+`_try_recv_goal_response_raw` / `_send_get_result_request_raw` /
+`_try_recv_result_raw` / `_send_cancel_request_raw` /
+`_try_recv_cancel_response_raw` / `_try_recv_feedback_raw`) for callers
+that drive the action lifecycle without an executor arena. The L1 family
+stores its `ActionClientCore` inline in the `nros_action_client_t._opaque`
+slot and does not require `nros_executor_register_action_client`.
+
 ## System Install
 
 For package maintainers:

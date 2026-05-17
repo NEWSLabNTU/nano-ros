@@ -76,7 +76,7 @@ Custom messages still flow through `cargo nano-ros generate-*` / `nros generate`
 
 ### A — sample.yaml
 
-- [ ] **114.A.1** Define the canonical `sample.yaml` schema in `docs/reference/sample-yaml-schema.md`. Subset of Twister format we promise to support.
+- [x] **114.A.1** Define the canonical `sample.yaml` schema in `docs/reference/sample-yaml-schema.md`. Subset of Twister format we promise to support. (2026-05-17)
 - [ ] **114.A.2** Walker tool `tools/sample-walker.rs` (or in `nros-cli-core`) that discovers all `sample.yaml` files under `examples/` and emits a JSON catalog.
 - [ ] **114.A.3** Backfill `sample.yaml` for every existing example. ~50 files. Include description, tags, integration_platforms, harness regex.
 - [ ] **114.A.4** `nros run` reads `sample.yaml` to find the right board + success regex (Phase 111 hookup).

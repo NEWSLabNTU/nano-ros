@@ -120,8 +120,19 @@ Sibling: `nros_c_setup(TARGET ...)` for the C API.
 - [ ] 119.3.2 lands; `nros_cpp_setup()` callable from any CMake context.
 - [ ] 119.3.3 lands; Zephyr CMakeLists has no hardcoded nros-cpp paths.
 - [ ] 119.3.4 lands; install layout uses the new per-build path.
-- [ ] 119.3.5 passes; `just test-all` matches 119.2 outcome (713 pass).
-- [ ] 119.3.6 lands; docs updated.
+- [x] 119.3.5 passes; `just test-all` matches 119.2 outcome (716/720 after 119.3 vs 713/720 in 119.2 — net +3 Zephyr XRCE CPP tests now pass).
+- [ ] 119.3.6 lands; docs updated. **STALE — see note below.**
+
+> **2026-05-17 stale notice (119.3.6):** Phases 137 / 138 / 139 / 140
+> are replacing the `find_package(NanoRos)` + `nros_cpp_setup()` /
+> `install-local` model with a source-distribution
+> `add_subdirectory(third_party/nano-ros)` entry. The docs that
+> 119.3.6 was meant to write (`nros_cpp_setup()` reference,
+> install-layout variant-header guide) would describe an API that
+> Phase 140 deletes. Hold the doc work until 137/138 land; then write
+> a single consumption guide that covers the new entry directly,
+> not the transitional dispatch helpers. Box stays `[ ]` to surface
+> in scoreboards but is effectively superseded.
 
 ## Notes
 

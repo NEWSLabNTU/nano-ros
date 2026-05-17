@@ -40,6 +40,48 @@ public surface a user application needs.
 > `set_{goal_response,cancel_response,result,feedback}_wake_callback`
 > on the client). See the Doxygen for signatures.
 
+## Async action client
+
+`<nros/action.h>` exposes two parallel entry-point families for sending
+goals, requesting results, and cancelling:
+
+- **Async (non-blocking):** `nros_action_send_goal_async()`,
+  `nros_action_get_result_async()`, `nros_action_cancel_goal()`,
+  `nros_action_try_recv_feedback()`. Return immediately. Replies are
+  delivered through the callbacks registered with
+  `nros_action_client_set_goal_response_callback()`,
+  `nros_action_client_set_feedback_callback()`, and
+  `nros_action_client_set_result_callback()`. The callbacks fire from
+  `nros_executor_spin_some()` — your spin loop is the only place
+  callbacks run.
+- **Blocking convenience:** `nros_action_send_goal()` and
+  `nros_action_get_result()`. These call the async variant and then
+  drive `nros_executor_spin_some()` internally on a wall-clock budget
+  until the reply lands (or 15 s / 30 s timeout). They take the
+  `nros_executor_t*` explicitly because the action client stores its
+  handle as an opaque slot inside the executor (registered via
+  `nros_executor_register_action_client()`). The same applies to
+  `nros_action_client_wait_for_action_server()` and
+  `nros_action_client_action_server_is_ready()`. Calling any of them
+  from inside a dispatch callback returns `NROS_RET_REENTRANT`.
+
+The equivalent service client helper `nros_client_call()` does **not**
+take an explicit executor — the client stashes the executor pointer
+during `nros_executor_register_client()` and recovers it internally —
+but it follows the same async-then-spin contract.
+
+Canonical pattern: declare the executor, register the client, then
+either call the blocking helper or drive `nros_executor_spin_some()`
+yourself between async calls until your callback flags the result. See
+the example layouts in `examples/native/c/<rmw>/action-client/` and
+`examples/qemu-arm-freertos/c/zenoh/action-client/`.
+
+Phase 122.3 added a separate L1 polling family
+(`nros_action_client_init_polling` + the `_raw` send/recv siblings)
+that stores `ActionClientCore` inline in the
+`nros_action_client_t._opaque` slot and skips the executor entirely;
+see the Doxygen for the full L1 verb list.
+
 ## CMake integration
 
 Out-of-tree projects use the `NanoRos::C` CMake target and the

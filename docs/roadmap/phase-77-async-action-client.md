@@ -258,9 +258,16 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
         - FreeRTOS C action E2E (`test_freertos_c_action_e2e`): **enabled**, passes (mildly flaky due to QEMU timing)
         - FreeRTOS C++ action E2E (`test_freertos_cpp_action_e2e`): **`#[ignore]`** — C++ action server hangs on 4th zenoh entity declaration (feedback publisher). C++ client works (confirmed with C server). Root cause: zenoh-pico mutex contention between app task declaring entities and background read/lease tasks on FreeRTOS QEMU.
     - **Files**: `nros-c/src/executor.rs`, `nros-cpp/build.rs`, `examples/native/c/zenoh/action-{server,client}/src/main.c`, `examples/qemu-arm-nuttx/c/zenoh/action-server/src/main.c`, `nros-tests/tests/c_api.rs`, `nros-tests/tests/freertos_qemu.rs`
-- [ ] 77.14 — Update documentation
-    - C API reference: document new `executor` parameter on blocking functions
-    - C++ API guide: document `SendGoalOptions`, `set_callbacks`, arena-based architecture
+- [x] 77.14 — Update documentation (2026-05-17)
+    - C API reference: documented `executor` parameter on action-client blocking
+      helpers (`nros_action_send_goal`, `_get_result`, `_wait_for_action_server`,
+      `_action_server_is_ready`). `nros_client_call` did NOT change shape —
+      the service client recovers its executor through
+      `client._internal.executor_ptr` stashed by `nros_executor_register_client`.
+    - C++ API guide: documented arena-storage `ActionClient<A>`, move-only
+      relocation via `nros_cpp_action_client_relocate`, three coexisting
+      flavors (blocking, `Future<T>` / `Future<GoalAccept>`,
+      `SendGoalOptions` + `set_callbacks()`).
     - **Files**: `docs/reference/c-api-cmake.md`, `docs/guides/cpp-api.md`, `book/src/reference/c-api.md`
 - [x] 77.15 — Extend unified design to service client (`Client<S>`)
     - [x] C API `nros_client_call()` already uses async + executor spin (no `zpico_get`)
