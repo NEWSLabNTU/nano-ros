@@ -33,9 +33,10 @@ self-contained inside the nano-ros source repo.
 
 ## What it shows
 
-* **One nano-ros source / install per workspace.** All three packages
-  consume the same prebuilt install (`CMAKE_PREFIX_PATH` for C/C++,
-  `[patch.crates-io]` for Rust).
+* **One nano-ros source per workspace.** Both CMake packages
+  `add_subdirectory(<path-to-nano-ros>)` (Phase 140) — there is no
+  install prefix to populate up front. The Rust package consumes
+  nano-ros via `[patch.crates-io]` against the same checkout.
 * **Three audiences, one entry.** C (rclc-shaped), C++ (rclcpp-shaped),
   Rust (rclrs-shaped) packages co-exist; their build files differ by
   ~10 lines of CMake / Cargo each.
@@ -43,24 +44,22 @@ self-contained inside the nano-ros source repo.
   `std_msgs__nano_ros_c` and `std_msgs__nano_ros_cpp` build **once**
   across the C + C++ packages. Without the cache, each package would
   regenerate the bindings independently. See Phase 123.A.7.
-* **Symbol-decoupled archives.** `NanoRos::NanoRos` /
-  `NanoRos::NanoRosCpp` pull `libnros_platform_posix.a` +
-  `libnros_rmw_<rmw>.a` transitively via the imported targets —
-  user CMake declares neither manually. Per-target overrides go
-  through `nano_ros_link_platform(target [PLATFORM <p>])` /
-  `nano_ros_link_rmw(target [RMW <r>])`. See Phase 123.A.1.x.5.
+* **`NanoRos::NanoRos` umbrella target.** `add_subdirectory(nano-ros)`
+  exposes `NanoRos::NanoRos` / `NanoRos::NanoRosCpp` INTERFACE
+  targets that transitively wire the RMW staticlib + platform shim
+  + the per-app fixup hook `nros_platform_link_app(target)`.
 
 ## Prerequisites
 
-Build + install nano-ros first:
+Bootstrap the nano-ros checkout once:
 
 ```bash
 cd <nano-ros-checkout>
-./tools/setup.sh --target=posix-zenoh        # one-time
-just install-local                            # builds + installs
+./tools/setup.sh --target=posix-zenoh        # one-time submodule + toolchain fetch
 ```
 
-This populates `<nano-ros-checkout>/build/install/`.
+No install step — Phase 140 removed `just install-local`. The
+source tree IS the consumption surface.
 
 ## Build all three packages
 
@@ -69,10 +68,10 @@ cd examples/multi-package-workspace
 ./build-all.sh
 ```
 
-`build-all.sh` configures each CMake package with
-`CMAKE_PREFIX_PATH` pointing at the nano-ros install + sets
-`NANO_ROS_GEN_CACHE_DIR` to a shared scratch dir, then builds the
-Rust package via `cargo build`.
+`build-all.sh` configures each CMake package
+(`add_subdirectory(<nano-ros-checkout>)` happens inside each
+`CMakeLists.txt`) + sets `NANO_ROS_GEN_CACHE_DIR` to a shared
+scratch dir, then builds the Rust package via `cargo build`.
 
 Per-package output:
 

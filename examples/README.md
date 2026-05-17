@@ -105,7 +105,7 @@ Each is a standalone Cargo package with an empty `[workspace]` table (they nest 
 
 ## Quick start
 
-Each block assumes a built local install (`just install-local`) and a zenoh router running on `tcp/127.0.0.1:7447` (`build/zenohd/zenohd --listen tcp/127.0.0.1:7447`).
+Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` (`build/zenohd/zenohd --listen tcp/127.0.0.1:7447`). C/C++ examples consume nano-ros via `add_subdirectory(<repo>)` from their own `CMakeLists.txt` (Phase 140); no install step required.
 
 ### Native Rust + zenoh
 

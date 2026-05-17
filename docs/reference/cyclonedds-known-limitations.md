@@ -204,8 +204,8 @@ first. Without the env override:
   headers and the runtime is the system Cyclone (different build
   flags, possibly different layout).
 
-Downstream consumers (e.g. nros-cpp examples linking via
-`find_package(NanoRos NANO_ROS_RMW=cyclonedds)`) inherit a
+Downstream consumers (nros-cpp examples linking via
+`add_subdirectory(<repo>)` with `NANO_ROS_RMW=cyclonedds`) inherit a
 build-tree rpath via `CycloneDDS::ddsc`'s own `INTERFACE_LINK_OPTIONS`,
 so the issue is contained to the in-tree CTest harness. Document
 this in any external integration guide.

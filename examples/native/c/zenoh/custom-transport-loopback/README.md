@@ -10,13 +10,17 @@ four never fires.
 The transport callbacks are platform-neutral — every line below
 the `/* loopback ring buffer */` block would compile unchanged on
 Cortex-M / Zephyr / FreeRTOS. POSIX is used here only because
-that's the host where `find_package(NanoRos)` and pthread
-synchronisation primitives are easiest to wire.
+pthread synchronisation primitives are easiest to wire on a
+hosted target.
 
 ## Build
 
+The example's `CMakeLists.txt` consumes nano-ros via
+`add_subdirectory(<repo-root>)` (Phase 140). No install prefix
+needed.
+
 ```sh
-cmake -S . -B build -DCMAKE_PREFIX_PATH=$(pwd)/../../../../../build/install
+cmake -S . -B build
 cmake --build build
 ./build/c_custom_transport_loopback
 ```

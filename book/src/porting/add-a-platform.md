@@ -103,15 +103,6 @@ The board layer owns:
 
 See `cmake/board/nano-ros-board-mps2-an385.cmake` for a working example.
 
-## Legacy `find_package(NanoRos)` support
-
-The Phase 138 modules are dual-installed under
-`<prefix>/lib/cmake/NanoRos/cmake/platform/` so consumers still using
-the legacy `find_package(NanoRos CONFIG)` path can pick them up after
-`just install-local`. Once Phase 140 retires `install-local` entirely,
-the dual-install rule in the root `CMakeLists.txt` goes away and
-`add_subdirectory(nano-ros)` becomes the only entry point.
-
 ## Where the existing layer-2 helpers live
 
 For RTOS ports that compose the kernel + netstack + glue inside CMake

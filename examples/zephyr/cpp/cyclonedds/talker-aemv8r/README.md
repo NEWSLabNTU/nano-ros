@@ -18,9 +18,12 @@ cd zephyr-workspace
 west build \
     -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
     -d build-aemv8r-cyclonedds \
-    nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
-    -- -DCMAKE_PREFIX_PATH=$NROS_ROOT/build/install
+    nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r
 ```
+
+(Phase 140 — no `-DCMAKE_PREFIX_PATH` needed; the example's
+`CMakeLists.txt` consumes nano-ros via the Phase 139 Zephyr
+integration shell at `integrations/zephyr/`.)
 
 The `boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf` overlay
 is auto-picked when the board target matches; layer additional

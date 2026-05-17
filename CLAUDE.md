@@ -68,7 +68,7 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 - No shared example-only helpers in `nros-cpp`/`nros-c` — boilerplate IS lesson.
 - `*_DIR` env / `-D` injection = SDK-path contract. Example cmake accepts env or `-D` only — never project-tree heuristics.
 - Per-example `Cargo.toml` + `.cargo/config.toml` + `CMakeLists.txt` build in isolation. No workspace reliance, no walk-up.
-- **C/C++ consumption shape (Phase 137 / 144 / native examples):** `set(NANO_ROS_PLATFORM <plat>) + set(NANO_ROS_RMW <rmw>) + add_subdirectory(<repo-root> nano_ros) + target_link_libraries(<app> PRIVATE NanoRos::NanoRos) + nros_platform_link_app(<app>)`. Per-platform CMake glue lives at `cmake/platform/nano-ros-<plat>.cmake`; per-board overlays at `cmake/board/nano-ros-board-<board>.cmake`. Legacy `find_package(NanoRos REQUIRED CONFIG)` against `build/install/lib/cmake/NanoRos/` still works as a transitional path (Phase 140 will remove it). Cross-RTOS users (Zephyr, ESP-IDF, PlatformIO, NuttX, PX4) consume via the Phase 139 shells at `integrations/<rtos>/` — those shells re-export the same root CMake under each RTOS's native package manager.
+- **C/C++ consumption shape (Phase 137 / 140 / 144 / native examples):** `set(NANO_ROS_PLATFORM <plat>) + set(NANO_ROS_RMW <rmw>) + add_subdirectory(<repo-root> nano_ros) + target_link_libraries(<app> PRIVATE NanoRos::NanoRos) + nros_platform_link_app(<app>)`. Per-platform CMake glue lives at `cmake/platform/nano-ros-<plat>.cmake`; per-board overlays at `cmake/board/nano-ros-board-<board>.cmake`. **There is no `find_package(NanoRos)` path** — Phase 140 deleted it along with `just install-local`, the `build/install/` layout, every `install(...)` rule and every `Config.cmake.in` template. Cross-RTOS users (Zephyr, ESP-IDF, PlatformIO, NuttX, PX4) consume via the Phase 139 shells at `integrations/<rtos>/` — those shells re-export the same root CMake under each RTOS's native package manager.
 - **Coverage matrix lives in `examples/README.md` ("Coverage matrix" + "Intentionally empty cells" sections) — authoritative for which `<plat>/<lang>/<rmw>` triples exist.** Deliberately empty cells: `{qemu-arm-baremetal, qemu-esp32-baremetal, esp32, stm32f4}/{c,cpp}/*` (no bare-metal C/C++ harness — `nros-c`/`nros-cpp` assume hosted RTOS for startup/heap/libc) and `px4/{c,rust}/*` (PX4 is uORB-only, and Phase 115.K.4 collapsed uORB to a C++-only port — `examples/px4/cpp/uorb/nros-register-check/` is the canonical surface). Do not add directories to these cells without first lifting the underlying constraint; Phase 118 lint blocks untriaged cells.
 
 ### CMake Path Convention
@@ -80,15 +80,16 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 - No `../../../cmake/...`, no project-root heuristics, no
   `${_ROOT}/external/<sdk>` defaults, no `$<source_dir>/../../../scripts/...`
   in `install(...)` rules.
-- **Drivers pass absolute paths.** The `just`-recipe / outer build
-  script knows the layout and supplies it via cmake `-D…=$PWD/...` or
-  env var:
-  - `-DCMAKE_TOOLCHAIN_FILE=`, `-D<SDK>_DIR=`, `-DCMAKE_PREFIX_PATH=$pwd/build/install/`,
-    `-D<BOARD>_CONFIG_DIR=`.
-  - Project-internal scripts shipped to the install: pass via a
-    cache var like `-DNROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE=$PWD/scripts/...`;
-    the project's `install(PROGRAMS ...)` reads the cache var, errors
-    out if it isn't absolute.
+- **Drivers pass NANO_ROS_PLATFORM / NANO_ROS_RMW (+ board-specific
+  cache vars) before `add_subdirectory(<repo-root>)`.** The
+  `just`-recipe / outer build script knows the layout and supplies
+  it via cmake `-D…=$PWD/...` or env var:
+  - `-DNANO_ROS_PLATFORM=`, `-DNANO_ROS_RMW=`, `-DCMAKE_TOOLCHAIN_FILE=`,
+    `-D<SDK>_DIR=`, `-D<BOARD>_CONFIG_DIR=`.
+  - Third-party SDKs (Cyclone DDS, NetX Duo, FreeRTOS-Kernel) still
+    pass `-DCMAKE_PREFIX_PATH=` to their own install prefixes — the
+    deletion was about NanoRos's own install prefix, not third-party
+    libraries the project depends on.
 - **Find-program / find-package fallbacks may use install-relative
   paths.** Once installed, a CMake config at `<prefix>/lib/cmake/<Pkg>/`
   legitimately knows that companion files live at

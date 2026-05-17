@@ -1,30 +1,27 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.22)
 project(pkg_c_talker LANGUAGES C)
 
-# Phase 123.A.10 — multi-package workspace demo.
+# Phase 140 — multi-package workspace demo, add_subdirectory shape.
 #
 # Tiny C talker that:
+#   * Pulls nano-ros source into the build via add_subdirectory.
 #   * Generates std_msgs C bindings via nros_generate_interfaces().
-#   * Links the nano-ros platform + RMW backends via the
-#     nano_ros_link_platform / nano_ros_link_rmw helpers
-#     (Phase 123.A.1.x.5).
+#   * Links the umbrella NanoRos::NanoRos target (which transitively
+#     wires the RMW staticlib + platform shim).
+#   * Calls nros_platform_link_app() for per-platform fixups.
 #
-# `find_package(NanoRos)` locates the installed nano-ros prefix
-# (cmake -DCMAKE_PREFIX_PATH=<install-dir>).
-find_package(NanoRos REQUIRED CONFIG)
+# Path depth: five levels up from
+# examples/templates/multi-package-workspace/src/pkg_c_talker/
+# to the nano-ros repo root.
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
 nros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
 nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
 
 add_executable(pkg_c_talker src/main.c)
-# Phase 123.A.10 — call RMW link helper BEFORE platform so that
-# at user-target level the link order ends with `... rmw platform`.
-# libnros_rmw_<rmw>.a's undefined `nros_platform_*` refs need
-# `libnros_platform_<plat>.a` to follow in single-pass ld scanning.
-nano_ros_link_rmw(pkg_c_talker)
-nano_ros_link_platform(pkg_c_talker)
 target_link_libraries(pkg_c_talker PRIVATE
     std_msgs__nano_ros_c
     NanoRos::NanoRos)
-
-install(TARGETS pkg_c_talker RUNTIME DESTINATION lib/${PROJECT_NAME})
+nros_platform_link_app(pkg_c_talker)

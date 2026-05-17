@@ -1,26 +1,14 @@
 #!/usr/bin/env bash
-# Phase 123.A.10 — build all three packages in this workspace.
+# Phase 140 — build all three packages in this workspace.
 #
-# Configures each CMake package with CMAKE_PREFIX_PATH pointing at
-# the nano-ros install + shares one NANO_ROS_GEN_CACHE_DIR so the
-# std_msgs codegen runs once across the C + C++ packages.
+# Each CMake package add_subdirectory's the nano-ros source tree
+# directly; we set NANO_ROS_GEN_CACHE_DIR to a shared scratch dir so
+# the std_msgs codegen output is reused across the C + C++ packages.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-NANO_ROS_INSTALL="${NANO_ROS_INSTALL:-${NANO_ROS_ROOT}/build/install}"
 GEN_CACHE="${SCRIPT_DIR}/build/nros-gen-cache"
-
-if [[ ! -d "${NANO_ROS_INSTALL}/lib/cmake/NanoRos" ]]; then
-    cat >&2 <<EOF
-build-all.sh: nano-ros not installed at ${NANO_ROS_INSTALL}
-  Run from the nano-ros checkout first:
-    ./tools/setup.sh --target=posix-zenoh
-    just install-local
-EOF
-    exit 1
-fi
 
 mkdir -p "${GEN_CACHE}"
 
@@ -31,7 +19,6 @@ build_cmake_pkg() {
     echo "=== build ${pkg} (cmake) ==="
     cmake -S "${src}" -B "${bld}" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH="${NANO_ROS_INSTALL}" \
         -DNANO_ROS_GEN_CACHE_DIR="${GEN_CACHE}" \
         > /dev/null
     cmake --build "${bld}" --parallel

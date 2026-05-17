@@ -16,13 +16,15 @@ The nros C++ API (`nros-cpp`) provides a freestanding C++14 interface for embedd
 ### Native Linux
 
 ```cmake
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 project(my_app LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(NanoRos REQUIRED CONFIG)
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(<path-to-nano-ros> nano_ros)
 
 nano_ros_generate_interfaces(std_msgs
     "msg/Int32.msg"
@@ -36,6 +38,7 @@ target_link_libraries(my_app
         std_msgs__nano_ros_cpp
         NanoRos::NanoRosCpp
 )
+nros_platform_link_app(my_app)
 ```
 
 The `nano_ros_generate_interfaces()` function:
@@ -46,38 +49,23 @@ The `nano_ros_generate_interfaces()` function:
 
 ### FreeRTOS (ARM Cortex-M3)
 
-The toolchain file is referenced by the example `CMakeLists.txt` — only `CMAKE_PREFIX_PATH` needs to be provided:
+Same shape as POSIX — set the toolchain + board + platform on the
+cmake command line and the example's `add_subdirectory(nano-ros)` does
+the rest. Phase 138's `cmake/platform/nano-ros-freertos.cmake` +
+`cmake/board/nano-ros-board-mps2-an385-freertos.cmake` compose the
+kernel + lwIP + LAN9118 driver in-tree; no install step needed.
 
 ```bash
 cmake -S examples/qemu-arm-freertos/cpp/zenoh/talker -B build/talker \
-    -DCMAKE_PREFIX_PATH=$(pwd)/build/install
+    -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake \
+    -DNANO_ROS_PLATFORM=freertos \
+    -DNANO_ROS_BOARD=mps2-an385-freertos
 cmake --build build/talker
 ```
 
-The example `CMakeLists.txt` follows this pattern:
-
-```cmake
-cmake_minimum_required(VERSION 3.22)
-set(CMAKE_TOOLCHAIN_FILE
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/arm-freertos-armcm3.cmake"
-    CACHE FILEPATH "")
-project(freertos_cpp_talker LANGUAGES C CXX ASM)
-
-find_package(NanoRos CONFIG REQUIRED)
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-support.cmake")
-
-nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
-
-add_executable(freertos_cpp_talker src/main.cpp ${FREERTOS_STARTUP_SOURCE})
-target_link_libraries(freertos_cpp_talker PRIVATE
-    std_msgs__nano_ros_cpp NanoRos::NanoRosCpp freertos_platform)
-```
-
-`find_package(NanoRos)` provides `NanoRos::NanoRosCpp` and `nros_generate_interfaces()`.
-`freertos-support.cmake` provides the `freertos_platform` target (FreeRTOS kernel + lwIP + LAN9118).
-`NANO_ROS_PLATFORM` is auto-detected as `freertos_armcm3` from the `Rust_CARGO_TARGET` set by the toolchain file.
-
-Run `just install-local` first to build and install the cross-compiled libraries.
+The example's own `CMakeLists.txt` consumes nano-ros via
+`add_subdirectory(<repo>)` (Phase 144) and reaches
+`NanoRos::NanoRosCpp` + `nros_platform_link_app()` directly.
 
 ### Zephyr
 

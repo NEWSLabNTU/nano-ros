@@ -629,13 +629,15 @@ examples/native/cpp/zenoh/my-example/
 #### `CMakeLists.txt`
 
 ```cmake
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22)
 project(my_example LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(NanoRos REQUIRED CONFIG)
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(<path-to-nano-ros> nano_ros)
 
 nano_ros_generate_interfaces(std_msgs
     "msg/Int32.msg"

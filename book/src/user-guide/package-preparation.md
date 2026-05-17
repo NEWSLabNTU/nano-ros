@@ -50,12 +50,16 @@ Generated message crates are added by the message-generation workflow.
 
 ## C or C++ Package
 
-Minimal CMake package:
+Minimal CMake package (Phase 140 — `add_subdirectory` is the only
+consumption shape):
 
 ```cmake
-find_package(NanoRos REQUIRED CONFIG)
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(<path-to-nano-ros> nano_ros)
 nano_ros_generate_interfaces(std_msgs "msg/Int32.msg")
 target_link_libraries(my_node PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(my_node)
 ```
 
 Use the platform guide for target-specific CMake options and link

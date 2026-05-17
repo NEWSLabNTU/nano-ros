@@ -2,24 +2,34 @@
 
 ## Overview
 
-C examples use a config-mode CMake package. Run `just install-local` first to create the pseudo-install layout at `build/install/`. Both zenoh and XRCE library variants are installed.
+Phase 140 — nano-ros is consumed exclusively via
+`add_subdirectory(<repo-root>)` from the user's CMakeLists. There is
+no install step, no install prefix, no `find_package(NanoRos)`.
 
-The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. The top-level `CMakeLists.txt` builds one RMW variant per invocation; `just install-local` runs cmake twice (zenoh + xrce) to the same prefix.
+The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. Each `add_subdirectory(nano-ros)` invocation builds the staticlib(s) for the selected `(NANO_ROS_PLATFORM, NANO_ROS_RMW)` tuple in-tree.
 
 ## Usage
 
 ```cmake
-find_package(NanoRos REQUIRED CONFIG)
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(third_party/nano-ros nano_ros)
+
+add_executable(my_app src/main.c)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(my_app)
 ```
 
-This provides include dirs, static library, and platform link libs (pthread, dl, m) automatically.
+This wires include dirs, RMW staticlib, platform shim, and per-build
+config header automatically. See
+[build-as-subdirectory.md](../../book/src/getting-started/build-as-subdirectory.md)
+for the full walkthrough.
 
-**RMW backend selection:** The `NANO_ROS_RMW` CMake variable selects which library variant to link (default: `zenoh`). Pass `-DNANO_ROS_RMW=xrce` for XRCE examples.
+**RMW backend selection:** Pass `-DNANO_ROS_RMW=<zenoh|dds|xrce|cyclonedds>` to cmake.
 
 ## Code Generation
 
-C code generation uses `nano_ros_generate_interfaces()` (from `NanoRosGenerateInterfaces.cmake`, included automatically by `find_package(NanoRos CONFIG)`). The codegen tool (`nros-codegen`) is installed to `$PREFIX/bin/` by `just install-local`.
+C code generation uses `nano_ros_generate_interfaces()` (from `cmake/NanoRosGenerateInterfaces.cmake`, included automatically by the root `CMakeLists.txt` once nano-ros is `add_subdirectory`'d). The codegen tool (`nros-codegen`) is a Corrosion-built target reachable via `$<TARGET_FILE:nros-codegen>`.
 
 Always use `nano_ros_generate_interfaces()` for message/service/action types — never hand-write CDR serialization or struct definitions. The API mirrors `rosidl_generate_interfaces()` from standard ROS 2: interface files are positional arguments resolved first locally, then via ament index, then from bundled interfaces.
 
@@ -117,54 +127,39 @@ slot and does not require `nros_executor_register_action_client`.
 
 ## System Install
 
-For package maintainers:
-
-```bash
-cmake -S . -B build -DNANO_ROS_RMW=zenoh -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-cmake --install build --prefix /usr/local
-
-# Multi-RMW: run cmake twice to same prefix (library names don't collide)
-cmake -S . -B build-xrce -DNANO_ROS_RMW=xrce -DCMAKE_BUILD_TYPE=Release
-cmake --build build-xrce
-cmake --install build-xrce --prefix /usr/local
-```
+There is no system install. Phase 140 deleted every `install(...)`
+rule. nano-ros ships in source form — the user project owns whatever
+install layout it needs for *its* binaries.
 
 ## FreeRTOS / NuttX Cross-Compilation
 
-Cross-compiled library variants are installed alongside the POSIX variant by `just install-local`. Pass `CMAKE_PREFIX_PATH` and a toolchain file — no source tree location required.
+Cross-compiled examples consume nano-ros the same way as POSIX:
+`add_subdirectory(<repo>)` with `NANO_ROS_PLATFORM` set to the
+target RTOS. Pass `CMAKE_TOOLCHAIN_FILE` for the cross-compiler.
 
 **FreeRTOS (ARM Cortex-M3, MPS2-AN385):**
 
 ```bash
 cmake -S examples/qemu-arm-freertos/c/zenoh/talker -B build/talker \
-    -DCMAKE_PREFIX_PATH=$(pwd)/build/install \
-    -DNANO_ROS_PLATFORM=freertos_armcm3 \
+    -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake \
+    -DNANO_ROS_PLATFORM=freertos \
+    -DNANO_ROS_BOARD=mps2-an385-freertos \
     -DNANO_ROS_RMW=zenoh
 cmake --build build/talker
 ```
-
-The toolchain file (`cmake/toolchain/arm-freertos-armcm3.cmake`) is referenced by the example `CMakeLists.txt` and sets the cross-compiler and Rust target automatically.
 
 **NuttX (ARM Cortex-A7):**
 
 ```bash
 cmake -S examples/qemu-arm-nuttx/cpp/zenoh/talker -B build/talker \
-    -DCMAKE_PREFIX_PATH=$(pwd)/build/install
+    -DNANO_ROS_PLATFORM=nuttx \
+    -DNANO_ROS_BOARD=nuttx-qemu-arm
 cmake --build build/talker
 ```
 
-**Installed library variants** (all under `build/install/lib/`):
-
-| File | Platform | RMW |
-|------|----------|-----|
-| `libnros_c_zenoh.a` | POSIX x86_64 | zenoh |
-| `libnros_c_xrce.a` | POSIX x86_64 | xrce |
-| `libnros_c_zenoh_freertos_armcm3.a` | FreeRTOS ARM Cortex-M3 | zenoh |
-| `libnros_cpp_zenoh.a` | POSIX x86_64 | zenoh |
-| `libnros_cpp_zenoh_freertos_armcm3.a` | FreeRTOS ARM Cortex-M3 | zenoh |
-
-`NANO_ROS_PLATFORM` is auto-detected from `Rust_CARGO_TARGET` (set by the toolchain file) when not explicitly specified.
+The example's own `CMakeLists.txt` add_subdirectory's nano-ros; the
+Corrosion target tree under `build/talker/cargo/` holds the
+per-build staticlib (`libnros_c.a`, `libnros_rmw_zenoh_staticlib.a`, …).
 
 ## Zephyr Integration
 

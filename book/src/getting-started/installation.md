@@ -1,17 +1,18 @@
 # Installation
 
-> **For new projects, prefer the `add_subdirectory` path documented at
-> [build-as-subdirectory.md](build-as-subdirectory.md).** This page
-> covers the legacy install-local workflow (slated for removal in
-> Phase 140).
+nano-ros is distributed as **source**, vendored into the consumer's
+project tree (git submodule, `west` manifest, ESP-IDF component, etc.)
+and built in-tree via `add_subdirectory(nano-ros)`. There is no binary
+tarball, no system-wide install step, no `find_package(NanoRos)`.
 
-nano-ros is distributed as **source**, fetched from git and built locally.
-There is no binary tarball or SDK release.
+> See [build-as-subdirectory.md](build-as-subdirectory.md) for the
+> canonical user incantation (4-line `CMakeLists.txt`). This page
+> walks the surrounding workspace + per-target setup choices.
 
 ## Pattern A: nano-ros lives inside your ROS 2 workspace
 
-The recommended layout is to clone nano-ros into your workspace's `src/`
-directory alongside your packages:
+The recommended layout is to clone nano-ros into your workspace's
+`src/` directory alongside your packages:
 
 ```
 ~/ros2_ws/
@@ -25,10 +26,43 @@ directory alongside your packages:
 
 `colcon build` discovers nano-ros + each user package via `package.xml`,
 builds them in dependency order, and shares one nano-ros build across
-every consuming package. Users never run `cmake` manually.
+every consuming package. Users never run `cmake` manually — the per-user
+package's `CMakeLists.txt` does `add_subdirectory(../nano-ros nano_ros)`
+under the hood.
 
 A complete working example lives at
 [`examples/templates/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace).
+
+## Pattern B: nano-ros as a third-party subdirectory
+
+For C/C++ projects that don't use colcon at all:
+
+```
+~/my_project/
+├── CMakeLists.txt
+├── src/main.c
+└── third_party/
+    └── nano-ros/             # git submodule
+```
+
+The top-level `CMakeLists.txt`:
+
+```cmake
+cmake_minimum_required(VERSION 3.22)
+project(my_app C)
+
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     zenoh)
+add_subdirectory(third_party/nano-ros nano_ros)
+
+add_executable(my_app src/main.c)
+target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(my_app)
+```
+
+That is the entire consumption shape. See
+[build-as-subdirectory.md](build-as-subdirectory.md) for the full
+walkthrough.
 
 ## One-shot bootstrap
 
@@ -65,58 +99,6 @@ Useful flags:
 | `--dry-run` | print plan, fetch nothing |
 | `--platform=<plat>` | platform-only fetch (skips RMW) |
 | `--rmw=<rmw>` | RMW-only fetch (skips platform) |
-
-## Build with colcon
-
-After bootstrap:
-
-```bash
-cd ~/ros2_ws
-colcon build
-source install/setup.bash
-ros2 run pkg_a my_node
-```
-
-colcon walks `src/`, finds packages with `<depend>nano-ros</depend>` +
-`<depend>std_msgs</depend>` (etc.), and builds them in dependency order.
-
-The shared codegen cache (Phase 123.A.7) lets each generated message
-package — `std_msgs__nano_ros_c`, `std_msgs__nano_ros_cpp`, etc. —
-build **once** per workspace instead of once per consuming user package.
-Set `NANO_ROS_GEN_CACHE_DIR=<dir>` to enable it (`build-all.sh` in the
-demo workspace shows the pattern).
-
-### Without colcon
-
-Some setups don't have a ROS 2 distro installed (embedded-focused users,
-CI runners). For these, `examples/templates/multi-package-workspace/build-all.sh`
-shows the bare CMake + Cargo invocation that mimics what colcon would
-do — useful as a fallback.
-
-## Direct `cmake -B build` (single-build mode)
-
-If you don't have a multi-package workspace and just want to use
-nano-ros as a one-shot library, configure it directly:
-
-```bash
-git clone https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
-cmake -S . -B build -DNANO_ROS_RMW=zenoh -DNANO_ROS_PLATFORM=posix
-cmake --build build
-cmake --install build --prefix ~/.local/nano-ros
-```
-
-`cmake/bootstrap.cmake` (Phase 123.A.5) auto-runs
-`tools/setup.sh --target=posix-zenoh` if you forgot — no separate setup
-step is required. Opt out via `-DNANO_ROS_SKIP_BOOTSTRAP=ON` if you
-manage submodules yourself.
-
-Your downstream projects then reference the install:
-
-```bash
-cmake -S my_project -B my_project/build \
-    -DCMAKE_PREFIX_PATH=~/.local/nano-ros
-```
 
 ## Per-target setup
 
@@ -205,8 +187,17 @@ just docker shell      # Interactive shell with all tools
 just docker test-qemu  # Run QEMU tests in container
 ```
 
+## Migrating from a pre-140 checkout
+
+If you were on a nano-ros version that still had `just install-local`,
+see
+[migration-install-local-removal.md](../release/migration-install-local-removal.md)
+for the one-page rewrite.
+
 ## Next Steps
 
 - [First Native Rust Node](native.md) — build + run a Rust publisher
+- [Build as Subdirectory](build-as-subdirectory.md) — C/C++ + CMake
+  consumption walkthrough
 - [C API](../reference/c-api.md) — API entry points and CMake integration
 - [`examples/templates/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace) — full mixed C / C++ / Rust example

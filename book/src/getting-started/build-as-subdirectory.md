@@ -1,14 +1,10 @@
 # Build as a CMake subdirectory
 
-This is the recommended way to integrate nano-ros into a new C or C++
-project. The nano-ros repo ships a top-level `CMakeLists.txt`
-(Phase 137) that exposes everything via `add_subdirectory(...)` — no
-`just install-local`, no `find_package(NanoRos CONFIG)`, no install
-prefix.
-
-The legacy `find_package(NanoRos CONFIG)` workflow is documented at
-[installation.md](installation.md) and stays supported until Phase
-140 retires it.
+This is **the** way to integrate nano-ros into a C or C++ project. The
+nano-ros repo ships a top-level `CMakeLists.txt` (Phase 137) that exposes
+everything via `add_subdirectory(...)`. No install step, no
+`find_package(NanoRos)`, no install prefix — Phase 140 removed every
+last trace of that pipeline.
 
 ## Layout
 
@@ -27,13 +23,14 @@ cmake_minimum_required(VERSION 3.22)
 project(my_app C)
 
 # Pick platform + RMW BEFORE add_subdirectory.
-set(NANO_ROS_PLATFORM posix)   # posix is the only fully wired Phase 137 path
-set(NANO_ROS_RMW     zenoh)    # zenoh | dds  (xrce | cyclonedds land in Phase 138)
+set(NANO_ROS_PLATFORM posix)   # posix | freertos | nuttx | threadx | zephyr | baremetal
+set(NANO_ROS_RMW     zenoh)    # zenoh | dds | xrce | cyclonedds
 
 add_subdirectory(third_party/nano-ros nano_ros)
 
 add_executable(my_app main.c)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(my_app)
 
 # Optional — generate C bindings for ROS 2 .msg / .srv / .action files.
 # nros_generate_interfaces() is reachable in-tree once nano-ros has been
@@ -52,49 +49,30 @@ libraries (`pthread`, `dl`, `m`), and the per-build
 
 | Variable | Default | Values |
 |----------|---------|--------|
-| `NANO_ROS_PLATFORM` | `posix` | `posix`, `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64` |
-| `NANO_ROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`*, `cyclonedds`* |
+| `NANO_ROS_PLATFORM` | `posix` | `posix`, `freertos` (`freertos_armcm3`), `nuttx` (`nuttx_armv7a`), `threadx` (`threadx_linux`, `threadx_riscv64`), `zephyr`, `baremetal` |
+| `NANO_ROS_BOARD` | (unset) | required for `threadx` (`threadx-linux` or `riscv64-qemu`) and `baremetal` (`mps2-an385`, `stm32f4-nucleo`, …) |
+| `NANO_ROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`, `cyclonedds` |
 | `NANO_ROS_ROS_EDITION` | `humble` | `humble`, `iron` |
 | `NANO_ROS_BUILD_CODEGEN` | `ON` | `ON` / `OFF` |
-| `NANO_ROS_FORCE_INSTALL` | `OFF` | `ON` / `OFF` — emit `install(...)` rules even when consumed via `add_subdirectory` |
-
-`*` Phase 137 wires `zenoh` + `dds` natively. Selecting `xrce` or
-`cyclonedds` from in-tree mode surfaces a clear fatal-error pointing
-back at the legacy install-local workflow until Phase 138 / 139 close
-the gap.
 
 Variables MUST be `set(...)` BEFORE `add_subdirectory(...)` — the
 sub-project consumes them at include time.
 
-## Install rules
+## What about installing?
 
-When nano-ros is the top-level project (`cmake -S nano-ros -B build`),
-the existing `install(...)` rules emit the legacy install layout under
-`<prefix>/lib`, `<prefix>/include`, `<prefix>/lib/cmake/NanoRos`. When
-nano-ros is consumed via `add_subdirectory`, those rules are gated on
-`PROJECT_IS_TOP_LEVEL` and stay inert — the user project owns install
-layout. Override with `-DNANO_ROS_FORCE_INSTALL=ON` if you need the
-legacy install layout produced from inside a user project.
+Phase 140 deleted every `install(...)` rule. nano-ros is consumed in
+source form — never out of an installed prefix. If you need a
+shippable artefact, your *user project* owns the install layout; ship
+your binary, not nano-ros itself.
 
-## What Phase 137 does not yet cover
-
-- **Per-platform RTOS shells** (Zephyr `west` module, ESP-IDF
-  component, PlatformIO `library.json`, NuttX `apps/external`) —
-  Phase 139.
-- **Per-platform support modules consolidation** (current
-  `packages/core/nros-c/cmake/nros-{threadx,freertos,nuttx}.cmake`
-  move to `cmake/platform/nano-ros-<plat>.cmake`) — Phase 138.
-- **`install-local` removal** — Phase 140.
-
-For RTOS targets today, keep using the platform-specific drivers
-(`just zephyr ...`, `just freertos ...`, `just nuttx ...`,
-`just threadx_linux ...`) plus the legacy
-[installation.md](installation.md) flow.
+For RTOS users who want a more idiomatic surface than raw
+`add_subdirectory`, see the Phase 139 integration shells under
+`integrations/<rtos>/` — they translate west / esp-idf / PlatformIO /
+NuttX / PX4 manifests into the same root CMake. Each shell is a
+~20-line wrapper around `add_subdirectory(<repo>)`.
 
 ## Worked example
 
-The `examples/native/c/zenoh/talker` example was migrated to the
-in-tree path in Phase 137.5; its `CMakeLists.txt` is ~16 lines and is
-the canonical copy-out template. The sibling
-`examples/native/c/zenoh/*` examples remain on the legacy
-`find_package(NanoRos CONFIG)` path until Phase 138.
+The `examples/native/c/zenoh/talker/CMakeLists.txt` is the canonical
+copy-out template — 20 lines including codegen + per-app fixup. All
+83 in-tree C/C++ examples follow the same shape after Phase 144.

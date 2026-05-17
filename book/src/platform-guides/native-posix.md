@@ -44,7 +44,8 @@ my_posix_node/
 ```
 
 Keep package beside `nano-ros` in workspace `src/`. Use path
-dependencies for Rust or `find_package(NanoRos CONFIG)` for C/C++.
+dependencies for Rust or `add_subdirectory(<path-to-nano-ros>)` for
+C/C++.
 
 ## Code Example
 

@@ -1,20 +1,14 @@
 # nano-ros C Talker (POSIX + Zenoh)
 
 Minimal C example: publishes `std_msgs/Int32` on `/chatter` once per
-second over zenoh-pico against a local `zenohd` router. Used as the
-canonical proof-of-concept for the Phase 137 source-distribution
-consumption path.
+second over zenoh-pico against a local `zenohd` router. Canonical
+proof-of-concept for the source-distribution consumption path
+(Phase 137 / 140 / 144).
 
 ## Build
 
-Two consumption paths are supported. The first is canonical going
-forward; the second is the legacy `install-local` flow being
-retired in Phase 140.
-
-### Canonical — `add_subdirectory(nano-ros)` (Phase 137)
-
 The example's `CMakeLists.txt` pulls the nano-ros source tree
-directly with `add_subdirectory`. No install step. Build with:
+directly via `add_subdirectory`. No install step, no install prefix.
 
 ```bash
 cd examples/native/c/zenoh/talker
@@ -35,49 +29,10 @@ Under the hood the `add_subdirectory(<repo-root>)` brings in:
   `.msg` / `.srv` / `.action` bindings; sourced from
   `<repo-root>/cmake/NanoRosGenerateInterfaces.cmake`.
 
-The canonical path works with **no prior `just install-local`** —
-the source tree IS the install layout. See
-`book/src/getting-started/build-as-subdirectory.md` for the full
-recipe and Phase 137's roadmap doc for the design notes.
-
-### Legacy — `find_package(NanoRos CONFIG)` (pre-137, scheduled for removal in Phase 140)
-
-The pre-137 flow built the nano-ros library set up-front into a
-prefix (`build/install/`) and consumed it via CMake's
-`find_package` mechanism. The flow still works today but is
-slated for removal once every internal test and example switches
-to the `add_subdirectory` path:
-
-```bash
-# 1. One-time: build the install tree (~30 archives across all
-#    supported platform / RMW combinations).
-just install-local
-
-# 2. Build the example against the install tree.
-cd examples/native/c/zenoh/talker
-cmake -B build-legacy -S . \
-    -DCMAKE_PREFIX_PATH="$PWD/../../../../../build/install"
-cmake --build build-legacy
-./build-legacy/c_talker
-```
-
-(The `find_package`-based `CMakeLists.txt` is not committed in
-this example anymore. To exercise the legacy path, copy a
-sibling example's pre-137 CMakeLists or read
-`docs/roadmap/archived/phase-119-3-cmake-setup.md` for the older
-recipe.)
-
-The legacy path's drawbacks that motivated Phase 137:
-- Up-front compile of every variant; users only need one.
-- `find_package` against `/opt/nano-ros` doesn't fit `west` /
-  `idf.py` / PlatformIO / NuttX-Kconfig / PX4 — the four
-  workflows nano-ros actually targets.
-- Two CMake APIs to maintain (`NanoRos::*` + `find_package`'s
-  install-side machinery).
-
-Phase 140 deletes `install-local` once every internal consumer
-moves to `add_subdirectory`. Treat this section as a transitional
-escape hatch, not a recommendation.
+See `book/src/getting-started/build-as-subdirectory.md` for the full
+recipe and Phase 137's roadmap doc for the design notes. Phase 140
+removed the legacy `find_package(NanoRos CONFIG)` / `just install-local`
+flow — `add_subdirectory` is the only supported shape today.
 
 ## Run
 
@@ -120,6 +75,6 @@ Pair with the matching listener example at
   user-facing guide for the canonical path.
 - `docs/roadmap/phase-137-source-distribution-entry-cmake.md` —
   design notes for the root entry CMake.
-- `docs/roadmap/phase-140-install-local-rip-off.md` — the legacy
-  path retirement plan.
+- `docs/release/migration-install-local-removal.md` — Phase 140
+  migration note for downstream consumers.
 - `examples/native/c/zenoh/listener/` — receiver-side counterpart.

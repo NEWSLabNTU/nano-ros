@@ -83,7 +83,11 @@ just cyclonedds build-rmw   # build packages/dds/nros-rmw-cyclonedds
 just cyclonedds test        # run the CTest harness
 ```
 
-`just install-local-posix` builds the four-RMW matrix automatically (`zenoh` / `xrce` / `dds` / `cyclonedds`); the resulting `build/install/` exposes a `cyclonedds`-flavoured `libnros_cpp_cyclonedds.a` plus `find_package(NrosRmwCyclonedds)`.
+Each example picks its RMW via `-DNANO_ROS_RMW=cyclonedds` at
+configure time; the root `CMakeLists.txt` add_subdirectory's
+`packages/dds/nros-rmw-cyclonedds/` and links the resulting target
+into `NanoRos::NanoRos`. No `build/install/` prefix, no
+`find_package(NrosRmwCyclonedds)` — Phase 140 deleted both.
 
 **Known limitations.** Cyclone DDS currently has a 2× CDR roundtrip per message, deferred status-event wiring, pending service request-id correlation, and incomplete Cortex-A/R Zephyr board support. See `docs/reference/cyclonedds-known-limitations.md` for the full list. ARMv8-R toolchain prep (Cortex-A 64-bit FVP, Cortex-R52 hardware) is in `docs/reference/zephyr-armv8r-setup.md`.
 
