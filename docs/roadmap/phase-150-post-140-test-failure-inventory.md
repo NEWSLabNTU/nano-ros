@@ -7,7 +7,7 @@ points at its root cause + remediation phase. Acts as the bridge
 between Phase 140's "structurally complete" state and a fully
 green CI.
 
-**Status.** Inventory complete. Phase 149 stubs landed
+**Status.** Inventory complete. Phase 151 stubs landed
 (`1d66d3dc` parent of this update). Interim CI v6 snapshot at
 769/797 tests run:
 
@@ -59,7 +59,7 @@ recipe `_test-c-codegen` failed   (final stage)
 
 ## Failure inventory by class
 
-### A. zenoh-pico POSIX serial link gap (58 tests) → **Phase 149**
+### A. zenoh-pico POSIX serial link gap (58 tests) → **Phase 151**
 
 ```
 nros-tests::native_api test_native_{action,service}_{client,server}_{builds,communication}::lang_{1,2}_Language__{C,Cpp}
@@ -73,7 +73,7 @@ link regressions; POSIX serial wasn't in scope.
 Fix: 7 stubs in `platform_aliases.c` per Phase 134 pattern. Filed
 as Phase 149; pending implementation as of inventory snapshot.
 
-### B. dds_api C++ build failures (8 tests) → **Phase 149-class**
+### B. dds_api C++ build failures (8 tests) → **Phase 151-class**
 
 ```
 nros-tests::dds_api test_dds_cpp_action_{client,server}_builds
@@ -193,7 +193,7 @@ follow-ups.
 
 ## Acceptance
 
-- [ ] Phase 149 stubs land; native_api + dds_api failure count
+- [ ] Phase 151 stubs land; native_api + dds_api failure count
       drops by ~66.
 - [ ] `qemu setup-qemu` run; class C drops to 0.
 - [ ] cmake_platform_matrix audit converts hard fails to
