@@ -73,16 +73,37 @@ link regressions; POSIX serial wasn't in scope.
 Fix: 7 stubs in `platform_aliases.c` per Phase 134 pattern. Filed
 as Phase 149; pending implementation as of inventory snapshot.
 
-### B. dds_api C++ build failures (8 tests) → **Phase 151-class**
+### B. dds_api C++ build failures (6 tests) → **Closed 2026-05-18**
 
 ```
 nros-tests::dds_api test_dds_cpp_action_{client,server}_builds
 nros-tests::dds_api test_dds_cpp_service_{client,server}_builds
-... (similar shape)
+nros-tests::dds_api test_dds_cpp_{talker,listener}_builds
 ```
 
-Likely same serial-link root cause — `libnros_rmw_dds_staticlib.a`
-may pull in zenoh-pico serial transitively. Verify post-149.
+NOT a serial-link issue (initial hypothesis was wrong). Actual
+failure: `undefined reference to nros_cpp_publish_raw` from
+`libnano_ros_cpp_ffi_<package>.a` at executable link time. Root
+cause was CMake link order: `libnros_cpp.a` (which DEFINES the
+symbol) and `libnano_ros_cpp_ffi_<pkg>.a` (which USES it) both
+landed as sibling `INTERFACE` deps of the generated
+`<pkg>__nano_ros_cpp` target with no recorded ordering. CMake
+emitted them in declaration order with `libnros_cpp.a` first;
+GNU ld processed left→right, discarded the unused
+`nros_cpp_publish_raw` member from `libnros_cpp.a`, then the
+ffi lib referenced it later — `undefined reference`.
+
+Fix: `cmake/NanoRosGenerateInterfaces.cmake` now appends
+`NanoRos::NanoRosCpp` to `INTERFACE_LINK_LIBRARIES` of the
+per-package `${_lib_target}_ffi_lib` STATIC IMPORTED target.
+That records the ffi→cpp dependency so CMake's topological
+sort places `libnros_cpp.a` AFTER the ffi staticlib in the
+final link line. Symbol now resolves on the second pass.
+
+Verified: all 6 `test_dds_cpp_*_builds` tests now pass under
+`cargo nextest run -p nros-tests --test dds_api -E
+'test(test_dds_cpp)'` (clean rebuild of the example build
+trees confirms the fix is durable, not a stale-cache artefact).
 
 ### C. qemu_patched_binary tests (6 tests)
 
@@ -174,7 +195,7 @@ migrated in Phase 140.3 but may still pull from stale paths).
 | Class | Tests | Root cause | Phase | Status |
 |-------|-------|------------|-------|--------|
 | A. POSIX serial-link | 58 | Missing aliases | 149 | Stubs ready to land (this branch) |
-| B. dds_api C++ builds | 8 | Same as A (likely) | 149 verification | Awaiting A's land |
+| B. dds_api C++ builds | 6 | CMake link order: ffi_lib → NanoRosCpp dep not recorded | 150.B | **Closed 2026-05-18** |
 | C. qemu_patched_binary | 6 | Patched qemu not built | 143 | Run `just qemu setup-qemu` |
 | D. cmake_platform_matrix | 10 | Skip-precondition gap | 138.6 follow-up | Filed as TODO |
 | E. zenoh_header_parity | 2 | Phase 134 user-owned | 134 | User stream |

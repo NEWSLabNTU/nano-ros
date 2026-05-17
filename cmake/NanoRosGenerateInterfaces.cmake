@@ -516,6 +516,26 @@ function(nros_generate_interfaces target)
         IMPORTED_LOCATION "${_ffi_lib}"
       )
       target_link_libraries(${_lib_target} INTERFACE ${_lib_target}_ffi_lib)
+
+      # Phase 150.B — record the ffi_lib → NanoRos::NanoRosCpp link
+      # dependency explicitly so CMake's topological sort places
+      # libnros_cpp.a AFTER the per-package ffi staticlib in the
+      # final link line. Without this, both libs land as sibling
+      # INTERFACE deps of `${_lib_target}` with no recorded ordering;
+      # CMake picks declaration order (libnros_cpp.a first), GNU ld
+      # processes left→right and discards `nros_cpp_publish_raw` from
+      # libnros_cpp.a before the ffi lib pulls it in, producing
+      # `undefined reference to nros_cpp_publish_raw` at executable
+      # link time. Declaring the dep both registers ordering AND
+      # forwards NanoRosCpp's transitive deps (nros_c, nros_platform,
+      # rmw staticlib) to consumers of the ffi lib.
+      if(TARGET NanoRos::NanoRosCpp)
+        set_property(TARGET ${_lib_target}_ffi_lib APPEND PROPERTY
+          INTERFACE_LINK_LIBRARIES NanoRos::NanoRosCpp)
+      elseif(TARGET nros_cpp::nros_cpp)
+        set_property(TARGET ${_lib_target}_ffi_lib APPEND PROPERTY
+          INTERFACE_LINK_LIBRARIES nros_cpp::nros_cpp)
+      endif()
     endif()
 
     # Link to nros C++ library (prefer installed target, fall back to build-time Corrosion target)
