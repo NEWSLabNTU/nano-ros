@@ -1,0 +1,19 @@
+# Phase 139.2 — ESP-IDF component manifest for nano-ros.
+#
+# Consumers add a dependency in their `main/idf_component.yml`:
+#
+#   dependencies:
+#     nano-ros:
+#       version: "*"
+#       path: "../components/nano-ros/integrations/esp-idf"
+#
+# Or via `idf.py add-dependency` once published to the ESP Component
+# Registry (see docs/release/registry-publishing.md).
+
+description: nano-ros — lightweight ROS 2 client for embedded RTOS
+url: https://github.com/aeon/nano-ros
+version: "0.1.0"
+license: "MIT OR Apache-2.0"
+
+dependencies:
+  idf: ">=5.1"

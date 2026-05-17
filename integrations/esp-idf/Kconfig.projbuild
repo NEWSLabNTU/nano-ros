@@ -1,0 +1,21 @@
+# Phase 139.2 — ESP-IDF Kconfig.projbuild for nano-ros.
+#
+# Surfaces NANO_ROS_* knobs under `menuconfig → Component config →
+# nano-ros`. The CMakeLists sibling reads these via CONFIG_NROS_*.
+
+menu "nano-ros"
+
+config NROS_RMW
+    string "RMW backend (zenoh | dds | xrce | cyclonedds)"
+    default "zenoh"
+    help
+      Maps to the NANO_ROS_RMW CMake cache variable consumed by the
+      Phase 137 root CMakeLists.txt.
+
+config NROS_ROS_EDITION
+    string "ROS 2 edition (humble | iron)"
+    default "humble"
+    help
+      Maps to the NANO_ROS_ROS_EDITION CMake cache variable.
+
+endmenu
