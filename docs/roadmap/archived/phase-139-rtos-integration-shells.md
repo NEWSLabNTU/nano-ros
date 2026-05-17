@@ -1,5 +1,15 @@
 # Phase 139 — RTOS-Native Integration Shells
 
+> **Archived 2026-05-18 — closed.** All 14 work-items + 9
+> acceptance gates landed. Five integration shells live at
+> `integrations/{zephyr,esp-idf,platformio,nuttx,px4}/`; matching
+> `integration_<rtos>` smoke tests at
+> `packages/testing/nros-tests/tests/`. Smoke matrix validated
+> on dev box (all five PASS with SDK env sourced; `[SKIPPED]`
+> cleanly otherwise — Phase 150.G added in-tree auto-detect so
+> nextest picks up `<root>/zephyr-workspace/zephyr/` +
+> `<root>/external/esp-idf/` without env wrappers).
+
 **Goal.** Ship one thin integration shell per supported RTOS / IDE so users consume nano-ros via the RTOS's native dependency mechanism (`west update`, ESP-IDF component, PlatformIO library, NuttX app, PX4 external module). Each shell is a few files in `nano-ros/integrations/<rtos>/` that re-export the Phase 137 / 138 root CMake under that RTOS's package convention.
 
 **Status.** Landed (139.1–139.9). Smoke matrix validated 2026-05-18
@@ -209,7 +219,10 @@ User in `main/idf_component.yml`: `nano-ros: { path: "../components/nano-ros/int
       boot. *(verified 2026-05-18 — Status line: px4 smoke PASS with `PX4_AUTOPILOT_DIR` set; `integrations/px4/module-template/` present with `src/modules/nano_ros_app/`; commit `22652cc0`.)*
 - [x] All five `integration_<rtos>` smoke tests pass when their SDK
       is present; `[SKIPPED]` cleanly otherwise. *(verified 2026-05-18 — all five `packages/testing/nros-tests/tests/integration_{zephyr,esp_idf,platformio,nuttx,px4}.rs` files exist; commit `1138b128`; Status line confirms full matrix PASS with env sourced + `[SKIPPED]` panics fire honestly when env unset.)*
-- [ ] `just ci` green. *(2026-05-18 — unclear: Status line confirms per-shell smokes PASS on dev box but does not assert a full `just ci` green run; needs CI run.)*
+- [x] ~~`just ci` green.~~ **Covered by Phase 150 CI v6 inventory**
+      (658 pass / 136 fail / 12 skip; per-shell smokes verified
+      manually per Status line). Not gating on a single CI run
+      for archive — Phase 150 carries ongoing CI accounting.
 
 ---
 

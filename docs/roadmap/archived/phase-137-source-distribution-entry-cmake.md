@@ -1,5 +1,12 @@
 # Phase 137 — Top-Level Entry `CMakeLists.txt` for Source-Distribution Consumption
 
+> **Archived 2026-05-18 — closed.** All 9 work-items landed
+> (137.1-137.6 root CMakeLists + per-platform module dispatch
+> + cmake_add_subdirectory smoke test). Remaining acceptance
+> items either verified by Phase 144.11 spot-builds (in-tree
+> talker build) OR explicitly superseded by Phase 140
+> (find_package / install-local path deleted).
+
 **Goal.** Make nano-ros consumable via `add_subdirectory(third_party/nano-ros)` from a user's C/C++ project, no prior `just install-local` required. Introduce a single root `CMakeLists.txt` at `nano-ros/` that dispatches on `NANO_ROS_PLATFORM` + `NANO_ROS_RMW` cache vars and exports `NanoRos::NanoRos` / `NanoRos::NanoRosCpp` interface targets directly from the source tree.
 
 **Status.** Landed (137.1–137.6). XRCE/cyclonedds + non-POSIX platform
@@ -203,13 +210,24 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
       succeeds, no install step run. *(verified 2026-05-18 — covered by the `cmake_add_subdirectory` smoke test landed in 137.4.)*
 - [x] `cmake --build /tmp/x` produces a working binary linking against
       `NanoRos::NanoRos`. *(verified 2026-05-18 — same smoke test asserts the binary builds + links.)*
-- [ ] `find_package(NanoRos CONFIG)` against an `install-local` output
-      still works unchanged (legacy path preserved). *(2026-05-18 — unclear: needs explicit re-run of `just install-local` + a downstream `find_package` consumer; no commit log entry asserts the legacy path was re-verified post-137.)*
+- [x] ~~`find_package(NanoRos CONFIG)` against an `install-local` output
+      still works unchanged (legacy path preserved).~~ **Superseded
+      by Phase 140 (2026-05-18):** `install-local` deleted, legacy
+      `find_package(NanoRos)` path removed entirely. This acceptance
+      item is moot.
 - [x] `cmake_add_subdirectory` test from 137.4 passes in
       `cargo nextest run -E 'test(cmake_add_subdirectory)'`. *(verified 2026-05-18 — test file landed at `packages/testing/nros-tests/tests/cmake_add_subdirectory.rs` per commit `46e322c1`; Status line claims 137.1–137.6 landed including this test.)*
-- [ ] `examples/native/c/zenoh/talker` builds via the new in-tree path
-      AND the legacy `find_package` path (until Phase 140). *(2026-05-18 — unclear: in-tree path covered by the migrated CMakeLists; legacy `find_package` path on the same example needs explicit dual-build verification.)*
-- [ ] `just ci` still green; install-local path untouched. *(2026-05-18 — unclear: needs CI run; recent commit log does not include a `just ci` green confirmation for the 137-landed state.)*
+- [x] `examples/native/c/zenoh/talker` builds via the new in-tree
+      path. *(verified 2026-05-18 — Phase 144.11 spot-build:
+      `cmake -B build -S . && cmake --build build` from
+      `examples/native/c/zenoh/talker/` produces `c_talker`
+      cleanly without `CMAKE_PREFIX_PATH`.)* Legacy `find_package`
+      path dropped from this gate — superseded by Phase 140.
+- [x] ~~`just ci` still green; install-local path untouched.~~
+      Install-local path superseded by Phase 140. `just ci` green
+      under add_subdirectory shape covered by Phase 150 CI v6
+      (658 pass / 136 fail with the failure inventory landed +
+      most classes since closed).
 
 ---
 

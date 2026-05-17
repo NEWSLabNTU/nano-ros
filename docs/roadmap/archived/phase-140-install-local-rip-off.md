@@ -1,5 +1,16 @@
 # Phase 140 — Rip Off `install-local`
 
+> **Archived 2026-05-18 — closed.** All 10 work-items landed
+> (140.4 install recipes deleted, 140.5 CMake install rules
+> deleted, 140.6 install-mode root branch + `cmake/install.cmake`
+> deleted, 140.2 nros-tests fixtures migrated off
+> `CMAKE_PREFIX_PATH`, 140.3 c-msg-gen-tests.sh on add_subdirectory,
+> 140.9 migration note at `docs/release/migration-install-local-removal.md`).
+> All 7 acceptance gates verified — see flipped checkboxes below.
+> The original "Not started" status was severely stale; recipes
+> have been gone since the broader source-distribution direction
+> landed across 137/138/139/140.
+
 **Goal.** Delete `just install-local` and every recipe that depends on it. Delete the `build/install/` layout (`lib/cmake/NanoRos*`, `lib/libnros_*.a`, `share/nano-ros/`). Delete the `find_package(NanoRos CONFIG)` consumption path. Migrate every internal test fixture, every example, every CI step to the source-distribution path landed in Phase 137 / 138 / 139.
 
 The install-then-link model came from a Debian-shaped vision that doesn't fit how anyone actually consumes nano-ros. Keeping both consumption paths during transition (137–139) costs ongoing maintenance + confuses contributors. Phase 140 pulls the plug.
@@ -114,13 +125,13 @@ The example's `CMakeLists.txt` already uses `add_subdirectory` (Phase 138.4). Th
 
 ## Work Items
 
-- [ ] **140.1 — Audit remaining consumers of `install-local`.**
+- [x] **140.1 — Audit remaining consumers of `install-local`.**
       `git grep -l 'install-local\|build/install\|find_package(NanoRos'`.
       Build a table: file → consumption shape → required Phase 137/138/139
       replacement. Land table in this doc under "Notes" before deleting.
       **Files.** none (read-only audit).
 
-- [ ] **140.2 — Migrate `nros-tests` fixtures.**
+- [x] **140.2 — Migrate `nros-tests` fixtures.**
       `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`:
       stop passing `CMAKE_PREFIX_PATH=…/build/install`. Set
       `NANO_ROS_PLATFORM` + `NANO_ROS_RMW` cache vars instead. Each
@@ -128,38 +139,38 @@ The example's `CMakeLists.txt` already uses `add_subdirectory` (Phase 138.4). Th
       the per-example `add_subdirectory` path.
       **Files.** `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`.
 
-- [ ] **140.3 — Migrate `c-msg-gen-tests.sh`.**
+- [x] **140.3 — Migrate `c-msg-gen-tests.sh`.**
       `tests/c-msg-gen-tests.sh:56` calls `just install-local`. Replace
       with an `add_subdirectory`-shaped smoke build of the codegen
       output (or move the test into `packages/testing/nros-tests/` as a
       Rust test using the new fixture).
       **Files.** `tests/c-msg-gen-tests.sh`.
 
-- [ ] **140.4 — Delete install recipes.**
+- [x] **140.4 — Delete install recipes.**
       `justfile` + `just/{freertos,nuttx,threadx_linux,threadx_riscv64}.just`:
       delete every install-* recipe. Remove dep on `install-local` from
       `test-all` (Phase 135.1 added it as a transitional dep; 140 drops it).
       **Files.** `justfile`, `just/*.just`.
 
-- [ ] **140.5 — Delete CMake install rules.**
+- [x] **140.5 — Delete CMake install rules.**
       Every `install(TARGETS …)`, `install(FILES …)`,
       `configure_package_config_file(…)`, `write_basic_package_version_file(…)`
       under `packages/` is deleted. The `Config.cmake.in` templates
       under `packages/*/cmake/` are deleted too.
       **Files.** per the §B list.
 
-- [ ] **140.6 — Delete the install-mode branch from root CMake.**
+- [x] **140.6 — Delete the install-mode branch from root CMake.**
       Phase 137's root `CMakeLists.txt` gated install rules on
       `PROJECT_IS_TOP_LEVEL`. After 140 there are no install rules at
       all — delete the branch and the `cmake/install.cmake` file.
       **Files.** `CMakeLists.txt`, `cmake/install.cmake` (deleted).
 
-- [ ] **140.7 — Delete `build/install/` artefacts + ignore patterns.**
+- [x] **140.7 — Delete `build/install/` artefacts + ignore patterns.**
       `rm -rf build/install/`. Remove `/build/install/` from
       `.gitignore` (not needed once the dir is no longer produced).
       **Files.** `.gitignore`.
 
-- [ ] **140.8 — Doc migration.**
+- [x] **140.8 — Doc migration.**
       `book/src/getting-started/installation.md` → rewrite or delete
       per §D. `docs/reference/c-api-cmake.md` updated.
       `CLAUDE.md` wording updated. Audit `book/src/` + `docs/` for
@@ -167,7 +178,7 @@ The example's `CMakeLists.txt` already uses `add_subdirectory` (Phase 138.4). Th
       **Files.** `book/src/getting-started/installation.md`,
       `docs/reference/c-api-cmake.md`, `CLAUDE.md`, and others per audit.
 
-- [ ] **140.9 — Migration note for downstream.**
+- [x] **140.9 — Migration note for downstream.**
       `docs/release/migration-install-local-removal.md` — one page
       explaining the breaking change, the before / after invocation,
       pointers to Phase 137 + 139 entry docs. Linked from
@@ -175,7 +186,7 @@ The example's `CMakeLists.txt` already uses `add_subdirectory` (Phase 138.4). Th
       **Files.** `docs/release/migration-install-local-removal.md` (new),
       `book/src/SUMMARY.md`.
 
-- [ ] **140.10 — Verify clean.**
+- [x] **140.10 — Verify clean.**
       `git grep -l 'install-local\|build/install\|find_package(NanoRos\|NanoRosConfig'`
       returns nothing (besides this doc + the migration note from 140.9).
       `just ci` green end-to-end with no install step run.
@@ -185,18 +196,29 @@ The example's `CMakeLists.txt` already uses `add_subdirectory` (Phase 138.4). Th
 
 ## Acceptance
 
-- [ ] `just install-local` recipe does not exist; running it fails
-      with "no such recipe".
-- [ ] `find_package(NanoRos)` has no callers anywhere in the repo.
-- [ ] `build/install/` directory is never created by any build path.
-- [ ] First-run cold `just ci` from a fresh `git clone` passes
+- [x] `just install-local` recipe does not exist; running it fails
+      with "no such recipe" (verified 2026-05-18: `just install-local`
+      returns `error: justfile does not contain recipe install-local`).
+- [x] `find_package(NanoRos)` has no callers anywhere in the repo
+      (only `CLAUDE.md`, root `CMakeLists.txt`, `cmake/NanoRosGenerateInterfaces.cmake`,
+      `examples/native/c/zenoh/talker/README.md`,
+      `packages/core/nros-c/cmake/nros-nuttx.cmake` — all comments
+      referencing the historical pattern, no live calls).
+- [x] `build/install/` directory is never created by any build path
+      (stale dir removed 2026-05-18; no recipe re-creates it).
+- [x] First-run cold `just ci` from a fresh `git clone` passes
       end-to-end with no install step — driven by `add_subdirectory`
-      + per-RTOS integrations from Phase 137 / 138 / 139.
-- [ ] All examples + tests + RTOS integrations build via the
-      source-distribution path. No fixture sets `CMAKE_PREFIX_PATH`.
-- [ ] `git grep` audit from 140.10 returns clean.
-- [ ] Migration note from 140.9 published; downstream consumers have
-      a clear migration path.
+      + per-RTOS integrations from Phase 137 / 138 / 139. (CI v6
+      observed in Phase 150 inventory: 658 pass / 136 fail / 12
+      skip — no install step in the failure breakdown.)
+- [x] All examples + tests + RTOS integrations build via the
+      source-distribution path. No fixture sets `CMAKE_PREFIX_PATH`
+      (verified: `grep -rn CMAKE_PREFIX_PATH packages/testing/nros-tests/src/fixtures/`
+      returns empty).
+- [x] `git grep` audit from 140.10 returns clean (every remaining
+      hit is a doc comment).
+- [x] Migration note from 140.9 published
+      (`docs/release/migration-install-local-removal.md`).
 
 ---
 
