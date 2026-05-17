@@ -233,10 +233,31 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
         target_link_libraries(NanoRos INTERFACE nros_rmw_xrce_cffi-static)
     endif()
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
-    message(FATAL_ERROR
-        "NANO_ROS_RMW=cyclonedds is not yet supported via add_subdirectory(). "
-        "Use the legacy install-local path: `just install-local` + "
-        "`find_package(NanoRos CONFIG)`. Phase 138/139 will close this gap.")
+    # Phase 144.fix — Cyclone DDS is a standalone C++ CMake project
+    # (NOT a Rust crate via corrosion). It builds a libnros_rmw_cyclonedds.a
+    # that registers the C++ vtable via nros_rmw_cffi_register at .init_array
+    # time. add_subdirectory invokes the project's own CMakeLists.txt;
+    # CMAKE_PREFIX_PATH must already point at the Cyclone DDS install
+    # (handled by the install-local-posix recipe's cyclonedds::build-rmw
+    # dep). For users consuming via add_subdirectory directly, they
+    # must `just cyclonedds setup` first to populate Cyclone DDS itself.
+    add_subdirectory(packages/dds/nros-rmw-cyclonedds)
+    if(TARGET nros_rmw_cyclonedds)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
+           OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+            target_link_libraries(NanoRos INTERFACE
+                "-Wl,--whole-archive"
+                nros_rmw_cyclonedds
+                "-Wl,--no-whole-archive"
+                "-Wl,--allow-multiple-definition")
+        elseif(APPLE)
+            target_link_libraries(NanoRos INTERFACE
+                "-Wl,-force_load,$<TARGET_FILE:nros_rmw_cyclonedds>"
+                "-Wl,--allow-multiple-definition")
+        else()
+            target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)
+        endif()
+    endif()
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
