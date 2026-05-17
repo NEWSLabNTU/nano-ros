@@ -51,6 +51,28 @@ mod node;
 pub use config::Config;
 pub use node::{init_hardware, run};
 
+/// Phase 152.3 — `BoardInit` impl for the AGX Orin SPE.
+///
+/// Canonical overlay-on-overlay precedent (the SPE is a FreeRTOS
+/// fork that runs prebuilt FSP V10.4.3 — no kernel rebuild — and
+/// replaces lwIP with IVC). Fits the `nros_board_common::BoardInit`
+/// contract documented in `book/src/porting/vendor-overlay.md`
+/// so future generic-FreeRTOS overlays (STM32 / NXP / stock-FreeRTOS
+/// + lwIP boards) share the same trait shape.
+pub struct OrinSpe;
+
+impl nros_board_common::BoardInit for OrinSpe {
+    type Config = Config;
+
+    fn init_hardware(cfg: &Config) {
+        // Delegate to existing `node::init_hardware` (TCU init +
+        // FSP-side bring-up). The IVC channel registration lives
+        // inside `run()` since it must follow `tcu_init` ordering
+        // — the trait method only handles the pre-run wakes.
+        init_hardware(cfg);
+    }
+}
+
 /// Print to the SPE's TCU (Tegra Combined UART) via FSP's `printf`.
 ///
 /// On real hardware this writes to the shared SoC debug UART; on the

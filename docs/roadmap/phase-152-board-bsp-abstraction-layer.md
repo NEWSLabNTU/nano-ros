@@ -388,14 +388,32 @@ with two reference overlays instead of one:
         passes (where applicable).
       - Native nano2nano talker-listener still passes.
 
-- [ ] **152.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
-      Become a true overlay on `nros-board-freertos` — re-exports
-      `Config` / `run` + adds NVIDIA FSP wiring (consumes
-      `NV_SPE_FSP_DIR`, replaces lwIP with IVC link). Demonstrates
-      the vendor-fork overlay pattern + the in-tree precedent for
-      future `nros-board-stm32*-freertos` / `nros-board-nxp-*`
-      community crates.
-      **Files.** `packages/boards/nros-board-orin-spe/` (refactor).
+- [x] **152.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
+      (landed 2026-05-18, partial)
+      `nros-board-orin-spe` now implements
+      `nros_board_common::BoardInit for OrinSpe` so it fits the
+      same overlay contract as `nros-board-nuttx-qemu-arm` (152.4.B)
+      and future stock-FreeRTOS overlays. Pulls `nros-board-common`
+      as `default-features = false` (BoardInit only; no serde/toml/cc
+      transitively).
+
+      `nros-board-common` itself gained a `build-helpers` feature
+      gate (default-on for back-compat) so runtime-only consumers
+      can disable the build-script-side serde/toml/cc dep chain.
+      `BoardInit` lives at the bare `no_std`-compatible surface.
+
+      **Out of scope this session:** the phase-doc-original goal of
+      depending on `nros-board-freertos` directly. orin-spe is a
+      FreeRTOS-FORK overlay (prebuilt FSP `libtegra_aon_fsp.a`
+      kernel, no source rebuild; IVC link instead of lwIP) — the
+      generic crate's stock-FreeRTOS-source + lwIP build pipeline
+      doesn't apply. The `BoardInit` trait is the cross-fork
+      shared surface; orin-spe demonstrates the
+      overlay-without-kernel-rebuild variant of the cookbook in
+      `book/src/porting/vendor-overlay.md`.
+      **Files.** `packages/boards/nros-board-orin-spe/{Cargo.toml,
+      src/lib.rs}`, `packages/boards/nros-board-common/{Cargo.toml,
+      src/lib.rs}`.
 
 #### 152.3 subitems (blocked on 152.1.B)
 
