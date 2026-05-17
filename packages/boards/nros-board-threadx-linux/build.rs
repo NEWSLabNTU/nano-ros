@@ -1,17 +1,24 @@
 //! Build script for nros-board-threadx-linux
 //!
-//! Compiles the ThreadX kernel (Linux simulation port), the nsos-netx
-//! BSD socket shim (forwards `nx_bsd_*` to host POSIX), and board-specific
-//! C glue into static libraries linked into the final binary.
+//! Phase 152.2.B.3 (Option C) — kernel + `nros-platform-threadx`
+//! compile lifted into the generic `nros-board-threadx` crate's
+//! own `build.rs`. This overlay's build script now only owns the
+//! Linux-specific bits:
 //!
-//! No NetX Duo TCP/IP stack is built — networking goes through the host
-//! kernel via nsos-netx.
+//!   - NSOS-netx BSD shim (`libnsos_netx.a`)
+//!   - Board-specific glue + shared `threadx_hooks.c`
+//!     (`libglue.a`)
+//!   - `pthread` link line
 //!
-//! Environment variables (auto-set by justfile recipes):
-//!   THREADX_DIR  — ThreadX kernel source root (default: third-party/threadx/kernel)
-//!   NETX_DIR — NetX Duo source root for BSD compatibility headers
-//!              (default: third-party/threadx/netxduo)
-//!   NSOS_NETX_DIR — nsos-netx shim source (default: packages/drivers/nsos-netx)
+//! Environment variables (auto-set by `.envrc` direnv defaults):
+//!   `THREADX_DIR`        — ThreadX kernel source root
+//!   `NETX_DIR`           — NetX-Duo source root (BSD shim headers)
+//!   `NSOS_NETX_DIR`      — nsos-netx shim source
+//!   `THREADX_CONFIG_DIR` — overlay's `config/` for `tx_user.h`
+//!   `NETX_CONFIG_DIR`    — overlay's `config/` for `nx_user.h`
+//!
+//! `THREADX_PORT` defaults to `linux/gnu` in the generic crate's
+//! `build.rs`, so this overlay does not need to override it.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -20,49 +27,27 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let config_dir = manifest_dir.join("config");
 
-    // Resolve workspace root (three levels up from packages/boards/nros-board-threadx-linux/)
     let workspace_root = manifest_dir
         .parent()
         .and_then(|p| p.parent())
         .and_then(|p| p.parent())
         .expect("Could not resolve workspace root");
 
-    let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
-    assert!(
-        threadx_dir.join("common/inc").exists(),
-        "ThreadX common/inc/ not found at {} — run `just setup-threadx`",
-        threadx_dir.display()
-    );
-
+    let threadx_dir =
+        env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
     let threadx_port_dir = threadx_dir.join("ports/linux/gnu");
     assert!(
-        threadx_port_dir.join("src").exists(),
+        threadx_port_dir.join("inc").exists(),
         "ThreadX Linux port not found at {}",
         threadx_port_dir.display()
     );
-    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
+    let netx_dir =
+        env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
     assert!(
         netx_dir.join("common/inc").exists(),
         "NetX Duo common/inc/ not found at {} — run `just threadx_linux setup`",
         netx_dir.display()
     );
-
-    // ---- Build ThreadX kernel ----
-    // Phase 152.2.B — kernel + port source enumeration moved to
-    // `nros_board_common::threadx_sources` so both ThreadX
-    // overlays (Linux sim + RISC-V QEMU) + the future generic
-    // crate share one canonical list. ThreadX-kernel submodule
-    // bumps that add new files pick up automatically here.
-    let mut threadx = cc::Build::new();
-    configure_linux(&mut threadx);
-    add_threadx_includes(&mut threadx, &threadx_dir, &threadx_port_dir, &config_dir);
-    nros_board_common::threadx_sources::add_threadx_kernel_sources(&mut threadx, &threadx_dir);
-    nros_board_common::threadx_sources::add_threadx_port_sources(
-        &mut threadx,
-        &threadx_dir,
-        "linux/gnu",
-    );
-    threadx.compile("threadx");
 
     // ---- Build nsos-netx (NetX BSD compatibility shim over POSIX) ----
     let nsos_netx_dir = env_path_or(
@@ -70,11 +55,7 @@ fn main() {
         workspace_root.join("packages/drivers/nsos-netx"),
     );
     let nsos_src = nsos_netx_dir.join("src/nsos_netx.c");
-    assert!(
-        nsos_src.exists(),
-        "nsos-netx not found at {}",
-        nsos_src.display()
-    );
+    assert!(nsos_src.exists(), "nsos-netx not found at {}", nsos_src.display());
 
     let mut nsos = cc::Build::new();
     configure_linux(&mut nsos);
@@ -84,45 +65,19 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", nsos_src.display());
 
-    // ---- Phase 121.3 — Build nros-platform-threadx C port ----
-    // Phase 152.2.B — wire up via
-    // `nros_board_common::threadx_sources::add_nros_platform_threadx_build`.
-    // The helper owns the source-file list + cffi-include + rerun
-    // triggers; overlay still owns the `cc::Build` so it can stamp
-    // its own cflags + ThreadX/NetX include set.
-    let mut platform = cc::Build::new();
-    configure_linux(&mut platform);
-    add_threadx_includes(&mut platform, &threadx_dir, &threadx_port_dir, &config_dir);
-    platform.include(netx_dir.join("common/inc"));
-    platform.include(netx_dir.join("ports/linux/gnu/inc"));
-    platform.include(netx_dir.join("addons/BSD"));
-    nros_board_common::threadx_sources::add_nros_platform_threadx_build(
-        &mut platform,
-        workspace_root,
-    );
-    platform.compile("nros_platform_threadx");
-
-    // ---- Build C glue ----
-    // Phase 152.2.B.1 — shared `tx_application_define` stub lives
-    // in `nros-board-common`'s `c/threadx_hooks.c`; this overlay
-    // ships only the board-specific weak-hook impls
-    // (`nros_board_init_eth` no-op for NSOS, `nros_board_log` →
-    // `printf`, `nros_board_compute_rng_seed` IP/MAC-derived) and
-    // the Linux flavour of `nros_threadx_set_config` (5-arg, takes
-    // `interface_name`).
+    // ---- Build C glue (board-specific weak-hook impls + shared threadx_hooks) ----
     let mut glue = cc::Build::new();
     configure_linux(&mut glue);
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &config_dir);
     nros_board_common::threadx_sources::add_threadx_hooks_source(&mut glue);
     glue.file(manifest_dir.join("c/board_threadx_linux.c"));
-
     glue.compile("glue");
 
     // ---- Link order (reverse dependency) ----
-    println!("cargo:rustc-link-lib=static=nros_platform_threadx");
+    // `libnros_platform_threadx.a` + `libthreadx_kernel.a` come from the
+    // generic `nros-board-threadx` crate's build.rs (152.2.B.3 lift).
     println!("cargo:rustc-link-lib=static=glue");
     println!("cargo:rustc-link-lib=static=nsos_netx");
-    println!("cargo:rustc-link-lib=static=threadx");
     println!("cargo:rustc-link-lib=pthread");
 
     // ---- Rerun triggers ----
@@ -147,11 +102,7 @@ fn configure_linux(build: &mut cc::Build) {
         .flag("-Wno-sign-compare")
         .define("TX_INCLUDE_USER_DEFINE_FILE", None)
         .define("NX_INCLUDE_USER_DEFINE_FILE", None);
-    // Suppress common warnings in third-party code
     build.warnings(false);
-    // Phase 152.2.B.2 — `THREADX_CFLAGS` extension point.
-    // Linux overlay typically leaves it unset (host gcc); the
-    // helper is a no-op then but still emits the rerun trigger.
     nros_board_common::threadx_sources::apply_threadx_cflags(build);
 }
 

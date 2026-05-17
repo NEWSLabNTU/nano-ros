@@ -351,6 +351,7 @@ dependencies = [
 name = "nros-board-threadx"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "nros-board-common",
 ]
 
