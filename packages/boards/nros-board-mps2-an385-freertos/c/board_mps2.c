@@ -16,11 +16,15 @@
  */
 
 #include <stdint.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
 
 #include "lwip/netif.h"
+#include "lwip/netifapi.h"
+#include "lwip/ip4_addr.h"
+#include "lwip/tcpip.h"
 
 #include "lan9118_lwip.h"
 
@@ -49,9 +53,48 @@ extern void _start(void);
 /* Semihosting helper exported by freertos_hooks.c */
 extern void semihosting_write0(const char *s);
 
-/* lwIP netif global, defined in network_glue.c — used here for the
- * diagnostic's `our_mac` lookup. */
-extern struct netif lan9118_netif;
+/* ---- LAN9118 netif globals (149.1.B.2 lift) ---- *
+ * Phase 149.1.B.2 — these lived in `network_glue.c` until 149.1.B.1;
+ * 149.1.B.2 moved them into the board-specific TU together with
+ * the strong `nros_board_register_netif` + `nros_board_poll_netif`
+ * implementations the generic glue invokes through its weak hooks. */
+struct netif lan9118_netif;
+struct lan9118_config lan9118_cfg;
+
+/* ---- Strong overrides for the generic network_glue.c hooks ---- */
+
+int nros_board_register_netif(
+    const uint8_t mac[6],
+    const uint8_t ip[4],
+    const uint8_t netmask[4],
+    const uint8_t gw[4])
+{
+    ip4_addr_t ipaddr, mask, gateway;
+
+    IP4_ADDR(&ipaddr,  ip[0], ip[1], ip[2], ip[3]);
+    IP4_ADDR(&mask,    netmask[0], netmask[1], netmask[2], netmask[3]);
+    IP4_ADDR(&gateway, gw[0], gw[1], gw[2], gw[3]);
+
+    lan9118_cfg.base_addr = LAN9118_BASE_DEFAULT;
+    memcpy(lan9118_cfg.mac_addr, mac, 6);
+
+    /* Register netif via netifapi (thread-safe: executes in
+     * tcpip_thread). netif_add() does NOT set netif_default even
+     * with LWIP_SINGLE_NETIF; call netif_set_default() explicitly. */
+    if (netifapi_netif_add(&lan9118_netif, &ipaddr, &mask, &gateway,
+                           &lan9118_cfg, lan9118_lwip_init, tcpip_input) != ERR_OK) {
+        return -1;
+    }
+
+    netifapi_netif_set_default(&lan9118_netif);
+    netifapi_netif_set_up(&lan9118_netif);
+    netifapi_netif_set_link_up(&lan9118_netif);
+    return 0;
+}
+
+void nros_board_poll_netif(void) {
+    lan9118_lwip_poll(&lan9118_netif);
+}
 
 /* ---- Interrupt vector table ---- */
 typedef void (*vector_fn)(void);
