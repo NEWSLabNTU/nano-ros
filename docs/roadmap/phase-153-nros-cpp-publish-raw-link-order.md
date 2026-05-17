@@ -1,4 +1,4 @@
-# Phase 152 — `nros_cpp_publish_raw` Link-Order / Codegen-FFI Archive Gap
+# Phase 153 — `nros_cpp_publish_raw` Link-Order / Codegen-FFI Archive Gap
 
 **Goal.** Resolve undefined `nros_cpp_publish_raw` references from
 codegen-generated `nano_ros_cpp_ffi_<pkg>.a` archives at native
@@ -8,7 +8,25 @@ fails with ~30 `undefined reference to nros_cpp_publish_raw` calls
 during the final ld step. Dominates Phase 150's post-140 failure
 inventory: 42 native_api + 8 dds_api (50 of 136 total).
 
-**Status.** Not started.
+**Status.** Superseded — Phase 150.B closed this 2026-05-18 via
+`5d00c930 phase-150.B: fix dds_api C++ builds — ffi_lib →
+NanoRosCpp link order`. The fix added `NanoRos::NanoRosCpp` to the
+per-package `${_lib_target}_ffi_lib` STATIC IMPORTED target's
+`INTERFACE_LINK_LIBRARIES` in `cmake/NanoRosGenerateInterfaces.cmake`,
+which records the ffi→cpp dep so CMake's topological sort places
+`libnros_cpp.a` AFTER the ffi staticlib in the final link line.
+Symbol resolves on the second pass.
+
+Dds_api class (Phase 150.B, 6 tests) verified closed by the
+user's commit. Native_api class (Phase 150.A, 42 tests) likely
+also closed by the same fix since they share the codegen-FFI root
+cause — pending CI verification on next run.
+
+This doc preserved for the analysis it captures (option A vs B vs
+C vs D); the actual fix landed as option A (NanoRosCpp on
+INTERFACE_LINK_LIBRARIES) rather than option D (codegen template
+dep) which this doc recommended. Option A is more surgical —
+single cmake file, no codegen template churn.
 
 **Priority.** P1 — 50 of 136 test failures from one root cause.
 Highest ROI of any open phase right now.
