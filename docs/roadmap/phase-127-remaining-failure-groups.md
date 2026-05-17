@@ -682,14 +682,47 @@ Done criteria:
 - [x] Separate host/board boot failures from DDS/XRCE message-flow failures.
 - [x] Include `west`, QEMU, and nextest logs.
 - [x] Identify whether the failure is common platform startup or backend-specific.
-- [ ] Produce focused commands that reproduce each remaining Zephyr subgroup.
+- [x] Produce focused commands that reproduce each remaining Zephyr subgroup.
+  (2026-05-18 — see below. After 127.C.1/2/4/5 closed, the only
+  remaining Zephyr subgroup is 127.C.3 / DDS action A9.)
 
 Focused commands:
+
+Catch-all (when triaging a fresh failure surface — slow):
 
 ```bash
 just zephyr build-fixtures
 just zephyr test --no-capture
 ```
+
+127.C.3 — DDS action A9 send-goal acceptance reply (only open subgroup):
+
+```bash
+# Build the two fixtures that participate (qemu_cortex_a9 board).
+# Per just/zephyr.just:207-208 the build-dir names are stable; the
+# helper rebuilds in place when sources are newer than the .elf.
+cd zephyr-workspace
+west build -b qemu_cortex_a9 -d build-dds-a9-action-server -p auto \
+    /home/aeon/repos/nano-ros/examples/zephyr/rust/dds/action-server \
+    -- -DCMAKE_PREFIX_PATH=/home/aeon/repos/nano-ros/build/install
+west build -b qemu_cortex_a9 -d build-dds-a9-action-client -p auto \
+    /home/aeon/repos/nano-ros/examples/zephyr/rust/dds/action-client \
+    -- -DCMAKE_PREFIX_PATH=/home/aeon/repos/nano-ros/build/install
+cd ..
+
+# Run the single failing test with full output. Expect the client to
+# log `Goal acceptance failed: ServiceRequestFailed` ~2-3s after sending
+# the goal; server logs `Goal succeeded` independently. Reproduces in
+# ~30s.
+cargo nextest run -p nros-tests --test zephyr --no-fail-fast \
+    --no-capture --retries 0 test_zephyr_dds_rust_action_a9_e2e
+```
+
+Probable surface area (per 2026-05-16 triage note above):
+`DdsServiceServer::send_reply` ↔ `DdsServiceClient::try_recv_reply_raw`
+↔ action `Promise::wait`. Pub/sub, service, and async-service all
+pass on the same qemu_cortex_a9 fixture set, so the bug is in the
+service reply correlation path on the action client only.
 
 ## 127.D: Bare-Metal Zenoh QEMU
 
