@@ -14,6 +14,12 @@ categories = ["embedded", "no-std", "network-programming"]
 
 [features]
 default = []
+# Phase 129.C.3 — `nros-platform/platform-<rtos>` forwards stay.
+# `zpico-platform-shim` imports `nros_platform::ConcretePlatform`,
+# which only resolves when the matching `platform-<rtos>` feature
+# on `nros-platform` is on. Until 129.D / 129.A.4 retire the shim
+# and route everything through the alias TU, the forward is
+# load-bearing.
 platform-posix = ["nros-platform/platform-posix", "zpico-sys/posix"]
 platform-zephyr = ["nros-platform/platform-zephyr", "zpico-sys/zephyr"]
 platform-bare-metal = ["zpico-sys/bare-metal"]

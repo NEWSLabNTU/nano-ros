@@ -14,39 +14,13 @@ path = "src/lib.rs"
 [features]
 default = []
 
-# Phase 115.K.2.5.1.0 — legacy single-axis selector. Equivalent to
-# `platform-posix`; kept for backwards-compat with consumers that
-# pulled the crate in via just `features = ["posix"]`.
-posix = ["platform-posix"]
-
-# Phase 115.K.2.5.1.3-zephyr — per-platform fanout for the
-# `cc::Build` step. Exactly one must be enabled.
-#
-# `platform-posix` (linux / macos / *bsd hosts) compiles the
-# vendored micro-XRCE-DDS-Client's POSIX transport TUs and emits
-# `UCLIENT_PLATFORM_POSIX` in the generated config header. The
-# generated header also keeps `UCLIENT_PROFILE_{UDP,TCP,SERIAL}` so
-# the POSIX-side transport open functions resolve.
-platform-posix = []
-
-# Bare-metal / Zephyr / FreeRTOS / NuttX / ThreadX: skip every
-# POSIX-specific TU and every `_POSIX_C_SOURCE` define. The
-# generated `<uxr/client/config.h>` keeps
-# `UCLIENT_PROFILE_{DISCOVERY,CUSTOM_TRANSPORT,STREAM_FRAMING}` (the
-# core subset that compiles freestanding) and drops every
-# `UCLIENT_PLATFORM_*` define. Embedded consumers MUST install a
-# custom transport at runtime via
-# `nros_rmw_cffi_set_custom_transport(...)` — the C backend's
-# `udp` / `serial` / `tcp` openers all gate on POSIX headers.
-platform-bare-metal = []
-platform-freertos = []
-platform-nuttx = []
-platform-threadx = []
-
-# `platform-zephyr` skips POSIX TUs, emits `UCLIENT_PLATFORM_ZEPHYR`,
-# and compiles the Zephyr UDP custom-transport bridge over the
-# canonical nros platform-net ABI.
-platform-zephyr = []
+# Phase 129.C.1 — all `platform-<rtos>` features deleted. Build
+# selection is `target_os`-driven; the platform-blind
+# `transport_nros_udp.c` (added in 129.NET.3) covers every
+# target. Consumers that used to pass `platform-posix` /
+# `platform-zephyr` / etc. should simply drop the feature flag
+# — the build script auto-detects from the cross-compile
+# target.
 
 [dependencies]
 # Phase 128.B.3 — distributed-slice contribution for the RMW init section.

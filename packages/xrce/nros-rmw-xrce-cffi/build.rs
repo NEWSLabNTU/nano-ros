@@ -27,26 +27,25 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    // Platform fanout. Exactly one of `platform-{posix,zephyr,
-    // bare-metal,freertos,nuttx,threadx}` should be on; the legacy
-    // `posix` alias forwards to `platform-posix`. Default (none set):
-    // fall back to the host-OS heuristic so `cargo check` /
-    // `cargo build` w/o an explicit feature still works on
-    // linux/macos hosts.
+    // Phase 129.C.1 — platform fanout driven by `target_os` alone.
+    // `nros-rmw-xrce-cffi` is platform-blind after 129.NET.3: the
+    // session UDP path runs `xrce_nros_udp_init` on top of
+    // `nros_platform_udp_*` regardless of platform. The build script
+    // only still cares about `target_os` for two narrow reasons:
+    //   1. Whether to compile the upstream `udp_transport*.c` and
+    //      `util/time.c` POSIX-only TUs (they call libc directly).
+    //   2. Whether to define `_POSIX_C_SOURCE` (needed to unlock
+    //      `clock_gettime` / `getaddrinfo` in POSIX libc headers).
+    // No `CARGO_FEATURE_PLATFORM_*` reads — the features that used
+    // to gate these were deleted in 129.C.1.
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    let feat_posix = env::var_os("CARGO_FEATURE_PLATFORM_POSIX").is_some()
-        || env::var_os("CARGO_FEATURE_POSIX").is_some();
-    let feat_zephyr = env::var_os("CARGO_FEATURE_PLATFORM_ZEPHYR").is_some();
-    let feat_baremetal = env::var_os("CARGO_FEATURE_PLATFORM_BARE_METAL").is_some()
-        || env::var_os("CARGO_FEATURE_PLATFORM_FREERTOS").is_some()
-        || env::var_os("CARGO_FEATURE_PLATFORM_NUTTX").is_some()
-        || env::var_os("CARGO_FEATURE_PLATFORM_THREADX").is_some();
     let host_is_posix = matches!(
         target_os.as_str(),
         "linux" | "macos" | "freebsd" | "netbsd" | "openbsd"
     );
-    let is_posix = feat_posix || (!feat_zephyr && !feat_baremetal && host_is_posix);
-    let is_embedded = feat_zephyr || feat_baremetal || !host_is_posix;
+    let feat_zephyr = false; // 129.C.1 — `transport_zephyr_udp` superseded by `transport_nros_udp`.
+    let is_posix = host_is_posix;
+    let is_embedded = !host_is_posix;
 
     // Generate config headers.
     generate_ucdr_config(&out_dir, &microcdr);
@@ -99,8 +98,6 @@ fn main() {
     if is_posix {
         backend_tus.push("transport_posix_udp");
         backend_tus.push("transport_posix_serial");
-    } else if feat_zephyr {
-        backend_tus.push("transport_zephyr_udp");
     }
     for name in &backend_tus {
         build.file(xrce_c.join(format!("src/{name}.c")));

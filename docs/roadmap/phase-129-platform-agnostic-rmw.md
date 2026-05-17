@@ -247,14 +247,32 @@ that exercises it is**:
 
 
 
-- [ ] `129.C.1` — `nros-rmw-zenoh/Cargo.toml`: remove
-  `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx,orin-spe}`
-  features. Any forwarding cleanup in `zpico-sys`.
-- [ ] `129.C.2` — `nros-rmw-xrce-cffi/Cargo.toml`: same.
-- [ ] `129.C.3` — board crates that flip these features in their
-  RMW deps drop them. Verify with `git grep -nE
-  'platform-(posix|zephyr|bare-metal|freertos|nuttx|threadx|orin-spe)'
-  packages/boards/ examples/` after the deletion.
+### 129.C — Delete `platform-<rtos>` features from RMW crates
+
+- [x] `129.C.1` — `nros-rmw-xrce-cffi/Cargo.toml`: every
+  `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}`
+  feature deleted. `build.rs` switched to `target_os`-only
+  auto-detect (POSIX hosts compile the POSIX upstream TUs +
+  bundled `nros-platform-posix`; embedded targets fall through
+  to the platform-blind `transport_nros_udp.c`). Codegen
+  template `backend_features` stripped of the XRCE forward.
+- [x] `129.C.2` — `nros-c` / `nros-cpp` per-platform feature
+  blocks dropped the `nros-rmw-xrce-cffi?/platform-<rtos>`
+  forwards. Cargo's feature unification still pulls the right
+  RMW symbols.
+- [ ] `129.C.3` — **partial** (2026-05-17 audit). Zenoh + dds
+  still need `nros-platform/platform-<rtos>` forwards:
+    - `nros-rmw-zenoh`'s `zpico-platform-shim` imports
+      `nros_platform::ConcretePlatform`, which only resolves
+      when a concrete `platform-*` feature on `nros-platform`
+      is on. Until 129.D retires the shim the forward stays.
+    - `nros-rmw-dds` imports compile-time constants
+      (`NET_SOCKET_SIZE`, `NET_ENDPOINT_SIZE`) from
+      `nros-platform`. The constants are gated on a concrete
+      `platform-*` feature being on.
+  - [ ] `129.C.3.a` — retire shim (depends on 129.D / 129.A.4).
+  - [ ] `129.C.3.b` — promote `NET_SOCKET_SIZE` / equivalents
+    out of the feature-gated path in `nros-platform`.
 
 ### 129.D — Delete `zpico-platform-shim` + `xrce-platform-shim`
 
