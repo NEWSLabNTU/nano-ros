@@ -38,6 +38,8 @@ pub mod node_record;
 #[cfg(any(has_rmw, test))]
 mod node_wake;
 #[cfg(any(has_rmw, test))]
+mod wake_alloc;
+#[cfg(any(has_rmw, test))]
 pub(crate) mod ready_set;
 #[cfg(any(has_rmw, test))]
 pub mod sched_context;
