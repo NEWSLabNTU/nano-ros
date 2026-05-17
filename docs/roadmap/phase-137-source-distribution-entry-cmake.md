@@ -2,7 +2,9 @@
 
 **Goal.** Make nano-ros consumable via `add_subdirectory(third_party/nano-ros)` from a user's C/C++ project, no prior `just install-local` required. Introduce a single root `CMakeLists.txt` at `nano-ros/` that dispatches on `NANO_ROS_PLATFORM` + `NANO_ROS_RMW` cache vars and exports `NanoRos::NanoRos` / `NanoRos::NanoRosCpp` interface targets directly from the source tree.
 
-**Status.** Not started.
+**Status.** Landed (137.1–137.6). XRCE/cyclonedds + non-POSIX platform
+branches in root CMake deferred to Phase 138/139. Phase 138 closes the
+non-POSIX gap by wiring up `cmake/platform/nano-ros-{zephyr,freertos,nuttx,threadx,baremetal}.cmake`.
 
 **Priority.** P1 — first piece of the install-local rip-off (Phase 140). Without 137, the source-distribution direction has no entry point.
 

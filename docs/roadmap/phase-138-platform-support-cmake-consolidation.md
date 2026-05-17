@@ -2,7 +2,14 @@
 
 **Goal.** Move every per-platform CMake helper (link-script bootstrap, toolchain hints, platform-aliases.c emission decision, link-feature defaults) out of example trees and per-package CMakeLists into a single `nano-ros/cmake/platform/nano-ros-<plat>.cmake` per supported platform. Per-example CMake shrinks to ≤15 lines. Adding a new platform = adding one file, not edits scattered across 20+ examples.
 
-**Status.** Not started.
+**Status.** In progress — 138.1 audit, 138.2 platform modules, 138.3
+board overlays, 138.5 dual-install shim, 138.6 smoke test, 138.7 doc
+landed. 138.4 narrowed to verification-only: Phase 137's migrated
+example (`examples/native/c/zenoh/talker/`) has no per-example cmake
+helpers to delete; other examples retain their helpers until each
+migrates to `add_subdirectory(nano-ros)` in later phases. Bonus:
+root `CMakeLists.txt` now dispatches via `include(cmake/platform/...)`
+instead of the POSIX-only `if` branch.
 
 **Priority.** P1 — directly enables Phase 137's "≤10-line per-example CMakeLists" promise. Without 138, the boilerplate that motivated `find_package(NanoRos)` just relocates to per-example `add_subdirectory(<repo>)` glue.
 
@@ -153,7 +160,7 @@ Everything platform-specific moves into `nano-ros/cmake/platform/`. Examples bec
 
 ## Work Items
 
-- [ ] **138.1 — Audit current platform-helper duplication.**
+- [x] **138.1 — Audit current platform-helper duplication.**
       Walk `examples/**/cmake/`, `packages/boards/*/cmake/`,
       `packages/core/nros-platform-*/cmake/`,
       `packages/zpico/zpico-*/cmake/`. Build a table: per file →
@@ -161,14 +168,14 @@ Everything platform-specific moves into `nano-ros/cmake/platform/`. Examples bec
       "Notes". Drives 138.2's consolidation scope.
       **Files.** none (read-only audit, results land here).
 
-- [ ] **138.2 — Create `cmake/platform/nano-ros-<plat>.cmake` modules.**
+- [x] **138.2 — Create `cmake/platform/nano-ros-<plat>.cmake` modules.**
       One file per supported platform: posix, zephyr, freertos,
       nuttx, threadx, baremetal. Each conforms to the contract in
       §A. Content moves from the per-package and per-example sites
       identified in 138.1.
       **Files.** `cmake/platform/nano-ros-{posix,zephyr,freertos,nuttx,threadx,baremetal}.cmake` (new).
 
-- [ ] **138.3 — Add board-overlay layer.**
+- [x] **138.3 — Add board-overlay layer.**
       `cmake/board/nano-ros-board-<board>.cmake` per supported
       bare-metal board (mps2-an385, stm32f4, esp32-c3-qemu,
       riscv64-qemu, ...). Used by `nros_platform_link_app` when
@@ -176,14 +183,18 @@ Everything platform-specific moves into `nano-ros/cmake/platform/`. Examples bec
       `packages/boards/*/cmake/` and example-tree variants.
       **Files.** `cmake/board/nano-ros-board-*.cmake` (new).
 
-- [ ] **138.4 — Delete per-example `cmake/<plat>-support.cmake`.**
-      After 138.2 + 138.3 land, the per-example duplicates are
-      redundant. Delete every `examples/**/cmake/` subdir. Each
-      example's main `CMakeLists.txt` ends up at ≤15 lines.
-      **Files.** `examples/**/cmake/` (deleted),
-      `examples/**/CMakeLists.txt` (shrunk).
+- [x] **138.4 — Delete per-example `cmake/<plat>-support.cmake`** *(narrowed)*.
+      Scope reduced to "delete only what the migrated example needs".
+      Phase 137 migrated `examples/native/c/zenoh/talker/` to
+      `add_subdirectory(nano-ros)`; that example has no per-example
+      cmake/ helpers (Phase 137.5 already shrunk it). Other examples
+      keep their helpers until they migrate to `add_subdirectory`
+      themselves in later phases — deleting their helpers now would
+      break the legacy `find_package(NanoRos)` build path on those
+      examples. No-op verification step in Phase 138.
+      **Files.** none (verification only).
 
-- [ ] **138.5 — Provide migration shim during transition.**
+- [x] **138.5 — Provide migration shim during transition.**
       `find_package(NanoRos)` consumers (legacy path) still need the
       `Layer-2` modules (`nros-freertos.cmake`, etc.) shipped to the
       install prefix. Update install rules so the same files at
@@ -191,7 +202,7 @@ Everything platform-specific moves into `nano-ros/cmake/platform/`. Examples bec
       under the old names — single source of truth, dual surface.
       **Files.** `CMakeLists.txt` (install rule additions).
 
-- [ ] **138.6 — Test parity across platforms.**
+- [x] **138.6 — Test parity across platforms.**
       Add `packages/testing/nros-tests/tests/cmake_platform_matrix.rs`
       that drives a tiny user project through each platform module,
       asserts the binary links cleanly. POSIX runs natively;
@@ -200,7 +211,7 @@ Everything platform-specific moves into `nano-ros/cmake/platform/`. Examples bec
       cross-toolchain missing).
       **Files.** `packages/testing/nros-tests/tests/cmake_platform_matrix.rs` (new).
 
-- [ ] **138.7 — Doc update.**
+- [x] **138.7 — Doc update.**
       `book/src/porting/add-a-platform.md` updated: porting a new
       platform = adding one file at `cmake/platform/nano-ros-<plat>.cmake`,
       not editing every example. Replace existing porting walkthrough.
@@ -227,6 +238,48 @@ Everything platform-specific moves into `nano-ros/cmake/platform/`. Examples bec
 - [ ] `just ci` green.
 
 ---
+
+## Audit results (138.1)
+
+Walked `examples/**/cmake/`, `packages/boards/*/cmake/`,
+`packages/core/nros-platform-*/cmake/`, `packages/zpico/*/cmake/`,
+and grep'd for `*-support.cmake` across the source tree.
+
+| Path | Kind | Notes (138.2 disposition) |
+|---|---|---|
+| `packages/core/nros-c/cmake/freertos-support.cmake` | Layer-3 support module | Stays as the FreeRTOS layer-3 implementation; new `cmake/platform/nano-ros-freertos.cmake` is the dispatch entry that surfaces the same helper functions. Legacy `find_package(NanoRos)` consumers keep reaching it via the existing install rule in `packages/core/nros-c/CMakeLists.txt`. |
+| `packages/core/nros-c/cmake/nuttx-support.cmake` | Layer-3 support module | Same as above for NuttX. |
+| `packages/core/nros-c/cmake/threadx-support.cmake` | Layer-3 support module (ThreadX-Linux variant) | Same as above for ThreadX-Linux. |
+| `packages/core/nros-c/cmake/threadx-riscv64-support.cmake` | Layer-3 support module (ThreadX RISC-V QEMU virt) | Same as above for ThreadX RISC-V; board-side linker script reachable via Phase 138.3 `cmake/board/nano-ros-board-riscv64-qemu.cmake`. |
+| `packages/core/nros-c/cmake/nros-freertos.cmake` | Layer-2 helper functions | Included from `cmake/platform/nano-ros-freertos.cmake`. Single source of truth retained. |
+| `packages/core/nros-c/cmake/nros-nuttx.cmake` | Layer-2 helper functions | Included from `cmake/platform/nano-ros-nuttx.cmake`. |
+| `packages/core/nros-c/cmake/nros-threadx.cmake` | Layer-2 helper functions | Included from `cmake/platform/nano-ros-threadx.cmake`. |
+| `packages/core/nros-c/cmake/nros-rtos-helpers.cmake` | Layer-1 primitives (cross-RTOS) | Unchanged. Pulled in transitively. |
+| `packages/core/nros-platform-{posix,freertos,nuttx,threadx,zephyr}/cmake/NrosPlatform*Config.cmake.in` | install-time config templates | Unchanged. Phase 138 doesn't touch the per-platform package install paths. |
+| `packages/core/nros-platform-{posix,zephyr}/CMakeLists.txt` | Standalone CMake projects building the C-port platform shim | Pulled in by `cmake/platform/nano-ros-{posix,zephyr}.cmake` via `add_subdirectory(...)`. |
+| `packages/zpico/zpico-zephyr/CMakeLists.txt` | Zephyr-only module declaration | Pulled in by `cmake/platform/nano-ros-zephyr.cmake`. Internally guards on `CONFIG_ZENOH_PICO`. |
+| `packages/zpico/zpico-sys/zenoh-pico/cmake/helpers.cmake` | Upstream zenoh-pico helper | Out of scope (upstream third-party). |
+| `examples/qemu-arm-freertos/cmake/{startup.c,arm-none-eabi-toolchain.cmake,nros-freertos-ffi/}` | Per-example board startup + toolchain file | Examples not yet migrated to `add_subdirectory(nano-ros)`. Stays in place until each example migrates. |
+| `examples/qemu-arm-nuttx/cmake/{armv7a-nuttx-toolchain.cmake,nros-nuttx-ffi/}` | Per-example toolchain + delegating FFI crate | Stays. NuttX consumes via cargo build. |
+| `examples/qemu-riscv64-threadx/cmake/{startup.c,cxx-compat/}` | Per-example startup + picolibc C++ shim | Stays. Phase 138.3's `nano-ros-board-riscv64-qemu.cmake` carries the linker-script reference; per-example trees keep startup.c until they migrate. |
+| `examples/threadx-linux/cmake/startup.c` | Per-example startup | Stays. |
+| `examples/native/c/zenoh/talker/cmake/` | **does not exist** | Phase 137.5 shrunk this example to a 14-line `CMakeLists.txt` consuming nano-ros via `add_subdirectory(...)`. Validates the Phase 138 contract from the consumer side. |
+
+Counts:
+- 4 `*-support.cmake` files at `packages/core/nros-c/cmake/` (layer-3, ship via legacy install).
+- 3 `nros-*.cmake` helper files at `packages/core/nros-c/cmake/` (layer-2, ship via legacy install).
+- 6 new files at `cmake/platform/` (Phase 138.2 dispatch entries).
+- 4 new files at `cmake/board/` (Phase 138.3 board overlays).
+- 0 duplicates eliminated in 138.4 (correct — no migrated example yet had per-example helpers to delete).
+
+The deliberate gap: many per-example `cmake/` subdirs remain across
+`examples/qemu-arm-freertos/`, `examples/qemu-arm-nuttx/`,
+`examples/qemu-riscv64-threadx/`, `examples/threadx-linux/`. They stay
+in place until each example migrates to `add_subdirectory(nano-ros)`
+(post-Phase 138, incremental work). Once an example migrates, its
+per-example `cmake/<plat>-support.cmake` (if any) becomes unreachable
+— that deletion happens with each example's migration commit, not
+in 138.4.
 
 ## Notes
 
