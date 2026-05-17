@@ -1,4 +1,9 @@
-# Phase 132 — Wake-Callback Wiring on Embedded Backends + Cortex-M3 P99 Microbench
+# Phase 141 — Wake-Callback Wiring on Embedded Backends + Cortex-M3 P99 Microbench
+
+> **Renumbered 132 → 141 on 2026-05-17** to resolve the duplicate
+> Phase 132 number. The other Phase 132 (`phase-132-cmsdk-uart-irq-
+> driven.md`) landed first and keeps the 132 slot; sequential
+> 133–140 were already taken.
 
 **Goal.** Close Phase 124.B.2 acceptance: wake-latency P99
 (subscriber-receive → callback-run) ≤ 100 µs on Cortex-M3 QEMU +

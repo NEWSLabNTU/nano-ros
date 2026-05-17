@@ -1178,7 +1178,9 @@ new test fixture rather than backend code change.
       (Phase 124.G.1) — observed 5 fires in 5.001 s on POSIX.
 - [-] Wake-latency P99 (subscriber-receive → callback-run)
       ≤ 100 µs on Cortex-M3 QEMU + zenoh-pico — moved to
-      Phase 132 (`phase-132-wake-callback-cortex-m3.md`).
+      Phase 141 (`phase-141-wake-callback-cortex-m3.md`,
+      renumbered from 132 on 2026-05-17 to resolve a duplicate
+      number).
       Phase 124.B ships the executor-side wake plumbing
       (cv-wait / NodeWake / wake_flag) verified on POSIX +
       RTOS std; closing the embedded P99 needs three pieces
