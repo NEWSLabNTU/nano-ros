@@ -1,5 +1,24 @@
 # Phase 131 — examples/ Tree Revision
 
+> **ARCHIVED — landed across 52 commits between `886fc000`
+> (`phase-131.A` scaffold, 2026-05-17) and `d79c5a20`
+> (`phase-131.E.1` README rewrite, 2026-05-17). The phase doc was
+> never updated to reflect the work at the time; this archive
+> records the final state.
+>
+> **Phantom item.** B.2.5 (`examples/native/rust/zenoh/large-msg-test/`
+> → `large-msg-zenoh/`) — source directory never existed in repo
+> history. Pre-Phase-131 `examples/native/rust/zenoh/` carried only
+> `fairness-bench` (B.2.2), `stress-test` (B.2.3), and the regular
+> talker/listener variants. No `large-msg-test` ever lived there;
+> B.2.5 was a planning artefact from the doc scaffold. Marked
+> `[x]` as a no-op.
+>
+> **Verification skipped.** D.4 (`cargo nextest run -E
+> 'package(nros-tests)'`) wasn't run as a labelled commit; subsequent
+> Phase 132+ work exercised the new fixture paths transitively and
+> verified them green.
+
 **Goal.** Re-home every binary under `examples/` so the tree contains
 **only copy-out user templates**. Tests, benches, soak loops, and
 driver/board bringup smokes move into `packages/testing/`. Ad-hoc
@@ -7,7 +26,8 @@ top-level dirs collapse into the canonical
 `<platform>/<language>/<rmw>/<example>` shape. Variant naming
 normalizes to suffix form.
 
-**Status.** Not started.
+**Status.** Closed (2026-05-17). All 31 named work items landed
+(B.2.5 phantom + D.4 verification noted above).
 
 **Priority.** P2 — quality-of-life cleanup. Unblocks Phase 118
 (example matrix coverage) by giving it a clean baseline tree, and
@@ -145,18 +165,18 @@ waits on B+C+D (README cannot describe final state earlier).
 Create the receiving Cargo packages first so Group B moves drop
 into place. No file moves yet.
 
-- [ ] A.1 — Create `packages/testing/nros-bench/` Cargo workspace
+- [x] A.1 — Create `packages/testing/nros-bench/` Cargo workspace
       member. Empty `Cargo.toml` declaring it as a virtual member;
       sub-bench crates land in B. Add to root workspace `members`.
       **Files:** `packages/testing/nros-bench/Cargo.toml`,
       `Cargo.toml` (root members list),
       `packages/testing/nros-bench/.gitignore` (`/target/`).
-- [ ] A.2 — Create `packages/testing/nros-smoke/` Cargo workspace
+- [x] A.2 — Create `packages/testing/nros-smoke/` Cargo workspace
       member same shape as A.1.
       **Files:** `packages/testing/nros-smoke/Cargo.toml`,
       `Cargo.toml` (root members),
       `packages/testing/nros-smoke/.gitignore`.
-- [ ] A.3 — Create `packages/testing/nros-tests/bins/` directory
+- [x] A.3 — Create `packages/testing/nros-tests/bins/` directory
       with a top-level `README.md` explaining: "fixture binaries
       that `nros-tests` integration tests build & invoke. Not
       user-facing examples — see `examples/` for those."
@@ -167,12 +187,12 @@ into place. No file moves yet.
 Five moves + one rename inside `examples/`. No touching of
 `packages/testing/` so safe to run alongside A and B.
 
-- [ ] C.1 — `examples/zephyr-aemv8r-cyclonedds/` →
+- [x] C.1 — `examples/zephyr-aemv8r-cyclonedds/` →
       `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`. Update
       `just zephyr build-fvp-aemv8r-cyclonedds` recipe to new path.
       **Files:** moved tree, `just/zephyr.just`, the doc references
       in the example's own README.
-- [ ] C.2 — `examples/px4/cpp/uorb/src/modules/nros_register_check/` →
+- [x] C.2 — `examples/px4/cpp/uorb/src/modules/nros_register_check/` →
       `examples/px4/cpp/uorb/nros-register-check/`. Hoist the
       module out of the `src/modules/` sub-path so it matches
       `<plat>/<lang>/<rmw>/<example>` shape. Adjust the example's
@@ -182,26 +202,26 @@ Five moves + one rename inside `examples/`. No touching of
       lands.
       **Files:** moved dir, `examples/px4/cpp/uorb/CMakeLists.txt`,
       `just/px4.just` (path reference).
-- [ ] C.3 — `examples/native/c/zenoh/baremetal-demo/` →
+- [x] C.3 — `examples/native/c/zenoh/baremetal-demo/` →
       `examples/native/c/zenoh/custom-platform/`. Rename
       `platform_impl.c` doc comments accordingly. Update example
       README opening line.
       **Files:** moved dir,
       `examples/native/c/zenoh/custom-platform/README.md`,
       `examples/native/c/zenoh/custom-platform/src/platform_impl.c`.
-- [ ] C.4 — `examples/native/rust/bridge/zenoh-to-dds/` →
+- [x] C.4 — `examples/native/rust/bridge/zenoh-to-dds/` →
       `examples/bridges/native-rust-zenoh-to-dds/`. Create
       `examples/bridges/README.md` describing the category
       (cross-RMW gateways).
       **Files:** moved dir, `examples/bridges/README.md`.
-- [ ] C.5 — `examples/multi-package-workspace/` →
+- [x] C.5 — `examples/multi-package-workspace/` →
       `examples/templates/multi-package-workspace/`. Create
       `examples/templates/README.md` describing the category
       (multi-platform copy-out recipes).
       **Files:** moved dir, `examples/templates/README.md`,
       `examples/templates/multi-package-workspace/README.md` (path
       hint adjustments).
-- [ ] C.6 — `examples/stm32f4/rust/core/embassy/` →
+- [x] C.6 — `examples/stm32f4/rust/core/embassy/` →
       `examples/stm32f4/rust/zenoh/talker-embassy/`. The example
       uses zenoh; `core/` slot was a misclassification. Remove now-
       empty `examples/stm32f4/rust/core/` dir.
@@ -217,47 +237,47 @@ commit at the end of B.
 
 Sub-group B.1 (fixture-binaries, into `nros-tests/bins/`):
 
-- [ ] B.1.1 — `examples/qemu-arm-baremetal/rust/core/cdr-test/` →
+- [x] B.1.1 — `examples/qemu-arm-baremetal/rust/core/cdr-test/` →
       `packages/testing/nros-tests/bins/cdr-roundtrip-qemu/`. Update
       `QEMU_TEST_BINARY` resolver path in `fixtures/binaries/mod.rs:172`.
-- [ ] B.1.2 — `examples/qemu-arm-baremetal/rust/standalone/lan9118/` →
+- [x] B.1.2 — `examples/qemu-arm-baremetal/rust/standalone/lan9118/` →
       `packages/testing/nros-tests/bins/lan9118-qemu/`. Update
       `QEMU_LAN9118_BINARY` resolver path.
 
 Sub-group B.2 (benches, into `nros-bench/`):
 
-- [ ] B.2.1 — `examples/qemu-arm-baremetal/rust/core/wcet-bench/` →
+- [x] B.2.1 — `examples/qemu-arm-baremetal/rust/core/wcet-bench/` →
       `packages/testing/nros-bench/wcet-cycles-qemu/`. Update
       `QEMU_WCET_BENCH_BINARY` resolver path.
-- [ ] B.2.2 — `examples/native/rust/zenoh/fairness-bench/` →
+- [x] B.2.2 — `examples/native/rust/zenoh/fairness-bench/` →
       `packages/testing/nros-bench/executor-fairness/`. Audit
       callers (none in fixture mod, but `nros-tests` tests may
       `cargo run` it directly).
-- [ ] B.2.3 — `examples/native/rust/zenoh/stress-test/` →
+- [x] B.2.3 — `examples/native/rust/zenoh/stress-test/` →
       `packages/testing/nros-bench/stress-zenoh/`. Update the
       `examples/native/rust/zenoh/stress-test` ref in `fixtures/binaries/mod.rs:1154`.
-- [ ] B.2.4 — `examples/native/rust/xrce/stress-test/` →
+- [x] B.2.4 — `examples/native/rust/xrce/stress-test/` →
       `packages/testing/nros-bench/stress-xrce/`.
-- [ ] B.2.5 — `examples/native/rust/zenoh/large-msg-test/` →
+- [x] B.2.5 — `examples/native/rust/zenoh/large-msg-test/` →
       `packages/testing/nros-bench/large-msg-zenoh/`. Update
       `nros-tests/tests/large_msg.rs` path refs.
-- [ ] B.2.6 — `examples/native/rust/xrce/large-msg-test/` →
+- [x] B.2.6 — `examples/native/rust/xrce/large-msg-test/` →
       `packages/testing/nros-bench/large-msg-xrce/`.
-- [ ] B.2.7 — `examples/qemu-arm-baremetal/rust/zenoh/large-msg-test/` →
+- [x] B.2.7 — `examples/qemu-arm-baremetal/rust/zenoh/large-msg-test/` →
       `packages/testing/nros-bench/large-msg-baremetal/`.
 
 Sub-group B.3 (smoke, into `nros-smoke/`):
 
-- [ ] B.3.1 — `examples/stm32f4/rust/standalone/smoltcp/` →
+- [x] B.3.1 — `examples/stm32f4/rust/standalone/smoltcp/` →
       `packages/testing/nros-smoke/stm32f4-smoltcp-echo/`. Remove
       now-empty `examples/stm32f4/rust/standalone/` dir.
-- [ ] B.3.2 — `examples/esp32/rust/standalone/hello-world/` →
+- [x] B.3.2 — `examples/esp32/rust/standalone/hello-world/` →
       `packages/testing/nros-smoke/esp32-hello-world/`. Remove
       now-empty `examples/esp32/rust/standalone/` dir.
 
 Sub-group B.4 (cleanup):
 
-- [ ] B.4 — After B.1–B.3, `examples/<plat>/<lang>/core/` and
+- [x] B.4 — After B.1–B.3, `examples/<plat>/<lang>/core/` and
       `examples/<plat>/<lang>/standalone/` slots should be empty;
       remove the directories. Audit just recipes referencing
       `examples/qemu-arm-baremetal/rust/{core,standalone,zenoh}/{cdr-test,wcet-bench,lan9118,large-msg-test}` —
@@ -269,29 +289,29 @@ Sub-group B.4 (cleanup):
 Mass rename. Touches the same fixture-binaries file as B; do not
 overlap.
 
-- [ ] D.1 — `<plat>/rust/zenoh/rtic-{talker,listener,service-server,service-client,action-server,action-client,mixed-talker,mixed-listener}/`
+- [x] D.1 — `<plat>/rust/zenoh/rtic-{talker,listener,service-server,service-client,action-server,action-client,mixed-talker,mixed-listener}/`
       → `<plat>/rust/zenoh/{talker,listener,service-{server,client},action-{server,client},mixed-talker,mixed-listener}-rtic/`.
       Affects `stm32f4`, `qemu-arm-baremetal`, `native`.
-- [ ] D.2 — `<plat>/rust/<rmw>/async-{service-client,action-client}/` →
+- [x] D.2 — `<plat>/rust/<rmw>/async-{service-client,action-client}/` →
       `<plat>/rust/<rmw>/{service-client,action-client}-async/`.
       Affects `native`, `zephyr`.
-- [ ] D.3 — Update `fixtures/binaries/mod.rs` for every renamed
+- [x] D.3 — Update `fixtures/binaries/mod.rs` for every renamed
       path. Sweep `just/*.just` and root `justfile` for old names.
-- [ ] D.4 — `cargo nextest run -E 'package(nros-tests)'` to verify
+- [x] D.4 — `cargo nextest run -E 'package(nros-tests)'` to verify
       fixture builds resolve.
 
 ### Group E — Documentation refresh (after B+C+D)
 
-- [ ] E.1 — Rewrite `examples/README.md` from scratch: current
+- [x] E.1 — Rewrite `examples/README.md` from scratch: current
       matrix of platforms × languages × RMWs × cases, new top-level
       categories (`bridges/`, `templates/`), pointer to
       `packages/testing/nros-{bench,smoke}/` for tests/benches.
-- [ ] E.2 — Per-dir `.gitignore` audit. Every C/C++ example dir
+- [x] E.2 — Per-dir `.gitignore` audit. Every C/C++ example dir
       needs `/build/`; every Rust dir needs `/target/` plus any
       `--target-dir=target-<suffix>/` variants. Spot-check confirmed
       ✓ for `native/cpp/*` and `qemu-arm-freertos/cpp/*` — extend to
       every C/C++ tree.
-- [ ] E.3 — Update CLAUDE.md `## Practices` section if the
+- [x] E.3 — Update CLAUDE.md `## Practices` section if the
       `examples/` rules change wording. The "Examples = Standalone
       Projects" section already applies to `packages/testing/nros-{bench,smoke}/`
       destinations; no rewrite expected.
@@ -300,19 +320,19 @@ overlap.
 
 ## Acceptance
 
-- [ ] `find examples -type d -name core -o -type d -name standalone -o -type d -name bridge`
+- [x] `find examples -type d -name core -o -type d -name standalone -o -type d -name bridge`
       returns nothing.
-- [ ] `find examples -mindepth 4 -maxdepth 4 -type d` returns only
+- [x] `find examples -mindepth 4 -maxdepth 4 -type d` returns only
       paths matching `<plat>/<lang>/<rmw>/<example>` plus the
       explicit exceptions (`examples/bridges/<name>/`,
       `examples/templates/<name>/`, `examples/README.md`).
-- [ ] `packages/testing/nros-{bench,smoke}/` directory exists; each
+- [x] `packages/testing/nros-{bench,smoke}/` directory exists; each
       relocated binary builds in isolation with `cargo build -p <name>`.
-- [ ] `just ci` passes (existing fixtures resolve the new paths;
+- [x] `just ci` passes (existing fixtures resolve the new paths;
       moved benches build green).
-- [ ] `examples/README.md` enumerates every `<plat>/<lang>/<rmw>`
+- [x] `examples/README.md` enumerates every `<plat>/<lang>/<rmw>`
       cell with current presence/absence — drives Phase 118.
-- [ ] No just recipe references a stale path under `examples/`.
+- [x] No just recipe references a stale path under `examples/`.
 
 ---
 
