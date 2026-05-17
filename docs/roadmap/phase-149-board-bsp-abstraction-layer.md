@@ -229,14 +229,34 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
       **Files.** `templates/overlay-board/` (new),
       `book/src/porting/vendor-overlay.md` (new).
 
-- [ ] **149.7 — Phase 139 shell polish (NuttX, ESP-IDF, PlatformIO).**
-      - NuttX: wire `Rust.mk` macros + `context::` hook + `Kconfig`
-        `choice` for RMW backend.
-      - ESP-IDF: doc `esp-idf-sys` `extra_components` bridge.
-      - PlatformIO: doc `EXTRA_COMPONENT_DIRS` workaround.
-      **Files.** `integrations/nuttx/{Make.defs, Makefile, Kconfig}`,
-      `book/src/getting-started/integration-esp-idf.md` (update),
-      `integrations/platformio/README.md` (update).
+- [x] **149.7 — Phase 139 shell polish (NuttX, ESP-IDF, PlatformIO).**
+      (landed 2026-05-18)
+      - NuttX: `integrations/nuttx/Make.defs` now `-include`s
+        upstream `apps/tools/Rust.mk` and appends the Cargo-built
+        staticlib paths to `EXTRA_LIBS` + `EXTRA_LIBPATHS` via
+        `RUST_GET_BINDIR` / `RUST_GET_LIBDIR`. The Makefile gained
+        a `context::` hook running `RUST_CARGO_BUILD` (+ `clean::`
+        mirror). `Kconfig` promoted free-form `string` knobs to
+        `choice` blocks (`NROS_RMW_{ZENOH,DDS,XRCE,CYCLONEDDS}` +
+        `NROS_ROS_{HUMBLE,IRON}`) that the Makefile reads to
+        assemble a `CARGO_FEATURES` env var driving Cargo's
+        `--features` + `--no-default-features` flags. Optional
+        include of `Rust.mk` keeps older NuttX trees building (just
+        skips the `EXTRA_LIBS` append).
+      - ESP-IDF: `book/src/getting-started/integration-esp-idf.md`
+        appended an "Rust glue via `esp-idf-sys`" section
+        documenting the canonical `[package.metadata.esp-idf-sys]`
+        `extra_components` + `bindings_header` bridge. Links to
+        `esp-rs/esp-idf-template` + `esp-idf-sys/BUILD-OPTIONS.md`
+        for the full schema.
+      - PlatformIO:
+        `book/src/getting-started/integration-platformio.md`
+        appended an "ESP-IDF gotcha" section explaining that
+        `lib_deps`-resolved libraries are NOT registered as IDF
+        components by default; the user's root `CMakeLists.txt`
+        must append `EXTRA_COMPONENT_DIRS` pointing at
+        `.pio/libdeps/<board>/nano-ros/integrations/esp-idf` for
+        `idf_component_register(...)` to fire.
 
 - [ ] **149.8 — Consumption-matrix doc.**
       `book/src/concepts/board-integration.md` (new) covering the

@@ -1,22 +1,68 @@
-# Phase 139.4 — Kconfig surfaced under
+# Phase 139.4 / 149.7 — Kconfig surfaced under
 # `Application Configuration → External Modules → nano-ros`.
+#
+# 149.7 — promoted free-form `string` knobs to `choice` so
+# `make menuconfig` drives Cargo `--features` cleanly via the
+# matching `CONFIG_NROS_RMW_*` / `CONFIG_NROS_ROS_*` symbols read
+# by the sibling `Makefile`.
 
 config NROS
     bool "nano-ros ROS 2 client"
     default n
     help
       Enables the nano-ros Cargo-built static library in the NuttX
-      build. Drives the CMake dispatch via NANO_ROS_PLATFORM=nuttx
-      when consumed through the CMake sibling.
+      build. Cargo runs in NuttX's `context::` phase via the
+      upstream `apps/tools/Rust.mk` macros; the resulting
+      `libnros_c.a` (and optionally `libnros_cpp.a`) is appended to
+      `EXTRA_LIBS` for the monolithic link.
 
 if NROS
 
-config NROS_RMW
-    string "RMW backend (zenoh | dds | xrce | cyclonedds)"
-    default "zenoh"
+choice
+    prompt "RMW backend"
+    default NROS_RMW_ZENOH
+    help
+      Selects the ROS 2 middleware nano-ros uses. The choice flips
+      the matching `--features rmw-<name>` Cargo flag in the
+      sibling Makefile.
 
-config NROS_ROS_EDITION
-    string "ROS 2 edition (humble | iron)"
-    default "humble"
+config NROS_RMW_ZENOH
+    bool "Zenoh (zenoh-pico)"
+    help
+      Embedded zenoh client; full ROS 2 graph support, low
+      footprint. Recommended default for most NuttX boards.
+
+config NROS_RMW_DDS
+    bool "DDS (dust-dds)"
+    help
+      Pure-Rust DDS stack. Heavier than zenoh-pico but compatible
+      with stock ROS 2 nodes via the DDS wire.
+
+config NROS_RMW_XRCE
+    bool "XRCE-DDS (micro-XRCE-DDS-Client)"
+    help
+      Lightweight XRCE-DDS client; needs a Micro-XRCE-DDS Agent
+      bridge on the host side.
+
+config NROS_RMW_CYCLONEDDS
+    bool "Cyclone DDS"
+    help
+      Eclipse Cyclone DDS via the rmw_cyclonedds_cpp bridge.
+      Largest footprint; pick only if Cyclone-specific QoS knobs
+      matter to you.
+
+endchoice
+
+choice
+    prompt "ROS 2 edition"
+    default NROS_ROS_HUMBLE
+
+config NROS_ROS_HUMBLE
+    bool "Humble"
+
+config NROS_ROS_IRON
+    bool "Iron"
+
+endchoice
 
 endif # NROS
