@@ -1056,6 +1056,14 @@ generate-bindings:
         echo "  $dir"
         (cd "$dir" && $NANO_ROS generate-rust --force)
     done
+    # Phase 131.B — bench/test-fixture crates relocated under packages/testing/
+    # also ship a package.xml + generated/ tree.
+    for pkg in $(find packages/testing/nros-bench packages/testing/nros-tests/bins packages/testing/nros-smoke \
+                     -name package.xml -not -path '*/target/*' -not -path '*/generated/*' 2>/dev/null | sort); do
+        dir="$(dirname "$pkg")"
+        echo "  $dir"
+        (cd "$dir" && $NANO_ROS generate-rust --force)
+    done
 
     echo "All bindings regenerated!"
 
@@ -1066,6 +1074,12 @@ clean-bindings:
     echo "Removing generated bindings..."
     # Auto-discover all generated/ directories under examples/
     for d in $(find examples -name generated -type d -not -path '*/target/*' | sort); do
+        rm -rf "$d"
+        echo "  removed $d"
+    done
+    # Phase 131.B — relocated bench/test-fixture crates under packages/testing/
+    for d in $(find packages/testing/nros-bench packages/testing/nros-tests/bins packages/testing/nros-smoke \
+                    -name generated -type d -not -path '*/target/*' 2>/dev/null | sort); do
         rm -rf "$d"
         echo "  removed $d"
     done

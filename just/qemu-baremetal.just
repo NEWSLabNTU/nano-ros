@@ -75,12 +75,8 @@ test-patched verbose="":
     @just qemu setup-qemu
     QEMU_SYSTEM_ARM={{QEMU_BIN}} just qemu test {{verbose}}
 
-# Build QEMU bare-metal core support tools.
-build:
-    (cd packages/reference/qemu-smoltcp-bridge && cargo build --release)
-
 # Build QEMU ARM bare-metal examples
-build-examples:
+build:
     #!/usr/bin/env bash
     set -e
     echo "Building QEMU ARM examples..."
@@ -90,6 +86,19 @@ build-examples:
         echo "  build $dir"
         (cd "$dir" && cargo build --release)
     done
+    # Phase 131.B — bench/test-fixture binaries that used to live under
+    # examples/qemu-arm-baremetal/rust/{core,standalone,zenoh/large-msg-test}
+    # now sit under packages/testing/.
+    for dir in \
+        packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
+        packages/testing/nros-tests/bins/lan9118-qemu \
+        packages/testing/nros-bench/wcet-cycles-qemu \
+        packages/testing/nros-bench/large-msg-baremetal; do
+        echo "  build $dir"
+        (cd "$dir" && cargo build --release)
+    done
+    # Also build qemu-smoltcp-bridge (library in packages/reference/)
+    (cd packages/reference/qemu-smoltcp-bridge && cargo build --release)
 
 # Build all example binaries used as test fixtures (bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
@@ -106,13 +115,18 @@ build-fixtures:
         echo "  → $dir"
         ( cd "$dir" && cargo build --release --quiet )
     done
+    # Phase 131.B — relocated bench/test-fixture crates.
+    for dir in \
+        packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
+        packages/testing/nros-tests/bins/lan9118-qemu \
+        packages/testing/nros-bench/wcet-cycles-qemu \
+        packages/testing/nros-bench/large-msg-baremetal; do
+        echo "  → $dir"
+        ( cd "$dir" && cargo build --release --quiet )
+    done
     # qemu-smoltcp-bridge: native lib that bridges QEMU's serial port to a
     # smoltcp socket, used by some serial-mode bare-metal tests.
     ( cd packages/reference/qemu-smoltcp-bridge && cargo build --release --quiet )
-
-# Build every QEMU bare-metal tier: core tools, examples, and test fixtures.
-build-all: build build-examples build-fixtures
-    @echo "QEMU bare-metal build-all completed."
 
 # Run all QEMU tests (non-networked)
 test verbose="":
@@ -131,7 +145,7 @@ test verbose="":
     fi
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
-test-basic verbose="": build-examples
+test-basic verbose="": build
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
@@ -139,7 +153,7 @@ test-basic verbose="": build-examples
             -kernel packages/testing/nros-tests/bins/cdr-roundtrip-qemu/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
-test-wcet verbose="": build-examples
+test-wcet verbose="": build
     ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
@@ -147,7 +161,7 @@ test-wcet verbose="": build-examples
             -kernel packages/testing/nros-bench/wcet-cycles-qemu/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
-test-lan9118 verbose="": build-examples
+test-lan9118 verbose="": build
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
@@ -187,7 +201,7 @@ status-network:
     ./scripts/qemu/setup-network.sh --status
 
 # Test QEMU zenoh-pico communication (requires zenohd + TAP network)
-test-zenoh: build-examples
+test-zenoh: build
     #!/usr/bin/env bash
     set -e
     echo "============================================"
@@ -303,9 +317,7 @@ help:
     @echo "  2. Set up network: sudo ./scripts/qemu/setup-network.sh"
     @echo ""
     @echo "Build & Test (non-networked):"
-    @echo "  just qemu build              # Build QEMU core support tools"
-    @echo "  just qemu build-examples     # Build all QEMU examples"
-    @echo "  just qemu build-all          # Build QEMU core, examples, and fixtures"
+    @echo "  just qemu build              # Build all QEMU examples"
     @echo "  just qemu test               # Run all QEMU tests (no network)"
     @echo "  just qemu test-basic         # Run basic serialization test"
     @echo "  just qemu test-wcet          # Run WCET benchmark"
@@ -334,6 +346,14 @@ clean: clean-zenoh-pico
                        -not -path '*/target/*' -not -path '*/generated/*' | sort); do
         rm -rf "$(dirname "$toml")/target"
     done
+    # Phase 131.B — relocated bare-metal bench/fixture crates.
+    for dir in \
+        packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
+        packages/testing/nros-tests/bins/lan9118-qemu \
+        packages/testing/nros-bench/wcet-cycles-qemu \
+        packages/testing/nros-bench/large-msg-baremetal; do
+        rm -rf "$dir/target"
+    done
     rm -rf packages/reference/qemu-smoltcp-bridge/target
     echo "QEMU bare-metal build artifacts cleaned"
 
@@ -343,7 +363,7 @@ clean: clean-zenoh-pico
 
 # QEMU ignores SIGINT — run in background with trap for Ctrl-C
 [no-exit-message]
-_run-qemu-mps2 binary: build-examples
+_run-qemu-mps2 binary: build
     #!/usr/bin/env bash
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
