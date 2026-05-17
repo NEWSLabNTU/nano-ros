@@ -21,7 +21,7 @@ nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 
 # Generated message types
 std_msgs = { version = "*", default-features = false }

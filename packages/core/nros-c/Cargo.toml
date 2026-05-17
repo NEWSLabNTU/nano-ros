@@ -53,8 +53,7 @@ cffi-dds-cffi = ["rmw-cffi"]
 cffi-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
-link-tcp = ["nros/link-tcp", "nros-rmw-zenoh?/link-tcp"]
-link-udp-unicast = ["nros/link-udp-unicast", "nros-rmw-zenoh?/link-udp-unicast"]
+# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.
 
 # XRCE transport refinements (require rmw-xrce-cffi)
 xrce-udp = ["nros/xrce-udp"]

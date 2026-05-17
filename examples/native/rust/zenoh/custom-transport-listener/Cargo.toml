@@ -15,7 +15,7 @@ default = []
 [dependencies]
 # Phase 115.L.5-custom-transport — see talker for migration notes.
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "link-custom", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-custom", "ros-humble"] }
 nros-rmw = { path = "../../../../../packages/core/nros-rmw", default-features = false, features = ["std"] }
 # Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
 # standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-

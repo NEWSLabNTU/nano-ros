@@ -17,5 +17,5 @@ default = []
 [dependencies]
 nros-board-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }

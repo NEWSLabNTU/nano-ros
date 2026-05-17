@@ -17,7 +17,7 @@ path = "src/main.rs"
 # bridge code uses `node_builder.rmw("dds")` to open a second
 # session for the egress side (Phase 104.C.3).
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "ros-humble"] }
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", default-features = false, features = ["std", "alloc", "platform-posix"] }
 log = "0.4"
 env_logger = "0.11"

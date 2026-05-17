@@ -51,7 +51,7 @@ nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "pla
 # Phase 124.A.8.b — zenoh-pico backend (lending feature on) for the
 # loan E2E test. Optional so the default test build doesn't pull
 # zenoh-pico unnecessarily.
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["lending", "platform-posix", "link-tcp"], optional = true }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["lending", "platform-posix"], optional = true }
 # Phase 124.G.2 — dust-DDS backend (registered as "dds") for the
 # multi-RMW bridge test.
 nros-rmw-dds = { path = "../../dds/nros-rmw-dds", features = ["platform-posix"], optional = true }

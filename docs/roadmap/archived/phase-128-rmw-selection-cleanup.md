@@ -5,7 +5,7 @@ Goal: Remove RMW/platform names from user code and from core libraries.
   Selection is determined at compile/link time by the user's manifest
   (Cargo `[dependencies]` or CMake `target_link_libraries`), with an
   optional `NROS_RMW` environment override for the single-backend case.
-Status: planning
+Status: ✅ done (2026-05-17)
 Priority: high (blocks future backend additions; pays off PR ergonomics)
 Depends on: phase-104 (umbrella decoupling), phase-115 (cffi),
   phase-117 (cyclonedds), phase-121 (platform C-port canonicalization)
@@ -235,10 +235,11 @@ what still needs work, organised by category.
   / serial / IVC bridge symbols are per-board / per-RTOS and stay
   in the shim. Full crate deletion blocked behind those — queued
   for phase 129. See `docs/roadmap/phase-129-platform-agnostic-rmw.md`.
-- [ ] `128.D.4` — `xrce-platform-shim` fold: deferred. The shim has
-  a narrower surface than `zpico-platform-shim`; expect a similar
-  alias-TU pattern plus a transport-hook layer that can't fold
-  cleanly. Queued alongside D.3 in phase 129.
+- [x] `128.D.4` — `xrce-platform-shim` deleted in phase 129.D.2.
+  `uxr_millis` / `uxr_nanos` moved to a C alias TU
+  (`nros-rmw-xrce/src/platform_aliases.c`) that calls
+  `nros_platform_time_now_ms` / `nros_platform_clock_us`.
+  Compiled into `nros-rmw-xrce-cffi` unconditionally.
 - [x] `128.E.1` — deleted `link-tcp`, `link-udp-unicast`,
   `link-udp-multicast`, `link-serial` features from `zpico-sys`.
   Vendor C sources for those four transports compile in always
@@ -414,19 +415,22 @@ Deferred to follow-up:
   the duplicate-axis requirement for POSIX consumers.
   **Files:** `packages/zpico/zpico-sys/build.rs`,
   `packages/xrce/xrce-sys/build.rs`.
-- [ ] `128.D.1` (deferred → phase 129): delete `platform-{posix,zephyr,
-  bare-metal,freertos,nuttx,threadx,orin-spe}` features from
-  `packages/zpico/nros-rmw-zenoh/Cargo.toml`. Blocked on 128.D.3
-  (the build script's per-RTOS C source picking still rides on
-  these features).
-- [ ] `128.D.2` (deferred → phase 129): same for `nros-rmw-xrce-cffi`.
-- [ ] `128.D.3` (deferred → phase 129): fold `zpico-platform-shim`
-  symbols into `nros-platform-cffi` via a C aliasing TU. The shim
-  also carries smoltcp-clock bridges, per-board serial openers, and
-  orin-spe IVC helpers that need a home before the crate can be
-  deleted.
-- [ ] `128.D.4` (deferred → phase 129): same fold for
-  `xrce-platform-shim`.
+- [x] `128.D.1` — landed in phase 129.C.3.a.
+  `nros-platform/platform-<rtos>` forwards dropped from
+  `nros-rmw-zenoh`; `platform-<rtos>` keeps only its
+  `zpico-sys/<rtos>` forwarder.
+- [x] `128.D.2` — landed in phase 129.C.1.
+  `nros-rmw-xrce-cffi` deleted every `platform-<rtos>` feature;
+  build.rs auto-detects from `target_os`.
+- [x] `128.D.3` — landed in phase 129.D.1.
+  `zpico-platform-shim` deleted. Symbols moved into
+  `zpico-sys/c/zpico/platform_aliases.c` (default-on via
+  `platform-aliases`). IVC link-layer carved into
+  `zpico-link-ivc`. `smoltcp_clock_now_ms` moved to alias TU
+  too.
+- [x] `128.D.4` — landed in phase 129.D.2.
+  `xrce-platform-shim` deleted. `uxr_millis` / `uxr_nanos` in
+  `nros-rmw-xrce/src/platform_aliases.c`.
 
 ### 128.E — Transport selection becomes runtime
 
@@ -463,13 +467,23 @@ Deferred:
   **Files:** `packages/zpico/zpico-sys/build.rs`.
 - [x] `128.E.0.xrce` (this phase): no change — xrce-cffi already
   auto-detects POSIX and compiles UDP / TCP / SERIAL profiles in.
-- [ ] `128.E.1` (deferred → phase 129): outright delete `link-*`
-  features from `nros-rmw-zenoh` and `zpico-sys`. Blocked on
-  graceful handling of bare-metal / RTOS link selection where the
-  build script cannot infer which transport the board supports.
-- [ ] `128.E.2` (deferred → phase 129): same audit pass for XRCE.
-- [ ] `128.E.3` (deferred → phase 129): examples drop `link-*` from
-  their `Cargo.toml`. Done piecemeal after 128.E.1 lands.
+- [x] `128.E.1` — `link-tcp` / `link-udp-unicast` deleted from
+  `nros-rmw-zenoh`, `nros-rmw-zenoh-staticlib`, `nros`, `nros-c`,
+  `nros-cpp`. Vendor zenoh-pico build always compiles TCP + UDP
+  unicast; the locator picks at runtime. Real link features
+  (`link-tls`, `link-custom`, `link-ivc`, `link-raweth`) keep
+  their build-host gates.
+- [x] `128.E.2` — XRCE had no `link-*` cargo features; vendor
+  build compiles UDP / TCP / SERIAL profiles unconditionally on
+  POSIX (auto-detected from `target_os`). No work needed.
+- [x] `128.E.3` — examples bulk-stripped of `link-tcp` /
+  `link-udp-unicast` / `link-udp-multicast` / `link-serial`
+  refs. `find examples -name Cargo.toml -exec grep -l 'link-
+  (tcp|udp-unicast|udp-multicast|serial)' {} \;` returns 0
+  after the sweep. Reference crates
+  (`packages/reference/stm32f4-porting/{polling,rtic}`) +
+  test fixtures (`packages/testing/nros-tests`) cleaned at the
+  same time.
 
 ### 128.F — Bridge crate (multi-RMW, names explicit)
 
@@ -499,9 +513,13 @@ surface stays unchanged.
   gains a `publish_raw_with_attachment` API; the contract is in
   place so a follow-up patch can light it up without touching the
   caller surface.
-- [ ] `128.F.5` (deferred → phase 129): C/C++ shim. Rust surface is
-  the source of truth for phase 128; the C/C++ mirror lands once
-  the bridge crate stabilizes.
+- [x] `128.F.5` — C/C++ shim landed. `nros-c/include/nros/bridge.h`
+  exposes `nros_init_multi` / `nros_fini_multi` /
+  `nros_pubsub_bridge_create` / `_pump` / `_pump_with_stats` /
+  `_destroy` on top of `nros_bridge::cffi`.
+  `nros-cpp/include/nros/bridge.hpp` wraps the C surface in
+  RAII (`nros::SessionSpec`, `nros::MultiExecutor`,
+  `nros::bridge::PubSubBridge`).
 
 ### 128.G — Optional config-driven entrypoint
 
@@ -526,8 +544,10 @@ flag.
   the surface in via one cargo feature.
   **Files:** `packages/core/nros/Cargo.toml`,
   `packages/core/nros/src/lib.rs`.
-- [ ] (Follow-up) Reference docs (`book/src/reference/nros-toml.md`)
-  for the file schema. Crate-level rustdoc covers it for now.
+- [x] (Follow-up) Reference docs landed at
+  `book/src/reference/nros-toml.md`. Documents the bridge
+  schema (`[[node]]` + `[[bridge]]` blocks), backend resolution,
+  and the `run_from_config` entrypoint.
 
 ## Acceptance Criteria
 

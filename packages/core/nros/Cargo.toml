@@ -108,15 +108,11 @@ platform-orin-spe = [
     "nros-node/platform-orin-spe",
 ]
 
-# Zenoh link-layer protocol features. Phase 104.A — formerly
-# forwarded to `nros-rmw-zenoh?/link-*`; now inert at the umbrella
-# level. Callers add the link feature to their direct
-# `nros-rmw-zenoh` dep instead.
-link-tcp = []
-link-udp-unicast = []
+# Phase 128.E.1 — `link-tcp` / `link-udp-unicast` deleted on
+# `nros-rmw-zenoh` (always-on in vendor build). The umbrella
+# crate's inert markers go with them. `link-tls` / `link-custom`
+# stay — both have real build-host gates.
 link-tls = []
-# Phase 115.B — runtime-pluggable user transport via the
-# `custom://` locator scheme.
 link-custom = []
 
 # XRCE transport — platform-agnostic UDP (auto-enabled by OS platform features).
