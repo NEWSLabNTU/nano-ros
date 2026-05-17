@@ -1,0 +1,17 @@
+# Phase 139.1 — Zephyr integration shell module declaration.
+#
+# `west` discovers any directory under the workspace whose `zephyr/`
+# subtree (or this `integrations/zephyr/` analogue) contains a
+# `module.yml` and pulls the CMake + Kconfig listed below into the
+# top-level Zephyr build.
+#
+# This shell is INDEPENDENT of the older `zephyr/` module at the repo
+# root (the vendored zenoh-pico transport module). Consumers picking up
+# nano-ros via the source-distribution path described in Phase 137 +
+# 138 should add this directory to their workspace; the root `zephyr/`
+# module stays in place until per-RTOS migration finishes (Phase 140).
+
+name: nano-ros
+build:
+  cmake: .
+  kconfig: Kconfig

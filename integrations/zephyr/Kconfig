@@ -1,0 +1,33 @@
+# Phase 139.1 — Kconfig knobs surfaced by the nano-ros Zephyr shell.
+#
+# Maps user `prj.conf` settings to CMake cache vars consumed by the
+# Phase 137 root CMakeLists.txt. Keep the surface MINIMAL — RMW-specific
+# tuning lives in the long-standing `zephyr/Kconfig` at the repo root
+# (which the legacy module honours). This shell only owns the
+# add-subdirectory dispatch knobs.
+
+menuconfig NROS
+    bool "nano-ros ROS 2 client (Phase 139 integration shell)"
+    help
+      Enables the nano-ros Zephyr integration shell. The shell pulls
+      the unified Phase 137 / 138 root CMake into the Zephyr build and
+      links NanoRos::NanoRos into the application.
+
+      For richer transport / executor tuning, also enable the legacy
+      `zephyr/` module knobs (kept until Phase 140).
+
+if NROS
+
+config NROS_RMW
+    string "RMW backend (zenoh | dds | xrce | cyclonedds)"
+    default "zenoh"
+    help
+      Maps to the NANO_ROS_RMW CMake cache variable.
+
+config NROS_ROS_EDITION
+    string "ROS 2 edition (humble | iron)"
+    default "humble"
+    help
+      Maps to the NANO_ROS_ROS_EDITION CMake cache variable.
+
+endif # NROS
