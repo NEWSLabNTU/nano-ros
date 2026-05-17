@@ -969,10 +969,22 @@ Current signal (2026-05-17):
 Subitems:
 
 - [~] `127.D.1`: RTIC action E2E — connect path now passes; reply
-  never reaches LAN9118 model RX FIFO. Same root cause as 127.D.2.
-- [~] `127.D.2`: RTIC service E2E — connect path now passes;
-  2026-05-17 tshark + zenoh-dissector pcap on host loopback
-  (`tcp port 7460`) confirmed:
+  correlation gap remains (same as 127.D.2 — see below).
+- [~] `127.D.2`: RTIC service E2E — connect path passes; LAN9118 RX
+  FIFO drops eliminated by `third-party/qemu/patches/0001-hw-net-lan9118-add-can_receive-flush-on-FIFO-drain.patch`
+  (built via `just qemu setup-qemu`, wired into top-level `just setup`).
+  Empirical retest 2026-05-17: with patched `build/qemu/bin/qemu-system-arm`,
+  `lan_pend` jumps from a stuck **518** to **3428+** — LAN9118 now
+  accepts every frame slirp pushes. Client `rx` / `recv` still capped
+  at ~256 bytes; the zenoh-pico `g_pending_gets[slot]` callback that
+  bridges `z_get` replies to `zpico_get_check` is not firing for the
+  reply that did reach smoltcp. Distinct failure mode in the
+  zenoh-pico reply-dispatch path under `ZPICO_SMOLTCP` /
+  `Z_FEATURE_MULTI_THREAD=0`. Needs a dedicated zenoh-pico internals
+  trace; tracked separately. Pubsub continues to pass.
+
+  Pre-patch capture (2026-05-17 via tshark + zenoh-dissector on
+  host loopback `tcp port 7460`) for reference:
   - Client TX path: query frame (98 B) leaves QEMU, host kernel ACKs.
   - zenohd forwards 99 B to server; server replies 104 B; zenohd
     forwards `Reply` (107 B, payload `[00, 01, 00, 00, 08, ..]` =
