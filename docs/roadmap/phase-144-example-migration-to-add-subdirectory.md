@@ -7,8 +7,44 @@ Per-example helpers under `examples/**/cmake/<plat>-support.cmake`
 get deleted in lock-step (Phase 138.4's narrowed scope completes
 here per-example).
 
-**Status.** 1 of 86 examples migrated (Phase 137.5:
-`examples/native/c/zenoh/talker/`). 85 outstanding.
+**Status.** 30 of 86 examples migrated as of 2026-05-18:
+- 144.1 native/c/zenoh (9) ✅
+- 144.2 native/c/dds (6) ✅
+- 144.4 native/cpp/{zenoh,dds} (14) ✅ — plus codegen +
+  nros-cpp infrastructure fixes (in-tree `nros_cpp_config_generated.h`
+  mirror; deferred-link of `NanoRos::NanoRos` into nros-cpp-headers;
+  `_NANO_ROS_{PREFIX,CMAKE_DIR}` cache promotion + in-tree serdes
+  fallback in the codegen submodule).
+- 144.3 native/c/xrce (6) — deferred (option b) per the
+  "1-hour" rule: XRCE has no add_subdirectory-friendly staticlib
+  entry, so the 6 examples stay on `find_package(NanoRos)` until a
+  Phase 137.X follow-up adds an `nros-rmw-xrce-staticlib` (mirroring
+  the zenoh / dds shape) and wires it into the root CMake's `xrce`
+  branch (currently `message(FATAL_ERROR ...)`).
+- 144.5 / .6 / .7 / .8 RTOS groups (48 examples) — **deferred**.
+  These examples reference legacy-install-only constructs (`find_dependency
+  (NrosPlatformFreertos)`, `nros_freertos_compose_platform(...)`,
+  `THREADX_STARTUP_SOURCE`, `nano_ros_link_rmw`, etc.) that pull from
+  `<prefix>/share/nano-ros/...` paths under the install layout. Mechanical
+  migration is not enough — the in-tree `cmake/platform/nano-ros-{freertos
+  ,nuttx,threadx}.cmake` modules currently re-export the layer-2 helpers
+  but do NOT compose the kernel + lwIP / NetX + netif + startup glue
+  the example expects. Composing it in-tree requires either:
+   (i) board overlays that surface `freertos_platform` / `threadx_platform`
+       targets composed via `add_subdirectory(packages/core/nros-platform-
+       {freertos,threadx})` + `nros_*_compose_platform(...)` against
+       in-tree FREERTOS_DIR / NETXDUO_DIR / LWIP_DIR paths, AND
+   (ii) replacing the per-example `nano_ros_read_config` /
+        `nano_ros_link_rmw` / `THREADX_GLUE_DEFINES` etc. references
+        with the Phase 138 platform-link-app contract.
+  Each RTOS family is a multi-hour engineering task; surfaced here as a
+  follow-up phase (likely 144.X.1–.4 or a new phase 146 per RTOS) so
+  Phase 140 can land the POSIX-side `install-local` removal independently.
+- 144.9 templates — kept as `find_package` demo per the doc note
+  ("likely outcome: keep as find_package demo until Phase 140").
+- 144.10 / .11 / .12 ✅ (helper sweep no-op — no
+  `examples/**/cmake/*-support.cmake` exist; smoke build for
+  POSIX-zenoh C + C++ passed; CLAUDE.md updated).
 
 **Priority.** P1 — blocks Phase 140 (`install-local` rip-off cannot
 remove `find_package(NanoRos)` while 85 consumers depend on it).
@@ -156,11 +192,11 @@ platform module, so the diff is mechanical.
 
 Grouped by platform (most homogeneous within group):
 
-- [ ] **144.1 — `examples/native/c/zenoh/*` (9 examples).**
+- [x] **144.1 — `examples/native/c/zenoh/*` (9 examples).**
       All consume POSIX + zenoh. Same depth 5, same modules.
       **Files.** 9 `CMakeLists.txt` files.
 
-- [ ] **144.2 — `examples/native/c/dds/*` (6 examples).**
+- [x] **144.2 — `examples/native/c/dds/*` (6 examples).**
       POSIX + dds. Same depth.
       **Files.** 6 `CMakeLists.txt` files.
 
@@ -171,7 +207,7 @@ Grouped by platform (most homogeneous within group):
       to user-action).
       **Files.** 6 `CMakeLists.txt` files.
 
-- [ ] **144.4 — `examples/native/cpp/{zenoh,dds}/*` (14 examples).**
+- [x] **144.4 — `examples/native/cpp/{zenoh,dds}/*` (14 examples).**
       POSIX + cpp. Uses `NanoRos::NanoRosCpp` target.
       **Files.** 14 `CMakeLists.txt` files.
 

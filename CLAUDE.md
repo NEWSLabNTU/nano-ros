@@ -5,7 +5,7 @@ Lightweight ROS 2 client for embedded RTOS (Zephyr, FreeRTOS, NuttX, ThreadX). `
 ## Naming
 - **nano-ros** — project name (prose, docs)
 - **nros** — code shorthand (crates, Rust/C idents, `CONFIG_NROS_*`)
-- **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nano_ros_generate_interfaces()`)
+- **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nros_generate_interfaces()`)
 
 ## Workspace
 `packages/{core,zpico,xrce,dds,boards,drivers,interfaces,testing,verification,reference,codegen}/`, `examples/`, `third-party/` (gitignored SDKs), `zephyr/` module. Run `ls packages/` for current crate list.
@@ -67,7 +67,7 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 - No shared example-only helpers in `nros-cpp`/`nros-c` — boilerplate IS lesson.
 - `*_DIR` env / `-D` injection = SDK-path contract. Example cmake accepts env or `-D` only — never project-tree heuristics.
 - Per-example `Cargo.toml` + `.cargo/config.toml` + `CMakeLists.txt` build in isolation. No workspace reliance, no walk-up.
-- Per-platform `cmake/<plat>-support.cmake` in example tree. Layer-2 (`nros-{threadx,freertos,nuttx}.cmake`) ship via `find_package(NanoRos)`.
+- **C/C++ consumption shape (Phase 137 / 144 / native examples):** `set(NANO_ROS_PLATFORM <plat>) + set(NANO_ROS_RMW <rmw>) + add_subdirectory(<repo-root> nano_ros) + target_link_libraries(<app> PRIVATE NanoRos::NanoRos) + nros_platform_link_app(<app>)`. Per-platform CMake glue lives at `cmake/platform/nano-ros-<plat>.cmake`; per-board overlays at `cmake/board/nano-ros-board-<board>.cmake`. Legacy `find_package(NanoRos REQUIRED CONFIG)` against `build/install/lib/cmake/NanoRos/` still works as a transitional path (Phase 140 will remove it). Cross-RTOS users (Zephyr, ESP-IDF, PlatformIO, NuttX, PX4) consume via the Phase 139 shells at `integrations/<rtos>/` — those shells re-export the same root CMake under each RTOS's native package manager.
 - **Coverage matrix lives in `examples/README.md` ("Coverage matrix" + "Intentionally empty cells" sections) — authoritative for which `<plat>/<lang>/<rmw>` triples exist.** Deliberately empty cells: `{qemu-arm-baremetal, qemu-esp32-baremetal, esp32, stm32f4}/{c,cpp}/*` (no bare-metal C/C++ harness — `nros-c`/`nros-cpp` assume hosted RTOS for startup/heap/libc) and `px4/{c,rust}/*` (PX4 is uORB-only, and Phase 115.K.4 collapsed uORB to a C++-only port — `examples/px4/cpp/uorb/nros-register-check/` is the canonical surface). Do not add directories to these cells without first lifting the underlying constraint; Phase 118 lint blocks untriaged cells.
 
 ### CMake Path Convention
