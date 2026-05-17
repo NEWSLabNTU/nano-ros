@@ -47,10 +47,21 @@ lending = ["rmw-cffi", "nros/lending"]
 # downstream `nano_ros_link_rmw()` is not involved.
 cffi-xrce-c = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
 cffi-dds-cffi = ["rmw-cffi"]
-# Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature was deleted. Pulling
-# `nros-rmw-zenoh` as a direct optional dep is the only thing this
-# alias still needs to do.
-cffi-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh"]
+# Phase 134.fix — drop `dep:nros-rmw-zenoh`. Pulling the rlib bundled
+# a duplicate copy of nros-rmw-zenoh's entire dependency closure
+# (including a second zenoh-pico C build) into `libnros_c.a`. With
+# `--allow-multiple-definition` the linker reconciles same-named
+# symbols (`nros_rmw_zenoh_register`, `nros_rmw_cffi_register_named`,
+# etc.) but each rlib instance keeps its own private VTABLE static
+# pointing at its own trampolines wired to its own zenoh-pico
+# variant. Whichever side the linker picks for the public no_mangle
+# entry points may reference the OTHER side's zenoh-pico structs
+# through the FFI boundary, producing layout / size mismatches at
+# runtime. The `nros_rmw_zenoh_register` C symbol is now resolved
+# at the C-binary link step exclusively from `libnros_rmw_zenoh.a`
+# (the standalone staticlib), via the `extern "C"` declaration in
+# `src/lib.rs`.
+cffi-zenoh-cffi = ["rmw-cffi"]
 
 # Zenoh transport refinements (require rmw-zenoh-cffi)
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` retired.

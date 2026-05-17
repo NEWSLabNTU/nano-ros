@@ -892,7 +892,28 @@ impl Registry {
 // SAFETY: see `Registry` doc-comment on the mutation protocol.
 unsafe impl Sync for Registry {}
 
-static REGISTRY: Registry = Registry::new();
+// Phase 134.fix — `#[no_mangle] pub static`. When a C binary links
+// `libnros_c.a` next to a backend staticlib (canonical case:
+// `libnros_rmw_zenoh.a`), each archive bundles its own
+// `nros-rmw-cffi` rlib instance with its own crate-hash-mangled
+// `REGISTRY` symbol. `nros_rmw_cffi_register_named` (extern,
+// dedup-able) gets picked from one of the two rlibs by the
+// linker; that function's body baked in a reference to ITS LOCAL
+// REGISTRY. Meanwhile `default_vtable` (private fn) inside the
+// other rlib accesses its OWN local REGISTRY. Registration and
+// lookup land in disjoint storage; the C binary fails to find the
+// just-registered backend.
+//
+// Stripping the crate-hash mangling with `#[no_mangle]` collapses
+// the two definitions onto one storage. `--allow-multiple-
+// definition` (already enabled for the multi-archive link) lets
+// the duplicate definition warning through silently — both
+// pointers resolve to the same backing storage, so all
+// `Registry`-mutating / `Registry`-reading code paths see a
+// single consistent registry state across rlib instances.
+#[unsafe(no_mangle)]
+#[allow(private_interfaces)]
+pub static REGISTRY: Registry = Registry::new();
 
 // ============================================================================
 // Rust-adapter MessageInfo side channel

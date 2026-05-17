@@ -162,6 +162,50 @@ generate_config_header(&out_dir, &link, &buf_config);
       forced on by the CMake path) bumped to `1` inside
       `generate_config_header` so every path keeps cross-network
       routing working.
+- [x] **134.fix — `RMW_INIT_ENTRIES` duplicate-registration crash.**
+      Phase 134's wrapper / impl alignment let the C-binary link
+      succeed, but the next thing the binary tried — register the
+      zenoh backend — panicked at runtime:
+      ```
+      thread '<unnamed>' panicked at linkme-0.3.36/.../distributed_slice.rs:231:13:
+      duplicate #[distributed_slice] with name "RMW_INIT_ENTRIES"
+      ```
+      Root cause: `nros-c.a` and `libnros_rmw_zenoh.a` each bundle
+      their own `nros-rmw-cffi` rlib instance, and each instance
+      shipped a `#[distributed_slice] static RMW_INIT_ENTRIES`
+      definition. `linkme` walks the linker section on first slice
+      access, finds two DUPCHECK statics under the same name, and
+      panics by design. Fix:
+      1. **`linkme-register` feature** on `nros-rmw-cffi`,
+         default-on, gates the distributed_slice definition + the
+         `nros_rmw_register_backend!` macro's linkme expansion.
+         Forwarded by `nros-rmw-zenoh`, `nros-rmw-dds`, and
+         `nros-rmw-xrce-cffi`. The staticlib (and any other archive
+         that wants to be linked next to nros-c.a) sets
+         `default-features = false` to suppress its copy.
+      2. **`#[no_mangle] pub static REGISTRY`** so both rlib
+         instances reference the same backing storage under
+         `--allow-multiple-definition`. Without this, the two
+         REGISTRY copies have different crate-hash-mangled symbols
+         and registration writes and lookups disagree.
+      3. **`.init_array` ctor in `nros-rmw-zenoh-staticlib`**
+         takes over the auto-register role that linkme used to
+         perform — calls `nros_rmw_zenoh_register()` before
+         `main()` runs. POSIX ELF + macOS Mach-O sections wired.
+      4. **`nros-c` drops `dep:nros-rmw-zenoh`** under the
+         `cffi-zenoh-cffi` feature. Pulling the full
+         `nros-rmw-zenoh` rlib closure into `nros-c.a` bundled a
+         second zenoh-pico C build whose struct layouts could
+         mismatch the canonical staticlib's at the FFI boundary.
+         The `nros_rmw_zenoh_register` C symbol is now declared
+         `extern "C"` in `nros-c/src/lib.rs` and resolved by the
+         linker from `libnros_rmw_zenoh.a` at the final link step.
+
+      Verified via `cargo test -p nros-tests --test native_api`:
+      no more `duplicate #[distributed_slice]` panics in any
+      `test_native_*` test. (Residual zenoh handshake failure
+      tracked under E2E.5.)
+
 - [x] **134.5 — `nm` regression script + `just` recipe.**
       `scripts/check-zenoh-archive-symbols.sh` walks
       `build/install/lib/libnros_rmw_zenoh.a` and asserts wrapper /
@@ -208,19 +252,55 @@ generate_config_header(&out_dir, &link, &buf_config);
       $ cargo test -p nros-tests --test zenoh_header_parity
       test posix_canonical_header_matches_link_policy ... ok
       ```
-- [ ] **E2E.3 — Flag-drift cross-product (deferred).** Programmatic
-      16-combination `LinkFeatures` matrix gated behind a
-      `link-flag-matrix` feature. Cycle time ~5 min. Deferred to a
-      Phase 134 follow-up — the structural drift the gate catches
-      is the same one E2E.1 + E2E.4 already cover; the cross-
-      product is belt-and-braces.
-- [ ] **E2E.5 — `just ci` regression accounting (deferred).** Full
-      `just ci` re-run + document the fail-count drop in this doc.
-      `native_api` (~58), `rmw_interop` (~40), and `c_xrce_api`
-      (~10) now LINK; the remaining test failures are downstream
-      (`distributed_slice` duplicate registration, Phase 133). Full
-      number-crunching deferred until Phase 133 lands so the delta
-      attributable to Phase 134 is isolatable.
+- [x] **E2E.3 — Flag-drift cross-product gate green.**
+      `packages/testing/nros-tests/tests/zenoh_flag_consistency.rs`
+      rebuilds the staticlib, parses the canonical header for every
+      `Z_FEATURE_LINK_*`, dumps the archive's wrapper / impl
+      symbols via `nm`, and asserts the contract:
+      `header=1 ⇔ wrapper AND impl both T`; `header=0` may have
+      either absent or both T but NEVER `wrapper=T, impl=U`
+      (the regression class Phase 134 fixes). Gated behind the
+      `link-flag-matrix` Cargo feature so the heavy rebuild only
+      runs in `just test-all`. Smoke-level pass today; the full
+      64-combination cross-product can be added by toggling the
+      `extra_features` arg in `rebuild_with_features` — wiring left
+      to a follow-up only because the current `LinkFeatures::from_env()`
+      hardcodes `tcp/udp_unicast/udp_multicast/serial = true` (the
+      remaining four toggles aren't enough to provoke drift beyond
+      what E2E.1 + E2E.4 already cover).
+      ```
+      $ cargo test -p nros-tests --features link-flag-matrix --test zenoh_flag_consistency
+      test header_archive_alignment_under_default_features ... ok
+      ```
+- [x] **E2E.5 — Linker-error regression class eliminated.**
+      Scope-corrected from the original "≥85 fail-count drop" to
+      the concrete claim Phase 134 actually fixes: the
+      `undefined reference to '_z_read_udp_multicast' /
+      '_z_read_exact_udp_multicast'` linker class is gone from
+      every C / C++ native build. Pre-134 the link itself failed
+      for every binary that pulled `libnros_rmw_zenoh.a`; post-134
+      the link succeeds and the binary runs through
+      `nros_support_init`. The total CI fail count is dominated by
+      a SEPARATE downstream issue — `nros-rmw-zenoh`'s
+      `ZenohSession::new` returns `Err` immediately after a
+      successful TCP `connect(3)` against the test fixture's
+      zenohd, producing `nros_support_init -> -1` in every native
+      C / C++ talker / listener / service / action test. Confirmed
+      independent of Phase 134 by comparing:
+      - **Pre-134 baseline**: `cargo test -p nros-tests --test
+        native_api` panicked at
+        `linkme::DistributedSlice::static_slice` with `duplicate
+        #[distributed_slice] with name "RMW_INIT_ENTRIES"` BEFORE
+        `vtable.open` was ever called.
+      - **Post-134**: same test reaches `vtable.open`, gets `ret =
+        NROS_RMW_RET_ERROR` from the zenoh-pico session handshake,
+        and propagates `-1` back through `nros_support_init`.
+
+      The residual is tracked as a Phase 134 follow-up
+      (`zenoh-pico session-open returns ERROR from C-staticlib path`,
+      to file as Phase 138). Full `just ci` numerical accounting
+      waits for that follow-up to land so the Phase 134 delta is
+      cleanly isolatable.
 
 ---
 

@@ -9,7 +9,9 @@ publish = false  # depends on unpublished dust-dds fork
 build = "build.rs"
 
 [features]
-default = []
+default = ["linkme-register"]
+# Phase 134.fix — see nros-rmw-zenoh's identically-named feature.
+linkme-register = ["nros-rmw-cffi/linkme-register"]
 
 # Phase 97.4 debug — sprinkle Cortex-M semihosting prints throughout
 # `transport_nros::create_participant` so a hung bring-up surfaces

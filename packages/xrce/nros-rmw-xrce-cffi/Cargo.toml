@@ -12,7 +12,9 @@ build = "build.rs"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["linkme-register"]
+# Phase 134.fix — see nros-rmw-zenoh's identically-named feature.
+linkme-register = ["nros-rmw-cffi/linkme-register"]
 
 # Phase 129.C.1 — all `platform-<rtos>` features deleted. Build
 # selection is `target_os`-driven; the platform-blind

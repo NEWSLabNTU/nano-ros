@@ -60,20 +60,29 @@ pub type RmwInitEntry = unsafe extern "C" fn();
 // instead of a build break.
 // ---------------------------------------------------------------------------
 
-#[cfg(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "fuchsia",
-    target_os = "psp",
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "tvos",
-    target_os = "watchos",
-    target_os = "windows",
-    target_os = "illumos",
-    target_os = "none",
+// Phase 134.fix — gate the linkme DEFINITION on both target-OS
+// support AND the new `linkme-register` feature. Staticlibs that
+// pre-link next to another archive (the canonical case:
+// `libnros_rmw_zenoh.a` linked alongside `libnros_c.a`) turn the
+// feature off to suppress the second DUPCHECK static and rely on
+// `.init_array` auto-register instead.
+#[cfg(all(
+    feature = "linkme-register",
+    any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "fuchsia",
+        target_os = "psp",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "windows",
+        target_os = "illumos",
+        target_os = "none",
+    )
 ))]
 mod linkme_backed {
     use super::RmwInitEntry;
@@ -86,27 +95,32 @@ mod linkme_backed {
     pub static RMW_INIT_ENTRIES: [RmwInitEntry] = [..];
 }
 
-#[cfg(not(any(
-    target_os = "linux",
-    target_os = "android",
-    target_os = "fuchsia",
-    target_os = "psp",
-    target_os = "freebsd",
-    target_os = "openbsd",
-    target_os = "macos",
-    target_os = "ios",
-    target_os = "tvos",
-    target_os = "watchos",
-    target_os = "windows",
-    target_os = "illumos",
-    target_os = "none",
+#[cfg(not(all(
+    feature = "linkme-register",
+    any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "fuchsia",
+        target_os = "psp",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "tvos",
+        target_os = "watchos",
+        target_os = "windows",
+        target_os = "illumos",
+        target_os = "none",
+    )
 )))]
 mod linkme_backed {
     use super::RmwInitEntry;
 
-    /// Stub for targets `linkme` does not support (NuttX, Zephyr,
-    /// ESP-IDF, …). Always empty; the walker returns 0; backends
-    /// must register via the explicit `register()` call pattern.
+    /// Stub used when `linkme-register` is off OR the target OS
+    /// is not in linkme's supported set (NuttX, Zephyr, ESP-IDF,
+    /// …). Always empty; the walker returns 0; backends register
+    /// via `.init_array` (C-style ctor) or the explicit
+    /// `register()` call pattern.
     pub static RMW_INIT_ENTRIES: [RmwInitEntry; 0] = [];
 }
 
@@ -129,20 +143,28 @@ pub use linkme_backed::RMW_INIT_ENTRIES;
 #[macro_export]
 macro_rules! nros_rmw_register_backend {
     (fn() $body:block) => {
-        #[cfg(any(
-            target_os = "linux",
-            target_os = "android",
-            target_os = "fuchsia",
-            target_os = "psp",
-            target_os = "freebsd",
-            target_os = "openbsd",
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "tvos",
-            target_os = "watchos",
-            target_os = "windows",
-            target_os = "illumos",
-            target_os = "none",
+        // Phase 134.fix — also gate on the `linkme-register` Cargo
+        // feature of `nros-rmw-cffi`. When the consuming staticlib
+        // builds with `default-features = false`, the macro expands
+        // to nothing (no linkme entry). Auto-registration falls to
+        // an explicit `.init_array` ctor in the staticlib's lib.rs.
+        #[cfg(all(
+            feature = "linkme-register",
+            any(
+                target_os = "linux",
+                target_os = "android",
+                target_os = "fuchsia",
+                target_os = "psp",
+                target_os = "freebsd",
+                target_os = "openbsd",
+                target_os = "macos",
+                target_os = "ios",
+                target_os = "tvos",
+                target_os = "watchos",
+                target_os = "windows",
+                target_os = "illumos",
+                target_os = "none",
+            )
         ))]
         const _: () = {
             unsafe extern "C" fn __nros_rmw_backend_section_entry() $body
