@@ -1,5 +1,10 @@
 # Installation
 
+> **For new projects, prefer the `add_subdirectory` path documented at
+> [build-as-subdirectory.md](build-as-subdirectory.md).** This page
+> covers the legacy install-local workflow (slated for removal in
+> Phase 140).
+
 nano-ros is distributed as **source**, fetched from git and built locally.
 There is no binary tarball or SDK release.
 

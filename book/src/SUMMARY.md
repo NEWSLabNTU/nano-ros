@@ -7,6 +7,7 @@
 - [Application Workflow](./user-guide/workflow.md)
 - [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
 - [Installation](./getting-started/installation.md)
+- [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Package Preparation](./user-guide/package-preparation.md)
 - [First Native Rust Node](./getting-started/native.md)
 - [Message Generation](./user-guide/message-generation.md)
