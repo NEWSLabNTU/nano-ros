@@ -50,11 +50,14 @@ elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
     # Phase 138 canonical "freertos" accepted alongside legacy
     # "freertos_armcm3" (Phase 138 collapsed board into NANO_ROS_BOARD).
     set(_platform_features alloc panic-halt platform-freertos)
-elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
+       OR NANO_ROS_PLATFORM STREQUAL "nuttx")
     # NuttX provides a POSIX-like libc, so std is available.
     # NOTE: CMake/Corrosion builds for NuttX are disabled — upstream libc
     # is missing _SC_HOST_NAME_MAX which blocks build-std. Use Rust examples
     # directly (just nuttx build) until this is upstreamed.
+    # Phase 138 canonical "nuttx" accepted alongside legacy
+    # "nuttx_armv7a" (Phase 138 collapsed board into NANO_ROS_BOARD).
     set(_platform_features std platform-nuttx)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     # ThreadX Linux sim: host compiler, std available, ThreadX + NetX Duo via system libs.

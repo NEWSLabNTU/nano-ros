@@ -38,7 +38,10 @@ elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
     # Phase 138 canonical "freertos" accepted alongside legacy
     # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features alloc panic-halt platform-freertos)
-elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
+       OR NANO_ROS_PLATFORM STREQUAL "nuttx")
+    # Phase 138 canonical "nuttx" accepted alongside legacy
+    # "nuttx_armv7a"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features std platform-nuttx)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     set(_platform_features std platform-threadx)

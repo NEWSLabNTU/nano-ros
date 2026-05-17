@@ -160,7 +160,10 @@ function(nros_board_link_app target)
     set(_link_ifaces "")
     if(_libs)
         foreach(_lib ${_libs})
-            if(_lib STREQUAL "NanoRos::NanoRos" OR _lib STREQUAL "NanoRos")
+            if(_lib STREQUAL "NanoRos::NanoRos"
+               OR _lib STREQUAL "NanoRos::NanoRosCpp"
+               OR _lib STREQUAL "NanoRos"
+               OR _lib STREQUAL "NanoRosCpp")
                 continue()
             endif()
             list(APPEND _link_ifaces "${_lib}")

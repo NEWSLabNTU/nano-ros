@@ -1,20 +1,30 @@
 cmake_minimum_required(VERSION 3.22)
-project(nuttx_c_talker LANGUAGES C CXX)
+project(nuttx_c_talker VERSION 0.1.0 LANGUAGES C CXX)
 
-find_package(NanoRos CONFIG REQUIRED)
-include(nuttx-support)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Phase 144.6 — consume nano-ros via add_subdirectory(<repo-root>).
+# Five levels up from examples/qemu-arm-nuttx/<lang>/<rmw>/<example>/.
+set(NANO_ROS_PLATFORM nuttx)
+set(NANO_ROS_RMW      zenoh)
+set(NANO_ROS_BOARD    nuttx-qemu-arm)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
-
 nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
 nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
-nuttx_build_example(nuttx_c_talker
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/main.c"
-    INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/include"
-                 "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c/std_msgs"
-                 "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c"
-    SOURCES      ${std_msgs_GENERATED_SOURCES}
-)
+add_executable(nuttx_c_talker
+    src/main.c
+    ${std_msgs_GENERATED_SOURCES})
+target_include_directories(nuttx_c_talker PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c/std_msgs"
+    "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c")
+target_link_libraries(nuttx_c_talker PRIVATE
+    std_msgs__nano_ros_c
+    NanoRos::NanoRos)
+nros_platform_link_app(nuttx_c_talker)
