@@ -11,15 +11,30 @@
 //! `LinkFeatures::apply(LinkPolicy::posix())` chain produces, so
 //! we catch any future change that silently flips a flag.
 //!
-//! Test FAILS (not skips) if:
-//!   - the header is absent (run `cargo build -p
-//!     nros-rmw-zenoh-staticlib --features platform-posix` first),
-//!     OR
-//!   - any `Z_FEATURE_LINK_*` value drifts from the contract.
+//! Header discovery (Phase 150.E rev2):
+//!
+//! 1. `NROS_TESTS_ZENOH_HEADER` — explicit absolute path, wins.
+//!    Use this in CI / out-of-tree consumers (e.g. point at a CMake
+//!    build's `<build>/_deps/.../zenoh_generic_config.h`).
+//! 2. `<workspace>/target-zenoh-header-fixture/{debug,release}/build/
+//!    zpico-sys-*/out/zenoh-config/zenoh_generic_config.h` —
+//!    deterministic fixture built by `just build-zenoh-header-fixture`
+//!    (pulled in by `just build-test-fixtures`). Only ONE
+//!    `zpico-sys-<hash>` lives in this target-dir because the
+//!    dir only ever has `nros-rmw-zenoh-staticlib --features
+//!    platform-posix` built into it; the wildcard is safe.
+//!
+//! Test FAILS (not skips) if neither source produces a header OR
+//! any `Z_FEATURE_LINK_*` value drifts from the contract. Failure
+//! mode (1) points the user at `just build-test-fixtures`; failure
+//! mode (2) is the actual Phase 134 regression class.
 
-use std::{fs, path::Path};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
-fn workspace_root() -> std::path::PathBuf {
+fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
@@ -27,51 +42,51 @@ fn workspace_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
-/// Phase 150.E — return the most-recently-modified header from
-/// `<workspace>/target/{debug,release}/build/zpico-sys-*/out/...`.
-///
-/// Restricting to the workspace-default native target dir is
-/// load-bearing: a cross-target build (e.g. `target/riscv64gc-…/`
-/// from a recent `just threadx_riscv64 build-fixtures`) produces
-/// a `zpico-sys-*` build dir for ThreadX, which goes through
-/// `LinkPolicy::threadx()` (serial/udp_unicast/udp_multicast forced
-/// off — Phase 146.2). Picking that header by accident would make
-/// every POSIX-policy assertion fail. The native POSIX path always
-/// lives under `target/{debug,release}/`, never under a
-/// `target/<triple>/` sub-directory.
-///
-/// Pick the most-recent across `debug/` and `release/` so the test
-/// reflects the latest POSIX build regardless of profile.
-fn find_out_dir_header(root: &Path) -> Option<std::path::PathBuf> {
-    let mut newest: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+/// Phase 150.E rev2 — deterministic + overridable.
+fn resolve_header_path() -> Result<PathBuf, String> {
+    if let Some(explicit) = env::var_os("NROS_TESTS_ZENOH_HEADER") {
+        let p = PathBuf::from(explicit);
+        if p.is_file() {
+            return Ok(p);
+        }
+        return Err(format!(
+            "NROS_TESTS_ZENOH_HEADER points at {} but the file is missing",
+            p.display(),
+        ));
+    }
+
+    let root = workspace_root();
+    // Same shape on both profiles; pick whichever exists. The fixture
+    // recipe (`just build-zenoh-header-fixture`) uses the dev profile
+    // (= `debug/`) but allowing `release/` keeps the contract honest
+    // if a caller invokes with `--release`.
     for profile in ["debug", "release"] {
-        let build_dir = root.join("target").join(profile).join("build");
+        let build_dir = root
+            .join("target-zenoh-header-fixture")
+            .join(profile)
+            .join("build");
         let Ok(entries) = fs::read_dir(&build_dir) else {
             continue;
         };
         for entry in entries.flatten() {
-            let path = entry.path();
             let name = entry.file_name();
-            let s = name.to_string_lossy();
-            if !s.starts_with("zpico-sys-") {
+            if !name.to_string_lossy().starts_with("zpico-sys-") {
                 continue;
             }
-            let candidate = path.join("out/zenoh-config/zenoh_generic_config.h");
-            let Ok(meta) = fs::metadata(&candidate) else {
-                continue;
-            };
-            let Ok(mtime) = meta.modified() else {
-                continue;
-            };
-            if newest
-                .as_ref()
-                .is_none_or(|(prev_mtime, _)| mtime > *prev_mtime)
-            {
-                newest = Some((mtime, candidate));
+            let candidate = entry.path().join("out/zenoh-config/zenoh_generic_config.h");
+            if candidate.is_file() {
+                return Ok(candidate);
             }
         }
     }
-    newest.map(|(_, p)| p)
+    Err(format!(
+        "Phase 150.E fixture not built. Run:\n  \
+         just build-zenoh-header-fixture\n\
+         (or `just build-test-fixtures` which pulls it in).\n\
+         Override path via NROS_TESTS_ZENOH_HEADER=<abs/path/to/header>.\n\
+         Workspace root searched: {}",
+        root.display(),
+    ))
 }
 
 fn parse_define(header: &str, key: &str) -> Option<String> {
@@ -90,22 +105,14 @@ fn parse_define(header: &str, key: &str) -> Option<String> {
 
 #[test]
 fn posix_canonical_header_matches_link_policy() {
-    let root = workspace_root();
-    let header_path = find_out_dir_header(&root).expect(
-        "zenoh_generic_config.h not found under any \
-         target/**/zpico-sys-*/out/zenoh-config/. \
-         Run `cargo build -p nros-rmw-zenoh-staticlib \
-         --features platform-posix` first (Phase 134 contract \
-         presumes the canonical header has been generated).",
-    );
-
+    let header_path = resolve_header_path().unwrap_or_else(|e| panic!("{e}"));
     let text = fs::read_to_string(&header_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", header_path.display()));
 
     // `LinkPolicy::posix()` today is pure passthrough +
     // `LinkFeatures::from_env()` forces tcp/udp_unicast/udp_multicast/serial
     // = true. raweth/tls/ivc/custom default to false unless their
-    // Cargo features are set. The cargo invocation above pulls in
+    // Cargo features are set. The fixture recipe pulls in
     // `platform-posix` only (no link-* feature opt-ins), so the
     // expected values are:
     let expected: &[(&str, &str)] = &[

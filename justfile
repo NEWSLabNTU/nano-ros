@@ -353,7 +353,7 @@ test verbose="": build-zenohd
 # use full host parallelism without competing with N concurrent QEMU +
 # zenohd processes during the nextest run, which used to stretch a 14 s
 # test out to 125 s under load. Run this before `just test-all`.
-build-test-fixtures:
+build-test-fixtures: build-zenoh-header-fixture
     just native build-fixtures
     just qemu build-fixtures
     just freertos build-fixtures
@@ -363,6 +363,22 @@ build-test-fixtures:
     just zephyr build-fixtures
     just stm32f4 build-fixtures
     @echo "All test fixtures built."
+
+# Phase 150.E — deterministic fixture for the `nros-tests::zenoh_header_parity`
+# test. Builds `nros-rmw-zenoh-staticlib --features platform-posix`
+# into a dedicated --target-dir so the test always reads the POSIX
+# canonical header, not whichever `zpico-sys-<hash>` left in `target/`
+# from an unrelated cross-target build (Phase 146.2 LinkPolicy::threadx()
+# etc.). Output: `target-zenoh-header-fixture/debug/build/zpico-sys-*/
+# out/zenoh-config/zenoh_generic_config.h` (one zpico-sys-<hash> per
+# target-dir → glob is safe). The test discovers this path via the
+# `NROS_TESTS_ZENOH_HEADER_DIR` env var (set by this recipe when
+# invoked through `just`); a manual override via
+# `NROS_TESTS_ZENOH_HEADER` takes priority.
+build-zenoh-header-fixture:
+    cargo build -p nros-rmw-zenoh-staticlib \
+        --features platform-posix \
+        --target-dir target-zenoh-header-fixture
 
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
