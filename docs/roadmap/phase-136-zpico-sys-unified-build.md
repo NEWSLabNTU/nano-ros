@@ -199,11 +199,19 @@ the manifest to stay in sync with upstream.
       `packages/zpico/zpico-sys/build.rs`,
       `packages/zpico/zpico-sys/Cargo.toml`.
 
-- [ ] **136.2 — `LinkPolicy` (from Phase 134).**
-      Re-use the `LinkPolicy` struct landed in Phase 134.2 as the
-      policy layer the manifest emits. If 134 hasn't landed yet,
-      build it here.
-      **Files.** `packages/zpico/zpico-sys/build/policy.rs`.
+- [x] **136.2 — `LinkPolicy` (from Phase 134).** (2026-05-18)
+      `LinkFeatures` + `PolicyChoice` + `LinkPolicy` extracted from
+      `build.rs` into `build/policy.rs` so the manifest layer can
+      produce the same values in 136.4. Behaviour preserved:
+      `LinkFeatures::from_env()`, `LinkFeatures::apply(&LinkPolicy)`,
+      and the three constructors (`passthrough()`, `posix()`,
+      `orin_spe()`) move verbatim. Renamed the manifest's enum from
+      `LinkPolicy` → `LinkOverride` to avoid name collision; the
+      manifest enum is the parser-side override hint, the policy
+      struct is the resolved mask the cc-rs path consumes.
+      **Files.** `packages/zpico/zpico-sys/build/policy.rs`,
+      `packages/zpico/zpico-sys/build/manifest.rs`,
+      `packages/zpico/zpico-sys/build.rs`.
 
 - [ ] **136.3 — Replace `build_zenoh_pico_native`.**
       Delete the CMake path entirely. POSIX builds run through the

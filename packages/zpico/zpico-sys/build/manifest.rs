@@ -49,14 +49,17 @@ pub struct PlatformEntry {
     pub mbedtls: Option<String>,
     /// Per-link-feature policy overrides.
     #[serde(default)]
-    pub link: BTreeMap<String, LinkPolicy>,
+    pub link: BTreeMap<String, LinkOverride>,
 }
 
-/// Per-link-feature policy. `bool` collapses to On / Off; a string
-/// like `"feature"` defers to the matching `CARGO_FEATURE_*` env var.
+/// Per-link-feature override declared in `zenoh_platforms.toml`.
+/// `bool` collapses to On / Off; a string like `"feature"` defers
+/// to the matching `CARGO_FEATURE_*` env var. Distinct from the
+/// build-script `LinkPolicy` struct in `build/policy.rs`, which is
+/// the resolved mask passed into `LinkFeatures::apply`.
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
 #[serde(untagged)]
-pub enum LinkPolicy {
+pub enum LinkOverride {
     On(bool),
     Mode(String),
 }
@@ -74,7 +77,7 @@ pub struct ResolvedPlatform {
     pub exclude: Vec<String>,
     pub system_libs: Vec<String>,
     pub mbedtls: Option<String>,
-    pub link: BTreeMap<String, LinkPolicy>,
+    pub link: BTreeMap<String, LinkOverride>,
 }
 
 impl PlatformManifest {
