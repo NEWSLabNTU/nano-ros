@@ -663,9 +663,14 @@ Subitems:
 
 - [x] `127.C.1`: Zephyr boot and fixture health.
 - [x] `127.C.2`: Zephyr native/host Rust Zenoh pub/sub message-flow failures.
-- [ ] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, and async
-  service now pass on qemu_cortex_a9; DDS action A9 still fails on the
-  send-goal acceptance reply path.
+- [x] `127.C.3`: Zephyr DDS runtime failures. Pub/sub, service, and async
+  service now pass on qemu_cortex_a9; DDS action A9 also passes
+  (2026-05-18 — `test_zephyr_dds_rust_action_a9_e2e` ran in 25.5s
+  with 11 feedbacks + `Action client finished`, status=Succeeded).
+  Implicit fix from the 2026-05-16 DDS service follow-up: the CFFI
+  `call_raw` cooperative request/reply wait + dust-dds `Timeout` →
+  `NoData` handling closes the send-goal acceptance reply path the
+  action client was hanging on.
 - [x] `127.C.4`: Zephyr XRCE runtime failures. Pub/sub, service, and action
   now pass for both Rust and C++ on native_sim. Root cause was a stale
   `UCLIENT_PLATFORM_POSIX`/`UCLIENT_PLATFORM_ZEPHYR` gate in
@@ -683,8 +688,9 @@ Done criteria:
 - [x] Include `west`, QEMU, and nextest logs.
 - [x] Identify whether the failure is common platform startup or backend-specific.
 - [x] Produce focused commands that reproduce each remaining Zephyr subgroup.
-  (2026-05-18 — see below. After 127.C.1/2/4/5 closed, the only
-  remaining Zephyr subgroup is 127.C.3 / DDS action A9.)
+  (2026-05-18 — see below. After 127.C.1/2/3/4/5 closed, no Zephyr
+  subgroup is open. Reproducer commands retained for future
+  regression triage.)
 
 Focused commands:
 
