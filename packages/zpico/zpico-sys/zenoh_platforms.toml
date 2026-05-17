@@ -184,7 +184,10 @@ include = ["system/common"]
 extra_sources = [
   { path = "{nros}/c/zpico/zpico.c" },
 ]
-arch = "cortex-m3"
+# Phase 148: bare-metal spans cortex-m3 (qemu-arm-baremetal,
+# stm32f4) AND riscv32imc (ESP32-C3). First arch whose `target_match`
+# hits is applied — see build.rs::build_zenoh_pico_unified Step 3.
+arch = ["cortex-m3", "riscv32imc"]
 compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 include_paths = [
   "{nros}/c/platform",

@@ -1463,18 +1463,21 @@ fn build_zenoh_pico_unified(
     generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
 
     // Step 3 — arch profile (cflags + sysroot / errno-override /
-    // riscv-cc probe). Profile is applied iff it matches the
-    // target triple.
-    if let Some(arch_name) = plat.arch.as_deref() {
-        if let Some(arch) = arch_table.get(arch_name) {
-            if arch_matches(arch, target) {
-                apply_arch(arch, &mut build, out_dir);
-            }
-        } else {
+    // riscv-cc probe). Platform's `arch` is now a Vec (Phase 148);
+    // walk entries in order and apply the first whose `target_match`
+    // hits the build target. Multi-arch platforms (bare-metal across
+    // cortex-m3 + riscv32imc) thus map to the right profile per
+    // target instead of being hard-coded to one arch.
+    for arch_name in &plat.arch {
+        let arch = arch_table.get(arch_name.as_str()).unwrap_or_else(|| {
             panic!(
                 "zenoh_platforms.toml: platform `{}` references unknown arch `{}`",
                 plat.name, arch_name
-            );
+            )
+        });
+        if arch_matches(arch, target) {
+            apply_arch(arch, &mut build, out_dir);
+            break;
         }
     }
 

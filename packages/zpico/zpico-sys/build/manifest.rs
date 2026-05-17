@@ -18,7 +18,23 @@
 
 use std::{collections::BTreeMap, fs, path::Path};
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+
+/// Accept either a single TOML string (`arch = "cortex-m3"`) or an
+/// array (`arch = ["cortex-m3", "riscv32imc"]`). Returns the
+/// normalised `Vec<String>`. Phase 148.
+fn deserialize_arch_field<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrVec {
+        Scalar(String),
+        Vec(Vec<String>),
+    }
+    Ok(match StringOrVec::deserialize(d)? {
+        StringOrVec::Scalar(s) => vec![s],
+        StringOrVec::Vec(v) => v,
+    })
+}
 
 /// Top-level manifest: `[platform.<name>]` + `[arch.<name>]`.
 #[derive(Debug, Deserialize)]
@@ -84,10 +100,15 @@ pub struct PlatformEntry {
     /// env-presence).
     #[serde(default)]
     pub include_paths_conditional: Vec<ConditionalPath>,
-    /// Optional `[arch.*]` profile to apply (cflags + sysroot /
-    /// errno-override hooks).
-    #[serde(default)]
-    pub arch: Option<String>,
+    /// Optional `[arch.*]` profile(s) to apply (cflags + sysroot /
+    /// errno-override hooks). Accepts a single arch name (scalar
+    /// TOML string) or a list (TOML array); single-arch platforms
+    /// stay readable while multi-arch platforms (bare-metal across
+    /// cortex-m3 + riscv32imc) declare every arch they support and
+    /// let `build.rs::build_zenoh_pico_unified` pick the first one
+    /// whose `target_match` matches the build target. See Phase 148.
+    #[serde(default, deserialize_with = "deserialize_arch_field")]
+    pub arch: Vec<String>,
     /// Cross-compile compile-rs options (opt_level, warnings,
     /// extra cflags).
     #[serde(default)]
@@ -239,7 +260,7 @@ pub struct ResolvedPlatform {
     pub required_env: Vec<RequiredEnv>,
     pub include_paths: Vec<String>,
     pub include_paths_conditional: Vec<ConditionalPath>,
-    pub arch: Option<String>,
+    pub arch: Vec<String>,
     pub compile: CompileSettings,
     pub pic: Option<bool>,
     pub rerun_if_env_changed: Vec<String>,
@@ -345,7 +366,14 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
     include_paths.append(&mut child.include_paths);
     let mut include_paths_conditional = parent.include_paths_conditional;
     include_paths_conditional.append(&mut child.include_paths_conditional);
-    let arch = child.arch.or(parent.arch);
+    // Child's arch list overrides parent's when non-empty; otherwise
+    // inherit. Mirrors the Option<String>.or semantics now extended
+    // to multi-arch platforms (Phase 148).
+    let arch = if child.arch.is_empty() {
+        parent.arch
+    } else {
+        child.arch
+    };
     let compile = CompileSettings {
         opt_level: child.compile.opt_level.or(parent.compile.opt_level),
         warnings: child.compile.warnings.or(parent.compile.warnings),
