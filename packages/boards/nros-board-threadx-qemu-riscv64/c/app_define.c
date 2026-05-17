@@ -16,6 +16,10 @@
 #include "virtio_net_nx.h"
 
 /* ---- Global errno for bare-metal (no TLS) ---- */
+/* nxd_bsd.h defines `errno` as a per-thread macro; undef before the
+ * declaration so the symbol is a plain global on this TU. The macro
+ * still applies to every other TU that includes nxd_bsd.h. */
+#undef errno
 int errno;
 
 /* ---- Board init (from ThreadX QEMU virt port) ---- */
