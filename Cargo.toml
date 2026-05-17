@@ -119,7 +119,7 @@ exclude = [
     "examples/native/rust/zenoh/rtic-action-server",
     "examples/native/rust/zenoh/rtic-action-client",
     # Phase 104 multi-RMW bridge example
-    "examples/native/rust/bridge/zenoh-to-dds",
+    "examples/bridges/native-rust-zenoh-to-dds",
     # Native DDS examples
     "examples/native/rust/dds/talker",
     "examples/native/rust/dds/listener",

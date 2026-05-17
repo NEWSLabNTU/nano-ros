@@ -189,7 +189,7 @@ Use the named entry points:
   `nros::NodeBuilder::rmw(...)` mirror the Rust API (Phase
   104.C.9).
 
-The `examples/native/rust/bridge/zenoh-to-dds/` demo shows the
+The `examples/bridges/native-rust-zenoh-to-dds/` demo shows the
 pattern end-to-end: both Zenoh and DDS backend ctors fire at
 lib-load (so the registry has both `"zenoh"` and `"dds"` slots
 populated), and `open_with_rmw("zenoh", ...)` plus
