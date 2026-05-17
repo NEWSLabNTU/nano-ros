@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "qemu-bsp-large-msg-test"
 version = "0.1.0"
@@ -17,11 +19,11 @@ docker = ["nros-board-mps2-an385/docker"]
 
 [dependencies]
 # Board crate for hardware + network init
-nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385" }
+nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }
 
 # nros Executor API
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal"] }
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal"] }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
 
 # Generated message types
 std_msgs = { version = "*", default-features = false }

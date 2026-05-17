@@ -1206,10 +1206,9 @@ pub fn xrce_stress_test_binary() -> PathBuf {
 pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
     QEMU_LARGE_MSG_TEST_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/zenoh/large-msg-test",
+            build_test_fixture(
+                "nros-bench/large-msg-baremetal",
                 "qemu-bsp-large-msg-test",
-                None,
                 Some("thumbv7m-none-eabi"),
             )
         })
