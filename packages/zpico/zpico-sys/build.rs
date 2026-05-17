@@ -1366,8 +1366,7 @@ fn build_c_shim(
         // `smoltcp_init` / `smoltcp_cleanup` symbols.
         let opt_out_smoltcp = env::var("ZPICO_NO_SMOLTCP").is_ok();
         println!("cargo:rerun-if-env-changed=ZPICO_NO_SMOLTCP");
-        let has_network =
-            (link.tcp || link.udp_unicast || link.udp_multicast) && !opt_out_smoltcp;
+        let has_network = (link.tcp || link.udp_unicast || link.udp_multicast) && !opt_out_smoltcp;
         if has_network {
             build.define("ZPICO_SMOLTCP", None);
         }
