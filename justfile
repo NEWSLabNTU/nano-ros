@@ -500,7 +500,7 @@ build-test-fixtures:
 # Single nextest run (entire workspace) + Miri + C codegen
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
-test-all verbose="": build-zenohd
+test-all verbose="": build-zenohd install-local
     #!/usr/bin/env bash
     set +e
     failed=0

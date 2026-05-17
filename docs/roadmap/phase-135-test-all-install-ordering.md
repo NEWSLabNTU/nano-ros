@@ -9,7 +9,7 @@ clean `just ci` on a fresh checkout fails ~58 native_api tests and
 ~24 dds_api tests because `build/install/lib/cmake/NanoRos/` does not
 yet exist.
 
-**Status.** Not started.
+**Status.** Landed (135.1). Verification (135.4) pending a cold-start `just ci`.
 
 **Priority.** P2 — broken first-run CI on fresh clones. Warm
 machines that already ran `just install-local` (or that previously
@@ -107,9 +107,9 @@ making it actually self-sufficient matches the documented contract.
 
 ## Work Items
 
-- [ ] 135.1 — Add `install-local` as a `test-all` dependency in
+- [x] 135.1 — Add `install-local` as a `test-all` dependency in
       `justfile:503`. Verify it runs ahead of `cargo nextest run`.
-      **Files.** `justfile`.
+      **Files.** `justfile`. Landed.
 
 - [ ] 135.2 — Sanity-check the warm-machine timing: `just ci` on a
       machine that already has install populated should add at most
