@@ -48,29 +48,11 @@ fi
 log_info "cargo-nano-ros built successfully: $GENERATOR"
 
 # ============================================================================
-# Step 2: Build install-local (nros-c + nros-codegen-c + CMake package)
+# Step 2: Configure native-c-custom-msg example
 # ============================================================================
-
-cd "$PROJECT_ROOT"
-log_info "Running install-local..."
-just install-local
-
-INSTALL_DIR="$PROJECT_ROOT/build/install"
-# Phase 128.C.4 — the cargo build is RMW-agnostic; the install
-# lib name no longer carries the `_zenoh` suffix. Single
-# canonical `libnros_c.a` per POSIX install. Backend selection
-# happens at the consumer's link step via
-# `target_link_libraries(... NanoRos::Rmw::<name>)`.
-if [ ! -f "$INSTALL_DIR/lib/libnros_c.a" ]; then
-    log_error "install-local failed: libnros_c.a not found at $INSTALL_DIR/lib/"
-    exit 1
-fi
-
-log_info "install-local complete: $INSTALL_DIR/"
-
-# ============================================================================
-# Step 3: Configure native-c-custom-msg example
-# ============================================================================
+#
+# Phase 140 — the example consumes nano-ros via
+# `add_subdirectory(<repo-root>)`; no pre-installed prefix needed.
 
 log_info "Configuring native-c-custom-msg example..."
 
@@ -82,13 +64,13 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# Configure with CMake
-cmake -DNanoRos_DIR="$PROJECT_ROOT/build/install/lib/cmake/NanoRos" -DCMAKE_BUILD_TYPE=Release ..
+# Configure with CMake — the example's CMakeLists.txt drives add_subdirectory.
+cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DCMAKE_BUILD_TYPE=Release ..
 
 log_info "CMake configuration successful"
 
 # ============================================================================
-# Step 4: Build the example
+# Step 3: Build the example
 # ============================================================================
 
 log_info "Building native-c-custom-msg example..."
@@ -98,7 +80,7 @@ cmake --build . --parallel
 log_info "Build successful"
 
 # ============================================================================
-# Step 5: Run the test executable
+# Step 4: Run the test executable
 # ============================================================================
 
 log_info "Running test executable..."
@@ -133,7 +115,7 @@ else
 fi
 
 # ============================================================================
-# Step 6: Verify generated files
+# Step 5: Verify generated files
 # ============================================================================
 
 log_info "Verifying generated files..."
