@@ -1,25 +1,19 @@
-cmake_minimum_required(VERSION 3.15)
-project(c_xrce_listener
-    VERSION 0.1.0
-    LANGUAGES C
-)
+cmake_minimum_required(VERSION 3.22)
+project(c_xrce_listener VERSION 0.1.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# ============================================================================
-# nros-c dependency (use -DNANO_ROS_RMW=xrce when configuring)
-# ============================================================================
+# Phase 144.3 — consume nano-ros via add_subdirectory(<repo-root>).
+set(NANO_ROS_PLATFORM posix)
+set(NANO_ROS_RMW     xrce)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
-find_package(NanoRos REQUIRED CONFIG)
+nros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
+nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
 
-# ============================================================================
-# Executable
-# ============================================================================
 add_executable(c_xrce_listener src/main.c)
-target_link_libraries(c_xrce_listener PRIVATE NanoRos::NanoRos)
-
-# ============================================================================
-# Installation (optional)
-# ============================================================================
-install(TARGETS c_xrce_listener RUNTIME DESTINATION bin)
+target_link_libraries(c_xrce_listener PRIVATE
+    std_msgs__nano_ros_c
+    NanoRos::NanoRos)
+nros_platform_link_app(c_xrce_listener)
