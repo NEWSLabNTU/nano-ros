@@ -356,6 +356,16 @@ nros_rmw_ret_t xrce_posix_udp_init(xrce_session_state_t *st,
 nros_rmw_ret_t xrce_zephyr_udp_init(xrce_session_state_t *st,
                                     const char *host, const char *port);
 
+/* Phase 129.NET.3 — platform-agnostic XRCE UDP. Mirrors the Zephyr
+ * variant but without the per-platform `#if`. Works on every target
+ * that satisfies the `nros_platform_udp_*` symbols at link time
+ * (POSIX, Zephyr, FreeRTOS, ThreadX, ESP-IDF; bare-metal via
+ * `nros-smoltcp`). Supersedes `xrce_posix_udp_init` /
+ * `xrce_zephyr_udp_init` long-term; both are kept for one cycle
+ * for fallback. */
+nros_rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
+                                  const char *host, const char *port);
+
 /* Phase 115.K.2.5.1.5-serial — POSIX serial transport via custom
  * transport. Opens a tty/pty `path`, configures termios (raw mode,
  * 8N1, baud from `XRCE_SERIAL_BAUD` env or 115200), and registers

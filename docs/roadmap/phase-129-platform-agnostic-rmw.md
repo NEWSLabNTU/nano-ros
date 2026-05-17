@@ -6,7 +6,7 @@ Goal: RMW packages depend ONLY on the canonical `nros_platform_*`
   source selection in the RMW build script. A single
   `nros-rmw-<name>` rlib + a single set of vendor C objects link
   against whichever platform provider the consumer wired in.
-Status: planning
+Status: in-progress (NET detour — see 129.NET)
 Priority: medium (logical follow-up to phase 128's manifest-driven
   selection; user expectation that RMW backends "do not have to know
   the platform" once they consume the platform ABI)
@@ -190,7 +190,62 @@ a `nros_platform_net_*` ABI.
   `uxrUDPTransport` ABI on top of `nros_platform_net_*` (from
   B.2), and `build.rs` substitutes it for the per-platform TU.
 
-### 129.C — Delete `platform-<rtos>` features from RMW crates
+### 129.NET — `nros_platform_*` net ABI audit
+
+The original "B blocker" was wrong. A re-audit on 2026-05-17
+turned up:
+
+- The Rust trait surface (`PlatformTcp`, `PlatformUdp`,
+  `PlatformUdpMulticast`, `PlatformSocketHelpers`) is already
+  in `packages/core/nros-platform-api/src/lib.rs`.
+- `nros-platform-cffi` already declares the matching
+  `extern "C" fn nros_platform_{tcp,udp,udp_mcast}_*` symbols
+  AND ships a `nros_platform_export_net!` macro that re-emits
+  them as `#[unsafe(no_mangle)] pub extern "C"` for any
+  platform `$ty: PlatformTcp + PlatformUdp + …`.
+- C-side impls already exist in
+  `packages/core/nros-platform-{posix,zephyr,freertos,threadx,esp-idf}/src/net.c`.
+- `zpico-platform-shim`'s `_z_open_tcp` / `_z_open_udp_*`
+  wrappers already dispatch through
+  `<ConcretePlatform as PlatformTcp>` / `… as PlatformUdp`,
+  with `ConcretePlatform = CffiPlatform`, so on every wired
+  platform the chain
+  `_z_open_tcp` → `CffiPlatform::open` → `nros_platform_tcp_open`
+  → platform C impl already runs today.
+
+The original blocker note was a grep miss
+(`nros_platform_net_*` prefix vs the real `nros_platform_tcp_*`
+/ `udp_*` / `udp_mcast_*` sub-namespaces).
+
+Second re-audit (same date):
+
+- `~/include/nros/platform_net.h` already exists alongside
+  `platform.h` with every `nros_platform_{tcp,udp,udp_mcast,
+  socket}_*` prototype and a `network_poll` entry — the
+  header sync was already done.
+- `nros-platform-nuttx` is a CMake project that delegates
+  source files to `nros-platform-posix` (`platform.c`,
+  `net.c`, `timer.c` reused verbatim). NuttX has full net
+  coverage today; no gap.
+- ESP32 / MPS2 / STM32F4 Rust platform crates pull
+  `nros-smoltcp`'s `PlatformTcp` / `PlatformUdp` impl and
+  invoke `nros_platform_export_net!(<board>Platform)` to emit
+  the C symbols.
+
+**Net ABI is in shape. The only actual phase 129 follow-up
+that exercises it is**:
+
+- [ ] `129.NET.3` — XRCE custom-transport TU
+  (`udp_transport_nros.c`) on top of the existing
+  `nros_platform_udp_*` ABI. `nros-rmw-xrce-cffi/build.rs`
+  swaps it in for the per-platform `udp_transport_posix.c` /
+  `udp_transport_zephyr_udp.c` so the XRCE C build no longer
+  knows what platform it is on. Same fold the zenoh path
+  already runs (zpico-platform-shim's `_z_open_tcp` /
+  `_z_open_udp_*` already dispatch through `PlatformTcp` /
+  `PlatformUdp`).
+
+
 
 - [ ] `129.C.1` — `nros-rmw-zenoh/Cargo.toml`: remove
   `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx,orin-spe}`

@@ -83,11 +83,19 @@ fn main() {
         "subscriber",
         "service",
         "transport_custom",
+        // Phase 129.NET.3 — platform-agnostic UDP via
+        // `nros_platform_udp_*`. Compiles on every target as long
+        // as the consumer links a platform-provider library that
+        // satisfies the symbols. Supersedes `transport_posix_udp`
+        // / `transport_zephyr_udp`.
+        "transport_nros_udp",
     ];
     // Phase 118 — `transport_posix_{udp,serial}.c` define
     // `xrce_posix_{udp,serial}_init`. The TUs only build where
     // `<sys/socket.h>` / `<termios.h>` are available; embedded
     // targets must inject their own custom transport instead.
+    // Kept alongside `transport_nros_udp` for one cycle so callers
+    // that still resolve `xrce_posix_udp_init` keep working.
     if is_posix {
         backend_tus.push("transport_posix_udp");
         backend_tus.push("transport_posix_serial");
@@ -175,6 +183,35 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_XRCE_STREAM_HISTORY");
 
     build.compile("nros_rmw_xrce_c_inline");
+
+    // Phase 129.NET.3 — `transport_nros_udp.c` references the
+    // canonical `nros_platform_udp_*` ABI. Ship the sibling
+    // `nros-platform-posix` C port inside this crate's static
+    // archive whenever the build resolves to a POSIX host
+    // (explicit `platform-posix` feature or host-OS auto-detect).
+    // Consumers that bring their own platform-provider library
+    // (e.g. the C SDK linked under cmake with `nano_ros_link_platform`)
+    // must opt out by NOT selecting `posix` / `platform-posix`
+    // and forcing a non-host target — otherwise the link hits
+    // duplicate-symbol errors.
+    if is_posix {
+        let posix_src = workspace.join("packages/core/nros-platform-posix/src");
+        let mut posix_build = cc::Build::new();
+        posix_build
+            .std("c11")
+            .warnings(false)
+            .define("_DEFAULT_SOURCE", None)
+            .define("_POSIX_C_SOURCE", Some("200809L"))
+            .include(workspace.join("packages/core/nros-platform-cffi/include"))
+            .file(posix_src.join("platform.c"))
+            .file(posix_src.join("net.c"))
+            .file(posix_src.join("timer.c"));
+        posix_build.compile("nros_platform_posix_link");
+        println!(
+            "cargo:rerun-if-changed={}",
+            posix_src.display()
+        );
+    }
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", xrce_c.join("src").display());

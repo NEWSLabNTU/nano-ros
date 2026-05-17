@@ -346,11 +346,13 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         char port_str[8];
         snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
 
-        /* Phase 115.K.2.5.1.2.a-fix-transport — route UDP through
-         * the custom-transport surface (matching `xrce-sys`'s
-         * legacy shape). `uxr_init_udp_transport` had reliable
-         * confirm-timeout issues against the upstream agent. */
-        nros_rmw_ret_t udp_ret = xrce_posix_udp_init(st, host, port_str);
+        /* Phase 129.NET.3 — UDP via the canonical `nros_platform_udp_*`
+         * ABI. Platform-blind: works on any target with a wired
+         * platform-provider. Supersedes `xrce_posix_udp_init` /
+         * `xrce_zephyr_udp_init`; both legacy paths remain compiled
+         * for one cycle for fallback. */
+        st->use_custom_transport = true;
+        nros_rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
         if (udp_ret != NROS_RMW_RET_OK) {
             free(st);
             return udp_ret;
@@ -376,7 +378,7 @@ nros_rmw_ret_t xrce_session_open(const char *locator, uint8_t mode,
         snprintf(port_str, sizeof(port_str), "%u", (unsigned)port);
 
         st->use_custom_transport = true;
-        nros_rmw_ret_t udp_ret = xrce_zephyr_udp_init(st, host, port_str);
+        nros_rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
         if (udp_ret != NROS_RMW_RET_OK) {
             free(st);
             return udp_ret;
