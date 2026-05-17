@@ -494,6 +494,60 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
+    /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
+    /// peer pair. Replaces the lossy `socket,mcast=…` cross-process
+    /// path with an AF_UNIX SOCK_DGRAM tunnel between exactly two
+    /// QEMU processes. No root, no routes, no IGMP — frames sent to
+    /// `remote_unix_path` arrive at the peer's `local_unix_path` and
+    /// vice versa.
+    ///
+    /// Caller is responsible for picking two distinct unique
+    /// per-pair paths and deleting any stale files at those paths
+    /// before launch (QEMU bind fails on EADDRINUSE).
+    pub fn start_nuttx_virt_dgram(
+        binary: &Path,
+        local_unix_path: &str,
+        remote_unix_path: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-arm");
+        cmd.args([
+            "-M",
+            "virt",
+            "-cpu",
+            "cortex-a7",
+            "-nographic",
+            "-icount",
+            "shift=auto",
+            "-kernel",
+        ])
+        .arg(binary)
+        .args([
+            "-netdev",
+            &format!(
+                "dgram,id=net0,\
+                 local.type=unix,local.path={local_unix_path},\
+                 remote.type=unix,remote.path={remote_unix_path}"
+            ),
+            "-device",
+            &format!("virtio-net-device,netdev=net0,mac={mac}"),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     pub fn start_nuttx_virt(binary: &Path, networking: bool) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
@@ -750,6 +804,25 @@ pub fn is_qemu_riscv64_available() -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Phase 127.B.5 — does the host's `qemu-system-arm` support
+/// `-netdev dgram,local.type=unix,…` (the AF_UNIX peer-pair
+/// netdev that replaces the lossy `socket,mcast=` cross-process
+/// path)? `dgram` was added in QEMU 7.2.
+pub fn qemu_supports_dgram_unix() -> bool {
+    let out = Command::new("qemu-system-arm")
+        .args(["-M", "virt", "-netdev", "help"])
+        .output();
+    match out {
+        Ok(o) => {
+            // `-netdev help` lists backend types one per line; "dgram"
+            // appears iff QEMU >= 7.2.
+            String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "dgram")
+                || String::from_utf8_lossy(&o.stderr).lines().any(|l| l.trim() == "dgram")
+        }
+        Err(_) => false,
+    }
 }
 
 /// Check if QEMU ARM is available

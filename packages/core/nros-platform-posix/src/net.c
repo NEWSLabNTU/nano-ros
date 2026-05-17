@@ -453,8 +453,15 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
                                       uint32_t timeout_ms,
                                       const uint8_t *iface,
                                       const uint8_t *join) {
-    (void) join;  /* additional pipe-separated groups not yet supported */
-    if (sock_raw == NULL || endpoint == NULL) return -1;
+    /* Phase 127.B.5 — `endpoint` is the LOCAL bind endpoint (typically
+     * `0.0.0.0:<port>`); `join` is the NUL-terminated dotted-quad
+     * multicast group to subscribe to (e.g. `"239.255.0.1"`). Use
+     * `join` for `imr_multiaddr` — using the endpoint's address (which
+     * is 0.0.0.0 for the SPDP path) silently subscribes to no group on
+     * lenient stacks (Linux drops the join with EINVAL but some stacks
+     * like NuttX add a sentinel grp entry that never matches any real
+     * incoming mcast frame, so SPDP discovery silently fails). */
+    if (sock_raw == NULL || endpoint == NULL || join == NULL) return -1;
     nros_posix_socket_t *sock = (nros_posix_socket_t *) sock_raw;
     const nros_posix_endpoint_t *ep = (const nros_posix_endpoint_t *) endpoint;
     if (ep->iptcp == NULL) return -1;
@@ -497,7 +504,9 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
     if (ai->ai_family == AF_INET) {
         struct ip_mreq mreq;
         memset(&mreq, 0, sizeof(mreq));
-        mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
+        if (inet_pton(AF_INET, (const char *) join, &mreq.imr_multiaddr) != 1) {
+            close(fd); free(lsockaddr); sock->fd = -1; return -1;
+        }
         mreq.imr_interface = ((const struct sockaddr_in *) lsockaddr)->sin_addr;
         join_rc = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                              &mreq, sizeof(mreq));
@@ -505,8 +514,9 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
 #ifdef IPV6_ADD_MEMBERSHIP
         struct ipv6_mreq mreq;
         memset(&mreq, 0, sizeof(mreq));
-        mreq.ipv6mr_multiaddr =
-            ((const struct sockaddr_in6 *) ai->ai_addr)->sin6_addr;
+        if (inet_pton(AF_INET6, (const char *) join, &mreq.ipv6mr_multiaddr) != 1) {
+            close(fd); free(lsockaddr); sock->fd = -1; return -1;
+        }
         mreq.ipv6mr_interface = if_nametoindex((const char *) iface);
         join_rc = setsockopt(fd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP,
                              &mreq, sizeof(mreq));

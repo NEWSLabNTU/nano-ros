@@ -447,8 +447,18 @@ Subitems:
   DDS Rust talker → listener passes (65 messages received in 83 s)
   after `cd713d43` added the explicit `nros_rmw_dds::register()` call
   to both fixtures.
-- [~] `127.B.5`: Shared platform DDS runtime triage. NuttX and ThreadX
-  RISC-V DDS now open and publish but do not deliver RTPS messages.
+- [x] `127.B.5`: Shared platform DDS runtime triage. NuttX DDS Rust
+  talker → listener passes (11 messages received in 83 s). The
+  root-cause fix on 2026-05-17 was a `nros_platform_udp_mcast_listen`
+  bug: `mreq.imr_multiaddr` was set from the LOCAL endpoint's IP
+  (always `0.0.0.0` on the dust-dds SPDP bind path) instead of the
+  `join` parameter's dotted-quad string (`"239.255.0.1"`). Linux
+  silently ignored the malformed join with `EINVAL` (so the host DDS
+  tests "worked" only via stack quirks); NuttX added a sentinel
+  group entry that never matched real incoming mcast frames, so SPDP
+  discovery silently failed. Fix uses `inet_pton(join)` to populate
+  `imr_multiaddr`. ThreadX RV64 DDS still on the chronic illegal-
+  instruction trap and is tracked separately under 127.B.3.
   Phase 127.B.5 follow-up (2026-05-16):
   - Fixed a posix-net regression where
     `nros_platform_udp_mcast_listen(iface=NULL, timeout_ms=0)` quietly

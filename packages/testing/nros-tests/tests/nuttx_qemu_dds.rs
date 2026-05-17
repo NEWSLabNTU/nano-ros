@@ -15,7 +15,7 @@ use std::{
 };
 
 use nros_tests::fixtures::{
-    QemuProcess, is_qemu_available, require_mcast_loopback_route,
+    QemuProcess, is_qemu_available,
     nuttx::{
         build_nuttx_dds_listener, build_nuttx_dds_talker, is_nuttx_available, is_nuttx_configured,
         is_nuttx_toolchain_available,
@@ -42,25 +42,24 @@ fn require_nuttx_dds() -> bool {
     true
 }
 
-/// Per-test mcast group + port — same convention as the FreeRTOS test
-/// (last octet rotates over PID + counter, port over the high bits).
-fn pick_mcast_addr_port() -> String {
-    static COUNTER: AtomicU32 = AtomicU32::new(0);
-    let pid = std::process::id();
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let last = ((pid ^ n) & 0xff) as u8;
-    let port = 17000 + (((pid ^ n) >> 8) & 0x3fff) as u16;
-    format!("230.10.0.{last}:{port}")
-}
+/// Per-process counter for unique AF_UNIX peer-socket paths
+/// (the dgram tunnel that replaces the lossy `socket,mcast=…`).
+static COUNTER: AtomicU32 = AtomicU32::new(0);
 
 #[test]
 fn test_nuttx_dds_rust_talker_to_listener_e2e() {
     if !require_nuttx_dds() {
         nros_tests::skip!("NuttX DDS prerequisites not available");
     }
-    let mcast = pick_mcast_addr_port();
-    if !require_mcast_loopback_route(&mcast) {
-        nros_tests::skip!("host mcast loopback route missing");
+    // Phase 127.B.5 — `-netdev dgram,local.type=unix,…` needs
+    // QEMU >= 7.2. Skip cleanly on older QEMU.
+    if !nros_tests::fixtures::qemu_supports_dgram_unix() {
+        eprintln!(
+            "Skipping test: qemu-system-arm < 7.2 — `-netdev dgram,local.type=unix,…`\n\
+             not available. Install a newer QEMU (e.g. Canonical's\n\
+             server-backports PPA for Ubuntu, see `just nuttx doctor`)."
+        );
+        nros_tests::skip!("qemu-system-arm too old for -netdev dgram unix");
     }
 
     let talker_bin = match build_nuttx_dds_talker() {
@@ -80,18 +79,38 @@ fn test_nuttx_dds_rust_talker_to_listener_e2e() {
         }
     };
 
-    eprintln!("[nuttx-dds] mcast group/port = {mcast}");
+    // Per-run unique AF_UNIX peer pair (no host route, no IGMP).
+    let tmpdir = std::env::temp_dir();
+    let pid = std::process::id();
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let talker_sock = tmpdir.join(format!("nros-nuttx-dds-{pid}-{counter}-T.sock"));
+    let listener_sock = tmpdir.join(format!("nros-nuttx-dds-{pid}-{counter}-L.sock"));
+    // Clean any stale socket files (QEMU bind fails on EADDRINUSE).
+    let _ = std::fs::remove_file(&talker_sock);
+    let _ = std::fs::remove_file(&listener_sock);
+    let talker_sock_s = talker_sock.to_string_lossy().to_string();
+    let listener_sock_s = listener_sock.to_string_lossy().to_string();
+    eprintln!("[nuttx-dds] dgram pair: T={talker_sock_s} L={listener_sock_s}");
 
     // Listener first (subscribes before talker publishes), then a
     // brief stabilisation window for SPDP discovery, then talker.
-    let mut listener =
-        QemuProcess::start_nuttx_virt_mcast(&listener_bin, &mcast, "52:54:00:12:34:71")
-            .expect("Failed to start NuttX DDS listener");
+    let mut listener = QemuProcess::start_nuttx_virt_dgram(
+        &listener_bin,
+        &listener_sock_s,
+        &talker_sock_s,
+        "52:54:00:12:34:71",
+    )
+    .expect("Failed to start NuttX DDS listener");
 
     std::thread::sleep(Duration::from_secs(3));
 
-    let mut talker = QemuProcess::start_nuttx_virt_mcast(&talker_bin, &mcast, "52:54:00:12:34:70")
-        .expect("Failed to start NuttX DDS talker");
+    let mut talker = QemuProcess::start_nuttx_virt_dgram(
+        &talker_bin,
+        &talker_sock_s,
+        &listener_sock_s,
+        "52:54:00:12:34:70",
+    )
+    .expect("Failed to start NuttX DDS talker");
 
     let talker_out = talker
         .wait_for_output(Duration::from_secs(20))
