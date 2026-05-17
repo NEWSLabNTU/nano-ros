@@ -529,7 +529,7 @@ threading, sleep, random) and **socket** (TCP/UDP open, read, send, close).
 |------------|-----------------------------------------|-----------------------------|--------------------------------------------------------------------------|
 | POSIX      | Shim → `nros-platform-posix`            | C `unix/network.c`          | POSIX APIs via `libc` crate                                              |
 | NuttX      | Shim → `nros-platform-nuttx` (= posix)  | C `unix/network.c`          | POSIX-compatible                                                         |
-| Bare-metal | Shim → `nros-platform-<board>`          | Shim `socket-stubs`         | No C runtime; zpico-smoltcp provides TCP/UDP                             |
+| Bare-metal | Shim → `nros-platform-<board>`          | Shim `socket-stubs`         | No C runtime; `nros-smoltcp` (`packages/drivers/`) provides TCP/UDP, paired with a MAC driver crate (`lan9118-smoltcp`, `openeth-smoltcp`, …). Updated Phase 80.13 (2026-05-17): smoltcp wiring moved out of `zpico-sys` into the standalone `nros-smoltcp` driver crate. |
 | FreeRTOS   | C `freertos/system.c`                   | C `freertos/lwip/network.c` | Shim tested but hangs — condvar/task semantics need work                 |
 | ThreadX    | Shim → `nros-platform-threadx` + C `task.c` | C `threadx/network.c`  | Task creation in C (struct layout); all else via shim                    |
 | Zephyr     | Zephyr CMake module                     | Zephyr CMake module         | Entire platform compiled by Zephyr's build system                        |

@@ -10,6 +10,8 @@ Lightweight ROS 2 client for embedded RTOS (Zephyr, FreeRTOS, NuttX, ThreadX). `
 ## Workspace
 `packages/{core,zpico,xrce,dds,boards,drivers,interfaces,testing,verification,reference,codegen}/`, `examples/`, `third-party/` (gitignored SDKs), `zephyr/` module. Run `ls packages/` for current crate list.
 
+`packages/drivers/` covers three sibling categories that settled during Phase 80: transport-bridge crates (`nros-smoltcp` — smoltcp ↔ zenoh-pico, formerly inside `zpico-sys`), peripheral / MAC drivers (`lan9118-smoltcp`, `openeth-smoltcp`, `cmsdk-uart`, `stm32f4-usart`, `virtio-net-netx`, `nvidia-ivc`, `nsos-netx`), and vendor `*-sys` bindings (`freertos-lwip-sys`, `threadx-netx-sys`, `zephyr-posix-sys`, `nuttx-sys`). Board crates pick the bridge + driver(s) they need; platform crates stay free of networking code.
+
 ## Build
 - `just setup` / `just doctor` / `just check` / `just ci` (check + test-all) / `just verify` (Kani+Verus) / `just generate-bindings`
 - `just <module> setup`: workspace, verification, qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32, zephyr, xrce, zenohd
@@ -66,6 +68,7 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 - `*_DIR` env / `-D` injection = SDK-path contract. Example cmake accepts env or `-D` only — never project-tree heuristics.
 - Per-example `Cargo.toml` + `.cargo/config.toml` + `CMakeLists.txt` build in isolation. No workspace reliance, no walk-up.
 - Per-platform `cmake/<plat>-support.cmake` in example tree. Layer-2 (`nros-{threadx,freertos,nuttx}.cmake`) ship via `find_package(NanoRos)`.
+- **Coverage matrix lives in `examples/README.md` ("Coverage matrix" + "Intentionally empty cells" sections) — authoritative for which `<plat>/<lang>/<rmw>` triples exist.** Deliberately empty cells: `{qemu-arm-baremetal, qemu-esp32-baremetal, esp32, stm32f4}/{c,cpp}/*` (no bare-metal C/C++ harness — `nros-c`/`nros-cpp` assume hosted RTOS for startup/heap/libc) and `px4/{c,rust}/*` (PX4 is uORB-only, and Phase 115.K.4 collapsed uORB to a C++-only port — `examples/px4/cpp/uorb/nros-register-check/` is the canonical surface). Do not add directories to these cells without first lifting the underlying constraint; Phase 118 lint blocks untriaged cells.
 
 ### CMake Path Convention
 - Never hard-code project-relative paths in example cmake **or in

@@ -139,8 +139,8 @@ Each item ships `talker, listener, service-{client,server}, action-{client,serve
 
 ### Tier 3 — Out-of-scope documentation
 
-- [ ] **118.E.1 — Bare-metal C/C++ holes.** Document in `examples/README.md` and the CLAUDE.md "Examples = Standalone Projects" section that `qemu-arm-baremetal/{c,cpp}`, `qemu-esp32-baremetal/{c,cpp}`, `esp32/{c,cpp}`, `stm32f4/{c,cpp}` are intentionally empty pending a future bare-metal C harness phase. Cite `nros-c`'s "hosted RTOS only" contract from the C-API guide.
-- [ ] **118.E.2 — `px4/{c,cpp}` hole.** Document that PX4 examples are uORB-only, and the uORB API surface is Rust-only by upstream design. C/C++ uORB shim is not on any roadmap.
+- [x] **118.E.1 — Bare-metal C/C++ holes (DONE 2026-05-17).** Documented in `examples/README.md` "Intentionally empty cells" subsection (under "Coverage matrix") and the CLAUDE.md "Examples = Standalone Projects" section that `qemu-arm-baremetal/{c,cpp}`, `qemu-esp32-baremetal/{c,cpp}`, `esp32/{c,cpp}`, `stm32f4/{c,cpp}` are intentionally empty pending a future bare-metal C harness phase. The README table cites the `nros-c` / `nros-cpp` hosted-RTOS-only contract (startup, heap, libc, RNG, clock not wired on bare-metal Cortex-M) and points at Phase 115.F's bare-metal-C custom-transport demo as the nearest gated work item.
+- [x] **118.E.2 — `px4/{c,rust}` holes (DONE 2026-05-17).** Documented in `examples/README.md` "Intentionally empty cells" subsection that PX4 is uORB-only and — **revised from the original assumption** — Phase 115.K.4 retired the Rust `nros-rmw-uorb` crate in favour of a C++ port (`nros-rmw-uorb`, formerly `nros-rmw-uorb-cpp`). The canonical PX4 example is therefore `examples/px4/cpp/uorb/nros-register-check/`; `examples/px4/rust/uorb/` is a README-only placeholder kept for the historical Rust path. No C example is planned (PX4 modules are C++ by construction); no new Rust example is planned (the Rust backend was deleted). CLAUDE.md mirrors the constraint so future contributors don't try to re-create the deleted Rust crate.
 
 ### Tier 4 — Coverage tests + CI
 

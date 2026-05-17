@@ -321,7 +321,7 @@ impl MyOsPlatform {
 
 Activate the `network` shim feature in `zpico-sys` so the shim provides the `_z_open_tcp`, `_z_read_tcp`, etc. C symbols by forwarding to your Rust methods.
 
-For bare-metal with smoltcp, use `zpico-smoltcp` as the networking driver. It provides `PlatformTcp` and `PlatformUdp` implementations using smoltcp's TCP/UDP sockets. Your platform crate implements `PlatformNetworkPoll` so the sleep loop can process packets.
+For bare-metal with smoltcp, use `nros-smoltcp` (in `packages/drivers/`) as the networking driver. It provides `PlatformTcp` and `PlatformUdp` implementations using smoltcp's TCP/UDP sockets. The MAC/PHY driver lives in a sibling driver crate (e.g. `lan9118-smoltcp`, `openeth-smoltcp`) and implements smoltcp's `Device` trait; `nros-smoltcp` consumes that `Device` and exposes the transport to zenoh-pico. Your platform crate implements `PlatformNetworkPoll` so the sleep loop can process packets — the platform crate stays free of smoltcp itself.
 
 ### Option B: Keep zenoh-pico's C network.c
 

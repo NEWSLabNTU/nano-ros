@@ -58,6 +58,24 @@ plan that fills these:
 - **XRCE absent on every embedded platform except Zephyr** — Phase 115.K.2 header-only backend needs a Rust adapter for bare-metal targets.
 - **CycloneDDS** present only on `zephyr/cpp/cyclonedds/talker-aemv8r/` — Phase 117 RMW lands POSIX first.
 
+### Intentionally empty cells
+
+These cells are *deliberately blank* in the matrix above and will not be
+filled without a separate scoping phase. New contributors should not
+spin up examples here without first lifting the underlying constraint.
+
+| Cell                                                   | Why empty                                                                                                                                                                                                                                                          | Lift requires                                                                                                                                                                  |
+|--------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `qemu-arm-baremetal/{c,cpp}/*`                         | No bare-metal C/C++ example harness exists. `nros-c` / `nros-cpp` ship as static libs but assume a hosted RTOS for startup, heap, libc, RNG, and clock — none of which are wired on `qemu-arm-baremetal`'s pure Cortex-M3 runtime. Only `qemu-arm-baremetal/rust/` builds. | A future bare-metal C harness phase: ports the Rust `define_*_platform!` startup macros into a C-facing `nano_ros_baremetal_*` toolkit and adds a CMake template per board. No phase tracks this yet; Phase 115.F's bare-metal-C custom-transport demo is the closest gated work item. |
+| `qemu-esp32-baremetal/{c,cpp}/*`                       | Same constraint. Even though ESP-IDF can host C/C++, the `qemu-esp32-baremetal` *example* tree is the no-IDF / pure-Rust HAL path (`esp-hal`). C/C++ on the same board would belong under a hypothetical `esp32-idf/` tree, not here.                                | Same as above, plus a decision on whether ESP-IDF-hosted C/C++ examples deserve a sibling platform dir.                                                                        |
+| `esp32/{c,cpp}/*`                                      | `examples/esp32/` is the real-hardware variant of `qemu-esp32-baremetal/` and inherits the same no-C/C++-harness constraint.                                                                                                                                       | Same as above.                                                                                                                                                                 |
+| `stm32f4/{c,cpp}/*`                                    | Same bare-metal Cortex-M constraint; the STM32F4 examples are RTIC / embassy Rust apps with no C-facing startup story.                                                                                                                                             | Same as above.                                                                                                                                                                 |
+| `px4/{c,rust}/*` (everything except `px4/cpp/uorb/`)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `examples/px4/cpp/uorb/nros-register-check/` is the canonical surface; `examples/px4/rust/uorb/` is a README-only placeholder retained for the historical Rust path. | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
+
+If you believe one of these cells should be filled, please open an issue
+referencing the gating phase before adding directories — the lint in
+Phase 118.A blocks untriaged cells.
+
 ## Sibling categories
 
 ### `bridges/` — cross-RMW gateways

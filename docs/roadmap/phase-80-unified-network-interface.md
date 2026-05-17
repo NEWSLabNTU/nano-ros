@@ -439,10 +439,10 @@ typedef struct {
         (`test_xrce_serial_listener_starts`, `_talker_starts`,
         `_communication`); full 14/14 XRCE suite also passes post-
         change.
-- [ ] 80.13 — Update documentation
-  - [ ] 80.13.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
-  - [ ] 80.13.2 — Update Phase 79 symbol tables to reflect network unification
-  - [ ] 80.13.3 — Update workspace structure in CLAUDE.md (nros-smoltcp, *-sys crates)
+- [x] 80.13 — Update documentation (completed 2026-05-17)
+  - [x] 80.13.1 — Refreshed `book/src/porting/custom-platform.md` (the surviving porting-platform guide; the originally-named `guides/porting-platform/implementing-a-platform.md` was reorganised into `book/src/porting/` in Phase 79.10) — bare-metal smoltcp wiring now points at `nros-smoltcp` in `packages/drivers/` with a sibling MAC driver crate, instead of the retired `zpico-smoltcp` mention.
+  - [x] 80.13.2 — Refreshed the platform symbol/responsibility table in `docs/roadmap/archived/phase-79-unified-platform-abstraction.md` (bare-metal row): TCP/UDP provider relabelled from `zpico-smoltcp` to `nros-smoltcp` (`packages/drivers/`), with explicit pointer to the Phase 80.13 move out of `zpico-sys`.
+  - [x] 80.13.3 — Expanded the workspace section in `CLAUDE.md` to spell out the three driver-crate categories that settled during Phase 80: transport-bridge (`nros-smoltcp`), peripheral / MAC drivers (`lan9118-smoltcp`, `openeth-smoltcp`, `cmsdk-uart`, `stm32f4-usart`, `virtio-net-netx`, `nvidia-ivc`, `nsos-netx`), and vendor `*-sys` bindings (`freertos-lwip-sys`, `threadx-netx-sys`, `zephyr-posix-sys`, `nuttx-sys`).
 
 ## Design Decisions
 
