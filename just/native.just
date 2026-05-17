@@ -94,8 +94,6 @@ build-fixtures:
         native/rust/zenoh/rtic-service-client
         native/rust/zenoh/rtic-action-server
         native/rust/zenoh/rtic-action-client
-        native/rust/zenoh/stress-test
-        native/rust/zenoh/fairness-bench
         native/rust/xrce/talker
         native/rust/xrce/listener
         native/rust/xrce/service-server
@@ -105,7 +103,6 @@ build-fixtures:
         native/rust/xrce/large-msg-test
         native/rust/xrce/serial-talker
         native/rust/xrce/serial-listener
-        native/rust/xrce/stress-test
         native/rust/dds/talker
         native/rust/dds/listener
         native/rust/dds/service-server
@@ -116,6 +113,16 @@ build-fixtures:
     for ex in "${examples[@]}"; do
         echo "  → $ex"
         ( cd "examples/$ex" && cargo build --release --quiet ) &
+    done
+    # Phase 131.B — bench/smoke binaries relocated under packages/testing/.
+    test_fixtures=(
+        packages/testing/nros-bench/stress-zenoh
+        packages/testing/nros-bench/executor-fairness
+        packages/testing/nros-bench/stress-xrce
+    )
+    for fx in "${test_fixtures[@]}"; do
+        echo "  → $fx"
+        ( cd "$fx" && cargo build --release --quiet ) &
     done
     wait
     echo "  → native/rust/zenoh/{talker,listener} (--features link-tls)"

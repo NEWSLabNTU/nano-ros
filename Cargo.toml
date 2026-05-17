@@ -232,7 +232,7 @@ exclude = [
     "examples/native/rust/xrce/serial-talker",
     "examples/native/rust/xrce/serial-listener",
     "examples/native/rust/xrce/large-msg-test",
-    "examples/native/rust/xrce/stress-test",
+    "packages/testing/nros-bench/stress-xrce",
     # Board crates (embedded-only, require cross-compilation)
     "packages/boards/mps2-an385-pac",
     "packages/boards/nros-board-mps2-an385",

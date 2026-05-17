@@ -1194,12 +1194,7 @@ pub fn zenoh_stress_test_large_buf_binary() -> PathBuf {
 pub fn build_xrce_stress_test() -> TestResult<&'static Path> {
     XRCE_STRESS_TEST_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/xrce/stress-test",
-                "xrce-stress-test",
-                None,
-                None,
-            )
+            build_test_fixture("nros-bench/stress-xrce", "xrce-stress-test", None)
         })
         .map(|p| p.as_path())
 }
