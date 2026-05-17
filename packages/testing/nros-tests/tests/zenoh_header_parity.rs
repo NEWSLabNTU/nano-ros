@@ -27,34 +27,51 @@ fn workspace_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// Phase 150.E — return the most-recently-modified header from
+/// `<workspace>/target/{debug,release}/build/zpico-sys-*/out/...`.
+///
+/// Restricting to the workspace-default native target dir is
+/// load-bearing: a cross-target build (e.g. `target/riscv64gc-…/`
+/// from a recent `just threadx_riscv64 build-fixtures`) produces
+/// a `zpico-sys-*` build dir for ThreadX, which goes through
+/// `LinkPolicy::threadx()` (serial/udp_unicast/udp_multicast forced
+/// off — Phase 146.2). Picking that header by accident would make
+/// every POSIX-policy assertion fail. The native POSIX path always
+/// lives under `target/{debug,release}/`, never under a
+/// `target/<triple>/` sub-directory.
+///
+/// Pick the most-recent across `debug/` and `release/` so the test
+/// reflects the latest POSIX build regardless of profile.
 fn find_out_dir_header(root: &Path) -> Option<std::path::PathBuf> {
-    let glob_root = root.join("target");
-    if !glob_root.exists() {
-        return None;
-    }
-    let mut stack = vec![glob_root];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else {
+    let mut newest: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+    for profile in ["debug", "release"] {
+        let build_dir = root.join("target").join(profile).join("build");
+        let Ok(entries) = fs::read_dir(&build_dir) else {
             continue;
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() {
-                let name = entry.file_name();
-                let s = name.to_string_lossy();
-                if s.starts_with("zpico-sys-") {
-                    let candidate = path.join("out/zenoh-config/zenoh_generic_config.h");
-                    if candidate.exists() {
-                        return Some(candidate);
-                    }
-                }
-                if !path.is_symlink() {
-                    stack.push(path);
-                }
+            let name = entry.file_name();
+            let s = name.to_string_lossy();
+            if !s.starts_with("zpico-sys-") {
+                continue;
+            }
+            let candidate = path.join("out/zenoh-config/zenoh_generic_config.h");
+            let Ok(meta) = fs::metadata(&candidate) else {
+                continue;
+            };
+            let Ok(mtime) = meta.modified() else {
+                continue;
+            };
+            if newest
+                .as_ref()
+                .is_none_or(|(prev_mtime, _)| mtime > *prev_mtime)
+            {
+                newest = Some((mtime, candidate));
             }
         }
     }
-    None
+    newest.map(|(_, p)| p)
 }
 
 fn parse_define(header: &str, key: &str) -> Option<String> {

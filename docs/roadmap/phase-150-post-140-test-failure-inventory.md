@@ -136,15 +136,40 @@ Fix: audit `cmake_platform_matrix.rs` for missing `skip!`
 preconditions; convert hard failures to `[SKIPPED]` per CLAUDE.md
 rule.
 
-### E. zenoh_header_parity (2 tests) → user's Phase 134
+### E. zenoh_header_parity (1 test) → **Closed 2026-05-18**
 
 ```
-nros-tests::zenoh_header_parity posix_link_features
-nros-tests::zenoh_header_parity arch_dispatch
+nros-tests::zenoh_header_parity posix_canonical_header_matches_link_policy
 ```
 
-Root cause: Phase 134 canonical-header E2E tests landed via user's
-stream but not yet fully wired. Stays in user's scope.
+(Inventory originally tagged "2 tests" — only one
+`posix_canonical_header_matches_link_policy` exists; no
+`posix_link_features` / `arch_dispatch` siblings in the file.)
+
+Root cause was NOT Phase 134 wiring — it was a stale-build
+discovery bug inside the test itself. `find_out_dir_header`
+walked the entire `target/` tree and returned the first
+`zpico-sys-*/out/zenoh-config/zenoh_generic_config.h` it found.
+After a recent `just threadx_riscv64 build-fixtures` populated
+`target/riscv64gc-unknown-none-elf/release/build/zpico-sys-*/`,
+that ThreadX-targeted header (which goes through Phase 146.2's
+`LinkPolicy::threadx()` and Force(false)s serial / udp_unicast /
+udp_multicast) won the search. Every POSIX-policy assertion then
+mismatched.
+
+Fix: restrict the search to `target/{debug,release}/build/` only
+(the workspace-default native target dir; cross-target builds
+land under `target/<triple>/...` and are explicitly excluded).
+Pick the most-recent mtime across `debug/` and `release/` so the
+test reflects the latest POSIX build regardless of profile.
+Comment block in the helper documents the load-bearing
+restriction so the next contributor doesn't widen it.
+
+Verified: `cargo build -p nros-rmw-zenoh-staticlib --features
+platform-posix && cargo nextest run -p nros-tests --test
+zenoh_header_parity` passes; the picked header is now the
+POSIX-policy one even with a populated `target/riscv64gc-…/`
+sibling.
 
 ### F. xrce E2E (2 tests)
 
@@ -198,7 +223,7 @@ migrated in Phase 140.3 but may still pull from stale paths).
 | B. dds_api C++ builds | 6 | CMake link order: ffi_lib → NanoRosCpp dep not recorded | 150.B | **Closed 2026-05-18** |
 | C. qemu_patched_binary | 6 | Patched qemu not built | 143 | Run `just qemu setup-qemu` |
 | D. cmake_platform_matrix | 10 | Skip-precondition gap | 138.6 follow-up | Filed as TODO |
-| E. zenoh_header_parity | 2 | Phase 134 user-owned | 134 | User stream |
+| E. zenoh_header_parity | 1 | Test helper picked up cross-target `target/riscv64gc-…/zpico-sys-*` header instead of POSIX | 150.E | **Closed 2026-05-18** |
 | F. xrce E2E | 2 | Agent not spawned | XRCE fixture | TODO |
 | G. integration shells | 4 | Env vars not in nextest | 139.9 follow-up | TODO |
 | H. nano2nano rtic | 2 | Investigate | 144 follow-up | TODO |
