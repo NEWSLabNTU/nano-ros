@@ -55,21 +55,32 @@
 //! | `THREADX_CFLAGS` | none | Extra compiler flags (overlay sets per-arch). |
 //! | `BOARD_LINKER_SCRIPT_DIR` | none | Overlay's linker-script dir, added to link search path. |
 
-// The two reference boards have incompatible `std` requirements
-// (`-linux` is `std`, `-qemu-riscv64` is `no_std`), so we cannot
-// flip `no_std` unconditionally — the attribute lives behind the
-// feature gates.
+// Phase 152.2.B.4 — both ThreadX overlays now `no_std`
+// (152.4.B-prep refactor on `-linux`), so the crate flips
+// unconditionally. The generic `run<B>` lives here; per-board
+// overlays implement `BoardInit + BoardPrint + BoardExit +
+// ThreadxConfig` and provide a thin non-generic `run` wrapper.
 
-#![cfg_attr(
-    not(any(feature = "reference-linux", feature = "reference-qemu-riscv64")),
-    no_std
-)]
+#![no_std]
 
+mod node;
+
+pub use node::run;
+pub use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
+
+// Legacy 152.2.A façade — keep the per-board `Config` +
+// `init_hardware` + `run` re-export accessible behind the
+// reference-* features so existing downstream that picked the
+// generic crate name during the .A → .B transition keeps
+// working. New consumers should depend on the per-board crate
+// directly (or import `run` from here + pick the marker type
+// via turbofish).
 #[cfg(feature = "reference-linux")]
-pub use nros_board_threadx_linux::{Config, init_hardware, run};
+pub use nros_board_threadx_linux::{
+    Config as ConfigLinux, init_hardware as init_hardware_linux,
+};
 
-#[cfg(all(
-    feature = "reference-qemu-riscv64",
-    not(feature = "reference-linux")
-))]
-pub use nros_board_threadx_qemu_riscv64::{Config, init_hardware, run};
+#[cfg(feature = "reference-qemu-riscv64")]
+pub use nros_board_threadx_qemu_riscv64::{
+    Config as ConfigQemuRiscv64, init_hardware as init_hardware_qemu_riscv64,
+};
