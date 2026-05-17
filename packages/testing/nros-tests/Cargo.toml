@@ -75,7 +75,10 @@ trigger-test = [
     # reached). zenoh-pico auto-registers via `.init_array` on POSIX.
     "dep:nros-rmw-zenoh",
     "dep:nros-platform-cffi",
-    "nros-node/rmw-zenoh-cffi",
+    # Phase 128.C.3 — per-backend rmw-*-cffi features removed; the
+    # umbrella `rmw-cffi` enables the walker that discovers whichever
+    # backend the manifest pulled in via `dep:nros-rmw-<name>`.
+    "nros-node/rmw-cffi",
     "nros-node/std",
 ]
 # Phase 124.G.2 — multi-RMW bridge delivery test. Links both
@@ -83,7 +86,6 @@ trigger-test = [
 multi-rmw-bridge = [
     "trigger-test",
     "dep:nros-rmw-dds",
-    "nros-node/rmw-dds-cffi",
 ]
 # Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.
 # Pulls nros-node + nros-rmw-zenoh with the `lending` feature so the
