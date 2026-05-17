@@ -21,6 +21,13 @@ name = "nros_board_freertos"
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", default-features = false, optional = true }
 
+[build-dependencies]
+# 149.1.B.4 — generic build.rs compiles FreeRTOS kernel + lwIP +
+# nros-platform-freertos + the board-agnostic glue (freertos_hooks +
+# network_glue). Overlays' build.rs only need to handle their own
+# driver + linker script + libc discovery.
+cc = "1.0"
+
 [features]
 default = []
 # Convenience feature for downstream overlays that want the
