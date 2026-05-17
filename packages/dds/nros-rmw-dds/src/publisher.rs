@@ -69,6 +69,11 @@ impl DdsPublisher {
             .map(|s| s.current_count)
             .unwrap_or(0)
     }
+
+    #[cfg(not(any(feature = "std", feature = "nostd-runtime")))]
+    pub(crate) fn matched_subscription_count(&self) -> i32 {
+        0
+    }
 }
 
 impl Publisher for DdsPublisher {
