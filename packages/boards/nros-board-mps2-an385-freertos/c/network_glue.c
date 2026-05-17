@@ -2,19 +2,15 @@
  * network_glue.c — lwIP + FreeRTOS network plumbing called from Rust
  *
  * Phase 149.1.B.1 — extracted from build.rs's `STARTUP_C` const.
- * Contains the FFI surface Rust calls (`nros_freertos_init_network`,
- * `_poll_network`, `_start_scheduler`, `_create_task`,
- * `_get_netif_state`, `_test_tcp_connect`) + the lwIP init wiring
- * (`tcpip_init` + `netifapi_netif_add`). The LAN9118 chunk inside
- * `nros_freertos_init_network` calls `lan9118_lwip_init` from the
- * driver crate; the LAN9118 *direct-register* poking lives in
- * `board_mps2.c`. Promotion to the generic `nros-board-freertos`
- * crate is 149.1.B.4, gated on 149.1.B.2 lifting the
- * `nros_board_init_eth` weak-hook contract.
+ * Phase 149.1.B.2 — board-specific Ethernet init lifted to the
+ * weak `nros_board_register_netif` / `nros_board_poll_netif`
+ * hooks the overlay implements (see `board_mps2.c` for the
+ * LAN9118 strong override). This TU is now board-agnostic and
+ * can promote into the generic `nros-board-freertos` crate at
+ * 149.1.B.4 without further changes.
  */
 
 #include <stdint.h>
-#include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 
@@ -24,15 +20,40 @@
 #include "lwip/init.h"
 #include "lwip/tcpip.h"
 #include "lwip/netif.h"
-#include "lwip/netifapi.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/sockets.h"
 
-#include "lan9118_lwip.h"
+/* ---- Weak board-init contract ----
+ *
+ * Overlays implement these to register their Ethernet driver with
+ * lwIP + drive the poll loop. Default no-ops keep the generic
+ * code linkable when an overlay is intentionally serial-only or
+ * loopback-only.
+ *
+ * Signature contract:
+ *   - nros_board_register_netif(mac, ip, netmask, gw): called
+ *     once after tcpip_init completes. Set up the board's netif,
+ *     call netifapi_netif_add + set_default + set_up + set_link_up.
+ *     Return 0 on success, -1 on failure.
+ *   - nros_board_poll_netif(): called periodically from the poll
+ *     task. Drives the board's netif RX-FIFO drain (LAN9118,
+ *     etc.). Default no-op for boards that use IRQ-driven RX.
+ */
+__attribute__((weak)) int nros_board_register_netif(
+    const uint8_t mac[6],
+    const uint8_t ip[4],
+    const uint8_t netmask[4],
+    const uint8_t gw[4])
+{
+    (void)mac; (void)ip; (void)netmask; (void)gw;
+    return -1;  /* No board override → no Ethernet. */
+}
 
-/* ---- Network globals (also accessed from board_mps2.c for diag) ---- */
-struct netif lan9118_netif;
-struct lan9118_config lan9118_cfg;
+__attribute__((weak)) void nros_board_poll_netif(void) {
+    /* No board override → nothing to poll. */
+}
+
+/* ---- lwIP init bookkeeping ---- */
 static volatile int lwip_init_done = 0;
 
 static void tcpip_init_done_cb(void *arg) {
@@ -56,8 +77,6 @@ int nros_freertos_init_network(
     const uint8_t netmask[4],
     const uint8_t gw[4])
 {
-    ip4_addr_t ipaddr, mask, gateway;
-
     /* Seed the C stdlib RNG with a value unique to this node.
      * Without this, rand() starts from seed 1 on every boot, causing
      * all QEMU instances to generate identical zenoh-pico session IDs
@@ -75,13 +94,6 @@ int nros_freertos_init_network(
         srand(seed);
     }
 
-    IP4_ADDR(&ipaddr,  ip[0], ip[1], ip[2], ip[3]);
-    IP4_ADDR(&mask,    netmask[0], netmask[1], netmask[2], netmask[3]);
-    IP4_ADDR(&gateway, gw[0], gw[1], gw[2], gw[3]);
-
-    lan9118_cfg.base_addr = LAN9118_BASE_DEFAULT;
-    memcpy(lan9118_cfg.mac_addr, mac, 6);
-
     /* Initialize per-thread lwIP semaphore for the app task.
      * Required when LWIP_NETCONN_SEM_PER_THREAD=1 — each task that calls
      * lwIP socket/netifapi functions must have its own semaphore.
@@ -94,27 +106,19 @@ int nros_freertos_init_network(
         vTaskDelay(1);
     }
 
-    /* Register netif via netifapi (thread-safe: executes in tcpip_thread).
-     * Note: netif_add() does NOT set netif_default, even with LWIP_SINGLE_NETIF.
-     * We must call netif_set_default() explicitly. */
-    if (netifapi_netif_add(&lan9118_netif, &ipaddr, &mask, &gateway,
-                           &lan9118_cfg, lan9118_lwip_init, tcpip_input) != ERR_OK) {
-        return -1;
-    }
-
-    netifapi_netif_set_default(&lan9118_netif);
-    netifapi_netif_set_up(&lan9118_netif);
-    netifapi_netif_set_link_up(&lan9118_netif);
-
-    return 0;
+    /* Delegate netif registration to the board overlay.
+     * Default weak impl returns -1 (no Ethernet); LAN9118 / STM ETH
+     * / NXP ENET / etc. overlays provide the strong version. */
+    return nros_board_register_netif(mac, ip, netmask, gw);
 }
 
 /*
- * Poll the LAN9118 RX FIFO for received frames.
- * Call from a FreeRTOS task periodically.
+ * Drive the board's netif RX-FIFO drain. Called periodically from
+ * the poll task. Default weak impl is a no-op (boards with
+ * IRQ-driven RX or no Ethernet leave it alone).
  */
 void nros_freertos_poll_network(void) {
-    lan9118_lwip_poll(&lan9118_netif);
+    nros_board_poll_netif();
 }
 
 /*
