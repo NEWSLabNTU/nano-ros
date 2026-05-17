@@ -22,3 +22,10 @@ name = "nros_board_common"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+# 149.2.B — `threadx_sources::add_threadx_kernel_sources` /
+# `_add_threadx_port_sources` take `&mut cc::Build`. The cc crate
+# is also a build-time-only dep but a regular `[dependencies]`
+# entry is fine since `nros-board-common` itself is only ever
+# pulled by other crates' `[build-dependencies]` (never reaches a
+# runtime binary).
+cc = "1.0"

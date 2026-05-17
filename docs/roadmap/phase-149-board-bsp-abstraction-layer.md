@@ -311,14 +311,24 @@ delta:
         different `Config` shapes). Workspace `Cargo.toml`
         excludes the new crate; `cargo check` clean (default +
         `reference-linux` host build).
-      - **149.2.B — Build-glue carve-out** (deferred; broken down
-        below). Move the ThreadX kernel + NetX-Duo + nros-platform-threadx
-        compile pipeline out of the two per-board `build.rs` files
-        into the generic crate's own `build.rs`. Land **after**
-        149.1.B because it reuses the same patterns (TOML
-        manifest, `<KERNEL>_CFLAGS` env var, `#[no_mangle]`
-        board-init hook contract) and benefits from the verified
-        149.1.B template.
+      - **149.2.B — Build-glue carve-out** (partial 2026-05-18;
+        full carve deferred).
+        Partial landed: kernel + port-source enumeration helpers
+        (`add_threadx_kernel_sources` +
+        `add_threadx_port_sources`) lifted into
+        `nros-board-common::threadx_sources`. Both overlays
+        (`nros-board-threadx-linux` + `nros-board-threadx-qemu-riscv64`)
+        switched from inline `read_dir(common/src)` /
+        `read_dir(ports/<port>/src)` loops to the shared helpers.
+        Future ThreadX-kernel submodule bumps that add files pick
+        up automatically in both overlays.
+        Full carve-out deferred — same shape as 149.1.B but with
+        two reference overlays differing in `std`/`no_std` +
+        `pthreads`/`bare-metal` + with/without full NetX-Duo
+        TCP/IP + with/without RISC-V startup assembly. Per-board
+        `Config` shapes diverge enough that a `BoardInit` trait
+        (149.4.B) is the right abstraction to share — wait for
+        that to land first.
 
 #### 149.2.B subitems
 

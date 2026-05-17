@@ -1215,6 +1215,7 @@ version = "0.1.0"
 name = "nros-board-common"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "serde",
  "toml 0.8.23",
 ]
