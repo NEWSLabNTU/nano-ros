@@ -11,14 +11,27 @@
 //!
 //! Run: `cargo test -p nros-tests --test wake_latency --features trigger-test -- --ignored`
 //!
-//! Both tests are `#[ignore]` by default — in-process `Executor::open`
-//! against the `zenohd_unique` fixture fails to connect in the current
-//! test harness setup (same failure mode as `trigger_conditions.rs`'s
-//! lone test). Pre-existing issue not specific to Phase 124. The
-//! tests are written so they exercise the right contract once the
-//! in-process zenoh-pico Client-to-zenohd setup is fixed.
+//! Phase 124.B.8 finalisation: tests now run by default. Two
+//! setup gaps were closed:
+//!   * `trigger-test` feature pulls `nros-rmw-zenoh` + the cffi
+//!     bridge so zenoh-pico auto-registers via `.init_array`
+//!     before `Executor::open` runs (previously the registry was
+//!     empty and `open` surfaced `Transport(ConnectionFailed)`).
+//!   * Test source `use nros_rmw_zenoh as _;` forces the linker
+//!     to pull the backend symbols into the test binary.
+//!
+//! Run serialized (`--test-threads=1`) — both tests open
+//! in-process zenoh-pico sessions against the `zenohd_unique`
+//! fixture, and zenoh-pico's single-process state isn't safe to
+//! tear down + re-open in parallel inside one test binary.
 
 #![cfg(feature = "trigger-test")]
+
+// Force-link the zenoh-pico backend so its `.init_array` ctor
+// registers the vtable before `Executor::open` runs (Phase 104.A).
+// Without this the cffi registry is empty and `Executor::open`
+// surfaces `Transport(ConnectionFailed)`.
+use nros_rmw_zenoh as _;
 
 use std::{
     sync::atomic::{AtomicBool, Ordering},
@@ -43,7 +56,6 @@ const WAKE_LATENCY_BOUND_MS: u64 = 10;
 /// versus the trigger fire time — must be ≤ trigger_delay +
 /// WAKE_LATENCY_BOUND_MS.
 #[rstest]
-#[ignore = "in-process Executor::open against zenohd_unique fixture fails (see file header)"]
 fn wake_latency_cross_thread_trigger(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
@@ -125,7 +137,6 @@ fn wake_latency_cross_thread_trigger(zenohd_unique: ZenohRouter) {
 /// its full timeout. Confirms the cv-wait is bounded by the user's
 /// timeout (not infinite block).
 #[rstest]
-#[ignore = "in-process Executor::open against zenohd_unique fixture fails (see file header)"]
 fn spin_once_honours_timeout_without_trigger(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");

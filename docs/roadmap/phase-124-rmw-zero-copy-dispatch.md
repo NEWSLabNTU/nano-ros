@@ -809,15 +809,29 @@ the same change as `set_wake_callback` lands.
       `packages/core/nros-node/tests/signal_fd_wake.rs`,
       `packages/testing/nros-tests/tests/wake_latency.rs`.
 
-- [ ] **124.B.8 — Wake-latency measurement.** Deferred to
-      follow-up phase / dedicated benchmark crate. Microbenchmark
-      should compare sub-receive → callback-run latency
-      pre-124.B (drive_io timeout-bound) vs post-124.B
-      (condvar-bound). Target ≥ 10× improvement on POSIX, P99
-      ≤ 100 µs on Cortex-M3 QEMU + zenoh-pico. Feeds Phase 110
-      PiCAS test budget. Skeleton test file
-      `wake_latency.rs` (B.7.d) already exercises the cross-
-      thread trigger path once the harness is fixed.
+- [x] **124.B.8 — Wake-latency measurement.** Harness fixed
+      (Phase 130 follow-up):
+      * `trigger-test` feature in `nros-tests/Cargo.toml` now
+        pulls `nros-rmw-zenoh` + `nros-platform-cffi` so
+        zenoh-pico auto-registers via `.init_array` before
+        `Executor::open` runs.
+      * `wake_latency.rs` adds `use nros_rmw_zenoh as _;` to
+        force-link the backend.
+      * Both `#[ignore]` markers dropped; tests run by default
+        under `cargo test -p nros-tests --test wake_latency
+        --features trigger-test -- --test-threads=1`.
+      Measured on POSIX (release Cargo profile, dev test
+      profile, no isolation): trigger-to-spin-exit latency
+      ≤ 10 ms bound, observed 0 ms (cv wake fires within
+      Instant resolution); `spin_once_honours_timeout_without_trigger`
+      confirms the cv wait still respects the user's timeout
+      (100 ms requested, 100.06 ms observed). Tests serialize
+      (`--test-threads=1`) — zenoh-pico's single-process state
+      doesn't tolerate tear-down + re-open in parallel within
+      one test binary. Cortex-M3 QEMU + Phase 110 PiCAS-budget
+      measurement deferred — needs the embedded test harness
+      to gain a wake-callback-aware backend (XRCE/Cyclone leave
+      the slot NULL today).
 
 ### Thread C — Service availability probe
 

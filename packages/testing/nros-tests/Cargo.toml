@@ -62,7 +62,19 @@ default = []
 types = ["nros-core", "nros-serdes"]
 rmw = ["nros-rmw", "nros-core", "nros-serdes"]
 safety-e2e = ["rmw", "nros-rmw/safety-e2e"]
-trigger-test = ["dep:nros-node", "nros-core", "nros-serdes"]
+trigger-test = [
+    "dep:nros-node",
+    "nros-core",
+    "nros-serdes",
+    # Phase 124.B.8 — wake-latency microbench needs an actual RMW
+    # backend so `Executor::open` returns a session (otherwise
+    # `Transport(ConnectionFailed)` and the cv-wait path is never
+    # reached). zenoh-pico auto-registers via `.init_array` on POSIX.
+    "dep:nros-rmw-zenoh",
+    "dep:nros-platform-cffi",
+    "nros-node/rmw-zenoh-cffi",
+    "nros-node/std",
+]
 # Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.
 # Pulls nros-node + nros-rmw-zenoh with the `lending` feature so the
 # customised ZENOH_VTABLE (124.A.4.b) is installed at backend
