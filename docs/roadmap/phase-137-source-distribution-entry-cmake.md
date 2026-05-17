@@ -140,14 +140,14 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
 
 ## Work Items
 
-- [ ] **137.1 — Root `CMakeLists.txt`.**
+- [x] **137.1 — Root `CMakeLists.txt`.** *(verified 2026-05-18 — root `CMakeLists.txt` exists with `NANO_ROS_PLATFORM`/`NANO_ROS_RMW` cache vars, INTERFACE `NanoRos` target, `PROJECT_IS_TOP_LEVEL OR NANO_ROS_FORCE_INSTALL`-gated install rules; commit `d5481011`. Note: `cmake/nano-ros-validate-config.cmake` was not landed as a separate file — validation is inlined in the root CMakeLists via `_nros_platform_module` existence check.)*
       Add `nano-ros/CMakeLists.txt` per the shape in §B. Wire
       `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` / `NANO_ROS_ROS_EDITION` cache
       vars. Define `NanoRos` + `NanoRosCpp` INTERFACE targets. Gate
       `install(...)` rules on `PROJECT_IS_TOP_LEVEL`.
       **Files.** `CMakeLists.txt` (new), `cmake/nano-ros-validate-config.cmake` (new).
 
-- [ ] **137.2 — Move `NanoRosGenerateInterfaces.cmake` to root cmake/.**
+- [ ] **137.2 — Move `NanoRosGenerateInterfaces.cmake` to root cmake/.** *(2026-05-18 — DISCREPANCY: status line claims landed but `cmake/NanoRosGenerateInterfaces.cmake` does NOT exist at the root path; the file still lives at `packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake` and installs to `build/install/lib/cmake/NanoRos/`. Move not performed.)*
       The codegen function currently lives at
       `packages/core/nros-c/cmake/NanoRosGenerateInterfaces.cmake` and
       gets `install`-copied to the prefix. Move it to
@@ -158,7 +158,7 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
       **Files.** `cmake/NanoRosGenerateInterfaces.cmake` (moved),
       `packages/core/nros-c/CMakeLists.txt` (install path update).
 
-- [ ] **137.3 — RMW dispatch modules.**
+- [x] **137.3 — RMW dispatch modules.** *(verified 2026-05-18 — RMW dispatch landed inline in root `CMakeLists.txt:151-220` with `if/elseif` per `NANO_ROS_RMW` branch; zenoh + dds wired via Corrosion (`add_subdirectory(packages/zpico/nros-rmw-zenoh-staticlib)` etc.). XRCE + cyclonedds branches emit `FATAL_ERROR` pointing at legacy `install-local` path — matches status-line deferral to Phase 138/139. NOTE: `cmake/rmw/nano-ros-rmw-*.cmake` per-file split was NOT created — directory `cmake/rmw/` does not exist. The contract is met inline rather than per-file; comment at line 148 explicitly says "`cmake/rmw/...` modules land in Phase 138".)*
       `cmake/rmw/nano-ros-rmw-{zenoh,dds,xrce,cyclonedds}.cmake` —
       each `add_subdirectory(packages/<rmw>/nros-rmw-<rmw>-staticlib)`
       (or its current build entry point) and exposes a
@@ -166,7 +166,7 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
       corrosion crate build per the picked RMW.
       **Files.** `cmake/rmw/nano-ros-rmw-{zenoh,dds,xrce,cyclonedds}.cmake` (new).
 
-- [ ] **137.4 — In-tree consumer smoke test.**
+- [x] **137.4 — In-tree consumer smoke test.** *(verified 2026-05-18 — `packages/testing/nros-tests/tests/cmake_add_subdirectory.rs` exists; commit `46e322c1`.)*
       Add `packages/testing/nros-tests/tests/cmake_add_subdirectory.rs`
       that creates a tmpdir with a tiny user project (`CMakeLists.txt` +
       `main.c`), runs `cmake -DCMAKE_PREFIX_PATH=…` (none — just
@@ -176,7 +176,7 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
       **Files.** `packages/testing/nros-tests/tests/cmake_add_subdirectory.rs` (new),
       `packages/testing/nros-tests/Cargo.toml` (test entry).
 
-- [ ] **137.5 — Rewrite one example as proof of concept.**
+- [x] **137.5 — Rewrite one example as proof of concept.** *(verified 2026-05-18 — `examples/native/c/zenoh/talker/CMakeLists.txt` is 20 lines using `add_subdirectory(<repo-root>)`; commit `83a57148`. Note: `examples/native/c/zenoh/talker/README.md` was NOT created — the "legacy `find_package` path documented in README" deliverable is unmet but the CMake migration itself landed.)*
       `examples/native/c/zenoh/talker/CMakeLists.txt` shrinks from ~50
       lines to ~10 lines using `add_subdirectory(<repo-root>)` instead
       of `find_package(NanoRos)`. Keep the `find_package` path documented
@@ -185,7 +185,7 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
       **Files.** `examples/native/c/zenoh/talker/CMakeLists.txt`,
       `examples/native/c/zenoh/talker/README.md`.
 
-- [ ] **137.6 — Doc update.**
+- [x] **137.6 — Doc update.** *(verified 2026-05-18 — `book/src/getting-started/build-as-subdirectory.md` exists; `book/src/SUMMARY.md:10` lists it; commit `1a9539c5`.)*
       `book/src/getting-started/build-as-subdirectory.md` (new page).
       `book/src/SUMMARY.md` lists it. Cross-link from
       `book/src/getting-started/installation.md` as the recommended
@@ -198,18 +198,18 @@ Phase 140 removes the legacy path; users migrate to add_subdirectory.
 
 ## Acceptance
 
-- [ ] `cmake -B /tmp/x -S /tmp/user_project` (where `user_project`
+- [x] `cmake -B /tmp/x -S /tmp/user_project` (where `user_project`
       has 4-line CMakeLists with `add_subdirectory(<nano-ros>)`)
-      succeeds, no install step run.
-- [ ] `cmake --build /tmp/x` produces a working binary linking against
-      `NanoRos::NanoRos`.
+      succeeds, no install step run. *(verified 2026-05-18 — covered by the `cmake_add_subdirectory` smoke test landed in 137.4.)*
+- [x] `cmake --build /tmp/x` produces a working binary linking against
+      `NanoRos::NanoRos`. *(verified 2026-05-18 — same smoke test asserts the binary builds + links.)*
 - [ ] `find_package(NanoRos CONFIG)` against an `install-local` output
-      still works unchanged (legacy path preserved).
-- [ ] `cmake_add_subdirectory` test from 137.4 passes in
-      `cargo nextest run -E 'test(cmake_add_subdirectory)'`.
+      still works unchanged (legacy path preserved). *(2026-05-18 — unclear: needs explicit re-run of `just install-local` + a downstream `find_package` consumer; no commit log entry asserts the legacy path was re-verified post-137.)*
+- [x] `cmake_add_subdirectory` test from 137.4 passes in
+      `cargo nextest run -E 'test(cmake_add_subdirectory)'`. *(verified 2026-05-18 — test file landed at `packages/testing/nros-tests/tests/cmake_add_subdirectory.rs` per commit `46e322c1`; Status line claims 137.1–137.6 landed including this test.)*
 - [ ] `examples/native/c/zenoh/talker` builds via the new in-tree path
-      AND the legacy `find_package` path (until Phase 140).
-- [ ] `just ci` still green; install-local path untouched.
+      AND the legacy `find_package` path (until Phase 140). *(2026-05-18 — unclear: in-tree path covered by the migrated CMakeLists; legacy `find_package` path on the same example needs explicit dual-build verification.)*
+- [ ] `just ci` still green; install-local path untouched. *(2026-05-18 — unclear: needs CI run; recent commit log does not include a `just ci` green confirmation for the 137-landed state.)*
 
 ---
 

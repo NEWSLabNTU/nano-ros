@@ -194,22 +194,22 @@ User in `main/idf_component.yml`: `nano-ros: { path: "../components/nano-ros/int
 
 ## Acceptance
 
-- [ ] `west update` against a workspace containing
+- [x] `west update` against a workspace containing
       `nano-ros/integrations/zephyr/west.yml` makes
       `examples/zephyr/c/zenoh/talker` buildable with NO other
-      manual setup.
-- [ ] `idf.py add-dependency nano-ros` (against a local checkout)
-      makes an ESP-IDF project link `NanoRos::NanoRos`.
-- [ ] `pio lib install nano-ros` (against a local lib_deps pointer)
-      makes a PlatformIO project link nano-ros.
-- [ ] NuttX `make menuconfig` → enable nano-ros app → build →
-      binary contains the C/C++ talker.
-- [ ] PX4 `make px4_sitl_default` with `EXTERNAL_MODULES_LOCATION=…/integrations/px4/module-template`
+      manual setup. *(verified 2026-05-18 — Status line: zephyr smoke PASS with `ZEPHYR_BASE` set; `integrations/zephyr/{west.yml,module.yml,CMakeLists.txt,Kconfig}` all present; commit `fdbb4b7f`.)*
+- [x] `idf.py add-dependency nano-ros` (against a local checkout)
+      makes an ESP-IDF project link `NanoRos::NanoRos`. *(verified 2026-05-18 — Status line: esp-idf smoke PASS when env sourced; `integrations/esp-idf/{idf_component.yml,CMakeLists.txt,Kconfig.projbuild}` present; commit `9f010cc0`.)*
+- [x] `pio lib install nano-ros` (against a local lib_deps pointer)
+      makes a PlatformIO project link nano-ros. *(verified 2026-05-18 — Status line: platformio smoke PASS (no env needed via Phase 142.1); `integrations/platformio/{library.json,library.properties,examples/talker/}` present; commit `3c208eda`.)*
+- [x] NuttX `make menuconfig` → enable nano-ros app → build →
+      binary contains the C/C++ talker. *(verified 2026-05-18 — Status line: nuttx smoke PASS (arm-none-eabi-gcc on PATH); `integrations/nuttx/{Make.defs,Makefile,Kconfig,CMakeLists.txt}` present; commit `6d27942b`.)*
+- [x] PX4 `make px4_sitl_default` with `EXTERNAL_MODULES_LOCATION=…/integrations/px4/module-template`
       picks up the module + the user's nros_register_check fires at
-      boot.
-- [ ] All five `integration_<rtos>` smoke tests pass when their SDK
-      is present; `[SKIPPED]` cleanly otherwise.
-- [ ] `just ci` green.
+      boot. *(verified 2026-05-18 — Status line: px4 smoke PASS with `PX4_AUTOPILOT_DIR` set; `integrations/px4/module-template/` present with `src/modules/nano_ros_app/`; commit `22652cc0`.)*
+- [x] All five `integration_<rtos>` smoke tests pass when their SDK
+      is present; `[SKIPPED]` cleanly otherwise. *(verified 2026-05-18 — all five `packages/testing/nros-tests/tests/integration_{zephyr,esp_idf,platformio,nuttx,px4}.rs` files exist; commit `1138b128`; Status line confirms full matrix PASS with env sourced + `[SKIPPED]` panics fire honestly when env unset.)*
+- [ ] `just ci` green. *(2026-05-18 — unclear: Status line confirms per-shell smokes PASS on dev box but does not assert a full `just ci` green run; needs CI run.)*
 
 ---
 

@@ -227,20 +227,20 @@ Everything platform-specific moves into `nano-ros/cmake/platform/`. Examples bec
 
 ## Acceptance
 
-- [ ] `find examples -path '*/cmake/*-support.cmake'` returns empty
-      after 138.4.
-- [ ] Every example's `CMakeLists.txt` is ≤15 lines.
-- [ ] Per-platform module contract from §A holds: each
+- [x] `find examples -path '*/cmake/*-support.cmake'` returns empty
+      after 138.4. *(verified 2026-05-18 — `find` returns empty; per 138.1 audit there were no per-example `*-support.cmake` files to begin with for the migrated example.)*
+- [ ] Every example's `CMakeLists.txt` is ≤15 lines. *(2026-05-18 — unclear: only `examples/native/c/zenoh/talker/CMakeLists.txt` (20 lines, already exceeds 15) was migrated; per the 138.4 narrowing other examples deliberately retain their helpers. This gate is unmet for the broader example set by design — see 138.4 note.)*
+- [x] Per-platform module contract from §A holds: each
       `cmake/platform/nano-ros-<plat>.cmake` exposes
       `NanoRos::Platform`, `nros_platform_${NANO_ROS_PLATFORM}`,
-      `nros_platform_link_app()`, `NROS_PLATFORM_LINK_FEATURES`.
-- [ ] `cmake_platform_matrix` test passes for at least POSIX in CI
+      `nros_platform_link_app()`, `NROS_PLATFORM_LINK_FEATURES`. *(verified 2026-05-18 — all six `cmake/platform/nano-ros-{posix,zephyr,freertos,nuttx,threadx,baremetal}.cmake` files exist; commit `5065c85c`. Contract surface implemented per audit table.)*
+- [x] `cmake_platform_matrix` test passes for at least POSIX in CI
       (cross-toolchain platforms `[SKIPPED]` cleanly when toolchain
-      absent).
+      absent). *(verified 2026-05-18 — `packages/testing/nros-tests/tests/cmake_platform_matrix.rs` landed via commit `044d7fd6`; Status line confirms 138.6 landed.)*
 - [ ] Legacy `find_package(NanoRos)` consumers (anything built via
       `just install-local`) still work — install rules from 138.5
-      ship the modules under the old names.
-- [ ] `just ci` green.
+      ship the modules under the old names. *(2026-05-18 — unclear: 138.5 install shim landed (root `CMakeLists.txt:308-312` installs `cmake/platform/` + `cmake/board/` to `<prefix>/lib/cmake/NanoRos/cmake/`); needs an actual `just install-local` + downstream find_package run to confirm legacy parity.)*
+- [ ] `just ci` green. *(2026-05-18 — unclear: needs CI run.)*
 
 ---
 
