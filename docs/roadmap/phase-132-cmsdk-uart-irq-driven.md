@@ -7,14 +7,31 @@ handshake. Replace the synchronous busy-spin TX in
 IRQ-driven design that yields cleanly to QEMU's main loop between
 bytes.
 
-**Status:** structural pieces landed (ISR symbol + NVIC unmask +
-`zpico-sys` serial-only build break fix); IRQ-driven `write`
-implementation still WIP — initial integration pass surfaced a
-QEMU-CMSDK timing puzzle where the zenoh InitSyn write succeeds
-but the peer's InitAck never arrives back through the polled read
-path. Polled busy-spin `write` remains the active TX
-implementation behind a default-off feature flag until the IRQ
-design lands a green `test_qemu_serial_pubsub_e2e`.
+**Status:** structural scaffolding landed (ISR symbol exported
+from `cmsdk-uart`, board-crate `#[interrupt]` forward, opt-in PAC
+dep, `zpico-sys` `ZPICO_NO_SMOLTCP` env opt-out for serial-only
+embedded builds broken since Phase 128). The IRQ-driven `write`
+implementation is **deferred** — `test_qemu_serial_pubsub_e2e`
+hangs at zenoh-pico's session-init handshake regardless of
+whether the IRQ path is active. Reproduced with the polled
+busy-spin write and the IRQ wiring fully removed: BOTH talker
+and listener stop at "Zenoh locator: serial/UART_0..." and never
+emit the post-`Executor::open` "Declaring publisher" /
+"Subscribing to /chatter" lines. The original 127.D.3 hang at
+"Publishing messages over serial..." (FIFO-fill on the second
+publish) is downstream of init — we never reach it now. The
+actual bug is in the connect_serial Init/InitAck exchange
+between zenoh-pico's bare-metal `_z_open_serial_from_dev` and
+zenohd's z-serial plugin, ambient since Phase 128/129/134
+reshaped the zpico-sys build path.
+
+Phase 132's IRQ-driven write was the wrong fix for the surface
+symptom. The new failure mode (init handshake) needs separate
+investigation: check the socat PTY bridge, zenohd z-serial
+plugin compatibility, and the COBS framing on both sides.
+Tracking under a new phase will be cleaner than expanding 132's
+scope; 132's structural pieces land here so the future IRQ wire-
+in is one feature flag away.
 
 Spun out from
 [`phase-127-remaining-failure-groups.md`](phase-127-remaining-failure-groups.md)

@@ -325,21 +325,13 @@ fn init_serial(config: &Config) {
     let mut uart = cmsdk_uart::CmsdkUart::new(config.uart_base);
     uart.enable();
 
-    // Phase 132 — unmask the UARTTX0 NVIC line so the driver's
-    // `wfi` between bytes wakes when QEMU's CMSDK model raises
-    // TX-empty. Mask all other CMSDK UART vectors (RX / OVF) — the
-    // current driver only uses TX-IRQ-driven write; RX stays polled.
-    //
-    // The pac's `Interrupt` enum gives the vector ordinal directly
-    // (see `mps2-an385-pac/src/lib.rs::Interrupt`). UARTTX0 = 1.
-    unsafe {
-        let mut nvic = cortex_m::peripheral::Peripherals::steal().NVIC;
-        cortex_m::peripheral::NVIC::unmask(mps2_an385_pac::Interrupt::UARTTX0);
-        // Lowest priority so user-level ISRs (Ethernet, timers) can
-        // preempt — TX-empty is a "wake the writer" signal, not a
-        // hard real-time event.
-        nvic.set_priority(mps2_an385_pac::Interrupt::UARTTX0, 0xE0);
-    }
+    // Phase 132 — UARTTX0 NVIC unmask deferred. The structural
+    // pieces (ISR symbol + PAC dep) stay so a future revision can
+    // re-enable the IRQ wiring once the wfi-loop timing puzzle in
+    // `CmsdkUart::write` is resolved. Today the polled spin path
+    // in the driver doesn't need the IRQ at all; leaving the line
+    // masked avoids the standalone-qemu hang observed before
+    // `Executor::open` even reached the first UART write.
 
     // Move into static storage
     unsafe {
