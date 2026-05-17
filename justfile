@@ -54,6 +54,7 @@ mod rmw_zenoh 'just/rmw_zenoh.just'
 mod px4 'just/px4.just'
 mod orin_spe 'just/orin-spe.just'
 mod cyclonedds 'just/cyclonedds.just'
+mod platformio 'just/platformio.just'
 
 default:
     @just --list
@@ -1182,6 +1183,7 @@ _orchestrate verb:
     run rmw_zenoh
     run orin_spe
     run cyclonedds
+    run platformio
     echo ""
     if [ ${#failed[@]} -gt 0 ]; then
         echo "{{verb}} finished with ${#failed[@]} failure(s): ${failed[*]}"
