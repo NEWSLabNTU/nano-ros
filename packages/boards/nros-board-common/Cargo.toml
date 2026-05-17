@@ -1,0 +1,24 @@
+[package]
+name = "nros-board-common"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Shared build-script helpers for nano-ros board crates (manifest parser + link-feature policy)"
+authors = ["nano-ros contributors"]
+repository = "https://github.com/NEWSLabNTU/peripherals"
+keywords = ["nano-ros", "build", "manifest", "policy", "no-std"]
+categories = ["development-tools::build-utils"]
+
+[lib]
+name = "nros_board_common"
+
+# Phase 149.5 — common build-script library shared between
+# `zpico-sys` (Phase 136) and the per-kernel generic board crates
+# (`nros-board-{freertos, threadx, nuttx}`). Consumers add this as
+# a `[build-dependencies]` path dep + import the `manifest` /
+# `policy` modules from their own `build.rs`. Not a runtime
+# dependency — never reaches the final binary.
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

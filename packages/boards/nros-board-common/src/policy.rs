@@ -1,18 +1,18 @@
-//! Phase 136.2 — link-feature env reader + per-platform policy mask.
+//! Link-feature env reader + per-platform policy mask.
 //!
-//! Factored out of `build.rs` for the unified-build refactor.
-//! `LinkFeatures::from_env()` reads `CARGO_FEATURE_LINK_*`; the
-//! resulting struct is masked by a `LinkPolicy` (one per platform)
-//! before C defines are emitted. 136.1's manifest layer already
-//! ships the per-platform override data
-//! (`manifest::ResolvedPlatform::link`); 136.4 will replace the
-//! hand-written `LinkPolicy::posix()` / `orin_spe()` / `passthrough()`
-//! constructors with a builder that consumes that data.
+//! Phase 134.2 introduced the `LinkFeatures` env reader + the
+//! `LinkPolicy` mask that overrides per-platform invariants
+//! (Orin SPE has no Ethernet → `Force(false)` masks TCP / UDP /
+//! MC / SERIAL / TLS, etc.). Phase 136.2 extracted it from
+//! `zpico-sys/build.rs` into `zpico-sys/build/policy.rs`. Phase
+//! 149.5 lifted it into the `nros-board-common` library so the
+//! per-kernel generic board crates can share one canonical
+//! implementation alongside the manifest parser.
 //!
-//! Include from `build.rs` with:
+//! Use from `build.rs`:
 //! ```ignore
-//! #[path = "build/policy.rs"]
-//! mod policy;
+//! use nros_board_common::policy::{LinkFeatures, LinkPolicy};
+//! let link = LinkFeatures::from_env().apply(&LinkPolicy::posix());
 //! ```
 
 use std::env;

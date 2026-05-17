@@ -107,10 +107,12 @@ cc = "1.0"
 # `.pc`-file synthesizer fallback (Ubuntu's `libmbedtls-dev` ships
 # no `.pc`) stays in build.rs.
 pkg-config = "0.3"
-# Phase 136.1 — zenoh_platforms.toml parser. Drives source +
-# define selection in the unified cc-rs path after 136.3.
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
+# Phase 149.5 — manifest parser + link-feature policy lifted out of
+# `zpico-sys/build/{manifest,policy}.rs` into the
+# `nros-board-common` library so per-kernel generic board crates
+# can share it. `nros-board-common` pulls in `serde` + `toml`
+# transitively; no need to declare them here separately.
+nros-board-common = { path = "../../boards/nros-board-common" }
 
 [lints]
 workspace = true

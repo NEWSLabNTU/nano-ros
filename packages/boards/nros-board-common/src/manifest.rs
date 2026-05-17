@@ -1,19 +1,24 @@
-//! Phase 136.1 / 136.4 — `zenoh_platforms.toml` parser.
+//! Manifest parser for `<kernel>_platforms.toml` files.
 //!
-//! 136.1 landed the loader + per-platform resolver. 136.4 expands
-//! the schema so it carries every per-platform datum the cc-rs
-//! collapse needs: SDK env vars (with help text + validation),
-//! conditional include paths (interpolated `{env:VAR}` /
-//! `{nros}` / `{out}` / `{src}` tokens; `when.target_match` /
-//! `when.target_not` / `when.if_env` gates), extra source files
-//! (with `if_env` and `with_define` modifiers), debug-env-driven
-//! defines, and an `[arch.*]` table for reusable target-arch
-//! compiler-flag profiles.
+//! Phase 136.1 / 136.4 landed the loader + per-platform resolver
+//! inside `zpico-sys/build/`. Phase 149.5 lifted it into the
+//! `nros-board-common` library so the per-kernel generic board
+//! crates can share one canonical implementation.
 //!
-//! Include from `build.rs` with:
+//! Schema carries every per-platform datum the cc-rs collapse
+//! needs: SDK env vars (with help text + validation), conditional
+//! include paths (interpolated `{env:VAR}` / `{nros}` / `{out}` /
+//! `{src}` tokens; `when.target_match` / `when.target_not` /
+//! `when.if_env` gates), extra source files (with `if_env` and
+//! `with_define` modifiers), debug-env-driven defines, and an
+//! `[arch.*]` table for reusable target-arch compiler-flag
+//! profiles.
+//!
+//! Use from `build.rs`:
 //! ```ignore
-//! #[path = "build/manifest.rs"]
-//! mod manifest;
+//! use nros_board_common::manifest::PlatformManifest;
+//! let m = PlatformManifest::load("zenoh_platforms.toml".as_ref())?;
+//! let resolved = m.for_platform("posix")?;
 //! ```
 
 use std::{collections::BTreeMap, fs, path::Path};

@@ -228,15 +228,28 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
         shrinks to a `pub struct MyBoard; impl BoardInit for MyBoard
         { ... }`. Today the per-board crate hand-rolls `Config`.
 
-- [ ] **149.5 — Reuse Phase 136 manifest parser.**
-      Land `packages/boards/nros-board-common/` containing the
-      shared `manifest.rs` + `policy.rs` shims that the per-kernel
-      generic crates pull in (avoid duplicating the
-      `packages/zpico/zpico-sys/build/manifest.rs` body across four
-      crates). Could be a `pub use` re-export or a workspace-level
-      build-script helper.
-      **Files.** `packages/boards/nros-board-common/` (new) or shared
-      shim under `packages/core/`.
+- [x] **149.5 — Reuse Phase 136 manifest parser.** (landed 2026-05-18)
+      `packages/boards/nros-board-common/` library crate exposes
+      `manifest` + `policy` modules (the Phase 136.1 / 136.4 /
+      134.2 parser + interpolator + matcher + `LinkFeatures` /
+      `LinkPolicy`). zpico-sys's `build.rs` switched from
+      `#[path = "build/manifest.rs"] mod manifest;` to
+      `use nros_board_common::{manifest, policy};`; the old
+      `packages/zpico/zpico-sys/build/{manifest,policy}.rs` copies
+      were deleted. Future per-kernel generic board crates
+      (`nros-board-freertos` 149.1.B, `nros-board-threadx`
+      149.2.B) consume the same library via `[build-dependencies]`
+      path dep.
+      `nros-board-common` declares `serde` + `toml` as regular
+      `[dependencies]` so consumers don't need to re-declare them
+      under `[build-dependencies]`. Library is build-host only —
+      never reaches a final binary.
+      Verified:
+      - `cargo check -p nros-board-common`
+      - `cargo check -p zpico-sys` (default features) — clean
+      - `cargo check -p zpico-sys --features posix` — clean
+      - `cargo check -p zpico-sys --features bare-metal --target thumbv7m-none-eabi --no-default-features` — clean
+      - `test_talker_listener_communication` + `test_tls_talker_listener_communication` native E2E pass.
 
 - [ ] **149.6 — Overlay-crate template + cookbook.**
       `templates/overlay-board/` cookiecutter-style skeleton + book

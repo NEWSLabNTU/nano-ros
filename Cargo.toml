@@ -13,6 +13,10 @@ members = [
     # Build-script helper: extracts Rust type sizes from a compiled rlib so
     # nros-c/nros-cpp can size their opaque storage from Rust's size_of.
     "packages/core/nros-sizes-build",
+    # Phase 149.5 — shared build-script helpers (manifest parser +
+    # link-feature policy) consumed by zpico-sys + the per-kernel
+    # generic board crates as `[build-dependencies]`.
+    "packages/boards/nros-board-common",
     # Zenoh-pico FFI bindings
     "packages/zpico/zpico-sys",
     # Free-list allocator for z_malloc/z_free on bare-metal
