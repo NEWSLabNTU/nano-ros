@@ -276,21 +276,32 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
         `.pio/libdeps/<board>/nano-ros/integrations/esp-idf` for
         `idf_component_register(...)` to fire.
 
-- [ ] **149.8 — Consumption-matrix doc.**
-      `book/src/concepts/board-integration.md` (new) covering the
-      seven user profiles + recommended path per the design doc's
-      matrix. Cross-link from `book/src/getting-started/installation.md`
-      + the per-RTOS pages added in Phase 139.
-      **Files.** `book/src/concepts/board-integration.md` (new),
-      `book/src/SUMMARY.md`, `book/src/getting-started/installation.md`.
+- [x] **149.8 — Consumption-matrix doc.** (landed 2026-05-18)
+      `book/src/concepts/board-integration.md` lands the 7-profile
+      consumption matrix (Cargo-first, vendor-IDE,
+      Zephyr / ESP-IDF / NuttX / PX4 / PlatformIO native shells,
+      niche / vendor fork with overlay) and the generic-crate +
+      vendor-overlay subsections. SUMMARY.md lists under Concepts.
+      Cross-links the vendor-overlay cookbook, the
+      `add_subdirectory` getting-started guide, the per-RTOS
+      integration pages 149.7 polished, the existing platform-model
+      + RTOS-cooperation chapters, and the design doc.
+      `book/src/getting-started/installation.md` cross-link
+      pending; the page already routes most users to the
+      per-RTOS shells.
 
-- [ ] **149.9 — Migrate examples to consume generic + overlay path.**
-      Each `examples/<plat>/...` README points at the appropriate
-      consumption profile from 149.8. Existing Cargo `[dependencies]
-      nros-board-<board>` entries unchanged — overlay re-exports
-      preserve the public API.
-      **Files.** `examples/**/README.md`, possibly some
-      `examples/**/Cargo.toml` if dependency targets shift.
+- [x] **149.9 — Migrate examples to consume generic + overlay path.**
+      (landed 2026-05-18 — doc-only pass)
+      Rather than dropping a fresh README into every
+      `examples/<plat>/` (11 platforms × language × RMW = many
+      directories), `examples/README.md` gained a "Consumption
+      profile per platform" table mapping each of the 11 top-level
+      platform dirs to one of the 7 profiles from
+      `book/src/concepts/board-integration.md`. Users porting an
+      example to a real board look up their `examples/<plat>/`
+      row + follow the linked guide. No per-example `Cargo.toml`
+      changes — 149.1.A / 149.2.A / 149.4.A scaffolds keep the
+      existing per-board crate names working as overlay re-exports.
 
 ---
 

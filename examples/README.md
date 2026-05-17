@@ -103,6 +103,31 @@ Test / bench / smoke binaries are NOT under `examples/`. They live with the inte
 
 Each is a standalone Cargo package with an empty `[workspace]` table (they nest under the `nros-tests` workspace member).
 
+## Consumption profile per platform
+
+Each `examples/<plat>/` tree maps to one of the seven consumption
+profiles from [`book/src/concepts/board-integration.md`](../book/src/concepts/board-integration.md).
+The mapping tells you which guide to read when porting one of these
+examples to your own board.
+
+| `examples/<plat>/` | Profile | Guide |
+|---|---|---|
+| `native/` | Host POSIX | Just `cargo run` — no integration shell needed. |
+| `qemu-arm-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
+| `qemu-arm-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
+| `qemu-arm-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |
+| `qemu-esp32-baremetal/` | Cargo-first bare-metal | Bare-metal `esp-hal` path; same generic-crate flow as `qemu-arm-baremetal`. |
+| `qemu-riscv64-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
+| `threadx-linux/` | Linux sim (CI) | Same as `qemu-riscv64-threadx` but with NSOS host-kernel sockets shim. |
+| `esp32/` | ESP-IDF native shell | [ESP-IDF integration shell](../book/src/getting-started/integration-esp-idf.md) — `idf.py add-dependency nano-ros`. |
+| `stm32f4/` | Vendor-IDE (STM32CubeIDE) | [`add_subdirectory(third_party/nano-ros)`](../book/src/getting-started/build-as-subdirectory.md) from the Cube-generated project, OR Cargo-first with a `nros-board-stm32f4-freertos` [vendor overlay](../book/src/porting/vendor-overlay.md). |
+| `zephyr/` | Zephyr native shell | [Zephyr integration shell](../book/src/getting-started/integration-zephyr.md) — `projects:` entry in your `west.yml`. |
+| `px4/` | PX4 native shell | [PX4 integration shell](../book/src/getting-started/integration-px4.md) — `EXTERNAL_MODULES_LOCATION`. |
+
+When in doubt, read [Board Integration](../book/src/concepts/board-integration.md)
+first — it explains why each profile exists and which one fits your
+project's build system.
+
 ## Quick start
 
 Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` (`build/zenohd/zenohd --listen tcp/127.0.0.1:7447`). C/C++ examples consume nano-ros via `add_subdirectory(<repo>)` from their own `CMakeLists.txt` (Phase 140); no install step required.
