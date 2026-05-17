@@ -19,6 +19,10 @@ name = "nros_board_freertos"
 # this crate today and get the same surface; the build-glue
 # refactor happens transparently.
 [dependencies]
+# 152.1.B.5 — `BoardInit` / `BoardPrint` / `BoardExit` traits the
+# generic `run<B>` is generic over. Trait-only surface; no
+# build-script transitive deps pulled.
+nros-board-common = { path = "../nros-board-common", default-features = false }
 nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", default-features = false, optional = true }
 
 [build-dependencies]
@@ -34,3 +38,10 @@ default = []
 # existing reference-board glue without naming the underlying
 # crate. Will become unnecessary once 152.1.B finishes.
 reference-mps2 = ["dep:nros-board-mps2-an385-freertos"]
+
+# 152.1.B.5 — when an overlay forwards its own `rmw-zenoh`
+# feature here, the generic `run<B>`'s `app_task_entry` calls
+# `zpico_set_task_config` to tune zenoh-pico's read/lease
+# task priorities from `Config`. DDS-only builds leave it
+# off and reach the linker without the FFI call.
+rmw-zenoh = []

@@ -264,19 +264,34 @@ delta:
       `packages/boards/nros-board-mps2-an385-freertos/build.rs`
       (~600 LOC delete).
 
-- [ ] **152.1.B.5 — `Config` + `run` lift into generic crate.**
-      Move the `Config` struct (TOML loader + IP/MAC parsing) +
-      the `run<F>` entry point (`xTaskCreate` + scheduler start +
-      poll-task spawn) from `nros-board-mps2-an385-freertos/src/`
-      into `nros-board-freertos/src/`. Overlay re-exports both via
-      `pub use nros_board_freertos::{Config, run};` (152.1.A's
-      `reference-mps2` feature becomes unconditional default).
-      The `init_hardware` symbol stays per-overlay (different
-      boards need different peripheral wakes).
-      **Files.** `packages/boards/nros-board-freertos/src/{config.rs,
-      node.rs, error.rs, lib.rs}`,
-      `packages/boards/nros-board-mps2-an385-freertos/src/lib.rs`
-      (shrinks to ~30 LOC re-exports + `init_hardware`).
+- [x] **152.1.B.5 — `Config` + `run` lift into generic crate.**
+      (landed 2026-05-18)
+      `node.rs` (~380 LOC of FreeRTOS-task plumbing) lifted from
+      `nros-board-mps2-an385-freertos/src/` into
+      `nros-board-freertos/src/node.rs`. The board-specific
+      divergence (cortex_m_semihosting print, QEMU semihosting
+      exit) is captured by two new traits in
+      `nros_board_common::board_init`:
+      `BoardPrint::println(format_args!)` +
+      `BoardExit::{exit_success, exit_failure}`. Generic
+      `nros_board_freertos::run<B: BoardInit<Config=Config> +
+      BoardPrint + BoardExit, F, E>` calls
+      `B::println(format_args!(...))` for every banner line and
+      `B::exit_success() / B::exit_failure()` at every termination
+      point.
+      Overlay's `lib.rs` shrunk to ~130 LOC: trait impls for
+      `Mps2An385` + thin non-generic `run(Config, F) -> !` wrapper
+      that calls `nros_board_freertos::run::<Mps2An385, F, E>` so
+      users keep their existing call shape. `run` + `init_hardware`
+      stay re-exported.
+      The `rmw-zenoh` feature in the generic crate forwards from
+      the overlay's `rmw-zenoh` to keep the
+      `zpico_set_task_config` FFI cfg-gated.
+      Verified: `just freertos build` + `just freertos test` clean.
+      The pre-existing `Transport(ConnectionFailed)` failure on
+      `test_rtos_pubsub_e2e::platform_1_Platform__Freertos::*`
+      reproduces unchanged with `git stash` on top of `e9d100e0`
+      — not a 152.1.B.5 regression; tracked separately.
 
 - [x] **152.1.B.6 — Verify matrix.** (landed 2026-05-18)
       - `cargo build --release --target thumbv7m-none-eabi` for

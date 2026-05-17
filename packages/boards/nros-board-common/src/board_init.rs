@@ -61,3 +61,39 @@ pub trait BoardInit {
     /// calls (clock tree, pin mux, peripheral wakes) go here.
     fn init_hardware(cfg: &Self::Config);
 }
+
+/// Per-board stdout contract for the generic kernel-family `run`
+/// to emit banner / status / error messages without knowing
+/// whether the board writes to QEMU semihosting, a UART, an
+/// FSP debug TCU, or something else.
+///
+/// Implementing overlays typically wrap one of:
+///
+/// - `cortex_m_semihosting::hprintln!` (QEMU Cortex-M boards)
+/// - Vendor printf bridge (orin-spe `tcu_print_msg`, NXP DCD)
+/// - Serial UART writer
+///
+/// The signature takes `core::fmt::Arguments` so the generic
+/// crate can pass `format_args!(...)` directly without forcing
+/// any allocation or fixed-size buffer at the trait level —
+/// each board picks its own staging strategy.
+pub trait BoardPrint {
+    /// Emit a line ending with `\n`.
+    fn println(args: core::fmt::Arguments<'_>);
+}
+
+/// Per-board exit contract for the generic kernel-family `run`
+/// to terminate after the user closure returns.
+///
+/// QEMU boards typically call `cortex_m_semihosting::debug::exit`.
+/// Real-hardware boards may reset the chip, halt in a `wfi`
+/// loop, or signal a watchdog. Both methods diverge (`-> !`)
+/// because the generic `run` itself is `-> !` and never returns.
+pub trait BoardExit {
+    /// Terminate after a successful user closure.
+    fn exit_success() -> !;
+
+    /// Terminate after a user closure returned `Err` or an
+    /// init step failed.
+    fn exit_failure() -> !;
+}

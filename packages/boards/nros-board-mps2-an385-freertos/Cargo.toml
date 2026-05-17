@@ -44,4 +44,4 @@ default = ["rmw-zenoh"]
 # `zpico_set_task_config` call that tunes its read/lease task
 # priorities. DDS-only examples can `default-features = false` to
 # drop both the optional deps and the FFI call.
-rmw-zenoh = ["dep:zpico-sys"]
+rmw-zenoh = ["dep:zpico-sys", "nros-board-freertos/rmw-zenoh"]
