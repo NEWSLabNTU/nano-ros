@@ -1,6 +1,6 @@
 # Phase 127 Remaining Failure Groups
 
-Date: 2026-05-15
+Date: 2026-05-15 (last update 2026-05-17)
 
 Phase 127 tracks the remaining post-Phase-124 failure work as parallelizable
 groups. Historical Phase 124 run details remain in
@@ -8,6 +8,32 @@ groups. Historical Phase 124 run details remain in
 
 Group identifiers are `127.A` through `127.G`. Subtasks use dotted suffixes
 such as `127.A.1`.
+
+## Scoreboard (2026-05-17)
+
+| Group | Status | Notes |
+|---|---|---|
+| 127.A — ESP32 Zenoh Delivery | ✓ closed | 9/9 `esp32_emulator` |
+| 127.B — RTOS/QEMU Platform E2E | mostly closed | refreshed-count entry only |
+| 127.C — Zephyr Runtime/E2E | open | C.3 DDS-action A9 + C.4 XRCE service/action |
+| 127.D — Bare-Metal Zenoh QEMU | closed | D.3 forwarded to phase 132 |
+| 127.E — Native DDS Action | ✓ closed | |
+| 127.F — ROS 2 Lifecycle Interop | ✓ closed | |
+| 127.G — Full-Matrix Refresh | open | G.3 `just test-all` + refreshed table |
+
+Spun-out follow-ups (own phase docs):
+- [`phase-132-cmsdk-uart-irq-driven.md`](phase-132-cmsdk-uart-irq-driven.md)
+  — IRQ-driven CMSDK UART (replaces 127.D.3).
+
+Key infrastructure landed under 127:
+- `094cb65a` — `SmoltcpBridge::poll` TX-drain-before-iface.poll reorder.
+- `e776a01d` — opt-in WFI idle hook for MPS2 bare-metal (`enable_wfi_idle`).
+- `f06ded78` — `third-party/qemu/qemu` (v11.0.0) submodule +
+  `third-party/qemu/patches/0001-hw-net-lan9118-add-can_receive-flush-on-FIFO-drain.patch`,
+  built via `just qemu setup-qemu` and wired into top-level `just setup`.
+- `ec08d948` — zenoh-pico bare-metal reply-dispatch LTO alias-defeat in
+  `zpico.c::pending_get_reply_handler` / `zpico_get_check` /
+  `zpico_liveliness_get_check`. Closed D.1 + D.2.
 
 ## Current Baseline
 
