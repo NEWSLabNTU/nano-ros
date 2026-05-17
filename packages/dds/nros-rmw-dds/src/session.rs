@@ -58,6 +58,20 @@ mod no_listener {
 pub struct DdsSession {
     #[cfg(feature = "std")]
     participant: dust_dds::domain::domain_participant::DomainParticipant,
+    /// Phase 124.G.2 — topic cache. dust-dds errors out with
+    /// `PreconditionNotMet("Topic with name X already exists")`
+    /// when `create_topic` is called twice for the same name —
+    /// hit when a single Node creates a sub then a pub on the
+    /// same topic, or when the bridge pattern wires sub-on-A
+    /// + pub-on-B over the same topic name. Cache the
+    /// `TopicDescription` per topic name and reuse.
+    #[cfg(feature = "std")]
+    topic_cache: std::sync::Mutex<
+        std::collections::HashMap<
+            std::string::String,
+            dust_dds::topic_definition::topic_description::TopicDescription,
+        >,
+    >,
     /// Async participant — used on the no_std path. Methods are
     /// driven through `runtime.block_on(...)`.
     #[cfg(all(feature = "nostd-runtime", not(feature = "std")))]
@@ -88,10 +102,56 @@ impl DdsSession {
     ) -> Self {
         Self {
             participant,
+            topic_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
             _domain_id: domain_id,
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
         }
+    }
+
+    /// Phase 124.G.2 — get-or-create the typed `Topic<RawCdrPayload>`
+    /// for `topic_name`. Reuses a cached `Topic` if the same name has
+    /// already been registered (sub + pub on the same topic, or two
+    /// nodes sharing the topic). dust-dds errors out
+    /// `PreconditionNotMet` on a duplicate `create_topic` call; the
+    /// cache absorbs that into a clone of the previously created
+    /// handle.
+    #[cfg(feature = "std")]
+    fn get_or_create_topic(
+        &mut self,
+        topic_name: &str,
+    ) -> Result<dust_dds::topic_definition::topic_description::TopicDescription, TransportError> {
+        use crate::raw_type::RawCdrPayload;
+        use dust_dds::infrastructure::{qos::QosKind, status::NO_STATUS, type_support::TypeSupport};
+
+        {
+            let cache = self
+                .topic_cache
+                .lock()
+                .map_err(|_| TransportError::PublisherCreationFailed)?;
+            if let Some(t) = cache.get(topic_name) {
+                return Ok(t.clone());
+            }
+        }
+        let topic = self
+            .participant
+            .create_topic::<RawCdrPayload>(
+                topic_name,
+                RawCdrPayload::get_type_name(),
+                QosKind::Default,
+                None::<()>,
+                NO_STATUS,
+            )
+            .map_err(|e| {
+                eprintln!("[dds diag] create_topic '{}' failed: {:?}", topic_name, e);
+                TransportError::PublisherCreationFailed
+            })?;
+        let mut cache = self
+            .topic_cache
+            .lock()
+            .map_err(|_| TransportError::PublisherCreationFailed)?;
+        cache.insert(topic_name.to_string(), topic.clone());
+        Ok(topic)
     }
 
     /// Constructor used by the no_std path (Phase 71.2 transport).
@@ -321,19 +381,9 @@ impl Session for DdsSession {
             use dust_dds::infrastructure::{
                 qos::QosKind,
                 status::{NO_STATUS, StatusKind},
-                type_support::TypeSupport,
             };
 
-            let dds_topic = self
-                .participant
-                .create_topic::<RawCdrPayload>(
-                    topic.name,
-                    RawCdrPayload::get_type_name(),
-                    QosKind::Default,
-                    None::<()>,
-                    NO_STATUS,
-                )
-                .map_err(|_| TransportError::PublisherCreationFailed)?;
+            let dds_topic = self.get_or_create_topic(topic.name)?;
 
             let publisher = self
                 .participant
@@ -351,7 +401,10 @@ impl Session for DdsSession {
                         StatusKind::OfferedDeadlineMissed,
                     ],
                 )
-                .map_err(|_| TransportError::PublisherCreationFailed)?;
+                .map_err(|e| {
+                    eprintln!("[dds diag] create_datawriter '{}' failed: {:?}", topic.name, e);
+                    TransportError::PublisherCreationFailed
+                })?;
 
             Ok(DdsPublisher::new(writer, shared))
         }
@@ -433,18 +486,10 @@ impl Session for DdsSession {
             use dust_dds::infrastructure::{
                 qos::QosKind,
                 status::{NO_STATUS, StatusKind},
-                type_support::TypeSupport,
             };
 
             let dds_topic = self
-                .participant
-                .create_topic::<RawCdrPayload>(
-                    topic.name,
-                    RawCdrPayload::get_type_name(),
-                    QosKind::Default,
-                    None::<()>,
-                    NO_STATUS,
-                )
+                .get_or_create_topic(topic.name)
                 .map_err(|_| TransportError::SubscriberCreationFailed)?;
 
             let subscriber = self

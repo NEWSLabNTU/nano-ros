@@ -45,10 +45,11 @@ const MESSAGE_COUNT: u32 = 50;
 const DELIVERY_BUDGET: Duration = Duration::from_secs(10);
 
 #[rstest]
-#[ignore = "Node B (rmw='dds') pub-creation fails with PublisherCreationFailed; \
-            dust-DDS extra_session opens via NodeBuilder::rmw but its create_publisher \
-            errors when invoked from a multi-backend Executor — distinct integration \
-            gap from zenoh-pico's dual-session limit"]
+#[ignore = "Phase 124.G.2 dust-DDS topic-cache landed (writer + reader on the same \
+            participant no longer trip PreconditionNotMet); test runs end-to-end but \
+            delivers 0/N — same-participant local loopback isn't wired in dust-DDS \
+            by default. Needs either an explicit `ignore_self` toggle or two dust-DDS \
+            participants (one per Node) and discovery between them"]
 fn bridge_zenoh_to_dds_delivers_99pct(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");

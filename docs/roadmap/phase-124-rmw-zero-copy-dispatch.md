@@ -1070,15 +1070,28 @@ new test fixture rather than backend code change.
       `#[ignore]`'d). Single Executor with two Nodes per
       Phase 104.B's bridge topology: Node A on the primary
       session (rmw zenoh-pico), Node B on an extra session
-      opened via `NodeBuilder::rmw("dds")` (dust-DDS). Node
-      B's `create_publisher_raw` returns
-      `PublisherCreationFailed` — distinct integration gap
-      from the zenoh-pico dual-session limit. Likely cause:
-      dust-DDS's session-create path expects single-instance
-      participant state and doesn't compose with a
-      zenoh-primary Executor today. Needs dust-DDS shim work
-      to allow being opened as an `extra_session` alongside
-      another backend.
+      opened via `NodeBuilder::rmw("dds")` (dust-DDS).
+
+      Progress this phase:
+        * **Fixed:** dust-DDS shim's `create_publisher_raw`
+          previously errored with
+          `PreconditionNotMet("Topic with name X already
+          exists")` whenever a Node registered a sub then a
+          pub on the same topic (or sub-on-A + pub-on-B in
+          the bridge pattern). `DdsSession` now caches typed
+          `TopicDescription`s per topic name and reuses on
+          duplicate registration. `create_publisher_raw` /
+          `create_subscriber` go through `get_or_create_topic`
+          and the test now runs end-to-end with 0 dust-DDS
+          create errors.
+
+      Remaining: same-participant local loopback isn't
+      enabled in dust-DDS by default, so the Node-B reader
+      doesn't see what the Node-B writer publishes. Need
+      either an explicit `ignore_self` toggle on the dust-DDS
+      shim or one dust-DDS participant per Node (with
+      discovery wiring between them). Out of scope for
+      Phase 124.
 
 - [ ] **124.G.3 — `server_available()` flips false→true within
       100 ms.** Test stub landed in
