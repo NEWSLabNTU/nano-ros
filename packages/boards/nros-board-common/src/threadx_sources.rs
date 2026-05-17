@@ -106,6 +106,35 @@ pub fn add_threadx_port_sources(
 /// glue.file(manifest_dir.join("c/board_threadx_linux.c"));
 /// glue.compile("glue");
 /// ```
+/// Phase 152.2.B.2 — `THREADX_CFLAGS` env wiring.
+///
+/// Appends every space-separated flag from the `THREADX_CFLAGS`
+/// environment variable to `build` and emits the matching
+/// `cargo:rerun-if-env-changed=THREADX_CFLAGS` so a future
+/// generic `nros-board-threadx` `build.rs` (152.2.B.3) and the
+/// existing per-overlay `build.rs` files share one canonical
+/// extension point for arch flags.
+///
+/// Empty / unset = no-op (host-native builds need no extra flags).
+/// Typical overlay-set values:
+///
+///   - `nros-board-threadx-linux`: unset (host gcc).
+///   - `nros-board-threadx-qemu-riscv64`:
+///     `-march=rv64gc -mabi=lp64d -mcmodel=medany`
+///   - Future Cortex-M ThreadX overlay:
+///     `-mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard`
+///
+/// Overlays typically set the var in their `.cargo/config.toml
+/// [env]` block so every `cargo` invocation sees it.
+pub fn apply_threadx_cflags(build: &mut cc::Build) {
+    if let Ok(cflags) = std::env::var("THREADX_CFLAGS") {
+        for flag in cflags.split_whitespace() {
+            build.flag(flag);
+        }
+    }
+    println!("cargo:rerun-if-env-changed=THREADX_CFLAGS");
+}
+
 pub fn add_threadx_hooks_source(build: &mut cc::Build) {
     const HOOKS_C: &str = include_str!("../c/threadx_hooks.c");
     let out_dir = std::path::PathBuf::from(

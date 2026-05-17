@@ -286,6 +286,12 @@ fn configure_riscv64(build: &mut cc::Build) {
     if let Some(sysroot) = get_picolibc_sysroot() {
         build.include(sysroot.join("include"));
     }
+
+    // Phase 152.2.B.2 — `THREADX_CFLAGS` extension point. RISC-V
+    // overlay's `.cargo/config.toml` may set additional flags
+    // (e.g. `-mtune=…`); appending here keeps overlay-specific
+    // tunables out of this build.rs.
+    nros_board_common::threadx_sources::apply_threadx_cflags(build);
 }
 
 /// Get the picolibc sysroot path for RISC-V (provides C standard library headers).
