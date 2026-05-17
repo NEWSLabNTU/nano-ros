@@ -1,21 +1,27 @@
 cmake_minimum_required(VERSION 3.22)
-project(riscv64_threadx_cpp_service_server LANGUAGES C CXX ASM)
+project(riscv64_threadx_cpp_service_server VERSION 0.1.0 LANGUAGES C CXX ASM)
 
-set(NANO_ROS_PLATFORM threadx_riscv64)
-find_package(NanoRos CONFIG REQUIRED)
-include(threadx-riscv64-support)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(NANO_ROS_PLATFORM threadx)
+set(NANO_ROS_RMW      zenoh)
+set(NANO_ROS_BOARD    riscv64-qemu)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
-
-add_executable(riscv64_threadx_cpp_service_server src/main.cpp ${THREADX_STARTUP_SOURCE})
-target_include_directories(riscv64_threadx_cpp_service_server PRIVATE ${THREADX_STARTUP_INCLUDES}
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
 nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
 nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
-target_link_options(riscv64_threadx_cpp_service_server PRIVATE -T${THREADX_LINKER_SCRIPT} --nmagic --gc-sections -u app_main)
-target_link_libraries(riscv64_threadx_cpp_service_server PRIVATE
-    example_interfaces__nano_ros_cpp NanoRos::NanoRosCpp threadx_platform)
 
+add_executable(riscv64_threadx_cpp_service_server src/main.cpp)
+target_include_directories(riscv64_threadx_cpp_service_server PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/include")
+target_link_libraries(riscv64_threadx_cpp_service_server PRIVATE
+    example_interfaces__nano_ros_cpp
+    NanoRos::NanoRosCpp)
+nros_platform_link_app(riscv64_threadx_cpp_service_server)
 nano_ros_link_rmw(riscv64_threadx_cpp_service_server RMW zenoh)
