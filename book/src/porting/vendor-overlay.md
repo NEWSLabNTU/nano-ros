@@ -26,7 +26,7 @@ build-script branch per vendor. The overlay pattern keeps the
 generic crate clean: nano-ros ships the kernel-family scaffolding,
 vendors / community ship the per-fork glue.
 
-See `docs/roadmap/phase-149-board-bsp-abstraction-layer.md` for the
+See `docs/roadmap/phase-152-board-bsp-abstraction-layer.md` for the
 phase that landed the architecture.
 
 ## Contract
@@ -145,7 +145,7 @@ run(Config::from_toml(include_str!("../config.toml")), |config| {
 ## Canonical in-tree precedent
 
 `packages/boards/nros-board-orin-spe/` is the canonical FSP-FreeRTOS
-overlay (Phase 149.3 refactors it explicitly into this shape):
+overlay (Phase 152.3 refactors it explicitly into this shape):
 
 - Re-exports `Config` + `run` from `nros-board-freertos`.
 - `build.rs` reads `NV_SPE_FSP_DIR`, pulls FreeRTOS V10.4.3 headers
@@ -247,13 +247,13 @@ Same flow as any Rust crate. Recommend:
 3. Tag a release on your repo for traceability.
 4. Open a PR against
    `book/src/getting-started/community-board-crates.md` (TODO —
-   landed by Phase 149.8) to add a link to your crate.
+   landed by Phase 152.8) to add a link to your crate.
 
 ## Related
 
 - `docs/design/board-bsp-integration-architecture.md` — the layered
   model + the consumption matrix.
-- `docs/roadmap/phase-149-board-bsp-abstraction-layer.md` — the
+- `docs/roadmap/phase-152-board-bsp-abstraction-layer.md` — the
   phase doc.
 - [Custom Board Package](custom-board.md) — older guide; covers
   monolithic board crates before the overlay split.

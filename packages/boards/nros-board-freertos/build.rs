@@ -1,4 +1,4 @@
-//! Phase 149.1.B.4 — generic FreeRTOS + lwIP + nros-platform-freertos
+//! Phase 152.1.B.4 — generic FreeRTOS + lwIP + nros-platform-freertos
 //! build pipeline carved out of `nros-board-mps2-an385-freertos/build.rs`.
 //!
 //! Compiles four static archives that any FreeRTOS + lwIP overlay
@@ -148,7 +148,7 @@ fn main() {
     // `c/freertos_hooks.c` provides the FreeRTOS task hooks +
     // semihosting helpers. `c/network_glue.c` provides the lwIP
     // init + FFI surface Rust calls; both invoke
-    // `nros_board_*` weak hooks the overlay implements (149.1.B.2).
+    // `nros_board_*` weak hooks the overlay implements (152.1.B.2).
     let mut glue = cc::Build::new();
     configure_cflags(&mut glue);
     add_freertos_includes(&mut glue, &freertos_dir, &port_dir, &freertos_config_dir);
@@ -185,7 +185,7 @@ fn env_path(name: &str) -> PathBuf {
 
 /// Shared cflag setup. Reads `FREERTOS_CFLAGS` env var
 /// (space-separated). Default cortex-m3 fallback matches the
-/// pre-149.1.B.3 behaviour for existing examples that haven't
+/// pre-152.1.B.3 behaviour for existing examples that haven't
 /// bumped their `.cargo/config.toml` yet.
 fn configure_cflags(build: &mut cc::Build) {
     build

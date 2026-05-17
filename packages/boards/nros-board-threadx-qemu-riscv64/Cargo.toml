@@ -15,7 +15,7 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
 
 [build-dependencies]
 cc = "1"
-# Phase 149.2.B — shared ThreadX kernel + port source helpers.
+# Phase 152.2.B — shared ThreadX kernel + port source helpers.
 nros-board-common = { path = "../nros-board-common" }
 
 [features]

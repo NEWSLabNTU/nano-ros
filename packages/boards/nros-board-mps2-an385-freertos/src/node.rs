@@ -10,7 +10,7 @@ use core::ffi::c_void;
 
 use cortex_m_semihosting::hprintln;
 
-// Phase 149.1.B.5 — `Config` + `Error` live in the generic
+// Phase 152.1.B.5 — `Config` + `Error` live in the generic
 // `nros-board-freertos` crate. `Error` and `Result` are
 // `pub(crate)` there; re-import via the dedicated `__board_lift`
 // re-export the generic crate exposes for overlays.

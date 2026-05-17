@@ -488,7 +488,7 @@ int8_t _z_socket_wait_event(void *peers, void *mutex) {
 
 /* Serial transport.
  *
- * Phase 149 — minimum stubs so `libnros_rmw_zenoh_staticlib.a` (which
+ * Phase 152 — minimum stubs so `libnros_rmw_zenoh_staticlib.a` (which
  * keeps `Z_FEATURE_LINK_SERIAL=1` to satisfy zenoh-pico's link-wrapper
  * layer in `src/link/unicast/serial.c` + `src/system/common/serial.c`)
  * links cleanly against platform_aliases.c. Stubs return `-1` / `0`

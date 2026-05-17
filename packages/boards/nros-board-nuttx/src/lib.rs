@@ -7,12 +7,12 @@
 //! `nros-board-{freertos, threadx}` siblings, this crate is THIN
 //! by design — NuttX owns the kernel build through its own
 //! `apps/external/nano-ros/` + `Make.defs` + `Kconfig` integration
-//! (see `integrations/nuttx/` and the Phase 149.7 polish). The
+//! (see `integrations/nuttx/` and the Phase 152.7 polish). The
 //! Cargo side only needs to ship `Config` + `run` + board-init
 //! hooks; there is no `build.rs` bundling the NuttX kernel
 //! sources here.
 //!
-//! ## 149.4.A scaffolding
+//! ## 152.4.A scaffolding
 //!
 //! Opt-in `reference-qemu-arm` feature re-exports `Config` + `run`
 //! from `nros-board-nuttx-qemu-arm` so future overlays
@@ -20,12 +20,12 @@
 //! depend on this crate name + can extend the `Config` shape +
 //! patch board-specific init via `#[no_mangle]` hooks.
 //!
-//! 149.4.B (deferred) carves the per-board `Config` / `init_hardware`
+//! 152.4.B (deferred) carves the per-board `Config` / `init_hardware`
 //! variation into a `BoardInit` trait so the per-board crate
 //! shrinks to a `pub struct MyBoard; impl BoardInit for MyBoard
 //! { ... }`. Today the per-board crate hand-rolls `Config`.
 //!
-//! ## Public contract (post-149.4.B)
+//! ## Public contract (post-152.4.B)
 //!
 //! - `Config` — TOML-loaded network + zenoh config.
 //! - `run(Config, FnOnce(&Config) -> Result<(), E>)` — entry point.
@@ -51,9 +51,9 @@
 
 #![cfg_attr(not(feature = "reference-qemu-arm"), no_std)]
 
-// Phase 149.4.B — re-export the kernel-agnostic BoardInit trait so
+// Phase 152.4.B — re-export the kernel-agnostic BoardInit trait so
 // overlays can `use nros_board_nuttx::BoardInit` without naming
-// nros-board-common directly. Once 149.4.B.2's overlay refactor
+// nros-board-common directly. Once 152.4.B.2's overlay refactor
 // lands, the per-board crate impls this trait and the generic
 // `run::<B>` shim below consumes it.
 pub use nros_board_common::BoardInit;
@@ -61,7 +61,7 @@ pub use nros_board_common::BoardInit;
 #[cfg(feature = "reference-qemu-arm")]
 pub use nros_board_nuttx_qemu_arm::{Config, init_hardware, run};
 
-/// Phase 149.4.B — generic NuttX entry point.
+/// Phase 152.4.B — generic NuttX entry point.
 ///
 /// Drives every NuttX overlay's boot: invokes the board's
 /// `BoardInit::init_hardware`, sleeps briefly for NuttX

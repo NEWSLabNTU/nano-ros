@@ -1,4 +1,4 @@
-//! Phase 149.2.B — shared ThreadX kernel + port source helpers.
+//! Phase 152.2.B — shared ThreadX kernel + port source helpers.
 //!
 //! Both `nros-board-threadx-linux` and `nros-board-threadx-qemu-riscv64`
 //! (and the future generic `nros-board-threadx` crate) enumerate the

@@ -1,5 +1,5 @@
 ############################################################################
-# Phase 139.4 / 149.7 — NuttX integration shell (Makefile).
+# Phase 139.4 / 152.7 — NuttX integration shell (Makefile).
 #
 # NuttX app Makefile. Invokes `cargo build` in the NuttX `context::`
 # phase via `apps/tools/Rust.mk` macros, then leaves the link to

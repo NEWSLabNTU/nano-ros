@@ -78,7 +78,7 @@ ESP-IDF has no first-party Rust integration; the bridge is the
 [`esp-rs`](https://github.com/esp-rs) stack. `esp-idf-sys`'s
 `build.rs` can build ESP-IDF natively (via `embuild`) and inject
 extra components into that build tree using the
-`[package.metadata.esp-idf-sys]` keys in `Cargo.toml`. Phase 149.7
+`[package.metadata.esp-idf-sys]` keys in `Cargo.toml`. Phase 152.7
 documents this as the canonical path for nano-ros users who want to
 drive their build from Cargo rather than `idf.py`.
 

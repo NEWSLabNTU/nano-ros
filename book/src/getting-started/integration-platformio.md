@@ -55,7 +55,7 @@ sources directly.
 
 ## ESP-IDF gotcha — `lib_deps` ≠ IDF component
 
-Phase 149.7 documents a sharp edge: PlatformIO's `lib_deps` resolves
+Phase 152.7 documents a sharp edge: PlatformIO's `lib_deps` resolves
 libraries into `.pio/libdeps/<board>/<name>/`, but those resolved
 libraries are **not** automatically registered as ESP-IDF
 components. `idf_component_register(...)` in the library's

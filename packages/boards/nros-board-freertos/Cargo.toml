@@ -3,7 +3,7 @@ name = "nros-board-freertos"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Generic FreeRTOS + lwIP board scaffolding for nano-ros (Phase 149.1 — overlay foundation)"
+description = "Generic FreeRTOS + lwIP board scaffolding for nano-ros (Phase 152.1 — overlay foundation)"
 authors = ["nano-ros contributors"]
 repository = "https://github.com/NEWSLabNTU/nano-ros"
 keywords = ["nano-ros", "ros2", "freertos", "lwip", "embedded"]
@@ -12,9 +12,9 @@ categories = ["embedded", "no-std", "hardware-support"]
 [lib]
 name = "nros_board_freertos"
 
-# Phase 149.1.A scaffolding — re-exports the existing
+# Phase 152.1.A scaffolding — re-exports the existing
 # `nros-board-mps2-an385-freertos` `Config` + `run` shape until
-# 149.1.B carves the kernel + lwIP build glue out of the per-board
+# 152.1.B carves the kernel + lwIP build glue out of the per-board
 # build.rs into this crate's own build.rs. Overlay crates depend on
 # this crate today and get the same surface; the build-glue
 # refactor happens transparently.
@@ -22,7 +22,7 @@ name = "nros_board_freertos"
 nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", default-features = false, optional = true }
 
 [build-dependencies]
-# 149.1.B.4 — generic build.rs compiles FreeRTOS kernel + lwIP +
+# 152.1.B.4 — generic build.rs compiles FreeRTOS kernel + lwIP +
 # nros-platform-freertos + the board-agnostic glue (freertos_hooks +
 # network_glue). Overlays' build.rs only need to handle their own
 # driver + linker script + libc discovery.
@@ -32,5 +32,5 @@ cc = "1.0"
 default = []
 # Convenience feature for downstream overlays that want the
 # existing reference-board glue without naming the underlying
-# crate. Will become unnecessary once 149.1.B finishes.
+# crate. Will become unnecessary once 152.1.B finishes.
 reference-mps2 = ["dep:nros-board-mps2-an385-freertos"]

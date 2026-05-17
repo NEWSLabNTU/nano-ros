@@ -3,7 +3,7 @@
 //! **Shared build-script helpers for nano-ros board crates.**
 //!
 //! Houses the manifest parser + link-feature policy lifted out of
-//! `packages/zpico/zpico-sys/build/` in Phase 149.5 so the
+//! `packages/zpico/zpico-sys/build/` in Phase 152.5 so the
 //! per-kernel generic crates (`nros-board-{freertos, threadx,
 //! nuttx}`) and `zpico-sys` can share one canonical implementation.
 //!

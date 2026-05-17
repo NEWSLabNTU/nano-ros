@@ -1,10 +1,10 @@
 ############################################################################
-# Phase 139.4 / 149.7 — NuttX integration shell (Make.defs).
+# Phase 139.4 / 152.7 — NuttX integration shell (Make.defs).
 #
 # NuttX apps under `apps/external/<name>/` are discovered when this
 # file exists. Inclusion is gated on CONFIG_NROS (Kconfig sibling).
 #
-# Phase 149.7 — wire upstream `apps/tools/Rust.mk` so the Cargo
+# Phase 152.7 — wire upstream `apps/tools/Rust.mk` so the Cargo
 # build of `nros-c` / `nros-cpp` runs in the NuttX `context::` phase
 # and the resulting staticlib lands on `EXTRA_LIBS` for the
 # monolithic link. The Makefile sibling owns the `context::` hook;

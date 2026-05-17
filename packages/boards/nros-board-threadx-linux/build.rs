@@ -48,7 +48,7 @@ fn main() {
     );
 
     // ---- Build ThreadX kernel ----
-    // Phase 149.2.B — kernel + port source enumeration moved to
+    // Phase 152.2.B — kernel + port source enumeration moved to
     // `nros_board_common::threadx_sources` so both ThreadX
     // overlays (Linux sim + RISC-V QEMU) + the future generic
     // crate share one canonical list. ThreadX-kernel submodule

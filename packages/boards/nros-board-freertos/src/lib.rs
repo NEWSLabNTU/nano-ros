@@ -10,20 +10,20 @@
 //!
 //! ## Status
 //!
-//! - 149.1.A — scaffolding crate (façade).
-//! - 149.1.B.1 — `STARTUP_C` const split into three checked-in C
+//! - 152.1.A — scaffolding crate (façade).
+//! - 152.1.B.1 — `STARTUP_C` const split into three checked-in C
 //!   files.
-//! - 149.1.B.2 — board-Ethernet weak-hook contract
+//! - 152.1.B.2 — board-Ethernet weak-hook contract
 //!   (`nros_board_register_netif` + `nros_board_poll_netif`).
-//! - 149.1.B.3 — `FREERTOS_CFLAGS` env-var arch parameterisation.
-//! - 149.1.B.4 — FreeRTOS kernel + lwIP + nros-platform-freertos
+//! - 152.1.B.3 — `FREERTOS_CFLAGS` env-var arch parameterisation.
+//! - 152.1.B.4 — FreeRTOS kernel + lwIP + nros-platform-freertos
 //!   compile lifted into this crate's `build.rs`. Emits
 //!   `lib{freertos, lwip, nros_platform_freertos, freertos_glue}.a`.
-//! - 149.1.B.5 — `Config` struct + `Error` enum lifted into this
+//! - 152.1.B.5 — `Config` struct + `Error` enum lifted into this
 //!   crate's `src/`. `node.rs` (~381 LOC of FreeRTOS-task plumbing
 //!   that semihosts via `cortex_m_semihosting` and exits via QEMU
 //!   semihosting) stays per-board until a `BoardPrint` /
-//!   `BoardExit` trait abstraction lands (coupled with 149.4.B's
+//!   `BoardExit` trait abstraction lands (coupled with 152.4.B's
 //!   `BoardInit` trait).
 //!
 //! ## Public contract
@@ -59,17 +59,17 @@ mod error;
 pub use config::Config;
 
 /// Internal re-export of the `Error` + `Result` types used by
-/// per-board `node.rs` files during the 149.1.B.5 → final-lift
+/// per-board `node.rs` files during the 152.1.B.5 → final-lift
 /// transition. Overlays import via `nros_board_freertos::__internal::*`.
 /// The path is intentionally private-looking; once `node.rs` lifts
-/// into this crate (coupled with 149.4.B's `BoardInit` trait), the
+/// into this crate (coupled with 152.4.B's `BoardInit` trait), the
 /// module goes away.
 #[doc(hidden)]
 pub mod __internal {
     pub use crate::error::{Error, Result};
 }
 
-// 149.1.A scaffolding re-export — kept for downstream consumers
+// 152.1.A scaffolding re-export — kept for downstream consumers
 // that switched to `nros-board-freertos = { features = ["reference-mps2"] }`
 // during the .A → .B transition. The `Config` re-export now wins
 // (both crates export the same type via this crate's `pub use

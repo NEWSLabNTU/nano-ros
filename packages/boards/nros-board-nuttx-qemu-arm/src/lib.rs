@@ -41,7 +41,7 @@ mod node;
 
 pub use config::Config;
 
-/// Phase 149.4.B — `BoardInit` impl for the QEMU ARM virt board.
+/// Phase 152.4.B — `BoardInit` impl for the QEMU ARM virt board.
 ///
 /// Provides `Config` + `init_hardware` per the kernel-agnostic
 /// contract `nros_board_common::BoardInit`. The

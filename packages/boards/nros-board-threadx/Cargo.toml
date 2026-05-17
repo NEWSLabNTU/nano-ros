@@ -3,7 +3,7 @@ name = "nros-board-threadx"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Generic ThreadX + NetX-Duo board scaffolding for nano-ros (Phase 149.2 — overlay foundation)"
+description = "Generic ThreadX + NetX-Duo board scaffolding for nano-ros (Phase 152.2 — overlay foundation)"
 authors = ["nano-ros contributors"]
 repository = "https://github.com/NEWSLabNTU/peripherals"
 keywords = ["nano-ros", "ros2", "threadx", "netx-duo", "embedded"]
@@ -12,9 +12,9 @@ categories = ["embedded", "no-std", "hardware-support"]
 [lib]
 name = "nros_board_threadx"
 
-# Phase 149.2.A scaffolding — re-exports `Config` + `run` from the
+# Phase 152.2.A scaffolding — re-exports `Config` + `run` from the
 # existing per-board ThreadX crates behind opt-in features. Once
-# 149.2.B carves the kernel + NetX-Duo + nros-platform-threadx
+# 152.2.B carves the kernel + NetX-Duo + nros-platform-threadx
 # build glue out of the per-board build.rs into this crate's own
 # build.rs, overlays depend on this name + the wiring switches
 # transparently.

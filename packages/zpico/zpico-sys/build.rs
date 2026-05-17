@@ -12,7 +12,7 @@ use std::{
     process::Command,
 };
 
-// Phase 149.5 — manifest parser + link-feature policy live in the
+// Phase 152.5 — manifest parser + link-feature policy live in the
 // shared `nros-board-common` library. zpico-sys pulls them as
 // build-deps; the old `zpico-sys/build/{manifest,policy}.rs`
 // copies were deleted so there's only one canonical source.

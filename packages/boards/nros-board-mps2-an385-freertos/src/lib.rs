@@ -36,7 +36,7 @@ extern crate zpico_sys;
 
 mod node;
 
-// Phase 149.1.B.5 — `Config` + `Error` live in the generic
+// Phase 152.1.B.5 — `Config` + `Error` live in the generic
 // `nros-board-freertos` crate. Re-export `Config` here so existing
 // `use nros_board_mps2_an385_freertos::Config` consumers keep
 // compiling. `node.rs` (board-specific FreeRTOS task plumbing +

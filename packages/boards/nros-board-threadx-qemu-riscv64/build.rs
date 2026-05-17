@@ -61,7 +61,7 @@ fn main() {
     configure_riscv64(&mut threadx);
     add_threadx_includes(&mut threadx, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
 
-    // Phase 149.2.B — kernel + port-C source enumeration moved to
+    // Phase 152.2.B — kernel + port-C source enumeration moved to
     // `nros_board_common::threadx_sources`. The helper covers the
     // identical loops both ThreadX overlays used. RISC-V-specific
     // assembly files + the board's own `.S` overrides stay

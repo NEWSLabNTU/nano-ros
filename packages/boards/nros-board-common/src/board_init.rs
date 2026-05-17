@@ -1,4 +1,4 @@
-//! Phase 149.4.B — `BoardInit` trait.
+//! Phase 152.4.B — `BoardInit` trait.
 //!
 //! Kernel-agnostic contract every per-board overlay implements so
 //! a generic kernel-family crate (`nros-board-freertos`,

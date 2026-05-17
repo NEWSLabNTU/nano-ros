@@ -45,7 +45,7 @@ fn main() {
     let nros_trace = env::var("NROS_TRACE").unwrap_or_default() == "1";
     println!("cargo:rerun-if-env-changed=NROS_TRACE");
 
-    // Phase 149.1.B.4 — FreeRTOS kernel + lwIP + nros-platform-freertos
+    // Phase 152.1.B.4 — FreeRTOS kernel + lwIP + nros-platform-freertos
     // are now compiled by `nros-board-freertos/build.rs` (the generic
     // crate this overlay depends on). Its `cargo:rustc-link-lib=static=...`
     // lines propagate transitively into this binary's link. Overlay
@@ -93,7 +93,7 @@ fn main() {
         glue.define("NROS_TRACE", "1");
     }
 
-    // Phase 149.1.B.4 — overlay glue carries only board-specific
+    // Phase 152.1.B.4 — overlay glue carries only board-specific
     // C: MPS2-AN385 vector table + Reset_Handler + LAN9118 diag +
     // trace_dump (always compiled; stubs when NROS_TRACE off).
     // Generic FreeRTOS / lwIP / nros-platform-freertos pieces moved
@@ -104,7 +104,7 @@ fn main() {
     glue.compile("startup");
 
     // --- Link order ---
-    // Phase 149.1.B.4 — overlay re-emits the link-lib lines for
+    // Phase 152.1.B.4 — overlay re-emits the link-lib lines for
     // the four archives the generic `nros-board-freertos` crate
     // produces. `cargo:rustc-link-search` propagates transitively
     // (the generic crate's OUT_DIR ends up on `-L` automatically)
@@ -156,14 +156,14 @@ fn env_path(name: &str) -> PathBuf {
     )
 }
 
-/// Phase 149.1.B.3 — generic FreeRTOS+lwIP compiler-flag setup.
+/// Phase 152.1.B.3 — generic FreeRTOS+lwIP compiler-flag setup.
 ///
 /// Reads `FREERTOS_CFLAGS` env var (space-separated flag list) +
 /// applies each via `cc::Build::flag`. The MPS2-AN385 board's
 /// reference `.cargo/config.toml` sets
 /// `FREERTOS_CFLAGS = "-mcpu=cortex-m3 -mthumb"`; future overlays
 /// (Cortex-M4F, etc.) set their own. Generic crate's build.rs
-/// (149.1.B.4) reads the same env var so kernel + lwIP + per-board
+/// (152.1.B.4) reads the same env var so kernel + lwIP + per-board
 /// glue all see consistent flags.
 ///
 /// `-ffunction-sections` / `-fdata-sections` / `-O2` / `warnings off`

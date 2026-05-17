@@ -1,4 +1,4 @@
-# Phase 149 — Board / BSP Abstraction Layer
+# Phase 152 — Board / BSP Abstraction Layer
 
 **Goal.** Stop requiring a hand-written Cargo board crate per
 `(vendor × board × SDK-variant)` combo. Carve generic board crates
@@ -55,7 +55,7 @@ patterns vendors actually use:
    path. One generic crate per kernel + tiny overlay crates per
    vendor fork covers this surface.
 
-Phase 149 lands both.
+Phase 152 lands both.
 
 ---
 
@@ -152,23 +152,23 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
 
 ## Work Items
 
-- [x] **149.1 — Carve `nros-board-freertos` generic crate.**
-      (149.1.A + 149.1.B.1-.6 landed 2026-05-18; B.5 partial —
-      `node.rs` lift deferred to `BoardInit` trait alongside 149.4.B)
+- [x] **152.1 — Carve `nros-board-freertos` generic crate.**
+      (152.1.A + 152.1.B.1-.6 landed 2026-05-18; B.5 partial —
+      `node.rs` lift deferred to `BoardInit` trait alongside 152.4.B)
       Split into two sub-steps:
-      - **149.1.A — Scaffolding** (landed): new
+      - **152.1.A — Scaffolding** (landed): new
         `packages/boards/nros-board-freertos/` crate claims the
         Layer-2 namespace + documents the public contract in
         `src/lib.rs`. Behind the opt-in `reference-mps2` feature
         it re-exports `Config` + `run` from
         `nros-board-mps2-an385-freertos` so future overlays can
         depend on the generic crate today and switch wiring
-        transparently when 149.1.B completes the build-glue
+        transparently when 152.1.B completes the build-glue
         carve-out. Workspace `Cargo.toml` excludes the new crate
         from members (standalone like every other board crate);
         `cargo check` clean (default + `reference-mps2 --target
         thumbv7m-none-eabi`); native nano2nano E2E unchanged.
-      - **149.1.B — Build-glue carve-out** (deferred; broken down
+      - **152.1.B — Build-glue carve-out** (deferred; broken down
         below). Move the FreeRTOS kernel + lwIP + sys_arch +
         nros-platform-freertos compile pipeline out of
         `nros-board-mps2-an385-freertos/build.rs` (~600 of its 816
@@ -177,9 +177,9 @@ overlay-crate cookbook with the `nros-board-orin-spe` walkthrough.
         overlay (~200 LOC).
       **Files.** `packages/boards/nros-board-freertos/` (new),
       `packages/boards/nros-board-mps2-an385-freertos/` (refactor —
-      149.1.B), `Cargo.toml` (exclude list — 149.1.A landed).
+      152.1.B), `Cargo.toml` (exclude list — 152.1.A landed).
 
-#### 149.1.B subitems
+#### 152.1.B subitems
 
 The existing `nros-board-mps2-an385-freertos/build.rs` is 816 LOC
 with the FreeRTOS / lwIP / nros-platform-freertos compile loops
@@ -193,7 +193,7 @@ FFI surface Rust calls (`nros_freertos_init_network`,
 the work; do it in 6 ordered sub-commits so each lands a verifiable
 delta:
 
-- [ ] **149.1.B.1 — Split `STARTUP_C` into three C files.**
+- [ ] **152.1.B.1 — Split `STARTUP_C` into three C files.**
       Promote the inline const into `startup/` checked-in C
       sources:
       - `startup/freertos_hooks.c` — generic FreeRTOS hooks
@@ -216,7 +216,7 @@ delta:
       `packages/boards/nros-board-mps2-an385-freertos/startup/board_mps2.c`,
       both crates' `build.rs`.
 
-- [ ] **149.1.B.2 — Define `nros_board_*` weak-hook contract.**
+- [ ] **152.1.B.2 — Define `nros_board_*` weak-hook contract.**
       `startup/network_glue.c`'s `nros_freertos_init_network`
       stops poking LAN9118 registers directly; it calls
       `nros_board_init_eth(mac, ip, netmask, gateway)` declared
@@ -230,23 +230,23 @@ delta:
       doc-comment + `book/src/porting/vendor-overlay.md`.
       **Files.** Both `startup/*.c` files, `nros-board-freertos/src/lib.rs`.
 
-- [ ] **149.1.B.3 — `FREERTOS_CFLAGS` arch parameterisation.**
+- [ ] **152.1.B.3 — `FREERTOS_CFLAGS` arch parameterisation.**
       Drop `configure_arm_cm3()` from the generic crate's
       `build.rs`. Read `FREERTOS_CFLAGS` env var (space-separated
       flag list) at the start of the generic crate's `build.rs` +
       pass to every `cc::Build`. Overlay's user-facing
       `.cargo/config.toml [env]` block sets
       `FREERTOS_CFLAGS = "-mcpu=cortex-m3 -mthumb"`. Document
-      env var in 149.5's `nros-board-common` reader so the
-      manifest-driven path (149.1.B.4) and the env-var-driven
+      env var in 152.5's `nros-board-common` reader so the
+      manifest-driven path (152.1.B.4) and the env-var-driven
       path agree.
       **Files.** `packages/boards/nros-board-freertos/build.rs`,
       reference `.cargo/config.toml` examples in MPS2 overlay
       + `book/src/porting/vendor-overlay.md`.
 
-- [ ] **149.1.B.4 — Move kernel + lwIP + nros-platform-freertos
+- [ ] **152.1.B.4 — Move kernel + lwIP + nros-platform-freertos
       build into generic `build.rs`.**
-      Generic crate's `build.rs` (was empty in 149.1.A) consumes
+      Generic crate's `build.rs` (was empty in 152.1.A) consumes
       `nros-board-common`'s manifest parser to read a new
       `nros_board_freertos_platforms.toml` declaring source-list
       data declaratively (mirror Phase 136.4's `zenoh_platforms.toml`).
@@ -264,12 +264,12 @@ delta:
       `packages/boards/nros-board-mps2-an385-freertos/build.rs`
       (~600 LOC delete).
 
-- [ ] **149.1.B.5 — `Config` + `run` lift into generic crate.**
+- [ ] **152.1.B.5 — `Config` + `run` lift into generic crate.**
       Move the `Config` struct (TOML loader + IP/MAC parsing) +
       the `run<F>` entry point (`xTaskCreate` + scheduler start +
       poll-task spawn) from `nros-board-mps2-an385-freertos/src/`
       into `nros-board-freertos/src/`. Overlay re-exports both via
-      `pub use nros_board_freertos::{Config, run};` (149.1.A's
+      `pub use nros_board_freertos::{Config, run};` (152.1.A's
       `reference-mps2` feature becomes unconditional default).
       The `init_hardware` symbol stays per-overlay (different
       boards need different peripheral wakes).
@@ -278,7 +278,7 @@ delta:
       `packages/boards/nros-board-mps2-an385-freertos/src/lib.rs`
       (shrinks to ~30 LOC re-exports + `init_hardware`).
 
-- [x] **149.1.B.6 — Verify matrix.** (landed 2026-05-18)
+- [x] **152.1.B.6 — Verify matrix.** (landed 2026-05-18)
       - `cargo build --release --target thumbv7m-none-eabi` for
         all 6 `examples/qemu-arm-freertos/rust/zenoh/{talker,
         listener, service-server, service-client, action-server,
@@ -286,7 +286,7 @@ delta:
       - `cargo build --release --target thumbv7m-none-eabi` for
         both `examples/qemu-arm-freertos/rust/dds/{talker, listener}`
         — clean (after `rm -rf target` to drop stale artifacts
-        that mixed pre-149.1.B.4 platform.c with the new
+        that mixed pre-152.1.B.4 platform.c with the new
         generic-crate copy).
       - `test_talker_listener_communication` native nano2nano
         E2E — pass (1.2s).
@@ -295,13 +295,13 @@ delta:
 
       `.B.1` → `.B.4` ran their own verify steps + recorded
       results in their commit messages. Each subitem landed as
-      a separate commit on the `phase-149-board-bsp-abstraction`
+      a separate commit on the `phase-152-board-bsp-abstraction`
       branch.
 
-- [~] **149.2 — Carve `nros-board-threadx` generic crate.** (149.2.A
-      landed 2026-05-18; 149.2.B deferred alongside 149.1.B)
-      Same split as 149.1:
-      - **149.2.A — Scaffolding** (landed): new
+- [~] **152.2 — Carve `nros-board-threadx` generic crate.** (152.2.A
+      landed 2026-05-18; 152.2.B deferred alongside 152.1.B)
+      Same split as 152.1:
+      - **152.2.A — Scaffolding** (landed): new
         `packages/boards/nros-board-threadx/` crate claims the
         Layer-2 namespace + documents the public contract. Two
         opt-in features (`reference-linux` +
@@ -311,7 +311,7 @@ delta:
         different `Config` shapes). Workspace `Cargo.toml`
         excludes the new crate; `cargo check` clean (default +
         `reference-linux` host build).
-      - **149.2.B — Build-glue carve-out** (partial 2026-05-18;
+      - **152.2.B — Build-glue carve-out** (partial 2026-05-18;
         full carve deferred).
         Partial landed: kernel + port-source enumeration helpers
         (`add_threadx_kernel_sources` +
@@ -322,15 +322,15 @@ delta:
         `read_dir(ports/<port>/src)` loops to the shared helpers.
         Future ThreadX-kernel submodule bumps that add files pick
         up automatically in both overlays.
-        Full carve-out deferred — same shape as 149.1.B but with
+        Full carve-out deferred — same shape as 152.1.B but with
         two reference overlays differing in `std`/`no_std` +
         `pthreads`/`bare-metal` + with/without full NetX-Duo
         TCP/IP + with/without RISC-V startup assembly. Per-board
         `Config` shapes diverge enough that a `BoardInit` trait
-        (149.4.B) is the right abstraction to share — wait for
+        (152.4.B) is the right abstraction to share — wait for
         that to land first.
 
-#### 149.2.B subitems
+#### 152.2.B subitems
 
 The two existing ThreadX board crates differ structurally:
 
@@ -341,10 +341,10 @@ The two existing ThreadX board crates differ structurally:
   bare-metal RISC-V64 port + full NetX-Duo TCP/IP stack over
   virtio-net. `no_std`; needs picolibc errno-shadow.
 
-The generic crate must handle both. Subitems mirror 149.1.B but
+The generic crate must handle both. Subitems mirror 152.1.B but
 with two reference overlays instead of one:
 
-- [ ] **149.2.B.1 — Split per-board C startup.**
+- [ ] **152.2.B.1 — Split per-board C startup.**
       Promote `startup.c` from each per-board crate into:
       - `startup/threadx_hooks.c` (generic): ThreadX kernel
         assertion handler, `tx_application_define` stub that
@@ -354,29 +354,29 @@ with two reference overlays instead of one:
       - `startup/board_threadx_qemu_riscv64.c` (overlay):
         RISC-V vector table + Reset + NetX-Duo virtio-net driver
         init.
-      Mirror 149.1.B.2's weak-hook contract.
+      Mirror 152.1.B.2's weak-hook contract.
 
-- [ ] **149.2.B.2 — `THREADX_CFLAGS` arch parameterisation.**
-      Same shape as 149.1.B.3. Linux overlay sets
+- [ ] **152.2.B.2 — `THREADX_CFLAGS` arch parameterisation.**
+      Same shape as 152.1.B.3. Linux overlay sets
       `THREADX_CFLAGS = ""` (host gcc native); RISC-V overlay sets
       `THREADX_CFLAGS = "-march=rv64gc -mabi=lp64d -mcmodel=medany"`.
 
-- [ ] **149.2.B.3 — Move kernel + NetX-Duo + nros-platform-threadx
+- [ ] **152.2.B.3 — Move kernel + NetX-Duo + nros-platform-threadx
       build into generic `build.rs`.**
       New `nros_board_threadx_platforms.toml` mirrors
-      149.1.B.4's structure. Per-platform blocks declare which
+      152.1.B.4's structure. Per-platform blocks declare which
       NetX-Duo features to compile (full TCP/IP for QEMU vs.
       nsos-netx-only for Linux sim). Linker emits
       `cargo:rustc-link-lib=static={threadx,netxduo,nros_platform_threadx}`.
 
-- [ ] **149.2.B.4 — `Config` + `run` lift into generic crate.**
+- [ ] **152.2.B.4 — `Config` + `run` lift into generic crate.**
       Both per-board crates expose `Config` + `run` + `init_hardware`
       today; the shapes differ (Linux sim has interface name,
       RISC-V QEMU has MAC + IP). Add per-overlay `Config` extension
       trait so each overlay's `Config` is `nros_board_threadx::Config`
       + extension fields. `run` lifts unchanged.
 
-- [ ] **149.2.B.5 — Verify matrix.**
+- [ ] **152.2.B.5 — Verify matrix.**
       - `cargo build` for `threadx-linux` Rust talker / listener
         — clean (currently pre-existing-broken per Phase 147 with
         `_z_task_free` duplicate; expect either to still fail the
@@ -388,7 +388,7 @@ with two reference overlays instead of one:
         passes (where applicable).
       - Native nano2nano talker-listener still passes.
 
-- [ ] **149.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
+- [ ] **152.3 — Refactor `nros-board-orin-spe` as canonical overlay.**
       Become a true overlay on `nros-board-freertos` — re-exports
       `Config` / `run` + adds NVIDIA FSP wiring (consumes
       `NV_SPE_FSP_DIR`, replaces lwIP with IVC link). Demonstrates
@@ -397,24 +397,24 @@ with two reference overlays instead of one:
       community crates.
       **Files.** `packages/boards/nros-board-orin-spe/` (refactor).
 
-#### 149.3 subitems (blocked on 149.1.B)
+#### 152.3 subitems (blocked on 152.1.B)
 
-- [ ] **149.3.1 — Switch `nros-board-orin-spe` Cargo dep to
+- [ ] **152.3.1 — Switch `nros-board-orin-spe` Cargo dep to
       `nros-board-freertos`.** Drop the standalone kernel build
       from this crate's `build.rs`; declare `nros-board-freertos`
       as `[dependencies]`.
 
-- [ ] **149.3.2 — Implement `nros_board_init_eth` as IVC bind.**
+- [ ] **152.3.2 — Implement `nros_board_init_eth` as IVC bind.**
       Replace the generic-crate weak default with an FSP-specific
       version that wires IVC link (via `zpico-link-ivc`) instead
       of lwIP. `nros_board_init_clocks` configures Cortex-R5F
       clocks via FSP API.
 
-- [ ] **149.3.3 — Shrink `build.rs` to FSP source injection.**
+- [ ] **152.3.3 — Shrink `build.rs` to FSP source injection.**
       Pull only `tegra_aon_fsp.a` headers + ARM_R5 portable layer
       from `$NV_SPE_FSP_DIR`. Hand the rest to the generic crate.
 
-- [ ] **149.3.4 — Verify `cargo build -p nros-board-orin-spe`
+- [ ] **152.3.4 — Verify `cargo build -p nros-board-orin-spe`
       succeeds with the same `NV_SPE_FSP_DIR` env requirement as
       today.** Verifies the overlay-on-generic pattern handles
       vendor forks cleanly. Document the resulting LOC count in
@@ -422,17 +422,17 @@ with two reference overlays instead of one:
       of `build.rs`, matching the
       `book/src/porting/vendor-overlay.md` cookbook's promise.
 
-- [x] **149.4 — Migrate NuttX board crate.** (149.4.A + 149.4.B landed 2026-05-18)
-      - **149.4.A — Scaffolding** (landed): thin
+- [x] **152.4 — Migrate NuttX board crate.** (152.4.A + 152.4.B landed 2026-05-18)
+      - **152.4.A — Scaffolding** (landed): thin
         `packages/boards/nros-board-nuttx/` crate (NuttX owns the
         kernel build via `apps/external/nano-ros/` + the Phase
-        149.7 `Make.defs` / `Makefile` / `Kconfig` shell). Opt-in
+        152.7 `Make.defs` / `Makefile` / `Kconfig` shell). Opt-in
         `reference-qemu-arm` feature re-exports `Config` + `run` +
         `init_hardware` from `nros-board-nuttx-qemu-arm`. Default
         build (no feature) clean on host; reference feature
         requires NuttX target (same constraint as the underlying
         crate; not a regression).
-      - **149.4.B — `BoardInit` trait + per-board overlay refactor**
+      - **152.4.B — `BoardInit` trait + per-board overlay refactor**
         (landed 2026-05-18). Kernel-agnostic `BoardInit` trait
         landed in `nros-board-common::board_init`; generic
         `nros-board-nuttx::run_generic<B: BoardInit>` consumes it.
@@ -446,12 +446,12 @@ with two reference overlays instead of one:
         `BoardInit` impl + use the same `run_generic` shim. The
         trait sits in `nros-board-common` so future FreeRTOS +
         ThreadX generic crates can reuse the contract when they
-        adopt the same pattern (unlocks the deferred 149.1.B.5
-        `node.rs` lift + the full 149.2.B carve-out).
+        adopt the same pattern (unlocks the deferred 152.1.B.5
+        `node.rs` lift + the full 152.2.B carve-out).
 
-#### 149.4.B subitems
+#### 152.4.B subitems
 
-- [ ] **149.4.B.1 — Define `BoardInit` trait.**
+- [ ] **152.4.B.1 — Define `BoardInit` trait.**
       Generic crate adds:
       ```rust
       pub trait BoardInit {
@@ -464,14 +464,14 @@ with two reference overlays instead of one:
       Default impl in `nros-board-nuttx::DefaultNuttx` produces
       the generic `Config` shape.
 
-- [ ] **149.4.B.2 — Refactor `nros-board-nuttx-qemu-arm` to
+- [ ] **152.4.B.2 — Refactor `nros-board-nuttx-qemu-arm` to
       implement `BoardInit`.**
       Per-board crate shrinks to `pub struct QemuArmVirt; impl
       BoardInit for QemuArmVirt { ... }`. Public API surface
       preserves backward compat via `pub use` re-export of
       `Config` + `run::<QemuArmVirt>`.
 
-- [ ] **149.4.B.3 — Verify matrix.**
+- [ ] **152.4.B.3 — Verify matrix.**
       - `cargo build --target arm-nuttx-eabihf` for the existing
         examples — clean (currently pre-existing-broken per
         Phase 147 with `_z_*_serial_internal`; re-verify same
@@ -481,25 +481,25 @@ with two reference overlays instead of one:
 
 **Order**: land in 1.B → 3 → 2.B → 4.B.
 
-1. **149.1.B first.** FreeRTOS has the largest existing surface
+1. **152.1.B first.** FreeRTOS has the largest existing surface
    (816 LOC build.rs + 749 LOC src). Doing it first establishes the
    `nros-board-*-platforms.toml` schema for the per-kernel
    manifests (mirrors Phase 136.4's `zenoh_platforms.toml` but
    for board glue), the `nros_board_init_*` weak-hook contract,
    and the `<KERNEL>_CFLAGS` env-var arch parameterisation pattern.
    Subsequent `.B`s clone the template.
-2. **149.3 next.** Refactor `nros-board-orin-spe` as the canonical
+2. **152.3 next.** Refactor `nros-board-orin-spe` as the canonical
    FSP-FreeRTOS overlay against the newly-landed
    `nros-board-freertos`. Validates the overlay-on-generic pattern
    actually shrinks code to ≤100 LOC + ≤50 LOC `build.rs` as
    `book/src/porting/vendor-overlay.md` promises. Cheapest
    end-to-end demonstration since orin-spe's existing build is
    already FreeRTOS-shaped.
-3. **149.2.B next.** ThreadX carve mirrors the 1.B template but
+3. **152.2.B next.** ThreadX carve mirrors the 1.B template but
    has two reference overlays (Linux sim + RISC-V QEMU) with
    genuinely different `Config` shapes + networking flavours.
    Land after 1.B + 3 prove the pattern works.
-4. **149.4.B last.** NuttX is the smallest because NuttX owns the
+4. **152.4.B last.** NuttX is the smallest because NuttX owns the
    kernel build — refactor is Rust-only (`BoardInit` trait + per-
    board impl) without TOML manifest / cflags parameterisation.
 
@@ -533,7 +533,7 @@ with two reference overlays instead of one:
   ORDER of the `cargo:rustc-link-lib` lines matters for static-
   library link resolution; document the canonical order in the
   generic crate's `build.rs` + verify with `cargo build -vv` on
-  one mps2-an385 example after 149.1.B.4.
+  one mps2-an385 example after 152.1.B.4.
 - **Pre-existing test failures masked.** Phase 147 documents three
   pre-existing link regressions (`_z_task_free` dup,
   `_z_*_serial_internal` undefined). The `.B` verify steps must
@@ -545,15 +545,15 @@ with two reference overlays instead of one:
 
 | Subitem | LOC delta | Sessions |
 |---|---|---|
-| 149.1.B.1 | -500 const, +3 files (split) | 0.5 |
-| 149.1.B.2 | +50 weak-hook contract | 0.5 |
-| 149.1.B.3 | -30 cortex-m3 hardcode, +30 cflags reader | 0.5 |
-| 149.1.B.4 | -600 from overlay, +400 in generic + 100 TOML | 1.5 |
-| 149.1.B.5 | -350 from overlay, +350 in generic | 0.5 |
-| 149.1.B.6 | verify pass | 0.5 |
-| 149.3.1-4 | overlay refactor + verify | 1 |
-| 149.2.B.1-5 | clone 1.B for ThreadX (×2 overlays) | 2 |
-| 149.4.B.1-3 | `BoardInit` trait + verify | 0.5 |
+| 152.1.B.1 | -500 const, +3 files (split) | 0.5 |
+| 152.1.B.2 | +50 weak-hook contract | 0.5 |
+| 152.1.B.3 | -30 cortex-m3 hardcode, +30 cflags reader | 0.5 |
+| 152.1.B.4 | -600 from overlay, +400 in generic + 100 TOML | 1.5 |
+| 152.1.B.5 | -350 from overlay, +350 in generic | 0.5 |
+| 152.1.B.6 | verify pass | 0.5 |
+| 152.3.1-4 | overlay refactor + verify | 1 |
+| 152.2.B.1-5 | clone 1.B for ThreadX (×2 overlays) | 2 |
+| 152.4.B.1-3 | `BoardInit` trait + verify | 0.5 |
 | **Total** | ~−1000 LOC net | **~7 sessions** |
 
 Plan calendar before starting: cluster `.B` work into a
@@ -562,7 +562,7 @@ checked out, since each verify step needs `FREERTOS_DIR` /
 `THREADX_DIR` / `NETX_DIR` / `NUTTX_DIR` / `NV_SPE_FSP_DIR` env
 vars present.
 
-- [x] **149.5 — Reuse Phase 136 manifest parser.** (landed 2026-05-18)
+- [x] **152.5 — Reuse Phase 136 manifest parser.** (landed 2026-05-18)
       `packages/boards/nros-board-common/` library crate exposes
       `manifest` + `policy` modules (the Phase 136.1 / 136.4 /
       134.2 parser + interpolator + matcher + `LinkFeatures` /
@@ -571,8 +571,8 @@ vars present.
       `use nros_board_common::{manifest, policy};`; the old
       `packages/zpico/zpico-sys/build/{manifest,policy}.rs` copies
       were deleted. Future per-kernel generic board crates
-      (`nros-board-freertos` 149.1.B, `nros-board-threadx`
-      149.2.B) consume the same library via `[build-dependencies]`
+      (`nros-board-freertos` 152.1.B, `nros-board-threadx`
+      152.2.B) consume the same library via `[build-dependencies]`
       path dep.
       `nros-board-common` declares `serde` + `toml` as regular
       `[dependencies]` so consumers don't need to re-declare them
@@ -585,7 +585,7 @@ vars present.
       - `cargo check -p zpico-sys --features bare-metal --target thumbv7m-none-eabi --no-default-features` — clean
       - `test_talker_listener_communication` + `test_tls_talker_listener_communication` native E2E pass.
 
-- [x] **149.6 — Overlay-crate template + cookbook.** (landed 2026-05-18)
+- [x] **152.6 — Overlay-crate template + cookbook.** (landed 2026-05-18)
       `templates/overlay-board/` skeleton (Cargo.toml.template +
       src/lib.rs.template + build.rs.template + README) + book
       chapter `book/src/porting/vendor-overlay.md` covering the
@@ -595,7 +595,7 @@ vars present.
       `nros-board-mps2-an385-freertos`). SUMMARY.md lists under
       Porting.
 
-- [x] **149.7 — Phase 139 shell polish (NuttX, ESP-IDF, PlatformIO).**
+- [x] **152.7 — Phase 139 shell polish (NuttX, ESP-IDF, PlatformIO).**
       (landed 2026-05-18)
       - NuttX: `integrations/nuttx/Make.defs` now `-include`s
         upstream `apps/tools/Rust.mk` and appends the Cargo-built
@@ -624,7 +624,7 @@ vars present.
         `.pio/libdeps/<board>/nano-ros/integrations/esp-idf` for
         `idf_component_register(...)` to fire.
 
-- [x] **149.8 — Consumption-matrix doc.** (landed 2026-05-18)
+- [x] **152.8 — Consumption-matrix doc.** (landed 2026-05-18)
       `book/src/concepts/board-integration.md` lands the 7-profile
       consumption matrix (Cargo-first, vendor-IDE,
       Zephyr / ESP-IDF / NuttX / PX4 / PlatformIO native shells,
@@ -632,13 +632,13 @@ vars present.
       vendor-overlay subsections. SUMMARY.md lists under Concepts.
       Cross-links the vendor-overlay cookbook, the
       `add_subdirectory` getting-started guide, the per-RTOS
-      integration pages 149.7 polished, the existing platform-model
+      integration pages 152.7 polished, the existing platform-model
       + RTOS-cooperation chapters, and the design doc.
       `book/src/getting-started/installation.md` cross-link
       pending; the page already routes most users to the
       per-RTOS shells.
 
-- [x] **149.9 — Migrate examples to consume generic + overlay path.**
+- [x] **152.9 — Migrate examples to consume generic + overlay path.**
       (landed 2026-05-18 — doc-only pass)
       Rather than dropping a fresh README into every
       `examples/<plat>/` (11 platforms × language × RMW = many
@@ -648,7 +648,7 @@ vars present.
       `book/src/concepts/board-integration.md`. Users porting an
       example to a real board look up their `examples/<plat>/`
       row + follow the linked guide. No per-example `Cargo.toml`
-      changes — 149.1.A / 149.2.A / 149.4.A scaffolds keep the
+      changes — 152.1.A / 152.2.A / 152.4.A scaffolds keep the
       existing per-board crate names working as overlay re-exports.
 
 ---
@@ -662,7 +662,7 @@ vars present.
       `NV_SPE_FSP_DIR` env requirement as today.
 - [ ] Adding a new overlay crate is < 100 LOC of Rust + < 50 LOC
       `build.rs`; verified by writing a `nros-board-stm32f4-freertos`
-      skeleton during 149.6.
+      skeleton during 152.6.
 - [ ] Each per-RTOS integration smoke test (Phase 139's set: NuttX,
       PlatformIO, Zephyr, PX4, ESP-IDF) stays green when its SDK
       env is sourced.
@@ -699,14 +699,14 @@ vars present.
 ## Notes
 
 - The Phase 136 manifest parser already proves the TOML-driven
-  build-data approach at scale. 149.5 reuses it to avoid
+  build-data approach at scale. 152.5 reuses it to avoid
   reinventing per-kernel.
 - Phase 139's smoke matrix (NuttX / PlatformIO / Zephyr / PX4 /
   ESP-IDF) validated 2026-05-18 — the integration shells work even
-  before the Phase 149 board-crate refactor; 149.7 is polish, not
+  before the Phase 152 board-crate refactor; 152.7 is polish, not
   rebuilding.
 - Phase 116 ("unified config and extensibility") is the long-term
-  north-star where this design sits. Phase 149 delivers the platform
+  north-star where this design sits. Phase 152 delivers the platform
   side; the configuration-DSL side (a la Zephyr's Kconfig + DTS)
   stays a Phase 116 open question.
 - Open question from the design doc: **monorepo vs sister repo for
@@ -716,4 +716,4 @@ vars present.
   community publishes more than ~5 overlays.
 - Open question: **who owns `nros-board-stm32*` / `nros-board-nxp-*`?**
   Plan: community-owned with one nano-ros-blessed example per
-  vendor (149.6 covers the example shape).
+  vendor (152.6 covers the example shape).
