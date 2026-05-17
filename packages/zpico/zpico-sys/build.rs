@@ -641,6 +641,13 @@ fn main() {
         cc::Build::new()
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
             .include(nros_platform_cffi_include)
+            .include(manifest_dir.join("c/zpico"))
+            // Phase 129.D — `NROS_PLATFORM_ALIASES` unlocks the
+            // alias TU's clock-variant + network wrappers, which
+            // depend on the generic `z_clock_t = uint64_t` typedef
+            // and the canonical `_z_sys_net_*` opaque layouts in
+            // `nros_zenoh_generic_platform.h`.
+            .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true)
             .compile("zpico_platform_aliases");
         println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");

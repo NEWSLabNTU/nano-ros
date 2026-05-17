@@ -19,6 +19,11 @@ default = []
 # The actual ConcretePlatform resolution is handled by nros-platform's
 # platform-* features, activated by the board crate via Cargo feature unification.
 active = []
+# Phase 129.D — set by `zpico-sys/platform-aliases` to suppress
+# the shim's `z_*` / `_z_*` emitters when the C alias TU is
+# providing the same symbols. Without the suppression the two
+# collide at link time (`duplicate symbol: _z_open_tcp` etc).
+provided-by-aliases = []
 
 # Skip _z_task_* symbols (ThreadX provides them in C due to struct layout dependency)
 skip-task-symbols = []

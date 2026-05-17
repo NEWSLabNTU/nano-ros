@@ -154,10 +154,15 @@ instead of picking `transport_posix_*.c` per platform.
     alias TU then satisfies every symbol that vendor `system.c`
     would have. `network.c` selection stays unchanged — it's
     a separate axis (smoltcp vs lwIP vs POSIX sockets).
-- [ ] `129.A.4` — make `platform-aliases` the default. Once A.1–A.3
-  prove out on POSIX + a sample RTOS, flip the default. Existing
-  `platform-<rtos>` features become inert markers (deleted in
-  129.C).
+- [x] `129.A.4` — `platform-aliases` flipped default-on (2026-05-17).
+  The alias TU now covers the full vendor surface — memory, sleep,
+  random, time, yield, threading, condvar (`_wait_until` included
+  under `NROS_PLATFORM_ALIASES`), clock variants, and network. A
+  new `zpico-platform-shim/provided-by-aliases` feature, auto-
+  enabled by `zpico-sys/platform-aliases`, cfg-gates the shim
+  module off so the two emitters do not collide at link. Consumers
+  that still want the Rust shim can pass `default-features = false`
+  on `zpico-sys`.
 
 ### 129.B — Generic platform adapter (XRCE)
 
@@ -276,12 +281,24 @@ that exercises it is**:
 
 ### 129.D — Delete `zpico-platform-shim` + `xrce-platform-shim`
 
-- [ ] `129.D.1` — `zpico-platform-shim` rehomes its remaining
-  responsibilities (smoltcp clock bridge, per-board serial
-  openers, orin-spe IVC helpers) into their respective board
-  crates / driver crates. Each board / driver exports the symbol
-  it needs directly via `#[no_mangle]`. Crate deletion follows.
-- [ ] `129.D.2` — same for `xrce-platform-shim`.
+- [x] `129.D.0` (foundation) — alias TU coverage extended to
+  match shim 1:1 (threading + condvar + clock + network) under
+  `NROS_PLATFORM_ALIASES`. `zpico-sys/platform-aliases` is now
+  default-on (129.A.4). The shim's `active` mode is gated off
+  whenever `provided-by-aliases` is set, eliminating duplicate-
+  symbol collisions.
+- [ ] `129.D.1` — rehome shim's still-Rust-only responsibilities
+  into the board / driver crates that need them, then physically
+  delete the `zpico-platform-shim` crate:
+    - `smoltcp_clock_now_ms` (used by bare-metal smoltcp drivers)
+      → `nros-smoltcp` direct export.
+    - `link-ivc` helpers (`ivc_helpers.rs`, orin-spe) →
+      `nros-platform-esp32` / orin board crate.
+    - Per-board serial openers (none on POSIX) →
+      `nros-platform-<board>`.
+  Each rehome is a separate sub-PR; cargo dep on `zpico-platform-shim`
+  comes off the board crate as soon as the symbols move.
+- [ ] `129.D.2` — same for `xrce-platform-shim` (smaller surface).
 
 ### 129.E — Examples + fixtures sweep
 

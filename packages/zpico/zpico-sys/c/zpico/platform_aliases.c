@@ -243,12 +243,162 @@ int8_t _z_condvar_wait(void *cv, void *m) {
     return nros_platform_condvar_wait(cv, m);
 }
 
-/* `_z_condvar_wait_until(cv, m, const z_clock_t *abstime)` — `z_clock_t`
- * is per-platform (`struct timespec` on POSIX, `TickType_t` on FreeRTOS
- * orin-spe, `void *` in the generic void header). A generic alias TU
- * cannot decode it without first installing a generic platform header
- * (`zenoh-pico/system/platform/nros_generic.h`) — tracked in
- * 129.A.1.b. Until then, leave `_z_condvar_wait_until` to the
- * vendor `system/<rtos>/system.c`. The alias TU only emits symbols
- * the platform ABI can fulfil unambiguously.
- */
+/* -------------------------------------------------------------------------
+ *  `_z_condvar_wait_until` — only safe to emit when the build defined
+ *  `NROS_PLATFORM_ALIASES`, which forces zenoh-pico to use the
+ *  generic platform header (`nros_zenoh_generic_platform.h`) that
+ *  types `z_clock_t = uint64_t` ms. Without the generic header,
+ *  per-platform `z_clock_t` layouts (`struct timespec` on POSIX,
+ *  `TickType_t` on FreeRTOS orin-spe) make a generic wrapper
+ *  unsafe. Vendor `system/<rtos>/system.c` provides the symbol in
+ *  that mode.
+ * ----------------------------------------------------------------------- */
+
+#ifdef NROS_PLATFORM_ALIASES
+
+int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {
+    if (abstime_ms == NULL) {
+        return nros_platform_condvar_wait(cv, m);
+    }
+    return nros_platform_condvar_wait_until(cv, m, *abstime_ms);
+}
+
+/* -------------------------------------------------------------------------
+ *  Clock / monotonic-time variants. Vendor `<system/common/platform.h>`
+ *  declares them with per-platform `z_clock_t` / `z_time_t`. Same
+ *  generic-header gate as `_z_condvar_wait_until`.
+ * ----------------------------------------------------------------------- */
+
+uint64_t z_clock_now(void) {
+    return nros_platform_time_now_ms();
+}
+
+unsigned long z_clock_elapsed_us(const uint64_t *clock) {
+    if (clock == NULL) return 0;
+    uint64_t now = nros_platform_time_now_ms();
+    return (unsigned long) ((now - *clock) * 1000ULL);
+}
+
+unsigned long z_clock_elapsed_ms(const uint64_t *clock) {
+    if (clock == NULL) return 0;
+    uint64_t now = nros_platform_time_now_ms();
+    return (unsigned long) (now - *clock);
+}
+
+unsigned long z_clock_elapsed_s(const uint64_t *clock) {
+    if (clock == NULL) return 0;
+    uint64_t now = nros_platform_time_now_ms();
+    return (unsigned long) ((now - *clock) / 1000ULL);
+}
+
+void z_clock_advance_us(uint64_t *clock, unsigned long duration) {
+    if (clock == NULL) return;
+    *clock += (uint64_t) duration / 1000ULL;
+}
+
+void z_clock_advance_ms(uint64_t *clock, unsigned long duration) {
+    if (clock == NULL) return;
+    *clock += (uint64_t) duration;
+}
+
+void z_clock_advance_s(uint64_t *clock, unsigned long duration) {
+    if (clock == NULL) return;
+    *clock += (uint64_t) duration * 1000ULL;
+}
+
+/* -------------------------------------------------------------------------
+ *  Networking. Wraps zenoh-pico's `_z_open_tcp` / `_z_open_udp_*` /
+ *  socket helpers on top of `nros_platform_{tcp,udp,udp_mcast,
+ *  socket}_*`. The opaque storage typedefs come from the generic
+ *  platform header; the platform impl knows the real layout.
+ *
+ *  Endpoints are passed BY VALUE in zenoh-pico's per-link
+ *  signatures, but the `nros_platform_*` ABI takes a pointer.
+ *  Stack-allocate then `&` to satisfy the contract.
+ * ----------------------------------------------------------------------- */
+
+#include "nros/platform_net.h"
+#include "nros_zenoh_generic_platform.h"
+
+/* The vendor `_z_sys_net_socket_t` / `_z_sys_net_endpoint_t`
+ * typedefs live in the generic platform header. The alias TU
+ * uses fixed-size opaque storage `uint8_t[N]` matching
+ * `nros_zenoh_generic_platform.h` — the linker doesn't care
+ * about the typedef name, only the ABI size + by-value vs.
+ * pointer convention. Inlining keeps the alias TU
+ * header-independent. */
+typedef struct {
+    uint8_t _opaque[NROS_ZP_NET_SOCKET_STORAGE_BYTES];
+} nros_zp_alias_socket_t;
+typedef struct {
+    uint8_t _opaque[NROS_ZP_NET_ENDPOINT_STORAGE_BYTES];
+} nros_zp_alias_endpoint_t;
+
+/* TCP. */
+int8_t _z_create_endpoint_tcp(void *ep, const uint8_t *address, const uint8_t *port) {
+    return nros_platform_tcp_create_endpoint(ep, address, port);
+}
+void _z_free_endpoint_tcp(void *ep) {
+    nros_platform_tcp_free_endpoint(ep);
+}
+int8_t _z_open_tcp(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
+    return nros_platform_tcp_open(sock, &rep, tout);
+}
+int8_t _z_listen_tcp(void *sock, nros_zp_alias_endpoint_t rep) {
+    return nros_platform_tcp_listen(sock, &rep);
+}
+void _z_close_tcp(void *sock) {
+    nros_platform_tcp_close(sock);
+}
+size_t _z_read_tcp(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+    return nros_platform_tcp_read(&sock, buf, len);
+}
+size_t _z_read_exact_tcp(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+    return nros_platform_tcp_read_exact(&sock, buf, len);
+}
+size_t _z_send_tcp(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len) {
+    return nros_platform_tcp_send(&sock, buf, len);
+}
+
+/* UDP unicast. */
+int8_t _z_create_endpoint_udp(void *ep, const uint8_t *address, const uint8_t *port) {
+    return nros_platform_udp_create_endpoint(ep, address, port);
+}
+void _z_free_endpoint_udp(void *ep) {
+    nros_platform_udp_free_endpoint(ep);
+}
+int8_t _z_open_udp_unicast(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
+    return nros_platform_udp_open(sock, &rep, tout);
+}
+int8_t _z_listen_udp_unicast(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
+    return nros_platform_udp_listen(sock, &rep, tout);
+}
+void _z_close_udp_unicast(void *sock) {
+    nros_platform_udp_close(sock);
+}
+size_t _z_read_udp_unicast(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+    return nros_platform_udp_read(&sock, buf, len);
+}
+size_t _z_read_exact_udp_unicast(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+    return nros_platform_udp_read_exact(&sock, buf, len);
+}
+size_t _z_send_udp_unicast(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len,
+                           nros_zp_alias_endpoint_t rep) {
+    return nros_platform_udp_send(&sock, buf, len, &rep);
+}
+
+/* Socket helpers. */
+int8_t _z_socket_set_non_blocking(const void *sock) {
+    return nros_platform_socket_set_non_blocking(sock);
+}
+int8_t _z_socket_accept(const void *in_sock, void *out_sock) {
+    return nros_platform_socket_accept(in_sock, out_sock);
+}
+void _z_socket_close(void *sock) {
+    nros_platform_socket_close(sock);
+}
+int8_t _z_socket_wait_event(void *peers, void *mutex) {
+    return nros_platform_socket_wait_event(peers, mutex);
+}
+
+#endif /* NROS_PLATFORM_ALIASES */

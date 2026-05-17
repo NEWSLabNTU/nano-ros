@@ -29,7 +29,13 @@
 
 #![no_std]
 
-#[cfg(feature = "active")]
+// Phase 129.D — `provided-by-aliases` suppresses the shim's
+// `z_*` / `_z_*` emitters when `zpico-sys`'s C alias TU
+// (`platform_aliases.c` under `CARGO_FEATURE_PLATFORM_ALIASES +
+// `NROS_PLATFORM_ALIASES`) is providing the same symbols.
+// Without the suppression the two collide at link time
+// (`duplicate symbol: _z_open_tcp` etc).
+#[cfg(all(feature = "active", not(feature = "provided-by-aliases")))]
 mod shim;
 
 #[cfg(feature = "link-ivc")]

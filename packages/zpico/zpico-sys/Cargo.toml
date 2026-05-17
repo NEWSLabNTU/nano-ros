@@ -17,7 +17,16 @@ categories = ["embedded", "no-std", "external-ffi-bindings", "network-programmin
 name = "zpico_sys"
 
 [features]
-default = []
+# Phase 129.A.4 / 129.D — `platform-aliases` flipped default-on.
+# The C alias TU (`platform_aliases.c`) now covers the full
+# `z_*` / `_z_*` surface — memory, sleep, random, time, yield,
+# threading, condvar, clock, network — that `zpico-platform-shim`
+# used to provide. Enabling `platform-aliases` also enables
+# `zpico-platform-shim?/provided-by-aliases`, which gates the
+# entire shim module off so there are no duplicate-symbol
+# collisions between the two emitters. Consumers that still
+# want the Rust shim can pass `default-features = false`.
+default = ["platform-aliases"]
 # Platform backends (mutually exclusive)
 # All platforms activate the shim to provide z_* symbols via nros-platform.
 # The C library's system.c is excluded — only network.c is kept.
@@ -59,7 +68,7 @@ link-tls = []
 # `platform-aliases` here (then turning off
 # `zpico-platform-shim`'s `active` feature for the alias subset).
 # Threading + smoltcp + serial bridge symbols stay in the shim.
-platform-aliases = []
+platform-aliases = ["zpico-platform-shim?/provided-by-aliases"]
 # Phase 100.4 — NVIDIA Tegra IVC link transport (Orin SPE). Selecting
 # this feature also propagates `cargo:rustc-cfg=feature="link_ivc"` so
 # zpico-platform-shim's `mod ivc_helpers` block compiles in.
