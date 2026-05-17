@@ -127,9 +127,9 @@ instead of picking `transport_posix_*.c` per platform.
        `void *` to caller storage, so an `N`-sized array
        satisfies the contract.
   Both issues belong to A.3 — A.2 is closed.
-- [ ] `129.A.3` — three sub-tasks, all needed before A.4 can
-  flip the default. Track separately:
-  - `129.A.3.a` — author
+- [x] `129.A.3` — all three sub-tasks landed (A.4 then flipped
+  `platform-aliases` default-on):
+  - [x] `129.A.3.a` — author
     `packages/zpico/zpico-sys/c/zpico/zenoh_generic_platform.h`.
     Vendor `system/common/platform.h` already accommodates a
     `ZENOH_GENERIC` mode (line 55) that includes this header by
@@ -142,11 +142,11 @@ instead of picking `transport_posix_*.c` per platform.
     pointer = 8 + attr struct; ThreadX TX_THREAD = ~232).
     Pick `N = 256` for tasks, `N = 64` for mutex / condvar to
     cover all supported platforms with a 2× safety margin.
-  - `129.A.3.b` — add `_z_condvar_wait_until` + `z_clock_now`
+  - [x] `129.A.3.b` — add `_z_condvar_wait_until` + `z_clock_now`
     + `z_clock_elapsed_us/ms/s` + `z_clock_advance_us/ms/s` to
     `platform_aliases.c`. They become trivial wrappers once
     A.3.a installs the generic `z_clock_t = uint64_t` typedef.
-  - `129.A.3.c` — `zpico-sys/build.rs`: when
+  - [x] `129.A.3.c` — `zpico-sys/build.rs`: when
     `platform-aliases` is on, define `ZENOH_GENERIC` for the
     vendor C build, add `c/zpico/` to the cc include path
     (so `zenoh_generic_platform.h` resolves), and exclude the
@@ -166,34 +166,20 @@ instead of picking `transport_posix_*.c` per platform.
 
 ### 129.B — Generic platform adapter (XRCE)
 
-Status: **blocked on B.2** — `nros_platform_*` net surface does
-not exist yet. Phase 121 shipped threading / mem / time / random
-only; net was deferred. The B fold cannot proceed until B.2 lands
-a `nros_platform_net_*` ABI.
+Status: ✅ done. Original "blocked on B.2" assessment was wrong
+(grep miss — see 129.NET audit). Both sub-items landed:
 
-- [ ] `129.B.2` (do first) — design + ship the
-  `nros_platform_net_*` ABI in
-  `packages/core/nros-platform-api/src/lib.rs` +
-  `packages/core/nros-platform-cffi/include/nros/platform.h`.
-  Surface needs:
-    - UDP unicast: `socket / bind / connect / sendto / recvfrom /
-      close / set_nonblocking / set_recv_timeout_ms`.
-    - UDP multicast: `join_group / leave_group / set_loopback`.
-    - TCP (XRCE optionally uses it): `socket / bind / connect /
-      listen / accept / send / recv / close`.
-    - Serial: deferred — micro-XRCE serial transport is rarely
-      used and zenoh-pico already has a working serial path.
-  Implementation on POSIX is a thin pass-through to BSD sockets.
-  Zephyr / FreeRTOS+lwIP / smoltcp impls reuse what
-  `zpico-platform-shim` + per-board crates already wire today.
-  Tracked separately from this phase if the ABI exercise is big
-  enough to warrant its own roadmap doc.
-- [ ] `129.B.1` — fold for `nros-rmw-xrce-cffi`. Today
-  `build.rs` compiles `udp_transport_posix.c` directly, opening
-  AF_INET sockets via libc. The new mode authors
-  `udp_transport_nros.c` that implements the same
-  `uxrUDPTransport` ABI on top of `nros_platform_net_*` (from
-  B.2), and `build.rs` substitutes it for the per-platform TU.
+- [x] `129.B.2` — net ABI already shipped: Rust traits
+  (`PlatformTcp` / `PlatformUdp` / `PlatformUdpMulticast` /
+  `PlatformSocketHelpers`) in `nros-platform-api`, C header
+  `<nros/platform_net.h>`, impls on POSIX / Zephyr / FreeRTOS /
+  ThreadX / ESP-IDF (NuttX delegates to POSIX). Audit closed
+  this without any new code.
+- [x] `129.B.1` — `nros-rmw-xrce/src/transport_nros_udp.c`
+  authored in 129.NET.3. `nros-rmw-xrce-cffi/build.rs` swaps
+  it in unconditionally; the per-platform
+  `transport_posix_udp.c` / `transport_zephyr_udp.c` paths
+  stay only for fallback during one transition cycle.
 
 ### 129.NET — `nros_platform_*` net ABI audit
 
@@ -240,7 +226,7 @@ Second re-audit (same date):
 **Net ABI is in shape. The only actual phase 129 follow-up
 that exercises it is**:
 
-- [ ] `129.NET.3` — XRCE custom-transport TU
+- [x] `129.NET.3` — XRCE custom-transport TU
   (`udp_transport_nros.c`) on top of the existing
   `nros_platform_udp_*` ABI. `nros-rmw-xrce-cffi/build.rs`
   swaps it in for the per-platform `udp_transport_posix.c` /
@@ -265,8 +251,9 @@ that exercises it is**:
   blocks dropped the `nros-rmw-xrce-cffi?/platform-<rtos>`
   forwards. Cargo's feature unification still pulls the right
   RMW symbols.
-- [ ] `129.C.3` — **partial** (2026-05-17 audit). Zenoh + dds
-  still need `nros-platform/platform-<rtos>` forwards:
+- [x] `129.C.3` — **done** (2026-05-17). Initial audit had
+  zenoh + dds blocked on the forward; 129.D + 129.C.3.b
+  unblocked both:
     - `nros-rmw-zenoh`'s `zpico-platform-shim` imports
       `nros_platform::ConcretePlatform`, which only resolves
       when a concrete `platform-*` feature on `nros-platform`
@@ -340,6 +327,12 @@ that exercises it is**:
   names from every example `Cargo.toml`. Same shape as phase
   128.H.2 (manifest fixups) — surface a grep + edit list before
   touching files.
+  - [x] `129.E.1.a` — zephyr xrce examples (six crates) stripped
+    of `nros-rmw-xrce-cffi platform-zephyr`.
+  - [ ] `129.E.1.b` — remaining sweep: zenoh / dds examples,
+    native xrce examples, qemu-arm-{baremetal,freertos,nuttx}
+    examples. Grep + bulk edit, then per-example cargo metadata
+    check.
 - [ ] `129.E.2` — `cargo build --workspace` + per-platform
   `just <plat> build-all` sweep, same as phase 128.H.6.
 
