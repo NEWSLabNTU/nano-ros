@@ -134,14 +134,11 @@ if(NOT TARGET NanoRos)
     elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_THREADX)
     endif()
-    # Platform shim (canonical `nros_platform_*`) — Phase 138 moves
-    # host-libs + platform-staticlib wiring into
-    # `cmake/platform/nano-ros-<plat>.cmake`. The per-platform module
-    # creates `NanoRos::Platform` (ALIAS over `nros_platform_<plat>_iface`),
-    # which carries both the static archive and the host-system libs.
-    if(TARGET NanoRos::Platform)
-        target_link_libraries(NanoRos INTERFACE NanoRos::Platform)
-    endif()
+    # Platform shim wiring deferred to after RMW dispatch below —
+    # `libnros_platform_<plat>.a` must appear AFTER `--whole-archive
+    # libnros_rmw_<rmw>_staticlib.a --no-whole-archive` on the ld command
+    # line so the platform symbols resolve back-references from the
+    # whole-archive'd RMW objects. See ld(1) single-pass semantics.
 endif()
 
 # ---------------------------------------------------------------------------
@@ -218,6 +215,18 @@ else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
         "(expected: zenoh, xrce, dds, or cyclonedds)")
+endif()
+
+# ---------------------------------------------------------------------------
+# Platform shim link — appended AFTER the RMW staticlib so the
+# `--whole-archive` RMW objects' undefined `nros_platform_*` refs
+# resolve against `libnros_platform_<plat>.a` later on the ld command
+# line. Per-platform module created `NanoRos::Platform` (ALIAS over
+# `nros_platform_<plat>_iface`) when `cmake/platform/nano-ros-<plat>.cmake`
+# was included earlier.
+# ---------------------------------------------------------------------------
+if(TARGET NanoRos AND TARGET NanoRos::Platform)
+    target_link_libraries(NanoRos INTERFACE NanoRos::Platform)
 endif()
 
 # ---------------------------------------------------------------------------
