@@ -17,3 +17,5 @@ nano_ros_generate_config_header(
 target_link_options(riscv64_threadx_cpp_listener PRIVATE -T${THREADX_LINKER_SCRIPT} --nmagic --gc-sections -u app_main)
 target_link_libraries(riscv64_threadx_cpp_listener PRIVATE
     std_msgs__nano_ros_cpp NanoRos::NanoRosCpp threadx_platform)
+
+nano_ros_link_rmw(riscv64_threadx_cpp_listener RMW zenoh)

@@ -232,9 +232,11 @@ function(nano_ros_link_rmw TARGET)
     # platform-specific NanoRos archive (`libnros_{c,cpp}_zenoh_<platform>.a`).
     # The standalone `NrosRmwZenoh::NrosRmwZenoh` target is the host POSIX
     # archive, so linking it into these fixtures either produces a file-format
-    # error (cross targets) or opens the wrong transport stack (ThreadX Linux).
+    # error (cross targets) or opens the wrong transport stack (ThreadX Linux,
+    # ThreadX RISC-V QEMU).
     if((NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
-            OR NANO_ROS_PLATFORM STREQUAL "threadx_linux")
+            OR NANO_ROS_PLATFORM STREQUAL "threadx_linux"
+            OR NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
             AND _chosen STREQUAL "zenoh")
         return()
     endif()
