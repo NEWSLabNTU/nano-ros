@@ -67,7 +67,7 @@ build-rust-examples:
     echo "Building Zephyr Rust examples in $WORKSPACE..."
     NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"
-    for ex in talker listener service-server service-client action-server action-client async-service-client; do
+    for ex in talker listener service-server service-client action-server action-client service-client-async; do
         echo "  Building zephyr/rust/zenoh/$ex -> build-$ex/"
         west build -b native_sim/native/64 -d "build-$ex" -p auto "$NROS/examples/zephyr/rust/zenoh/$ex"
     done
@@ -156,7 +156,7 @@ build-fixtures:
       "native_sim/native/64|build-service-client|zephyr/rust/zenoh/service-client|0"
       "native_sim/native/64|build-action-server|zephyr/rust/zenoh/action-server|0"
       "native_sim/native/64|build-action-client|zephyr/rust/zenoh/action-client|0"
-      "native_sim/native/64|build-async-service-client|zephyr/rust/zenoh/async-service-client|0"
+      "native_sim/native/64|build-async-service-client|zephyr/rust/zenoh/service-client-async|0"
       # Zenoh C++ (native_sim) — talker/listener required, service+action best-effort
       "native_sim/native/64|build-cpp-talker|zephyr/cpp/zenoh/talker|0"
       "native_sim/native/64|build-cpp-listener|zephyr/cpp/zenoh/listener|0"
@@ -198,7 +198,7 @@ build-fixtures:
       "native_sim/native/64|build-dds-rs-service-client|zephyr/rust/dds/service-client|1"
       "native_sim/native/64|build-dds-rs-action-server|zephyr/rust/dds/action-server|1"
       "native_sim/native/64|build-dds-rs-action-client|zephyr/rust/dds/action-client|1"
-      "native_sim/native/64|build-dds-rs-async-service-client|zephyr/rust/dds/async-service-client|1"
+      "native_sim/native/64|build-dds-rs-async-service-client|zephyr/rust/dds/service-client-async|1"
       # Phase 92 + 95.B — DDS Rust full 7-set on qemu_cortex_a9 (real IGMP/GEM/ARP)
       "qemu_cortex_a9|build-dds-a9-talker|zephyr/rust/dds/talker|0"
       "qemu_cortex_a9|build-dds-a9-listener|zephyr/rust/dds/listener|0"
@@ -206,7 +206,7 @@ build-fixtures:
       "qemu_cortex_a9|build-dds-a9-service-client|zephyr/rust/dds/service-client|0"
       "qemu_cortex_a9|build-dds-a9-action-server|zephyr/rust/dds/action-server|0"
       "qemu_cortex_a9|build-dds-a9-action-client|zephyr/rust/dds/action-client|0"
-      "qemu_cortex_a9|build-dds-a9-async-service-client|zephyr/rust/dds/async-service-client|0"
+      "qemu_cortex_a9|build-dds-a9-async-service-client|zephyr/rust/dds/service-client-async|0"
       # Phase 95.D — DDS C++ full 6-set on both native_sim and qemu_cortex_a9
       "native_sim/native/64|build-dds-cpp-talker|zephyr/cpp/dds/talker|0"
       "native_sim/native/64|build-dds-cpp-listener|zephyr/cpp/dds/listener|0"
@@ -602,7 +602,7 @@ test-c:
 clean:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE"/build-{talker,listener,service-server,service-client,action-server,action-client,async-service-client,c-talker,c-listener,cpp-talker,cpp-listener,cpp-service-server,cpp-service-client,cpp-action-server,cpp-action-client,xrce-rs-talker,xrce-rs-listener,xrce-c-talker,xrce-c-listener}
+    rm -rf "$WORKSPACE"/build-{talker,listener,service-server,service-client,action-server,action-client,service-client-async,async-service-client,c-talker,c-listener,cpp-talker,cpp-listener,cpp-service-server,cpp-service-client,cpp-action-server,cpp-action-client,xrce-rs-talker,xrce-rs-listener,xrce-c-talker,xrce-c-listener}
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -715,7 +715,7 @@ async-service-client:
     NROS="$(basename "$(pwd)")"
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     cd "$WORKSPACE"
-    west build -b native_sim/native/64 -d build-async-service-client -p auto "$NROS/examples/zephyr/rust/zenoh/async-service-client"
+    west build -b native_sim/native/64 -d build-async-service-client -p auto "$NROS/examples/zephyr/rust/zenoh/service-client-async"
     ./build-async-service-client/zephyr/zephyr.exe
 
 # Start zenohd router for Zephyr examples (port 7456, all interfaces)

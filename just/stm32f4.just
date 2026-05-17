@@ -22,12 +22,12 @@ build-fixtures:
     echo "Building STM32F4 test fixtures..."
     rust_examples=(
         talker
-        rtic-talker
-        rtic-listener
-        rtic-service-server
-        rtic-service-client
-        rtic-action-server
-        rtic-action-client
+        talker-rtic
+        listener-rtic
+        service-server-rtic
+        service-client-rtic
+        action-server-rtic
+        action-client-rtic
     )
     # Strict: abort on the first per-example failure. Per-example RAM
     # tuning (e.g. `NROS_SUBSCRIPTION_BUFFER_SIZE` in the example's

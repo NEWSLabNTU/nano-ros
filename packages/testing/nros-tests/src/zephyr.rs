@@ -724,7 +724,7 @@ fn example_path_for_name(example_name: &str) -> String {
             "zephyr/rust/dds/action-client".to_string()
         }
         "zephyr-dds-rs-async-service-client" | "dds-rs-async-service-client" => {
-            "zephyr/rust/dds/async-service-client".to_string()
+            "zephyr/rust/dds/service-client-async".to_string()
         }
         // Phase 92 — same source, qemu_cortex_a9 build dir alias
         "zephyr-dds-rs-talker-a9" => "zephyr/rust/dds/talker".to_string(),
@@ -735,7 +735,7 @@ fn example_path_for_name(example_name: &str) -> String {
         "zephyr-dds-rs-action-server-a9" => "zephyr/rust/dds/action-server".to_string(),
         "zephyr-dds-rs-action-client-a9" => "zephyr/rust/dds/action-client".to_string(),
         "zephyr-dds-rs-async-service-client-a9" => {
-            "zephyr/rust/dds/async-service-client".to_string()
+            "zephyr/rust/dds/service-client-async".to_string()
         }
         // For any other name, assume it's a path relative to examples/
         _ => example_name.to_string(),

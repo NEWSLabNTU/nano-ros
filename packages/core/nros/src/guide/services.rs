@@ -60,6 +60,6 @@
 //! external runtime dependency.  They work on `no_std`/`no_alloc` targets.
 //! For async combinators (`select`, `join`), add `embassy-futures`.
 //!
-//! See `examples/native/rust/zenoh/async-service-client/` (tokio) and
-//! `examples/zephyr/rust/zenoh/async-service-client/` (Embassy) for complete
+//! See `examples/native/rust/zenoh/service-client-async/` (tokio) and
+//! `examples/zephyr/rust/zenoh/service-client-async/` (Embassy) for complete
 //! working examples.

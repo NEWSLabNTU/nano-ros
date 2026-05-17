@@ -799,7 +799,7 @@ pub fn build_rtic_talker() -> TestResult<&'static Path> {
     RTIC_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/rtic-talker",
+                "stm32f4/rust/zenoh/talker-rtic",
                 "stm32f4-rtic-talker",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -813,7 +813,7 @@ pub fn build_rtic_listener() -> TestResult<&'static Path> {
     RTIC_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/rtic-listener",
+                "stm32f4/rust/zenoh/listener-rtic",
                 "stm32f4-rtic-listener",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -826,7 +826,7 @@ pub fn build_rtic_listener() -> TestResult<&'static Path> {
 pub fn build_native_rtic_talker() -> TestResult<&'static Path> {
     NATIVE_RTIC_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example("native/rust/zenoh/rtic-talker", "rtic-talker", None, None)
+            build_example("native/rust/zenoh/talker-rtic", "rtic-talker", None, None)
         })
         .map(|p| p.as_path())
 }
@@ -836,7 +836,7 @@ pub fn build_native_rtic_listener() -> TestResult<&'static Path> {
     NATIVE_RTIC_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/rtic-listener",
+                "native/rust/zenoh/listener-rtic",
                 "rtic-listener",
                 None,
                 None,
@@ -850,7 +850,7 @@ pub fn build_native_rtic_service_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/rtic-service-server",
+                "native/rust/zenoh/service-server-rtic",
                 "rtic-service-server",
                 None,
                 None,
@@ -864,7 +864,7 @@ pub fn build_native_rtic_service_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/rtic-service-client",
+                "native/rust/zenoh/service-client-rtic",
                 "rtic-service-client",
                 None,
                 None,
@@ -878,7 +878,7 @@ pub fn build_rtic_service_server() -> TestResult<&'static Path> {
     RTIC_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/rtic-service-server",
+                "stm32f4/rust/zenoh/service-server-rtic",
                 "stm32f4-rtic-service-server",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -892,7 +892,7 @@ pub fn build_rtic_service_client() -> TestResult<&'static Path> {
     RTIC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/rtic-service-client",
+                "stm32f4/rust/zenoh/service-client-rtic",
                 "stm32f4-rtic-service-client",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -906,7 +906,7 @@ pub fn build_native_rtic_action_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/rtic-action-server",
+                "native/rust/zenoh/action-server-rtic",
                 "rtic-action-server",
                 None,
                 None,
@@ -920,7 +920,7 @@ pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/rtic-action-client",
+                "native/rust/zenoh/action-client-rtic",
                 "rtic-action-client",
                 None,
                 None,
@@ -934,7 +934,7 @@ pub fn build_rtic_action_server() -> TestResult<&'static Path> {
     RTIC_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/rtic-action-server",
+                "stm32f4/rust/zenoh/action-server-rtic",
                 "stm32f4-rtic-action-server",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -948,7 +948,7 @@ pub fn build_rtic_action_client() -> TestResult<&'static Path> {
     RTIC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/rtic-action-client",
+                "stm32f4/rust/zenoh/action-client-rtic",
                 "stm32f4-rtic-action-client",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -1717,7 +1717,7 @@ pub fn build_qemu_rtic_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-talker",
+                "qemu-arm-baremetal/rust/zenoh/talker-rtic",
                 "qemu-rtic-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1731,7 +1731,7 @@ pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-listener",
+                "qemu-arm-baremetal/rust/zenoh/listener-rtic",
                 "qemu-rtic-listener",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1751,7 +1751,7 @@ pub fn build_qemu_rtic_service_server() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-service-server",
+                "qemu-arm-baremetal/rust/zenoh/service-server-rtic",
                 "qemu-rtic-service-server",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1765,7 +1765,7 @@ pub fn build_qemu_rtic_service_client() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-service-client",
+                "qemu-arm-baremetal/rust/zenoh/service-client-rtic",
                 "qemu-rtic-service-client",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2001,7 +2001,7 @@ pub fn build_qemu_rtic_action_server() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-action-server",
+                "qemu-arm-baremetal/rust/zenoh/action-server-rtic",
                 "qemu-rtic-action-server",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2015,7 +2015,7 @@ pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-action-client",
+                "qemu-arm-baremetal/rust/zenoh/action-client-rtic",
                 "qemu-rtic-action-client",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2039,7 +2039,7 @@ pub fn build_qemu_rtic_mixed_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-mixed-talker",
+                "qemu-arm-baremetal/rust/zenoh/talker-rtic-mixed",
                 "qemu-rtic-mixed-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2053,7 +2053,7 @@ pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/rtic-mixed-listener",
+                "qemu-arm-baremetal/rust/zenoh/listener-rtic-mixed",
                 "qemu-rtic-mixed-listener",
                 None,
                 Some("thumbv7m-none-eabi"),

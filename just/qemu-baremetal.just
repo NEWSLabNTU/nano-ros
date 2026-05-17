@@ -381,16 +381,16 @@ talker: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/talker/target/th
 listener: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener")
 
 # Run RTIC service server on QEMU
-rtic-service-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-service-server/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-server")
+rtic-service-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/service-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-server")
 
 # Run RTIC service client on QEMU
-rtic-service-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-service-client/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-client")
+rtic-service-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/service-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-client")
 
 # Run RTIC action server on QEMU
-rtic-action-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-server/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-server")
+rtic-action-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/action-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-server")
 
 # Run RTIC action client on QEMU
-rtic-action-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-client/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-client")
+rtic-action-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/action-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-client")
 
 # Start zenohd router for bare-metal QEMU examples (port 7450)
 zenohd:

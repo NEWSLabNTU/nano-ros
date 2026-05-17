@@ -88,12 +88,12 @@ build-fixtures:
         native/rust/zenoh/service-client
         native/rust/zenoh/action-server
         native/rust/zenoh/action-client
-        native/rust/zenoh/rtic-talker
-        native/rust/zenoh/rtic-listener
-        native/rust/zenoh/rtic-service-server
-        native/rust/zenoh/rtic-service-client
-        native/rust/zenoh/rtic-action-server
-        native/rust/zenoh/rtic-action-client
+        native/rust/zenoh/talker-rtic
+        native/rust/zenoh/listener-rtic
+        native/rust/zenoh/service-server-rtic
+        native/rust/zenoh/service-client-rtic
+        native/rust/zenoh/action-server-rtic
+        native/rust/zenoh/action-client-rtic
         native/rust/xrce/talker
         native/rust/xrce/listener
         native/rust/xrce/service-server
