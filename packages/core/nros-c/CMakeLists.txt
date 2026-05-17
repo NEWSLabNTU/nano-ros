@@ -65,9 +65,24 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     # ThreadX on RISC-V 64 (QEMU virt): no std, alloc for internal collections.
     set(_platform_features alloc panic-halt platform-threadx)
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
+    # Phase 138 canonical "threadx" — board axis disambiguates the
+    # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
+    # bare-metal). Required for `add_subdirectory(<nano-ros-root>)`
+    # consumers per Phase 144.7-8.
+    if(NANO_ROS_BOARD STREQUAL "threadx-linux")
+        set(_platform_features std platform-threadx)
+    elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
+        set(_platform_features alloc panic-halt platform-threadx)
+    else()
+        message(FATAL_ERROR
+            "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
+            "threadx-linux, riscv64-qemu. Got '${NANO_ROS_BOARD}'.")
+    endif()
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
-            "(expected: posix, freertos_armcm3, nuttx_armv7a, or threadx_linux)")
+            "(expected: posix, freertos_armcm3, freertos, nuttx_armv7a, "
+            "threadx_linux, threadx_riscv64, or threadx)")
 endif()
 
 set(_features ros-humble ${_rmw_features} ${_platform_features})
@@ -220,17 +235,17 @@ install(FILES
     "${_PROJECT_ROOT}/packages/core/nros-platform-freertos/src/net.c"
     DESTINATION share/nano_ros/platform/freertos)
 
-# ThreadX-Linux — startup.c
+# ThreadX-Linux — startup.c (Phase 144.8: now under board crate)
 install(FILES
-    "${_PROJECT_ROOT}/examples/threadx-linux/cmake/startup.c"
+    "${_PROJECT_ROOT}/packages/boards/nros-board-threadx-linux/startup.c"
     DESTINATION share/nano_ros/platform/threadx-linux)
 
-# ThreadX-RISCV64 — startup.c + cxx-compat headers
+# ThreadX-RISCV64 — startup.c + cxx-compat headers (Phase 144.7: now under board crate)
 install(FILES
-    "${_PROJECT_ROOT}/examples/qemu-riscv64-threadx/cmake/startup.c"
+    "${_PROJECT_ROOT}/packages/boards/nros-board-threadx-qemu-riscv64/startup.c"
     DESTINATION share/nano_ros/platform/threadx-riscv64)
 install(DIRECTORY
-    "${_PROJECT_ROOT}/examples/qemu-riscv64-threadx/cmake/cxx-compat"
+    "${_PROJECT_ROOT}/packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
     DESTINATION share/nano_ros/platform/threadx-riscv64)
 
 # NuttX — FFI crate is NOT installed under share/. The crate's

@@ -25,6 +25,19 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     set(_platform_features platform-threadx)
     set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
+    # Phase 144.7-8 canonical "threadx" — board axis disambiguates
+    # the std-vs-no_std crate-feature split.
+    if(NANO_ROS_BOARD STREQUAL "threadx-linux")
+        set(_platform_features platform-threadx-std)
+    elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
+        set(_platform_features platform-threadx)
+    else()
+        message(FATAL_ERROR
+            "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
+            "threadx-linux, riscv64-qemu. Got '${NANO_ROS_BOARD}'.")
+    endif()
+    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM}")
 endif()
