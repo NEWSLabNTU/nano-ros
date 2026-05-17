@@ -144,7 +144,7 @@ test-wcet verbose="": build-examples
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu-arm-baremetal/rust/core/wcet-bench/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
+            -kernel packages/testing/nros-bench/wcet-cycles-qemu/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
 test-lan9118 verbose="": build-examples

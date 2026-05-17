@@ -131,7 +131,7 @@ exclude = [
     "examples/qemu-arm-baremetal/rust/zenoh/talker",
     "examples/qemu-arm-baremetal/rust/zenoh/listener",
     "packages/testing/nros-tests/bins/cdr-roundtrip-qemu",
-    "examples/qemu-arm-baremetal/rust/core/wcet-bench",
+    "packages/testing/nros-bench/wcet-cycles-qemu",
     "examples/qemu-arm-baremetal/rust/zenoh/large-msg-test",
     "packages/testing/nros-tests/bins/lan9118-qemu",
     "examples/qemu-arm-baremetal/rust/zenoh/rtic-talker",

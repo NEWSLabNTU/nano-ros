@@ -835,7 +835,7 @@ show-asm-list pkg target="":
 # Analyze per-function stack usage (requires nightly + llvm-tools)
 # Usage: just check-stack [example-dir] [top]
 # Default: examples/qemu/rs-wcet-bench, top 30
-check-stack example="examples/qemu-arm-baremetal/rust/core/wcet-bench" top="30":
+check-stack example="packages/testing/nros-bench/wcet-cycles-qemu" top="30":
     ./scripts/stack-analysis.sh {{example}} --top {{top}}
 
 # Analyze stack usage of a pre-built ELF (e.g. Zephyr west build output)
@@ -858,7 +858,7 @@ check-stack-all top="10":
     failed=0
     # Rust examples (QEMU ARM — no exclude, show full picture)
     for example in \
-        examples/qemu-arm-baremetal/rust/core/wcet-bench \
+        packages/testing/nros-bench/wcet-cycles-qemu \
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
         examples/qemu-arm-baremetal/rust/zenoh/talker \
         examples/qemu-arm-baremetal/rust/zenoh/listener \

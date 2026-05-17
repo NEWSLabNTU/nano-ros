@@ -8,10 +8,10 @@ DEFMT_LOG = "trace"
 path = "generated/builtin_interfaces"
 
 [patch.crates-io.nros-core]
-path = "../../../../../packages/core/nros-core"
+path = "../../../../packages/core/nros-core"
 
 [patch.crates-io.nros-serdes]
-path = "../../../../../packages/core/nros-serdes"
+path = "../../../../packages/core/nros-serdes"
 
 [patch.crates-io.std_msgs]
 path = "generated/std_msgs"

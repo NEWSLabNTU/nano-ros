@@ -368,10 +368,9 @@ pub fn qemu_binary() -> PathBuf {
 pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "qemu-arm-baremetal/rust/core/wcet-bench",
+            build_test_fixture(
+                "nros-bench/wcet-cycles-qemu",
                 "qemu-rs-wcet-bench",
-                None,
                 Some("thumbv7m-none-eabi"),
             )
         })
