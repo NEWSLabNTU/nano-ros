@@ -1074,9 +1074,28 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
                 return;
             }
 
-            std::fs::write(&output_file, processed).unwrap_or_else(|e| {
-                println!("cargo:warning=Failed to write header: {e}");
-            });
+            // Race-free write under parallel cargo invocations (one per
+            // example/target-dir, all rebuilding zpico-sys against this same
+            // source-tree path). std::fs::write would interleave bytes on
+            // concurrent writers; instead write to a per-pid temp then
+            // atomic-rename. Same-content skip avoids redundant churn that
+            // confuses cargo's rerun-if-changed.
+            let existing = std::fs::read(&output_file).ok();
+            if existing.as_deref() == Some(processed.as_bytes()) {
+                return;
+            }
+            let tmp = output_file
+                .parent()
+                .map(|p| p.join(format!(".zpico.h.tmp.{}", std::process::id())))
+                .unwrap_or_else(|| output_file.with_extension(format!("h.tmp.{}", std::process::id())));
+            if let Err(e) = std::fs::write(&tmp, processed) {
+                println!("cargo:warning=Failed to write tmp header {tmp:?}: {e}");
+                return;
+            }
+            if let Err(e) = std::fs::rename(&tmp, &output_file) {
+                println!("cargo:warning=Failed to rename tmp header into place: {e}");
+                let _ = std::fs::remove_file(&tmp);
+            }
         }
         Err(e) => {
             println!("cargo:warning=cbindgen failed: {e}");
