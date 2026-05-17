@@ -28,7 +28,9 @@ add_library(nros_platform_posix STATIC
     src/platform.c
     src/net.c
     src/timer.c)
-target_include_directories(nros_platform_posix PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
+target_include_directories(nros_platform_posix PUBLIC
+    $<BUILD_INTERFACE:${NROS_PLATFORM_CFFI_INCLUDE}>
+    $<INSTALL_INTERFACE:include>)
 target_compile_options(nros_platform_posix PRIVATE
     -Wall -Wextra -Wpedantic -Werror)
 
