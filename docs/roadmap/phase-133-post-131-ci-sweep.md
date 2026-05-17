@@ -5,7 +5,7 @@ clean `just ci` run after Phase 131 landed on `main`. Acts as an
 index over the per-issue fix commits + the deferred follow-up phases
 that close the larger gaps.
 
-**Status.** 4 of 6 items landed. 2 deferred to dedicated phase docs.
+**Status.** 6 of 7 items closed (5 landed directly, 1 closed via Phase 134, 1 superseded by Phase 140 plan). 133.7 stays open but is now scheduled to be eliminated wholesale rather than fixed in place.
 
 **Priority.** P2 — bookkeeping. Each line item is small (or
 delegated). Recorded here so future "why does CI complain about X"
@@ -61,23 +61,22 @@ prevents the same root-causes recurring under a new label later.
 **Fix.** `clang-format -i` sweep.
 
 ### 133.5 — zpico-sys build.rs race on `c/include/zpico.h` regeneration → **Phase 134**
-**Status.** Landed (`d41cf9c`); root cause documented + follow-up tracked in [phase-134-zenoh-pico-udp-multicast-gate.md](phase-134-zenoh-pico-udp-multicast-gate.md) (separate concern, same `zpico-sys` crate).
+**Status.** Landed (`d41cf9c`); root cause documented + follow-up tracked in [phase-134-zenoh-pico-udp-multicast-gate.md](archived/phase-134-zenoh-pico-udp-multicast-gate.md) (separate concern, same `zpico-sys` crate; now archived).
 **Trigger.** `just check` parallel `cargo check` fan-out failed with `unknown type name 'zpico_ring_desc_t'` etc.
 **Files.** `packages/zpico/zpico-sys/build.rs::generate_header`.
 **Why.** `std::fs::write(&output_file, processed)` to source-tree `c/include/zpico.h` from N parallel cargo invocations (one per example target-dir) interleaved bytes when concurrent writers raced. Parallel cc readers picked up a truncated header.
 **Fix.** Same-content skip + write-to-temp + atomic `rename(2)` into place. POSIX-atomic; concurrent readers see either old-full or new-full, never partial.
 
 ### 133.6 — Phase 128 incomplete UDP multicast feature gate → **Phase 134**
-**Status.** Not started. Deferred to [phase-134-zenoh-pico-udp-multicast-gate.md](phase-134-zenoh-pico-udp-multicast-gate.md).
-**Trigger.** Test-all C-link of every native_api / rmw_interop / c_xrce_api example fails: `/usr/bin/ld: …libnros_rmw_zenoh.a(udp.c.o): in function '_z_f_link_open_udp_multicast': undefined reference to '_z_read_udp_multicast' / '_z_read_exact_udp_multicast'`.
-**Why.** Phase 128 deleted "inert link-tcp / udp-unicast" features but the cleanup left two zenoh-pico source files compiled with mismatched `Z_FEATURE_LINK_UDP_MULTICAST` flags inside the same archive: `src/link/multicast/udp.c` keeps the link-wrappers (built with `=1`); `src/system/unix/network.c` no longer emits the underlying transport fns (built with `=0`). Archive ships wrappers with no underlying impl → linker fails at any consumer of `libnros_rmw_zenoh.a`.
-**Impact.** Blocks ~86 of the 148 post-131 ci failures.
+**Status.** **CLOSED** via [phase-134-zenoh-pico-udp-multicast-gate.md](archived/phase-134-zenoh-pico-udp-multicast-gate.md) (commit `241172e5`). Phase 134's canonical-header contract + the new POSIX multicast aliases in `platform_aliases.c` collapse the half-defined-archive class. The follow-up `RMW_INIT_ENTRIES` duplicate-registration panic surfaced by the now-working C-binary link is closed in the same phase via the `linkme-register` Cargo feature gate + `.init_array` ctor in `nros-rmw-zenoh-staticlib`. Residual `vtable.open=-1` zenoh handshake failure documented as a Phase 138 follow-up.
+**Original trigger.** Test-all C-link of every native_api / rmw_interop / c_xrce_api example failed: `/usr/bin/ld: …libnros_rmw_zenoh.a(udp.c.o): in function '_z_f_link_open_udp_multicast': undefined reference to '_z_read_udp_multicast' / '_z_read_exact_udp_multicast'`.
+**Note.** The entire bug class (cc-rs / CMake split + `--allow-multiple-definition` for the dual-staticlib link) is structurally eliminated by Phase 140's `install-local` removal: `add_subdirectory(third_party/nano-ros)` builds everything in one cargo dep graph, no second zenoh-pico C build, no duplicate REGISTRY, no `--allow-multiple-definition` needed. The 134 fix is therefore transitional. The archived Phase 134 doc records the structural shape so the lesson survives the rewrite.
 
-### 133.7 — `test-all` install-ordering bug → **Phase 135**
-**Status.** Not started. Deferred to [phase-135-test-all-install-ordering.md](phase-135-test-all-install-ordering.md).
-**Trigger.** First-run fresh `just ci` on a checkout that has never run `just install-local`: native_api / dds_api / rmw_interop / xrce tests panic with `cmake configure failed … Could not find a package configuration file provided by "NrosPlatformPosix"`. Subsequent runs pass (the late `_test-c-codegen` recipe inside test-all calls `just install-local` and populates the install).
+### 133.7 — `test-all` install-ordering bug → **Phase 135 (open, will be subsumed by Phase 140)**
+**Status.** **Open.** Tracked in [phase-135-test-all-install-ordering.md](phase-135-test-all-install-ordering.md). [Phase 140](phase-140-install-local-rip-off.md) supersedes the fix: rather than reorder `test-all`'s dep on `install-local`, Phase 140 deletes `install-local` entirely + migrates tests to the `add_subdirectory` path landed by Phase 137 / 138. Phase 135 stays open as a placeholder so the regression test from `chore: fix all just-check warnings` (`25a83568`) keeps its tracking issue, but the implementation will land inside Phase 140.
+**Original trigger.** First-run fresh `just ci` on a checkout that has never run `just install-local`: native_api / dds_api / rmw_interop / xrce tests panic with `cmake configure failed … Could not find a package configuration file provided by "NrosPlatformPosix"`.
 **Why.** `test-all` depends only on `build-zenohd`. Tests that build C / C++ examples via cmake assume `build/install/lib/cmake/NanoRos/…` is populated, which only happens after `just install-local` runs.
-**Impact.** Cosmetic on warm machines; broken first-run CI on fresh clones.
+**Impact.** Cosmetic on warm machines; broken first-run CI on fresh clones. Pinned for 140 because fixing it in 135 first (then immediately deleting the install path) is wasted work.
 
 ---
 
@@ -85,6 +84,8 @@ prevents the same root-causes recurring under a new label later.
 
 - [x] 133.1–133.4 committed on `main`.
 - [x] 133.5 committed on `main`.
+- [x] 133.6 closed via Phase 134 (commit `241172e5`); doc archived at `archived/phase-134-zenoh-pico-udp-multicast-gate.md`.
+- [x] 133.7 superseded by Phase 140 (`install-local` deletion); 135 stays open as a tracking placeholder.
 - [x] phase-134 + phase-135 stubs exist with reproducible trigger + a one-line theory of the fix.
 - [x] This index links every fix commit + every deferred phase.
 

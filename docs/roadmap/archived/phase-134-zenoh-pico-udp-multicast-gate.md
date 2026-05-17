@@ -1,5 +1,31 @@
 # Phase 134 — zenoh-pico Build-Flag Canonical Header
 
+> **ARCHIVED 2026-05-17 (commit `241172e5`).** Every work item and E2E
+> gate landed. The phase delivers a real, shipped fix for the linker
+> bug class it scoped to. Doc kept under `archived/` as the canonical
+> record of what shipped and why.
+>
+> **Superseded structurally by [Phase 140](../phase-140-install-local-rip-off.md).**
+> The entire bug class — dual-staticlib link, `--allow-multiple-
+> definition`, separate cc-rs / CMake build paths for `zpico-sys`,
+> the `linkme-register` feature gate + `.init_array` ctor + private-
+> static REGISTRY-with-`#[no_mangle]` workaround — exists only because
+> `install-local` produces two independently-built archives that the
+> consumer's CMake link stitches together. Phase 137 + Phase 140
+> migrate to `add_subdirectory(third_party/nano-ros)`, which builds
+> the whole project in one cargo dep graph: one nros-rmw-cffi rlib
+> instance, one REGISTRY, one zenoh-pico C build, no dup, no FFI
+> mismatch. The residual `vtable.open=-1` zenoh handshake failure
+> documented under E2E.5 (the C-staticlib FFI-layout mismatch
+> between two independently-cargo-built zenoh-pico variants) is the
+> same root cause and goes away by construction.
+>
+> When Phase 140 lands, the four `linkme-register` / `#[no_mangle]
+> REGISTRY` / `.init_array` ctor / `nros-c.dep:nros-rmw-zenoh`-drop
+> changes from Phase 134.fix become removable. Phase 140 is the
+> right time to remove them — taking them out before 140 lands would
+> re-break the dup-registration crash for every C-binary consumer.
+
 **Goal.** Eliminate the linker-time class where `libnros_rmw_zenoh.a`
 ships `_z_f_link_*` wrappers compiled under one `Z_FEATURE_LINK_*`
 value while the underlying transport impls compile under a different
@@ -14,9 +40,11 @@ This phase is the minimal, ship-fast fix. The larger "unify the two
 build paths and eliminate CMake from `zpico-sys`" effort is deferred
 to Phase 136.
 
-**Status.** Not started.
+**Status.** Closed (commit `241172e5`). Every named work item +
+every E2E gate landed. Residual zenoh handshake failure documented
+under E2E.5 + deferred to Phase 138 (or, structurally, Phase 140).
 
-**Priority.** P1 — blocks ~86 of 148 post-Phase-131 ci failures
+**Priority (historical).** P1 — blocks ~86 of 148 post-Phase-131 ci failures
 (`native_api` 58, `rmw_interop` 40, `c_xrce_api` 10) all caused by
 this one half-defined-archive class.
 
