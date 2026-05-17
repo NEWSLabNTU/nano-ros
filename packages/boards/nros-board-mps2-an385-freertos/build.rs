@@ -45,96 +45,11 @@ fn main() {
     let nros_trace = env::var("NROS_TRACE").unwrap_or_default() == "1";
     println!("cargo:rerun-if-env-changed=NROS_TRACE");
 
-    // --- Build FreeRTOS kernel ---
-    let mut freertos = cc::Build::new();
-    configure_arm_cm3(&mut freertos);
-    add_freertos_includes(&mut freertos, &freertos_dir, &port_dir, &freertos_config_dir);
-    if nros_trace {
-        let tband_dir = manifest_dir.join("../../../third-party/tracing/Tonbandgeraet/tband");
-        let trace_config_dir = manifest_dir.join("trace");
-        freertos.include(tband_dir.join("inc"));
-        freertos.include(&trace_config_dir);
-        freertos.define("NROS_TRACE", "1");
-    }
-
-    // Kernel core
-    for src in &[
-        "tasks.c",
-        "queue.c",
-        "list.c",
-        "timers.c",
-        "event_groups.c",
-        "stream_buffer.c",
-    ] {
-        freertos.file(freertos_dir.join(src));
-    }
-    // Portable layer
-    freertos.file(port_dir.join("port.c"));
-    // Memory manager
-    freertos.file(freertos_dir.join("portable/MemMang/heap_4.c"));
-
-    freertos.compile("freertos");
-
-    // --- Build lwIP ---
-    let mut lwip = cc::Build::new();
-    configure_arm_cm3(&mut lwip);
-    add_freertos_includes(&mut lwip, &freertos_dir, &port_dir, &freertos_config_dir);
-    add_lwip_includes(&mut lwip, &lwip_dir);
-
-    // Core
-    for src in &[
-        "src/core/init.c",
-        "src/core/def.c",
-        "src/core/dns.c",
-        "src/core/inet_chksum.c",
-        "src/core/ip.c",
-        "src/core/mem.c",
-        "src/core/memp.c",
-        "src/core/netif.c",
-        "src/core/pbuf.c",
-        "src/core/raw.c",
-        "src/core/stats.c",
-        "src/core/sys.c",
-        "src/core/tcp.c",
-        "src/core/tcp_in.c",
-        "src/core/tcp_out.c",
-        "src/core/timeouts.c",
-        "src/core/udp.c",
-    ] {
-        lwip.file(lwip_dir.join(src));
-    }
-    // IPv4
-    for src in &[
-        "src/core/ipv4/etharp.c",
-        "src/core/ipv4/icmp.c",
-        "src/core/ipv4/ip4.c",
-        "src/core/ipv4/ip4_addr.c",
-        "src/core/ipv4/ip4_frag.c",
-        // Phase 97.1.kconfig.freertos — IGMP for RTPS SPDP multicast.
-        "src/core/ipv4/igmp.c",
-    ] {
-        lwip.file(lwip_dir.join(src));
-    }
-    // API (required for sockets)
-    for src in &[
-        "src/api/api_lib.c",
-        "src/api/api_msg.c",
-        "src/api/err.c",
-        "src/api/if_api.c",
-        "src/api/netbuf.c",
-        "src/api/netdb.c",
-        "src/api/netifapi.c",
-        "src/api/sockets.c",
-        "src/api/tcpip.c",
-    ] {
-        lwip.file(lwip_dir.join(src));
-    }
-    // Netif
-    lwip.file(lwip_dir.join("src/netif/ethernet.c"));
-    // FreeRTOS sys_arch
-    lwip.file(lwip_dir.join("contrib/ports/freertos/sys_arch.c"));
-
-    lwip.compile("lwip");
+    // Phase 149.1.B.4 — FreeRTOS kernel + lwIP + nros-platform-freertos
+    // are now compiled by `nros-board-freertos/build.rs` (the generic
+    // crate this overlay depends on). Its `cargo:rustc-link-lib=static=...`
+    // lines propagate transitively into this binary's link. Overlay
+    // only needs the per-board pieces below.
 
     // --- Build LAN9118 lwIP netif driver ---
     let mut lan9118 = cc::Build::new();
@@ -178,49 +93,32 @@ fn main() {
         glue.define("NROS_TRACE", "1");
     }
 
-    // Phase 149.1.B.1 — startup C split into three checked-in
-    // files under `c/`. Mechanical split; behaviour unchanged.
-    // - freertos_hooks.c — generic FreeRTOS hooks + semihosting
-    //   (candidate for promotion into nros-board-freertos at 149.1.B.4)
-    // - network_glue.c   — lwIP init + FFI surface Rust calls
-    //   (candidate for promotion once 149.1.B.2 lifts the
-    //   nros_board_init_eth weak-hook contract)
-    // - board_mps2.c     — MPS2-AN385 vector table + Reset +
-    //   LAN9118 register-level diagnostic (stays per-board)
-    glue.file(manifest_dir.join("c/freertos_hooks.c"));
-    glue.file(manifest_dir.join("c/network_glue.c"));
+    // Phase 149.1.B.4 — overlay glue carries only board-specific
+    // C: MPS2-AN385 vector table + Reset_Handler + LAN9118 diag +
+    // trace_dump (always compiled; stubs when NROS_TRACE off).
+    // Generic FreeRTOS / lwIP / nros-platform-freertos pieces moved
+    // to `nros-board-freertos/build.rs`.
     glue.file(manifest_dir.join("c/board_mps2.c"));
-
-    // Trace dump (always compiled — stubs when NROS_TRACE not defined)
     glue.file(manifest_dir.join("trace/trace_dump.c"));
 
     glue.compile("startup");
 
-    // --- Phase 121.3 — nros-platform-freertos C port ---
-    // The native C port (`packages/core/nros-platform-freertos/src/`)
-    // provides the canonical `nros_platform_*` symbols against the
-    // FreeRTOS kernel + lwIP. Built in-tree by the board because the
-    // C port headers (`<FreeRTOS.h>`, `<lwip/sockets.h>`) come from
-    // this build's already-configured includes.
-    let nros_platform_freertos_dir =
-        manifest_dir.join("../../../packages/core/nros-platform-freertos/src");
-    let nros_platform_cffi_include =
-        manifest_dir.join("../../../packages/core/nros-platform-cffi/include");
-    let mut platform = cc::Build::new();
-    configure_arm_cm3(&mut platform);
-    add_freertos_includes(&mut platform, &freertos_dir, &port_dir, &freertos_config_dir);
-    add_lwip_includes(&mut platform, &lwip_dir);
-    platform.include(&nros_platform_cffi_include);
-    platform.file(nros_platform_freertos_dir.join("platform.c"));
-    platform.file(nros_platform_freertos_dir.join("net.c"));
-    platform.file(nros_platform_freertos_dir.join("timer.c"));
-    platform.compile("nros_platform_freertos");
-    println!("cargo:rerun-if-changed={}", nros_platform_freertos_dir.display());
-
     // --- Link order ---
-    println!("cargo:rustc-link-lib=static=nros_platform_freertos");
+    // Phase 149.1.B.4 — overlay re-emits the link-lib lines for
+    // the four archives the generic `nros-board-freertos` crate
+    // produces. `cargo:rustc-link-search` propagates transitively
+    // (the generic crate's OUT_DIR ends up on `-L` automatically)
+    // but `cargo:rustc-link-lib` does NOT propagate cleanly
+    // through a regular `[dependencies]` chain in rust-lld's
+    // ordering, so the overlay names them explicitly. Order
+    // matters for static-archive symbol resolution; per-board
+    // archives first (so the overlay's strong `nros_board_*`
+    // overrides win), then generic kernel + lwIP + glue +
+    // platform-port archives.
     println!("cargo:rustc-link-lib=static=startup");
     println!("cargo:rustc-link-lib=static=lan9118_lwip");
+    println!("cargo:rustc-link-lib=static=nros_platform_freertos");
+    println!("cargo:rustc-link-lib=static=freertos_glue");
     println!("cargo:rustc-link-lib=static=lwip");
     println!("cargo:rustc-link-lib=static=freertos");
 
@@ -243,8 +141,6 @@ fn main() {
     println!("cargo:rerun-if-changed=config/FreeRTOSConfig.h");
     println!("cargo:rerun-if-changed=config/lwipopts.h");
     println!("cargo:rerun-if-changed=config/mps2_an385.ld");
-    println!("cargo:rerun-if-changed=c/freertos_hooks.c");
-    println!("cargo:rerun-if-changed=c/network_glue.c");
     println!("cargo:rerun-if-changed=c/board_mps2.c");
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
