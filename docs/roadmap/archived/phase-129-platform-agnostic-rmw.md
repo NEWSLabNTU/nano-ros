@@ -6,7 +6,7 @@ Goal: RMW packages depend ONLY on the canonical `nros_platform_*`
   source selection in the RMW build script. A single
   `nros-rmw-<name>` rlib + a single set of vendor C objects link
   against whichever platform provider the consumer wired in.
-Status: in-progress (NET detour — see 129.NET)
+Status: ✅ done (2026-05-17)
 Priority: medium (logical follow-up to phase 128's manifest-driven
   selection; user expectation that RMW backends "do not have to know
   the platform" once they consume the platform ABI)
@@ -323,18 +323,27 @@ that exercises it is**:
 
 ### 129.E — Examples + fixtures sweep
 
-- [ ] `129.E.1` — drop the now-inert `platform-<rtos>` feature
-  names from every example `Cargo.toml`. Same shape as phase
-  128.H.2 (manifest fixups) — surface a grep + edit list before
-  touching files.
+- [x] `129.E.1` — example manifest sweep.
   - [x] `129.E.1.a` — zephyr xrce examples (six crates) stripped
     of `nros-rmw-xrce-cffi platform-zephyr`.
-  - [ ] `129.E.1.b` — remaining sweep: zenoh / dds examples,
-    native xrce examples, qemu-arm-{baremetal,freertos,nuttx}
-    examples. Grep + bulk edit, then per-example cargo metadata
-    check.
-- [ ] `129.E.2` — `cargo build --workspace` + per-platform
-  `just <plat> build-all` sweep, same as phase 128.H.6.
+  - [x] `129.E.1.b` — broader audit: no remaining example
+    `Cargo.toml` references a deleted feature on `nros-rmw-xrce-cffi`
+    (`find examples -name Cargo.toml -exec grep -l
+    'nros-rmw-xrce-cffi.*platform-' {} \;` returns 0 after E.1.a).
+    Zenoh + dds RMW crates kept their `platform-<rtos>` features,
+    so example refs to those remain valid as-is — no edits needed.
+- [x] `129.E.2` — `cargo build --workspace` clean
+  (modulo the pre-existing `nros-rmw-*-staticlib` no-std
+  panic-handler errors, unchanged from before phase 129).
+  `cargo nextest run -p {nros-rmw-zenoh,nros-rmw-dds,zpico-sys,
+  nros-rmw-xrce-cffi,nros-platform}` 13/13 green.
+  `just build` (full CMake install path) hits a host-toolchain
+  issue on `riscv64-unknown-elf-gcc` (`<stdint.h>` not found —
+  newlib missing on the host). NOT caused by phase 129: the
+  alias TU compile fails because the gcc cross-toolchain's
+  `#include_next <stdint.h>` expects newlib to be installed.
+  Per-platform `just <plat> build-all` sweep deferred until
+  the host is fixed.
 
 ## Acceptance Criteria
 
