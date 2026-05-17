@@ -45,6 +45,7 @@
 - [Architecture Overview](./concepts/architecture.md)
 - [Execution Model and Two-Layer API](./concepts/two-layer-api.md)
 - [Platform Model](./concepts/platform-model.md)
+- [Board Integration](./concepts/board-integration.md)
 - [`no_std`, `alloc`, and `std`](./concepts/no-std.md)
 - [RTOS Cooperation](./concepts/rtos-cooperation.md)
 
