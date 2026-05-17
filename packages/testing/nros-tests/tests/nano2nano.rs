@@ -12,6 +12,30 @@ use nros_tests::{
 use rstest::rstest;
 use std::{path::PathBuf, time::Duration};
 
+/// Phase 150.H — unwrap a fixture-builder result, but if the
+/// failure is `BuildFailed("...not prebuilt...")`, surface it as
+/// `nros_tests::skip!` instead of a hard panic. Mirrors the
+/// 150.F treatment for the xrce/stress rstest fixtures
+/// (`packages/testing/nros-tests/src/fixtures/binaries/mod.rs`).
+///
+/// "Not prebuilt" means the user / CI hasn't run
+/// `just build-test-fixtures` first. That's an environment
+/// precondition, not a test-logic failure — same policy as 150.F.
+/// Any OTHER build error panics normally and counts as a real
+/// failure.
+fn require_prebuilt(
+    result: nros_tests::TestResult<&'static std::path::Path>,
+    name: &str,
+) -> &'static std::path::Path {
+    match result {
+        Ok(p) => p,
+        Err(nros_tests::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
+            nros_tests::skip!("{name}: {msg}")
+        }
+        Err(e) => panic!("Failed to build {name}: {e:?}"),
+    }
+}
+
 // =============================================================================
 // Native Pub/Sub Tests
 // =============================================================================
@@ -442,10 +466,14 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let rtic_talker = nros_tests::fixtures::build_native_rtic_talker()
-        .expect("Failed to build native rtic-talker");
-    let rtic_listener = nros_tests::fixtures::build_native_rtic_listener()
-        .expect("Failed to build native rtic-listener");
+    let rtic_talker = require_prebuilt(
+        nros_tests::fixtures::build_native_rtic_talker(),
+        "native rtic-talker",
+    );
+    let rtic_listener = require_prebuilt(
+        nros_tests::fixtures::build_native_rtic_listener(),
+        "native rtic-listener",
+    );
 
     let locator = zenohd_unique.locator();
 
@@ -495,10 +523,14 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let rtic_server = nros_tests::fixtures::build_native_rtic_service_server()
-        .expect("Failed to build native rtic-service-server");
-    let rtic_client = nros_tests::fixtures::build_native_rtic_service_client()
-        .expect("Failed to build native rtic-service-client");
+    let rtic_server = require_prebuilt(
+        nros_tests::fixtures::build_native_rtic_service_server(),
+        "native rtic-service-server",
+    );
+    let rtic_client = require_prebuilt(
+        nros_tests::fixtures::build_native_rtic_service_client(),
+        "native rtic-service-client",
+    );
 
     let locator = zenohd_unique.locator();
 
@@ -549,10 +581,14 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let rtic_server = nros_tests::fixtures::build_native_rtic_action_server()
-        .expect("Failed to build native rtic-action-server");
-    let rtic_client = nros_tests::fixtures::build_native_rtic_action_client()
-        .expect("Failed to build native rtic-action-client");
+    let rtic_server = require_prebuilt(
+        nros_tests::fixtures::build_native_rtic_action_server(),
+        "native rtic-action-server",
+    );
+    let rtic_client = require_prebuilt(
+        nros_tests::fixtures::build_native_rtic_action_client(),
+        "native rtic-action-client",
+    );
 
     let locator = zenohd_unique.locator();
 
