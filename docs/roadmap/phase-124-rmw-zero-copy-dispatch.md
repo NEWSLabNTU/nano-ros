@@ -1172,15 +1172,27 @@ new test fixture rather than backend code change.
 - [x] `spin_once_honours_timeout_without_trigger` negative
       control — 100 ms requested, 100.06 ms observed; cv
       wait is bounded by user timeout, not infinite block.
-- [ ] Executor spin with 4 idle subscribers + 1-Hz timer
-      wakes exactly N times per N seconds. Not yet
-      written — needs a stand-alone microbench.
-- [ ] Wake-latency P99 (subscriber-receive → callback-run)
-      ≤ 100 µs on Cortex-M3 QEMU + zenoh-pico — deferred
-      with 124.B.8; needs an embedded backend that installs
-      `set_wake_callback` (XRCE/Cyclone leave it NULL).
-- [ ] Multi-RMW bridge ≥ 99% delivery — not yet measured;
-      needs a dual-backend test fixture.
+- [x] Executor spin with 4 idle subscribers + 1-Hz timer
+      wakes exactly N times per N seconds. Covered by
+      `wake_latency::timer_fires_n_times_per_n_seconds_under_idle_subs`
+      (Phase 124.G.1) — observed 5 fires in 5.001 s on POSIX.
+- [-] Wake-latency P99 (subscriber-receive → callback-run)
+      ≤ 100 µs on Cortex-M3 QEMU + zenoh-pico — moved to
+      Phase 131 (`phase-131-wake-callback-cortex-m3.md`).
+      Phase 124.B ships the executor-side wake plumbing
+      (cv-wait / NodeWake / wake_flag) verified on POSIX +
+      RTOS std; closing the embedded P99 needs three pieces
+      that don't fit on Phase 124's critical path: (1) a
+      wake-firing RX driver on embedded zenoh-pico (only
+      Cortex-M3-viable backend; today's shim installs the cb
+      on POSIX std only), (2) a DWT CYCCNT µs-grain probe in
+      the executor + transport notify path, (3) histogram
+      aggregation + UART export with host-side parsing.
+      Tracked in full as Phase 131 (P2; not gating any other
+      shipping work).
+- [x] Multi-RMW bridge ≥ 99% delivery — covered by
+      `multi_rmw_bridge::bridge_zenoh_to_dds_delivers_99pct`
+      (Phase 124.G.2). 50/50 (100%) on POSIX in 1.51 s.
 
 ### Thread C — Service available
 
@@ -1194,9 +1206,10 @@ new test fixture rather than backend code change.
       covered by `server_available_unsupported_when_slot_null`
       (XRCE's vtable.service_server_available = NULL per
       `packages/xrce/nros-rmw-xrce/src/vtable.c:73`).
-- [ ] 100 ms first-publish-discovery timing E2E — needs a
-      real-backend integration test (zenoh/Cyclone), not
-      written.
+- [x] 100 ms first-publish-discovery timing E2E — covered
+      by `server_available_e2e::server_available_flips_within_100ms`
+      (Phase 124.G.3) on the dust-DDS backend. Observed
+      63 ms flip on POSIX (100 ms acceptance target).
 
 ### Thread D — Sequence take
 
