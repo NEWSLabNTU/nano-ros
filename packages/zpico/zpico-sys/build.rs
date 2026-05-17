@@ -58,6 +58,25 @@ impl LinkFeatures {
         }
     }
 
+    /// Phase 134.2 — apply a platform-invariant policy mask. Each
+    /// `PolicyChoice` value either forces the field to a literal (SPE
+    /// has no Ethernet → `Force(false)` masks TCP/UDP/MC/SERIAL/TLS)
+    /// or lets the upstream `LinkFeatures::from_env()` value through
+    /// (`Follow`). Constructor matches what the previous per-build-fn
+    /// `build.define("Z_FEATURE_LINK_*", "0")` literals encoded, just
+    /// in declarative form.
+    fn apply(mut self, policy: &LinkPolicy) -> Self {
+        self.tcp = policy.tcp.resolve(self.tcp);
+        self.udp_unicast = policy.udp_unicast.resolve(self.udp_unicast);
+        self.udp_multicast = policy.udp_multicast.resolve(self.udp_multicast);
+        self.serial = policy.serial.resolve(self.serial);
+        self.raweth = policy.raweth.resolve(self.raweth);
+        self.tls = policy.tls.resolve(self.tls);
+        self.ivc = policy.ivc.resolve(self.ivc);
+        self.custom = policy.custom.resolve(self.custom);
+        self
+    }
+
     fn tcp_flag(&self) -> u8 {
         self.tcp as u8
     }
@@ -81,6 +100,87 @@ impl LinkFeatures {
     }
     fn custom_flag(&self) -> u8 {
         self.custom as u8
+    }
+}
+
+/// Phase 134.2 — per-platform link-feature policy mask.
+///
+/// Layered on top of `LinkFeatures::from_env()`. Each field is a
+/// `PolicyChoice`: `Force(bool)` overrides the env-derived value;
+/// `Follow` lets it through. Replaces the eight functions' worth of
+/// scattered `build.define("Z_FEATURE_LINK_*", "0")` literals with
+/// one declarative table per platform.
+#[derive(Copy, Clone)]
+enum PolicyChoice {
+    Force(bool),
+    Follow,
+}
+
+impl PolicyChoice {
+    fn resolve(self, env_value: bool) -> bool {
+        match self {
+            PolicyChoice::Force(v) => v,
+            PolicyChoice::Follow => env_value,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+struct LinkPolicy {
+    tcp: PolicyChoice,
+    udp_unicast: PolicyChoice,
+    udp_multicast: PolicyChoice,
+    serial: PolicyChoice,
+    raweth: PolicyChoice,
+    tls: PolicyChoice,
+    ivc: PolicyChoice,
+    custom: PolicyChoice,
+}
+
+impl LinkPolicy {
+    /// All-`Follow` baseline: every flag tracks Cargo env exactly.
+    /// Used by every platform whose network stack supports the full
+    /// set of transports (FreeRTOS+lwIP, NuttX, ThreadX/NetX,
+    /// bare-metal/smoltcp).
+    const fn passthrough() -> Self {
+        Self {
+            tcp: PolicyChoice::Follow,
+            udp_unicast: PolicyChoice::Follow,
+            udp_multicast: PolicyChoice::Follow,
+            serial: PolicyChoice::Follow,
+            raweth: PolicyChoice::Follow,
+            tls: PolicyChoice::Follow,
+            ivc: PolicyChoice::Follow,
+            custom: PolicyChoice::Follow,
+        }
+    }
+
+    /// POSIX policy — same as passthrough today. Phase 134.7 adds
+    /// the missing multicast aliases in `platform_aliases.c`; until
+    /// that lands the linker still fails on `_z_read_udp_multicast`
+    /// if multicast is on, but `LinkFeatures::from_env()` already
+    /// hardcodes `udp_multicast=true` so the policy can't paper
+    /// over the gap.
+    const fn posix() -> Self {
+        Self::passthrough()
+    }
+
+    /// AGX Orin SPE — Cortex-R5F + NVIDIA FSP, no Ethernet, no
+    /// serial, no TLS. Only IVC + custom transports are valid.
+    /// Encodes the invariants that `build_zenoh_pico_orin_spe`
+    /// used to scatter as `build.define("Z_FEATURE_LINK_*", "0")`
+    /// literals at the bottom of the function body.
+    const fn orin_spe() -> Self {
+        Self {
+            tcp: PolicyChoice::Force(false),
+            udp_unicast: PolicyChoice::Force(false),
+            udp_multicast: PolicyChoice::Force(false),
+            serial: PolicyChoice::Force(false),
+            raweth: PolicyChoice::Force(false),
+            tls: PolicyChoice::Force(false),
+            ivc: PolicyChoice::Follow,
+            custom: PolicyChoice::Follow,
+        }
     }
 }
 
@@ -358,7 +458,12 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_BATCHING 0").unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_TX_MUTEX 0").unwrap();
     writeln!(header, "#define Z_FEATURE_BATCH_PEER_MUTEX 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_MATCHING 0").unwrap();
+    // Phase 134.4 — MATCHING is required for proper message routing
+    // between clients on different networks (e.g., Zephyr on TAP vs
+    // native on localhost). Previously the CMake POSIX path forced
+    // this on via `cmake_cfg.define("Z_FEATURE_MATCHING", "1")`;
+    // canonicalising the header brings every path in line.
+    writeln!(header, "#define Z_FEATURE_MATCHING 1").unwrap();
     writeln!(header, "#define Z_FEATURE_RX_CACHE 0").unwrap();
     writeln!(header, "#define Z_FEATURE_UNICAST_PEER 0").unwrap();
     // Auto-reconnect is dead code on the IVC link (fixed-frame mailbox, no
@@ -500,6 +605,21 @@ fn main() {
     let shim_config = ShimConfig::from_env();
     shim_config.generate_rust_consts(&out_dir);
 
+    // Phase 134.3 — `zenoh_generic_config.h` is the single source of
+    // truth for every `Z_FEATURE_LINK_*` flag. Apply the per-platform
+    // `LinkPolicy` once here, generate the canonical header, and every
+    // build path below reads it (cc-rs via `ZENOH_GENERIC` + include
+    // path; CMake via the same — see 134.4 below).
+    let link_policy = if use_orin_spe {
+        LinkPolicy::orin_spe()
+    } else if use_posix {
+        LinkPolicy::posix()
+    } else {
+        LinkPolicy::passthrough()
+    };
+    let link_features = link_features.apply(&link_policy);
+    generate_config_header(&out_dir, &link_features, &buf_config);
+
     // Build zenoh-pico and C shim
     //
     // ThreadX is checked first because it uses its own build path for both
@@ -508,7 +628,6 @@ fn main() {
     // Task creation kept in C (task.c) due to _z_task_t struct layout dependency.
     // Network I/O provided by C network.c (NetX Duo BSD sockets).
     if use_threadx {
-        generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_threadx(
             &zenoh_pico_src,
             &c_dir,
@@ -552,7 +671,6 @@ fn main() {
         // Embedded + bare-metal: build zenoh-pico + platform + shim all together with cc.
         // This replaces the external build-zenoh-pico.sh shell scripts.
         // Generate config header from Cargo link-* features before building.
-        generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_embedded(
             &zenoh_pico_src,
             &c_dir,
@@ -565,7 +683,6 @@ fn main() {
     } else if use_freertos {
         // Embedded + FreeRTOS: build zenoh-pico + FreeRTOS platform + shim with cc.
         // Uses zenoh-pico's built-in FreeRTOS+lwIP platform (system.c + lwip/network.c).
-        generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_freertos(
             &zenoh_pico_src,
             &c_dir,
@@ -578,7 +695,6 @@ fn main() {
     } else if use_nuttx {
         // Embedded + NuttX: build zenoh-pico + unix platform (NuttX is POSIX-compatible) + shim.
         // Reuses zenoh-pico's unix/system.c + unix/network.c with ZENOH_NUTTX define.
-        generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_nuttx(
             &zenoh_pico_src,
             &c_dir,
@@ -598,7 +714,6 @@ fn main() {
         // (the SPE has no Ethernet) — the new ZENOH_ORIN_SPE platform
         // header (`include/zenoh-pico/system/platform/freertos/orin_spe.h`)
         // provides FreeRTOS thread/sync types with empty socket unions.
-        generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_orin_spe(
             &zenoh_pico_src,
             &c_dir,
@@ -1287,49 +1402,38 @@ fn build_zenoh_pico_native(
     // clients on different networks (e.g., Zephyr on TAP vs native on localhost).
     // Both clients must have matching INTEREST settings for the router to route properly.
     let mut cmake_cfg = cmake::Config::new(&zenoh_pico_build);
+    // Phase 134.3 / 134.4 — `ZENOH_GENERIC` makes upstream's
+    // `zenoh-pico/include/zenoh-pico/config.h` `#include
+    // <zenoh_generic_config.h>` instead of falling into the CMake-
+    // configured `#else` branch with its hardcoded
+    // `#define Z_FEATURE_LINK_TCP 1` defaults. Our header lives in
+    // `<out_dir>/zenoh-config/` (written by `generate_config_header`)
+    // and carries every `Z_FEATURE_LINK_*` from the resolved
+    // `LinkFeatures`. Adding the include search dir lets CMake's
+    // `-include`-less compile units pick it up via the `#include`
+    // directive inside config.h. Net effect: NO `Z_FEATURE_LINK_*`
+    // literals scattered across `build.rs`.
+    let zenoh_config_dir = out_dir.join("zenoh-config");
     cmake_cfg
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_EXAMPLES", "OFF")
         .define("BUILD_TESTING", "OFF")
         .define("BUILD_TOOLS", "OFF")
         .define("ZENOH_DEBUG", "0")
-        .define("Z_FEATURE_LOCAL_SUBSCRIBER", "0")
-        .define("Z_FEATURE_INTEREST", "1")
-        .define("Z_FEATURE_MATCHING", "1")
-        .define("Z_FEATURE_LINK_SERIAL", "0")
-        .define(
-            "Z_FEATURE_LINK_IVC",
-            if env::var("CARGO_FEATURE_LINK_IVC").is_ok() {
-                "1"
-            } else {
-                "0"
-            },
-        )
-        .define(
-            "Z_FEATURE_LINK_CUSTOM",
-            if env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok() {
-                "1"
-            } else {
-                "0"
-            },
-        )
-        .define(
-            "Z_FEATURE_UNSTABLE_API",
-            if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
-                "1"
-            } else {
-                "0"
-            },
-        )
+        .define("ZENOH_GENERIC", "1")
+        .cflag(format!("-I{}", zenoh_config_dir.display()))
         // zenoh-pico CMakeLists.txt uses FRAG_MAX_SIZE / BATCH_*_SIZE (no Z_ prefix)
         .define("FRAG_MAX_SIZE", buf.frag_max_size.to_string())
         .define("BATCH_UNICAST_SIZE", buf.batch_unicast_size.to_string())
         .define("BATCH_MULTICAST_SIZE", buf.batch_multicast_size.to_string());
+    // Touch `link` so the closure-captured borrow keeps a single
+    // call site for what used to be the per-feature CMake defines.
+    let _ = link;
 
-    // TLS support via mbedTLS (zenoh-pico's CMakeLists.txt handles finding mbedTLS)
+    // TLS — when the canonical header sets `Z_FEATURE_LINK_TLS=1`
+    // we still need to wire pkg-config so CMake's FindPkgConfig
+    // can locate Ubuntu's libmbedtls-dev (which ships no .pc).
     if link.tls {
-        cmake_cfg.define("Z_FEATURE_LINK_TLS", "1");
-
         // Ubuntu's libmbedtls-dev doesn't ship pkg-config .pc files, but
         // zenoh-pico's CMakeLists.txt uses pkg_check_modules to find mbedTLS.
         // Generate .pc files so CMake can discover the system libraries.
@@ -1557,27 +1661,15 @@ fn build_c_shim(
         }
         build.define("ZENOH_GENERIC", None);
         build.define("Z_FEATURE_MULTI_THREAD", "0");
-        build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
-        build.define(
-            "Z_FEATURE_LINK_UDP_UNICAST",
-            if link.udp_unicast { "1" } else { "0" },
-        );
-        build.define(
-            "Z_FEATURE_LINK_UDP_MULTICAST",
-            if link.udp_multicast { "1" } else { "0" },
-        );
-        build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
-        build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
-        build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
-        build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
-        build.define(
-            "Z_FEATURE_RAWETH_TRANSPORT",
-            if link.raweth { "1" } else { "0" },
-        );
-        build.define("Z_FEATURE_SCOUTING_UDP", "0");
-        if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
-            build.define("Z_FEATURE_UNSTABLE_API", "1");
-        }
+        // Phase 134.4 — every `Z_FEATURE_LINK_*` / `Z_FEATURE_RAWETH_*`
+        // / `Z_FEATURE_SCOUTING_UDP` / `Z_FEATURE_UNSTABLE_API` value
+        // lives in `<out_dir>/zenoh-config/zenoh_generic_config.h`,
+        // generated by `generate_config_header` from the resolved
+        // `LinkFeatures + LinkPolicy`. The compile units that need
+        // them `#include "zenoh-pico/config.h"` which dispatches into
+        // our header under `ZENOH_GENERIC`. NO `Z_FEATURE_LINK_*`
+        // literals scattered through `build.rs`.
+        let _ = link;
 
         // ARM cross-compilation flags
         if target.contains("thumbv7em") {
@@ -1703,35 +1795,17 @@ fn build_zenoh_pico_embedded(
         build.define("ZPICO_SERIAL", None);
     }
     build.define("ZENOH_DEBUG", "0");
-    // Link features are set in the generated zenoh_generic_config.h,
-    // but also pass them as -D flags for consistency with any code that
-    // checks these before including the config header.
     build.define("Z_FEATURE_MULTI_THREAD", "0");
-    build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
-    build.define(
-        "Z_FEATURE_LINK_UDP_UNICAST",
-        if link.udp_unicast { "1" } else { "0" },
-    );
-    build.define(
-        "Z_FEATURE_LINK_UDP_MULTICAST",
-        if link.udp_multicast { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_WS", "0");
-    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
-    build.define(
-        "Z_FEATURE_RAWETH_TRANSPORT",
-        if link.raweth { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_SCOUTING_UDP", "0");
+    // Phase 134.4 — link-feature defines flow through the canonical
+    // `zenoh_generic_config.h` written by `generate_config_header`.
+    // Compile units that need them `#include "zenoh-pico/config.h"`
+    // which dispatches into our header via `ZENOH_GENERIC`.
+    let _ = link;
 
     // Pass slot counts as -D flags so zpico.c gets them
     shim.apply_to_cc(&mut build);
 
-    // mbedTLS — when Z_FEATURE_LINK_TLS=1:
+    // mbedTLS — when the canonical header sets `Z_FEATURE_LINK_TLS=1`:
     // 1. Add mbedTLS include paths for zenoh-pico's link/unicast/tls.c
     // 2. Compile mbedTLS library sources (for crypto/TLS primitives)
     // 3. Compile TLS platform symbols (tls_bare_metal.c, entropy_bare_metal.c)
@@ -1922,17 +1996,14 @@ fn build_zenoh_pico_orin_spe(
     build.define("ZENOH_DEBUG", "0");
     // FSP's FreeRTOS V10.4.3 has real threads.
     build.define("Z_FEATURE_MULTI_THREAD", "1");
-    build.define("Z_FEATURE_LINK_TCP", "0");
-    build.define("Z_FEATURE_LINK_UDP_UNICAST", "0");
-    build.define("Z_FEATURE_LINK_UDP_MULTICAST", "0");
-    build.define("Z_FEATURE_LINK_SERIAL", "0");
-    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_TLS", "0");
-    build.define("Z_FEATURE_LINK_WS", "0");
-    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
-    build.define("Z_FEATURE_RAWETH_TRANSPORT", "0");
-    build.define("Z_FEATURE_SCOUTING_UDP", "0");
+    // Phase 134.4 — every `Z_FEATURE_LINK_*` / `Z_FEATURE_RAWETH_*`
+    // / `Z_FEATURE_SCOUTING_UDP` value flows from
+    // `<out_dir>/zenoh-config/zenoh_generic_config.h`, generated by
+    // `generate_config_header` from `LinkFeatures::apply(
+    // &LinkPolicy::orin_spe())` — which encodes the SPE invariants
+    // (no Ethernet → TCP/UDP/MC/SERIAL/TLS = false) declaratively
+    // instead of as scattered build.define literals here.
+    let _ = link;
 
     // Pass slot counts as -D flags so zpico.c gets them
     shim.apply_to_cc(&mut build);
@@ -2090,29 +2161,9 @@ fn build_zenoh_pico_freertos(
     // FreeRTOS has real threads — override the #ifndef default of 0 in config header
     build.define("Z_FEATURE_MULTI_THREAD", "1");
 
-    // Link features (same as embedded — controlled by Cargo link-* features)
-    build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
-    build.define(
-        "Z_FEATURE_LINK_UDP_UNICAST",
-        if link.udp_unicast { "1" } else { "0" },
-    );
-    build.define(
-        "Z_FEATURE_LINK_UDP_MULTICAST",
-        if link.udp_multicast { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_WS", "0");
-    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
-    build.define(
-        "Z_FEATURE_RAWETH_TRANSPORT",
-        if link.raweth { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_SCOUTING_UDP", "0");
-    if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
-        build.define("Z_FEATURE_UNSTABLE_API", "1");
-    }
+    // Phase 134.4 — link-feature defines flow through
+    // `<out_dir>/zenoh-config/zenoh_generic_config.h`.
+    let _ = link;
 
     // Pass shim slot counts as -D flags
     shim.apply_to_cc(&mut build);
@@ -2236,29 +2287,9 @@ fn build_zenoh_pico_nuttx(
     // picks up the host's TCP_NODELAY=1, causing setsockopt(IPPROTO_TCP, 1)
     // to fail with ENOPROTOOPT.
 
-    // Link features (same as embedded — controlled by Cargo link-* features)
-    build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
-    build.define(
-        "Z_FEATURE_LINK_UDP_UNICAST",
-        if link.udp_unicast { "1" } else { "0" },
-    );
-    build.define(
-        "Z_FEATURE_LINK_UDP_MULTICAST",
-        if link.udp_multicast { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_WS", "0");
-    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
-    build.define(
-        "Z_FEATURE_RAWETH_TRANSPORT",
-        if link.raweth { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_SCOUTING_UDP", "0");
-    if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
-        build.define("Z_FEATURE_UNSTABLE_API", "1");
-    }
+    // Phase 134.4 — link-feature defines flow through
+    // `<out_dir>/zenoh-config/zenoh_generic_config.h`.
+    let _ = link;
 
     // Pass shim slot counts as -D flags
     shim.apply_to_cc(&mut build);
@@ -2479,29 +2510,9 @@ fn build_zenoh_pico_threadx(
     // ThreadX has real threads — multi-thread support
     build.define("Z_FEATURE_MULTI_THREAD", "1");
 
-    // Link features (controlled by Cargo link-* features)
-    build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
-    build.define(
-        "Z_FEATURE_LINK_UDP_UNICAST",
-        if link.udp_unicast { "1" } else { "0" },
-    );
-    build.define(
-        "Z_FEATURE_LINK_UDP_MULTICAST",
-        if link.udp_multicast { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_IVC", if link.ivc { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_CUSTOM", if link.custom { "1" } else { "0" });
-    build.define("Z_FEATURE_LINK_WS", "0");
-    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
-    build.define(
-        "Z_FEATURE_RAWETH_TRANSPORT",
-        if link.raweth { "1" } else { "0" },
-    );
-    build.define("Z_FEATURE_SCOUTING_UDP", "0");
-    if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
-        build.define("Z_FEATURE_UNSTABLE_API", "1");
-    }
+    // Phase 134.4 — link-feature defines flow through
+    // `<out_dir>/zenoh-config/zenoh_generic_config.h`.
+    let _ = link;
 
     // Pass shim slot counts as -D flags
     shim.apply_to_cc(&mut build);

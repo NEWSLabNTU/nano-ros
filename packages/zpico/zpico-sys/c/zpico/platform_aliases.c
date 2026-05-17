@@ -400,6 +400,66 @@ size_t _z_send_udp_unicast(nros_zp_alias_socket_t sock, const uint8_t *buf, size
     return nros_platform_udp_send(&sock, buf, len, &rep);
 }
 
+/* UDP multicast (Phase 134.7).
+ *
+ * Bridges the `_z_*_udp_multicast` symbols (called from upstream
+ * zenoh-pico's `link/multicast/udp.c`) to the canonical
+ * `nros_platform_udp_mcast_*` ABI declared in <nros/platform_net.h>.
+ * Same opaque-storage idiom as the unicast aliases above. `addr` is
+ * declared `void *` because `_z_slice_t` is a zenoh-pico-internal
+ * type the alias TU cannot pull in without a circular include — the
+ * canonical platform fn signature also takes `void *` for this
+ * parameter, so the cast is byte-for-byte.
+ *
+ * Pre-134 the CMake POSIX path deleted `src/system/unix/network.c`
+ * from the build copy and relied on `nros-platform-cffi` providing
+ * the impls via these aliases. The multicast bridge was never wired
+ * — `libnros_rmw_zenoh.a` shipped the `_z_f_link_*_udp_multicast`
+ * wrappers compiled against the canonical header's
+ * `Z_FEATURE_LINK_UDP_MULTICAST=1` but the `_z_*_udp_multicast`
+ * impls were undefined, breaking every C / C++ native link.
+ */
+int8_t _z_open_udp_multicast(void *sock,
+                             nros_zp_alias_endpoint_t rep,
+                             void *lep,
+                             uint32_t tout,
+                             const char *iface) {
+    return nros_platform_udp_mcast_open(sock, &rep, lep, tout,
+                                        (const uint8_t *)iface);
+}
+int8_t _z_listen_udp_multicast(void *sock,
+                               nros_zp_alias_endpoint_t rep,
+                               uint32_t tout,
+                               const char *iface,
+                               const char *join) {
+    return nros_platform_udp_mcast_listen(sock, &rep, tout,
+                                          (const uint8_t *)iface,
+                                          (const uint8_t *)join);
+}
+void _z_close_udp_multicast(void *sockrecv,
+                            void *socksend,
+                            nros_zp_alias_endpoint_t rep,
+                            nros_zp_alias_endpoint_t lep) {
+    nros_platform_udp_mcast_close(sockrecv, socksend, &rep, &lep);
+}
+size_t _z_read_udp_multicast(nros_zp_alias_socket_t sock,
+                             uint8_t *ptr, size_t len,
+                             nros_zp_alias_endpoint_t lep,
+                             void *addr) {
+    return nros_platform_udp_mcast_read(&sock, ptr, len, &lep, addr);
+}
+size_t _z_read_exact_udp_multicast(nros_zp_alias_socket_t sock,
+                                   uint8_t *ptr, size_t len,
+                                   nros_zp_alias_endpoint_t lep,
+                                   void *addr) {
+    return nros_platform_udp_mcast_read_exact(&sock, ptr, len, &lep, addr);
+}
+size_t _z_send_udp_multicast(nros_zp_alias_socket_t sock,
+                             const uint8_t *ptr, size_t len,
+                             nros_zp_alias_endpoint_t rep) {
+    return nros_platform_udp_mcast_send(&sock, ptr, len, &rep);
+}
+
 /* Socket helpers. */
 int8_t _z_socket_set_non_blocking(const void *sock) {
     return nros_platform_socket_set_non_blocking(sock);

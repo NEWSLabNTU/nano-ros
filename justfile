@@ -323,6 +323,14 @@ check: \
 check-platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
 
+# Phase 134.5 — verify libnros_rmw_zenoh.a internal symbol parity.
+# For every defined `_z_f_link_*_<transport>` wrapper, the matching
+# `_z_*_<transport>` impl must also be defined. Pre-Phase-134 the
+# POSIX CMake path shipped wrappers without multicast impls and every
+# C/C++ native link broke. Run after `just install-rmw-zenoh`.
+check-zenoh-archive:
+    @bash scripts/check-zenoh-archive-symbols.sh
+
 # Phase 104.A.4 — assert `nros` + `nros-node` Cargo deps stay free of
 # concrete RMW / platform crates. The umbrella must consume only the
 # generic ABI (`nros-rmw-cffi` vtable + `nros-platform-cffi` C header);

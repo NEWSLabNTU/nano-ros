@@ -192,5 +192,17 @@ name = "loan_e2e"
 path = "tests/loan_e2e.rs"
 required-features = ["loan-e2e"]
 
+# Phase 134.6 E2E.1 — wraps scripts/check-zenoh-archive-symbols.sh as
+# a cargo-runnable regression gate over the install tree.
+[[test]]
+name = "zenoh_archive_symbols"
+path = "tests/zenoh_archive_symbols.rs"
+
+# Phase 134.6 E2E.4 — asserts the canonical zenoh_generic_config.h
+# matches LinkPolicy::posix() contract.
+[[test]]
+name = "zenoh_header_parity"
+path = "tests/zenoh_header_parity.rs"
+
 [lints]
 workspace = true
