@@ -57,6 +57,18 @@ pub use resolve::ConcretePlatform;
 // existing `use nros_platform::PlatformClock;` imports keep working.
 pub use nros_platform_api::*;
 
+// Link-graph anchor — relays an in-rlib `#[used]` static to the
+// `_nros_force_link_cffi` symbol that lives in `nros-platform-cffi`.
+// Downstream crates (`nros-rmw-zenoh`, the C/C++ FFI) reference
+// `__FORCE_LINK_CFFI` from their own `#[used]` static, which chains
+// up through this crate to cffi and keeps the `libnros_platform_posix.a`
+// static lib in the final link. Without the chain, rustc elides the
+// cffi rlib and every `nros_platform_*` C symbol is unresolved.
+#[cfg(feature = "platform-posix")]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_CFFI: extern "C" fn() = nros_platform_cffi::_nros_force_link_cffi;
+
 // ============================================================================
 // Phase 71.27 — opt-in `#[global_allocator]`
 // ============================================================================

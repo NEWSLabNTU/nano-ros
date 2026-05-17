@@ -131,6 +131,20 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// Link-graph anchor — relays an in-rlib `#[used]` static down to the
+// `_nros_force_link_cffi` symbol that lives in `nros-platform-cffi`,
+// keeping the cffi rlib (and its build.rs-emitted
+// `libnros_platform_posix.a` link directive) in every binary's link
+// graph. Without this chain, rustc elides cffi (no Rust-level usage
+// in user code — trait impls are inlined into callers) and every
+// `nros_platform_*` C symbol resolves nowhere at link time.
+// Anchored in `nros` so the chain works for any RMW backend
+// (zenoh / xrce / dds / cyclonedds) — they all funnel through `nros`.
+#[cfg(feature = "platform-posix")]
+#[doc(hidden)]
+#[used]
+pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_LINK_CFFI;
+
 pub mod component;
 pub mod component_metadata;
 pub mod guide;

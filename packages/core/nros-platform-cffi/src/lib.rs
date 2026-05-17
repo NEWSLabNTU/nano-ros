@@ -34,6 +34,18 @@
 
 use core::ffi::c_void;
 
+// Anchor symbol so downstream crates can chain `#[used]` statics to
+// keep this rlib in the link graph. Without an explicit reference,
+// rustc elides the rlib (it's mostly extern decls + a trait impl that
+// gets inlined into callers), and the build.rs `cargo:rustc-link-lib=`
+// directive for `libnros_platform_posix.a` is dropped along with it,
+// leaving every `nros_platform_*` symbol unresolved at the binary
+// link step.
+#[cfg(feature = "posix-c-port")]
+#[doc(hidden)]
+#[inline(never)]
+pub extern "C" fn _nros_force_link_cffi() {}
+
 // ============================================================================
 // Canonical ABI declarations
 // ----------------------------------------------------------------------------
