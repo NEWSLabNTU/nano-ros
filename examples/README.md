@@ -1,157 +1,150 @@
-# nros Examples
+# nano-ros Examples
 
-This directory contains examples demonstrating nros on various platforms.
+Copy-out templates for users porting nano-ros to a new platform / language / RMW.
 
-## Directory Structure
+**Non-example binaries live elsewhere** — see [Where else to look](#where-else-to-look).
+
+## Tree shape
 
 ```
 examples/
-├── native/              # Desktop/Linux examples
-│   ├── rust/zenoh/      # Rust + zenoh transport
-│   ├── rust/xrce/       # Rust + XRCE-DDS transport
-│   └── c/zenoh/         # C + zenoh transport
-├── qemu-arm-baremetal/            # QEMU bare-metal ARM (MPS2-AN385)
-│   └── rust/
-│       ├── zenoh/       # Networked examples (talker, listener)
-│       ├── core/        # nros-core only (cdr-test, wcet-bench)
-│       └── standalone/  # No nros deps (lan9118 driver test)
-├── qemu-esp32-baremetal/          # QEMU ESP32-C3 (RISC-V)
-│   └── rust/zenoh/      # Networked examples
-├── esp32/               # ESP32-C3 hardware
-│   └── rust/
-│       ├── zenoh/       # Networked examples
-│       └── standalone/  # No nros deps (hello-world)
-├── stm32f4/             # STM32F4 microcontrollers
-│   └── rust/
-│       ├── zenoh/       # Networked examples (talker, polling, rtic)
-│       ├── core/        # nros-core only (embassy)
-│       └── standalone/  # No nros deps (smoltcp)
-└── zephyr/              # Zephyr RTOS
-    ├── rust/zenoh/      # Rust + zenoh transport
-    └── c/zenoh/         # C + zenoh transport
+├── <platform>/<language>/<rmw>/<example>/     # canonical
+├── bridges/<name>/                            # cross-RMW gateways
+└── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
-## Example Categories
+- **Platform** (12): `native`, `esp32`, `stm32f4`, `px4`, `qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-esp32-baremetal`, `qemu-riscv64-threadx`, `threadx-linux`, `zephyr`
+- **Language**: `c`, `cpp`, `rust`
+- **RMW**: `zenoh`, `dds`, `xrce`, `cyclonedds`, `uorb`
+- **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-embassy`, `-aemv8r`, etc.
 
-### Native (`native/`)
+Each example is a standalone Cargo + CMake package — no walk-up to the parent tree, no workspace coupling. Copy any directory out, set `*_DIR` env vars (or `-D…`) for SDK paths, and it builds.
 
-Desktop/Linux examples using the full nros Rust or C API. Best for learning nros concepts and developing applications before deploying to embedded targets.
+## Coverage matrix
 
-| Example | Language | Description |
-|---------|----------|-------------|
-| `rust/zenoh/talker` | Rust | Publishes Int32 messages to `/chatter` |
-| `rust/zenoh/listener` | Rust | Subscribes to `/chatter` |
-| `rust/zenoh/service-server` | Rust | ROS 2 service server example |
-| `rust/zenoh/service-client` | Rust | ROS 2 service client example |
-| `rust/zenoh/action-server` | Rust | ROS 2 action server example |
-| `rust/zenoh/action-client` | Rust | ROS 2 action client example |
-| `rust/zenoh/custom-msg` | Rust | Custom message types |
-| `rust/xrce/talker` | Rust | XRCE-DDS publisher on `/chatter` |
-| `rust/xrce/listener` | Rust | XRCE-DDS subscriber on `/chatter` |
-| `rust/xrce/service-server` | Rust | XRCE-DDS service server |
-| `rust/xrce/service-client` | Rust | XRCE-DDS service client |
-| `rust/xrce/action-server` | Rust | XRCE-DDS action server (Fibonacci) |
-| `rust/xrce/action-client` | Rust | XRCE-DDS action client (Fibonacci) |
-| `c/zenoh/talker` | C | C language talker using nros-c |
-| `c/zenoh/listener` | C | C language listener using nros-c |
-| `c/zenoh/custom-msg` | C | C custom message types |
+Cell content: `<count>` of `talker|listener|service-{server,client}|action-{server,client}` cases present (max 6). `+` suffix indicates extras (custom-msg, parameters, lifecycle, RTIC variants, custom-transport, serial, embassy, async, etc.).
 
-**Running native examples:**
+| Platform                  | Language | zenoh | dds | xrce | cyclonedds | uorb |
+|---------------------------|----------|-------|-----|------|------------|------|
+| `native`                  | c        | 6+    | 6   | 6    | –          | –    |
+| `native`                  | cpp      | 6+    | 6   | –    | –          | –    |
+| `native`                  | rust     | 6+    | 6   | 6+   | –          | –    |
+| `esp32`                   | rust     | 2     | –   | –    | –          | –    |
+| `stm32f4`                 | rust     | 1+rtic×6 | – | –   | –          | –    |
+| `px4`                     | cpp      | –     | –   | –    | –          | nros_register_check |
+| `px4`                     | rust     | –     | –   | –    | –          | (pending) |
+| `qemu-arm-baremetal`      | rust     | 6+rtic+serial | 2 | –  | –          | –    |
+| `qemu-arm-freertos`       | c        | 6     | –   | –    | –          | –    |
+| `qemu-arm-freertos`       | cpp      | 6     | –   | –    | –          | –    |
+| `qemu-arm-freertos`       | rust     | 6     | 2   | –    | –          | –    |
+| `qemu-arm-nuttx`          | c        | 6     | –   | –    | –          | –    |
+| `qemu-arm-nuttx`          | cpp      | 6     | –   | –    | –          | –    |
+| `qemu-arm-nuttx`          | rust     | 6     | 2   | –    | –          | –    |
+| `qemu-esp32-baremetal`    | rust     | 2     | 2   | –    | –          | –    |
+| `qemu-riscv64-threadx`    | c        | 6     | –   | –    | –          | –    |
+| `qemu-riscv64-threadx`    | cpp      | 6     | –   | –    | –          | –    |
+| `qemu-riscv64-threadx`    | rust     | 6     | 2   | –    | –          | –    |
+| `threadx-linux`           | c        | 6     | –   | –    | –          | –    |
+| `threadx-linux`           | cpp      | 6     | –   | –    | –          | –    |
+| `threadx-linux`           | rust     | 6     | 2   | –    | –          | –    |
+| `zephyr`                  | c        | 6     | 6   | 6    | –          | –    |
+| `zephyr`                  | cpp      | 6     | 6   | 6    | talker-aemv8r | – |
+| `zephyr`                  | rust     | 6+async | 6+async | 6 | –         | –    |
+
+Gap themes — see `docs/roadmap/phase-118-example-matrix-coverage.md` for the
+plan that fills these:
+
+- **DDS C/C++ on RTOS QEMU platforms** — Rust DDS present, C/C++ never followed.
+- **XRCE absent on every embedded platform except Zephyr** — Phase 115.K.2 header-only backend needs a Rust adapter for bare-metal targets.
+- **CycloneDDS** present only on `zephyr/cpp/cyclonedds/talker-aemv8r/` — Phase 117 RMW lands POSIX first.
+
+## Sibling categories
+
+### `bridges/` — cross-RMW gateways
+
+Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell.
+
+- `bridges/native-rust-zenoh-to-dds/` — zenoh ↔ dust-DDS gateway
+
+### `templates/` — multi-platform copy-out recipes
+
+Patterns that span platforms (multi-package workspace layouts, mixed C / C++ / Rust packages sharing one nano-ros install, etc.).
+
+- `templates/multi-package-workspace/` — Pattern A workspace (C talker, C++ listener, Rust publisher under one nano-ros install)
+
+## Where else to look
+
+Test / bench / smoke binaries are NOT under `examples/`. They live with the integration-test crate so the example tree stays a clean copy-out surface.
+
+- **`packages/testing/nros-bench/`** — perf, fairness, stress, large-msg
+  - `executor-fairness`, `stress-{zenoh,xrce}`, `large-msg-{xrce,baremetal}`, `wcet-cycles-qemu`
+- **`packages/testing/nros-smoke/`** — driver / board bringup (no nros API)
+  - `stm32f4-smoltcp-echo`, `esp32-hello-world`
+- **`packages/testing/nros-tests/bins/`** — fixture binaries that integration tests build & invoke
+  - `cdr-roundtrip-qemu`, `lan9118-qemu`
+
+Each is a standalone Cargo package with an empty `[workspace]` table (they nest under the `nros-tests` workspace member).
+
+## Quick start
+
+Each block assumes a built local install (`just install-local`) and a zenoh router running on `tcp/127.0.0.1:7447` (`build/zenohd/zenohd --listen tcp/127.0.0.1:7447`).
+
+### Native Rust + zenoh
+
 ```bash
-# Terminal 1: Start zenoh router
-zenohd --listen tcp/127.0.0.1:7447
-
-# Terminal 2: Run talker
-cd examples/native/rust/zenoh/talker && cargo run
-
-# Terminal 3: Run listener
-cd examples/native/rust/zenoh/listener && cargo run
+cd examples/native/rust/zenoh/talker   && cargo run     # terminal 2
+cd examples/native/rust/zenoh/listener && cargo run     # terminal 3
 ```
 
-### QEMU ARM Bare-Metal (`qemu-arm-baremetal/`)
+### QEMU bare-metal Cortex-M3 (MPS2-AN385)
 
-Bare-metal ARM Cortex-M3 examples running on QEMU MPS2-AN385. Uses `nros-board-mps2-an385` for simplified setup.
-
-| Example | Description |
-|---------|-------------|
-| `rust/zenoh/talker` | Publisher using platform crate |
-| `rust/zenoh/listener` | Subscriber using platform crate |
-| `rust/core/cdr-test` | CDR serialization integration tests |
-| `rust/core/wcet-bench` | WCET cycle counting benchmarks |
-| `rust/standalone/lan9118` | LAN9118 Ethernet driver validation |
-
-**Running QEMU examples:**
 ```bash
-# Run in Docker (recommended)
-just docker-qemu-test
+just qemu-baremetal setup
+just qemu-baremetal build
+just qemu-baremetal talker      # spawns QEMU + nros-rs-talker
 ```
 
-### STM32F4 (`stm32f4/`)
+### STM32F4 + RTIC (NUCLEO-F429ZI)
 
-STM32F4 microcontroller examples using `nros-board-stm32f4`.
-
-| Example | Description |
-|---------|-------------|
-| `rust/zenoh/talker` | Publisher for NUCLEO-F429ZI |
-| `rust/zenoh/polling` | Polling-based networking |
-| `rust/zenoh/rtic` | RTIC-based networking |
-| `rust/zenoh/talker-embassy` | Embassy async framework |
-| `rust/standalone/smoltcp` | smoltcp TCP echo server |
-
-### Zephyr (`zephyr/`)
-
-Zephyr RTOS examples using `zpico-zephyr` (C) or the Rust API.
-
-| Example | Language | Description |
-|---------|----------|-------------|
-| `c/zenoh/talker` | C | Publisher using C BSP API |
-| `c/zenoh/listener` | C | Subscriber using C BSP API |
-| `rust/zenoh/talker` | Rust | Publisher using Rust API on Zephyr |
-| `rust/zenoh/listener` | Rust | Subscriber using Rust API on Zephyr |
-| `rust/zenoh/service-server` | Rust | Service server on Zephyr |
-| `rust/zenoh/service-client` | Rust | Service client on Zephyr |
-| `rust/zenoh/action-server` | Rust | Action server on Zephyr |
-| `rust/zenoh/action-client` | Rust | Action client on Zephyr |
-
-**Running Zephyr examples:**
 ```bash
-# Set up Zephyr workspace
+just stm32f4 setup
+cd examples/stm32f4/rust/zenoh/talker-rtic
+cargo build --release --target thumbv7em-none-eabihf
+# flash with probe-rs / openocd
+```
+
+### Zephyr (native_sim) C + DDS
+
+```bash
 just zephyr setup
 source ~/nano-ros-workspace/env.sh
-
-# Build for native_sim
-west build -b native_sim/native/64 nros/examples/zephyr/c/zenoh/talker
-
-# Run
+west build -b native_sim/native/64 nano-ros/examples/zephyr/c/dds/talker
 ./build/zephyr/zephyr.exe
 ```
 
-## Quick Start
+## ROS 2 interoperability
 
-1. **New to nros?** Start with `native/rust/zenoh/talker` and `native/rust/zenoh/listener`
-2. **Targeting QEMU?** Use `qemu-arm-baremetal/rust/zenoh/talker` and `qemu-arm-baremetal/rust/zenoh/listener`
-3. **Targeting STM32F4?** Use `stm32f4/rust/zenoh/talker`
-4. **Targeting Zephyr?** Use `zephyr/c/zenoh/talker` (C) or `zephyr/rust/zenoh/talker` (Rust)
-
-## ROS 2 Interoperability
-
-nros examples are compatible with ROS 2 nodes using rmw_zenoh. To test interop:
+nano-ros pubs/subs are rmw_zenoh-compatible. Quickest round-trip:
 
 ```bash
-# Terminal 1: zenoh router
-zenohd --listen tcp/127.0.0.1:7447
+# terminal 1
+build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
-# Terminal 2: nros talker
+# terminal 2
 cd examples/native/rust/zenoh/talker && cargo run
 
-# Terminal 3: ROS 2 listener
+# terminal 3
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
-## See Also
+For DDS-side interop (cyclonedds, dust-dds), see `docs/reference/rmw_zenoh_interop.md`.
 
-- [CLAUDE.md](../CLAUDE.md) - Development guidelines
-- [docs/zephyr-setup.md](../docs/guides/zephyr-setup.md) - Zephyr workspace setup
-- [docs/rmw_zenoh_interop.md](../docs/reference/rmw_zenoh_interop.md) - ROS 2 protocol details
+## See also
+
+- [`CLAUDE.md`](../CLAUDE.md) — development guidelines, "Examples = Standalone Projects" section
+- [`docs/guides/zephyr-setup.md`](../docs/guides/zephyr-setup.md) — Zephyr workspace bootstrap
+- [`docs/reference/rmw_zenoh_interop.md`](../docs/reference/rmw_zenoh_interop.md) — ROS 2 wire protocol
+- [`docs/roadmap/phase-118-example-matrix-coverage.md`](../docs/roadmap/phase-118-example-matrix-coverage.md) — coverage-gap fill plan
+- [`docs/roadmap/phase-131-examples-tree-revision.md`](../docs/roadmap/phase-131-examples-tree-revision.md) — this tree's restructuring history
