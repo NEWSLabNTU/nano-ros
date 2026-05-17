@@ -250,7 +250,9 @@ the manifest to stay in sync with upstream.
       + `test_tls_talker_listener_communication` POSIX E2E pass.
       Embedded paths (FreeRTOS / NuttX / ThreadX) hit pre-existing
       symbol-conflict / serial-link errors on origin/main too —
-      out of scope for 136.4 verification.
+      out of scope for 136.4 verification. See
+      `docs/roadmap/phase-146-zenoh-pico-embedded-link-regressions.md`
+      for the three documented symptoms + suggested fix paths.
       Net diff: ~793 LOC removed, ~600 LOC of TOML + 250 LOC of
       Rust consumer added.
 
