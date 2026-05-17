@@ -28,51 +28,13 @@ doctor:
     fi
     exit $fail
 
-# Phase 123.A.1.x.3 — install the standalone ThreadX platform C-port
-# (`libnros_platform_threadx.a`) into build/install/lib/. Builds
-# against the in-tree ThreadX-Kernel headers via the linux/gnu port
-# (host-buildable; embedded targets re-cross-build via their own
-# scaffold copy). Net surface (`net.c`) is excluded — needs NetX Duo
-# headers; apps that want it compile net.c into their binary via the
-# board crate's build.rs.
-install-platform:
-    #!/usr/bin/env bash
-    set -e
-    if [ ! -d "${THREADX_DIR:-third-party/threadx/kernel}/common/inc" ]; then
-        echo "ThreadX SDK not found — skipping standalone platform C-port"
-        exit 0
-    fi
-    PREFIX="$(pwd)/build/install"
-    SCAFFOLD="$(pwd)/tools/install-platform/threadx"
-    echo "=== Building standalone libnros_platform_threadx.a ==="
-    cmake -S "$SCAFFOLD" -B build/cmake-platform-threadx \
-        -DCMAKE_BUILD_TYPE=Release >/dev/null
-    cmake --build build/cmake-platform-threadx
-    cmake --install build/cmake-platform-threadx --prefix "$PREFIX"
+# Phase 140 — `install-platform` + `install` recipes deleted. ThreadX
+# Linux examples consume nano-ros via `add_subdirectory(<repo-root>)`
+# (Phase 144.8) — no install prefix needed.
 
-# Install ThreadX Linux libraries into build/install/
-install:
-    #!/usr/bin/env bash
-    set -e
-    if [ ! -d "${THREADX_DIR:-third-party/threadx/kernel}/common/inc" ]; then
-        echo "ThreadX SDK not found — skipping ThreadX Linux libraries"
-        exit 0
-    fi
-    PREFIX="$(pwd)/build/install"
-    echo "=== Building threadx_linux RMW=zenoh ==="
-    cmake -S . -B "build/cmake-threadx-linux-zenoh" \
-        -DNANO_ROS_RMW="zenoh" \
-        -DNANO_ROS_PLATFORM="threadx_linux" \
-        -DNANO_ROS_BOARD="threadx-linux" \
-        -DNANO_ROS_BUILD_CODEGEN=OFF \
-        -DCMAKE_BUILD_TYPE=Release
-    just _cmake-cargo-stale-guard "build/cmake-threadx-linux-zenoh"
-    cmake --build "build/cmake-threadx-linux-zenoh"
-    cmake --install "build/cmake-threadx-linux-zenoh" --prefix "$PREFIX"
-
-# Build ThreadX Linux platform/RMW libraries.
-build: install-platform install
-    @echo "ThreadX Linux core libraries built."
+# Build ThreadX Linux examples (canonical "did the core link clean?" smoke).
+build: build-examples
+    @echo "ThreadX Linux examples built."
 
 # Build ThreadX Linux examples
 build-examples:
@@ -100,7 +62,6 @@ build-fixtures:
     fi
     echo "Building ThreadX-Linux test fixtures..."
     root="$(pwd)"
-    cmake_pfx="$root/build/install"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
     nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
@@ -123,7 +84,6 @@ build-fixtures:
             [ ! -d "$dir" ] && continue
             echo "  → threadx-linux/$lang/$ex (cmake)"
             cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
                 -DNANO_ROS_PLATFORM=threadx_linux \
                 -DTHREADX_DIR="$threadx_dir" \
                 -DNSOS_NETX_DIR="$nsos_netx_dir" \

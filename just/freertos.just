@@ -37,61 +37,15 @@ doctor:
     fi
     exit $fail
 
-# Phase 123.A.1.x.3 — install the standalone FreeRTOS platform C-port
-# (`libnros_platform_freertos.a`) into build/install/lib/. Cross-builds
-# against the in-tree FreeRTOS-Kernel headers using the same
-# arm-none-eabi-gcc toolchain as the rest of FreeRTOS targets. Symbols
-# that resolve at the user's final link (`xTaskCreate`, etc.) are left
-# undefined inside the .a — same shape as `libnros_platform_posix.a`
-# on POSIX.
-install-platform:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v arm-none-eabi-gcc &>/dev/null; then
-        echo "Skipping FreeRTOS platform C-port (arm-none-eabi-gcc not found)"
-        exit 0
-    fi
-    PREFIX="$(pwd)/build/install"
-    SCAFFOLD="$(pwd)/tools/install-platform/freertos"
-    if [[ ! -d "$SCAFFOLD" ]]; then
-        echo "ERROR: install scaffold not found at $SCAFFOLD"
-        exit 1
-    fi
-    echo "=== Building standalone libnros_platform_freertos.a ==="
-    cmake -S "$SCAFFOLD" -B build/cmake-platform-freertos \
-        -DCMAKE_TOOLCHAIN_FILE="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake" \
-        -DFREERTOS_KERNEL_PATH="${FREERTOS_DIR}" \
-        -DFREERTOS_CONFIG_DIR="${FREERTOS_CONFIG_DIR}" \
-        -DLWIP_DIR="${LWIP_DIR}" \
-        -DCMAKE_BUILD_TYPE=Release >/dev/null
-    cmake --build build/cmake-platform-freertos
-    cmake --install build/cmake-platform-freertos --prefix "$PREFIX"
+# Phase 140 — `install-platform` + `install` recipes deleted along with
+# the `build/install/` layout. FreeRTOS examples consume nano-ros via
+# `add_subdirectory(<repo-root>)` (Phase 144.5) or via the
+# `integrations/nuttx/` etc. shells (Phase 139). The `build` recipe
+# below now drives only the example tree.
 
-# Install FreeRTOS ARM Cortex-M3 libraries into build/install/
-install:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v arm-none-eabi-gcc &>/dev/null; then
-        echo "ERROR: arm-none-eabi-gcc not found"
-        echo "Install with: sudo apt install gcc-arm-none-eabi"
-        exit 1
-    fi
-    PREFIX="$(pwd)/build/install"
-    echo "=== Building freertos_armcm3 RMW=zenoh ==="
-    cmake -S . -B "build/cmake-freertos-armcm3-zenoh" \
-        -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/arm-freertos-armcm3.cmake" \
-        -DNANO_ROS_RMW="zenoh" \
-        -DNANO_ROS_PLATFORM="freertos_armcm3" \
-        -DNANO_ROS_BOARD="mps2-an385-freertos" \
-        -DNANO_ROS_BUILD_CODEGEN=OFF \
-        -DCMAKE_BUILD_TYPE=Release
-    just _cmake-cargo-stale-guard "build/cmake-freertos-armcm3-zenoh"
-    cmake --build "build/cmake-freertos-armcm3-zenoh"
-    cmake --install "build/cmake-freertos-armcm3-zenoh" --prefix "$PREFIX"
-
-# Build FreeRTOS platform/RMW libraries.
-build: install-platform install
-    @echo "FreeRTOS core libraries built."
+# Build FreeRTOS examples (the canonical "did the core link clean?" smoke).
+build: build-examples
+    @echo "FreeRTOS examples built."
 
 # Build FreeRTOS QEMU MPS2-AN385 Rust examples
 build-examples:
@@ -133,7 +87,6 @@ build-fixtures:
         echo "  → freertos/rust/dds/$ex"
         ( cd "examples/qemu-arm-freertos/rust/dds/$ex" && cargo build --release --quiet )
     done
-    cmake_pfx="$(pwd)/build/install"
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
@@ -141,7 +94,6 @@ build-fixtures:
             echo "  → freertos/$lang/$ex (cmake)"
             dir="examples/qemu-arm-freertos/$lang/zenoh/$ex"
             cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
                 -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
                 -DCMAKE_BUILD_TYPE=Release > /dev/null
             cmake --build "$dir/build" --parallel > /dev/null

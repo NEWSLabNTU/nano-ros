@@ -96,8 +96,12 @@ list-all:
 #                       Slow — expect 15-40 min depending on machine.
 #
 # Default `build` recipe: refresh bindings + workspace + transports.
+#
+# Phase 140 — `install-local` removed; `add_subdirectory(<repo-root>)`
+# is the only supported C/C++ consumption shape. CMake-driven crates
+# build in-tree via Corrosion when an example invokes them.
 build: \
-    install-local generate-bindings \
+    generate-bindings \
     build-workspace build-workspace-embedded \
     build-zenohd qemu::build-zenoh-pico
     @echo 'Workspace + transports built. Run "just build-examples" for example crates, "just build-test-fixtures" for `test-all` staging, or "just build-all" for everything.'
@@ -114,105 +118,6 @@ build-examples: build \
 # Pre-populates everything `just test-all` consumes. Slow.
 build-all: build-examples build-test-fixtures
     @echo "All builds completed (workspace + examples + test fixtures)."
-
-# Populate build/install/ with C/C++ artifacts (libraries, headers, CMake module, codegen).
-# Builds posix (zenoh + xrce) unconditionally, then platform-specific libraries when toolchains are available.
-install-local: \
-    cyclonedds::setup \
-    install-platform-posix \
-    freertos::install-platform \
-    threadx_linux::install-platform \
-    install-rmw-zenoh install-rmw-dds \
-    install-local-posix \
-    freertos::install nuttx::install \
-    threadx_linux::install threadx_riscv64::install
-    @echo "Installed to $(pwd)/build/install"
-
-# Phase 123.A.1.x — install the standalone POSIX platform C-port
-# (`libnros_platform_posix.a`) alongside the C/C++ libraries. The
-# decoupled platform `.a` exports `nros_platform_*` symbols via the
-# canonical CFFI ABI; `nano_ros_link_platform` picks it up at the
-# user's CMake site (or the in-tree consumer links it via build.rs).
-#
-# Phase 123.A.1.x.2 deleted the Rust `nros-platform-posix` crate and
-# renamed the C-port from `nros-platform-posix-c` to
-# `nros-platform-posix` so the POSIX directory matches the FreeRTOS /
-# NuttX / ThreadX / Zephyr C-port-only layout from Phase 121.3.
-# Phase 123.A.1.x.4.a — build the standalone DDS RMW staticlib via
-# cargo, install into build/install/lib/libnros_rmw_dds.a + emit
-# NrosRmwDds::NrosRmwDds imported target via a tiny CMake scaffold.
-[private]
-install-rmw-dds:
-    #!/usr/bin/env bash
-    set -e
-    PREFIX="$(pwd)/build/install"
-    echo "=== Building libnros_rmw_dds_staticlib.a (posix + humble) ==="
-    cargo build -p nros-rmw-dds-staticlib \
-        --features platform-posix,ros-humble \
-        --release
-    TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
-    cmake -S tools/install-rmw/dds -B build/cmake-install-rmw-dds \
-        -DSTATICLIB_SOURCE="$TARGET_DIR/release/libnros_rmw_dds_staticlib.a" >/dev/null
-    cmake --install build/cmake-install-rmw-dds --prefix "$PREFIX"
-
-# Phase 123.A.1.x.4.a — build the standalone Zenoh RMW staticlib via
-# cargo, install into build/install/lib/libnros_rmw_zenoh.a + emit
-# NrosRmwZenoh::NrosRmwZenoh imported target via a tiny CMake scaffold.
-[private]
-install-rmw-zenoh:
-    #!/usr/bin/env bash
-    set -e
-    PREFIX="$(pwd)/build/install"
-    echo "=== Building libnros_rmw_zenoh_staticlib.a (posix + tcp + humble) ==="
-    cargo build -p nros-rmw-zenoh-staticlib \
-        --features platform-posix,ros-humble \
-        --release
-    TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
-    cmake -S tools/install-rmw/zenoh -B build/cmake-install-rmw-zenoh \
-        -DSTATICLIB_SOURCE="$TARGET_DIR/release/libnros_rmw_zenoh_staticlib.a" >/dev/null
-    cmake --install build/cmake-install-rmw-zenoh --prefix "$PREFIX"
-
-[private]
-install-platform-posix:
-    #!/usr/bin/env bash
-    set -e
-    PREFIX="$(pwd)/build/install"
-    cmake -S packages/core/nros-platform-posix \
-        -B build/cmake-platform-posix \
-        -DCMAKE_BUILD_TYPE=Release >/dev/null
-    cmake --build build/cmake-platform-posix
-    cmake --install build/cmake-platform-posix --prefix "$PREFIX"
-
-# Build POSIX host libraries + codegen tool (zenoh + xrce + dds).
-# Phase 95.G/H — `dds` joins the loop now that nros-rmw-dds compiles
-# cleanly with `std + platform-posix` and the lib names are RMW-suffixed
-# (`libnros_c_dds.a` / `libnros_cpp_dds.a`), so all three coexist in
-# the install prefix.
-[private]
-install-local-posix: cyclonedds::build-rmw xrce::build-rmw
-    #!/usr/bin/env bash
-    set -e
-    PREFIX="$(pwd)/build/install"
-    # Phase 117.8: `cyclonedds` joins the loop. Cyclone DDS itself
-    # and the `nros-rmw-cyclonedds` C++ backend are built ahead of
-    # this loop (via the `cyclonedds::build-rmw` dep), so the
-    # NanoRosCpp cmake build can `find_package(NrosRmwCyclonedds)`
-    # against the same install prefix when NANO_ROS_RMW=cyclonedds.
-    # Phase 115.K.2.5.2: `xrce::build-rmw` does the same for
-    # `nros-rmw-xrce` so the C/C++ APIs can `find_package(NrosRmwXrce)`
-    # under the canonical `NANO_ROS_RMW=xrce` selector (which now
-    # routes to the C backend).
-    for rmw in zenoh xrce dds cyclonedds; do
-        echo "=== Building posix RMW=$rmw ==="
-        cmake -S . -B "build/cmake-$rmw" \
-            -DNANO_ROS_RMW="$rmw" \
-            -DNANO_ROS_PLATFORM="posix" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$PREFIX"
-        just _cmake-cargo-stale-guard "build/cmake-$rmw"
-        cmake --build "build/cmake-$rmw"
-        cmake --install "build/cmake-$rmw" --prefix "$PREFIX"
-    done
 
 # Internal: invalidate stale nros-* cargo fingerprints in a cmake build
 # dir's per-build cargo cache when shared-core source content has
@@ -256,54 +161,9 @@ _cmake-cargo-stale-guard build_dir:
 # The cmake build dirs hold their own cargo target tree
 # (`build/cmake-<rmw>/cargo/...`) whose incremental cache can hand
 # back stale `.rlib`s after edits to deeply-shared crates like
-# `nros-node` — the resulting `lib<...>.a` then carries pre-edit code
-# into Zephyr / FreeRTOS / etc. binaries that link against it. Wipe
-# both layers when in doubt.
-#
-# Remove install prefix + each per-RMW cmake build dir, then rebuild from scratch.
-clean-install:
-    rm -rf build/install/ build/cmake-*
-    just install-local
-
-# Same stale-`.rlib` trap as above (see clean-install) — preserves
-# cmake configure state, only wipes the cargo target trees and the
-# installed nros-c / nros-cpp staticlibs. After this, rerun whatever
-# per-platform build recipe is relevant (`just install-local`,
-# `just zephyr build-fixtures`, …).
-#
-# Faster cache flush — wipes per-RMW cargo target trees only, no cmake reconfigure.
-[private]
-refresh-cmake-cargo:
-    #!/usr/bin/env bash
-    set -e
-    for dir in build/cmake-*; do
-        [ -d "$dir" ] || continue
-        rm -rf "$dir/cargo"
-        echo "Wiped $dir/cargo"
-    done
-    rm -f build/install/lib/libnros_c*.a build/install/lib/libnros_cpp*.a
-    echo "Done. Now rerun the build recipe for whichever target you need."
-
-# Create a combined binary distribution archive of the full install prefix.
-# Runs install-local first, then archives build/install/ as a self-contained
-# prefix tree. Extract and pass to cmake via -DCMAKE_PREFIX_PATH=<dir>.
-#
-# Output: nros-<version>-<os>-<arch>.tar.gz  (in the project root)
-package:
-    #!/usr/bin/env bash
-    set -e
-    just clean-install
-    VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m)
-    DIRNAME="nros-${VERSION}-${OS}-${ARCH}"
-    ARCHIVE="${DIRNAME}.tar.gz"
-    rm -rf "build/package"
-    mkdir -p "build/package/${DIRNAME}"
-    cp -a build/install/. "build/package/${DIRNAME}/"
-    tar -czf "${ARCHIVE}" -C build/package "${DIRNAME}"
-    echo "Created: ${ARCHIVE}"
-    echo "Usage:   cmake -DCMAKE_PREFIX_PATH=\$(pwd)/${DIRNAME} ..."
+# `nros-node`. The Phase 140 `add_subdirectory` shape consumes nano-ros
+# in-tree per-example, so the only persistent build dirs are the user's
+# per-example `build/` directories; flush by removing those.
 
 # Format everything: Rust workspace + examples, C, C++, Python
 format: format-workspace native::format format-c format-cpp format-python
@@ -322,13 +182,14 @@ check: \
 check-platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
 
-# Phase 134.5 — verify libnros_rmw_zenoh.a internal symbol parity.
-# For every defined `_z_f_link_*_<transport>` wrapper, the matching
-# `_z_*_<transport>` impl must also be defined. Pre-Phase-134 the
-# POSIX CMake path shipped wrappers without multicast impls and every
-# C/C++ native link broke. Run after `just install-rmw-zenoh`.
+# Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
+# parity. For every defined `_z_f_link_*_<transport>` wrapper, the
+# matching `_z_*_<transport>` impl must also be defined. Pre-Phase-134
+# the POSIX CMake path shipped wrappers without multicast impls and
+# every C/C++ native link broke. Run after
+# `cargo build -p nros-rmw-zenoh-staticlib --release`.
 check-zenoh-archive:
-    @bash scripts/check-zenoh-archive-symbols.sh
+    @bash scripts/check-zenoh-archive-symbols.sh target/release/libnros_rmw_zenoh_staticlib.a
 
 # Phase 104.A.4 — assert `nros` + `nros-node` Cargo deps stay free of
 # concrete RMW / platform crates. The umbrella must consume only the
@@ -507,7 +368,7 @@ build-test-fixtures:
 # Single nextest run (entire workspace) + Miri + C codegen
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
-test-all verbose="": build-zenohd install-local
+test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0

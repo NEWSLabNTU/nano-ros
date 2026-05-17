@@ -11,18 +11,19 @@
 # regression-guards the contract permanently.
 #
 # Usage:
-#   ./scripts/check-zenoh-archive-symbols.sh [path/to/libnros_rmw_zenoh.a]
+#   ./scripts/check-zenoh-archive-symbols.sh [path/to/libnros_rmw_zenoh_staticlib.a]
 #
-# Default path is `build/install/lib/libnros_rmw_zenoh.a` (the install
-# tree produced by `just install-rmw-zenoh`).
+# Default path is `target/release/libnros_rmw_zenoh_staticlib.a` (the
+# Corrosion-emitted staticlib produced by
+# `cargo build -p nros-rmw-zenoh-staticlib --release`).
 
 set -euo pipefail
 
-ARCHIVE="${1:-build/install/lib/libnros_rmw_zenoh.a}"
+ARCHIVE="${1:-target/release/libnros_rmw_zenoh_staticlib.a}"
 
 if [[ ! -f "$ARCHIVE" ]]; then
     echo "error: archive not found at $ARCHIVE" >&2
-    echo "       run \`just install-rmw-zenoh\` first" >&2
+    echo "       run \`cargo build -p nros-rmw-zenoh-staticlib --release\` first" >&2
     exit 2
 fi
 

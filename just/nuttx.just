@@ -8,22 +8,9 @@ QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
 default:
     @just --list --justfile {{source_file()}}
 
-# Install NuttX ARM C/C++ libraries into build/install/
-#
-# DISABLED: NuttX C/C++ library cross-compilation requires build-std, which
-# resolves libc from the sysroot's Cargo.lock (ignoring workspace [patch.crates-io]).
-# The upstream libc crate (0.2.178) is missing _SC_HOST_NAME_MAX for NuttX,
-# blocking std compilation for armv7a-nuttx-eabihf.
-#
-# Rust NuttX examples work because they use standalone Cargo.toml manifests
-# with their own [patch.crates-io] that build-std does honor for non-workspace
-# packages.
-#
-# To re-enable: either upstream _SC_HOST_NAME_MAX to rust-lang/libc, or wait
-# for a nightly that includes it.
-install:
-    @echo "NuttX C/C++ libraries: skipped (upstream libc missing _SC_HOST_NAME_MAX)"
-    @echo "Rust NuttX examples are unaffected — use 'just nuttx build-examples' and 'just nuttx test'"
+# Phase 140 — `install` recipe deleted along with the install-local
+# layout. NuttX examples consume nano-ros via `add_subdirectory(<repo>)`
+# (Phase 144.6) or the `integrations/nuttx/` shell (Phase 139).
 
 # Build NuttX kernel (requires arm-none-eabi-gcc + kconfig tools)
 build-kernel:
@@ -45,7 +32,7 @@ build-kernel:
         packages/boards/nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh
 
 # Build NuttX core artifacts.
-build: install build-kernel
+build: build-kernel
     @echo "NuttX core artifacts built."
 
 # Build NuttX QEMU ARM virt examples
@@ -77,7 +64,6 @@ build-fixtures:
     fi
     echo "Building NuttX test fixtures..."
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    cmake_pfx="$(pwd)/build/install"
     rust_examples=(talker listener service-server service-client action-server action-client)
     for ex in "${rust_examples[@]}"; do
         echo "  → nuttx/rust/$ex"
@@ -93,25 +79,20 @@ build-fixtures:
           CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
           cargo build --release --quiet )
     done
-    # C/C++ variant libs are skipped by `just nuttx install` (upstream
-    # libc missing _SC_HOST_NAME_MAX); skip the matching fixtures too.
-    if ! ls "$cmake_pfx"/lib/libnros_c_zenoh_nuttx_*.a >/dev/null 2>&1; then
-        echo "NuttX C/C++ fixtures skipped: nros-c variant lib not installed"
-    else
-        cmake_examples=(talker listener service-server service-client action-server action-client)
-        for lang in c cpp; do
-            for ex in "${cmake_examples[@]}"; do
-                echo "  → nuttx/$lang/$ex (cmake)"
-                dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
-                cmake -S "$dir" -B "$dir/build" \
-                    -DCMAKE_PREFIX_PATH="$cmake_pfx" \
-                    -DNUTTX_DIR="$nuttx_dir" \
-                    -DNUTTX_FFI_CRATE_DIR="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi" \
-                    -DCMAKE_BUILD_TYPE=Release > /dev/null
-                cmake --build "$dir/build" --parallel > /dev/null
-            done
+    # Phase 140 — NuttX C/C++ examples consume nano-ros in-tree via
+    # add_subdirectory; no pre-installed prefix needed.
+    cmake_examples=(talker listener service-server service-client action-server action-client)
+    for lang in c cpp; do
+        for ex in "${cmake_examples[@]}"; do
+            echo "  → nuttx/$lang/$ex (cmake)"
+            dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
+            cmake -S "$dir" -B "$dir/build" \
+                -DNUTTX_DIR="$nuttx_dir" \
+                -DNUTTX_FFI_CRATE_DIR="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi" \
+                -DCMAKE_BUILD_TYPE=Release > /dev/null
+            cmake --build "$dir/build" --parallel > /dev/null
         done
-    fi
+    done
 
 # Build every NuttX tier: core artifacts, examples, and test fixtures.
 build-all: build build-examples build-fixtures

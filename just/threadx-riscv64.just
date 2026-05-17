@@ -40,44 +40,12 @@ doctor:
     fi
     exit $fail
 
-# Install ThreadX RISC-V 64 libraries into build/install/
-install:
-    #!/usr/bin/env bash
-    set -e
-    if ! command -v riscv64-unknown-elf-gcc &>/dev/null || \
-       [ ! -d "${THREADX_DIR:-third-party/threadx/kernel}/common/inc" ]; then
-        echo "RISC-V toolchain or ThreadX SDK not found — skipping ThreadX RISC-V libraries"
-        exit 0
-    fi
-    PREFIX="$(pwd)/build/install"
-    rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
-    echo "=== Building threadx_riscv64 RMW=zenoh ==="
-    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
-    cmake -S . -B "build/cmake-threadx-riscv64-zenoh" \
-        -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/riscv64-threadx.cmake" \
-        -DNANO_ROS_RMW="zenoh" \
-        -DNANO_ROS_PLATFORM="threadx_riscv64" \
-        -DNANO_ROS_BOARD="riscv64-qemu" \
-        -DNANO_ROS_BUILD_CODEGEN=OFF \
-        -DCMAKE_BUILD_TYPE=Release
-    just _cmake-cargo-stale-guard "build/cmake-threadx-riscv64-zenoh"
-    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
-    cmake --build "build/cmake-threadx-riscv64-zenoh"
-    cmake --install "build/cmake-threadx-riscv64-zenoh" --prefix "$PREFIX"
-    echo "=== Building threadx_riscv64 nros_rmw_zenoh staticlib ==="
-    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
-    cargo build -p nros-rmw-zenoh-staticlib \
-        --target riscv64gc-unknown-none-elf \
-        --release \
-        --no-default-features \
-        --features platform-threadx,ros-humble
-    TARGET_DIR="${CARGO_TARGET_DIR:-$(pwd)/target}"
-    cp "$TARGET_DIR/riscv64gc-unknown-none-elf/release/libnros_rmw_zenoh_staticlib.a" \
-        "$PREFIX/lib/libnros_rmw_zenoh_threadx_riscv64.a"
+# Phase 140 — `install` recipe deleted. ThreadX RISC-V 64 examples
+# consume nano-ros via `add_subdirectory(<repo-root>)` (Phase 144.7).
 
-# Build ThreadX RISC-V 64 platform/RMW libraries.
-build: install
-    @echo "ThreadX RISC-V 64 core libraries built."
+# Build ThreadX RISC-V 64 examples (canonical core-link smoke).
+build: build-examples
+    @echo "ThreadX RISC-V 64 examples built."
 
 # Build ThreadX QEMU RISC-V 64 examples
 build-examples:
@@ -111,7 +79,6 @@ build-fixtures:
     fi
     echo "Building ThreadX-RV64 test fixtures..."
     root="$(pwd)"
-    cmake_pfx="$root/build/install"
     toolchain="$root/cmake/toolchain/riscv64-threadx.cmake"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
     netx_dir="${NETX_DIR:-$root/third-party/threadx/netxduo}"
@@ -141,7 +108,6 @@ build-fixtures:
             echo "  → threadx-rv64/$lang/$ex (cmake)"
             dir="examples/qemu-riscv64-threadx/$lang/zenoh/$ex"
             cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_PREFIX_PATH="$cmake_pfx" \
                 -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
                 -DNANO_ROS_PLATFORM=threadx_riscv64 \
                 -DTHREADX_DIR="$threadx_dir" \

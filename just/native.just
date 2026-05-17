@@ -233,22 +233,20 @@ clean: clean-c clean-cpp
 # Native C/C++ examples (CMake-based)
 # =============================================================================
 
-# Build a single C example with CMake
+# Build a single C example with CMake (Phase 140 — add_subdirectory shape).
 [no-exit-message]
 _build-c-example dir *CMAKE_ARGS:
     #!/usr/bin/env bash
     set -e
-    NROS_DIR="$(pwd)/build/install/lib/cmake/NanoRos"
     echo "Building {{dir}}..."
     cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
-    cmake -DNanoRos_DIR="$NROS_DIR" {{CMAKE_ARGS}} ..
+    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh {{CMAKE_ARGS}} ..
     make
 
 # Build C examples only (no tests)
 build-c:
     #!/usr/bin/env bash
     set -e
-    just install-local-posix
     just native _build-c-example examples/native/c/zenoh/talker
     just native _build-c-example examples/native/c/zenoh/listener
     just native _build-c-example examples/native/c/zenoh/custom-msg
@@ -258,7 +256,6 @@ build-c:
 build-c-xrce:
     #!/usr/bin/env bash
     set -e
-    just install-local-posix
     just native _build-c-example examples/native/c/xrce/talker  "-DNANO_ROS_RMW=xrce"
     just native _build-c-example examples/native/c/xrce/listener "-DNANO_ROS_RMW=xrce"
     echo "C XRCE examples built!"
@@ -269,22 +266,20 @@ clean-c:
     rm -rf examples/native/c/xrce/{talker,listener}/build
     @echo "C examples build cleaned"
 
-# Build a single C++ example with CMake
+# Build a single C++ example with CMake (Phase 140 — add_subdirectory shape).
 [no-exit-message]
 _build-cpp-example dir *CMAKE_ARGS:
     #!/usr/bin/env bash
     set -e
-    NROS_DIR="$(pwd)/build/install/lib/cmake/NanoRos"
     echo "Building {{dir}}..."
     cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
-    cmake -DNanoRos_DIR="$NROS_DIR" {{CMAKE_ARGS}} ..
+    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh {{CMAKE_ARGS}} ..
     make
 
 # Build C++ examples only (no tests)
 build-cpp:
     #!/usr/bin/env bash
     set -e
-    just install-local-posix
     just native _build-cpp-example examples/native/cpp/zenoh/talker
     just native _build-cpp-example examples/native/cpp/zenoh/listener
     just native _build-cpp-example examples/native/cpp/zenoh/service-server
@@ -414,7 +409,7 @@ test-c verbose="":
     cargo nextest run "${args[@]}"
     just native _test-c-codegen {{verbose}}
 
-# C++ API integration tests (needs cmake + zenohd + install-local)
+# C++ API integration tests (needs cmake + zenohd)
 test-cpp verbose="":
     #!/usr/bin/env bash
     set -e

@@ -111,12 +111,11 @@ build-fixtures:
     # and DDS SPDP discovery never closes on `native_sim`.
     bash ./scripts/zephyr/native-sim-ipproto-ip-patch.sh "$workspace"
     echo "Building Zephyr test fixtures..."
-    cmake_pfx="$(pwd)/build/install"
+    # Phase 140 — Zephyr examples consume nano-ros via the Phase 139
+    # integration shell (`integrations/zephyr/`) under `west build`.
+    # No CMAKE_PREFIX_PATH override / install-local pre-step needed;
+    # `add_subdirectory(<repo-root>)` invokes Corrosion in-tree.
     nros_root="$(pwd)"
-    if [ ! -x "$cmake_pfx/bin/nros-codegen" ]; then
-        echo "  nros-codegen missing from $cmake_pfx; running just install-local first"
-        just install-local
-    fi
     log_dir="$nros_root/build/zephyr-fixtures"
     mkdir -p "$log_dir"
     jobs="${NROS_ZEPHYR_BUILD_JOBS:-1}"
@@ -271,6 +270,12 @@ build-fixtures:
             extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
         fi
         log="$log_dir/${build_dir}.log"
+        # Phase 140 — pass extra_args only when populated; the example's
+        # CMakeLists consumes nano-ros via add_subdirectory (no PREFIX_PATH).
+        west_extra=()
+        if [ "${#extra_args[@]}" -gt 0 ]; then
+            west_extra=(-- "${extra_args[@]}")
+        fi
         if [ "$jobs" -eq 1 ]; then
             set +e
             (
@@ -278,7 +283,7 @@ build-fixtures:
               SCCACHE_DISABLE="$sccache_disable" CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs" \
                 west build -b "$board" -d "$build_dir" -p "$pristine" \
                     "$nros_root/examples/$src" \
-                    -- -DCMAKE_PREFIX_PATH="$cmake_pfx" "${extra_args[@]}"
+                    "${west_extra[@]}"
             ) 2>&1 | tee "$log"
             rc="${PIPESTATUS[0]}"
             set -e
@@ -296,7 +301,7 @@ build-fixtures:
               SCCACHE_DISABLE="$sccache_disable" CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs" \
                 west build -b "$board" -d "$build_dir" -p "$pristine" \
                     "$nros_root/examples/$src" \
-                    -- -DCMAKE_PREFIX_PATH="$cmake_pfx" "${extra_args[@]}"
+                    "${west_extra[@]}"
             ) > "$log" 2>&1 &
             running+=("$!|$src|$log|$best_effort")
             while [ "${#running[@]}" -ge "$jobs" ]; do
@@ -338,7 +343,6 @@ build-fvp-aemv8r:
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
-    cmake_pfx="$nros_root/build/install"
     extra="$nros_root/packages/boards/nros-board-fvp-aemv8r-smp/boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf"
     cd "$workspace"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
@@ -346,7 +350,7 @@ build-fvp-aemv8r:
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-fvp-aemv8r-talker -p auto \
         nano-ros/examples/zephyr/rust/dds/talker \
-        -- -DCMAKE_PREFIX_PATH="$cmake_pfx" -DEXTRA_CONF_FILE="$extra"
+        -- -DEXTRA_CONF_FILE="$extra"
     echo "FVP AEMv8-R Cortex-A SMP build smoke OK"
 
 # Phase 117.14 — Zephyr build smoke for the AEMv8-R Cortex-A SMP
@@ -371,14 +375,12 @@ build-fvp-aemv8r-cyclonedds:
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
-    cmake_pfx="$nros_root/build/install"
     cd "$workspace"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     echo "Building examples/zephyr/cpp/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-aemv8r-cyclonedds-talker -p auto \
-        nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
-        -- -DCMAKE_PREFIX_PATH="$cmake_pfx"
+        nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
@@ -405,7 +407,6 @@ build-s32z:
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/cortex-r-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
-    cmake_pfx="$nros_root/build/install"
     extra="$nros_root/packages/boards/nros-board-s32z270dc2-r52/boards/s32z2xxdc2_s32z270_rtu0_D.conf"
     cd "$workspace"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
@@ -436,7 +437,7 @@ build-s32z:
     west build -b "s32z2xxdc2@D/s32z270/rtu0" \
         -d build-s32z-talker -p auto \
         nano-ros/examples/zephyr/rust/zenoh/talker \
-        -- -DCMAKE_PREFIX_PATH="$cmake_pfx" -DEXTRA_CONF_FILE="$extra" \
+        -- -DEXTRA_CONF_FILE="$extra" \
         > "$nros_root/build-s32z-output.log" 2>&1
     rc=$?
     set -e
