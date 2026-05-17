@@ -1,0 +1,57 @@
+# Phase 136.1 — canonical zenoh-pico build manifest.
+#
+# build.rs reads this once. Cargo features select the platform.
+# Per-platform `link.*` policies mask LinkFeatures. `include` and
+# `exclude` are glob-style relative paths under `zenoh-pico/src/`.
+# `defines` are added unconditionally via `cc::Build::define(name, None)`.
+#
+# 136.1 lands the manifest + parser only. 136.2–136.5 plug the
+# resolved data into build.rs and delete the per-platform branches
+# in cmake/cc-rs. Manifest schema is the contract: future-phase
+# changes must preserve the shape or update every platform block.
+
+[platform.posix]
+defines = ["ZENOH_LINUX"]
+include = ["system/common", "system/unix"]
+exclude = ["tests", "example"]
+system_libs = ["pthread", "rt"]
+mbedtls = "pkg-config"            # or "vendored" or "none"
+
+[platform.zephyr]
+defines = ["ZENOH_ZEPHYR"]
+include = ["system/common", "system/zephyr"]
+
+[platform.freertos-lwip]
+defines = ["ZENOH_FREERTOS_LWIP"]
+include = ["system/common", "system/freertos"]
+
+[platform.nuttx]
+defines = ["ZENOH_NUTTX", "ZENOH_LINUX"]  # nuttx reuses unix shim
+include = ["system/common", "system/unix"]
+
+[platform.threadx]
+defines = ["ZENOH_GENERIC", "ZENOH_THREADX"]
+include = ["system/common"]
+# consumer ships the platform shim via zpico-platform-shim
+
+[platform.bare-metal]
+defines = ["ZENOH_GENERIC"]
+include = ["system/common"]
+
+[platform.generic]
+defines = ["ZENOH_GENERIC"]
+include = ["system/common"]
+
+[platform.orin-spe]
+inherits = "generic"
+defines = ["ZENOH_ORIN_SPE"]
+link.tcp = false
+link.udp_unicast = false
+link.udp_multicast = false
+link.serial = false
+link.tls = false
+link.ws = false
+link.bluetooth = false
+link.raweth = false
+link.ivc = "feature"             # gated by CARGO_FEATURE_LINK_IVC
+link.custom = "feature"

@@ -103,6 +103,11 @@ zpico-platform-custom = { workspace = true, optional = true }
 cbindgen = "0.29"
 cc = "1.0"
 cmake = "0.1"
+# Phase 136.1 — zenoh_platforms.toml parser. The reader runs at
+# build time but does not yet drive cc-rs / cmake; 136.3 / 136.4
+# wire it into the cc-rs collapse.
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 
 [lints]
 workspace = true

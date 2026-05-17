@@ -12,6 +12,13 @@ use std::{
     process::Command,
 };
 
+// Phase 136.1 — zenoh_platforms.toml parser. Loaded + smoke-resolved
+// at the top of `main()` so any TOML drift surfaces at build time
+// instead of waiting for 136.3 / 136.4 to wire the resolver into
+// cc-rs. The resolved data is not yet consumed by the build path.
+#[path = "build/manifest.rs"]
+mod manifest;
+
 /// Protocol link features read from Cargo feature flags.
 ///
 /// Each field corresponds to a `link-*` Cargo feature that controls
@@ -488,6 +495,23 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap_or_default();
+
+    // Phase 136.1 — parse the canonical platform manifest. Resolve
+    // every declared platform so a typo or broken `inherits` chain
+    // surfaces as a hard build error, not a runtime surprise after
+    // 136.3 plugs the data into cc-rs.
+    let platform_manifest_path = manifest_dir.join("zenoh_platforms.toml");
+    println!(
+        "cargo:rerun-if-changed={}",
+        platform_manifest_path.display()
+    );
+    let platform_manifest = manifest::PlatformManifest::load(&platform_manifest_path)
+        .unwrap_or_else(|e| panic!("zenoh_platforms.toml: {e}"));
+    for name in platform_manifest.platform.keys() {
+        platform_manifest
+            .for_platform(name)
+            .unwrap_or_else(|e| panic!("zenoh_platforms.toml: resolve {name}: {e}"));
+    }
 
     // Check which platform backend to use
     let mut use_posix = env::var("CARGO_FEATURE_POSIX").is_ok();

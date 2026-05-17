@@ -182,13 +182,21 @@ the manifest to stay in sync with upstream.
 
 ## Work Items
 
-- [ ] **136.1 — Manifest schema + reader.**
-      Land `zenoh_platforms.toml` with the eight platforms listed
-      above. Add `serde` + `toml` build-deps to `zpico-sys`. Write
-      `PlatformManifest::load() -> Self` + `for_platform(name) ->
-      ResolvedPlatform`.
+- [x] **136.1 — Manifest schema + reader.** (2026-05-18)
+      Landed `zenoh_platforms.toml` with eight platforms (posix,
+      zephyr, freertos-lwip, nuttx, threadx, bare-metal, generic,
+      orin-spe). Added `serde` + `toml` build-deps to `zpico-sys`.
+      Wrote `PlatformManifest::{load, parse, for_platform}` +
+      `ResolvedPlatform` with `inherits`-chain merging (parent
+      defines/include/exclude/system_libs unioned, child wins on
+      mbedtls and per-key `link.*` overrides; cycle-detected).
+      `build.rs` parses + resolves every declared platform at the
+      top of `main()` so TOML drift surfaces as a build-script
+      panic. The resolved data is not yet consumed by the cc-rs /
+      cmake paths — 136.3 / 136.4 plug it in.
       **Files.** `packages/zpico/zpico-sys/zenoh_platforms.toml`,
       `packages/zpico/zpico-sys/build/manifest.rs`,
+      `packages/zpico/zpico-sys/build.rs`,
       `packages/zpico/zpico-sys/Cargo.toml`.
 
 - [ ] **136.2 — `LinkPolicy` (from Phase 134).**
