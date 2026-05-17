@@ -1,0 +1,30 @@
+[package]
+name = "nros-board-threadx"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Generic ThreadX + NetX-Duo board scaffolding for nano-ros (Phase 149.2 — overlay foundation)"
+authors = ["nano-ros contributors"]
+repository = "https://github.com/NEWSLabNTU/peripherals"
+keywords = ["nano-ros", "ros2", "threadx", "netx-duo", "embedded"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[lib]
+name = "nros_board_threadx"
+
+# Phase 149.2.A scaffolding — re-exports `Config` + `run` from the
+# existing per-board ThreadX crates behind opt-in features. Once
+# 149.2.B carves the kernel + NetX-Duo + nros-platform-threadx
+# build glue out of the per-board build.rs into this crate's own
+# build.rs, overlays depend on this name + the wiring switches
+# transparently.
+[dependencies]
+nros-board-threadx-linux = { path = "../nros-board-threadx-linux", optional = true }
+nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64", optional = true }
+
+[features]
+default = []
+# Linux simulation port (ThreadX over pthreads + NSOS shim).
+reference-linux = ["dep:nros-board-threadx-linux"]
+# Bare-metal RISC-V64 QEMU port (full NetX-Duo + virtio-net).
+reference-qemu-riscv64 = ["dep:nros-board-threadx-qemu-riscv64"]
