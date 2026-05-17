@@ -32,7 +32,9 @@
 #![cfg_attr(not(feature = "build-helpers"), no_std)]
 
 pub mod board_init;
+pub mod threadx_config;
 pub use board_init::{BoardExit, BoardInit, BoardPrint};
+pub use threadx_config::ThreadxConfig;
 
 #[cfg(feature = "build-helpers")]
 pub mod manifest;

@@ -19,6 +19,9 @@ name = "nros_board_threadx"
 # build.rs, overlays depend on this name + the wiring switches
 # transparently.
 [dependencies]
+# 152.2.B.4 — `BoardInit` / `BoardPrint` / `BoardExit` /
+# `ThreadxConfig` traits the generic `run<B>` is generic over.
+nros-board-common = { path = "../nros-board-common", default-features = false }
 nros-board-threadx-linux = { path = "../nros-board-threadx-linux", optional = true }
 nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64", optional = true }
 

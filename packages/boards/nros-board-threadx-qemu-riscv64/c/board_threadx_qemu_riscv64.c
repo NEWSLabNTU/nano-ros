@@ -84,13 +84,18 @@ static uint8_t cfg_mac[6]     = {0x52, 0x54, 0x00, 0x12, 0x34, 0x56};
 static uint64_t cfg_mmio_base = 0x10001000;
 static int      cfg_irq_num   = 1;
 
-/* FFI: called from Rust to set config. */
+/* FFI: called from Rust to set config. Signature matches the
+ * unified 5-arg form (Phase 152.2.B.4). The `interface_name`
+ * parameter is unused here — bare-metal RISC-V QEMU has no
+ * host network interface to bind to. */
 void nros_threadx_set_config(
     const uint8_t *ip,
     const uint8_t *netmask,
     const uint8_t *gateway,
-    const uint8_t *mac)
+    const uint8_t *mac,
+    const char *interface_name)
 {
+    (void)interface_name;
     memcpy(cfg_ip,      ip,      4);
     memcpy(cfg_netmask, netmask, 4);
     memcpy(cfg_gateway, gateway, 4);

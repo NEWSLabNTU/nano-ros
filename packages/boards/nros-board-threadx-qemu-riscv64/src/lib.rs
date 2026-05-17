@@ -90,7 +90,7 @@ pub use node::{init_hardware, run};
 
 // Phase 152.2.B — canonical overlay trait impls. Generic-crate
 // `run<B>` lift deferred; trait surface lands now.
-use nros_board_common::{BoardExit, BoardInit, BoardPrint};
+use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
 
 /// Per-board marker for trait dispatch.
 pub struct ThreadxQemuRiscv64;
@@ -101,6 +101,14 @@ impl BoardInit for ThreadxQemuRiscv64 {
     fn init_hardware(cfg: &Config) {
         init_hardware(cfg);
     }
+}
+
+impl ThreadxConfig for Config {
+    fn mac(&self) -> &[u8; 6] { &self.mac }
+    fn ip(&self) -> &[u8; 4] { &self.ip }
+    fn netmask(&self) -> &[u8; 4] { &self.netmask }
+    fn gateway(&self) -> &[u8; 4] { &self.gateway }
+    // No host interface — bare-metal NetX-Duo + virtio-net.
 }
 
 impl BoardPrint for ThreadxQemuRiscv64 {

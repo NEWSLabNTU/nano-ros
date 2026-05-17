@@ -445,27 +445,33 @@ with two reference overlays instead of one:
       obviously cheaper than keeping the per-overlay form.
       Reconsider when a third ThreadX overlay shows up.
 
-- [~] **152.2.B.4 — `Config` + `run` lift into generic crate.**
-      (partial 2026-05-18 — trait scaffolding only)
-      Both ThreadX overlays now implement
-      `nros_board_common::{BoardInit, BoardPrint, BoardExit}`
-      — same canonical-overlay shape as 152.1.B.5
-      (`Mps2An385`) and 152.3 (`OrinSpe`). Concrete markers:
-      `ThreadxLinux` (in `nros-board-threadx-linux`),
-      `ThreadxQemuRiscv64` (in `nros-board-threadx-qemu-riscv64`).
-      `Config` stays per-overlay because the two shapes diverge
-      meaningfully (Linux has `interface: String`; RISC-V has
-      MAC + IP + netmask + gateway with no host-bridge name) —
-      a shared `ThreadxConfig` trait would be five accessors
-      with no shared storage worth carving.
-      `run<B>` lift deferred: Linux uses `Box::leak` (std heap)
-      for `AppContext`; RISC-V uses a `static mut [u8; 4096]`
-      backing store (no_std). Generic crate would need either a
-      `feature = "std-host"` split or twin `run_std<B>` /
-      `run_no_std<B>` entry points — non-mechanical design call
-      that wants explicit user direction.
-      Verified: `cargo check` clean for both overlays + 
-      `just threadx_linux build` clean.
+- [x] **152.2.B.4 — `Config` + `run` lift into generic crate.**
+      (landed 2026-05-18)
+      Full `run<B>` lift into `packages/boards/nros-board-threadx/src/node.rs`.
+      `nros-board-threadx-linux` dropped `std`, switching to
+      `no_std` + libc externs (`exit`, `fputs` via the existing
+      `nros_board_log` C glue) + a `static mut CTX_STORAGE: [u8;
+      8192]` backing store (same shape as the RISC-V overlay
+      already used). That dropped the std-vs-no_std + Box-vs-
+      static-mut blocker noted in the earlier partial.
+      New `nros_board_common::ThreadxConfig` trait
+      (`mac/ip/netmask/gateway/interface`) lets the generic
+      `run<B, C, F, E>` accept any per-board `Config`. Bare-metal
+      overlays return `interface() == None` and the generic side
+      passes `NULL` to the unified 5-arg
+      `nros_threadx_set_config` FFI (RISC-V's C-side was
+      previously 4-arg; promoted to 5-arg with the new param
+      ignored on bare metal).
+      Per-overlay `node.rs` files shrank to ~35 LOC each — just
+      a thin non-generic `run(Config, F) -> !` wrapper around
+      `nros_board_threadx::run::<ThreadxXxx, Config, F, E>(config, f)`.
+      User call shape unchanged.
+      Verified: `just threadx_linux build` + `just threadx_linux
+      test` clean. RISC-V `cargo check --target
+      riscv64gc-unknown-none-elf` clean. ThreadX-Linux Rust E2E
+      reaches `[app_thread] Calling Rust entry...` then hits
+      pre-existing `Transport(ConnectionFailed)` infra issue
+      (same shape as FreeRTOS in 152.1.B.5).
 
 - [x] **152.2.B.5 — Verify matrix.** (rolling, last 2026-05-18)
       - `just threadx_linux build` — clean across all 6 zenoh
