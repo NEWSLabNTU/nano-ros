@@ -177,6 +177,37 @@ doctor:
         echo "  [MISSING] kconfig-frontends-nox (run: just workspace apt-packages)"
         fail=1
     fi
+    # Phase 127.B.5 — NuttX DDS RTPS multi-instance tests rely on
+    # mcast-style cross-process delivery between two QEMU processes.
+    # QEMU 6.2's `socket,mcast=` cannot do this reliably; the
+    # documented workaround uses `-netdev dgram,local.type=unix,...`,
+    # which was introduced in QEMU 7.2.
+    if command -v qemu-system-arm &>/dev/null; then
+        ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
+        major=${ver%%.*}
+        minor=${ver##*.}
+        if [ -n "$ver" ] && { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
+            echo "  [OK] qemu-system-arm ($ver, >= 7.2 — supports -netdev dgram unix)"
+        else
+            echo "  [WARN] qemu-system-arm ($ver) < 7.2 — NuttX DDS multi-instance"
+            echo "         tests need '-netdev dgram,local.type=unix,...' which was"
+            echo "         introduced in QEMU 7.2. Older QEMU's 'socket,mcast=' is"
+            echo "         known to drop cross-process frames silently."
+            if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
+                codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
+                echo "         Ubuntu detected ($codename). Get QEMU 8.2 from"
+                echo "         Canonical's server-backports PPA:"
+                echo ""
+                echo "           sudo add-apt-repository ppa:canonical-server/server-backports"
+                echo "           sudo apt update"
+                echo "           sudo apt install qemu-system-arm"
+                echo ""
+                echo "         PPA: https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
+            else
+                echo "         Build from source: https://www.qemu.org/download/#source"
+            fi
+        fi
+    fi
     exit $fail
 
 # =============================================================================

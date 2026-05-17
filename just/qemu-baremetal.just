@@ -164,7 +164,34 @@ doctor:
         fail=1
     fi
     if command -v qemu-system-arm &>/dev/null; then
-        echo "  [OK] qemu-system-arm"
+        ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
+        major=${ver%%.*}
+        minor=${ver##*.}
+        # Phase 127.B.5 — `-netdev dgram,local.type=unix,...` (the
+        # supported workaround for QEMU 6.2's broken cross-process
+        # `socket,mcast=` delivery) was introduced in QEMU 7.2.
+        # NuttX DDS / RTPS multi-instance tests need it.
+        if [ -n "$ver" ] && { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
+            echo "  [OK] qemu-system-arm ($ver, supports -netdev dgram unix)"
+        else
+            echo "  [WARN] qemu-system-arm ($ver) is older than 7.2 — RTPS multi-instance"
+            echo "         tests (NuttX DDS in particular) hit a known cross-process"
+            echo "         delivery limit in 'socket,mcast='. The workaround"
+            echo "         '-netdev dgram,local.type=unix,...' needs QEMU >= 7.2."
+            if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
+                codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
+                echo "         Ubuntu detected (codename: $codename). Get QEMU 8.2 via"
+                echo "         Canonical's server-backports PPA:"
+                echo ""
+                echo "           sudo add-apt-repository ppa:canonical-server/server-backports"
+                echo "           sudo apt update"
+                echo "           sudo apt install qemu-system-arm"
+                echo ""
+                echo "         PPA: https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
+            else
+                echo "         Build from source: https://www.qemu.org/download/#source"
+            fi
+        fi
     else
         echo "  [MISSING] qemu-system-arm (run: just workspace apt-packages)"
         fail=1
