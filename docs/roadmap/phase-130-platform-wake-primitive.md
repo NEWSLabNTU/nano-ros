@@ -210,6 +210,29 @@ platform-native binary semaphore:
 Document each impl's ISR-safety in
 `docs/reference/platform-sync-abi.md` (new).
 
+## Follow-ups (130.6 – 130.8)
+
+- [x] **130.6 — tunable `XRCE_STREAM_HISTORY`.** `internal.h`
+  guards the default behind `#ifndef XRCE_STREAM_HISTORY` and
+  rejects values `< 4` at compile time. `nros-rmw-xrce-cffi/build.rs`
+  reads `NROS_XRCE_STREAM_HISTORY` env var and passes it through
+  as a `cc::Build::define`. Tight-RAM RTOS builds that don't run
+  server-side action callbacks can drop to 8 (saving 32 KiB of
+  per-session output buffer) or to the minimum 4.
+- [x] **130.7 — verify wake_* on other RTOS.** `cargo check`
+  passes for `rmw-cffi + platform-{zephyr,freertos,nuttx,threadx}`;
+  per-platform C ports compile via `cc::Build` under their
+  respective platform features. Runtime validation only done on
+  POSIX (15 wake tests) and Zephyr (13 XRCE E2E). FreeRTOS /
+  NuttX / ThreadX / ESP-IDF still need QEMU smoke harness runs;
+  status table in `docs/reference/platform-sync-abi.md`.
+- [x] **130.8 — deprecate legacy blocking `call_raw` fallback.**
+  `CffiServiceClient::send_request_raw` now emits a one-shot
+  `warn_legacy_send_recv_fallback()` warning when the backend's
+  vtable omits the non-blocking `send_request_raw` /
+  `try_recv_reply_raw` slots; documents the removal target
+  (when Cyclone + dust-DDS ship the split).
+
 ## Acceptance
 
 - [x] 130.1: `nros_platform_wake_*` declared in `platform.h` +

@@ -36,16 +36,28 @@ extern "C" {
 #define XRCE_MAX_SERVICE_SERVERS   4
 #define XRCE_MAX_SERVICE_CLIENTS   4
 #define XRCE_BUFFER_SIZE           1024
-/* Phase 130.4 — bumped from 4 to 16. Action server callbacks that
- * publish feedback + result + status_array + service replies in a
- * single user-handler invocation could exhaust 4 unACK'd slots
+/* Phase 130.4 — bumped default from 4 to 16. Action server callbacks
+ * that publish feedback + result + status_array + service replies
+ * in a single user-handler invocation could exhaust 4 unACK'd slots
  * before the executor gets a chance to drain ACKs, causing
  * `uxr_buffer_reply` to return UXR_INVALID_REQUEST_ID. Sixteen
  * slots cover a typical action lifecycle (accept + 3-4 feedback
  * + complete + status_array + result) with room to spare. Costs
  * 16 * UXR_CONFIG_CUSTOM_TRANSPORT_MTU = 64 KiB of per-session
- * output stream buffer (was 16 KiB at history=4). */
+ * output stream buffer (was 16 KiB at history=4).
+ *
+ * Phase 130.6 — tunable via build.rs env override
+ * `NROS_XRCE_STREAM_HISTORY=<n>`; defaults to 16 if unset. Tight-
+ * RAM RTOS targets can drop to 8 (32 KiB) when the application
+ * doesn't run server-side action callbacks that fan out replies.
+ * Lower than 4 is rejected — reliable retransmission needs at
+ * least 2 unACK'd messages outstanding plus headroom. */
+#ifndef XRCE_STREAM_HISTORY
 #define XRCE_STREAM_HISTORY        16
+#endif
+#if XRCE_STREAM_HISTORY < 4
+#error "XRCE_STREAM_HISTORY must be >= 4 (reliable retransmit headroom)"
+#endif
 /* Stream buffer sized after the largest MTU compiled in. Embedded
  * (no_POSIX) builds drop the UDP profile, so fall back to the custom
  * transport MTU. */

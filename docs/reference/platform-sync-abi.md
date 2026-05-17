@@ -89,6 +89,27 @@ stale wake credits.
 - Zephyr/FreeRTOS/ESP-IDF: binary semaphore (init max 1).
 - ThreadX: `tx_semaphore_ceiling_put` with ceiling 1.
 
+## Verification status (Phase 130.7)
+
+| Platform | Compile-check (`cargo check`) | Link + integration test |
+|----------|-------------------------------|--------------------------|
+| POSIX (Linux) | ✅ | ✅ 15 tests pass (`c_port_posix_wake.rs`, `wake_wrapper.rs`) |
+| POSIX (macOS) | ✅ | not tested in CI |
+| Zephyr native_sim | ✅ | ✅ all 13 Zephyr XRCE E2E pass |
+| Zephyr qemu_cortex_a9 | ✅ | not run since 130.x landed |
+| FreeRTOS | ✅ | needs FreeRTOS QEMU smoke |
+| NuttX | ✅ (reuses POSIX C source) | needs NuttX QEMU smoke |
+| ThreadX | ✅ | needs ThreadX QEMU smoke |
+| ESP-IDF | ✅ | needs ESP32-QEMU smoke |
+| bare-metal (Cortex-M) | trait default = unsupported | n/a |
+
+RTOS targets are compile-clean (the `cc::Build` step succeeds for
+each `platform-*` feature), but the binary-semaphore impls have
+only been runtime-exercised on POSIX and Zephyr. FreeRTOS / NuttX
+/ ThreadX / ESP-IDF runtime validation tracks as a Phase 130
+follow-up — needs each platform's QEMU smoke harness to run a
+service or action E2E.
+
 ## Consumer expectations
 
 `Executor::spin_once` on `std + rmw-cffi + any(platform-{zephyr,

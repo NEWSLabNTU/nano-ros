@@ -158,6 +158,22 @@ fn main() {
         build.define("UCLIENT_PLATFORM_NO_POSIX", None);
     }
 
+    // Phase 130.6 — tunable reliable-stream history. Tight-RAM
+    // targets that don't run server-side action callbacks can drop
+    // from the default 16 (= 64 KiB per-session output buffer) to 8
+    // or 4. `internal.h` enforces `>= 4`.
+    if let Ok(v) = env::var("NROS_XRCE_STREAM_HISTORY") {
+        let n: u32 = v.parse().unwrap_or_else(|_| {
+            panic!("NROS_XRCE_STREAM_HISTORY='{}' is not a number", v)
+        });
+        if n < 4 {
+            panic!("NROS_XRCE_STREAM_HISTORY={} too small (minimum 4)", n);
+        }
+        build.define("XRCE_STREAM_HISTORY", n.to_string().as_str());
+        println!("cargo:rerun-if-env-changed=NROS_XRCE_STREAM_HISTORY");
+    }
+    println!("cargo:rerun-if-env-changed=NROS_XRCE_STREAM_HISTORY");
+
     build.compile("nros_rmw_xrce_c_inline");
 
     println!("cargo:rerun-if-changed=build.rs");

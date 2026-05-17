@@ -20,6 +20,9 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(feature = "std")]
+extern crate std;
+
 use core::{cell::UnsafeCell, ffi::c_void, sync::atomic::Ordering};
 
 use nros_rmw::{
@@ -151,6 +154,32 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
 /// path before calling this. Unknown negative codes collapse to the
 /// generic `TransportError::Backend("unknown rmw_ret_t")` so a future
 /// constant added to the C header degrades gracefully on the Rust side.
+/// Phase 130.8 — one-shot warning when an RMW backend's vtable
+/// omits the non-blocking `send_request_raw` / `try_recv_reply_raw`
+/// slots and the runtime falls back to the legacy blocking
+/// `call_raw` burst. The fallback blocks the executor's spin loop
+/// (Phase 127.C.4 root cause for the C++ XRCE action E2E hang);
+/// new backends should implement the non-blocking split. Removal
+/// target: when every shipping backend has migrated.
+fn warn_legacy_send_recv_fallback() {
+    #[cfg(feature = "std")]
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static WARNED: AtomicBool = AtomicBool::new(false);
+        if !WARNED.swap(true, Ordering::Relaxed) {
+            std::eprintln!(
+                "[nros-rmw-cffi] WARNING: backend vtable omits non-blocking \
+                 send_request_raw + try_recv_reply_raw slots; falling back to \
+                 the deprecated blocking call_raw burst (Phase 130.8). The \
+                 fallback blocks the executor's spin loop for up to the \
+                 backend's call_raw timeout. Backends should implement the \
+                 non-blocking vtable slots (see \
+                 docs/roadmap/phase-130-platform-wake-primitive.md)."
+            );
+        }
+    }
+}
+
 pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
     match ret {
         NROS_RMW_RET_OK => {
@@ -2607,22 +2636,27 @@ impl ServiceClientTrait for CffiServiceClient {
         // `send_request_raw` vtable slot when available. Falls back
         // to the legacy "store in pending_request, send during
         // try_recv_reply_raw via blocking call_raw" pattern when
-        // the slot is NULL (Phase 127.C.4 root cause behaviour).
+        // the slot is NULL.
+        //
+        // Phase 130.8 — the legacy fallback is DEPRECATED. It
+        // conflates send + recv into a single blocking burst that
+        // starves the executor's spin loop (Phase 127.C.4 root
+        // cause); backends should implement the non-blocking
+        // `send_request_raw` + `try_recv_reply_raw` vtable slots
+        // instead. First use logs a one-shot warning so backend
+        // authors notice. Removal target: when every shipping
+        // backend (Cyclone, dust-DDS) provides the non-blocking
+        // split.
         if let Some(f) = self.vtable.send_request_raw {
             let mut view = self.make_view();
             let rc = unsafe { f(&mut view, request.as_ptr(), request.len()) };
             if rc != NROS_RMW_RET_OK {
                 return Err(error_from_ret(rc));
             }
-            // Mark that we're awaiting a reply via the non-blocking
-            // path — try_recv_reply_raw uses pending_len > 0 to
-            // distinguish "no in-flight request" from "polling for
-            // reply", same as the blocking fallback. Length is the
-            // request size; the actual bytes aren't stored because
-            // the backend already owns them.
             self.pending_len = request.len().max(1);
             return Ok(());
         }
+        warn_legacy_send_recv_fallback();
         if request.len() > self.pending_request.len() {
             return Err(TransportError::BufferTooSmall);
         }
@@ -2654,9 +2688,12 @@ impl ServiceClientTrait for CffiServiceClient {
             self.pending_len = 0;
             return Ok(Some(rc as usize));
         }
-        // Legacy blocking fallback (Phase 127.C.4 behaviour) for
+        // Phase 130.8 — DEPRECATED legacy blocking fallback for
         // backends that haven't implemented the non-blocking
-        // split. Sends + polls in a single call_raw burst.
+        // split. Sends + polls in a single call_raw burst, which
+        // blocks the executor for up to the backend's call_raw
+        // timeout (Phase 127.C.4 root cause). One-shot warning is
+        // emitted from `send_request_raw`; no extra log here.
         if self.pending_len == 0 {
             return Ok(None);
         }
