@@ -88,6 +88,39 @@ _start:
 pub use config::Config;
 pub use node::{init_hardware, run};
 
+// Phase 152.2.B — canonical overlay trait impls. Generic-crate
+// `run<B>` lift deferred; trait surface lands now.
+use nros_board_common::{BoardExit, BoardInit, BoardPrint};
+
+/// Per-board marker for trait dispatch.
+pub struct ThreadxQemuRiscv64;
+
+impl BoardInit for ThreadxQemuRiscv64 {
+    type Config = Config;
+
+    fn init_hardware(cfg: &Config) {
+        init_hardware(cfg);
+    }
+}
+
+impl BoardPrint for ThreadxQemuRiscv64 {
+    fn println(args: core::fmt::Arguments<'_>) {
+        use core::fmt::Write;
+        let mut w = UartWriter;
+        let _ = writeln!(w, "{}", args);
+    }
+}
+
+impl BoardExit for ThreadxQemuRiscv64 {
+    fn exit_success() -> ! {
+        exit_success()
+    }
+
+    fn exit_failure() -> ! {
+        exit_failure()
+    }
+}
+
 /// Print to QEMU UART console.
 ///
 /// Uses the 16550 UART at `0x10000000` (QEMU virt machine).

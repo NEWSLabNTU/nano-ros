@@ -397,12 +397,27 @@ with two reference overlays instead of one:
       nsos-netx-only for Linux sim). Linker emits
       `cargo:rustc-link-lib=static={threadx,netxduo,nros_platform_threadx}`.
 
-- [ ] **152.2.B.4 — `Config` + `run` lift into generic crate.**
-      Both per-board crates expose `Config` + `run` + `init_hardware`
-      today; the shapes differ (Linux sim has interface name,
-      RISC-V QEMU has MAC + IP). Add per-overlay `Config` extension
-      trait so each overlay's `Config` is `nros_board_threadx::Config`
-      + extension fields. `run` lifts unchanged.
+- [~] **152.2.B.4 — `Config` + `run` lift into generic crate.**
+      (partial 2026-05-18 — trait scaffolding only)
+      Both ThreadX overlays now implement
+      `nros_board_common::{BoardInit, BoardPrint, BoardExit}`
+      — same canonical-overlay shape as 152.1.B.5
+      (`Mps2An385`) and 152.3 (`OrinSpe`). Concrete markers:
+      `ThreadxLinux` (in `nros-board-threadx-linux`),
+      `ThreadxQemuRiscv64` (in `nros-board-threadx-qemu-riscv64`).
+      `Config` stays per-overlay because the two shapes diverge
+      meaningfully (Linux has `interface: String`; RISC-V has
+      MAC + IP + netmask + gateway with no host-bridge name) —
+      a shared `ThreadxConfig` trait would be five accessors
+      with no shared storage worth carving.
+      `run<B>` lift deferred: Linux uses `Box::leak` (std heap)
+      for `AppContext`; RISC-V uses a `static mut [u8; 4096]`
+      backing store (no_std). Generic crate would need either a
+      `feature = "std-host"` split or twin `run_std<B>` /
+      `run_no_std<B>` entry points — non-mechanical design call
+      that wants explicit user direction.
+      Verified: `cargo check` clean for both overlays + 
+      `just threadx_linux build` clean.
 
 - [ ] **152.2.B.5 — Verify matrix.**
       - `cargo build` for `threadx-linux` Rust talker / listener
