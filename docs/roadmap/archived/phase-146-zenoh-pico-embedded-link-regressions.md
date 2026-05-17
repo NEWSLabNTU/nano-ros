@@ -7,7 +7,8 @@ ThreadX-Linux). All three regressions are **pre-existing on
 verification on 2026-05-18); none were introduced by the 136
 manifest-driven cc-rs collapse.
 
-**Status.** Not started.
+**Status.** Landed — 146.1/.2/.3 done (2026-05-18). 146.4 is a
+cross-link note (no code change).
 
 **Priority.** P1 — these failures block every Rust example build on
 the affected RTOS targets. Hosted-RTOS QEMU E2E test runs
@@ -139,14 +140,14 @@ Same fix options.
 
 ## Work Items
 
-- [ ] **146.1 — Symptom A: `_z_task_free` duplicate on ThreadX-Linux.**
+- [x] **146.1 — Symptom A: `_z_task_free` duplicate on ThreadX-Linux.**
       Decide option 1 (skip carve-out in `platform_aliases.c`) vs
       option 2 (fold `task.c` into the alias TU). Land + verify
       `cargo build` of `threadx-linux` Rust examples.
       **Files.** `packages/zpico/zpico-sys/c/zpico/platform_aliases.c`,
       possibly `packages/zpico/zpico-sys/c/platform/threadx/task.c`.
 
-- [ ] **146.2 — Symptom B/C: `_z_*_serial_internal` undefined.**
+- [x] **146.2 — Symptom B/C: `_z_*_serial_internal` undefined.**
       Decide option 1 (stub) vs option 2 (re-gate `serial = true`
       per-platform). Apply across FreeRTOS, NuttX, and any other
       target that surfaces the same set on its next build. Land
@@ -157,16 +158,69 @@ Same fix options.
       `packages/zpico/zpico-sys/c/zpico/platform_aliases.c`,
       depending on option choice.
 
-- [ ] **146.3 — CI gate.** Add `cargo build` of one example per
+- [x] **146.3 — CI gate.** Add `cargo build` of one example per
       affected RTOS to `just ci` so the next regression of this
       shape fires immediately.
       **Files.** `justfile`, `just/*.just`.
 
-- [ ] **146.4 — Phase 127.G.3 cross-link.** Once 146.1–146.3 land,
-      the deferred `just test-all` refresh in Phase 127.G.3 can run;
-      update that closeout pointer.
+- [x] **146.4 — Phase 127.G.3 cross-link.** Phase 146 unblocks
+      RTOS Rust example link, but Phase 127.G.3's deferred
+      `just test-all` table refresh remains gated on Phases
+      137/138/139/140 (the source-distribution refactor that
+      retires `install-local`). 127.G.3 stays deferred until that
+      refactor lands; refreshing the table now would obsolete the
+      moment 140 lands. Note recorded in
+      `docs/roadmap/archived/phase-127-remaining-failure-groups.md`
+      via the existing 127.G.3 deferred-status block.
 
 ---
+
+## Progress
+
+- 2026-05-18 — 146.1/.2/.3 landed:
+  - 146.1: option 1 (carve-out) won — `platform_aliases.c`'s
+    `_z_task_*` block is now guarded by
+    `#ifndef NROS_PLATFORM_ALIASES_SKIP_TASK`; `zpico-sys/build.rs`
+    sets the define when the `threadx` feature is on, so the
+    ThreadX-specific `c/platform/threadx/task.c` keeps its
+    monopoly on the `_z_task_*` symbols (the `_z_task_t` layout
+    embeds a `TX_THREAD` struct + stack that the trampoline
+    recovers via `tx_thread_identify()` — there is no way to make
+    the alias TU honour that layout without inlining the entire
+    ThreadX path). Verified: `cargo build --release` of the
+    `threadx-linux` Rust talker + listener now succeeds.
+  - 146.2: option 2 (re-gate) won, applied via the existing
+    Phase 134.2 `LinkPolicy` mask machinery. Added
+    `LinkPolicy::freertos_lwip()`, `LinkPolicy::nuttx()`, and
+    `LinkPolicy::threadx()` — each forces `serial`, `raweth`, and
+    `tls` to `Force(false)` so neither the upstream
+    `#error "Serial not supported"` in
+    `zenoh-pico/src/system/freertos/lwip/network.c` fires nor
+    `src/system/common/serial.c` builds and emits unresolved
+    `_z_*_serial_internal` calls. `zpico-sys/build.rs` selects
+    the per-platform policy based on the existing `use_freertos`
+    / `use_nuttx` / `use_threadx` switches. Verified by
+    `cargo build --release` of the FreeRTOS / NuttX /
+    ThreadX-Linux Rust talker + listener examples.
+  - 146.2 also exposed a pre-existing `nx_bsd_inet_addr`
+    unresolved symbol on ThreadX-Linux: my Phase 127.B.5
+    mcast_listen fix calls `nx_bsd_inet_addr` (defined by NetX
+    Duo's `nxd_bsd.c` when `NX_BSD_ENABLE_NATIVE_API` is set),
+    but the ThreadX-Linux board uses the POSIX shim in
+    `packages/drivers/nsos-netx/` instead of building NetX Duo,
+    and the shim was missing that symbol. Added a one-line
+    forward `uint32_t nx_bsd_inet_addr(const CHAR *) { return
+    inet_addr(buffer); }` to `nsos_netx.c` — POSIX `inet_addr`
+    has the same `INADDR_NONE` contract.
+  - 146.3: new root `just rust-rtos-link-check` recipe builds
+    one Rust talker per affected RTOS (FreeRTOS, NuttX,
+    ThreadX-Linux) under `cargo build --release`. Wired into
+    `ci` ahead of `test-all` so the next link-symbol drift
+    surfaces immediately. ARM cross toolchain skips cleanly via
+    a `command -v arm-none-eabi-gcc` guard so contributors
+    without it don't trip false failures.
+  - 146.4: Phase 127.G.3 stays deferred (gated on 137/138/139/140
+    source-distribution refactor); no code change for this item.
 
 ## Notes
 

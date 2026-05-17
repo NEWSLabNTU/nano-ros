@@ -387,6 +387,16 @@ INT nx_bsd_shutdown(INT sockID, INT how) {
     return shutdown(sockID, how);
 }
 
+/* Phase 146 — used by `nros-platform-threadx/src/net.c`'s
+ * mcast_listen path (Phase 127.B.5 fix) to parse the dotted-quad
+ * `join` group address. NetX Duo BSD declares the prototype as
+ * `nx_bsd_in_addr_t nx_bsd_inet_addr(const CHAR *)`, returning
+ * `INADDR_NONE` (`0xffffffffu`) on parse failure. Forward to the
+ * host's POSIX `inet_addr` which has the same contract. */
+uint32_t nx_bsd_inet_addr(const CHAR *buffer) {
+    return (uint32_t) inet_addr(buffer);
+}
+
 INT nx_bsd_getaddrinfo(const CHAR *node,
                        const CHAR *service,
                        const struct nx_bsd_addrinfo *hints,

@@ -515,6 +515,22 @@ fn main() {
         LinkPolicy::orin_spe()
     } else if use_posix {
         LinkPolicy::posix()
+    } else if use_freertos {
+        // Phase 146.2 — FreeRTOS has no serial / raweth / TLS
+        // backend; force them off so the upstream "Serial not
+        // supported" `#error` doesn't fire and the alias TU
+        // doesn't have to stub `_z_*_serial_internal`.
+        LinkPolicy::freertos_lwip()
+    } else if use_nuttx {
+        // Phase 146.2 — NuttX has no serial / raweth / TLS
+        // backend either. Same shape as freertos_lwip().
+        LinkPolicy::nuttx()
+    } else if use_threadx {
+        // Phase 146.2 — ThreadX uses platform_aliases.c for
+        // network ops (no serial wrapper there); force serial
+        // off to skip building zenoh-pico's serial.c against
+        // undefined `_z_*_serial_internal` symbols.
+        LinkPolicy::threadx()
     } else {
         LinkPolicy::passthrough()
     };
@@ -636,6 +652,14 @@ fn main() {
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
+        // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
+        // already provides every `_z_task_*` symbol because the
+        // `_z_task_t` layout embeds a `TX_THREAD` struct. Skip the
+        // generic alias-TU versions so both TUs can land in the
+        // same archive without a duplicate-symbol link error.
+        if use_threadx {
+            alias_build.define("NROS_PLATFORM_ALIASES_SKIP_TASK", None);
+        }
         // Phase 129.D — bare-metal cross targets
         // (`target_os = "none"`) often lack a usable newlib on the
         // host (`#include <stdint.h>` falls into gcc's own header

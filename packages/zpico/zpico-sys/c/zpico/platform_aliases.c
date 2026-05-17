@@ -156,7 +156,17 @@ uint64_t smoltcp_clock_now_ms(void) {
  *  Threading: tasks. zenoh-pico passes a `_z_task_t *` whose layout is
  *  opaque caller storage. nros_platform_task_init takes a `void *` for
  *  the same purpose — direct pass-through.
+ *
+ *  Phase 146.1 — ThreadX must provide its own `_z_task_*` symbols
+ *  (`c/platform/threadx/task.c`) because the `_z_task_t` layout
+ *  embeds a `TX_THREAD` + stack + entry/arg fields that the trampoline
+ *  recovers via `tx_thread_identify()`. Skip the generic alias-TU
+ *  versions under `NROS_PLATFORM_ALIASES_SKIP_TASK` so both TUs can
+ *  coexist in the same `zpico_sys` rlib without a duplicate-symbol
+ *  link error.
  * ----------------------------------------------------------------------- */
+
+#ifndef NROS_PLATFORM_ALIASES_SKIP_TASK
 
 int8_t _z_task_init(void *task, void *attr, void *(*entry)(void *), void *arg) {
     return nros_platform_task_init(task, attr, entry, arg);
@@ -181,6 +191,8 @@ void _z_task_exit(void) {
 void _z_task_free(void **task) {
     nros_platform_task_free(task);
 }
+
+#endif  /* NROS_PLATFORM_ALIASES_SKIP_TASK */
 
 /* -------------------------------------------------------------------------
  *  Threading: non-recursive mutex.

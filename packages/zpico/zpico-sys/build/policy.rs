@@ -187,4 +187,65 @@ impl LinkPolicy {
             custom: PolicyChoice::Follow,
         }
     }
+
+    /// Phase 146.2 — FreeRTOS + lwIP. zenoh-pico's
+    /// `src/system/freertos/lwip/network.c` ships an explicit
+    /// `#error "Serial not supported yet on FreeRTOS + LWIP port"`
+    /// behind `Z_FEATURE_LINK_SERIAL == 1`, and no FreeRTOS user
+    /// has wired a serial backend through `zpico-serial`. Force
+    /// serial off so neither the upstream `#error` fires nor
+    /// `src/system/common/serial.c` builds and emits unresolved
+    /// `_z_*_serial_internal` calls. Same shape forces raweth and
+    /// TLS off because no backend exists for them on FreeRTOS.
+    pub const fn freertos_lwip() -> Self {
+        Self {
+            tcp: PolicyChoice::Follow,
+            udp_unicast: PolicyChoice::Follow,
+            udp_multicast: PolicyChoice::Follow,
+            serial: PolicyChoice::Force(false),
+            raweth: PolicyChoice::Force(false),
+            tls: PolicyChoice::Force(false),
+            ivc: PolicyChoice::Follow,
+            custom: PolicyChoice::Follow,
+        }
+    }
+
+    /// Phase 146.2 — NuttX. Same shape as `freertos_lwip()`: NuttX
+    /// ships no serial backend, no raweth, no TLS provider; forcing
+    /// these features on under `LinkFeatures::from_env`'s Phase
+    /// 128.E.1 "always-on" defaults causes `_z_*_serial_internal`
+    /// to surface as link-time undefined symbols on every NuttX
+    /// Rust example build.
+    pub const fn nuttx() -> Self {
+        Self {
+            tcp: PolicyChoice::Follow,
+            udp_unicast: PolicyChoice::Follow,
+            udp_multicast: PolicyChoice::Follow,
+            serial: PolicyChoice::Force(false),
+            raweth: PolicyChoice::Force(false),
+            tls: PolicyChoice::Force(false),
+            ivc: PolicyChoice::Follow,
+            custom: PolicyChoice::Follow,
+        }
+    }
+
+    /// Phase 146.2 — ThreadX (both Linux sim and RV64 board).
+    /// `c/platform/threadx/network.c` ships TCP/UDP/serial code over
+    /// NetX Duo BSD but is NOT listed under `[platform.threadx]
+    /// extra_sources` — threadx uses `platform_aliases.c` for
+    /// network ops instead, and the alias TU has no serial wrapper.
+    /// Force serial off to match: every ThreadX example uses
+    /// TCP/UDP over NetX Duo BSD, none use serial.
+    pub const fn threadx() -> Self {
+        Self {
+            tcp: PolicyChoice::Follow,
+            udp_unicast: PolicyChoice::Follow,
+            udp_multicast: PolicyChoice::Follow,
+            serial: PolicyChoice::Force(false),
+            raweth: PolicyChoice::Force(false),
+            tls: PolicyChoice::Force(false),
+            ivc: PolicyChoice::Follow,
+            custom: PolicyChoice::Follow,
+        }
+    }
 }

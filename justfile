@@ -543,13 +543,43 @@ test-all verbose="": build-zenohd install-local
         echo "All tests passed!"
     fi
 
+# Phase 146.3 — embedded-RTOS Rust-link regression gate.
+#
+# `cargo build` of one Rust example per hosted-RTOS that ships an
+# embedded zenoh-pico variant (FreeRTOS, NuttX, ThreadX-Linux).
+# These three are the targets whose link-symbol drift between
+# `platform_aliases.c`, the zenoh-pico vendor TUs, and the
+# `LinkPolicy` mask surfaced as Phase 146 A/B/C. Catches the next
+# regression of the same shape (duplicate `_z_task_*`, undefined
+# `_z_*_serial_internal`, etc.) immediately during `just ci`
+# rather than during `just test-all`'s full QEMU sweep.
+#
+# Best-effort: each RTOS's build skips cleanly if its cross
+# toolchain or board crate prerequisites are absent.
+rust-rtos-link-check:
+    #!/usr/bin/env bash
+    set -e
+    echo "== Phase 146.3 — embedded-RTOS Rust link check =="
+    if command -v arm-none-eabi-gcc >/dev/null; then
+        echo "  freertos talker:"
+        ( cd examples/qemu-arm-freertos/rust/zenoh/talker && cargo build --release ) >/dev/null
+        echo "  nuttx talker:"
+        ( cd examples/qemu-arm-nuttx/rust/zenoh/talker && cargo build --release ) >/dev/null
+    else
+        echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
+    fi
+    echo "  threadx-linux talker:"
+    ( cd examples/threadx-linux/rust/zenoh/talker && cargo build --release ) >/dev/null
+    echo "Rust-RTOS link check OK."
+
 # Run CI: format check + clippy + every test tier (never modifies code).
 # `test-all` already covers test-doc + test-miri internally. Phase
 # 117.16 — `cyclonedds::ci` runs the C++ Cyclone DDS RMW backend's
 # CTest harnesses (entity smoke + POSIX E2E vs stock
-# `rmw_cyclonedds_cpp`). Skips cleanly if the Cyclone submodule
-# isn't initialised; otherwise fully gated.
-ci: check test-all cyclonedds-ci
+# `rmw_cyclonedds_cpp`). Phase 146.3 adds the `rust-rtos-link-check`
+# gate ahead of `test-all` so the embedded-RTOS link-symbol
+# regression class surfaces immediately on `just ci`.
+ci: check rust-rtos-link-check test-all cyclonedds-ci
     @echo "CI passed!"
 
 # Cyclone DDS module CI step. Best-effort: skips cleanly when the
