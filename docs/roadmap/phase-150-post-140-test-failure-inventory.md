@@ -200,8 +200,22 @@ not exported in the nextest subprocess environment. These pass
 when run with explicit env (verified during Phase 139.9 smoke
 matrix validation).
 
-Fix: nextest config wires env vars per-test OR fixtures source
-the right env scripts. Phase 139 follow-up.
+**Closed 2026-05-18** (commit `6222cb49`). Both tests now
+auto-detect their SDK at the canonical in-tree path:
+
+- `integration_zephyr.rs`: probes `<root>/zephyr-workspace/zephyr/`
+  (provisioned by `scripts/zephyr/setup.sh`) and sets
+  `ZEPHYR_BASE` from inside the test. Verified PASS after
+  `just zephyr setup`.
+- `integration_esp_idf.rs`: probes `<root>/external/esp-idf/`,
+  sets `IDF_PATH`, prepends `<IDF_PATH>/tools` to `PATH` so
+  `idf.py --version` resolves. Falls through to
+  `nros_tests::skip!` when the python venv isn't sourced (no
+  `python` on PATH) — the full venv setup is `just esp_idf
+  setup`'s job, not the smoke test's. Verified `[SKIPPED]` on a
+  host without sourced venv.
+
+`_count-real-failures` returns 0 after both run.
 
 ### H. nano2nano rtic_pattern (2 tests)
 
@@ -232,7 +246,7 @@ migrated in Phase 140.3 but may still pull from stale paths).
 | D. cmake_platform_matrix | 10 | Skip-precondition gap | 138.6 follow-up | Filed as TODO |
 | E. zenoh_header_parity | 1 | Test helper picked up cross-target `target/riscv64gc-…/zpico-sys-*` header instead of POSIX | 150.E | **Closed 2026-05-18** |
 | F. xrce E2E | 2 | Agent not spawned | XRCE fixture | TODO |
-| G. integration shells | 4 | Env vars not in nextest | 139.9 follow-up | TODO |
+| G. integration shells | 4 | Env vars not in nextest | 150.G | **Closed 2026-05-18** |
 | H. nano2nano rtic | 2 | Investigate | 144 follow-up | TODO |
 | I. _test-c-codegen | 1 recipe | Path artefact | 140.3 follow-up | Investigate |
 | timeouts | 3 | nextest 60s cap on cmake+cargo cold-cache builds | per-test | See "Timeout breakdown" below |
