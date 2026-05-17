@@ -289,14 +289,14 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         create_service_client: create_service_client_trampoline::<R>,
         destroy_service_client: destroy_service_client_trampoline::<R>,
         call_raw: call_raw_trampoline::<R>,
-        // Phase 130.4 — Rust-side ServiceClient already implements
-        // send_request_raw / try_recv_reply_raw natively (default
-        // body in the trait stores pending + maps NoData to Ok(None));
-        // CFFI users get the legacy blocking call_raw fallback
-        // unless a native backend installs its own non-blocking
-        // slot (e.g. nros-rmw-xrce's xrce_service_*).
-        send_request_raw: None,
-        try_recv_reply_raw: None,
+        // Phase 130.8 — wire non-blocking trampolines so Rust-backed
+        // CFFI consumers (dust-DDS, future Rust Cyclone wrapper)
+        // skip the legacy blocking call_raw fallback inside
+        // CffiServiceClient. Backends that don't override the trait
+        // defaults inherit the "store pending + map NoData to
+        // Ok(None)" base behaviour.
+        send_request_raw: Some(send_request_raw_trampoline::<R>),
+        try_recv_reply_raw: Some(try_recv_reply_raw_trampoline::<R>),
         register_subscriber_event: register_subscriber_event_trampoline::<R>,
         register_publisher_event: register_publisher_event_trampoline::<R>,
         assert_publisher_liveliness: assert_publisher_liveliness_trampoline::<R>,
@@ -779,6 +779,48 @@ unsafe extern "C" fn call_raw_trampoline<R: RustBackend>(
     #[allow(deprecated)]
     match ServiceClientTrait::call_raw(c, req, reply) {
         Ok(n) => n as i32,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+// Phase 130.8 — non-blocking send/recv trampolines. Forwards to the
+// backend's `ServiceClientTrait::send_request_raw` /
+// `try_recv_reply_raw` so Rust-backed cffi consumers (dust-DDS,
+// future Rust Cyclone wrapper) skip the legacy blocking call_raw
+// fallback inside `CffiServiceClient`.
+unsafe extern "C" fn send_request_raw_trampoline<R: RustBackend>(
+    client: *mut NrosRmwServiceClient,
+    request: *const u8,
+    req_len: usize,
+) -> NrosRmwRet {
+    let Some(c) = (unsafe { service_client_mut::<R::ServiceClient>(client) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    if request.is_null() && req_len != 0 {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let req = unsafe { core::slice::from_raw_parts(request, req_len) };
+    match ServiceClientTrait::send_request_raw(c, req) {
+        Ok(()) => NROS_RMW_RET_OK,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+unsafe extern "C" fn try_recv_reply_raw_trampoline<R: RustBackend>(
+    client: *mut NrosRmwServiceClient,
+    reply_buf: *mut u8,
+    reply_buf_len: usize,
+) -> i32 {
+    let Some(c) = (unsafe { service_client_mut::<R::ServiceClient>(client) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    if reply_buf.is_null() && reply_buf_len != 0 {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let reply = unsafe { core::slice::from_raw_parts_mut(reply_buf, reply_buf_len) };
+    match ServiceClientTrait::try_recv_reply_raw(c, reply) {
+        Ok(Some(n)) => n as i32,
+        Ok(None) => NROS_RMW_RET_NO_DATA,
         Err(e) => ret_from_error(&e),
     }
 }
