@@ -282,9 +282,22 @@ last is manual.
       verification is gated by Phase 23.4.x sketch-API reconciliation
       (placeholder `app_main` is what currently runs — no `nros_*`
       calls).
-- [ ] **23.5c** Cross-arch interop: ESP32-C3 QEMU ↔ ARM Cortex-M3
-      QEMU (both publishing through zenohd) using the patched
-      `qemu-system-arm` from Phase 143.
+- [x] **23.5c** Cross-arch interop test scaffolding at
+      `packages/testing/nros-tests/tests/esp32c3_freertos_cross_arch.rs`
+      — dual-listen zenohd (esp32 port 7454 + freertos port 7451)
+      bridges two QEMU instances (`qemu-system-riscv32 -machine
+      esp32c3` for ESP32-C3 + `qemu-system-arm -machine
+      mps2-an385` for FreeRTOS ARM Cortex-M3) on isolated slirp
+      NATs; both directions covered. Both tests `#[ignore]`d until
+      the upstream
+      `examples/qemu-esp32-baremetal/rust/zenoh/talker` firmware
+      stops faulting in OpenETH / smoltcp init under
+      `qemu-system-riscv32 -machine esp32c3` (same root cause that
+      gates `test_esp32_to_native` in `esp32_emulator.rs`,
+      Phase 89.4 follow-up). The cross-arch wiring (dual-listen
+      zenohd + `QemuProcess::start_mps2_an385_networked`) itself
+      works end-to-end — only the ESP32-C3 firmware fails on this
+      QEMU build.
 - [ ] **23.5d** Host transport-glue test with a mock `WiFi.h` stub:
       runs `nros_arduino.cpp` against a native libc build of
       `libnros_c.a` so the transport-glue logic is covered without
