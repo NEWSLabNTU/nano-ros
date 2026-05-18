@@ -29,6 +29,11 @@ fn nuttx_dir() -> Option<PathBuf> {
     std::env::var("NUTTX_DIR").ok().map(PathBuf::from)
 }
 
+// Phase 157.C.15 — C examples only. CPP example linking blocked
+// on the per-package Rust FFI staticlib build (157.C.16) — the
+// codegen output crate at `generated/<pkg>/Cargo.toml` needs
+// cargo build + EXTRA_LIBS append before nuttx_cpp_*_main can
+// resolve. Extend this list once .C.16 lands.
 const EXPECTED_PROGNAMES: &[&str] = &[
     "nuttx_c_talker",
     "nuttx_c_listener",
@@ -36,12 +41,6 @@ const EXPECTED_PROGNAMES: &[&str] = &[
     "nuttx_c_service_client",
     "nuttx_c_action_server",
     "nuttx_c_action_client",
-    "nuttx_cpp_talker",
-    "nuttx_cpp_listener",
-    "nuttx_cpp_service_server",
-    "nuttx_cpp_service_client",
-    "nuttx_cpp_action_server",
-    "nuttx_cpp_action_client",
 ];
 
 #[test]

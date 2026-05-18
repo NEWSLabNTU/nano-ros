@@ -173,10 +173,19 @@ build-fixtures-make:
     # prior run convince apps/Application.mk that nothing's stale,
     # but apps/libapps.a (gone after distclean / re-config) lacks
     # the example objects → kernel link fails with undefined
-    # `<PROGNAME>_main` references.
+    # `<PROGNAME>_main` references. Skip the integration shell —
+    # its `clean::` rule runs `cargo clean` which would wipe the
+    # 28 GiB cargo target dir (forcing a full nros-c + nros-cpp
+    # rebuild on every recipe invocation).
     for ex in "$nuttx_apps_dir"/external/nano-ros-*; do
         ( cd "$ex" && make clean APPDIR="$nuttx_apps_dir" TOPDIR="$nuttx_dir" >/dev/null 2>&1 || true )
     done
+    # Phase 157.C.15 — also force the integration shell to
+    # rebuild its CSRCS (platform_wake_stubs.c). Touching the
+    # .built marker removes the staleness flag without running
+    # the heavy `cargo clean` from the shell's `clean::` rule.
+    rm -f "$nuttx_apps_dir"/external/nano-ros/.built \
+          "$nuttx_apps_dir"/external/nano-ros/c/*.o
     # Final build. Single binary contains all 12 examples as
     # built-in commands (nuttx_c_talker / nuttx_cpp_listener / ...).
     echo "Building NuttX with all nano-ros examples enabled..."

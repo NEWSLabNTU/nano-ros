@@ -70,10 +70,16 @@ export NUTTX_INCLUDE_DIR := $(TOPDIR)/include:$(TOPDIR)/include/arch
 # need a different nightly.
 export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 
-# No C sources of our own — the symbol-level integration goes
-# through `libnros_c.a` (and optionally `libnros_cpp.a`) produced
-# by the Cargo build in the `context::` phase.
-CSRCS =
+# Phase 157.C.15 — `nros_platform_wake_*` stubs.
+# `nros-node`'s `NodeWake` extern-Cs five `nros_platform_wake_*`
+# symbols on platforms with `platform-nuttx` enabled. NuttX has
+# no Rust kernel crate emitting them (cf. nros-platform-
+# {posix,freertos,threadx,zephyr}/src/platform.c), so the make
+# build provides minimal stubs that return `storage_size=0` →
+# `NodeWake::new()` returns `None` → executor falls back to
+# transport-driven spin. Real `sem_t`-backed implementation is a
+# 158.x follow-up.
+CSRCS = c/platform_wake_stubs.c
 
 # Phase 157.C — resolve the real nano-ros repo root via the
 # `apps/external/nano-ros` symlink (which points at

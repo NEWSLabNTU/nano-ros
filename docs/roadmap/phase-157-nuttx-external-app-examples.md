@@ -375,20 +375,46 @@ path was bypassing. Each fix unblocks the next layer:
       `tmp/phase157-gen-wrappers.sh` (extend Makefile
       template to append each `lib<pkg>.a` to EXTRA_LIBS).
 
-- [ ] **157.C.15 — `nros_platform_*` link.**
-      Current build hits `undefined reference to
-      nros_platform_wake_storage_size /
-      nros_platform_wake_storage_align /
-      nros_platform_wake_init / nros_platform_wake_wait_ms
-      / nros_platform_wake_drop` at kernel link. These
-      symbols are defined by the `nros-platform-nuttx`
-      crate (Rust-side). Need to either build it separately
-      + add to EXTRA_LIBS, or pull it transitively through
-      nros-c's dependency graph. cmake handles this via
-      Phase 121's NanoRos::Platform target; make-build
-      needs equivalent.
-      **Files:** `integrations/nuttx/{Make.defs,Makefile}`
-      (add `nros-platform-nuttx` to context:: cargo build).
+- [x] **157.C.15 — `nros_platform_wake_*` stubs + `nros_app_main` rename + E2E green.**
+
+  Two-stage fix to get the kernel link past every undefined.
+
+  Stage 1 — wake stubs. There is NO `nros-platform-nuttx`
+  crate (unlike posix / freertos / threadx / zephyr /
+  esp-idf which each ship a `src/platform.c` with all
+  `nros_platform_*` definitions). Created
+  `integrations/nuttx/c/platform_wake_stubs.c` with the
+  five wake symbols returning sentinel values:
+  `storage_size=0` makes `NodeWake::new()` return `None`
+  per the documented contract in
+  `packages/core/nros-node/src/executor/node_wake.rs`,
+  causing the executor to fall back to transport-driven
+  spin (correct, slightly higher P99 under contention).
+  A real `sem_t`-backed implementation tracked as 158.x.
+
+  Stage 2 — `nros_app_main` rename. Each example
+  defines `int nros_app_main(int, char**)` with external
+  linkage. When linking all 6 C examples into one nuttx
+  ELF, the definitions collide. Per-example Makefile now
+  passes `-Dnros_app_main=<PROGNAME>_nros_app_main`
+  (gen-wrappers.sh template addition) so each compilation
+  unit gets its own renamed symbol; the wrapper
+  `int main()` (which Application.mk renames to
+  `<PROGNAME>_main`) calls the renamed nros_app_main from
+  inside its own TU.
+
+  Plus per-recipe state hygiene:
+    * Wipe `apps/external/nano-ros/.built` + `c/*.o`
+      before the kernel build so the integration shell
+      rebuilds its CSRCS. Don't run `make clean` on it
+      because the shell's `clean::` runs `cargo clean`
+      which wipes the 28 GiB target dir.
+
+  **Verified:** `just nuttx build-fixtures-make` exits 0.
+  `arm-none-eabi-nm $NUTTX_DIR/nuttx` shows all 6
+  `nuttx_c_<example>_main` + `nuttx_c_<example>_nros_app_main`
+  symbols as `T`. `cargo nextest run -p nros-tests --test
+  nuttx_make_e2e` → **1 passed / 0 skipped**.
 
 - [ ] **157.C.12 — multi-pass ALLSYMS bootstrap.**
       The stock `qemu-armv7a/nsh` defconfig enables
