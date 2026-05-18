@@ -210,12 +210,14 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # path, so prepend our shim dir to the include search path.
     zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config)
 
-    # Force-include a Zephyr IPv4 compat header on every TU so
-    # `struct ip_mreq` / `ip_mreqn` exist where Cyclone references
-    # them directly (Zephyr ≤3.5 BSD socket layer doesn't expose
-    # them). Actual multicast joins go through the IGMP API in
-    # nros-platform-zephyr/src/net.c.
-    zephyr_compile_options(-include ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h)
+    # Force-include a Zephyr IPv4 compat header on every C/C++ TU
+    # (NOT .S assembly — `-include` of a C header into asm
+    # breaks). Provides `struct ip_mreq` / `ip_mreqn` where Cyclone
+    # references them directly. Actual multicast joins go through
+    # the IGMP API in nros-platform-zephyr/src/net.c.
+    zephyr_compile_options(
+        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-include\ ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h>
+    )
 
     # ---- Cyclone DDS sources -----------------------------------------------
     # ddsrt: platform-abstraction layer. Top-level .c files plus per-feature
