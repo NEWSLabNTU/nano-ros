@@ -1,0 +1,16 @@
+# Phase 23.2 — IDF defaults for the Arduino library builder. Tune for
+# library output size, not full app runtime. The Arduino sketch's own
+# sdkconfig (delivered by arduino-esp32) overrides these at link time.
+
+# Smallest viable C library implementation (smaller .a output).
+CONFIG_NEWLIB_NANO_FORMAT=y
+
+# Disable the IDF console + boot logger — keeps the static archives
+# free of host-only printf weight that would otherwise inflate
+# libnanoros.a.
+CONFIG_BOOTLOADER_LOG_LEVEL_NONE=y
+CONFIG_LOG_DEFAULT_LEVEL_NONE=y
+
+# nros's own RMW pulls TCP / UDP / multicast off ESP-IDF lwIP. Keep
+# lwIP defaults for the library — Arduino sketches that want to trim
+# them can override.
