@@ -6,7 +6,7 @@
 
 **Priority:** High
 
-**Depends on:** Phase 79 (PlatformYield trait), Phase 76 (config.toml plumbing), Phase 77 (`zpico_spin_once` wake primitive). Coordinates with Phase 94 (RTOS orchestration — emits per-callback `SchedContext` bindings from launch manifests in future) and Phase 88 (nros-log — uses `BestEffort` SC for log sinks). **Absorbs former Phase 105** — the RMW-side `Session::next_deadline_ms` work lives here as 110.0; former 105's `max_callbacks` + timer/GC interleaving + wall-clock budget are all subsumed by 110.A's Activator + ReadySet design (cap and budget enforcement live in the executor's dispatch loop, not in `drive_io`).
+**Depends on:** Phase 79 (PlatformYield trait), Phase 76 (config.toml plumbing), Phase 77 (`zpico_spin_once` wake primitive). Coordinates with Phase 94 (RTOS orchestration — emits per-callback `SchedContext` bindings from launch manifests in future) and Phase 88 (nros-log — uses `BestEffort` SC for log sinks). **Absorbs former Phase 105** — the RMW-side `Session::next_deadline_ms` work lives here as 110.0; former 105's `max_callbacks` + timer/GC interleaving + wall-clock budget are all subsumed by 110.A's Activator + ReadySet design (cap and budget enforcement live in the executor's dispatch loop, not in `drive_io`). **Absorbs Phase 104's E-thread tail** — the cross-backend bridge follow-ups (former 104.E.2 PiCAS bridge test, 104.E.4 ARINC TT bridge example) migrated to 110.F.bridge + 110.G.bridge respectively since their runtime gates live here, not in the bridge-design phase.
 
 **Design:** [docs/design/rt-execution-model.md](../design/rt-execution-model.md)
 
@@ -302,6 +302,21 @@ Opt-in for users wanting native OS-level callback priorities. Useful only on pla
 
 **Acceptance:** PiCAS interop reproducible on Linux (Xavier-style platform) per RTAS '21 paper baseline.
 
+#### 110.F.bridge — PiCAS + bridge interaction test (migrated from 104.E.2)
+
+- [ ] `packages/testing/nros-tests/tests/bridge_picas_priority.rs`:
+      high-priority sub on backend A + low-priority pub on
+      backend B; measure end-to-end priority inheritance
+      under the PiCAS dispatcher. Asserts no priority
+      inversion. **Blocked on 110.F runtime apply path** —
+      `scheduler-os-priority` Cargo feature already gates
+      the OsPrioritySet skeleton; needs the per-callback
+      OS-priority dispatch wired through the bridge's
+      multi-Session Executor (Phase 104.C.3) so each Node's
+      callbacks land on their own OS thread.
+      **Files:**
+      `packages/testing/nros-tests/tests/bridge_picas_priority.rs`.
+
 ---
 
 ### 110.G — `SchedClass::TimeTriggered` (cyclic executive, stretch)
@@ -314,6 +329,22 @@ ARINC-653-style outer time-triggered + inner priority. Major-frame schedule tabl
 - `packages/core/nros-node/src/executor/spin.rs` — TT mode selector.
 
 **Acceptance:** ARINC-653 schedule table demo (one major frame, three slots, deterministic dispatch order across runs).
+
+#### 110.G.bridge — ARINC TT bridge example (migrated from 104.E.4)
+
+- [ ] `examples/native/rust/bridge/tt-zenoh-to-xrce/`:
+      time-triggered cyclic bridge with non-overlapping
+      ingress/egress windows in a 10 ms major frame.
+      Demonstrates `tt_window_offset_us` +
+      `tt_window_duration_us` per Node default
+      SchedContext. **Blocked on 110.G runtime** —
+      `scheduler-time-triggered` Cargo feature already
+      gates the TT skeleton; needs major-frame dispatch +
+      per-handle TT window enforcement before the bridge
+      example can exercise the deterministic
+      ingress/egress slot pattern.
+      **Files:**
+      `examples/native/rust/bridge/tt-zenoh-to-xrce/{Cargo.toml,src/main.rs,README.md}`.
 
 ---
 
@@ -337,7 +368,9 @@ ARINC-653-style outer time-triggered + inner priority. Major-frame schedule tabl
 
 - [ ] `SchedClass::Sporadic` budget enforcement verified on NuttX (native) + Linux (`SCHED_DEADLINE`) + user-space fallback.
 - [ ] PiCAS interop reproduced (110.F).
+- [ ] PiCAS + cross-backend bridge priority-inheritance test green (110.F.bridge, migrated from 104.E.2).
 - [ ] ARINC-653 schedule-table demo (110.G).
+- [ ] ARINC TT bridge example deterministic across runs (110.G.bridge, migrated from 104.E.4).
 
 ---
 

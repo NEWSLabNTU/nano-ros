@@ -288,7 +288,7 @@ lists which `<plat>/<lang>/<rmw>` triples ship a bridge today.
 - [RMW Backends — Host-Language
   Policy](../internals/rmw-backends.md) — registry +
   per-backend sizing.
-- [`docs/roadmap/archived/phase-104-multi-backend-bridges.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-104-multi-backend-bridges.md)
+- [`docs/roadmap/archived/phase-104-multi-backend-bridges.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-104-multi-backend-bridges.md)
   — design rationale + acceptance criteria.
 - [`docs/roadmap/archived/phase-156-bridge-runtime-blockers.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-156-bridge-runtime-blockers.md)
   — the four sub-bugs that gated the D.3 / D.4 E2E tests +

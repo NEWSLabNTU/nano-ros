@@ -30,10 +30,20 @@ Four coupled threads under one phase:
    executor wake, cross-priority handoff guidance, per-backend
    WCET documentation.
 
-**Status.** Plan rewritten 2026-05-14. Thread A (API
-decoupling) landed on branch `phase-104-A-api-decoupling`
-(commits `8f7667d3` … `6aebcea6`). Threads B/C/D/E not yet
-started.
+**Status.** Closed 2026-05-18. Threads A, B, C, D fully
+shipped: nros / nros-node decoupled from concrete RMW deps,
+named registry replaces VTABLE singleton, rclcpp-aligned
+`Executor::node_builder(...).rmw(...).build()` lands with
+the multi-Session dispatch path, three bridge examples
+(Rust zenoh→DDS, C XRCE→DDS, C++ zenoh→DDS), D.3 + D.4
+E2E smokes green (Phase 156 closed the four runtime
+blockers), and the user-guide book chapter
+`book/src/user-guide/cross-backend-bridges.md` shipped
+(104.D.6). Thread E tail (104.E.2 PiCAS bridge test,
+104.E.4 ARINC TT bridge example) **migrated to Phase 110**
+(110.F.bridge / 110.G.bridge) since their runtime gates
+live in the RT-execution-model phase, not the bridge-
+design phase.
 
 **Priority.** P1. Unblocks (a) PX4-on-drone bridge
 (uORB ⇆ Zenoh), (b) ROS 2 cross-RMW gateways (XRCE ⇆ DDS),
@@ -861,17 +871,14 @@ follow-up items that finish the rclcpp-aligned story:
       `packages/testing/nros-bench/wake-latency-cortex-m3/`.
       **Files:** `book/src/internals/rmw-backends.md`.
 
-- [ ] **104.E.2 — PiCAS + bridge interaction test.**
-      `packages/testing/nros-tests/tests/bridge_picas_priority.rs`:
-      high-priority sub on backend A + low-priority pub on
-      backend B; measure end-to-end priority inheritance
-      under the PiCAS dispatcher. Asserts no priority
-      inversion. **Blocked on Phase 110.F (PiCAS-style
-      per-callback OS priority dispatcher)** — currently
-      gated behind `scheduler-os-priority` Cargo feature
-      but the runtime apply path is post-v1.
-      **Files:**
-      `packages/testing/nros-tests/tests/bridge_picas_priority.rs`.
+- [→] **104.E.2 — PiCAS + bridge interaction test.**
+      **Migrated to Phase 110.F.bridge** (2026-05-18). The
+      runtime gate (PiCAS-style per-callback OS-priority
+      dispatch) is a 110.F deliverable; the bridge-side
+      test rides on top of it and tracks with the
+      RT-execution-model phase rather than the bridge-
+      design phase that already shipped its multi-Session
+      Executor primitives.
 
 - [x] **104.E.3 — Cross-priority handoff pattern.**
       Landed as `executor::handoff::Handoff<M, N>` —
@@ -894,19 +901,11 @@ follow-up items that finish the rclcpp-aligned story:
       `packages/core/nros-node/src/executor/mod.rs`
       (`pub mod handoff` declaration).
 
-- [ ] **104.E.4 — ARINC TT bridge example.**
-      `examples/native/rust/bridge/tt-zenoh-to-xrce/`:
-      time-triggered cyclic bridge with non-overlapping
-      ingress/egress windows in a 10 ms major frame.
-      Demonstrates `tt_window_offset_us` +
-      `tt_window_duration_us` per Node default SchedContext.
-      **Blocked on Phase 110.G (ARINC-653 cyclic executive /
-      TimeTriggered class)** — currently gated behind
-      `scheduler-time-triggered` Cargo feature; the runtime
-      major-frame dispatch + per-handle TT window enforcement
-      are post-v1.
-      **Files:**
-      `examples/native/rust/bridge/tt-zenoh-to-xrce/`.
+- [→] **104.E.4 — ARINC TT bridge example.**
+      **Migrated to Phase 110.G.bridge** (2026-05-18). The
+      runtime gate (major-frame dispatch + per-handle TT
+      window enforcement) is a 110.G deliverable; same
+      rationale as 104.E.2 above.
 
 ## Memory + code-size budget
 
