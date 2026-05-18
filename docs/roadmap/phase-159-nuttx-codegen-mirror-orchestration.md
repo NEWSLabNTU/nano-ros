@@ -175,6 +175,62 @@ Options:
 **Recommended:** (a) — minimal change, covers all callers
 (Rust + C + C++), no extra round-trip.
 
+### 157.4 — Path A attempt 2026-05-18 → FAILED at runtime
+
+Tried Option A (nros-c as build-dep of nros-nuttx-ffi). Two
+follow-on changes were needed to make the build succeed:
+
+1. `packages/codegen/.../NanoRosGenerateInterfaces.cmake` — codegen
+   STATIC lib → INTERFACE on NuttX (host gcc compile of generated
+   `.c` sources was hitting source-tree stub regardless of A).
+2. `packages/zpico/zpico-sys/build.rs` — add nros-platform-cffi
+   include to BOTH `build_c_shim` and `build_zenoh_pico_unified`
+   (zpico.c needs `<nros/platform_net.h>`, added by Phase 154
+   commit `90bff903` but never wired through both build paths).
+
+With those + the build-dep edge, **fresh-tree NuttX C build
+succeeds in one pass** — codegen lib INTERFACE works, mirror
+header materialises at `CARGO_TARGET_DIR/nros-c-generated/`,
+main.c compiles cleanly. Binary 'arm-eabi5 ARM ELF' produced.
+
+**But runtime regression**: `nros_support_init -> -4`
+(NROS_RET_NOT_FOUND from ConnectionFailed). Both NuttX C pubsub
+AND action fail at session open — never reaches the test's
+"Waiting for messages" / "Waiting for goals" marker. Affects
+ALL NuttX C examples, not just action.
+
+Root cause not identified in this attempt. Hypothesis: cargo
+feature unification between HOST and TARGET dep trees disables
+a transport / threading feature in zpico-sys or zenoh-pico
+vendor when `nros-c` appears in both `[dependencies]` and
+`[build-dependencies]`. Bisect candidates:
+
+- `Z_FEATURE_MULTI_THREAD` getting flipped off
+- `Z_FEATURE_LINK_TCP` dropped
+- Cargo's `links` constraint resolution picking the wrong feature
+  set for the C linkage edge
+
+Reverted all four changes. Phase 155.F4 warm-up stays in place
+as the only working path.
+
+**Open question for next attempt:** does `default-features = false`
+on the build-dep variant change anything? Tested both ways —
+same -4 fail. Suggests the issue isn't feature flags on `nros-c`
+itself but on a transitive (zpico-sys, zenoh-pico).
+
+### 157.5 — Path C — pre-commit NuttX fallback header (untried)
+
+If Path A's feature-unification land-mine can't be cleared, fall
+back to Path C: commit a `nros_config_generated_nuttx.h` at
+`packages/core/nros-c/include/nros/` with safe sizes harvested
+from a working `build/cmake-threadx-riscv64-zenoh/cargo/...`
+artifact. Stub `nros_config_generated.h` `#include`s it under
+`#ifdef NROS_PLATFORM_NUTTX`. Bump the file when nros types grow
+(CI gate compares against the live probe on another platform).
+
+Loses per-build precision. Trades correctness for orchestration
+simplicity.
+
 ### 157.3 — Bisect why `nros` rlib doesn't build in Path B attempt
 
 **Root cause found 2026-05-18.** Cargo build ordering puts
