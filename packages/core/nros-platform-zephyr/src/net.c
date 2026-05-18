@@ -287,6 +287,17 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
 
 #include <zephyr/posix/sys/socket.h>
 
+/* Older Zephyr (≤3.5) doesn't expose IP_ADD_MEMBERSHIP via the BSD
+ * socket layer. Fall back to net_ipv4_igmp_join() / _leave() from
+ * <zephyr/net/igmp.h>, which the same `CONFIG_NET_IPV4_IGMP=y`
+ * enables. Detect by the macro absence — newer Zephyr defines it
+ * via <zephyr/net/socket.h>. */
+#ifndef IP_ADD_MEMBERSHIP
+#  define NROS_NET_USE_IGMP_HELPER 1
+#  include <zephyr/net/igmp.h>
+#  include <zephyr/net/net_if.h>
+#endif
+
 typedef struct {
     size_t  len;
     const uint8_t *start;
@@ -369,6 +380,22 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         zsock_close(fd); sock->fd = -1; return -1;
     }
 
+#ifdef NROS_NET_USE_IGMP_HELPER
+    struct in_addr mcast;
+    if (join != NULL) {
+        if (zsock_inet_pton(AF_INET, (const char *) join, &mcast) != 1) {
+            zsock_close(fd); sock->fd = -1; return -1;
+        }
+    } else {
+        mcast = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
+    }
+    {
+        struct net_if *nif = net_if_get_default();
+        if (nif == NULL || net_ipv4_igmp_join(nif, &mcast) < 0) {
+            zsock_close(fd); sock->fd = -1; return -1;
+        }
+    }
+#else
     struct ip_mreqn mreq;
     memset(&mreq, 0, sizeof(mreq));
     if (join != NULL
@@ -383,6 +410,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
                          &mreq, sizeof(mreq)) < 0) {
         zsock_close(fd); sock->fd = -1; return -1;
     }
+#endif
     return 0;
 }
 
@@ -395,12 +423,21 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
 
     if (sockrecv != NULL && sockrecv->fd >= 0 && rep != NULL && rep->iptcp != NULL) {
         struct zsock_addrinfo *ai = rep->iptcp;
+#ifdef NROS_NET_USE_IGMP_HELPER
+        struct in_addr mcast =
+            ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
+        struct net_if *nif = net_if_get_default();
+        if (nif != NULL) {
+            (void) net_ipv4_igmp_leave(nif, &mcast);
+        }
+#else
         struct ip_mreqn mreq;
         memset(&mreq, 0, sizeof(mreq));
         mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
         mreq.imr_address.s_addr = htonl(INADDR_ANY);
         (void) zsock_setsockopt(sockrecv->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                                 &mreq, sizeof(mreq));
+#endif
     }
     if (lep != NULL && lep->iptcp != NULL) {
         struct zsock_addrinfo *laddr = lep->iptcp;
