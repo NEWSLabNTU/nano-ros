@@ -178,6 +178,87 @@ panics with `nros_executor_node_init(...) -> -1` for the
 
 ## Work Items
 
+### 156.B diagnostic — failure localised to zpico_open (2026-05-18 second probe)
+
+Added `NROS_RMW_TRACE_OPEN` env-gated `eprintln!` at three
+points along the open path:
+
+  * `packages/core/nros-rmw-cffi/src/lib.rs:1558`
+    (`open_with_vtable` — outer)
+  * `packages/zpico/nros-rmw-zenoh/src/zpico.rs:404`
+    (after `zpico_init_with_config`)
+  * `packages/zpico/nros-rmw-zenoh/src/zpico.rs:417`
+    (after `zpico_open`)
+
+Trace output from the bridge run:
+
+```
+[zpico] init_with_config ret=0
+[zpico] zpico_open ret=-3
+[nros-rmw-cffi] open: locator="tcp/127.0.0.1:7451" mode=0 ret=-1 backend_data=0x0
+```
+
+`init_with_config` succeeds (config built correctly); the
+failure is `zpico_open` returning `ZPICO_ERR_SESSION` (-3,
+defined in `packages/zpico/zpico-sys/c/include/zpico.h`),
+which is set when zenoh-pico's `z_open` returns negative
+(see `packages/zpico/zpico-sys/c/zpico/zpico.c:880-883`).
+The outer cffi layer correctly maps to
+`Transport(ConnectionFailed)` and the bridge surfaces it.
+
+**Crucial finding (falsifies bridge-specific hypothesis):**
+the same trace appears when running the **single-backend
+native talker** (`examples/native/rust/zenoh/talker/`)
+against the same zenohd — both bridge AND talker fail at
+`zpico_open` with -3. zenohd shows zero incoming TCP
+accepts in either case. So the failure isn't dual-backend
+related — it's a zenoh-pico session-open env / runtime
+issue affecting every zenoh-pico consumer in this
+sandbox.
+
+Falsified hypotheses:
+- **H1 (DDS clobber)** — zenoh-only bridge fails the same way.
+- **H2 (registry name miss)** — diag shows registry lookup
+  succeeded (vtable.open ran).
+- **H3 (zenoh-pico transport singleton)** — broken in
+  single-backend talker too.
+- **H7 (multicast scout blocking)** — `ZENOH_MULTICAST_SCOUTING=false`
+  doesn't unblock.
+
+New hypotheses to test (parked):
+- **H8 (zenoh-pico vs zenohd version mismatch despite
+  matching version.txt):** Both report 1.7.2 but ABI / wire
+  format may differ. Stock `zenohd` binary picked up from
+  PATH — check if `build/zenohd/zenohd` is actually 1.7.2
+  built from the project's pinned source vs a system
+  install.
+- **H9 (Z_FEATURE_MULTI_THREAD timing):** `zpico_open`
+  sets `auto_start_read_task = false` /
+  `auto_start_lease_task = false` (`zpico.c:876-879`).
+  `z_open` may rely on those tasks for its own handshake
+  completion → returns prematurely. Check whether
+  zenoh-pico's `z_open` semantics require those tasks
+  to be auto-started, or whether `zpico_open` should
+  manually pump after.
+- **H10 (build-time config drift):** my Phase 156 fix to
+  `[platform.posix].include_paths` in
+  `zenoh_platforms.toml` is data-only and shouldn't
+  affect runtime. The `build_c_shim` include addition
+  is the active code path for POSIX zpico.c builds.
+  Confirm neither change altered zenoh-pico
+  compile-time defines.
+
+Next concrete probe (156.5):
+
+1. Set `RUST_LOG=trace` + run `zenohd` with
+   `--cfg 'transport/log_level:"trace"'` to see if any TCP
+   handshake attempt reaches the router.
+2. Bypass nros-rmw-zenoh entirely — call zenoh-pico's
+   `z_open` directly from a 30-line C test program with
+   the same config. If THAT works, the bug is in
+   zpico.c's config / task wiring. If it fails too,
+   zenoh-pico itself is the issue in this env.
+
 ### 156.A diagnostic log (2026-05-18 investigation pause)
 
 Partial findings from the first investigation session:

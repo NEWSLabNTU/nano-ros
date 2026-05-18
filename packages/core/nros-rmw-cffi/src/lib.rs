@@ -1590,6 +1590,18 @@ impl CffiSession {
                 &mut view,
             )
         };
+        // Phase 156.4 — diagnostic for bridge runtime
+        // ConnectionFailed investigation. Logs the raw ret +
+        // post-open backend_data state so callers see which of
+        // the two failure paths fired. Gated on env var so
+        // production traffic stays quiet.
+        #[cfg(feature = "std")]
+        if std::env::var_os("NROS_RMW_TRACE_OPEN").is_some() {
+            std::eprintln!(
+                "[nros-rmw-cffi] open: locator={locator:?} mode={mode} ret={ret} backend_data={:p}",
+                view.backend_data,
+            );
+        }
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
