@@ -66,6 +66,22 @@ for lang in c cpp; do
             # CMakeLists.txt). Skips gracefully if AMENT_PREFIX_PATH
             # is unset / interfaces can't be resolved.
             python3 "$ROOT/scripts/nuttx/gen-interfaces.py" "$src" || true
+            # Phase 157.C.16 — for CPP examples, also build the
+            # per-package `nano_ros_cpp_ffi_<pkg>` staticlib crate
+            # (cmake's nros_generate_interfaces equivalent for the
+            # cpp ABI bridge). Output: one staticlib path per
+            # package. We persist the list as a Make fragment under
+            # generated/ffi/extra_libs.mk so the example Makefile
+            # can `-include` it and append to EXTRA_LIBS.
+            if [ "$lang" = "cpp" ]; then
+                extras_mk="$src/generated/ffi/extra_libs.mk"
+                mkdir -p "$(dirname "$extras_mk")"
+                : > "$extras_mk"
+                python3 "$ROOT/scripts/nuttx/gen-cpp-ffi-crates.py" "$src" \
+                    | while read -r lib_path; do
+                        printf 'EXTRA_LIBS += %s\n' "$lib_path" >> "$extras_mk"
+                    done
+            fi
         else
             echo "  [skip] $src missing"
         fi

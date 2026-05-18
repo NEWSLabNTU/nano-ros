@@ -65,7 +65,9 @@ static void result_cb(const uint8_t goal_id[16], int32_t status,
     g_result_received = true;
 }
 
+#ifndef __NuttX__
 extern "C" int sleep(unsigned int);
+#endif
 int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;

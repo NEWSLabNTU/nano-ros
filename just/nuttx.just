@@ -142,15 +142,11 @@ build-fixtures-make:
     config="$nuttx_dir/.config"
     kconfig-tweak --file "$config" --enable NROS
     kconfig-tweak --file "$config" --enable NROS_C_API
-    # Phase 157.C.11 partial — C-only by default. CPP examples need
-    # cpp codegen (gen-interfaces.py extension) + CXX stub
-    # registration work tracked as 157.C.14. Enable manually for
-    # local cpp iteration via `kconfig-tweak --enable
-    # NROS_CPP_API`.
-    kconfig-tweak --file "$config" --disable NROS_CPP_API
-    for ex in TALKER LISTENER SERVICE_SERVER SERVICE_CLIENT ACTION_SERVER ACTION_CLIENT; do
-        kconfig-tweak --file "$config" --enable "NROS_EXAMPLE_${ex}_C"
-        kconfig-tweak --file "$config" --disable "NROS_EXAMPLE_${ex}_CPP"
+    kconfig-tweak --file "$config" --enable NROS_CPP_API
+    for lang in C CPP; do
+        for ex in TALKER LISTENER SERVICE_SERVER SERVICE_CLIENT ACTION_SERVER ACTION_CLIENT; do
+            kconfig-tweak --file "$config" --enable "NROS_EXAMPLE_${ex}_${lang}"
+        done
     done
     # Phase 157.C — disable ALLSYMS for first build (chicken-egg:
     # CONFIG_ALLSYMS=y runs mkallsyms.py on $(NUTTX) which doesn't
@@ -164,6 +160,13 @@ build-fixtures-make:
     # qemu-armv7a/nsh sets it to 0). Set 8 — enough for std's
     # internal TLS slots + a few user-side keys.
     kconfig-tweak --file "$config" --set-val TLS_NELEM 8
+    # Phase 157.C.16 — nros-cpp's `result.hpp` `#include <utility>`
+    # (std::move / std::forward). Stock NuttX qemu-armv7a/nsh sets
+    # CONFIG_LIBCXXNONE=y (no C++ stdlib headers). Switch to
+    # LIBCXXTOOLCHAIN so the toolchain's `<utility>` etc. are
+    # available — no extra source build required.
+    kconfig-tweak --file "$config" --disable LIBCXXNONE
+    kconfig-tweak --file "$config" --enable LIBCXXTOOLCHAIN
     # Pass 2: olddefconfig again so the just-enabled knobs settle
     # any newly-visible dependencies.
     echo "Pass 2/2: olddefconfig with NROS enabled"

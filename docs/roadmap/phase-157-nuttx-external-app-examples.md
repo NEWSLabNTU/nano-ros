@@ -361,19 +361,68 @@ path was bypassing. Each fix unblocks the next layer:
 
   Remaining within CPP path (157.C.16):
 
-- [ ] **157.C.16 — C++ Rust FFI staticlib build.**
-      The codegen tool also emits a per-package Rust FFI
-      crate (`generated/<pkg>/Cargo.toml`) that compiles to
-      `lib<pkg>.a`. cmake's `nros_generate_interfaces()`
-      pulls this through Corrosion + adds it to the example's
-      `target_link_libraries`. Make-build needs equivalent —
-      either cargo-build each generated FFI crate from the
-      staging script + append to `EXTRA_LIBS`, or wire the
-      build into the example's `Makefile` `context::` rule.
-      **Files:** `scripts/nuttx/stage-external-apps.sh` (add
-      cargo-build pass per generated FFI crate),
-      `tmp/phase157-gen-wrappers.sh` (extend Makefile
-      template to append each `lib<pkg>.a` to EXTRA_LIBS).
+- [x] **157.C.16 — C++ Rust FFI staticlib build + cpp compile path.**
+
+  Landed:
+    * `scripts/nuttx/gen-cpp-ffi-crates.py` — for each cpp
+      example, calls `nros-codegen resolve-deps` to get
+      topological package order, then for each pkg:
+        - Stages `generated/ffi/nano-ros-cpp-ffi-<pkg>/
+          {Cargo.toml,src/lib.rs,.cargo/config.toml}` from
+          the same templates cmake uses
+          (`cmake/{cpp_ffi_Cargo.toml.in,ffi_lib_rs.in}`).
+        - Walks deps + `include!()`s their `_ffi.rs` files
+          into lib.rs (covers cross-pkg type references
+          like `action_msgs` → `unique_identifier_msgs`).
+        - cargo build --release with the same nightly +
+          `-Zbuild-std=core` + cross-compile flags
+          NROS_CARGO_BUILD uses.
+      Emits the resulting `lib<crate>.a` paths to stdout.
+    * `scripts/nuttx/stage-external-apps.sh` captures those
+      paths into `<example>/generated/ffi/extra_libs.mk` as
+      `EXTRA_LIBS += <path>` lines per pkg.
+    * Per-example Makefile (CPP variant) `-include`s the
+      fragment (silently no-ops if codegen skipped).
+    * `CXXEXT := .cpp` override in template — NuttX defaults
+      to `.cxx`, our examples use `.cpp`.
+    * Cross-pkg C include paths: `-Igenerated/c` +
+      `-Igenerated/cpp` parent dirs so
+      `#include "<pkg>/msg/<file>.h"` resolves.
+    * Per-example `extern "C" int sleep(unsigned int);`
+      wrapped in `#ifndef __NuttX__` (already declared in
+      NuttX's `<unistd.h>`).
+    * `LIBCXXTOOLCHAIN` enabled in recipe — stock NuttX
+      `qemu-armv7a/nsh` defconfig sets `LIBCXXNONE=y`
+      (no `<utility>` etc.); switch to toolchain-provided
+      libstdc++ headers.
+
+  Verified through compile: all 12 example main.{c,cpp}
+  files compile clean to ARM objects; per-package FFI
+  staticlibs link into libapps.a; cpp examples reach
+  kernel link.
+
+  Final gate: stock `qemu-armv7a/nsh` defconfig has
+  `CONFIG_NET=n` so zenoh-pico's socket calls (bind,
+  setsockopt, sendto, recvfrom etc.) don't resolve.
+  **User runs with `qemu-armv7a/full` defconfig** (or runs
+  `./tools/configure.sh -l qemu-armv7a:full` before
+  `just nuttx build-fixtures-make`) for networking
+  support. Not Phase 157.C scope — user-side defconfig
+  choice. Recipe could auto-flip CONFIG_NET via kconfig-
+  tweak; tracked as 157.C.17.
+
+- [ ] **157.C.17 — NuttX defconfig auto-tune for networking.**
+      Recipe currently runs against the user's pre-configured
+      NuttX board. With stock `qemu-armv7a/nsh` (the doctor
+      hint), zenoh-pico's UDP multicast init can't link.
+      Either:
+        (a) recipe forcibly enables `CONFIG_NET + UDP +
+            SOCKOPTS + NETDEV_*` via kconfig-tweak alongside
+            the existing NROS toggles.
+        (b) recipe REQUIRES the `full` defconfig + skips
+            with hint if `CONFIG_NET=n`.
+      Option (a) preferred — recipe owns the build's
+      requirements end-to-end.
 
 - [x] **157.C.15 — `nros_platform_wake_*` stubs + `nros_app_main` rename + E2E green.**
 

@@ -58,7 +58,9 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     return nros::GoalResponse::AcceptAndExecute;
 }
 
+#ifndef __NuttX__
 extern "C" int sleep(unsigned int);
+#endif
 int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;

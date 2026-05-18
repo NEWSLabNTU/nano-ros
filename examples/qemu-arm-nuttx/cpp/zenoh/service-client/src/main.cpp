@@ -12,7 +12,9 @@
 #include <nros/app_config.h>
 #include "example_interfaces.hpp"
 
+#ifndef __NuttX__
 extern "C" int sleep(unsigned int);
+#endif
 int nros_app_main(int argc, char **argv) {
     (void)argc;
     (void)argv;

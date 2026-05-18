@@ -15,6 +15,11 @@
 
 include $(APPDIR)/Make.defs
 
+# Phase 157.C.16 — NuttX defaults CXXEXT to `.cxx`; nano-ros
+# examples use the more common `.cpp`. Override so
+# Application.mk's MAINCXXSRCS filter matches MAINSRC = src/main.cpp.
+CXXEXT := .cpp
+
 PROGNAME  = nuttx_cpp_action_client
 PRIORITY  = SCHED_PRIORITY_DEFAULT
 STACKSIZE = 16384
@@ -53,6 +58,13 @@ NROS_GEN_CPP_DIRS := $(wildcard $(CURDIR)/generated/cpp/*)
 CFLAGS   += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_C_DIRS))
 CXXFLAGS += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_C_DIRS))
 CXXFLAGS += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_CPP_DIRS))
+# Phase 157.C.16 — cross-package C codegen includes reference
+# sibling packages via `#include "<pkg>/msg/<file>.h"`. Add
+# generated/c/ + generated/cpp/ parent dirs so the compiler
+# finds the nested pkg subdirs.
+CFLAGS   += ${INCDIR_PREFIX}$(CURDIR)/generated/c
+CXXFLAGS += ${INCDIR_PREFIX}$(CURDIR)/generated/c
+CXXFLAGS += ${INCDIR_PREFIX}$(CURDIR)/generated/cpp
 NROS_GEN_CSRCS := $(wildcard $(CURDIR)/generated/c/*/msg/*.c \
                               $(CURDIR)/generated/c/*/srv/*.c \
                               $(CURDIR)/generated/c/*/action/*.c)
@@ -63,5 +75,14 @@ NROS_GEN_CXXSRCS := $(wildcard $(CURDIR)/generated/cpp/*/msg/*.cpp \
 CSRCS    = $(NROS_GEN_CSRCS)
 CXXSRCS  = $(wildcard generated/*.cpp) $(NROS_GEN_CXXSRCS)
 MAINSRC  = src/main.cpp
+
+# Phase 157.C.16 — per-package cpp FFI staticlibs (one per
+# resolved msg/srv/action package). scripts/nuttx/gen-cpp-ffi-
+# crates.py cargo-builds them at staging time + emits the lib
+# paths into generated/ffi/extra_libs.mk as `EXTRA_LIBS += <path>`
+# lines. `-include` (lowercase) silently no-ops if the fragment
+# is missing — handles the case where staging skipped codegen
+# (no AMENT_PREFIX_PATH).
+-include $(CURDIR)/generated/ffi/extra_libs.mk
 
 include $(APPDIR)/Application.mk
