@@ -137,6 +137,16 @@ defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_U
 include = ["system/common", "system/freertos/lwip"]
 extra_sources = [
   { path = "{src}/system/freertos/system.c" },
+  # Phase 154 / 156 follow-up — vendor `system/freertos/lwip/network.c`
+  # provides `_z_open_tcp` / `_z_send_tcp` / `_z_read_tcp` / etc. with
+  # the matching `_z_sys_net_socket_t = { int _socket; }` ABI from
+  # `platform/freertos/lwip.h`. The alias TU's network functions are
+  # gated off via `NROS_ZENOH_PLATFORM_USES_UNIX`, so without this
+  # source file the link fails with `undefined symbol: _z_open_tcp`
+  # etc. The manifest's `include = ["system/freertos/lwip"]` only
+  # validates the directory exists, it doesn't compile the files —
+  # extra_sources is the build-side hookup.
+  { path = "{src}/system/freertos/lwip/network.c" },
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 arch = "cortex-m3"

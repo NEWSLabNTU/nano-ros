@@ -32,6 +32,20 @@
 
 #include "nros/platform.h"
 
+/* Phase 156 follow-up — when the vendor's per-platform system.c
+ * (e.g. `system/unix/system.c`, `system/freertos/system.c`) is
+ * compiled in, it already provides z_malloc / z_sleep_* /
+ * z_random_* / z_time_* / z_yield + _z_task_* / _z_mutex_* /
+ * _z_condvar_* with the matching platform-native ABI. The alias TU's
+ * generic versions would duplicate every symbol and break the link
+ * with `rust-lld: error: duplicate symbol: z_malloc ... defined at
+ * system.c ... defined at platform_aliases.c`. Gate the whole top
+ * section on the same `NROS_ZENOH_PLATFORM_USES_UNIX` macro that
+ * `build.rs` sets for `use_posix || use_freertos`; the macro name
+ * stays for backward compatibility with Phase 156 even though it
+ * now covers FreeRTOS-lwIP too. */
+#ifndef NROS_ZENOH_PLATFORM_USES_UNIX
+
 /* -------------------------------------------------------------------------
  *  Memory — direct alias (signatures match).
  * ----------------------------------------------------------------------- */
@@ -267,6 +281,8 @@ int8_t _z_condvar_signal_all(void *cv) {
 int8_t _z_condvar_wait(void *cv, void *m) {
     return nros_platform_condvar_wait(cv, m);
 }
+
+#endif /* !NROS_ZENOH_PLATFORM_USES_UNIX — runtime aliases gate */
 
 /* -------------------------------------------------------------------------
  *  `_z_condvar_wait_until` — only safe to emit when the build defined

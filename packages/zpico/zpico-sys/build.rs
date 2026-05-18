@@ -644,6 +644,22 @@ fn main() {
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
+        // Phase 156 — POSIX + FreeRTOS-lwIP consumers pull zenoh-pico's
+        // upstream `system/{unix,freertos/lwip}/network.c` which already
+        // emits `_z_send_tcp` / `_z_read_tcp` / `_z_open_tcp` / etc. with
+        // the per-platform `_z_sys_net_socket_t` layout. The alias TU's
+        // generic copies would collide at link time (`rust-lld: error:
+        // duplicate symbol: _z_create_endpoint_tcp ... defined at
+        // network.c ... defined at platform_aliases.c`). Skip the
+        // network alias section on those platforms with the same
+        // `NROS_ZENOH_PLATFORM_USES_UNIX` gate the `#ifndef` in
+        // `platform_aliases.c` checks. (FreeRTOS-lwIP's vendor file
+        // lives at `system/freertos/lwip/network.c` but uses the same
+        // 4-byte socket struct shape; reusing the gate keeps the
+        // platform_aliases.c condition compact.)
+        if use_posix || use_freertos {
+            alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
+        }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
         // already provides every `_z_task_*` symbol because the
         // `_z_task_t` layout embeds a `TX_THREAD` struct. Skip the
