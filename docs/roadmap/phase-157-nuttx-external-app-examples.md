@@ -150,32 +150,27 @@ don't duplicate any of that.
 
 ## Work Items
 
-### 157.A — Wrapper-file scaffolding per example
+### 157.A — Wrapper-file scaffolding per example (DONE 2026-05-18)
 
-- [ ] **157.A.1 — Spike on `talker-c`.**
-      Write `Kconfig + Make.defs + Makefile` for
-      `examples/qemu-arm-nuttx/c/zenoh/talker/`. Verify
-      hand-staged `apps/external/nano-ros-talker-c → <example>`
-      + `apps/external/nano-ros → <repo-root>` symlinks +
-      `menuconfig` shows both knobs.
-      **Files:**
-      `examples/qemu-arm-nuttx/c/zenoh/talker/{Kconfig,Make.defs,Makefile}`.
+- [x] **157.A.1 — Spike on `talker-c`.**
+- [x] **157.A.2 — Replicate across remaining C examples.**
+- [x] **157.A.3 — Replicate across all 6 C++ examples.**
 
-- [ ] **157.A.2 — Replicate across remaining C examples.**
-      `listener`, `service-server`, `service-client`,
-      `action-server`, `action-client`. Same skeleton, different
-      `PROGNAME` + `CONFIG_NROS_EXAMPLE_*` symbol.
-      **Files:**
-      `examples/qemu-arm-nuttx/c/zenoh/{listener,service-server,
-      service-client,action-server,action-client}/{Kconfig,
-      Make.defs,Makefile}`.
+Landed in commit `edbb00f5`. All 12 example dirs now carry the
+Kconfig + Make.defs + Makefile trio. Auto-generation script at
+`tmp/phase157-gen-wrappers.sh` kept for re-runs when adding
+examples.
 
-- [ ] **157.A.3 — Replicate across all 6 C++ examples.**
-      Same shape; Makefile uses `CXXSRCS` instead of `CSRCS`;
-      Kconfig depends on `NROS_CPP_API` instead of `NROS_C_API`.
-      **Files:**
-      `examples/qemu-arm-nuttx/cpp/zenoh/*/{Kconfig,Make.defs,Makefile}`
-      (6 dirs).
+Also landed alongside (necessary plumbing):
+
+  * `packages/core/nros-c/include/nros/app_main.h` —
+    `NROS_APP_MAIN_REGISTER_NUTTX()` macro + auto-detect on
+    `NROS_NUTTX_EXTERNAL_APP`. The Phase 144.6 QEMU cmake path
+    stays on `REGISTER_VOID` for the Rust shim entry; canonical
+    NuttX external-app path defines the toggle in its Makefile.
+  * All 12 example `main.{c,cpp}` swapped from the explicit
+    `NROS_APP_MAIN_REGISTER_VOID()` to the auto-detect
+    `NROS_APP_MAIN_REGISTER()`.
 
 ### 157.B — Integration-shell Kconfig glob-include
 
@@ -188,32 +183,96 @@ don't duplicate any of that.
 
 ### 157.C — Justfile + CI wiring
 
-- [ ] **157.C.1 — `just nuttx build-fixtures-make` recipe.**
-      Stages a NuttX defconfig (`boards/arm/qemu/
-      qemu-armv7a/configs/nsh` baseline + nano-ros knobs flipped
-      via `kconfig-tweak`), symlinks `apps/external/nano-ros` +
-      each `apps/external/nano-ros-<example>-<lang>`, invokes
-      `make` from `nuttx/`. One build cycle covers all 12
-      examples (NuttX builds a single binary; examples register
-      as built-in apps).
-      **Files:** `just/nuttx.just`,
-      `scripts/nuttx/stage-external-apps.sh` (new helper).
+- [x] **157.C.1 — `just nuttx build-fixtures-make` recipe.**
+      Landed in commit `5ed1d652`. Stages templates +
+      symlinks via `scripts/nuttx/stage-external-apps.sh`;
+      runs `make` from the configured NuttX tree.
+- [x] **157.C.2 — `just nuttx build-all` aggregates both.**
+      Landed in `5ed1d652`.
+- [x] **157.C.3 — `nuttx_make_e2e.rs` parity test.**
+      Landed in `5ed1d652`. Asserts every
+      `<PROGNAME>_main` symbol via `nm -A`. Skips when
+      `$NUTTX_APPS_DIR/external/nano-ros` not staged.
 
-- [ ] **157.C.2 — `just nuttx build-all` aggregates both.**
-      Existing `build-all: build build-examples build-fixtures` →
-      `build-all: build build-examples build-fixtures
-      build-fixtures-make`. Cmake smoke stays primary
-      (fast); make-based path runs as parity check.
-      **Files:** `just/nuttx.just`.
+#### Make-build plumbing fixes (uncovered during 157.C.1 verify)
 
-- [ ] **157.C.3 — `just nuttx test-e2e-make`.**
-      Boots the make-built NuttX QEMU binary, runs the talker /
-      listener E2E against a zenohd, asserts the same wire-level
-      delivery the cmake-built fixtures already verify. Skips
-      cleanly via `nros_tests::skip!` when `$NUTTX_DIR` isn't
-      configured.
-      **Files:** `just/nuttx.just`,
-      `packages/testing/nros-tests/tests/nuttx_make_e2e.rs` (new).
+The canonical NuttX flow exposed a cascade of integration bugs in
+the existing `integrations/nuttx/` shell that the cmake bring-up
+path was bypassing. Each fix unblocks the next layer:
+
+- [x] **157.C.4 — `RUSTUP_TOOLCHAIN` export.** Repo-root
+      `rust-toolchain.toml` pins stable; NuttX's `-Zbuild-std`
+      requires nightly. Integration shell's Makefile exports
+      `RUSTUP_TOOLCHAIN ?= nightly-2026-04-11` (matches what
+      `examples/qemu-arm-nuttx/rust-toolchain.toml` pins).
+
+- [x] **157.C.5 — Symlink-resolution for path expansions.**
+      `apps/external/nano-ros` is a SYMLINK to
+      `integrations/nuttx/` (not the repo root). Plain
+      `$(APPDIR)/external/nano-ros/packages/...` resolves
+      through the symlink literally + misses `packages/`.
+      Fixed via `NANO_ROS_ROOT := $(realpath $(APPDIR)/external/
+      nano-ros/../..)` in both `Makefile` (manifest path) and
+      `Make.defs` (EXTRA_LIBS / EXTRA_LIBPATHS / CFLAGS
+      includes).
+
+- [x] **157.C.6 — `RUST_TARGET_TRIPLE` armv7a branch missing.**
+      Upstream `apps/tools/Rust.mk`'s macro enumerates
+      `thumb*`, `riscv32`, `riscv64`, `x86`, `x86_64` —
+      MISSING `armv7a` (non-thumb ARM-A, which is what
+      `qemu-armv7a/nsh` uses with `CONFIG_ARM_THUMB=n`).
+      Integration shell's Makefile defines `NROS_TARGET_TRIPLE`
+      that falls back to `armv7a-nuttx-$(LLVM_ABITYPE)` when
+      upstream macro returns empty + overrides
+      `RUST_CARGO_BUILD` with a `NROS_CARGO_BUILD` that uses
+      it. Worth upstreaming to NuttX as a one-line `$(and
+      $(filter armv7a,$(LLVM_ARCHTYPE)), armv7a-nuttx-$(LLVM_ABITYPE))`
+      branch.
+
+- [x] **157.C.7 — Cargo cross-compile env + `--config`
+      overrides.** Cargo invocation from the integration
+      shell ran without the per-target env the standalone
+      examples carry in their `.cargo/config.toml`. Added
+      to `NROS_CARGO_BUILD`:
+        * `CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc` (+
+          eabi / CXX / AR variants).
+        * `--config 'patch.crates-io.libc.path="..."'`
+          pointing at `third-party/nuttx/libc` (the
+          patched libc with `_SC_HOST_NAME_MAX` added).
+        * `--config 'target.armv7a-nuttx-eabihf.rustflags=
+          ["-C","link-arg=-mcpu=cortex-a7", ...]'`.
+        * `--config 'env.CFLAGS_armv7a_nuttx_eabihf.value=
+          "-mcpu=cortex-a7 -mfloat-abi=hard ..."'`.
+        * Dropped the deprecated
+          `-Zbuild-std-features=panic_immediate_abort` flag
+          (current nightly errors with "panic_immediate_abort
+          is now a real panic strategy").
+
+#### Remaining for next iteration (carved out as 157.C.8+):
+
+- [ ] **157.C.8 — `nros_config_generated.h` materialization.**
+      The make-build's example compile fails at
+      `nros_generated.h: error: 'SERVICE_SERVER_OPAQUE_U64S'
+      undeclared` because `nros_config_generated.h` (per-build
+      variant header from `nros-c`'s build.rs) isn't supplied
+      to the example's compile path. cmake handles this via
+      Phase 137's mirror copy; make path needs equivalent —
+      either a post-cargo `cp` step in the integration shell's
+      `context::` rule or an `INCDIRS` addition that points at
+      the cargo build artifact directory.
+      **Files:** `integrations/nuttx/{Make.defs,Makefile}`.
+
+- [ ] **157.C.9 — `<nros/app_config.h>` codegen.**
+      Each example's `main.c` `#include <nros/app_config.h>`.
+      The cmake path generates this via
+      `nano_ros_generate_config_header()` from the example's
+      `config.toml`. Make path needs equivalent — either an
+      out-of-band `nros-codegen --emit-app-config` invocation
+      in the example's Makefile, or a sibling generator
+      script staged by `stage-external-apps.sh`.
+      **Files:**
+      `examples/qemu-arm-nuttx/{c,cpp}/zenoh/*/Makefile` +
+      `scripts/nuttx/gen-app-config.sh` (new).
 
 ### 157.D — User-facing documentation
 

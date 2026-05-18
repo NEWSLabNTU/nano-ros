@@ -14,6 +14,14 @@
 ifneq ($(CONFIG_NROS),)
 CONFIGURED_APPS += $(APPDIR)/external/nano-ros
 
+# Phase 157.C — `apps/external/nano-ros` is a SYMLINK to
+# `integrations/nuttx/` (the integration shell), NOT to the
+# nano-ros repo root. `$(APPDIR)/external/nano-ros/packages/...`
+# would resolve through the symlink target literally and miss
+# `packages/core/`. `realpath` follows the symlink so we land on
+# `integrations/nuttx/`, then `../..` walks up to the repo root.
+NANO_ROS_ROOT_DEFS := $(realpath $(APPDIR)/external/nano-ros/../..)
+
 # Pull upstream `apps/tools/Rust.mk` for RUST_CARGO_BUILD /
 # RUST_CARGO_CLEAN / RUST_GET_BINDIR / RUST_GET_LIBDIR /
 # RUST_TARGET_TRIPLE. Optional include — older NuttX trees without
@@ -25,12 +33,15 @@ CONFIGURED_APPS += $(APPDIR)/external/nano-ros
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # Rust.mk found — append the Cargo-built staticlib paths so NuttX's
 # top-level link sees them. `nros-c` is the canonical entry; users
-# wanting the C++ surface add `nros-cpp` analogously.
-EXTRA_LIBS    += $(call RUST_GET_BINDIR,nros_c,$(APPDIR)/external/nano-ros/packages/core)
-EXTRA_LIBPATHS+= $(call RUST_GET_LIBDIR,nros_c,$(APPDIR)/external/nano-ros/packages/core)
+# wanting the C++ surface add `nros-cpp` analogously. Paths route
+# through `NANO_ROS_ROOT_DEFS` per the symlink-resolution comment
+# above.
+EXTRA_LIBS    += $(call RUST_GET_BINDIR,nros_c,$(NANO_ROS_ROOT_DEFS)/packages/core)
+EXTRA_LIBPATHS+= $(call RUST_GET_LIBDIR,nros_c,$(NANO_ROS_ROOT_DEFS)/packages/core)
 endif
 
 # CFLAGS — surface the nano-ros C headers to user code that
-# `#include <nros/...>`.
-CFLAGS += ${INCDIR_PREFIX}$(APPDIR)/external/nano-ros/packages/core/nros-c/include
+# `#include <nros/...>`. Same symlink-resolution applies; route
+# through the repo-root realpath.
+CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/core/nros-c/include
 endif
