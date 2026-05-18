@@ -88,6 +88,15 @@ build-fixtures:
         ( cd "examples/qemu-arm-freertos/rust/dds/$ex" && cargo build --release --quiet )
     done
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
+    # Phase 155.D.3 — export FreeRTOS+lwIP SDK env vars BEFORE
+    # cmake config + build so cmake-driven cargo invocations
+    # (corrosion + cc-rs build scripts) inherit them instead of
+    # falling back to the `.envrc` defaults. Mirrors the threadx_*
+    # build-fixtures recipes.
+    export FREERTOS_DIR="${FREERTOS_DIR:-$(pwd)/third-party/freertos/kernel}"
+    export FREERTOS_PORT="${FREERTOS_PORT:-GCC/ARM_CM3}"
+    export LWIP_DIR="${LWIP_DIR:-$(pwd)/third-party/freertos/lwip}"
+    export FREERTOS_CONFIG_DIR="${FREERTOS_CONFIG_DIR:-$(pwd)/packages/boards/nros-board-mps2-an385-freertos/config}"
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do

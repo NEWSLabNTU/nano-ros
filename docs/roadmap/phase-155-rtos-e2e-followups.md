@@ -414,10 +414,24 @@ process.
       justfile half is needed because `cmake --build` runs
       after configure exits, so the configure-time env
       patch alone doesn't survive.
-- [ ] **155.D.3.** Replicate the env-export pattern in
+- [x] **155.D.3.** Replicated the env-export pattern in
       `just/threadx-linux.just` + `just/freertos.just`
-      `build-fixtures` recipes for parity. Audit other
-      cmake-driven cargo recipes for the same pattern.
+      `build-fixtures` recipes for parity (this session).
+      - `threadx-linux` exports `THREADX_DIR`,
+        `THREADX_CONFIG_DIR`, `NETX_DIR`, `NETX_CONFIG_DIR`
+        before the cmake configure + build loop. Symmetric
+        with the existing 155.D RV64 export block.
+      - `freertos` exports `FREERTOS_DIR`, `FREERTOS_PORT`,
+        `LWIP_DIR`, `FREERTOS_CONFIG_DIR` with the
+        repository defaults if the caller hasn't set them.
+      Both recipes already passed `-D` for the same vars to
+      cmake; the exports ensure cmake-driven cargo
+      invocations (corrosion + cc-rs) read the right values
+      from process env, not just cmake cache.
+      Other cmake-driven cargo recipes audited and found
+      symmetric: `nuttx` build-fixtures doesn't have config-
+      dir env-vars to leak (NuttX uses NUTTX_DIR which the
+      recipe already exports inline).
 
 **Acceptance — partial.** `just threadx_riscv64 build-fixtures`
 now passes the env-leak failure point. Hits next-layer issue:

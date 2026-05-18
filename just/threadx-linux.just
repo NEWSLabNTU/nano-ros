@@ -77,6 +77,18 @@ build-fixtures:
         echo "  → threadx-linux/rust/dds/$ex"
         ( cd "examples/threadx-linux/rust/dds/$ex" && cargo build --release --quiet )
     done
+    # Phase 155.D.3 — export the ThreadX-Linux config-dir env vars
+    # BEFORE cmake config + build. cmake `-D…=…` only sets cache;
+    # cmake-driven cargo invocations (corrosion) spawn cc-rs which
+    # reads its own env, NOT cmake cache. Without the export here,
+    # cc-rs inherits the stale `.envrc` defaults — for threadx-linux
+    # those happen to match, but the symmetry with threadx_riscv64
+    # (Phase 155.D) keeps the two recipes parallel and avoids silent
+    # divergence when a contributor edits one in isolation.
+    export THREADX_DIR="$threadx_dir"
+    export THREADX_CONFIG_DIR="$config_dir"
+    export NETX_DIR="${NETX_DIR:-$root/third-party/threadx/netxduo}"
+    export NETX_CONFIG_DIR="$config_dir"
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do
