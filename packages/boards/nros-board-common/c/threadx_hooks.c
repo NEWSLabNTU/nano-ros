@@ -83,10 +83,21 @@ static void *rust_app_arg = 0;
 static void (*c_app_main)(void) = (void (*)(void))0;
 /* Phase 154 fallback — when `nros_threadx_set_app_main` was
  * never called (Linux-host C / C++ examples just define
- * `app_main()` and rely on link-time symbol resolution; the
- * RISC-V PC-relative concern doesn't apply to host-tooled
- * builds), pick up the weak symbol below. */
+ * `app_main()` and rely on link-time symbol resolution),
+ * pick up the weak symbol below.
+ *
+ * Gated on non-RISC-V because `R_RISCV_PCREL_HI20` has a
+ * ±512 KB range and a weak-undefined `app_main` resolves to
+ * address 0, which is far outside that window from `.text`
+ * at `0x80000000` — the link fails with "relocation
+ * R_RISCV_PCREL_HI20 out of range". RISC-V consumers must
+ * use the `nros_threadx_set_app_main` FFI setter explicitly
+ * (the Rust-side `nros_board_threadx::run<B>` does so via
+ * `nros_threadx_set_app_callback`; C / C++ ports on RISC-V
+ * need to wire it manually). */
+#if !defined(__riscv)
 extern void app_main(void) __attribute__((weak));
+#endif
 
 void nros_threadx_set_app_callback(void (*entry)(void *), void *arg)
 {
@@ -116,12 +127,14 @@ static void app_thread_entry(ULONG input)
         nros_board_log("[app_thread] c_app_main returned\n");
         return;
     }
+#if !defined(__riscv)
     if (app_main) {
         nros_board_log("[app_thread] Calling app_main (weak)...\n");
         app_main();
         nros_board_log("[app_thread] app_main returned\n");
         return;
     }
+#endif
     nros_board_log("ERROR: no app entry point (set Rust callback or define app_main)\n");
 }
 
