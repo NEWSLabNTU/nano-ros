@@ -10,6 +10,38 @@ use crate::{
     error::*,
 };
 
+/// Phase 155.B — collapse `nros_rmw::TransportError` into the closest
+/// matching `NROS_RET_*` so the C-side `nros_support_init` error log
+/// (`init -> -X`) tells the user which precondition the backend
+/// rejected. Anything not directly classifiable falls back to
+/// `NROS_RET_ERROR` (-1) — the legacy value, preserving the existing
+/// "something went wrong, dig into the backend log" semantics for
+/// callers that branch on `== NROS_RET_ERROR`.
+#[cfg(feature = "rmw-cffi")]
+fn transport_error_to_ret(err: nros_rmw::TransportError) -> nros_ret_t {
+    use nros_rmw::TransportError as E;
+    match err {
+        E::ConnectionFailed | E::Disconnected => NROS_RET_NOT_FOUND,
+        E::Timeout | E::WouldBlock => NROS_RET_TIMEOUT,
+        E::InvalidConfig => NROS_RET_INVALID_ARGUMENT,
+        E::BufferTooSmall => NROS_RET_FULL,
+        E::MessageTooLarge | E::TooLarge => NROS_RET_FULL,
+        E::PublishFailed => NROS_RET_PUBLISH_FAILED,
+        E::ServiceRequestFailed | E::ServiceReplyFailed => NROS_RET_SERVICE_FAILED,
+        E::PublisherCreationFailed
+        | E::SubscriberCreationFailed
+        | E::ServiceServerCreationFailed
+        | E::ServiceClientCreationFailed
+        | E::SerializationError
+        | E::DeserializationError
+        | E::TaskStartFailed
+        | E::PollFailed
+        | E::KeepaliveFailed
+        | E::JoinFailed => NROS_RET_ERROR,
+        _ => NROS_RET_ERROR,
+    }
+}
+
 /// Support context state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,7 +238,12 @@ pub unsafe extern "C" fn nros_support_init_named(
                 support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
                 NROS_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            // Phase 155.B — surface the inner `TransportError` variant
+            // as a specific `NROS_RET_*` code so a fresh
+            // `nros_support_init -> -X` log line tells the user which
+            // precondition the backend rejected, instead of every
+            // failure mode collapsing to NROS_RET_ERROR (-1).
+            Err(e) => transport_error_to_ret(e),
         }
     }
 

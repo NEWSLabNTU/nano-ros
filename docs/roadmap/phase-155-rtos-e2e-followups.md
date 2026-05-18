@@ -113,10 +113,30 @@ buffer.
 
 **Suggested debug path.**
 
-- [ ] **155.B.1.** Print the actual return code rather than
+- [x] **155.B.1.** Print the actual return code rather than
       just "-1". `NROS_RET_*` values from
       `packages/core/nros-c/include/nano_ros/ret.h` tell us
       which branch tripped.
+      **Landed 2026-05-18.** `nros::internals::open_session`
+      no longer collapses every backend failure to
+      `TransportError::ConnectionFailed`; the real variant
+      now propagates to the C side. `support.rs` decodes via
+      a new `transport_error_to_ret(TransportError)` helper:
+      `ConnectionFailed`/`Disconnected` → `NROS_RET_NOT_FOUND`
+      (-4); `Timeout`/`WouldBlock` → `NROS_RET_TIMEOUT` (-2);
+      `InvalidConfig` → `NROS_RET_INVALID_ARGUMENT` (-3);
+      `Buffer/Message/TooLarge` → `NROS_RET_FULL` (-6);
+      `PublishFailed` → `NROS_RET_PUBLISH_FAILED` (-10);
+      `Service*Failed` → `NROS_RET_SERVICE_FAILED` (-9);
+      everything else stays `NROS_RET_ERROR` (-1) so any
+      caller branching on `== NROS_RET_ERROR` keeps working.
+      Next `nros_support_init -> -X` line in the FreeRTOS C
+      test logs tells which precondition the backend
+      rejected; 155.B.2/.3 branch on that code. Verification
+      pending the FreeRTOS C fixture rebuild (cmake cross-
+      toolchain config blocks the local rebuild today;
+      patched fixture lands once the upstream cmake issue
+      resolves).
 - [ ] **155.B.2.** If `NROS_RET_BAD_SEQUENCE` — the
       `support` was non-zero pre-call. Check linker layout
       for `app.support` on FreeRTOS (BSS vs DATA).
@@ -231,7 +251,10 @@ attribute) signature.
       missing `NX_BSD_ENABLE_NATIVE_API` made `nxd_bsd.h`
       hit the alias-typedef path that collides with
       picolibc's `suseconds_t`. Same flag the Rust-side
-      build sets via zpico-sys manifest.
+      build sets via zpico-sys manifest. Rust-side board
+      build.rs also got an explicit
+      `.define("NX_BSD_ENABLE_NATIVE_API", None)` in
+      `configure_riscv64` as belt-and-braces (this commit).
 - [x] **155.E.2.** Fixed by adding
       `NX_BSD_ENABLE_NATIVE_API` + `NX_INCLUDE_USER_DEFINE_FILE`
       to `nros_threadx_build_glue(... DEFINES ...)` in
@@ -247,8 +270,9 @@ attribute) signature.
 build-fixtures` clean through Rust + C + C++ build. RISC-V
 C / C++ E2E reaches runtime but tests fail with
 `nros_support_init -> -1` — same shape as 155.B (FreeRTOS C).
-The 155.B fix once it lands will also unblock RISC-V C / C++
-matrix.
+The 155.B fix (this commit) propagates `TransportError`
+variants to specific `NROS_RET_*` codes so next RISC-V
+C / C++ run logs which precondition the backend rejected.
 
 ## Notes
 

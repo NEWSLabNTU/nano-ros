@@ -361,9 +361,14 @@ pub mod internals {
             namespace: "",
             properties: &[],
         };
-        nros_rmw_cffi::CffiRmw
-            .open(&config)
-            .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
+        // Phase 155.B — propagate the real `TransportError` instead
+        // of collapsing every backend failure to `ConnectionFailed`.
+        // The C-side `nros_support_init` now decodes the variant
+        // into a specific `NROS_RET_*` code so a fresh "init -> -X"
+        // log line tells the user which precondition the backend
+        // rejected (locator parse vs RMW absent vs connect refused vs
+        // …). The bare ConnectionFailed mapping hid every cause.
+        nros_rmw_cffi::CffiRmw.open(&config)
     }
 
     /// Drive middleware I/O for pull-based backends.

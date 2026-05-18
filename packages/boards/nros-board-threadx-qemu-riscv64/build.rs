@@ -259,7 +259,20 @@ fn configure_riscv64(build: &mut cc::Build) {
         .flag("-Wno-unused-parameter")
         .flag("-Wno-sign-compare")
         .define("TX_INCLUDE_USER_DEFINE_FILE", None)
-        .define("NX_INCLUDE_USER_DEFINE_FILE", None);
+        .define("NX_INCLUDE_USER_DEFINE_FILE", None)
+        // Phase 155.E — `NX_BSD_ENABLE_NATIVE_API` must be on for
+        // the entire board build, not just at nx_user.h scope.
+        // Without it, nxd_bsd.h's "legacy override" block (line
+        // 203-...) fires `#define nx_bsd_suseconds_t suseconds_t`,
+        // which then expands the unconditional `typedef LONG
+        // nx_bsd_suseconds_t;` at line 629 into a SECOND
+        // `typedef LONG suseconds_t;` that conflicts with picolibc's
+        // own `<sys/types.h>` definition. The nx_user.h define
+        // alone doesn't reach the BSD addon when nxd_bsd.h is
+        // included from a TU that doesn't pull nx_api.h's user-
+        // define chain first; defining it via cc::Build is the
+        // canonical override (per nxd_bsd.h:144 comment).
+        .define("NX_BSD_ENABLE_NATIVE_API", None);
     build.warnings(false);
 
     // picolibc provides C standard library headers (string.h, stdint.h, etc.)
