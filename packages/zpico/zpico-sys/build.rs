@@ -12,18 +12,10 @@ use std::{
     process::Command,
 };
 
-// Phase 136.1 — zenoh_platforms.toml parser. Loaded + smoke-resolved
-// at the top of `main()` so any TOML drift surfaces at build time
-// instead of waiting for 136.3 / 136.4 to wire the resolver into
-// cc-rs. The resolved data is not yet consumed by the build path.
-#[path = "build/manifest.rs"]
-mod manifest;
-
-// Phase 136.2 — link-feature env reader + per-platform policy mask.
-// Moved out of this file to `build/policy.rs` so the manifest layer
-// can produce the same `LinkPolicy` values directly in 136.4.
-#[path = "build/policy.rs"]
-mod policy;
+// Phase 149.5 — shared manifest/policy parser moved to
+// `nros-board-common`. Re-import as local module aliases so every
+// `manifest::*` / `policy::*` reference below stays unchanged.
+use nros_board_common::{manifest, policy};
 
 use policy::{LinkFeatures, LinkPolicy};
 

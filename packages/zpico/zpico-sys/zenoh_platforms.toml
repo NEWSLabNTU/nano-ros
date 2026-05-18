@@ -188,8 +188,18 @@ include_paths = [
 rerun_if_env_changed = ["NUTTX_DIR"]
 
 [platform.threadx]
+# `NROS_PLATFORM_ALIASES` selects the 32-byte opaque socket / endpoint
+# / task layouts from `nros_zenoh_generic_platform.h`. Must match the
+# layout the alias TU (`platform_aliases.c`) is compiled with — without
+# this define on the vendor build, `c/platform/zenoh_generic_platform.h`
+# falls through to `threadx/platform.h` (`{ int _fd; }`, 4 bytes), and
+# every `_z_send_tcp(*socket, ...)` call passes 4 bytes by value while
+# the alias TU's wrapper expects a 32-byte struct → caller passes fd as
+# the a0 register value, callee dereferences fd as a pointer → load
+# access fault at `mtval = fd`. Phase 154 doc claimed this was set; the
+# build.rs hookup was missing, fixed in zenoh_platforms.toml directly.
 defines = [
-  "ZENOH_GENERIC", "ZENOH_THREADX",
+  "ZENOH_GENERIC", "ZENOH_THREADX", "NROS_PLATFORM_ALIASES",
   "NX_BSD_ENABLE_NATIVE_API",
   "TX_INCLUDE_USER_DEFINE_FILE", "NX_INCLUDE_USER_DEFINE_FILE",
 ]
