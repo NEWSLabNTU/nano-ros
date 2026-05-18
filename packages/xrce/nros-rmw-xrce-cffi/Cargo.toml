@@ -10,13 +10,16 @@ build = "build.rs"
 
 [lib]
 path = "src/lib.rs"
-# Phase 144.3 — emit `libnros_rmw_xrce_cffi.a` so the root CMake's xrce
-# branch can pull this crate via `corrosion_import_crate(... CRATE_TYPES
-# staticlib)` and link it into `NanoRos::NanoRos`. Mirrors the
-# `nros-rmw-{zenoh,dds}-staticlib` shape — the cffi crate already
-# bundles the C XRCE backend + the Rust register entry point, so no
-# extra wrapper crate is needed.
-crate-type = ["staticlib", "rlib"]
+# Phase 154 (140 follow-up) — drop `staticlib` from the default crate-type
+# list. Embedded Rust consumers (Zephyr xrce examples) depend on this
+# crate as an rlib; cargo would otherwise also emit a `staticlib` variant
+# on every build, and the staticlib emit needs a panic_handler resolved
+# at compile time — which doesn't exist on no_std cross targets where
+# the example's panic source (e.g. the `zephyr` crate) isn't visible to
+# the xrce-cffi compile scope. The cmake/Corrosion path supplies
+# `--crate-type=staticlib` (via `corrosion_import_crate(... CRATE_TYPES
+# staticlib)`) on hosted builds and so still gets a `libnros_rmw_xrce_cffi.a`.
+crate-type = ["rlib"]
 
 [features]
 default = ["linkme-register"]

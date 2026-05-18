@@ -118,6 +118,14 @@ build-fixtures:
     nros_root="$(pwd)"
     log_dir="$nros_root/build/zephyr-fixtures"
     mkdir -p "$log_dir"
+    # Phase 140 — Zephyr C/C++ DDS examples call nros_generate_interfaces()
+    # which needs nros-codegen on the host. Cross builds (every Zephyr
+    # board target) can't build it with the cross toolchain, so build
+    # once with host cargo and pass the absolute path via west -D.
+    echo "  → host nros-codegen (cargo)"
+    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+        -p nros-codegen-c --bin nros-codegen --quiet
+    codegen_tool="$nros_root/packages/codegen/packages/target/release/nros-codegen"
     jobs="${NROS_ZEPHYR_BUILD_JOBS:-1}"
     if ! [[ "$jobs" =~ ^[0-9]+$ ]] || [ "$jobs" -lt 1 ]; then
         echo "Invalid NROS_ZEPHYR_BUILD_JOBS=$jobs; expected positive integer" >&2
@@ -265,7 +273,7 @@ build-fixtures:
         # pair builds against its own Kconfig port slot.
         IFS='|' read -r board build_dir src best_effort xrce_port <<< "$entry"
         echo "  → zephyr/$src (-d $build_dir, $board${xrce_port:+, xrce-port=$xrce_port})"
-        extra_args=()
+        extra_args=(-D_NANO_ROS_CODEGEN_TOOL="$codegen_tool")
         if [ -n "$xrce_port" ]; then
             extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
         fi
