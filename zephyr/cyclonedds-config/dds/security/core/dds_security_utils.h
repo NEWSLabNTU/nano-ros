@@ -1,0 +1,4 @@
+/* Stub: DDS_HAS_SECURITY=0 on Zephyr. */
+#ifndef DDS_SECURITY_CORE_UTILS_STUB
+#define DDS_SECURITY_CORE_UTILS_STUB
+#endif

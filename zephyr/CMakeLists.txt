@@ -210,6 +210,13 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # path, so prepend our shim dir to the include search path.
     zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config)
 
+    # Force-include a Zephyr IPv4 compat header on every TU so
+    # `struct ip_mreq` / `ip_mreqn` exist where Cyclone references
+    # them directly (Zephyr ≤3.5 BSD socket layer doesn't expose
+    # them). Actual multicast joins go through the IGMP API in
+    # nros-platform-zephyr/src/net.c.
+    zephyr_compile_options(-include ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h)
+
     # ---- Cyclone DDS sources -----------------------------------------------
     # ddsrt: platform-abstraction layer. Top-level .c files plus per-feature
     # POSIX backends (sockets / threads / sync / time / heap / etc.).
@@ -304,7 +311,26 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         MAXTHREADNAMESIZE=64
         IFF_UP=0x1
         IFF_LOOPBACK=0x8
+        IFF_POINTOPOINT=0x10
         IFF_MULTICAST=0x1000
+        # POSIX signal flags absent from Zephyr's minimal POSIX.
+        # pthread_sigmask is a no-op stub under Zephyr without signals,
+        # so the value doesn't matter at runtime; just need to compile.
+        SIG_BLOCK=0
+        SIG_UNBLOCK=1
+        SIG_SETMASK=2
+        # Multicast socket-option constants. Zephyr's zsock layer ≤3.5
+        # doesn't expose these via <zephyr/posix/sys/socket.h>; values
+        # match Linux. ddsi_udp.c's setsockopt calls will fail at
+        # runtime (Zephyr returns -ENOPROTOOPT) — Cyclone treats those
+        # failures as non-fatal warnings on most paths. For actual SPDP
+        # multicast joins, use the Cyclone XML's <General><MulticastRecvNetworkInterfaceAddresses>
+        # or fall back to the nros-platform-zephyr IGMP path.
+        IP_MULTICAST_IF=32
+        IP_MULTICAST_TTL=33
+        IP_MULTICAST_LOOP=34
+        IP_ADD_MEMBERSHIP=35
+        IP_DROP_MEMBERSHIP=36
     )
 
     # ---- nros-rmw-cyclonedds C++ register glue ------------------------------
