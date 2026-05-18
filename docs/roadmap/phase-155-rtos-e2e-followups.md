@@ -13,7 +13,15 @@ matrix coverage.
 
 **Depends on.** Phase 154 landed (commits 7f5e9a86 → deb94258).
 
-## Issue 155.A — ThreadX-RISC-V Rust illegal-instruction trap
+## Issue 155.A — ThreadX-RISC-V Rust illegal-instruction trap ✅ FIXED 2026-05-18
+
+**Root cause.** Stack-base setup bug (candidate 1 in original triage). Weak `const uint32_t nros_board_app_stack_size = 64 * 1024` in `packages/boards/nros-board-common/c/threadx_hooks.c` was constant-folded by gcc at the call site, so the RISC-V overlay's strong-override (`512 * 1024` in `packages/boards/nros-board-threadx-qemu-riscv64/c/board_threadx_qemu_riscv64.c`) never took effect. App thread got the 64 KB weak default; Rust `Executor::open` stack frame exceeded that; `sp` underflowed past byte-pool storage into `.text` at `CffiSession::open_with_vtable+128`; next register save (`sd s7, 88(sp)`) corrupted code there → illegal-instruction trap on next fetch.
+
+**Fix** (commit ffe4468d): drop `const` from both the weak default + the strong overrides. Plain (non-const) `uint32_t` keeps the symbol as a regular load against the storage cell the linker picks — strong override wins.
+
+**Verified 2026-05-18:** all three RISC-V Rust `rtos_e2e` variants PASS (pubsub 65.2s, service 40.2s, action 42.4s).
+
+Original triage retained below for reference.
 
 **Symptom.** Every `rtos_e2e Platform__ThreadxRiscv64
 lang_1_Lang__Rust *` test hits:
