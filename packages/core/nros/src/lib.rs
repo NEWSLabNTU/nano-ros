@@ -337,6 +337,13 @@ pub mod internals {
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
     /// Used by the C API (`nros-c`); Rust users should prefer `Executor::open()`.
+    ///
+    /// Phase 156 — consults `$NROS_RMW` (when std + the env var is set)
+    /// to pin the primary backend by name, mirroring what `Executor::open`
+    /// does for Rust callers. Without this, C bridges built with two
+    /// linked backends (e.g. xrce + dds) get whichever ctor fires
+    /// first via linkme — non-deterministic across link orderings +
+    /// often the wrong backend for the bridge's intended primary.
     #[cfg(feature = "rmw-cffi")]
     pub fn open_session(
         locator: &str,
@@ -361,13 +368,19 @@ pub mod internals {
             namespace: "",
             properties: &[],
         };
-        // Phase 155.B — propagate the real `TransportError` instead
-        // of collapsing every backend failure to `ConnectionFailed`.
-        // The C-side `nros_support_init` now decodes the variant
-        // into a specific `NROS_RET_*` code so a fresh "init -> -X"
-        // log line tells the user which precondition the backend
-        // rejected (locator parse vs RMW absent vs connect refused vs
-        // …). The bare ConnectionFailed mapping hid every cause.
+        // Phase 156 — honor `$NROS_RMW` env-var primary selector
+        // when present so C bridges built with multiple linked
+        // backends (e.g. xrce + dds) pin the primary deterministically
+        // instead of taking whichever linkme ctor fires first.
+        // Phase 155.B — propagate the real `TransportError` instead of
+        // collapsing every backend failure to `ConnectionFailed`. The
+        // C-side `nros_support_init` decodes the variant into a
+        // specific `NROS_RET_*` code so "init -> -X" tells the user
+        // which precondition the backend rejected.
+        #[cfg(feature = "std")]
+        if let Some(name) = std::env::var("NROS_RMW").ok().filter(|s| !s.is_empty()) {
+            return nros_rmw_cffi::CffiRmw::open_with_rmw(&name, &config);
+        }
         nros_rmw_cffi::CffiRmw.open(&config)
     }
 

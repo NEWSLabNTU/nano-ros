@@ -65,9 +65,19 @@ fn bridge_xrce_to_dds_starts_and_opens_both_sessions() {
     // XrceAgent::addr() returns the bare "host:port" pair; the
     // bridge's `nros_support_init` locator parser expects an
     // `udp/host:port` scheme. Prepend it.
+    // Phase 156 — `NROS_RMW=xrce` pins the bridge's primary
+    // session to XRCE so `nros_executor_node_init(rmw="xrce")`
+    // for ingress hits the session-cache (slot 0) instead of
+    // trying to open a SECOND XRCE-DDS-Client session
+    // (uxrSession is process-singleton; double-open fails).
+    // Both bridge nodes use the C 104.C.8 dispatch path which
+    // calls `NodeBuilder::resolve_session_slot` — that needs
+    // `primary_rmw_name` populated, which `nros_executor_init`
+    // does from the `NROS_RMW` env (Phase 156).
     cmd.env("NROS_XRCE_LOCATOR", format!("udp/{}", agent.addr()))
         .env("NROS_DDS_LOCATOR", "")
-        .env("ROS_DOMAIN_ID", "0");
+        .env("ROS_DOMAIN_ID", "0")
+        .env("NROS_RMW", "xrce");
     let mut bridge = ManagedProcess::spawn_command(cmd, "c-xrce-to-dds-bridge")
         .expect("Failed to spawn C bridge");
 

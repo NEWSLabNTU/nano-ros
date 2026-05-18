@@ -178,6 +178,87 @@ panics with `nros_executor_node_init(...) -> -1` for the
 
 ## Work Items
 
+### 156.E Sub-bug C — multi-staticlib `nros-rmw-cffi` monomorphisation conflict (D.4 blocker)
+
+D.3 (Rust bridge) went fully green after the
+session-cache primary-identity fix. D.4 (C bridge) hits a
+**different** blocker exposed by the same fix.
+
+C bridge links TWO Rust staticlibs (`nros-rmw-xrce-cffi`
++ `nros-rmw-dds-staticlib`) via separate corrosion
+imports. Each is its own `cargo build` invocation → each
+monomorphises `nros-rmw-cffi` (shared dependency) with
+whatever feature set was active in THAT invocation:
+
+  * XRCE staticlib uses
+    `nros-rmw-cffi = { default-features = false }` (no
+    `alloc`); root CMake passes `linkme-register std` for
+    XRCE.
+  * DDS staticlib uses
+    `nros-rmw-cffi = { default-features = false, features = ["alloc"] }`
+    via `nros-rmw-dds`; root CMake passed `platform-posix
+    ros-humble` only (no `linkme-register`) until the
+    Phase 156 cmake edit added it.
+
+Different `nros-rmw-cffi` feature sets per staticlib =
+two crate hashes (verified via `nm xrce_to_dds_bridge |
+grep RMW_INIT_ENTRIES` → both `linkme_RMW_INIT_ENTRIES`
+and `linkm2_RMW_INIT_ENTRIES` symbols visible, each only
+8 bytes = ONE entry). Each backend's
+`#[distributed_slice]` entry lands in a different
+slice. The runtime walker only iterates ONE slice; the
+other backend is effectively unregistered.
+
+After enabling `linkme-register` on the DDS staticlib
+(Phase 156 attempt), `linkme` itself panics at runtime
+with:
+
+```
+duplicate #[distributed_slice] with name "RMW_INIT_ENTRIES"
+```
+
+— `linkme` detects two static slices defined under the
+same name across the two `nros-rmw-cffi` crate
+instances and aborts.
+
+**Root cause:** Cargo + linkme can't deduplicate
+distributed-slice definitions across crate instances
+when those instances result from multi-staticlib
+monomorphisation. The Phase 129 "unified vtable
+registry" design implicitly assumed ONE
+`nros-rmw-cffi` instance per binary, which holds when
+everything is one cargo build but breaks when two
+corrosion staticlibs are linked into the same C/C++
+executable.
+
+**Possible fixes (need design judgement):**
+
+1. **Align feature sets across all staticlibs.** Pin
+   every staticlib that depends on `nros-rmw-cffi` to
+   the SAME features (e.g. `["alloc", "linkme-register",
+   "std"]`). Forces Cargo to unify → one crate hash.
+   Risk: harder to maintain as backends diverge in
+   features.
+2. **Single combined staticlib.** Build one
+   `libnros_rmw_all.a` containing every backend +
+   one shared `nros-rmw-cffi`. Bridge consumers link
+   just that. Bigger refactor of Phase 123.A.1.x.4
+   staticlib boundary.
+3. **Drop the linkme distributed-slice entirely on
+   POSIX.** Use the explicit `register()`-call pattern
+   (`Phase 104.A.4` already supports it on bare-metal).
+   POSIX would lose the auto-registration ergonomic but
+   gain multi-backend determinism.
+4. **Use `linkme`'s `#[linkme(crate = X)]` attribute
+   if available** to pin the slice to a stable crate
+   identity across monomorphisations. Need to check
+   linkme docs.
+
+**Status:** Sub-bug C carved out. D.4 stays
+`[SKIPPED]` cleanly when the bridge fails to reach
+"Spinning"; CI gate intact. Real fix gated on
+option-pick discussion.
+
 ### 156.D Sub-bug B FIXED via Option B + missing Z_FEATURE_MULTI_THREAD (2026-05-18 fourth probe)
 
 Two changes landed Sub-bug B:

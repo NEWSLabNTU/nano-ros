@@ -71,7 +71,12 @@ impl Rmw for DdsRmw {
                     None::<()>,
                     NO_STATUS,
                 )
-                .map_err(|_| TransportError::ConnectionFailed)?;
+                .map_err(|e| {
+                    if std::env::var_os("NROS_RMW_TRACE_OPEN").is_some() {
+                        std::eprintln!("[dust-dds] create_participant failed: {:?}", e);
+                    }
+                    TransportError::ConnectionFailed
+                })?;
 
             Ok(DdsSession::new(participant, config.domain_id))
         }

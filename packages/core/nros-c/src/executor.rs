@@ -270,7 +270,21 @@ pub unsafe extern "C" fn nros_executor_init(
         return NROS_RET_NOT_INIT;
     }
 
-    let rust_exec = CExecutor::from_session_ptr(session_ptr);
+    let mut rust_exec = CExecutor::from_session_ptr(session_ptr);
+    // Phase 156 — populate executor's primary identity fields
+    // so `NodeBuilder::resolve_session_slot` can return slot 0
+    // when a C-side `nros_executor_node_init(rmw_name, ...)`
+    // names the same backend the support session opened
+    // against. Mirror env-var resolution `open_session` uses so
+    // primary picks line up.
+    #[cfg(feature = "std")]
+    {
+        let name = std::env::var("NROS_RMW").unwrap_or_default();
+        let support_locator = core::str::from_utf8_unchecked(
+            &support_ref.locator[..support_ref.locator_len],
+        );
+        rust_exec.set_primary_identity(&name, support_locator);
+    }
     ptr::write(executor._opaque.as_mut_ptr() as *mut CExecutor, rust_exec);
 
     executor.max_handles = max_handles.min(NROS_EXECUTOR_MAX_HANDLES);

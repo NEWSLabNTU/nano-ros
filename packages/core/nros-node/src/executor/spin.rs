@@ -1162,6 +1162,24 @@ impl Executor {
     ///
     /// Called by `open()` to propagate config values. When `register_subscription`
     /// or `register_service` creates entities, these values are attached to the
+    /// Phase 156 — record the primary session's backend identity
+    /// (rmw name + locator) so `NodeBuilder::resolve_session_slot`
+    /// can detect when a `.rmw(name)` matches the primary instead
+    /// of opening a SECOND backend session against the same
+    /// singleton (zenoh-pico's `g_session` is process-wide;
+    /// opening twice fails). `Executor::open*` calls this
+    /// automatically; the C surface (`nros_executor_init`) calls
+    /// it manually because it constructs via `from_session_ptr`
+    /// which doesn't know the open metadata. Empty strings = "no
+    /// primary identity tracked"; the cache check degrades to
+    /// always-miss.
+    pub fn set_primary_identity(&mut self, rmw_name: &str, locator: &str) {
+        self.primary_rmw_name.clear();
+        let _ = self.primary_rmw_name.push_str(rmw_name);
+        self.primary_locator.clear();
+        let _ = self.primary_locator.push_str(locator);
+    }
+
     /// `TopicInfo`/`ServiceInfo` so the zenoh backend can declare liveliness.
     pub fn set_node_identity(&mut self, node_name: &str, namespace: &str) {
         self.node_name.clear();
