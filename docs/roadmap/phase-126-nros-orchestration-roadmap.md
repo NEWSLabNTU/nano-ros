@@ -7,9 +7,13 @@ workspace of component packages, launch files as the system description, ROS
 launch manifests as graph requirements, and one generated nano-ros binary for
 the target.
 
-**Status.** MVP implementation integrated through schema, Rust metadata,
-planner/checker, and generated-package build scaffolding. Coverage phase is
-starting.
+**Status.** M1–M4 + M6 + M7 acceptance criteria met. `nros build --launch-file`
+now drives the full metadata → plan → check → generate → cargo pipeline in a
+single command; generated `main.rs` opens an executor, instantiates planned
+components, binds callbacks, and spins on native targets. Phase 126B export
+diagnostic is wired into the planner. M5 (RTOS generated binary) remains the
+only open milestone — FreeRTOS generated package compiles and boots the
+platform banner under QEMU; runtime parity work continues there.
 
 **Priority.** P1. This is the user workflow layer above Phase 123 build/API
 work and Phase 110 scheduling.
@@ -221,11 +225,17 @@ Merge Group D's single-tier native generated package.
 Acceptance:
 
 - [x] Generated package builds with Cargo.
-- [ ] Generated `main.rs` opens one executor, creates one default `SchedContext`,
+- [x] Generated `main.rs` opens one executor, creates one default `SchedContext`,
   instantiates all planned Rust components, binds callbacks, and spins.
+  Covered by `tests/orchestration_e2e.rs::fixture_workspace_plans_checks_and_builds_generated_package`
+  which boots the native binary against a real zenohd and asserts the process
+  stays alive until the test stops it.
 - [x] Generated code is readable and checked into `build/`, not hidden in opaque
   binary blobs.
-- [ ] `nros build` runs metadata, plan, generation, and Cargo build in one command.
+- [x] `nros build` runs metadata, plan, generation, and Cargo build in one
+  command via `--launch-file` (chains `nros metadata` → `nros plan` →
+  `nros check` → `build_generated_package`). Covered by
+  `tests/orchestration_e2e.rs::build_command_runs_full_metadata_plan_check_build_pipeline`.
 
 ### M5 - RTOS generated binary
 

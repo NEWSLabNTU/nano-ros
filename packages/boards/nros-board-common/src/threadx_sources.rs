@@ -46,7 +46,10 @@ pub fn add_threadx_port_sources(
     threadx_dir: &Path,
     port_subpath: &str,
 ) -> usize {
-    add_c_files_in(build, &threadx_dir.join("ports").join(port_subpath).join("src"))
+    add_c_files_in(
+        build,
+        &threadx_dir.join("ports").join(port_subpath).join("src"),
+    )
 }
 
 /// Phase 152.2.B — wire `nros-platform-threadx`'s C port into a
@@ -141,9 +144,8 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build) {
         std::env::var_os("OUT_DIR").expect("nros-board-common: OUT_DIR not set"),
     );
     let dest = out_dir.join("nros_threadx_hooks.c");
-    std::fs::write(&dest, HOOKS_C).unwrap_or_else(|e| {
-        panic!("nros-board-common: write({}): {e}", dest.display())
-    });
+    std::fs::write(&dest, HOOKS_C)
+        .unwrap_or_else(|e| panic!("nros-board-common: write({}): {e}", dest.display()));
     build.file(&dest);
     println!(
         "cargo:rerun-if-changed={}/c/threadx_hooks.c",
@@ -166,12 +168,8 @@ pub fn add_nros_platform_threadx_build(build: &mut cc::Build, workspace_root: &P
 
 fn add_c_files_in(build: &mut cc::Build, dir: &Path) -> usize {
     let mut count = 0;
-    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {
-        panic!(
-            "nros-board-common: read_dir({}): {e}",
-            dir.display()
-        )
-    });
+    let entries = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("nros-board-common: read_dir({}): {e}", dir.display()));
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "c") {
