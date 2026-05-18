@@ -3,3 +3,4 @@
 Make.dep
 /.built
 c/*.o
+/extra_libs.mk

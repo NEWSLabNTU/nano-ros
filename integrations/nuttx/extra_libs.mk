@@ -1,5 +1,0 @@
-EXTRA_LIBS += /home/aeon/repos/nano-ros/examples/qemu-arm-nuttx/cpp/zenoh/action-client/generated/ffi/nano-ros-cpp-ffi-builtin_interfaces/target/armv7a-nuttx-eabihf/release/libnano_ros_cpp_ffi_builtin_interfaces.a
-EXTRA_LIBS += /home/aeon/repos/nano-ros/examples/qemu-arm-nuttx/cpp/zenoh/listener/generated/ffi/nano-ros-cpp-ffi-std_msgs/target/armv7a-nuttx-eabihf/release/libnano_ros_cpp_ffi_std_msgs.a
-EXTRA_LIBS += /home/aeon/repos/nano-ros/examples/qemu-arm-nuttx/cpp/zenoh/action-client/generated/ffi/nano-ros-cpp-ffi-example_interfaces/target/armv7a-nuttx-eabihf/release/libnano_ros_cpp_ffi_example_interfaces.a
-EXTRA_LIBS += /home/aeon/repos/nano-ros/examples/qemu-arm-nuttx/cpp/zenoh/action-client/generated/ffi/nano-ros-cpp-ffi-action_msgs/target/armv7a-nuttx-eabihf/release/libnano_ros_cpp_ffi_action_msgs.a
-EXTRA_LIBS += /home/aeon/repos/nano-ros/examples/qemu-arm-nuttx/cpp/zenoh/action-client/generated/ffi/nano-ros-cpp-ffi-unique_identifier_msgs/target/armv7a-nuttx-eabihf/release/libnano_ros_cpp_ffi_unique_identifier_msgs.a
