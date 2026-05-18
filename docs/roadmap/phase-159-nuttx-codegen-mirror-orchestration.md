@@ -218,6 +218,59 @@ on the build-dep variant change anything? Tested both ways —
 same -4 fail. Suggests the issue isn't feature flags on `nros-c`
 itself but on a transitive (zpico-sys, zenoh-pico).
 
+### 157.7 — tshark pcap diagnosis 2026-05-18 → NOT a ZID collision
+
+Captured `/tmp/nuttx-listener.pcap` via QEMU `-object
+filter-dump,id=f0,netdev=net0,file=...`. Sequence on the wire:
+
+```
+1   0.000  ARP Who has 10.0.2.2?  (NuttX queries gateway)
+2   0.000  ARP 10.0.2.2 is at ... (slirp replies)
+3   0.009  TCP 25148 → 7552 [SYN]
+4   0.009  TCP 7552 → 25148 [SYN, ACK]
+5   0.014  TCP 25148 → 7552 [ACK]               ← handshake complete
+6   0.022  TCP 25148 → 7552 [FIN, ACK]          ← CLIENT CLOSES with 0 bytes sent
+7   0.022  TCP 7552 → 25148 [ACK]
+8   0.024  TCP 7552 → 25148 [PSH, ACK] Len=4    ← zenohd sends something
+9   0.024  TCP 7552 → 25148 [FIN, ACK]
+```
+
+Client opens TCP, then closes 8 ms later WITHOUT sending a single
+byte of zenoh handshake (no InitSyn, no OpenSyn, no ZID exchange).
+Zenohd logs the close as "early eof".
+
+**Not a ZID collision** — client never reaches the ZID stage.
+zpico_open() succeeds at `_z_open_tcp` (TCP handshake fires), then
+fails before the InitSyn write. Possible failure points:
+
+- `_z_socket_set_non_blocking` (fcntl F_SETFL) on NuttX
+- `getaddrinfo` / `inet_pton` returning the wrong family
+- Zenoh-pico's internal session-state setup error path
+- ZID generator returning failure (z_random_fill on /dev/urandom)
+  — even though /dev/urandom exists on NuttX, if write-seeding
+  fails silently the read may also fail
+
+Same failure mode on BOTH listener and talker (single QEMU
+instance per test, zenohd freshly restarted, NO concurrent
+peer), confirming this is NOT a MAX_LINKS / duplicate-ZID issue.
+
+**Bisect blocker:** comparable Rust talker (`nuttx-rs-talker`)
+to port 7452 PASSES (publishes successfully). Same NuttX
+target, same zenoh-pico vendor, same nros-rmw-zenoh shim.
+Difference is the binary entry path: Rust talker is a
+standalone cargo crate at `examples/qemu-arm-nuttx/rust/zenoh/
+talker/`; C examples route through `nros-nuttx-ffi`'s cargo
+build which provides `extern fn app_main()` for the C-side
+user code to call.
+
+**Next investigation steps:**
+- gdb-attach to NuttX QEMU (`-s -S`), break on `_z_open_tcp`
+  return, step until socket close
+- Add printfs around zpico_open's caller chain in
+  nros-rmw-zenoh shim to print the actual ZpicoError variant
+- Capture Rust talker pcap for same client and diff the
+  byte sequences
+
 ### 157.6 — Path C attempt 2026-05-18 → FAILED at runtime (same -4)
 
 Tried Path C (commit checked-in `nros_config_generated_nuttx.h` +
