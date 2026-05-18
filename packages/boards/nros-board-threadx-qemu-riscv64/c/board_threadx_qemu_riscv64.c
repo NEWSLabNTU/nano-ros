@@ -39,7 +39,11 @@ extern void uart_puts(const char *s);
 
 /* ---- Overlay-tunable parameters (strong override of the weak
  * defaults in threadx_hooks.c) ---- */
-const uint32_t nros_board_app_stack_size = 512 * 1024;
+/* Phase 155.A — drop `const` to match the weak default in
+ * `threadx_hooks.c`. With `const`, gcc folded the WEAK value
+ * (64 KB) at the call site and this strong override never
+ * took effect — Rust closure stack overflowed silently. */
+uint32_t nros_board_app_stack_size = 512 * 1024;
 /* zenoh-pico's read/lease tasks default to ThreadX priority 14
  * (`Z_TASK_PRIORITY` in `zenoh-pico/src/system/threadx/.../platform.h`).
  * App must run at strictly lower priority (= higher numeric value)
@@ -47,7 +51,7 @@ const uint32_t nros_board_app_stack_size = 512 * 1024;
  * spin loop. Pre-120.3 this was 4 → preempted keep-alive →
  * 10 s lease expiry → router unregistered all queryables before
  * the client's first z_get even arrived. */
-const uint32_t nros_board_app_priority = 15;
+uint32_t nros_board_app_priority = 15;
 
 /* ---- Sizing constants for the local NetX bring-up ---- */
 #define PACKET_SIZE             1536

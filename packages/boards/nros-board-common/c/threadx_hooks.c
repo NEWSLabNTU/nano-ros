@@ -43,9 +43,25 @@
 /* ---- Sizing constants ---- */
 #define BYTE_POOL_SIZE          (2 * 1024 * 1024)
 
-/* ---- Overlay-tunable parameters (weak — overlay strong-overrides) ---- */
-__attribute__((weak)) const uint32_t nros_board_app_stack_size = 64 * 1024;
-__attribute__((weak)) const uint32_t nros_board_app_priority = 4;
+/* ---- Overlay-tunable parameters (weak — overlay strong-overrides) ----
+ *
+ * Phase 155.A — `const` qualifier dropped. With weak `const
+ * uint32_t x = …`, gcc treats the read as a compile-time
+ * constant (inlines the weak value at the use site below) so
+ * the strong-override in a sibling TU never wins at link time.
+ * Without `const`, the symbol stays a regular load against the
+ * storage cell the linker picks — strong-override wins.
+ *
+ * Manifested on RISC-V: the board's
+ * `nros_board_app_stack_size = 512 * 1024` override was
+ * silently dropped; `tx_thread_create` got the 64 KB weak
+ * default. Rust `Executor::open` stack frame exceeded 64 KB,
+ * sp underflowed past byte_pool storage into `.text` at
+ * `CffiSession::open_with_vtable+128`, and the next register
+ * save (`sd s7, 88(sp)`) corrupted the code there → illegal-
+ * instruction trap on next fetch. */
+__attribute__((weak)) uint32_t nros_board_app_stack_size = 64 * 1024;
+__attribute__((weak)) uint32_t nros_board_app_priority = 4;
 
 /* ---- Weak hooks the overlay implements ---- */
 __attribute__((weak)) void nros_board_log(const char *s) { (void)s; }
