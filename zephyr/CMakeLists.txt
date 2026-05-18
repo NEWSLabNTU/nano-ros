@@ -255,7 +255,17 @@ if(CONFIG_NROS_CPP_API)
     # so both variants must resolve to the per-build versions.
     zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated)
     zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated)
-    zephyr_include_directories(${NROS_REPO_DIR}/zephyr/cxx-compat)
+    # `cxx-compat/` ships a stripped-down `<cstdlib>` (and friends)
+    # for picolibc-based Zephyr targets where the toolchain's full
+    # libstdc++ C-shim layer isn't wired up. Injecting it on newlib
+    # targets (e.g. zephyr-sdk-0.16.3 aarch64-zephyr-elf) shadows
+    # the real `<cstdlib>` and breaks every `std::` symbol the shim
+    # doesn't explicitly re-export (`abort`, `exit`, `strtol`,
+    # `malloc`, `free`, ...). Gate on CONFIG_PICOLIBC so newlib
+    # builds see the proper header.
+    if(CONFIG_PICOLIBC)
+        zephyr_include_directories(${NROS_REPO_DIR}/zephyr/cxx-compat)
+    endif()
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the
