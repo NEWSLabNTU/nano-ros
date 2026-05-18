@@ -37,6 +37,7 @@ fn main() {
         .flag("-mcpu=cortex-a7")
         .flag("-mfloat-abi=hard")
         .flag("-mfpu=vfpv3-d16")
+        .define("NROS_PLATFORM_NUTTX", None)
         .warnings(false);
 
     if is_cpp {

@@ -670,12 +670,13 @@ fn main() {
         // version often wins → its 32-byte arg layout collides
         // with the 4-byte ABI tx.c / link.c call sites use →
         // `_z_send_tcp` reads garbage → session open returns
-        // `TransportError::ConnectionFailed` → C examples surface
-        // `nros_support_init -> -4`. Matches Phase 159's Path A +
-        // Path C runtime-regression symptom exactly. The Phase
-        // 155.F4 warm-up + incremental build state masked it by
-        // leaving stale objects from earlier builds where the
-        // define was effectively present (pre-Phase 156 wiring).
+        // `_Z_ERR_TRANSPORT_TX_FAILED (-100)` → ZPICO_ERR_SESSION
+        // → C examples surface `nros_support_init -> -4`. Matches
+        // Phase 159's Path A + Path C runtime-regression symptom
+        // exactly. The Phase 155.F4 warm-up + incremental build
+        // state masked it by leaving stale objects from earlier
+        // builds where the define was effectively present
+        // (pre-Phase 156 wiring).
         if use_posix || use_nuttx {
             alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
         }
@@ -1562,6 +1563,8 @@ fn build_zenoh_pico_unified(
         .include(&zenoh_config_dir)
         .include(zenoh_pico_src.join("include"))
         .include(&version_include_dir);
+    let nros_manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    build.include(nros_manifest_dir.join("../../core/nros-platform-cffi/include"));
     let is_embedded = is_embedded_target(target);
     for raw in &plat.include_paths {
         let path = manifest::interpolate(raw, interp).unwrap_or_else(|e| {

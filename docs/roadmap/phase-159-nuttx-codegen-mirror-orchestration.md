@@ -5,7 +5,9 @@ the two Phase 155.F4 follow-ups (action_core retry-on-empty-reply
 and wait_for_action_server fast-path tighten) that were attempted
 but rolled back because the underlying build orchestration broke.
 
-**Status.** Open.
+**Status.** ✅ CLOSED 2026-05-18. NuttX 9/9 PASS (fresh-tree
+build + runtime). Root cause was `_z_send_tcp` ABI mismatch
+between alias TU and zenoh-pico vendor — see 157.8 below.
 
 **Priority.** P1. NuttX C/C++ examples currently rely on
 incremental-build leftovers to find `nros_config_generated.h`; a
@@ -217,6 +219,69 @@ as the only working path.
 on the build-dep variant change anything? Tested both ways —
 same -4 fail. Suggests the issue isn't feature flags on `nros-c`
 itself but on a transitive (zpico-sys, zenoh-pico).
+
+### 157.8 — gdb / printf bisect → ABI fix landed ✅ FIXED 2026-05-18
+
+Added `printf` instrumentation around `zpico_open` in `zpico.c`.
+Surfaced the actual error:
+
+```
+[zpico_open] enter g_initialized=1
+[zpico_open] calling z_open
+[zpico_open] z_open returned -100
+[nros] support_init -> -4
+```
+
+**`-100 = _Z_ERR_TRANSPORT_TX_FAILED`** — zenoh-pico's first
+`send()` after TCP connect FAILED. Disassembled `_z_send_tcp`
+in the ARM ELF:
+
+```
+00612020 <_z_send_tcp>:
+  ...
+  bl  62b338 <nros_platform_tcp_send>   ← ALIAS TU path
+```
+
+The alias TU's `_z_send_tcp` (32-byte opaque `nros_zp_alias_socket_t`)
+won at link time over `system/unix/network.c`'s real impl
+(4-byte `_z_sys_net_socket_t = {int _fd;}` from `unix.h`).
+Inside `nros_platform_tcp_send`, the pointer is interpreted as
+the 32-byte struct — `fd` field read from the wrong offset =
+garbage = EBADF on send.
+
+**Root cause:** upstream commit `a529afb1` ("fix(ci): scope
+USES_UNIX gate to POSIX-only") narrowed the
+`NROS_ZENOH_PLATFORM_USES_UNIX` gate from `use_posix ||
+use_freertos || use_nuttx` to `use_posix` only. That re-enabled
+the wrong-shape alias TU network section for NuttX even though
+NuttX's manifest pulls `system/unix/network.c` (the right-shape
+impl). The two impls coexisted via `--allow-multiple-definition`;
+linker picked the alias.
+
+**Fix:** re-add `use_nuttx` to the USES_UNIX gate in
+`packages/zpico/zpico-sys/build.rs`. The alias TU's network
+section gets `#ifndef`-elided on NuttX; `system/unix/network.c`'s
+unix.h-shaped impls win.
+
+Plus Path C build-orchestration fixes for fresh-tree NuttX C:
+- `nros-c/nros-cpp` source-tree stub headers forward to
+  checked-in NuttX fallback when `NROS_PLATFORM_NUTTX` defined.
+- `nros-nuttx-ffi/build.rs` defines `NROS_PLATFORM_NUTTX` on
+  the cc-rs main.c compile.
+- `zpico-sys/build.rs` adds `nros-platform-cffi/include` to
+  the zenoh-pico vendor build (zpico.c needs
+  `<nros/platform_net.h>` from Phase 154).
+- `NanoRosGenerateInterfaces.cmake` (codegen submodule) emits
+  codegen lib as INTERFACE on NuttX (host STATIC was dead
+  weight + hit stub).
+- Root `CMakeLists.txt` aliases `NanoRos::NanoRosCpp` to
+  `NanoRos` umbrella when `nros-cpp`'s add_subdirectory is
+  skipped (NuttX path).
+
+**Verified 2026-05-18:** NuttX rtos_e2e 9/9 PASS in fresh-tree
+build (action C 30.3s, action Cpp 30.4s, action Rust 32.9s,
+pubsub C 75.3s, pubsub Cpp 45.5s, pubsub Rust 45.2s, service
+all 30s+).
 
 ### 157.7 — tshark pcap diagnosis 2026-05-18 → NOT a ZID collision
 

@@ -22,8 +22,12 @@
 #ifndef NROS_CONFIG_GENERATED_H
 #define NROS_CONFIG_GENERATED_H
 
+#if defined(NROS_PLATFORM_NUTTX)
+#include "nros/nros_config_generated_nuttx.h"
+#else
 // clang-format off
 #error "nros_config_generated.h must be supplied per-build by the build system; see this stub for guidance."
 // clang-format on
+#endif
 
 #endif /* NROS_CONFIG_GENERATED_H */

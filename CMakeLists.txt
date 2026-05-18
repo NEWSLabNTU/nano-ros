@@ -130,6 +130,16 @@ if(NOT TARGET NanoRos)
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-cpp/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-rmw-cffi/include")
     endif()
+    # Phase 159 — NanoRos::NanoRosCpp ALIAS for NuttX path (where
+    # nros-cpp's add_subdirectory is skipped). C++ examples
+    # `target_link_libraries(... NanoRos::NanoRosCpp)`; without this
+    # alias the cmake generate step errors with "links to target
+    # NanoRos::NanoRosCpp but the target was not found". Make it
+    # an alias of NanoRos so consumers get the same INTERFACE
+    # includes (nros-cpp/include is already added above).
+    if(NOT TARGET NanoRos::NanoRosCpp)
+        add_library(NanoRos::NanoRosCpp ALIAS NanoRos)
+    endif()
     # Propagate the platform compile definition to mirror the install-time
     # NanoRos::NanoRos behaviour from NanoRosCTargets.cmake.
     if(NANO_ROS_PLATFORM STREQUAL "posix")

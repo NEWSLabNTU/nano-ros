@@ -26,6 +26,10 @@
 #ifndef NROS_CPP_CONFIG_GENERATED_H
 #define NROS_CPP_CONFIG_GENERATED_H
 
+#if defined(NROS_PLATFORM_NUTTX)
+#include "nros/nros_cpp_config_generated_nuttx.h"
+#else
 #error "nros_cpp_config_generated.h must be supplied per-build by the build system; see the comment in this stub for guidance."
+#endif
 
 #endif /* NROS_CPP_CONFIG_GENERATED_H */
