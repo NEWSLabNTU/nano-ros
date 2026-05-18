@@ -136,17 +136,16 @@ defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_U
 # (alias TU is gated off for FreeRTOS in build.rs).
 include = ["system/common", "system/freertos/lwip"]
 extra_sources = [
-  { path = "{src}/system/freertos/system.c" },
-  # Phase 154 / 156 follow-up — vendor `system/freertos/lwip/network.c`
-  # provides `_z_open_tcp` / `_z_send_tcp` / `_z_read_tcp` / etc. with
-  # the matching `_z_sys_net_socket_t = { int _socket; }` ABI from
-  # `platform/freertos/lwip.h`. The alias TU's network functions are
-  # gated off via `NROS_ZENOH_PLATFORM_USES_UNIX`, so without this
-  # source file the link fails with `undefined symbol: _z_open_tcp`
-  # etc. The manifest's `include = ["system/freertos/lwip"]` only
-  # validates the directory exists, it doesn't compile the files —
-  # extra_sources is the build-side hookup.
-  { path = "{src}/system/freertos/lwip/network.c" },
+  # Phase 156 follow-up — vendor `system/freertos/system.c` AND
+  # `system/freertos/lwip/network.c` are intentionally NOT compiled
+  # here: their `z_malloc` / `_z_task_*` / `_z_open_tcp` etc. impls
+  # would collide with the alias TU (`platform_aliases.c`) versions,
+  # which forward to `nros_platform_*`. nros-platform-freertos
+  # provides the canonical `nros_platform_task_*` /
+  # `nros_platform_mutex_*` C symbols the alias TU dispatches to, so
+  # the alias TU is the single source of truth for FreeRTOS too —
+  # parallel to bare-metal / threadx (which use the same alias TU
+  # without vendor system.c).
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 arch = "cortex-m3"

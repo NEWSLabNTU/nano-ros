@@ -644,20 +644,19 @@ fn main() {
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
-        // Phase 156 — POSIX + FreeRTOS-lwIP consumers pull zenoh-pico's
-        // upstream `system/{unix,freertos/lwip}/network.c` which already
-        // emits `_z_send_tcp` / `_z_read_tcp` / `_z_open_tcp` / etc. with
-        // the per-platform `_z_sys_net_socket_t` layout. The alias TU's
-        // generic copies would collide at link time (`rust-lld: error:
-        // duplicate symbol: _z_create_endpoint_tcp ... defined at
-        // network.c ... defined at platform_aliases.c`). Skip the
-        // network alias section on those platforms with the same
-        // `NROS_ZENOH_PLATFORM_USES_UNIX` gate the `#ifndef` in
-        // `platform_aliases.c` checks. (FreeRTOS-lwIP's vendor file
-        // lives at `system/freertos/lwip/network.c` but uses the same
-        // 4-byte socket struct shape; reusing the gate keeps the
-        // platform_aliases.c condition compact.)
-        if use_posix || use_freertos {
+        // Phase 156 — POSIX consumers pull zenoh-pico's upstream
+        // `system/unix/network.c` which already emits `_z_open_tcp` /
+        // `_z_send_tcp` / etc. with the per-platform 4-byte
+        // `_z_sys_net_socket_t = { int _fd; }` layout. The alias TU's
+        // generic 32-byte copies would collide at link time. Gate the
+        // alias TU's NETWORK section off via `NROS_ZENOH_PLATFORM_USES_UNIX`
+        // (the `#ifndef` in `platform_aliases.c` at the network-section
+        // header). Runtime aliases (memory / sleep / random / time /
+        // yield + threading) stay active — alias TU forwards them to
+        // `nros_platform_*`, no vendor system.c is compiled for POSIX
+        // (extra_sources lists only `network.c` + `tls.c`), so no
+        // duplicates.
+        if use_posix {
             alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
         }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
