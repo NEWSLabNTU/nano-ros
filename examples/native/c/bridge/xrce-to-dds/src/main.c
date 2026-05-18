@@ -206,8 +206,7 @@ int nros_app_main(int argc, char** argv) {
     // Ingress node — XRCE.
     {
         nros_node_options_t opts = make_options_for_rmw("xrce");
-        NROS_CHECK_RET(
-            nros_executor_node_init(&app.executor, &app.node_in, "ingress", &opts), 1);
+        NROS_CHECK_RET(nros_executor_node_init(&app.executor, &app.node_in, "ingress", &opts), 1);
         printf("Ingress node bound to XRCE\n");
     }
 
@@ -224,14 +223,12 @@ int nros_app_main(int argc, char** argv) {
             memcpy(opts.locator, dds_locator, loc_len);
             opts.locator_len = loc_len;
         }
-        NROS_CHECK_RET(
-            nros_executor_node_init(&app.executor, &app.node_out, "egress", &opts), 1);
+        NROS_CHECK_RET(nros_executor_node_init(&app.executor, &app.node_out, "egress", &opts), 1);
         printf("Egress node bound to DDS\n");
     }
 
     // Egress publisher — DDS side.
-    NROS_CHECK_RET(
-        nros_publisher_init(&app.pub_out, &app.node_out, &kStringType, "/chatter"), 1);
+    NROS_CHECK_RET(nros_publisher_init(&app.pub_out, &app.node_out, &kStringType, "/chatter"), 1);
     printf("Egress raw publisher created on DDS /chatter\n");
 
     // Ingress subscription — XRCE side. Per-node session
@@ -240,13 +237,12 @@ int nros_app_main(int argc, char** argv) {
     // session because `node_in.node_id` is non-zero.
     app.bridge_ctx.egress_publisher = &app.pub_out;
     app.bridge_ctx.forwarded_count = 0;
-    NROS_CHECK_RET(
-        nros_subscription_init(&app.sub_in, &app.node_in, &kStringType, "/chatter",
-                               on_ingress, &app.bridge_ctx),
-        1);
-    NROS_CHECK_RET(nros_executor_register_subscription(&app.executor, &app.sub_in,
-                                                       NROS_EXECUTOR_ON_NEW_DATA),
+    NROS_CHECK_RET(nros_subscription_init(&app.sub_in, &app.node_in, &kStringType, "/chatter",
+                                          on_ingress, &app.bridge_ctx),
                    1);
+    NROS_CHECK_RET(
+        nros_executor_register_subscription(&app.executor, &app.sub_in, NROS_EXECUTOR_ON_NEW_DATA),
+        1);
     printf("Ingress raw subscription registered on XRCE /chatter\n");
 
     signal(SIGINT, signal_handler);
