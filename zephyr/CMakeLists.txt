@@ -308,6 +308,26 @@ if(CONFIG_NROS_CPP_API)
 
     # Link the built library
     zephyr_library_link_libraries(nros_cpp_cargo)
+
+    # Phase 1.7 (autoware-safety-island): nros-cpp's public headers
+    # (notably `<nros/parameter.hpp>`) transitively include nros-c's
+    # `<nros/types.h>`, which depends on the cbindgen-emitted
+    # `<nros/nros_generated.h>`. That header is only produced by
+    # nros-c's `build.rs` when nros-c's cargo build runs. Under the
+    # C++-only API path (CONFIG_NROS_C_API=n + CONFIG_NROS_CPP_API=y)
+    # the nros-c cargo build above never fires, so user code that
+    # uses the C++ API can't compile. Trigger the nros-c cargo build
+    # here for its side effect of writing
+    # `${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_generated.h`;
+    # we don't link the resulting library (nros-cpp already supplies
+    # the runtime), only the header.
+    if(NOT CONFIG_NROS_C_API)
+        nros_cargo_build(
+            PACKAGE nros-c
+            FEATURES "${_nros_cpp_features}"
+        )
+        add_dependencies(app nros_c_cargo_build)
+    endif()
 endif()
 
 # =============================================================================
