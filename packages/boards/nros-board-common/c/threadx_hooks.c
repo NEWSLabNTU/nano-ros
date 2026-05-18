@@ -81,6 +81,12 @@ static void *rust_app_arg = 0;
  * undefined (R_RISCV_PCREL_HI20 ±512KB range vs. weak-undefined
  * resolving to address 0 with .text at 0x80000000). */
 static void (*c_app_main)(void) = (void (*)(void))0;
+/* Phase 154 fallback — when `nros_threadx_set_app_main` was
+ * never called (Linux-host C / C++ examples just define
+ * `app_main()` and rely on link-time symbol resolution; the
+ * RISC-V PC-relative concern doesn't apply to host-tooled
+ * builds), pick up the weak symbol below. */
+extern void app_main(void) __attribute__((weak));
 
 void nros_threadx_set_app_callback(void (*entry)(void *), void *arg)
 {
@@ -102,13 +108,21 @@ static void app_thread_entry(ULONG input)
         nros_board_log("[app_thread] Calling Rust entry...\n");
         rust_app_entry(rust_app_arg);
         nros_board_log("[app_thread] Rust entry returned\n");
-    } else if (c_app_main) {
-        nros_board_log("[app_thread] Calling app_main...\n");
-        c_app_main();
-        nros_board_log("[app_thread] app_main returned\n");
-    } else {
-        nros_board_log("ERROR: no app entry point (set Rust callback or define app_main)\n");
+        return;
     }
+    if (c_app_main) {
+        nros_board_log("[app_thread] Calling c_app_main (FFI)...\n");
+        c_app_main();
+        nros_board_log("[app_thread] c_app_main returned\n");
+        return;
+    }
+    if (app_main) {
+        nros_board_log("[app_thread] Calling app_main (weak)...\n");
+        app_main();
+        nros_board_log("[app_thread] app_main returned\n");
+        return;
+    }
+    nros_board_log("ERROR: no app entry point (set Rust callback or define app_main)\n");
 }
 
 /* ---- ThreadX tx_application_define (called by tx_kernel_enter) ---- */
