@@ -8,13 +8,12 @@ underlying bridge can't reach its `Spinning` marker; this
 phase closes the actual session-open paths so the assertions
 fire end-to-end instead.
 
-**Status.** Open — investigation paused 2026-05-18 after
-clearing the four shallower blockers (link-tcp feature
-removal, zpico-sys POSIX shim include path, bridge
-`ExecutorConfig::default` vs `from_env`, missing `std`
-feature on `nros-rmw-zenoh`). The remaining two failures
-both surface inside dual-RMW-backend binaries and need
-focused debugging.
+**Status.** Closed 2026-05-18. All four sub-bugs (A POSIX
+socket-option ordering, B Z_FEATURE_MULTI_THREAD + alias
+ABI, C linkme multi-monomorphisation, D C-side multi-Session
+dispatch) resolved. Both target tests fully green:
+`bridge_zenoh_to_dds_e2e` (D.3) + `bridge_xrce_to_dds_e2e`
+(D.4) → 1 passed / 0 skipped each.
 
 **Priority.** P2 — bridge plumbing already works structurally
 (D.1 / .D.2 examples build clean, both `register` symbols
