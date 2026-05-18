@@ -292,27 +292,47 @@ int8_t _z_condvar_wait_until(void *cv, void *m, const uint64_t *abstime_ms) {
  *  Clock / monotonic-time variants. Vendor `<system/common/platform.h>`
  *  declares them with per-platform `z_clock_t` / `z_time_t`. Same
  *  generic-header gate as `_z_condvar_wait_until`.
+ *
+ *  Phase 160.L.1 — `z_clock_*` is the *monotonic* clock in zenoh-pico's
+ *  contract (`unix/system.c:247` uses `CLOCK_MONOTONIC`; `z_time_now`
+ *  is the wall-clock variant). The alias TU previously routed
+ *  `z_clock_now` through `nros_platform_time_now_ms` (wall-clock /
+ *  CLOCK_REALTIME on POSIX). That meant
+ *  `zpico_spin_once`'s cv-deadline (`z_clock_now() + 100 ms`) was a
+ *  REALTIME-epoch number (~1.78e15 ms in 2026), but
+ *  `nros_platform_condvar_wait_until` interpreted the deadline against
+ *  `nros_platform_clock_ms` (CLOCK_MONOTONIC, ~uptime ms). Subtracting
+ *  the two yielded `rel_ms ≈ 55 YEARS`; pthread_cond_timedwait then
+ *  blocked forever and the executor's spin_period stalled before
+ *  the first timer callback could fire — root cause of the C/C++
+ *  native talker regression (Phase 160.L cluster).
+ *
+ *  Fix: route the monotonic clock variants through
+ *  `nros_platform_clock_ms` so the value matches what
+ *  `nros_platform_condvar_wait_until` expects. `z_time_*` (wall
+ *  clock) — if/when added to the alias TU — should keep
+ *  `nros_platform_time_now_ms`.
  * ----------------------------------------------------------------------- */
 
 uint64_t z_clock_now(void) {
-    return nros_platform_time_now_ms();
+    return nros_platform_clock_ms();
 }
 
 unsigned long z_clock_elapsed_us(const uint64_t *clock) {
     if (clock == NULL) return 0;
-    uint64_t now = nros_platform_time_now_ms();
+    uint64_t now = nros_platform_clock_ms();
     return (unsigned long) ((now - *clock) * 1000ULL);
 }
 
 unsigned long z_clock_elapsed_ms(const uint64_t *clock) {
     if (clock == NULL) return 0;
-    uint64_t now = nros_platform_time_now_ms();
+    uint64_t now = nros_platform_clock_ms();
     return (unsigned long) (now - *clock);
 }
 
 unsigned long z_clock_elapsed_s(const uint64_t *clock) {
     if (clock == NULL) return 0;
-    uint64_t now = nros_platform_time_now_ms();
+    uint64_t now = nros_platform_clock_ms();
     return (unsigned long) ((now - *clock) / 1000ULL);
 }
 

@@ -546,17 +546,18 @@ test_threadx_linux_dds_rust_talker_to_listener_e2e
 Per-platform dust-dds bring-up. NuttX side may share root cause
 with B (Zephyr A9 DDS).
 
-### L. Native + misc (8 tests) → **partial close 2026-05-19**
+### L. Native + misc (8 tests) → **7/8 CLOSED 2026-05-19**
 
 ```
-test_c_xrce_listener_builds                ✓ FIXED (160.L)
-test_c_xrce_listener_starts                ✓ FIXED (160.L)
-test_c_xrce_talker_builds                  ✓ FIXED (160.L)
-test_c_xrce_talker_listener_communication  ✓ FIXED (160.L)
-test_c_xrce_talker_starts                  ✓ FIXED (160.L)
-test_native_talker_listener_communication::lang_1_Language__C  ✗ open
-test_zenoh_overflow_detection              ✗ open
-test_qos_reliable_delivery  (and other QoS tests)              ✗ unverified
+test_c_xrce_listener_builds                                      ✓ FIXED (160.L)
+test_c_xrce_listener_starts                                      ✓ FIXED (160.L)
+test_c_xrce_talker_builds                                        ✓ FIXED (160.L)
+test_c_xrce_talker_listener_communication                        ✓ FIXED (160.L)
+test_c_xrce_talker_starts                                        ✓ FIXED (160.L)
+test_native_talker_listener_communication::lang_1_Language__C    ✓ FIXED (160.L.1)
+test_native_talker_listener_communication::lang_2_Language__Cpp  ✓ FIXED (160.L.1)
+test_qos_reliable_delivery (and other QoS tests)                 ✓ verified PASS
+test_zenoh_overflow_detection                                    ✗ open (160.L.2)
 ```
 
 **c_xrce_api family (5/5 PASS).** Root cause: Phase 154 dropped
@@ -571,13 +572,44 @@ sibling crate carrying the `staticlib` crate-type, mirroring the
 `nros-rmw-{zenoh,dds}-staticlib` pattern. Root `CMakeLists.txt`
 xrce branch now imports the wrapper. cffi rlib stays Zephyr-safe.
 
-**Open.** `test_native_talker_listener_communication::lang_1_Language__C`:
-C talker prints `Publishing messages (Ctrl+C to exit)...` then
-nothing — timer-driven publish doesn't fire. C++ variant PASSES on
-identical run. Likely Phase 141 wake-callback regression on the C
-timer path, or Phase 156 session-cache change. Needs further
-triage. `test_zenoh_overflow_detection`: receiver gets 0 messages
-across 15s — possibly related to same root cause.
+**Native talker / Cpp talker (160.L.1 — 2/2 PASS).** Root cause:
+the alias TU's `z_clock_now()` (added in Phase 129 along with the
+generic-platform clock variants) routed through
+`nros_platform_time_now_ms` (CLOCK_REALTIME). zenoh-pico's
+`z_clock_*` contract is the *monotonic* clock — `unix/system.c:247`
+uses `CLOCK_MONOTONIC`; `z_time_*` is the wallclock variant. The
+mismatch meant `zpico_spin_once`'s cv-deadline
+(`z_clock_now() + timeout_ms`) was a REALTIME-epoch number
+(~1.78e15 ms in 2026), while `nros_platform_condvar_wait_until`
+interpreted the deadline against `nros_platform_clock_ms`
+(CLOCK_MONOTONIC, ~uptime ms). `rel_ms` came out ~55 YEARS;
+`pthread_cond_timedwait` then blocked the executor thread forever
+and the C/C++ talker's 1 Hz timer callback never fired
+(`Publishing messages…` printed but no `Published:` line).
+Reproduced by attaching gdb mid-spin and confirming a stuck
+`futex_wait_queue` on `g_spin_cv+40`; addr2line traced the
+linker-resolved `_z_condvar_wait_until` to the alias TU at
+`platform_aliases.c:284`. Rust talker was unaffected because it
+calls `nros::Executor::spin_blocking` whose internal cv path is
+the Rust-side `std::sync::Condvar`-backed `wake_cv` — that one
+uses `std::time::Instant` (monotonic) consistently. Only the C
+talker hits zenoh-pico's `g_spin_cv` deadline path. Fix: route
+`z_clock_now` + `z_clock_elapsed_*` through
+`nros_platform_clock_ms` so the deadline epoch aligns with what
+`nros_platform_condvar_wait_until` expects.
+
+**Open (160.L.2).** `test_zenoh_overflow_detection`: receiver
+expects to see `Receive error` printf when talker sends 2048 B
+payloads against a 512 B subscriber buffer. Currently shows
+`RECV_DONE: received=0 valid=0 invalid=0` — listener gets 0
+messages AND 0 errors. Not gated on the L.1 timer fix (talker
+process is the Rust `stress-zenoh` bench binary, which doesn't
+use C-side spin_period). Likely zenoh-pico now silently drops
+oversized incoming frames instead of surfacing the
+`MessageTooLarge` upstream. Defer to a follow-up phase that
+audits zenoh-pico's `_z_unicast_recv_t_msg` error-surface path
++ updates the test pattern to match whatever the real error
+shape is today.
 
 ### M. Integration shells (3 tests) → **phantom — already `[SKIPPED]`**
 
@@ -615,7 +647,7 @@ No action needed.
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
 | J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
-| L. Native + c_xrce + qos | 8 | c_xrce: Corrosion CRATE_TYPES misuse; rest: timer/wake regression | **5 CLOSED 160.L** + 2-3 open |
+| L. Native + c_xrce + qos | 8 | c_xrce: Corrosion CRATE_TYPES misuse; talker: alias-TU `z_clock_now` epoch mismatch (REALTIME vs MONOTONIC) | **7/8 CLOSED 160.L + 160.L.1** — 160.L.2 (`zenoh_overflow_detection`) remains |
 | M. Integration shells | 3 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | skipped | 12 | env (expected) | OK |
 | **total** | **66** unique (63 + 3 retries-only) | | |
