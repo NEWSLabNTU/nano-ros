@@ -208,6 +208,29 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     file(GLOB _cdds_ddsrt_top   ${CYCLONEDDS_DIR}/src/ddsrt/src/*.c)
     file(GLOB _cdds_ddsrt_posix ${CYCLONEDDS_DIR}/src/ddsrt/src/*/posix/*.c)
 
+    # Drop POSIX TUs that reference symbols Zephyr does NOT provide. The
+    # `DDSRT_HAVE_*` undef'd in cyclonedds-config/dds/config.h only gate
+    # *call sites* in headers + top-level TUs; the per-feature posix/*.c
+    # bodies are still unconditional and would fail to link.
+    #   - ifaddrs/posix/ifaddrs.c   → getifaddrs / struct ifaddrs (absent)
+    #   - dynlib/posix/dynlib.c     → dlopen / dlsym / dlerror (no libdl)
+    #   - random/posix/random.c     → fopen("/dev/urandom") — replaced by
+    #     the Zephyr-specific ddsrt_prng_makeseed override under
+    #     zephyr/cyclonedds-zephyr/random_zephyr.c.
+    #   - sockets/posix/gethostname.c → empty under DDSRT_HAVE_GETHOSTNAME=0
+    #     but drop for clarity.
+    list(REMOVE_ITEM _cdds_ddsrt_posix
+        ${CYCLONEDDS_DIR}/src/ddsrt/src/ifaddrs/posix/ifaddrs.c
+        ${CYCLONEDDS_DIR}/src/ddsrt/src/dynlib/posix/dynlib.c
+        ${CYCLONEDDS_DIR}/src/ddsrt/src/random/posix/random.c
+        ${CYCLONEDDS_DIR}/src/ddsrt/src/sockets/posix/gethostname.c
+    )
+
+    # Zephyr replacement TUs for the dropped POSIX bodies above.
+    set(_cdds_zephyr_overrides
+        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/random_zephyr.c
+    )
+
     # ddsi: protocol engine. ddsc: public C API.
     file(GLOB _cdds_ddsi ${CYCLONEDDS_DIR}/src/core/ddsi/src/*.c)
     file(GLOB _cdds_ddsc ${CYCLONEDDS_DIR}/src/core/ddsc/src/*.c)
@@ -215,6 +238,7 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     zephyr_library_sources(
         ${_cdds_ddsrt_top}
         ${_cdds_ddsrt_posix}
+        ${_cdds_zephyr_overrides}
         ${_cdds_ddsi}
         ${_cdds_ddsc}
     )
