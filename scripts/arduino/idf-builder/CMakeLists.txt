@@ -52,3 +52,57 @@ set(ENV{RUSTFLAGS} "--cfg portable_atomic_unsafe_assume_single_core")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(nano_ros_arduino_lib_builder)
+
+# Phase 21.10.A — feed ESP-IDF component include dirs (freertos /
+# lwip / esp_hw_support / esp_system) into `CFLAGS_<rust-target>`
+# so the Corrosion-driven cc::Build invocations inside
+# `zpico-sys/build.rs` find `<FreeRTOS.h>`, `<lwip/sockets.h>`,
+# etc. Without this, the IDF cmake glue only feeds these dirs to
+# components registered through `idf_component_register(...)` —
+# Corrosion runs cargo as a custom_command outside that target
+# graph.
+function(_nros_idf_collect_includes _out)
+    set(_dirs "")
+    foreach(_comp freertos lwip esp_hw_support esp_system esp_common
+                  hal soc xtensa riscv esp_rom esp_timer log esp_pm
+                  newlib esp_event esp_netif esp_phy)
+        if(TARGET __idf_${_comp})
+            get_property(_comp_dirs TARGET __idf_${_comp}
+                PROPERTY INTERFACE_INCLUDE_DIRECTORIES)
+            foreach(_d IN LISTS _comp_dirs)
+                if(NOT _d MATCHES "\\$<" AND IS_DIRECTORY "${_d}")
+                    list(APPEND _dirs "${_d}")
+                endif()
+            endforeach()
+        endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _dirs)
+    set(${_out} "${_dirs}" PARENT_SCOPE)
+endfunction()
+
+function(_nros_idf_publish_cflags)
+    if(NOT Rust_CARGO_TARGET)
+        return()
+    endif()
+    _nros_idf_collect_includes(_dirs)
+    set(_flags "")
+    foreach(_d IN LISTS _dirs)
+        string(APPEND _flags " -I${_d}")
+    endforeach()
+    string(REPLACE "-" "_" _target_env "${Rust_CARGO_TARGET}")
+    string(TOUPPER "${_target_env}" _target_env)
+    set(ENV{CFLAGS_${_target_env}} "${_flags}")
+    # Some cc-rs paths also read TARGET_CFLAGS as a fallback.
+    set(ENV{TARGET_CFLAGS} "${_flags}")
+endfunction()
+
+cmake_language(DEFER CALL _nros_idf_publish_cflags)
+
+# Phase 21.10.A — outstanding: setting `ENV{CFLAGS_<target>}` here
+# does NOT propagate into Corrosion's `cargo rustc` invocation
+# because Corrosion wraps cargo with `cmake -E env ...`, which
+# captures the env at command-creation time. The Corrosion-native
+# fix is `corrosion_set_env_vars(<target> CFLAGS_<target>="...")`
+# invoked on each downstream staticlib target (nros-c, nros-cpp,
+# nros-rmw-zenoh-staticlib, zpico-sys). That work is tracked in
+# `docs/roadmap/phase-21-c-api-nostd-backend.md` under 21.10.A.
