@@ -273,6 +273,9 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # `Iceoryx_LogLevel_*` types our stubs don't define. Drop entirely
     # under DDS_HAS_SHM=0; call sites guarded internally.
     list(FILTER _cdds_ddsi EXCLUDE REGEX "ddsi_shm_transport\\.c$")
+    # ddsc/src/shm_monitor.c — SHM data-plane monitor; uses real
+    # iceoryx storage / event / result types. Drop under DDS_HAS_SHM=0.
+    list(FILTER _cdds_ddsc EXCLUDE REGEX "shm_monitor\\.c$")
 
     zephyr_library_sources(
         ${_cdds_ddsrt_top}
