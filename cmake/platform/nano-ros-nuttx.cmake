@@ -102,6 +102,22 @@ set(_nros_nuttx_codegen_module
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_nuttx_codegen_module}")
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
+    # Phase 155.B.4 follow-up — pre-cache the host-side codegen tool
+    # path before the submodule's strict NO_DEFAULT_PATH find_program.
+    # Mirrors the same probe in `nano-ros-freertos.cmake` /
+    # `nano-ros-threadx.cmake`. Without this, the cross-compile NuttX
+    # cmake build trips on `_NANO_ROS_CODEGEN_TOOL-NOTFOUND` when
+    # `nros_generate_interfaces()` shells out.
+    if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
+        find_program(_NANO_ROS_CODEGEN_TOOL nros-codegen
+            PATHS
+                "${_NANO_ROS_PREFIX}/build/install/bin"
+                "${_NANO_ROS_PREFIX}/bin")
+        if(_NANO_ROS_CODEGEN_TOOL)
+            set(_NANO_ROS_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}"
+                CACHE INTERNAL "Path to nros C codegen tool")
+        endif()
+    endif()
     include("${_nros_nuttx_codegen_module}")
 endif()
 

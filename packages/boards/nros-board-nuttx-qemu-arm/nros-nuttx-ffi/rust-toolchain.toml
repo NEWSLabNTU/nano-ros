@@ -1,0 +1,13 @@
+# Phase 155.B.4 follow-up — pin the FFI crate to the pinned
+# nightly toolchain so `cmake --build` of NuttX C/C++ examples
+# can `-Zbuild-std` against the tier-3 `armv7a-nuttx-eabihf`
+# target without needing the caller to prefix `cargo +nightly`.
+# The cmake-driven `nros_nuttx_build_example` invokes a bare
+# `cargo build --release` from this directory, so cargo reads
+# this rust-toolchain.toml + the sibling `.cargo/config.toml`
+# (which carries `build-std = ["std", "panic_abort"]`).
+#
+# Keep `channel` in sync with `tools/rust-toolchain.toml` — the
+# workspace's canonical pinned nightly.
+[toolchain]
+channel = "nightly-2026-04-11"

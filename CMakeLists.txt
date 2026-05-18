@@ -135,7 +135,35 @@ endif()
 # `cmake/rmw/nano-ros-rmw-<rmw>.cmake` modules land in Phase 138 once
 # the per-platform layout (138 / 139) is in place.
 # ---------------------------------------------------------------------------
-if(NANO_ROS_RMW STREQUAL "zenoh")
+# Phase 155.B.4 follow-up — NuttX's `armv7a-nuttx-eabihf` is a
+# Tier-3 cargo target with no prebuilt `core` rlib; every cargo
+# invocation needs `-Zbuild-std` driven from the per-example
+# `.cargo/config.toml`. Corrosion runs cargo from the staticlib's
+# manifest dir, which doesn't pick that config up → cargo errors
+# with `can't find crate for core`. On NuttX, the per-example
+# `nros_nuttx_build_example` already pulls every staticlib
+# transitively through the per-app FFI crate (whose own
+# `.cargo/config.toml` carries build-std), so the corrosion-
+# driven adds here are pure duplication AND cause the build
+# failure. Skip them on NuttX.
+set(_nano_ros_skip_corrosion_rmw FALSE)
+if(NANO_ROS_PLATFORM STREQUAL "nuttx" OR NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+    set(_nano_ros_skip_corrosion_rmw TRUE)
+endif()
+
+if(_nano_ros_skip_corrosion_rmw)
+    # NuttX path — FFI crate handles RMW staticlib via cargo.
+    # Skip the corrosion add but keep the `NROS_RMW_*_CFFI`
+    # compile define + a no-op interface lib for downstream
+    # `target_link_libraries(... NanoRos::NanoRos)` to swallow.
+    if(NANO_ROS_RMW STREQUAL "zenoh")
+        target_compile_definitions(NanoRos INTERFACE NROS_RMW_ZENOH_CFFI=1)
+    elseif(NANO_ROS_RMW STREQUAL "dds")
+        target_compile_definitions(NanoRos INTERFACE NROS_RMW_DDS_CFFI=1)
+    elseif(NANO_ROS_RMW STREQUAL "xrce")
+        target_compile_definitions(NanoRos INTERFACE NROS_RMW_XRCE_CFFI=1)
+    endif()
+elseif(NANO_ROS_RMW STREQUAL "zenoh")
     add_subdirectory(packages/zpico/nros-rmw-zenoh-staticlib)
     # `nros_rmw_zenoh_staticlib-static` is the Corrosion-emitted target
     # from the staticlib sub-project. Whole-archive wrap so the
