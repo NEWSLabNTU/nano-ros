@@ -167,13 +167,38 @@ keep-alive + query-reply path through zenoh-pico's
 
 **Suggested debug path.**
 
-- [x] **155.C.1.** Client stdout captured via `nextest
-      --no-capture`. Pre-fix shape:
+- [x] **155.C.1.** Captured both server and client side.
+      **Client** (via `nextest --no-capture`):
       `nros C++ Service Client (FreeRTOS) / Node created /
       Service client ready / Call [1] failed: -2 (Timeout)`.
-      Server output not currently captured by `start_pair`;
-      need a per-process stdout split (see `RtosProcess`
-      enum).
+      **Server**: `nros::init(&app.support, locator,
+      domain_id) -> -100` (`NROS_CPP_RET_TRANSPORT_ERROR`)
+      — server never reaches "Waiting for requests", so
+      every client call times out. Same root-cause shape
+      as 155.B's C-side `nros_support_init -> -1`:
+      `nros_cpp_init` collapsed every `NodeError` from
+      `CppExecutor::open` to TRANSPORT_ERROR with no
+      indication which variant tripped.
+      Fix: `packages/core/nros-cpp/src/lib.rs`
+      `nros_cpp_init` now decodes via a new
+      `node_error_to_cpp_ret(NodeError)` helper —
+      NameTooLong → INVALID_ARGUMENT; BufferTooSmall →
+      FULL; Timeout → TIMEOUT; NotInitialized → NOT_INIT;
+      RequestInFlight → REENTRANT; Transport variants
+      mapped further (ConnectionFailed/Disconnected stay
+      TRANSPORT_ERROR; Timeout/WouldBlock → TIMEOUT;
+      InvalidConfig → INVALID_ARGUMENT; Buffer/Message/
+      TooLarge → FULL; rest → TRANSPORT_ERROR). Pairs
+      with Phase 155.B.1's C-side mapping so all three
+      `nros::init` / `nros_support_init` paths surface
+      specific codes. Next FreeRTOS C++ + RV64 C++ run
+      logs identify which precondition the backend
+      rejected; 155.C.2 / .C.3 branch on that code.
+      Server stdout split still TODO at the test-harness
+      level (RtosProcess enum, `start_pair`); the
+      current diagnostic uses single-instance reruns
+      (`cargo nextest run … service_e2e … --no-capture`)
+      with one process at a time.
 - [ ] **155.C.2.** Run zenohd with `ZENOHD_LOG=trace` to see
       whether queries flow at all.
 - [ ] **155.C.3.** Compare to ThreadX-Linux C++ service (which

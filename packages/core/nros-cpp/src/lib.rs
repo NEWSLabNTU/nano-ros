@@ -518,7 +518,38 @@ pub unsafe extern "C" fn nros_cpp_init(
             unsafe { core::ptr::write(storage as *mut CppContext, ctx) };
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        // Phase 155.C — surface the inner `NodeError` variant as a
+        // specific `NROS_CPP_RET_*` code instead of collapsing every
+        // backend failure to TRANSPORT_ERROR. Mirrors the C-side
+        // `transport_error_to_ret` mapping from Phase 155.B so the
+        // next `nros::init -> -X` log line in the FreeRTOS / RV64
+        // C++ tests identifies which precondition the backend
+        // rejected.
+        Err(e) => node_error_to_cpp_ret(e),
+    }
+}
+
+/// Phase 155.C — map `NodeError` to the closest `NROS_CPP_RET_*` code.
+/// Unknown variants stay TRANSPORT_ERROR (-100) — the legacy catch-all.
+#[cfg(feature = "rmw-cffi")]
+fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t {
+    use nros_node::NodeError as E;
+    use nros_rmw::TransportError as T;
+    match err {
+        E::NameTooLong => NROS_CPP_RET_INVALID_ARGUMENT,
+        E::Serialization | E::Deserialization => NROS_CPP_RET_ERROR,
+        E::BufferTooSmall => NROS_CPP_RET_FULL,
+        E::Timeout => NROS_CPP_RET_TIMEOUT,
+        E::NotInitialized => NROS_CPP_RET_NOT_INIT,
+        E::RequestInFlight => NROS_CPP_RET_REENTRANT,
+        E::Transport(t) => match t {
+            T::ConnectionFailed | T::Disconnected => NROS_CPP_RET_TRANSPORT_ERROR,
+            T::Timeout | T::WouldBlock => NROS_CPP_RET_TIMEOUT,
+            T::InvalidConfig => NROS_CPP_RET_INVALID_ARGUMENT,
+            T::BufferTooSmall | T::MessageTooLarge | T::TooLarge => NROS_CPP_RET_FULL,
+            _ => NROS_CPP_RET_TRANSPORT_ERROR,
+        },
+        _ => NROS_CPP_RET_TRANSPORT_ERROR,
     }
 }
 
