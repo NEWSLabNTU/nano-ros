@@ -47,6 +47,12 @@ ln -sfn "$INTEGRATION" "$EXT/nano-ros"
 # time from the example's config.toml. The make build's CFLAGS
 # additions for `<NANO_ROS_ROOT>/<example>/generated/include`
 # (added by the per-example Makefile in 157.A) pick it up.
+# Phase 157.C.17 — also accumulate cpp FFI staticlib paths into
+# a central Make fragment that the integration shell's Make.defs
+# `-include`s. Per-example EXTRA_LIBS additions don't propagate
+# to the kernel link; only the shell's Make.defs does.
+shell_extras="$EXT/nano-ros/extra_libs.mk"
+: > "$shell_extras"
 staged_dirs=()
 for lang in c cpp; do
     for example in talker listener service-server service-client action-server action-client; do
@@ -106,6 +112,33 @@ done
     echo ""
     echo "endmenu"
 } > "$EXT/Kconfig"
+
+# Phase 157.C.17 — collect cpp FFI staticlib paths across every
+# cpp example into the shell-level extras_mk, deduped by lib
+# basename. Each cpp example's gen-cpp-ffi-crates.py emits one
+# `lib<crate>.a` per resolved package; multiple examples sharing
+# package deps (e.g. talker + listener both need std_msgs +
+# builtin_interfaces) produce SEPARATE staticlibs that all
+# define the same `nros_cpp_*` symbols → "multiple definition"
+# at kernel link. Pick one path per unique basename (last writer
+# wins — prefer the example with the longest dep chain since its
+# staticlibs include!() the most ffi.rs files).
+declare -A seen_basename
+declare -A path_for_basename
+for example_extras in $(ls -t "$ROOT"/examples/qemu-arm-nuttx/cpp/zenoh/*/generated/ffi/extra_libs.mk 2>/dev/null); do
+    while IFS= read -r line; do
+        # Line shape: `EXTRA_LIBS += <abs-path>`
+        lib_path="${line##*= }"
+        base="$(basename "$lib_path")"
+        if [ -z "${seen_basename[$base]:-}" ]; then
+            seen_basename[$base]=1
+            path_for_basename[$base]="$lib_path"
+        fi
+    done < "$example_extras"
+done
+for base in "${!path_for_basename[@]}"; do
+    printf 'EXTRA_LIBS += %s\n' "${path_for_basename[$base]}" >> "$shell_extras"
+done
 
 echo "Staged nano-ros external apps under $EXT/"
 ls -la "$EXT" | sed 's/^/  /'

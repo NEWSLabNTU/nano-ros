@@ -97,13 +97,16 @@ build-fixtures:
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
-# then run `make` from a pre-configured NuttX kernel tree. Exercises
-# the apps/external/*/Make.defs + apps/external/*/Kconfig discovery
-# path that the cmake fixtures (`build-fixtures`) bypass.
+# then run `make` from the NuttX kernel tree. Exercises
+# apps/external/*/Make.defs + apps/external/*/Kconfig discovery
+# (the path cmake fixtures `build-fixtures` bypass).
 #
-# Requires the user to have run a NuttX board configure first
-# (e.g. `./tools/configure.sh boards/arm/qemu/qemu-armv7a/nsh`
-# from $NUTTX_DIR). Without that the recipe skips cleanly.
+# Phase 157.C.17 — recipe owns the NuttX configure step. If
+# `.config` is missing OR lacks `CONFIG_NET=y` (stock
+# qemu-armv7a/nsh defconfig), copies in
+# `packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig`
+# which already has the full networking + TLS_NELEM + virtio-net
+# stack zenoh-pico needs. Same defconfig the cmake bring-up uses.
 build-fixtures-make:
     #!/usr/bin/env bash
     set -e
@@ -118,11 +121,20 @@ build-fixtures-make:
     if [ ! -d "$nuttx_apps_dir" ]; then
         echo "NuttX skip: NUTTX_APPS_DIR=$nuttx_apps_dir not found"; exit 0
     fi
-    if [ ! -f "$nuttx_dir/.config" ]; then
-        echo "NuttX skip: $nuttx_dir/.config missing — run \`./tools/configure.sh boards/...\` first" ; exit 0
-    fi
     if ! command -v kconfig-tweak >/dev/null 2>&1; then
         echo "NuttX skip: kconfig-tweak not on PATH (install kconfig-frontends)"; exit 0
+    fi
+    # Phase 157.C.17 — auto-configure NuttX with the nano-ros
+    # board defconfig if `.config` is missing or lacks networking.
+    # Networking is mandatory: zenoh-pico links bind/sendto/etc.
+    nros_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig"
+    if [ ! -f "$nuttx_dir/.config" ] || ! grep -q "^CONFIG_NET=y" "$nuttx_dir/.config"; then
+        if [ ! -f "$nros_defconfig" ]; then
+            echo "NuttX skip: $nros_defconfig missing — can't auto-configure" ; exit 0
+        fi
+        echo "Configuring NuttX with nano-ros defconfig (CONFIG_NET=y + virtio-net + TLS_NELEM)..."
+        cp "$nros_defconfig" "$nuttx_dir/.config"
+        ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
     fi
     echo "Staging nano-ros external apps into $nuttx_apps_dir/external/..."
     scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir"

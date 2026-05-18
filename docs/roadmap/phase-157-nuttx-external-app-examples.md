@@ -411,18 +411,74 @@ path was bypassing. Each fix unblocks the next layer:
   choice. Recipe could auto-flip CONFIG_NET via kconfig-
   tweak; tracked as 157.C.17.
 
-- [ ] **157.C.17 — NuttX defconfig auto-tune for networking.**
-      Recipe currently runs against the user's pre-configured
-      NuttX board. With stock `qemu-armv7a/nsh` (the doctor
-      hint), zenoh-pico's UDP multicast init can't link.
-      Either:
-        (a) recipe forcibly enables `CONFIG_NET + UDP +
-            SOCKOPTS + NETDEV_*` via kconfig-tweak alongside
-            the existing NROS toggles.
-        (b) recipe REQUIRES the `full` defconfig + skips
-            with hint if `CONFIG_NET=n`.
-      Option (a) preferred — recipe owns the build's
-      requirements end-to-end.
+- [x] **157.C.17 — auto-defconfig + POSIX C-port + FFI symbol dedupe → all 12 linked, E2E green.**
+
+  Three orthogonal fixes that close the make-build end-to-end:
+
+  (1) Auto-defconfig. Recipe now copies
+  `packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/
+  defconfig` to `$NUTTX_DIR/.config` when `.config` is missing
+  OR lacks `CONFIG_NET=y` — the nano-ros board defconfig
+  already has NET + UDP + TCP + IGMP + virtio-net + TLS_NELEM
+  + the rest of the stack zenoh-pico needs. Same defconfig the
+  cmake bring-up uses, so user `./tools/configure.sh ...`
+  step is no longer mandatory.
+
+  (2) POSIX C-port. NuttX has no `nros-platform-nuttx` Rust
+  crate emitting the canonical `nros_platform_*` ABI. But
+  NuttX provides POSIX threading + clocks + semaphores via
+  its libc, so the existing
+  `packages/core/nros-platform-posix/src/platform.c` (the
+  POSIX C-port — every libc-bearing platform's canonical
+  implementation) compiles cleanly under arm-none-eabi-gcc
+  against NuttX's POSIX headers. Integration shell's
+  `Make.defs` CSRCS now lists it; CFLAGS gets the
+  `nros-platform-cffi/include` dir so `#include
+  <nros/platform.h>` resolves. Obviates a dedicated nuttx
+  platform crate.
+
+  (3) FFI symbol dedupe + `--allow-multiple-definition`.
+  Each cpp example's gen-cpp-ffi-crates.py emits
+  `lib<crate>.a` per resolved pkg. Different examples sharing
+  pkg deps produce DIFFERENT staticlibs that define
+  overlapping `nros_cpp_*` symbols (each ffi crate
+  `include!()`s every preceding pkg's ffi.rs files; the
+  superset depends on each example's resolved-deps chain).
+  Staging script dedupes by lib basename (last writer wins —
+  prefers the example with the deepest dep chain); kernel
+  link still hits residual overlaps because the deepest chain
+  isn't always a superset (talker has std_msgs+
+  builtin_interfaces; action-server has example_interfaces
+  +action_msgs+unique_identifier_msgs+builtin_interfaces;
+  neither covers the other's std_msgs / example_interfaces
+  leaf). Add `--allow-multiple-definition` to EXTRA_LIBPATHS
+  — codegen output is deterministic so byte-identical
+  overlapping defs are safe. Also tolerates the
+  libnros_c.a + libnros_cpp.a overlap on
+  `nros_rmw_cffi_*` (each lib carries its own
+  nros-rmw-cffi monomorphisation).
+
+  **Verified:**
+    * `just nuttx build-fixtures-make` → **exit 0**.
+    * `nm $NUTTX_DIR/nuttx | grep -E "nuttx_(c|cpp)_.*_main\b"
+      | wc -l` → **12** (all 6 C + 6 CPP examples).
+    * `cargo nextest run -p nros-tests --test nuttx_make_e2e`
+      → **1 passed / 0 skipped** with the full 12-example
+      check list.
+
+  **Phase 157 complete end-to-end.** Canonical NuttX
+  external-app build path for all C + C++ examples works.
+  Carved-out follow-ups:
+
+- [ ] **158.x — proper `sem_t`-backed nuttx wake.**
+      Currently `nros_platform_wake_*` stubs return
+      `storage_size=0` → executor falls back to transport
+      spin. Real impl would use NuttX's `sem_t` (POSIX
+      semaphore) following the freertos / threadx / zephyr
+      pattern.
+
+- [ ] **157.C.12 — multi-pass ALLSYMS bootstrap.**
+- [ ] **157.C.13 — incremental rebuild robustness.**
 
 - [x] **157.C.15 — `nros_platform_wake_*` stubs + `nros_app_main` rename + E2E green.**
 

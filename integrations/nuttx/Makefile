@@ -80,6 +80,18 @@ export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 # transport-driven spin. Real `sem_t`-backed implementation is a
 # 158.x follow-up.
 CSRCS = c/platform_wake_stubs.c
+# Phase 157.C.17 — full `nros_platform_*` ABI implementation.
+# NuttX provides POSIX threading + clocks + sockets via its
+# libc, so reuse the POSIX C-port (the canonical implementation
+# for every libc-bearing platform). It compiles cleanly under
+# arm-none-eabi-gcc against NuttX's POSIX headers + supplies all
+# the symbols zenoh-pico's `platform_aliases.c` shim wraps
+# (`nros_platform_mutex_*`, `_task_*`, `_time_now_ms`, etc.).
+# This obviates a dedicated `nros-platform-nuttx` Rust crate.
+CSRCS += $(NANO_ROS_ROOT)/packages/core/nros-platform-posix/src/platform.c
+# Include the platform.h header in CFLAGS so the POSIX port's
+# `#include <nros/platform.h>` resolves.
+CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/core/nros-platform-cffi/include
 
 # Phase 157.C — resolve the real nano-ros repo root via the
 # `apps/external/nano-ros` symlink (which points at

@@ -47,6 +47,27 @@ ifneq ($(CONFIG_NROS_CPP_API),)
 EXTRA_LIBS    += $(NROS_CARGO_LIB_DIR)/libnros_cpp.a
 endif
 EXTRA_LIBPATHS+= -L$(NROS_CARGO_LIB_DIR)
+# Phase 157.C.17 — per-package C++ FFI staticlibs. The staging
+# script (scripts/nuttx/stage-external-apps.sh) populates this
+# fragment with one `EXTRA_LIBS += <path>` per built FFI crate
+# (across every cpp example) so the kernel link finds the
+# `nros_cpp_serialize/deserialize_<pkg>_<type>` symbols.
+# `-include` silently no-ops when the fragment is missing
+# (CPP_API off / no cpp examples staged).
+-include $(APPDIR)/external/nano-ros/extra_libs.mk
+# Phase 157.C.17 — `--allow-multiple-definition` tolerates the
+# overlapping symbols across:
+#   (a) libnros_c.a + libnros_cpp.a (each carries its own
+#       nros-rmw-cffi monomorphisation; both define
+#       `nros_rmw_cffi_*`).
+#   (b) per-example FFI staticlibs whose `include!()` chains
+#       overlap (e.g. ffi_std_msgs + ffi_example_interfaces
+#       both define `nros_cpp_*_builtin_interfaces_*`).
+# Codegen output is deterministic so the conflicting defs are
+# byte-identical; first-wins is safe. Routed through
+# EXTRA_LIBPATHS because NuttX's kernel link rule passes that
+# to `ld` directly (`$(LD) ... $(EXTRA_LIBPATHS) ...`).
+EXTRA_LIBPATHS += --allow-multiple-definition
 endif
 
 # Phase 157.C.8 — per-build `nros_config_generated.h` lands at
