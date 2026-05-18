@@ -143,7 +143,7 @@ Closed by Phase 159 (`7205eb4d`). Three fixes converged:
 Verified 2026-05-19: full rtos_e2e matrix 36/36 PASS including
 all 6 NuttX C/C++ tests in this cluster.
 
-### E. ESP32 emulator (3 tests) → **env-gated**
+### E. ESP32 emulator (3 tests) → **real failure (NOT env-gated)**
 
 ```
 test_esp32_talker_listener_e2e
@@ -151,11 +151,24 @@ test_esp32_to_native
 test_native_to_esp32
 ```
 
-**Root cause.** ESP-IDF + Rust ESP32 toolchain (espflash, riscv32imc
-nightly) not bootstrapped on CI host; tests fail rather than
-`[SKIPPED]`. Phase 150 G covered the env-skip pattern but ESP32
-emulator wasn't included. Tracked as **160.E** (extend
-`nros_tests::skip!` precondition checks).
+**Verified 2026-05-19.** `require_esp32_networked()` already
+wires `nros_tests::skip!` for missing prerequisites. All four
+checks pass on this host (qemu-system-riscv32 + espflash +
+riscv32imc-unknown-none-elf target + zenohd) → real test runs,
+real test fails on documented bug:
+
+> TODO(phase-89.4-followup): firmware reaches TCP-SYN and slirp
+> replies with SYN-ACK, but the ESP32 side's smoltcp never emits
+> the final ACK, so the handshake stalls and zpico returns
+> `Transport(ConnectionFailed)`. The DMA-buffer lifetime bug in
+> the OpenETH driver was fixed; remaining stall is a deeper
+> RX/TX coordination issue in the bare-metal OpenETH smoltcp
+> integration.
+> — `packages/testing/nros-tests/tests/esp32_emulator.rs:205-211`
+
+So 160.E is NOT skip-wiring — it's a real Phase 89.4-tier
+OpenETH/smoltcp RX-coordination bug. Move tracking to a Phase
+89.4 follow-up phase.
 
 ### F. QEMU bare-metal RTIC + serial (5 tests)
 
@@ -262,7 +275,7 @@ c_xrce_api family + native_talker_listener_communication C variant
 + qos / overflow scattered fails. Each one-off — investigate
 individually.
 
-### M. Integration shells (2 tests)
+### M. Integration shells (3 tests) → **phantom — already `[SKIPPED]`**
 
 ```
 esp_idf_integration_shell_smoke
@@ -270,9 +283,18 @@ nuttx_external_apps_link_into_kernel_binary
 px4_integration_template_smoke
 ```
 
-Phase 139 / 157 integration-shell smoke tests. Each gated on
-having that vendor SDK staged; convert to `skip!` when env
-absent.
+**Verified 2026-05-19.** All three already call
+`nros_tests::skip!` for missing env (IDF_PATH / PX4_AUTOPILOT_DIR
+/ NUTTX_APPS_DIR staging). Direct test-run output:
+```
+[SKIPPED] nano-ros not staged under ... — run `just nuttx build-fixtures-make`
+[SKIPPED] idf.py not on PATH — install ESP-IDF >=5.1
+[SKIPPED] PX4_AUTOPILOT_DIR unset
+```
+nextest reports these as panics ("[SKIPPED]"-prefixed message);
+the JUnit post-processor in `justfile::_count-real-failures`
+correctly reclassifies them as `[SKIPPED]`, same as cluster G.
+No action needed.
 
 ## Remediation status
 
@@ -282,7 +304,7 @@ absent.
 | B. Zephyr Cortex-A9 DDS Rust | 4 | dust-dds-on-A9 / Cortex-A9 Rust patch | New (160.B) |
 | C. Zephyr cross-host bridge | 8 | cascades from A | Closes with A |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
-| E. ESP32 emulator | 3 | env precondition not enforced | 160.E `skip!` wiring |
+| E. ESP32 emulator | 3 | OpenETH RX/TX stall (NOT env) | Phase 89.4 follow-up |
 | F. RTIC + serial bare-metal | 5 | Phase 132 / 141 RTIC regression | Triage → 132 or 141 |
 | G. cmake_platform_matrix cross | 4 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | H. nano2nano + bridges | 4 | XRCE `g_session` process-globals | Phase 156 follow-up |
@@ -290,7 +312,7 @@ absent.
 | J. RV64 C pubsub | 1 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
 | L. Native + c_xrce + qos | 8 | scattered, one-offs | Per-test triage |
-| M. Integration shells | 3 | env precondition not enforced | 160.M `skip!` wiring |
+| M. Integration shells | 3 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | skipped | 12 | env (expected) | OK |
 | **total** | **66** unique (63 + 3 retries-only) | | |
 
