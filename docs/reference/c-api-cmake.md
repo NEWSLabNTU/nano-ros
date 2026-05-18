@@ -54,7 +54,7 @@ nano_ros_generate_interfaces(${PROJECT_NAME}
 )
 ```
 
-Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<install_prefix>/share/nano-ros/interfaces/<target>/<file>`.
+Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<nano-ros-repo-root>/share/nano-ros/interfaces/<target>/<file>` (the in-tree bundled-interfaces fallback; `_NANO_ROS_PREFIX` resolves to the `add_subdirectory`'d repo root, NOT a system install prefix — Phase 140 deleted those).
 
 Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_type_t`) are all defined in `nros/types.h`.
 

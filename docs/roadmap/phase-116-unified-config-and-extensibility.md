@@ -14,7 +14,7 @@
 The cross-RTOS UX research identified three convergent long-term improvements that all hinge on a single declarative project file:
 
 1. **Config sprawl.** PlatformIO collapses the build matrix into one `platformio.ini`. nano-ros has 4–5 parallel knobs per example. A `nano-ros.toml` analogue restores the single-source-of-truth.
-2. **No 3rd-party C/C++ package manager.** PlatformIO `lib_deps`, ESP-IDF Component Registry, Arduino Library Registry all converge on the same shape: declarative manifest, named versions, transitive resolution. nano-ros has nothing for C/C++ users beyond `find_package(NanoRos)`.
+2. **No 3rd-party C/C++ package manager.** PlatformIO `lib_deps`, ESP-IDF Component Registry, Arduino Library Registry all converge on the same shape: declarative manifest, named versions, transitive resolution. nano-ros has nothing for C/C++ users beyond `add_subdirectory(<nano-ros>)` (Phase 140 — `find_package(NanoRos)` is gone).
 3. **Per-board crate per chip.** PIO/Arduino/Mbed = JSON / FQBN string. nano-ros = full Rust crate. Adding STM32F7 to an STM32F4 codebase = new crate. A board descriptor TOML on top of family runtime crates flattens this.
 
 These three are co-designed because the config schema, the registry, and the board names share vocabulary.
