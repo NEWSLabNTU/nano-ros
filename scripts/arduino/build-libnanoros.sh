@@ -13,11 +13,18 @@
 #                            `$repo/esp-idf-workspace/esp-idf`). Must be
 #                            populated first via `just esp_idf setup`.
 #   ARDUINO_LIB_TARGETS      Comma-separated chip list (default:
-#                            "esp32c3,esp32s3,esp32"). Each chip maps
-#                            to an Arduino-IDE arch subdir:
+#                            "esp32c3"). Each chip maps to an
+#                            Arduino-IDE arch subdir:
 #                              esp32c3 → arduino/nros/src/esp32c3/
 #                              esp32s3 → arduino/nros/src/esp32s3/
 #                              esp32   → arduino/nros/src/esp32/
+#
+#                            ESP32-C3 (RISC-V) builds out-of-the-box
+#                            with the stock `rustup` `riscv32imc-
+#                            unknown-none-elf` target. ESP32 / ESP32-S3
+#                            (Xtensa) need esp-rs's custom rustc fork
+#                            (`espup install`) — track as
+#                            Phase 23.2.x follow-up.
 #
 # Output layout:
 #   build/arduino/<chip>/   — IDF build dir (cached between runs).
@@ -42,7 +49,7 @@ BUILDER_DIR="$SCRIPT_DIR/idf-builder"
 ARDUINO_LIB_ROOT="$NANO_ROS_ROOT/arduino/nros"
 
 WORKSPACE_DIR="${NROS_ESP_IDF_WORKSPACE:-$NANO_ROS_ROOT/esp-idf-workspace/esp-idf}"
-TARGETS="${ARDUINO_LIB_TARGETS:-esp32c3,esp32s3,esp32}"
+TARGETS="${ARDUINO_LIB_TARGETS:-esp32c3}"
 CLEAN=0
 
 while [[ $# -gt 0 ]]; do

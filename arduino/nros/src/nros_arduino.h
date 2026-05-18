@@ -20,7 +20,14 @@
 extern "C" {
 #endif
 
-#include <nros/init.h>
+// Note: do NOT `#include <nros/init.h>` here. That header pulls
+// `nros_generated.h` which references per-build size macros
+// (`SERVICE_SERVER_OPAQUE_U64S` etc.) emitted by `nros-c`'s
+// build.rs into `CORROSION_BUILD_DIR/nros_config_generated.h`.
+// Sketches that need the nros C API include `<nros/init.h>` /
+// `<nros/node.h>` / etc. themselves — and Arduino's precompiled-
+// library link path makes the size header visible at the right
+// time via the bundled `libnanoros.a`.
 
 // ────────────────────────────────────────────────────────────────────
 // Error-handling macros (mirror micro-ROS's RCCHECK / RCSOFTCHECK)

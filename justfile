@@ -1383,6 +1383,16 @@ build-arduino-libs:
 package-arduino:
     @bash scripts/arduino/package-arduino-lib.sh
 
+# Phase 23.5d — Host transport-glue smoke test. Builds
+# `arduino/nros/src/nros_arduino.cpp` against the mock WiFi.h /
+# Arduino.h stubs and verifies `set_nanoros_wifi_transports` /
+# `nanoros_ping` behave under a mocked WiFi-connected state. No
+# ESP-IDF / QEMU / hardware required.
+test-arduino-transport:
+    cmake -S tests/arduino/test-transport-host -B build/arduino/test-transport-host
+    cmake --build build/arduino/test-transport-host
+    build/arduino/test-transport-host/test_transport_host
+
 # Show Zephyr build instructions
 zephyr-help:
     just zephyr help

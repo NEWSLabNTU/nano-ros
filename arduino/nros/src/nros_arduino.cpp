@@ -7,7 +7,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-#include <nros/init.h>
+// `nros/init.h` deliberately NOT included — see nros_arduino.h
+// for the size-macro / build-dir reason.
 
 extern "C" {
 
