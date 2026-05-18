@@ -225,17 +225,30 @@ attribute) signature.
 
 **Suggested debug path.**
 
-- [ ] **155.E.1.** Verify whether the Rust-side build (which
-      passes) somehow avoids the include collision. Maybe
-      picolibc isn't on the Rust include path but is on the
-      cmake-build path.
-- [ ] **155.E.2.** Define `NX_BSD_TIMEVAL_DEFINED` (or
-      similar guard in nxd_bsd.h) so the conflicting typedef
-      is suppressed when picolibc / newlib provides
-      `suseconds_t`.
-- [ ] **155.E.3.** Or: forward-declare `nx_bsd_suseconds_t`
-      as a fixed-width type in `nx_user.h` so picolibc's
-      definition isn't reached.
+- [x] **155.E.1.** Root cause confirmed (commit `aab273ab`):
+      `threadx_glue` cmake compile passed only
+      `TX_INCLUDE_USER_DEFINE_FILE` + `NROS_PLATFORM_BAREMETAL`;
+      missing `NX_BSD_ENABLE_NATIVE_API` made `nxd_bsd.h`
+      hit the alias-typedef path that collides with
+      picolibc's `suseconds_t`. Same flag the Rust-side
+      build sets via zpico-sys manifest.
+- [x] **155.E.2.** Fixed by adding
+      `NX_BSD_ENABLE_NATIVE_API` + `NX_INCLUDE_USER_DEFINE_FILE`
+      to `nros_threadx_build_glue(... DEFINES ...)` in
+      `cmake/board/nano-ros-board-riscv64-qemu.cmake`.
+- [x] **155.E.3.** Plus toolchain-level fixes: picolibc +
+      cxx-compat `-isystem` paths in
+      `cmake/toolchain/riscv64-threadx.cmake`; gcc-driver
+      flag filter (`-nostartfiles` etc.) in
+      `cmake/toolchain/riscv64-lld-wrapper.sh` so lld
+      stops erroring on flags it doesn't understand.
+
+**Acceptance — partial.** `just threadx_riscv64
+build-fixtures` clean through Rust + C + C++ build. RISC-V
+C / C++ E2E reaches runtime but tests fail with
+`nros_support_init -> -1` — same shape as 155.B (FreeRTOS C).
+The 155.B fix once it lands will also unblock RISC-V C / C++
+matrix.
 
 ## Notes
 
