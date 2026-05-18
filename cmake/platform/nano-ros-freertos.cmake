@@ -82,19 +82,12 @@ set(_nros_freertos_codegen_module
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_freertos_codegen_module}")
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
-    # Phase 154 (140 follow-up) — pre-cache the codegen tool path
-    # before the submodule's strict NO_DEFAULT_PATH find_program.
-    # Mirrors the same probe in `nano-ros-threadx.cmake`.
-    if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
-        find_program(_NANO_ROS_CODEGEN_TOOL nros-codegen
-            PATHS
-                "${_NANO_ROS_PREFIX}/build/install/bin"
-                "${_NANO_ROS_PREFIX}/bin")
-        if(_NANO_ROS_CODEGEN_TOOL)
-            set(_NANO_ROS_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}"
-                CACHE INTERNAL "Path to nros C codegen tool")
-        endif()
-    endif()
+    # Phase 157.A — shared host-side bootstrap. See
+    # `cmake/NanoRosBootstrapCodegen.cmake` for the resolution
+    # ladder + auto-build behaviour. Replaces the Phase 154 probe
+    # stanza that pointed at the stale `build/install/bin` layout.
+    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBootstrapCodegen.cmake")
+    nros_bootstrap_codegen()
     include("${_nros_freertos_codegen_module}")
 endif()
 

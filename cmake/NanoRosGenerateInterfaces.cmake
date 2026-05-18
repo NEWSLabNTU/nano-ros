@@ -70,17 +70,30 @@ set(_NANO_ROS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 # =========================================================================
 
 if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
+  # Phase 157.A — last-ditch fallback. The POSIX branch of the root
+  # `CMakeLists.txt` pre-caches this via `$<TARGET_FILE:nros-codegen>`
+  # (Corrosion target) + every cross-compile platform module calls
+  # `nros_bootstrap_codegen()` from
+  # `cmake/NanoRosBootstrapCodegen.cmake`. If neither path fired we
+  # try PATH + the canonical host-build location one more time before
+  # erroring out — keeps custom platform integrations that don't go
+  # through the standard modules working.
   find_program(_NANO_ROS_CODEGEN_TOOL nros-codegen
-    PATHS "${_NANO_ROS_PREFIX}/bin"
-    NO_DEFAULT_PATH
+    PATHS
+      "${_NANO_ROS_PREFIX}/packages/codegen/packages/target/release"
   )
 
   if(NOT _NANO_ROS_CODEGEN_TOOL)
     message(FATAL_ERROR
-      "nros-codegen not found in ${_NANO_ROS_PREFIX}/bin\n"
-      "Install with:\n"
-      "  cmake -S <nros-src> -B build && cmake --build build\n"
-      "  cmake --install build --prefix <path>"
+      "nros-codegen not found. Phase 140 deleted the install layout; "
+      "nano-ros is consumed via add_subdirectory(<repo-root>) and the "
+      "codegen tool is built either by the POSIX root branch "
+      "(Corrosion target) or auto-bootstrapped by the cross-compile "
+      "platform modules. Pre-build with:\n"
+      "  cargo build --release -p nros-codegen-c\n"
+      "(run inside packages/codegen/packages/) or pass\n"
+      "  -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros-codegen>\n"
+      "to the consumer's cmake invocation."
     )
   endif()
 

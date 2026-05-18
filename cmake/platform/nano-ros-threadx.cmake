@@ -78,22 +78,13 @@ set(_nros_threadx_codegen_module
     "${CMAKE_CURRENT_LIST_DIR}/../../packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_threadx_codegen_module}")
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
-    # Phase 154 (140 follow-up) — pre-cache the codegen tool path
-    # before the submodule's find_program runs (which only searches
-    # `${_NANO_ROS_PREFIX}/bin` with NO_DEFAULT_PATH). Phase 140
-    # deleted `install-local`, so `nros-codegen` now ships under
-    # `build/install/bin/` (populated by `just generate-bindings`)
-    # or on PATH. Probe both before the submodule's strict search.
-    if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
-        find_program(_NANO_ROS_CODEGEN_TOOL nros-codegen
-            PATHS
-                "${_NANO_ROS_PREFIX}/build/install/bin"
-                "${_NANO_ROS_PREFIX}/bin")
-        if(_NANO_ROS_CODEGEN_TOOL)
-            set(_NANO_ROS_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}"
-                CACHE INTERNAL "Path to nros C codegen tool")
-        endif()
-    endif()
+    # Phase 157.A — shared host-side bootstrap. See
+    # `cmake/NanoRosBootstrapCodegen.cmake` for the resolution
+    # ladder + auto-build behaviour. Replaces the Phase 154 probe
+    # stanza that pointed at the stale `build/install/bin` layout
+    # (Phase 140 deleted that prefix).
+    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBootstrapCodegen.cmake")
+    nros_bootstrap_codegen()
     include("${_nros_threadx_codegen_module}")
 endif()
 
