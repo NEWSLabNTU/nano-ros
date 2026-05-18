@@ -80,7 +80,7 @@ Manifest `[[shared_state]]` → C-ABI struct + Rust + C++ accessors. Tier-aware 
 - `packages/codegen/rosidl-codegen/templates/orchestration/shared_context.rs.jinja`
 - `packages/codegen/rosidl-codegen/templates/orchestration/shared_context.hpp.jinja`
 - Generated crate: `nros_generated_context` (per build target).
-- CMake glue: emit `find_package(NanoRosSharedContext)` config.
+- CMake glue: generated package exposes a `NanoRos::GeneratedSharedContext` INTERFACE library consumed via the existing `add_subdirectory(<nano-ros>)` shape (Phase 137 / 140 / 144). No `find_package(NanoRosSharedContext)` config — that path was removed in Phase 140.
 
 ### 94.D — Multi-tier codegen + cross-tier sync
 

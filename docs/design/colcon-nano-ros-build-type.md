@@ -348,15 +348,22 @@ extern "C" fn _start() -> ! {
 
 #### C/C++: CMake platform support module
 
-The user's `CMakeLists.txt` includes the platform support module and reads `config.toml`:
+The user's `CMakeLists.txt` selects platform + RMW, pulls the
+nano-ros tree in via `add_subdirectory`, and reads `config.toml`:
 
 ```cmake
-find_package(NanoRos CONFIG REQUIRED)
-include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/freertos-support.cmake")
+# Phase 137 / 140 / 144 consumption shape — no find_package(NanoRos),
+# no install-local prefix. Just point at the checked-out nano-ros tree.
+set(NANO_ROS_PLATFORM freertos)
+set(NANO_ROS_RMW zenoh)
+add_subdirectory(${NANO_ROS_DIR} nano_ros)
+
+include("${NANO_ROS_DIR}/cmake/board/nano-ros-board-mps2-an385-freertos.cmake")
 nano_ros_read_config("config.toml")
 
-add_executable(my_node src/main.c ${FREERTOS_STARTUP_SOURCE})
-target_link_libraries(my_node freertos_platform NanoRos::NanoRos)
+add_executable(my_node src/main.c)
+target_link_libraries(my_node PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(my_node)
 target_compile_definitions(my_node PRIVATE
     "APP_IP={${NROS_CONFIG_IP}}"
     "APP_ZENOH_LOCATOR=\"${NROS_CONFIG_ZENOH_LOCATOR}\""
