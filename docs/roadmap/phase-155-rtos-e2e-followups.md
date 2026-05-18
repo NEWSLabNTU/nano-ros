@@ -190,6 +190,39 @@ buffer.
       `zpico_init` / `zpico_open`. Reclassify as a new
       155.B.4 sub-item if it grows beyond a one-line fix.
 
+- [x] **155.B.4.** Root cause for the `-3
+      (NROS_RET_INVALID_ARGUMENT)` from 155.B.3 traced
+      and fixed (this session).
+
+      Trace: `nros_support_init -> open_session ->
+      nros_rmw_cffi_walk_init_section -> CffiRmw.open ->
+      CffiSession::open -> get_vtable() -> InvalidArgument
+      (registry empty)`. The registry was empty because
+      `nros_app_register_backends()` was never called.
+
+      Phase 128.C.2 had deleted the explicit
+      `nros_app_register_backends()` call from
+      `nros_support_init_named` under the assumption that
+      `walk_init_section` / `linkme` would register every
+      backend automatically. But the
+      `nros_rmw_register_backend!` macro in
+      `nros-rmw-zenoh/src/lib.rs:176` documents that
+      `linkme` is a NO-OP on FreeRTOS, NuttX, Zephyr,
+      ESP-IDF — leaving the explicit `register()` call as
+      the only registration path. The sibling
+      `nros_cpp_init` still calls
+      `nros_app_register_backends()` for this exact reason
+      (see `nros-cpp/src/lib.rs:467`).
+
+      Fix: restore the explicit
+      `nros_app_register_backends()` call to
+      `nros_support_init_named`, mirroring `nros_cpp_init`.
+
+      Verified: FreeRTOS C zenoh listener now reaches
+      "Waiting for messages..." and the pubsub E2E receives
+      messages 0..N. `test_rtos_pubsub_e2e
+      Platform__Freertos lang_2_Lang__C` should now pass.
+
 ## Issue 155.C — FreeRTOS C++ service test, 0 responses
 
 **Symptom.** `test_rtos_service_e2e Platform__Freertos

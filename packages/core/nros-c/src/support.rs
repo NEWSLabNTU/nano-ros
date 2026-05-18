@@ -200,6 +200,26 @@ pub unsafe extern "C" fn nros_support_init_named(
     // `nros::internals::open_session` / `Executor::open` call below;
     // the prior `nros_app_register_backends()` weak/strong dance and
     // the legacy `cffi-xrce-c` hook are no longer needed.
+    //
+    // Phase 155.B.4 — Phase 128.C.2's "no longer needed" assumption
+    // doesn't hold on RTOS targets `linkme` doesn't recognise:
+    // FreeRTOS, NuttX, Zephyr, ESP-IDF all silently skip the
+    // distributed-slice entry, so `walk_init_section` finds zero
+    // backends and `get_vtable()` returns
+    // `TransportError::InvalidArgument` (registry empty). The
+    // sibling `nros_cpp_init` still calls
+    // `nros_app_register_backends()` explicitly for this exact
+    // reason. Mirror that here so the C-API path works on the
+    // same RTOSes.
+    #[cfg(feature = "rmw-cffi")]
+    {
+        unsafe extern "C" {
+            fn nros_app_register_backends();
+        }
+        unsafe {
+            nros_app_register_backends();
+        }
+    }
 
     // Initialize the middleware session
     #[cfg(feature = "rmw-cffi")]
