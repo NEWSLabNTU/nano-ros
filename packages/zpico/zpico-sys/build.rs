@@ -669,15 +669,15 @@ fn main() {
         // (ThreadX-RV64) hit `cannot link object files with different
         // floating-point ABI` — rustc emits lp64d while cc-rs picks
         // the bare-metal toolchain default (lp64).
-        if let Some(name) = platform_name {
-            if let Ok(resolved) = platform_manifest.for_platform(name) {
-                for arch_name in &resolved.arch {
-                    if let Some(arch) = platform_manifest.arch.get(arch_name.as_str())
-                        && arch_matches(arch, &target)
-                    {
-                        apply_arch(arch, &mut alias_build, &out_dir);
-                        break;
-                    }
+        if let Some(name) = platform_name
+            && let Ok(resolved) = platform_manifest.for_platform(name)
+        {
+            for arch_name in &resolved.arch {
+                if let Some(arch) = platform_manifest.arch.get(arch_name.as_str())
+                    && arch_matches(arch, &target)
+                {
+                    apply_arch(arch, &mut alias_build, &out_dir);
+                    break;
                 }
             }
         }
