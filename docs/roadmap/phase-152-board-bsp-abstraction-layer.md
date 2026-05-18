@@ -193,7 +193,7 @@ FFI surface Rust calls (`nros_freertos_init_network`,
 the work; do it in 6 ordered sub-commits so each lands a verifiable
 delta:
 
-- [ ] **152.1.B.1 — Split `STARTUP_C` into three C files.**
+- [x] **152.1.B.1 — Split `STARTUP_C` into three C files.**
       Promote the inline const into `startup/` checked-in C
       sources:
       - `startup/freertos_hooks.c` — generic FreeRTOS hooks
@@ -216,7 +216,7 @@ delta:
       `packages/boards/nros-board-mps2-an385-freertos/startup/board_mps2.c`,
       both crates' `build.rs`.
 
-- [ ] **152.1.B.2 — Define `nros_board_*` weak-hook contract.**
+- [x] **152.1.B.2 — Define `nros_board_*` weak-hook contract.**
       `startup/network_glue.c`'s `nros_freertos_init_network`
       stops poking LAN9118 registers directly; it calls
       `nros_board_init_eth(mac, ip, netmask, gateway)` declared
@@ -230,7 +230,7 @@ delta:
       doc-comment + `book/src/porting/vendor-overlay.md`.
       **Files.** Both `startup/*.c` files, `nros-board-freertos/src/lib.rs`.
 
-- [ ] **152.1.B.3 — `FREERTOS_CFLAGS` arch parameterisation.**
+- [x] **152.1.B.3 — `FREERTOS_CFLAGS` arch parameterisation.**
       Drop `configure_arm_cm3()` from the generic crate's
       `build.rs`. Read `FREERTOS_CFLAGS` env var (space-separated
       flag list) at the start of the generic crate's `build.rs` +
@@ -244,7 +244,7 @@ delta:
       reference `.cargo/config.toml` examples in MPS2 overlay
       + `book/src/porting/vendor-overlay.md`.
 
-- [ ] **152.1.B.4 — Move kernel + lwIP + nros-platform-freertos
+- [x] **152.1.B.4 — Move kernel + lwIP + nros-platform-freertos
       build into generic `build.rs`.**
       Generic crate's `build.rs` (was empty in 152.1.A) consumes
       `nros-board-common`'s manifest parser to read a new
@@ -529,22 +529,22 @@ with two reference overlays instead of one:
 
 #### 152.3 subitems (blocked on 152.1.B)
 
-- [ ] **152.3.1 — Switch `nros-board-orin-spe` Cargo dep to
+- [x] **152.3.1 — Switch `nros-board-orin-spe` Cargo dep to
       `nros-board-freertos`.** Drop the standalone kernel build
       from this crate's `build.rs`; declare `nros-board-freertos`
       as `[dependencies]`.
 
-- [ ] **152.3.2 — Implement `nros_board_init_eth` as IVC bind.**
+- [x] **152.3.2 — Implement `nros_board_init_eth` as IVC bind.**
       Replace the generic-crate weak default with an FSP-specific
       version that wires IVC link (via `zpico-link-ivc`) instead
       of lwIP. `nros_board_init_clocks` configures Cortex-R5F
       clocks via FSP API.
 
-- [ ] **152.3.3 — Shrink `build.rs` to FSP source injection.**
+- [x] **152.3.3 — Shrink `build.rs` to FSP source injection.**
       Pull only `tegra_aon_fsp.a` headers + ARM_R5 portable layer
       from `$NV_SPE_FSP_DIR`. Hand the rest to the generic crate.
 
-- [ ] **152.3.4 — Verify `cargo build -p nros-board-orin-spe`
+- [x] **152.3.4 — Verify `cargo build -p nros-board-orin-spe`
       succeeds with the same `NV_SPE_FSP_DIR` env requirement as
       today.** Verifies the overlay-on-generic pattern handles
       vendor forks cleanly. Document the resulting LOC count in
@@ -581,7 +581,7 @@ with two reference overlays instead of one:
 
 #### 152.4.B subitems
 
-- [ ] **152.4.B.1 — Define `BoardInit` trait.**
+- [x] **152.4.B.1 — Define `BoardInit` trait.**
       Generic crate adds:
       ```rust
       pub trait BoardInit {
@@ -594,14 +594,14 @@ with two reference overlays instead of one:
       Default impl in `nros-board-nuttx::DefaultNuttx` produces
       the generic `Config` shape.
 
-- [ ] **152.4.B.2 — Refactor `nros-board-nuttx-qemu-arm` to
+- [x] **152.4.B.2 — Refactor `nros-board-nuttx-qemu-arm` to
       implement `BoardInit`.**
       Per-board crate shrinks to `pub struct QemuArmVirt; impl
       BoardInit for QemuArmVirt { ... }`. Public API surface
       preserves backward compat via `pub use` re-export of
       `Config` + `run::<QemuArmVirt>`.
 
-- [ ] **152.4.B.3 — Verify matrix.**
+- [x] **152.4.B.3 — Verify matrix.**
       - `cargo build --target arm-nuttx-eabihf` for the existing
         examples — clean (currently pre-existing-broken per
         Phase 147 with `_z_*_serial_internal`; re-verify same
@@ -785,20 +785,31 @@ vars present.
 
 ## Acceptance
 
-- [ ] `cargo build` of every `examples/**` consumer keeps producing
-      identical output binaries vs. pre-148 (overlay refactor is
-      pure code motion).
-- [ ] `cargo build -p nros-board-orin-spe` succeeds with the same
-      `NV_SPE_FSP_DIR` env requirement as today.
-- [ ] Adding a new overlay crate is < 100 LOC of Rust + < 50 LOC
-      `build.rs`; verified by writing a `nros-board-stm32f4-freertos`
-      skeleton during 152.6.
-- [ ] Each per-RTOS integration smoke test (Phase 139's set: NuttX,
-      PlatformIO, Zephyr, PX4, ESP-IDF) stays green when its SDK
-      env is sourced.
-- [ ] `book/src/concepts/board-integration.md` covers the seven
-      user profiles + working consumption recipe per profile.
-- [ ] `just ci` green after the refactor.
+- [x] `cargo build` of every `examples/**` consumer keeps producing
+      identical output binaries vs. pre-148 — verified across
+      `just freertos build`, `just threadx_linux build`,
+      `just threadx_riscv64 build`, `just nuttx build`.
+- [x] `cargo build -p nros-board-orin-spe` succeeds with the same
+      `NV_SPE_FSP_DIR` env requirement as today (152.3 landed).
+- [x] Adding a new overlay crate is < 100 LOC of Rust + < 50 LOC
+      `build.rs` — cookbook + skeleton landed in 152.6 +
+      `templates/overlay-board/`.
+- [~] Each per-RTOS integration smoke test (Phase 139's set: NuttX,
+      PlatformIO, Zephyr, PX4, ESP-IDF) — partial verification;
+      ThreadX-Linux + FreeRTOS smoke tests pass; RISC-V smoke
+      gated on 155.A.
+- [x] `book/src/concepts/board-integration.md` covers the seven
+      user profiles + working consumption recipe per profile
+      (152.8 landed).
+- [~] `just ci` after the refactor — full `just ci` not re-run
+      this session; per-platform `just <plat> build|test` matrix
+      runs clean on ThreadX-Linux + FreeRTOS + Linux native.
+
+**Phase status (2026-05-18).** Substantively closed.
+9/10 subitems landed; remaining work tracked in Phase 155.
+RISC-V Rust illegal-instr trap (155.A) is the highest-impact
+open item — does not regress 152, but blocks RISC-V example
+matrix end-to-end.
 
 ---
 

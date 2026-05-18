@@ -10,10 +10,18 @@ ThreadX-Linux + FreeRTOS + ThreadX-RISC-V `rtos_e2e` (Rust + C++
 variants; C variants pass because their code paths happen to
 avoid the broken caller/callee pair).
 
-**Status.** Open. Surfaced during 152.2.B verify (after the
-RISC-V float-ABI fix in `444a6d06` unblocked link, the next-
-layer ABI mismatch produced `sendto(fd=0, buf=3,
+**Status.** Substantively closed 2026-05-18. ThreadX-Linux
+9/9 + FreeRTOS Rust 3/3 + Cpp 2/3 PASS via Option A (accessor
+helpers + scoped NROS_PLATFORM_ALIASES flip + opaque storage
+size bump). Surfaced during 152.2.B verify (after the RISC-V
+float-ABI fix in `444a6d06` unblocked link, the next-layer
+ABI mismatch produced `sendto(fd=0, buf=3,
 len=18446744073498616880, …)` strace traces).
+
+Four downstream issues spun off into Phase 155 (not 154
+regressions): RISC-V Rust illegal-instr, FreeRTOS C
+`nros_support_init -1`, FreeRTOS Cpp service 0-responses,
+RISC-V cmake env-var leak.
 
 **Priority.** Medium. Blocks ~18 `rtos_e2e` tests across three
 platforms. Build / link still clean — runtime-only failure.
@@ -176,7 +184,7 @@ radius, future-proof against opaque-layout changes.
 
 ### 154.1 — Diagnose
 
-- [ ] **154.1.1.** Confirm reproducer matrix.
+- [x] **154.1.1.** Confirm reproducer matrix.
   Run `just threadx_linux test-all`, `just freertos test-all`,
   `just threadx_riscv64 test-all` against current `main`.
   Capture which tests fail with `Transport(ConnectionFailed)`
@@ -185,14 +193,14 @@ radius, future-proof against opaque-layout changes.
   fail at the connect → send boundary.
   **Files.** N/A (read-only). Record matrix in this doc.
 
-- [ ] **154.1.2.** Trace one failure per affected platform with
+- [x] **154.1.2.** Trace one failure per affected platform with
   strace (Linux) / QEMU debug log (RISC-V / FreeRTOS) to
   confirm the same arg-shift signature as the
   `sendto(fd=0, buf=3, len=huge)` pattern documented above.
 
 ### 154.2 — Design `nros_platform_*` accessors
 
-- [ ] **154.2.1.** Inventory every concrete-struct field
+- [x] **154.2.1.** Inventory every concrete-struct field
   access in `c/zpico/zpico.c`, `c/platform/threadx/task.c`,
   and any other TU that reads `_z_sys_net_socket_t._fd` /
   `_z_task_t._fun` / etc. Grep:
@@ -200,7 +208,7 @@ radius, future-proof against opaque-layout changes.
   grep -rn "_z_sys_net_socket_t\|_z_task_t\|_socket\._fd\|->_fun\|->_arg" \
        packages/zpico/zpico-sys/c/
   ```
-- [ ] **154.2.2.** Design accessor surface in
+- [x] **154.2.2.** Design accessor surface in
   `packages/core/nros-platform/include/nros/platform_net.h` (or
   a new `platform_socket.h`). Cover:
   - `nros_platform_socket_get_fd / _set_fd`
@@ -211,7 +219,7 @@ radius, future-proof against opaque-layout changes.
   Decide whether accessors take by-pointer or by-value (32 B
   by-value crosses the 16 B SysV register threshold — must be
   by-pointer to keep the wrapper cheap).
-- [ ] **154.2.3.** Per-RTOS implementation. Each platform's
+- [x] **154.2.3.** Per-RTOS implementation. Each platform's
   existing concrete struct already has the fields; the
   accessor just `&sock->_fd` etc. The alias TU's opaque
   storage gets matching accessors that cast the opaque blob
@@ -219,17 +227,17 @@ radius, future-proof against opaque-layout changes.
 
 ### 154.3 — Refactor callsites
 
-- [ ] **154.3.1.** Swap field access for accessor calls in
+- [x] **154.3.1.** Swap field access for accessor calls in
   `c/zpico/zpico.c`, `c/platform/threadx/task.c`, any other
   hits from 154.2.1.
-- [ ] **154.3.2.** Add `NROS_PLATFORM_ALIASES` to the vendor
+- [x] **154.3.2.** Add `NROS_PLATFORM_ALIASES` to the vendor
   zenoh-pico build (`packages/zpico/zpico-sys/build.rs`,
   `build_zenoh_pico_unified`, after Step 6 defines). Add
   `{nros}/c/zpico` to the threadx platform's
   `include_paths` in `zenoh_platforms.toml` so the
   generic dispatcher's `#include "nros_zenoh_generic_platform.h"`
   resolves.
-- [ ] **154.3.3.** Per-file `#undef` audit. Any TU that still
+- [x] **154.3.3.** Per-file `#undef` audit. Any TU that still
   needs the concrete layout (e.g. some `c/platform/<rtos>/`
   files that pre-date the accessors) gets a localized
   `#undef NROS_PLATFORM_ALIASES` + comment pointing at this
@@ -237,18 +245,24 @@ radius, future-proof against opaque-layout changes.
 
 ### 154.4 — Verify
 
-- [ ] **154.4.1.** `just freertos build|test|test-all` clean.
-- [ ] **154.4.2.** `just threadx_linux build|test|test-all` clean.
-- [ ] **154.4.3.** `just threadx_riscv64 build|test|test-all`
-  clean (the link blocker from 152.2.B-followup `444a6d06`
-  cleared; the runtime side reaches Rust closure now).
-- [ ] **154.4.4.** strace the post-fix
-  `_z_send_tcp` callsite. Expect
-  `sendto(fd=<correct>, buf=<real ptr>, len=<real>, …)` with no
-  `ENOTSOCK`.
-- [ ] **154.4.5.** Native nano2nano talker / listener still
-  passes (regression catch — accessor wrappers must not slow
-  down POSIX path).
+- [~] **154.4.1.** `just freertos build|test|test-all` —
+  Rust 3/3 + Cpp 2/3 PASS; Cpp service + all C variants
+  fail (tracked in 155.B / 155.C).
+- [x] **154.4.2.** `just threadx_linux build|test|test-all` —
+  9/9 PASS (Rust + C + Cpp × pubsub + service + action).
+- [~] **154.4.3.** `just threadx_riscv64 build|test|test-all`
+  — Rust still hits illegal-instruction at corrupt sp
+  inside `.text`. Downstream of 154 ABI fix (binary now
+  reaches Rust closure; previously failed at link). Tracked
+  in 155.A. C / C++ build blocked by cmake env-var leak
+  (155.D).
+- [x] **154.4.4.** strace post-fix `_z_send_tcp` —
+  `sendto(3, "\25\0\201\t…", 23, 0, NULL, 0) = 23`
+  (was `sendto(0, 0x3, 18446744073498616880, 0, NULL, 0)
+  = -1 ENOTSOCK`). ABI clean.
+- [~] **154.4.5.** Native nano2nano — not re-verified this
+  session; accessor is static-inline + zero-cost on POSIX
+  so no regression expected.
 
 ### 154.5 — Documentation
 
@@ -257,7 +271,7 @@ radius, future-proof against opaque-layout changes.
   (or wherever the platform ABI surface is documented). Link
   to this phase doc for the failure case it prevents.
 - [ ] **154.5.2.** Update `MEMORY.md` "Known Issues" entry once
-  closed.
+  fully closed (after 155.A unblocks RISC-V Rust).
 
 ## Acceptance
 
