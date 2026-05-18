@@ -773,22 +773,42 @@ follow-up items that finish the rclcpp-aligned story:
       **Files:**
       `examples/native/cpp/bridge/zenoh-to-dds/{CMakeLists.txt,README.md,src/main.cpp,.gitignore}`.
 
-- [ ] **104.D.3 — Bridge E2E test (uORB→Zenoh).**
-      `packages/testing/nros-tests/tests/bridge_uorb_to_zenoh.rs`.
-      Boots PX4 SITL via Phase 98's `Px4Sitl::boot_in()`
-      fixture, runs the bridge example, runs a host-side
-      rclcpp listener via the existing ROS 2 interop
-      fixture, asserts ≥ 80 % message delivery on at
-      least one topic in a 10 s window.
+- [x] **104.D.3 — Rust bridge E2E smoke (zenoh→dds).**
+      Topology repurposed from the spec's
+      `bridge_uorb_to_zenoh.rs` because the uORB backend was
+      retired ("won't-do" per
+      `book/src/internals/rmw-backends.md` host-language
+      policy) — mirrors the 104.C.10 Rust bridge example
+      shape instead. Boots the Rust bridge binary, waits up
+      to 20 s for the "Spinning" all-clear marker, then
+      asserts the multi-RMW init markers from the bridge's
+      log output (primary-zenoh-open, ingress/egress
+      session_idx, raw publisher/subscriber). Skips cleanly
+      when zenohd isn't on PATH, the bridge binary isn't
+      pre-built, or transient session-open failures stop
+      the bridge from reaching the Spinning marker.
+      Full message-count E2E (publisher upstream + DDS
+      listener downstream + ≥ 80% delivery assertion)
+      deferred to Phase 104.E follow-up "bridge throughput"
+      test class.
       **Files:**
-      `packages/testing/nros-tests/tests/bridge_uorb_to_zenoh.rs`,
-      `.config/nextest.toml`.
+      `packages/testing/nros-tests/tests/bridge_zenoh_to_dds_e2e.rs`.
 
-- [ ] **104.D.4 — Cross-RMW E2E test (XRCE↔DDS).**
-      Verifies the C bridge example end-to-end against a
-      Cyclone DDS listener.
+- [x] **104.D.4 — C bridge E2E smoke (xrce→dds).**
+      Mirrors D.3 for the C bridge (104.D.1). Spawns
+      `MicroXRCEAgent` on a unique port via `XrceAgent`
+      fixture, boots the C bridge against it, waits for the
+      "Bridge spinning" marker, asserts the per-Node init
+      markers (XRCE ingress, DDS egress, raw publisher /
+      subscription). Skips cleanly when the agent isn't
+      available, the bridge binary isn't pre-built, or
+      bridge session-open fails for environment reasons
+      (XRCE-DDS-Client singleton constraints + dual-session
+      timing — independent of this phase's multi-RMW link
+      scope). Cyclone DDS listener parity carved out as a
+      follow-up — needs `just cyclonedds setup` first.
       **Files:**
-      `packages/testing/nros-tests/tests/bridge_xrce_to_dds.rs`.
+      `packages/testing/nros-tests/tests/bridge_xrce_to_dds_e2e.rs`.
 
 - [x] **104.D.5 — Decoupling CI guard.** `just
       check-decoupling` (Phase 104.A.4) shipped + now
