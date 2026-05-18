@@ -59,7 +59,13 @@ set(_NROS_BOARD_ROOT  "${CMAKE_CURRENT_LIST_DIR}/../..")
 set(_NROS_BOARD_DIR   "${_NROS_BOARD_ROOT}/packages/boards/nros-board-threadx-linux")
 set(_NROS_BOARD_CONFIG_DIR "${_NROS_BOARD_DIR}/config")
 set(_NROS_BOARD_STARTUP_C  "${_NROS_BOARD_DIR}/startup.c")
-set(_NROS_BOARD_APP_DEFINE_C "${_NROS_BOARD_DIR}/c/app_define.c")
+# Phase 152.2.B.1 — board-specific glue (renamed from `app_define.c`).
+# The shared `tx_application_define` + byte pool + app-thread plumbing
+# now lives in `nros-board-common/c/threadx_hooks.c`; both compile
+# together via THREADX_APP_DEFINE_SOURCE below.
+set(_NROS_BOARD_APP_DEFINE_C "${_NROS_BOARD_DIR}/c/board_threadx_linux.c")
+set(_NROS_BOARD_THREADX_HOOKS_C
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c/threadx_hooks.c")
 
 # Default vendored locations — overridable via -D/env.
 if(NOT DEFINED THREADX_DIR)
@@ -109,8 +115,13 @@ if(NOT EXISTS "${_NROS_BOARD_STARTUP_C}")
 endif()
 if(NOT EXISTS "${_NROS_BOARD_APP_DEFINE_C}")
     message(FATAL_ERROR
-        "nano-ros-board-threadx-linux: app_define.c not found at "
+        "nano-ros-board-threadx-linux: board_threadx_linux.c not found at "
         "${_NROS_BOARD_APP_DEFINE_C}.")
+endif()
+if(NOT EXISTS "${_NROS_BOARD_THREADX_HOOKS_C}")
+    message(FATAL_ERROR
+        "nano-ros-board-threadx-linux: threadx_hooks.c not found at "
+        "${_NROS_BOARD_THREADX_HOOKS_C}.")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -154,6 +165,7 @@ set(THREADX_STARTUP_SOURCE
 
 set(THREADX_APP_DEFINE_SOURCE
     "${_NROS_BOARD_APP_DEFINE_C}"
+    "${_NROS_BOARD_THREADX_HOOKS_C}"
     CACHE INTERNAL "ThreadX / threadx-linux app_define TU")
 
 set(THREADX_STARTUP_INCLUDES
