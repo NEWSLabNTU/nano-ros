@@ -1,5 +1,10 @@
 # Phase 100 — AGX Orin SPE infrastructure (Cortex-R5F + IVC)
 
+> **Archived 2026-05-18 — closed.** 16/0 checkbox ratio. Status
+> self-declares "Done. All 10 sub-items landed; POSIX mock-IVC
+> E2E green". Hardware bring-up is downstream (autoware_sentinel
+> Phase 11).
+
 **Goal:** ship the platform-level support nano-ros needs to run on NVIDIA Jetson AGX Orin's
 **Sensor Processing Engine (SPE)** — a Cortex-R5F core running NVIDIA's FreeRTOS V10.4.3
 FSP. Application-level work (porting the safety-island packages from the friend project

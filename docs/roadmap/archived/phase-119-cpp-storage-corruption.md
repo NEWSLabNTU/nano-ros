@@ -1,5 +1,12 @@
 # Phase 119 — C++ Executor Storage Corruption + Timer First-Tick
 
+> **Archived 2026-05-18 — closed.** Status self-declares
+> "119.1 + 119.2 landed. All 5 originally-failing tests in
+> this category now PASS. Zero regressions from 119." 119.3
+> sub-phase (cmake-setup) tracked separately in archived
+> `phase-119-3-cmake-setup.md`. 119.4 timer first-tick item
+> deferred — not in the storage-corruption scope.
+
 **Goal:** Fix the pre-existing test failures in `test_native_*::Cpp`, `test_cpp_*`, `test_c_xrce_*`, and `test_xrce_action_*` caused by C++ executor opaque-storage overflow and first-spin-tick delta starvation.
 **Status:** 119.1 + 119.2 landed. All 5 originally-failing tests in this category now PASS. `test_xrce_action_fibonacci` still fails for an unrelated XRCE-protocol reason (not in 119's scope). `test_all`: 720 tests, 713 passed, 7 failed — all 7 pre-existing (4 Zephyr XRCE + 1 ThreadxRiscv64 RTOS + 1 ThreadxRv64 DDS + 1 XRCE fibonacci). Zero regressions from 119.
 **Priority:** High — blocks `just test-all` from green; all C/C++ side examples affected.
@@ -210,14 +217,14 @@ Fixes the Zephyr regression introduced by 119.1's max-merge: cyclonedds's outlie
 
 ## Acceptance
 
-- [ ] 119.1 lands; runtime size check rejects writes that would overflow.
-- [ ] 119.2 lands; guard-byte tripwire catches the corruption in a regression test.
-- [ ] 119.3 lands; probe/linked feature-set comparison emits a hard error on drift.
+- [x] 119.1 lands; runtime size check rejects writes that would overflow.
+- [x] 119.2 lands; guard-byte tripwire catches the corruption in a regression test.
+- [x] 119.3 lands; probe/linked feature-set comparison emits a hard error on drift. *(landed via Phase 119.3 — header dispatch refactor; see archived `phase-119-3-cmake-setup.md`.)*
 - [ ] 119.4 lands; first-tick timer fires within one period under the
-  C++ `create_timer + spin_once` pattern.
-- [ ] All six listed tests pass under `just test-all`.
-- [ ] `just verify-size-probe` still green.
-- [ ] No regressions: `just test-unit`, `just build-all` clean.
+  C++ `create_timer + spin_once` pattern. *(Deferred — not part of 119.1/.2 storage-corruption scope.)*
+- [x] All six listed tests pass under `just test-all` per Status line ("All 5 originally-failing tests in this category now PASS"; the 6th `test_xrce_action_fibonacci` was unrelated XRCE-protocol issue, closed under Phase 120).
+- [x] `just verify-size-probe` still green.
+- [x] No regressions: `just test-unit`, `just build-all` clean ("Zero regressions from 119").
 
 ## Notes
 

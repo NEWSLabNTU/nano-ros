@@ -1,5 +1,12 @@
 # Phase 118.E — Size-Probe Rigorization
 
+> **Archived 2026-05-18 — closed.** 14 + 5 acceptance ratio.
+> Status self-declares "DONE for common case. 118.E.1-.5
+> landed". Only outstanding item is 118.E.6 (filesystem path
+> removal) — explicitly deferred since the fallback is
+> load-bearing for custom-target builds with `build-std` that
+> nested invocation can't reproduce.
+
 **Goal:** Replace the parallel-build retry loop in `nros-sizes-build::find_dep_rlib` with a deterministic mechanism. Investigate cbindgen const propagation as the leading candidate; document findings; pick an actionable path.
 **Status:** **DONE** for the common case. Layered probe: isolated nested-cargo path primary (deterministic, default), filesystem watch fallback (handles custom-target JSON specs with `build-std` configs that the nested invocation can't reproduce). 118.E.1/.2/.3/.4/.5 landed; .6 (filesystem path removal) deferred — the fallback is load-bearing for custom-target builds.
 **Priority:** Medium (build reliability; current retry loop works but flakes under parallel + slow filesystems).
@@ -227,12 +234,12 @@ where the duplicate compile is more expensive than the retry).
 
 ## Acceptance
 
-- [ ] 118.E.1 lands; both probe modes selectable via env var; defaults to `nested`.
-- [ ] 118.E.2 lands; feature resolution matches `cargo build` output for all three RMW backends.
-- [ ] 118.E.3 passes for the three listed cross-targets.
-- [ ] 118.E.4 soak test: 10× workspace build, no deadlocks, no probe failures.
-- [ ] 118.E.5 docs landed.
-- [ ] 118.E.6 filesystem path removed; CI green; no `NROS_SIZES_PROBE_MODE=filesystem` references in tree.
+- [x] 118.E.1 lands; both probe modes selectable via env var; defaults to `nested`.
+- [x] 118.E.2 lands; feature resolution matches `cargo build` output for all three RMW backends.
+- [x] 118.E.3 passes for the three listed cross-targets.
+- [x] 118.E.4 soak test: 10× workspace build, no deadlocks, no probe failures.
+- [x] 118.E.5 docs landed.
+- [ ] 118.E.6 filesystem path removed; CI green; no `NROS_SIZES_PROBE_MODE=filesystem` references in tree. *(Deferred — filesystem fallback load-bearing for custom-target builds per Status line.)*
 
 ## Notes
 

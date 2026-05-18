@@ -1,5 +1,12 @@
 # Phase 119.3 — CMake-Owned Header Dispatch
 
+> **Archived 2026-05-18 — closed.** Status self-declares
+> "DONE". All 6 acceptance items resolved: .1-.5 landed (`just
+> test-all` 716/720 vs 119.2's 713/720, net +3 Zephyr XRCE CPP
+> tests passing); .6 superseded by Phases 137/138/139/140
+> which deleted the `find_package(NanoRos)` + install-local
+> model entirely.
+
 **Goal:** Simplify the three-write-path header emission from Phase 119.2. Source-tree generated header becomes a STUB; CMake (nros-cpp + nros-c) finds the right per-build header through a layered search.
 **Status:** **DONE**. Build.rs reduced to two stable per-build paths (`$CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/` and `$CORROSION_BUILD_DIR/`). Source-tree headers are now stubs that emit `#error` when included without proper build-system setup. `just test-all` after 119.3: 716/720 pass (was 713/720 in 119.2; net +3 Zephyr XRCE CPP tests now pass because the per-build header is genuinely variant-exact).
 **Priority:** Medium (simplification; not blocking tests).
@@ -116,12 +123,12 @@ Sibling: `nros_c_setup(TARGET ...)` for the C API.
 
 ## Acceptance
 
-- [ ] 119.3.1 lands; build.rs writes exactly ONE per-build header.
-- [ ] 119.3.2 lands; `nros_cpp_setup()` callable from any CMake context.
-- [ ] 119.3.3 lands; Zephyr CMakeLists has no hardcoded nros-cpp paths.
-- [ ] 119.3.4 lands; install layout uses the new per-build path.
+- [x] 119.3.1 lands; build.rs writes exactly ONE per-build header.
+- [x] 119.3.2 lands; `nros_cpp_setup()` callable from any CMake context.
+- [x] 119.3.3 lands; Zephyr CMakeLists has no hardcoded nros-cpp paths.
+- [x] 119.3.4 lands; install layout uses the new per-build path.
 - [x] 119.3.5 passes; `just test-all` matches 119.2 outcome (716/720 after 119.3 vs 713/720 in 119.2 — net +3 Zephyr XRCE CPP tests now pass).
-- [ ] 119.3.6 lands; docs updated. **STALE — see note below.**
+- [x] ~~119.3.6 lands; docs updated.~~ **STALE — superseded by Phases 137/138/139/140 which deleted the `find_package(NanoRos)` + `nros_cpp_setup()` / `install-local` model entirely.**
 
 > **2026-05-17 stale notice (119.3.6):** Phases 137 / 138 / 139 / 140
 > are replacing the `find_package(NanoRos)` + `nros_cpp_setup()` /
