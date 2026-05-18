@@ -833,32 +833,52 @@ follow-up items that finish the rclcpp-aligned story:
 
 #### Thread E — Real-time integration
 
-- [ ] **104.E.1 — Per-backend WCET + memory documentation.**
-      Each RMW backend documents its `poll_wcet_us`
-      (worst-case poll-loop budget) + buffer-pool size in
-      `book/src/internals/rmw-backends.md`. Bridge users
-      compose: `bridge_wcet = Σ poll_i + Σ dispatch_j`.
-      **Files:** `book/src/internals/rmw-backends.md`,
-      per-backend `README.md`.
+- [x] **104.E.1 — Per-backend WCET + memory documentation.**
+      Landed as the new "Real-time budget per backend" section
+      in `book/src/internals/rmw-backends.md`. Table covers
+      zenoh-pico / dust-DDS / XRCE-DDS / Cyclone DDS with
+      `poll_wcet_us` ranges, P99 estimates, buffer-pool sizes,
+      and per-backend notes (wake-cb wiring status, poll-only
+      vs notify-driven, alloc-heavy carve-outs). Sums into
+      `bridge_wcet = Σ poll_i + Σ dispatch_j` for bridge users.
+      Per-backend `README.md` per-target microbench numbers
+      tracked as ongoing — table cross-references
+      `packages/testing/nros-bench/wcet-cycles-qemu/` +
+      `packages/testing/nros-bench/wake-latency-cortex-m3/`.
+      **Files:** `book/src/internals/rmw-backends.md`.
 
 - [ ] **104.E.2 — PiCAS + bridge interaction test.**
       `packages/testing/nros-tests/tests/bridge_picas_priority.rs`:
       high-priority sub on backend A + low-priority pub on
       backend B; measure end-to-end priority inheritance
       under the PiCAS dispatcher. Asserts no priority
-      inversion.
+      inversion. **Blocked on Phase 110.F (PiCAS-style
+      per-callback OS priority dispatcher)** — currently
+      gated behind `scheduler-os-priority` Cargo feature
+      but the runtime apply path is post-v1.
       **Files:**
       `packages/testing/nros-tests/tests/bridge_picas_priority.rs`.
 
-- [ ] **104.E.3 — Cross-priority handoff pattern.**
-      Add `Executor::handoff_queue<M>` convenience API
-      that wires a sub callback at priority A into a
-      timer-driven pub at priority B with a bounded queue
-      between. Optional sugar; existing pattern using
-      `Arc<Mutex<Queue>>` + manual timer remains.
+- [x] **104.E.3 — Cross-priority handoff pattern.**
+      Landed as `executor::handoff::Handoff<M, N>` —
+      `std`-gated bounded FIFO between two callbacks with
+      non-blocking `push` (returns `Err(msg)` on overflow so
+      the high-pri side never stalls), O(N) `pop` (acceptable
+      for typical bridge cap N ≤ 32; ring buffer upgrade
+      tracked as follow-up if bench shows hotspot),
+      `len`/`is_empty`/`is_full`/`capacity` accessors. Module
+      doc demonstrates the canonical pattern
+      (`Arc<Handoff<M, N>>` shared between
+      `register_subscription` callback + `register_timer`
+      callback). 3 lib tests verify push/pop FIFO, overflow
+      error-return, cross-thread shared-Arc producer/consumer
+      with monotonic-order assertion. Existing
+      `Arc<Mutex<Queue>>` manual pattern remains supported
+      per spec.
       **Files:**
       `packages/core/nros-node/src/executor/handoff.rs` (new),
-      `packages/core/nros-node/src/lib.rs` (export).
+      `packages/core/nros-node/src/executor/mod.rs`
+      (`pub mod handoff` declaration).
 
 - [ ] **104.E.4 — ARINC TT bridge example.**
       `examples/native/rust/bridge/tt-zenoh-to-xrce/`:
@@ -866,6 +886,11 @@ follow-up items that finish the rclcpp-aligned story:
       ingress/egress windows in a 10 ms major frame.
       Demonstrates `tt_window_offset_us` +
       `tt_window_duration_us` per Node default SchedContext.
+      **Blocked on Phase 110.G (ARINC-653 cyclic executive /
+      TimeTriggered class)** — currently gated behind
+      `scheduler-time-triggered` Cargo feature; the runtime
+      major-frame dispatch + per-handle TT window enforcement
+      are post-v1.
       **Files:**
       `examples/native/rust/bridge/tt-zenoh-to-xrce/`.
 

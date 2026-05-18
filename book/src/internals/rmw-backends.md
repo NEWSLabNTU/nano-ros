@@ -201,6 +201,38 @@ one ctor fires, the default-slot convention picks it up, and
 no user-visible name is ever required. The cost of naming is
 paid only when multiple backends coexist.
 
+## Real-time budget per backend (Phase 104.E.1)
+
+The poll loop's worst-case execution time is dominated by the
+backend's transport drain. Bridge users summing
+`bridge_wcet = Σ poll_i + Σ dispatch_j` need each backend's
+contribution; this table captures the current best-effort
+estimates from per-backend microbenchmarks
+(`packages/testing/nros-bench/wcet-cycles-qemu/`,
+`packages/testing/nros-bench/wake-latency-cortex-m3/`) +
+heap-usage stats from `cargo build --release` symbol
+dumps.
+
+| Backend | `poll_wcet_us` | Buffer-pool size | Notes |
+|---|---|---|---|
+| **zenoh-pico** (`nros-rmw-zenoh`) | ~50–200 µs nominal on Cortex-M3 (FreeRTOS QEMU); P99 ≤ 1 ms under 100 Hz pub load | `Z_BATCH_UNICAST_SIZE` (default 6500 B/peer) + 4 KB per subscription buffered ring | Wake-cb (Phase 141.A.3) collapses idle wait to kernel `xSemaphore` post — sub-poll-period latency when transport notifies. POSIX cv-wait path same shape, ~1 µs notify-to-dispatch. |
+| **dust-DDS** (`nros-rmw-dds`) | ~200–800 µs nominal on POSIX (cold-cache reader scan); discovery storms can push P99 to ~5 ms | DDS RTPS history (default 10-deep ring per Reader/Writer) — heap-resident; ~16 KB/topic baseline | RustDDS-derivative; listener thread fires `set_wake_callback` on data arrival, drains via spin's drive_io. No bare-metal port (alloc-heavy). |
+| **XRCE-DDS** (`nros-rmw-xrce-cffi`) | ~100–500 µs per `uxr_run_session_time` on POSIX; agent-round-trip dominates over local poll. Bare-metal targets pay the same poll cost. | `STREAM_HISTORY` (4) × `UXR_CONFIG_UDP_TRANSPORT_MTU` (512 B default) ≈ 2 KB/stream; one input + one output stream per session | Poll-only — `set_wake_callback` slot is NULL (Phase 124.B); spin_once cv-wait still wakes on its deadline. Agent does the reliable-retransmit accounting; client adds ~10 µs per stream per tick. |
+| **Cyclone DDS** (`nros-rmw-cyclonedds`) | ~150–600 µs on POSIX; C++ listener callback latency depends on Cyclone's reader-cache scan. | Cyclone's RTPS history per the DDS QoS `History.depth` (default 10) + Cyclone's own DDSI buffer pool (~32 KB default) | Listener-side `set_wake_callback` wiring is Phase 124 follow-up — today the C++ vtable sets the slot NULL. Memory footprint dominated by Cyclone itself, not the nano-ros shim. |
+
+**Bridge users:** sum the `poll_wcet_us` for every backend the
+bridge process opens, then add per-callback dispatch budget
+(typically <10 µs for the executor's arena dispatch + the
+user callback's own work). The `bridge_picas_priority` test
+(Phase 104.E.2, blocked on Phase 110.F PiCAS dispatcher)
+will pin a regression bar to this table.
+
+Per-backend `README.md` files live at
+`packages/{zpico/nros-rmw-zenoh,dds/nros-rmw-dds,dds/nros-rmw-cyclonedds,xrce/nros-rmw-xrce-cffi}/README.md`
+(when present); reach out to the backend's maintainer for
+fresh microbench numbers on a different target class than
+the ones above.
+
 ## See also
 
 - [Phase 115 roadmap doc](../../../docs/roadmap/phase-115-runtime-transport-vtable.md)

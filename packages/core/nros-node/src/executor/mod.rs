@@ -31,6 +31,8 @@ mod arena;
 pub(crate) mod dispatcher;
 #[cfg(any(has_rmw, test))]
 mod handles;
+#[cfg(feature = "std")]
+pub mod handoff;
 #[cfg(any(has_rmw, test))]
 mod node;
 #[cfg(any(has_rmw, test))]
