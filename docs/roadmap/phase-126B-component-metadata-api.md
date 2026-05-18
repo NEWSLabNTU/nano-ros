@@ -128,6 +128,12 @@ Next coverage focus:
 - [x] Metadata contains unresolved source names, interface types, QoS,
       callbacks, params, and optional effects.
 - [x] Component-mode entity APIs require stable IDs.
-- [ ] Missing export macro fails clearly during metadata discovery/check.
+- [x] Missing export macro fails clearly during metadata discovery/check.
+      `nros metadata` walks every `component_nros.toml` in the workspace
+      and bails with `MISSING_COMPONENT_EXPORT_ERROR` ("package has no
+      exported nros component") when the declared
+      `[metadata].source_metadata` file is absent, naming the offending
+      package and hinting at the missing `nros::component!` macro.
+      Covered by `orchestration_metadata_command_flags_missing_component_export`.
 - [x] Existing hand-written `main()` examples remain supported as simple-app
       path and are not pulled into orchestration.
