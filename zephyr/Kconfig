@@ -72,7 +72,52 @@ config NROS_RMW_DDS
       Fast-DDS, dust-dds) — no router or agent required.
       Phase 71 — see docs/roadmap/phase-71-dust-dds-platform-agnostic.md.
 
+config NROS_RMW_CYCLONEDDS
+    bool "Cyclone DDS (nros-rmw-cyclonedds)"
+    depends on NET_SOCKETS && POSIX_API && CPP && NROS_CPP_API
+    help
+      Use Cyclone DDS (pinned to 0.10.5, matches ros-humble-cyclonedds)
+      as the RMW transport backend. Wire-compatible with stock
+      rmw_cyclonedds_cpp on the ROS 2 Humble peer side.
+
+      Implementation lives at packages/dds/nros-rmw-cyclonedds/ as a
+      standalone C++ project; the Zephyr module compiles the pinned
+      Cyclone DDS submodule plus the nros-rmw-cyclonedds register
+      glue into the app library. The auto-register hook in
+      nros-cpp's node.hpp fires when NROS_RMW_CYCLONEDDS=1 is defined,
+      which this Kconfig path turns on.
+
+      Requires CONFIG_NROS_CPP_API=y for now (no C API binding —
+      nros_rmw_cyclonedds_register is C++-only at the source level).
+      Phase 117 — see docs/roadmap/phase-117-cyclonedds-rmw.md.
+
 endchoice
+
+# =============================================================================
+# Cyclone DDS tuning
+# =============================================================================
+
+if NROS_RMW_CYCLONEDDS
+
+config NROS_CYCLONE_DOMAIN_ID
+    int "DDS domain ID"
+    default 0
+    range 0 232
+    help
+      DDS domain ID passed to dds_create_domain_with_rawconfig at init.
+      Must match the ROS 2 peer's ROS_DOMAIN_ID for discovery.
+
+config NROS_CYCLONE_CONFIG_XML
+    string "Cyclone raw config XML (empty = default)"
+    default ""
+    help
+      Optional Cyclone DDS configuration XML blob baked at build time
+      (Zephyr has no filesystem to read from at runtime). Leave empty
+      to use Cyclone's compiled-in defaults; set this to override
+      transport / discovery / QoS settings. Mirrors the
+      ddsi_config struct produced by Cyclone's XML parser.
+
+endif # NROS_RMW_CYCLONEDDS
 
 # =============================================================================
 # Zenoh-pico Feature Configuration
