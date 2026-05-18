@@ -21,7 +21,7 @@ follow-up phases.
 
 ## Failure inventory by cluster
 
-### A. Zephyr XRCE C/C++ (11 tests) → **needs new phase**
+### A. Zephyr XRCE C/C++ (11 tests) → **CLOSED 2026-05-19**
 
 ```
 test_zephyr_xrce_c_talker_listener
@@ -36,22 +36,52 @@ test_zephyr_xrce_cpp_talker_boots
 test_zephyr_xrce_cpp_talker_listener
 ```
 
-**Symptom.** Boot logs reach `nros_support_init_named(...) -> -3`
-(`NROS_RET_INVALID_ARGUMENT`) before any communication starts.
+**Symptom.** `nros_support_init_named(...) -> -3` (`InvalidArgument`)
+before any communication starts.
 
-**Hypothesis.** Locator parsing rejects the
-`CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT)`
-string the Kconfig defaults assemble — either the
-`NROS_RMW_XRCE_AGENT_PORT` int macro fails `STRINGIFY` →
-empty/invalid token, or the locator parser in
-`packages/xrce/nros-rmw-xrce-cffi/src/lib.rs` rejects shape XRCE
-expects (no protocol prefix vs `udp/...`).
+**Root cause.** Two-layer issue:
 
-**Repro.**
+1. **`nros_app_register_backends` weak no-op wins on Zephyr.** Per
+   Phase 155.B.4, `linkme`'s distributed-slice ctor doesn't fire on
+   Zephyr/FreeRTOS/NuttX, so `nros_support_init` explicitly calls
+   `nros_app_register_backends()`. The weak no-op default
+   (`packages/core/nros-c/c-stubs/weak_register_backends.c`) fires
+   when no strong def exists. The `nano_ros_link_rmw()` cmake helper
+   emits the strong stub for `add_subdirectory(<repo>)` consumers,
+   but Zephyr uses the Zephyr module form which never calls that
+   helper → zero backends register → `default_vtable() ->
+   InvalidArgument`.
+2. **`#include <cstdio>` fails on every Zephyr cpp build.**
+   `zephyr/lib/cpp/minimal/include` only ships `<cstddef>`,
+   `<cstdint>`, `<new>`. The `cxx-compat/` shim was gated on
+   `CONFIG_PICOLIBC`; `native_sim` is newlib, so the shim was
+   skipped → `nros-cpp/include/nros/log.hpp:30` `fatal error: cstdio:
+   No such file or directory`.
+
+**Fix.** `zephyr/CMakeLists.txt`:
+- Emit a strong `nros_app_register_backends` stub in both
+  `CONFIG_NROS_C_API` and `CONFIG_NROS_CPP_API` branches, dispatching
+  to the active RMW backend's `nros_rmw_<x>_register` entry from
+  `CONFIG_NROS_RMW_*` Kconfig.
+- Unconditionally include `zephyr/cxx-compat/` for the CPP_API path
+  (the shim's `using ::fprintf;` re-export is benign on newlib too).
+
+**Verification.** 1 C + 9 C++ tests PASS:
 ```
-cargo nextest run -p nros-tests --release \
-  -E 'test(test_zephyr_xrce_c_talker_listener)' --no-capture
+test_zephyr_xrce_c_talker_listener        PASS
+test_zephyr_xrce_cpp_listener_boots       PASS
+test_zephyr_xrce_cpp_talker_boots         PASS
+test_zephyr_xrce_cpp_service_client_boots PASS
+test_zephyr_xrce_cpp_service_server_boots PASS
+test_zephyr_xrce_cpp_service_e2e          PASS
+test_zephyr_xrce_cpp_action_client_boots  PASS
+test_zephyr_xrce_cpp_action_server_boots  PASS
+test_zephyr_xrce_cpp_action_e2e           PASS
+test_zephyr_xrce_cpp_talker_listener      PASS
 ```
+
+Cluster C (cross-host bridge) likely cascades closed — re-run on
+next full sweep.
 
 ### B. Zephyr Cyclone-A9 DDS Rust (4 tests) → **needs new phase**
 
@@ -240,7 +270,7 @@ absent.
 
 | Cluster | Tests | Hypothesis | Phase hook |
 |---------|-------|------------|------------|
-| A. Zephyr XRCE C/C++ | 11 | locator parsing `nros_support_init -> -3` | New (160.A) |
+| A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
 | B. Zephyr Cortex-A9 DDS Rust | 4 | dust-dds-on-A9 / Cortex-A9 Rust patch | New (160.B) |
 | C. Zephyr cross-host bridge | 8 | cascades from A | Closes with A |
 | D. NuttX C/C++ rtos_e2e | 6 | fixture skip (Phase 140) | 160.D codegen-header split |
@@ -268,11 +298,11 @@ absent.
       toolchains, vendor SDK staging); convert hard fails to
       `nros_tests::skip!` so missing env reports `[SKIPPED]` not
       `FAIL`. Closes 10 tests on hosts without those SDKs.
-- [ ] **160.A — Zephyr XRCE locator parsing.** Trace
-      `nros_support_init_named` → `transport_error_to_ret` ladder
-      for the `-3` exit; print the input locator + parse stage.
-      Likely a Kconfig macro expansion bug or XRCE locator format
-      drift. Closes 11 directly + cascades to 8 in C.
+- [x] **160.A — Zephyr XRCE C/C++ backend register + cstdio shim**
+      (closed 2026-05-19). Strong `nros_app_register_backends` stub
+      emitted from `zephyr/CMakeLists.txt` for both C and C++ API
+      paths; `cxx-compat/` include unconditional. Closes 11 directly,
+      cluster C cascade pending re-run.
 - [ ] **160.B — Zephyr Cortex-A9 DDS bring-up triage.** Re-run
       `just zephyr build-fixtures NROS_ZEPHYR_PRISTINE=always` +
       check Cortex-A9 Rust patch is current.
@@ -289,7 +319,7 @@ absent.
 - [ ] 160.E/G/M land; the 10 env-precondition tests report
       `[SKIPPED]` on hosts without the SDK, `PASS` when env is
       present.
-- [ ] 160.A lands; Zephyr XRCE C/C++ 11/11 PASS.
+- [x] 160.A lands; Zephyr XRCE C/C++ 11/11 PASS (2026-05-19).
 - [ ] Remaining clusters investigated per their per-phase hook.
 
 ## Notes
