@@ -136,10 +136,10 @@ if(NOT EXISTS "${_NROS_BOARD_STARTUP_C}")
         "nano-ros-board-riscv64-qemu: startup.c not found at "
         "${_NROS_BOARD_STARTUP_C}.")
 endif()
-if(NOT EXISTS "${_NROS_BOARD_C_DIR}/app_define.c")
+if(NOT EXISTS "${_NROS_BOARD_C_DIR}/board_threadx_qemu_riscv64.c")
     message(FATAL_ERROR
-        "nano-ros-board-riscv64-qemu: app_define.c not found at "
-        "${_NROS_BOARD_C_DIR}/app_define.c.")
+        "nano-ros-board-riscv64-qemu: board_threadx_qemu_riscv64.c not found at "
+        "${_NROS_BOARD_C_DIR}/board_threadx_qemu_riscv64.c (Phase 152.2.B.1 renamed from app_define.c).")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -199,8 +199,13 @@ nros_threadx_setup_rust_lld()
 # reverse-dependency order).
 # ---------------------------------------------------------------------------
 if(NOT TARGET threadx_glue)
+    # Phase 152.2.B.1 — app_define.c renamed to per-board
+    # `board_threadx_qemu_riscv64.c` (shared `tx_application_define`
+    # + byte pool / app thread plumbing moved into
+    # `nros-board-common/c/threadx_hooks.c`).
     set(_glue_srcs
-        "${THREADX_BOARD_DIR}/app_define.c"
+        "${THREADX_BOARD_DIR}/board_threadx_qemu_riscv64.c"
+        "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c/threadx_hooks.c"
         "${THREADX_BOARD_DIR}/entry.s"
         "${THREADX_BOARD_DIR}/trap.c"
         "${THREADX_BOARD_DIR}/syscalls.c"

@@ -255,12 +255,14 @@ function(nano_ros_link_rmw TARGET)
         if(TARGET ${_pkg}::${_name})
             target_link_libraries(${TARGET} PRIVATE ${_pkg}::${_name})
         endif()
-        if(CMAKE_SYSTEM_NAME STREQUAL "Generic")
-            target_link_options(${TARGET} PRIVATE
-                "--allow-multiple-definition")
-        elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR APPLE)
-            target_link_options(${TARGET} PRIVATE
-                "-Wl,--allow-multiple-definition")
-        endif()
+        # Phase 154 — always route through `-Wl,…`. When the build
+        # uses a gcc driver (`arm-none-eabi-gcc`, `riscv64-unknown-elf-gcc`,
+        # `gcc`) the bare `--allow-multiple-definition` is rejected
+        # as an unknown command-line option even on bare-metal
+        # `CMAKE_SYSTEM_NAME=Generic` targets. ld accepts both, but
+        # we never call ld directly — the compiler driver does the
+        # linking, so `-Wl,…` is the only safe form.
+        target_link_options(${TARGET} PRIVATE
+            "-Wl,--allow-multiple-definition")
     endif()
 endfunction()
