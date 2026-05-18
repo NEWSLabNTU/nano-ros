@@ -285,6 +285,37 @@ Still Phase 89.4-tier — needs sustained ESP32 bare-metal
 session. Documenting here so the next attempt has a precise
 locus.
 
+**Update 2026-05-19 (deeper bisect):**
+
+- Reproduced with FRESH listener rebuild — earlier "listener
+  works" observation was stale binary (5+ days old cache).
+  Both talker AND listener crash identically with mtval=
+  0x0202000c when rebuilt against current main.
+- RA decode: `0x42021A06` → `smoltcp::wire::tcp::Repr::emit`.
+  TrapFrame a5 = 0x02020000 (invalid ptr), faulting at
+  offset 0xc into nonexistent memory.
+- `.bss` symbol map looks normal: SOCKET_TABLE at 3fc8a190,
+  TCP_RX/TX buffers at 3fcb57a4+, NET_SOCKETS at 3fcc1828.
+  All in valid DRAM (0x3FC80000-0x3FCDFFFF).
+- Bisect target: `fb6b778b` ("fix(bare-metal): resolve
+  smoltcp_clock_now_ms + zpico.c link failures") is the most
+  recent direct ESP32 platform-touching commit (5 days back).
+  Earlier listener-alone success used a binary built BEFORE
+  this commit; after the commit landed + we rebuild, both
+  crash. Bisect blocked here this session — submodule
+  rollback denied. Reproducer for next session:
+  ```
+  pkill -9 zenohd qemu-system 2>/dev/null
+  build/zenohd/zenohd --listen tcp/0.0.0.0:7454 \
+    --no-multicast-scouting > /tmp/zd.log 2>&1 &
+  sleep 2
+  qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+    -drive file=build/esp32-qemu/esp32-qemu-listener.bin,if=mtd,format=raw \
+    -nic user,model=open_eth,id=net0 > /tmp/log 2>&1 &
+  sleep 30; tail -30 /tmp/log
+  ```
+  Bisect window: git rev-list fb6b778b..HEAD -- packages/drivers/nros-smoltcp packages/zpico/zpico-sys packages/platforms/nros-platform-esp32-qemu packages/boards/nros-board-esp32-qemu — find the commit that flipped working → broken.
+
 ### F. QEMU bare-metal RTIC + serial (5 tests)
 
 ```
