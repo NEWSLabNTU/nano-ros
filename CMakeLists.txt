@@ -20,7 +20,7 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 # ---------------------------------------------------------------------------
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
 set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or dds")
-set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds)
+set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds none)
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
@@ -241,10 +241,20 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
             target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)
         endif()
     endif()
+elseif(NANO_ROS_RMW STREQUAL "none")
+    # Phase 156 — bridge / multi-backend consumers pull their own
+    # RMW staticlibs via `corrosion_import_crate` to ensure
+    # IDENTICAL feature sets across every `nros-rmw-cffi`
+    # invocation (linkme distributed-slice dedup). Root CMake
+    # skips the auto-pull when `NANO_ROS_RMW=none`. Consumers
+    # MUST call `nros_rmw_<backend>::register()` (Rust) or
+    # `nros_rmw_<backend>_register()` (C) explicitly from
+    # their `main` / `nros_app_register_backends` — auto-
+    # registration via linkme is disabled in this mode.
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
-        "(expected: zenoh, xrce, dds, or cyclonedds)")
+        "(expected: zenoh, xrce, dds, cyclonedds, or none)")
 endif()
 
 # ---------------------------------------------------------------------------

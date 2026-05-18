@@ -127,11 +127,35 @@ static nros_node_options_t make_options_for_rmw(const char* rmw) {
 // Main.
 // ----------------------------------------------------------------------------
 
+// Phase 156 Option 3 — explicit backend registration. The bridge
+// CMakeLists sets `NANO_ROS_RMW=none` + pulls the XRCE + DDS
+// staticlibs without `linkme-register`, so the auto-registration
+// path is OFF (avoids the `nros-rmw-cffi` multi-monomorphisation
+// linkme-duplicate-slice panic). Bridge declares the backend
+// register C entry points + calls them before
+// `nros_support_init` runs.
+extern int8_t nros_rmw_xrce_register(void);
+extern int8_t nros_rmw_dds_register(void);
+
 int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
     printf("=== Phase 104.D.1 bridge: XRCE -> DDS ===\n");
+
+    // Phase 156 — explicit register both backends BEFORE
+    // `nros_support_init` so the registry has both `"xrce"` +
+    // `"dds"` names available for `nros_executor_node_init`'s
+    // per-Node `.rmw(name)` dispatch.
+    if (nros_rmw_xrce_register() != 0) {
+        fprintf(stderr, "Failed to register XRCE RMW backend\n");
+        return 1;
+    }
+    if (nros_rmw_dds_register() != 0) {
+        fprintf(stderr, "Failed to register DDS RMW backend\n");
+        return 1;
+    }
+    printf("Registered XRCE + DDS RMW backends\n");
 
     // Primary support context. The locator + domain_id supplied
     // here drive the executor's default-backend session — bridge

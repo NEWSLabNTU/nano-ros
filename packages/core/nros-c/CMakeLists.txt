@@ -29,11 +29,18 @@ endif()
 # triple.
 if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
         OR NANO_ROS_RMW STREQUAL "dds" OR NANO_ROS_RMW STREQUAL "cyclonedds"
-        OR NANO_ROS_RMW STREQUAL "uorb"))
+        OR NANO_ROS_RMW STREQUAL "uorb"
+        OR NANO_ROS_RMW STREQUAL "none"))
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, dds, cyclonedds, or uorb)")
+        "(expected: zenoh, xrce, dds, cyclonedds, uorb, or none)")
 endif()
+# Phase 156 — `NANO_ROS_RMW=none` = bridge / multi-backend
+# escape hatch. Root CMake skips RMW auto-pull; consumer pulls
+# its own staticlibs + calls explicit `nros_rmw_<x>_register()`.
+# nros-c still builds with `rmw-cffi` so umbrella Rust API
+# surfaces compile; registry stays empty until explicit
+# register() fires.
 if(NANO_ROS_RMW STREQUAL "zenoh")
     set(_rmw_features cffi-zenoh-cffi)
 else()

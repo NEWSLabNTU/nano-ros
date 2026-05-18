@@ -178,6 +178,67 @@ panics with `nros_executor_node_init(...) -> -1` for the
 
 ## Work Items
 
+### 156.F Sub-bug D — C-side multi-Session dispatch missing in `nros_publisher_init` (D.4 next blocker)
+
+After Sub-bug C resolved via Option 3 (`NANO_ROS_RMW=none`
+escape hatch + explicit register calls), D.4 progressed
+further:
+
+```
+=== Phase 104.D.1 bridge: XRCE -> DDS ===
+Registered XRCE + DDS RMW backends
+XRCE locator (ingress): udp/127.0.0.1:33535
+DDS  locator (egress):  (backend default)
+Domain ID: 0
+Ingress node bound to XRCE
+Egress node bound to DDS
+[nros] nros_publisher_init(&app.pub_out, &app.node_out, &kStringType, "/chatter") -> -7
+```
+
+Both nodes bind (`Ingress node bound to XRCE` +
+`Egress node bound to DDS`). Failure at the next call:
+`nros_publisher_init` returns `NROS_RET_NOT_INIT` (-7)
+because `node_ref.get_support_mut()` returns `None`.
+
+**Root cause:** `nros_executor_node_init`
+(`packages/core/nros-c/src/executor.rs:541`) explicitly
+sets `node_ref.support = ptr::null()` — the Phase 104.C.8
+design ditched the support-based dispatch for multi-Node
+paths in favour of `node.node_id`-keyed executor session
+lookup. But `nros_publisher_init`
+(`packages/core/nros-c/src/publisher.rs:202`) still calls
+`node_ref.get_support_mut()` unconditionally — the
+"branch on `node.node_id` non-zero" multi-Session
+dispatch the doc claims for the C API was wired into
+`nros_executor_register_{subscription,service,client,
+action_*}` but NOT into `nros_publisher_init` /
+`nros_subscription_init` / etc.
+
+**Fix sketch (deferred):**
+
+1. Add `pub executor: *const nros_executor_t` field to
+   `nros_node_t` (struct ABI bump, cbindgen regenerate).
+2. Populate in `nros_executor_node_init`: `node.executor
+   = executor as *const _;`.
+3. `nros_publisher_init`: branch on `node.node_id != 0
+   && !node.executor.is_null()`:
+   - Take that path → resolve session via
+     `(*executor).session_at_mut(node_record.session_idx)`
+     (new helper on the Rust Executor).
+   - Else → legacy `node.get_support_mut()` path.
+4. Same branching in `nros_subscription_init`,
+   `nros_service_*_init`, `nros_action_*_init`,
+   `nros_client_init`.
+
+**Effort:** Medium (~6 C entity-init sites + Rust
+executor accessor + struct ABI bump + cbindgen regen).
+**Risk:** medium — touches every C entity creation path.
+
+Carved out as Sub-bug D. The Phase 156 Option 3
+implementation (`NANO_ROS_RMW=none` + explicit
+register) is **correct + landed**; D.4 just exposes the
+NEXT layer of incomplete Phase 104.C.8.b work.
+
 ### 156.E Sub-bug C — multi-staticlib `nros-rmw-cffi` monomorphisation conflict (D.4 blocker)
 
 D.3 (Rust bridge) went fully green after the
