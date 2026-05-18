@@ -83,8 +83,13 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
             struct net_if_ipv4* ipv4 = iface->config.ip.ipv4;
             if (ipv4 != NULL) {
                 for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
-                    if (ipv4->unicast[i].ipv4.is_used &&
-                        ipv4->unicast[i].ipv4.addr_state == NET_ADDR_PREFERRED) {
+                    /* Zephyr 3.5 / 3.6 `struct net_if_addr` exposes
+                     * `is_used` + `addr_state` directly, not under a
+                     * `.ipv4` sub-struct. Drop the indirection so
+                     * the file compiles on older Zephyr trees
+                     * (e.g. the autoware-safety-island FVP pin). */
+                    if (ipv4->unicast[i].is_used &&
+                        ipv4->unicast[i].addr_state == NET_ADDR_PREFERRED) {
                         LOG_INF("Network ready (iface up + IPv4 bound)");
                         return 0;
                     }
