@@ -40,6 +40,13 @@ install -m 0644 "$INTEGRATION/external-Make.defs.in" "$EXT/Make.defs"
 ln -sfn "$INTEGRATION" "$EXT/nano-ros"
 
 # Each example as a sibling under apps/external/.
+# Phase 157.C.9 — each example's `main.{c,cpp}` includes
+# `<nros/app_config.h>`. The cmake path generates it via
+# `nano_ros_generate_config_header()`; the NuttX make path
+# doesn't run cmake, so we generate the header here at staging
+# time from the example's config.toml. The make build's CFLAGS
+# additions for `<NANO_ROS_ROOT>/<example>/generated/include`
+# (added by the per-example Makefile in 157.A) pick it up.
 staged_dirs=()
 for lang in c cpp; do
     for example in talker listener service-server service-client action-server action-client; do
@@ -48,6 +55,17 @@ for lang in c cpp; do
         if [ -d "$src" ]; then
             ln -sfn "$src" "$dst"
             staged_dirs+=("nano-ros-$example-$lang")
+            # Generate per-example app_config.h.
+            if [ -f "$src/config.toml" ]; then
+                python3 "$ROOT/scripts/nuttx/gen-app-config.py" \
+                    "$src/config.toml" \
+                    "$src/generated/include/nros/app_config.h"
+            fi
+            # Run nros-codegen for message dependencies (parses
+            # nros_generate_interfaces() calls from the example's
+            # CMakeLists.txt). Skips gracefully if AMENT_PREFIX_PATH
+            # is unset / interfaces can't be resolved.
+            python3 "$ROOT/scripts/nuttx/gen-interfaces.py" "$src" || true
         else
             echo "  [skip] $src missing"
         fi

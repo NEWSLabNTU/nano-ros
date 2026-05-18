@@ -136,15 +136,21 @@ build-fixtures-make:
     echo "Pass 1/2: regenerate apps/Kconfig + propagate new symbols"
     ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
     # Now enable every nano-ros knob in .config.
+    # Phase 157.C — C-only for now. C++ examples need a parallel
+    # nros-cpp Cargo build in the integration shell + symbol-export
+    # work tracked as 157.C.11.
     config="$nuttx_dir/.config"
     kconfig-tweak --file "$config" --enable NROS
     kconfig-tweak --file "$config" --enable NROS_C_API
-    kconfig-tweak --file "$config" --enable NROS_CPP_API
-    for lang in C CPP; do
-        for ex in TALKER LISTENER SERVICE_SERVER SERVICE_CLIENT ACTION_SERVER ACTION_CLIENT; do
-            kconfig-tweak --file "$config" --enable "NROS_EXAMPLE_${ex}_${lang}"
-        done
+    for ex in TALKER LISTENER SERVICE_SERVER SERVICE_CLIENT ACTION_SERVER ACTION_CLIENT; do
+        kconfig-tweak --file "$config" --enable "NROS_EXAMPLE_${ex}_C"
     done
+    # Phase 157.C — disable ALLSYMS for first build (chicken-egg:
+    # CONFIG_ALLSYMS=y runs mkallsyms.py on $(NUTTX) which doesn't
+    # exist on first link). NuttX's stock qemu-armv7a/nsh enables
+    # it by default. Carve out as 157.C.12 — multi-pass build that
+    # bootstraps allsyms.
+    kconfig-tweak --file "$config" --disable ALLSYMS
     # Pass 2: olddefconfig again so the just-enabled knobs settle
     # any newly-visible dependencies.
     echo "Pass 2/2: olddefconfig with NROS enabled"

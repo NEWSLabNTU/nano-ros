@@ -31,14 +31,32 @@ NANO_ROS_ROOT_DEFS := $(realpath $(APPDIR)/external/nano-ros/../..)
 -include $(APPDIR)/tools/Rust.mk
 
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
-# Rust.mk found — append the Cargo-built staticlib paths so NuttX's
-# top-level link sees them. `nros-c` is the canonical entry; users
-# wanting the C++ surface add `nros-cpp` analogously. Paths route
-# through `NANO_ROS_ROOT_DEFS` per the symlink-resolution comment
-# above.
-EXTRA_LIBS    += $(call RUST_GET_BINDIR,nros_c,$(NANO_ROS_ROOT_DEFS)/packages/core)
-EXTRA_LIBPATHS+= $(call RUST_GET_LIBDIR,nros_c,$(NANO_ROS_ROOT_DEFS)/packages/core)
+# Phase 157.C.10 — direct paths to the cargo-built staticlib.
+# Upstream `RUST_GET_BINDIR` / `RUST_GET_LIBDIR` assume a
+# per-crate `target/` dir under the prefix (`$(2)/$(1)/target/`)
+# AND name the lib `lib$(1).a` with no underscore transform.
+# Both assumptions break for nano-ros's layout:
+#   * Cargo defaults to `<workspace-root>/target/` (shared across
+#     every crate); nros-c doesn't have its own `target/`.
+#   * Cargo emits `libnros_c.a` (rust hyphen→underscore convention).
+# Hard-code the actual paths, mirroring what cmake's Corrosion
+# integration produces.
+NROS_CARGO_LIB_DIR := $(NANO_ROS_ROOT_DEFS)/target/armv7a-nuttx-eabihf/release
+EXTRA_LIBS    += $(NROS_CARGO_LIB_DIR)/libnros_c.a
+EXTRA_LIBPATHS+= -L$(NROS_CARGO_LIB_DIR)
 endif
+
+# Phase 157.C.8 — per-build `nros_config_generated.h` lands at
+# `$CARGO_TARGET_DIR/nros-c-generated/nros/` after `cargo build
+# -p nros-c`. Add the parent dir to the include path FIRST (gcc
+# resolves `-I` left-to-right) so user code's `#include <nros/
+# nros_generated.h>` picks up the per-build variant header
+# instead of the source-tree stub (which deliberately errors via
+# `#error` to flag mis-configured builds).
+# Cargo defaults to `<workspace-root>/target/`. The make-build
+# recipe doesn't override `CARGO_TARGET_DIR`, so the repo-root
+# `target/` dir is correct.
+CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/target/nros-c-generated
 
 # CFLAGS — surface the nano-ros C headers to user code that
 # `#include <nros/...>`. Same symlink-resolution applies; route

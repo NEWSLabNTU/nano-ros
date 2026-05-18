@@ -248,31 +248,95 @@ path was bypassing. Each fix unblocks the next layer:
           (current nightly errors with "panic_immediate_abort
           is now a real panic strategy").
 
-#### Remaining for next iteration (carved out as 157.C.8+):
+- [x] **157.C.8 — `nros_config_generated.h` materialization.**
+      `integrations/nuttx/Make.defs` now prepends
+      `$(NANO_ROS_ROOT_DEFS)/target/nros-c-generated` to
+      `CFLAGS` BEFORE the source-tree
+      `packages/core/nros-c/include` path. Cargo defaults to
+      writing the per-build header to
+      `<workspace-root>/target/nros-c-generated/nros/
+      nros_config_generated.h` (via nros-c's build.rs); the
+      example compile picks it up via `-I` precedence so the
+      `SERVICE_SERVER_OPAQUE_U64S` etc. constants resolve.
+      Source-tree stub (which errors via `#error`) loses by
+      gcc include-search order.
 
-- [ ] **157.C.8 — `nros_config_generated.h` materialization.**
-      The make-build's example compile fails at
-      `nros_generated.h: error: 'SERVICE_SERVER_OPAQUE_U64S'
-      undeclared` because `nros_config_generated.h` (per-build
-      variant header from `nros-c`'s build.rs) isn't supplied
-      to the example's compile path. cmake handles this via
-      Phase 137's mirror copy; make path needs equivalent —
-      either a post-cargo `cp` step in the integration shell's
-      `context::` rule or an `INCDIRS` addition that points at
-      the cargo build artifact directory.
-      **Files:** `integrations/nuttx/{Make.defs,Makefile}`.
+- [x] **157.C.9 — `<nros/app_config.h>` codegen + msg interface
+      codegen.** Two new Python scripts:
+        * `scripts/nuttx/gen-app-config.py` — CLI mirror of
+          cmake's `nano_ros_generate_config_header()`. Parses
+          the example's `config.toml`, substitutes into
+          `cmake/templates/nros_app_config.h.in`, writes the
+          header.
+        * `scripts/nuttx/gen-interfaces.py` — CLI driver for
+          nros-codegen. Greps each example's `CMakeLists.txt`
+          for `nros_generate_interfaces(<pkg> "<file>" ...)`
+          calls, resolves each interface via
+          `AMENT_PREFIX_PATH` (or bundled tree), invokes
+          `nros-codegen --args-file <json>` per package. Output
+          under `<example>/generated/c/<pkg>/`.
+      Both invoked from `scripts/nuttx/stage-external-apps.sh`
+      at staging time. Per-example Makefile (157.A) globs
+      `generated/c/*/{msg,srv,action}/*.c` into `CSRCS` and
+      adds `generated/c/<pkg>/` to `CFLAGS`.
 
-- [ ] **157.C.9 — `<nros/app_config.h>` codegen.**
-      Each example's `main.c` `#include <nros/app_config.h>`.
-      The cmake path generates this via
-      `nano_ros_generate_config_header()` from the example's
-      `config.toml`. Make path needs equivalent — either an
-      out-of-band `nros-codegen --emit-app-config` invocation
-      in the example's Makefile, or a sibling generator
-      script staged by `stage-external-apps.sh`.
-      **Files:**
-      `examples/qemu-arm-nuttx/{c,cpp}/zenoh/*/Makefile` +
-      `scripts/nuttx/gen-app-config.sh` (new).
+#### Remaining (carved out as 157.C.10+ follow-ups):
+
+- [x] **157.C.10 — direct staticlib paths.**
+      `EXTRA_LIBS` / `EXTRA_LIBPATHS` in
+      `integrations/nuttx/Make.defs` use direct paths
+      (`<root>/target/<triple>/release/libnros_c.a` +
+      `-L<root>/target/<triple>/release`) instead of upstream's
+      `RUST_GET_BINDIR` / `RUST_GET_LIBDIR` macros which assume
+      a per-crate `target/` dir + the `-`→`_` rename that
+      doesn't apply to nano-ros's shared workspace layout.
+
+- [ ] **157.C.11 — C++ examples build.**
+      Currently the `build-fixtures-make` recipe only enables
+      `CONFIG_NROS_C_API` + the 6 C examples. C++ examples
+      need a parallel `nros-cpp` Cargo build in the
+      integration shell + the same `EXTRA_LIBS` /
+      `EXTRA_LIBPATHS` plumbing. Also two example mains
+      (action-client) reference `nros_action_get_result` +
+      `nros_goal_status_to_string` which aren't exported
+      from nros-c's cbindgen surface on the
+      cross-compile target — separate FFI gap to investigate.
+
+- [ ] **157.C.12 — multi-pass ALLSYMS bootstrap.**
+      The stock `qemu-armv7a/nsh` defconfig enables
+      `CONFIG_ALLSYMS=y` which makes the link rule run
+      `mkallsyms.py $(NUTTX)` BEFORE the kernel binary exists
+      → first-build EINVAL. Recipe currently disables
+      ALLSYMS via `kconfig-tweak`. Proper fix: run the link
+      twice (first with ALLSYMS off to bootstrap, then on
+      to populate the symbol table) — standard NuttX
+      multi-pass build pattern.
+
+- [ ] **157.C.13 — incremental rebuild robustness.**
+      `kconfig-tweak --disable` + `make olddefconfig` can
+      drop required NuttX symbols on subsequent runs.
+      Current recipe assumes `.config` survives intact across
+      runs; verify behaviour on a CI matrix that re-runs the
+      recipe ≥ 2× in sequence.
+
+#### Verified to compile:
+
+After 157.C.4 through .C.10, the make-build path:
+
+  * Stages all 12 examples + integration shell under
+    `apps/external/`.
+  * Generates `apps/external/Kconfig` + `Make.defs` (157.B).
+  * Runs `cargo build --release -p nros-c
+    --target armv7a-nuttx-eabihf` cleanly →
+    `target/armv7a-nuttx-eabihf/release/libnros_c.a` (4.1 MB).
+  * Compiles all 6 C example main.c files + their codegen
+    output (`std_msgs`, `example_interfaces`) → object files
+    with `<PROGNAME>_main` symbols defined.
+  * Archives the example objects into `apps/libapps.a`.
+
+The final kernel link step is what still trips on 157.C.11 +
+.C.12 + .C.13 issues. The cmake `build-fixtures` smoke path
+(157.A) keeps working unchanged.
 
 ### 157.D — User-facing documentation
 
