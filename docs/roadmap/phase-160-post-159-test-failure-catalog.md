@@ -15,6 +15,11 @@ successor.
 / 3 flaky. Fail count down from 189 (cf. Phase 150 v6 inventory) →
 110 (mid-session) → 63 here.
 
+**Update 2026-05-19** — partial re-verify via rtos_e2e matrix
+run (36/36 PASS) closes clusters D + I + J (10 tests) on top of
+160.A (11 tests). Remaining: ~42 fails across B / E / F / G / H /
+K / L / M. Full `just test-all` re-run pending for new baseline.
+
 **Priority.** Medium — no test is gating a release; clusters split
 naturally along subsystem boundaries that map onto independent
 follow-up phases.
@@ -117,27 +122,26 @@ test_zephyr_to_native_e2e
 session init fails (`-3`), bridge counterpart times out waiting.
 Likely closes when A closes.
 
-### D. NuttX C/C++ rtos_e2e (6 tests) → **Phase 140 follow-up**
+### D. NuttX C/C++ rtos_e2e (6 tests) → **CLOSED 2026-05-19**
 
-```
-test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C
-test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp
-test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C
-test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp
-test_rtos_service_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C
-test_rtos_service_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp
-```
+Closed by Phase 159 (`7205eb4d`). Three fixes converged:
 
-**Root cause.** `just nuttx build-fixtures` skips C/C++ cmake
-examples (`↷ nuttx C/C++ cmake examples skipped — see Phase 140
-follow-up`) because `nros-c` needs `-Z build-std` to emit
-`nros_config_generated.h` for tier-3 NuttX target, AND the alias
-TU's vendor-mode dependency-closure differs.
+1. `NROS_ZENOH_PLATFORM_USES_UNIX` gate re-added for NuttX (had
+   been narrowed to POSIX-only by `a529afb1`) → alias TU's
+   wrong-shape `_z_send_tcp` no longer wins at link time over
+   `system/unix/network.c`'s by-value impl. Was producing
+   `_Z_ERR_TRANSPORT_TX_FAILED (-100)` → `support_init -> -4`
+   on every NuttX C example.
+2. Codegen lib emitted as INTERFACE on NuttX (host STATIC compile
+   was dead weight + hit source-tree stub).
+3. Source-tree `nros_{,cpp_}config_generated.h` stubs forward to
+   checked-in fallback under `NROS_PLATFORM_NUTTX` (sizes from
+   threadx-riscv64 ARM cross-build artifact); cmake/cargo wiring
+   adds the define + nros-platform-cffi include + NanoRos::NanoRosCpp
+   alias.
 
-**Fix path.** Extract `nros_config_generated.h` size-probe to a
-standalone codegen step that runs on the host and writes a header
-the cmake project consumes verbatim. Tracked in this phase as
-**160.D**.
+Verified 2026-05-19: full rtos_e2e matrix 36/36 PASS including
+all 6 NuttX C/C++ tests in this cluster.
 
 ### E. ESP32 emulator (3 tests) → **env-gated**
 
@@ -217,27 +221,19 @@ singleton issue Phase 156 doc flagged at the end. Bridge tests
 open TWO RMW backends in same process; XRCE's process-global
 state may collide with zenoh.
 
-### I. ThreadX-Linux rtos_e2e (3 tests) → **PASS 2026-05-19**
-
-```
-test_rtos_action_e2e::platform_3_Platform__ThreadxLinux::lang_1_Lang__Rust
-test_rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux::lang_1_Lang__Rust
-test_rtos_service_e2e::platform_3_Platform__ThreadxLinux::lang_1_Lang__Rust
-```
+### I. ThreadX-Linux rtos_e2e (3 tests) → **CLOSED 2026-05-19**
 
 **Status.** 3/3 PASS on rerun (12.5s total). Fixture staleness as
 hypothesized — Phase 154/155.A platform-aliases work was already
 applied; just needed a fresh fixture build after the unrelated
 churn that produced the catalog. No source changes needed.
+Verified again via full rtos_e2e matrix run (36/36 PASS).
 
-### J. RV64 C pubsub (1 test)
+### J. RV64 C pubsub (1 test) → **CLOSED 2026-05-19**
 
-```
-test_rtos_pubsub_e2e::platform_4_Platform__ThreadxRiscv64::lang_2_Lang__C
-```
-
-C example only; Rust variant passes after Phase 120.3 close.
-Fixture missing per Phase 140 follow-up (same family as D).
+Verified 2026-05-19: full RV64 rtos_e2e matrix 9/9 PASS. Was
+fixture skip per Phase 140 family; current `just threadx_riscv64
+build-fixtures` produces all binaries.
 
 ### K. NuttX DDS + ThreadX-Linux DDS (2 tests)
 
@@ -285,13 +281,13 @@ absent.
 | A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
 | B. Zephyr Cortex-A9 DDS Rust | 4 | dust-dds-on-A9 / Cortex-A9 Rust patch | New (160.B) |
 | C. Zephyr cross-host bridge | 8 | cascades from A | Closes with A |
-| D. NuttX C/C++ rtos_e2e | 6 | fixture skip (Phase 140) | 160.D codegen-header split |
+| D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | env precondition not enforced | 160.E `skip!` wiring |
 | F. RTIC + serial bare-metal | 5 | Phase 132 / 141 RTIC regression | Triage → 132 or 141 |
 | G. cmake_platform_matrix cross | 4 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | H. nano2nano + bridges | 4 | XRCE `g_session` process-globals | Phase 156 follow-up |
-| I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **PASS** on rerun, no changes |
-| J. RV64 C pubsub | 1 | fixture skip (Phase 140) | Closes with D |
+| I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
+| J. RV64 C pubsub | 1 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
 | L. Native + c_xrce + qos | 8 | scattered, one-offs | Per-test triage |
 | M. Integration shells | 3 | env precondition not enforced | 160.M `skip!` wiring |
