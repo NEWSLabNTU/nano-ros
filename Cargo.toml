@@ -88,6 +88,12 @@ members = [
     # Phase 115.K.2.5.1.0 — Rust shim that links the C XRCE backend
     # (nros-rmw-xrce) and exposes its register entry point.
     "packages/xrce/nros-rmw-xrce-cffi",
+    # Phase 160.L — standalone staticlib wrapper. Mirrors
+    # nros-rmw-zenoh-staticlib / nros-rmw-dds-staticlib so cmake /
+    # Corrosion can import a `staticlib` target without forcing the
+    # cffi crate itself to emit one (which broke Zephyr no_std
+    # compiles per Phase 154's notes).
+    "packages/xrce/nros-rmw-xrce-cffi-staticlib",
     # Phase 128.F — cross-RMW bridge primitives.
     "packages/bridge/nros-bridge",
 ]

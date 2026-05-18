@@ -1,0 +1,41 @@
+[package]
+name = "nros-rmw-xrce-cffi-staticlib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Standalone staticlib wrapper for nros-rmw-xrce-cffi — emits libnros_rmw_xrce_cffi_staticlib.a"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+publish = false
+
+# Phase 160.L — emit `libnros_rmw_xrce_cffi_staticlib.a` containing the
+# full `nros-rmw-xrce-cffi` Rust dependency closure + the Micro
+# XRCE-DDS Client C sources + compiler_builtins. Mirrors the
+# zenoh / dds staticlib siblings.
+#
+# Why a separate crate: Cargo always emits every `crate-type` listed
+# in `[lib]`. Putting `staticlib` on the cffi crate itself forced
+# Cargo to resolve a `panic_handler` at compile time on RTOS no_std
+# cross targets (Zephyr, FreeRTOS) where the example's panic source
+# isn't visible — see Phase 154's note. Hoisting the staticlib emit
+# into this wrapper lets cffi stay rlib-only, while hosted-target
+# consumers (cmake / Corrosion) link this archive directly.
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+default = []
+# `std` switches the wrapper to use libstd's panic strategy. Required
+# for hosted targets where compile-time panic resolution otherwise
+# fails. RTOS targets keep the default no_std build (panic comes from
+# the top-level binary via `panic-halt` / `panic-probe`).
+std = ["nros-rmw-xrce-cffi/std"]
+linkme-register = ["nros-rmw-xrce-cffi/linkme-register"]
+
+[dependencies]
+nros-rmw-xrce-cffi = { workspace = true, default-features = false }
+
+[lints]
+workspace = true

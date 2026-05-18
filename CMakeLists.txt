@@ -223,22 +223,23 @@ elseif(NANO_ROS_RMW STREQUAL "dds")
         target_link_libraries(NanoRos INTERFACE nros_rmw_dds_staticlib-static)
     endif()
 elseif(NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 144.3 — XRCE via `nros-rmw-xrce-cffi` (the Rust C-FFI shim
-    # that wraps the header-only Micro XRCE-DDS client + auto-registers
-    # the RMW vtable via `linkme`). The cffi crate has no
-    # `platform-*` / `ros-*` features (Phase 129.C.1 deleted them in
-    # favour of `target_os`-driven selection); we pass `linkme-register`
-    # (default) and `std` on hosted targets so Cargo can resolve the
-    # panic handler when emitting the staticlib top-level. RTOS
-    # consumers keep the default `no_std` build and supply their own
-    # panic handler at the top-level link.
+    # Phase 160.L — XRCE via `nros-rmw-xrce-cffi-staticlib` (the
+    # standalone staticlib sibling that wraps the Rust C-FFI shim
+    # `nros-rmw-xrce-cffi`). The wrapper exists because Corrosion's
+    # `CRATE_TYPES staticlib` flag FILTERS — it does not FORCE the
+    # crate-type emit. Putting `staticlib` directly on the cffi crate's
+    # `[lib].crate-type` made Cargo resolve a `panic_handler` at
+    # compile time on Zephyr / FreeRTOS no_std cross builds where the
+    # example's panic source isn't visible (Phase 154's note). The
+    # wrapper sibling carries the staticlib crate-type so the cffi
+    # crate can stay rlib-only.
     set(_xrce_features linkme-register)
     if(NANO_ROS_PLATFORM STREQUAL "posix")
         list(APPEND _xrce_features std)
     endif()
     corrosion_import_crate(
         MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
-        CRATES        nros-rmw-xrce-cffi
+        CRATES        nros-rmw-xrce-cffi-staticlib
         CRATE_TYPES   staticlib
         NO_DEFAULT_FEATURES
         FEATURES      ${_xrce_features}
@@ -248,15 +249,15 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
        OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
         target_link_libraries(NanoRos INTERFACE
             "-Wl,--whole-archive"
-            nros_rmw_xrce_cffi-static
+            nros_rmw_xrce_cffi_staticlib-static
             "-Wl,--no-whole-archive"
             "-Wl,--allow-multiple-definition")
     elseif(APPLE)
         target_link_libraries(NanoRos INTERFACE
-            "-Wl,-force_load,$<TARGET_FILE:nros_rmw_xrce_cffi-static>"
+            "-Wl,-force_load,$<TARGET_FILE:nros_rmw_xrce_cffi_staticlib-static>"
             "-Wl,--allow-multiple-definition")
     else()
-        target_link_libraries(NanoRos INTERFACE nros_rmw_xrce_cffi-static)
+        target_link_libraries(NanoRos INTERFACE nros_rmw_xrce_cffi_staticlib-static)
     endif()
 elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 144.fix — Cyclone DDS is a standalone C++ CMake project

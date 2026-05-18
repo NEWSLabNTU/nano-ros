@@ -1488,6 +1488,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw-xrce-cffi-staticlib"
+version = "0.1.0"
+dependencies = [
+ "nros-rmw-xrce-cffi",
+]
+
+[[package]]
 name = "nros-rmw-zenoh"
 version = "0.1.0"
 dependencies = [

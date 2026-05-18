@@ -404,22 +404,38 @@ test_threadx_linux_dds_rust_talker_to_listener_e2e
 Per-platform dust-dds bring-up. NuttX side may share root cause
 with B (Zephyr A9 DDS).
 
-### L. Native + misc (8 tests)
+### L. Native + misc (8 tests) → **partial close 2026-05-19**
 
 ```
-test_c_xrce_listener_builds
-test_c_xrce_listener_starts
-test_c_xrce_talker_builds
-test_c_xrce_talker_listener_communication
-test_c_xrce_talker_starts
-test_native_talker_listener_communication::lang_1_Language__C
-test_zenoh_overflow_detection
-test_qos_reliable_delivery  (and other QoS tests)
+test_c_xrce_listener_builds                ✓ FIXED (160.L)
+test_c_xrce_listener_starts                ✓ FIXED (160.L)
+test_c_xrce_talker_builds                  ✓ FIXED (160.L)
+test_c_xrce_talker_listener_communication  ✓ FIXED (160.L)
+test_c_xrce_talker_starts                  ✓ FIXED (160.L)
+test_native_talker_listener_communication::lang_1_Language__C  ✗ open
+test_zenoh_overflow_detection              ✗ open
+test_qos_reliable_delivery  (and other QoS tests)              ✗ unverified
 ```
 
-c_xrce_api family + native_talker_listener_communication C variant
-+ qos / overflow scattered fails. Each one-off — investigate
-individually.
+**c_xrce_api family (5/5 PASS).** Root cause: Phase 154 dropped
+`staticlib` from `nros-rmw-xrce-cffi`'s `[lib].crate-type` to
+fix the no_std cross-compile panic_handler issue, but the comment
+claimed "Corrosion's `--crate-type=staticlib` still works" — it
+does not. `corrosion_import_crate(... CRATE_TYPES staticlib)`
+FILTERS the available crate-types, it does not FORCE Cargo to
+emit one. Result: `Found no targets in 35 packages` configure-time
+error. Fix: created `packages/xrce/nros-rmw-xrce-cffi-staticlib/`
+sibling crate carrying the `staticlib` crate-type, mirroring the
+`nros-rmw-{zenoh,dds}-staticlib` pattern. Root `CMakeLists.txt`
+xrce branch now imports the wrapper. cffi rlib stays Zephyr-safe.
+
+**Open.** `test_native_talker_listener_communication::lang_1_Language__C`:
+C talker prints `Publishing messages (Ctrl+C to exit)...` then
+nothing — timer-driven publish doesn't fire. C++ variant PASSES on
+identical run. Likely Phase 141 wake-callback regression on the C
+timer path, or Phase 156 session-cache change. Needs further
+triage. `test_zenoh_overflow_detection`: receiver gets 0 messages
+across 15s — possibly related to same root cause.
 
 ### M. Integration shells (3 tests) → **phantom — already `[SKIPPED]`**
 
@@ -457,7 +473,7 @@ No action needed.
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
 | J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
-| L. Native + c_xrce + qos | 8 | scattered, one-offs | Per-test triage |
+| L. Native + c_xrce + qos | 8 | c_xrce: Corrosion CRATE_TYPES misuse; rest: timer/wake regression | **5 CLOSED 160.L** + 2-3 open |
 | M. Integration shells | 3 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | skipped | 12 | env (expected) | OK |
 | **total** | **66** unique (63 + 3 retries-only) | | |

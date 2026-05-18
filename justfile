@@ -229,6 +229,7 @@ test-unit verbose="":
     # invocations under `check-workspace-features`.
     args=(--workspace --exclude nros-tests \
           --exclude nros-rmw-xrce-cffi \
+          --exclude nros-rmw-xrce-cffi-staticlib \
           --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -555,6 +556,7 @@ build-workspace-embedded:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
+        --exclude nros-rmw-xrce-cffi-staticlib \
         --exclude nros-rmw-uorb \
         --exclude nros-px4
 
@@ -581,7 +583,8 @@ check-workspace:
         --exclude nros-c --exclude nros-cpp \
         --exclude nros-rmw-dds-staticlib \
         --exclude nros-rmw-zenoh-staticlib \
-        --exclude nros-rmw-xrce-cffi
+        --exclude nros-rmw-xrce-cffi \
+        --exclude nros-rmw-xrce-cffi-staticlib
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -600,6 +603,7 @@ check-workspace-embedded:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
+        --exclude nros-rmw-xrce-cffi-staticlib \
 
 # Check workspace with various feature combinations
 [private]
