@@ -12,10 +12,7 @@
 // sketch's request through to the host node.
 
 #include <nros_arduino.h>
-#include <nros/init.h>
-#include <nros/node.h>
-#include <nros/client.h>
-#include <example_interfaces/srv/add_two_ints.h>
+#include <example_interfaces/example_interfaces.h>
 
 // ─── User configuration ─────────────────────────────────────────────
 static const char* WIFI_SSID = "YourSSID";
@@ -37,19 +34,28 @@ void setup() {
     NRCHECK(nros_init(&ctx));
     NRCHECK(nros_node_create(&node, &ctx, "add_two_ints_client"));
     NRCHECK(nros_client_create(&client, &node, SERVICE_NAME,
-        NANO_ROS_SRV_TYPE_SUPPORT(example_interfaces, srv, AddTwoInts)));
+        example_interfaces_srv_add_two_ints_get_type_support()));
 
     Serial.println("[client] ready");
 }
 
 void loop() {
-    example_interfaces__srv__AddTwoInts_Request req;
-    example_interfaces__srv__AddTwoInts_Response resp;
-    req.a = 41;
-    req.b = 1;
+    example_interfaces_srv_add_two_ints_request req = { 41, 1 };
+    example_interfaces_srv_add_two_ints_response resp = {};
 
-    int rc = nros_client_call(&client, &req, sizeof(req), &resp, sizeof(resp));
-    if (rc == 0) {
+    uint8_t req_buf[64];
+    uint8_t resp_buf[64];
+    size_t req_len = 0;
+    if (example_interfaces_srv_add_two_ints_request_serialize(
+            &req, req_buf, sizeof(req_buf), &req_len) != 0) {
+        Serial.println("[client] request serialize failed");
+        return;
+    }
+    size_t resp_len = 0;
+    int rc = nros_client_call(&client, req_buf, req_len,
+                              resp_buf, sizeof(resp_buf), &resp_len);
+    if (rc == 0 && example_interfaces_srv_add_two_ints_response_deserialize(
+                       &resp, resp_buf, resp_len) == 0) {
         Serial.printf("[client] %ld + %ld = %ld\n",
                       (long)req.a, (long)req.b, (long)resp.sum);
     } else {

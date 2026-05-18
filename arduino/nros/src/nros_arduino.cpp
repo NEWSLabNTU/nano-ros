@@ -4,6 +4,8 @@
 
 #include "nros_arduino.h"
 
+#include <cstring>
+
 #include <Arduino.h>
 #include <WiFi.h>
 

@@ -4,10 +4,7 @@
 // `arduino/nros/src/<arch>/libnanoros.a` for your ESP32 variant.
 
 #include <nros_arduino.h>
-#include <nros/init.h>
-#include <nros/node.h>
-#include <nros/subscription.h>
-#include <std_msgs/msg/int32.h>
+#include <std_msgs/std_msgs.h>
 
 // ─── User configuration ─────────────────────────────────────────────
 static const char* WIFI_SSID = "YourSSID";
@@ -19,14 +16,15 @@ nros_context_t ctx;
 nros_node_t node;
 nros_subscription_t sub;
 
-static void on_chatter(const void* data, size_t len, void* /*user_data*/) {
-    if (len < sizeof(std_msgs__msg__Int32)) {
-        Serial.printf("[listener] short payload (%u bytes)\n",
-                      (unsigned)len);
+static void on_chatter(const uint8_t* data, size_t len, void* /*user_data*/) {
+    std_msgs_msg_int32 msg = {};
+    int32_t rc = std_msgs_msg_int32_deserialize(&msg, data, len);
+    if (rc != 0) {
+        Serial.printf("[listener] decode error %ld (%u bytes)\n",
+                      (long)rc, (unsigned)len);
         return;
     }
-    const std_msgs__msg__Int32* m = (const std_msgs__msg__Int32*)data;
-    Serial.printf("[listener] got %d\n", (int)m->data);
+    Serial.printf("[listener] got %d\n", (int)msg.data);
 }
 
 void setup() {
@@ -38,7 +36,7 @@ void setup() {
     NRCHECK(nros_init(&ctx));
     NRCHECK(nros_node_create(&node, &ctx, "listener"));
     NRCHECK(nros_subscription_create(&sub, &node, "/chatter",
-        NANO_ROS_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+        std_msgs_msg_int32_get_type_support(),
         on_chatter, nullptr));
 
     Serial.println("[listener] ready");

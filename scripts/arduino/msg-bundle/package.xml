@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!-- Phase 23.1.4 — stub package.xml that lists the ROS 2 message
+     packages bundled into the Arduino library. `cargo nano-ros
+     generate-c --manifest-path <here>` walks these dependencies
+     transitively and emits C headers for every reachable
+     interface package (builtin_interfaces, action_msgs,
+     unique_identifier_msgs all come along for free as transitive
+     deps). -->
+<package format="3">
+  <name>nros_arduino_msgs</name>
+  <version>0.1.0</version>
+  <description>Bundle of common ROS 2 message C bindings for the nros Arduino library.</description>
+  <maintainer email="noreply@example.invalid">NEWSLab NTU</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>example_interfaces</depend>
+</package>

@@ -228,6 +228,36 @@ for chip in $(echo "$TARGETS" | tr ',' ' '); do
     fi
 done
 
+# Phase 23.1.4 — bundle the common ROS 2 message-type C headers
+# under `arduino/nros/src/<pkg>/`. One run covers every chip; the
+# generated layout is target-agnostic. `cargo nano-ros generate-c`
+# (and the standalone `nano-ros` binary it wraps) reads the deps
+# from `scripts/arduino/msg-bundle/package.xml` and emits C
+# headers for every transitively-reachable interface package.
+echo
+echo "==> bundling ROS 2 interface headers"
+gen_root="$NANO_ROS_ROOT/build/arduino/msg-gen"
+mkdir -p "$gen_root"
+nano_ros_bin="$NANO_ROS_ROOT/packages/codegen/packages/target/debug/nano-ros"
+if [[ ! -x "$nano_ros_bin" ]]; then
+    (cd "$NANO_ROS_ROOT/packages/codegen/packages" && cargo build -p cargo-nano-ros --bin nano-ros >/dev/null 2>&1)
+fi
+"$nano_ros_bin" generate-c \
+    --manifest-path "$SCRIPT_DIR/msg-bundle/package.xml" \
+    --output "$gen_root" \
+    --force | tail -10 || true
+
+for pkg_dir in "$gen_root"/*/; do
+    [[ -d "$pkg_dir" ]] || continue
+    pkg=$(basename "$pkg_dir")
+    dest="$ARDUINO_LIB_ROOT/src/$pkg"
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    cp -r "$pkg_dir"* "$dest/"
+done
+n_headers=$(find "$ARDUINO_LIB_ROOT/src" -mindepth 2 -name '*.h' | wc -l)
+echo "  bundled $n_headers ROS interface headers under arduino/nros/src/"
+
 echo
 echo "Done. To package the Arduino library zip, run:"
 echo "  scripts/arduino/package-arduino-lib.sh"

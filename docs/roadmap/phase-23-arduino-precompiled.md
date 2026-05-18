@@ -141,9 +141,16 @@ without undefined-reference errors.
 - [x] **23.1.2** `arduino/nros/keywords.txt`.
 - [x] **23.1.3** `arduino/nros/src/nros_arduino.{h,cpp}` — WiFi
       bring-up + locator stash + `NRCHECK` / `NRSOFTCHECK` macros.
-- [ ] **23.1.4** Bundle a curated set of message-type headers under
-      `arduino/nros/src/<package>/` via `cargo nano-ros generate-c`.
-      Deferred to first Library Manager submission (23.6.4).
+- [x] **23.1.4** `scripts/arduino/build-libnanoros.sh` runs
+      `nano-ros generate-c` against
+      `scripts/arduino/msg-bundle/package.xml` (depends on
+      `std_msgs` / `geometry_msgs` / `sensor_msgs` /
+      `example_interfaces` — pulls `builtin_interfaces` /
+      `action_msgs` / `unique_identifier_msgs` transitively) and
+      copies the resulting 170 C headers under
+      `arduino/nros/src/<pkg>/`. Library zip grows from 80 KB to
+      468 KB; users can `#include <std_msgs/std_msgs.h>` etc.
+      without re-running codegen.
 - [x] **23.1.5** Per-arch `.gitkeep` directories (esp32 / esp32s3 /
       esp32c3) + `.gitignore` for the produced `.a` artefacts.
 - [x] **23.1.6** `arduino/nros/README.md`.
@@ -220,28 +227,24 @@ no changes to `nros-c` are needed beyond Phase 21's ESP-IDF backend.
 - [x] **23.4.3** `ServiceClient.ino` (calls AddTwoInts).
 - [x] **23.4.4** `Reconnection.ino` (drives `nanoros_ping()` +
       bring-up / tear-down on failure).
-- [ ] **23.4.x** Sketch API reconciliation. All four sketches use
-      Arduino-shaped names (`nros_*_create` / `nros_spin_once`) that
-      do NOT match nros-c's `_init` / `_fini` / `executor_init` +
-      `executor_add_*` + `executor_spin_some` surface. Two
-      paths investigated:
-      - **(a) rewrite sketches against the real API** — concrete but
-        loses the micro-ROS-shape ergonomics that Arduino users
-        expect. Adds boilerplate for the executor object that
-        micro-ROS hides.
-      - **(b) thin Arduino-shape wrappers in `nros_arduino.h`** —
-        wraps `nros_support_init` / `nros_node_init` /
-        `nros_publisher_init` / `nros_publish_raw` /
-        `nros_client_init` / `nros_client_call` plus a hidden global
-        `nros_executor_t` so `nros_spin_once(&ctx, timeout)` resolves
-        without the user constructing one explicitly. Closer to
-        micro-ROS DX. Requires the bundled
-        `arduino/nros/src/nros/` headers (landed by 23.1.4 follow-up
-        in 2026-05) so the struct sizes resolve.
-      Recommended path: **(b)**. Tracked separately because the
-      wrapper layer needs care around executor lifetime, subscription
-      callback signature reshape, and per-sketch resource sizing —
-      not blocking the precompiled-library packaging.
+- [x] **23.4.x** `arduino/nros/src/nros_arduino_wrappers.cpp` wraps
+      `nros_support_init` / `nros_node_init` /
+      `nros_publisher_init` / `nros_publish_raw` /
+      `nros_subscription_init` / `nros_client_init` /
+      `nros_executor_init` / `nros_executor_add_client` /
+      `nros_executor_spin_some` behind the
+      `nros_init` / `nros_*_create` / `nros_*_destroy` /
+      `nros_publish` / `nros_spin_once` shape. The wrapper layer
+      owns a hidden global `nros_executor_t` so sketches do not
+      construct one explicitly. The 5-arg
+      `nros_client_call(client, req, req_len, resp, resp_cap)`
+      shape was dropped because the real nros-c `nros_client_call`
+      already takes the same args plus an out `response_len`
+      pointer — sketches use the real symbol. All four bundled
+      example sketches (Talker / Listener / ServiceClient /
+      Reconnection) now compile against the bundled
+      `std_msgs` / `example_interfaces` C headers + the wrapper
+      surface.
 
 ### 23.5 — Testing
 
