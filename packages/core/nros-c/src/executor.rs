@@ -270,6 +270,12 @@ pub unsafe extern "C" fn nros_executor_init(
         return NROS_RET_NOT_INIT;
     }
 
+    // `mut` only needed under `feature = "std"` where the
+    // env-var-driven primary-identity block below mutates it;
+    // on `no_std` (FreeRTOS / NuttX / ThreadX) the mutation
+    // path compiles out and `-D unused-mut` would otherwise
+    // hard-fail every cmake build of the C examples.
+    #[allow(unused_mut)]
     let mut rust_exec = CExecutor::from_session_ptr(session_ptr);
     // Phase 156 — populate executor's primary identity fields
     // so `NodeBuilder::resolve_session_slot` can return slot 0
