@@ -9,3 +9,22 @@
 # backtraces.
 [build]
 rustflags = ["-C", "symbol-mangling-version=v0"]
+
+# Phase 21.6 — ESP32 family cross-targets are single-core (ESP32-C3 /
+# original ESP32) or single-core for IDF builds (ESP32-S3 in non-SMP
+# IDF default), and they have no native atomic-CAS instructions, so
+# `portable-atomic` refuses to compile unless one of its escape
+# hatches is enabled. The `portable_atomic_unsafe_assume_single_core`
+# cfg is the right pick for single-core targets (IDF apps + Arduino
+# library bundles are single-core in practice). When cargo's
+# target-specific rustflags table wins over `[build]`, the workspace
+# `-C symbol-mangling-version=v0` must be duplicated here.
+[target.riscv32imc-unknown-none-elf]
+rustflags = ["-C", "symbol-mangling-version=v0",
+             "--cfg=portable_atomic_unsafe_assume_single_core"]
+[target.xtensa-esp32s3-none-elf]
+rustflags = ["-C", "symbol-mangling-version=v0",
+             "--cfg=portable_atomic_unsafe_assume_single_core"]
+[target.xtensa-esp32-none-elf]
+rustflags = ["-C", "symbol-mangling-version=v0",
+             "--cfg=portable_atomic_unsafe_assume_single_core"]

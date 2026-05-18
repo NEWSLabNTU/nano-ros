@@ -54,10 +54,49 @@ reopened Phase 21 is now Phase 23's 23.0 prerequisite.
       the extended SDK tier: `just setup tier=extended` or
       `just esp_idf setup`). Capture the first-time install
       footprint in `docs/development/sdk-tiers.md` if the tier
-      classification needs to change. Deferred — needs ESP-IDF
-      installed locally; the integration shell + platform module
-      land in this iteration so the gate-build is the next
-      verification step.
+      classification needs to change.
+- [ ] **21.10.A** ESP-IDF cross-build reaches Rust compile but the
+      IDF cmake glue does not feed its component include directories
+      (FreeRTOS / lwIP / esp_hw_support headers) to Corrosion-driven
+      cc::Build invocations inside `zpico-sys/build.rs`. Result:
+      `fatal error: FreeRTOS.h: No such file or directory` when
+      zenoh-pico's `system/freertos/lwip.h` includes it. Need a
+      mechanism to export the IDF `INCLUDE_DIRECTORIES` of `freertos`
+      / `lwip` / `esp_hw_support` / `esp_system` components into
+      `CFLAGS_<rust-target>` env so cc-rs picks them up. Likely
+      lives in the Phase 23.2 `scripts/arduino/idf-builder/`
+      CMakeLists.txt (use `idf_build_get_property(include_dirs
+      INCLUDE_DIRECTORIES …)` + write CFLAGS env before Corrosion
+      runs).
+
+## Progress 2026-05-18
+
+- Phase 21.6–21.9 landed (`platform-esp-idf` feature + cmake routing
+  + `integrations/esp-idf/` repoint).
+- ESP-IDF v5.3 installed locally (`just esp_idf setup`).
+- `scripts/arduino/build-libnanoros.sh` reaches the Rust cross-compile
+  pass for `riscv32imc-unknown-none-elf`. Resolved issues so far:
+  - dedicated `[platform.esp-idf]` entry in
+    `zenoh_platforms.toml` (no `required_env`, no
+    `include_paths`, no arch flags).
+  - `zpico-sys/build.rs` gets a `use_esp_idf` flag that bypasses
+    the mps2-an385 FREERTOS_DIR / LWIP_DIR injection.
+  - `.cargo/config.toml` adds
+    `--cfg=portable_atomic_unsafe_assume_single_core` for the
+    three ESP32-family Rust target triples.
+  - `scripts/arduino/build-libnanoros.sh` scrubs
+    `FREERTOS_DIR` / `LWIP_DIR` etc. from the env so direnv's
+    vanilla-FreeRTOS values do not leak into the IDF build.
+  - root + `nros-c` + `nros-cpp` + `nros-rmw-zenoh-staticlib`
+    CMakeLists accept `NANO_ROS_PLATFORM=esp-idf`;
+    `nros-cpp` Cargo gains a `platform-esp-idf` feature;
+    `nros-platform/src/{lib,resolve}.rs` gain matching cfg gates.
+  - `nros-rmw-dds/Cargo.toml` adds `platform-esp-idf` (nostd-runtime
+    shape).
+- Remaining blocker for 21.10: `scripts/arduino/idf-builder/`
+  needs to export IDF component include dirs into
+  `CFLAGS_<rust-target>` before Corrosion fires (see 21.10.A
+  above).
 
 ## Historical record (original 2024 closure notes follow)
 

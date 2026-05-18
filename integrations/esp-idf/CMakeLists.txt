@@ -7,7 +7,13 @@
 #
 # ≤50 lines (excl. comments) per Phase 139's per-shell budget.
 
-set(_nros_root "${CMAKE_CURRENT_LIST_DIR}/../..")
+# Resolve symlinks before walking up. The Arduino library builder
+# (Phase 23.2) stages this directory under a renamed symlink so the
+# IDF component name resolves to `nano-ros`; resolving the real
+# path of CMAKE_CURRENT_LIST_DIR first ensures the `../..` walk
+# lands at the repo root rather than inside the staging dir.
+file(REAL_PATH "${CMAKE_CURRENT_LIST_DIR}" _nros_int_real)
+file(REAL_PATH "${_nros_int_real}/../.." _nros_root)
 
 # Map Kconfig.projbuild knobs to NANO_ROS_* cache vars. Defaults
 # mirror the Phase 137 root defaults; user `sdkconfig` overrides win.

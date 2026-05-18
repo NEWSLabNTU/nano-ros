@@ -1,0 +1,7 @@
+# IDF build dir is under <repo>/build/arduino/<chip>/ (set via
+# `idf.py -B`), but `idf.py set-target` plants sdkconfig + lockfile
+# next to the project sources too.
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/

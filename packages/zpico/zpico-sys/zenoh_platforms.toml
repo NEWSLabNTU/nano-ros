@@ -157,6 +157,26 @@ include_paths = [
 ]
 rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_CONFIG_DIR"]
 
+# Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork). Same zenoh-pico
+# source set as `freertos-lwip` (system/freertos/lwip) but ESP-IDF
+# supplies the kernel + lwIP includes via its own component
+# manager, so we declare zero `required_env` / `include_paths` and
+# leave arch flags to cc-rs (the IDF cmake glue feeds the cross
+# compiler through CC_<target> / CFLAGS_<target>). Also drops the
+# nano-ros `zpico.c` printk shim — it embeds ARM Cortex-M3 inline
+# asm that is invalid on RISC-V / Xtensa.
+[platform.esp-idf]
+defines = ["ZENOH_GENERIC", "ZENOH_FREERTOS_LWIP"]
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_UDP_MULTICAST = "0" }
+include = ["system/common", "system/freertos/lwip"]
+extra_sources = [
+  { path = "{src}/system/freertos/system.c" },
+]
+arch = []
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+required_env = []
+include_paths = ["{nros}/c/include"]
+
 [platform.nuttx]
 defines = ["ZENOH_GENERIC", "ZENOH_NUTTX"]
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_TIMEOUT = "5000" }

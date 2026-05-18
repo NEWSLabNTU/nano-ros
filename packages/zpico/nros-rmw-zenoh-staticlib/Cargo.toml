@@ -37,6 +37,16 @@ platform-freertos = [
     "nros-platform/global-allocator",
     "dep:panic-halt",
 ]
+# Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork). Mirrors the
+# freertos staticlib feature.
+platform-esp-idf = [
+    "alloc",
+    "nros-rmw-zenoh/platform-esp-idf",
+    "dep:nros-platform",
+    "nros-platform/platform-esp-idf",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
 platform-nuttx = ["nros-rmw-zenoh/platform-nuttx"]
 platform-threadx = [
     "alloc",

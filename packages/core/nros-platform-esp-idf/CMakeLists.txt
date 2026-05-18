@@ -8,7 +8,14 @@ cmake_minimum_required(VERSION 3.20)
 # `cmake -B build` outside an IDF project still produces a sensible
 # error message instead of silent garbage.
 
-if(DEFINED IDF_VERSION)
+# Phase 21.6 follow-up — gate on `COMMAND idf_component_register`
+# rather than `DEFINED IDF_VERSION`. ESP-IDF's component-discovery
+# pass runs each component's CMakeLists in cmake script mode (where
+# `project()` is illegal); `IDF_VERSION` is not set in that pass, so
+# the standalone branch below would fire and break the build. The
+# `idf_component_register` command, however, IS injected at every
+# component-script entry point.
+if(COMMAND idf_component_register)
     idf_component_register(
         SRCS src/platform.c src/net.c src/timer.c
         INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-cffi/include"

@@ -31,7 +31,12 @@ set(_NROS_PLATFORM_ESP_IDF_INCLUDED TRUE)
 set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast udp_multicast
     CACHE STRING "Default link features for the ESP-IDF platform")
 
-if(NOT DEFINED IDF_VERSION)
+# `IDF_VERSION` is set only during the main IDF build pass — the
+# component-discovery script-mode pass does NOT have it set, but
+# the `idf_component_register` command IS injected at every IDF
+# scope. Gate the standalone-fatal-error on the more reliable
+# command check.
+if(NOT COMMAND idf_component_register)
     message(FATAL_ERROR
         "nano-ros-esp-idf: NANO_ROS_PLATFORM=esp-idf must be used inside "
         "an ESP-IDF project. Register nano-ros via the Phase 139 shell "
@@ -73,15 +78,15 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Native-C platform shim — `packages/core/nros-platform-esp-idf/`.
-# Pulled in via `add_subdirectory` so it registers as an IDF
-# component (its CMakeLists detects `IDF_VERSION` and calls
-# `idf_component_register()`). The IDF component manager picks up
-# the REQUIRES (freertos / esp_timer / esp_hw_support / esp_system /
-# lwip) automatically.
+# The IDF project's component-discovery pass (driven by the caller's
+# `EXTRA_COMPONENT_DIRS`) is what registers this directory as an IDF
+# component, so we do NOT `add_subdirectory` it here — that would
+# create a duplicate `__idf_nano-ros` target collision and force IDF
+# to process the component in two different contexts. Callers
+# (`scripts/arduino/idf-builder/CMakeLists.txt`, `tests/esp-idf-smoke/`,
+# user projects) are responsible for adding
+# `packages/core/nros-platform-esp-idf` to their EXTRA_COMPONENT_DIRS.
 # ---------------------------------------------------------------------------
-add_subdirectory(
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-esp-idf"
-    nros_platform_esp_idf)
 
 # ---------------------------------------------------------------------------
 # NanoRos::Platform alias. The IDF component manager exposes

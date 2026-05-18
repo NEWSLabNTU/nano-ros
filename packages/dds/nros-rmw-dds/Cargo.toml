@@ -55,6 +55,10 @@ platform-zephyr   = ["nostd-runtime"]
 platform-freertos = ["nostd-runtime"]
 platform-nuttx    = ["nostd-runtime"]
 platform-threadx  = ["nostd-runtime"]
+# Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork). Same nostd-runtime
+# pieces; the C platform port at packages/core/nros-platform-esp-idf/
+# supplies the canonical ABI symbols at IDF link time.
+platform-esp-idf  = ["nostd-runtime"]
 
 # Internal — set by every `platform-*` feature that uses
 # `NrosPlatformRuntime` + `NrosUdpTransportFactory` (i.e. every

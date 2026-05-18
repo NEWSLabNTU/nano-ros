@@ -27,6 +27,9 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     set(_platform_features platform-threadx)
     set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
+elseif(NANO_ROS_PLATFORM STREQUAL "esp-idf")
+    set(_platform_features platform-esp-idf)
+    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
     # Phase 144.7-8 canonical "threadx" — board axis disambiguates
     # the std-vs-no_std crate-feature split.

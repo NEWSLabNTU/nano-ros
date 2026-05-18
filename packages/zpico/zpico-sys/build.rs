@@ -389,6 +389,12 @@ fn main() {
     let use_freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
     let use_nuttx = env::var("CARGO_FEATURE_NUTTX").is_ok();
     let use_threadx = env::var("CARGO_FEATURE_THREADX").is_ok();
+    // Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork). Distinct from
+    // upstream vanilla FreeRTOS because ESP-IDF supplies kernel + lwIP
+    // headers through its own IDF component include flow; pulling
+    // FREERTOS_DIR / LWIP_DIR (the mps2-an385 path) would inject ARM
+    // Cortex-M3 inline asm into a RISC-V / Xtensa build.
+    let use_esp_idf = env::var("CARGO_FEATURE_ESP_IDF").is_ok();
     // Phase 100.6 — AGX Orin SPE (Cortex-R5F + NVIDIA FreeRTOS FSP).
     // Builds zenoh-pico from the same C source as `freertos` but
     // skips lwIP / TCP-UDP wiring; the only link transport is IVC.
@@ -413,7 +419,8 @@ fn main() {
         || use_freertos
         || use_nuttx
         || use_threadx
-        || use_orin_spe;
+        || use_orin_spe
+        || use_esp_idf;
     if !any_explicit && auto_posix {
         use_posix = true;
     }
@@ -427,6 +434,7 @@ fn main() {
         use_nuttx,
         use_threadx,
         use_orin_spe,
+        use_esp_idf,
     ]
     .iter()
     .filter(|&&b| b)
@@ -507,11 +515,13 @@ fn main() {
         LinkPolicy::orin_spe()
     } else if use_posix {
         LinkPolicy::posix()
-    } else if use_freertos {
+    } else if use_freertos || use_esp_idf {
         // Phase 146.2 — FreeRTOS has no serial / raweth / TLS
         // backend; force them off so the upstream "Serial not
         // supported" `#error` doesn't fire and the alias TU
-        // doesn't have to stub `_z_*_serial_internal`.
+        // doesn't have to stub `_z_*_serial_internal`. Phase 21.6 —
+        // ESP-IDF's FreeRTOS fork uses the same link-feature set,
+        // so it routes through the same LinkPolicy.
         LinkPolicy::freertos_lwip()
     } else if use_nuttx {
         // Phase 146.2 — NuttX has no serial / raweth / TLS
@@ -546,6 +556,12 @@ fn main() {
         Some("orin-spe")
     } else if use_nuttx {
         Some("nuttx")
+    } else if use_esp_idf {
+        // Phase 21.6 — dedicated [platform.esp-idf] manifest entry.
+        // Same source set as freertos-lwip but with empty required_env
+        // / include_paths / arch — ESP-IDF supplies everything via
+        // its own component include flow.
+        Some("esp-idf")
     } else if use_freertos {
         Some("freertos-lwip")
     } else if use_bare_metal {
@@ -590,7 +606,13 @@ fn main() {
                 println!("cargo:rustc-link-lib=ws2_32");
             }
         }
-        if backend_count > 0 && !use_zephyr && !use_freertos && !use_nuttx && !use_threadx {
+        if backend_count > 0
+            && !use_zephyr
+            && !use_freertos
+            && !use_nuttx
+            && !use_threadx
+            && !use_esp_idf
+        {
             build_c_shim(
                 &c_dir,
                 &include_dir,
@@ -615,6 +637,11 @@ fn main() {
         println!("cargo:rustc-cfg=zpico_backend=\"bare-metal\"");
     } else if use_freertos {
         println!("cargo:rustc-cfg=zpico_backend=\"freertos\"");
+    } else if use_esp_idf {
+        // Phase 21.6 — distinct cfg so any Rust shim code that
+        // needs ESP-IDF-specific behaviour (vs vanilla FreeRTOS)
+        // can target `#[cfg(zpico_backend = "esp-idf")]`.
+        println!("cargo:rustc-cfg=zpico_backend=\"esp-idf\"");
     } else if use_nuttx {
         println!("cargo:rustc-cfg=zpico_backend=\"nuttx\"");
     } else if use_threadx {
@@ -763,6 +790,7 @@ fn main() {
             use_freertos,
             use_nuttx,
             use_threadx,
+            use_esp_idf,
         );
     }
 }
@@ -782,6 +810,7 @@ fn probe_net_type_sizes(
     use_freertos: bool,
     use_nuttx: bool,
     use_threadx: bool,
+    use_esp_idf: bool,
 ) {
     let mut build = cc::Build::new();
     build.file(c_dir.join("size_probe.c"));
@@ -857,6 +886,17 @@ fn probe_net_type_sizes(
             let lwip = PathBuf::from(dir);
             build.include(lwip.join("src/include"));
         }
+    } else if use_esp_idf {
+        // Phase 21.6 — ESP-IDF supplies the FreeRTOS kernel + lwIP +
+        // sockets headers via its own component include flow. Do NOT
+        // pull `FREERTOS_DIR` / `LWIP_DIR` (those default to the
+        // mps2-an385 ARM Cortex-M3 paths and inject incompatible
+        // inline asm). The IDF cmake glue feeds the cross compiler
+        // the right `-I` flags via CFLAGS_<target>, which Corrosion
+        // forwards verbatim to cc-rs. We only flip the define so
+        // zenoh-pico's `system/common/platform.h` selects the
+        // `system/freertos/system.c` source set.
+        build.define("ZENOH_FREERTOS_LWIP", None);
     } else if use_nuttx {
         build.define("ZENOH_NUTTX", None);
         build.define("ZENOH_LINUX", None);

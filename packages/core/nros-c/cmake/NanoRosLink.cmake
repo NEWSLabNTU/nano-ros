@@ -236,7 +236,8 @@ function(nano_ros_link_rmw TARGET)
     # ThreadX RISC-V QEMU).
     if((NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
             OR NANO_ROS_PLATFORM STREQUAL "threadx_linux"
-            OR NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
+            OR NANO_ROS_PLATFORM STREQUAL "threadx_riscv64"
+            OR NANO_ROS_PLATFORM STREQUAL "esp-idf")
             AND _chosen STREQUAL "zenoh")
         return()
     endif()

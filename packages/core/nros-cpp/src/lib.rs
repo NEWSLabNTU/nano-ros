@@ -34,8 +34,14 @@ use panic_halt as _;
 extern crate nros_rmw_xrce_cffi;
 
 // FreeRTOS global allocator: wraps pvPortMalloc/vPortFree for alloc on no_std.
-// FreeRTOS heap_4 returns 8-byte aligned pointers, sufficient for all nros types.
-#[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-freertos"))]
+// FreeRTOS heap_4 returns 8-byte aligned pointers, sufficient for all nros
+// types. Phase 21.6 also enables this for `platform-esp-idf` — ESP-IDF's
+// FreeRTOS fork exports the same `pvPortMalloc` / `vPortFree` symbols.
+#[cfg(all(
+    feature = "alloc",
+    not(feature = "std"),
+    any(feature = "platform-freertos", feature = "platform-esp-idf"),
+))]
 mod freertos_alloc {
     use core::alloc::{GlobalAlloc, Layout};
 

@@ -1,0 +1,5 @@
+# The `nano-ros` symlink is created by `../CMakeLists.txt` on every
+# configure pass so the IDF component scan finds the integration
+# shell under a `nano-ros/` directory name. Ignore the symlink itself
+# (re-created on every clean build).
+nano-ros

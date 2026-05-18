@@ -96,6 +96,14 @@ for chip in $(echo "$TARGETS" | tr ',' ' '); do
     echo "==> [$chip] cross-compiling via idf.py build (out: $build_dir)"
     (
         cd "$BUILDER_DIR"
+        # Phase 21.6 — scrub vanilla-FreeRTOS env that direnv / .env
+        # injects for the mps2-an385 build. zpico-sys's build.rs
+        # treats any non-empty `FREERTOS_DIR` / `LWIP_DIR` as a
+        # request to inject the ARM Cortex-M3 FreeRTOS port headers,
+        # which clashes with ESP-IDF's RISC-V / Xtensa compile
+        # flags. ESP-IDF supplies kernel + lwIP includes through its
+        # own component manager — no `FREERTOS_*` env required.
+        unset FREERTOS_DIR FREERTOS_PORT FREERTOS_CONFIG_DIR LWIP_DIR
         idf.py -B "$build_dir" set-target "$chip"
         idf.py -B "$build_dir" build
     )

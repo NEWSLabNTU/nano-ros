@@ -74,6 +74,16 @@ platform-freertos = [
     "nros-rmw-zenoh?/platform-freertos",
     "nros-rmw-dds?/platform-freertos",
 ]
+# Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork). Same shape as
+# platform-freertos; the RMW backend selects ESP-IDF via its own
+# `platform-esp-idf` feature so zpico-sys / dust-dds pick up the
+# right system shim.
+platform-esp-idf = [
+    "alloc",
+    "nros/platform-esp-idf",
+    "nros-rmw-zenoh?/platform-esp-idf",
+    "nros-rmw-dds?/platform-esp-idf",
+]
 platform-nuttx = [
     "alloc",
     "nros/platform-nuttx",

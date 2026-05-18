@@ -47,6 +47,13 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 #[cfg(feature = "platform-freertos")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
+// Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork). C platform port
+// at `packages/core/nros-platform-esp-idf/` supplies the canonical
+// `nros_platform_*` symbols; the Rust binding routes through the
+// same cffi adapter as the other RTOSes.
+#[cfg(feature = "platform-esp-idf")]
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
+
 #[cfg(feature = "platform-threadx")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
