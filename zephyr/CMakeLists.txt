@@ -220,18 +220,22 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # `DDSRT_HAVE_*` undef'd in cyclonedds-config/dds/config.h only gate
     # *call sites* in headers + top-level TUs; the per-feature posix/*.c
     # bodies are still unconditional and would fail to link.
-    #   - ifaddrs/posix/ifaddrs.c   → getifaddrs / struct ifaddrs (absent)
-    #   - dynlib/posix/dynlib.c     → dlopen / dlsym / dlerror (no libdl)
-    #   - random/posix/random.c     → fopen("/dev/urandom") — replaced by
+    #   - ifaddrs/posix/ifaddrs.c    → getifaddrs / struct ifaddrs (absent)
+    #   - dynlib/posix/dynlib.c      → dlopen / dlsym / dlerror (no libdl)
+    #   - random/posix/random.c      → fopen("/dev/urandom") — replaced by
     #     the Zephyr-specific ddsrt_prng_makeseed override under
     #     zephyr/cyclonedds-zephyr/random_zephyr.c.
     #   - sockets/posix/gethostname.c → empty under DDSRT_HAVE_GETHOSTNAME=0
     #     but drop for clarity.
+    #   - filesystem/posix/filesystem.c → DDSRT_HAVE_FILESYSTEM=0 in config.h
+    #     but the body references DDSRT_FILESEPCHAR / ddsrt_dir_handle_t
+    #     unconditionally; drop to avoid build errors.
     list(REMOVE_ITEM _cdds_ddsrt_posix
         ${CYCLONEDDS_DIR}/src/ddsrt/src/ifaddrs/posix/ifaddrs.c
         ${CYCLONEDDS_DIR}/src/ddsrt/src/dynlib/posix/dynlib.c
         ${CYCLONEDDS_DIR}/src/ddsrt/src/random/posix/random.c
         ${CYCLONEDDS_DIR}/src/ddsrt/src/sockets/posix/gethostname.c
+        ${CYCLONEDDS_DIR}/src/ddsrt/src/filesystem/posix/filesystem.c
     )
 
     # Zephyr replacement TUs for the dropped POSIX bodies above.
@@ -274,6 +278,12 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         DDS_HAS_TYPE_DISCOVERY=0
         DDS_HAS_TOPIC_DISCOVERY=0
     )
+
+    # Zephyr POSIX doesn't expose `INADDR_LOOPBACK`. Cyclone's
+    # `ddsrt/src/sockets.c` uses it unconditionally for IPv4
+    # loopback compare. Provide the canonical value via -D so
+    # the TU compiles without patching upstream.
+    zephyr_compile_definitions(INADDR_LOOPBACK=0x7f000001UL)
 
     # ---- nros-rmw-cyclonedds C++ register glue ------------------------------
     file(GLOB _nros_cdds_cpp ${NROS_RMW_CDDS_DIR}/src/*.cpp)
