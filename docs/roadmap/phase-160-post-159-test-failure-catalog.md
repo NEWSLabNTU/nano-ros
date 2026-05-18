@@ -185,10 +185,56 @@ real test fails.
 - Listener doesn't hit this path → no crash → "Listener received
   0 messages" because talker crashed before publishing.
 
-Tracked as Phase 89.4-tier ESP32 bug; needs deeper investigation
-of zpico's `g_pending_gets` slot management or zenoh-pico
-endpoint-string lifetime on ESP32-C3 bare-metal. NOT the
-OpenETH/smoltcp RX stall the original TODO described.
+**Further investigation (talker-only re-run):** Talker alone
+(without listener) reproduces. addr2line on the fresh post-rebuild
+binary gave the actual call chain (caller→callee):
+
+```
+zpico_open                 zpico.c:880
+z_open                     api.c:766
+_z_open_inner              session.c:166
+_z_new_transport_client    manager.c:36
+_z_open_link               link.c:99
+_z_open_tcp                platform_aliases.c:385
+nros_platform_tcp_open     (cffi crate, Rust)
+```
+
+Crash is INSIDE `nros_platform_tcp_open` — the Rust shim that
+bridges zenoh-pico's `_z_open_tcp` (called from the alias TU)
+to smoltcp on ESP32-C3.
+
+mtval=0x0202000c on every retry — same NULL-page deref pattern.
+0x02xxxxxx is invalid memory on ESP32-C3 (DRAM at 0x3fc80000,
+IRAM at 0x40380000, flash at 0x42000000). Looks like
+`*(null)->field` where field offset = 0x0c — classic NULL struct
+deref.
+
+Listener works (same code path); talker crashes. Different
+heap state per binary (different MAC / IP config strings,
+different timer registration) flips a pointer NULL on talker.
+
+Looking at recent zpico-sys changes that touched the alias TU
+(my Phase 159 `NROS_ZENOH_PLATFORM_USES_UNIX` gate, Phase 154
+ABI fixes, Phase 156-F1 vendor-mode wiring): all those changes
+deliberately SKIP the alias TU's network section on USES_UNIX
+platforms. ESP32 is bare-metal NOT USES_UNIX (no unix.h socket
+struct) → alias TU IS active for ESP32 → `_z_open_tcp` calls
+`nros_platform_tcp_open` from the alias TU.
+
+Suspected regression source: `nros_platform_tcp_open` in
+`nros-platform-cffi` may have changed signature or struct layout
+in Phase 154's accessor work, and the ESP32 platform crate
+`nros-platform-esp32-qemu` wasn't re-validated. Needs:
+
+1. Diff `nros_platform_tcp_open` signature on disk vs what the
+   alias TU expects (struct layout match per Phase 154).
+2. Check `nros-platform-esp32-qemu`'s implementation hasn't
+   gone stale relative to the cffi shim contract.
+3. Verify with the test's smoltcp::Interface globals are
+   actually initialised before zpico_open fires.
+
+Defer to Phase 89.4 follow-up (or new ESP32-focused phase) —
+this needs ESP32 platform-crate domain knowledge.
 
 ### F. QEMU bare-metal RTIC + serial (5 tests)
 
