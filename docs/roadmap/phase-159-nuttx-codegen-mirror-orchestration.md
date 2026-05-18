@@ -218,6 +218,54 @@ on the build-dep variant change anything? Tested both ways —
 same -4 fail. Suggests the issue isn't feature flags on `nros-c`
 itself but on a transitive (zpico-sys, zenoh-pico).
 
+### 157.6 — Path C attempt 2026-05-18 → FAILED at runtime (same -4)
+
+Tried Path C (commit checked-in `nros_config_generated_nuttx.h` +
+`nros_cpp_config_generated_nuttx.h` companion headers under
+`packages/core/nros-{c,cpp}/include/nros/`). Sizes harvested from
+working `build/cmake-threadx-riscv64-zenoh/cargo/.../nros-{c,cpp}-
+generated/...` artifacts. Stubs conditionally `#include` the
+fallback when `NROS_PLATFORM_NUTTX` is defined.
+
+Required cmake/build.rs adjuncts:
+- `nros-nuttx-ffi/build.rs` — `.define("NROS_PLATFORM_NUTTX", None)`
+  so cc-rs compile of user `main.c` picks the fallback path. Cmake's
+  `NanoRos::NanoRos` INTERFACE compile-def doesn't propagate to the
+  sibling cargo build.
+- `zpico-sys/build.rs` — add nros-platform-cffi include to
+  `build_zenoh_pico_unified` (zpico.c needs `<nros/platform_net.h>`
+  from Phase 154 commit 90bff903; manifest extra_sources path was
+  missing it).
+- `NanoRosGenerateInterfaces.cmake` — codegen STATIC → INTERFACE
+  on NuttX (host-compile is dead weight; .c sources reach final
+  ELF via APP_EXTRA_SOURCES).
+
+**Fresh-tree build PASSED** — `cmake --build build --parallel`
+produces `nuttx_c_action_client` ARM ELF in one pass without
+incremental leftover.
+
+**But runtime SAME -4 fail** as Path A. NuttX C pubsub and action
+both surface `nros_support_init -> -4` (NROS_RET_NOT_FOUND from
+ConnectionFailed). Affects every NuttX C example.
+
+So neither feature unification (Path A) nor checked-in fallback
+sizes (Path C) is the root cause. The runtime regression appears
+to be pre-existing on `main` but masked by warm-up + incremental
+build state in commit `f6442f24`'s test. Suspect ZID collision
+or zenoh-pico session setup regression introduced by an upstream
+commit (Phase 154 / 156 area). Needs separate root-cause
+investigation:
+
+- Capture zenohd debug log for a clean NuttX C client connect
+  attempt → check if TCP succeeds + what handshake fails on.
+- Compare ARM ELF symbols between Path C-built listener and a
+  known-working Rust listener (which connects fine).
+- Possible regression: `_z_random_u32` for NuttX picks identical
+  seed across QEMU instances → zenohd rejects with MAX_LINKS.
+
+Reverted all four Path C changes. Path C is structurally
+correct but blocked by the same runtime regression as Path A.
+
 ### 157.5 — Path C — pre-commit NuttX fallback header (untried)
 
 If Path A's feature-unification land-mine can't be cleared, fall
