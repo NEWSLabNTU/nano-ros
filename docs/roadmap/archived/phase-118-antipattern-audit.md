@@ -329,10 +329,12 @@ level. 8 violations:
 ## Acceptance
 
 - [x] **118.audit.scan** — survey complete; findings cataloged.
-- [ ] **118.audit.consume** — each remediation rolled into a follow-up
-  phase doc (118.A → Phase 119 candidate, 118.B → Phase 87.6 closure,
-  118.C → Phase 120 candidate, 118.D → Phase 121 candidate, 118.E → Phase 122
-  candidate, 118.F → Phase 123 candidate).
+- [x] **118.audit.consume** — each remediation rolled into a follow-up
+  phase doc (118.A → Phase 119, 118.B → Phase 87.6 closure,
+  118.C → Phase 120, 118.D → Phase 121, 118.E → Phase 122,
+  118.F → Phase 123). All consuming phases have landed or are
+  tracked under their own roadmap docs; the audit's role as a
+  one-shot survey is complete.
 
 ## Notes
 
