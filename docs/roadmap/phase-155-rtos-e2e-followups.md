@@ -137,14 +137,36 @@ buffer.
       toolchain config blocks the local rebuild today;
       patched fixture lands once the upstream cmake issue
       resolves).
-- [ ] **155.B.2.** If `NROS_RET_BAD_SEQUENCE` — the
-      `support` was non-zero pre-call. Check linker layout
-      for `app.support` on FreeRTOS (BSS vs DATA).
-- [ ] **155.B.3.** If `NROS_RET_ERROR` from
-      `Executor::open` — likely the same shape as 154
-      surfaced for Rust; verify the C path also benefits
-      from the ABI flip (which is FreeRTOS+lwIP-skipped
-      now, see Phase 154 final commit).
+- [~] **155.B.2/.3.** Diagnostic data from 155.B.1's
+      mapping: a freshly-built FreeRTOS C listener fixture
+      still surfaces `nros_support_init -> -1`, NOT one of
+      the more specific codes the mapping would emit. So
+      the underlying `TransportError` is either `Backend(_)`
+      or `BackendDynamic(_)` — the two variants
+      `transport_error_to_ret` cannot decode (each carries
+      a backend-defined string that doesn't ride a
+      `nros_ret_t`). Tracing back: `error_from_ret`
+      (`packages/core/nros-rmw-cffi/src/lib.rs:185`)
+      returns `Backend("rmw_ret error")` whenever the C
+      backend emits the generic `NROS_RMW_RET_ERROR`. The
+      FreeRTOS zenoh-pico backend collapses every failure
+      cause to `NROS_RMW_RET_ERROR` instead of returning a
+      narrower code. Fix path:
+        a) FreeRTOS path needs the Phase 154 ABI flip (skipped
+           in the 154 final commit for FreeRTOS+lwIP). Apply
+           it so `zpico_open` returns specific codes; or
+        b) Extend `nros_log_ret` to side-channel the
+           `Backend(&str)` payload to UART for diagnostic
+           builds, so the next failure log line carries the
+           backend string. Sketched as 155.B.3.
+
+      Expanded mapping landed today covers `NoData →
+      TRY_AGAIN`, `InvalidArgument / TopicNameInvalid /
+      NodeNameNonExistent → INVALID_ARGUMENT`, `BadAlloc →
+      FULL`, `Unsupported / LoanNotSupported → NOT_ALLOWED`,
+      `IncompatibleQos / IncompatibleAbi → REJECTED` so
+      backends that DO return specific codes surface them.
+      Only `Backend(_)` / `BackendDynamic(_)` stay at -1.
 
 ## Issue 155.C — FreeRTOS C++ service test, 0 responses
 

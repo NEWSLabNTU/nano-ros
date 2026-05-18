@@ -22,12 +22,16 @@ fn transport_error_to_ret(err: nros_rmw::TransportError) -> nros_ret_t {
     use nros_rmw::TransportError as E;
     match err {
         E::ConnectionFailed | E::Disconnected => NROS_RET_NOT_FOUND,
-        E::Timeout | E::WouldBlock => NROS_RET_TIMEOUT,
-        E::InvalidConfig => NROS_RET_INVALID_ARGUMENT,
-        E::BufferTooSmall => NROS_RET_FULL,
-        E::MessageTooLarge | E::TooLarge => NROS_RET_FULL,
+        E::Timeout => NROS_RET_TIMEOUT,
+        E::WouldBlock | E::NoData => NROS_RET_TRY_AGAIN,
+        E::InvalidConfig | E::InvalidArgument | E::TopicNameInvalid | E::NodeNameNonExistent => {
+            NROS_RET_INVALID_ARGUMENT
+        }
+        E::BufferTooSmall | E::MessageTooLarge | E::TooLarge | E::BadAlloc => NROS_RET_FULL,
         E::PublishFailed => NROS_RET_PUBLISH_FAILED,
         E::ServiceRequestFailed | E::ServiceReplyFailed => NROS_RET_SERVICE_FAILED,
+        E::Unsupported | E::LoanNotSupported => NROS_RET_NOT_ALLOWED,
+        E::IncompatibleQos | E::IncompatibleAbi => NROS_RET_REJECTED,
         E::PublisherCreationFailed
         | E::SubscriberCreationFailed
         | E::ServiceServerCreationFailed
@@ -38,6 +42,11 @@ fn transport_error_to_ret(err: nros_rmw::TransportError) -> nros_ret_t {
         | E::PollFailed
         | E::KeepaliveFailed
         | E::JoinFailed => NROS_RET_ERROR,
+        // Backend / BackendDynamic carry a backend-defined string that
+        // can't ride through a `nros_ret_t`. Keep them at the generic
+        // catch-all so callers branching on `== NROS_RET_ERROR` still
+        // catch backend faults; the string is lost (TODO: surface via
+        // a side-channel debug-log macro for diagnostic builds).
         _ => NROS_RET_ERROR,
     }
 }
