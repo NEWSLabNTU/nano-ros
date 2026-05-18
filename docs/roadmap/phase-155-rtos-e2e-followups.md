@@ -167,13 +167,43 @@ keep-alive + query-reply path through zenoh-pico's
 
 **Suggested debug path.**
 
-- [ ] **155.C.1.** Capture talker (server) + listener (client)
-      stdout independently to see which side is silent.
+- [x] **155.C.1.** Client stdout captured via `nextest
+      --no-capture`. Pre-fix shape:
+      `nros C++ Service Client (FreeRTOS) / Node created /
+      Service client ready / Call [1] failed: -2 (Timeout)`.
+      Server output not currently captured by `start_pair`;
+      need a per-process stdout split (see `RtosProcess`
+      enum).
 - [ ] **155.C.2.** Run zenohd with `ZENOHD_LOG=trace` to see
       whether queries flow at all.
 - [ ] **155.C.3.** Compare to ThreadX-Linux C++ service (which
       passes) — diff zpico-sys feature flags / link policy
       between the two platforms.
+
+**Tried + reverted** (didn't fix):
+
+- Pre-discovery `for (int i = 0; i < 500; i++) nros::spin_once(10)`
+  before first call. Side effect: client hung past
+  "Discovery wait done" — never reached the `for` body.
+  Possible interaction between intensive spin_once and
+  zenoh-pico's read-task on lwIP. Reverted.
+- Bump `Future::wait` timeout 5 s → 30 s. Same `Call [1]
+  failed: -2` — server simply never replies within 30 s.
+  Confirms it's not just first-call cold-start latency;
+  reply path is broken end-to-end. Reverted.
+
+**Likely real cause.** FreeRTOS+lwIP C++ `Future::wait` →
+`nros_cpp_spin_once` doesn't pump zenoh-pico's reply
+delivery the same way Rust's `executor.spin_once` does. C++
+Listener's `nros::spin_once(10)` in a tight loop works fine
+for pubsub; the query-reply path probably needs a different
+spin shape OR there's a bug in `nros-cpp` `Client::send_request`'s
+slot-management that mishandles the reply when
+`Z_FEATURE_MULTI_THREAD=1` (alias TU + vendor freertos/lwip
+both running tasks).
+
+**Acceptance.** All three FreeRTOS C++ service variants pass
+(currently only pubsub + action pass).
 
 ## Issue 155.D — RISC-V cmake env-var leak
 
