@@ -223,7 +223,33 @@ buffer.
       messages 0..N. `test_rtos_pubsub_e2e
       Platform__Freertos lang_2_Lang__C` should now pass.
 
-## Issue 155.C — FreeRTOS C++ service test, 0 responses
+## Issue 155.C — FreeRTOS C++ service test, 0 responses ✅ FIXED 2026-05-18
+
+**Root cause.** `LWIP_RAND()` in
+`packages/boards/nros-board-mps2-an385-freertos/config/arch/cc.h`
+mapped to libc `rand()` (default seed = 1). zenoh-pico's
+FreeRTOS+lwIP `z_random_u64` (via vendor
+`system/freertos/system.c`) routed through `LWIP_RAND` →
+both server + client QEMU instances produced the SAME
+session ZID `e241fd0c6a5e726ac3eebe2f7a5d0568`. zenohd
+rejected the client's OpenSyn (duplicate peer ID,
+`max_links=1`) → no zenoh session → no queries → all four
+`Future::wait` calls timed out at 5 s each.
+
+**Fix.** Route `LWIP_RAND()` through
+`nros_platform_random_u32()` which reads `s_rng_state`
+seeded by `nros_platform_freertos_seed_rng()` during board
+init from the IP/MAC hash. Different IP/MAC per config →
+different seed → different ZID.
+
+Traced via tshark with built-in `Zenoh Protocol` dissector
+on a QEMU `-object filter-dump` pcap pair (manual launcher,
+not test harness). Confirmed via pcap diff before/after.
+
+Verified: full FreeRTOS C++ matrix now 3/3 PASS
+(pubsub + service + action).
+
+## Issue 155.C — FreeRTOS C++ service test, 0 responses [original triage retained for reference]
 
 **Symptom.** `test_rtos_service_e2e Platform__Freertos
 lang_3_Lang__Cpp` fails at 100 s (extended timeout) with:
