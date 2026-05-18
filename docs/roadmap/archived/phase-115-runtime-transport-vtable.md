@@ -1,5 +1,15 @@
 # Phase 115: Runtime Transport Vtable for nros-c
 
+> **Archived 2026-05-18 — closed.** 43/1 checkbox ratio; Status
+> self-declares "v1 + 115.B + 115.F (native) + 115.H scaffolding
+> complete" with all v1 acceptance satisfied
+> (115.A.1/.A.2/.B/.C/.D/.E/.G.1-4/.I/.I.2). 1 open item is
+> **115.J Arduino library reuse** — explicitly deferred to
+> Phase 23. Other follow-ups carved out separately: 115.F
+> bare-metal C variant (blocked on bare-metal C example
+> harness), 115.H.2 DDS dispatch + discovery, 115.K native-
+> language backend ports (ongoing tier).
+
 **Goal:** Expose a `nros_set_custom_transport(struct nros_transport_ops *ops)` C API so users can plug a custom transport (USB-CDC, BLE, RS-485, semihosting bridge) at runtime without changing board crate, Cargo features, or rebuilding.
 
 **Sub-goal (added 2026-05-06):** Establish the **canonical-C-ABI**

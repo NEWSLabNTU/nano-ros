@@ -1,5 +1,13 @@
 # Phase 112: C/C++ API Ergonomics Pass
 
+> **Archived 2026-05-18 — closed.** 13/2 checkbox ratio; Status
+> self-declares "Complete on core scope (A + B + C + D + E +
+> F.1 + F.2 shipped)". 2 open items deferred externally:
+> 112.A.2 (`_Generic NROS_PUBLISH` umbrella macro) — best
+> generated under Phase 116; 112.F.3 (Zephyr `rustapp`
+> package-name workaround) — tracks upstream zephyr-lang-rust
+> PR. Neither blocks 112's stated goal.
+
 **Goal:** Close the day-to-day API ergonomics gap between `nros-c`/`nros-cpp` and `rclc`/`rclcpp` so a hello-world is the same line count, the same shape, and free of platform leaks.
 
 **Status:** Complete on core scope (A + B + C + D + E + F.1 + F.2 shipped). F.3 tracks upstream zephyr-lang-rust PR.
