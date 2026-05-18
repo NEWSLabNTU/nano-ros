@@ -9,7 +9,9 @@ typedef void * iox_sub_t;
 typedef void * iox_user_trigger_t;
 typedef void * iox_listener_t;
 typedef void * iox_notification_info_t;
-typedef void * iox_sub_context_t;
+/* `iox_sub_context_t` is Cyclone's per-reader SHM wrapper, defined
+ * by `ddsi_shm_transport.h` as `typedef struct { ... } iox_sub_context_t`.
+ * Don't redefine here — let the Cyclone header own it. */
 
 /* Opaque storage — Cyclone allocates one of these per reader. */
 typedef struct { uint64_t _opaque[8]; } iox_sub_storage_t;

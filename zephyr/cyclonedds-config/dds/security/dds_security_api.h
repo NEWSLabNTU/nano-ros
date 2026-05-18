@@ -30,4 +30,5 @@
 #define DDS_SEC_PROP_ACCESS_LIBRARY_FINALIZE     "dds.sec.access.library.finalize"
 #define DDS_SEC_PROP_AUTH_PASSWORD               "dds.sec.auth.password"
 #define DDS_SEC_PROP_ACCESS_TRUSTED_CA_DIR       "dds.sec.access.trusted_ca_dir"
+#define DDS_SEC_PROP_BUILTIN_ENDPOINT_NAME       "dds.sec.builtin_endpoint_name"
 #endif
