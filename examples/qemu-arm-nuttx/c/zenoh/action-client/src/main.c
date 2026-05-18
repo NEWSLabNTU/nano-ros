@@ -77,6 +77,29 @@ int nros_app_main(int argc, char **argv) {
     // boot. See the service-client example for the full rationale.
     NROS_CHECK_RET(nros_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000), 1);
     printf("Action server discovered — sending goal\n");
+
+    // Phase 156 (NuttX C action) — `wait_for_action_server` returns
+    // OK as soon as the server's liveliness token is visible to the
+    // local zenoh-pico session, but on slirp's parallel boot the
+    // SERVER QEMU can lag the CLIENT QEMU by several seconds: the
+    // client connects to zenohd, declares its own SC liveliness
+    // tokens, the fast-path `is_server_ready()` flips true once
+    // zenoh-pico's local matching state sees the server's SS token
+    // arrive (set by an earlier discovery probe), then send_goal
+    // fires its z_get IMMEDIATELY — racing the server's actual
+    // `queryable` declaration. Zenohd routes the query, finds no
+    // matching queryables, and replies empty; blocking send_goal
+    // returns NROS_RET_TIMEOUT.
+    //
+    // The C++ action client at examples/qemu-arm-nuttx/cpp/zenoh/
+    // action-client/src/main.cpp:103-107 already pays a 5s warm-up
+    // spin to ride out this race; mirror that here. 5s = 500 ×
+    // 10ms spin_some chunks lets the server's queryable declare
+    // propagate to zenohd's routing table before send_goal fires.
+    for (int i = 0; i < 500; i++) {
+        nros_executor_spin_some(&app.executor, 10000000ULL);
+    }
+
     nros_ret_t ret = NROS_RET_OK;
     fflush(stdout);
 
