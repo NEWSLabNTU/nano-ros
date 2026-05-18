@@ -6,7 +6,7 @@ and FreeRTOS Rust is 3/3, but four issues remain in the rtos_e2e
 test fleet. Each has a different root cause; bundling here so
 they're tracked without colliding.
 
-**Status.** ✅ CLOSED 2026-05-18. All six sub-issues resolved (A/B/C/D/E/F). NuttX C action remains the sole rtos_e2e fail, tracked under preexisting Phase 77 async-action-client work (NOT a 155 sub-bug).
+**Status.** ✅ CLOSED 2026-05-18. All six sub-issues resolved (A/B/C/D/E/F). Full rtos_e2e matrix now GREEN — FreeRTOS / NuttX / ThreadX-Linux / ThreadX-RISC-V × Rust / C / C++ × pubsub / service / action = 36/36 PASS.
 
 **Priority.** Medium. Bench / docs unaffected; only rtos_e2e
 matrix coverage.
@@ -511,9 +511,10 @@ Closes 155.D + 155.E together — the runtime gap was the same
 `Disconnected` → `NROS_RMW_RET_CONNECTION_FAILED → -18` mapping
 unblocked RISC-V's C / C++ paths once fixtures rebuilt.
 
-## Issue 155.F — NuttX rtos_e2e ✅ Rust 3/3 + C 2/3 (action preexisting) + C++ 3/3
+## Issue 155.F — NuttX rtos_e2e ✅ FIXED 2026-05-18 (9/9 PASS)
 
-**Status:** Rust 3/3 PASS. C 2/3 PASS (pubsub + service; action FAIL is preexisting Phase 77 async-action-client work, NOT a sub-bug of this phase). C++ 3/3 PASS.
+**Status:** Rust 3/3 + C 3/3 + C++ 3/3. All NuttX rtos_e2e variants
+PASS after F1 + F2 + F3 + F4 fixes (see below).
 
 ### Sub-bug F1 — Rust `Transport(ConnectionFailed)` immediately after `nros::init` ✅ FIXED
 
@@ -539,7 +540,7 @@ NuttX Rust pubsub/service/action all PASS after rebuild.
 - `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake` — in `nros_board_link_app`, after redispatching through `nros_nuttx_build_example`, set `EXCLUDE_FROM_ALL TRUE` on the carrier `add_executable` target and `add_dependencies(<target> <target>_build)`. Default build no longer tries to host-link the carrier; explicit `cmake --build . --target <target>` still produces the kernel ELF via cargo.
 - `packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi/build.rs` — apply `CARGO_TARGET_DIR/nros-{c,cpp}-generated/` includes first, then APP_INCLUDE_DIRS_FILE entries with source-tree `packages/core/nros-{c,cpp}/include` entries deferred to the end. Per-build mirrors win; source-tree fallback still provides hand-written headers (`nros/app_main.h` etc.).
 
-NuttX C pubsub + service PASS. NuttX C action FAILS on `accepted=false, completed=false` — preexisting Phase 77 async-action issue tracked separately.
+NuttX C pubsub + service PASS. NuttX C action FAIL → see Sub-bug F4 below.
 
 ### Sub-bug F3 — C++ examples blocked on corrosion cross-compile ✅ FIXED 2026-05-18
 
@@ -555,6 +556,36 @@ NuttX C pubsub + service PASS. NuttX C action FAILS on `accepted=false, complete
 - `packages/core/nros-c/cmake/nros-nuttx.cmake` — in `nros_nuttx_build_example`, `add_dependencies(${name}_build cargo-build_nros_c cargo-build_nros_cpp)` so the per-build `nros_{,cpp_}config_generated.h` mirrors complete before the FFI cargo invocation reads them.
 
 **Verified 2026-05-18:** all 12 NuttX cmake fixtures (6 × C + 6 × C++) build cleanly in a single `cmake --build` pass. NuttX C++ E2E 3/3 PASS (pubsub 45.3s, service 30.4s, action 30.4s).
+
+### Sub-bug F4 — NuttX C action `accepted=false, completed=false` ✅ FIXED 2026-05-18 (commit f6442f24)
+
+**Symptom:** NuttX C action E2E times out at 270s × 3 retries with `accepted=false, completed=false`. Client log: `Action server discovered — sending goal / Sending goal: order=10 / Failed to send goal: -2` (NROS_RET_TIMEOUT). Server log: `Waiting for goals...` then silence — server's `goal_callback` never fires.
+
+**Root cause:** Race between server + client QEMU boot ordering.
+
+`start_pair` special-cases NuttX to spawn both QEMU instances back-to-back without `stabilization_delay` (parallel boot, since each instance takes 30s+). Whichever boots fastest connects first. On the failing test the CLIENT QEMU often wins.
+
+Client flow:
+1. Client connects to zenohd
+2. Declares 4 SC liveliness tokens (action client side: send_goal/cancel_goal/get_result + feedback MS)
+3. Calls `wait_for_action_server(10000ms)` — returns OK quickly, BEFORE the server QEMU has even connected. zenoh-pico's local matching state has flipped `is_server_ready()` true (probably from an earlier-routed discovery probe), but the SERVER's `queryable` declarations have NOT yet propagated to zenohd's routing table.
+4. Blocking `nros_action_send_goal` fires its z_get IMMEDIATELY.
+5. Zenohd: `Route query for res 0/fibonacci/_action/send_goal/.../*` → `Send final reply (no matching queryables or not master)` — empty reply.
+6. Blocking `send_goal` returns NROS_RET_TIMEOUT (15s timer fires without ever getting a goal_response callback).
+
+Diagnosed via `ZENOHD_LOG=debug` + zenohd routing-trace inspection. The single `Route query` event with `no matching queryables` was the smoking gun: server's `queryable` declaration arrived 3.5s AFTER the client's send_goal query.
+
+NuttX C++ action client works because it already pays a 5-second warm-up spin (`for (int i = 0; i < 500; i++) { nros::spin_once(10); client.poll(); }` at examples/qemu-arm-nuttx/cpp/zenoh/action-client/src/main.cpp:103-107) — gives the server time to register its queryables.
+
+**Fix:** Mirror the C++ warm-up pattern in the NuttX C action client. After `wait_for_action_server` returns OK, spin `nros_executor_spin_some` 500 × 10ms before issuing `send_goal`. Lets the server's queryable propagate to zenohd's routing table before send_goal fires.
+
+  - `examples/qemu-arm-nuttx/c/zenoh/action-client/src/main.c` — add 5s spin loop between `wait_for_action_server` and `send_goal`.
+
+**Verified 2026-05-18:** NuttX rtos_e2e 9/9 PASS — action C now 30.3s (was timing out at 13.5 minutes). Full rtos_e2e matrix across FreeRTOS / NuttX / ThreadX-Linux / ThreadX-RISC-V × Rust / C / C++ × pubsub / service / action = 36/36 GREEN.
+
+**Followups (not blocking):**
+- `wait_for_action_server` returns OK prematurely — `is_server_ready()` fast-path flips true before zenohd routing table has the server's queryable. Either the local matching state lies, or the function should additionally probe zenohd before returning. Tracked but not blocking 155.
+- The blocking `nros_action_send_goal` doesn't retry — a single empty reply from zenohd surfaces as -2. C++ async path implicitly retries via callback polling.
 
 ## Notes
 
