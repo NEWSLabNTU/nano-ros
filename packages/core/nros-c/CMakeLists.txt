@@ -112,6 +112,17 @@ corrosion_import_crate(
     LOCKED
 )
 
+# Phase 21.10.A — `corrosion_set_env_vars` would be the obvious
+# fix here, but in Corrosion 0.5 the call routes through a
+# `$<TARGET_PROPERTY:nros-c,…>` genex on a bare-name target that
+# Corrosion never creates (only `nros-c-static` /
+# `cargo-build_nros-c` exist). The env-injection therefore lives
+# entirely in the two-pass build driver
+# (`scripts/arduino/build-libnanoros.sh`) which extracts
+# `NROS_ESP_IDF_RUST_CFLAGS` from a configure-time file and
+# re-exports it as `CFLAGS_<rust-target>` before the second
+# `idf.py build` pass. No per-crate cmake plumbing required.
+
 # ---- In-tree variant header (Phase 137) ----
 # `nros-c`'s build.rs writes the per-build `nros_config_generated.h` to
 # `${CORROSION_BUILD_DIR}/nros_config_generated.h` (== this file's

@@ -104,7 +104,31 @@ for chip in $(echo "$TARGETS" | tr ',' ' '); do
         # flags. ESP-IDF supplies kernel + lwIP includes through its
         # own component manager — no `FREERTOS_*` env required.
         unset FREERTOS_DIR FREERTOS_PORT FREERTOS_CONFIG_DIR LWIP_DIR
+
+        # Phase 21.10.A — two-pass build. The first `idf.py
+        # reconfigure` lets the integration shell walk every
+        # `__idf_<comp>` target's INTERFACE_INCLUDE_DIRECTORIES,
+        # collect the FreeRTOS / lwIP / esp_* include dirs, and
+        # write them to `nros_esp_idf_rust_cflags.env`. We then
+        # source that file so `CFLAGS_<rust-target>` is in the
+        # shell env before `idf.py build` re-launches ninja —
+        # cmake's `set(ENV{...})` at configure time does NOT
+        # propagate to Corrosion's `cmake -E env` invocations
+        # (those inherit ninja's launch env). Corrosion 0.5
+        # `corrosion_set_env_vars` cannot help here either: the
+        # genex it relies on reads a property off a bare-name
+        # target Corrosion never creates.
         idf.py -B "$build_dir" set-target "$chip"
+        idf.py -B "$build_dir" reconfigure
+        if [[ -f "$build_dir/nros_esp_idf_rust_cflags.env" ]]; then
+            echo "==> [$chip] sourcing Rust CFLAGS"
+            set -a
+            # shellcheck disable=SC1091
+            source "$build_dir/nros_esp_idf_rust_cflags.env"
+            set +a
+        else
+            echo "  WARN: $build_dir/nros_esp_idf_rust_cflags.env not found" >&2
+        fi
         idf.py -B "$build_dir" build
     )
 
@@ -112,15 +136,40 @@ for chip in $(echo "$TARGETS" | tr ',' ' '); do
     bundle="$out_dir/libnanoros.a"
     rm -f "$bundle"
 
+    # IDF emits per-component static archives under
+    # `<build>/esp-idf/<component>/lib<name>.a`. The nano-ros
+    # umbrella component (`integrations/esp-idf` staged under
+    # `components/nano-ros`) adds `nros-platform-esp-idf` and the
+    # Corrosion-built `libnros_c.a` / `libnros_cpp.a` /
+    # `libnros_rmw_zenoh_staticlib.a` to its own build tree under
+    # `esp-idf/nano-ros/nano_ros_root/...`. zenoh-pico's C archive
+    # (`libzenohpico.a`) and the canonical platform-aliases TU
+    # (`libzpico_platform_aliases.a`) live under
+    # `<cargo>/.../build/zpico-sys-*/out/`.
     component_archives=()
-    for required in nros_c-static nros_rmw_zenoh-static nros_platform_esp_idf \
-                    nros_rmw_cffi-static nros_platform_cffi-static \
-                    zpico-sys-static; do
-        match="$(find "$build_dir" -name "lib${required}.a" -print -quit || true)"
-        if [[ -n "$match" ]]; then
-            component_archives+=("$match")
-        fi
-    done
+    while IFS= read -r match; do
+        component_archives+=("$match")
+    done < <(
+        # Prefer the merged `esp-idf/<comp>/lib<comp>.a` static archives
+        # that IDF produces — these contain just the .o files for the
+        # component, no test/main/etc. duplicates.
+        find "$build_dir/esp-idf" -maxdepth 4 \
+            \( -name "libnros_c.a" -o -name "libnros_cpp.a" \
+               -o -name "libnros_rmw_zenoh_staticlib.a" \
+               -o -name "libnros-platform-esp-idf.a" \) \
+            -print 2>/dev/null
+        # The zenoh-pico vendor lib + alias TU live in zpico-sys's
+        # cargo build out dir; pick the freshest copy.
+        find "$build_dir/cargo" -path "*/build/zpico-sys-*/out/libzenohpico.a" \
+            -print 2>/dev/null
+        find "$build_dir/cargo" -path "*/build/zpico-sys-*/out/libzpico_platform_aliases.a" \
+            -print 2>/dev/null
+        # cc-rs weak-stubs that nros-c / nros-cpp's build.rs emits.
+        find "$build_dir/cargo" -path "*/build/nros-c-*/out/libnros_c_weak_stubs.a" \
+            -print 2>/dev/null
+        find "$build_dir/cargo" -path "*/build/nros-cpp-*/out/libnros_cpp_weak_stubs.a" \
+            -print 2>/dev/null
+    )
 
     if [[ ${#component_archives[@]} -eq 0 ]]; then
         echo "  no component archives located under $build_dir" >&2
@@ -128,13 +177,17 @@ for chip in $(echo "$TARGETS" | tr ',' ' '); do
     fi
 
     # `ar crsT` produces a thin archive — keeps each component's .o
-    # references rather than copying them, which the Arduino IDE's
-    # `precompiled=true` link step handles fine.
+    # references rather than copying them. Arduino IDE's
+    # `precompiled=true` link step de-references this at sketch
+    # link time so the per-component .a files must remain reachable
+    # at the recorded paths. For a fully self-contained zip we'd
+    # want `ar -M` with `addlib` / `save` to copy objects — track
+    # as 23.2.x follow-up.
     ar crsT "$bundle" "${component_archives[@]}"
     strip --strip-debug "$bundle" 2>/dev/null || true
 
     sz=$(du -h "$bundle" | cut -f1)
-    echo "  wrote $bundle ($sz, $(echo "${component_archives[@]}" | wc -w) components)"
+    echo "  wrote $bundle ($sz, ${#component_archives[@]} components)"
 done
 
 echo

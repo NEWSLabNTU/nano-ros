@@ -56,6 +56,9 @@ corrosion_import_crate(
     LOCKED
 )
 
+# Phase 21.10.A — see nros-c/CMakeLists.txt; env injection lives
+# in `scripts/arduino/build-libnanoros.sh` two-pass driver.
+
 # _lib_name retained above for reference only — the in-tree consumer
 # links the Corrosion staticlib target directly under the
 # `nros_rmw_zenoh_staticlib-static` name (no rename needed).

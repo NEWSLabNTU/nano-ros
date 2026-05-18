@@ -26,7 +26,11 @@ extern crate nros_platform as _;
 
 #[cfg(all(
     not(feature = "std"),
-    any(feature = "platform-freertos", feature = "platform-threadx")
+    any(
+        feature = "platform-freertos",
+        feature = "platform-threadx",
+        feature = "platform-esp-idf",
+    )
 ))]
 extern crate panic_halt as _;
 

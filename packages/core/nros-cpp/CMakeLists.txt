@@ -85,6 +85,9 @@ corrosion_import_crate(
     LOCKED
 )
 
+# Phase 21.10.A — see nros-c/CMakeLists.txt; env injection lives
+# in `scripts/arduino/build-libnanoros.sh` two-pass driver.
+
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)
 add_library(NanoRos::NanoRosCpp ALIAS nros-cpp-headers)

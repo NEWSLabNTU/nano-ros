@@ -162,16 +162,21 @@ rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_C
 # supplies the kernel + lwIP includes via its own component
 # manager, so we declare zero `required_env` / `include_paths` and
 # leave arch flags to cc-rs (the IDF cmake glue feeds the cross
-# compiler through CC_<target> / CFLAGS_<target>). Also drops the
-# nano-ros `zpico.c` printk shim — it embeds ARM Cortex-M3 inline
-# asm that is invalid on RISC-V / Xtensa.
+# compiler through CC_<target> / CFLAGS_<target>). Also drops:
+#   * the nano-ros `zpico.c` printk shim — ARM Cortex-M3 inline asm
+#     invalid on RISC-V / Xtensa.
+#   * `system/freertos/system.c` — vanilla FreeRTOS API shape
+#     (`taskENTER_CRITICAL()` no-arg) does not match ESP-IDF's
+#     SMP-aware `portENTER_CRITICAL(mux)` macros. The
+#     `nros-platform-esp-idf` IDF component supplies the canonical
+#     `nros_platform_*` symbols; `zpico-sys`'s default-on
+#     `platform-aliases.c` TU forwards `_z_task_*` / `_z_mutex_*`
+#     calls through them.
 [platform.esp-idf]
 defines = ["ZENOH_GENERIC", "ZENOH_FREERTOS_LWIP"]
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_UDP_MULTICAST = "0" }
 include = ["system/common", "system/freertos/lwip"]
-extra_sources = [
-  { path = "{src}/system/freertos/system.c" },
-]
+extra_sources = []
 arch = []
 compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 required_env = []
