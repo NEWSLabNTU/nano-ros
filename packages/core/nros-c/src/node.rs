@@ -69,6 +69,15 @@ pub struct nros_node_t {
     /// single-Node path). Internal use only — readers should treat as
     /// opaque.
     pub node_id: u8,
+    /// Phase 156 / 104.C.8.b — executor pointer for the multi-Session
+    /// dispatch path. `nros_executor_node_init` populates this when
+    /// the Node is bound; per-entity `nros_*_init` paths
+    /// (`nros_publisher_init`, `nros_subscription_init`, etc.) branch
+    /// on `node_id != 0 && !executor.is_null()` to route through
+    /// `Executor::node_session_mut(NodeId)` instead of the legacy
+    /// support-based dispatch. NULL = legacy single-Node path
+    /// (`nros_node_init` / `nros_node_init_ex`).
+    pub executor: *const crate::executor::nros_executor_t,
 }
 
 impl Default for nros_node_t {
@@ -86,6 +95,7 @@ impl Default for nros_node_t {
             sched_context_id: 0,
             _reserved: [0u8; 3],
             node_id: 0,
+            executor: ptr::null(),
         }
     }
 }
@@ -477,5 +487,56 @@ impl nros_node_t {
         } else {
             Some(&mut *(self.support as *mut nros_support_t))
         }
+    }
+
+    /// Phase 156 Sub-bug D — true on Nodes bound via
+    /// `nros_executor_node_init` (multi-Session bridge path). False on
+    /// nodes initialised via `nros_node_init` / `nros_node_init_ex`
+    /// (legacy single-Session path).
+    #[inline]
+    pub(crate) fn is_multi_session(&self) -> bool {
+        self.node_id != 0 && !self.executor.is_null()
+    }
+}
+
+/// Phase 156 Sub-bug D — resolve the per-Node session + effective
+/// domain id for entity-init paths. Branches on `is_multi_session`:
+///   * Multi-session: dereferences `node.executor`, walks the
+///     NodeRecord table via [`Executor::node_session_mut`], pulls the
+///     domain id from `node.domain_id_override` (or the executor's
+///     support when the Node opted to inherit).
+///   * Single-session: falls back to `node.get_support_mut` +
+///     `support.get_session_mut`, mirrors the pre-Phase-156 dispatch.
+///
+/// Returns `None` when any lookup fails so callers can map to
+/// `NROS_RET_NOT_INIT`.
+#[cfg(feature = "rmw-cffi")]
+#[allow(clippy::mut_from_ref)]
+pub(crate) unsafe fn resolve_session_and_domain(
+    node: &nros_node_t,
+) -> Option<(&mut nros::internals::RmwSession, u32)> {
+    if node.is_multi_session() {
+        let exec_mut = &mut *(node.executor as *mut crate::executor::nros_executor_t);
+        let support_ptr = exec_mut.support;
+        let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
+        let node_id = nros_node::executor::node_record::NodeId::from_raw(node.node_id);
+        let session = rust_exec.node_session_mut(node_id)?;
+        let domain_id = if node.domain_id_override != NROS_DOMAIN_ID_INHERIT {
+            node.domain_id_override
+        } else if !support_ptr.is_null() {
+            (*support_ptr).domain_id as u32
+        } else {
+            0
+        };
+        Some((session, domain_id))
+    } else {
+        let support_mut = node.get_support_mut()?;
+        if support_mut.state != crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        {
+            return None;
+        }
+        let domain_id = support_mut.domain_id as u32;
+        let session = support_mut.get_session_mut()?;
+        Some((session, domain_id))
     }
 }

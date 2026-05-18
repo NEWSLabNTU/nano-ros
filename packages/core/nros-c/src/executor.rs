@@ -280,9 +280,8 @@ pub unsafe extern "C" fn nros_executor_init(
     #[cfg(feature = "std")]
     {
         let name = std::env::var("NROS_RMW").unwrap_or_default();
-        let support_locator = core::str::from_utf8_unchecked(
-            &support_ref.locator[..support_ref.locator_len],
-        );
+        let support_locator =
+            core::str::from_utf8_unchecked(&support_ref.locator[..support_ref.locator_len]);
         rust_exec.set_primary_identity(&name, support_locator);
     }
     ptr::write(executor._opaque.as_mut_ptr() as *mut CExecutor, rust_exec);
@@ -536,9 +535,10 @@ pub unsafe extern "C" fn nros_executor_node_init(
     // Persist NodeId so handle-creation paths can hit the `_on()`
     // multi-Session variants. Support pointer stays NULL on this path —
     // legacy single-Node paths key off support, multi-Node paths key
-    // off node_id.
+    // off node_id + executor pointer (Phase 156 Sub-bug D).
     node_ref.node_id = node_id.raw();
     node_ref.support = core::ptr::null();
+    node_ref.executor = executor as *const nros_executor_t;
     node_ref.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
 
     NROS_RET_OK

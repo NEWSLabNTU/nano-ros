@@ -12,7 +12,6 @@ use crate::{
     error::*,
     node::{nros_node_state_t, nros_node_t},
     qos::nros_qos_t,
-    support::nros_support_state_t,
 };
 
 /// Message type information.
@@ -198,23 +197,15 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
     {
         use nros_node::{Session, TopicInfo};
 
-        // Get mutable support reference to access the session
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        validate_state!(
-            support_mut,
-            nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
-        );
-
-        // Save domain_id before borrowing session
-        let domain_id = support_mut.domain_id as u32;
-
-        // Get mutable session reference
-        let session = match support_mut.get_session_mut() {
-            Some(s) => s,
+        // Phase 156 Sub-bug D — resolve session via the multi-Session
+        // helper. Branches on whether the Node was bound via
+        // `nros_executor_node_init` (sets `node.executor` + non-zero
+        // `node.node_id`) or via legacy `nros_node_init` (sets
+        // `node.support`). Single call covers both shapes; bridge
+        // examples now reach the XRCE / DDS extra sessions instead of
+        // hitting NROS_RET_NOT_INIT against a NULL support pointer.
+        let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
+            Some(t) => t,
             None => return NROS_RET_NOT_INIT,
         };
 

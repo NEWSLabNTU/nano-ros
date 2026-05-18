@@ -141,6 +141,15 @@ int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
+    // Force line-buffered stdout so readiness markers reach pipe
+    // readers (e.g. the `bridge_xrce_to_dds_e2e` test harness)
+    // before the bridge enters its long-lived `spin_period` loop.
+    // Without this, glibc full-buffers piped stdout and the
+    // `ManagedProcess::wait_for_output_pattern("Bridge spinning",
+    // 20s)` poll loop times out with empty output even though the
+    // bridge has printed all init markers.
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     printf("=== Phase 104.D.1 bridge: XRCE -> DDS ===\n");
 
     // Phase 156 — explicit register both backends BEFORE

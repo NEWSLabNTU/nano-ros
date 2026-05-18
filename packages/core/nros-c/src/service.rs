@@ -350,17 +350,10 @@ pub unsafe extern "C" fn nros_service_init_polling(
     {
         use nros_node::{ServiceInfo, Session};
 
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-        validate_state!(
-            support_mut,
-            crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
-        );
-        let domain_id = support_mut.domain_id as u32;
-        let session = match support_mut.get_session_mut() {
-            Some(s) => s,
+        // Phase 156 Sub-bug D — multi-Session dispatch (see
+        // `nros_publisher_init`).
+        let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
+            Some(t) => t,
             None => return NROS_RET_NOT_INIT,
         };
 
@@ -1032,17 +1025,10 @@ pub unsafe extern "C" fn nros_client_init_polling(
     {
         use nros_node::{ServiceInfo, Session};
 
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-        validate_state!(
-            support_mut,
-            crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
-        );
-        let domain_id = support_mut.domain_id as u32;
-        let session = match support_mut.get_session_mut() {
-            Some(s) => s,
+        // Phase 156 Sub-bug D — multi-Session dispatch (see
+        // `nros_publisher_init`).
+        let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
+            Some(t) => t,
             None => return NROS_RET_NOT_INIT,
         };
 

@@ -178,7 +178,7 @@ panics with `nros_executor_node_init(...) -> -1` for the
 
 ## Work Items
 
-### 156.F Sub-bug D — C-side multi-Session dispatch missing in `nros_publisher_init` (D.4 next blocker)
+### 156.F Sub-bug D — C-side multi-Session dispatch missing in `nros_publisher_init` (D.4 next blocker) — RESOLVED
 
 After Sub-bug C resolved via Option 3 (`NANO_ROS_RMW=none`
 escape hatch + explicit register calls), D.4 progressed
@@ -214,30 +214,42 @@ dispatch the doc claims for the C API was wired into
 action_*}` but NOT into `nros_publisher_init` /
 `nros_subscription_init` / etc.
 
-**Fix sketch (deferred):**
+**Fix landed:**
 
-1. Add `pub executor: *const nros_executor_t` field to
-   `nros_node_t` (struct ABI bump, cbindgen regenerate).
-2. Populate in `nros_executor_node_init`: `node.executor
-   = executor as *const _;`.
-3. `nros_publisher_init`: branch on `node.node_id != 0
-   && !node.executor.is_null()`:
-   - Take that path → resolve session via
-     `(*executor).session_at_mut(node_record.session_idx)`
-     (new helper on the Rust Executor).
-   - Else → legacy `node.get_support_mut()` path.
-4. Same branching in `nros_subscription_init`,
-   `nros_service_*_init`, `nros_action_*_init`,
-   `nros_client_init`.
+1. Added `pub executor: *const nros_executor_t` field to
+   `nros_node_t` (struct ABI bump; cbindgen regen
+   confirmed in `packages/core/nros-c/include/nros/
+   nros_generated.h`).
+2. `nros_executor_node_init` populates the field after
+   `builder.build()` returns the NodeId.
+3. New helper `node::resolve_session_and_domain` branches
+   on `node.node_id != 0 && !node.executor.is_null()`:
+   - Multi-Session path → `Executor::node_session_mut
+     (NodeId::from_raw(node.node_id))` (already public,
+     lands in `extra_sessions[N-1]` via
+     `NodeRecord.session_idx`); domain_id comes from
+     `node.domain_id_override` or, when inherit, the
+     executor's still-borrowed `support` pointer.
+   - Legacy single-Session path → preserved
+     `node.get_support_mut() + support.get_session_mut()`
+     dispatch.
+4. Wired into all six entity init sites:
+   `nros_publisher_init`, `nros_subscription_init`,
+   `nros_service_server_init`, `nros_service_client_init`,
+   `nros_action_server_init`, `nros_action_client_init`.
+5. Bridge `examples/native/c/bridge/xrce-to-dds/src/
+   main.c` gained an `setvbuf(stdout, NULL, _IOLBF, 0)`
+   so the init-marker prints reach piped test harnesses
+   before the long-lived `spin_period` loop blocks
+   subsequent flushes.
 
-**Effort:** Medium (~6 C entity-init sites + Rust
-executor accessor + struct ABI bump + cbindgen regen).
-**Risk:** medium — touches every C entity creation path.
-
-Carved out as Sub-bug D. The Phase 156 Option 3
-implementation (`NANO_ROS_RMW=none` + explicit
-register) is **correct + landed**; D.4 just exposes the
-NEXT layer of incomplete Phase 104.C.8.b work.
+**Verification:** `cargo nextest run -p nros-tests --test
+bridge_xrce_to_dds_e2e` (with `MicroXRCEAgent` on PATH)
+goes 1 passed / 0 skipped. The bridge prints all init
+markers (`Ingress node bound to XRCE`, `Egress node
+bound to DDS`, `Egress raw publisher created on DDS`,
+`Ingress raw subscription registered on XRCE`, `Bridge
+spinning`) within the test's 20 s readiness window.
 
 ### 156.E Sub-bug C — multi-staticlib `nros-rmw-cffi` monomorphisation conflict (D.4 blocker)
 
