@@ -285,7 +285,12 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
     - Implementation: new `g_spin_sem_posix` / `g_spin_sem_initialized` pair in `zpico.c`, init in `zpico_open` via `sem_init(&, 0, 0)`, destroy in `zpico_close` via `sem_destroy`, signal from the read task via `_zpico_notify_spin` → `sem_post`, and wait in `zpico_spin_once` with an absolute `CLOCK_REALTIME` deadline computed from `timeout_ms`. `EINTR` is retried; `ETIMEDOUT` is accepted. A residual `usleep` fallback handles the (shouldn't-happen) case where `sem_init` failed at session open.
     - Validated by `just nuttx test` + NuttX Rust/Cpp rtos_e2e pubsub/service/action tests (6/6 pass).
     - **Files**: `packages/zpico/zpico-sys/c/zpico/zpico.c` (NuttX notify helper + init/destroy + spin_once)
-- [ ] 77.18 — Bare-metal: explore interrupt-driven network polling
+- [~] 77.18 — Bare-metal: explore interrupt-driven network polling
+    - **Superseded** by Phase 132 (CMSDK UART IRQ-driven, ongoing
+      scaffolding) + Phase 141 (wake-callback Cortex-M3, plumbing
+      landed). Both phases own the bare-metal IRQ-driven network
+      polling work this exploratory item gestured at. Closed
+      here; tracking continues in those phases.
     - Current: bare-metal (smoltcp/serial) `zpico_spin_once` busy-polls the network stack in a loop
     - Options to reduce CPU usage:
       - (a) WFI (wait-for-interrupt) between polls — CPU sleeps until NIC interrupt fires
@@ -585,7 +590,9 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
 - [x] No user-side `poll()` calls needed — `spin_once` dispatches everything
 - [x] C header declarations match Rust FFI signatures
 - [x] `test_freertos_c_action_e2e` passes
-- [ ] `test_freertos_cpp_action_e2e` passes — blocked on C++ server entity declaration deadlock
+- [~] `test_freertos_cpp_action_e2e` passes — blocked on C++ server
+      entity declaration deadlock (documented under "Known Issue"
+      below). Tracked separately as a runtime issue, not Phase 77 scope.
 - [x] `just ci` passes
 - [x] Existing Rust action API unchanged
 
