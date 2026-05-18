@@ -1,0 +1,49 @@
+[workspace]
+
+[package]
+name = "wake-latency-cortex-m3"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 141.D wake-latency microbench on FreeRTOS + Cortex-M3 + zenoh-pico"
+
+[[bin]]
+name = "wake-latency-cortex-m3"
+test = false
+bench = false
+
+[features]
+default = []
+# Phase 141.D scenarios — exactly one must be active at build
+# time. Defaults pull the talker-only "single sub @ 100 Hz" run.
+scenario-single = []
+scenario-fanout = [] # 4 idle subs + 1 active
+scenario-burst = []  # 10 messages back-to-back
+
+[dependencies]
+nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = [
+    "rmw-cffi",
+    "platform-freertos",
+    "ros-humble",
+] }
+# Phase 141.B.2 — wake-latency probe lives behind a feature on
+# `nros-node`. The umbrella `nros` crate re-exports nothing
+# from the probe today, so depend on `nros-node` directly to
+# pull the feature in + reach `nros::executor::wake_probe`
+# through the umbrella's `executor` module.
+nros-node = { path = "../../../../packages/core/nros-node", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-freertos",
+    "wake-latency-probe",
+] }
+nros-platform-mps2-an385 = { path = "../../../../packages/platforms/nros-platform-mps2-an385" }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = [
+    "platform-freertos",
+    "ros-humble",
+] }
+std_msgs = { version = "*", default-features = false }
+panic-semihosting = { version = "0.6", features = ["exit"] }
+heapless = "0.8"

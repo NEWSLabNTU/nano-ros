@@ -1,0 +1,18 @@
+use std::{env, fs::File, io::Write, path::PathBuf};
+
+fn main() {
+    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
+
+    // Copy memory.x to the output directory
+    File::create(out.join("memory.x"))
+        .unwrap()
+        .write_all(include_bytes!("memory.x"))
+        .unwrap();
+
+    // Tell the linker where to find memory.x
+    println!("cargo:rustc-link-search={}", out.display());
+
+    // Rebuild if memory.x changes
+    println!("cargo:rerun-if-changed=memory.x");
+    println!("cargo:rerun-if-changed=build.rs");
+}
