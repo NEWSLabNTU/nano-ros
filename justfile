@@ -1370,6 +1370,19 @@ clean: native::clean zephyr::clean clean-zenohd
     rm -rf build
     @echo "All build artifacts cleaned"
 
+# Phase 23.2 — Build per-arch `libnanoros.a` for every Arduino ESP32
+# chip variant via the ESP-IDF toolchain. Requires `just esp_idf setup`
+# to have populated the IDF workspace. Targets default to
+# esp32c3,esp32s3,esp32; override with `ARDUINO_LIB_TARGETS=…`.
+build-arduino-libs:
+    @bash scripts/arduino/build-libnanoros.sh
+
+# Phase 23.2 — Assemble the distributable Arduino library zip from
+# whatever is currently under `arduino/nros/`. Requires
+# `just build-arduino-libs` to have populated the per-arch `.a` slots.
+package-arduino:
+    @bash scripts/arduino/package-arduino-lib.sh
+
 # Show Zephyr build instructions
 zephyr-help:
     just zephyr help

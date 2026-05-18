@@ -4,7 +4,7 @@
 
 **Status:** Not Started
 **Priority:** Medium
-**Depends on:** Phase 78 (colcon-nano-ros), Phase 111 (`nros` CLI — `nros run` consumes sample.yaml)
+**Depends on:** Phase 111 (`nros` CLI — `nros run` consumes sample.yaml), Phase 126 (`nros build` pipeline)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-24, UX-25
 
 ---
@@ -66,7 +66,7 @@ action-msgs    = []
 example-interfaces = ["std-msgs"]
 ```
 
-C/C++ side: ships a `find_package(NanoRosMsgsCommon)` cmake target. Consumer adds `target_link_libraries(my_app PRIVATE NanoRos::MsgsCommon)`. Headers under `<std_msgs/msg/int32.h>`, `<geometry_msgs/msg/twist.h>`, etc. — same paths as upstream rosidl C codegen so existing rclc/rclcpp code ports without `#include` changes.
+C/C++ side: ships a `NanoRos::MsgsCommon` INTERFACE library exported from the `add_subdirectory(<nano-ros>)` consumption shape (Phase 137 / 140 / 144 — there is no `find_package(NanoRosMsgsCommon)` path; Phase 140 deleted every `Config.cmake.in`). Consumer adds `target_link_libraries(my_app PRIVATE NanoRos::MsgsCommon)`. Headers under `<std_msgs/msg/int32.h>`, `<geometry_msgs/msg/twist.h>`, etc. — same paths as upstream rosidl C codegen so existing rclc/rclcpp code ports without `#include` changes.
 
 Custom messages still flow through `cargo nano-ros generate-*` / `nros generate` as a sibling library. The bundle is *additive*.
 
@@ -88,7 +88,7 @@ Custom messages still flow through `cargo nano-ros generate-*` / `nros generate`
 
 - [ ] **114.B.1** Create `packages/interfaces/nros-msgs-common/`. Workspace member. `Cargo.toml` with feature-gated re-exports.
 - [ ] **114.B.2** `build.rs` invokes `cargo nano-ros generate-rust` for each enabled family. Cache outputs under `OUT_DIR`.
-- [ ] **114.B.3** CMake target `NanoRos::MsgsCommon` exposing C headers + static lib per RTOS.
+- [ ] **114.B.3** CMake INTERFACE library `NanoRos::MsgsCommon` exposing C headers + static lib per RTOS, exported from the root `CMakeLists.txt` so it flows through `add_subdirectory(<nano-ros>)` like the other `NanoRos::*` targets.
 - [ ] **114.B.4** C++ wrapper `nros::msgs::common` namespace.
 - [ ] **114.B.5** Migrate existing examples to depend on the bundle when applicable; keep custom-message examples as the codegen-flow demonstrators.
 - [ ] **114.B.6** Phase 111 release pipeline pubishes `nros-msgs-common` to crates.io.
@@ -100,7 +100,7 @@ Custom messages still flow through `cargo nano-ros generate-*` / `nros generate`
 - `tools/sample-walker.rs` *or* `packages/codegen/packages/nros-cli-core/src/sample_walker.rs` (new)
 - `examples/**/sample.yaml` (~50 new files)
 - `packages/interfaces/nros-msgs-common/` (new crate)
-- `cmake/NanoRosMsgsCommon-config.cmake.in` (new)
+- `cmake/NanoRosMsgsCommon.cmake` (new — exported via `add_subdirectory(<nano-ros>)`; no `Config.cmake.in`)
 - `book/src/examples.md` (auto-generated)
 - `book/src/user-guide/message-generation.md` (update)
 
@@ -111,7 +111,7 @@ Custom messages still flow through `cargo nano-ros generate-*` / `nros generate`
 - Every example has a `sample.yaml`. CI fails if one is missing.
 - `nros run examples/qemu-arm-freertos/c/zenoh/talker/` reads `sample.yaml` for both the board and the success regex; no per-platform hardcoding.
 - `cargo add nros-msgs-common --features "std-msgs geometry-msgs"` works on a fresh project (depends on Phase 111 crates.io publish).
-- A C/C++ user adds `find_package(NanoRosMsgsCommon REQUIRED)` + `target_link_libraries(... NanoRos::MsgsCommon)` and includes `<std_msgs/msg/int32.h>` without running codegen.
+- A C/C++ user pulls nano-ros in via `add_subdirectory(<nano-ros>)`, adds `target_link_libraries(... NanoRos::MsgsCommon)`, and includes `<std_msgs/msg/int32.h>` without running codegen.
 - Flash cost of `default` feature set on Cortex-M3 ≤ 8 KB.
 
 ## Notes

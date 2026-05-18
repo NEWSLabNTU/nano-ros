@@ -82,6 +82,10 @@ platform-bare-metal = []
 platform-freertos = []
 platform-nuttx = []
 platform-threadx = []
+# Phase 21.6 — ESP-IDF (Espressif FreeRTOS fork). Marker only;
+# downstream crates flip `cfg(feature = "platform-esp-idf")` off
+# this.
+platform-esp-idf = []
 # Phase 11 — AGX Orin SPE (zenoh-only; IVC link).
 platform-orin-spe = []
 platform-cffi = []

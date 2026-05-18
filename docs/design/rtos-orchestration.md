@@ -435,7 +435,20 @@ Codegen analyzes manifest tier graph + accessor declarations:
 
 ### 8.4 Discovery & symbol resolution
 
-`nros_shared_context` symbols emitted by codegen into a generated crate (`nros_generated_context`). Each node crate declares dep in its `Cargo.toml` (Rust) or includes generated header (C/C++). Codegen also emits CMake variable + Cargo build script glue so 3rd-party packages can opt in via `find_package(NanoRosSharedContext)` or `nros-generated-context = { path = "..." }`.
+`nros_shared_context` symbols emitted by codegen into a generated
+crate (`nros_generated_context`). Each node crate declares dep in
+its `Cargo.toml` (Rust) or includes the generated header (C/C++).
+For C/C++ consumers, codegen also emits a CMake interface library
+exposed through the existing `add_subdirectory(<nano-ros>)`
+consumption shape (Phase 137 / 140 / 144). Third-party packages opt
+in via:
+
+- Rust: `nros-generated-context = { path = "build/<sys>/nros/generated/shared-context" }`
+- C/C++: `target_link_libraries(<app> PRIVATE NanoRos::GeneratedSharedContext)` (interface lib exported by the generated package's `CMakeLists.txt`)
+
+There is no `find_package(NanoRosSharedContext)` path — Phase 140
+deleted every `Config.cmake.in` template and the `build/install/`
+prefix that backed it.
 
 ### 8.5 Verification implications
 

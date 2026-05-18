@@ -1,7 +1,7 @@
 # ROS 2 User Workflow for nano-ros
 
 **Status:** Living design note
-**Related:** [Phase 123](../roadmap/phase-123-build-and-api-revision.md), [RTOS orchestration](rtos-orchestration.md), [Colcon build type](colcon-nano-ros-build-type.md)
+**Related:** [Phase 123](../roadmap/phase-123-build-and-api-revision.md), [Phase 126 orchestration roadmap](../roadmap/phase-126-nros-orchestration-roadmap.md), [RTOS orchestration](rtos-orchestration.md). (The retired Phase 78 colcon-build-type design lives at [archived/colcon-nano-ros-build-type.md](archived/colcon-nano-ros-build-type.md); `nros build` superseded it because per-package colcon recipes can't freeze launch-file graphs into one firmware image.)
 **Related repo:** `~/repos/play_launch`
 
 ## Goal
@@ -855,7 +855,7 @@ from the workspace/interface cache, `nros check` fails before firmware build.
 - fetch target-specific submodules;
 - install/check Rust target and C cross toolchain;
 - prepare workspace-level generated-interface cache;
-- make nano-ros discoverable to colcon/CMake/Cargo.
+- make nano-ros discoverable to CMake/Cargo (`add_subdirectory(<nano-ros>)` + Cargo path-deps). The Phase 78 colcon-build-type path was archived once `nros build [--launch-file]` took over system-level orchestration.
 
 ### 2. Plan
 
@@ -1523,12 +1523,12 @@ enough trace data from the start.
 | Shared state is ad hoc in hand-written apps                                 | Generate shared-context structs/accessors with tier-aware locking                                |
 | Generated code cannot create/bind SC tables from config                     | Add plan-to-`create_sched_context` and handle binding codegen                                    |
 
-### Build and colcon
+### Build pipeline (`nros build`)
 
 | Gap                                                     | Needed                                                                                  |
 |---------------------------------------------------------|-----------------------------------------------------------------------------------------|
-| Phase 78 builds package binaries                        | Add component/library package mode and system/orchestration package mode                |
-| Generated orchestration package does not exist          | Add `cargo nano-ros generate-main` or equivalent library called by `nros build`         |
+| Per-package build mode (archived Phase 78)              | Superseded by Phase 126: `nros build [--launch-file]` drives metadata → plan → check → generate → cargo as one system-level pass. Colcon cannot freeze a launch graph into one firmware image. |
+| Generated orchestration package exists                  | Closed by Phase 126.M4: `orchestration::generate` writes `Cargo.toml` + `build.rs` + `main.rs` under `build/<system_pkg>/nros/generated/`. |
 | Generated package lacks a mixed-language `build.rs` contract | Generate Rust package whose `build.rs` drives CMake archives and Cargo linking     |
 | Source metadata generation path does not exist           | Add host metadata mode with fake `ComponentContext` for Rust/C/C++ components           |
 | Interface cache is not collective across the system      | Generate one build-local Rust/C/C++ interface cache under `build/<system_pkg>/nros/`    |

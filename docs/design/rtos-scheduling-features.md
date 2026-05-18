@@ -434,7 +434,11 @@ unsafe {
 
 ### CMake Config Parser Update
 
-`cmake/NanoRosConfig.cmake`'s `nano_ros_read_config()` adds `[scheduling]` parsing:
+`packages/core/nros-c/cmake/NanoRosReadConfig.cmake`'s
+`nano_ros_read_config()` (loaded transitively via the
+Phase 137 / 140 / 144 `add_subdirectory(<nano-ros>)` consumption
+shape — there is no `find_package(NanoRos)` path any more) adds
+`[scheduling]` parsing:
 
 ```cmake
 # New variables set by nano_ros_read_config():

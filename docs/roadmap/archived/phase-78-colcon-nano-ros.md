@@ -1,11 +1,29 @@
 # Phase 78: Colcon Build Type for nano-ros
 
-**Goal**: Enable ROS 2 users to build nano-ros packages (native, RTOS, bare-metal) with `colcon build` using a custom `nros.<lang>.<platform>` build type.
+**Status**: **Superseded — archived 2026-05-18.** The `colcon build`
+driver cannot integrate launch files into the final image:
+`colcon-nano-ros` invokes per-package Cargo/CMake without a graph
+pass that consumes ROS 2 launch files and freezes them into one
+target binary. Phase 126's `nros build [--launch-file]` plus
+`play_launch_parser` integration owns that pipeline now (metadata →
+plan → check → generate → cargo) and emits a single firmware image
+per system package. The colcon-cargo-ros2 codegen submodule under
+`packages/codegen/` lives on as a rosidl message bindgen back-end —
+that piece was never about driving the build.
 
-**Status**: In Progress (78.1–78.10 done)
+Phase 78's design doc has been retired alongside this roadmap entry;
+see `docs/roadmap/archived/phase-78-colcon-nano-ros.md` and
+`docs/design/archived/colcon-nano-ros-build-type.md` for the
+historical record.
+
+---
+
+**Original goal (historical)**: Enable ROS 2 users to build nano-ros packages (native, RTOS, bare-metal) with `colcon build` using a custom `nros.<lang>.<platform>` build type.
+
+**Original Status**: In Progress (78.1–78.10 done)
 **Priority**: Medium
 **Depends on**: Phase 69 (C/C++ examples), Phase 75 (CMake install)
-**Design doc**: `docs/design/colcon-nano-ros-build-type.md`
+**Design doc**: `docs/design/colcon-nano-ros-build-type.md` (also archived)
 **Repo**: `packages/codegen/` submodule → `https://github.com/jerry73204/colcon-nano-ros.git`
 
 ## Overview

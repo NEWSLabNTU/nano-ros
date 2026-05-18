@@ -43,6 +43,13 @@ bare-metal = []
 freertos = []
 nuttx = []
 threadx = []
+# Phase 21.6 — ESP-IDF's FreeRTOS fork. The build switches map
+# 1:1 to the upstream `freertos` flag (zenoh-pico's
+# `system/freertos/system.c` is stripped, same `link/<rtos>/*`
+# selection logic). Keep as a sibling feature so consumers can
+# select via `--features platform-esp-idf` without overloading the
+# `freertos` name.
+esp-idf = ["freertos"]
 # Phase 100.6 — AGX Orin SPE (Cortex-R5F + FreeRTOS FSP). IVC-only:
 # orin-spe pulls `zpico-link-ivc` (the carved-out IVC link-layer
 # forwarders that used to live inside `zpico-platform-shim`).

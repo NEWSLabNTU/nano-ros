@@ -99,6 +99,9 @@ platform-nuttx = ["dep:nros-platform-cffi"]
 platform-freertos = ["dep:nros-platform-cffi"]
 platform-threadx = ["dep:nros-platform-cffi"]
 platform-zephyr = ["dep:nros-platform-cffi"]
+# Phase 21.6 — ESP-IDF (native C port at packages/core/nros-platform-esp-idf/
+# registered as an IDF component; we only need the cffi bridge on the Rust side).
+platform-esp-idf = ["dep:nros-platform-cffi"]
 # Phase 100 / 121.10 — orin-spe was promoted out of the platform layer.
 # AGX Orin SPE (Cortex-R5F + FreeRTOS FSP) is now a board over
 # `platform-freertos`; `nros-board-orin-spe` selects `platform-freertos`

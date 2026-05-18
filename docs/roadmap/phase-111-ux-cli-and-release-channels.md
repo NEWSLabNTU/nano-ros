@@ -4,7 +4,7 @@
 
 **Status:** Pillar A in progress (CLI v1 landed); Pillar B–G + H.4 deferred
 **Priority:** High
-**Depends on:** Phase 23 (Arduino precompiled lib), Phase 75 (relocatable CMake install), Phase 78 (colcon-nano-ros), Phase 88 (`nros-log`)
+**Depends on:** Phase 23 (Arduino precompiled lib), Phase 88 (`nros-log`), Phase 126 (`nros build` orchestration pipeline)
 **Related research:** `docs/research/sdk-ux/SYNTHESIS.md`, `docs/research/sdk-ux/{micro-ros,zephyr-and-esp-idf,platformio-arduino-mbed}.md`
 
 ---
@@ -13,7 +13,7 @@
 
 The cross-RTOS UX research (`docs/research/sdk-ux/`) compared nano-ros to micro-ROS, ESP-IDF, Zephyr `west`, PlatformIO, Arduino CLI, and Mbed CLI 2. Two convergent findings dominate:
 
-1. **There is no user-facing CLI.** `cargo nano-ros` only reaches Rust users with cargo installed; `just` is a maintainer recipe surface (60+ recipes, internal stale-guards, install-local helpers). Customers on Arduino, PlatformIO, ESP-IDF, or any C/C++-only flow have nothing to type.
+1. **There is no user-facing CLI.** `cargo nano-ros` only reaches Rust users with cargo installed; `just` is a maintainer recipe surface (60+ recipes, internal stale-guards, per-platform build/test orchestrators). Customers on Arduino, PlatformIO, ESP-IDF, or any C/C++-only flow have nothing to type.
 2. **There is one distribution channel.** "Clone the monorepo + `just setup`". Reference SDKs ship 5–10 channels (Arduino zip, IDF component, west module, PIO library, Docker agent images, …).
 
 Phase 111 closes both gaps:
@@ -105,7 +105,7 @@ For each release channel below, ship: (a) packaging recipe, (b) CI publish job, 
 | ESP-IDF Component Registry | `idf_component.yml` + headers + per-target `libnros.a` (`esp32`, `esp32c3`, `esp32s3`) | `compote component upload` | `book/src/getting-started/esp-idf.md` (new) |
 | PlatformIO Library | `library.json` + same per-arch `.a` collection | `pio package publish` | `book/src/getting-started/platformio.md` (new) |
 | Zephyr west module | tagged-release reference for `west.yml` | git tag only — module is the repo | `book/src/getting-started/zephyr.md` (update) |
-| GitHub Releases tarball | `nano-ros-<ver>.tar.gz` with `find_package(NanoRos)`-installable layout | `cmake --install --prefix` + `tar` | `book/src/getting-started/c-cpp-from-source.md` (new) |
+| GitHub Releases tarball | `nano-ros-<ver>.tar.gz` of the source tree; consumers use `add_subdirectory(<extracted-path>)` per the Phase 137 / 140 / 144 shape — no install prefix, no `find_package(NanoRos)` | `git archive` + `tar` | `book/src/getting-started/c-cpp-from-source.md` (new) |
 | Agent Docker images | `ghcr.io/newslabntu/nano-ros-zenoh-router:<ver>`, `…/nano-ros-xrce-agent:<ver>` | GH Actions buildx | mentioned in every getting-started page |
 
 Channel-publish ordering: Rust → GH Releases tarball → Arduino zip + IDF component + PIO (parallel) → Docker images. Failure of one channel does not block others; CI emits per-channel pass/fail.
@@ -249,7 +249,7 @@ Both stay. `nros <verb>` is the documented user verb; `cargo nano-ros <verb>` al
 
 ### G — GitHub Releases tarball + agent Docker images
 
-- [ ] **111.G.1** — `tools/release/source-tarball.sh` produces `nano-ros-<ver>.tar.gz` with the relocatable `find_package(NanoRos)` install (Phase 75 product).
+- [ ] **111.G.1** — `tools/release/source-tarball.sh` produces `nano-ros-<ver>.tar.gz` of the source tree (Phase 137 / 140 / 144 shape — consumers use `add_subdirectory(<extracted-path>)`, no install prefix). Phase 75 install-prefix product was retired by Phase 140.
 - [ ] **111.G.2** — Dockerfiles for `nano-ros-zenoh-router` (wraps `zenohd`) and `nano-ros-xrce-agent` (wraps `MicroXRCEAgent`). Multi-arch (amd64, arm64).
 - [ ] **111.G.3** — GH Actions `release-publish-docker.yml` builds and pushes to GHCR.
 - [ ] **111.G.4** — Mention `docker run …` in every getting-started page replacing the "build zenohd from source" steps.

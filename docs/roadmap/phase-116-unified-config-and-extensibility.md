@@ -212,4 +212,4 @@ Two-phase rollout:
 - **Risk:** Hand-written cmake + Cargo configs are battle-tested; generated ones aren't. Run for at least one release in read-only-emit mode before flipping defaults.
 - **Risk:** Registry curation cost. v1 = curated, PR-based; v2 = open submission with review. Set expectations in the docs.
 - **Out of scope:** binary registry hosting (cargo crates.io / IDF Component Registry / Arduino registry handle the actual binaries; ours is a pointer registry).
-- **Open question:** does `nano-ros.toml` replace `package.xml` or live alongside? Likely alongside — `package.xml` is the ROS-2 interop key and Phase 78 (colcon-nano-ros) needs it.
+- **Open question:** does `nano-ros.toml` replace `package.xml` or live alongside? Likely alongside — `package.xml` is the ROS-2 interop key that downstream tooling (rosidl bindgen, rmw_zenoh discovery, ros2 CLI introspection) still keys off. Phase 78's colcon-driver requirement was retired (build flows through Phase 126's `nros build` now), but `package.xml` stays for interop.

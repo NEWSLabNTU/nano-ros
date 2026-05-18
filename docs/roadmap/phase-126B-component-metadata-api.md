@@ -122,12 +122,18 @@ Next coverage focus:
 ## Acceptance criteria
 
 - [x] A Rust component package emits source metadata without opening transport.
-- [ ] The same component can be instantiated by generated runtime code. The
-      runtime adapter now exists; generated-main wiring is tracked by
-      `126.D.3`.
+- [x] The same component can be instantiated by generated runtime code via
+      `instantiate_components` in `orchestration::generate` (M4 generated
+      `main.rs`). Covered by
+      `tests/orchestration_e2e.rs::fixture_workspace_plans_checks_and_builds_generated_package`.
 - [x] Metadata contains unresolved source names, interface types, QoS,
       callbacks, params, and optional effects.
 - [x] Component-mode entity APIs require stable IDs.
-- [ ] Missing export macro fails clearly during metadata discovery/check.
+- [x] Missing export macro fails clearly during metadata discovery/check.
+      `nros check` / `nros plan` emit `missing-component-export` when a
+      Rust source-metadata artifact has `exported_symbol: null`, instructing
+      the user to add `nros::component_export!` (or `#[nros::component]`).
+      Covered by
+      `planner::tests::plan_system_rejects_rust_component_missing_exported_symbol`.
 - [x] Existing hand-written `main()` examples remain supported as simple-app
       path and are not pulled into orchestration.

@@ -2,14 +2,30 @@
 
 **Goal.** Turn the design in
 [`docs/design/ros2-user-workflow.md`](../design/ros2-user-workflow.md) into
-an implementation plan that standard ROS 2 users can follow: a colcon-like
-workspace of component packages, launch files as the system description, ROS
-launch manifests as graph requirements, and one generated nano-ros binary for
-the target.
+an implementation plan that standard ROS 2 users can follow: a colcon-style
+workspace *shape* (src/<pkg>/{package.xml,Cargo.toml,CMakeLists.txt}), launch
+files as the system description, ROS launch manifests as graph requirements,
+and one generated nano-ros binary for the target. The build driver is
+`nros build`, not `colcon build` — Phase 78's colcon-build-type approach
+was archived because per-package colcon recipes cannot freeze launch-file
+graphs into one firmware image. `colcon-cargo-ros2` lives on under
+`packages/codegen/` only as the rosidl message bindgen back-end.
 
-**Status.** MVP implementation integrated through schema, Rust metadata,
-planner/checker, and generated-package build scaffolding. Coverage phase is
-starting.
+**Status.** All seven milestones (M1–M7) and Phase 126B acceptance
+criteria met. `nros build --launch-file` drives the full metadata →
+plan → check → generate → cargo pipeline in a single command. On
+native targets the generated `main.rs` boots an executor,
+instantiates planned components, binds callbacks, and spins. On
+FreeRTOS (M5), the generated package compiles into a `no_std`
+firmware image that the MPS2-AN385 board crate boots under QEMU; the
+e2e test asserts board init handed off to `run_system`, the runtime
+did not panic before reaching the spin loop, the generated package's
+target-side dep tree carries no JSON/TOML parsers, and every
+`plan.build.cfg` entry flows through to a `cargo::rustc-cfg`
+directive in the generated `build.rs`. Mixed-language RTOS (M5.B —
+C/C++ components on RTOS through a CMake superproject wrapper) and
+multi-tier scheduling stay deliberately deferred (see "Deliberate
+deferrals" below).
 
 **Priority.** P1. This is the user workflow layer above Phase 123 build/API
 work and Phase 110 scheduling.
@@ -24,17 +40,18 @@ work and Phase 110 scheduling.
 
 **Related phase docs.**
 
-- [Phase 126.A - schema and plan IR](phase-126A-schema-plan-ir.md)
-- [Phase 126.B - component metadata API](phase-126B-component-metadata-api.md)
-- [Phase 126.C - launch and manifest planner](phase-126C-launch-manifest-planner.md)
-- [Phase 126.D - generated main and build](phase-126D-generated-main-build.md)
+- [Phase 126.A — schema and plan IR](archived/phase-126A-schema-plan-ir.md) (archived)
+- [Phase 126.B — component metadata API](phase-126B-component-metadata-api.md)
+- [Phase 126.C — launch and manifest planner](archived/phase-126C-launch-manifest-planner.md) (archived)
+- [Phase 126.D — generated main and build](archived/phase-126D-generated-main-build.md) (archived)
 
 ## Implementation gap summary
 
 The runtime foundation is strong: `nros-node` already has a multi-node
 executor, service/action paths, callback handles, and `SchedContext`. C and
 C++ bindings expose most executor features. Codegen packages already provide
-message/service/action generation and colcon integration.
+message/service/action generation (rosidl bindgen via the
+`colcon-cargo-ros2` codegen submodule under `packages/codegen/`).
 
 The first orchestration layer is now in place:
 
@@ -221,11 +238,17 @@ Merge Group D's single-tier native generated package.
 Acceptance:
 
 - [x] Generated package builds with Cargo.
-- [ ] Generated `main.rs` opens one executor, creates one default `SchedContext`,
+- [x] Generated `main.rs` opens one executor, creates one default `SchedContext`,
   instantiates all planned Rust components, binds callbacks, and spins.
+  Covered by `tests/orchestration_e2e.rs::fixture_workspace_plans_checks_and_builds_generated_package`
+  which boots the native binary against a real zenohd and asserts the process
+  stays alive until the test stops it.
 - [x] Generated code is readable and checked into `build/`, not hidden in opaque
   binary blobs.
-- [ ] `nros build` runs metadata, plan, generation, and Cargo build in one command.
+- [x] `nros build` runs metadata, plan, generation, and Cargo build in one
+  command via `--launch-file` (chains `nros metadata` → `nros plan` →
+  `nros check` → `build_generated_package`). Covered by
+  `tests/orchestration_e2e.rs::build_command_runs_full_metadata_plan_check_build_pipeline`.
 
 ### M5 - RTOS generated binary
 
@@ -233,10 +256,31 @@ Extend M4 to one RTOS/QEMU target.
 
 Acceptance:
 
-- Build uses existing board/platform recipes.
-- Transport/env compile-time options are captured in `nros-plan.json`.
-- Runtime hot path is allocation-free; static capacities come from the plan.
-- No JSON/TOML parsing happens on target.
+- [x] Build uses existing board/platform recipes — generated FreeRTOS
+  package pulls `nros-board-mps2-an385-freertos` via Cargo path-dep
+  and `nros_board_mps2_an385_freertos::run` drives the `_start`
+  entry. Covered by
+  `tests/orchestration_e2e.rs::fixture_workspace_builds_and_boots_generated_freertos_package`.
+- [x] Transport/env compile-time options are captured in
+  `nros-plan.json`. `PlanBuildOptions { target, board, rmw, profile,
+  features, cfg }` already round-trips through schema; the generator
+  now also emits `println!("cargo::rustc-cfg=<key>=\"<value>\"")` +
+  matching `cargo::rustc-check-cfg` directives for every entry in
+  `plan.build.cfg`. Covered by
+  `tests/orchestration_generate.rs::generated_build_rs_emits_rustc_cfg_directives_from_plan_cfg`.
+- [x] Runtime hot path is allocation-free; static capacities come
+  from the plan. Generated FreeRTOS package's `default` feature set
+  contains no `std` (asserted by the e2e test); `generate.rs` emits
+  `CALLBACK_COUNT`, `SCHED_CONTEXT_COUNT`, `MAX_NODES`,
+  `MAX_ENTITIES`, and the `SystemSpec.capacities` block as compile-
+  time constants derived from `nros-plan.json` so the runtime arrays
+  are sized at codegen time.
+- [x] No JSON/TOML parsing happens on target. `build.rs` reads the
+  plan on the host, embeds typed Rust tables via
+  `include!(concat!(env!("OUT_DIR"), "/nros_generated.rs"))`. The
+  e2e test runs `cargo tree --target thumbv7m-none-eabi` against the
+  generated package and rejects any `serde_json`, `serde_yaml`,
+  `serde_yaml_ng`, or `toml` in the target-side dep tree.
 
 ### M6 - mixed-language components
 
@@ -284,6 +328,12 @@ but must consume real `nros-plan.json` by M4.
 
 ## Deliberate deferrals
 
+- M5.B — mixed-language RTOS firmware. M5 covers pure-Rust components
+  on FreeRTOS; mixed Rust + C/C++ on RTOS needs a generated CMake
+  superproject that consumes the generated Rust crate as a staticlib
+  and links C/C++ components via the Phase 138/144
+  `nros_platform_link_app` shape. Generator currently emits Rust
+  path-deps only.
 - lifecycle node orchestration;
 - automatic callback-chain inference;
 - automatic callback-group inference;

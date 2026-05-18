@@ -1,10 +1,67 @@
 # Phase 21: C API `no_std` Backend
 
-**Status: COMPLETE**
+**Status: REOPENED 2026-05-18 — bare-metal / ESP-IDF backend gap**
 
-## Summary
+**Original closure (2024)** delivered no_std + alloc compilation via
+the now-retired `shim-posix` / `shim-zephyr` feature axis. After the
+Phase 137 / 138 / 144 cmake refactor and Phase 128/129 platform
+consolidation, `nros-c`'s public platform features became
+`platform-{posix,zephyr,freertos,nuttx,threadx}`. None of these
+cover the bare-metal hosted-libc target that ESP-IDF (and therefore
+arduino-esp32) needs. Per CLAUDE.md "Examples = Standalone Projects":
+"no bare-metal C/C++ harness — nros-c/nros-cpp assume hosted RTOS for
+startup/heap/libc". The Phase 139 `integrations/esp-idf/` shell sets
+`NANO_ROS_PLATFORM=baremetal` but `packages/core/nros-c/CMakeLists.txt`
+fatal-errors on that value, so the integration has never linked nros-c
+end to end.
 
-The C API crate (`nano-ros-c`) has ~30 functions that return `NANO_ROS_RET_ERROR` when compiled without `std`. The `Zenoh*` type aliases (`ZenohPublisher`, `ZenohSession`, etc.) are re-exports of `Shim*` types from `nano-ros-transport`, which already work in `no_std + alloc`. The barriers are:
+Phase 23 (Arduino precompiled lib for ESP32) blocks on this gap; the
+reopened Phase 21 is now Phase 23's 23.0 prerequisite.
+
+## Scope (reopened)
+
+- [x] **21.6** Added `platform-esp-idf` feature to `nros-c`. Reuses
+      the existing `freertos_alloc` allocator module
+      (`pvPortMalloc` / `vPortFree` exported by ESP-IDF's FreeRTOS
+      fork — bytes match upstream Apex); the cfg gate is now
+      `any(feature = "platform-freertos", feature = "platform-esp-idf")`.
+      The C platform port at
+      `packages/core/nros-platform-esp-idf/` (Phase 121.3) supplies
+      the canonical `nros_platform_*` ABI at link time. No new
+      critical-section impl needed in nros-c — the IDF component
+      handles it.
+- [x] **21.7** Propagated `platform-esp-idf` through `nros`,
+      `nros-node`, `nros-platform`, `nros-rmw-zenoh`, and
+      `zpico-sys` (`esp-idf = ["freertos"]` — zenoh-pico's
+      `system/freertos/system.c` is the right pick for ESP-IDF).
+      No new `*-c-port` feature on `nros-platform-cffi`: the C
+      symbols come from the IDF component, not from a Rust-built
+      C port.
+- [x] **21.8** `packages/core/nros-c/CMakeLists.txt` accepts
+      `NANO_ROS_PLATFORM=esp-idf` (maps to
+      `_platform_features = alloc panic-halt platform-esp-idf`).
+      The root `CMakeLists.txt` updated its error message + adds
+      `NROS_PLATFORM_ESP_IDF` compile-definition. Bare-metal
+      ESP32 Rust-only path stays separate; the `esp-idf` value is
+      the IDF-hosted variant only.
+- [x] **21.9** `integrations/esp-idf/CMakeLists.txt` now sets
+      `NANO_ROS_PLATFORM=esp-idf` and adds the IDF components
+      `nros-platform-esp-idf` REQUIRES (freertos / esp_timer /
+      esp_hw_support / esp_system / lwip) to the shell's
+      `idf_component_register(REQUIRES …)` so the IDF dependency
+      walker resolves them.
+- [ ] **21.10** Smoke build through `just esp_idf build` (requires
+      the extended SDK tier: `just setup tier=extended` or
+      `just esp_idf setup`). Capture the first-time install
+      footprint in `docs/development/sdk-tiers.md` if the tier
+      classification needs to change. Deferred — needs ESP-IDF
+      installed locally; the integration shell + platform module
+      land in this iteration so the gate-build is the next
+      verification step.
+
+## Historical record (original 2024 closure notes follow)
+
+The C API crate (`nano-ros-c`) had ~30 functions that returned `NANO_ROS_RET_ERROR` when compiled without `std`. The `Zenoh*` type aliases (`ZenohPublisher`, `ZenohSession`, etc.) were re-exports of `Shim*` types from `nano-ros-transport`, which already worked in `no_std + alloc`. The 2024 barriers were:
 
 1. `#[cfg(feature = "std")]` guards on all transport code (should be `alloc`)
 2. `std::boxed::Box` usage (needs `alloc::boxed::Box`)

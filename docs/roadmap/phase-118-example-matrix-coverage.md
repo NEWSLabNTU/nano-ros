@@ -4,7 +4,7 @@
 
 **Status:** Not Started
 **Priority:** Medium
-**Depends on:** Phase 78 (`colcon-nano-ros` for cross-language codegen), Phase 112 (C/C++ API ergonomics), Phase 114 (sample-yaml landing per example), Phase 115 (custom-transport surface unblocks transport-light demos)
+**Depends on:** Phase 112 (C/C++ API ergonomics), Phase 114 (sample-yaml landing per example), Phase 115 (custom-transport surface unblocks transport-light demos), Phase 126 (`nros build` pipeline; `colcon-cargo-ros2` lives on only as the rosidl bindgen back-end under `packages/codegen/`)
 **Related:** `examples/README.md`, CLAUDE.md "Examples = Standalone Projects" section
 
 ---

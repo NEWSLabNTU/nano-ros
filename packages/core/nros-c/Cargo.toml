@@ -90,6 +90,19 @@ platform-freertos = [
     "nros/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
 ]
+# Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork). Reuses the
+# FreeRTOS allocator + critical-section layout because the
+# `pvPortMalloc` / `vPortFree` symbols and `xTaskCreate` /
+# `xSemaphore*` shape match upstream Apex FreeRTOS. ESP-IDF
+# provides the C platform port via `packages/core/nros-platform-esp-idf/`
+# (registered as an IDF component); this feature is the Rust-side
+# marker that flips `cfg(feature = "platform-esp-idf")` in
+# downstream crates.
+platform-esp-idf = [
+    "alloc",
+    "nros/platform-esp-idf",
+    "nros-rmw-zenoh?/platform-esp-idf",
+]
 platform-nuttx = [
     "alloc",
     "nros/platform-nuttx",
