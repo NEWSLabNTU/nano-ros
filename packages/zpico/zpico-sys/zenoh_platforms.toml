@@ -285,6 +285,13 @@ compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-
 include_paths = [
   "{nros}/c/platform",
   "{nros}/c/include",
+  # Phase 154 — `nros-platform-cffi/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI +
+  # `nros_platform_socket_get_fd` accessor). `zpico.c` includes it
+  # unconditionally; without this on the bare-metal path
+  # `cargo check` against any `examples/qemu-arm-baremetal/...`
+  # example fails with `nros/platform_net.h: No such file or directory`.
+  "{nros}/../../core/nros-platform-cffi/include",
 ]
 
 [platform.generic]
