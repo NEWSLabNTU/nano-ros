@@ -470,12 +470,20 @@ path was bypassing. Each fix unblocks the next layer:
   external-app build path for all C + C++ examples works.
   Carved-out follow-ups:
 
-- [ ] **158.x — proper `sem_t`-backed nuttx wake.**
-      Currently `nros_platform_wake_*` stubs return
-      `storage_size=0` → executor falls back to transport
-      spin. Real impl would use NuttX's `sem_t` (POSIX
-      semaphore) following the freertos / threadx / zephyr
-      pattern.
+- [x] **158.x — proper `sem_t`-backed nuttx wake (incidentally addressed).**
+      Phase 157.C.17's POSIX C-port reuse already provides the
+      real `sem_t`-backed wake — POSIX `nros_wake_t` wraps a
+      `sem_t`, `_wake_init` calls `sem_init`, `_wake_wait_ms`
+      calls `sem_timedwait` with a `CLOCK_REALTIME` deadline,
+      `_wake_signal` calls `sem_post`. NuttX's libc honors
+      `sem_timedwait` correctly so the POSIX impl works
+      unchanged on NuttX. Stubs file
+      (`integrations/nuttx/c/platform_wake_stubs.c`)
+      DELETED — the POSIX impl is now the sole definition.
+      Verified disasm: `nros_platform_wake_storage_size`
+      returns `sizeof(sem_t) = 16` (was 0 under stubs),
+      `nros_platform_wake_init` body calls `sem_init`. E2E
+      test still 1 passed / 0 skipped with all 12 examples.
 
 - [ ] **157.C.12 — multi-pass ALLSYMS bootstrap.**
 - [ ] **157.C.13 — incremental rebuild robustness.**

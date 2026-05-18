@@ -70,25 +70,23 @@ export NUTTX_INCLUDE_DIR := $(TOPDIR)/include:$(TOPDIR)/include/arch
 # need a different nightly.
 export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 
-# Phase 157.C.15 — `nros_platform_wake_*` stubs.
-# `nros-node`'s `NodeWake` extern-Cs five `nros_platform_wake_*`
-# symbols on platforms with `platform-nuttx` enabled. NuttX has
-# no Rust kernel crate emitting them (cf. nros-platform-
-# {posix,freertos,threadx,zephyr}/src/platform.c), so the make
-# build provides minimal stubs that return `storage_size=0` →
-# `NodeWake::new()` returns `None` → executor falls back to
-# transport-driven spin. Real `sem_t`-backed implementation is a
-# 158.x follow-up.
-CSRCS = c/platform_wake_stubs.c
-# Phase 157.C.17 — full `nros_platform_*` ABI implementation.
-# NuttX provides POSIX threading + clocks + sockets via its
-# libc, so reuse the POSIX C-port (the canonical implementation
-# for every libc-bearing platform). It compiles cleanly under
-# arm-none-eabi-gcc against NuttX's POSIX headers + supplies all
-# the symbols zenoh-pico's `platform_aliases.c` shim wraps
-# (`nros_platform_mutex_*`, `_task_*`, `_time_now_ms`, etc.).
-# This obviates a dedicated `nros-platform-nuttx` Rust crate.
-CSRCS += $(NANO_ROS_ROOT)/packages/core/nros-platform-posix/src/platform.c
+# Phase 157.C.17 + .C.18 — full `nros_platform_*` ABI from the
+# POSIX C-port. NuttX provides POSIX threading + clocks +
+# semaphores + sockets via its libc, so reuse the canonical C-port
+# implementation. Compiles cleanly under arm-none-eabi-gcc against
+# NuttX's POSIX headers + supplies every symbol nano-ros expects:
+#   * `nros_platform_mutex_*` / `_task_*` / `_time_now_ms` /
+#     `_clock_*` / `_alloc` etc. — used by zenoh-pico's
+#     `platform_aliases.c` shim (Phase 157.C.17).
+#   * `nros_platform_wake_*` — real `sem_t`-backed impl (POSIX
+#     `nros_wake_t` wraps a `sem_t`). Supersedes the Phase
+#     157.C.15 stubs (which returned `storage_size=0` to disable
+#     the executor's wake-cb path). Phase 158.x — was carved out
+#     as a follow-up but C.17's POSIX C-port reuse incidentally
+#     provided the real impl, since NuttX's `sem_t` honors
+#     `sem_timedwait` correctly.
+# Obviates a dedicated `nros-platform-nuttx` Rust crate.
+CSRCS = $(NANO_ROS_ROOT)/packages/core/nros-platform-posix/src/platform.c
 # Include the platform.h header in CFLAGS so the POSIX port's
 # `#include <nros/platform.h>` resolves.
 CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/core/nros-platform-cffi/include

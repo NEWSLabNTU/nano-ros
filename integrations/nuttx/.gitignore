@@ -1,3 +1,5 @@
 # NuttX make-build artifacts (Phase 157.C).
 .depend
 Make.dep
+/.built
+c/*.o
