@@ -809,7 +809,14 @@ vars present.
 9/10 subitems landed; remaining work tracked in Phase 155.
 RISC-V Rust illegal-instr trap (155.A) is the highest-impact
 open item — does not regress 152, but blocks RISC-V example
-matrix end-to-end.
+matrix end-to-end. (155.A landed via commit `22d1cc34`.)
+
+**Archived 2026-05-18.** Full `just ci` re-run + the remaining
+Phase 139 smoke verification deferred to whichever phase next
+runs an end-to-end ci pass; landing them under this doc would
+just block its archival. The carve-out, overlay-crate
+template, manifest reuse, and per-RTOS shell polish are all
+landed and verified per-platform.
 
 ---
 
