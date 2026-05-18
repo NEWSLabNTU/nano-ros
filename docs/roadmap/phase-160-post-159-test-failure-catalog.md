@@ -236,6 +236,55 @@ in Phase 154's accessor work, and the ESP32 platform crate
 Defer to Phase 89.4 follow-up (or new ESP32-focused phase) —
 this needs ESP32 platform-crate domain knowledge.
 
+**Deeper dig (2026-05-19, source exploration):**
+
+Followed the call chain through the actual implementation:
+
+- `nros-platform-cffi/src/lib.rs:1091` — `nros_platform_tcp_open`
+  ABI shim, calls `<$ty as PlatformTcp>::open(sock, endpoint, tout)`.
+- `nros-smoltcp/src/platform_macro.rs:107` — smoltcp impl. Does:
+  - tcp_open() → finds free SOCKET_TABLE slot
+  - tcp_connect(handle, ip, port) → sets remote_ip/port
+  - Loop: `poll_network()` + `tcp_is_connected(handle)` until
+    timeout or connected
+- `nros-smoltcp/src/bridge.rs:820` — `SocketEntry { allocated,
+  handle_raw: usize::MAX, ... }`. Pre-populated by
+  `register_socket(handle)` during `init_hardware`.
+- `nros-board-esp32-qemu/src/node.rs:127` — calls
+  `SmoltcpBridge::init()` + `create_and_register_sockets(sockets)`
+  during init_hardware. Confirmed runs to completion ("Ethernet
+  ready." prints before talker crash).
+
+Decoded RA from TrapFrame: `0x42021A06` →
+`smoltcp::wire::tcp::Repr::emit` (TCP segment generation). So
+crash happens INSIDE smoltcp's TCP wire emit during the FIRST
+SYN packet construction inside `poll_network()` loop.
+
+Talker pcap shows ZERO packets — crash before TX. Listener
+pcap from earlier shows full TCP+zenoh handshake on same code
+path. Difference: talker's user closure captures a `Publisher`
+(generic over msg type) → different monomorphization → likely
+different `.rodata` / `.bss` layout → some smoltcp pointer
+lands on garbage memory.
+
+**Next investigation hooks:**
+
+- Diff `.bss` symbol map between talker + listener ELFs for
+  smoltcp-related statics (`SOCKET_TABLE`, `SOCKET_RX_BUFFERS`,
+  smoltcp Interface, etc.) — see which one moved.
+- Reproduce with smoltcp Repr::emit instrumented (println of
+  src/dst/seq/data ptr before each emit).
+- Check if `NET_SOCKETS: MaybeUninit<SocketSet<'static>>` storage
+  alignment / size differs across binaries (the SocketSet's
+  internal slab is the obvious candidate for the offset-0x0c
+  read).
+- Try toggling `lto`, `codegen-units`, `panic = "abort"` in
+  talker's profile to see if optimization shifts the crash.
+
+Still Phase 89.4-tier — needs sustained ESP32 bare-metal
+session. Documenting here so the next attempt has a precise
+locus.
+
 ### F. QEMU bare-metal RTIC + serial (5 tests)
 
 ```
