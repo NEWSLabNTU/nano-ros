@@ -225,6 +225,19 @@ function(nros_nuttx_build_example)
         add_dependencies(${_NNBE_NAME}_build ${_lib})
     endforeach()
 
+    # Phase 156 (F3) — depend on corrosion's cross-built nros-c /
+    # nros-cpp targets so their `build.rs` POST_BUILD mirror of
+    # `nros_{,cpp_}config_generated.h` into the per-build
+    # `<build_dir>/nano_ros/packages/core/nros-{c,cpp}/include/nros/`
+    # dir completes BEFORE this app's nros-nuttx-ffi cargo build
+    # runs. Without the dep the cargo build races corrosion + main.cpp
+    # compile picks the source-tree `#error` stub.
+    foreach(_dep cargo-build_nros_c cargo-build_nros_cpp)
+        if(TARGET ${_dep})
+            add_dependencies(${_NNBE_NAME}_build ${_dep})
+        endif()
+    endforeach()
+
     # Copy the binary to the build directory for convenience.
     add_custom_command(
         TARGET ${_NNBE_NAME}_build POST_BUILD

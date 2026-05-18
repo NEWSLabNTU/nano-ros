@@ -497,9 +497,9 @@ The 155.B fix (this commit) propagates `TransportError`
 variants to specific `NROS_RET_*` codes so next RISC-V
 C / C++ run logs which precondition the backend rejected.
 
-## Issue 155.F — NuttX rtos_e2e ✅ Rust 3/3 + C 2/3 (action preexisting), C++ blocked on corrosion
+## Issue 155.F — NuttX rtos_e2e ✅ Rust 3/3 + C 2/3 (action preexisting) + C++ 3/3
 
-**Status:** Rust pubsub/service/action PASS. C pubsub + service PASS. C action FAIL (preexisting Phase 77 async-action-client work). C++ build blocked on corrosion cross-compile.
+**Status:** Rust 3/3 PASS. C 2/3 PASS (pubsub + service; action FAIL is preexisting Phase 77 async-action-client work, NOT a sub-bug of this phase). C++ 3/3 PASS.
 
 ### Sub-bug F1 — Rust `Transport(ConnectionFailed)` immediately after `nros::init` ✅ FIXED
 
@@ -527,11 +527,20 @@ NuttX Rust pubsub/service/action all PASS after rebuild.
 
 NuttX C pubsub + service PASS. NuttX C action FAILS on `accepted=false, completed=false` — preexisting Phase 77 async-action issue tracked separately.
 
-### Sub-bug F3 — C++ examples blocked on corrosion cross-compile
+### Sub-bug F3 — C++ examples blocked on corrosion cross-compile ✅ FIXED 2026-05-18
 
-**Symptom:** C++ examples fail to link with `libnano_ros_cpp_ffi_<pkg>.a: file format not recognized` — host x86_64 objects in an ARM link. Setting `-DRust_CARGO_TARGET=armv7a-nuttx-eabihf` flips the FFI codegen library to ARM but then corrosion's `cargo-build_nros_cpp` invocation fails (`can't find crate for 'core'`) because the stable host rustc lacks the `armv7a-nuttx-eabihf` target; would need nightly + `-Zbuild-std`.
+**Symptom:** C++ examples fail to link with `libnano_ros_cpp_ffi_<pkg>.a: file format not recognized` — host x86_64 objects in an ARM link. Codegen's `nano_ros_cpp_ffi_<pkg>` cargo build in `packages/codegen/.../NanoRosGenerateInterfaces.cmake:466` only emits the `+nightly` + `-Zbuild-std=core` path if `Rust_CARGO_TARGET MATCHES "nuttx"`, but `nros_nuttx_set_cargo_target` published the value via PARENT_SCOPE — which doesn't cross the `add_subdirectory(<repo-root>)` boundary, so the example's top scope never saw it.
 
-**Status:** Deferred. Pre-existing structural issue from Phase 144.6.c migration (the cmake `add_subdirectory(<repo-root>)` consumer path uses corrosion for nros-c/nros-cpp, which doesn't know about NuttX's tier-3 target). Fixing requires either (a) wiring corrosion to use the nightly toolchain + `-Zbuild-std` on NuttX, or (b) sidestepping corrosion entirely and routing nros-c/nros-cpp through `nros-nuttx-ffi`'s cargo build (which already cross-compiles them fine via the existing Cargo.toml path-deps). Option (b) likely simpler.
+**Root cause:** Three independent gaps stacked:
+1. **Rust_CARGO_TARGET propagation.** PARENT_SCOPE walks the include chain, not add_subdirectory'd scopes. The codegen `nros_generate_interfaces()` call in the example scope read `Rust_CARGO_TARGET` as unset and emitted a host-target cargo build of the cpp FFI codegen lib.
+2. **Build ordering.** The `_build` custom target ran `nros-nuttx-ffi`'s cargo invocation in parallel with corrosion's `cargo-build_nros_cpp`. Without a dep, main.cpp compile beat the per-build `nros_cpp_config_generated.h` mirror that nros-cpp's POST_BUILD writes, and the source-tree `#error` stub won.
+3. **Stale `Error 2` from prior failed build attempts** masked successful re-builds.
+
+**Fix:**
+- `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake` — after `nros_nuttx_set_cargo_target`, also publish `Rust_CARGO_TARGET` as CACHE so it reaches the add_subdirectory'd example scope. Safe to set after the corrosion `add_subdirectory(nros-c/nros-cpp)` calls in the root CMakeLists.txt have already run (corrosion sees the unset value and builds for host; the resulting host .a is never linked into the NuttX kernel ELF — that link goes through `nros_nuttx_build_example`'s cargo invocation that cross-builds every nros-* crate via the FFI crate's path-deps).
+- `packages/core/nros-c/cmake/nros-nuttx.cmake` — in `nros_nuttx_build_example`, `add_dependencies(${name}_build cargo-build_nros_c cargo-build_nros_cpp)` so the per-build `nros_{,cpp_}config_generated.h` mirrors complete before the FFI cargo invocation reads them.
+
+**Verified 2026-05-18:** all 12 NuttX cmake fixtures (6 × C + 6 × C++) build cleanly in a single `cmake --build` pass. NuttX C++ E2E 3/3 PASS (pubsub 45.3s, service 30.4s, action 30.4s).
 
 ## Notes
 

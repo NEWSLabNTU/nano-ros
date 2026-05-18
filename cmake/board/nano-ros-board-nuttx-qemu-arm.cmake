@@ -93,6 +93,24 @@ set(NUTTX_BOARD_TOOLCHAIN_FILE
 nros_nuttx_validate(REQUIRE NUTTX_DIR)
 nros_nuttx_set_cargo_target("armv7a-nuttx-eabihf")
 
+# Phase 156 (F3) — also publish Rust_CARGO_TARGET as CACHE so it
+# reaches scopes that PARENT_SCOPE can't cross (notably the example
+# CMakeLists.txt that add_subdirectory'd this root). The codegen
+# pipeline at `NanoRosGenerateInterfaces.cmake:466` reads
+# Rust_CARGO_TARGET to enable the `+nightly` / `-Zbuild-std=core`
+# path for tier-3 NuttX cargo invocations. Safe to set here AFTER
+# the corrosion `add_subdirectory(nros-c/nros-cpp)` calls in the
+# root CMakeLists.txt have already run (those run before
+# `cmake/platform/nano-ros-nuttx.cmake` is included, so corrosion
+# still sees the unset value and builds for host — which is
+# discarded later because the real ELF link goes through
+# `nros_nuttx_build_example`'s cargo invocation that cross-builds
+# every nros-* crate via the FFI crate's path-deps).
+if(NOT DEFINED CACHE{Rust_CARGO_TARGET})
+    set(Rust_CARGO_TARGET "armv7a-nuttx-eabihf" CACHE STRING
+        "Rust cargo target triple (Phase 156 F3 — set by NuttX board overlay)")
+endif()
+
 # ---------------------------------------------------------------------------
 # nros_board_link_app(<target>)
 #
