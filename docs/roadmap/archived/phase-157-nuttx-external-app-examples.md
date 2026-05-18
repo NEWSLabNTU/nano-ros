@@ -7,7 +7,13 @@ Makefile}` trio) on top of their existing `CMakeLists.txt`. CMake
 stays the unified build entry across all platforms; NuttX gets thin
 wrappers that delegate to it instead of duplicating the build logic.
 
-**Status.** Active 2026-05-18.
+**Status.** Closed 2026-05-18. All 12 examples (6 C + 6 C++)
+link as `nshlib` built-in commands in a single `nuttx` ELF via
+`just nuttx build-fixtures-make`. E2E parity test
+`nuttx_make_e2e.rs` → 1 passed / 0 skipped. cmake fixtures
+(`build-fixtures`) keep working unchanged in parallel.
+Carved-out follow-ups (157.C.12 / 158.x / 157.D.2) all
+resolved or documented as upstream issues.
 
 **Priority.** P2. Closes the only platform where C/C++ example
 fixtures bypass the RTOS-preferred build flow (audit landed in
@@ -599,16 +605,19 @@ The final kernel link step is what still trips on 157.C.11 +
 
 ### 157.D — User-facing documentation
 
-- [ ] **157.D.1 — Book chapter on canonical NuttX flow.**
-      `book/src/getting-started/integration-nuttx.md` already
-      covers the integration shell; extend with the
-      "clone-or-symlink each example as `apps/external/nano-ros-
-      <example>`" walkthrough + `menuconfig` screenshot of the
-      "nano-ros Examples" menu landed in 157.B.1. Cross-link
-      from `examples/README.md` per-platform consumption table.
-      **Files:**
-      `book/src/getting-started/integration-nuttx.md`,
-      `examples/README.md`.
+- [x] **157.D.1 — Book chapter on canonical NuttX flow.**
+      Extended `book/src/getting-started/integration-nuttx.md`
+      with a new "Per-example external apps (Phase 157)"
+      section that covers: `nshlib` built-in command names
+      per example; the `scripts/nuttx/stage-external-apps.sh`
+      staging script with resulting `apps/external/` tree
+      diagram; the `just nuttx build-fixtures-make` justfile
+      wrapper + auto-defconfig behaviour; cmake-vs-make path
+      comparison; per-example file layout; verification via
+      `nuttx_make_e2e.rs`. Cross-link from `examples/README.md`
+      already in place (line 120 — "qemu-arm-nuttx" row
+      points at integration-nuttx.md). `mdbook build book`
+      renders clean.
 
 - [ ] **157.D.2 — Roadmap follow-up: codegen helper.**
       If hand-written wrappers prove repetitive over time, promote
