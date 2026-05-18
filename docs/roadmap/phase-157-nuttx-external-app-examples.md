@@ -291,16 +291,67 @@ path was bypassing. Each fix unblocks the next layer:
       a per-crate `target/` dir + the `-`→`_` rename that
       doesn't apply to nano-ros's shared workspace layout.
 
-- [ ] **157.C.11 — C++ examples build.**
-      Currently the `build-fixtures-make` recipe only enables
-      `CONFIG_NROS_C_API` + the 6 C examples. C++ examples
-      need a parallel `nros-cpp` Cargo build in the
-      integration shell + the same `EXTRA_LIBS` /
-      `EXTRA_LIBPATHS` plumbing. Also two example mains
-      (action-client) reference `nros_action_get_result` +
-      `nros_goal_status_to_string` which aren't exported
-      from nros-c's cbindgen surface on the
-      cross-compile target — separate FFI gap to investigate.
+- [x] **157.C.11 partial — feature passing + nros-cpp build + pthread fix.**
+
+  Landed:
+    * Per-crate features. `NROS_C_FEATURES` (uses
+      `cffi-zenoh-cffi`) + `NROS_CPP_FEATURES` (uses
+      `rmw-zenoh-cffi`) split out — different per-backend
+      feature names. NROS_CARGO_BUILD takes feature list as
+      `$(3)`. Without `--features`, cargo built nros-c with
+      defaults (`std` only) → no `rmw-cffi` → no `action`
+      module → undefined `nros_action_get_result` /
+      `nros_goal_status_to_string` (which IS gated on
+      `rmw-cffi` after all — earlier hypothesis about
+      "missing FFI exports" was wrong).
+    * nros-cpp Cargo build wired into `context::` rule
+      under `CONFIG_NROS_CPP_API`. EXTRA_LIBS appends
+      `libnros_cpp.a`; CXXFLAGS adds nros-cpp include +
+      target/nros-cpp-generated dirs.
+    * pthread keys: `kconfig-tweak --set-val TLS_NELEM 8`.
+      Rust std's TLS support references `pthread_{key_create,
+      key_delete,getspecific,setspecific}` which NuttX gates
+      on `CONFIG_TLS_NELEM > 0`. Stock qemu-armv7a/nsh sets
+      it to 0.
+    * Per-example `make clean` in the recipe before kernel
+      build. Without this, stale `.built` timestamps from a
+      prior run convince `Application.mk` that nothing's
+      stale, but `apps/libapps.a` (gone after distclean /
+      re-config) lacks the example objects.
+
+  Verified: C-only build links nuttx kernel past
+  the `<PROGNAME>_main` resolution. All 6 C examples'
+  `nuttx_c_*_main` symbols resolve correctly from libapps.a.
+
+  Remaining within 157.C.11 (carved as .C.14 + .C.15):
+
+- [ ] **157.C.14 — C++ codegen extension.**
+      Each CPP example's `main.cpp` includes generated
+      `std_msgs.hpp` / `example_interfaces.hpp` (cpp codegen
+      output). `scripts/nuttx/gen-interfaces.py` only invokes
+      `nros-codegen --language c`. Extend to handle CPP
+      examples (detect via dir suffix or `LANGUAGE CPP`
+      flag in CMakeLists pattern) + run codegen twice
+      (`--language c` for shared msg structs, `--language
+      cpp` for the C++ wrapper headers).
+      **Files:** `scripts/nuttx/gen-interfaces.py`,
+      `tmp/phase157-gen-wrappers.sh` (example Makefile
+      template — CXXSRCS glob update).
+
+- [ ] **157.C.15 — `nros_platform_*` link.**
+      Current build hits `undefined reference to
+      nros_platform_wake_storage_size /
+      nros_platform_wake_storage_align /
+      nros_platform_wake_init / nros_platform_wake_wait_ms
+      / nros_platform_wake_drop` at kernel link. These
+      symbols are defined by the `nros-platform-nuttx`
+      crate (Rust-side). Need to either build it separately
+      + add to EXTRA_LIBS, or pull it transitively through
+      nros-c's dependency graph. cmake handles this via
+      Phase 121's NanoRos::Platform target; make-build
+      needs equivalent.
+      **Files:** `integrations/nuttx/{Make.defs,Makefile}`
+      (add `nros-platform-nuttx` to context:: cargo build).
 
 - [ ] **157.C.12 — multi-pass ALLSYMS bootstrap.**
       The stock `qemu-armv7a/nsh` defconfig enables

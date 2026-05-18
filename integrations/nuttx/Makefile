@@ -12,31 +12,54 @@ include $(APPDIR)/Make.defs
 # Cargo features assembled from Kconfig knobs. The Kconfig sibling
 # exposes RMW + ROS-edition as `choice` blocks so `make menuconfig`
 # drives Cargo via this var rather than free-form strings.
-CARGO_FEATURES :=
+#
+# Phase 157.C.11 — feature names mirror what
+# `packages/core/nros-c/CMakeLists.txt` passes to Corrosion. nros-c
+# carries `cffi-zenoh-cffi` / `cffi-dds-cffi` / `cffi-xrce-c` as
+# Cargo features that select the RMW + flip on `rmw-cffi`. Kconfig
+# RMW choice maps onto those names.
+# nros-c features. Names mirror what `packages/core/nros-c/CMakeLists.txt`
+# passes to Corrosion. nros-c uses `cffi-zenoh-cffi` etc.
+NROS_C_FEATURES := std ros-humble platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
-CARGO_FEATURES += rmw-zenoh
+NROS_C_FEATURES += cffi-zenoh-cffi
 endif
 ifneq ($(CONFIG_NROS_RMW_DDS),)
-CARGO_FEATURES += rmw-dds
+NROS_C_FEATURES += cffi-dds-cffi
 endif
 ifneq ($(CONFIG_NROS_RMW_XRCE),)
-CARGO_FEATURES += rmw-xrce
+NROS_C_FEATURES += cffi-xrce-c
 endif
 ifneq ($(CONFIG_NROS_RMW_CYCLONEDDS),)
-CARGO_FEATURES += rmw-cyclonedds
-endif
-ifneq ($(CONFIG_NROS_ROS_HUMBLE),)
-CARGO_FEATURES += ros-humble
+NROS_C_FEATURES += rmw-cffi
 endif
 ifneq ($(CONFIG_NROS_ROS_IRON),)
-CARGO_FEATURES += ros-iron
+NROS_C_FEATURES := $(filter-out ros-humble,$(NROS_C_FEATURES)) ros-iron
 endif
-CARGO_FEATURES += platform-nuttx
+
+# nros-cpp features. Different per-backend feature names from nros-c
+# (rmw-{zenoh,xrce,dds}-cffi instead of cffi-{...}). Mirrors
+# `packages/core/nros-cpp/CMakeLists.txt`.
+NROS_CPP_FEATURES := std ros-humble platform-nuttx
+ifneq ($(CONFIG_NROS_RMW_ZENOH),)
+NROS_CPP_FEATURES += rmw-zenoh-cffi
+endif
+ifneq ($(CONFIG_NROS_RMW_DDS),)
+NROS_CPP_FEATURES += rmw-dds-cffi
+endif
+ifneq ($(CONFIG_NROS_RMW_XRCE),)
+NROS_CPP_FEATURES += rmw-xrce-cffi
+endif
+ifneq ($(CONFIG_NROS_RMW_CYCLONEDDS),)
+NROS_CPP_FEATURES += rmw-cffi
+endif
+ifneq ($(CONFIG_NROS_ROS_IRON),)
+NROS_CPP_FEATURES := $(filter-out ros-humble,$(NROS_CPP_FEATURES)) ros-iron
+endif
 
 # Pass the feature set + NuttX include dir to Cargo via env.
 # `apps/tools/Rust.mk` reads CARGO_BUILD_ARGS to inject extras.
 export NUTTX_INCLUDE_DIR := $(TOPDIR)/include:$(TOPDIR)/include/arch
-export CARGO_BUILD_ARGS := --features "$(strip $(CARGO_FEATURES))" --no-default-features
 
 # Phase 157.C — nano-ros's repo-root `rust-toolchain.toml` pins
 # stable. The NuttX `-Zbuild-std=std,panic_abort` flags need
@@ -107,6 +130,8 @@ NROS_LIBC_PATCH := patch.crates-io.libc.path="$(NANO_ROS_ROOT)/third-party/nuttx
 NROS_RUSTFLAGS_ARMV7A := target.armv7a-nuttx-eabihf.rustflags=["-C","link-arg=-mcpu=cortex-a7","-C","link-arg=-mfloat-abi=hard","-C","link-arg=-mfpu=neon-vfpv4"]
 NROS_CFLAGS_ARMV7A := env.CFLAGS_armv7a_nuttx_eabihf.value="-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
+# $(3) = feature list (per-crate, since nros-c + nros-cpp have
+# different per-backend feature names).
 define NROS_CARGO_BUILD
 	NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
 	CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc \
@@ -117,6 +142,8 @@ define NROS_CARGO_BUILD
 	AR_armv7a_nuttx_eabi=arm-none-eabi-ar \
     cargo build --release \
 		-Zbuild-std=std,panic_abort \
+		--no-default-features \
+		--features "$(strip $(3))" \
 		--config '$(NROS_LIBC_PATCH)' \
 		--config '$(NROS_RUSTFLAGS_ARMV7A)' \
 		--config '$(NROS_CFLAGS_ARMV7A)' \
@@ -137,11 +164,24 @@ context::
 ifeq ($(NROS_TARGET_TRIPLE),)
 	$(call RUST_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/core)
 else
-	$(call NROS_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/core)
+	$(call NROS_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/core,$(NROS_C_FEATURES))
+endif
+# Phase 157.C.11 — also build nros-cpp staticlib when CONFIG_NROS_CPP_API=y.
+# `libnros_cpp.a` rides on the same Cargo workspace target dir as
+# `libnros_c.a`; Make.defs adds it to EXTRA_LIBS conditionally.
+ifneq ($(CONFIG_NROS_CPP_API),)
+ifeq ($(NROS_TARGET_TRIPLE),)
+	$(call RUST_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/core)
+else
+	$(call NROS_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/core,$(NROS_CPP_FEATURES))
+endif
 endif
 
 clean::
 	$(call NROS_CARGO_CLEAN,nros-c,$(NANO_ROS_ROOT)/packages/core)
+ifneq ($(CONFIG_NROS_CPP_API),)
+	$(call NROS_CARGO_CLEAN,nros-cpp,$(NANO_ROS_ROOT)/packages/core)
+endif
 endif
 
 include $(APPDIR)/Application.mk

@@ -142,8 +142,15 @@ build-fixtures-make:
     config="$nuttx_dir/.config"
     kconfig-tweak --file "$config" --enable NROS
     kconfig-tweak --file "$config" --enable NROS_C_API
+    # Phase 157.C.11 partial — C-only by default. CPP examples need
+    # cpp codegen (gen-interfaces.py extension) + CXX stub
+    # registration work tracked as 157.C.14. Enable manually for
+    # local cpp iteration via `kconfig-tweak --enable
+    # NROS_CPP_API`.
+    kconfig-tweak --file "$config" --disable NROS_CPP_API
     for ex in TALKER LISTENER SERVICE_SERVER SERVICE_CLIENT ACTION_SERVER ACTION_CLIENT; do
         kconfig-tweak --file "$config" --enable "NROS_EXAMPLE_${ex}_C"
+        kconfig-tweak --file "$config" --disable "NROS_EXAMPLE_${ex}_CPP"
     done
     # Phase 157.C — disable ALLSYMS for first build (chicken-egg:
     # CONFIG_ALLSYMS=y runs mkallsyms.py on $(NUTTX) which doesn't
@@ -151,10 +158,25 @@ build-fixtures-make:
     # it by default. Carve out as 157.C.12 — multi-pass build that
     # bootstraps allsyms.
     kconfig-tweak --file "$config" --disable ALLSYMS
+    # Phase 157.C.11 — Rust std references `pthread_{key_create,
+    # key_delete,getspecific,setspecific}` for thread-local
+    # storage. NuttX gates these on CONFIG_TLS_NELEM > 0 (stock
+    # qemu-armv7a/nsh sets it to 0). Set 8 — enough for std's
+    # internal TLS slots + a few user-side keys.
+    kconfig-tweak --file "$config" --set-val TLS_NELEM 8
     # Pass 2: olddefconfig again so the just-enabled knobs settle
     # any newly-visible dependencies.
     echo "Pass 2/2: olddefconfig with NROS enabled"
     ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
+    # Clean per-example app build state so ar re-archives objects
+    # into libapps.a. Without this, stale .built timestamps from a
+    # prior run convince apps/Application.mk that nothing's stale,
+    # but apps/libapps.a (gone after distclean / re-config) lacks
+    # the example objects → kernel link fails with undefined
+    # `<PROGNAME>_main` references.
+    for ex in "$nuttx_apps_dir"/external/nano-ros-*; do
+        ( cd "$ex" && make clean APPDIR="$nuttx_apps_dir" TOPDIR="$nuttx_dir" >/dev/null 2>&1 || true )
+    done
     # Final build. Single binary contains all 12 examples as
     # built-in commands (nuttx_c_talker / nuttx_cpp_listener / ...).
     echo "Building NuttX with all nano-ros examples enabled..."

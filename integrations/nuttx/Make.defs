@@ -43,6 +43,9 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # integration produces.
 NROS_CARGO_LIB_DIR := $(NANO_ROS_ROOT_DEFS)/target/armv7a-nuttx-eabihf/release
 EXTRA_LIBS    += $(NROS_CARGO_LIB_DIR)/libnros_c.a
+ifneq ($(CONFIG_NROS_CPP_API),)
+EXTRA_LIBS    += $(NROS_CARGO_LIB_DIR)/libnros_cpp.a
+endif
 EXTRA_LIBPATHS+= -L$(NROS_CARGO_LIB_DIR)
 endif
 
@@ -62,4 +65,18 @@ CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/target/nros-c-generated
 # `#include <nros/...>`. Same symlink-resolution applies; route
 # through the repo-root realpath.
 CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/core/nros-c/include
+
+# Phase 157.C.11 — C++ surface. Mirror the C-side header
+# precedence + add the cbindgen-emitted `nros_cpp_ffi.h` parent
+# (in `packages/core/nros-cpp/include/`). nros-cpp's per-build
+# `nros_cpp_config_generated.h` lands at
+# `$CARGO_TARGET_DIR/nros-cpp-generated/nros/` analogous to nros-c.
+ifneq ($(CONFIG_NROS_CPP_API),)
+CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/target/nros-cpp-generated
+CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/core/nros-cpp/include
+# nros-cpp depends on nros-c headers — keep the C-side -I on the
+# C++ compile line too.
+CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/target/nros-c-generated
+CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/core/nros-c/include
+endif
 endif
