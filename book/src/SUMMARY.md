@@ -13,6 +13,7 @@
 - [Integration: PlatformIO library](./getting-started/integration-platformio.md)
 - [Integration: NuttX external app](./getting-started/integration-nuttx.md)
 - [Integration: PX4 external module](./getting-started/integration-px4.md)
+- [Arduino IDE library (`nros`)](./getting-started/arduino.md)
 - [Package Preparation](./user-guide/package-preparation.md)
 - [First Native Rust Node](./getting-started/native.md)
 - [Message Generation](./user-guide/message-generation.md)
