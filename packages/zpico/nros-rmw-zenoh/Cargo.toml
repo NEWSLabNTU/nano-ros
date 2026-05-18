@@ -36,6 +36,11 @@ platform-bare-metal = ["zpico-sys/bare-metal"]
 platform-freertos = ["zpico-sys/freertos"]
 platform-nuttx = ["zpico-sys/nuttx"]
 platform-threadx = ["zpico-sys/threadx"]
+# Phase 21.6 — ESP-IDF reuses zpico-sys's FreeRTOS build switch
+# because ESP-IDF ships FreeRTOS as its scheduler. The C platform
+# port (`packages/core/nros-platform-esp-idf/`) supplies the
+# canonical `nros_platform_*` symbols at IDF link time.
+platform-esp-idf = ["zpico-sys/esp-idf"]
 # Phase 11 — AGX Orin SPE (Cortex-R5F). IVC link only, no TCP/UDP.
 platform-orin-spe = ["zpico-sys/orin-spe", "zpico-sys/link-ivc"]
 # Phase 128.E.1 — `link-tcp` / `link-udp-unicast` deleted (were

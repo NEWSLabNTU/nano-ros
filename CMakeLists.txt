@@ -86,7 +86,7 @@ if(NOT EXISTS "${_nros_platform_module}")
     message(FATAL_ERROR
         "Unknown NANO_ROS_PLATFORM: '${NANO_ROS_PLATFORM}' "
         "(no module at cmake/platform/nano-ros-${_nros_platform_module_name}.cmake). "
-        "Supported: posix, zephyr, freertos, nuttx, threadx, baremetal "
+        "Supported: posix, zephyr, freertos, nuttx, threadx, baremetal, esp-idf "
         "(plus legacy freertos_armcm3 / nuttx_armv7a / threadx_linux / threadx_riscv64).")
 endif()
 include("${_nros_platform_module}")
@@ -120,6 +120,8 @@ if(NOT TARGET NanoRos)
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_NUTTX)
     elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_THREADX)
+    elseif(NANO_ROS_PLATFORM STREQUAL "esp-idf")
+        target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_ESP_IDF)
     endif()
     # Platform shim wiring deferred to after RMW dispatch below —
     # `libnros_platform_<plat>.a` must appear AFTER `--whole-archive

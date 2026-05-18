@@ -89,6 +89,18 @@ platform-freertos = [
     "nros-node/platform-freertos",
     "platform-udp",
 ]
+# Phase 21.6 — ESP-IDF (Espressif's FreeRTOS fork + lwIP stack).
+# Pulls the canonical platform ABI from `nros-platform-cffi`; the
+# C symbols are supplied at link time by
+# `packages/core/nros-platform-esp-idf/` registered as an IDF
+# component. Mirrors `platform-freertos` for sched/sync primitives
+# (xTask*, xSemaphore*) and depends on `platform-udp` because
+# ESP-IDF ships lwIP for WiFi/Ethernet sockets.
+platform-esp-idf = [
+    "nros-platform/platform-esp-idf",
+    "nros-node/platform-esp-idf",
+    "platform-udp",
+]
 platform-nuttx = [
     "nros-platform/platform-nuttx",
     "nros-node/platform-nuttx",

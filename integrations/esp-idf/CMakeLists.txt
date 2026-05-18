@@ -22,15 +22,26 @@ else()
     set(_nros_ros_edition "${CONFIG_NROS_ROS_EDITION}")
 endif()
 
-set(NANO_ROS_PLATFORM    "baremetal"           CACHE STRING "" FORCE)
+# Phase 21.6 / 21.9 — switch from `baremetal` (which the nros-c
+# subproject rejects with `FATAL_ERROR`) to the dedicated `esp-idf`
+# platform module that ships with this checkout. The `esp-idf`
+# module pulls in `packages/core/nros-platform-esp-idf/` as a child
+# IDF component and exposes `NanoRos::Platform`.
+set(NANO_ROS_PLATFORM    "esp-idf"             CACHE STRING "" FORCE)
 set(NANO_ROS_RMW         "${_nros_rmw}"        CACHE STRING "" FORCE)
 set(NANO_ROS_ROS_EDITION "${_nros_ros_edition}" CACHE STRING "" FORCE)
 
-# Register first so $COMPONENT_LIB exists for the link below.
+# Register first so $COMPONENT_LIB exists for the link below. The
+# REQUIRES list pulls every IDF component the nros-platform-esp-idf
+# child component (and therefore nros-c) needs through the IDF
+# dependency walker — without this, the child component's
+# `idf_component_register(REQUIRES freertos esp_timer …)` would
+# fail because those components don't transitively reach this top-
+# level shell otherwise.
 idf_component_register(
     SRCS ""
     INCLUDE_DIRS "${_nros_root}/packages/core/nros-c/include"
-    REQUIRES log)
+    REQUIRES log freertos esp_timer esp_hw_support esp_system lwip)
 
 # Pull in the unified root CMake. ESP-IDF runs each component
 # CMakeLists in an isolated CMake project, so add_subdirectory works
