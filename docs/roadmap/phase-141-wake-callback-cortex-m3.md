@@ -204,17 +204,35 @@ Closing 124.B.2 means:
 
 ### 141.C — Histogram aggregation + UART export
 
-- [ ] **141.C.1 — Ring-buffered histogram in `nros-tests`
-      embedded harness.** Logarithmic bucket distribution (1 µs
-      → 100 ms) sized to ~1 KB stack budget. Sample push from
-      the instrumentation hooks (141.B.2). Dump format: CSV
-      bucket-edge,count over UART, terminated by a sentinel
-      line.
-- [ ] **141.C.2 — Host-side parser + assertion.** Test bin
-      runs FreeRTOS QEMU + zenoh-pico talker/listener pair,
-      drains UART, parses histogram, computes P99, compares to
-      pre-124.B baseline (captured once with
-      `set_wake_callback = NULL` to establish the ≥ 10× claim).
+- [x] **141.C.1 — Ring-buffered histogram + CSV serializer.**
+      Landed as `wake_probe::Histogram` +
+      `wake_probe::write_csv` in
+      `packages/core/nros-node/src/executor/wake_probe.rs`.
+      Log-distributed `HISTOGRAM_BUCKETS = 24` buckets
+      (`BUCKET_EDGES_NS` 1 µs → ~4.2 s pow-2 + u64::MAX
+      overflow) — 96 bytes of state, well under the 1 KB
+      stack budget. `insert(ns)` is branch-free linear scan,
+      `saturating_add` on count (sample bursts past u32::MAX
+      between drains won't panic).
+      `drain_into::<BUF_SAMPLES>(&mut hist, cycles_to_ns)`
+      convenience: drains the probe ring through a stack
+      buffer + bucketizes via a caller-supplied
+      `cycles_to_ns` (typically partial-applied
+      `nros_platform_mps2_an385::timing::cycles_to_ns`).
+      `write_csv` emits the v1 contract — `NROS-WAKE-HIST,v1`
+      header, `bucket_edge_ns,count` body, `total,N` summary,
+      `END` sentinel. `Histogram::percentile(pct)` for
+      on-device P99 sanity logging.
+- [x] **141.C.2 — Host-side parser + assertion helpers.**
+      `wake_probe::parse_csv(input)` + `percentile_ns(buckets,
+      pct)` gated `cfg(feature = "std")` so the no_std
+      embedded path doesn't pay any cost. Round-trip
+      verified by the lib test
+      `wake_probe::tests::csv_roundtrip` (write_csv → parse_csv
+      → percentile_ns chain). The full FreeRTOS-QEMU
+      pub/sub binary + serial drainer that this parser feeds
+      is the 141.D harness work — these helpers are the
+      reusable building blocks.
 
 ### 141.D — Microbench scenarios
 
