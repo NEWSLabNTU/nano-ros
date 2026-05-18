@@ -517,6 +517,15 @@ name = "nros-baremetal-common"
 version = "0.1.0"
 
 [[package]]
+name = "nros-board-common"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "nros-board-mps2-an385"
 version = "0.1.0"
 dependencies = [
@@ -1310,7 +1319,6 @@ version = "0.1.0"
 dependencies = [
  "cbindgen",
  "cc",
+ "nros-board-common",
  "pkg-config",
- "serde",
- "toml 0.8.23",
 ]
