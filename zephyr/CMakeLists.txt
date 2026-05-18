@@ -216,7 +216,7 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # references them directly. Actual multicast joins go through
     # the IGMP API in nros-platform-zephyr/src/net.c.
     zephyr_compile_options(
-        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-include\ ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h>
+        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:SHELL:-include ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h>
     )
 
     # ---- Cyclone DDS sources -----------------------------------------------
