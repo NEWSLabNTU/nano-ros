@@ -656,7 +656,27 @@ fn main() {
         // `nros_platform_*`, no vendor system.c is compiled for POSIX
         // (extra_sources lists only `network.c` + `tls.c`), so no
         // duplicates.
-        if use_posix {
+        // Phase 159 root cause — NuttX also needs this gate. The
+        // NuttX `zenoh_platforms.toml` block routes `ZENOH_NUTTX`
+        // to `system/platform/unix.h` (BY-VALUE 4-byte socket
+        // struct) AND pulls `system/unix/network.c` into
+        // `extra_sources`. Without `NROS_ZENOH_PLATFORM_USES_UNIX`
+        // defined for the alias TU compile, BOTH the alias TU's
+        // 32-byte-opaque `_z_open_tcp` (forwarding to
+        // `nros_platform_tcp_open`) AND `unix/network.c`'s by-
+        // value impl land in the link. With
+        // `--allow-multiple-definition` (NuttX kernel link flag,
+        // 157.C.17) or rebuild-order-dependent picks, the alias
+        // version often wins → its 32-byte arg layout collides
+        // with the 4-byte ABI tx.c / link.c call sites use →
+        // `_z_send_tcp` reads garbage → session open returns
+        // `TransportError::ConnectionFailed` → C examples surface
+        // `nros_support_init -> -4`. Matches Phase 159's Path A +
+        // Path C runtime-regression symptom exactly. The Phase
+        // 155.F4 warm-up + incremental build state masked it by
+        // leaving stale objects from earlier builds where the
+        // define was effectively present (pre-Phase 156 wiring).
+        if use_posix || use_nuttx {
             alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
         }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
