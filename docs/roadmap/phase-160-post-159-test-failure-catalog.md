@@ -327,13 +327,138 @@ test_qemu_serial_pubsub_e2e
 test_qemu_zenoh_large_publish
 ```
 
-**Hypothesis.** Either:
-- Phase 132 (descoped) cmsdk-uart IRQ — serial pubsub blocked on
-  init-handshake regression.
-- Phase 141 (active) wake-callback cortex-m3 plumbing — RTIC
-  scheduling change may have surfaced a regression.
+**Triage 2026-05-19 (Phase 160.F probe).**
 
-Triage one to confirm + file under whichever phase fits.
+- All five fixtures build cleanly: `cargo build --release` on
+  `examples/qemu-arm-baremetal/rust/zenoh/talker-rtic/` +
+  siblings finishes without warnings or link errors.
+- `test_qemu_rtic_pubsub_e2e` end-to-end run under
+  `qemu-system-arm -machine mps2-an385` reaches:
+    - smoltcp ethernet init success
+      (`IP: 10.0.2.10`, `MAC: 02:00:00:00:00:00`,
+      `Ethernet ready.`)
+    - then RTIC talker panics at `src/main.rs:68:57`:
+      `called Result::unwrap() on an Err value:
+      Transport(ConnectionFailed)`
+    - listener also receives `Published=0 / Received=0`.
+- Line 68 is `let mut executor = Executor::open(&exec_config)`.
+  Failure is at zenoh-session TCP open against
+  `tcp/10.0.2.2:7450` — host-side `zenohd` IS up on that port
+  (test waits for `wait_for_port` to confirm).
+- Boundary is therefore inside zenoh-pico's
+  `_z_open_tcp` → `nros_platform_socket_*` path. smoltcp can
+  ARP / RX / TX (Ethernet line ready) but the actual TCP
+  handshake to the slirp gateway never completes from inside
+  the firmware.
+- Phase 132 (cmsdk-uart) is archived, never landed → not the
+  cause.
+- Phase 141 (wake-callback cortex-m3) added a
+  `cycles_to_ns` helper + free-fn aliases on
+  `nros-platform-mps2-an385` (commit `c262d145c`) — no socket
+  path touched.
+- The most recent zpico-side changes that touch the path are
+  Phase 156's `a529afb15` (remove outer
+  `NROS_ZENOH_PLATFORM_USES_UNIX` gate around the runtime
+  aliases in `platform_aliases.c`) + Phase 159's `81910e006`
+  (extend the inner network-section gate to NuttX). Both
+  intentionally leave the bare-metal alias section active, so
+  this is suspicious but not yet confirmed as the regression
+  point. A worktree-based bisect against pre-Phase-154
+  baseline aborted on missing rosidl-generated bindings
+  (`examples/.../talker-rtic/generated/builtin_interfaces/
+  Cargo.toml` absent in the historical tree — codegen pipeline
+  has moved).
+
+**Deeper probe (2026-05-19, session 2).** Direct FFI probes
+injected into `examples/qemu-arm-baremetal/rust/zenoh/talker-rtic/
+src/main.rs` (reverted before commit; see git history for the
+diff) measured the canonical layers individually with semihosting
+`println!`s:
+
+| Probe call                              | Return | Wall time |
+|-----------------------------------------|--------|-----------|
+| `nros_platform_tcp_create_endpoint`     | `0`    | ~0 ms     |
+| `nros_platform_tcp_open` (3 s timeout)  | `0`    | **1 ms**  |
+| `nros_platform_tcp_send` (4-byte fake)  | `4/4`  | ~0 ms     |
+| `nros_platform_tcp_read` (after 100 ms) | `0`    | —         |
+| `zpico_init_with_config`                | `0`    | ~0 ms     |
+| `zpico_open`                            | `-3`   | **<1 ms** |
+
+Notable:
+1. **smoltcp + slirp completes the TCP three-way handshake in
+   ~1 ms** when called directly via the `nros_platform_tcp_*`
+   canonical surface. The QEMU user-mode network slirp NATs to
+   host port 7450 and `127.0.0.1:7450` (zenohd) responds inside
+   the same QEMU mainloop tick.
+2. **smoltcp accepts 4/4 bytes via `nros_platform_tcp_send`**;
+   the tx-staging plumbing is alive on the canonical path.
+3. **`zpico_open` returns `ZPICO_ERR_SESSION` (`-3`) in under a
+   millisecond** — far faster than any TCP-connect timeout
+   (`CONNECT_TIMEOUT_MS = 30000`) could expire. The fault is
+   therefore *not* TCP connect, *not* alias-TU symbol resolution
+   (`nm` confirms `_z_open_tcp` and `nros_platform_tcp_open`
+   both resolve in `qemu-rtic-talker`), and *not* zenoh-pico
+   config validation (which already returned `0` for
+   `zpico_init_with_config`).
+4. The failure must live inside `z_open` *after* `_z_open_tcp`
+   succeeds — i.e. zenoh-pico's INIT / OPEN handshake. Likely
+   suspects: a) the staged 4-byte send did not actually reach
+   zenohd (smoltcp poll never serviced the tx queue because no
+   `net_poll` task runs during `Executor::open`), b) the receive
+   side returns 0 bytes so zenoh-pico's `_z_read_exact_tcp`
+   either spin-fails or returns a length mismatch, c) the
+   `_z_sys_net_socket_t` opaque storage that zenoh-pico passes
+   by value between `_z_open_tcp` and `_z_send_tcp` carries
+   stale bytes the smoltcp impl mis-reads (alias TU uses 32-byte
+   opaque, smoltcp reads first 2 bytes as `{handle: i8,
+   connected: bool}` — should be safe, but worth instrumenting).
+
+The smoking gun on the in-firmware path: **no `net_poll` task is
+spawned until `Executor::open` returns**. Zenoh-pico's `z_open`
+issues `_z_send_tcp` then `_z_read_exact_tcp` synchronously; the
+read path calls `nros_platform_tcp_read` which (per
+`platform_macro.rs`) calls `SmoltcpBridge::poll_network()`
+internally — but the *write* path goes straight to
+`socket.send_slice` via the next pre-write `poll`, then needs a
+*second* poll iteration to actually push the bytes to the wire.
+With zenohd's INIT-ACK reply gated on the inbound INIT, the
+firmware blocks in `_z_read_exact_tcp`'s polling loop, the loop
+times out internally (zenoh-pico's `Z_TRANSPORT_LEASE` is
+shorter than smoltcp's connect timeout), and `z_open` returns
+`-1` early. This matches the <1 ms failure (zenoh-pico's own
+short retry budget, not smoltcp's 30 s).
+
+**Next steps** (split into Phase 160.F.x subphases for the
+follow-up session):
+
+- **160.F.1** — instrument zenoh-pico's `_z_open_link` /
+  `_z_open_tcp` callers in `third-party/zenoh-pico/src/` with
+  `Z_DEBUG` prints so each step of the INIT/OPEN handshake
+  surfaces a label + return code via the alias TU's stderr
+  (semihosting on bare-metal). Specifically wrap the
+  `_z_send_n` / `_z_read_exact` calls inside
+  `_z_transport_handshake_init` so we can tell whether the
+  send returned the expected length and whether the receive
+  loop hit zero-byte completion or read what it expected.
+- **160.F.2** — exercise the *direct* `nros_platform_tcp_*`
+  probe inside a release build of `talker-rtic` (the
+  diagnostic probes from this session are in the git log; cherry-
+  pick them as a temporary fixture). Wire it to write a real
+  zenoh INIT frame (constructed from `z_transport_message_t`
+  defaults) and read back the INIT-ACK, *with* a
+  `SmoltcpBridge::poll_network` call interleaved on a 10 ms
+  cadence (mimicking what `net_poll` does post-`Executor::open`).
+  If that handshake succeeds, root cause is confirmed as
+  "no poll task driving smoltcp during `Executor::open`"; the
+  fix is to either start polling earlier (call
+  `enable_wfi_idle` + a busy-poll inside `Executor::open` for
+  bare-metal targets) or restructure RTIC examples to spawn
+  `net_poll` *before* `Executor::open`.
+- **160.F.3** — root-cause patch + cluster-wide regression
+  guard test (host-side `cargo test` that asserts the alias
+  TU exports `_z_open_tcp` symbol on bare-metal builds + a
+  QEMU smoke that asserts `zpico_open` returns `0` within 2 s
+  with zenohd reachable, not `-3`).
 
 ### G. Cmake platform matrix (4 tests) → **phantom — already skipped**
 
