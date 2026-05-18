@@ -195,6 +195,37 @@ for chip in $(echo "$TARGETS" | tr ',' ' '); do
 
     sz=$(du -h "$bundle" | cut -f1)
     echo "  wrote $bundle ($sz, ${#component_archives[@]} components)"
+
+    # Phase 23.5b — copy the per-build `nros_config_generated.h`
+    # next to the public nros headers so Arduino sketches (and the
+    # QEMU smoke test under `tests/arduino/`) can `#include
+    # <nros/init.h>` without depending on CORROSION_BUILD_DIR. The
+    # header is written by nros-c's build.rs at cross-compile time
+    # and contains the SIZE / OPAQUE_U64S macros that the bundled
+    # public headers reference.
+    cfg_header="$(find "$build_dir" -path "*/nros-c/include/nros/nros_config_generated.h" -print -quit || true)"
+    if [[ -z "$cfg_header" ]]; then
+        cfg_header="$(find "$build_dir" -name "nros_config_generated.h" -print -quit || true)"
+    fi
+    if [[ -n "$cfg_header" ]]; then
+        nros_inc_dir="$ARDUINO_LIB_ROOT/src/nros"
+        mkdir -p "$nros_inc_dir"
+        cp "$cfg_header" "$nros_inc_dir/nros_config_generated.h"
+        # Mirror the public hand-written headers next to it so the
+        # sketch's `#include <nros/init.h>` etc. all resolve from
+        # the library's own src/nros/ dir.
+        for h in init.h node.h publisher.h subscription.h client.h \
+                 service.h action.h executor.h clock.h types.h \
+                 visibility.h platform.h check.h cdr.h app_main.h \
+                 component.h bridge.h guard_condition.h lifecycle.h \
+                 parameter.h nros.h nros_generated.h; do
+            src="$NANO_ROS_ROOT/packages/core/nros-c/include/nros/$h"
+            [[ -f "$src" ]] && cp "$src" "$nros_inc_dir/$h"
+        done
+        echo "  staged $(ls "$nros_inc_dir"/*.h 2>/dev/null | wc -l) public headers + nros_config_generated.h under $nros_inc_dir"
+    else
+        echo "  WARN: nros_config_generated.h not located under $build_dir" >&2
+    fi
 done
 
 echo

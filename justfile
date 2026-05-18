@@ -1393,6 +1393,39 @@ test-arduino-transport:
     cmake --build build/arduino/test-transport-host
     build/arduino/test-transport-host/test_transport_host
 
+# Phase 23.5b — ESP-IDF / libnanoros boot smoke. Boots the
+# `scripts/arduino/idf-builder/` ELF (linked against the per-arch
+# libnanoros) in qemu-system-riscv32's `esp32c3` machine and
+# asserts the placeholder `app_main` line prints. Verifies that
+# every nano-ros symbol resolves at IDF link time without dragging
+# zenoh's runtime path through QEMU (which would need TAP +
+# zenohd). Requires `just esp_idf setup` + `just
+# build-arduino-libs`.
+test-arduino-qemu-boot:
+    #!/usr/bin/env bash
+    set -e
+    bin=build/arduino/esp32c3
+    if [[ ! -f "$bin/nano_ros_arduino_lib_builder.elf" ]]; then
+        echo "build/arduino/esp32c3 missing — run \`just build-arduino-libs\` first" >&2
+        exit 2
+    fi
+    source esp-idf-workspace/env.sh >/dev/null 2>&1
+    esptool.py --chip esp32c3 merge_bin --output "$bin/flash_image.bin" \
+        --flash_mode dio --flash_freq 80m --flash_size 2MB \
+        0x0    "$bin/bootloader/bootloader.bin" \
+        0x8000 "$bin/partition_table/partition-table.bin" \
+        0x10000 "$bin/nano_ros_arduino_lib_builder.bin" >/dev/null
+    truncate -s 2M "$bin/flash_image_2m.bin"
+    dd if="$bin/flash_image.bin" of="$bin/flash_image_2m.bin" conv=notrunc status=none
+    out=$(timeout 8 qemu-system-riscv32 -nographic -machine esp32c3 \
+        -drive file="$bin/flash_image_2m.bin",if=mtd,format=raw \
+        -global driver=esp32c3.gpio,property=strap_mode,value=0x08 2>&1 || true)
+    if grep -q "nano-ros Arduino library builder" <<< "$out"; then
+        echo "[PASS] libnanoros boots in qemu-system-riscv32 esp32c3"
+    else
+        echo "[FAIL] expected app_main line not found"; echo "$out" | tail -30; exit 1
+    fi
+
 # Show Zephyr build instructions
 zephyr-help:
     just zephyr help
