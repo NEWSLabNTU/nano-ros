@@ -250,6 +250,10 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     file(GLOB _cdds_ddsc ${CYCLONEDDS_DIR}/src/core/ddsc/src/*.c)
     list(FILTER _cdds_ddsi EXCLUDE REGEX "\\.part\\.c$")
     list(FILTER _cdds_ddsc EXCLUDE REGEX "\\.part\\.c$")
+    # Security TUs depend on dds/security/core/* headers that come from
+    # the security plugin tree we don't compile (DDS_HAS_SECURITY=0).
+    # Drop matching ddsi sources.
+    list(FILTER _cdds_ddsi EXCLUDE REGEX "ddsi_(security|handshake|omg_security)[^/]*\\.c$")
 
     zephyr_library_sources(
         ${_cdds_ddsrt_top}
@@ -268,6 +272,8 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # their corresponding .c files in ddsrt's src/ tree and are
         # included via `"name.h"` from sibling TUs. Expose the dir.
         ${CYCLONEDDS_DIR}/src/ddsrt/src
+        # Private headers in ddsc src tree (dds__alloc.h, dds__entity.h, ...)
+        ${CYCLONEDDS_DIR}/src/core/ddsc/src
     )
 
     # Trim Cyclone optional features that drag in host-toolchain deps.
@@ -284,6 +290,22 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # loopback compare. Provide the canonical value via -D so
     # the TU compiles without patching upstream.
     zephyr_compile_definitions(INADDR_LOOPBACK=0x7f000001UL)
+
+    # More Zephyr POSIX gaps Cyclone hits unconditionally:
+    #   - MAXTHREADNAMESIZE: pthread_setname_np max bytes (Linux=16, BSD=64).
+    #   - SIG_BLOCK / SIG_SETMASK: pthread_sigmask flags. Zephyr's
+    #     POSIX_SIGNAL_GROUP defines them; if not built in, fall back
+    #     to canonical Linux values (no-op at runtime since
+    #     pthread_sigmask is a no-op stub under Zephyr without signals).
+    #   - IFF_UP / IFF_LOOPBACK / IFF_MULTICAST: net iface flags from
+    #     <net/if.h>. Cyclone's ddsi_ownip.c references them; provide
+    #     canonical Linux values.
+    zephyr_compile_definitions(
+        MAXTHREADNAMESIZE=64
+        IFF_UP=0x1
+        IFF_LOOPBACK=0x8
+        IFF_MULTICAST=0x1000
+    )
 
     # ---- nros-rmw-cyclonedds C++ register glue ------------------------------
     file(GLOB _nros_cdds_cpp ${NROS_RMW_CDDS_DIR}/src/*.cpp)
