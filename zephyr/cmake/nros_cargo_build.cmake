@@ -218,9 +218,36 @@ function(nros_cargo_build)
     string(REPLACE "-" "_" _target_stem ${ARG_PACKAGE})
     set(_target_name "${_target_stem}_cargo")
 
+    # Cross-compile env for the `cc` crate that nros-c / nros-cpp's
+    # build.rs invoke for `weak_register_backends.c`. cc defaults to
+    # the host CC, producing wrong-arch objects (`Relocations in
+    # generic ELF (EM: 62)` at link time). Point at the Zephyr SDK
+    # toolchain for the active Rust triple so cc picks the right
+    # cross compiler. CC_<triple> uses underscores per cc's rules.
+    set(_cc_env "")
+    if(NROS_RUST_TARGET)
+        string(REPLACE "-" "_" _cc_triple ${NROS_RUST_TARGET})
+        # Try CMAKE's resolved C compiler first; fall back to the
+        # ZEPHYR_SDK_INSTALL_DIR layout if cmake didn't expose it.
+        set(_cc_path "${CMAKE_C_COMPILER}")
+        if(NOT _cc_path AND DEFINED ENV{ZEPHYR_SDK_INSTALL_DIR})
+            file(GLOB _gcc_glob
+                "$ENV{ZEPHYR_SDK_INSTALL_DIR}/*-zephyr-elf/bin/*-zephyr-elf-gcc")
+            list(GET _gcc_glob 0 _cc_path)
+        endif()
+        if(_cc_path)
+            list(APPEND _cc_env
+                CC_${_cc_triple}=${_cc_path}
+                CFLAGS_${_cc_triple}=--sysroot=${SYSROOT_DIR}
+                AR_${_cc_triple}=${CMAKE_AR}
+            )
+        endif()
+    endif()
+
     add_custom_target(${_target_name}_build
         COMMAND ${CMAKE_COMMAND} -E env
             ${_rustup_override}
+            ${_cc_env}
             ZPICO_MAX_PUBLISHERS=$ENV{ZPICO_MAX_PUBLISHERS}
             ZPICO_MAX_SUBSCRIBERS=$ENV{ZPICO_MAX_SUBSCRIBERS}
             ZPICO_MAX_QUERYABLES=$ENV{ZPICO_MAX_QUERYABLES}
