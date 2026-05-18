@@ -1393,6 +1393,35 @@ test-arduino-transport:
     cmake --build build/arduino/test-transport-host
     build/arduino/test-transport-host/test_transport_host
 
+# Phase 23.2.3 — nm symbol audit on the produced libnanoros. Asserts
+# the public `nros_*` surface is exported (T = text/code) and rejects
+# any POSIX-only undefined refs that would fail to link on a hosted-
+# RTOS firmware build (pthread / dlopen / fork / exec).
+test-arduino-symbols:
+    #!/usr/bin/env bash
+    set -e
+    archive=arduino/nros/src/esp32c3/libnanoros.a
+    if [[ ! -f "$archive" ]]; then
+        echo "$archive missing — run \`just build-arduino-libs\` first" >&2
+        exit 2
+    fi
+    source esp-idf-workspace/env.sh >/dev/null 2>&1
+    n_pub=$(riscv32-esp-elf-nm -g "$archive" 2>/dev/null | grep -c " T nros_" || true)
+    if (( n_pub < 50 )); then
+        echo "[FAIL] only $n_pub public nros_* T symbols (expected ≥ 50)" >&2
+        exit 1
+    fi
+    forbidden=$(riscv32-esp-elf-nm -u "$archive" 2>/dev/null \
+        | awk '/U /{print $2}' \
+        | sort -u \
+        | grep -iE '^(pthread_|dlopen|dlsym|fork$|exec[lv]|posix_spawn)' || true)
+    if [[ -n "$forbidden" ]]; then
+        echo "[FAIL] forbidden POSIX-only undefined refs:" >&2
+        echo "$forbidden" >&2
+        exit 1
+    fi
+    echo "[PASS] $n_pub public nros_* symbols; no POSIX-only undefined refs"
+
 # Phase 23.5b — ESP-IDF / libnanoros boot smoke. Boots the
 # `scripts/arduino/idf-builder/` ELF (linked against the per-arch
 # libnanoros) in qemu-system-riscv32's `esp32c3` machine and

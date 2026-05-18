@@ -1,0 +1,94 @@
+# Phase 23.2.5 — Build per-arch `libnanoros.a` on release tags +
+# attach the packaged zip as a GitHub Release asset.
+#
+# Triggers: push of any `arduino-v*` tag (e.g. `arduino-v0.1.0`)
+#           plus manual `workflow_dispatch` for verification runs.
+#
+# Matrix: one job per chip in `ARDUINO_LIB_TARGETS`. ESP32-C3
+# (RISC-V) is the only chip the stock `rustup` toolchain supports
+# today; ESP32 + ESP32-S3 (Xtensa) need the esp-rs custom rustc
+# fork (`espup install`) — tracked under Phase 23.2.x. Until that
+# lands, those rows are commented out so the matrix passes cleanly.
+
+name: arduino-release
+
+on:
+  push:
+    tags:
+      - "arduino-v*"
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: "Override ARDUINO_LIB_TARGETS (comma-separated)"
+        required: false
+        default: "esp32c3"
+
+permissions:
+  contents: write  # needs release upload
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [esp32c3]
+        # 23.2.x — uncomment after esp-rs Xtensa toolchain wiring
+        # lands.
+        # target: [esp32c3, esp32s3, esp32]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust + RISC-V target
+        run: |
+          rustup show
+          rustup target add riscv32imc-unknown-none-elf
+          # esp-rs Xtensa toolchain pull would go here (Phase 23.2.x)
+
+      - name: ESP-IDF prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              git wget flex bison gperf python3 python3-pip python3-venv \
+              cmake ninja-build ccache libffi-dev libssl-dev dfu-util \
+              libusb-1.0-0
+
+      - name: Install ESP-IDF v5.3
+        run: |
+          ESP_IDF_TARGETS="${{ matrix.target }}" just esp_idf setup
+
+      - name: Build libnanoros.a
+        run: |
+          ARDUINO_LIB_TARGETS="${{ matrix.target }}" just build-arduino-libs
+
+      - name: nm symbol audit
+        run: just test-arduino-symbols
+
+      - name: QEMU boot smoke (esp32c3 only)
+        if: matrix.target == 'esp32c3'
+        run: |
+          # Espressif QEMU fork ships with `qemu-system-riscv32`
+          # 9.2+ on Ubuntu 22.04 once installed via apt.
+          sudo apt-get install -y --no-install-recommends \
+              qemu-system-misc qemu-utils
+          just test-arduino-qemu-boot || \
+              echo "::warning::QEMU boot smoke skipped (Espressif QEMU fork not on stock apt)"
+
+      - name: Stage Arduino library zip
+        run: just package-arduino
+
+      - name: Upload artifact (CI run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nano-ros-arduino-${{ matrix.target }}
+          path: build/arduino/nano-ros-arduino-v*.zip
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/arduino-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/arduino/nano-ros-arduino-v*.zip

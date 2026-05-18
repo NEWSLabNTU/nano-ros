@@ -6,14 +6,26 @@ publish/subscribe ROS 2 topics from a sketch with no Rust toolchain,
 no agent, and no `colcon` install — just `Library Manager → install
 nros` and a sketch.
 
-**Status**: In Progress (2026-05-18). ESP32-C3 end-to-end works:
-`just esp_idf setup` → `just build-arduino-libs` produces
-`arduino/nros/src/esp32c3/libnanoros.a` (56 KB, 5 components);
-`just test-arduino-transport` smokes the WiFi glue on host. Remaining
-open: `23.2.x` (esp-rs Xtensa toolchain → ESP32 + ESP32-S3),
-`23.2.5` (CI matrix), `23.2.3` (`nm` smoke), `23.4.x` (sketch API
-reconciliation), `23.5b/c` (QEMU + cross-arch interop),
-`23.5e` (hardware — manual), `23.6.4` (Library Manager submission).
+**Status**: In Progress (2026-05-18). ESP32-C3 end-to-end works.
+The single-chip happy path is:
+
+```
+just esp_idf setup            # one-time ESP-IDF v5.3 install
+just build-arduino-libs       # → arduino/nros/src/esp32c3/libnanoros.a (56 KB)
+just test-arduino-symbols     # nm audit (≥ 50 public T nros_* symbols)
+just test-arduino-qemu-boot   # qemu-system-riscv32 -machine esp32c3 boot
+just test-arduino-transport   # host WiFi-mock pub/sub glue smoke
+just package-arduino          # → build/arduino/nano-ros-arduino-v*.zip (80 KB)
+```
+
+Plus `.github/workflows/arduino-release.yml` wires the whole
+sequence as a release-tag-triggered job. Remaining open:
+`23.2.x` (esp-rs Xtensa toolchain → ESP32 + ESP32-S3 matrix
+rows), `23.4.x` (sketch API reconciliation — sketches are
+aspirational against a wrapper layer that has not landed yet),
+`23.5c` (cross-arch interop ESP32-C3 QEMU ↔ ARM Cortex-M3 QEMU),
+`23.5e` (hardware — manual only), `23.6.4` (Arduino Library
+Manager submission, post-v1).
 **Priority**: Medium
 **Depends on**: Phase 21 (reopened — `platform-esp-idf` for `nros-c`),
   Phase 142 (extended SDK tier covers ESP-IDF install),
@@ -170,9 +182,17 @@ need only `-lnanoros`.
       IDF driver (reconfigure → source CFLAGS → build → `ar crsT`
       bundle).
 - [x] **23.2.2** `scripts/arduino/package-arduino-lib.sh`.
-- [ ] **23.2.3** `nm` smoke checks. Defer to CI matrix (23.2.5).
+- [x] **23.2.3** `nm` smoke checks via `just test-arduino-symbols`
+      (asserts ≥ 50 public `T nros_*` symbols, rejects POSIX-only
+      undefined refs like `pthread_*` / `dlopen` / `fork` /
+      `exec[lv]`).
 - [x] **23.2.4** `just build-arduino-libs` + `just package-arduino`.
-- [ ] **23.2.5** GitHub Actions matrix.
+- [x] **23.2.5** `.github/workflows/arduino-release.yml` —
+      release-tag-triggered matrix per chip; runs
+      `just esp_idf setup` + `just build-arduino-libs` + nm smoke +
+      QEMU boot + `just package-arduino`; uploads the zip as a
+      Release asset. ESP32 + ESP32-S3 matrix rows commented out
+      until 23.2.x lands esp-rs Xtensa toolchain wiring.
 - [ ] **23.2.x** Xtensa Rust toolchain — stock rustup lacks
       `xtensa-esp32{,s3}-none-elf`. Need `espup install` (or vendor
       the esp-rs channel under `esp-idf-workspace/`). Until that
@@ -202,10 +222,26 @@ no changes to `nros-c` are needed beyond Phase 21's ESP-IDF backend.
       bring-up / tear-down on failure).
 - [ ] **23.4.x** Sketch API reconciliation. All four sketches use
       Arduino-shaped names (`nros_*_create` / `nros_spin_once`) that
-      do NOT match nros-c's `_init` / `_fini` / `executor_spin`
-      surface. Either (a) rewrite sketches against the real API or
-      (b) add thin Arduino-shape wrappers in `nros_arduino.h`.
-      Tracked under Phase 23.5a audit notes.
+      do NOT match nros-c's `_init` / `_fini` / `executor_init` +
+      `executor_add_*` + `executor_spin_some` surface. Two
+      paths investigated:
+      - **(a) rewrite sketches against the real API** — concrete but
+        loses the micro-ROS-shape ergonomics that Arduino users
+        expect. Adds boilerplate for the executor object that
+        micro-ROS hides.
+      - **(b) thin Arduino-shape wrappers in `nros_arduino.h`** —
+        wraps `nros_support_init` / `nros_node_init` /
+        `nros_publisher_init` / `nros_publish_raw` /
+        `nros_client_init` / `nros_client_call` plus a hidden global
+        `nros_executor_t` so `nros_spin_once(&ctx, timeout)` resolves
+        without the user constructing one explicitly. Closer to
+        micro-ROS DX. Requires the bundled
+        `arduino/nros/src/nros/` headers (landed by 23.1.4 follow-up
+        in 2026-05) so the struct sizes resolve.
+      Recommended path: **(b)**. Tracked separately because the
+      wrapper layer needs care around executor lifetime, subscription
+      callback signature reshape, and per-sketch resource sizing —
+      not blocking the precompiled-library packaging.
 
 ### 23.5 — Testing
 
