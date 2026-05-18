@@ -731,13 +731,24 @@ follow-up items that finish the rclcpp-aligned story:
 
 #### Thread D — Validation
 
-- [ ] **104.D.1 — C bridge example.**
-      `examples/native/c/bridge/xrce-to-dds/`. Same shape
-      as 104.C.10, C audience. Demonstrates
-      `nros_node_init_ex` + `nano_ros_link_rmw(target xrce
-      dds)` two-backend CMake link.
+- [x] **104.D.1 — C bridge example.**
+      `examples/native/c/bridge/xrce-to-dds/` landed. Same
+      shape as 104.C.10, C audience. Demonstrates
+      `nros_executor_node_init` with `nros_node_options_t.rmw_name`
+      pinning each node to its backend ("xrce" for ingress,
+      "dds" for egress). Two-backend CMake link is per-target
+      whole-archive wrap of both staticlibs — the originally-
+      planned `nano_ros_link_rmw(target xrce dds)` helper
+      doesn't exist yet (root CMake's `NANO_ROS_RMW` dispatch
+      handles single-backend only; per-example wrap is the
+      bridge-pattern workaround). Generalising into the
+      helper is tracked as follow-up under Phase 104.B.
+      Build verified clean (`cmake -B build -S . && cmake
+      --build build`); `nm` confirms both
+      `nros_rmw_xrce_register` + `nros_rmw_dds_register`
+      land in the final binary.
       **Files:**
-      `examples/native/c/bridge/xrce-to-dds/`.
+      `examples/native/c/bridge/xrce-to-dds/{CMakeLists.txt,README.md,src/main.c,.gitignore}`.
 
 - [ ] **104.D.2 — C++ bridge example.**
       `examples/native/cpp/bridge/zenoh-to-cyclonedds/`.
