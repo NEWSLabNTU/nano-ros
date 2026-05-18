@@ -170,10 +170,31 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
             return Ok(0);
         };
 
+        // Phase 156 — check primary FIRST. Executor::open* records
+        // `primary_rmw_name` + `primary_locator` so we can detect
+        // when a `.rmw(name)` matches the primary session and
+        // return slot 0 instead of opening a SECOND backend
+        // session against the same singleton (which zenoh-pico's
+        // global g_session forbids). Locator-None means "inherit
+        // primary"; locator-Some must match primary's exactly.
+        // Empty `primary_rmw_name` → constructed via
+        // `from_session(_ptr)` without `open*` recording — fall
+        // through to extras cache + new-session path.
+        if !self.executor.primary_rmw_name.is_empty()
+            && self.executor.primary_rmw_name.as_str() == rmw
+        {
+            let locator_matches = match self.locator {
+                None => true,
+                Some(loc) => self.executor.primary_locator.as_str() == loc,
+            };
+            if locator_matches {
+                return Ok(0);
+            }
+        }
+
         // Reuse an extra session if one already opened against the
-        // same rmw + locator. Slot 0 (primary) is opaque — we don't
-        // know its rmw name today; treat the first-named-rmw Node
-        // as the primary unless explicitly bridging.
+        // same rmw + locator. Slot 0 (primary) handled by the
+        // primary-identity check above.
         for (i, sess) in self.executor.extra_sessions.iter().enumerate() {
             let _ = sess;
             // Phase 104.C.3 doesn't yet store rmw-name per session;

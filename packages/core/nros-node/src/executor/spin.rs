@@ -164,6 +164,10 @@ impl Executor {
                 .map_err(NodeError::Transport)?;
         let mut executor = Self::from_session(primary_session);
         executor.set_node_identity("", "/");
+        // Phase 156 — see `Executor::open` for primary-identity
+        // recording rationale.
+        let _ = executor.primary_rmw_name.push_str(primary.rmw);
+        let _ = executor.primary_locator.push_str(primary.locator);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
         #[cfg(all(
@@ -247,6 +251,10 @@ impl Executor {
             executor.last_spin_end_us = config.clock_us.map(|clock| clock());
         }
         executor.set_node_identity(config.node_name, config.namespace);
+        // Phase 156 — record primary identity for the session-
+        // cache hit path. See `Executor::open` for the rationale.
+        let _ = executor.primary_rmw_name.push_str(rmw_name);
+        let _ = executor.primary_locator.push_str(config.locator);
         #[cfg(all(feature = "std", feature = "rmw-cffi"))]
         executor.install_wake_signal_on_primary();
         #[cfg(all(
@@ -695,6 +703,18 @@ pub struct Executor {
     /// extra session per Node is the worst case.
     pub(crate) extra_sessions:
         heapless::Vec<session::ConcreteSession, { crate::config::MAX_NODES }>,
+    /// Phase 156 — primary session's rmw name + locator, captured
+    /// at `open*` time so `NodeBuilder::resolve_session_slot`'s
+    /// cache lookup can detect when a `.rmw(name).locator(loc)`
+    /// matches the primary (slot 0) instead of falling through to
+    /// `CffiRmw::open_with_rmw` and trying to open a SECOND
+    /// session against the same backend. zenoh-pico's global state
+    /// is a process singleton; opening twice fails. Empty when
+    /// constructed via `from_session(_ptr)` without `open*`
+    /// recording the metadata; in that case the cache check
+    /// degrades to "always miss" (today's behaviour).
+    pub(crate) primary_rmw_name: heapless::String<32>,
+    pub(crate) primary_locator: heapless::String<128>,
     #[cfg(feature = "std")]
     pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// Phase 104.C.6 — shared executor wake flag. Any source of work
@@ -890,6 +910,8 @@ impl Executor {
             node_name: heapless::String::new(),
             nodes: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
+            primary_rmw_name: heapless::String::new(),
+            primary_locator: heapless::String::new(),
             namespace: {
                 let mut ns = heapless::String::new();
                 let _ = ns.push_str("/");
@@ -1029,6 +1051,8 @@ impl Executor {
             node_name: heapless::String::new(),
             nodes: heapless::Vec::new(),
             extra_sessions: heapless::Vec::new(),
+            primary_rmw_name: heapless::String::new(),
+            primary_locator: heapless::String::new(),
             namespace: {
                 let mut ns = heapless::String::new();
                 let _ = ns.push_str("/");
