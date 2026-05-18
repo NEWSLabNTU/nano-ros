@@ -250,6 +250,11 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # Zephyr replacement TUs for the dropped POSIX bodies above.
     set(_cdds_zephyr_overrides
         ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/random_zephyr.c
+        # SHM stub fns — original ddsi_shm_transport.c dropped under
+        # DDS_HAS_SHM=0 but downstream headers still publicly DDS_EXPORT
+        # iox_sub_context_*() / shm_{lock,unlock}_iox_sub(). Stub bodies
+        # satisfy the linker; never called at runtime.
+        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/shm_stubs.c
     )
 
     # ddsi: protocol engine. ddsc: public C API. `.part.c` files
