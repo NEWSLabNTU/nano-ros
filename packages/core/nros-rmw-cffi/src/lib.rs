@@ -137,6 +137,13 @@ pub const NROS_RMW_RET_AMBIGUOUS_BACKEND: NrosRmwRet = -16;
 /// in the registry (mis-spelling or missing `nros-rmw-<name>` dep).
 pub const NROS_RMW_RET_UNKNOWN_BACKEND: NrosRmwRet = -17;
 
+/// Phase 155.B.3 — backend reached the wire but couldn't establish a
+/// session. Maps to / from `TransportError::ConnectionFailed` /
+/// `Disconnected`. Distinct from `NROS_RMW_RET_ERROR` so callers can
+/// tell "can't reach the router" from "internal backend invariant
+/// tripped".
+pub const NROS_RMW_RET_CONNECTION_FAILED: NrosRmwRet = -18;
+
 /// Map a `TransportError` to the corresponding `nros_rmw_ret_t` code.
 ///
 /// By-reference because `TransportError` carries a `String` on its
@@ -160,6 +167,18 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
         TransportError::LoanNotSupported => NROS_RMW_RET_LOAN_NOT_SUPPORTED,
         TransportError::NoData => NROS_RMW_RET_NO_DATA,
         TransportError::IncompatibleAbi => NROS_RMW_RET_INCOMPATIBLE_ABI,
+        // Phase 155.B.3 — distinguish wire-level connection failure
+        // from generic backend error so the FreeRTOS / RV64 C+C++
+        // `init -> -X` logs identify the actual class. zenoh-pico's
+        // `ZpicoError::Session` (zpico_open returned -3) and
+        // `ZpicoError::Generic` (zpico_init returned -1) both flow
+        // through `ZpicoError → ConnectionFailed`; the cmake-built
+        // FreeRTOS C/C++ tests will now surface NOT_FOUND (the
+        // user-side mapping in `nros_support_init`) instead of the
+        // generic NROS_RET_ERROR catch-all.
+        TransportError::ConnectionFailed | TransportError::Disconnected => {
+            NROS_RMW_RET_CONNECTION_FAILED
+        }
         // Everything else collapses to NROS_RMW_RET_ERROR. Backends
         // that want fine-grained reporting should adopt the named
         // variants above (Phase 102.2 sweep).
@@ -196,6 +215,13 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
         NROS_RMW_RET_BUFFER_TOO_SMALL => TransportError::BufferTooSmall,
         NROS_RMW_RET_MESSAGE_TOO_LARGE => TransportError::MessageTooLarge,
         NROS_RMW_RET_INCOMPATIBLE_ABI => TransportError::IncompatibleAbi,
+        // Phase 155.B.3 — inverse of `ret_from_error`'s
+        // `ConnectionFailed | Disconnected → CONNECTION_FAILED`
+        // mapping. Decodes the new vtable-level code back to the
+        // `TransportError::ConnectionFailed` variant; downstream
+        // `transport_error_to_ret` in nros-c surfaces it as
+        // `NROS_RET_NOT_FOUND` (-4) to the user.
+        NROS_RMW_RET_CONNECTION_FAILED => TransportError::ConnectionFailed,
         _ => TransportError::Backend("unknown rmw_ret_t"),
     }
 }

@@ -137,36 +137,58 @@ buffer.
       toolchain config blocks the local rebuild today;
       patched fixture lands once the upstream cmake issue
       resolves).
-- [~] **155.B.2/.3.** Diagnostic data from 155.B.1's
-      mapping: a freshly-built FreeRTOS C listener fixture
-      still surfaces `nros_support_init -> -1`, NOT one of
-      the more specific codes the mapping would emit. So
-      the underlying `TransportError` is either `Backend(_)`
-      or `BackendDynamic(_)` — the two variants
-      `transport_error_to_ret` cannot decode (each carries
-      a backend-defined string that doesn't ride a
-      `nros_ret_t`). Tracing back: `error_from_ret`
-      (`packages/core/nros-rmw-cffi/src/lib.rs:185`)
-      returns `Backend("rmw_ret error")` whenever the C
-      backend emits the generic `NROS_RMW_RET_ERROR`. The
-      FreeRTOS zenoh-pico backend collapses every failure
-      cause to `NROS_RMW_RET_ERROR` instead of returning a
-      narrower code. Fix path:
-        a) FreeRTOS path needs the Phase 154 ABI flip (skipped
-           in the 154 final commit for FreeRTOS+lwIP). Apply
-           it so `zpico_open` returns specific codes; or
-        b) Extend `nros_log_ret` to side-channel the
-           `Backend(&str)` payload to UART for diagnostic
-           builds, so the next failure log line carries the
-           backend string. Sketched as 155.B.3.
+- [x] **155.B.2/.3.** Picked path (a) — applied the
+      Phase 154 ABI flip to the vtable round-trip itself
+      (commits this session).
 
-      Expanded mapping landed today covers `NoData →
-      TRY_AGAIN`, `InvalidArgument / TopicNameInvalid /
-      NodeNameNonExistent → INVALID_ARGUMENT`, `BadAlloc →
-      FULL`, `Unsupported / LoanNotSupported → NOT_ALLOWED`,
-      `IncompatibleQos / IncompatibleAbi → REJECTED` so
-      backends that DO return specific codes surface them.
-      Only `Backend(_)` / `BackendDynamic(_)` stay at -1.
+      Tracing showed the FreeRTOS path was losing info at
+      `nros-rmw-cffi`'s `ret_from_error`: the catch-all `_
+      => NROS_RMW_RET_ERROR` swallowed `ConnectionFailed`
+      and `Disconnected` (the two variants `ZpicoError ->
+      TransportError` maps zpico's `ZPICO_ERR_GENERIC` /
+      `ZPICO_ERR_SESSION` into). Round-trip back through
+      `error_from_ret` then surfaced
+      `TransportError::Backend("rmw_ret error")` to the
+      Rust caller, which `transport_error_to_ret` couldn't
+      decode → catch-all `NROS_RET_ERROR` (-1).
+
+      Fix:
+        - Added `NROS_RMW_RET_CONNECTION_FAILED = -18` to
+          both the Rust constants
+          (`packages/core/nros-rmw-cffi/src/lib.rs`) and the
+          C header (`include/nros/rmw_ret.h`).
+        - `ret_from_error` now maps `ConnectionFailed |
+          Disconnected → NROS_RMW_RET_CONNECTION_FAILED`.
+        - `error_from_ret` decodes `-18 →
+          TransportError::ConnectionFailed`.
+        - End-to-end: zpico → ConnectionFailed →
+          NROS_RMW_RET_CONNECTION_FAILED → ConnectionFailed
+          → NROS_RET_NOT_FOUND (-4) at the C-side
+          `nros_support_init` log.
+
+      Verified (this session): FreeRTOS C listener test now
+      logs `nros_support_init(...) -> -3`
+      (`NROS_RET_INVALID_ARGUMENT`) — meaning the FreeRTOS
+      backend rejects an argument BEFORE attempting the
+      connection. This is a different failure mode than the
+      hypothesised `ConnectionFailed`; useful actionable
+      signal for the next debug session (likely a
+      locator-format or node-name issue inside the zenoh-pico
+      backend's argument validation).
+
+      Mapping also covers `NoData → TRY_AGAIN`,
+      `InvalidArgument / TopicNameInvalid / NodeNameNonExistent
+      → INVALID_ARGUMENT`, `BadAlloc → FULL`, `Unsupported /
+      LoanNotSupported → NOT_ALLOWED`, `IncompatibleQos /
+      IncompatibleAbi → REJECTED`. Only `Backend(_)` /
+      `BackendDynamic(_)` still collapse to -1 (path (b)
+      would side-channel the carried string; left for a
+      future session if it becomes worth it).
+
+      Next: trace which argument the FreeRTOS zenoh-pico
+      backend rejects — bisect via debug-stderr prints in
+      `zpico_init` / `zpico_open`. Reclassify as a new
+      155.B.4 sub-item if it grows beyond a one-line fix.
 
 ## Issue 155.C — FreeRTOS C++ service test, 0 responses
 

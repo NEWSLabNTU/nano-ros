@@ -116,4 +116,13 @@ typedef int32_t nros_rmw_ret_t;
  *  spelling. */
 #define NROS_RMW_RET_UNKNOWN_BACKEND        -17
 
+/** Phase 155.B.3 — backend reached the wire but couldn't establish a
+ *  session: refused TCP connect, unreachable agent, peer dropped the
+ *  link mid-handshake. Distinct from `NROS_RMW_RET_ERROR` so callers
+ *  (and the C-side `nros_support_init` / `nros_cpp_init` log lines)
+ *  can distinguish "I can't reach the router" from "internal
+ *  backend invariant tripped". Maps to / from
+ *  `TransportError::ConnectionFailed` and `Disconnected`. */
+#define NROS_RMW_RET_CONNECTION_FAILED      -18
+
 #endif /* NROS_RMW_RET_H */
