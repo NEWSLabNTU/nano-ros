@@ -816,20 +816,34 @@ follow-up items that finish the rclcpp-aligned story:
       (justfile:175). CI enforces.
       **Files:** `justfile`.
 
-- [ ] **104.D.6 — Book chapter.**
-      `book/src/user-guide/cross-backend-bridges.md`. Covers
-      the rclcpp-aligned Executor + Node model, the
-      `multi-backend` Cargo feature, the registration model
-      per audience, the memory-budget table, the per-RT-
-      class examples, and walkthroughs of each bridge
-      example. Cross-link from
+- [x] **104.D.6 — Book chapter.**
+      Landed as `book/src/user-guide/cross-backend-bridges.md`.
+      Covers the rclcpp-aligned Executor + Node model, the
+      session-slot dispatch (primary cache hit vs
+      `extra_sessions[N-1]`), the registration model per
+      audience (Rust explicit `register()`, C / C++
+      `--whole-archive` + explicit calls), the `NROS_RMW`
+      primary selector, WCET sum across linked backends
+      (cross-ref to the Phase 104.E.1 rmw-backends table),
+      the three shipped examples (`native-rust-zenoh-to-dds`,
+      `native/c/bridge/xrce-to-dds`,
+      `native/cpp/bridge/zenoh-to-dds`), and a
+      troubleshooting matrix keyed on the four Phase 156
+      sub-bugs (ConnectionFailed missing register / second-
+      open against singleton backend / pre-Phase-156 entity
+      init / piped-stdout buffering). Cross-linked from
       `book/src/concepts/ros2-comparison.md` ("backend
-      selection at compile time" section) and from
-      `examples/README.md`.
+      selection at compile time" section, new paragraph
+      pointing readers to the bridge chapter) and from
+      `examples/README.md` (bridges section now lists all
+      three examples + back-link to the chapter).
       **Files:**
-      `book/src/user-guide/cross-backend-bridges.md`,
-      `book/src/SUMMARY.md`,
-      `book/src/concepts/ros2-comparison.md`.
+      `book/src/user-guide/cross-backend-bridges.md` (new),
+      `book/src/SUMMARY.md` (added entry under
+      "Choosing an RMW Backend"),
+      `book/src/concepts/ros2-comparison.md` (cross-link
+      paragraph at end of §5),
+      `examples/README.md` (bridges entry update).
 
 #### Thread E — Real-time integration
 

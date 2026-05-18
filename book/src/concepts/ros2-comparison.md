@@ -128,6 +128,14 @@ The trade-off is real: changing backends requires a rebuild. This is
 the right trade-off for the embedded use case; it would be the wrong
 trade-off for desktop ROS 2.
 
+A binary can still link **multiple** backends and run them in
+parallel — one node on backend A, another on backend B,
+the executor draining both each tick. The
+[Cross-backend Bridges](../user-guide/cross-backend-bridges.md)
+chapter walks the build knobs (`NROS_RMW=...` primary
+selector, explicit per-backend `register()`, `NANO_ROS_RMW=
+none` cmake escape hatch) and the three shipped examples.
+
 ### 6. Message codegen lands inside your build, not a sibling library
 
 Standard ROS 2 uses `ament` + `rosidl` to compile message packages

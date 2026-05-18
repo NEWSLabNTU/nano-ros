@@ -80,9 +80,11 @@ Phase 118.A blocks untriaged cells.
 
 ### `bridges/` — cross-RMW gateways
 
-Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell.
+Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell. See [`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md) for the model + build-knob walkthrough.
 
 - `bridges/native-rust-zenoh-to-dds/` — zenoh ↔ dust-DDS gateway
+- `native/c/bridge/xrce-to-dds/` — C bridge, XRCE-DDS ↔ dust-DDS
+- `native/cpp/bridge/zenoh-to-dds/` — C++ bridge, zenoh ↔ dust-DDS
 
 ### `templates/` — multi-platform copy-out recipes
 

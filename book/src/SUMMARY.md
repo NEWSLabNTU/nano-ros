@@ -20,6 +20,7 @@
 - [Deployment Workflow](./user-guide/deployment.md)
 - [ROS 2 Interoperability](./getting-started/ros2-interop.md)
 - [Choosing an RMW Backend](./user-guide/rmw-backends.md)
+- [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
 - [Serial Transport](./user-guide/serial-transport.md)
 - [Troubleshooting](./user-guide/troubleshooting.md)
