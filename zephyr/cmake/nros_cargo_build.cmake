@@ -191,11 +191,20 @@ function(nros_cargo_build)
     if(ARG_PACKAGE STREQUAL "nros-c")
         list(APPEND _cargo_byproducts
             ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
+            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_generated.h
         )
     elseif(ARG_PACKAGE STREQUAL "nros-cpp")
+        # nros-cpp's Cargo dep on nros-c transitively runs nros-c's
+        # build.rs, which writes both nros-c headers via cbindgen.
+        # Declare them as byproducts so Ninja can order user TUs
+        # that include them (`<nros/parameter.hpp>` →
+        # `<nros/types.h>` → `<nros/nros_generated.h>`) after this
+        # target instead of failing with "No such file or directory"
+        # when only CONFIG_NROS_CPP_API=y (no separate nros-c build).
         list(APPEND _cargo_byproducts
             ${CARGO_TARGET_DIR}/nros-cpp-generated/nros/nros_cpp_config_generated.h
             ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
+            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_generated.h
         )
     endif()
 
