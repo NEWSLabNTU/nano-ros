@@ -79,21 +79,40 @@ build-fixtures:
           CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
           cargo build --release --quiet )
     done
-    # Phase 140 — NuttX C/C++ examples consume nano-ros in-tree via
-    # add_subdirectory; codegen tool must be built with the host
-    # cargo (cross toolchain can't build it) and pointed at via
-    # -D_NANO_ROS_CODEGEN_TOOL.
-    # Phase 140 left the NuttX C/C++ cmake examples unable to build
-    # against the cross toolchain: nros-c's `nros_config_generated.h`
-    # is emitted by the (tier-2 host) Corrosion build of nros-c, which
-    # can't be cross-built without `-Z build-std`, and the only
-    # canonical NuttX entry point (`nros_board_link_app` →
-    # `nros-nuttx-ffi` cargo build) doesn't expose the header to a
-    # sibling cmake project. Re-wiring requires extracting the size
-    # probe into a standalone codegen step — tracked as a follow-up.
-    # Rust nuttx examples above are unaffected (they consume
-    # nros-nuttx-ffi via cargo directly).
-    echo "  ↷ nuttx C/C++ cmake examples skipped — see Phase 140 follow-up"
+    # Phase 160.D — NuttX C/C++ examples now build via cmake. The
+    # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
+    # sidestepped by:
+    #   - root CMakeLists.txt skips `add_subdirectory(packages/core/nros-c)`
+    #     for NuttX (no Corrosion attempt against armv7a-nuttx-eabihf).
+    #   - root CMakeLists.txt's NanoRos INTERFACE branch (when
+    #     nros_c-static is absent) exposes the public include dirs
+    #     directly + sets `NROS_PLATFORM_NUTTX` compile-def.
+    #   - `nros-c/include/nros/nros_config_generated.h`'s
+    #     `#if defined(NROS_PLATFORM_NUTTX)` arm falls through to
+    #     the baked-once `nros_config_generated_nuttx.h` header
+    #     (Phase 159 Path C). Sizes are pre-probed for the canonical
+    #     NuttX armv7a-eabihf target.
+    # Host nros-codegen is still required for `nros_generate_interfaces()`.
+    echo "  → host nros-codegen (cargo)"
+    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+        -p nros-codegen-c --bin nros-codegen --quiet
+    codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
+    toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
+    cmake_examples=(talker listener service-server service-client action-server action-client)
+    for lang in c cpp; do
+        for ex in "${cmake_examples[@]}"; do
+            echo "  → nuttx/$lang/$ex (cmake)"
+            dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
+            rm -rf "$dir/build"
+            cmake -S "$dir" -B "$dir/build" \
+                -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+                -DNUTTX_DIR="$nuttx_dir" \
+                -DNUTTX_FFI_CRATE_DIR="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
+            cmake --build "$dir/build" --parallel > /dev/null
+        done
+    done
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
