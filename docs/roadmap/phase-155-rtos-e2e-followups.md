@@ -199,8 +199,25 @@ keep-alive + query-reply path through zenoh-pico's
       current diagnostic uses single-instance reruns
       (`cargo nextest run … service_e2e … --no-capture`)
       with one process at a time.
-- [ ] **155.C.2.** Run zenohd with `ZENOHD_LOG=trace` to see
-      whether queries flow at all.
+- [~] **155.C.2.** Ran zenohd with `ZENOHD_LOG=debug`
+      (`/tmp/zenohd-7661.log`). Key observations:
+        - Server connects, registers
+          `0/add_two_ints/example_interfaces::srv::dds_::AddTwoInts_/TypeHashNotSupported`,
+          declares queryable. Looks correct.
+        - Client connects ~20 s later (matches stabilization
+          delay). Holds TCP connection until test kills it.
+        - **No query messages appear in zenohd log between
+          connect and disconnect.** Either client never
+          sends `zp_get`, OR zenoh-pico's per-query framing
+          fails before reaching the wire, OR zenohd drops
+          them silently below DEBUG.
+      Next: tshark with built-in `Zenoh Protocol` dissector
+      on a QEMU `-object filter-dump` pcap to see whether
+      bytes actually leave the client's TCP socket.
+      Requires modifying `QemuProcess::start_mps2_an385_networked`
+      to use `-netdev user,id=net0 -object filter-dump,
+      id=f0,netdev=net0,file=…pcap -device lan9118,netdev=net0`
+      instead of legacy `-nic user,model=lan9118`.
 - [ ] **155.C.3.** Compare to ThreadX-Linux C++ service (which
       passes) — diff zpico-sys feature flags / link policy
       between the two platforms.
