@@ -309,7 +309,7 @@ No action needed.
 | G. cmake_platform_matrix cross | 4 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | H. nano2nano + bridges | 4 | XRCE `g_session` process-globals | Phase 156 follow-up |
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
-| J. RV64 C pubsub | 1 | Phase 159 fix landed | **CLOSED 2026-05-19** |
+| J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
 | L. Native + c_xrce + qos | 8 | scattered, one-offs | Per-test triage |
 | M. Integration shells | 3 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
@@ -318,11 +318,21 @@ No action needed.
 
 ## Work items
 
-- [ ] **160.D — NuttX C/C++ rtos_e2e fixture path.** Extract
-      `nros_config_generated.h` size probe into a standalone host
-      codegen step so tier-3 cross builds can consume the header
-      without `-Z build-std`-ing nros-c. Closes 6 NuttX C/C++ + 1
-      RV64 C fail.
+- [x] **160.D — NuttX C/C++ rtos_e2e fixture path.** (commit
+      `2b4eb535`) Re-enabled `just nuttx build-fixtures` cmake
+      path: root CMakeLists already skips nros-c add_subdirectory
+      for NuttX (no tier-3 Corrosion), Phase 159 Path C fallback
+      header supplies sizes, host nros-codegen passed via
+      `-D_NANO_ROS_CODEGEN_TOOL`. NuttX rtos_e2e 9/9 PASS.
+- [x] **160.J — RV64 C pubsub fixture path.** Re-enabled
+      `just threadx_riscv64 build-fixtures` cmake loop. Unlike
+      NuttX, Corrosion successfully cross-builds nros-c for
+      `riscv64gc-unknown-none-elf` under the bundled
+      `cmake/toolchain/riscv64-threadx.cmake`. ThreadX + NetX Duo
+      include paths flow in via `-DTHREADX_DIR=` /
+      `-DNETX_DIR=` / `-DTHREADX_CONFIG_DIR=` /
+      `-DNETX_CONFIG_DIR=`. ThreadX RV64 rtos_e2e 9/9 PASS
+      (Rust + C + Cpp × pubsub + service + action).
 - [ ] **160.E + 160.G + 160.M — env-precondition `skip!` wiring.**
       Each cluster has clear env gates (ESP_IDF_DIR, cross
       toolchains, vendor SDK staging); convert hard fails to
@@ -344,8 +354,11 @@ No action needed.
 
 ## Acceptance
 
-- [ ] 160.D lands; NuttX rtos_e2e 9/9 PASS (Rust passes today, C +
+- [x] 160.D lands; NuttX rtos_e2e 9/9 PASS (Rust passes today, C +
       C++ blocked on fixture).
+- [x] 160.J lands; ThreadX RV64 rtos_e2e 9/9 PASS (RV64 C pubsub
+      fail was the visible symptom; rebuild closes Cpp + service +
+      action C/Cpp too).
 - [ ] 160.E/G/M land; the 10 env-precondition tests report
       `[SKIPPED]` on hosts without the SDK, `PASS` when env is
       present.

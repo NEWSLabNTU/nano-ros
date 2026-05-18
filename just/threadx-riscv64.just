@@ -102,16 +102,37 @@ build-fixtures:
           THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
           cargo build --release --quiet )
     done
-    # Phase 140 left the ThreadX RV64 C/C++ cmake examples unable to
-    # build: nros-c's `nros_config_generated.h` is emitted by the
-    # (tier-2 host) Corrosion build of nros-c which can't be cross-
-    # built without `-Z build-std`, and Corrosion's nros-rmw-zenoh-
-    # staticlib build for `riscv64gc-unknown-none-elf` needs the
-    # ThreadX + NetX Duo include paths (via env vars in the Rust
-    # example's `.cargo/config.toml`) that don't propagate to the
-    # sibling cmake project. Same shape as the NuttX skip — Rust
-    # examples above still build via cargo directly.
-    echo "  ↷ threadx-rv64 C/C++ cmake examples skipped — see Phase 140 follow-up"
+    # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
+    # Corrosion handles the riscv64gc-unknown-none-elf cross under
+    # the bundled toolchain file; the ThreadX + NetX Duo include
+    # paths the staticlib needs flow in via `-D` cache vars matching
+    # the Rust path's `.cargo/config.toml` env. Host nros-codegen is
+    # still required for `nros_generate_interfaces()`.
+    echo "  → host nros-codegen (cargo)"
+    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+        -p nros-codegen-c --bin nros-codegen --quiet
+    codegen="$root/packages/codegen/packages/target/release/nros-codegen"
+    cmake_examples=(talker listener service-server service-client action-server action-client)
+    for lang in c cpp; do
+        for ex in "${cmake_examples[@]}"; do
+            echo "  → threadx-rv64/$lang/$ex (cmake)"
+            dir="examples/qemu-riscv64-threadx/$lang/zenoh/$ex"
+            rm -rf "$dir/build"
+            THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
+            THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+                cmake -S "$dir" -B "$dir/build" \
+                    -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+                    -DTHREADX_DIR="$threadx_dir" \
+                    -DNETX_DIR="$netx_dir" \
+                    -DTHREADX_CONFIG_DIR="$config_dir" \
+                    -DNETX_CONFIG_DIR="$config_dir" \
+                    -DCMAKE_BUILD_TYPE=Release \
+                    -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
+            THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
+            THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+                cmake --build "$dir/build" --parallel > /dev/null
+        done
+    done
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.
 build-all: build build-examples build-fixtures
