@@ -20,27 +20,44 @@ reopened Phase 21 is now Phase 23's 23.0 prerequisite.
 
 ## Scope (reopened)
 
-- [ ] **21.6** Add `platform-esp-idf` feature to `nros-c` that (a)
-      uses libc `malloc`/`free` for the global allocator (ESP-IDF
-      ships newlib), (b) wires ESP-IDF's FreeRTOS critical-section
-      primitives (`portENTER_CRITICAL` / `portEXIT_CRITICAL`), (c)
-      reuses existing `platform-freertos` plumbing where the
-      FreeRTOS APIs match upstream Apex.
-- [ ] **21.7** Propagate the feature through `nros`, `nros-platform`,
-      `nros-rmw-zenoh`, and `nros-platform-cffi`
-      (`esp-idf-c-port`).
-- [ ] **21.8** Extend `packages/core/nros-c/CMakeLists.txt` to map
-      `NANO_ROS_PLATFORM=esp-idf` to the new feature set. Accept
-      `NANO_ROS_PLATFORM=baremetal` with `NANO_ROS_BOARD=<board>` for
-      the future ESP32 bare-metal Rust-only path (delegating to the
-      board overlay).
-- [ ] **21.9** Repoint `integrations/esp-idf/CMakeLists.txt` from
-      `baremetal` to `esp-idf` once the feature lands.
+- [x] **21.6** Added `platform-esp-idf` feature to `nros-c`. Reuses
+      the existing `freertos_alloc` allocator module
+      (`pvPortMalloc` / `vPortFree` exported by ESP-IDF's FreeRTOS
+      fork — bytes match upstream Apex); the cfg gate is now
+      `any(feature = "platform-freertos", feature = "platform-esp-idf")`.
+      The C platform port at
+      `packages/core/nros-platform-esp-idf/` (Phase 121.3) supplies
+      the canonical `nros_platform_*` ABI at link time. No new
+      critical-section impl needed in nros-c — the IDF component
+      handles it.
+- [x] **21.7** Propagated `platform-esp-idf` through `nros`,
+      `nros-node`, `nros-platform`, `nros-rmw-zenoh`, and
+      `zpico-sys` (`esp-idf = ["freertos"]` — zenoh-pico's
+      `system/freertos/system.c` is the right pick for ESP-IDF).
+      No new `*-c-port` feature on `nros-platform-cffi`: the C
+      symbols come from the IDF component, not from a Rust-built
+      C port.
+- [x] **21.8** `packages/core/nros-c/CMakeLists.txt` accepts
+      `NANO_ROS_PLATFORM=esp-idf` (maps to
+      `_platform_features = alloc panic-halt platform-esp-idf`).
+      The root `CMakeLists.txt` updated its error message + adds
+      `NROS_PLATFORM_ESP_IDF` compile-definition. Bare-metal
+      ESP32 Rust-only path stays separate; the `esp-idf` value is
+      the IDF-hosted variant only.
+- [x] **21.9** `integrations/esp-idf/CMakeLists.txt` now sets
+      `NANO_ROS_PLATFORM=esp-idf` and adds the IDF components
+      `nros-platform-esp-idf` REQUIRES (freertos / esp_timer /
+      esp_hw_support / esp_system / lwip) to the shell's
+      `idf_component_register(REQUIRES …)` so the IDF dependency
+      walker resolves them.
 - [ ] **21.10** Smoke build through `just esp_idf build` (requires
       the extended SDK tier: `just setup tier=extended` or
       `just esp_idf setup`). Capture the first-time install
       footprint in `docs/development/sdk-tiers.md` if the tier
-      classification needs to change.
+      classification needs to change. Deferred — needs ESP-IDF
+      installed locally; the integration shell + platform module
+      land in this iteration so the gate-build is the next
+      verification step.
 
 ## Historical record (original 2024 closure notes follow)
 
