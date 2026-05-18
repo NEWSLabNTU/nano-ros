@@ -88,9 +88,26 @@ include = ["system/common", "system/zephyr"]
 
 [platform.freertos-lwip]
 defines = ["ZENOH_GENERIC", "ZENOH_FREERTOS_LWIP"]
-defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
-include = ["system/common"]
+# Phase 154 — `Z_FEATURE_LINK_UDP_MULTICAST = 0` disables the
+# vendor `_z_close_udp_multicast` codepath in
+# `system/freertos/lwip/network.c`, which has a vendor
+# `sockrecv->socket` typo (the struct field is `_socket`).
+# nano-ros doesn't use UDP multicast over zenoh-pico on
+# FreeRTOS (router is TCP-only on this slirp path), so the
+# feature loss is harmless and the typo stops mattering.
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_UDP_MULTICAST = "0" }
+# Phase 154 — pull vendor's FreeRTOS+lwIP `system/freertos/lwip`
+# subtree + the top-level `system/freertos/system.c` so vendor's
+# native `_z_send_tcp` / `_z_read_tcp` / `_z_task_*` / `_z_mutex_*`
+# impls are compiled. Vendor's `system/common/platform.h`
+# dispatch picks `platform/freertos/freertos_plus_tcp.h`
+# (`{int _socket;}` struct) — having the matching network /
+# system impls in the same TU set keeps caller / callee ABI
+# coherent without needing the alias TU's opaque socket
+# (alias TU is gated off for FreeRTOS in build.rs).
+include = ["system/common", "system/freertos/lwip"]
 extra_sources = [
+  { path = "{src}/system/freertos/system.c" },
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 arch = "cortex-m3"

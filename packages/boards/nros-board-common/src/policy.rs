@@ -201,7 +201,16 @@ impl LinkPolicy {
         Self {
             tcp: PolicyChoice::Follow,
             udp_unicast: PolicyChoice::Follow,
-            udp_multicast: PolicyChoice::Follow,
+            // Phase 154 — vendor `system/freertos/lwip/network.c`
+            // line 780 has a typo (`sockrecv->socket` for
+            // `_z_close_udp_multicast`; field is `_socket`).
+            // nano-ros doesn't use UDP multicast over zenoh-pico
+            // on FreeRTOS+lwIP (router is TCP-only), so force
+            // the feature off to stop the vendor typo from
+            // firing once we start compiling
+            // `system/freertos/lwip` (Phase 154 added it to the
+            // manifest's `include`).
+            udp_multicast: PolicyChoice::Force(false),
             serial: PolicyChoice::Force(false),
             raweth: PolicyChoice::Force(false),
             tls: PolicyChoice::Force(false),
