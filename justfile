@@ -353,7 +353,13 @@ test verbose="": build-zenohd
 # use full host parallelism without competing with N concurrent QEMU +
 # zenohd processes during the nextest run, which used to stretch a 14 s
 # test out to 125 s under load. Run this before `just test-all`.
-build-test-fixtures: build-zenoh-posix-fixture
+# Phase 150.F — `generate-bindings` precondition: every per-platform
+# `build-fixtures` recipe assumes `generated/<pkg>/` is populated for
+# each fixture crate. Without it `cargo build` fails on
+# `unable to update generated/builtin_interfaces`. Make the dep
+# explicit so `just build-test-fixtures` (and `just test-all` via
+# the bench fixtures it consumes) is self-contained.
+build-test-fixtures: generate-bindings build-zenoh-posix-fixture
     just native build-fixtures
     just qemu build-fixtures
     just freertos build-fixtures

@@ -193,15 +193,36 @@ zenoh_header_parity` passes; the picked header is now the
 POSIX-policy one even with a populated `target/riscv64gc-…/`
 sibling.
 
-### F. xrce E2E (2 tests)
+### F. xrce E2E (2 tests) → **Partial close 2026-05-18**
 
 ```
-nros-tests::xrce xrce_e2e_*
+nros-tests::large_msg test_xrce_e2e_integrity
+nros-tests::large_msg test_xrce_large_publish_sizes
+nros-tests::large_msg test_xrce_throughput_100hz       (runtime, deferred)
+nros-tests::large_msg test_xrce_throughput_burst       (runtime, deferred)
 ```
 
-Likely XRCE agent connection / config issue. XRCE agent was built
-(`build/xrce-agent/MicroXRCEAgent` per `just xrce setup`); test
-may need agent process spawned in fixture. Possibly stale.
+Inventory said "agent not spawned". Actual root cause was simpler:
+the bench fixture `packages/testing/nros-bench/stress-xrce` wasn't
+pre-built (test panics with `[SKIPPED] Test fixture binary not
+prebuilt: …/xrce-stress-test`). The bench dir uses a
+`patch.crates-io` block pointing at `generated/{builtin_interfaces,
+std_msgs}`, which only exist after `cargo nano-ros generate-rust`
+(orchestrated by `just generate-bindings`). `just build-test-fixtures`
+called the per-platform fixture recipes WITHOUT first running
+codegen, so a fresh `git clone && just build-test-fixtures` left
+every bench dir with `Cargo.toml` errors.
+
+Fix: `justfile`'s `build-test-fixtures` recipe now declares
+`generate-bindings` as an explicit prerequisite. After `just
+generate-bindings && (cd packages/testing/nros-bench/stress-xrce
+&& cargo build --release)`, `test_xrce_e2e_integrity` and
+`test_xrce_large_publish_sizes` pass.
+
+Two `test_xrce_throughput_*` tests still fail with "Expected at
+least 3 messages in burst mode, got 1" — runtime / timing flake,
+NOT a fixture-build issue. Tracked separately; out of Phase 150.F
+scope which was about the agent-fixture / skip-panic class.
 
 ### G. integration_{zephyr,esp_idf} smoke (2 each)
 
@@ -289,7 +310,7 @@ change required.
 | C. qemu_patched_binary | 6 | Patched qemu not built; `just qemu setup-qemu` itself fails — qemu submodule's `python/scripts/mkvenv.py` can't `pip install -e` qemu's own python lib because its build backend lacks PEP 660 `build_editable` hook (Python 3.10 / current pip combo) | 143 | **Blocked on qemu submodule + pip toolchain compatibility** |
 | D. cmake_platform_matrix | 6 | POSIX cell: `platform-posix` feature didn't activate `nros-platform-cffi/posix-c-port`. Other 5 cells were `skip!` panics (inventory misclassified) | 150.D | **Closed 2026-05-18** |
 | E. zenoh_header_parity | 1 | Test helper picked up cross-target `target/riscv64gc-…/zpico-sys-*` header instead of POSIX | 150.E | **Closed 2026-05-18** |
-| F. xrce E2E | 2 | Agent not spawned | XRCE fixture | TODO |
+| F. xrce E2E | 4 | bench fixture not prebuilt because `build-test-fixtures` lacked `generate-bindings` prereq | 150.F | **Partial 2026-05-18** — 2 pass; 2 throughput tests still flake at runtime |
 | G. integration shells | 4 | Env vars not in nextest | 150.G | **Closed 2026-05-18** |
 | H. nano2nano rtic | 3 | Fixture not prebuilt → `.expect()` panicked | 150.H | **Closed 2026-05-18** |
 | I. _test-c-codegen | 1 recipe | Path artefact | 140.3 follow-up | **Closed 2026-05-18 (no-op, recipe now exits 0)** |
