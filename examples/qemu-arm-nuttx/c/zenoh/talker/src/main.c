@@ -119,4 +119,11 @@ int nros_app_main(int argc, char **argv) {
 
 }
 
-NROS_APP_MAIN_REGISTER_VOID()
+/* Phase 157 — NuttX external-app build (canonical
+ * apps/external/<name>/) defines NROS_NUTTX_EXTERNAL_APP=1 via the
+ * sibling Makefile so the auto-detect macro picks the
+ * `int main(int, char**)` entry that NuttX's Application.mk renames
+ * to `<PROGNAME>_main`. QEMU cmake bring-up (Phase 144.6) leaves
+ * the define unset and stays on `app_main(void)` for the
+ * nros-board-nuttx-qemu-arm Rust shim. */
+NROS_APP_MAIN_REGISTER()

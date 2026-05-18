@@ -65,4 +65,29 @@ config NROS_ROS_IRON
 
 endchoice
 
+# Phase 157 — language API selectors. The C surface always builds
+# (cargo features `rmw-cffi` already pulls nros-c), but the C++
+# surface is opt-in because it doubles the Cargo build time +
+# adds ~80 KB to the link. External-app examples key their
+# Kconfig depends on these two so the menu only shows examples
+# whose host API is actually enabled.
+
+config NROS_C_API
+    bool "C API surface (nros-c)"
+    default y
+    help
+      Enables the nros-c C API. Required by every C-language
+      external-app example (`apps/external/nano-ros-*-c/`).
+      Disable to skip the nros-c staticlib build for C++-only
+      deployments.
+
+config NROS_CPP_API
+    bool "C++ API surface (nros-cpp)"
+    default n
+    help
+      Enables the nros-cpp C++ API. Required by every
+      C++-language external-app example
+      (`apps/external/nano-ros-*-cpp/`). Adds ~80 KB to the
+      link + an extra Cargo build cycle.
+
 endif # NROS

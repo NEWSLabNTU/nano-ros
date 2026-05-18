@@ -1,0 +1,10 @@
+# Phase 157 — NuttX external-app Kconfig for the C action-server example.
+# Sourced from `integrations/nuttx/Kconfig` via osource glob.
+
+config NROS_EXAMPLE_ACTION_SERVER_C
+    tristate "nano-ros: C action-server (zenoh)"
+    default n
+    depends on NROS && NROS_C_API
+    ---help---
+        Hosts an example_interfaces/action/Fibonacci action on /fibonacci.
+        Built-in command name: `nuttx_c_action_server`.

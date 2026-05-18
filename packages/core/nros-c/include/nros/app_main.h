@@ -75,6 +75,17 @@ int nros_app_main(int argc, char** argv);
         return nros_app_main(argc, argv);                                                          \
     }
 
+/* Phase 157 — NuttX external-app entry point. NuttX's
+ * `apps/Application.mk` defines `-Dmain=<PROGNAME>_main` so the
+ * `int main(int argc, char** argv)` symbol below gets renamed to
+ * `<PROGNAME>_main` at compile time, which is what nshlib expects
+ * for built-in command registration. Identical to the POSIX
+ * variant — the rename trick is what makes it work. */
+#define NROS_APP_MAIN_REGISTER_NUTTX()                                                             \
+    NROS_APP_MAIN_LINKAGE int main(int argc, char** argv) {                                        \
+        return nros_app_main(argc, argv);                                                          \
+    }
+
 /* Auto-detect the right shim. Users who want a different choice
  * invoke one of the explicit `NROS_APP_MAIN_REGISTER_*` macros above
  * directly instead of `NROS_APP_MAIN_REGISTER()`. */
@@ -82,6 +93,8 @@ int nros_app_main(int argc, char** argv);
 #define NROS_APP_MAIN_REGISTER() NROS_APP_MAIN_REGISTER_ZEPHYR()
 #elif defined(NROS_HOST_POSIX)
 #define NROS_APP_MAIN_REGISTER() NROS_APP_MAIN_REGISTER_POSIX()
+#elif defined(NROS_NUTTX_EXTERNAL_APP)
+#define NROS_APP_MAIN_REGISTER() NROS_APP_MAIN_REGISTER_NUTTX()
 #else
 #define NROS_APP_MAIN_REGISTER() NROS_APP_MAIN_REGISTER_VOID()
 #endif

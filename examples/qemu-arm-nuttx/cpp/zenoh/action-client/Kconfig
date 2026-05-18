@@ -1,0 +1,10 @@
+# Phase 157 — NuttX external-app Kconfig for the CPP action-client example.
+# Sourced from `integrations/nuttx/Kconfig` via osource glob.
+
+config NROS_EXAMPLE_ACTION_CLIENT_CPP
+    tristate "nano-ros: CPP action-client (zenoh)"
+    default n
+    depends on NROS && NROS_CPP_API
+    ---help---
+        Sends an example_interfaces/action/Fibonacci goal on /fibonacci and streams feedback.
+        Built-in command name: `nuttx_cpp_action_client`.
