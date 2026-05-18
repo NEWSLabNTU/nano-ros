@@ -178,6 +178,117 @@ panics with `nros_executor_node_init(...) -> -1` for the
 
 ## Work Items
 
+### 156.C ROOT CAUSE — ABI mismatch in platform_aliases.c on POSIX (2026-05-18 third probe, gdb + tshark + per-layer trace)
+
+Localised + fixed the two visible failure surfaces, but the
+fundamental issue is a Phase 129 design-level decision:
+
+**Layer-by-layer trace:**
+
+```
+[zpico] init_with_config ret=0             ← config built OK
+[zpico/aliases] _z_open_tcp -> -1 (tout=0) ← FIRST FAILURE
+[zpico.c] z_open ret=-102                  ← _Z_ERR_TRANSPORT_OPEN_FAILED
+[zpico] zpico_open ret=-3                  ← ZPICO_ERR_SESSION
+[nros-rmw-cffi] open: ret=-1 backend_data=0x0
+```
+
+tshark on loopback showed: TCP SYN/ACK/ACK handshake
+**succeeded** at kernel level (zenohd accepted), then client
+immediately sent FIN — no zenoh handshake bytes ever
+exchanged. Failure was AFTER socket open but BEFORE TX.
+
+**Sub-bug A (FIXED):** `nros_platform_tcp_open` called
+`apply_tcp_common_options(fd, timeout_ms)` BEFORE `connect()`.
+With `timeout_ms = 0`, `set_recv_timeout_ms` flipped the
+socket to `O_NONBLOCK` (Phase 127.B.5 mapping designed for
+dust-DDS recv loop). Then `connect()` on a non-blocking
+socket returns `-1` with `errno = EINPROGRESS` even though
+the kernel completed the SYN/ACK/ACK. The C code treats
+`-1` as failure → `close()` → kernel sends FIN. Fixed by
+moving `apply_tcp_common_options` to AFTER successful
+`connect()`.
+
+After Sub-bug A fix: `_z_open_tcp` returns 0 (success).
+zenoh-pico proceeds to `_z_link_send_t_msg` for InitSyn,
+which calls `_z_send_tcp` (the alias) which calls
+`nros_platform_tcp_send`. Trace:
+
+```
+[posix] tcp_send fd=0 len=106674563756592 r=-1 errno=88
+```
+
+**Sub-bug B (NOT trivially fixable):** ABI mismatch.
+
+- zenoh-pico's `_z_send_tcp` declared in unix.h:
+  `size_t _z_send_tcp(const _z_sys_net_socket_t sock, ...)`
+  where `_z_sys_net_socket_t = { int _fd; }` (4 bytes,
+  passed by VALUE in one int register on SysV AMD64).
+- The alias TU `platform_aliases.c` redeclares the same
+  name with a 32-byte opaque struct from
+  `nros_zenoh_generic_platform.h`:
+  `size_t _z_send_tcp(nros_zp_alias_socket_t sock, ...)`
+  where `nros_zp_alias_socket_t = { uint8_t _opaque[32]; }`.
+  The 32-byte struct is passed via stack/multiple regs.
+- `--allow-multiple-definition` makes the linker pick
+  ONE definition. Which one wins is undefined; on this
+  host it picked the alias TU's 32-byte version.
+- zenoh-pico's call site passes 4 bytes; alias function
+  reads 32 → `fd = 0` (stdin) + garbage `len` →
+  `errno = 88 (ENOTSOCK)`.
+
+**Why both POSIX defines are set:** `[platform.posix]` in
+`zenoh_platforms.toml` defines BOTH `ZENOH_LINUX` AND
+`ZENOH_GENERIC`. zenoh-pico's `system/common/platform.h`
+checks `ZENOH_LINUX` first → includes `unix.h` (4-byte
+struct). The alias TU is built with `NROS_PLATFORM_ALIASES`
+which (per the `define` comment in `build.rs:645`) "unlocks
+the alias TU's clock-variant + network wrappers, which
+depend on the generic `z_clock_t = uint64_t` typedef and
+the canonical `_z_sys_net_*` opaque layouts in
+`nros_zenoh_generic_platform.h`." So the alias TU
+deliberately uses the GENERIC layouts regardless of
+platform — POSIX shouldn't compile the network aliases at
+all.
+
+**Root-cause fix options (need design judgement):**
+
+1. **(A) Don't compile platform_aliases.c on POSIX.**
+   Tried — breaks link with undefined `_z_mutex_*` +
+   `z_malloc` etc. because the unified build's POSIX entry
+   (`zenoh_platforms.toml:71-80`) only includes
+   `system/common` + `system/unix/tls.c`; the unix/system.c
+   + unix/network.c files that provide POSIX threading +
+   malloc aren't compiled into the unified archive. POSIX
+   relied on aliases for those symbols too.
+
+2. **(B) Make `platform_aliases.c` skip JUST the network
+   aliases on POSIX.** Add `#ifndef NROS_ZENOH_PLATFORM_USES_UNIX`
+   around `_z_open_tcp` / `_z_send_tcp` / etc. Keep the
+   threading + malloc aliases. Requires defining the new
+   macro from `build.rs` when `use_posix`. Cleanest
+   localized fix.
+
+3. **(C) Drop `ZENOH_LINUX` define on POSIX + add
+   `system/unix/*.c` to `extra_sources`.** Use zenoh-pico's
+   unix.h fully; aliases stop fighting. Bigger reshape.
+
+4. **(D) Switch POSIX to `ZENOH_GENERIC`-only + extend
+   alias TU to fully provide POSIX system layer.** Most
+   aligned with Phase 129's "unified ABI" intent but
+   biggest change.
+
+**Sub-bug A's fix landed under Phase 156 anyway** because
+it's a real bug even after Sub-bug B is resolved
+(`set_recv_timeout_ms(0)` should never have run pre-connect).
+The `apply_tcp_common_options(fd, effective_tout)` call now
+runs post-connect with a `5000ms` coercion when `timeout_ms
+== 0` (zenoh-pico's `_z_send_t_msg` does single-shot send;
+non-blocking socket would EAGAIN on slow consumers).
+
+Sub-bug B's resolution deferred to option-pick discussion +
+implementation (likely option B as smallest blast radius).
+
 ### 156.B diagnostic — failure localised to zpico_open (2026-05-18 second probe)
 
 Added `NROS_RMW_TRACE_OPEN` env-gated `eprintln!` at three

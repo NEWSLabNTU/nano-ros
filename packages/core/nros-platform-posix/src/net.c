@@ -125,10 +125,28 @@ int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t tim
     if (fd < 0) return -1;
     sock->fd = fd;
 
-    apply_tcp_common_options(fd, timeout_ms);
-
+    /* Phase 156 — apply socket options AFTER connect, not before.
+     * Previously `apply_tcp_common_options(fd, timeout_ms)` ran
+     * pre-connect, which on `timeout_ms == 0` flipped the socket
+     * to O_NONBLOCK via `set_recv_timeout_ms`. A non-blocking
+     * connect returns -1 with EINPROGRESS, which this code
+     * treated as failure → close → kernel still completed
+     * the TCP handshake async then sent FIN. zenoh-pico
+     * bubbled up _Z_ERR_TRANSPORT_OPEN_FAILED (-102), nros
+     * surfaced `Transport(ConnectionFailed)`. Phase 127.B.5's
+     * non-blocking remap was intended for the recv loop on
+     * a NON-zenoh consumer (dust-dds); zenoh-pico's
+     * `_z_link_send_t_msg` does single send + checks ret,
+     * so a non-blocking socket here trips
+     * `_Z_ERR_TRANSPORT_TX_FAILED` (-100) when send() returns
+     * EAGAIN. Keep recv-timeout blocking semantics for the
+     * TCP connect path by coercing `timeout_ms=0` to a
+     * conservative blocking-recv default for zenoh-pico
+     * compatibility. */
+    uint32_t effective_tout = (timeout_ms == 0) ? 5000u : timeout_ms;
     for (struct addrinfo *it = ep->iptcp; it != NULL; it = it->ai_next) {
         if (connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+            apply_tcp_common_options(fd, effective_tout);
             return 0;
         }
     }
