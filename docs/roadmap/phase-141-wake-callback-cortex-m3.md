@@ -12,7 +12,17 @@ flag-only path. Requires shipping a wake-driven backend on
 Cortex-M3 + an embedded latency-measurement harness that can
 produce a P99 distribution.
 
-**Status.** Not started.
+**Status.** Plumbing landed 2026-05-18 (commits c262d145 →
+7c7c34b1, 8 commits this stretch): 141.A.1-.A.3 wake-cb on
+FreeRTOS Cortex-M3 + Executor wire-up + spin_once branch;
+141.B.1 DWT cycles_to_ns; 141.B.2 `wake_probe` module + hook
+sites; 141.C.1/.C.2 Histogram + write_csv + parse_csv +
+percentile_ns (3 lib tests passing); 141.D.1/.2/.3 bench
+crate (`packages/testing/nros-bench/wake-latency-cortex-m3/`)
++ host runner asserting P99 ≤ 10 ms. Outstanding: real-
+hardware P99 ≤ 100 µs spec gate (no CI runner for real
+hardware), 10× baseline (one-time measurement vs pre-124.B
+flag-only path), FreeRTOS E2E regression sweep.
 
 **Priority.** P2. Phase 124's executor-side wake plumbing
 (`wake_cv` / `NodeWake` / `wake_flag` + cv-wait spin) is

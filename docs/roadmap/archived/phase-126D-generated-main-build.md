@@ -1,5 +1,10 @@
 # Phase 126.D - generated main and build
 
+> **Archived 2026-05-18 — closed.** All 19 work-items done, 0
+> open. Status self-declares "Complete for Phase 126.D MVP"
+> — generated native + FreeRTOS entry packages build, native
+> fixture runs against local `zenohd`.
+
 **Goal.** Generate a debuggable Rust entry package that owns the only `main()`,
 instantiates all planned node instances, applies RT scheduling, and builds one
 nano-ros binary for the selected target.

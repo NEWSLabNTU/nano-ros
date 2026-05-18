@@ -1,5 +1,9 @@
 # Phase 117 — Cyclone DDS RMW + Autoware Safety-Island Boards
 
+> **Archived 2026-05-18 — closed.** All 24 work-items done, 0
+> open. Status line self-declares "Done". Cyclone-on-Zephyr
+> runtime carved out as separate follow-up.
+
 **Goal:** Land Cyclone DDS as fourth RMW backend (`rmw-cyclonedds`) targeting `nros-rmw-cffi` C ABI, **with full wire-compat against stock `rmw_cyclonedds_cpp`** (pub/sub + services in both directions), plus Zephyr board crates for ARMv8-R Cortex-A SMP and NXP S32Z Cortex-R52. Closes the only `nros-cpp` API gap (`declare_parameter` / `get_parameter`). Unblocks future migration of Arm `autoware-safety-island` from raw Cyclone DDS to nano-ros middleware.
 
 **Status:** Done. All sub-phases landed: core RMW + entity / data plane (117.1–117.9), stock-RMW POSIX interop (117.X.1–117.X.6 + 117.12), Zephyr boards + build smoke (117.10–117.13) + FVP nros-cpp example (117.14), docs (117.15), `just cyclonedds` CI hookup (117.16). Cyclone-on-Zephyr runtime is the only outstanding work and is tracked separately (Zephyr nros module needs a Cyclone build path; example is wired to flip the Kconfig symbol once it lands).
