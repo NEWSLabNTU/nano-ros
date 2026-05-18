@@ -4,7 +4,7 @@
 
 **Status:** Pillar A in progress (CLI v1 landed); Pillar B–G + H.4 deferred
 **Priority:** High
-**Depends on:** Phase 23 (Arduino precompiled lib), Phase 75 (relocatable CMake install), Phase 78 (colcon-nano-ros), Phase 88 (`nros-log`)
+**Depends on:** Phase 23 (Arduino precompiled lib), Phase 88 (`nros-log`), Phase 126 (`nros build` orchestration pipeline)
 **Related research:** `docs/research/sdk-ux/SYNTHESIS.md`, `docs/research/sdk-ux/{micro-ros,zephyr-and-esp-idf,platformio-arduino-mbed}.md`
 
 ---

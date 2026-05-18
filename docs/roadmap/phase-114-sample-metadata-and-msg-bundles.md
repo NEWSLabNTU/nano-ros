@@ -4,7 +4,7 @@
 
 **Status:** Not Started
 **Priority:** Medium
-**Depends on:** Phase 78 (colcon-nano-ros), Phase 111 (`nros` CLI — `nros run` consumes sample.yaml)
+**Depends on:** Phase 111 (`nros` CLI — `nros run` consumes sample.yaml), Phase 126 (`nros build` pipeline)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-24, UX-25
 
 ---

@@ -1,5 +1,14 @@
 # Design: Colcon Build Type for nano-ros
 
+> **Archived 2026-05-18 — superseded by `nros build [--launch-file]` +
+> play_launch_parser integration (Phase 126).** `colcon build`'s
+> per-package recipe model cannot consume ROS 2 launch files and
+> freeze them into one firmware image — the launch graph has to be
+> resolved by a system-level orchestrator that owns metadata
+> discovery, plan generation, and final-binary codegen end to end.
+> `nros build` does that today; this design is kept for historical
+> reference only.
+
 ## Motivation
 
 ROS 2 users expect to build projects with `colcon build`. nano-ros targets native, RTOS, and bare-metal platforms — none of which fit the standard `ament_cmake` or `ament_cargo` build types. A custom colcon build type would let users write:

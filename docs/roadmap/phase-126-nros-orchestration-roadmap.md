@@ -2,10 +2,14 @@
 
 **Goal.** Turn the design in
 [`docs/design/ros2-user-workflow.md`](../design/ros2-user-workflow.md) into
-an implementation plan that standard ROS 2 users can follow: a colcon-like
-workspace of component packages, launch files as the system description, ROS
-launch manifests as graph requirements, and one generated nano-ros binary for
-the target.
+an implementation plan that standard ROS 2 users can follow: a colcon-style
+workspace *shape* (src/<pkg>/{package.xml,Cargo.toml,CMakeLists.txt}), launch
+files as the system description, ROS launch manifests as graph requirements,
+and one generated nano-ros binary for the target. The build driver is
+`nros build`, not `colcon build` — Phase 78's colcon-build-type approach
+was archived because per-package colcon recipes cannot freeze launch-file
+graphs into one firmware image. `colcon-cargo-ros2` lives on under
+`packages/codegen/` only as the rosidl message bindgen back-end.
 
 **Status.** M1–M4 + M6 + M7 acceptance criteria met. `nros build --launch-file`
 now drives the full metadata → plan → check → generate → cargo pipeline in a
@@ -28,17 +32,18 @@ work and Phase 110 scheduling.
 
 **Related phase docs.**
 
-- [Phase 126.A - schema and plan IR](phase-126A-schema-plan-ir.md)
-- [Phase 126.B - component metadata API](phase-126B-component-metadata-api.md)
-- [Phase 126.C - launch and manifest planner](phase-126C-launch-manifest-planner.md)
-- [Phase 126.D - generated main and build](phase-126D-generated-main-build.md)
+- [Phase 126.A — schema and plan IR](archived/phase-126A-schema-plan-ir.md) (archived)
+- [Phase 126.B — component metadata API](phase-126B-component-metadata-api.md)
+- [Phase 126.C — launch and manifest planner](archived/phase-126C-launch-manifest-planner.md) (archived)
+- [Phase 126.D — generated main and build](archived/phase-126D-generated-main-build.md) (archived)
 
 ## Implementation gap summary
 
 The runtime foundation is strong: `nros-node` already has a multi-node
 executor, service/action paths, callback handles, and `SchedContext`. C and
 C++ bindings expose most executor features. Codegen packages already provide
-message/service/action generation and colcon integration.
+message/service/action generation (rosidl bindgen via the
+`colcon-cargo-ros2` codegen submodule under `packages/codegen/`).
 
 The first orchestration layer is now in place:
 
