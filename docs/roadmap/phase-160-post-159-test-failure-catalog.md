@@ -118,9 +118,22 @@ test_zephyr_talker_to_listener_e2e
 test_zephyr_to_native_e2e
 ```
 
-**Hypothesis.** Same root cause as A — Zephyr-side XRCE/zenoh
-session init fails (`-3`), bridge counterpart times out waiting.
-Likely closes when A closes.
+**Hypothesis (refuted 2026-05-19).** Tested cascade after 160.A;
+all 11 still fail with a DIFFERENT signature than A:
+
+```
+[err] nros_cpp_talker: nros::init(...) -> -100
+socket_family_from_nsos_mid: socket family 6 not supported
+```
+
+`-100` is `NROS_RET_TRANSPORT_TX_FAILED` (Phase 155.B `_z_send_tcp`
+maps to this). Plus an NSOS POSIX-socket-shim warning about an
+unknown socket family. These tests use **zenoh** RMW (not XRCE
+like cluster A), and the failure is on the TX path post-handshake,
+not the support-init path A hit. Needs its own investigation
+(likely zenoh-pico bare-metal `_z_send_tcp` regression on
+Zephyr/NSOS, separate from NuttX's Phase 159 fix). Track as
+**160.C** (new follow-up).
 
 ### D. NuttX C/C++ rtos_e2e (6 tests) → **CLOSED 2026-05-19**
 
@@ -316,15 +329,15 @@ locus.
   ```
   Bisect window: git rev-list fb6b778b..HEAD -- packages/drivers/nros-smoltcp packages/zpico/zpico-sys packages/platforms/nros-platform-esp32-qemu packages/boards/nros-board-esp32-qemu — find the commit that flipped working → broken.
 
-### F. QEMU bare-metal RTIC + serial (5 tests)
+### F. QEMU bare-metal RTIC + serial (6 tests) → **triaged 2026-05-19**
 
 ```
-test_qemu_rtic_action_e2e
-test_qemu_rtic_mixed_priority_pubsub_e2e
-test_qemu_rtic_pubsub_e2e
-test_qemu_rtic_service_e2e
-test_qemu_serial_pubsub_e2e
-test_qemu_zenoh_large_publish
+test_qemu_rtic_action_e2e             ETH — open -> Transport(ConnectionFailed)
+test_qemu_rtic_mixed_priority_pubsub_e2e  ETH — same as above
+test_qemu_rtic_pubsub_e2e             ETH — same as above
+test_qemu_rtic_service_e2e            ETH — same as above
+test_qemu_zenoh_large_publish         ETH — same as above
+test_qemu_serial_pubsub_e2e           SERIAL — Phase 132.3 known-deferred
 ```
 
 **Triage 2026-05-19 (Phase 160.F probe).**
@@ -460,6 +473,10 @@ follow-up session):
   QEMU smoke that asserts `zpico_open` returns `0` within 2 s
   with zenohd reachable, not `-3`).
 
+**Serial test (1 test).** Tracked under Phase 132.3 (descoped from
+132). zenoh-pico bare-metal `connect_serial` Init/InitAck
+regression post-Phase 128. Stays under Phase 132 follow-up.
+
 ### G. Cmake platform matrix (4 tests) → **phantom — already skipped**
 
 ```
@@ -589,10 +606,10 @@ No action needed.
 |---------|-------|------------|------------|
 | A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
 | B. Zephyr Cortex-A9 DDS Rust | 4 | dust-dds-on-A9 / Cortex-A9 Rust patch | New (160.B) |
-| C. Zephyr cross-host bridge | 8 | cascades from A | Closes with A |
+| C. Zephyr cross-host bridge | 11 | NOT cascade — zenoh `_z_send_tcp -> -100` on Zephyr/NSOS | New (160.C) |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | OpenETH RX/TX stall (NOT env) | Phase 89.4 follow-up |
-| F. RTIC + serial bare-metal | 5 | Phase 132 / 141 RTIC regression | Triage → 132 or 141 |
+| F. RTIC + serial bare-metal | 6 | RTIC (5): zenoh-pico session-open regression. Serial (1): Phase 132.3 deferred. | RTIC → New (160.F); serial → Phase 132.3 |
 | G. cmake_platform_matrix cross | 4 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | H. nano2nano + bridges | 4 | XRCE `g_session` process-globals | Phase 156 follow-up |
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
