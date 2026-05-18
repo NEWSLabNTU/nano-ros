@@ -182,25 +182,60 @@ process.
 
 **Fix sketch.**
 
-- [ ] **155.D.1.** Find the cmake-cargo bridge (corrosion or
-      the `_cargo-build_*` custom target generation) and
-      teach it to propagate selected cmake variables (or
-      ones listed in a per-platform allowlist) as env vars
-      via `set(ENV{NAME} value)` or `--env NAME=value` to
-      cargo.
-- [ ] **155.D.2.** Alternative: have
-      `cmake/platform/nano-ros-threadx.cmake` do
-      `set(ENV{THREADX_CONFIG_DIR} "${THREADX_CONFIG_DIR}")`
-      after the CACHE setup so cmake's own subprocess env is
-      patched.
-- [ ] **155.D.3.** Verify all four cmake-board overlays
-      (threadx-linux, riscv64-qemu, orin-spe,
-      mps2-an385-freertos) propagate any per-board env-only
-      vars they rely on.
+- [x] **155.D.1.** Two-pronged fix (commit `deed6b57`):
+      board `cmake` file does `set(ENV{THREADX_CONFIG_DIR}
+      …)` + sibling vars; `just threadx_riscv64
+      build-fixtures` exports the same names in the shell
+      before `cmake -S` (cmake `-D…=…` only sets cache,
+      doesn't reach subprocess env).
+- [~] **155.D.2.** Alternative path (in-cmake `set(ENV…)`
+      only) implemented as the cmake half of #1; the
+      justfile half is needed because `cmake --build` runs
+      after configure exits, so the configure-time env
+      patch alone doesn't survive.
+- [ ] **155.D.3.** Replicate the env-export pattern in
+      `just/threadx-linux.just` + `just/freertos.just`
+      `build-fixtures` recipes for parity. Audit other
+      cmake-driven cargo recipes for the same pattern.
 
-**Acceptance.** `just threadx_riscv64 build-fixtures` clean +
-RISC-V C / C++ rtos_e2e variants build + run (orthogonal to
-the 155.A illegal-instr concern, which only blocks Rust).
+**Acceptance — partial.** `just threadx_riscv64 build-fixtures`
+now passes the env-leak failure point. Hits next-layer issue:
+`nxd_bsd.h: conflicting types for 'suseconds_t'` when bare-
+metal compile pulls newlib / picolibc `suseconds_t` against
+NetX-Duo's own typedef. Spun into Issue 155.E (header guard /
+typedef conflict).
+
+## Issue 155.E — RISC-V cmake-build `suseconds_t` conflict (new)
+
+**Symptom.** After 155.D's env propagation lands,
+`just threadx_riscv64 build-fixtures` reaches the C / C++
+glue compile then errors:
+
+```
+nxd_bsd.h:209:33: error: conflicting types for 'suseconds_t'
+  209 | #define nx_bsd_suseconds_t      suseconds_t
+nxd_bsd.h:629:21: note: in expansion of macro 'nx_bsd_suseconds_t'
+```
+
+The bare-metal compile of `board_threadx_qemu_riscv64.c`
+includes `nxd_bsd.h`, which defines `nx_bsd_suseconds_t` =
+`suseconds_t`. picolibc's `<sys/types.h>` already declares
+`suseconds_t` with a different (or incompatible-by-typedef-
+attribute) signature.
+
+**Suggested debug path.**
+
+- [ ] **155.E.1.** Verify whether the Rust-side build (which
+      passes) somehow avoids the include collision. Maybe
+      picolibc isn't on the Rust include path but is on the
+      cmake-build path.
+- [ ] **155.E.2.** Define `NX_BSD_TIMEVAL_DEFINED` (or
+      similar guard in nxd_bsd.h) so the conflicting typedef
+      is suppressed when picolibc / newlib provides
+      `suseconds_t`.
+- [ ] **155.E.3.** Or: forward-declare `nx_bsd_suseconds_t`
+      as a fixed-width type in `nx_user.h` so picolibc's
+      definition isn't reached.
 
 ## Notes
 
