@@ -325,18 +325,55 @@ path was bypassing. Each fix unblocks the next layer:
 
   Remaining within 157.C.11 (carved as .C.14 + .C.15):
 
-- [ ] **157.C.14 — C++ codegen extension.**
-      Each CPP example's `main.cpp` includes generated
-      `std_msgs.hpp` / `example_interfaces.hpp` (cpp codegen
-      output). `scripts/nuttx/gen-interfaces.py` only invokes
-      `nros-codegen --language c`. Extend to handle CPP
-      examples (detect via dir suffix or `LANGUAGE CPP`
-      flag in CMakeLists pattern) + run codegen twice
-      (`--language c` for shared msg structs, `--language
-      cpp` for the C++ wrapper headers).
-      **Files:** `scripts/nuttx/gen-interfaces.py`,
-      `tmp/phase157-gen-wrappers.sh` (example Makefile
-      template — CXXSRCS glob update).
+- [x] **157.C.14 — C++ codegen extension.**
+
+  Landed:
+    * `scripts/nuttx/gen-interfaces.py` detects CPP examples
+      by grepping for `nros_find_interfaces(` (vs C
+      examples' `nros_generate_interfaces(`).
+    * CPP path shells out to `nros-codegen resolve-deps
+      --package-xml --output-cmake` to get the resolved
+      package list + interface files (cmake function does
+      the same), parses the emitted cmake snippet for
+      `_NROS_RESOLVED_PACKAGES` + `_NROS_RESOLVED_<pkg>_
+      FILES` + `_NROS_RESOLVED_<pkg>_DEPS`.
+    * For each resolved package runs codegen TWICE —
+      `--language c` (typesupport sources the cpp wrappers
+      reference) + `--language cpp` (per-message `.cpp` +
+      `<pkg>.hpp` umbrella).
+    * Per-example Makefile template (regenerated via
+      `tmp/phase157-gen-wrappers.sh`) split into two
+      branches:
+        - C examples: CSRCS = `generated/*.c` +
+          `NROS_GEN_CSRCS`; MAINSRC = `src/main.c`.
+        - CPP examples: CSRCS = `NROS_GEN_CSRCS` (still
+          needed — cpp deps on c typesupport); CXXSRCS =
+          `generated/*.cpp` + `NROS_GEN_CXXSRCS`; MAINSRC =
+          `src/main.cpp`.
+    * Both CFLAGS + CXXFLAGS gain `-Igenerated/c/<pkg>`;
+      CXXFLAGS additionally gains `-Igenerated/cpp/<pkg>`.
+
+  Verified: `gen-interfaces.py examples/qemu-arm-nuttx/cpp/
+  zenoh/talker` produces full `generated/cpp/{builtin_
+  interfaces,std_msgs}/` tree with `std_msgs.hpp` umbrella +
+  per-message wrappers, plus `generated/c/{builtin_
+  interfaces,std_msgs}/` typesupport.
+
+  Remaining within CPP path (157.C.16):
+
+- [ ] **157.C.16 — C++ Rust FFI staticlib build.**
+      The codegen tool also emits a per-package Rust FFI
+      crate (`generated/<pkg>/Cargo.toml`) that compiles to
+      `lib<pkg>.a`. cmake's `nros_generate_interfaces()`
+      pulls this through Corrosion + adds it to the example's
+      `target_link_libraries`. Make-build needs equivalent —
+      either cargo-build each generated FFI crate from the
+      staging script + append to `EXTRA_LIBS`, or wire the
+      build into the example's `Makefile` `context::` rule.
+      **Files:** `scripts/nuttx/stage-external-apps.sh` (add
+      cargo-build pass per generated FFI crate),
+      `tmp/phase157-gen-wrappers.sh` (extend Makefile
+      template to append each `lib<pkg>.a` to EXTRA_LIBS).
 
 - [ ] **157.C.15 — `nros_platform_*` link.**
       Current build hits `undefined reference to

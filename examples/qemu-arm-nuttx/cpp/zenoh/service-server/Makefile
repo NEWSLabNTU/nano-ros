@@ -31,18 +31,26 @@ CXXFLAGS += -DNROS_NUTTX_EXTERNAL_APP=1
 CFLAGS   += ${INCDIR_PREFIX}$(CURDIR)/generated/include
 CXXFLAGS += ${INCDIR_PREFIX}$(CURDIR)/generated/include
 
-# Phase 157.C.9 — nros-codegen output. scripts/nuttx/gen-interfaces.py
-# parses each example's CMakeLists.txt for nros_generate_interfaces()
-# calls + runs the codegen at staging time. Output: generated/c/<pkg>/
-# with msg/*.c, srv/*.c, action/*.c sources + top-level *.h umbrella.
-NROS_GEN_PKG_DIRS := $(wildcard $(CURDIR)/generated/c/*)
-CFLAGS   += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_PKG_DIRS))
-CXXFLAGS += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_PKG_DIRS))
+# Phase 157.C.9 + .C.14 — nros-codegen output. scripts/nuttx/
+# gen-interfaces.py parses each example's CMakeLists.txt for
+# nros_generate_interfaces() / nros_find_interfaces() calls + runs
+# the codegen at staging time. C output: generated/c/<pkg>/{msg,srv,
+# action}/*.c + top-level *.h umbrella. CPP output:
+# generated/cpp/<pkg>/{msg,srv,action}/*.cpp + <pkg>.hpp umbrella.
+NROS_GEN_C_DIRS   := $(wildcard $(CURDIR)/generated/c/*)
+NROS_GEN_CPP_DIRS := $(wildcard $(CURDIR)/generated/cpp/*)
+CFLAGS   += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_C_DIRS))
+CXXFLAGS += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_C_DIRS))
+CXXFLAGS += $(addprefix ${INCDIR_PREFIX},$(NROS_GEN_CPP_DIRS))
 NROS_GEN_CSRCS := $(wildcard $(CURDIR)/generated/c/*/msg/*.c \
                               $(CURDIR)/generated/c/*/srv/*.c \
                               $(CURDIR)/generated/c/*/action/*.c)
+NROS_GEN_CXXSRCS := $(wildcard $(CURDIR)/generated/cpp/*/msg/*.cpp \
+                                $(CURDIR)/generated/cpp/*/srv/*.cpp \
+                                $(CURDIR)/generated/cpp/*/action/*.cpp)
 
-CXXSRCS = $(wildcard generated/*.cpp) $(NROS_GEN_CSRCS)
-MAINSRC = src/main.cpp
+CSRCS    = $(NROS_GEN_CSRCS)
+CXXSRCS  = $(wildcard generated/*.cpp) $(NROS_GEN_CXXSRCS)
+MAINSRC  = src/main.cpp
 
 include $(APPDIR)/Application.mk
