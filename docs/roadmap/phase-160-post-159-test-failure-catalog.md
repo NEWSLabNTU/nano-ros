@@ -155,20 +155,40 @@ test_native_to_esp32
 wires `nros_tests::skip!` for missing prerequisites. All four
 checks pass on this host (qemu-system-riscv32 + espflash +
 riscv32imc-unknown-none-elf target + zenohd) → real test runs,
-real test fails on documented bug:
+real test fails.
 
-> TODO(phase-89.4-followup): firmware reaches TCP-SYN and slirp
-> replies with SYN-ACK, but the ESP32 side's smoltcp never emits
-> the final ACK, so the handshake stalls and zpico returns
-> `Transport(ConnectionFailed)`. The DMA-buffer lifetime bug in
-> the OpenETH driver was fixed; remaining stall is a deeper
-> RX/TX coordination issue in the bare-metal OpenETH smoltcp
-> integration.
-> — `packages/testing/nros-tests/tests/esp32_emulator.rs:205-211`
+**Re-investigation (gdb-less, pcap + addr2line):**
 
-So 160.E is NOT skip-wiring — it's a real Phase 89.4-tier
-OpenETH/smoltcp RX-coordination bug. Move tracking to a Phase
-89.4 follow-up phase.
+- The TODO comment at `esp32_emulator.rs:205-211` (TCP-SYN/SYN-ACK
+  stall on OpenETH) is STALE. Standalone listener-only run with
+  zenohd on the correct port (7454, not 7448) reaches "Waiting
+  for messages..." cleanly. Pcap shows full TCP handshake +
+  zenoh InitSyn → InitAck → OpenSyn → OpenAck. The OpenETH /
+  smoltcp stack works.
+
+- Actual failure is in the TALKER: `Exception 'Load access
+  fault' mepc=0x42025d90, mtval=0x0202000c`. Backtrace
+  resolved via addr2line:
+  ```
+  ?? (riscv-pac result.rs:7)              ← panic intercept
+  endpoint.c:560 (_z_endpoint_from_string)
+  primitives.c:70
+  network.c:231
+  string.c:127
+  zpico.c:2189 (zpico_get_start)
+  ```
+  Talker enters `zpico_get_start` (presumably for liveliness /
+  routing-state query during publisher_put), descends into
+  zenoh-pico endpoint string parsing, dereferences invalid
+  pointer at riscv-pac → exception.
+
+- Listener doesn't hit this path → no crash → "Listener received
+  0 messages" because talker crashed before publishing.
+
+Tracked as Phase 89.4-tier ESP32 bug; needs deeper investigation
+of zpico's `g_pending_gets` slot management or zenoh-pico
+endpoint-string lifetime on ESP32-C3 bare-metal. NOT the
+OpenETH/smoltcp RX stall the original TODO described.
 
 ### F. QEMU bare-metal RTIC + serial (5 tests)
 
