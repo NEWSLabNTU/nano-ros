@@ -38,19 +38,37 @@ CARGO_FEATURES += platform-nuttx
 export NUTTX_INCLUDE_DIR := $(TOPDIR)/include:$(TOPDIR)/include/arch
 export CARGO_BUILD_ARGS := --features "$(strip $(CARGO_FEATURES))" --no-default-features
 
+# Phase 157.C — nano-ros's repo-root `rust-toolchain.toml` pins
+# stable. The NuttX `-Zbuild-std=std,panic_abort` flags need
+# nightly. Pin via env var so the Cargo invocation from
+# `RUST_CARGO_BUILD` picks the same nightly the rest of the
+# NuttX examples use (`examples/qemu-arm-nuttx/
+# rust-toolchain.toml`). Override via env before `make` if you
+# need a different nightly.
+export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
+
 # No C sources of our own — the symbol-level integration goes
 # through `libnros_c.a` (and optionally `libnros_cpp.a`) produced
 # by the Cargo build in the `context::` phase.
 CSRCS =
 
+# Phase 157.C — resolve the real nano-ros repo root via the
+# `apps/external/nano-ros` symlink (which points at
+# `integrations/nuttx/`; `../..` from there lands on the repo
+# root). `realpath` follows the symlink so the cargo manifest path
+# is absolute + correct. Plain `$(APPDIR)/external/nano-ros/...`
+# would resolve through the symlink target literally + miss the
+# packages/core/ dir.
+NANO_ROS_ROOT := $(realpath $(APPDIR)/external/nano-ros/../..)
+
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # NuttX-blessed Rust path — Cargo runs in `context::` for every
 # crate listed.  `clean::` mirrors.
 context::
-	$(call RUST_CARGO_BUILD,nros-c,$(APPDIR)/external/nano-ros/packages/core)
+	$(call RUST_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/core)
 
 clean::
-	$(call RUST_CARGO_CLEAN,nros-c,$(APPDIR)/external/nano-ros/packages/core)
+	$(call RUST_CARGO_CLEAN,nros-c,$(NANO_ROS_ROOT)/packages/core)
 endif
 
 include $(APPDIR)/Application.mk

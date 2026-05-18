@@ -1,10 +1,20 @@
-# Phase 139.4 / 152.7 — Kconfig surfaced under
+# Phase 139.4 / 152.7 / 157.B — Kconfig surfaced under
 # `Application Configuration → External Modules → nano-ros`.
 #
 # 152.7 — promoted free-form `string` knobs to `choice` so
 # `make menuconfig` drives Cargo `--features` cleanly via the
 # matching `CONFIG_NROS_RMW_*` / `CONFIG_NROS_ROS_*` symbols read
 # by the sibling `Makefile`.
+#
+# 157.B — this file is the integration shell's own Kconfig,
+# discovered by NuttX once symlinked to `apps/external/nano-ros/`
+# AND the Phase 157.C staging script has copied
+# `external-Kconfig.in` to `apps/external/Kconfig` (which
+# osource-globs every `apps/external/*/Kconfig`). Example apps
+# (apps/external/nano-ros-talker-c/Kconfig etc.) are discovered
+# as separate apps/external/ siblings via that same glob. Example
+# Kconfigs depend on NROS_C_API / NROS_CPP_API (declared below)
+# so menuconfig only shows examples whose host API is enabled.
 
 config NROS
     bool "nano-ros ROS 2 client"

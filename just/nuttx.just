@@ -95,8 +95,72 @@ build-fixtures:
     # nros-nuttx-ffi via cargo directly).
     echo "  ↷ nuttx C/C++ cmake examples skipped — see Phase 140 follow-up"
 
+# Phase 157.C — stage the integration shell + every C/C++ example
+# under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
+# then run `make` from a pre-configured NuttX kernel tree. Exercises
+# the apps/external/*/Make.defs + apps/external/*/Kconfig discovery
+# path that the cmake fixtures (`build-fixtures`) bypass.
+#
+# Requires the user to have run a NuttX board configure first
+# (e.g. `./tools/configure.sh boards/arm/qemu/qemu-armv7a/nsh`
+# from $NUTTX_DIR). Without that the recipe skips cleanly.
+build-fixtures-make:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+        echo "NuttX skip: arm-none-eabi-gcc not found"; exit 0
+    fi
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    nuttx_apps_dir="${NUTTX_APPS_DIR:-$(pwd)/third-party/nuttx/nuttx-apps}"
+    if [ ! -d "$nuttx_dir/arch" ]; then
+        echo "NuttX skip: NUTTX_DIR=$nuttx_dir not found"; exit 0
+    fi
+    if [ ! -d "$nuttx_apps_dir" ]; then
+        echo "NuttX skip: NUTTX_APPS_DIR=$nuttx_apps_dir not found"; exit 0
+    fi
+    if [ ! -f "$nuttx_dir/.config" ]; then
+        echo "NuttX skip: $nuttx_dir/.config missing — run \`./tools/configure.sh boards/...\` first" ; exit 0
+    fi
+    if ! command -v kconfig-tweak >/dev/null 2>&1; then
+        echo "NuttX skip: kconfig-tweak not on PATH (install kconfig-frontends)"; exit 0
+    fi
+    echo "Staging nano-ros external apps into $nuttx_apps_dir/external/..."
+    scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir"
+    # Force apps/Kconfig regeneration so mkkconfig.sh picks up the
+    # newly-staged apps/external/Kconfig.
+    rm -f "$nuttx_apps_dir/Kconfig"
+    # First pass: olddefconfig from kernel. Drives apps preconfig
+    # (regenerates apps/Kconfig with the new NROS_* symbols), then
+    # drops NROS_* from .config because they're new symbols with
+    # default n.
+    echo "Pass 1/2: regenerate apps/Kconfig + propagate new symbols"
+    ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
+    # Now enable every nano-ros knob in .config.
+    config="$nuttx_dir/.config"
+    kconfig-tweak --file "$config" --enable NROS
+    kconfig-tweak --file "$config" --enable NROS_C_API
+    kconfig-tweak --file "$config" --enable NROS_CPP_API
+    for lang in C CPP; do
+        for ex in TALKER LISTENER SERVICE_SERVER SERVICE_CLIENT ACTION_SERVER ACTION_CLIENT; do
+            kconfig-tweak --file "$config" --enable "NROS_EXAMPLE_${ex}_${lang}"
+        done
+    done
+    # Pass 2: olddefconfig again so the just-enabled knobs settle
+    # any newly-visible dependencies.
+    echo "Pass 2/2: olddefconfig with NROS enabled"
+    ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
+    # Final build. Single binary contains all 12 examples as
+    # built-in commands (nuttx_c_talker / nuttx_cpp_listener / ...).
+    echo "Building NuttX with all nano-ros examples enabled..."
+    ( cd "$nuttx_dir" && make )
+    echo "NuttX external-app build complete. Binary: $nuttx_dir/nuttx"
+
 # Build every NuttX tier: core artifacts, examples, and test fixtures.
-build-all: build build-examples build-fixtures
+# Phase 157.C — `build-fixtures-make` runs alongside `build-fixtures`
+# (cmake smoke) so both paths exercise: cmake smoke catches QEMU /
+# Rust shim regressions fast, make path catches NuttX Kconfig /
+# Application.mk / EXTRA_LIBS integration bugs the cmake path can't.
+build-all: build build-examples build-fixtures build-fixtures-make
     @echo "NuttX build-all completed."
 
 # Run NuttX QEMU integration tests

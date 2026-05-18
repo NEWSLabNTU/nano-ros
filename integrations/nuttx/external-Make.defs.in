@@ -1,0 +1,21 @@
+############################################################################
+# Phase 157.B — apps/external/Make.defs template.
+#
+# NuttX's top-level apps/Makefile globs `$(APPDIR)/*/Make.defs` to
+# discover application categories. For external apps, NuttX expects
+# a single apps/external/Make.defs at the category root that pulls
+# in every sub-app's Make.defs (`apps/external/<app>/Make.defs`).
+#
+# Phase 157.C's staging script copies THIS file (verbatim — no
+# `.in` placeholder substitution today) to
+# `$NUTTX_APPS_DIR/external/Make.defs` when staging the nano-ros
+# integration shell + example apps as `apps/external/nano-ros-*`
+# siblings. The `wildcard` include picks up the shell + every
+# example automatically — no per-example wiring in this file.
+#
+# If NuttX upstream ever ships its own canonical apps/external/
+# Make.defs, the staging script SHOULD detect + skip this copy.
+# Today the directory is empty in stock NuttX apps tree.
+############################################################################
+
+include $(wildcard $(APPDIR)/external/*/Make.defs)

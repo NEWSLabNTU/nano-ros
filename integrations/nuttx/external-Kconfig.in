@@ -1,0 +1,22 @@
+# Phase 157.B — apps/external/Kconfig template.
+#
+# NuttX's apps/Kconfig sources every apps/<category>/Kconfig at
+# preconfig time. For external apps, NuttX expects a single
+# apps/external/Kconfig that osource's each sub-app's Kconfig.
+#
+# Phase 157.C's staging script copies this file verbatim to
+# `$NUTTX_APPS_DIR/external/Kconfig` so menuconfig surfaces the
+# integration shell (NROS) + every example
+# (NROS_EXAMPLE_<NAME>_<LANG>) under
+# `Application Configuration > External Modules`.
+#
+# `osource` (lowercase-s) is NuttX kconfig's optional-source
+# directive that silently no-ops if the path glob matches zero
+# files — keeps the menuconfig run from erroring on a tree where
+# only some examples were symlinked.
+
+menu "External Modules"
+
+osource "$APPSDIR/external/*/Kconfig"
+
+endmenu
