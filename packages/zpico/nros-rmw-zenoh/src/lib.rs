@@ -75,7 +75,7 @@ pub use zpico::{
 pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,
     SUBSCRIBER_BUFFER_SIZE, ZenohPublisher, ZenohRmw, ZenohServiceClient, ZenohServiceServer,
-    ZenohSession, ZenohSubscriber, ZenohTransport,
+    ZenohSession, ZenohSubscriber, ZenohTransport, overflow_drops_total,
 };
 
 // Re-export std-only executor wake functions

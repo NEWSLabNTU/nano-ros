@@ -223,7 +223,7 @@ impl SubscriberBufferRef {
 /// full-ring or oversized-payload drop the C shim still calls us so
 /// the waker observes the arrival attempt.
 extern "C" fn subscriber_notify_callback(
-    _len: usize,
+    len: usize,
     _attachment: *const u8,
     _attachment_len: usize,
     ctx: *mut core::ffi::c_void,
@@ -231,6 +231,18 @@ extern "C" fn subscriber_notify_callback(
     let buffer_index = ctx as usize;
     if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
         return;
+    }
+
+    // Phase 160.L.2 — C shim signals an oversized-payload drop by
+    // calling notify with `len > SUBSCRIBER_BUFFER_SIZE` and a NULL
+    // payload (see `zpico.c:595-599`). Bump a per-subscriber counter
+    // so user code can observe drops that would otherwise be silent
+    // — the test harness asserts on this in
+    // `test_zenoh_overflow_detection`, and it doubles as a
+    // user-visible signal that the subscriber's QoS / buffer sizing
+    // is wrong for the producer's payload size.
+    if len > SUBSCRIBER_BUFFER_SIZE {
+        OVERFLOW_DROPS.fetch_add(1, Ordering::Relaxed);
     }
 
     let buf_ref = SubscriberBufferRef {
@@ -244,6 +256,23 @@ extern "C" fn subscriber_notify_callback(
     // Wake the executor spin loop (if waiting).
     #[cfg(feature = "std")]
     signal_executor_wake();
+}
+
+/// Cumulative count of incoming samples that exceeded
+/// `SUBSCRIBER_BUFFER_SIZE` and were therefore dropped by the C shim
+/// before they could land in any subscriber ring. Bumped by
+/// [`subscriber_notify_callback`] when the C side signals an
+/// oversized-payload drop. Process-wide counter — every subscriber
+/// shares the same atomic, which mirrors how the C shim drops are
+/// reported (the notify callback doesn't carry a subscriber-specific
+/// slot index past the `ctx` we already use for waker dispatch).
+static OVERFLOW_DROPS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+
+/// Read the cumulative overflow-drop count. Useful for tests that
+/// want to assert on the silent-drop path; production code should
+/// size the subscriber buffer up-front.
+pub fn overflow_drops_total() -> u32 {
+    OVERFLOW_DROPS.load(Ordering::Relaxed)
 }
 
 // ============================================================================

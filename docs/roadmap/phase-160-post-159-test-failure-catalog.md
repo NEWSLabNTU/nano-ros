@@ -546,7 +546,7 @@ test_threadx_linux_dds_rust_talker_to_listener_e2e
 Per-platform dust-dds bring-up. NuttX side may share root cause
 with B (Zephyr A9 DDS).
 
-### L. Native + misc (8 tests) → **7/8 CLOSED 2026-05-19**
+### L. Native + misc (8 tests) → **CLOSED 2026-05-19 (8/8)**
 
 ```
 test_c_xrce_listener_builds                                      ✓ FIXED (160.L)
@@ -557,7 +557,7 @@ test_c_xrce_talker_starts                                        ✓ FIXED (160.
 test_native_talker_listener_communication::lang_1_Language__C    ✓ FIXED (160.L.1)
 test_native_talker_listener_communication::lang_2_Language__Cpp  ✓ FIXED (160.L.1)
 test_qos_reliable_delivery (and other QoS tests)                 ✓ verified PASS
-test_zenoh_overflow_detection                                    ✗ open (160.L.2)
+test_zenoh_overflow_detection                                    ✓ FIXED (160.L.2)
 ```
 
 **c_xrce_api family (5/5 PASS).** Root cause: Phase 154 dropped
@@ -598,18 +598,27 @@ talker hits zenoh-pico's `g_spin_cv` deadline path. Fix: route
 `nros_platform_clock_ms` so the deadline epoch aligns with what
 `nros_platform_condvar_wait_until` expects.
 
-**Open (160.L.2).** `test_zenoh_overflow_detection`: receiver
-expects to see `Receive error` printf when talker sends 2048 B
-payloads against a 512 B subscriber buffer. Currently shows
-`RECV_DONE: received=0 valid=0 invalid=0` — listener gets 0
-messages AND 0 errors. Not gated on the L.1 timer fix (talker
-process is the Rust `stress-zenoh` bench binary, which doesn't
-use C-side spin_period). Likely zenoh-pico now silently drops
-oversized incoming frames instead of surfacing the
-`MessageTooLarge` upstream. Defer to a follow-up phase that
-audits zenoh-pico's `_z_unicast_recv_t_msg` error-surface path
-+ updates the test pattern to match whatever the real error
-shape is today.
+**`test_zenoh_overflow_detection` (160.L.2 — PASS).** The
+original `Receive error` printf assertion never matched because
+oversized payloads are dropped INSIDE the zenoh-pico C shim
+(`packages/zpico/zpico-sys/c/zpico/zpico.c:595`: `if (payload_len
+> r->payload_stride)` → call `notify` with NULL payload + return
+without advancing `ring_tail`). Drops never reached the Rust
+executor ring, so `try_recv_raw` returned `Ok(None)` forever
+and never produced an `Err` to log. The test originally
+expected zenoh-pico to surface `MessageTooLarge` upstream;
+post-Phase-124 the silent-drop path was the only behaviour.
+
+Fix: wire a process-wide `OVERFLOW_DROPS: AtomicU32` counter
+that the `subscriber_notify_callback` bumps whenever the C
+shim signals an oversized drop (`len > SUBSCRIBER_BUFFER_SIZE`
++ NULL payload + ctx is a valid subscriber). Expose via
+`nros_rmw_zenoh::overflow_drops_total()`. `stress-zenoh`'s
+`run_listener` prints `overflow_drops=<N>` in the `RECV_DONE:`
+summary; the test parses + asserts `overflow_drops >= 1`.
+Production code paths see zero overhead (one fetch_add per
+oversized-drop on the C-callback edge — only fires when a
+real overflow happens). Verified: 1/1 PASS in 15 s.
 
 ### M. Integration shells (3 tests) → **phantom — already `[SKIPPED]`**
 
@@ -647,7 +656,7 @@ No action needed.
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
 | J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
-| L. Native + c_xrce + qos | 8 | c_xrce: Corrosion CRATE_TYPES misuse; talker: alias-TU `z_clock_now` epoch mismatch (REALTIME vs MONOTONIC) | **7/8 CLOSED 160.L + 160.L.1** — 160.L.2 (`zenoh_overflow_detection`) remains |
+| L. Native + c_xrce + qos | 8 | c_xrce: Corrosion CRATE_TYPES misuse; talker: alias-TU `z_clock_now` epoch mismatch (REALTIME vs MONOTONIC); overflow: silent-drop counter unsurfaced | **CLOSED 160.L + 160.L.1 + 160.L.2** (8/8) |
 | M. Integration shells | 3 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | skipped | 12 | env (expected) | OK |
 | **total** | **66** unique (63 + 3 retries-only) | | |

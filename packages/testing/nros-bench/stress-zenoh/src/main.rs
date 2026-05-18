@@ -210,11 +210,13 @@ fn run_listener() {
     }
 
     let elapsed = start.elapsed();
+    let overflow_drops = nros_rmw_zenoh::overflow_drops_total();
     println!(
-        "RECV_DONE: received={} valid={} invalid={} elapsed_ms={}",
+        "RECV_DONE: received={} valid={} invalid={} overflow_drops={} elapsed_ms={}",
         received,
         valid,
         invalid,
+        overflow_drops,
         elapsed.as_millis()
     );
 }

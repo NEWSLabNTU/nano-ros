@@ -66,7 +66,7 @@ pub use crate::zpico::ZenohId;
 pub use publisher::ZenohPublisher;
 pub use service::{ZenohServiceClient, ZenohServiceServer};
 pub use session::ZenohSession;
-pub use subscriber::ZenohSubscriber;
+pub use subscriber::{overflow_drops_total, ZenohSubscriber};
 pub use transport::{ZenohRmw, ZenohTransport};
 
 // ============================================================================

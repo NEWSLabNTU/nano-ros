@@ -177,11 +177,29 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
         valid_count, listener_output,
     );
 
-    // Verify that the MessageTooLarge error was actually reported
-    let overflow_errors = count_pattern(&listener_output, "Receive error");
+    // Phase 160.L.2 — overflow is detected silently inside the zenoh-pico
+    // C shim (`zpico.c:595`: `payload_len > payload_stride` → call
+    // `notify` with NULL payload + don't advance ring tail) and surfaced
+    // through `nros_rmw_zenoh::overflow_drops_total()`, a process-wide
+    // atomic the subscriber-notify callback bumps when the oversized
+    // path fires. The stress-test listener prints
+    // `overflow_drops=<N>` in the `RECV_DONE:` summary; the test asserts
+    // the counter advanced for THIS run. Pre-Phase-160.L.2 the test
+    // checked for a `Receive error` printf, which the
+    // `try_recv_raw` path never emits — drops never reach the executor
+    // ring at all, so there is no `Err` to log.
+    let overflow_drops = listener_output
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("RECV_DONE:")
+                .and_then(|tail| tail.split_whitespace().find_map(|tok| tok.strip_prefix("overflow_drops=")))
+                .and_then(|n| n.parse::<u32>().ok())
+        })
+        .unwrap_or(0);
     assert!(
-        overflow_errors >= 1,
-        "Expected at least 1 overflow error (MessageTooLarge), got 0.\nOutput:\n{}",
+        overflow_drops >= 1,
+        "Expected overflow_drops >= 1 in RECV_DONE summary, got {}.\nOutput:\n{}",
+        overflow_drops,
         listener_output,
     );
 }
