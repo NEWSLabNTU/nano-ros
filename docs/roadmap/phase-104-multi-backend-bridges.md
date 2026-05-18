@@ -717,15 +717,17 @@ follow-up items that finish the rclcpp-aligned story:
       (cbindgen output).
 
 - [x] **104.C.10 — Rust example refactor: bridge.**
-      `examples/native/rust/bridge/uorb-to-zenoh/`.
-      Subscribes to PX4 SITL uORB topics via
-      `nros-rmw-uorb` (out of scope for this phase — stub
-      until 104.D); republishes onto Zenoh keys via
-      `nros-rmw-zenoh`. Demonstrates the multi-Node + per-
-      Node SchedContext pattern. Topic-name translation
-      table as a `phf` perfect-hash.
+      Landed as `examples/bridges/native-rust-zenoh-to-dds/`
+      (zenoh ↔ dust-dds topology, not the originally-planned
+      uorb-to-zenoh). uORB backend was retired ("won't-do" per
+      `book/src/internals/rmw-backends.md`'s host-language
+      policy), so the cross-RMW demonstration switched to two
+      shipping backends (zenoh-pico via `nros-rmw-zenoh` +
+      dust-dds via `nros-rmw-dds`). Demonstrates multi-Node +
+      per-Node SchedContext pattern + topic translation via
+      a static const table.
       **Files:**
-      `examples/native/rust/bridge/uorb-to-zenoh/`.
+      `examples/bridges/native-rust-zenoh-to-dds/`.
 
 #### Thread D — Validation
 
@@ -760,10 +762,10 @@ follow-up items that finish the rclcpp-aligned story:
       **Files:**
       `packages/testing/nros-tests/tests/bridge_xrce_to_dds.rs`.
 
-- [ ] **104.D.5 — Decoupling CI guard.** Already shipped
-      as `just check-decoupling` (Phase 104.A.4). Once
-      Threads B + C land, add to the top-level `just
-      check` aggregate so CI enforces.
+- [x] **104.D.5 — Decoupling CI guard.** `just
+      check-decoupling` (Phase 104.A.4) shipped + now
+      wired into the top-level `just check` aggregate
+      (justfile:175). CI enforces.
       **Files:** `justfile`.
 
 - [ ] **104.D.6 — Book chapter.**

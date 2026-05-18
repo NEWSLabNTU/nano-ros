@@ -172,7 +172,7 @@ format: format-workspace native::format format-c format-cpp format-python
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 check: \
     check-workspace check-workspace-embedded check-workspace-features \
-    check-platform-abi-mirror \
+    check-platform-abi-mirror check-decoupling \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
