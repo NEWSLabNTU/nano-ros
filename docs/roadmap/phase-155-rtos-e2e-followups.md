@@ -82,7 +82,33 @@ candidates:
 
 **Acceptance.** All three RISC-V Rust `rtos_e2e` variants pass.
 
-## Issue 155.B — FreeRTOS C `nros_support_init -1`
+## Issue 155.B — FreeRTOS C `nros_support_init -1` ✅ FIXED 2026-05-18
+
+**Root cause** (per the 155.B.2/.3 subitem already on this doc):
+`nros-rmw-cffi`'s `ret_from_error` catch-all `_ => NROS_RMW_RET_ERROR`
+swallowed `ConnectionFailed` / `Disconnected` from
+`ZpicoError -> TransportError`, surfacing as
+`Backend("rmw_ret error")` to the Rust caller and finally
+`NROS_RET_ERROR (-1)` at the C log.
+
+**Fix** (landed in earlier sibling commits): added
+`NROS_RMW_RET_CONNECTION_FAILED = -18`, taught
+`ret_from_error` to map both `ConnectionFailed | Disconnected
+→ -18`, and `error_from_ret` to decode `-18 →
+TransportError::ConnectionFailed`. End-to-end: zpico →
+ConnectionFailed → NROS_RMW_RET_CONNECTION_FAILED →
+ConnectionFailed → NROS_RET_NOT_FOUND at C-side log.
+
+**Verified this session** (after forcing C/C++ fixture rebuild
+— stale binaries from pre-fix compile masked the win):
+
+  FreeRTOS  × C × {pubsub, service, action} — 3/3 PASS
+  ThreadX-RISC-V × C   × {pubsub, service, action} — 3/3 PASS
+  ThreadX-RISC-V × C++ × {pubsub, service, action} — 3/3 PASS
+
+Acceptance reached. Below is the original triage for reference.
+
+## Issue 155.B — FreeRTOS C `nros_support_init -1` [original triage]
 
 **Symptom.** Every `rtos_e2e Platform__Freertos lang_2_Lang__C *`
 test prints:
