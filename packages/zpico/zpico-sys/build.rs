@@ -637,6 +637,21 @@ fn main() {
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
             .include(&nros_platform_cffi_include)
             .include(manifest_dir.join("c/zpico"))
+            // Phase 156 option B — on POSIX, zenoh-pico's
+            // `system/common/platform.h` picks `unix.h` (because
+            // `[platform.posix].defines` includes `ZENOH_LINUX`),
+            // which defines `_z_sys_net_socket_t = { int _fd; }`
+            // (4 bytes, passed by VALUE to `_z_send_tcp` /
+            // `_z_read_tcp`). The alias TU's network functions
+            // use a 32-byte opaque struct (`nros_zenoh_generic_platform.h`),
+            // which ABI-mismatches by-value socket args and
+            // corrupts every send. Skip the network aliases
+            // here; the upstream `src/system/unix/network.c`
+            // (added to `[platform.posix].extra_sources`) provides
+            // matching-shape TCP/UDP impls. Pointer-shaped
+            // aliases (threading/mutex/condvar/clock) stay
+            // active because pointer ABI is uniform across
+            // struct sizes.
             // Phase 129.D — `NROS_PLATFORM_ALIASES` unlocks the
             // alias TU's clock-variant + network wrappers, which
             // depend on the generic `z_clock_t = uint64_t` typedef
@@ -644,6 +659,9 @@ fn main() {
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
+        if use_posix {
+            alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
+        }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
         // already provides every `_z_task_*` symbol because the
         // `_z_task_t` layout embeds a `TX_THREAD` struct. Skip the

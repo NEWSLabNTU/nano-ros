@@ -359,6 +359,21 @@ typedef struct {
     uint8_t _opaque[NROS_ZP_NET_ENDPOINT_STORAGE_BYTES];
 } nros_zp_alias_endpoint_t;
 
+/* Phase 156 (option B) — POSIX consumers use zenoh-pico's
+ * upstream `src/system/unix/network.c` for the network impls
+ * so the `_z_sys_net_socket_t = { int _fd; }` (4 bytes, from
+ * `unix.h`) layout matches the by-value socket arg the call
+ * sites in `tx.c` push (4-byte int in one register). Without
+ * the skip, this alias TU defines the same symbols with a
+ * 32-byte opaque struct (from `nros_zenoh_generic_platform.h`),
+ * `--allow-multiple-definition` picks the wrong copy at
+ * link time, and `_z_send_tcp` reads garbage off the stack
+ * (`fd=0 (stdin)`, nonsense `len`, EAGAIN/ENOTSOCK on send).
+ * Pointer-shaped aliases (threading/mutex/condvar/clock)
+ * stay active on POSIX since pointer ABI is uniform across
+ * struct sizes. */
+#ifndef NROS_ZENOH_PLATFORM_USES_UNIX
+
 /* TCP. */
 int8_t _z_create_endpoint_tcp(void *ep, const uint8_t *address, const uint8_t *port) {
     return nros_platform_tcp_create_endpoint(ep, address, port);
@@ -485,6 +500,8 @@ void _z_socket_close(void *sock) {
 int8_t _z_socket_wait_event(void *peers, void *mutex) {
     return nros_platform_socket_wait_event(peers, mutex);
 }
+
+#endif /* NROS_ZENOH_PLATFORM_USES_UNIX — Phase 156 option B */
 
 /* Serial transport.
  *

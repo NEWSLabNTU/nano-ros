@@ -70,10 +70,29 @@ needs_errno_override = true
 
 [platform.posix]
 defines = ["ZENOH_GENERIC", "ZENOH_LINUX"]
-defines_kv = { ZENOH_DEBUG = "0" }
+# Phase 156 — `Z_FEATURE_MULTI_THREAD = 1` so
+# `zp_start_read_task` / `zp_start_lease_task` actually spawn
+# pthreads via `_z_task_init` (rather than returning -1
+# unconditionally). POSIX always has pthreads available; the
+# missing flag was leftover from an era where the alias TU
+# was assumed to handle threading singleton-style. Other
+# platforms (freertos-lwip / nuttx / threadx) already set
+# it; POSIX should too.
+defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
 include = ["system/common"]
 exclude = ["tests", "example"]
 extra_sources = [
+  # Phase 156 option B — compile zenoh-pico's upstream
+  # `system/unix/network.c` so the by-value socket TCP/UDP
+  # impls (using `unix.h`'s `_z_sys_net_socket_t = { int _fd; }`
+  # 4-byte struct) match the call-site ABI in `tx.c` /
+  # `link.c`. The alias TU's 32-byte opaque network
+  # functions are skipped on POSIX via the
+  # `NROS_ZENOH_PLATFORM_USES_UNIX` macro defined from
+  # `build.rs`. `unix/tls.c` already in extra_sources +
+  # calls `_z_open_tcp` etc. — now resolves against the
+  # native unix impls instead of the wrong-shape aliases.
+  { path = "{src}/system/unix/network.c" },
   { path = "{src}/system/unix/tls.c" },
 ]
 system_libs = ["pthread", "rt"]

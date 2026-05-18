@@ -178,6 +178,56 @@ panics with `nros_executor_node_init(...) -> -1` for the
 
 ## Work Items
 
+### 156.D Sub-bug B FIXED via Option B + missing Z_FEATURE_MULTI_THREAD (2026-05-18 fourth probe)
+
+Two changes landed Sub-bug B:
+
+1. **Option B implemented:**
+   - `platform_aliases.c`: wrap all network alias functions
+     (TCP / UDP-unicast / UDP-multicast / socket-helpers) in
+     `#ifndef NROS_ZENOH_PLATFORM_USES_UNIX`. Pointer-shaped
+     aliases (threading / mutex / condvar / clock / sleep /
+     random / malloc / time) stay active uniformly across
+     platforms because pointer ABI is uniform.
+   - `build.rs`: define `NROS_ZENOH_PLATFORM_USES_UNIX` when
+     `use_posix`, so the network alias section gets `#ifndef`-
+     elided.
+   - `zenoh_platforms.toml [platform.posix].extra_sources`:
+     add `system/unix/network.c` so zenoh-pico's upstream
+     POSIX impls (matching `_z_sys_net_socket_t = { int _fd; }`
+     4-byte struct from unix.h) compile in + provide the
+     real TCP/UDP impls.
+
+2. **Missing `Z_FEATURE_MULTI_THREAD = 1` on POSIX:**
+   `[platform.posix].defines_kv` was setting only
+   `ZENOH_DEBUG = 0`. Other platforms (freertos-lwip /
+   nuttx / threadx) all set `Z_FEATURE_MULTI_THREAD = 1`.
+   POSIX's missing flag fell to zenoh-pico's `config.h`
+   default `0`, which makes `zp_start_read_task` /
+   `zp_start_lease_task` return `-1` unconditionally
+   (`api.c:2152-2164`). `zpico_open` mapped that to
+   `ZPICO_ERR_TASK` (-4). Fix: add `Z_FEATURE_MULTI_THREAD = "1"`
+   to the kv set — POSIX always has pthreads.
+
+**Verification trace (zenoh-min minimal repro after both
+fixes):**
+
+```
+opened
+```
+
+Plus tshark on loopback showed full zenoh handshake:
+InitSyn → InitAck → OpenSyn → OpenAck → KeepAlive
+sequence completed. Verified zenohd accepted the session.
+
+**Full bridge demo:** primary opens but ingress
+`node_builder("ingress").rmw("zenoh").build()` returns
+`Transport(Backend("rmw_ret error"))` — that's a SEPARATE
+issue (zenoh-pico's `g_session` is a process-singleton; the
+bridge's two-Node-same-RMW pattern needs the session-cache
+to hit instead of opening a second session). Tracked
+under a new sub-item below — not part of Sub-bug B.
+
 ### 156.C ROOT CAUSE — ABI mismatch in platform_aliases.c on POSIX (2026-05-18 third probe, gdb + tshark + per-layer trace)
 
 Localised + fixed the two visible failure surfaces, but the

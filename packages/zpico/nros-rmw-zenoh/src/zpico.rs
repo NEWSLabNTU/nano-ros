@@ -410,20 +410,11 @@ impl Context {
                     properties.len(),
                 )
             };
-            // Phase 156.4 diagnostic — env-gated.
-            #[cfg(feature = "std")]
-            if std::env::var_os("NROS_RMW_TRACE_OPEN").is_some() {
-                std::eprintln!("[zpico] init_with_config ret={ret}");
-            }
             if ret < 0 {
                 return Err(ZpicoError::from_code(ret));
             }
 
             let ret = unsafe { zpico_open() };
-            #[cfg(feature = "std")]
-            if std::env::var_os("NROS_RMW_TRACE_OPEN").is_some() {
-                std::eprintln!("[zpico] zpico_open ret={ret}");
-            }
             if ret < 0 {
                 return Err(ZpicoError::from_code(ret));
             }
