@@ -255,6 +255,15 @@ function(nros_generate_interfaces target)
     file(GLOB_RECURSE _generated_headers "${_output_dir}/*.hpp")
     file(GLOB_RECURSE _generated_rs_files "${_output_dir}/*.rs")
 
+    # Propagate the per-target generated-Rust file list to the caller
+    # scope so a sibling nros_generate_interfaces() call that lists
+    # this target under DEPENDENCIES can find it (the dep walk at
+    # line ~318 below reads `${_dep}_GENERATED_RS_FILES`). Without
+    # this set the cross-package FFI include!() chain was empty and
+    # every consumer that referenced a type from a sibling package
+    # failed to compile.
+    set(${target}_GENERATED_RS_FILES "${_generated_rs_files}" PARENT_SCOPE)
+
     if(NOT _generated_headers)
       message(FATAL_ERROR
         "nros-codegen produced no .hpp files for ${target} in ${_output_dir}")
