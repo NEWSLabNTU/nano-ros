@@ -263,6 +263,11 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # the security plugin tree we don't compile (DDS_HAS_SECURITY=0).
     # Drop matching ddsi sources.
     list(FILTER _cdds_ddsi EXCLUDE REGEX "ddsi_(security|handshake|omg_security)[^/]*\\.c$")
+    # ddsi_vnet.c (virtual-network locator transport) uses POSIX
+    # `struct sockaddr::sa_data` which Zephyr's `struct sockaddr`
+    # renames to `data`. We don't use vnet transport on the embedded
+    # path; drop the TU.
+    list(FILTER _cdds_ddsi EXCLUDE REGEX "ddsi_vnet\\.c$")
 
     zephyr_library_sources(
         ${_cdds_ddsrt_top}
