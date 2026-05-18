@@ -750,11 +750,28 @@ follow-up items that finish the rclcpp-aligned story:
       **Files:**
       `examples/native/c/bridge/xrce-to-dds/{CMakeLists.txt,README.md,src/main.c,.gitignore}`.
 
-- [ ] **104.D.2 — C++ bridge example.**
-      `examples/native/cpp/bridge/zenoh-to-cyclonedds/`.
-      Demonstrates the C++ builder + lambda subscription.
+- [x] **104.D.2 — C++ bridge example.**
+      `examples/native/cpp/bridge/zenoh-to-dds/` landed.
+      Demonstrates the C++ 104.C.9 `NodeBuilder` chain
+      (`executor.node_builder("ingress").rmw("zenoh").build(...)`)
+      + per-tick `try_recv_raw` poll + `publish_raw` republish
+      on the egress DDS node. Stub `ChatterString` type with
+      `TYPE_NAME` / `TYPE_HASH` / `SERIALIZED_SIZE_MAX` —
+      keeps the example codegen-free since the bridge forwards
+      verbatim CDR bytes. Topology switched from the spec's
+      zenoh-to-cyclonedds to zenoh-to-dds because Cyclone DDS
+      needs a one-time `just cyclonedds setup` (not on the
+      default install path); the Cyclone variant is a 3-line
+      change documented in the README. Lambda-callback C++
+      subscription deferred — nros-cpp's Subscription<M>
+      surface is poll-only today; the bridge's poll loop
+      achieves the same end-to-end behaviour with one extra
+      check per `spin_once`. Build verified clean (`cmake
+      -B build -S . && cmake --build build`); `nm` confirms
+      both `nros_rmw_zenoh_register` + `nros_rmw_dds_register`
+      land in the final binary.
       **Files:**
-      `examples/native/cpp/bridge/zenoh-to-cyclonedds/`.
+      `examples/native/cpp/bridge/zenoh-to-dds/{CMakeLists.txt,README.md,src/main.cpp,.gitignore}`.
 
 - [ ] **104.D.3 — Bridge E2E test (uORB→Zenoh).**
       `packages/testing/nros-tests/tests/bridge_uorb_to_zenoh.rs`.
