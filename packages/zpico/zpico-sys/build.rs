@@ -1348,6 +1348,15 @@ fn build_c_shim(
     // Include paths
     build.include(include_dir);
     build.include(zenoh_pico_include);
+    // Phase 104.D.3 — zpico.c #includes <nros/platform_net.h>
+    // which lives in the nros-platform-cffi include set. Bare-
+    // metal builds reach it via the unified-build path in
+    // build_zenoh_pico_unified (which applies plat.include_paths
+    // from zenoh_platforms.toml); the POSIX shim build bypasses
+    // that loop, so add the header dir explicitly. `c_dir` is
+    // `<repo>/packages/zpico/zpico-sys/c`; the cffi crate sits
+    // three levels up under `packages/core/nros-platform-cffi/`.
+    build.include(c_dir.join("../../../core/nros-platform-cffi/include"));
 
     // Core shim source
     build.file(c_dir.join("zpico/zpico.c"));

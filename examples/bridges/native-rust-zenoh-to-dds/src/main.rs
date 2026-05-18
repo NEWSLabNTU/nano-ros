@@ -43,7 +43,11 @@ fn main() {
 
     info!("=== Phase 104 bridge: Zenoh → DDS ===");
 
-    let cfg = ExecutorConfig::default()
+    // Phase 104.D.3 — read locator + mode from env so callers
+    // (the E2E test, ad-hoc users) can point the bridge at any
+    // zenohd instance without rebuilding. `default()` would
+    // hard-code `tcp/127.0.0.1:7447` and miss NROS_LOCATOR.
+    let cfg = ExecutorConfig::from_env()
         .node_name("bridge_primary")
         .namespace("/");
 

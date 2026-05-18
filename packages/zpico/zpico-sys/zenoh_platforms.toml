@@ -78,6 +78,16 @@ extra_sources = [
 ]
 system_libs = ["pthread", "rt"]
 mbedtls = "pkg-config"
+# Phase 154 — `nros-platform-cffi/include` carries
+# `<nros/platform_net.h>` which the zpico.c TU pulls in for
+# the multicast / UDP shim glue. Bare-metal already carries
+# this path; POSIX was missing it, so `cargo build` on
+# anything that consumes zpico-sys via cc-rs (e.g. the
+# bridge examples) failed with "platform_net.h: No such
+# file or directory". Phase 104.D.3.
+include_paths = [
+  "{nros}/../../core/nros-platform-cffi/include",
+]
 
 [platform.zephyr]
 # Zephyr's build system compiles zenoh-pico itself; this block
