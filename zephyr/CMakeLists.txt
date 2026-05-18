@@ -239,9 +239,13 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/random_zephyr.c
     )
 
-    # ddsi: protocol engine. ddsc: public C API.
+    # ddsi: protocol engine. ddsc: public C API. `.part.c` files
+    # are partials meant to be #include'd from sibling TUs, not
+    # compiled directly — drop them from the source list.
     file(GLOB _cdds_ddsi ${CYCLONEDDS_DIR}/src/core/ddsi/src/*.c)
     file(GLOB _cdds_ddsc ${CYCLONEDDS_DIR}/src/core/ddsc/src/*.c)
+    list(FILTER _cdds_ddsi EXCLUDE REGEX "\\.part\\.c$")
+    list(FILTER _cdds_ddsc EXCLUDE REGEX "\\.part\\.c$")
 
     zephyr_library_sources(
         ${_cdds_ddsrt_top}
@@ -256,6 +260,10 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         ${CYCLONEDDS_DIR}/src/core/include
         ${CYCLONEDDS_DIR}/src/core/ddsc/include
         ${CYCLONEDDS_DIR}/src/core/ddsi/include
+        # Private headers (sockets_priv.h, threads_priv.h) live alongside
+        # their corresponding .c files in ddsrt's src/ tree and are
+        # included via `"name.h"` from sibling TUs. Expose the dir.
+        ${CYCLONEDDS_DIR}/src/ddsrt/src
     )
 
     # Trim Cyclone optional features that drag in host-toolchain deps.
