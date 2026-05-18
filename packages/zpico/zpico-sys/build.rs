@@ -629,7 +629,13 @@ fn main() {
     // pairs it with disabling the matching symbols in
     // zpico-platform-shim or relies on `--allow-multiple-definition`
     // for one-cycle co-existence.
-    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() {
+    // Phase 154 — FreeRTOS pulls vendor `system/freertos/system.c` +
+    // `system/freertos/lwip/network.c` which already provide `z_malloc`
+    // / `_z_task_*` / `_z_open_tcp` / etc. with the matching small-
+    // socket-struct ABI. Compiling the alias TU on top would emit
+    // duplicate symbols at link. Skip on FreeRTOS — vendor src is
+    // the single source of truth there.
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = manifest_dir.join("../../core/nros-platform-cffi/include");
         let mut alias_build = cc::Build::new();
