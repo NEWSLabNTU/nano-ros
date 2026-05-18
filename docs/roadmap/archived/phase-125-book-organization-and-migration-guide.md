@@ -1,5 +1,13 @@
 # Phase 125 — Book organization + ROS 2 migration path
 
+> **Archived 2026-05-18 — closed.** 9/0 checkbox ratio. Status
+> self-declares "Source reorganization landed 2026-05-14.
+> Navigation, ROS 2 setup comparison, migration-guide
+> scaffold, link hygiene, and the first platform/debug split
+> are complete." Remaining work (incremental polish of
+> individual platform pages) tracked as in-flight docs work,
+> not a phase-scoped item.
+
 **Goal.** Rework the mdBook so an experienced ROS 2 user can move
 from first install to a working nano-ros node without reading
 implementation internals first. The book should explain what changes
