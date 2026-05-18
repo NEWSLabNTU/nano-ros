@@ -60,16 +60,33 @@ if(CONFIG_NROS_RMW_ZENOH)
         "${ZENOH_PICO_DIR}/src/utils/*.c"
         "${ZENOH_PICO_DIR}/src/system/common/*.c"
     )
-    # Zephyr platform: none of zenoh-pico's src/system/zephyr/*.c is compiled.
-    # - system.c (clock/memory/sleep/random/threading/time) is replaced by
-    #   nros-platform-zephyr → zpico-platform-shim.
-    # - network.c (TCP/UDP/multicast) is replaced by nros-platform-zephyr's
-    #   net.rs module (Phase 80 network unification) → zpico-platform-shim's
-    #   network feature forwarders.
-    # Both replacements link in via the Rust staticlib produced from
-    # nros-c / nros-cpp / rustapp.
-
-    zephyr_library_sources(${_zenoh_pico_sources})
+    # Zephyr platform: system.c (clock/memory/sleep/random/threading/time)
+    # is replaced by the alias TU (`packages/zpico/zpico-sys/c/zpico/
+    # platform_aliases.c`) compiled inside the cargo-built Rust
+    # staticlib (`librustapp.a` / `libnros_c.a`). That TU forwards each
+    # `_z_*` to the canonical `nros_platform_*` ABI provided by
+    # `nros-platform-zephyr`. Phase 129 retired `zpico-platform-shim`;
+    # the alias TU is the single replacement provider.
+    #
+    # Phase 160.C — network.c (TCP/UDP/multicast) MUST come from
+    # zenoh-pico's `src/system/zephyr/network.c`, NOT from the alias
+    # TU. The alias TU's `_z_open_tcp` / `_z_send_tcp` / etc. see a
+    # generic 32-byte `_z_sys_net_socket_t` opaque (from
+    # `nros_zenoh_generic_platform.h`); the Zephyr-side `tx.c` /
+    # `link.c` (compiled here under `ZENOH_ZEPHYR`) see the
+    # 4-byte `{int _fd}` socket from `system/platform/zephyr.h`.
+    # The endpoint layouts diverge too (alias 16 B opaque vs.
+    # `{struct addrinfo*}` 8 B). The size mismatch propagates
+    # through the by-value endpoint arg and the by-pointer socket
+    # arg, corrupting the connect-time state → `Transport(
+    # ConnectionFailed)` on every Zephyr Rust app at session open.
+    # Same family as Phase 159 NuttX (`_z_send_tcp` ABI gate). The
+    # paired build.rs change extends `NROS_ZENOH_PLATFORM_USES_UNIX`
+    # to zephyr so the alias TU's network section is `#ifndef`-elided
+    # at cargo compile time — without that, both providers land and
+    # the alias version wins under `--allow-multiple-definition`.
+    zephyr_library_sources(${_zenoh_pico_sources}
+        "${ZENOH_PICO_DIR}/src/system/zephyr/network.c")
 
     # zenoh-pico include directory
     zephyr_include_directories(${ZENOH_PICO_DIR}/include)

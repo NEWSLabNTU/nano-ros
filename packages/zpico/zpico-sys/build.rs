@@ -683,7 +683,15 @@ fn main() {
         // state masked it by leaving stale objects from earlier
         // builds where the define was effectively present
         // (pre-Phase 156 wiring).
-        if use_posix || use_nuttx {
+        if use_posix || use_nuttx || use_zephyr {
+            // Phase 160.C — zephyr added. zephyr/CMakeLists.txt now
+            // compiles `zenoh-pico/src/system/zephyr/network.c`
+            // alongside `tx.c` / `link.c`, so the `_z_open_tcp` /
+            // `_z_send_tcp` impls match the 4-byte
+            // `_z_sys_net_socket_t = {int _fd}` from
+            // `system/platform/zephyr.h`. Gate the alias TU's 32-B
+            // generic-opaque versions OFF so they don't shadow at link
+            // (same ABI mismatch root cause as Phase 159 NuttX).
             alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
         }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
