@@ -168,6 +168,96 @@ elseif(CONFIG_NROS_RMW_DDS)
     # zpico-sys include dir so the compile succeeds.
     zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include)
 
+elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+    # -------------------------------------------------------------------------
+    # Cyclone DDS RMW backend — Phase 117 + ASI Phase 1D
+    # -------------------------------------------------------------------------
+    # Compiles the pinned Cyclone DDS submodule (tag 0.10.5) plus the
+    # standalone nros-rmw-cyclonedds C++ register glue directly into the
+    # Zephyr app library. No nros-rmw-cyclonedds CMake subproject step —
+    # the standalone project at packages/dds/nros-rmw-cyclonedds/ is a
+    # POSIX-host build path; we replicate the relevant compile here.
+    #
+    # Foundation only. Iteration items deferred to first real build:
+    #   - platform-shim audit (getifaddrs, pthread_setname_np, IGMP) in
+    #     nros_platform_zephyr_shims.c
+    #   - L4 wait_for_network hookup (zpico_zephyr helper, like dust-dds)
+    #   - link-time symbol gap fixes
+    #   - ROM/RAM trimming for S32Z
+
+    set(CYCLONEDDS_DIR ${NROS_REPO_DIR}/third-party/dds/cyclonedds)
+    set(NROS_RMW_CDDS_DIR ${NROS_REPO_DIR}/packages/dds/nros-rmw-cyclonedds)
+
+    if(NOT EXISTS ${CYCLONEDDS_DIR}/src/ddsrt/include/dds/config.h.in)
+        message(FATAL_ERROR
+            "Cyclone DDS submodule not initialised at ${CYCLONEDDS_DIR}. "
+            "Run: git submodule update --init third-party/dds/cyclonedds")
+    endif()
+
+    # ---- dds/config.h shim --------------------------------------------------
+    # Cyclone's CMake normally generates dds/config.h via configure_file()
+    # after probing the host toolchain. Zephyr cross-builds can't run those
+    # probes, so a hand-rolled shim ships under zephyr/cyclonedds-config/.
+    # It is included by Cyclone source files via the standard "dds/config.h"
+    # path, so prepend our shim dir to the include search path.
+    zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config)
+
+    # ---- Cyclone DDS sources -----------------------------------------------
+    # ddsrt: platform-abstraction layer. Top-level .c files plus per-feature
+    # POSIX backends (sockets / threads / sync / time / heap / etc.).
+    file(GLOB _cdds_ddsrt_top   ${CYCLONEDDS_DIR}/src/ddsrt/src/*.c)
+    file(GLOB _cdds_ddsrt_posix ${CYCLONEDDS_DIR}/src/ddsrt/src/*/posix/*.c)
+
+    # ddsi: protocol engine. ddsc: public C API.
+    file(GLOB _cdds_ddsi ${CYCLONEDDS_DIR}/src/core/ddsi/src/*.c)
+    file(GLOB _cdds_ddsc ${CYCLONEDDS_DIR}/src/core/ddsc/src/*.c)
+
+    zephyr_library_sources(
+        ${_cdds_ddsrt_top}
+        ${_cdds_ddsrt_posix}
+        ${_cdds_ddsi}
+        ${_cdds_ddsc}
+    )
+
+    zephyr_include_directories(
+        ${CYCLONEDDS_DIR}/src/ddsrt/include
+        ${CYCLONEDDS_DIR}/src/core/include
+        ${CYCLONEDDS_DIR}/src/core/ddsc/include
+        ${CYCLONEDDS_DIR}/src/core/ddsi/include
+    )
+
+    # Trim Cyclone optional features that drag in host-toolchain deps.
+    zephyr_compile_definitions(
+        DDS_HAS_NETWORK_PARTITIONS=0
+        DDS_HAS_SECURITY=0
+        DDS_HAS_SHM=0
+        DDS_HAS_TYPE_DISCOVERY=0
+        DDS_HAS_TOPIC_DISCOVERY=0
+    )
+
+    # ---- nros-rmw-cyclonedds C++ register glue ------------------------------
+    file(GLOB _nros_cdds_cpp ${NROS_RMW_CDDS_DIR}/src/*.cpp)
+    zephyr_library_sources(${_nros_cdds_cpp})
+    zephyr_include_directories(
+        ${NROS_RMW_CDDS_DIR}/include
+        ${NROS_RMW_CDDS_DIR}/src
+        ${NROS_REPO_DIR}/packages/core/nros-rmw-cffi/include
+    )
+
+    # Flips the auto-register hook in packages/core/nros-cpp/include/nros/node.hpp
+    # which calls nros_rmw_cyclonedds_register() inside nros::init().
+    zephyr_compile_definitions(
+        NROS_RMW_CYCLONEDDS=1
+        NROS_CYCLONE_DOMAIN_ID=${CONFIG_NROS_CYCLONE_DOMAIN_ID}
+    )
+
+    # L4-readiness helper (same backend-agnostic helper dust-dds uses).
+    zephyr_library_sources(${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/src/zpico_zephyr.c)
+    zephyr_include_directories(
+        ${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/include
+        ${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include
+    )
+
 endif() # RMW backend
 
 # =============================================================================
@@ -218,6 +308,17 @@ if(CONFIG_NROS_C_API)
         set(_nros_features "rmw-cffi,cffi-xrce-c,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_DDS)
         set(_nros_features "rmw-cffi,cffi-dds-cffi,platform-zephyr,ros-humble")
+    elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+        # cyclonedds backend has no Cargo-side shim crate — the C++
+        # nros-rmw-cyclonedds lib registers via the C++ auto-hook in
+        # nros-cpp's node.hpp. C API path is not yet supported here;
+        # the Kconfig guard above (`depends on NROS_CPP_API`) prevents
+        # this combo, and this branch errors as a belt-and-braces
+        # check in case the guard is bypassed.
+        message(FATAL_ERROR
+            "CONFIG_NROS_C_API=y is not supported with "
+            "CONFIG_NROS_RMW_CYCLONEDDS=y. Use CONFIG_NROS_CPP_API=y "
+            "or pick a different RMW backend.")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)
@@ -270,6 +371,13 @@ if(CONFIG_NROS_CPP_API)
         set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_DDS)
         set(_nros_cpp_features "rmw-dds-cffi,platform-zephyr,ros-humble")
+    elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+        # cyclonedds bypasses Cargo: the standalone nros-rmw-cyclonedds
+        # C++ lib (compiled into the Zephyr app library by the RMW
+        # backend block above) registers the vtable via
+        # nros_rmw_cyclonedds_register(). nros-cpp only needs the
+        # generic cffi runtime + Zephyr platform feature.
+        set(_nros_cpp_features "rmw-cffi,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)
