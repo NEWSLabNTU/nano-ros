@@ -43,6 +43,23 @@ fn main() {
 
     info!("=== Phase 104 bridge: Zenoh → DDS ===");
 
+    // Phase 156 — explicit `register()` calls. Phase 128.B.1
+    // notes that on stable Rust the backend rlib is NOT
+    // pulled into the link line unless something references
+    // one of its symbols, even though its `RMW_INIT_ENTRIES`
+    // entry is `#[used]`. The two `register()` calls below
+    // double as (a) idempotent registration triggers + (b)
+    // the symbol references that drag each rlib's CGU into
+    // the binary so the linkme walker actually finds both
+    // names. C/C++ builds avoid this because
+    // `--whole-archive` pulls every section entry
+    // unconditionally; pure-Rust bridges have to do it
+    // manually. Without these, `Executor::open_with_rmw(...)`
+    // returns `Transport(ConnectionFailed)` because the
+    // registry's `"zenoh"` slot is empty.
+    nros_rmw_zenoh::register().expect("Failed to register zenoh RMW backend");
+    nros_rmw_dds::register().expect("Failed to register dds RMW backend");
+
     // Phase 104.D.3 — read locator + mode from env so callers
     // (the E2E test, ad-hoc users) can point the bridge at any
     // zenohd instance without rebuilding. `default()` would
