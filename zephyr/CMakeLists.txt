@@ -268,6 +268,11 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # renames to `data`. We don't use vnet transport on the embedded
     # path; drop the TU.
     list(FILTER _cdds_ddsi EXCLUDE REGEX "ddsi_vnet\\.c$")
+    # ddsi_shm_transport.c is the SHM (iceoryx) data-plane impl —
+    # uses real `iox_chunk_header_t`, `AllocationResult_*`,
+    # `Iceoryx_LogLevel_*` types our stubs don't define. Drop entirely
+    # under DDS_HAS_SHM=0; call sites guarded internally.
+    list(FILTER _cdds_ddsi EXCLUDE REGEX "ddsi_shm_transport\\.c$")
 
     zephyr_library_sources(
         ${_cdds_ddsrt_top}
