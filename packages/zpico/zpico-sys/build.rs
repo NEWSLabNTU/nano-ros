@@ -1347,6 +1347,14 @@ fn build_c_shim(
     // Include paths
     build.include(include_dir);
     build.include(zenoh_pico_include);
+    // Phase 154 — `zpico.c` now `#include <nros/platform_net.h>` from
+    // `nros-platform-cffi`. The unified (embedded) builder picks the
+    // path up via the manifest's `include_paths`; the legacy
+    // `build_c_shim` path (POSIX + bare-metal) still needs it added
+    // explicitly so `cargo check --workspace` on the host doesn't
+    // fail with `nros/platform_net.h: No such file or directory`.
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    build.include(manifest_dir.join("../../core/nros-platform-cffi/include"));
 
     // Core shim source
     build.file(c_dir.join("zpico/zpico.c"));

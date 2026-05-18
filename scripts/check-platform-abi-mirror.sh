@@ -48,7 +48,11 @@ extract_symbols() {
         echo "error: header not found: $header" >&2
         return 2
     fi
-    grep -oE 'nros_platform_[a-zA-Z0-9_]+[[:space:]]*\(' "$header" \
+    # Skip `static inline` definitions: those are header-only helpers
+    # (e.g. nros_platform_socket_get_fd) — they have no ABI obligation
+    # and intentionally aren't declared in the Rust mirror.
+    grep -v -E '^\s*static\s+inline\b' "$header" \
+        | grep -oE 'nros_platform_[a-zA-Z0-9_]+[[:space:]]*\(' \
         | sed -E 's/[[:space:]]*\($//' \
         | sort -u
 }
