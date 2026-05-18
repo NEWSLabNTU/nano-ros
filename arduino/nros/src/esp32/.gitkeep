@@ -1,0 +1,5 @@
+# `libnanoros.a` for the ESP32 (Xtensa LX6) lands here once Phase 23.2's
+# `scripts/arduino/build-libnanoros.sh` runs against this checkout.
+# Until then, this directory only exists so the Arduino IDE's
+# precompiled-library lookup (`src/<arch>/libnanoros.a`) finds the
+# expected path without erroring out at install time.

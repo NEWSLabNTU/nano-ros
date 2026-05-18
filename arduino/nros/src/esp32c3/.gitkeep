@@ -1,0 +1,2 @@
+# `libnanoros.a` for the ESP32-C3 (RISC-V) lands here once Phase 23.2
+# builds the per-arch artefacts. See `../esp32/.gitkeep`.

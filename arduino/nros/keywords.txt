@@ -1,0 +1,40 @@
+#######################################
+# Syntax Coloring Map for nros (Arduino IDE)
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+nros_context_t	KEYWORD1
+nros_node_t	KEYWORD1
+nros_publisher_t	KEYWORD1
+nros_subscription_t	KEYWORD1
+nros_service_t	KEYWORD1
+nros_client_t	KEYWORD1
+nros_timer_t	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+nros_init	KEYWORD2
+nros_node_create	KEYWORD2
+nros_publisher_create	KEYWORD2
+nros_subscription_create	KEYWORD2
+nros_service_create	KEYWORD2
+nros_client_create	KEYWORD2
+nros_publish	KEYWORD2
+nros_spin_once	KEYWORD2
+nros_fini	KEYWORD2
+set_nanoros_wifi_transports	KEYWORD2
+set_nanoros_serial_transports	KEYWORD2
+nanoros_ping	KEYWORD2
+
+#######################################
+# Macros (LITERAL1)
+#######################################
+
+NRCHECK	LITERAL1
+NRSOFTCHECK	LITERAL1
+NANO_ROS_MSG_TYPE_SUPPORT	LITERAL1

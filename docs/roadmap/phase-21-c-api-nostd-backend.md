@@ -1,10 +1,50 @@
 # Phase 21: C API `no_std` Backend
 
-**Status: COMPLETE**
+**Status: REOPENED 2026-05-18 — bare-metal / ESP-IDF backend gap**
 
-## Summary
+**Original closure (2024)** delivered no_std + alloc compilation via
+the now-retired `shim-posix` / `shim-zephyr` feature axis. After the
+Phase 137 / 138 / 144 cmake refactor and Phase 128/129 platform
+consolidation, `nros-c`'s public platform features became
+`platform-{posix,zephyr,freertos,nuttx,threadx}`. None of these
+cover the bare-metal hosted-libc target that ESP-IDF (and therefore
+arduino-esp32) needs. Per CLAUDE.md "Examples = Standalone Projects":
+"no bare-metal C/C++ harness — nros-c/nros-cpp assume hosted RTOS for
+startup/heap/libc". The Phase 139 `integrations/esp-idf/` shell sets
+`NANO_ROS_PLATFORM=baremetal` but `packages/core/nros-c/CMakeLists.txt`
+fatal-errors on that value, so the integration has never linked nros-c
+end to end.
 
-The C API crate (`nano-ros-c`) has ~30 functions that return `NANO_ROS_RET_ERROR` when compiled without `std`. The `Zenoh*` type aliases (`ZenohPublisher`, `ZenohSession`, etc.) are re-exports of `Shim*` types from `nano-ros-transport`, which already work in `no_std + alloc`. The barriers are:
+Phase 23 (Arduino precompiled lib for ESP32) blocks on this gap; the
+reopened Phase 21 is now Phase 23's 23.0 prerequisite.
+
+## Scope (reopened)
+
+- [ ] **21.6** Add `platform-esp-idf` feature to `nros-c` that (a)
+      uses libc `malloc`/`free` for the global allocator (ESP-IDF
+      ships newlib), (b) wires ESP-IDF's FreeRTOS critical-section
+      primitives (`portENTER_CRITICAL` / `portEXIT_CRITICAL`), (c)
+      reuses existing `platform-freertos` plumbing where the
+      FreeRTOS APIs match upstream Apex.
+- [ ] **21.7** Propagate the feature through `nros`, `nros-platform`,
+      `nros-rmw-zenoh`, and `nros-platform-cffi`
+      (`esp-idf-c-port`).
+- [ ] **21.8** Extend `packages/core/nros-c/CMakeLists.txt` to map
+      `NANO_ROS_PLATFORM=esp-idf` to the new feature set. Accept
+      `NANO_ROS_PLATFORM=baremetal` with `NANO_ROS_BOARD=<board>` for
+      the future ESP32 bare-metal Rust-only path (delegating to the
+      board overlay).
+- [ ] **21.9** Repoint `integrations/esp-idf/CMakeLists.txt` from
+      `baremetal` to `esp-idf` once the feature lands.
+- [ ] **21.10** Smoke build through `just esp_idf build` (requires
+      the extended SDK tier: `just setup tier=extended` or
+      `just esp_idf setup`). Capture the first-time install
+      footprint in `docs/development/sdk-tiers.md` if the tier
+      classification needs to change.
+
+## Historical record (original 2024 closure notes follow)
+
+The C API crate (`nano-ros-c`) had ~30 functions that returned `NANO_ROS_RET_ERROR` when compiled without `std`. The `Zenoh*` type aliases (`ZenohPublisher`, `ZenohSession`, etc.) were re-exports of `Shim*` types from `nano-ros-transport`, which already worked in `no_std + alloc`. The 2024 barriers were:
 
 1. `#[cfg(feature = "std")]` guards on all transport code (should be `alloc`)
 2. `std::boxed::Box` usage (needs `alloc::boxed::Box`)

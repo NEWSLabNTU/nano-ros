@@ -1,0 +1,11 @@
+# Precompiled archives are built per-release by
+# `scripts/arduino/build-libnanoros.sh` (Phase 23.2). The
+# directories themselves stay tracked via .gitkeep so the
+# Arduino IDE's per-arch lookup path resolves; only the actual
+# `.a` artefacts are ignored.
+src/esp32/libnanoros.a
+src/esp32s3/libnanoros.a
+src/esp32c3/libnanoros.a
+
+# Distributable zip emitted by Phase 23.2.2.
+nano-ros-arduino-v*.zip
