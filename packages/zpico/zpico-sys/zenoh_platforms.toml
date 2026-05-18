@@ -154,6 +154,10 @@ include_paths = [
   "{env:FREERTOS_CONFIG_DIR}",
   "{env:LWIP_DIR}/src/include",
   "{env:LWIP_DIR}/contrib/ports/freertos/include",
+  # Phase 154 — `nros-platform-cffi/include` carries
+  # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
+  # `zpico.c` includes it unconditionally.
+  "{nros}/../../core/nros-platform-cffi/include",
 ]
 rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_CONFIG_DIR"]
 
@@ -184,6 +188,9 @@ required_env = [
 include_paths = [
   "{nros}/c/include",
   "{env:NUTTX_DIR}/include",
+  # Phase 154 — `<nros/platform_net.h>` source; same need as posix/
+  # bare-metal/freertos-lwip blocks above.
+  "{nros}/../../core/nros-platform-cffi/include",
 ]
 rerun_if_env_changed = ["NUTTX_DIR"]
 
@@ -318,5 +325,7 @@ include_paths = [
   "{env:NV_SPE_FSP_DIR}/include/freertos",
   "{env:NV_SPE_FSP_DIR}/include/freertos/portable/GCC/ARM_R5",
   "{env:NV_SPE_FSP_DIR}/include",
+  # Phase 154 — `<nros/platform_net.h>` source.
+  "{nros}/../../core/nros-platform-cffi/include",
 ]
 rerun_if_env_changed = ["NV_SPE_FSP_DIR"]
