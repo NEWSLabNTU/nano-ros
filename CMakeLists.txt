@@ -20,7 +20,7 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 # ---------------------------------------------------------------------------
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
 set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or dds")
-set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds none)
+set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds)
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
@@ -51,11 +51,19 @@ FetchContent_Declare(Corrosion
 FetchContent_MakeAvailable(Corrosion)
 
 # ---------------------------------------------------------------------------
-# Core libraries — always built.
+# Core libraries — always built EXCEPT on tier-3 cross targets (NuttX).
+# nros-c / nros-cpp / nros-rmw-cffi Corrosion targets fall over on
+# `armv7a-nuttx-eabihf` because they need `-Z build-std` to compile core
+# from source. NuttX builds funnel through `nros_board_link_app()` →
+# `cargo build` on `nros-nuttx-ffi`, which depends on these crates and
+# carries its own `.cargo/config.toml` with `build-std`. The cmake
+# Corrosion target is redundant + impossible there.
 # ---------------------------------------------------------------------------
-add_subdirectory(packages/core/nros-rmw-cffi)
-add_subdirectory(packages/core/nros-c)
-add_subdirectory(packages/core/nros-cpp)
+if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
+    add_subdirectory(packages/core/nros-rmw-cffi)
+    add_subdirectory(packages/core/nros-c)
+    add_subdirectory(packages/core/nros-cpp)
+endif()
 
 # ---------------------------------------------------------------------------
 # Platform shim (canonical `nros_platform_*` ABI). Phase 138 dispatches
@@ -106,8 +114,22 @@ if(NOT TARGET NanoRos)
     add_library(NanoRos::NanoRos ALIAS NanoRos)
     # `nros_c-static`'s INTERFACE carries the per-build variant header
     # path + the public `include/` dirs (wired in
-    # `packages/core/nros-c/CMakeLists.txt` for Phase 137).
-    target_link_libraries(NanoRos INTERFACE nros_c-static)
+    # `packages/core/nros-c/CMakeLists.txt` for Phase 137). Skipped for
+    # NuttX cross builds where the FFI crate's cargo build supplies
+    # nros-c via its own dependency closure.
+    if(TARGET nros_c-static)
+        target_link_libraries(NanoRos INTERFACE nros_c-static)
+    else()
+        # NuttX (and any future tier-3 cross build) — staticlibs come
+        # in via the FFI crate's cargo build, but downstream cmake
+        # targets (`nros_generate_interfaces()` output, user code) still
+        # `#include <nros/...>` headers. Expose the public include
+        # surfaces directly.
+        target_include_directories(NanoRos INTERFACE
+            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-c/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-cpp/include"
+            "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/nros-rmw-cffi/include")
+    endif()
     # Propagate the platform compile definition to mirror the install-time
     # NanoRos::NanoRos behaviour from NanoRosCTargets.cmake.
     if(NANO_ROS_PLATFORM STREQUAL "posix")
@@ -135,52 +157,34 @@ endif()
 # `cmake/rmw/nano-ros-rmw-<rmw>.cmake` modules land in Phase 138 once
 # the per-platform layout (138 / 139) is in place.
 # ---------------------------------------------------------------------------
-# Phase 155.B.4 follow-up — NuttX's `armv7a-nuttx-eabihf` is a
-# Tier-3 cargo target with no prebuilt `core` rlib; every cargo
-# invocation needs `-Zbuild-std` driven from the per-example
-# `.cargo/config.toml`. Corrosion runs cargo from the staticlib's
-# manifest dir, which doesn't pick that config up → cargo errors
-# with `can't find crate for core`. On NuttX, the per-example
-# `nros_nuttx_build_example` already pulls every staticlib
-# transitively through the per-app FFI crate (whose own
-# `.cargo/config.toml` carries build-std), so the corrosion-
-# driven adds here are pure duplication AND cause the build
-# failure. Skip them on NuttX.
-set(_nano_ros_skip_corrosion_rmw FALSE)
-if(NANO_ROS_PLATFORM STREQUAL "nuttx" OR NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
-    set(_nano_ros_skip_corrosion_rmw TRUE)
-endif()
-
-if(_nano_ros_skip_corrosion_rmw)
-    # NuttX path — FFI crate handles RMW staticlib via cargo.
-    # Skip the corrosion add but keep the `NROS_RMW_*_CFFI`
-    # compile define + a no-op interface lib for downstream
-    # `target_link_libraries(... NanoRos::NanoRos)` to swallow.
-    if(NANO_ROS_RMW STREQUAL "zenoh")
-        target_compile_definitions(NanoRos INTERFACE NROS_RMW_ZENOH_CFFI=1)
-    elseif(NANO_ROS_RMW STREQUAL "dds")
-        target_compile_definitions(NanoRos INTERFACE NROS_RMW_DDS_CFFI=1)
-    elseif(NANO_ROS_RMW STREQUAL "xrce")
-        target_compile_definitions(NanoRos INTERFACE NROS_RMW_XRCE_CFFI=1)
-    endif()
-elseif(NANO_ROS_RMW STREQUAL "zenoh")
-    add_subdirectory(packages/zpico/nros-rmw-zenoh-staticlib)
-    # `nros_rmw_zenoh_staticlib-static` is the Corrosion-emitted target
-    # from the staticlib sub-project. Whole-archive wrap so the
-    # auto-register .init_array ctor (phase 104.A) survives dead-strip.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
-       OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
-        target_link_libraries(NanoRos INTERFACE
-            "-Wl,--whole-archive"
-            nros_rmw_zenoh_staticlib-static
-            "-Wl,--no-whole-archive"
-            "-Wl,--allow-multiple-definition")
-    elseif(APPLE)
-        target_link_libraries(NanoRos INTERFACE
-            "-Wl,-force_load,$<TARGET_FILE:nros_rmw_zenoh_staticlib-static>"
-            "-Wl,--allow-multiple-definition")
-    else()
-        target_link_libraries(NanoRos INTERFACE nros_rmw_zenoh_staticlib-static)
+if(NANO_ROS_RMW STREQUAL "zenoh")
+    # NuttX (and any future tier-3 target) — the FFI crate bundles
+    # nros-rmw-zenoh via cargo with `-Z build-std`, so the Corrosion-
+    # built `libnros_rmw_zenoh_staticlib.a` at the cmake level is both
+    # redundant and impossible (Corrosion would invoke `cargo build`
+    # against a tier-3 triple without the per-example `.cargo/config.toml`
+    # that supplies build-std). Skip the staticlib add_subdirectory for
+    # those platforms; `nros_board_link_app()` (board overlay) drives
+    # the cargo build that produces the final ELF.
+    if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
+        add_subdirectory(packages/zpico/nros-rmw-zenoh-staticlib)
+        # `nros_rmw_zenoh_staticlib-static` is the Corrosion-emitted target
+        # from the staticlib sub-project. Whole-archive wrap so the
+        # auto-register .init_array ctor (phase 104.A) survives dead-strip.
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
+           OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+            target_link_libraries(NanoRos INTERFACE
+                "-Wl,--whole-archive"
+                nros_rmw_zenoh_staticlib-static
+                "-Wl,--no-whole-archive"
+                "-Wl,--allow-multiple-definition")
+        elseif(APPLE)
+            target_link_libraries(NanoRos INTERFACE
+                "-Wl,-force_load,$<TARGET_FILE:nros_rmw_zenoh_staticlib-static>"
+                "-Wl,--allow-multiple-definition")
+        else()
+            target_link_libraries(NanoRos INTERFACE nros_rmw_zenoh_staticlib-static)
+        endif()
     endif()
 elseif(NANO_ROS_RMW STREQUAL "dds")
     # Phase 137.1 — dust-DDS via the standalone staticlib. Build it via
@@ -269,20 +273,10 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
             target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)
         endif()
     endif()
-elseif(NANO_ROS_RMW STREQUAL "none")
-    # Phase 156 — bridge / multi-backend consumers pull their own
-    # RMW staticlibs via `corrosion_import_crate` to ensure
-    # IDENTICAL feature sets across every `nros-rmw-cffi`
-    # invocation (linkme distributed-slice dedup). Root CMake
-    # skips the auto-pull when `NANO_ROS_RMW=none`. Consumers
-    # MUST call `nros_rmw_<backend>::register()` (Rust) or
-    # `nros_rmw_<backend>_register()` (C) explicitly from
-    # their `main` / `nros_app_register_backends` — auto-
-    # registration via linkme is disabled in this mode.
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
-        "(expected: zenoh, xrce, dds, cyclonedds, or none)")
+        "(expected: zenoh, xrce, dds, or cyclonedds)")
 endif()
 
 # ---------------------------------------------------------------------------

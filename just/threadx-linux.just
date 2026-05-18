@@ -77,31 +77,25 @@ build-fixtures:
         echo "  → threadx-linux/rust/dds/$ex"
         ( cd "examples/threadx-linux/rust/dds/$ex" && cargo build --release --quiet )
     done
-    # Phase 155.D.3 — export the ThreadX-Linux config-dir env vars
-    # BEFORE cmake config + build. cmake `-D…=…` only sets cache;
-    # cmake-driven cargo invocations (corrosion) spawn cc-rs which
-    # reads its own env, NOT cmake cache. Without the export here,
-    # cc-rs inherits the stale `.envrc` defaults — for threadx-linux
-    # those happen to match, but the symmetry with threadx_riscv64
-    # (Phase 155.D) keeps the two recipes parallel and avoids silent
-    # divergence when a contributor edits one in isolation.
-    export THREADX_DIR="$threadx_dir"
-    export THREADX_CONFIG_DIR="$config_dir"
-    export NETX_DIR="${NETX_DIR:-$root/third-party/threadx/netxduo}"
-    export NETX_CONFIG_DIR="$config_dir"
+    echo "  → host nros-codegen (cargo)"
+    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+        -p nros-codegen-c --bin nros-codegen --quiet
+    codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do
             dir="examples/threadx-linux/$lang/zenoh/$ex"
             [ ! -d "$dir" ] && continue
             echo "  → threadx-linux/$lang/$ex (cmake)"
+            rm -rf "$dir/build"
             cmake -S "$dir" -B "$dir/build" \
                 -DNANO_ROS_PLATFORM=threadx_linux \
                 -DTHREADX_DIR="$threadx_dir" \
                 -DNSOS_NETX_DIR="$nsos_netx_dir" \
                 -DTHREADX_CONFIG_DIR="$config_dir" \
                 -DTHREADX_APP_DEFINE="$app_define" \
-                -DCMAKE_BUILD_TYPE=Release > /dev/null
+                -DCMAKE_BUILD_TYPE=Release \
+                -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
             cmake --build "$dir/build" --parallel > /dev/null
         done
     done

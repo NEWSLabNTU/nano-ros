@@ -88,23 +88,26 @@ build-fixtures:
         ( cd "examples/qemu-arm-freertos/rust/dds/$ex" && cargo build --release --quiet )
     done
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
-    # Phase 155.D.3 — export FreeRTOS+lwIP SDK env vars BEFORE
-    # cmake config + build so cmake-driven cargo invocations
-    # (corrosion + cc-rs build scripts) inherit them instead of
-    # falling back to the `.envrc` defaults. Mirrors the threadx_*
-    # build-fixtures recipes.
-    export FREERTOS_DIR="${FREERTOS_DIR:-$(pwd)/third-party/freertos/kernel}"
-    export FREERTOS_PORT="${FREERTOS_PORT:-GCC/ARM_CM3}"
-    export LWIP_DIR="${LWIP_DIR:-$(pwd)/third-party/freertos/lwip}"
-    export FREERTOS_CONFIG_DIR="${FREERTOS_CONFIG_DIR:-$(pwd)/packages/boards/nros-board-mps2-an385-freertos/config}"
+    # Phase 140 removed the `build/install/bin/nros-codegen` install
+    # layout. Cross builds (FreeRTOS) can't build the host codegen
+    # tool with their cross toolchain, so build it once with the host
+    # cargo and pass the absolute path via `-D_NANO_ROS_CODEGEN_TOOL`.
+    echo "  → host nros-codegen (cargo)"
+    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+        -p nros-codegen-c --bin nros-codegen --quiet
+    codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do
             echo "  → freertos/$lang/$ex (cmake)"
             dir="examples/qemu-arm-freertos/$lang/zenoh/$ex"
+            # Stale caches from pre-Phase-140 still reference the
+            # deleted `build/install/bin/nros-codegen`; wipe + reconfigure.
+            rm -rf "$dir/build"
             cmake -S "$dir" -B "$dir/build" \
                 -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                -DCMAKE_BUILD_TYPE=Release > /dev/null
+                -DCMAKE_BUILD_TYPE=Release \
+                -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
             cmake --build "$dir/build" --parallel > /dev/null
         done
     done

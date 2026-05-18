@@ -12,11 +12,19 @@ use std::{
     process::Command,
 };
 
-// Phase 152.5 — manifest parser + link-feature policy live in the
-// shared `nros-board-common` library. zpico-sys pulls them as
-// build-deps; the old `zpico-sys/build/{manifest,policy}.rs`
-// copies were deleted so there's only one canonical source.
-use nros_board_common::{manifest, policy};
+// Phase 136.1 — zenoh_platforms.toml parser. Loaded + smoke-resolved
+// at the top of `main()` so any TOML drift surfaces at build time
+// instead of waiting for 136.3 / 136.4 to wire the resolver into
+// cc-rs. The resolved data is not yet consumed by the build path.
+#[path = "build/manifest.rs"]
+mod manifest;
+
+// Phase 136.2 — link-feature env reader + per-platform policy mask.
+// Moved out of this file to `build/policy.rs` so the manifest layer
+// can produce the same `LinkPolicy` values directly in 136.4.
+#[path = "build/policy.rs"]
+mod policy;
+
 use policy::{LinkFeatures, LinkPolicy};
 
 /// Shim slot count configuration.
@@ -637,21 +645,6 @@ fn main() {
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
             .include(&nros_platform_cffi_include)
             .include(manifest_dir.join("c/zpico"))
-            // Phase 156 option B — on POSIX, zenoh-pico's
-            // `system/common/platform.h` picks `unix.h` (because
-            // `[platform.posix].defines` includes `ZENOH_LINUX`),
-            // which defines `_z_sys_net_socket_t = { int _fd; }`
-            // (4 bytes, passed by VALUE to `_z_send_tcp` /
-            // `_z_read_tcp`). The alias TU's network functions
-            // use a 32-byte opaque struct (`nros_zenoh_generic_platform.h`),
-            // which ABI-mismatches by-value socket args and
-            // corrupts every send. Skip the network aliases
-            // here; the upstream `src/system/unix/network.c`
-            // (added to `[platform.posix].extra_sources`) provides
-            // matching-shape TCP/UDP impls. Pointer-shaped
-            // aliases (threading/mutex/condvar/clock) stay
-            // active because pointer ABI is uniform across
-            // struct sizes.
             // Phase 129.D — `NROS_PLATFORM_ALIASES` unlocks the
             // alias TU's clock-variant + network wrappers, which
             // depend on the generic `z_clock_t = uint64_t` typedef
@@ -659,23 +652,6 @@ fn main() {
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
-        if use_posix || use_nuttx {
-            // Phase 156 Sub-bug B — zenoh-pico's `system/common/platform.h`
-            // routes both `ZENOH_LINUX` and `ZENOH_NUTTX` to
-            // `system/platform/unix.h`, which uses the BY-VALUE
-            // `_z_sys_net_socket_t = { int _fd; }` shape (4 bytes,
-            // passed in a single register). `platform_aliases.c`'s
-            // network wrappers expect the 32-byte opaque struct from
-            // `nros_zenoh_generic_platform.h` — ABI-incompatible.
-            // `NROS_ZENOH_PLATFORM_USES_UNIX` `#ifndef`-elides the
-            // alias TU's network section so the upstream
-            // `system/unix/network.c` impls (matching unix.h) win
-            // at link time. Manifested on NuttX as
-            // `Transport(ConnectionFailed)` immediately after
-            // `nros::init` — `_z_send_tcp` read garbage `fd`/`len`
-            // off the stack and `send()` returned EBADF.
-            alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
-        }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
         // already provides every `_z_task_*` symbol because the
         // `_z_task_t` layout embeds a `TX_THREAD` struct. Skip the
@@ -695,24 +671,23 @@ fn main() {
         if target_os_for_alias == "none" {
             alias_build.flag("-ffreestanding");
         }
-        // Phase 152.B-followup — match the float-ABI of the rest
-        // of the link map on RISC-V. cc-rs defaults to
-        // `-mabi=lp64` (single-precision FP ABI) when the target
-        // triple is `riscv64gc-unknown-none-elf`, but every other
-        // .a in the link (kernel, NetX-Duo, platform-threadx,
-        // virtio, glue, Rust core) uses `lp64d` (double-precision).
-        // Mismatch produces `rust-lld: error: cannot link object
-        // files with different floating-point ABI` at the final
-        // example link. Apply the same RISC-V flag set the rest
-        // of this file uses for its own cc builds (line 859) and
-        // that `nros-board-threadx/build.rs` uses for kernel +
-        // platform-threadx.
-        let alias_target = env::var("TARGET").unwrap_or_default();
-        if alias_target.contains("riscv64") {
-            alias_build
-                .flag("-march=rv64gc")
-                .flag("-mabi=lp64d")
-                .flag("-mcmodel=medany");
+        // Apply the same `[arch.*]` cflags the manifest hands to
+        // zpico.c, so platform_aliases.o uses the matching float-ABI
+        // / march / mabi / mcmodel. Without this, riscv64gc targets
+        // (ThreadX-RV64) hit `cannot link object files with different
+        // floating-point ABI` — rustc emits lp64d while cc-rs picks
+        // the bare-metal toolchain default (lp64).
+        if let Some(name) = platform_name {
+            if let Ok(resolved) = platform_manifest.for_platform(name) {
+                for arch_name in &resolved.arch {
+                    if let Some(arch) = platform_manifest.arch.get(arch_name.as_str())
+                        && arch_matches(arch, &target)
+                    {
+                        apply_arch(arch, &mut alias_build, &out_dir);
+                        break;
+                    }
+                }
+            }
         }
         alias_build.compile("zpico_platform_aliases");
         println!("cargo:rerun-if-changed=c/zpico/platform_aliases.c");
@@ -1380,15 +1355,6 @@ fn build_c_shim(
     // Include paths
     build.include(include_dir);
     build.include(zenoh_pico_include);
-    // Phase 104.D.3 — zpico.c #includes <nros/platform_net.h>
-    // which lives in the nros-platform-cffi include set. Bare-
-    // metal builds reach it via the unified-build path in
-    // build_zenoh_pico_unified (which applies plat.include_paths
-    // from zenoh_platforms.toml); the POSIX shim build bypasses
-    // that loop, so add the header dir explicitly. `c_dir` is
-    // `<repo>/packages/zpico/zpico-sys/c`; the cffi crate sits
-    // three levels up under `packages/core/nros-platform-cffi/`.
-    build.include(c_dir.join("../../../core/nros-platform-cffi/include"));
 
     // Core shim source
     build.file(c_dir.join("zpico/zpico.c"));
@@ -1535,23 +1501,6 @@ fn build_zenoh_pico_unified(
 
     // Step 4 — core sources + per-platform extra C files.
     add_zenoh_pico_core_sources(&mut build, zenoh_pico_src);
-
-    // Phase 154 — extend with the platform's manifest-declared
-    // `include` subtrees beyond `system/common` (always added
-    // by `add_zenoh_pico_core_sources`). Per-RTOS subtrees like
-    // `system/freertos`, `system/threadx`, etc. provide vendor's
-    // own `_z_send_tcp` / `_z_read_tcp` impls that match the
-    // per-RTOS `_z_sys_net_socket_t` layout; without them the
-    // alias TU's opaque-socket version is the only definition
-    // at link time, ABI-misaligning every socket call.
-    let zpico_src_dir = zenoh_pico_src.join("src");
-    for include in &plat.include {
-        if include == "system/common" {
-            // Already added by add_zenoh_pico_core_sources.
-            continue;
-        }
-        add_c_sources_recursive(&mut build, &zpico_src_dir.join(include));
-    }
     for extra in &plat.extra_sources {
         if let Some(env_var) = &extra.if_env {
             if env::var(env_var).is_err() {
@@ -1612,71 +1561,6 @@ fn build_zenoh_pico_unified(
         let value = env::var(&env_def.env).unwrap_or_else(|_| env_def.default.clone());
         build.define(key, value.as_str());
         println!("cargo:rerun-if-env-changed={}", env_def.env);
-    }
-
-    // Phase 154 — `NROS_PLATFORM_ALIASES` must flow into the
-    // vendor source build, not just the alias TU. The alias TU
-    // (`c/zpico/platform_aliases.c`) declares `_z_send_tcp` /
-    // `_z_read_tcp` / `_z_open_tcp` / etc. with a 32-byte
-    // opaque socket from `nros_zenoh_generic_platform.h`. Vendor
-    // src (`zenoh-pico/src/link/unicast/tcp.c`, etc.) compiled
-    // WITHOUT this define picks `c/platform/<rtos>/platform.h`
-    // (8-byte `{ int _fd; }` socket on ThreadX-Linux). Same
-    // `_z_send_tcp` symbol, different struct sizes → SysV
-    // AMD64 / AAPCS arg shift → `sendto(fd=0, buf=3,
-    // len=18446744073498616880, …)` strace traces →
-    // `Transport(ConnectionFailed)` on FreeRTOS +
-    // ThreadX-Linux + ThreadX-RISC-V Rust / C++ E2E.
-    //
-    // Two TUs that need the concrete per-RTOS layout handle
-    // the divergence either via the
-    // `nros_platform_socket_get_fd` accessor
-    // (`c/zpico/zpico.c::get_session_fd`) or TU-local
-    // `#undef NROS_PLATFORM_ALIASES`
-    // (`c/platform/threadx/task.c`).
-    // Phase 154 — `NROS_PLATFORM_ALIASES` on the vendor build
-    // is meaningful only for platforms whose `system/common/platform.h`
-    // dispatch chain reaches `zenoh_generic_platform.h` (i.e.
-    // pure-generic platforms with no per-RTOS network impl in
-    // zenoh-pico). Today that's ThreadX (no `system/threadx/` in
-    // vendor) and bare-metal. FreeRTOS+lwIP, POSIX, NuttX,
-    // Zephyr all have their own `system/<rtos>/network.c` with a
-    // matching native `_z_sys_net_socket_t` typedef from
-    // `platform/<rtos>/*.h`; flipping the define on those
-    // platforms would force the dispatch to mismatch (the
-    // `system/common/platform.h` checks ZENOH_FREERTOS_LWIP /
-    // ZENOH_LINUX / etc. *before* ZENOH_GENERIC, so the alias
-    // header never gets included, but the now-misaligned
-    // alias-TU socket struct would still ABI-collide with the
-    // vendor's native one).
-    //
-    // Gating the flip on `use_threadx` (ZENOH_THREADX hits the
-    // ZENOH_GENERIC branch in the dispatcher) keeps the
-    // ThreadX-Linux + ThreadX-RISC-V fix while leaving
-    // FreeRTOS / POSIX / NuttX on their vendor-native paths.
-    // `nros-platform-cffi/include` is unconditional — every
-    // platform's zpico.c `#include <nros/platform_net.h>` for
-    // the `nros_platform_socket_get_fd` accessor (used by
-    // `get_session_fd` on ThreadX; harmless include on others
-    // even if the function body doesn't fire).
-    {
-        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-        build.include(
-            manifest_dir
-                .parent()
-                .and_then(|p| p.parent())
-                .map(|root| root.join("core/nros-platform-cffi/include"))
-                .expect("zpico-sys: workspace root unresolvable"),
-        );
-    }
-
-    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some()
-        && env::var_os("CARGO_FEATURE_THREADX").is_some()
-    {
-        build.define("NROS_PLATFORM_ALIASES", None);
-        let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-        build.include(manifest_dir.join("c/platform"));
-        build.include(manifest_dir.join("c/zpico"));
     }
 
     // Step 7 — TLS / mbedtls. Manifest sets `mbedtls` to

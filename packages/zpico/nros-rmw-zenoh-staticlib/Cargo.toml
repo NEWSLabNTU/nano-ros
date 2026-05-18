@@ -37,7 +37,14 @@ platform-freertos = [
     "nros-platform/global-allocator",
     "dep:panic-halt",
 ]
-platform-nuttx = ["nros-rmw-zenoh/platform-nuttx"]
+platform-nuttx = [
+    "alloc",
+    "nros-rmw-zenoh/platform-nuttx",
+    "dep:nros-platform",
+    "nros-platform/platform-nuttx",
+    "nros-platform/global-allocator",
+    "dep:panic-halt",
+]
 platform-threadx = [
     "alloc",
     "nros-rmw-zenoh/platform-threadx",

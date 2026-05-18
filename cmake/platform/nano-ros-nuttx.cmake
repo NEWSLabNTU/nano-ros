@@ -85,8 +85,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-nuttx.c
 # the same one-line shape across platforms — board overlay decides
 # whether the call is a no-op (NuttX) or a real link (FreeRTOS).
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/NanoRosReadConfig.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/NanoRosLink.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosConfig.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # ---------------------------------------------------------------------------
 # Codegen — provide `nros_generate_interfaces()` / `nros_find_interfaces()`.
@@ -155,17 +155,27 @@ include("${_nros_nuttx_board_module}")
 # we still build it here so the CMake link graph captures the
 # dependency and a stand-alone `cmake --build` of the shim works.
 # ---------------------------------------------------------------------------
-if(NOT TARGET nros_platform_nuttx)
+# The C shim's `add_library(nros_platform_nuttx STATIC ...)` compiles
+# the POSIX sibling sources (`packages/core/nros-platform-posix/src/{platform,
+# net,timer}.c`) which #include `<arpa/inet.h>` / `<semaphore.h>` /
+# `<signal.h>`. NuttX-the-OS supplies these headers via its own include
+# tree (`$NUTTX_DIR/include`), but the cmake subproject doesn't pull
+# that path in — it's the Rust FFI crate (`nros-nuttx-ffi`) that owns
+# the NuttX include + link surface. The cargo build of the FFI crate
+# is what actually links the platform glue into the app binary; the
+# cmake archive was a host-side smoke check that doesn't survive a
+# cross compile against `arm-none-eabi-gcc`. Skip the subdirectory
+# when cross-compiling.
+if(NOT TARGET nros_platform_nuttx AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(
         "${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-platform-nuttx"
         nros_platform_nuttx)
 endif()
 
 # ---------------------------------------------------------------------------
-# NanoRos::Platform alias. INTERFACE wrapper around the native-C shim.
-# The actual link into the app binary happens inside the cargo build
-# of the FFI crate; this target exists for contract uniformity with
-# the FreeRTOS / ThreadX modules.
+# NanoRos::Platform alias. INTERFACE wrapper around the native-C shim
+# (when present) or an empty stub on cross builds (the FFI crate's
+# cargo build supplies the real glue).
 # ---------------------------------------------------------------------------
 add_library(nros_platform_nuttx_iface INTERFACE)
 if(TARGET nros_platform_nuttx)

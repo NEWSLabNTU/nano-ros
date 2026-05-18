@@ -61,8 +61,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-threadx
 # ---------------------------------------------------------------------------
 # User-facing nano-ros helpers (config + link).
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/NanoRosReadConfig.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/NanoRosLink.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosConfig.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # ---------------------------------------------------------------------------
 # Codegen — provide `nros_generate_interfaces()` / `nros_find_interfaces()`.

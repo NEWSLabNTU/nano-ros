@@ -27,7 +27,7 @@ function(nano_ros_read_config CONFIG_FILE)
 
     file(READ "${CONFIG_FILE}" _content)
 
-    # Defaults
+    # Defaults — network
     set(_ip "192,0,3,10")
     set(_mac "0x02,0x00,0x00,0x00,0x00,0x00")
     set(_gateway "192,0,3,1")
@@ -35,6 +35,20 @@ function(nano_ros_read_config CONFIG_FILE)
     set(_prefix "24")
     set(_locator "tcp/127.0.0.1:7447")
     set(_domain_id "0")
+    set(_interface "")
+
+    # Defaults — scheduling (normalized 0–31 scale)
+    set(_app_priority "12")
+    # 256 KB — FreeRTOS QEMU zenoh session open can exceed 160 KiB with lwIP.
+    # Keep the C/C++ generated config in sync with the Rust board default so
+    # stack overflow checks fail cleanly instead of corrupting the task state.
+    set(_app_stack_bytes "262144")
+    set(_zenoh_read_priority "16")
+    set(_zenoh_read_stack_bytes "5120")
+    set(_zenoh_lease_priority "16")
+    set(_zenoh_lease_stack_bytes "5120")
+    set(_poll_priority "16")
+    set(_poll_interval_ms "5")
 
     # Track current section
     set(_section "")
@@ -76,7 +90,6 @@ function(nano_ros_read_config CONFIG_FILE)
                     _nros_ip_to_c("${_val}" _netmask)
                 elseif("${_key}" STREQUAL "prefix")
                     set(_prefix "${_val}")
-                    # Also derive netmask from prefix
                     _nros_prefix_to_netmask("${_val}" _netmask)
                 endif()
             # [zenoh] section
@@ -85,6 +98,30 @@ function(nano_ros_read_config CONFIG_FILE)
                     set(_locator "${_val}")
                 elseif("${_key}" STREQUAL "domain_id")
                     set(_domain_id "${_val}")
+                endif()
+            # [platform] section
+            elseif("${_section}" STREQUAL "platform")
+                if("${_key}" STREQUAL "interface")
+                    set(_interface "${_val}")
+                endif()
+            # [scheduling] section
+            elseif("${_section}" STREQUAL "scheduling")
+                if("${_key}" STREQUAL "app_priority")
+                    set(_app_priority "${_val}")
+                elseif("${_key}" STREQUAL "app_stack_bytes")
+                    set(_app_stack_bytes "${_val}")
+                elseif("${_key}" STREQUAL "zenoh_read_priority")
+                    set(_zenoh_read_priority "${_val}")
+                elseif("${_key}" STREQUAL "zenoh_read_stack_bytes")
+                    set(_zenoh_read_stack_bytes "${_val}")
+                elseif("${_key}" STREQUAL "zenoh_lease_priority")
+                    set(_zenoh_lease_priority "${_val}")
+                elseif("${_key}" STREQUAL "zenoh_lease_stack_bytes")
+                    set(_zenoh_lease_stack_bytes "${_val}")
+                elseif("${_key}" STREQUAL "poll_priority")
+                    set(_poll_priority "${_val}")
+                elseif("${_key}" STREQUAL "poll_interval_ms")
+                    set(_poll_interval_ms "${_val}")
                 endif()
             endif()
         endif()
@@ -97,6 +134,36 @@ function(nano_ros_read_config CONFIG_FILE)
     set(NROS_CONFIG_PREFIX "${_prefix}" PARENT_SCOPE)
     set(NROS_CONFIG_ZENOH_LOCATOR "${_locator}" PARENT_SCOPE)
     set(NROS_CONFIG_DOMAIN_ID "${_domain_id}" PARENT_SCOPE)
+    set(NROS_CONFIG_INTERFACE "${_interface}" PARENT_SCOPE)
+    set(NROS_CONFIG_APP_PRIORITY "${_app_priority}" PARENT_SCOPE)
+    set(NROS_CONFIG_APP_STACK_BYTES "${_app_stack_bytes}" PARENT_SCOPE)
+    set(NROS_CONFIG_ZENOH_READ_PRIORITY "${_zenoh_read_priority}" PARENT_SCOPE)
+    set(NROS_CONFIG_ZENOH_READ_STACK_BYTES "${_zenoh_read_stack_bytes}" PARENT_SCOPE)
+    set(NROS_CONFIG_ZENOH_LEASE_PRIORITY "${_zenoh_lease_priority}" PARENT_SCOPE)
+    set(NROS_CONFIG_ZENOH_LEASE_STACK_BYTES "${_zenoh_lease_stack_bytes}" PARENT_SCOPE)
+    set(NROS_CONFIG_POLL_PRIORITY "${_poll_priority}" PARENT_SCOPE)
+    set(NROS_CONFIG_POLL_INTERVAL_MS "${_poll_interval_ms}" PARENT_SCOPE)
+endfunction()
+
+# nano_ros_generate_config_header(<config_file> <out_path>)
+#
+# Reads <config_file> via nano_ros_read_config(), then emits a typed
+# <nros/app_config.h> at <out_path>. User code reads
+# `NROS_APP_CONFIG.zenoh.locator` instead of a tree of `APP_*`
+# preprocessor macros.
+function(nano_ros_generate_config_header CONFIG_FILE OUT_PATH)
+    nano_ros_read_config("${CONFIG_FILE}")
+
+    set(NROS_CONFIG_SOURCE "${CONFIG_FILE}")
+
+    set(_NROS_CFG_CMAKE_DIR "${CMAKE_CURRENT_FUNCTION_LIST_DIR}")
+    set(_template "${_NROS_CFG_CMAKE_DIR}/templates/nros_app_config.h.in")
+    if(NOT EXISTS "${_template}")
+        message(FATAL_ERROR
+            "nano_ros_generate_config_header: template not found at ${_template}")
+    endif()
+
+    configure_file("${_template}" "${OUT_PATH}" @ONLY)
 endfunction()
 
 # Convert "192.0.3.10" -> "192,0,3,10"
