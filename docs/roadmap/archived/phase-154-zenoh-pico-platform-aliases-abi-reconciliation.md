@@ -10,13 +10,21 @@ ThreadX-Linux + FreeRTOS + ThreadX-RISC-V `rtos_e2e` (Rust + C++
 variants; C variants pass because their code paths happen to
 avoid the broken caller/callee pair).
 
-**Status.** Substantively closed 2026-05-18. ThreadX-Linux
-9/9 + FreeRTOS Rust 3/3 + Cpp 2/3 PASS via Option A (accessor
-helpers + scoped NROS_PLATFORM_ALIASES flip + opaque storage
-size bump). Surfaced during 152.2.B verify (after the RISC-V
-float-ABI fix in `444a6d06` unblocked link, the next-layer
-ABI mismatch produced `sendto(fd=0, buf=3,
+**Status.** ✅ CLOSED 2026-05-19. Full rtos_e2e matrix 36/36
+PASS (FreeRTOS / NuttX / ThreadX-Linux / ThreadX-RISC-V × Rust
+/ C / C++ × pubsub / service / action). ABI fix landed via
+Option A (accessor helpers + scoped NROS_PLATFORM_ALIASES flip +
+opaque storage size bump). Surfaced during 152.2.B verify (after
+the RISC-V float-ABI fix in `444a6d06` unblocked link, the next-
+layer ABI mismatch produced `sendto(fd=0, buf=3,
 len=18446744073498616880, …)` strace traces).
+
+Phase 159 was the final follow-up: NuttX-specific gate of
+`NROS_ZENOH_PLATFORM_USES_UNIX` for the alias TU network
+section. Without it, NuttX C examples surfaced the same
+`_Z_ERR_TRANSPORT_TX_FAILED (-100)` symptom as the original 154
+report, just on a different platform. Fix landed in commit
+`7205eb4d`.
 
 Four downstream issues spun off into Phase 155 (not 154
 regressions): RISC-V Rust illegal-instr, FreeRTOS C
