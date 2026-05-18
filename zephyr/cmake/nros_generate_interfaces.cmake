@@ -284,15 +284,45 @@ function(nros_generate_interfaces target)
       set(_nros_repo_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../..")
       get_filename_component(_nros_repo_dir "${_nros_repo_dir}" ABSOLUTE)
 
-      set(_serdes_dir
-          "${_nros_repo_dir}/packages/core/nros-cpp/cmake")
+      set(_serdes_standalone_toml
+          "${_nros_repo_dir}/packages/core/nros-cpp/cmake/nros-serdes-standalone-Cargo.toml")
       set(_template_dir
           "${_nros_repo_dir}/cmake")
 
-      if(NOT EXISTS "${_serdes_dir}/nros-serdes-standalone-Cargo.toml")
+      if(NOT EXISTS "${_serdes_standalone_toml}")
         message(FATAL_ERROR
           "nros-serdes standalone Cargo.toml not found at "
-          "${_serdes_dir}. The nano-ros checkout looks incomplete.")
+          "${_serdes_standalone_toml}. The nano-ros checkout looks incomplete.")
+      endif()
+
+      # Stage a proper crate directory for the per-FFI Cargo.toml's
+      # `path = ` dependency. The upstream layout ships the
+      # standalone Cargo.toml beside other cmake helpers under
+      # `packages/core/nros-cpp/cmake/`, but Cargo needs the file
+      # named `Cargo.toml` and the `src/` tree alongside it. Stage
+      # both under the build dir on first configure (idempotent).
+      set(_serdes_dir "${CMAKE_BINARY_DIR}/nros-rust/staged-nros-serdes")
+      file(MAKE_DIRECTORY "${_serdes_dir}")
+      configure_file(
+        "${_serdes_standalone_toml}"
+        "${_serdes_dir}/Cargo.toml"
+        COPYONLY
+      )
+      # Stage the serdes crate source. Use a symlink so build.rs
+      # reads always-fresh content without re-staging on every
+      # configure; fall back to a directory copy if symlinks fail
+      # (Windows + non-admin, etc.).
+      if(NOT EXISTS "${_serdes_dir}/src")
+        execute_process(
+          COMMAND ${CMAKE_COMMAND} -E create_symlink
+            "${_nros_repo_dir}/packages/core/nros-serdes/src"
+            "${_serdes_dir}/src"
+          RESULT_VARIABLE _serdes_link_rc
+        )
+        if(NOT _serdes_link_rc EQUAL 0)
+          file(COPY "${_nros_repo_dir}/packages/core/nros-serdes/src"
+            DESTINATION "${_serdes_dir}")
+        endif()
       endif()
 
       # Set up temp Cargo project
