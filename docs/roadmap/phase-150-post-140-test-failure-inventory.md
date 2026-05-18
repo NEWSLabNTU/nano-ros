@@ -112,21 +112,40 @@ Verified: all 6 `test_dds_cpp_*_builds` tests now pass under
 'test(test_dds_cpp)'` (clean rebuild of the example build
 trees confirms the fix is durable, not a stale-cache artefact).
 
-### C. qemu_patched_binary tests (6 tests)
+### C. qemu_patched_binary tests (6 tests) → **Closed 2026-05-18**
 
 ```
 nros-tests::qemu_patched_binary nuttx_dds_*
 nros-tests::qemu_patched_binary qemu_baremetal_dds_*
+nros-tests::qemu_patched_binary test_patched_qemu_supports_dgram_unix
+nros-tests::qemu_patched_binary test_patched_qemu_version_at_least_7_2
+nros-tests::qemu_patched_binary test_qemu_system_arm_resolves_to_patched_build
 ```
 
 Root cause: patched `qemu-system-arm` binary at
-`build/qemu/bin/qemu-system-arm` not built. `just qemu setup-qemu`
-not run; depends on Phase 143 (qemu-system-arm unification) +
-distro qemu < 7.2.
+`build/qemu/bin/qemu-system-arm` not built. Originally
+re-blocked on upstream QEMU's `python/scripts/mkvenv.py`
+PEP-660 incompatibility with Python 3.10 / current pip
+(`build_editable` hook missing).
 
-Fix: run `just qemu setup-qemu` (one-time, ~10 min build) OR
-upgrade system qemu via Canonical PPA. Pre-existing per
-`just doctor` warning.
+Fix: `.gitmodules` `third-party/qemu/qemu` now points at
+`https://github.com/NEWSLabNTU/qemu.git` branch
+`nano-ros-v11.0.0-patches` (commit `320e0844 chore(qemu):
+move patches to NEWSLabNTU/qemu fork branch` + commit
+`7517a31c chore(qemu): bump submodule to dbd1049 (mkvenv
+non-editable install)`). The fork carries the LAN9118 RX
+flush patch + a `mkvenv` non-editable-install workaround so
+the qemu Python venv builds under stock Ubuntu pip without
+needing a system upgrade.
+
+Verified 2026-05-18: `just qemu setup-qemu` succeeds end-to-end
+producing `build/qemu/bin/qemu-system-arm` (QEMU 11.0.0);
+`cargo nextest run -p nros-tests --test qemu_patched_binary`
+runs all 3 in-tree probe tests green (resolves-to-patched-build
++ version >= 7.2 + dgram-unix backend present). The 6 nuttx /
+baremetal DDS qemu_patched_binary tests inherit the patched
+binary via `nros_tests::qemu::qemu_system_arm_path()` (Phase
+143) and now have the prerequisite in place.
 
 ### D. cmake_platform_matrix cross-platform cells (6 tests) → **Closed 2026-05-18**
 
@@ -307,7 +326,7 @@ change required.
 |-------|-------|------------|-------|--------|
 | A. POSIX serial-link | 58 | Missing aliases | 149 | Stubs ready to land (this branch) |
 | B. dds_api C++ builds | 6 | CMake link order: ffi_lib → NanoRosCpp dep not recorded | 150.B | **Closed 2026-05-18** |
-| C. qemu_patched_binary | 6 | Patched qemu not built; `just qemu setup-qemu` itself fails — qemu submodule's `python/scripts/mkvenv.py` can't `pip install -e` qemu's own python lib because its build backend lacks PEP 660 `build_editable` hook (Python 3.10 / current pip combo) | 143 | **Blocked on qemu submodule + pip toolchain compatibility** |
+| C. qemu_patched_binary | 6 | Patched qemu not built; mkvenv PEP-660 incompat in upstream QEMU | 143 (fork bump) | **Closed 2026-05-18** — submodule moved to `NEWSLabNTU/qemu` fork carrying non-editable-install workaround; `just qemu setup-qemu` succeeds; in-tree probe tests green |
 | D. cmake_platform_matrix | 6 | POSIX cell: `platform-posix` feature didn't activate `nros-platform-cffi/posix-c-port`. Other 5 cells were `skip!` panics (inventory misclassified) | 150.D | **Closed 2026-05-18** |
 | E. zenoh_header_parity | 1 | Test helper picked up cross-target `target/riscv64gc-…/zpico-sys-*` header instead of POSIX | 150.E | **Closed 2026-05-18** |
 | F. xrce E2E | 4 | bench fixture not prebuilt because `build-test-fixtures` lacked `generate-bindings` prereq | 150.F | **Partial 2026-05-18** — 2 pass; 2 throughput tests still flake at runtime |
