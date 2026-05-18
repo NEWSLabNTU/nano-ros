@@ -52,18 +52,88 @@ fn main() {
         build.pic(false);
     }
 
-    // Phase 155.B.5 — caller-supplied include dirs MUST be added
-    // BEFORE the source-tree fallbacks. cc-rs forwards `.include()`
-    // calls as `-I` flags in order, and gcc searches them top-down.
-    // The source-tree `packages/core/nros-c/include/` ships a STUB
-    // `nros_config_generated.h` that `#error`s — it gets overwritten
-    // per-build by `nros-c`'s build.rs into a mirror dir
-    // (`${BINARY_DIR}/include/nros/nros_config_generated.h`, Phase
-    // 144). The cmake-driven `nros_nuttx_build_example` passes that
-    // mirror dir via `APP_INCLUDE_DIRS_FILE`; reading it FIRST puts
-    // the per-build header ahead of the stub.
+    // Phase 156 (NuttX, supersedes 155.B.5) — generated per-build header paths MUST come
+    // first so they shadow the source-tree `#error` stubs at
+    // `packages/core/nros-{c,cpp}/include/nros/nros_{,cpp_}config_generated.h`.
     //
-    // Two callers, two ENV channels:
+    // nros-c / nros-cpp `build.rs` each emit their
+    // `nros_{,cpp_}config_generated.h` under
+    // `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/`. Cmake also
+    // mirrors the C header into
+    // `<build_dir>/nano_ros/packages/core/nros-c/include/nros/...`
+    // (passed via APP_INCLUDE_DIRS_FILE), but the cpp variant is
+    // not mirrored — the cargo-target path is the only place it
+    // lives. Add both up front; the APP_INCLUDE_DIRS_FILE and the
+    // source-tree fallback come after so they cannot win.
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        let td = PathBuf::from(target_dir);
+        build.include(td.join("nros-c-generated"));
+        if is_cpp {
+            build.include(td.join("nros-cpp-generated"));
+        }
+    }
+
+    // APP_INCLUDE_DIRS_FILE from cmake lists per-example codegen
+    // paths (`build/nano_ros_c/std_msgs`, `build/nano_ros_cpp/...`),
+    // the per-build mirror of nros-c/nros-cpp headers
+    // (`build/nano_ros/packages/core/nros-{c,cpp}/include`), AND
+    // the in-tree source-tree fallbacks
+    // (`packages/core/nros-{c,cpp}/include`). cmake puts the
+    // source-tree path first in the list — but those source-tree
+    // paths hold `#error` stubs of nros_{,cpp_}config_generated.h.
+    // If applied verbatim, the source-tree stub wins over the
+    // per-build mirror that has the real header.
+    //
+    // Filter the source-tree nros-{c,cpp}/include paths out of
+    // the first pass and re-add them at the end as a last-resort
+    // fallback. Other entries (codegen + per-build mirrors) keep
+    // their original order.
+    let nros_c_src = nros_root.join("packages/core/nros-c/include");
+    let nros_cpp_src = nros_root.join("packages/core/nros-cpp/include");
+    let is_src_tree_stub = |dir: &str| -> bool {
+        let p = PathBuf::from(dir);
+        let canon = p.canonicalize().unwrap_or(p);
+        canon == nros_c_src.canonicalize().unwrap_or(nros_c_src.clone())
+            || canon == nros_cpp_src.canonicalize().unwrap_or(nros_cpp_src.clone())
+    };
+    let mut deferred_src_tree: Vec<String> = Vec::new();
+    if let Ok(includes_file) = env::var("APP_INCLUDE_DIRS_FILE") {
+        match std::fs::read_to_string(&includes_file) {
+            Ok(contents) => {
+                for line in contents.lines() {
+                    let dir = line.trim();
+                    if dir.is_empty() {
+                        continue;
+                    }
+                    if is_src_tree_stub(dir) {
+                        // Defer to the end so the per-build mirror at
+                        // `build/nano_ros/packages/core/nros-{c,cpp}/include`
+                        // (which has the real `nros_{,cpp_}config_generated.h`)
+                        // is searched first, but source-tree headers like
+                        // `nros/app_main.h` are still found.
+                        deferred_src_tree.push(dir.to_string());
+                    } else {
+                        build.include(dir);
+                    }
+                }
+                for dir in &deferred_src_tree {
+                    build.include(dir);
+                }
+            }
+            Err(e) => panic!("APP_INCLUDE_DIRS_FILE={includes_file} not readable: {e}"),
+        }
+    }
+
+    if is_cpp {
+        let nros_cpp_include = nros_root.join("packages/core/nros-cpp/include");
+        build.include(&nros_cpp_include);
+        build.flag("-std=c++14");
+    } else {
+        let nros_c_include = nros_root.join("packages/core/nros-c/include");
+        build.include(&nros_c_include);
+    }
+
+    // Additional include directories. Two paths:
     //   * `APP_INCLUDE_DIRS` (semicolon-separated env var) — legacy
     //     callers that build the include list directly in cmake.
     //   * `APP_INCLUDE_DIRS_FILE` (newline-separated file) — the
@@ -79,21 +149,8 @@ fn main() {
             }
         }
     }
-    if let Ok(includes_file) = env::var("APP_INCLUDE_DIRS_FILE") {
-        match std::fs::read_to_string(&includes_file) {
-            Ok(contents) => {
-                for line in contents.lines() {
-                    let dir = line.trim();
-                    if !dir.is_empty() {
-                        build.include(dir);
-                    }
-                }
-            }
-            Err(e) => panic!(
-                "APP_INCLUDE_DIRS_FILE={includes_file} not readable: {e}"
-            ),
-        }
-    }
+    // (Note: APP_INCLUDE_DIRS_FILE applied above before the source-tree
+    // includes, to make the per-build generated header win.)
 
     // Source-tree fallbacks (lowest priority — stub headers may
     // live here, must come AFTER any caller mirror dirs).

@@ -161,9 +161,19 @@ rerun_if_env_changed = ["FREERTOS_DIR", "FREERTOS_PORT", "LWIP_DIR", "FREERTOS_C
 defines = ["ZENOH_GENERIC", "ZENOH_NUTTX"]
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_TIMEOUT = "5000" }
 include = ["system/common"]
+# Phase 156 Sub-bug B (NuttX) — `system/common/platform.h` routes
+# `ZENOH_NUTTX` to `system/platform/unix.h` (BY-VALUE 4-byte socket
+# struct). Pull `system/unix/network.c` so the upstream
+# `_z_open_tcp` / `_z_send_tcp` / `_z_read_tcp` impls (matching
+# unix.h's shape) compile in. Paired with the
+# `NROS_ZENOH_PLATFORM_USES_UNIX` macro set in `build.rs` which
+# `#ifndef`-elides the alias TU's wrong-shape network section.
+# `unix/tls.c` is `#if Z_FEATURE_LINK_TLS == 1`-gated, so it
+# compiles to an empty TU on NuttX (no TLS feature flag set).
 extra_sources = [
   { path = "{nros}/c/zpico/nuttx_clock.c" },
   { path = "{nros}/c/zpico/zpico.c" },
+  { path = "{src}/system/unix/network.c" },
 ]
 arch = "cortex-a7"
 compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }

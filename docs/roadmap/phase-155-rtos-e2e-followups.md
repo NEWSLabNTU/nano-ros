@@ -489,6 +489,42 @@ The 155.B fix (this commit) propagates `TransportError`
 variants to specific `NROS_RET_*` codes so next RISC-V
 C / C++ run logs which precondition the backend rejected.
 
+## Issue 155.F — NuttX rtos_e2e ✅ Rust 3/3 + C 2/3 (action preexisting), C++ blocked on corrosion
+
+**Status:** Rust pubsub/service/action PASS. C pubsub + service PASS. C action FAIL (preexisting Phase 77 async-action-client work). C++ build blocked on corrosion cross-compile.
+
+### Sub-bug F1 — Rust `Transport(ConnectionFailed)` immediately after `nros::init` ✅ FIXED
+
+**Symptom:** `nros NuttX platform starting (IP: 10.0.2.31, zenoh: tcp/10.0.2.2:7452)` then `Application error: Transport(ConnectionFailed)`. Slirp gateway + zenohd reachable; same ZID-collision-style fail mode as 155.C, but on NuttX.
+
+**Root cause:** Identical to Phase 156 Sub-bug B (POSIX) but undetected for NuttX. `zenoh-pico/system/common/platform.h` line 28 routes `ZENOH_NUTTX` through `system/platform/unix.h`, which uses BY-VALUE `_z_sys_net_socket_t = { int _fd; }` (4 bytes, single-register). `packages/zpico/zpico-sys/c/zpico/platform_aliases.c`'s network wrappers expect the 32-byte opaque struct from `nros_zenoh_generic_platform.h`. ABI mismatch → `_z_send_tcp` reads garbage `fd` + `len` off the stack → `send()` returns EBADF → ConnectionFailed.
+
+**Fix:**
+- `packages/zpico/zpico-sys/build.rs` — extend the `NROS_ZENOH_PLATFORM_USES_UNIX` gate from `use_posix` to `use_posix || use_nuttx`.
+- `packages/zpico/zpico-sys/zenoh_platforms.toml` — add `{ path = "{src}/system/unix/network.c" }` to `[platform.nuttx].extra_sources` so the upstream BY-VALUE TCP/UDP impls compile in (matches unix.h's 4-byte socket shape).
+
+NuttX Rust pubsub/service/action all PASS after rebuild.
+
+### Sub-bug F2 — C examples `nros_config_generated.h must be supplied per-build` ✅ FIXED
+
+**Symptom:** Every NuttX C example fails to compile with `#error "nros_config_generated.h must be supplied per-build by the build system; see this stub for guidance."` — picked up from the source-tree stub at `packages/core/nros-c/include/nros/nros_config_generated.h`.
+
+**Root cause:**
+1. Carrier `add_executable(<name>)` target in the example CMakeLists.txt was being linked by cmake with the *host* toolchain (x86_64 gcc), failing with `undefined reference to main` (NuttX example registers `void app_main(void)` via NROS_APP_MAIN_REGISTER_VOID, not `int main`). Only the cargo-built `<name>_build` produces the real NuttX kernel ELF.
+2. `nros-nuttx-ffi/build.rs` added the source-tree `packages/core/nros-c/include` to cc-rs's include path BEFORE the per-build mirror at `<build_dir>/nano_ros/packages/core/nros-c/include` arrived via APP_INCLUDE_DIRS_FILE. The source-tree stub shadowed the real generated header.
+
+**Fix:**
+- `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake` — in `nros_board_link_app`, after redispatching through `nros_nuttx_build_example`, set `EXCLUDE_FROM_ALL TRUE` on the carrier `add_executable` target and `add_dependencies(<target> <target>_build)`. Default build no longer tries to host-link the carrier; explicit `cmake --build . --target <target>` still produces the kernel ELF via cargo.
+- `packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi/build.rs` — apply `CARGO_TARGET_DIR/nros-{c,cpp}-generated/` includes first, then APP_INCLUDE_DIRS_FILE entries with source-tree `packages/core/nros-{c,cpp}/include` entries deferred to the end. Per-build mirrors win; source-tree fallback still provides hand-written headers (`nros/app_main.h` etc.).
+
+NuttX C pubsub + service PASS. NuttX C action FAILS on `accepted=false, completed=false` — preexisting Phase 77 async-action issue tracked separately.
+
+### Sub-bug F3 — C++ examples blocked on corrosion cross-compile
+
+**Symptom:** C++ examples fail to link with `libnano_ros_cpp_ffi_<pkg>.a: file format not recognized` — host x86_64 objects in an ARM link. Setting `-DRust_CARGO_TARGET=armv7a-nuttx-eabihf` flips the FFI codegen library to ARM but then corrosion's `cargo-build_nros_cpp` invocation fails (`can't find crate for 'core'`) because the stable host rustc lacks the `armv7a-nuttx-eabihf` target; would need nightly + `-Zbuild-std`.
+
+**Status:** Deferred. Pre-existing structural issue from Phase 144.6.c migration (the cmake `add_subdirectory(<repo-root>)` consumer path uses corrosion for nros-c/nros-cpp, which doesn't know about NuttX's tier-3 target). Fixing requires either (a) wiring corrosion to use the nightly toolchain + `-Zbuild-std` on NuttX, or (b) sidestepping corrosion entirely and routing nros-c/nros-cpp through `nros-nuttx-ffi`'s cargo build (which already cross-compiles them fine via the existing Cargo.toml path-deps). Option (b) likely simpler.
+
 ## Notes
 
 These four are mutually independent (different root causes,

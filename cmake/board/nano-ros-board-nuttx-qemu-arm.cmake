@@ -211,4 +211,21 @@ function(nros_board_link_app target)
         INCLUDE_DIRS    ${_incs}
         SOURCES         ${_extra_srcs}
         LINK_INTERFACES ${_link_ifaces})
+
+    # Phase 156 (NuttX) — neutralise the carrier `add_executable`
+    # target. The real ELF is emitted by `<target>_build`'s cargo
+    # invocation (NuttX kernel link via arm-none-eabi-gcc); the
+    # carrier was kept only as a declarative `target_link_libraries`
+    # / `target_include_directories` sink. Without these props, CMake
+    # tries to link the carrier with the *host* toolchain
+    # (x86_64-linux-gnu gcc), which fails with
+    # `undefined reference to 'main'` because the NuttX example
+    # registers `void app_main(void)` via NROS_APP_MAIN_REGISTER_VOID,
+    # not `int main`.
+    #
+    #   EXCLUDE_FROM_ALL — keep it out of the default build
+    #   add_dependencies(carrier <name>_build) — `cmake --build . --target <name>`
+    #     still produces the kernel ELF via the cargo path
+    set_target_properties(${target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    add_dependencies(${target} ${target}_build)
 endfunction()

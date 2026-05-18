@@ -659,7 +659,21 @@ fn main() {
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
-        if use_posix {
+        if use_posix || use_nuttx {
+            // Phase 156 Sub-bug B — zenoh-pico's `system/common/platform.h`
+            // routes both `ZENOH_LINUX` and `ZENOH_NUTTX` to
+            // `system/platform/unix.h`, which uses the BY-VALUE
+            // `_z_sys_net_socket_t = { int _fd; }` shape (4 bytes,
+            // passed in a single register). `platform_aliases.c`'s
+            // network wrappers expect the 32-byte opaque struct from
+            // `nros_zenoh_generic_platform.h` — ABI-incompatible.
+            // `NROS_ZENOH_PLATFORM_USES_UNIX` `#ifndef`-elides the
+            // alias TU's network section so the upstream
+            // `system/unix/network.c` impls (matching unix.h) win
+            // at link time. Manifested on NuttX as
+            // `Transport(ConnectionFailed)` immediately after
+            // `nros::init` — `_z_send_tcp` read garbage `fd`/`len`
+            // off the stack and `send()` returned EBADF.
             alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
         }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
