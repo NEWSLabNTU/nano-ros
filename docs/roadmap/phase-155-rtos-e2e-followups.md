@@ -6,7 +6,7 @@ and FreeRTOS Rust is 3/3, but four issues remain in the rtos_e2e
 test fleet. Each has a different root cause; bundling here so
 they're tracked without colliding.
 
-**Status.** Open. Surfaced during 154.4 verify.
+**Status.** ✅ CLOSED 2026-05-18. All six sub-issues resolved (A/B/C/D/E/F). NuttX C action remains the sole rtos_e2e fail, tracked under preexisting Phase 77 async-action-client work (NOT a 155 sub-bug).
 
 **Priority.** Medium. Bench / docs unaffected; only rtos_e2e
 matrix coverage.
@@ -448,6 +448,9 @@ metal compile pulls newlib / picolibc `suseconds_t` against
 NetX-Duo's own typedef. Spun into Issue 155.E (header guard /
 typedef conflict).
 
+**Verified 2026-05-18 ✅ FIXED.** RISC-V cmake-built C / C++ E2E
+3/3 + 3/3 PASS end-to-end (see 155.E acceptance below).
+
 ## Issue 155.E — RISC-V cmake-build `suseconds_t` conflict (new)
 
 **Symptom.** After 155.D's env propagation lands,
@@ -496,6 +499,17 @@ C / C++ E2E reaches runtime but tests fail with
 The 155.B fix (this commit) propagates `TransportError`
 variants to specific `NROS_RET_*` codes so next RISC-V
 C / C++ run logs which precondition the backend rejected.
+
+**Verified 2026-05-18 ✅ FIXED.** Full RISC-V 9/9 matrix PASS:
+
+  Rust × {pubsub, service, action} — 3/3 (pubsub 65.2s, service 40.2s, action 42.2s)
+  C    × {pubsub, service, action} — 3/3 (pubsub 65.2s, service 40.3s, action 42.3s)
+  C++  × {pubsub, service, action} — 3/3 (pubsub 65.2s, service 40.3s, action 50.2s)
+
+Closes 155.D + 155.E together — the runtime gap was the same
+`NROS_RET_ERROR` swallow as 155.B; 155.B's `ConnectionFailed`/
+`Disconnected` → `NROS_RMW_RET_CONNECTION_FAILED → -18` mapping
+unblocked RISC-V's C / C++ paths once fixtures rebuilt.
 
 ## Issue 155.F — NuttX rtos_e2e ✅ Rust 3/3 + C 2/3 (action preexisting) + C++ 3/3
 
