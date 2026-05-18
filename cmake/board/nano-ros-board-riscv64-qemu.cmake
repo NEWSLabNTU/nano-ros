@@ -233,7 +233,19 @@ if(NOT TARGET threadx_glue)
         "${THREADX_BOARD_DIR}/hwtimer.c")
     nros_threadx_build_glue(
         SOURCES ${_glue_srcs}
-        DEFINES NROS_PLATFORM_BAREMETAL)
+        # Phase 155.E — `NX_BSD_ENABLE_NATIVE_API` flips the
+        # `nxd_bsd.h` typedef-alias chain from
+        # `nx_bsd_suseconds_t = suseconds_t` (line 209;
+        # collides with picolibc's `suseconds_t` typedef) to
+        # `typedef LONG nx_bsd_suseconds_t` (native NetX type,
+        # no collision). Same flag the Rust-side build sets via
+        # zenoh_platforms.toml; missing here because the cmake
+        # glue compile defaulted to TX_INCLUDE_USER_DEFINE_FILE
+        # alone. `NX_INCLUDE_USER_DEFINE_FILE` ditto so nx_user.h's
+        # define block is honoured for the bare-metal C glue.
+        DEFINES NROS_PLATFORM_BAREMETAL
+                NX_BSD_ENABLE_NATIVE_API
+                NX_INCLUDE_USER_DEFINE_FILE)
     # The kernel's includes (qemu_virt board, netxduo BSD, virtio) are
     # already on threadx_kernel's INTERFACE — pull them onto threadx_glue
     # so app_define.c finds <nx_bsd.h>, <virtio_net.h>, etc.

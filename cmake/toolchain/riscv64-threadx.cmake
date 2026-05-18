@@ -27,6 +27,48 @@ set(CMAKE_C_FLAGS_INIT   "-march=rv64gc -mabi=lp64d -mcmodel=medany -ffunction-s
 set(CMAKE_CXX_FLAGS_INIT "-march=rv64gc -mabi=lp64d -mcmodel=medany -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -std=c++14 -ffreestanding")
 set(CMAKE_ASM_FLAGS_INIT "-march=rv64gc -mabi=lp64d -mcmodel=medany")
 
+# Phase 155.E — picolibc include dir for every target compiled
+# under this toolchain. gcc's `<stdint.h>` does `#include_next
+# <stdint.h>` expecting libc to provide the real one — bare-
+# metal RISC-V uses picolibc. Without this on EVERY target's
+# include path, codegen-output `.c` files (`std_msgs__nano_ros_c`
+# etc.) that don't go through `nros_threadx_setup_picolibc`
+# fail at `fatal error: stdint.h: No such file or directory`.
+execute_process(
+    COMMAND riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d
+            --specs=picolibc.specs -print-sysroot
+    OUTPUT_VARIABLE _RISCV_THREADX_PICOLIBC_SYSROOT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+if(NOT _RISCV_THREADX_PICOLIBC_SYSROOT
+        OR NOT EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+    # Debian / Ubuntu picolibc-riscv64-unknown-elf install path
+    set(_RISCV_THREADX_PICOLIBC_SYSROOT
+        "/usr/lib/picolibc/riscv64-unknown-elf")
+endif()
+if(EXISTS "${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+    set(CMAKE_C_FLAGS_INIT
+        "${CMAKE_C_FLAGS_INIT} -isystem ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+    set(CMAKE_CXX_FLAGS_INIT
+        "${CMAKE_CXX_FLAGS_INIT} -isystem ${_RISCV_THREADX_PICOLIBC_SYSROOT}/include")
+endif()
+
+# Phase 155.E — C++ shim headers (`cstdio`, `cstdint`, etc.)
+# that wrap picolibc's C headers in the `std::` namespace.
+# The Debian `picolibc-riscv64-unknown-elf` package is C-only;
+# libstdc++ for riscv64-unknown-elf doesn't ship in apt. The
+# board crate's `cxx-compat/` dir provides the freestanding
+# minimum every nano-ros C++ example needs (Phase 89.13 +
+# follow-ups). Apply globally so codegen-output `.cpp` files +
+# `nros-cpp` headers pulled by examples both see it.
+get_filename_component(_riscv_threadx_cxx_compat
+    "${CMAKE_CURRENT_LIST_DIR}/../../packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
+    ABSOLUTE)
+if(EXISTS "${_riscv_threadx_cxx_compat}/cstdio")
+    set(CMAKE_CXX_FLAGS_INIT
+        "${CMAKE_CXX_FLAGS_INIT} -isystem ${_riscv_threadx_cxx_compat}")
+endif()
+
 # Rust target triple
 set(Rust_CARGO_TARGET "riscv64gc-unknown-none-elf" CACHE STRING "Rust target triple" FORCE)
 

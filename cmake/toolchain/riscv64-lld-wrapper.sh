@@ -54,14 +54,28 @@ done
 
 lld_args=()
 for arg in "$@"; do
-    if [[ "$arg" == -Wl,* ]]; then
-        IFS=',' read -ra parts <<< "${arg#-Wl,}"
-        for part in "${parts[@]}"; do
-            lld_args+=("$part")
-        done
-    else
-        lld_args+=("$arg")
-    fi
+    case "$arg" in
+        -Wl,*)
+            IFS=',' read -ra parts <<< "${arg#-Wl,}"
+            for part in "${parts[@]}"; do
+                lld_args+=("$part")
+            done
+            ;;
+        # Phase 155.E — gcc-driver-only flags that lld doesn't
+        # understand. Cmake board overlays pass these via
+        # `target_link_options` for the gcc-as-linker case; the
+        # bare flags reach lld too. Strip them — lld's "no
+        # startup files / no default libs" behaviour is the
+        # default, and the explicit `-T<script>` + `--gc-sections`
+        # already cover the actual link controls.
+        -nostartfiles|-nostdlib|-nodefaultlibs|-no-pie|-pie|--specs=*)
+            ;;
+        # `--allow-multiple-definition` is an ld/lld flag too;
+        # pass it through. `--nmagic` likewise.
+        *)
+            lld_args+=("$arg")
+            ;;
+    esac
 done
 
 exec "$RUST_LLD" "${lld_args[@]}"
