@@ -448,6 +448,10 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     if ctx.is_null() {
         return;
     }
+    // Phase 141.B.2 — capture T0 at cb entry. No-op when the
+    // probe feature is off or no cycle reader is installed.
+    #[cfg(feature = "wake-latency-probe")]
+    super::wake_probe::on_wake();
     // SAFETY: ctx points at a `WakeCtx` owned by an Executor still
     // alive at the time of the call. Executor::drop must clear the
     // callback via `set_wake_callback(None, _)` on all sessions
@@ -3965,6 +3969,19 @@ impl Executor {
                             arena_ptr: *mut u8,
                             delta_ms: u64,
                             result: &mut SpinOnceResult| {
+            // Phase 141.B.2 — capture T1 at subscription dispatch
+            // entry. Probe pairs it with the most recent T0 from
+            // `nros_rmw_runtime_wake_cb` (std + alloc variants)
+            // and pushes `T1 - T0` onto the ring buffer 141.C
+            // drains. No-op when the probe feature is off or
+            // no cycle reader is installed. Other entry kinds
+            // (Service / Timer / GuardCondition) skip the probe
+            // because the 141 acceptance is specifically
+            // wake-to-subscription-dispatch latency.
+            #[cfg(feature = "wake-latency-probe")]
+            if matches!(meta.kind, EntryKind::Subscription) {
+                super::wake_probe::on_dispatch();
+            }
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
             match unsafe { (meta.try_process)(data_ptr, delta_ms) } {
                 Ok(true) => match meta.kind {

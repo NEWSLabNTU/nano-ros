@@ -176,14 +176,31 @@ Closing 124.B.2 means:
       `CycleCounter::{enable, read, measure, cycles_to_ns}` +
       free-fn aliases `clock_cycles()` / `cycles_to_ns()` in
       `packages/platforms/nros-platform-mps2-an385/src/timing.rs`.)*
-- [ ] **141.B.2 — Instrumentation hooks in executor +
-      transport.** Two probe points: (a) inside
-      `nros_rmw_runtime_wake_cb` (entry — "transport notified
-      executor at T₀"), (b) at the top of arena dispatch when
-      the bit for the matching subscription fires
-      ("subscription callback ran at T₁"). Gate behind
-      `feature = "wake-latency-probe"` so production builds
-      stay clean.
+- [x] **141.B.2 — Instrumentation hooks in executor +
+      transport.** Landed via new
+      `packages/core/nros-node/src/executor/wake_probe.rs`
+      module + `wake-latency-probe` Cargo feature
+      (`portable-atomic/fallback` for Cortex-M3's missing
+      native AtomicU64). Hooks: (a) `super::wake_probe::on_wake()`
+      at the entry of `nros_rmw_runtime_wake_cb` (std variant
+      in `spin.rs:447` + alloc variant in `wake_alloc.rs:85`);
+      (b) `super::wake_probe::on_dispatch()` at the top of
+      `dispatch_one` (`spin.rs:3968`) when
+      `matches!(meta.kind, EntryKind::Subscription)` — Service
+      / Timer / GuardCondition skip the probe because the 141
+      acceptance is wake-to-subscription latency only.
+      Storage: lock-free `[AtomicU64; 256]` ring +
+      `WRITE_IDX: AtomicU32` (sample count + wrap detection)
+      + `LAST_WAKE_TICKS: AtomicU64` (T0 pending pairing,
+      swap-cleared by `on_dispatch`). Time source is
+      caller-supplied via
+      `wake_probe::set_cycle_reader(Some(fn))` — point at
+      `nros_platform_mps2_an385::timing::clock_cycles` for
+      Cortex-M3. Drain API:
+      `wake_probe::drain(&mut [u64])` → `(samples_written,
+      total_writes_since_boot)` for 141.C's UART harness.
+      Feature is off by default — production builds carry
+      zero overhead (call sites are `#[cfg]`-elided no-ops).
 
 ### 141.C — Histogram aggregation + UART export
 

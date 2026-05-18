@@ -82,6 +82,10 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     if ctx.is_null() {
         return;
     }
+    // Phase 141.B.2 — capture T0 at cb entry. No-op when the
+    // probe feature is off or no cycle reader is installed.
+    #[cfg(feature = "wake-latency-probe")]
+    super::wake_probe::on_wake();
     // SAFETY: ctx points at a WakeCtxAlloc owned by an Executor
     // still alive at the time of the call. The Executor clears
     // the cb via `set_wake_callback(None, _)` on every session
