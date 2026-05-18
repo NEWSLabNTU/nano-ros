@@ -153,9 +153,19 @@ function(nros_board_link_app target)
     # are routed into nuttx_build_example as LINK_INTERFACES, which
     # walks each lib's INTERFACE_INCLUDE_DIRECTORIES + per-package
     # `*_ffi_lib` static archive into the cargo build. Skip
-    # NanoRos::NanoRos itself: cargo drags the NanoRos transitive
-    # closure (nros-c / nros-cpp / nros-rmw-zenoh / etc.) in via the
-    # FFI crate's `[dependencies]` table.
+    # NanoRos::NanoRos itself for the LINK_INTERFACES list: cargo
+    # drags the NanoRos transitive closure (nros-c / nros-cpp /
+    # nros-rmw-zenoh / etc.) in via the FFI crate's
+    # `[dependencies]` table.
+    #
+    # Phase 155.B.5 — but NanoRos's INTERFACE_INCLUDE_DIRECTORIES
+    # carries the per-build mirror dir for `nros_config_generated.h`
+    # (`${CMAKE_CURRENT_BINARY_DIR}/include`, set by nros-c's
+    # CMakeLists). Cargo can't discover that location, so the
+    # `nros-c/include/nros_config_generated.h` stub
+    # (which `#error`s) wins. Pull NanoRos's INTERFACE_INCLUDE_DIRECTORIES
+    # into INCLUDE_DIRS separately so the mirror dir reaches the FFI
+    # cc-rs build before the source-tree fallback.
     get_target_property(_libs ${target} LINK_LIBRARIES)
     set(_link_ifaces "")
     if(_libs)
@@ -164,6 +174,29 @@ function(nros_board_link_app target)
                OR _lib STREQUAL "NanoRos::NanoRosCpp"
                OR _lib STREQUAL "NanoRos"
                OR _lib STREQUAL "NanoRosCpp")
+                # Skip the link target but ferry its include dirs.
+                if(TARGET ${_lib})
+                    get_target_property(_nros_inc ${_lib} INTERFACE_INCLUDE_DIRECTORIES)
+                    if(_nros_inc)
+                        list(APPEND _incs ${_nros_inc})
+                    endif()
+                    # Also walk the umbrella's transitive
+                    # INTERFACE_LINK_LIBRARIES (nros_c-static,
+                    # nros_cpp-static) — those carry the mirror
+                    # dirs set by `nros-c/CMakeLists.txt:128`.
+                    get_target_property(_nros_link ${_lib} INTERFACE_LINK_LIBRARIES)
+                    if(_nros_link)
+                        foreach(_dep ${_nros_link})
+                            if(TARGET ${_dep})
+                                get_target_property(_dep_inc ${_dep}
+                                    INTERFACE_INCLUDE_DIRECTORIES)
+                                if(_dep_inc)
+                                    list(APPEND _incs ${_dep_inc})
+                                endif()
+                            endif()
+                        endforeach()
+                    endif()
+                endif()
                 continue()
             endif()
             list(APPEND _link_ifaces "${_lib}")

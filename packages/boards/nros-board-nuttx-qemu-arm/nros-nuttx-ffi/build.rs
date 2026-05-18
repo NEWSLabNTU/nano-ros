@@ -52,24 +52,26 @@ fn main() {
         build.pic(false);
     }
 
-    if is_cpp {
-        let nros_cpp_include = nros_root.join("packages/core/nros-cpp/include");
-        build.include(&nros_cpp_include);
-        build.flag("-std=c++14");
-    } else {
-        let nros_c_include = nros_root.join("packages/core/nros-c/include");
-        build.include(&nros_c_include);
-    }
-
-    // Additional include directories. Two paths:
+    // Phase 155.B.5 — caller-supplied include dirs MUST be added
+    // BEFORE the source-tree fallbacks. cc-rs forwards `.include()`
+    // calls as `-I` flags in order, and gcc searches them top-down.
+    // The source-tree `packages/core/nros-c/include/` ships a STUB
+    // `nros_config_generated.h` that `#error`s — it gets overwritten
+    // per-build by `nros-c`'s build.rs into a mirror dir
+    // (`${BINARY_DIR}/include/nros/nros_config_generated.h`, Phase
+    // 144). The cmake-driven `nros_nuttx_build_example` passes that
+    // mirror dir via `APP_INCLUDE_DIRS_FILE`; reading it FIRST puts
+    // the per-build header ahead of the stub.
+    //
+    // Two callers, two ENV channels:
     //   * `APP_INCLUDE_DIRS` (semicolon-separated env var) — legacy
     //     callers that build the include list directly in cmake.
     //   * `APP_INCLUDE_DIRS_FILE` (newline-separated file) — the
     //     `nuttx_build_example(LINK_INTERFACES …)` path, which
     //     materialises the cmake link-graph closure via
     //     `file(GENERATE)`. File-based passing avoids the
-    //     `cmake -E env` ambiguity around `;` (it's both list-sep and
-    //     a valid path char).
+    //     `cmake -E env` ambiguity around `;` (it's both list-sep
+    //     and a valid path char).
     if let Ok(include_dirs) = env::var("APP_INCLUDE_DIRS") {
         for dir in include_dirs.split(';') {
             if !dir.is_empty() {
@@ -91,6 +93,17 @@ fn main() {
                 "APP_INCLUDE_DIRS_FILE={includes_file} not readable: {e}"
             ),
         }
+    }
+
+    // Source-tree fallbacks (lowest priority — stub headers may
+    // live here, must come AFTER any caller mirror dirs).
+    if is_cpp {
+        let nros_cpp_include = nros_root.join("packages/core/nros-cpp/include");
+        build.include(&nros_cpp_include);
+        build.flag("-std=c++14");
+    } else {
+        let nros_c_include = nros_root.join("packages/core/nros-c/include");
+        build.include(&nros_c_include);
     }
 
     // Extra source files from CMake (semicolon-separated, e.g. generated interface .c files)
