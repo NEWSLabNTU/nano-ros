@@ -172,7 +172,7 @@ test_qemu_zenoh_large_publish
 
 Triage one to confirm + file under whichever phase fits.
 
-### G. Cmake platform matrix (4 tests) → **fixture build gap**
+### G. Cmake platform matrix (4 tests) → **phantom — already skipped**
 
 ```
 cmake_platform_freertos
@@ -181,13 +181,25 @@ cmake_platform_threadx
 cmake_platform_zephyr
 ```
 
-**Root cause.** Each test compiles a minimal C example for the
-named platform via the top-level `add_subdirectory(<repo>)`
-shape. The four embedded targets need cross toolchains + per-
-RTOS prerequisite env (FREERTOS_DIR, NUTTX_DIR, THREADX_DIR,
-Zephyr workspace). When env is present they should pass; when
-not, the matrix entries should `[SKIPPED]`. Convert hard fails to
-preconditioned `skip!` panics. Tracked as **160.G**.
+**Verified 2026-05-19.** These are NOT real failures. They panic via
+`nros_tests::skip!("Phase 138.6 ... cell deferred to Phase 139")`,
+which the JUnit post-processor in `justfile::_count-real-failures`
+correctly classifies as `[SKIPPED]`. Latest `_test-summary`:
+```
+Environment-skipped tests: 4 (missing prerequisites)
+  1 [SKIPPED] Phase 138.6 zephyr cell deferred to Phase 139
+  1 [SKIPPED] Phase 138.6 threadx cell deferred to Phase 139
+  1 [SKIPPED] Phase 138.6 nuttx cell deferred — ...
+  1 [SKIPPED] Phase 138.6 freertos cell deferred — ...
+Real failures: 0 / 4 total failures
+```
+
+`/tmp/unique-fails.txt` was extracted from raw nextest console
+output rather than the JUnit `<failure>` real-vs-skipped split, so
+this cluster is artifact, not work. Closes-with-zero-changes:
+remove the four tests from the real-fail rollup. Same caveat may
+apply to any `*_integration_shell_smoke` / `_e2e` tests with
+deferred-skip panics (see M).
 
 ### H. nano2nano + cross-RMW bridges (4 tests)
 
@@ -205,7 +217,7 @@ singleton issue Phase 156 doc flagged at the end. Bridge tests
 open TWO RMW backends in same process; XRCE's process-global
 state may collide with zenoh.
 
-### I. ThreadX-Linux rtos_e2e (3 tests)
+### I. ThreadX-Linux rtos_e2e (3 tests) → **PASS 2026-05-19**
 
 ```
 test_rtos_action_e2e::platform_3_Platform__ThreadxLinux::lang_1_Lang__Rust
@@ -213,10 +225,10 @@ test_rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux::lang_1_Lang__Rust
 test_rtos_service_e2e::platform_3_Platform__ThreadxLinux::lang_1_Lang__Rust
 ```
 
-**Hypothesis.** Phase 154 / 155.A platform-aliases ABI work
-covered ThreadX-Linux, but a recent fixture rebuild may have
-re-introduced staleness. Re-run fixture build + verify before
-filing.
+**Status.** 3/3 PASS on rerun (12.5s total). Fixture staleness as
+hypothesized — Phase 154/155.A platform-aliases work was already
+applied; just needed a fresh fixture build after the unrelated
+churn that produced the catalog. No source changes needed.
 
 ### J. RV64 C pubsub (1 test)
 
@@ -276,9 +288,9 @@ absent.
 | D. NuttX C/C++ rtos_e2e | 6 | fixture skip (Phase 140) | 160.D codegen-header split |
 | E. ESP32 emulator | 3 | env precondition not enforced | 160.E `skip!` wiring |
 | F. RTIC + serial bare-metal | 5 | Phase 132 / 141 RTIC regression | Triage → 132 or 141 |
-| G. cmake_platform_matrix cross | 4 | env precondition not enforced | 160.G `skip!` wiring |
+| G. cmake_platform_matrix cross | 4 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | H. nano2nano + bridges | 4 | XRCE `g_session` process-globals | Phase 156 follow-up |
-| I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | Rebuild + verify |
+| I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **PASS** on rerun, no changes |
 | J. RV64 C pubsub | 1 | fixture skip (Phase 140) | Closes with D |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
 | L. Native + c_xrce + qos | 8 | scattered, one-offs | Per-test triage |
