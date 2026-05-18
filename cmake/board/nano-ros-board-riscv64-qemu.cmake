@@ -106,8 +106,29 @@ endif()
 # tx_user.h / nx_user.h / link.lds). The .env file ships a single
 # legacy value pointing at the threadx-linux config dir — ignore it
 # and FORCE the right per-board path here.
+#
+# Phase 155.D — also patch the cmake process env so cargo
+# invocations spawned by corrosion (and any other subprocess)
+# see the RISC-V board's config dir instead of inheriting the
+# stale .envrc value. cmake CACHE variables don't propagate to
+# subprocess env automatically. NETX_CONFIG_DIR uses the same
+# board dir today (both `tx_user.h` and `nx_user.h` live next
+# to each other under the board's `config/`); patch it too so
+# the cmake-driven C / C++ fixture rebuild path sees the right
+# `nx_port.h`.
 set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
     CACHE PATH "Directory with tx_user.h / nx_user.h / link.lds" FORCE)
+set(NETX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
+    CACHE PATH "Directory with nx_user.h / nx_port.h" FORCE)
+set(ENV{THREADX_CONFIG_DIR} "${_NROS_BOARD_CONFIG_DIR}")
+set(ENV{NETX_CONFIG_DIR}    "${_NROS_BOARD_CONFIG_DIR}")
+# Phase 155.D — same propagation for `THREADX_PORT` +
+# `THREADX_EXTRA_INCLUDES`. RISC-V Rust examples set these in
+# per-example `.cargo/config.toml [env]`; cmake-driven cargo
+# (corrosion) doesn't see those, so propagate via process env.
+set(ENV{THREADX_PORT}            "risc-v64/gnu")
+set(ENV{THREADX_EXTRA_INCLUDES}
+    "${THREADX_DIR}/ports/risc-v64/gnu/example_build/qemu_virt")
 if(NOT DEFINED THREADX_BOARD_DIR AND NOT DEFINED ENV{THREADX_BOARD_DIR})
     set(THREADX_BOARD_DIR "${_NROS_BOARD_C_DIR}"
         CACHE PATH "ThreadX RV64 board C dir (entry.s, app_define.c, ...)")

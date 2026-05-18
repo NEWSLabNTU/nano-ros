@@ -102,6 +102,17 @@ build-fixtures:
           THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
           cargo build --release --quiet )
     done
+    # Phase 155.D — export the RISC-V config-dir env vars BEFORE
+    # cmake config + build. cmake `-D…=…` only sets cache; the
+    # downstream cmake-driven cargo invocations (corrosion) spawn
+    # cc-rs which reads its own env, NOT cmake cache. Without the
+    # export here, cc-rs inherits the stale `.envrc` defaults that
+    # point at `nros-board-threadx-linux/config` and the kernel
+    # build sees the wrong `tx_user.h` / `nx_port.h`.
+    export THREADX_CONFIG_DIR="$config_dir"
+    export NETX_CONFIG_DIR="$config_dir"
+    export THREADX_PORT="risc-v64/gnu"
+    export THREADX_EXTRA_INCLUDES="$threadx_dir/ports/risc-v64/gnu/example_build/qemu_virt"
     cmake_examples=(talker listener service-server service-client action-server action-client)
     for lang in c cpp; do
         for ex in "${cmake_examples[@]}"; do
