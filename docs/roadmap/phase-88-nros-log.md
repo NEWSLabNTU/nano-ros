@@ -348,13 +348,24 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             Boots via `QemuProcess::start_riscv64_virt`, exits
             through the QEMU `test-finisher` MMIO device after the
             6 records emit.
-      - [ ] 88.15.e — Zephyr `native_sim`. **Deferred** — needs a
-            tiny west-build fixture under `zephyr/`, gated on
-            `west` / `ZEPHYR_BASE` env availability. Chain
-            de-facto covered by the post-88.16.G example output in
-            the standard `zephyr.rs` E2E test, which already
-            shows the `[INFO] <module>: …` format flowing through
-            `LOG_INF` via the platform impl.
+      - [x] 88.15.e — Zephyr `native_sim/native/64`. Fixture at
+            `packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim/`
+            (prj.conf + `boards/native_sim_native_64.conf` + minimal
+            `src/main.c` that calls `nros_log_init()` + emits via
+            `nros_log_default_logger()`). Built via
+            `just zephyr build-logging-smoke`; binary lands at
+            `<zephyr-workspace>/build-logging-smoke/zephyr/zephyr.exe`.
+            Harness in
+            `logging_smoke.rs::logging_smoke_zephyr_native_sim_emits_every_severity`
+            spawns it as a Linux process, drains stdout + stderr,
+            asserts INFO / WARN / ERROR / FATAL payloads (Zephyr's
+            runtime LOG filter blocks DBG-mapped TRACE + DEBUG at
+            the default level; bumping
+            `CONFIG_LOG_DEFAULT_LEVEL=4` alone doesn't lift the
+            backend filter — that's a per-module setup users can
+            opt into separately). Process exits cleanly via
+            `nsi_exit(0)` so the harness drain completes inside
+            the 15 s deadline.
       - [ ] 88.15.f — ESP32 QEMU. **Deferred** — Espressif's
             `qemu-system-xtensa` / `qemu-system-riscv32` fork
             isn't in the default toolchain set; CI would have to

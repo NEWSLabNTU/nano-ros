@@ -495,6 +495,33 @@ build-c:
     west build -b native_sim/native/64 -d build-c-listener -p auto $NROS/examples/zephyr/c/zenoh/listener
     echo "Zephyr C examples built successfully!"
 
+# Phase 88.15.e — build the nros-log Zephyr native_sim smoke
+# fixture (boots Zephyr `native_sim/native/64` as a Linux ELF,
+# emits every Severity via the nros-log facade, and exits through
+# `nsi_exit(0)`). Consumed by
+# `packages/testing/nros-tests/tests/logging_smoke.rs`.
+build-logging-smoke:
+    #!/usr/bin/env bash
+    set -e
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if [ ! -d "$WORKSPACE/zephyr" ]; then
+        echo "Error: Zephyr workspace not found at $WORKSPACE"
+        echo "Run: ./scripts/zephyr/setup.sh"
+        exit 1
+    fi
+    CODEGEN="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
+    if [ ! -x "$CODEGEN" ]; then
+        echo "  Building host nros-codegen..."
+        cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+            -p nros-codegen-c --bin nros-codegen --quiet
+    fi
+    NROS="$(basename "$(pwd)")"
+    cd "$WORKSPACE"
+    echo "  Building logging-smoke-zephyr-native-sim -> build-logging-smoke/"
+    west build -b native_sim/native/64 -d build-logging-smoke -p auto \
+        $NROS/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim \
+        -- -D_NANO_ROS_CODEGEN_TOOL="$CODEGEN"
+
 # Build Zephyr C++ examples
 build-cpp:
     #!/usr/bin/env bash

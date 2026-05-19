@@ -412,6 +412,27 @@ pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the Phase 88.15.e `logging-smoke-zephyr-native-sim`
+/// fixture binary (Zephyr `native_sim/native/64` running as a Linux
+/// process).
+static LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt Phase 88.15.e logging smoke binary. Built
+/// by `just zephyr build-logging-smoke` (or whichever recipe wires
+/// the fixture into `just zephyr build-fixtures`). The Zephyr
+/// `native_sim` flow emits a Linux ELF under
+/// `<zephyr-workspace>/build-logging-smoke/zephyr/zephyr.exe`.
+pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
+    LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY
+        .get_or_try_init(|| {
+            let root = crate::project_root();
+            let binary = root
+                .join("zephyr-workspace/build-logging-smoke/zephyr/zephyr.exe");
+            require_prebuilt_binary(&binary)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Build the qemu-wcet-bench example and return its path (cached)
 pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY

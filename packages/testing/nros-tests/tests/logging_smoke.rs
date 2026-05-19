@@ -13,12 +13,17 @@
 
 use std::time::Duration;
 
+use std::{
+    process::{Command, Stdio},
+    time::Instant,
+};
+
 use nros_tests::{
     assert_output_contains,
     fixtures::{
         build_logging_smoke_freertos_mps2, build_logging_smoke_mps2_baremetal,
-        build_logging_smoke_threadx_riscv64, is_arm_toolchain_available, is_qemu_available,
-        is_qemu_riscv64_available, QemuProcess,
+        build_logging_smoke_threadx_riscv64, build_logging_smoke_zephyr_native_sim,
+        is_arm_toolchain_available, is_qemu_available, is_qemu_riscv64_available, QemuProcess,
     },
 };
 
@@ -106,4 +111,68 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);
+}
+
+/// Phase 88.15.e — Zephyr `native_sim/native/64` running as a Linux
+/// process. The platform's `PlatformLog` impl
+/// (`nros-platform-zephyr::nros_platform_log_write`) routes each
+/// nros record through Zephyr's `LOG_INF` / `LOG_WRN` / `LOG_ERR`
+/// macros. Zephyr's runtime LOG filter blocks `LOG_DBG` records
+/// below `CONFIG_LOG_DEFAULT_LEVEL`, so the smoke checks only the
+/// four severities that survive the standard logging level.
+#[test]
+fn logging_smoke_zephyr_native_sim_emits_every_severity() {
+    let binary = build_logging_smoke_zephyr_native_sim().expect(
+        "logging-smoke-zephyr-native-sim fixture not built — run `just zephyr build-logging-smoke`",
+    );
+
+    let mut child = Command::new(binary)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn native_sim binary");
+
+    // Drain both fds in parallel — Zephyr LOG backend may pick
+    // either stream depending on the native_sim console driver.
+    use std::io::Read;
+    let mut stdout = child.stdout.take().expect("no stdout");
+    let mut stderr = child.stderr.take().expect("no stderr");
+    let mut output = String::new();
+    let start = Instant::now();
+    let mut buf = [0u8; 4096];
+    let deadline = Duration::from_secs(15);
+    while start.elapsed() < deadline {
+        if let Ok(Some(_)) = child.try_wait() {
+            let _ = stdout.read_to_string(&mut output);
+            let _ = stderr.read_to_string(&mut output);
+            break;
+        }
+        if let Ok(n) = stdout.read(&mut buf)
+            && n > 0
+        {
+            output.push_str(&String::from_utf8_lossy(&buf[..n]));
+        }
+        if let Ok(n) = stderr.read(&mut buf)
+            && n > 0
+        {
+            output.push_str(&String::from_utf8_lossy(&buf[..n]));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = child.kill();
+
+    // The Zephyr LOG default filter drops DBG records below the
+    // configured CONFIG_LOG_DEFAULT_LEVEL, so the platform impl's
+    // TRACE / DEBUG -> LOG_DBG mapping doesn't surface unless the
+    // user bumps CONFIG_LOG_MAX_LEVEL. Check the four severities
+    // that pass the runtime gate.
+    assert_output_contains(
+        &output,
+        &[
+            "info payload",
+            "warn payload",
+            "error payload",
+            "fatal payload",
+        ],
+    );
 }
