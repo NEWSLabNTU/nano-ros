@@ -1,0 +1,26 @@
+[build]
+target = "armv7a-nuttx-eabihf"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+build-std-features = ["compiler-builtins-mem"]
+
+[target.armv7a-nuttx-eabihf]
+linker = "arm-none-eabi-gcc"
+rustflags = [
+    "-C", "link-arg=-mcpu=cortex-a7",
+    "-C", "link-arg=-mfloat-abi=hard",
+    "-C", "link-arg=-mfpu=neon-vfpv4",
+]
+
+[env]
+CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
+CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
+
+# Phase 88.15.c — fixture follows the qemu-arm-nuttx Rust example
+# pattern: patched libc (`third-party/nuttx/libc`) for std builds plus
+# in-tree nros-core / nros-serdes overrides.
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }
+libc = { path = "../../../../../third-party/nuttx/libc" }

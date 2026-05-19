@@ -23,9 +23,10 @@ use nros_tests::{
     esp32::start_esp32_qemu,
     fixtures::{
         build_logging_smoke_esp32_qemu_flash, build_logging_smoke_freertos_mps2,
-        build_logging_smoke_mps2_baremetal, build_logging_smoke_threadx_riscv64,
-        build_logging_smoke_zephyr_native_sim, is_arm_toolchain_available, is_qemu_available,
-        is_qemu_riscv64_available, QemuProcess,
+        build_logging_smoke_mps2_baremetal, build_logging_smoke_nuttx_qemu_arm,
+        build_logging_smoke_threadx_riscv64, build_logging_smoke_zephyr_native_sim,
+        is_arm_toolchain_available, is_qemu_available, is_qemu_riscv64_available, nuttx,
+        QemuProcess,
     },
 };
 
@@ -86,6 +87,50 @@ fn logging_smoke_freertos_mps2_emits_every_severity() {
         .expect("failed to start QEMU (networked slirp)");
     let output = qemu
         .wait_for_output(Duration::from_secs(30))
+        .expect("QEMU timed out waiting for log output");
+
+    assert_output_contains(&output, EXPECTED_LINES);
+}
+
+/// Phase 88.15.c — NuttX QEMU ARM virt. NuttX uses the POSIX C
+/// platform port (`nros-platform-posix`, shared via the
+/// `nros-platform-nuttx` shim); the POSIX
+/// `nros_platform_log_write` impl renders each record on stderr.
+/// `wait_for_output` already drains stderr (Phase 88.16.A) so the
+/// log lines reach the captured output. The fixture's
+/// `run()` closure returns `Ok` after emitting all six records;
+/// the board crate's `run()` then calls `std::process::exit(0)`,
+/// printing `Application completed successfully.` — the harness
+/// uses that line as the readiness marker.
+#[test]
+fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
+    if !nuttx::is_nuttx_available() {
+        panic!("[SKIPPED] NuttX source tree not found");
+    }
+    if !nuttx::is_nuttx_configured() {
+        panic!("[SKIPPED] NuttX not configured");
+    }
+    if !nuttx::is_arm_gcc_available() {
+        panic!("[SKIPPED] arm-none-eabi-gcc not on PATH");
+    }
+    if nuttx::nuttx_kernel_path().is_none() {
+        panic!("[SKIPPED] NuttX kernel not built ($NUTTX_DIR/nuttx)");
+    }
+
+    let binary = build_logging_smoke_nuttx_qemu_arm().expect(
+        "logging-smoke-nuttx-qemu-arm fixture not built — run `just nuttx build-fixtures`",
+    );
+
+    // No networking — fixture skips `Executor::open` so no zenoh
+    // session is needed. `init_hardware` still runs (5s sleep +
+    // ioctl) but the slirp interface is harmless.
+    let mut qemu =
+        QemuProcess::start_nuttx_virt(binary, true).expect("failed to start QEMU (nuttx-virt)");
+    let output = qemu
+        .wait_for_output_pattern(
+            "Application completed successfully.",
+            Duration::from_secs(45),
+        )
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);

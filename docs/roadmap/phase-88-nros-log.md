@@ -330,17 +330,26 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             Uses `QemuProcess::start_mps2_an385_networked` so the
             board's `init_network` succeeds via slirp; semihosting
             writer registered by Phase 88.11's `run()`.
-      - [ ] 88.15.c — NuttX QEMU virt. **Deferred** — the NuttX
-            example binaries aren't bootable standalone; they ship
-            as NuttX `apps/` payloads linked into a NuttX kernel
-            image. Building a dedicated logging-smoke fixture
-            requires the NuttX `apps/external` registration shim
-            plus a kernel re-link. **Covered de-facto** by
-            `rtos_e2e::test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_1_Lang__Rust`
-            after Phase 88.16.D, which already shows
-            `[INFO] listener: Received: N` lines from the migrated
-            talker→listener pair (the same chain a dedicated smoke
-            would exercise).
+      - [x] 88.15.c — NuttX QEMU virt. Fixture at
+            `packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/`;
+            harness in
+            `logging_smoke.rs::logging_smoke_nuttx_qemu_arm_emits_every_severity`.
+            Builds via the `armv7a-nuttx-eabihf` flat-build path
+            (NuttX kernel image is the Rust binary — `build.rs`
+            preprocesses NuttX's `dramboot.ld` linker script and
+            pulls in `staging/lib{sched,drivers,boards,c,mm,arch,
+            xx,apps,net,crypto,fs,binfmt,openamp,board}.a`, same
+            shape as `examples/qemu-arm-nuttx/rust/zenoh/talker`).
+            The NuttX C platform port (`nros-platform-posix`,
+            shared via the `nros-platform-nuttx` shim) renders
+            each record on stderr; the harness drains stderr
+            (Phase 88.16.A merged stdout+stderr) and matches on
+            `Application completed successfully.` as the
+            readiness marker. Earlier "deferred" reasoning
+            (apps/external registration shim + kernel re-link)
+            was stale — the NuttX Rust examples have been
+            standalone bootable kernels since Phase 152.B / 157;
+            the smoke fixture just mirrors that pattern.
       - [x] 88.15.d — ThreadX RISC-V QEMU virt. Fixture at
             `packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/`;
             harness in

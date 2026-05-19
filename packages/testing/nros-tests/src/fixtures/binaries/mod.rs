@@ -433,6 +433,25 @@ pub fn build_logging_smoke_esp32_qemu_flash() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the Phase 88.15.c `logging-smoke-nuttx-qemu-arm`
+/// fixture binary (NuttX flat-build kernel image for QEMU ARM virt).
+static LOGGING_SMOKE_NUTTX_QEMU_ARM_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt Phase 88.15.c logging smoke binary. Built
+/// by `just nuttx build-fixtures` (folded the fixture into the same
+/// parallel sweep that builds the NuttX example tree).
+pub fn build_logging_smoke_nuttx_qemu_arm() -> TestResult<&'static Path> {
+    LOGGING_SMOKE_NUTTX_QEMU_ARM_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/logging-smoke-nuttx-qemu-arm",
+                "logging-smoke-nuttx-qemu-arm",
+                Some("armv7a-nuttx-eabihf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.e `logging-smoke-zephyr-native-sim`
 /// fixture binary (Zephyr `native_sim/native/64` running as a Linux
 /// process).

@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "logging-smoke-nuttx-qemu-arm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 88.15.c — NuttX QEMU ARM virt nros-log smoke fixture"
+
+[[bin]]
+name = "logging-smoke-nuttx-qemu-arm"
+test = false
+bench = false
+
+[dependencies]
+nros-board-nuttx-qemu-arm = { path = "../../../../boards/nros-board-nuttx-qemu-arm" }
+nros-log = { path = "../../../../core/nros-log" }
+
+[profile.release]
+opt-level = "s"
+lto = true

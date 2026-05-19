@@ -1,0 +1,6 @@
+# Phase 88.15.c — pin nightly to match the qemu-arm-nuttx examples
+# so the `-Z build-std` resolution + the patched libc version line up.
+# Bump in lockstep with `examples/qemu-arm-nuttx/rust-toolchain.toml`.
+[toolchain]
+channel = "nightly-2026-04-11"
+components = ["rust-src", "rustfmt"]

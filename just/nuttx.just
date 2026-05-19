@@ -73,6 +73,8 @@ build-fixtures:
     for ex in talker listener; do
         rust_dirs+=("examples/qemu-arm-nuttx/rust/dds/$ex")
     done
+    # Phase 88.15.c — nros-log severity-coverage smoke fixture.
+    rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm")
     printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
          cargo build --release --quiet'
