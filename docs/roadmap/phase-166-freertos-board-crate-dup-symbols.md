@@ -137,3 +137,108 @@ consume). Matches the platform-cffi pattern documented in
   in a binary (the Rust zenoh examples that bypass
   `nros-board-freertos` still build cleanly because they only
   pull in `nros-board-mps2-an385-freertos`).
+
+---
+
+## Non-passing test inventory (snapshot 2026-05-19)
+
+Cataloged during the Phase 88.16.B verification sweep. Pulled from a
+full grep of `packages/testing/nros-tests/tests/*.rs`. Two classes:
+hard-coded `#[ignore]` markers (test runner reports `ignored`) and
+prerequisite skips through `nros_tests::skip!(...)` (test runner
+reports `[SKIPPED]` via panic+prefix). None of these are caused by
+Phase 88 / nros-log; they predate it.
+
+### Permanently `#[ignore]`'d — needs upstream / other-phase fix
+
+| Test | Reason | Tracking |
+|---|---|---|
+| `actions::test_action_server_client_communication` | blocking `zpico_get` in `send_goal` returns `Timeout` immediately on native | Phase 77 |
+| `native_api::test_c_action_communication` | same root cause | Phase 77 |
+| `native_api::test_c_rust_service_interop` | blocking `zpico_get` in service call returns `Timeout` | Phase 77 |
+| `nuttx_qemu::test_nuttx_cpp_talker_builds` | NuttX C/C++ CMake build blocked by upstream libc missing `_SC_HOST_NAME_MAX` | NuttX upstream |
+| `nuttx_qemu::test_nuttx_cpp_listener_builds` | same | NuttX upstream |
+| `nuttx_qemu::test_nuttx_cpp_service_server_builds` | same | NuttX upstream |
+| `nuttx_qemu::test_nuttx_cpp_service_client_builds` | same | NuttX upstream |
+| `nuttx_qemu::test_nuttx_cpp_action_server_builds` | same | NuttX upstream |
+| `nuttx_qemu::test_nuttx_cpp_action_client_builds` | same | NuttX upstream |
+| `esp32_qemu_dds::test_esp32_qemu_dds_rust_talker_to_listener_e2e` | dust-dds `DcpsDomainParticipant` builtin entity count overflows ESP32-C3 heap budget; Phase 101 deferral | Phase 101 follow-up |
+| `freertos_qemu_dds::test_freertos_dds_rust_talker_to_listener_e2e` | gates flipping 97.4.freertos to done; runtime smoke deferred | Phase 97.4 |
+
+**Phase 77 status:** "In Progress (77.1–77.5 done)" per
+`docs/roadmap/archived/phase-77-async-action-client.md`. Three
+`#[ignore]` markers above clear when 77.6+ lands.
+
+### Prerequisite-gated `nros_tests::skip!(...)` — environmental
+
+These pass when the listed dependency is installed / running; they
+print `[SKIPPED] <reason>` and exit otherwise. Skip frequency
+across the suite (full grep, with-duplicates):
+
+| Skip reason | Count | Unblocker |
+|---|---|---|
+| zenohd not found | 78 | `just zenohd build` (artefact at `build/zenohd/zenohd`) |
+| Zephyr not available | 49 | `just zephyr setup` |
+| XRCE agent not available | 33 | `just xrce setup` |
+| ROS 2 not found | 20 | `source /opt/ros/humble/setup.bash` |
+| cmake not found | 12 | distro-level `cmake` install |
+| zenoh-pico arm build not available | 10 | `just qemu build-zenoh-pico-arm` |
+| `require_nuttx_cpp` check failed | 6 | NuttX C/C++ block (see above) |
+| ROS 2 DDS not available | 5 | ROS 2 install + rmw_cyclonedds_cpp |
+| DDS talker / listener binary missing | 10 | `just <plat> build-fixtures` |
+| west command not available | 4 | `pip install west` |
+| socat not available | 3 | distro `socat` install |
+| riscv32 target not available | 3 | `rustup target add riscv32imc-unknown-none-elf` |
+| `require_esp32_networked` check failed | 3 | `just esp32 setup` |
+| qemu-system-arm too old for `-netdev dgram unix` | 2 | `just qemu setup-qemu` (patched binary) |
+| Patched qemu-system-arm not built | 2 | `just qemu setup-qemu` |
+| ThreadX (Linux + RV64) DDS prereq | 2 | `just threadx_{linux,riscv64} setup` |
+| `require_threadx{,_riscv64}` check failed | 2 | same |
+| `require_nuttx` / `require_freertos` check failed | 2 | `just {nuttx,freertos} setup` |
+| `qemu-system-riscv32` not available | 1 | distro `qemu-system-misc` install |
+| `pio` CLI not on PATH | 1 | `pip install platformio` |
+| Phase 138.6 zephyr cell deferred | 1 | Phase 139 work |
+| openssl not available — cannot generate TLS certs | 1 | distro `openssl` install |
+| NUTTX_DIR unset | 1 | env var |
+| `idf.py` not on PATH | 1 | `just esp_idf setup` |
+| `espflash` not available | 1 | `cargo install espflash` |
+| `arm-none-eabi-gcc` not on PATH | 1 | distro `gcc-arm-none-eabi` install |
+| bare-metal DDS prerequisites not available | 1 | `just qemu setup` |
+| zenoh-pico arm build (bridge variant) | 1 | `just qemu build-zenoh-pico-arm` |
+
+### Pure-fixture skip (separate failure mode)
+
+`xrce::test_xrce_large_message_publish` fails (not skip!) with
+`Test fixture binary not prebuilt: .../target/release/xrce-large-msg-test`.
+Resolves with `just build-test-fixtures`. The xrce harness panics
+on the missing path because the test was written before the
+`skip!` macro existed.
+
+### Survey gap — broader ignored / skipped set this snapshot
+misses
+
+This inventory was gathered from a static grep, not from a full
+`just test-all` run. Real run-time counts vary by:
+- which optional services are running (zenohd, xrce-agent),
+- which platform toolchains are installed,
+- which fixtures are prebuilt (`just build-test-fixtures`).
+
+Run `cargo nextest run --workspace 2>&1 | tee tmp/nextest.log` and
+grep for `SKIPPED` + `ignored` to refresh this snapshot before
+treating it as canonical.
+
+### Recommended dispositions
+
+- **Phase 77 trio (3 tests)** — keep ignored; resolution gated on
+  Phase 77.6+.
+- **NuttX C/C++ block (6 tests)** — keep ignored; resolution
+  gated on the upstream NuttX libc patch.
+- **DDS RTOS smoke (2 tests)** — keep ignored; Phase 97.4 /
+  Phase 101 cleanups; un-skip when their respective work items
+  flip to done.
+- **Environmental skips (77 + 49 + …)** — leave as is; these are
+  desirable (CI / dev hosts without the dep should skip cleanly).
+- **xrce large-message fixture** — convert from raw panic to
+  `nros_tests::skip!("xrce-large-msg-test fixture not prebuilt; run
+  `just build-test-fixtures`")` so the test reports `[SKIPPED]`
+  instead of `FAILED` when fixture is missing. Trivial follow-up.
