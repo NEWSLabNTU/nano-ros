@@ -136,6 +136,27 @@ build-fixtures:
            -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
          cmake --build {}/build --parallel > /dev/null"
 
+    # Phase 118.B.4 — collapsed-shape FreeRTOS C / C++ examples. Each
+    # case builds under `-DNROS_RMW=zenoh` (no DDS C / C++ siblings
+    # existed pre-collapse on FreeRTOS, so the matrix is zenoh-only).
+    collapsed_cmake_dirs=()
+    for lang in c cpp; do
+        for ex in talker listener service-server service-client action-server action-client; do
+            dir="examples/qemu-arm-freertos/$lang/$ex"
+            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
+        done
+    done
+    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+             cmake -S {} -B {}/build-zenoh \
+               -DNROS_RMW=zenoh \
+               -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+               -DCMAKE_BUILD_TYPE=Release \
+               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+             cmake --build {}/build-zenoh --parallel > /dev/null"
+    fi
+
 # Build every FreeRTOS tier: core libraries, examples, and test fixtures.
 build-all: build build-examples build-fixtures
     @echo "FreeRTOS build-all completed."

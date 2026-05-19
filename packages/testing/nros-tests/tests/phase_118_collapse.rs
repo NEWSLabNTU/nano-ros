@@ -358,3 +358,44 @@ fn test_freertos_rust_case_rmw_variant_exists(
         path.display()
     );
 }
+
+/// Phase 118.B.4 — FreeRTOS C / C++ collapsed cases. Zenoh only on
+/// FreeRTOS for C / C++ (no pre-collapse DDS C / C++ siblings).
+#[rstest]
+#[case::c_talker("c", "talker", "freertos_c_talker")]
+#[case::c_listener("c", "listener", "freertos_c_listener")]
+#[case::c_ss("c", "service-server", "freertos_c_service_server")]
+#[case::c_sc("c", "service-client", "freertos_c_service_client")]
+#[case::c_as("c", "action-server", "freertos_c_action_server")]
+#[case::c_ac("c", "action-client", "freertos_c_action_client")]
+#[case::cpp_talker("cpp", "talker", "freertos_cpp_talker")]
+#[case::cpp_listener("cpp", "listener", "freertos_cpp_listener")]
+#[case::cpp_ss("cpp", "service-server", "freertos_cpp_service_server")]
+#[case::cpp_sc("cpp", "service-client", "freertos_cpp_service_client")]
+#[case::cpp_as("cpp", "action-server", "freertos_cpp_action_server")]
+#[case::cpp_ac("cpp", "action-client", "freertos_cpp_action_client")]
+fn test_freertos_cmake_case_rmw_variant_exists(
+    #[case] lang: &str,
+    #[case] case: &str,
+    #[case] binary: &str,
+) {
+    let path = nros_tests::fixtures::build_freertos_cmake_example_rmw(
+        lang, case, binary, Rmw::Zenoh,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "qemu-arm-freertos/{}/{} zenoh variant not prebuilt; run \
+             `just freertos build-fixtures` first: {:?}",
+            lang,
+            case,
+            e
+        )
+    });
+    assert!(
+        path.exists(),
+        "freertos {}/{} zenoh binary missing: {}",
+        lang,
+        case,
+        path.display()
+    );
+}

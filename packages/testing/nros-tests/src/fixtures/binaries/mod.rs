@@ -491,6 +491,22 @@ pub fn build_native_cpp_example_rmw(
     build_example_cmake_rmw(&format!("native/cpp/{}", case), binary_name, rmw)
 }
 
+/// Phase 118.B.4 — collapsed-shape FreeRTOS C / C++ example resolver.
+/// `lang` is `"c"` or `"cpp"`. Binary lands at
+/// `examples/qemu-arm-freertos/<lang>/<case>/build-<rmw>/<binary>`.
+pub fn build_freertos_cmake_example_rmw(
+    lang: &str,
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    build_example_cmake_rmw(
+        &format!("qemu-arm-freertos/{}/{}", lang, case),
+        binary_name,
+        rmw,
+    )
+}
+
 /// Phase 118.B.4 — collapsed-shape FreeRTOS Rust example resolver.
 /// FreeRTOS examples are cross-compiled to `thumbv7m-none-eabi`, so
 /// the binary lives at
