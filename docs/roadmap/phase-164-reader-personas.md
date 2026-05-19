@@ -66,7 +66,7 @@ Cross-cutting blockers (multiple personas):
 
 ### 164.C — Serious-engineer production readiness checklist
 
-- [ ] **164.C.1** New page `book/src/concepts/production-readiness.md`
+- [x] **164.C.1** New page `book/src/concepts/production-readiness.md`
       (or `book/src/internals/production-readiness.md`) listing
       hardware-validated RT metrics, platform-specific validation
       checks, RMW certification per target, safety + verification,

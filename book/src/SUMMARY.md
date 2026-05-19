@@ -85,6 +85,7 @@
 - [zpico-sys Build Architecture](./internals/zpico-build.md)
 - [Formal Verification](./internals/verification.md)
 - [Safety Protocol](./internals/safety.md)
+- [Production Readiness Checklist](./internals/production-readiness.md)
 - [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)
 - [XRCE-DDS Symbol Reference](./internals/porting-platform/xrce-dds.md)
 - [Creating Examples](./internals/creating-examples.md)
