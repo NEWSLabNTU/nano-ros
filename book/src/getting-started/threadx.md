@@ -13,8 +13,8 @@ ThreadX (not in the
 [coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)).
 
 > **Prereqs.** Clone with `just setup` already run. For
-> threadx-riscv64 also need a `riscv64-unknown-linux-gnu-gcc` cross
-> toolchain on `PATH` plus `qemu-system-riscv64`.
+> threadx-riscv64 also need a `riscv64-unknown-elf-gcc` (bare-metal)
+> cross toolchain on `PATH` plus `qemu-system-riscv64`.
 
 ## Project layout
 
@@ -33,7 +33,7 @@ examples/threadx-linux/
     ├── package.xml
     └── src/main.c
 
-examples/threadx-riscv64/
+examples/qemu-riscv64-threadx/
 ├── rust/zenoh/talker/                 # Cargo, target = riscv64gc-unknown-linux-gnu
 │   └── ...
 └── c/zenoh/talker/
@@ -48,23 +48,38 @@ uses the `nx_bsd_*` BSD socket shim layered on the host TCP stack
 ## Configure
 
 ```toml
-# threadx-linux talker config.toml
+# threadx-linux talker config.toml — mirror of in-tree file
+[network]
+ip      = "192.0.3.10"
+mac     = "02:00:00:00:00:00"
+gateway = "192.0.3.1"
+netmask = "255.255.255.0"
+
+[platform]
+interface = "tap-tx0"               # veth pair created by just threadx_linux setup
+
 [zenoh]
-locator   = "tcp/127.0.0.1:7447"
+locator   = "tcp/127.0.0.1:7455"   # ThreadX-Linux test-fixture port
 domain_id = 0
 ```
 
 ```toml
 # threadx-riscv64 talker config.toml — QEMU Slirp
+[network]
+ip      = "10.0.2.10"
+mac     = "02:00:00:00:00:00"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
+
 [zenoh]
-locator   = "tcp/10.0.2.2:7447"
+locator   = "tcp/10.0.2.2:7453"   # ThreadX-RV64 test-fixture port
 domain_id = 0
 ```
 
-The ThreadX-Linux fixture intentionally pins zenohd to `0.0.0.0`
-(not `127.0.0.1`) because the veth bridge needs an externally-
-reachable bind. The QEMU-RISC-V64 fixture uses Slirp's default
-`10.0.2.2` gateway just like the FreeRTOS QEMU flow.
+ThreadX-Linux uses a veth pair (`tap-tx0`) rather than QEMU Slirp;
+`just threadx_linux setup` creates the interface. The QEMU-RISC-V64
+fixture uses Slirp's default `10.0.2.2` gateway just like the
+FreeRTOS QEMU flow.
 
 ## Build
 
@@ -131,7 +146,7 @@ seconds of QEMU boot. If no `Published:` line:
 - ThreadX-Linux C:
   [`examples/threadx-linux/c/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/c/zenoh/talker)
 - ThreadX-RISC-V64 Rust:
-  [`examples/threadx-riscv64/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-riscv64/rust/zenoh/talker)
+  [`examples/qemu-riscv64-threadx/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-riscv64-threadx/rust/zenoh/talker)
 - Board crates:
   [`packages/boards/nros-board-threadx-linux/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-threadx-linux),
   [`packages/boards/nros-board-riscv64-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-riscv64-qemu)

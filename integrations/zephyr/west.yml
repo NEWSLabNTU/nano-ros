@@ -1,4 +1,4 @@
-# Phase 139.1 — west manifest fragment for the nano-ros Zephyr module.
+# west manifest fragment for the nano-ros Zephyr module.
 #
 # Downstream workspaces import this from their own `west.yml` so that
 # `west update` pulls nano-ros and Zephyr discovers it as a module:
@@ -6,7 +6,7 @@
 #   manifest:
 #     remotes:
 #       - name: nano-ros
-#         url-base: https://github.com/aeon/nano-ros
+#         url-base: https://github.com/NEWSLabNTU
 #     projects:
 #       - name: nano-ros
 #         remote: nano-ros

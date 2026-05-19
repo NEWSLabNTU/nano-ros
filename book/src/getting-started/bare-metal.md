@@ -38,20 +38,26 @@ suffix — this is the bare-metal variant) which provides:
 
 ## Configure
 
+Mirror of the in-tree
+[`config.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/zenoh/talker/config.toml):
+
 ```toml
 [network]
-ip       = "10.0.2.21"
-mac      = "02:00:00:00:00:01"
+ip       = "10.0.2.10"
+mac      = "02:00:00:00:00:00"
 gateway  = "10.0.2.2"
-netmask  = "255.255.255.0"
+prefix   = 24                       # NOT `netmask` — Config::from_toml
+                                    # parses `prefix` (CIDR) only.
 
 [zenoh]
-locator   = "tcp/10.0.2.2:7447"
+locator   = "tcp/10.0.2.2:7450"     # bare-metal test-fixture port
 domain_id = 0
 ```
 
-QEMU Slirp networking — no host TAP / bridge / sudo. Same scheme
-as the FreeRTOS QEMU starter.
+QEMU Slirp networking — no host TAP / bridge / sudo. The
+`zenohd` default port is 7447; this example expects **7450** so
+start the router with `zenohd run --listen tcp/127.0.0.1:7450`
+(or edit `config.toml` to match `zenohd`'s 7447 default).
 
 ## Build
 

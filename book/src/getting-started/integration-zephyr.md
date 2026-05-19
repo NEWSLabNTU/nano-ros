@@ -12,7 +12,12 @@ care of the rest.
 > the canonical user entry.
 
 > **Prereqs.** Zephyr SDK ≥ v0.16, `west` CLI (`pip install west`),
-> Python 3.10+.
+> Python 3.10+. Bootstrap a Zephyr workspace first
+> (`west init -l <your-app>` or `just zephyr setup` to use the
+> in-tree `zephyr-workspace/` layout). nano-ros's imported west
+> fragment `integrations/zephyr/west.yml` is a manifest-only file —
+> it does NOT pull Zephyr itself; that has to be in your parent
+> manifest (`zephyrproject-rtos/zephyr`).
 
 ## Project layout
 
@@ -129,7 +134,7 @@ no `Published:` line in 30 seconds:
   [`examples/zephyr/c/zenoh/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/zenoh),
   [`examples/zephyr/cpp/zenoh/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp/zenoh)
 - Module manifest:
-  [`integrations/zephyr/zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/zephyr/zephyr/module.yml)
+  [`integrations/zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/zephyr/module.yml)
 
 ## Next
 

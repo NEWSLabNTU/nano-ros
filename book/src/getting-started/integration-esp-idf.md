@@ -50,16 +50,15 @@ After `idf.py menuconfig`:
 
 ```
 Component config → nano-ros
-    [*] Enable nano-ros
-        RMW backend       (zenoh)        zenoh | xrce | dds
-        ROS 2 edition     (humble)
-        Wi-Fi SSID        "your-ssid"
-        Wi-Fi password    ********
+    RMW backend          (zenoh)        zenoh | xrce | dds | cyclonedds
+    ROS 2 edition        (humble)       humble | iron
 ```
 
-Wi-Fi creds + zenoh locator can also live in a `config.toml`
-alongside `app_main.c` if you prefer file-based config; the
-component shell reads either source.
+The nano-ros component itself exposes only those two knobs.
+**Wi-Fi credentials + zenoh locator are NOT in this Kconfig** —
+provide them via your app's own `Kconfig.projbuild` (Espressif's
+standard pattern) or via environment variables, then pass them to
+`nros::init(locator, domain_id)` at startup.
 
 ## Build
 
@@ -108,10 +107,15 @@ patched QEMU.
 
 - IDF component shell:
   [`integrations/esp-idf/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/esp-idf)
-- Worked IDF example:
-  [`integrations/esp-idf/examples/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/esp-idf/examples/talker)
 - Component manifest:
   [`integrations/esp-idf/idf_component.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/esp-idf/idf_component.yml)
+- Kconfig surface:
+  [`integrations/esp-idf/Kconfig.projbuild`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/esp-idf/Kconfig.projbuild)
+
+A complete reference app showing Wi-Fi + zenoh wiring on top of the
+component is not in-tree yet; the bare-metal
+[`examples/esp32/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/zenoh/talker)
+is the closest worked example.
 
 ## Next
 

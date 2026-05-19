@@ -13,16 +13,19 @@ consumption.
 ## Project layout
 
 The talker is a **standalone CMake project** that pulls nano-ros via
-`add_subdirectory(<repo-root>)`. Four files matter:
+`add_subdirectory(<repo-root>)`. Two files matter:
 
 ```text
 examples/native/cpp/zenoh/talker/
 ├── CMakeLists.txt      # add_subdirectory + targets
-├── package.xml         # ROS-style manifest (drives codegen tooling)
-├── config.toml         # runtime locator + domain id (optional)
 └── src/
     └── main.cpp        # ~70-line talker
 ```
+
+POSIX talkers read the locator + domain from arguments passed to
+`nros::init(...)`; no `config.toml` is needed. Embedded variants
+under `examples/<plat>/cpp/zenoh/talker/` carry a `config.toml`
+that their board crate reads.
 
 CMake preamble — five lines + per-target link:
 

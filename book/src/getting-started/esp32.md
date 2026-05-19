@@ -36,17 +36,28 @@ The `Cargo.toml` pulls `nros-board-esp32` (real hardware) or
 `config.toml` carries wifi + zenoh:
 
 ```toml
-[network]
+[wifi]
 ssid     = "your-wifi-ssid"
 password = "your-wifi-password"
 
 [zenoh]
 locator   = "tcp/192.168.1.100:7447"     # host running zenohd
 domain_id = 0
+
+# Optional static IP (commented out — defaults to DHCP):
+# [network]
+# ip      = "10.0.0.100"
+# gateway = "10.0.0.1"
+# prefix  = 24
 ```
 
-For QEMU ESP32 (no real wifi) the board crate falls back to the
-host loopback via TAP.
+Wi-Fi credentials can also be supplied via `SSID=… PASSWORD=…`
+environment variables on the build command — preferred for real
+networks since the file ships in git history.
+
+For QEMU ESP32 (no real wifi) the example tree at
+`examples/qemu-esp32-baremetal/` uses the loopback path via
+`nros-board-esp32-qemu`.
 
 ## Build
 
@@ -98,7 +109,7 @@ QEMU ESP32: ~15 seconds. If no `Published:` line:
 - esp-hal Rust:
   [`examples/esp32/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/zenoh/talker)
 - QEMU ESP32 talker:
-  [`examples/esp32-qemu/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32-qemu/rust/zenoh/talker)
+  [`examples/qemu-esp32-baremetal/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-esp32-baremetal/rust/zenoh/talker)
 - Board crates:
   [`packages/boards/nros-board-esp32/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32),
   [`packages/boards/nros-board-esp32-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32-qemu)
