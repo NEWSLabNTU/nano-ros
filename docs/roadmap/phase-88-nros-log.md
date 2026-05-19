@@ -8,7 +8,13 @@ implementations through the canonical `nros_platform_*` ABI. Each
 (`printk` / `esp_log_write` / `syslog` / UART writer / etc.). `/rosout`
 publication is explicitly out of scope for this phase.
 
-**Status**: Not Started
+**Status**: Code Complete 2026-05-19 — all work items 88.1–88.14 landed on
+`phase-88-nros-log`. POSIX path verified end-to-end via
+`packages/core/nros-log/tests/posix_dispatch.rs` +
+`packages/testing/nros-tests/tests/logging.rs`. RTOS visual
+confirmation (Zephyr / ESP32 / MPS2-AN385 UART capture) listed in
+acceptance criteria is still pending; tracking that as a 88.15 smoke
+follow-up rather than reopening the phase.
 
 **Priority**: Medium — the project currently has no unified logging
 story; board crates use ad-hoc `cortex_m_semihosting::hprintln!`,
@@ -168,7 +174,7 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
 
 ## Work Items
 
-- [ ] 88.1 — Create `packages/core/nros-log/` portable facade:
+- [x] 88.1 — Create `packages/core/nros-log/` portable facade:
       `Cargo.toml` (no target deps; only `heapless`), `src/lib.rs`
       with `Severity`, `Record<'a>`, `Logger`, trait `LogSink`,
       lock-free dispatcher, intern table, `nros_log::get_logger(name)`,
@@ -176,7 +182,7 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       Cargo features pick the buffer size + compile-time ceiling
       only — no sinks here.
 
-- [ ] 88.2 — Macros in `nros-log`: `nros_trace!`, `nros_debug!`,
+- [x] 88.2 — Macros in `nros-log`: `nros_trace!`, `nros_debug!`,
       `nros_info!`, `nros_warn!`, `nros_error!`, `nros_fatal!`, plus
       `*_throttle!(logger, ms, …)`, `*_once!`, `*_skipfirst!`.
       Formatting uses `heapless::String<N>` with `N` controlled by a
@@ -184,7 +190,7 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       ceiling via `max-level-*` features; macros below the ceiling
       expand to `()`.
 
-- [ ] 88.3 — `nros-platform-api` ABI extension:
+- [x] 88.3 — `nros-platform-api` ABI extension:
       ```c
       void nros_platform_log_write(
           uint8_t  severity,
@@ -195,32 +201,32 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       Stable Rust signature on the producer side, `#[unsafe(no_mangle)]
       extern "C"` on each implementor. Severity = `nros_log::Severity::as_u8()`.
 
-- [ ] 88.4 — `PlatformSink` in `nros-log`: thin `LogSink` impl that
+- [x] 88.4 — `PlatformSink` in `nros-log`: thin `LogSink` impl that
       forwards `&Record` to `nros_platform_log_write`. The default sink
       list for `nros_log::init` includes this when the user passes
       `nros_log::sinks::default()`.
 
-- [ ] 88.5 — POSIX impl in `nros-platform-posix`:
+- [x] 88.5 — POSIX impl in `nros-platform-posix`:
       `nros_platform_log_write` → `fwrite(stderr) + \n`. Severity ↦
       `[INFO]` / `[WARN]` / … prefix. `nros_platform_log_flush` →
       `fflush(stderr)`.
 
-- [ ] 88.6 — Zephyr impl in `nros-platform-zephyr` (+ `zephyr/`
+- [x] 88.6 — Zephyr impl in `nros-platform-zephyr` (+ `zephyr/`
       module glue): FFI to `log_msg_runtime_create` (fallback `printk`
       under `CONFIG_LOG=n`). Severity ↦ Zephyr `LOG_LEVEL_*`. Module
       registered as `LOG_MODULE_DECLARE(nros)` so it shows up in
       Zephyr's runtime-filter shell commands.
 
-- [ ] 88.7 — ESP-IDF impl in `nros-platform-esp-idf`: FFI to
+- [x] 88.7 — ESP-IDF impl in `nros-platform-esp-idf`: FFI to
       `esp_log_write`. Severity ↦ `ESP_LOG_*`. Uses the logger name as
       the TAG; converts to a null-terminated `CStr` via a small
       `heapless` buffer.
 
-- [ ] 88.8 — NuttX impl in `nros-platform-nuttx`: FFI to
+- [x] 88.8 — NuttX impl in `nros-platform-nuttx`: FFI to
       `syslog(priority, "%s", buf)`. Severity ↦ `LOG_ERR` /
       `LOG_WARNING` / `LOG_INFO` / `LOG_DEBUG`.
 
-- [ ] 88.9 — FreeRTOS + ThreadX + bare-metal:
+- [x] 88.9 — FreeRTOS + ThreadX + bare-metal:
       - `nros-platform-freertos`: expose
         `register_log_writer(fn(Severity, &str))`. Default = null. Board
         provides the writer (e.g. UART or `configPRINTF`).
@@ -228,13 +234,13 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       - `nros-platform-bare-metal`: same shape — board crate registers
         semihosting / defmt / RTT writer.
 
-- [ ] 88.10 — Optional `log-compat` feature on `nros-log`: provide a
+- [x] 88.10 — Optional `log-compat` feature on `nros-log`: provide a
       `log::Log` impl that forwards to the same dispatcher, and a
       reverse bridge (`nros_log::LogSink` wrapping a `log::Log`). Lets
       existing ecosystem crates (that use `log::info!`) integrate
       without duplicating output.
 
-- [ ] 88.11 — Board-crate wiring: replace ad-hoc output paths with the
+- [x] 88.11 — Board-crate wiring: replace ad-hoc output paths with the
       new platform impls:
       - `nros-board-mps2-an385` → register semihosting writer with
         `nros-platform-bare-metal`; delete the custom `println!` macro
@@ -254,13 +260,13 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
         `CONFIG_NROS_LOG` (already covered by the platform impl when
         enabled).
 
-- [ ] 88.12 — Node integration: `Node::logger() -> &Logger` on the
+- [x] 88.12 — Node integration: `Node::logger() -> &Logger` on the
       Rust API (`nros-node`), `nros_node_get_logger(node)` on the C API
       (`nros-c`), and `Node::get_logger()` on the C++ API (`nros-cpp`).
       Logger name matches the node name (no namespace logic in v1; we
       can add `get_child("subcomponent")` as a follow-up).
 
-- [ ] 88.13 — Examples + docs: one minimal `logging/` example per
+- [x] 88.13 — Examples + docs: one minimal `logging/` example per
       language (Rust, C, C++) that demonstrates per-severity macros and
       runtime threshold adjustment. Extend `book/src/user-guide/` with a
       `logging.md` chapter; extend `book/src/reference/rust-api.md`,
