@@ -27,6 +27,25 @@ nros_platform_cffi::nros_platform_export!(Stm32f4Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Stm32f4Platform);
 
+// Phase 110.E.b — `PlatformTimer` ABI export. STM32F4 has no
+// board-level periodic-timer hook yet; default impl returns
+// `TimerError::Unsupported`. Symbols still link cleanly so any
+// cross-platform code resolving `nros_platform_timer_*` against
+// this board degrades gracefully. Real refill arrives with the
+// per-board `SysTickHook` work (design 110-e-platform-timer).
+impl nros_platform_api::PlatformTimer for Stm32f4Platform {
+    type TimerHandle = TimerHandleStub;
+}
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct TimerHandleStub(*mut core::ffi::c_void);
+unsafe impl Send for TimerHandleStub {}
+unsafe impl Sync for TimerHandleStub {}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_timer!(Stm32f4Platform);
+
 // Phase 121.9 — Cortex-M PRIMASK critical section. See sibling
 // mps2-an385 for rationale.
 impl nros_platform_api::PlatformCriticalSection for Stm32f4Platform {

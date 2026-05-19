@@ -36,6 +36,35 @@ nros_platform_cffi::nros_platform_export!(Mps2An385Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Mps2An385Platform);
 
+// Phase 110.E.b — `PlatformTimer` ABI export. MPS2-AN385 has no
+// board-level periodic-timer hook yet (the SysTick is owned by
+// cortex-m-rt's millisecond clock and the CMSDK Timer0 is reserved
+// for `clock::clock_ms()`). The trait default returns
+// `TimerError::Unsupported`; the export macro emits the C symbols
+// returning NULL so any code that resolves
+// `nros_platform_timer_*` against this platform's static lib links
+// cleanly + degrades gracefully. Real ISR-driven refill lands with
+// the per-board `SysTickHook` work flagged in
+// `docs/design/phase-110-e-platform-timer.md`.
+impl nros_platform_api::PlatformTimer for Mps2An385Platform {
+    type TimerHandle = TimerHandleStub;
+}
+
+/// Pointer-sized newtype satisfying `nros_platform_export_timer!`'s
+/// `size_of::<TimerHandle>() == size_of::<*mut c_void>()` guard.
+/// The default trait impl never constructs one.
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct TimerHandleStub(*mut core::ffi::c_void);
+
+// SAFETY: stub never holds a real handle; trait default returns
+// `Unsupported` before this type is materialized at runtime.
+unsafe impl Send for TimerHandleStub {}
+unsafe impl Sync for TimerHandleStub {}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_timer!(Mps2An385Platform);
+
 // Phase 121.9 — Cortex-M PRIMASK critical section. Always emitted
 // (independent of the `critical-section` feature, which only gates
 // the `critical_section::set_impl!` global registration). The

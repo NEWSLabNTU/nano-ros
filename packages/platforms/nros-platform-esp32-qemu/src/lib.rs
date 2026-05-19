@@ -24,6 +24,21 @@ nros_platform_cffi::nros_platform_export!(Esp32QemuPlatform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Esp32QemuPlatform);
 
+// Phase 110.E.b — `PlatformTimer` ABI export. ESP32-QEMU has no
+// board-level periodic-timer hook yet; default returns Unsupported.
+impl nros_platform_api::PlatformTimer for Esp32QemuPlatform {
+    type TimerHandle = TimerHandleStub;
+}
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct TimerHandleStub(*mut core::ffi::c_void);
+unsafe impl Send for TimerHandleStub {}
+unsafe impl Sync for TimerHandleStub {}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_timer!(Esp32QemuPlatform);
+
 // Phase 121.9 — RISC-V mstatus.MIE critical section; see sibling
 // nros-platform-esp32 for rationale.
 impl nros_platform_api::PlatformCriticalSection for Esp32QemuPlatform {

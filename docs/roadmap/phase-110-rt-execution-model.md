@@ -105,10 +105,28 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
         via the Rust trait + `atomic_sporadic_refill_thunk`, and
         asserts the budget refilled back to its declared capacity
         from the POSIX timer callback (6/6 tests in the file PASS).
-        Confirms the trait-side wiring is functionally complete; the
-        remaining work is just porting `nros_platform_timer_*` to
-        each RTOS's native timer surface (FreeRTOS / Zephyr / ThreadX
-        / NuttX / bare-metal).
+      * **Per-RTOS native C ports** (Phase 121.6) already provide
+        `nros_platform_timer_*` symbols for POSIX / FreeRTOS / Zephyr
+        / ThreadX / ESP-IDF; NuttX shares POSIX's `timer.c` via
+        `add_library` (its CMakeLists pulls
+        `${NROS_PLATFORM_POSIX_C_SRC_DIR}/timer.c` directly). Every
+        hosted-RTOS target therefore exposes the canonical timer
+        symbols through the same link path as the POSIX reference.
+      * **Bare-metal stub exports** (Phase 110.E.b) — Mps2An385 /
+        Stm32f4 / Esp32QemuPlatform / Esp32Platform impl
+        `PlatformTimer` with the trait's default
+        `TimerError::Unsupported` and emit the C symbols via
+        `nros_platform_export_timer!` so the bare-metal link line
+        always resolves cleanly. Calls degrade to a NULL handle /
+        `KernelError`; ISR-driven refill on bare-metal still needs
+        the per-board `SysTickHook` work flagged in
+        `docs/design/phase-110-e-platform-timer.md` step 9 (separate
+        per-board investment, design-deferred).
+
+      v1 trait surface + every supported hosted RTOS now has a
+      functional `PlatformTimer` port. Outstanding: per-board
+      bare-metal SysTickHook + per-callback runtime accounting
+      (cancel + restart_oneshot wiring).
 - [~] 110.F — `OsPrioritySet` per-priority OS-thread dispatch.
       **Reframed:** Cargo feature `scheduler-os-priority` + stub
       `OsPrioritySet<N>` shipped to lock the namespace; real

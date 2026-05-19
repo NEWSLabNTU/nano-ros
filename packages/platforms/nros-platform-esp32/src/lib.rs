@@ -23,6 +23,21 @@ nros_platform_cffi::nros_platform_export!(Esp32Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Esp32Platform);
 
+// Phase 110.E.b — `PlatformTimer` ABI export. ESP32-C3 has no
+// board-level periodic-timer hook yet; default returns Unsupported.
+impl nros_platform_api::PlatformTimer for Esp32Platform {
+    type TimerHandle = TimerHandleStub;
+}
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct TimerHandleStub(*mut core::ffi::c_void);
+unsafe impl Send for TimerHandleStub {}
+unsafe impl Sync for TimerHandleStub {}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_timer!(Esp32Platform);
+
 // Phase 121.9 — RISC-V (ESP32-C3) critical section via the
 // `mstatus.MIE` bit. Token = prior MIE bit; outermost release
 // re-enables.
