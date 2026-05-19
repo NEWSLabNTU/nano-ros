@@ -5,12 +5,19 @@
 
 use nros::prelude::*;
 use nros_board_nuttx_qemu_arm::{Config, run};
+use nros_log::{nros_error, nros_info, nros_warn, Logger};
+
+// Phase 88.16.D — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("listener");
 use std_msgs::msg::Int32;
 
 fn main() {
     run(
         Config::from_toml(include_str!("../config.toml")),
         |config| {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
+
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
                 .node_name("listener");
@@ -21,12 +28,12 @@ fn main() {
             let mut executor = Executor::open(&exec_config)?;
             let _node = executor.create_node("listener")?;
 
-            println!("Subscribing to /chatter (std_msgs/Int32)");
+            nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/Int32)");
             executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-                println!("Received: {}", msg.data);
+                nros_info!(&LOGGER, "Received: {}", msg.data);
             })?;
-            println!("Subscriber declared");
-            println!("Waiting for messages...");
+            nros_info!(&LOGGER, "Subscriber declared");
+            nros_info!(&LOGGER, "Waiting for messages...");
 
             loop {
                 executor.spin_once(core::time::Duration::from_millis(10));

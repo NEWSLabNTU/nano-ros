@@ -363,6 +363,7 @@ dependencies = [
  "nros-board-common",
  "nros-board-threadx",
  "nros-platform",
+ "nros-platform-cffi",
 ]
 
 [[package]]
@@ -372,6 +373,13 @@ dependencies = [
  "heapless",
  "log",
  "nros-serdes",
+]
+
+[[package]]
+name = "nros-log"
+version = "0.1.0"
+dependencies = [
+ "heapless",
 ]
 
 [[package]]
@@ -390,6 +398,7 @@ dependencies = [
  "atomic-waker",
  "heapless",
  "nros-core",
+ "nros-log",
  "nros-params",
  "nros-platform-api",
  "nros-rmw",
@@ -520,6 +529,7 @@ dependencies = [
  "heapless",
  "nros",
  "nros-board-threadx-qemu-riscv64",
+ "nros-log",
  "nros-rmw-zenoh",
 ]
 

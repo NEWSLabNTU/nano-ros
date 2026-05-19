@@ -5,10 +5,17 @@
 
 use nros::prelude::*;
 use nros_board_nuttx_qemu_arm::{Config, run};
+use nros_log::{nros_error, nros_info, nros_warn, Logger};
+
+// Phase 88.16.D — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("talker");
 use std_msgs::msg::Int32;
 
 fn main() {
     run(Config::from_toml(include_str!("../config.toml")), |config| {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
+
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("talker");
@@ -19,17 +26,17 @@ fn main() {
         let mut executor = Executor::open(&exec_config)?;
         let publisher = {
             let mut node = executor.create_node("talker")?;
-            println!("Declaring publisher on /chatter (std_msgs/Int32)");
+            nros_info!(&LOGGER, "Declaring publisher on /chatter (std_msgs/Int32)");
             node.create_publisher::<Int32>("/chatter")?
         };
-        println!("Publisher declared");
-        println!("Publishing messages...");
+        nros_info!(&LOGGER, "Publisher declared");
+        nros_info!(&LOGGER, "Publishing messages...");
 
         let mut count: i32 = 0;
         executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
             match publisher.publish(&Int32 { data: count }) {
-                Ok(()) => println!("Published: {}", count),
-                Err(e) => println!("Publish failed: {:?}", e),
+                Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+                Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
             }
             count = count.wrapping_add(1);
         })?;

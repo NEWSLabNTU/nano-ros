@@ -15,11 +15,18 @@ use example_interfaces::action::{
 };
 use nros::prelude::*;
 use nros::{CancelResponse, GoalResponse, GoalStatus};
-use nros_board_threadx_qemu_riscv64::{Config, println, run};
+use nros_board_threadx_qemu_riscv64::{Config, run};
+use nros_log::{nros_error, nros_info, Logger};
+
+// Phase 88.16.D — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-server");
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
     run(Config::from_toml(include_str!("../config.toml")), |config| {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
+
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("fibonacci_action_server");
@@ -36,7 +43,7 @@ extern "C" fn main() -> ! {
         let handle = executor.register_action_server::<Fibonacci, _, _>(
             "/fibonacci",
             |_goal_id, goal: &FibonacciGoal| {
-                println!("Goal request: order={}", goal.order);
+                nros_info!(&LOGGER, "Goal request: order={}", goal.order);
                 if goal.order >= 0 {
                     GoalResponse::AcceptAndExecute
                 } else {
@@ -45,8 +52,8 @@ extern "C" fn main() -> ! {
             },
             |_goal_id, _status| CancelResponse::Ok,
         )?;
-        println!("Action server ready on /fibonacci");
-        println!("Waiting for goals...");
+        nros_info!(&LOGGER, "Action server ready on /fibonacci");
+        nros_info!(&LOGGER, "Waiting for goals...");
 
         let mut goals_handled = 0u32;
 
@@ -85,7 +92,7 @@ extern "C" fn main() -> ! {
                 }
 
                 let result = FibonacciResult { sequence };
-                println!("Goal completed: id={:?}", goal_id);
+                nros_info!(&LOGGER, "Goal completed: id={:?}", goal_id);
                 handle.complete_goal(&mut executor, &goal_id, GoalStatus::Succeeded, result);
 
                 goals_handled += 1;
@@ -94,13 +101,13 @@ extern "C" fn main() -> ! {
                     for _ in 0..2000 {
                         executor.spin_once(core::time::Duration::from_millis(10));
                     }
-                    println!("Server shutting down.");
+                    nros_info!(&LOGGER, "Server shutting down.");
                     return Ok(());
                 }
             }
         }
 
-        println!("Server timeout.");
+        nros_info!(&LOGGER, "Server timeout.");
         Ok::<(), NodeError>(())
     })
 }

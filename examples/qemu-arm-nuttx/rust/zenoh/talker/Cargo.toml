@@ -13,6 +13,8 @@ bench = false
 
 [dependencies]
 nros-board-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+# Phase 88.16.D — user diagnostics route through `nros-log`.
+nros-log = { path = "../../../../../packages/core/nros-log", default-features = false }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-nuttx", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-nuttx", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }

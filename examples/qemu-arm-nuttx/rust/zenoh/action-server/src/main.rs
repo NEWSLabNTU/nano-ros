@@ -7,11 +7,18 @@
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{CancelResponse, GoalResponse, GoalStatus, prelude::*};
 use nros_board_nuttx_qemu_arm::{Config, run};
+use nros_log::{nros_error, nros_info, nros_warn, Logger};
+
+// Phase 88.16.D — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-server");
 
 fn main() {
     run(
         Config::from_toml(include_str!("../config.toml")),
         |config| {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
+
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
                 .node_name("fibonacci_action_server");
@@ -22,11 +29,11 @@ fn main() {
             let mut executor = Executor::open(&exec_config)?;
             let _node = executor.create_node("fibonacci_action_server")?;
 
-            println!("Creating action server: /fibonacci (Fibonacci)");
+            nros_info!(&LOGGER, "Creating action server: /fibonacci (Fibonacci)");
             let handle = executor.register_action_server::<Fibonacci, _, _>(
                 "/fibonacci",
                 |_goal_id, goal: &FibonacciGoal| {
-                    println!("Goal request: order={}", goal.order);
+                    nros_info!(&LOGGER, "Goal request: order={}", goal.order);
                     if goal.order >= 0 {
                         GoalResponse::AcceptAndExecute
                     } else {
@@ -35,9 +42,9 @@ fn main() {
                 },
                 |_goal_id, _status| CancelResponse::Ok,
             )?;
-            println!("Action server ready");
-            println!();
-            println!("Waiting for goals...");
+            nros_info!(&LOGGER, "Action server ready");
+            nros_info!(&LOGGER, "");
+            nros_info!(&LOGGER, "Waiting for goals...");
 
             let mut goals_handled = 0u32;
 
@@ -70,22 +77,22 @@ fn main() {
                         };
                         if let Err(e) = handle.publish_feedback(&mut executor, &goal_id, &feedback)
                         {
-                            eprintln!("Feedback error: {:?}", e);
+                            nros_warn!(&LOGGER, "Feedback error: {:?}", e);
                         } else {
-                            println!("Feedback: {:?}", feedback.sequence);
+                            nros_info!(&LOGGER, "Feedback: {:?}", feedback.sequence);
                         }
                     }
 
                     let result = FibonacciResult {
                         sequence: sequence.clone(),
                     };
-                    println!("Goal completed: {:?}", result.sequence);
+                    nros_info!(&LOGGER, "Goal completed: {:?}", result.sequence);
                     handle.complete_goal(&mut executor, &goal_id, GoalStatus::Succeeded, result);
 
                     goals_handled += 1;
                     if goals_handled >= 3 {
-                        println!();
-                        println!("Handled 3 goals, exiting.");
+                        nros_info!(&LOGGER, "");
+                        nros_info!(&LOGGER, "Handled 3 goals, exiting.");
                         return Ok::<(), NodeError>(());
                     }
                 }

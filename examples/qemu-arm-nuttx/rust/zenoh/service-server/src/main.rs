@@ -6,9 +6,16 @@
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::prelude::*;
 use nros_board_nuttx_qemu_arm::{Config, run};
+use nros_log::{nros_error, nros_info, nros_warn, Logger};
+
+// Phase 88.16.D — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-server");
 
 fn main() {
     run(Config::from_toml(include_str!("../config.toml")), |config| {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
+
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_server");
@@ -18,25 +25,25 @@ fn main() {
         nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor: Executor = Executor::open(&exec_config)?;
 
-        println!("Registering service: /add_two_ints (AddTwoInts)");
+        nros_info!(&LOGGER, "Registering service: /add_two_ints (AddTwoInts)");
         executor
             .register_service::<AddTwoInts, _>("/add_two_ints", |request| {
                 let sum = request.a + request.b;
-                println!("Request: {} + {} = {}", request.a, request.b, sum);
+                nros_info!(&LOGGER, "Request: {} + {} = {}", request.a, request.b, sum);
                 AddTwoIntsResponse { sum }
             })
             .expect("Failed to add service");
-        println!("Service server ready");
-        println!();
-        println!("Waiting for requests...");
+        nros_info!(&LOGGER, "Service server ready");
+        nros_info!(&LOGGER, "");
+        nros_info!(&LOGGER, "Waiting for requests...");
 
         // Spin for a bounded time (embedded test pattern)
         for _ in 0..10000 {
             executor.spin_once(core::time::Duration::from_millis(10));
         }
 
-        println!();
-        println!("Server timeout, exiting.");
+        nros_info!(&LOGGER, "");
+        nros_info!(&LOGGER, "Server timeout, exiting.");
         Ok::<(), NodeError>(())
     })
 }

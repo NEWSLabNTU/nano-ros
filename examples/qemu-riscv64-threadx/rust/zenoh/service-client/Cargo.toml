@@ -16,6 +16,8 @@ default = []
 
 [dependencies]
 nros-board-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
+# Phase 88.16.D — user diagnostics route through `nros-log`.
+nros-log = { path = "../../../../../packages/core/nros-log", default-features = false }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"] }
 example_interfaces = { version = "*", default-features = false }

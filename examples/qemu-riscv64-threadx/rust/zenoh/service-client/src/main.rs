@@ -7,11 +7,18 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::prelude::*;
-use nros_board_threadx_qemu_riscv64::{Config, println, run};
+use nros_board_threadx_qemu_riscv64::{Config, run};
+use nros_log::{nros_error, nros_info, Logger};
+
+// Phase 88.16.D — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-client");
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
     run(Config::from_toml(include_str!("../config.toml")), |config| {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
+
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_client");
@@ -23,7 +30,7 @@ extern "C" fn main() -> ! {
         let mut node = executor.create_node("add_two_ints_client")?;
 
         let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
-        println!("Service client ready for /add_two_ints");
+        nros_info!(&LOGGER, "Service client ready for /add_two_ints");
 
         // Wait for service to be available
         for _ in 0..500 {
@@ -34,7 +41,7 @@ extern "C" fn main() -> ! {
 
         for &(a, b) in test_cases {
             let request = AddTwoIntsRequest { a, b };
-            println!("Calling: {} + {} = ?", a, b);
+            nros_info!(&LOGGER, "Calling: {} + {} = ?", a, b);
 
             let mut promise = client.call(&request)?;
 
@@ -50,18 +57,18 @@ extern "C" fn main() -> ! {
 
             match response {
                 Some(resp) => {
-                    println!("Response: {} + {} = {}", a, b, resp.sum);
+                    nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, resp.sum);
                     if resp.sum != a + b {
-                        println!("ERROR: expected {}", a + b);
+                        nros_info!(&LOGGER, "ERROR: expected {}", a + b);
                     }
                 }
                 None => {
-                    println!("ERROR: timeout waiting for response");
+                    nros_info!(&LOGGER, "ERROR: timeout waiting for response");
                 }
             }
         }
 
-        println!("All service calls completed.");
+        nros_info!(&LOGGER, "All service calls completed.");
         Ok::<(), NodeError>(())
     })
 }
