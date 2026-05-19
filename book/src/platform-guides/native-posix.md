@@ -15,19 +15,24 @@ embedded targets.
 
 ## Setup
 
-From a ROS 2 workspace root:
+From the nano-ros clone:
 
 ```bash
-./src/nano-ros/tools/setup.sh --target=posix-zenoh
-colcon build
-source install/setup.bash
+just setup tier=default
+just zenohd setup        # build the in-tree zenoh router (optional if system zenohd is on PATH)
 ```
 
-For direct repository development, use:
+For a narrower fetch (POSIX + zenoh only):
 
 ```bash
-just setup posix-zenoh
-just build
+tools/setup.sh --target=posix-zenoh
+```
+
+For a colcon consumer workspace that already has nano-ros under
+`src/`:
+
+```bash
+colcon build && source install/setup.bash
 ```
 
 ## Package Layout
@@ -80,8 +85,10 @@ Start router:
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 ```
 
-Run node through colcon install or directly with Cargo/CMake,
-depending on package type.
+Run the node directly via `cargo run` (Rust) or
+`cmake --build build && ./build/<binary>` (C/C++), or via
+`colcon build && source install/setup.bash && ros2 run …` if the
+package lives in a colcon consumer workspace.
 
 ## Configuration
 

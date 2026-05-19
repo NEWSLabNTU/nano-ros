@@ -7,12 +7,13 @@ an API reference; use it as a checklist when moving an existing
 ## Setup
 
 Standard ROS 2 usually starts from a distro install and a runtime RMW
-choice. nano-ros starts from a source checkout inside the workspace and
-a compile-time target tuple:
+choice. nano-ros starts from a source checkout + a compile-time target
+tuple:
 
 ```bash
-./src/nano-ros/tools/setup.sh --target=posix-zenoh
-colcon build
+git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
+cd nano-ros
+just setup tier=default
 ```
 
 Read [Setup Compared to Standard ROS 2](setup-compared-to-ros2.md)

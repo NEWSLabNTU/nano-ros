@@ -112,27 +112,52 @@ into `NanoRos::NanoRos`. No `build/install/` prefix, no
 
 ### Cargo.toml (Rust)
 
-Select exactly one RMW backend in your dependency features:
+Phase 128/129 reshape — RMW selection is driven by **manifest deps**,
+not by features on `nros`. Add `nros` with the platform feature plus
+exactly one `nros-rmw-<x>` shim dep:
 
 ```toml
 # Zenoh backend
 [dependencies]
-nros = { features = ["rmw-zenoh", "platform-bare-metal"] }
+nros = { path = "<...>/packages/core/nros",
+         default-features = false,
+         features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "<...>/packages/zpico/nros-rmw-zenoh",
+                   features = ["std", "platform-posix", "ros-humble"] }
 
 # XRCE-DDS backend
 [dependencies]
-nros = { features = ["rmw-xrce", "platform-bare-metal"] }
+nros = { path = "<...>/packages/core/nros",
+         default-features = false,
+         features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-xrce-cffi = { path = "<...>/packages/xrce/nros-rmw-xrce-cffi",
+                       features = ["std"] }
 
-# DDS backend (dust-dds)
+# DDS backend (dust-dds, pure Rust)
 [dependencies]
-nros = { features = ["rmw-dds", "platform-zephyr"] }
+nros = { path = "<...>/packages/core/nros",
+         default-features = false,
+         features = ["std", "alloc", "rmw-cffi", "platform-posix"] }
+nros-rmw-dds = { path = "<...>/packages/dds/nros-rmw-dds",
+                 default-features = false,
+                 features = ["std", "alloc", "platform-posix"] }
 
-# Cyclone DDS backend — the Rust runtime sees it as the generic
-# `rmw-cffi` C-ABI vtable axis; the actual Cyclone wiring is linked
-# C++-side via NrosRmwCyclonedds::NrosRmwCyclonedds.
+# Cyclone DDS backend — Rust runtime sees the generic rmw-cffi C-ABI
+# vtable; actual Cyclone wiring lives C++-side under
+# packages/dds/nros-rmw-cyclonedds/ and is selected at CMake
+# configure time via -DNANO_ROS_RMW=cyclonedds. The Rust
+# manifest only carries the `rmw-cffi` feature; no Rust shim dep.
 [dependencies]
-nros = { features = ["rmw-cffi", "platform-posix"] }
+nros = { path = "<...>/packages/core/nros",
+         default-features = false,
+         features = ["std", "rmw-cffi", "platform-posix"] }
 ```
+
+Each example also calls `<backend>::register()` from `main()` before
+`Executor::open` — this drags the rlib's CGU into the binary so the
+linkme distributed-slice walker finds the backend. C/C++ builds rely
+on the CMake-emitted strong stub from `nano_ros_link_rmw(... RMW <x>)`
+instead.
 
 For C++ consumers, the CMake option is the canonical way:
 

@@ -136,35 +136,48 @@ backend binaries with one auto-registering backend Just Work
 without user code mentioning the backend's name. Build-time
 selection happens at:
 
-- **Cargo feature**: `--features cffi-zenoh-cffi` (Rust users).
-- **CMake**: `NANO_ROS_RMW=zenoh cmake ...` (C/C++ users).
+- **Cargo manifest dep** (Phase 128/129): add `nros-rmw-zenoh = { … }`
+  to the consumer's `[dependencies]`. The RMW shim crate name is
+  the selector; no per-RMW feature flag on `nros` itself.
+- **CMake**: `cmake -DNANO_ROS_RMW=zenoh ...` (C/C++ users). The
+  `nano_ros_link_rmw(... RMW zenoh)` helper auto-generates the
+  per-target `nros_app_register_backends()` strong stub.
 
 No runtime env-var override; selection is fixed at link time
 (RTOS-friendly, matches our static-link world).
 
 ### Symbol-survival mechanism
 
-Backend register symbols must survive linker dead-strip. Three
-levers, all currently active without `--whole-archive`:
+Backend register symbols must survive linker dead-strip. Four
+mechanisms, layered:
 
-1. **Rust ctor:** `#[unsafe(link_section = ".init_array")] #[used]
-   static AUTO_REGISTER_CTOR` in each backend's `src/lib.rs`.
-   `#[used]` is the load-bearing attribute — tells rustc the static
-   is reachable from outside Rust, suppressing dead-strip.
-2. **C ctor:** `__attribute__((constructor)) static void
-   nros_rmw_<name>_register_ctor`. Same survival via
+1. **`linkme` distributed-slice** (Phase 128.B.1 / 128.H.2) — each
+   backend contributes an `RMW_INIT_ENTRIES` entry through the
+   `nros_rmw_register_backend!` macro. `nros_support_init` /
+   `Executor::open` walks the slice and calls each entry. Canonical
+   on Linux / macOS / Windows / POSIX. Macro expands to a no-op on
+   RTOS targets where `linkme` can't recognise the section (NuttX,
+   Zephyr, ESP-IDF, FreeRTOS bare-metal).
+2. **Rust ctor** (legacy fallback): `#[unsafe(link_section =
+   ".init_array")] #[used] static AUTO_REGISTER_CTOR`. `#[used]`
+   keeps rustc from dead-stripping.
+3. **C ctor** (legacy fallback): `__attribute__((constructor))
+   static void nros_rmw_<name>_register_ctor`. Same survival via
    `.init_array` walk by libc startup.
-3. **Explicit reference:** `nros_support_init` (C path) and
-   `nros::init` (C++ path) call `nros_rmw_<name>_register()`
-   directly. The reference brings in the register fn, which
-   references the vtable, which keeps everything alive.
+4. **CMake strong stub** (Phase 104.B.6 — landed): the
+   `nano_ros_link_rmw(<target> RMW <name>)` helper at
+   `cmake/NanoRosLink.cmake:62-117` emits an auto-generated TU
+   per target that defines a strong `nros_app_register_backends()`
+   calling every linked RMW's `nros_rmw_<name>_register()`. The
+   weak default in `libnros_c_weak_stubs.a` is overridden. This is
+   the canonical path on every RTOS where `linkme` can't survive.
+5. **Explicit user call** (Rust no_std bridges): `nros_rmw_<name>::register()`
+   from `main()` — drags the rlib's CGU into the binary so the
+   linkme entry is reachable. See `examples/bridges/native-rust-zenoh-to-dds/`.
 
-Bare-metal targets without `.init_array` walking (RTIC,
-FreeRTOS, some NuttX configs) rely on (3) — the explicit call
-from `nros_support_init` / `nros::init`. Future Phase 104.B.6
-will codify a `nano_ros_link_rmw` CMake stub that emits a
-register call for bare-metal builds when (3) is bypassed (pure-
-Rust binaries on no_std targets).
+Bare-metal + RTOS targets that don't run `.init_array` rely on
+(4). Pure-Rust no_std binaries with multiple backends rely on (5).
+POSIX builds get (1) + (2) + (3) for free.
 
 ### Ctor ordering (Phase 104.C.3.3.e)
 

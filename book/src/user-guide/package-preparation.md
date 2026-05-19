@@ -25,15 +25,31 @@ dependency so message generation and local builds are reused.
 
 ## Setup Toolchain
 
-Run setup from workspace root:
+Run setup from the nano-ros clone:
 
 ```bash
-./src/nano-ros/tools/setup.sh --target=posix-zenoh
+cd src/nano-ros
+just setup tier=default        # Phase 142 SDK tiers (minimal | default | extended)
 ```
 
-The target tuple selects platform + RMW. Setup fetches required
-submodules, installs/checks Rust targets, and reports missing system
-packages. Use `--list-targets` to inspect valid tuples.
+For a narrower fetch (single platform + RMW only), invoke the
+underlying script:
+
+```bash
+tools/setup.sh --target=posix-zenoh
+tools/setup.sh --list-targets       # print known platforms / RMWs
+```
+
+Setup fetches required submodules, installs/checks Rust targets, and
+reports missing system packages. It never runs `sudo` — it tells you
+what to install.
+
+Add `nano_ros_link_rmw(... RMW <rmw>)` to your CMakeLists.txt — that
+helper emits the strong-stub `nros_app_register_backends()` C TU
+that links the right vtable on bare-metal / FreeRTOS / NuttX / Zephyr /
+ESP-IDF where `linkme` distributed-slice contribution isn't picked up
+automatically. POSIX builds can rely on the linkme path, but the
+helper is harmless there.
 
 ## Rust Package
 
@@ -55,11 +71,12 @@ consumption shape):
 
 ```cmake
 set(NANO_ROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NANO_ROS_RMW      zenoh)
 add_subdirectory(<path-to-nano-ros> nano_ros)
 nano_ros_generate_interfaces(std_msgs "msg/Int32.msg")
 target_link_libraries(my_node PRIVATE NanoRos::NanoRos)
 nros_platform_link_app(my_node)
+nano_ros_link_rmw(my_node RMW zenoh)
 ```
 
 Use the platform guide for target-specific CMake options and link
