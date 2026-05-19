@@ -466,6 +466,63 @@ green.
     cyclonedds Zephyr coverage to FVP/aemv8r (see existing note
     above). Phase 11W's "compile + link + boot smoke" deliverable
     has already landed (Phase 11W.5 / .6 / .7).
+
+- **11W.8 resolution (2026-05-20):** Took path **A** — the bind
+  failure was NOT an NSOS bug. Root cause: the talker's NSOS board
+  overlay (`boards/native_sim_native_64.conf`) is **not auto-applied
+  when `-DCONF_FILE` is set explicitly**, so the cyclonedds build
+  fell back to the zeth/TAP `eth_posix` driver. With no TAP device,
+  `socket()` returned a native-stack fd whose `bind(127.0.0.1)`
+  failed. Forcing the NSOS Kconfig directly in `prj-cyclonedds.conf`
+  (`CONFIG_NET_SOCKETS_OFFLOAD=y +
+  CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y + CONFIG_ETH_NATIVE_POSIX=n`)
+  routes sockets through host BSD sockets, and bind works.
+
+  With NSOS active the participant init then surfaced a cascade of
+  NSOS feature gaps, each now patched:
+
+  1. **`getsockname` missing entirely** — NSOS never populated the
+     `socket_op_vtable.getsockname` slot, so Cyclone read back port 0
+     after binding to an ephemeral port. Added top+bottom-half
+     impl via `scripts/zephyr/nsos-getsockname-patch.sh`.
+  2. **`getsockopt(SO_*BUF)` reports 0** — NSOS succeeds but returns
+     a zero buffer size; Cyclone's min-size check then errored.
+     Tolerate `actsize == 0` (`cyclonedds-zephyr-udp-rcvbuf-patch.sh`).
+  3. **`IP_MULTICAST_{IF,TTL,LOOP}` setsockopt fail** — best-effort
+     on Zephyr NSOS (struct-shape / size mismatches from upstream
+     POSIX). Same patch makes the multicast TX-option block
+     non-fatal.
+
+  Init now drives all the way through `find_own_ip`, unicast +
+  multicast socket creation, transmit-connection setup, and reaches
+  the **SPDP multicast group join** (`joinleave_spdp_defmcip` →
+  `add_locator_to_addrset`), where it still `abort()`s. This is the
+  multicast-discovery wall: the synthetic loopback interface
+  (127.0.0.1, from `link_stubs.c`'s `ddsrt_getifaddrs`) drives
+  Cyclone down the ASM multicast-join path, and the
+  `add_locator_to_addrset` / mreq handling does not survive the
+  NSOS multicast plumbing (the existing nano-ros NSOS
+  `IP_ADD_MEMBERSHIP` handler expects `struct ip_mreqn` (12 B) while
+  Cyclone passes `struct ip_mreq` (8 B), among other shape gaps).
+
+  **Remaining 11W.8 options for the multicast wall:**
+  - Align the NSOS `IP_ADD_MEMBERSHIP` / `IP_MULTICAST_*` struct
+    shapes with what Cyclone's `ddsi_udp.c` actually passes
+    (`ip_mreq` 8 B, 1-byte TTL/LOOP), then debug
+    `add_locator_to_addrset`.
+  - Configure Cyclone for **unicast-only discovery**
+    (`General/AllowMulticast=false` + `Discovery/Peers`) so the
+    multicast join path is never taken — works for in-host
+    talker↔listener but does not auto-discover LAN ROS 2 peers.
+  - Accept native_sim cyclonedds as "init-progresses-far" and pin
+    full runtime to FVP/aemv8r (path C).
+
+  Landed this iteration (all via reproducible workspace patches,
+  applied by `just zephyr setup`): NSOS getsockname, SO_*BUF
+  actsize==0 tolerance, multicast TX best-effort, NSOS-forcing +
+  arena bump in `prj-cyclonedds.conf`. The bind / getsockname /
+  sockbuf gaps are fully resolved; only the multicast-RX join
+  remains.
 - Phase 117's "follow-ups (post-117)" list is **separate**: 11X
   autoware, 11Y Phase 108 events, 11Z zero-copy sertype. 11W
   here is yet another post-117 follow-up.

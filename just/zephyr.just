@@ -45,8 +45,10 @@ setup *ARGS:
     bash ./scripts/zephyr/cyclonedds-zephyr-threads-patch.sh
     echo "[zephyr setup] applying Phase 11W.7 cyclonedds log eager-flush patch (idempotent)..."
     bash ./scripts/zephyr/cyclonedds-zephyr-log-flush-patch.sh
-    echo "[zephyr setup] applying Phase 11W.7 cyclonedds udp rcvbuf patch (idempotent)..."
+    echo "[zephyr setup] applying Phase 11W.7/.8 cyclonedds udp sockopt patch (idempotent)..."
     bash ./scripts/zephyr/cyclonedds-zephyr-udp-rcvbuf-patch.sh
+    echo "[zephyr setup] applying Phase 11W.8 NSOS getsockname patch (idempotent)..."
+    bash ./scripts/zephyr/nsos-getsockname-patch.sh
 
 # Diagnose Zephyr install status (read-only).
 doctor:

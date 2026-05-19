@@ -82,6 +82,81 @@ if old2 not in src:
     sys.exit(1)
 src = src.replace(old2, new2, 1)
 
+# Phase 11W.8 — actsize == 0 tolerance. NSOS getsockopt(SO_*BUF)
+# succeeds but reports 0; treat as "stack can't size, continue".
+old3 = '''    else
+    {
+      /* If the configuration states it must be >= X, then error out if the
+         kernel doesn't give us at least X */
+      GVLOG (DDS_LC_CONFIG | DDS_LC_ERROR,
+             "failed to increase socket %s buffer size to at least %"PRIu32" bytes, current is %"PRIu32" bytes\\n",
+             name, socket_min_buf_size, actsize);
+      rc = DDS_RETCODE_NOT_ENOUGH_SPACE;
+    }'''
+new3 = '''    else if (actsize == 0)
+    {
+      /* nano-ros: zephyr unsupported-sockopt — Phase 11W.8. Zephyr
+       * NSOS getsockopt(SO_*BUF) succeeds but reports 0 because the
+       * host-offloaded socket doesn't surface a buffer size; treat
+       * 0 as "stack can't size, continue" (the host socket still has
+       * the kernel default buffer). */
+      GVLOG (DDS_LC_CONFIG, "socket %s buffer size unreported by stack, continuing\\n", name);
+    }
+    else
+    {
+      /* If the configuration states it must be >= X, then error out if the
+         kernel doesn't give us at least X */
+      GVLOG (DDS_LC_CONFIG | DDS_LC_ERROR,
+             "failed to increase socket %s buffer size to at least %"PRIu32" bytes, current is %"PRIu32" bytes\\n",
+             name, socket_min_buf_size, actsize);
+      rc = DDS_RETCODE_NOT_ENOUGH_SPACE;
+    }'''
+if old3 not in src:
+    sys.stderr.write("ERROR: actsize==0 anchor not found in ddsi_udp.c\\n")
+    sys.exit(1)
+src = src.replace(old3, new3, 1)
+
+# Phase 11W.8 — multicast TX options best-effort. The IP_MULTICAST_*
+# setsockopt family is unsupported / shape-mismatched on Zephyr NSOS;
+# evaluate each call but never fail the connection on its result.
+old4 = '''  const unsigned char ttl = (unsigned char) gv->config.multicast_ttl;
+  const unsigned char loop = (unsigned char) !!gv->config.enableMulticastLoopback;
+  dds_return_t rc;
+  if ((rc = set_mc_options_transmit_ipv4_if (gv, intf, sock)) != DDS_RETCODE_OK) {
+    GVERROR ("ddsi_udp_create_conn: set IP_MULTICAST_IF failed: %s\\n", dds_strretcode (rc));
+    return rc;
+  }
+  if ((rc = ddsrt_setsockopt (sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof (ttl))) != DDS_RETCODE_OK) {
+    GVERROR ("ddsi_udp_create_conn: set IP_MULTICAST_TTL failed: %s\\n", dds_strretcode (rc));
+    return rc;
+  }
+  if ((rc = ddsrt_setsockopt (sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof (loop))) != DDS_RETCODE_OK) {
+    GVERROR ("ddsi_udp_create_conn: set IP_MULTICAST_LOOP failed: %s\\n", dds_strretcode (rc));
+    return rc;
+  }
+  return DDS_RETCODE_OK;'''
+new4 = '''  const unsigned char ttl = (unsigned char) gv->config.multicast_ttl;
+  const unsigned char loop = (unsigned char) !!gv->config.enableMulticastLoopback;
+  dds_return_t rc;
+  /* nano-ros: zephyr unsupported-sockopt — Phase 11W.8. The
+   * IP_MULTICAST_* setsockopt family is best-effort on Zephyr NSOS
+   * (struct-shape / size differences from upstream POSIX cause
+   * BAD_PARAMETER / generic ERROR). Evaluate each call but never
+   * fail the connection on its result; embedded multicast group
+   * membership is driven by nros-platform-zephyr's IGMP path, not
+   * Cyclone's setsockopt. */
+#define NROS_MC_OPT_BEST_EFFORT(expr) ((void)(expr))
+  NROS_MC_OPT_BEST_EFFORT(rc = set_mc_options_transmit_ipv4_if (gv, intf, sock));
+  NROS_MC_OPT_BEST_EFFORT(rc = ddsrt_setsockopt (sock, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof (ttl)));
+  NROS_MC_OPT_BEST_EFFORT(rc = ddsrt_setsockopt (sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof (loop)));
+#undef NROS_MC_OPT_BEST_EFFORT
+  (void) rc;
+  return DDS_RETCODE_OK;'''
+if old4 not in src:
+    sys.stderr.write("ERROR: multicast-tx anchor not found in ddsi_udp.c\\n")
+    sys.exit(1)
+src = src.replace(old4, new4, 1)
+
 path.write_text(src)
 PYEOF
 
