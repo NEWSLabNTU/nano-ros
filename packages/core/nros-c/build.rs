@@ -37,6 +37,19 @@ fn main() {
         .flag_if_supported("-Wpedantic")
         .compile("nros_c_weak_stubs");
 
+    // Phase 88.12 — `nros_log_emit_fmt` C shim. Implemented in C
+    // because Rust's `c_variadic` feature is still unstable. The shim
+    // vsnprintfs and forwards to the Rust-side `nros_log_emit`.
+    let log_fmt_path = manifest_dir.join("c-stubs/log_fmt.c");
+    println!("cargo:rerun-if-changed={}", log_fmt_path.display());
+    cc::Build::new()
+        .file(&log_fmt_path)
+        .include(manifest_dir.join("include"))
+        .warnings(true)
+        .extra_warnings(true)
+        .flag_if_supported("-Wpedantic")
+        .compile("nros_c_log_fmt");
+
     // Re-run if source files change (for library rebuild + header regen)
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");

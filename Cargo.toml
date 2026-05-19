@@ -348,6 +348,7 @@ nros-rmw-xrce-cffi = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce-cf
 nros-rmw-dds = { version = "0.1.0", path = "packages/dds/nros-rmw-dds", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
+nros-log = { version = "0.1.0", path = "packages/core/nros-log" }
 nros-orchestration = { version = "0.1.0", path = "packages/core/nros-orchestration", default-features = false }
 nros-sizes-build = { version = "0.1.0", path = "packages/core/nros-sizes-build" }
 nros-platform = { version = "0.1.0", path = "packages/core/nros-platform", default-features = false }

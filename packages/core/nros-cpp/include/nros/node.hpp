@@ -151,6 +151,17 @@ class Node {
         return nros_cpp_node_get_namespace(&handle_);
     }
 
+    /// Phase 88.12 — return the `nros_log::Logger` keyed on this
+    /// node's name. The returned opaque handle is passed to the
+    /// `NROS_LOG_*` macros in `<nros/log.hpp>`. Lifetime is
+    /// `'static`; callers must NOT free.
+    ///
+    /// Returns NULL on an uninitialized node.
+    const void* get_logger() const {
+        if (!initialized_) return nullptr;
+        return nros_cpp_node_get_logger(&handle_);
+    }
+
     /// Check if the node is initialized and valid.
     bool is_valid() const { return initialized_; }
 

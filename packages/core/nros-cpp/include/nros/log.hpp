@@ -52,4 +52,35 @@
 #define NROS_DEBUG(...) NROS_LOG_SINK("DEBUG", __FILE__, __LINE__, __VA_ARGS__)
 #endif
 
+/* ---- Phase 88.12 — node-/logger-keyed surface ----
+ *
+ * The macros above are legacy (Phase 123.B.7) — file:line-prefixed
+ * stderr printf with no per-logger routing. The macros below carry
+ * a Logger handle through to the post-Phase-88 dispatcher
+ * (`nros_log_emit_fmt` → per-platform sinks, see
+ * `<nros/platform.h>` for the ABI).
+ *
+ * Obtain the handle from a Node via `node.get_logger()`:
+ *
+ * ```cpp
+ * nros::Node node;
+ * NROS_TRY(nros::create_node(node, "my_node"));
+ * auto logger = node.get_logger();
+ * NROS_LOG_INFO(logger, "started; domain=%u", 42);
+ * ```
+ *
+ * Below-threshold filtering happens runtime-side via the
+ * `nros_log::Logger`'s `set_level`; compile-time filtering is via
+ * `nros-log/max-level-*` Cargo features (compiled into the nros-c
+ * staticlib that ships `nros_log_emit_fmt`). */
+
+#include <nros/log.h>
+
+#define NROS_LOG_TRACE(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_TRACE, __VA_ARGS__)
+#define NROS_LOG_DEBUG(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_DEBUG, __VA_ARGS__)
+#define NROS_LOG_INFO(logger, ...)  ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_INFO,  __VA_ARGS__)
+#define NROS_LOG_WARN(logger, ...)  ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_WARN,  __VA_ARGS__)
+#define NROS_LOG_ERROR(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_ERROR, __VA_ARGS__)
+#define NROS_LOG_FATAL(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_FATAL, __VA_ARGS__)
+
 #endif // NROS_CPP_LOG_HPP

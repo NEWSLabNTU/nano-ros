@@ -116,6 +116,8 @@ panic-halt = ["dep:panic-halt"]
 [dependencies]
 nros = { version = "0.1.0", path = "../nros", default-features = false }
 nros-node.workspace = true
+# Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.
+nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }

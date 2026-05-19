@@ -380,6 +380,44 @@ pub unsafe extern "C" fn nros_node_get_namespace(node: *const nros_node_t) -> *c
     node.namespace.as_ptr() as *const c_char
 }
 
+/// Phase 88.12 — return the `nros::Logger` keyed on this node's name.
+///
+/// The returned handle is opaque from the C side; pass it to
+/// `nros_log_info(...)` / `nros_log_warn(...)` / etc. (declared in
+/// `<nros/log.h>`). The lifetime is `'static` — loggers live for the
+/// process; callers must NOT free the returned pointer.
+///
+/// # Parameters
+/// * `node` - Pointer to an initialized node.
+///
+/// # Returns
+/// * Opaque `nros_logger_t *` (= `&'static nros_log::Logger`), or NULL
+///   if `node` is NULL / uninitialised.
+///
+/// # Safety
+/// * `node` must be a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_node_get_logger(
+    node: *const nros_node_t,
+) -> *const core::ffi::c_void {
+    if node.is_null() {
+        return core::ptr::null();
+    }
+
+    let node = &*node;
+    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+        return core::ptr::null();
+    }
+
+    // Name lives in `node.name: [u8; N]` as a NUL-terminated C string.
+    // Find the NUL + slice to a `&str` before handing to nros-log.
+    let name_bytes = &node.name[..];
+    let nul = name_bytes.iter().position(|&b| b == 0).unwrap_or(0);
+    let name = core::str::from_utf8(&name_bytes[..nul]).unwrap_or("");
+    let logger: &'static nros_log::Logger = nros_log::get_logger(name);
+    (logger as *const nros_log::Logger).cast()
+}
+
 #[cfg(kani)]
 mod verification {
     use super::*;

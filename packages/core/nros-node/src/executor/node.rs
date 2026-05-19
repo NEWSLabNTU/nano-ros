@@ -48,6 +48,33 @@ impl<'a> Node<'a> {
         &self.name
     }
 
+    /// Phase 88.12 — return the [`nros_log::Logger`] keyed on the
+    /// node name.
+    ///
+    /// Loggers are interned in nros-log's bounded global table
+    /// ([`nros_log::MAX_LOGGERS`] slots). If the caller has
+    /// pre-registered a `'static Logger` whose name matches this
+    /// node's name (via [`nros_log::register_logger`]), this method
+    /// returns that exact reference — so subsequent `nros_*!` calls
+    /// share per-logger runtime threshold state with any other call
+    /// site that resolves the same name. Otherwise the call returns
+    /// [`nros_log::DEFAULT_LOGGER`], keeping the API total.
+    ///
+    /// ```ignore
+    /// // Pre-register if you want a dedicated threshold:
+    /// static MY_NODE_LOGGER: nros_log::Logger =
+    ///     nros_log::Logger::new("my_node");
+    /// nros_log::register_logger(&MY_NODE_LOGGER);
+    ///
+    /// // Inside any node-creating code:
+    /// let logger = node.logger();
+    /// nros_log::nros_info!(logger, "started; domain = {}", node.domain_id());
+    /// ```
+    #[must_use]
+    pub fn logger(&self) -> &'static nros_log::Logger {
+        nros_log::get_logger(self.name())
+    }
+
     /// Get the domain ID.
     pub fn domain_id(&self) -> u32 {
         self.domain_id

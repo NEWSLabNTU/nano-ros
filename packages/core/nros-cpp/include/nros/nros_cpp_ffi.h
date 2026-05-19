@@ -535,6 +535,16 @@ const char *nros_cpp_node_get_name(const struct nros_cpp_node_t *node);
 const char *nros_cpp_node_get_namespace(const struct nros_cpp_node_t *node);
 
 /**
+ * Phase 88.12 — return the `nros_log::Logger` keyed on this node's
+ * name. Opaque handle on the C++ side; pass to `NROS_LOG_*` macros.
+ *
+ * # Safety
+ * `node` must be a valid pointer to an initialized `nros_cpp_node_t`,
+ * or NULL (in which case NULL is returned).
+ */
+const void *nros_cpp_node_get_logger(const struct nros_cpp_node_t *node);
+
+/**
  * Drive transport I/O and dispatch any registered callbacks.
  *
  * Call this periodically so subscriptions can receive data.

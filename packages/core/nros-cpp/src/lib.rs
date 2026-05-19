@@ -891,6 +891,30 @@ pub unsafe extern "C" fn nros_cpp_node_get_namespace(
     unsafe { (*node).namespace.as_ptr() as *const c_char }
 }
 
+/// Phase 88.12 — return the `nros_log::Logger` keyed on this node's
+/// name. Opaque handle on the C++ side; pass to `NROS_LOG_*` macros.
+///
+/// # Safety
+/// `node` must be a valid pointer to an initialized `nros_cpp_node_t`,
+/// or NULL (in which case NULL is returned).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_get_logger(
+    node: *const nros_cpp_node_t,
+) -> *const core::ffi::c_void {
+    if node.is_null() {
+        return core::ptr::null();
+    }
+    let name_ptr = unsafe { (*node).name.as_ptr() as *const u8 };
+    // Find the NUL terminator in the fixed-size `name` array to
+    // build a `&str` for the intern table lookup.
+    let name_bytes =
+        unsafe { core::slice::from_raw_parts(name_ptr, (*node).name.len()) };
+    let nul = name_bytes.iter().position(|&b| b == 0).unwrap_or(0);
+    let name = core::str::from_utf8(&name_bytes[..nul]).unwrap_or("");
+    let logger: &'static nros_log::Logger = nros_log::get_logger(name);
+    (logger as *const nros_log::Logger).cast()
+}
+
 // ============================================================================
 // Spin
 // ============================================================================

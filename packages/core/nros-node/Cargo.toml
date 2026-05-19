@@ -119,6 +119,9 @@ nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 # `register()` call (bare-metal). See
 # `docs/roadmap/phase-104-multi-backend-bridges.md` Thread A.
 nros-params = { workspace = true, default-features = false }
+# Phase 88.12 — `Node::logger()` returns a `&'static Logger` from the
+# nros-log intern table.
+nros-log = { version = "0.1.0", path = "../nros-log" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"], optional = true }
