@@ -37,7 +37,18 @@ rmw-cffi = ["nros/rmw-cffi"]
 # `rmw-cffi` plus the per-backend optional dep.
 rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
 rmw-dds-cffi = ["rmw-cffi", "dep:nros-rmw-dds"]
-rmw-zenoh-cffi = ["rmw-cffi", "dep:nros-rmw-zenoh"]
+# Phase 161 — mirror nros-c's Phase 134.fix: drop `dep:nros-rmw-zenoh`.
+# Pulling the rlib bundled a duplicate copy of nros-rmw-zenoh's entire
+# dependency closure (including a second zenoh-pico C build) into
+# `libnros_cpp.a`. Whichever side the linker picks for the public
+# no_mangle entry points may reference the OTHER side's zenoh-pico
+# structs through the FFI boundary, producing runtime layout / size
+# mismatches that surface as `nros::init -> -100 TransportError` on
+# the FreeRTOS C++ E2E tests (Phase 161 root cause). The
+# `nros_rmw_zenoh_register` C symbol is resolved at the C-binary link
+# step exclusively from `libnros_rmw_zenoh.a` (the standalone
+# staticlib emitted by `nano_ros_link_rmw(... RMW zenoh)`).
+rmw-zenoh-cffi = ["rmw-cffi"]
 
 # Phase 124.A — zero-copy publisher/subscriber loan ABI exposed
 # through the C++ FFI (`nros_cpp_publisher_loan` / `_commit` /

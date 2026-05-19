@@ -173,8 +173,17 @@ use core::ffi::{c_char, c_int, c_void};
 
 #[cfg(feature = "rmw-dds-cffi")]
 pub use nros_rmw_dds::nros_rmw_dds_register;
+
+// Phase 161 — mirror nros-c's Phase 134.fix. Declaring
+// `nros_rmw_zenoh_register` as a plain `extern "C"` symbol keeps the
+// public surface (downstream C/C++ glue may resolve this) without
+// pulling `nros-rmw-zenoh` into `libnros_cpp.a`'s Rust dep graph. The
+// linker resolves the symbol at the C-binary link step from
+// `libnros_rmw_zenoh.a` (the standalone staticlib).
 #[cfg(feature = "rmw-zenoh-cffi")]
-pub use nros_rmw_zenoh::nros_rmw_zenoh_register;
+unsafe extern "C" {
+    pub fn nros_rmw_zenoh_register() -> i32;
+}
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
 #[cfg(feature = "rmw-cffi")]
@@ -471,10 +480,13 @@ pub unsafe extern "C" fn nros_cpp_init(
     {
         let _ = nros_rmw_xrce_cffi::register();
     }
-    #[cfg(feature = "rmw-zenoh-cffi")]
-    {
-        let _ = nros_rmw_zenoh::register();
-    }
+    // Phase 161 — drop the redundant `nros_rmw_zenoh::register()` call;
+    // `nros_app_register_backends()` above already calls
+    // `nros_rmw_zenoh_register()` via the CMake-emitted strong stub
+    // (`cmake/NanoRosLink.cmake:62-117`). Keeping a second registration
+    // path used to pull `nros-rmw-zenoh` into the Rust dep graph and
+    // produced the dual zenoh-pico instance bug — see Cargo.toml for
+    // the full diagnosis.
     #[cfg(feature = "rmw-dds-cffi")]
     {
         let _ = nros_rmw_dds::register();

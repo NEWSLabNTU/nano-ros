@@ -6,8 +6,33 @@ Phase 144.5.c migration to `add_subdirectory(<repo-root>)`. The
 Rust and C variants pass on the same fixture, so the bug is
 C++-specific.
 
-**Status.** Not Started — triage notes captured below; fix
-pending root-cause probe.
+**Status.** **CLOSED 2026-05-19.** Root cause: nros-cpp's
+`rmw-zenoh-cffi` feature pulled `nros-rmw-zenoh` as a Rust dep,
+which bundled a second copy of the zenoh-pico C build into
+`libnros_cpp.a` alongside the one already coming from the
+standalone `libnros_rmw_zenoh.a` (linked via
+`nano_ros_link_rmw(... RMW zenoh)`). With
+`--allow-multiple-definition` the linker reconciled same-named
+symbols but each rlib instance kept private trampolines wired to
+its private zenoh-pico variant — runtime FFI layout mismatch
+surfaced as `nros::init -> -100`. Phase 134.fix landed the
+identical fix on nros-c (2026-05-12); nros-cpp was never
+migrated.
+
+**Fix:** Drop `dep:nros-rmw-zenoh` from nros-cpp's
+`rmw-zenoh-cffi` feature; declare `nros_rmw_zenoh_register` as a
+plain `extern "C" { fn nros_rmw_zenoh_register() -> i32; }`
+symbol resolved at the C-binary link step from
+`libnros_rmw_zenoh.a`. Drop the redundant
+`nros_rmw_zenoh::register()` call from `nros_cpp_init` — the
+CMake-emitted strong stub at
+`cmake/NanoRosLink.cmake:62-117` already calls
+`nros_rmw_zenoh_register()` via
+`nros_app_register_backends()`.
+
+**Result:** `cargo nextest run -p nros-tests --test rtos_e2e
+"platform_1_Platform__Freertos"`: **9/9 PASS** (was 6/9 — all 3
+C++ variants previously failed with -100 TransportError).
 
 **Priority.** P1 — blocks the "no FreeRTOS QEMU E2E regression"
 acceptance gate of Phase 141 (`docs/roadmap/phase-141-wake-callback-cortex-m3.md`),
