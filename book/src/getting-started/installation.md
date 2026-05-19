@@ -66,39 +66,50 @@ walkthrough.
 
 ## One-shot bootstrap
 
-From the workspace root:
+From the nano-ros clone (or its workspace parent), invoke the
+top-level `just setup` orchestrator:
 
 ```bash
-mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
-git clone https://github.com/NEWSLabNTU/nano-ros.git
-cd ~/ros2_ws
-./src/nano-ros/tools/setup.sh --target=posix-zenoh
+git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
+cd nano-ros
+
+# Phase 142 SDK tiers (strict supersets):
+just setup tier=minimal      # workspace + verification + zenohd
+just setup tier=default      # default coverage for `just ci` (recommended)
+just setup tier=extended     # default + esp-idf + px4
 ```
 
-What `tools/setup.sh` does:
+Override the default tier via `NROS_SETUP_TIER=<tier>` in your shell
+profile.
 
-1. Reads `config/submodule-deps.toml` to pick the submodules needed for
-   your `(platform, rmw)` tuple.
+What `just setup` does (delegates to `tools/setup.sh`):
+
+1. Reads `config/submodule-deps.toml` to pick the submodules needed
+   for the selected tier (or for a specific `(platform, rmw)` tuple).
 2. Runs `git submodule update --init --depth=1` for each — selective
    fetch, no unrelated dependencies pulled.
-3. Installs rustup (if missing) + the Rust target triple for the
-   selected platform via `rustup target add`.
-4. Surfaces any missing apt cross-toolchain packages on Linux.
-   `tools/setup.sh` **never** runs sudo automatically; it tells you
-   what to install.
+3. Installs rustup (if missing) + the Rust target triples needed via
+   `rustup target add`.
+4. Surfaces missing apt cross-toolchain packages on Linux. **Never**
+   runs sudo automatically; reports what to install.
 
-Useful flags:
+Tier policy: a module joins `default` iff ≤ 500 MB / ≤ 5 min wall-clock
+install AND idempotent AND covered by `just test-all`. ARM FVP, NVIDIA
+SDK Manager, and license-gated installs stay opt-in entirely — run
+their per-module `just <module> setup` recipe out-of-band.
 
-| Flag | Effect |
+For a narrower fetch (single platform + RMW), invoke the underlying
+script:
+
+| Form | Effect |
 |---|---|
-| `--target=<plat>-<rmw>` | canonical setup (e.g. `posix-zenoh`, `freertos-xrce`, `threadx-dds`) |
-| `--list-targets` | print known platforms / RMWs / references |
-| `--doctor` | check tool availability without fetching |
-| `--with-dev` | include dev-only paths (zenoh router, XRCE agent) |
-| `--with-reference=<name>` | opt-in references (e.g. `px4`, `tracing`) |
-| `--dry-run` | print plan, fetch nothing |
-| `--platform=<plat>` | platform-only fetch (skips RMW) |
-| `--rmw=<rmw>` | RMW-only fetch (skips platform) |
+| `just <platform> setup` | platform-only fetch + build (`just freertos setup`, etc.) |
+| `tools/setup.sh --target=<plat>-<rmw>` | canonical pair setup (e.g. `posix-zenoh`) |
+| `tools/setup.sh --list-targets` | print known platforms / RMWs / references |
+| `tools/setup.sh --doctor` | check tool availability without fetching |
+| `tools/setup.sh --with-dev` | include dev-only paths (zenoh router, XRCE agent) |
+| `tools/setup.sh --with-reference=<name>` | opt-in references (e.g. `px4`, `tracing`) |
+| `tools/setup.sh --dry-run` | print plan, fetch nothing |
 
 ## Per-target setup
 
@@ -138,27 +149,22 @@ nros = { path = "src/nano-ros/packages/core/nros",
          features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 ```
 
-For a tidier workspace, `tools/setup.sh --rust-workspace` (planned)
-will auto-generate a workspace-level `Cargo.toml` with the right
-`[workspace.dependencies]` + `[patch.crates-io]` table. Until then,
-each Rust package carries its own `.cargo/config.toml` patch —
-see [`examples/templates/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace/src/pkg_rust_publisher)
+Each Rust package carries its own `.cargo/config.toml` patch entries
+when needed — see
+[`examples/templates/multi-package-workspace/src/pkg_rust_publisher/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace/src/pkg_rust_publisher)
 for the pattern.
 
 ## Contributor setup (working on nano-ros itself)
 
-If you're hacking on nano-ros rather than consuming it, the
-workspace-wide `just setup` walks every platform module:
+Hacking on nano-ros uses the same `just setup` entry point, with
+the wider `default` or `extended` tier:
 
 ```bash
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup       # Workspace + all platforms + verification + services
+just setup tier=default      # everything `just ci` exercises
+# just setup tier=extended   # + esp-idf, + px4
 ```
-
-The zero-arg form is the contributor entry point; the one-arg form
-`just setup posix-zenoh` shims `tools/setup.sh --target=posix-zenoh`
-for ergonomics parity with users.
 
 Diagnose missing tools (read-only):
 
@@ -169,13 +175,14 @@ just doctor
 Set up just one module:
 
 ```bash
-just freertos::setup
-just nuttx::setup
-just threadx_linux::setup
+just freertos setup
+just nuttx setup
+just threadx_linux setup
 ```
 
-These delegate to `tools/setup.sh` (Phase 123.A.8) + run any
-platform-specific build steps (NuttX kernel, Cyclone DDS SDK).
+Each `<module> setup` delegates to `tools/setup.sh` for submodule
+fetch + runs any platform-specific build steps (NuttX kernel build,
+Cyclone DDS SDK build, etc.).
 
 ## Docker environment
 
