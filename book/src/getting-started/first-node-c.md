@@ -109,7 +109,9 @@ Three terminals.
 
 ```bash
 # 1. Start the in-tree zenoh router:
-just zenohd run                      # or: ./build/zenohd/zenohd
+zenohd                               # provided by `source ./setup.bash`;
+                                     # equivalent to `just zenohd run` or
+                                     # `./build/zenohd/zenohd` directly
 
 # 2. Run the talker:
 cd examples/native/c/zenoh/talker

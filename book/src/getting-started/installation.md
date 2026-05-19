@@ -66,37 +66,39 @@ walkthrough.
 
 ## One-shot bootstrap
 
-From the nano-ros clone (or its workspace parent), invoke the
-top-level `just setup` orchestrator:
-
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
 
-# SDK tiers (strict supersets):
-just setup tier=minimal      # workspace + verification + zenohd
-just setup tier=default      # default coverage for `just ci` (recommended)
-just setup tier=extended     # default + esp-idf + px4
+just setup                       # one-shot fetch + build of every module
+source ./setup.bash               # zenohd, nros, nros-codegen, qemu-system-arm on PATH
+                                  # (use ./setup.fish for fish)
 ```
 
-Override the default tier via `NROS_SETUP_TIER=<tier>` in your shell
-profile.
+`just setup` is the only entry point you need. It:
 
-What `just setup` does (delegates to `tools/setup.sh`):
-
-1. Reads `config/submodule-deps.toml` to pick the submodules needed
-   for the selected tier (or for a specific `(platform, rmw)` tuple).
-2. Runs `git submodule update --init --depth=1` for each — selective
-   fetch, no unrelated dependencies pulled.
-3. Installs rustup (if missing) + the Rust target triples needed via
-   `rustup target add`.
+1. Picks the submodules required for the modules in scope.
+2. Runs `git submodule update --init --depth=1` selectively (no
+   unrelated deps).
+3. Installs the Rust target triples via `rustup target add`.
 4. Surfaces missing apt cross-toolchain packages on Linux. **Never**
    runs sudo automatically; reports what to install.
 
-Tier policy: a module joins `default` iff ≤ 500 MB / ≤ 5 min wall-clock
-install AND idempotent AND covered by `just test-all`. ARM FVP, NVIDIA
-SDK Manager, and license-gated installs stay opt-in entirely — run
-their per-module `just <module> setup` recipe out-of-band.
+The optional `tier=` argument scopes the install (handy on CI or
+for Rust-only contributors):
+
+```bash
+just setup tier=minimal          # workspace + verification + zenohd
+just setup tier=default          # everything `just ci` covers (the default)
+just setup tier=extended         # default + esp-idf + px4
+```
+
+Most users can ignore tiers entirely.
+
+After `just setup`, `source ./setup.bash` puts every shipped
+binary on PATH for the current shell session — same idiom as
+`source /opt/ros/humble/setup.bash`. Re-source after subsequent
+builds (e.g. `just xrce setup`) to pick up newly-built tools.
 
 > **Heads-up before your first example.** Every nano-ros example
 > (Linux talker, FreeRTOS talker, …) connects to a **Zenoh router**
@@ -113,18 +115,18 @@ their per-module `just <module> setup` recipe out-of-band.
 > FreeRTOS (Slirp forwards to host). Mismatch = silent hang;
 > see [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
-For a narrower fetch (single platform + RMW), invoke the underlying
-script:
+For a narrower fetch, invoke the per-platform recipe directly:
 
 | Form | Effect |
 |---|---|
-| `just <platform> setup` | platform-only fetch + build (`just freertos setup`, etc.) |
-| `tools/setup.sh --target=<plat>-<rmw>` | canonical pair setup (e.g. `posix-zenoh`) |
-| `tools/setup.sh --list-targets` | print known platforms / RMWs / references |
-| `tools/setup.sh --doctor` | check tool availability without fetching |
-| `tools/setup.sh --with-dev` | include dev-only paths (zenoh router, XRCE agent) |
-| `tools/setup.sh --with-reference=<name>` | opt-in references (e.g. `px4`, `tracing`) |
-| `tools/setup.sh --dry-run` | print plan, fetch nothing |
+| `just <platform> setup` | platform-only fetch + build (`just freertos setup`, `just zephyr setup`, etc.) |
+| `just <platform> doctor` | read-only check of that platform's prereqs |
+| `just doctor` | aggregate doctor across the chosen tier |
+
+> **Power-user escape hatch.** The underlying script `tools/setup.sh`
+> takes `--target=<plat>-<rmw>` for exact-pair fetch + `--list-targets`,
+> `--doctor`, `--with-dev`, `--with-reference=<name>`, `--dry-run`.
+> Use it when you need finer control than the just recipes provide.
 
 ## Per-target setup
 

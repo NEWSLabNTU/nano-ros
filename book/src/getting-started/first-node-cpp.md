@@ -110,8 +110,8 @@ Re-builds finish in seconds.
 Three terminals.
 
 ```bash
-# 1. zenoh router:
-just zenohd run
+# 1. zenoh router (run `source ./setup.bash` first to put zenohd on PATH):
+zenohd                               # or: just zenohd run / ./build/zenohd/zenohd
 
 # 2. Run the talker:
 cd examples/native/cpp/zenoh/talker

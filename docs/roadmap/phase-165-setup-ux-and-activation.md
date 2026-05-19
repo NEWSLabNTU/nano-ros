@@ -137,10 +137,10 @@ nano-ros binary on PATH — same ergonomics as ROS 2's
 
 ### 165.A — Setup entry unification
 
-- [ ] **165.A.1** Decide canonical surface: `just setup` only.
+- [x] **165.A.1** Decide canonical surface: `just setup` only.
       `tools/setup.sh` stays as the underlying script (power-user
       / debugging surface, not in user docs).
-- [ ] **165.A.2** Update book (`installation.md`,
+- [x] **165.A.2** Update book (`installation.md`,
       `setup-compared-to-ros2.md`, every starter page) to use
       `just setup [<plat>]` only. Demote `tools/setup.sh` to a
       one-line aside.
@@ -171,15 +171,15 @@ divergence, wrong error codes in C troubleshooting). Treat every
 new per-platform setup as needing the same audit pass before
 declaring it "done."
 
-- [ ] **165.B-test.1** Audit-reader agent: Linux Rust starter
+- [x] **165.B-test.1** Audit-reader agent: Linux Rust starter
       (`book/src/getting-started/first-node-rust.md`). Acceptance:
       blind reader executes every Build / Run command and reaches
       `Published: 1` without bouncing.
-- [ ] **165.B-test.2** Audit-reader agent: Linux C starter
+- [x] **165.B-test.2** Audit-reader agent: Linux C starter
       (`book/src/getting-started/first-node-c.md`).
 - [ ] **165.B-test.3** Audit-reader agent: Linux C++ starter
       (`book/src/getting-started/first-node-cpp.md`).
-- [ ] **165.B-test.4** Audit-reader agent: FreeRTOS QEMU starter
+- [~] **165.B-test.4** Audit-reader agent: FreeRTOS QEMU starter
       (`book/src/getting-started/freertos.md`) — covers Rust + C +
       C++ variants, runs `just freertos build-fixtures`. Blocked
       on [Phase 166](./phase-166-freertos-board-crate-dup-symbols.md)
@@ -221,7 +221,7 @@ For each audit-reader pass, the agent's report should list:
 
 ### 165.D — Shell activation file
 
-- [ ] **165.D.1** Ship `setup.bash` at the repo root that:
+- [x] **165.D.1** Ship `setup.bash` at the repo root that:
       - Computes `NROS_ROOT` (the script's dirname).
       - Adds `${NROS_ROOT}/build/zenohd`, `${NROS_ROOT}/build/qemu/bin`,
         `${NROS_ROOT}/packages/codegen/packages/target/release`,
@@ -231,13 +231,13 @@ For each audit-reader pass, the agent's report should list:
         `NROS_XRCE_AGENT` to the resolved absolute paths.
       - Prints a one-line confirmation banner with `NROS_ROOT` + the
         binaries it found.
-- [ ] **165.D.2** Ship `setup.fish` (mirror).
-- [ ] **165.D.3** Ship `setup.zsh` (or confirm `setup.bash`
+- [x] **165.D.2** Ship `setup.fish` (mirror).
+- [x] **165.D.3** Ship `setup.zsh` (or confirm `setup.bash`
       works under zsh).
-- [ ] **165.D.4** `just setup` (the orchestrator) prints
+- [x] **165.D.4** `just setup` (the orchestrator) prints
       "✅ Source ./setup.bash to get every nano-ros binary on PATH"
       at the end so users discover the activation step.
-- [ ] **165.D.5** Update book's installation + first-node pages to
+- [x] **165.D.5** Update book's installation + first-node pages to
       lead with `source ./setup.bash` after `just setup`.
 
 ---

@@ -1110,6 +1110,13 @@ setup target="" tier="":
         chosen_tier="${NROS_SETUP_TIER:-default}"
     fi
     just _orchestrate setup "$chosen_tier"
+    echo ""
+    echo "✅ nano-ros setup complete."
+    echo "   Activate this shell with the shipped binaries on PATH:"
+    echo ""
+    echo "     source ./setup.bash      # bash / zsh"
+    echo "     source ./setup.fish      # fish"
+    echo ""
 
 # Diagnose install status (read-only). Tier matches `just setup`.
 doctor tier="":

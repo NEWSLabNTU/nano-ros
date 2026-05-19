@@ -86,9 +86,12 @@ seconds.
 Three terminals (each command below blocks; keep them open):
 
 ```bash
-# Terminal 1 — in-tree zenoh router (already built by `just setup`).
-# Blocks the shell until you Ctrl-C it.
-just zenohd run                      # or: ./build/zenohd/zenohd
+# Each terminal:  source ./setup.bash    (first command after cd-ing in)
+
+# Terminal 1 — in-tree zenoh router. Blocks the shell until Ctrl-C.
+zenohd                               # provided by setup.bash; equivalent
+                                     # to `just zenohd run` or
+                                     # ./build/zenohd/zenohd directly
 
 # Terminal 2 — the talker.
 cd examples/native/rust/zenoh/talker
