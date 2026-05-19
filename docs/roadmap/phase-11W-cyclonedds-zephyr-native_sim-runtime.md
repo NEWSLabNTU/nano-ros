@@ -434,6 +434,38 @@ green.
   collapse-shape contribution is still useful — users get a
   drop-in cyclonedds-overlay shape across all three languages,
   even if native_sim only validates configure + link.
+
+- **11W.8 status (2026-05-20):** Cyclonedds talker now boots
+  through `Executor::open` → `dds_create_participant` →
+  `ddsi_config_init` (full default-config walk, ~80 elements) →
+  UDP transport factory. Stuck at `ddsi_udp_create_conn`'s
+  `ddsrt_bind`. Direct probe (via `zsock_bind` from
+  `vtable.cpp` register fn) confirms the failure is **not
+  Cyclone-specific**: NSOS rejects `bind(AF_INET, 127.0.0.1, *)`
+  with `errno=2` (ENOENT) while accepting `bind(AF_INET,
+  0.0.0.0, *)`. Linux host bind of 127.0.0.1 succeeds outside
+  Zephyr (Python sanity check), so this is a Zephyr NSOS path
+  issue — possibly in `nsos_adapt_bind`'s `sockaddr_storage`
+  zero-init, possibly in the family / port byte-order
+  translation. Diagnosing further needs printk inside
+  `zephyr-workspace/zephyr/drivers/net/nsos_adapt.c` — blocked
+  by sandbox policy.
+- **11W.8 options for resolution:**
+  - **A.** Authorize Zephyr SDK edits via a workspace patch
+    script (mirror the cyclonedds-zephyr-*-patch.sh pattern), add
+    printk inside `nsos_adapt_bind` to capture the host-side
+    errno before NSOS_MID translation, then root-cause from there.
+  - **B.** Coerce Cyclone DDS to bind sockets to `0.0.0.0` (which
+    NSOS accepts) while continuing to **advertise** 127.0.0.1 in
+    the participant locator. Cyclone's XML config has
+    `General/Interfaces/NetworkInterface` with an `autodetermine`
+    attribute and an explicit `address` field — set the synthetic
+    ifaddrs entry to `0.0.0.0` but configure Cyclone's locator
+    advertisement to 127.0.0.1.
+  - **C.** Skip native_sim runtime validation entirely and pin
+    cyclonedds Zephyr coverage to FVP/aemv8r (see existing note
+    above). Phase 11W's "compile + link + boot smoke" deliverable
+    has already landed (Phase 11W.5 / .6 / .7).
 - Phase 117's "follow-ups (post-117)" list is **separate**: 11X
   autoware, 11Y Phase 108 events, 11Z zero-copy sertype. 11W
   here is yet another post-117 follow-up.

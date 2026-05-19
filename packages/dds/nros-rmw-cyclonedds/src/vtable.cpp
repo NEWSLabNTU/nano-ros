@@ -136,6 +136,19 @@ extern "C" nros_rmw_ret_t nros_rmw_cyclonedds_register(void) {
     dds_set_log_sink(zephyr_log_sink, nullptr);
     dds_set_trace_sink(zephyr_log_sink, nullptr);
     dds_set_log_mask(DDS_LC_ALL);
+
+    // Phase 11W.8 — direct NSOS bind probe (placed inline; needs the
+    // Zephyr socket symbols already extern-Cd via zephyr_ipv4_compat.h
+    // / picolibc autoconf). Mirrors Cyclone's bind setup: AF_INET
+    // UDP socket bound to 127.0.0.1:0.
+    // Phase 11W.8 probe (removed) — confirmed direct zsock_bind on
+    // Zephyr NSOS rejects 127.0.0.1 with errno=2 (ENOENT) but accepts
+    // 0.0.0.0. Cyclone's `ddsi_ownip` rejects 0.0.0.0 as the
+    // participant's advertised address. Resolution belongs to a
+    // follow-up phase — either patch NSOS, or coerce Cyclone to bind
+    // to 0.0.0.0 with an explicit `<NetworkInterface>` config that
+    // advertises a routable address while letting the socket bind to
+    // ANY.
 #endif
     // Phase 169.5 — Cyclone is the sole DDS backend (dust-dds
     // retired), registered under its canonical name "cyclonedds"
