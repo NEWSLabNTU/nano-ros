@@ -52,6 +52,16 @@ Remaining orchestration gap is broad validation:
 
 - broad `just` matrix has not been run for the integrated Phase 126 path.
 
+**2026-05-20.** `just test-all` now invokes the codegen-side
+orchestration E2E suite (5 tests: plan/check/build native, mixed-C
+component archive, services/actions, FreeRTOS-QEMU boot, one-shot
+`nros build --launch`) via the new `just native _test-orchestration-e2e`
+step. Each test self-gates on toolchain availability; the suite
+runs alongside the existing C codegen step at the bottom of
+`test-all`. Promotes Phase 126's coverage from "tested manually
+inside the codegen submodule" to "exercised every time CI runs
+`just ci`". Verified locally: 5 passed; 0 failed in ~43 s wall.
+
 ## Progress update - 2026-05-15
 
 Integrated on `main` through:

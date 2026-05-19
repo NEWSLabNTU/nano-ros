@@ -448,6 +448,24 @@ _test-c-codegen verbose="":
         bash -c 'cd packages/codegen/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
     ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh
 
+# Phase 126 coverage — promote the orchestration E2E fixtures from
+# the codegen submodule into the top-level `just test-all` matrix.
+# The tests live in `packages/codegen/packages/nros-cli-core/tests/
+# orchestration_e2e.rs` and drive metadata → plan → check → build →
+# native run (and FreeRTOS QEMU + mixed-C + services/actions) of a
+# fixture workspace. They depend on `build/zenohd/zenohd` for the
+# native spin-up + `arm-none-eabi-gcc` / `qemu-system-arm` for the
+# FreeRTOS variant; each #[test] gates itself when the toolchain
+# is absent.
+_test-orchestration-e2e verbose="":
+    #!/usr/bin/env bash
+    set -e
+    just init-test-logs
+    v="{{ if verbose != "" { "--verbose" } else { "" } }}"
+    ./tests/run-test.sh --name orchestration-e2e \
+        --log {{LOG_DIR}}/latest/orchestration-e2e.log $v -- \
+        bash -c 'cd packages/codegen/packages && cargo test -p nros-cli-core --test orchestration_e2e -- --nocapture'
+
 # Run all C tests (integration + codegen)
 test-c verbose="":
     #!/usr/bin/env bash

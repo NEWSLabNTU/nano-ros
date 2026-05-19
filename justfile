@@ -449,6 +449,9 @@ test-all verbose="": build-zenohd
     echo "=== C Codegen Tests ==="
     just native _test-c-codegen {{verbose}} || failed=1
     echo ""
+    echo "=== Orchestration E2E (Phase 126) ==="
+    just native _test-orchestration-e2e {{verbose}} || failed=1
+    echo ""
     echo "JUnit XML:  target/nextest/default/junit.xml"
     echo "Other logs: {{LOG_DIR}}/latest/"
     if [ $failed -ne 0 ]; then
