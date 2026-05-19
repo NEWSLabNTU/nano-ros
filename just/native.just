@@ -140,6 +140,25 @@ build-fixtures:
     echo "  → native/rust/zenoh/listener (--features unstable-zenoh-api)"
     ( cd examples/native/rust/zenoh/listener && \
       cargo build --release --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
+    # Phase 118.A.2 — collapsed-shape native talker. Built once per RMW
+    # feature into isolated target-<rmw>/ dirs so the test harness's
+    # `build_native_talker_rmw(Rmw::{Zenoh,Dds,Xrce})` resolver finds
+    # the matching binary. Param-services is zenoh-only (the gate
+    # references nros-rmw-zenoh's optional feature; rmw-dds / rmw-xrce
+    # builds omit it).
+    if [ -d examples/native/rust/talker ]; then
+        for rmw in zenoh dds xrce; do
+            feature_flags="--features rmw-${rmw}"
+            if [ "$rmw" = "zenoh" ]; then
+                feature_flags="${feature_flags},param-services"
+            fi
+            echo "  → native/rust/talker (--features rmw-${rmw}, target-${rmw}/)"
+            ( cd examples/native/rust/talker && \
+              cargo build --release --no-default-features ${feature_flags} \
+                  --target-dir target-${rmw} --quiet ) &
+        done
+        wait
+    fi
     echo "  → packages/testing/nros-bench/stress-zenoh (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
     ( cd packages/testing/nros-bench/stress-zenoh && \
       ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build --release --target-dir target-large-buf --quiet )

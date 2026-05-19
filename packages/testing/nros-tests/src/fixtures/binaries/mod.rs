@@ -251,6 +251,68 @@ pub fn build_example(
     require_prebuilt_binary(&binary_path)
 }
 
+/// Phase 118 — RMW selector for the per-feature collapsed example dirs.
+///
+/// Mirror of the per-feature `rmw-{zenoh,dds,xrce}` Cargo features
+/// exposed by every `examples/<plat>/<lang>/<case>/Cargo.toml` after
+/// the collapse. Build harness picks one feature + the matching
+/// `--target-dir target-<rmw>/` so each RMW's incremental state stays
+/// isolated from the others (same isolation pattern Phase 88 zero-copy
+/// / safety-e2e use).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Rmw {
+    Zenoh,
+    Dds,
+    Xrce,
+}
+
+impl Rmw {
+    /// Cargo feature name (`rmw-zenoh` / `rmw-dds` / `rmw-xrce`).
+    pub fn cargo_feature(self) -> &'static str {
+        match self {
+            Rmw::Zenoh => "rmw-zenoh",
+            Rmw::Dds => "rmw-dds",
+            Rmw::Xrce => "rmw-xrce",
+        }
+    }
+
+    /// `--target-dir` suffix (`target-zenoh` / `target-dds` / `target-xrce`).
+    pub fn target_dir(self) -> &'static str {
+        match self {
+            Rmw::Zenoh => "target-zenoh",
+            Rmw::Dds => "target-dds",
+            Rmw::Xrce => "target-xrce",
+        }
+    }
+}
+
+/// Phase 118 — resolve a prebuilt binary for a collapsed-shape example
+/// built under a specific RMW feature.
+///
+/// `name` is the example dir under `examples/` (e.g. `"native/rust/talker"`,
+/// without a `<rmw>` axis). `binary_name` is the Cargo `[[bin]] name`.
+/// The build is expected to live at
+/// `examples/<name>/<rmw.target_dir()>/release/<binary_name>` — the
+/// harness asserts the binary exists, mirroring `require_prebuilt_binary`'s
+/// contract. The actual `cargo build --no-default-features --features <rmw>
+/// --target-dir <rmw.target_dir()>` invocation belongs to
+/// `just <plat> build-fixtures`.
+pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    let binary_path =
+        example_dir.join(format!("{}/release/{}", rmw.target_dir(), binary_name));
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Phase 131.B — resolve a prebuilt test-fixture / bench binary that lives
 /// under `packages/testing/nros-{tests/bins,bench,smoke}/<crate>/`.
 ///
@@ -291,6 +353,27 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
                 None,
             )
         })
+        .map(|p| p.as_path())
+}
+
+/// Phase 118 — collapsed-shape native talker, RMW-parametrized.
+///
+/// Returns the prebuilt binary for the named RMW. The fixture build
+/// chain (`just native build-fixtures`) compiles
+/// `examples/native/rust/talker/` once per RMW into separate
+/// `target-{zenoh,dds,xrce}/` dirs; this helper resolves whichever
+/// the caller asked for. Cached per RMW so repeated lookups in a
+/// nextest run avoid filesystem-stat overhead.
+pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_CELL,
+        Rmw::Dds => &DDS_CELL,
+        Rmw::Xrce => &XRCE_CELL,
+    };
+    cell.get_or_try_init(|| build_example_rmw("native/rust/talker", "talker", rmw))
         .map(|p| p.as_path())
 }
 
