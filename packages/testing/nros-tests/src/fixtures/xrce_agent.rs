@@ -38,7 +38,17 @@ impl XrceAgent {
         let mut cmd = std::process::Command::new(&binary);
         let log_path = crate::project_root().join(format!("xrce-agent-{}.log", port));
         let log_file = std::fs::File::create(&log_path).expect("failed to create log file");
-        cmd.args(["udp4", "-p", &port.to_string()])
+        // Phase 160.H.1.2 — `-v6` enables Agent verbose logging
+        // (`UXR_VERBOSE_LEVEL_TRACE`) when `NROS_XRCE_AGENT_VERBOSE` is
+        // set in the env. Captures every inbound/outbound message at the
+        // Agent so we can correlate publisher publishes with subscriber
+        // deliveries for the throughput-drop investigation.
+        let mut agent_args: Vec<String> =
+            vec!["udp4".into(), "-p".into(), port.to_string()];
+        if std::env::var_os("NROS_XRCE_AGENT_VERBOSE").is_some() {
+            agent_args.push("-v6".into());
+        }
+        cmd.args(&agent_args)
             .stdout(log_file.try_clone().expect("failed to clone log file"))
             .stderr(log_file);
         #[cfg(unix)]
