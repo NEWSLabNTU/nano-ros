@@ -1,0 +1,50 @@
+[package]
+name = "native-rs-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "talker"
+path = "src/main.rs"
+
+[features]
+# Phase 118 — single source-of-truth talker. RMW selected at build
+# time via mutually exclusive features. `cargo build` with no
+# `--features` flag falls into the canonical `rmw-zenoh` path so
+# `cargo run -p native-rs-talker` Just Works for the docs-first
+# experience.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-dds   = ["dep:nros-rmw-dds"]
+rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+
+# Carry-over feature gates that previously lived in
+# `native/rust/zenoh/talker/`. These are zenoh-specific and silently
+# no-op (or fail to compile) under the other RMWs — the matrix lint
+# advertises only `rmw-*` for each example; downstream tooling
+# should not combine zenoh-specific gates with `rmw-dds` /
+# `rmw-xrce`.
+safety-e2e     = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+param-services = ["nros/param-services"]
+link-tls       = ["nros/link-tls", "nros-rmw-zenoh?/link-tls"]
+
+[dependencies]
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+# Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
+# standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
+# cargo builds (no CMake glue) enable the feature so the library's
+# `build.rs` compiles the C port into the binary.
+nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+std_msgs = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+# Phase 118 — RMW shim crates as optional deps. Each `rmw-*`
+# feature toggles the matching dep on. Exactly one of the three
+# is enabled per build; the cfg-chain in `src/main.rs` calls the
+# corresponding `register()` entry.
+nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
+nros-rmw-dds      = { path = "../../../../packages/dds/nros-rmw-dds",    features = ["platform-posix"], optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
