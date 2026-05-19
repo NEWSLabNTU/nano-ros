@@ -104,7 +104,39 @@ const nros_rmw_vtable_t kVtable = {
 
 } // namespace
 
+#ifdef __ZEPHYR__
+// Phase 11W.6 — route Cyclone DDS log messages to Zephyr's LOG
+// subsystem so init-time fatal errors surface in `west build -t run`
+// output. Default sink calls `fwrite(..., stderr)` which picolibc
+// silently drops on native_sim; result is a bare `abort()` with no
+// diagnostic. Installing a sink that hands the message to Zephyr's
+// printk gives us readable failure messages.
+extern "C" {
+#include <zephyr/logging/log.h>
+}
+LOG_MODULE_REGISTER(cyclonedds, LOG_LEVEL_INF);
+
+#include <dds/ddsrt/log.h>
+
+namespace {
+void zephyr_log_sink(void *userdata, const dds_log_data_t *data) {
+    (void)userdata;
+    if (data == nullptr || data->message == nullptr) {
+        return;
+    }
+    // `data->size` excludes the trailing NUL; Cyclone guarantees a
+    // NUL is present at `message[size]`.
+    LOG_INF("cyclone: %.*s", static_cast<int>(data->size), data->message);
+}
+} // namespace
+#endif
+
 extern "C" nros_rmw_ret_t nros_rmw_cyclonedds_register(void) {
+#ifdef __ZEPHYR__
+    dds_set_log_sink(zephyr_log_sink, nullptr);
+    dds_set_trace_sink(zephyr_log_sink, nullptr);
+    dds_set_log_mask(DDS_LC_ALL);
+#endif
     // Phase 169.5 — Cyclone is the sole DDS backend (dust-dds
     // retired), registered under its canonical name "cyclonedds"
     // ONLY. Callers select via `NROS_RMW=cyclonedds`; the generic

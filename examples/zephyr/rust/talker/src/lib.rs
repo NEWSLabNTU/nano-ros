@@ -30,6 +30,10 @@ fn register_rmw() -> Result<(), &'static str> {
     {
         nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
     }
+    #[cfg(feature = "rmw-cyclonedds")]
+    {
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
+    }
     Ok(())
 }
 

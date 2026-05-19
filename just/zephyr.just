@@ -41,6 +41,8 @@ setup *ARGS:
     bash ./scripts/zephyr/native-sim-ipproto-ip-patch.sh "$WORKSPACE"
     echo "[zephyr setup] applying Phase 168.X.fvp llext-edk conditional patch (idempotent)..."
     bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$WORKSPACE"
+    echo "[zephyr setup] applying Phase 11W.6 cyclonedds threads patch (idempotent)..."
+    bash ./scripts/zephyr/cyclonedds-zephyr-threads-patch.sh
 
 # Diagnose Zephyr install status (read-only).
 doctor:

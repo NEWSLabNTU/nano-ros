@@ -19,6 +19,14 @@
 #include <cstring>
 #include <new>
 
+#ifdef __ZEPHYR__
+#include <zephyr/logging/log.h>
+LOG_MODULE_DECLARE(cyclonedds, LOG_LEVEL_INF);
+#define NROS_CYC_TRACE(...) LOG_INF(__VA_ARGS__)
+#else
+#define NROS_CYC_TRACE(...) ((void)0)
+#endif
+
 namespace nros_rmw_cyclonedds {
 
 namespace {
@@ -40,17 +48,16 @@ nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
+    NROS_CYC_TRACE("session_open: domain=%u entering", domain_id);
     auto *state = new (std::nothrow) SessionState();
     if (state == nullptr) {
+        NROS_CYC_TRACE("session_open: BAD_ALLOC for SessionState");
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
-    // dds_create_participant takes a `dds_domainid_t` (uint32_t).
-    // Cyclone's `DDS_DOMAIN_DEFAULT` (0xFFFFFFFFu) means "pick the
-    // domain from the configuration"; explicit zero is domain 0 — the
-    // ROS 2 default. We pass through `domain_id` unchanged so the
-    // runtime-supplied value (typically `ROS_DOMAIN_ID`) wins.
+    NROS_CYC_TRACE("session_open: calling dds_create_participant");
     dds_entity_t pp = dds_create_participant(domain_id, nullptr, nullptr);
+    NROS_CYC_TRACE("session_open: dds_create_participant returned %d", (int)pp);
     if (pp < 0) {
         delete state;
         return NROS_RMW_RET_ERROR;
