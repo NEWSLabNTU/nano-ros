@@ -3,9 +3,9 @@
 **Goal.** Add component-mode APIs that are natural for ROS 2 users and make
 metadata discovery a byproduct of normal node declaration.
 
-**Status.** Rust MVP implemented through runtime node mapping. C/C++ component
-declaration headers are in place; generated thunk/link integration remains in
-Phase 126.D.10.
+**Status.** Complete. All work-items (B.1–B.9) + acceptance criteria
+closed via Phase 126.D codegen integration; verified by
+orchestration_e2e tests covering native + FreeRTOS + mixed-C builds.
 
 **Priority.** P1 for Rust MVP, P2 for C/C++ after native generated binary.
 
@@ -122,9 +122,15 @@ Next coverage focus:
 ## Acceptance criteria
 
 - [x] A Rust component package emits source metadata without opening transport.
-- [ ] The same component can be instantiated by generated runtime code. The
-      runtime adapter now exists; generated-main wiring is tracked by
-      `126.D.3`.
+- [x] The same component can be instantiated by generated runtime code.
+      Generated `instantiate_components` (codegen
+      `nros-cli-core/src/orchestration/generate.rs:516`) walks
+      `INSTANCES`, builds a `ComponentRuntimeAdapter`, and dispatches
+      to `nros::register_component::<C>(...)` (Rust) or
+      `register_native_<id>(...)` (C/C++). Verified by
+      `orchestration_e2e::fixture_workspace_plans_checks_and_builds_generated_package`
+      + `_builds_and_boots_generated_freertos_package` +
+      `_links_mixed_c_component_archive` — all PASS.
 - [x] Metadata contains unresolved source names, interface types, QoS,
       callbacks, params, and optional effects.
 - [x] Component-mode entity APIs require stable IDs.
