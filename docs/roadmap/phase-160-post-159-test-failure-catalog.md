@@ -146,9 +146,50 @@ async. Verified: first call completes in <1 s after the 10 s
 discovery wait; full 4-call sequence + "All async service calls
 completed" reached.
 
-Outstanding follow-up (deferred from 160.B.1): provide an Embassy
-`Signaler`-backed `Waker` bridge so users of the `.await` pattern
-work too. The fix above keeps the example green without that work.
+**Outstanding follow-up investigation (160.B.2 — 2026-05-19).**
+Deeper trace of why `.await` doesn't wake on `nostd-runtime` DDS
+revealed that the issue is NOT a Waker-clone / Embassy-scheduler
+defect — it's that dust-dds's `DataReaderListener::on_data_available`
+**never fires on the nostd-runtime path** when the consumer is
+parked on `.await`. The listener is a separately-spawned dust-dds
+task; on the std path, dust-dds's own background-thread pool polls
+it whenever socket data arrives. On nostd-runtime there's no
+background pool — every dust-dds future only runs when something
+calls `runtime.block_on(...)`. The consumer in `.await` is parked
+(no block_on calls happening from its context), and spin_task's
+`block_on(reader.take(...))` only drives the `take` future, not
+the listener future. So the wake never fires regardless of how
+the Waker is plumbed.
+
+This means the proper fix is one of:
+- Have dust-dds's nostd-runtime poll listener-bound futures
+  alongside the user-requested future inside `block_on` (upstream
+  change to dust-dds).
+- Have nros-rmw-dds's nostd path actively drive listener-bound
+  futures from `try_recv_raw` (incrementally call the listener
+  future inside the block_on cycle).
+- Document the poll-loop pattern as the canonical async shape for
+  the `nostd-runtime` DDS path and add a small helper API
+  (`Promise::poll_until_ready(|| yield_fut)`) so callers don't
+  hand-roll it.
+
+**160.B.2 landed 2026-05-19** (option 3). Added
+`Promise::poll_until_ready(yield_fn)` to `nros-node`'s public
+surface — an async helper that actively polls `try_recv()` between
+caller-supplied yield futures. Idiomatic shape:
+
+```rust
+let reply = client
+    .call(&req)?
+    .poll_until_ready(|| embassy_time::Timer::after_millis(5))
+    .await?;
+```
+
+`examples/zephyr/rust/dds/service-client-async/src/lib.rs` switched
+to this helper; test still PASS. Options 1 + 2 (the actual root-
+cause fixes that would let bare `.await` work) remain open as
+upstream-flavor work — file separately if a future user hits the
+listener-doesn't-fire issue outside this example.
 
 ### C. Zephyr cross-host bridge E2E (8 of 10 tests closed 2026-05-19)
 

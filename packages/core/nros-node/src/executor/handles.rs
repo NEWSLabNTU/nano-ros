@@ -2103,6 +2103,53 @@ impl<T> core::future::Future for Promise<'_, T> {
     }
 }
 
+impl<T> Promise<'_, T> {
+    /// Async poll-until-ready helper for environments where the
+    /// backend's `register_waker` path can't deliver a wake.
+    ///
+    /// The plain `.await` (via the `Future` impl above) parks the
+    /// caller until the backend's listener fires the stored Waker.
+    /// That works on `std` builds where the backend has a
+    /// background-thread pool actively polling its listener tasks,
+    /// but it deadlocks on the `nostd-runtime` DDS path (and any
+    /// other cooperative backend whose listener future only runs
+    /// when something actively drives the runtime). The 160.B.1
+    /// trace pinned this to dust-dds's nostd runtime: listener
+    /// futures only advance inside `runtime.block_on(...)`, and the
+    /// parked `.await` consumer never issues such a call.
+    ///
+    /// `poll_until_ready(yield_fn)` instead actively polls
+    /// `try_recv()` on each turn and awaits the caller-supplied
+    /// yield future between attempts. The yield gives the executor
+    /// a chance to run other ready tasks (typically a `spin_task`
+    /// that drives the backend runtime via `executor.spin_once()`),
+    /// which in turn pumps the listener future. On the `std` path
+    /// this devolves to a fast poll-then-yield loop with no
+    /// correctness penalty; on `nostd-runtime` it's the only shape
+    /// that completes.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let reply = client
+    ///     .call(&req)?
+    ///     .poll_until_ready(|| embassy_time::Timer::after_millis(5))
+    ///     .await?;
+    /// ```
+    pub async fn poll_until_ready<F, Fut>(&mut self, mut yield_fn: F) -> Result<T, NodeError>
+    where
+        F: FnMut() -> Fut,
+        Fut: core::future::Future<Output = ()>,
+    {
+        loop {
+            match self.try_recv()? {
+                Some(reply) => return Ok(reply),
+                None => yield_fn().await,
+            }
+        }
+    }
+}
+
 /// Deserialize a CDR-encoded service reply.
 fn cdr_deserialize_reply<Svc: RosService>(data: &[u8]) -> Result<Svc::Reply, NodeError> {
     let mut reader = CdrReader::new_with_header(data).map_err(|_| NodeError::Deserialization)?;

@@ -103,32 +103,20 @@ async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeE
         let req = AddTwoIntsRequest { a, b };
         info!("Calling service: {} + {} = ?", a, b);
 
-        // Phase 160.B.1 — switched from `.await` to a poll loop with
-        // an embassy-time pacing yield. The `.await` path relied on
-        // dust-dds's `DataReaderListener::on_data_available`
-        // (registered via Phase 71.29) waking the Promise's stored
-        // `Waker`. On the `nostd-runtime` build the listener fires
-        // INSIDE `runtime.block_on_boxed(...)` (no background-thread
-        // pool); the waker-clone we hand to the Promise belongs to
-        // the Embassy task that's parked on `.await`, and Embassy's
-        // single-threaded executor + cooperative-yield model never
-        // re-polls it because no yield point exists between the
-        // listener fire and the next spin_task iteration. The poll
-        // loop pattern (documented under `Executor::spin_async`'s
-        // "Pattern 2") drives Promise progress from this task's own
-        // run-quantum, with an embassy-time yield in between so
-        // `spin_task` still gets cpu to drive the runtime. Native
-        // sync `client.call(...).wait(&mut executor, …)` uses the
-        // same fundamental pattern.
-        let mut promise = client.call(&req)?;
-        let reply = loop {
-            match promise.try_recv()? {
-                Some(reply) => break reply,
-                None => {
-                    embassy_time::Timer::after_millis(SPIN_TICK_MS).await;
-                }
-            }
-        };
+        // Phase 160.B.2 — use `Promise::poll_until_ready` instead of
+        // the bare `.await`. The Future impl on `Promise` relies on
+        // the backend's `register_waker` -> listener-fires-Waker
+        // path, which doesn't deliver on dust-dds's nostd-runtime
+        // build: listener futures only advance inside
+        // `runtime.block_on(...)`, and a parked `.await` consumer
+        // never issues such a call. `poll_until_ready` actively
+        // polls `try_recv()` between yields, letting `spin_task`
+        // pump the runtime in between (which IS what fires the
+        // listener).
+        let reply = client
+            .call(&req)?
+            .poll_until_ready(|| embassy_time::Timer::after_millis(SPIN_TICK_MS))
+            .await?;
         info!("Response: {} + {} = {}", a, b, reply.sum);
 
         embassy_time::Timer::after_millis(500).await;
