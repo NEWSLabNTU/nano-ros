@@ -30,6 +30,7 @@
 - [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)
+- [Logging](./user-guide/logging.md)
 - [Deployment Workflow](./user-guide/deployment.md)
 - [ROS 2 Interoperability](./getting-started/ros2-interop.md)
 - [Choosing an RMW Backend](./user-guide/rmw-backends.md)

@@ -82,6 +82,13 @@ exclude = [
     "SERVICE_CLIENT_OPAQUE_U64S",
     "ACTION_SERVER_OPAQUE_U64S",
     "ACTION_CLIENT_OPAQUE_U64S",
+    # Phase 88.12 — the log surface is hand-authored in
+    # `<nros/log.h>` so the macros + Doxygen comments survive.
+    # Cbindgen would re-emit the enum + functions under their
+    # mangled forms and collide with the hand-written header.
+    "nros_log_severity_t",
+    "nros_log_emit",
+    "nros_log_emit_fmt",
 ]
 
 [export.rename]

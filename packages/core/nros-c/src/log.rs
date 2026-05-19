@@ -3,11 +3,18 @@
 //! Mirrors `<nros/log.h>`. The `nros_log_emit` /
 //! `nros_log_emit_fmt` symbols dispatch through the same per-platform
 //! sink chain the Rust call sites use (Phase 88.5 onwards).
+//!
+//! cbindgen is told to skip every item in this module — the
+//! hand-written `<nros/log.h>` is authoritative for the C ABI
+//! (cbindgen would re-emit the enum + functions under their
+//! mangled names, colliding with the hand-written header).
 
 use core::ffi::{c_char, c_void};
 
 /// C severity mirror of `nros_log::Severity`. Discriminants match
 /// `Severity::as_u8()`.
+///
+/// cbindgen:ignore
 #[repr(u8)]
 #[derive(Copy, Clone)]
 pub enum nros_log_severity_t {
@@ -48,6 +55,12 @@ pub unsafe extern "C" fn nros_log_emit(
     if logger.is_null() {
         return;
     }
+    // Lazy-install the default sink list on first emit so C/C++
+    // call sites work without an explicit `nros_log_init` step from
+    // the user. Rust callers that want a custom sink list can still
+    // call `nros_log::init(...)` before any record fires (the
+    // install is idempotent — replacing the pointer is fine).
+    ensure_default_sinks();
     let logger: &'static nros_log::Logger = &*(logger as *const nros_log::Logger);
     let sev = severity.to_facade();
     if !logger.is_enabled(sev) {
@@ -68,6 +81,18 @@ pub unsafe extern "C" fn nros_log_emit(
         timestamp_ns: 0,
     };
     logger.dispatch(&record);
+}
+
+use core::sync::atomic::{AtomicBool, Ordering};
+static DEFAULT_SINKS_INSTALLED: AtomicBool = AtomicBool::new(false);
+
+fn ensure_default_sinks() {
+    if DEFAULT_SINKS_INSTALLED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        nros_log::init(nros_log::sinks::default());
+    }
 }
 
 // `nros_log_emit_fmt` is implemented in C

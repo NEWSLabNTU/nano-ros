@@ -258,26 +258,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cortex-m-rt"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "801d4dec46b34c299ccf6b036717ae0fce602faa4f4fe816d9013b9a7c9f5ba6"
-dependencies = [
- "cortex-m-rt-macros",
-]
-
-[[package]]
-name = "cortex-m-rt-macros"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e37549a379a9e0e6e576fd208ee60394ccb8be963889eebba3ffe0980364f472"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "cortex-m-semihosting"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1179,14 +1159,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "mps2-an385-pac"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
-]
-
-[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1276,6 +1248,7 @@ dependencies = [
  "critical-section",
  "nros",
  "nros-core",
+ "nros-log",
  "nros-node",
  "nros-rmw",
  "nros-rmw-xrce-cffi",
@@ -1302,6 +1275,7 @@ dependencies = [
  "cc",
  "critical-section",
  "nros",
+ "nros-log",
  "nros-node",
  "nros-platform",
  "nros-rmw",
@@ -1355,6 +1329,7 @@ dependencies = [
  "nros-core",
  "nros-ghost-types",
  "nros-lifecycle-msgs",
+ "nros-log",
  "nros-params",
  "nros-platform-api",
  "nros-rcl-interfaces",
@@ -1401,7 +1376,6 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "libc",
- "nros-node",
  "nros-platform-api",
 ]
 
@@ -1441,7 +1415,7 @@ name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
- "mps2-an385-pac",
+ "cortex-m-semihosting",
  "nros-baremetal-common",
  "nros-platform-api",
  "nros-platform-cffi",

@@ -74,13 +74,11 @@
  * `nros-log/max-level-*` Cargo features (compiled into the nros-c
  * staticlib that ships `nros_log_emit_fmt`). */
 
+/* `<nros/log.h>` already defines the six Phase-88 macros
+ * (`NROS_LOG_TRACE` … `NROS_LOG_FATAL`) — include it here so C++
+ * call sites pick up the same definitions without re-emitting
+ * them (would trigger -Wmacro-redefined on identical-but-redeclared
+ * macros). */
 #include <nros/log.h>
-
-#define NROS_LOG_TRACE(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_TRACE, __VA_ARGS__)
-#define NROS_LOG_DEBUG(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_DEBUG, __VA_ARGS__)
-#define NROS_LOG_INFO(logger, ...)  ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_INFO,  __VA_ARGS__)
-#define NROS_LOG_WARN(logger, ...)  ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_WARN,  __VA_ARGS__)
-#define NROS_LOG_ERROR(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_ERROR, __VA_ARGS__)
-#define NROS_LOG_FATAL(logger, ...) ::nros_log_emit_fmt((logger), ::NROS_LOG_SEVERITY_FATAL, __VA_ARGS__)
 
 #endif // NROS_CPP_LOG_HPP
