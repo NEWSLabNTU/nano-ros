@@ -226,8 +226,9 @@ to add.
       independent of QEMU emulation. Out of Phase 117's QEMU
       smoke goal — track as a separate sub-phase.
 
-- [ ] **117.2e — Discovery-actor blocking under
-      nostd-runtime.** During 117.2c's QEMU smoke probe
+- [~] **117.2e — Discovery-actor blocking under nostd-runtime
+      (partial probe 2026-05-19, deep fix deferred).** During
+      117.2c's QEMU smoke probe
       (2026-05-19) the talker booted, ETH initialised, then
       hung inside `Executor::open` →
       `runtime.block_on(participant_async.create_participant(...))`.
@@ -248,8 +249,51 @@ to add.
       spin loop). Same blocker the ESP32-C3 sibling hit at
       Phase 101.7 — the alloc-budget issue was the immediate
       symptom, but the underlying runtime-drive shape is the
-      root cause. Tracked as 117.2e for cluster B-style
-      follow-up.
+      root cause.
+
+      **2026-05-19 probe outcome.** Wired `debug-esp-println`
+      feature into `nros-rmw-dds` so the existing `dbg_log!`
+      traces (in `transport_nros.rs::create_participant` +
+      `bind_unicast` / `bind_multicast`) reach the ESP32-S3
+      UART. Trace shows dust-dds makes meaningful progress:
+
+      ```
+      [nros-rmw-dds] DdsRmw::open: pre block_on
+      [nros-rmw-dds] create_participant: ENTER domain=0
+      [nros-rmw-dds] bind_unicast(7411) listen rc=0
+      [nros-rmw-dds] bind_unicast(7410) listen rc=0
+      [nros-rmw-dds] bind_multicast(7400) mcast_listen rc=0
+      [nros-rmw-dds] create_participant: RETURN
+      [nros-rmw-dds] write_message ENTER: datagram_len=236
+      [nros-rmw-dds] write_message: dst=239.255.0.1:7400 sent=236
+      ```
+
+      The announcement spawned task fires SPDP frames over the
+      mcast socket. `create_participant` returned. Yet
+      `block_on(factory.create_participant(...))` still never
+      resolves. Means the factory mailbox handler's
+      `reply_sender.send(...)` either did not fire, or fired
+      but the `OneshotReceiver` poll never observes the data
+      on the user-future side. Likely interaction shape:
+      ESP32-S3's `critical_section` impl + dust-dds's
+      `oneshot.rs` send/poll both lock the same
+      `Mutex<RefCell>` via `critical_section::with`, with the
+      send-side Waker replacement happening in one CS while
+      the user-future poll's data-check happens in another.
+      Under `NrosPlatformRuntime::block_on_boxed`'s poll loop
+      the data SHOULD still be observed (block_on polls
+      regardless of waker, uses `noop_waker`), but the chain
+      somehow stalls.
+
+      Real fix path (deferred to follow-up session):
+      instrument `dust-dds/dds/src/dcps/channels/oneshot.rs`
+      send + poll callsites with `dbg_log!` probes (requires
+      plumbing a trace hook from dust-dds back to
+      nros-rmw-dds's esp-println backend), or replace
+      dust-dds's nostd oneshot shape with a simpler
+      `core::cell::Cell` poll-once pattern that avoids the
+      critical_section nesting. Either is invasive enough to
+      warrant a dedicated session.
 
 - [x] **117.3 — DDS talker / listener example crates.** (2026-05-19)
       Cloned from the C3 templates; target triple
