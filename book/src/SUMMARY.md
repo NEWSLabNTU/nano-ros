@@ -26,7 +26,6 @@
 # User Guide
 
 - [Application Workflow](./user-guide/workflow.md)
-- [Package Preparation](./user-guide/package-preparation.md)
 - [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)

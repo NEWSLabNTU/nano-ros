@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Use the full [First Native Rust Node](../getting-started/native.md)
+Use the full [First Node — Rust](../getting-started/first-node-rust.md)
 walkthrough for generated messages and runnable commands.
 
 ## Build and Run

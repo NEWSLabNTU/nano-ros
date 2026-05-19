@@ -37,8 +37,11 @@ nano-ros in as a `third_party/nano-ros/` git submodule and consume
 it via `add_subdirectory(third_party/nano-ros nano_ros)`.
 
 See [Installation](../getting-started/installation.md) for both
-patterns + [Package Preparation](package-preparation.md) for the
-per-package details.
+patterns. The per-language starter pages document the canonical
+package shape in their "Project layout" sections:
+[Rust](../getting-started/first-node-rust.md),
+[C](../getting-started/first-node-c.md),
+[C++](../getting-started/first-node-cpp.md).
 
 ## 2. Write Node Code
 
@@ -49,8 +52,9 @@ Choose API language first:
   `nros_find_interfaces(LANGUAGE C)` in CMake.
 - **C++** — include `nros/nros.hpp` and use typed wrappers.
 
-Start with [First Native Rust Node](../getting-started/native.md),
-then adapt to C or C++ via the API references.
+Start with one of the Linux starters above, then adapt to your
+target via the [Embedded Starters](../getting-started/freertos.md)
+section.
 
 ## 3. Generate Messages
 

@@ -203,8 +203,9 @@ for the one-page rewrite.
 
 ## Next Steps
 
-- [First Native Rust Node](native.md) — build + run a Rust publisher
-- [Build as Subdirectory](build-as-subdirectory.md) — C/C++ + CMake
-  consumption walkthrough
+- [First Node — Rust](./first-node-rust.md) — build + run a Rust talker on Linux
+- [First Node — C](./first-node-c.md) — build + run a C talker on Linux
+- [First Node — C++](./first-node-cpp.md) — build + run a C++ talker on Linux
+- [Build as Subdirectory](build-as-subdirectory.md) — CMake consumption walkthrough
 - [C API](../reference/c-api.md) — API entry points and CMake integration
 - [`examples/templates/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace) — full mixed C / C++ / Rust example

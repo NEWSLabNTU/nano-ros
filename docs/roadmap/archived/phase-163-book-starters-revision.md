@@ -7,8 +7,8 @@ starter pages in each RTOS's native layout. Every starter follows the
 same 5-section template (Layout / Configure / Build / Run / GitHub
 link) so users can pattern-match across languages and platforms.
 
-**Status.** In progress — 163.A (Linux starters) + 163.B (SUMMARY
-restructure) landed 2026-05-19; 163.C (Embedded Starters rewrites) landed same day. 163.D / 163.E pending.
+**Status.** **CLOSED 2026-05-19.** All work items landed in one session.
+restructure) landed 2026-05-19; 163.C (Embedded Starters rewrites) landed same day; 163.D + 163.E landed 2026-05-19. **All done.**.
 
 **Priority.** P2 — user onboarding quality. Current book has a single
 Rust starter (`First Native Rust Node`); C and C++ users have no
@@ -106,7 +106,7 @@ Introduction
       section pointing at the existing per-RTOS pages. (The per-RTOS
       page bodies are revised in 163.C; this step only moves them
       in the TOC.)
-- [ ] **163.B.3** Collapse `# Platform Guides` into the new
+- [x] **163.B.3** Collapse `# Platform Guides` into the new
       Embedded Starters section. Drop the `Integration:` duplicate
       entries from `# User Guide` (they live in Embedded Starters
       now).
@@ -143,29 +143,29 @@ Each RTOS page rewritten to its native layout convention.
 
 ### 163.D — User Guide consolidation
 
-- [ ] **163.D.1** Drop `getting-started/native.md` (superseded by
+- [x] **163.D.1** Drop `getting-started/native.md` (superseded by
       `first-node-rust.md`).
-- [ ] **163.D.2** Drop `user-guide/package-preparation.md`
+- [x] **163.D.2** Drop `user-guide/package-preparation.md`
       (subsumed by per-starter "Project layout" sections). Add a
       stub redirect or fold useful content into
       `user-guide/workflow.md`.
-- [ ] **163.D.3** Refit `getting-started/installation.md` to be
+- [x] **163.D.3** Refit `getting-started/installation.md` to be
       pure environment-setup (just / setup.sh / SDK tiers) without
       duplicating the first-node walkthrough.
-- [ ] **163.D.4** Strip duplicate Integration vs Platform Guide
+- [x] **163.D.4** Strip duplicate Integration vs Platform Guide
       pages — keep the integration shell (`west`, ESP-IDF
       component, etc.) page; merge the contributor-facing platform
       page into Internals.
 
 ### 163.E — Cross-cutting polish
 
-- [ ] **163.E.1** Every starter page links to its GitHub example
+- [x] **163.E.1** Every starter page links to its GitHub example
       directory with a `[`copy-out`](https://github.com/.../tree/...)`
       anchor.
-- [ ] **163.E.2** Every starter page ends with a "Next" section
+- [x] **163.E.2** Every starter page ends with a "Next" section
       listing 3 next steps (add a sub, add custom msgs, cross-
       compile for an RTOS).
-- [ ] **163.E.3** `book/src/SUMMARY.md` lints clean against the
+- [x] **163.E.3** `book/src/SUMMARY.md` lints clean against the
       mdbook build.
 
 ---
