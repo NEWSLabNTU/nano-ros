@@ -2,7 +2,7 @@
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cyclonedds")))]
 compile_error!("Exactly one rmw-* feature must be enabled.");
 
 #[cfg(any(

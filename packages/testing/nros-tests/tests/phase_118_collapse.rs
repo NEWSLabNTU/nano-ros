@@ -547,10 +547,13 @@ fn test_threadx_linux_rust_case_rmw_variant_exists(
 #[case::ac_zenoh("action-client", Rmw::Zenoh)]
 #[case::ac_xrce("action-client", Rmw::Xrce)]
 #[case::sca_zenoh("service-client-async", Rmw::Zenoh)]
-// Phase 169.4 retired dust-dds; the Rust RMW path lost its DDS
-// backend with it. Cyclone DDS is C++-only today (Phase 117 / 169.5
-// future Rust shim). DDS cases re-land once a `nros-rmw-cyclonedds`
-// Rust crate exists.
+// Phase 11W — Cyclone DDS via Phase 169.5 `nros-rmw-cyclonedds-sys`.
+#[case::talker_cyclonedds("talker", Rmw::Cyclonedds)]
+#[case::listener_cyclonedds("listener", Rmw::Cyclonedds)]
+#[case::ss_cyclonedds("service-server", Rmw::Cyclonedds)]
+#[case::sc_cyclonedds("service-client", Rmw::Cyclonedds)]
+#[case::as_cyclonedds("action-server", Rmw::Cyclonedds)]
+#[case::ac_cyclonedds("action-client", Rmw::Cyclonedds)]
 fn test_zephyr_rust_case_rmw_variant_exists(
     #[case] case: &str,
     #[case] rmw: Rmw,
@@ -595,10 +598,21 @@ fn test_zephyr_rust_case_rmw_variant_exists(
 #[case::cpp_as_xrce("cpp", "action-server", Rmw::Xrce)]
 #[case::cpp_ac_zenoh("cpp", "action-client", Rmw::Zenoh)]
 #[case::cpp_ac_xrce("cpp", "action-client", Rmw::Xrce)]
-// Cyclone DDS native_sim build hits an upstream Zephyr cmake gen-expr
-// bug; C / C++ cyclonedds verification stays on FVP / aemv8r per
-// `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`. Add smokes once
-// the native_sim path resolves.
+// Phase 11W — Cyclone DDS C + C++ on native_sim. Compile + link
+// path unblocked by llext-edk patch + cxx-compat shims + DDS_HAS_*
+// `#ifdef` fixes + link stubs.
+#[case::c_talker_cyclonedds("c", "talker", Rmw::Cyclonedds)]
+#[case::c_listener_cyclonedds("c", "listener", Rmw::Cyclonedds)]
+#[case::c_ss_cyclonedds("c", "service-server", Rmw::Cyclonedds)]
+#[case::c_sc_cyclonedds("c", "service-client", Rmw::Cyclonedds)]
+#[case::c_as_cyclonedds("c", "action-server", Rmw::Cyclonedds)]
+#[case::c_ac_cyclonedds("c", "action-client", Rmw::Cyclonedds)]
+#[case::cpp_talker_cyclonedds("cpp", "talker", Rmw::Cyclonedds)]
+#[case::cpp_listener_cyclonedds("cpp", "listener", Rmw::Cyclonedds)]
+#[case::cpp_ss_cyclonedds("cpp", "service-server", Rmw::Cyclonedds)]
+#[case::cpp_sc_cyclonedds("cpp", "service-client", Rmw::Cyclonedds)]
+#[case::cpp_as_cyclonedds("cpp", "action-server", Rmw::Cyclonedds)]
+#[case::cpp_ac_cyclonedds("cpp", "action-client", Rmw::Cyclonedds)]
 fn test_zephyr_cmake_case_rmw_variant_exists(
     #[case] lang: &str,
     #[case] case: &str,

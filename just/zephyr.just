@@ -246,6 +246,28 @@ build-fixtures:
       "native_sim/native/64|build-cpp-action-server-xrce|zephyr/cpp/action-server|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-cpp-action-client-zenoh|zephyr/cpp/action-client|0||prj.conf;prj-zenoh.conf"
       "native_sim/native/64|build-cpp-action-client-xrce|zephyr/cpp/action-client|0||prj.conf;prj-xrce.conf"
+
+      # Phase 11W — Cyclone DDS native_sim. Compile + link path
+      # unblocked by Phase 168.X.fvp llext-edk patch + cxx-compat
+      # shims + DDS_HAS_* `#ifdef`-fix + link stubs.
+      "native_sim/native/64|build-rs-talker-cyclonedds|zephyr/rust/talker|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-rs-listener-cyclonedds|zephyr/rust/listener|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-rs-service-server-cyclonedds|zephyr/rust/service-server|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-rs-service-client-cyclonedds|zephyr/rust/service-client|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-rs-action-server-cyclonedds|zephyr/rust/action-server|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-rs-action-client-cyclonedds|zephyr/rust/action-client|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-c-talker-cyclonedds|zephyr/c/talker|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-c-listener-cyclonedds|zephyr/c/listener|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-c-service-server-cyclonedds|zephyr/c/service-server|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-c-service-client-cyclonedds|zephyr/c/service-client|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-c-action-server-cyclonedds|zephyr/c/action-server|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-c-action-client-cyclonedds|zephyr/c/action-client|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-cpp-talker-cyclonedds|zephyr/cpp/talker|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-cpp-listener-cyclonedds|zephyr/cpp/listener|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-cpp-service-server-cyclonedds|zephyr/cpp/service-server|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-cpp-service-client-cyclonedds|zephyr/cpp/service-client|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-cpp-action-server-cyclonedds|zephyr/cpp/action-server|0||prj.conf;prj-cyclonedds.conf"
+      "native_sim/native/64|build-cpp-action-client-cyclonedds|zephyr/cpp/action-client|0||prj.conf;prj-cyclonedds.conf"
     )
 
     failures=()

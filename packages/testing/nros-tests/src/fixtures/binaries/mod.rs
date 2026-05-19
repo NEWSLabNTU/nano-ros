@@ -264,44 +264,53 @@ pub enum Rmw {
     Zenoh,
     Dds,
     Xrce,
+    /// Phase 11W — Cyclone DDS. Today exercised by the Zephyr
+    /// `prj-cyclonedds.conf` overlay path; native / FreeRTOS /
+    /// ThreadX wiring follows once those platforms grow a
+    /// cyclonedds backend.
+    Cyclonedds,
 }
 
 impl Rmw {
-    /// Cargo feature name (`rmw-zenoh` / `rmw-dds` / `rmw-xrce`).
+    /// Cargo feature name (`rmw-zenoh` / `rmw-dds` / `rmw-xrce` /
+    /// `rmw-cyclonedds`).
     pub fn cargo_feature(self) -> &'static str {
         match self {
             Rmw::Zenoh => "rmw-zenoh",
             Rmw::Dds => "rmw-dds",
             Rmw::Xrce => "rmw-xrce",
+            Rmw::Cyclonedds => "rmw-cyclonedds",
         }
     }
 
-    /// `--target-dir` suffix (`target-zenoh` / `target-dds` / `target-xrce`).
+    /// `--target-dir` suffix.
     pub fn target_dir(self) -> &'static str {
         match self {
             Rmw::Zenoh => "target-zenoh",
             Rmw::Dds => "target-dds",
             Rmw::Xrce => "target-xrce",
+            Rmw::Cyclonedds => "target-cyclonedds",
         }
     }
 
-    /// `NROS_RMW` cmake cache value (`zenoh` / `dds` / `xrce`).
+    /// `NROS_RMW` cmake cache value.
     pub fn cmake_value(self) -> &'static str {
         match self {
             Rmw::Zenoh => "zenoh",
             Rmw::Dds => "dds",
             Rmw::Xrce => "xrce",
+            Rmw::Cyclonedds => "cyclonedds",
         }
     }
 
-    /// Per-RMW C / C++ build dir name (`build-zenoh` / `build-dds` /
-    /// `build-xrce`). Same isolation pattern as `target_dir()` but
-    /// for cmake.
+    /// Per-RMW C / C++ build dir name. Same isolation pattern as
+    /// `target_dir()` but for cmake.
     pub fn build_dir(self) -> &'static str {
         match self {
             Rmw::Zenoh => "build-zenoh",
             Rmw::Dds => "build-dds",
             Rmw::Xrce => "build-xrce",
+            Rmw::Cyclonedds => "build-cyclonedds",
         }
     }
 }
@@ -371,10 +380,12 @@ pub fn build_native_c_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
     static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONEDDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_CELL,
         Rmw::Dds => &DDS_CELL,
         Rmw::Xrce => &XRCE_CELL,
+        Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
     cell.get_or_try_init(|| build_example_cmake_rmw("native/c/talker", "c_talker", rmw))
         .map(|p| p.as_path())
@@ -435,10 +446,12 @@ pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
     static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONEDDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_CELL,
         Rmw::Dds => &DDS_CELL,
         Rmw::Xrce => &XRCE_CELL,
+        Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
     cell.get_or_try_init(|| build_example_rmw("native/rust/talker", "talker", rmw))
         .map(|p| p.as_path())
@@ -449,10 +462,12 @@ pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
     static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONEDDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_CELL,
         Rmw::Dds => &DDS_CELL,
         Rmw::Xrce => &XRCE_CELL,
+        Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
     cell.get_or_try_init(|| build_example_rmw("native/rust/listener", "listener", rmw))
         .map(|p| p.as_path())
