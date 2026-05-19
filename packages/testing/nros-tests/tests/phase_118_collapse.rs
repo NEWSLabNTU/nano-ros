@@ -292,3 +292,33 @@ fn test_native_cpp_rmw_variant_exists(
         path.display()
     );
 }
+
+/// Phase 118.B.4 — collapsed-shape FreeRTOS Rust talker. Single
+/// `examples/qemu-arm-freertos/rust/talker/` builds against zenoh +
+/// dds via Cargo features. DDS-only build adds `extern crate alloc`
+/// + the `nros-platform-critical-section` registration; zenoh path
+/// stays exactly as before. Same `--target-dir` isolation pattern.
+#[rstest]
+#[case::zenoh(Rmw::Zenoh)]
+#[case::dds(Rmw::Dds)]
+fn test_freertos_talker_rmw_variant_exists(#[case] rmw: Rmw) {
+    let path = nros_tests::fixtures::build_freertos_rust_example_rmw(
+        "talker",
+        "qemu-freertos-talker",
+        rmw,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "qemu-arm-freertos/rust/talker {:?} variant not prebuilt; run \
+             `just freertos build-fixtures` first: {:?}",
+            rmw,
+            e
+        )
+    });
+    assert!(
+        path.exists(),
+        "FreeRTOS talker {:?} binary missing: {}",
+        rmw,
+        path.display()
+    );
+}

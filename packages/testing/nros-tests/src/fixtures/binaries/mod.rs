@@ -491,6 +491,31 @@ pub fn build_native_cpp_example_rmw(
     build_example_cmake_rmw(&format!("native/cpp/{}", case), binary_name, rmw)
 }
 
+/// Phase 118.B.4 — collapsed-shape FreeRTOS Rust example resolver.
+/// FreeRTOS examples are cross-compiled to `thumbv7m-none-eabi`, so
+/// the binary lives at
+/// `examples/qemu-arm-freertos/rust/<case>/target-<rmw>/thumbv7m-none-eabi/release/<binary>`.
+pub fn build_freertos_rust_example_rmw(
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}", case));
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+    let binary_path = example_dir.join(format!(
+        "{}/thumbv7m-none-eabi/release/{}",
+        rmw.target_dir(),
+        binary_name
+    ));
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
