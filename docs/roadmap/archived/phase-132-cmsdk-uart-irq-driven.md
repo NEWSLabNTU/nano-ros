@@ -16,9 +16,12 @@ The original ambition — replace the busy-spin TX with an IRQ +
 to be the **wrong fix for the actual symptom**. Diagnosis under
 "Root cause (revised)" below.
 
-**Status.** Scaffolding landed (commits `02f62291`, `b23acf84`).
-IRQ-driven `write` deferred. Original 127.D.3 acceptance test
-still red, for a different reason now tracked separately.
+**Status.** Complete. Scaffolding landed (commits `02f62291`,
+`b23acf84`). IRQ-driven `write` deferred (132.2 — QEMU emulator
+makes busy-spin adequate). Original 127.D.3 acceptance test
+(`test_qemu_serial_pubsub_e2e`) now PASSES (~9 s) — closed by
+unrelated upstream fixes between the descope note and 2026-05-19;
+132.3 + stretch tick off without any 132-side work.
 
 **Spun out from** [`phase-127-remaining-failure-groups.md`](archived/phase-127-remaining-failure-groups.md)
 `127.D.3` on 2026-05-17 after the D.1 / D.2 / D.4 portions of 127.D
@@ -111,12 +114,11 @@ no longer scheduled.
   enhancement if real-hardware serial-rate latency becomes a
   requirement.
 
-- [ ] **132.3 (descoped) — `test_qemu_serial_pubsub_e2e` green.**
-  Moved out of 132's scope. The init-handshake regression that
-  blocks the test today is a separate bug class (zenoh-pico
-  bare-metal `connect_serial` post-Phase-128). File as a
-  follow-up phase ("zenoh-pico bare-metal serial Init/InitAck
-  regression").
+- [x] **132.3 — `test_qemu_serial_pubsub_e2e` green.** Now PASSES
+  (~9 s) per 2026-05-19 probe. Was descoped on the assumption the
+  init-handshake regression would require a separate phase; the
+  fix landed via unrelated upstream work between the descope note
+  and verification. No 132-side action needed.
 
 ---
 
@@ -131,8 +133,8 @@ no longer scheduled.
 - [x] `serial-talker` / `serial-listener` link clean on
   `thumbv7m-none-eabi` without `smoltcp_init` / `smoltcp_cleanup`
   undefined-reference errors.
-- [ ] (Stretch, moved to follow-up phase.) `test_qemu_serial_pubsub_e2e`
-  passes against the patched `qemu-system-arm`.
+- [x] (Stretch.) `test_qemu_serial_pubsub_e2e` passes against the
+  patched `qemu-system-arm`. Verified 2026-05-19 (8.945 s).
 
 ---
 
