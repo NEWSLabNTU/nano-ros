@@ -416,8 +416,23 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             service-{server,client}-rtic, action-{server,client}-rtic,
             talker-embassy) bypass `run()` and need separate handling;
             tracked as a deferred follow-up under this same item.
-      - [ ] 88.16.G — `examples/zephyr/c/*` — replace `LOG_INF()` in
-            user code with `nros_log_info()` (C wrapper from 88.12).
+      - [x] 88.16.G — 18 C + 18 C++ Zephyr examples under
+            `examples/zephyr/{c,cpp}/{zenoh,dds,xrce}/*` migrated.
+            Bring-up banners (`LOG_MODULE_REGISTER`-tagged) +
+            `Network not ready` / `Waiting for …` lines stay on
+            Zephyr's `LOG_INF` because `init_marker()` /
+            `wait_for_output_pattern("Waiting for", …)` calls in
+            `zephyr.rs` rely on them. Every post-`nros_node_init` /
+            post-`nros::create_node` E2E-tagged `LOG_*` call (Published
+            / Received / Goal accepted / Feedback # / Request [ /
+            Result: / Call [ / Sent reply / Goal received /
+            Goal completed / Action {client,completed} / All service
+            calls completed) routes through `NROS_LOG_INFO` /
+            `NROS_LOG_WARN` / `NROS_LOG_ERROR(g_logger, …)`.
+            `nros-platform-zephyr::nros_platform_log_write` forwards
+            back to `LOG_INF` etc., so the rendered output still
+            lands in Zephyr's log subsystem (visible via `west
+            monitor` / `native_sim` stdout).
       - [ ] 88.16.H — `examples/qemu-arm-{baremetal,freertos}/c/*`
             and `examples/qemu-arm-{baremetal,freertos}/cpp/*` —
             replace `printf` / `std::cout` with `NROS_INFO()` /
