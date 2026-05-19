@@ -96,10 +96,157 @@ build.
 
 ## Work Items
 
-- [ ] **169.1 — Audit dust-dds dependents.** Grep every
-      workspace + example for `dust_dds`, `nros-rmw-dds`, and
-      the `rmw-dds` feature; list every consumer that needs a
-      replacement RMW. Record in this doc as a checklist.
+- [x] **169.1 — Audit dust-dds dependents.** Done 2026-05-19.
+      Catalog landed in this doc (see "Audit results" below).
+
+### Audit results (2026-05-19)
+
+309 hits across the tree (excluding `build/` and `target/`
+artifacts).
+
+**A. Submodule + retire-by-deletion crates (169.4).**
+
+- `packages/dds/dust-dds/` — entire submodule fork (carries the
+  `portable-atomic-util::Arc` substitution, regex removal,
+  fusion barriers, all Phase 117.2 follow-up bug fixes). Delete
+  the submodule + `.gitmodules` entry.
+- `packages/dds/nros-rmw-dds/` — cffi shim impl (20 `src/*.rs`
+  files + tests + Cargo.toml).
+- `packages/dds/nros-rmw-dds-staticlib/` — Corrosion staticlib
+  sibling.
+
+**B. Workspace root (169.4).**
+
+- `Cargo.toml` lines 34, 36, 57, 93, 104–105, 349 — workspace
+  `members` entries, dust-dds comments, and the
+  `nros-rmw-dds = { ... }` workspace dep declaration.
+
+**C. Consumer Cargo deps (169.2).**
+
+- `packages/core/nros-cpp/Cargo.toml` — **real dep**.
+  `rmw-dds-cffi` feature + `nros-rmw-dds?/platform-{posix,
+  zephyr,freertos,nuttx,threadx}` + `nros-rmw-dds?/ros-{humble,
+  iron}` forwards + optional workspace dep. Drop the feature +
+  dep; replace `rmw-dds-cffi` callers with
+  `rmw-cyclonedds-cffi`.
+- `packages/core/nros/Cargo.toml` — `rmw-dds-portable-atomic`
+  feature (already inert) + two prose comments. Drop feature;
+  clean comments.
+- `packages/core/{nros-c,nros-node,nros-platform,
+  nros-platform-api,nros-platform-critical-section,
+  nros-rmw-cffi}/Cargo.toml` — comments only. Clean prose.
+- `packages/boards/nros-board-{esp32-qemu,mps2-an385,
+  mps2-an385-freertos}/Cargo.toml` — heap-budget prose
+  references. Generalize to "DDS heap budget".
+- `packages/platforms/nros-platform-{esp32-qemu,mps2-an385}/Cargo.toml`
+  — same prose pattern.
+
+**D. Example Rust crates (169.2 — retarget).**
+
+Nineteen DDS Rust example crates pulling `nros-rmw-dds`:
+
+| Path | Replacement |
+|------|-------------|
+| `examples/native/rust/dds/{talker,listener,service-server,service-client,action-server,action-client}/` | Cyclone (POSIX). |
+| `examples/qemu-arm-baremetal/rust/dds/{talker,listener}/` | Zenoh interim. |
+| `examples/qemu-arm-freertos/rust/dds/{talker,listener}/` | Zenoh interim. |
+| `examples/qemu-arm-nuttx/rust/dds/{talker,listener}/` | Zenoh interim. |
+| `examples/qemu-esp32-baremetal/rust/dds/{talker,listener}/` | Zenoh interim. |
+| `examples/qemu-esp32s3-baremetal/rust/dds/{talker,listener}/` *(on `phase-117.0-esp32s3-toolchain`)* | Zenoh interim. |
+| `examples/qemu-riscv64-threadx/rust/dds/{talker,listener}/` | Zenoh interim. |
+| `examples/threadx-linux/rust/dds/{talker,listener}/` | Cyclone (ThreadX-Linux runs Linux ELF). |
+| `examples/zephyr/rust/dds/{talker,listener,service-server,service-client,service-client-async,action-server,action-client}/` | Zenoh interim (Cyclone-on-Zephyr is the open follow-up from archived Phase 117). |
+
+**E. Example C / C++ bridges (169.2).**
+
+- `examples/native/c/bridge/xrce-to-dds/CMakeLists.txt` —
+  `nros-rmw-dds-staticlib` → Cyclone.
+- `examples/native/cpp/bridge/zenoh-to-dds/CMakeLists.txt` —
+  same.
+- `examples/bridges/native-rust-zenoh-to-dds/Cargo.toml` +
+  `src/main.rs` — flip to Cyclone.
+
+**F. Tests (169.3).**
+
+Ten `packages/testing/nros-tests/tests/*.rs` + Cargo.toml:
+
+| Test | Retarget |
+|------|----------|
+| `baremetal_qemu_dds.rs` | Zenoh OR `#[ignore]` pending Cyclone Cortex-M3. |
+| `bridge_zenoh_to_dds_e2e.rs` | DDS half → Cyclone. |
+| `dds_api.rs` | Cyclone (host). |
+| `dds_ros2_interop.rs` | Already exercises Cyclone; verify path. |
+| `esp32_qemu_dds.rs` | `#[ignore]` post-retire. |
+| `multi_rmw_bridge.rs` | DDS slot → Cyclone. |
+| `server_available_e2e.rs` | DDS slot → Cyclone. |
+| `threadx_riscv64_qemu_dds.rs` | Zenoh OR `#[ignore]`. |
+| `zephyr.rs` | Zenoh interim. |
+| `src/qemu.rs` | Drop `dust_dds` helpers. |
+
+**G. Build orchestration (169.4).**
+
+- `justfile` — `nros-rmw-dds` build target (line 148), four
+  `--exclude nros-rmw-dds-staticlib` switches (557, 573, 602,
+  620), feature comment (1330). Drop them.
+- `just/zephyr.just` line 435 — comment. Clean prose.
+- `scripts/check-decoupling.sh` line 10 — backend list comment.
+  Drop dust-dds from list.
+
+**H. Source-level cross-refs in non-dust-dds crates (169.4).**
+
+| File | Nature | Action |
+|------|--------|--------|
+| `packages/core/nros-cpp/src/lib.rs` | `rmw-dds-cffi` cfg | Drop feature + ctor call. |
+| `packages/core/nros-cpp/CMakeLists.txt` | `rmw-dds` fragment | Drop. |
+| `packages/core/nros-node/src/executor/handles.rs` | Cfg refs | Drop. |
+| `packages/core/nros-platform/src/{lib,resolve}.rs` | Cfg refs | Drop. |
+| `packages/core/nros-platform-api/src/lib.rs` | Comment | Clean. |
+| `packages/core/nros-platform-critical-section/src/lib.rs` | Comment | Clean. |
+| `packages/core/nros-rmw-cffi/src/rust_adapter.rs` | Backend lookup | Drop dust-dds path. |
+| `packages/dds/nros-rmw-cyclonedds/src/vtable.cpp` | Cross-ref comment | Clean. |
+| `packages/xrce/nros-rmw-xrce-cffi-staticlib/src/lib.rs` | Comment | Clean. |
+| `packages/platforms/nros-platform-{esp32-qemu,mps2-an385}/src/memory.rs` | Heap-size comment | Generalize. |
+| `packages/boards/nros-board-nuttx-qemu-arm/src/node.rs` | Heap-size comment | Generalize. |
+
+**I. Docs (169.6).**
+
+- **Live (sweep prose):**
+  `book/src/concepts/{no-std,platform-model,ros2-comparison}.md`,
+  `book/src/getting-started/troubleshooting-first-10-min.md`,
+  `book/src/internals/{platform-c-abi,rmw-backends}.md`,
+  `book/src/introduction.md`,
+  `book/src/porting/{custom-transport,vendor-overlay}.md`,
+  `book/src/reference/{nros-toml,rmw-api}.md`,
+  `book/src/user-guide/{configuration,cross-backend-bridges,rmw-backends}.md`,
+  `docs/design/{rt-execution-model,zero-copy-raw-api}.md`,
+  `docs/development/crates-io-metadata-audit.md`,
+  `docs/research/{phase-111-B1-crates-io-metadata-audit,rmw-c-abi-coverage}.md`.
+- **Roadmap (live):**
+  `phase-117-esp32s3-qemu-dds.md` (already banner-updated),
+  `phase-145-cache-discipline-for-user-projects.md`,
+  `phase-161-cpp-freertos-transport-error.md`,
+  `phase-168-zephyr-rmw-collapse.md`.
+- **Archived (leave frozen):** 20 archived phase docs
+  reference dust-dds; no edits.
+
+**J. CLAUDE.md (169.6).** Already retired in commit
+`087e48f20` (rebased as `68e259e2c` on `main`).
+
+### Summary
+
+| Category | Count | Lineage |
+|----------|------:|---------|
+| Submodule + retire-by-deletion crates | 3 | 169.4 |
+| Workspace root edits | 1 file | 169.4 |
+| Consumer Cargo deps (real) | 1 (`nros-cpp`) | 169.2 |
+| Consumer Cargo deps (prose-only) | 9 files | 169.2 |
+| Example Rust crates | 19 dirs | 169.2 |
+| Example C/C++ bridges | 3 dirs | 169.2 |
+| Tests | 10 files + Cargo.toml | 169.3 |
+| Build orchestration | 3 files | 169.4 |
+| Source cross-refs | 12 files | 169.4 |
+| Live docs | 22 files | 169.6 |
+| Archived docs (no edit) | 20 files | n/a |
 
 - [ ] **169.2 — Re-target test fixtures + examples.** Every
       `nros-rmw-dds` dep in `examples/**/Cargo.toml` and
