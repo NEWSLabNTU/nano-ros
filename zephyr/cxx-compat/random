@@ -1,0 +1,80 @@
+// Phase 11W.3 — minimal `<random>` shim for Zephyr targets.
+// Provides the subset Cyclone DDS uses (random_device + a
+// generator with seed + uniform distribution). Backed by
+// Zephyr's `sys_rand32_get()` — no entropy guarantees beyond
+// Zephyr's PRNG.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_RANDOM
+#define NROS_ZEPHYR_CXX_COMPAT_RANDOM
+
+#include <stdint.h>
+
+#ifdef __ZEPHYR__
+#include <zephyr/random/random.h>
+#endif
+
+namespace std {
+
+class random_device {
+public:
+    using result_type = uint32_t;
+    random_device() = default;
+    explicit random_device(const char* /*token*/) {}
+
+    static constexpr result_type min() { return 0; }
+    static constexpr result_type max() { return UINT32_MAX; }
+
+    result_type operator()() {
+#ifdef __ZEPHYR__
+        return sys_rand32_get();
+#else
+        return 0;
+#endif
+    }
+
+    double entropy() const noexcept { return 32.0; }
+};
+
+// Minimal Mersenne Twister substitute — Cyclone uses mt19937 but
+// for the use sites we care about (random GUID seeding), any
+// 32-bit PRNG suffices. Forward to sys_rand32_get for now.
+class mt19937 {
+public:
+    using result_type = uint32_t;
+    mt19937() = default;
+    explicit mt19937(result_type /*seed*/) {}
+    template <class SeedSeq> explicit mt19937(SeedSeq&) {}
+
+    static constexpr result_type min() { return 0; }
+    static constexpr result_type max() { return UINT32_MAX; }
+
+    void seed(result_type) {}
+
+    result_type operator()() {
+#ifdef __ZEPHYR__
+        return sys_rand32_get();
+#else
+        return 0;
+#endif
+    }
+};
+
+template <class IntType = int>
+class uniform_int_distribution {
+public:
+    using result_type = IntType;
+    uniform_int_distribution(IntType a, IntType b) : a_(a), b_(b) {}
+
+    template <class Gen>
+    IntType operator()(Gen& g) {
+        const uint32_t r = g();
+        const uint64_t span = static_cast<uint64_t>(b_ - a_ + 1);
+        return static_cast<IntType>(a_ + (r % span));
+    }
+
+private:
+    IntType a_, b_;
+};
+
+} // namespace std
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_RANDOM

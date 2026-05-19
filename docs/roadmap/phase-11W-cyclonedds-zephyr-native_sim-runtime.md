@@ -191,7 +191,66 @@ For (2): provide a minimal `<atomic>` shim. Either:
   in service.cpp's reply-slot counter — could be replaced with
   `volatile` + memory fence).
 
-## Gap 4 — Unknown TU compile failures past Gap 3
+## Gap 3.5 — chrono / thread / random / new shim surface (landed)
+
+**Symptom (post Gap 3 cstring fix):**
+
+```
+service.cpp:58:10: fatal error: chrono: No such file or directory
+service.cpp: error: 'std::this_thread::sleep_for' / 'std::chrono::steady_clock'
+publisher.cpp:86: error: no matching function for call to 'operator new(sizetype, const std::nothrow_t&)'
+sertype_min.cpp:11: error: 'memset' is not a member of 'std'
+```
+
+**Resolution.** New `zephyr/cxx-compat/` headers landed:
+
+- `cxx-compat/atomic` — minimal `std::atomic<T>` over GCC
+  `__atomic_*` builtins (no `<stdatomic.h>` include — that uses
+  C11 `_Atomic`, incompatible with C++).
+- `cxx-compat/chrono` — `std::chrono::steady_clock`,
+  `std::chrono::{nanoseconds, milliseconds, seconds, …}`. Backed
+  by Zephyr's `k_uptime_ticks()`.
+- `cxx-compat/thread` — `std::this_thread::sleep_for(duration)`.
+  Forwards to `k_msleep`.
+- `cxx-compat/random` — `random_device`, `mt19937`,
+  `uniform_int_distribution`. Backed by `sys_rand32_get()`.
+- `cxx-compat/new` — declares nothrow placement-new overloads.
+  Implementation in
+  `zephyr/cyclonedds-zephyr/nothrow_new.cpp` (forwards to
+  `malloc`/`free`).
+- `cxx-compat/cstring` + `cstdlib` + `cstdio` — extended with
+  `namespace std { using ::name; }` exports.
+
+## Gap 4 — Cyclone DDS link-time undefined references (88 symbols)
+
+**Symptom (post Gap 3.5).** All compile gaps clear — the build
+advances all the way to the link stage. `ld` then reports
+**88 undefined references** across the linked `zephyr.elf`,
+categorised:
+
+| Category | Symbol prefix | Count | Driver |
+|----------|---------------|-------|--------|
+| Security | `q_omg_*`, `ddsi_handshake_*`, `*_secure*`, `validate_msg_decoding`, `decode_Data*`, `encode_*` | ~50 | `DDS_HAS_SECURITY=0` drops the TU bodies but **leaves call sites** in `ddsi_acknack.c`, `ddsi_endpoint.c`, `ddsi_entity_match.c`, `q_receive.c`. |
+| Iceoryx SHM | `iox_*`, `shm_*`, `iceoryx_header_*`, `deliver_data_via_iceoryx`, `free_iox_chunk` | ~15 | `DDS_HAS_SHM=0` — same pattern as security. |
+| Endpoint helpers | `determine_publication_writer`, `determine_subscription_writer`, `determine_topic_writer`, `is_proxy_participant_deletion_allowed`, `set_proxy_participant_security_info`, `pserop_participant_generic_message{,_nops}`, `secure_conn_write` | ~10 | Internal cyclonedds helpers normally provided by dropped TUs. |
+| POSIX | `ddsrt_eth_get_mac_addr`, `ddsrt_getifaddrs`, `IN_MULTICAST` | 3 | Zephyr doesn't ship these; `ddsrt/src/ifaddrs/posix/ifaddrs.c` was deliberately dropped in Phase 117. |
+| Network transport | `ddsi_vnet_init`, `decode_rtps_message`, `volatile_secure_data_filter` | 3 | Dropped `ddsi_vnet.c` TU but call sites remain. |
+| Auth handshake | `handle_auth_handshake_message`, `handle_crypto_exchange_message`, `ddsi_handshake_*` | 7 | SECURITY=0 follow-up. |
+
+**Fix sketch.** Write a comprehensive
+`zephyr/cyclonedds-zephyr/link_stubs.c` (mirror of the existing
+`shm_stubs.c` but covering all 88 symbols). Each stub returns
+the failure / no-op sentinel value matching the function's
+return type (security checks → `false`, SHM ops → `0`, encode
+helpers → `0` size, etc.). Per-symbol signatures looked up from
+the Cyclone DDS source headers (~30 min mechanical work).
+
+Alternative: extend Cyclone DDS upstream to wrap each call site
+in `#if DDS_HAS_SECURITY` / `#if DDS_HAS_SHM` guards. Cleaner
+but ~50 source-file patches; harder to maintain across Cyclone
+bumps.
+
+## Gap 5 — Unknown runtime gaps past Gap 4
 
 The Phase 168.X.fvp investigation stopped at Gap 2; further TU
 compile failures may exist further into the cyclonedds source
@@ -255,15 +314,23 @@ green.
        inside `CONFIG_NROS_RMW_CYCLONEDDS` branch. Cyclone's
        C++ TUs now resolve `<cstdlib>` / `<cstring>` /
        `<cstdio>` against the nros-cpp shim layer.
-- [ ] **11W.3 — Gap 3 namespace + atomic shim.** Extend each
-       `zephyr/cxx-compat/<cname>` header with
-       `namespace std { using ::name; … }` blocks; add minimal
-       `<atomic>` shim forwarding to `<stdatomic.h>` C11.
-- [ ] **11W.4 — Gap 4 iterative TU fixes.** Each new compile
-       failure past Gap 3 → drop / stub per existing pattern.
-       Land via additional entries in
-       `list(REMOVE_ITEM _cdds_ddsrt_posix …)` or new files
-       under `zephyr/cyclonedds-zephyr/`.
+- [x] **11W.3 — Gap 3 namespace + atomic shim.** Landed
+       `zephyr/cxx-compat/{atomic, chrono, thread, random, new}`
+       headers + extended `cstring` / `cstdlib` / `cstdio` with
+       `namespace std { using ::name; … }` exports.
+- [x] **11W.3.b — Gap 3.5 nothrow new impl.** Landed
+       `zephyr/cyclonedds-zephyr/nothrow_new.cpp` (`malloc`/`free`
+       backed) + wired into `_cdds_zephyr_overrides`. Cyclone's
+       `new (std::nothrow) T{}` expressions now resolve.
+- [ ] **11W.4 — Gap 4 link-time stubs (88 symbols).** Write
+       `zephyr/cyclonedds-zephyr/link_stubs.c` covering the
+       security / SHM / endpoint / POSIX / vnet / auth handshake
+       categories. Per-symbol signatures pulled from Cyclone's
+       headers; bodies return failure / no-op sentinels.
+- [ ] **11W.5 — Runtime smoke.** Once link is clean, extend
+       `phase_118_collapse::test_zephyr_{rust,cmake}_case_rmw_variant_exists`
+       with cyclonedds rows. Add a separate ctest that boots the
+       binary under timeout and asserts a log line.
 - [ ] **11W.3 — Verify link.** All three languages
        (`examples/zephyr/{c,cpp,rust}/<case>/`) × at least one
        case (`talker`) link clean. Capture artefact size +

@@ -1,0 +1,42 @@
+// Phase 11W.3 — minimal `<thread>` shim for Zephyr targets.
+// Provides `std::this_thread::sleep_for(chrono::duration)` —
+// the only API surface Cyclone DDS service.cpp uses today.
+// Forwards to Zephyr's `k_sleep`. No `std::thread` class.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_THREAD
+#define NROS_ZEPHYR_CXX_COMPAT_THREAD
+
+#include <chrono>
+
+#ifdef __ZEPHYR__
+#include <zephyr/kernel.h>
+#endif
+
+namespace std {
+namespace this_thread {
+
+template <class Rep, class Period>
+inline void sleep_for(const chrono::duration<Rep, Period>& dur) {
+#ifdef __ZEPHYR__
+    // Convert duration → milliseconds.
+    const int64_t ms = static_cast<int64_t>(dur.count()) *
+                       Period::num * 1000 / Period::den;
+    if (ms > 0) {
+        k_msleep(ms);
+    } else {
+        k_yield();
+    }
+#else
+    (void)dur;
+#endif
+}
+
+inline void yield() {
+#ifdef __ZEPHYR__
+    k_yield();
+#endif
+}
+
+} // namespace this_thread
+} // namespace std
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_THREAD

@@ -4,7 +4,23 @@
 #include <stdio.h>
 
 namespace std {
+using ::FILE;
+using ::fclose;
+using ::fflush;
+using ::fopen;
 using ::fprintf;
 using ::fputc;
+using ::fputs;
+using ::fread;
+using ::fwrite;
+using ::printf;
+using ::puts;
+using ::snprintf;
+using ::sprintf;
+using ::sscanf;
+using ::vfprintf;
+using ::vprintf;
+using ::vsnprintf;
+using ::vsprintf;
 }
 #endif

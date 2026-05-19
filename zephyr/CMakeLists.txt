@@ -288,6 +288,10 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # iox_sub_context_*() / shm_{lock,unlock}_iox_sub(). Stub bodies
         # satisfy the linker; never called at runtime.
         ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/shm_stubs.c
+        # Phase 11W.3 — nothrow placement-new overload + nothrow tag
+        # definition. Zephyr's `lib/cpp/minimal/include/new` declares
+        # but doesn't define them.
+        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/nothrow_new.cpp
     )
 
     # ddsi: protocol engine. ddsc: public C API. `.part.c` files

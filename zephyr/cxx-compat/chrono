@@ -1,0 +1,114 @@
+// Phase 11W.3 — minimal `<chrono>` shim for Zephyr targets.
+// Provides the subset Cyclone DDS uses
+// (`steady_clock::now()`, `milliseconds`, `seconds`, comparison
+// + addition). NOT a full libstdc++ replacement.
+//
+// Runtime semantics: `steady_clock::now()` returns Zephyr's
+// monotonic kernel time via `k_uptime_ticks()`. Resolution =
+// `CONFIG_SYS_CLOCK_TICKS_PER_SEC`.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_CHRONO
+#define NROS_ZEPHYR_CXX_COMPAT_CHRONO
+
+#include <stdint.h>
+
+#ifdef __ZEPHYR__
+#include <zephyr/kernel.h>
+#endif
+
+namespace std {
+namespace chrono {
+
+template <int64_t Num, int64_t Den>
+struct ratio {
+    static constexpr int64_t num = Num;
+    static constexpr int64_t den = Den;
+};
+
+using nano  = ratio<1, 1000000000>;
+using micro = ratio<1, 1000000>;
+using milli = ratio<1, 1000>;
+
+template <class Rep, class Period = ratio<1, 1>>
+class duration {
+public:
+    using rep    = Rep;
+    using period = Period;
+
+    constexpr duration() = default;
+    constexpr explicit duration(Rep v) : value_(v) {}
+
+    template <class Rep2, class Period2>
+    constexpr duration(const duration<Rep2, Period2>& other)
+        : value_(static_cast<Rep>(other.count() * (Period2::num * Period::den) /
+                                  (Period2::den * Period::num))) {}
+
+    constexpr Rep count() const { return value_; }
+
+    constexpr duration operator+(const duration& other) const {
+        return duration(value_ + other.value_);
+    }
+    constexpr duration operator-(const duration& other) const {
+        return duration(value_ - other.value_);
+    }
+    constexpr bool operator<(const duration& other) const {
+        return value_ < other.value_;
+    }
+    constexpr bool operator<=(const duration& other) const {
+        return value_ <= other.value_;
+    }
+    constexpr bool operator>(const duration& other) const {
+        return value_ > other.value_;
+    }
+    constexpr bool operator>=(const duration& other) const {
+        return value_ >= other.value_;
+    }
+    constexpr bool operator==(const duration& other) const {
+        return value_ == other.value_;
+    }
+
+private:
+    Rep value_{};
+};
+
+using nanoseconds  = duration<int64_t, nano>;
+using microseconds = duration<int64_t, micro>;
+using milliseconds = duration<int64_t, milli>;
+using seconds      = duration<int64_t>;
+using minutes      = duration<int64_t, ratio<60, 1>>;
+using hours        = duration<int64_t, ratio<3600, 1>>;
+
+struct steady_clock {
+    using rep      = int64_t;
+    using duration = nanoseconds;
+    using time_point_t = duration;
+
+    static duration now() {
+#ifdef __ZEPHYR__
+        // k_uptime_ticks() → tick count since boot; convert to ns.
+        const int64_t ticks = k_uptime_ticks();
+        const int64_t ns_per_tick = 1000000000LL / CONFIG_SYS_CLOCK_TICKS_PER_SEC;
+        return duration(ticks * ns_per_tick);
+#else
+        return duration(0);
+#endif
+    }
+};
+
+// Allow `steady_clock::now() + chrono::seconds(5)` shape.
+template <class Rep1, class P1, class Rep2, class P2>
+constexpr duration<int64_t, nano>
+operator+(const duration<Rep1, P1>& a, const duration<Rep2, P2>& b) {
+    return duration<int64_t, nano>(
+        a.count() * P1::num * 1000000000 / P1::den +
+        b.count() * P2::num * 1000000000 / P2::den);
+}
+
+template <class Rep1, class P1, class Rep2, class P2>
+constexpr bool operator<(const duration<Rep1, P1>& a, const duration<Rep2, P2>& b) {
+    return a.count() * P1::num * P2::den < b.count() * P2::num * P1::den;
+}
+
+} // namespace chrono
+} // namespace std
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_CHRONO

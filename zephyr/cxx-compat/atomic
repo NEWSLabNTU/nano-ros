@@ -1,0 +1,117 @@
+// Phase 11W.3 — minimal `<atomic>` shim for Zephyr targets that
+// don't ship libstdc++. Forwards to C11 `<stdatomic.h>` primitives
+// via thin C++ wrappers, exposing the subset of `std::atomic<T>`
+// API that nros-rmw-cyclonedds actually uses today
+// (`std::atomic<bool>` + `std::atomic<int64_t>` with `.load()`,
+// `.store()`, `.fetch_add()`, `.exchange()`).
+//
+// NOT a drop-in libstdc++ replacement. Embedded callers that
+// need richer atomic ops should land them here on demand or
+// switch to the underlying `<stdatomic.h>` primitives directly.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_ATOMIC
+#define NROS_ZEPHYR_CXX_COMPAT_ATOMIC
+
+// NOTE: don't `#include <stdatomic.h>` — that header uses the
+// C11 `_Atomic` qualifier which is C-only. The `__atomic_*`
+// builtins below are GCC intrinsics available in both C and C++.
+#include <stddef.h>
+#include <stdint.h>
+
+namespace std {
+
+enum memory_order {
+    memory_order_relaxed = __ATOMIC_RELAXED,
+    memory_order_consume = __ATOMIC_CONSUME,
+    memory_order_acquire = __ATOMIC_ACQUIRE,
+    memory_order_release = __ATOMIC_RELEASE,
+    memory_order_acq_rel = __ATOMIC_ACQ_REL,
+    memory_order_seq_cst = __ATOMIC_SEQ_CST,
+};
+
+template <class T>
+struct atomic {
+    T value;
+
+    atomic() noexcept = default;
+    constexpr atomic(T desired) noexcept : value(desired) {}
+
+    atomic(const atomic&) = delete;
+    atomic& operator=(const atomic&) = delete;
+
+    T load(memory_order order = memory_order_seq_cst) const noexcept {
+        T v;
+        __atomic_load(const_cast<T*>(&value), &v, static_cast<int>(order));
+        return v;
+    }
+
+    void store(T desired, memory_order order = memory_order_seq_cst) noexcept {
+        __atomic_store(&value, &desired, static_cast<int>(order));
+    }
+
+    T exchange(T desired, memory_order order = memory_order_seq_cst) noexcept {
+        T v;
+        __atomic_exchange(&value, &desired, &v, static_cast<int>(order));
+        return v;
+    }
+
+    bool compare_exchange_strong(T& expected, T desired,
+                                  memory_order success = memory_order_seq_cst,
+                                  memory_order failure = memory_order_seq_cst) noexcept {
+        return __atomic_compare_exchange(&value, &expected, &desired, false,
+                                          static_cast<int>(success),
+                                          static_cast<int>(failure));
+    }
+
+    bool compare_exchange_weak(T& expected, T desired,
+                                memory_order success = memory_order_seq_cst,
+                                memory_order failure = memory_order_seq_cst) noexcept {
+        return __atomic_compare_exchange(&value, &expected, &desired, true,
+                                          static_cast<int>(success),
+                                          static_cast<int>(failure));
+    }
+
+    T fetch_add(T arg, memory_order order = memory_order_seq_cst) noexcept {
+        return __atomic_fetch_add(&value, arg, static_cast<int>(order));
+    }
+
+    T fetch_sub(T arg, memory_order order = memory_order_seq_cst) noexcept {
+        return __atomic_fetch_sub(&value, arg, static_cast<int>(order));
+    }
+
+    T fetch_or(T arg, memory_order order = memory_order_seq_cst) noexcept {
+        return __atomic_fetch_or(&value, arg, static_cast<int>(order));
+    }
+
+    T fetch_and(T arg, memory_order order = memory_order_seq_cst) noexcept {
+        return __atomic_fetch_and(&value, arg, static_cast<int>(order));
+    }
+
+    operator T() const noexcept { return load(); }
+    T operator=(T desired) noexcept { store(desired); return desired; }
+};
+
+typedef atomic<bool>     atomic_bool;
+typedef atomic<char>     atomic_char;
+typedef atomic<int>      atomic_int;
+typedef atomic<long>     atomic_long;
+typedef atomic<long long> atomic_llong;
+typedef atomic<uint8_t>  atomic_uint8_t;
+typedef atomic<uint16_t> atomic_uint16_t;
+typedef atomic<uint32_t> atomic_uint32_t;
+typedef atomic<uint64_t> atomic_uint64_t;
+typedef atomic<int8_t>   atomic_int8_t;
+typedef atomic<int16_t>  atomic_int16_t;
+typedef atomic<int32_t>  atomic_int32_t;
+typedef atomic<int64_t>  atomic_int64_t;
+
+inline void atomic_thread_fence(memory_order order) noexcept {
+    __atomic_thread_fence(static_cast<int>(order));
+}
+
+inline void atomic_signal_fence(memory_order order) noexcept {
+    __atomic_signal_fence(static_cast<int>(order));
+}
+
+} // namespace std
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_ATOMIC

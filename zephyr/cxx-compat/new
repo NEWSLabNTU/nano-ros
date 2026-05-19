@@ -1,0 +1,35 @@
+// Phase 11W.3 — extends Zephyr's `lib/cpp/minimal/include/new`
+// with the nothrow placement-new operator overloads Cyclone DDS
+// uses (`new (std::nothrow) T{...}`). Zephyr's shim declares
+// `std::nothrow_t` + `std::nothrow` but not the matching
+// `operator new` overload, so a literal `new (std::nothrow) T`
+// expression fails to find a candidate.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_NEW
+#define NROS_ZEPHYR_CXX_COMPAT_NEW
+
+#include <stddef.h>
+
+namespace std {
+#if __cplusplus < 201103L
+    struct nothrow_t {};
+#else
+    struct nothrow_t {
+        explicit nothrow_t() = default;
+    };
+#endif
+    extern const nothrow_t nothrow;
+} // namespace std
+
+void* operator new(size_t size, const std::nothrow_t&) noexcept;
+void* operator new[](size_t size, const std::nothrow_t&) noexcept;
+void  operator delete(void* p, const std::nothrow_t&) noexcept;
+void  operator delete[](void* p, const std::nothrow_t&) noexcept;
+
+// Placement new — already part of the language but the header
+// must declare these for `new (ptr) T` to compile cleanly.
+inline void* operator new  (size_t, void* p) noexcept { return p; }
+inline void* operator new[](size_t, void* p) noexcept { return p; }
+inline void  operator delete  (void*, void*) noexcept {}
+inline void  operator delete[](void*, void*) noexcept {}
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_NEW

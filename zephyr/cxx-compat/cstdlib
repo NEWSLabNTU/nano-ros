@@ -4,6 +4,34 @@
 #include <stdlib.h>
 
 namespace std {
+using ::abort;
+using ::abs;
+using ::atexit;
+using ::atoi;
+using ::atol;
+using ::atoll;
+using ::calloc;
+using ::div;
+using ::div_t;
+using ::exit;
+using ::free;
 using ::getenv;
+using ::labs;
+using ::ldiv;
+using ::ldiv_t;
+using ::llabs;
+using ::lldiv;
+using ::lldiv_t;
+using ::malloc;
+using ::qsort;
+using ::rand;
+using ::realloc;
+using ::srand;
+using ::strtod;
+using ::strtof;
+using ::strtol;
+using ::strtoll;
+using ::strtoul;
+using ::strtoull;
 }
 #endif
