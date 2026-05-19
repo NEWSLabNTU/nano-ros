@@ -11,7 +11,16 @@
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::{Executor, ExecutorConfig};
 
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-client");
+
+extern crate nros_platform_cffi as _;
+
 fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
     let agent_addr =
         std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
@@ -23,7 +32,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(3);
 
-    eprintln!(
+    nros_warn!(&LOGGER, 
         "XRCE Service Client: agent={}, domain={}, requests={}",
         agent_addr, domain_id, request_count
     );
@@ -37,7 +46,7 @@ fn main() {
     // when no symbol from the rlib is otherwise referenced.
     nros_rmw_xrce_cffi::register().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open XRCE session");
-    eprintln!("Session created");
+    nros_warn!(&LOGGER, "Session created");
 
     // Create service client
     let mut node = executor
@@ -46,10 +55,10 @@ fn main() {
     let mut client = node
         .create_client::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create service client");
-    eprintln!("Service client created for /add_two_ints");
+    nros_warn!(&LOGGER, "Service client created for /add_two_ints");
 
     // Ready marker for test matching
-    println!("Service client ready");
+    nros_info!(&LOGGER, "Service client ready");
 
     // Send requests using the Promise pattern
     let mut success_count = 0usize;
@@ -59,13 +68,13 @@ fn main() {
         let b = (i as i64 + 1) * 10;
         let request = AddTwoIntsRequest { a, b };
 
-        println!("Sent request: a={} b={}", a, b);
+        nros_info!(&LOGGER, "Sent request: a={} b={}", a, b);
 
         // Non-blocking: send request and get a promise
         let mut promise = match client.call(&request) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Failed to send request: {:?}", e);
+                nros_warn!(&LOGGER, "Failed to send request: {:?}", e);
                 continue;
             }
         };
@@ -73,11 +82,11 @@ fn main() {
         // Wait for the reply (drives I/O internally)
         match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
             Ok(reply) => {
-                println!("Received reply: sum={}", reply.sum);
+                nros_info!(&LOGGER, "Received reply: sum={}", reply.sum);
                 success_count += 1;
             }
             Err(e) => {
-                eprintln!("Service call failed: {:?}", e);
+                nros_warn!(&LOGGER, "Service call failed: {:?}", e);
             }
         }
 
@@ -85,7 +94,7 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
-    println!("Completed {}/{} requests", success_count, request_count);
+    nros_info!(&LOGGER, "Completed {}/{} requests", success_count, request_count);
 
     // Clean up
     let _ = executor.close();

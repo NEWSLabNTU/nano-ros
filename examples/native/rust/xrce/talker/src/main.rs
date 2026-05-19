@@ -14,7 +14,16 @@ use std::sync::{
 };
 use std_msgs::msg::Int32;
 
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("talker");
+
+extern crate nros_platform_cffi as _;
+
 fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
     let agent_addr =
         std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
@@ -22,7 +31,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
-    eprintln!("XRCE Talker: agent={}, domain={}", agent_addr, domain_id);
+    nros_warn!(&LOGGER, "XRCE Talker: agent={}, domain={}", agent_addr, domain_id);
 
     // Phase 115.K.2.5.1.2 — register the C XRCE backend's vtable
     // before opening the session. Idempotent.
@@ -36,7 +45,7 @@ fn main() {
     // when no symbol from the rlib is otherwise referenced.
     nros_rmw_xrce_cffi::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
-    eprintln!("Session created");
+    nros_warn!(&LOGGER, "Session created");
 
     // Create publisher
     let mut node = executor
@@ -45,18 +54,18 @@ fn main() {
     let publisher = node
         .create_publisher::<Int32>("/chatter")
         .expect("Failed to create publisher");
-    eprintln!("Publisher created on /chatter");
+    nros_warn!(&LOGGER, "Publisher created on /chatter");
 
     // Register timer callback that publishes every 500ms
-    println!("Publishing Int32 messages...");
+    nros_info!(&LOGGER, "Publishing Int32 messages...");
     let counter = Arc::new(AtomicI32::new(0));
     let counter_cb = counter.clone();
     executor
         .register_timer(TimerDuration::from_millis(500), move || {
             let i = counter_cb.fetch_add(1, Ordering::SeqCst);
             match publisher.publish(&Int32 { data: i }) {
-                Ok(()) => println!("Published: {}", i),
-                Err(e) => eprintln!("Publish error: {:?}", e),
+                Ok(()) => nros_info!(&LOGGER, "Published: {}", i),
+                Err(e) => nros_warn!(&LOGGER, "Publish error: {:?}", e),
             }
         })
         .expect("Failed to add timer");
@@ -68,5 +77,5 @@ fn main() {
 
     // Clean up
     let _ = executor.close();
-    eprintln!("Talker done");
+    nros_warn!(&LOGGER, "Talker done");
 }

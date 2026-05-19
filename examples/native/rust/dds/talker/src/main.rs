@@ -10,15 +10,21 @@
 //! cargo run -p native-dds-talker
 //! ```
 
-use log::{error, info};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("talker");
 
-    info!("nros Native Talker (DDS/RTPS Transport)");
-    info!("==========================================");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros Native Talker (DDS/RTPS Transport)");
+    nros_info!(&LOGGER, "==========================================");
 
     let config = ExecutorConfig::from_env().node_name("talker");
     // Phase 104.A — explicit RMW backend registration. The auto-ctor
@@ -31,11 +37,11 @@ fn main() {
         let mut node = executor
             .create_node("talker")
             .expect("Failed to create node");
-        info!("Node created: talker");
+        nros_info!(&LOGGER, "Node created: talker");
         let pub_ = node
             .create_publisher::<Int32>("/chatter")
             .expect("Failed to create publisher");
-        info!("Publisher created for topic: /chatter");
+        nros_info!(&LOGGER, "Publisher created for topic: /chatter");
         pub_
     };
 
@@ -44,13 +50,13 @@ fn main() {
         .register_timer(nros::TimerDuration::from_millis(1000), move || {
             let msg = Int32 { data: count };
             match publisher.publish(&msg) {
-                Ok(()) => info!("Published: {}", count),
-                Err(e) => error!("Publish error: {:?}", e),
+                Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+                Err(e) => nros_error!(&LOGGER, "Publish error: {:?}", e),
             }
             count = count.wrapping_add(1);
         })
         .expect("Failed to register publish timer");
-    info!("Publishing Int32 messages every 1s...");
+    nros_info!(&LOGGER, "Publishing Int32 messages every 1s...");
 
     executor
         .spin_blocking(SpinOptions::default())

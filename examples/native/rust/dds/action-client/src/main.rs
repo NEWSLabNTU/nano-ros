@@ -13,14 +13,20 @@
 //! ```
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
-use log::{error, info, warn};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-client");
 
-    info!("nros DDS Action Client Example");
-    info!("================================");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros DDS Action Client Example");
+    nros_info!(&LOGGER, "================================");
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("fibonacci_action_client");
@@ -36,12 +42,12 @@ fn main() {
     let mut node = executor
         .create_node("fibonacci_action_client")
         .expect("Failed to create node");
-    info!("Node created: fibonacci_action_client");
+    nros_info!(&LOGGER, "Node created: fibonacci_action_client");
 
     let mut client = node
         .create_action_client::<Fibonacci>("/fibonacci")
         .expect("Failed to create action client");
-    info!("Action client created: /fibonacci");
+    nros_info!(&LOGGER, "Action client created: /fibonacci");
 
     // Allow time for SPDP/SEDP discovery on all 5 action channels
     // (send_goal/cancel_goal/get_result services + feedback/status pubs).
@@ -60,13 +66,13 @@ fn main() {
 
     // Create goal
     let goal = FibonacciGoal { order };
-    info!("Sending goal: order={}", goal.order);
+    nros_info!(&LOGGER, "Sending goal: order={}", goal.order);
 
     // Send goal using the Promise pattern
     let (goal_id, mut promise) = match client.send_goal(&goal) {
         Ok(pair) => pair,
         Err(e) => {
-            error!("Failed to send goal: {:?}", e);
+            nros_error!(&LOGGER, "Failed to send goal: {:?}", e);
             std::process::exit(1);
         }
     };
@@ -75,18 +81,18 @@ fn main() {
     let accepted = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok(accepted) => accepted,
         Err(e) => {
-            error!("Goal acceptance failed: {:?}", e);
+            nros_error!(&LOGGER, "Goal acceptance failed: {:?}", e);
             std::process::exit(1);
         }
     };
 
     if !accepted {
-        warn!("Goal was rejected by the server");
+        nros_warn!(&LOGGER, "Goal was rejected by the server");
         std::process::exit(1);
     }
-    info!("Goal accepted! ID: {:?}", goal_id);
+    nros_info!(&LOGGER, "Goal accepted! ID: {:?}", goal_id);
 
-    info!("Waiting for feedback...");
+    nros_info!(&LOGGER, "Waiting for feedback...");
 
     // Receive feedback via FeedbackStream (drives I/O internally, filters by goal ID)
     let mut feedback_count = 0;
@@ -98,7 +104,7 @@ fn main() {
             match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
                 Ok(Some(feedback)) => {
                     feedback_count += 1;
-                    info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
+                    nros_info!(&LOGGER, "Feedback #{}: {:?}", feedback_count, feedback.sequence);
 
                     if let Some(cancel_after) = cancel_after_feedback
                         && feedback_count >= cancel_after
@@ -108,14 +114,14 @@ fn main() {
                     }
 
                     if feedback.sequence.len() as i32 > goal.order {
-                        info!("Received all feedback, action completed!");
-                        info!("Final sequence: {:?}", feedback.sequence);
+                        nros_info!(&LOGGER, "Received all feedback, action completed!");
+                        nros_info!(&LOGGER, "Final sequence: {:?}", feedback.sequence);
                         break;
                     }
                 }
                 Ok(None) => {} // no feedback in this window, retry
                 Err(e) => {
-                    error!("Error receiving feedback: {:?}", e);
+                    nros_error!(&LOGGER, "Error receiving feedback: {:?}", e);
                     break;
                 }
             }
@@ -123,22 +129,22 @@ fn main() {
     }
 
     if should_cancel {
-        info!(
+        nros_info!(&LOGGER, 
             "Requesting cancellation after {} feedback frames",
             feedback_count
         );
         let mut cancel_promise = match client.cancel_goal(&goal_id) {
             Ok(promise) => promise,
             Err(e) => {
-                error!("Failed to request cancellation: {:?}", e);
+                nros_error!(&LOGGER, "Failed to request cancellation: {:?}", e);
                 std::process::exit(1);
             }
         };
 
         match cancel_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
-            Ok(response) => info!("Cancel response: {:?}", response),
+            Ok(response) => nros_info!(&LOGGER, "Cancel response: {:?}", response),
             Err(e) => {
-                error!("Cancel response failed: {:?}", e);
+                nros_error!(&LOGGER, "Cancel response failed: {:?}", e);
                 std::process::exit(1);
             }
         }
@@ -153,7 +159,7 @@ fn main() {
     let mut result_promise = match client.get_result(&goal_id) {
         Ok(promise) => promise,
         Err(e) => {
-            error!("Failed to request result: {:?}", e);
+            nros_error!(&LOGGER, "Failed to request result: {:?}", e);
             std::process::exit(1);
         }
     };
@@ -162,25 +168,25 @@ fn main() {
         match result_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
             Ok(result) => result,
             Err(e) => {
-                error!("Result response failed: {:?}", e);
+                nros_error!(&LOGGER, "Result response failed: {:?}", e);
                 std::process::exit(1);
             }
         };
 
-    info!(
+    nros_info!(&LOGGER, 
         "Result: status={:?}, sequence={:?}",
         status, result.sequence
     );
 
     if should_cancel {
         if status != GoalStatus::Canceled {
-            error!("Expected canceled result, got {:?}", status);
+            nros_error!(&LOGGER, "Expected canceled result, got {:?}", status);
             std::process::exit(1);
         }
     } else if status != GoalStatus::Succeeded {
-        error!("Expected succeeded result, got {:?}", status);
+        nros_error!(&LOGGER, "Expected succeeded result, got {:?}", status);
         std::process::exit(1);
     }
 
-    info!("Action client finished");
+    nros_info!(&LOGGER, "Action client finished");
 }

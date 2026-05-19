@@ -24,6 +24,6 @@ nros-rmw = { path = "../../../../../packages/core/nros-rmw", default-features = 
 # cargo builds (no CMake glue) enable the feature so the library's
 # `build.rs` compiles the C port into the binary.
 nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+# Phase 88.16.B — diagnostics route through `nros-log`.
+nros-log = { path = "../../../../../packages/core/nros-log" }
 std_msgs = { version = "*", default-features = false }
-log = "0.4"
-env_logger = "0.11"

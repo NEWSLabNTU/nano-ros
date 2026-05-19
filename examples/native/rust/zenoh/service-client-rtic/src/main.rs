@@ -11,13 +11,19 @@
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-service-client/`.
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-client-rtic");
 
-    info!("nros RTIC-pattern Service Client (native)");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros RTIC-pattern Service Client (native)");
 
     let config = ExecutorConfig::from_env().node_name("add_client");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
@@ -35,7 +41,7 @@ fn main() {
         .create_client::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create client");
 
-    info!("Service client created for /add_two_ints (RTIC pattern)");
+    nros_info!(&LOGGER, "Service client created for /add_two_ints (RTIC pattern)");
 
     // Stabilization delay
     for _ in 0..200 {
@@ -48,12 +54,12 @@ fn main() {
 
     for (a, b) in test_cases {
         let request = AddTwoIntsRequest { a, b };
-        info!("Calling: {} + {} = ?", a, b);
+        nros_info!(&LOGGER, "Calling: {} + {} = ?", a, b);
 
         let mut promise = match client.call(&request) {
             Ok(p) => p,
             Err(e) => {
-                log::error!("Failed to send request: {:?}", e);
+                nros_error!(&LOGGER, "Failed to send request: {:?}", e);
                 continue;
             }
         };
@@ -64,7 +70,7 @@ fn main() {
             executor.spin_once(core::time::Duration::from_millis(0));
 
             if let Ok(Some(reply)) = promise.try_recv() {
-                info!("Reply: {} + {} = {}", a, b, reply.sum);
+                nros_info!(&LOGGER, "Reply: {} + {} = {}", a, b, reply.sum);
                 success_count += 1;
                 got_reply = true;
                 break;
@@ -74,7 +80,7 @@ fn main() {
         }
 
         if !got_reply {
-            log::error!("Timeout waiting for reply to {} + {}", a, b);
+            nros_error!(&LOGGER, "Timeout waiting for reply to {} + {}", a, b);
         }
 
         // Brief pause between calls
@@ -84,7 +90,7 @@ fn main() {
         }
     }
 
-    info!(
+    nros_info!(&LOGGER, 
         "Done. {} of {} calls succeeded",
         success_count,
         test_cases.len()

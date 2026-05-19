@@ -12,7 +12,16 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::{Executor, ExecutorConfig};
 use std::time::Instant;
 
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-server");
+
+extern crate nros_platform_cffi as _;
+
 fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
     let agent_addr =
         std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
@@ -24,7 +33,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
 
-    eprintln!(
+    nros_warn!(&LOGGER, 
         "XRCE Service Server: agent={}, domain={}, timeout={}s",
         agent_addr, domain_id, timeout_secs
     );
@@ -38,21 +47,21 @@ fn main() {
     // when no symbol from the rlib is otherwise referenced.
     nros_rmw_xrce_cffi::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
-    eprintln!("Session created");
+    nros_warn!(&LOGGER, "Session created");
 
     // Register service callback
     executor
         .register_service::<AddTwoInts, _>("/add_two_ints", |req| {
-            println!("Received request: a={} b={}", req.a, req.b);
+            nros_info!(&LOGGER, "Received request: a={} b={}", req.a, req.b);
             let sum = req.a + req.b;
-            println!("Sent reply: sum={}", sum);
+            nros_info!(&LOGGER, "Sent reply: sum={}", sum);
             AddTwoIntsResponse { sum }
         })
         .expect("Failed to add service");
-    eprintln!("Service server created on /add_two_ints");
+    nros_warn!(&LOGGER, "Service server created on /add_two_ints");
 
     // Ready marker for test matching
-    println!("Service server ready");
+    nros_info!(&LOGGER, "Service server ready");
 
     // Spin loop with timeout
     let start = Instant::now();
@@ -62,6 +71,6 @@ fn main() {
         executor.spin_once(core::time::Duration::from_millis(100));
     }
 
-    eprintln!("Server timeout, exiting");
+    nros_warn!(&LOGGER, "Server timeout, exiting");
     let _ = executor.close();
 }

@@ -43,9 +43,14 @@ use std::{
     time::Duration,
 };
 
-use log::{error, info};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("custom-transport-talker");
+
+extern crate nros_platform_cffi as _;
 
 // ============================================================================
 // Custom-transport bridge to TCP
@@ -128,21 +133,22 @@ unsafe extern "C" fn cb_read(ud: *mut c_void, buf: *mut u8, len: usize, timeout_
 // ============================================================================
 
 fn main() {
-    env_logger::init();
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
 
     let target = std::env::var("NROS_CUSTOM_TCP_TARGET").unwrap_or_else(|_| {
-        info!("NROS_CUSTOM_TCP_TARGET not set; defaulting to 127.0.0.1:7447");
+        nros_info!(&LOGGER, "NROS_CUSTOM_TCP_TARGET not set; defaulting to 127.0.0.1:7447");
         "127.0.0.1:7447".to_string()
     });
 
-    info!("nros Custom-Transport Talker — bridging to TCP {target}");
+    nros_info!(&LOGGER, "nros Custom-Transport Talker — bridging to TCP {target}");
 
     // Connect TcpStream + leak Box so the user_data outlives the
     // session (custom-transport contract).
     let bridge = match TcpBridge::new(&target) {
         Ok(b) => Box::leak(Box::new(b)),
         Err(e) => {
-            error!("TCP connect to {target} failed: {e}");
+            nros_error!(&LOGGER, "TCP connect to {target} failed: {e}");
             std::process::exit(1);
         }
     };
@@ -161,7 +167,7 @@ fn main() {
     unsafe {
         nros_rmw::set_custom_transport(Some(ops)).expect("abi_version v1 ok");
     }
-    info!("Custom transport vtable registered");
+    nros_info!(&LOGGER, "Custom transport vtable registered");
 
     // Phase 115.L.5-custom-transport — install zenoh-pico C-vtable
     // backend before Executor::open. Order matters: the custom-
@@ -185,7 +191,7 @@ fn main() {
     let publisher = node
         .create_publisher::<Int32>("/chatter")
         .expect("Failed to create publisher");
-    info!("Publisher created on /chatter");
+    nros_info!(&LOGGER, "Publisher created on /chatter");
 
     let max_msgs: i32 = std::env::var("NROS_TALKER_COUNT")
         .ok()
@@ -195,14 +201,14 @@ fn main() {
     for i in 0..max_msgs {
         let msg = Int32 { data: i };
         if let Err(e) = publisher.publish(&msg) {
-            error!("Publish failed: {e:?}");
+            nros_error!(&LOGGER, "Publish failed: {e:?}");
         } else {
-            info!("Published: {i}");
+            nros_info!(&LOGGER, "Published: {i}");
         }
         std::thread::sleep(Duration::from_millis(100));
         // Drive session I/O so writes flush.
         let _ = executor.spin_once(Duration::from_millis(10));
     }
 
-    info!("Talker done — published {max_msgs} messages");
+    nros_info!(&LOGGER, "Talker done — published {max_msgs} messages");
 }

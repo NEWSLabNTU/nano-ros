@@ -18,14 +18,20 @@
 //! ```
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use log::{error, info};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-client");
 
-    info!("nros Service Client Example");
-    info!("================================");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros Service Client Example");
+    nros_info!(&LOGGER, "================================");
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("add_two_ints_client");
@@ -41,21 +47,21 @@ fn main() {
     let mut node = executor
         .create_node("add_two_ints_client")
         .expect("Failed to create node");
-    info!("Node created: add_two_ints_client");
+    nros_info!(&LOGGER, "Node created: add_two_ints_client");
 
     let mut client = node
         .create_client::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create client");
-    info!("Service client created for: /add_two_ints");
+    nros_info!(&LOGGER, "Service client created for: /add_two_ints");
 
     match client.wait_for_service(&mut executor, core::time::Duration::from_secs(5)) {
-        Ok(true) => info!("Service server is available"),
+        Ok(true) => nros_info!(&LOGGER, "Service server is available"),
         Ok(false) => {
-            error!("Timed out waiting for /add_two_ints service");
+            nros_error!(&LOGGER, "Timed out waiting for /add_two_ints service");
             std::process::exit(1);
         }
         Err(e) => {
-            error!("Failed while waiting for service: {:?}", e);
+            nros_error!(&LOGGER, "Failed while waiting for service: {:?}", e);
             std::process::exit(1);
         }
     }
@@ -65,13 +71,13 @@ fn main() {
 
     for (a, b) in test_cases {
         let request = AddTwoIntsRequest { a, b };
-        info!("Calling service: {} + {} = ?", a, b);
+        nros_info!(&LOGGER, "Calling service: {} + {} = ?", a, b);
 
         // Non-blocking: send request and get a promise
         let mut promise = match client.call(&request) {
             Ok(p) => p,
             Err(e) => {
-                error!("Failed to send request: {:?}", e);
+                nros_error!(&LOGGER, "Failed to send request: {:?}", e);
                 std::process::exit(1);
             }
         };
@@ -80,18 +86,18 @@ fn main() {
         let response = match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
             Ok(reply) => reply,
             Err(e) => {
-                error!("Service call failed: {:?}", e);
-                error!("Make sure the service server is running:");
-                error!("  cargo run -p native-rs-service-server");
+                nros_error!(&LOGGER, "Service call failed: {:?}", e);
+                nros_error!(&LOGGER, "Make sure the service server is running:");
+                nros_error!(&LOGGER, "  cargo run -p native-rs-service-server");
                 std::process::exit(1);
             }
         };
 
-        info!("Response: {} + {} = {}", a, b, response.sum);
+        nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, response.sum);
         assert_eq!(response.sum, a + b, "Sum mismatch!");
 
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
-    info!("All service calls completed successfully!");
+    nros_info!(&LOGGER, "All service calls completed successfully!");
 }

@@ -12,7 +12,16 @@ use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
 
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-server");
+
+extern crate nros_platform_cffi as _;
+
 fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
     let agent_addr =
         std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
@@ -24,7 +33,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
 
-    eprintln!(
+    nros_warn!(&LOGGER, 
         "XRCE Action Server: agent={}, domain={}, timeout={}s",
         agent_addr, domain_id, timeout_secs
     );
@@ -38,7 +47,7 @@ fn main() {
     // when no symbol from the rlib is otherwise referenced.
     nros_rmw_xrce_cffi::register().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open XRCE session");
-    eprintln!("Session created");
+    nros_warn!(&LOGGER, "Session created");
 
     // Create action server
     let mut node = executor
@@ -48,7 +57,7 @@ fn main() {
         .create_action_server::<Fibonacci>("/fibonacci")
         .expect("Failed to create action server");
 
-    println!("Action server ready");
+    nros_info!(&LOGGER, "Action server ready");
 
     let start = Instant::now();
     let timeout = std::time::Duration::from_secs(timeout_secs);
@@ -62,7 +71,7 @@ fn main() {
         // Try to accept a new goal
         let accepted = action_server
             .try_accept_goal(|_goal_id, goal| {
-                println!("Received goal: order={}", goal.order);
+                nros_info!(&LOGGER, "Received goal: order={}", goal.order);
                 GoalResponse::AcceptAndExecute
             })
             .expect("accept error");
@@ -73,7 +82,7 @@ fn main() {
                 None => continue,
             };
 
-            println!("Goal accepted: {:?}", goal_id);
+            nros_info!(&LOGGER, "Goal accepted: {:?}", goal_id);
             action_server.set_goal_status(&goal_id, GoalStatus::Executing);
 
             // Execute Fibonacci computation with feedback
@@ -94,18 +103,18 @@ fn main() {
                 };
                 let _ = action_server.publish_feedback(&goal_id, &feedback);
 
-                println!("Feedback: step={}, sequence_len={}", i, sequence.len());
+                nros_info!(&LOGGER, "Feedback: step={}, sequence_len={}", i, sequence.len());
                 executor.spin_once(core::time::Duration::from_millis(100));
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
 
             // Complete the goal
             let result = FibonacciResult { sequence };
-            println!("Goal completed: result_len={}", result.sequence.len());
+            nros_info!(&LOGGER, "Goal completed: result_len={}", result.sequence.len());
             action_server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
         }
     }
 
-    eprintln!("Server timeout, exiting");
+    nros_warn!(&LOGGER, "Server timeout, exiting");
     let _ = executor.close();
 }

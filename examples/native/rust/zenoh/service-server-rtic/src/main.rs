@@ -8,13 +8,19 @@
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-service-server/`.
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-server-rtic");
 
-    info!("nros RTIC-pattern Service Server (native)");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros RTIC-pattern Service Server (native)");
 
     let config = ExecutorConfig::from_env().node_name("add_server");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
@@ -32,8 +38,8 @@ fn main() {
         .create_service::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create service");
 
-    info!("Service server ready: /add_two_ints");
-    info!("Waiting for requests (RTIC pattern)...");
+    nros_info!(&LOGGER, "Service server ready: /add_two_ints");
+    nros_info!(&LOGGER, "Waiting for requests (RTIC pattern)...");
 
     let mut handled = 0u32;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -43,16 +49,16 @@ fn main() {
 
         match service.handle_request(|req| {
             let sum = req.a + req.b;
-            info!("Request: {} + {} = {}", req.a, req.b, sum);
+            nros_info!(&LOGGER, "Request: {} + {} = {}", req.a, req.b, sum);
             AddTwoIntsResponse { sum }
         }) {
             Ok(true) => handled += 1,
             Ok(false) => {}
-            Err(e) => log::error!("Service error: {:?}", e),
+            Err(e) => nros_error!(&LOGGER, "Service error: {:?}", e),
         }
 
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    info!("Done. Handled {} requests", handled);
+    nros_info!(&LOGGER, "Done. Handled {} requests", handled);
 }

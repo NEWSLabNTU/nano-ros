@@ -28,100 +28,89 @@
 //! TLS requires system mbedTLS (`sudo apt install libmbedtls-dev`) and the
 //! `link-tls` feature. Generate a self-signed certificate, start zenohd with
 //! a TLS listener, then connect with `ZENOH_TLS_ROOT_CA_CERTIFICATE` pointing
-//! to the CA certificate:
+//! to the CA certificate.
 //!
-//! ```bash
-//! # Generate test certificate
-//! openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-//!   -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+//! # Diagnostics
 //!
-//! # Start zenohd with TLS
-//! zenohd --no-multicast-scouting --listen tls/localhost:7447 \
-//!   --cfg 'transport/link/tls/listen_certificate:"cert.pem"' \
-//!   --cfg 'transport/link/tls/listen_private_key:"key.pem"'
+//! All diagnostic output flows through `nros-log`. The default
+//! `PlatformSink` renders `[<LEVEL>] talker: <message>` on stderr.
+//! Drop the runtime threshold to silence Info / Debug:
 //!
-//! # Run talker with TLS (--features link-tls)
-//! ZENOH_LOCATOR=tls/localhost:7447 \
-//!   ZENOH_TLS_ROOT_CA_CERTIFICATE=cert.pem \
-//!   cargo run -p native-rs-talker --features link-tls
-//! ```
-//!
-//! # Enabling debug logs:
-//! ```bash
-//! RUST_LOG=debug cargo run -p native-rs-talker
+//! ```ignore
+//! LOGGER.set_level(nros_log::Severity::Warn);
 //! ```
 
-use log::{error, info};
 use nros::prelude::*;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger, Severity};
 use std_msgs::msg::Int32;
 
+// Phase 88.16.B — pre-register the logger so `[INFO] talker: …`
+// shows the expected name, not the catch-all `nros` default.
+static LOGGER: Logger = Logger::new("talker");
+
+// Force the nros-platform-cffi crate's `posix-c-port` C build into
+// the link graph so `nros_platform_log_write` resolves.
+extern crate nros_platform_cffi as _;
+
 fn main() {
-    env_logger::init();
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
 
-    info!("nros Native Talker (Zenoh Transport)");
-    info!("=========================================");
+    nros_info!(&LOGGER, "nros Native Talker (Zenoh Transport)");
 
-    // Phase 128.B.1 — on stable Rust the backend rlib is NOT pulled
-    // into the link line unless something references one of its
-    // symbols, even though its `RMW_INIT_ENTRIES` entry is `#[used]`.
-    // The one-line `register()` call below doubles as both the
-    // (idempotent) backend registration trigger AND the symbol
-    // reference that drags the rlib's CGU into the binary. C/C++
-    // builds avoid this because `--whole-archive` semantics for
-    // static libs pulls every section entry unconditionally.
+    // Phase 128.B.1 — explicit register() drags nros-rmw-zenoh's
+    // CGU into the binary on stable Rust.
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
-    // Create executor from environment (reads ZENOH_LOCATOR, ROS_DOMAIN_ID, ZENOH_MODE)
     let config = ExecutorConfig::from_env().node_name("talker");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
-    // Register parameter services (when param-services feature is enabled)
     #[cfg(feature = "param-services")]
     {
         executor
             .register_parameter_services()
             .expect("Failed to register parameter services");
         executor.declare_parameter("start_value", ParameterValue::Integer(0));
-        info!("Parameter services registered for /talker");
+        nros_info!(&LOGGER, "Parameter services registered for /talker");
     }
 
-    // Create publisher (scoped so the node drops; publisher is owned).
     let publisher = {
         let mut node = executor
             .create_node("talker")
             .expect("Failed to create node");
-        info!("Node created: talker");
+        nros_info!(&LOGGER, "Node created: talker");
         let pub_ = node
             .create_publisher::<Int32>("/chatter")
             .expect("Failed to create publisher");
-        info!("Publisher created for topic: /chatter");
+        nros_info!(&LOGGER, "Publisher created for topic: /chatter");
         pub_
     };
 
-    // Get counter start value from parameters (if available)
     #[cfg(feature = "param-services")]
     let counter_start = {
         let v = executor.get_parameter_integer("start_value").unwrap_or(0) as i32;
-        info!("Counter start value: {}", v);
+        nros_info!(&LOGGER, "Counter start value: {}", v);
         v
     };
     #[cfg(not(feature = "param-services"))]
     let counter_start = 0i32;
 
-    // Phase 122.4 — L2 timer-driven publish. Timer fires every 1 s;
-    // closure owns the publisher + counter.
     let mut count: i32 = counter_start;
     executor
         .register_timer(nros::TimerDuration::from_millis(1000), move || {
             let msg = Int32 { data: count };
             match publisher.publish(&msg) {
-                Ok(()) => info!("Published: {}", count),
-                Err(e) => error!("Publish error: {:?}", e),
+                Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+                Err(e) => nros_error!(&LOGGER, "Publish error: {:?}", e),
             }
             count = count.wrapping_add(1);
         })
         .expect("Failed to register publish timer");
-    info!("Publishing Int32 messages every 1s...");
+    nros_info!(&LOGGER, "Publishing Int32 messages every 1s...");
+
+    // Reference Severity so the unused-import lint stays quiet if a
+    // user wires set_level() into their own variant later.
+    let _ = Severity::Info;
 
     executor
         .spin_blocking(SpinOptions::default())

@@ -18,7 +18,16 @@ use std::{
 };
 use std_msgs::msg::Int32;
 
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("serial-listener");
+
+extern crate nros_platform_cffi as _;
+
 fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
     let pty_path = std::env::var("XRCE_SERIAL_PTY")
         .expect("XRCE_SERIAL_PTY must be set to the PTY device path");
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
@@ -30,7 +39,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(5);
 
-    eprintln!(
+    nros_warn!(&LOGGER, 
         "XRCE Serial Listener: pty={}, domain={}, count={}",
         pty_path, domain_id, msg_count
     );
@@ -57,7 +66,7 @@ fn main() {
     // when no symbol from the rlib is otherwise referenced.
     nros_rmw_xrce_cffi::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
-    eprintln!("Session created");
+    nros_warn!(&LOGGER, "Session created");
 
     // Register subscription callback
     let received = Arc::new(AtomicUsize::new(0));
@@ -65,13 +74,13 @@ fn main() {
     executor
         .register_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
             let n = received_cb.fetch_add(1, Ordering::SeqCst) + 1;
-            println!("[{}] Received: {}", n, msg.data);
+            nros_info!(&LOGGER, "[{}] Received: {}", n, msg.data);
         })
         .expect("Failed to add subscription");
-    eprintln!("Subscriber created on /chatter");
+    nros_warn!(&LOGGER, "Subscriber created on /chatter");
 
     // Spin loop with timeout
-    println!("Waiting for messages...");
+    nros_info!(&LOGGER, "Waiting for messages...");
     let start = Instant::now();
     let timeout = std::time::Duration::from_secs(30);
 
@@ -81,9 +90,9 @@ fn main() {
 
     let final_count = received.load(Ordering::SeqCst);
     if final_count >= msg_count {
-        println!("Received {} messages, exiting", final_count);
+        nros_info!(&LOGGER, "Received {} messages, exiting", final_count);
     } else {
-        eprintln!(
+        nros_warn!(&LOGGER, 
             "Timeout: received only {}/{} messages",
             final_count, msg_count
         );

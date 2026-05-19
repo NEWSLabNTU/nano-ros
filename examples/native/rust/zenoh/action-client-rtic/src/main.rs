@@ -12,13 +12,19 @@
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-action-client/`.
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-client-rtic");
 
-    info!("nros RTIC-pattern Action Client (native)");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros RTIC-pattern Action Client (native)");
 
     let config = ExecutorConfig::from_env().node_name("fibonacci_client");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
@@ -36,7 +42,7 @@ fn main() {
         .create_action_client::<Fibonacci>("/fibonacci")
         .expect("Failed to create action client");
 
-    info!("Action client created for /fibonacci (RTIC pattern)");
+    nros_info!(&LOGGER, "Action client created for /fibonacci (RTIC pattern)");
 
     // Stabilization delay
     for _ in 0..300 {
@@ -45,7 +51,7 @@ fn main() {
     }
 
     let goal = FibonacciGoal { order: 5 };
-    info!("Sending goal: order={}", goal.order);
+    nros_info!(&LOGGER, "Sending goal: order={}", goal.order);
 
     let (goal_id, mut promise) = client.send_goal(&goal).expect("Failed to send goal");
 
@@ -61,10 +67,10 @@ fn main() {
     }
 
     if !accepted {
-        log::error!("Goal not accepted (timeout)");
+        nros_error!(&LOGGER, "Goal not accepted (timeout)");
         std::process::exit(1);
     }
-    info!("Goal accepted: {:?}", goal_id);
+    nros_info!(&LOGGER, "Goal accepted: {:?}", goal_id);
 
     // Receive feedback via try_recv_feedback() loop
     let mut feedback_count = 0u32;
@@ -75,7 +81,7 @@ fn main() {
             && id.uuid == goal_id.uuid
         {
             feedback_count += 1;
-            info!("Feedback #{}: {:?}", feedback_count, &feedback.sequence[..]);
+            nros_info!(&LOGGER, "Feedback #{}: {:?}", feedback_count, &feedback.sequence[..]);
             if feedback.sequence.len() as i32 > goal.order {
                 break;
             }
@@ -84,7 +90,7 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    info!(
+    nros_info!(&LOGGER, 
         "Done. Got {} feedback messages, goal accepted",
         feedback_count
     );

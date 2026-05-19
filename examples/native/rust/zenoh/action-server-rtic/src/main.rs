@@ -9,13 +9,19 @@
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-action-server/`.
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-server-rtic");
 
-    info!("nros RTIC-pattern Action Server (native)");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros RTIC-pattern Action Server (native)");
 
     let config = ExecutorConfig::from_env().node_name("fibonacci_server");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
@@ -33,8 +39,8 @@ fn main() {
         .create_action_server::<Fibonacci>("/fibonacci")
         .expect("Failed to create action server");
 
-    info!("Action server ready: /fibonacci");
-    info!("Waiting for goals (RTIC pattern)...");
+    nros_info!(&LOGGER, "Action server ready: /fibonacci");
+    nros_info!(&LOGGER, "Waiting for goals (RTIC pattern)...");
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
 
@@ -43,11 +49,11 @@ fn main() {
 
         // Try to accept new goals
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
-            info!("Goal request: order={}", goal.order);
+            nros_info!(&LOGGER, "Goal request: order={}", goal.order);
             GoalResponse::AcceptAndExecute
         }) {
             Ok(Some(goal_id)) => {
-                info!("Goal accepted: {}", goal_id);
+                nros_info!(&LOGGER, "Goal accepted: {}", goal_id);
 
                 if let Some(active_goal) = server.get_goal(&goal_id) {
                     let order = active_goal.goal.order;
@@ -72,9 +78,9 @@ fn main() {
                             sequence: sequence.clone(),
                         };
                         if let Err(e) = server.publish_feedback(&goal_id, &feedback) {
-                            log::error!("Feedback error: {:?}", e);
+                            nros_error!(&LOGGER, "Feedback error: {:?}", e);
                         } else {
-                            info!("Feedback: {:?}", &feedback.sequence[..]);
+                            nros_info!(&LOGGER, "Feedback: {:?}", &feedback.sequence[..]);
                         }
 
                         // Drive I/O between feedback publishes
@@ -85,7 +91,7 @@ fn main() {
                     }
 
                     let result = FibonacciResult { sequence };
-                    info!("Goal completed: {:?}", &result.sequence[..]);
+                    nros_info!(&LOGGER, "Goal completed: {:?}", &result.sequence[..]);
                     server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
                 }
 
@@ -97,7 +103,7 @@ fn main() {
                 }
             }
             Ok(None) => {}
-            Err(e) => log::error!("Accept error: {:?}", e),
+            Err(e) => nros_error!(&LOGGER, "Accept error: {:?}", e),
         }
 
         // Handle cancel requests
@@ -106,5 +112,5 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    info!("Done");
+    nros_info!(&LOGGER, "Done");
 }

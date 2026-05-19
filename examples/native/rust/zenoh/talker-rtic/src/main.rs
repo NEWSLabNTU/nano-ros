@@ -7,14 +7,20 @@
 //!
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-talker/`.
 
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("talker-rtic");
 
-    info!("nros RTIC-pattern Talker (native)");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros RTIC-pattern Talker (native)");
 
     let config = ExecutorConfig::from_env().node_name("talker");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
@@ -32,7 +38,7 @@ fn main() {
         .create_publisher::<Int32>("/chatter")
         .expect("Failed to create publisher");
 
-    info!("Publishing Int32 on /chatter (RTIC pattern)...");
+    nros_info!(&LOGGER, "Publishing Int32 on /chatter (RTIC pattern)...");
 
     // Stabilization delay (like RTIC Mono::delay(2000.millis()))
     for _ in 0..200 {
@@ -43,8 +49,8 @@ fn main() {
     let mut count: i32 = 0;
     loop {
         match publisher.publish(&Int32 { data: count }) {
-            Ok(()) => info!("Published: {}", count),
-            Err(e) => log::error!("Publish error: {:?}", e),
+            Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+            Err(e) => nros_error!(&LOGGER, "Publish error: {:?}", e),
         }
         count = count.wrapping_add(1);
 

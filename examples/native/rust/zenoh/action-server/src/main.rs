@@ -18,14 +18,20 @@
 //! ```
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
-use log::{error, info};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-server");
 
-    info!("nros Action Server Example");
-    info!("================================");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros Action Server Example");
+    nros_info!(&LOGGER, "================================");
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("fibonacci_action_server");
@@ -41,25 +47,25 @@ fn main() {
     let mut node = executor
         .create_node("fibonacci_action_server")
         .expect("Failed to create node");
-    info!("Node created: fibonacci_action_server");
+    nros_info!(&LOGGER, "Node created: fibonacci_action_server");
 
     let mut server = node
         .create_action_server::<Fibonacci>("/fibonacci")
         .expect("Failed to create action server");
-    info!("Action server created: /fibonacci");
+    nros_info!(&LOGGER, "Action server created: /fibonacci");
 
-    info!("Waiting for action goals...");
-    info!("(Run native-rs-action-client in another terminal)");
+    nros_info!(&LOGGER, "Waiting for action goals...");
+    nros_info!(&LOGGER, "(Run native-rs-action-client in another terminal)");
 
     // Main loop - handle incoming goals
     loop {
         // Try to accept new goals
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
-            info!("Received goal request: order={}", goal.order);
+            nros_info!(&LOGGER, "Received goal request: order={}", goal.order);
             GoalResponse::AcceptAndExecute
         }) {
             Ok(Some(goal_id)) => {
-                info!("Goal accepted: {}", goal_id);
+                nros_info!(&LOGGER, "Goal accepted: {}", goal_id);
 
                 if let Some(active_goal) = server.get_goal(&goal_id) {
                     let order = active_goal.goal.order;
@@ -86,16 +92,16 @@ fn main() {
                         };
 
                         if let Err(e) = server.publish_feedback(&goal_id, &feedback) {
-                            error!("Failed to publish feedback: {:?}", e);
+                            nros_error!(&LOGGER, "Failed to publish feedback: {:?}", e);
                         } else {
-                            info!("Feedback: {:?}", feedback.sequence);
+                            nros_info!(&LOGGER, "Feedback: {:?}", feedback.sequence);
                         }
 
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
 
                     let result = FibonacciResult { sequence };
-                    info!("Goal completed: {:?}", result.sequence);
+                    nros_info!(&LOGGER, "Goal completed: {:?}", result.sequence);
 
                     server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
                 }
@@ -104,7 +110,7 @@ fn main() {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             Err(e) => {
-                error!("Error accepting goal: {:?}", e);
+                nros_error!(&LOGGER, "Error accepting goal: {:?}", e);
             }
         }
     }

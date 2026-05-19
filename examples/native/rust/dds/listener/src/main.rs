@@ -9,15 +9,21 @@
 //! cargo run -p native-dds-listener
 //! ```
 
-use log::{error, info};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("listener");
 
-    info!("nros Native Listener (DDS/RTPS Transport)");
-    info!("============================================");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros Native Listener (DDS/RTPS Transport)");
+    nros_info!(&LOGGER, "============================================");
 
     let config = ExecutorConfig::from_env().node_name("listener");
     // Phase 115.L.5 — install dust-dds C-vtable backend.
@@ -30,15 +36,15 @@ fn main() {
 
     executor
         .register_subscription::<Int32, _>("/chatter", move |msg| {
-            info!("Received: {}", msg.data);
+            nros_info!(&LOGGER, "Received: {}", msg.data);
         })
         .expect("Failed to add subscription");
-    info!("Subscriber created for topic: /chatter");
+    nros_info!(&LOGGER, "Subscriber created for topic: /chatter");
 
-    info!("Waiting for Int32 messages on /chatter...");
-    info!("(Press Ctrl+C to exit)");
+    nros_info!(&LOGGER, "Waiting for Int32 messages on /chatter...");
+    nros_info!(&LOGGER, "(Press Ctrl+C to exit)");
 
     if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
-        error!("Spin error: {:?}", e);
+        nros_error!(&LOGGER, "Spin error: {:?}", e);
     }
 }

@@ -13,14 +13,20 @@
 //! ```
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
-use log::{error, info};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::{CancelResponse, prelude::*};
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-server");
 
-    info!("nros DDS Action Server Example");
-    info!("================================");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros DDS Action Server Example");
+    nros_info!(&LOGGER, "================================");
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("fibonacci_action_server");
@@ -36,42 +42,42 @@ fn main() {
     let mut node = executor
         .create_node("fibonacci_action_server")
         .expect("Failed to create node");
-    info!("Node created: fibonacci_action_server");
+    nros_info!(&LOGGER, "Node created: fibonacci_action_server");
 
     let mut server = node
         .create_action_server::<Fibonacci>("/fibonacci")
         .expect("Failed to create action server");
-    info!("Action server created: /fibonacci");
+    nros_info!(&LOGGER, "Action server created: /fibonacci");
 
-    info!("Waiting for action goals...");
-    info!("(Run native-rs-action-client in another terminal)");
+    nros_info!(&LOGGER, "Waiting for action goals...");
+    nros_info!(&LOGGER, "(Run native-rs-action-client in another terminal)");
 
     // Main loop - handle incoming goals
     loop {
         executor.spin_once(core::time::Duration::from_millis(20));
 
         if let Err(e) = server.try_handle_get_result() {
-            error!("Error handling result request: {:?}", e);
+            nros_error!(&LOGGER, "Error handling result request: {:?}", e);
         }
 
         if let Err(e) = server.try_handle_cancel(|goal_id, status| {
-            info!("Cancel request: {} status={:?}", goal_id, status);
+            nros_info!(&LOGGER, "Cancel request: {} status={:?}", goal_id, status);
             if status.is_active() {
                 CancelResponse::Ok
             } else {
                 CancelResponse::GoalTerminated
             }
         }) {
-            error!("Error handling cancel request: {:?}", e);
+            nros_error!(&LOGGER, "Error handling cancel request: {:?}", e);
         }
 
         // Try to accept new goals
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
-            info!("Received goal request: order={}", goal.order);
+            nros_info!(&LOGGER, "Received goal request: order={}", goal.order);
             GoalResponse::AcceptAndExecute
         }) {
             Ok(Some(goal_id)) => {
-                info!("Goal accepted: {}", goal_id);
+                nros_info!(&LOGGER, "Goal accepted: {}", goal_id);
 
                 if let Some(active_goal) = server.get_goal(&goal_id) {
                     let order = active_goal.goal.order;
@@ -99,15 +105,15 @@ fn main() {
                         };
 
                         if let Err(e) = server.publish_feedback(&goal_id, &feedback) {
-                            error!("Failed to publish feedback: {:?}", e);
+                            nros_error!(&LOGGER, "Failed to publish feedback: {:?}", e);
                         } else {
-                            info!("Feedback: {:?}", feedback.sequence);
+                            nros_info!(&LOGGER, "Feedback: {:?}", feedback.sequence);
                         }
 
                         executor.spin_once(core::time::Duration::from_millis(20));
 
                         match server.try_handle_cancel(|cancel_id, status| {
-                            info!("Cancel request: {} status={:?}", cancel_id, status);
+                            nros_info!(&LOGGER, "Cancel request: {} status={:?}", cancel_id, status);
                             if cancel_id.uuid == goal_id.uuid && status.is_active() {
                                 CancelResponse::Ok
                             } else if status.is_terminal() {
@@ -119,15 +125,15 @@ fn main() {
                             Ok(Some((cancel_id, CancelResponse::Ok)))
                                 if cancel_id.uuid == goal_id.uuid =>
                             {
-                                info!("Goal cancellation accepted: {}", goal_id);
+                                nros_info!(&LOGGER, "Goal cancellation accepted: {}", goal_id);
                                 canceled = true;
                             }
                             Ok(_) => {}
-                            Err(e) => error!("Error handling cancel request: {:?}", e),
+                            Err(e) => nros_error!(&LOGGER, "Error handling cancel request: {:?}", e),
                         }
 
                         if let Err(e) = server.try_handle_get_result() {
-                            error!("Error handling result request: {:?}", e);
+                            nros_error!(&LOGGER, "Error handling result request: {:?}", e);
                         }
 
                         if canceled {
@@ -139,10 +145,10 @@ fn main() {
 
                     let result = FibonacciResult { sequence };
                     if canceled {
-                        info!("Goal canceled: {:?}", result.sequence);
+                        nros_info!(&LOGGER, "Goal canceled: {:?}", result.sequence);
                         server.complete_goal(&goal_id, GoalStatus::Canceled, result);
                     } else {
-                        info!("Goal completed: {:?}", result.sequence);
+                        nros_info!(&LOGGER, "Goal completed: {:?}", result.sequence);
                         server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
                     }
                 }
@@ -151,7 +157,7 @@ fn main() {
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             Err(e) => {
-                error!("Error accepting goal: {:?}", e);
+                nros_error!(&LOGGER, "Error accepting goal: {:?}", e);
             }
         }
     }

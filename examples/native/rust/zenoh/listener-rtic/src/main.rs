@@ -7,14 +7,20 @@
 //!
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-listener/`.
 
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("listener-rtic");
 
-    info!("nros RTIC-pattern Listener (native)");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros RTIC-pattern Listener (native)");
 
     let config = ExecutorConfig::from_env().node_name("listener");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
@@ -32,17 +38,17 @@ fn main() {
         .create_subscription::<Int32>("/chatter")
         .expect("Failed to create subscription");
 
-    info!("Waiting for Int32 messages on /chatter (RTIC pattern)...");
+    nros_info!(&LOGGER, "Waiting for Int32 messages on /chatter (RTIC pattern)...");
 
     loop {
         executor.spin_once(core::time::Duration::from_millis(0));
 
         match subscription.try_recv() {
             Ok(Some(msg)) => {
-                info!("Received: {}", msg.data);
+                nros_info!(&LOGGER, "Received: {}", msg.data);
             }
             Ok(None) => {}
-            Err(e) => log::error!("Receive error: {:?}", e),
+            Err(e) => nros_error!(&LOGGER, "Receive error: {:?}", e),
         }
 
         std::thread::sleep(std::time::Duration::from_millis(10));

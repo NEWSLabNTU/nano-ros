@@ -23,15 +23,21 @@
 //! ```
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use log::{error, info};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-client-async");
+
+extern crate nros_platform_cffi as _;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    env_logger::init();
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
 
-    info!("nros Async Service Client Example (tokio background spin)");
-    info!("==========================================================");
+    nros_info!(&LOGGER, "nros Async Service Client Example (tokio background spin)");
+    nros_info!(&LOGGER, "==========================================================");
 
     // Create executor
     let config = ExecutorConfig::from_env().node_name("async_service_client");
@@ -53,8 +59,8 @@ async fn main() {
             .expect("Failed to create client")
     };
 
-    info!("Service client created for: /add_two_ints");
-    info!("Using tokio background spin pattern");
+    nros_info!(&LOGGER, "Service client created for: /add_two_ints");
+    nros_info!(&LOGGER, "Using tokio background spin pattern");
 
     // LocalSet enables spawn_local (single-threaded, no Send bound needed)
     let local = tokio::task::LocalSet::new();
@@ -72,30 +78,30 @@ async fn main() {
 
             for (a, b) in test_cases {
                 let request = AddTwoIntsRequest { a, b };
-                info!("Calling service: {} + {} = ?", a, b);
+                nros_info!(&LOGGER, "Calling service: {} + {} = ?", a, b);
 
                 let reply = match client.call(&request) {
                     Ok(promise) => match promise.await {
                         Ok(reply) => reply,
                         Err(e) => {
-                            error!("Service call failed: {:?}", e);
+                            nros_error!(&LOGGER, "Service call failed: {:?}", e);
                             std::process::exit(1);
                         }
                     },
                     Err(e) => {
-                        error!("Failed to send request: {:?}", e);
+                        nros_error!(&LOGGER, "Failed to send request: {:?}", e);
                         std::process::exit(1);
                     }
                 };
 
-                info!("Response: {} + {} = {}", a, b, reply.sum);
+                nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, reply.sum);
                 assert_eq!(reply.sum, a + b, "Sum mismatch!");
 
                 // Brief pause between calls
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
 
-            info!("All async service calls completed successfully!");
+            nros_info!(&LOGGER, "All async service calls completed successfully!");
         })
         .await;
 }

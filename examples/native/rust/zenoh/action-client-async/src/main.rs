@@ -22,15 +22,21 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use futures::StreamExt;
-use log::{error, info, warn};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-client-async");
+
+extern crate nros_platform_cffi as _;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    env_logger::init();
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
 
-    info!("nros Async Action Client Example (tokio + StreamExt)");
-    info!("=====================================================");
+    nros_info!(&LOGGER, "nros Async Action Client Example (tokio + StreamExt)");
+    nros_info!(&LOGGER, "=====================================================");
 
     // Create executor
     let config = ExecutorConfig::from_env().node_name("async_fibonacci_client");
@@ -52,11 +58,11 @@ async fn main() {
             .expect("Failed to create action client")
     };
 
-    info!("Action client created: /fibonacci");
+    nros_info!(&LOGGER, "Action client created: /fibonacci");
 
     let goal = FibonacciGoal { order: 10 };
     let order = goal.order;
-    info!("Sending goal: order={}", order);
+    nros_info!(&LOGGER, "Sending goal: order={}", order);
 
     // LocalSet enables spawn_local (single-threaded, no Send bound needed)
     let local = tokio::task::LocalSet::new();
@@ -72,7 +78,7 @@ async fn main() {
             let (goal_id, promise) = match client.send_goal(&goal) {
                 Ok(pair) => pair,
                 Err(e) => {
-                    error!("Failed to send goal: {:?}", e);
+                    nros_error!(&LOGGER, "Failed to send goal: {:?}", e);
                     return;
                 }
             };
@@ -80,19 +86,19 @@ async fn main() {
             let accepted = match promise.await {
                 Ok(accepted) => accepted,
                 Err(e) => {
-                    error!("Goal acceptance failed: {:?}", e);
+                    nros_error!(&LOGGER, "Goal acceptance failed: {:?}", e);
                     return;
                 }
             };
 
             if !accepted {
-                warn!("Goal was rejected by the server");
+                nros_warn!(&LOGGER, "Goal was rejected by the server");
                 return;
             }
-            info!("Goal accepted! ID: {:?}", goal_id);
+            nros_info!(&LOGGER, "Goal accepted! ID: {:?}", goal_id);
 
             // ── Step 2: Stream feedback with StreamExt ──────────────
-            info!("Streaming feedback...");
+            nros_info!(&LOGGER, "Streaming feedback...");
             {
                 let mut stream = client.feedback_stream_for(goal_id);
                 let mut feedback_count = 0;
@@ -103,15 +109,15 @@ async fn main() {
                     match result {
                         Ok(feedback) => {
                             feedback_count += 1;
-                            info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
+                            nros_info!(&LOGGER, "Feedback #{}: {:?}", feedback_count, feedback.sequence);
 
                             if feedback.sequence.len() as i32 > order {
-                                info!("Received all feedback, action completed!");
+                                nros_info!(&LOGGER, "Received all feedback, action completed!");
                                 break;
                             }
                         }
                         Err(e) => {
-                            error!("Feedback error: {:?}", e);
+                            nros_error!(&LOGGER, "Feedback error: {:?}", e);
                             break;
                         }
                     }
@@ -122,17 +128,17 @@ async fn main() {
             match client.get_result(&goal_id) {
                 Ok(promise) => match promise.await {
                     Ok((status, result)) => {
-                        info!(
+                        nros_info!(&LOGGER, 
                             "Result: status={:?}, sequence={:?}",
                             status, result.sequence
                         );
                     }
-                    Err(e) => error!("get_result failed: {:?}", e),
+                    Err(e) => nros_error!(&LOGGER, "get_result failed: {:?}", e),
                 },
-                Err(e) => error!("get_result failed: {:?}", e),
+                Err(e) => nros_error!(&LOGGER, "get_result failed: {:?}", e),
             }
 
-            info!("Async action client finished");
+            nros_info!(&LOGGER, "Async action client finished");
         })
         .await;
 }

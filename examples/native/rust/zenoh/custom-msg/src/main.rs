@@ -28,8 +28,13 @@
 //! The .msg files in this example's `msg/` directory show the format.
 
 use heapless::String as HString;
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::{CdrReader, CdrWriter, DeserError, Deserialize, RosMessage, SerError, Serialize};
+
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("custom-msg");
+
+extern crate nros_platform_cffi as _;
 
 // =============================================================================
 // Custom Message Type Definitions
@@ -161,7 +166,8 @@ fn test_roundtrip<T: RosMessage + Serialize + Deserialize + PartialEq + std::fmt
 // =============================================================================
 
 fn main() {
-    env_logger::init();
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
 
     println!("nros Custom Message Example (Rust)");
     println!("======================================");
@@ -218,7 +224,7 @@ fn main() {
                 return;
             }
         };
-        info!("Session created");
+        nros_info!(&LOGGER, "Session created");
 
         // Create publisher
         let mut node = executor
@@ -227,7 +233,7 @@ fn main() {
         let publisher = node
             .create_publisher::<SensorReading>("/sensor_data")
             .expect("Failed to create publisher");
-        info!("Publisher created for: /sensor_data");
+        nros_info!(&LOGGER, "Publisher created for: /sensor_data");
 
         // Register subscription callback
         executor
@@ -241,7 +247,7 @@ fn main() {
                 },
             )
             .expect("Failed to add subscription");
-        info!("Subscriber created for: /sensor_data");
+        nros_info!(&LOGGER, "Subscriber created for: /sensor_data");
 
         println!();
         println!("Publishing sensor readings...");

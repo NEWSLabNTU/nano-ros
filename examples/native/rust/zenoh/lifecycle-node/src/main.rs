@@ -30,42 +30,46 @@
 
 use core::{ffi::c_void, time::Duration};
 
-use log::info;
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::{
     Executor, ExecutorConfig,
     lifecycle::{LifecycleCallbackSlot, TransitionResult},
 };
 
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("lifecycle-node");
+
+extern crate nros_platform_cffi as _;
+
 unsafe extern "C" fn on_configure(_ctx: *mut c_void) -> u8 {
-    info!("[callback] on_configure — allocating resources");
+    nros_info!(&LOGGER, "[callback] on_configure — allocating resources");
     TransitionResult::Success as u8
 }
 
 unsafe extern "C" fn on_activate(_ctx: *mut c_void) -> u8 {
-    info!("[callback] on_activate — starting work");
+    nros_info!(&LOGGER, "[callback] on_activate — starting work");
     TransitionResult::Success as u8
 }
 
 unsafe extern "C" fn on_deactivate(_ctx: *mut c_void) -> u8 {
-    info!("[callback] on_deactivate — pausing work");
+    nros_info!(&LOGGER, "[callback] on_deactivate — pausing work");
     TransitionResult::Success as u8
 }
 
 unsafe extern "C" fn on_cleanup(_ctx: *mut c_void) -> u8 {
-    info!("[callback] on_cleanup — releasing resources");
+    nros_info!(&LOGGER, "[callback] on_cleanup — releasing resources");
     TransitionResult::Success as u8
 }
 
 unsafe extern "C" fn on_shutdown(_ctx: *mut c_void) -> u8 {
-    info!("[callback] on_shutdown — finalizing");
+    nros_info!(&LOGGER, "[callback] on_shutdown — finalizing");
     TransitionResult::Success as u8
 }
 
 fn main() {
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .init();
-    info!("Lifecycle demo starting…");
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+    nros_info!(&LOGGER, "Lifecycle demo starting…");
 
     let config = ExecutorConfig::from_env().node_name("lifecycle_demo");
     // Phase 115.L.5 — install zenoh-pico C-vtable backend.
@@ -79,7 +83,7 @@ fn main() {
     executor
         .register_lifecycle_services()
         .expect("Failed to register lifecycle services");
-    info!("Lifecycle services registered on /lifecycle_demo");
+    nros_info!(&LOGGER, "Lifecycle services registered on /lifecycle_demo");
 
     // Register transition callbacks on the executor-owned state machine.
     let sm = executor
@@ -91,7 +95,7 @@ fn main() {
     sm.register(LifecycleCallbackSlot::Cleanup, Some(on_cleanup));
     sm.register(LifecycleCallbackSlot::Shutdown, Some(on_shutdown));
 
-    info!("Ready. Drive the lifecycle with `ros2 lifecycle set /lifecycle_demo configure`, etc.");
+    nros_info!(&LOGGER, "Ready. Drive the lifecycle with `ros2 lifecycle set /lifecycle_demo configure`, etc.");
 
     // Spin indefinitely. Each spin_once drains the lifecycle services so
     // `ros2 lifecycle` queries round-trip.

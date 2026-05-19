@@ -18,14 +18,20 @@
 //! ```
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
-use log::{error, info, warn};
+use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
 
-fn main() {
-    env_logger::init();
+// Phase 88.16.B — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("action-client");
 
-    info!("nros Action Client Example");
-    info!("================================");
+extern crate nros_platform_cffi as _;
+
+fn main() {
+    nros_log::register_logger(&LOGGER);
+    nros_log::init(nros_log::sinks::default());
+
+    nros_info!(&LOGGER, "nros Action Client Example");
+    nros_info!(&LOGGER, "================================");
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("fibonacci_action_client");
@@ -41,22 +47,22 @@ fn main() {
     let mut node = executor
         .create_node("fibonacci_action_client")
         .expect("Failed to create node");
-    info!("Node created: fibonacci_action_client");
+    nros_info!(&LOGGER, "Node created: fibonacci_action_client");
 
     let mut client = node
         .create_action_client::<Fibonacci>("/fibonacci")
         .expect("Failed to create action client");
-    info!("Action client created: /fibonacci");
+    nros_info!(&LOGGER, "Action client created: /fibonacci");
 
     // Create goal
     let goal = FibonacciGoal { order: 10 };
-    info!("Sending goal: order={}", goal.order);
+    nros_info!(&LOGGER, "Sending goal: order={}", goal.order);
 
     // Send goal using the Promise pattern
     let (goal_id, mut promise) = match client.send_goal(&goal) {
         Ok(pair) => pair,
         Err(e) => {
-            error!("Failed to send goal: {:?}", e);
+            nros_error!(&LOGGER, "Failed to send goal: {:?}", e);
             std::process::exit(1);
         }
     };
@@ -65,18 +71,18 @@ fn main() {
     let accepted = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok(accepted) => accepted,
         Err(e) => {
-            error!("Goal acceptance failed: {:?}", e);
+            nros_error!(&LOGGER, "Goal acceptance failed: {:?}", e);
             std::process::exit(1);
         }
     };
 
     if !accepted {
-        warn!("Goal was rejected by the server");
+        nros_warn!(&LOGGER, "Goal was rejected by the server");
         std::process::exit(1);
     }
-    info!("Goal accepted! ID: {:?}", goal_id);
+    nros_info!(&LOGGER, "Goal accepted! ID: {:?}", goal_id);
 
-    info!("Waiting for feedback...");
+    nros_info!(&LOGGER, "Waiting for feedback...");
 
     // Receive feedback via FeedbackStream (drives I/O internally, filters by goal ID)
     let mut stream = client.feedback_stream_for(goal_id);
@@ -86,21 +92,21 @@ fn main() {
         match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
             Ok(Some(feedback)) => {
                 feedback_count += 1;
-                info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
+                nros_info!(&LOGGER, "Feedback #{}: {:?}", feedback_count, feedback.sequence);
 
                 if feedback.sequence.len() as i32 > goal.order {
-                    info!("Received all feedback, action completed!");
-                    info!("Final sequence: {:?}", feedback.sequence);
+                    nros_info!(&LOGGER, "Received all feedback, action completed!");
+                    nros_info!(&LOGGER, "Final sequence: {:?}", feedback.sequence);
                     break;
                 }
             }
             Ok(None) => {} // no feedback in this window, retry
             Err(e) => {
-                error!("Error receiving feedback: {:?}", e);
+                nros_error!(&LOGGER, "Error receiving feedback: {:?}", e);
                 break;
             }
         }
     }
 
-    info!("Action client finished");
+    nros_info!(&LOGGER, "Action client finished");
 }
