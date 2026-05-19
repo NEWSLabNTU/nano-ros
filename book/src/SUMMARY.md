@@ -2,19 +2,32 @@
 
 [Introduction](./introduction.md)
 
+# Getting Started (Linux first)
+
+- [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
+- [Install + first build](./getting-started/installation.md)
+- [First Node — Rust](./getting-started/first-node-rust.md)
+- [First Node — C](./getting-started/first-node-c.md)
+- [First Node — C++](./getting-started/first-node-cpp.md)
+
+# Embedded Starters
+
+- [FreeRTOS (QEMU)](./getting-started/freertos.md)
+- [Zephyr (west module)](./getting-started/integration-zephyr.md)
+- [NuttX (apps/external)](./getting-started/integration-nuttx.md)
+- [ThreadX](./getting-started/threadx.md)
+- [ESP32 (esp-hal)](./getting-started/esp32.md)
+- [ESP32 (ESP-IDF component)](./getting-started/integration-esp-idf.md)
+- [PlatformIO library](./getting-started/integration-platformio.md)
+- [Bare-metal Cortex-M3](./getting-started/bare-metal.md)
+- [PX4 Autopilot](./getting-started/px4.md)
+- [Native POSIX (reference)](./platform-guides/native-posix.md)
+
 # User Guide
 
 - [Application Workflow](./user-guide/workflow.md)
-- [Setup Compared to Standard ROS 2](./start-here/setup-compared-to-ros2.md)
-- [Installation](./getting-started/installation.md)
-- [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
-- [Integration: Zephyr (`west` module)](./getting-started/integration-zephyr.md)
-- [Integration: ESP-IDF component](./getting-started/integration-esp-idf.md)
-- [Integration: PlatformIO library](./getting-started/integration-platformio.md)
-- [Integration: NuttX external app](./getting-started/integration-nuttx.md)
-- [Integration: PX4 external module](./getting-started/integration-px4.md)
 - [Package Preparation](./user-guide/package-preparation.md)
-- [First Native Rust Node](./getting-started/native.md)
+- [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)
 - [Deployment Workflow](./user-guide/deployment.md)
@@ -29,17 +42,6 @@
 
 - [Differences from Standard ROS 2](./concepts/ros2-comparison.md)
 - [Migration Guide](./start-here/migration-guide.md)
-
-# Platform Guides
-
-- [Native POSIX](./platform-guides/native-posix.md)
-- [Zephyr](./getting-started/zephyr.md)
-- [FreeRTOS (QEMU)](./getting-started/freertos.md)
-- [NuttX (QEMU)](./getting-started/nuttx.md)
-- [ThreadX](./getting-started/threadx.md)
-- [Bare-metal (QEMU ARM)](./getting-started/bare-metal.md)
-- [ESP32](./getting-started/esp32.md)
-- [PX4 Autopilot](./getting-started/px4.md)
 
 # Concepts
 
