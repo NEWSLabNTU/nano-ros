@@ -89,6 +89,7 @@ build:
     for dir in \
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
         packages/testing/nros-tests/bins/lan9118-qemu \
+        packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal \
         packages/testing/nros-bench/wcet-cycles-qemu \
         packages/testing/nros-bench/large-msg-baremetal; do
         echo "  build $dir"
@@ -120,6 +121,7 @@ build-fixtures:
     dirs+=(
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu
         packages/testing/nros-tests/bins/lan9118-qemu
+        packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal
         packages/testing/nros-bench/wcet-cycles-qemu
         packages/testing/nros-bench/large-msg-baremetal
         packages/reference/qemu-smoltcp-bridge
@@ -362,6 +364,7 @@ clean: clean-zenoh-pico
     for dir in \
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
         packages/testing/nros-tests/bins/lan9118-qemu \
+        packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal \
         packages/testing/nros-bench/wcet-cycles-qemu \
         packages/testing/nros-bench/large-msg-baremetal; do
         rm -rf "$dir/target"

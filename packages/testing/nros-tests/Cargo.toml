@@ -265,5 +265,10 @@ path = "tests/integration_px4.rs"
 name = "logging"
 path = "tests/logging.rs"
 
+# Phase 88.15 — RTOS smoke fixtures + QEMU output capture.
+[[test]]
+name = "logging_smoke"
+path = "tests/logging_smoke.rs"
+
 [lints]
 workspace = true

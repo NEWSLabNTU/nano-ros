@@ -281,6 +281,37 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       UART-capture verification stays best-effort and lives with the
       per-platform smoke tests.
 
+- [ ] 88.15 — RTOS smoke fixtures + QEMU E2E capture asserts. One
+      minimal `logging-smoke` fixture binary per supported RTOS lives
+      under `packages/testing/nros-tests/bins/`; each emits one record
+      per severity through `nros_*!` and exits via the platform's
+      "exit success" path. A new integration test
+      `packages/testing/nros-tests/tests/logging_smoke.rs` boots each
+      fixture under QEMU and asserts the rendered `[TRACE]` / `[DEBUG]`
+      / `[INFO]` / `[WARN]` / `[ERROR]` / `[FATAL]` lines appear in the
+      captured UART / semihosting / native_sim output. Platforms in
+      scope:
+      - [x] 88.15.a — MPS2-AN385 bare-metal (semihosting via the
+            `cortex-m-semihosting` writer wired in
+            `nros-platform-mps2-an385::PlatformLog`). Fixture at
+            `packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal/`;
+            harness at
+            `packages/testing/nros-tests/tests/logging_smoke.rs::logging_smoke_mps2_baremetal_emits_every_severity`
+            (drains stderr; writer routes to `hstderr()`).
+      - [ ] 88.15.b — MPS2-AN385 + FreeRTOS (semihosting writer
+            registered by `nros-board-mps2-an385-freertos::run`).
+      - [ ] 88.15.c — NuttX QEMU virt (syslog via
+            `nros-platform-nuttx::PlatformLog`).
+      - [ ] 88.15.d — ThreadX RISC-V QEMU virt (UART writer fn-ptr
+            registered by `nros-board-threadx-qemu-riscv64::run`).
+      - [ ] 88.15.e — Zephyr `native_sim` (printk via
+            `nros-platform-zephyr::PlatformLog`); skip cleanly when
+            `west` / `ZEPHYR_BASE` is unavailable.
+      - [ ] 88.15.f — ESP32 QEMU (UART via
+            `esp_log_write` in `nros-platform-esp-idf::PlatformLog`);
+            skip cleanly when the Espressif QEMU fork isn't
+            installed.
+
 ## Design Notes
 
 - **`Logger` shape**:

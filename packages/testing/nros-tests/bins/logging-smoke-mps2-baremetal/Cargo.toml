@@ -1,0 +1,30 @@
+[workspace]
+
+[package]
+name = "logging-smoke-mps2-baremetal"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 88.15.a — bare-metal MPS2-AN385 nros-log smoke fixture (QEMU semihosting capture)"
+
+[[bin]]
+name = "logging-smoke-mps2-baremetal"
+test = false
+bench = false
+
+[dependencies]
+# `nros-log` facade — `default-features = false` strips std/alloc so the
+# binary stays `no_std`. The `max-level-trace` ceiling stays on by
+# default; we want every severity to flow through.
+nros-log = { path = "../../../../core/nros-log", default-features = false }
+# Pulls in the `PlatformSink` → `nros_platform_log_write` ABI shim.
+nros-platform-cffi = { path = "../../../../core/nros-platform-cffi", default-features = false }
+# Provides the `nros_platform_log_write` symbol via
+# `nros_platform_export_log!(Mps2An385Platform)` — the actual semihosting
+# writer under test.
+nros-platform-mps2-an385 = { path = "../../../../platforms/nros-platform-mps2-an385", features = ["cffi-export"] }
+
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }

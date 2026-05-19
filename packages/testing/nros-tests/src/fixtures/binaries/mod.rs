@@ -360,6 +360,24 @@ pub fn qemu_binary() -> PathBuf {
         .to_path_buf()
 }
 
+/// Cached path to the Phase 88.15.a `logging-smoke-mps2-baremetal`
+/// fixture binary (bare-metal MPS2-AN385 nros-log smoke).
+static LOGGING_SMOKE_MPS2_BAREMETAL_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt Phase 88.15.a logging smoke binary. The
+/// fixture must already be built (`just qemu build-fixtures`).
+pub fn build_logging_smoke_mps2_baremetal() -> TestResult<&'static Path> {
+    LOGGING_SMOKE_MPS2_BAREMETAL_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/logging-smoke-mps2-baremetal",
+                "logging-smoke-mps2-baremetal",
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Build the qemu-wcet-bench example and return its path (cached)
 pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY
