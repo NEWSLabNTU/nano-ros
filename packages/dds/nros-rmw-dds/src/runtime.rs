@@ -274,8 +274,30 @@ impl NrosSpawner {
     /// single-pass behaviour too (it just wouldn't have manifested as
     /// fast).
     pub fn drain_until_quiescent(&self, max_passes: usize) -> usize {
+        // Phase 117.2e — opaque side-effect anchor that survives
+        // LTO. Mirrors the volatile-counter pattern in
+        // `block_on_boxed`. Without this, `xtensa-esp32s3-none-elf`
+        // release builds appear to fuse the per-pass `drain_tasks`
+        // call into a single pass: `drain_tasks` itself returns a
+        // `usize` and accesses the spawner's `Mutex<VecDeque<...>>`,
+        // but LLVM apparently determines that the cross-pass state
+        // doesn't change in observable ways and elides re-execution.
+        // A volatile R/W on a stack-local anchor injects an
+        // observable side effect per iteration that breaks the
+        // fusion. Empirically: without this, talker hangs after
+        // "Ethernet ready" because `block_on(create_participant)`
+        // never sees the factory mailbox handler's
+        // `reply_sender.send(...)` (the actor task is never polled
+        // after the first iteration).
+        let pass_anchor: core::cell::UnsafeCell<u32> = core::cell::UnsafeCell::new(0);
         let mut total = 0;
         for _ in 0..max_passes {
+            // SAFETY: single-threaded access; the volatile R/W pair
+            // creates an opaque-to-LLVM side effect per iteration.
+            unsafe {
+                let v = core::ptr::read_volatile(pass_anchor.get()).wrapping_add(1);
+                core::ptr::write_volatile(pass_anchor.get(), v);
+            }
             let polled = self.drain_tasks();
             total += polled;
             if polled == 0 {
@@ -406,10 +428,30 @@ where
     pub fn block_on_boxed<T>(&self, mut f: Pin<Box<dyn Future<Output = T> + '_>>) -> T {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
+        // Phase 117.2e — opaque side-effect counter that survives
+        // LTO. Without this, LLVM apparently fuses the `loop { ...
+        // poll → drain → sleep }` shape on `xtensa-esp32s3-none-elf`
+        // such that the outer Future is only polled once: the
+        // `noop_waker` provides no observable "wake might happen"
+        // signal, the platform Sleep::sleep_ms is treated as
+        // side-effect-free at the Rust visibility boundary (the
+        // body lives across an `extern "C"` boundary and LLVM has
+        // no way to prove progress), and the future's state
+        // machine never advances past its first Pending. Adding a
+        // volatile counter pinned by `read_volatile` injects an
+        // observable side effect per iteration that breaks the
+        // fusion. Verified by toggling the probe build on /off:
+        // with the counter the trace shows iter=1 (Pending) →
+        // drain → iter=2 (Ready); without, the second poll never
+        // happens and `block_on` deadlocks.
         loop {
+            #[cfg(feature = "debug-esp-println")]
+            esp_println::println!("[block_on] iter");
             // Poll the caller's future first; if it's already ready we
             // don't need to drive any background work.
             if let Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+                #[cfg(feature = "debug-esp-println")]
+                esp_println::println!("[block_on] READY");
                 return v;
             }
             // Drive background tasks (RTPS receive loops, reliability

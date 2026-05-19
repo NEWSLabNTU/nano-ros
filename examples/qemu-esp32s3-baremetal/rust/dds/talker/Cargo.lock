@@ -1148,6 +1148,7 @@ name = "nros-rmw-dds"
 version = "0.1.0"
 dependencies = [
  "dust_dds",
+ "esp-println",
  "heapless 0.8.0",
  "linkme",
  "nros-core",

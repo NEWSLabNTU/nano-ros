@@ -146,11 +146,9 @@ impl Rmw for DdsRmw {
             #[cfg(feature = "debug-cortex-m-semihosting")]
             cortex_m_semihosting::hprintln!("[nros-rmw-dds] DdsRmw::open: pre block_on");
             #[cfg(feature = "debug-esp-println")]
-            esp_println::println!("[nros-rmw-dds] DdsRmw::open: pre factory new");
+            esp_println::println!("[nros-rmw-dds] DdsRmw::open: pre block_on");
             let factory =
                 DomainParticipantFactoryAsync::new(runtime.clone(), app_id, host_id, close_ops);
-            #[cfg(feature = "debug-esp-println")]
-            esp_println::println!("[nros-rmw-dds] DdsRmw::open: pre block_on");
             let participant = runtime
                 .block_on(factory.create_participant(
                     config.domain_id as i32,
@@ -159,12 +157,12 @@ impl Rmw for DdsRmw {
                     NO_STATUS,
                 ))
                 .map_err(|_| TransportError::ConnectionFailed)?;
+            #[cfg(feature = "debug-esp-println")]
+            esp_println::println!("[nros-rmw-dds] DdsRmw::open: post block_on");
             #[cfg(feature = "debug-cortex-m-semihosting")]
             cortex_m_semihosting::hprintln!(
                 "[nros-rmw-dds] DdsRmw::open: post block_on, session ready"
             );
-            #[cfg(feature = "debug-esp-println")]
-            esp_println::println!("[nros-rmw-dds] DdsRmw::open: post block_on");
 
             Ok(DdsSession::new_nostd(
                 runtime_arc,
