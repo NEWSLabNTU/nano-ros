@@ -813,7 +813,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     client.callbacks.goal_response = Some(blocking_goal_cb);
     client.callbacks.context = core::ptr::null_mut();
 
-    // Spin executor until flag set or timeout (10 s wall-clock).
+    // Spin executor until flag set or timeout (30 s wall-clock).
     //
     // Phase 89.3: wall-clock budgeting instead of `for _ in 0..1000`
     // (same class of bug fixed for service clients in 89.2). On
@@ -822,9 +822,15 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // gossip, interest messages) — a 1000-iteration budget collapses
     // to milliseconds of real time and the goal-response callback
     // never has a chance to fire before we return Error.
+    //
+    // Phase 160.C.2 — bumped 10 s → 30 s. Zephyr zenoh-pico's
+    // declare-cascade slowness extends to the get-query path too;
+    // server's queryable callback may not run for ~12 s after the
+    // client sends the goal (lease/keepalive serialization). The
+    // 10 s budget was racing this on test_zephyr_cpp_action_server_to_client_e2e.
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
     let start_ns = crate::nros_cpp_time_ns();
-    let timeout_ns: u64 = 10_000_000_000; // 10 s
+    let timeout_ns: u64 = 30_000_000_000; // 30 s
     loop {
         let _ = ctx
             .executor
