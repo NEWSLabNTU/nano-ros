@@ -1,4 +1,53 @@
-# Phase 111: `nros` CLI + Multi-Channel Release Pipeline
+# Phase 111: `nros` CLI + Multi-Channel Release Pipeline (CLOSED 2026-05-19 — superseded)
+
+**Status:** **CLOSED 2026-05-19.** Pillar A (CLI utility) shipped — 13/13 work items
+done. Pillars B–G (release-channel pipelines: crates.io, Arduino, ESP-IDF,
+PlatformIO, Zephyr west, GitHub Releases tarball, Docker agents) are
+superseded by the Phase 123 "source-only across the board" locked decision
+(2026-05-14, see `docs/roadmap/archived/phase-123-build-and-api-revision.md`).
+
+That decision rules out **both** precompiled binary distribution (too many
+chip × board × RMW × ROS-edition variants to maintain at acceptable cost)
+**and** crates.io publication (version-drift vs. in-repo HEAD, mandatory
+semver + yank overhead, half-published / half-not split). Canonical user
+entry is now `git clone --branch=v<X.Y.Z>` + `tools/setup.sh` + `colcon
+build`, with nano-ros sitting as a colcon-discoverable package inside the
+user's workspace `src/` (Pattern A).
+
+Phase 111's Pillars B–G all contradict that policy:
+- **B** (crates.io publish) — directly rejected by Phase 123's Pattern A note
+  ("crates.io published reuse: ❌ source-only").
+- **C / D / E** (Arduino zip / ESP-IDF component / PIO library) — all
+  precompiled per-arch `.a` artifacts.
+- **F** (Zephyr west module) — was the cleanest source-pointer channel,
+  but `git clone + tools/setup.sh` already covers that case (`setup.sh`
+  runs `west init -l` when the user opts into Zephyr targets), so the
+  separate west-module shape adds maintenance with no user benefit.
+- **G.1** (GitHub Releases tarball with `find_package(NanoRos)`-installable
+  layout) — broken: Phase 140 ripped out every `install(...)` rule and
+  every `Config.cmake.in` template, so the `find_package` shape no longer
+  exists in-tree (consumers do `add_subdirectory(<repo-root>)` instead).
+- **G.2-4** (Docker agent images for `zenohd` / `MicroXRCEAgent`) —
+  binary distribution; the source-only policy applies.
+- **H** (docs) — A + F docs were canonical, but the source-only entry is
+  now documented in `book/src/getting-started/` against the Pattern A
+  `tools/setup.sh` flow, so H's per-channel pages are moot.
+
+**What lives on past Phase 111:**
+- The `nros` binary itself (Pillar A) remains shipped and supported. New
+  user-facing CLI work goes under whatever sub-phase needs it.
+- The A.3 follow-up (split `cargo-nano-ros` into separate lib + bin crates
+  to break the `cargo-nano-ros → nros-cli-core → cargo-nano-ros` Cargo
+  cycle) is a small refactor — file as a one-off if a contributor wants
+  to land it.
+- The Phase 111.B.1 crates.io metadata audit
+  (`docs/development/crates-io-metadata-audit.md`) is now a no-op record;
+  metadata fields are still useful for `cargo metadata` consumers but no
+  crate will ever be published.
+
+---
+
+## Original goal (HISTORICAL — superseded above)
 
 **Goal:** Ship a single `nros` command-line utility as the canonical user entry point for nano-ros (scaffolding, message generation, configuration, build, run), and stand up a release pipeline that publishes Rust crates to crates.io and C/C++ libraries to per-platform channels (Arduino Library Registry, ESP-IDF Component Registry, PlatformIO, Zephyr west module, GitHub Releases tarball).
 

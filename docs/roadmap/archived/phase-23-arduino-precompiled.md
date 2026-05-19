@@ -1,4 +1,35 @@
-# Phase 23: Precompiled C Library for Arduino IDE
+# Phase 23: Precompiled C Library for Arduino IDE (CLOSED 2026-05-19 — superseded)
+
+**Status**: **CLOSED 2026-05-19.** Superseded by the Phase 123 "source-only
+across the board" locked decision (2026-05-14, see
+`docs/roadmap/archived/phase-123-build-and-api-revision.md`).
+
+Precompiled binary distribution is permanently off the roadmap: the
+chip × board × RMW × ROS-edition matrix has too many variants to maintain
+at acceptable cost. The canonical Arduino-user entry, like every other
+audience, is `git clone --branch=v<X.Y.Z>` + `tools/setup.sh` + `colcon
+build` against Pattern A workspace shape.
+
+Arduino IDE users who want nano-ros today either:
+1. Use one of the per-RTOS examples under `examples/qemu-arm-*` /
+   `examples/esp32/` / `examples/zephyr/` as a copy-out template (Arduino
+   IDE's no-CMake constraint means an Arduino-specific template would
+   need to be hand-rolled — separate sub-phase if a real user demand
+   surfaces).
+2. Drop into a hosted RTOS shell (FreeRTOS / Zephyr / ESP-IDF) that runs
+   under the Arduino-board chip family, source-build there.
+
+The Phase 23 work that landed (subphases 23.1–23.6) is still valid as a
+**hand-rolled-template** reference: the C-API surface (`<NanoROS.h>`
+shape), the `library.properties` and `library.json` skeletons, the cross-
+arch interop research, the `external/micro_ros_arduino/` reference notes.
+None of it gets published, but if a future contributor wants to revive
+Arduino IDE support as a copy-out template, the design + per-arch test
+matrix work is preserved here.
+
+---
+
+## Original goal (HISTORICAL — superseded above)
 
 **Goal**: Provide a precompiled nros Arduino library that enables Arduino IDE users to publish/subscribe ROS 2 topics using a C API with transport setup helpers — no Rust toolchain required.
 
