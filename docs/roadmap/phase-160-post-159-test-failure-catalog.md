@@ -128,38 +128,67 @@ doesn't drive the DDS RTPS request/reply path to completion. Sync
 variant PASSES. Async-specific blocker, file as separate Embassy
 follow-up.
 
-### C. Zephyr cross-host bridge E2E (8 tests) → **needs new phase**
+### C. Zephyr cross-host bridge E2E (8 of 10 tests closed 2026-05-19)
 
 ```
-test_bidirectional_native_zephyr_e2e
-test_native_server_zephyr_client
-test_native_talker_to_zephyr_cpp_listener
-test_native_to_zephyr_e2e
-test_zephyr_cpp_action_server_to_client_e2e
-test_zephyr_cpp_service_server_to_client_e2e
-test_zephyr_cpp_talker_to_listener_e2e
-test_zephyr_cpp_talker_to_native_listener
-test_zephyr_action_e2e
-test_zephyr_talker_to_listener_e2e
-test_zephyr_to_native_e2e
+test_bidirectional_native_zephyr_e2e                       PASS
+test_native_server_zephyr_client                           PASS
+test_native_talker_to_zephyr_cpp_listener                  PASS
+test_native_to_zephyr_e2e                                  PASS
+test_zephyr_cpp_service_server_to_client_e2e               PASS
+test_zephyr_cpp_talker_to_listener_e2e                     PASS
+test_zephyr_cpp_talker_to_native_listener                  PASS  (8/10 PASS)
+test_zephyr_talker_to_listener_e2e                         PASS
+test_zephyr_to_native_e2e                                  PASS
+test_zephyr_action_e2e                                     STILL FAIL
+test_zephyr_cpp_action_server_to_client_e2e                STILL FAIL
 ```
 
-**Hypothesis (refuted 2026-05-19).** Tested cascade after 160.A;
-all 11 still fail with a DIFFERENT signature than A:
+**Root cause + fix (commit `57add997`).** Phase 159 NuttX bug in a
+different platform. Zephyr-side `tx.c` / `link.c` (compiled under
+`ZENOH_ZEPHYR`) see `_z_sys_net_socket_t = {int _fd}` (4 B); the
+alias TU (compiled by zpico-sys cargo under `NROS_PLATFORM_ALIASES`
+/ `ZENOH_GENERIC`) defines `_z_open_tcp` with 32 B opaque socket +
+16 B opaque endpoint. With `--allow-multiple-definition` the alias
+version wins at link, but the by-value endpoint arg ABI then
+disagrees between caller (8 B from `addrinfo*`) and callee (16 B
+opaque), corrupting the connect-time state →
+`Transport(ConnectionFailed)`.
 
-```
-[err] nros_cpp_talker: nros::init(...) -> -100
-socket_family_from_nsos_mid: socket family 6 not supported
-```
+Fix (mirrors Phase 159.D for NuttX):
+- `zephyr/CMakeLists.txt`: compile `zenoh-pico/src/system/zephyr/
+  network.c` (no longer skipped) so `_z_open_tcp` etc. come from a
+  TU that sees the Zephyr-platform 4-B socket type.
+- `zpico-sys/build.rs`: extend `NROS_ZENOH_PLATFORM_USES_UNIX` gate
+  to zephyr — alias TU's network section is `#ifndef`-elided at
+  cargo compile time so it doesn't shadow at link.
 
-`-100` is `NROS_RET_TRANSPORT_TX_FAILED` (Phase 155.B `_z_send_tcp`
-maps to this). Plus an NSOS POSIX-socket-shim warning about an
-unknown socket family. These tests use **zenoh** RMW (not XRCE
-like cluster A), and the failure is on the TX path post-handshake,
-not the support-init path A hit. Needs its own investigation
-(likely zenoh-pico bare-metal `_z_send_tcp` regression on
-Zephyr/NSOS, separate from NuttX's Phase 159 fix). Track as
-**160.C** (new follow-up).
+**Residue — 2 action tests (commit `487e3ac3` exposed real bug).**
+zenoh-pico on Zephyr serializes each queryable declaration at ~10 s
+under `Z_FEATURE_INTEREST=1`. `create_action_server` declares 3
+queryables → ~30 s readiness. Original 30 s timeouts hid this as
+"didn't reach readiness"; bumping to 60 s reaches the real bug:
+client `send_goal` times out after 10 s waiting for server's
+goal_response — server's queryable is supposedly declared but the
+get-query routing through zenohd doesn't deliver. Symptom:
+`Failed to send goal: -2` (`NROS_CPP_RET_TIMEOUT`).
+
+Hypotheses for the action residue (track as new sub-phase if needed):
+- zenoh-pico declare-flush behaviour under `Z_FEATURE_INTEREST=1` on
+  Zephyr — declare returns OK locally but DeclareInterest message
+  isn't transmitted until the next lease/keepalive boundary (~10 s).
+- Native_sim NSOS socket scheduling — host-loopback writes return
+  immediately but the actual flush waits for a context switch that
+  Zephyr's preempt threading rarely hits during the executor's busy
+  `spin_once(100ms)` loop.
+- Server's queryable callback may not be invoked even when the get
+  arrives (concurrency / mutex ordering between zpico_spin_once and
+  the queryable callback dispatch).
+
+Pubsub / service paths are unaffected (1 queryable / 0 queryables
+respectively). Action's 3-queryable declaration sequence amplifies
+the per-declare delay enough to push the goal-routing window past
+the 10 s send_goal budget.
 
 ### D. NuttX C/C++ rtos_e2e (6 tests) → **CLOSED 2026-05-19**
 
@@ -793,7 +822,7 @@ No action needed.
 |---------|-------|------------|------------|
 | A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
 | B. Zephyr Cortex-A9 DDS Rust | 4 | Missing armv7a-none-eabi rust target + Zephyr 3.7 net_if.h field-access drift | **3/4 CLOSED 160.B** + 1 Embassy follow-up |
-| C. Zephyr cross-host bridge | 11 | NOT cascade — zenoh `_z_send_tcp -> -100` on Zephyr/NSOS | New (160.C) |
+| C. Zephyr cross-host bridge | 10 | `_z_open_tcp` ABI gate (Phase 159 family) | **8/10 CLOSED 160.C** (2 action tests residue) |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | alias TU ↔ vendor `_z_sys_net_*_t` ABI mismatch (RV32 inline-vs-hidden-ptr) + drift guard via `_Static_assert` | **CLOSED 2026-05-19** |
 | F. RTIC + serial bare-metal | 6 | RTIC (5): same alias-TU/vendor ABI mismatch as E (cortex-m3 6-byte endpoint, inline vs hidden ptr). Serial (1): Phase 132.3 deferred. | **5/6 CLOSED 2026-05-19** via cluster-E fix; serial → Phase 132.3 |
