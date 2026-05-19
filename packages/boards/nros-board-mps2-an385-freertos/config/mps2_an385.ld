@@ -39,7 +39,7 @@ SECTIONS
 
     /* ARM exception unwinding tables (.ARM.extab) — referenced by
      * .ARM.exidx, placed before it in FLASH. Phase 97.1.linker:
-     * dust-dds emits extab entries for its panic unwind paths;
+     * DDS emits extab entries for its panic unwind paths;
      * without explicit placement they fall to the default
      * read-only output and overlap .data on bare-metal Cortex-M.
      */

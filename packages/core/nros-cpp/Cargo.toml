@@ -36,7 +36,8 @@ rmw-cffi = ["nros/rmw-cffi"]
 # `nros/rmw-*-cffi` (those were deleted); they just toggle
 # `rmw-cffi` plus the per-backend optional dep.
 rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-rmw-dds-cffi = ["rmw-cffi", "dep:nros-rmw-dds"]
+# Phase 169.4 — DDS retired. `rmw-dds-cffi` removed; future
+# DDS path goes through Cyclone (Phase 169.5 shim).
 # Phase 161 — mirror nros-c's Phase 134.fix: drop `dep:nros-rmw-zenoh`.
 # Pulling the rlib bundled a duplicate copy of nros-rmw-zenoh's entire
 # dependency closure (including a second zenoh-pico C build) into
@@ -70,44 +71,37 @@ xrce-serial = ["nros/xrce-serial"]
 platform-posix = [
     "nros/platform-posix",
     "nros-rmw-zenoh?/platform-posix",
-    "nros-rmw-dds?/platform-posix",
 ]
 platform-zephyr = [
     "alloc",
     "nros/platform-zephyr",
     "dep:critical-section",
     "nros-rmw-zenoh?/platform-zephyr",
-    "nros-rmw-dds?/platform-zephyr",
 ]
 platform-freertos = [
     "alloc",
     "nros/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
-    "nros-rmw-dds?/platform-freertos",
 ]
 platform-nuttx = [
     "alloc",
     "nros/platform-nuttx",
     "nros-rmw-zenoh?/platform-nuttx",
-    "nros-rmw-dds?/platform-nuttx",
 ]
 platform-threadx = [
     "alloc",
     "nros/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
-    "nros-rmw-dds?/platform-threadx",
 ]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = [
     "nros/ros-humble",
     "nros-rmw-zenoh?/ros-humble",
-    "nros-rmw-dds?/ros-humble",
 ]
 ros-iron = [
     "nros/ros-iron",
     "nros-rmw-zenoh?/ros-iron",
-    "nros-rmw-dds?/ros-iron",
 ]
 
 # Bare-metal panic handler (enables building staticlib without std)
@@ -121,15 +115,15 @@ nros-log = { workspace = true }
 nros-platform = { workspace = true, default-features = false }
 nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
 nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = false }
-nros-rmw-dds = { workspace = true, optional = true, default-features = false }
+# Phase 169.4 — DDS retired. Dep removed.
 nros-rmw-zenoh = { workspace = true, optional = true, default-features = false }
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
-# platform-zephyr. dust-dds + portable-atomic depend on it being set.
+# platform-zephyr. DDS + portable-atomic depend on it being set.
 #
 # `restore-state-u32` is only safe to enable on real Cortex-M Zephyr
 # targets where `nros_zephyr_irq_lock` returns a u32 IRQ key. On
-# native_sim (x86_64) Zephyr DDS the dust-dds[std] path enables
+# native_sim (x86_64) Zephyr DDS the DDS[std] path enables
 # `critical-section/std`, which selects `restore-state-bool` — having
 # both u32 and bool active produces `error[E0428]: RawRestoreStateInner
 # defined multiple times` inside critical-section. Gate by target arch:

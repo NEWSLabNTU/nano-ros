@@ -246,7 +246,7 @@ size_t  nros_platform_wake_storage_align(void);
 /* ---- Critical section ---- */
 /* Phase 121.9 — global mutual exclusion against preemption + ISR
  * delivery. Backs the Rust `critical_section::Impl` registration used
- * by dust-dds, nros-rmw-{xrce,zenoh}, and any consumer of
+ * by DDS, nros-rmw-{xrce,zenoh}, and any consumer of
  * `critical_section::with()`. Reentrant by contract: every acquire
  * must be paired with exactly one release, and the platform handles
  * nesting (PRIMASK already stacks; pthread side uses a recursive

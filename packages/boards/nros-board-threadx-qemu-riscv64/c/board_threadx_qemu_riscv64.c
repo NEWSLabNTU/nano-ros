@@ -67,7 +67,7 @@ uint32_t nros_board_app_priority = 15;
 #define BSD_STACK_SIZE          8192
 /* Phase 97.4.threadx-riscv64 — NetX Duo BSD-Support docs note
  * "this thread should be the highest priority task defined in
- * the program". With BSD = APP+1, the cooperative dust-dds poll
+ * the program". With BSD = APP+1, the cooperative DDS poll
  * loop in the app thread starves the BSD thread → deferred packet
  * processing never fires → `bind`/`getaddrinfo` hang inside
  * `create_subscription`. Priority 2 (one below the IP helper,

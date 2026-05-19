@@ -2,7 +2,7 @@
 //! canonical `nros_platform_critical_section_acquire` and
 //! `nros_platform_critical_section_release` C symbols (Phase 121.9).
 //!
-//! Any binary that needs the global `critical_section::Impl` (dust-dds,
+//! Any binary that needs the global `critical_section::Impl` (DDS,
 //! `nros-rmw-{xrce,zenoh}`, `embassy-sync`, …) links this crate. The
 //! body delegates to the active platform's C port — Cortex-M PRIMASK
 //! on FreeRTOS / bare-metal Cortex-M, CPSR I-bit on Cortex-R5,

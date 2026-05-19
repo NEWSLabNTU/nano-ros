@@ -2114,7 +2114,7 @@ impl<T> Promise<'_, T> {
     /// but it deadlocks on the `nostd-runtime` DDS path (and any
     /// other cooperative backend whose listener future only runs
     /// when something actively drives the runtime). The 160.B.1
-    /// trace pinned this to dust-dds's nostd runtime: listener
+    /// trace pinned this to DDS's nostd runtime: listener
     /// futures only advance inside `runtime.block_on(...)`, and the
     /// parked `.await` consumer never issues such a call.
     ///

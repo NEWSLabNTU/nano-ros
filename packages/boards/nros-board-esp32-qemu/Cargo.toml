@@ -54,6 +54,6 @@ rmw-zenoh = []
 ethernet = ["dep:nros-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)
 serial = []
-# Phase 97.3.esp32-qemu — DDS / dust-dds heap budget (256 KB). Off
+# Phase 97.3.esp32-qemu — DDS / DDS heap budget (256 KB). Off
 # by default; DDS example crates pull in via `features = ["dds-heap"]`.
 dds-heap = ["nros-platform-esp32-qemu/dds-heap"]

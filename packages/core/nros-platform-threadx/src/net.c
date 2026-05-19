@@ -44,7 +44,7 @@ static void set_rcv_timeout(INT fd, uint32_t timeout_ms) {
      * means "non-blocking" per the platform-net ABI (cooperative recv
      * loops poll + yield). NetX BSD's SO_RCVTIMEO with `{0, 0}` is
      * "block forever" — the inverse. Map timeout==0 to O_NONBLOCK via
-     * fcntl so dust-dds's multicast_recv_loop yields cleanly instead
+     * fcntl so DDS's multicast_recv_loop yields cleanly instead
      * of blocking the cooperative async runtime. */
     if (timeout_ms == 0) {
         (void) nx_bsd_fcntl(fd, F_SETFL, O_NONBLOCK);
@@ -357,7 +357,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
     /* Phase 127.B.5 — same fix as nros-platform-posix: use the `join`
      * dotted-quad (e.g. "239.255.0.1") for `imr_multiaddr`, NOT the
      * local endpoint's sin_addr which is always 0.0.0.0 on the
-     * dust-dds SPDP bind path (`create_endpoint("0.0.0.0", port)`).
+     * DDS SPDP bind path (`create_endpoint("0.0.0.0", port)`).
      * Joining 0.0.0.0 silently fails (NetX adds a sentinel grp entry
      * that never matches any real incoming mcast frame, so SPDP
      * discovery silently fails). */

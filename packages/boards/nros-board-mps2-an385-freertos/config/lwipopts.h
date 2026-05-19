@@ -64,7 +64,7 @@
 #define MEMP_NUM_TCP_PCB                8
 #define MEMP_NUM_TCP_PCB_LISTEN         4
 #define MEMP_NUM_TCP_SEG                32
-/* Phase 97.1.kconfig.freertos — bumped from 8 to 32 so dust-dds's
+/* Phase 97.1.kconfig.freertos — bumped from 8 to 32 so DDS's
  * SPDP / SEDP discovery burst doesn't exhaust the pool on
  * participant open. Same rationale as the Cortex-A9 net_pkt bump
  * for Zephyr (Phase 71.29). */

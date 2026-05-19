@@ -30,10 +30,9 @@ members = [
     # `libnros_rmw_zenoh_staticlib.a` separately from `libnros_c.a`
     # so the SDK matrix can ship them decoupled.
     "packages/zpico/nros-rmw-zenoh-staticlib",
-    # DDS RMW backend (pure Rust, dust-dds)
-    "packages/dds/nros-rmw-dds",
-    # Phase 123.A.1.x.4.a — standalone staticlib wrapper for DDS.
-    "packages/dds/nros-rmw-dds-staticlib",
+    # Phase 169.4 — dust-dds retired. nros-rmw-dds +
+    # nros-rmw-dds-staticlib crates deleted. Future DDS Rust
+    # path lands as `nros-rmw-cyclonedds-sys` shim (Phase 169.5).
     # Integration tests
     "packages/testing/nros-tests",
     # C API for embedded systems
@@ -54,7 +53,6 @@ members = [
     "packages/interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs",
     # C function table adapter for third-party RMW backends
     "packages/core/nros-rmw-cffi",
-    # Phase 115.L.1 — dust-dds via C vtable
     # Phase 115.L.2 — zenoh-pico via C vtable
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
@@ -90,7 +88,7 @@ members = [
     # (nros-rmw-xrce) and exposes its register entry point.
     "packages/xrce/nros-rmw-xrce-cffi",
     # Phase 160.L — standalone staticlib wrapper. Mirrors
-    # nros-rmw-zenoh-staticlib / nros-rmw-dds-staticlib so cmake /
+    # nros-rmw-zenoh-staticlib so cmake /
     # Corrosion can import a `staticlib` target without forcing the
     # cffi crate itself to emit one (which broke Zephyr no_std
     # compiles per Phase 154's notes).
@@ -101,8 +99,6 @@ members = [
 
 # Excluded from workspace — standalone packages and third-party forks
 exclude = [
-    # dust-dds fork (has its own workspace root)
-    "packages/dds/dust-dds",
     # rcl-interfaces parent package (metadata only, no Rust targets)
     "packages/interfaces/rcl-interfaces",
     # lifecycle-msgs parent package (metadata only, no Rust targets)
@@ -325,7 +321,6 @@ nros-rmw-zenoh = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh", de
 # Used by nros / nros-node when `rmw-xrce-cffi` feature is on, and
 # by example crates that opt into the cffi-via-C-backend path.
 nros-rmw-xrce-cffi = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce-cffi", default-features = false }
-nros-rmw-dds = { version = "0.1.0", path = "packages/dds/nros-rmw-dds", default-features = false }
 nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
 nros-log = { version = "0.1.0", path = "packages/core/nros-log" }

@@ -1,6 +1,6 @@
 # nros-rmw
 
-RMW (middleware) abstraction layer for [nano-ros](https://github.com/NEWSLabNTU/nano-ros). Defines the `Rmw`, `Session`, `Publisher`, `Subscriber`, `Service`, and `Client` traits implemented by each backend (`nros-rmw-zenoh`, `nros-rmw-xrce`, `nros-rmw-dds`).
+RMW (middleware) abstraction layer for [nano-ros](https://github.com/NEWSLabNTU/nano-ros). Defines the `Rmw`, `Session`, `Publisher`, `Subscriber`, `Service`, and `Client` traits implemented by each backend (`nros-rmw-zenoh`, `nros-rmw-xrce`, `nros-rmw-cyclonedds`).
 
 ## License
 

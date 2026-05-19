@@ -115,13 +115,13 @@ threading = []
 # `Box`, `Vec`, etc. through `<ConcretePlatform as PlatformAlloc>`.
 # Off by default: host (`platform-posix`) builds use libstd's
 # allocator and would conflict; bare-metal / RTOS examples enable
-# this feature to wire dust-dds + heapless futures through the
+# this feature to wire DDS + heapless futures through the
 # board's heap (`pvPortMalloc` on FreeRTOS, `tx_byte_allocate` on
 # ThreadX, `kmm_malloc` on NuttX, etc.).
 global-allocator = ["alloc"]
 
 # Phase 97.1.cs — opt-in `critical_section::Impl` registered against
-# the active platform's interrupt-disable primitive. dust-dds's
+# the active platform's interrupt-disable primitive. DDS's
 # oneshot channels reference `_critical_section_1_0_acquire` /
 # `_release` symbols; without this feature, every bare-metal / RTOS
 # DDS example fails to link.

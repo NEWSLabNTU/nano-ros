@@ -563,7 +563,7 @@ pub trait PlatformNetworkPoll {
 /// (Phase 121.9).
 ///
 /// Backs the Rust `critical_section::Impl` registration used by
-/// dust-dds, nros-rmw-{xrce,zenoh}, and any other no_std consumer of
+/// DDS, nros-rmw-{xrce,zenoh}, and any other no_std consumer of
 /// `critical_section::with()`. The token returned by `acquire` is
 /// passed back to `release`; it holds whatever bookkeeping the
 /// platform needs to restore the prior posture (Cortex-M PRIMASK bit,

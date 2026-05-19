@@ -3,7 +3,7 @@
 //! Heap size:
 //!   - 64 KB default (zenoh-pico / xrce-dds builds)
 //!   - 128 KB with `link-tls` (mbedTLS context + certs + crypto)
-//!   - 2 MB with `dds-heap` (Phase 97.3.mps2-an385 — dust-dds
+//!   - 2 MB with `dds-heap` (Phase 97.3.mps2-an385 — DDS
 //!     DcpsDomainParticipant builtin entities; same budget as the
 //!     FreeRTOS / ThreadX-RV64 slices)
 

@@ -72,6 +72,6 @@ serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:mps2-an385-pac"]
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)
 link-tls = ["nros-platform-mps2-an385/link-tls"]
-# Phase 97.3.mps2-an385 — DDS / dust-dds heap budget (2 MB). Off by
+# Phase 97.3.mps2-an385 — DDS / DDS heap budget (2 MB). Off by
 # default; DDS example crates pull in via `features = ["dds-heap"]`.
 dds-heap = ["nros-platform-mps2-an385/dds-heap"]

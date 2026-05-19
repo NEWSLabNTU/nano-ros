@@ -65,7 +65,7 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 // Each `nros-platform-*` crate computes these from `core::mem::size_of`
 // over its private `Socket` / `Endpoint` struct (which mirrors zenoh-pico's
 // platform header). Re-exporting them here lets callers like
-// `nros-rmw-dds::transport_nros` size their opaque buffers exactly via
+// RMW transport adapters size their opaque buffers exactly via
 // `nros_platform::NET_SOCKET_SIZE`, instead of paying for a `[u8; 64]`
 // worst-case.
 //
@@ -97,7 +97,7 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 // release-prep branch.
 // Phase 129.C.3.b — exported unconditionally. Previously gated
 // on a specific `platform-<rtos>` feature, which forced every
-// RMW crate that imported them (notably `nros-rmw-dds`) to
+// RMW crate that imported them to
 // forward a `nros-platform/platform-*` feature so the constants
 // would resolve. Worst-case 64-byte / 8-aligned storage covers
 // every supported platform — POSIX's `{ int fd }` socket and

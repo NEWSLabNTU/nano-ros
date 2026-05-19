@@ -470,7 +470,7 @@ macro_rules! __define_smoltcp_platform_impl {
                 /// the bridge's poll loop; here we just record
                 /// `entry.local_port` via `udp_set_local_port`. Until
                 /// the next poll the socket isn't yet bound, but the
-                /// recv loop in `nros-rmw-dds::transport_nros` yields
+                /// recv loop in the DDS transport adapter yields
                 /// repeatedly anyway so the bind happens before the
                 /// first read attempt.
                 fn listen(sock: *mut c_void, endpoint: *const c_void, _timeout_ms: u32) -> i8 {

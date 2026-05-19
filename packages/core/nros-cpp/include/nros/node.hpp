@@ -43,9 +43,6 @@ extern "C" int32_t nros_rmw_cyclonedds_register(void);
 #if defined(NROS_RMW_XRCE) || defined(NROS_RMW_XRCE_CFFI)
 extern "C" int32_t nros_rmw_xrce_register(void);
 #endif
-#ifdef NROS_RMW_DDS_CFFI
-extern "C" int32_t nros_rmw_dds_register(void);
-#endif
 #ifdef NROS_RMW_ZENOH_CFFI
 extern "C" int32_t nros_rmw_zenoh_register(void);
 #endif
