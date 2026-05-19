@@ -248,13 +248,47 @@ Ten `packages/testing/nros-tests/tests/*.rs` + Cargo.toml:
 | Live docs | 22 files | 169.6 |
 | Archived docs (no edit) | 20 files | n/a |
 
-- [ ] **169.2 — Re-target test fixtures + examples.** Every
-      `nros-rmw-dds` dep in `examples/**/Cargo.toml` and
-      `packages/testing/**/Cargo.toml` flips to either
-      `nros-rmw-zenoh` (zenoh-pico backend already on every
-      RTOS) or `nros-rmw-cyclonedds` (POSIX-host-only today).
-      Phase 117's ESP32-S3 example crates flip to zenoh-pico
-      since Cyclone Xtensa port doesn't exist yet.
+- [x] **169.2 — Rust DDS examples deleted (2026-05-19).**
+      Original plan was a Cargo.toml flip from `nros-rmw-dds`
+      to `nros-rmw-zenoh` or `nros-rmw-cyclonedds`, but
+      Cyclone has no Rust shim (the backend is a CMake/C++
+      project consumed via `nros_rmw_cyclonedds_register()`
+      at the C/C++ ABI layer), and Zenoh retargeting would
+      have duplicated existing `examples/{platform}/rust/zenoh/`
+      siblings 1-for-1. Decision per user input: **delete all
+      19 Rust DDS example dirs** + the one Rust bridge
+      (`examples/bridges/native-rust-zenoh-to-dds/`). They get
+      re-created in Phase 169.5 / 169.9 once a Rust→Cyclone
+      shim crate (working name `nros-rmw-cyclonedds-sys`)
+      lands.
+
+      **Deleted (this commit):**
+      - `examples/native/rust/dds/{talker,listener,service-server,service-client,action-server,action-client}/` — 6 dirs.
+      - `examples/qemu-arm-baremetal/rust/dds/{talker,listener}/`
+      - `examples/qemu-arm-freertos/rust/dds/{talker,listener}/`
+      - `examples/qemu-arm-nuttx/rust/dds/{talker,listener}/`
+      - `examples/qemu-esp32-baremetal/rust/dds/{talker,listener}/`
+      - `examples/qemu-riscv64-threadx/rust/dds/{talker,listener}/`
+      - `examples/threadx-linux/rust/dds/{talker,listener}/`
+      - `examples/zephyr/rust/dds/{talker,listener,service-server,service-client,service-client-async,action-server,action-client}/` — 7 dirs.
+      - `examples/bridges/native-rust-zenoh-to-dds/` — Rust bridge.
+
+      Workspace `exclude` list cleaned (~25 entries removed).
+      `cargo metadata --no-deps` validates.
+
+      **NOT deleted (covered by other 169 work items):**
+      - `examples/native/{c,cpp}/dds/*` — C/C++ DDS examples
+        consume Cyclone via CMake; survive untouched until
+        Phase 169.4 verifies the Cyclone link path.
+      - `examples/zephyr/{c,cpp}/dds/*` — same.
+      - `examples/native/c/bridge/xrce-to-dds/`,
+        `examples/native/cpp/bridge/zenoh-to-dds/` — C/C++
+        bridges link `nros-rmw-dds-staticlib` today; flipped
+        to Cyclone in 169.4 (or marked Won't-Do if no
+        equivalent staticlib shape exists).
+      - `examples/qemu-esp32s3-baremetal/rust/dds/*` — exists
+        only on the `phase-117.0-esp32s3-toolchain` archaeology
+        branch; that branch never merges to main.
 
 - [ ] **169.3 — Re-target integration tests.** Every
       `packages/testing/nros-tests/tests/*_dds.rs` that hits

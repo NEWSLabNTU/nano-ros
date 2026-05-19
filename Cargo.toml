@@ -130,15 +130,11 @@ exclude = [
     "examples/native/rust/zenoh/service-client-rtic",
     "examples/native/rust/zenoh/action-server-rtic",
     "examples/native/rust/zenoh/action-client-rtic",
-    # Phase 104 multi-RMW bridge example
-    "examples/bridges/native-rust-zenoh-to-dds",
-    # Native DDS examples
-    "examples/native/rust/dds/talker",
-    "examples/native/rust/dds/listener",
-    "examples/native/rust/dds/service-server",
-    "examples/native/rust/dds/service-client",
-    "examples/native/rust/dds/action-server",
-    "examples/native/rust/dds/action-client",
+    # Phase 169.2 — examples/bridges/native-rust-zenoh-to-dds
+    # + examples/native/rust/dds/* deleted along with the
+    # `nros-rmw-dds` (dust-dds) backend retirement. Rust DDS
+    # examples will be re-created once a Rust→Cyclone shim
+    # lands (Phase 169.5 / 169.9).
     # QEMU ARM examples (bare-metal Cortex-M3)
     "examples/qemu-arm-baremetal/rust/zenoh/talker",
     "examples/qemu-arm-baremetal/rust/zenoh/listener",
@@ -156,8 +152,8 @@ exclude = [
     "examples/qemu-arm-baremetal/rust/zenoh/listener-rtic-mixed",
     "examples/qemu-arm-baremetal/rust/zenoh/serial-talker",
     "examples/qemu-arm-baremetal/rust/zenoh/serial-listener",
-    "examples/qemu-arm-baremetal/rust/dds/talker",
-    "examples/qemu-arm-baremetal/rust/dds/listener",
+    # Phase 169.2 — Rust DDS examples deleted (no Rust→Cyclone
+    # path yet; see Phase 169 doc work item .9).
     # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)
     "examples/qemu-arm-freertos/rust/zenoh/talker",
     "examples/qemu-arm-freertos/rust/zenoh/listener",
@@ -165,10 +161,7 @@ exclude = [
     "examples/qemu-arm-freertos/rust/zenoh/service-client",
     "examples/qemu-arm-freertos/rust/zenoh/action-server",
     "examples/qemu-arm-freertos/rust/zenoh/action-client",
-    # Phase 97.4.freertos — DDS variant (board crate built with
-    # `default-features = false` to drop the zenoh-pico C transport).
-    "examples/qemu-arm-freertos/rust/dds/talker",
-    "examples/qemu-arm-freertos/rust/dds/listener",
+    # Phase 169.2 — qemu-arm-freertos rust/dds deleted.
     # QEMU ARM NuttX examples (Cortex-M3 + NuttX)
     "examples/qemu-arm-nuttx/rust/zenoh/talker",
     "examples/qemu-arm-nuttx/rust/zenoh/listener",
@@ -176,9 +169,7 @@ exclude = [
     "examples/qemu-arm-nuttx/rust/zenoh/service-client",
     "examples/qemu-arm-nuttx/rust/zenoh/action-server",
     "examples/qemu-arm-nuttx/rust/zenoh/action-client",
-    # NuttX DDS (Phase 97.4.nuttx)
-    "examples/qemu-arm-nuttx/rust/dds/talker",
-    "examples/qemu-arm-nuttx/rust/dds/listener",
+    # Phase 169.2 — qemu-arm-nuttx rust/dds deleted.
     # STM32F4 examples
     "examples/stm32f4/rust/zenoh/talker",
     "examples/stm32f4/rust/zenoh/polling",
@@ -205,14 +196,7 @@ exclude = [
     "examples/zephyr/rust/xrce/service-client",
     "examples/zephyr/rust/xrce/action-server",
     "examples/zephyr/rust/xrce/action-client",
-    # Zephyr DDS examples (Phase 71.8 — require Zephyr workspace)
-    "examples/zephyr/rust/dds/talker",
-    "examples/zephyr/rust/dds/listener",
-    "examples/zephyr/rust/dds/service-server",
-    "examples/zephyr/rust/dds/service-client",
-    "examples/zephyr/rust/dds/action-server",
-    "examples/zephyr/rust/dds/action-client",
-    "examples/zephyr/rust/dds/service-client-async",
+    # Phase 169.2 — Zephyr rust/dds examples deleted.
     # No Cargo.toml in cpp/c examples (Zephyr cmake builds them)
     # Reference implementations (library, not an example)
     "packages/reference/qemu-smoltcp-bridge",
@@ -289,9 +273,7 @@ exclude = [
     "examples/threadx-linux/rust/zenoh/service-client",
     "examples/threadx-linux/rust/zenoh/action-server",
     "examples/threadx-linux/rust/zenoh/action-client",
-    # ThreadX-Linux DDS (Phase 97.4.threadx-linux)
-    "examples/threadx-linux/rust/dds/talker",
-    "examples/threadx-linux/rust/dds/listener",
+    # Phase 169.2 — threadx-linux rust/dds deleted.
     # ThreadX QEMU RISC-V examples (require ThreadX + NetX Duo SDKs + RISC-V toolchain)
     "examples/qemu-riscv64-threadx/rust/zenoh/talker",
     "examples/qemu-riscv64-threadx/rust/zenoh/listener",
@@ -299,9 +281,7 @@ exclude = [
     "examples/qemu-riscv64-threadx/rust/zenoh/service-client",
     "examples/qemu-riscv64-threadx/rust/zenoh/action-server",
     "examples/qemu-riscv64-threadx/rust/zenoh/action-client",
-    # ThreadX QEMU RISC-V DDS (Phase 97.4.threadx-riscv64)
-    "examples/qemu-riscv64-threadx/rust/dds/talker",
-    "examples/qemu-riscv64-threadx/rust/dds/listener",
+    # Phase 169.2 — qemu-riscv64-threadx rust/dds deleted.
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
@@ -310,8 +290,7 @@ exclude = [
     "examples/esp32/rust/zenoh/listener",
     "examples/qemu-esp32-baremetal/rust/zenoh/talker",
     "examples/qemu-esp32-baremetal/rust/zenoh/listener",
-    "examples/qemu-esp32-baremetal/rust/dds/talker",
-    "examples/qemu-esp32-baremetal/rust/dds/listener",
+    # Phase 169.2 — qemu-esp32-baremetal rust/dds deleted.
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",
     # PX4 vendored sources (submodule under third-party/px4/). Has its
