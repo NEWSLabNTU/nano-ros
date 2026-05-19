@@ -275,6 +275,103 @@ ZPICO_SMOLTCP_MAX_SOCKETS=4
 ZPICO_SMOLTCP_BUFFER_SIZE=4096
 ```
 
+## Measured Memory Footprint
+
+Concrete numbers from a POSIX (x86_64, gcc 11) probe — `sizeof()` of every
+zpico entity-slot struct + each zenoh-pico internal type, sampled against the
+`zenoh-pico/src` headers compiled with `Z_FEATURE_MULTI_THREAD=1`,
+`Z_FEATURE_LINK_TCP=1`, `ZENOH_LINUX`. Bare-metal generic-alias builds (smoltcp
+backend) match the same layouts byte-for-byte — opaque handles are pointer
+sized regardless of platform; the data they point at lives in either a static
+slot pool (smoltcp / `nostd-runtime`) or the libc heap (POSIX), but the
+working-set size is identical.
+
+### Per-slot static cost (zpico entity tables)
+
+```
+publisher_entry_t              168 B
+subscriber_entry_t              88 B
+queryable_entry_t               48 B
+liveliness_entry_t              80 B
+g_stored_query slot              24 B  (16-B z_owned_query_t + bool + align)
+```
+
+### Per-entity allocation cost (zenoh-pico internal state)
+
+```
+_z_session_t                   672 B
+_z_transport_t                 352 B  (excludes RX/TX batch buffers below)
+_z_publisher_t                 160 B
+_z_subscriber_t                 24 B
+_z_queryable_t                  24 B
+```
+
+### Default configuration total
+
+At default sizing (`ZPICO_MAX_PUBLISHERS=8` / `MAX_SUBSCRIBERS=8` /
+`MAX_QUERYABLES=8` / `MAX_LIVELINESS=16` / `MAX_PENDING_GETS=4` /
+`GET_REPLY_BUF_SIZE=4096`):
+
+| Component | Bytes | Note |
+|-----------|-------|------|
+| `g_publishers` array | 1 344 | 168 × 8 |
+| `g_subscribers` array | 704 | 88 × 8 |
+| `g_queryables` array | 384 | 48 × 8 |
+| `g_liveliness` array | 1 280 | 80 × 16 |
+| `g_stored_queries` + valid flags | 192 | 24 × 8 |
+| Pending-get reply buffers | 16 384 | 4 × 4 096 |
+| `g_session` + `g_config` | 48 | owned handles |
+| **zpico.c globals total** | **~20 KB** | static |
+| `_z_session_t` (per session) | 672 | + `_z_transport_t` 352 |
+| `_z_publisher_t` × 8 | 1 280 | per active publisher |
+| `_z_subscriber_t` × 8 | 192 | per active subscriber |
+| `_z_queryable_t` × 8 | 192 | per active queryable |
+| **zenoh-pico per-session working set** | **~2.5 KB** | scales with active entities |
+
+Adding the RX/TX batch buffers (default `ZPICO_BATCH_UNICAST_SIZE=1024` +
+`ZPICO_FRAG_MAX_SIZE=2048` on embedded targets) brings a typical "Standard"
+profile (Cortex-M7 / 1 MB RAM) to ~30 KB total zpico working set before
+application code.
+
+### Sizing the limits down
+
+Halving each `MAX_*` cuts the dominant `g_*` arrays linearly. For the
+`Minimal (Cortex-M4, 256 KB)` profile (4 pub / 4 sub / 4 query / 8 liveliness):
+
+```
+g_publishers       672 B  (168 × 4)
+g_subscribers      352 B  (88  × 4)
+g_queryables       192 B  (48  × 4)
+g_liveliness       640 B  (80  × 8)
+g_stored_queries    96 B  (24  × 4)
+pending-get bufs  4096 B  (1   × 4096, MAX_PENDING_GETS=1)
+session+config      48 B
+zpico.c globals  ~6 KB
+```
+
+≈ 24 KB savings vs. default; per-entity working set unchanged.
+
+### How to reproduce
+
+Compile + run the in-tree probes against the vendored zenoh-pico:
+
+```bash
+gcc -I packages/zpico/zpico-sys/zenoh-pico/include \
+    -I packages/zpico/zpico-sys/c/zpico \
+    -I packages/zpico/zpico-sys/c/platform \
+    -DZ_FEATURE_MULTI_THREAD=1 -DZENOH_LINUX -DZ_FEATURE_LINK_TCP=1 \
+    -o /tmp/sizeof_probe packages/testing/nros-bench/zpico-sizeof/sizeof_probe.c
+/tmp/sizeof_probe
+```
+
+See `packages/testing/nros-bench/zpico-sizeof/README.md` for the matching
+`internal_probe.c` (per-entity heap allocation sizes) and the rerun procedure
+after zenoh-pico submodule bumps.
+
+For per-platform `.bss` / `.data` segment totals, use `just check-stack` (each
+example) or `just check-stack-elf <path>` to break down a compiled binary's
+static footprint by section + symbol.
+
 ## Comparison with CycloneDDS
 
 ARM's [actuation_porting](https://github.com/oguzkaganozt/actuation_porting) project

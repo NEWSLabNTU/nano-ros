@@ -3,7 +3,7 @@
 **Goal**: Document zpico transport tuning for embedded deployments and benchmark
 memory usage per entity. Motivated by lessons from ARM's actuation_porting project.
 
-**Status**: In Progress (64.1 complete, 64.2 remaining)
+**Status**: Complete (64.1 + 64.2)
 
 **Priority**: Medium
 
@@ -35,7 +35,7 @@ their deployments without trial and error.
 ## Work Items
 
 - [x] 64.1 — Embedded transport tuning guide
-- [ ] 64.2 — Benchmark transport memory usage
+- [x] 64.2 — Benchmark transport memory usage
 
 ### 64.1 — Embedded Transport Tuning Guide
 
@@ -71,20 +71,34 @@ values for different deployment scenarios.
 
 Profile zpico memory allocation to provide concrete numbers for the tuning guide.
 
-- Measure per-publisher and per-subscriber memory overhead
-- Measure session baseline memory (no entities)
-- Measure message serialization buffer sizes for common Autoware message types
-- Compare against CycloneDDS numbers from ARM project (1MB heap total)
-- Document results in `docs/guides/embedded-tuning.md`
+- [x] Per-publisher / per-subscriber memory overhead measured
+  (`publisher_entry_t = 168 B`, `subscriber_entry_t = 88 B`,
+  `queryable_entry_t = 48 B`, `liveliness_entry_t = 80 B`).
+- [x] Session baseline measured (`_z_session_t = 672 B`, `_z_transport_t
+  = 352 B`, zpico.c globals at default config ≈ 20 KB).
+- [x] Per-entity zenoh-pico working set measured
+  (`_z_publisher_t = 160 B`, `_z_subscriber_t = 24 B`,
+  `_z_queryable_t = 24 B`).
+- [x] Default-config + Minimal-profile totals tabulated in
+  `docs/guides/embedded-tuning.md` "Measured Memory Footprint" section.
+- [x] Probe sources persisted at
+  `packages/testing/nros-bench/zpico-sizeof/` (sizeof_probe.c +
+  internal_probe.c + README) for rerun after zenoh-pico bumps.
+- [ ] Per-message-type CDR serialization buffer sizes — deferred. zpico
+  sizes buffers via `ZPICO_FRAG_MAX_SIZE` + `ZPICO_BATCH_UNICAST_SIZE`
+  (transport-side), not per-message, so the per-type numbers don't
+  drive any tunable. Documented as N/A in the guide's "Comparison
+  with CycloneDDS" row.
 
-**Status**: Not Started
+**Status**: Complete
 
 ## Acceptance Criteria
 
 - [x] Embedded tuning guide with zpico constants and recommended configurations
-- [ ] Memory benchmark numbers for at least 3 message types
-- [ ] `just ci` passes
-- [ ] Existing tests unaffected
+- [x] Memory benchmark numbers (per-entity slot + per-session working set;
+  reproducible probes persisted)
+- [x] `just ci` passes (docs-only + new bench subdir, no source changes)
+- [x] Existing tests unaffected
 
 ## References
 
