@@ -36,15 +36,28 @@ my_app/                                  # your application
 └── src/main.{rs,c,cpp}
 ```
 
-Wire the shell once per workspace via symlink:
+Wire the shell into your NuttX apps tree. Easiest path:
+
+```bash
+just nuttx setup        # stages the shell + example apps into
+                        # $NUTTX_APPS_DIR/external/ automatically
+```
+
+This runs `scripts/nuttx/stage-external-apps.sh`, which writes
+`$NUTTX_APPS_DIR/external/Make.defs` + `Kconfig` and symlinks the
+integration shell (`external/nano-ros`) plus every example app
+(`external/nano-ros-<example>-<lang>`). Menuconfig surfaces them
+under `Application Configuration → External Modules`.
+
+If you'd rather wire it yourself (e.g. into a vendored apps tree):
 
 ```bash
 ln -s /path/to/nano-ros/integrations/nuttx \
       $NUTTX_APPS/external/nano-ros
+# then copy integrations/nuttx/external-Make.defs.in →
+# $NUTTX_APPS/external/Make.defs and add a matching
+# $NUTTX_APPS/external/Kconfig that `source`s the shell.
 ```
-
-Or attach as a git submodule under `$NUTTX_APPS/external/`. NuttX's
-app discovery picks up the `Make.defs` automatically.
 
 ## Configure
 

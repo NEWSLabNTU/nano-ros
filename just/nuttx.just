@@ -268,6 +268,17 @@ setup:
     set -e
     "{{justfile_directory()}}/tools/setup.sh" --platform=nuttx --skip-apt-check
     just nuttx build-kernel
+    # Phase 166.E — stage integration shell + example apps under
+    # $NUTTX_APPS_DIR/external/ so users following the book's NuttX
+    # starter find the example apps under
+    # `menuconfig → Application Configuration → External Modules`.
+    nuttx_apps_dir="${NUTTX_APPS_DIR:-$(pwd)/third-party/nuttx/nuttx-apps}"
+    if [ -f "$nuttx_apps_dir/Make.defs" ]; then
+        echo "Staging nano-ros external apps into $nuttx_apps_dir/external/..."
+        scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir"
+    else
+        echo "Skipping external-app staging: $nuttx_apps_dir/Make.defs not found"
+    fi
     echo "NuttX setup complete!"
 
 # Diagnose NuttX install status (read-only).

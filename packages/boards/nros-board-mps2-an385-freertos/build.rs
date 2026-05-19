@@ -104,23 +104,16 @@ fn main() {
     glue.compile("startup");
 
     // --- Link order ---
-    // Phase 152.1.B.4 — overlay re-emits the link-lib lines for
-    // the four archives the generic `nros-board-freertos` crate
-    // produces. `cargo:rustc-link-search` propagates transitively
-    // (the generic crate's OUT_DIR ends up on `-L` automatically)
-    // but `cargo:rustc-link-lib` does NOT propagate cleanly
-    // through a regular `[dependencies]` chain in rust-lld's
-    // ordering, so the overlay names them explicitly. Order
-    // matters for static-archive symbol resolution; per-board
-    // archives first (so the overlay's strong `nros_board_*`
-    // overrides win), then generic kernel + lwIP + glue +
-    // platform-port archives.
+    // Only the per-board archives compiled in THIS build script
+    // get explicit link-lib lines. The four archives produced by
+    // `nros-board-freertos` (nros_platform_freertos, freertos_glue,
+    // lwip, freertos) propagate via cargo's normal dep chain — its
+    // `cc::Build::compile()` already emitted matching link-lib
+    // directives. Re-emitting them here causes cargo to bundle the
+    // same `.a` into BOTH rlibs (Phase 166.A duplicate-symbol root
+    // cause).
     println!("cargo:rustc-link-lib=static=startup");
     println!("cargo:rustc-link-lib=static=lan9118_lwip");
-    println!("cargo:rustc-link-lib=static=nros_platform_freertos");
-    println!("cargo:rustc-link-lib=static=freertos_glue");
-    println!("cargo:rustc-link-lib=static=lwip");
-    println!("cargo:rustc-link-lib=static=freertos");
 
     // --- Newlib (libc + nosys stubs for bare-metal) ---
     // zenoh-pico and lwIP use standard C library functions (atoi, strtoul, snprintf, etc.)

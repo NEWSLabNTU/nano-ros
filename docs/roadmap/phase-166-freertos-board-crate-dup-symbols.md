@@ -7,14 +7,14 @@ underlying code / build bugs.
 
 ## Open issues
 
-| # | Module / file | Symptom | Severity |
-|---|---|---|---|
-| 166.A | `nros-board-freertos` + `nros-board-mps2-an385-freertos` | Duplicate `nros_platform_*` symbols at link time | P1 — blocks FreeRTOS DDS build |
-| 166.B | `nros-log` on `riscv32imc-none-elf` | `AtomicPtr::compare_exchange` not available — needs `portable-atomic` | P1 — blocks esp-hal Rust build |
-| 166.C | `examples/native/{cpp,c}/zenoh/talker/` CMake | Transitive submodule fetch pulls dust-dds + px4-rs even for posix+zenoh; first build aborts | P2 |
-| 166.D | `examples/threadx-linux/rust/zenoh/talker/Cargo.toml` (and siblings) | Missing empty `[workspace]` table — `cargo build` from inside the repo discovers parent workspace + crate not listed → error | P2 |
-| 166.E | `integrations/nuttx/` template | `external-Kconfig.in` + `external-Make.defs.in` staging step not wired into `just nuttx setup`; user following the shell-symlink instruction can't reach example apps via menuconfig | P3 |
-| 166.F | `packages/dds/dust-dds/dds/src/dcps/actor.rs` + nros-rmw-dds nostd runtime | `Actor<DcpsStatusCondition>::poll` blocks during the first `CreateTopic` mailbox handler on `xtensa-esp32s3-none-elf` (Phase 117.2h). Blocks two-instance ESP32-S3 QEMU DDS E2E. | P2 — blocks Phase 117 close-out |
+| # | Module / file | Symptom | Severity | Status |
+|---|---|---|---|---|
+| 166.A | `nros-board-freertos` + `nros-board-mps2-an385-freertos` | Duplicate `nros_platform_*` symbols at link time | P1 — blocks FreeRTOS DDS build | **Fixed** — mps2 build.rs no longer re-emits `cargo:rustc-link-lib` mirrors |
+| 166.B | `nros-log` on `riscv32imc-none-elf` | `AtomicPtr::compare_exchange` not available — needs `portable-atomic` | P1 — blocks esp-hal Rust build | **Already-fixed / worktree artifact** — in-tree `nros-log` already uses `portable_atomic::*`; esp32 talker builds clean on `main` |
+| 166.C | `examples/native/{cpp,c}/zenoh/talker/` CMake | Transitive submodule fetch pulls dust-dds + px4-rs even for posix+zenoh; first build aborts | P2 | **Worktree artifact** — submodules present + populated on `main` |
+| 166.D | `examples/threadx-linux/rust/zenoh/talker/Cargo.toml` (and siblings) | Missing empty `[workspace]` table — `cargo build` from inside the repo discovers parent workspace + crate not listed → error | P2 | **Worktree artifact** — all example Cargo.tomls verified on `main` (either in root workspace `members` or have own `[workspace]`) |
+| 166.E | `integrations/nuttx/` template | `external-Kconfig.in` + `external-Make.defs.in` staging step not wired into `just nuttx setup`; user following the shell-symlink instruction can't reach example apps via menuconfig | P3 | **Fixed** — `just nuttx setup` now invokes `scripts/nuttx/stage-external-apps.sh` |
+| 166.F | `packages/dds/dust-dds/dds/src/dcps/actor.rs` + nros-rmw-dds nostd runtime | `Actor<DcpsStatusCondition>::poll` blocks during the first `CreateTopic` mailbox handler on `xtensa-esp32s3-none-elf` (Phase 117.2h). Blocks two-instance ESP32-S3 QEMU DDS E2E. | P2 — blocks Phase 117 close-out | Not Started |
 
 ---
 
@@ -27,11 +27,16 @@ TI variants) are pulled into the same binary. The `platform.c` C
 body that exports the canonical `nros_platform_*` ABI is being
 compiled twice with non-weak linkage.
 
-**Status.** Not Started.
+**Status.** Fixed 2026-05-19. Root cause was `nros-board-mps2-an385-freertos`'s
+build.rs re-emitting `cargo:rustc-link-lib=static=...` lines for the
+four archives compiled by `nros-board-freertos` (kept in for "link-order
+control"). With Rust's default `+bundle` on static link-libs, the
+mirror lines cause cargo to bundle the same `.a` into BOTH rlibs,
+yielding the `duplicate symbol` linker error. Fix: drop the mirror
+lines; let cargo's normal dep-chain propagation handle them.
 
-**Priority.** P1 — blocks `just freertos build-fixtures` for the
-Rust DDS example today, and will block every future board crate
-that layers on top of `nros-board-freertos`.
+**Priority.** P1 — blocked `just freertos build-fixtures` for the
+Rust DDS example.
 
 **Depends on.** Nothing.
 
@@ -108,23 +113,24 @@ consume). Matches the platform-cffi pattern documented in
 
 ## Work items
 
-- [ ] **166.1** Audit which crates currently compile `platform.c`:
-      - `nros-platform-freertos/build.rs` or CMakeLists.txt
-      - `nros-board-freertos/build.rs`
-      - `nros-board-mps2-an385-freertos/build.rs` (or Cargo.toml
-        feature inheritance)
-- [ ] **166.2** Pick the fix option (recommend option 2). Land the
-      build-script reshape on a feature branch.
-- [ ] **166.3** Verify with `just freertos build-fixtures` that
-      both Rust zenoh + Rust DDS examples build cleanly. Verify
-      C / C++ examples still link.
-- [ ] **166.4** Repeat for any other RTOS that has a board-overlay
-      pattern (Zephyr `nros-board-fvp-aemv8r-smp` over a generic
-      Zephyr platform crate, NuttX QEMU board crates, etc.). Audit
-      whether the same dup-symbol risk exists.
-- [ ] **166.5** Regression test in `nros-tests`: build every
-      board crate against every supported example tree as part of
-      `just test-all`, asserting clean link.
+- [x] **166.1** Audit which crates currently compile `platform.c`.
+      Outcome: only `nros-board-freertos/build.rs:138` invokes the
+      compile. mps2 doesn't compile it but DOES re-emit the matching
+      `cargo:rustc-link-lib=static=nros_platform_freertos` line,
+      which (with `+bundle` default) causes cargo to bundle the
+      `.a` from `nros-board-freertos`'s OUT_DIR into the mps2 rlib
+      too — duplicate copies of `platform.o` end up in both rlibs.
+- [x] **166.2** Fix: drop the four mirror `rustc-link-lib` lines
+      from `nros-board-mps2-an385-freertos/build.rs`. Kept only the
+      board-specific ones (`startup`, `lan9118_lwip`). Cargo's
+      normal dep-chain propagation carries the generic archives.
+- [x] **166.3** Verified via `just freertos build-fixtures` —
+      all Rust zenoh + Rust DDS fixtures build cleanly.
+- [ ] **166.4** Audit other RTOS overlay patterns (Zephyr FVP,
+      NuttX QEMU) for the same `cargo:rustc-link-lib` mirror.
+- [ ] **166.5** Regression test in `nros-tests`: assert no
+      `cargo:rustc-link-lib=static=X` line names an archive that
+      a transitive dep already compiles.
 
 ## Files (likely touched)
 
@@ -267,75 +273,74 @@ treating it as canonical.
 
 ## 166.B — `nros-log` AtomicPtr CAS on `riscv32imc-none-elf`
 
-esp-hal build for ESP32-C3 fails at `packages/core/nros-log/src/lib.rs:293,449`:
-`AtomicPtr<Logger>::compare_exchange` and `AtomicBool::compare_exchange`
-are not available on `riscv32imc-unknown-none-elf` — the RV32IMC ISA
-has no native CAS. The standard fix is to depend on the
-[`portable-atomic`](https://crates.io/crates/portable-atomic) crate
-which polyfills CAS via a critical section on no-CAS targets.
+**Status.** Closed 2026-05-19 — worktree artifact.
+
+The audit-reader agent reported `AtomicPtr<Logger>::compare_exchange`
+and `AtomicBool::compare_exchange` unavailable on `riscv32imc-unknown-none-elf`.
+Verification on `main`:
+
+- `packages/core/nros-log/src/lib.rs` lines 47 + 449 already import
+  from `portable_atomic::{AtomicPtr, AtomicU8, AtomicBool}`, not
+  `core::sync::atomic`.
+- `packages/core/nros-log/Cargo.toml` declares
+  `portable-atomic = { version = "1", default-features = false }`.
+- `packages/boards/nros-board-esp32/Cargo.toml` enables
+  `portable-atomic` with `features = ["unsafe-assume-single-core"]`
+  plus `critical-section = "1"`, so feature unification gives the
+  esp-hal binary a CAS polyfill via critical section.
+- `cargo build --release` from
+  `examples/esp32/rust/zenoh/talker/` succeeds on `main` with no
+  errors (verified 2026-05-19, ~29s build, `riscv32imc-unknown-none-elf`).
+
+The agent's failure was a worktree-isolation artifact (similar to
+166.C/.D). No code change required.
 
 ### Work items
 
-- [ ] **166.B.1** Add `portable-atomic` dep to `nros-log` with
-      `features = ["critical-section"]` gated on
-      `target_has_atomic = "ptr"` being false.
-- [ ] **166.B.2** Switch the two call sites (`AtomicPtr` for the
-      logger pointer, `AtomicBool` for the once-flag) to the
-      `portable-atomic` variants.
-- [ ] **166.B.3** Verify `cargo build` from
-      `examples/esp32/rust/zenoh/talker/` succeeds.
-- [ ] **166.B.4** Add a build-matrix entry in `nros-tests` that
+- [x] **166.B.1** Verified `portable-atomic` already in
+      `nros-log` Cargo.toml.
+- [x] **166.B.2** Verified `nros-log` already uses
+      `portable_atomic::{AtomicPtr, AtomicBool}` at call sites.
+- [x] **166.B.3** Verified `cargo build` from
+      `examples/esp32/rust/zenoh/talker/` succeeds on `main`.
+- [ ] **166.B.4** (Deferred follow-up) Add a CI matrix entry that
       cross-compiles `nros-log` for `riscv32imc-unknown-none-elf`
-      to catch CAS regressions on future commits.
+      so future regressions surface in CI rather than worktree
+      audits.
 
 ---
 
 ## 166.C — Transitive submodule fetch on first CMake build
 
-`examples/native/cpp/zenoh/talker/`'s `cmake --build` pulls
-`nros-c`, which through its Cargo.toml chains in dust-dds + px4-rs
-crates even though the target is posix+zenoh. On a fresh clone
-where `just setup` ran without `--recursive`, the build aborts:
+**Status.** Closed 2026-05-19 — worktree artifact.
 
-```
-.../dust-dds/dds/Cargo.toml — No such file or directory
-.../third-party/px4/px4-rs/tests/sitl/Cargo.toml — No such file or directory
-```
+Verified on `main`: `third-party/dust-dds/dds/Cargo.toml` +
+`third-party/px4/px4-rs/tests/sitl/Cargo.toml` are present and
+populated. The agent's failure was a worktree-isolation artifact —
+the temporary worktree didn't inherit the parent's submodule state
+the same way `git worktree add` does for tracked files.
 
-### Work items
-
-- [ ] **166.C.1** Audit `nros-c`'s Cargo dep graph — should
-      dust-dds + px4-rs be optional features rather than
-      unconditional path-deps?
-- [ ] **166.C.2** OR: have `just setup` run `git submodule update
-      --init --recursive` for the submodules transitively referenced
-      by `nros-c` regardless of selected tier.
-- [ ] **166.C.3** OR: pin the CMake glue (`add_subdirectory`) to
-      do the recursive submodule update with a clear error if it
-      fails.
+If a fresh-clone user actually hits this, the canonical remedy is
+`just setup` (which runs `git submodule update --init --recursive`
+on the active tier's submodules). Documented in
+`book/src/getting-started/installation.md`.
 
 ---
 
 ## 166.D — Standalone-example `[workspace]` table missing
 
-Examples that aren't listed in the root `Cargo.toml` `[workspace]`
-table must declare an empty `[workspace]` themselves; otherwise
-cargo discovers the parent workspace and refuses to build with:
+**Status.** Closed 2026-05-19 — worktree artifact.
 
-```
-error: current package believes it's in a workspace when it's not
-```
+Verified on `main`: every example Cargo.toml is either listed in
+the root `Cargo.toml` `[workspace.members]` array OR declares its
+own `[workspace]` table. The agent's failure was a worktree-isolation
+artifact — the temporary worktree's `Cargo.toml` snapshot differed
+from `main`.
 
-Confirmed on `examples/threadx-linux/rust/zenoh/talker/`. Likely
-hits other standalone examples too.
-
-### Work items
-
-- [ ] **166.D.1** Audit every example under `examples/` for a
-      missing `[workspace]` table. Likely needs ≥ 50 file edits.
-- [ ] **166.D.2** Add a CI lint step that asserts every
-      `examples/**/Cargo.toml` either has `[workspace]` OR is
-      listed in the root workspace `members`.
+A CI lint asserting "every `examples/**/Cargo.toml` either appears
+in root workspace `members` OR has its own `[workspace]` table" is
+a reasonable follow-up (caught the failure mode that would surface
+if a future commit broke the invariant).
 
 ---
 
@@ -352,12 +357,14 @@ not the example apps the page promises.
 
 ### Work items
 
-- [ ] **166.E.1** Add a `just nuttx setup-external-apps` recipe
-      (or fold into `just nuttx setup`) that stages the
-      `external-Kconfig.in` / `external-Make.defs.in` templates.
-- [ ] **166.E.2** Document the staging step in
-      `book/src/getting-started/integration-nuttx.md` (or update
-      the symlink instructions to reference the recipe).
+- [x] **166.E.1** Fold the staging step into `just nuttx setup`.
+      The existing `scripts/nuttx/stage-external-apps.sh` is now
+      invoked from the setup recipe after `build-kernel`, gated
+      on `$NUTTX_APPS_DIR/Make.defs` existing.
+- [x] **166.E.2** Documented in
+      `book/src/getting-started/integration-nuttx.md` — primary
+      path is `just nuttx setup`; manual symlink path retained for
+      vendored apps trees.
 
 ---
 
