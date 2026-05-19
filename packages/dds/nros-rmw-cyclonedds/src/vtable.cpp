@@ -105,15 +105,12 @@ const nros_rmw_vtable_t kVtable = {
 } // namespace
 
 extern "C" nros_rmw_ret_t nros_rmw_cyclonedds_register(void) {
-    // Phase 169.5 — Cyclone is now the sole DDS backend (dust-dds
-    // retired). Register under BOTH the canonical name "cyclonedds"
-    // AND the generic "dds" alias so `NROS_RMW=dds` selectors work
-    // without callers having to know which DDS impl is wired up.
-    nros_rmw_ret_t r = nros_rmw_cffi_register_named("cyclonedds", &kVtable);
-    if (r != NROS_RMW_RET_OK) {
-        return r;
-    }
-    return nros_rmw_cffi_register_named("dds", &kVtable);
+    // Phase 169.5 — Cyclone is the sole DDS backend (dust-dds
+    // retired), registered under its canonical name "cyclonedds"
+    // ONLY. Callers select via `NROS_RMW=cyclonedds`; the generic
+    // `"dds"` slot is not aliased per user direction (always
+    // reference Cyclone by its specific name, not the generic one).
+    return nros_rmw_cffi_register_named("cyclonedds", &kVtable);
 }
 
 // Phase 128.B.4 — `.nros_rmw_init` self-registration via the canonical

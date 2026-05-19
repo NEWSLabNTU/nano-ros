@@ -388,24 +388,33 @@ Ten `packages/testing/nros-tests/tests/*.rs` + Cargo.toml:
       `cargo metadata --no-deps` validates.
       `cargo check -p nros-tests --all-targets` clean.
 
-- [x] **169.5 — Promote Cyclone DDS to "the DDS backend"
-      (2026-05-19).** Took the less-invasive "keep package
-      name, add registry alias" path per user instruction:
+- [x] **169.5 — Cyclone is the canonical DDS backend; ALWAYS
+      reference it as `cyclonedds` (2026-05-19).** Per user
+      direction, do NOT alias Cyclone under the generic `"dds"`
+      slot. Callers select Cyclone by its specific name —
+      `NROS_RMW=cyclonedds`, `NANO_ROS_RMW=cyclonedds`,
+      `node_builder.rmw("cyclonedds")`, `target_link_libraries(
+      ... NanoRos::Rmw::cyclonedds)`. The generic `"dds"`
+      string is no longer a valid backend name anywhere in the
+      tree.
 
       - Package name stays `nros-rmw-cyclonedds`.
-      - `nros_rmw_cyclonedds_register()` now registers the
-        same vtable under TWO names:
-        - `"cyclonedds"` (canonical, unchanged)
-        - `"dds"` (new alias — `NROS_RMW=dds` selector path)
-      - `book/src/internals/rmw-backends.md` updated: dust-DDS
-        row in the decision matrix marked **retired Phase 169**;
-        hierarchy diagram drops the `nros-rmw-dds` arrow;
-        registry table notes both names against Cyclone;
-        "Rust-backend cffi shape" prose drops dust-DDS from the
-        Rust-shim list; per-backend perf table drops the
-        dust-DDS row.
-      - `packages/{dds/nros-rmw-dds → }/README.md` reference
-        in the book updated.
+      - `nros_rmw_cyclonedds_register()` registers the vtable
+        under `"cyclonedds"` ONLY (no `"dds"` alias).
+      - `packages/core/nros-c/CMakeLists.txt` +
+        `packages/core/nros-cpp/CMakeLists.txt` validators drop
+        `dds` from the `NANO_ROS_RMW` accepted-value list.
+      - `packages/core/nros-cpp/include/nros/node.hpp` docstring
+        example switched from `.rmw("dds")` to
+        `.rmw("cyclonedds")`.
+      - `examples/bridges/README.md` swept: `node_builder.rmw("dds")`
+        → `node_builder.rmw("cyclonedds")`.
+      - `book/src/internals/rmw-backends.md` decision matrix +
+        registry table + diagram updated; the Phase 169 banner
+        records the no-alias rule.
+      - `nros-rmw-cffi/tests/registry.rs` test references
+        `c"dds"` as a generic registry test fixture (not a
+        Cyclone selector) — kept untouched.
 
       `just cyclonedds build-rmw test` — 12/12 tests pass.
 

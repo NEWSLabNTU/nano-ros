@@ -42,10 +42,12 @@ on `nros` / `nros-c` / `nros-cpp` (`rmw-{zenoh,xrce}-cffi`,
 
 **Phase 169 (2026-05-19) — dust-dds retired.** The `nros-rmw-dds`
 Rust shim and the `dust-dds` upstream Rust DDS implementation
-have been removed (Phase 169.4). Cyclone DDS is now the sole DDS
-backend; the `nros-rmw-cyclonedds` shim registers under BOTH its
-canonical name `"cyclonedds"` AND the generic `"dds"` alias, so
-`NROS_RMW=dds` selectors continue to work.
+have been removed (Phase 169.4). Cyclone DDS is the sole DDS
+backend; the `nros-rmw-cyclonedds` shim registers under its
+canonical name `"cyclonedds"` only. The previous `"dds"` generic
+slot is **not** aliased — callers always select Cyclone by its
+specific name (`NROS_RMW=cyclonedds`, `target_link_libraries(...
+NanoRos::Rmw::cyclonedds)`, etc.).
 
 Any language with stable C-ABI interop (C, C++, Zig, Rust,
 Go-via-cgo, Python-via-ctypes…) can implement a backend by filling
@@ -108,7 +110,7 @@ process startup:
 |---|---|---|
 | zenoh-pico | `"zenoh"` | `nros_rmw_zenoh_register()` (auto-ctor on POSIX) |
 | micro-XRCE-DDS-Client | `"xrce"` | `nros_rmw_xrce_register()` (C ctor on POSIX) |
-| Cyclone DDS | `"cyclonedds"` + `"dds"` alias (Phase 169.5) | `nros_rmw_cyclonedds_register()` registers both names against the same vtable |
+| Cyclone DDS | `"cyclonedds"` | `nros_rmw_cyclonedds_register()` (Phase 169.5 — canonical DDS backend; no generic `"dds"` alias) |
 | uORB | `"uorb"` (future) | TBD |
 
 ### Naming policy

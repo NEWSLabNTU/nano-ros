@@ -28,12 +28,12 @@ endif()
 # nros-c's Cargo build. Result: one `libnros_c.a` per target
 # triple.
 if(NOT (NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce"
-        OR NANO_ROS_RMW STREQUAL "dds" OR NANO_ROS_RMW STREQUAL "cyclonedds"
+        OR NANO_ROS_RMW STREQUAL "cyclonedds"
         OR NANO_ROS_RMW STREQUAL "uorb"
         OR NANO_ROS_RMW STREQUAL "none"))
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} "
-        "(expected: zenoh, xrce, dds, cyclonedds, uorb, or none)")
+        "(expected: zenoh, xrce, cyclonedds, uorb, or none)")
 endif()
 # Phase 156 — `NANO_ROS_RMW=none` = bridge / multi-backend
 # escape hatch. Root CMake skips RMW auto-pull; consumer pulls

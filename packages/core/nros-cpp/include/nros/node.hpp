@@ -493,7 +493,7 @@ inline Result Executor::create_node(Node& out, const char* name, const char* ns)
 // ```cpp
 // nros::Node node;
 // NROS_TRY(executor.node_builder("egress")
-//              .rmw("dds")
+//              .rmw("cyclonedds")
 //              .domain_id(0)
 //              .build(node));
 // ```
