@@ -1,0 +1,31 @@
+[workspace]
+
+[package]
+name = "logging-smoke-esp32-qemu"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 88.15.f — ESP32-C3 QEMU nros-log smoke fixture"
+
+[[bin]]
+name = "logging-smoke-esp32-qemu"
+test = false
+bench = false
+
+[dependencies]
+# Board crate's `run()` now registers an `esp_println`-backed writer
+# with the platform's fn-ptr slot (Phase 88.15.f groundwork).
+nros-board-esp32-qemu = { path = "../../../../boards/nros-board-esp32-qemu" }
+nros-log = { path = "../../../../core/nros-log", default-features = false }
+
+# Required for #[main] proc macro (references esp_hal crate directly)
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+# Panic handler (required for no_std)
+esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1

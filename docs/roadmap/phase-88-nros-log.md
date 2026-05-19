@@ -366,14 +366,21 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             opt into separately). Process exits cleanly via
             `nsi_exit(0)` so the harness drain completes inside
             the 15 s deadline.
-      - [ ] 88.15.f — ESP32 QEMU. **Deferred** — Espressif's
-            `qemu-system-xtensa` / `qemu-system-riscv32` fork
-            isn't in the default toolchain set; CI would have to
-            skip cleanly when it's missing. Chain de-facto
-            verified by Phase 88.16.E (esp32 examples build clean
-            against the migrated stack on `riscv32imc-unknown-none-elf`);
-            the missing piece is purely runtime QEMU capture, not
-            facade correctness.
+      - [x] 88.15.f — ESP32-C3 under stock `qemu-system-riscv32 -M
+            esp32c3` (no Espressif fork needed). Fixture at
+            `packages/testing/nros-tests/bins/logging-smoke-esp32-qemu/`;
+            harness in
+            `logging_smoke.rs::logging_smoke_esp32_qemu_emits_every_severity`
+            launches via `nros_tests::esp32::start_esp32_qemu`. Board
+            crate `nros-board-esp32-qemu::run()` now registers an
+            `esp_println`-backed writer with
+            `nros-platform-esp32-qemu`'s fn-ptr slot (Phase 88.15.f
+            groundwork — mirrors 88.16.E's wifi board pattern).
+            Build entry: `just esp32 build-logging-smoke` (cargo
+            +nightly + espflash `save-image`). All six severity
+            lines emit; QEMU exit triggered by the board's tail
+            `Application completed successfully.` banner which
+            `QemuProcess::wait_for_output` already recognises.
 
 - [ ] 88.16 — Migrate every `examples/` binary to emit diagnostics
       through `nros-log` instead of ad-hoc `println!` /

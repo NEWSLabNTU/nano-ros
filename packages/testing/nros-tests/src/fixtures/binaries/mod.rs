@@ -412,6 +412,27 @@ pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the Phase 88.15.f `logging-smoke-esp32-qemu`
+/// flash image (ESP32-C3 binary under stock `qemu-system-riscv32 -M
+/// esp32c3`).
+static LOGGING_SMOKE_ESP32_QEMU_FLASH: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt Phase 88.15.f logging smoke flash image.
+/// Built by `just esp32 build-logging-smoke` (or whichever recipe
+/// invokes the espflash `save-image` step against the fixture's
+/// ELF output).
+pub fn build_logging_smoke_esp32_qemu_flash() -> TestResult<&'static Path> {
+    LOGGING_SMOKE_ESP32_QEMU_FLASH
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/logging-smoke-esp32-qemu",
+                "logging-smoke-esp32-qemu.bin",
+                Some("riscv32imc-unknown-none-elf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the Phase 88.15.e `logging-smoke-zephyr-native-sim`
 /// fixture binary (Zephyr `native_sim/native/64` running as a Linux
 /// process).

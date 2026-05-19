@@ -20,10 +20,12 @@ use std::{
 
 use nros_tests::{
     assert_output_contains,
+    esp32::start_esp32_qemu,
     fixtures::{
-        build_logging_smoke_freertos_mps2, build_logging_smoke_mps2_baremetal,
-        build_logging_smoke_threadx_riscv64, build_logging_smoke_zephyr_native_sim,
-        is_arm_toolchain_available, is_qemu_available, is_qemu_riscv64_available, QemuProcess,
+        build_logging_smoke_esp32_qemu_flash, build_logging_smoke_freertos_mps2,
+        build_logging_smoke_mps2_baremetal, build_logging_smoke_threadx_riscv64,
+        build_logging_smoke_zephyr_native_sim, is_arm_toolchain_available, is_qemu_available,
+        is_qemu_riscv64_available, QemuProcess,
     },
 };
 
@@ -109,6 +111,37 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
     let output = qemu
         .wait_for_output(Duration::from_secs(30))
         .expect("QEMU timed out waiting for log output");
+
+    assert_output_contains(&output, EXPECTED_LINES);
+}
+
+/// Phase 88.15.f — ESP32-C3 under stock `qemu-system-riscv32 -M
+/// esp32c3`. The board crate's `run()` registers an
+/// `esp_println`-backed writer with `nros-platform-esp32-qemu`'s
+/// fn-ptr slot (Phase 88.15.f groundwork) before the user closure
+/// fires; the closure drives every Severity through `nros-log`.
+/// The board's tail `Application completed successfully.` banner
+/// is the harness's exit signal — `QemuProcess::wait_for_output`
+/// kills the process once it sees the completion marker.
+#[test]
+fn logging_smoke_esp32_qemu_emits_every_severity() {
+    use std::process::Command;
+    if Command::new("qemu-system-riscv32")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        panic!("[SKIPPED] qemu-system-riscv32 not available");
+    }
+
+    let flash = build_logging_smoke_esp32_qemu_flash()
+        .expect("logging-smoke-esp32-qemu fixture not built — run `just esp32 build-logging-smoke`");
+
+    let mut qemu = start_esp32_qemu(flash, false).expect("failed to start ESP32-C3 QEMU");
+    let output = qemu
+        .wait_for_output(Duration::from_secs(30))
+        .expect("ESP32-C3 QEMU timed out waiting for log output");
+    qemu.kill();
 
     assert_output_contains(&output, EXPECTED_LINES);
 }

@@ -93,8 +93,27 @@ build-qemu:
     done
     echo "ESP32 QEMU examples built!"
 
+# Phase 88.15.f — build the ESP32-C3 nros-log smoke fixture +
+# espflash-pack the flash image alongside the ELF so the harness
+# can pick it up via `build_logging_smoke_esp32_qemu_flash`.
+build-logging-smoke:
+    #!/usr/bin/env bash
+    set -e
+    echo "Building logging-smoke-esp32-qemu..."
+    fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
+    (cd "$fixture" && cargo +{{NIGHTLY}} build --release)
+    elf="$fixture/target/riscv32imc-unknown-none-elf/release/logging-smoke-esp32-qemu"
+    bin="$elf.bin"
+    if command -v espflash &>/dev/null; then
+        espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$bin"
+        echo "  $bin"
+    else
+        echo "  WARNING: espflash not found, skipping flash image"
+        echo "  Install with: cargo install espflash"
+    fi
+
 # Build ESP32 test fixtures.
-build-fixtures: build-qemu
+build-fixtures: build-qemu build-logging-smoke
     @echo "ESP32 fixtures built."
 
 # Build every ESP32 tier: core artifacts, examples, and test fixtures.
