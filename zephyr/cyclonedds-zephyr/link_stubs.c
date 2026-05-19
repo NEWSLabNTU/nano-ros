@@ -96,18 +96,24 @@ dds_return_t ddsrt_getifaddrs(ddsrt_ifaddrs_t **ifap, const int *afs) {
         return DDS_RETCODE_OUT_OF_RESOURCES;
     }
 
+    /* 127.0.0.1/8 — usable loopback bind address. Cyclone DDS rejects
+     * INADDR_ANY because it isn't a routable identity for the
+     * participant's locator advertisement. With NSOS, socket calls
+     * tunnel to the host kernel so loopback works for both in-host
+     * domain peers and (with multicast group join) cross-host
+     * traffic that the host's routing table forwards. */
     addr->sin_family = AF_INET;
     addr->sin_port = 0;
-    addr->sin_addr.s_addr = htonl(INADDR_ANY);
+    addr->sin_addr.s_addr = htonl(0x7F000001U);  /* 127.0.0.1 */
 
     mask->sin_family = AF_INET;
     mask->sin_port = 0;
-    mask->sin_addr.s_addr = htonl(0x00000000U);
+    mask->sin_addr.s_addr = htonl(0xFF000000U);  /* /8 */
 
     ifa->next = NULL;
     ifa->name = name;
     ifa->index = 1;
-    ifa->flags = IFF_UP | IFF_MULTICAST;
+    ifa->flags = IFF_UP | IFF_LOOPBACK | IFF_MULTICAST;
     ifa->type = DDSRT_IFTYPE_WIRED;
     ifa->addr = (struct sockaddr *)addr;
     ifa->netmask = (struct sockaddr *)mask;
