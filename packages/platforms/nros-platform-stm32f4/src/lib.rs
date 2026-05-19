@@ -65,6 +65,33 @@ unsafe impl Sync for TimerHandleStub {}
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_timer!(Stm32f4Platform);
 
+// Phase 88 — `PlatformLog` impl + canonical C ABI export. Routes
+// log records through `defmt` over RTT (already the board's
+// existing logging path; the impl wraps the message body as the
+// `"{=str}"` arg so defmt interns the format string once). ISR-safe
+// under the standard `critical-section` defmt impl.
+impl nros_platform_api::PlatformLog for Stm32f4Platform {
+    fn write(severity: u8, name: &[u8], message: &[u8]) {
+        // defmt wants a `&str`. Lossy decode is fine — the facade
+        // formats from `core::fmt::Arguments`, so the body is UTF-8
+        // by construction.
+        let name_str = core::str::from_utf8(name).unwrap_or("");
+        let msg_str = core::str::from_utf8(message).unwrap_or("");
+        match severity {
+            0 => defmt::trace!("[nros:{=str}] {=str}", name_str, msg_str),
+            1 => defmt::debug!("[nros:{=str}] {=str}", name_str, msg_str),
+            2 => defmt::info!("[nros:{=str}] {=str}", name_str, msg_str),
+            3 => defmt::warn!("[nros:{=str}] {=str}", name_str, msg_str),
+            // defmt has no FATAL — fold into ERROR.
+            4 | 5 => defmt::error!("[nros:{=str}] {=str}", name_str, msg_str),
+            _ => defmt::info!("[nros:{=str}] {=str}", name_str, msg_str),
+        }
+    }
+}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_log!(Stm32f4Platform);
+
 // Phase 121.9 — Cortex-M PRIMASK critical section. See sibling
 // mps2-an385 for rationale.
 impl nros_platform_api::PlatformCriticalSection for Stm32f4Platform {

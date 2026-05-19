@@ -57,6 +57,58 @@ unsafe impl Sync for TimerHandleStub {}
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_timer!(Esp32Platform);
 
+// Phase 88 — `PlatformLog` for ESP32-C3 bare-metal. The Rust ESP32
+// console writer surface is fragmented across `esp-println` / RTT
+// / JTAG / serial-jtag depending on board wiring, so this crate
+// leaves the writer slot empty by default — board crates register
+// their own writer at startup via [`register_log_writer`]. Without
+// a registered writer the log path is a no-op (matches the
+// FreeRTOS / ThreadX shape).
+mod log_slot {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    pub(super) type Writer = fn(severity: u8, name: &[u8], message: &[u8]);
+
+    static WRITER: AtomicUsize = AtomicUsize::new(0);
+
+    pub(super) fn set(writer: Option<Writer>) {
+        let raw = match writer {
+            Some(w) => w as usize,
+            None => 0,
+        };
+        WRITER.store(raw, Ordering::Release);
+    }
+
+    pub(super) fn get() -> Option<Writer> {
+        let raw = WRITER.load(Ordering::Acquire);
+        if raw == 0 {
+            None
+        } else {
+            // SAFETY: only `set` writes here, and it only stores fn
+            // pointers we own (cast from a `fn(...)` literal).
+            Some(unsafe { core::mem::transmute::<usize, Writer>(raw) })
+        }
+    }
+}
+
+/// Register a board-supplied log writer for [`Esp32Platform`].
+///
+/// Boards call this once at startup. Re-calling replaces the
+/// previous writer. Pass `None` to disable logging.
+pub fn register_log_writer(writer: Option<log_slot::Writer>) {
+    log_slot::set(writer);
+}
+
+impl nros_platform_api::PlatformLog for Esp32Platform {
+    fn write(severity: u8, name: &[u8], message: &[u8]) {
+        if let Some(writer) = log_slot::get() {
+            writer(severity, name, message);
+        }
+    }
+}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_log!(Esp32Platform);
+
 // Phase 121.9 — RISC-V (ESP32-C3) critical section via the
 // `mstatus.MIE` bit. Token = prior MIE bit; outermost release
 // re-enables.

@@ -54,6 +54,51 @@ unsafe impl Sync for TimerHandleStub {}
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_timer!(Esp32QemuPlatform);
 
+// Phase 88 — `PlatformLog` for ESP32-C3 QEMU bare-metal. Same
+// fn-ptr shape as `nros-platform-esp32`: board crate (or QEMU test
+// harness) registers a writer at startup. No writer = no-op.
+mod log_slot {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    pub(super) type Writer = fn(severity: u8, name: &[u8], message: &[u8]);
+
+    static WRITER: AtomicUsize = AtomicUsize::new(0);
+
+    pub(super) fn set(writer: Option<Writer>) {
+        let raw = match writer {
+            Some(w) => w as usize,
+            None => 0,
+        };
+        WRITER.store(raw, Ordering::Release);
+    }
+
+    pub(super) fn get() -> Option<Writer> {
+        let raw = WRITER.load(Ordering::Acquire);
+        if raw == 0 {
+            None
+        } else {
+            // SAFETY: only `set` writes here, and it only stores fn
+            // pointers we own.
+            Some(unsafe { core::mem::transmute::<usize, Writer>(raw) })
+        }
+    }
+}
+
+/// Register a board-supplied log writer for [`Esp32QemuPlatform`].
+pub fn register_log_writer(writer: Option<log_slot::Writer>) {
+    log_slot::set(writer);
+}
+
+impl nros_platform_api::PlatformLog for Esp32QemuPlatform {
+    fn write(severity: u8, name: &[u8], message: &[u8]) {
+        if let Some(writer) = log_slot::get() {
+            writer(severity, name, message);
+        }
+    }
+}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_log!(Esp32QemuPlatform);
+
 // Phase 121.9 — RISC-V mstatus.MIE critical section; see sibling
 // nros-platform-esp32 for rationale.
 impl nros_platform_api::PlatformCriticalSection for Esp32QemuPlatform {

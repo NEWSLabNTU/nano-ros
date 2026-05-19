@@ -12,6 +12,8 @@ name = "nros_board_threadx_qemu_riscv64"
 # Phase 121.3 — canonical symbols from ThreadX C port; see sibling
 # nros-board-threadx-linux for full rationale.
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator"] }
+# Phase 88 — Rust binding for `nros_platform_register_log_writer`.
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", default-features = false }
 # Phase 152.2.B — `BoardInit` / `BoardPrint` / `BoardExit` trait
 # impls so this overlay fits the canonical overlay shape (same
 # pattern as `nros-board-orin-spe` 152.3, `nros-board-mps2-an385-freertos`
