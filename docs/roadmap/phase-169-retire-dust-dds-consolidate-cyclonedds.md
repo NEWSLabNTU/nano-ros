@@ -388,12 +388,26 @@ Ten `packages/testing/nros-tests/tests/*.rs` + Cargo.toml:
       `cargo metadata --no-deps` validates.
       `cargo check -p nros-tests --all-targets` clean.
 
-- [ ] **169.5 — Promote Cyclone DDS to "the DDS backend".**
-      Rename `nros-rmw-cyclonedds` → `nros-rmw-dds` (or keep
-      the current name and add an alias for the `rmw-dds`
-      slot — pick the less invasive). Update the registry
-      naming + `book/src/internals/rmw-backends.md`. Either
-      way the `NROS_RMW=dds` selector must work.
+- [x] **169.5 — Promote Cyclone DDS to "the DDS backend"
+      (2026-05-19).** Took the less-invasive "keep package
+      name, add registry alias" path per user instruction:
+
+      - Package name stays `nros-rmw-cyclonedds`.
+      - `nros_rmw_cyclonedds_register()` now registers the
+        same vtable under TWO names:
+        - `"cyclonedds"` (canonical, unchanged)
+        - `"dds"` (new alias — `NROS_RMW=dds` selector path)
+      - `book/src/internals/rmw-backends.md` updated: dust-DDS
+        row in the decision matrix marked **retired Phase 169**;
+        hierarchy diagram drops the `nros-rmw-dds` arrow;
+        registry table notes both names against Cyclone;
+        "Rust-backend cffi shape" prose drops dust-DDS from the
+        Rust-shim list; per-backend perf table drops the
+        dust-DDS row.
+      - `packages/{dds/nros-rmw-dds → }/README.md` reference
+        in the book updated.
+
+      `just cyclonedds build-rmw test` — 12/12 tests pass.
 
 - [ ] **169.6 — Update CLAUDE.md.** Drop the "dust-dds=Rust"
       entry from the RMW host-language policy table.

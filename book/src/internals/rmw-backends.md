@@ -29,17 +29,23 @@ nros-core (Rust) ──→ Rmw trait (internal; bridged by RustBackendAdapter<R>
                         └──→ nros-rmw-cffi   (C ABI bridge, registry)
                                 ↓ nros_rmw_vtable_t  (~17 fn ptrs)
                                 ├──→ nros-rmw-zenoh    (wraps Rust nros-rmw-zenoh)
-                                ├──→ nros-rmw-dds      (wraps Rust nros-rmw-dds)
                                 ├──→ nros-rmw-xrce-cffi     (links C nros-rmw-xrce)
                                 ├──→ nros-rmw-cyclonedds    (C++ direct, no Rust)
                                 └──→ nros-rmw-uorb      (C++ direct, no Rust)
 ```
 
 The shims are the canonical consumer surface. Public Cargo features
-on `nros` / `nros-c` / `nros-cpp` (`rmw-{zenoh,dds,xrce}-cffi`,
-`cffi-{zenoh-cffi,dds-cffi,xrce-c}`) all route through the same
+on `nros` / `nros-c` / `nros-cpp` (`rmw-{zenoh,xrce}-cffi`,
+`cffi-{zenoh-cffi,xrce-c}`) all route through the same
 `nros_rmw_vtable_t` runtime. The pre-L.7 direct-Rust-trait features
-(`rmw-zenoh`, `rmw-dds`, `rmw-xrce`, `rmw-uorb`) are gone.
+(`rmw-zenoh`, `rmw-xrce`, `rmw-uorb`) are gone.
+
+**Phase 169 (2026-05-19) — dust-dds retired.** The `nros-rmw-dds`
+Rust shim and the `dust-dds` upstream Rust DDS implementation
+have been removed (Phase 169.4). Cyclone DDS is now the sole DDS
+backend; the `nros-rmw-cyclonedds` shim registers under BOTH its
+canonical name `"cyclonedds"` AND the generic `"dds"` alias, so
+`NROS_RMW=dds` selectors continue to work.
 
 Any language with stable C-ABI interop (C, C++, Zig, Rust,
 Go-via-cgo, Python-via-ctypes…) can implement a backend by filling
@@ -50,25 +56,25 @@ startup.
 
 | Backend | Underlying lib | Underlying lang | Shim crate | Verdict |
 |---------|----------------|-----------------|------------|---------|
-| dust-DDS | dust-dds | Rust | `nros-rmw-dds` (Rust → vtable via `RustBackendAdapter<DdsRmw>`) | keep |
-| Cyclone DDS | Cyclone DDS | C / C++ | `nros-rmw-cyclonedds` (C++ direct vtable) | keep |
+| Cyclone DDS | Cyclone DDS | C / C++ | `nros-rmw-cyclonedds` (C++ direct vtable; canonical DDS backend) | keep |
 | XRCE | micro-XRCE-DDS-Client | C | `nros-rmw-xrce-cffi` (Rust shim over the C `nros-rmw-xrce` static lib; 115.K.2 ported) | keep |
 | zenoh-pico | zenoh-pico | C | `nros-rmw-zenoh` (Rust → vtable via `RustBackendAdapter<ZenohRmw>`) | keep |
 | uORB | PX4 module SDK | C++ | `nros-rmw-uorb` (C++ direct vtable; 115.K.4 port replaces legacy `nros-rmw-uorb` Rust crate) | keep |
+| ~~dust-DDS~~ | ~~dust-dds~~ | ~~Rust~~ | ~~`nros-rmw-dds`~~ | **Retired Phase 169 (2026-05-19)** — repeated bring-up failures on every embedded target; Cyclone now fills the DDS slot. |
 
 ### Rust-backend cffi shape
 
-For backends whose upstream library is Rust (dust-DDS, zenoh-pico)
-the cffi shim ships as a tiny crate that calls
+For backends whose upstream library is Rust (zenoh-pico) the cffi
+shim ships as a tiny crate that calls
 `RustBackendAdapter::<UnderlyingRmw>::register()`. The adapter
 monomorphizes a static `nros_rmw_vtable_t` over the Rust `Rmw`
 trait impl and installs it into the C registry. Consumer code never
 sees the trait surface; it only sees the vtable.
 
 The legacy direct-Rust-trait crates (`nros-rmw-zenoh`,
-`nros-rmw-dds`, `nros-rmw-xrce`) stay in the workspace as
-internal-only implementation libs of these shims. They have no
-public Cargo feature reaching them after.
+`nros-rmw-xrce`) stay in the workspace as internal-only
+implementation libs of these shims. They have no public Cargo
+feature reaching them after.
 
 ### C-/C++-backend cffi shape
 
@@ -101,9 +107,8 @@ process startup:
 | Backend | Name | Registered by |
 |---|---|---|
 | zenoh-pico | `"zenoh"` | `nros_rmw_zenoh_register()` (auto-ctor on POSIX) |
-| dust-DDS | `"dds"` | `nros_rmw_dds_register()` (auto-ctor on POSIX) |
 | micro-XRCE-DDS-Client | `"xrce"` | `nros_rmw_xrce_register()` (C ctor on POSIX) |
-| Cyclone DDS | `"cyclonedds"` | `nros::init` hook (C++ explicit call) |
+| Cyclone DDS | `"cyclonedds"` + `"dds"` alias (Phase 169.5) | `nros_rmw_cyclonedds_register()` registers both names against the same vtable |
 | uORB | `"uorb"` (future) | TBD |
 
 ### Naming policy
@@ -229,7 +234,6 @@ dumps.
 | Backend | `poll_wcet_us` | Buffer-pool size | Notes |
 |---|---|---|---|
 | **zenoh-pico** (`nros-rmw-zenoh`) | ~50–200 µs nominal on Cortex-M3 (FreeRTOS QEMU); P99 ≤ 1 ms under 100 Hz pub load | `Z_BATCH_UNICAST_SIZE` (default 6500 B/peer) + 4 KB per subscription buffered ring | Wake-cb collapses idle wait to kernel `xSemaphore` post — sub-poll-period latency when transport notifies. POSIX cv-wait path same shape, ~1 µs notify-to-dispatch. |
-| **dust-DDS** (`nros-rmw-dds`) | ~200–800 µs nominal on POSIX (cold-cache reader scan); discovery storms can push P99 to ~5 ms | DDS RTPS history (default 10-deep ring per Reader/Writer) — heap-resident; ~16 KB/topic baseline | RustDDS-derivative; listener thread fires `set_wake_callback` on data arrival, drains via spin's drive_io. No bare-metal port (alloc-heavy). |
 | **XRCE-DDS** (`nros-rmw-xrce-cffi`) | ~100–500 µs per `uxr_run_session_time` on POSIX; agent-round-trip dominates over local poll. Bare-metal targets pay the same poll cost. | `STREAM_HISTORY` (4) × `UXR_CONFIG_UDP_TRANSPORT_MTU` (512 B default) ≈ 2 KB/stream; one input + one output stream per session | Poll-only — `set_wake_callback` slot is NULL; spin_once cv-wait still wakes on its deadline. Agent does the reliable-retransmit accounting; client adds ~10 µs per stream per tick. |
 | **Cyclone DDS** (`nros-rmw-cyclonedds`) | ~150–600 µs on POSIX; C++ listener callback latency depends on Cyclone's reader-cache scan. | Cyclone's RTPS history per the DDS QoS `History.depth` (default 10) + Cyclone's own DDSI buffer pool (~32 KB default) | Listener-side `set_wake_callback` wiring is follow-up — today the C++ vtable sets the slot NULL. Memory footprint dominated by Cyclone itself, not the nano-ros shim. |
 
@@ -241,7 +245,7 @@ test (blocked on the PiCAS dispatcher) will eventually pin a
 bar to this table.
 
 Per-backend `README.md` files live at
-`packages/{zpico/nros-rmw-zenoh,dds/nros-rmw-dds,dds/nros-rmw-cyclonedds,xrce/nros-rmw-xrce-cffi}/README.md`
+`packages/{zpico/nros-rmw-zenoh,dds/nros-rmw-cyclonedds,xrce/nros-rmw-xrce-cffi}/README.md`
 (when present); reach out to the backend's maintainer for
 fresh microbench numbers on a different target class than
 the ones above.
