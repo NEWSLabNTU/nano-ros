@@ -41,7 +41,7 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener first
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -54,7 +54,7 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -121,7 +121,7 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener first
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -134,7 +134,7 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -159,12 +159,11 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     // Extract received values
     let mut received_values: Vec<i32> = Vec::new();
     for line in listener_output.lines() {
-        if line.contains("Received:") {
-            if let Some(data_part) = line.split("Received:").nth(1) {
-                if let Ok(num) = data_part.trim().parse() {
-                    received_values.push(num);
-                }
-            }
+        if line.contains("Received:")
+            && let Some(data_part) = line.split("Received:").nth(1)
+            && let Ok(num) = data_part.trim().parse()
+        {
+            received_values.push(num);
         }
     }
 
@@ -217,7 +216,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -229,7 +228,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -250,12 +249,11 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     // Extract received values
     let mut received_values: Vec<i32> = Vec::new();
     for line in listener_output.lines() {
-        if line.contains("Received:") {
-            if let Some(data_part) = line.split("Received:").nth(1) {
-                if let Ok(num) = data_part.trim().parse() {
-                    received_values.push(num);
-                }
-            }
+        if line.contains("Received:")
+            && let Some(data_part) = line.split("Received:").nth(1)
+            && let Ok(num) = data_part.trim().parse()
+        {
+            received_values.push(num);
         }
     }
 
@@ -297,7 +295,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "debug") // Debug to see QoS info
         .env("NROS_LOCATOR", &locator)
@@ -309,7 +307,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "debug")
         .env("NROS_LOCATOR", &locator)
@@ -361,13 +359,13 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start two listeners
-    let mut listener1_cmd = Command::new(&listener_binary);
+    let mut listener1_cmd = Command::new(listener_binary);
     listener1_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut listener2_cmd = Command::new(&listener_binary);
+    let mut listener2_cmd = Command::new(listener_binary);
     listener2_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -381,7 +379,7 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)

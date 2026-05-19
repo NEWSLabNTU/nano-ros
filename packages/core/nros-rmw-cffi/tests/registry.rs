@@ -34,7 +34,7 @@ fn dummy_vtable() -> &'static NrosRmwVtable {
         // Single-threaded init under cargo-test default; benign
         // double-write if multiple threads race here (same value).
         unsafe extern "C" fn noop() {}
-        let p = noop as *const () as *const ();
+        let p = noop as *const ();
         let n = core::mem::size_of::<NrosRmwVtable>() / core::mem::size_of::<*const ()>();
         unsafe {
             let raw = (&raw mut VTABLE_BUF.0) as *mut *const ();

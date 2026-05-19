@@ -698,7 +698,7 @@ mod tests {
     fn test_ctx_node_clear_callbacks_resets() {
         unsafe {
             let mut node = LifecyclePollingNodeCtx::new();
-            node.set_context(1usize as *mut c_void);
+            node.set_context(core::ptr::dangling_mut::<c_void>());
             node.register(LifecycleCallbackSlot::Configure, Some(ctx_cb_success));
             node.clear_callbacks();
             assert!(node.context().is_null());

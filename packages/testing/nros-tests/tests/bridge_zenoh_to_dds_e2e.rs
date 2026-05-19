@@ -11,7 +11,7 @@
 //! Scope: smoke-test that the multi-backend Executor + per-Node
 //! NodeBuilder path (Phase 104.C.3 + 104.C.9) actually links + runs
 //! in one binary. Full message-count assertion (publisher upstream
-//! + DDS subscriber downstream) is the follow-up "bridge throughput"
+//! plus DDS subscriber downstream) is the follow-up "bridge throughput"
 //! test class — tracked under Phase 104.E.
 //!
 //! Skips cleanly via `nros_tests::skip!` when:

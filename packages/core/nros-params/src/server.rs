@@ -464,6 +464,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_declare_and_get() {
         let mut server = ParameterServer::new();
 

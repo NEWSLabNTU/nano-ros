@@ -37,7 +37,7 @@ static mut VTABLE_BUF: StaticVtable = StaticVtable(MaybeUninit::uninit());
 fn dummy_vtable() -> &'static NrosRmwVtable {
     if !VTABLE_INIT.load(Ordering::Acquire) {
         unsafe extern "C" fn noop() {}
-        let p = noop as *const () as *const ();
+        let p = noop as *const ();
         let n = core::mem::size_of::<NrosRmwVtable>() / core::mem::size_of::<*const ()>();
         unsafe {
             let raw = (&raw mut VTABLE_BUF.0) as *mut *const ();

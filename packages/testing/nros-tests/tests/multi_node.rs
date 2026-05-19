@@ -42,7 +42,7 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener first
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -56,12 +56,12 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     // Start 3 talkers
     let mut talkers = Vec::new();
     for i in 0..3 {
-        let mut cmd = Command::new(&talker_binary);
+        let mut cmd = Command::new(talker_binary);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client");
 
-        let proc = ManagedProcess::spawn_command(cmd, &format!("talker_{}", i))
+        let proc = ManagedProcess::spawn_command(cmd, format!("talker_{}", i))
             .expect("Failed to start talker");
         talkers.push(proc);
     }
@@ -118,12 +118,12 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     // Start 3 listeners
     let mut listeners = Vec::new();
     for i in 0..3 {
-        let mut cmd = Command::new(&listener_binary);
+        let mut cmd = Command::new(listener_binary);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client");
 
-        let proc = ManagedProcess::spawn_command(cmd, &format!("listener_{}", i))
+        let proc = ManagedProcess::spawn_command(cmd, format!("listener_{}", i))
             .expect("Failed to start listener");
         listeners.push(proc);
     }
@@ -131,7 +131,7 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -209,12 +209,12 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
     // Start 2 listeners
     let mut listeners = Vec::new();
     for i in 0..2 {
-        let mut cmd = Command::new(&listener_binary);
+        let mut cmd = Command::new(listener_binary);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client");
 
-        let proc = ManagedProcess::spawn_command(cmd, &format!("listener_{}", i))
+        let proc = ManagedProcess::spawn_command(cmd, format!("listener_{}", i))
             .expect("Failed to start listener");
         listeners.push(proc);
     }
@@ -224,12 +224,12 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
     // Start 2 talkers
     let mut talkers = Vec::new();
     for i in 0..2 {
-        let mut cmd = Command::new(&talker_binary);
+        let mut cmd = Command::new(talker_binary);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client");
 
-        let proc = ManagedProcess::spawn_command(cmd, &format!("talker_{}", i))
+        let proc = ManagedProcess::spawn_command(cmd, format!("talker_{}", i))
             .expect("Failed to start talker");
         talkers.push(proc);
     }
@@ -285,7 +285,7 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -297,7 +297,7 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -357,7 +357,7 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -369,7 +369,7 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -391,12 +391,11 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     // Extract received values
     let mut received_values: Vec<i32> = Vec::new();
     for line in listener_output.lines() {
-        if line.contains("Received:") {
-            if let Some(data_part) = line.split("Received:").nth(1) {
-                if let Ok(num) = data_part.trim().parse() {
-                    received_values.push(num);
-                }
-            }
+        if line.contains("Received:")
+            && let Some(data_part) = line.split("Received:").nth(1)
+            && let Ok(num) = data_part.trim().parse()
+        {
+            received_values.push(num);
         }
     }
 
@@ -459,12 +458,12 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     let mut listeners = Vec::new();
 
     for i in 0..num_listeners {
-        let mut cmd = Command::new(&listener_binary);
+        let mut cmd = Command::new(listener_binary);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client");
 
-        let proc = ManagedProcess::spawn_command(cmd, &format!("listener_{}", i))
+        let proc = ManagedProcess::spawn_command(cmd, format!("listener_{}", i))
             .expect("Failed to start listener");
         listeners.push(proc);
 
@@ -475,7 +474,7 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -535,7 +534,7 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -551,12 +550,12 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     let mut talkers = Vec::new();
 
     for i in 0..num_talkers {
-        let mut cmd = Command::new(&talker_binary);
+        let mut cmd = Command::new(talker_binary);
         cmd.env("RUST_LOG", "info")
             .env("NROS_LOCATOR", &locator)
             .env("NROS_SESSION_MODE", "client");
 
-        let proc = ManagedProcess::spawn_command(cmd, &format!("talker_{}", i))
+        let proc = ManagedProcess::spawn_command(cmd, format!("talker_{}", i))
             .expect("Failed to start talker");
         talkers.push(proc);
 
@@ -612,25 +611,25 @@ fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start 2 listeners and 2 talkers nearly simultaneously
-    let mut listener1_cmd = Command::new(&listener_binary);
+    let mut listener1_cmd = Command::new(listener_binary);
     listener1_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut listener2_cmd = Command::new(&listener_binary);
+    let mut listener2_cmd = Command::new(listener_binary);
     listener2_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut talker1_cmd = Command::new(&talker_binary);
+    let mut talker1_cmd = Command::new(talker_binary);
     talker1_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut talker2_cmd = Command::new(&talker_binary);
+    let mut talker2_cmd = Command::new(talker_binary);
     talker2_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)

@@ -1089,11 +1089,11 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     let mut first_message_time = None;
     for _ in 0..50 {
         std::thread::sleep(Duration::from_millis(100));
-        if let Ok(output) = ros2_subscriber.wait_for_output(Duration::from_millis(10)) {
-            if output.contains("data:") {
-                first_message_time = Some(start.elapsed());
-                break;
-            }
+        if let Ok(output) = ros2_subscriber.wait_for_output(Duration::from_millis(10))
+            && output.contains("data:")
+        {
+            first_message_time = Some(start.elapsed());
+            break;
         }
     }
 

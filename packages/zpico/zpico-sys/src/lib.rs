@@ -314,7 +314,7 @@ mod tests {
     fn test_constants() {
         assert_eq!(ZPICO_OK, 0);
         assert_eq!(ZPICO_ERR_GENERIC, -1);
-        assert!(ZPICO_MAX_PUBLISHERS > 0);
-        assert!(ZPICO_MAX_SUBSCRIBERS > 0);
+        const { assert!(ZPICO_MAX_PUBLISHERS > 0) };
+        const { assert!(ZPICO_MAX_SUBSCRIBERS > 0) };
     }
 }

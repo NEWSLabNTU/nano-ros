@@ -41,7 +41,7 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
             .env("PAYLOAD_SIZE", size.to_string())
             .env("PUBLISH_COUNT", "3")
             .env("PUBLISH_INTERVAL_MS", "10");
-        let mut proc = ManagedProcess::spawn_command(cmd, &format!("zenoh-stress-{}", size))
+        let mut proc = ManagedProcess::spawn_command(cmd, format!("zenoh-stress-{}", size))
             .expect("Failed to start stress test");
 
         let output = proc
@@ -473,7 +473,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
             .env("PAYLOAD_SIZE", size.to_string())
             .env("PUBLISH_COUNT", "3")
             .env("PUBLISH_INTERVAL_MS", "50");
-        let mut proc = ManagedProcess::spawn_command(cmd, &format!("xrce-stress-{}", size))
+        let mut proc = ManagedProcess::spawn_command(cmd, format!("xrce-stress-{}", size))
             .expect("Failed to start stress test");
 
         let output = proc

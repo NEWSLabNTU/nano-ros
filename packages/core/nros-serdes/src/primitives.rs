@@ -358,6 +358,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_floats_roundtrip() {
         let mut buf = [0u8; 32];
         let mut writer = CdrWriter::new(&mut buf);

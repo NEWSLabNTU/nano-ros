@@ -14,7 +14,7 @@ mod tests {
         let mut buf = [0u8; 8];
         let writer = CdrWriter::new_with_header(&mut buf).unwrap();
         let pos = writer.position();
-        drop(writer);
+        let _ = writer;
 
         // Pico-ROS format: 0x0100 as u32 little-endian = [0x00, 0x01, 0x00, 0x00]
         assert_eq!(&buf[0..4], &CDR_LE_HEADER);
@@ -334,6 +334,7 @@ mod tests {
 
     /// Test deserialization matches serialization
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_roundtrip_complex() {
         let mut buf = [0u8; 64];
 

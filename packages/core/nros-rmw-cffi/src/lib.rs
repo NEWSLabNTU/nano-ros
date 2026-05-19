@@ -2909,6 +2909,7 @@ impl CffiRmw {
 //    vtable callback.
 
 #[cfg(test)]
+#[allow(static_mut_refs)]
 mod tests {
     use super::*;
     use nros_rmw::{Rmw, RmwConfig, Session, SessionMode, TopicInfo};
@@ -2957,7 +2958,7 @@ mod tests {
         out: *mut NrosRmwSession,
     ) -> NrosRmwRet {
         unsafe {
-            *(&raw mut STUB_OPEN_CALLED) = true;
+            STUB_OPEN_CALLED = true;
             (*out).backend_data = 0xDEAD_BEEFusize as *mut c_void;
         }
         NROS_RMW_RET_OK
@@ -2985,10 +2986,10 @@ mod tests {
     ) -> NrosRmwRet {
         // Capture the typed-struct fields the runtime supplied.
         unsafe {
-            *(&raw mut STUB_CREATE_PUB_CALLED) = true;
-            copy_cstr((*out).topic_name, &mut *(&raw mut STUB_LAST_TOPIC_NAME));
-            copy_cstr((*out).type_name, &mut *(&raw mut STUB_LAST_TYPE_NAME));
-            *(&raw mut STUB_LAST_QOS) = *qos;
+            STUB_CREATE_PUB_CALLED = true;
+            copy_cstr((*out).topic_name, &mut STUB_LAST_TOPIC_NAME);
+            copy_cstr((*out).type_name, &mut STUB_LAST_TYPE_NAME);
+            STUB_LAST_QOS = *qos;
             (*out).backend_data = 0xCAFEusize as *mut c_void;
             (*out).can_loan_messages = true;
         }
@@ -3005,11 +3006,11 @@ mod tests {
         // Verify the runtime is still passing the same backend_data
         // and topic_name on every call.
         unsafe {
-            *(&raw mut STUB_PUBLISH_CALLED) = true;
+            STUB_PUBLISH_CALLED = true;
             assert_eq!((*publisher).backend_data as usize, 0xCAFE);
             let mut buf = [0u8; 64];
             copy_cstr((*publisher).topic_name, &mut buf);
-            assert_eq!(&buf[..], &*(&raw const STUB_LAST_TOPIC_NAME));
+            assert_eq!(&buf[..], &STUB_LAST_TOPIC_NAME);
         }
         NROS_RMW_RET_OK
     }
@@ -3024,7 +3025,7 @@ mod tests {
         out: *mut NrosRmwSubscriber,
     ) -> NrosRmwRet {
         unsafe {
-            (*out).backend_data = 0x1usize as *mut c_void;
+            (*out).backend_data = core::ptr::dangling_mut::<c_void>();
         }
         NROS_RMW_RET_OK
     }
@@ -3045,7 +3046,7 @@ mod tests {
         out: *mut NrosRmwServiceServer,
     ) -> NrosRmwRet {
         unsafe {
-            (*out).backend_data = 0x1usize as *mut c_void;
+            (*out).backend_data = core::ptr::dangling_mut::<c_void>();
         }
         NROS_RMW_RET_OK
     }
@@ -3079,7 +3080,7 @@ mod tests {
         out: *mut NrosRmwServiceClient,
     ) -> NrosRmwRet {
         unsafe {
-            (*out).backend_data = 0x1usize as *mut c_void;
+            (*out).backend_data = core::ptr::dangling_mut::<c_void>();
         }
         NROS_RMW_RET_OK
     }
@@ -3161,7 +3162,7 @@ mod tests {
             vtable: &STUB_VTABLE,
             service_name_buf: [0u8; NAME_BUF_LEN],
             type_name_buf: [0u8; NAME_BUF_LEN],
-            backend_data: 0x1usize as *mut c_void,
+            backend_data: core::ptr::dangling_mut::<c_void>(),
         };
         let mut buf = [0u8; 16];
 
@@ -3184,7 +3185,7 @@ mod tests {
             properties: &[],
         };
         let mut session = Rmw::open(CffiRmw, &cfg).expect("session open");
-        assert!(unsafe { *(&raw const STUB_OPEN_CALLED) });
+        assert!(unsafe { STUB_OPEN_CALLED });
         assert_eq!(session.node_name(), "test_node");
 
         // Create a publisher; verify backend received the typed
@@ -3194,15 +3195,15 @@ mod tests {
         let publisher = session
             .create_publisher(&topic, qos)
             .expect("publisher create");
-        assert!(unsafe { *(&raw const STUB_CREATE_PUB_CALLED) });
-        let topic_buf = unsafe { &*(&raw const STUB_LAST_TOPIC_NAME) };
+        assert!(unsafe { STUB_CREATE_PUB_CALLED });
+        let topic_buf = unsafe { &STUB_LAST_TOPIC_NAME };
         assert_eq!(
             core::str::from_utf8(topic_buf)
                 .unwrap_or("")
                 .trim_end_matches('\0'),
             "/chatter"
         );
-        let type_buf = unsafe { &*(&raw const STUB_LAST_TYPE_NAME) };
+        let type_buf = unsafe { &STUB_LAST_TYPE_NAME };
         assert_eq!(
             core::str::from_utf8(type_buf)
                 .unwrap_or("")
@@ -3219,6 +3220,6 @@ mod tests {
         // the typed view.
         use nros_rmw::Publisher as _;
         publisher.publish_raw(&[1u8, 2, 3]).expect("publish");
-        assert!(unsafe { *(&raw const STUB_PUBLISH_CALLED) });
+        assert!(unsafe { STUB_PUBLISH_CALLED });
     }
 }

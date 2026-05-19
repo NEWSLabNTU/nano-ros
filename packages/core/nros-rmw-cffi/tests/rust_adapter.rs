@@ -6,6 +6,7 @@
 //! confirms each trampoline reached its trait counterpart.
 
 #![cfg(feature = "alloc")]
+#![allow(clippy::manual_c_str_literals)]
 
 use std::sync::{
     Mutex,

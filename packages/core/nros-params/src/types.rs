@@ -560,6 +560,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_parameter_value_types() {
         let bool_val = ParameterValue::Bool(true);
         assert_eq!(bool_val.param_type(), ParameterType::Bool);

@@ -278,9 +278,9 @@ impl Platform {
     /// Phase 140 — the pre-140 NuttX C/C++ heuristic looked for prebuilt
     /// variant libs under `build/install/lib/`. With install-local gone,
     /// NuttX C/C++ examples build in-tree via `add_subdirectory(nano-ros)`
-    /// + the Phase 139 NuttX integration shell; toolchain absence is the
-    /// real skip signal and is surfaced where the QEMU / cross-compile
-    /// build runs.
+    /// plus the Phase 139 NuttX integration shell; toolchain absence is
+    /// the real skip signal and is surfaced where the QEMU /
+    /// cross-compile build runs.
     fn skip_reason(self, _lang: Lang, _variant: Variant) -> Option<&'static str> {
         None
     }

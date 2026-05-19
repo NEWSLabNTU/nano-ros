@@ -47,7 +47,7 @@ unsafe extern "C" fn stub_open(
     _: *const u8,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
-    unsafe { (*out).backend_data = 0x1usize as *mut c_void };
+    unsafe { (*out).backend_data = std::ptr::dangling_mut::<c_void>() };
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_close(_: *mut NrosRmwSession) -> NrosRmwRet {

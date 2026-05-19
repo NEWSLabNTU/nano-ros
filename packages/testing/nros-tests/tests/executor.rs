@@ -56,7 +56,7 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
     // At 1Hz for 5 seconds, we expect ~5 messages (allow 3-7 for timing variance)
     println!("Published count: {}", published_count);
     assert!(
-        published_count >= 3 && published_count <= 7,
+        (3..=7).contains(&published_count),
         "Expected ~5 messages at 1Hz over 5s, got {}",
         published_count
     );
@@ -116,7 +116,7 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener first
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -129,7 +129,7 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -156,10 +156,10 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     for line in listener_output.lines() {
         if line.contains("Received:") {
             // Parse "Received: N" pattern
-            if let Some(data_part) = line.split("Received:").nth(1) {
-                if let Ok(num) = data_part.trim().parse() {
-                    received_values.push(num);
-                }
+            if let Some(data_part) = line.split("Received:").nth(1)
+                && let Ok(num) = data_part.trim().parse()
+            {
+                received_values.push(num);
             }
         }
     }
@@ -203,7 +203,7 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start listener
-    let mut listener_cmd = Command::new(&listener_binary);
+    let mut listener_cmd = Command::new(listener_binary);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -216,7 +216,7 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
 
     // Start talker
-    let mut talker_cmd = Command::new(&talker_binary);
+    let mut talker_cmd = Command::new(talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
@@ -322,13 +322,13 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
 
     // Start two talkers (each has its own timer)
-    let mut talker1_cmd = Command::new(&talker_binary);
+    let mut talker1_cmd = Command::new(talker_binary);
     talker1_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
 
-    let mut talker2_cmd = Command::new(&talker_binary);
+    let mut talker2_cmd = Command::new(talker_binary);
     talker2_cmd
         .env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)

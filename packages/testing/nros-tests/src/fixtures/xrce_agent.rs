@@ -43,8 +43,7 @@ impl XrceAgent {
         // set in the env. Captures every inbound/outbound message at the
         // Agent so we can correlate publisher publishes with subscriber
         // deliveries for the throughput-drop investigation.
-        let mut agent_args: Vec<String> =
-            vec!["udp4".into(), "-p".into(), port.to_string()];
+        let mut agent_args: Vec<String> = vec!["udp4".into(), "-p".into(), port.to_string()];
         if std::env::var_os("NROS_XRCE_AGENT_VERBOSE").is_some() {
             agent_args.push("-v6".into());
         }

@@ -31,7 +31,6 @@ use std::{path::PathBuf, time::Duration};
 fn require_qemu() {
     if !is_qemu_available() {
         eprintln!("Skipping test: qemu-system-arm not found");
-        return;
     }
 }
 
@@ -39,7 +38,6 @@ fn require_qemu() {
 fn require_arm_toolchain() {
     if !is_arm_toolchain_available() {
         eprintln!("Skipping test: thumbv7m-none-eabi target not installed");
-        return;
     }
 }
 
@@ -325,7 +323,6 @@ fn require_arm_m4_toolchain() {
         .unwrap_or(false)
     {
         eprintln!("Skipping test: thumbv7em-none-eabihf target not installed");
-        return;
     }
 }
 
@@ -701,7 +698,7 @@ fn test_qemu_serial_pubsub_e2e() {
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting serial listener QEMU...");
     let mut listener =
-        QemuProcess::start_mps2_an385_with_serial(&listener_bin, &listener_pair.qemu_path)
+        QemuProcess::start_mps2_an385_with_serial(listener_bin, &listener_pair.qemu_path)
             .expect("Failed to start listener QEMU");
 
     // Brief delay for listener to subscribe before talker starts publishing
@@ -709,7 +706,7 @@ fn test_qemu_serial_pubsub_e2e() {
 
     // Start talker QEMU
     eprintln!("Starting serial talker QEMU...");
-    let mut talker = QemuProcess::start_mps2_an385_with_serial(&talker_bin, &talker_pair.qemu_path)
+    let mut talker = QemuProcess::start_mps2_an385_with_serial(talker_bin, &talker_pair.qemu_path)
         .expect("Failed to start talker QEMU");
 
     // Wait for listener to receive messages (examples now run forever)

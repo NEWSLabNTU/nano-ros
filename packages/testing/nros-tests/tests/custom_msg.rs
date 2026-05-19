@@ -99,7 +99,7 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
     println!("Starting custom_msg with zenoh...");
     println!("zenohd locator: {}", locator);
 
-    let mut cmd = Command::new(&binary);
+    let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)
         .env("NROS_SESSION_MODE", "client");
@@ -221,7 +221,7 @@ fn test_custom_msg_no_router() {
     let binary = build_native_custom_msg().expect("Failed to build with zenoh");
 
     // Run with zenoh feature but no router - should handle gracefully
-    let mut cmd = Command::new(&binary);
+    let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", "tcp/127.0.0.1:19999") // Non-existent port
         .env("NROS_SESSION_MODE", "client");

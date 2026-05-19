@@ -53,7 +53,7 @@ unsafe extern "C" fn stub_open(
     _: *const u8,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
-    unsafe { (*out).backend_data = 0x1usize as *mut c_void };
+    unsafe { (*out).backend_data = std::ptr::dangling_mut::<c_void>() };
     NROS_RMW_RET_OK
 }
 unsafe extern "C" fn stub_close(_: *mut NrosRmwSession) -> NrosRmwRet {
@@ -206,8 +206,7 @@ unsafe extern "C" fn stub_try_recv_sequence(
 ) -> i32 {
     SEQ_CALLS_NATIVE.fetch_add(1, Ordering::SeqCst);
     let to_emit = QUEUE.len().min(max_msgs);
-    for i in 0..to_emit {
-        let msg = QUEUE[i];
+    for (i, msg) in QUEUE.iter().take(to_emit).enumerate() {
         let copy = msg.len().min(per_msg_cap);
         unsafe {
             core::ptr::copy_nonoverlapping(msg.as_ptr(), buf.add(i * per_msg_cap), copy);

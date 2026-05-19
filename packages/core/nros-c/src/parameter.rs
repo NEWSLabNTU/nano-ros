@@ -1261,6 +1261,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_get_type_returns_array_type() {
         let mut server = nros_param_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];

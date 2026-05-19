@@ -64,12 +64,12 @@ fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary:
         .expect("Failed to start service server");
 
     // Wait for server readiness
-    match server.wait_for_output_pattern("Waiting for service", Duration::from_secs(5)) {
-        Ok(_) => {
-            eprintln!("[PASS] native-rs-service-server started successfully");
-            return;
-        }
-        Err(_) => {}
+    if server
+        .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
+        .is_ok()
+    {
+        eprintln!("[PASS] native-rs-service-server started successfully");
+        return;
     }
 
     // Check process is still running (didn't crash)

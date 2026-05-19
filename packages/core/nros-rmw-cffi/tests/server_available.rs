@@ -40,7 +40,7 @@ unsafe extern "C" fn stub_open(
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     unsafe {
-        (*out).backend_data = 0x1usize as *mut c_void;
+        (*out).backend_data = std::ptr::dangling_mut::<c_void>();
     }
     NROS_RMW_RET_OK
 }
@@ -287,10 +287,10 @@ fn server_available_tracks_slot_return_value() {
     let client = open_client("/svc_scripted");
 
     SCRIPT.store(0, Ordering::SeqCst);
-    assert_eq!(client.server_available().unwrap(), false);
+    assert!(!client.server_available().unwrap());
 
     SCRIPT.store(1, Ordering::SeqCst);
-    assert_eq!(client.server_available().unwrap(), true);
+    assert!(client.server_available().unwrap());
 
     SCRIPT.store(NROS_RMW_RET_ERROR, Ordering::SeqCst);
     assert!(client.server_available().is_err());
@@ -299,7 +299,7 @@ fn server_available_tracks_slot_return_value() {
     // than a strict boolean. Treat any positive non-1 value as
     // "available" — covered in `CffiServiceClient::server_available`.
     SCRIPT.store(7, Ordering::SeqCst);
-    assert_eq!(client.server_available().unwrap(), true);
+    assert!(client.server_available().unwrap());
 }
 
 #[test]

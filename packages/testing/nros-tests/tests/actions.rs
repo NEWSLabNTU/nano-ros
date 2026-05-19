@@ -30,12 +30,12 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
         .expect("Failed to start action server");
 
     // Wait for server readiness
-    match server.wait_for_output_pattern("Waiting for action", Duration::from_secs(5)) {
-        Ok(_) => {
-            eprintln!("[PASS] native-rs-action-server started successfully");
-            return;
-        }
-        Err(_) => {}
+    if server
+        .wait_for_output_pattern("Waiting for action", Duration::from_secs(5))
+        .is_ok()
+    {
+        eprintln!("[PASS] native-rs-action-server started successfully");
+        return;
     }
 
     // Check process is still running (didn't crash)

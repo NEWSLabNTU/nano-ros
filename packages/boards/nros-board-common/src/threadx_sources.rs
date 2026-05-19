@@ -58,7 +58,7 @@ pub fn add_threadx_port_sources(
 /// emits the matching `cargo:rerun-if-changed` lines.
 ///
 /// Caller's `build` must already carry the architecture / cflags
-/// + ThreadX kernel + NetX includes — those differ per overlay
+/// plus ThreadX kernel + NetX includes — those differ per overlay
 /// (NSOS shim vs full NetX-Duo) so they can't be lifted here.
 ///
 /// `workspace_root` is the directory containing `packages/` —
