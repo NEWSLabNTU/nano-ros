@@ -239,9 +239,18 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # Phase 11W.1 — Cyclone DDS atomics use unprefixed `asm
     # volatile` in `ddsrt/atomics/gcc.h`. Zephyr's default -std=c11
     # rejects the unprefixed keyword on strict toolchains
-    # (host-gcc on native_sim). Re-enable GCC keyword recognition
-    # for Cyclone's C TUs only.
-    zephyr_compile_options($<$<COMPILE_LANGUAGE:C>:-fgnu-keywords>)
+    # (host-gcc on native_sim). `-fgnu-keywords` is C++-only;
+    # for C, the equivalent is a macro substitution to the
+    # always-accepted `__asm__` form.
+    zephyr_compile_options($<$<COMPILE_LANGUAGE:C>:-Dasm=__asm__>)
+
+    # Phase 11W.2 — `packages/dds/nros-rmw-cyclonedds/src/*.cpp`
+    # include `<cstdlib>` / `<cstring>` etc. Zephyr's
+    # `lib/cpp/minimal/include` only ships `<cstddef>` / `<cstdint>`
+    # / `<new>`. Project ships compat shims at `zephyr/cxx-compat/`
+    # — same shims `nros-cpp` uses. Prepend so cyclonedds C++ TUs
+    # find them.
+    zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cxx-compat)
 
     # ---- Cyclone DDS sources -----------------------------------------------
     # ddsrt: platform-abstraction layer. Top-level .c files plus per-feature

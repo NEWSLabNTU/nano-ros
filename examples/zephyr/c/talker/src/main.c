@@ -61,6 +61,8 @@ int nros_app_main(int argc, char **argv)
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
         CONFIG_NROS_DOMAIN_ID,
         "xrce_talker"), 1);
+#elif defined(CONFIG_NROS_RMW_CYCLONEDDS)
+    NROS_CHECK_RET(nros_support_init(&support, "", CONFIG_NROS_DOMAIN_ID), 1);
 #else
 #error "Phase 168.4 requires CONFIG_NROS_RMW_{ZENOH,XRCE,CYCLONEDDS}=y via prj-<rmw>.conf overlay"
 #endif

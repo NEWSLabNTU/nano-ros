@@ -117,7 +117,81 @@ compile options via its `CMakeLists.txt`).
 `ddsrt/atomics/gcc.h` to use `__asm__` instead of `asm`. Upstream
 PR; backport burden each Cyclone bump.
 
-## Gap 3 — Possibly-more cyclonedds TU compile issues (unknown)
+## Gap 2.5 — Cyclonedds C++ source needs `zephyr/cxx-compat/` shims (landed)
+
+**Symptom (post Gap 2 fix):**
+
+```
+packages/dds/nros-rmw-cyclonedds/src/session.cpp:18:10: fatal error: cstdlib: No such file or directory
+packages/dds/nros-rmw-cyclonedds/src/descriptors.cpp:24:10: fatal error: cstring: No such file or directory
+packages/dds/nros-rmw-cyclonedds/src/sertype_min.cpp:5:10: fatal error: cstdlib: No such file or directory
+```
+
+Cyclonedds' C++ sources `#include <cstdlib>` / `<cstring>` etc.
+Zephyr 3.7's `lib/cpp/minimal/include` only ships `<cstddef>`,
+`<cstdint>`, `<new>`. Project already ships compat shims at
+`zephyr/cxx-compat/` (used by nros-cpp). Cyclone branch was
+missing the include directive.
+
+**Resolution.** Added `zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cxx-compat)`
+inside the `CONFIG_NROS_RMW_CYCLONEDDS` branch.
+
+## Gap 3 — Cxx-compat shim namespace + atomic gap
+
+**Symptom (post Gap 2.5 fix):**
+
+```
+packages/dds/nros-rmw-cyclonedds/src/descriptors.cpp:53:18:
+  error: 'strcmp' is not a member of 'std'; did you mean 'strcmp'?
+packages/dds/nros-rmw-cyclonedds/src/sertype_min.cpp:11:10:
+  error: 'memset' is not a member of 'std'; did you mean 'memset'?
+packages/dds/nros-rmw-cyclonedds/src/service.cpp:57:10:
+  fatal error: atomic: No such file or directory
+```
+
+Two distinct issues:
+
+1. **`zephyr/cxx-compat/<cstring>` etc.** use `using ::strcmp;`
+   patterns that expose C library functions in the global
+   namespace but NOT inside `std::`. Cyclone's source qualifies
+   every call as `std::strcmp`, `std::memset`, `std::malloc`,
+   `std::memcpy`, `std::free`, `std::strlen`. nros-cpp doesn't
+   hit this because its code uses unqualified `strcmp` /
+   `memset` (legal post `#include <cstring>` on a strict-
+   compliant stdlib).
+
+2. **`<atomic>` header** — Zephyr's minimal libcpp doesn't ship
+   `<atomic>` at all. Cyclone's `service.cpp` includes it for
+   `std::atomic`. nros-cpp avoids it (uses `core::sync::atomic`
+   on the Rust side). No shim exists in `cxx-compat/`.
+
+**Fix sketch.**
+
+For (1): extend each `cxx-compat/<cname>` header with a
+`namespace std { using ::name; }` block alongside the existing
+global `using` exports. Pattern:
+
+```cpp
+// zephyr/cxx-compat/cstring
+#include <string.h>
+namespace std {
+  using ::strcmp;
+  using ::strlen;
+  using ::strncpy;
+  using ::memcpy;
+  using ::memset;
+  using ::memmove;
+  using ::memcmp;
+}
+```
+
+For (2): provide a minimal `<atomic>` shim. Either:
+- Forward to `<stdatomic.h>` C11 atomics with namespace wrappers.
+- Drop Cyclone's `<atomic>` use entirely (single `std::atomic<bool>`
+  in service.cpp's reply-slot counter — could be replaced with
+  `volatile` + memory fence).
+
+## Gap 4 — Unknown TU compile failures past Gap 3
 
 The Phase 168.X.fvp investigation stopped at Gap 2; further TU
 compile failures may exist further into the cyclonedds source
@@ -168,14 +242,26 @@ green.
 
 ## Work items
 
-- [ ] **11W.1 — Gap 2 `-fgnu-keywords` patch.** Add the one-line
-       `zephyr_compile_options` inside `CONFIG_NROS_RMW_CYCLONEDDS`
-       branch. Retest `west build -b native_sim/native/64 …
-       prj-cyclonedds.conf` on `examples/zephyr/c/talker/`;
-       confirm builds advance past `ddsrt/src/*.c`.
-- [ ] **11W.2 — Gap 3 iterative TU fixes.** Each new compile
-       failure → drop / stub per existing pattern. Land via
-       additional entries in the
+- [x] **11W.1 — Gap 2 asm keyword fix.** Landed
+       `zephyr_compile_options($<$<COMPILE_LANGUAGE:C>:-Dasm=__asm__>)`
+       inside `CONFIG_NROS_RMW_CYCLONEDDS` branch. Cyclone's
+       `ddsrt/atomics/gcc.h` `asm volatile` lines now resolve to
+       `__asm__ volatile` at preprocess time.
+       (`-fgnu-keywords` was attempted first; turns out it is
+       C++-only — gcc emits a `valid for C++/ObjC++ but not for
+       C` diagnostic and ignores it on C TUs.)
+- [x] **11W.2 — Gap 2.5 cxx-compat include.** Landed
+       `zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cxx-compat)`
+       inside `CONFIG_NROS_RMW_CYCLONEDDS` branch. Cyclone's
+       C++ TUs now resolve `<cstdlib>` / `<cstring>` /
+       `<cstdio>` against the nros-cpp shim layer.
+- [ ] **11W.3 — Gap 3 namespace + atomic shim.** Extend each
+       `zephyr/cxx-compat/<cname>` header with
+       `namespace std { using ::name; … }` blocks; add minimal
+       `<atomic>` shim forwarding to `<stdatomic.h>` C11.
+- [ ] **11W.4 — Gap 4 iterative TU fixes.** Each new compile
+       failure past Gap 3 → drop / stub per existing pattern.
+       Land via additional entries in
        `list(REMOVE_ITEM _cdds_ddsrt_posix …)` or new files
        under `zephyr/cyclonedds-zephyr/`.
 - [ ] **11W.3 — Verify link.** All three languages
