@@ -1,0 +1,27 @@
+[package]
+name = "qemu-riscv64-threadx-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "talker on QEMU RISC-V ThreadX (Phase 118 collapsed)"
+
+[[bin]]
+name = "qemu-riscv64-threadx-talker"
+test = false
+bench = false
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-dds   = ["dep:nros-rmw-dds", "dep:nros-platform-critical-section", "nros/alloc"]
+
+[dependencies]
+nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
+std_msgs = { version = "*", default-features = false }
+
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
+nros-rmw-dds = { path = "../../../../packages/dds/nros-rmw-dds", features = ["platform-threadx"], optional = true }
+nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }

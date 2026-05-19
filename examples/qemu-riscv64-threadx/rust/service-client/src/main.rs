@@ -1,0 +1,74 @@
+//! ThreadX QEMU RISC-V Service Client
+//!
+//! Calls `example_interfaces/AddTwoInts` on `/add_two_ints`.
+
+#![no_std]
+#![no_main]
+
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
+use nros::prelude::*;
+use nros_board_threadx_qemu_riscv64::{Config, println, run};
+#[cfg(not(feature = "rmw-zenoh"))]
+compile_error!("this example requires `rmw-zenoh`");
+
+fn register_rmw() -> Result<(), &'static str> {
+    nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")
+}
+
+
+#[unsafe(no_mangle)]
+extern "C" fn main() -> ! {
+    run(Config::from_toml(include_str!("../config.toml")), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("add_two_ints_client");
+        // Phase 104.A — bare-metal callers explicitly register the RMW
+        // backend before `Executor::open`. POSIX hosts auto-register via
+        // `.init_array`; this target doesn't walk that section.
+        register_rmw().expect("Failed to register RMW backend");
+        let mut executor = Executor::open(&exec_config)?;
+        let mut node = executor.create_node("add_two_ints_client")?;
+
+        let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
+        println!("Service client ready for /add_two_ints");
+
+        // Wait for service to be available
+        for _ in 0..500 {
+            executor.spin_once(core::time::Duration::from_millis(10));
+        }
+
+        let test_cases: &[(i64, i64)] = &[(5, 3), (10, 20), (100, 200), (-5, 10)];
+
+        for &(a, b) in test_cases {
+            let request = AddTwoIntsRequest { a, b };
+            println!("Calling: {} + {} = ?", a, b);
+
+            let mut promise = client.call(&request)?;
+
+            // Poll for response
+            let mut response = None;
+            for _ in 0..5000 {
+                executor.spin_once(core::time::Duration::from_millis(10));
+                if let Some(reply) = promise.try_recv()? {
+                    response = Some(reply);
+                    break;
+                }
+            }
+
+            match response {
+                Some(resp) => {
+                    println!("Response: {} + {} = {}", a, b, resp.sum);
+                    if resp.sum != a + b {
+                        println!("ERROR: expected {}", a + b);
+                    }
+                }
+                None => {
+                    println!("ERROR: timeout waiting for response");
+                }
+            }
+        }
+
+        println!("All service calls completed.");
+        Ok::<(), NodeError>(())
+    })
+}

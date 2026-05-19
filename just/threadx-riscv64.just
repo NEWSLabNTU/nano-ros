@@ -134,6 +134,54 @@ build-fixtures:
          THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
            cmake --build {}/build --parallel > /dev/null"
 
+    # Phase 118.B.6 — collapsed-shape ThreadX-RV64 Rust + C / C++.
+    # Rust: talker + listener × {zenoh, dds}; service/action × zenoh.
+    # C / C++: 6 cases × zenoh (no DDS C / C++ siblings pre-collapse).
+    rv64_rust_dirs=()
+    for case in talker listener service-server service-client action-server action-client; do
+        if [ ! -d examples/qemu-riscv64-threadx/rust/${case} ]; then
+            continue
+        fi
+        rmws="zenoh"
+        if [ "$case" = "talker" ] || [ "$case" = "listener" ]; then
+            rmws="zenoh dds"
+        fi
+        for rmw in $rmws; do
+            echo "  → threadx-rv64/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
+            ( cd examples/qemu-riscv64-threadx/rust/${case} && \
+              THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+              cargo build --release --no-default-features --features rmw-${rmw} \
+                  --target-dir target-${rmw} --quiet ) &
+        done
+    done
+    wait
+
+    collapsed_cmake_dirs=()
+    for lang in c cpp; do
+        for ex in talker listener service-server service-client action-server action-client; do
+            dir="examples/qemu-riscv64-threadx/$lang/$ex"
+            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
+        done
+    done
+    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+             THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
+             THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+               cmake -S {} -B {}/build-zenoh \
+                 -DNROS_RMW=zenoh \
+                 -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+                 -DTHREADX_DIR='$threadx_dir' \
+                 -DNETX_DIR='$netx_dir' \
+                 -DTHREADX_CONFIG_DIR='$config_dir' \
+                 -DNETX_CONFIG_DIR='$config_dir' \
+                 -DCMAKE_BUILD_TYPE=Release \
+                 -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+             THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
+             THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+               cmake --build {}/build-zenoh --parallel > /dev/null"
+    fi
+
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.
 build-all: build build-examples build-fixtures
     @echo "ThreadX RISC-V 64 build-all completed."

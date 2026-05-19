@@ -443,3 +443,60 @@ fn test_nuttx_cmake_case_rmw_variant_exists(
         path.display()
     );
 }
+
+/// Phase 118.B.6 — ThreadX-RV64 Rust cases. talker + listener
+/// support {zenoh, dds}; service-* + action-* are zenoh-only.
+#[rstest]
+#[case::talker_zenoh("talker", "qemu-riscv64-threadx-talker", Rmw::Zenoh)]
+#[case::talker_dds("talker", "qemu-riscv64-threadx-talker", Rmw::Dds)]
+#[case::listener_zenoh("listener", "qemu-riscv64-threadx-listener", Rmw::Zenoh)]
+#[case::listener_dds("listener", "qemu-riscv64-threadx-listener", Rmw::Dds)]
+#[case::ss_zenoh("service-server", "qemu-riscv64-threadx-service-server", Rmw::Zenoh)]
+#[case::sc_zenoh("service-client", "qemu-riscv64-threadx-service-client", Rmw::Zenoh)]
+#[case::as_zenoh("action-server", "qemu-riscv64-threadx-action-server", Rmw::Zenoh)]
+#[case::ac_zenoh("action-client", "qemu-riscv64-threadx-action-client", Rmw::Zenoh)]
+fn test_threadx_rv64_rust_case_rmw_variant_exists(
+    #[case] case: &str,
+    #[case] binary: &str,
+    #[case] rmw: Rmw,
+) {
+    let path = nros_tests::fixtures::build_threadx_rv64_rust_example_rmw(case, binary, rmw)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!(
+                "qemu-riscv64-threadx/rust/{} {:?} not prebuilt: {:?}",
+                case,
+                rmw,
+                e
+            )
+        });
+    assert!(path.exists(), "threadx-rv64 {} {:?} missing: {}", case, rmw, path.display());
+}
+
+/// Phase 118.B.6 — ThreadX-RV64 C / C++ cases (zenoh only).
+#[rstest]
+#[case::c_talker("c", "talker", "riscv64_threadx_c_talker")]
+#[case::c_listener("c", "listener", "riscv64_threadx_c_listener")]
+#[case::c_ss("c", "service-server", "riscv64_threadx_c_service_server")]
+#[case::c_sc("c", "service-client", "riscv64_threadx_c_service_client")]
+#[case::c_as("c", "action-server", "riscv64_threadx_c_action_server")]
+#[case::c_ac("c", "action-client", "riscv64_threadx_c_action_client")]
+#[case::cpp_talker("cpp", "talker", "riscv64_threadx_cpp_talker")]
+#[case::cpp_listener("cpp", "listener", "riscv64_threadx_cpp_listener")]
+#[case::cpp_ss("cpp", "service-server", "riscv64_threadx_cpp_service_server")]
+#[case::cpp_sc("cpp", "service-client", "riscv64_threadx_cpp_service_client")]
+#[case::cpp_as("cpp", "action-server", "riscv64_threadx_cpp_action_server")]
+#[case::cpp_ac("cpp", "action-client", "riscv64_threadx_cpp_action_client")]
+fn test_threadx_rv64_cmake_case_rmw_variant_exists(
+    #[case] lang: &str,
+    #[case] case: &str,
+    #[case] binary: &str,
+) {
+    let path = nros_tests::fixtures::build_threadx_rv64_cmake_example_rmw(
+        lang, case, binary, Rmw::Zenoh,
+    ).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "qemu-riscv64-threadx/{}/{} zenoh not prebuilt: {:?}", lang, case, e
+        )
+    });
+    assert!(path.exists(), "threadx-rv64 {}/{} zenoh missing: {}", lang, case, path.display());
+}

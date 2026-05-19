@@ -491,6 +491,42 @@ pub fn build_native_cpp_example_rmw(
     build_example_cmake_rmw(&format!("native/cpp/{}", case), binary_name, rmw)
 }
 
+/// Phase 118.B.6 — collapsed-shape ThreadX-RV64 Rust example resolver.
+pub fn build_threadx_rv64_rust_example_rmw(
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/rust/{}", case));
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+    let binary_path = example_dir.join(format!(
+        "{}/riscv64gc-unknown-none-elf/release/{}",
+        rmw.target_dir(),
+        binary_name
+    ));
+    require_prebuilt_binary(&binary_path)
+}
+
+/// Phase 118.B.6 — collapsed-shape ThreadX-RV64 C / C++ example resolver.
+pub fn build_threadx_rv64_cmake_example_rmw(
+    lang: &str,
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    build_example_cmake_rmw(
+        &format!("qemu-riscv64-threadx/{}/{}", lang, case),
+        binary_name,
+        rmw,
+    )
+}
+
 /// Phase 118.B.5 — collapsed-shape NuttX C / C++ example resolver.
 pub fn build_nuttx_cmake_example_rmw(
     lang: &str,
