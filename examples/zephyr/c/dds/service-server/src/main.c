@@ -15,6 +15,7 @@ LOG_MODULE_REGISTER(nros_service_server, LOG_LEVEL_INF);
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/service.h>
 
@@ -43,7 +44,7 @@ static bool service_callback(const uint8_t* request_data,
     example_interfaces_srv_add_two_ints_response_init(&response);
     response.sum = request.a + request.b;
 
-    LOG_INF("Request [%d]: %lld + %lld = %lld",
+    NROS_LOG_INFO(g_logger, "Request [%d]: %lld + %lld = %lld",
             g_request_count,
             (long long)request.a,
             (long long)request.b,
@@ -70,6 +71,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros_node_t node = nros_node_get_zero_initialized();
     NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_service_server", "/"), 1);
+    g_logger = nros_node_get_logger(&node);
 
     nros_service_type_t type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),

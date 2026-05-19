@@ -19,10 +19,15 @@ extern "C" {
 }
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ action bindings
 #include "example_interfaces.hpp"
+
+// Phase 88.16.G — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 int nros_app_main(int argc, char **argv) {
     (void)argc;
@@ -41,6 +46,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_action_client"), 1);
+    g_logger = node.get_logger();
 
     using Fibonacci = example_interfaces::action::Fibonacci;
     nros::ActionClient<Fibonacci> client;
@@ -66,7 +72,7 @@ int nros_app_main(int argc, char **argv) {
         nros::shutdown();
         return 1;
     }
-    LOG_INF("Goal sent: order=%d", order);
+    NROS_LOG_INFO(g_logger, "Goal sent: order=%d", order);
 
     /* Poll for feedback while waiting for server to complete */
     for (int i = 0; i < 30; i++) {
@@ -74,7 +80,7 @@ int nros_app_main(int argc, char **argv) {
 
         Fibonacci::Feedback fb;
         while (client.try_recv_feedback(fb)) {
-            LOG_INF("Feedback: sequence length=%d", fb.sequence.length());
+            NROS_LOG_INFO(g_logger, "Feedback: sequence length=%d", fb.sequence.length());
         }
     }
 

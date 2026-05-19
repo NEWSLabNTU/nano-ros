@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(nros_service_client, LOG_LEVEL_INF);
 #include <nros/client.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <zpico_zephyr.h>
 
@@ -37,6 +38,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros_node_t node = nros_node_get_zero_initialized();
     NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_service_client", "/"), 1);
+    g_logger = nros_node_get_logger(&node);
 
     nros_service_type_t type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
@@ -75,7 +77,7 @@ int nros_app_main(int argc, char **argv) {
         example_interfaces_srv_add_two_ints_response response;
         if (example_interfaces_srv_add_two_ints_response_deserialize(
                 &response, resp_buf, resp_len) == 0) {
-            LOG_INF("Result: %lld + %lld = %lld",
+            NROS_LOG_INFO(g_logger, "Result: %lld + %lld = %lld",
                     (long long)request.a,
                     (long long)request.b,
                     (long long)response.sum);

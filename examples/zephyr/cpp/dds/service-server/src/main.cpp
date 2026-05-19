@@ -17,6 +17,7 @@ LOG_MODULE_REGISTER(nros_cpp_dds_service_server, LOG_LEVEL_INF);
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ service bindings
@@ -25,6 +26,10 @@ LOG_MODULE_REGISTER(nros_cpp_dds_service_server, LOG_LEVEL_INF);
 /* ============================================================================
  * Application
  * ============================================================================ */
+
+// Phase 88.16.G — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 int nros_app_main(int argc, char **argv) {
     (void)argc;
@@ -37,6 +42,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_service_server"), 1);
+    g_logger = node.get_logger();
 
     nros::Service<example_interfaces::srv::AddTwoInts> srv;
     NROS_TRY_RET(node.create_service(srv, "/add_two_ints"), 1);
@@ -58,7 +64,7 @@ int nros_app_main(int argc, char **argv) {
             example_interfaces::srv::AddTwoInts::Response resp;
             resp.sum = req.a + req.b;
 
-            LOG_INF("Request [%d]: %lld + %lld = %lld", request_count,
+            NROS_LOG_INFO(g_logger, "Request [%d]: %lld + %lld = %lld", request_count,
                     static_cast<long long>(req.a), static_cast<long long>(req.b),
                     static_cast<long long>(resp.sum));
 

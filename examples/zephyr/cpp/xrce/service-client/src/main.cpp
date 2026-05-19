@@ -18,6 +18,7 @@ LOG_MODULE_REGISTER(nros_cpp_xrce_service_client, LOG_LEVEL_INF);
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ service bindings
@@ -26,6 +27,10 @@ LOG_MODULE_REGISTER(nros_cpp_xrce_service_client, LOG_LEVEL_INF);
 /* ============================================================================
  * Application
  * ============================================================================ */
+
+// Phase 88.16.G — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 int nros_app_main(int argc, char **argv) {
     (void)argc;
@@ -42,6 +47,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_service_client"), 1);
+    g_logger = node.get_logger();
 
     nros::Client<example_interfaces::srv::AddTwoInts> client;
     NROS_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
@@ -71,25 +77,25 @@ int nros_app_main(int argc, char **argv) {
         example_interfaces::srv::AddTwoInts::Response resp;
         auto fut = client.send_request(req);
         if (fut.is_consumed()) {
-            LOG_ERR("Call [%d]: send_request failed", i + 1);
+            NROS_LOG_ERROR(g_logger, "Call [%d]: send_request failed", i + 1);
             continue;
         }
         ret = fut.wait(nros::global_handle(), 5000, resp);
 
         if (ret.ok()) {
             if (resp.sum == req.a + req.b) {
-                LOG_INF("Call [%d]: %lld + %lld = %lld [OK]", i + 1,
+                NROS_LOG_INFO(g_logger, "Call [%d]: %lld + %lld = %lld [OK]", i + 1,
                         static_cast<long long>(req.a), static_cast<long long>(req.b),
                         static_cast<long long>(resp.sum));
                 success_count++;
             } else {
-                LOG_ERR("Call [%d]: mismatch %lld + %lld = %lld (expected %lld)", i + 1,
+                NROS_LOG_ERROR(g_logger, "Call [%d]: mismatch %lld + %lld = %lld (expected %lld)", i + 1,
                         static_cast<long long>(req.a), static_cast<long long>(req.b),
                         static_cast<long long>(resp.sum),
                         static_cast<long long>(req.a + req.b));
             }
         } else {
-            LOG_ERR("Call [%d]: failed with error %d", i + 1, ret.raw());
+            NROS_LOG_ERROR(g_logger, "Call [%d]: failed with error %d", i + 1, ret.raw());
         }
 
         k_sleep(K_SECONDS(1));

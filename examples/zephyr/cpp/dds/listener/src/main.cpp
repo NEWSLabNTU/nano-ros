@@ -17,6 +17,7 @@ LOG_MODULE_REGISTER(nros_cpp_dds_listener, LOG_LEVEL_INF);
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ message bindings
@@ -25,6 +26,10 @@ LOG_MODULE_REGISTER(nros_cpp_dds_listener, LOG_LEVEL_INF);
 /* ============================================================================
  * Application
  * ============================================================================ */
+
+// Phase 88.16.G — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 int nros_app_main(int argc, char **argv) {
     (void)argc;
@@ -37,6 +42,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_listener"), 1);
+    g_logger = node.get_logger();
 
     nros::Subscription<std_msgs::msg::Int32> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
@@ -56,7 +62,7 @@ int nros_app_main(int argc, char **argv) {
         std_msgs::msg::Int32 msg;
         while (sub.try_recv(msg)) {
             message_count++;
-            LOG_INF("Received: %d", msg.data);
+            NROS_LOG_INFO(g_logger, "Received: %d", msg.data);
         }
     }
 

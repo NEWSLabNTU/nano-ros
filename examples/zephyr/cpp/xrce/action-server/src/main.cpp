@@ -17,6 +17,7 @@ LOG_MODULE_REGISTER(nros_cpp_xrce_action_server, LOG_LEVEL_INF);
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ action bindings
@@ -34,7 +35,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     }
 
     g_goal_count++;
-    LOG_INF("Goal received: order=%d", goal.order);
+    NROS_LOG_INFO(g_logger, "Goal received: order=%d", goal.order);
 
     int32_t a = 0;
     int32_t b = 1;
@@ -57,12 +58,16 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     }
 
     if (g_srv->complete_goal(uuid, result).ok()) {
-        LOG_INF("Goal completed (sequence length=%d)", result.sequence.length());
+        NROS_LOG_INFO(g_logger, "Goal completed (sequence length=%d)", result.sequence.length());
     } else {
         LOG_ERR("Failed to complete goal");
     }
     return nros::GoalResponse::AcceptAndExecute;
 }
+
+// Phase 88.16.G — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 int nros_app_main(int argc, char **argv) {
     (void)argc;
@@ -79,6 +84,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_action_server"), 1);
+    g_logger = node.get_logger();
 
     nros::ActionServer<Fibonacci> srv;
     NROS_TRY_RET(node.create_action_server(srv, "/fibonacci"), 1);

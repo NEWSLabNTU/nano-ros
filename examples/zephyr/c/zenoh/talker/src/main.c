@@ -19,6 +19,7 @@ LOG_MODULE_REGISTER(nros_talker, LOG_LEVEL_INF);
 #include <nros/app_main.h>
 #include <nros/check.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
 #include <zpico_zephyr.h>
@@ -29,6 +30,10 @@ LOG_MODULE_REGISTER(nros_talker, LOG_LEVEL_INF);
 /* ============================================================================
  * Application
  * ============================================================================ */
+
+// Phase 88.16.G — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 int nros_app_main(int argc, char **argv)
 {
@@ -54,6 +59,7 @@ int nros_app_main(int argc, char **argv)
     /* Create node */
     nros_node_t node = nros_node_get_zero_initialized();
     NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_talker", "/"), 1);
+    g_logger = nros_node_get_logger(&node);
 
     /* Create publisher using generated type support */
     nros_publisher_t pub = nros_publisher_get_zero_initialized();
@@ -71,7 +77,7 @@ int nros_app_main(int argc, char **argv)
         count++;
         msg.data = count;
         NROS_SOFTCHECK(std_msgs_msg_int32_publish(&pub, &msg));
-        LOG_INF("Published: %d", count);
+        NROS_LOG_INFO(g_logger, "Published: %d", count);
         k_sleep(K_SECONDS(1));
     }
 

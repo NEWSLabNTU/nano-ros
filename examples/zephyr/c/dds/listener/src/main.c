@@ -20,6 +20,7 @@ LOG_MODULE_REGISTER(nros_listener, LOG_LEVEL_INF);
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/subscription.h>
 
@@ -41,7 +42,7 @@ static void on_message(const uint8_t *data, size_t len, void *context)
 
     if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
         message_count++;
-        LOG_INF("Received: %d", msg.data);
+        NROS_LOG_INFO(g_logger, "Received: %d", msg.data);
     } else {
         LOG_ERR("Failed to deserialize message (len=%zu)", len);
     }
@@ -65,6 +66,7 @@ int nros_app_main(int argc, char **argv) {
     /* Create node */
     nros_node_t node = nros_node_get_zero_initialized();
     NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_listener", "/"), 1);
+    g_logger = nros_node_get_logger(&node);
 
     /* Create subscription using generated type support */
     nros_subscription_t sub = nros_subscription_get_zero_initialized();

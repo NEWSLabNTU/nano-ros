@@ -20,6 +20,7 @@ extern "C" {
 }
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ message bindings
@@ -28,6 +29,10 @@ extern "C" {
 /* ============================================================================
  * Application
  * ============================================================================ */
+
+// Phase 88.16.G — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 int nros_app_main(int argc, char **argv) {
     (void)argc;
@@ -46,6 +51,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "zephyr_cpp_talker"), 1);
+    g_logger = node.get_logger();
 
     nros::Publisher<std_msgs::msg::Int32> pub;
     NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
@@ -58,8 +64,8 @@ int nros_app_main(int argc, char **argv) {
         std_msgs::msg::Int32 msg;
         msg.data = count;
         nros::Result ret = pub.publish(msg);
-        if (ret.ok()) LOG_INF("Published: %d", count);
-        else LOG_ERR("Publish failed: %d", ret.raw());
+        if (ret.ok()) NROS_LOG_INFO(g_logger, "Published: %d", count);
+        else NROS_LOG_ERROR(g_logger, "Publish failed: %d", ret.raw());
         k_sleep(K_SECONDS(1));
     }
 

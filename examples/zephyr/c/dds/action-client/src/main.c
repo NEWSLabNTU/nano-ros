@@ -20,6 +20,7 @@ LOG_MODULE_REGISTER(nros_action_client, LOG_LEVEL_INF);
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 
 #include "example_interfaces.h"
@@ -34,6 +35,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros_node_t node = nros_node_get_zero_initialized();
     NROS_CHECK_RET(nros_node_init(&node, &support, "zephyr_action_client", "/"), 1);
+    g_logger = nros_node_get_logger(&node);
 
     nros_action_type_t fib_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
@@ -73,7 +75,7 @@ int nros_app_main(int argc, char **argv) {
         goto cleanup;
     }
 
-    LOG_INF("Goal sent (uuid=%02x%02x%02x%02x...), waiting for result...",
+    NROS_LOG_INFO(g_logger, "Goal sent (uuid=%02x%02x%02x%02x...), waiting for result...",
             goal_uuid.uuid[0], goal_uuid.uuid[1],
             goal_uuid.uuid[2], goal_uuid.uuid[3]);
 
