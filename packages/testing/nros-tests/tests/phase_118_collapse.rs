@@ -628,6 +628,37 @@ fn test_zephyr_cmake_case_rmw_variant_exists(
     assert!(path.exists(), "zephyr {}/{} {:?} missing: {}", lang, case, rmw, path.display());
 }
 
+/// Phase 11W.5 — Runtime boot smoke for cyclonedds native_sim Rust
+/// talker. Asserts the binary boots far enough to print the
+/// "Booting Zephyr OS" banner. ConnectionFailed past that point is
+/// expected without an in-domain DDS peer.
+#[test]
+fn test_zephyr_rust_talker_cyclonedds_boot() {
+    use std::time::Duration;
+
+    use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
+
+    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw(
+        "talker",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("zephyr/rust/talker cyclonedds not prebuilt: {:?}", e)
+    });
+
+    let mut z = ZephyrProcess::start(&path, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr talker (cyclonedds)");
+
+    let output = z
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+
+    eprintln!("zephyr cyclonedds talker output:\n{}", output);
+
+    let booted = output.contains("Booting Zephyr") || output.contains("nros");
+    assert!(booted, "cyclonedds talker failed to print init banner");
+}
+
 /// Phase 118.B.7 — ThreadX-Linux C / C++ cases (zenoh only).
 #[rstest]
 #[case::c_talker("c", "talker", "threadx_c_talker")]

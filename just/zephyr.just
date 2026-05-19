@@ -415,12 +415,17 @@ build-fvp-aemv8r-cyclonedds:
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
+    echo "  → host nros-codegen (cargo)"
+    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+        -p nros-codegen-c --bin nros-codegen --quiet
+    codegen_tool="$nros_root/packages/codegen/packages/target/release/nros-codegen"
     cd "$workspace"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     echo "Building examples/zephyr/cpp/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-aemv8r-cyclonedds-talker -p auto \
-        nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r
+        nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
