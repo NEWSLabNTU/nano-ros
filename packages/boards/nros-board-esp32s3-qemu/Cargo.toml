@@ -43,8 +43,11 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
 
 # ESP32-S3 HAL and support crates. esp-hal exposes the Xtensa-LX7
 # critical-section impl + interrupt vector wiring under the `esp32s3`
-# feature, plus the `Rng` driver that backs `random::seed`.
-esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable"] }
+# feature, plus the `Rng` driver that backs `random::seed`. The
+# `psram` feature exposes `esp_hal::psram::{PsramConfig, psram_raw_parts}`
+# + plumbs the `init_psram(config.psram)` call inside
+# `esp_hal::init(Config::with_psram(...))` (Phase 117.2b).
+esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable", "psram"] }
 esp-backtrace = { version = "~0.18.0", features = ["esp32s3", "panic-handler", "println"] }
 esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32s3"] }
 esp-println = { version = "~0.16.0", features = ["esp32s3"] }

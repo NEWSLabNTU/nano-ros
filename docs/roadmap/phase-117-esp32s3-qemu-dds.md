@@ -118,14 +118,38 @@ to add.
       **Files:** `packages/boards/nros-board-esp32s3-qemu/`,
       `packages/drivers/openeth-smoltcp/src/{regs,lib}.rs`.
 
-- [~] **117.2b — PSRAM heap routing.** *Open follow-up.* Land
-      `esp_hal::psram::init` boot call in the board crate plus
-      a matching `.ext_ram.bss` section in the linker script so
-      the platform's `dds-heap` static lands in PSRAM (1 MiB+
-      budget vs. today's 192 KiB internal-SRAM cap). Required to
-      drop `#[ignore]` on `tests/esp32s3_qemu_dds.rs` — dust-dds's
-      `DcpsDomainParticipant::new` exhausts the C3-sized cap at
-      runtime; PSRAM is the whole point of the chip swap.
+- [~] **117.2b — PSRAM init plumbing (partial 2026-05-19).** Board
+      crate adds the `esp-hal/psram` feature + threads
+      `PsramConfig::default()` through `esp_hal::init(Config::
+      default().with_psram(...))` under `dds-heap`. After init,
+      `psram_raw_parts(&peripherals.PSRAM)` returns
+      `(ptr, byte_count)` for the mapped PSRAM region; the board
+      currently prints the region info but does NOT register it
+      as a global allocator — see 117.2c. Build path is green
+      end-to-end through this stage (release builds of both
+      talker + listener link clean).
+
+      **Atomic-in-PSRAM caveat (blocks 117.2c).** Per esp-alloc's
+      `psram_allocator!` rustdoc, ESP32-S3 atomic instructions
+      misbehave on PSRAM-backed addresses. dust-dds places `Arc`
+      refcounts (atomics) inside its allocated state, so routing
+      the global allocator into PSRAM is NOT safe on real
+      hardware. QEMU emulation likely tolerates it, but a
+      hardware-deployable path needs Allocator-API surgery: pin
+      atomic-bearing types (Arc, Mutex, etc.) to internal SRAM
+      via explicit allocator, route bulk byte buffers (sample
+      payloads, history caches) to PSRAM. That's 117.2c below.
+
+- [ ] **117.2c — Allocator-API split for atomic-safe DDS on
+      ESP32-S3.** Wire `nros-rmw-dds`'s `DcpsDomainParticipant`
+      builder (and dust-dds's internal types where ours owns the
+      allocation site) to accept a `Allocator` parameter, route
+      atomic-bearing types to an SRAM `EspHeap` and bulk-byte
+      types to the PSRAM `EspHeap`. Once this lands, drop the
+      `#[ignore]` on `tests/esp32s3_qemu_dds.rs` because the
+      runtime heap budget stops gating runtime correctness.
+      Substantial upstream work — track as a separate sub-phase
+      after 117.0–117.6 close.
 
 - [x] **117.3 — DDS talker / listener example crates.** (2026-05-19)
       Cloned from the C3 templates; target triple

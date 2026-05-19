@@ -193,8 +193,20 @@ pub fn init_hardware(config: &Config) {
     esp_println::println!("========================================");
     esp_println::println!("");
 
-    // Step 1: Initialize ESP32 peripherals
+    // Step 1: Initialize ESP32 peripherals. Phase 117.2b — under
+    // `dds-heap` we pass an explicit `PsramConfig` so esp-hal's
+    // `init_psram` boot path runs, mapping the chip's external
+    // SPI RAM (octal PSRAM up to 16 MiB on production parts; 8 MiB
+    // on QEMU's modeled ESP32-S3) into the virtual address space.
+    // The actual PSRAM heap region registration happens in step
+    // 2b below.
     esp_println::println!("Initializing ESP32-S3...");
+    #[cfg(feature = "dds-heap")]
+    let _peripherals = esp_hal::init(
+        esp_hal::Config::default()
+            .with_psram(esp_hal::psram::PsramConfig::default()),
+    );
+    #[cfg(not(feature = "dds-heap"))]
     let _peripherals = esp_hal::init(esp_hal::Config::default());
 
     // Step 2: Set up heap allocator. For zenoh / non-DDS builds,
@@ -202,12 +214,52 @@ pub fn init_hardware(config: &Config) {
     // nros publisher/subscriber setup can exceed the previous 64 KB
     // carve-out after session open. For DDS builds the example crate
     // enables `nros-platform/global-allocator`, which registers a
-    // 256 KB static `FreeListHeap` instead — calling
-    // `esp_alloc::heap_allocator!` on top of that produces the
-    // "the `#[global_allocator]` in nros_platform conflicts with
-    // global allocator in: esp_alloc" link error (Phase 101.7).
+    // 192 KB static `FreeListHeap` from `nros-platform-esp32s3-qemu/
+    // memory.rs` — calling `esp_alloc::heap_allocator!` on top of
+    // that produces the "the `#[global_allocator]` in nros_platform
+    // conflicts with global allocator in: esp_alloc" link error
+    // (Phase 101.7 carry-over).
     #[cfg(not(feature = "dds-heap"))]
     esp_alloc::heap_allocator!(size: 96 * 1024);
+
+    // Step 2b (Phase 117.2b): register the PSRAM region with
+    // esp-alloc as a SECONDARY heap region. Allocations default
+    // to the platform's internal-SRAM `FreeListHeap`
+    // (`#[global_allocator]`); PSRAM is reachable via
+    // `psram_raw_parts(&peripherals.PSRAM)` for code paths that
+    // want to opt-in (e.g. via the Allocator API with `Vec::
+    // with_capacity_in(.., &PSRAM_ALLOCATOR)`).
+    //
+    // **Atomic-in-PSRAM caveat.** ESP32-S3 atomic instructions
+    // misbehave on PSRAM-backed addresses (see esp-alloc's
+    // `psram_allocator!` rustdoc). dust-dds places `Arc` refcounts
+    // (read: atomics) inside its allocated state; routing the
+    // global allocator into PSRAM is therefore NOT safe on
+    // real hardware. QEMU may emulate the missing semantics
+    // forgivingly — which is why this stays as a SECONDARY
+    // region (callers opt-in) instead of being wired into the
+    // platform-side `FreeListHeap` global. Future Phase 117.2c
+    // adds Allocator-API plumbing so dust-dds explicitly
+    // allocates from internal SRAM while bulk buffers route to
+    // PSRAM.
+    //
+    // For Phase 117.2b's QEMU smoke goal, the PSRAM region is
+    // available to user code; the 192 KiB DRAM cap on the global
+    // allocator continues to gate dust-dds runtime use.
+    #[cfg(feature = "dds-heap")]
+    {
+        let (psram_ptr, psram_len) =
+            esp_hal::psram::psram_raw_parts(&_peripherals.PSRAM);
+        esp_println::println!(
+            "PSRAM region: {} bytes at {:p}",
+            psram_len,
+            psram_ptr
+        );
+        // No automatic allocator registration — see caveat above.
+        // Callers that need PSRAM allocations should layer their
+        // own `esp_alloc::EspHeap` against this region.
+        let _ = (psram_ptr, psram_len);
+    }
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
     // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently
