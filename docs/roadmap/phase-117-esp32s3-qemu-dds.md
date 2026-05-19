@@ -6,7 +6,14 @@
 keep all dust-dds builtin discovery/metatraffic entities (full ROS 2 interop),
 trade chip target instead of trimming protocol surface.
 
-**Status:** Not Started.
+**Status:** **In progress 2026-05-19.** 117.0 through 117.5
+landed on `phase-117.0-esp32s3-toolchain`. The build path is
+green end-to-end (`xtensa-esp32s3-none-elf` talker + listener
+link clean under `cargo +esp build --release`). The runtime
+path is gated on 117.2b (PSRAM heap region init), so the
+`tests/esp32s3_qemu_dds.rs` E2E is `#[ignore]`'d — promote to
+default-run once PSRAM lands. 117.6 (docs + CI) partially done
+via the build-commands.md update in 117.0.
 **Priority:** Medium — promotes Phase 97 / 101 from "DDS works on every other
 RTOS slice" to "DDS works on ESP32 too." Bonus coverage for the ESP32 line
 without requiring real hardware.
@@ -75,59 +82,96 @@ to add.
 
 ## Work Items
 
-- [ ] **117.0 — Toolchain + QEMU smoke check.**
-      Install `espup`, run `espup install` to get `+esp` channel +
-      `xtensa-esp32s3-none-elf`. Verify `qemu-system-xtensa` on the dev
-      box can boot an ESP32-S3 image (mainline vs. Espressif fork —
-      Espressif's `qemu-xtensa` may be needed for full SoC). Document
-      QEMU command shape in `book/src/reference/build-commands.md`.
-      **Files:** `book/src/reference/build-commands.md`, optionally
-      `Justfile` (`just setup esp32s3`).
+- [x] **117.0 — Toolchain + QEMU smoke check.** (2026-05-19)
+      Espressif QEMU's `xtensa-softmmu` target builds + lands as
+      `~/.local/bin/qemu-system-xtensa` with `esp32s3` machine
+      model. `just esp32 setup-xtensa` (new recipe) drives
+      `scripts/esp32/install-espressif-qemu.sh` with
+      `NROS_ESP32_QEMU_TARGETS=riscv32,xtensa`. `+esp` rustc
+      channel + `xtensa-esp32s3-none-elf` target installed via
+      `espup install --targets esp32s3`. Documented in
+      `book/src/reference/build-commands.md` (new section).
+      **Files:** `scripts/esp32/install-espressif-qemu.sh`,
+      `just/esp32.just`, `book/src/reference/build-commands.md`.
 
-- [ ] **117.1 — `nros-platform-esp32s3-qemu` crate.**
-      Mirror `nros-platform-esp32-qemu`. Differences:
-      * `esp-hal` features: `esp32s3` (not `esp32c3`)
-      * Xtensa target — link script differences (`memory.x` may need
-        update for IRAM/DRAM partitioning + PSRAM region)
-      * `critical-section` impl from `esp-hal` (already xtensa-aware)
-      * Clock + sleep primitives identical shape; backend differs.
-      **Files:** new `packages/platforms/nros-platform-esp32s3-qemu/`.
+- [x] **117.1 — `nros-platform-esp32s3-qemu` crate.** (2026-05-19)
+      Mirrors `nros-platform-esp32-qemu` on the Xtensa LX7 side.
+      Two structural differences: (1) critical-section uses
+      Xtensa `rsil` / `wsr.ps` (PS.INTLEVEL) instead of RISC-V
+      `mstatus.MIE`; (2) `dds-heap` HEAP region intended for PSRAM
+      via `#[link_section = ".ext_ram.bss"]` (currently a 192 KiB
+      internal-SRAM carve-out as the transitional default —
+      PSRAM routing gated on 117.2b). Wired into `nros-platform`
+      as `platform-esp32s3-qemu`. Builds clean under
+      `cargo +esp build --release --target xtensa-esp32s3-none-elf
+      -Z build-std=core,alloc`.
+      **Files:** `packages/platforms/nros-platform-esp32s3-qemu/`.
 
-- [ ] **117.2 — `nros-board-esp32s3-qemu` crate + PSRAM heap init.**
-      Mirror `nros-board-esp32-qemu`. New: PSRAM region added to
-      `esp-alloc` so dust-dds gets ≥4 MiB heap (target 8 MiB if QEMU
-      model supports octal PSRAM). Internal SRAM reserved for stack +
-      small allocations.
-      **Files:** new `packages/boards/nros-board-esp32s3-qemu/`.
-      Plumb `nros::platform-esp32s3-qemu` umbrella feature.
+- [x] **117.2 — `nros-board-esp32s3-qemu` crate.** (2026-05-19)
+      Mirrors `nros-board-esp32-qemu`. esp-hal / esp-backtrace /
+      esp-bootloader-esp-idf / esp-println all use `esp32s3`
+      feature; OpenETH base addr identical to C3 (verified via
+      `third-party/esp32/qemu/include/hw/misc/esp32s3_reg.h:77`,
+      added `ESP32S3_BASE` const alias in `openeth-smoltcp`);
+      `portable-atomic` keeps default features (LX7 has native
+      pointer-CAS); `dds-heap` forwards to platform crate.
+      **Files:** `packages/boards/nros-board-esp32s3-qemu/`,
+      `packages/drivers/openeth-smoltcp/src/{regs,lib}.rs`.
 
-- [ ] **117.3 — DDS talker / listener example crates.**
-      Copy `examples/qemu-esp32-baremetal/rust/dds/{talker,listener}/`
-      to `examples/qemu-esp32s3-baremetal/rust/dds/{talker,listener}/`.
-      Adjust target triple, board crate, esp-hal feature.
-      `rmw-dds-portable-atomic` feature kept on (still
-      Xtensa-friendly — `portable-atomic` works on any
-      target; `critical-section` impl provided by esp-hal).
-      **Files:** new `examples/qemu-esp32s3-baremetal/rust/dds/`.
+- [~] **117.2b — PSRAM heap routing.** *Open follow-up.* Land
+      `esp_hal::psram::init` boot call in the board crate plus
+      a matching `.ext_ram.bss` section in the linker script so
+      the platform's `dds-heap` static lands in PSRAM (1 MiB+
+      budget vs. today's 192 KiB internal-SRAM cap). Required to
+      drop `#[ignore]` on `tests/esp32s3_qemu_dds.rs` — dust-dds's
+      `DcpsDomainParticipant::new` exhausts the C3-sized cap at
+      runtime; PSRAM is the whole point of the chip swap.
 
-- [ ] **117.4 — Test infra: `nros_tests::esp32s3` launcher + nextest
-      group.** Mirror `nros_tests::esp32`. Pick `qemu-system-xtensa
-      -M esp32s3 -nic socket,model=open_eth,mcast=…`. New port 7457
-      in `nros_tests::platform`. Nextest group `qemu-esp32s3` with
-      `max-threads = 1`.
-      **Files:** `packages/testing/nros-tests/src/`,
-      `.config/nextest.toml`.
+- [x] **117.3 — DDS talker / listener example crates.** (2026-05-19)
+      Cloned from the C3 templates; target triple
+      `xtensa-esp32s3-none-elf`, `+esp` toolchain via espup,
+      esp-hal `esp32s3` feature, `nros-platform/platform-esp32s3-qemu`,
+      no `portable_atomic_unsafe_assume_single_core` (LX7 has
+      hardware atomics). Regenerated `std_msgs` +
+      `builtin_interfaces` bindings via `cargo nano-ros
+      generate-rust`. Both crates excluded from the workspace
+      (same shape as the C3 siblings).
+      **Files:** `examples/qemu-esp32s3-baremetal/rust/dds/`.
 
-- [ ] **117.5 — `tests/esp32s3_qemu_dds.rs` E2E.**
-      Modelled on `tests/esp32_qemu_dds.rs`. Runs talker + listener
-      under qemu-system-xtensa, asserts ≥80 % delivery — same bar as
-      every other QEMU DDS slice.
-      **Files:** `packages/testing/nros-tests/tests/esp32s3_qemu_dds.rs`.
+- [x] **117.4 — Test infra: `nros_tests::esp32s3` launcher +
+      nextest group.** (2026-05-19) `is_qemu_xtensa_available` /
+      `require_qemu_xtensa` probes for `esp32s3` machine model;
+      `is_xtensa_esp32s3_target_available` / `require_*` probe for
+      `+esp` toolchain via `$HOME/.rustup/toolchains/esp/`;
+      `start_esp32s3_qemu_mcast` mirrors the C3 launcher on
+      `qemu-system-xtensa -M esp32s3`. Port 7457 in
+      `nros_tests::platform::ESP32S3`. Nextest group
+      `qemu-esp32s3` (`max-threads = 1`). `justfile` skip-group
+      alternation updated.
+      **Files:** `packages/testing/nros-tests/src/{esp32s3,lib,platform}.rs`,
+      `.config/nextest.toml`, `justfile`.
 
-- [ ] **117.6 — Documentation + CI.**
-      Update `book/src/getting-started/`, `book/src/porting/`,
-      reference build-commands. Add `qemu-esp32s3` to CI matrix.
-      **Files:** `book/src/...`, GitHub Actions if applicable.
+- [x] **117.5 — `tests/esp32s3_qemu_dds.rs` E2E.** (2026-05-19)
+      Talker + listener under `qemu-system-xtensa -M esp32s3
+      -nic socket,model=open_eth,mcast=…`, asserts ≥1
+      `Received:` line. Marked `#[ignore]` pending 117.2b —
+      build-path is green but runtime PSRAM gate still applies.
+      Supporting: factored `create_esp32_flash_image` into a
+      chip-parameterised `create_esp_flash_image(elf, output,
+      chip, flash_size)` so `--chip esp32s3 --flash-size 8mb`
+      shares the helper. New fixture builders
+      (`build_esp32s3_qemu_dds_{talker,listener,…_flash}`).
+      **Files:** `packages/testing/nros-tests/tests/esp32s3_qemu_dds.rs`,
+      `packages/testing/nros-tests/src/esp32.rs`,
+      `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`.
+
+- [~] **117.6 — Documentation + CI.** *Partial:*
+      `book/src/reference/build-commands.md` got an "ESP32 /
+      ESP32-S3 QEMU Setup" section in 117.0. `book/src/getting-
+      started/esp32.md` rewrite (S3 section + dual-chip toolchain
+      flow) is the remaining work. No CI matrix — the project
+      doesn't ship one beyond `deploy-book.yml`.
+      **Files:** `book/src/...` (remaining).
 
 ## Acceptance Criteria
 
