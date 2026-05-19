@@ -145,33 +145,29 @@ Closing 124.B.2 means:
       build; wiring it into `Executor` fields + a spin_once
       no_std wait branch is the remaining 141.A.3 work (next
       bullet).
-- [ ] **141.A.3 — Wire `WakeCtxAlloc` into `Executor` +
+- [x] **141.A.3 — Wire `WakeCtxAlloc` into `Executor` +
       no_std spin_once wait branch.** Mirrors the std-RTOS
-      branch already present in
-      `packages/core/nros-node/src/executor/spin.rs:3193-3216`
-      (which uses `node_wake.wait_ms(timeout_ms)` for the
-      kernel-native binary-semaphore wait):
-      - Add cfg-gated Executor fields
-        (`cfg(all(alloc, not(std), rmw-cffi, any-rtos-platform))`):
-        `wake_flag_alloc: Arc<AtomicBool>`,
-        `node_wake_alloc: Option<Arc<NodeWake>>`,
-        `wake_ctx_alloc: Option<Arc<WakeCtxAlloc>>`,
-        `has_async_wake_alloc: bool`.
-      - Initialize in both Executor constructors
-        (`from_session` line 749 + `from_session_ptr` line 837).
-      - Add `install_wake_signal_on_primary_alloc` /
-        `_on_extra_alloc` methods (alloc-mode mirrors of
-        the existing std installers at lines 1148-1180).
-      - Add the no_std wait branch in `spin_once` that picks
-        the alloc `node_wake.wait_ms(deadline)` when
-        `has_async_wake_alloc && wake_flag_alloc.swap(false)`
-        is false.
-      - ISR-safety: cb in `wake_alloc::nros_rmw_runtime_wake_cb`
-        is NOT ISR-safe (matches the std cb policy). ISR callers
-        route through the existing
-        `nros_platform_wake_signal_from_isr` slot (Phase 130.1).
-        Verify against the ISR contract in
-        `docs/reference/platform-sync-abi.md`.
+      `node_wake.wait_ms(timeout_ms)` branch. Landed:
+      - Executor fields cfg-gated
+        `all(alloc, not(std), rmw-cffi, any-rtos-platform)`:
+        `wake_flag_alloc`, `node_wake_alloc`, `wake_ctx_alloc`,
+        `has_async_wake_alloc` (spin.rs:806-842).
+      - Initialized in `from_session` + `from_session_ptr`
+        (spin.rs:960/984/996 + 1101/1125/1137).
+      - `wake_ctx_alloc_ptr` + `install_wake_signal_on_primary_alloc`
+        + `install_wake_signal_on_extra_alloc` at spin.rs:1516-1583.
+      - no_std spin_once wait branch at spin.rs:3614-3652 — when
+        `has_async_wake_alloc && !wake_flag_alloc.swap(false)`,
+        blocks on `node_wake_alloc.wait_ms(timeout_ms)` then
+        passes 0 to `drive_io`. Falls back to full-timeout
+        `drive_io` on no_std without rmw-cffi or on bare-metal
+        (no wake primitive).
+      - ISR-safety: `wake_alloc::nros_rmw_runtime_wake_cb` NOT
+        ISR-safe (matches std cb). ISR routes via
+        `nros_platform_wake_signal_from_isr` (Phase 130.1).
+      - Verified: `cargo check -p nros-node` against
+        `thumbv7m-none-eabi` with each of FreeRTOS / Zephyr /
+        NuttX / ThreadX feature combos.
 
 ### 141.B — µs-grain latency probe on Cortex-M3
 
