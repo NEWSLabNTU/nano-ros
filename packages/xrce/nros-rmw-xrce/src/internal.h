@@ -99,7 +99,16 @@ extern "C" {
  * `deadline_cb`, `last_msg_at_ms`, etc. Skipped here per K.2 scope.
  */
 #ifndef XRCE_SUBSCRIBER_RING_DEPTH
-#define XRCE_SUBSCRIBER_RING_DEPTH 4
+/* Phase 160.H.1 — bumped 4 → 16. A 100 Hz publisher delivers ~5
+ * samples per 50 ms `spin_once` window; a 4-deep ring dropped the
+ * 5th onward, so `test_xrce_throughput_100hz` only saw 4 of 100
+ * messages. 16 covers ~1 s of 100 Hz traffic between drains, which
+ * matches the talker's busy-burst behaviour and the typical
+ * subscriber `try_recv_raw` cadence. Costs
+ * 16 * XRCE_BUFFER_SIZE per subscriber (with XRCE_BUFFER_SIZE = 256
+ * → 4 KiB / subscriber; tight-RAM RTOS targets can override via
+ * `-DXRCE_SUBSCRIBER_RING_DEPTH=...` at build time). */
+#define XRCE_SUBSCRIBER_RING_DEPTH 16
 #endif
 
 typedef struct xrce_subscriber_ring_entry {
