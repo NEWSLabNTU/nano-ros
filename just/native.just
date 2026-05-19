@@ -159,6 +159,19 @@ build-fixtures:
         done
         wait
     fi
+    # Phase 118.A.3 — collapsed-shape native C talker. Built once per
+    # RMW via cmake `-DNROS_RMW=<rmw>` into isolated build-<rmw>/ dirs.
+    # XRCE C variant deferred to Tier 2 (main.c differs significantly —
+    # uses manual CDR serialization in the legacy `c/xrce/talker/`).
+    if [ -d examples/native/c/talker ]; then
+        for rmw in zenoh dds; do
+            echo "  → native/c/talker (-DNROS_RMW=${rmw}, build-${rmw}/)"
+            ( cd examples/native/c/talker && \
+              cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+              cmake --build build-${rmw} -j > /dev/null ) &
+        done
+        wait
+    fi
     echo "  → packages/testing/nros-bench/stress-zenoh (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
     ( cd packages/testing/nros-bench/stress-zenoh && \
       ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build --release --target-dir target-large-buf --quiet )

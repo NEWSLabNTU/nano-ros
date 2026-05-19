@@ -15,7 +15,7 @@
 
 use std::path::Path;
 
-use nros_tests::fixtures::{Rmw, build_native_talker_rmw};
+use nros_tests::fixtures::{Rmw, build_native_c_talker_rmw, build_native_talker_rmw};
 use rstest::rstest;
 
 #[rstest]
@@ -57,6 +57,53 @@ fn test_native_talker_rmw_variant_exists(#[case] rmw: Rmw) {
         target_dir_name,
         rmw.target_dir(),
         "binary {} is not under the expected target-<rmw> dir for {:?}",
+        binary.display(),
+        rmw
+    );
+}
+
+/// Phase 118.A.3 — collapsed-shape C talker. XRCE deferred (main.c
+/// differs significantly across RMWs in the legacy `c/xrce/talker/`
+/// — manual CDR serialization vs the canonical std_msgs binding —
+/// so Tier 2 owns that port).
+#[rstest]
+#[case::zenoh(Rmw::Zenoh)]
+#[case::dds(Rmw::Dds)]
+fn test_native_c_talker_rmw_variant_exists(#[case] rmw: Rmw) {
+    let binary = build_native_c_talker_rmw(rmw).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "native/c/talker {:?} variant not prebuilt; run \
+             `just native build-fixtures` first: {:?}",
+            rmw,
+            e
+        )
+    });
+
+    let binary: &Path = binary;
+    assert!(
+        binary.exists(),
+        "build_native_c_talker_rmw({:?}) returned a path that doesn't exist: {}",
+        rmw,
+        binary.display()
+    );
+    assert_eq!(
+        binary.file_name().and_then(|n| n.to_str()),
+        Some("c_talker"),
+        "unexpected binary name for {:?}: {}",
+        rmw,
+        binary.display()
+    );
+
+    // Path contract: `examples/native/c/talker/build-<rmw>/c_talker`.
+    let build_dir_name = binary
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    assert_eq!(
+        build_dir_name,
+        rmw.build_dir(),
+        "binary {} is not under the expected build-<rmw> dir for {:?}",
         binary.display(),
         rmw
     );

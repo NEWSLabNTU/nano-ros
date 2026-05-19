@@ -284,6 +284,26 @@ impl Rmw {
             Rmw::Xrce => "target-xrce",
         }
     }
+
+    /// `NROS_RMW` cmake cache value (`zenoh` / `dds` / `xrce`).
+    pub fn cmake_value(self) -> &'static str {
+        match self {
+            Rmw::Zenoh => "zenoh",
+            Rmw::Dds => "dds",
+            Rmw::Xrce => "xrce",
+        }
+    }
+
+    /// Per-RMW C / C++ build dir name (`build-zenoh` / `build-dds` /
+    /// `build-xrce`). Same isolation pattern as `target_dir()` but
+    /// for cmake.
+    pub fn build_dir(self) -> &'static str {
+        match self {
+            Rmw::Zenoh => "build-zenoh",
+            Rmw::Dds => "build-dds",
+            Rmw::Xrce => "build-xrce",
+        }
+    }
 }
 
 /// Phase 118 — resolve a prebuilt binary for a collapsed-shape example
@@ -311,6 +331,53 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
     let binary_path =
         example_dir.join(format!("{}/release/{}", rmw.target_dir(), binary_name));
     require_prebuilt_binary(&binary_path)
+}
+
+/// Phase 118 — resolve a prebuilt binary for a collapsed-shape C / C++
+/// example built under a specific RMW (cmake `-DNROS_RMW=<rmw>`).
+///
+/// `name` is the example dir under `examples/` (e.g. `"native/c/talker"`).
+/// `binary_name` is the cmake `add_executable` target name. The build
+/// is expected to land at
+/// `examples/<name>/<rmw.build_dir()>/<binary_name>`. The actual
+/// `cmake -B build-<rmw> -S . -DNROS_RMW=<rmw> && cmake --build
+/// build-<rmw>` invocation belongs to `just <plat> build-fixtures`.
+pub fn build_example_cmake_rmw(
+    name: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    let binary_path = example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name));
+    require_prebuilt_binary(&binary_path)
+}
+
+/// Phase 118 — collapsed-shape native C talker, RMW-parametrized.
+///
+/// Returns the prebuilt binary for the named RMW. The fixture build
+/// chain (`just native build-fixtures`) configures + builds
+/// `examples/native/c/talker/` once per RMW into separate
+/// `build-{zenoh,dds,xrce}/` dirs.
+pub fn build_native_c_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_CELL,
+        Rmw::Dds => &DDS_CELL,
+        Rmw::Xrce => &XRCE_CELL,
+    };
+    cell.get_or_try_init(|| build_example_cmake_rmw("native/c/talker", "c_talker", rmw))
+        .map(|p| p.as_path())
 }
 
 /// Phase 131.B — resolve a prebuilt test-fixture / bench binary that lives
