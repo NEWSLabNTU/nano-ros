@@ -140,13 +140,15 @@ fn test_native_service_action_rmw_variant_exists(#[case] case: &str, #[case] rmw
     );
 }
 
-/// Phase 118.A.3 — collapsed-shape C talker. XRCE deferred (main.c
-/// differs significantly across RMWs in the legacy `c/xrce/talker/`
-/// — manual CDR serialization vs the canonical std_msgs binding —
-/// so Tier 2 owns that port).
+/// Phase 118.A.3 / 118.B.2 — collapsed-shape C talker, RMW-parametrized.
+/// The canonical zenoh-style main.c uses the typed `std_msgs_msg_int32_publish`
+/// binding and builds under all three RMWs — XRCE is no longer deferred,
+/// the legacy `c/xrce/<case>/` siblings' manual-CDR variant is redundant
+/// and gets dropped in Tier 5 cleanup.
 #[rstest]
 #[case::zenoh(Rmw::Zenoh)]
 #[case::dds(Rmw::Dds)]
+#[case::xrce(Rmw::Xrce)]
 fn test_native_c_talker_rmw_variant_exists(#[case] rmw: Rmw) {
     let binary = build_native_c_talker_rmw(rmw).unwrap_or_else(|e| {
         nros_tests::skip!(
@@ -188,19 +190,24 @@ fn test_native_c_talker_rmw_variant_exists(#[case] rmw: Rmw) {
 }
 
 /// Phase 118.B.2 — collapsed-shape native C listener / service /
-/// action cases. XRCE deferred (main.c uses manual CDR
-/// serialization on the legacy `c/xrce/<case>/` siblings).
+/// action cases. XRCE included — the canonical zenoh-style main.c
+/// uses the typed bindings and builds under all three RMWs.
 #[rstest]
 #[case::listener_zenoh("listener", "c_listener", Rmw::Zenoh)]
 #[case::listener_dds("listener", "c_listener", Rmw::Dds)]
+#[case::listener_xrce("listener", "c_listener", Rmw::Xrce)]
 #[case::ss_zenoh("service-server", "c_service_server", Rmw::Zenoh)]
 #[case::ss_dds("service-server", "c_service_server", Rmw::Dds)]
+#[case::ss_xrce("service-server", "c_service_server", Rmw::Xrce)]
 #[case::sc_zenoh("service-client", "c_service_client", Rmw::Zenoh)]
 #[case::sc_dds("service-client", "c_service_client", Rmw::Dds)]
+#[case::sc_xrce("service-client", "c_service_client", Rmw::Xrce)]
 #[case::as_zenoh("action-server", "c_action_server", Rmw::Zenoh)]
 #[case::as_dds("action-server", "c_action_server", Rmw::Dds)]
+#[case::as_xrce("action-server", "c_action_server", Rmw::Xrce)]
 #[case::ac_zenoh("action-client", "c_action_client", Rmw::Zenoh)]
 #[case::ac_dds("action-client", "c_action_client", Rmw::Dds)]
+#[case::ac_xrce("action-client", "c_action_client", Rmw::Xrce)]
 fn test_native_c_listener_service_action_rmw_variant_exists(
     #[case] case: &str,
     #[case] binary: &str,

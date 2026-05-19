@@ -163,12 +163,14 @@ build-fixtures:
     wait
     # Phase 118.A.3 / 118.B.2 — collapsed-shape native C examples. Each
     # case built once per RMW via cmake `-DNROS_RMW=<rmw>` into
-    # isolated build-<rmw>/ dirs. XRCE C variants deferred (legacy
-    # `c/xrce/<case>/main.c` uses manual CDR serialization, not the
-    # canonical std_msgs/example_interfaces binding).
+    # isolated build-<rmw>/ dirs. The canonical zenoh-style main.c
+    # uses the typed std_msgs / example_interfaces binding and builds
+    # cleanly under all three RMWs (zenoh, dds, xrce); the legacy
+    # `c/xrce/<case>/` siblings' manual-CDR variant is now redundant
+    # and is dropped by Tier 5 cleanup.
     for case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/c/${case} ]; then
-            for rmw in zenoh dds; do
+            for rmw in zenoh dds xrce; do
                 echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 ( cd examples/native/c/${case} && \
                   cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
