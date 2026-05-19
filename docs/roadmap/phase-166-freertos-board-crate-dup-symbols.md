@@ -181,6 +181,22 @@ consume). Matches the platform-cffi pattern documented in
   in a binary (the Rust zenoh examples that bypass
   `nros-board-freertos` still build cleanly because they only
   pull in `nros-board-mps2-an385-freertos`).
+- **Phase 88.16.H is blocked on this.** A direct
+  `[plat_log_write] writer=0` probe confirmed that on the FreeRTOS
+  C/C++ example chain, `nros_platform_log_write` reads
+  `s_log_writer` from a *different* file-static than the one the
+  Rust-side board crate's `register_log_writer` call writes. Two
+  compilations of `nros-platform-freertos/src/platform.c` are
+  live in each binary — one from
+  `libnros_platform_freertos.a` (cmake) and one from
+  `libnros_rmw_zenoh_staticlib.a` / `libnros_c.a` (Cargo via
+  Corrosion). The linker dedups the EXPORTED
+  `nros_platform_{register_log_writer,log_write}` to one archive,
+  but the other archive's file-static `s_log_writer` is what
+  the surviving function addresses. Phase 166 option-2 (canonical
+  platform crate emits a staticlib, board + cmake build steps
+  consume it) collapses the dup and unblocks 88.16.H's example
+  migration with no further nros-log changes needed.
 
 ---
 

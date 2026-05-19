@@ -97,6 +97,33 @@ void nros_log_emit_fmt(
 #define NROS_LOG_ERROR(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_ERROR, __VA_ARGS__)
 #define NROS_LOG_FATAL(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_FATAL, __VA_ARGS__)
 
+/**
+ * Phase 88.16.H — explicit installation of the default sink list.
+ *
+ * Cross-language `no_std` builds (FreeRTOS / NuttX / ThreadX C and
+ * C++ examples) must call this once after the board crate's
+ * platform-log writer is registered (typically right after
+ * `nros_node_init` returns). Pins `nros_log::init` as a linker root
+ * so `--gc-sections` keeps it; without this, the lazy guard inside
+ * `nros_log_emit` can be unreachable and every record silently
+ * drops.
+ *
+ * Idempotent. Hosted POSIX consumers can skip this — the
+ * `.init_array` ctors already wire the dispatcher.
+ */
+void nros_log_init(void);
+
+/**
+ * Phase 88.16.H — opaque handle to the catch-all `nros` logger.
+ *
+ * Lets C callers emit through `NROS_LOG_*` without standing up a
+ * full `nros_node_t` (useful for boot diagnostics, panic hooks,
+ * smoke fixtures). The returned handle is `'static`. Never free.
+ *
+ * @return `nros_logger_t` for the default ("nros") logger.
+ */
+nros_logger_t nros_log_default_logger(void);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

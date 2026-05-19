@@ -461,39 +461,40 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             lands in Zephyr's log subsystem (visible via `west
             monitor` / `native_sim` stdout).
       - [ ] 88.16.H — `examples/qemu-arm-freertos/{c,cpp}/zenoh/*`
-            (12 examples: 6 C + 6 C++). `examples/qemu-arm-baremetal`
-            has no C/C++ tree, so the scope is freertos-only. **First
-            attempt landed a working migration that builds clean but
-            silently drops every post-`nros_log_emit_fmt` record on
-            the FreeRTOS C/C++ chain — `nros_executor_spin_some` +
-            publish run fine, `nros_log_emit_fmt` returns without
-            error, but `dispatch_to_sinks` never reaches the
-            registered `PlatformSink` writer.** Same example shape
-            works for the FreeRTOS Rust lane (88.16.C verified
-            green), so the bug is somewhere in the
-            `nros-c → nros_log::ensure_default_sinks` lazy-init
-            path on `no_std` cross-language targets. Likely
-            candidates:
-            1. Two copies of `nros_log` linked into the same binary
-               (nros-c's Corrosion staticlib + the FreeRTOS rlib
-               graph), each with its own `SINKS_PTR` static.
-               Lazy-init populates the staticlib's copy; dispatch
-               reads the rlib's null copy.
-            2. `--gc-sections` dropping `nros_log::init` because no
-               Rust call site references it; `ensure_default_sinks`
-               is only reachable via the C ABI shim, but the
-               linker doesn't know to keep the Rust impl alive.
-            3. `core::sync::atomic::AtomicBool::compare_exchange`
-               in `nros-c::ensure_default_sinks` racing with an
-               unstable Cortex-M3 STREX (less likely — Rust path
-               uses the same machinery and works).
-            Revert kept the C/C++ FreeRTOS examples on plain
-            `printf` so `rtos_e2e::test_rtos_*::platform_1_Platform__Freertos::lang_{2,3}`
-            stays green. **Next step**: add a tiny `nros_log_init()`
-            C export to nros-c and call it explicitly from the C
-            examples — bypasses the lazy guard and pins
-            `nros_log::init` as a linker root. Track under this
-            same item.
+            (12 examples: 6 C + 6 C++). **Blocked on Phase 166** —
+            duplicate-symbol issue between cmake's
+            `libnros_platform_freertos.a` and Cargo-built
+            `libnros_rmw_zenoh_staticlib.a`. Both archives compile
+            the FreeRTOS platform C body, each with its own
+            file-static `s_log_writer`. Linker dedups the
+            `nros_platform_log_write` symbol to one archive but the
+            Rust-side board crate's `register_log_writer` call
+            ends up writing the OTHER archive's `s_log_writer`,
+            so the C-side dispatch path reads NULL and drops.
+
+            Direct probe inside `nros_platform_log_write` confirmed
+            the root cause: `[plat_log_write] sev=2 writer=0
+            msg_len=11` (writer NULL despite Rust path working).
+
+            **Groundwork landed in 88.16.H (without the example
+            migration):**
+            - `nros_log_init()` C export pins `nros_log::init` as
+              a linker root for cross-language consumers. Decl in
+              `<nros/log.h>`; impl in `nros-c::log`.
+            - `nros_log_default_logger()` C export returns the
+              `'static` catch-all `nros::DEFAULT_LOGGER` so callers
+              can emit through `NROS_LOG_*` without a full `Node`.
+              Useful for the deferred Phase 88.15.e Zephyr smoke +
+              the eventual 88.16.H retry.
+
+            Example migration kept reverted so
+            `rtos_e2e::test_rtos_*::platform_1_Platform__Freertos::lang_{2,3}`
+            stays green. **Retry once Phase 166 collapses the
+            dup-symbol** — then the migration script
+            `tmp/migrate-freertos-c-cpp.py` (preserved in this
+            phase doc's notes) can be re-run with the
+            `nros_log_init()` call already wired into each
+            example body.
 
 ## Design Notes
 

@@ -95,6 +95,33 @@ fn ensure_default_sinks() {
     }
 }
 
+/// Phase 88.16.H — explicit C-side install of the default sink list.
+///
+/// Pins `nros_log::init` as a linker root for cross-language consumers
+/// (FreeRTOS / NuttX / ThreadX C and C++ examples). Without this,
+/// `--gc-sections` can drop `nros_log::init` because it is only
+/// reachable from the lazy `ensure_default_sinks` guard inside Rust,
+/// and the C example never resolves a symbol that drags it in.
+///
+/// Idempotent: re-calling replaces the sink-list pointer with the
+/// same default. Safe to call from any task / thread once the
+/// platform-log fn-ptr slot is registered by the board crate.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_log_init() {
+    DEFAULT_SINKS_INSTALLED.store(true, Ordering::Release);
+    nros_log::init(nros_log::sinks::default());
+}
+
+/// Phase 88.16.H — opaque handle to `nros_log::DEFAULT_LOGGER`.
+///
+/// Lets C callers emit records without standing up a full `Node`
+/// (useful for boot-time diagnostics, panic hooks, smoke fixtures).
+/// The returned pointer is `'static`. Never free.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_log_default_logger() -> *const c_void {
+    (&raw const nros_log::DEFAULT_LOGGER).cast()
+}
+
 // `nros_log_emit_fmt` is implemented in C
 // (`packages/core/nros-c/c-stubs/log_fmt.c`) because the Rust
 // `c_variadic` feature is still unstable on stable. The C shim
