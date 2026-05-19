@@ -591,7 +591,7 @@ locus.
   ```
   Bisect window: git rev-list fb6b778b..HEAD -- packages/drivers/nros-smoltcp packages/zpico/zpico-sys packages/platforms/nros-platform-esp32-qemu packages/boards/nros-board-esp32-qemu — find the commit that flipped working → broken.
 
-### F. QEMU bare-metal RTIC + serial (6 tests) → **5/6 CLOSED 2026-05-19** by cluster-E ABI fix
+### F. QEMU bare-metal RTIC + serial (6 tests) → **6/6 CLOSED 2026-05-19**
 
 **Resolution (ETH path).** All five `test_qemu_rtic_*_e2e` +
 `test_qemu_zenoh_large_publish` tests close out from the cluster
@@ -804,7 +804,7 @@ remove the four tests from the real-fail rollup. Same caveat may
 apply to any `*_integration_shell_smoke` / `_e2e` tests with
 deferred-skip panics (see M).
 
-### H. nano2nano + cross-RMW bridges (6 tests) → **partially closed 2026-05-19**
+### H. nano2nano + cross-RMW bridges (6 tests) → **6/6 CLOSED 2026-05-19**
 
 ```
 bridge_xrce_to_dds_starts_and_opens_both_sessions      → phantom (fixture skip)
@@ -979,9 +979,9 @@ No action needed.
 | C. Zephyr cross-host bridge | 10 | `_z_open_tcp` ABI gate + queryable-cascade declare hang + batch-size + feedback-loop budget + cpp send_goal budget | **10/10 CLOSED 160.C + 160.C.2** |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | alias TU ↔ vendor `_z_sys_net_*_t` ABI mismatch (RV32 inline-vs-hidden-ptr) + drift guard via `_Static_assert` | **CLOSED 2026-05-19** |
-| F. RTIC + serial bare-metal | 6 | RTIC (5): same alias-TU/vendor ABI mismatch as E (cortex-m3 6-byte endpoint, inline vs hidden ptr). Serial (1): Phase 132.3 deferred. | **5/6 CLOSED 2026-05-19** via cluster-E fix; serial → Phase 132.3 |
+| F. RTIC + serial bare-metal | 6 | RTIC (5): same alias-TU/vendor ABI mismatch as E. Serial (1): Phase 132.3 closed. | **6/6 CLOSED 2026-05-19** |
 | G. cmake_platform_matrix cross | 4 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
-| H. nano2nano + bridges | 6 | 2 phantom (fixture skip); 2 PASS no changes; 2 XRCE throughput drops (real) | **4/6 closed 2026-05-19**; throughput → 160.H.1 |
+| H. nano2nano + bridges | 6 | 2 phantom (fixture skip); 2 PASS no changes; 2 XRCE throughput: talker drain + SUBSCRIBER_RING_DEPTH 4→16 | **6/6 CLOSED 160.H + 160.H.1** |
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
 | J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
 | K. NuttX + ThreadX-Linux DDS | 2 | NuttX: flaky (PASS sometimes, SPDP-over-dgram-pair unreliable); ThreadX-Linux: phantom env-skip | **flaky/phantom** — NuttX rerun-or-mcast-launcher needed |
