@@ -10,7 +10,7 @@ publish = false
 [workspace]
 
 [dependencies]
-nros = { path = "../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh-cffi", "platform-posix", "link-tcp", "ros-humble"] }
+nros = { path = "../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
 nros-rmw = { path = "../../packages/core/nros-rmw", default-features = false }
 nros-rmw-cffi = { path = "../../packages/core/nros-rmw-cffi", default-features = false }
 nros-platform = { path = "../../packages/core/nros-platform", default-features = false, features = ["platform-posix"] }
