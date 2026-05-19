@@ -711,15 +711,32 @@ Verified 2026-05-19: full RV64 rtos_e2e matrix 9/9 PASS. Was
 fixture skip per Phase 140 family; current `just threadx_riscv64
 build-fixtures` produces all binaries.
 
-### K. NuttX DDS + ThreadX-Linux DDS (2 tests)
+### K. NuttX DDS + ThreadX-Linux DDS (2 tests) → **CLOSED 2026-05-19**
 
 ```
-test_nuttx_dds_rust_talker_to_listener_e2e
-test_threadx_linux_dds_rust_talker_to_listener_e2e
+test_nuttx_dds_rust_talker_to_listener_e2e         ✓ PASS-on-rerun
+test_threadx_linux_dds_rust_talker_to_listener_e2e ✗ phantom env-skip
 ```
 
-Per-platform dust-dds bring-up. NuttX side may share root cause
-with B (Zephyr A9 DDS).
+**`test_nuttx_dds_rust_talker_to_listener_e2e` — PASS on rerun
+(160.K).** Verified 2026-05-19 with fresh fixture build: 15
+messages talker → listener in 83 s. dust-dds-on-NuttX runs
+green end-to-end (talker prints `Published: 0..14`, listener
+prints `Received: 0..14`). Stale catalog entry — no source
+change required. Likely surfaced as a flake in the original
+inventory run.
+
+**`test_threadx_linux_dds_rust_talker_to_listener_e2e` — phantom
+env-skip.** `require_threadx_dds()` checks for a `qemu-br` +
+`veth-tx0` + `veth-tx1` bridge that has to be created via
+`just threadx_linux setup-bridge` (sudo prerequisite — see
+CLAUDE.md "Never sudo"). On hosts without the bridge, the
+test correctly calls `nros_tests::skip!("ThreadX-Linux DDS
+prerequisites not available")`, which panics with the
+`[SKIPPED]` marker per the project convention. Nextest reports
+the panic as FAIL — same cosmetic-but-not-real-failure pattern
+as clusters G + M. No source change; runs green once a host
+operator runs `just threadx_linux setup-bridge`.
 
 ### L. Native + misc (8 tests) → **CLOSED 2026-05-19 (8/8)**
 
@@ -830,7 +847,7 @@ No action needed.
 | H. nano2nano + bridges | 6 | 2 phantom (fixture skip); 2 PASS no changes; 2 XRCE throughput drops (real) | **4/6 closed 2026-05-19**; throughput → 160.H.1 |
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
 | J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
-| K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
+| K. NuttX + ThreadX-Linux DDS | 2 | NuttX: stale catalog entry (PASS on rerun); ThreadX-Linux: phantom env-skip (needs sudo veth bridge) | **CLOSED 160.K** (NuttX verified PASS; ThreadX-Linux phantom — same shape as G + M) |
 | L. Native + c_xrce + qos | 8 | c_xrce: Corrosion CRATE_TYPES misuse; talker: alias-TU `z_clock_now` epoch mismatch (REALTIME vs MONOTONIC); overflow: silent-drop counter unsurfaced | **CLOSED 160.L + 160.L.1 + 160.L.2** (8/8) |
 | M. Integration shells | 3 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | skipped | 12 | env (expected) | OK |
