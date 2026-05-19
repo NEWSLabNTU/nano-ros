@@ -14,6 +14,7 @@ pub mod pins;
 pub mod random;
 pub mod serial;
 pub mod sleep;
+pub mod sporadic_timer;
 pub mod timing;
 
 /// Zero-sized type implementing all platform methods for STM32F4.
@@ -27,14 +28,32 @@ nros_platform_cffi::nros_platform_export!(Stm32f4Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Stm32f4Platform);
 
-// Phase 110.E.b — `PlatformTimer` ABI export. STM32F4 has no
-// board-level periodic-timer hook yet; default impl returns
-// `TimerError::Unsupported`. Symbols still link cleanly so any
-// cross-platform code resolving `nros_platform_timer_*` against
-// this board degrades gracefully. Real refill arrives with the
-// per-board `SysTickHook` work (design 110-e-platform-timer).
+// Phase 110.E.b — `PlatformTimer` dispatches through the
+// per-board periodic-timer hook in `sporadic_timer`. Board crates
+// (or user-init code) call
+// `sporadic_timer::install_periodic_timer_hook(register, destroy)`
+// to wire a TIM2/TIM3/TIM5 IRQ; without a hook installed the impl
+// returns `TimerError::Unsupported` and `nros_platform_timer_*`
+// surfaces NULL so cross-platform code degrades gracefully. See
+// `sporadic_timer` module docs for the hook contract; mps2-an385
+// is the canonical drive-the-timer-directly reference.
 impl nros_platform_api::PlatformTimer for Stm32f4Platform {
     type TimerHandle = TimerHandleStub;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        sporadic_timer::dispatch_register(period_us, callback, user_data)?;
+        // v1: single-slot hook, sentinel handle (1) — `destroy`
+        // ignores the value + tears the hook's slot down.
+        Ok(TimerHandleStub(1 as *mut core::ffi::c_void))
+    }
+
+    fn destroy(_handle: Self::TimerHandle) {
+        sporadic_timer::dispatch_destroy();
+    }
 }
 
 #[derive(Clone, Copy)]

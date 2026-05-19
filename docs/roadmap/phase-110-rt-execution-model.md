@@ -157,10 +157,26 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       and receive ISR-driven budget refresh without a polled
       fallback.
 
-      Outstanding: stm32f4 / esp32 / esp32-qemu Timer-IRQ wiring
-      (mirror the mps2 pattern with each board's available timer)
-      + the `cancel` / `restart_oneshot` machinery (oneshot timer
-      arm before dispatch + cancel after to detect callback
+      **stm32f4 / esp32 / esp32-qemu hook surface landed.** These
+      three platforms own peripherals via their board crates'
+      `Peripherals` split (stm32f4xx-hal handles, esp-hal v1's
+      ownership model), so the platform crate can't drive a fixed
+      timer directly the way mps2-an385 does with CMSDK Timer1.
+      Each platform now exposes
+      `sporadic_timer::install_periodic_timer_hook(register,
+      destroy)`: a board crate (or user-init) calls it once during
+      boot with function pointers that arrange a periodic IRQ on
+      whichever timer the board has reserved (TIM2/TIM3/TIM5 on
+      stm32f4, `esp_hal::timer::PeriodicTimer` /
+      `SystemTimer` alarms on ESP32-C3). The platform's
+      `PlatformTimer::create_periodic` dispatches through the hook;
+      `nros_platform_timer_*` returns NULL when no hook is
+      installed so cross-platform code degrades gracefully. mps2
+      remains the canonical "drive the timer directly" reference
+      for the simpler / fully-owning case.
+
+      Outstanding: `cancel` / `restart_oneshot` machinery (oneshot
+      timer arm before dispatch + cancel after to detect callback
       overruns). Wall-clock measurement covers the bulk of the
       per-callback accuracy win without that machinery;
       oneshot-driven overrun detection is an additional hardening

@@ -11,6 +11,7 @@ pub mod memory;
 pub mod net;
 pub mod random;
 pub mod sleep;
+pub mod sporadic_timer;
 pub mod timing;
 
 /// Zero-sized type implementing all platform methods for ESP32-C3 QEMU.
@@ -24,10 +25,24 @@ nros_platform_cffi::nros_platform_export!(Esp32QemuPlatform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Esp32QemuPlatform);
 
-// Phase 110.E.b — `PlatformTimer` ABI export. ESP32-QEMU has no
-// board-level periodic-timer hook yet; default returns Unsupported.
+// Phase 110.E.b — `PlatformTimer` dispatches through the
+// per-board periodic-timer hook in `sporadic_timer`. Identical
+// shape to the `nros-platform-esp32` sibling.
 impl nros_platform_api::PlatformTimer for Esp32QemuPlatform {
     type TimerHandle = TimerHandleStub;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        sporadic_timer::dispatch_register(period_us, callback, user_data)?;
+        Ok(TimerHandleStub(1 as *mut core::ffi::c_void))
+    }
+
+    fn destroy(_handle: Self::TimerHandle) {
+        sporadic_timer::dispatch_destroy();
+    }
 }
 
 #[derive(Clone, Copy)]
