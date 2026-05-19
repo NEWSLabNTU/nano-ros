@@ -221,11 +221,17 @@ Merge Group D's single-tier native generated package.
 Acceptance:
 
 - [x] Generated package builds with Cargo.
-- [ ] Generated `main.rs` opens one executor, creates one default `SchedContext`,
+- [x] Generated `main.rs` opens one executor, creates one default `SchedContext`,
   instantiates all planned Rust components, binds callbacks, and spins.
+  (Already wired in `templates/orchestration/main.rs.jinja` — pre-existed
+  126D archival; verified by 126.M4 close.)
 - [x] Generated code is readable and checked into `build/`, not hidden in opaque
   binary blobs.
-- [ ] `nros build` runs metadata, plan, generation, and Cargo build in one command.
+- [x] `nros build` runs metadata, plan, generation, and Cargo build in one
+  command. (Codegen submodule `555707e`: `nros build --launch <file>` chains
+  `metadata::run` → `plan::run` → `build_generated_package`; also dropped
+  dead `nros/rmw-*-cffi` + `link-tcp` feature emissions left over from
+  Phase 128.C, unblocking every existing orchestration_e2e Cargo build.)
 
 ### M5 - RTOS generated binary
 
