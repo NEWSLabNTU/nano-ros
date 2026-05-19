@@ -212,20 +212,7 @@ exclude = [
     "examples/zephyr/rust/action-server",
     "examples/zephyr/rust/action-client",
     "examples/zephyr/rust/service-client-async",
-    "examples/zephyr/rust/zenoh/talker",
-    "examples/zephyr/rust/zenoh/listener",
-    "examples/zephyr/rust/zenoh/service-server",
-    "examples/zephyr/rust/zenoh/service-client",
-    "examples/zephyr/rust/zenoh/action-server",
-    "examples/zephyr/rust/zenoh/action-client",
-    "examples/zephyr/rust/zenoh/service-client-async",
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)
-    "examples/zephyr/rust/xrce/talker",
-    "examples/zephyr/rust/xrce/listener",
-    "examples/zephyr/rust/xrce/service-server",
-    "examples/zephyr/rust/xrce/service-client",
-    "examples/zephyr/rust/xrce/action-server",
-    "examples/zephyr/rust/xrce/action-client",
     # Phase 169.2 — Zephyr rust/dds examples deleted.
     # No Cargo.toml in cpp/c examples (Zephyr cmake builds them)
     # Reference implementations (library, not an example)
