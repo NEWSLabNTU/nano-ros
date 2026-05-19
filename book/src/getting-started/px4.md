@@ -14,57 +14,63 @@ C++ only — PX4's uORB binding is C++-only (Rust + C not in the
 ## Project layout
 
 PX4 external modules live **outside** the PX4 source tree and are
-hooked in at configure time:
+hooked in at configure time. The template at
+`integrations/px4/module-template/` has the PX4-required
+`src/modules/<name>/` shape:
 
 ```text
 my_drone_firmware/
-├── PX4-Autopilot/                       # PX4 source tree (submodule)
-└── px4-modules/                         # passed via EXTERNAL_MODULES_LOCATION
-    └── nano-ros/                        # copy-out from integrations/px4/module-template/
-        ├── CMakeLists.txt
-        ├── Kconfig
-        ├── nros_uorb_bridge.cpp         # the actual nano-ros app
-        └── ...
+├── PX4-Autopilot/                          # PX4 source tree (submodule)
+└── px4-modules/                            # passed via EXTERNAL_MODULES_LOCATION
+    └── nano-ros/                           # copy-out from integrations/px4/module-template/
+        └── src/
+            ├── CMakeLists.txt              # populates config_module_list_external
+            └── modules/
+                └── nano_ros_app/
+                    ├── CMakeLists.txt      # px4_add_module(... MAIN nano_ros_app)
+                    └── nano_ros_app.cpp    # the user-editable app
 ```
 
-The template at `integrations/px4/module-template/` is the
-canonical copy-out source — vendor it into your firmware repo, then
-point PX4 at its parent directory:
+> **Prereq.** PX4 is an extended-tier dependency. Run
+> `just px4 setup` first to populate `third-party/px4/PX4-Autopilot`
+> and `third-party/px4/px4-rs`. `just px4 doctor` reports the gap
+> on a fresh clone.
 
-```bash
-cmake -B build -S PX4-Autopilot \
-      -DCONFIG=px4_fmu-v5_default \
-      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules
-```
-
-Inside the module, the canonical pattern bridges uORB → nano-ros.
-The module is a `PX4Module` subclass that runs in its own work
-queue, opens an nros executor, and forwards uORB messages onto a
-zenoh / DDS topic (or vice versa).
-
-## Configure
-
-PX4 uses Kconfig for module enablement:
-
-```bash
-cd PX4-Autopilot
-make px4_fmu-v5_default menuconfig
-# Navigate to:
-#   External modules → nano-ros
-#       [*] Enable nano-ros uORB bridge
-#           RMW backend       (zenoh)         zenoh | xrce | dds
-#           ROS 2 edition     (humble)
-#           Default locator   "tcp/10.41.0.1:7447"
-```
-
-Build-time CMake cache vars also work:
+Vendor the template into your firmware repo, then point PX4 at its
+parent directory + tell the template where nano-ros lives via
+`NANO_ROS_DIR`:
 
 ```bash
 cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
       -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules \
+      -DNANO_ROS_DIR=$PWD/../nano-ros            # point at your nano-ros clone
+```
+
+Inside the module, the canonical pattern bridges uORB → nano-ros.
+The module is a `PX4Module` subclass that runs in its own work
+queue, opens an nros executor, and forwards uORB messages onto a
+zenoh / DDS topic (or vice versa). Edit `nano_ros_app.cpp` to add
+your topic bindings.
+
+## Configure
+
+The template does **not** ship a Kconfig overlay (no `Kconfig.projbuild`
+files). Module enablement is implicit once `EXTERNAL_MODULES_LOCATION`
+points at the template's parent. Pass RMW + ROS-edition selection
+via CMake cache vars rather than menuconfig:
+
+```bash
+cmake -B build -S PX4-Autopilot \
+      -DCONFIG=px4_fmu-v5_default \
+      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules \
+      -DNANO_ROS_DIR=$PWD/../nano-ros \
       -DNANO_ROS_RMW=zenoh
 ```
+
+(Adding a Kconfig overlay so the module appears under
+`menuconfig → External modules` is a follow-up task; for now the
+template is always enabled.)
 
 ## Build
 
@@ -85,7 +91,7 @@ PX4's NuttX kernel + apps (~10 min on a fresh checkout).
 cd PX4-Autopilot
 make px4_sitl_default gazebo
 # In the PX4 console:
-pxh> nros_uorb_bridge start
+pxh> nano_ros_app start
 
 # Real hardware (Pixhawk): flash via QGroundControl or
 #     `make px4_fmu-v5_default upload` over the bootloader USB
@@ -96,7 +102,7 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /vehicle_local_position px4_msgs/msg/VehicleLocalPosition
 ```
 
-**Readiness signal.** After `nros_uorb_bridge start` in the PX4
+**Readiness signal.** After `nano_ros_app start` in the PX4
 console, expect `INFO  [nano-ros] bridge started` plus messages
 flowing within 5 seconds. If no bridge log:
 
@@ -133,7 +139,7 @@ flowing within 5 seconds. If no bridge log:
 ## Next
 
 - Add your own uORB topics to the bridge: see the
-  `nros_uorb_bridge.cpp` template's topic-table section.
+  `nano_ros_app.cpp` template's topic-table section.
 - Multi-vehicle: PX4-XRCE-Agent → nano-ros XRCE backend gives you
   the standard PX4-ROS bridge with nano-ros on the autopilot side.
 - For pure-NuttX (no PX4) firmware: see the
