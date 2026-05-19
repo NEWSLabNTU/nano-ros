@@ -705,6 +705,17 @@ fn main() {
         // in Phase 159. Emit the network section ONLY for bare-metal;
         // every other platform's vendor network.c is the single source
         // of truth and the alias TU stays out of the link.
+        if use_threadx {
+            // Phase 160 follow-up — threadx uses NROS_PLATFORM_ALIASES
+            // (vendor sees the 16/32-byte opaque struct from
+            // `nros_zenoh_generic_platform.h`); alias TU emits its
+            // network section with the same opaque shape so the
+            // by-value pass uses hidden-pointer ABI consistently on
+            // both sides. POSIX/NuttX/Zephyr/FreeRTOS bring their own
+            // vendor `system/<rtos>/network.c` and stay out of both
+            // gates; bare-metal uses the small-struct gate below.
+            alias_build.define("NROS_ZP_ALIAS_OPAQUE_NET", None);
+        }
         if use_bare_metal {
             alias_build.define("NROS_ZP_ALIAS_BARE_METAL_NET", None);
 

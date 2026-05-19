@@ -131,8 +131,6 @@ build-fixtures:
          THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
          THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
            cmake --build {}/build --parallel > /dev/null"
-        done
-    done
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.
 build-all: build build-examples build-fixtures
