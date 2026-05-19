@@ -605,7 +605,7 @@ impl QemuProcess {
             // host slirp I/O during WFI. NuttX virt + AF_UNIX dgram
             // pair has no slirp dependency and runs under wall-clock
             // virtio-net. Icount tied virtual time to instruction
-            // count, so heavy dust-dds RTPS bursts (SPDP+SEDP+
+            // count, so heavy RTPS bursts (SPDP+SEDP+
             // reliability) advanced virtual time by milliseconds per
             // wall-second — the 1 Hz publish timer fired ~once per
             // 30 wall-seconds, breaking the test's 60 s budget. With

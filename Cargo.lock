@@ -1602,7 +1602,6 @@ dependencies = [
  "nros-node",
  "nros-platform-cffi",
  "nros-rmw",
- "nros-rmw-dds",
  "nros-rmw-zenoh",
  "nros-serdes",
  "nvidia-ivc",
