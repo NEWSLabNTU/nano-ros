@@ -57,8 +57,12 @@ netmask  = "255.255.255.0"
 
 [zenoh]
 locator   = "tcp/10.0.2.2:7451"   # host's zenohd reached via Slirp
-domain_id = 0                      # FreeRTOS test fixture uses 7451;
-                                   # adjust if you run zenohd on 7447
+domain_id = 0                      # Per-language test-fixture ports:
+                                   #   Rust  → 7451   C → 7551   C++ → 7651
+                                   # The talker / listener under each
+                                   # `<lang>/zenoh/` use the matching
+                                   # port; start `zenohd` on the one
+                                   # you intend to test against.
 
 [scheduling]
 app_priority           = 12
@@ -80,7 +84,8 @@ cd examples/qemu-arm-freertos/rust/zenoh/talker
 cargo build --release
 
 # C / C++ — use the cross-toolchain CMake invocation:
-just freertos build-fixtures        # builds all 12 (Rust + C + C++) at once
+just freertos build-fixtures        # builds every in-tree zenoh +
+                                    # DDS example across Rust / C / C++
 # Or single-example:
 toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
 codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
@@ -98,16 +103,17 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 
 ```bash
 # 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451):
-just zenohd                               # or: ./build/zenohd/zenohd
+just zenohd run                           # or: ./build/zenohd/zenohd
 
 # 2. Boot the talker in QEMU:
 cd examples/qemu-arm-freertos/rust/zenoh/talker
 cargo run --release
-# Or for C / C++:
+# Or for C / C++ (binary names carry the `freertos_` prefix from
+# the CMake project() declaration in each example):
 qemu-system-arm -cpu cortex-m3 -machine mps2-an385 \
                 -nographic -semihosting-config enable=on,target=native \
                 -nic socket,model=lan9118,listen=:6666 \
-                -kernel ./build/c_talker
+                -kernel ./build/freertos_c_talker      # or freertos_cpp_talker
 
 # 3. Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash

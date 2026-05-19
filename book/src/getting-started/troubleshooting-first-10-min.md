@@ -44,7 +44,7 @@ Did the binary build but not produce output?
 ├─ Hangs after "Opening session" / no `Published:` lines
 ├─ `nros::init -> -3` / `-100` (Transport error)
 │   → zenohd isn't running. Open another terminal:
-│       just zenohd                 # in the repo root
+│       just zenohd run             # in the repo root
 │     Or any system `zenohd --listen tcp/127.0.0.1:7447`.
 │     Check the locator the example points at matches the
 │     port zenohd is listening on (default 7447 for POSIX,

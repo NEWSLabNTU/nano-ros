@@ -109,7 +109,7 @@ Three terminals.
 
 ```bash
 # 1. Start the in-tree zenoh router:
-just zenohd                          # or: ./build/zenohd/zenohd
+just zenohd run                      # or: ./build/zenohd/zenohd
 
 # 2. Run the talker:
 cd examples/native/c/zenoh/talker
@@ -131,10 +131,12 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 binary should print `Published: 1` on stdout. If no `Published:`
 line in 30 seconds:
 
-1. Confirm `zenohd` is running (terminal 1). Without it, `nros_init`
-   blocks indefinitely.
-2. Check `nros_init -> -3` / `-100` in stderr — both indicate
-   transport open failed (wrong locator or zenohd unreachable).
+1. Confirm `zenohd` is running (terminal 1). Without it,
+   `nros_support_init` returns immediately with `-4`
+   (`NROS_RET_NOT_FOUND` — connection refused).
+2. Wrong locator / unreachable host → same `-4` signature in stderr.
+   Reachable host but mismatched port → talker hangs on session-open
+   handshake rather than returning a code.
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source

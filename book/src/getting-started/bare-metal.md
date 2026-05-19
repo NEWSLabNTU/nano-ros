@@ -67,7 +67,7 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 
 ```bash
 # 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7447):
-just zenohd
+just zenohd run
 
 # 2. Boot the talker in QEMU. The .cargo/config.toml runner does:
 cd examples/qemu-arm-baremetal/rust/zenoh/talker

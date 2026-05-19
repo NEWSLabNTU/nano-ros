@@ -38,6 +38,17 @@ doctor:
 build:
     ./scripts/zenohd/build.sh
 
+# Run the built zenoh router. Blocks the shell until Ctrl-C.
+# Accepts any zenohd flags as positional args (forwarded verbatim).
+run *args:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -x build/zenohd/zenohd ]; then
+        echo "ERROR: build/zenohd/zenohd not found. Run: just zenohd setup" >&2
+        exit 1
+    fi
+    exec ./build/zenohd/zenohd {{args}}
+
 # Clean zenohd build artifacts.
 clean:
     ./scripts/zenohd/build.sh --clean

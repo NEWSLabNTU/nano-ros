@@ -105,7 +105,7 @@ their per-module `just <module> setup` recipe out-of-band.
 > terminal and start the router before launching any example:
 >
 > ```bash
-> just zenohd            # or: ./build/zenohd/zenohd
+> just zenohd run        # or: ./build/zenohd/zenohd
 > ```
 >
 > Leave that terminal open for the entire session. Default ports:

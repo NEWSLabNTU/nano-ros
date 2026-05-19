@@ -111,7 +111,7 @@ Three terminals.
 
 ```bash
 # 1. zenoh router:
-just zenohd
+just zenohd run
 
 # 2. Run the talker:
 cd examples/native/cpp/zenoh/talker

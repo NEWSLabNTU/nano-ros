@@ -89,7 +89,7 @@ builds finish in seconds.
 
 ```bash
 # threadx-linux (no QEMU):
-just zenohd setup && just zenohd            # bring up router
+just zenohd setup && just zenohd run        # bring up router
 cd examples/threadx-linux/rust/zenoh/talker
 cargo run --release
 # Expected:

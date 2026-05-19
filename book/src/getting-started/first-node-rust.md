@@ -19,10 +19,15 @@ via a path dependency. Three files matter:
 examples/native/rust/zenoh/talker/
 ├── Cargo.toml          # path dep on `nros` + `nros-rmw-zenoh`
 ├── package.xml         # ROS-style manifest (drives codegen tooling)
-├── config.toml         # runtime locator + domain id (optional)
+├── generated/          # auto-generated message bindings (gitignored)
 └── src/
     └── main.rs         # 60-line talker
 ```
+
+POSIX talkers read the locator / domain from environment variables
+(`ZENOH_LOCATOR`, `ROS_DOMAIN_ID`) — no `config.toml` is needed.
+The `config.toml` shape used by embedded targets shows up under
+the Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your
 package:
@@ -78,13 +83,14 @@ seconds.
 
 ## Run
 
-Three terminals.
+Three terminals (each command below blocks; keep them open):
 
 ```bash
-# 1. Start the in-tree zenoh router (already built by `just setup`):
-just zenohd                          # or: ./build/zenohd/zenohd
+# Terminal 1 — in-tree zenoh router (already built by `just setup`).
+# Blocks the shell until you Ctrl-C it.
+just zenohd run                      # or: ./build/zenohd/zenohd
 
-# 2. Run the talker:
+# Terminal 2 — the talker.
 cd examples/native/rust/zenoh/talker
 cargo run
 # Expected output:
@@ -94,14 +100,27 @@ cargo run
 #   Published: 1
 #   Published: 2
 #   …
+```
 
-# 3. Verify from a stock ROS 2 install (any other terminal):
+That's the nano-ros side fully working. **Optional step:** verify
+interop with stock ROS 2.
+
+```bash
+# Terminal 3 — stock ROS 2 with rmw_zenoh_cpp. NOTE: rmw_zenoh_cpp
+# uses its OWN router daemon (`ros2 run rmw_zenoh_cpp rmw_zenohd`),
+# NOT the in-tree zenohd from terminal 1. They need to peer with
+# each other, or both clients need to point at the same router.
+# Simplest: stop terminal 1 and run only `rmw_zenohd` instead, then
+# launch the talker pointing at rmw_zenohd's port (default 7447).
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 run rmw_zenoh_cpp rmw_zenohd &       # in its own subshell
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
-You should see the same counter values arriving on the ROS 2 side.
+If `ros2 topic echo` shows no output despite the talker printing
+`Published:`, the routers aren't peering — confirm both processes
+point at the same port (default `tcp/127.0.0.1:7447`).
 
 **Readiness signal.** Within 5 seconds of `cargo run`, the talker
 should print `Published: 1`. If no `Published:` line in 30 seconds:
