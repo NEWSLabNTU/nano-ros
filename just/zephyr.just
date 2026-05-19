@@ -32,6 +32,15 @@ setup *ARGS:
     rustup target add armv7a-none-eabi
     echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
+    echo "[zephyr setup] applying AArch64 / Cortex-R Rust patches (idempotent)..."
+    bash ./scripts/zephyr/aarch64-rust-patch.sh "$WORKSPACE"
+    bash ./scripts/zephyr/cortex-r-rust-patch.sh "$WORKSPACE"
+    echo "[zephyr setup] applying Phase 168.1 cargo-features patch (idempotent)..."
+    bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
+    echo "[zephyr setup] applying Phase 97.4 native_sim IPPROTO_IP patch (idempotent)..."
+    bash ./scripts/zephyr/native-sim-ipproto-ip-patch.sh "$WORKSPACE"
+    echo "[zephyr setup] applying Phase 168.X.fvp llext-edk conditional patch (idempotent)..."
+    bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$WORKSPACE"
 
 # Diagnose Zephyr install status (read-only).
 doctor:
@@ -120,6 +129,12 @@ build-fixtures:
     # Without this the listener can't join `239.255.0.1` host-side
     # and DDS SPDP discovery never closes on `native_sim`.
     bash ./scripts/zephyr/native-sim-ipproto-ip-patch.sh "$workspace"
+    # Phase 168.X.fvp — backport upstream Zephyr 4.x's CONFIG_LLEXT_EDK
+    # gate as a 3.7-LTS-compatible `if(CONFIG_LLEXT)` wrap. Lets the
+    # cyclonedds compile-options closure live alongside host-gcc's
+    # minimal toolchain `compiler` property set without tripping the
+    # llext-edk gen-expr evaluator.
+    bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$workspace"
     echo "Building Zephyr test fixtures..."
     # Phase 140 — Zephyr examples consume nano-ros via the Phase 139
     # integration shell (`integrations/zephyr/`) under `west build`.
