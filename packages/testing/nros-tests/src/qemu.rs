@@ -579,8 +579,18 @@ impl QemuProcess {
             "-cpu",
             "cortex-a7",
             "-nographic",
-            "-icount",
-            "shift=auto",
+            // Phase 160.K — NO `-icount shift=auto`. The MPS2 / slirp
+            // sibling sets icount to keep CMSDK Timer0 aligned with
+            // host slirp I/O during WFI. NuttX virt + AF_UNIX dgram
+            // pair has no slirp dependency and runs under wall-clock
+            // virtio-net. Icount tied virtual time to instruction
+            // count, so heavy dust-dds RTPS bursts (SPDP+SEDP+
+            // reliability) advanced virtual time by milliseconds per
+            // wall-second — the 1 Hz publish timer fired ~once per
+            // 30 wall-seconds, breaking the test's 60 s budget. With
+            // icount off, wall-clock virtio + NuttX kernel timing
+            // align and the publish loop ticks at the configured
+            // rate.
             "-kernel",
         ])
         .arg(binary)

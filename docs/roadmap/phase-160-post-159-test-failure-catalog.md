@@ -852,16 +852,25 @@ test_nuttx_dds_rust_talker_to_listener_e2e         ✓ PASS-on-rerun (flaky)
 test_threadx_linux_dds_rust_talker_to_listener_e2e ✗ phantom env-skip
 ```
 
-**`test_nuttx_dds_rust_talker_to_listener_e2e` — flaky PASS.**
-Verified 2026-05-19 (per upstream c50b2841) with fresh fixture
-build: 15 messages talker → listener in 83 s. dust-dds-on-NuttX
-runs green end-to-end. Re-verified later same day (this catalog
-commit) — listener got 0 messages on rerun (SPDP discovery did
-not complete over the `start_nuttx_virt_dgram` pair). Marks the
-test as flaky; root cause is likely SPDP-over-dgram-point-to-point
-unreliability (SPDP relies on UDP multicast for participant
-announcement and the dgram pair is unicast). Mitigations: rerun
-or migrate to a NuttX QEMU dgram-mcast launcher when one lands.
+**`test_nuttx_dds_rust_talker_to_listener_e2e` — CLOSED 160.K
+2026-05-19.** Root cause was NOT dgram-pair SPDP unreliability
+(initial hypothesis). `start_nuttx_virt_dgram` passed
+`-icount shift=auto` to QEMU — that locks virtual time to
+instruction count, which the MPS2 / slirp launchers need to keep
+CMSDK Timer0 aligned with slirp wall-clock I/O. NuttX virt has
+no slirp dependency: it runs virtio-net against an AF_UNIX dgram
+pair (no host stack), so wall-clock + virtio + NuttX kernel
+timing all align natively. Under icount, heavy dust-dds RTPS
+bursts (SPDP + SEDP + reliability handshakes) consumed enormous
+instruction budget per wall-second, so the 1 Hz publish timer
+fired ~once per 30 wall-seconds. Verified by manual `qemu-system-arm`
+runs:
+- with icount: 1 `Published: N` line in 30 wall-s
+- without icount: 21 `Published: N` lines in 30 wall-s
+
+Fix: drop `-icount shift=auto` from `start_nuttx_virt_dgram`.
+Test now PASS in 83 s (was hanging the full 60 s wait_for_output
+timeout before).
 
 **`test_threadx_linux_dds_rust_talker_to_listener_e2e` — phantom
 env-skip.** `require_threadx_dds()` checks for a `qemu-br` +
@@ -984,7 +993,7 @@ No action needed.
 | H. nano2nano + bridges | 6 | 2 phantom (fixture skip); 2 PASS no changes; 2 XRCE throughput: talker drain + SUBSCRIBER_RING_DEPTH 4→16 | **6/6 CLOSED 160.H + 160.H.1** |
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
 | J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
-| K. NuttX + ThreadX-Linux DDS | 2 | NuttX: flaky (PASS sometimes, SPDP-over-dgram-pair unreliable); ThreadX-Linux: phantom env-skip | **flaky/phantom** — NuttX rerun-or-mcast-launcher needed |
+| K. NuttX + ThreadX-Linux DDS | 2 | NuttX: `-icount shift=auto` starved virtual time under dust-dds RTPS burst (publish timer fired ~once / 30 s); ThreadX-Linux: phantom env-skip | **CLOSED 160.K** (NuttX) + phantom (TX-Linux) |
 | L. Native + c_xrce + qos | 8 | c_xrce: Corrosion CRATE_TYPES misuse; talker: alias-TU `z_clock_now` epoch mismatch (REALTIME vs MONOTONIC); overflow: silent-drop counter unsurfaced | **CLOSED 160.L + 160.L.1 + 160.L.2** (8/8) |
 | M. Integration shells | 3 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
 | skipped | 12 | env (expected) | OK |
