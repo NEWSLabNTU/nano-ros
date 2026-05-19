@@ -373,6 +373,117 @@ impl SchedContext {
     }
 }
 
+// ----------------------------------------------------------------------
+// Phase 110.G — TimeTriggered schedule-table API.
+//
+// ARINC-653-style cyclic executive: the major frame is partitioned
+// into fixed windows; each callback is bound to a window via
+// `SchedContext { tt_window_offset_us, tt_window_duration_us }`.
+// The runtime gate inside `Executor::spin_once` already enforces
+// per-window dispatch suppression (Phase 110.G runtime, landed
+// pre-session). This block adds the schedule-table types +
+// builder helpers so callers can declare a complete cyclic
+// schedule with a single API call instead of stitching
+// `create_sched_context` + `bind_handle_to_sched_context` together.
+// ----------------------------------------------------------------------
+
+/// One slot in a time-triggered schedule.
+///
+/// Window `[offset_us, offset_us + duration_us)` within the major
+/// frame. `name` is a static-lifetime label for diagnostics
+/// (logging, panic messages); the runtime never inspects it.
+#[derive(Debug, Clone, Copy)]
+pub struct TimeTriggeredWindow {
+    pub offset_us: u32,
+    pub duration_us: u32,
+    pub name: &'static str,
+}
+
+impl TimeTriggeredWindow {
+    pub const fn new(offset_us: u32, duration_us: u32, name: &'static str) -> Self {
+        Self {
+            offset_us,
+            duration_us,
+            name,
+        }
+    }
+}
+
+/// Fixed-size, no_std-friendly cyclic schedule. `N` is the
+/// declared maximum window count; `window_count` is the active
+/// length (callers can build the array up to `N` and set
+/// `window_count` to the actual size used).
+#[derive(Debug)]
+pub struct TimeTriggeredSchedule<const N: usize> {
+    pub major_frame_us: u32,
+    pub windows: [TimeTriggeredWindow; N],
+    pub window_count: usize,
+}
+
+impl<const N: usize> TimeTriggeredSchedule<N> {
+    /// Construct a schedule from an exhaustive `[TimeTriggeredWindow; N]`
+    /// array; `window_count` is set to `N`.
+    pub const fn new_full(
+        major_frame_us: u32,
+        windows: [TimeTriggeredWindow; N],
+    ) -> Self {
+        Self {
+            major_frame_us,
+            windows,
+            window_count: N,
+        }
+    }
+
+    /// Validate the schedule: every window must fit inside
+    /// `[0, major_frame_us)` and windows must be non-overlapping
+    /// in offset-sorted order. Sliding-window check; O(N²) is fine
+    /// because TT schedules are small (rarely > 16 slots).
+    pub fn validate(&self) -> Result<(), TimeTriggeredScheduleError> {
+        if self.major_frame_us == 0 {
+            return Err(TimeTriggeredScheduleError::ZeroMajorFrame);
+        }
+        if self.window_count > N {
+            return Err(TimeTriggeredScheduleError::WindowCountOverflow);
+        }
+        for (i, w) in self.windows[..self.window_count].iter().enumerate() {
+            if w.duration_us == 0 {
+                return Err(TimeTriggeredScheduleError::ZeroWindowDuration { window: i });
+            }
+            let end = (w.offset_us as u64) + (w.duration_us as u64);
+            if end > self.major_frame_us as u64 {
+                return Err(TimeTriggeredScheduleError::WindowExceedsMajorFrame {
+                    window: i,
+                });
+            }
+            for (j, other) in self.windows[..self.window_count].iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                let o_end = (other.offset_us as u64) + (other.duration_us as u64);
+                let overlaps = (w.offset_us as u64) < o_end
+                    && (other.offset_us as u64) < end;
+                if overlaps {
+                    return Err(TimeTriggeredScheduleError::WindowsOverlap {
+                        window_a: i,
+                        window_b: j,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Validation errors for a [`TimeTriggeredSchedule`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeTriggeredScheduleError {
+    ZeroMajorFrame,
+    WindowCountOverflow,
+    ZeroWindowDuration { window: usize },
+    WindowExceedsMajorFrame { window: usize },
+    WindowsOverlap { window_a: usize, window_b: usize },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

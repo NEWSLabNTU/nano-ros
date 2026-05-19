@@ -331,6 +331,111 @@ fn test_tt_window_gate_suppresses_outside_window() {
     );
 }
 
+/// Phase 110.G — schedule-table builder declares + applies a full
+/// cyclic schedule in one call: validates window layout, sets
+/// major-frame length, creates one SC per window with the right
+/// TT-gate fields. Two-window schedule with the first window
+/// covering [0..1s) within a 2-second major frame ensures the
+/// test's spin (well under 1s after executor construction) fires
+/// the entry bound to window-0 and suppresses the one bound to
+/// window-1.
+#[test]
+fn test_apply_time_triggered_schedule_dispatches_only_active_window() {
+    use crate::executor::sched_context::{
+        TimeTriggeredSchedule, TimeTriggeredWindow,
+    };
+
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let count_w0 = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count_w1 = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let cb0 = count_w0.clone();
+    let cb1 = count_w1.clone();
+    let h0 = executor
+        .register_subscription::<TestMsg, _>("/tt0", move |_msg: &TestMsg| {
+            cb0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+    let h1 = executor
+        .register_subscription::<TestMsg, _>("/tt1", move |_msg: &TestMsg| {
+            cb1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    let schedule = TimeTriggeredSchedule::<2>::new_full(
+        2_000_000,
+        [
+            TimeTriggeredWindow::new(0, 1_000_000, "w0"),
+            TimeTriggeredWindow::new(1_000_000, 1_000_000, "w1"),
+        ],
+    );
+    let ids = executor
+        .apply_time_triggered_schedule(&schedule)
+        .expect("schedule should validate");
+    executor.bind_handle_to_sched_context(h0, ids[0]).unwrap();
+    executor.bind_handle_to_sched_context(h1, ids[1]).unwrap();
+
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off0 = executor.entries[0].as_ref().unwrap().offset;
+    let off1 = executor.entries[1].as_ref().unwrap().offset;
+    let (d0, n0) = encode_test_msg(10);
+    let (d1, n1) = encode_test_msg(20);
+    unsafe { &*(arena_ptr.add(off0) as *const MockSubscriber) }.load(d0, n0);
+    unsafe { &*(arena_ptr.add(off1) as *const MockSubscriber) }.load(d1, n1);
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    // Phase < 1s → only the entry bound to window-0 fires; the
+    // entry bound to window-1 must stay suppressed.
+    assert_eq!(
+        count_w0.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "entry bound to window-0 should dispatch inside its active slot"
+    );
+    assert_eq!(
+        count_w1.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "entry bound to window-1 must stay suppressed outside its slot"
+    );
+}
+
+/// Phase 110.G — schedule validation. Overlapping windows are an
+/// authoring bug and surface as a structured error rather than
+/// silent precedence between dispatchers.
+#[test]
+fn test_time_triggered_schedule_rejects_overlapping_windows() {
+    use crate::executor::sched_context::{
+        TimeTriggeredSchedule, TimeTriggeredScheduleError, TimeTriggeredWindow,
+    };
+
+    let bad = TimeTriggeredSchedule::<2>::new_full(
+        1_000_000,
+        [
+            TimeTriggeredWindow::new(0, 600_000, "w0"),
+            TimeTriggeredWindow::new(500_000, 200_000, "w1"),
+        ],
+    );
+    let err = bad.validate().unwrap_err();
+    assert!(
+        matches!(err, TimeTriggeredScheduleError::WindowsOverlap { .. }),
+        "overlapping windows must surface as a WindowsOverlap error, got {err:?}"
+    );
+
+    let oversize = TimeTriggeredSchedule::<1>::new_full(
+        1_000,
+        [TimeTriggeredWindow::new(500, 600, "w0")],
+    );
+    let err = oversize.validate().unwrap_err();
+    assert!(
+        matches!(
+            err,
+            TimeTriggeredScheduleError::WindowExceedsMajorFrame { .. }
+        ),
+        "window past major-frame end must surface as WindowExceedsMajorFrame, got {err:?}"
+    );
+}
+
 /// Phase 110.E — `SchedClass::Sporadic` budget suppression. After the
 /// budget is exhausted within a period, the bound subscription's
 /// callback no longer fires until the next period boundary refills

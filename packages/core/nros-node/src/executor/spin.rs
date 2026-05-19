@@ -1292,6 +1292,57 @@ impl Executor {
         self.major_frame_us = major_frame_us;
     }
 
+    /// Phase 110.G — apply a declarative cyclic schedule.
+    ///
+    /// One-shot helper that wraps the underlying primitives:
+    /// validates the schedule (`major_frame > 0`, no overlapping
+    /// windows, every window fits inside the major frame), sets the
+    /// executor's major-frame length, then materialises one
+    /// `SchedContext` per window with `class = TimeTriggered` +
+    /// the window's offset / duration. Returns the per-window
+    /// [`SchedContextId`] array so callers can immediately
+    /// `bind_handle_to_sched_context(handle, sc_id)` for their
+    /// subscription / timer handles.
+    ///
+    /// `N` is the schedule's *declared* maximum window count;
+    /// `schedule.window_count` gates how many SCs are actually
+    /// created. Unused trailing slots return
+    /// `SchedContextId::default()` (sentinel — callers must respect
+    /// `window_count`).
+    pub fn apply_time_triggered_schedule<const N: usize>(
+        &mut self,
+        schedule: &super::sched_context::TimeTriggeredSchedule<N>,
+    ) -> Result<
+        [super::sched_context::SchedContextId; N],
+        super::sched_context::TimeTriggeredScheduleError,
+    > {
+        schedule.validate()?;
+        self.major_frame_us = schedule.major_frame_us;
+        // SC slot 0 is the auto-created default; reusing it as a
+        // sentinel for unused trailing slots is safe because the
+        // caller respects `schedule.window_count`.
+        let mut ids: [super::sched_context::SchedContextId; N] =
+            [super::sched_context::SchedContextId(0); N];
+        for (i, window) in schedule.windows[..schedule.window_count].iter().enumerate() {
+            // Deprecation note on `SchedClass::TimeTriggered`: TT
+            // is implemented as a per-SC *window gate* on top of
+            // the existing class-based dispatch (Fifo here keeps
+            // the EDF / Sporadic budgets out of the picture for
+            // pure cyclic schedules). The window-gate fields set
+            // below are what `spin_once`'s 110.G runtime gate
+            // actually reads.
+            let sc = super::sched_context::SchedContext {
+                tt_window_offset_us: super::sched_context::OptUs::from_us(window.offset_us),
+                tt_window_duration_us: super::sched_context::OptUs::from_us(window.duration_us),
+                ..super::sched_context::SchedContext::new_fifo()
+            };
+            ids[i] = self
+                .create_sched_context(sc)
+                .map_err(|_| super::sched_context::TimeTriggeredScheduleError::WindowCountOverflow)?;
+        }
+        Ok(ids)
+    }
+
     /// Phase 110.E.b — register an ISR-driven refill timer for an
     /// already-created Sporadic SC. The caller invokes their
     /// platform's `PlatformTimer::create_periodic` with the returned

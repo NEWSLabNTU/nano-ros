@@ -205,9 +205,42 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       written. Trait surface (`ReadySet`) stays compatible; whatever
       orchestration model lands plugs into the existing
       Activator/Dispatcher seams from 110.A.
-- [ ] 110.G — `SchedClass::TimeTriggered` (ARINC-653-style cyclic
-      executive) — design-locked, impl deferred. Needs schedule-table
-      parser + spin_once mode selector.
+- [x] 110.G — `SchedClass::TimeTriggered` (ARINC-653-style cyclic
+      executive). Runtime gate (`spin_once`'s per-cycle phase check
+      against `tt_window_offset_us` / `tt_window_duration_us`)
+      landed pre-session via `Executor::register_time_triggered_dispatcher`.
+      Schedule-table declarative API + validator + builder now land
+      this session:
+
+      * `TimeTriggeredWindow { offset_us, duration_us, name }` —
+        one cyclic slot, static-lifetime `name` for diagnostics.
+      * `TimeTriggeredSchedule<const N>` — fixed-size array of
+        windows + `major_frame_us` + `window_count` for active
+        prefix; `new_full` constructor + `validate()` that rejects
+        `ZeroMajorFrame`, `ZeroWindowDuration`,
+        `WindowExceedsMajorFrame`, `WindowsOverlap` (O(N²)
+        sliding-window comparison — TT schedules are small).
+      * `Executor::apply_time_triggered_schedule(&schedule)` —
+        one-shot builder: validates, sets `major_frame_us`, creates
+        one `SchedContext` per window with the right
+        `tt_window_*` fields, returns `[SchedContextId; N]` for
+        callers to `bind_handle_to_sched_context` against.
+
+      Verified by two tests in `executor::tests`:
+      * `test_apply_time_triggered_schedule_dispatches_only_active_window`
+        — two subscriptions bound to windows `[0..1s)` + `[1s..2s)`
+        within a 2 s major frame; one `spin_once` early in the
+        cycle dispatches only the window-0 entry, window-1 stays
+        suppressed.
+      * `test_time_triggered_schedule_rejects_overlapping_windows`
+        — overlapping or oversize windows surface structured
+        `TimeTriggeredScheduleError` rather than silent dispatcher
+        precedence.
+
+      Deferred to a future session if a real consumer surfaces: a
+      `nano-ros.toml` schedule-table parser + a load-from-TOML
+      example. The Rust struct API is sufficient for embedded
+      consumers that declare their schedule at compile time.
 
 ---
 
