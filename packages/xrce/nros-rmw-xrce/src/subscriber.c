@@ -48,15 +48,24 @@ void xrce_topic_callback(uxrSession *session,
         if (slot->locked) {
             return;
         }
-        if (len > XRCE_BUFFER_SIZE) {
-            slot->overflow = true;
-            slot->has_data = true;
+        /* Phase 160.H.1 — ring full → drop the newest. Preserves
+         * in-order delivery of the already-buffered messages; the
+         * alternative (overwrite oldest) silently shifts the
+         * sequence which is harder to diagnose. */
+        if (slot->count >= XRCE_SUBSCRIBER_RING_DEPTH) {
             return;
         }
-        memcpy(slot->data, ub->iterator, len);
-        slot->len = len;
-        slot->overflow = false;
-        slot->has_data = true;
+        xrce_subscriber_ring_entry *entry = &slot->entries[slot->write_idx];
+        if (len > XRCE_BUFFER_SIZE) {
+            entry->overflow = true;
+            entry->len = 0;
+        } else {
+            memcpy(entry->data, ub->iterator, len);
+            entry->len = len;
+            entry->overflow = false;
+        }
+        slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
+        slot->count++;
         return;
     }
     /* TODO 115.K.2.x: bump a per-session "unmatched callback" counter
@@ -140,10 +149,14 @@ nros_rmw_ret_t xrce_subscriber_create(nros_rmw_session_t *session,
 
     /* Register slot for callback dispatch. */
     slot->datareader_id = dr_oid.id;
-    slot->has_data      = false;
-    slot->overflow      = false;
+    slot->write_idx     = 0;
+    slot->read_idx      = 0;
+    slot->count         = 0;
     slot->locked        = false;
-    slot->len           = 0;
+    for (size_t i = 0; i < XRCE_SUBSCRIBER_RING_DEPTH; ++i) {
+        slot->entries[i].len = 0;
+        slot->entries[i].overflow = false;
+    }
     slot->active        = true;
     ss->datareader_oid  = dr_oid;
 
@@ -172,7 +185,9 @@ void xrce_subscriber_destroy(nros_rmw_subscriber_t *subscriber) {
 
     if (ss->slot != NULL) {
         ss->slot->active = false;
-        ss->slot->has_data = false;
+        ss->slot->count = 0;
+        ss->slot->write_idx = 0;
+        ss->slot->read_idx = 0;
     }
     (void)uxr_buffer_delete_entity(&st->session, st->output_reliable,
                                    ss->datareader_oid);
@@ -189,26 +204,31 @@ int32_t xrce_subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     }
     xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
     xrce_subscriber_slot *slot = ss->slot;
-    if (slot == NULL || !slot->has_data) {
+    if (slot == NULL || slot->count == 0) {
         return NROS_RMW_RET_NO_DATA;
     }
-    if (slot->overflow) {
-        slot->overflow = false;
-        slot->has_data = false;
-        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    xrce_subscriber_ring_entry *entry = &slot->entries[slot->read_idx];
+    /* Always consume the head slot regardless of outcome — overflow,
+     * buffer-too-small, and successful read all advance the ring so a
+     * single bad entry can't wedge the queue. */
+    int32_t ret;
+    if (entry->overflow) {
+        ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    } else if (entry->len > buf_len) {
+        ret = NROS_RMW_RET_BUFFER_TOO_SMALL;
+    } else {
+        slot->locked = true;
+        if (buf != NULL && entry->len > 0) {
+            memcpy(buf, entry->data, entry->len);
+        }
+        slot->locked = false;
+        ret = (int32_t)entry->len;
     }
-    size_t len = slot->len;
-    if (len > buf_len) {
-        slot->has_data = false;
-        return NROS_RMW_RET_BUFFER_TOO_SMALL;
-    }
-    slot->locked = true;
-    if (buf != NULL && len > 0) {
-        memcpy(buf, slot->data, len);
-    }
-    slot->locked = false;
-    slot->has_data = false;
-    return (int32_t)len;
+    entry->len = 0;
+    entry->overflow = false;
+    slot->read_idx = (uint16_t)((slot->read_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
+    slot->count--;
+    return ret;
 }
 
 int32_t xrce_subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
@@ -219,5 +239,5 @@ int32_t xrce_subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
     if (ss->slot == NULL) {
         return 0;
     }
-    return ss->slot->has_data ? 1 : 0;
+    return ss->slot->count > 0 ? 1 : 0;
 }

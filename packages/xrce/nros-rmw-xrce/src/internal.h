@@ -81,19 +81,38 @@ extern "C" {
 
 /* ---- Per-entity slots ----------------------------------------------- */
 
-/* Subscriber slot — single-message ringbuffer with a `has_data` flag.
- * Phase 115.K.2 keeps overflow handling minimal: oversized messages
- * flag `overflow` and drop. Phase 115.K.2.x follow-ups can grow this
- * to a real ringbuffer if topics show drop pressure.
+/* Subscriber slot — N-deep ringbuffer.
+ *
+ * Phase 160.H.1 — grew from a single-message buffer to N entries so a
+ * back-to-back publish burst doesn't silently overwrite unread
+ * messages (root cause of `test_xrce_throughput_{100hz,burst}` only
+ * receiving 1 of 100 msgs). Each ring entry carries its own
+ * `data[XRCE_BUFFER_SIZE]` + `len`; the topic callback writes to
+ * `entries[write_idx]` and advances, `try_recv_raw` reads from
+ * `entries[read_idx]` and advances. `count` distinguishes empty (0)
+ * from full (XRCE_SUBSCRIBER_RING_DEPTH). On full, the callback
+ * drops the newest message (preserves in-order delivery of buffered
+ * msgs); on overflow length the per-entry `overflow` flag is set so
+ * `try_recv_raw` can surface `MESSAGE_TOO_LARGE`.
  *
  * TODO 115.K.2.x: deadline tracking, async wakers. The Rust impl carries
  * `deadline_cb`, `last_msg_at_ms`, etc. Skipped here per K.2 scope.
  */
-typedef struct xrce_subscriber_slot {
+#ifndef XRCE_SUBSCRIBER_RING_DEPTH
+#define XRCE_SUBSCRIBER_RING_DEPTH 4
+#endif
+
+typedef struct xrce_subscriber_ring_entry {
     uint8_t   data[XRCE_BUFFER_SIZE];
     size_t    len;
-    bool      has_data;
     bool      overflow;
+} xrce_subscriber_ring_entry;
+
+typedef struct xrce_subscriber_slot {
+    xrce_subscriber_ring_entry entries[XRCE_SUBSCRIBER_RING_DEPTH];
+    uint16_t  write_idx;
+    uint16_t  read_idx;
+    uint16_t  count;
     /* `locked` mirrors the Rust impl: callbacks observing this drop
      * the message rather than overwriting a buffer mid-read. */
     bool      locked;

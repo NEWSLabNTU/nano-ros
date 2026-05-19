@@ -176,20 +176,34 @@ fn run_listener() {
     while received < expected_count && start.elapsed() < timeout {
         executor.spin_once(core::time::Duration::from_millis(50));
 
-        match subscription.try_recv_raw() {
-            Ok(Some(len)) => {
-                let (seq, is_valid) = validate_payload(&subscription.buffer()[..len], actual_size);
-                received += 1;
-                if is_valid {
-                    valid += 1;
-                } else {
-                    invalid += 1;
+        // Phase 160.H.1 — drain all queued messages per spin tick.
+        // Pair to the XRCE subscriber's N-deep ring (`XRCE_SUBSCRIBER_
+        // RING_DEPTH`): a single `try_recv_raw` per outer iteration
+        // would only pull the head and the rest of the ring would sit
+        // until the next 50ms spin elapsed, which under a 100 Hz
+        // publisher (~10 msgs per spin window) means the listener
+        // can't keep up with the producer's burst.
+        loop {
+            match subscription.try_recv_raw() {
+                Ok(Some(len)) => {
+                    let (seq, is_valid) =
+                        validate_payload(&subscription.buffer()[..len], actual_size);
+                    received += 1;
+                    if is_valid {
+                        valid += 1;
+                    } else {
+                        invalid += 1;
+                    }
+                    println!("Received: seq={} size={} valid={}", seq, len, is_valid);
+                    if received >= expected_count {
+                        break;
+                    }
                 }
-                println!("Received: seq={} size={} valid={}", seq, len, is_valid);
-            }
-            Ok(None) => {}
-            Err(e) => {
-                eprintln!("Receive error: {:?}", e);
+                Ok(None) => break,
+                Err(e) => {
+                    eprintln!("Receive error: {:?}", e);
+                    break;
+                }
             }
         }
     }
