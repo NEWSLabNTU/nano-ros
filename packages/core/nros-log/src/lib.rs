@@ -41,6 +41,8 @@ extern crate alloc;
 
 use core::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 
+#[cfg(feature = "log-compat")]
+pub mod log_compat;
 pub mod macros;
 pub mod sinks;
 
