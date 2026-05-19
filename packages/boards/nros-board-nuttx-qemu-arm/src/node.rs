@@ -13,7 +13,7 @@ use crate::config::Config;
 /// before `main()` runs (NETINIT_IPADDR baked into the kernel
 /// defconfig). This function:
 ///   * re-seeds `/dev/urandom` from `config.ip` so two QEMU instances
-///     don't collide on Zenoh ZID / dust-dds GUID prefix;
+///     don't collide on Zenoh ZID / DDS GUID prefix;
 ///   * pushes `config.ip` into the live `eth0` interface via
 ///     `SIOCSIFADDR` so each instance overrides the kernel-baked IP
 ///     (otherwise both default to 10.0.2.30 from defconfig and DDS

@@ -8,8 +8,8 @@
 //!
 //! ```ignore
 //! #[unsafe(no_mangle)]
-//! pub extern "C" fn nros_rmw_dds_register() -> nros_rmw_cffi::NrosRmwRet {
-//!     nros_rmw_cffi::RustBackendAdapter::<nros_rmw_dds::DdsRmw>::register()
+//! pub extern "C" fn nros_rmw_zenoh_register() -> nros_rmw_cffi::NrosRmwRet {
+//!     nros_rmw_cffi::RustBackendAdapter::<nros_rmw_zenoh::ZenohRmw>::register()
 //! }
 //! ```
 //!

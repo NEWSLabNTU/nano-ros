@@ -149,14 +149,6 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     # `NROS_RMW_XRCE` define still emitted by `NanoRosCppTargets.cmake`
     # for installed find_package consumers.
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_XRCE_CFFI=1)
-elseif(NANO_ROS_RMW STREQUAL "dds")
-    # Phase 115.L.1: dust-DDS via the C vtable. The register
-    # entry point `nros_rmw_dds_register()` ships from the
-    # Rust-side `nros-rmw-dds` shim crate (pulled via the
-    # `rmw-dds-cffi` Cargo feature), so no extra find_package
-    # is required — the symbol is in the staticlib produced by
-    # corrosion_import_crate above.
-    target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_DDS_CFFI=1)
 elseif(NANO_ROS_RMW STREQUAL "zenoh")
     # Phase 115.L.2: zenoh-pico via the C vtable. Same shape as
     # the `dds` path above — `nros_rmw_zenoh_register()` lives

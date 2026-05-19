@@ -1,6 +1,6 @@
 //! Phase 160.L — thin staticlib wrapper around `nros-rmw-xrce-cffi`.
 //!
-//! Same shape as `nros-rmw-zenoh-staticlib` / `nros-rmw-dds-staticlib`:
+//! Same shape as `nros-rmw-zenoh-staticlib`:
 //! flips the crate-type to `staticlib` so Cargo emits a standalone
 //! `libnros_rmw_xrce_cffi_staticlib.a` archive containing the full
 //! cffi dependency closure (Micro XRCE-DDS Client C sources, linkme

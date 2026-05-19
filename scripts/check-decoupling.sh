@@ -7,7 +7,7 @@
 #   * `nros-platform-cffi` (the C-header platform ABI)
 #
 # Either crate carrying a Rust-level dependency on a concrete RMW
-# (`nros-rmw-zenoh`, `nros-rmw-dds`, `nros-rmw-xrce-cffi`,
+# (`nros-rmw-zenoh`, `nros-rmw-xrce-cffi`,
 # `nros-rmw-cyclonedds`) or a concrete platform
 # (`nros-platform-{posix,freertos,nuttx,threadx,zephyr,esp-idf}`)
 # means backend / platform selection has leaked into the umbrella's

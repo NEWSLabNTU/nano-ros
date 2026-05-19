@@ -145,7 +145,6 @@ _cmake-cargo-stale-guard build_dir:
         packages/core \
         packages/xrce/nros-rmw-xrce \
         packages/zpico/nros-rmw-zenoh \
-        packages/dds/nros-rmw-dds \
         -name '*.rs' -type f -print0 2>/dev/null \
         | sort -z \
         | xargs -0 sha1sum 2>/dev/null \
@@ -554,7 +553,6 @@ build-workspace:
     cargo build --workspace --no-default-features \
         --exclude nros-c \
         --exclude nros-cpp \
-        --exclude nros-rmw-dds-staticlib \
         --exclude nros-rmw-zenoh-staticlib
     cargo nextest run --workspace --no-run
 
@@ -570,7 +568,6 @@ build-workspace-embedded:
         --exclude nros-tests \
         --exclude nros-c \
         --exclude nros-cpp \
-        --exclude nros-rmw-dds-staticlib \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
@@ -599,7 +596,6 @@ check-workspace:
     cargo +{{NIGHTLY}} fmt --check
     cargo clippy --workspace --no-default-features \
         --exclude nros-c --exclude nros-cpp \
-        --exclude nros-rmw-dds-staticlib \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib
@@ -617,7 +613,6 @@ check-workspace-embedded:
         --exclude nros-tests \
         --exclude nros-c \
         --exclude nros-cpp \
-        --exclude nros-rmw-dds-staticlib \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \

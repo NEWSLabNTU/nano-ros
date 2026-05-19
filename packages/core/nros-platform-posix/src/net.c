@@ -56,7 +56,7 @@ static void set_recv_timeout_ms(int fd, uint32_t timeout_ms) {
     /* Phase 127.B.5 — `timeout_ms == 0` means "non-blocking" per the
      * platform-net ABI (cooperative recv loops poll + yield). POSIX
      * `SO_RCVTIMEO` with `{0, 0}` is the OPPOSITE — it means "block
-     * forever". Map timeout==0 to O_NONBLOCK so the dust-dds recv
+     * forever". Map timeout==0 to O_NONBLOCK so the DDS recv
      * loops actually yield to the async runtime instead of starving
      * `Executor::open` / `create_publisher`. */
     if (timeout_ms == 0) {
@@ -135,7 +135,7 @@ int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t tim
      * bubbled up _Z_ERR_TRANSPORT_OPEN_FAILED (-102), nros
      * surfaced `Transport(ConnectionFailed)`. Phase 127.B.5's
      * non-blocking remap was intended for the recv loop on
-     * a NON-zenoh consumer (dust-dds); zenoh-pico's
+     * a NON-zenoh consumer (DDS); zenoh-pico's
      * `_z_link_send_t_msg` does single send + checks ret,
      * so a non-blocking socket here trips
      * `_Z_ERR_TRANSPORT_TX_FAILED` (-100) when send() returns

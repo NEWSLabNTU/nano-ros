@@ -432,7 +432,7 @@ build-s32z:
     cd "$workspace"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     # Use the zenoh talker rather than the DDS one — the eval board
-    # has only 1 MiB SRAM, which dust-dds + Rust core overflows by
+    # has only 1 MiB SRAM, which Rust core overflows by
     # ~100 KiB. zenoh-pico's footprint fits and exercises the same
     # toolchain + nros module + Rust API path the build smoke needs
     # to validate. Real Cyclone DDS deployments live on devices with

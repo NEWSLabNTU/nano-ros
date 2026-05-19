@@ -322,12 +322,71 @@ Ten `packages/testing/nros-tests/tests/*.rs` + Cargo.toml:
 
       `cargo check -p nros-tests --all-targets` clean.
 
-- [ ] **169.4 — Delete `nros-rmw-dds` + sibling crates.** Once
-      no consumer references them, remove
-      `packages/dds/nros-rmw-dds/`,
-      `packages/dds/nros-rmw-dds-staticlib/`, and the
-      `dust-dds` submodule at `packages/dds/dust-dds/`.
-      Update workspace root `Cargo.toml` members list.
+- [x] **169.4 — Delete `nros-rmw-dds` + sibling crates +
+      dust-dds submodule (2026-05-19).** Done. The crate
+      retirement also pulled along:
+
+      - `packages/dds/nros-rmw-dds/` — full crate (rust src,
+        Cargo.toml, tests).
+      - `packages/dds/nros-rmw-dds-staticlib/` — Corrosion
+        sibling.
+      - `packages/dds/dust-dds/` — submodule deregistered
+        (`git submodule deinit -f` + `git rm`); `.gitmodules`
+        entry removed.
+      - `examples/native/c/bridge/xrce-to-dds/`,
+        `examples/native/cpp/bridge/zenoh-to-dds/` — C/C++
+        bridges that linked `nros-rmw-dds-staticlib`. Removed
+        in this commit (no Cyclone-staticlib counterpart yet;
+        bridges return in Phase 169.5).
+
+      Workspace `Cargo.toml`: dropped both `members` entries,
+      the `[workspace.dependencies] nros-rmw-dds` line, and
+      the `exclude = ["packages/dds/dust-dds"]` line.
+
+      `nros-cpp`: `rmw-dds-cffi` feature + per-platform +
+      per-ros-edition `nros-rmw-dds?/...` forwards + optional
+      dep + `pub use nros_rmw_dds::nros_rmw_dds_register` +
+      `rmw-dds-cffi`-gated ctor call + CMake
+      `NROS_RMW_DDS_CFFI` branch — all removed.
+      `nros-cpp/include/nros/node.hpp` `nros_rmw_dds_register`
+      extern declaration removed.
+
+      `nros`: inert `rmw-dds-portable-atomic` feature removed.
+
+      `nros-node/build.rs`: `CARGO_FEATURE_RMW_DDS` dropped
+      from the `has_rmw` cfg-or-list.
+
+      Build orchestration: `packages/dds/nros-rmw-dds` dropped
+      from the `SRC_HASH` find in `justfile`; four
+      `--exclude nros-rmw-dds-staticlib` flags removed; one
+      dust-dds prose comment cleaned in `just/zephyr.just`;
+      backend list in `scripts/check-decoupling.sh` cleaned.
+
+      Source-level cross-refs in ~20 files (mostly comments
+      naming dust-dds or `nros-rmw-dds`) swept with sed —
+      prose now reads "DDS" or "the DDS transport adapter"
+      where the dust-dds spelling was prose-only; load-bearing
+      symbol references (Rust `pub use` lines, CMake
+      `#ifdef`s) removed entirely.
+
+      Dead-code Rust DDS fixture builders left in
+      `packages/testing/nros-tests/src/fixtures/binaries/{mod,freertos,nuttx,threadx_linux}.rs`
+      — they reference deleted example paths but still compile
+      (the build_example call is a runtime path lookup). To
+      avoid touching every fixture file in this commit, the
+      dead code stays for a follow-up sweep tracked as 169.4b.
+
+      Code-side references that survive (vendored submodule,
+      out of scope per "don't modify vendored" rule):
+      - `packages/codegen/packages/nros-cli-core/src/orchestration/generate.rs`
+        still emits a `nros-rmw-dds = { ... }` Cargo.toml
+        template + a `nros_rmw_dds::register();` call. The
+        `colcon-cargo-ros2` submodule needs an upstream fix
+        (or fork) to mirror the retirement. Tracked as Phase
+        169.4c.
+
+      `cargo metadata --no-deps` validates.
+      `cargo check -p nros-tests --all-targets` clean.
 
 - [ ] **169.5 — Promote Cyclone DDS to "the DDS backend".**
       Rename `nros-rmw-cyclonedds` → `nros-rmw-dds` (or keep

@@ -87,7 +87,7 @@ const nros_rmw_vtable_t kVtable = {
 
     /* Phase 124.C — service availability probe. Deferred until the
      * Cyclone DDS built-in topic readers are wired through (matches
-     * the 124.C.2 dust-dds blocker). nullptr → runtime surfaces
+     * the 124.C.2 DDS blocker). nullptr → runtime surfaces
      * NROS_RMW_RET_UNSUPPORTED, no stub. */
     /*service_server_available*/  nullptr,
 

@@ -143,11 +143,6 @@ param-services = ["nros-node/param-services"]
 # Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002).
 lifecycle-services = ["nros-node/lifecycle-services"]
 
-# Phase 101.4 — formerly forwarded to `nros-rmw-dds?/portable-atomic`;
-# now inert at the umbrella level. ESP32-class board crates wire the
-# feature on their direct `nros-rmw-dds` dep instead.
-rmw-dds-portable-atomic = []
-
 # ROS edition feature flags.
 ros-humble = ["nros-node/ros-humble"]
 ros-iron = ["nros-node/ros-iron"]
@@ -164,7 +159,7 @@ nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features
 # enabled.
 nros-bridge = { version = "0.1.0", path = "../../bridge/nros-bridge", default-features = false, optional = true }
 # Phase 104.A — concrete RMW deps (`nros-rmw-xrce-cffi`,
-# `nros-rmw-dds`, `nros-rmw-zenoh`) removed. The umbrella consumes
+# `nros-rmw-zenoh`) removed. The umbrella consumes
 # only the generic vtable shim (`nros-rmw-cffi`); callers depend on
 # the concrete backend crate directly and trigger registration via
 # the backend's `#[ctor]` (POSIX) or an explicit `register()` call

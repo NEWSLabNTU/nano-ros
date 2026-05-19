@@ -98,7 +98,7 @@ mod zephyr_alloc {
 }
 
 // critical-section impl backed by Zephyr's nros_zephyr_irq_lock /
-// nros_zephyr_irq_unlock. dust-dds + portable-atomic require this whenever the
+// nros_zephyr_irq_unlock. portable-atomic requires this whenever the
 // Zephyr C++ staticlib is linked without the zephyr-lang-rust crate, including
 // native_sim std builds.
 #[cfg(feature = "platform-zephyr")]
@@ -170,9 +170,6 @@ mod threadx_alloc {
 }
 
 use core::ffi::{c_char, c_int, c_void};
-
-#[cfg(feature = "rmw-dds-cffi")]
-pub use nros_rmw_dds::nros_rmw_dds_register;
 
 // Phase 161 — mirror nros-c's Phase 134.fix. Declaring
 // `nros_rmw_zenoh_register` as a plain `extern "C"` symbol keeps the
@@ -487,11 +484,6 @@ pub unsafe extern "C" fn nros_cpp_init(
     // path used to pull `nros-rmw-zenoh` into the Rust dep graph and
     // produced the dual zenoh-pico instance bug — see Cargo.toml for
     // the full diagnosis.
-    #[cfg(feature = "rmw-dds-cffi")]
-    {
-        let _ = nros_rmw_dds::register();
-    }
-
     let node_name_str = match unsafe { cstr_to_str(node_name) } {
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,

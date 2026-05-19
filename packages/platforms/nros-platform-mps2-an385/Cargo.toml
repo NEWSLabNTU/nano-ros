@@ -13,7 +13,7 @@ name = "nros_platform_mps2_an385"
 default = []
 # TLS support (larger heap: 128 KB instead of 64 KB)
 link-tls = []
-# Phase 97.3.mps2-an385 — DDS / dust-dds DcpsDomainParticipant + builtin
+# Phase 97.3.mps2-an385 — DDS / DDS DcpsDomainParticipant + builtin
 # topics / readers / writers consume far more heap than zenoh-pico (the
 # threadx-rv64 slice needed 2 MB; same budget here). Off by default so
 # zenoh / xrce builds keep their 64 KB footprint.

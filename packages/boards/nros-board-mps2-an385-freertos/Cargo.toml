@@ -26,7 +26,7 @@ nros-platform = { path = "../../core/nros-platform", default-features = false, f
 nros-platform-cffi = { path = "../../core/nros-platform-cffi", default-features = false }
 # Phase 121.3 — the FreeRTOS Rust kernel crate is gone. The C port's
 # canonical `nros_platform_*` symbols are compiled in-tree by this
-# crate's `build.rs` and linked statically. dust-dds's
+# crate's `build.rs` and linked statically. DDS's
 # `critical_section::Impl` now comes from the `nros-platform-critical-section`
 # shim crate (Phase 121.9) — opt in by adding it to the example's deps.
 

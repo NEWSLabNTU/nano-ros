@@ -73,7 +73,7 @@ pub static __FORCE_LINK_CFFI: extern "C" fn() = nros_platform_cffi::_nros_force_
 // Phase 71.27 — opt-in `#[global_allocator]`
 // ============================================================================
 //
-// On bare-metal / RTOS targets dust-dds + heapless futures need a real
+// On bare-metal / RTOS targets DDS + heapless futures need a real
 // heap. Each `nros-platform-*` crate already implements `PlatformAlloc`
 // against its native heap (`pvPortMalloc` on FreeRTOS,
 // `tx_byte_allocate` on ThreadX, `kmm_malloc` on NuttX,
@@ -101,7 +101,7 @@ mod global_allocator {
     unsafe impl GlobalAlloc for PlatformGlobalAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             // Most RTOS heaps don't honor alignment > sizeof(void*).
-            // dust-dds's heaviest types are pointer-aligned, so this
+            // DDS's heaviest types are pointer-aligned, so this
             // matches the typical 8-byte heap alignment without
             // over-allocating. Callers that need larger alignment
             // (e.g. SIMD) should layer a custom allocator on top.
