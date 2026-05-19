@@ -528,6 +528,77 @@ fn test_threadx_linux_rust_case_rmw_variant_exists(
     assert!(path.exists(), "threadx-linux {} {:?} missing: {}", case, rmw, path.display());
 }
 
+/// Phase 168.3 — Zephyr Rust cases.
+///
+/// `build_zephyr_rust_example_rmw` resolves
+/// `zephyr-workspace/build-rs-<case>-<rmw>/zephyr/zephyr.exe`.
+/// Build orchestration lives in `just/zephyr.just :: build-fixtures`.
+#[rstest]
+#[case::talker_zenoh("talker", Rmw::Zenoh)]
+#[case::talker_dds("talker", Rmw::Dds)]
+#[case::talker_xrce("talker", Rmw::Xrce)]
+#[case::listener_zenoh("listener", Rmw::Zenoh)]
+#[case::listener_dds("listener", Rmw::Dds)]
+#[case::listener_xrce("listener", Rmw::Xrce)]
+#[case::ss_zenoh("service-server", Rmw::Zenoh)]
+#[case::ss_dds("service-server", Rmw::Dds)]
+#[case::ss_xrce("service-server", Rmw::Xrce)]
+#[case::sc_zenoh("service-client", Rmw::Zenoh)]
+#[case::sc_dds("service-client", Rmw::Dds)]
+#[case::sc_xrce("service-client", Rmw::Xrce)]
+#[case::as_zenoh("action-server", Rmw::Zenoh)]
+#[case::as_dds("action-server", Rmw::Dds)]
+#[case::as_xrce("action-server", Rmw::Xrce)]
+#[case::ac_zenoh("action-client", Rmw::Zenoh)]
+#[case::ac_dds("action-client", Rmw::Dds)]
+#[case::ac_xrce("action-client", Rmw::Xrce)]
+#[case::sca_zenoh("service-client-async", Rmw::Zenoh)]
+#[case::sca_dds("service-client-async", Rmw::Dds)]
+fn test_zephyr_rust_case_rmw_variant_exists(
+    #[case] case: &str,
+    #[case] rmw: Rmw,
+) {
+    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw(case, rmw)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!(
+                "zephyr/rust/{} {:?} not prebuilt: {:?}",
+                case, rmw, e
+            )
+        });
+    assert!(path.exists(), "zephyr {} {:?} missing: {}", case, rmw, path.display());
+}
+
+/// Phase 168.4 — Zephyr C / C++ cases (zenoh + xrce verified; dds +
+/// cpp deferred to Phase 168.X — see
+/// `docs/roadmap/phase-168-X-zephyr-cmake-build-gaps.md`).
+#[rstest]
+#[case::c_talker_zenoh("c", "talker", Rmw::Zenoh)]
+#[case::c_talker_xrce("c", "talker", Rmw::Xrce)]
+#[case::c_listener_zenoh("c", "listener", Rmw::Zenoh)]
+#[case::c_listener_xrce("c", "listener", Rmw::Xrce)]
+#[case::c_ss_zenoh("c", "service-server", Rmw::Zenoh)]
+#[case::c_ss_xrce("c", "service-server", Rmw::Xrce)]
+#[case::c_sc_zenoh("c", "service-client", Rmw::Zenoh)]
+#[case::c_sc_xrce("c", "service-client", Rmw::Xrce)]
+#[case::c_as_zenoh("c", "action-server", Rmw::Zenoh)]
+#[case::c_as_xrce("c", "action-server", Rmw::Xrce)]
+#[case::c_ac_zenoh("c", "action-client", Rmw::Zenoh)]
+#[case::c_ac_xrce("c", "action-client", Rmw::Xrce)]
+fn test_zephyr_cmake_case_rmw_variant_exists(
+    #[case] lang: &str,
+    #[case] case: &str,
+    #[case] rmw: Rmw,
+) {
+    let path = nros_tests::fixtures::build_zephyr_cmake_example_rmw(lang, case, rmw)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!(
+                "zephyr/{}/{} {:?} not prebuilt: {:?}",
+                lang, case, rmw, e
+            )
+        });
+    assert!(path.exists(), "zephyr {}/{} {:?} missing: {}", lang, case, rmw, path.display());
+}
+
 /// Phase 118.B.7 — ThreadX-Linux C / C++ cases (zenoh only).
 #[rstest]
 #[case::c_talker("c", "talker", "threadx_c_talker")]

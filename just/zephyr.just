@@ -253,6 +253,43 @@ build-fixtures:
       "qemu_cortex_a9|build-dds-c-a9-service-client|zephyr/c/dds/service-client|0"
       "qemu_cortex_a9|build-dds-c-a9-action-server|zephyr/c/dds/action-server|0"
       "qemu_cortex_a9|build-dds-c-a9-action-client|zephyr/c/dds/action-client|0"
+
+      # Phase 168.3 — collapsed Rust cases (single dir, RMW via prj overlay).
+      "native_sim/native/64|build-rs-talker-zenoh|zephyr/rust/talker|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-talker-dds|zephyr/rust/talker|0||prj.conf;prj-dds.conf"
+      "native_sim/native/64|build-rs-talker-xrce|zephyr/rust/talker|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-rs-listener-zenoh|zephyr/rust/listener|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-listener-dds|zephyr/rust/listener|0||prj.conf;prj-dds.conf"
+      "native_sim/native/64|build-rs-listener-xrce|zephyr/rust/listener|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-rs-service-server-zenoh|zephyr/rust/service-server|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-service-server-dds|zephyr/rust/service-server|0||prj.conf;prj-dds.conf"
+      "native_sim/native/64|build-rs-service-server-xrce|zephyr/rust/service-server|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-rs-service-client-zenoh|zephyr/rust/service-client|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-service-client-dds|zephyr/rust/service-client|0||prj.conf;prj-dds.conf"
+      "native_sim/native/64|build-rs-service-client-xrce|zephyr/rust/service-client|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-rs-action-server-zenoh|zephyr/rust/action-server|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-action-server-dds|zephyr/rust/action-server|0||prj.conf;prj-dds.conf"
+      "native_sim/native/64|build-rs-action-server-xrce|zephyr/rust/action-server|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-rs-action-client-zenoh|zephyr/rust/action-client|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-action-client-dds|zephyr/rust/action-client|0||prj.conf;prj-dds.conf"
+      "native_sim/native/64|build-rs-action-client-xrce|zephyr/rust/action-client|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-rs-service-client-async-zenoh|zephyr/rust/service-client-async|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-service-client-async-dds|zephyr/rust/service-client-async|0||prj.conf;prj-dds.conf"
+
+      # Phase 168.4 — collapsed C cases (zenoh + xrce; dds deferred
+      # to Phase 168.X — see docs/roadmap/phase-168-X-zephyr-cmake-build-gaps.md).
+      "native_sim/native/64|build-c-talker-zenoh|zephyr/c/talker|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-c-talker-xrce|zephyr/c/talker|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-c-listener-zenoh|zephyr/c/listener|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-c-listener-xrce|zephyr/c/listener|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-c-service-server-zenoh|zephyr/c/service-server|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-c-service-server-xrce|zephyr/c/service-server|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-c-service-client-zenoh|zephyr/c/service-client|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-c-service-client-xrce|zephyr/c/service-client|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-c-action-server-zenoh|zephyr/c/action-server|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-c-action-server-xrce|zephyr/c/action-server|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-c-action-client-zenoh|zephyr/c/action-client|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-c-action-client-xrce|zephyr/c/action-client|0||prj.conf;prj-xrce.conf"
     )
 
     failures=()
@@ -280,15 +317,22 @@ build-fixtures:
     }
 
     for entry in "${entries[@]}"; do
-        # Optional 5th column: `xrce_agent_port`. Defaults to empty for
-        # non-XRCE entries (no override). When present, it's forwarded as
-        # `-DCONFIG_NROS_XRCE_AGENT_PORT=<port>` so each (variant, lang)
-        # pair builds against its own Kconfig port slot.
-        IFS='|' read -r board build_dir src best_effort xrce_port <<< "$entry"
-        echo "  → zephyr/$src (-d $build_dir, $board${xrce_port:+, xrce-port=$xrce_port})"
+        # Columns:
+        #   5  xrce_agent_port (optional) — forwarded as
+        #      `-DCONFIG_NROS_XRCE_AGENT_PORT=<port>` so each
+        #      (variant, lang) pair builds against its own Kconfig
+        #      port slot.
+        #   6  conf_files (optional) — `;`-separated overlay list
+        #      forwarded as `-DCONF_FILE="..."` for Phase 168.x
+        #      collapsed cases that select RMW via prj overlay.
+        IFS='|' read -r board build_dir src best_effort xrce_port conf_files <<< "$entry"
+        echo "  → zephyr/$src (-d $build_dir, $board${xrce_port:+, xrce-port=$xrce_port}${conf_files:+, conf=$conf_files})"
         extra_args=(-D_NANO_ROS_CODEGEN_TOOL="$codegen_tool")
         if [ -n "$xrce_port" ]; then
             extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
+        fi
+        if [ -n "$conf_files" ]; then
+            extra_args+=(-DCONF_FILE="$conf_files")
         fi
         log="$log_dir/${build_dir}.log"
         # Phase 140 — pass extra_args only when populated; the example's
