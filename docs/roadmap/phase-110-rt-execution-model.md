@@ -142,13 +142,29 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       passes — the polled `SporadicState` path is unchanged for
       no_std consumers.
 
-      Outstanding: per-board bare-metal SysTickHook (separate
-      per-board investment) + the `cancel` / `restart_oneshot`
-      machinery (oneshot timer arm before dispatch + cancel after
-      to detect callback overruns). Wall-clock measurement covers
-      the bulk of the per-callback accuracy win without that
-      machinery; oneshot-driven overrun detection is an additional
-      hardening pass.
+      **Per-board MPS2-AN385 ISR refill landed.**
+      `nros-platform-mps2-an385::sporadic_timer` drives CMSDK
+      Timer1 with `#[interrupt] fn TIMER1()` calling the registered
+      `atomic_sporadic_refill_thunk` from ISR context. Single
+      periodic-callback slot (v1) backs
+      `<Mps2An385Platform as PlatformTimer>::create_periodic`.
+      Build verified: `nros-platform-mps2-an385` compiles for
+      thumbv7m-none-eabi; `qemu-rtic-talker` example still builds
+      + `test_qemu_rtic_pubsub_e2e` PASSES (talker doesn't bind a
+      Sporadic SC so the Timer1 path stays dormant). Bare-metal
+      callers needing sporadic refill can now register an
+      `AtomicSporadicState` via `Executor::register_sporadic_timer`
+      and receive ISR-driven budget refresh without a polled
+      fallback.
+
+      Outstanding: stm32f4 / esp32 / esp32-qemu Timer-IRQ wiring
+      (mirror the mps2 pattern with each board's available timer)
+      + the `cancel` / `restart_oneshot` machinery (oneshot timer
+      arm before dispatch + cancel after to detect callback
+      overruns). Wall-clock measurement covers the bulk of the
+      per-callback accuracy win without that machinery;
+      oneshot-driven overrun detection is an additional hardening
+      pass.
 - [~] 110.F — `OsPrioritySet` per-priority OS-thread dispatch.
       **Reframed:** Cargo feature `scheduler-os-priority` + stub
       `OsPrioritySet<N>` shipped to lock the namespace; real

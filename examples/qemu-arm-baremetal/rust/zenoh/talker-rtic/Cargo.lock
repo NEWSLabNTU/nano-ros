@@ -605,6 +605,7 @@ name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "mps2-an385-pac",
  "nros-baremetal-common",
  "nros-platform-api",
  "nros-platform-cffi",

@@ -4061,6 +4061,7 @@ impl Executor {
         // clock; the no_std fallback continues to use the polled
         // `SporadicState` path (cycle delta_us) until a board-side
         // monotonic-microsecond accessor lands.
+        #[cfg(feature = "std")]
         let consume_dispatch_runtime_us = |desc_idx: usize,
                                            elapsed_us: u32,
                                            sched_context_bindings: &[super::sched_context::SchedContextId; crate::config::MAX_CBS],

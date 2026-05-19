@@ -35,6 +35,9 @@ nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 # Cortex-M register access
 cortex-m = "0.7"
+# Phase 110.E.b — `Interrupt::TIMER1` NVIC slot ID for
+# `sporadic_timer::register_periodic` / `destroy`.
+mps2-an385-pac = { path = "../../boards/mps2-an385-pac" }
 # smoltcp network provider (TCP/UDP via SmoltcpBridge)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
 # Shared bare-metal helpers (PRNG, sleep, libc stubs)

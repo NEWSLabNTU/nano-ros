@@ -17,6 +17,7 @@ pub mod net;
 pub mod random;
 pub mod serial;
 pub mod sleep;
+pub mod sporadic_timer;
 pub mod threading;
 pub mod time;
 pub mod timing;
@@ -36,29 +37,40 @@ nros_platform_cffi::nros_platform_export!(Mps2An385Platform);
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_net!(Mps2An385Platform);
 
-// Phase 110.E.b — `PlatformTimer` ABI export. MPS2-AN385 has no
-// board-level periodic-timer hook yet (the SysTick is owned by
-// cortex-m-rt's millisecond clock and the CMSDK Timer0 is reserved
-// for `clock::clock_ms()`). The trait default returns
-// `TimerError::Unsupported`; the export macro emits the C symbols
-// returning NULL so any code that resolves
-// `nros_platform_timer_*` against this platform's static lib links
-// cleanly + degrades gracefully. Real ISR-driven refill lands with
-// the per-board `SysTickHook` work flagged in
-// `docs/design/phase-110-e-platform-timer.md`.
+// Phase 110.E.b — `PlatformTimer` impl. CMSDK Timer1 drives a
+// single periodic-callback slot via `sporadic_timer::register_periodic`;
+// the `#[interrupt] fn TIMER1` handler invokes the registered
+// `atomic_sporadic_refill_thunk` from ISR context. `create_oneshot`
+// stays `Unsupported` — the oneshot machinery (per-callback overrun
+// detection) needs a second timer source + is design-deferred.
 impl nros_platform_api::PlatformTimer for Mps2An385Platform {
     type TimerHandle = TimerHandleStub;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut core::ffi::c_void),
+        user_data: *mut core::ffi::c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        sporadic_timer::register_periodic(period_us, callback, user_data)?;
+        // v1: one shared slot, so the handle is a sentinel non-null
+        // pointer (1) — `destroy` ignores the value + tears down the
+        // global slot. Pointer is never dereferenced.
+        Ok(TimerHandleStub(1 as *mut core::ffi::c_void))
+    }
+
+    fn destroy(_handle: Self::TimerHandle) {
+        sporadic_timer::destroy();
+    }
 }
 
 /// Pointer-sized newtype satisfying `nros_platform_export_timer!`'s
 /// `size_of::<TimerHandle>() == size_of::<*mut c_void>()` guard.
-/// The default trait impl never constructs one.
+/// The Timer1 backend uses a sentinel value — never dereferenced.
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct TimerHandleStub(*mut core::ffi::c_void);
 
-// SAFETY: stub never holds a real handle; trait default returns
-// `Unsupported` before this type is materialized at runtime.
+// SAFETY: the wrapped pointer is a sentinel only; nothing reads it.
 unsafe impl Send for TimerHandleStub {}
 unsafe impl Sync for TimerHandleStub {}
 
