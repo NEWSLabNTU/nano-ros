@@ -229,12 +229,19 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
 
     # Force-include a Zephyr IPv4 compat header on every C/C++ TU
     # (NOT .S assembly — `-include` of a C header into asm
-    # breaks). Provides `struct ip_mreq` / `ip_mreqn` where Cyclone
-    # references them directly. Actual multicast joins go through
-    # the IGMP API in nros-platform-zephyr/src/net.c.
+    # breaks). Provides `struct ip_mreq` where Cyclone references
+    # it directly. Actual multicast joins go through the IGMP API
+    # in nros-platform-zephyr/src/net.c.
     zephyr_compile_options(
         $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:SHELL:-include ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h>
     )
+
+    # Phase 11W.1 — Cyclone DDS atomics use unprefixed `asm
+    # volatile` in `ddsrt/atomics/gcc.h`. Zephyr's default -std=c11
+    # rejects the unprefixed keyword on strict toolchains
+    # (host-gcc on native_sim). Re-enable GCC keyword recognition
+    # for Cyclone's C TUs only.
+    zephyr_compile_options($<$<COMPILE_LANGUAGE:C>:-fgnu-keywords>)
 
     # ---- Cyclone DDS sources -----------------------------------------------
     # ddsrt: platform-abstraction layer. Top-level .c files plus per-feature
