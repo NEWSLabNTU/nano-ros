@@ -81,14 +81,24 @@ Cross-cutting blockers (multiple personas):
       untested / unsupported), example link. Surfaces in the
       Reference section.
 
-### 164.E — Comparison vs alternatives
+### 164.E — Comparison vs micro-ROS
 
 - [ ] **164.E.1** Add a comparison section to
-      `book/src/concepts/ros2-comparison.md` or a new
-      `book/src/concepts/comparison-vs-alternatives.md` listing
-      micro-ROS, rmw_zenoh, ros2_rust, Eclipse Cyclone DDS Lite
-      (where applicable). Axes: API surface, supported platforms,
-      RT scheduling story, formal verification, license, governance.
+      `book/src/concepts/ros2-comparison.md` (or a new
+      `book/src/concepts/comparison-vs-microros.md`) **comparing
+      only nano-ros vs micro-ROS** — both are full embedded ROS 2
+      frameworks (RMW + client library + tooling), so they are
+      the apples-to-apples comparison.
+
+      **Do NOT compare against** rmw_zenoh (it's a single RMW
+      backend, scope mismatch) or ros2_rust / rclrs (hosted-only
+      Rust client, scope mismatch).
+
+      Axes for the micro-ROS comparison: API surface (rclc-only
+      vs Rust + C + C++), supported RTOSes, RMW backend choice
+      (XRCE-only vs Zenoh/XRCE/DDS/Cyclone), RT scheduling story,
+      formal verification, license, governance, footprint,
+      agent-vs-peer networking model.
 
 ### 164.F — Surface Cyclone DDS limitations + cross-RMW story
 
@@ -127,7 +137,7 @@ Cross-cutting blockers (multiple personas):
 - `book/src/getting-started/troubleshooting-first-10-min.md` (164.B.1)
 - `book/src/internals/production-readiness.md` (164.C.1)
 - `book/src/reference/supported-boards.md` (164.D.1)
-- `book/src/concepts/comparison-vs-alternatives.md` (164.E.1)
+- `book/src/concepts/comparison-vs-microros.md` (164.E.1)
 - `book/src/start-here/choose-your-entry.md` (164.H.1)
 
 ### Modified
