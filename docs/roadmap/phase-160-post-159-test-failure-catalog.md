@@ -88,19 +88,45 @@ test_zephyr_xrce_cpp_talker_listener      PASS
 Cluster C (cross-host bridge) likely cascades closed — re-run on
 next full sweep.
 
-### B. Zephyr Cyclone-A9 DDS Rust (4 tests) → **needs new phase**
+### B. Zephyr Cyclone-A9 DDS Rust (4 tests) → **3/4 CLOSED 2026-05-19, 1 deferred**
 
 ```
-test_zephyr_dds_rust_action_a9_e2e
-test_zephyr_dds_rust_async_service_a9_e2e
-test_zephyr_dds_rust_service_a9_e2e
-test_zephyr_dds_rust_talker_to_listener_a9_e2e
+test_zephyr_dds_rust_action_a9_e2e             ✓ FIXED (160.B)
+test_zephyr_dds_rust_service_a9_e2e            ✓ FIXED (160.B)
+test_zephyr_dds_rust_talker_to_listener_a9_e2e ✓ FIXED (160.B)
+test_zephyr_dds_rust_async_service_a9_e2e      ✗ Embassy spin_async
 ```
 
-**Hypothesis.** `qemu_cortex_a9` board target — likely Cortex-A9
-Rust patch (`scripts/zephyr/cortex-a9-rust-patch.sh`) or
-dust-dds-on-zephyr stack regression. Sibling `native_sim` DDS
-tests pass.
+**Root cause (3 closed).** Two missing setup steps for the
+`qemu_cortex_a9` target:
+
+1. `armv7a-none-eabi` rust target not installed → cargo errored
+   `error[E0463]: can't find crate for 'core'` on every nros-rmw-dds
+   dep.
+2. `packages/zpico/zpico-zephyr/src/zpico_zephyr.c` accessed
+   `ipv4->unicast[i].is_used` directly — the prior "drop the
+   `.ipv4` sub-struct" attempt (commit `defbb260`) was directionally
+   wrong for Zephyr 3.7's `net_if.h`. The pin wraps each IPv4
+   unicast entry in `struct net_if_addr_ipv4` with the
+   `net_if_addr` carrying `is_used`/`addr_state` under
+   `.ipv4` — restored.
+
+**Fix.** `just zephyr setup` now explicitly:
+- `rustup target add armv7a-none-eabi` (was relying on per-user
+  prior install).
+- `scripts/zephyr/cortex-a9-rust-patch.sh` runs on EVERY setup
+  path (was only on the "already-present" branch). `just zephyr
+  doctor` adds the rust-target check.
+
+Plus `zpico_zephyr.c` field-access restored to
+`unicast[i].ipv4.is_used` / `.addr_state`.
+
+**Open.** `test_zephyr_dds_rust_async_service_a9_e2e` builds +
+boots, reaches `Async service client ready: /add_two_ints` and
+`Calling service: 5 + 3 = ?`, then hangs — Embassy `spin_async()`
+doesn't drive the DDS RTPS request/reply path to completion. Sync
+variant PASSES. Async-specific blocker, file as separate Embassy
+follow-up.
 
 ### C. Zephyr cross-host bridge E2E (8 tests) → **needs new phase**
 
@@ -766,7 +792,7 @@ No action needed.
 | Cluster | Tests | Hypothesis | Phase hook |
 |---------|-------|------------|------------|
 | A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
-| B. Zephyr Cortex-A9 DDS Rust | 4 | dust-dds-on-A9 / Cortex-A9 Rust patch | New (160.B) |
+| B. Zephyr Cortex-A9 DDS Rust | 4 | Missing armv7a-none-eabi rust target + Zephyr 3.7 net_if.h field-access drift | **3/4 CLOSED 160.B** + 1 Embassy follow-up |
 | C. Zephyr cross-host bridge | 11 | NOT cascade — zenoh `_z_send_tcp -> -100` on Zephyr/NSOS | New (160.C) |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | alias TU ↔ vendor `_z_sys_net_*_t` ABI mismatch (RV32 inline-vs-hidden-ptr) + drift guard via `_Static_assert` | **CLOSED 2026-05-19** |

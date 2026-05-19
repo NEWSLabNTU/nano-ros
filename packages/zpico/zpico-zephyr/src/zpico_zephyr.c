@@ -83,13 +83,16 @@ int32_t zpico_zephyr_wait_network(int timeout_ms) {
             struct net_if_ipv4* ipv4 = iface->config.ip.ipv4;
             if (ipv4 != NULL) {
                 for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
-                    /* Zephyr 3.5 / 3.6 `struct net_if_addr` exposes
-                     * `is_used` + `addr_state` directly, not under a
-                     * `.ipv4` sub-struct. Drop the indirection so
-                     * the file compiles on older Zephyr trees
-                     * (e.g. the autoware-safety-island FVP pin). */
-                    if (ipv4->unicast[i].is_used &&
-                        ipv4->unicast[i].addr_state == NET_ADDR_PREFERRED) {
+                    /* Zephyr 3.7+ wraps each IPv4 unicast entry in
+                     * `struct net_if_addr_ipv4` (the `net_if_addr` lives
+                     * under `.ipv4`, alongside `.netmask`). The earlier
+                     * "drop the .ipv4 sub-struct" attempt (commit
+                     * `defbb260`) was directionally wrong for Zephyr
+                     * 3.7's net_if.h shape — restored here. The Cortex-A9
+                     * DDS Rust suite (Phase 160.B) surfaced this as a
+                     * compile-time error on the qemu_cortex_a9 target. */
+                    if (ipv4->unicast[i].ipv4.is_used &&
+                        ipv4->unicast[i].ipv4.addr_state == NET_ADDR_PREFERRED) {
                         LOG_INF("Network ready (iface up + IPv4 bound)");
                         return 0;
                     }

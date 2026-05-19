@@ -19,13 +19,20 @@ setup *ARGS:
     if [ -d "$WORKSPACE/zephyr" ] && [[ "$ARGS" != *--force* ]]; then
         echo "Zephyr workspace already present at $WORKSPACE"
         echo "To reinstall, run: just zephyr setup --force"
-        # Re-apply Cortex-A9 patches anyway: idempotent, and ensures
-        # workspaces created before the patch script existed get the
-        # tweaks without needing --force (which re-downloads ~1 GB).
-        bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
     else
         ./scripts/zephyr/setup.sh $ARGS
     fi
+    # Phase 160.B — ensure the Cortex-A9 (qemu_cortex_a9) toolchain
+    # bits are in place for `examples/zephyr/rust/dds/*` tests:
+    #   1. `armv7a-none-eabi` rust target (no_std core / compiler_builtins)
+    #   2. `cortex-a9-rust-patch.sh`: patches Zephyr's Rust module to
+    #      register the Cortex-A9 target + adds the SLCR MMU entry the
+    #      Zynq-7000 eth_xlnx_gem driver needs.
+    # Both are idempotent — safe to run on every `just zephyr setup`.
+    echo "[zephyr setup] ensuring armv7a-none-eabi Rust target..."
+    rustup target add armv7a-none-eabi
+    echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
+    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
 
 # Diagnose Zephyr install status (read-only).
 doctor:
@@ -43,6 +50,12 @@ doctor:
         echo "  [OK] Zephyr workspace: $WORKSPACE"
     else
         echo "  [MISSING] Zephyr workspace at $WORKSPACE (run: just zephyr setup)"
+        fail=1
+    fi
+    if rustup target list --installed 2>/dev/null | grep -q '^armv7a-none-eabi$'; then
+        echo "  [OK] armv7a-none-eabi rust target (qemu_cortex_a9 DDS)"
+    else
+        echo "  [MISSING] armv7a-none-eabi rust target (run: just zephyr setup)"
         fail=1
     fi
     # native_sim uses NSOS (host loopback) — no TAP bridge required.
