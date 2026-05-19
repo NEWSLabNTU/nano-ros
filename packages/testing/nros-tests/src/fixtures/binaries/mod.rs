@@ -72,8 +72,8 @@ static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-listener binary
 static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Phase 97.3.mps2-an385 — bare-metal MPS2-AN385 DDS examples.
-// Phase 169.4 — bare-metal DDS fixture statics removed.
+// Phase 169.4 — bare-metal MPS2-AN385 DDS fixture statics removed
+// (Phase 97.3.mps2-an385 lineage; deleted with the dust-dds retirement).
 
 /// Cached path to the qemu-serial-talker binary
 static QEMU_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
