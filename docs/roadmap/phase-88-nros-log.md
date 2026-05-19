@@ -379,16 +379,21 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             handle captured into a file-level `g_logger` right after
             `nros_node_init` / `nros::create_node`. Verified green:
             actions, executor, multi_node, dds_api, xrce, native_api.
-      - [ ] 88.16.C — `examples/qemu-arm-baremetal/rust/*` and
-            `examples/qemu-arm-freertos/rust/*` — replace the board
-            crate's `println!` *inside the user closure* (timer
-            callbacks, subscription callbacks, "Publisher declared"
-            chatter) with `nros_*!`. Leave the board crate's own
-            `println!` calls (banner, network init, `Network ready.`)
-            alone — those run before the executor exists.
-      - [ ] 88.16.D — `examples/qemu-arm-nuttx/rust/*` and
-            `examples/qemu-riscv64-threadx/rust/*` — same shape as
-            88.16.C.
+      - [x] 88.16.C — `examples/qemu-arm-baremetal/rust/*` (4 non-RTIC
+            examples: talker / listener / serial-talker /
+            serial-listener) and `examples/qemu-arm-freertos/rust/*`
+            (6 examples: talker / listener / service-{server,client} /
+            action-{server,client}) migrated. RTIC variants deferred —
+            they bypass `run(config, |cfg| { … })`; a separate pass
+            handles those once RTIC users need the facade.
+      - [x] 88.16.D — `examples/qemu-arm-nuttx/rust/*` (6) and
+            `examples/qemu-riscv64-threadx/rust/*` (6) migrated.
+            NuttX leans on `nros-platform-nuttx`'s syslog
+            `PlatformLog`; ThreadX boards register a UART writer
+            fn-ptr in `run()` (Phase 88.11). Verified green in
+            isolation:
+            `rtos_e2e::test_rtos_{pubsub,service,action}_e2e` on each
+            platform's Rust lane.
       - [ ] 88.16.E — `examples/esp32/rust/*` — replace
             `esp_println::println!()` inside the user closure.
       - [ ] 88.16.F — `examples/stm32f4/rust/*` — replace
