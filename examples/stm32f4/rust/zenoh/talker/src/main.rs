@@ -21,6 +21,14 @@
 //! cargo build --release
 //! cargo run --release  # Uses probe-rs to flash
 //! ```
+//!
+//! # Logging
+//!
+//! Phase 88.16.F — user diagnostics route through `nros-log`.
+//! `nros-platform-stm32f4`'s `PlatformLog` impl forwards every
+//! record to `defmt::{trace,debug,info,warn,error}!` so the
+//! existing `defmt_rtt` + `probe-rs attach` workflow keeps working
+//! unchanged.
 
 #![no_std]
 #![no_main]
@@ -33,31 +41,37 @@ defmt::timestamp!("{=u64:us}", { 0 });
 
 use nros::prelude::*;
 use nros_board_stm32f4::prelude::*;
+use nros_log::{nros_error, nros_info, Logger};
 use std_msgs::msg::Int32;
 
 /// Poll interval in milliseconds
 const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
 
+static LOGGER: Logger = Logger::new("talker");
+
 #[entry]
 fn main() -> ! {
     run(Config::nucleo_f429zi(), |config| -> Result<(), NodeError> {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
+
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("talker");
         let mut executor = Executor::open(&exec_config)?;
         let publisher = {
             let mut node = executor.create_node("talker")?;
-            info!("Creating publisher for /chatter (std_msgs/Int32)...");
+            nros_info!(&LOGGER, "Creating publisher for /chatter (std_msgs/Int32)...");
             node.create_publisher::<Int32>("/chatter")?
         };
 
-        info!("Starting publish timer (1 Hz)...");
+        nros_info!(&LOGGER, "Starting publish timer (1 Hz)...");
         let mut counter: i32 = 0;
         executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
             counter = counter.wrapping_add(1);
             match publisher.publish(&Int32 { data: counter }) {
-                Ok(()) => info!("Published: {}", counter),
-                Err(e) => warn!("Publish failed: {:?}", e),
+                Ok(()) => nros_info!(&LOGGER, "Published: {}", counter),
+                Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
             }
         })?;
 
