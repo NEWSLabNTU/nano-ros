@@ -125,6 +125,19 @@ fn run_talker() {
         elapsed.as_millis()
     );
 
+    // Phase 160.H.1 — drain the reliable output stream + agent forward
+    // queue before tearing down the XRCE session. Without this the
+    // talker exits as soon as the last `uxr_buffer_topic` enqueues
+    // locally; XRCE's session_delete is observed by the agent (TCP
+    // FIN) before the reliable stream's outbound submessages cross to
+    // the agent, dropping every queued PUBLISH at the agent's "client
+    // gone" cleanup. With this drain, the burst-100 test reliably
+    // delivers ≥3 samples (test threshold) instead of the trailing
+    // sample only.
+    for _ in 0..200 {
+        executor.spin_once(core::time::Duration::from_millis(10));
+    }
+
     let _ = executor.close();
 }
 
