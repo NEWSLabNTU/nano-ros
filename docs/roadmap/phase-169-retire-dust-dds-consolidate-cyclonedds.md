@@ -290,12 +290,37 @@ Ten `packages/testing/nros-tests/tests/*.rs` + Cargo.toml:
         only on the `phase-117.0-esp32s3-toolchain` archaeology
         branch; that branch never merges to main.
 
-- [ ] **169.3 — Re-target integration tests.** Every
-      `packages/testing/nros-tests/tests/*_dds.rs` that hits
-      dust-dds gets retargeted onto Cyclone. The
-      `esp32s3_qemu_dds.rs` / `esp32_qemu_dds.rs` tests need
-      to either retarget onto zenoh-pico (lower-friction) or
-      be marked `#[ignore]` until a Cyclone Xtensa port lands.
+- [x] **169.3 — Delete dust-dds integration tests + strip
+      Cargo wiring (2026-05-19).** Same rationale as 169.2:
+      no Rust→Cyclone path exists, and retargeting to zenoh
+      would have duplicated existing zenoh tests. Deleted:
+
+      - `packages/testing/nros-tests/tests/baremetal_qemu_dds.rs`
+      - `packages/testing/nros-tests/tests/esp32_qemu_dds.rs`
+      - `packages/testing/nros-tests/tests/freertos_qemu_dds.rs`
+      - `packages/testing/nros-tests/tests/nuttx_qemu_dds.rs`
+      - `packages/testing/nros-tests/tests/threadx_linux_dds.rs`
+      - `packages/testing/nros-tests/tests/threadx_riscv64_qemu_dds.rs`
+      - `packages/testing/nros-tests/tests/dds_api.rs`
+      - `packages/testing/nros-tests/tests/dds_ros2_interop.rs`
+      - `packages/testing/nros-tests/tests/multi_rmw_bridge.rs`
+      - `packages/testing/nros-tests/tests/server_available_e2e.rs`
+      - 670 lines stripped from `tests/zephyr.rs` (all Rust
+        DDS tests; C/C++ DDS tests on Zephyr survive — they
+        consume Cyclone via the existing CMake glue).
+
+      `packages/testing/nros-tests/Cargo.toml` patched: optional
+      `nros-rmw-dds` dep removed; `multi-rmw-bridge` feature
+      commented out for archaeology; `[[test]]` entries for the
+      deleted bridge / server-available tests removed.
+
+      Dead-code Rust DDS fixture builders in
+      `src/fixtures/binaries/{mod,freertos,nuttx,threadx_linux}.rs`
+      kept temporarily (no callers, no compile errors); they
+      get deleted in 169.4 alongside `nros-rmw-dds` crate
+      removal.
+
+      `cargo check -p nros-tests --all-targets` clean.
 
 - [ ] **169.4 — Delete `nros-rmw-dds` + sibling crates.** Once
       no consumer references them, remove
