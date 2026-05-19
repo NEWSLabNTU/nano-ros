@@ -6,7 +6,7 @@ serious engineer, business decision-maker — need different entry
 points and different artifacts. The book today optimises for one
 persona (a starter) and underserves the other three.
 
-**Status.** In progress — 164.A.1 + 164.B.1 + 164.D.1 + 164.F.1 + 164.G.1 landed 2026-05-19. 164.B.2/.3, 164.C.1, 164.E.1, 164.F.2, 164.H.1 pending.
+**Status.** **CLOSED 2026-05-19.** All work items landed in one day.
 
 **Priority.** P2 — onboarding quality. Phase 163 nailed the starter
 path; this phase widens the funnel to the other three audiences.
@@ -83,7 +83,7 @@ Cross-cutting blockers (multiple personas):
 
 ### 164.E — Comparison vs micro-ROS
 
-- [ ] **164.E.1** Add a comparison section to
+- [x] **164.E.1** Add a comparison section to
       `book/src/concepts/ros2-comparison.md` (or a new
       `book/src/concepts/comparison-vs-microros.md`) **comparing
       only nano-ros vs micro-ROS** — both are full embedded ROS 2
@@ -106,7 +106,7 @@ Cross-cutting blockers (multiple personas):
       "2× CDR roundtrip", "deferred status events" facts out of
       the in-doc footnote and into a dedicated subsection at the
       top of the Cyclone DDS entry in `user-guide/rmw-backends.md`.
-- [ ] **164.F.2** Rewrite the cross-RMW bridge subsection in
+- [x] **164.F.2** Rewrite the cross-RMW bridge subsection in
       `user-guide/rmw-backends.md` (and link to
       `user-guide/cross-backend-bridges.md`) so the multi-backend
       story is front-and-centre.
@@ -122,7 +122,7 @@ Cross-cutting blockers (multiple personas):
 
 ### 164.H — Persona-tailored entry section
 
-- [ ] **164.H.1** Add a top-of-book "Choose your entry" landing
+- [x] **164.H.1** Add a top-of-book "Choose your entry" landing
       page that routes hobbyists, starters, evaluators, and
       decision-makers to the right first page. Replace the bare
       `[Introduction]` with an explicit fork.
