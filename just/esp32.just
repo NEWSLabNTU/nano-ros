@@ -25,6 +25,36 @@ setup:
         ./scripts/esp32/install-espressif-qemu.sh
     fi
 
+# Phase 117.0 — install Espressif QEMU's Xtensa target (covers
+# ESP32 / ESP32-S2 / ESP32-S3 machines) ALONGSIDE the RISC-V target
+# the default `setup` installs. Same Espressif submodule, same
+# `~/.local/` prefix; only the `--target-list=` arg to ./configure
+# differs (driven by `NROS_ESP32_QEMU_TARGETS=riscv32,xtensa`).
+# Idempotent — skips when both binaries already advertise their
+# Espressif machine model.
+setup-xtensa:
+    #!/usr/bin/env bash
+    set -e
+    have_xtensa=0
+    if command -v qemu-system-xtensa &>/dev/null \
+            && qemu-system-xtensa -machine help 2>/dev/null | grep -q '\besp32s3\b'; then
+        echo "Espressif qemu-system-xtensa already installed: $(qemu-system-xtensa --version | head -1)"
+        have_xtensa=1
+    fi
+    have_riscv=0
+    if command -v qemu-system-riscv32 &>/dev/null \
+            && qemu-system-riscv32 -machine help 2>/dev/null | grep -q '\besp32c3\b'; then
+        have_riscv=1
+    fi
+    if [ "${have_xtensa}" = "1" ] && [ "${have_riscv}" = "1" ]; then
+        echo "All Espressif QEMU targets present; nothing to do."
+        exit 0
+    fi
+    # Always rebuild both targets in one ./configure run so the
+    # install prefix is consistent. The script handles the rest via
+    # NROS_ESP32_QEMU_TARGETS.
+    NROS_ESP32_QEMU_TARGETS=riscv32,xtensa ./scripts/esp32/install-espressif-qemu.sh
+
 # Diagnose ESP32 install status (read-only).
 doctor:
     #!/usr/bin/env bash
@@ -36,6 +66,14 @@ doctor:
     else
         echo "  [MISSING] Espressif qemu-system-riscv32 with esp32c3 machine (run: just esp32 setup)"
         fail=1
+    fi
+    if command -v qemu-system-xtensa &>/dev/null \
+            && qemu-system-xtensa -machine help 2>/dev/null | grep -q '\besp32s3\b'; then
+        echo "  [OK] qemu-system-xtensa (Espressif fork, esp32s3 machine)"
+    else
+        # Xtensa is Phase 117 territory — flag as INFO, not MISSING,
+        # so existing ESP32-C3 doctor users don't get a new red row.
+        echo "  [INFO] qemu-system-xtensa esp32s3 not installed (Phase 117 — run: just esp32 setup-xtensa)"
     fi
     if rustup target list --installed 2>/dev/null | grep -q '^riscv32imc-unknown-none-elf$'; then
         echo "  [OK] riscv32imc-unknown-none-elf target"

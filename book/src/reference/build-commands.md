@@ -171,6 +171,48 @@ just qemu setup-network                    # Requires sudo
 
 Run `just qemu help` for more options.
 
+## ESP32 / ESP32-S3 QEMU Setup
+
+Run Espressif QEMU images (`esp32c3` machine for zenoh, `esp32s3` machine for the DDS PSRAM bring-up landing in Phase 117).
+
+The mainline `qemu-system-riscv32` / `qemu-system-xtensa` packaged by Debian / Ubuntu does NOT carry the Espressif-specific board models. The project's `third-party/esp32/qemu` submodule pins Espressif's QEMU fork, and `scripts/esp32/install-espressif-qemu.sh` builds both binaries into `~/.local/bin/` from a single configure run.
+
+```bash
+# Default — ESP32-C3 (riscv32-softmmu) only
+just esp32 setup
+
+# Phase 117.0 — add the Xtensa target (covers esp32 / esp32s2 /
+# esp32s3 machines). Idempotent; reuses the same prefix.
+just esp32 setup-xtensa
+
+# Verify both fork binaries + their machine models
+just esp32 doctor
+```
+
+Verified machine support after `setup-xtensa`:
+
+```bash
+qemu-system-riscv32 -machine help | grep esp32   # esp32c3
+qemu-system-xtensa  -machine help | grep esp32   # esp32, esp32s3
+```
+
+### Xtensa Rust toolchain
+
+Xtensa rustc support is out-of-tree (`esp-rs/rust` fork). Stable rustc cannot build ESP32-S3 examples; the `+esp` channel must be installed via [`espup`](https://github.com/esp-rs/espup):
+
+```bash
+# One-time
+cargo install espup
+espup install --targets esp32s3
+. $HOME/export-esp.sh    # adds +esp toolchain to PATH + sets LIBCLANG_PATH
+
+# Verify
+rustup run esp rustc --version
+rustc +esp --print target-list | grep esp32s3   # xtensa-esp32s3-none-elf
+```
+
+`export-esp.sh` must be sourced in every shell that builds ESP32-S3 code (set up via `direnv` / shell rc for persistence).
+
 ## Zephyr Setup
 
 ```bash
