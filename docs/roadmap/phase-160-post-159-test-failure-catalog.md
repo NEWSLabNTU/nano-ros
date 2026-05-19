@@ -190,6 +190,27 @@ respectively). Action's 3-queryable declaration sequence amplifies
 the per-declare delay enough to push the goal-routing window past
 the 10 s send_goal budget.
 
+**Confirmed 2026-05-19 via bisect-by-queryable-count:**
+`test_zephyr_cpp_service_server_to_client_e2e` PASS at 174 s SLOW
+(1 queryable). `test_zephyr_action_*` HANG / send_goal -2 (3
+queryables). The 174 s service runtime already shows the slow-
+declare effect — single declare takes the ~10 s budget plus
+keep-alive boundary. Action triples it AND the goal-routing
+window can't recover.
+
+**Next-investigation hooks for 160.C.2.**
+- Add `LOG_INF` between every `nros_*` call in
+  `examples/zephyr/cpp/zenoh/action-server/src/main.cpp` to
+  attribute time per declare.
+- Add `printk` inside `zpico_declare_queryable` (in
+  `packages/zpico/zpico-sys/c/zpico/zpico.c:1860`) before /
+  after `z_declare_queryable` to confirm per-call latency.
+- Inspect `Z_BATCH_UNICAST_SIZE` high-water mark on Zephyr;
+  default 256 B may be too small for back-to-back Declare flush.
+- Compare lease-task scheduling between Zephyr (k_thread) and
+  POSIX (pthread) — Zephyr cooperative scheduling could let the
+  declare-send loop starve the lease/keepalive thread.
+
 ### D. NuttX C/C++ rtos_e2e (6 tests) → **CLOSED 2026-05-19**
 
 Closed by Phase 159 (`7205eb4d`). Three fixes converged:
@@ -839,7 +860,7 @@ No action needed.
 |---------|-------|------------|------------|
 | A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
 | B. Zephyr Cortex-A9 DDS Rust | 4 | Missing armv7a-none-eabi rust target + Zephyr 3.7 net_if.h field-access drift | **3/4 CLOSED 160.B** + 1 Embassy follow-up |
-| C. Zephyr cross-host bridge | 10 | `_z_open_tcp` ABI gate (Phase 159 family) | **8/10 CLOSED 160.C** (2 action tests residue) |
+| C. Zephyr cross-host bridge | 10 | `_z_open_tcp` ABI gate (Phase 159 family) + queryable-cascade declare hang | **8/10 CLOSED 160.C** (2 action tests → 160.C.2) |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | alias TU ↔ vendor `_z_sys_net_*_t` ABI mismatch (RV32 inline-vs-hidden-ptr) + drift guard via `_Static_assert` | **CLOSED 2026-05-19** |
 | F. RTIC + serial bare-metal | 6 | RTIC (5): same alias-TU/vendor ABI mismatch as E (cortex-m3 6-byte endpoint, inline vs hidden ptr). Serial (1): Phase 132.3 deferred. | **5/6 CLOSED 2026-05-19** via cluster-E fix; serial → Phase 132.3 |
