@@ -93,6 +93,8 @@ build-fixtures:
     for ex in talker listener; do
         rust_dirs+=("examples/qemu-riscv64-threadx/rust/dds/$ex")
     done
+    # Phase 88.15.d — nros-log severity-coverage smoke fixture.
+    rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64")
     # threadx-netx-sys/build.rs needs the rv64-specific NetX port
     # headers, not the threadx-linux defaults exported by the top-level
     # justfile. Pass via env to each parallel cargo.

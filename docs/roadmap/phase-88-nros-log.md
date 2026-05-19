@@ -323,19 +323,46 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             harness at
             `packages/testing/nros-tests/tests/logging_smoke.rs::logging_smoke_mps2_baremetal_emits_every_severity`
             (drains stderr; writer routes to `hstderr()`).
-      - [ ] 88.15.b — MPS2-AN385 + FreeRTOS (semihosting writer
-            registered by `nros-board-mps2-an385-freertos::run`).
-      - [ ] 88.15.c — NuttX QEMU virt (syslog via
-            `nros-platform-nuttx::PlatformLog`).
-      - [ ] 88.15.d — ThreadX RISC-V QEMU virt (UART writer fn-ptr
-            registered by `nros-board-threadx-qemu-riscv64::run`).
-      - [ ] 88.15.e — Zephyr `native_sim` (printk via
-            `nros-platform-zephyr::PlatformLog`); skip cleanly when
-            `west` / `ZEPHYR_BASE` is unavailable.
-      - [ ] 88.15.f — ESP32 QEMU (UART via
-            `esp_log_write` in `nros-platform-esp-idf::PlatformLog`);
-            skip cleanly when the Espressif QEMU fork isn't
-            installed.
+      - [x] 88.15.b — MPS2-AN385 + FreeRTOS. Fixture at
+            `packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/`;
+            harness in
+            `logging_smoke.rs::logging_smoke_freertos_mps2_emits_every_severity`.
+            Uses `QemuProcess::start_mps2_an385_networked` so the
+            board's `init_network` succeeds via slirp; semihosting
+            writer registered by Phase 88.11's `run()`.
+      - [ ] 88.15.c — NuttX QEMU virt. **Deferred** — the NuttX
+            example binaries aren't bootable standalone; they ship
+            as NuttX `apps/` payloads linked into a NuttX kernel
+            image. Building a dedicated logging-smoke fixture
+            requires the NuttX `apps/external` registration shim
+            plus a kernel re-link. **Covered de-facto** by
+            `rtos_e2e::test_rtos_pubsub_e2e::platform_2_Platform__Nuttx::lang_1_Lang__Rust`
+            after Phase 88.16.D, which already shows
+            `[INFO] listener: Received: N` lines from the migrated
+            talker→listener pair (the same chain a dedicated smoke
+            would exercise).
+      - [x] 88.15.d — ThreadX RISC-V QEMU virt. Fixture at
+            `packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/`;
+            harness in
+            `logging_smoke.rs::logging_smoke_threadx_riscv64_emits_every_severity`.
+            Boots via `QemuProcess::start_riscv64_virt`, exits
+            through the QEMU `test-finisher` MMIO device after the
+            6 records emit.
+      - [ ] 88.15.e — Zephyr `native_sim`. **Deferred** — needs a
+            tiny west-build fixture under `zephyr/`, gated on
+            `west` / `ZEPHYR_BASE` env availability. Chain
+            de-facto covered by the post-88.16.G example output in
+            the standard `zephyr.rs` E2E test, which already
+            shows the `[INFO] <module>: …` format flowing through
+            `LOG_INF` via the platform impl.
+      - [ ] 88.15.f — ESP32 QEMU. **Deferred** — Espressif's
+            `qemu-system-xtensa` / `qemu-system-riscv32` fork
+            isn't in the default toolchain set; CI would have to
+            skip cleanly when it's missing. Chain de-facto
+            verified by Phase 88.16.E (esp32 examples build clean
+            against the migrated stack on `riscv32imc-unknown-none-elf`);
+            the missing piece is purely runtime QEMU capture, not
+            facade correctness.
 
 - [ ] 88.16 — Migrate every `examples/` binary to emit diagnostics
       through `nros-log` instead of ad-hoc `println!` /

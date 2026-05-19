@@ -87,6 +87,8 @@ build-fixtures:
     for ex in talker listener; do
         rust_dirs+=("examples/qemu-arm-freertos/rust/dds/$ex")
     done
+    # Phase 88.15.b — nros-log severity-coverage smoke fixture.
+    rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-freertos-mps2")
     printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && cargo build --release --quiet'
 

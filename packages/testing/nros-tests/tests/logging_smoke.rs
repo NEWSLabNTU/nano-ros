@@ -16,8 +16,9 @@ use std::time::Duration;
 use nros_tests::{
     assert_output_contains,
     fixtures::{
-        build_logging_smoke_mps2_baremetal, is_arm_toolchain_available, is_qemu_available,
-        QemuProcess,
+        build_logging_smoke_freertos_mps2, build_logging_smoke_mps2_baremetal,
+        build_logging_smoke_threadx_riscv64, is_arm_toolchain_available, is_qemu_available,
+        is_qemu_riscv64_available, QemuProcess,
     },
 };
 
@@ -52,6 +53,56 @@ fn logging_smoke_mps2_baremetal_emits_every_severity() {
     let mut qemu = QemuProcess::start_mps2_an385(binary).expect("failed to start QEMU");
     let output = qemu
         .wait_for_output(Duration::from_secs(15))
+        .expect("QEMU timed out waiting for log output");
+
+    assert_output_contains(&output, EXPECTED_LINES);
+}
+
+/// Phase 88.15.b — MPS2-AN385 + FreeRTOS + lwIP over QEMU
+/// semihosting. The board crate's `run()` registers a semihosting
+/// writer with `nros-platform-freertos`'s fn-ptr slot (Phase 88.11)
+/// before the user closure fires; the closure then drives every
+/// severity through `nros-log`.
+#[test]
+fn logging_smoke_freertos_mps2_emits_every_severity() {
+    if !is_qemu_available() {
+        panic!("[SKIPPED] qemu-system-arm not available");
+    }
+    if !is_arm_toolchain_available() {
+        panic!("[SKIPPED] thumbv7m-none-eabi target not installed");
+    }
+
+    let binary = build_logging_smoke_freertos_mps2()
+        .expect("logging-smoke-freertos-mps2 fixture not built — run `just freertos build-fixtures`");
+
+    let mut qemu = QemuProcess::start_mps2_an385_networked(binary)
+        .expect("failed to start QEMU (networked slirp)");
+    let output = qemu
+        .wait_for_output(Duration::from_secs(30))
+        .expect("QEMU timed out waiting for log output");
+
+    assert_output_contains(&output, EXPECTED_LINES);
+}
+
+/// Phase 88.15.d — ThreadX + NetX Duo on QEMU RISC-V `virt`. The
+/// board crate's `run()` registers a UART writer with
+/// `nros-platform-threadx`'s fn-ptr slot (Phase 88.11) before the
+/// user closure fires; the closure drives every severity and exits
+/// through the QEMU `test-finisher` MMIO device.
+#[test]
+fn logging_smoke_threadx_riscv64_emits_every_severity() {
+    if !is_qemu_riscv64_available() {
+        panic!("[SKIPPED] qemu-system-riscv64 not available");
+    }
+
+    let binary = build_logging_smoke_threadx_riscv64().expect(
+        "logging-smoke-threadx-riscv64 fixture not built — run `just threadx_riscv64 build-fixtures`",
+    );
+
+    let mut qemu = QemuProcess::start_riscv64_virt(binary, 99)
+        .expect("failed to start QEMU (riscv64-virt)");
+    let output = qemu
+        .wait_for_output(Duration::from_secs(30))
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);

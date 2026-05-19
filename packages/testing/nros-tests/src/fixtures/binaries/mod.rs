@@ -378,6 +378,40 @@ pub fn build_logging_smoke_mps2_baremetal() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the Phase 88.15.b `logging-smoke-freertos-mps2`
+/// fixture binary (MPS2-AN385 + FreeRTOS + lwIP nros-log smoke).
+static LOGGING_SMOKE_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt Phase 88.15.b logging smoke binary.
+pub fn build_logging_smoke_freertos_mps2() -> TestResult<&'static Path> {
+    LOGGING_SMOKE_FREERTOS_MPS2_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/logging-smoke-freertos-mps2",
+                "logging-smoke-freertos-mps2",
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Cached path to the Phase 88.15.d `logging-smoke-threadx-riscv64`
+/// fixture binary (ThreadX + NetX Duo on QEMU `virt` RV64).
+static LOGGING_SMOKE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt Phase 88.15.d logging smoke binary.
+pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
+    LOGGING_SMOKE_THREADX_RISCV64_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/logging-smoke-threadx-riscv64",
+                "logging-smoke-threadx-riscv64",
+                Some("riscv64gc-unknown-none-elf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Build the qemu-wcet-bench example and return its path (cached)
 pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY

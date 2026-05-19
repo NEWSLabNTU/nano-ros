@@ -1,0 +1,28 @@
+[workspace]
+
+[package]
+name = "logging-smoke-threadx-riscv64"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 88.15.d — ThreadX RISC-V QEMU nros-log smoke fixture"
+
+[[bin]]
+name = "logging-smoke-threadx-riscv64"
+test = false
+bench = false
+
+[dependencies]
+# Board crate's `run()` registers a UART writer with the
+# ThreadX platform's log fn-ptr slot (Phase 88.11). Has a hard
+# dep on a `[network]` block in the config TOML, so the fixture
+# supplies a slirp-style default.
+nros-board-threadx-qemu-riscv64 = { path = "../../../../boards/nros-board-threadx-qemu-riscv64" }
+nros-log = { path = "../../../../core/nros-log", default-features = false }
+
+[profile.release]
+debug = true
+lto = "fat"
+codegen-units = 1
+opt-level = "s"

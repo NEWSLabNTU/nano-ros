@@ -1,0 +1,36 @@
+[workspace]
+
+[package]
+name = "logging-smoke-freertos-mps2"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 88.15.b — FreeRTOS + MPS2-AN385 nros-log smoke fixture"
+
+[[bin]]
+name = "logging-smoke-freertos-mps2"
+test = false
+bench = false
+
+[dependencies]
+# Board crate's `run()` registers a semihosting writer with the
+# FreeRTOS platform's log fn-ptr slot before invoking the user
+# closure (Phase 88.11). DDS-only feature set drops zpico-sys so
+# the fixture stays small.
+nros-board-mps2-an385-freertos = { path = "../../../../boards/nros-board-mps2-an385-freertos", default-features = false }
+# Phase 88 facade.
+nros-log = { path = "../../../../core/nros-log", default-features = false }
+# Pull `nros-platform-freertos` symbols into the link graph (the
+# board crate already does this transitively, but make it explicit
+# so the binary stays linkable if board-crate deps shift).
+nros-platform = { path = "../../../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+debug = true
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
