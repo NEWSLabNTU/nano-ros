@@ -88,17 +88,17 @@ test_zephyr_xrce_cpp_talker_listener      PASS
 Cluster C (cross-host bridge) likely cascades closed — re-run on
 next full sweep.
 
-### B. Zephyr Cyclone-A9 DDS Rust (4 tests) → **3/4 CLOSED 2026-05-19, 1 deferred**
+### B. Zephyr Cyclone-A9 DDS Rust (4 tests) → **4/4 CLOSED 2026-05-19**
 
 ```
 test_zephyr_dds_rust_action_a9_e2e             ✓ FIXED (160.B)
 test_zephyr_dds_rust_service_a9_e2e            ✓ FIXED (160.B)
 test_zephyr_dds_rust_talker_to_listener_a9_e2e ✓ FIXED (160.B)
-test_zephyr_dds_rust_async_service_a9_e2e      ✗ Embassy spin_async
+test_zephyr_dds_rust_async_service_a9_e2e      ✓ FIXED (160.B.1)
 ```
 
-**Root cause (3 closed).** Two missing setup steps for the
-`qemu_cortex_a9` target:
+**Root cause (160.B — 3 of 4 tests).** Two missing setup steps for
+the `qemu_cortex_a9` target:
 
 1. `armv7a-none-eabi` rust target not installed → cargo errored
    `error[E0463]: can't find crate for 'core'` on every nros-rmw-dds
@@ -111,7 +111,7 @@ test_zephyr_dds_rust_async_service_a9_e2e      ✗ Embassy spin_async
    `net_if_addr` carrying `is_used`/`addr_state` under
    `.ipv4` — restored.
 
-**Fix.** `just zephyr setup` now explicitly:
+**Fix (160.B).** `just zephyr setup` now explicitly:
 - `rustup target add armv7a-none-eabi` (was relying on per-user
   prior install).
 - `scripts/zephyr/cortex-a9-rust-patch.sh` runs on EVERY setup
@@ -121,12 +121,34 @@ test_zephyr_dds_rust_async_service_a9_e2e      ✗ Embassy spin_async
 Plus `zpico_zephyr.c` field-access restored to
 `unicast[i].ipv4.is_used` / `.addr_state`.
 
-**Open.** `test_zephyr_dds_rust_async_service_a9_e2e` builds +
-boots, reaches `Async service client ready: /add_two_ints` and
-`Calling service: 5 + 3 = ?`, then hangs — Embassy `spin_async()`
-doesn't drive the DDS RTPS request/reply path to completion. Sync
-variant PASSES. Async-specific blocker, file as separate Embassy
-follow-up.
+**Root cause (160.B.1 — async_service variant).** The async client
+used `client.call(&req)?.await?`, relying on dust-dds's
+`DataReaderListener::on_data_available` (Phase 71.29) to wake the
+Promise's stored `Waker`. On the `nostd-runtime` build the listener
+fires INSIDE `runtime.block_on_boxed(...)` (no background-thread
+pool); the Waker we hand to the Promise belongs to the Embassy
+task parked on `.await`. Embassy's single-threaded executor never
+re-polls it — the spin_task that just ran the listener has no
+yield point between the wake and its next `Timer::after(...)`,
+and once it yields the Embassy run-queue does NOT observe the
+fresh wake (the listener's `wake_by_ref` lands on a stale slot
+because Embassy's task scheduler tracked it only at park time).
+
+**Fix (160.B.1).** Switched the async example from `.await` to a
+poll loop using `Promise::try_recv()` interleaved with
+`embassy_time::Timer::after_millis(SPIN_TICK_MS).await` — the
+"Pattern 2" shape documented in `Executor::spin_async`'s rustdoc.
+The poll loop drives Promise progress from the caller's own
+run-quantum; the embassy yield in between keeps `spin_task`
+schedulable so the runtime still drains. Mirrors the synchronous
+sibling's `promise.wait(&mut executor, ...)` pattern, lifted to
+async. Verified: first call completes in <1 s after the 10 s
+discovery wait; full 4-call sequence + "All async service calls
+completed" reached.
+
+Outstanding follow-up (deferred from 160.B.1): provide an Embassy
+`Signaler`-backed `Waker` bridge so users of the `.await` pattern
+work too. The fix above keeps the example green without that work.
 
 ### C. Zephyr cross-host bridge E2E (8 of 10 tests closed 2026-05-19)
 
@@ -862,7 +884,7 @@ No action needed.
 | Cluster | Tests | Hypothesis | Phase hook |
 |---------|-------|------------|------------|
 | A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
-| B. Zephyr Cortex-A9 DDS Rust | 4 | Missing armv7a-none-eabi rust target + Zephyr 3.7 net_if.h field-access drift | **3/4 CLOSED 160.B** + 1 Embassy follow-up |
+| B. Zephyr Cortex-A9 DDS Rust | 4 | 160.B: missing armv7a-none-eabi target + Zephyr 3.7 net_if.h drift; 160.B.1: async-await needs Embassy Signaler bridge (worked around with poll loop) | **4/4 CLOSED 160.B + 160.B.1** |
 | C. Zephyr cross-host bridge | 10 | `_z_open_tcp` ABI gate (Phase 159 family) + queryable-cascade declare hang | **8/10 CLOSED 160.C** (2 action tests → 160.C.2) |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | alias TU ↔ vendor `_z_sys_net_*_t` ABI mismatch (RV32 inline-vs-hidden-ptr) + drift guard via `_Static_assert` | **CLOSED 2026-05-19** |

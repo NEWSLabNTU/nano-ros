@@ -103,12 +103,32 @@ async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeE
         let req = AddTwoIntsRequest { a, b };
         info!("Calling service: {} + {} = ?", a, b);
 
-        // `nros-rmw-dds` now implements `register_waker` (Phase 71.29
-        // follow-up): a `DataReaderListener` attached to the reply
-        // reader fires `on_data_available` from dust-dds's task pool
-        // when the reply lands, which wakes the future polling this
-        // Promise.
-        let reply = client.call(&req)?.await?;
+        // Phase 160.B.1 — switched from `.await` to a poll loop with
+        // an embassy-time pacing yield. The `.await` path relied on
+        // dust-dds's `DataReaderListener::on_data_available`
+        // (registered via Phase 71.29) waking the Promise's stored
+        // `Waker`. On the `nostd-runtime` build the listener fires
+        // INSIDE `runtime.block_on_boxed(...)` (no background-thread
+        // pool); the waker-clone we hand to the Promise belongs to
+        // the Embassy task that's parked on `.await`, and Embassy's
+        // single-threaded executor + cooperative-yield model never
+        // re-polls it because no yield point exists between the
+        // listener fire and the next spin_task iteration. The poll
+        // loop pattern (documented under `Executor::spin_async`'s
+        // "Pattern 2") drives Promise progress from this task's own
+        // run-quantum, with an embassy-time yield in between so
+        // `spin_task` still gets cpu to drive the runtime. Native
+        // sync `client.call(...).wait(&mut executor, …)` uses the
+        // same fundamental pattern.
+        let mut promise = client.call(&req)?;
+        let reply = loop {
+            match promise.try_recv()? {
+                Some(reply) => break reply,
+                None => {
+                    embassy_time::Timer::after_millis(SPIN_TICK_MS).await;
+                }
+            }
+        };
         info!("Response: {} + {} = {}", a, b, reply.sum);
 
         embassy_time::Timer::after_millis(500).await;
