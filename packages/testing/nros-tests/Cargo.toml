@@ -220,6 +220,20 @@ path = "tests/cmake_platform_matrix.rs"
 name = "zenoh_header_parity"
 path = "tests/zenoh_header_parity.rs"
 
+# Phase 136.7 E2E.3 — guards the source-list drift gate in
+# `zpico-sys/build.rs`. Corrupts a sandboxed manifest, asserts the
+# build-script panic surfaces with the documented diagnostic.
+[[test]]
+name = "zpico_drift_gate"
+path = "tests/zpico_drift_gate.rs"
+
+# Phase 136.7 E2E.1 + E2E.7 — guards the unified build path.
+# POSIX archive carries the canonical `_z_open_tcp` / `_z_open_udp_*`
+# symbols; `cargo tree -p zpico-sys` carries no `cmake` row.
+[[test]]
+name = "zpico_build_matrix"
+path = "tests/zpico_build_matrix.rs"
+
 # Phase 139.6 — per-RTOS integration-shell smoke tests. Each skips
 # cleanly via `nros_tests::skip!` when the RTOS SDK / toolchain isn't
 # installed on the test box; full builds run in per-RTOS CI.

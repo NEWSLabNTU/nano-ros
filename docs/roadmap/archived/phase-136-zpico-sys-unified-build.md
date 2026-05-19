@@ -7,7 +7,22 @@ let one cc-rs invocation build every supported target. The CMake
 dependency on `cmake = "0.1"` and the entire
 `build_zenoh_pico_native` function (~600 LOC) are removed.
 
-**Status.** Not started.
+**Status.** **CLOSED 2026-05-19.** All eight work items (136.1
+through 136.8) landed, plus the E2E gate set:
+- E2E.1 + E2E.7 → `tests/zpico_build_matrix.rs` (POSIX archive
+  carries `_z_open_tcp` / `_z_open_udp_unicast` /
+  `_z_open_udp_multicast`; `cargo tree -p zpico-sys` carries no
+  `cmake` row).
+- E2E.3 → `tests/zpico_drift_gate.rs` (corrupts a sandboxed
+  manifest via the new `ZPICO_PLATFORMS_TOML` override hook,
+  asserts the build-script panic surfaces, then restores +
+  re-asserts a clean build).
+- E2E.6 → already satisfied by `nano2nano.rs::
+  test_tls_talker_listener_communication`; doc-only cross-link.
+- E2E.5 (embedded smoke pre/post) covered by the existing
+  per-platform `just <plat> test` recipes — the 136 refactor
+  preserved their pass set per the 137-140 follow-up CI run.
+- E2E.8 informational; not measured.
 
 **Priority.** P2 — structural follow-up to Phase 134. Not blocking
 CI; pays back permanently by removing the failure class that 134's

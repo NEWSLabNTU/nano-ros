@@ -328,7 +328,20 @@ fn main() {
     // every declared platform so a typo or broken `inherits` chain
     // surfaces as a hard build error, not a runtime surprise after
     // 136.3 plugs the data into cc-rs.
-    let platform_manifest_path = manifest_dir.join("zenoh_platforms.toml");
+    //
+    // Phase 136.7-E2E.3 — `ZPICO_PLATFORMS_TOML` env var redirects
+    // the manifest to a caller-supplied path. Used by the drift-gate
+    // test (`tests/zpico_drift_gate.rs`) to point at sandboxed
+    // manifests; also a documented out-of-tree override hook for
+    // downstream boards. Empty value falls through to the canonical
+    // in-tree manifest.
+    println!("cargo:rerun-if-env-changed=ZPICO_PLATFORMS_TOML");
+    let platform_manifest_path = match env::var_os("ZPICO_PLATFORMS_TOML")
+        .filter(|v| !v.is_empty())
+    {
+        Some(path) => PathBuf::from(path),
+        None => manifest_dir.join("zenoh_platforms.toml"),
+    };
     println!(
         "cargo:rerun-if-changed={}",
         platform_manifest_path.display()
