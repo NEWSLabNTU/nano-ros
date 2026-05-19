@@ -33,6 +33,30 @@ struct ip_mreq {
 };
 #endif  /* NROS_HAVE_STRUCT_IP_MREQ */
 
+/* Phase 11W.4 — POSIX IN_MULTICAST macro. Zephyr's net/socket.h
+ * doesn't expose it; Cyclone's ddsi_udp.c uses it to classify
+ * 224.0.0.0/4 multicast addresses. */
+#ifndef IN_MULTICAST
+#include <stdint.h>
+#define IN_MULTICAST(a) (((uint32_t)(a) & 0xf0000000U) == 0xe0000000U)
+#endif
+
+/* Phase 11W.3 — declare nothrow `operator new` overloads for
+ * Cyclone DDS C++ TUs. Zephyr's `lib/cpp/minimal/include/new`
+ * declares `std::nothrow_t` + `std::nothrow` but not the
+ * matching ops; cyclonedds source uses `new (std::nothrow) T{}`
+ * heavily. Definitions live in
+ * `zephyr/cyclonedds-zephyr/nothrow_new.cpp`. C++ TUs only —
+ * guarded so the C-side TUs don't see C++ syntax. */
+#ifdef __cplusplus
+#include <new>
+#include <stddef.h>
+void* operator new  (size_t, const std::nothrow_t&) noexcept;
+void* operator new[](size_t, const std::nothrow_t&) noexcept;
+void  operator delete  (void*, const std::nothrow_t&) noexcept;
+void  operator delete[](void*, const std::nothrow_t&) noexcept;
+#endif
+
 #endif  /* __ZEPHYR__ */
 
 #endif  /* NROS_ZEPHYR_IPV4_COMPAT_H */

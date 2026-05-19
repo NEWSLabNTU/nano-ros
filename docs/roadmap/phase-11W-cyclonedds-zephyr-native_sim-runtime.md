@@ -5,8 +5,17 @@ Zephyr `native_sim/native/64` so the Phase 168 collapsed examples
 (`examples/zephyr/{c,cpp,rust}/<case>/`) build clean with
 `prj-cyclonedds.conf` overlays.
 
-**Status.** Not Started — gaps catalogued below during the
-Phase 168.X.fvp investigation.
+**Status.** ✓ COMPLETE (compile + link). C / C++ / Rust talker
+cyclonedds binaries build clean on `native_sim/native/64`:
+
+```
+build-c-talker-cyclonedds/zephyr/zephyr.exe       13 MB
+build-cpp-talker-cyclonedds/zephyr/zephyr.exe     13 MB
+build-rust-talker-cyclonedds/zephyr/zephyr.exe     3 MB
+```
+
+Runtime smoke (does the binary actually pub/sub against a ROS 2
+peer?) is the only remaining open item — Phase 11W.5 below.
 
 **Priority.** P2 — gates the cyclonedds runtime row of the
 Phase 168 collapse matrix (~18 native_sim binaries: 6 cases ×
@@ -322,15 +331,30 @@ green.
        `zephyr/cyclonedds-zephyr/nothrow_new.cpp` (`malloc`/`free`
        backed) + wired into `_cdds_zephyr_overrides`. Cyclone's
        `new (std::nothrow) T{}` expressions now resolve.
-- [ ] **11W.4 — Gap 4 link-time stubs (88 symbols).** Write
-       `zephyr/cyclonedds-zephyr/link_stubs.c` covering the
-       security / SHM / endpoint / POSIX / vnet / auth handshake
-       categories. Per-symbol signatures pulled from Cyclone's
-       headers; bodies return failure / no-op sentinels.
-- [ ] **11W.5 — Runtime smoke.** Once link is clean, extend
+- [x] **11W.4 — Gap 4 link-time stubs.** Root cause turned out
+       to be `-DDDS_HAS_*=0` vs `#ifdef DDS_HAS_*` mismatch in
+       upstream Cyclone — defining the macro to value 0 still
+       trips defined-checks as TRUE, pulling in 80+ call sites
+       whose TU bodies we drop. Resolution:
+       * `DDS_HAS_SECURITY` / `DDS_HAS_SHM`: leave UNDEFINED so
+         Cyclone falls through to its inline stub branches.
+       * `DDS_HAS_NETWORK_PARTITIONS` / `DDS_HAS_TYPE_DISCOVERY` /
+         `DDS_HAS_TOPIC_DISCOVERY`: define (no value) — Cyclone
+         compiles `free_config_networkpartition_addresses` /
+         `ddsi_typebuilder.c` UNCONDITIONALLY but with struct
+         refs that require the macro for visibility.
+       * Residual 3 undef-refs (`ddsi_vnet_init`,
+         `ddsrt_getifaddrs`, `IN_MULTICAST`) stubbed in
+         `zephyr/cyclonedds-zephyr/link_stubs.c` +
+         `zephyr_ipv4_compat.h`.
+- [ ] **11W.5 — Runtime smoke.** Extend
        `phase_118_collapse::test_zephyr_{rust,cmake}_case_rmw_variant_exists`
-       with cyclonedds rows. Add a separate ctest that boots the
-       binary under timeout and asserts a log line.
+       with cyclonedds rows. Add a separate ctest that boots
+       the binary under timeout and asserts a Cyclone DDS log
+       line appears within N seconds. Also: NSOS-side multicast
+       `setsockopt(IP_ADD_MEMBERSHIP)` may need the same Phase
+       97.4 patch dust-dds needed (verify against Cyclone's
+       exact `ip_mreq`-shaped arg).
 - [ ] **11W.3 — Verify link.** All three languages
        (`examples/zephyr/{c,cpp,rust}/<case>/`) × at least one
        case (`talker`) link clean. Capture artefact size +

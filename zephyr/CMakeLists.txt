@@ -292,6 +292,12 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # definition. Zephyr's `lib/cpp/minimal/include/new` declares
         # but doesn't define them.
         ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/nothrow_new.cpp
+        # Phase 11W.4 — link-time stubs for the residual unreferenced
+        # symbols (ddsi_vnet_init / ddsrt_getifaddrs / IN_MULTICAST
+        # macro define). Most of the original 88 undef-references
+        # disappeared once `DDS_HAS_*` was switched from `=0` to
+        # leave-undefined; only these three needed explicit stubs.
+        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/link_stubs.c
     )
 
     # ddsi: protocol engine. ddsc: public C API. `.part.c` files
@@ -341,13 +347,29 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     )
 
     # Trim Cyclone optional features that drag in host-toolchain deps.
+    # IMPORTANT: Cyclone checks these with a mix of `#ifdef
+    # DDS_HAS_*` (defined-check) AND `#if DDS_HAS_*` (value-check).
+    # Per-symbol policy:
+    #   - SECURITY / SHM / TYPE_DISCOVERY / TOPIC_DISCOVERY:
+    #     UNDEFINED. `#ifdef`-gated; falls through to inline
+    #     no-op / error-returning stubs. Avoids 80+ link-time
+    #     undefined references from security_check_* /
+    #     iox_pub_* / etc. (Phase 11W.4).
+    #   - NETWORK_PARTITIONS: DEFINED (no value).
+    #     `free_config_networkpartition_addresses` is compiled
+    #     UNCONDITIONALLY in q_init.c, but its body references
+    #     `struct ddsi_config_networkpartition_listelem` which
+    #     is itself `#ifdef`-gated. Mismatch in upstream Cyclone;
+    #     defining the macro keeps the struct visible.
     zephyr_compile_definitions(
-        DDS_HAS_NETWORK_PARTITIONS=0
-        DDS_HAS_SECURITY=0
-        DDS_HAS_SHM=0
-        DDS_HAS_TYPE_DISCOVERY=0
-        DDS_HAS_TOPIC_DISCOVERY=0
+        DDS_HAS_NETWORK_PARTITIONS
+        DDS_HAS_TYPE_DISCOVERY
+        DDS_HAS_TOPIC_DISCOVERY
     )
+
+    # Phase 11W.4 — IN_MULTICAST macro provided via the
+    # `zephyr_ipv4_compat.h` force-include header instead of
+    # cmake `-D` (cmake refuses function-style macro defines).
 
     # Zephyr POSIX doesn't expose `INADDR_LOOPBACK`. Cyclone's
     # `ddsrt/src/sockets.c` uses it unconditionally for IPv4
