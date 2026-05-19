@@ -137,6 +137,44 @@ unsafe extern "C" {
     // -- Critical section (Phase 121.9) --
     pub fn nros_platform_critical_section_acquire() -> u32;
     pub fn nros_platform_critical_section_release(token: u32);
+
+    // -- Logging (Phase 88) --
+    pub fn nros_platform_log_write(
+        severity: u8,
+        name_ptr: *const u8,
+        name_len: usize,
+        msg_ptr: *const u8,
+        msg_len: usize,
+    );
+    pub fn nros_platform_log_flush();
+}
+
+/// Board-supplied writer fn type. ONLY meaningful on platforms whose
+/// `nros_platform_log_write` impl is itself a thin dispatcher to a
+/// board-registered fn (FreeRTOS, ThreadX, bare-metal). On platforms
+/// with a native logger (POSIX, Zephyr, ESP-IDF, NuttX), the symbol
+/// is absent and the board should not link against it.
+pub type NrosPlatformLogWriterFn = unsafe extern "C" fn(
+    severity: u8,
+    name_ptr: *const u8,
+    name_len: usize,
+    msg_ptr: *const u8,
+    msg_len: usize,
+);
+
+/// Board-supplied flush fn type. Pass `None` to
+/// [`nros_platform_register_log_writer`] when the writer is fully
+/// synchronous.
+pub type NrosPlatformLogFlushFn = unsafe extern "C" fn();
+
+unsafe extern "C" {
+    /// Register a board writer + optional flusher (Phase 88.9).
+    /// Available only when the linked platform impl is one of the
+    /// no-native-logger backends (FreeRTOS / ThreadX / bare-metal).
+    pub fn nros_platform_register_log_writer(
+        writer: Option<NrosPlatformLogWriterFn>,
+        flusher: Option<NrosPlatformLogFlushFn>,
+    );
 }
 
 // ============================================================================
@@ -719,6 +757,28 @@ impl nros_platform_api::PlatformCriticalSection for CffiPlatform {
     }
 }
 
+impl nros_platform_api::PlatformLog for CffiPlatform {
+    fn write(severity: u8, name: &[u8], message: &[u8]) {
+        // SAFETY: extern decl matches the C ABI byte-for-byte; the
+        // pointer/length pairs come from `&[u8]` references that
+        // outlive the call.
+        unsafe {
+            nros_platform_log_write(
+                severity,
+                name.as_ptr(),
+                name.len(),
+                message.as_ptr(),
+                message.len(),
+            );
+        }
+    }
+
+    fn flush() {
+        // SAFETY: no args, no preconditions.
+        unsafe { nros_platform_log_flush() };
+    }
+}
+
 // ============================================================================
 // Phase 121.2 — export_*! macros
 // ----------------------------------------------------------------------------
@@ -1019,10 +1079,54 @@ macro_rules! nros_platform_export_critical_section {
     };
 }
 
+/// Phase 88.11 — emit `nros_platform_log_write` + `nros_platform_log_flush`
+/// from a `PlatformLog`-implementing ZST. Use this on bare-metal /
+/// custom platforms (mps2-an385, stm32f4, esp32-baremetal, …) that
+/// don't ship a separate C implementation file. The implementor's
+/// `write` receives the rendered body + logger name as `&[u8]` slices.
+#[macro_export]
+macro_rules! nros_platform_export_log {
+    ($ty:ty) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_log_write(
+            severity: u8,
+            name_ptr: *const u8,
+            name_len: usize,
+            msg_ptr: *const u8,
+            msg_len: usize,
+        ) {
+            // SAFETY: caller passes valid `&[u8]` slices that outlive
+            // the call; empty-name case (name_ptr=null, name_len=0)
+            // collapses to an empty slice.
+            let name: &[u8] = if name_ptr.is_null() || name_len == 0 {
+                &[]
+            } else {
+                unsafe { ::core::slice::from_raw_parts(name_ptr, name_len) }
+            };
+            let msg: &[u8] = if msg_ptr.is_null() || msg_len == 0 {
+                &[]
+            } else {
+                unsafe { ::core::slice::from_raw_parts(msg_ptr, msg_len) }
+            };
+            <$ty as ::nros_platform_api::PlatformLog>::write(severity, name, msg);
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_log_flush() {
+            <$ty as ::nros_platform_api::PlatformLog>::flush()
+        }
+    };
+}
+
 /// Convenience: emit every `nros_platform_*` symbol declared in
 /// `<nros/platform.h>` by delegating to the corresponding
 /// `nros_platform_api::Platform*` trait method on `$ty`. The caller must
 /// implement every trait covered by the capability macros.
+///
+/// Logging (`nros_platform_export_log!`) is NOT part of this convenience
+/// macro: bare-metal platforms typically need to supply a writer
+/// (`hprintln!` / `defmt::info!`) that requires extra deps not all
+/// platforms link against. Call `nros_platform_export_log!` separately
+/// after the platform crate implements `PlatformLog`.
 #[macro_export]
 macro_rules! nros_platform_export {
     ($ty:ty) => {

@@ -108,7 +108,61 @@ pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
+    register_log_writer();
     nros_board_freertos::run::<Mps2An385, F, E>(config, f)
+}
+
+/// Phase 88 — register a semihosting writer with `nros-platform-freertos`'s
+/// log fn-ptr slot. Called once from `run()` before any task spawns.
+/// Idempotent: re-calling overrides the previous registration with the
+/// same writer.
+fn register_log_writer() {
+    use core::fmt::Write as _;
+    unsafe extern "C" fn writer(
+        severity: u8,
+        name_ptr: *const u8,
+        name_len: usize,
+        msg_ptr: *const u8,
+        msg_len: usize,
+    ) {
+        let Ok(mut out) = cortex_m_semihosting::hio::hstderr() else {
+            return;
+        };
+        let label = match severity {
+            0 => "TRACE",
+            1 => "DEBUG",
+            2 => "INFO",
+            3 => "WARN",
+            4 => "ERROR",
+            5 => "FATAL",
+            _ => "?",
+        };
+        // SAFETY: caller passes valid `&[u8]` slices that outlive
+        // the call; empty-name case collapses to an empty slice.
+        let name: &[u8] = if name_ptr.is_null() || name_len == 0 {
+            &[]
+        } else {
+            unsafe { core::slice::from_raw_parts(name_ptr, name_len) }
+        };
+        let msg: &[u8] = if msg_ptr.is_null() || msg_len == 0 {
+            &[]
+        } else {
+            unsafe { core::slice::from_raw_parts(msg_ptr, msg_len) }
+        };
+        let name_str = core::str::from_utf8(name).unwrap_or("");
+        let msg_str = core::str::from_utf8(msg).unwrap_or("");
+        if !name_str.is_empty() {
+            let _ = writeln!(out, "[{}] {}: {}", label, name_str, msg_str);
+        } else {
+            let _ = writeln!(out, "[{}] {}", label, msg_str);
+        }
+    }
+    // SAFETY: extern decl matches `<nros/platform.h>`. The writer
+    // satisfies the documented contract (slice validity, no panics
+    // inside the writer beyond the fmt::Result we ignore).
+    unsafe {
+        nros_platform_cffi::nros_platform_register_log_writer(Some(writer), None);
+    }
 }
 
 /// Re-export semihosting for the `println!` macro.

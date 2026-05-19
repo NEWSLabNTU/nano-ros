@@ -20,6 +20,10 @@ nros-board-freertos = { path = "../nros-board-freertos" }
 # entirely.
 zpico-sys = { path = "../../zpico/zpico-sys", default-features = false, optional = true }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+# Phase 88 — Rust binding for `nros_platform_register_log_writer`.
+# The board crate hands a semihosting writer to the platform's
+# FreeRTOS log slot at `run()` time.
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", default-features = false }
 # Phase 121.3 — the FreeRTOS Rust kernel crate is gone. The C port's
 # canonical `nros_platform_*` symbols are compiled in-tree by this
 # crate's `build.rs` and linked statically. dust-dds's

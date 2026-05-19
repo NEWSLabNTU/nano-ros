@@ -38,6 +38,11 @@ cortex-m = "0.7"
 # Phase 110.E.b — `Interrupt::TIMER1` NVIC slot ID for
 # `sporadic_timer::register_periodic` / `destroy`.
 mps2-an385-pac = { path = "../../boards/mps2-an385-pac" }
+# Phase 88 — semihosting writer for `PlatformLog::write`. QEMU
+# semihosting console is the canonical bare-metal log sink for
+# mps2-an385; `hstderr()` lands in the host terminal under
+# `-semihosting-config enable=on,target=native`.
+cortex-m-semihosting = "0.5"
 # smoltcp network provider (TCP/UDP via SmoltcpBridge)
 nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
 # Shared bare-metal helpers (PRNG, sleep, libc stubs)

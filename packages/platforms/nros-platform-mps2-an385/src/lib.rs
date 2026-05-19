@@ -52,9 +52,6 @@ impl nros_platform_api::PlatformTimer for Mps2An385Platform {
         user_data: *mut core::ffi::c_void,
     ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
         sporadic_timer::register_periodic(period_us, callback, user_data)?;
-        // v1: one shared slot, so the handle is a sentinel non-null
-        // pointer (1) — `destroy` ignores the value + tears down the
-        // global slot. Pointer is never dereferenced.
         Ok(TimerHandleStub(1 as *mut core::ffi::c_void))
     }
 
@@ -65,7 +62,6 @@ impl nros_platform_api::PlatformTimer for Mps2An385Platform {
 
 /// Pointer-sized newtype satisfying `nros_platform_export_timer!`'s
 /// `size_of::<TimerHandle>() == size_of::<*mut c_void>()` guard.
-/// The Timer1 backend uses a sentinel value — never dereferenced.
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct TimerHandleStub(*mut core::ffi::c_void);
@@ -76,6 +72,40 @@ unsafe impl Sync for TimerHandleStub {}
 
 #[cfg(feature = "cffi-export")]
 nros_platform_cffi::nros_platform_export_timer!(Mps2An385Platform);
+
+// Phase 88 — `PlatformLog` impl + canonical C ABI export. Routes
+// log records through QEMU semihosting (`hstderr`). Format:
+// `[<LEVEL>] <name>: <msg>` followed by `\n`. Not ISR-safe —
+// semihosting BKPT halts the CPU until the debugger services the
+// request; calling from an ISR is fine on QEMU but should be
+// avoided on real hardware-with-debugger setups.
+impl nros_platform_api::PlatformLog for Mps2An385Platform {
+    fn write(severity: u8, name: &[u8], message: &[u8]) {
+        use core::fmt::Write as _;
+        let Ok(mut out) = cortex_m_semihosting::hio::hstderr() else {
+            return;
+        };
+        let label = match severity {
+            0 => "TRACE",
+            1 => "DEBUG",
+            2 => "INFO",
+            3 => "WARN",
+            4 => "ERROR",
+            5 => "FATAL",
+            _ => "?",
+        };
+        let name_str = core::str::from_utf8(name).unwrap_or("");
+        let msg_str = core::str::from_utf8(message).unwrap_or("");
+        if !name_str.is_empty() {
+            let _ = writeln!(out, "[{}] {}: {}", label, name_str, msg_str);
+        } else {
+            let _ = writeln!(out, "[{}] {}", label, msg_str);
+        }
+    }
+}
+
+#[cfg(feature = "cffi-export")]
+nros_platform_cffi::nros_platform_export_log!(Mps2An385Platform);
 
 // Phase 121.9 — Cortex-M PRIMASK critical section. Always emitted
 // (independent of the `critical-section` feature, which only gates
