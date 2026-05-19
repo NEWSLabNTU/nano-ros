@@ -140,6 +140,21 @@ pub fn wait_for_addr(addr: &str, timeout: std::time::Duration) -> bool {
 /// * `elf` - Path to the ELF binary
 /// * `output` - Path to write the flash image
 pub fn create_esp32_flash_image(elf: &Path, output: &Path) -> TestResult<()> {
+    create_esp_flash_image(elf, output, "esp32c3", "4mb")
+}
+
+/// Phase 117.5 — chip-parameterised variant of
+/// [`create_esp32_flash_image`]. Same shape, but the `--chip` arg
+/// is caller-supplied so Xtensa (esp32 / esp32s2 / esp32s3) and
+/// RISC-V (esp32c3 / esp32c2 / esp32c6 / esp32h2) chip families
+/// share the same helper. The `flash-size` arg also varies per
+/// chip (S3 dev kits ship with 8 MiB by default).
+pub fn create_esp_flash_image(
+    elf: &Path,
+    output: &Path,
+    chip: &str,
+    flash_size: &str,
+) -> TestResult<()> {
     if !elf.exists() {
         return Err(TestError::BuildFailed(format!(
             "ELF binary not found: {}",
@@ -147,14 +162,14 @@ pub fn create_esp32_flash_image(elf: &Path, output: &Path) -> TestResult<()> {
         )));
     }
 
-    // Create output directory if needed
     if let Some(parent) = output.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| TestError::BuildFailed(format!("Failed to create output dir: {}", e)))?;
     }
 
     eprintln!(
-        "Creating flash image: {} -> {}",
+        "Creating flash image ({}): {} -> {}",
+        chip,
         elf.display(),
         output.display()
     );
@@ -163,9 +178,9 @@ pub fn create_esp32_flash_image(elf: &Path, output: &Path) -> TestResult<()> {
         "espflash",
         "save-image",
         "--chip",
-        "esp32c3",
+        chip,
         "--flash-size",
-        "4mb",
+        flash_size,
         "--merge",
         elf.to_str().unwrap(),
         output.to_str().unwrap()

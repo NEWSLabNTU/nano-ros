@@ -1688,6 +1688,106 @@ pub fn build_esp32_qemu_dds_listener_flash() -> TestResult<&'static Path> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Phase 117.5 — ESP32-S3 QEMU DDS example builders (Xtensa LX7)
+// ═══════════════════════════════════════════════════════════════════════════
+
+static ESP32S3_QEMU_DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static ESP32S3_QEMU_DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static ESP32S3_QEMU_DDS_TALKER_FLASH: OnceCell<PathBuf> = OnceCell::new();
+static ESP32S3_QEMU_DDS_LISTENER_FLASH: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build an ESP32-S3 QEMU DDS example. Mirrors the C3 builder
+/// (`build_esp32_qemu_dds_example`) on the Xtensa side; key
+/// difference is the toolchain: `cargo +esp` (the espup-managed
+/// `+esp` channel) instead of the pinned in-tree nightly. The
+/// Xtensa target triple is set in the example's
+/// `.cargo/config.toml` `[build] target = "xtensa-esp32s3-none-elf"`
+/// + `[unstable] build-std = ["core", "alloc"]`.
+fn build_esp32s3_qemu_dds_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/qemu-esp32s3-baremetal/rust/dds/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "ESP32-S3 DDS example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    eprintln!("Building qemu-esp32s3/rust/dds/{} (+esp toolchain)...", name);
+
+    let output = cmd!("cargo", "+esp", "build", "--release")
+        .dir(&example_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cargo +esp build failed (did you `espup install --targets esp32s3` + \
+             `. $HOME/export-esp.sh` in this shell?):\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let binary_path = example_dir.join(format!(
+        "target/xtensa-esp32s3-none-elf/release/{}",
+        binary_name
+    ));
+
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+/// Build esp32s3-qemu-dds-talker ELF (cached).
+pub fn build_esp32s3_qemu_dds_talker() -> TestResult<&'static Path> {
+    ESP32S3_QEMU_DDS_TALKER_BINARY
+        .get_or_try_init(|| build_esp32s3_qemu_dds_example("talker", "esp32s3-qemu-dds-talker"))
+        .map(|p| p.as_path())
+}
+
+/// Build esp32s3-qemu-dds-listener ELF (cached).
+pub fn build_esp32s3_qemu_dds_listener() -> TestResult<&'static Path> {
+    ESP32S3_QEMU_DDS_LISTENER_BINARY
+        .get_or_try_init(|| build_esp32s3_qemu_dds_example("listener", "esp32s3-qemu-dds-listener"))
+        .map(|p| p.as_path())
+}
+
+/// Build + flash esp32s3-qemu-dds-talker (cached path to .bin image).
+pub fn build_esp32s3_qemu_dds_talker_flash() -> TestResult<&'static Path> {
+    ESP32S3_QEMU_DDS_TALKER_FLASH
+        .get_or_try_init(|| {
+            let elf = build_esp32s3_qemu_dds_talker()?;
+            let out = elf.parent().unwrap().join("esp32s3-qemu-dds-talker.bin");
+            // ESP32-S3 dev kits ship 8 MiB flash by default; espflash
+            // can pad/merge up to that size without issue.
+            crate::esp32::create_esp_flash_image(elf, &out, "esp32s3", "8mb")?;
+            Ok(out)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build + flash esp32s3-qemu-dds-listener (cached path to .bin image).
+pub fn build_esp32s3_qemu_dds_listener_flash() -> TestResult<&'static Path> {
+    ESP32S3_QEMU_DDS_LISTENER_FLASH
+        .get_or_try_init(|| {
+            let elf = build_esp32s3_qemu_dds_listener()?;
+            let out = elf.parent().unwrap().join("esp32s3-qemu-dds-listener.bin");
+            crate::esp32::create_esp_flash_image(elf, &out, "esp32s3", "8mb")?;
+            Ok(out)
+        })
+        .map(|p| p.as_path())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // RTIC QEMU Example Builders (MPS2-AN385, Cortex-M3)
 // ═══════════════════════════════════════════════════════════════════════════
 
