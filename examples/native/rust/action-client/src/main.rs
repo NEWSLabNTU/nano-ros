@@ -1,0 +1,125 @@
+//! Native Action Client Example
+//!
+//! Demonstrates a ROS 2 action client using nros with the Promise API.
+//! Sends a Fibonacci goal, waits for acceptance with `promise.wait()`,
+//! then receives feedback via `FeedbackStream::wait_next()`.
+//!
+//! # Usage
+//!
+//! ```bash
+//! # Start zenoh router first:
+//! zenohd --listen tcp/127.0.0.1:7447
+//!
+//! # Run the action server:
+//! cargo run -p native-rs-action-server
+//!
+//! # In another terminal, run the client:
+//! cargo run -p native-rs-action-client
+//! ```
+
+use example_interfaces::action::{Fibonacci, FibonacciGoal};
+use log::{error, info, warn};
+use nros::prelude::*;
+
+// Phase 118 — RMW selection is build-time via mutually exclusive
+// `rmw-{zenoh,dds,xrce}` features. `register_rmw()` fans out under
+// `#[cfg(feature)]`; the rest of the file stays RMW-agnostic.
+
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
+compile_error!(
+    "this example requires exactly one of `rmw-zenoh`, `rmw-dds`, or `rmw-xrce`",
+);
+
+fn register_rmw() -> Result<(), &'static str> {
+    #[cfg(feature = "rmw-zenoh")]
+    { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
+    #[cfg(feature = "rmw-dds")]
+    { nros_rmw_dds::register().map_err(|_| "dds register failed")?; }
+    #[cfg(feature = "rmw-xrce")]
+    { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
+    Ok(())
+}
+
+fn main() {
+    env_logger::init();
+
+    info!("nros Action Client Example");
+    info!("================================");
+
+    // Create executor from environment
+    let config = ExecutorConfig::from_env().node_name("fibonacci_action_client");
+    // Phase 115.L.5 — install zenoh-pico C-vtable backend.
+
+    // Phase 104.A — explicit RMW backend registration. The auto-ctor
+    // in `.init_array` doesn't survive Rust's archive-walk linkage
+    // when no symbol from the rlib is otherwise referenced.
+    register_rmw().expect("Failed to register RMW backend");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
+
+    // Create node and action client
+    let mut node = executor
+        .create_node("fibonacci_action_client")
+        .expect("Failed to create node");
+    info!("Node created: fibonacci_action_client");
+
+    let mut client = node
+        .create_action_client::<Fibonacci>("/fibonacci")
+        .expect("Failed to create action client");
+    info!("Action client created: /fibonacci");
+
+    // Create goal
+    let goal = FibonacciGoal { order: 10 };
+    info!("Sending goal: order={}", goal.order);
+
+    // Send goal using the Promise pattern
+    let (goal_id, mut promise) = match client.send_goal(&goal) {
+        Ok(pair) => pair,
+        Err(e) => {
+            error!("Failed to send goal: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Wait for goal acceptance (drives I/O internally)
+    let accepted = match promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
+        Ok(accepted) => accepted,
+        Err(e) => {
+            error!("Goal acceptance failed: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    if !accepted {
+        warn!("Goal was rejected by the server");
+        std::process::exit(1);
+    }
+    info!("Goal accepted! ID: {:?}", goal_id);
+
+    info!("Waiting for feedback...");
+
+    // Receive feedback via FeedbackStream (drives I/O internally, filters by goal ID)
+    let mut stream = client.feedback_stream_for(goal_id);
+    let mut feedback_count = 0;
+    for _ in 0..30 {
+        // 30 x 1000ms = 30 second max
+        match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
+            Ok(Some(feedback)) => {
+                feedback_count += 1;
+                info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
+
+                if feedback.sequence.len() as i32 > goal.order {
+                    info!("Received all feedback, action completed!");
+                    info!("Final sequence: {:?}", feedback.sequence);
+                    break;
+                }
+            }
+            Ok(None) => {} // no feedback in this window, retry
+            Err(e) => {
+                error!("Error receiving feedback: {:?}", e);
+                break;
+            }
+        }
+    }
+
+    info!("Action client finished");
+}

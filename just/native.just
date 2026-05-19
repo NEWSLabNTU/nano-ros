@@ -146,7 +146,7 @@ build-fixtures:
     # the matching binary. Param-services is zenoh-only (the gate
     # references nros-rmw-zenoh's optional feature; rmw-dds / rmw-xrce
     # builds omit it).
-    for collapsed_case in talker listener; do
+    for collapsed_case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/rust/${collapsed_case} ]; then
             for rmw in zenoh dds xrce; do
                 feature_flags="--features rmw-${rmw}"

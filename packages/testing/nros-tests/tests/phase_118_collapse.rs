@@ -16,7 +16,8 @@
 use std::path::Path;
 
 use nros_tests::fixtures::{
-    Rmw, build_native_c_talker_rmw, build_native_listener_rmw, build_native_talker_rmw,
+    Rmw, build_native_c_talker_rmw, build_native_listener_rmw,
+    build_native_rust_example_rmw, build_native_talker_rmw,
 };
 use rstest::rstest;
 
@@ -90,6 +91,50 @@ fn test_native_listener_rmw_variant_exists(#[case] rmw: Rmw) {
         binary.file_name().and_then(|n| n.to_str()),
         Some("listener"),
         "unexpected binary name for {:?}: {}",
+        rmw,
+        binary.display()
+    );
+}
+
+/// Phase 118.B.1 — service-{server,client} + action-{server,client}
+/// on native/rust. Same collapse mechanism as talker / listener; one
+/// parametrized test covers all 4 cases × 3 RMWs.
+#[rstest]
+#[case::ss_zenoh("service-server", Rmw::Zenoh)]
+#[case::ss_dds("service-server", Rmw::Dds)]
+#[case::ss_xrce("service-server", Rmw::Xrce)]
+#[case::sc_zenoh("service-client", Rmw::Zenoh)]
+#[case::sc_dds("service-client", Rmw::Dds)]
+#[case::sc_xrce("service-client", Rmw::Xrce)]
+#[case::as_zenoh("action-server", Rmw::Zenoh)]
+#[case::as_dds("action-server", Rmw::Dds)]
+#[case::as_xrce("action-server", Rmw::Xrce)]
+#[case::ac_zenoh("action-client", Rmw::Zenoh)]
+#[case::ac_dds("action-client", Rmw::Dds)]
+#[case::ac_xrce("action-client", Rmw::Xrce)]
+fn test_native_service_action_rmw_variant_exists(#[case] case: &str, #[case] rmw: Rmw) {
+    let binary = build_native_rust_example_rmw(case, case, rmw).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "native/rust/{} {:?} variant not prebuilt; run \
+             `just native build-fixtures` first: {:?}",
+            case,
+            rmw,
+            e
+        )
+    });
+
+    assert!(
+        binary.exists(),
+        "{} {:?} binary missing: {}",
+        case,
+        rmw,
+        binary.display()
+    );
+    assert_eq!(
+        binary.file_name().and_then(|n| n.to_str()),
+        Some(case),
+        "unexpected binary name for {} {:?}: {}",
+        case,
         rmw,
         binary.display()
     );

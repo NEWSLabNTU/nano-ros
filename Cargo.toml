@@ -108,6 +108,10 @@ exclude = [
     # Phase 118 — collapsed per-RMW cells (build-time RMW feature selection)
     "examples/native/rust/talker",
     "examples/native/rust/listener",
+    "examples/native/rust/service-server",
+    "examples/native/rust/service-client",
+    "examples/native/rust/action-server",
+    "examples/native/rust/action-client",
     "examples/native/rust/zenoh/talker",
     "examples/native/rust/zenoh/listener",
     "examples/native/rust/zenoh/logging",

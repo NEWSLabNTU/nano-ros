@@ -458,6 +458,17 @@ pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Phase 118 — generic native Rust example resolver. Cuts repetition
+/// when the test only needs a single (case, rmw) tuple instead of the
+/// pre-cached talker/listener wrappers.
+pub fn build_native_rust_example_rmw(
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    build_example_rmw(&format!("native/rust/{}", case), binary_name, rmw)
+}
+
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY

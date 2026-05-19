@@ -1,0 +1,16 @@
+[package]
+name = "action_msgs"
+version = "1.2.2"
+edition = "2021"
+
+[features]
+default = []
+std = ["nros-core/std", "nros-serdes/std", "unique_identifier_msgs/std", "builtin_interfaces/std"]
+
+[dependencies]
+# nros crates (patched to local via .cargo/config.toml during development)
+nros-core = { version = "*", default-features = false }
+nros-serdes = { version = "*", default-features = false }
+heapless = "0.8"
+unique_identifier_msgs = { path = "../unique_identifier_msgs", default-features = false }
+builtin_interfaces = { path = "../builtin_interfaces", default-features = false }
