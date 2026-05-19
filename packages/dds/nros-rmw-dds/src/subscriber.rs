@@ -90,6 +90,18 @@ impl Subscriber for DdsSubscriber {
             use dust_dds::infrastructure::sample_info::{
                 ANY_INSTANCE_STATE, ANY_SAMPLE_STATE, ANY_VIEW_STATE,
             };
+            // Phase 160.B.4 — drive the runtime BEFORE issuing the
+            // take. The Promise::poll path on `.await` (or
+            // `poll_until_ready`) calls try_recv_raw exactly once per
+            // turn; without an explicit drive here the runtime only
+            // advances inside `block_on(take(...))`'s loop body, which
+            // means the very FIRST try_recv after `client.call(...)`
+            // never sees inbound listener mail that was already queued
+            // by a sibling spin_task pass. A pre-take drive guarantees
+            // pending listener mail is dispatched, the waker_cell
+            // wake fires inline if needed, and the take is more likely
+            // to return the reply on the same turn.
+            self.runtime.drive();
             return match self.runtime.block_on(self.reader_async.take(
                 1,
                 ANY_SAMPLE_STATE,
@@ -188,6 +200,8 @@ impl Subscriber for DdsSubscriber {
             use dust_dds::infrastructure::sample_info::{
                 ANY_INSTANCE_STATE, ANY_SAMPLE_STATE, ANY_VIEW_STATE,
             };
+            // Phase 160.B.4 — see `try_recv_raw` for the rationale.
+            self.runtime.drive();
             let samples = match self.runtime.block_on(self.reader_async.take(
                 limit as i32,
                 ANY_SAMPLE_STATE,

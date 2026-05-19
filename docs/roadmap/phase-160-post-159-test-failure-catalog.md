@@ -188,6 +188,19 @@ let reply = client
 `examples/zephyr/rust/dds/service-client-async/src/lib.rs` switched
 to this helper; test PASS.
 
+**160.B.4 landed 2026-05-19** (option 2). `nros-rmw-dds`
+`Subscriber::try_recv_raw` (both single + batch variants) now
+calls `self.runtime.drive()` BEFORE the `block_on(reader.take(...))`
+on the nostd-runtime path. Previously the runtime only advanced
+inside `block_on(take(...))`'s loop, which meant the FIRST
+try_recv after `client.call(...)` couldn't see listener mail that
+was queued by a sibling spin_task pass. A pre-take drive
+guarantees pending listener mail is dispatched, waker_cell.wake
+fires inline if needed, and the take is more likely to return
+the reply on the same turn. Strict improvement for both the
+poll_until_ready and bare-.await shapes (the latter still
+deadlocks for a different reason — see 160.B.3 hypotheses).
+
 **160.B.3 landed 2026-05-19** (partial — option 2 base layer).
 Lifted `NrosPlatformRuntime::drive()` (and the `block_on_boxed`
 loop body) from a single-pass `spawner.drain_tasks()` to a new
