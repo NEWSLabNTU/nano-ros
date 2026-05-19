@@ -106,24 +106,26 @@ build-fixtures:
         echo "QEMU bare-metal skip: arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building QEMU bare-metal test fixtures..."
-    for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' | sort); do
-        dir="$(dirname "$toml")"
-        echo "  → $dir"
-        ( cd "$dir" && cargo build --release --quiet )
-    done
+    # Phase 160 follow-up — parallel cargo builds. Each example has its
+    # own isolated `target/`; no cross-fixture lock contention. Cap
+    # concurrent cargos at 8 so the per-cargo job server (default nproc)
+    # × 8 stays in the same ballpark as nproc on a 32-core host without
+    # over-saturating smaller hosts.
+    dirs=()
+    while IFS= read -r toml; do
+        dirs+=("$(dirname "$toml")")
+    done < <(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
+                  -not -path '*/target/*' -not -path '*/generated/*' | sort)
     # Phase 131.B — relocated bench/test-fixture crates.
-    for dir in \
-        packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
-        packages/testing/nros-tests/bins/lan9118-qemu \
-        packages/testing/nros-bench/wcet-cycles-qemu \
-        packages/testing/nros-bench/large-msg-baremetal; do
-        echo "  → $dir"
-        ( cd "$dir" && cargo build --release --quiet )
-    done
-    # qemu-smoltcp-bridge: native lib that bridges QEMU's serial port to a
-    # smoltcp socket, used by some serial-mode bare-metal tests.
-    ( cd packages/reference/qemu-smoltcp-bridge && cargo build --release --quiet )
+    dirs+=(
+        packages/testing/nros-tests/bins/cdr-roundtrip-qemu
+        packages/testing/nros-tests/bins/lan9118-qemu
+        packages/testing/nros-bench/wcet-cycles-qemu
+        packages/testing/nros-bench/large-msg-baremetal
+        packages/reference/qemu-smoltcp-bridge
+    )
+    printf '%s\n' "${dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && cargo build --release --quiet'
 
 # Run all QEMU tests (non-networked)
 test verbose="":

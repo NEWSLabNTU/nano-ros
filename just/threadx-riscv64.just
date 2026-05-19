@@ -85,23 +85,21 @@ build-fixtures:
     config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/virtio-net-netx"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → threadx-rv64/rust/$ex"
-        # threadx-netx-sys/build.rs needs the rv64-specific NetX port headers,
-        # not the threadx-linux defaults exported by the top-level justfile.
-        ( cd "examples/qemu-riscv64-threadx/rust/zenoh/$ex" && \
-          THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-          cargo build --release --quiet )
+    # Phase 160 follow-up — parallel cargo builds.
+    rust_dirs=()
+    for ex in talker listener service-server service-client action-server action-client; do
+        rust_dirs+=("examples/qemu-riscv64-threadx/rust/zenoh/$ex")
     done
-    # Phase 97.4.threadx-riscv64 — DDS variants alongside zenoh.
-    dds_examples=(talker listener)
-    for ex in "${dds_examples[@]}"; do
-        echo "  → threadx-rv64/rust/dds/$ex"
-        ( cd "examples/qemu-riscv64-threadx/rust/dds/$ex" && \
-          THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-          cargo build --release --quiet )
+    for ex in talker listener; do
+        rust_dirs+=("examples/qemu-riscv64-threadx/rust/dds/$ex")
     done
+    # threadx-netx-sys/build.rs needs the rv64-specific NetX port
+    # headers, not the threadx-linux defaults exported by the top-level
+    # justfile. Pass via env to each parallel cargo.
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+        "echo '  → {}' && cd {} && \
+         THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+         cargo build --release --quiet"
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
     # Corrosion handles the riscv64gc-unknown-none-elf cross under
     # the bundled toolchain file; the ThreadX + NetX Duo include
@@ -112,25 +110,27 @@ build-fixtures:
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$root/packages/codegen/packages/target/release/nros-codegen"
-    cmake_examples=(talker listener service-server service-client action-server action-client)
+    cmake_dirs=()
     for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → threadx-rv64/$lang/$ex (cmake)"
-            dir="examples/qemu-riscv64-threadx/$lang/zenoh/$ex"
-            rm -rf "$dir/build"
-            THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
-            THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-                cmake -S "$dir" -B "$dir/build" \
-                    -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                    -DTHREADX_DIR="$threadx_dir" \
-                    -DNETX_DIR="$netx_dir" \
-                    -DTHREADX_CONFIG_DIR="$config_dir" \
-                    -DNETX_CONFIG_DIR="$config_dir" \
-                    -DCMAKE_BUILD_TYPE=Release \
-                    -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-            THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
-            THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-                cmake --build "$dir/build" --parallel > /dev/null
+        for ex in talker listener service-server service-client action-server action-client; do
+            cmake_dirs+=("examples/qemu-riscv64-threadx/$lang/zenoh/$ex")
+        done
+    done
+    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        "echo '  → {} (cmake)' && rm -rf {}/build && \
+         THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
+         THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+           cmake -S {} -B {}/build \
+             -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+             -DTHREADX_DIR='$threadx_dir' \
+             -DNETX_DIR='$netx_dir' \
+             -DTHREADX_CONFIG_DIR='$config_dir' \
+             -DNETX_CONFIG_DIR='$config_dir' \
+             -DCMAKE_BUILD_TYPE=Release \
+             -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+         THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
+         THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+           cmake --build {}/build --parallel > /dev/null"
         done
     done
 

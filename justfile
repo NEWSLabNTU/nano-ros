@@ -361,14 +361,32 @@ test verbose="": build-zenohd
 # explicit so `just build-test-fixtures` (and `just test-all` via
 # the bench fixtures it consumes) is self-contained.
 build-test-fixtures: generate-bindings build-zenoh-posix-fixture
-    just native build-fixtures
-    just qemu build-fixtures
-    just freertos build-fixtures
-    just nuttx build-fixtures
-    just threadx_linux build-fixtures
-    just threadx_riscv64 build-fixtures
-    just zephyr build-fixtures
-    just stm32f4 build-fixtures
+    #!/usr/bin/env bash
+    set -e
+    # Phase 160 follow-up — parallelize per-platform fixture builds.
+    # Each platform writes into its own per-example `target/` dirs (no
+    # workspace `target/` sharing across `examples/<plat>/...`), so the
+    # builds are independent. Bottleneck on a 32-core host was the
+    # outer sequential `just <plat>` loop spending ~1 hour total
+    # walking 150-ish standalone Cargo crates serially.
+    #
+    # Concurrency: cap parallel platforms at 4. Each platform's
+    # internal cargo run spawns its own jobs server up to nproc, so
+    # 4 × ~8 = 32 jobs at the rough nproc=32 mark — without
+    # over-saturating on bigger hosts each platform's internal job
+    # count throttles naturally via the cargo job server (`-j` /
+    # `CARGO_BUILD_JOBS`).
+    #
+    # Use `parallel --halt-on-error` so a single broken toolchain
+    # surfaces fast instead of waiting for the remaining 7 platforms.
+    # `--joblog` lands a per-recipe duration breakdown at
+    # `tmp/build-test-fixtures.joblog` for follow-up tuning.
+    mkdir -p tmp
+    parallel --jobs 4 --halt now,fail=1 \
+             --joblog tmp/build-test-fixtures.joblog \
+             --line-buffer \
+             'echo "== {} ==" && just {} build-fixtures' ::: \
+        native qemu freertos nuttx threadx_linux threadx_riscv64 zephyr stm32f4
     @echo "All test fixtures built."
 
 # Phase 150.E rev3 — single deterministic fixture serving both

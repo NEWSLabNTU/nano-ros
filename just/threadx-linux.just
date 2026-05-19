@@ -66,39 +66,40 @@ build-fixtures:
     nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
     app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → threadx-linux/rust/$ex"
-        ( cd "examples/threadx-linux/rust/zenoh/$ex" && cargo build --release --quiet )
+    # Phase 160 follow-up — parallel cargo builds.
+    rust_dirs=()
+    for ex in talker listener service-server service-client action-server action-client; do
+        rust_dirs+=("examples/threadx-linux/rust/zenoh/$ex")
     done
     # Phase 97.4.threadx-linux — DDS variants alongside zenoh.
-    dds_examples=(talker listener)
-    for ex in "${dds_examples[@]}"; do
-        echo "  → threadx-linux/rust/dds/$ex"
-        ( cd "examples/threadx-linux/rust/dds/$ex" && cargo build --release --quiet )
+    for ex in talker listener; do
+        rust_dirs+=("examples/threadx-linux/rust/dds/$ex")
     done
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && cargo build --release --quiet'
+
     echo "  → host nros-codegen (cargo)"
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
-    cmake_examples=(talker listener service-server service-client action-server action-client)
+    cmake_dirs=()
     for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
+        for ex in talker listener service-server service-client action-server action-client; do
             dir="examples/threadx-linux/$lang/zenoh/$ex"
-            [ ! -d "$dir" ] && continue
-            echo "  → threadx-linux/$lang/$ex (cmake)"
-            rm -rf "$dir/build"
-            cmake -S "$dir" -B "$dir/build" \
-                -DNANO_ROS_PLATFORM=threadx_linux \
-                -DTHREADX_DIR="$threadx_dir" \
-                -DNSOS_NETX_DIR="$nsos_netx_dir" \
-                -DTHREADX_CONFIG_DIR="$config_dir" \
-                -DTHREADX_APP_DEFINE="$app_define" \
-                -DCMAKE_BUILD_TYPE=Release \
-                -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
+            [ -d "$dir" ] && cmake_dirs+=("$dir")
         done
     done
+    [ ${#cmake_dirs[@]} -gt 0 ] && printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        "echo '  → {} (cmake)' && rm -rf {}/build && \
+         cmake -S {} -B {}/build \
+           -DNANO_ROS_PLATFORM=threadx_linux \
+           -DTHREADX_DIR='$threadx_dir' \
+           -DNSOS_NETX_DIR='$nsos_netx_dir' \
+           -DTHREADX_CONFIG_DIR='$config_dir' \
+           -DTHREADX_APP_DEFINE='$app_define' \
+           -DCMAKE_BUILD_TYPE=Release \
+           -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+         cmake --build {}/build --parallel > /dev/null"
 
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.
 build-all: build build-examples build-fixtures

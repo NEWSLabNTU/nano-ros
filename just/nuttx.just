@@ -64,21 +64,18 @@ build-fixtures:
     fi
     echo "Building NuttX test fixtures..."
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → nuttx/rust/$ex"
-        ( cd "examples/qemu-arm-nuttx/rust/zenoh/$ex" && \
-          CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-          cargo build --release --quiet )
+    # Phase 160 follow-up — parallel cargo builds (per-example isolated
+    # target/ dirs, no cross-fixture lock contention).
+    rust_dirs=()
+    for ex in talker listener service-server service-client action-server action-client; do
+        rust_dirs+=("examples/qemu-arm-nuttx/rust/zenoh/$ex")
     done
-    # Phase 97.4.nuttx — DDS variants alongside zenoh.
-    dds_examples=(talker listener)
-    for ex in "${dds_examples[@]}"; do
-        echo "  → nuttx/rust/dds/$ex"
-        ( cd "examples/qemu-arm-nuttx/rust/dds/$ex" && \
-          CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-          cargo build --release --quiet )
+    for ex in talker listener; do
+        rust_dirs+=("examples/qemu-arm-nuttx/rust/dds/$ex")
     done
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
+         cargo build --release --quiet'
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
     # sidestepped by:
@@ -98,21 +95,22 @@ build-fixtures:
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
     toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
-    cmake_examples=(talker listener service-server service-client action-server action-client)
+    nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi"
+    cmake_dirs=()
     for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → nuttx/$lang/$ex (cmake)"
-            dir="examples/qemu-arm-nuttx/$lang/zenoh/$ex"
-            rm -rf "$dir/build"
-            cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                -DNUTTX_DIR="$nuttx_dir" \
-                -DNUTTX_FFI_CRATE_DIR="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi" \
-                -DCMAKE_BUILD_TYPE=Release \
-                -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
+        for ex in talker listener service-server service-client action-server action-client; do
+            cmake_dirs+=("examples/qemu-arm-nuttx/$lang/zenoh/$ex")
         done
     done
+    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        "echo '  → {} (cmake)' && rm -rf {}/build && \
+         cmake -S {} -B {}/build \
+           -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+           -DNUTTX_DIR='$nuttx_dir' \
+           -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
+           -DCMAKE_BUILD_TYPE=Release \
+           -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+         cmake --build {}/build --parallel > /dev/null"
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,

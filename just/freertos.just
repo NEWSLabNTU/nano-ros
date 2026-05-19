@@ -74,19 +74,22 @@ build-fixtures:
         echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building FreeRTOS test fixtures..."
-    rust_examples=(talker listener service-server service-client action-server action-client)
-    for ex in "${rust_examples[@]}"; do
-        echo "  → freertos/rust/zenoh/$ex"
-        ( cd "examples/qemu-arm-freertos/rust/zenoh/$ex" && cargo build --release --quiet )
+    # Phase 160 follow-up — parallel cargo / cmake builds. Each example
+    # has its own isolated `target/`; cmake builds use per-example
+    # `build/` dirs. No cross-fixture lock contention. Cap concurrency
+    # at 8 so on a 32-core host the per-cargo job server × 8 stays in
+    # the same ballpark as nproc.
+    rust_dirs=()
+    for ex in talker listener service-server service-client action-server action-client; do
+        rust_dirs+=("examples/qemu-arm-freertos/rust/zenoh/$ex")
     done
-    # Phase 97.4.freertos — DDS variant (talker + listener only;
-    # services / actions follow once the kconfig + linker template
-    # graduates to those use cases).
-    dds_rust_examples=(talker listener)
-    for ex in "${dds_rust_examples[@]}"; do
-        echo "  → freertos/rust/dds/$ex"
-        ( cd "examples/qemu-arm-freertos/rust/dds/$ex" && cargo build --release --quiet )
+    # Phase 97.4.freertos — DDS variant (talker + listener only).
+    for ex in talker listener; do
+        rust_dirs+=("examples/qemu-arm-freertos/rust/dds/$ex")
     done
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && cargo build --release --quiet'
+
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install
     # layout. Cross builds (FreeRTOS) can't build the host codegen
@@ -96,21 +99,19 @@ build-fixtures:
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
-    cmake_examples=(talker listener service-server service-client action-server action-client)
+    cmake_dirs=()
     for lang in c cpp; do
-        for ex in "${cmake_examples[@]}"; do
-            echo "  → freertos/$lang/$ex (cmake)"
-            dir="examples/qemu-arm-freertos/$lang/zenoh/$ex"
-            # Stale caches from pre-Phase-140 still reference the
-            # deleted `build/install/bin/nros-codegen`; wipe + reconfigure.
-            rm -rf "$dir/build"
-            cmake -S "$dir" -B "$dir/build" \
-                -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                -DCMAKE_BUILD_TYPE=Release \
-                -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-            cmake --build "$dir/build" --parallel > /dev/null
+        for ex in talker listener service-server service-client action-server action-client; do
+            cmake_dirs+=("examples/qemu-arm-freertos/$lang/zenoh/$ex")
         done
     done
+    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        "echo '  → {} (cmake)' && rm -rf {}/build && \
+         cmake -S {} -B {}/build \
+           -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+           -DCMAKE_BUILD_TYPE=Release \
+           -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+         cmake --build {}/build --parallel > /dev/null"
 
 # Build every FreeRTOS tier: core libraries, examples, and test fixtures.
 build-all: build build-examples build-fixtures

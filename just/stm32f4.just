@@ -20,27 +20,19 @@ build-fixtures:
         echo "STM32F4 skip: arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building STM32F4 test fixtures..."
-    rust_examples=(
-        talker
-        talker-rtic
-        listener-rtic
-        service-server-rtic
-        service-client-rtic
-        action-server-rtic
-        action-client-rtic
-    )
-    # Strict: abort on the first per-example failure. Per-example RAM
-    # tuning (e.g. `NROS_SUBSCRIPTION_BUFFER_SIZE` in the example's
-    # `.cargo/config.toml`) is the right place to fix overflows now.
-    for ex in "${rust_examples[@]}"; do
+    # Phase 160 follow-up — parallel cargo builds.
+    rust_dirs=()
+    for ex in talker talker-rtic listener-rtic service-server-rtic \
+              service-client-rtic action-server-rtic action-client-rtic; do
         dir="examples/stm32f4/rust/zenoh/$ex"
         if [ ! -d "$dir" ]; then
             echo "ERROR: $dir missing"
             exit 1
         fi
-        echo "  → stm32f4/rust/$ex"
-        ( cd "$dir" && cargo build --release --target thumbv7em-none-eabihf --quiet )
+        rust_dirs+=("$dir")
     done
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && cargo build --release --target thumbv7em-none-eabihf --quiet'
 
 # Build every STM32F4 tier: core artifacts, examples, and test fixtures.
 build-all: build build-examples build-fixtures
