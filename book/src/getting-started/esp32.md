@@ -81,6 +81,18 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
+**Readiness signal.** Real hardware: after `espflash flash --monitor`,
+expect the Wi-Fi connect line + `Published: 1` within 10 seconds.
+QEMU ESP32: ~15 seconds. If no `Published:` line:
+
+1. Wi-Fi credentials wrong → `Wifi connect failed` in serial log.
+2. Wrong locator → talker logs `zenoh open failed` and retries.
+   Confirm `zenohd` is reachable on the host IP from the board's
+   subnet.
+3. ESP32-C3 vs ESP32-S3: confirm `.cargo/config.toml` target matches
+   your chip (`riscv32imc-unknown-none-elf` vs `xtensa-esp32s3-none-elf`).
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - esp-hal Rust:

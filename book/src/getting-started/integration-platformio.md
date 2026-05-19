@@ -92,6 +92,17 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
+**Readiness signal.** After `pio run -t upload` + `pio device
+monitor`, expect `Wifi connected` then `Published: 1` within 10
+seconds. If no `Published:` line:
+
+1. Wrong build flag — `pio run -t envdump` should show the
+   `NANO_ROS_*` macros from `platformio.ini` resolved.
+2. Wi-Fi creds — same as ESP-IDF path; check the `-D` flags in
+   `platformio.ini`.
+3. Locator unreachable from the board's subnet.
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - PIO library spec:

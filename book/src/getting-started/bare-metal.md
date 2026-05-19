@@ -86,6 +86,21 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 
 QEMU exits via Ctrl-A x.
 
+**Readiness signal.** Within ~15 seconds of QEMU boot (no RTOS
+init delay, but smoltcp + zenoh handshake still takes a few
+seconds), expect `Published: 1` on semihosting stdout. If no
+`Published:` line:
+
+1. `zenohd` not running — talker spins on smoltcp poll until
+   killed.
+2. Wrong LAN9118 emulation flag — `qemu-system-arm` needs
+   `-nic socket,model=lan9118,…` or equivalent; the runner in
+   `.cargo/config.toml` already supplies it.
+3. Cooperative spin starvation — if you added a long-running
+   callback, the entire executor stalls; bare-metal has no
+   preemption.
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - Bare-metal talker:

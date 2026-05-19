@@ -120,6 +120,21 @@ For batch testing without manual QEMU launches: `just freertos
 test` runs every E2E (pub/sub, service, action) against a temporary
 in-test zenohd.
 
+**Readiness signal.** Within ~20 seconds of QEMU boot, the talker
+should print `Published: 1` on its semihosting stdout. QEMU
+cold-boot through FreeRTOS init + lwIP DHCP + zenoh session open
+typically takes 10–15 s. If no `Published:` line in 30 seconds:
+
+1. Confirm `zenohd` is running on the host (Slirp forwards
+   `10.0.2.2:7447` → host:7447). Without it the talker retries the
+   zenoh handshake until QEMU is killed.
+2. Check the talker's early log for `lwIP DHCP timeout` or
+   `Failed to open session`.
+3. Bridge tip: `ros2 topic echo /chatter` from a stock ROS 2
+   install (with `RMW_IMPLEMENTATION=rmw_zenoh_cpp`) confirms
+   end-to-end interop.
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 Canonical, copy-out:

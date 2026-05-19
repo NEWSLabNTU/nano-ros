@@ -127,6 +127,16 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
+**Readiness signal.** Within 5 seconds of `./build/c_talker`, the
+binary should print `Published: 1` on stdout. If no `Published:`
+line in 30 seconds:
+
+1. Confirm `zenohd` is running (terminal 1). Without it, `nros_init`
+   blocks indefinitely.
+2. Check `nros_init -> -3` / `-100` in stderr — both indicate
+   transport open failed (wrong locator or zenohd unreachable).
+3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 Canonical, copy-out:

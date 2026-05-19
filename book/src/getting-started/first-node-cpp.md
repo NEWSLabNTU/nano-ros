@@ -127,6 +127,17 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
+**Readiness signal.** Within 5 seconds of `./build/cpp_talker`, the
+binary should print `Published: 1`. If no `Published:` line in 30
+seconds:
+
+1. Confirm `zenohd` is running (terminal 1). Without it,
+   `nros::init` returns `-100` (TransportError) — the
+   `NROS_TRY_RET` macro logs the failed call to stderr.
+2. Check stderr for `[nros] …/main.cpp:LINE nros::init(...) -> -N`
+   diagnostics. `-3` / `-100` both indicate transport open failed.
+3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 Canonical, copy-out:

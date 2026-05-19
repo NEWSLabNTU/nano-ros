@@ -107,6 +107,19 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 The Zephyr boot banner runs first, then nano-ros prints
 `Published: 1`, `Published: 2`, ... as the talker fires.
 
+**Readiness signal.** On `native_sim`, expect `Published: 1`
+within 5 seconds of `./build/zephyr/zephyr.exe`; on `qemu_cortex_a9`
+expect it within ~15 seconds (QEMU cold boot + Zephyr init). If
+no `Published:` line in 30 seconds:
+
+1. Confirm `CONFIG_NROS=y` lit up via `west build -t menuconfig`;
+   without it the module shell never `add_subdirectory`'s nano-ros.
+2. Check `CONFIG_NETWORKING=y`, `CONFIG_NET_IPV4=y`, `CONFIG_NET_TCP=y`
+   in `prj.conf` — Zephyr networking is opt-in.
+3. Confirm `zenohd` reachable from the simulated network (Slirp
+   needs `10.0.2.2:7447` on QEMU; native_sim uses host loopback).
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - Zephyr module shell:

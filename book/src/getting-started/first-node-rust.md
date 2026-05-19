@@ -103,6 +103,15 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 
 You should see the same counter values arriving on the ROS 2 side.
 
+**Readiness signal.** Within 5 seconds of `cargo run`, the talker
+should print `Published: 1`. If no `Published:` line in 30 seconds:
+
+1. Confirm `zenohd` is running (terminal 1). Without it, the talker
+   blocks on `Executor::open` indefinitely.
+2. Re-run with `RUST_LOG=debug cargo run` and look for "Failed to
+   open session" — usually a wrong locator or wrong port.
+3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 Canonical, copy-out:

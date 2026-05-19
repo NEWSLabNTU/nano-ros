@@ -56,11 +56,11 @@ Cross-cutting blockers (multiple personas):
       Covers: `unresolved import nros`, `Failed to open session`,
       `unknown target`, "build hangs" patterns. Link from every
       starter page's preamble.
-- [ ] **164.B.2** Every starter page's "Run" section names the
+- [x] **164.B.2** Every starter page's "Run" section names the
       readiness signal (e.g. "the talker prints `Published: 1`
       within 5 s of `cargo run`; if you see no output, zenohd
       isn't running — start a router first").
-- [ ] **164.B.3** Add expected stderr / log output for each
+- [x] **164.B.3** Add expected stderr / log output for each
       starter so users can compare against "what success looks
       like."
 

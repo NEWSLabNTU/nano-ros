@@ -96,6 +96,19 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /vehicle_local_position px4_msgs/msg/VehicleLocalPosition
 ```
 
+**Readiness signal.** After `nros_uorb_bridge start` in the PX4
+console, expect `INFO  [nano-ros] bridge started` plus messages
+flowing within 5 seconds. If no bridge log:
+
+1. uORB topic not advertised yet — start the upstream PX4 module
+   that publishes it (`commander start` etc.) first.
+2. `zenohd` unreachable — Pixhawk's network config (set via
+   QGroundControl or `param set`) needs to route to the host
+   running zenohd.
+3. Module didn't register — check the PX4 boot log for
+   `nano-ros: register failed`.
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - PX4 external-module template:

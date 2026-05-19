@@ -114,6 +114,16 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 For batch testing: `just threadx_linux test` runs every pubsub /
 service / action against an in-test zenohd.
 
+**Readiness signal.** threadx-linux: `Published: 1` within 3
+seconds of `cargo run`. threadx-riscv64 (QEMU): within ~15
+seconds of QEMU boot. If no `Published:` line:
+
+1. Confirm `zenohd` reachable on the locator from `config.toml`
+   (threadx-linux uses `127.0.0.1`; riscv64 QEMU uses `10.0.2.2`).
+2. threadx-linux: confirm the veth bridge came up via
+   `just threadx_linux setup`.
+3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - ThreadX-Linux Rust:

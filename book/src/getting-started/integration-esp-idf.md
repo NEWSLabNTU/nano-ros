@@ -92,6 +92,18 @@ QEMU ESP32 testing path: see the `just esp_idf` recipes — they
 boot the IDF binary in `qemu-system-xtensa` via Espressif's
 patched QEMU.
 
+**Readiness signal.** After `idf.py flash monitor`, expect
+`I (XXXX) nano-ros: Wi-Fi connected` followed by
+`I (XXXX) nano-ros: Published: 1` within 10 seconds. If no
+`Published:` line:
+
+1. Wi-Fi creds — IDF Kconfig under `Component config → nano-ros`
+   must carry SSID + password OR your `config.toml` must.
+2. Wrong locator — confirm host running `zenohd` is on the same
+   Wi-Fi subnet (or routable to it). NAT will block discovery.
+3. `idf.py menuconfig` confirms `CONFIG_NROS_ENABLED=y`.
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - IDF component shell:

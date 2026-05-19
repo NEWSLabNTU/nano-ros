@@ -105,6 +105,17 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
+**Readiness signal.** After typing the app's NSH command (e.g.
+`nros_talker`), expect `Published: 1` on the NSH console within
+5 seconds. If no `Published:` line:
+
+1. Confirm the app actually ran — `ps` should show your task.
+2. Confirm networking — `ifconfig` shows a configured interface.
+   For QEMU `nsh_smp`, Slirp defaults apply: `eth0` at `10.0.2.15`.
+3. Confirm `zenohd` reachable; the locator in `config.toml` /
+   `nros_init` arguments must match.
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 ## GitHub source
 
 - NuttX integration shell:
