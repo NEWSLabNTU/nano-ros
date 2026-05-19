@@ -53,6 +53,13 @@ log-compat = ["dep:log"]
 [dependencies]
 heapless = { workspace = true }
 log = { workspace = true, optional = true }
+# Phase 88.16.E — `compare_exchange` on `AtomicBool` / `AtomicPtr`
+# isn't available on `core::sync::atomic` for RISC-V `imc` and
+# similar CAS-less targets. `portable-atomic` polyfills via
+# critical-section / single-core lock. Feature unification: the
+# consuming bare-metal crate enables `unsafe-assume-single-core`
+# or `critical-section` on its own `portable-atomic` dep.
+portable-atomic = { version = "1", default-features = false }
 
 # Integration tests pull the POSIX C impl of `nros_platform_log_*`
 # in via `nros-platform-cffi[posix-c-port]` so `PlatformSink ->

@@ -6,6 +6,11 @@
 //! Network configuration is in `config.toml` (WiFi credentials,
 //! zenoh locator, optional static IP).
 //!
+//! Phase 88.16.E — user diagnostics route through `nros-log`. The
+//! board crate's `run()` registers an `esp_println`-backed writer
+//! against `nros-platform-esp32`'s fn-ptr slot, so the example only
+//! needs to install sinks.
+//!
 //! # Building
 //!
 //! ```bash
@@ -23,38 +28,40 @@
 
 use esp_backtrace as _;
 use nros::prelude::*;
-use nros_board_esp32::{NodeConfig, entry, esp_println, run};
+use nros_board_esp32::{NodeConfig, entry, run};
+use nros_log::{nros_error, nros_info, Logger};
 use std_msgs::msg::Int32;
 
 nros_board_esp32::esp_bootloader_esp_idf::esp_app_desc!();
+
+static LOGGER: Logger = Logger::new("talker");
 
 #[entry]
 fn main() -> ! {
     run(
         NodeConfig::from_toml(include_str!("../config.toml")),
         |config| {
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
+
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
                 .node_name("talker");
-            // Phase 104.A — bare-metal callers explicitly register the RMW
-            // backend before `Executor::open`. POSIX hosts auto-register via
-            // `.init_array`; this target doesn't walk that section.
             nros_rmw_zenoh::register().expect("Failed to register RMW backend");
             let mut executor = Executor::open(&exec_config)?;
             let publisher = {
                 let mut node = executor.create_node("talker")?;
-                esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
+                nros_info!(&LOGGER, "Declaring publisher on /chatter (std_msgs/Int32)");
                 node.create_publisher::<Int32>("/chatter")?
             };
-            esp_println::println!("Publisher declared");
-
-            esp_println::println!("Publishing messages...");
+            nros_info!(&LOGGER, "Publisher declared");
+            nros_info!(&LOGGER, "Publishing messages...");
 
             let mut count: i32 = 0;
             executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
                 match publisher.publish(&Int32 { data: count }) {
-                    Ok(()) => esp_println::println!("Published: {}", count),
-                    Err(e) => esp_println::println!("Publish failed: {:?}", e),
+                    Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+                    Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
                 }
                 count = count.wrapping_add(1);
             })?;

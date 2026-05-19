@@ -14,6 +14,10 @@ bench = false
 [dependencies]
 # Platform crate - all you need for ESP32 WiFi + zenoh
 nros-board-esp32 = { path = "../../../../../packages/boards/nros-board-esp32" }
+# Phase 88.16.E — user diagnostics route through `nros-log`. The
+# board crate's `run()` registers an `esp_println`-backed writer
+# against `nros-platform-esp32`'s fn-ptr slot.
+nros-log = { path = "../../../../../packages/core/nros-log", default-features = false }
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }

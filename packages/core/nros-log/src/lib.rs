@@ -39,7 +39,12 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-use core::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
+// Phase 88.16.E — portable-atomic polyfill for CAS-less targets
+// (RISC-V `imc`, etc.). Feature unification: a consuming bare-metal
+// crate enables `unsafe-assume-single-core` / `critical-section` on
+// its own `portable-atomic` dep; native CAS targets get the
+// passthrough.
+use portable_atomic::{AtomicPtr, AtomicU8, Ordering};
 
 #[cfg(feature = "log-compat")]
 pub mod log_compat;
@@ -441,7 +446,7 @@ pub fn flush() {
 // `no_std` targets (`thread_local!` requires `std`).
 // -----------------------------------------------------------------------------
 
-use core::sync::atomic::AtomicBool;
+use portable_atomic::AtomicBool;
 static RECURSION_GUARD: AtomicBool = AtomicBool::new(false);
 
 fn recursion_guard_check_and_set() -> bool {

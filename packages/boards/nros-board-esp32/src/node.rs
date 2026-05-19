@@ -360,6 +360,7 @@ where
     F: FnOnce(&NodeConfig) -> core::result::Result<(), E>,
 {
     init_hardware(&config);
+    register_log_writer();
 
     // Run user application
     match f(&config) {
@@ -382,4 +383,30 @@ where
     loop {
         core::hint::spin_loop();
     }
+}
+
+/// Phase 88.16.E — register an `esp_println`-backed writer with
+/// `nros-platform-esp32`'s log fn-ptr slot. Called once from
+/// [`run()`] right after hardware init. Idempotent: re-calling
+/// replaces the previous registration.
+fn register_log_writer() {
+    fn writer(severity: u8, name: &[u8], message: &[u8]) {
+        let label = match severity {
+            0 => "TRACE",
+            1 => "DEBUG",
+            2 => "INFO",
+            3 => "WARN",
+            4 => "ERROR",
+            5 => "FATAL",
+            _ => "?",
+        };
+        let name_str = core::str::from_utf8(name).unwrap_or("");
+        let msg_str = core::str::from_utf8(message).unwrap_or("");
+        if !name_str.is_empty() {
+            esp_println::println!("[{}] {}: {}", label, name_str, msg_str);
+        } else {
+            esp_println::println!("[{}] {}", label, msg_str);
+        }
+    }
+    nros_platform_esp32::register_log_writer(Some(writer));
 }
