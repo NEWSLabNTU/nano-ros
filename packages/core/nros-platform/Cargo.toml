@@ -60,6 +60,7 @@ cffi-export = [
     "nros-platform-stm32f4?/cffi-export",
     "nros-platform-esp32?/cffi-export",
     "nros-platform-esp32-qemu?/cffi-export",
+    "nros-platform-esp32s3-qemu?/cffi-export",
 ]
 # Phase 121.8.e — bare-metal embedded crates flip to CffiPlatform
 # routing. Each crate impls the full PlatformTcp/Udp/SocketHelpers/
@@ -86,6 +87,15 @@ platform-esp32-qemu = [
     "dep:nros-platform-esp32-qemu",
     "dep:nros-platform-cffi",
     "nros-platform-esp32-qemu/cffi-export",
+]
+# Phase 117.1 — Xtensa ESP32-S3 QEMU bare-metal. PSRAM-backed
+# heap unblocks dust-dds on the ESP32 line (ESP32-C3's 400 KiB
+# internal SRAM can't fit RTPS builtin entities — see
+# `nros-platform-esp32s3-qemu/README.md` for the design rationale).
+platform-esp32s3-qemu = [
+    "dep:nros-platform-esp32s3-qemu",
+    "dep:nros-platform-cffi",
+    "nros-platform-esp32s3-qemu/cffi-export",
 ]
 # Phase 121.3.deprecate-rust-remove (closed): the four RTOS platform
 # features still resolve `ConcretePlatform` to `CffiPlatform`. The
@@ -168,6 +178,7 @@ nros-platform-mps2-an385 = { version = "0.1.0", path = "../../platforms/nros-pla
 nros-platform-stm32f4 = { version = "0.1.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
 nros-platform-esp32 = { version = "0.1.0", path = "../../platforms/nros-platform-esp32", optional = true }
 nros-platform-esp32-qemu = { version = "0.1.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
+nros-platform-esp32s3-qemu = { version = "0.1.0", path = "../../platforms/nros-platform-esp32s3-qemu", optional = true }
 # Phase 121.3.deprecate-rust-remove — nros-platform-{freertos,nuttx,
 # threadx,zephyr} Rust crates were deleted. `packages/core/nros-platform-{rtos}/`
 # now hosts the C port only. `platform-{rtos}` features just toggle

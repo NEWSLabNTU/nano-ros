@@ -1,0 +1,34 @@
+[package]
+name = "nros-platform-esp32s3-qemu"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "nros platform implementation for ESP32-S3 QEMU bare-metal (Phase 117)"
+publish = false
+
+[lib]
+name = "nros_platform_esp32s3_qemu"
+
+[features]
+default = []
+# Phase 117 — dust-dds heap budget for the PSRAM-backed DDS bring-up.
+# ESP32-S3 carries up to 16 MiB octal PSRAM (8 MiB on QEMU's modeled
+# part). Reserve a generous 1 MiB by default for
+# `DcpsDomainParticipant` + builtin actors — the C3 path was capped
+# at 192 KiB to fit within 400 KiB internal SRAM; on S3 the heap
+# lives in PSRAM so the budget is no longer cramped. The off-feature
+# build stays at the 32 KiB internal-SRAM default so zenoh / xrce
+# footprints don't pay PSRAM tax.
+dds-heap = []
+# Phase 121.2.embedded — canonical C ABI export.
+cffi-export = ["dep:nros-platform-cffi"]
+
+[dependencies]
+nros-platform-api = { path = "../../core/nros-platform-api" }
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
+zpico-alloc = { path = "../../zpico/zpico-alloc" }
+esp-hal = { version = "1", features = ["esp32s3", "unstable"] }
+nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+# Shared bare-metal helpers (PRNG, sleep). esp-hal already provides
+# libc symbols, so we do NOT enable the `libc-stubs` feature here.
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common" }
