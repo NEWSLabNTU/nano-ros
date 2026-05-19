@@ -1,0 +1,66 @@
+[package]
+name = "nros-log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ROS 2 style leveled logging facade for nros (Phase 88)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "logging", "embedded", "no-std"]
+categories = ["embedded", "no-std", "development-tools::debugging"]
+
+# Phase 88 — portable facade. NO target deps. Per-platform log
+# delivery lives in each `nros-platform-<rtos>` crate via the
+# `nros_platform_log_write` / `nros_platform_log_flush` ABI; the
+# `PlatformSink` here is the only sink that calls the ABI.
+#
+# `default = ["max-level-trace", "buffer-size-256"]` keeps the
+# library-only case zero-cost: pull the crate in, get types +
+# macros, no sink wired until the app calls `nros_log::init(...)`.
+#
+# Compile-time level ceiling: pick at most one `max-level-*`.
+# Macros below the ceiling expand to `()` so the format call is
+# dead-code-eliminated.
+#
+# Buffer-size family controls the `heapless::String<N>` used for
+# call-site formatting. Bigger N = larger stack frame per call;
+# smaller N = more truncation. Pick at most one.
+
+[features]
+default = ["max-level-trace", "buffer-size-256"]
+std = ["alloc"]
+alloc = []
+
+max-level-trace = []
+max-level-debug = []
+max-level-info  = []
+max-level-warn  = []
+max-level-error = []
+max-level-off   = []
+
+buffer-size-128  = []
+buffer-size-256  = []
+buffer-size-512  = []
+buffer-size-1024 = []
+
+# Optional `log` crate bridge (Phase 88.10). Lets ecosystem crates
+# that target `log::info!` etc. feed through the same dispatcher.
+log-compat = ["dep:log"]
+
+[dependencies]
+heapless = { workspace = true }
+log = { workspace = true, optional = true }
+
+# Integration tests pull the POSIX C impl of `nros_platform_log_*`
+# in via `nros-platform-cffi[posix-c-port]` so `PlatformSink ->
+# nros_platform_log_write` actually resolves at link time without
+# needing a separate `nros-platform-posix` cargo dep on the host
+# (cffi already wraps the C build via its `cc` build dep).
+[dev-dependencies]
+nros-platform-cffi = { path = "../nros-platform-cffi", default-features = false, features = ["posix-c-port"] }
+
+[lints]
+workspace = true

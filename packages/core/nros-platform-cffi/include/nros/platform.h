@@ -259,6 +259,43 @@ size_t  nros_platform_wake_storage_align(void);
 uint32_t nros_platform_critical_section_acquire(void);
 void     nros_platform_critical_section_release(uint32_t token);
 
+/* ---- Logging (Phase 88) ---- */
+/* Per-platform leveled log delivery, matching the post-Phase-129
+ * pattern: portable facade (`nros-log`) formats into a buffer and
+ * hands the rendered text to whichever `nros-platform-<rtos>` is
+ * linked in. POSIX writes to stderr; Zephyr routes through
+ * `LOG_MODULE_DECLARE(nros)` (or `printk` fallback); ESP-IDF goes
+ * through `esp_log_write`; NuttX through `syslog`; FreeRTOS /
+ * ThreadX / bare-metal expose a `register_log_writer(...)` helper
+ * in their platform crate so boards register the actual writer
+ * (UART / semihosting / defmt / RTT) once at startup.
+ *
+ * `severity`: matches `nros_log::Severity::as_u8()`:
+ *   0 = Trace, 1 = Debug, 2 = Info, 3 = Warn, 4 = Error, 5 = Fatal.
+ * Implementors should map onto the platform's nearest level.
+ *
+ * `name_ptr` / `name_len`: logger name (NOT null-terminated; UTF-8).
+ *   May be empty (the catch-all logger).
+ * `msg_ptr`  / `msg_len`:  already-formatted message body (NOT null-
+ *   terminated; UTF-8). Implementors that need a `CStr` must copy
+ *   into their own buffer + append `'\0'`.
+ *
+ * No return value: log delivery never fails from the caller's POV.
+ * Platforms drop silently on internal overflow (e.g. RTT ring full).
+ *
+ * `nros_platform_log_flush`: best-effort drain of any internal
+ * buffer (RTT, syslog buffered chan, etc.). Default impl = no-op.
+ *
+ * Thread / ISR safety is documented per platform — see the table
+ * in `docs/roadmap/phase-88-nros-log.md`. The ABI itself is
+ * synchronous + reentrant-safe at the caller layer (a recursion
+ * guard in `nros-log` prevents fan-out re-entry). */
+void nros_platform_log_write(
+    uint8_t        severity,
+    const uint8_t *name_ptr, uintptr_t name_len,
+    const uint8_t *msg_ptr,  uintptr_t msg_len);
+void nros_platform_log_flush(void);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif

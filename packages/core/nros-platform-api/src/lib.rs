@@ -714,6 +714,41 @@ pub trait PlatformLibc {
 }
 
 // ============================================================================
+// Logging — Phase 88 leveled log delivery
+// ============================================================================
+
+/// Per-platform leveled log delivery.
+///
+/// Matches the post-Phase-129 platform-ABI pattern: the portable
+/// facade (`nros-log`) formats messages into a fixed buffer; each
+/// `nros-platform-<rtos>` carries the actual delivery (stderr,
+/// `printk`, `esp_log_write`, `syslog`, board-registered UART writer,
+/// etc.).
+///
+/// `severity` is the `u8` discriminant of `nros_log::Severity`
+/// (0 = Trace .. 5 = Fatal). Implementors should map onto the
+/// platform's nearest native level.
+///
+/// `name` is the logger name (UTF-8, NOT null-terminated, may be
+/// empty); `message` is the already-formatted body (UTF-8, NOT
+/// null-terminated). Delivery is infallible from the caller's POV;
+/// platforms that fill an internal buffer (RTT, syslog) silently
+/// drop on overflow.
+///
+/// Thread / ISR safety is per-platform — see the table in
+/// `docs/roadmap/phase-88-nros-log.md`. The ABI itself is synchronous
+/// and the caller-side facade carries a recursion guard so a sink
+/// that triggers `log()` from inside `write` is short-circuited.
+pub trait PlatformLog {
+    /// Deliver one record. Severity is a stable `u8` matching
+    /// `nros_log::Severity::as_u8()`.
+    fn write(severity: u8, name: &[u8], message: &[u8]);
+
+    /// Best-effort drain of any internal buffer. Default = no-op.
+    fn flush() {}
+}
+
+// ============================================================================
 // Networking — UDP multicast
 // ============================================================================
 

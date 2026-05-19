@@ -563,3 +563,52 @@ void nros_platform_critical_section_release(uint32_t token) {
     (void) token;
     pthread_mutex_unlock(&s_cs_mutex);
 }
+
+/* ============================================================
+ *   Logging (Phase 88)
+ *
+ *   Render to stderr as `[<LEVEL>] <name>: <message>\n`. Body is
+ *   pre-formatted by `nros-log`; we only prepend severity + name
+ *   and append the newline. Mutex guards stderr so multi-thread
+ *   writes land one line at a time. Not ISR-safe (POSIX has no ISR).
+ * ============================================================ */
+#include <stdio.h>
+
+static const char *severity_label_log(uint8_t s) {
+    switch (s) {
+    case 0: return "TRACE";
+    case 1: return "DEBUG";
+    case 2: return "INFO";
+    case 3: return "WARN";
+    case 4: return "ERROR";
+    case 5: return "FATAL";
+    default: return "?";
+    }
+}
+
+static pthread_mutex_t s_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void nros_platform_log_write(uint8_t severity,
+                             const uint8_t *name_ptr, uintptr_t name_len,
+                             const uint8_t *msg_ptr,  uintptr_t msg_len) {
+    if (msg_ptr == NULL && msg_len > 0) {
+        return;
+    }
+    const char *label = severity_label_log(severity);
+    pthread_mutex_lock(&s_log_mutex);
+    if (name_ptr != NULL && name_len > 0) {
+        fprintf(stderr, "[%s] %.*s: %.*s\n",
+                label,
+                (int) name_len, (const char *) name_ptr,
+                (int) msg_len,  (const char *) msg_ptr);
+    } else {
+        fprintf(stderr, "[%s] %.*s\n",
+                label,
+                (int) msg_len, (const char *) msg_ptr);
+    }
+    pthread_mutex_unlock(&s_log_mutex);
+}
+
+void nros_platform_log_flush(void) {
+    fflush(stderr);
+}

@@ -9,6 +9,7 @@ members = [
     "packages/core/nros-params",
     "packages/core/nros-rmw",
     "packages/core/nros-node",
+    "packages/core/nros-log",
     "packages/core/nros-orchestration",
     # Build-script helper: extracts Rust type sizes from a compiled rlib so
     # nros-c/nros-cpp can size their opaque storage from Rust's size_of.

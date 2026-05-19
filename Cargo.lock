@@ -1326,6 +1326,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-log"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+ "log",
+ "nros-platform-cffi",
+]
+
+[[package]]
 name = "nros-macros"
 version = "0.1.0"
 dependencies = [
