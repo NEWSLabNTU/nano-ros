@@ -471,6 +471,34 @@ if(CONFIG_NROS_C_API)
     # Link the built library
     zephyr_library_link_libraries(nros_c_cargo)
 
+    # Phase 168.4 — Phase 134.fix dropped `dep:nros-rmw-zenoh` and
+    # `dep:nros-rmw-dds` from `nros-c`'s feature graph so `libnros_c.a`
+    # no longer carries `nros_rmw_<x>_register` for those backends.
+    # The Phase 160.A strong stub below still references those symbols,
+    # so the C-API Zephyr link fails for zenoh + dds without a
+    # standalone backend staticlib. XRCE keeps `dep:nros-rmw-xrce-cffi`
+    # under `cffi-xrce-c`, so it does NOT need a separate staticlib.
+    if(CONFIG_NROS_RMW_ZENOH)
+        set(_nros_backend_features "platform-zephyr")
+        if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
+            string(APPEND _nros_backend_features ",std")
+        endif()
+        nros_cargo_build(
+            PACKAGE nros-rmw-zenoh-staticlib
+            FEATURES "${_nros_backend_features}"
+        )
+        add_dependencies(app nros_rmw_zenoh_staticlib_cargo_build)
+        zephyr_library_link_libraries(nros_rmw_zenoh_staticlib_cargo)
+    endif()
+    # Phase 168.4 follow-up — DDS C-API Zephyr build is gated on
+    # extending `nros-rmw-dds-staticlib`'s `platform-zephyr` feature
+    # to pull `nros-platform/global-allocator` + `panic-halt` (mirror
+    # of the FreeRTOS / NuttX / ThreadX setup in
+    # `nros-rmw-zenoh-staticlib`). dust-dds is no_std-alloc-only, so
+    # native_sim cannot fall through to the `std` path. Deferred to
+    # Phase 168.X. The legacy `examples/zephyr/c/dds/<case>/` builds
+    # share the same gap on `main` — this is not a regression.
+
     # Phase 160.A — emit the `nros_app_register_backends` strong stub
     # that calls the active backend's `nros_rmw_<x>_register` entry.
     # `nros_support_init` invokes this hook explicitly (Phase 155.B.4)
@@ -581,6 +609,28 @@ if(CONFIG_NROS_CPP_API)
 
     # Link the built library
     zephyr_library_link_libraries(nros_cpp_cargo)
+
+    # Phase 168.4 — same backend staticlib link as the C-API branch
+    # above. `nros-cpp`'s `rmw-zenoh-cffi` feature does NOT pull
+    # `dep:nros-rmw-zenoh` (Phase 134.fix), so the Phase 160.A strong
+    # stub below references `nros_rmw_zenoh_register` with no provider
+    # unless we link the standalone backend staticlib. `rmw-xrce-cffi`
+    # and `rmw-dds-cffi` still carry their deps, so they don't need
+    # this extra step.
+    if(CONFIG_NROS_RMW_ZENOH)
+        set(_nros_cpp_backend_features "platform-zephyr")
+        if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
+            string(APPEND _nros_cpp_backend_features ",std")
+        endif()
+        if(NOT TARGET nros_rmw_zenoh_staticlib_cargo)
+            nros_cargo_build(
+                PACKAGE nros-rmw-zenoh-staticlib
+                FEATURES "${_nros_cpp_backend_features}"
+            )
+        endif()
+        add_dependencies(app nros_rmw_zenoh_staticlib_cargo_build)
+        zephyr_library_link_libraries(nros_rmw_zenoh_staticlib_cargo)
+    endif()
 
     # Phase 160.A — same register-stub emission as the C-API branch
     # above. C++ apps call `nros_cpp_init` which internally invokes
