@@ -265,6 +265,10 @@ mod intern {
 
     impl InternTable {
         pub(super) const fn new() -> Self {
+            // `AtomicPtr` has interior mutability; clippy flags
+            // `const` bindings here, but the pattern is canonical
+            // for `[T; N]` array init (rust-clippy#5754).
+            #[allow(clippy::declare_interior_mutable_const)]
             const NULL: AtomicPtr<Logger> = AtomicPtr::new(core::ptr::null_mut());
             Self {
                 slots: [NULL; MAX_LOGGERS],
