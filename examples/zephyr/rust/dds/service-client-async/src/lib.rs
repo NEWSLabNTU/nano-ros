@@ -103,16 +103,15 @@ async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeE
         let req = AddTwoIntsRequest { a, b };
         info!("Calling service: {} + {} = ?", a, b);
 
-        // Phase 160.B.2 — use `Promise::poll_until_ready` instead of
-        // the bare `.await`. The Future impl on `Promise` relies on
-        // the backend's `register_waker` -> listener-fires-Waker
-        // path, which doesn't deliver on dust-dds's nostd-runtime
-        // build: listener futures only advance inside
-        // `runtime.block_on(...)`, and a parked `.await` consumer
-        // never issues such a call. `poll_until_ready` actively
-        // polls `try_recv()` between yields, letting `spin_task`
-        // pump the runtime in between (which IS what fires the
-        // listener).
+        // Use `Promise::poll_until_ready` (Phase 160.B.2) — the
+        // canonical async shape for backends without listener-driven
+        // wake on nostd-runtime. The bare `.await` path still
+        // doesn't complete even after Phase 160.B.3 lifted
+        // `NrosPlatformRuntime::drive` to drain-until-quiescent
+        // (the listener-fires path involves dust-dds internals not
+        // visible from the spawner queue alone — needs a deeper
+        // dust-dds-side fix tracked under Phase 160's open
+        // upstream-flavor follow-ups).
         let reply = client
             .call(&req)?
             .poll_until_ready(|| embassy_time::Timer::after_millis(SPIN_TICK_MS))

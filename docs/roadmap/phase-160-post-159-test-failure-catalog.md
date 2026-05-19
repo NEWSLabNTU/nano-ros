@@ -186,10 +186,47 @@ let reply = client
 ```
 
 `examples/zephyr/rust/dds/service-client-async/src/lib.rs` switched
-to this helper; test still PASS. Options 1 + 2 (the actual root-
-cause fixes that would let bare `.await` work) remain open as
-upstream-flavor work — file separately if a future user hits the
-listener-doesn't-fire issue outside this example.
+to this helper; test PASS.
+
+**160.B.3 landed 2026-05-19** (partial — option 2 base layer).
+Lifted `NrosPlatformRuntime::drive()` (and the `block_on_boxed`
+loop body) from a single-pass `spawner.drain_tasks()` to a new
+`spawner.drain_until_quiescent(max_passes)` that loops the drain
+until no tasks remain pending or a 32-pass safety bound trips.
+The dust-dds receive loop needs several poll cycles per UDP packet
+(socket-poll -> buf-read -> packet-decode -> dispatch ->
+DcpsDataReaderListener mpsc enqueue -> listener task poll ->
+listener body -> waker_cell.wake), so the prior single-pass drain
+per `spin_once` tick rate-limited inbound throughput.
+
+What 160.B.3 does NOT fix: bare `.await` on a Promise still hangs
+on the nostd-runtime DDS path. Empirically the listener-fires
+chain doesn't translate into Embassy task re-poll. Hypotheses
+that remain to verify with on-target instrumentation:
+
+- The dust-dds `DcpsDataReaderListener` mpsc channel may rely on
+  its receive-side waker being driven from a real Embassy
+  Signaler. Our spawner polls with `noop_waker`, so the channel
+  never gets re-polled via the wake path — only via the next
+  drain-pass scan. Drain happens, listener fires its body
+  (`waker_cell.wake()`), Embassy's task waker IS called — but
+  Embassy may not observe the cross-context wake because the
+  spawner is running inside a Zephyr kernel context that isn't
+  Embassy's own. Needs an embassy-executor + zephyr-embassy +
+  raw_executor::TaskRef interaction trace to confirm.
+- Or: the listener mpsc send path (in
+  `domain_participant.rs:5358-5363`) requires an in-Embassy-context
+  task to drive the awaited `.send(...).await`. If the
+  domain_participant task itself is parked waiting on
+  socket-readiness via a Waker that doesn't fire on the
+  nostd-runtime, the listener_sender.send().await stalls.
+
+Path forward: keep `Promise::poll_until_ready` as the canonical
+shape; tackle the bare `.await` deadlock under a dedicated
+sub-phase once an on-target log probe identifies which link in
+the chain is the stall. The 160.B.3 drain-quiescent change is
+purely net-positive (faster per-tick throughput) regardless of
+the deeper issue, so it ships unconditionally.
 
 ### C. Zephyr cross-host bridge E2E (8 of 10 tests closed 2026-05-19)
 

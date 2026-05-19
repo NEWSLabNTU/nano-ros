@@ -185,6 +185,13 @@ where
 /// Type-erased future the spawner owns.
 type BoxedTask = Pin<Box<dyn Future<Output = ()> + Send>>;
 
+/// Safety bound on `drain_until_quiescent` loop count. 32 covers normal
+/// dust-dds SPDP / SEDP / RTPS-receive depth with headroom; a runaway
+/// pattern that re-spawns every poll would have looped indefinitely
+/// under the prior single-pass drain shape too (it just wouldn't have
+/// manifested as fast). Tuneable if a future use case needs more depth.
+const DRAIN_MAX_PASSES: usize = 32;
+
 /// Task queue shared between the spawner handle and the cooperative
 /// executor that drains it.
 ///
@@ -209,8 +216,13 @@ impl NrosSpawner {
     /// Drain the task queue once: pop every pending task, poll it, and
     /// push it back onto a second queue if it didn't complete. Intended
     /// to be called from the executor arena hook (Phase 71.4).
-    pub fn drain_tasks(&self) {
+    ///
+    /// Returns the number of tasks polled. The caller can use this to
+    /// decide whether to loop (drain until quiescent) — see
+    /// [`drain_until_quiescent`](Self::drain_until_quiescent).
+    pub fn drain_tasks(&self) -> usize {
         let drained: VecDeque<BoxedTask> = mutex_lock(&self.queue, |q| core::mem::take(q));
+        let polled = drained.len();
         let mut survivors: VecDeque<BoxedTask> = VecDeque::with_capacity(drained.len());
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
@@ -227,6 +239,44 @@ impl NrosSpawner {
                 q.push_back(t);
             }
         });
+        polled
+    }
+
+    /// Repeatedly [`drain_tasks`](Self::drain_tasks) until the queue is
+    /// quiescent (no more pending tasks left) or `max_passes` iterations
+    /// have run, whichever comes first. Returns the total number of task
+    /// polls performed.
+    ///
+    /// Phase 160.B.3 — single-pass `drain_tasks` per `spin_once` call
+    /// wasn't enough to fire DDS listeners on the nostd-runtime path:
+    /// the dust-dds receive loop needs several poll cycles to consume
+    /// a single UDP packet (socket-poll -> buf-read -> packet-decode
+    /// -> dispatch -> listener-fire), and the listener future itself
+    /// is just one task in the spawner queue. A 10 ms `spin_task` tick
+    /// crediting one poll per drain bounded inbound packet rate to
+    /// fractional packets per second, which broke the `.await` shape
+    /// (the parked consumer's Waker only fires once the listener runs
+    /// to completion). The poll-loop pattern (160.B.1) accidentally
+    /// worked because `block_on(reader.take(...))` loops `drain_tasks`
+    /// in tight succession. Looping here lifts the same behaviour up
+    /// to spin_task and `block_on`, so both shapes complete.
+    ///
+    /// `max_passes` is a safety bound against pathological tasks that
+    /// re-spawn themselves every poll. 32 covers normal dust-dds
+    /// SPDP / SEDP / RTPS-receive depth with plenty of headroom; a
+    /// runaway pattern would have looped indefinitely under the prior
+    /// single-pass behaviour too (it just wouldn't have manifested as
+    /// fast).
+    pub fn drain_until_quiescent(&self, max_passes: usize) -> usize {
+        let mut total = 0;
+        for _ in 0..max_passes {
+            let polled = self.drain_tasks();
+            total += polled;
+            if polled == 0 {
+                break;
+            }
+        }
+        total
     }
 
     pub fn is_empty(&self) -> bool {
@@ -302,10 +352,13 @@ impl<P> NrosPlatformRuntime<P> {
         }
     }
 
-    /// Drain the spawner's task queue once. Intended for Phase 71.4's
-    /// arena hook to call from `Executor::spin_once()`.
+    /// Drain the spawner's task queue until quiescent. Intended for
+    /// Phase 71.4's arena hook to call from `Executor::spin_once()`.
+    /// Phase 160.B.3 lifted this from a single-pass drain to a
+    /// quiescent loop so listener tasks fire reliably per spin tick
+    /// (see [`NrosSpawner::drain_until_quiescent`]).
     pub fn drive(&self) {
-        self.spawner.drain_tasks();
+        self.spawner.drain_until_quiescent(DRAIN_MAX_PASSES);
     }
 
     pub fn spawner_handle(&self) -> NrosSpawner {
@@ -354,8 +407,11 @@ where
                 return v;
             }
             // Drive background tasks (RTPS receive loops, reliability
-            // timers, etc.) once per iteration.
-            self.spawner.drain_tasks();
+            // timers, listener-bound futures, etc.) until quiescent
+            // per iteration. Phase 160.B.3 — see
+            // [`NrosSpawner::drain_until_quiescent`] for the reason
+            // single-pass drains were insufficient for listener wake.
+            self.spawner.drain_until_quiescent(DRAIN_MAX_PASSES);
             // Yield to the platform scheduler so we don't starve
             // co-resident threads (POSIX) or ISR handlers (RTOS).
             <P as PlatformSleep>::sleep_ms(1);
