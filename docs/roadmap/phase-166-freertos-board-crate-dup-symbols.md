@@ -1,6 +1,25 @@
-# Phase 166 — Duplicate `nros_platform_*` symbols across FreeRTOS board crates
+# Phase 166 — Code regressions surfaced by audit-reader agents
 
-**Goal.** Eliminate the duplicate-symbol linker error when both
+**Goal.** Land the code-side fixes for issues the multi-platform
+audit-reader pass found while following starter pages. The book-side
+docs are corrected as the audits run; this phase tracks the
+underlying code / build bugs.
+
+## Open issues
+
+| # | Module / file | Symptom | Severity |
+|---|---|---|---|
+| 166.A | `nros-board-freertos` + `nros-board-mps2-an385-freertos` | Duplicate `nros_platform_*` symbols at link time | P1 — blocks FreeRTOS DDS build |
+| 166.B | `nros-log` on `riscv32imc-none-elf` | `AtomicPtr::compare_exchange` not available — needs `portable-atomic` | P1 — blocks esp-hal Rust build |
+| 166.C | `examples/native/{cpp,c}/zenoh/talker/` CMake | Transitive submodule fetch pulls dust-dds + px4-rs even for posix+zenoh; first build aborts | P2 |
+| 166.D | `examples/threadx-linux/rust/zenoh/talker/Cargo.toml` (and siblings) | Missing empty `[workspace]` table — `cargo build` from inside the repo discovers parent workspace + crate not listed → error | P2 |
+| 166.E | `integrations/nuttx/` template | `external-Kconfig.in` + `external-Make.defs.in` staging step not wired into `just nuttx setup`; user following the shell-symlink instruction can't reach example apps via menuconfig | P3 |
+
+---
+
+## 166.A — Duplicate `nros_platform_*` symbols across FreeRTOS board crates
+
+Eliminate the duplicate-symbol linker error when both
 `nros-board-freertos` (common FreeRTOS overlay) and a board-specific
 overlay (`nros-board-mps2-an385-freertos`, eventual STM32F4 / NXP /
 TI variants) are pulled into the same binary. The `platform.c` C
@@ -242,3 +261,99 @@ treating it as canonical.
   `nros_tests::skip!("xrce-large-msg-test fixture not prebuilt; run
   `just build-test-fixtures`")` so the test reports `[SKIPPED]`
   instead of `FAILED` when fixture is missing. Trivial follow-up.
+
+---
+
+## 166.B — `nros-log` AtomicPtr CAS on `riscv32imc-none-elf`
+
+esp-hal build for ESP32-C3 fails at `packages/core/nros-log/src/lib.rs:293,449`:
+`AtomicPtr<Logger>::compare_exchange` and `AtomicBool::compare_exchange`
+are not available on `riscv32imc-unknown-none-elf` — the RV32IMC ISA
+has no native CAS. The standard fix is to depend on the
+[`portable-atomic`](https://crates.io/crates/portable-atomic) crate
+which polyfills CAS via a critical section on no-CAS targets.
+
+### Work items
+
+- [ ] **166.B.1** Add `portable-atomic` dep to `nros-log` with
+      `features = ["critical-section"]` gated on
+      `target_has_atomic = "ptr"` being false.
+- [ ] **166.B.2** Switch the two call sites (`AtomicPtr` for the
+      logger pointer, `AtomicBool` for the once-flag) to the
+      `portable-atomic` variants.
+- [ ] **166.B.3** Verify `cargo build` from
+      `examples/esp32/rust/zenoh/talker/` succeeds.
+- [ ] **166.B.4** Add a build-matrix entry in `nros-tests` that
+      cross-compiles `nros-log` for `riscv32imc-unknown-none-elf`
+      to catch CAS regressions on future commits.
+
+---
+
+## 166.C — Transitive submodule fetch on first CMake build
+
+`examples/native/cpp/zenoh/talker/`'s `cmake --build` pulls
+`nros-c`, which through its Cargo.toml chains in dust-dds + px4-rs
+crates even though the target is posix+zenoh. On a fresh clone
+where `just setup` ran without `--recursive`, the build aborts:
+
+```
+.../dust-dds/dds/Cargo.toml — No such file or directory
+.../third-party/px4/px4-rs/tests/sitl/Cargo.toml — No such file or directory
+```
+
+### Work items
+
+- [ ] **166.C.1** Audit `nros-c`'s Cargo dep graph — should
+      dust-dds + px4-rs be optional features rather than
+      unconditional path-deps?
+- [ ] **166.C.2** OR: have `just setup` run `git submodule update
+      --init --recursive` for the submodules transitively referenced
+      by `nros-c` regardless of selected tier.
+- [ ] **166.C.3** OR: pin the CMake glue (`add_subdirectory`) to
+      do the recursive submodule update with a clear error if it
+      fails.
+
+---
+
+## 166.D — Standalone-example `[workspace]` table missing
+
+Examples that aren't listed in the root `Cargo.toml` `[workspace]`
+table must declare an empty `[workspace]` themselves; otherwise
+cargo discovers the parent workspace and refuses to build with:
+
+```
+error: current package believes it's in a workspace when it's not
+```
+
+Confirmed on `examples/threadx-linux/rust/zenoh/talker/`. Likely
+hits other standalone examples too.
+
+### Work items
+
+- [ ] **166.D.1** Audit every example under `examples/` for a
+      missing `[workspace]` table. Likely needs ≥ 50 file edits.
+- [ ] **166.D.2** Add a CI lint step that asserts every
+      `examples/**/Cargo.toml` either has `[workspace]` OR is
+      listed in the root workspace `members`.
+
+---
+
+## 166.E — NuttX `external-Kconfig.in` staging step missing
+
+The NuttX integration shell at `integrations/nuttx/` carries
+`external-Kconfig.in` + `external-Make.defs.in` templates that
+need to be staged into `$NUTTX_APPS/external/` (alongside the
+`nano-ros/` symlink) for example apps to appear under
+`menuconfig → Application Configuration → External Modules`. The
+book's "wire the shell once via symlink" instruction is incomplete
+— users following it literally get the nano-ros library app but
+not the example apps the page promises.
+
+### Work items
+
+- [ ] **166.E.1** Add a `just nuttx setup-external-apps` recipe
+      (or fold into `just nuttx setup`) that stages the
+      `external-Kconfig.in` / `external-Make.defs.in` templates.
+- [ ] **166.E.2** Document the staging step in
+      `book/src/getting-started/integration-nuttx.md` (or update
+      the symlink instructions to reference the recipe).
