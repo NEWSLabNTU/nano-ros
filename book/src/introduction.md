@@ -12,7 +12,8 @@ as well as Linux and macOS. The entire core stack is `no_std` compatible.
   communication) or XRCE-DDS (agent-based) at compile time. Same
   application code either way.
 - **Rust-first with C API** — the core is written in Rust for memory safety
-  and ergonomics, with a thin C FFI layer following rclc conventions.
+  and ergonomics, with a thin C FFI (Foreign Function Interface) layer
+  following rclc conventions.
 - **True `no_std`** — runs on bare-metal Cortex-M3 with no heap allocator.
   The `alloc` and `std` features are opt-in.
 - **Standalone tooling** — `cargo nano-ros generate` produces message

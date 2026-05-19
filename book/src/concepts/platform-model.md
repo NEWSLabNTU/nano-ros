@@ -1,10 +1,9 @@
 # Platform Model
 
 nano-ros configures the library for a specific target through
-compile-time choices on three axes. reshaped the RMW
-axis: `nros` no longer carries a per-backend feature — it carries one
-generic `rmw-cffi` runtime registry, and the consuming `Cargo.toml`
-adds the backend crate directly.
+compile-time choices on three axes. `nros` itself carries one
+generic `rmw-cffi` runtime registry; the consuming `Cargo.toml`
+adds the chosen backend shim crate directly (one per RMW).
 
 ## The Three Axes
 

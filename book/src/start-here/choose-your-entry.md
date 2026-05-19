@@ -15,13 +15,30 @@ it's worth playing with.
   paragraph for the maturity signal.
 - If you stay interested, jump to one of the starters below.
 
+## 🔌 I have an ESP32 on my desk right now
+
+Already have hardware? Two-step path:
+
+1. **Linux first** — [First Node — Rust](../getting-started/first-node-rust.md)
+   on your host to verify the stack in ~10 minutes
+   (`just setup tier=default` then `cargo run`).
+2. **Then ESP32** — once Linux works, follow
+   [ESP32 (esp-hal)](../getting-started/esp32.md) for the Rust
+   cross-compile path. You need a second machine (or the host
+   itself) running `zenohd` on your Wi-Fi network — the board
+   needs network reach to the router. For a C-only path use
+   [ESP32 (ESP-IDF component)](../getting-started/integration-esp-idf.md)
+   if you already have ESP-IDF set up.
+
 ## 🚀 I want to get started shipping something
 
 You've decided to use nano-ros and want a working talker on Linux
 first, then maybe move to an MCU.
 
 1. **[Install + first build](../getting-started/installation.md)**
-   — `just setup tier=default` + tooling sanity.
+   — `just setup tier=default` (an SDK *tier* controls which
+   toolchains the setup script installs; `default` covers every
+   in-CI target) plus tooling sanity.
 2. **First Node** in your language:
    [Rust](../getting-started/first-node-rust.md) ·
    [C](../getting-started/first-node-c.md) ·

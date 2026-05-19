@@ -1,8 +1,10 @@
 # PX4 (integration shell)
 
 > **Contributor docs?** Building nano-ros's PX4 example from this
-> repository is covered at [PX4 (contributor)](./px4.md). lifts the PX4 `EXTERNAL_MODULES_LOCATION` pattern (Phase
-131.C.2) into a generic copy-out template under
+> repository is covered at [PX4 (contributor)](./px4.md).
+
+nano-ros lifts the PX4 `EXTERNAL_MODULES_LOCATION` pattern into a
+generic copy-out template under
 `integrations/px4/module-template/`. Downstream PX4 apps vendor the
 template, customise it, and point `EXTERNAL_MODULES_LOCATION` at
 their copy.

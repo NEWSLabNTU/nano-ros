@@ -23,7 +23,7 @@ them.
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |
 | NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
 | TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | Untested | FreeRTOS starter + TI driver overlay                         |
-| RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS | Untested | Bare-metal Cortex-M3 path — Cortex-M0+ has only 4 NVIC levels (PiCAS not supported on this chip) |
+| RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS | Untested | Bare-metal Cortex-M3 path — Cortex-M0+ has only 4 NVIC priority levels (per-callback OS-priority dispatch is disqualified — pub/sub still works fine) |
 | QEMU         | `virt` RISC-V64      | rv64gc             | RISC-V     | ThreadX       | Tested   | `examples/threadx-riscv64/`                                       |
 | QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr / NuttX | Tested   | Zephyr `-b qemu_cortex_a9`, NuttX `qemu-armv7a`                    |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |
@@ -51,8 +51,9 @@ them.
 ## Caveats by chip family
 
 - **Cortex-M0+** (RP2040, STM32F0, nRF51): only 4 NVIC priority
-  levels. PiCAS-style per-callback OS priority dispatch is
-  disqualified on this class; nano-ros's user-space EDF / FIFO
+  levels. Per-callback OS-priority dispatch (a research scheduler
+  shape originally proposed by Choi et al. as **PiCAS**, RTAS '21)
+  is disqualified on this class; nano-ros's user-space EDF / FIFO
   scheduler is the only option. Pub/sub works fine.
 - **Xtensa ESP32 / ESP32-S2 / ESP32-S3**: needs the `esp-rs` fork
   of rustc (`rustup target add` does not cover Xtensa; install via

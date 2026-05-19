@@ -154,8 +154,37 @@ may differ.
 - [ ] **Support model**: nano-ros has **no commercial support
       entity** as of writing. Plan accordingly — either staff
       in-house expertise or contract a consultancy.
-- [ ] **Roadmap visibility**: track `docs/roadmap/` in the
-      upstream repo. Phases are numbered and dated.
+- [ ] **Roadmap visibility**: track the project's roadmap
+      directory in the upstream repo. Items are numbered and
+      dated.
+
+## 9. Maintainability pledge
+
+The single-maintainer signal in §8 is a real adoption risk. Add
+explicit mitigations to your project plan rather than treating
+"open-source" as the answer:
+
+- [ ] **Maintenance horizon**: record the date you adopted and
+      the upstream commit cadence (e.g. `git log --since=…
+      --oneline | wc -l` over the last 90 days). Re-check
+      quarterly.
+- [ ] **Escalation path**: identify the primary maintainer
+      contact (from `Cargo.toml` `authors` + GitHub commit
+      history). For CVEs, use a public GitHub security
+      advisory.
+- [ ] **Governance model**: nano-ros is BDFL-style
+      (benevolent-dictator-for-life) with no formal RFC / vote
+      process. Major design decisions are documented in the
+      roadmap directory; align your expectations accordingly.
+- [ ] **Fork mitigation**: the dual MIT / Apache-2.0 license
+      lets your team fork and maintain independently if upstream
+      goes dormant. Budget for that **possibility**, not the
+      assumption that it will happen.
+- [ ] **Distro tracking**: nano-ros targets ROS 2 Humble today.
+      Iron / Jazzy support depends on the type-hash work tracked
+      in the upstream roadmap (no public ETA yet). If your
+      product must ship on Iron / Jazzy at launch, plan to
+      contribute the type-hash port or wait for upstream.
 
 ## Scoring rubric
 
@@ -169,9 +198,9 @@ Suggested gates:
 | 3–4/8 | Lab / prototype only |
 | < 3/8 | Block on these items first |
 
-Sum across all 8 sections gives your overall readiness. Below 40/64
-you have foundational work to do; above 56/64 you're at production
-quality on every axis where nano-ros can be validated.
+Sum across all 9 sections (§1–9). Below ~50 / 70 you have
+foundational work to do; above ~62 / 70 you're at production
+quality on every axis where nano-ros can be validated externally.
 
 ## See also
 

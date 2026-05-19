@@ -138,10 +138,10 @@ int nros_app_main(int argc, char** argv) {
 ```
 
 `nros_executor_node_init` honours per-Node `rmw_name` +
-`locator` via the `nros_node_options_t` struct (Phase
-104.C.8); the executor sets `node.executor` so subsequent
-`nros_*_init` calls (publisher, subscription, service,
-action) route to the right session.
+`locator` via the `nros_node_options_t` struct; the executor
+sets `node.executor` so subsequent `nros_*_init` calls
+(publisher, subscription, service, action) route to the right
+session.
 
 ### C++ binary
 
@@ -217,10 +217,12 @@ let egress = exec.node_builder("egress")
     .rmw("dds")
     .sched(best_effort_sc)
     .build()?;
-```'s PiCAS-style per-callback OS-priority
-dispatcher (gated behind the `scheduler-os-priority`
-feature) routes each Node's callbacks to its own OS
-priority slot so the slow backend cannot block the fast one.
+```
+
+The PiCAS-style per-callback OS-priority dispatcher (gated
+behind the `scheduler-os-priority` feature) routes each Node's
+callbacks to its own OS priority slot so the slow backend cannot
+block the fast one.
 
 ## Shipped examples
 
