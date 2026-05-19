@@ -239,10 +239,27 @@ Extend M4 to one RTOS/QEMU target.
 
 Acceptance:
 
-- Build uses existing board/platform recipes.
-- Transport/env compile-time options are captured in `nros-plan.json`.
-- Runtime hot path is allocation-free; static capacities come from the plan.
-- No JSON/TOML parsing happens on target.
+- [x] Build uses existing board/platform recipes.
+  (`nros-board-mps2-an385-freertos` `path =` dep wired in generated
+  Cargo.toml; `Cargo.toml.jinja` adds the FreeRTOS branch.)
+- [x] Transport/env compile-time options are captured in `nros-plan.json`.
+  (`plan.build.target` / `plan.build.rmw` / `platform_feature(board)`
+  drive every feature flag the generator emits.)
+- [x] Runtime hot path is allocation-free; static capacities come
+  from the plan. (`nros_generated.rs` emits `pub static` / `pub const`
+  tables; `CallbackHandleTable` is const-generic on `CALLBACK_COUNT`;
+  `SCHED_CONTEXTS` / `INSTANCES` / `NODES` / `PARAMETERS` / `CALLBACK_BINDINGS`
+  are all static. No heap on the target.)
+- [x] No JSON/TOML parsing happens on target. (Generated `build.rs`
+  reads `nros-plan.json` on the host, emits Rust-typed static tables;
+  target code only sees `nros_generated::*`.)
+
+Closed by codegen submodule `71f1bb0` (FreeRTOS e2e banner assertion
+fix unblocks `fixture_workspace_builds_and_boots_generated_freertos_package`).
+M4's generator + template work (codegen `555707e` /
+`templates/orchestration/{Cargo.toml,build.rs,main.rs}.jinja`) covers
+the runtime + build wiring; M5 just had to land the QEMU boot check
++ correct the assertion drift.
 
 ### M6 - mixed-language components
 
