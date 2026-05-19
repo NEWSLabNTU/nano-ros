@@ -523,6 +523,60 @@ green.
   arena bump in `prj-cyclonedds.conf`. The bind / getsockname /
   sockbuf gaps are fully resolved; only the multicast-RX join
   remains.
+
+- **11W.8 continued (2026-05-20, second pass) — participant init now
+  fully completes.** Pushed past the multicast-join wall and a
+  cascade of further NSOS/Zephyr gaps; the Cyclone DDS participant
+  now initialises end-to-end on native_sim. Fixes (each a
+  reproducible workspace patch, wired into `just zephyr setup`):
+
+  4. **pthread mutex/cond pool exhaustion** — Cyclone creates many
+     mutexes during init; the 32-entry pool was exhausted and
+     `pthread_mutex_lock` on the failed-init mutex aborted. Bumped
+     `CONFIG_MAX_PTHREAD_MUTEX_COUNT` / `_COND_COUNT` to 256
+     (`prj-cyclonedds.conf`).
+  5. **Multicast join non-fatal** — `joinleave_spdp_defmcip` now
+     returns success on Zephyr when the ASM join fails, so init
+     continues unicast-only (`cyclonedds-zephyr-mcjoin-patch.sh`).
+  6. **`sigprocmask` → `pthread_sigmask`** — Cyclone blocks signals
+     around `pthread_create`; Zephyr asserts on `sigprocmask` in a
+     multi-threaded context. Redirected via `#define` in the
+     threads patch.
+  7. **`pthread_create` EINVAL** — Cyclone worker threads (gc, recv,
+     lease, tev, …) are created with no explicit stack attr; Zephyr
+     needs the dynamic-thread stack pool. Enabled
+     `CONFIG_DYNAMIC_THREAD` + `_ALLOC` + `THREAD_STACK_INFO` +
+     `THREAD_MONITOR` + `DYNAMIC_THREAD_STACK_SIZE=32768`.
+  8. **Socket-waitset self-pipe** — Cyclone's `make_pipe` uses
+     `pipe(2)`, whose fds the NSOS socket-poll waitset can't watch,
+     so `os_sockWaitsetTrigger` failed. Replaced (under `__ZEPHYR__`)
+     with a loopback TCP socket pair — the same technique upstream
+     uses on Windows (`cyclonedds-zephyr-sockwaitset-patch.sh`,
+     needs `CONFIG_NET_TCP=y`).
+
+  Init now drives all the way to **`create_publisher`**, which fails
+  at `find_descriptor` → returns NULL for
+  `std_msgs::msg::dds_::Int32_`. **This is the final, distinct
+  blocker and a different problem class** — the Cyclone DDS C type
+  descriptor for the message type is neither generated nor
+  registered on the Rust + cyclonedds + Zephyr path:
+  - The descriptor self-registration uses
+    `__attribute__((constructor))`
+    (`cmake/NrosRmwCycloneddsTypeSupport.cmake`), which does not run
+    on Zephyr bare-metal (`target_os = "none"`, no `.init_array`
+    invocation) — the same root cause as the RMW-register gap fixed
+    in 11W.6.
+  - More fundamentally, the Rust example's codegen produces Rust
+    message types, not the Cyclone DDS C `dds_topic_descriptor_t`
+    the backend's `find_descriptor` needs. Wiring Cyclone C
+    type-support generation + explicit (non-constructor)
+    registration into the Rust + cyclonedds Zephyr build is a
+    codegen-pipeline task, tracked as **Phase 11W.9**.
+
+  **Net 11W.8 result:** every NSOS / Zephyr-runtime gap in the
+  Cyclone DDS participant-init path is resolved; the participant
+  boots and initialises fully on native_sim. The remaining work is
+  type-support codegen, not runtime/transport.
 - Phase 117's "follow-ups (post-117)" list is **separate**: 11X
   autoware, 11Y Phase 108 events, 11Z zero-copy sertype. 11W
   here is yet another post-117 follow-up.

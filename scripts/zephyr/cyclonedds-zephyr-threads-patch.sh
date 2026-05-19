@@ -183,6 +183,12 @@ top_define = """\
 /* nano-ros: zephyr k_thread_custom_data override gate — Phase 11W.6 */
 #ifdef __ZEPHYR__
 #define _NROS_CYC_THREADS_OVERRIDE 1
+/* Phase 11W.8 — Zephyr asserts on sigprocmask() in a multi-threaded
+ * context (lib/posix/options/signal.c) and wants pthread_sigmask().
+ * Cyclone blocks signals around pthread_create so worker threads
+ * inherit a blocked mask; the two calls have identical signatures,
+ * so redirect them to the pthread variant. */
+#define sigprocmask pthread_sigmask
 #endif
 """
 
