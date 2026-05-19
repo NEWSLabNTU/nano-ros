@@ -16,8 +16,8 @@
 use std::path::Path;
 
 use nros_tests::fixtures::{
-    Rmw, build_native_c_talker_rmw, build_native_listener_rmw,
-    build_native_rust_example_rmw, build_native_talker_rmw,
+    Rmw, build_native_c_example_rmw, build_native_c_talker_rmw,
+    build_native_listener_rmw, build_native_rust_example_rmw, build_native_talker_rmw,
 };
 use rstest::rstest;
 
@@ -184,5 +184,50 @@ fn test_native_c_talker_rmw_variant_exists(#[case] rmw: Rmw) {
         "binary {} is not under the expected build-<rmw> dir for {:?}",
         binary.display(),
         rmw
+    );
+}
+
+/// Phase 118.B.2 — collapsed-shape native C listener / service /
+/// action cases. XRCE deferred (main.c uses manual CDR
+/// serialization on the legacy `c/xrce/<case>/` siblings).
+#[rstest]
+#[case::listener_zenoh("listener", "c_listener", Rmw::Zenoh)]
+#[case::listener_dds("listener", "c_listener", Rmw::Dds)]
+#[case::ss_zenoh("service-server", "c_service_server", Rmw::Zenoh)]
+#[case::ss_dds("service-server", "c_service_server", Rmw::Dds)]
+#[case::sc_zenoh("service-client", "c_service_client", Rmw::Zenoh)]
+#[case::sc_dds("service-client", "c_service_client", Rmw::Dds)]
+#[case::as_zenoh("action-server", "c_action_server", Rmw::Zenoh)]
+#[case::as_dds("action-server", "c_action_server", Rmw::Dds)]
+#[case::ac_zenoh("action-client", "c_action_client", Rmw::Zenoh)]
+#[case::ac_dds("action-client", "c_action_client", Rmw::Dds)]
+fn test_native_c_listener_service_action_rmw_variant_exists(
+    #[case] case: &str,
+    #[case] binary: &str,
+    #[case] rmw: Rmw,
+) {
+    let path = build_native_c_example_rmw(case, binary, rmw).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "native/c/{} {:?} variant not prebuilt; run \
+             `just native build-fixtures` first: {:?}",
+            case,
+            rmw,
+            e
+        )
+    });
+    assert!(
+        path.exists(),
+        "{} {:?} binary missing: {}",
+        case,
+        rmw,
+        path.display()
+    );
+    assert_eq!(
+        path.file_name().and_then(|n| n.to_str()),
+        Some(binary),
+        "unexpected binary name for {} {:?}: {}",
+        case,
+        rmw,
+        path.display()
     );
 }

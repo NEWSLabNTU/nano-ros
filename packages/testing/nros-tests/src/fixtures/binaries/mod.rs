@@ -469,6 +469,18 @@ pub fn build_native_rust_example_rmw(
     build_example_rmw(&format!("native/rust/{}", case), binary_name, rmw)
 }
 
+/// Phase 118 — generic native C example resolver. `case` is the
+/// directory name under `examples/native/c/` (talker, listener,
+/// service-server, …); `binary_name` is the cmake target (e.g.
+/// `c_talker`, `c_service_server`, …).
+pub fn build_native_c_example_rmw(
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    build_example_cmake_rmw(&format!("native/c/{}", case), binary_name, rmw)
+}
+
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
