@@ -104,6 +104,14 @@ max-threads = 3
 [test-groups.qemu-esp32]
 max-threads = 1
 
+# Phase 117.4 — sibling group for the ESP32-S3 (Xtensa LX7) DDS
+# emulator. Same single-thread bound as `qemu-esp32` so the two
+# QEMU processes (talker + listener) don't race on shared mcast
+# sockets, but a distinct group so cross-chip concurrency works:
+# `qemu-esp32` (C3) and `qemu-esp32s3` (S3) can run in parallel.
+[test-groups.qemu-esp32s3]
+max-threads = 1
+
 # Phase 89.9 — ThreadX Linux is native-process + nsos-netx (NSOS offloads
 # BSD sockets straight to host kernel, ignoring the legacy `interface`/
 # `ip` fields), so per-case port splitting is sufficient for concurrent
@@ -354,6 +362,14 @@ retries = 2
 [[profile.default.overrides]]
 filter = "binary(esp32_emulator) or binary(esp32_qemu_dds)"
 test-group = "qemu-esp32"
+slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
+
+# Phase 117.4 — ESP32-S3 QEMU (Espressif Xtensa fork) — port 7457.
+# Sibling group / override for the Phase 117 DDS-on-ESP32 bring-up.
+[[profile.default.overrides]]
+filter = "binary(esp32s3_qemu_dds)"
+test-group = "qemu-esp32s3"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 

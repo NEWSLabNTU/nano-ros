@@ -191,6 +191,19 @@ pub const ESP32: PlatformConfig = PlatformConfig {
     xrce_lang_stride: 0,
 };
 
+/// Phase 117.4 — ESP32-S3 QEMU (Espressif fork, Xtensa LX7).
+/// Distinct zenohd port from `ESP32` so the C3 and S3 emulator
+/// suites can run concurrently under `cargo nextest`. Port 7457
+/// per the Phase 117 design note (next free slot after 7456 which
+/// Zephyr already owns).
+pub const ESP32S3: PlatformConfig = PlatformConfig {
+    name: "esp32s3",
+    zenohd_port: 7457,
+    lang_stride: 0,
+    xrce_agent_port: 0,
+    xrce_lang_stride: 0,
+};
+
 /// ThreadX Linux simulation (veth pairs).
 ///
 /// Phase 89.13: migrated to per-(variant, lang) ports. NSOS offloads BSD

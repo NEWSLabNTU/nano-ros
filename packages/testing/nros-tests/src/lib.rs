@@ -18,6 +18,9 @@
 //! ```
 
 pub mod esp32;
+// Phase 117.4 — sibling of `esp32` covering the Xtensa LX7 /
+// ESP32-S3 path (Espressif QEMU `qemu-system-xtensa -M esp32s3`).
+pub mod esp32s3;
 pub mod fixtures;
 pub mod output;
 pub mod platform;
