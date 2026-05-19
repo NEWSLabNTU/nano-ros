@@ -29,6 +29,10 @@ debug-stderr = []
 # `transport_nros::create_participant` bind/listen path traces
 # through it, which is enough to surface where bring-up dies.
 debug-uart = []
+# Phase 117.2e — esp-println-routed probes for the ESP32-S3
+# DDS bring-up. Off by default; enable from the s3 example to
+# trace where `Executor::open` hangs inside dust-dds.
+debug-esp-println = ["dep:esp-println", "esp-println?/esp32s3"]
 
 # Core capability flags. `std` enables the stock dust-dds UDP transport
 # (3 OS threads per participant); `alloc` is required on every platform
@@ -108,6 +112,9 @@ spin = { version = "0.9", default-features = false, features = ["spin_mutex", "p
 # `mcast_listen` step, etc.). Cortex-M only; bare-metal / FreeRTOS
 # examples turn it on via `features = ["debug-cortex-m-semihosting"]`.
 cortex-m-semihosting = { version = "0.5", optional = true }
+# Phase 117.2e — esp-println-backed `debug-esp-println` feature.
+# Optional so non-ESP builds don't pull esp-println into deps.
+esp-println = { version = "~0.16.0", default-features = false, optional = true }
 
 [dev-dependencies]
 # Phase 71 — host-side end-to-end validation drives `NrosPlatformRuntime`

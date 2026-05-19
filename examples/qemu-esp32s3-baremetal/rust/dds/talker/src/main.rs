@@ -28,8 +28,11 @@ fn main() -> ! {
             // Phase 104.A — bare-metal callers explicitly register the RMW
             // backend before `Executor::open`. POSIX hosts auto-register via
             // `.init_array`; this target doesn't walk that section.
+            esp_println::println!("[probe] register RMW backend...");
             nros_rmw_dds::register().expect("Failed to register RMW backend");
+            esp_println::println!("[probe] RMW registered; opening executor...");
             let mut executor = Executor::open(&exec_config)?;
+            esp_println::println!("[probe] executor open returned");
             let publisher = {
                 let mut node = executor.create_node("dds_talker")?;
                 esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32) over DDS");

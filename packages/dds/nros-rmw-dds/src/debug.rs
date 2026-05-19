@@ -84,9 +84,23 @@ macro_rules! dbg_log {
 }
 
 #[cfg(all(
+    feature = "debug-esp-println",
     not(feature = "debug-cortex-m-semihosting"),
     not(feature = "debug-stderr"),
     not(feature = "debug-uart"),
+))]
+#[macro_export]
+macro_rules! dbg_log {
+    ($($arg:tt)*) => {
+        esp_println::println!("[nros-rmw-dds] {}", format_args!($($arg)*));
+    };
+}
+
+#[cfg(all(
+    not(feature = "debug-cortex-m-semihosting"),
+    not(feature = "debug-stderr"),
+    not(feature = "debug-uart"),
+    not(feature = "debug-esp-println"),
 ))]
 #[macro_export]
 macro_rules! dbg_log {
