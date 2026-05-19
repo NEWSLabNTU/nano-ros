@@ -241,7 +241,7 @@ the chain is the stall. The 160.B.3 drain-quiescent change is
 purely net-positive (faster per-tick throughput) regardless of
 the deeper issue, so it ships unconditionally.
 
-### C. Zephyr cross-host bridge E2E (8 of 10 tests closed 2026-05-19)
+### C. Zephyr cross-host bridge E2E (9 of 10 tests closed 2026-05-19)
 
 ```
 test_bidirectional_native_zephyr_e2e                       PASS
@@ -250,11 +250,11 @@ test_native_talker_to_zephyr_cpp_listener                  PASS
 test_native_to_zephyr_e2e                                  PASS
 test_zephyr_cpp_service_server_to_client_e2e               PASS
 test_zephyr_cpp_talker_to_listener_e2e                     PASS
-test_zephyr_cpp_talker_to_native_listener                  PASS  (8/10 PASS)
+test_zephyr_cpp_talker_to_native_listener                  PASS
 test_zephyr_talker_to_listener_e2e                         PASS
 test_zephyr_to_native_e2e                                  PASS
-test_zephyr_action_e2e                                     STILL FAIL
-test_zephyr_cpp_action_server_to_client_e2e                STILL FAIL
+test_zephyr_action_e2e                                     PASS (160.C.2)
+test_zephyr_cpp_action_server_to_client_e2e                STILL FAIL (9/10 PASS)
 ```
 
 **Root cause + fix (commit `57add997`).** Phase 159 NuttX bug in a
@@ -976,7 +976,7 @@ No action needed.
 |---------|-------|------------|------------|
 | A. Zephyr XRCE C/C++ | 11 | weak `nros_app_register_backends` + missing `<cstdio>` shim | **CLOSED 160.A** |
 | B. Zephyr Cortex-A9 DDS Rust | 4 | 160.B: missing armv7a-none-eabi target + Zephyr 3.7 net_if.h drift; 160.B.1: async-await needs Embassy Signaler bridge (worked around with poll loop) | **4/4 CLOSED 160.B + 160.B.1** |
-| C. Zephyr cross-host bridge | 10 | `_z_open_tcp` ABI gate (Phase 159 family) + queryable-cascade declare hang | **8/10 CLOSED 160.C** (2 action tests → 160.C.2) |
+| C. Zephyr cross-host bridge | 10 | `_z_open_tcp` ABI gate + queryable-cascade declare hang + batch-size + feedback-loop budget | **9/10 CLOSED 160.C + 160.C.2** (cpp action test residue, send_goal -2) |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
 | E. ESP32 emulator | 3 | alias TU ↔ vendor `_z_sys_net_*_t` ABI mismatch (RV32 inline-vs-hidden-ptr) + drift guard via `_Static_assert` | **CLOSED 2026-05-19** |
 | F. RTIC + serial bare-metal | 6 | RTIC (5): same alias-TU/vendor ABI mismatch as E (cortex-m3 6-byte endpoint, inline vs hidden ptr). Serial (1): Phase 132.3 deferred. | **5/6 CLOSED 2026-05-19** via cluster-E fix; serial → Phase 132.3 |
