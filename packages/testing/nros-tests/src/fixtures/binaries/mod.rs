@@ -444,6 +444,20 @@ pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Phase 118 — collapsed-shape native listener, RMW-parametrized.
+pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_CELL,
+        Rmw::Dds => &DDS_CELL,
+        Rmw::Xrce => &XRCE_CELL,
+    };
+    cell.get_or_try_init(|| build_example_rmw("native/rust/listener", "listener", rmw))
+        .map(|p| p.as_path())
+}
+
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY

@@ -1,0 +1,35 @@
+[package]
+name = "native-rs-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "listener"
+path = "src/main.rs"
+
+[features]
+# Phase 118 — RMW selected at build time. Default is `rmw-zenoh`
+# so `cargo run -p native-rs-listener` Just Works.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-dds   = ["dep:nros-rmw-dds"]
+rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+
+# Zenoh-specific feature carry-overs (silently no-op under
+# rmw-dds / rmw-xrce — the matrix lint only exposes `rmw-*`).
+safety-e2e         = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+unstable-zenoh-api = ["nros/unstable-zenoh-api"]
+link-tls           = ["nros/link-tls", "nros-rmw-zenoh?/link-tls"]
+
+[dependencies]
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+std_msgs = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
+nros-rmw-dds      = { path = "../../../../packages/dds/nros-rmw-dds",    features = ["platform-posix"], optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }

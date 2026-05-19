@@ -15,7 +15,9 @@
 
 use std::path::Path;
 
-use nros_tests::fixtures::{Rmw, build_native_c_talker_rmw, build_native_talker_rmw};
+use nros_tests::fixtures::{
+    Rmw, build_native_c_talker_rmw, build_native_listener_rmw, build_native_talker_rmw,
+};
 use rstest::rstest;
 
 #[rstest]
@@ -59,6 +61,37 @@ fn test_native_talker_rmw_variant_exists(#[case] rmw: Rmw) {
         "binary {} is not under the expected target-<rmw> dir for {:?}",
         binary.display(),
         rmw
+    );
+}
+
+/// Phase 118.B.1 — collapsed-shape native Rust listener.
+#[rstest]
+#[case::zenoh(Rmw::Zenoh)]
+#[case::dds(Rmw::Dds)]
+#[case::xrce(Rmw::Xrce)]
+fn test_native_listener_rmw_variant_exists(#[case] rmw: Rmw) {
+    let binary = build_native_listener_rmw(rmw).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "native/rust/listener {:?} variant not prebuilt; run \
+             `just native build-fixtures` first: {:?}",
+            rmw,
+            e
+        )
+    });
+
+    let binary: &Path = binary;
+    assert!(
+        binary.exists(),
+        "build_native_listener_rmw({:?}) returned a path that doesn't exist: {}",
+        rmw,
+        binary.display()
+    );
+    assert_eq!(
+        binary.file_name().and_then(|n| n.to_str()),
+        Some("listener"),
+        "unexpected binary name for {:?}: {}",
+        rmw,
+        binary.display()
     );
 }
 

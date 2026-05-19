@@ -146,19 +146,21 @@ build-fixtures:
     # the matching binary. Param-services is zenoh-only (the gate
     # references nros-rmw-zenoh's optional feature; rmw-dds / rmw-xrce
     # builds omit it).
-    if [ -d examples/native/rust/talker ]; then
-        for rmw in zenoh dds xrce; do
-            feature_flags="--features rmw-${rmw}"
-            if [ "$rmw" = "zenoh" ]; then
-                feature_flags="${feature_flags},param-services"
-            fi
-            echo "  → native/rust/talker (--features rmw-${rmw}, target-${rmw}/)"
-            ( cd examples/native/rust/talker && \
-              cargo build --release --no-default-features ${feature_flags} \
-                  --target-dir target-${rmw} --quiet ) &
-        done
-        wait
-    fi
+    for collapsed_case in talker listener; do
+        if [ -d examples/native/rust/${collapsed_case} ]; then
+            for rmw in zenoh dds xrce; do
+                feature_flags="--features rmw-${rmw}"
+                if [ "$rmw" = "zenoh" ] && [ "$collapsed_case" = "talker" ]; then
+                    feature_flags="${feature_flags},param-services"
+                fi
+                echo "  → native/rust/${collapsed_case} (--features rmw-${rmw}, target-${rmw}/)"
+                ( cd examples/native/rust/${collapsed_case} && \
+                  cargo build --release --no-default-features ${feature_flags} \
+                      --target-dir target-${rmw} --quiet ) &
+            done
+        fi
+    done
+    wait
     # Phase 118.A.3 — collapsed-shape native C talker. Built once per
     # RMW via cmake `-DNROS_RMW=<rmw>` into isolated build-<rmw>/ dirs.
     # XRCE C variant deferred to Tier 2 (main.c differs significantly —
