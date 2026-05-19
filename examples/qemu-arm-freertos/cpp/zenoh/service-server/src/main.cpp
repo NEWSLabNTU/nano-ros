@@ -7,9 +7,14 @@
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 #include <nros/app_config.h>
 #include "example_interfaces.hpp"
+
+// Phase 88.16.H — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 int nros_app_main(int argc, char **argv) {
     (void)argc;
@@ -20,6 +25,8 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_service_server"), 1);
+    g_logger = node.get_logger();
+    nros_log_init();
     printf("Node created\n");
 
     nros::Service<example_interfaces::srv::AddTwoInts> srv;
@@ -36,7 +43,7 @@ int nros_app_main(int argc, char **argv) {
             req_count++;
             example_interfaces::srv::AddTwoInts::Response resp;
             resp.sum = req.a + req.b;
-            printf("Request [%d]: %d + %d = %d\n", req_count, (int)req.a, (int)req.b, (int)resp.sum);
+            NROS_LOG_INFO(g_logger, "Request [%d]: %d + %d = %d", req_count, (int)req.a, (int)req.b, (int)resp.sum);
             srv.send_reply(seq_id, resp);
         }
     }

@@ -10,10 +10,15 @@
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
 
 #include "std_msgs.h"
+
+// Phase 88.16.H — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -42,6 +47,8 @@ int nros_app_main(int argc, char **argv) {
                                      NROS_APP_CONFIG.zenoh.locator,
                                      NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_talker", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
+    nros_log_init();
     NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
                                        std_msgs_msg_int32_get_type_support(), "/chatter"), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
@@ -58,7 +65,7 @@ int nros_app_main(int argc, char **argv) {
 
         message.data = count;
         NROS_SOFTCHECK(std_msgs_msg_int32_publish(&app.publisher, &message));
-        printf("Published: %d\n", message.data);
+        NROS_LOG_INFO(g_logger, "Published: %d", message.data);
         count++;
     }
 }

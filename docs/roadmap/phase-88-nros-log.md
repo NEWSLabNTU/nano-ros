@@ -487,41 +487,52 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             back to `LOG_INF` etc., so the rendered output still
             lands in Zephyr's log subsystem (visible via `west
             monitor` / `native_sim` stdout).
-      - [ ] 88.16.H — `examples/qemu-arm-freertos/{c,cpp}/zenoh/*`
-            (12 examples: 6 C + 6 C++). **Blocked on Phase 166** —
-            duplicate-symbol issue between cmake's
-            `libnros_platform_freertos.a` and Cargo-built
-            `libnros_rmw_zenoh_staticlib.a`. Both archives compile
-            the FreeRTOS platform C body, each with its own
-            file-static `s_log_writer`. Linker dedups the
-            `nros_platform_log_write` symbol to one archive but the
-            Rust-side board crate's `register_log_writer` call
-            ends up writing the OTHER archive's `s_log_writer`,
-            so the C-side dispatch path reads NULL and drops.
+      - [x] 88.16.H — `examples/qemu-arm-freertos/{c,cpp}/zenoh/*`
+            (12 examples: 6 C + 6 C++) migrated. Two root-cause
+            fixes were needed to unblock this:
 
-            Direct probe inside `nros_platform_log_write` confirmed
-            the root cause: `[plat_log_write] sev=2 writer=0
-            msg_len=11` (writer NULL despite Rust path working).
+            **(1) Dup-symbol on the platform log slot (Phase 166
+            class):** `nros-platform-freertos/src/platform.c` is
+            compiled twice in every freertos binary — once by
+            `nros-board-freertos/build.rs` (cc-rs) for the cargo
+            rlib path, once by `cmake/platform/nano-ros-freertos.cmake`
+            for the cmake umbrella. With `s_log_writer` declared
+            file-static, each TU got its own private slot. The
+            Rust board crate's `register_log_writer` wrote one;
+            the C-side `nros_platform_log_write` (via PlatformSink)
+            read the other (NULL). Direct
+            `[plat_log_write] writer=0` probe confirmed.
+            **Fix:** promote `s_log_writer` + `s_log_flusher` to
+            external linkage as
+            `nros_platform_freertos_log_{writer,flusher}`. Linker
+            dedups; both archives' functions now address the same
+            single slot.
 
-            **Groundwork landed in 88.16.H (without the example
-            migration):**
-            - `nros_log_init()` C export pins `nros_log::init` as
-              a linker root for cross-language consumers. Decl in
-              `<nros/log.h>`; impl in `nros-c::log`.
-            - `nros_log_default_logger()` C export returns the
-              `'static` catch-all `nros::DEFAULT_LOGGER` so callers
-              can emit through `NROS_LOG_*` without a full `Node`.
-              Useful for the deferred Phase 88.15.e Zephyr smoke +
-              the eventual 88.16.H retry.
+            **(2) C/C++ path never reached the Rust `run()`:** the
+            `nros_app_main` entry that startup.c calls bypasses
+            Rust's `run()`, so the Rust-side
+            `register_log_writer()` thunk never fires. **Fix:**
+            add a C-level `board_log_writer` (printf-backed,
+            routes through semihosting stdout) that startup.c
+            registers via `nros_platform_register_log_writer`
+            before invoking `app_main`. Mirrors the shape of the
+            Rust thunk.
 
-            Example migration kept reverted so
-            `rtos_e2e::test_rtos_*::platform_1_Platform__Freertos::lang_{2,3}`
-            stays green. **Retry once Phase 166 collapses the
-            dup-symbol** — then the migration script
-            `tmp/migrate-freertos-c-cpp.py` (preserved in this
-            phase doc's notes) can be re-run with the
-            `nros_log_init()` call already wired into each
-            example body.
+            **Groundwork retained from the first attempt:**
+            `nros_log_init()` + `nros_log_default_logger()` C
+            exports (used by 88.15.e Zephyr smoke + the C/C++
+            example migration). Migration script applied via
+            `tmp/migrate-freertos-c-cpp.py` (preserves the
+            E2E-critical printf format strings while routing
+            them through `NROS_LOG_*(g_logger, …)`; harness
+            substring matchers ride through the `[INFO] nros: `
+            prefix unchanged).
+
+            **Verified green:**
+            - `rtos_e2e::test_rtos_{pubsub,service,action}_e2e::platform_1_Platform__Freertos::lang_{1_Rust,2_C,3_Cpp}`
+              (9 combinations).
+            - All 12 C/C++ examples build clean for
+              `thumbv7m-none-eabi` via cmake.
 
 ## Design Notes
 

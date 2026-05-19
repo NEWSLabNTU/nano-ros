@@ -9,11 +9,16 @@
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/service.h>
 
 #include <nros/app_config.h>
 #include "example_interfaces.h"
+
+// Phase 88.16.H — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -53,7 +58,7 @@ static bool service_callback(const uint8_t *request_data, size_t request_len,
     example_interfaces_srv_add_two_ints_response_init(&response);
     response.sum = request.a + request.b;
 
-    printf("Request [%d]: %lld + %lld = %lld\n", ctx->request_count,
+    NROS_LOG_INFO(g_logger, "Request [%d]: %lld + %lld = %lld", ctx->request_count,
            (long long)request.a, (long long)request.b, (long long)response.sum);
 
     int32_t ser_len = example_interfaces_srv_add_two_ints_response_serialize(
@@ -86,6 +91,8 @@ int nros_app_main(int argc, char **argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_server", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
+    nros_log_init();
     NROS_CHECK_RET(nros_service_init(&app.service, &app.node, &add_two_ints_type,
                                  "/add_two_ints", service_callback, &app.ctx), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);

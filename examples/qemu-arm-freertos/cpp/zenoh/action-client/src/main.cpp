@@ -9,9 +9,14 @@
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 #include <nros/app_config.h>
 #include "example_interfaces.hpp"
+
+// Phase 88.16.H — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -27,7 +32,7 @@ static nros::ActionClient<example_interfaces::action::Fibonacci>* g_client_ptr;
 static void goal_response_cb(bool accepted, const uint8_t goal_id[16], void* ctx) {
     (void)ctx;
     if (accepted) {
-        printf("Goal accepted!\n");
+        NROS_LOG_INFO(g_logger, "Goal accepted!");
         // Automatically request the result
         g_client_ptr->get_result_async(goal_id);
     } else {
@@ -42,7 +47,7 @@ static void feedback_cb(const uint8_t goal_id[16], const uint8_t* data,
 
     example_interfaces::action::Fibonacci::Feedback fb;
     if (example_interfaces::action::Fibonacci::Feedback::ffi_deserialize(data, len, &fb) == 0) {
-        printf("Feedback: [");
+        NROS_LOG_INFO(g_logger, "Feedback: [");
         for (uint32_t i = 0; i < fb.sequence.size; i++) {
             if (i > 0) printf(", ");
             printf("%d", fb.sequence.data[i]);
@@ -59,7 +64,7 @@ static void result_cb(const uint8_t goal_id[16], int32_t status,
 
     example_interfaces::action::Fibonacci::Result result;
     if (example_interfaces::action::Fibonacci::Result::ffi_deserialize(data, len, &result) == 0) {
-        printf("Result: [");
+        NROS_LOG_INFO(g_logger, "Result: [");
         for (uint32_t i = 0; i < result.sequence.size; i++) {
             if (i > 0) printf(", ");
             printf("%d", result.sequence.data[i]);
@@ -84,6 +89,8 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_action_client"), 1);
+    g_logger = node.get_logger();
+    nros_log_init();
     printf("Node created\n");
 
     nros::ActionClient<example_interfaces::action::Fibonacci> client;
@@ -98,7 +105,7 @@ int nros_app_main(int argc, char **argv) {
     opts.result = result_cb;
     client.set_callbacks(opts);
 
-    printf("Action client ready for /fibonacci\n");
+    NROS_LOG_INFO(g_logger, "Action client ready for /fibonacci");
 
     // Warm-up: spin to allow Zenoh to discover the server's queryables
     for (int i = 0; i < 500; i++) {

@@ -10,10 +10,15 @@
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 
 #include <nros/app_config.h>
 #include "example_interfaces.h"
+
+// Phase 88.16.H — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -48,6 +53,8 @@ int nros_app_main(int argc, char **argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_client", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
+    nros_log_init();
     NROS_CHECK_RET(nros_action_client_init(&app.action_client, &app.node, "/fibonacci",
                                        &fibonacci_type), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
@@ -55,7 +62,7 @@ int nros_app_main(int argc, char **argv) {
     NROS_CHECK_RET(nros_executor_register_action_client(&app.executor, &app.action_client), 1);
     nros_ret_t ret = NROS_RET_OK;
 
-    printf("Action client ready for /fibonacci\n");
+    NROS_LOG_INFO(g_logger, "Action client ready for /fibonacci");
 
     // Warm-up: spin to allow Zenoh to discover the server's queryables
     for (int i = 0; i < 500; i++) {
@@ -94,7 +101,7 @@ int nros_app_main(int argc, char **argv) {
         goto cleanup;
     }
 
-    printf("Goal accepted!\n");
+    NROS_LOG_INFO(g_logger, "Goal accepted!");
     printf("Waiting for result...\n\n");
 
     // Blocking get_result — spins the executor internally.
@@ -109,7 +116,7 @@ int nros_app_main(int argc, char **argv) {
         example_interfaces_action_fibonacci_result result;
         if (example_interfaces_action_fibonacci_result_deserialize(
                 &result, result_buf, result_len) == 0) {
-            printf("Result: [");
+            NROS_LOG_INFO(g_logger, "Result: [");
             for (uint32_t i = 0; i < result.sequence.size; i++) {
                 if (i > 0) printf(", ");
                 printf("%d", result.sequence.data[i]);

@@ -181,7 +181,7 @@ consume). Matches the platform-cffi pattern documented in
   in a binary (the Rust zenoh examples that bypass
   `nros-board-freertos` still build cleanly because they only
   pull in `nros-board-mps2-an385-freertos`).
-- **Phase 88.16.H is blocked on this.** A direct
+- **Phase 88.16.H was blocked on this.** A direct
   `[plat_log_write] writer=0` probe confirmed that on the FreeRTOS
   C/C++ example chain, `nros_platform_log_write` reads
   `s_log_writer` from a *different* file-static than the one the
@@ -193,10 +193,18 @@ consume). Matches the platform-cffi pattern documented in
   Corrosion). The linker dedups the EXPORTED
   `nros_platform_{register_log_writer,log_write}` to one archive,
   but the other archive's file-static `s_log_writer` is what
-  the surviving function addresses. Phase 166 option-2 (canonical
-  platform crate emits a staticlib, board + cmake build steps
-  consume it) collapses the dup and unblocks 88.16.H's example
-  migration with no further nros-log changes needed.
+  the surviving function addresses.
+
+  **Phase 88.16.H unblocked itself with a targeted slice of this
+  bigger fix** (commit Phase 88.16.H): promoted `s_log_writer` +
+  `s_log_flusher` to external linkage as
+  `nros_platform_freertos_log_{writer,flusher}` so the linker
+  dedups both the function symbols and the slot storage. The
+  broader Phase 166 cleanup — collapsing platform.c emission to a
+  single canonical build path — is still worth doing for hygiene
+  + to prevent the same class of bug from recurring on other slots
+  that get added later, but it is no longer the blocker for any
+  shipped feature.
 
 ---
 

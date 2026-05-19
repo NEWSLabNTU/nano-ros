@@ -10,10 +10,15 @@
 #include <nros/client.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 
 #include <nros/app_config.h>
 #include "example_interfaces.h"
+
+// Phase 88.16.H — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -45,6 +50,8 @@ int nros_app_main(int argc, char **argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_service_client", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
+    nros_log_init();
     NROS_CHECK_RET(nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
@@ -90,14 +97,14 @@ int nros_app_main(int argc, char **argv) {
                 }
             }
         } else if (ret == NROS_RET_TIMEOUT) {
-            printf("Call [%d]: Timeout\n", i + 1);
+            NROS_LOG_INFO(g_logger, "Call [%d]: Timeout", i + 1);
         } else {
-            printf("Call [%d]: Failed with error %d\n", i + 1, ret);
+            NROS_LOG_INFO(g_logger, "Call [%d]: Failed with error %d", i + 1, ret);
         }
     }
 
     printf("%d/%d calls succeeded\n", success_count, num_cases);
-    printf("All service calls completed.\n");
+    NROS_LOG_INFO(g_logger, "All service calls completed.");
 
     nros_executor_fini(&app.executor);
     nros_client_fini(&app.client);

@@ -660,8 +660,17 @@ typedef void (*nros_platform_log_writer_fn)(
 
 typedef void (*nros_platform_log_flush_fn)(void);
 
-static nros_platform_log_writer_fn s_log_writer = NULL;
-static nros_platform_log_flush_fn  s_log_flusher = NULL;
+/* Phase 166 — promoted from `static` to external linkage so the
+ * linker dedups the storage across multiple TU compilations of
+ * this file (cmake's `libnros_platform_freertos.a` + cargo's
+ * `nros-board-freertos` build script both compile `platform.c`).
+ * With file-static linkage each TU got its own private slot;
+ * `nros_platform_register_log_writer` from one archive would
+ * write its slot, and `nros_platform_log_write` from the other
+ * archive would read a NULL slot. That broke the Phase 88.16.H
+ * C/C++ FreeRTOS log path. Single external symbol = single slot. */
+nros_platform_log_writer_fn nros_platform_freertos_log_writer = NULL;
+nros_platform_log_flush_fn  nros_platform_freertos_log_flusher = NULL;
 
 /* Board-crate hook. Pass NULL for `flusher` if the writer is fully
  * synchronous. Re-calling replaces the current writer; the swap
@@ -669,14 +678,14 @@ static nros_platform_log_flush_fn  s_log_flusher = NULL;
  * starts logging. */
 void nros_platform_register_log_writer(nros_platform_log_writer_fn writer,
                                        nros_platform_log_flush_fn  flusher) {
-    s_log_writer  = writer;
-    s_log_flusher = flusher;
+    nros_platform_freertos_log_writer  = writer;
+    nros_platform_freertos_log_flusher = flusher;
 }
 
 void nros_platform_log_write(uint8_t severity,
                              const uint8_t *name_ptr, uintptr_t name_len,
                              const uint8_t *msg_ptr,  uintptr_t msg_len) {
-    nros_platform_log_writer_fn writer = s_log_writer;
+    nros_platform_log_writer_fn writer = nros_platform_freertos_log_writer;
     if (writer == NULL) {
         return;
     }
@@ -684,7 +693,7 @@ void nros_platform_log_write(uint8_t severity,
 }
 
 void nros_platform_log_flush(void) {
-    nros_platform_log_flush_fn flusher = s_log_flusher;
+    nros_platform_log_flush_fn flusher = nros_platform_freertos_log_flusher;
     if (flusher != NULL) {
         flusher();
     }

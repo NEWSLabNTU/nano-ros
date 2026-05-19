@@ -7,9 +7,14 @@
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 #include <nros/app_config.h>
 #include "example_interfaces.hpp"
+
+// Phase 88.16.H — set after `nros::create_node`; used by post-init
+// diagnostics. nullptr before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 using Fibonacci = example_interfaces::action::Fibonacci;
 
@@ -23,7 +28,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     }
 
     g_goal_count++;
-    printf("Goal request [%d]: order=%d\n", g_goal_count, goal.order);
+    NROS_LOG_INFO(g_logger, "Goal request [%d]: order=%d", g_goal_count, goal.order);
 
     Fibonacci::Feedback fb;
     fb.sequence.size = 0;
@@ -66,6 +71,8 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_action_server"), 1);
+    g_logger = node.get_logger();
+    nros_log_init();
     printf("Node created\n");
 
     nros::ActionServer<Fibonacci> srv;

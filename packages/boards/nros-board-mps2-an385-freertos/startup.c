@@ -603,6 +603,43 @@ _Bool nros_platform_atomic_load_bool(const _Bool *ptr) {
 
 extern void app_main(void);
 
+/* Phase 88.16.H — printf-backed nros-log writer registered with
+ * the platform fn-ptr slot before app_main. Same shape as the Rust
+ * `run()` path's hstderr writer, just expressed in C so the C/C++
+ * example path that bypasses Rust's `run()` still gets log output. */
+static void board_log_writer(uint8_t severity,
+                             const uint8_t *name_ptr, uintptr_t name_len,
+                             const uint8_t *msg_ptr,  uintptr_t msg_len)
+{
+    const char *label;
+    switch (severity) {
+        case 0: label = "TRACE"; break;
+        case 1: label = "DEBUG"; break;
+        case 2: label = "INFO";  break;
+        case 3: label = "WARN";  break;
+        case 4: label = "ERROR"; break;
+        case 5: label = "FATAL"; break;
+        default: label = "?";    break;
+    }
+    if (name_len == 0 || name_ptr == NULL) {
+        printf("[%s] %.*s\n", label, (int)msg_len, (const char *)msg_ptr);
+    } else {
+        printf("[%s] %.*s: %.*s\n",
+               label,
+               (int)name_len, (const char *)name_ptr,
+               (int)msg_len,  (const char *)msg_ptr);
+    }
+}
+
+void nros_platform_register_log_writer(
+    void (*writer)(uint8_t, const uint8_t *, uintptr_t,
+                   const uint8_t *, uintptr_t),
+    void (*flusher)(void));
+
+static void nros_board_register_log_writer(void) {
+    nros_platform_register_log_writer(board_log_writer, NULL);
+}
+
 __attribute__((weak, used))
 void zpico_set_task_config(uint32_t read_priority,
                            uint32_t read_stack_bytes,
@@ -663,6 +700,15 @@ static void app_task_entry(void *arg) {
      * test harnesses that capture stdout from QEMU processes). */
     semihosting_stdio_init();
     setvbuf(stdout, NULL, _IONBF, 0);
+
+    /* Phase 88.16.H — register a printf-backed nros-log writer with
+     * the platform's fn-ptr slot before any task starts logging. The
+     * Rust `run()` flow registers an `hstderr`-based writer; for the
+     * C/C++ example path that goes through `nros_app_main` directly
+     * (no Rust `run()`), this C-side hook is the equivalent. Routes
+     * to semihosting stdout via printf so the QEMU harness's
+     * stdout-drain picks every record up. */
+    nros_board_register_log_writer();
 
     /* Configure zenoh-pico read+lease task priorities BEFORE app_main
      * (which calls zpico_init -> zp_start_read_task). Without this,

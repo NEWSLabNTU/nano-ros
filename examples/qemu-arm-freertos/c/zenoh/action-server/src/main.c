@@ -10,10 +10,15 @@
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 
 #include <nros/app_config.h>
 #include "example_interfaces.h"
+
+// Phase 88.16.H — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -49,7 +54,7 @@ static nros_goal_response_t goal_callback(nros_action_server_t *server,
         return NROS_GOAL_REJECT;
     }
 
-    printf("Goal request: order=%d (uuid=%02x%02x...)\n",
+    NROS_LOG_INFO(g_logger, "Goal request: order=%d (uuid=%02x%02x...)",
            goal_msg.order, goal->uuid.uuid[0], goal->uuid.uuid[1]);
 
     if (goal_msg.order < 0 || goal_msg.order >= 64) {
@@ -154,6 +159,8 @@ int nros_app_main(int argc, char **argv) {
 
     NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_server", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
+    nros_log_init();
     NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",
                                        &fibonacci_type, goal_callback, cancel_callback,
                                        accepted_callback, &app.ctx), 1);
