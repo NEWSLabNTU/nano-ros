@@ -406,11 +406,16 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             FreeRTOS / ThreadX board pattern from Phase 88.11.
             Runtime verification deferred — Espressif QEMU fork
             not in auto-CI; user flashes via `cargo +nightly run`.
-      - [ ] 88.16.F — `examples/stm32f4/rust/*` — replace
-            `defmt::info!()` inside the user closure (or document
-            that users explicitly choosing defmt-native call sites
-            should opt out and call `defmt::info!` directly; the
-            default migration moves them to `nros_*!`).
+      - [x] 88.16.F — `examples/stm32f4/rust/zenoh/talker` (the only
+            non-RTIC STM32F4 example) migrated. Defmt stays the wire
+            sink: `nros-platform-stm32f4::PlatformLog` forwards every
+            record to `defmt::{trace,debug,info,warn,error}!`, so the
+            `defmt_rtt` + `probe-rs attach` workflow keeps emitting
+            the same RTT stream — just routed via the facade.
+            RTIC + Embassy variants (talker-rtic, listener-rtic,
+            service-{server,client}-rtic, action-{server,client}-rtic,
+            talker-embassy) bypass `run()` and need separate handling;
+            tracked as a deferred follow-up under this same item.
       - [ ] 88.16.G — `examples/zephyr/c/*` — replace `LOG_INF()` in
             user code with `nros_log_info()` (C wrapper from 88.12).
       - [ ] 88.16.H — `examples/qemu-arm-{baremetal,freertos}/c/*`
