@@ -914,14 +914,15 @@ fn test_zephyr_action_e2e() {
     // Wait for the client to print the action-completion marker
     // (early-exits as soon as the action completes; falls back to a
     // long cap so a stuck client still returns and surfaces the
-    // failure). Phase 160.C.2 — bumped 40 s → 120 s. Client
+    // failure). Phase 160.C.2 — bumped 40 s → 150 s. Client
     // budget: ~22 s setup (3 service-client cascades on Zephyr
-    // zenoh-pico, ~7 s each despite the BATCH_UNICAST_SIZE bump
-    // — still slower than POSIX) + 5 s send_goal + ~25 s feedback
-    // stream (10 increments × 2.5 s) + 30 s get_result. Total
-    // ~80 s. 120 s leaves headroom for `max-threads = 3`
+    // zenoh-pico, ~7 s each despite the upstream BATCH_UNICAST_SIZE
+    // bump — still slower than POSIX) + 5 s send_goal + ~25 s
+    // feedback stream (10 increments × 2.5 s) + 30 s get_result
+    // (with `NROS_SERVICE_TIMEOUT_MS` raised to 30 s). Total
+    // ~110 s. 150 s leaves headroom for `max-threads = 3`
     // parallelism load.
-    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(120));
+    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(150));
     // Server output can stop shortly after the client finishes —
     // give the reader a few seconds to drain any trailing feedback.
     let server_output = server

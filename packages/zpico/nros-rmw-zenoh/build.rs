@@ -7,7 +7,17 @@ fn main() {
 
     let sub_size: usize = env_usize("ZPICO_SUBSCRIBER_BUFFER_SIZE", 1024);
     let svc_size: usize = env_usize("ZPICO_SERVICE_BUFFER_SIZE", 1024);
-    let service_timeout_ms: usize = env_usize("NROS_SERVICE_TIMEOUT_MS", 10_000);
+    // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
+    // was too short for slow zenoh-pico flushes on Zephyr/NSOS where
+    // each publish/query can take ~2.5 s under Z_FEATURE_INTEREST=1. An
+    // action `get_result` query sent while the server is still running a
+    // feedback loop (11 publishes × ~2.5 s each = ~28 s before
+    // `complete_goal` fires) expires the internal query timer well
+    // before the server reaches its `try_handle_get_result` handler.
+    // Bumping to 30 s covers the common slow-Zephyr action window; fast
+    // services on POSIX still return in milliseconds so the wider cap
+    // only matters when something is genuinely slow.
+    let service_timeout_ms: usize = env_usize("NROS_SERVICE_TIMEOUT_MS", 30_000);
     let keyexpr_string_size: usize = env_usize("NROS_KEYEXPR_STRING_SIZE", 256);
     // Phase 124.D.3.c — SPSC ring depth per subscriber. Default 4
     // keeps the static-RAM bump small (4 × SUBSCRIBER_BUFFER_SIZE
