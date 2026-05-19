@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr service-client-async (Rust) — Phase 168.3 collapsed shape.
+
+[package]
+name = "nros_zephyr_service_client_async"
+version = "0.1.0"
+edition = "2021"
+description = "nros service-client-async for Zephyr RTOS (multi-RMW)"
+license = "Apache-2.0"
+
+[lib]
+name = "rustapp"
+crate-type = ["staticlib"]
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-dds   = ["dep:nros-rmw-dds"]
+
+[dependencies]
+# `time-driver` is required by DDS path; harmless for zenoh.
+zephyr = { version = "0.1.0", features = ["executor-zephyr", "time-driver"] }
+log = "0.4"
+
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
+
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
+nros-rmw-dds   = { version = "*", default-features = false, features = ["platform-zephyr"], optional = true }
+
+# Embassy async runtime + timer + static cell.
+embassy-executor = { version = "0.7", default-features = false, features = ["task-arena-size-262144"] }
+embassy-time = { version = "0.4", features = ["tick-hz-1_000"] }
+static_cell = "2"
+
+example_interfaces = { version = "*", default-features = false }
+
+[build-dependencies]
+zephyr-build = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

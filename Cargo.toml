@@ -203,6 +203,15 @@ exclude = [
     "examples/stm32f4/rust/zenoh/talker-embassy",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
+    # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW
+    # backends via Kconfig overlay + Cargo features).
+    "examples/zephyr/rust/talker",
+    "examples/zephyr/rust/listener",
+    "examples/zephyr/rust/service-server",
+    "examples/zephyr/rust/service-client",
+    "examples/zephyr/rust/action-server",
+    "examples/zephyr/rust/action-client",
+    "examples/zephyr/rust/service-client-async",
     "examples/zephyr/rust/zenoh/talker",
     "examples/zephyr/rust/zenoh/listener",
     "examples/zephyr/rust/zenoh/service-server",

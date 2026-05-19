@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr action-client (Rust) — Phase 168.3 collapsed shape.
+#
+# Single dir, N RMW backends. Selection driven by Kconfig overlay
+# (prj-<rmw>.conf) → CMakeLists.txt → EXTRA_CARGO_ARGS=--features rmw-<x>.
+
+[package]
+name = "nros_zephyr_action_client"
+version = "0.1.0"
+edition = "2021"
+description = "nros action-client for Zephyr RTOS (multi-RMW)"
+license = "Apache-2.0"
+
+[lib]
+name = "rustapp"
+crate-type = ["staticlib"]
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-dds   = ["dep:nros-rmw-dds"]
+rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
+
+[dependencies]
+zephyr = "0.1.0"
+log = "0.4"
+
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
+
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
+nros-rmw-dds = { version = "*", default-features = false, features = ["platform-zephyr"], optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
+
+example_interfaces = { version = "*", default-features = false }
+heapless = "0.8"
+
+[build-dependencies]
+zephyr-build = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

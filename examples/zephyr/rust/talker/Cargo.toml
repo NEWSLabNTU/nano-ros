@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr Talker Example (Rust) — Phase 168.1 collapsed shape.
+#
+# Single dir, three RMW backends. Selection driven by Kconfig
+# overlay (prj-<rmw>.conf) → CMakeLists.txt maps to
+# EXTRA_CARGO_ARGS=--no-default-features --features rmw-<rmw>.
+
+[package]
+name = "nros_zephyr_talker"
+version = "0.1.0"
+edition = "2021"
+description = "nros talker for Zephyr RTOS (multi-RMW)"
+license = "Apache-2.0"
+
+[lib]
+name = "rustapp"
+crate-type = ["staticlib"]
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-dds   = ["dep:nros-rmw-dds"]
+rmw-xrce  = ["dep:nros-rmw-xrce-cffi", "dep:heapless"]
+
+[dependencies]
+zephyr = "0.1.0"
+log = "0.4"
+
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
+
+# Optional RMW backends — exactly one enabled per build.
+nros-rmw-zenoh    = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
+nros-rmw-dds      = { version = "*", default-features = false, features = ["platform-zephyr"], optional = true }
+nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
+
+# XRCE locator built from Kconfig at runtime via heapless::String.
+heapless = { version = "0.8", optional = true }
+
+std_msgs = { version = "*", default-features = false }
+
+[build-dependencies]
+zephyr-build = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

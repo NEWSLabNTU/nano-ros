@@ -1,0 +1,109 @@
+//! nros Zephyr Service Client (Rust) — Phase 168.3 collapsed shape.
+
+#![no_std]
+
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
+compile_error!("Exactly one rmw-* feature must be enabled.");
+
+#[cfg(any(
+    all(feature = "rmw-zenoh", feature = "rmw-dds"),
+    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
+    all(feature = "rmw-dds", feature = "rmw-xrce"),
+))]
+compile_error!("rmw-zenoh / rmw-dds / rmw-xrce are mutually exclusive.");
+
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
+use log::{error, info};
+use nros::{Executor, ExecutorConfig, NodeError};
+
+fn register_rmw() -> Result<(), &'static str> {
+    #[cfg(feature = "rmw-zenoh")]
+    { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
+    #[cfg(feature = "rmw-dds")]
+    { nros_rmw_dds::register().map_err(|_| "dds register failed")?; }
+    #[cfg(feature = "rmw-xrce")]
+    { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
+    Ok(())
+}
+
+#[cfg(feature = "rmw-zenoh")]
+fn make_config() -> ExecutorConfig<'static> {
+    ExecutorConfig::new("tcp/127.0.0.1:7466")
+}
+
+#[cfg(feature = "rmw-dds")]
+fn make_config() -> ExecutorConfig<'static> {
+    ExecutorConfig::new("").domain_id(0).node_name("dds_service_client")
+}
+
+#[cfg(feature = "rmw-xrce")]
+fn make_config() -> ExecutorConfig<'static> {
+    use core::fmt::Write;
+    static mut LOCATOR: heapless::String<48> = heapless::String::new();
+    unsafe {
+        LOCATOR.clear();
+        let _ = write!(
+            LOCATOR,
+            "{}:{}",
+            zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_ADDR,
+            zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_PORT
+        );
+        let s: &'static str = core::str::from_utf8_unchecked(LOCATOR.as_bytes());
+        ExecutorConfig::new(s).node_name("xrce_service_client")
+    }
+}
+
+#[cfg(feature = "rmw-dds")]
+const CALL_TIMEOUT_MS: u64 = 15_000;
+#[cfg(not(feature = "rmw-dds"))]
+const CALL_TIMEOUT_MS: u64 = 5_000;
+
+#[no_mangle]
+extern "C" fn rust_main() {
+    unsafe { zephyr::set_logger().ok(); }
+    info!("nros Zephyr Service Client");
+    info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
+    if let Err(e) = run() {
+        error!("Error: {:?}", e);
+    }
+}
+
+fn run() -> Result<(), NodeError> {
+    let _ = nros::platform::zephyr::wait_for_network(2000);
+    register_rmw().expect("Failed to register RMW backend");
+
+    let config = make_config();
+    let mut executor = Executor::open(&config)?;
+
+    let mut node = executor.create_node("add_two_ints_client")?;
+    let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
+
+    info!("Service client ready: /add_two_ints");
+
+    // DDS needs SPDP/SEDP discovery warmup driven by spin_once; zenoh
+    // + xrce are router-mediated and stabilise via a brief sleep.
+    #[cfg(feature = "rmw-dds")]
+    {
+        for _ in 0..100 {
+            executor.spin_once(core::time::Duration::from_millis(10));
+            zephyr::time::sleep(zephyr::time::Duration::millis(100));
+        }
+    }
+    #[cfg(not(feature = "rmw-dds"))]
+    {
+        zephyr::time::sleep(zephyr::time::Duration::secs(2));
+    }
+
+    let mut count: i64 = 0;
+    loop {
+        let req = AddTwoIntsRequest { a: count, b: count + 1 };
+        info!("[{}] Sending: {} + {}", count, req.a, req.b);
+        let mut promise = client.call(&req)?;
+        match promise.wait(&mut executor, core::time::Duration::from_millis(CALL_TIMEOUT_MS)) {
+            Ok(resp) => info!("[{}] Response: sum={}", count, resp.sum),
+            Err(e) => error!("[{}] Call failed: {:?}", count, e),
+        }
+        count += 1;
+        zephyr::time::sleep(zephyr::time::Duration::secs(2));
+    }
+}

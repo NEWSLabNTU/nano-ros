@@ -536,6 +536,58 @@ pub fn build_threadx_linux_cmake_example_rmw(
     )
 }
 
+/// Phase 168.1 — collapsed-shape Zephyr Rust example resolver.
+///
+/// Zephyr west builds drop the artifact at
+/// `zephyr-workspace/build-rs-<case>-<rmw>/zephyr/zephyr.exe` (not
+/// inside the example dir), so this helper resolves to that path
+/// instead of using `build_example_rmw`. `case` is the directory
+/// name under `examples/zephyr/rust/` (talker, listener, …).
+///
+/// Build orchestration lives in `just/zephyr.just :: build-fixtures`.
+pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/zephyr/rust/{}", case));
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+    let workspace = root.join("zephyr-workspace");
+    let binary_path = workspace.join(format!(
+        "build-rs-{}-{}/zephyr/zephyr.exe",
+        case,
+        rmw.cmake_value()
+    ));
+    require_prebuilt_binary(&binary_path)
+}
+
+/// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
+/// `lang` is `"c"` or `"cpp"`. Mirrors the Rust resolver.
+pub fn build_zephyr_cmake_example_rmw(
+    lang: &str,
+    case: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/zephyr/{}/{}", lang, case));
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+    let workspace = root.join("zephyr-workspace");
+    let binary_path = workspace.join(format!(
+        "build-{}-{}-{}/zephyr/zephyr.exe",
+        lang,
+        case,
+        rmw.cmake_value()
+    ));
+    require_prebuilt_binary(&binary_path)
+}
+
 /// Phase 118.B.6 — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,
