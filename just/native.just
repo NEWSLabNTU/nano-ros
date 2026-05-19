@@ -179,6 +179,19 @@ build-fixtures:
         fi
     done
     wait
+    # Phase 118.B.3 — collapsed-shape native C++ examples. Same shape
+    # as the C side; the typed nros-cpp binding handles all three RMWs.
+    for case in talker listener service-server service-client action-server action-client; do
+        if [ -d examples/native/cpp/${case} ]; then
+            for rmw in zenoh dds xrce; do
+                echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
+                ( cd examples/native/cpp/${case} && \
+                  cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                  cmake --build build-${rmw} -j > /dev/null ) &
+            done
+        fi
+    done
+    wait
     echo "  → packages/testing/nros-bench/stress-zenoh (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
     ( cd packages/testing/nros-bench/stress-zenoh && \
       ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build --release --target-dir target-large-buf --quiet )

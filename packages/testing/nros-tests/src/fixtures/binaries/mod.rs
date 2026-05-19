@@ -481,6 +481,16 @@ pub fn build_native_c_example_rmw(
     build_example_cmake_rmw(&format!("native/c/{}", case), binary_name, rmw)
 }
 
+/// Phase 118 — generic native C++ example resolver. Mirror of the C
+/// helper for `examples/native/cpp/<case>/`.
+pub fn build_native_cpp_example_rmw(
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    build_example_cmake_rmw(&format!("native/cpp/{}", case), binary_name, rmw)
+}
+
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY

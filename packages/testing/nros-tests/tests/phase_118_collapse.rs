@@ -17,7 +17,8 @@ use std::path::Path;
 
 use nros_tests::fixtures::{
     Rmw, build_native_c_example_rmw, build_native_c_talker_rmw,
-    build_native_listener_rmw, build_native_rust_example_rmw, build_native_talker_rmw,
+    build_native_cpp_example_rmw, build_native_listener_rmw,
+    build_native_rust_example_rmw, build_native_talker_rmw,
 };
 use rstest::rstest;
 
@@ -216,6 +217,59 @@ fn test_native_c_listener_service_action_rmw_variant_exists(
     let path = build_native_c_example_rmw(case, binary, rmw).unwrap_or_else(|e| {
         nros_tests::skip!(
             "native/c/{} {:?} variant not prebuilt; run \
+             `just native build-fixtures` first: {:?}",
+            case,
+            rmw,
+            e
+        )
+    });
+    assert!(
+        path.exists(),
+        "{} {:?} binary missing: {}",
+        case,
+        rmw,
+        path.display()
+    );
+    assert_eq!(
+        path.file_name().and_then(|n| n.to_str()),
+        Some(binary),
+        "unexpected binary name for {} {:?}: {}",
+        case,
+        rmw,
+        path.display()
+    );
+}
+
+/// Phase 118.B.3 — collapsed-shape native C++ examples. Six cases,
+/// three RMWs. Mirror of the C path; typed nros-cpp binding works
+/// across all three RMWs without per-RMW source changes.
+#[rstest]
+#[case::talker_zenoh("talker", "cpp_talker", Rmw::Zenoh)]
+#[case::talker_dds("talker", "cpp_talker", Rmw::Dds)]
+#[case::talker_xrce("talker", "cpp_talker", Rmw::Xrce)]
+#[case::listener_zenoh("listener", "cpp_listener", Rmw::Zenoh)]
+#[case::listener_dds("listener", "cpp_listener", Rmw::Dds)]
+#[case::listener_xrce("listener", "cpp_listener", Rmw::Xrce)]
+#[case::ss_zenoh("service-server", "cpp_service_server", Rmw::Zenoh)]
+#[case::ss_dds("service-server", "cpp_service_server", Rmw::Dds)]
+#[case::ss_xrce("service-server", "cpp_service_server", Rmw::Xrce)]
+#[case::sc_zenoh("service-client", "cpp_service_client", Rmw::Zenoh)]
+#[case::sc_dds("service-client", "cpp_service_client", Rmw::Dds)]
+#[case::sc_xrce("service-client", "cpp_service_client", Rmw::Xrce)]
+#[case::as_zenoh("action-server", "cpp_action_server", Rmw::Zenoh)]
+#[case::as_dds("action-server", "cpp_action_server", Rmw::Dds)]
+#[case::as_xrce("action-server", "cpp_action_server", Rmw::Xrce)]
+#[case::ac_zenoh("action-client", "cpp_action_client", Rmw::Zenoh)]
+#[case::ac_dds("action-client", "cpp_action_client", Rmw::Dds)]
+#[case::ac_xrce("action-client", "cpp_action_client", Rmw::Xrce)]
+fn test_native_cpp_rmw_variant_exists(
+    #[case] case: &str,
+    #[case] binary: &str,
+    #[case] rmw: Rmw,
+) {
+    let path = build_native_cpp_example_rmw(case, binary, rmw).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "native/cpp/{} {:?} variant not prebuilt; run \
              `just native build-fixtures` first: {:?}",
             case,
             rmw,
