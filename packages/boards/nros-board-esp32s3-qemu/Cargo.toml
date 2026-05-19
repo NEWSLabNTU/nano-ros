@@ -1,0 +1,79 @@
+[package]
+name = "nros-board-esp32s3-qemu"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "ESP32-S3 QEMU board crate for nros (platform init + run() entry point, Phase 117.2)"
+
+[lib]
+name = "nros_board_esp32s3_qemu"
+
+[dependencies]
+# Unified platform primitives (clock, memory, random, sleep, libc stubs)
+nros-platform-esp32s3-qemu = { path = "../../platforms/nros-platform-esp32s3-qemu" }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32s3-qemu"] }
+# Phase 97.3.esp32-qemu — `smoltcp_clock_now_ms` extern shim needs the
+# trait import. Only used inside the cfg-gated forwarder in lib.rs.
+nros-platform-api = { path = "../../core/nros-platform-api" }
+# Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
+# symbols come from `zpico-sys`'s default-on `platform-aliases`
+# alias TU when `rmw-zenoh` is active.
+
+# smoltcp network provider (ethernet only)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp", optional = true }
+# OpenCores Ethernet MAC driver (for QEMU open_eth NIC, ethernet only).
+# Phase 117.2 — Espressif QEMU maps OpenETH at the same `DR_REG_EMAC_BASE
+# = 0x600C_D000` on ESP32-S3 as on ESP32-C3 (verified against
+# `third-party/esp32/qemu/include/hw/misc/esp32s3_reg.h`), so the
+# `ESP32C3_BASE` constant works for both chips. No driver fork needed;
+# the local `Config.base_addr` field carries the address verbatim.
+openeth-smoltcp = { path = "../../drivers/openeth-smoltcp", optional = true }
+# Network stack (ethernet only)
+smoltcp = { version = "0.12", default-features = false, optional = true, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-tcp",
+    "socket-udp",
+    # Phase 117.2 — IGMP / multicast group join for RTPS SPDP
+    # `239.255.0.1:7400+`. dust-dds-on-ESP32-S3 (the entire reason
+    # for Phase 117) needs this — without it SPDP never sees the
+    # peer.
+    "multicast",
+] }
+
+# ESP32-S3 HAL and support crates. esp-hal exposes the Xtensa-LX7
+# critical-section impl + interrupt vector wiring under the `esp32s3`
+# feature, plus the `Rng` driver that backs `random::seed`.
+esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable"] }
+esp-backtrace = { version = "~0.18.0", features = ["esp32s3", "panic-handler", "println"] }
+esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32s3"] }
+esp-println = { version = "~0.16.0", features = ["esp32s3"] }
+esp-alloc = { version = "~0.9.0" }
+
+# Phase 117.2 — ESP32-S3 (Xtensa LX7) has native pointer-CAS, but
+# the chip is dual-core in production. QEMU under `-M esp32s3`
+# defaults to single-core boot (PRO core only). Keep
+# `portable-atomic` as a dep so downstream crates that need
+# `portable_atomic::AtomicUsize` etc. resolve cleanly; do NOT set
+# the `unsafe-assume-single-core` cfg (LX7 hardware atomics
+# satisfy the bounds natively).
+portable-atomic = { version = "1", default-features = false }
+
+[features]
+default = ["ethernet", "rmw-zenoh"]
+# Phase 129.D — `rmw-zenoh` is now a pure marker. Symbols come
+# from `zpico-sys`'s default-on `platform-aliases` C TU, which
+# the consumer pulls in transitively via `nros-rmw-zenoh`.
+rmw-zenoh = []
+# Ethernet transport via OpenETH + smoltcp
+ethernet = ["dep:nros-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
+# Serial transport via zenoh-pico built-in serial (no additional deps)
+serial = []
+# Phase 117.2 — DDS / dust-dds heap budget (1 MiB PSRAM-backed via
+# the platform crate's `.ext_ram.bss` section attribute). Off by
+# default; DDS example crates pull in via `features = ["dds-heap"]`.
+# The board's `init_hardware` still calls `esp_alloc::heap_allocator!`
+# at 96 KiB for internal-SRAM short-lived allocations; the
+# `dds-heap` carve is a separate static in PSRAM via the platform
+# crate's `memory` module.
+dds-heap = ["nros-platform-esp32s3-qemu/dds-heap"]

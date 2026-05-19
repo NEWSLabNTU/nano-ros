@@ -6,6 +6,15 @@
 /// Default base address on ESP32-C3 QEMU (mapped via `-nic model=open_eth`)
 pub const ESP32C3_BASE: usize = 0x600C_D000;
 
+/// Default base address on ESP32-S3 QEMU (Phase 117.2). Espressif's
+/// QEMU fork maps OpenETH at the same `DR_REG_EMAC_BASE` on both
+/// chips — verified against
+/// `third-party/esp32/qemu/include/hw/misc/esp32s3_reg.h:77`
+/// (`#define DR_REG_EMAC_BASE 0x600CD000`). Kept as a chip-specific
+/// alias so the ESP32-S3 board crate can name it self-documentingly
+/// instead of importing the ESP32-C3 constant.
+pub const ESP32S3_BASE: usize = ESP32C3_BASE;
+
 /// Register offsets from base address
 pub mod offset {
     /// Mode Register

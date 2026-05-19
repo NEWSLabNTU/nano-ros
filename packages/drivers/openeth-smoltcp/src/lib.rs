@@ -34,7 +34,7 @@ use core::ptr::{read_volatile, write_volatile};
 use smoltcp::phy::{self, Device, DeviceCapabilities, Medium};
 use smoltcp::time::Instant;
 
-pub use regs::ESP32C3_BASE;
+pub use regs::{ESP32C3_BASE, ESP32S3_BASE};
 
 /// Maximum Transmission Unit for Ethernet
 pub const MTU: usize = 1500;

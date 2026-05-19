@@ -256,6 +256,10 @@ exclude = [
     "packages/platforms/nros-platform-esp32s3-qemu",
     "packages/boards/nros-board-esp32",
     "packages/boards/nros-board-esp32-qemu",
+    # Phase 117.2 — ESP32-S3 QEMU board crate. PSRAM heap region init
+    # + memory.x carve-out + OpenETH wire. Pairs with
+    # `nros-platform-esp32s3-qemu`.
+    "packages/boards/nros-board-esp32s3-qemu",
     "packages/boards/nros-board-stm32f4",
     "packages/boards/nros-board-nuttx-qemu-arm",
     "packages/boards/nros-board-mps2-an385-freertos",
