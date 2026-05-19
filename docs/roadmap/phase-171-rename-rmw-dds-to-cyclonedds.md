@@ -1,26 +1,34 @@
-# Phase 169 — Retire dust-dds; rename `dds` RMW → `cyclonedds`; complete example matrix
+# Phase 171 — Rename `dds` RMW → `cyclonedds`; complete example matrix; no-alloc audit
 
-**Goal.** Collapse nano-ros's DDS story onto a single backend —
-Cyclone DDS — by retiring the `nros-rmw-dds` (dust-DDS) Rust crate,
-renaming the RMW backend identifier `dds` → `cyclonedds` everywhere
-it surfaces (features, cmake vars, Kconfig, example tree, docs), and
-filling the per-platform × per-language example matrix for the
-remaining `cyclonedds` cell. The `nros-rmw-cyclonedds` package stays
-C++ (Cyclone DDS's native language; matches the RMW backend
-host-language policy frozen 2026-05-07). New examples target
-`no_std + no-alloc` where the platform allows it.
+**Goal.** Once Phase 169 retires dust-DDS, do the follow-on rename
++ matrix sweep: rename the RMW backend identifier `dds` →
+`cyclonedds` everywhere it surfaces (Cargo features, CMake cache
+vars, Kconfig values, example-tree directories, book docs),
+fill the per-platform × per-language `cyclonedds` example matrix,
+and audit the `nros-rmw-cyclonedds` wrapper for `no_std + no-alloc`
+discipline. The wrapper stays C++ (Cyclone DDS's native language;
+matches the RMW backend host-language policy frozen 2026-05-07).
 
 **Status.** Not Started.
 
-**Priority.** P1 — closes Phase 117 follow-up + dramatically
-shrinks the DDS surface area to one well-supported backend.
+**Priority.** P2 — paper-rename and matrix-fill on top of the
+already-decided 169 retirement.
 
 **Depends on.**
+- **Phase 169** retire-dust-dds-consolidate-cyclonedds (must land
+  first so the `dds` identifier unambiguously means Cyclone DDS).
 - Phase 117 Cyclone DDS RMW bring-up (POSIX + Zephyr/cpp landed;
   stock-RMW interop slices 117.X.1–117.X.5 still open — those land
   on top of this rename, not blocked by it).
 - Phase 131 examples-tree shape (canonical
   `examples/<plat>/<lang>/<rmw>/<example>/` layout).
+
+> **Note.** Earlier-drafted as Phase 169 (file
+> `phase-169-retire-dust-dds-rename-cyclonedds.md`); renumbered to
+> 171 after a separate Phase 169 doc (`-consolidate-cyclonedds`)
+> landed first and claimed the same number. Content scope narrowed
+> to the rename + matrix + no-alloc audit since the retirement
+> half is now Phase 169's job.
 
 ---
 
@@ -50,23 +58,21 @@ Kconfig values, example-tree directories, book docs) uses bare
 `dds` to mean "dust-DDS". Once dust-DDS is gone, `dds` is a stale
 identifier — `cyclonedds` is what the backend actually is.
 
-This phase does three things in order:
+This phase does two things, in order:
 
 1. **Rename** `dds` → `cyclonedds` everywhere it surfaces in code,
-   build glue, example dirs, and docs. This is mostly mechanical
-   but touches enough surfaces that doing it as one atomic phase
+   build glue, example dirs, and docs. Mostly mechanical, but
+   touches enough surfaces that doing it as one atomic phase
    avoids half-renamed states.
-2. **Retire** dust-dds: delete the `nros-rmw-dds` +
-   `nros-rmw-dds-staticlib` crates, the `third-party/dust-dds/`
-   submodule, every feature flag / Cargo dep / test reference.
-3. **Complete the matrix**: fill every `<plat>/<lang>/cyclonedds/`
+2. **Complete the matrix**: fill every `<plat>/<lang>/cyclonedds/`
    cell that Cyclone DDS can actually build on, with `no_std +
    no-alloc` examples where the platform / language allow.
 
-The retire step has to come AFTER the rename — running them in
-parallel risks leaving the workspace in a state where `dds`
-historically meant dust-DDS but cyclonedds doesn't yet answer to
-`dds`, which would make every grep / replace pass ambiguous.
+> **Note.** The dust-DDS retirement (delete crates + submodule)
+> moved to Phase 169 as the prerequisite. By the time Phase 171
+> starts, `nros-rmw-dds` and `third-party/dust-dds/` are already
+> gone — this phase only deals with the lingering naming
+> follow-ups and the example-matrix fill.
 
 ---
 
@@ -137,30 +143,30 @@ After this phase:
 
 ## Work items
 
-### 169.A — Rename `dds` → `cyclonedds` in code surface
+### 171.A — Rename `dds` → `cyclonedds` in code surface
 
 Mechanical rename across every non-example reference. Run BEFORE
 any deletion so the workspace stays buildable at every step.
 
-- [ ] **169.A.1** Workspace `Cargo.toml`: rename the workspace-
+- [ ] **171.A.1** Workspace `Cargo.toml`: rename the workspace-
       level `nros-rmw-dds` aliases that point at the staticlib;
       add a new `rmw-cyclonedds` feature group; keep the dust-DDS
-      paths intact for now (deletion is step 169.D).
-- [ ] **169.A.2** `nros-core` / `nros-node` / `nros`: rename the
+      paths intact for now (deletion is step 171.D).
+- [ ] **171.A.2** `nros-core` / `nros-node` / `nros`: rename the
       `Rmw::Dds` enum variant to `Rmw::CycloneDds`. Update every
       `match` over the enum.
-- [ ] **169.A.3** Root `CMakeLists.txt`: rename the cmake
+- [ ] **171.A.3** Root `CMakeLists.txt`: rename the cmake
       `NANO_ROS_RMW=dds` branch → `cyclonedds`. Re-export the
       `NROS_RMW_DDS` C macro as `NROS_RMW_CYCLONEDDS`.
-- [ ] **169.A.4** Per-platform integration shells
+- [ ] **171.A.4** Per-platform integration shells
       (`integrations/{zephyr,esp-idf,nuttx,px4,platformio}/`): grep
       for `dds` Kconfig / yaml / cmake values; rename each.
-- [ ] **169.A.5** `book/src/`: update every reference to the
+- [ ] **171.A.5** `book/src/`: update every reference to the
       `dds` RMW identifier. Files touched include
       `internals/rmw-backends.md`, `user-guide/rmw-backends.md`,
       `concepts/comparison-vs-microros.md`, every starter page,
       `reference/build-commands.md`.
-- [ ] **169.A.6** Reserve the old `dds` identifier as a hard
+- [ ] **171.A.6** Reserve the old `dds` identifier as a hard
       compile-time error for one release: `compile_error!("the
       'rmw-dds' Cargo feature was renamed to 'rmw-cyclonedds' in
       Phase 169 — see docs/roadmap/phase-169-... for details");`
@@ -171,33 +177,33 @@ any deletion so the workspace stays buildable at every step.
 `rmw-dds|rmw_dds|RMW_DDS|NROS_RMW.*dds|nros-rmw-dds` outside
 `docs/roadmap/archived/` and `third-party/`.
 
-### 169.B — Rename example-tree `dds` → `cyclonedds`
+### 171.B — Rename example-tree `dds` → `cyclonedds`
 
 For each existing `examples/<plat>/<lang>/dds/` directory, decide
 whether the example actually targets dust-DDS or whether the
 example is platform-agnostic enough to retarget at Cyclone DDS:
 
 - Examples that link `nros-rmw-dds` directly (the Rust dust-DDS
-  staticlib) — these get **deleted** in 169.D once Cyclone DDS has
+  staticlib) — these get **deleted** in 171.D once Cyclone DDS has
   a matching example.
 - Examples that just point at "the DDS backend, whichever it is"
   via cmake / cargo feature — these get **renamed** in place.
 
-- [ ] **169.B.1** Survey every `examples/*/*/dds/` directory.
+- [ ] **171.B.1** Survey every `examples/*/*/dds/` directory.
       Classify: dust-DDS-bound vs backend-agnostic. Output:
       `tmp/phase-169-example-classify.md` table.
-- [ ] **169.B.2** For dust-DDS-bound examples (every Rust RTOS DDS
+- [ ] **171.B.2** For dust-DDS-bound examples (every Rust RTOS DDS
       example today): mark for deletion + matching cyclonedds
-      replacement under 169.C.
-- [ ] **169.B.3** For backend-agnostic examples (native C / cpp /
+      replacement under 171.C.
+- [ ] **171.B.3** For backend-agnostic examples (native C / cpp /
       rust DDS, Zephyr-side DDS examples): `git mv
       examples/<plat>/<lang>/dds/ examples/<plat>/<lang>/cyclonedds/`.
       Update each example's per-dir `Cargo.toml` /
       `CMakeLists.txt` to select the cyclonedds backend.
-- [ ] **169.B.4** Update `examples/README.md` matrix: drop the
+- [ ] **171.B.4** Update `examples/README.md` matrix: drop the
       `dds` column, mark every renamed cell under `cyclonedds`.
 
-### 169.C — Complete the cyclonedds example matrix
+### 171.C — Complete the cyclonedds example matrix
 
 Fill every `<plat>/<lang>/cyclonedds/` cell that Cyclone DDS can
 build on. Each cell gets the canonical six-example set (talker,
@@ -217,7 +223,7 @@ Target matrix (after rename + new cells):
 | `threadx-linux`        | c        | full 6          |
 | `threadx-linux`        | cpp      | full 6          |
 | `threadx-linux`        | rust     | full 6 (via staticlib) |
-| `qemu-arm-freertos`    | c        | full 6 (gated on Cyclone DDS FreeRTOS port — Phase 169.C.gate) |
+| `qemu-arm-freertos`    | c        | full 6 (gated on Cyclone DDS FreeRTOS port — Phase 171.C.gate) |
 | `qemu-arm-freertos`    | cpp      | full 6 (same gate) |
 | `qemu-arm-freertos`    | rust     | full 6 (same gate) |
 | `qemu-arm-nuttx`       | c        | full 6 (gated on Cyclone DDS NuttX port) |
@@ -230,28 +236,28 @@ Target matrix (after rename + new cells):
 | `stm32f4`              | rust     | same gate as baremetal |
 | `px4`                  | cpp      | (uORB-only, unchanged) |
 
-- [ ] **169.C.1** **`native` × {c,cpp,rust}** — extend the existing
+- [ ] **171.C.1** **`native` × {c,cpp,rust}** — extend the existing
       native dds examples (3 langs × 6 cases = 18 examples) to
       Cyclone DDS. Native is POSIX so Cyclone DDS works out of
       the box.
-- [ ] **169.C.2** **`zephyr` × {c, rust}** — fill the gap left by
+- [ ] **171.C.2** **`zephyr` × {c, rust}** — fill the gap left by
       having only `zephyr/cpp/cyclonedds/` today. Cyclone DDS has
       a Zephyr port in upstream tree.
-- [ ] **169.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
+- [ ] **171.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
       DDS via the existing NetX-Duo / NSOS BSD shim
       (`packages/drivers/nsos-netx`).
-- [ ] **169.C.4** **`qemu-arm-{freertos, nuttx}` × {c, cpp, rust}**
+- [ ] **171.C.4** **`qemu-arm-{freertos, nuttx}` × {c, cpp, rust}**
       — gated on Cyclone DDS RTOS-port viability assessment
-      (169.C.gate). If viable, add the 18 cells; if not, mark
+      (171.C.gate). If viable, add the 18 cells; if not, mark
       empty with documented reason in the README matrix.
-- [ ] **169.C.5** **`qemu-riscv64-threadx` × {c, cpp, rust}** —
+- [ ] **171.C.5** **`qemu-riscv64-threadx` × {c, cpp, rust}** —
       same gate as qemu-arm RTOS cells.
-- [ ] **169.C.6** **`esp32` × rust** — gated on esp-hal Cyclone
+- [ ] **171.C.6** **`esp32` × rust** — gated on esp-hal Cyclone
       DDS port (a real engineering question — Cyclone DDS expects
       a hosted RTOS; esp-hal is bare-metal Rust). Likely empty
       cell.
-- [ ] **169.C.gate** **Cyclone DDS RTOS port assessment** — before
-      committing to 169.C.4 / 169.C.5 / 169.C.6, spike one cell
+- [ ] **171.C.gate** **Cyclone DDS RTOS port assessment** — before
+      committing to 171.C.4 / 171.C.5 / 171.C.6, spike one cell
       end-to-end (suggested: `qemu-arm-nuttx/c/cyclonedds/talker/`)
       and decide: viable / gated on upstream patch / won't-do.
       Output: gate decision in `tmp/phase-169-rtos-cyclone-gate.md`,
@@ -264,70 +270,56 @@ Each new C example: no `malloc` in user code, fixed `char[N]`
 scratch buffers. Each new C++ example: `NROS_CPP_STD=OFF`,
 freestanding C++14 only.
 
-### 169.D — Delete dust-dds + nros-rmw-dds
+### 171.D — Deletion follow-ups left over from Phase 169
 
-After 169.A + 169.B + 169.C land, dust-DDS has zero remaining
-in-tree consumers. Delete it.
+Most dust-DDS deletion (crates + submodule + workspace refs) is
+**Phase 169's job**. By the time 171 starts, those are gone. The
+items below are the lingering paperwork that surfaces after the
+rename:
 
-- [ ] **169.D.1** Delete `packages/dds/nros-rmw-dds/` + 
-      `packages/dds/nros-rmw-dds-staticlib/` crates.
-- [ ] **169.D.2** Delete `third-party/dust-dds/` submodule: remove
-      from `.gitmodules`, run `git rm`, drop the gitignore entries.
-- [ ] **169.D.3** Remove every workspace member / Cargo dep /
-      build alias referencing the deleted crates. Run `cargo
-      check` from a clean state; expect zero "unresolved
-      dependency" errors.
-- [ ] **169.D.4** Delete the dust-DDS-bound examples flagged in
-      169.B.2 (every `examples/*/rust/dds/` that hard-links
-      `nros-rmw-dds`).
-- [ ] **169.D.5** Delete the `compile_error!` aliases from 169.A.6
+- [ ] **171.D.1** Delete the `compile_error!` aliases from 171.A.6
       after one minor-version release — kept for one release so
-      out-of-tree consumers get a clear error rather than a
-      missing-feature failure.
-- [ ] **169.D.6** Remove dust-DDS specific tests from
-      `packages/testing/nros-tests/tests/`:
-      `dds_ros2_interop.rs` (rewrite for Cyclone),
-      `server_available_e2e.rs` (uses `nros_rmw_dds as _`),
-      every test referencing `dust_dds::*`.
-- [ ] **169.D.7** Update `book/src/internals/rmw-backends.md` host-
+      out-of-tree consumers using the old `rmw-dds` feature name
+      get a clear error rather than a missing-feature failure.
+- [ ] **171.D.2** Update `book/src/internals/rmw-backends.md` host-
       language policy table — drop the dust-DDS row, leave the
       "retired Phase 169" footnote.
 
-### 169.E — `no_std + no-alloc` audit on `nros-rmw-cyclonedds`
+### 171.E — `no_std + no-alloc` audit on `nros-rmw-cyclonedds`
 
 The wrapper package itself (not Cyclone DDS core) is freestanding
 C++14 today. Tighten the audit:
 
-- [ ] **169.E.1** Grep `packages/dds/nros-rmw-cyclonedds/` for
+- [ ] **171.E.1** Grep `packages/dds/nros-rmw-cyclonedds/` for
       every `std::vector`, `std::string`, `std::shared_ptr`,
       `std::unique_ptr`, `new` / `delete`. Replace with `nros::`
       equivalents or stack-allocated fixed-capacity types where
       possible.
-- [ ] **169.E.2** Document remaining `alloc`-touching call sites
+- [ ] **171.E.2** Document remaining `alloc`-touching call sites
       (Cyclone DDS's own API takes `dds_qos_t*` from
       `dds_create_qos()` which `malloc`s internally — that's
       transparent to nano-ros's wrapper but document the
       transitive allocation budget per-platform).
-- [ ] **169.E.3** Add a CI check that
+- [ ] **171.E.3** Add a CI check that
       `nros-rmw-cyclonedds` compiles with
       `-fno-exceptions -fno-rtti -fno-threadsafe-statics` on every
       target — same flags Phase 117 already uses, but make the
       assertion explicit.
 
-### 169.F — Acceptance + cleanup
+### 171.F — Acceptance + cleanup
 
-- [ ] **169.F.1** `just ci` clean from root.
-- [ ] **169.F.2** `rg -i "dust[ -_]dds|nros[-_]rmw[-_]dds\b"` 
+- [ ] **171.F.1** `just ci` clean from root.
+- [ ] **171.F.2** `rg -i "dust[ -_]dds|nros[-_]rmw[-_]dds\b"` 
       returns only hits under `docs/roadmap/archived/` (historical)
       and `book/src/changelog.md`-style files (history).
-- [ ] **169.F.3** `examples/README.md` matrix updated: `dds` column
-      gone, `cyclonedds` column populated per 169.C target.
-- [ ] **169.F.4** `book/src/internals/rmw-backends.md` policy table
+- [ ] **171.F.3** `examples/README.md` matrix updated: `dds` column
+      gone, `cyclonedds` column populated per 171.C target.
+- [ ] **171.F.4** `book/src/internals/rmw-backends.md` policy table
       updated.
-- [ ] **169.F.5** Archive Phase 117 once 117.X.1–117.X.5
+- [ ] **171.F.5** Archive Phase 117 once 117.X.1–117.X.5
       stock-RMW interop slices are done (separate from this
       phase but enabled by the rename).
-- [ ] **169.F.6** Archive Phase 166.F — dust-DDS Xtensa actor
+- [ ] **171.F.6** Archive Phase 166.F — dust-DDS Xtensa actor
       deadlock — as "won't-fix, dust-DDS retired".
 
 ---
@@ -341,7 +333,7 @@ Code:
 - `packages/dds/nros-rmw-dds/` (delete)
 - `packages/dds/nros-rmw-dds-staticlib/` (delete)
 - `packages/dds/nros-rmw-cyclonedds/` (audit; possibly add Rust
-  staticlib sibling per 169.C.1 if Rust users need a static
+  staticlib sibling per 171.C.1 if Rust users need a static
   archive)
 - `packages/testing/nros-tests/tests/dds_ros2_interop.rs` (rewrite)
 - `packages/testing/nros-tests/tests/server_available_e2e.rs`
@@ -350,7 +342,7 @@ Code:
   `NROS_RMW_DDS` test branch)
 - `third-party/dust-dds/` (submodule delete)
 
-Examples (per 169.B + 169.C tables — likely 60-100 directories
+Examples (per 171.B + 171.C tables — likely 60-100 directories
 moved or created).
 
 Docs:
@@ -382,7 +374,7 @@ Integrations:
       under `docs/roadmap/archived/` (history) and `CHANGELOG`-style
       files.
 - [ ] `examples/<plat>/<lang>/cyclonedds/` populated per the
-      169.C matrix; every cell either has the canonical 6 examples
+      171.C matrix; every cell either has the canonical 6 examples
       OR an entry in the "Intentionally empty cells" section of
       `examples/README.md` explaining why.
 - [ ] `just test-all` passes — every test that previously depended
