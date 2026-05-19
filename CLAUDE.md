@@ -65,7 +65,7 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 
 ### Examples = Standalone Projects
 **Each `examples/` dir is self-contained, copy-out template.**
-- Canonical shape `examples/<plat>/<lang>/<rmw>/<example>/`. Sibling categories: `examples/bridges/<name>/` (cross-RMW gateways), `examples/templates/<name>/` (multi-platform copy-out recipes — Pattern A workspaces etc.).
+- Canonical shape `examples/<plat>/<lang>/<example>/` (collapsed — RMW selected at build time via Cargo features for Rust + cmake `-DNROS_RMW=<rmw>` for C/C++ + Kconfig `prj-<rmw>.conf` overlay on Zephyr). Phase 118 + 168 collapsed every `<plat>/<lang>/<rmw>/<example>/` triple onto the single dir; legacy `<rmw>/<case>/` siblings deleted on Zephyr (Phase 168.6.C). Sibling categories: `examples/bridges/<name>/` (cross-RMW gateways), `examples/templates/<name>/` (multi-platform copy-out recipes — Pattern A workspaces etc.). Carve-outs: `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` (one-board-one-RMW reference, not collapsed).
 - **Non-example binaries live elsewhere.** Tests/benches/smokes are NOT in `examples/`:
   - `packages/testing/nros-bench/<name>/` — perf, fairness, stress, large-msg
   - `packages/testing/nros-smoke/<name>/` — driver/board bringup (no nros API)

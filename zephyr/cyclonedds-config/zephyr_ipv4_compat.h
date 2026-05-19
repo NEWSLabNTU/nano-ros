@@ -19,17 +19,17 @@
 #ifdef __ZEPHYR__
 
 #include <zephyr/net/net_ip.h>  /* struct in_addr */
+/* Zephyr ≥3.7 defines `struct ip_mreqn` in <zephyr/net/socket.h>.
+ * Pull it in so our compat shim doesn't redefine it (Phase 117 +
+ * 168.X.fvp). `struct ip_mreq` (no trailing n) is still missing —
+ * Zephyr only ships the newer form — so we keep that one below. */
+#include <zephyr/net/socket.h>  /* struct ip_mreqn (Zephyr ≥3.7) */
 
 #ifndef NROS_HAVE_STRUCT_IP_MREQ
 #define NROS_HAVE_STRUCT_IP_MREQ 1
 struct ip_mreq {
     struct in_addr imr_multiaddr;
     struct in_addr imr_interface;
-};
-struct ip_mreqn {
-    struct in_addr imr_multiaddr;
-    struct in_addr imr_address;
-    int            imr_ifindex;
 };
 #endif  /* NROS_HAVE_STRUCT_IP_MREQ */
 

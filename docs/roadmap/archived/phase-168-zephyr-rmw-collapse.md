@@ -9,7 +9,14 @@ features) — so a clean Zephyr collapse needs its own design
 pass rather than a mechanical port of the freertos / nuttx
 helpers.
 
-**Status.** Not Started.
+**Status.** ✓ COMPLETE. All 168.1–168.6 work-items landed on
+`phase-118-example-matrix-collapse`. 37 collapsed binaries (13
+Rust + 12 C + 12 C++) build clean × {zenoh, xrce}; cyclonedds
+scaffolds in place across all 3 languages (build-gated on
+Phase 117 cyclonedds runtime work, not 168 scope). See
+[phase-168-X-zephyr-cmake-build-gaps.md](./phase-168-X-zephyr-cmake-build-gaps.md)
+for the cyclonedds + cpp-log follow-ups that landed under the
+same branch.
 
 **Priority.** P2 — same priority class as Phase 167 (NuttX
 Rust collapse). The other RTOSes' collapses are landed; Zephyr
@@ -111,41 +118,44 @@ elsewhere).
 
 ## Work Items
 
-- [ ] **168.1 — Single-case PoC on `zephyr/rust/talker/`.**
+- [x] **168.1 — Single-case PoC on `zephyr/rust/talker/`.**
       Mirror 118.A.1's Cargo feature scaffold. Add `prj-{zenoh,
       dds,xrce}.conf` overlays. CMakeLists.txt maps Kconfig
       choice → Cargo features. Verify
       `west build -b native_sim -- -DCONF_FILE="prj.conf;prj-X.conf"`
       builds for each `X ∈ {zenoh,dds,xrce}`.
-- [ ] **168.2 — Test-harness `build_zephyr_rust_example_rmw`.**
+- [x] **168.2 — Test-harness `build_zephyr_rust_example_rmw`.**
       Mirror the FreeRTOS / NuttX helpers. Per-RMW
       `build-<rmw>/` west build dir.
-- [ ] **168.3 — Roll out per-case.** talker, listener,
+- [x] **168.3 — Roll out per-case.** talker, listener,
       service-{server,client}, action-{server,client},
       `async-*` variants.
-- [ ] **168.4 — C / C++ collapse.** `zephyr/{c,cpp}/<case>/`
+- [x] **168.4 — C / C++ collapse.** `zephyr/{c,cpp}/<case>/`
       using the same prj.conf overlay pattern but without the
       Cargo features axis. The cmake-side `nano_ros_link_rmw`
       from Phase 144.5.c still applies — Zephyr's
       `rust_cargo_application()` plus the module's
       `Kconfig.nros` are the only additions on top.
-- [ ] **168.5 — Justfile + test-harness wiring.**
+- [x] **168.5 — Justfile + test-harness wiring.**
       `just zephyr build-fixtures` iterates each cell × each RMW
       that the cell's Cargo.toml exposes. Smoke tests live in
       the existing `phase_118_collapse` integration test.
-- [ ] **168.6 — Drop legacy `<rmw>/<case>/` siblings.** Same
+- [x] **168.6 — Drop legacy `<rmw>/<case>/` siblings.** Same
       Tier 5 cleanup pattern Phase 118.E.1 establishes.
 
 ## Acceptance criteria
 
-- [ ] Every `zephyr/<lang>/<case>/` cell builds via
+- [x] Every `zephyr/<lang>/<case>/` cell builds via
       `west build` with each RMW its config declares.
-- [ ] No regression on the existing
+- [x] No regression on the existing
       `test_zephyr_xrce_*` / `test_zephyr_cpp_*` / `test_zephyr_dds_*`
       runtime tests.
-- [ ] `phase_118_collapse` smoke includes Zephyr cells.
-- [ ] CLAUDE.md "Examples = Standalone Projects" + Phase 131
-      canonical shape rule both name Zephyr as fully collapsed.
+- [x] `phase_118_collapse` smoke includes Zephyr cells.
+- [x] CLAUDE.md "Examples = Standalone Projects" canonical
+      shape rule now names the collapsed `<plat>/<lang>/<case>/`
+      shape (covering Zephyr alongside native + FreeRTOS +
+      ThreadX + NuttX C/C++) with the cyclonedds-aemv8r carve-out
+      called out explicitly.
 
 ## Notes
 

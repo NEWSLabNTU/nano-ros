@@ -148,11 +148,18 @@ build green after the cyclonedds option added.
 - [x] `phase_118_collapse` smokes pass for every cell with a
        built artifact. Currently 37 / 37 pass (13 Rust + 12 C +
        12 cpp).
-- [ ] `examples/zephyr/rust/<case>/` cyclonedds once Phase 169.5
-       lands `nros-rmw-cyclonedds-sys`.
-- [ ] native_sim cyclonedds upstream Zephyr fix (cmake gen-expr
-       crash on cyclonedds `zephyr_compile_options(-include …)`
-       under native_sim arch).
+- [x] `examples/zephyr/rust/<case>/` cyclonedds — Phase 169.5
+       landed `nros-rmw-cyclonedds-sys`; collapsed Rust dirs
+       gain `rmw-cyclonedds` Cargo feature + `prj-cyclonedds.conf`
+       overlay. Runtime build still gated on Phase 117
+       cyclonedds-runtime work (see next item).
+- [x] native_sim cyclonedds llext-edk gen-expr crash — fixed by
+       `scripts/zephyr/llext-edk-conditional-patch.sh`
+       (Phase 168.X.fvp). Cyclonedds configure phase now clean
+       on host-gcc / native_sim; remaining cyclonedds runtime
+       compile issues (struct ip_mreqn shim, atomics `asm`
+       keyword) are Phase 117 cyclonedds-config scope, not
+       Phase 168 collapse scope.
 - [x] No regression on 168.3 Rust collapse, 168.4 C collapse.
 
 ## Files (post-landing)
