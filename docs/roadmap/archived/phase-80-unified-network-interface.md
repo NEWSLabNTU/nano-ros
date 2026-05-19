@@ -1,8 +1,19 @@
-# Phase 80: Unified Network Interface for nros-platform
+# Phase 80: Unified Network Interface for nros-platform (CLOSED 2026-05-19)
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.10, 80.12 done)
+**Status**: **CLOSED 2026-05-19.** All work items 80.1 through 80.14
+landed. The architecture survived Phase 129's retirement of
+`zpico-platform-shim` + `xrce-platform-shim` (shims → C alias TUs at
+`zpico-sys/c/zpico/platform_aliases.c` + `nros-rmw-xrce/src/
+platform_aliases.c` that forward to the same `nros_platform_*` ABI
+this phase defined); only the dispatch layer changed, the goal
+("all networking lives in `nros-platform`, RMW crates carry zero
+network code") still holds. 80.11 (Zephyr UDP multicast) was the
+last apparent gap — verified landed in
+`nros-platform-zephyr/src/net.c` and exercised by the Phase 160.B
+A9 DDS Rust suite.
+
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -344,9 +355,22 @@ typedef struct {
   - [x] 80.10.1 — `nros-platform-nuttx/net.rs` using `nuttx-sys` types (NuttxPlatform as proper struct)
   - [x] 80.10.2 — Activate shim `network` for NuttX + remove C `unix/network.c`
   - [x] 80.10.3 — Verified: 20/21 pass (1 C service client failure — Phase 82 API, not networking)
-- [ ] 80.11 — Zephyr UDP multicast
-  - [ ] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr
-  - [ ] 80.11.2 — Exercise via a Zephyr example with scouting enabled
+- [x] 80.11 — Zephyr UDP multicast (LANDED, doc was stale)
+  - [x] 80.11.1 — Port posix mcast_open/listen/read/send to Zephyr.
+        Six multicast entry points (`nros_platform_udp_mcast_{open,
+        listen,close,read,read_exact,send}`) live in
+        `packages/core/nros-platform-zephyr/src/net.c`. Uses
+        `zsock_setsockopt(IP_ADD_MEMBERSHIP, &ip_mreqn)` when
+        the BSD-shim layer exposes it; falls back to direct
+        `net_ipv4_igmp_join(nif, &mcast)` for older Zephyr (≤3.5,
+        gated by `NROS_NET_USE_IGMP_HELPER`). Requires
+        `CONFIG_NET_IPV4_IGMP=y`.
+  - [x] 80.11.2 — Exercised in production by the Phase 160.B
+        Cortex-A9 DDS Rust tests (RTPS SPDP multicast at
+        `239.255.0.1:7400`). All four (talker→listener, service,
+        async-service, action) PASS as of 2026-05-19; dust-dds's
+        nostd-runtime UDP path lands on Zephyr through this exact
+        `nros_platform_udp_mcast_*` surface.
 - [x] 80.12 — XRCE-DDS network unification via nros-platform
   - [x] 80.12.1 — Add `set_recv_timeout()` to `PlatformUdp` trait (XRCE needs per-read timeout)
   - [x] 80.12.2 — Implement `set_recv_timeout` in 5 platform crates (posix, zephyr, freertos, nuttx, threadx)
