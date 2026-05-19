@@ -369,12 +369,16 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             private spawn loop. Helpers `set_nonblocking` +
             `drain_into` live at the top of
             `packages/testing/nros-tests/src/qemu.rs`.
-      - [ ] 88.16.B — `examples/native/{rust,c,cpp}/{zenoh,dds,xrce}/*`
-            — replace `info!()` / `eprintln!` / `printf` / `std::cout`
-            with `nros_info!` / `nros_warn!` / `nros_error!` via
-            `node.get_logger()`. Keep the program-start banner (if
-            any) as a `println!` so it lands before
-            `nros_log::init()` is wired up.
+      - [x] 88.16.B — `examples/native/{rust,c,cpp}/{zenoh,dds,xrce}/*`
+            migrated. Rust strips `log` + `env_logger` (and bare
+            `println!` on the XRCE side) for the full nros-log
+            surface; C and C++ keep their bring-up banner / init-marker
+            prints but route every post-node-init diagnostic
+            (`Published:`, `Received:`, `Goal accepted`, `Feedback #`,
+            …) through `NROS_LOG_INFO` / `NROS_LOG_WARN`. Logger
+            handle captured into a file-level `g_logger` right after
+            `nros_node_init` / `nros::create_node`. Verified green:
+            actions, executor, multi_node, dds_api, xrce, native_api.
       - [ ] 88.16.C — `examples/qemu-arm-baremetal/rust/*` and
             `examples/qemu-arm-freertos/rust/*` — replace the board
             crate's `println!` *inside the user closure* (timer
