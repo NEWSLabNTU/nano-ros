@@ -4085,6 +4085,18 @@ impl Executor {
                 .and_then(|s| s.as_ref())
             {
                 state.consume(elapsed_us);
+                // Phase 110.E.b — overrun detection. Cooperative
+                // single-thread can't preempt a runaway callback,
+                // so post-dispatch wall-clock comparison delivers
+                // the same observable signal as the design's
+                // oneshot-IRQ-and-cancel pattern, without needing
+                // a separate timer per SC. `budget_capacity_us` is
+                // the per-period budget the SC was sized against;
+                // any callback exceeding that has run past its
+                // bandwidth allotment.
+                if elapsed_us > state.budget_capacity_us {
+                    state.record_overrun(elapsed_us - state.budget_capacity_us);
+                }
             }
             #[cfg(not(feature = "alloc"))]
             {

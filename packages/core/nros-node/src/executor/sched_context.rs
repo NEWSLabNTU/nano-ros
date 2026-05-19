@@ -208,6 +208,24 @@ pub struct AtomicSporadicState {
     pub last_refill_ms: portable_atomic::AtomicU32,
     pub budget_capacity_us: u32,
     pub period_us: u32,
+    /// Phase 110.E.b — cumulative count of dispatched callbacks
+    /// whose measured wall-clock runtime exceeded the SC's
+    /// `budget_us`. Bumped by the per-callback runtime closure
+    /// inside `Executor::spin_once` (std-only — the no_std fallback
+    /// continues to use the polled `SporadicState` path without
+    /// per-callback overrun accounting). Cooperative single-thread
+    /// dispatch can't preempt a runaway callback, so this counter
+    /// is the diagnostic signal — the design's oneshot-IRQ-and-
+    /// cancel pattern is structurally equivalent for non-preemptive
+    /// callbacks, and `last_overrun_us` carries the worst-case
+    /// observation for tuning. Both reset by `clear_overrun_stats`.
+    pub overrun_count: portable_atomic::AtomicU32,
+    /// Phase 110.E.b — most recent dispatch's overrun amount
+    /// (`measured_us - budget_us`). `0` when no overrun has been
+    /// observed since the last `clear_overrun_stats`. Used by
+    /// monitoring code that wants to size the budget against
+    /// worst-case observed runtime.
+    pub last_overrun_us: portable_atomic::AtomicU32,
 }
 
 #[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
@@ -218,7 +236,31 @@ impl AtomicSporadicState {
             last_refill_ms: portable_atomic::AtomicU32::new(0),
             budget_capacity_us: budget_us,
             period_us,
+            overrun_count: portable_atomic::AtomicU32::new(0),
+            last_overrun_us: portable_atomic::AtomicU32::new(0),
         }
+    }
+
+    /// Record one overrun: callback measured runtime exceeded the
+    /// SC's `budget_us`. Bumps `overrun_count` + stores the absolute
+    /// overrun amount in `last_overrun_us`. Called from the
+    /// per-callback runtime closure inside `Executor::spin_once`.
+    #[inline]
+    pub fn record_overrun(&self, overrun_us: u32) {
+        self.overrun_count
+            .fetch_add(1, portable_atomic::Ordering::Relaxed);
+        self.last_overrun_us
+            .store(overrun_us, portable_atomic::Ordering::Relaxed);
+    }
+
+    /// Reset both overrun statistics. Useful when tuning the budget
+    /// across windows (monitoring code logs + clears periodically).
+    #[inline]
+    pub fn clear_overrun_stats(&self) {
+        self.overrun_count
+            .store(0, portable_atomic::Ordering::Relaxed);
+        self.last_overrun_us
+            .store(0, portable_atomic::Ordering::Relaxed);
     }
 
     /// Read the budget atomically; spin_once consults this to decide

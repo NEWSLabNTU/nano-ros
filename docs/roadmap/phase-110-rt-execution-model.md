@@ -175,12 +175,27 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       remains the canonical "drive the timer directly" reference
       for the simpler / fully-owning case.
 
-      Outstanding: `cancel` / `restart_oneshot` machinery (oneshot
-      timer arm before dispatch + cancel after to detect callback
-      overruns). Wall-clock measurement covers the bulk of the
-      per-callback accuracy win without that machinery;
-      oneshot-driven overrun detection is an additional hardening
-      pass.
+      **Callback overrun detection landed.** Cooperative
+      single-thread dispatch can't preempt a runaway callback, so
+      post-dispatch wall-clock comparison delivers the same
+      observable signal as the design's oneshot-IRQ-and-cancel
+      pattern without needing a separate timer per SC.
+      `AtomicSporadicState` gained `overrun_count: AtomicU32` +
+      `last_overrun_us: AtomicU32` (set when `elapsed_us >
+      budget_capacity_us` inside the per-callback runtime closure)
+      + `record_overrun(us)` / `clear_overrun_stats()` helpers.
+      Verified by `test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget`
+      — a 25 ms sleeping callback against a 5 ms budget records
+      one overrun with `last_overrun_us ≥ 20_000`. The trait's
+      `create_oneshot` + `cancel` stays available for callers that
+      want an actual IRQ-driven oneshot (e.g. for waking a watchdog
+      on a separate executor thread); the spin-loop dispatch path
+      itself uses the cheaper wall-clock signal.
+
+      v1 Phase 110.E.b acceptance criteria fully met. Remaining
+      per-board work (stm32f4 / esp32 / esp32-qemu actual timer
+      driver populating the hook surface) is downstream consumer
+      investment.
 - [~] 110.F — `OsPrioritySet` per-priority OS-thread dispatch.
       **Reframed:** Cargo feature `scheduler-os-priority` + stub
       `OsPrioritySet<N>` shipped to lock the namespace; real

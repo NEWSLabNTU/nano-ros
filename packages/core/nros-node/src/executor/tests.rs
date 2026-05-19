@@ -463,6 +463,67 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
     );
 }
 
+/// Phase 110.E.b — overrun detection. A Sporadic-bound callback
+/// whose measured runtime exceeds the SC's budget bumps
+/// `AtomicSporadicState::overrun_count` + stamps `last_overrun_us`.
+/// The "oneshot-IRQ-and-cancel" pattern from the design doc is
+/// structurally equivalent for cooperative single-thread dispatch
+/// (we can't preempt a running callback), so this is the
+/// diagnostic signal end-callers consume to tune budgets.
+#[test]
+#[cfg(feature = "alloc")]
+fn test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    use crate::executor::spin::OpaqueTimerHandle;
+
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    // Subscription sleeps 25 ms; budget is 5 ms → must overrun.
+    let h = executor
+        .register_subscription::<TestMsg, _>("/overrun", move |_msg: &TestMsg| {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        })
+        .unwrap();
+
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(5_000), // 5 ms budget
+            period_us: OptUs::from_us(60_000_000),
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h, sc_id).unwrap();
+
+    extern "C" fn noop_destroy(_h: *mut core::ffi::c_void) {}
+    let fake_timer = unsafe { OpaqueTimerHandle::new(core::ptr::null_mut(), noop_destroy) };
+    let state = executor.register_sporadic_timer(sc_id, fake_timer).unwrap();
+    assert_eq!(state.overrun_count.load(portable_atomic::Ordering::Acquire), 0);
+
+    // Drive one dispatch — the registered closure sleeps 25 ms.
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let (d, n) = encode_test_msg(42);
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    let count = state.overrun_count.load(portable_atomic::Ordering::Acquire);
+    let last = state.last_overrun_us.load(portable_atomic::Ordering::Acquire);
+    assert_eq!(count, 1, "overrun_count must increment exactly once");
+    // Overrun = measured - budget; measured ≥ 25 ms, budget = 5 ms.
+    // last_overrun_us should be ≥ 20 ms = 20_000 us.
+    assert!(
+        last >= 20_000,
+        "last_overrun_us {last} should be ≥ 20000 (25 ms callback - 5 ms budget)"
+    );
+
+    // `clear_overrun_stats` resets both counters.
+    state.clear_overrun_stats();
+    assert_eq!(state.overrun_count.load(portable_atomic::Ordering::Acquire), 0);
+    assert_eq!(state.last_overrun_us.load(portable_atomic::Ordering::Acquire), 0);
+}
+
 /// Phase 110.D — multi-executor smoke test. Spawns two Executors,
 /// each on its own OS thread with a different `SchedPolicy`. Mirrors
 /// the shape of the drone S1 / watchdog S3 acceptance scenarios from
