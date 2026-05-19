@@ -16,6 +16,7 @@ nros-platform   = { path = "../../../../packages/core/nros-platform" }
 
 # Zenoh RMW
 nros-rmw-zenoh  = { path = "../../../../packages/zpico/nros-rmw-zenoh" }
+nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys" }
 zpico-sys       = { path = "../../../../packages/zpico/zpico-sys" }
 
 # DDS RMW

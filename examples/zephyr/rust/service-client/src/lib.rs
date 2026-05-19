@@ -2,11 +2,15 @@
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
-compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce).");
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cyclonedds")))]
+compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce | rmw-cyclonedds).");
 
-#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-compile_error!("rmw-zenoh and rmw-xrce are mutually exclusive.");
+#[cfg(any(
+    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
+    all(feature = "rmw-zenoh", feature = "rmw-cyclonedds"),
+    all(feature = "rmw-xrce", feature = "rmw-cyclonedds"),
+))]
+compile_error!("rmw-zenoh / rmw-xrce / rmw-cyclonedds are mutually exclusive.");
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use log::{error, info};
@@ -17,12 +21,19 @@ fn register_rmw() -> Result<(), &'static str> {
     { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
     #[cfg(feature = "rmw-xrce")]
     { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
+    #[cfg(feature = "rmw-cyclonedds")]
+    { nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?; }
     Ok(())
 }
 
 #[cfg(feature = "rmw-zenoh")]
 fn make_config() -> ExecutorConfig<'static> {
     ExecutorConfig::new("tcp/127.0.0.1:7466")
+}
+
+#[cfg(feature = "rmw-cyclonedds")]
+fn make_config() -> ExecutorConfig<'static> {
+    ExecutorConfig::new("").domain_id(0).node_name("cyclonedds_service_client")
 }
 
 #[cfg(feature = "rmw-xrce")]

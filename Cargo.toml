@@ -30,9 +30,14 @@ members = [
     # `libnros_rmw_zenoh_staticlib.a` separately from `libnros_c.a`
     # so the SDK matrix can ship them decoupled.
     "packages/zpico/nros-rmw-zenoh-staticlib",
+    # Phase 169.5 — Rust shim exposing the Cyclone DDS C++ backend's
+    # C-linkage register entry (`nros_rmw_cyclonedds_register`).
+    # The underlying library is built by the standalone
+    # `packages/dds/nros-rmw-cyclonedds/` CMake project or by the
+    # Zephyr module's `CONFIG_NROS_RMW_CYCLONEDDS` branch.
+    "packages/dds/nros-rmw-cyclonedds-sys",
     # Phase 169.4 — dust-dds retired. nros-rmw-dds +
-    # nros-rmw-dds-staticlib crates deleted. Future DDS Rust
-    # path lands as `nros-rmw-cyclonedds-sys` shim (Phase 169.5).
+    # nros-rmw-dds-staticlib crates deleted.
     # Integration tests
     "packages/testing/nros-tests",
     # C API for embedded systems

@@ -10,6 +10,8 @@ if(CONFIG_NROS_RMW_ZENOH)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-zenoh)
 elseif(CONFIG_NROS_RMW_XRCE)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-xrce)
+elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+    set(EXTRA_CARGO_ARGS --no-default-features --features rmw-cyclonedds)
 else()
     message(FATAL_ERROR
         "Phase 168 requires an RMW overlay. Build with: "

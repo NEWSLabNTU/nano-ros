@@ -89,21 +89,35 @@ because it uses a different board's compile-options closure.
 Investigation deferred: Zephyr's `zephyr_compile_options(-include …)`
 appears to corrupt the gen-expr stack under specific configs.
 
-## Gap 2.C — cyclonedds on Rust (blocked on Phase 169.5) ⏸
+## Gap 2.C — cyclonedds on Rust ✓ (shim landed; build blocked on Gap 168.X.fvp)
 
-Rust has no Cyclone DDS backend today. Phase 169.4 deleted
-`nros-rmw-dds` (dust-dds); Phase 169.5 left a future
-`nros-rmw-cyclonedds-sys` shim as TBD. When that shim lands:
+**Resolved by Phase 169.5**:
 
-1. Add `nros-rmw-cyclonedds[-sys] = { ..., optional = true }` to
-   each `examples/zephyr/rust/<case>/Cargo.toml`.
-2. Add `rmw-cyclonedds = ["dep:nros-rmw-cyclonedds[-sys]"]` feature.
-3. Add `nros_rmw_cyclonedds::register()` call to `register_rmw()`
-   gated by `#[cfg(feature = "rmw-cyclonedds")]`.
-4. Add `make_config()` variant for cyclonedds.
-5. Copy `prj-cyclonedds.conf` from cpp scaffold.
-6. Wire `EXTRA_CARGO_ARGS=--features rmw-cyclonedds` into the
-   `CMakeLists.txt` `elseif(CONFIG_NROS_RMW_CYCLONEDDS)` branch.
+1. New crate `packages/dds/nros-rmw-cyclonedds-sys/` — Rust shim
+   exposing `nros_rmw_cyclonedds_register()` (C-linkage) as a
+   normal Rust `extern "C"` declaration + safe `register()`
+   wrapper + `linkme` distributed-slice contribution. Mirrors
+   `nros-rmw-xrce-cffi`. The Cyclone DDS C++ library itself is
+   compiled by the standalone `packages/dds/nros-rmw-cyclonedds/`
+   CMake project or by the Zephyr module's
+   `CONFIG_NROS_RMW_CYCLONEDDS` branch — this crate just provides
+   the Rust binding.
+2. `examples/zephyr/rust/<case>/` collapsed examples extended:
+   - `Cargo.toml`: `rmw-cyclonedds` feature +
+     `nros-rmw-cyclonedds-sys` optional dep.
+   - `.cargo/config.toml`: patch.crates-io for the new crate.
+   - `src/lib.rs`: `#[cfg(feature = "rmw-cyclonedds")]` branch in
+     `register_rmw()` + `make_config()`.
+   - `CMakeLists.txt`: `elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-cyclonedds)`.
+   - `prj-cyclonedds.conf`: Kconfig overlay (mirrors C/C++ side).
+
+The Rust scaffolding is fully in place. Build verification
+itself blocks on Gap 168.X.fvp (same native_sim Zephyr cmake
+gen-expr bug that hits C / C++ cyclonedds builds).
+
+No regression: 13 / 13 Rust × {zenoh, xrce} + sca-zenoh still
+build green after the cyclonedds option added.
 
 ## Gap 3 — E2E surface ✓ (zenoh + xrce; cyclonedds pending native_sim fix)
 

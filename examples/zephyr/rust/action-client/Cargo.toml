@@ -18,6 +18,7 @@ crate-type = ["staticlib"]
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
 [dependencies]
@@ -27,6 +28,7 @@ log = "0.4"
 nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
 
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
 
 example_interfaces = { version = "*", default-features = false }

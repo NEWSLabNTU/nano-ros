@@ -7,11 +7,15 @@
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
-compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce).");
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cyclonedds")))]
+compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce | rmw-cyclonedds).");
 
-#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-compile_error!("rmw-zenoh and rmw-xrce are mutually exclusive.");
+#[cfg(any(
+    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
+    all(feature = "rmw-zenoh", feature = "rmw-cyclonedds"),
+    all(feature = "rmw-xrce", feature = "rmw-cyclonedds"),
+))]
+compile_error!("rmw-zenoh / rmw-xrce / rmw-cyclonedds are mutually exclusive.");
 
 use log::{error, info};
 use nros::{Executor, ExecutorConfig, NodeError, TimerDuration};
@@ -32,6 +36,11 @@ fn register_rmw() -> Result<(), &'static str> {
 #[cfg(feature = "rmw-zenoh")]
 fn make_config() -> ExecutorConfig<'static> {
     ExecutorConfig::new("tcp/127.0.0.1:7456")
+}
+
+#[cfg(feature = "rmw-cyclonedds")]
+fn make_config() -> ExecutorConfig<'static> {
+    ExecutorConfig::new("").domain_id(0).node_name("cyclonedds_talker")
 }
 
 #[cfg(feature = "rmw-xrce")]

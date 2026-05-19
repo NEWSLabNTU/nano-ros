@@ -1,0 +1,36 @@
+[package]
+name = "nros-rmw-cyclonedds-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust shim for nros-rmw-cyclonedds — exposes the C-linkage register entry from the C++ Cyclone DDS backend (Phase 169.5)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+publish = false
+
+# Mirror of `nros-rmw-xrce-cffi`. Rust users call `register()` once
+# before any session creation; the underlying C++ Cyclone DDS
+# library (compiled by `packages/dds/nros-rmw-cyclonedds/`'s
+# standalone CMake project, or by the Zephyr module's
+# `CONFIG_NROS_RMW_CYCLONEDDS` branch) provides the symbol.
+[lib]
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[features]
+default = ["linkme-register"]
+# Phase 128.B.3 — see nros-rmw-xrce-cffi for the same feature.
+linkme-register = ["nros-rmw-cffi/linkme-register"]
+# Phase 144.3 — toggled on when emitting this crate as a top-level
+# `staticlib` (hosted POSIX builds). Embedded consumers keep the
+# default no_std build.
+std = []
+
+[dependencies]
+nros-rmw-cffi = { version = "0.1.0", path = "../../core/nros-rmw-cffi", default-features = false }
+linkme = { version = "0.3", default-features = false }
+
+[lints]
+workspace = true
