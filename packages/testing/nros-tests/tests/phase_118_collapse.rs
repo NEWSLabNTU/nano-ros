@@ -322,3 +322,39 @@ fn test_freertos_talker_rmw_variant_exists(#[case] rmw: Rmw) {
         path.display()
     );
 }
+
+/// Phase 118.B.4 — full FreeRTOS Rust collapse coverage (6 cases).
+/// talker + listener support {zenoh, dds}; service-* + action-*
+/// are zenoh-only (no pre-collapse DDS sibling).
+#[rstest]
+#[case::talker_zenoh("talker", "qemu-freertos-talker", Rmw::Zenoh)]
+#[case::talker_dds("talker", "qemu-freertos-talker", Rmw::Dds)]
+#[case::listener_zenoh("listener", "qemu-freertos-listener", Rmw::Zenoh)]
+#[case::listener_dds("listener", "qemu-freertos-listener", Rmw::Dds)]
+#[case::ss_zenoh("service-server", "qemu-freertos-service-server", Rmw::Zenoh)]
+#[case::sc_zenoh("service-client", "qemu-freertos-service-client", Rmw::Zenoh)]
+#[case::as_zenoh("action-server", "qemu-freertos-action-server", Rmw::Zenoh)]
+#[case::ac_zenoh("action-client", "qemu-freertos-action-client", Rmw::Zenoh)]
+fn test_freertos_rust_case_rmw_variant_exists(
+    #[case] case: &str,
+    #[case] binary: &str,
+    #[case] rmw: Rmw,
+) {
+    let path = nros_tests::fixtures::build_freertos_rust_example_rmw(case, binary, rmw)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!(
+                "qemu-arm-freertos/rust/{} {:?} variant not prebuilt; run \
+                 `just freertos build-fixtures` first: {:?}",
+                case,
+                rmw,
+                e
+            )
+        });
+    assert!(
+        path.exists(),
+        "freertos {} {:?} binary missing: {}",
+        case,
+        rmw,
+        path.display()
+    );
+}

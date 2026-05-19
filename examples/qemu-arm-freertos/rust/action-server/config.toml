@@ -1,0 +1,12 @@
+# QEMU ARM FreeRTOS action server — network configuration
+# Used by nros-board-mps2-an385-freertos board crate (Config::from_toml)
+
+[network]
+ip = "10.0.2.20"
+mac = "02:00:00:00:00:00"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
+
+[zenoh]
+locator = "tcp/10.0.2.2:7471"
+domain_id = 0

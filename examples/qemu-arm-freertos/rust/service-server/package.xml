@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>qemu_freertos_service_server</name>
+  <version>0.1.0</version>
+  <description>FreeRTOS QEMU service server example</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>example_interfaces</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

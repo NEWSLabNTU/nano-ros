@@ -92,18 +92,26 @@ build-fixtures:
     printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && cargo build --release --quiet'
 
-    # Phase 118.B.4 — collapsed-shape FreeRTOS Rust talker (PoC).
-    # Single dir builds against zenoh + dds via mutually exclusive
-    # `rmw-*` Cargo features + per-RMW `target-<rmw>/` dirs.
-    if [ -d examples/qemu-arm-freertos/rust/talker ]; then
-        for rmw in zenoh dds; do
-            echo "  → freertos/rust/talker (--features rmw-${rmw}, target-${rmw}/)"
-            ( cd examples/qemu-arm-freertos/rust/talker && \
+    # Phase 118.B.4 — collapsed-shape FreeRTOS Rust cases. Each case
+    # builds against the RMWs its Cargo.toml advertises: talker +
+    # listener under {zenoh, dds}; service-* + action-* under
+    # {zenoh} only (no DDS sibling existed pre-collapse).
+    for case in talker listener service-server service-client action-server action-client; do
+        if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
+            continue
+        fi
+        rmws="zenoh"
+        if [ "$case" = "talker" ] || [ "$case" = "listener" ]; then
+            rmws="zenoh dds"
+        fi
+        for rmw in $rmws; do
+            echo "  → freertos/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
+            ( cd examples/qemu-arm-freertos/rust/${case} && \
               cargo build --release --no-default-features --features rmw-${rmw} \
                   --target-dir target-${rmw} --quiet ) &
         done
-        wait
-    fi
+    done
+    wait
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install

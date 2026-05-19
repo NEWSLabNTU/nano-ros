@@ -1,0 +1,28 @@
+[package]
+name = "qemu-freertos-action-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "action-client on QEMU MPS2-AN385 with FreeRTOS + lwIP (Phase 118 collapsed)"
+
+[[bin]]
+name = "qemu-freertos-action-client"
+test = false
+bench = false
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-mps2-an385-freertos/rmw-zenoh"]
+
+
+[dependencies]
+nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+example_interfaces = { version = "*", default-features = false }
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-freertos", "ros-humble"], optional = true }
+
+
