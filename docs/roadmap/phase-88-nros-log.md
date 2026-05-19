@@ -433,10 +433,40 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             back to `LOG_INF` etc., so the rendered output still
             lands in Zephyr's log subsystem (visible via `west
             monitor` / `native_sim` stdout).
-      - [ ] 88.16.H — `examples/qemu-arm-{baremetal,freertos}/c/*`
-            and `examples/qemu-arm-{baremetal,freertos}/cpp/*` —
-            replace `printf` / `std::cout` with `NROS_INFO()` /
-            `nros::Logger::info()`.
+      - [ ] 88.16.H — `examples/qemu-arm-freertos/{c,cpp}/zenoh/*`
+            (12 examples: 6 C + 6 C++). `examples/qemu-arm-baremetal`
+            has no C/C++ tree, so the scope is freertos-only. **First
+            attempt landed a working migration that builds clean but
+            silently drops every post-`nros_log_emit_fmt` record on
+            the FreeRTOS C/C++ chain — `nros_executor_spin_some` +
+            publish run fine, `nros_log_emit_fmt` returns without
+            error, but `dispatch_to_sinks` never reaches the
+            registered `PlatformSink` writer.** Same example shape
+            works for the FreeRTOS Rust lane (88.16.C verified
+            green), so the bug is somewhere in the
+            `nros-c → nros_log::ensure_default_sinks` lazy-init
+            path on `no_std` cross-language targets. Likely
+            candidates:
+            1. Two copies of `nros_log` linked into the same binary
+               (nros-c's Corrosion staticlib + the FreeRTOS rlib
+               graph), each with its own `SINKS_PTR` static.
+               Lazy-init populates the staticlib's copy; dispatch
+               reads the rlib's null copy.
+            2. `--gc-sections` dropping `nros_log::init` because no
+               Rust call site references it; `ensure_default_sinks`
+               is only reachable via the C ABI shim, but the
+               linker doesn't know to keep the Rust impl alive.
+            3. `core::sync::atomic::AtomicBool::compare_exchange`
+               in `nros-c::ensure_default_sinks` racing with an
+               unstable Cortex-M3 STREX (less likely — Rust path
+               uses the same machinery and works).
+            Revert kept the C/C++ FreeRTOS examples on plain
+            `printf` so `rtos_e2e::test_rtos_*::platform_1_Platform__Freertos::lang_{2,3}`
+            stays green. **Next step**: add a tiny `nros_log_init()`
+            C export to nros-c and call it explicitly from the C
+            examples — bypasses the lazy guard and pins
+            `nros_log::init` as a linker root. Track under this
+            same item.
 
 ## Design Notes
 
