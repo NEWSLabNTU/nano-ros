@@ -2,9 +2,26 @@
 
 **Goal:** Adopt Zephyr's `sample.yaml` shape per example so test runners and humans get one source of truth, and ship a precompiled "common ROS 2 messages" bundle so users don't run codegen for every package they depend on.
 
-**Status:** Not Started
-**Priority:** Medium
-**Depends on:** Phase 78 (colcon-nano-ros), Phase 111 (`nros` CLI — `nros run` consumes sample.yaml)
+**Status:** **Archived 2026-05-19 — superseded.**
+
+- **114.A `sample.yaml`** is superseded by **Phase 126** (ROS 2 workflow
+  orchestration MVP). The single-source-of-truth slot for examples is
+  filled by `record.json` (from `play_launch_parser`) plus
+  `nros-plan.json`'s typed schema. `nros run` / `nros plan` / `nros check`
+  in `nros-cli-core` consume the manifest layer, not Twister YAML. Zero
+  `sample.yaml` files exist anywhere in `examples/` or `packages/`.
+- **114.B `nros-msgs-common`** is partly satisfied and partly contradicted
+  by current shape:
+  - **Already done:** Phase 23.1.4 pre-bakes `std_msgs`, `geometry_msgs`,
+    `sensor_msgs`, `action_msgs`, `builtin_interfaces`,
+    `example_interfaces`, `unique_identifier_msgs` for Arduino at
+    `build/arduino/msg-gen/`.
+  - **Contradicted:** Phase 144's `add_subdirectory(<repo-root>)` +
+    per-example `generated/` model intentionally distributes codegen
+    per-consumer. A workspace-wide bundle crate fights that.
+
+**Priority (at archive):** Medium
+**Depends on:** Phase 78 (colcon-nano-ros, also archived), Phase 111 (`nros` CLI, archived as landed)
 **Related:** `docs/research/sdk-ux/SYNTHESIS.md` UX-24, UX-25
 
 ---
