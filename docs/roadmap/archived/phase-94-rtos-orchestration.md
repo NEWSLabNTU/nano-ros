@@ -1,8 +1,23 @@
 # Phase 94 — RTOS Orchestration via Launch Tree + Manifest Codegen
 
-**Goal:** Replace hand-written RTOS `main.rs` orchestration with build-time codegen that consumes ROS 2 launch trees + per-package `nros.toml` manifests. Preserves ROS 2 mental model on resource-constrained MCUs.
+**Status:** Archived 2026-05-20 — superseded by [Phase 126](phase-126-nros-orchestration-roadmap.md).
 
-**Status:** Not Started
+Phase 126 (ROS 2 workflow orchestration MVP) shipped the user-workflow
+surface this phase originally proposed — launch-tree → plan IR →
+generated main → native + FreeRTOS QEMU E2E, with C/C++ component
+thunks and the services/actions checker landing through M1–M7. The
+deeper RTOS-specific surface this phase had carved out (multi-tier
+scheduling, cross-language shared state, lifecycle startup-order,
+composable-node containers, MultiThreadedExecutor) is now tracked as
+explicit deferrals at the bottom of the Phase 126 roadmap doc; new
+work on those topics should reopen as a Phase 126 follow-up rather
+than as a Phase 94 sub-item.
+
+Keeping this doc archived rather than deleted so the design + work
+breakdown stays searchable as a reference for whichever Phase 126
+follow-up takes on the deferred items first.
+
+**Original goal:** Replace hand-written RTOS `main.rs` orchestration with build-time codegen that consumes ROS 2 launch trees + per-package `nros.toml` manifests. Preserves ROS 2 mental model on resource-constrained MCUs.
 
 **Priority:** Medium
 
