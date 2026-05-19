@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-server");
@@ -33,9 +33,12 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
 
-    nros_warn!(&LOGGER, 
+    nros_warn!(
+        &LOGGER,
         "XRCE Action Server: agent={}, domain={}, timeout={}s",
-        agent_addr, domain_id, timeout_secs
+        agent_addr,
+        domain_id,
+        timeout_secs
     );
 
     // Open session
@@ -103,14 +106,23 @@ fn main() {
                 };
                 let _ = action_server.publish_feedback(&goal_id, &feedback);
 
-                nros_info!(&LOGGER, "Feedback: step={}, sequence_len={}", i, sequence.len());
+                nros_info!(
+                    &LOGGER,
+                    "Feedback: step={}, sequence_len={}",
+                    i,
+                    sequence.len()
+                );
                 executor.spin_once(core::time::Duration::from_millis(100));
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
 
             // Complete the goal
             let result = FibonacciResult { sequence };
-            nros_info!(&LOGGER, "Goal completed: result_len={}", result.sequence.len());
+            nros_info!(
+                &LOGGER,
+                "Goal completed: result_len={}",
+                result.sequence.len()
+            );
             action_server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
         }
     }

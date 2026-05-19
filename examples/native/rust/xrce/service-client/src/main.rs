@@ -11,7 +11,7 @@
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::{Executor, ExecutorConfig};
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-client");
@@ -32,9 +32,12 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(3);
 
-    nros_warn!(&LOGGER, 
+    nros_warn!(
+        &LOGGER,
         "XRCE Service Client: agent={}, domain={}, requests={}",
-        agent_addr, domain_id, request_count
+        agent_addr,
+        domain_id,
+        request_count
     );
 
     // Open session
@@ -94,7 +97,12 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
-    nros_info!(&LOGGER, "Completed {}/{} requests", success_count, request_count);
+    nros_info!(
+        &LOGGER,
+        "Completed {}/{} requests",
+        success_count,
+        request_count
+    );
 
     // Clean up
     let _ = executor.close();

@@ -23,8 +23,8 @@
 //! ```
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-client-async");
@@ -36,8 +36,14 @@ async fn main() {
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());
 
-    nros_info!(&LOGGER, "nros Async Service Client Example (tokio background spin)");
-    nros_info!(&LOGGER, "==========================================================");
+    nros_info!(
+        &LOGGER,
+        "nros Async Service Client Example (tokio background spin)"
+    );
+    nros_info!(
+        &LOGGER,
+        "=========================================================="
+    );
 
     // Create executor
     let config = ExecutorConfig::from_env().node_name("async_service_client");

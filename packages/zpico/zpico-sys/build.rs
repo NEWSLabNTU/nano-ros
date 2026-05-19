@@ -336,8 +336,7 @@ fn main() {
     // downstream boards. Empty value falls through to the canonical
     // in-tree manifest.
     println!("cargo:rerun-if-env-changed=ZPICO_PLATFORMS_TOML");
-    let platform_manifest_path = match env::var_os("ZPICO_PLATFORMS_TOML")
-        .filter(|v| !v.is_empty())
+    let platform_manifest_path = match env::var_os("ZPICO_PLATFORMS_TOML").filter(|v| !v.is_empty())
     {
         Some(path) => PathBuf::from(path),
         None => manifest_dir.join("zenoh_platforms.toml"),

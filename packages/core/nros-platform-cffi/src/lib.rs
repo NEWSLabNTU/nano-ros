@@ -421,8 +421,7 @@ impl nros_platform_api::PlatformTimer for CffiPlatform {
         // fn` — both have the same ABI; Rust just demands the unsafe
         // version at the C call site.
         let cb: unsafe extern "C" fn(*mut c_void) = callback;
-        let raw =
-            unsafe { nros_platform_timer_create_periodic(period_us, cb, user_data) };
+        let raw = unsafe { nros_platform_timer_create_periodic(period_us, cb, user_data) };
         if raw.is_null() {
             // The C layer returns NULL for both "unsupported on this
             // platform" (default stub) and "syscall failed" (POSIX
@@ -442,8 +441,7 @@ impl nros_platform_api::PlatformTimer for CffiPlatform {
         user_data: *mut c_void,
     ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
         let cb: unsafe extern "C" fn(*mut c_void) = callback;
-        let raw =
-            unsafe { nros_platform_timer_create_oneshot(timeout_us, cb, user_data) };
+        let raw = unsafe { nros_platform_timer_create_oneshot(timeout_us, cb, user_data) };
         if raw.is_null() {
             return Err(nros_platform_api::TimerError::KernelError);
         }
@@ -1113,6 +1111,29 @@ macro_rules! nros_platform_export_log {
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_log_flush() {
             <$ty as ::nros_platform_api::PlatformLog>::flush()
+        }
+        /// Phase 88.16.H — ABI-mirror parity. Direct-impl
+        /// platforms (`mps2-an385`, `stm32f4`, …) route every
+        /// record through `PlatformLog::write`, so the runtime
+        /// swap slot is meaningless to them. The header mirror
+        /// nonetheless declares `nros_platform_register_log_writer`,
+        /// so the macro emits a no-op stub to satisfy the
+        /// ABI-mirror check. Fn-ptr-slot platforms (FreeRTOS /
+        /// ThreadX / NuttX) don't call this macro — their C body
+        /// ships the real strong definition.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_register_log_writer(
+            _writer: ::core::option::Option<
+                unsafe extern "C" fn(
+                    severity: u8,
+                    name_ptr: *const u8,
+                    name_len: usize,
+                    msg_ptr: *const u8,
+                    msg_len: usize,
+                ),
+            >,
+            _flusher: ::core::option::Option<unsafe extern "C" fn()>,
+        ) {
         }
     };
 }

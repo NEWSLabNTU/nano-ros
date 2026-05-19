@@ -7,7 +7,7 @@
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{CancelResponse, GoalResponse, GoalStatus, prelude::*};
 use nros_board_nuttx_qemu_arm::{Config, run};
-use nros_log::{nros_error, nros_info, nros_warn, Logger};
+use nros_log::{Logger, nros_error, nros_info, nros_warn};
 
 // Phase 88.16.D — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-server");
@@ -16,8 +16,8 @@ fn main() {
     run(
         Config::from_toml(include_str!("../config.toml")),
         |config| {
-        nros_log::register_logger(&LOGGER);
-        nros_log::init(nros_log::sinks::default());
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
 
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)

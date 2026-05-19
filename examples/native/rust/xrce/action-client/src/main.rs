@@ -12,7 +12,7 @@ use nros::{Executor, ExecutorConfig};
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-client");
@@ -33,9 +33,12 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(5);
 
-    nros_warn!(&LOGGER, 
+    nros_warn!(
+        &LOGGER,
         "XRCE Action Client: agent={}, domain={}, order={}",
-        agent_addr, domain_id, order
+        agent_addr,
+        domain_id,
+        order
     );
 
     // Open session
@@ -96,7 +99,8 @@ fn main() {
             match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
                 Ok(Some(feedback)) => {
                     feedback_count += 1;
-                    nros_info!(&LOGGER, 
+                    nros_info!(
+                        &LOGGER,
                         "Feedback {}: sequence_len={}",
                         feedback_count,
                         feedback.sequence.len()
@@ -133,7 +137,12 @@ fn main() {
 
     match result_promise.wait(&mut executor, core::time::Duration::from_millis(10000)) {
         Ok((status, result)) => {
-            nros_info!(&LOGGER, "Result: status={}, sequence={:?}", status, result.sequence);
+            nros_info!(
+                &LOGGER,
+                "Result: status={}, sequence={:?}",
+                status,
+                result.sequence
+            );
         }
         Err(e) => {
             nros_warn!(&LOGGER, "get_result failed: {:?}", e);

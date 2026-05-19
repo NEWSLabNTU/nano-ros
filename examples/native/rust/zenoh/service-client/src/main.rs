@@ -18,8 +18,8 @@
 //! ```
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-client");

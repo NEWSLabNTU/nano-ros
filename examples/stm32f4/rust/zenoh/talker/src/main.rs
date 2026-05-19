@@ -41,7 +41,7 @@ defmt::timestamp!("{=u64:us}", { 0 });
 
 use nros::prelude::*;
 use nros_board_stm32f4::prelude::*;
-use nros_log::{nros_error, nros_info, Logger};
+use nros_log::{Logger, nros_error, nros_info};
 use std_msgs::msg::Int32;
 
 /// Poll interval in milliseconds
@@ -61,7 +61,10 @@ fn main() -> ! {
         let mut executor = Executor::open(&exec_config)?;
         let publisher = {
             let mut node = executor.create_node("talker")?;
-            nros_info!(&LOGGER, "Creating publisher for /chatter (std_msgs/Int32)...");
+            nros_info!(
+                &LOGGER,
+                "Creating publisher for /chatter (std_msgs/Int32)..."
+            );
             node.create_publisher::<Int32>("/chatter")?
         };
 

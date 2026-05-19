@@ -18,7 +18,7 @@ use std::{
 };
 use std_msgs::msg::Int32;
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("serial-listener");
@@ -39,9 +39,12 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(5);
 
-    nros_warn!(&LOGGER, 
+    nros_warn!(
+        &LOGGER,
         "XRCE Serial Listener: pty={}, domain={}, count={}",
-        pty_path, domain_id, msg_count
+        pty_path,
+        domain_id,
+        msg_count
     );
 
     // Phase 115.K.2.5.1.5-serial — register the C XRCE backend's
@@ -92,9 +95,11 @@ fn main() {
     if final_count >= msg_count {
         nros_info!(&LOGGER, "Received {} messages, exiting", final_count);
     } else {
-        nros_warn!(&LOGGER, 
+        nros_warn!(
+            &LOGGER,
             "Timeout: received only {}/{} messages",
-            final_count, msg_count
+            final_count,
+            msg_count
         );
         std::process::exit(1);
     }

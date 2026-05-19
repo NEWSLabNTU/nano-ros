@@ -53,7 +53,7 @@ pub mod sinks;
 
 mod buffer;
 
-pub use buffer::{format_buffer_capacity, FormatBuffer};
+pub use buffer::{FormatBuffer, format_buffer_capacity};
 
 /// REP-2012 severity levels, mirroring `rcutils_log_severity_t`.
 ///
@@ -257,7 +257,7 @@ pub const MAX_LOGGERS: usize = 32;
 pub static DEFAULT_LOGGER: Logger = Logger::new("nros");
 
 mod intern {
-    use super::{AtomicPtr, Logger, Ordering, MAX_LOGGERS};
+    use super::{AtomicPtr, Logger, MAX_LOGGERS, Ordering};
 
     pub(super) struct InternTable {
         slots: [AtomicPtr<Logger>; MAX_LOGGERS],
@@ -265,6 +265,11 @@ mod intern {
 
     impl InternTable {
         pub(super) const fn new() -> Self {
+            // `AtomicPtr::new` is `const` on both `core::sync::atomic`
+            // and `portable_atomic`, so we can initialise the array
+            // by repeating the call rather than naming a `const` —
+            // which clippy flags as interior-mutable.
+            #[allow(clippy::declare_interior_mutable_const)]
             const NULL: AtomicPtr<Logger> = AtomicPtr::new(core::ptr::null_mut());
             Self {
                 slots: [NULL; MAX_LOGGERS],

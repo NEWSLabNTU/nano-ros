@@ -19,7 +19,7 @@
 //! `[<LEVEL>] listener: <message>` on stderr.
 
 use nros::prelude::*;
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 use std_msgs::msg::Int32;
 
 static LOGGER: Logger = Logger::new("listener");
@@ -36,7 +36,10 @@ fn init_logging() {
 fn main() {
     init_logging();
 
-    nros_info!(&LOGGER, "nros Native Listener (Zenoh Transport, Safety E2E)");
+    nros_info!(
+        &LOGGER,
+        "nros Native Listener (Zenoh Transport, Safety E2E)"
+    );
 
     let config = ExecutorConfig::from_env().node_name("listener");
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
@@ -54,7 +57,11 @@ fn main() {
             nros_info!(
                 &LOGGER,
                 "[{}] Received: data={} [SAFETY] seq_gap={} dup={} crc={}",
-                count, msg.data, status.gap, status.duplicate, crc_str
+                count,
+                msg.data,
+                status.gap,
+                status.duplicate,
+                crc_str
             );
         })
         .expect("Failed to add safety subscription");
@@ -86,8 +93,14 @@ fn main() {
                     &LOGGER,
                     "seq={} gid={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
                     msg_info.publication_sequence_number(),
-                    gid[0], gid[1], gid[2], gid[3],
-                    gid[4], gid[5], gid[6], gid[7],
+                    gid[0],
+                    gid[1],
+                    gid[2],
+                    gid[3],
+                    gid[4],
+                    gid[5],
+                    gid[6],
+                    gid[7],
                 );
             }
         })

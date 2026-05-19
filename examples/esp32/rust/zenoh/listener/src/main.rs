@@ -16,7 +16,7 @@
 use esp_backtrace as _;
 use nros::prelude::*;
 use nros_board_esp32::{NodeConfig, entry, run};
-use nros_log::{nros_info, Logger};
+use nros_log::{Logger, nros_info};
 use std_msgs::msg::Int32;
 
 nros_board_esp32::esp_bootloader_esp_idf::esp_app_desc!();

@@ -13,8 +13,8 @@
 //! ```
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-client");
@@ -104,7 +104,12 @@ fn main() {
             match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
                 Ok(Some(feedback)) => {
                     feedback_count += 1;
-                    nros_info!(&LOGGER, "Feedback #{}: {:?}", feedback_count, feedback.sequence);
+                    nros_info!(
+                        &LOGGER,
+                        "Feedback #{}: {:?}",
+                        feedback_count,
+                        feedback.sequence
+                    );
 
                     if let Some(cancel_after) = cancel_after_feedback
                         && feedback_count >= cancel_after
@@ -129,7 +134,8 @@ fn main() {
     }
 
     if should_cancel {
-        nros_info!(&LOGGER, 
+        nros_info!(
+            &LOGGER,
             "Requesting cancellation after {} feedback frames",
             feedback_count
         );
@@ -173,9 +179,11 @@ fn main() {
             }
         };
 
-    nros_info!(&LOGGER, 
+    nros_info!(
+        &LOGGER,
         "Result: status={:?}, sequence={:?}",
-        status, result.sequence
+        status,
+        result.sequence
     );
 
     if should_cancel {

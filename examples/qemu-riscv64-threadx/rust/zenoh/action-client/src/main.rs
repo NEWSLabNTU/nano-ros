@@ -8,70 +8,73 @@
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::prelude::*;
 use nros_board_threadx_qemu_riscv64::{Config, run};
-use nros_log::{nros_error, nros_info, Logger};
+use nros_log::{Logger, nros_error, nros_info};
 
 // Phase 88.16.D — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-client");
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
-    run(Config::from_toml(include_str!("../config.toml")), |config| {
-        nros_log::register_logger(&LOGGER);
-        nros_log::init(nros_log::sinks::default());
+    run(
+        Config::from_toml(include_str!("../config.toml")),
+        |config| {
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
 
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("fibonacci_action_client");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("fibonacci_action_client")?;
+            let exec_config = ExecutorConfig::new(config.zenoh_locator)
+                .domain_id(config.domain_id)
+                .node_name("fibonacci_action_client");
+            // Phase 104.A — bare-metal callers explicitly register the RMW
+            // backend before `Executor::open`. POSIX hosts auto-register via
+            // `.init_array`; this target doesn't walk that section.
+            nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+            let mut executor = Executor::open(&exec_config)?;
+            let mut node = executor.create_node("fibonacci_action_client")?;
 
-        let mut client = node.create_action_client::<Fibonacci>("/fibonacci")?;
-        nros_info!(&LOGGER, "Action client ready for /fibonacci");
+            let mut client = node.create_action_client::<Fibonacci>("/fibonacci")?;
+            nros_info!(&LOGGER, "Action client ready for /fibonacci");
 
-        // Wait for server to be available
-        for _ in 0..500 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-        }
-
-        let goal = FibonacciGoal { order: 5 };
-        nros_info!(&LOGGER, "Sending goal: order={}", goal.order);
-
-        let (goal_id, mut promise) = client.send_goal(&goal)?;
-
-        // Poll for goal acceptance
-        let mut accepted = false;
-        for _ in 0..5000 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-            if let Some(result) = promise.try_recv()? {
-                accepted = result;
-                break;
+            // Wait for server to be available
+            for _ in 0..500 {
+                executor.spin_once(core::time::Duration::from_millis(10));
             }
-        }
 
-        if !accepted {
-            nros_info!(&LOGGER, "Goal was rejected or timed out");
-            return Ok(());
-        }
-        nros_info!(&LOGGER, "Goal accepted: {:?}", goal_id);
+            let goal = FibonacciGoal { order: 5 };
+            nros_info!(&LOGGER, "Sending goal: order={}", goal.order);
 
-        // Poll for result
-        nros_info!(&LOGGER, "Requesting result...");
-        let mut result_promise = client.get_result(&goal_id)?;
-        for _ in 0..10000u32 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-            if let Some((status, result)) = result_promise.try_recv()? {
-                nros_info!(&LOGGER, "Result status: {:?}", status);
-                nros_info!(&LOGGER, "Fibonacci sequence: {:?}", result.sequence);
-                nros_info!(&LOGGER, "Action completed successfully.");
+            let (goal_id, mut promise) = client.send_goal(&goal)?;
+
+            // Poll for goal acceptance
+            let mut accepted = false;
+            for _ in 0..5000 {
+                executor.spin_once(core::time::Duration::from_millis(10));
+                if let Some(result) = promise.try_recv()? {
+                    accepted = result;
+                    break;
+                }
+            }
+
+            if !accepted {
+                nros_info!(&LOGGER, "Goal was rejected or timed out");
                 return Ok(());
             }
-        }
+            nros_info!(&LOGGER, "Goal accepted: {:?}", goal_id);
 
-        nros_info!(&LOGGER, "Timeout waiting for result.");
-        Ok::<(), NodeError>(())
-    })
+            // Poll for result
+            nros_info!(&LOGGER, "Requesting result...");
+            let mut result_promise = client.get_result(&goal_id)?;
+            for _ in 0..10000u32 {
+                executor.spin_once(core::time::Duration::from_millis(10));
+                if let Some((status, result)) = result_promise.try_recv()? {
+                    nros_info!(&LOGGER, "Result status: {:?}", status);
+                    nros_info!(&LOGGER, "Fibonacci sequence: {:?}", result.sequence);
+                    nros_info!(&LOGGER, "Action completed successfully.");
+                    return Ok(());
+                }
+            }
+
+            nros_info!(&LOGGER, "Timeout waiting for result.");
+            Ok::<(), NodeError>(())
+        },
+    )
 }

@@ -12,7 +12,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::{Executor, ExecutorConfig};
 use std::time::Instant;
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-server");
@@ -33,9 +33,12 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
 
-    nros_warn!(&LOGGER, 
+    nros_warn!(
+        &LOGGER,
         "XRCE Service Server: agent={}, domain={}, timeout={}s",
-        agent_addr, domain_id, timeout_secs
+        agent_addr,
+        domain_id,
+        timeout_secs
     );
 
     // Open session with callback arena

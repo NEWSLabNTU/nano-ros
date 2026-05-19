@@ -8,7 +8,7 @@
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::prelude::*;
 use nros_board_mps2_an385_freertos::{Config, run};
-use nros_log::{nros_error, nros_info, Logger};
+use nros_log::{Logger, nros_error, nros_info};
 
 // Phase 88.16.C — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-client");
@@ -16,61 +16,64 @@ use panic_semihosting as _;
 
 #[unsafe(no_mangle)]
 extern "C" fn _start() -> ! {
-    run(Config::from_toml(include_str!("../config.toml")), |config| {
+    run(
+        Config::from_toml(include_str!("../config.toml")),
+        |config| {
             nros_log::register_logger(&LOGGER);
             nros_log::init(nros_log::sinks::default());
 
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("add_two_ints_client");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("add_two_ints_client")?;
+            let exec_config = ExecutorConfig::new(config.zenoh_locator)
+                .domain_id(config.domain_id)
+                .node_name("add_two_ints_client");
+            // Phase 104.A — bare-metal callers explicitly register the RMW
+            // backend before `Executor::open`. POSIX hosts auto-register via
+            // `.init_array`; this target doesn't walk that section.
+            nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+            let mut executor = Executor::open(&exec_config)?;
+            let mut node = executor.create_node("add_two_ints_client")?;
 
-        let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
-        nros_info!(&LOGGER, "Service client ready for /add_two_ints");
+            let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
+            nros_info!(&LOGGER, "Service client ready for /add_two_ints");
 
-        // Wait for service to be available
-        for _ in 0..500 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-        }
-
-        let test_cases: &[(i64, i64)] = &[(5, 3), (10, 20), (100, 200), (-5, 10)];
-
-        for &(a, b) in test_cases {
-            let request = AddTwoIntsRequest { a, b };
-            nros_info!(&LOGGER, "Calling: {} + {} = ?", a, b);
-
-            let mut promise = client.call(&request)?;
-
-            // Poll for response
-            let mut response = None;
-            for _ in 0..5000 {
+            // Wait for service to be available
+            for _ in 0..500 {
                 executor.spin_once(core::time::Duration::from_millis(10));
-                if let Some(reply) = promise.try_recv()? {
-                    response = Some(reply);
-                    break;
-                }
             }
 
-            match response {
-                Some(resp) => {
-                    nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, resp.sum);
-                    if resp.sum != a + b {
-                        nros_info!(&LOGGER, "ERROR: expected {}", a + b);
+            let test_cases: &[(i64, i64)] = &[(5, 3), (10, 20), (100, 200), (-5, 10)];
+
+            for &(a, b) in test_cases {
+                let request = AddTwoIntsRequest { a, b };
+                nros_info!(&LOGGER, "Calling: {} + {} = ?", a, b);
+
+                let mut promise = client.call(&request)?;
+
+                // Poll for response
+                let mut response = None;
+                for _ in 0..5000 {
+                    executor.spin_once(core::time::Duration::from_millis(10));
+                    if let Some(reply) = promise.try_recv()? {
+                        response = Some(reply);
+                        break;
                     }
                 }
-                None => {
-                    nros_info!(&LOGGER, "ERROR: timeout waiting for response");
+
+                match response {
+                    Some(resp) => {
+                        nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, resp.sum);
+                        if resp.sum != a + b {
+                            nros_info!(&LOGGER, "ERROR: expected {}", a + b);
+                        }
+                    }
+                    None => {
+                        nros_info!(&LOGGER, "ERROR: timeout waiting for response");
+                    }
                 }
             }
-        }
 
-        nros_info!(&LOGGER, "");
-        nros_info!(&LOGGER, "All service calls completed.");
-        Ok::<(), NodeError>(())
-    })
+            nros_info!(&LOGGER, "");
+            nros_info!(&LOGGER, "All service calls completed.");
+            Ok::<(), NodeError>(())
+        },
+    )
 }

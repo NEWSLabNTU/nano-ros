@@ -18,7 +18,7 @@ use std::{
 };
 use std_msgs::msg::Int32;
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("listener");
@@ -39,9 +39,12 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(5);
 
-    nros_warn!(&LOGGER, 
+    nros_warn!(
+        &LOGGER,
         "XRCE Listener: agent={}, domain={}, count={}",
-        agent_addr, domain_id, msg_count
+        agent_addr,
+        domain_id,
+        msg_count
     );
 
     // Open session with callback arena
@@ -79,9 +82,11 @@ fn main() {
     if final_count >= msg_count {
         nros_info!(&LOGGER, "Received {} messages, exiting", final_count);
     } else {
-        nros_warn!(&LOGGER, 
+        nros_warn!(
+            &LOGGER,
             "Timeout: received only {}/{} messages",
-            final_count, msg_count
+            final_count,
+            msg_count
         );
         std::process::exit(1);
     }

@@ -36,40 +36,43 @@ use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
 extern "C" fn _start() -> ! {
-    run(Config::from_toml(include_str!("../config.toml")), |config| {
-        // DDS uses domain_id only — no locator string. Pass an
-        // empty locator and let `nros-rmw-dds`'s
-        // `NrosUdpTransportFactory::create_participant` derive the
-        // RTPS port set from the domain id.
-        let exec_config = ExecutorConfig::new("")
-            .domain_id(config.domain_id)
-            .node_name("dds_talker");
-        // Phase 115.L.5 — install dust-dds C-vtable backend.
-        nros_rmw_dds::register().expect("Failed to register RMW backend");
-        let mut executor = Executor::open(&exec_config)?;
-        let publisher = {
-            let mut node = executor.create_node("dds_talker")?;
-            println!("Declaring publisher on /chatter (std_msgs/Int32) over DDS");
-            node.create_publisher::<Int32>("/chatter")?
-        };
-        println!("Publisher declared");
+    run(
+        Config::from_toml(include_str!("../config.toml")),
+        |config| {
+            // DDS uses domain_id only — no locator string. Pass an
+            // empty locator and let `nros-rmw-dds`'s
+            // `NrosUdpTransportFactory::create_participant` derive the
+            // RTPS port set from the domain id.
+            let exec_config = ExecutorConfig::new("")
+                .domain_id(config.domain_id)
+                .node_name("dds_talker");
+            // Phase 115.L.5 — install dust-dds C-vtable backend.
+            nros_rmw_dds::register().expect("Failed to register RMW backend");
+            let mut executor = Executor::open(&exec_config)?;
+            let publisher = {
+                let mut node = executor.create_node("dds_talker")?;
+                println!("Declaring publisher on /chatter (std_msgs/Int32) over DDS");
+                node.create_publisher::<Int32>("/chatter")?
+            };
+            println!("Publisher declared");
 
-        println!("Publishing messages...");
+            println!("Publishing messages...");
 
-        let mut count: i32 = 0;
-        executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
-            match publisher.publish(&Int32 { data: count }) {
-                Ok(()) => println!("Published: {}", count),
-                Err(e) => println!("Publish failed: {:?}", e),
+            let mut count: i32 = 0;
+            executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
+                match publisher.publish(&Int32 { data: count }) {
+                    Ok(()) => println!("Published: {}", count),
+                    Err(e) => println!("Publish failed: {:?}", e),
+                }
+                count = count.wrapping_add(1);
+            })?;
+
+            loop {
+                executor.spin_once(core::time::Duration::from_millis(10));
             }
-            count = count.wrapping_add(1);
-        })?;
 
-        loop {
-            executor.spin_once(core::time::Duration::from_millis(10));
-        }
-
-        #[allow(unreachable_code)]
-        Ok::<(), NodeError>(())
-    })
+            #[allow(unreachable_code)]
+            Ok::<(), NodeError>(())
+        },
+    )
 }

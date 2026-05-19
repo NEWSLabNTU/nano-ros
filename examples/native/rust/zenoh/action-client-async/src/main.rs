@@ -22,8 +22,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use futures::StreamExt;
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-client-async");
@@ -35,8 +35,14 @@ async fn main() {
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_log::sinks::default());
 
-    nros_info!(&LOGGER, "nros Async Action Client Example (tokio + StreamExt)");
-    nros_info!(&LOGGER, "=====================================================");
+    nros_info!(
+        &LOGGER,
+        "nros Async Action Client Example (tokio + StreamExt)"
+    );
+    nros_info!(
+        &LOGGER,
+        "====================================================="
+    );
 
     // Create executor
     let config = ExecutorConfig::from_env().node_name("async_fibonacci_client");
@@ -109,7 +115,12 @@ async fn main() {
                     match result {
                         Ok(feedback) => {
                             feedback_count += 1;
-                            nros_info!(&LOGGER, "Feedback #{}: {:?}", feedback_count, feedback.sequence);
+                            nros_info!(
+                                &LOGGER,
+                                "Feedback #{}: {:?}",
+                                feedback_count,
+                                feedback.sequence
+                            );
 
                             if feedback.sequence.len() as i32 > order {
                                 nros_info!(&LOGGER, "Received all feedback, action completed!");
@@ -128,9 +139,11 @@ async fn main() {
             match client.get_result(&goal_id) {
                 Ok(promise) => match promise.await {
                     Ok((status, result)) => {
-                        nros_info!(&LOGGER, 
+                        nros_info!(
+                            &LOGGER,
                             "Result: status={:?}, sequence={:?}",
-                            status, result.sequence
+                            status,
+                            result.sequence
                         );
                     }
                     Err(e) => nros_error!(&LOGGER, "get_result failed: {:?}", e),

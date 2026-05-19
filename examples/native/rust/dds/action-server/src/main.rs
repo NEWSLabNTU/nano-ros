@@ -13,8 +13,8 @@
 //! ```
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::{CancelResponse, prelude::*};
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-server");
@@ -113,7 +113,12 @@ fn main() {
                         executor.spin_once(core::time::Duration::from_millis(20));
 
                         match server.try_handle_cancel(|cancel_id, status| {
-                            nros_info!(&LOGGER, "Cancel request: {} status={:?}", cancel_id, status);
+                            nros_info!(
+                                &LOGGER,
+                                "Cancel request: {} status={:?}",
+                                cancel_id,
+                                status
+                            );
                             if cancel_id.uuid == goal_id.uuid && status.is_active() {
                                 CancelResponse::Ok
                             } else if status.is_terminal() {
@@ -129,7 +134,9 @@ fn main() {
                                 canceled = true;
                             }
                             Ok(_) => {}
-                            Err(e) => nros_error!(&LOGGER, "Error handling cancel request: {:?}", e),
+                            Err(e) => {
+                                nros_error!(&LOGGER, "Error handling cancel request: {:?}", e)
+                            }
                         }
 
                         if let Err(e) = server.try_handle_get_result() {

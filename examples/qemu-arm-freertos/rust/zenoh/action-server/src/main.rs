@@ -11,7 +11,7 @@
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{CancelResponse, GoalResponse, GoalStatus, prelude::*};
 use nros_board_mps2_an385_freertos::{Config, run};
-use nros_log::{nros_error, nros_info, Logger};
+use nros_log::{Logger, nros_error, nros_info};
 
 // Phase 88.16.C — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-server");

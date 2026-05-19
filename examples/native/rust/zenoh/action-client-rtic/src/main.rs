@@ -12,8 +12,8 @@
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-action-client/`.
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("action-client-rtic");
@@ -42,7 +42,10 @@ fn main() {
         .create_action_client::<Fibonacci>("/fibonacci")
         .expect("Failed to create action client");
 
-    nros_info!(&LOGGER, "Action client created for /fibonacci (RTIC pattern)");
+    nros_info!(
+        &LOGGER,
+        "Action client created for /fibonacci (RTIC pattern)"
+    );
 
     // Stabilization delay
     for _ in 0..300 {
@@ -81,7 +84,12 @@ fn main() {
             && id.uuid == goal_id.uuid
         {
             feedback_count += 1;
-            nros_info!(&LOGGER, "Feedback #{}: {:?}", feedback_count, &feedback.sequence[..]);
+            nros_info!(
+                &LOGGER,
+                "Feedback #{}: {:?}",
+                feedback_count,
+                &feedback.sequence[..]
+            );
             if feedback.sequence.len() as i32 > goal.order {
                 break;
             }
@@ -90,7 +98,8 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    nros_info!(&LOGGER, 
+    nros_info!(
+        &LOGGER,
         "Done. Got {} feedback messages, goal accepted",
         feedback_count
     );

@@ -26,8 +26,8 @@
 use std::sync::Mutex;
 
 use nros_log::{
-    init, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
-    register_logger, severity_enabled_at_compile_time, LogSink, Logger, Record, Severity,
+    LogSink, Logger, Record, Severity, init, nros_debug, nros_error, nros_fatal, nros_info,
+    nros_trace, nros_warn, register_logger, severity_enabled_at_compile_time,
 };
 
 /// Process-wide serialization for tests that mutate the global
@@ -140,9 +140,10 @@ fn per_logger_runtime_threshold_filters_below() {
         "quiet logger should drop trace/debug/info; got {:?}",
         quiet_records
     );
-    assert!(quiet_records
-        .iter()
-        .all(|r| matches!(r.severity, Severity::Warn | Severity::Error | Severity::Fatal)));
+    assert!(quiet_records.iter().all(|r| matches!(
+        r.severity,
+        Severity::Warn | Severity::Error | Severity::Fatal
+    )));
     assert!(quiet_records.iter().any(|r| r.message == "keep-warn"));
 
     assert_eq!(loud_records.len(), 2, "loud logger should emit info + warn");

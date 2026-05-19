@@ -13,8 +13,8 @@
 //! ```
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-server");
@@ -42,7 +42,13 @@ fn main() {
     executor
         .register_service::<AddTwoInts, _>("/add_two_ints", |request| {
             let sum = request.a + request.b;
-            nros_info!(&LOGGER, "Received request: {} + {} = {}", request.a, request.b, sum);
+            nros_info!(
+                &LOGGER,
+                "Received request: {} + {} = {}",
+                request.a,
+                request.b,
+                sum
+            );
             AddTwoIntsResponse { sum }
         })
         .expect("Failed to add service");

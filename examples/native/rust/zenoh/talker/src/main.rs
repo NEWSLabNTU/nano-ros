@@ -41,7 +41,7 @@
 //! ```
 
 use nros::prelude::*;
-use nros_log::{nros_error, nros_info, Logger, Severity};
+use nros_log::{Logger, Severity, nros_error, nros_info};
 use std_msgs::msg::Int32;
 
 // Phase 88.16.B — pre-register the logger so `[INFO] talker: …`

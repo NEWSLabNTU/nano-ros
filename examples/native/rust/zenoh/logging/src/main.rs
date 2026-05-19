@@ -26,8 +26,9 @@
 //! [FATAL] demo: round 2: hello with fatal=true
 //! ```
 
-use nros_log::{nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn};
-use nros_log::{Logger, Severity};
+use nros_log::{
+    Logger, Severity, nros_debug, nros_error, nros_fatal, nros_info, nros_trace, nros_warn,
+};
 
 // Pre-register a Logger so `get_logger("demo")` / `Node::logger()`
 // resolve to the same instance.

@@ -496,6 +496,7 @@ name = "nros-log"
 version = "0.1.0"
 dependencies = [
  "heapless",
+ "portable-atomic",
 ]
 
 [[package]]

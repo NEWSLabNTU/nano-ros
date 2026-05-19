@@ -60,9 +60,7 @@ use std::{
 };
 
 use log::{info, warn};
-use nros::{
-    Executor, ExecutorConfig, TimeTriggeredSchedule, TimeTriggeredWindow, TimerDuration,
-};
+use nros::{Executor, ExecutorConfig, TimeTriggeredSchedule, TimeTriggeredWindow, TimerDuration};
 
 const TYPE_NAME: &str = "std_msgs/msg/String";
 const TYPE_HASH: &str = "RIHS01_df668c740482bbd48fb39d76a70dfd4bd59db1288021743503259e948f6b1a18";
@@ -88,8 +86,7 @@ fn main() {
 
     let zenoh_locator =
         std::env::var("ZENOH_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
-    let xrce_locator =
-        std::env::var("XRCE_LOCATOR").unwrap_or_else(|_| "127.0.0.1:8888".into());
+    let xrce_locator = std::env::var("XRCE_LOCATOR").unwrap_or_else(|_| "127.0.0.1:8888".into());
 
     let cfg = ExecutorConfig::new(&zenoh_locator)
         .node_name("tt_bridge_primary")

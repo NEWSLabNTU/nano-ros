@@ -15,7 +15,7 @@
 
 use nros::prelude::*;
 use nros_board_mps2_an385::{Config, run};
-use nros_log::{nros_error, nros_info, Logger};
+use nros_log::{Logger, nros_error, nros_info};
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 

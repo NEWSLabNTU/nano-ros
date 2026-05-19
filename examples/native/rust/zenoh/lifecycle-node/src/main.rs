@@ -30,11 +30,11 @@
 
 use core::{ffi::c_void, time::Duration};
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::{
     Executor, ExecutorConfig,
     lifecycle::{LifecycleCallbackSlot, TransitionResult},
 };
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("lifecycle-node");
@@ -95,7 +95,10 @@ fn main() {
     sm.register(LifecycleCallbackSlot::Cleanup, Some(on_cleanup));
     sm.register(LifecycleCallbackSlot::Shutdown, Some(on_shutdown));
 
-    nros_info!(&LOGGER, "Ready. Drive the lifecycle with `ros2 lifecycle set /lifecycle_demo configure`, etc.");
+    nros_info!(
+        &LOGGER,
+        "Ready. Drive the lifecycle with `ros2 lifecycle set /lifecycle_demo configure`, etc."
+    );
 
     // Spin indefinitely. Each spin_once drains the lifecycle services so
     // `ros2 lifecycle` queries round-trip.

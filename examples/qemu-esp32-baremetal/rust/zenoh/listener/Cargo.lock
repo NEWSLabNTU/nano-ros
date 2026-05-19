@@ -1145,6 +1145,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-log"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+ "portable-atomic",
+]
+
+[[package]]
 name = "nros-macros"
 version = "0.1.0"
 dependencies = [
@@ -1160,6 +1168,7 @@ dependencies = [
  "atomic-waker",
  "heapless 0.8.0",
  "nros-core",
+ "nros-log",
  "nros-params",
  "nros-platform-api",
  "nros-rmw",

@@ -11,8 +11,8 @@
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-service-client/`.
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-client-rtic");
@@ -41,7 +41,10 @@ fn main() {
         .create_client::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create client");
 
-    nros_info!(&LOGGER, "Service client created for /add_two_ints (RTIC pattern)");
+    nros_info!(
+        &LOGGER,
+        "Service client created for /add_two_ints (RTIC pattern)"
+    );
 
     // Stabilization delay
     for _ in 0..200 {
@@ -90,7 +93,8 @@ fn main() {
         }
     }
 
-    nros_info!(&LOGGER, 
+    nros_info!(
+        &LOGGER,
         "Done. {} of {} calls succeeded",
         success_count,
         test_cases.len()

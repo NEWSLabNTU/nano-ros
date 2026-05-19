@@ -7,8 +7,8 @@
 //!
 //! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-listener/`.
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 use std_msgs::msg::Int32;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
@@ -38,7 +38,10 @@ fn main() {
         .create_subscription::<Int32>("/chatter")
         .expect("Failed to create subscription");
 
-    nros_info!(&LOGGER, "Waiting for Int32 messages on /chatter (RTIC pattern)...");
+    nros_info!(
+        &LOGGER,
+        "Waiting for Int32 messages on /chatter (RTIC pattern)..."
+    );
 
     loop {
         executor.spin_once(core::time::Duration::from_millis(0));

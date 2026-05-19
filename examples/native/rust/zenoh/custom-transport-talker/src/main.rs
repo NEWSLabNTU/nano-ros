@@ -43,8 +43,8 @@ use std::{
     time::Duration,
 };
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 use std_msgs::msg::Int32;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
@@ -137,11 +137,17 @@ fn main() {
     nros_log::init(nros_log::sinks::default());
 
     let target = std::env::var("NROS_CUSTOM_TCP_TARGET").unwrap_or_else(|_| {
-        nros_info!(&LOGGER, "NROS_CUSTOM_TCP_TARGET not set; defaulting to 127.0.0.1:7447");
+        nros_info!(
+            &LOGGER,
+            "NROS_CUSTOM_TCP_TARGET not set; defaulting to 127.0.0.1:7447"
+        );
         "127.0.0.1:7447".to_string()
     });
 
-    nros_info!(&LOGGER, "nros Custom-Transport Talker — bridging to TCP {target}");
+    nros_info!(
+        &LOGGER,
+        "nros Custom-Transport Talker — bridging to TCP {target}"
+    );
 
     // Connect TcpStream + leak Box so the user_data outlives the
     // session (custom-transport contract).

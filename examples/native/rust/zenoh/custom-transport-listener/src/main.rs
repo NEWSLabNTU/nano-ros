@@ -12,8 +12,8 @@ use std::{
     time::Duration,
 };
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 use std_msgs::msg::Int32;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
@@ -91,7 +91,10 @@ fn main() {
     let target =
         std::env::var("NROS_CUSTOM_TCP_TARGET").unwrap_or_else(|_| "127.0.0.1:7447".to_string());
 
-    nros_info!(&LOGGER, "nros Custom-Transport Listener — bridging to TCP {target}");
+    nros_info!(
+        &LOGGER,
+        "nros Custom-Transport Listener — bridging to TCP {target}"
+    );
 
     let bridge = match TcpBridge::new(&target) {
         Ok(b) => Box::leak(Box::new(b)),

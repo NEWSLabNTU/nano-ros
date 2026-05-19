@@ -9,8 +9,8 @@
 //! cargo run -p native-dds-listener
 //! ```
 
-use nros_log::{nros_debug, nros_error, nros_info, nros_trace, nros_warn, Logger};
 use nros::prelude::*;
+use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
 use std_msgs::msg::Int32;
 
 // Phase 88.16.B — diagnostics route through `nros-log`.

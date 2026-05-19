@@ -146,7 +146,11 @@ fn zpico_posix_archive_carries_link_feature_symbols() {
     // catch the "transport silently disabled" regression — Phase
     // 134's symbol-parity gate covers the wrapper/impl matching
     // case so this test stays narrow.
-    for sym in ["_z_open_tcp", "_z_open_udp_unicast", "_z_open_udp_multicast"] {
+    for sym in [
+        "_z_open_tcp",
+        "_z_open_udp_unicast",
+        "_z_open_udp_multicast",
+    ] {
         assert!(
             nm_out.contains(sym),
             "expected `{}` defined in {} (POSIX link.tcp / link.udp_*\
