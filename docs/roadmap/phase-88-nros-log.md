@@ -266,12 +266,14 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       `logging.md` chapter; extend `book/src/reference/rust-api.md`,
       `c-api.md`, `cpp-api.md` with the `Logger` surface.
 
-- [ ] 88.14 — Tests: a `packages/testing/nros-tests/tests/logging.rs`
-      that verifies severity filtering (compile-time ceiling +
-      per-logger runtime threshold), throttle/once semantics, and sink
-      fan-out. RTOS-specific impl verification is best-effort — on QEMU
-      platforms that expose the UART, assert the expected line appears
-      in the captured output.
+- [x] 88.14 — Tests: a `packages/testing/nros-tests/tests/logging.rs`
+      verifying compile-time ceiling, per-logger runtime threshold,
+      sink fan-out (every installed sink receives every dispatched
+      record), and that filtered records reach no sink. Throttle/once
+      coverage is deferred along with the macros themselves — the test
+      file documents how to extend it when the macros land. RTOS-specific
+      UART-capture verification stays best-effort and lives with the
+      per-platform smoke tests.
 
 ## Design Notes
 

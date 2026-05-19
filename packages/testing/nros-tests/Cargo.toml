@@ -63,6 +63,9 @@ nros-rmw-dds = { path = "../../dds/nros-rmw-dds", features = ["platform-posix"],
 # canonical symbols extern without providing them, and link fails.
 nros-platform-cffi = { path = "../../core/nros-platform-cffi", features = ["posix-c-port"], optional = true }
 
+# Phase 88.14 — `nros-log` facade for the host-side logging tests.
+nros-log = { path = "../../core/nros-log" }
+
 [features]
 default = []
 types = ["nros-core", "nros-serdes"]
@@ -256,6 +259,11 @@ path = "tests/integration_nuttx.rs"
 [[test]]
 name = "integration_px4"
 path = "tests/integration_px4.rs"
+
+# Phase 88.14 — `nros-log` integration coverage.
+[[test]]
+name = "logging"
+path = "tests/logging.rs"
 
 [lints]
 workspace = true
