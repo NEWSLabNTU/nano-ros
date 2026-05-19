@@ -1,6 +1,12 @@
 # RMW Backends: Zenoh, XRCE-DDS, DDS, Cyclone DDS
 
-nano-ros supports four RMW (ROS Middleware) backends for connecting embedded devices to a ROS 2 network. Each backend targets different deployment scenarios and resource constraints. Only one backend can be active at compile time.
+nano-ros supports four RMW (ROS Middleware) backends for connecting
+embedded devices to a ROS 2 network. Each backend targets different
+deployment scenarios and resource constraints. Each Node picks its
+backend at build time; **one binary can link multiple backends and
+bridge between them** — see
+[Cross-backend Bridges](./cross-backend-bridges.md) for the
+multi-RMW pattern.
 
 ## Zenoh (rmw-zenoh)
 
@@ -57,6 +63,16 @@ The DDS backend uses [dust-dds](https://github.com/s2e-systems/dust-dds), a pure
 - ROS 2 interop is end-to-end (no protocol translator) — DDS-on-MCU appears in the ROS 2 graph the same way a desktop ROS 2 node does.
 
 ## Cyclone DDS (rmw-cyclonedds)
+
+> **Maturity status.** Cyclone DDS support is **pub/sub-only today.**
+> Service create / recv / reply returns `NROS_RMW_RET_UNSUPPORTED`;
+> status events (liveliness, deadline-miss, etc.) are not wired to
+> Cyclone listeners yet. Wire-level interop with stock
+> `rmw_cyclonedds_cpp` (Humble) works for topic publishing and
+> subscribing. If your fleet needs RPC or lifecycle events over
+> Cyclone, use Zenoh or dust-DDS instead until the gaps close. Full
+> known-limitations list:
+> [`docs/reference/cyclonedds-known-limitations.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-known-limitations.md).
 
 The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cyclonedds/cyclonedds), the same DDS implementation that ROS 2 ships with via `rmw_cyclonedds_cpp`. Built as a **standalone C++ library** at `packages/dds/nros-rmw-cyclonedds/` that registers itself with the runtime through the C ABI vtable in `nros-rmw-cffi`.
 

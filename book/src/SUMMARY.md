@@ -9,6 +9,7 @@
 - [First Node — Rust](./getting-started/first-node-rust.md)
 - [First Node — C](./getting-started/first-node-c.md)
 - [First Node — C++](./getting-started/first-node-cpp.md)
+- [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
 
 # Embedded Starters
 
@@ -97,6 +98,7 @@
 - [RMW API](./reference/rmw-api.md)
 - [Platform API](./reference/platform-api.md)
 - [Platform Differences](./reference/platform-differences.md)
+- [Supported Boards](./reference/supported-boards.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Build Commands](./reference/build-commands.md)
 - [`nros.toml` Schema](./reference/nros-toml.md)

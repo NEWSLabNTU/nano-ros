@@ -4,6 +4,8 @@ Build, run, and verify a single nano-ros publisher node on Linux in
 about ten minutes. Uses the canonical Zenoh backend; no router needs
 to be pre-installed (the repo ships `zenohd`).
 
+> **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
+>
 > **Prereqs.** A clone with `just setup tier=default` already run.
 > See [Install + first build (Linux)](./installation.md) if you
 > haven't.
