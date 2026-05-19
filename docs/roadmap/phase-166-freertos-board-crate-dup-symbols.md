@@ -14,6 +14,7 @@ underlying code / build bugs.
 | 166.C | `examples/native/{cpp,c}/zenoh/talker/` CMake | Transitive submodule fetch pulls dust-dds + px4-rs even for posix+zenoh; first build aborts | P2 |
 | 166.D | `examples/threadx-linux/rust/zenoh/talker/Cargo.toml` (and siblings) | Missing empty `[workspace]` table — `cargo build` from inside the repo discovers parent workspace + crate not listed → error | P2 |
 | 166.E | `integrations/nuttx/` template | `external-Kconfig.in` + `external-Make.defs.in` staging step not wired into `just nuttx setup`; user following the shell-symlink instruction can't reach example apps via menuconfig | P3 |
+| 166.F | `packages/dds/dust-dds/dds/src/dcps/actor.rs` + nros-rmw-dds nostd runtime | `Actor<DcpsStatusCondition>::poll` blocks during the first `CreateTopic` mailbox handler on `xtensa-esp32s3-none-elf` (Phase 117.2h). Blocks two-instance ESP32-S3 QEMU DDS E2E. | P2 — blocks Phase 117 close-out |
 
 ---
 
@@ -357,3 +358,131 @@ not the example apps the page promises.
 - [ ] **166.E.2** Document the staging step in
       `book/src/getting-started/integration-nuttx.md` (or update
       the symlink instructions to reference the recipe).
+
+---
+
+## 166.F — dust-dds `Actor<DcpsStatusCondition>` poll deadlock on Xtensa LX7
+
+During Phase 117.2h (`phase-117.0-esp32s3-toolchain` branch) the
+ESP32-S3 QEMU DDS talker / listener both reach `Executor::open`
+cleanly (after 117.2g's stack-overflow workaround + 117.2f's
+triple LLVM fusion barrier in `NrosPlatformRuntime::block_on_boxed`)
+but hang inside the first `node.create_publisher` /
+`executor.register_subscription` call. The first `block_on(create_topic)`
+enters `NrosSpawner::drain_until_quiescent`, which calls
+`drain_tasks` once, which calls `task.as_mut().poll(&mut cx)` for
+each of the ~20 spawned tasks in FIFO order. Task index 16
+(a `dust_dds::dcps::actor::Actor<DcpsStatusCondition>::spawn`
+closure per the type-name spawn probe) never returns from `poll`.
+
+**Status.** Not Started. Blocks Phase 117 close-out (ESP32-S3
+QEMU DDS E2E). Workaround / probes already landed on the
+feature branch; this issue tracks the underlying root cause.
+
+**Priority.** P2 — blocks one slice, not the whole DDS surface.
+
+**Depends on.** Phase 117.2g + 117.2f (both landed). The fusion
+barriers are necessary preconditions to even REACH this hang
+point — without them `block_on_boxed` returns Pending exactly
+once and never re-polls, masking the actor deadlock.
+
+### Symptom
+
+With `nros-rmw-dds[debug-esp-println]` on, the talker trace ends:
+
+```
+[talker] post Executor::open
+[talker] post create_node
+Declaring publisher on /chatter (std_msgs/Int32) over DDS
+[block_on] iter
+[block_on] post-poll Pending
+[drain] enter max_passes=256 queue_len=20
+[drain_tasks] poll task 0 done: pending=true
+...
+[drain_tasks] poll task 15 done: pending=true
+[drain_tasks] poll task 16          ← never returns
+```
+
+`drain_tasks` is sync — the for-loop hangs inside `poll(&mut cx)`
+for task 16. CPU spins (no Pending, no Ready).
+
+### Hypothesis
+
+Looking at `packages/dds/dust-dds/dds/src/dcps/actor.rs`'s actor
+loop + `dcps/channels/{mpsc,oneshot}.rs`:
+
+- `MpscSender::send` is sync and uses `critical_section::with`
+  to push + wake the receiver's waker (`mpsc.rs:77`).
+- `MpscReceiverFuture::poll` also uses `critical_section::with`
+  to pop or store a waker (`mpsc.rs:113`).
+- `Actor<T>`'s mailbox handler runs message processing inline
+  during `MpscReceiverFuture::poll` — IF that message handler
+  itself does another `participant_address.send(...)`, we have
+  two nested `critical_section::with` calls.
+
+`critical-section`'s default `restore-state-bool` impl on esp-hal
+xtensa is non-reentrant — nesting two `with` calls on the same
+core toggles `PS.INTLEVEL` such that the inner `with` returns
+with interrupts enabled, then the outer `with` restores its saved
+state (interrupts disabled) at scope exit. Functionally OK for
+mutex but not OK if either `with` body re-enters a `Mutex<RefCell<…>>`
+the outer is holding — re-borrow panic, or in the dust-dds shape
+likely a spinlock contention loop on a `Mutex<RefCell<MpscInner<T>>>`
+the outer holds.
+
+Why only `Actor<DcpsStatusCondition>` and only on CreateTopic:
+the topic-creation path attaches a status condition to the new
+topic, which spawns a status-condition actor that immediately
+processes a setup message that itself sends to the participant
+actor — exactly the nested-send shape above.
+
+### Work items
+
+- [ ] **166.F.1** Confirm the hypothesis by instrumenting
+      `Actor::spawn`'s mailbox loop in
+      `packages/dds/dust-dds/dds/src/dcps/actor.rs` with
+      `dbg_log!` probes (gated behind the existing
+      `nros-rmw-dds[debug-esp-println]` chain that's already
+      wired through nros-rmw-dds → nros-rmw-cffi). Show the
+      nested `critical_section::with` entry / exit pattern.
+- [ ] **166.F.2** Pick a fix path:
+      - **Option A — Patch dust-dds:** restructure the actor
+        mailbox loop so message handlers complete fully BEFORE
+        the next outbound send (no nested `with` on the same
+        `MpscInner`). Vendored submodule — needs an upstream
+        contribution or a maintained fork patch.
+      - **Option B — Replace nostd actor mailbox:** swap
+        dust-dds's per-actor mailbox shape on `nostd-runtime`
+        for a single cooperative dispatch loop that
+        `NrosSpawner::drain_until_quiescent` already pumps.
+        Bigger change but avoids the nested-CS shape entirely.
+      - **Option C — Replace `critical-section[default]`:**
+        switch esp-hal's `critical_section_impl` to a reentrant
+        variant (esp-hal v1.0 has `xtensa-lx-rt` reentrant
+        support behind a feature; verify it composes with
+        embassy-sync's `critical-section[default]`).
+- [ ] **166.F.3** Once a fix lands, re-run
+      `cargo nextest run -p nros-tests --test esp32s3_qemu_dds
+      --run-ignored=all` from `phase-117.0-esp32s3-toolchain`;
+      expect `Publisher declared` → `Published: 0` → `Received: 0`
+      → ≥80% delivery (Phase 117.5 acceptance bar).
+
+### Diagnostic infrastructure (already landed on feature branch)
+
+These features are kept gated-off in production but available
+on `phase-117.0-esp32s3-toolchain` for follow-up:
+
+- `nros-rmw-dds[debug-esp-println]` — block_on iter + create_participant
+  + write_message traces.
+- `nros-rmw-cffi[debug-esp-println]` — CffiRmw + CffiSession +
+  `open_trampoline` boundary traces.
+- `nros-node[debug-uart-raw]` — raw UART0 MMIO writes for
+  `Executor::open` / `from_session` bisection. No transitive
+  deps — avoids the esp-sync / embassy-sync /
+  critical-section[default] cross-talk that re-breaks the
+  fusion barriers in `block_on_boxed`.
+- `nros = { … features = ["debug-uart-raw"] }` umbrella forward.
+- `NROS_EXECUTOR_ARENA_SIZE` / `_MAX_CBS` / `_MAX_SC` env vars
+  in talker / listener `.cargo/config.toml` (workaround for
+  117.2g stack overflow; revert once `Executor` heap-boxing
+  lands).
