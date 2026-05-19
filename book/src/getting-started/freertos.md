@@ -56,8 +56,9 @@ gateway  = "10.0.2.2"          # QEMU Slirp gateway = host loopback
 netmask  = "255.255.255.0"
 
 [zenoh]
-locator   = "tcp/10.0.2.2:7447"   # host's zenohd reached via Slirp
-domain_id = 0
+locator   = "tcp/10.0.2.2:7451"   # host's zenohd reached via Slirp
+domain_id = 0                      # FreeRTOS test fixture uses 7451;
+                                   # adjust if you run zenohd on 7447
 
 [scheduling]
 app_priority           = 12
@@ -96,7 +97,7 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 ## Run
 
 ```bash
-# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7447 → host:7447):
+# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451):
 just zenohd                               # or: ./build/zenohd/zenohd
 
 # 2. Boot the talker in QEMU:
@@ -126,7 +127,7 @@ cold-boot through FreeRTOS init + lwIP DHCP + zenoh session open
 typically takes 10–15 s. If no `Published:` line in 30 seconds:
 
 1. Confirm `zenohd` is running on the host (Slirp forwards
-   `10.0.2.2:7447` → host:7447). Without it the talker retries the
+   `10.0.2.2:7451` → host:7451). Without it the talker retries the
    zenoh handshake until QEMU is killed.
 2. Check the talker's early log for `lwIP DHCP timeout` or
    `Failed to open session`.

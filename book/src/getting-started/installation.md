@@ -98,6 +98,21 @@ install AND idempotent AND covered by `just test-all`. ARM FVP, NVIDIA
 SDK Manager, and license-gated installs stay opt-in entirely — run
 their per-module `just <module> setup` recipe out-of-band.
 
+> **Heads-up before your first example.** Every nano-ros example
+> (Linux talker, FreeRTOS talker, …) connects to a **Zenoh router**
+> (`zenohd`) at startup. Without one running, the talker blocks
+> forever on `Executor::open` with no output. Open a dedicated
+> terminal and start the router before launching any example:
+>
+> ```bash
+> just zenohd            # or: ./build/zenohd/zenohd
+> ```
+>
+> Leave that terminal open for the entire session. Default ports:
+> `tcp/127.0.0.1:7447` on POSIX, `tcp/10.0.2.2:7451` on QEMU
+> FreeRTOS (Slirp forwards to host). Mismatch = silent hang;
+> see [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
 For a narrower fetch (single platform + RMW), invoke the underlying
 script:
 
