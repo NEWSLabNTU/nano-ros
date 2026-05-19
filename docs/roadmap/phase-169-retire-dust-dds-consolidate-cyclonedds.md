@@ -369,21 +369,46 @@ Ten `packages/testing/nros-tests/tests/*.rs` + Cargo.toml:
       symbol references (Rust `pub use` lines, CMake
       `#ifdef`s) removed entirely.
 
-      Dead-code Rust DDS fixture builders left in
-      `packages/testing/nros-tests/src/fixtures/binaries/{mod,freertos,nuttx,threadx_linux}.rs`
-      — they reference deleted example paths but still compile
-      (the build_example call is a runtime path lookup). To
-      avoid touching every fixture file in this commit, the
-      dead code stays for a follow-up sweep tracked as 169.4b.
+      **169.4b cleanup (2026-05-20).** Dead-code Rust DDS
+      fixture builders removed from:
+      - `packages/testing/nros-tests/src/fixtures/binaries/freertos.rs`
+        — `build_freertos_dds_{talker,listener}` + statics.
+      - `packages/testing/nros-tests/src/fixtures/binaries/nuttx.rs`
+        — `build_nuttx_dds_{talker,listener}` + statics.
+      - `packages/testing/nros-tests/src/fixtures/binaries/threadx_linux.rs`
+        — `build_threadx_dds_{talker,listener}` + statics.
+      - `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`
+        — `build_esp32_qemu_dds_{talker,listener,talker_flash,
+        listener_flash}` + statics; `build_dds_{talker,listener,
+        service_server,service_client,action_server,action_client}`
+        + `dds_*_binary` rstest fixtures + statics.
 
-      Code-side references that survive (vendored submodule,
-      out of scope per "don't modify vendored" rule):
-      - `packages/codegen/packages/nros-cli-core/src/orchestration/generate.rs`
-        still emits a `nros-rmw-dds = { ... }` Cargo.toml
-        template + a `nros_rmw_dds::register();` call. The
-        `colcon-cargo-ros2` submodule needs an upstream fix
-        (or fork) to mirror the retirement. Tracked as Phase
-        169.4c.
+      C/C++ DDS fixture builders (`build_dds_{c,cpp}_*`) kept —
+      they consume Cyclone via the CMake glue and may be
+      revived by future Cyclone-host tests.
+
+      **169.4c cleanup (2026-05-20).** `colcon-nano-ros` codegen
+      submodule (`packages/codegen/`, upstream
+      `https://github.com/NEWSLabNTU/colcon-nano-ros`) patched
+      on a sibling branch `phase-169-retire-dust-dds`:
+      - `nros-cli-core/src/cmd/new.rs` `--rmw` value-parser
+        accepts `zenoh / xrce / cyclonedds` (was
+        `zenoh / xrce / dds`).
+      - `nros-cli-core/src/orchestration/generate.rs`:
+        `generate_dependency_line` swaps the `"dds" | "rmw-dds"
+        | "rmw-dds-cffi"` arm for `"cyclonedds" |
+        "rmw-cyclonedds" | "rmw-cyclonedds-cffi"` emitting a
+        comment-only Cargo.toml note (Cyclone is CMake/C++);
+        `generated_feature` + `rmw_backend_feature` mirror the
+        token swap; `render_backend_register_fn` "cyclonedds"
+        arm emits no Rust register call (C ABI registration via
+        CMake at link time).
+
+      Pushed to
+      `https://github.com/NEWSLabNTU/colcon-nano-ros/tree/phase-169-retire-dust-dds`;
+      superproject submodule pointer bumped in this commit.
+
+      `cargo check` (codegen workspace) clean.
 
       `cargo metadata --no-deps` validates.
       `cargo check -p nros-tests --all-targets` clean.
