@@ -244,11 +244,28 @@ pub fn init_hardware(config: &Config) {
     #[cfg(feature = "dds-heap")]
     {
         esp_alloc::heap_allocator!(size: 96 * 1024);
-        let (psram_ptr, psram_len) =
+        let (psram_ptr, psram_full_len) =
             esp_hal::psram::psram_raw_parts(&_peripherals.PSRAM);
+        // Phase 117.2c diag — Espressif's QEMU ESP32-S3 model
+        // reports the FULL PSRAM range via `psram_raw_parts`,
+        // but the emulated memory backing it may only be a
+        // subset (QEMU's default is 2 MiB on `-M esp32s3`).
+        // Probe by writing the LAST byte of the claimed range —
+        // if QEMU faults silently past the modeled subset, the
+        // probe prints the smaller actually-usable size before
+        // we hand it to esp-alloc. Conservative cap: 256 KiB so
+        // the allocator init doesn't iterate over potentially
+        // unmapped memory.
+        // Use up to 3 MiB of mapped PSRAM (out of the QEMU-modeled
+        // 4 MiB). esp-alloc's per-region allocator is happy with
+        // large ranges; the cap is purely defensive against an
+        // even larger reported range that exceeds emulated memory
+        // (production hardware up to 16 MiB).
+        let psram_len = psram_full_len.min(3 * 1024 * 1024);
         esp_println::println!(
-            "Registering PSRAM heap region: {} bytes at {:p}",
+            "Registering PSRAM heap region: {} of {} bytes at {:p}",
             psram_len,
+            psram_full_len,
             psram_ptr
         );
         // SAFETY: `psram_raw_parts` returned a unique, exclusive

@@ -36,9 +36,19 @@ use zpico_alloc::FreeListHeap;
 // wiring; until that lands, internal-SRAM-only carve-out must
 // leave headroom for `.bss` / `.text` / `.rodata` / esp-hal runtime
 // fixtures on top.
-#[cfg(feature = "dds-heap")]
-static HEAP: FreeListHeap<{ 192 * 1024 }> = FreeListHeap::new();
-#[cfg(not(feature = "dds-heap"))]
+// Phase 117.2c — 32 KiB scratchpad, regardless of `dds-heap`. The
+// board crate's `esp_alloc::EspHeap` (96 KiB internal SRAM +
+// ~3 MiB PSRAM External region) is the `#[global_allocator]`;
+// this static is reachable only via direct
+// `<Esp32s3QemuPlatform as PlatformAlloc>::alloc()` calls (no
+// caller in tree uses it for ESP32-S3 yet, but the surface stays
+// alive for parity with the C3 sibling). Previously the
+// `dds-heap` path expanded this static to 192 KiB; that was
+// dead weight in `.bss` once 117.2c removed `nros-platform/
+// global-allocator` from the example, and the extra 160 KiB of
+// zeroed DRAM was preventing `esp_alloc::heap_allocator!` from
+// having enough free internal SRAM left for dust-dds's first
+// few allocations.
 static HEAP: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
 
 pub fn alloc(size: usize) -> *mut core::ffi::c_void {

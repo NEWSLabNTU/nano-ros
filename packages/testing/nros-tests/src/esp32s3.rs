@@ -131,6 +131,18 @@ pub fn start_esp32s3_qemu_mcast(
     cmd.args([
         "-M",
         "esp32s3",
+        // `-m N`: QEMU's `machine->ram_size` controls whether
+        // Espressif's ESP32-S3 SoC model instantiates the
+        // `SsiPsramState` (verified at
+        // `third-party/esp32/qemu/hw/xtensa/esp32s3.c:687-689` —
+        // `if (machine->ram_size > 0) { esp32s3_machine_init_psram(
+        // ms, machine->ram_size / MiB); }`). Without `-m`, the
+        // SoC reports a PSRAM address via `psram_raw_parts` but
+        // the address has no backing memory → first write hangs.
+        // 4 MiB matches Phase 117's heap budget target; tunable
+        // upward to 8 / 16 MiB if dust-dds needs more headroom.
+        "-m",
+        "4M",
         // `-icount 3` worked on the ESP32-C3 emulator (matched
         // RISC-V HAL timer rates). Xtensa LX7 + Espressif QEMU's
         // ESP32-S3 model uses different timer ratios; start with

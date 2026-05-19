@@ -176,6 +176,45 @@ to add.
       to default-run once `cargo nextest run -E
       'binary(esp32s3_qemu_dds)' --run-ignored=all` goes green.
 
+      **117.2c QEMU smoke probe (2026-05-19).** Talker booted
+      end-to-end through:
+      - ESP32-S3 banner ✓
+      - PSRAM mapped (`Registering PSRAM heap region:
+        3145728 of 4194304 bytes at 0x3c110000`) ✓
+      - PSRAM read/write probe ✓ (with `qemu-system-xtensa
+        -M esp32s3 -m 4M` — the `-m` flag is REQUIRED, see
+        `esp32s3.c:687` `if (machine->ram_size > 0) {
+        init_psram(...) }` in Espressif QEMU). Test harness
+        updated accordingly in `start_esp32s3_qemu_mcast`.
+      - DRAM + PSRAM `EspHeap` regions registered ✓
+      - OpenETH init, smoltcp interface created, IP set, MAC
+        printed, "Ethernet ready." ✓
+      - **Hung inside `Executor::open`** after that. No alloc
+        panic — heap is fine. dust-dds's
+        `DomainParticipantFactoryAsync::create_participant`
+        future never resolves under `runtime.block_on(...)`.
+        Same shape the C3 sibling hits (Phase 101.7's earlier
+        diagnosis): the cooperative `nostd-runtime` apparently
+        spawns a discovery actor that awaits SPDP socket
+        activity before resolving create-participant, and we
+        never drive the socket because we haven't entered
+        `Executor.spin_once` yet (which only runs AFTER
+        `Executor::open` returns).
+      - Discovery-actor blocking shape is orthogonal to PSRAM.
+        Tracked as **117.2e** below.
+
+      Also discovered + fixed during this probe:
+      - `nros-platform-esp32s3-qemu/src/memory.rs`: dropped the
+        `dds-heap`-gated 192 KiB FreeListHeap (now 32 KiB
+        always). The 192 KiB carve-out was dead weight in
+        `.bss` once 117.2c removed `nros-platform/global-allocator`
+        from the example, AND it was eating internal DRAM that
+        `esp_alloc::heap_allocator!` needed for its 96 KiB
+        region.
+      - Diagnostic probe prints (`PSRAM probe: writing first
+        byte…` etc.) were used to isolate the `-m` flag fix;
+        removed once the path was confirmed.
+
 - [ ] **117.2d — Allocator-API split for hardware-correct DDS on
       ESP32-S3.** Upstream-flavor work: thread an `Allocator`
       parameter through `nros-rmw-dds`'s session / participant
@@ -186,6 +225,31 @@ to add.
       PSRAM). Required before claiming hardware support
       independent of QEMU emulation. Out of Phase 117's QEMU
       smoke goal — track as a separate sub-phase.
+
+- [ ] **117.2e — Discovery-actor blocking under
+      nostd-runtime.** During 117.2c's QEMU smoke probe
+      (2026-05-19) the talker booted, ETH initialised, then
+      hung inside `Executor::open` →
+      `runtime.block_on(participant_async.create_participant(...))`.
+      No alloc panic — the heap is fine. Hypothesis: dust-dds's
+      nostd-runtime `create_participant` future spawns a
+      discovery actor that awaits SPDP socket data before
+      resolving the create-participant future. We haven't
+      entered `Executor::spin_once` yet (that loop only runs
+      after `Executor::open` returns), so the actor's socket
+      poll never sees any progress, and `block_on` loops
+      forever. Likely needs the same shape Phase 160.B.2's
+      `Promise::poll_until_ready` landed for service Promises:
+      either drop a yielding poll-loop pattern at the
+      `block_on(create_participant)` callsite that also drains
+      the dust-dds task spawner, or refactor `Executor::open`
+      to return as soon as the participant is structurally
+      ready (defer discovery completion to the user-driven
+      spin loop). Same blocker the ESP32-C3 sibling hit at
+      Phase 101.7 — the alloc-budget issue was the immediate
+      symptom, but the underlying runtime-drive shape is the
+      root cause. Tracked as 117.2e for cluster B-style
+      follow-up.
 
 - [x] **117.3 — DDS talker / listener example crates.** (2026-05-19)
       Cloned from the C3 templates; target triple
