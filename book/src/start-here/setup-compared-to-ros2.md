@@ -32,7 +32,7 @@ loading.
 
 ## nano-ros Flow
 
-nano-ros is **shipped as source** (Phase 111 archive — no crates.io,
+nano-ros is **shipped as source** (archive — no crates.io,
 no precompiled SDK, no binary tarball). Clone, run `just setup`, then
 build the example tree (or your own package) directly:
 
@@ -60,13 +60,13 @@ just zephyr  build-fixtures    # west + Zephyr-SDK
 just nuttx   build-fixtures    # NuttX kernel + ARM Cortex-M3
 ```
 
-SDK tier matrix (Phase 142 — strict supersets):
+SDK tier matrix (strict supersets):
 
 - `minimal` — workspace + verification + zenohd. Rust-only.
 - `default` — `minimal` + QEMU + FreeRTOS + NuttX + ThreadX(Linux/RV64) +
   ESP32 + Zephyr + XRCE + rmw_zenoh + Orin SPE + Cyclone DDS + PlatformIO.
   Covers everything `just ci` exercises.
-- `extended` — `default` + ESP-IDF + PX4. Every Phase 139 integration
+- `extended` — `default` + ESP-IDF + PX4. Every integration
   shell runnable.
 
 Override the default via `NROS_SETUP_TIER=<tier>` or by passing
@@ -81,7 +81,7 @@ features:
 
 ```cmake
 # Each example is a standalone CMake project that pulls nano-ros in
-# via add_subdirectory (Phase 144).
+# via add_subdirectory.
 set(NANO_ROS_PLATFORM freertos)
 set(NANO_ROS_RMW      zenoh)
 set(NANO_ROS_BOARD    mps2-an385-freertos)
@@ -120,9 +120,9 @@ Multi-RMW bridges (one binary, two or more backends) use
   so the RMW and platform combination is locked in by CMake cache
   vars (`NANO_ROS_PLATFORM`, `NANO_ROS_RMW`) and Cargo features at
   build time.
-- **No install prefix.** Phase 140 removed `just install-local` and
+- **No install prefix.** removed `just install-local` and
   every `install(...)` rule; consumers pull nano-ros into their build
-  via `add_subdirectory(<repo-root>)` (Phase 144). The Phase 139
+  via `add_subdirectory(<repo-root>)`. The
   integration shells under `integrations/<rtos>/` re-export the same
   root CMake under each RTOS's native package manager.
 - **Generated bindings in-tree.** Message codegen lands under

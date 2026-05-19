@@ -145,7 +145,7 @@ run(Config::from_toml(include_str!("../config.toml")), |config| {
 ## Canonical in-tree precedent
 
 `packages/boards/nros-board-orin-spe/` is the canonical FSP-FreeRTOS
-overlay (Phase 152.3 refactors it explicitly into this shape):
+overlay (refactors it explicitly into this shape):
 
 - Re-exports `Config` + `run` from `nros-board-freertos`.
 - `build.rs` reads `NV_SPE_FSP_DIR`, pulls FreeRTOS V10.4.3 headers
@@ -177,7 +177,7 @@ Publish to crates.io as
   consumer wants to target an nRF board outside the Zephyr build)
 
 Crates.io has no namespacing; the `nros-board-` prefix is the
-informal namespace. The `nros-board-` names listed in Phase 111.B.2
+informal namespace. The `nros-board-` names listed
 audit are all unclaimed today.
 
 ## What overlays DO
@@ -201,8 +201,7 @@ audit are all unclaimed today.
   crate handles it).
 - ❌ Override `nros-rmw-*` selection (user picks RMW via Cargo
   features on `nros`, same as any nano-ros consumer).
-- ❌ Ship a fork of zenoh-pico / dust-dds / mbedTLS (use the upstream
-  via Phase 136's manifest).
+- ❌ Ship a fork of zenoh-pico / dust-dds / mbedTLS (use the upstream's manifest).
 
 ## Testing an overlay locally
 
@@ -247,7 +246,7 @@ Same flow as any Rust crate. Recommend:
 3. Tag a release on your repo for traceability.
 4. Open a PR against
    `book/src/getting-started/community-board-crates.md` (TODO —
-   landed by Phase 152.8) to add a link to your crate.
+   landed by) to add a link to your crate.
 
 ## Related
 

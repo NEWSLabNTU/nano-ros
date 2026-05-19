@@ -2,7 +2,7 @@
 
 This page documents which language each RMW backend is implemented in,
 and the rule that decides it. The matrix was originally frozen
-2026-05-07 under Phase 115.K.1; the L tier (Phase 115.L.7 + L.8,
+2026-05-07; the L tier (+ L.8,
 landed 2026-05-12) collapsed the public RMW surface so every backend
 now reaches the runtime via the same `nros_rmw_vtable_t` bridge. The
 underlying implementations still ship in whichever language their
@@ -68,7 +68,7 @@ sees the trait surface; it only sees the vtable.
 The legacy direct-Rust-trait crates (`nros-rmw-zenoh`,
 `nros-rmw-dds`, `nros-rmw-xrce`) stay in the workspace as
 internal-only implementation libs of these shims. They have no
-public Cargo feature reaching them after Phase 115.L.7.
+public Cargo feature reaching them after.
 
 ### C-/C++-backend cffi shape
 
@@ -92,7 +92,7 @@ changes:
 
 The rule stays. Only per-backend verdicts and shim shapes move.
 
-## Registry + naming (Phase 104.B.2)
+## Registry + naming
 
 `nros-rmw-cffi` holds a fixed-size named registry of backend
 vtables. Each backend registers under a canonical name at
@@ -136,7 +136,7 @@ backend binaries with one auto-registering backend Just Work
 without user code mentioning the backend's name. Build-time
 selection happens at:
 
-- **Cargo manifest dep** (Phase 128/129): add `nros-rmw-zenoh = { … }`
+- **Cargo manifest dep**: add `nros-rmw-zenoh = { … }`
   to the consumer's `[dependencies]`. The RMW shim crate name is
   the selector; no per-RMW feature flag on `nros` itself.
 - **CMake**: `cmake -DNANO_ROS_RMW=zenoh ...` (C/C++ users). The
@@ -151,7 +151,7 @@ No runtime env-var override; selection is fixed at link time
 Backend register symbols must survive linker dead-strip. Four
 mechanisms, layered:
 
-1. **`linkme` distributed-slice** (Phase 128.B.1 / 128.H.2) — each
+1. **`linkme` distributed-slice** (/ 128.H.2) — each
    backend contributes an `RMW_INIT_ENTRIES` entry through the
    `nros_rmw_register_backend!` macro. `nros_support_init` /
    `Executor::open` walks the slice and calls each entry. Canonical
@@ -164,7 +164,7 @@ mechanisms, layered:
 3. **C ctor** (legacy fallback): `__attribute__((constructor))
    static void nros_rmw_<name>_register_ctor`. Same survival via
    `.init_array` walk by libc startup.
-4. **CMake strong stub** (Phase 104.B.6 — landed): the
+4. **CMake strong stub** (landed): the
    `nano_ros_link_rmw(<target> RMW <name>)` helper at
    `cmake/NanoRosLink.cmake:62-117` emits an auto-generated TU
    per target that defines a strong `nros_app_register_backends()`
@@ -179,7 +179,7 @@ Bare-metal + RTOS targets that don't run `.init_array` rely on
 (4). Pure-Rust no_std binaries with multiple backends rely on (5).
 POSIX builds get (1) + (2) + (3) for free.
 
-### Ctor ordering (Phase 104.C.3.3.e)
+### Ctor ordering
 
 POSIX `.init_array` runs ctors in **link order**, not in any
 user-controlled sequence. When multiple backends auto-register
@@ -197,7 +197,7 @@ Use the named entry points:
   primary session; `node_builder("name").rmw("dds").build()`
   for additional Nodes.
 - C: `nros_node_init_ex` with `nros_node_options_t.rmw_name`
-  set (Phase 104.C.8).
+  set.
 - C++: `nros::Executor::open_with_rmw(...)` and
   `nros::NodeBuilder::rmw(...)` mirror the Rust API (Phase
   104.C.9).
@@ -214,7 +214,7 @@ one ctor fires, the default-slot convention picks it up, and
 no user-visible name is ever required. The cost of naming is
 paid only when multiple backends coexist.
 
-## Real-time budget per backend (Phase 104.E.1)
+## Real-time budget per backend
 
 The poll loop's worst-case execution time is dominated by the
 backend's transport drain. Bridge users summing
@@ -228,17 +228,17 @@ dumps.
 
 | Backend | `poll_wcet_us` | Buffer-pool size | Notes |
 |---|---|---|---|
-| **zenoh-pico** (`nros-rmw-zenoh`) | ~50–200 µs nominal on Cortex-M3 (FreeRTOS QEMU); P99 ≤ 1 ms under 100 Hz pub load | `Z_BATCH_UNICAST_SIZE` (default 6500 B/peer) + 4 KB per subscription buffered ring | Wake-cb (Phase 141.A.3) collapses idle wait to kernel `xSemaphore` post — sub-poll-period latency when transport notifies. POSIX cv-wait path same shape, ~1 µs notify-to-dispatch. |
+| **zenoh-pico** (`nros-rmw-zenoh`) | ~50–200 µs nominal on Cortex-M3 (FreeRTOS QEMU); P99 ≤ 1 ms under 100 Hz pub load | `Z_BATCH_UNICAST_SIZE` (default 6500 B/peer) + 4 KB per subscription buffered ring | Wake-cb collapses idle wait to kernel `xSemaphore` post — sub-poll-period latency when transport notifies. POSIX cv-wait path same shape, ~1 µs notify-to-dispatch. |
 | **dust-DDS** (`nros-rmw-dds`) | ~200–800 µs nominal on POSIX (cold-cache reader scan); discovery storms can push P99 to ~5 ms | DDS RTPS history (default 10-deep ring per Reader/Writer) — heap-resident; ~16 KB/topic baseline | RustDDS-derivative; listener thread fires `set_wake_callback` on data arrival, drains via spin's drive_io. No bare-metal port (alloc-heavy). |
-| **XRCE-DDS** (`nros-rmw-xrce-cffi`) | ~100–500 µs per `uxr_run_session_time` on POSIX; agent-round-trip dominates over local poll. Bare-metal targets pay the same poll cost. | `STREAM_HISTORY` (4) × `UXR_CONFIG_UDP_TRANSPORT_MTU` (512 B default) ≈ 2 KB/stream; one input + one output stream per session | Poll-only — `set_wake_callback` slot is NULL (Phase 124.B); spin_once cv-wait still wakes on its deadline. Agent does the reliable-retransmit accounting; client adds ~10 µs per stream per tick. |
-| **Cyclone DDS** (`nros-rmw-cyclonedds`) | ~150–600 µs on POSIX; C++ listener callback latency depends on Cyclone's reader-cache scan. | Cyclone's RTPS history per the DDS QoS `History.depth` (default 10) + Cyclone's own DDSI buffer pool (~32 KB default) | Listener-side `set_wake_callback` wiring is Phase 124 follow-up — today the C++ vtable sets the slot NULL. Memory footprint dominated by Cyclone itself, not the nano-ros shim. |
+| **XRCE-DDS** (`nros-rmw-xrce-cffi`) | ~100–500 µs per `uxr_run_session_time` on POSIX; agent-round-trip dominates over local poll. Bare-metal targets pay the same poll cost. | `STREAM_HISTORY` (4) × `UXR_CONFIG_UDP_TRANSPORT_MTU` (512 B default) ≈ 2 KB/stream; one input + one output stream per session | Poll-only — `set_wake_callback` slot is NULL; spin_once cv-wait still wakes on its deadline. Agent does the reliable-retransmit accounting; client adds ~10 µs per stream per tick. |
+| **Cyclone DDS** (`nros-rmw-cyclonedds`) | ~150–600 µs on POSIX; C++ listener callback latency depends on Cyclone's reader-cache scan. | Cyclone's RTPS history per the DDS QoS `History.depth` (default 10) + Cyclone's own DDSI buffer pool (~32 KB default) | Listener-side `set_wake_callback` wiring is follow-up — today the C++ vtable sets the slot NULL. Memory footprint dominated by Cyclone itself, not the nano-ros shim. |
 
 **Bridge users:** sum the `poll_wcet_us` for every backend the
 bridge process opens, then add per-callback dispatch budget
 (typically <10 µs for the executor's arena dispatch + the
-user callback's own work). The `bridge_picas_priority` test
-(Phase 104.E.2, blocked on Phase 110.F PiCAS dispatcher)
-will pin a regression bar to this table.
+user callback's own work). A `bridge_picas_priority` regression
+test (blocked on the PiCAS dispatcher) will eventually pin a
+bar to this table.
 
 Per-backend `README.md` files live at
 `packages/{zpico/nros-rmw-zenoh,dds/nros-rmw-dds,dds/nros-rmw-cyclonedds,xrce/nros-rmw-xrce-cffi}/README.md`
@@ -248,12 +248,11 @@ the ones above.
 
 ## See also
 
-- [Phase 115 roadmap doc](../../../docs/roadmap/phase-115-runtime-transport-vtable.md)
+- [roadmap doc](../../../docs/roadmap/phase-115-runtime-transport-vtable.md)
   — Appendix D carries LOC sizing, port shapes, and risk notes.
 - [Custom Transport porting guide](../porting/custom-transport.md) —
-  how the Phase 115 transport vtable composes with the Phase 117
-  RMW vtable.
+  how the transport vtable composes with the RMW vtable.
 - `packages/dds/nros-rmw-cyclonedds/` — reference layout for the
-  C++ vtable consumer (Phase 117).
+  C++ vtable consumer.
 - `packages/px4/nros-rmw-uorb/` — reference layout for the
-  C++ vtable consumer with PX4 SDK integration (Phase 115.K.4).
+  C++ vtable consumer with PX4 SDK integration.

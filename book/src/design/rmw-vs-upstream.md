@@ -493,7 +493,7 @@ Two related choices:
 ### Per-backend QoS coverage
 
 The mask actually advertised by each backend's
-`Session::supported_qos_policies()` (Phase 108):
+`Session::supported_qos_policies()`:
 
 | Backend | Reliability + Durability + History/Depth | Deadline | Lifespan | Liveliness Automatic | Liveliness Manual | Liveliness Lease | `avoid_ros_namespace_conventions` |
 |---------|-------------------------------------------|----------|----------|----------------------|--------------------|------------------|-----------------------------------|

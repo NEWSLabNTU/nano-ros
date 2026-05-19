@@ -1,9 +1,9 @@
 # Build as a CMake subdirectory
 
 This is **the** way to integrate nano-ros into a C or C++ project. The
-nano-ros repo ships a top-level `CMakeLists.txt` (Phase 137) that exposes
+nano-ros repo ships a top-level `CMakeLists.txt` that exposes
 everything via `add_subdirectory(...)`. No install step, no
-`find_package(NanoRos)`, no install prefix — Phase 140 removed every
+`find_package(NanoRos)`, no install prefix removed every
 last trace of that pipeline.
 
 ## Layout
@@ -60,13 +60,13 @@ sub-project consumes them at include time.
 
 ## What about installing?
 
-Phase 140 deleted every `install(...)` rule. nano-ros is consumed in
+deleted every `install(...)` rule. nano-ros is consumed in
 source form — never out of an installed prefix. If you need a
 shippable artefact, your *user project* owns the install layout; ship
 your binary, not nano-ros itself.
 
 For RTOS users who want a more idiomatic surface than raw
-`add_subdirectory`, see the Phase 139 integration shells under
+`add_subdirectory`, see the integration shells under
 `integrations/<rtos>/` — they translate west / esp-idf / PlatformIO /
 NuttX / PX4 manifests into the same root CMake. Each shell is a
 ~20-line wrapper around `add_subdirectory(<repo>)`.
@@ -75,4 +75,4 @@ NuttX / PX4 manifests into the same root CMake. Each shell is a
 
 The `examples/native/c/zenoh/talker/CMakeLists.txt` is the canonical
 copy-out template — 20 lines including codegen + per-app fixup. All
-83 in-tree C/C++ examples follow the same shape after Phase 144.
+83 in-tree C/C++ examples follow the same shape after.

@@ -1,6 +1,6 @@
-# Migrating off `just install-local` (Phase 140)
+# Migrating off `just install-local`
 
-**TL;DR.** Phase 140 deleted `just install-local`, the `build/install/`
+**TL;DR.** deleted `just install-local`, the `build/install/`
 prefix, every `install(...)` rule, every `Config.cmake.in` template,
 and the `find_package(NanoRos)` consumption path. nano-ros is now
 consumed exclusively via `add_subdirectory(<repo-root>)` from the
@@ -115,7 +115,7 @@ nano-ros actually targets (Zephyr `west`, ESP-IDF, PlatformIO,
 NuttX `apps/external`, PX4 `EXTERNAL_MODULES_LOCATION`) all
 consume dependencies as source trees inside the user's workspace —
 not from an installed prefix. The install path drifted out of sync
-with the cargo path more than once (Phase 134 UDP multicast
+with the cargo path more than once (UDP multicast
 linker error was the proof) and added ~30 s warm / ~10 min cold to
 every test-all run. Removing it collapses two surfaces into one.
 

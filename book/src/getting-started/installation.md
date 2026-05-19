@@ -73,7 +73,7 @@ top-level `just setup` orchestrator:
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
 
-# Phase 142 SDK tiers (strict supersets):
+# SDK tiers (strict supersets):
 just setup tier=minimal      # workspace + verification + zenohd
 just setup tier=default      # default coverage for `just ci` (recommended)
 just setup tier=extended     # default + esp-idf + px4
@@ -126,7 +126,7 @@ script:
 | `zephyr-zenoh` | Zephyr module via west — see `just zephyr::setup` |
 | `esp32-zenoh` | ESP-IDF component model |
 
-The per-platform `just <plat>::setup` recipes (Phase 123.A.8) delegate
+The per-platform `just <plat>::setup` recipes delegate
 to `tools/setup.sh --platform=<plat>` for submodule fetch, then run any
 platform-specific build steps (NuttX kernel, Cyclone DDS SDK, etc.).
 

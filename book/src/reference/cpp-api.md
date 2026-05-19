@@ -19,7 +19,7 @@ public surface a user application needs.
 - [`nros::Publisher<M>`](../api/cpp/classnros_1_1Publisher.html) / [`Subscription<M>`](../api/cpp/classnros_1_1Subscription.html)
 - [`nros::Service<S>`](../api/cpp/classnros_1_1Service.html) / [`Client<S>`](../api/cpp/classnros_1_1Client.html)
 - [`nros::ActionServer<A>`](../api/cpp/classnros_1_1ActionServer.html) / [`ActionClient<A>`](../api/cpp/classnros_1_1ActionClient.html) — L2 callback model (executor-arena registered).
-- [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model (Phase 122.3.d.b). Caller drives `try_recv_*` / `accept_goal` / `complete_goal` from a spin loop.
+- [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model. Caller drives `try_recv_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`nros::Future<T>`](../api/cpp/classnros_1_1Future.html) — async result handle
 - [`nros::Executor`](../api/cpp/classnros_1_1Executor.html), [`Timer`](../api/cpp/classnros_1_1Timer.html), [`GuardCondition`](../api/cpp/classnros_1_1GuardCondition.html)
 - [`nros::ParameterServer<Cap>`](../api/cpp/classnros_1_1ParameterServer.html) — node-local typed parameter store (`bool` / `int64_t` / `double` / `const char*`); compose alongside a `Node`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.
@@ -32,7 +32,7 @@ The library is freestanding C++14 — no STL, no exceptions. Define
 > templates are L2 callback handles (set callbacks via
 > `nros_cpp_action_server_set_callbacks`, dispatched by the
 > executor). The new `nros::PollingActionServer<A>` /
-> `PollingActionClient<A>` (Phase 122.3.d.b) are L1 polling
+> `PollingActionClient<A>` are L1 polling
 > templates with the same typed serdes glue but caller-driven
 > control flow. Subscriptions / services / service clients are
 > already L1-shaped in nros-cpp. See
@@ -43,7 +43,7 @@ The library is freestanding C++14 — no STL, no exceptions. Define
 > `PollingActionClient<A>` expose a nested `WakeState` POD and
 > typed `set_{goal,cancel,get_result,goal_response,
 > cancel_response,result,feedback}_wake_callback(state, cb, ctx)`
-> methods (Phase 122.3.c.6.e). Pair an `nros_cpp_wake_state_t`
+> methods. Pair an `nros_cpp_wake_state_t`
 > with each entity / channel to wake on rx instead of polling.
 
 ## Generating locally

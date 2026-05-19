@@ -1,8 +1,8 @@
 # `nros` CLI reference
 
 The `nros` binary is the user entry point for nano-ros: scaffolding,
-message codegen, configuration, build, run, diagnostics, and (since
-Phase 126) workflow orchestration on top of ROS 2 launch files.
+message codegen, configuration, build, run, diagnostics, and
+workflow orchestration on top of ROS 2 launch files.
 
 The `cargo nano-ros …` cargo subcommand keeps working — both
 front-ends dispatch through the shared `nros-cli-core` library and
@@ -10,10 +10,8 @@ stay in lockstep.
 
 ## Install
 
-nano-ros is shipped **source-only** (Phase 111 archive — no crates.io
-publication, no precompiled binaries; see
-[Phase 111 archive note](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-111-ux-cli-and-release-channels.md)
-for the rationale). Install the CLI from a clone:
+nano-ros is shipped **source-only** — no crates.io publication, no
+precompiled binaries. Install the CLI from a clone:
 
 ```sh
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
@@ -52,16 +50,12 @@ existing `cargo nano-ros generate-{rust,c,cpp}` surface.
 | `--ros-edition` | `humble`, `iron` | `humble` |
 | `--generate-config` | emit `.cargo/config.toml` patches (Rust only) | off |
 
-### `nros metadata <system_pkg> [--workspace <path>] [--out-dir <dir>] [--metadata <existing.json>]`
-
-Phase 126.A — walk a colcon-style workspace under `<workspace>/src/`
+### `nros metadata <system_pkg> [--workspace <path>] [--out-dir <dir>] [--metadata <existing.json>]` — walk a colcon-style workspace under `<workspace>/src/`
 collecting component source metadata into
 `build/<system_pkg>/nros/source-metadata.json`. The result feeds
 `nros plan`.
 
-### `nros plan <system_pkg> <launch_file> [LAUNCH_ARGS...] [options]`
-
-Phase 126.C — resolve a ROS 2 launch file (or a precomputed
+### `nros plan <system_pkg> <launch_file> [LAUNCH_ARGS...] [options]` — resolve a ROS 2 launch file (or a precomputed
 `play_launch_parser` `record.json`) plus the source metadata into a
 typed `build/<system_pkg>/nros/nros-plan.json` IR. Picks per-component
 SchedContext bindings, node graph wiring, parameter remaps, and
@@ -103,7 +97,7 @@ Auto-detect the project flavor and delegate. Detection precedence:
 4. plain `CMakeLists.txt` → `cmake -B build && cmake --build build`
 
 Trailing arguments after `--` forward verbatim to the underlying tool.
-Builds consume nano-ros via `add_subdirectory(<repo-root>)` (Phase 144)
+Builds consume nano-ros via `add_subdirectory(<repo-root>)`
 — there is no install layout to find first.
 
 ### `nros run [--project <path>] [--env <name>] [-- ...]`
@@ -119,7 +113,7 @@ Build → flash → monitor in one verb.
 ### `nros monitor [--env <name>] [-- ...]`
 
 v1 surfaces `espflash monitor`. ARM RTT (`defmt-print`) and QEMU
-semihosting decoders land alongside Phase 88 (`nros-log`).
+semihosting decoders land (`nros-log`).
 
 ### `nros doctor [--platform <name>] [--workspace <path>]`
 
@@ -167,10 +161,10 @@ recipes (build matrices, CI orchestration) keep their current shape.
 
 There is no `nros release` verb and no crates.io / Arduino zip /
 ESP-IDF binary / PlatformIO library / GitHub Releases tarball
-channel. Per the Phase 111 archive decision (2026-05-19), nano-ros
+channel. Per the archive decision (2026-05-19), nano-ros
 is consumed by `git clone --branch=v<X.Y.Z>` plus the in-tree build
 recipes documented at
 [Installation](../getting-started/installation.md). Downstream RTOS
 package managers (Zephyr `west`, ESP-IDF `idf_component_yml`,
 PlatformIO `library.json`, NuttX `Kconfig`) consume the same source
-tree via the Phase 139 integration shells under `integrations/<rtos>/`.
+tree via the integration shells under `integrations/<rtos>/`.

@@ -41,7 +41,7 @@ nros/
 
 ### Migrating from the legacy sibling layout
 
-Pre-Phase-113 setups put the workspace at `../nano-ros-workspace/` with an
+Legacy setups put the workspace at `../nano-ros-workspace/` with an
 in-tree symlink. Both layouts work — `just zephyr` recipes auto-detect — but
 to consolidate run:
 

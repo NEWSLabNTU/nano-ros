@@ -13,7 +13,7 @@ Three equivalent entry points; pick by workspace shape:
 cd examples/native/rust/zenoh/talker
 cargo run
 
-# Multi-component system via Phase 126 orchestration:
+# Multi-component system orchestration:
 nros metadata my_system
 nros plan my_system launch/my_system.launch.py
 nros check

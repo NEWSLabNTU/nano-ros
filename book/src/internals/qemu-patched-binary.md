@@ -12,7 +12,7 @@ Two production-blocking issues motivated the patched build:
 1. **LAN9118 RX FIFO drain bug** (mainline QEMU through at least
    11.0). Under sustained burst RX, the LAN9118 emulator's
    `lan9118_can_receive()` can stop returning true even after the
-   guest drains the FIFO, so frames silently disappear. Phase 127.D
+   guest drains the FIFO, so frames silently disappear.
    bisected this and ships the fix as
    `third-party/qemu/patches/0001-hw-net-lan9118-add-can_receive-flush-on-FIFO-drain.patch`.
    Bare-metal MPS2-AN385 RTPS / Zenoh tests on the system QEMU
@@ -21,7 +21,7 @@ Two production-blocking issues motivated the patched build:
 2. **`-netdev dgram,local.type=unix,…` requires QEMU 7.2+**. Ubuntu
    jammy ships QEMU 6.2, and the dgram-tunnel pattern is how
    NuttX / ThreadX DDS multi-instance tests cross-deliver frames
-   between two QEMU processes after Phase 127.B.5 retired the
+   between two QEMU processes after retired the
    broken `-netdev socket,mcast=` cross-process path. With a too-old
    system QEMU, those tests fall back to `[SKIPPED]`.
 
@@ -100,7 +100,7 @@ Selection order:
    an exec error.
 
 Every `Command::new("qemu-system-arm")` in the test crates goes
-through this helper (Phase 143). New tests must use it.
+through this helper. New tests must use it.
 
 `just/qemu-baremetal.just`, `just/nuttx.just` and `just/freertos.just`
 do the same in shell, gating their `qemu-system-arm` invocations
@@ -138,7 +138,7 @@ suggested remedy instead of silently passing.
 4. Touch the patch file (or just commit it) — `just qemu setup-qemu`
    detects the patch is newer than the installed binary and
    rebuilds.
-5. Bump the relevant CI cache key (see Phase 143.8) so other
+5. Bump the relevant CI cache key (see) so other
    machines also rebuild.
 
 ## Submodule pin bump

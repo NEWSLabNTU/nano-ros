@@ -156,23 +156,22 @@ match. Adding a capability means adding a row to **every** column.
 covers periodic timers. The shapes follow the same pattern: trait →
 macro → header → drift gate.
 
-## Status and historical context
+## Status and architecture
 
-- **Phase 115** introduced the C-vtable RMW shape and the dual
-  Rust-trait / C-vtable model.
-- **Phase 121** lifted the same pattern down into the platform tier:
-  one canonical header, every port mirrors it, the drift gate fails
-  the build on divergence.
-- **Phase 121.3** retired the per-RTOS Rust platform crates
-  (`nros-platform-{freertos,nuttx,threadx,zephyr}`) in favour of the
-  pure-C ports under the same directory names.
-- **Phase 121.9** promoted `critical_section` from a per-FreeRTOS
-  Cortex-M feature flag to a canonical platform capability owned by
-  every port's C body, with `nros-platform-critical-section` as the
-  global-registration shim.
-- **Phase 130** added the opaque-storage wake primitive
-  (`nros_platform_wake_*`) — a binary semaphore that lets the executor
-  block on RMW activity without burning a thread.
+The platform tier today is:
+
+- One canonical header per capability family (`platform.h`,
+  `platform_net.h`, `platform_timer.h`). Every port mirrors them
+  exactly; a drift gate fails the build on divergence.
+- Pure-C ports under `nros-platform-{posix,freertos,nuttx,threadx,zephyr,esp-idf}`
+  — the per-RTOS Rust platform crates were retired in favour of
+  one C body per RTOS.
+- `critical_section` promoted to a canonical platform capability
+  owned by every port's C body; `nros-platform-critical-section`
+  is the global-registration shim.
+- An opaque-storage wake primitive (`nros_platform_wake_*`) — a
+  binary semaphore that lets the executor block on RMW activity
+  without burning a thread.
 
 The current canonical surface is 57 + 29 + 8 = **94 symbols** across
 three headers, mirrored exactly by the Rust extern block, exported by

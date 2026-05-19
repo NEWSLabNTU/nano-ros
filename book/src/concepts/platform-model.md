@@ -1,7 +1,7 @@
 # Platform Model
 
 nano-ros configures the library for a specific target through
-compile-time choices on three axes. Phase 104.A reshaped the RMW
+compile-time choices on three axes. reshaped the RMW
 axis: `nros` no longer carries a per-backend feature — it carries one
 generic `rmw-cffi` runtime registry, and the consuming `Cargo.toml`
 adds the backend crate directly.
@@ -156,9 +156,7 @@ nros = { path = "…/nros", default-features = false, features = [
 nros-rmw-xrce-cffi = { path = "…/nros-rmw-xrce-cffi", features = ["platform-nuttx", "xrce-serial"] }
 ```
 
-## How the pieces link
-
-Phase 104.A decoupled `nros` from concrete backends — `nros` carries
+## How the pieces link decoupled `nros` from concrete backends — `nros` carries
 no RMW crate dependency. Instead:
 
 - **RMW.** The consuming crate's `nros-rmw-*` dep ships a `#[ctor]`

@@ -38,7 +38,7 @@ interface, designed per
 callback — lands in the L0 struct first; L1 wrappers follow
 mechanically.
 
-The same canonical-C-ABI pattern was generalised in Phase 117 to
+The same canonical-C-ABI pattern was generalised to
 the full RMW backend surface (`nros_rmw_vtable_t`). For the
 host-language policy that decides whether a given backend lives in
 Rust, C, or C++, see [RMW Backends — Host-Language Policy](../internals/rmw-backends.md).
@@ -208,9 +208,9 @@ applied; the user vtable just sees raw bytes.
 
 | Backend | Status |
 |---------|--------|
-| **XRCE-DDS** | ✅ Wired (Phase 115.E). `nros_rmw_xrce::init_transport_from_custom_ops(framing)` pulls the registered vtable into `uxr_set_custom_transport_callbacks` via four C trampolines. |
-| **zenoh-pico** | 🟡 Deferred (Phase 115.X-zenoh). zenoh-pico's custom-link API needs a per-platform `_z_link_t` shim; tracked separately. Zenoh users with custom transports today fork a `zpico-platform-*` crate. |
-| **dust-DDS** | 🟡 Deferred (Phase 115.X-dds). dust-dds requires a custom transport plug-in implementing `RtpsUdpTransportParticipantFactory`-equivalent; design doc tracked separately. |
+| **XRCE-DDS** | ✅ Wired. `nros_rmw_xrce::init_transport_from_custom_ops(framing)` pulls the registered vtable into `uxr_set_custom_transport_callbacks` via four C trampolines. |
+| **zenoh-pico** | 🟡 Deferred (zenoh). zenoh-pico's custom-link API needs a per-platform `_z_link_t` shim; tracked separately. Zenoh users with custom transports today fork a `zpico-platform-*` crate. |
+| **dust-DDS** | 🟡 Deferred (dds). dust-dds requires a custom transport plug-in implementing `RtpsUdpTransportParticipantFactory`-equivalent; design doc tracked separately. |
 
 ## Loopback test
 

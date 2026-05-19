@@ -7,7 +7,7 @@ linked guide.
 
 The architecture behind the matrix lives in
 [`docs/design/board-bsp-integration-architecture.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/board-bsp-integration-architecture.md)
-(layered model, vendor-BSP scaling, Phase 152 plan).
+(layered model, vendor-BSP scaling, plan).
 
 ## Consumption matrix
 
@@ -122,7 +122,7 @@ two-and-a-half rows at the top + bottom of the matrix.
 - [Vendor Overlay Board Crate](../porting/vendor-overlay.md) — the
   overlay cookbook.
 - [Custom Board Package](../porting/custom-board.md) — older guide
-  covering monolithic board crates (pre-Phase-149 pattern).
+  covering monolithic board crates (legacy pattern).
 - [`add_subdirectory(third_party/nano-ros)`](../getting-started/build-as-subdirectory.md)
   — root CMake entry for vendor-IDE consumers.
 - [Platform Model](./platform-model.md) — Boards vs Platforms;

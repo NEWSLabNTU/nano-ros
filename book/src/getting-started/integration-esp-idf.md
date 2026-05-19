@@ -5,7 +5,7 @@
 > via `just esp_idf setup` (separate from this user-facing
 > component).
 
-Phase 139 ships an ESP-IDF component under `integrations/esp-idf/`.
+ships an ESP-IDF component under `integrations/esp-idf/`.
 ESP-IDF projects pull nano-ros via `idf.py add-dependency` (once
 published to the ESP Component Registry) or via a local path during
 development.
@@ -78,7 +78,7 @@ ESP-IDF has no first-party Rust integration; the bridge is the
 [`esp-rs`](https://github.com/esp-rs) stack. `esp-idf-sys`'s
 `build.rs` can build ESP-IDF natively (via `embuild`) and inject
 extra components into that build tree using the
-`[package.metadata.esp-idf-sys]` keys in `Cargo.toml`. Phase 152.7
+`[package.metadata.esp-idf-sys]` keys in `Cargo.toml`.
 documents this as the canonical path for nano-ros users who want to
 drive their build from Cargo rather than `idf.py`.
 

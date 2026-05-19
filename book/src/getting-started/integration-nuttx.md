@@ -3,7 +3,7 @@
 > **Contributor docs?** Building nano-ros's own NuttX examples on
 > QEMU from this repository is covered at [NuttX (contributor)](./nuttx.md).
 
-Phase 139 ships a NuttX app shell under `integrations/nuttx/`.
+ships a NuttX app shell under `integrations/nuttx/`.
 NuttX users symlink (or submodule) the shell into
 `apps/external/nano-ros/`; Kconfig surfaces it under
 `Application Configuration → External Modules → nano-ros`.
@@ -42,7 +42,7 @@ make
   app stage (`apps/external/nano-ros/Makefile` declares the
   consumer-app shape).
 - **CMake** (cmake-driven NuttX builds): uses `CMakeLists.txt`,
-  which dispatches into the Phase 137 root CMake with
+  which dispatches into the root CMake with
   `NANO_ROS_PLATFORM=nuttx`.
 
 Both surfaces coexist — pick the one matching your NuttX config.
@@ -58,7 +58,7 @@ exactly as on any other RTOS:
 
 See `examples/qemu-arm-nuttx/` for a working publisher loop.
 
-## Per-example external apps (Phase 157)
+## Per-example external apps
 
 The 12 C/C++ examples under
 `examples/qemu-arm-nuttx/{c,cpp}/zenoh/` ship as canonical
@@ -114,8 +114,7 @@ as long as `CONFIG_NET` is on.
 
 ### Two parallel paths
 
-  * **CMake bring-up** (`just nuttx build-fixtures`) — the
-    Phase 144.6 standalone path. Fast smoke per example;
+  * **CMake bring-up** (`just nuttx build-fixtures`) — the standalone path. Fast smoke per example;
     Corrosion + in-tree Cargo workspace. Good for regression
     coverage.
   * **Make-based external apps** (`just nuttx

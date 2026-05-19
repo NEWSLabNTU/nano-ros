@@ -34,7 +34,7 @@ implementation; the source is the worked example to copy.
 
 | Backend | Source | Notes |
 |---|---|---|
-| zenoh-pico | [`packages/zpico/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh) | Default. C transport via zenoh-pico. Native zero-copy publish via `z_bytes_from_static_buf` (Phase 124.A.4.b). |
+| zenoh-pico | [`packages/zpico/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh) | Default. C transport via zenoh-pico. Native zero-copy publish via `z_bytes_from_static_buf`. |
 | micro-XRCE-DDS-Client | [`packages/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/xrce/nros-rmw-xrce) | C-only shim; agent-based. |
 | dust-DDS | [`packages/dds/nros-rmw-dds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-dds) | Pure-Rust DDS; `std` + `nostd-runtime` variants. |
 | Cyclone DDS | [`packages/dds/nros-rmw-cyclonedds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-cyclonedds) | C++ shim; standalone CMake project. |

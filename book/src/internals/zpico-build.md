@@ -1,7 +1,6 @@
 # zpico-sys Build Architecture
 
-`zpico-sys` is nano-ros's Rust `*-sys` crate for zenoh-pico. After
-Phase 136 (2026-05-18) the build path is a single `cc-rs` invocation
+`zpico-sys` is nano-ros's Rust `*-sys` crate for zenoh-pico. After (2026-05-18) the build path is a single `cc-rs` invocation
 driven entirely by a TOML manifest. Earlier phases shipped a
 CMake/cc-rs hybrid with per-RTOS Rust functions; the unified path
 collapses that surface to one consumer + one data file.
@@ -33,10 +32,10 @@ per-platform datum the build needs. Two top-level table groups:
 | `required_env` | list[RequiredEnv] | SDK paths the build needs. See below. |
 | `include_paths` | list[str] | Header search paths; interpolated. |
 | `include_paths_conditional` | list[ConditionalPath] | Header paths gated by `when`. |
-| `arch` | string \| list[str] | Name(s) of `[arch.*]` block(s) to apply. Single name (TOML scalar) for single-arch platforms; list (TOML array) for multi-arch platforms like `bare-metal` (cortex-m3 + riscv32imc). build.rs walks the list in order and applies the first arch whose `target_match` hits the build target. Phase 148. |
+| `arch` | string \| list[str] | Name(s) of `[arch.*]` block(s) to apply. Single name (TOML scalar) for single-arch platforms; list (TOML array) for multi-arch platforms like `bare-metal` (cortex-m3 + riscv32imc). build.rs walks the list in order and applies the first arch whose `target_match` hits the build target.. |
 | `compile` | table | `opt_level` / `warnings` / `cflags`. |
 | `pic` | bool | `cc::Build::pic` override (NuttX flat builds use `false`). |
-| `link.*` | map | Per-link-feature policy (Phase 134). Values: `true` / `false` (force on/off) or `"feature"` (defer to `CARGO_FEATURE_LINK_<X>`). |
+| `link.*` | map | Per-link-feature policy. Values: `true` / `false` (force on/off) or `"feature"` (defer to `CARGO_FEATURE_LINK_<X>`). |
 | `mbedtls` | string | `pkg-config` / `vendored` / `none`. |
 | `system_libs` | list[str] | `cargo:rustc-link-lib=` entries. |
 | `rerun_if_env_changed` | list[str] | `cargo:rerun-if-env-changed=…` triggers. |
@@ -146,7 +145,7 @@ This is what makes `cargo check` work on both
 `esp32/rust/zenoh/{listener,talker}` from the same platform
 entry — the picolibc sysroot wired up by
 `arch.riscv32imc.needs_picolibc = true` is added to the cc-rs
-`-I` list only when the build target is riscv32imc-*. (Phase 148.)
+`-I` list only when the build target is riscv32imc-*.
 
 ## mbedTLS source policy
 
@@ -169,7 +168,7 @@ the `CARGO_FEATURE_LINK_TLS` env var).
 Every `include` root in `zenoh_platforms.toml` must (a) resolve to
 a real directory under `zenoh-pico/src/`, (b) contain `≥1 .c` file
 or sub-directory. A failed check panics build-time with the
-offending key + expected path. Phase 136.6 owns this; full
+offending key + expected path. owns this; full
 set-equality vs. the resolved cc-rs source list lands as a
 follow-up.
 

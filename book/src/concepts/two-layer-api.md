@@ -82,7 +82,7 @@ Both layers cross the FFI cleanly:
 - **C, L2 callback** — `nros_subscription_init` records the C callback pointer; `nros_executor_register_subscription` allocates the executor-arena entry.
 - **C++** — typed templates wrap each FFI surface: `nros::Subscription<M>` + `try_recv` for L1, `nros::PollingActionServer<A>` for the L1 action path (122.3.d.b), the L2 executor-registered callback model via the existing `nros::ActionServer<A>` API.
 
-For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/index.html). For the example migration tally (32 examples on L2, 16 intentionally L1), see [Phase 122 — Unify API Paths](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-122-unify-api-paths.md).
+For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/index.html). For the example migration tally (32 examples on L2, 16 intentionally L1), see the [unify-api-paths roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-122-unify-api-paths.md).
 
 ## Event-driven path (122.3.c.6.e)
 

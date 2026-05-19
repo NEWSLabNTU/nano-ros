@@ -1,8 +1,6 @@
-# `nros.toml` — bridge configuration schema
-
-Phase 128.G entrypoint. Consumed by `nros::run_from_config` (Rust) and
-the future C/C++ mirror (`nros::run_from_config` in `nros-cpp`,
-phase 129).
+# `nros.toml` — bridge configuration schema entrypoint. Consumed by
+`nros::run_from_config` (Rust) and the future C/C++ mirror
+(`nros::run_from_config` in `nros-cpp`).
 
 The file lives next to the binary (or anywhere the program can read
 it) and selects:

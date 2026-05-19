@@ -1,6 +1,6 @@
 # PlatformIO (integration shell)
 
-Phase 139 ships a PlatformIO library spec under
+ships a PlatformIO library spec under
 `integrations/platformio/`. Consumers add nano-ros to their
 `platformio.ini` like any other PIO library.
 
@@ -53,9 +53,7 @@ goes through `integrations/esp-idf/`, `zephyr` through
 `integrations/zephyr/`. `arduino` uses the bundled bare-metal
 sources directly.
 
-## ESP-IDF gotcha — `lib_deps` ≠ IDF component
-
-Phase 152.7 documents a sharp edge: PlatformIO's `lib_deps` resolves
+## ESP-IDF gotcha — `lib_deps` ≠ IDF component documents a sharp edge: PlatformIO's `lib_deps` resolves
 libraries into `.pio/libdeps/<board>/<name>/`, but those resolved
 libraries are **not** automatically registered as ESP-IDF
 components. `idf_component_register(...)` in the library's

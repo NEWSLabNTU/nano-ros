@@ -6,7 +6,7 @@
 > For the runtime traits a new platform must implement in Rust /
 > platform-cffi, see [Custom Platform](./custom-platform.md).
 
-Since Phase 138, porting a new platform to nano-ros is **one new file**:
+Since, porting a new platform to nano-ros is **one new file**:
 
 ```
 nano-ros/cmake/platform/nano-ros-<plat>.cmake
@@ -16,7 +16,7 @@ Adding a platform no longer touches the root `CMakeLists.txt`, never
 edits per-example trees, and never duplicates platform helpers across
 20+ examples.
 
-## Module contract (Phase 138 §A)
+## Module contract (§A)
 
 Every `cmake/platform/nano-ros-<plat>.cmake` must expose:
 
@@ -108,7 +108,7 @@ See `cmake/board/nano-ros-board-mps2-an385.cmake` for a working example.
 For RTOS ports that compose the kernel + netstack + glue inside CMake
 (FreeRTOS, ThreadX, NuttX), the per-RTOS helper functions
 (`nros_freertos_build_kernel`, `nros_threadx_compose_platform`, …)
-stay at `packages/core/nros-c/cmake/nros-<rtos>.cmake`. The Phase 138
+stay at `packages/core/nros-c/cmake/nros-<rtos>.cmake`. The
 modules `include(...)` those helpers — the per-platform file is the
 **dispatch entry**, not the implementation.
 

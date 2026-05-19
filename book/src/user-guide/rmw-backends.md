@@ -58,7 +58,7 @@ The DDS backend uses [dust-dds](https://github.com/s2e-systems/dust-dds), a pure
 
 ## Cyclone DDS (rmw-cyclonedds)
 
-The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cyclonedds/cyclonedds), the same DDS implementation that ROS 2 ships with via `rmw_cyclonedds_cpp`. Built as a **standalone C++ library** at `packages/dds/nros-rmw-cyclonedds/` that registers itself with the runtime through the C ABI vtable in `nros-rmw-cffi` (Phase 102).
+The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cyclonedds/cyclonedds), the same DDS implementation that ROS 2 ships with via `rmw_cyclonedds_cpp`. Built as a **standalone C++ library** at `packages/dds/nros-rmw-cyclonedds/` that registers itself with the runtime through the C ABI vtable in `nros-rmw-cffi`.
 
 **How it works:**
 
@@ -87,7 +87,7 @@ Each example picks its RMW via `-DNANO_ROS_RMW=cyclonedds` at
 configure time; the root `CMakeLists.txt` add_subdirectory's
 `packages/dds/nros-rmw-cyclonedds/` and links the resulting target
 into `NanoRos::NanoRos`. No `build/install/` prefix, no
-`find_package(NrosRmwCyclonedds)` — Phase 140 deleted both.
+`find_package(NrosRmwCyclonedds)` deleted both.
 
 **Known limitations.** Cyclone DDS currently has a 2× CDR roundtrip per message, deferred status-event wiring, pending service request-id correlation, and incomplete Cortex-A/R Zephyr board support. See `docs/reference/cyclonedds-known-limitations.md` for the full list. ARMv8-R toolchain prep (Cortex-A 64-bit FVP, Cortex-R52 hardware) is in `docs/reference/zephyr-armv8r-setup.md`.
 
@@ -110,9 +110,7 @@ into `NanoRos::NanoRos`. No `build/install/` prefix, no
 
 ## Feature Selection
 
-### Cargo.toml (Rust)
-
-Phase 128/129 reshape — RMW selection is driven by **manifest deps**,
+### Cargo.toml (Rust)/129 reshape — RMW selection is driven by **manifest deps**,
 not by features on `nros`. Add `nros` with the platform feature plus
 exactly one `nros-rmw-<x>` shim dep:
 

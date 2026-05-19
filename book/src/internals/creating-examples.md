@@ -1,7 +1,7 @@
 # Creating Examples
 
-This guide describes the canonical example shape adopted in Phase 131
-(layout) + Phase 144 (consumption). When adding a new example, copy
+This guide describes the canonical example shape adopted
+(layout) + (consumption). When adding a new example, copy
 the nearest existing peer; the per-platform working examples are the
 authoritative templates.
 
@@ -70,7 +70,7 @@ picks up examples — they are explicitly out-of-workspace.
 ### C / C++ (CMake)
 
 Each example is a standalone CMake project that pulls nano-ros via
-`add_subdirectory(<repo-root>)` (Phase 144). The canonical four-line
+`add_subdirectory(<repo-root>)`. The canonical four-line
 preamble:
 
 ```cmake
@@ -94,7 +94,7 @@ auto-registration path for targets where `linkme`'s distributed-slice
 contribution isn't picked up by the linker (FreeRTOS, NuttX, Zephyr,
 ESP-IDF).
 
-There is no `find_package(NanoRos)` path — Phase 140 deleted it along
+There is no `find_package(NanoRos)` path deleted it along
 with `just install-local`, every `install(...)` rule, and every
 `Config.cmake.in` template.
 
@@ -119,7 +119,7 @@ no workspace reliance, no path heuristics walking up the source tree.
 Examples with custom `.msg`, `.srv`, or `.action` files generate
 bindings in-tree under `generated/`. The `generated/` directory is
 gitignored per-example (only `packages/interfaces/rcl-interfaces/`
-generated bindings live in git — Phase 23.1.4 Arduino bundle exception
+generated bindings live in git Arduino bundle exception
 aside).
 
 ```bash

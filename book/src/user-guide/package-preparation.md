@@ -29,7 +29,7 @@ Run setup from the nano-ros clone:
 
 ```bash
 cd src/nano-ros
-just setup tier=default        # Phase 142 SDK tiers (minimal | default | extended)
+just setup tier=default        # SDK tiers (minimal | default | extended)
 ```
 
 For a narrower fetch (single platform + RMW only), invoke the
@@ -66,7 +66,7 @@ Generated message crates are added by the message-generation workflow.
 
 ## C or C++ Package
 
-Minimal CMake package (Phase 140 — `add_subdirectory` is the only
+Minimal CMake package (`add_subdirectory` is the only
 consumption shape):
 
 ```cmake

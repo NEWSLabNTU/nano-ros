@@ -304,7 +304,7 @@ storage). `params.raw()` exposes the underlying
 `nros_param_server_t*` for future ROS 2 service-backed registration.
 
 **Why no `Box<dyn FnMut>` callback yet.** The same constraint that
-shapes Phase 108's event callbacks applies here: nano-ros's
+shapes's event callbacks applies here: nano-ros's
 `#[no_std]` core forbids alloc-style indirection. A future
 descriptor-+-validation-callback path will use a function pointer +
 `void* user_context` pair, registered at declare-time. Tracked under

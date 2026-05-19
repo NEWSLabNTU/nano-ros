@@ -217,9 +217,7 @@ let egress = exec.node_builder("egress")
     .rmw("dds")
     .sched(best_effort_sc)
     .build()?;
-```
-
-Phase 110.F's PiCAS-style per-callback OS-priority
+```'s PiCAS-style per-callback OS-priority
 dispatcher (gated behind the `scheduler-os-priority`
 feature) routes each Node's callbacks to its own OS
 priority slot so the slow backend cannot block the fast one.
@@ -278,7 +276,7 @@ lists which `<plat>/<lang>/<rmw>` triples ship a bridge today.
 |---------|--------------|
 | `Transport(ConnectionFailed)` on `open_with_rmw("X", ...)` | Backend X's rlib not pulled into the link line. Rust: add a `register()` call. C / C++: confirm `--whole-archive` wraps the staticlib. |
 | Second node's `.rmw("zenoh")` returns `Transport(...)` | Both nodes try to open against the same singleton-state backend. Set `NROS_RMW=zenoh` so the primary lands on zenoh + the second Node hits the session-cache (slot 0) instead of double-opening. |
-| `nros_publisher_init -> -7` after `nros_executor_node_init` | Pre-Phase-156 build. The C-side multi-Session dispatch in entity-init paths landed in 42001c37; rebuild `nros-c` after pulling main. |
+| `nros_publisher_init -> -7` after `nros_executor_node_init` | Stale build. The C-side multi-Session dispatch in entity-init paths landed in commit `42001c37`; rebuild `nros-c` after pulling main. |
 | `Bridge spinning` marker never reaches piped test harness | Add `setvbuf(stdout, NULL, _IOLBF, 0)` at the top of `nros_app_main`. glibc full-buffers piped stdout; line-buffering surfaces readiness markers before the long-lived `spin_period` loop. |
 
 ## See also

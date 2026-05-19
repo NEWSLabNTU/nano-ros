@@ -26,14 +26,14 @@ public surface a user application needs.
 > sets: `nros_*_init` (Layer 1, caller polls) and
 > `nros_executor_register_*` (Layer 2, executor callback). Layer 1
 > grew an `_init_polling` + `try_recv_*_raw` / `send_*_raw` family
-> in Phase 122.3 for inline-storage callers (no executor arena).
+> for inline-storage callers (no executor arena).
 > Layer 2 keeps the existing `nros_*_init` + executor-register
 > pair. See [Two-Layer API](../concepts/two-layer-api.md) for the
 > verb discipline and per-layer trade-offs.
 
 > **Event-driven wake callbacks.** Each L1 polling entity supports
 > `nros_*_set_wake_callback(entity, &state, cb, ctx)` for event-
-> driven RTOS / embassy callers (Phase 122.3.c.6.e). State is a
+> driven RTOS / embassy callers. State is a
 > caller-owned `nros_wake_state_t` POD; the backend fires `cb(ctx)`
 > on rx / reply / request arrival. Per-channel for actions
 > (`set_{goal,cancel,get_result}_wake_callback` on the server,
@@ -76,7 +76,7 @@ yourself between async calls until your callback flags the result. See
 the example layouts in `examples/native/c/<rmw>/action-client/` and
 `examples/qemu-arm-freertos/c/zenoh/action-client/`.
 
-Phase 122.3 added a separate L1 polling family
+added a separate L1 polling family
 (`nros_action_client_init_polling` + the `_raw` send/recv siblings)
 that stores `ActionClientCore` inline in the
 `nros_action_client_t._opaque` slot and skips the executor entirely;

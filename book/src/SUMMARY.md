@@ -102,4 +102,4 @@
 
 # Release Notes
 
-- [Migrating off `install-local` (Phase 140)](./release/migration-install-local-removal.md)
+- [Migrating off `install-local`](./release/migration-install-local-removal.md)

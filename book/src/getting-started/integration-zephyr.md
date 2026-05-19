@@ -3,7 +3,7 @@
 > **Contributor docs?** Building nano-ros's own Zephyr examples from
 > this repository is covered at [Zephyr (contributor)](./zephyr.md).
 
-Phase 139 ships a thin Zephyr module under `integrations/zephyr/`
+ships a thin Zephyr module under `integrations/zephyr/`
 that lets `west` discover nano-ros automatically. Use this path
 when consuming nano-ros from a Zephyr workspace alongside other
 modules; it replaces hand-rolled `add_subdirectory(nano-ros)` glue
@@ -58,12 +58,12 @@ int main(void) {
 
 `CONFIG_NROS=y` activates the shell; the shell maps Kconfig values
 to `NANO_ROS_*` CMake cache vars and `add_subdirectory()`s the root
-nano-ros CMake (Phase 137). `NanoRos::NanoRos` is linked into the
+nano-ros CMake. `NanoRos::NanoRos` is linked into the
 `app` library transparently.
 
 ## Coexistence with the legacy `zephyr/` module
 
-The pre-Phase 139 module at `<repo-root>/zephyr/` (vendored
-zenoh-pico transport sources) still works. The Phase 139 shell is
-INDEPENDENT — pick one entry point per workspace. Phase 140 removes
+The pre-module at `<repo-root>/zephyr/` (vendored
+zenoh-pico transport sources) still works. The shell is
+INDEPENDENT — pick one entry point per workspace. removes
 the legacy path.

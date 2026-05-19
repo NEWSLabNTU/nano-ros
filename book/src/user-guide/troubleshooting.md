@@ -292,7 +292,7 @@ ip addr show tap0
 **Solution**: Ensure the Zephyr workspace is properly configured:
 ```bash
 # Default location: $repo/zephyr-workspace/ (gitignored, in-tree).
-# Pre-Phase-113 setups: $repo/../nano-ros-workspace/ (auto-detected).
+# Legacy setups: $repo/../nano-ros-workspace/ (auto-detected).
 ls -la zephyr-workspace
 just zephyr doctor
 

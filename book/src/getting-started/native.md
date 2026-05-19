@@ -31,7 +31,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Phase 104.A: `nros` carries the generic `rmw-cffi` registry; the
+#: `nros` carries the generic `rmw-cffi` registry; the
 # concrete backend crate (`nros-rmw-zenoh`) is a direct dep whose
 # `#[ctor]` registers its vtable before `main`. POSIX additionally
 # needs `nros-platform-cffi[posix-c-port]` for the C platform symbols.

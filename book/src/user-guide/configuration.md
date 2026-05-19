@@ -165,9 +165,7 @@ All buffer tuning variables (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional -- plat
 Features select the RMW backend, platform, ROS edition, and optional
 capabilities. The complete matrix and mutual-exclusion rules live in
 [Platform Model](../concepts/platform-model.md); this page only shows
-the shape used by downstream projects.
-
-Phase 104.A decoupled the `nros` umbrella from concrete RMW crates.
+the shape used by downstream projects. decoupled the `nros` umbrella from concrete RMW crates.
 A consuming `Cargo.toml` lists `nros` (with `rmw-cffi` + a
 `platform-*` feature) plus the chosen backend crate directly:
 

@@ -12,7 +12,7 @@ workspace and run `just setup`:
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup tier=default      # Phase 142 SDK tiers: minimal | default | extended
+just setup tier=default      # SDK tiers: minimal | default | extended
 ```
 
 For multi-package workspaces (Pattern A — recommended for POSIX +
@@ -98,7 +98,7 @@ just freertos build-fixtures
 just zephyr  build-fixtures
 just nuttx   build-fixtures
 
-# Multi-component system (Phase 126 orchestration):
+# Multi-component system (orchestration):
 nros metadata my_system
 nros plan my_system launch/my_system.launch.py
 nros check

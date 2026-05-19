@@ -500,9 +500,9 @@ handle.
 | Humble | literal string `"TypeHashNotSupported"` |
 | Iron / Jazzy / Rolling | `RIHS01_<sha256_hex>` computed from the IDL |
 
-nano-ros currently targets Humble (see [Phase
-41](../../../docs/roadmap/phase-41-iron-type-hash-support.md) for Iron
-support). A new backend that aims at a newer distro must compute the
+nano-ros currently targets Humble (the
+[Iron type-hash roadmap doc](../../../docs/roadmap/phase-41-iron-type-hash-support.md)
+tracks Iron support). A new backend that aims at a newer distro must compute the
 right hash string — the `TopicInfo::type_hash` field is already plumbed
 through.
 

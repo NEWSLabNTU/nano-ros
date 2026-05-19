@@ -51,7 +51,7 @@ is propagated through the feature chain but does not add any API surface.
 - `executor.spin_once(timeout_ms)` -- single spin iteration
 - `executor.spin_period_polling(period_ms)` -- periodic spin without `std::thread::sleep`
 
-**Two-layer API.** Phase 122 unified the verb discipline:
+**Two-layer API.** unified the verb discipline:
 
 - **Layer 1 (caller polls)** -- `Node::create_*` returns an owned
   handle. Caller drives `try_recv` / `call` / `try_accept_goal` /
@@ -61,9 +61,7 @@ is propagated through the feature chain but does not add any API surface.
   takes a closure; `spin_once` fires it on rx / reply / timer.
   Good for callback-shaped applications.
 
-Both layers share the same session; mix per entity. See
-[Phase 122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-122-unify-api-paths.md)
-for the rationale and the example migration tally.
+Both layers share the same session; mix per entity.
 
 **Publish/Subscribe:**
 - L1 — `node.create_publisher::<M>(topic)`,
@@ -161,9 +159,7 @@ protocol layer requires it.
 | `SpinPeriodResult`                                            | nros-node/types.rs   | Contains `std::time::Duration`                          |
 | `ParameterVariant` for `std::string::String`, `std::vec::Vec` | nros-params/types.rs | Convenience conversions for std types                   |
 
-## Typical Configurations
-
-Phase 104.A decoupled the `nros` umbrella from concrete RMW crates.
+## Typical Configurations decoupled the `nros` umbrella from concrete RMW crates.
 A consuming `Cargo.toml` lists **three** path deps: `nros` (with
 `rmw-cffi` + a `platform-*` feature), the chosen backend crate
 (`nros-rmw-zenoh` / `nros-rmw-dds` / `nros-rmw-xrce-cffi`), and —
