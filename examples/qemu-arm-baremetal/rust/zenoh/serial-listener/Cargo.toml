@@ -17,6 +17,8 @@ default = []
 [dependencies]
 # Board crate with serial transport (no ethernet)
 nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["serial", "rmw-zenoh"] }
+# Phase 88.16.C — user diagnostics route through `nros-log`.
+nros-log = { path = "../../../../../packages/core/nros-log", default-features = false }
 
 # nros Executor API (no link-tcp/link-udp — serial link comes from zpico-serial)
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }

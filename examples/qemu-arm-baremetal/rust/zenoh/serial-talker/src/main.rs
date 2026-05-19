@@ -17,7 +17,11 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_board_mps2_an385::{Config, println, run};
+use nros_board_mps2_an385::{Config, run};
+use nros_log::{nros_error, nros_info, Logger};
+
+// Phase 88.16.C — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("serial-talker");
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -26,7 +30,10 @@ fn main() -> ! {
     run(
         Config::from_toml(include_str!("../config.toml")),
         |config| {
-            println!("Zenoh locator: {}", config.zenoh_locator);
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
+
+            nros_info!(&LOGGER, "Zenoh locator: {}", config.zenoh_locator);
 
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
@@ -38,11 +45,11 @@ fn main() -> ! {
             let mut executor = Executor::open(&exec_config)?;
             let mut node = executor.create_node("serial_talker")?;
 
-            println!("Declaring publisher on /chatter (std_msgs/Int32)");
+            nros_info!(&LOGGER, "Declaring publisher on /chatter (std_msgs/Int32)");
             let publisher = node.create_publisher::<Int32>("/chatter")?;
-            println!("Publisher declared");
+            nros_info!(&LOGGER, "Publisher declared");
 
-            println!("Publishing messages over serial...");
+            nros_info!(&LOGGER, "Publishing messages over serial...");
 
             let mut count: i32 = 0;
             loop {
@@ -52,8 +59,8 @@ fn main() -> ! {
                 }
 
                 match publisher.publish(&Int32 { data: count }) {
-                    Ok(()) => println!("Published: {}", count),
-                    Err(e) => println!("Publish failed: {:?}", e),
+                    Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+                    Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
                 }
                 count = count.wrapping_add(1);
             }

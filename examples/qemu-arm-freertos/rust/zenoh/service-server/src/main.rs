@@ -7,12 +7,19 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::prelude::*;
-use nros_board_mps2_an385_freertos::{Config, println, run};
+use nros_board_mps2_an385_freertos::{Config, run};
+use nros_log::{nros_error, nros_info, Logger};
+
+// Phase 88.16.C — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("service-server");
 use panic_semihosting as _;
 
 #[unsafe(no_mangle)]
 extern "C" fn _start() -> ! {
     run(Config::from_toml(include_str!("../config.toml")), |config| {
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
+
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_server");
@@ -24,19 +31,19 @@ extern "C" fn _start() -> ! {
 
         executor.register_service::<AddTwoInts, _>("/add_two_ints", |request| {
             let sum = request.a + request.b;
-            println!("Request: {} + {} = {}", request.a, request.b, sum);
+            nros_info!(&LOGGER, "Request: {} + {} = {}", request.a, request.b, sum);
             AddTwoIntsResponse { sum }
         })?;
 
-        println!("Service server ready on /add_two_ints");
-        println!("Waiting for requests...");
+        nros_info!(&LOGGER, "Service server ready on /add_two_ints");
+        nros_info!(&LOGGER, "Waiting for requests...");
 
         // Spin for a bounded time (test automation)
         for _ in 0..50000u32 {
             executor.spin_once(core::time::Duration::from_millis(10));
         }
 
-        println!("Server shutting down.");
+        nros_info!(&LOGGER, "Server shutting down.");
         Ok::<(), NodeError>(())
     })
 }

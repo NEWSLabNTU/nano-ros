@@ -16,6 +16,8 @@ default = []
 
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-board-mps2-an385-freertos" }
+# Phase 88.16.C — user diagnostics route through `nros-log`.
+nros-log = { path = "../../../../../packages/core/nros-log", default-features = false }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-freertos", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }

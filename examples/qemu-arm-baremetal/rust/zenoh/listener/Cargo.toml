@@ -25,6 +25,8 @@ link-tls = [
 [dependencies]
 # Board crate for hardware + network init
 nros-board-mps2-an385 = { path = "../../../../../packages/boards/nros-board-mps2-an385" }
+# Phase 88.16.C — user diagnostics route through `nros-log`.
+nros-log = { path = "../../../../../packages/core/nros-log", default-features = false }
 
 # nros Executor API
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }

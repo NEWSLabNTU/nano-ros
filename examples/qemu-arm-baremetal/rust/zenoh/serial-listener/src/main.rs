@@ -17,7 +17,11 @@
 #![no_main]
 
 use nros::prelude::*;
-use nros_board_mps2_an385::{Config, println, run};
+use nros_board_mps2_an385::{Config, run};
+use nros_log::{nros_error, nros_info, Logger};
+
+// Phase 88.16.C — diagnostics route through `nros-log`.
+static LOGGER: Logger = Logger::new("serial-listener");
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -26,7 +30,10 @@ fn main() -> ! {
     run(
         Config::from_toml(include_str!("../config.toml")),
         |config| {
-            println!("Zenoh locator: {}", config.zenoh_locator);
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
+
+            nros_info!(&LOGGER, "Zenoh locator: {}", config.zenoh_locator);
 
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
@@ -38,13 +45,13 @@ fn main() -> ! {
             let mut executor = Executor::open(&exec_config)?;
             let _node = executor.create_node("serial_listener")?;
 
-            println!("Subscribing to /chatter (std_msgs/Int32)");
+            nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/Int32)");
             executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-                println!("Received: {}", msg.data);
+                nros_info!(&LOGGER, "Received: {}", msg.data);
             })?;
-            println!("Subscriber declared");
+            nros_info!(&LOGGER, "Subscriber declared");
 
-            println!("Waiting for messages over serial...");
+            nros_info!(&LOGGER, "Waiting for messages over serial...");
 
             loop {
                 executor.spin_once(core::time::Duration::from_millis(10));

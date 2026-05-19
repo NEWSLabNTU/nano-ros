@@ -492,6 +492,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-log"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+]
+
+[[package]]
 name = "nros-macros"
 version = "0.1.0"
 dependencies = [
@@ -507,6 +514,7 @@ dependencies = [
  "atomic-waker",
  "heapless",
  "nros-core",
+ "nros-log",
  "nros-params",
  "nros-platform-api",
  "nros-rmw",
@@ -546,6 +554,8 @@ name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "cortex-m-semihosting",
+ "mps2-an385-pac",
  "nros-baremetal-common",
  "nros-platform-api",
  "nros-platform-cffi",
@@ -667,6 +677,7 @@ version = "0.1.0"
 dependencies = [
  "nros",
  "nros-board-mps2-an385",
+ "nros-log",
  "nros-rmw-zenoh",
  "panic-semihosting",
  "std_msgs",
