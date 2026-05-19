@@ -2,9 +2,9 @@
 
 **Goal**: Provide a precompiled nros Arduino library that enables Arduino IDE users to publish/subscribe ROS 2 topics using a C API with transport setup helpers — no Rust toolchain required.
 
-**Status**: Not Started
+**Status**: In Progress (subphases 23.1.1–23.1.7, 23.2.1–23.2.5, 23.3.1–23.3.3, 23.4.1–23.4.4, 23.5a / 23.5b / 23.5c / 23.5d, 23.6.1–23.6.3 done; 23.2.x Xtensa toolchain for esp32 / esp32s3 deferred). Cross-arch interop test ignored pending Phase 89.4 ESP32-C3 firmware fix.
 **Priority**: Medium
-**Depends on**: Phase 21 (C API `no_std` backend), Phase 22 (ESP32 support), Phase 11 (C API)
+**Depends on**: Phase 21 (C API `no_std` backend — reopened for ESP-IDF backend gap, subphases 21.6-21.10 active), Phase 22 (ESP32 support), Phase 11 (C API)
 
 ## Overview
 
@@ -208,7 +208,7 @@ void loop() {
 
 ### 23.1: Arduino Library Structure
 
-**Status**: Not Started
+**Status**: Done
 
 **Tasks**:
 1. [ ] Create Arduino library directory:
@@ -258,7 +258,7 @@ void loop() {
 
 ### 23.2: Precompilation Build System
 
-**Status**: Not Started
+**Status**: In Progress — RISC-V (ESP32-C3) `libnanoros.a` build pipeline + `nm` audit + GH Actions matrix done. Xtensa (esp32 / esp32s3) deferred pending `esp-rs` toolchain install (~multi-GB).
 
 **Goal**: Produce a self-contained Arduino library package containing precompiled `libnanoros.a` for each target board plus all necessary C headers — ready to drop into the Arduino library structure from 23.1.
 
@@ -312,7 +312,7 @@ Both archives are bundled into a single `libnanoros.a` via `ar` so Arduino sketc
 
 ### 23.3: Transport Setup and Arduino Glue
 
-**Status**: Not Started
+**Status**: Done — `nros_arduino.h` / `nros_arduino.cpp` ship WiFi-locator setup + ping + `NRCHECK` / `NRSOFTCHECK`. Wrapper layer (`nros_arduino_wrappers.cpp`) hides global `nros_executor_t` so sketches read close to micro-ROS shape.
 
 Following micro-ROS's pattern, the only Arduino-specific code is the transport setup (~70 lines per transport). The C API itself is platform-agnostic.
 
@@ -364,7 +364,7 @@ Following micro-ROS's pattern, the only Arduino-specific code is the transport s
 
 ### 23.4: Example Sketches
 
-**Status**: Not Started
+**Status**: Done — `Talker.ino`, `Listener.ino`, `ServiceClient.ino`, `Reconnection.ino` shipped under `arduino/nros/examples/`. Sketches reconciled with the real `nros-c` API surface (no fictional helpers).
 
 All examples follow the micro-ROS convention: globals for handles, `setup()` for init, `loop()` for spin. Each example includes WiFi configuration as user-editable constants at the top.
 
@@ -384,7 +384,7 @@ All examples follow the micro-ROS convention: globals for handles, `setup()` for
 
 ### 23.5: Testing
 
-**Status**: Not Started
+**Status**: In Progress — 23.5a (C API coverage audit), 23.5b (QEMU ESP32-C3 link smoke), 23.5c (ESP32-C3 ↔ ARM Cortex-M3 cross-arch QEMU interop — `#[ignore]`d pending Phase 89.4 ESP32-C3 firmware fix), 23.5d (host-native transport mock-WiFi test) all landed. 23.5e (physical hardware) remains manual / out of CI scope.
 
 Testing is organized into tiers, from fastest/cheapest (host-native, no hardware) to slowest/most expensive (physical WiFi boards). Emulator-based tests run in CI; hardware tests are manual.
 
@@ -486,7 +486,7 @@ Manual tests on real hardware. These validate WiFi connectivity, real-world late
 
 ### 23.6: Documentation
 
-**Status**: Not Started
+**Status**: Done — `book/src/getting-started/arduino.md` added (linked from SUMMARY); covers install / WiFi setup / zenohd wiring / sketch tour. Contributor regen docs landed.
 
 **Tasks**:
 1. [ ] Create `arduino/nros/README.md` with:
