@@ -337,6 +337,68 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             skip cleanly when the Espressif QEMU fork isn't
             installed.
 
+- [ ] 88.16 — Migrate every `examples/` binary to emit diagnostics
+      through `nros-log` instead of ad-hoc `println!` /
+      `cortex_m_semihosting::hprintln!` / `printf` / `std::cout` /
+      `info!()` (`log` crate) / `defmt::info!`. The board crates'
+      `println!` macros stay for *board-level* bring-up output
+      (network init, scheduler-start banner) — only the
+      *user-application* prints inside the closure passed to `run()`
+      switch over. **Why this matters**: examples are the surface
+      users copy, and every example that rolls its own `println!`
+      teaches users to bypass the logging facade we just shipped.
+
+      **E2E impact survey (2026-05-19).** The harness's
+      `wait_for_output` + `wait_for_output_pattern` + `output.rs`
+      parsers all use `String::contains(pattern)` / `str::find(marker)`
+      — substring matches, not anchored line matches. The default
+      writers emit `[<LEVEL>] <name>: <message>\n`, so every existing
+      assertion (`"Published: 5"`, `"Received: 7"`, `"Goal accepted"`,
+      `"Feedback #"`, `"Action client finished"`, …) survives the
+      migration unchanged. The one exception is the **stream the
+      writer routes to**: on bare-metal MPS2-AN385 the writer goes to
+      `hstderr()` while `wait_for_output` only drains stdout.
+      Resolve once at the harness level, not per-example.
+
+      Sub-items:
+
+      - [x] 88.16.A — `QemuProcess::wait_for_output` (and
+            `wait_for_output_pattern`) drain stdout AND stderr,
+            merging them into the captured string. The 88.15.a
+            smoke test now uses the shared helper instead of a
+            private spawn loop. Helpers `set_nonblocking` +
+            `drain_into` live at the top of
+            `packages/testing/nros-tests/src/qemu.rs`.
+      - [ ] 88.16.B — `examples/native/{rust,c,cpp}/{zenoh,dds,xrce}/*`
+            — replace `info!()` / `eprintln!` / `printf` / `std::cout`
+            with `nros_info!` / `nros_warn!` / `nros_error!` via
+            `node.get_logger()`. Keep the program-start banner (if
+            any) as a `println!` so it lands before
+            `nros_log::init()` is wired up.
+      - [ ] 88.16.C — `examples/qemu-arm-baremetal/rust/*` and
+            `examples/qemu-arm-freertos/rust/*` — replace the board
+            crate's `println!` *inside the user closure* (timer
+            callbacks, subscription callbacks, "Publisher declared"
+            chatter) with `nros_*!`. Leave the board crate's own
+            `println!` calls (banner, network init, `Network ready.`)
+            alone — those run before the executor exists.
+      - [ ] 88.16.D — `examples/qemu-arm-nuttx/rust/*` and
+            `examples/qemu-riscv64-threadx/rust/*` — same shape as
+            88.16.C.
+      - [ ] 88.16.E — `examples/esp32/rust/*` — replace
+            `esp_println::println!()` inside the user closure.
+      - [ ] 88.16.F — `examples/stm32f4/rust/*` — replace
+            `defmt::info!()` inside the user closure (or document
+            that users explicitly choosing defmt-native call sites
+            should opt out and call `defmt::info!` directly; the
+            default migration moves them to `nros_*!`).
+      - [ ] 88.16.G — `examples/zephyr/c/*` — replace `LOG_INF()` in
+            user code with `nros_log_info()` (C wrapper from 88.12).
+      - [ ] 88.16.H — `examples/qemu-arm-{baremetal,freertos}/c/*`
+            and `examples/qemu-arm-{baremetal,freertos}/cpp/*` —
+            replace `printf` / `std::cout` with `NROS_INFO()` /
+            `nros::Logger::info()`.
+
 ## Design Notes
 
 - **`Logger` shape**:

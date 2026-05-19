@@ -49,6 +49,34 @@ pub fn qemu_system_arm_cmd() -> Command {
 }
 
 /// Best-effort discovery of the cargo workspace root by walking
+/// Phase 88.16.A — flip a piped stdio fd to non-blocking so the
+/// drain loop below never wedges.
+#[cfg(unix)]
+fn set_nonblocking<F: AsRawFd>(fd: &F) {
+    let raw = fd.as_raw_fd();
+    // SAFETY: `raw` is a valid OS fd we own; fcntl is async-signal-safe.
+    unsafe {
+        let flags = libc::fcntl(raw, libc::F_GETFL);
+        if flags >= 0 {
+            libc::fcntl(raw, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+    }
+}
+
+/// Phase 88.16.A — drain whatever bytes are currently buffered on
+/// `src` into `dst`. Returns `true` if any bytes were consumed.
+/// Treats `WouldBlock`, `0`, and read errors as "no progress".
+fn drain_into<R: Read>(src: &mut R, buffer: &mut [u8], dst: &mut String) -> bool {
+    match src.read(buffer) {
+        Ok(0) => false,
+        Ok(n) => {
+            dst.push_str(&String::from_utf8_lossy(&buffer[..n]));
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// upward from `CARGO_MANIFEST_DIR` looking for a `Cargo.toml` that
 /// declares `[workspace]`. Used by [`qemu_system_arm_path`] to find
 /// the patched `build/qemu/bin/qemu-system-arm` without forcing
@@ -330,30 +358,31 @@ impl QemuProcess {
         let start = Instant::now();
         let mut output = String::new();
 
-        // Take ownership of stdout
+        // Phase 88.16.A — drain stderr alongside stdout so logging
+        // records (which route through `hstderr()` on bare-metal
+        // semihosting) reach the captured string. Examples that
+        // emit via `nros_info!` would otherwise look silent to the
+        // harness.
         let mut stdout = self
             .handle
             .stdout
             .take()
             .ok_or_else(|| TestError::ProcessFailed("No stdout".to_string()))?;
+        let mut stderr = self.handle.stderr.take();
 
         // Set non-blocking mode so read() doesn't block indefinitely when the
         // QEMU process pauses output (e.g., listener waiting for messages).
-        // Without this, the timeout loop never fires because read() blocks.
         #[cfg(unix)]
         {
-            let fd = stdout.as_raw_fd();
-            unsafe {
-                let flags = libc::fcntl(fd, libc::F_GETFL);
-                libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            set_nonblocking(&stdout);
+            if let Some(ref s) = stderr {
+                set_nonblocking(s);
             }
         }
 
-        // Read with timeout
         let mut buffer = [0u8; 4096];
         loop {
             if start.elapsed() > timeout {
-                // Kill on timeout
                 kill_process_group(&mut self.handle);
                 if output.is_empty() {
                     return Err(TestError::Timeout);
@@ -361,42 +390,35 @@ impl QemuProcess {
                 break;
             }
 
-            // Check if process exited
             match self.handle.try_wait() {
                 Ok(Some(_status)) => {
-                    // Process exited, read remaining output
                     let _ = stdout.read_to_string(&mut output);
+                    if let Some(mut s) = stderr.take() {
+                        let _ = s.read_to_string(&mut output);
+                    }
                     break;
                 }
                 Ok(None) => {
-                    // Still running, try to read
-                    match stdout.read(&mut buffer) {
-                        Ok(0) => {
-                            std::thread::sleep(Duration::from_millis(50));
-                        }
-                        Ok(n) => {
-                            output.push_str(&String::from_utf8_lossy(&buffer[..n]));
-
-                            // Check for test completion markers
-                            if output.contains("All tests passed")
-                                || output.contains("Benchmark complete")
-                                || output.contains("TEST COMPLETE")
-                                || output.contains("QEMU: Terminated")
-                                // E2E completion markers (finite examples)
-                                || output.contains("All service calls completed")
-                                || output.contains("Action client finished")
-                                || output.contains("Action completed successfully")
-                            {
-                                // Give it a moment to finish cleanly
-                                std::thread::sleep(Duration::from_millis(100));
-                                kill_process_group(&mut self.handle);
-                                break;
-                            }
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            std::thread::sleep(Duration::from_millis(50));
-                        }
-                        Err(_) => break,
+                    let mut progressed = false;
+                    progressed |= drain_into(&mut stdout, &mut buffer, &mut output);
+                    if let Some(ref mut s) = stderr {
+                        progressed |= drain_into(s, &mut buffer, &mut output);
+                    }
+                    if !progressed {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    // Check for test completion markers
+                    if output.contains("All tests passed")
+                        || output.contains("Benchmark complete")
+                        || output.contains("TEST COMPLETE")
+                        || output.contains("QEMU: Terminated")
+                        || output.contains("All service calls completed")
+                        || output.contains("Action client finished")
+                        || output.contains("Action completed successfully")
+                    {
+                        std::thread::sleep(Duration::from_millis(100));
+                        kill_process_group(&mut self.handle);
+                        break;
                     }
                 }
                 Err(_) => break,
@@ -421,13 +443,13 @@ impl QemuProcess {
             .stdout
             .take()
             .ok_or_else(|| TestError::ProcessFailed("No stdout".to_string()))?;
+        let mut stderr = self.handle.stderr.take();
 
         #[cfg(unix)]
         {
-            let fd = stdout.as_raw_fd();
-            unsafe {
-                let flags = libc::fcntl(fd, libc::F_GETFL);
-                libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            set_nonblocking(&stdout);
+            if let Some(ref s) = stderr {
+                set_nonblocking(s);
             }
         }
 
@@ -444,29 +466,28 @@ impl QemuProcess {
             match self.handle.try_wait() {
                 Ok(Some(_)) => {
                     let _ = stdout.read_to_string(&mut output);
+                    if let Some(mut s) = stderr.take() {
+                        let _ = s.read_to_string(&mut output);
+                    }
                     break;
                 }
-                Ok(None) => match stdout.read(&mut buffer) {
-                    Ok(0) => {
+                Ok(None) => {
+                    let mut progressed = false;
+                    progressed |= drain_into(&mut stdout, &mut buffer, &mut output);
+                    if let Some(ref mut s) = stderr {
+                        progressed |= drain_into(s, &mut buffer, &mut output);
+                    }
+                    if output.contains(pattern) {
+                        // Put streams back so follow-up `wait_for_output`
+                        // / `kill` calls see them.
+                        self.handle.stdout = Some(stdout);
+                        self.handle.stderr = stderr;
+                        return Ok(output);
+                    }
+                    if !progressed {
                         std::thread::sleep(Duration::from_millis(50));
                     }
-                    Ok(n) => {
-                        output.push_str(&String::from_utf8_lossy(&buffer[..n]));
-                        if output.contains(pattern) {
-                            // Put stdout back on the handle so subsequent
-                            // wait_for_output / kill calls still see it.
-                            // (Killing here would break two-phase tests
-                            // that wait for a "ready" pattern then expect
-                            // the process to keep running.)
-                            self.handle.stdout = Some(stdout);
-                            return Ok(output);
-                        }
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(50));
-                    }
-                    Err(_) => break,
-                },
+                }
                 Err(_) => break,
             }
         }
