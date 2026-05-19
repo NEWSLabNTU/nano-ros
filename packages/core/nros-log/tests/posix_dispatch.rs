@@ -12,7 +12,7 @@
 // `nros_platform_*` symbols land in the test binary.
 extern crate nros_platform_cffi as _;
 
-use nros_log::{init, sinks, Logger, Severity};
+use nros_log::{Logger, Severity, init, sinks};
 
 static TEST_LOGGER: Logger = Logger::new("posix_dispatch_test");
 

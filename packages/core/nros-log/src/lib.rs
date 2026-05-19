@@ -53,7 +53,7 @@ pub mod sinks;
 
 mod buffer;
 
-pub use buffer::{format_buffer_capacity, FormatBuffer};
+pub use buffer::{FormatBuffer, format_buffer_capacity};
 
 /// REP-2012 severity levels, mirroring `rcutils_log_severity_t`.
 ///
@@ -257,7 +257,7 @@ pub const MAX_LOGGERS: usize = 32;
 pub static DEFAULT_LOGGER: Logger = Logger::new("nros");
 
 mod intern {
-    use super::{AtomicPtr, Logger, Ordering, MAX_LOGGERS};
+    use super::{AtomicPtr, Logger, MAX_LOGGERS, Ordering};
 
     pub(super) struct InternTable {
         slots: [AtomicPtr<Logger>; MAX_LOGGERS],

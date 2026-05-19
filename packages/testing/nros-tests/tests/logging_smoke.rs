@@ -22,10 +22,10 @@ use nros_tests::{
     assert_output_contains,
     esp32::start_esp32_qemu,
     fixtures::{
-        build_logging_smoke_esp32_qemu_flash, build_logging_smoke_freertos_mps2,
+        QemuProcess, build_logging_smoke_esp32_qemu_flash, build_logging_smoke_freertos_mps2,
         build_logging_smoke_mps2_baremetal, build_logging_smoke_threadx_riscv64,
         build_logging_smoke_zephyr_native_sim, is_arm_toolchain_available, is_qemu_available,
-        is_qemu_riscv64_available, QemuProcess,
+        is_qemu_riscv64_available,
     },
 };
 
@@ -79,8 +79,9 @@ fn logging_smoke_freertos_mps2_emits_every_severity() {
         panic!("[SKIPPED] thumbv7m-none-eabi target not installed");
     }
 
-    let binary = build_logging_smoke_freertos_mps2()
-        .expect("logging-smoke-freertos-mps2 fixture not built — run `just freertos build-fixtures`");
+    let binary = build_logging_smoke_freertos_mps2().expect(
+        "logging-smoke-freertos-mps2 fixture not built — run `just freertos build-fixtures`",
+    );
 
     let mut qemu = QemuProcess::start_mps2_an385_networked(binary)
         .expect("failed to start QEMU (networked slirp)");
@@ -106,8 +107,8 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
         "logging-smoke-threadx-riscv64 fixture not built — run `just threadx_riscv64 build-fixtures`",
     );
 
-    let mut qemu = QemuProcess::start_riscv64_virt(binary, 99)
-        .expect("failed to start QEMU (riscv64-virt)");
+    let mut qemu =
+        QemuProcess::start_riscv64_virt(binary, 99).expect("failed to start QEMU (riscv64-virt)");
     let output = qemu
         .wait_for_output(Duration::from_secs(30))
         .expect("QEMU timed out waiting for log output");
@@ -134,8 +135,9 @@ fn logging_smoke_esp32_qemu_emits_every_severity() {
         panic!("[SKIPPED] qemu-system-riscv32 not available");
     }
 
-    let flash = build_logging_smoke_esp32_qemu_flash()
-        .expect("logging-smoke-esp32-qemu fixture not built — run `just esp32 build-logging-smoke`");
+    let flash = build_logging_smoke_esp32_qemu_flash().expect(
+        "logging-smoke-esp32-qemu fixture not built — run `just esp32 build-logging-smoke`",
+    );
 
     let mut qemu = start_esp32_qemu(flash, false).expect("failed to start ESP32-C3 QEMU");
     let output = qemu

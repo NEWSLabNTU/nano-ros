@@ -423,10 +423,7 @@ pub struct TimeTriggeredSchedule<const N: usize> {
 impl<const N: usize> TimeTriggeredSchedule<N> {
     /// Construct a schedule from an exhaustive `[TimeTriggeredWindow; N]`
     /// array; `window_count` is set to `N`.
-    pub const fn new_full(
-        major_frame_us: u32,
-        windows: [TimeTriggeredWindow; N],
-    ) -> Self {
+    pub const fn new_full(major_frame_us: u32, windows: [TimeTriggeredWindow; N]) -> Self {
         Self {
             major_frame_us,
             windows,
@@ -451,17 +448,14 @@ impl<const N: usize> TimeTriggeredSchedule<N> {
             }
             let end = (w.offset_us as u64) + (w.duration_us as u64);
             if end > self.major_frame_us as u64 {
-                return Err(TimeTriggeredScheduleError::WindowExceedsMajorFrame {
-                    window: i,
-                });
+                return Err(TimeTriggeredScheduleError::WindowExceedsMajorFrame { window: i });
             }
             for (j, other) in self.windows[..self.window_count].iter().enumerate() {
                 if i == j {
                     continue;
                 }
                 let o_end = (other.offset_us as u64) + (other.duration_us as u64);
-                let overlaps = (w.offset_us as u64) < o_end
-                    && (other.offset_us as u64) < end;
+                let overlaps = (w.offset_us as u64) < o_end && (other.offset_us as u64) < end;
                 if overlaps {
                     return Err(TimeTriggeredScheduleError::WindowsOverlap {
                         window_a: i,

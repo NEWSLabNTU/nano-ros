@@ -2805,4 +2805,3 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         );
     }
 }
-

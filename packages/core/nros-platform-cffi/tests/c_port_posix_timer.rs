@@ -162,9 +162,7 @@ fn rust_trait_cancel_returns_true_when_prevented() {
 
 #[test]
 fn rust_trait_atomic_sporadic_refill_round_trip() {
-    use nros_node::executor::sched_context::{
-        atomic_sporadic_refill_thunk, AtomicSporadicState,
-    };
+    use nros_node::executor::sched_context::{AtomicSporadicState, atomic_sporadic_refill_thunk};
     use nros_platform_api::PlatformTimer;
     use std::sync::Arc;
 
@@ -172,7 +170,10 @@ fn rust_trait_atomic_sporadic_refill_round_trip() {
 
     // Drain the budget so we can prove the refill thunk restored it.
     state.consume(10_000);
-    assert!(!state.has_budget(), "budget should be exhausted before refill");
+    assert!(
+        !state.has_budget(),
+        "budget should be exhausted before refill"
+    );
 
     let user_data = Arc::as_ptr(&state) as *mut c_void;
     let handle = CffiPlatform::create_periodic(

@@ -421,8 +421,7 @@ impl nros_platform_api::PlatformTimer for CffiPlatform {
         // fn` — both have the same ABI; Rust just demands the unsafe
         // version at the C call site.
         let cb: unsafe extern "C" fn(*mut c_void) = callback;
-        let raw =
-            unsafe { nros_platform_timer_create_periodic(period_us, cb, user_data) };
+        let raw = unsafe { nros_platform_timer_create_periodic(period_us, cb, user_data) };
         if raw.is_null() {
             // The C layer returns NULL for both "unsupported on this
             // platform" (default stub) and "syscall failed" (POSIX
@@ -442,8 +441,7 @@ impl nros_platform_api::PlatformTimer for CffiPlatform {
         user_data: *mut c_void,
     ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
         let cb: unsafe extern "C" fn(*mut c_void) = callback;
-        let raw =
-            unsafe { nros_platform_timer_create_oneshot(timeout_us, cb, user_data) };
+        let raw = unsafe { nros_platform_timer_create_oneshot(timeout_us, cb, user_data) };
         if raw.is_null() {
             return Err(nros_platform_api::TimerError::KernelError);
         }

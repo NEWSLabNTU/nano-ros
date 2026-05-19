@@ -899,8 +899,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_logger(
     let name_ptr = unsafe { (*node).name.as_ptr() as *const u8 };
     // Find the NUL terminator in the fixed-size `name` array to
     // build a `&str` for the intern table lookup.
-    let name_bytes =
-        unsafe { core::slice::from_raw_parts(name_ptr, (*node).name.len()) };
+    let name_bytes = unsafe { core::slice::from_raw_parts(name_ptr, (*node).name.len()) };
     let nul = name_bytes.iter().position(|&b| b == 0).unwrap_or(0);
     let name = core::str::from_utf8(&name_bytes[..nul]).unwrap_or("");
     let logger: &'static nros_log::Logger = nros_log::get_logger(name);
