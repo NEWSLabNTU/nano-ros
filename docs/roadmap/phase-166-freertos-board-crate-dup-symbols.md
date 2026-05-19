@@ -126,8 +126,26 @@ consume). Matches the platform-cffi pattern documented in
       normal dep-chain propagation carries the generic archives.
 - [x] **166.3** Verified via `just freertos build-fixtures` —
       all Rust zenoh + Rust DDS fixtures build cleanly.
-- [ ] **166.4** Audit other RTOS overlay patterns (Zephyr FVP,
-      NuttX QEMU) for the same `cargo:rustc-link-lib` mirror.
+- [x] **166.4** Audited all other RTOS overlay patterns 2026-05-19.
+      Survey of `packages/boards/*/build.rs` × `Cargo.toml` deps:
+      - `nros-board-threadx-linux → nros-board-threadx`: parent
+        compiles `threadx_kernel` + `nros_platform_threadx`; child
+        emits only `glue` + `nsos_netx`. No overlap. Verified
+        `just threadx_linux build` links clean.
+      - `nros-board-threadx-qemu-riscv64 → nros-board-threadx`:
+        same parent; child emits `glue`, `virtio_net_netx`,
+        `netxduo`, `threadx_port_asm`. No overlap. Verified
+        `just threadx_riscv64 build` links clean.
+      - `nros-board-nuttx-qemu-arm`: standalone (no sibling board
+        dep). Compiles + emits its own `nros_platform_nuttx`.
+        No risk.
+      - `nros-board-orin-spe`: standalone. No risk.
+      - `nros-board-fvp-aemv8r-smp`: Zephyr CMake path, no Cargo
+        sibling-board dep. Out of scope.
+      - `nros-board-stm32f4`, `nros-board-mps2-an385`,
+        `nros-board-esp32{,-qemu}`: no `cc::Build::compile` chains
+        or no sibling board deps. No risk.
+      Only `nros-board-mps2-an385-freertos` (166.A) had the bug.
 - [ ] **166.5** Regression test in `nros-tests`: assert no
       `cargo:rustc-link-lib=static=X` line names an archive that
       a transitive dep already compiles.
