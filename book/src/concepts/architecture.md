@@ -52,9 +52,11 @@ The RMW layer is the transport boundary. It creates sessions,
 publishers, subscribers, services, clients, and action channels, then
 moves serialized samples over the selected wire protocol.
 
-Only one backend is selected for a build. That compile-time selection
+Each Node picks its backend at build time. That compile-time selection
 replaces standard ROS 2's runtime `RMW_IMPLEMENTATION` plugin loader,
-which is not available on many embedded targets.
+which is not available on many embedded targets. A single binary can
+link multiple backends and bridge between them — see
+[Cross-backend Bridges](../user-guide/cross-backend-bridges.md).
 
 For user-facing backend selection, see
 [Choosing an RMW Backend](../user-guide/rmw-backends.md). For design
