@@ -1,109 +1,110 @@
-# ESP-IDF (integration shell)
+# ESP32 (ESP-IDF component)
 
-> **Building nano-ros ESP32 examples in this repo?** The bare-metal
-> esp-hal path is at [ESP32](./esp32.md); the ESP-IDF C-port runs
-> via `just esp_idf setup` (separate from this user-facing
-> component).
+Single-node starter on ESP32-family chips via the **ESP-IDF
+component path** — Espressif's native C / C++ build system. For the
+bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 
-ships an ESP-IDF component under `integrations/esp-idf/`.
-ESP-IDF projects pull nano-ros via `idf.py add-dependency` (once
-published to the ESP Component Registry) or via a local path during
-development.
+> **Building nano-ros's own ESP32 examples from this repository?**
+> The ESP-IDF C-port runs via `just esp_idf setup`, separate from
+> the user-facing component documented here.
 
-## Prereqs
+> **Prereqs.** ESP-IDF ≥ 5.1 installed and `idf.py` on `PATH`
+> (`source $IDF_PATH/export.sh`).
 
-- ESP-IDF ≥ 5.1
-- `idf.py` on `PATH` (source `$IDF_PATH/export.sh`)
+## Project layout
 
-## One-liner add to your `main/idf_component.yml`
+ESP-IDF apps are CMake projects with `idf.py` as the orchestrator.
+nano-ros plugs in as a component pulled by IDF's component manager
+or by a local path during development.
 
-Once published:
+```text
+my_idf_app/
+├── CMakeLists.txt                 # top-level: `project(my_app)`
+├── sdkconfig                      # IDF Kconfig (generated)
+├── main/
+│   ├── CMakeLists.txt             # `idf_component_register(REQUIRES nano-ros …)`
+│   ├── idf_component.yml          # declares nano-ros as a managed dependency
+│   ├── app_main.c | app_main.cpp
+│   └── config.toml
+└── components/                    # (optional) local components override
+```
+
+The `idf_component.yml` is the dependency manifest:
 
 ```yaml
 dependencies:
   nano-ros:
-    version: "*"
+    # During development — local path to your nano-ros clone:
+    path: ../../../nano-ros/integrations/esp-idf
+    # Once published to the Espressif Component Registry:
+    # version: "*"
 ```
 
-During local development:
+The shell at `integrations/esp-idf/` wraps the nano-ros root CMake
+into a standard IDF component, mapping IDF Kconfig knobs to
+`NANO_ROS_*` cache vars.
 
-```yaml
-dependencies:
-  nano-ros:
-    path: "../components/nano-ros/integrations/esp-idf"
+## Configure
+
+After `idf.py menuconfig`:
+
+```
+Component config → nano-ros
+    [*] Enable nano-ros
+        RMW backend       (zenoh)        zenoh | xrce | dds
+        ROS 2 edition     (humble)
+        Wi-Fi SSID        "your-ssid"
+        Wi-Fi password    ********
 ```
 
-Then:
+Wi-Fi creds + zenoh locator can also live in a `config.toml`
+alongside `app_main.c` if you prefer file-based config; the
+component shell reads either source.
+
+## Build
 
 ```bash
-idf.py set-target esp32
+cd my_idf_app
+idf.py set-target esp32c3        # or esp32s3, esp32, esp32c6
 idf.py build
 ```
 
-## Minimal user `main/CMakeLists.txt`
+First build cross-compiles nano-ros's Rust staticlibs + IDF
+components (~5 min). Re-builds finish in seconds.
 
-```cmake
-idf_component_register(
-    SRCS "main.c"
-    INCLUDE_DIRS "."
-    REQUIRES nano-ros)
+## Run
+
+```bash
+# Flash + monitor:
+idf.py -p /dev/ttyUSB0 flash monitor
+# Expected serial output:
+#   I (1234) nano-ros: Wi-Fi connected
+#   I (1456) nano-ros: zenoh session opened
+#   I (1567) nano-ros: Published: 1
+
+# Verify from stock ROS 2 on the same network:
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
-## Minimal user `main/main.c`
+QEMU ESP32 testing path: see the `just esp_idf` recipes — they
+boot the IDF binary in `qemu-system-xtensa` via Espressif's
+patched QEMU.
 
-```c
-#include <nros/init.h>
-#include <stdio.h>
+## GitHub source
 
-void app_main(void) {
-    nros_support_t s = nros_support_get_zero_initialized();
-    (void)s;
-    printf("nano-ros linked into ESP-IDF app\n");
-}
-```
+- IDF component shell:
+  [`integrations/esp-idf/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/esp-idf)
+- Worked IDF example:
+  [`integrations/esp-idf/examples/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/esp-idf/examples/talker)
+- Component manifest:
+  [`integrations/esp-idf/idf_component.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/esp-idf/idf_component.yml)
 
-## Configuration
+## Next
 
-`menuconfig → Component config → nano-ros` exposes:
-
-- `NROS_RMW` (`zenoh` | `dds` | `xrce` | `cyclonedds`)
-- `NROS_ROS_EDITION` (`humble` | `iron`)
-
-Both are surfaced via the component's `Kconfig.projbuild` and forward
-to `NANO_ROS_*` CMake cache vars.
-
-## Rust glue via `esp-idf-sys`
-
-ESP-IDF has no first-party Rust integration; the bridge is the
-[`esp-rs`](https://github.com/esp-rs) stack. `esp-idf-sys`'s
-`build.rs` can build ESP-IDF natively (via `embuild`) and inject
-extra components into that build tree using the
-`[package.metadata.esp-idf-sys]` keys in `Cargo.toml`.
-documents this as the canonical path for nano-ros users who want to
-drive their build from Cargo rather than `idf.py`.
-
-```toml
-# user_project/Cargo.toml
-[dependencies]
-esp-idf-svc = { version = "0.49", default-features = false }
-
-[package.metadata.esp-idf-sys]
-esp_idf_version = "branch:release/v5.1"
-esp_idf_tools_install_dir = "workspace"
-# Inject nano-ros as an extra ESP-IDF component into the embedded
-# IDF mini-project that esp-idf-sys builds.
-extra_components = [
-    { component_dirs = ["../nano-ros/integrations/esp-idf"],
-      bindings_header = "../nano-ros/packages/core/nros-c/include/nros/init.h" },
-]
-```
-
-This lands `integrations/esp-idf/CMakeLists.txt` inside the embedded
-IDF project at build time; ESP-IDF discovers it via the standard
-`COMPONENT_DIRS` walk. `bindings_header` tells `bindgen` to emit
-Rust FFI for the nano-ros C surface.
-
-See [`esp-rs/esp-idf-template`](https://github.com/esp-rs/esp-idf-template)
-for the canonical Cargo + ESP-IDF project scaffold and
-[`esp-idf-sys` BUILD-OPTIONS.md](https://github.com/esp-rs/esp-idf-sys/blob/master/BUILD-OPTIONS.md)
-for the full env / `[metadata]` schema.
+- Bare-metal `esp-hal` Rust path: [ESP32 (esp-hal)](./esp32.md).
+- PlatformIO library path: [PlatformIO library](./integration-platformio.md).
+- Multi-component IDF apps: nano-ros sits next to other Espressif
+  components (network, storage, sensors) — IDF's component manager
+  resolves them all.

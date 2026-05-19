@@ -1,285 +1,121 @@
-# QEMU Bare-Metal Testing
+# Bare-metal Cortex-M3 (QEMU)
 
-This document describes how to run bare-metal nros applications in QEMU with network connectivity.
+Single-node starter on **bare-metal** Cortex-M3 (QEMU MPS2-AN385) —
+no RTOS, no kernel scheduler. Pure cooperative spin via
+`zpico_spin_once`. Rust only. `nros-c` / `nros-cpp` are not
+supported on bare-metal targets (they assume a hosted RTOS for
+startup / heap / libc); see the
+[examples coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md#coverage-matrix)
+for the policy.
 
-## Overview
+> **When to use this path:** ultra-constrained Cortex-M0+ / M3 / M4
+> targets with no OS scheduler, no `pthread`. If you have FreeRTOS
+> or any RTOS, use the [FreeRTOS starter](./freertos.md) instead —
+> it's more ergonomic and produces smaller code overall.
 
-QEMU emulates the MPS2-AN385 board (ARM Cortex-M3) with LAN9118 Ethernet, allowing full network testing without physical hardware.
+> **Prereqs.** Clone with `just setup tier=default` already run.
+> Need `qemu-system-arm` + the Rust `thumbv7m-none-eabi` target.
 
-### Network Topology
+## Project layout
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Host System                              │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐  │
-│  │  zenohd     │    │ ROS 2 Node  │    │   Test Runner       │  │
-│  │  (router)   │    │ (rmw_zenoh) │    │   (cargo test)      │  │
-│  └──────┬──────┘    └──────┬──────┘    └──────────┬──────────┘  │
-│         │                  │                       │            │
-│         └─────────┬────────┴───────────────────────┘            │
-│                   │                                             │
-│         ┌─────────▼─────────┐                                   │
-│         │   Bridge          │  192.0.2.1                        │
-│         │   (qemu-br)       │                                   │
-│         └─────────┬─────────┘                                   │
-│                   │                                             │
-│    ┌──────────────┼──────────────┐                              │
-│    │              │              │                              │
-│    ▼              ▼              ▼                              │
-│ ┌──────────┐ ┌──────────┐ ┌──────────┐                          │
-│ │tap-qemu0 │ │tap-qemu1 │ │tap-qemu2 │                          │
-│ └────┬─────┘ └────┬─────┘ └────┬─────┘                          │
-└──────┼────────────┼────────────┼────────────────────────────────┘
-       │            │            │
-  ┌────▼────┐  ┌────▼────┐  ┌────▼────┐
-  │  QEMU   │  │  QEMU   │  │  QEMU   │
-  │ MPS2    │  │ MPS2    │  │ MPS2    │
-  │ talker  │  │listener │  │  node   │
-  │192.0.2.10│ │192.0.2.11│ │192.0.2.12│
-  └─────────┘  └─────────┘  └─────────┘
+```text
+examples/qemu-arm-baremetal/rust/zenoh/talker/
+├── Cargo.toml
+├── .cargo/config.toml         # target = thumbv7m-none-eabi
+│                              # runner = qemu-system-arm ... -kernel
+├── config.toml                # network + zenoh
+├── package.xml
+├── generated/                 # codegen output (gitignored)
+└── src/main.rs                # #[entry] fn main() -> !
 ```
 
-### IP Address Allocation
+The board crate is `nros-board-mps2-an385` (note: no `-freertos`
+suffix — this is the bare-metal variant) which provides:
 
-| Address | Device |
-|---------|--------|
-| 192.0.2.1 | Host bridge (zenohd) |
-| 192.0.2.10 | QEMU node 0 (tap-qemu0) |
-| 192.0.2.11 | QEMU node 1 (tap-qemu1) |
-| 192.0.2.12+ | Additional QEMU nodes |
+- Cortex-M3 startup + linker script
+- LAN9118 driver for smoltcp
+- `BoardIdle::wfi()` for cooperative wait
 
-## Prerequisites
+## Configure
 
-### Install QEMU
+```toml
+[network]
+ip       = "10.0.2.21"
+mac      = "02:00:00:00:00:01"
+gateway  = "10.0.2.2"
+netmask  = "255.255.255.0"
+
+[zenoh]
+locator   = "tcp/10.0.2.2:7447"
+domain_id = 0
+```
+
+QEMU Slirp networking — no host TAP / bridge / sudo. Same scheme
+as the FreeRTOS QEMU starter.
+
+## Build
 
 ```bash
-sudo apt install qemu-system-arm
+cd examples/qemu-arm-baremetal/rust/zenoh/talker
+cargo build --release
 ```
 
-### Verify Installation
+First build (~5 min) cross-compiles all of nano-ros's Rust deps for
+`thumbv7m-none-eabi`. Re-builds finish in seconds.
+
+## Run
 
 ```bash
-just check-qemu
+# 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7447):
+just zenohd
+
+# 2. Boot the talker in QEMU. The .cargo/config.toml runner does:
+cd examples/qemu-arm-baremetal/rust/zenoh/talker
+cargo run --release
+# Expected serial-over-semihosting output:
+#   nros Bare-Metal Cortex-M3 Talker
+#   Published: 1
+#   Published: 2
+#   ...
+
+# 3. Verify from stock ROS 2:
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
-## Quick Start
-
-### 1. Build QEMU Examples
-
-```bash
-just qemu build
-```
-
-### 2. Run Tests (No Networking)
-
-```bash
-# Run all QEMU bare-metal tests
-just qemu test
-```
-
-### 3. Setup Networking (For Full Stack Tests)
-
-```bash
-# Create TAP bridge (requires sudo)
-just qemu setup-network
-
-# Verify setup
-just qemu status-network
-```
-
-### 4. Run with Networking
-
-```bash
-# Terminal 1: Start zenoh router
-zenohd --listen tcp/0.0.0.0:7447
-
-# Terminal 2: Run QEMU with network
-./scripts/qemu/launch-mps2-an385.sh \
-    --tap tap-qemu0 \
-    --ip 192.0.2.10 \
-    --binary examples/qemu-arm-baremetal/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
-```
-
-### 5. Teardown
-
-```bash
-just qemu teardown-network
-```
-
-## Scripts Reference
-
-### `scripts/qemu/setup-network.sh`
-
-Creates Linux bridge and TAP interfaces for QEMU networking.
-
-```bash
-# Create default setup (2 TAP interfaces)
-sudo ./scripts/qemu/setup-network.sh
-
-# Create with more TAP interfaces
-sudo ./scripts/qemu/setup-network.sh -n 4
-
-# Show current status
-./scripts/qemu/setup-network.sh --status
-
-# Tear down
-sudo ./scripts/qemu/setup-network.sh --down
-```
-
-### `scripts/qemu/launch-mps2-an385.sh`
-
-Launches QEMU mps2-an385 with optional networking.
-
-```bash
-# Basic usage (no network)
-./scripts/qemu/launch-mps2-an385.sh --binary app.elf
-
-# With networking
-./scripts/qemu/launch-mps2-an385.sh \
-    --tap tap-qemu0 \
-    --ip 192.0.2.10 \
-    --binary app.elf
-
-# With GDB debugging
-./scripts/qemu/launch-mps2-an385.sh --gdb --binary app.elf
-# Then: arm-none-eabi-gdb -ex "target remote :1234" app.elf
-
-# Show full command without executing
-./scripts/qemu/launch-mps2-an385.sh --debug --tap tap-qemu0 --binary app.elf
-```
-
-## Justfile Recipes
-
-All under the `qemu` module: `just qemu <recipe>`.
-
-| Recipe | Description |
-|--------|-------------|
-| `build` | Build all QEMU bare-metal examples |
-| `test` | Run all QEMU bare-metal integration tests |
-| `setup-network` | Create TAP bridge (sudo) |
-| `teardown-network` | Remove TAP bridge (sudo) |
-| `status-network` | Show network status |
-| `help` | Show QEMU help |
-| `doctor` | Diagnose QEMU install status |
-
-## Available Examples
-
-### `qemu-rs-test`
-
-Basic nros test on Cortex-M3 (lm3s6965evb machine, no networking).
-
-- Tests CDR serialization
-- Tests Node API
-- Uses semihosting for output
-
-### `qemu-rs-lan9118`
-
-LAN9118 Ethernet driver test on MPS2-AN385.
-
-- Tests driver initialization
-- Tests smoltcp Device trait
-- Uses semihosting for output
-
-### `qemu-rs-talker`
-
-TCP client example with smoltcp networking on MPS2-AN385.
-
-- Connects to a TCP server on the host (192.0.2.1:7777)
-- Sends 5 test messages
-- Demonstrates LAN9118 + smoltcp integration
-- Static IP: 192.0.2.10
-
-### `qemu-rs-listener`
-
-TCP server example with smoltcp networking on MPS2-AN385.
-
-- Listens on port 7778
-- Echoes received data
-- Demonstrates TCP server pattern
-- Static IP: 192.0.2.11
-
-## Debugging
-
-### Using GDB
-
-```bash
-# Terminal 1: Start QEMU with GDB server
-./scripts/qemu/launch-mps2-an385.sh --gdb --binary app.elf
-
-# Terminal 2: Connect GDB
-arm-none-eabi-gdb \
-    -ex "target remote :1234" \
-    -ex "load" \
-    app.elf
-```
-
-### Semihosting Output
-
-All examples use semihosting for debug output. Output appears directly in the terminal where QEMU runs.
-
-### Common Issues
-
-**TAP interface not found**
-```
-Error: TAP interface tap-qemu0 does not exist
-```
-Solution: Run `just qemu setup-network`
-
-**Permission denied on TAP**
-```
-qemu-system-arm: -netdev tap,id=net0,ifname=tap-qemu0: could not open /dev/net/tun: Permission denied
-```
-Solution: Ensure TAP is owned by your user. Re-run `sudo ./scripts/qemu/setup-network.sh $USER`
-
-**QEMU not found**
-```
-Error: qemu-system-arm not found
-```
-Solution: `sudo apt install qemu-system-arm`
-
-**QEMU version compatibility**
-
-The LAN9118 networking requires QEMU 7.0+ for full TAP networking support. On older versions (e.g., QEMU 6.2), the LAN9118 driver tests work but TAP networking may have issues.
-
-Check your QEMU version:
-```bash
-qemu-system-arm --version
-```
-
-To install a newer QEMU version on Ubuntu:
-```bash
-sudo add-apt-repository ppa:canonical-server/server-backports
-sudo apt update
-sudo apt install qemu-system-arm
-```
-
-## Hardware Details
-
-### MPS2-AN385 Machine
-
-| Feature | Value |
-|---------|-------|
-| CPU | ARM Cortex-M3 |
-| Flash | 4MB at 0x00000000 |
-| SRAM | 4MB at 0x20000000 |
-| Ethernet | LAN9118 at 0x40200000 |
-
-### LAN9118 Ethernet Controller
-
-The `lan9118-smoltcp` crate provides a Rust driver for the LAN9118.
-
-```rust
-use lan9118_smoltcp::{Lan9118, Config};
-
-let config = Config {
-    base_addr: 0x4020_0000,
-    mac_addr: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
-};
-
-let mut eth = unsafe { Lan9118::new(config) }?;
-eth.init()?;
-
-// Use with smoltcp
-let mut iface = Interface::new(iface_config, &mut eth, instant);
-```
+QEMU exits via Ctrl-A x.
+
+## GitHub source
+
+- Bare-metal talker:
+  [`examples/qemu-arm-baremetal/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-baremetal/rust/zenoh/talker)
+- Board crate:
+  [`packages/boards/nros-board-mps2-an385/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-mps2-an385)
+
+## Constraints to be aware of
+
+- **No `alloc` by default.** Pure `no_std` + `heapless` for
+  bounded collections. If you need `alloc`, opt in via the
+  `alloc` feature on your board crate and supply a `#[global_allocator]`.
+- **No wake primitive.** Cooperative single-thread spin only; the
+  executor's `nros_platform_wake_*` slots return `Unsupported`.
+- **No preemption.** A long-running user callback blocks every
+  other dispatchable handle until it returns.
+- **`nros-c` / `nros-cpp` NOT supported.** These wrappers assume
+  hosted-RTOS libc + heap. Pure-Rust API only on this target.
+
+For Cortex-M3 with an RTOS, switch to the
+[FreeRTOS](./freertos.md) starter.
+
+## Next
+
+- Subscriber / service / action peers under the same
+  `examples/qemu-arm-baremetal/rust/zenoh/` tree.
+- Wake-callback opt-in: the `wake-callback` (latency-probe) bench
+  under `packages/testing/nros-bench/wake-latency-cortex-m3/` shows
+  how to feed a backend's transport-notify into the cooperative
+  spin loop on bare-metal.
+- Real hardware: same code runs on STM32F4-Discovery with a
+  different board crate (`nros-board-stm32f4-nucleo`) and a
+  different linker script.

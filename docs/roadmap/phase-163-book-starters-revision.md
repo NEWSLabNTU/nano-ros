@@ -8,7 +8,7 @@ same 5-section template (Layout / Configure / Build / Run / GitHub
 link) so users can pattern-match across languages and platforms.
 
 **Status.** In progress — 163.A (Linux starters) + 163.B (SUMMARY
-restructure) landed 2026-05-19. 163.C / 163.D / 163.E pending.
+restructure) landed 2026-05-19; 163.C (Embedded Starters rewrites) landed same day. 163.D / 163.E pending.
 
 **Priority.** P2 — user onboarding quality. Current book has a single
 Rust starter (`First Native Rust Node`); C and C++ users have no
@@ -115,29 +115,29 @@ Introduction
 
 Each RTOS page rewritten to its native layout convention.
 
-- [ ] **163.C.1** **FreeRTOS** (QEMU MPS2-AN385).
+- [x] **163.C.1** **FreeRTOS** (QEMU MPS2-AN385).
       Layout: standard nano-ros example tree
       (`examples/qemu-arm-freertos/<lang>/zenoh/talker/`). Rust / C /
       C++ all shown.
-- [ ] **163.C.2** **Zephyr** (west module). Layout: `samples/`
+- [x] **163.C.2** **Zephyr** (west module). Layout: `samples/`
       directory under a west-managed workspace; `prj.conf` +
       `west build -b <board>` flow. Reuse `integrations/zephyr/`
       shell. Rust / C / C++.
-- [ ] **163.C.3** **NuttX** (`apps/external/`). Layout: NuttX
+- [x] **163.C.3** **NuttX** (`apps/external/`). Layout: NuttX
       app shim, Kconfig entry. Reuse `integrations/nuttx/`. Rust /
       C / C++.
-- [ ] **163.C.4** **ThreadX** (Linux sim and RISC-V64 QEMU).
+- [x] **163.C.4** **ThreadX** (Linux sim and RISC-V64 QEMU).
       Layout: standard nano-ros tree under
       `examples/threadx-linux/` and `examples/threadx-riscv64/`.
       Rust + C only (no nros-cpp port).
-- [ ] **163.C.5** **ESP32** (esp-hal bare-metal + ESP-IDF
+- [x] **163.C.5** **ESP32** (esp-hal bare-metal + ESP-IDF
       component). Two halves: esp-hal Rust layout (no IDF), and
       ESP-IDF component layout via `integrations/esp-idf/`. C / C++
       for IDF path, Rust for esp-hal path.
-- [ ] **163.C.6** **Bare-metal Cortex-M3** (QEMU MPS2-AN385). Rust
+- [x] **163.C.6** **Bare-metal Cortex-M3** (QEMU MPS2-AN385). Rust
       only; nros-c / nros-cpp not supported on bare-metal (CLAUDE.md
       coverage matrix).
-- [ ] **163.C.7** **PX4 Autopilot** (external module). Layout:
+- [x] **163.C.7** **PX4 Autopilot** (external module). Layout:
       `EXTERNAL_MODULES_LOCATION` pattern. C++ only (uORB binding
       is C++-only).
 

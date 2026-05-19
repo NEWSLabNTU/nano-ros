@@ -1,302 +1,127 @@
-# PX4 Autopilot (contributor / in-tree workflow)
+# PX4 Autopilot (external module)
 
-> **Looking for the user-facing path?** This page covers building
-> nano-ros's PX4 example from this repository.
-> If you're adding nano-ros to YOUR PX4 module via
-> `EXTERNAL_MODULES_LOCATION`, see
-> [Integration: PX4 external module](./integration-px4.md) instead.
+Single-node starter on PX4 Autopilot via the **external-module
+copy-out template**. PX4's `EXTERNAL_MODULES_LOCATION` pattern lets
+downstream firmware drop in nano-ros without forking PX4 itself.
+C++ only — PX4's uORB binding is C++-only (Rust + C not in the
+[coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)).
 
-nano-ros runs on PX4 Autopilot via the **uORB transport** — a publish/subscribe
-broker that ships in every PX4 build. Unlike the network-based zenoh and
-XRCE-DDS backends, uORB is in-process: publishers and subscribers share one
-binary and one address space, with the PX4 WorkQueue scheduler driving I/O.
+> **Prereqs.** A PX4-Autopilot ≥ v1.16 clone, the matching cross
+> toolchain (e.g. `gcc-arm-none-eabi` for Pixhawk targets), and
+> `python3` with the PX4 development requirements installed
+> (`bash ./Tools/setup/ubuntu.sh` once).
 
-## Overview
+## Project layout
 
-The PX4 backend uses:
+PX4 external modules live **outside** the PX4 source tree and are
+hooked in at configure time:
 
-- **uORB** — in-process pub/sub broker, included in PX4
-- **px4-rs** — Rust framework for writing PX4 modules (separate project at
-  [github.com/aeon/px4-rs](https://github.com/aeon/px4-rs))
-- **px4-uorb** — typed `Publication<T>` / `Subscription<T>` wrappers
-- **px4-workqueue** — `#[task]` macro + waker chain integrated with PX4's
-  `ScheduledWorkItem`
+```text
+my_drone_firmware/
+├── PX4-Autopilot/                       # PX4 source tree (submodule)
+└── px4-modules/                         # passed via EXTERNAL_MODULES_LOCATION
+    └── nano-ros/                        # copy-out from integrations/px4/module-template/
+        ├── CMakeLists.txt
+        ├── Kconfig
+        ├── nros_uorb_bridge.cpp         # the actual nano-ros app
+        └── ...
+```
 
-Crates: `nros-rmw-uorb` (RMW backend) + `nros-px4` (board-style entry point).
-Both live under `packages/px4/` and are wired into the workspace via the
-`rmw-uorb` feature on `nros-node`.
-
-## Setup
-
-px4-rs is a sibling project. Symlink it into the nano-ros tree:
+The template at `integrations/px4/module-template/` is the
+canonical copy-out source — vendor it into your firmware repo, then
+point PX4 at its parent directory:
 
 ```bash
-just px4 setup            # symlinks third-party/px4-rs → $PX4_RS_DIR
-                          # default $PX4_RS_DIR = ~/repos/px4-rs
+cmake -B build -S PX4-Autopilot \
+      -DCONFIG=px4_fmu-v5_default \
+      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules
 ```
 
-Override the source location via the `PX4_RS_DIR` env var or `.env`. SITL
-integration tests additionally require `PX4_AUTOPILOT_DIR` pointing at a
-PX4-Autopilot checkout.
+Inside the module, the canonical pattern bridges uORB → nano-ros.
+The module is a `PX4Module` subclass that runs in its own work
+queue, opens an nros executor, and forwards uORB messages onto a
+zenoh / DDS topic (or vice versa).
 
-### Prerequisites
+## Configure
 
-- `~/repos/px4-rs` checked out (recent main)
-- For SITL tests: `~/repos/PX4-Autopilot` checked out + ability to build
-  `make px4_sitl`
-- For target builds: `arm-none-eabi-gcc` (Pixhawk) or `riscv32-elf-gcc`
-- Rust toolchain ≥ 1.85 (px4-rs uses edition 2024)
-
-Run `just px4 doctor` to verify install.
-
-## Quick build
+PX4 uses Kconfig for module enablement:
 
 ```bash
-just px4 build            # cargo check on host (std mock)
-just px4 test             # round-trip test via std mock broker
-just px4 ci               # check + test
+cd PX4-Autopilot
+make px4_fmu-v5_default menuconfig
+# Navigate to:
+#   External modules → nano-ros
+#       [*] Enable nano-ros uORB bridge
+#           RMW backend       (zenoh)         zenoh | xrce | dds
+#           ROS 2 edition     (humble)
+#           Default locator   "tcp/10.41.0.1:7447"
 ```
 
-## Writing a PX4 nano-ros module
-
-PX4 uORB messages are `#[repr(C)]` POD structs generated from `.msg` files
-by `px4-msg-codegen`. The same `.msg` definition is used on both ends of the
-pub/sub wire — there is no CDR. Each topic must be **registered once** at
-module init so nano-ros can map ROS 2 topic strings to typed
-`Publication<T>`/`Subscription<T>` instances.
-
-### Direct typed API (recommended)
-
-This is the primary path: PX4-generated message types + raw pub/sub
-straight from `px4-uorb`, with topic-name validation against
-`topics.toml`. No CDR, no type erasure, no trampoline registry. The
-entire API surface lives in [`nros::uorb`] — you never reach into
-`nros-rmw-uorb` or `px4-uorb` directly from your application code.
-
-```rust
-#![no_std]
-
-use nros::uorb::{publication, subscription};
-use px4_uorb::UorbTopic;
-
-// Generated by px4-msg-codegen from msg/SensorPing.msg
-#[px4_msg_macros::px4_message("./msg/SensorPing.msg")]
-pub struct sensor_ping;
-
-#[px4_workqueue::task(wq = "rate_ctrl")]
-async fn talker() {
-    let pub_ = publication::<sensor_ping>(
-        "/fmu/out/sensor_ping",
-        0,
-    ).expect("publication");
-
-    loop {
-        let msg = SensorPing { seq: 0, /* ... */ };
-        pub_.publish(&msg).ok();
-        // throttle via px4-workqueue's Timer or interval task
-    }
-}
-
-#[px4_workqueue::task(wq = "rate_ctrl")]
-async fn listener() {
-    let sub = subscription::<sensor_ping>(
-        "/fmu/out/sensor_ping",
-        0,
-    ).expect("subscription");
-
-    loop {
-        let msg: SensorPing = sub.recv().await;
-        // process msg
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn nros_talker_main(_argc: i32, _argv: *mut *mut u8) -> i32 {
-    talker::spawn().forget();
-    listener::spawn().forget();
-    0
-}
-```
-
-`publication`/`subscription` validate the ROS 2 topic name is in
-`topics.toml` AND that the mapped uORB name matches `T::metadata().o_name`.
-Mismatches fail at module init rather than first publish, catching
-copy-paste errors early.
-
-### Typeless API via `Executor` / `Node` (recommended for ROS-shaped code)
-
-For users who want their PX4 module to look just like the zenoh / xrce
-examples — same `Executor::open` → `create_node` → `create_publisher` /
-`create_subscription` shape — use the **typeless API**. It bypasses CDR
-serialization (which doesn't fit uORB's raw memcpy semantics) by handing
-you a byte-shaped publisher/subscriber. Your code does its own
-serialization (memcpy of a `#[repr(C)]` struct).
-
-```rust
-use core::time::Duration;
-use nros::{Executor, ExecutorConfig};
-
-// One-time at boot: enrol the PX4 message type with the uORB trampoline.
-nros::uorb::register::<sensor_ping>("/fmu/out/sensor_ping", 0);
-
-let config = ExecutorConfig::new("").node_name("talker");
-let mut executor = Executor::open(&config)?;
-let mut node = executor.create_node("talker")?;
-
-// Typeless publisher: same shape as create_publisher::<M>, but no
-// M: RosMessage bound. The (type_name, type_hash) strings are used by
-// backends that care about discovery; uORB ignores them.
-let publisher = node.create_publisher_raw(
-    "/fmu/out/sensor_ping",
-    "px4::SensorPing",
-    "0",
-)?;
-
-let msg = SensorPing { seq: 0, /* ... */ };
-let bytes: &[u8] = unsafe {
-    core::slice::from_raw_parts(
-        &msg as *const SensorPing as *const u8,
-        core::mem::size_of::<SensorPing>(),
-    )
-};
-publisher.publish_raw(bytes)?;
-
-// Subscription mirror:
-let mut subscriber = node.create_subscription_raw(
-    "/fmu/out/sensor_ping",
-    "px4::SensorPing",
-    "0",
-)?;
-loop {
-    let _ = executor.spin_once(Duration::from_millis(10));
-    if let Some(len) = subscriber.try_recv_raw()? {
-        let recv: SensorPing = unsafe {
-            core::ptr::read_unaligned(subscriber.buffer().as_ptr() as *const SensorPing)
-        };
-        // process recv
-        let _ = len;
-    }
-}
-```
-
-`create_publisher_raw` / `create_subscription_raw` work for **any** RMW
-backend — zenoh, XRCE-DDS, uORB. Bytes you supply must match the
-backend's wire format (CDR for zenoh / XRCE / DDS; raw POD for uORB).
-
-### Direct typed API (lowest overhead)
-
-This is the alternative path: PX4-generated message types + raw pub/sub
-straight from `px4-uorb`, with topic-name validation against
-`topics.toml`. No CDR, no type erasure, no trampoline registry. The
-entire API surface lives in [`nros::uorb`] — you never reach into
-`nros-rmw-uorb` or `px4-uorb` directly from your application code.
-
-```rust
-#![no_std]
-
-use nros::uorb::{publication, subscription};
-use px4_uorb::UorbTopic;
-
-// Generated by px4-msg-codegen from msg/SensorPing.msg
-#[px4_msg_macros::px4_message("./msg/SensorPing.msg")]
-pub struct sensor_ping;
-
-#[px4_workqueue::task(wq = "rate_ctrl")]
-async fn talker() {
-    let pub_ = publication::<sensor_ping>(
-        "/fmu/out/sensor_ping",
-        0,
-    ).expect("publication");
-
-    loop {
-        let msg = SensorPing { seq: 0, /* ... */ };
-        pub_.publish(&msg).ok();
-        // throttle via px4-workqueue's Timer or interval task
-    }
-}
-
-#[px4_workqueue::task(wq = "rate_ctrl")]
-async fn listener() {
-    let sub = subscription::<sensor_ping>(
-        "/fmu/out/sensor_ping",
-        0,
-    ).expect("subscription");
-
-    loop {
-        let msg: SensorPing = sub.recv().await;
-        // process msg
-    }
-}
-```
-
-`publication`/`subscription` validate the ROS 2 topic name is in
-`topics.toml` AND that the mapped uORB name matches `T::metadata().o_name`.
-Mismatches fail at module init rather than first publish.
-
-The direct typed API has zero registry overhead but couples your code
-tightly to uORB-specific entry points. **Prefer the typeless `Node`
-API** when you want code that reads like the zenoh / xrce examples and
-keeps the door open for swapping RMW backends later.
-
-## Limitations
-
-- **Services and actions return `Backend("uORB: services not yet supported")`.**
-  uORB has no native request/response; a paired-topic protocol with a
-  correlation-id field is planned. For service-heavy workloads use the
-  XRCE-DDS backend.
-- **No CDR translation.** Bytes flowing through nano-ros's `publish_raw` are
-  interpreted directly as the PX4 message struct via memcpy. ROS 2 messages
-  with non-PX4 layouts (e.g. `sensor_msgs/msg/Imu`) require schema-mapping
-  shims that we do not yet generate. Use the same `.msg` source on both ends.
-- **Spin loop is polling.** `nros-px4::run` calls `executor.spin_once`
-  every 10 ms. Future work will replace this with a waker-driven
-  `ScheduleNow()` integration so subscriber callbacks wake the hosting
-  WorkItem on demand.
-- **Discovery is static.** uORB topics must be registered at compile time
-  via `nros::uorb::register::<T>(name, instance)` calls. There is no
-  runtime topic discovery.
-
-## ROS 2 ↔ uORB topic mapping
-
-The mapping table lives in `packages/px4/nros-rmw-uorb/topics.toml`. It seeds
-a compile-time `phf::Map` (built by `build.rs`) used by the RMW session to
-translate ROS 2 topic names to uORB descriptors. Initial subset mirrors
-PX4-Autopilot's `src/modules/uxrce_dds_client/dds_topics.yaml`. To add a
-topic:
-
-```toml
-[[topic]]
-ros = "/fmu/out/your_topic"
-uorb = "your_topic"
-instance = 0
-```
-
-Then re-run `cargo build` — the new entry is baked into `nros-rmw-uorb`.
-
-## Testing
-
-### Host-mock unit tests (no SITL)
-
-px4-uorb ships an in-process broker keyed by topic name. Enable via the
-`std` feature; nano-ros tests use it through the `test-helpers` feature:
+Build-time CMake cache vars also work:
 
 ```bash
-cargo test -p nros-rmw-uorb --features 'std test-helpers' --test round_trip
+cmake -B build -S PX4-Autopilot \
+      -DCONFIG=px4_fmu-v5_default \
+      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules \
+      -DNANO_ROS_RMW=zenoh
 ```
 
-3 tests cover the registry, publish/subscribe round-trip, and error paths.
-
-### SITL E2E tests (requires PX4-Autopilot)
-
-Future work will add an integration test that links a nano-ros module into
-the PX4 simulator, modelled on `px4-rs/tests/sitl/`'s `Px4Sitl::boot()` /
-`shell()` / `wait_for_log()` fixture. Run via:
+## Build
 
 ```bash
-PX4_AUTOPILOT_DIR=~/repos/PX4-Autopilot just px4 test-sitl
+cd PX4-Autopilot
+make px4_fmu-v5_default
+# Or for the SITL simulator (POSIX target — easier to develop against):
+make px4_sitl_default gazebo
 ```
 
-## See also
+The first build cross-compiles nano-ros's Rust staticlibs alongside
+PX4's NuttX kernel + apps (~10 min on a fresh checkout).
 
-- [docs/design/px4-rmw-uorb.md](../../../docs/design/px4-rmw-uorb.md) — design notes
-- [px4-rs README](https://github.com/aeon/px4-rs) — upstream framework
+## Run
+
+```bash
+# SITL: PX4 boots Gazebo + the autopilot binary
+cd PX4-Autopilot
+make px4_sitl_default gazebo
+# In the PX4 console:
+pxh> nros_uorb_bridge start
+
+# Real hardware (Pixhawk): flash via QGroundControl or
+#     `make px4_fmu-v5_default upload` over the bootloader USB
+
+# Verify from stock ROS 2 on the same network:
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /vehicle_local_position px4_msgs/msg/VehicleLocalPosition
+```
+
+## GitHub source
+
+- PX4 external-module template:
+  [`integrations/px4/module-template/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/px4/module-template)
+- Worked PX4 example:
+  [`examples/px4/cpp/uorb/nros-register-check/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/px4/cpp/uorb/nros-register-check)
+- PX4 integration roadmap notes:
+  [`integrations/px4/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/px4/README.md)
+
+## Constraints to be aware of
+
+- **uORB binding is C++-only.** The PX4 example collapses uORB
+  registration to a C++ port; Rust / C variants exist for non-PX4
+  RTOSes but not for PX4.
+- **PX4's NuttX kernel.** Underneath, PX4 runs NuttX; if you need
+  to debug at the kernel layer, the
+  [NuttX starter](./integration-nuttx.md) page applies too.
+- **uORB throughput vs zenoh hops.** uORB is in-process pub/sub at
+  ~µs latency; zenoh adds network-RTT. Plan accordingly when
+  bridging high-rate streams.
+
+## Next
+
+- Add your own uORB topics to the bridge: see the
+  `nros_uorb_bridge.cpp` template's topic-table section.
+- Multi-vehicle: PX4-XRCE-Agent → nano-ros XRCE backend gives you
+  the standard PX4-ROS bridge with nano-ros on the autopilot side.
+- For pure-NuttX (no PX4) firmware: see the
+  [NuttX starter](./integration-nuttx.md).

@@ -1,153 +1,137 @@
-# ThreadX
+# ThreadX (Linux sim / RISC-V64 QEMU)
 
-nano-ros runs on Eclipse ThreadX with NetX Duo networking. Two targets are
-supported: a Linux simulation environment and a RISC-V 64-bit QEMU machine.
+Single-node starter on Microsoft Azure RTOS ThreadX + NetX Duo (BSD
+socket layer). Two flavours ship in-tree:
 
-## Overview
+- **threadx-linux** — ThreadX user-space simulator on Linux. Fast
+  build, host network stack, ideal for development.
+- **threadx-riscv64** — QEMU `virt` machine with the RISC-V64 GCC
+  toolchain. Full kernel + NetX Duo TCP/IP stack.
 
-The ThreadX platform uses:
+Rust and C are supported on both flavours; nros-cpp does not target
+ThreadX (not in the
+[coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)).
 
-- **ThreadX** (Eclipse ThreadX) — pre-emptive RTOS kernel with deterministic scheduling
-- **NetX Duo** — TCP/IP network stack with BSD socket compatibility layer
-- **zenoh-pico** — Zenoh transport over NetX Duo BSD sockets
+> **Prereqs.** Clone with `just setup tier=default` already run. For
+> threadx-riscv64 also need a `riscv64-unknown-linux-gnu-gcc` cross
+> toolchain on `PATH` plus `qemu-system-riscv64`.
 
-Board crates:
-- `nros-board-threadx-qemu-riscv64` — QEMU RISC-V 64-bit virt machine
-- `nros-board-threadx-linux` — Linux simulation (ThreadX Linux port)
+## Project layout
 
-## Safety Certifications
+Each example is a standalone Cargo or CMake project under
+`examples/threadx-{linux,riscv64}/<lang>/zenoh/<example>/`:
 
-ThreadX holds the highest level of safety certifications across multiple
-standards:
+```text
+examples/threadx-linux/
+├── rust/zenoh/talker/                 # Cargo, target = x86_64-unknown-linux-gnu
+│   ├── Cargo.toml
+│   ├── package.xml
+│   ├── generated/
+│   └── src/main.rs
+└── c/zenoh/talker/                    # CMake, add_subdirectory
+    ├── CMakeLists.txt
+    ├── package.xml
+    └── src/main.c
 
-- **IEC 61508 SIL 4** — functional safety for industrial systems
-- **IEC 62304 Class C** — medical device software
-- **ISO 26262 ASIL D** — automotive functional safety
-
-NetX Duo is certified to the same IEC 61508 SIL 4 standard. Combined with
-nano-ros's Kani/Verus formal verification, this creates a uniquely strong
-safety argument for safety-critical deployments.
-
-## Prerequisites
-
-### Linux Simulation
-
-- Linux host with `CAP_NET_RAW` capability
-- Rust nightly toolchain
-
-### QEMU RISC-V 64-bit
-
-| Tool | Purpose |
-|------|---------|
-| `qemu-system-riscv64` | RISC-V system emulation |
-| `riscv64-unknown-elf-gcc` | RISC-V bare-metal cross-compiler |
-| Rust nightly + `riscv64gc-unknown-none-elf` | Rust cross-compilation |
-
-```bash
-sudo apt install qemu-system-misc gcc-riscv64-unknown-elf
-rustup target add riscv64gc-unknown-none-elf
+examples/threadx-riscv64/
+├── rust/zenoh/talker/                 # Cargo, target = riscv64gc-unknown-linux-gnu
+│   └── ...
+└── c/zenoh/talker/
+    └── ...
 ```
 
-## Environment Variables
+ThreadX-linux runs as a regular host process — no QEMU. NetX Duo
+uses the `nx_bsd_*` BSD socket shim layered on the host TCP stack
+(threadx-linux variant) or on its own NetX Duo TCP/IP stack
+(riscv64 variant).
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `THREADX_DIR` | `third-party/threadx/kernel` | ThreadX kernel source |
-| `THREADX_CONFIG_DIR` | Board crate's `config/` | ThreadX config (`tx_user.h`) |
-| `NETX_DIR` | `third-party/threadx/netxduo` | NetX Duo source |
-| `NETX_CONFIG_DIR` | Board crate's `config/` | NetX Duo config (`nx_user.h`) |
+## Configure
 
-## Building
-
-```bash
-# Download ThreadX + NetX Duo
-just threadx_linux setup     # Linux simulation SDK
-just threadx_riscv64 setup   # QEMU RISC-V SDK
-
-# Build Linux simulation examples
-just threadx_linux build
-
-# Build QEMU RISC-V examples
-just threadx_riscv64 build
+```toml
+# threadx-linux talker config.toml
+[zenoh]
+locator   = "tcp/127.0.0.1:7447"
+domain_id = 0
 ```
 
-### Available Examples
-
-Zenoh examples (zenoh-pico backend) live in
-`examples/threadx-linux/rust/zenoh/` and
-`examples/qemu-riscv64-threadx/rust/zenoh/`:
-
-| Example | Description |
-|---------|-------------|
-| `talker` | Publishes `std_msgs/Int32` on `/chatter` |
-| `listener` | Subscribes to `std_msgs/Int32` on `/chatter` |
-| `service-server` | Serves `AddTwoInts` on `/add_two_ints` |
-| `service-client` | Calls `AddTwoInts` on `/add_two_ints` |
-| `action-server` | Serves `Fibonacci` action on `/fibonacci` |
-| `action-client` | Sends `Fibonacci` goal on `/fibonacci` |
-
-DDS examples (dust-dds + NetX Duo BSD shim, brokerless RTPS over UDP)
-live in `examples/threadx-linux/rust/dds/` and
-`examples/qemu-riscv64-threadx/rust/dds/`:
-
-| Example | Description |
-|---------|-------------|
-| `talker` | Publishes `std_msgs/Int32` on `/chatter` over RTPS |
-| `listener` | Subscribes to `std_msgs/Int32` on `/chatter` over RTPS |
-
-## Testing
-
-```bash
-just test-threadx          # Both Linux sim + QEMU RISC-V
-just test-threadx-linux    # Linux simulation only
-just test-threadx-riscv64  # QEMU RISC-V only
+```toml
+# threadx-riscv64 talker config.toml — QEMU Slirp
+[zenoh]
+locator   = "tcp/10.0.2.2:7447"
+domain_id = 0
 ```
 
-### Network Configuration (QEMU RISC-V)
+The ThreadX-Linux fixture intentionally pins zenohd to `0.0.0.0`
+(not `127.0.0.1`) because the veth bridge needs an externally-
+reachable bind. The QEMU-RISC-V64 fixture uses Slirp's default
+`10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 
-Tests use TAP networking with virtio-net:
-
-| Role | IP Address | TAP Device |
-|------|-----------|------------|
-| zenohd (host) | 192.0.3.1 | br-qemu |
-| Talker/Publisher | 192.0.3.10 | tap-qemu0 |
-| Listener/Sub | 192.0.3.11 | tap-qemu1 |
-
-### Linux Simulation
-
-Linux simulation tests use a TAP network driver. Set up the bridge
-and TAP devices once:
+## Build
 
 ```bash
-sudo just setup-network
+# threadx-linux:
+just threadx_linux setup            # build ThreadX + NetX Duo + NSOS shim
+just threadx_linux build-fixtures   # build all rust + c examples
+
+# Single example:
+cd examples/threadx-linux/rust/zenoh/talker
+cargo build --release
+
+# threadx-riscv64:
+just threadx_riscv64 setup
+just threadx_riscv64 build-fixtures
 ```
 
-## Architecture
+First setup builds ThreadX + NetX Duo (~3 min). Subsequent example
+builds finish in seconds.
 
-### Board Crates
+## Run
 
-Both board crates follow the standard `Config` / `run()` pattern documented in the [Custom Board Package](../porting/custom-board.md) guide.
+```bash
+# threadx-linux (no QEMU):
+just zenohd setup && just zenohd            # bring up router
+cd examples/threadx-linux/rust/zenoh/talker
+cargo run --release
+# Expected:
+#   nros ThreadX-Linux Talker
+#   Published: 1
+#   Published: 2
+#   ...
 
-- **`nros-board-threadx-linux`** -- runs the full ThreadX kernel as pthreads on a Linux host. NetX Duo uses a TAP network driver (`tap-netx` in `packages/drivers/`) for Ethernet I/O. This provides the fastest iteration cycle for ThreadX-specific code.
-- **`nros-board-threadx-qemu-riscv64`** -- runs ThreadX's RISC-V port on QEMU virt machine with real preemptive scheduling. NetX Duo uses a virtio-net driver (`virtio-net-netx` in `packages/drivers/`) for Ethernet I/O over QEMU's virtio MMIO interface.
+# threadx-riscv64 (QEMU virt):
+qemu-system-riscv64 -machine virt -cpu rv64 -smp 1 -m 256M \
+                    -nographic \
+                    -netdev user,id=net0 \
+                    -device virtio-net-device,netdev=net0 \
+                    -kernel ./build/talker.elf
 
-### Key Design Points
+# Verify from stock ROS 2:
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /chatter std_msgs/msg/Int32
+```
 
-- **Multi-threaded**: ThreadX provides real threads/mutexes. zenoh-pico uses
-  background read/lease tasks.
-- **NetX Duo BSD sockets**: POSIX-compatible `socket()`/`connect()`/`select()`
-  -- same code path as zenoh-pico's POSIX platform.
-- **Build via `cc` crate**: ThreadX kernel + NetX Duo compiled in the board
-  crate's `build.rs` (no external CMake needed).
-- **`no_std` target**: `riscv64gc-unknown-none-elf` for QEMU; Linux simulation
-  uses the host toolchain.
+For batch testing: `just threadx_linux test` runs every pubsub /
+service / action against an in-test zenohd.
 
-## TSN Support
+## GitHub source
 
-NetX Duo provides Time-Sensitive Networking (TSN) capabilities (CBS, TAS,
-FPE, PTP), enabling deterministic, low-latency communication for industrial
-and automotive use cases. TSN support requires TSN-capable hardware.
+- ThreadX-Linux Rust:
+  [`examples/threadx-linux/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/rust/zenoh/talker)
+- ThreadX-Linux C:
+  [`examples/threadx-linux/c/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/c/zenoh/talker)
+- ThreadX-RISC-V64 Rust:
+  [`examples/threadx-riscv64/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-riscv64/rust/zenoh/talker)
+- Board crates:
+  [`packages/boards/nros-board-threadx-linux/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-threadx-linux),
+  [`packages/boards/nros-board-riscv64-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-riscv64-qemu)
 
-## Status
+## Next
 
-ThreadX platform support is in active development.
+- Subscriber + service + action peers in the same example tree.
+- DDS on ThreadX: dust-DDS works in Rust, gated on the `rmw-dds-cffi`
+  feature axis; see
+  [Choosing an RMW Backend](../user-guide/rmw-backends.md).
+- Real hardware: same code runs against ThreadX vendor BSPs (Renesas
+  Synergy, MIMXRT, etc.); replace the QEMU board crate with a vendor
+  board crate.

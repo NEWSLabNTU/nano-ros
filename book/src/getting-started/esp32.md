@@ -1,304 +1,104 @@
-# ESP32-C3 Development Setup
+# ESP32 (esp-hal, bare-metal Rust)
 
-Guide for setting up ESP32-C3 development with nros.
+Single-node starter on ESP32-C3 / ESP32-S3 using the bare-metal
+`esp-hal` Rust path — no ESP-IDF. For the ESP-IDF component path
+(C / C++ apps), see [ESP32 (ESP-IDF
+component)](./integration-esp-idf.md).
 
-## Hardware
+> **Prereqs.** Clone with `just setup tier=default` already run.
+> `espflash` on `PATH` (`cargo install espflash`). For ESP32-C3 the
+> `riscv32imc-unknown-none-elf` Rust target is the toolchain;
+> `just esp32 setup` pulls it.
 
-| Board | Chip | Arch | WiFi | Price |
-|-------|------|------|------|-------|
-| ESP32-C3-DevKitC | ESP32-C3 | RISC-V (RV32IMC) | 802.11 b/g/n | ~$8 |
-| ESP32-C6-DevKitC | ESP32-C6 | RISC-V (RV32IMAC) | WiFi 6 | ~$12 |
+## Project layout
 
-ESP32-C3 is the primary target. It uses upstream Rust (no forked compiler).
+Each example is a standalone Cargo package targeting
+`riscv32imc-unknown-none-elf` (ESP32-C3) or `xtensa-esp32s3-none-elf`
+(ESP32-S3). The board crate (`nros-board-esp32` or
+`nros-board-esp32-qemu`) wraps the wifi / esp-hal init.
 
-## Prerequisites
-
-### 1. Rust Toolchains
-
-```bash
-# Stable (for workspace builds)
-rustup target add riscv32imc-unknown-none-elf
-
-# Nightly (required for ESP32 examples -- build-std)
-rustup toolchain install nightly
-rustup component add --toolchain nightly rust-src
+```text
+examples/esp32/rust/zenoh/talker/
+├── Cargo.toml
+├── .cargo/config.toml         # target = riscv32imc-unknown-none-elf
+│                              # runner = espflash flash --monitor
+├── config.toml                # wifi credentials + zenoh locator
+├── package.xml
+├── generated/
+└── src/main.rs                # esp-hal init → nros_app_main
 ```
 
-Or use `just setup` which installs both automatically.
+The `Cargo.toml` pulls `nros-board-esp32` (real hardware) or
+`nros-board-esp32-qemu` (QEMU ESP32 / ESP32-C3 fork).
 
-### 2. RISC-V GCC Cross-Compiler
+## Configure
 
-Required for building zenoh-pico C library for RISC-V.
-
-```bash
-# Ubuntu/Debian
-sudo apt install gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
-```
-
-The `picolibc` package provides C standard library headers (`stdint.h`, `stdlib.h`, etc.) for bare-metal RISC-V targets.
-
-### 3. Flashing Tool
-
-```bash
-cargo install espflash --locked
-```
-
-Also installed by `just setup`.
-
-### 4. USB Permissions (Linux)
-
-ESP32-C3 dev boards use USB-UART bridges. Add a udev rule to avoid needing `sudo` for flashing:
-
-```bash
-sudo tee /etc/udev/rules.d/99-esp32.rules << 'EOF'
-# CP210x (Silicon Labs USB-UART)
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", MODE="0666"
-# CH340/CH341
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", MODE="0666"
-# FTDI
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="0403", MODE="0666"
-# ESP32-C3 built-in USB-JTAG
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", MODE="0666"
-EOF
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-## Quick Start
-
-### Build Hello World
-
-```bash
-cd examples/esp32/hello-world
-cargo +nightly build --release
-```
-
-### Flash to Device
-
-Connect the ESP32-C3 board via USB, then:
-
-```bash
-cd examples/esp32/hello-world
-cargo +nightly run --release
-```
-
-This builds, flashes, and opens the serial monitor (`espflash flash --monitor` is configured as the cargo runner).
-
-### Build zenoh-pico for RISC-V
-
-zenoh-pico for the ESP32 RISC-V target is built via:
-
-```bash
-just esp32 build           # WiFi BSP (production hardware)
-just esp32 build-qemu      # QEMU OpenETH variant
-```
-
-Both invoke `cargo build` against the BSP, which links against
-zenoh-pico vendored under `packages/zpico/zpico-sys/zenoh-pico/`.
-
-## Project Structure
-
-ESP32 support spans three directories:
-
-```
-packages/boards/
-├── nros-board-esp32/            # WiFi BSP crate (esp-radio + smoltcp)
-└── nros-board-esp32-qemu/       # QEMU BSP crate (OpenETH + smoltcp, no WiFi deps)
-
-packages/drivers/
-└── openeth-smoltcp/       # OpenCores Ethernet MAC driver for smoltcp
-
-packages/core/
-├── nros-platform-esp32/       # WiFi platform primitives (clock, memory, sleep, random)
-└── nros-platform-esp32-qemu/  # QEMU platform primitives
-
-examples/esp32/rust/
-├── zenoh/
-│   ├── talker/            # WiFi publisher (nros-board-esp32 BSP)
-│   └── listener/          # WiFi subscriber (nros-board-esp32 BSP)
-└── standalone/
-    └── hello-world/       # Minimal UART print (no nros deps)
-
-examples/qemu-esp32-baremetal/rust/zenoh/
-├── talker/                # QEMU publisher (nros-board-esp32-qemu BSP)
-└── listener/              # QEMU subscriber (nros-board-esp32-qemu BSP)
-```
-
-All ESP32 examples are standalone packages (excluded from the workspace) because they require nightly + `build-std`.
-
-## ESP-HAL Crate Versions
-
-These are the crate versions used for ESP32-C3 support (pinned with `~` to avoid breaking updates):
-
-| Crate | Version | Purpose |
-|-------|---------|---------|
-| `esp-hal` | ~1.0.0 | Hardware Abstraction Layer |
-| `esp-backtrace` | ~0.18.0 | Panic handler + backtrace |
-| `esp-println` | ~0.16.0 | UART print output |
-| `esp-bootloader-esp-idf` | ~0.4.0 | ESP-IDF bootloader compatibility |
-
-All crates require the `esp32c3` feature flag. The `unstable` feature on `esp-hal` is needed for `delay` and other commonly-used modules.
-
-## Cargo Configuration
-
-Each ESP32 example needs `.cargo/config.toml`:
+`config.toml` carries wifi + zenoh:
 
 ```toml
-[target.riscv32imc-unknown-none-elf]
-runner = "espflash flash --monitor"
-rustflags = ["-C", "link-arg=-Tlinkall.x", "-C", "force-frame-pointers"]
+[network]
+ssid     = "your-wifi-ssid"
+password = "your-wifi-password"
 
-[build]
-target = "riscv32imc-unknown-none-elf"
-
-[unstable]
-build-std = ["core"]
+[zenoh]
+locator   = "tcp/192.168.1.100:7447"     # host running zenohd
+domain_id = 0
 ```
 
-Key points:
-- `build-std = ["core"]` requires nightly Rust
-- Add `"alloc"` to `build-std` if heap allocation is needed (WiFi examples)
-- `-Tlinkall.x` is the RISC-V linker script from `esp-riscv-rt`
+For QEMU ESP32 (no real wifi) the board crate falls back to the
+host loopback via TAP.
 
-## QEMU ESP32-C3 Testing
-
-Espressif's QEMU fork emulates ESP32-C3 with OpenCores Ethernet, enabling full E2E testing without physical hardware.
-
-### Install Espressif QEMU
+## Build
 
 ```bash
-just setup                                    # Includes QEMU check
-./scripts/esp32/install-espressif-qemu.sh     # Or install manually
-```
-
-Provides `qemu-system-riscv32` with the `-M esp32c3` machine type.
-
-### Build and Run QEMU Examples
-
-```bash
-# Build QEMU examples + create flash images
-just esp32 build-qemu
-
-# Boot test (no networking)
-just esp32 test-basic
-```
-
-### Networked E2E Tests
-
-The QEMU tests use TAP networking to connect ESP32-C3 instances through zenohd:
-
-```
-┌──────────────────┐         ┌─────────┐         ┌──────────────────┐
-│ QEMU ESP32-C3    │  TAP    │ zenohd  │  TAP    │ QEMU ESP32-C3    │
-│  talker          │◄───────►│ (host)  │◄───────►│  listener        │
-│  192.0.3.10      │  eth    │192.0.3.1│  eth    │  192.0.3.11      │
-│ OpenETH + smoltcp│         │         │         │ OpenETH + smoltcp│
-└──────────────────┘         └─────────┘         └──────────────────┘
-```
-
-Run the full test suite:
-
-```bash
-# Setup TAP network (one-time, requires sudo)
-sudo ./scripts/qemu/setup-network.sh
-
-# Run all ESP32-C3 QEMU tests (builds zenohd automatically)
-just esp32 test
-```
-
-Tests include boot verification, ESP32-to-ESP32 pub/sub, and ESP32-to-native interop.
-
-### Key Notes
-
-- Requires `espflash` for flash image creation (`espflash save-image --merge`)
-- Uses `-icount 3` for instruction timing (simulates 125MHz)
-- Must use zenohd from submodule (`just build-zenohd`) -- system zenohd may be incompatible
-- Each QEMU peer uses a separate TAP device (`tap-qemu0`, `tap-qemu1`)
-
-## WiFi BSP Examples
-
-The WiFi examples use the `nros-board-esp32` BSP crate, which handles WiFi initialization, DHCP, and zenoh session setup.
-
-### Build
-
-WiFi credentials are passed as environment variables:
-
-```bash
-SSID=MyNetwork PASSWORD=secret just esp32 build
-```
-
-### Flash and Monitor
-
-Connect the ESP32-C3 board via USB, then flash:
-
-```bash
+# Real hardware (ESP32-C3):
+just esp32 setup           # rustup target add riscv32imc-unknown-none-elf
 cd examples/esp32/rust/zenoh/talker
-espflash flash --monitor target/riscv32imc-unknown-none-elf/release/esp32-bsp-talker
+cargo build --release
+
+# QEMU ESP32 (qemu-system-xtensa or qemu-system-riscv32):
+just esp32 build           # builds for the QEMU board crate
 ```
 
-### BSP API
+## Run
 
-The `nros-board-esp32` crate provides `run_node()` for a minimal setup:
-
-```rust
-use nros_board_esp32::prelude::*;
-
-run_node(
-    WifiConfig::new("MyNetwork", "password123"),
-    |node| {
-        let publisher = node.create_publisher("demo/esp32")?;
-        loop {
-            node.spin_once(1000);
-            publisher.publish(&data)?;
-        }
-    },
-)
-```
-
-For advanced configuration (static IP, custom zenoh locator):
-
-```rust
-run_node_with_config(
-    WifiConfig::new("MyNetwork", "password123"),
-    NodeConfig::new()
-        .zenoh_locator("tcp/192.168.1.1:7447")
-        .node_name("esp32_sensor")
-        .ip_mode(IpMode::Dhcp),
-    |node| { /* ... */ },
-)
-```
-
-See `packages/boards/nros-board-esp32/` for full API documentation.
-
-### Requirements
-
-- Physical ESP32-C3 board (WiFi testing is not available in QEMU)
-- WiFi network reachable by both ESP32 and the zenohd router host
-- zenohd running on a host the ESP32 can reach over WiFi
-
-## Troubleshooting
-
-### `error: no matching package found` for esp-hal
-
-Ensure you're using nightly: `cargo +nightly build --release`
-
-### `error[E0463]: can't find crate for core`
-
-The `build-std` config requires nightly and `rust-src`:
 ```bash
-rustup component add --toolchain nightly rust-src
+# Real hardware:
+cd examples/esp32/rust/zenoh/talker
+cargo run --release        # invokes `espflash flash --monitor`
+# Expected serial output:
+#   ESP32-C3 booting...
+#   Wifi connected: 192.168.1.42
+#   Published: 1
+#   Published: 2
+
+# QEMU ESP32:
+just esp32 talker          # boots the talker binary in qemu-system-xtensa
+
+# Verify from stock ROS 2 on the same network:
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
-### `Permission denied` when flashing
+## GitHub source
 
-Add the udev rules listed above, or use `sudo` temporarily:
-```bash
-sudo cargo +nightly run --release
-```
+- esp-hal Rust:
+  [`examples/esp32/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/zenoh/talker)
+- QEMU ESP32 talker:
+  [`examples/esp32-qemu/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32-qemu/rust/zenoh/talker)
+- Board crates:
+  [`packages/boards/nros-board-esp32/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32),
+  [`packages/boards/nros-board-esp32-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32-qemu)
 
-### zenoh-pico build fails with `stdint.h: No such file or directory`
+## Next
 
-Install the picolibc C library headers:
-```bash
-sudo apt install picolibc-riscv64-unknown-elf
-```
+- Subscriber + service + action peer directories under the same
+  `examples/esp32/rust/zenoh/`.
+- ESP-IDF component path for C / C++ apps:
+  [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
+- PlatformIO library path:
+  [PlatformIO library](./integration-platformio.md).
+- ESP32-S3 (Xtensa) — same code shape; the toolchain swap is
+  `rustup target add xtensa-esp32s3-none-elf` and a different board
+  crate.
