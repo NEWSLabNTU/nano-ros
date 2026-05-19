@@ -201,7 +201,7 @@ bridge_wcet = Σ poll_wcet_i + Σ dispatch_wcet_j
 ```
 
 Read the per-backend numbers in the [Real-time budget per
-backend](../internals/rmw-backends.md#real-time-budget-per-backend-phase-104e1)
+backend](../internals/rmw-backends.md#real-time-budget-per-backend)
 table and add them up — there is no parallelism between
 backends inside a single executor.
 

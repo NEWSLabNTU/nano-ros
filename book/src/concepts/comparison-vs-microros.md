@@ -25,7 +25,7 @@ comparison.
 | **Supported RTOSes** | FreeRTOS, NuttX, ThreadX, Zephyr, ESP-IDF, PX4 (NuttX), POSIX, bare-metal | FreeRTOS, NuttX, Zephyr, ESP-IDF, POSIX; PX4 is the canonical deployment |
 | **`no_std` core** | Yes — entire client stack compiles `no_std` + heapless | No — `rclc` requires libc + a heap |
 | **Heap usage** | Optional on bare-metal (XRCE backend is fully static); required for Zenoh / DDS / Cyclone | Required (malloc-based DDS-XRCE client) |
-| **RT scheduling story** | Phase 110 SchedContext API: FIFO / EDF / Sporadic / TimeTriggered classes; ARINC-653 cyclic-executive surface; per-callback runtime accounting + overrun detection | rclc executor with priority callbacks; no SchedContext / EDF / TT story |
+| **RT scheduling story** | SchedContext API: FIFO / EDF / Sporadic / TimeTriggered classes; ARINC-653 cyclic-executive surface; per-callback runtime accounting + overrun detection | rclc executor with priority callbacks; no SchedContext / EDF / TT story |
 | **Multi-executor preemption** | `Executor::open_threaded` per-RTOS via `PlatformScheduler` trait | Single executor per process |
 | **Multi-backend bridge in one binary** | Yes — `Executor::open_with_rmw` + multi-Node | No (single XRCE session per process) |
 | **Discovery** | Zenoh liveliness, RTPS SPDP, XRCE-via-Agent | XRCE-via-Agent |

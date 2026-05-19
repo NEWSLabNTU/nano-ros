@@ -208,8 +208,7 @@ filter.
   (`NROS_LOG_*` macros + `nros_log_emit_fmt`).
 - `packages/core/nros-cpp/include/nros/log.hpp` — C++ macros (the
   legacy `NROS_INFO` / etc. file:line printf surface stays
-  alongside the Phase-88 `NROS_LOG_*` macros).
-- Phase doc: `docs/roadmap/phase-88-nros-log.md`.
+  alongside the new `NROS_LOG_*` macros).
 
 `/rosout` publication is explicitly out of scope today; the
 dispatcher's `&'static [&dyn LogSink]` shape leaves room for an
