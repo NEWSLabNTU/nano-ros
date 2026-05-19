@@ -215,6 +215,22 @@ build-fixtures:
       "native_sim/native/64|build-c-action-server-xrce|zephyr/c/action-server|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-c-action-client-zenoh|zephyr/c/action-client|0||prj.conf;prj-zenoh.conf"
       "native_sim/native/64|build-c-action-client-xrce|zephyr/c/action-client|0||prj.conf;prj-xrce.conf"
+
+      # Phase 168.X gap 1 unblocked — collapsed C++ cases. cyclonedds
+      # native_sim hits an upstream Zephyr cmake gen-expr bug; FVP /
+      # aemv8r path remains in `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`.
+      "native_sim/native/64|build-cpp-talker-zenoh|zephyr/cpp/talker|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-cpp-talker-xrce|zephyr/cpp/talker|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-cpp-listener-zenoh|zephyr/cpp/listener|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-cpp-listener-xrce|zephyr/cpp/listener|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-cpp-service-server-zenoh|zephyr/cpp/service-server|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-cpp-service-server-xrce|zephyr/cpp/service-server|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-cpp-service-client-zenoh|zephyr/cpp/service-client|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-cpp-service-client-xrce|zephyr/cpp/service-client|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-cpp-action-server-zenoh|zephyr/cpp/action-server|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-cpp-action-server-xrce|zephyr/cpp/action-server|0||prj.conf;prj-xrce.conf"
+      "native_sim/native/64|build-cpp-action-client-zenoh|zephyr/cpp/action-client|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-cpp-action-client-xrce|zephyr/cpp/action-client|0||prj.conf;prj-xrce.conf"
     )
 
     failures=()

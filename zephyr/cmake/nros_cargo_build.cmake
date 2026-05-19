@@ -203,9 +203,19 @@ function(nros_cargo_build)
         # when only CONFIG_NROS_CPP_API=y (no separate nros-c build).
         list(APPEND _cargo_byproducts
             ${CARGO_TARGET_DIR}/nros-cpp-generated/nros/nros_cpp_config_generated.h
-            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
-            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_generated.h
         )
+        # Phase 168.X gap 1 — when nros-c is built separately
+        # (CPP_API path now builds it alongside nros-cpp for the log
+        # glue), the c-format header is already declared as a
+        # byproduct of `nros_c_cargo_build`. Declaring it on both
+        # targets makes ninja error with "multiple rules generate".
+        # Only claim it for nros-cpp when nros-c is NOT being built.
+        if(NOT TARGET nros_c_cargo_build)
+            list(APPEND _cargo_byproducts
+                ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
+                ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_generated.h
+            )
+        endif()
     endif()
 
     # Pass both ZPICO_* and XRCE_* env vars — build.rs ignores vars it

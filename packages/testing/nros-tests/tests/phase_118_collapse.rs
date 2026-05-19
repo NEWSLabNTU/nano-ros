@@ -569,6 +569,7 @@ fn test_zephyr_rust_case_rmw_variant_exists(
 /// cpp deferred to Phase 168.X — see
 /// `docs/roadmap/phase-168-X-zephyr-cmake-build-gaps.md`).
 #[rstest]
+// C × {zenoh, xrce}.
 #[case::c_talker_zenoh("c", "talker", Rmw::Zenoh)]
 #[case::c_talker_xrce("c", "talker", Rmw::Xrce)]
 #[case::c_listener_zenoh("c", "listener", Rmw::Zenoh)]
@@ -581,6 +582,23 @@ fn test_zephyr_rust_case_rmw_variant_exists(
 #[case::c_as_xrce("c", "action-server", Rmw::Xrce)]
 #[case::c_ac_zenoh("c", "action-client", Rmw::Zenoh)]
 #[case::c_ac_xrce("c", "action-client", Rmw::Xrce)]
+// Phase 168.X gap 1 unblocked C++ × {zenoh, xrce}.
+#[case::cpp_talker_zenoh("cpp", "talker", Rmw::Zenoh)]
+#[case::cpp_talker_xrce("cpp", "talker", Rmw::Xrce)]
+#[case::cpp_listener_zenoh("cpp", "listener", Rmw::Zenoh)]
+#[case::cpp_listener_xrce("cpp", "listener", Rmw::Xrce)]
+#[case::cpp_ss_zenoh("cpp", "service-server", Rmw::Zenoh)]
+#[case::cpp_ss_xrce("cpp", "service-server", Rmw::Xrce)]
+#[case::cpp_sc_zenoh("cpp", "service-client", Rmw::Zenoh)]
+#[case::cpp_sc_xrce("cpp", "service-client", Rmw::Xrce)]
+#[case::cpp_as_zenoh("cpp", "action-server", Rmw::Zenoh)]
+#[case::cpp_as_xrce("cpp", "action-server", Rmw::Xrce)]
+#[case::cpp_ac_zenoh("cpp", "action-client", Rmw::Zenoh)]
+#[case::cpp_ac_xrce("cpp", "action-client", Rmw::Xrce)]
+// Cyclone DDS native_sim build hits an upstream Zephyr cmake gen-expr
+// bug; C / C++ cyclonedds verification stays on FVP / aemv8r per
+// `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`. Add smokes once
+// the native_sim path resolves.
 fn test_zephyr_cmake_case_rmw_variant_exists(
     #[case] lang: &str,
     #[case] case: &str,

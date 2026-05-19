@@ -62,7 +62,7 @@ int nros_app_main(int argc, char **argv)
         CONFIG_NROS_DOMAIN_ID,
         "xrce_talker"), 1);
 #else
-#error "Phase 168.4 requires CONFIG_NROS_RMW_{ZENOH,XRCE}=y via prj-<rmw>.conf overlay"
+#error "Phase 168.4 requires CONFIG_NROS_RMW_{ZENOH,XRCE,CYCLONEDDS}=y via prj-<rmw>.conf overlay"
 #endif
 
     nros_node_t node = nros_node_get_zero_initialized();

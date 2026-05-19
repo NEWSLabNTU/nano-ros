@@ -444,16 +444,15 @@ if(CONFIG_NROS_C_API)
     elseif(CONFIG_NROS_RMW_DDS)
         set(_nros_features "rmw-cffi,cffi-dds-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
-        # cyclonedds backend has no Cargo-side shim crate — the C++
-        # nros-rmw-cyclonedds lib registers via the C++ auto-hook in
-        # nros-cpp's node.hpp. C API path is not yet supported here;
-        # the Kconfig guard above (`depends on NROS_CPP_API`) prevents
-        # this combo, and this branch errors as a belt-and-braces
-        # check in case the guard is bypassed.
-        message(FATAL_ERROR
-            "CONFIG_NROS_C_API=y is not supported with "
-            "CONFIG_NROS_RMW_CYCLONEDDS=y. Use CONFIG_NROS_CPP_API=y "
-            "or pick a different RMW backend.")
+        # Phase 168.X gap 2.B — cyclonedds is now usable from the C
+        # API too. The backend's `nros_rmw_cyclonedds_register`
+        # entry point is declared with C linkage in
+        # `packages/dds/nros-rmw-cyclonedds/include/nros_rmw_cyclonedds.h`,
+        # so the Phase 160.A strong stub below resolves it from the
+        # standalone C++ library compiled by the RMW backend block
+        # above (lines 196+). nros-c just needs the generic cffi
+        # runtime + Zephyr platform feature.
+        set(_nros_features "rmw-cffi,platform-zephyr,ros-humble")
     endif()
 
     # native_sim targets run on Linux and support std (needed for panic handler)
@@ -511,8 +510,8 @@ if(CONFIG_NROS_C_API)
         set(_nros_rmw_name "xrce")
     elseif(CONFIG_NROS_RMW_ZENOH)
         set(_nros_rmw_name "zenoh")
-    elseif(CONFIG_NROS_RMW_DDS)
-        set(_nros_rmw_name "dds")
+    elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+        set(_nros_rmw_name "cyclonedds")
     endif()
     if(_nros_rmw_name)
         set(_nros_app_register_stub "${CMAKE_BINARY_DIR}/nros_app_register_backends.c")
@@ -596,6 +595,42 @@ if(CONFIG_NROS_CPP_API)
         string(APPEND _nros_cpp_features ",std")
     endif()
 
+    # Phase 168.X gap 1 — `nros_log_emit` + `nros_log_emit_fmt`
+    # symbols (the C-side log glue every `NROS_LOG_*` macro from
+    # `<nros/log.h>` expands to) ship only with `libnros_c.a`.
+    # `libnros_cpp.a` doesn't carry them, so C++-only Zephyr builds
+    # (`CONFIG_NROS_C_API=n + CONFIG_NROS_CPP_API=y`) fail to link
+    # the moment a cpp example uses `NROS_LOG_INFO`. Build nros-c
+    # alongside nros-cpp (with the SAME RMW + platform feature set
+    # the C-API path uses) so the log glue lands in the link line.
+    # No code duplication: the C / C++ rlibs share their nros-node /
+    # nros / nros-platform dep graph; the second cargo build wraps
+    # them in nros-c's exported C symbols (init / log / executor /
+    # …) — which is what nros-cpp's C++ classes call into anyway.
+    #
+    # Must run BEFORE the nros-cpp build below so the
+    # nros-c-generated header byproducts are declared on the
+    # nros_c_cargo_build target (nros-cpp's target then defers to it
+    # via `TARGET nros_c_cargo_build` in nros_cargo_build.cmake).
+    if(NOT CONFIG_NROS_C_API)
+        if(CONFIG_NROS_RMW_ZENOH)
+            set(_nros_c_for_cpp_features "rmw-cffi,cffi-zenoh-cffi,platform-zephyr,ros-humble")
+        elseif(CONFIG_NROS_RMW_XRCE)
+            set(_nros_c_for_cpp_features "rmw-cffi,cffi-xrce-c,platform-zephyr,ros-humble")
+        elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+            set(_nros_c_for_cpp_features "rmw-cffi,platform-zephyr,ros-humble")
+        endif()
+        if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
+            string(APPEND _nros_c_for_cpp_features ",std")
+        endif()
+        nros_cargo_build(
+            PACKAGE nros-c
+            FEATURES "${_nros_c_for_cpp_features}"
+        )
+        add_dependencies(app nros_c_cargo_build)
+        zephyr_library_link_libraries(nros_c_cargo)
+    endif()
+
     # Build nros-cpp static library via Cargo
     nros_cargo_build(
         PACKAGE nros-cpp
@@ -611,8 +646,7 @@ if(CONFIG_NROS_CPP_API)
     # `dep:nros-rmw-zenoh` (Phase 134.fix), so the Phase 160.A strong
     # stub below references `nros_rmw_zenoh_register` with no provider
     # unless we link the standalone backend staticlib. `rmw-xrce-cffi`
-    # and `rmw-dds-cffi` still carry their deps, so they don't need
-    # this extra step.
+    # still carries its dep, so it doesn't need this extra step.
     if(CONFIG_NROS_RMW_ZENOH)
         set(_nros_cpp_backend_features "platform-zephyr")
         if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)

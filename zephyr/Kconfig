@@ -74,7 +74,7 @@ config NROS_RMW_DDS
 
 config NROS_RMW_CYCLONEDDS
     bool "Cyclone DDS (nros-rmw-cyclonedds)"
-    depends on NET_SOCKETS && POSIX_API && CPP && NROS_CPP_API
+    depends on NET_SOCKETS && POSIX_API && CPP
     help
       Use Cyclone DDS (pinned to 0.10.5, matches ros-humble-cyclonedds)
       as the RMW transport backend. Wire-compatible with stock
@@ -83,13 +83,16 @@ config NROS_RMW_CYCLONEDDS
       Implementation lives at packages/dds/nros-rmw-cyclonedds/ as a
       standalone C++ project; the Zephyr module compiles the pinned
       Cyclone DDS submodule plus the nros-rmw-cyclonedds register
-      glue into the app library. The auto-register hook in
-      nros-cpp's node.hpp fires when NROS_RMW_CYCLONEDDS=1 is defined,
-      which this Kconfig path turns on.
+      glue into the app library. The register entry point
+      (`nros_rmw_cyclonedds_register`) is declared with C linkage
+      in `nros_rmw_cyclonedds.h`, so both the C API
+      (CONFIG_NROS_C_API=y) and C++ API (CONFIG_NROS_CPP_API=y) can
+      call it via the Phase 160.A strong-stub emission.
 
-      Requires CONFIG_NROS_CPP_API=y for now (no C API binding —
-      nros_rmw_cyclonedds_register is C++-only at the source level).
       Phase 117 — see docs/roadmap/phase-117-cyclonedds-rmw.md.
+      Phase 168.X gap 2.B dropped the NROS_CPP_API requirement so
+      C-API examples can also pick this backend through
+      `prj-cyclonedds.conf` overlays.
 
 endchoice
 
