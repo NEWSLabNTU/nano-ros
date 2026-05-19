@@ -27,6 +27,7 @@
  *     leaves only the aliases.
  */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -365,19 +366,52 @@ void z_clock_advance_s(uint64_t *clock, unsigned long duration) {
 #include "nros/platform_net.h"
 #include "nros_zenoh_generic_platform.h"
 
-/* The vendor `_z_sys_net_socket_t` / `_z_sys_net_endpoint_t`
- * typedefs live in the generic platform header. The alias TU
- * uses fixed-size opaque storage `uint8_t[N]` matching
- * `nros_zenoh_generic_platform.h` — the linker doesn't care
- * about the typedef name, only the ABI size + by-value vs.
- * pointer convention. Inlining keeps the alias TU
- * header-independent. */
+/* Phase 160 — alias TU's networking is bare-metal-only (every
+ * other platform ships a vendor `system/<rtos>/network.c` in
+ * `extra_sources`). The struct shapes here MUST match
+ * `c/platform/bare-metal/platform.h`'s `_z_sys_net_*_t` so the
+ * pass-by-value ABI from vendor TX (`link/unicast/tcp.c`)
+ * matches the alias TU's tail-call into `nros_platform_*`. On
+ * RV32 the difference between 6-byte (inline in a1/a2) and
+ * 16-byte (hidden pointer in a1) endpoint is silent at link
+ * time but faults at first call. The opaque storage caps in
+ * `nros_zenoh_generic_platform.h` (`NROS_ZP_NET_*_STORAGE_BYTES`)
+ * are used by the runtime aliases (clock / threading) where the
+ * payload is owned by `nros-platform-cffi`; they don't apply to
+ * the network wrappers. */
 typedef struct {
-    uint8_t _opaque[NROS_ZP_NET_SOCKET_STORAGE_BYTES];
+    union {
+        int8_t _handle;
+        int8_t _fd;
+    };
+    bool _connected;
 } nros_zp_alias_socket_t;
 typedef struct {
-    uint8_t _opaque[NROS_ZP_NET_ENDPOINT_STORAGE_BYTES];
+    uint8_t _ip[4];
+    uint16_t _port;
 } nros_zp_alias_endpoint_t;
+
+/* Phase 160 — compile-time drift guard. `build.rs` extracts the
+ * vendor sizes from `size_probe.c` (built against bare-metal/
+ * platform.h) and passes them as `-D` defines. If vendor flips
+ * `_z_sys_net_socket_t` to embed a TLS pointer or extends the
+ * endpoint to carry an interface tag, this assert trips at
+ * compile time instead of crashing at runtime with `lhu a2, 2(a1)`
+ * on a register that holds an inline-packed IP value. The
+ * defines are only present on the bare-metal alias build (other
+ * platforms gate the whole network section off via
+ * `NROS_ZP_ALIAS_BARE_METAL_NET`). */
+#if defined(NROS_ZP_VENDOR_NET_SOCKET_SIZE) \
+    && defined(NROS_ZP_VENDOR_NET_ENDPOINT_SIZE)
+_Static_assert(sizeof(nros_zp_alias_socket_t)
+                   == NROS_ZP_VENDOR_NET_SOCKET_SIZE,
+               "alias TU's nros_zp_alias_socket_t drifted from vendor "
+               "_z_sys_net_socket_t — pass-by-value ABI will corrupt");
+_Static_assert(sizeof(nros_zp_alias_endpoint_t)
+                   == NROS_ZP_VENDOR_NET_ENDPOINT_SIZE,
+               "alias TU's nros_zp_alias_endpoint_t drifted from vendor "
+               "_z_sys_net_endpoint_t — pass-by-value ABI will corrupt");
+#endif
 
 /* Phase 156 (option B) — POSIX consumers use zenoh-pico's
  * upstream `src/system/unix/network.c` for the network impls
@@ -392,7 +426,7 @@ typedef struct {
  * Pointer-shaped aliases (threading/mutex/condvar/clock)
  * stay active on POSIX since pointer ABI is uniform across
  * struct sizes. */
-#ifndef NROS_ZENOH_PLATFORM_USES_UNIX
+#ifdef NROS_ZP_ALIAS_BARE_METAL_NET
 
 /* TCP. */
 int8_t _z_create_endpoint_tcp(void *ep, const uint8_t *address, const uint8_t *port) {
@@ -521,7 +555,7 @@ int8_t _z_socket_wait_event(void *peers, void *mutex) {
     return nros_platform_socket_wait_event(peers, mutex);
 }
 
-#endif /* NROS_ZENOH_PLATFORM_USES_UNIX — Phase 156 option B */
+#endif /* NROS_ZP_ALIAS_BARE_METAL_NET — Phase 160 */
 
 /* Serial transport.
  *

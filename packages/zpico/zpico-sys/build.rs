@@ -623,6 +623,27 @@ fn main() {
         println!("cargo:rustc-cfg=zpico_backend=\"orin-spe\"");
     }
 
+    // Phase 160 — probe vendor `_z_sys_net_*_t` sizes BEFORE the alias
+    // TU compile so the resulting `net_type_sizes.txt` can be read at
+    // alias-TU configure time. Moved earlier than the historical
+    // location (post-Rust-cfg block below) so the
+    // `_Static_assert(sizeof(nros_zp_alias_*_t) == VENDOR_SIZE)` drift
+    // guards inside `platform_aliases.c` actually evaluate; without
+    // this reorder the file doesn't exist when alias_build runs the
+    // first time after a clean and `#if defined(...)` silently
+    // suppresses the assert.
+    if backend_count > 0 && !use_zephyr {
+        probe_net_type_sizes(
+            &c_dir,
+            &zenoh_pico_src.join("include"),
+            &out_dir,
+            use_bare_metal || use_orin_spe,
+            use_freertos,
+            use_nuttx,
+            use_threadx,
+        );
+    }
+
     // Phase 128.D.3 — opt-in alias TU that maps z_*/_z_get_time_*
     // symbols to the canonical nros_platform_* ABI. Compiled only
     // when the `platform-aliases` feature is selected; downstream
@@ -650,49 +671,54 @@ fn main() {
             // `nros_zenoh_generic_platform.h`.
             .define("NROS_PLATFORM_ALIASES", None)
             .warnings(true);
-        // Phase 156 — POSIX consumers pull zenoh-pico's upstream
-        // `system/unix/network.c` which already emits `_z_open_tcp` /
-        // `_z_send_tcp` / etc. with the per-platform 4-byte
-        // `_z_sys_net_socket_t = { int _fd; }` layout. The alias TU's
-        // generic 32-byte copies would collide at link time. Gate the
-        // alias TU's NETWORK section off via `NROS_ZENOH_PLATFORM_USES_UNIX`
-        // (the `#ifndef` in `platform_aliases.c` at the network-section
-        // header). Runtime aliases (memory / sleep / random / time /
-        // yield + threading) stay active — alias TU forwards them to
-        // `nros_platform_*`, no vendor system.c is compiled for POSIX
-        // (extra_sources lists only `network.c` + `tls.c`), so no
-        // duplicates.
-        // Phase 159 root cause — NuttX also needs this gate. The
-        // NuttX `zenoh_platforms.toml` block routes `ZENOH_NUTTX`
-        // to `system/platform/unix.h` (BY-VALUE 4-byte socket
-        // struct) AND pulls `system/unix/network.c` into
-        // `extra_sources`. Without `NROS_ZENOH_PLATFORM_USES_UNIX`
-        // defined for the alias TU compile, BOTH the alias TU's
-        // 32-byte-opaque `_z_open_tcp` (forwarding to
-        // `nros_platform_tcp_open`) AND `unix/network.c`'s by-
-        // value impl land in the link. With
-        // `--allow-multiple-definition` (NuttX kernel link flag,
-        // 157.C.17) or rebuild-order-dependent picks, the alias
-        // version often wins → its 32-byte arg layout collides
-        // with the 4-byte ABI tx.c / link.c call sites use →
-        // `_z_send_tcp` reads garbage → session open returns
-        // `_Z_ERR_TRANSPORT_TX_FAILED (-100)` → ZPICO_ERR_SESSION
-        // → C examples surface `nros_support_init -> -4`. Matches
-        // Phase 159's Path A + Path C runtime-regression symptom
-        // exactly. The Phase 155.F4 warm-up + incremental build
-        // state masked it by leaving stale objects from earlier
-        // builds where the define was effectively present
-        // (pre-Phase 156 wiring).
-        if use_posix || use_nuttx || use_zephyr {
-            // Phase 160.C — zephyr added. zephyr/CMakeLists.txt now
-            // compiles `zenoh-pico/src/system/zephyr/network.c`
-            // alongside `tx.c` / `link.c`, so the `_z_open_tcp` /
-            // `_z_send_tcp` impls match the 4-byte
-            // `_z_sys_net_socket_t = {int _fd}` from
-            // `system/platform/zephyr.h`. Gate the alias TU's 32-B
-            // generic-opaque versions OFF so they don't shadow at link
-            // (same ABI mismatch root cause as Phase 159 NuttX).
-            alias_build.define("NROS_ZENOH_PLATFORM_USES_UNIX", None);
+        // Phase 160 (ESP32 talker fix, supersedes Phase 156 / 159 /
+        // 160.C `USES_UNIX` skip-list) — alias TU's network section is
+        // only safe to emit on bare-metal. Every other platform pulls a
+        // vendor `system/<rtos>/network.c` into `extra_sources` that
+        // provides `_z_open_tcp` / `_z_send_tcp` / etc. with the
+        // per-platform `_z_sys_net_{socket,endpoint}_t` layout (4-byte
+        // `int _fd` on unix.h, struct embedding `TX_THREAD *` on
+        // threadx, etc.). The alias TU's generic 16/32-byte opaque
+        // layouts have a DIFFERENT pass-by-value ABI on RV32 (hidden
+        // pointer vs. inline registers), so even when symbol resolution
+        // picks the vendor copy at link time, any cross-call into the
+        // alias TU breaks the calling convention. Worst case (ESP32-C3
+        // bare-metal): vendor TX (`link/unicast/tcp.c`) compiles
+        // against bare-metal/platform.h's 6-byte endpoint and passes
+        // it inline in a1/a2; alias TU's `_z_open_tcp` tail-calls
+        // `nros_platform_tcp_open` treating a1 as a pointer →
+        // `lhu a2, 2(a1)` faults with a1 = 10.0.2.2 (the IP value).
+        // Same class of bug closed NuttX (`nros_support_init -> -4`)
+        // in Phase 159. Emit the network section ONLY for bare-metal;
+        // every other platform's vendor network.c is the single source
+        // of truth and the alias TU stays out of the link.
+        if use_bare_metal {
+            alias_build.define("NROS_ZP_ALIAS_BARE_METAL_NET", None);
+
+            // Phase 160 — feed vendor-side `_z_sys_net_socket_t` /
+            // `_z_sys_net_endpoint_t` sizes (extracted by `size_probe.c`
+            // against the vendor `bare-metal/platform.h`) into the alias
+            // TU as preprocessor constants so a `_Static_assert` inside
+            // `platform_aliases.c` traps any silent ABI drift between
+            // the alias TU's local typedefs and the vendor's. The
+            // probe writes `net_type_sizes.txt` (line 985 above) on
+            // every bare-metal build; missing file means the probe
+            // fell into the warning fallback and we deliberately omit
+            // the defines so the static assert is skipped (the
+            // fallback already screams).
+            let sizes_file = out_dir.join("net_type_sizes.txt");
+            if let Ok(contents) = std::fs::read_to_string(&sizes_file) {
+                let mut lines = contents.lines();
+                let (socket_size, endpoint_size) = (
+                    lines.next().and_then(|s| s.trim().parse::<usize>().ok()),
+                    lines.next().and_then(|s| s.trim().parse::<usize>().ok()),
+                );
+                if let (Some(ss), Some(es)) = (socket_size, endpoint_size) {
+                    alias_build
+                        .define("NROS_ZP_VENDOR_NET_SOCKET_SIZE", ss.to_string().as_str())
+                        .define("NROS_ZP_VENDOR_NET_ENDPOINT_SIZE", es.to_string().as_str());
+                }
+            }
         }
         // Phase 146.1 — ThreadX's `c/platform/threadx/task.c`
         // already provides every `_z_task_*` symbol because the
@@ -760,28 +786,9 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NUTTX_DIR");
     println!("cargo:rerun-if-changed=c/size_probe.c");
 
-    // Probe network type sizes from C headers and emit DEP variables.
-    // zpico-platform-shim reads these to generate correctly-sized #[repr(C)] types.
-    //
-    // Skipped for Zephyr: the probe needs Zephyr's `<zephyr/kernel.h>` and
-    // picolibc headers, which live in the Zephyr build tree and aren't
-    // visible to Cargo. Zephyr doesn't use the shim's socket-stubs feature
-    // (C network.c provides the real types), so the sizes aren't consumed —
-    // the shim's own build.rs falls back to defaults, which is harmless.
-    if backend_count > 0 && !use_zephyr {
-        probe_net_type_sizes(
-            &c_dir,
-            &zenoh_pico_src.join("include"),
-            &out_dir,
-            // orin-spe routes through the bare-metal probe path
-            // (ZENOH_GENERIC → bare-metal/platform.h, with ARM Cortex-R
-            // cross-compile flags inside the function).
-            use_bare_metal || use_orin_spe,
-            use_freertos,
-            use_nuttx,
-            use_threadx,
-        );
-    }
+    // Phase 160 — probe moved to before alias-TU compile (see
+    // comment above `probe_net_type_sizes` call earlier in this
+    // function).
 }
 
 /// Probe the sizes of `_z_sys_net_socket_t` and `_z_sys_net_endpoint_t` from C headers.

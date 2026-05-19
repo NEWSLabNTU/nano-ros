@@ -192,7 +192,10 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
         .lines()
         .find_map(|line| {
             line.strip_prefix("RECV_DONE:")
-                .and_then(|tail| tail.split_whitespace().find_map(|tok| tok.strip_prefix("overflow_drops=")))
+                .and_then(|tail| {
+                    tail.split_whitespace()
+                        .find_map(|tok| tok.strip_prefix("overflow_drops="))
+                })
                 .and_then(|n| n.parse::<u32>().ok())
         })
         .unwrap_or(0);

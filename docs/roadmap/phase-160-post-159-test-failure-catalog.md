@@ -156,7 +156,80 @@ Closed by Phase 159 (`7205eb4d`). Three fixes converged:
 Verified 2026-05-19: full rtos_e2e matrix 36/36 PASS including
 all 6 NuttX C/C++ tests in this cluster.
 
-### E. ESP32 emulator (3 tests) → **real failure (NOT env-gated)**
+### E. ESP32 emulator (3 tests) → **CLOSED 2026-05-19**
+
+**Resolution.** Same root-cause family as cluster D (Phase 159):
+silent ABI mismatch between alias TU (`platform_aliases.c`) and
+vendor zenoh-pico TX (`link/unicast/tcp.c`). On ESP32-C3 (RV32imc
+baremetal) the alias TU declared the network `_z_sys_net_*_t`
+typedefs as **16/32-byte opaques** (`nros_zenoh_generic_platform.h`),
+while the vendor link layer compiled against `bare-metal/platform.h`'s
+**6-byte endpoint** (`{uint8_t _ip[4]; uint16_t _port;}`) and
+**2-byte socket** (`{int8_t _handle; bool _connected;}`). RV32 ELF
+ABI: ≤8-byte structs pass inline in argument registers, >8-byte
+structs pass via hidden pointer. Mismatch → vendor sent the IP
+inline in `a1` (`0x0202000A` = `10.0.2.2` LE), alias TU tail-
+called `nros_platform_tcp_open` treating `a1` as an endpoint
+pointer → `lhu a2, 2(a1)` (smoltcp `Repr::emit` reading the high
+half of `_ip`) faulted with `mtval=0x0202000C`.
+
+Earlier hypothesis (smoltcp Interface globals / `bss` layout drift
+/ Phase 132/141 regression / fb6b778b bisect target) was wrong —
+the bug pre-dated all those commits but was masked by stale
+incremental builds. Fresh full clean reproduced reliably.
+
+Fix landed in two parts, both in `packages/zpico/zpico-sys/`:
+
+1. **`c/zpico/platform_aliases.c`** — replaced the cross-platform
+   16/32-byte opaque typedefs in the network section with the
+   exact `bare-metal/platform.h` shape (`{int8_t _handle/_fd;
+   bool _connected;}` socket, `{uint8_t _ip[4]; uint16_t _port;}`
+   endpoint). Replaced the historical
+   `#ifndef NROS_ZENOH_PLATFORM_USES_UNIX` skip-on-POSIX/NuttX
+   gate with `#ifdef NROS_ZP_ALIAS_BARE_METAL_NET` —
+   emit-only-on-baremetal, since every other platform's vendor
+   `system/<rtos>/network.c` already provides `_z_open_tcp` /
+   `_z_send_tcp` / etc. with the matching per-platform shape and
+   the alias TU's wrappers compete with `--allow-multiple-definition`
+   only to introduce silent ABI mismatches.
+
+2. **`build.rs`** — moved `probe_net_type_sizes` to run BEFORE the
+   alias-TU compile (it used to run after, so the
+   `net_type_sizes.txt` file didn't exist when the alias build
+   read it for the first post-clean run). For bare-metal builds
+   the resolved sizes flow as `-DNROS_ZP_VENDOR_NET_SOCKET_SIZE=N`
+   / `-DNROS_ZP_VENDOR_NET_ENDPOINT_SIZE=N` into the alias TU
+   compile.
+
+3. **Drift guard** — `_Static_assert(sizeof(nros_zp_alias_*_t)
+   == NROS_ZP_VENDOR_NET_*_SIZE, "ABI drift")` inside
+   `platform_aliases.c`. If a vendor header bump ever changes
+   the `_z_sys_net_*_t` shape (TLS pointer added, port widened,
+   etc.) the assert fires at compile time instead of producing
+   another silent runtime fault. Verified by intentionally
+   adding `+1` to the expected size — `error: static assertion
+   failed: "alias TU's nros_zp_alias_socket_t drifted from
+   vendor _z_sys_net_socket_t — pass-by-value ABI will corrupt"`
+   immediately at `riscv64-unknown-elf-gcc`.
+
+**Validation matrix.**
+
+- `test_esp32_talker_listener_e2e` PASS (~31s)
+- `test_esp32_to_native` PASS
+- `test_native_to_esp32` PASS
+- `test_qemu_rtic_pubsub_e2e` (cortex-m3 baremetal, same alias-TU
+  path) PASS
+- `test_qemu_lan9118_driver` PASS
+- NuttX rtos_e2e Rust/C/Cpp (sequential) PASS — confirming the
+  POSIX/NuttX gate inversion didn't reintroduce Phase 159's
+  symptom
+- FreeRTOS + ThreadX-Linux + ThreadX-RV64 rtos_e2e × Rust/C/Cpp
+  (9 tests, sequential) all PASS — confirming the hosted-RTOS
+  paths still consume vendor `network.c` exclusively, not the
+  alias TU
+
+#### Historical investigation (left for archaeology)
+
 
 ```
 test_esp32_talker_listener_e2e
@@ -329,7 +402,43 @@ locus.
   ```
   Bisect window: git rev-list fb6b778b..HEAD -- packages/drivers/nros-smoltcp packages/zpico/zpico-sys packages/platforms/nros-platform-esp32-qemu packages/boards/nros-board-esp32-qemu — find the commit that flipped working → broken.
 
-### F. QEMU bare-metal RTIC + serial (6 tests) → **triaged 2026-05-19**
+### F. QEMU bare-metal RTIC + serial (6 tests) → **5/6 CLOSED 2026-05-19** by cluster-E ABI fix
+
+**Resolution (ETH path).** All five `test_qemu_rtic_*_e2e` +
+`test_qemu_zenoh_large_publish` tests close out from the cluster
+E fix in this same revision. The cortex-m3 mps2-an385 path
+suffered the same alias-TU ↔ vendor zenoh-pico `_z_sys_net_*_t`
+ABI mismatch as ESP32-C3 (both are bare-metal consumers of
+`zenoh_generic_platform.h` and the alias TU's network section).
+The earlier Phase 160.F "TCP handshake works, z_open fails fast"
+triage (commit `2c5ed554`) correctly localized the failure to
+zenoh-pico's `_z_open_tcp` → `nros_platform_tcp_open` call but
+mis-attributed cause to "no `net_poll` task during
+`Executor::open`". The actual root cause was the same
+inline-vs-hidden-pointer struct ABI bug — cortex-m3 passes 6-byte
+endpoint inline in `r0`/`r1`, but the alias TU was reading the
+16-byte hidden-pointer form, so the first `lhu`/`ldrh` against
+the "endpoint pointer" dereferenced the IP value (`0x0202000A` on
+ESP32 LE; equivalent garbage on cortex-m3 LE).
+
+Verified `cargo nextest run --test emulator`:
+
+```
+PASS test_qemu_rtic_pubsub_e2e
+PASS test_qemu_rtic_action_e2e
+PASS test_qemu_rtic_service_e2e
+PASS test_qemu_rtic_mixed_priority_pubsub_e2e
+PASS test_qemu_zenoh_large_publish (via large_msg crate)
+```
+
+**Remaining.** `test_qemu_serial_pubsub_e2e` still fails
+(`published=0, received=0`) — this is the Phase 132.3 deferred
+CMSDK UART known regression, NOT zenoh ABI. Tracks separately;
+defer to Phase 132.3 follow-up.
+
+#### Historical triage (left for archaeology)
+
+**triaged 2026-05-19**
 
 ```
 test_qemu_rtic_action_e2e             ETH — open -> Transport(ConnectionFailed)
@@ -506,21 +615,32 @@ remove the four tests from the real-fail rollup. Same caveat may
 apply to any `*_integration_shell_smoke` / `_e2e` tests with
 deferred-skip panics (see M).
 
-### H. nano2nano + cross-RMW bridges (4 tests)
+### H. nano2nano + cross-RMW bridges (6 tests) → **partially closed 2026-05-19**
 
 ```
-bridge_xrce_to_dds_starts_and_opens_both_sessions
-bridge_zenoh_to_dds_starts_and_opens_both_sessions
-test_c_rust_pubsub_interop
-test_xrce_action_fibonacci
-test_xrce_throughput_100hz
-test_xrce_throughput_burst
+bridge_xrce_to_dds_starts_and_opens_both_sessions      → phantom (fixture skip)
+bridge_zenoh_to_dds_starts_and_opens_both_sessions     → phantom (fixture skip)
+test_c_rust_pubsub_interop                             → PASS
+test_xrce_action_fibonacci                             → PASS
+test_xrce_throughput_100hz                             → FAIL (real)
+test_xrce_throughput_burst                             → FAIL (real)
 ```
 
-**Hypothesis.** Single XRCE-agent flake or shared `g_session`
-singleton issue Phase 156 doc flagged at the end. Bridge tests
-open TWO RMW backends in same process; XRCE's process-global
-state may collide with zenoh.
+**Status (2026-05-19).**
+
+- Both `bridge_*` tests panic with `[SKIPPED] <lang> bridge binary
+  not prebuilt` — same JUnit reclassification pattern as clusters
+  G / M. Not real failures, just need fixture build before run
+  (`cmake -B build -S . && cmake --build build` in the bridge
+  example dirs, or `cargo build --release` for the Rust bridge).
+- `test_xrce_action_fibonacci` + `test_c_rust_pubsub_interop`
+  PASS without changes — no bridge-related regression.
+- Remaining real failures: `test_xrce_throughput_{100hz, burst}`
+  — receiver gets 1/3 expected messages in burst mode, fewer
+  than expected at 100Hz steady. Likely XRCE-side
+  send-buffer or agent rate-limit issue, NOT bridge or RMW-
+  selection bug. Track as new XRCE follow-up (160.H.1) — not
+  blocked on cluster-E ABI work.
 
 ### I. ThreadX-Linux rtos_e2e (3 tests) → **CLOSED 2026-05-19**
 
@@ -649,10 +769,10 @@ No action needed.
 | B. Zephyr Cortex-A9 DDS Rust | 4 | dust-dds-on-A9 / Cortex-A9 Rust patch | New (160.B) |
 | C. Zephyr cross-host bridge | 11 | NOT cascade — zenoh `_z_send_tcp -> -100` on Zephyr/NSOS | New (160.C) |
 | D. NuttX C/C++ rtos_e2e | 6 | Phase 159 fix landed | **CLOSED 2026-05-19** |
-| E. ESP32 emulator | 3 | OpenETH RX/TX stall (NOT env) | Phase 89.4 follow-up |
-| F. RTIC + serial bare-metal | 6 | RTIC (5): zenoh-pico session-open regression. Serial (1): Phase 132.3 deferred. | RTIC → New (160.F); serial → Phase 132.3 |
+| E. ESP32 emulator | 3 | alias TU ↔ vendor `_z_sys_net_*_t` ABI mismatch (RV32 inline-vs-hidden-ptr) + drift guard via `_Static_assert` | **CLOSED 2026-05-19** |
+| F. RTIC + serial bare-metal | 6 | RTIC (5): same alias-TU/vendor ABI mismatch as E (cortex-m3 6-byte endpoint, inline vs hidden ptr). Serial (1): Phase 132.3 deferred. | **5/6 CLOSED 2026-05-19** via cluster-E fix; serial → Phase 132.3 |
 | G. cmake_platform_matrix cross | 4 | **phantom — already `[SKIPPED]`** | none (artifact of raw fail list) |
-| H. nano2nano + bridges | 4 | XRCE `g_session` process-globals | Phase 156 follow-up |
+| H. nano2nano + bridges | 6 | 2 phantom (fixture skip); 2 PASS no changes; 2 XRCE throughput drops (real) | **4/6 closed 2026-05-19**; throughput → 160.H.1 |
 | I. ThreadX-Linux rtos_e2e | 3 | fixture staleness | **CLOSED 2026-05-19** (rebuild) |
 | J. RV64 C pubsub | 1 | recipe + Phase 159 fix landed | **CLOSED 160.J** (recipe `23e5650d`) |
 | K. NuttX + ThreadX-Linux DDS | 2 | per-platform dust-dds bring-up | Phase 117-adjacent |
