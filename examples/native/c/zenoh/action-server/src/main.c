@@ -12,6 +12,7 @@
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 
 // Generated C bindings for example_interfaces/action/Fibonacci
@@ -34,6 +35,9 @@ static struct {
 } app;
 
 static volatile sig_atomic_t g_running = 1;
+// Phase 88.16.B — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 static nros_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
@@ -67,7 +71,7 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
         return NROS_GOAL_REJECT;
     }
 
-    printf("Goal request: order=%d (uuid=%02x%02x...)\n", goal_msg.order, goal->uuid.uuid[0],
+    NROS_LOG_INFO(g_logger, "Goal request: order=%d (uuid=%02x%02x...)", goal_msg.order, goal->uuid.uuid[0],
            goal->uuid.uuid[1]);
 
     // Reject negative orders or orders too large
@@ -204,6 +208,7 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_action_server", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",

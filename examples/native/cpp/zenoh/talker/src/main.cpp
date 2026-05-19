@@ -10,6 +10,7 @@
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for std_msgs/msg/Int32
@@ -25,6 +26,9 @@ struct TalkerContext {
 };
 
 static volatile sig_atomic_t g_running = 1;
+// Phase 88.16.B — set after `nros::create_node`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -48,9 +52,9 @@ static void timer_callback(void* context) {
 
     nros::Result ret = ctx->publisher->publish(msg);
     if (ret.ok()) {
-        std::printf("Published: %d\n", ctx->count);
+        NROS_LOG_INFO(g_logger, "Published: %d", ctx->count);
     } else {
-        std::fprintf(stderr, "Publish failed: %d\n", ret.raw());
+        NROS_LOG_ERROR(g_logger, "Publish failed: %d", ret.raw());
     }
 }
 
@@ -84,6 +88,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_talker"), 1);
+    g_logger = node.get_logger();
     std::printf("Node created: %s\n", node.get_name());
 
     nros::Publisher<std_msgs::msg::Int32> pub;

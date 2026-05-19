@@ -10,6 +10,7 @@
 #include <nros/action.h>
 #include <nros/check.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 
 #include "example_interfaces.h"
@@ -21,6 +22,9 @@ static struct {
 } app;
 
 static volatile sig_atomic_t g_running = 1;
+// Phase 88.16.B — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 static void signal_handler(int signum) {
     (void)signum;
@@ -48,11 +52,11 @@ static void feedback_callback(const nros_goal_uuid_t* goal_uuid, const uint8_t* 
     example_interfaces_action_fibonacci_feedback fb;
     if (example_interfaces_action_fibonacci_feedback_deserialize(&fb, feedback, feedback_len) ==
         0) {
-        printf("Feedback #%d: ", g_feedback_count);
+        NROS_LOG_INFO(g_logger, "Feedback #%d: ", g_feedback_count);
         print_sequence(&fb);
         printf("\n");
     } else {
-        fprintf(stderr, "Feedback #%d: failed to deserialize\n", g_feedback_count);
+        NROS_LOG_WARN(g_logger, "Feedback #%d: failed to deserialize", g_feedback_count);
     }
 }
 
@@ -115,11 +119,12 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(nros_support_init(&app.support, agent, domain_id), 1);
     printf("Support initialized\n");
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_action_client", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(
         nros_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
-    printf("Action client created: /fibonacci\n");
+    NROS_LOG_INFO(g_logger, "Action client created: /fibonacci");
 
     nros_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL);
     nros_action_client_set_result_callback(&app.action_client, result_callback, NULL);
@@ -147,7 +152,7 @@ int nros_app_main(int argc, char** argv) {
         goto cleanup;
     }
 
-    printf("Goal sent (uuid=%02x%02x%02x%02x...)\n", goal_uuid.uuid[0], goal_uuid.uuid[1],
+    NROS_LOG_INFO(g_logger, "Goal sent (uuid=%02x%02x%02x%02x...)", goal_uuid.uuid[0], goal_uuid.uuid[1],
            goal_uuid.uuid[2], goal_uuid.uuid[3]);
 
     signal(SIGINT, signal_handler);

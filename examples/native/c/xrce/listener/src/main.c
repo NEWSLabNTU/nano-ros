@@ -18,6 +18,7 @@
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/subscription.h>
 
@@ -68,6 +69,9 @@ static struct {
 } app;
 
 static volatile sig_atomic_t g_running = 1;
+// Phase 88.16.B — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 static nros_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
@@ -94,7 +98,7 @@ static void subscription_callback(const uint8_t* data, size_t len, void* context
 
     if (std_msgs_Int32_deserialize(&msg, data, len) == 0) {
         ctx->message_count++;
-        printf("Received: %d\n", msg.data);
+        NROS_LOG_INFO(g_logger, "Received: %d", msg.data);
     } else {
         fprintf(stderr, "Failed to deserialize message (len=%zu)\n", len);
     }
@@ -132,6 +136,7 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(nros_support_init(&app.support, agent_addr, domain_id), 1);
     printf("Support initialized\n");
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_listener", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     app.listener_ctx = (listener_context_t){.message_count = 0};

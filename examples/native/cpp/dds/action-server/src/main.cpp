@@ -9,6 +9,7 @@
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
@@ -21,6 +22,9 @@ using Fibonacci = example_interfaces::action::Fibonacci;
 // ----------------------------------------------------------------------------
 
 static volatile sig_atomic_t g_running = 1;
+// Phase 88.16.B — set after `nros::create_node`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 /// State that the goal callback needs to reach — held on the stack of
 /// `main` and handed to the ActionServer via the Phase 84.G9
@@ -57,7 +61,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     }
 
     state->goal_count++;
-    std::printf("Goal accepted: order=%d\n", goal.order);
+    NROS_LOG_INFO(g_logger, "Goal accepted: order=%d", goal.order);
 
     int32_t a = 0;
     int32_t b = 1;
@@ -121,6 +125,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_action_server"), 1);
+    g_logger = node.get_logger();
     std::printf("Node created: %s\n", node.get_name());
 
     nros::ActionServer<Fibonacci> srv;

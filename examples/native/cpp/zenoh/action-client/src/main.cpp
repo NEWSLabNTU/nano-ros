@@ -8,10 +8,15 @@
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
 #include "example_interfaces.hpp"
+
+// Phase 88.16.B — set after `nros::create_node`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 // ----------------------------------------------------------------------------
 // Main
@@ -43,6 +48,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_action_client"), 1);
+    g_logger = node.get_logger();
     std::printf("Node created: %s\n", node.get_name());
 
     nros::ActionClient<example_interfaces::action::Fibonacci> client;
@@ -67,7 +73,7 @@ int nros_app_main(int argc, char **argv) {
         nros::shutdown();
         return 2;
     }
-    std::printf("Goal sent: order=%d [OK]\n", order);
+    NROS_LOG_INFO(g_logger, "Goal sent: order=%d [OK]", order);
 
     // Poll for feedback while waiting — drain via the new Stream<T> API
     // (Phase 84.G7) which aligns the feedback receive surface with
@@ -80,7 +86,7 @@ int nros_app_main(int argc, char **argv) {
 
         example_interfaces::action::Fibonacci::Feedback fb;
         while (feedback.try_next(fb).ok()) {
-            std::printf("Feedback: sequence=[");
+            NROS_LOG_INFO(g_logger, "Feedback: sequence=[");
             for (uint32_t k = 0; k < fb.sequence.length(); k++) {
                 if (k > 0) std::printf(", ");
                 std::printf("%d", fb.sequence[k]);

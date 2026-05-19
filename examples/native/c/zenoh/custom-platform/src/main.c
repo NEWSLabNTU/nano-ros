@@ -25,6 +25,7 @@
 // nros modular includes
 #include <nros/app_main.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
 #include <nros/timer.h>
@@ -108,7 +109,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     if (len > 0) {
         nros_ret_t ret = nros_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
         if (ret == NROS_RET_OK) {
-            printf("Published: %d\n", app.message.data);
+            NROS_LOG_INFO(g_logger, "Published: %d", app.message.data);
         }
     }
 }
@@ -217,6 +218,10 @@ static void demo_guard_condition(void) {
 // ============================================================================
 // Main
 // ============================================================================
+
+// Phase 88.16.B — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 
 int nros_app_main(int argc, char** argv) {
     (void)argc;

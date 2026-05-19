@@ -9,6 +9,7 @@
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
+#include <nros/log.hpp>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for std_msgs/msg/Int32
@@ -19,6 +20,9 @@
 // ----------------------------------------------------------------------------
 
 static volatile sig_atomic_t g_running = 1;
+// Phase 88.16.B — set after `nros::create_node`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = nullptr;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -59,6 +63,7 @@ int nros_app_main(int argc, char **argv) {
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_listener"), 1);
+    g_logger = node.get_logger();
     std::printf("Node created: %s\n", node.get_name());
 
     nros::Subscription<std_msgs::msg::Int32> sub;
@@ -83,7 +88,7 @@ int nros_app_main(int argc, char **argv) {
         std_msgs::msg::Int32 msg;
         while (sub.try_recv(msg)) {
             message_count++;
-            std::printf("Received: %d\n", msg.data);
+            NROS_LOG_INFO(g_logger, "Received: %d", msg.data);
         }
     }
 

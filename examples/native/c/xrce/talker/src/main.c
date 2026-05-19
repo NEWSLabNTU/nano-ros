@@ -18,6 +18,7 @@
 #include <nros/check.h>
 #include <nros/executor.h>
 #include <nros/init.h>
+#include <nros/log.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
 #include <nros/timer.h>
@@ -79,6 +80,9 @@ static struct {
 } app;
 
 static volatile sig_atomic_t g_running = 1;
+// Phase 88.16.B — set after `nros_node_init`; used by post-init
+// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
+static nros_logger_t g_logger = NULL;
 static nros_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
@@ -110,7 +114,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     if (len > 0) {
         nros_ret_t ret = nros_publish_raw(ctx->publisher, buffer, (size_t)len);
         if (ret == NROS_RET_OK) {
-            printf("Published: %d\n", ctx->message.data);
+            NROS_LOG_INFO(g_logger, "Published: %d", ctx->message.data);
         } else {
             fprintf(stderr, "Publish failed: %d\n", ret);
         }
@@ -149,6 +153,7 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(nros_support_init(&app.support, agent_addr, domain_id), 1);
     printf("Support initialized\n");
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_xrce_talker", "/"), 1);
+    g_logger = nros_node_get_logger(&app.node);
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/chatter"),
