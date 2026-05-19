@@ -126,7 +126,7 @@ Three orthogonal axes (compile-time mutual excl, zero on axis OK):
 - **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}` — `[platform.bare-metal]` in `zenoh_platforms.toml` carries `arch = ["cortex-m3", "riscv32imc"]`; build.rs's first-match dispatch picks the right arch per target triple (so `qemu-arm-baremetal` + `ESP32-C3` share the same platform entry). Phase 148.
 - **ROS edition**: `ros-{humble,iron}`
 
-RMW backend host-language policy (frozen 2026-05-07): see `book/src/internals/rmw-backends.md`. Rule: backend's host language matches its underlying library's native language unless overridden. Today: dust-dds=Rust, cyclonedds=C++, XRCE=Rust→C (115.K.2), zenoh-pico=Rust (deferred), uORB=Rust (won't-do).
+RMW backend host-language policy (frozen 2026-05-07; dust-dds row retired 2026-05-19 per Phase 169): see `book/src/internals/rmw-backends.md`. Rule: backend's host language matches its underlying library's native language unless overridden. Today: cyclonedds=C++, XRCE=Rust→C (115.K.2), zenoh-pico=Rust (deferred), uORB=Rust (won't-do). dust-dds=Rust **retired** (Phase 169 — repeated bring-up failures on every embedded target; consolidating DDS on Cyclone).
 
 Default `std`. Cross-cutting: `unstable-zenoh-api` (zero-copy receive).
 

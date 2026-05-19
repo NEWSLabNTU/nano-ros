@@ -14,7 +14,7 @@ underlying code / build bugs.
 | 166.C | `examples/native/{cpp,c}/zenoh/talker/` CMake | Transitive submodule fetch pulls dust-dds + px4-rs even for posix+zenoh; first build aborts | P2 | **Worktree artifact** — submodules present + populated on `main` |
 | 166.D | `examples/threadx-linux/rust/zenoh/talker/Cargo.toml` (and siblings) | Missing empty `[workspace]` table — `cargo build` from inside the repo discovers parent workspace + crate not listed → error | P2 | **Worktree artifact** — all example Cargo.tomls verified on `main` (either in root workspace `members` or have own `[workspace]`) |
 | 166.E | `integrations/nuttx/` template | `external-Kconfig.in` + `external-Make.defs.in` staging step not wired into `just nuttx setup`; user following the shell-symlink instruction can't reach example apps via menuconfig | P3 | **Fixed** — `just nuttx setup` now invokes `scripts/nuttx/stage-external-apps.sh` |
-| 166.F | `packages/dds/dust-dds/dds/src/dcps/actor.rs` + nros-rmw-dds nostd runtime | `Actor<DcpsStatusCondition>::poll` blocks during the first `CreateTopic` mailbox handler on `xtensa-esp32s3-none-elf` (Phase 117.2h). Blocks two-instance ESP32-S3 QEMU DDS E2E. | P2 — blocks Phase 117 close-out | Not Started |
+| 166.F | ~~`packages/dds/dust-dds/dds/src/dcps/actor.rs` + nros-rmw-dds nostd runtime~~ | ~~`Actor<DcpsStatusCondition>::poll` blocks during the first `CreateTopic` mailbox handler on `xtensa-esp32s3-none-elf` (Phase 117.2h). Blocks two-instance ESP32-S3 QEMU DDS E2E.~~ **Won't-Fix — superseded by Phase 169** (Retire dust-dds; consolidate on Cyclone DDS). Closed by deleting the dust-dds submodule, not by patching it. | Closed |
 
 ---
 
@@ -387,6 +387,17 @@ not the example apps the page promises.
 ---
 
 ## 166.F — dust-dds `Actor<DcpsStatusCondition>` poll deadlock on Xtensa LX7
+
+> **Won't-Fix 2026-05-19 — superseded by Phase 169 (Retire dust-dds;
+> consolidate on Cyclone DDS).** Closed by deleting the dust-dds
+> submodule rather than patching the actor mailbox shape. Diagnostic
+> infrastructure on `phase-117.0-esp32s3-toolchain` (the
+> `nros-rmw-dds[debug-esp-println]` chain, the `block_on_boxed`
+> fusion barriers, the `NROS_EXECUTOR_*` env-var arena shrinkage)
+> is preserved on the feature branch for archaeology — none of it
+> survives Phase 169.4 (delete `nros-rmw-dds`). The hypothesis
+> below stands as a historical record of why dust-dds nostd-runtime
+> was structurally untenable.
 
 During Phase 117.2h (`phase-117.0-esp32s3-toolchain` branch) the
 ESP32-S3 QEMU DDS talker / listener both reach `Executor::open`

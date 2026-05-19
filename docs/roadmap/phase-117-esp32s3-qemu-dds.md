@@ -1,12 +1,25 @@
 # Phase 117 — ESP32-S3-QEMU DDS pubsub bring-up
 
+> **DDS pubsub bits retired 2026-05-19 — superseded by Phase 169
+> (Retire dust-dds; consolidate on Cyclone DDS).** The ESP32-S3
+> toolchain + platform crate + board crate + test infrastructure
+> (117.0 through 117.5 on the `phase-117.0-esp32s3-toolchain`
+> branch) is preserved as foundation for future
+> Cyclone-DDS-on-Xtensa work. The dust-dds–rooted runtime
+> blockers (PSRAM heap budget, Executor stack overflow,
+> LLVM-fusion poll loop, Actor poll deadlock — every one
+> surfaced during bring-up) get closed by deleting the dust-dds
+> submodule, not by patching it. Phase 117 example crates
+> retarget onto zenoh-pico in Phase 169.2 until a Cyclone Xtensa
+> port lands (tracked separately as Phase 169.9).
+
 **Goal:** unblock full-RTPS DDS on an ESP32-class chip via **ESP32-S3 + QEMU
 + PSRAM**. Closes Phase 97.4.esp32-qemu (currently `[ ]`) and Phase 101.7
 (blocked on ESP32-C3 heap budget) without sacrificing RTPS conformance — i.e.
 keep all dust-dds builtin discovery/metatraffic entities (full ROS 2 interop),
 trade chip target instead of trimming protocol surface.
 
-**Status:** Not Started.
+**Status:** Not Started → **DDS bits retired 2026-05-19 (see Phase 169).**
 **Priority:** Medium — promotes Phase 97 / 101 from "DDS works on every other
 RTOS slice" to "DDS works on ESP32 too." Bonus coverage for the ESP32 line
 without requiring real hardware.
