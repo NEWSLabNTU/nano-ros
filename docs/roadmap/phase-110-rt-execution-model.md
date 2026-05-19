@@ -483,17 +483,19 @@ ARINC-653-style outer time-triggered + inner priority. Major-frame schedule tabl
 
 #### 110.G.bridge — ARINC TT bridge example (migrated from 104.E.4)
 
-- [ ] `examples/native/rust/bridge/tt-zenoh-to-xrce/`:
+- [x] `examples/native/rust/bridge/tt-zenoh-to-xrce/`:
       time-triggered cyclic bridge with non-overlapping
-      ingress/egress windows in a 10 ms major frame.
-      Demonstrates `tt_window_offset_us` +
-      `tt_window_duration_us` per Node default
-      SchedContext. **Blocked on 110.G runtime** —
-      `scheduler-time-triggered` Cargo feature already
-      gates the TT skeleton; needs major-frame dispatch +
-      per-handle TT window enforcement before the bridge
-      example can exercise the deterministic
-      ingress/egress slot pattern.
+      ingress/egress windows in a 10 ms major frame
+      (2026-05-19). Demonstrates `tt_window_offset_us` +
+      `tt_window_duration_us` per-handle gating. Ingress
+      [0, 3) ms — zenoh raw subscription copies into a
+      shared staging buffer. Egress [5, 8) ms — 1 kHz drain
+      timer republishes the buffered bytes to XRCE.
+      `apply_time_triggered_schedule<2>` returns the two
+      SchedContext IDs; both handles bind via
+      `bind_handle_to_sched_context`. spin_once TT gate
+      (`executor/spin.rs:4007+`) reads each handle's bound
+      SC and suppresses out-of-slot dispatch.
       **Files:**
       `examples/native/rust/bridge/tt-zenoh-to-xrce/{Cargo.toml,src/main.rs,README.md}`.
 

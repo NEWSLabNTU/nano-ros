@@ -1,0 +1,24 @@
+[package]
+name = "native-rs-bridge-tt-zenoh-to-xrce"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "tt-zenoh-to-xrce"
+path = "src/main.rs"
+
+[dependencies]
+# Phase 110.G.bridge — time-triggered bridge demo. Ingress
+# (zenoh subscriber) and egress (XRCE raw publisher) fire in
+# non-overlapping windows of a 10 ms major frame, exercising
+# `apply_time_triggered_schedule` + per-handle TT window gating
+# from Phase 110.G.
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+nros-rmw-xrce-cffi = { path = "../../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"] }
+log = "0.4"
+env_logger = "0.11"
+
+[workspace]

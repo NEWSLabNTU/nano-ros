@@ -414,6 +414,16 @@ pub use nros_node::{
     LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawSubscription, RecvView, Subscription,
 };
 
+// Phase 110.B / 110.G — scheduling-context API surface. Consumers
+// of the Phase 110 cyclic / TT scheduler need these types to
+// describe schedules and bind handles; re-exporting them here
+// keeps user code free of `nros_node::executor::sched_context`
+// path noise.
+pub use nros_node::executor::sched_context::{
+    DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext, SchedContextId,
+    TimeTriggeredSchedule, TimeTriggeredScheduleError, TimeTriggeredWindow,
+};
+
 #[cfg(all(feature = "std", feature = "rmw-cffi"))]
 pub use nros_node::SpinPeriodResult;
 
