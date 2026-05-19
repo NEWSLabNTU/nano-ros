@@ -399,3 +399,47 @@ fn test_freertos_cmake_case_rmw_variant_exists(
         path.display()
     );
 }
+
+/// Phase 118.B.5 — NuttX C / C++ collapsed cases. Zenoh only on
+/// NuttX C / C++ (no pre-collapse DDS C / C++ NuttX siblings).
+/// Rust collapse for NuttX is deferred — `cargo build` on the
+/// collapsed 4-segment path hits a libgloss / newlib crt0 link
+/// issue that the 5-segment zenoh sibling avoids.
+#[rstest]
+#[case::c_talker("c", "talker", "nuttx_c_talker")]
+#[case::c_listener("c", "listener", "nuttx_c_listener")]
+#[case::c_ss("c", "service-server", "nuttx_c_service_server")]
+#[case::c_sc("c", "service-client", "nuttx_c_service_client")]
+#[case::c_as("c", "action-server", "nuttx_c_action_server")]
+#[case::c_ac("c", "action-client", "nuttx_c_action_client")]
+#[case::cpp_talker("cpp", "talker", "nuttx_cpp_talker")]
+#[case::cpp_listener("cpp", "listener", "nuttx_cpp_listener")]
+#[case::cpp_ss("cpp", "service-server", "nuttx_cpp_service_server")]
+#[case::cpp_sc("cpp", "service-client", "nuttx_cpp_service_client")]
+#[case::cpp_as("cpp", "action-server", "nuttx_cpp_action_server")]
+#[case::cpp_ac("cpp", "action-client", "nuttx_cpp_action_client")]
+fn test_nuttx_cmake_case_rmw_variant_exists(
+    #[case] lang: &str,
+    #[case] case: &str,
+    #[case] binary: &str,
+) {
+    let path = nros_tests::fixtures::build_nuttx_cmake_example_rmw(
+        lang, case, binary, Rmw::Zenoh,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "qemu-arm-nuttx/{}/{} zenoh variant not prebuilt; run \
+             `just nuttx build-fixtures` first: {:?}",
+            lang,
+            case,
+            e
+        )
+    });
+    assert!(
+        path.exists(),
+        "nuttx {}/{} zenoh binary missing: {}",
+        lang,
+        case,
+        path.display()
+    );
+}

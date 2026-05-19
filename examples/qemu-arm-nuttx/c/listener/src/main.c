@@ -1,0 +1,119 @@
+/// @file main.c
+/// @brief NuttX C listener example - subscribes to std_msgs/Int32 on /chatter
+
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <nros/app_main.h>
+#include <nros/check.h>
+#include <nros/executor.h>
+#include <nros/init.h>
+#include <nros/node.h>
+#include <nros/subscription.h>
+
+#include <nros/app_config.h>
+#include "std_msgs.h"
+
+#define MAX_MESSAGES 10
+
+typedef struct {
+    int message_count;
+} listener_context_t;
+
+static struct {
+    nros_support_t support;
+    nros_node_t node;
+    listener_context_t listener_ctx;
+    nros_subscription_t subscription;
+    nros_executor_t executor;
+} app;
+
+static void subscription_callback(const uint8_t* data, size_t len, void* context) {
+    listener_context_t* ctx = (listener_context_t*)context;
+
+    std_msgs_msg_int32 msg;
+    std_msgs_msg_int32_init(&msg);
+
+    if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
+        ctx->message_count++;
+        printf("Received: %d\n", msg.data);
+    } else {
+        fprintf(stderr, "Failed to deserialize message\n");
+    }
+    fflush(stdout);
+    fflush(stderr);
+}
+
+int nros_app_main(int argc, char **argv) {
+    (void)argc;
+    (void)argv;
+
+
+    printf("nros NuttX C Listener\n");
+    printf("Locator: %s\n", NROS_APP_CONFIG.zenoh.locator);
+
+    memset(&app, 0, sizeof(app));
+
+    // Re-seed /dev/urandom with a per-example unique value. NuttX's
+    // xorshift128 PRNG starts with a fixed seed, so two QEMU instances
+    // otherwise generate identical Zenoh session IDs and zenohd rejects
+    // the second connection with MAX_LINKS. Writing bytes to /dev/urandom
+    // reseeds the PRNG state.
+    {
+        FILE* urandom = fopen("/dev/urandom", "wb");
+        if (urandom != NULL) {
+            const uint8_t seed[4] = {10, 0, 2, 31};
+            fwrite(seed, 1, sizeof(seed), urandom);
+            fclose(urandom);
+        }
+    }
+
+    // Wait for NuttX networking to become ready before attempting the
+    // zenoh TCP session. NuttX's poll()/select() don't cooperate with
+    // blocking connect() well enough to rely on connect_timeout, so we
+    // just sleep for a few seconds after boot and let the virtio-net
+    // driver + DHCP/static IP setup finish. Mirrors the 5-second wait
+    // in packages/boards/nros-board-nuttx-qemu-arm/src/node.rs::run().
+    fflush(stdout);
+    sleep(5);
+
+    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
+    NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "nuttx_c_listener", "/"), 1);
+
+    app.listener_ctx = (listener_context_t){ .message_count = 0 };
+
+    NROS_CHECK_RET(nros_subscription_init(
+        &app.subscription,
+        &app.node,
+        std_msgs_msg_int32_get_type_support(),
+        "/chatter",
+        subscription_callback,
+        &app.listener_ctx
+    ), 1);
+    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    NROS_SOFTCHECK(nros_executor_register_subscription(&app.executor, &app.subscription,
+        NROS_EXECUTOR_ON_NEW_DATA));
+
+    printf("Waiting for messages...\n\n");
+    // NuttX libc full-buffers stdout under the test harness's pipe.
+    // See action-server for rationale.
+    fflush(stdout);
+    nros_executor_spin_period(&app.executor, 100000000ULL);
+
+    nros_executor_fini(&app.executor);
+    nros_subscription_fini(&app.subscription);
+    nros_node_fini(&app.node);
+    nros_support_fini(&app.support);
+
+}
+
+/* Phase 157 — NuttX external-app build (canonical
+ * apps/external/<name>/) defines NROS_NUTTX_EXTERNAL_APP=1 via the
+ * sibling Makefile so the auto-detect macro picks the
+ * `int main(int, char**)` entry that NuttX's Application.mk
+ * renames to `<PROGNAME>_main`. QEMU cmake bring-up (Phase 144.6)
+ * leaves the define unset and stays on `app_main(void)` for the
+ * nros-board-nuttx-qemu-arm Rust shim. */
+NROS_APP_MAIN_REGISTER()

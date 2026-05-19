@@ -114,6 +114,33 @@ build-fixtures:
            -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
          cmake --build {}/build --parallel > /dev/null"
 
+    # Phase 118.B.5 — collapsed-shape NuttX C / C++ examples (zenoh
+    # only; no DDS C / C++ NuttX siblings existed pre-collapse).
+    # Rust collapse deferred — `cargo build` on the 4-segment path
+    # hits a libgloss / newlib crt0 link issue that the original
+    # 5-segment-path zenoh sibling avoids (likely a build-std
+    # `[patch.crates-io] libc` resolution interaction with the
+    # rust-toolchain.toml file location). Track as 118.B.5.1.
+    collapsed_cmake_dirs=()
+    for lang in c cpp; do
+        for ex in talker listener service-server service-client action-server action-client; do
+            dir="examples/qemu-arm-nuttx/$lang/$ex"
+            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
+        done
+    done
+    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+             cmake -S {} -B {}/build-zenoh \
+               -DNROS_RMW=zenoh \
+               -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+               -DNUTTX_DIR='$nuttx_dir' \
+               -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
+               -DCMAKE_BUILD_TYPE=Release \
+               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+             cmake --build {}/build-zenoh --parallel > /dev/null"
+    fi
+
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
 # then run `make` from the NuttX kernel tree. Exercises
