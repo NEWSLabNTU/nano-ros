@@ -185,12 +185,18 @@ where
 /// Type-erased future the spawner owns.
 type BoxedTask = Pin<Box<dyn Future<Output = ()> + Send>>;
 
-/// Safety bound on `drain_until_quiescent` loop count. 32 covers normal
-/// dust-dds SPDP / SEDP / RTPS-receive depth with headroom; a runaway
-/// pattern that re-spawns every poll would have looped indefinitely
-/// under the prior single-pass drain shape too (it just wouldn't have
-/// manifested as fast). Tuneable if a future use case needs more depth.
-const DRAIN_MAX_PASSES: usize = 32;
+/// Safety bound on `drain_until_quiescent` loop count. 256 covers
+/// dust-dds participant-creation depth (factory mailbox + multiple
+/// per-actor spawns + announcement / message-write tasks + each
+/// task's internal sub-awaits across mpsc / oneshot / select_future
+/// resolution). Phase 117.2e probe found that 32 was too tight — on
+/// ESP32-S3 the create-participant flow needed ~80 passes to resolve
+/// the reply_receiver chain. Doubled twice with headroom so the
+/// bound isn't load-bearing in production traffic. A runaway pattern
+/// that re-spawns every poll would still loop indefinitely under
+/// either bound; the increase trades one drain wall-clock cycle (a
+/// few hundred function calls) for correctness margin.
+const DRAIN_MAX_PASSES: usize = 256;
 
 /// Task queue shared between the spawner handle and the cooperative
 /// executor that drains it.
