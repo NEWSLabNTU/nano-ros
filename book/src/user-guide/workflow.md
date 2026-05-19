@@ -12,7 +12,7 @@ workspace and run `just setup`:
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup tier=default      # SDK tiers: minimal | default | extended
+just setup      # SDK tiers: minimal | default | extended
 ```
 
 For multi-package workspaces (Pattern A — recommended for POSIX +

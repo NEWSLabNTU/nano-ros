@@ -84,16 +84,18 @@ source ./setup.bash               # zenohd, nros, nros-codegen, qemu-system-arm 
 4. Surfaces missing apt cross-toolchain packages on Linux. **Never**
    runs sudo automatically; reports what to install.
 
-The optional `tier=` argument scopes the install (handy on CI or
-for Rust-only contributors):
+The optional `tier=minimal` argument scopes the install down to
+the workspace + verification + zenohd (Rust-only contributors who
+don't want any cross toolchains pulled in):
 
 ```bash
-just setup tier=minimal          # workspace + verification + zenohd
-just setup tier=default          # everything `just ci` covers (the default)
-just setup tier=extended         # default + esp-idf + px4
+just setup tier=minimal          # no cross toolchains; Rust + zenohd only
+just setup                       # the everything tier — every safe module
 ```
 
-Most users can ignore tiers entirely.
+Most users can ignore the tier knob entirely. For platform-specific
+work prefer the narrower `just <plat> setup` recipes documented
+below.
 
 After `just setup`, `source ./setup.bash` puts every shipped
 binary on PATH for the current shell session — same idiom as
@@ -173,14 +175,13 @@ for the pattern.
 
 ## Contributor setup (working on nano-ros itself)
 
-Hacking on nano-ros uses the same `just setup` entry point, with
-the wider `default` or `extended` tier:
+Same `just setup` entry point — the no-arg invocation fetches every
+module:
 
 ```bash
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup tier=default      # everything `just ci` exercises
-# just setup tier=extended   # + esp-idf, + px4
+just setup                    # every safe / idempotent module
 ```
 
 Diagnose missing tools (read-only):

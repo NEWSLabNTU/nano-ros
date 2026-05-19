@@ -13,7 +13,7 @@ tuple:
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup tier=default
+just setup
 ```
 
 Read [Setup Compared to Standard ROS 2](setup-compared-to-ros2.md)

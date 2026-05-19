@@ -12,7 +12,7 @@ Rust and C are supported on both flavours; nros-cpp does not target
 ThreadX (not in the
 [coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)).
 
-> **Prereqs.** Clone with `just setup tier=default` already run. For
+> **Prereqs.** Clone with `just setup` already run. For
 > threadx-riscv64 also need a `riscv64-unknown-linux-gnu-gcc` cross
 > toolchain on `PATH` plus `qemu-system-riscv64`.
 

@@ -1107,7 +1107,7 @@ setup target="" tier="":
     fi
     chosen_tier="{{tier}}"
     if [[ -z "$chosen_tier" ]]; then
-        chosen_tier="${NROS_SETUP_TIER:-default}"
+        chosen_tier="${NROS_SETUP_TIER:-everything}"
     fi
     just _orchestrate setup "$chosen_tier"
     echo ""
@@ -1124,7 +1124,7 @@ doctor tier="":
     set -e
     chosen_tier="{{tier}}"
     if [[ -z "$chosen_tier" ]]; then
-        chosen_tier="${NROS_SETUP_TIER:-default}"
+        chosen_tier="${NROS_SETUP_TIER:-everything}"
     fi
     just _orchestrate doctor "$chosen_tier"
 
@@ -1133,7 +1133,7 @@ doctor tier="":
 # extended. Unknown tier exits non-zero so a typo doesn't silently
 # pick the wrong module list.
 [private]
-_orchestrate verb tier="default":
+_orchestrate verb tier="everything":
     #!/usr/bin/env bash
     set +e
     failed=()
@@ -1147,36 +1147,18 @@ _orchestrate verb tier="default":
             failed+=("$mod")
         fi
     }
-    # Phase 142.6 — surface the qemu PPA upgrade prompt at end of
-    # `just doctor` (qemu module's own doctor already prints it).
-    capture_qemu_doctor=""
+    # Tiers (collapsed 2026-05-19): only two surfaces remain.
+    #   - `minimal`     : Rust-only contributors (workspace + verification + zenohd)
+    #   - `everything`  : default; every safe / idempotent module
+    # The legacy names `default` and `extended` alias to `everything`
+    # so existing scripts + NROS_SETUP_TIER values keep working.
     case "{{tier}}" in
         minimal)
             run workspace
             run verification
             run zenohd
             ;;
-        default)
-            # minimal
-            run workspace
-            run verification
-            run zenohd
-            # + RTOS, embedded, support services
-            run qemu
-            run freertos
-            run nuttx
-            run threadx_linux
-            run threadx_riscv64
-            run esp32
-            run zephyr
-            run xrce
-            run rmw_zenoh
-            run orin_spe
-            run cyclonedds
-            run platformio
-            ;;
-        extended)
-            # default
+        everything|default|extended)
             run workspace
             run verification
             run zenohd
@@ -1192,12 +1174,12 @@ _orchestrate verb tier="default":
             run orin_spe
             run cyclonedds
             run platformio
-            # + heavy / private-SDK modules
             run esp_idf
             run px4
             ;;
         *)
-            echo "unknown tier '{{tier}}' — expected one of: minimal, default, extended" >&2
+            echo "unknown tier '{{tier}}' — expected one of: minimal, everything" >&2
+            echo "(legacy aliases default / extended also accepted)" >&2
             exit 2
             ;;
     esac

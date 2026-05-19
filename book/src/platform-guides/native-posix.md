@@ -18,7 +18,7 @@ embedded targets.
 From the nano-ros clone:
 
 ```bash
-just setup tier=default
+just setup
 just zenohd setup        # build the in-tree zenoh router (optional if system zenohd is on PATH)
 ```
 

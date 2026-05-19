@@ -4,7 +4,7 @@ Single-node starter on FreeRTOS + lwIP, cross-compiled for Cortex-M3
 and booted in QEMU MPS2-AN385. Slirp networking; no host TAP /
 bridge / sudo. Rust, C, and C++ talkers all live in-tree.
 
-> **Prereqs.** Clone with `just setup tier=default` already run. Need
+> **Prereqs.** Clone with `just setup` already run. Need
 > `arm-none-eabi-gcc` + `qemu-system-arm` on `PATH`. `just freertos
 > setup` fetches the FreeRTOS kernel + lwIP sources under
 > `third-party/freertos/`.

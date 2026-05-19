@@ -5,7 +5,7 @@ Single-node starter on ESP32-C3 / ESP32-S3 using the bare-metal
 (C / C++ apps), see [ESP32 (ESP-IDF
 component)](./integration-esp-idf.md).
 
-> **Prereqs.** Clone with `just setup tier=default` already run.
+> **Prereqs.** Clone with `just setup` already run.
 > `espflash` on `PATH` (`cargo install espflash`). For ESP32-C3 the
 > `riscv32imc-unknown-none-elf` Rust target is the toolchain;
 > `just esp32 setup` pulls it.

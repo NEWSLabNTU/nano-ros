@@ -40,10 +40,10 @@ build the example tree (or your own package) directly:
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
 
-# One-shot SDK fetch. `tier` controls how much gets installed.
-just setup tier=default        # full coverage for `just ci`
-# just setup tier=minimal      # workspace + verification + zenohd
-# just setup tier=extended     # default + esp_idf + px4
+# One-shot SDK fetch.
+just setup                       # every safe / idempotent module
+# just setup tier=minimal        # workspace + verification + zenohd only
+source ./setup.bash               # zenohd / nros / qemu-system-arm on PATH
 
 # Build + run an example (POSIX):
 cd examples/native/rust/zenoh/talker
@@ -60,17 +60,18 @@ just zephyr  build-fixtures    # west + Zephyr-SDK
 just nuttx   build-fixtures    # NuttX kernel + ARM Cortex-M3
 ```
 
-SDK tier matrix (strict supersets):
+Two tiers:
 
-- `minimal` — workspace + verification + zenohd. Rust-only.
-- `default` — `minimal` + QEMU + FreeRTOS + NuttX + ThreadX(Linux/RV64) +
-  ESP32 + Zephyr + XRCE + rmw_zenoh + Orin SPE + Cyclone DDS + PlatformIO.
-  Covers everything `just ci` exercises.
-- `extended` — `default` + ESP-IDF + PX4. Every integration
-  shell runnable.
+- **No-arg `just setup`** (default) — every safe / idempotent
+  module: workspace, verification, zenohd, QEMU, FreeRTOS, NuttX,
+  ThreadX (Linux + RV64), ESP32, Zephyr, XRCE, rmw_zenoh, Orin SPE,
+  Cyclone DDS, PlatformIO, ESP-IDF, PX4.
+- **`just setup tier=minimal`** — workspace + verification +
+  zenohd only. For Rust-only contributors who don't want any cross
+  toolchains pulled in.
 
-Override the default via `NROS_SETUP_TIER=<tier>` or by passing
-`tier=<tier>` to `just setup`.
+For platform-specific work prefer the narrower `just <plat> setup`
+recipes — they fetch only one RTOS's deps without pulling the rest.
 
 ## Choosing platform + RMW
 
@@ -114,8 +115,9 @@ Multi-RMW bridges (one binary, two or more backends) use
   no Arduino zip / ESP-IDF binary component / PlatformIO library /
   GitHub Releases artifact. The locked policy is `git clone --branch=v<X.Y.Z>` +
   in-tree build.
-- **Target-aware setup.** `just setup tier=<tier>` fetches only the
-  submodules + toolchains needed for the requested tier.
+- **Target-aware setup.** `just <plat> setup` fetches only the
+  submodules + toolchains needed for one RTOS. No-arg `just setup`
+  fetches everything safe.
 - **Compile-time RMW + platform.** Embedded targets can't `dlopen`,
   so the RMW and platform combination is locked in by CMake cache
   vars (`NANO_ROS_PLATFORM`, `NANO_ROS_RMW`) and Cargo features at

@@ -212,12 +212,12 @@ For each audit-reader pass, the agent's report should list:
 
 ### 165.C — Tier system audit
 
-- [ ] **165.C.1** Decide: keep three tiers, collapse to two
+- [x] **165.C.1** Decide: keep three tiers, collapse to two
       (`minimal` + `everything`), or drop entirely.
-- [ ] **165.C.2** If dropped: update the justfile orchestrator to
+- [x] **165.C.2** If dropped: update the justfile orchestrator to
       take a platform list directly. If kept: document why each
       tier earns its slot.
-- [ ] **165.C.3** Update book per the decision.
+- [x] **165.C.3** Update book per the decision.
 
 ### 165.D — Shell activation file
 

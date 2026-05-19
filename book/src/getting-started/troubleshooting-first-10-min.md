@@ -12,7 +12,7 @@ Did `cargo build` / `cmake --build` fail?
 ├─ error[E0432]: unresolved import `nros`
 ├─ error: failed to load source for dependency `nros`
 ├─ error: could not find `nros-rmw-zenoh`
-│   → Run `just setup tier=default` from the repo root. The
+│   → Run `just setup` from the repo root. The
 │     path-dep in the example's Cargo.toml points at the
 │     in-tree `packages/core/nros`; if the SDK fetch didn't
 │     run, transitive deps are missing.

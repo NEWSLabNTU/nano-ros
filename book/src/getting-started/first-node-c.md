@@ -5,7 +5,7 @@ C. Uses CMake, the Zenoh backend, and `add_subdirectory` consumption.
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
 >
-> **Prereqs.** A clone with `just setup tier=default` already run.
+> **Prereqs.** A clone with `just setup` already run.
 > See [Install + first build (Linux)](./installation.md) if you
 > haven't.
 
