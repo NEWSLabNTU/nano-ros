@@ -884,10 +884,19 @@ fn test_zephyr_action_e2e() {
     // the Zephyr action server example emits after
     // `create_action_server` returns — match on the common substring
     // "Action server ready".
-    let server_ready = server.wait_for_pattern("Action server ready", Duration::from_secs(30));
+    //
+    // Phase 160.C — bumped 30s → 60s. Each of the 3 service-server
+    // (queryable) declarations on Zephyr serializes at ~10 s under the
+    // current zenoh-pico transport (every declare does a sync wait that
+    // hits an internal lease/keepalive boundary; native_sim NSOS does
+    // not exhibit it on POSIX). 3 × 10 s + headroom puts readiness at
+    // ~30 s, right on the prior cutoff. Root-cause investigation
+    // (zenoh-pico declare-flush behaviour under Z_FEATURE_INTEREST=1)
+    // remains open as a follow-up.
+    let server_ready = server.wait_for_pattern("Action server ready", Duration::from_secs(60));
     if !server_ready.contains("Action server ready") {
         panic!(
-            "Zephyr action server didn't reach readiness within 30 s.\nOutput:\n{}",
+            "Zephyr action server didn't reach readiness within 60 s.\nOutput:\n{}",
             server_ready
         );
     }
@@ -2734,16 +2743,33 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
 
     // Start action server first
     let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim).unwrap();
-    std::thread::sleep(Duration::from_secs(3));
+
+    // Phase 160.C — wait for server readiness rather than fixed 3 s sleep.
+    // `create_action_server` declares 3 queryables on Zephyr; each
+    // serializes at ~10 s under the current zenoh-pico transport
+    // (see test_zephyr_action_e2e for the same observation). Total
+    // readiness time ~30 s — fixed-3-s sleep used to race the client
+    // ahead of the server's first queryable and the test failed.
+    let server_ready =
+        server.wait_for_pattern("Waiting for goal requests", Duration::from_secs(60));
+    if !server_ready.contains("Waiting for goal requests") {
+        panic!(
+            "Zephyr C++ action server didn't reach readiness within 60 s.\nOutput:\n{}",
+            server_ready
+        );
+    }
+    std::thread::sleep(Duration::from_millis(500));
 
     // Start action client
-    let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim).unwrap();
+    let client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim).unwrap();
 
-    // Wait for client to complete
+    // Wait for client to complete. Phase 160.C — bumped 30 s → 90 s.
+    // Client itself takes ~25 s to reach `send_goal` (3 service-clients
+    // mirror the server's 3 queryables — each declaration serializes at
+    // ~10 s on Zephyr zenoh-pico). Then goal exec + get_result. Was
+    // racing the 30 s window before this bump.
     let client_output = client
-        .wait_for_output(Duration::from_secs(30))
-        .unwrap_or_default();
-
+        .wait_for_pattern("[OK]", Duration::from_secs(90));
     let server_output = server
         .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
