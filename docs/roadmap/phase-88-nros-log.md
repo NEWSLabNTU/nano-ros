@@ -289,8 +289,33 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       `packages/testing/nros-tests/tests/logging_smoke.rs` boots each
       fixture under QEMU and asserts the rendered `[TRACE]` / `[DEBUG]`
       / `[INFO]` / `[WARN]` / `[ERROR]` / `[FATAL]` lines appear in the
-      captured UART / semihosting / native_sim output. Platforms in
-      scope:
+      captured UART / semihosting / native_sim output.
+
+      **2026-05-19 status.** 88.15.a is done and gives us a canonical
+      pattern: bare-metal Cortex-M3 fixture + per-test private QEMU
+      spawn + stderr drain (because the mps2-an385 writer routes
+      through `hstderr()`). The remaining sub-items are blocked on
+      smaller pre-work that doesn't fit cleanly into a single
+      commit, so they stay open as follow-ups rather than being
+      crammed into this phase:
+
+      - **88.15.b (FreeRTOS)** needs the board crate's `run()` flow
+        to be runnable without lwIP init — either a `run_minimal()`
+        helper that skips `nros_freertos_init_network` for smoke
+        fixtures, or a hand-rolled FreeRTOS-task fixture that calls
+        `nros_platform_register_log_writer` directly.
+      - **88.15.c–.d (NuttX / ThreadX)** need analogous "skip
+        network init" hooks plus, on ThreadX, a public
+        `nros_board_threadx_register_log_writer` helper for fixtures
+        that don't want to enter the full scheduler.
+      - **88.15.e (Zephyr)** needs a tiny `native_sim` binary
+        outside the `examples/` tree gated on `west` /
+        `ZEPHYR_BASE` availability.
+      - **88.15.f (ESP32)** needs the Espressif QEMU fork in the
+        CI's PATH; until that's part of `just esp32 setup`, the
+        test must skip cleanly.
+
+      Platforms in scope:
       - [x] 88.15.a — MPS2-AN385 bare-metal (semihosting via the
             `cortex-m-semihosting` writer wired in
             `nros-platform-mps2-an385::PlatformLog`). Fixture at
