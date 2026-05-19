@@ -124,9 +124,31 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
         per-board investment, design-deferred).
 
       v1 trait surface + every supported hosted RTOS now has a
-      functional `PlatformTimer` port. Outstanding: per-board
-      bare-metal SysTickHook + per-callback runtime accounting
-      (cancel + restart_oneshot wiring).
+      functional `PlatformTimer` port.
+
+      **Per-callback runtime accounting (Phase 110.E.b follow-up step
+      10) landed.** `spin_once`'s per-bucket dispatch loop now
+      wall-clock-times each invocation of `dispatch_one` and feeds
+      the elapsed microseconds into the bound SC's
+      `AtomicSporadicState::consume` (atomic-path Sporadic SCs
+      only). Replaces the cycle-level `delta_us` over-attribution
+      that previously charged every Sporadic SC the full spin
+      duration regardless of which callbacks fired. Verified by the
+      new `test_atomic_sporadic_per_callback_runtime_consumed`
+      test: a 10 ms sleeping callback consumes ≥10 000 us / <500 000
+      us from a 1 s budget (proves dispatch-local measurement, not
+      cycle-level over-attribution). Existing
+      `test_sporadic_budget_exhaustion_suppresses_dispatch` still
+      passes — the polled `SporadicState` path is unchanged for
+      no_std consumers.
+
+      Outstanding: per-board bare-metal SysTickHook (separate
+      per-board investment) + the `cancel` / `restart_oneshot`
+      machinery (oneshot timer arm before dispatch + cancel after
+      to detect callback overruns). Wall-clock measurement covers
+      the bulk of the per-callback accuracy win without that
+      machinery; oneshot-driven overrun detection is an additional
+      hardening pass.
 - [~] 110.F — `OsPrioritySet` per-priority OS-thread dispatch.
       **Reframed:** Cargo feature `scheduler-os-priority` + stub
       `OsPrioritySet<N>` shipped to lock the namespace; real

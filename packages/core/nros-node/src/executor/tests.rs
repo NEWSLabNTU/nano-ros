@@ -390,6 +390,79 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     );
 }
 
+/// Phase 110.E.b follow-up — per-callback runtime accounting.
+/// When a Sporadic SC has an `AtomicSporadicState` registered (the
+/// ISR-driven refill path), `spin_once` measures each bound
+/// callback's wall-clock dispatch time + `consume`s those microseconds
+/// from the atomic budget. Replaces the cycle-level over-attribution
+/// that previously charged the full cycle `delta_us` against every
+/// Sporadic SC regardless of which entries actually fired.
+#[test]
+#[cfg(feature = "alloc")]
+fn test_atomic_sporadic_per_callback_runtime_consumed() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    use crate::executor::spin::OpaqueTimerHandle;
+
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    // Subscription that sleeps a known interval so the per-callback
+    // dispatch timing is deterministic enough to assert on.
+    let h = executor
+        .register_subscription::<TestMsg, _>("/timed", move |_msg: &TestMsg| {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        })
+        .unwrap();
+
+    // Sporadic SC with 1 s budget — plenty so dispatch always
+    // proceeds; the assertion is on the *consumed* amount, not
+    // suppression.
+    let sc_id = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(1_000_000),
+            period_us: OptUs::from_us(60_000_000),
+            ..Default::default()
+        })
+        .unwrap();
+    executor.bind_handle_to_sched_context(h, sc_id).unwrap();
+
+    // Build a no-op `OpaqueTimerHandle` so `register_sporadic_timer`
+    // accepts the call — the test doesn't need a real periodic
+    // refill; it only needs the `AtomicSporadicState` slot wired so
+    // the dispatcher consumes runtime from it.
+    extern "C" fn noop_destroy(_handle: *mut core::ffi::c_void) {}
+    let fake_timer = unsafe { OpaqueTimerHandle::new(core::ptr::null_mut(), noop_destroy) };
+    let state = executor.register_sporadic_timer(sc_id, fake_timer).unwrap();
+    let before = state
+        .budget_remaining_us
+        .load(portable_atomic::Ordering::Acquire);
+
+    // Drive one dispatch — the registered closure sleeps 10 ms.
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let (d, n) = encode_test_msg(7);
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    let after = state
+        .budget_remaining_us
+        .load(portable_atomic::Ordering::Acquire);
+
+    // Per-callback runtime consumed at least the 10 ms (= 10_000 us)
+    // sleep, but well under the full 1 s budget — proves dispatch-
+    // local measurement, not cycle-level over-attribution.
+    let consumed = before.saturating_sub(after);
+    assert!(
+        consumed >= 10_000,
+        "expected at least 10 ms (10000 us) consumed for a 10 ms callback, got {consumed} us"
+    );
+    assert!(
+        consumed < 500_000,
+        "consumed {consumed} us suggests cycle-level over-attribution, not per-callback measurement"
+    );
+}
+
 /// Phase 110.D — multi-executor smoke test. Spawns two Executors,
 /// each on its own OS thread with a different `SchedPolicy`. Mirrors
 /// the shape of the drone S1 / watchdog S3 acceptance scenarios from

@@ -3900,20 +3900,21 @@ impl Executor {
                 if !has_budget {
                     continue;
                 }
-                // Consume cycle-level `delta_us` against the atomic
-                // budget so it drains until the PlatformTimer fires
-                // a refill. Per-callback runtime measurement (replaces
-                // this worst-case attribution) lands with item 2 of
-                // the 110.E.b follow-up — `PlatformTimer::cancel` +
-                // `restart_oneshot`.
-                #[cfg(feature = "alloc")]
-                if let Some((state, _)) = self
-                    .sporadic_atomic_states
-                    .get(sc_idx)
-                    .and_then(|s| s.as_ref())
+                // Phase 110.E.b follow-up — per-callback runtime
+                // accounting (replaces this cycle-level attribution)
+                // is applied at dispatch time below via
+                // `consume_dispatch_runtime_us`. We only update the
+                // polled-path `SporadicState` (no_std fallback) here
+                // because the atomic path now records actual
+                // wall-clock per-callback runtime. The
+                // `delta_us` over-attribution that previously hit the
+                // atomic state was a worst-case bandwidth limiter;
+                // per-callback measurement is strictly tighter.
+                #[cfg(not(feature = "alloc"))]
                 {
-                    let delta_us = (delta_ms as u32).saturating_mul(1000);
-                    state.consume(delta_us);
+                    let _ = sc_idx; // polled-state path lives in
+                    // `sporadic_states`; this branch is a no-op when
+                    // the atomic path is enabled.
                 }
             }
             // Phase 110.F — per-callback OS priority routing. Entries
@@ -4047,6 +4048,49 @@ impl Executor {
             }
         };
 
+        // Phase 110.E.b follow-up — per-callback runtime accounting
+        // for Sporadic SCs. Wall-clock-measure each dispatch and
+        // consume the elapsed microseconds from the bound SC's
+        // atomic budget. This replaces the cycle-level over-
+        // attribution that previously charged the FULL `delta_us`
+        // against every Sporadic SC regardless of which entries
+        // actually fired — accurate per-callback measurement is the
+        // shape the design doc's per-callback runtime acceptance
+        // calls out. The closure is `feature = "std"`-gated because
+        // it needs a `core::time::Instant`-equivalent monotonic
+        // clock; the no_std fallback continues to use the polled
+        // `SporadicState` path (cycle delta_us) until a board-side
+        // monotonic-microsecond accessor lands.
+        let consume_dispatch_runtime_us = |desc_idx: usize,
+                                           elapsed_us: u32,
+                                           sched_context_bindings: &[super::sched_context::SchedContextId; crate::config::MAX_CBS],
+                                           sched_contexts: &[Option<super::sched_context::SchedContext>; crate::config::MAX_SC],
+                                           #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
+                                               portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
+                                               OpaqueTimerHandle,
+                                           )>; crate::config::MAX_SC]| {
+            let sc_idx = sched_context_bindings[desc_idx].0 as usize;
+            let sc_class = sched_contexts
+                .get(sc_idx)
+                .and_then(|s| s.as_ref())
+                .map(|sc| sc.class)
+                .unwrap_or(super::sched_context::SchedClass::Fifo);
+            if !matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
+                return;
+            }
+            #[cfg(feature = "alloc")]
+            if let Some((state, _)) = sporadic_atomic_states
+                .get(sc_idx)
+                .and_then(|s| s.as_ref())
+            {
+                state.consume(elapsed_us);
+            }
+            #[cfg(not(feature = "alloc"))]
+            {
+                let _ = (sc_idx, elapsed_us);
+            }
+        };
+
         // For each priority bucket (Critical → Normal → BestEffort),
         // drain EDF first then FIFO so an EDF callback in this bucket
         // beats a FIFO peer at the same priority, but no lower-priority
@@ -4057,13 +4101,41 @@ impl Executor {
             while let Some(job) = edf.pop_from(bucket) {
                 let i = job.desc_idx as usize;
                 if let Some(meta) = self.entries[i].as_ref() {
+                    #[cfg(feature = "std")]
+                    let start = std::time::Instant::now();
                     dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+                    #[cfg(feature = "std")]
+                    {
+                        let elapsed_us = start.elapsed().as_micros().min(u32::MAX as u128) as u32;
+                        consume_dispatch_runtime_us(
+                            i,
+                            elapsed_us,
+                            &self.sched_context_bindings,
+                            &self.sched_contexts,
+                            #[cfg(feature = "alloc")]
+                            &self.sporadic_atomic_states,
+                        );
+                    }
                 }
             }
             while let Some(job) = fifo.pop_from(bucket) {
                 let i = job.desc_idx as usize;
                 if let Some(meta) = self.entries[i].as_ref() {
+                    #[cfg(feature = "std")]
+                    let start = std::time::Instant::now();
                     dispatch_one(meta, arena_ptr, delta_ms, &mut result);
+                    #[cfg(feature = "std")]
+                    {
+                        let elapsed_us = start.elapsed().as_micros().min(u32::MAX as u128) as u32;
+                        consume_dispatch_runtime_us(
+                            i,
+                            elapsed_us,
+                            &self.sched_context_bindings,
+                            &self.sched_contexts,
+                            #[cfg(feature = "alloc")]
+                            &self.sporadic_atomic_states,
+                        );
+                    }
                 }
             }
         }
