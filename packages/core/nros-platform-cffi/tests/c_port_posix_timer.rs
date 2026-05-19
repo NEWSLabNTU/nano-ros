@@ -92,3 +92,106 @@ fn cancel_prevents_oneshot_fire() {
 
     unsafe { nros_platform_timer_destroy(handle) };
 }
+
+// ----------------------------------------------------------------------
+// Phase 110.E.b — Rust trait-side coverage.
+// ----------------------------------------------------------------------
+
+extern "C" fn bump_safe(user_data: *mut c_void) {
+    // Same as `bump` above, expressed as a safe `extern "C" fn` so it
+    // satisfies the `PlatformTimer` trait's callback type. The trait
+    // takes a non-`unsafe` fn pointer; the C impl signature is
+    // `unsafe extern "C" fn`. The cffi shim coerces between them.
+    let counter = unsafe { &*(user_data as *const AtomicU32) };
+    counter.fetch_add(1, Ordering::SeqCst);
+}
+
+#[test]
+fn rust_trait_periodic_fires() {
+    use nros_platform_api::PlatformTimer;
+
+    let counter = AtomicU32::new(0);
+    let handle = CffiPlatform::create_periodic(
+        5_000, // 5 ms
+        bump_safe,
+        &counter as *const _ as *mut c_void,
+    )
+    .expect("create_periodic via Rust trait");
+
+    thread::sleep(Duration::from_millis(40));
+    CffiPlatform::destroy(handle);
+
+    let count = counter.load(Ordering::SeqCst);
+    assert!(
+        count >= 4,
+        "expected at least 4 fires via trait surface, got {count}"
+    );
+}
+
+#[test]
+fn rust_trait_cancel_returns_true_when_prevented() {
+    use nros_platform_api::PlatformTimer;
+
+    let counter = AtomicU32::new(0);
+    let mut handle = CffiPlatform::create_oneshot(
+        100_000, // 100 ms
+        bump_safe,
+        &counter as *const _ as *mut c_void,
+    )
+    .expect("create_oneshot via Rust trait");
+
+    thread::sleep(Duration::from_millis(5));
+    let prevented = CffiPlatform::cancel(&mut handle);
+    assert!(
+        prevented,
+        "cancel via Rust trait must return true when fire prevented"
+    );
+    CffiPlatform::destroy(handle);
+}
+
+// ----------------------------------------------------------------------
+// Phase 110.E.b — End-to-end Sporadic-state refill via the trait.
+// ----------------------------------------------------------------------
+//
+// This is the headline integration: drive
+// `AtomicSporadicState::budget_remaining_us` from a real platform
+// timer + the shipped `atomic_sporadic_refill_thunk`. Demonstrates
+// the wake-up path the Executor will take inside
+// `register_sporadic_timer` without pulling the rest of `nros-node`
+// into this test crate.
+
+#[test]
+fn rust_trait_atomic_sporadic_refill_round_trip() {
+    use nros_node::executor::sched_context::{
+        atomic_sporadic_refill_thunk, AtomicSporadicState,
+    };
+    use nros_platform_api::PlatformTimer;
+    use std::sync::Arc;
+
+    let state = Arc::new(AtomicSporadicState::new(10_000, 5_000));
+
+    // Drain the budget so we can prove the refill thunk restored it.
+    state.consume(10_000);
+    assert!(!state.has_budget(), "budget should be exhausted before refill");
+
+    let user_data = Arc::as_ptr(&state) as *mut c_void;
+    let handle = CffiPlatform::create_periodic(
+        2_000, // 2 ms — refill fires several times within the wait window
+        atomic_sporadic_refill_thunk,
+        user_data,
+    )
+    .expect("create_periodic via Rust trait");
+
+    thread::sleep(Duration::from_millis(30));
+    CffiPlatform::destroy(handle);
+
+    assert!(
+        state.has_budget(),
+        "atomic sporadic state should be refilled by the timer callback"
+    );
+    let remaining = state.budget_remaining_us.load(Ordering::Acquire);
+    assert_eq!(
+        remaining, 10_000,
+        "refill thunk must restore budget to its declared capacity"
+    );
+}

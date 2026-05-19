@@ -67,7 +67,7 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       config to actually take effect; per-platform integration tests
       follow once the privileged-scheduling harness ships.
 
-      **110.E.b deferred** — ISR-driven refill on no-std platforms
+      **110.E.b in progress** — ISR-driven refill on no-std platforms
       (FreeRTOS / Zephyr / ThreadX / bare-metal). Requires
       `PlatformTimer` trait + `AtomicSporadicState` rewrite — design
       locked in
@@ -78,6 +78,37 @@ See [design doc](../design/rt-execution-model.md) for full per-RTOS fit checks, 
       Per-callback runtime measurement + `cancel` / `restart_oneshot`
       land in a follow-up to 110.E.b once `PlatformTimer` is in
       place.
+
+      Landed pieces:
+      * Trait `PlatformTimer` + `TimerError` in `nros-platform-api`
+        (default `Unsupported` for `create_periodic` /
+        `create_oneshot`, no-op `destroy`, false `cancel`).
+      * `AtomicSporadicState` + `atomic_sporadic_refill_thunk` in
+        `nros-node::executor::sched_context` (atomic budget + Release
+        store refill thunk safe in any thread / ISR context).
+      * `OpaqueTimerHandle` + `Executor::register_sporadic_timer` in
+        `nros-node::executor::spin` (Drop walks `sporadic_atomic_states`
+        and frees timers via the per-platform destroy thunk).
+      * Canonical C ABI in `<nros/platform_timer.h>` +
+        `nros_platform_timer_create_periodic` /
+        `nros_platform_timer_create_oneshot` /
+        `nros_platform_timer_destroy` /
+        `nros_platform_timer_cancel`.
+      * **POSIX C port** (`nros-platform-posix/src/timer.c`) backed by
+        `timer_create(CLOCK_MONOTONIC, SIGEV_THREAD)` + trampoline.
+      * **`impl PlatformTimer for CffiPlatform`** in
+        `nros-platform-cffi` — dispatches the trait through the C ABI.
+        `CffiTimerHandle` newtype carries the opaque `*mut c_void`
+        with `Send + Sync` impls.
+      * End-to-end test `c_port_posix_timer::rust_trait_atomic_sporadic_refill_round_trip`
+        drains an `AtomicSporadicState`, attaches the periodic timer
+        via the Rust trait + `atomic_sporadic_refill_thunk`, and
+        asserts the budget refilled back to its declared capacity
+        from the POSIX timer callback (6/6 tests in the file PASS).
+        Confirms the trait-side wiring is functionally complete; the
+        remaining work is just porting `nros_platform_timer_*` to
+        each RTOS's native timer surface (FreeRTOS / Zephyr / ThreadX
+        / NuttX / bare-metal).
 - [~] 110.F — `OsPrioritySet` per-priority OS-thread dispatch.
       **Reframed:** Cargo feature `scheduler-os-priority` + stub
       `OsPrioritySet<N>` shipped to lock the namespace; real

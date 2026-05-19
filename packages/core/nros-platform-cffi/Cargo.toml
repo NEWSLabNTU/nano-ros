@@ -39,6 +39,11 @@ cc = { version = "1", optional = true }
 # Required by the `posix-c-port` integration test for pthread_mutex_t /
 # pthread_cond_t / pthread_t type layouts.
 libc = "0.2"
+# Phase 110.E.b — `c_port_posix_timer.rs` exercises the
+# `AtomicSporadicState` + `atomic_sporadic_refill_thunk` round-trip
+# against the real POSIX `PlatformTimer` impl. Only the test pulls
+# nros-node, so the production crate stays dependency-light.
+nros-node = { path = "../nros-node", default-features = false, features = ["std", "rmw-cffi"] }
 
 [lints]
 workspace = true

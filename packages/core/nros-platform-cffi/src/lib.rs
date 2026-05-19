@@ -349,6 +349,82 @@ impl nros_platform_api::PlatformScheduler for CffiPlatform {
     }
 }
 
+// Phase 110.E.b — `PlatformTimer` dispatches to the
+// `nros_platform_timer_*` C ABI declared above. Backed by
+// `nros-platform-posix/src/timer.c` on POSIX (POSIX `timer_create` +
+// `SIGEV_THREAD` trampoline); each RTOS port supplies its own
+// `timer.c` mirroring the canonical signatures.
+//
+// `TimerHandle` is a `*mut c_void` newtype so the trait's
+// `Send + Sync` bound holds. Safety: the C layer owns the heap
+// record behind the pointer; Rust just shuttles the opaque handle
+// between `create_*` and `destroy` / `cancel`.
+#[derive(Debug)]
+pub struct CffiTimerHandle(*mut c_void);
+
+// SAFETY: the underlying `*mut c_void` is an opaque platform-owned
+// handle (POSIX `timer_t` wrapped in a heap record, FreeRTOS
+// `TimerHandle_t`, etc.). The Rust side never dereferences it; the
+// only operations are forwarding it back to `destroy` / `cancel`.
+// Send + Sync are required by the trait so the executor can stash
+// the handle across thread boundaries.
+unsafe impl Send for CffiTimerHandle {}
+unsafe impl Sync for CffiTimerHandle {}
+
+impl nros_platform_api::PlatformTimer for CffiPlatform {
+    type TimerHandle = CffiTimerHandle;
+
+    fn create_periodic(
+        period_us: u32,
+        callback: extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        // `extern "C" fn` coerces structurally to `unsafe extern "C"
+        // fn` — both have the same ABI; Rust just demands the unsafe
+        // version at the C call site.
+        let cb: unsafe extern "C" fn(*mut c_void) = callback;
+        let raw =
+            unsafe { nros_platform_timer_create_periodic(period_us, cb, user_data) };
+        if raw.is_null() {
+            // The C layer returns NULL for both "unsupported on this
+            // platform" (default stub) and "syscall failed" (POSIX
+            // EINVAL / kernel error). The runtime treats both the
+            // same way (drop back to the polled-clock fallback), so
+            // surface `KernelError` to differentiate from the
+            // trait-default `Unsupported` that fires when the C
+            // symbol isn't linked at all.
+            return Err(nros_platform_api::TimerError::KernelError);
+        }
+        Ok(CffiTimerHandle(raw))
+    }
+
+    fn create_oneshot(
+        timeout_us: u32,
+        callback: extern "C" fn(*mut c_void),
+        user_data: *mut c_void,
+    ) -> Result<Self::TimerHandle, nros_platform_api::TimerError> {
+        let cb: unsafe extern "C" fn(*mut c_void) = callback;
+        let raw =
+            unsafe { nros_platform_timer_create_oneshot(timeout_us, cb, user_data) };
+        if raw.is_null() {
+            return Err(nros_platform_api::TimerError::KernelError);
+        }
+        Ok(CffiTimerHandle(raw))
+    }
+
+    fn destroy(handle: Self::TimerHandle) {
+        unsafe { nros_platform_timer_destroy(handle.0) }
+    }
+
+    fn cancel(handle: &mut Self::TimerHandle) -> bool {
+        let rc = unsafe { nros_platform_timer_cancel(handle.0) };
+        // `1` = cancellation prevented the callback from firing;
+        // `0` / `-1` = already fired (or error — treated as "not
+        // cancelled in time" by the caller).
+        rc == 1
+    }
+}
+
 impl nros_platform_api::PlatformRandom for CffiPlatform {
     #[inline]
     fn random_u8() -> u8 {
