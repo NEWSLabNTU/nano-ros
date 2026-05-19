@@ -460,8 +460,7 @@ pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
     LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY
         .get_or_try_init(|| {
             let root = crate::project_root();
-            let binary = root
-                .join("zephyr-workspace/build-logging-smoke/zephyr/zephyr.exe");
+            let binary = root.join("zephyr-workspace/build-logging-smoke/zephyr/zephyr.exe");
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())

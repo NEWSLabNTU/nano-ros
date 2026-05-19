@@ -1336,9 +1336,9 @@ impl Executor {
                 tt_window_duration_us: super::sched_context::OptUs::from_us(window.duration_us),
                 ..super::sched_context::SchedContext::new_fifo()
             };
-            ids[i] = self
-                .create_sched_context(sc)
-                .map_err(|_| super::sched_context::TimeTriggeredScheduleError::WindowCountOverflow)?;
+            ids[i] = self.create_sched_context(sc).map_err(|_| {
+                super::sched_context::TimeTriggeredScheduleError::WindowCountOverflow
+            })?;
         }
         Ok(ids)
     }
@@ -4113,47 +4113,50 @@ impl Executor {
         // `SporadicState` path (cycle delta_us) until a board-side
         // monotonic-microsecond accessor lands.
         #[cfg(feature = "std")]
-        let consume_dispatch_runtime_us = |desc_idx: usize,
-                                           elapsed_us: u32,
-                                           sched_context_bindings: &[super::sched_context::SchedContextId; crate::config::MAX_CBS],
-                                           sched_contexts: &[Option<super::sched_context::SchedContext>; crate::config::MAX_SC],
-                                           #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
-                                               portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
-                                               OpaqueTimerHandle,
-                                           )>; crate::config::MAX_SC]| {
-            let sc_idx = sched_context_bindings[desc_idx].0 as usize;
-            let sc_class = sched_contexts
-                .get(sc_idx)
-                .and_then(|s| s.as_ref())
-                .map(|sc| sc.class)
-                .unwrap_or(super::sched_context::SchedClass::Fifo);
-            if !matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
-                return;
-            }
-            #[cfg(feature = "alloc")]
-            if let Some((state, _)) = sporadic_atomic_states
-                .get(sc_idx)
-                .and_then(|s| s.as_ref())
-            {
-                state.consume(elapsed_us);
-                // Phase 110.E.b — overrun detection. Cooperative
-                // single-thread can't preempt a runaway callback,
-                // so post-dispatch wall-clock comparison delivers
-                // the same observable signal as the design's
-                // oneshot-IRQ-and-cancel pattern, without needing
-                // a separate timer per SC. `budget_capacity_us` is
-                // the per-period budget the SC was sized against;
-                // any callback exceeding that has run past its
-                // bandwidth allotment.
-                if elapsed_us > state.budget_capacity_us {
-                    state.record_overrun(elapsed_us - state.budget_capacity_us);
+        let consume_dispatch_runtime_us =
+            |desc_idx: usize,
+             elapsed_us: u32,
+             sched_context_bindings: &[super::sched_context::SchedContextId;
+                  crate::config::MAX_CBS],
+             sched_contexts: &[Option<super::sched_context::SchedContext>;
+                  crate::config::MAX_SC],
+             #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
+                portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
+                OpaqueTimerHandle,
+            )>;
+                  crate::config::MAX_SC]| {
+                let sc_idx = sched_context_bindings[desc_idx].0 as usize;
+                let sc_class = sched_contexts
+                    .get(sc_idx)
+                    .and_then(|s| s.as_ref())
+                    .map(|sc| sc.class)
+                    .unwrap_or(super::sched_context::SchedClass::Fifo);
+                if !matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
+                    return;
                 }
-            }
-            #[cfg(not(feature = "alloc"))]
-            {
-                let _ = (sc_idx, elapsed_us);
-            }
-        };
+                #[cfg(feature = "alloc")]
+                if let Some((state, _)) =
+                    sporadic_atomic_states.get(sc_idx).and_then(|s| s.as_ref())
+                {
+                    state.consume(elapsed_us);
+                    // Phase 110.E.b — overrun detection. Cooperative
+                    // single-thread can't preempt a runaway callback,
+                    // so post-dispatch wall-clock comparison delivers
+                    // the same observable signal as the design's
+                    // oneshot-IRQ-and-cancel pattern, without needing
+                    // a separate timer per SC. `budget_capacity_us` is
+                    // the per-period budget the SC was sized against;
+                    // any callback exceeding that has run past its
+                    // bandwidth allotment.
+                    if elapsed_us > state.budget_capacity_us {
+                        state.record_overrun(elapsed_us - state.budget_capacity_us);
+                    }
+                }
+                #[cfg(not(feature = "alloc"))]
+                {
+                    let _ = (sc_idx, elapsed_us);
+                }
+            };
 
         // For each priority bucket (Critical → Normal → BestEffort),
         // drain EDF first then FIFO so an EDF callback in this bucket

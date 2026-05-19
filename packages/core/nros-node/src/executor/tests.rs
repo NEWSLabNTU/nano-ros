@@ -341,9 +341,7 @@ fn test_tt_window_gate_suppresses_outside_window() {
 /// window-1.
 #[test]
 fn test_apply_time_triggered_schedule_dispatches_only_active_window() {
-    use crate::executor::sched_context::{
-        TimeTriggeredSchedule, TimeTriggeredWindow,
-    };
+    use crate::executor::sched_context::{TimeTriggeredSchedule, TimeTriggeredWindow};
 
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
@@ -422,10 +420,8 @@ fn test_time_triggered_schedule_rejects_overlapping_windows() {
         "overlapping windows must surface as a WindowsOverlap error, got {err:?}"
     );
 
-    let oversize = TimeTriggeredSchedule::<1>::new_full(
-        1_000,
-        [TimeTriggeredWindow::new(500, 600, "w0")],
-    );
+    let oversize =
+        TimeTriggeredSchedule::<1>::new_full(1_000, [TimeTriggeredWindow::new(500, 600, "w0")]);
     let err = oversize.validate().unwrap_err();
     assert!(
         matches!(
@@ -505,8 +501,10 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
 #[test]
 #[cfg(feature = "alloc")]
 fn test_atomic_sporadic_per_callback_runtime_consumed() {
-    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
-    use crate::executor::spin::OpaqueTimerHandle;
+    use crate::executor::{
+        sched_context::{OptUs, SchedClass, SchedContext},
+        spin::OpaqueTimerHandle,
+    };
 
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
@@ -578,8 +576,10 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
 #[test]
 #[cfg(feature = "alloc")]
 fn test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget() {
-    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
-    use crate::executor::spin::OpaqueTimerHandle;
+    use crate::executor::{
+        sched_context::{OptUs, SchedClass, SchedContext},
+        spin::OpaqueTimerHandle,
+    };
 
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
@@ -604,7 +604,10 @@ fn test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget() {
     extern "C" fn noop_destroy(_h: *mut core::ffi::c_void) {}
     let fake_timer = unsafe { OpaqueTimerHandle::new(core::ptr::null_mut(), noop_destroy) };
     let state = executor.register_sporadic_timer(sc_id, fake_timer).unwrap();
-    assert_eq!(state.overrun_count.load(portable_atomic::Ordering::Acquire), 0);
+    assert_eq!(
+        state.overrun_count.load(portable_atomic::Ordering::Acquire),
+        0
+    );
 
     // Drive one dispatch — the registered closure sleeps 25 ms.
     let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -614,7 +617,9 @@ fn test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget() {
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
 
     let count = state.overrun_count.load(portable_atomic::Ordering::Acquire);
-    let last = state.last_overrun_us.load(portable_atomic::Ordering::Acquire);
+    let last = state
+        .last_overrun_us
+        .load(portable_atomic::Ordering::Acquire);
     assert_eq!(count, 1, "overrun_count must increment exactly once");
     // Overrun = measured - budget; measured ≥ 25 ms, budget = 5 ms.
     // last_overrun_us should be ≥ 20 ms = 20_000 us.
@@ -625,8 +630,16 @@ fn test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget() {
 
     // `clear_overrun_stats` resets both counters.
     state.clear_overrun_stats();
-    assert_eq!(state.overrun_count.load(portable_atomic::Ordering::Acquire), 0);
-    assert_eq!(state.last_overrun_us.load(portable_atomic::Ordering::Acquire), 0);
+    assert_eq!(
+        state.overrun_count.load(portable_atomic::Ordering::Acquire),
+        0
+    );
+    assert_eq!(
+        state
+            .last_overrun_us
+            .load(portable_atomic::Ordering::Acquire),
+        0
+    );
 }
 
 /// Phase 110.D — multi-executor smoke test. Spawns two Executors,

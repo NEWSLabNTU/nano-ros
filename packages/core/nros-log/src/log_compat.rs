@@ -19,7 +19,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use crate::{LogSink, Record, Severity};
 
 #[cfg(test)]
-use crate::{Logger, DEFAULT_LOGGER};
+use crate::{DEFAULT_LOGGER, Logger};
 
 /// Convert nros-log [`Severity`] to `log::Level`.
 ///
