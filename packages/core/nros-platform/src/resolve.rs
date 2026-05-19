@@ -32,6 +32,9 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 #[cfg(feature = "platform-esp32-qemu")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
+#[cfg(feature = "platform-esp32s3-qemu")]
+pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
+
 // Phase 121.3.deprecate-rust-migrate: the four deprecated RTOS
 // platforms resolve to `CffiPlatform` and reach their kernel impl
 // through the deprecated Rust crate's `cffi-export` macro emission

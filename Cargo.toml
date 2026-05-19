@@ -318,6 +318,12 @@ exclude = [
     "examples/qemu-esp32-baremetal/rust/zenoh/listener",
     "examples/qemu-esp32-baremetal/rust/dds/talker",
     "examples/qemu-esp32-baremetal/rust/dds/listener",
+    # Phase 117.3 — ESP32-S3 (Xtensa LX7) bare-metal DDS examples.
+    # Excluded for the same reason as the C3 siblings: Xtensa target
+    # needs the out-of-tree `+esp` rustc fork (espup-managed); the
+    # workspace's stable / nightly toolchains can't build them.
+    "examples/qemu-esp32s3-baremetal/rust/dds/talker",
+    "examples/qemu-esp32s3-baremetal/rust/dds/listener",
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",
     # PX4 vendored sources (submodule under third-party/px4/). Has its

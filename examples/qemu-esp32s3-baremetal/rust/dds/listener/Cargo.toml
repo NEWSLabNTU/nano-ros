@@ -1,0 +1,27 @@
+[package]
+name = "esp32s3-qemu-dds-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "DDS listener example on ESP32-S3 QEMU + OpenETH + smoltcp (Phase 117)"
+
+[[bin]]
+name = "esp32s3-qemu-dds-listener"
+test = false
+bench = false
+
+[dependencies]
+nros-board-esp32s3-qemu = { path = "../../../../../packages/boards/nros-board-esp32s3-qemu", default-features = false, features = ["ethernet", "dds-heap"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-bare-metal"] }
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32s3-qemu", "global-allocator"] }
+std_msgs = { version = "*", default-features = false }
+esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable"] }
+esp-backtrace = { version = "~0.18.0", features = ["esp32s3", "panic-handler", "println"] }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1

@@ -21,13 +21,23 @@
 
 use zpico_alloc::FreeListHeap;
 
-// Phase 117.1 — 1 MiB DDS heap (PSRAM-backed). Pre-117 ESP32-C3
-// path was capped at 192 KiB to fit within 400 KiB internal SRAM;
-// here the heap region is in PSRAM so the budget is no longer
-// internal-SRAM-bound.
+// Phase 117.1 — 256 KiB DDS heap in internal SRAM as the
+// transitional default. The end-state design routes the heap to
+// PSRAM via `#[link_section = ".ext_ram.bss"]` + esp-hal's
+// `psram::init` (1 MiB+ budget); that wiring is gated on the
+// board crate's PSRAM init landing as Phase 117.2b. Until then
+// the 256 KiB internal-SRAM carve-out fits within ESP32-S3's
+// 512 KiB DRAM (vs the C3 path's 192 KiB cap for its 400 KiB
+// chip) and is enough for dust-dds's `DcpsDomainParticipant`
+// builtin entities to compile and link, while letting users
+// exercise the rest of the bring-up before PSRAM lands.
+// Conservative 192 KiB matches the ESP32-C3 path's tested cap.
+// PSRAM-routed 1 MiB heap is gated on Phase 117.2b's psram::init
+// wiring; until that lands, internal-SRAM-only carve-out must
+// leave headroom for `.bss` / `.text` / `.rodata` / esp-hal runtime
+// fixtures on top.
 #[cfg(feature = "dds-heap")]
-#[unsafe(link_section = ".ext_ram.bss")]
-static HEAP: FreeListHeap<{ 1024 * 1024 }> = FreeListHeap::new();
+static HEAP: FreeListHeap<{ 192 * 1024 }> = FreeListHeap::new();
 #[cfg(not(feature = "dds-heap"))]
 static HEAP: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
 

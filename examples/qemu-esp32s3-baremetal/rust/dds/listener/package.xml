@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>esp32s3_qemu_dds_listener</name>
+  <version>0.1.0</version>
+  <description>ESP32-S3 QEMU bare-metal DDS listener example (Phase 117)</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

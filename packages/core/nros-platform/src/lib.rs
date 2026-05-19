@@ -45,6 +45,7 @@ pub use resolve::{NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_S
     feature = "platform-stm32f4",
     feature = "platform-esp32",
     feature = "platform-esp32-qemu",
+    feature = "platform-esp32s3-qemu",
     feature = "platform-nuttx",
     feature = "platform-freertos",
     feature = "platform-threadx",
