@@ -1,0 +1,15 @@
+# ThreadX Linux talker — network configuration
+# Used by nros-board-threadx-linux board crate (Config::from_toml)
+
+[network]
+ip = "192.0.3.10"
+mac = "02:00:00:00:00:00"
+gateway = "192.0.3.1"
+netmask = "255.255.255.0"
+
+[platform]
+interface = "tap-tx0"
+
+[zenoh]
+locator = "tcp/127.0.0.1:7455"
+domain_id = 0

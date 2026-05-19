@@ -513,6 +513,29 @@ pub fn build_threadx_rv64_rust_example_rmw(
     require_prebuilt_binary(&binary_path)
 }
 
+/// Phase 118.B.7 — collapsed-shape threadx-linux Rust example resolver.
+pub fn build_threadx_linux_rust_example_rmw(
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    build_example_rmw(&format!("threadx-linux/rust/{}", case), binary_name, rmw)
+}
+
+/// Phase 118.B.7 — collapsed-shape threadx-linux C / C++ example resolver.
+pub fn build_threadx_linux_cmake_example_rmw(
+    lang: &str,
+    case: &str,
+    binary_name: &str,
+    rmw: Rmw,
+) -> TestResult<PathBuf> {
+    build_example_cmake_rmw(
+        &format!("threadx-linux/{}/{}", lang, case),
+        binary_name,
+        rmw,
+    )
+}
+
 /// Phase 118.B.6 — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,

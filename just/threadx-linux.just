@@ -101,6 +101,47 @@ build-fixtures:
            -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
          cmake --build {}/build --parallel > /dev/null"
 
+    # Phase 118.B.7 — collapsed-shape threadx-linux Rust + C / C++.
+    collapsed_rust_dirs=()
+    for case in talker listener service-server service-client action-server action-client; do
+        if [ ! -d examples/threadx-linux/rust/${case} ]; then
+            continue
+        fi
+        rmws="zenoh"
+        if [ "$case" = "talker" ] || [ "$case" = "listener" ]; then
+            rmws="zenoh dds"
+        fi
+        for rmw in $rmws; do
+            echo "  → threadx-linux/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
+            ( cd examples/threadx-linux/rust/${case} && \
+              cargo build --release --no-default-features --features rmw-${rmw} \
+                  --target-dir target-${rmw} --quiet ) &
+        done
+    done
+    wait
+
+    collapsed_cmake_dirs=()
+    for lang in c cpp; do
+        for ex in talker listener service-server service-client action-server action-client; do
+            dir="examples/threadx-linux/$lang/$ex"
+            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
+        done
+    done
+    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+             cmake -S {} -B {}/build-zenoh \
+               -DNROS_RMW=zenoh \
+               -DNANO_ROS_PLATFORM=threadx_linux \
+               -DTHREADX_DIR='$threadx_dir' \
+               -DNSOS_NETX_DIR='$nsos_netx_dir' \
+               -DTHREADX_CONFIG_DIR='$config_dir' \
+               -DTHREADX_APP_DEFINE='$app_define' \
+               -DCMAKE_BUILD_TYPE=Release \
+               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+             cmake --build {}/build-zenoh --parallel > /dev/null"
+    fi
+
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.
 build-all: build build-examples build-fixtures
     @echo "ThreadX Linux build-all completed."

@@ -1,0 +1,44 @@
+//! ThreadX Linux Service Server
+//!
+//! Handles `example_interfaces/AddTwoInts` requests on `/add_two_ints`.
+
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
+use nros::prelude::*;
+use nros_board_threadx_linux::{Config, run};
+#[cfg(not(feature = "rmw-zenoh"))]
+compile_error!("this example requires `rmw-zenoh`");
+
+fn register_rmw() -> Result<(), &'static str> {
+    nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")
+}
+
+
+fn main() {
+    run(Config::from_toml(include_str!("../config.toml")), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("add_two_ints_server");
+        // Phase 104.A — bare-metal callers explicitly register the RMW
+        // backend before `Executor::open`. POSIX hosts auto-register via
+        // `.init_array`; this target doesn't walk that section.
+        register_rmw().expect("Failed to register RMW backend");
+        let mut executor: Executor = Executor::open(&exec_config)?;
+
+        executor.register_service::<AddTwoInts, _>("/add_two_ints", |request| {
+            let sum = request.a + request.b;
+            println!("Request: {} + {} = {}", request.a, request.b, sum);
+            AddTwoIntsResponse { sum }
+        })?;
+
+        println!("Service server ready on /add_two_ints");
+        println!("Waiting for requests...");
+
+        // Spin for a bounded time (test automation)
+        for _ in 0..50000u32 {
+            executor.spin_once(core::time::Duration::from_millis(10));
+        }
+
+        println!("Server shutting down.");
+        Ok::<(), NodeError>(())
+    })
+}
