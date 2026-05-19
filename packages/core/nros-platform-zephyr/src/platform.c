@@ -443,3 +443,72 @@ uint32_t nros_platform_critical_section_acquire(void) {
 void nros_platform_critical_section_release(uint32_t token) {
     irq_unlock((unsigned int) token);
 }
+
+/* ============================================================
+ *   Logging (Phase 88)
+ *
+ *   When CONFIG_LOG=y, route through Zephyr's logging subsystem
+ *   (`LOG_INF` / `LOG_WRN` etc., backed by `log_msg_runtime_create`).
+ *   Falls back to `printk` when CONFIG_LOG is disabled so the
+ *   message still reaches the system console.
+ *
+ *   Module name `nros` is registered with `LOG_MODULE_REGISTER` so
+ *   Zephyr's shell `log enable warn nros` filters at the platform
+ *   layer (in addition to the per-Logger threshold on the nros-log
+ *   side). ISR-safe: Zephyr LOG queues for deferred processing.
+ * ============================================================ */
+#ifdef CONFIG_LOG
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(nros, CONFIG_LOG_DEFAULT_LEVEL);
+#endif
+
+#include <stdio.h>
+
+#define NROS_PLATFORM_LOG_BUFSZ 1280
+
+static void nros_platform_log_format(char *out, size_t out_sz,
+                                     const uint8_t *name_ptr, uintptr_t name_len,
+                                     const uint8_t *msg_ptr,  uintptr_t msg_len) {
+    if (name_ptr != NULL && name_len > 0) {
+        snprintf(out, out_sz, "%.*s: %.*s",
+                 (int) name_len, (const char *) name_ptr,
+                 (int) msg_len,  (const char *) msg_ptr);
+    } else {
+        snprintf(out, out_sz, "%.*s",
+                 (int) msg_len, (const char *) msg_ptr);
+    }
+}
+
+void nros_platform_log_write(uint8_t severity,
+                             const uint8_t *name_ptr, uintptr_t name_len,
+                             const uint8_t *msg_ptr,  uintptr_t msg_len) {
+    if (msg_ptr == NULL && msg_len > 0) {
+        return;
+    }
+    char buf[NROS_PLATFORM_LOG_BUFSZ];
+    nros_platform_log_format(buf, sizeof(buf), name_ptr, name_len, msg_ptr, msg_len);
+#ifdef CONFIG_LOG
+    switch (severity) {
+    case 5: /* Fatal */
+    case 4: /* Error */ LOG_ERR("%s", buf); break;
+    case 3: /* Warn  */ LOG_WRN("%s", buf); break;
+    case 2: /* Info  */ LOG_INF("%s", buf); break;
+    case 1: /* Debug */
+    case 0: /* Trace */ LOG_DBG("%s", buf); break;
+    default:            LOG_INF("%s", buf); break;
+    }
+#else
+    static const char *labels[] = {
+        "[TRACE]", "[DEBUG]", "[INFO]", "[WARN]", "[ERROR]", "[FATAL]",
+    };
+    const char *label = severity <= 5 ? labels[severity] : "[?]";
+    printk("%s %s\n", label, buf);
+#endif
+}
+
+void nros_platform_log_flush(void) {
+#ifdef CONFIG_LOG
+    /* Best-effort: yield so the log thread drains its deferred queue. */
+    k_yield();
+#endif
+}

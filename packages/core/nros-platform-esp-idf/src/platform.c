@@ -473,3 +473,60 @@ void nros_platform_critical_section_release(uint32_t token) {
     (void) token;
     portEXIT_CRITICAL(&s_cs_lock);
 }
+
+/* ============================================================
+ *   Logging (Phase 88)
+ *
+ *   Route through `esp_log_write`. Logger name → ESP TAG;
+ *   message body → "%s" arg so ESP-IDF's timestamp + colour
+ *   prefix wraps the rendered line.
+ *
+ *   ISR-safety: "partial" — `esp_log_write` is NOT IRAM-safe in
+ *   the flash-cache-enabled default. Callers logging from IRAM
+ *   handlers should call `esp_rom_printf` directly; nros-log
+ *   does not surface that distinction in v1.
+ * ============================================================ */
+#include "esp_log.h"
+#include <string.h>
+
+#define NROS_PLATFORM_LOG_TAG_SZ  64
+#define NROS_PLATFORM_LOG_BODY_SZ 1280
+
+static esp_log_level_t severity_to_esp(uint8_t s) {
+    switch (s) {
+    case 5: /* Fatal — ESP has no fatal; map to ERROR */
+    case 4: return ESP_LOG_ERROR;
+    case 3: return ESP_LOG_WARN;
+    case 2: return ESP_LOG_INFO;
+    case 1: return ESP_LOG_DEBUG;
+    case 0: return ESP_LOG_VERBOSE;
+    default: return ESP_LOG_INFO;
+    }
+}
+
+void nros_platform_log_write(uint8_t severity,
+                             const uint8_t *name_ptr, uintptr_t name_len,
+                             const uint8_t *msg_ptr,  uintptr_t msg_len) {
+    if (msg_ptr == NULL && msg_len > 0) {
+        return;
+    }
+    char tag[NROS_PLATFORM_LOG_TAG_SZ];
+    if (name_ptr != NULL && name_len > 0) {
+        size_t copy = name_len < (sizeof(tag) - 1) ? name_len : (sizeof(tag) - 1);
+        memcpy(tag, name_ptr, copy);
+        tag[copy] = '\0';
+    } else {
+        tag[0] = 'n'; tag[1] = 'r'; tag[2] = 'o'; tag[3] = 's'; tag[4] = '\0';
+    }
+    char body[NROS_PLATFORM_LOG_BODY_SZ];
+    size_t copy = msg_len < (sizeof(body) - 1) ? msg_len : (sizeof(body) - 1);
+    if (msg_ptr != NULL && msg_len > 0) {
+        memcpy(body, msg_ptr, copy);
+    }
+    body[copy] = '\0';
+    esp_log_write(severity_to_esp(severity), tag, "%s\n", body);
+}
+
+void nros_platform_log_flush(void) {
+    /* esp_log_write is synchronous to UART; nothing to flush. */
+}

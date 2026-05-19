@@ -443,3 +443,46 @@ uint32_t nros_platform_critical_section_acquire(void) {
 void nros_platform_critical_section_release(uint32_t token) {
     (void) tx_interrupt_control((UINT) token);
 }
+
+/* ============================================================
+ *   Logging (Phase 88)
+ *
+ *   ThreadX has no native text logger. Same fn-ptr pattern as
+ *   FreeRTOS: board crate registers a writer at startup. Without
+ *   one, the ABI is a no-op.
+ * ============================================================ */
+#include <string.h>
+
+typedef void (*nros_platform_log_writer_fn)(
+    uint8_t        severity,
+    const uint8_t *name_ptr, uintptr_t name_len,
+    const uint8_t *msg_ptr,  uintptr_t msg_len);
+
+typedef void (*nros_platform_log_flush_fn)(void);
+
+static nros_platform_log_writer_fn s_log_writer = NULL;
+static nros_platform_log_flush_fn  s_log_flusher = NULL;
+
+/* Board-crate hook. NULL flusher = writer is fully synchronous. */
+void nros_platform_register_log_writer(nros_platform_log_writer_fn writer,
+                                       nros_platform_log_flush_fn  flusher) {
+    s_log_writer  = writer;
+    s_log_flusher = flusher;
+}
+
+void nros_platform_log_write(uint8_t severity,
+                             const uint8_t *name_ptr, uintptr_t name_len,
+                             const uint8_t *msg_ptr,  uintptr_t msg_len) {
+    nros_platform_log_writer_fn writer = s_log_writer;
+    if (writer == NULL) {
+        return;
+    }
+    writer(severity, name_ptr, name_len, msg_ptr, msg_len);
+}
+
+void nros_platform_log_flush(void) {
+    nros_platform_log_flush_fn flusher = s_log_flusher;
+    if (flusher != NULL) {
+        flusher();
+    }
+}

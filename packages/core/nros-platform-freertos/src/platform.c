@@ -636,3 +636,56 @@ void nros_platform_critical_section_release(uint32_t token) {
     (void) token;
     taskEXIT_CRITICAL();
 }
+
+/* ============================================================
+ *   Logging (Phase 88)
+ *
+ *   FreeRTOS has no native text logger. The board crate registers
+ *   a writer fn-ptr at startup via `nros_platform_register_log_writer`
+ *   (e.g. mps2-an385-freertos hands over its semihosting helper;
+ *   another board might hand over a `configPRINTF` adapter).
+ *
+ *   Until a writer is registered, `nros_platform_log_write` is a
+ *   no-op. This keeps the ABI total — every consumer call returns
+ *   immediately on a board that hasn't wired logging.
+ *
+ *   ISR safety inherits from the registered writer.
+ * ============================================================ */
+#include <string.h>
+
+typedef void (*nros_platform_log_writer_fn)(
+    uint8_t        severity,
+    const uint8_t *name_ptr, uintptr_t name_len,
+    const uint8_t *msg_ptr,  uintptr_t msg_len);
+
+typedef void (*nros_platform_log_flush_fn)(void);
+
+static nros_platform_log_writer_fn s_log_writer = NULL;
+static nros_platform_log_flush_fn  s_log_flusher = NULL;
+
+/* Board-crate hook. Pass NULL for `flusher` if the writer is fully
+ * synchronous. Re-calling replaces the current writer; the swap
+ * is plain pointer store — boards must call this BEFORE any task
+ * starts logging. */
+void nros_platform_register_log_writer(nros_platform_log_writer_fn writer,
+                                       nros_platform_log_flush_fn  flusher) {
+    s_log_writer  = writer;
+    s_log_flusher = flusher;
+}
+
+void nros_platform_log_write(uint8_t severity,
+                             const uint8_t *name_ptr, uintptr_t name_len,
+                             const uint8_t *msg_ptr,  uintptr_t msg_len) {
+    nros_platform_log_writer_fn writer = s_log_writer;
+    if (writer == NULL) {
+        return;
+    }
+    writer(severity, name_ptr, name_len, msg_ptr, msg_len);
+}
+
+void nros_platform_log_flush(void) {
+    nros_platform_log_flush_fn flusher = s_log_flusher;
+    if (flusher != NULL) {
+        flusher();
+    }
+}

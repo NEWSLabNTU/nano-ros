@@ -296,6 +296,28 @@ void nros_platform_log_write(
     const uint8_t *msg_ptr,  uintptr_t msg_len);
 void nros_platform_log_flush(void);
 
+/* Board-supplied writer hook. ONLY meaningful on platforms whose
+ * `nros_platform_log_write` impl is itself a thin dispatcher to a
+ * board-registered fn (FreeRTOS, ThreadX, bare-metal). On platforms
+ * with a native logger (POSIX, Zephyr, ESP-IDF, NuttX), the symbol
+ * is absent and the board should not link against it.
+ *
+ * Board crates call this ONCE at startup, before any task / thread
+ * begins logging. Re-calling replaces the registration.
+ *
+ * `writer` matches the signature of `nros_platform_log_write`.
+ * `flusher` is optional (pass NULL for fully-synchronous writers). */
+typedef void (*nros_platform_log_writer_fn_t)(
+    uint8_t        severity,
+    const uint8_t *name_ptr, uintptr_t name_len,
+    const uint8_t *msg_ptr,  uintptr_t msg_len);
+
+typedef void (*nros_platform_log_flush_fn_t)(void);
+
+void nros_platform_register_log_writer(
+    nros_platform_log_writer_fn_t writer,
+    nros_platform_log_flush_fn_t  flusher);
+
 #ifdef __cplusplus
 }  /* extern "C" */
 #endif
