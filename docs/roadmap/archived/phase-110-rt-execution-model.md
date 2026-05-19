@@ -2,7 +2,44 @@
 
 **Goal:** Refactor the nano-ros executor to support mixed-criticality callbacks (Critical / Normal / BestEffort) on one executor with pluggable scheduling policies (FIFO / EDF / Sporadic), keeping the user-facing ROS-style API stable across scheduler swaps. Default uses **1 OS priority slot per executor thread** — scheduling decisions live in user space, not in OS priority slots (avoids PiCAS-style slot starvation on platforms like Cortex-M0+ which only has 4 NVIC levels).
 
-**Status:** v1 in progress — 110.0 / A / B / C / D-foundation landed (POSIX/NuttX/FreeRTOS/Zephyr/ThreadX/cffi/Orin SPE PlatformScheduler impls + multi-exec lifecycle). Drone S1 / watchdog S3 timing acceptance + 110.E–G post-v1 deferred.
+**Status:** **Archived 2026-05-19** — all CI-reachable items closed.
+Remaining acceptance items require either bare-metal Cortex-M3
+hardware (P99 wake-latency on real silicon) or a privileged-
+scheduling harness (CAP_SYS_NICE / RT kernel / NuttX
+SCHED_SPORADIC). Split out to
+[Phase 162](../phase-162-rt-scheduling-harness.md), which documents
+harness setup plus the test plan that closes the remaining v1 /
+post-v1 acceptance criteria.
+
+Landed in this phase:
+- 110.0 `Session::next_deadline_ms` RMW trait + per-backend impls
+- 110.A Activator + ReadySet + Dispatcher + ISR SPSC ring
+- 110.B `SchedContext` API + `OptUs` + EdfReadySet (+ C/C++ wrappers)
+- 110.C BucketedFifoSet + BucketedEdfSet (HSE criticality split)
+- 110.D foundation: `Executor::open_threaded` + `PlatformScheduler`
+  trait + per-RTOS impls (POSIX / NuttX / FreeRTOS / Zephyr /
+  ThreadX / cffi / Orin SPE) + multi-executor lifecycle
+- 110.E v1: Linux SCHED_DEADLINE syscall, NuttX SCHED_SPORADIC
+  syscall, user-space `SporadicState` polled-clock fallback
+- 110.E.b: `PlatformTimer` trait, `AtomicSporadicState`,
+  ISR-driven refill on FreeRTOS / Zephyr / ThreadX / bare-metal,
+  per-board MPS2-AN385 CMSDK Timer1, hook surface for stm32f4 /
+  esp32 / esp32-qemu, per-callback runtime accounting,
+  callback overrun detection (post-dispatch wall-clock)
+- 110.F: `scheduler-os-priority` feature + stub `OsPrioritySet<N>`
+  (real dispatch model deferred to a future node-orchestration
+  phase)
+- 110.G: `TimeTriggeredSchedule<N>` + `apply_time_triggered_schedule`
+  + per-handle TT window gate in `spin_once`
+- 110.G.bridge: `examples/native/rust/bridge/tt-zenoh-to-xrce/`
+
+Parked under Phase 162 (privileged scheduling harness + hardware):
+- 110.D drone S1 (1 ms deadline under 5 ms BE-load) + watchdog
+  S3 (multi-executor preemption)
+- 110.E line 487 — SCHED_DEADLINE / SCHED_SPORADIC verification
+- 110.F PiCAS dispatch + 110.F.bridge
+- v1 acceptance line 516 — book chapter on RT execution model
+  + scenario catalogue
 
 **Priority:** High
 
