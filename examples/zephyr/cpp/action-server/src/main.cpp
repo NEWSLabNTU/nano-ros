@@ -74,10 +74,10 @@ int nros_app_main(int argc, char **argv)
 #elif defined(CONFIG_NROS_RMW_XRCE)
     NROS_TRY_RET(nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
                             CONFIG_NROS_DOMAIN_ID), 1);
-#elif defined(CONFIG_NROS_RMW_DDS)
+#elif defined(CONFIG_NROS_RMW_CYCLONEDDS)
     NROS_TRY_RET(nros::init("", CONFIG_NROS_DOMAIN_ID), 1);
 #else
-#error "Phase 168.4 requires CONFIG_NROS_RMW_{ZENOH,DDS,XRCE}=y"
+#error "Phase 168.4 requires CONFIG_NROS_RMW_{ZENOH,XRCE,CYCLONEDDS}=y"
 #endif
 
     nros::Node node;

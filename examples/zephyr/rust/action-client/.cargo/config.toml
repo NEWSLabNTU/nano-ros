@@ -19,7 +19,6 @@ nros-rmw-zenoh  = { path = "../../../../packages/zpico/nros-rmw-zenoh" }
 zpico-sys       = { path = "../../../../packages/zpico/zpico-sys" }
 
 # DDS RMW
-nros-rmw-dds    = { path = "../../../../packages/dds/nros-rmw-dds" }
 
 # XRCE RMW
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi" }

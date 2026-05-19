@@ -8,8 +8,6 @@ project(nros_zephyr_service_server_rs)
 
 if(CONFIG_NROS_RMW_ZENOH)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-zenoh)
-elseif(CONFIG_NROS_RMW_DDS)
-    set(EXTRA_CARGO_ARGS --no-default-features --features rmw-dds)
 elseif(CONFIG_NROS_RMW_XRCE)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-xrce)
 else()

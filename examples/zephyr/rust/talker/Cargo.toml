@@ -19,7 +19,6 @@ crate-type = ["staticlib"]
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-dds   = ["dep:nros-rmw-dds"]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi", "dep:heapless"]
 
 [dependencies]
@@ -30,7 +29,6 @@ nros = { version = "*", default-features = false, features = ["rmw-cffi", "platf
 
 # Optional RMW backends — exactly one enabled per build.
 nros-rmw-zenoh    = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
-nros-rmw-dds      = { version = "*", default-features = false, features = ["platform-zephyr"], optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
 
 # XRCE locator built from Kconfig at runtime via heapless::String.

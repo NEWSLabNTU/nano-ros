@@ -256,25 +256,18 @@ build-fixtures:
 
       # Phase 168.3 — collapsed Rust cases (single dir, RMW via prj overlay).
       "native_sim/native/64|build-rs-talker-zenoh|zephyr/rust/talker|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-talker-dds|zephyr/rust/talker|0||prj.conf;prj-dds.conf"
       "native_sim/native/64|build-rs-talker-xrce|zephyr/rust/talker|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-rs-listener-zenoh|zephyr/rust/listener|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-listener-dds|zephyr/rust/listener|0||prj.conf;prj-dds.conf"
       "native_sim/native/64|build-rs-listener-xrce|zephyr/rust/listener|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-rs-service-server-zenoh|zephyr/rust/service-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-service-server-dds|zephyr/rust/service-server|0||prj.conf;prj-dds.conf"
       "native_sim/native/64|build-rs-service-server-xrce|zephyr/rust/service-server|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-rs-service-client-zenoh|zephyr/rust/service-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-service-client-dds|zephyr/rust/service-client|0||prj.conf;prj-dds.conf"
       "native_sim/native/64|build-rs-service-client-xrce|zephyr/rust/service-client|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-rs-action-server-zenoh|zephyr/rust/action-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-action-server-dds|zephyr/rust/action-server|0||prj.conf;prj-dds.conf"
       "native_sim/native/64|build-rs-action-server-xrce|zephyr/rust/action-server|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-rs-action-client-zenoh|zephyr/rust/action-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-action-client-dds|zephyr/rust/action-client|0||prj.conf;prj-dds.conf"
       "native_sim/native/64|build-rs-action-client-xrce|zephyr/rust/action-client|0||prj.conf;prj-xrce.conf"
       "native_sim/native/64|build-rs-service-client-async-zenoh|zephyr/rust/service-client-async|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-service-client-async-dds|zephyr/rust/service-client-async|0||prj.conf;prj-dds.conf"
 
       # Phase 168.4 — collapsed C cases (zenoh + xrce; dds deferred
       # to Phase 168.X — see docs/roadmap/phase-168-X-zephyr-cmake-build-gaps.md).

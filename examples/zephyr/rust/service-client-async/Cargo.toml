@@ -15,7 +15,6 @@ crate-type = ["staticlib"]
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-dds   = ["dep:nros-rmw-dds"]
 
 [dependencies]
 # `time-driver` is required by DDS path; harmless for zenoh.
@@ -25,7 +24,6 @@ log = "0.4"
 nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-zephyr"] }
 
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr", "ros-humble"], optional = true }
-nros-rmw-dds   = { version = "*", default-features = false, features = ["platform-zephyr"], optional = true }
 
 # Embassy async runtime + timer + static cell.
 embassy-executor = { version = "0.7", default-features = false, features = ["task-arena-size-262144"] }

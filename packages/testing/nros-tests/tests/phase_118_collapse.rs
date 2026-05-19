@@ -535,25 +535,22 @@ fn test_threadx_linux_rust_case_rmw_variant_exists(
 /// Build orchestration lives in `just/zephyr.just :: build-fixtures`.
 #[rstest]
 #[case::talker_zenoh("talker", Rmw::Zenoh)]
-#[case::talker_dds("talker", Rmw::Dds)]
 #[case::talker_xrce("talker", Rmw::Xrce)]
 #[case::listener_zenoh("listener", Rmw::Zenoh)]
-#[case::listener_dds("listener", Rmw::Dds)]
 #[case::listener_xrce("listener", Rmw::Xrce)]
 #[case::ss_zenoh("service-server", Rmw::Zenoh)]
-#[case::ss_dds("service-server", Rmw::Dds)]
 #[case::ss_xrce("service-server", Rmw::Xrce)]
 #[case::sc_zenoh("service-client", Rmw::Zenoh)]
-#[case::sc_dds("service-client", Rmw::Dds)]
 #[case::sc_xrce("service-client", Rmw::Xrce)]
 #[case::as_zenoh("action-server", Rmw::Zenoh)]
-#[case::as_dds("action-server", Rmw::Dds)]
 #[case::as_xrce("action-server", Rmw::Xrce)]
 #[case::ac_zenoh("action-client", Rmw::Zenoh)]
-#[case::ac_dds("action-client", Rmw::Dds)]
 #[case::ac_xrce("action-client", Rmw::Xrce)]
 #[case::sca_zenoh("service-client-async", Rmw::Zenoh)]
-#[case::sca_dds("service-client-async", Rmw::Dds)]
+// Phase 169.4 retired dust-dds; the Rust RMW path lost its DDS
+// backend with it. Cyclone DDS is C++-only today (Phase 117 / 169.5
+// future Rust shim). DDS cases re-land once a `nros-rmw-cyclonedds`
+// Rust crate exists.
 fn test_zephyr_rust_case_rmw_variant_exists(
     #[case] case: &str,
     #[case] rmw: Rmw,

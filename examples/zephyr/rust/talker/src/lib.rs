@@ -1,21 +1,17 @@
 //! nros Zephyr Talker Example (Rust) — Phase 168.1 collapsed shape.
 //!
 //! Single example, three RMW backends. Cargo features
-//! `rmw-zenoh` / `rmw-dds` / `rmw-xrce` (mutually exclusive)
+//! `rmw-zenoh` / `rmw-xrce` (mutually exclusive)
 //! select the backend at build time; CMakeLists.txt maps Kconfig
 //! `CONFIG_NROS_RMW_<X>=y` to the matching feature.
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
-compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-dds | rmw-xrce).");
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce).");
 
-#[cfg(any(
-    all(feature = "rmw-zenoh", feature = "rmw-dds"),
-    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
-    all(feature = "rmw-dds", feature = "rmw-xrce"),
-))]
-compile_error!("rmw-zenoh / rmw-dds / rmw-xrce are mutually exclusive.");
+#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+compile_error!("rmw-zenoh and rmw-xrce are mutually exclusive.");
 
 use log::{error, info};
 use nros::{Executor, ExecutorConfig, NodeError, TimerDuration};
@@ -25,10 +21,6 @@ fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
     {
         nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    #[cfg(feature = "rmw-dds")]
-    {
-        nros_rmw_dds::register().map_err(|_| "dds register failed")?;
     }
     #[cfg(feature = "rmw-xrce")]
     {
@@ -40,12 +32,6 @@ fn register_rmw() -> Result<(), &'static str> {
 #[cfg(feature = "rmw-zenoh")]
 fn make_config() -> ExecutorConfig<'static> {
     ExecutorConfig::new("tcp/127.0.0.1:7456")
-}
-
-#[cfg(feature = "rmw-dds")]
-fn make_config() -> ExecutorConfig<'static> {
-    // DDS derives RTPS ports from domain_id; locator stays empty.
-    ExecutorConfig::new("").domain_id(0).node_name("talker")
 }
 
 #[cfg(feature = "rmw-xrce")]

@@ -490,14 +490,10 @@ if(CONFIG_NROS_C_API)
         add_dependencies(app nros_rmw_zenoh_staticlib_cargo_build)
         zephyr_library_link_libraries(nros_rmw_zenoh_staticlib_cargo)
     endif()
-    # Phase 168.4 follow-up — DDS C-API Zephyr build is gated on
-    # extending `nros-rmw-dds-staticlib`'s `platform-zephyr` feature
-    # to pull `nros-platform/global-allocator` + `panic-halt` (mirror
-    # of the FreeRTOS / NuttX / ThreadX setup in
-    # `nros-rmw-zenoh-staticlib`). dust-dds is no_std-alloc-only, so
-    # native_sim cannot fall through to the `std` path. Deferred to
-    # Phase 168.X. The legacy `examples/zephyr/c/dds/<case>/` builds
-    # share the same gap on `main` — this is not a regression.
+    # Phase 169.4 retired dust-dds; the Rust DDS path (and its
+    # `nros-rmw-dds-staticlib`) is gone. Future Cyclone DDS Rust
+    # support comes via Phase 169.5's `nros-rmw-cyclonedds-sys`
+    # shim — wire it in here when it lands.
 
     # Phase 160.A — emit the `nros_app_register_backends` strong stub
     # that calls the active backend's `nros_rmw_<x>_register` entry.

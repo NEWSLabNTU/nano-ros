@@ -48,10 +48,8 @@ int nros_app_main(int argc, char **argv)
     NROS_CHECK_RET(nros_support_init_named(&support,
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
         CONFIG_NROS_DOMAIN_ID, "xrce_action_client"), 1);
-#elif defined(CONFIG_NROS_RMW_DDS)
-    NROS_CHECK_RET(nros_support_init(&support, "", CONFIG_NROS_DOMAIN_ID), 1);
 #else
-#error "Phase 168.4 requires CONFIG_NROS_RMW_{ZENOH,DDS,XRCE}=y"
+#error "Phase 168.4 requires CONFIG_NROS_RMW_{ZENOH,XRCE}=y"
 #endif
 
     nros_node_t node = nros_node_get_zero_initialized();

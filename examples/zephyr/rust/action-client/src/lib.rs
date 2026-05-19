@@ -2,15 +2,11 @@
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
 compile_error!("Exactly one rmw-* feature must be enabled.");
 
-#[cfg(any(
-    all(feature = "rmw-zenoh", feature = "rmw-dds"),
-    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
-    all(feature = "rmw-dds", feature = "rmw-xrce"),
-))]
-compile_error!("rmw-zenoh / rmw-dds / rmw-xrce are mutually exclusive.");
+#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+compile_error!("rmw-zenoh and rmw-xrce are mutually exclusive.");
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use log::{error, info, warn};
@@ -19,8 +15,6 @@ use nros::{Executor, ExecutorConfig, NodeError};
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
     { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
-    #[cfg(feature = "rmw-dds")]
-    { nros_rmw_dds::register().map_err(|_| "dds register failed")?; }
     #[cfg(feature = "rmw-xrce")]
     { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
     Ok(())
@@ -29,11 +23,6 @@ fn register_rmw() -> Result<(), &'static str> {
 #[cfg(feature = "rmw-zenoh")]
 fn make_config() -> ExecutorConfig<'static> {
     ExecutorConfig::new("tcp/127.0.0.1:7476")
-}
-
-#[cfg(feature = "rmw-dds")]
-fn make_config() -> ExecutorConfig<'static> {
-    ExecutorConfig::new("").domain_id(0).node_name("dds_action_client")
 }
 
 #[cfg(feature = "rmw-xrce")]
@@ -75,19 +64,8 @@ fn run() -> Result<(), NodeError> {
     info!("Action client ready: /fibonacci");
 
     // DDS needs SPDP/SEDP discovery warmup; zenoh + xrce use brief sleep.
-    #[cfg(feature = "rmw-dds")]
-    {
-        for _ in 0..100 {
-            executor.spin_once(core::time::Duration::from_millis(10));
-            zephyr::time::sleep(zephyr::time::Duration::millis(100));
-        }
-    }
-    #[cfg(not(feature = "rmw-dds"))]
-    {
-        zephyr::time::sleep(zephyr::time::Duration::secs(3));
-    }
-
-    let goal = FibonacciGoal { order: 10 };
+            zephyr::time::sleep(zephyr::time::Duration::secs(3));
+        let goal = FibonacciGoal { order: 10 };
     info!("Sending goal: order={}", goal.order);
 
     let (goal_id, mut promise) = action_client.send_goal(&goal)?;

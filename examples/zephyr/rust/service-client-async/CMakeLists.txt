@@ -8,8 +8,6 @@ project(nros_zephyr_service_client_async_rs)
 
 if(CONFIG_NROS_RMW_ZENOH)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-zenoh)
-elseif(CONFIG_NROS_RMW_DDS)
-    set(EXTRA_CARGO_ARGS --no-default-features --features rmw-dds)
 else()
     message(FATAL_ERROR
         "Phase 168 requires an RMW overlay. Build with: "

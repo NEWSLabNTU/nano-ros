@@ -1,19 +1,15 @@
 //! nros Zephyr Listener Example (Rust) — Phase 168.3 collapsed shape.
 //!
-//! Single example, three RMW backends. Cargo features `rmw-zenoh` /
-//! `rmw-dds` / `rmw-xrce` (mutually exclusive) select the backend.
+//! Single example, two RMW backends. Cargo features `rmw-zenoh` /
+//! `rmw-xrce` (mutually exclusive) select the backend.
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
-compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-dds | rmw-xrce).");
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce).");
 
-#[cfg(any(
-    all(feature = "rmw-zenoh", feature = "rmw-dds"),
-    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
-    all(feature = "rmw-dds", feature = "rmw-xrce"),
-))]
-compile_error!("rmw-zenoh / rmw-dds / rmw-xrce are mutually exclusive.");
+#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+compile_error!("rmw-zenoh and rmw-xrce are mutually exclusive.");
 
 use log::{error, info};
 use nros::{Executor, ExecutorConfig, NodeError};
@@ -22,8 +18,6 @@ use std_msgs::msg::Int32;
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
     { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
-    #[cfg(feature = "rmw-dds")]
-    { nros_rmw_dds::register().map_err(|_| "dds register failed")?; }
     #[cfg(feature = "rmw-xrce")]
     { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
     Ok(())
@@ -32,11 +26,6 @@ fn register_rmw() -> Result<(), &'static str> {
 #[cfg(feature = "rmw-zenoh")]
 fn make_config() -> ExecutorConfig<'static> {
     ExecutorConfig::new("tcp/127.0.0.1:7456")
-}
-
-#[cfg(feature = "rmw-dds")]
-fn make_config() -> ExecutorConfig<'static> {
-    ExecutorConfig::new("").domain_id(0).node_name("listener")
 }
 
 #[cfg(feature = "rmw-xrce")]
