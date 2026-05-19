@@ -76,8 +76,14 @@ fn run() -> Result<(), NodeError> {
     {
         let mut stream = action_client.feedback_stream_for(goal_id);
         let mut feedback_count: u32 = 0;
-        for _ in 0..20 {
-            // 20 x 1000ms = 20 second max
+        // Phase 160.C.2 — bumped 20 → 60 iter. Zephyr zenoh-pico's
+        // per-declare slowness translates to ~2.5 s real-time gaps
+        // between feedbacks at server. With 11 feedbacks expected
+        // for goal.order=10, the prior 20 s loop budget exhausted
+        // before the sequence finished, then get_result raced an
+        // incomplete server state and timed out.
+        for _ in 0..60 {
+            // 60 x 1000ms = 60 second max
             match stream.wait_next(&mut executor, core::time::Duration::from_millis(1000)) {
                 Ok(Some(feedback)) => {
                     feedback_count += 1;
