@@ -156,6 +156,60 @@ nano-ros binary on PATH — same ergonomics as ROS 2's
 - [ ] **165.B.3** Fix gaps (missing submodules, missing build
       steps, undocumented env vars) one platform at a time.
 
+### 165.B-test — Audit-reader verification (use book-walker agents)
+
+Each per-platform setup verification (165.B.1) MUST also pass an
+audit-reader pass: an agent acts as a first-time user, opens the
+matching book page, executes every command literally, and reports
+friction. Each agent reports against the 5-section template
+(Project layout / Configure / Build / Run / GitHub source) plus
+the readiness signal.
+
+The 2026-05-19 first-pass already surfaced concrete bugs (zenohd
+recipe missing, FreeRTOS binary-name mismatch, per-language port
+divergence, wrong error codes in C troubleshooting). Treat every
+new per-platform setup as needing the same audit pass before
+declaring it "done."
+
+- [ ] **165.B-test.1** Audit-reader agent: Linux Rust starter
+      (`book/src/getting-started/first-node-rust.md`). Acceptance:
+      blind reader executes every Build / Run command and reaches
+      `Published: 1` without bouncing.
+- [ ] **165.B-test.2** Audit-reader agent: Linux C starter
+      (`book/src/getting-started/first-node-c.md`).
+- [ ] **165.B-test.3** Audit-reader agent: Linux C++ starter
+      (`book/src/getting-started/first-node-cpp.md`).
+- [ ] **165.B-test.4** Audit-reader agent: FreeRTOS QEMU starter
+      (`book/src/getting-started/freertos.md`) — covers Rust + C +
+      C++ variants, runs `just freertos build-fixtures`. Blocked
+      on [Phase 166](./phase-166-freertos-board-crate-dup-symbols.md)
+      until the duplicate-symbol regression is closed.
+- [ ] **165.B-test.5** Audit-reader agent: Zephyr west-module
+      starter (`book/src/getting-started/integration-zephyr.md`).
+- [ ] **165.B-test.6** Audit-reader agent: NuttX apps/external
+      starter (`book/src/getting-started/integration-nuttx.md`).
+- [ ] **165.B-test.7** Audit-reader agent: ThreadX-Linux + RV64
+      starter (`book/src/getting-started/threadx.md`).
+- [ ] **165.B-test.8** Audit-reader agent: ESP32 esp-hal starter
+      (`book/src/getting-started/esp32.md`) and ESP-IDF starter
+      (`book/src/getting-started/integration-esp-idf.md`). Hardware-
+      board steps stay deferred (need physical board); the build-
+      path steps must pass.
+- [ ] **165.B-test.9** Audit-reader agent: Bare-metal Cortex-M3
+      starter (`book/src/getting-started/bare-metal.md`).
+- [ ] **165.B-test.10** Audit-reader agent: PX4 external-module
+      starter (`book/src/getting-started/px4.md`). Build-path only;
+      no hardware Pixhawk required.
+
+For each audit-reader pass, the agent's report should list:
+- Per-command exit code + last 10 lines of output.
+- Any documented prereq the agent missed because the book didn't
+  flag it (e.g. zenohd-must-be-running, terminal-blocks).
+- Any discrepancy between the book's "Project layout" tree and
+  the actual on-disk directory.
+- Any binary-name / port / error-code mismatch between docs and
+  reality.
+
 ### 165.C — Tier system audit
 
 - [ ] **165.C.1** Decide: keep three tiers, collapse to two
