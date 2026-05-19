@@ -140,16 +140,52 @@ to add.
       via explicit allocator, route bulk byte buffers (sample
       payloads, history caches) to PSRAM. That's 117.2c below.
 
-- [ ] **117.2c — Allocator-API split for atomic-safe DDS on
-      ESP32-S3.** Wire `nros-rmw-dds`'s `DcpsDomainParticipant`
-      builder (and dust-dds's internal types where ours owns the
-      allocation site) to accept a `Allocator` parameter, route
-      atomic-bearing types to an SRAM `EspHeap` and bulk-byte
-      types to the PSRAM `EspHeap`. Once this lands, drop the
-      `#[ignore]` on `tests/esp32s3_qemu_dds.rs` because the
-      runtime heap budget stops gating runtime correctness.
-      Substantial upstream work — track as a separate sub-phase
-      after 117.0–117.6 close.
+- [~] **117.2c — Multi-region heap (96 KiB SRAM + PSRAM
+      External via one `EspHeap`) — landed 2026-05-19.**
+      `nros-board-esp32s3-qemu`'s `init_hardware` now registers
+      `esp_alloc::EspHeap` as the global allocator with a 96 KiB
+      internal-SRAM region (via `esp_alloc::heap_allocator!`),
+      then calls `esp_alloc::HEAP.add_region(HeapRegion::new(
+      psram_ptr, psram_len, MemoryCapability::External))` to add
+      the entire ~8 MiB mapped PSRAM range as a second region on
+      the same allocator. dust-dds's `DcpsDomainParticipant` +
+      reliability caches + history buffers + sample byte ranges
+      all spill into PSRAM after the 96 KiB Internal region
+      fills.
+
+      DDS example crates updated: `nros-platform/global-allocator`
+      feature dropped, so the only `#[global_allocator]`
+      registered is esp-alloc's `EspHeap`. The platform-side
+      `FreeListHeap` static stays alive for direct
+      `<Esp32s3QemuPlatform as PlatformAlloc>::alloc()` calls
+      (useful for explicit Internal-only allocations) but is no
+      longer the global.
+
+      **Open hardware-correctness item.** The atomic-in-PSRAM
+      caveat (esp-alloc's `psram_allocator!` rustdoc) means
+      `Arc`-bearing types that the allocator happens to spill
+      into PSRAM may race on refcounts. QEMU emulation tolerates
+      it; production hardware deployment needs Allocator-API
+      surgery to pin atomic-bearing types to a separate
+      Internal-only allocator parameter at the dust-dds /
+      nros-rmw-dds constructor surface. That's deferred as
+      **117.2d** below.
+
+      Tests stay `#[ignore]`d pending a clean on-host QEMU run
+      to verify the runtime path completes end-to-end. Promote
+      to default-run once `cargo nextest run -E
+      'binary(esp32s3_qemu_dds)' --run-ignored=all` goes green.
+
+- [ ] **117.2d — Allocator-API split for hardware-correct DDS on
+      ESP32-S3.** Upstream-flavor work: thread an `Allocator`
+      parameter through `nros-rmw-dds`'s session / participant
+      constructors (and into the dust-dds types our wrapper
+      owns) so Arc, Mutex, atomic-bearing types get an explicit
+      Internal-only `&BOARD_SRAM_ALLOCATOR` and bulk byte
+      buffers route to the default global (which spills to
+      PSRAM). Required before claiming hardware support
+      independent of QEMU emulation. Out of Phase 117's QEMU
+      smoke goal — track as a separate sub-phase.
 
 - [x] **117.3 — DDS talker / listener example crates.** (2026-05-19)
       Cloned from the C3 templates; target triple

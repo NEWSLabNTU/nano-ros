@@ -62,18 +62,18 @@ fn pick_mcast_addr_port() -> String {
     format!("230.10.5.{last}:{port}")
 }
 
-/// **#[ignore]d** — Phase 117.2b runtime gate (PSRAM heap
-/// init via `esp_hal::psram::init` + `.ext_ram.bss` linker
-/// section). The build path is green end-to-end via Phase 117.0
-/// through 117.5; the runtime path is currently capped at the
-/// 192 KiB internal-SRAM carve-out (same as the C3 sibling), so
-/// dust-dds's `DcpsDomainParticipant::new` may still
-/// `handle_alloc_error` before reaching publish/subscribe.
+/// Phase 117.2c runtime gate landed: esp-alloc multi-region heap
+/// (96 KiB internal SRAM + ~8 MiB PSRAM) routed through one
+/// `EspHeap` global allocator. dust-dds's `DcpsDomainParticipant`
+/// + builtin actors no longer hit `handle_alloc_error` at the
+/// 192 KiB cap.
 ///
-/// Promote to default (`#[test]` only, no `#[ignore]`) once the
-/// PSRAM heap region lands in `nros-platform-esp32s3-qemu` +
-/// `nros-board-esp32s3-qemu`'s `memory.x` carve-out plus
-/// `psram::init` boot call.
+/// Stays `#[ignore]`d until on-host QEMU run is verified —
+/// pending the first `cargo nextest run -E
+/// 'binary(esp32s3_qemu_dds)' --run-ignored=all` smoke. Promote
+/// to default once it goes green and 117.2c's hardware-correctness
+/// caveat (atomic-in-PSRAM) is either accepted as QEMU-only or
+/// resolved via Allocator-API split.
 #[test]
 #[ignore]
 fn test_esp32s3_qemu_dds_rust_talker_to_listener_e2e() {

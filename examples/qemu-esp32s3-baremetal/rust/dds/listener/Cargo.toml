@@ -15,7 +15,9 @@ bench = false
 nros-board-esp32s3-qemu = { path = "../../../../../packages/boards/nros-board-esp32s3-qemu", default-features = false, features = ["ethernet", "dds-heap"] }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-bare-metal", "ros-humble"] }
 nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = ["platform-bare-metal"] }
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32s3-qemu", "global-allocator"] }
+# Phase 117.2c — see sibling talker Cargo.toml for the rationale
+# behind dropping `global-allocator` here.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32s3-qemu"] }
 std_msgs = { version = "*", default-features = false }
 esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable"] }
 esp-backtrace = { version = "~0.18.0", features = ["esp32s3", "panic-handler", "println"] }

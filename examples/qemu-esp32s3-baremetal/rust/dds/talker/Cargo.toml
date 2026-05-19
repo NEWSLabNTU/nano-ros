@@ -32,7 +32,16 @@ nros-rmw-dds = { path = "../../../../../packages/dds/nros-rmw-dds", features = [
 # board crate skips the smaller `esp_alloc::heap_allocator!(64K)`
 # call so the two `#[global_allocator]` registrations don't
 # collide (Phase 101.7).
-nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32s3-qemu", "global-allocator"] }
+# Phase 117.2c — drop `nros-platform/global-allocator` so the
+# board's `esp_alloc::heap_allocator!` (DRAM region) +
+# `esp_alloc::HEAP.add_region(...)` (PSRAM region) can register a
+# single multi-region `EspHeap` as the global allocator. The
+# platform-side `FreeListHeap` static stays alive for direct
+# `Esp32s3QemuPlatform::alloc()` calls but is no longer the
+# `#[global_allocator]`; the C3 sibling keeps the
+# `global-allocator` shape because that path doesn't have PSRAM
+# to combine with.
+nros-platform = { path = "../../../../../packages/core/nros-platform", default-features = false, features = ["platform-esp32s3-qemu"] }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }
