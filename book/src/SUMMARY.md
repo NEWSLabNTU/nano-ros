@@ -1,6 +1,7 @@
 # Summary
 
 [Introduction](./introduction.md)
+[Choose Your Entry](./start-here/choose-your-entry.md)
 
 # Getting Started (Linux first)
 
@@ -42,6 +43,7 @@
 # ROS 2 Orientation
 
 - [Differences from Standard ROS 2](./concepts/ros2-comparison.md)
+- [nano-ros vs micro-ROS](./concepts/comparison-vs-microros.md)
 - [Migration Guide](./start-here/migration-guide.md)
 
 # Concepts

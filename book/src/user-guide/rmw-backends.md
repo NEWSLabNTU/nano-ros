@@ -124,6 +124,35 @@ into `NanoRos::NanoRos`. No `build/install/` prefix, no
 | **Failure mode**      | Router crash = lose routing    | Agent crash = lose connectivity | Peer goes offline = its samples stop arriving | Peer goes offline = its samples stop arriving |
 | **C source files**    | ~100+                          | 28                              | 0 — pure Rust                   | Upstream Cyclone (~600+ files, vendored unchanged via submodule) |
 
+## Multi-backend binaries (bridges)
+
+A single nano-ros binary can link **more than one RMW backend** and
+forward traffic between them. The bridge pattern is useful for:
+
+- **Translating between protocols** — a gateway node running zenoh
+  ingress + DDS egress lets MCU fleets on zenoh-pico talk to an
+  Autoware stack on Cyclone DDS without a separate translator.
+- **Hard-real-time + best-effort split** — a high-priority Node on
+  dust-DDS for control loops, a low-priority Node on Zenoh for
+  telemetry, both in one process.
+- **Bringing up an XRCE Agent**-free fleet — bridge XRCE devices
+  to a Zenoh network so they look like first-class participants
+  to stock ROS 2.
+
+The pattern uses `Executor::open_with_rmw("<name>", ...)` to pin the
+primary session and `node_builder("name").rmw("<other>").build()` to
+open additional sessions on other backends. Both backends must be
+in the binary's link line (Cargo manifest deps + `register()` call
+each).
+
+A worked example lives at
+[`examples/bridges/native-rust-zenoh-to-dds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/native-rust-zenoh-to-dds);
+the time-triggered variant under
+[`examples/native/rust/bridge/tt-zenoh-to-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/bridge/tt-zenoh-to-xrce)
+shows the same pattern under an ARINC-653-style cyclic schedule.
+
+Full walkthrough: [Cross-backend Bridges](./cross-backend-bridges.md).
+
 ## Feature Selection
 
 ### Cargo.toml (Rust)/129 reshape — RMW selection is driven by **manifest deps**,
