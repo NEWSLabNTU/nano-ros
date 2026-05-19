@@ -299,10 +299,16 @@ gates the file so the default test build doesn't pull
 - [x] **Histogram CSV in test logs:** `eprintln!` in the host
       runner logs the parsed P99 + sample count per run; full
       CSV is captured in `target/nextest/.../<test>.stderr`.
-- [ ] **No FreeRTOS QEMU pub/sub/service/action E2E regression:**
-      9/9 Phase 130.7 tests still green after the 141.A.3 wake
-      plumbing landed. Pending validation on the next full
-      `just freertos test-all` run.
+- [x] **No FreeRTOS QEMU pub/sub/service/action E2E regression:**
+      9/9 Phase 130.7 tests green after the 141.A.3 wake
+      plumbing landed. Validated 2026-05-19 via `cargo nextest
+      run -p nros-tests --test rtos_e2e
+      "platform_1_Platform__Freertos"`: **9/9 PASS** (3 langs ×
+      3 variants). The 3 C++ failures that originally surfaced
+      during the validation run were a separate pre-existing bug
+      (Phase 161, closed: dual zenoh-pico instance from
+      `nros-cpp`'s missing Phase-134.fix migration), not a wake-
+      plumbing regression.
 
 ## Notes
 
