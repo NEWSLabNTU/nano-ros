@@ -394,8 +394,18 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             isolation:
             `rtos_e2e::test_rtos_{pubsub,service,action}_e2e` on each
             platform's Rust lane.
-      - [ ] 88.16.E — `examples/esp32/rust/*` — replace
-            `esp_println::println!()` inside the user closure.
+      - [x] 88.16.E — `examples/esp32/rust/*` (2: talker + listener)
+            migrated. Required two upstream pieces:
+            (a) `nros-log` swapped `core::sync::atomic::{AtomicBool,
+            AtomicPtr, AtomicU8}` → `portable_atomic::…` so the
+            recursion guard's CAS compiles on RISC-V `imc` (ESP32-C3
+            has no native atomic CAS);
+            (b) `nros-board-esp32::run()` now registers an
+            `esp_println::println!`-backed writer against
+            `nros-platform-esp32`'s fn-ptr slot, matching the
+            FreeRTOS / ThreadX board pattern from Phase 88.11.
+            Runtime verification deferred — Espressif QEMU fork
+            not in auto-CI; user flashes via `cargo +nightly run`.
       - [ ] 88.16.F — `examples/stm32f4/rust/*` — replace
             `defmt::info!()` inside the user closure (or document
             that users explicitly choosing defmt-native call sites
