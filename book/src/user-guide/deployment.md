@@ -6,15 +6,26 @@ verify ROS 2 communication.
 
 ## POSIX
 
-Use colcon or direct Cargo/CMake:
+Three equivalent entry points; pick by workspace shape:
 
 ```bash
-colcon build
-source install/setup.bash
+# Per-example (Pattern B or any single binary):
+cd examples/native/rust/zenoh/talker
+cargo run
+
+# Multi-component system via Phase 126 orchestration:
+nros metadata my_system
+nros plan my_system launch/my_system.launch.py
+nros check
+nros build && ./build/my_system/...
+
+# Colcon consumer workspace (Pattern A):
+colcon build && source install/setup.bash
 ros2 run my_pkg my_node
 ```
 
-For interop with ROS 2 over Zenoh:
+For interop with stock ROS 2 over Zenoh, run the bundled router (built
+by `just zenohd setup`) and point ROS 2 at it:
 
 ```bash
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
