@@ -87,13 +87,8 @@ static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the esp32-qemu-listener binary (ELF)
 static ESP32_QEMU_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Phase 101.7 — cached paths to ESP32-C3 QEMU DDS examples (ELF).
-static ESP32_QEMU_DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static ESP32_QEMU_DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Phase 101.7 — cached paths to flashed ESP32-C3 DDS images (.bin).
-static ESP32_QEMU_DDS_TALKER_FLASH: OnceCell<PathBuf> = OnceCell::new();
-static ESP32_QEMU_DDS_LISTENER_FLASH: OnceCell<PathBuf> = OnceCell::new();
+// Phase 169.4b — ESP32-C3 QEMU DDS fixture statics removed alongside
+// the dust-dds retirement (Phase 169.2 deleted the example crates).
 
 /// Cached path to the xrce-talker binary
 static XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -1688,90 +1683,10 @@ pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Phase 101.7 — ESP32-C3 QEMU DDS variant (talker / listener)
+// Phase 169.4b — ESP32-C3 QEMU Rust DDS fixture builders deleted
+// alongside the dust-dds retirement (Phase 169.2 deleted the example
+// crates).
 // ───────────────────────────────────────────────────────────────────────────
-
-/// Build an ESP32-C3 QEMU DDS example using the pinned nightly.
-fn build_esp32_qemu_dds_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-esp32-baremetal/rust/dds/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "ESP32 DDS example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    eprintln!("Building qemu-esp32/rust/dds/{}...", name);
-
-    let nightly = format!("+{}", pinned_nightly());
-    let output = cmd!("cargo", &nightly, "build", "--release")
-        .dir(&example_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
-    let binary_path = example_dir.join(format!(
-        "target/riscv32imc-unknown-none-elf/release/{}",
-        binary_name
-    ));
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
-}
-
-/// Build esp32-qemu-dds-talker ELF (cached).
-pub fn build_esp32_qemu_dds_talker() -> TestResult<&'static Path> {
-    ESP32_QEMU_DDS_TALKER_BINARY
-        .get_or_try_init(|| build_esp32_qemu_dds_example("talker", "esp32-qemu-dds-talker"))
-        .map(|p| p.as_path())
-}
-
-/// Build esp32-qemu-dds-listener ELF (cached).
-pub fn build_esp32_qemu_dds_listener() -> TestResult<&'static Path> {
-    ESP32_QEMU_DDS_LISTENER_BINARY
-        .get_or_try_init(|| build_esp32_qemu_dds_example("listener", "esp32-qemu-dds-listener"))
-        .map(|p| p.as_path())
-}
-
-/// Build + flash esp32-qemu-dds-talker (cached path to .bin image).
-pub fn build_esp32_qemu_dds_talker_flash() -> TestResult<&'static Path> {
-    ESP32_QEMU_DDS_TALKER_FLASH
-        .get_or_try_init(|| {
-            let elf = build_esp32_qemu_dds_talker()?;
-            let out = elf.parent().unwrap().join("esp32-qemu-dds-talker.bin");
-            crate::esp32::create_esp32_flash_image(elf, &out)?;
-            Ok(out)
-        })
-        .map(|p| p.as_path())
-}
-
-/// Build + flash esp32-qemu-dds-listener (cached path to .bin image).
-pub fn build_esp32_qemu_dds_listener_flash() -> TestResult<&'static Path> {
-    ESP32_QEMU_DDS_LISTENER_FLASH
-        .get_or_try_init(|| {
-            let elf = build_esp32_qemu_dds_listener()?;
-            let out = elf.parent().unwrap().join("esp32-qemu-dds-listener.bin");
-            crate::esp32::create_esp32_flash_image(elf, &out)?;
-            Ok(out)
-        })
-        .map(|p| p.as_path())
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RTIC QEMU Example Builders (MPS2-AN385, Cortex-M3)
@@ -2140,118 +2055,9 @@ pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
 // DDS example binaries
 // ============================================================================
 
-/// Cached path to the native-dds-talker binary
-static DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the native-dds-listener binary
-static DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Build native-dds-talker (cached)
-pub fn build_dds_talker() -> TestResult<&'static Path> {
-    DDS_TALKER_BINARY
-        .get_or_try_init(|| build_example("native/rust/dds/talker", "talker", None, None))
-        .map(|p| p.as_path())
-}
-
-/// Build native-dds-listener (cached)
-pub fn build_dds_listener() -> TestResult<&'static Path> {
-    DDS_LISTENER_BINARY
-        .get_or_try_init(|| build_example("native/rust/dds/listener", "listener", None, None))
-        .map(|p| p.as_path())
-}
-
-/// rstest fixture that provides the native-dds-talker binary path
-#[rstest::fixture]
-pub fn dds_talker_binary() -> PathBuf {
-    build_dds_talker()
-        .expect("Failed to build native-dds-talker")
-        .to_path_buf()
-}
-
-/// rstest fixture that provides the native-dds-listener binary path
-#[rstest::fixture]
-pub fn dds_listener_binary() -> PathBuf {
-    build_dds_listener()
-        .expect("Failed to build native-dds-listener")
-        .to_path_buf()
-}
-
-// Phase 95.F — Native DDS service + action examples ---------------------------
-
-static DDS_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static DDS_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static DDS_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static DDS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-pub fn build_dds_service_server() -> TestResult<&'static Path> {
-    DDS_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "native/rust/dds/service-server",
-                "service-server",
-                None,
-                None,
-            )
-        })
-        .map(|p| p.as_path())
-}
-
-pub fn build_dds_service_client() -> TestResult<&'static Path> {
-    DDS_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "native/rust/dds/service-client",
-                "service-client",
-                None,
-                None,
-            )
-        })
-        .map(|p| p.as_path())
-}
-
-pub fn build_dds_action_server() -> TestResult<&'static Path> {
-    DDS_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example("native/rust/dds/action-server", "action-server", None, None)
-        })
-        .map(|p| p.as_path())
-}
-
-pub fn build_dds_action_client() -> TestResult<&'static Path> {
-    DDS_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example("native/rust/dds/action-client", "action-client", None, None)
-        })
-        .map(|p| p.as_path())
-}
-
-#[rstest::fixture]
-pub fn dds_service_server_binary() -> PathBuf {
-    build_dds_service_server()
-        .expect("Failed to build native-dds-service-server")
-        .to_path_buf()
-}
-
-#[rstest::fixture]
-pub fn dds_service_client_binary() -> PathBuf {
-    build_dds_service_client()
-        .expect("Failed to build native-dds-service-client")
-        .to_path_buf()
-}
-
-#[rstest::fixture]
-pub fn dds_action_server_binary() -> PathBuf {
-    build_dds_action_server()
-        .expect("Failed to build native-dds-action-server")
-        .to_path_buf()
-}
-
-#[rstest::fixture]
-pub fn dds_action_client_binary() -> PathBuf {
-    build_dds_action_client()
-        .expect("Failed to build native-dds-action-client")
-        .to_path_buf()
-}
+// Phase 169.4b — native Rust DDS fixture builders + rstest fixtures
+// deleted alongside the dust-dds retirement (Phase 169.2 deleted the
+// example crates).
 
 // Phase 95.G — Native C DDS examples ----------------------------------------
 
