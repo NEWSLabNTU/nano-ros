@@ -15,11 +15,18 @@ bring-up + Zephyr matrix-fill (formerly tracked as the standalone
 pub/sub works in all three languages (Rust/C/C++) and request/response
 services work in Rust + C++, with the supporting NSOS host patches,
 backend `service_type_name` fix, and a stock-`rmw_cyclonedds_cpp`
-double-slash topic-naming interop fix. The `dds`→`cyclonedds` rename
-(§171.A/B), the non-Zephyr matrix cells (§171.C.1/.3/.4/.5/.6), and the
-no-alloc audit (§171.E) are still open. Two Zephyr cyclonedds gaps
-remain open inside §171.0 (C-service request delivery; all-language
-actions).
+double-slash topic-naming interop fix. The rust example migration off
+`nros-rmw-dds` → `nros-rmw-cyclonedds-sys` has **landed** (§171.B.2,
+commit `40efd9319`) for native / freertos / threadx-{linux,riscv64}.
+**Decision 2026-05-21: keep Cyclone DDS support targeted at bare metal**
+— the freertos / nuttx / baremetal / esp32 / riscv64-threadx rust cells
+keep the `rmw-cyclonedds` feature *defined* (build gated on the Cyclone
+RTOS port, §171.C.gate / `phase-170`), rather than being deleted as the
+original 171.B draft proposed. Still open: the code-surface rename
+(§171.A), the `dds/` example *directory* renames (§171.B.3), the
+non-Zephyr matrix cells (§171.C.1/.3/.4/.5/.6), and the no-alloc audit
+(§171.E). Two Zephyr cyclonedds gaps remain open inside §171.0
+(C-service request delivery; all-language actions).
 
 **Priority.** P2 — paper-rename and matrix-fill on top of the
 already-decided 169 retirement.
@@ -282,17 +289,28 @@ example is platform-agnostic enough to retarget at Cyclone DDS:
       - **rename** candidates (Cyclone-DDS-viable platforms):
         `native/{c,cpp,rust}` (6 cases each), `zephyr/rust` (8),
         `threadx-linux/rust` (2).
-      - **delete** candidates (dust-bound, no Cyclone DDS port on
-        the platform): `qemu-arm-baremetal/rust`,
+      - **keep as `rmw-cyclonedds`, build-gated** (decision
+        2026-05-21 — *keep Cyclone DDS support targeted at bare
+        metal*, do NOT delete): `qemu-arm-baremetal/rust`,
         `qemu-arm-freertos/rust`, `qemu-arm-nuttx/rust`,
-        `qemu-esp32-baremetal/rust`, `qemu-riscv64-threadx/rust`
-        (2 cases each).
-- [ ] **171.B.2** For dust-DDS-bound examples (the five RTOS rust
-      cells above): mark for deletion + matching cyclonedds
-      replacement under 171.C. **Gated on Phase 169 landing**
-      (dust-DDS still on `main`) + a documented cyclonedds
-      replacement (or an "intentionally empty cell" entry where
-      Cyclone DDS can't fit the RTOS).
+        `qemu-esp32-baremetal/rust`, `qemu-riscv64-threadx/rust`.
+        The `rmw-cyclonedds` feature stays *defined* on these cells
+        as the target; the build is gated on the Cyclone DDS RTOS
+        port (§171.C.gate). Until that lands the cell is feature-
+        present-but-unbuilt — see
+        `phase-170-cyclone-rust-example-build-path.md`. Reverses the
+        earlier "delete" plan.
+- [~] **171.B.2** Migrated the rust dds examples off the retired
+      `nros-rmw-dds` onto `nros-rmw-cyclonedds-sys` (feature
+      `rmw-cyclonedds`) for `native`, `qemu-arm-freertos`,
+      `qemu-riscv64-threadx`, `threadx-linux` (commit `40efd9319`).
+      The bare-metal RTOS cells keep the feature defined but are NOT
+      built in the fixture matrices (Cyclone has no pure-cargo build;
+      gated on §171.C.gate). zenoh-only fixture matrices + the defer
+      rationale live in `phase-170`. Remaining B.2 work: the
+      `examples/<plat>/rust/dds/` *directory* renames (the migration
+      flipped the collapsed cells' features in place; the legacy
+      nested `dds/` dirs still need the `git mv` per B.3).
 - [ ] **171.B.3** For the rename candidates (`native`, `zephyr`,
       `threadx-linux`): `git mv examples/<plat>/<lang>/dds/
       examples/<plat>/<lang>/cyclonedds/` + flip the backend to
