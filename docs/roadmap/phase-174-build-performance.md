@@ -67,13 +67,29 @@ Each of ~21 zephyr fixtures pays, uncacheably and largely serially:
   Under the fifo jobserver ninja inherits the pool; else it gets the
   per-build ninja-jobs budget. `pristine=always` still forces west.
 
-Remaining (deeper, lower-ROI):
-- Cache codegen output (`nros_generate_interfaces`) so even the FIRST
-  build of a fresh dir reuses shared-interface output.
-- **shared build dirs per RMW group** / Zephyr **sysbuild** so one
-  configured kernel+picolibc tree is reused across same-config examples.
-  Bigger; intersects the broken cyclonedds-zephyr (Phase 171.0.d) so
-  hard to validate cleanly there.
+**Deeper investigation (2026-05-21) — diminishing returns, deferred.**
+With the warm same-dir rebuild already at 0.28 s, the residual cost is
+the **cold first build of each fresh build dir**, which decomposes as:
+per-dir cmake configure (~4 s: devicetree regen + Rust-target detect)
++ picolibc (934 TUs — sccache cache-hits *within* a config, but each
+app still fetches + relinks its own copy) + app + link. Both remaining
+levers fight Zephyr's **one-app-one-image** model:
+
+- **Codegen caching** (`nros_generate_interfaces`) — marginal: the
+  fixtures use tiny interfaces (`std_msgs/Int32`), so regen is sub-second;
+  not worth a cross-build cache.
+- **Shared kernel+picolibc / sysbuild** — the only real cold win, but
+  Zephyr links picolibc + kernel **per app** by design; sharing one
+  `libc.a`/kernel across the 6 examples of a config is a sysbuild-grade
+  restructure (research-level), risky, and **measurement-blocked** by the
+  wedged local cyclonedds-zephyr workspace (Phase 171.0.d). The per-dir
+  configure (~4 s) is likewise per-build-dir in Zephyr's model with no
+  cheap share.
+
+Verdict: the clean, safe wins (pristine=auto + ninja-direct + sccache +
+the jobserver) are banked; further cold-build reduction needs a Zephyr
+sysbuild rework + a clean cyclonedds workspace. Deferred as a tracked
+research item rather than hacked in.
 
 ### 174.B — config-divergent cache misses — **investigated, deferred** (2026-05-21)
 
