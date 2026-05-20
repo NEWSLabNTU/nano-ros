@@ -25,9 +25,9 @@ extern crate alloc;
 
 // Application modules
 mod config;
-mod node;
 #[cfg(feature = "ethernet")]
 pub mod network;
+mod node;
 
 // Re-export entry macro from esp-hal
 pub use esp_hal::main as entry;
@@ -60,8 +60,10 @@ pub use nros_smoltcp;
 ///
 /// Use with: `use nros_board_esp32_qemu::prelude::*;`
 pub mod prelude {
-    pub use crate::config::Config;
-    pub use crate::node::{init_hardware, run};
+    pub use crate::{
+        config::Config,
+        node::{init_hardware, run},
+    };
     pub use esp_hal::main as entry;
     pub use nros_platform::BoardConfig;
     pub use nros_platform_esp32_qemu::timing::MonotonicClock;

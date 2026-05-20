@@ -76,9 +76,7 @@ pub use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
 // directly (or import `run` from here + pick the marker type
 // via turbofish).
 #[cfg(feature = "reference-linux")]
-pub use nros_board_threadx_linux::{
-    Config as ConfigLinux, init_hardware as init_hardware_linux,
-};
+pub use nros_board_threadx_linux::{Config as ConfigLinux, init_hardware as init_hardware_linux};
 
 #[cfg(feature = "reference-qemu-riscv64")]
 pub use nros_board_threadx_qemu_riscv64::{

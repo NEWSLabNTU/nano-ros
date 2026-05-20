@@ -1126,6 +1126,7 @@ dependencies = [
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-println",
+ "nros-board-common",
  "nros-platform",
  "nros-platform-api",
  "nros-platform-esp32-qemu",

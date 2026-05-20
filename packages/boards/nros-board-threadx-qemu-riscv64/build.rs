@@ -8,10 +8,12 @@
 //!   THREADX_DIR          — ThreadX kernel source root (default: third-party/threadx/kernel)
 //!   NETX_DIR             — NetX Duo source root (default: third-party/threadx/netxduo)
 
-use std::env;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    env,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -24,8 +26,14 @@ fn main() {
         .and_then(|p| p.parent())
         .expect("Could not resolve workspace root");
 
-    let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
-    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
+    let threadx_dir = env_path_or(
+        "THREADX_DIR",
+        workspace_root.join("third-party/threadx/kernel"),
+    );
+    let netx_dir = env_path_or(
+        "NETX_DIR",
+        workspace_root.join("third-party/threadx/netxduo"),
+    );
     let virtio_driver_dir = workspace_root.join("packages/drivers/virtio-net-netx");
 
     // Validate directories
@@ -142,7 +150,13 @@ fn main() {
     // ---- Build NetX Duo ----
     let mut netxduo = cc::Build::new();
     configure_riscv64(&mut netxduo);
-    add_threadx_includes(&mut netxduo, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
+    add_threadx_includes(
+        &mut netxduo,
+        &threadx_dir,
+        &threadx_port_dir,
+        &qemu_virt_dir,
+        &config_dir,
+    );
     add_netx_includes(&mut netxduo, &netx_dir, &config_dir);
 
     // All NetX Duo common sources
@@ -161,7 +175,13 @@ fn main() {
     // ---- Build virtio-net NetX Duo driver ----
     let mut virtio = cc::Build::new();
     configure_riscv64(&mut virtio);
-    add_threadx_includes(&mut virtio, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
+    add_threadx_includes(
+        &mut virtio,
+        &threadx_dir,
+        &threadx_port_dir,
+        &qemu_virt_dir,
+        &config_dir,
+    );
     add_netx_includes(&mut virtio, &netx_dir, &config_dir);
 
     virtio
@@ -185,7 +205,13 @@ fn main() {
     // `interface_name`).
     let mut glue = cc::Build::new();
     configure_riscv64(&mut glue);
-    add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
+    add_threadx_includes(
+        &mut glue,
+        &threadx_dir,
+        &threadx_port_dir,
+        &qemu_virt_dir,
+        &config_dir,
+    );
     add_netx_includes(&mut glue, &netx_dir, &config_dir);
     glue.include(virtio_driver_dir.join("include"));
     glue.file(manifest_dir.join("c/entry.s"));
@@ -217,7 +243,10 @@ fn main() {
 
     // Link picolibc (C standard library for bare-metal RISC-V) and libgcc (compiler builtins)
     if let Some(picolibc_lib_dir) = get_picolibc_lib_dir() {
-        println!("cargo:rustc-link-search=native={}", picolibc_lib_dir.display());
+        println!(
+            "cargo:rustc-link-search=native={}",
+            picolibc_lib_dir.display()
+        );
         println!("cargo:rustc-link-lib=static=c");
     }
     if let Some(libgcc_dir) = get_libgcc_dir() {
