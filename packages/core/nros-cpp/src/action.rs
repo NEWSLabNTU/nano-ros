@@ -369,12 +369,20 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
         uuid: unsafe { *goal_id },
     };
     let data = unsafe { core::slice::from_raw_parts(result_buf, result_len) };
+    // Core action storage keeps result fields only; C++ serializers include
+    // the CDR header for user-facing deserialize calls.
+    let result_fields = strip_cdr_header(data);
 
     let h = match &server.handle {
         Some(h) => h,
         None => return NROS_CPP_RET_ERROR,
     };
-    h.complete_goal_raw(&mut ctx.executor, &id, nros::GoalStatus::Succeeded, data);
+    h.complete_goal_raw(
+        &mut ctx.executor,
+        &id,
+        nros::GoalStatus::Succeeded,
+        result_fields,
+    );
     NROS_CPP_RET_OK
 }
 
@@ -619,15 +627,28 @@ unsafe extern "C" fn cpp_result_trampoline(
     result_len: usize,
     context: *mut c_void,
 ) {
-    // Always stash the result for Future::wait polling
+    // User callbacks expect normal CDR bytes, so restore the header stripped
+    // before `complete_goal_raw` stored the result fields.
+    let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
+    framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
+    let copy_len = result_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
     unsafe {
-        let copy_len = result_len.min(DEFAULT_RX_BUF_SIZE);
         core::ptr::copy_nonoverlapping(
             result_data,
-            core::ptr::addr_of_mut!(RESULT_STASH) as *mut u8,
+            framed.as_mut_ptr().add(CDR_HEADER_LEN),
             copy_len,
         );
-        core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), copy_len as i32);
+    }
+    let framed_len = CDR_HEADER_LEN + copy_len;
+
+    // Always stash the result for Future::wait polling
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            framed.as_ptr(),
+            core::ptr::addr_of_mut!(RESULT_STASH) as *mut u8,
+            framed_len,
+        );
+        core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), framed_len as i32);
     }
 
     // Also forward to user callback if set
@@ -643,8 +664,8 @@ unsafe extern "C" fn cpp_result_trampoline(
             cb(
                 &(*goal_id).uuid,
                 s,
-                result_data,
-                result_len,
+                framed.as_ptr(),
+                framed_len,
                 client.callbacks.context,
             )
         };
@@ -2055,7 +2076,8 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_handle_get_result_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
-    let slice = unsafe { core::slice::from_raw_parts(default_result_cdr, default_result_len) };
+    let data = unsafe { core::slice::from_raw_parts(default_result_cdr, default_result_len) };
+    let slice = strip_cdr_header(data);
     match core.try_handle_get_result_raw(slice) {
         Ok(Some(_)) => 1,
         Ok(None) => 0,
