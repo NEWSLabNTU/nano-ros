@@ -1,0 +1,5 @@
+# ESP32-S3 (Xtensa) ships in the espup `esp` channel, which also bundles
+# rust-src for the `-Z build-std` no_std build. Install: `espup install`.
+[toolchain]
+channel = "esp"
+components = ["rust-src", "rustfmt"]
