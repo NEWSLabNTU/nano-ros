@@ -181,6 +181,11 @@ INCLUDES="$INCLUDES -I$BUILD_DIR/include"
 INCLUDES="$INCLUDES -I$PLATFORM_DIR"
 INCLUDES="$INCLUDES -I$PLATFORM_DIR/bare-metal"
 INCLUDES="$INCLUDES -I$C_DIR/include"
+# Phase 154 — zpico.c includes <nros/platform_net.h> (the canonical
+# platform ABI header). It lives in nros-platform-cffi, which the
+# Rust build.rs already has on its include path; the standalone
+# embedded build script needs it too.
+INCLUDES="$INCLUDES -I$REPO_ROOT/packages/core/nros-platform-cffi/include"
 
 # Platform defines (matches build.rs build_zenoh_pico_embedded)
 DEFINES="-DZENOH_GENERIC"
