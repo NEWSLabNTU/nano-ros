@@ -485,20 +485,26 @@ Target matrix (after rename + new cells):
            include dirs (not the lib) so `libnros_rmw_cyclonedds.a` stays
            inside NanoRos's `--whole-archive` group.
 
-        **Still open for the C / C++ native cells (`nros_support_init
-        -> -3`).** The c/cpp examples build with all the above (descriptors
-        compile + link; cross-language verified) but fail at runtime: the
-        C-API path registers the cyclonedds backend via the
-        `.nros_rmw_init` section walker rather than an explicit
-        `register()` call, and on the native C link the walker comes up
-        empty (registry → `NROS_RET_INVALID_ARGUMENT`). The section entry
-        + walker symbols are present in the binary, so this is a
-        section-discovery / walker-invocation issue on the native C/C++
-        API path — distinct from the descriptor work, pre-existing (the
-        `-3` predates this commit), and the next runtime item. The rust
-        cell sidesteps it by calling `nros_rmw_cyclonedds_sys::register()`
-        explicitly. NOTE: the locator default is *not* the cause — an
-        empty locator reproduces the same `-3`.
+        **C / C++ native cells — LANDED + runtime-verified 2026-05-21
+        (`cc26c09f9`).** The earlier `nros_support_init -> -3` was an
+        empty RMW registry: the backend self-registers via the
+        `.nros_rmw_init` linkme section walker, but `nros-node` pulls
+        `nros-rmw-cffi` with `default-features = false` and its
+        `rmw-cffi` feature does not re-enable `linkme-register`, so on
+        the C-API path the walker is the no-op stub and the section
+        entry is never invoked. (The locator default is NOT the cause —
+        an empty locator reproduced the same `-3`.) Fixes:
+        - An `.init_array` constructor on the Cyclone backend (gated off
+          Zephyr) registers it before `nros_support_init`, regardless of
+          the walker. `register_named` is idempotent, so harmless when
+          the walker is also live (Rust-API builds).
+        - C++ examples declare `project(... LANGUAGES CXX C)` — idlc
+          descriptors are C source, uncompilable in a CXX-only project.
+
+        Verified: native c + cpp talkers publish `std_msgs/Int32` at
+        1 Hz, and a **C talker → C listener cross-process run delivers
+        over the wire (`Received: 1..5`)** — full data-plane e2e, all
+        three languages.
 
         **Hazard to design around (the reason this is not a quick
         spike):** the `rustapp` staticlib pulls the **Rust** nros
