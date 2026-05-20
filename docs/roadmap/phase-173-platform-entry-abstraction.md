@@ -507,7 +507,10 @@ nano-ros transport⟷RMW surface by design.
       crate — **zero** edits to the six former match-arm functions.
 - [ ] `orchestration_e2e` suite stays green across all existing platforms
       (posix / freertos / nuttx / zephyr / threadx / esp32-c3 / bare-metal).
-- [ ] Drift gate fails when a `PlatformProfile` row lacks a `Board` impl.
+- [x] Drift gate fails when a `PlatformProfile` row lacks a `Board` impl.
+      (`check-profile-board-mirror.sh` now asserts each concrete board
+      crate impls `BoardInit`+`BoardPrint`+`BoardExit`; verified red when
+      an impl is removed.)
 - [x] `nros/board.h` + `nros_board_export!` land in the new
       `nros-board-cffi` crate; `check-board-abi-mirror` keeps header ⟷
       extern block ⟷ macro in sync (clean: 5 symbols), wired into
