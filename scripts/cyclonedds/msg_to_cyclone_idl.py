@@ -108,6 +108,32 @@ _STRUCT_RE = re.compile(
     r"(?P<indent>[ \t]*)struct\s+(?P<name>[A-Za-z_]\w*)\s*\{",
 )
 
+# Composite messages reference nested message types by their
+# rosidl_adapter scoped name, e.g. `std_msgs::msg::MultiArrayDimension`
+# or `builtin_interfaces::msg::Time`. Those referenced types are
+# themselves mangled into a `dds_` sub-module with a `_`-suffixed name
+# (see `mangle_idl`), so the reference must be rewritten to match —
+# `std_msgs::msg::dds_::MultiArrayDimension_` — or idlc fails to resolve
+# the scoped name. Match only `<pkg>::<msg|srv|action>::<Type>` triples,
+# which is exactly how rosidl_adapter renders cross-type references.
+_SCOPED_REF_RE = re.compile(
+    r"\b([A-Za-z_]\w*)::(msg|srv|action)::([A-Za-z_]\w*)\b",
+)
+
+
+def _mangle_scoped_refs(line: str) -> str:
+    """Rewrite nested type references to their mangled `dds_::<Type>_`
+    form. A reference already pointing at `dds_::` is left alone."""
+    def _sub(m: "re.Match[str]") -> str:
+        pkg, kind, ty = m.group(1), m.group(2), m.group(3)
+        return f"{pkg}::{kind}::dds_::{ty}_"
+
+    # Skip references that already carry the `dds_` segment to keep the
+    # rewrite idempotent.
+    if "::dds_::" in line:
+        return line
+    return _SCOPED_REF_RE.sub(_sub, line)
+
 
 # Phase 117.X.3 / 117.12.B — leading fields injected into every
 # `_Request_` / `_Response_` struct so the wire CDR matches stock
@@ -138,6 +164,10 @@ def mangle_idl(src: str, inject_service_header: bool = False) -> str:
     out_lines: list[str] = []
     nesting: list[str] = []  # stack of opened wrapper indents
     for line in src.splitlines(keepends=False):
+        # Mangle nested type references before any structural handling.
+        # The struct-open / wrapper / `};` lines carry no scoped refs,
+        # so this only rewrites member-field declarations.
+        line = _mangle_scoped_refs(line)
         m = _STRUCT_RE.match(line)
         if m:
             indent = m.group("indent")

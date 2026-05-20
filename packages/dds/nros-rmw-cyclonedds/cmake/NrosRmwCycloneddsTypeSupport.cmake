@@ -64,6 +64,53 @@ if(NOT TARGET CycloneDDS::idlc)
     endif()
 endif()
 
+# Resolve idlc to an absolute path *here*, where the imported
+# `CycloneDDS::idlc` target is visible, and stash it in an INTERNAL
+# cache var. Imported targets are directory-scoped, so a far-away
+# consumer (e.g. an example calling `nros_generate_interfaces`) cannot
+# expand `$<TARGET_FILE:CycloneDDS::idlc>` — the genex resolves to an
+# empty string and idlc never runs. The cached absolute path is
+# visible from every scope.
+if(NOT NROS_RMW_CYCLONEDDS_IDLC)
+    set(_idlc_loc "")
+    # Prefer the imported target's location (covers per-config suffixes).
+    if(TARGET CycloneDDS::idlc)
+        foreach(_loc_prop
+                IMPORTED_LOCATION
+                IMPORTED_LOCATION_RELEASE
+                IMPORTED_LOCATION_RELWITHDEBINFO
+                IMPORTED_LOCATION_DEBUG
+                IMPORTED_LOCATION_NOCONFIG)
+            if(NOT _idlc_loc)
+                get_target_property(_p CycloneDDS::idlc ${_loc_prop})
+                if(_p)
+                    set(_idlc_loc "${_p}")
+                endif()
+            endif()
+        endforeach()
+    endif()
+    # Fall back to a real on-disk search so far consumers never depend
+    # on the imported target being visible in their scope.
+    if(NOT _idlc_loc)
+        if(IDLC_EXECUTABLE)
+            set(_idlc_loc "${IDLC_EXECUTABLE}")
+        else()
+            find_program(_idlc_found idlc
+                HINTS
+                    "${CycloneDDS_DIR}/../../../bin"
+                    "${CMAKE_INSTALL_PREFIX}/bin"
+                    "$ENV{CYCLONEDDS_INSTALL_DIR}/bin")
+            if(_idlc_found)
+                set(_idlc_loc "${_idlc_found}")
+            endif()
+        endif()
+    endif()
+    if(_idlc_loc)
+        set(NROS_RMW_CYCLONEDDS_IDLC "${_idlc_loc}"
+            CACHE INTERNAL "Absolute path to Cyclone DDS idlc")
+    endif()
+endif()
+
 # Phase 117.X.1: locate the .msg/.srv → mangled-IDL converter.
 #
 # Resolution order (no source-tree-relative HINTs — see CLAUDE.md
@@ -156,7 +203,7 @@ endif()
 function(nros_rmw_cyclonedds_idlc_compile output_var)
     set(_options "")
     set(_one    IDL_FILE OUTPUT_DIR TYPE_NAME)
-    set(_multi  TYPE_NAMES)
+    set(_multi  TYPE_NAMES INCLUDE_DIRS EXTRA_DEPENDS)
     cmake_parse_arguments(_arg "${_options}" "${_one}" "${_multi}" ${ARGN})
 
     if(NOT _arg_IDL_FILE)
@@ -172,7 +219,12 @@ function(nros_rmw_cyclonedds_idlc_compile output_var)
     set(_gen_c "${_arg_OUTPUT_DIR}/${_idl_stem}.c")
     set(_gen_h "${_arg_OUTPUT_DIR}/${_idl_stem}.h")
 
-    if(TARGET CycloneDDS::idlc)
+    # Use the absolute path cached at module-load (see top of file) so
+    # this works from any scope, not only where CycloneDDS::idlc is
+    # visible. `$<TARGET_FILE:…>` would expand to "" for far consumers.
+    if(NROS_RMW_CYCLONEDDS_IDLC)
+        set(_idlc "${NROS_RMW_CYCLONEDDS_IDLC}")
+    elseif(TARGET CycloneDDS::idlc)
         set(_idlc "$<TARGET_FILE:CycloneDDS::idlc>")
     else()
         set(_idlc "${IDLC_EXECUTABLE}")
@@ -190,10 +242,17 @@ function(nros_rmw_cyclonedds_idlc_compile output_var)
         set(_idlc_flags "-l" "c")
     endif()
 
+    # Composite messages `#include` sibling / cross-package IDLs using
+    # the rosidl-style `<pkg>/msg/<Type>.idl` path. idlc resolves those
+    # against `-I <root>` dirs where the package-nested layout lives.
+    foreach(_inc IN LISTS _arg_INCLUDE_DIRS)
+        list(APPEND _idlc_flags "-I" "${_inc}")
+    endforeach()
+
     add_custom_command(
         OUTPUT  "${_gen_c}" "${_gen_h}"
         COMMAND "${_idlc}" ${_idlc_flags} -o "${_arg_OUTPUT_DIR}" "${_idl_abs}"
-        DEPENDS "${_idl_abs}"
+        DEPENDS "${_idl_abs}" ${_arg_EXTRA_DEPENDS}
         COMMENT "idlc ${_idl_stem}.idl"
         VERBATIM
     )
@@ -237,6 +296,14 @@ static void ${_ctor}(void) {
 }
 ")
         configure_file("${_reg}.in" "${_reg}" COPYONLY)
+        # The register TU `#include`s the idlc-generated `<stem>.h`.
+        # idlc emits `.c` + `.h` from one custom_command, but only the
+        # `.c` is a tracked source — nothing makes the register TU's
+        # compile wait for the header, so a parallel build races and
+        # fails with "<stem>.h: No such file or directory". Pin the
+        # ordering with an explicit object dependency on the header.
+        set_source_files_properties("${_reg}" PROPERTIES
+            OBJECT_DEPENDS "${_gen_h}")
         list(APPEND _out_files "${_reg}")
         math(EXPR _idx "${_idx} + 1")
     endforeach()
@@ -323,7 +390,7 @@ endfunction()
 #
 function(nros_rmw_cyclonedds_generate_from_msg output_var)
     set(_options "")
-    set(_one    PKG_NAME PKG_DIR OUTPUT_DIR)
+    set(_one    PKG_NAME PKG_DIR OUTPUT_DIR INCLUDE_ROOT GEN_ROOT)
     set(_multi  INTERFACES)
     cmake_parse_arguments(_arg "${_options}" "${_one}" "${_multi}" ${ARGN})
 
@@ -343,8 +410,31 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
         set(_arg_OUTPUT_DIR
             "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-from-msg/${_arg_PKG_NAME}")
     endif()
-    set(_idl_dir "${_arg_OUTPUT_DIR}/idl")
-    set(_gen_dir "${_arg_OUTPUT_DIR}/gen")
+    # Composite messages cross-reference sibling / cross-package IDLs
+    # via `#include "<pkg>/msg/<Type>.idl"`. When the caller supplies a
+    # shared INCLUDE_ROOT, write each package's IDLs into the nested
+    # `<root>/<pkg>/msg/` layout those includes expect and hand idlc
+    # `-I <root>`. Packages generated earlier (declared DEPENDENCIES)
+    # populate the same root, so cross-package includes resolve too.
+    # Without INCLUDE_ROOT we keep the flat layout (legacy hand-IDL
+    # callers register one self-contained type at a time).
+    if(_arg_INCLUDE_ROOT)
+        set(_idl_dir "${_arg_INCLUDE_ROOT}/${_arg_PKG_NAME}/msg")
+        set(_idlc_includes "${_arg_INCLUDE_ROOT}")
+    else()
+        set(_idl_dir "${_arg_OUTPUT_DIR}/idl")
+        set(_idlc_includes "")
+    endif()
+    # idlc emits each descriptor `.h` with `#include "<pkg>/msg/<Dep>.h"`
+    # lines for composite members, so the generated `.c`/`.h` must also
+    # live in the package-nested layout and compile with `-I <GEN_ROOT>`.
+    # Without GEN_ROOT, keep the flat per-package gen dir (legacy path,
+    # self-contained types only).
+    if(_arg_GEN_ROOT)
+        set(_gen_dir "${_arg_GEN_ROOT}/${_arg_PKG_NAME}/msg")
+    else()
+        set(_gen_dir "${_arg_OUTPUT_DIR}/gen")
+    endif()
     file(MAKE_DIRECTORY "${_idl_dir}")
     file(MAKE_DIRECTORY "${_gen_dir}")
 
@@ -364,13 +454,17 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
 
     set(_all_outputs "")
 
+    # Pass 1 — convert every .msg/.srv to mangled IDL first and collect
+    # the .idl paths. idlc reads `#include`d sibling / cross-package
+    # IDLs at generation time, so every idlc command in pass 2 must wait
+    # for *all* of this package's .idl files (and, via the ts-lib target
+    # ordering set up by the caller, the dependency packages' files in
+    # the shared INCLUDE_ROOT).
+    set(_pkg_idl_paths "")
     foreach(_iface IN LISTS _arg_INTERFACES)
         get_filename_component(_iface_stem "${_iface}" NAME_WE)
-        get_filename_component(_iface_ext  "${_iface}" EXT)
         set(_idl_path "${_idl_dir}/${_iface_stem}.idl")
 
-        # Run the converter once per interface so each .idl has a
-        # focused custom_command DEPENDS line.
         if(IS_ABSOLUTE "${_iface}")
             set(_iface_abs "${_iface}")
         else()
@@ -388,6 +482,14 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
             COMMENT "msg_to_cyclone_idl ${_arg_PKG_NAME}/${_iface}"
             VERBATIM
         )
+        list(APPEND _pkg_idl_paths "${_idl_path}")
+    endforeach()
+
+    # Pass 2 — run idlc on each .idl, gated on all sibling .idl files.
+    foreach(_iface IN LISTS _arg_INTERFACES)
+        get_filename_component(_iface_stem "${_iface}" NAME_WE)
+        get_filename_component(_iface_ext  "${_iface}" EXT)
+        set(_idl_path "${_idl_dir}/${_iface_stem}.idl")
 
         # Decide which type name(s) to register based on the
         # extension. .msg → one name, .srv → two (Request + Response).
@@ -395,12 +497,16 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
             nros_rmw_cyclonedds_idlc_compile(_gen
                 IDL_FILE  "${_idl_path}"
                 OUTPUT_DIR "${_gen_dir}"
+                INCLUDE_DIRS ${_idlc_includes}
+                EXTRA_DEPENDS ${_pkg_idl_paths}
                 TYPE_NAME "${_arg_PKG_NAME}::msg::dds_::${_iface_stem}_"
             )
         elseif(_iface_ext STREQUAL ".srv")
             nros_rmw_cyclonedds_idlc_compile(_gen
                 IDL_FILE  "${_idl_path}"
                 OUTPUT_DIR "${_gen_dir}"
+                INCLUDE_DIRS ${_idlc_includes}
+                EXTRA_DEPENDS ${_pkg_idl_paths}
                 TYPE_NAMES
                     "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Request_"
                     "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Response_"

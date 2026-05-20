@@ -19,6 +19,10 @@
 #include <cstring>
 #include <new>
 
+#ifndef __ZEPHYR__
+#include <ctime> // nanosleep / timespec (POSIX spin-loop pacing)
+#endif
+
 #ifdef __ZEPHYR__
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -102,12 +106,25 @@ nros_rmw_ret_t session_drive_io(nros_rmw_session_t * /*session*/,
     // so the loop paces to real time, the credited delta matches
     // wall-clock, and the thread yields to the native_sim scheduler.
     // Cyclone's own RX threads keep delivering in parallel.
+    //
+    // The same pacing is required on hosted POSIX. With no async-wake
+    // callback the executor's `spin_once` free-runs here; an instant
+    // return makes it iterate sub-microsecond, and the runtime credits
+    // timers by `elapsed.as_micros()`, which truncates each sub-µs
+    // iteration to 0 — so wall-clock timers never accumulate and never
+    // fire. Sleeping `timeout_ms` paces the loop to real time exactly
+    // like the Zephyr branch.
 #ifdef __ZEPHYR__
     if (timeout_ms > 0) {
         (void) k_msleep(timeout_ms);
     }
 #else
-    (void)timeout_ms;
+    if (timeout_ms > 0) {
+        struct timespec ts;
+        ts.tv_sec = timeout_ms / 1000;
+        ts.tv_nsec = static_cast<long>(timeout_ms % 1000) * 1000000L;
+        (void) nanosleep(&ts, nullptr);
+    }
 #endif
     return NROS_RMW_RET_OK;
 }

@@ -30,5 +30,14 @@ target_link_libraries(rust_talker PRIVATE
     rustapp
     std_msgs__nano_ros_c
     NanoRos::NanoRos
-    "-Wl,--allow-multiple-definition")
+    "-Wl,--allow-multiple-definition"
+    # The C++ Cyclone DDS backend (force-loaded via the message lib's
+    # WHOLE_ARCHIVE interface) lands late on the link line, after the
+    # `-lstdc++` that NanoRos's INTERFACE injects. This executable is
+    # linked with the C driver (no .cpp → no automatic C++ runtime), so
+    # static left-to-right resolution leaves `std::nothrow` et al.
+    # undefined. Re-list stdc++ last; pass it as an opaque `-Wl,` flag
+    # so CMake does not de-duplicate it against the early occurrence and
+    # it stays after the backend archive.
+    "-Wl,--no-as-needed,-lstdc++")
 nros_platform_link_app(rust_talker)

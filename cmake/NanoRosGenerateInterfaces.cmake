@@ -613,6 +613,88 @@ function(nros_generate_interfaces target)
     endforeach()
   endif()
 
+  # Phase 171.C.runtime — Cyclone DDS topic-descriptor typesupport.
+  # When building against the cyclonedds RMW, the publisher/subscriber
+  # need a per-message `dds_topic_descriptor_t` registered in the
+  # backend registry. `nros_generate_interfaces` only emits the CDR/C
+  # message bindings, so generate + link the idlc descriptor +
+  # static-init register TU here (the helper is defined globally once
+  # `add_subdirectory(packages/dds/nros-rmw-cyclonedds)` runs, which
+  # the cyclonedds branch of the root CMake does).
+  if(NANO_ROS_RMW STREQUAL "cyclonedds"
+     AND COMMAND nros_rmw_cyclonedds_generate_from_msg)
+    # Only .msg / .srv carry data types; .action is not wired yet.
+    set(_cyc_ifaces "")
+    foreach(_if ${_interface_files})
+      if(_if MATCHES "\\.(msg|srv)$")
+        list(APPEND _cyc_ifaces "${_if}")
+      endif()
+    endforeach()
+    if(_cyc_ifaces)
+      # PKG_DIR = the package root (parent of msg/ or srv/). All
+      # interface files for one `target` share a package root.
+      list(GET _cyc_ifaces 0 _cyc_first)
+      get_filename_component(_cyc_ifdir "${_cyc_first}" DIRECTORY)
+      get_filename_component(_cyc_pkgdir "${_cyc_ifdir}" DIRECTORY)
+      # Shared IDL include root for the whole build. Composite messages
+      # (`std_msgs/Header` → `builtin_interfaces/Time`, the `*MultiArray`
+      # family → `MultiArrayLayout`) `#include` sibling / cross-package
+      # IDLs; idlc resolves those against `-I <root>` with each package
+      # laid out as `<root>/<pkg>/msg/<Type>.idl`. Anchor the root at the
+      # binary dir of the call that first creates it so every package in
+      # one example shares it.
+      set(_cyc_idl_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_idlroot")
+      set(_cyc_gen_root "${CMAKE_BINARY_DIR}/cyclonedds-ts/_genroot")
+      nros_rmw_cyclonedds_generate_from_msg(_cyc_sources
+        PKG_NAME   "${target}"
+        PKG_DIR    "${_cyc_pkgdir}"
+        INTERFACES ${_cyc_ifaces}
+        INCLUDE_ROOT "${_cyc_idl_root}"
+        GEN_ROOT     "${_cyc_gen_root}"
+        OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/${target}")
+      if(_cyc_sources)
+        add_library(${target}__cyclonedds_ts STATIC ${_cyc_sources})
+        # idlc lays the descriptor `.c`/`.h` out as
+        # `<gen-root>/<pkg>/msg/<Type>.{c,h}`; the register TUs `#include`
+        # their sibling `<Type>.h`, and composite descriptors cross-
+        # `#include "<pkg>/msg/<Dep>.h"`. Both resolve against the shared
+        # gen root.
+        target_include_directories(${target}__cyclonedds_ts PRIVATE
+          "${_cyc_gen_root}")
+        # The descriptor `.c` files `#include "dds/dds.h"`, so the ts
+        # lib needs Cyclone's ddsc *headers*. Pull only the backend's
+        # INTERFACE include dirs — do NOT link the backend library.
+        # Linking it (even PUBLIC) makes `libnros_rmw_cyclonedds.a`
+        # reappear as a plain transitive dependency on the final exe
+        # link line; CMake then de-duplicates it out of the
+        # `--whole-archive` group NanoRos sets up, so the backend's
+        # `.nros_rmw_init` self-registration entry gets GC'd and the
+        # RMW registry comes up empty (`nros_support_init -> -3`). The
+        # `nros_rmw_cyclonedds_register_descriptor` symbol the register
+        # TUs call is resolved at exe link via NanoRos's whole-archived
+        # backend, so the ts lib never needs to link it directly.
+        if(TARGET nros_rmw_cyclonedds)
+          target_include_directories(${target}__cyclonedds_ts PRIVATE
+            "$<TARGET_PROPERTY:nros_rmw_cyclonedds,INTERFACE_INCLUDE_DIRECTORIES>")
+        endif()
+        # Cross-package include ordering: a dependency package's IDLs
+        # must populate the shared root before this package's idlc runs.
+        # idlc reads them at generate-time, so order the ts-lib targets.
+        foreach(_dep ${_ARG_DEPENDENCIES})
+          if(TARGET ${_dep}__cyclonedds_ts)
+            add_dependencies(${target}__cyclonedds_ts ${_dep}__cyclonedds_ts)
+          endif()
+        endforeach()
+        # The descriptor self-registration is a static-init TU with no
+        # symbol the app references directly, so a plain static-lib link
+        # GC's it. Force-load it through the interface message lib so
+        # any consumer of `${_lib_target}` keeps the registrations.
+        target_link_libraries(${_lib_target} INTERFACE
+          "$<LINK_LIBRARY:WHOLE_ARCHIVE,${target}__cyclonedds_ts>")
+      endif()
+    endif()
+  endif()
+
   # Install
   if(NOT _ARG_SKIP_INSTALL)
     if(_ARG_LANGUAGE STREQUAL "CPP")
