@@ -748,18 +748,21 @@ green.
   samples. Patches are wired into `just zephyr setup` (idempotent)
   after the mcjoin-mreq patch.
 
-  **C++ parity.** The C++ cyclonedds overlay
-  (`examples/zephyr/cpp/{talker,listener}/prj-cyclonedds.conf`) only
-  carried the Phase-117 link-time config — it lacked the 11W.8
-  runtime knobs, so the C++ talker hit `CODE_UNREACHABLE` in picolibc
+  **C / C++ parity.** The C and C++ cyclonedds overlays
+  (`examples/zephyr/{c,cpp}/{talker,listener}/prj-cyclonedds.conf`)
+  only carried the Phase-117 link-time config — they lacked the 11W.8
+  runtime knobs, so the talker hit `CODE_UNREACHABLE` in picolibc
   libc-hooks (16 KiB malloc arena) and `Cannot create zeth` (no NSOS
   forcing) before ever publishing. Brought to parity with the Rust
   overlay (16 MiB `COMMON_LIBC_MALLOC_ARENA_SIZE`, NSOS offload
   forcing, NET_TCP, bigger pthread pools, diagnostics) and added the
-  Cyclone C descriptor generation to the C++ CMake (the C++ codegen
-  emits only C++ types; the backend's `find_descriptor` needs the C
-  `dds_topic_descriptor_t`). `test_zephyr_cpp_cyclonedds_pubsub_e2e`
-  passes — C++ listener receives the C++ talker's samples.
+  Cyclone C descriptor generation to the C and C++ CMake (the C/C++
+  codegen emits the message types but not Cyclone's descriptor; the
+  backend's `find_descriptor` needs the C `dds_topic_descriptor_t`).
+  The C app links the C++ cyclonedds backend via the module (overlay
+  keeps `CONFIG_CPP=y`). `test_zephyr_{c,cpp}_cyclonedds_pubsub_e2e`
+  both pass — listener receives the talker's samples in all three
+  languages (Rust + C + C++).
 
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
