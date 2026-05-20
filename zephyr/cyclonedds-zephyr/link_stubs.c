@@ -17,6 +17,19 @@
 #include "dds/ddsrt/retcode.h"
 #include "dds/ddsrt/string.h"
 
+/* Phase 11W.12 — NSOS host interface enumeration (host trampoline
+ * added by scripts/zephyr/nsos-getifaddrs-patch.sh). Declared locally
+ * to avoid pulling the NSOS driver header into this cyclonedds TU;
+ * layout MUST match `struct nsos_mid_ifaddr` in nsos.h. */
+struct nsos_mid_ifaddr {
+    unsigned int addr;      /* IPv4 address, network byte order */
+    unsigned int netmask;   /* network byte order */
+    unsigned int flags;     /* host IFF_* */
+    unsigned int ifindex;
+    char name[16];
+};
+int nsos_adapt_getifaddrs(struct nsos_mid_ifaddr *out);
+
 #ifndef IFF_UP
 #define IFF_UP        0x1
 #endif
@@ -84,10 +97,17 @@ dds_return_t ddsrt_getifaddrs(ddsrt_ifaddrs_t **ifap, const int *afs) {
         }
     }
 
+    /* Phase 11W.12 — query the host's primary multicast-capable IPv4
+     * interface via NSOS. SPDP multicast discovery needs to join the
+     * group on a real interface; the loopback fallback below works for
+     * unicast bind but Linux can't join multicast on lo. */
+    struct nsos_mid_ifaddr hostif;
+    int have_hostif = (nsos_adapt_getifaddrs(&hostif) == 0);
+
     ddsrt_ifaddrs_t *ifa = ddsrt_calloc(1, sizeof(*ifa));
     struct sockaddr_in *addr = ddsrt_calloc(1, sizeof(*addr));
     struct sockaddr_in *mask = ddsrt_calloc(1, sizeof(*mask));
-    char *name = ddsrt_strdup("nsos0");
+    char *name = ddsrt_strdup(have_hostif ? hostif.name : "nsos0");
     if (ifa == NULL || addr == NULL || mask == NULL || name == NULL) {
         ddsrt_free(ifa);
         ddsrt_free(addr);
@@ -96,24 +116,29 @@ dds_return_t ddsrt_getifaddrs(ddsrt_ifaddrs_t **ifap, const int *afs) {
         return DDS_RETCODE_OUT_OF_RESOURCES;
     }
 
-    /* 127.0.0.1/8 — usable loopback bind address. Cyclone DDS rejects
-     * INADDR_ANY because it isn't a routable identity for the
-     * participant's locator advertisement. With NSOS, socket calls
-     * tunnel to the host kernel so loopback works for both in-host
-     * domain peers and (with multicast group join) cross-host
-     * traffic that the host's routing table forwards. */
     addr->sin_family = AF_INET;
     addr->sin_port = 0;
-    addr->sin_addr.s_addr = htonl(0x7F000001U);  /* 127.0.0.1 */
-
     mask->sin_family = AF_INET;
     mask->sin_port = 0;
-    mask->sin_addr.s_addr = htonl(0xFF000000U);  /* /8 */
+
+    if (have_hostif) {
+        /* Real host interface — multicast join lands here and two
+         * native_sim processes discover each other via SPDP. */
+        addr->sin_addr.s_addr = hostif.addr;
+        mask->sin_addr.s_addr = hostif.netmask;
+        ifa->index = hostif.ifindex ? hostif.ifindex : 1;
+        ifa->flags = IFF_UP | IFF_MULTICAST;
+    } else {
+        /* No usable host interface — fall back to loopback. Usable for
+         * unicast bind; multicast discovery won't work. */
+        addr->sin_addr.s_addr = htonl(0x7F000001U);  /* 127.0.0.1 */
+        mask->sin_addr.s_addr = htonl(0xFF000000U);  /* /8 */
+        ifa->index = 1;
+        ifa->flags = IFF_UP | IFF_LOOPBACK | IFF_MULTICAST;
+    }
 
     ifa->next = NULL;
     ifa->name = name;
-    ifa->index = 1;
-    ifa->flags = IFF_UP | IFF_LOOPBACK | IFF_MULTICAST;
     ifa->type = DDSRT_IFTYPE_WIRED;
     ifa->addr = (struct sockaddr *)addr;
     ifa->netmask = (struct sockaddr *)mask;

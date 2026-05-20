@@ -5,13 +5,15 @@ Zephyr `native_sim/native/64` so the Phase 168 collapsed examples
 (`examples/zephyr/{c,cpp,rust}/<case>/`) build clean with
 `prj-cyclonedds.conf` overlays.
 
-**Status.** ✓ COMPLETE for compile + link + boot smoke. Every
-collapsed case (6 cases × 3 languages = 18 cells) builds clean on
-`native_sim/native/64`; the Rust talker boots to the init banner
-under `test_zephyr_rust_talker_cyclonedds_boot`. Full pub/sub against
-a stock ROS 2 peer stays an open follow-up — Cyclone DDS
-`Executor::open` currently surfaces `Transport(ConnectionFailed)`
-under NSOS, separate from 11W's "compile + link + boot" bar.
+**Status.** ✓ COMPLETE for compile + link + boot smoke **+ true
+talker→listener pub/sub discovery (11W.12)**. Every collapsed case
+(6 cases × 3 languages = 18 cells) builds clean on
+`native_sim/native/64`; the Rust talker publishes std_msgs/Int32 at
+1 Hz and a separate Rust listener now receives those samples over
+Cyclone DDS SPDP multicast discovery — `test_zephyr_rust_cyclonedds_pubsub_e2e`
+asserts `Received`. Wire-compat against a stock ROS 2 /
+`rmw_cyclonedds_cpp` peer stays an open follow-up (Phase 117.X interop
+track).
 
 ```
 build-c-talker-cyclonedds/zephyr/zephyr.exe       13 MB
@@ -708,6 +710,48 @@ green.
   resolve via the project's setup paths). Generalising descriptor
   generation across all collapsed C/C++/Rust cyclonedds examples
   (not just the talker) is the broader 11W.9 follow-up.
+
+  **Phase 11W.12 — RESOLVED (discovery works).** Talker→listener
+  pub/sub now completes on native_sim NSOS. The full multicast path
+  needed three more pieces beyond the 11W.8 mreq optlen fix:
+
+  1. **Real multicast interface** — `scripts/zephyr/nsos-getifaddrs-patch.sh`
+     adds a host `getifaddrs()` trampoline (`nsos_adapt_getifaddrs`
+     → `struct nsos_mid_ifaddr`) that returns the first UP +
+     MULTICAST + non-loopback AF_INET host interface.
+     `link_stubs.c`'s `ddsrt_getifaddrs` now reports that real
+     address (e.g. 192.168.x.x) instead of 127.0.0.1, so the join
+     lands on a multicast-capable interface and `ddsi_ownip` accepts
+     it.
+  2. **Host-side IPPROTO_IP forwarder** — the guest half
+     (`native-sim-ipproto-ip-patch.sh`, `nsos_sockets.c`) marshalled
+     `IP_ADD_MEMBERSHIP` / `IP_MULTICAST_*` but the *bottom* half
+     (`nsos_adapt.c`) had no `case NSOS_MID_IPPROTO_IP`, so the
+     midplane returned `-NSOS_MID_EOPNOTSUPP` and the join never
+     reached the host kernel. `scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh`
+     adds that handler (reconstructs host `struct ip_mreq` /
+     `in_addr` / int and calls the host `setsockopt`). With it the
+     join succeeds (no more `error in join`).
+  3. **Distinct GUID prefix per process** — native_sim's test
+     entropy ("not safe - entropy source") is deterministic, so two
+     copies of the same binary generated *identical* Cyclone
+     participant GUID prefixes (same participant handle, same thread
+     IDs across processes). Each then treated the other's SPDP
+     announcement as its own and discovery never matched. Passing a
+     unique `--seed` per process fixes it; `ZephyrProcess::start`
+     already injects a time-+counter seed per spawn, so the E2E test
+     gets distinct GUIDs for free.
+
+  Verified: `test_zephyr_rust_cyclonedds_pubsub_e2e` (listener +
+  talker, distinct seeds) — listener logs `Received[N]:` for the
+  talker's published sequence. Manual 30 s run delivered 24/24
+  samples. Patches are wired into `just zephyr setup` (idempotent)
+  after the mcjoin-mreq patch.
+
+  Follow-ups: upstream the NSOS host patches (getifaddrs +
+  adapt-side IPPROTO_IP, alongside the earlier getsockname /
+  recvmsg) to Zephyr; the determinism gotcha is native_sim-specific
+  (real hardware / separate hosts differ naturally).
 - Phase 117's "follow-ups (post-117)" list is **separate**: 11X
   autoware, 11Y Phase 108 events, 11Z zero-copy sertype. 11W
   here is yet another post-117 follow-up.

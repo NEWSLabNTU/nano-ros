@@ -16,9 +16,8 @@
 use std::path::Path;
 
 use nros_tests::fixtures::{
-    Rmw, build_native_c_example_rmw, build_native_c_talker_rmw,
-    build_native_cpp_example_rmw, build_native_listener_rmw,
-    build_native_rust_example_rmw, build_native_talker_rmw,
+    Rmw, build_native_c_example_rmw, build_native_c_talker_rmw, build_native_cpp_example_rmw,
+    build_native_listener_rmw, build_native_rust_example_rmw, build_native_talker_rmw,
 };
 use rstest::rstest;
 
@@ -262,11 +261,7 @@ fn test_native_c_listener_service_action_rmw_variant_exists(
 #[case::ac_zenoh("action-client", "cpp_action_client", Rmw::Zenoh)]
 #[case::ac_dds("action-client", "cpp_action_client", Rmw::Dds)]
 #[case::ac_xrce("action-client", "cpp_action_client", Rmw::Xrce)]
-fn test_native_cpp_rmw_variant_exists(
-    #[case] case: &str,
-    #[case] binary: &str,
-    #[case] rmw: Rmw,
-) {
+fn test_native_cpp_rmw_variant_exists(#[case] case: &str, #[case] binary: &str, #[case] rmw: Rmw) {
     let path = build_native_cpp_example_rmw(case, binary, rmw).unwrap_or_else(|e| {
         nros_tests::skip!(
             "native/cpp/{} {:?} variant not prebuilt; run \
@@ -379,18 +374,17 @@ fn test_freertos_cmake_case_rmw_variant_exists(
     #[case] case: &str,
     #[case] binary: &str,
 ) {
-    let path = nros_tests::fixtures::build_freertos_cmake_example_rmw(
-        lang, case, binary, Rmw::Zenoh,
-    )
-    .unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "qemu-arm-freertos/{}/{} zenoh variant not prebuilt; run \
+    let path =
+        nros_tests::fixtures::build_freertos_cmake_example_rmw(lang, case, binary, Rmw::Zenoh)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!(
+                    "qemu-arm-freertos/{}/{} zenoh variant not prebuilt; run \
              `just freertos build-fixtures` first: {:?}",
-            lang,
-            case,
-            e
-        )
-    });
+                    lang,
+                    case,
+                    e
+                )
+            });
     assert!(
         path.exists(),
         "freertos {}/{} zenoh binary missing: {}",
@@ -423,18 +417,16 @@ fn test_nuttx_cmake_case_rmw_variant_exists(
     #[case] case: &str,
     #[case] binary: &str,
 ) {
-    let path = nros_tests::fixtures::build_nuttx_cmake_example_rmw(
-        lang, case, binary, Rmw::Zenoh,
-    )
-    .unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "qemu-arm-nuttx/{}/{} zenoh variant not prebuilt; run \
+    let path = nros_tests::fixtures::build_nuttx_cmake_example_rmw(lang, case, binary, Rmw::Zenoh)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!(
+                "qemu-arm-nuttx/{}/{} zenoh variant not prebuilt; run \
              `just nuttx build-fixtures` first: {:?}",
-            lang,
-            case,
-            e
-        )
-    });
+                lang,
+                case,
+                e
+            )
+        });
     assert!(
         path.exists(),
         "nuttx {}/{} zenoh binary missing: {}",
@@ -469,7 +461,13 @@ fn test_threadx_rv64_rust_case_rmw_variant_exists(
                 e
             )
         });
-    assert!(path.exists(), "threadx-rv64 {} {:?} missing: {}", case, rmw, path.display());
+    assert!(
+        path.exists(),
+        "threadx-rv64 {} {:?} missing: {}",
+        case,
+        rmw,
+        path.display()
+    );
 }
 
 /// Phase 118.B.6 — ThreadX-RV64 C / C++ cases (zenoh only).
@@ -491,14 +489,23 @@ fn test_threadx_rv64_cmake_case_rmw_variant_exists(
     #[case] case: &str,
     #[case] binary: &str,
 ) {
-    let path = nros_tests::fixtures::build_threadx_rv64_cmake_example_rmw(
-        lang, case, binary, Rmw::Zenoh,
-    ).unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "qemu-riscv64-threadx/{}/{} zenoh not prebuilt: {:?}", lang, case, e
-        )
-    });
-    assert!(path.exists(), "threadx-rv64 {}/{} zenoh missing: {}", lang, case, path.display());
+    let path =
+        nros_tests::fixtures::build_threadx_rv64_cmake_example_rmw(lang, case, binary, Rmw::Zenoh)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!(
+                    "qemu-riscv64-threadx/{}/{} zenoh not prebuilt: {:?}",
+                    lang,
+                    case,
+                    e
+                )
+            });
+    assert!(
+        path.exists(),
+        "threadx-rv64 {}/{} zenoh missing: {}",
+        lang,
+        case,
+        path.display()
+    );
 }
 
 /// Phase 118.B.7 — ThreadX-Linux Rust cases.
@@ -525,7 +532,13 @@ fn test_threadx_linux_rust_case_rmw_variant_exists(
                 e
             )
         });
-    assert!(path.exists(), "threadx-linux {} {:?} missing: {}", case, rmw, path.display());
+    assert!(
+        path.exists(),
+        "threadx-linux {} {:?} missing: {}",
+        case,
+        rmw,
+        path.display()
+    );
 }
 
 /// Phase 168.3 — Zephyr Rust cases.
@@ -554,18 +567,17 @@ fn test_threadx_linux_rust_case_rmw_variant_exists(
 #[case::sc_cyclonedds("service-client", Rmw::Cyclonedds)]
 #[case::as_cyclonedds("action-server", Rmw::Cyclonedds)]
 #[case::ac_cyclonedds("action-client", Rmw::Cyclonedds)]
-fn test_zephyr_rust_case_rmw_variant_exists(
-    #[case] case: &str,
-    #[case] rmw: Rmw,
-) {
-    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw(case, rmw)
-        .unwrap_or_else(|e| {
-            nros_tests::skip!(
-                "zephyr/rust/{} {:?} not prebuilt: {:?}",
-                case, rmw, e
-            )
-        });
-    assert!(path.exists(), "zephyr {} {:?} missing: {}", case, rmw, path.display());
+fn test_zephyr_rust_case_rmw_variant_exists(#[case] case: &str, #[case] rmw: Rmw) {
+    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw(case, rmw).unwrap_or_else(|e| {
+        nros_tests::skip!("zephyr/rust/{} {:?} not prebuilt: {:?}", case, rmw, e)
+    });
+    assert!(
+        path.exists(),
+        "zephyr {} {:?} missing: {}",
+        case,
+        rmw,
+        path.display()
+    );
 }
 
 /// Phase 168.4 — Zephyr C / C++ cases (zenoh + xrce verified; dds +
@@ -620,12 +632,16 @@ fn test_zephyr_cmake_case_rmw_variant_exists(
 ) {
     let path = nros_tests::fixtures::build_zephyr_cmake_example_rmw(lang, case, rmw)
         .unwrap_or_else(|e| {
-            nros_tests::skip!(
-                "zephyr/{}/{} {:?} not prebuilt: {:?}",
-                lang, case, rmw, e
-            )
+            nros_tests::skip!("zephyr/{}/{} {:?} not prebuilt: {:?}", lang, case, rmw, e)
         });
-    assert!(path.exists(), "zephyr {}/{} {:?} missing: {}", lang, case, rmw, path.display());
+    assert!(
+        path.exists(),
+        "zephyr {}/{} {:?} missing: {}",
+        lang,
+        case,
+        rmw,
+        path.display()
+    );
 }
 
 /// Phase 11W.9/.10 — runtime smoke for the cyclonedds native_sim Rust
@@ -638,13 +654,10 @@ fn test_zephyr_rust_talker_cyclonedds_boot() {
 
     use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
 
-    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw(
-        "talker",
-        Rmw::Cyclonedds,
-    )
-    .unwrap_or_else(|e| {
-        nros_tests::skip!("zephyr/rust/talker cyclonedds not prebuilt: {:?}", e)
-    });
+    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw("talker", Rmw::Cyclonedds)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!("zephyr/rust/talker cyclonedds not prebuilt: {:?}", e)
+        });
 
     let mut z = ZephyrProcess::start(&path, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr talker (cyclonedds)");
@@ -675,13 +688,10 @@ fn test_zephyr_rust_listener_cyclonedds_boot() {
 
     use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
 
-    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw(
-        "listener",
-        Rmw::Cyclonedds,
-    )
-    .unwrap_or_else(|e| {
-        nros_tests::skip!("zephyr/rust/listener cyclonedds not prebuilt: {:?}", e)
-    });
+    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw("listener", Rmw::Cyclonedds)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!("zephyr/rust/listener cyclonedds not prebuilt: {:?}", e)
+        });
 
     let mut z = ZephyrProcess::start(&path, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr listener (cyclonedds)");
@@ -699,6 +709,53 @@ fn test_zephyr_rust_listener_cyclonedds_boot() {
     assert!(
         output.contains("Waiting for messages"),
         "cyclonedds listener did not reach subscription wait state"
+    );
+}
+
+/// Phase 11W.12 — true talker→listener pub/sub over Cyclone DDS SPDP
+/// multicast discovery on native_sim NSOS. Requires the full multicast
+/// path: NSOS `getifaddrs` returning a real multicast-capable interface,
+/// the host-side `IPPROTO_IP` setsockopt forwarder (so `IP_ADD_MEMBERSHIP`
+/// reaches the host kernel), and *distinct* `--seed` per process —
+/// native_sim's deterministic test entropy otherwise yields identical
+/// Cyclone GUID prefixes, so each participant treats the other's SPDP as
+/// its own and discovery never completes. `ZephyrProcess::start` injects a
+/// unique seed per spawn, covering the last requirement.
+#[test]
+fn test_zephyr_rust_cyclonedds_pubsub_e2e() {
+    use std::time::Duration;
+
+    use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
+
+    let listener_bin =
+        nros_tests::fixtures::build_zephyr_rust_example_rmw("listener", Rmw::Cyclonedds)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!("zephyr/rust/listener cyclonedds not prebuilt: {:?}", e)
+            });
+    let talker_bin = nros_tests::fixtures::build_zephyr_rust_example_rmw("talker", Rmw::Cyclonedds)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!("zephyr/rust/talker cyclonedds not prebuilt: {:?}", e)
+        });
+
+    let mut listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr listener (cyclonedds)");
+    // Let the listener join the SPDP group before the talker announces.
+    std::thread::sleep(Duration::from_secs(2));
+    let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr talker (cyclonedds)");
+
+    // SPDP + SEDP + first delivered sample: allow generous margin.
+    let output = listener.wait_for_pattern("Received", Duration::from_secs(20));
+
+    listener.kill();
+    talker.kill();
+
+    eprintln!("zephyr cyclonedds e2e listener output:\n{}", output);
+
+    assert!(
+        output.contains("Received"),
+        "cyclonedds listener did not receive any talker sample over SPDP \
+         discovery (expected a `Received` line)"
     );
 }
 
@@ -721,12 +778,21 @@ fn test_threadx_linux_cmake_case_rmw_variant_exists(
     #[case] case: &str,
     #[case] binary: &str,
 ) {
-    let path = nros_tests::fixtures::build_threadx_linux_cmake_example_rmw(
-        lang, case, binary, Rmw::Zenoh,
-    ).unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "threadx-linux/{}/{} zenoh not prebuilt: {:?}", lang, case, e
-        )
-    });
-    assert!(path.exists(), "threadx-linux {}/{} zenoh missing: {}", lang, case, path.display());
+    let path =
+        nros_tests::fixtures::build_threadx_linux_cmake_example_rmw(lang, case, binary, Rmw::Zenoh)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!(
+                    "threadx-linux/{}/{} zenoh not prebuilt: {:?}",
+                    lang,
+                    case,
+                    e
+                )
+            });
+    assert!(
+        path.exists(),
+        "threadx-linux {}/{} zenoh missing: {}",
+        lang,
+        case,
+        path.display()
+    );
 }
