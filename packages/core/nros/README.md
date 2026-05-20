@@ -1,13 +1,13 @@
 # nros
 
-The unified [nano-ros](https://github.com/NEWSLabNTU/nano-ros) facade crate. Re-exports `nros-core`, `nros-node`, `nros-rmw`, `nros-serdes`, `nros-platform`, and the RMW backend selected by feature flag (`rmw-zenoh`, `rmw-xrce`, `rmw-dds`).
+The unified [nano-ros](https://github.com/NEWSLabNTU/nano-ros) facade crate. Re-exports `nros-core`, `nros-node`, `nros-rmw`, `nros-serdes`, `nros-platform`, and the RMW backend selected by feature flag (`rmw-zenoh`, `rmw-xrce`, `rmw-cyclonedds`).
 
 This is the entry point for application code. See the [book](https://github.com/NEWSLabNTU/nano-ros/tree/main/book) and the [examples directory](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples).
 
 ## Features
 
 - `std` / `alloc` / `no-std`
-- RMW backends: `rmw-zenoh`, `rmw-xrce`, `rmw-xrce-cffi`, `rmw-dds`
+- RMW backends: `rmw-zenoh`, `rmw-xrce`, `rmw-xrce-cffi`, `rmw-cyclonedds`
 - Platforms: `platform-posix`, `platform-nuttx`, `platform-freertos`, `platform-threadx`, `platform-zephyr`
 
 ## License

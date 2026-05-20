@@ -41,12 +41,11 @@ Studio). Pair with:
 
 ## Wire backend
 
-The example builds against the Zephyr nros module's existing DDS
-backend (`CONFIG_NROS_RMW_DDS=y`, dust-dds). The Cyclone DDS RMW
-in `packages/dds/nros-rmw-cyclonedds/` lands on POSIX today (Phase
-117.12 stock-RMW interop validated end-to-end); extending the
-Zephyr nros module to ship a Cyclone build path is tracked
-separately. Once it lands, swap `CONFIG_NROS_RMW_DDS=y` →
-`CONFIG_NROS_RMW_CYCLONEDDS=y` (or whatever Kconfig symbol the
-glue exposes) in `prj.conf` and the wire format on this binary
-becomes byte-equal with stock `rmw_cyclonedds_cpp` peers.
+The example builds against the Zephyr nros module's Cyclone DDS
+backend (`CONFIG_NROS_RMW_CYCLONEDDS=y`). The Cyclone DDS RMW in
+`packages/dds/nros-rmw-cyclonedds/` is validated on POSIX (Phase
+117.12 stock-RMW interop end-to-end) and on Zephyr `native_sim`
+(Phase 11W / 171.0 — pub/sub + services); this FVP Cortex-A/R
+target reuses that build glue. The wire format on this binary is
+byte-equal with stock `rmw_cyclonedds_cpp` peers. (FVP build
+verification for this board is tracked as Phase 171.0.c.)

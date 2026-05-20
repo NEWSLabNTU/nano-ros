@@ -272,8 +272,7 @@ pub enum Rmw {
 }
 
 impl Rmw {
-    /// Cargo feature name (`rmw-zenoh` / `rmw-dds` / `rmw-xrce` /
-    /// `rmw-cyclonedds`).
+    /// Cargo feature name (`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds`).
     pub fn cargo_feature(self) -> &'static str {
         match self {
             Rmw::Zenoh => "rmw-zenoh",

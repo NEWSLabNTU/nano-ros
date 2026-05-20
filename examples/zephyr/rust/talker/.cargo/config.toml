@@ -1,6 +1,6 @@
 # Phase 97.4.zephyr-native_sim — pin SPDP unicast locator + mcast TX
-# iface for DDS RMW; harmless for zenoh/xrce (read only by
-# `nros-rmw-dds` / `nros-platform-zephyr`).
+# iface for the Cyclone DDS RMW; harmless for zenoh/xrce (read only by
+# `nros-platform-zephyr`).
 [env]
 NROS_LOCAL_IPV4 = "127.0.0.10"
 NROS_LOCAL_IPV4_BYTES = "127,0,0,10"

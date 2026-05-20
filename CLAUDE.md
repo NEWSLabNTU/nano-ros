@@ -124,7 +124,7 @@ SDK paths auto from `third-party/<sdk>/`; override `<SDK>_DIR` env. See `docs/re
 
 ### Platform Backends
 Three orthogonal axes (compile-time mutual excl, zero on axis OK):
-- **RMW**: `rmw-zenoh|rmw-xrce|rmw-dds|rmw-cyclonedds`
+- **RMW**: `rmw-zenoh|rmw-xrce|rmw-cyclonedds` (`rmw-dds`/dust-dds retired Phase 169)
 - **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}` — `[platform.bare-metal]` in `zenoh_platforms.toml` carries `arch = ["cortex-m3", "riscv32imc"]`; build.rs's first-match dispatch picks the right arch per target triple (so `qemu-arm-baremetal` + `ESP32-C3` share the same platform entry). Phase 148.
 - **ROS edition**: `ros-{humble,iron}`
 

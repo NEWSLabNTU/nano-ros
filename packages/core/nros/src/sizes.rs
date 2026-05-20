@@ -12,7 +12,7 @@
 //!   to derive opaque-storage macros for the generated C/C++ headers.
 //!
 //! Feature gating follows the rest of the crate: the statics only exist when
-//! an RMW backend (`rmw-zenoh` / `rmw-xrce` / `rmw-dds` / `rmw-cffi`) is
+//! an RMW backend (`rmw-zenoh` / `rmw-xrce` / `rmw-cyclonedds` / `rmw-cffi`) is
 //! active, which is exactly the condition under which the `Rmw*` type
 //! aliases resolve. Workspace-level `cargo check` without any RMW feature
 //! sees this module as empty.

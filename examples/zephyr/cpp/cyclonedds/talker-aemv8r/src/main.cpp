@@ -10,11 +10,11 @@
  * the matching `examples/zephyr/cpp/dds/listener` running on
  * native_sim for an in-tree round-trip.
  *
- * The Cyclone DDS RMW lands on POSIX today (Phase 117.12); this
- * example builds against the Zephyr nros module's existing DDS
- * backend (`CONFIG_NROS_RMW_DDS=y`, dust-dds). Swap to Cyclone once
- * the Zephyr build glue at `packages/dds/nros-rmw-cyclonedds/` is
- * extended to ship a Zephyr module (tracked separately).
+ * Builds against the Zephyr nros module's Cyclone DDS backend
+ * (`CONFIG_NROS_RMW_CYCLONEDDS=y`). The Cyclone DDS RMW at
+ * `packages/dds/nros-rmw-cyclonedds/` is validated on POSIX (Phase
+ * 117.12) and Zephyr native_sim (Phase 11W / 171.0); this FVP
+ * Cortex-A/R target reuses that glue (build verification: 171.0.c).
  */
 
 #include <zephyr/kernel.h>

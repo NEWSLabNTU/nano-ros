@@ -84,9 +84,7 @@ Phase 118.A blocks untriaged cells.
 
 Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell. See [`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md) for the model + build-knob walkthrough.
 
-- `bridges/native-rust-zenoh-to-dds/` — zenoh ↔ dust-DDS gateway
-- `native/c/bridge/xrce-to-dds/` — C bridge, XRCE-DDS ↔ dust-DDS
-- `native/cpp/bridge/zenoh-to-dds/` — C++ bridge, zenoh ↔ dust-DDS
+- `native/rust/bridge/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
 
 ### `templates/` — multi-platform copy-out recipes
 
@@ -160,12 +158,13 @@ cargo build --release --target thumbv7em-none-eabihf
 # flash with probe-rs / openocd
 ```
 
-### Zephyr (native_sim) C + DDS
+### Zephyr (native_sim) C + Cyclone DDS
 
 ```bash
 just zephyr setup
 source ~/nano-ros-workspace/env.sh
-west build -b native_sim/native/64 nano-ros/examples/zephyr/c/dds/talker
+west build -b native_sim/native/64 nano-ros/examples/zephyr/c/talker \
+  -- -DCONF_FILE="prj.conf;prj-cyclonedds.conf"
 ./build/zephyr/zephyr.exe
 ```
 
@@ -186,7 +185,7 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
-For DDS-side interop (cyclonedds, dust-dds), see `docs/reference/rmw_zenoh_interop.md`.
+For DDS-side interop (cyclonedds), see `docs/reference/rmw_zenoh_interop.md`.
 
 ## See also
 

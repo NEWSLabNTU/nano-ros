@@ -56,10 +56,6 @@ paths = [
 # Dev-only: Micro-XRCE-DDS Agent (host-side bridge to ROS 2).
 dev_paths = ["third-party/xrce/agent"]
 
-[rmw.dds]
-# dust-dds: pure-Rust DDS implementation, no native deps.
-paths = ["packages/dds/dust-dds"]
-
 [rmw.cyclonedds]
 # Eclipse Cyclone DDS (C++). Tag-pinned to 0.10.5 for Humble
 # wire-compat (see CLAUDE.md "Phase 117").
