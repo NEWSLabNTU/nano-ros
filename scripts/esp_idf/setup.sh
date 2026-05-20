@@ -57,7 +57,14 @@ echo "Targets:           $ESP_IDF_TARGETS"
 # 1. Clone (or update) ESP-IDF.
 if [[ -d "$WORKSPACE_DIR/.git" ]]; then
     echo "==> esp-idf already cloned; fetching $ESP_IDF_REF"
-    git -C "$WORKSPACE_DIR" fetch --depth 1 origin "$ESP_IDF_REF":"$ESP_IDF_REF"
+    # NOTE: `fetch origin <ref>:<ref>` writes the destination into
+    # `refs/heads/<ref>` (a branch). When `$ESP_IDF_REF` is an
+    # annotated tag (e.g. v5.3), the tag object is a non-commit and
+    # git refuses with "trying to write non-commit object". Fetch
+    # the ref + its tags into FETCH_HEAD / refs/tags (no forced
+    # branch destination), then check it out — works for both tags
+    # and branches.
+    git -C "$WORKSPACE_DIR" fetch --depth 1 --tags origin "$ESP_IDF_REF"
     git -C "$WORKSPACE_DIR" checkout "$ESP_IDF_REF"
 else
     echo "==> cloning esp-idf @$ESP_IDF_REF"
