@@ -247,13 +247,56 @@ collapsed.
       `nros_client_call`'s loop `k_msleep`s via `session_drive_io`, so it
       yields). Re-apply the C service-client `prj-cyclonedds.conf` (NSOS)
       + descriptor-gen CMake (reverted while parked) when resuming.
-- [ ] **171.0.b — Actions (all languages).** The IDL converter
-      (`scripts/cyclonedds/msg_to_cyclone_idl.py`) handles `.msg`/`.srv`
-      only; `.action` decomposition (Goal/Result/Feedback + SendGoal/
-      GetResult srvs + FeedbackMessage, pulling in action_msgs /
-      unique_identifier_msgs — ROS ships no `action2idl.py`) is unbuilt.
-      Plus the action client has a documented blocking-`zpico_get` hang
-      risk. Large; not runtime-verifiable until the converter lands.
+- [ ] **171.0.b — Actions (all languages).** Phase-sized; concrete
+      design below (scoped 2026-05-21 while doing 171.C). Two independent
+      pieces, both required before any native cyclonedds action runs:
+
+      **Piece 1 — sub-type descriptor lookup (the `-1` blocker).**
+      `register_action_server` (`executor/action.rs`) passes the bare
+      action type `<pkg>::action::dds_::<A>_` to all three sub-services
+      (send_goal, get_result, feedback). The cyclonedds service path
+      (`service.cpp:service_type_name`) appends `_Request_`/`_Response_`,
+      so it looks up `<A>_Request_` — but the real DDS types are
+      `<A>_SendGoal_Request_`, `<A>_GetResult_Request_`,
+      `<A>_FeedbackMessage_`. Lookup misses → create_service_server
+      fails → `register_action_* -> -1`. Do NOT fix this by changing the
+      type name `action.rs` passes: the **zenoh** keyexpr embeds
+      `type_name` in its type-hash segment, so changing it shifts the
+      zenoh wire key (interop + test risk). Instead make the **cyclonedds
+      backend** action-aware: detect the action sub-service from its
+      keyexpr role (the send_goal / get_result / feedback key suffixes
+      `action_info.{send_goal,get_result,feedback}_key()` emit) and
+      derive `<A>_SendGoal_` / `<A>_GetResult_` / `<A>_FeedbackMessage_`
+      locally before the `_Request_`/`_Response_` suffix step. Keeps the
+      backend-agnostic contract (and zenoh) untouched.
+
+      **Piece 2 — descriptor synthesis.** `msg_to_cyclone_idl.py` +
+      the cyclonedds branch handle `.msg`/`.srv` only. Actions need the
+      rosidl-synthesized wrapper types, none of which `action2idl` emits
+      (it produces only the base Goal/Result/Feedback structs — verified):
+        - `<A>_SendGoal.srv`  = `unique_identifier_msgs/UUID goal_id` +
+          `<A>_Goal goal` --- `bool accepted` + `builtin_interfaces/Time stamp`
+        - `<A>_GetResult.srv` = `unique_identifier_msgs/UUID goal_id` ---
+          `int8 status` + `<A>_Result result`
+        - `<A>_FeedbackMessage.msg` = `unique_identifier_msgs/UUID goal_id` +
+          `<A>_Feedback feedback`
+      Plus cross-package descriptors the action server registers directly:
+      `action_msgs::srv::CancelGoal_`, `action_msgs::msg::GoalStatusArray_`
+      (→ `GoalStatus`, `GoalInfo`), and `unique_identifier_msgs::UUID`.
+      Approach: have the cyclonedds branch synthesize the three wrapper
+      `.srv`/`.msg` texts from each `.action` (the base structs via
+      `action2idl`, or decompose the `.action` directly), feed them
+      through the existing converter (the nested-`::action::`-ref
+      mangling added in `b49b0b42e` already covers action scoped refs),
+      and require the example to `nros_generate_interfaces(action_msgs)`
+      + `(unique_identifier_msgs)` into the shared idl/gen root so the
+      cross-package `#include`s resolve.
+
+      Also: the action client has a documented blocking-`zpico_get` hang
+      risk (zenoh path). Not runtime-verifiable until both pieces land.
+      The c/cpp native action examples already exist + build (they fail
+      only at the `-1` above); rust action examples are NOT created (no
+      point until the descriptors register).
 - [ ] **171.0.c — aemv8r regression.** Confirm the existing
       `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` (FVP one-board
       reference) still builds after the topic + service backend changes.
