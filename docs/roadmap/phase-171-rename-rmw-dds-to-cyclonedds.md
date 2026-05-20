@@ -213,6 +213,23 @@ collapsed.
       crashing in picolibc libc-hooks.
 
 **Open (Zephyr cyclonedds):**
+- [ ] **171.0.d — `nsos_adapt.c` duplicate-case build break (REGRESSION,
+      blocks ALL cyclonedds-zephyr).** After the Phase 11W.10–.12 NSOS
+      patch set, `zephyr/drivers/net/nsos_adapt.c` has TWO
+      `case NSOS_MID_IPPROTO_IP:` labels in the `nsos_adapt_setsockopt`
+      switch (lines ~788 and ~841): `nsos-adapt-ipproto-ip-patch.sh`
+      (11W.12) adds a second IPPROTO_IP case to a switch that an earlier
+      patch (mcjoin / udp-rcvbuf) already gave one → gcc `error:
+      duplicate case value` → `zephyr.exe` link never reached. Breaks
+      **every** cyclonedds-zephyr fixture (rust + c + cpp, all 6 cases =
+      54 builds) on a clean `just zephyr setup`. Confirmed via
+      `just build-all` 2026-05-21 (the sole `build-all` failure; the 7
+      cargo platforms + zenoh/xrce-zephyr are green). Fix: make
+      `nsos-adapt-ipproto-ip-patch.sh` MERGE its handling into the
+      existing `case NSOS_MID_IPPROTO_IP:` body rather than emit a
+      second label (idempotency guard already exists; the collision is
+      cross-patch, not double-apply). Highest-priority 171.0 item — it
+      gates everything else here.
 - [ ] **171.0.a — C service request delivery.** C service-*server*
       works (handles a C++ client's requests), but the C *client*'s
       request never reaches any server: `nros_client_call` writes
