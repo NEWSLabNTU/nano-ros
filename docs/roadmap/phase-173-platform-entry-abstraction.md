@@ -12,13 +12,24 @@ boot/link shapes. Three cross-cutting factors shape the design:
    same — a Rust-only generic `run<B>` strands every C/C++ app. The
    abstraction therefore lands a board **C ABI**, mirroring the platform
    pattern, so the one `Board` impl serves Rust *and* C/C++ entry.
-2. **Board composition.** A board is not always a fixed monolith. Devkit
-   / Arduino-class targets are a *base board* (chip + core boot) plus
-   user-attached peripherals (radio/"aerial", IMU, extra NIC, sensor
-   shield). The abstraction must let a concrete board be **assembled**
-   from a base + peripheral overlays rather than hardcoding the peripheral
-   set into one board crate.
-3. **Bounded essential variation.** Target triple, toolchain, boot entry
+2. **Lean on the embedded ecosystem; don't reinvent peripherals.**
+   `embedded-hal` / `embedded-nal` / `embedded-io` already standardise
+   the peripheral + network + byte-stream trait surfaces. nano-ros's
+   driver crates should consume those, not define a competing
+   `Peripheral` trait. nano-ros's *own* config concern is narrower: the
+   **transport ⟷ RMW binding** — which transport(s) (Ethernet / serial /
+   CAN) a build uses and which RMW rides each, with bridge mode being
+   2+ (transport, RMW) pairs. Per-transport hardware params (IP,
+   baudrate, pins) stay in the platform's native config (board
+   `config.toml`, RTOS Kconfig/devicetree), not a nano-ros invention.
+3. **Default-first UX.** Standard ROS users run with defaults and tune a
+   backend via one env var (`CYCLONEDDS_URI`, `ZENOH_LOCATOR`). nano-ros
+   moves the transport + RMW *shape* choice to compile time (a no_std
+   MCU can't carry every backend), but the default build must just boot
+   with zero config, and customisation must be one small declarative
+   surface (transport + RMW), with runtime values still env/`config.toml`
+   overridable.
+4. **Bounded essential variation.** Target triple, toolchain, boot entry
    attribute, and link glue genuinely differ per platform and are kept
    behind small finite enums — not abstracted away, just centralised.
 
@@ -221,51 +232,82 @@ macro_rules! nros_board_export {
   board C ABI is for **standalone** C/C++ apps (the
   `examples/<rtos>/{c,cpp}/` tree), not the generator's entry.
 
-### 173.5 — board composition (base + peripheral overlays)
+### 173.5 — transport ⟷ RMW binding config (NOT a new peripheral framework)
 
-Today a board crate bakes its peripherals in (e.g.
-`nros-board-esp32-qemu` hardcodes OpenETH + smoltcp). Devkit /
-Arduino-class targets need *assembly*: a base board plus user-chosen
-peripherals ("aerial"/radio, IMU, second NIC, sensor shield).
+**Don't reinvent the peripheral layer.** The Rust embedded ecosystem
+already standardises it, and nano-ros should consume those traits in
+its driver crates rather than define a competing `Peripheral` trait:
 
-Introduce a peripheral contract + a board builder:
+- **`embedded-hal`** — the de-facto SPI / I2C / GPIO / UART peripheral
+  traits; vendor HALs (esp-hal, stm32-hal, embassy-stm32) impl them.
+- **`embedded-nal`** (+ `embedded-nal-async`) — `TcpClientStack` /
+  `UdpClientStack` network abstraction.
+- **`embedded-io`** — `Read`/`Write`/`Seek` for byte streams (serial).
 
-```rust
-// nros-board-common
-/// A board peripheral the base board's init/poll loop drives. Drivers
-/// (packages/drivers/*) implement this; a composed board owns a set.
-pub trait Peripheral {
-    fn init(&mut self);                  // bring-up (pin mux, bus attach)
-    fn poll(&mut self) {}                // optional per-spin servicing
-}
+A peripheral *driver* (LoRa radio, IMU, a second NIC, a CAN
+controller) is an `embedded-hal`/`embedded-io` consumer authored
+**outside** nano-ros's concern. nano-ros's transport-bridge crates
+(`packages/drivers/*` — `lan9118-smoltcp`, `openeth-smoltcp`,
+`stm32f4-usart`, `nros-smoltcp`) should, where practical, sit on top
+of `embedded-nal`/`embedded-io` so any conformant driver drops in.
+**173 does NOT add a `Peripheral`/`BaseBoard` trait** — that earlier
+sketch was a reinvention; it's dropped.
 
-/// A base board exposes its chip-level boot; peripherals layer on top.
-/// `init_hardware` (BoardInit) calls `init_base()` then each
-/// peripheral's `init()` in attach order.
-pub trait BaseBoard {
-    type Config: nros_platform::BoardConfig;
-    fn init_base(cfg: &Self::Config);
-}
-```
+**What nano-ros config actually owns: transport ⟷ RMW cooperation.**
+The board layer *already* does compile-time transport selection — the
+`ethernet` / `serial` / `wifi` Cargo features on board crates, with
+`#[cfg(feature = …)]` `Config` fields (`ip_addr`, `baudrate`,
+`zenoh_locator`). The nano-ros config surface is the *binding*:
 
-- A concrete board becomes `BaseBoard` + a `&mut [&mut dyn Peripheral]`
-  attach list. The blanket `impl Board for Composed<B, P>` drives
-  `init_base` then peripheral `init`/`poll`. Fixed boards (the current
-  monolithic ones) are the degenerate empty-peripheral-list case, so
-  they migrate without behaviour change.
-- **Composition surfaces both languages.** Rust apps build the attach
-  list directly; C/C++ apps register peripherals through a C
-  registration call (`nros_board_attach_peripheral(const nros_peripheral_vtable_t*)`)
-  before `nros_board_run`, reusing the same vtable discipline as the RMW
-  registry (`nros_rmw_cffi_register_named`).
-- The drift gate from 173.3 extends to assert a composed board's
-  declared peripherals all resolve to driver crates that impl
-  `Peripheral` (Rust) or export a `nros_peripheral_vtable_t` (C).
-- **Deferred sub-scope:** auto-discovery of attached peripherals from a
-  board-description file (devicetree-like) is *not* in 173 — 173 lands the
-  manual attach-list + the C registration ABI. A later phase can add a
-  declarative board manifest that the generator reads into the
-  `PlatformProfile`.
+- **which transport(s)** a build uses (ethernet / serial / CAN), and
+- **which RMW rides each transport**, and
+- for **bridge mode**, the 2+ (transport, RMW) pairs and their topology.
+
+That binding is the nano-ros-specific decision. It maps onto the
+existing `nros-bridge` `Executor::open_multi(&[SessionSpec])` surface
+(Phase 128.F) — a `SessionSpec` already names an RMW + a locator;
+extend the orchestration `nros.toml` / `nros-plan.json` to declare the
+(transport, RMW) pairs the generator turns into `SessionSpec`s + the
+matching board transport features.
+
+**Hardware params stay in the platform's native config — not a
+nano-ros invention.** IP address, serial baudrate, pin mux, CAN
+bitrate belong to the board/RTOS config the platform already has:
+
+- bare-metal / esp-hal boards: `Config::from_toml` (the existing
+  `config.toml` with `ip_addr` / `baudrate` / `zenoh_locator` fields),
+- RTOS targets: the RTOS's own Kconfig / devicetree (Zephyr),
+  `defconfig` (NuttX), FreeRTOSConfig.h — already where these live.
+
+nano-ros does not duplicate these knobs; it references the resulting
+locator string (`tcp/10.0.0.1:7448`, `serial/UART_0#baudrate=115200`),
+which already encodes transport + params.
+
+### 173.6 — UX: default-first, like standard ROS
+
+Standard ROS 2: users run with defaults; customise a backend via one
+env var (`CYCLONEDDS_URI`, `ZENOH_CONFIG`/`ZENOH_LOCATOR`). nano-ros
+shifts the *transport + RMW* choice to **compile time** (it must — a
+no_std MCU build can't carry every backend), but the UX target is the
+same default-first shape:
+
+- **Default build just works.** A board's default transport feature
+  (`ethernet` on most) + the single linked RMW → zero-config boot. No
+  `nros.toml` required for the common single-transport case.
+- **Customisation is one declarative surface.** When a user needs a
+  non-default transport, a second transport (bridge), or a specific
+  RMW, they say so once in `nros.toml` (the orchestration config) —
+  *transport + RMW only*, not hardware params. The generator turns
+  that into board features + `SessionSpec`s.
+- **Runtime knobs stay runtime.** Locator / IP / domain id remain
+  env-overridable (`ZENOH_LOCATOR`, `ROS_DOMAIN_ID`) exactly like
+  stock ROS, read through `ExecutorConfig::from_env` on hosted targets
+  and `Config::from_toml` on MCU targets. Compile-time config picks the
+  *shape*; runtime config tunes the *values*.
+
+This keeps the nano-ros-specific cognitive load to one question —
+"which transport(s) talk which RMW?" — and delegates everything else
+to mechanisms users (or the RTOS) already know.
 
 ## Acceptance criteria
 
@@ -287,14 +329,18 @@ pub trait BaseBoard {
       a standalone C++ app on one hosted RTOS (e.g. NuttX or Zephyr) boot
       through `nros_board_run` against the same `Board` impl the Rust
       path uses. `check-board-abi-mirror` keeps header ⟷ macro in sync.
-- [ ] A composed board (base + ≥1 peripheral overlay) boots: the
-      `BaseBoard::init_base` → per-peripheral `init`/`poll` order holds;
-      the existing monolithic boards migrate as the empty-peripheral case
-      with no behaviour change.
-- [ ] C/C++ peripheral registration (`nros_board_attach_peripheral`)
-      drives a composed board from a C app, reusing the RMW-registry
-      vtable discipline.
-
+- [ ] Default build (board default transport + single RMW) boots with
+      **no `nros.toml`** — the zero-config common case.
+- [ ] `nros.toml` declares a (transport, RMW) binding; the generator
+      turns it into the board transport feature(s) + `SessionSpec`(s).
+      A bridge build with 2 (transport, RMW) pairs opens via
+      `Executor::open_multi`.
+- [ ] At least one transport-bridge driver crate (`*-smoltcp`) is
+      reworked to sit on `embedded-nal` (or documented why it can't),
+      proving the "consume the ecosystem, don't reinvent" direction.
+- [ ] Hardware params (IP / baudrate) are sourced from board
+      `config.toml` / RTOS Kconfig — nano-ros adds **no** new param
+      knob; it only consumes the resulting locator string.
 ## Notes
 
 - The features layer (`nros-platform-api` + export macros + cffi ABI +
@@ -306,21 +352,30 @@ pub trait BaseBoard {
 - `BoardConfig` (`nros_platform::board::BoardConfig`, `zenoh_locator()` /
   `domain_id()`) already exists; 173.1 just makes the generic `run` +
   generated `main.rs` consume it instead of poking board-specific fields.
-- **Symmetry is the through-line.** Both new ABIs copy the platform
+- **Symmetry is the through-line.** The one new ABI copies the platform
   layer's proven shape: a C header (`nros/board.h`) + an export macro
   (`nros_board_export!`) + a drift gate (`check-board-abi-mirror`),
   exactly as `nros/platform.h` + `nros_platform_export!` +
-  `check-platform-abi-mirror`. Peripheral registration copies the RMW
-  registry's `nros_*_register_named` vtable discipline. No new
-  cross-language mechanism is invented — each piece reuses an
-  already-load-bearing pattern.
+  `check-platform-abi-mirror`. No new cross-language mechanism is
+  invented.
+- **No competing peripheral trait.** The earlier `Peripheral` /
+  `BaseBoard` sketch is dropped — `embedded-hal` / `embedded-nal` /
+  `embedded-io` own that surface. nano-ros consumes them in its driver
+  crates; it does not redefine them.
 - **Layer roles after 173:**
+  - *Peripheral driver* — an `embedded-hal`/`embedded-io`/`embedded-nal`
+    consumer (vendor HAL or community crate). Outside nano-ros's trait
+    surface entirely.
+  - *Transport-bridge crate* (`packages/drivers/*-smoltcp`) — adapts a
+    transport to the RMW; should ride `embedded-nal`/`embedded-io` where
+    practical.
   - *Platform crate* — system features (clock/net/timer/log) via
     capability traits → `nros/platform.h` ABI. (unchanged)
-  - *Driver crate* — a `Peripheral` (Rust) or `nros_peripheral_vtable_t`
-    (C) attachable to a base board. (new contract; existing driver
-    crates retrofit)
-  - *Board crate* — `BaseBoard` (chip boot) + composed peripherals,
-    driving the workflow via the single `run<B: Board>` / `nros_board_run`.
-  - *Generator* — `PlatformProfile` data + `EntryKind`; emits Rust or
-    C/C++ entry that funnels into the board ABI.
+  - *Board crate* — chip boot (`init_hardware`) + the compile-time
+    transport feature set; drives the workflow via the single
+    `run<B: Board>` / `nros_board_run`. Hardware params via its own
+    `config.toml` / RTOS Kconfig.
+  - *Generator* — `PlatformProfile` data + `EntryKind`; reads the
+    `nros.toml` transport⟷RMW binding into board features +
+    `SessionSpec`s; emits Rust or C/C++ entry funnelling into the
+    board ABI.
