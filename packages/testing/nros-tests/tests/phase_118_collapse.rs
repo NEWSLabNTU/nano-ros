@@ -628,10 +628,10 @@ fn test_zephyr_cmake_case_rmw_variant_exists(
     assert!(path.exists(), "zephyr {}/{} {:?} missing: {}", lang, case, rmw, path.display());
 }
 
-/// Phase 11W.5 — Runtime boot smoke for cyclonedds native_sim Rust
-/// talker. Asserts the binary boots far enough to print the
-/// "Booting Zephyr OS" banner. ConnectionFailed past that point is
-/// expected without an in-domain DDS peer.
+/// Phase 11W.9/.10 — runtime smoke for the cyclonedds native_sim Rust
+/// talker. After 11W.10 the participant inits and the talker publishes
+/// std_msgs/Int32 at 1 Hz, so assert an actual `Published:` line (not
+/// just the boot banner).
 #[test]
 fn test_zephyr_rust_talker_cyclonedds_boot() {
     use std::time::Duration;
@@ -649,14 +649,57 @@ fn test_zephyr_rust_talker_cyclonedds_boot() {
     let mut z = ZephyrProcess::start(&path, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr talker (cyclonedds)");
 
+    // 1 Hz timer — first publish lands ~1.1 s in; allow margin.
     let output = z
-        .wait_for_output(Duration::from_secs(3))
+        .wait_for_output(Duration::from_secs(4))
         .unwrap_or_default();
 
     eprintln!("zephyr cyclonedds talker output:\n{}", output);
 
-    let booted = output.contains("Booting Zephyr") || output.contains("nros");
-    assert!(booted, "cyclonedds talker failed to print init banner");
+    assert!(
+        output.contains("Booting Zephyr") || output.contains("nros"),
+        "cyclonedds talker failed to print init banner"
+    );
+    assert!(
+        output.contains("Published:"),
+        "cyclonedds talker did not publish (expected a `Published:` line)"
+    );
+}
+
+/// Phase 11W.9/.10 — runtime smoke for the cyclonedds native_sim Rust
+/// listener. Asserts the participant + subscription init cleanly
+/// (reaches the "Waiting for messages" log) without aborting.
+#[test]
+fn test_zephyr_rust_listener_cyclonedds_boot() {
+    use std::time::Duration;
+
+    use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
+
+    let path = nros_tests::fixtures::build_zephyr_rust_example_rmw(
+        "listener",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("zephyr/rust/listener cyclonedds not prebuilt: {:?}", e)
+    });
+
+    let mut z = ZephyrProcess::start(&path, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr listener (cyclonedds)");
+
+    let output = z
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+
+    eprintln!("zephyr cyclonedds listener output:\n{}", output);
+
+    assert!(
+        output.contains("Booting Zephyr") || output.contains("nros"),
+        "cyclonedds listener failed to print init banner"
+    );
+    assert!(
+        output.contains("Waiting for messages"),
+        "cyclonedds listener did not reach subscription wait state"
+    );
 }
 
 /// Phase 118.B.7 — ThreadX-Linux C / C++ cases (zenoh only).
