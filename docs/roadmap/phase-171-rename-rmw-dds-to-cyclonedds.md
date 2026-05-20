@@ -256,13 +256,18 @@ collapsed.
         warms up discovery (~3 s spin) before the first `send_goal`,
         mirroring the C client — `send_goal` is a service call and its
         request races the writer↔reader match otherwise.
-      - **C++**: BLOCKED on a *separate* cpp-FFI codegen gap — the cpp
-        binding for `action_msgs/GoalInfo` references
-        `unique_identifier_msgs_msg_uuid_t` without pulling the
-        `unique_identifier_msgs` cpp FFI into scope (`E0425`). Not a
-        cyclonedds-descriptor issue; the cpp action CMakeLists were left
-        at `example_interfaces`-only (build OK, runtime `-1`) pending a
-        cpp-codegen cross-package fix.
+      - **C++** (`5b9ee97bc`): BUILD fixed + server e2e. The cpp-FFI
+        cross-package gap (`action_msgs/GoalInfo` → `unique_identifier_msgs`
+        types, `E0425`) was the cpp FFI `include!()` of a dependency's
+        `.rs` not being transitive; the example CMakeLists now flatten the
+        transitive closure (builtin + unique_identifier_msgs + action_msgs).
+        cpp action **server** runs full e2e (goal→accept→execute→complete
+        `[0,1,1,2,3,5,8,13,21,34]`); cpp **client** warms up discovery
+        before the blocking send_goal (goal→accept works). STILL OPEN: the
+        cpp client's return paths — feedback stream + blocking get_result
+        — receive nothing (`-2`); the documented cpp-action async gap
+        (Phase 77), distinct from the FFI build gap. The deeper codegen
+        fix (make cpp-FFI `include!()` transitive) is a follow-up.
 
       Two pieces, both required before any native cyclonedds action runs:
 
