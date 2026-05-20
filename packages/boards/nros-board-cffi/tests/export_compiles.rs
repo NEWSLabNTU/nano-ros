@@ -27,10 +27,14 @@ impl BoardPrint for DummyBoard {
 
 impl BoardExit for DummyBoard {
     fn exit_success() -> ! {
-        loop {}
+        loop {
+            core::hint::spin_loop();
+        }
     }
     fn exit_failure() -> ! {
-        loop {}
+        loop {
+            core::hint::spin_loop();
+        }
     }
 }
 

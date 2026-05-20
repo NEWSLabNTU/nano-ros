@@ -27,10 +27,14 @@ impl BoardPrint for DummyKernelBoard {
 
 impl BoardExit for DummyKernelBoard {
     fn exit_success() -> ! {
-        loop {}
+        loop {
+            core::hint::spin_loop();
+        }
     }
     fn exit_failure() -> ! {
-        loop {}
+        loop {
+            core::hint::spin_loop();
+        }
     }
 }
 
@@ -45,7 +49,9 @@ impl BoardEntry for DummyKernelBoard {
         E: core::fmt::Debug,
     {
         // Real impl: spawn an app task carrying `_f`, start the scheduler.
-        loop {}
+        loop {
+            core::hint::spin_loop();
+        }
     }
 }
 

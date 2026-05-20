@@ -86,6 +86,7 @@ unsafe extern "C" {
 macro_rules! nros_board_export {
     ($ty:ty) => {
         #[unsafe(no_mangle)]
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         pub extern "C" fn nros_board_init_hardware(cfg: *const ::core::ffi::c_void) {
             // SAFETY: caller passes a pointer to a live config of the
             // board's concrete `Config` type (see `<nros/board.h>`).
@@ -94,6 +95,7 @@ macro_rules! nros_board_export {
         }
 
         #[unsafe(no_mangle)]
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         pub extern "C" fn nros_board_println(msg: *const u8, len: usize) {
             // SAFETY: caller passes a valid UTF-8 byte slice of `len`
             // bytes that outlives the call; empty case collapses to "".
@@ -117,6 +119,7 @@ macro_rules! nros_board_export {
         }
 
         #[unsafe(no_mangle)]
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
         pub extern "C" fn nros_board_run(
             cfg: *const ::core::ffi::c_void,
             app: $crate::NrosBoardAppFn,
