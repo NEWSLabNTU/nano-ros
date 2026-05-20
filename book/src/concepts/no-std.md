@@ -162,7 +162,7 @@ protocol layer requires it.
 ## Typical Configurations decoupled the `nros` umbrella from concrete RMW crates.
 A consuming `Cargo.toml` lists **three** path deps: `nros` (with
 `rmw-cffi` + a `platform-*` feature), the chosen backend crate
-(`nros-rmw-zenoh` / `nros-rmw-dds` / `nros-rmw-xrce-cffi`), and —
+(`nros-rmw-zenoh` / `nros-rmw-xrce-cffi`), and —
 on POSIX — `nros-platform-cffi` with `posix-c-port` so the C
 `nros_platform_*` symbols link into a pure-cargo build. The backend
 crate's `#[ctor]` registers its vtable before `main`.

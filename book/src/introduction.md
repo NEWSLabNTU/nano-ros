@@ -71,8 +71,8 @@ time by adding the backend crate as a dependency:
   process. Compatible with ROS 2 `rmw_zenoh_cpp`.
 - **XRCE-DDS** (`nros-rmw-xrce-cffi`) — agent-based via Micro-XRCE-DDS.
   Compatible with micro-ROS agent.
-- **dust-DDS** (`nros-rmw-dds`) — pure-Rust DDS.
-- **Cyclone DDS** (`nros-rmw-cyclonedds`) — C++ shim.
+- **Cyclone DDS** (`nros-rmw-cyclonedds`) — C++ shim; full RTPS wire-compat
+  with stock `rmw_cyclonedds_cpp`.
 
 Application code is identical regardless of backend — switch with a single
 Cargo feature flag or Zephyr Kconfig option.

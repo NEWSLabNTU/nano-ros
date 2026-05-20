@@ -30,7 +30,7 @@ nano-ros mirrors rclcpp:
 ```
 Executor exec;                   // owns the primary session
 Node ingress = exec.node_builder("ingress").rmw("xrce").build();
-Node egress  = exec.node_builder("egress").rmw("dds").build();
+Node egress  = exec.node_builder("egress").rmw("cyclonedds").build();
 auto sub = ingress.create_subscription<Foo>(...);
 auto pub = egress.create_publisher<Foo>(...);
 ```
@@ -71,17 +71,17 @@ Add both backend crates to `Cargo.toml` and call each
 [dependencies]
 nros            = { ..., features = ["rmw-cffi"] }
 nros-rmw-zenoh  = { ... }
-nros-rmw-dds    = { ... }
+nros-rmw-xrce-cffi = { ... }
 ```
 
 ```rust
 fn main() {
     nros_rmw_zenoh::register().expect("register zenoh");
-    nros_rmw_dds::register().expect("register dds");
+    nros_rmw_xrce_cffi::register().expect("register xrce");
     let mut exec = nros::Executor::open_with_rmw("zenoh",
         &nros::ExecutorConfig::from_env())?;
     let ingress = exec.node_builder("ingress").rmw("zenoh").build()?;
-    let egress  = exec.node_builder("egress").rmw("dds").build()?;
+    let egress  = exec.node_builder("egress").rmw("xrce").build()?;
     // ...
 }
 ```
@@ -111,7 +111,7 @@ corrosion_import_crate(
     FEATURES std)
 corrosion_import_crate(
     MANIFEST_PATH ${nano_ros_root}/Cargo.toml
-    CRATES nros-rmw-dds-staticlib
+    CRATES nros-rmw-zenoh-staticlib
     NO_DEFAULT_FEATURES
     FEATURES "platform-posix;ros-humble")
 
@@ -119,7 +119,7 @@ target_link_libraries(my_bridge PRIVATE
     NanoRos::NanoRos
     -Wl,--whole-archive
     nros_rmw_xrce_cffi-static
-    nros_rmw_dds_staticlib-static
+    nros_rmw_zenoh_staticlib-static
     -Wl,--no-whole-archive)
 ```
 
@@ -128,11 +128,11 @@ Then declare + call the register functions early in
 
 ```c
 extern int8_t nros_rmw_xrce_register(void);
-extern int8_t nros_rmw_dds_register(void);
+extern int8_t nros_rmw_zenoh_register(void);
 
 int nros_app_main(int argc, char** argv) {
-    if (nros_rmw_xrce_register() != 0) return 1;
-    if (nros_rmw_dds_register() != 0)  return 1;
+    if (nros_rmw_xrce_register() != 0)  return 1;
+    if (nros_rmw_zenoh_register() != 0) return 1;
     // ... nros_support_init / nros_executor_init / nros_executor_node_init
 }
 ```
@@ -152,7 +152,7 @@ thin header layer; the linker work is identical. Use the
 ```cpp
 auto exec = nros::Executor::open_with_rmw("zenoh", cfg);
 auto ingress = exec.node_builder("ingress").rmw("zenoh").build();
-auto egress  = exec.node_builder("egress").rmw("dds").build();
+auto egress  = exec.node_builder("egress").rmw("xrce").build();
 auto pub = egress.create_publisher<std_msgs::String>("/chatter");
 exec.register_subscription_on<std_msgs::String>(ingress, "/chatter",
     [&pub](const auto& msg) { pub->publish(msg); });
@@ -214,7 +214,7 @@ let ingress = exec.node_builder("ingress")
     .sched(critical_sc)   // RT priority
     .build()?;
 let egress = exec.node_builder("egress")
-    .rmw("dds")
+    .rmw("cyclonedds")
     .sched(best_effort_sc)
     .build()?;
 ```
@@ -226,40 +226,26 @@ block the fast one.
 
 ## Shipped examples
 
-### `examples/bridges/native-rust-zenoh-to-dds/`
+### `examples/native/rust/bridge/tt-zenoh-to-xrce/`
 
-Pure-Rust bridge. Zenoh ingress → DDS egress. Read this
-first — the smallest possible setup, no codegen, raw byte
-forwarding.
+Pure-Rust bridge. Zenoh ingress → XRCE-DDS egress under an
+ARINC-653-style time-triggered cyclic schedule. Read this
+first — it shows the Phase 104 multi-RMW
+`Executor::open_with_rmw("zenoh", ...)` plus
+`node_builder.rmw("xrce")` per-session pin, with raw byte
+forwarding and no codegen.
 
 ```sh
 zenohd --listen tcp/127.0.0.1:7447 &
-cargo run -p native-rs-bridge-zenoh-to-dds
-```
-
-### `examples/native/c/bridge/xrce-to-dds/`
-
-C bridge. XRCE-DDS ingress → dust-DDS egress. Demonstrates
-the `NANO_ROS_RMW=none` + `--whole-archive` cmake shape and
-the explicit register-call pattern from
-`nros_app_main`.
-
-```sh
 build/xrce-agent/MicroXRCEAgent udp4 -p 8888 &
-NROS_RMW=xrce NROS_XRCE_LOCATOR=udp/127.0.0.1:8888 \
-    examples/native/c/bridge/xrce-to-dds/build/xrce_to_dds_bridge
+NROS_XRCE_LOCATOR=udp/127.0.0.1:8888 \
+    cargo run -p native-rs-bridge-tt-zenoh-to-xrce
 ```
 
-### `examples/native/cpp/bridge/zenoh-to-dds/`
-
-C++ bridge. Mirrors the Rust example via `nros-cpp`.
-Useful as a reference when porting an existing rclcpp
-bridge.
-
-```sh
-zenohd --listen tcp/127.0.0.1:7447 &
-examples/native/cpp/bridge/zenoh-to-dds/build/zenoh_to_dds_bridge
-```
+The same `node_builder(...).rmw(...)` pattern composes any pair
+of the surviving backends — swap the egress to
+`.rmw("cyclonedds")` (selected C++-side via
+`-DNANO_ROS_RMW=cyclonedds`) for a Zenoh → Cyclone DDS gateway.
 
 ## Coverage matrix
 

@@ -1,6 +1,6 @@
-# RMW Backends: Zenoh, XRCE-DDS, DDS, Cyclone DDS
+# RMW Backends: Zenoh, XRCE-DDS, Cyclone DDS
 
-nano-ros supports four RMW (ROS Middleware) backends for connecting
+nano-ros supports three RMW (ROS Middleware) backends for connecting
 embedded devices to a ROS 2 network. Each backend targets different
 deployment scenarios and resource constraints. Each Node picks its
 backend at build time; **one binary can link multiple backends and
@@ -44,24 +44,6 @@ The XRCE-DDS backend uses [Micro-XRCE-DDS-Client](https://github.com/eProsima/Mi
 - Client-side discovery is not supported; the Agent handles it
 - Transport options: UDP, serial (HDLC framing), CAN FD
 
-## DDS (rmw-dds)
-
-The DDS backend uses [dust-dds](https://github.com/s2e-systems/dust-dds), a pure-Rust DDS / RTPS implementation with `no_std + alloc` support and OMG-certified RTPS interoperability.
-
-**How it works:**
-
-1. The MCU runs the dust-dds participant directly — no agent, no router.
-2. SPDP / SEDP discovery flows over UDP multicast (`239.255.0.1:7400`+); peers find each other on the same domain via standard RTPS.
-3. dust-dds creates DDS readers / writers per topic and exchanges samples via UDP unicast or multicast.
-4. ROS 2 nodes using any DDS-based RMW (Cyclone DDS, FastDDS, dust-dds itself) interoperate directly — same wire protocol, same discovery.
-
-**Key characteristics:**
-- Brokerless peer-to-peer — no `zenohd`, no Agent process needed.
-- Pure-Rust transport: dust-dds replaces zenoh-pico's C transport layer with a `NrosPlatformRuntime` adapter on every platform except `platform-posix`, which keeps using dust-dds's stock OS-thread transport.
-- Heap required (`alloc`-only on `no_std` platforms). Boot-time allocation only on RTOS targets where the global allocator is opt-in (`feature = "platform-zephyr"` enables `k_malloc`-backed allocator in `nros-c` / `nros-cpp`).
-- Transport options: UDP unicast + multicast.
-- ROS 2 interop is end-to-end (no protocol translator) — DDS-on-MCU appears in the ROS 2 graph the same way a desktop ROS 2 node does.
-
 ## Cyclone DDS (rmw-cyclonedds)
 
 > **Maturity status.** Cyclone DDS support is **pub/sub-only today.**
@@ -70,7 +52,7 @@ The DDS backend uses [dust-dds](https://github.com/s2e-systems/dust-dds), a pure
 > Cyclone listeners yet. Wire-level interop with stock
 > `rmw_cyclonedds_cpp` (Humble) works for topic publishing and
 > subscribing. If your fleet needs RPC or lifecycle events over
-> Cyclone, use Zenoh or dust-DDS instead until the gaps close. Full
+> Cyclone, use Zenoh instead until the gaps close. Full
 > known-limitations list:
 > [`docs/reference/cyclonedds-known-limitations.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-known-limitations.md).
 
@@ -109,20 +91,20 @@ into `NanoRos::NanoRos`. No `build/install/` prefix, no
 
 ## Comparison
 
-| Aspect               | Zenoh (`rmw-zenoh`)            | XRCE-DDS (`rmw-xrce`)          | DDS (`rmw-dds`)                 | Cyclone DDS (`rmw-cyclonedds`) |
-|-----------------------|--------------------------------|---------------------------------|---------------------------------|---------------------------------|
-| **Client RAM**        | ~16 KB+ (heap required)        | ~3 KB (fully static)            | ~32 KB+ (heap required)         | ~32 KB+ (heap required)         |
-| **Client Flash**      | ~100 KB+                       | ~75 KB                          | ~120 KB+                        | ~150 KB+ (`libddsc.so` ~1.4 MB on POSIX, sized down on embedded link) |
-| **Bridge process**    | `zenohd` (generic router)      | Agent (protocol translator)     | None — RTPS multicast directly  | None — RTPS multicast directly  |
-| **Peer-to-peer**      | Yes (no router needed)         | No (agent always required)      | Yes (RTPS native)               | Yes (RTPS native)               |
-| **Discovery**         | Client participates            | Agent handles on behalf         | SPDP / SEDP on UDP multicast    | SPDP / SEDP on UDP multicast or static peer list |
-| **Entity creation**   | Client creates directly        | Client requests, agent creates  | Client creates directly         | Client creates directly         |
-| **Transport options** | TCP, UDP, TLS                  | UDP, serial, CAN FD             | UDP unicast + multicast (RTPS)  | UDP unicast + multicast (RTPS)  |
-| **Heap allocation**   | Required (C-level)             | None                            | Required (Rust `alloc` crate)   | Required (Cyclone uses `malloc`) |
-| **Implementation**    | Rust + zenoh-pico C            | Rust + Micro-XRCE-DDS-Client C  | Pure Rust (dust-dds)            | C++ wrapper over upstream Cyclone DDS C |
-| **ROS 2 interop**     | Via `rmw_zenoh_cpp` + `zenohd` | Via Agent + any DDS RMW         | Direct (DDS↔DDS, any RMW)       | Direct against `rmw_cyclonedds_cpp` (same upstream version) |
-| **Failure mode**      | Router crash = lose routing    | Agent crash = lose connectivity | Peer goes offline = its samples stop arriving | Peer goes offline = its samples stop arriving |
-| **C source files**    | ~100+                          | 28                              | 0 — pure Rust                   | Upstream Cyclone (~600+ files, vendored unchanged via submodule) |
+| Aspect               | Zenoh (`rmw-zenoh`)            | XRCE-DDS (`rmw-xrce`)          | Cyclone DDS (`rmw-cyclonedds`) |
+|-----------------------|--------------------------------|---------------------------------|---------------------------------|
+| **Client RAM**        | ~16 KB+ (heap required)        | ~3 KB (fully static)            | ~32 KB+ (heap required)         |
+| **Client Flash**      | ~100 KB+                       | ~75 KB                          | ~150 KB+ (`libddsc.so` ~1.4 MB on POSIX, sized down on embedded link) |
+| **Bridge process**    | `zenohd` (generic router)      | Agent (protocol translator)     | None — RTPS multicast directly  |
+| **Peer-to-peer**      | Yes (no router needed)         | No (agent always required)      | Yes (RTPS native)               |
+| **Discovery**         | Client participates            | Agent handles on behalf         | SPDP / SEDP on UDP multicast or static peer list |
+| **Entity creation**   | Client creates directly        | Client requests, agent creates  | Client creates directly         |
+| **Transport options** | TCP, UDP, TLS                  | UDP, serial, CAN FD             | UDP unicast + multicast (RTPS)  |
+| **Heap allocation**   | Required (C-level)             | None                            | Required (Cyclone uses `malloc`) |
+| **Implementation**    | Rust + zenoh-pico C            | Rust + Micro-XRCE-DDS-Client C  | C++ wrapper over upstream Cyclone DDS C |
+| **ROS 2 interop**     | Via `rmw_zenoh_cpp` + `zenohd` | Via Agent + any DDS RMW         | Direct against `rmw_cyclonedds_cpp` (same upstream version) |
+| **Failure mode**      | Router crash = lose routing    | Agent crash = lose connectivity | Peer goes offline = its samples stop arriving |
+| **C source files**    | ~100+                          | 28                              | Upstream Cyclone (~600+ files, vendored unchanged via submodule) |
 
 ## Multi-backend binaries (bridges)
 
@@ -133,7 +115,7 @@ forward traffic between them. The bridge pattern is useful for:
   ingress + DDS egress lets MCU fleets on zenoh-pico talk to an
   Autoware stack on Cyclone DDS without a separate translator.
 - **Hard-real-time + best-effort split** — a high-priority Node on
-  dust-DDS for control loops, a low-priority Node on Zenoh for
+  Cyclone DDS for control loops, a low-priority Node on Zenoh for
   telemetry, both in one process.
 - **Bringing up an XRCE Agent**-free fleet — bridge XRCE devices
   to a Zenoh network so they look like first-class participants
@@ -176,15 +158,6 @@ nros = { path = "<...>/packages/core/nros",
 nros-rmw-xrce-cffi = { path = "<...>/packages/xrce/nros-rmw-xrce-cffi",
                        features = ["std"] }
 
-# DDS backend (dust-dds, pure Rust)
-[dependencies]
-nros = { path = "<...>/packages/core/nros",
-         default-features = false,
-         features = ["std", "alloc", "rmw-cffi", "platform-posix"] }
-nros-rmw-dds = { path = "<...>/packages/dds/nros-rmw-dds",
-                 default-features = false,
-                 features = ["std", "alloc", "platform-posix"] }
-
 # Cyclone DDS backend — Rust runtime sees the generic rmw-cffi C-ABI
 # vtable; actual Cyclone wiring lives C++-side under
 # packages/dds/nros-rmw-cyclonedds/ and is selected at CMake
@@ -205,7 +178,7 @@ instead.
 For C++ consumers, the CMake option is the canonical way:
 
 ```bash
-cmake -S . -B build -DNANO_ROS_RMW=cyclonedds  # zenoh / xrce / dds / cyclonedds
+cmake -S . -B build -DNANO_ROS_RMW=cyclonedds  # zenoh / xrce / cyclonedds
 ```
 
 ### Kconfig (Zephyr)
@@ -217,18 +190,15 @@ CONFIG_NROS_RMW_ZENOH=y
 # XRCE-DDS backend
 CONFIG_NROS_RMW_XRCE=y
 
-# DDS backend (dust-dds)
-CONFIG_NROS_RMW_DDS=y
-
 # Cyclone DDS backend (Cortex-A/R Zephyr targets)
 CONFIG_NROS_RMW_CYCLONEDDS=y
 ```
 
 Enabling more than one simultaneously produces a `compile_error!()`.
 
-## DDS — per-platform configuration profile
+## Cyclone DDS — per-platform configuration profile
 
-The DDS backend speaks raw RTPS over UDP multicast and unicast. The
+The Cyclone DDS backend speaks raw RTPS over UDP multicast and unicast. The
 host networking stack on every RTOS needs IGMP enabled, adequate net-
 buffer pool sizing for the SPDP / SEDP discovery burst, and a way to
 join a multicast group. Concrete deltas per platform:
@@ -254,7 +224,7 @@ CONFIG_NET_BUF_RX_COUNT=512
 CONFIG_NET_BUF_TX_COUNT=256
 CONFIG_NET_BUF_DATA_SIZE=512
 
-# Heap — dust-dds + heapless mailboxes.
+# Heap — Cyclone DDS (malloc) + heapless mailboxes.
 CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=4194304
 CONFIG_HEAP_MEM_POOL_SIZE=524288
 ```
@@ -281,7 +251,7 @@ forward `IP_ADD_MEMBERSHIP` to the host kernel
 ```c
 // FreeRTOSConfig.h / lwipopts.h
 #define LWIP_IGMP            1   // SPDP multicast
-#define LWIP_SO_RCVTIMEO     1   // dust-dds recv timeouts
+#define LWIP_SO_RCVTIMEO     1   // Cyclone DDS recv timeouts
 #define LWIP_BROADCAST       1
 #define IP_REASSEMBLY        1   // RTPS DATA_FRAG fragments
 #define MEMP_NUM_NETBUF      32  // discovery burst headroom
@@ -339,11 +309,12 @@ support natively. Just ensure the loopback interface is up
 - You want zero heap allocation on the MCU side
 - You need CAN FD transport
 
-**Choose DDS when:**
+**Choose Cyclone DDS when:**
 - You want direct, brokerless ROS 2 interop with no `zenohd` and no Agent
-- Your MCU has at least ~32 KB RAM (heap for dust-dds futures + RTPS state) and a network stack with IGMP
-- You're integrating with a DDS-only ROS 2 deployment (Cyclone DDS, FastDDS) and want first-class interop without protocol translation
+- Your MCU has at least ~32 KB RAM (heap for Cyclone + RTPS state) and a network stack with IGMP
+- You're integrating with a DDS-based ROS 2 deployment running stock `rmw_cyclonedds_cpp` and want full RTPS wire-compat without protocol translation
 - Your tolerance for failure is "samples from peer X stop arriving" rather than "the whole router goes down"
+- Note: Cyclone DDS is pub/sub-only today (no services / actions yet)
 
 **Any of the three works well for:**
 - Standard pub/sub and service patterns

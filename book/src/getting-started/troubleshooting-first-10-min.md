@@ -36,8 +36,7 @@ Did `cargo build` / `cmake --build` fail?
 │       brew install arm-none-eabi-gcc          # macOS
 │
 ├─ ld: cannot find -lddsc / -lcyclonedds-ddsc
-│   → DDS / Cyclone backend needs its native lib installed first:
-│       just dust-dds setup       # for `rmw-dds`
+│   → Cyclone DDS backend needs its native lib installed first:
 │       just cyclonedds setup     # for `rmw-cyclonedds`
 
 Did the binary build but not produce output?

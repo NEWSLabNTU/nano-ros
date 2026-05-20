@@ -2,7 +2,7 @@
 
 The RMW (ROS middleware) vtable is the porting boundary between
 nano-ros and a concrete pub/sub transport (zenoh-pico, XRCE-DDS,
-dust-DDS, Cyclone DDS, uORB, …). RMW is **internal** — user
+Cyclone DDS, uORB, …). RMW is **internal** — user
 applications use the [Rust](rust-api.md) / [C](c-api.md) /
 [C++](cpp-api.md) APIs, not the vtable directly.
 
@@ -36,7 +36,6 @@ implementation; the source is the worked example to copy.
 |---|---|---|
 | zenoh-pico | [`packages/zpico/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/zpico/nros-rmw-zenoh) | Default. C transport via zenoh-pico. Native zero-copy publish via `z_bytes_from_static_buf`. |
 | micro-XRCE-DDS-Client | [`packages/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/xrce/nros-rmw-xrce) | C-only shim; agent-based. |
-| dust-DDS | [`packages/dds/nros-rmw-dds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-dds) | Pure-Rust DDS; `std` + `nostd-runtime` variants. |
 | Cyclone DDS | [`packages/dds/nros-rmw-cyclonedds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/dds/nros-rmw-cyclonedds) | C++ shim; standalone CMake project. |
 | PX4 uORB | [`packages/px4/nros-rmw-uorb`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/px4/nros-rmw-uorb) | Typed-trampoline registry over PX4 uORB. |
 

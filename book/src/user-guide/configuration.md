@@ -192,7 +192,7 @@ nros = { path = "…/nros", default-features = false, features = [
 # RMW backend crate — pick one. Its `#[ctor]` registers the vtable
 # with `nros-rmw-cffi`'s registry before `main`.
 nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
-# …or nros-rmw-dds / nros-rmw-xrce-cffi
+# …or nros-rmw-xrce-cffi
 
 # POSIX only: ships the `nros_platform_*` C symbols for pure-cargo builds.
 # nros-platform-cffi = { path = "…/nros-platform-cffi", features = ["posix-c-port"] }

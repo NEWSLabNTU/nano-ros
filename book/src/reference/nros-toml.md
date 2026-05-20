@@ -111,7 +111,6 @@ before the failure are not pumped.
 | Backend name | Cargo dep that contributes the `RMW_INIT_ENTRIES` entry |
 |--------------|---------------------------------------------------------|
 | `zenoh`      | `nros-rmw-zenoh = { ... }` |
-| `dds`        | `nros-rmw-dds = { ... }` |
 | `xrce`       | `nros-rmw-xrce-cffi = { ... }` |
 | `cyclonedds` | `nros-rmw-cyclonedds` static lib (CMake side, `--whole-archive`) |
 

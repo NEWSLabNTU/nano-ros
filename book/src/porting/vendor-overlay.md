@@ -201,7 +201,7 @@ audit are all unclaimed today.
   crate handles it).
 - ❌ Override `nros-rmw-*` selection (user picks RMW via Cargo
   features on `nros`, same as any nano-ros consumer).
-- ❌ Ship a fork of zenoh-pico / dust-dds / mbedTLS (use the upstream's manifest).
+- ❌ Ship a fork of zenoh-pico / Cyclone DDS / mbedTLS (use the upstream's manifest).
 
 ## Testing an overlay locally
 

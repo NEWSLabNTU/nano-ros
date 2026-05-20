@@ -210,7 +210,7 @@ applied; the user vtable just sees raw bytes.
 |---------|--------|
 | **XRCE-DDS** | ✅ Wired. `nros_rmw_xrce::init_transport_from_custom_ops(framing)` pulls the registered vtable into `uxr_set_custom_transport_callbacks` via four C trampolines. |
 | **zenoh-pico** | 🟡 Deferred (zenoh). zenoh-pico's custom-link API needs a per-platform `_z_link_t` shim; tracked separately. Zenoh users with custom transports today fork a `zpico-platform-*` crate. |
-| **dust-DDS** | 🟡 Deferred (dds). dust-dds requires a custom transport plug-in implementing `RtpsUdpTransportParticipantFactory`-equivalent; design doc tracked separately. |
+| **Cyclone DDS** | ➖ N/A. Cyclone DDS binds the platform's network stack directly (POSIX / NSOS / lwIP / NetX-Duo BSD sockets) rather than going through the nano-ros custom-transport vtable; "porting" Cyclone to a new link means providing those sockets, not a transport plug-in. |
 
 ## Loopback test
 

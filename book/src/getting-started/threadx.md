@@ -154,8 +154,8 @@ seconds of QEMU boot. If no `Published:` line:
 ## Next
 
 - Subscriber + service + action peers in the same example tree.
-- DDS on ThreadX: dust-DDS works in Rust, gated on the `rmw-dds-cffi`
-  feature axis; see
+- DDS on ThreadX: Cyclone DDS is the surviving DDS backend
+  (`nros-rmw-cyclonedds`, selected via `-DNANO_ROS_RMW=cyclonedds`); see
   [Choosing an RMW Backend](../user-guide/rmw-backends.md).
 - Real hardware: same code runs against ThreadX vendor BSPs (Renesas
   Synergy, MIMXRT, etc.); replace the QEMU board crate with a vendor

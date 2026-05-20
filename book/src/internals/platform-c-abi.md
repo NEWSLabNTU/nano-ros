@@ -121,7 +121,7 @@ the result with `critical_section::set_impl!`.
    `just <port> test-c-port`. The smoke tests are the runtime
    parity layer that the drift gate cannot enforce.
 4. **For platforms that emit `critical_section::Impl`** (i.e. anything
-   that consumes `dust-dds` or other `critical-section`-using crates),
+   that consumes a `critical-section`-using crate),
    make sure the binary pulls
    `nros-platform-critical-section` once — it does the
    `critical_section::set_impl!(PlatformCs)` registration against the

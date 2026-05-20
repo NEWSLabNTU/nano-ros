@@ -19,7 +19,6 @@ vtable with that registry before `main`.
 |---|---|---|
 | `nros-rmw-zenoh` | zenoh-pico | Peer-to-peer via Zenoh protocol; default, ROS-2-interop. |
 | `nros-rmw-xrce-cffi` | Micro-XRCE-DDS-Client | Agent-based via DDS-XRCE protocol. |
-| `nros-rmw-dds` | dust-DDS | Pure-Rust DDS; `std` + `nostd-runtime` variants. |
 | `nros-rmw-cyclonedds` | Cyclone DDS | C++ shim; standalone CMake project. |
 
 Unlike the platform axis, RMW is **not** mutually exclusive — Phase

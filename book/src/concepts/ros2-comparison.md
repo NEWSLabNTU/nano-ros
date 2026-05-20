@@ -93,7 +93,7 @@ nano-ros runs in three modes that map onto target capability:
 |------|----------------|------------|
 | `std` | `std` (default on POSIX) | Everything. POSIX threading, full async runtime. |
 | `no_std + alloc` | `alloc` + a `#[global_allocator]` | Everything except features that need `std::sync::Mutex`. Used by FreeRTOS / NuttX / ThreadX / Zephyr / ESP32. |
-| `no_std + nostd-runtime` (cooperative) | `nostd-runtime` on dust-DDS, RTIC apps | Cooperative single-task — no threading at all. Used by bare-metal MPS2-AN385, single-core RTIC. |
+| `no_std + nostd-runtime` (cooperative) | `nostd-runtime`, RTIC apps | Cooperative single-task — no threading at all. Used by bare-metal MPS2-AN385, single-core RTIC. |
 
 **Why.** Heap presence is not a binary "embedded yes/no" — it is a
 spectrum. Stm32-class boards have a heap; Cortex-M0+-class might not.
@@ -107,7 +107,7 @@ through C function pointers.
 
 nano-ros bakes the backend in at compile time. The consuming
 `Cargo.toml` adds the backend crate directly (`nros-rmw-zenoh` /
-`nros-rmw-dds` / `nros-rmw-xrce-cffi`) alongside `nros` with the
+`nros-rmw-cyclonedds` / `nros-rmw-xrce-cffi`) alongside `nros` with the
 `rmw-cffi` feature; CMake options (`-DNANO_ROS_RMW=zenoh`) decide it
 for C/C++ builds. The backend's `#[ctor]` registers its vtable with
 the `nros-rmw-cffi` runtime registry before `main`.
@@ -205,8 +205,8 @@ zenoh endpoints communicate intent through the topic-key encoding.
 every language surface (Rust `Publisher<M>::assert_liveliness()`, C
 `nros_publisher_assert_liveliness(&pub)`, C++
 `pub.assert_liveliness()`). Backends without manual-assertion wiring
-treat the call as a no-op — only dust-DDS implements it natively
-today. See [Status events](status-events.md) for the runtime-event
+treat the call as a no-op — none of the surviving backends wire it
+natively yet. See [Status events](status-events.md) for the runtime-event
 side of liveliness, deadline, and message-lost.
 
 **Per-backend coverage** is documented in
@@ -219,8 +219,8 @@ endpoints discovery, `rmw_get_*` introspection.
 
 nano-ros has none of that at runtime. The backend is fixed at compile
 time, the wire-protocol introspection is whatever the backend natively
-exposes (zenoh-pico's `z_query` for SPDP, dust-DDS's discovery DB,
-…). Use the host-side ROS 2 tools for introspection and connect via
+exposes (zenoh-pico's `z_query` for SPDP, Cyclone DDS's SPDP/SEDP
+discovery, …). Use the host-side ROS 2 tools for introspection and connect via
 the rmw_zenoh interop path.
 
 **Why.** Every byte of "introspect what's running" is overhead a
