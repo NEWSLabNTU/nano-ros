@@ -801,6 +801,23 @@ green.
   decomposition in the IDL converter — `msg_to_cyclone_idl.py` handles
   only `.msg`/`.srv`).
 
+  Investigation leads (for the next pass):
+  - Generated type strings are *identical* across C and C++
+    (`example_interfaces::srv::dds_::AddTwoInts_` + `_Request_` /
+    `_Response_`), so it is not a type-name divergence.
+  - `nros_executor_register_service` (nros-c) routes straight to
+    nros-node's `register_service_raw_sized{,_on}` with the same
+    `service_name` / `type_name` / `type_hash` the Rust and C++ paths
+    use — no registration divergence found. The fault is therefore most
+    likely in nros-c's *runtime* request take / reply send during
+    `nros_executor_spin_period`, not in setup.
+  - Localization method: run a cross-language pair (C++ client → C
+    server, then C client → C++ server) on domain 0 — the working C++
+    endpoint isolates whether the C *server* receive or the C *client*
+    send is at fault. This was blocked in one pass by flaky
+    background-process execution under native_sim (0-byte captured
+    output for `&`-launched processes); re-run when the host is stable.
+
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
   recvmsg) to Zephyr; the determinism gotcha is native_sim-specific
