@@ -627,7 +627,22 @@ function(nros_generate_interfaces target)
     set(_cyc_ifaces "")
     foreach(_if ${_interface_files})
       if(_if MATCHES "\\.(msg|srv)$")
-        list(APPEND _cyc_ifaces "${_if}")
+        # Cyclone DDS 0.10.5's idlc crashes on `wstring` (wide-string)
+        # fields — it parses the type then aborts in delete_const_expr.
+        # The full ROS `example_interfaces` (resolved via
+        # AMENT_PREFIX_PATH) ships `WString[MultiArray]`, which no
+        # example uses as a topic. Skip any interface declaring a
+        # wstring field rather than letting one unused type abort the
+        # whole package's descriptor build. Documented upstream limit.
+        file(READ "${_if}" _if_body)
+        if(_if_body MATCHES "(\n|^)[ \t]*wstring[ \t<\\[]")
+          message(STATUS
+            "nros_generate_interfaces(${target}): skipping cyclonedds "
+            "descriptor for ${_if} — `wstring` is unsupported by the "
+            "bundled Cyclone DDS 0.10.5 idlc.")
+        else()
+          list(APPEND _cyc_ifaces "${_if}")
+        endif()
       endif()
     endforeach()
     if(_cyc_ifaces)

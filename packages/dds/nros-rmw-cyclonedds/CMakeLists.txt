@@ -109,7 +109,12 @@ set_target_properties(nros_rmw_cyclonedds PROPERTIES
 )
 
 # ---- Tests -----------------------------------------------------------------
-option(NROS_RMW_CYCLONEDDS_BUILD_TESTS "Build CTest harness" ON)
+# Default the CTest harness ON only when this is the top-level project
+# (`just cyclonedds build`). When add_subdirectory'd into an example or
+# the root NanoRos build, the backend's own test fixtures must not be
+# built — they generate descriptors for their own type set and are not
+# part of the consuming app.
+option(NROS_RMW_CYCLONEDDS_BUILD_TESTS "Build CTest harness" "${PROJECT_IS_TOP_LEVEL}")
 if(NROS_RMW_CYCLONEDDS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
