@@ -49,6 +49,8 @@ setup *ARGS:
     bash ./scripts/zephyr/cyclonedds-zephyr-udp-rcvbuf-patch.sh
     echo "[zephyr setup] applying Phase 11W.8 NSOS getsockname patch (idempotent)..."
     bash ./scripts/zephyr/nsos-getsockname-patch.sh
+    echo "[zephyr setup] applying Phase 11W.10 NSOS recvmsg patch (idempotent)..."
+    bash ./scripts/zephyr/nsos-recvmsg-patch.sh
     echo "[zephyr setup] applying Phase 11W.8 cyclonedds multicast-join best-effort patch (idempotent)..."
     bash ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
     echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."

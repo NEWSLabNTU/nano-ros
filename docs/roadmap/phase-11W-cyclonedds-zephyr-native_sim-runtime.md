@@ -641,6 +641,30 @@ green.
   surfaces the layer-2 recv-spin (no visible publishes). 11W.10
   proper is gated on the NSOS UDP-recv fix.
 
+- **11W.10 RESOLVED (2026-05-20) — clean 1 Hz publishing.** Root
+  cause of layer 2 found: `nsos_recvmsg` in
+  `zephyr/drivers/net/nsos_sockets.c` was an
+  `errno = ENOTSUP; return -1;` stub — NSOS never implemented
+  recvmsg, but Cyclone's UDP read uses it, so every receive failed
+  (ENOTSUP → DDS_RETCODE_ERROR, the `retcode -1` in the spam) and
+  the recv thread busy-spun. Two fixes:
+  1. **Implement NSOS recvmsg** (`nsos-recvmsg-patch.sh`): delegate
+     the single-iovec form (Cyclone uses one iovec + msg_name) to
+     the existing `nsos_recvfrom` path, reusing its poll/block +
+     sockaddr translation. The recv thread now blocks for data
+     instead of spinning.
+  2. **Pace `session_drive_io`** (k_msleep `timeout_ms` on Zephyr):
+     the executor's "wait for events" primitive now actually waits,
+     so the no_std timer-delta credit matches wall-clock, the 1 Hz
+     timer fires once per second, the native_sim clock advances, and
+     the writer-history cache no longer grows unbounded.
+
+  Result: the talker publishes at a steady 1 Hz indefinitely —
+  `Published: 0` @ 1.1 s, `Published: 12` @ 14.3 s, zero recvmsg
+  spam, no abort. `test_zephyr_rust_talker_cyclonedds_boot` still
+  passes. **cyclonedds Rust talker now runs stably on Zephyr
+  native_sim end to end.**
+
   **Remaining for full E2E:** the build hardcodes
   `/opt/ros/humble/share/std_msgs` + `build/cyclonedds/bin/idlc`
   (acceptable: the cyclonedds Zephyr path already needs ROS +

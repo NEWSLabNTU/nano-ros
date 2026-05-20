@@ -20,6 +20,7 @@
 #include <new>
 
 #ifdef __ZEPHYR__
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(cyclonedds, LOG_LEVEL_INF);
 #define NROS_CYC_TRACE(...) LOG_INF(__VA_ARGS__)
@@ -86,10 +87,28 @@ nros_rmw_ret_t session_close(nros_rmw_session_t *session) {
 }
 
 nros_rmw_ret_t session_drive_io(nros_rmw_session_t * /*session*/,
-                                int32_t /*timeout_ms*/) {
+                                int32_t timeout_ms) {
     // Cyclone owns its own RX threads internally — `drive_io` has
     // nothing to pump. Listener trampolines (Phase 117.6) wake the
     // runtime's `Activator` directly from inside Cyclone's worker.
+    //
+    // Phase 11W.10 — the executor spin loop calls drive_io as its
+    // "wait up to timeout_ms for events" primitive. As a poll-only
+    // backend with no async-wake callback, an instant return makes
+    // `spin_once` free-run: the no_std Zephyr executor credits
+    // `timeout_ms` to timers every call (no clock_us_fn), so a 1 Hz
+    // timer fires hundreds of times/second and the writer-history
+    // cache grows until the heap is exhausted. Sleep for timeout_ms
+    // so the loop paces to real time, the credited delta matches
+    // wall-clock, and the thread yields to the native_sim scheduler.
+    // Cyclone's own RX threads keep delivering in parallel.
+#ifdef __ZEPHYR__
+    if (timeout_ms > 0) {
+        (void) k_msleep(timeout_ms);
+    }
+#else
+    (void)timeout_ms;
+#endif
     return NROS_RMW_RET_OK;
 }
 
