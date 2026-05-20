@@ -122,12 +122,12 @@ wire-up, which is a one-line generator change once A is in.
 
 ## Work items
 
-### 173.1 — One `Board` trait + one generic `run`
+### 173.1 — One `Board` trait + one generic `run` — **DONE (Group A)**
 
-*Group A · can start now · no blockers.*
+*Group A · landed on `phase-173A-board-entry-unification`.*
 
 
-Add to `nros-board-common`:
+Added to `nros-board-common` (`src/board_init.rs`):
 
 ```rust
 /// Everything the generic entry driver needs from a concrete board.
@@ -137,8 +137,7 @@ Add to `nros-board-common`:
 pub trait Board: BoardInit + BoardPrint + BoardExit {}
 impl<T: BoardInit + BoardPrint + BoardExit> Board for T {}
 
-/// The single kernel-family entry driver. Replaces the three
-/// per-family `run` / `run_generic` / `run<B,C,…>` declarations.
+/// The one **direct-exec** board entry driver.
 pub fn run<B, F, E>(cfg: B::Config, f: F) -> !
 where
     B: Board,
@@ -153,23 +152,32 @@ where
 }
 ```
 
-Then:
+**Discovered during implementation — `run` is a 2-shape, not 1-shape,
+unification.** The original proposal ("six per-platform `run`s collapse
+to one") over-promised: FreeRTOS and ThreadX have genuine *kernel-spawn*
+semantics — they allocate an app task, hand the closure to it, and start
+the scheduler; the closure runs in *task* context and scheduler-start
+never returns, so the result is consumed inside the task, not in `run`.
+That kernel bring-up is the bounded essential variation (factor 5). So:
 
-- `nros-board-{freertos,nuttx,threadx}` — delete their bespoke
-  `run` / `run_generic`; re-export `nros_board_common::run`. Keep only
-  the kernel-level glue that legitimately differs (their `init_hardware`
-  helpers feed `BoardInit`).
-- `nros-board-esp32-qemu`, `nros-board-mps2-an385` — stop hand-rolling
-  `run`; add `impl BoardInit/BoardPrint/BoardExit` (init_hardware =
-  esp-hal init + log-writer reg / cortex-m init) and route through the
-  common `run`.
-- Normalise the config generic on `B::Config` everywhere (the ThreadX
-  `<B,C,…>` extra param + the FreeRTOS crate-local `Config` both
-  collapse to `B::Config`). `B::Config: nros_platform::BoardConfig`
-  already gives `zenoh_locator()` + `domain_id()` so the generated
-  `main.rs` builds `ExecutorConfig` uniformly.
+- **Direct-exec families** (bare-metal `mps2-an385`, `stm32f4`; esp-hal
+  `esp32`) — the closure runs on the boot stack; control falls through
+  to `exit_*`. These route through `nros_board_common::run`.
+  `nros-board-mps2-an385` migrated as the proof: added the `Mps2An385`
+  ZST with `BoardInit/BoardPrint/BoardExit` impls (delegating to the
+  existing free `init_hardware` / `exit_*` / `hprintln!`), and its
+  `run` now tail-calls `nros_board_common::run::<Mps2An385, F, E>`.
+- **Kernel-spawn families** (`nros-board-{freertos,threadx}`) — keep
+  their own task-spawning `run` body, but converge on the `Board`
+  super-trait + `B::Config` so the generator (173.2) still emits a
+  uniform `<board>::run(cfg, closure)` callsite. The *callsite* is
+  unified even though the *body* legitimately differs.
+- `nros-board-nuttx` is direct-exec (returns into `std::process::exit`);
+  it can route through the common `run` in a follow-up.
 
-Net: every board exposes the identical `<board>::run(cfg, closure) -> !`.
+Net: one direct-exec `run` + the `Board` super-trait; every board (both
+shapes) exposes the identical `<board>::run(cfg, closure) -> !`
+*callsite*, which is what 173.2's generator depends on.
 
 ### 173.2 — `PlatformProfile` descriptor + `EntryKind` in the generator
 
@@ -232,58 +240,57 @@ Mirror `check-platform-abi-mirror`: a test asserting every
 witness, or a runtime path-existence + `cargo metadata` check). Catches
 "added a profile row, forgot the board impl" and vice-versa.
 
-### 173.4 — board C ABI (`nros/board.h` + `nros_board_export!`)
+### 173.4 — board C ABI (`nros/board.h` + `nros_board_export!`) — **DONE (Group A)**
 
-*Group A · after 173.1 (the macro wraps the `Board` trait) · intra-group, no external wait.*
+*Group A · landed on `phase-173A-board-entry-unification`.*
 
 
 The features layer crosses into C/C++ via `nros/platform.h`; the
-workflow layer must do the same so the *one* `Board` impl serves Rust
-and C/C++ apps alike. Mirror the platform pattern exactly.
+workflow layer does the same so the *one* `Board` impl serves Rust and
+C/C++ apps alike. Mirrors the platform pattern: new `nros-board-cffi`
+crate (sibling of `nros-platform-cffi`) with an `unsafe extern "C"`
+block + a `nros_board_export!` macro + the `<nros/board.h>` header.
 
-Header (`nros-board-cffi/include/nros/board.h`, new):
+**As-built differs from the proposal in two deliberate ways:**
+
+1. **Opaque `cfg` pointer, not a fixed `nros_board_config_t`.** The
+   proposal baked `{ zenoh_locator, domain_id }` into the ABI struct —
+   too narrow: boards carry peripheral / IP / baud / RMW-binding config
+   (factor 2, Phase 173.5). Instead `cfg` is `const void *`, an opaque
+   pointer the board casts back to its concrete `BoardInit::Config`.
+   The generic ABI never inspects it; board crates ship their own C
+   constructor (`nros_board_<name>_config_from_toml`). This keeps
+   hardware config *out* of the generic header — exactly the
+   "no hardcoded hardware config in code" principle.
+2. **Five primitives, not one.** The ABI mirrors the full `Board`
+   surface so the drift gate has real coverage and a C runtime can call
+   any single primitive: `nros_board_run` (direct-exec driver),
+   `nros_board_init_hardware`, `nros_board_println`,
+   `nros_board_exit_success`, `nros_board_exit_failure`.
+
+Header (`packages/boards/nros-board-cffi/include/nros/board.h`):
 
 ```c
-typedef struct {
-    const char *zenoh_locator;   // nullptr ⇒ board default
-    uint32_t    domain_id;
-} nros_board_config_t;
+/* Returns 0 on success, non-zero on error. `user` is threaded through. */
+typedef int32_t (*nros_board_app_fn)(void *user);
 
-/* User application body. Returns 0 on success, non-zero on error.
-   `user` is an opaque pointer the caller threads through. */
-typedef int32_t (*nros_board_app_fn)(const nros_board_config_t *cfg, void *user);
+/* Direct-exec driver: init_hardware(cfg) → app(user) → exit_*. noreturn. */
+void nros_board_run(const void *cfg, nros_board_app_fn app, void *user);
 
-/* Init hardware (board::init_hardware), run `app`, then exit per the
-   board's BoardExit. Never returns on bare-metal/RTOS targets; on
-   hosted boards returns the app's status. Symmetric with the Rust
-   `nros_board_common::run`. */
-void nros_board_run(const nros_board_config_t *cfg,
-                    nros_board_app_fn app, void *user);
+void    nros_board_init_hardware(const void *cfg);
+void    nros_board_println(const uint8_t *msg, size_t len);
+void    nros_board_exit_success(void);   /* noreturn */
+void    nros_board_exit_failure(void);   /* noreturn */
 ```
 
-Rust side — an export macro that monomorphises the C shim over a
-`Board` impl, exactly like `nros_platform_export!`:
+Rust side — `nros_board_export!($ty)` monomorphises all five symbols
+over a `Board` impl, casting `cfg` → `&<$ty>::Config`, exactly like
+`nros_platform_export!`. A compile-link test (`tests/export_compiles.rs`)
+exercises the macro against a dummy `Board`.
 
-```rust
-// nros-board-cffi
-#[macro_export]
-macro_rules! nros_board_export {
-    ($board:ty) => {
-        #[unsafe(no_mangle)]
-        pub extern "C" fn nros_board_run(
-            cfg: *const $crate::NrosBoardConfig,
-            app: $crate::NrosBoardAppFn,
-            user: *mut core::ffi::c_void,
-        ) {
-            // marshal cfg → <$board as Board>::Config, then call the
-            // common generic `run::<$board>(config, |c| app(c, user))`.
-        }
-    };
-}
-```
-
-- A `check-board-abi-mirror` gate (sibling of the platform one) keeps
-  `nros/board.h` ⟷ the macro emission in lock-step.
+- `scripts/check-board-abi-mirror.sh` (sibling of the platform gate,
+  wired into `just check`) keeps `nros/board.h` ⟷ extern block ⟷ macro
+  emission in lock-step. Currently clean: 5 symbols.
 - **Scope:** C/C++ targets the *hosted-RTOS* entry kinds only
   (FreeRTOS/NuttX/Zephyr/ThreadX/posix). Bare-metal C/C++ (esp32,
   stm32f4, mps2 bare-metal) stays out of scope — `nros-c`/`nros-cpp`
@@ -463,11 +470,14 @@ nano-ros transport⟷RMW surface by design.
 
 ## Acceptance criteria
 
-- [ ] One `pub fn run<B: Board, …>` in `nros-board-common`; the three
-      family-crate `run`/`run_generic` declarations deleted; esp32 +
-      bare-metal route through it.
+- [x] One direct-exec `pub fn run<B: Board, …>` + the `Board` super-trait
+      in `nros-board-common`. (Revised from "all six collapse to one":
+      kernel-spawn families FreeRTOS/ThreadX keep their task-spawning
+      `run` body but converge on `Board` + `B::Config`. `mps2-an385`
+      bare-metal migrated as the direct-exec proof; esp32 + nuttx +
+      kernel-family route-through tracked as Group A follow-ups.)
 - [ ] Every board crate exposes `<board>::run(cfg, closure) -> !` with
-      the identical signature.
+      the identical *callsite* signature (body differs by family).
 - [ ] Generator's six per-platform functions collapse to
       `PlatformProfile` lookups + a 3-arm `EntryKind` match in
       `main.rs.jinja`.
@@ -477,10 +487,14 @@ nano-ros transport⟷RMW surface by design.
 - [ ] `orchestration_e2e` suite stays green across all existing platforms
       (posix / freertos / nuttx / zephyr / threadx / esp32-c3 / bare-metal).
 - [ ] Drift gate fails when a `PlatformProfile` row lacks a `Board` impl.
-- [ ] `nros/board.h` + `nros_board_export!` land; a standalone C app and
-      a standalone C++ app on one hosted RTOS (e.g. NuttX or Zephyr) boot
-      through `nros_board_run` against the same `Board` impl the Rust
-      path uses. `check-board-abi-mirror` keeps header ⟷ macro in sync.
+- [x] `nros/board.h` + `nros_board_export!` land in the new
+      `nros-board-cffi` crate; `check-board-abi-mirror` keeps header ⟷
+      extern block ⟷ macro in sync (clean: 5 symbols), wired into
+      `just check`. Macro proven via `tests/export_compiles.rs`.
+- [ ] A standalone C app and a standalone C++ app on one hosted RTOS
+      (e.g. NuttX or Zephyr) boot through `nros_board_run` against the
+      same `Board` impl the Rust path uses. (Group A follow-up — needs a
+      board crate to invoke `nros_board_export!` + an example app.)
 - [ ] Default build (board default transport + single RMW) boots with
       **no `nros.toml`** — the zero-config common case.
 - [ ] `nros.toml` is the single authority: declaring transport + IP +

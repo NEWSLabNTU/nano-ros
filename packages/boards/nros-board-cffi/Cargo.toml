@@ -1,0 +1,23 @@
+[package]
+name = "nros-board-cffi"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Canonical C ABI for the nano-ros board-entry layer (Phase 173.4)"
+authors = ["nano-ros contributors"]
+repository = "https://github.com/NEWSLabNTU/peripherals"
+keywords = ["nano-ros", "board", "ffi", "abi", "no-std"]
+categories = ["embedded", "no-std"]
+
+[lib]
+name = "nros_board_cffi"
+
+# Phase 173.4 — board layer's `-cffi` shim, mirroring
+# `nros-platform-cffi`. Declares the canonical `nros_board_*` C ABI
+# (header `<nros/board.h>`) as an `unsafe extern "C"` block (Rust
+# knows the signatures) plus the `nros_board_export!` macro that
+# re-emits a Rust `Board` impl as `#[unsafe(no_mangle)] extern "C"`
+# symbols. `no_std`, zero runtime deps beyond the trait surface.
+
+[dependencies]
+nros-board-common = { path = "../nros-board-common", default-features = false }
