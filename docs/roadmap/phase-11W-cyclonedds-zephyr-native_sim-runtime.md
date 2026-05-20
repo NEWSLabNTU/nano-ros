@@ -764,6 +764,23 @@ green.
   both pass — listener receives the talker's samples in all three
   languages (Rust + C + C++).
 
+  **Services (Rust).** `service-server`/`service-client` got the same
+  overlay parity + Cyclone C descriptor generation, but from
+  `example_interfaces/srv/AddTwoInts.srv` (the converter emits the
+  `_Request_` + `_Response_` structs). Surfaced + fixed a backend bug:
+  `service_type_name` concatenated `<base> + _Request_`, but the nros
+  codegen emits `SERVICE_NAME` with a trailing underscore
+  (`<pkg>::srv::dds_::<Svc>_`, mirroring the message `<Type>_`
+  convention), so the lookup became `<Svc>__Request_` (double `_`) and
+  missed the registered `<Svc>_Request_`. `service_type_name` now
+  strips one trailing `_` from the base, matching both the registered
+  descriptor and stock `rmw_cyclonedds_cpp` (no-op when the base has no
+  trailing `_`, so the backend's own roundtrip tests still pass). With
+  it `test_zephyr_rust_cyclonedds_service_e2e` passes — client gets
+  `Response: sum=` over the request/response roundtrip. C/C++ service +
+  all-language action examples are the remaining follow-up (actions
+  also need `.action` decomposition support in the IDL converter).
+
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
   recvmsg) to Zephyr; the determinism gotcha is native_sim-specific

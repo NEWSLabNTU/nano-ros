@@ -130,9 +130,21 @@ bool service_topic_name(const char *service_name, const char *prefix,
 
 // Build the suffixed type name `<base>_Request_` / `<base>_Response_`
 // the codegen helper (117.X.1) registers. Returns false on overflow.
+//
+// Phase 11W.12: the nros codegen emits SERVICE_NAME with a trailing
+// underscore (`<pkg>::srv::dds_::<Svc>_`, mirroring the message
+// `<Type>_` convention), but the registered DDS request/response types
+// — and stock `rmw_cyclonedds_cpp` — are `<pkg>::srv::dds_::<Svc>_Request_`
+// / `_Response_` with a *single* underscore before the suffix. Strip one
+// trailing underscore from the base so both the no-trailing-`_` form
+// (used by the backend's own roundtrip tests) and the codegen's
+// trailing-`_` form resolve to the same registered descriptor.
 bool service_type_name(const char *base, const char *suffix, char *out,
                        std::size_t out_cap) {
     std::size_t blen = std::strlen(base);
+    if (blen > 0 && base[blen - 1] == '_') {
+        --blen;
+    }
     std::size_t slen = std::strlen(suffix);
     if (blen + slen + 1 > out_cap) return false;
     std::memcpy(out, base, blen);

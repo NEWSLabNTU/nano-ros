@@ -844,6 +844,60 @@ fn test_zephyr_c_cyclonedds_pubsub_e2e() {
     );
 }
 
+/// Phase 11W.12 — Cyclone DDS service request/response roundtrip on
+/// native_sim NSOS. The service maps to a request + response topic; the
+/// CMake generates both Cyclone C descriptors from
+/// example_interfaces/srv/AddTwoInts.srv. Exercises the backend
+/// `service_type_name` fix: the nros codegen emits SERVICE_NAME with a
+/// trailing `_`, so the backend must strip it before appending
+/// `_Request_`/`_Response_` to match the registered descriptor. Client
+/// logs `Response: sum=` once the server replies.
+#[test]
+fn test_zephyr_rust_cyclonedds_service_e2e() {
+    use std::time::Duration;
+
+    use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
+
+    let server_bin =
+        nros_tests::fixtures::build_zephyr_rust_example_rmw("service-server", Rmw::Cyclonedds)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!(
+                    "zephyr/rust/service-server cyclonedds not prebuilt: {:?}",
+                    e
+                )
+            });
+    let client_bin =
+        nros_tests::fixtures::build_zephyr_rust_example_rmw("service-client", Rmw::Cyclonedds)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!(
+                    "zephyr/rust/service-client cyclonedds not prebuilt: {:?}",
+                    e
+                )
+            });
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr service-server (cyclonedds)");
+    std::thread::sleep(Duration::from_secs(2));
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr service-client (cyclonedds)");
+
+    let output = client.wait_for_pattern("Response: sum=", Duration::from_secs(20));
+
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "zephyr rust cyclonedds service e2e client output:\n{}",
+        output
+    );
+
+    assert!(
+        output.contains("Response: sum="),
+        "cyclonedds service client did not receive a reply (expected a \
+         `Response: sum=` line)"
+    );
+}
+
 /// Phase 118.B.7 — ThreadX-Linux C / C++ cases (zenoh only).
 #[rstest]
 #[case::c_talker("c", "talker", "threadx_c_talker")]

@@ -436,7 +436,7 @@ retries = 2
 # collide (NSOS doesn't forward SO_REUSEADDR). The `*_variant_exists`
 # tests only check file presence and stay in the parallel default.
 [[profile.default.overrides]]
-filter = "binary(phase_118_collapse) and (test(cyclonedds_boot) or test(cyclonedds_pubsub_e2e))"
+filter = "binary(phase_118_collapse) and test(cyclonedds) and (test(_boot) or test(_e2e))"
 test-group = "zephyr-native-cyclonedds"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
