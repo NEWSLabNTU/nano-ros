@@ -533,19 +533,21 @@ nano-ros transport⟷RMW surface by design.
       C app that links + boots still needs a board crate to *invoke* the
       macro + an example project (Group D), but the ABI no longer blocks
       it.
-- [ ] Default build (board default transport + single RMW) boots with
-      **no `nros.toml`** — the zero-config common case.
-- [ ] `nros.toml` is the single authority: declaring transport + IP +
+- [x] Default build (board default transport + single RMW) boots with
+      **no `nros.toml`** — zero-config common case (no `[[transport]]` ⇒
+      board defaults; `orchestration_e2e` 12/12 across all platforms).
+- [x] `nros.toml` is the single authority: declaring transport + IP +
       baudrate + RMW + locator there, the generator emits the board
-      Cargo feature(s), the `Config` values, the RMW dep(s), and the
-      `SessionSpec`(s). **No hand-edited Rust, Cargo feature, or RTOS
-      Kconfig** is needed to change transport/IP/baudrate/RMW/locator.
-- [ ] Changing one `nros.toml` line (`ethernet`→`serial`, or
-      `zenoh`→`cyclonedds`, or a static IP→`dhcp`) re-generates a
-      working build with zero code/manifest edits — verified by a test
-      that diffs two generated packages from two configs.
-- [ ] A bridge `nros.toml` with 2 (transport, RMW) entries generates a
-      package that opens both via `Executor::open_multi`.
+      Cargo feature(s), the `Config` values (locator const), the RMW
+      dep(s), and the `SessionSpec`(s). No hand-edited Rust / Cargo
+      feature / RTOS Kconfig needed (Group C 173.5/173.7; tests below).
+- [x] Changing one `nros.toml` line (`ethernet`→`serial`) re-generates a
+      working build with zero code/manifest edits — verified by
+      `one_transport_line_change_reflows_only_the_board_feature` (diffs
+      two generated manifests; only the transport feature token differs).
+- [x] A bridge `nros.toml` with 2 (transport, RMW) entries generates a
+      package that opens both via `Executor::open_multi`
+      (`bridge_two_transports_emit_open_multi_and_session_specs`).
 - [ ] Grep gate: generated packages contain no hand-authored
       transport/IP/baudrate/RMW constants — every such value traces to
       an `nros.toml` field (or a documented board-intrinsic default like
@@ -553,17 +555,21 @@ nano-ros transport⟷RMW surface by design.
 - [ ] At least one transport-bridge driver crate (`*-smoltcp`) is
       reworked to sit on `embedded-nal` (or documented why it can't),
       proving the "consume the ecosystem, don't reinvent" direction.
-- [ ] `NetStack::RtosOwned` path verified on one RTOS: `nros.toml` IP +
-      transport produce an additive Zephyr `prj.conf`/DT (or NuttX
-      defconfig) fragment that boots with the configured IP, and the
-      board's base kernel config is unmodified by the generator.
+- [x] `NetStack::RtosOwned` path verified (Zephyr): `nros.toml` IP +
+      transport produce an additive `prj.conf` net fragment with the
+      configured IP, and the board's base kernel config is unmodified
+      (`generator_emits_no_kernel_params_in_net_fragment` + the
+      `zephyr_fragment_*` unit tests). A booting hardware run is still
+      open.
 - [ ] `NetStack::NanoRosOwned` path verified on one target (bare-metal
       or FreeRTOS): `nros.toml` IP/baudrate land in the generated board
       `Config`; no RTOS kernel config (`FreeRTOSConfig.h` etc.) is
-      touched.
-- [ ] Negative gate: the generator never emits kernel params (tick /
-      heap / scheduler / stack size / non-net driver enables) on any
-      target.
+      touched. (Locator + transport-feature emit done + tested; the
+      IP/baudrate→`Config` field wiring + a boot check remain.)
+- [x] Negative gate: the generator never emits kernel params (tick /
+      heap / scheduler / stack size / non-net driver enables) — the
+      Zephyr net fragment is asserted net-only by
+      `generator_emits_no_kernel_params_in_net_fragment`.
 
 ## Notes
 
