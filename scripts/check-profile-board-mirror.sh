@@ -64,6 +64,27 @@ for rel in "${BOARD_PATHS[@]}"; do
         fail=1
         continue
     fi
+    # Phase 173.3 — a crate that exposes a *concrete* board entry
+    # (`pub fn run`, i.e. the board ZST itself — NOT a `run_generic<B>`
+    # family base driver, and NOT the trait-defining `nros-board-common`)
+    # must implement the `Board` super-trait: all three sub-traits
+    # `BoardInit` + `BoardPrint` + `BoardExit`. This is the acceptance
+    # requirement "drift gate fails when a PlatformProfile row lacks a
+    # Board impl" — catches "added a board + its `run`, forgot the impls".
+    # Base/common crates (run_generic / trait def) are exempt.
+    if [[ "$rel" != *nros-board-common ]] \
+       && grep -rqE 'pub fn run\b' "$dir/src" 2>/dev/null \
+       && ! grep -rqE 'pub fn run_generic\b' "$dir/src" 2>/dev/null; then
+        # Match the trait-impl head `… <Trait> for …` (covers both
+        # `impl BoardExit for X` and `impl nros_board_common::BoardExit
+        # for X`). The `<Trait> for` adjacency is the robust signal.
+        for tr in BoardInit BoardPrint BoardExit; do
+            if ! grep -rqE "\b${tr}[[:space:]]+for\b" "$dir/src" 2>/dev/null; then
+                echo "drift: $rel has a concrete board entry but no \`${tr}\` impl (Board super-trait incomplete)" >&2
+                fail=1
+            fi
+        done
+    fi
 done
 
 if (( fail )); then
