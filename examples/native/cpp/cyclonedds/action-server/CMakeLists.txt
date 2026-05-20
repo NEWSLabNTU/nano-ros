@@ -9,7 +9,20 @@ set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     cyclonedds)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
-nros_generate_interfaces(example_interfaces LANGUAGE CPP SKIP_INSTALL)
+# Actions need the action infrastructure types' Cyclone descriptors
+# (cancel_goal → action_msgs/CancelGoal, status → GoalStatusArray,
+# transitively unique_identifier_msgs/UUID + builtin_interfaces). The
+# cpp FFI crate pulls a dependency's generated `.rs` via `include!()`,
+# which is NOT transitive — so `example_interfaces` must list the full
+# transitive closure (action_msgs + its deps) for `action_msgs`'s
+# GoalInfo binding (which references `unique_identifier_msgs` types) to
+# resolve in scope.
+nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
+nros_generate_interfaces(unique_identifier_msgs LANGUAGE CPP SKIP_INSTALL)
+nros_generate_interfaces(action_msgs LANGUAGE CPP
+    DEPENDENCIES builtin_interfaces unique_identifier_msgs SKIP_INSTALL)
+nros_generate_interfaces(example_interfaces LANGUAGE CPP
+    DEPENDENCIES builtin_interfaces unique_identifier_msgs action_msgs SKIP_INSTALL)
 
 add_executable(cpp_action_server src/main.cpp)
 target_link_libraries(cpp_action_server PRIVATE

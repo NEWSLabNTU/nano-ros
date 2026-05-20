@@ -61,6 +61,15 @@ int nros_app_main(int argc, char **argv) {
     if (const char* ord = std::getenv("NROS_TEST_GOAL_ORDER")) {
         order = std::atoi(ord);
     }
+    // Warm up discovery before the blocking send_goal: the goal request
+    // is a service call, and its request races the writer↔server-reader
+    // endpoint match. send_goal blocks on the acceptance reply, so an
+    // unmatched first request would hang. Spin ~3 s to let the endpoints
+    // match first (mirrors the C action client).
+    for (int i = 0; i < 300; i++) {
+        nros::spin_once(10);
+    }
+
     std::printf("\nSending goal: order=%d\n", order);
 
     example_interfaces::action::Fibonacci::Goal goal;
@@ -81,7 +90,9 @@ int nros_app_main(int argc, char **argv) {
     // below is still supported for callers that want the bool-convertible
     // helper.
     auto& feedback = client.feedback_stream();
-    for (int i = 0; i < 20; i++) {
+    // Poll long enough for the server to finish computing (feedback is
+    // sent incrementally) so the result is stored before get_result.
+    for (int i = 0; i < 80; i++) {
         nros::spin_once(100);
 
         example_interfaces::action::Fibonacci::Feedback fb;
@@ -95,7 +106,8 @@ int nros_app_main(int argc, char **argv) {
         }
     }
 
-    // Get result (blocking)
+    // Get result. The feedback poll above runs long enough for the
+    // server to store the result first.
     example_interfaces::action::Fibonacci::Result result;
     ret = client.get_result(goal_id, result);
     if (ret.ok()) {
