@@ -62,19 +62,35 @@ pub extern "C" fn rust_main() -> i32 {
     let mut ok = 0;
     for (a, b) in [(5, 3), (10, 20), (100, 200), (-5, 10)] {
         let request = AddTwoIntsRequest { a, b };
-        let mut promise = match client.call(&request) {
-            Ok(p) => p,
+        // `call()` rejects a new request while one is still in flight.
+        // A timed-out `Promise` does NOT clear that flag on drop (a
+        // stale reply could still be queued), so a call that times out
+        // — e.g. the first one, before the request writer has finished
+        // matching the server's reader — would otherwise wedge every
+        // later call with `RequestInFlight`. Clear it explicitly on
+        // failure so the next call proceeds, mirroring the C client.
+        let got = match client.call(&request) {
+            Ok(mut promise) => {
+                match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
+                    Ok(reply) => {
+                        nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, reply.sum);
+                        true
+                    }
+                    Err(e) => {
+                        nros_error!(&LOGGER, "Service call failed: {:?}", e);
+                        false
+                    }
+                }
+            }
             Err(e) => {
                 nros_error!(&LOGGER, "Failed to send request: {:?}", e);
-                continue;
+                false
             }
         };
-        match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
-            Ok(reply) => {
-                nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, reply.sum);
-                ok += 1;
-            }
-            Err(e) => nros_error!(&LOGGER, "Service call failed: {:?}", e),
+        if got {
+            ok += 1;
+        } else {
+            client.reset_in_flight();
         }
     }
     nros_info!(&LOGGER, "{}/4 calls succeeded", ok);
