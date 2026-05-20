@@ -217,6 +217,16 @@ build-fixtures:
         echo "Invalid NROS_ZEPHYR_NINJA_JOBS=$ninja_jobs; expected positive integer" >&2
         exit 2
     fi
+    # Phase 173 — under the unified fifo jobserver (NROS_JOBSERVER=1, set
+    # by `just build-all-jobserver`), ninja >=1.13 draws its job tokens
+    # from the shared pool via the fifo path in MAKEFLAGS. Pinning
+    # CMAKE_BUILD_PARALLEL_LEVEL would override the jobserver and detach
+    # ninja from the pool, so we DON'T set it in that mode.
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        cmake_build_env=()
+    else
+        cmake_build_env=(CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs")
+    fi
     sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-0}"
     case "$sccache_disable" in
         0|1) ;;
@@ -382,7 +392,7 @@ build-fixtures:
             set +e
             (
               cd "$workspace"
-              SCCACHE_DISABLE="$sccache_disable" CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs" \
+              SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
                 west build -b "$board" -d "$build_dir" -p "$pristine" \
                     "$nros_root/examples/$src" \
                     "${west_extra[@]}"
@@ -400,7 +410,7 @@ build-fixtures:
         else
             (
               cd "$workspace"
-              SCCACHE_DISABLE="$sccache_disable" CMAKE_BUILD_PARALLEL_LEVEL="$ninja_jobs" \
+              SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
                 west build -b "$board" -d "$build_dir" -p "$pristine" \
                     "$nros_root/examples/$src" \
                     "${west_extra[@]}"

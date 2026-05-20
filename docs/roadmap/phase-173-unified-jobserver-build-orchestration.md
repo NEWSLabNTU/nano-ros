@@ -7,8 +7,15 @@ build draws from one dynamically-allocated token pool. The long pole
 (zephyr) soaks up tokens freed by finished platforms instead of idling
 on a fixed 1/Nth share.
 
-**Status.** Not started — design captured here. Blocked on toolchain
-versions (see Depends on).
+**Status.** Foundation landed + mechanism validated. Pinned make 4.4.1
++ ninja 1.13.2 install (173.A) done; `build-all.mk` + `just
+build-all-jobserver` (173.B) + zephyr `-j` gating (173.C, partial)
+done. **Validated**: under `make 4.4 -j2 --jobserver-style=fifo`,
+ninja 1.13 throttles to 2 (`Jobserver mode detected: fifo:…`) and
+cargo's rustc concurrency caps at 2 — both draw from the shared pool.
+**Remaining**: gate the cmake `--parallel` in the C/C++ example recipes
+(173.C), and a full `build-all-jobserver` sweep + utilization check
+(173.D).
 
 **Priority.** P3 (perf/ergonomics). The current static split
 (`NROS_BUILD_JOBS` budget, `build-test-fixtures` pool + zephyr solo

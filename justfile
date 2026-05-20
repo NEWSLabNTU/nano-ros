@@ -137,6 +137,35 @@ build-examples: build \
 build-all: build-examples build-test-fixtures
     @echo "All builds completed (workspace + examples + test fixtures)."
 
+# Phase 173 — `build-all` under one GNU-make fifo jobserver shared across
+# every stage (cargo + build-script cc + ninja-via-west + cmake), instead
+# of the static per-platform `parallel --jobs` split. When the fast
+# platforms finish, their tokens flow to the long pole automatically.
+# Needs the pinned make >=4.4 + ninja >=1.13 (just workspace install-make
+# / install-ninja). NROS_BUILD_JOBS (default nproc) = the token budget.
+# Recipes detect the inherited jobserver (NROS_JOBSERVER=1) and skip their
+# own explicit -j so the tools draw from the shared pool.
+build-all-jobserver:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    make_bin="third-party/make/make"
+    ninja_bin="third-party/ninja/ninja"
+    if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then
+        echo "jobserver build needs make >=4.4 — run: just workspace install-make" >&2
+        exit 1
+    fi
+    if [ ! -x "$ninja_bin" ]; then
+        echo "jobserver build needs ninja >=1.13 — run: just workspace install-ninja" >&2
+        exit 1
+    fi
+    n="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
+    echo "build-all (jobserver): $make_bin -j$n --jobserver-style=fifo -f build-all.mk"
+    # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
+    # --parallel so cargo / ninja / cmake inherit the fifo pool. NROS_BUILD_JOBS
+    # stays the budget; GNU parallel only launches (the jobserver throttles).
+    exec env NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" \
+        "$make_bin" -j"$n" --jobserver-style=fifo -f build-all.mk
+
 # Internal: invalidate stale nros-* cargo fingerprints in a cmake build
 # dir's per-build cargo cache when shared-core source content has
 # changed since the last build.

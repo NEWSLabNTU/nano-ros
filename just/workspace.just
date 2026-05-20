@@ -7,6 +7,13 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # binary under `third-party/ninja/`; `.envrc` prepends it to PATH.
 NINJA_VERSION := "1.13.2"
 
+# Pinned GNU make version. Ubuntu ships 4.3, whose jobserver is
+# pipe-fd-based; ninja 1.13's jobserver client speaks ONLY the
+# fifo protocol (make ≥4.4, `--jobserver-style=fifo`). Phase 173's
+# unified jobserver needs 4.4. Built from source to third-party/make/;
+# `.envrc` prepends it to PATH.
+MAKE_VERSION := "4.4.1"
+
 # Workspace module — host-agnostic dev environment setup.
 #
 # "workspace" here means the developer's dev workspace (host OS packages,
@@ -28,9 +35,38 @@ default:
 setup:
     @just workspace apt-packages
     @just workspace install-ninja
+    @just workspace install-make
     @just workspace rust-pinned-toolchains
     @just workspace rust-targets
     @just workspace cargo-tools
+
+# Build the pinned GNU make (>=4.4) from source under third-party/make/.
+# Ubuntu's make 4.3 jobserver is pipe-fd-based; ninja 1.13's jobserver
+# client only speaks fifo (make 4.4 `--jobserver-style=fifo`). Needed
+# for the Phase 173 unified jobserver. `.envrc` puts it first on PATH.
+# Lives under third-party/ (survives `just clean`). Idempotent.
+install-make:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want="{{MAKE_VERSION}}"
+    dest="third-party/make"
+    bin="$dest/make"
+    if [ -x "$bin" ] && "$bin" --version 2>/dev/null | head -1 | grep -q "$want"; then
+        echo "[make] $want already installed ($bin)"
+        exit 0
+    fi
+    mkdir -p "$dest"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    echo "[make] downloading $want..."
+    curl -fSL "https://ftp.gnu.org/gnu/make/make-$want.tar.gz" -o "$tmp/make.tar.gz"
+    tar xzf "$tmp/make.tar.gz" -C "$tmp"
+    echo "[make] building (./configure && ./build.sh)..."
+    ( cd "$tmp/make-$want" && ./configure >/dev/null 2>&1 && ./build.sh >/dev/null 2>&1 )
+    cp "$tmp/make-$want/make" "$bin"
+    chmod +x "$bin"
+    echo "[make] installed: $("$bin" --version | head -1) ($bin)"
+    echo "[make] ensure third-party/make is on PATH (direnv .envrc does this)."
 
 # Install the pinned ninja static binary under third-party/ninja/.
 # Ubuntu's apt ninja is too old (1.10) for the GNU-jobserver client;
@@ -95,6 +131,15 @@ doctor:
         echo "  [OK] ninja {{NINJA_VERSION}} (third-party/ninja; jobserver-capable)"
     else
         echo "  [MISSING] ninja {{NINJA_VERSION}} (run: just workspace install-ninja)"
+        fail=1
+    fi
+
+    # --- pinned make (>=4.4 for the fifo jobserver, Phase 173) ---
+    make_bin="third-party/make/make"
+    if [ -x "$make_bin" ] && "$make_bin" --version 2>/dev/null | head -1 | grep -q "{{MAKE_VERSION}}"; then
+        echo "  [OK] make {{MAKE_VERSION}} (third-party/make; fifo jobserver)"
+    else
+        echo "  [MISSING] make {{MAKE_VERSION}} (run: just workspace install-make)"
         fail=1
     fi
 
