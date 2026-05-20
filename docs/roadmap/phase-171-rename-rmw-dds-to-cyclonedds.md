@@ -275,14 +275,52 @@ collapsed.
         cpp action **server** runs full e2e (goal→accept→execute→complete
         `[0,1,1,2,3,5,8,13,21,34]`); cpp **client** warms up discovery
         before the blocking send_goal (goal→accept works). STILL OPEN
-        (171.0.b follow-up): the cpp client's return paths — feedback
-        stream + get_result — receive nothing on **cyclonedds** while C +
-        Rust receive fine with the same descriptors. NOTE: this is NOT
-        "Phase 77" — Phase 77 (archived, complete) eliminated zenoh-pico's
-        blocking `zpico_get`; the cpp cyclonedds client already uses that
-        executor-spin pattern. This is a cyclonedds-specific cpp
-        receive/protocol bug. The deeper codegen fix (make cpp-FFI
-        `include!()` transitive) is a separate follow-up.
+        (171.0.b follow-up): **cpp+cpp** `get_result` times out (`-2`)
+        while **C+C** and **rust+rust** work e2e. NOTE: not "Phase 77"
+        (archived) — the cpp cyclonedds client already uses executor-spin.
+
+        **Deep diagnosis 2026-05-21 (do NOT re-derive — instrument was
+        reverted):**
+        - Cross-impl matrix: C-server reply is delivered to C & cpp
+          clients; cpp-server reply is delivered to neither — but the
+          cpp **client** *does* receive (cpp-client+C-server returns `-1`
+          = post-receive buffer check, not timeout). So the cpp client
+          receive path itself works.
+        - `send_goal` acceptance works because it uses the **blocking
+          `call_raw`** path (`service_call_raw`, self-contained poll).
+          `get_result`/feedback use the **async path**
+          (`send_request_raw` + arena-polled `try_recv_*`). The async
+          *service* path works for C and rust (`#52`), so it is not the
+          backend in general.
+        - Cyclone discovery trace: the get_result reply writer
+          (`rr/.../get_resultReply`, `wr …:603`) **matches** the client
+          reply reader (`proxy_reader_add_connection`), exactly like the
+          working send_goal reply (`:203`). `service_send_reply` returns
+          ok=true. `service_try_recv_reply_raw` **receives the reply and
+          correlates it** (`got_seq==pending && got_guid==my_guid` true).
+        - So the break is **above the Cyclone backend.** Instrumenting
+          `nros_cpp_action_client_get_result` + `cpp_result_trampoline`:
+          a get_result request+reply round-trips *during the client's
+          feedback-poll phase, before* `get_result` is called; the
+          **result trampoline never fires**; and the seq counter shows
+          **two `seq=0` sends** (`ClientState::next_seq` not advancing as
+          expected). i.e. an unexpected early `send_get_result_request`
+          whose matched reply is consumed by the arena dispatch without
+          propagating to `BLOCKING_RESULT_LEN`, leaving the real
+          `get_result` send with no reply.
+        - **Next step:** find the early/duplicate `send_get_result_request`
+          caller (NOT the example, NOT header `get_result`) and why the
+          arena consumes its matched reply without firing
+          `cpp_result_trampoline`. Tried + ruled out: client re-send,
+          accept-before-callback reorder, deferred-execute server rewrite.
+        - **Secondary (separate) issue:** the stock cpp action *server*
+          example computes inline in the goal callback (instant) → its
+          volatile feedback is dropped before the reader matches; C/rust
+          pace with delays + execute after accept.
+        - Cross-impl pairings (rust↔C↔cpp) also diverge on feedback/result
+          CDR framing — only same-language pairs are supported.
+        The deeper codegen fix (make cpp-FFI `include!()` transitive) is
+        a separate follow-up.
 
       Two pieces, both required before any native cyclonedds action runs:
 
