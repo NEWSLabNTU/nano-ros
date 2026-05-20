@@ -311,15 +311,61 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
 // it; 64 KiB covers ROS 2's default service payload size budget.
 constexpr std::size_t kWireScratch = 65536;
 
-bool descriptors_for_service(const char *type_name,
+// Action sub-services reuse one service-create path but each carries a
+// distinct DDS type. The action layer (`executor/action.rs`) passes the
+// bare action type `<pkg>::action::dds_::<A>_` for both the send_goal
+// and get_result services, distinguishing them only by the service
+// name suffix `<action>/_action/{send_goal,get_result}` (see
+// `ActionInfo::{send_goal,get_result}_key`). Map that suffix to the
+// rosidl-synthesised wrapper base — `<A>_SendGoal_` / `<A>_GetResult_`
+// — so the `_Request_`/`_Response_` lookup resolves the right
+// descriptor. Non-action services pass through unchanged. This keeps
+// the backend-agnostic contract (and the zenoh keyexpr) untouched.
+bool action_effective_base(const char *service_name, const char *type_name,
+                           char *out, std::size_t out_cap) {
+    const char *infix = nullptr;
+    std::size_t nlen = std::strlen(service_name);
+    auto ends_with = [&](const char *suf) {
+        std::size_t slen = std::strlen(suf);
+        return nlen >= slen && std::strcmp(service_name + nlen - slen, suf) == 0;
+    };
+    if (ends_with("/_action/send_goal")) {
+        infix = "_SendGoal_";
+    } else if (ends_with("/_action/get_result")) {
+        infix = "_GetResult_";
+    }
+    if (infix == nullptr) {
+        std::size_t blen = std::strlen(type_name);
+        if (blen + 1 > out_cap) return false;
+        std::memcpy(out, type_name, blen + 1);
+        return true;
+    }
+    // Strip the single trailing `_` from the action base, append the
+    // wrapper infix (which itself ends in `_`, the marker the later
+    // `service_type_name` strips before adding `_Request_`).
+    std::size_t blen = std::strlen(type_name);
+    if (blen > 0 && type_name[blen - 1] == '_') --blen;
+    std::size_t ilen = std::strlen(infix);
+    if (blen + ilen + 1 > out_cap) return false;
+    std::memcpy(out, type_name, blen);
+    std::memcpy(out + blen, infix, ilen);
+    out[blen + ilen] = '\0';
+    return true;
+}
+
+bool descriptors_for_service(const char *service_name, const char *type_name,
                              const dds_topic_descriptor_t **out_req,
                              const dds_topic_descriptor_t **out_rep) {
-    char req_type[kMaxTopicName];
-    char rep_type[kMaxTopicName];
-    if (!service_type_name(type_name, "_Request_",  req_type, sizeof(req_type))) {
+    char base[kMaxTopicName];
+    if (!action_effective_base(service_name, type_name, base, sizeof(base))) {
         return false;
     }
-    if (!service_type_name(type_name, "_Response_", rep_type, sizeof(rep_type))) {
+    char req_type[kMaxTopicName];
+    char rep_type[kMaxTopicName];
+    if (!service_type_name(base, "_Request_",  req_type, sizeof(req_type))) {
+        return false;
+    }
+    if (!service_type_name(base, "_Response_", rep_type, sizeof(rep_type))) {
         return false;
     }
     *out_req = find_descriptor(req_type);
@@ -359,7 +405,7 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
 
     const dds_topic_descriptor_t *req_desc = nullptr;
     const dds_topic_descriptor_t *rep_desc = nullptr;
-    if (!descriptors_for_service(type_name, &req_desc, &rep_desc)) {
+    if (!descriptors_for_service(service_name, type_name, &req_desc, &rep_desc)) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
 
@@ -522,7 +568,7 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
 
     const dds_topic_descriptor_t *req_desc = nullptr;
     const dds_topic_descriptor_t *rep_desc = nullptr;
-    if (!descriptors_for_service(type_name, &req_desc, &rep_desc)) {
+    if (!descriptors_for_service(service_name, type_name, &req_desc, &rep_desc)) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
 

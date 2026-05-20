@@ -78,7 +78,11 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t *session,
         return NROS_RMW_RET_ERROR;
     }
 
-    const dds_topic_descriptor_t *desc = find_descriptor(type_name);
+    char eff_type[256];
+    if (!action_topic_type(topic_name, type_name, eff_type, sizeof(eff_type))) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    const dds_topic_descriptor_t *desc = find_descriptor(eff_type);
     if (desc == nullptr) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
