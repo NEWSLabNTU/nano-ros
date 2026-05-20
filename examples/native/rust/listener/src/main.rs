@@ -59,7 +59,11 @@ use std_msgs::msg::Int32;
 // `rmw-{zenoh,cyclonedds,xrce}` features. `register_rmw()` fans out under
 // `#[cfg(feature)]`; the rest of the file stays RMW-agnostic.
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-cyclonedds",
+    feature = "rmw-xrce"
+)))]
 compile_error!(
     "examples/native/rust/listener requires exactly one of \
      `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",

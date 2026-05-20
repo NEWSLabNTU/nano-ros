@@ -56,8 +56,8 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
         return NROS_GOAL_REJECT;
     }
 
-    NROS_LOG_INFO(g_logger, "Goal request: order=%d (uuid=%02x%02x...)", goal_msg.order, goal->uuid.uuid[0],
-           goal->uuid.uuid[1]);
+    NROS_LOG_INFO(g_logger, "Goal request: order=%d (uuid=%02x%02x...)", goal_msg.order,
+                  goal->uuid.uuid[0], goal->uuid.uuid[1]);
 
     if (goal_msg.order < 0 || goal_msg.order >= 64) {
         printf("  -> REJECTED (order out of range)\n");

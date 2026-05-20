@@ -519,7 +519,9 @@ static ZEPHYR_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// to the collapsed Phase 168 shape. The build directory and
 /// example path both follow `build-<lang>-<case>-<rmw>[<-board>]`
 /// / `examples/zephyr/<lang>/<case>` respectively.
-fn decode_alias(example_name: &str) -> Option<(&'static str, &'static str, &'static str, &'static str)> {
+fn decode_alias(
+    example_name: &str,
+) -> Option<(&'static str, &'static str, &'static str, &'static str)> {
     // (lang, case, rmw, board_suffix)
     Some(match example_name {
         // Rust zenoh
@@ -532,8 +534,12 @@ fn decode_alias(example_name: &str) -> Option<(&'static str, &'static str, &'sta
         // C++ zenoh
         "zephyr-cpp-talker" | "cpp-talker" => ("cpp", "talker", "zenoh", ""),
         "zephyr-cpp-listener" | "cpp-listener" => ("cpp", "listener", "zenoh", ""),
-        "zephyr-cpp-service-server" | "cpp-service-server" => ("cpp", "service-server", "zenoh", ""),
-        "zephyr-cpp-service-client" | "cpp-service-client" => ("cpp", "service-client", "zenoh", ""),
+        "zephyr-cpp-service-server" | "cpp-service-server" => {
+            ("cpp", "service-server", "zenoh", "")
+        }
+        "zephyr-cpp-service-client" | "cpp-service-client" => {
+            ("cpp", "service-client", "zenoh", "")
+        }
         "zephyr-cpp-action-server" | "cpp-action-server" => ("cpp", "action-server", "zenoh", ""),
         "zephyr-cpp-action-client" | "cpp-action-client" => ("cpp", "action-client", "zenoh", ""),
         // C zenoh
@@ -542,20 +548,36 @@ fn decode_alias(example_name: &str) -> Option<(&'static str, &'static str, &'sta
         // XRCE Rust
         "zephyr-xrce-rs-talker" | "xrce-rs-talker" => ("rust", "talker", "xrce", ""),
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => ("rust", "listener", "xrce", ""),
-        "zephyr-xrce-rs-service-server" | "xrce-rs-service-server" => ("rust", "service-server", "xrce", ""),
-        "zephyr-xrce-rs-service-client" | "xrce-rs-service-client" => ("rust", "service-client", "xrce", ""),
-        "zephyr-xrce-rs-action-server" | "xrce-rs-action-server" => ("rust", "action-server", "xrce", ""),
-        "zephyr-xrce-rs-action-client" | "xrce-rs-action-client" => ("rust", "action-client", "xrce", ""),
+        "zephyr-xrce-rs-service-server" | "xrce-rs-service-server" => {
+            ("rust", "service-server", "xrce", "")
+        }
+        "zephyr-xrce-rs-service-client" | "xrce-rs-service-client" => {
+            ("rust", "service-client", "xrce", "")
+        }
+        "zephyr-xrce-rs-action-server" | "xrce-rs-action-server" => {
+            ("rust", "action-server", "xrce", "")
+        }
+        "zephyr-xrce-rs-action-client" | "xrce-rs-action-client" => {
+            ("rust", "action-client", "xrce", "")
+        }
         // XRCE C
         "zephyr-xrce-c-talker" | "xrce-c-talker" => ("c", "talker", "xrce", ""),
         "zephyr-xrce-c-listener" | "xrce-c-listener" => ("c", "listener", "xrce", ""),
         // XRCE C++
         "zephyr-xrce-cpp-talker" | "xrce-cpp-talker" => ("cpp", "talker", "xrce", ""),
         "zephyr-xrce-cpp-listener" | "xrce-cpp-listener" => ("cpp", "listener", "xrce", ""),
-        "zephyr-xrce-cpp-service-server" | "xrce-cpp-service-server" => ("cpp", "service-server", "xrce", ""),
-        "zephyr-xrce-cpp-service-client" | "xrce-cpp-service-client" => ("cpp", "service-client", "xrce", ""),
-        "zephyr-xrce-cpp-action-server" | "xrce-cpp-action-server" => ("cpp", "action-server", "xrce", ""),
-        "zephyr-xrce-cpp-action-client" | "xrce-cpp-action-client" => ("cpp", "action-client", "xrce", ""),
+        "zephyr-xrce-cpp-service-server" | "xrce-cpp-service-server" => {
+            ("cpp", "service-server", "xrce", "")
+        }
+        "zephyr-xrce-cpp-service-client" | "xrce-cpp-service-client" => {
+            ("cpp", "service-client", "xrce", "")
+        }
+        "zephyr-xrce-cpp-action-server" | "xrce-cpp-action-server" => {
+            ("cpp", "action-server", "xrce", "")
+        }
+        "zephyr-xrce-cpp-action-client" | "xrce-cpp-action-client" => {
+            ("cpp", "action-client", "xrce", "")
+        }
         // Cyclone DDS — C / C++ today; Rust path lands once Phase 169.5
         // ships `nros-rmw-cyclonedds-sys`. Legacy `zephyr-dds-*` aliases
         // map to cyclonedds for source-compat after Phase 169.4 retired
@@ -591,18 +613,30 @@ fn decode_alias(example_name: &str) -> Option<(&'static str, &'static str, &'sta
         // a clean "example not found" failure.
         "zephyr-dds-rs-talker" | "dds-rs-talker" => ("rust", "talker", "cyclonedds", ""),
         "zephyr-dds-rs-listener" | "dds-rs-listener" => ("rust", "listener", "cyclonedds", ""),
-        "zephyr-dds-rs-service-server" | "dds-rs-service-server" => ("rust", "service-server", "cyclonedds", ""),
-        "zephyr-dds-rs-service-client" | "dds-rs-service-client" => ("rust", "service-client", "cyclonedds", ""),
-        "zephyr-dds-rs-action-server" | "dds-rs-action-server" => ("rust", "action-server", "cyclonedds", ""),
-        "zephyr-dds-rs-action-client" | "dds-rs-action-client" => ("rust", "action-client", "cyclonedds", ""),
-        "zephyr-dds-rs-async-service-client" | "dds-rs-async-service-client" => ("rust", "service-client-async", "cyclonedds", ""),
+        "zephyr-dds-rs-service-server" | "dds-rs-service-server" => {
+            ("rust", "service-server", "cyclonedds", "")
+        }
+        "zephyr-dds-rs-service-client" | "dds-rs-service-client" => {
+            ("rust", "service-client", "cyclonedds", "")
+        }
+        "zephyr-dds-rs-action-server" | "dds-rs-action-server" => {
+            ("rust", "action-server", "cyclonedds", "")
+        }
+        "zephyr-dds-rs-action-client" | "dds-rs-action-client" => {
+            ("rust", "action-client", "cyclonedds", "")
+        }
+        "zephyr-dds-rs-async-service-client" | "dds-rs-async-service-client" => {
+            ("rust", "service-client-async", "cyclonedds", "")
+        }
         "zephyr-dds-rs-talker-a9" => ("rust", "talker", "cyclonedds", "-a9"),
         "zephyr-dds-rs-listener-a9" => ("rust", "listener", "cyclonedds", "-a9"),
         "zephyr-dds-rs-service-server-a9" => ("rust", "service-server", "cyclonedds", "-a9"),
         "zephyr-dds-rs-service-client-a9" => ("rust", "service-client", "cyclonedds", "-a9"),
         "zephyr-dds-rs-action-server-a9" => ("rust", "action-server", "cyclonedds", "-a9"),
         "zephyr-dds-rs-action-client-a9" => ("rust", "action-client", "cyclonedds", "-a9"),
-        "zephyr-dds-rs-async-service-client-a9" => ("rust", "service-client-async", "cyclonedds", "-a9"),
+        "zephyr-dds-rs-async-service-client-a9" => {
+            ("rust", "service-client-async", "cyclonedds", "-a9")
+        }
         _ => return None,
     })
 }
@@ -637,9 +671,8 @@ fn example_path_for_name(example_name: &str) -> String {
 /// collapsed alias. Returns `None` for non-collapsed names so
 /// callers leave the west default (single `prj.conf`) alone.
 fn conf_files_for_example(example_name: &str) -> Option<String> {
-    decode_alias(example_name).map(|(_lang, _case, rmw, _suffix)| {
-        format!("prj.conf;prj-{rmw}.conf")
-    })
+    decode_alias(example_name)
+        .map(|(_lang, _case, rmw, _suffix)| format!("prj.conf;prj-{rmw}.conf"))
 }
 
 /// Get path to Zephyr binary, using existing build if available

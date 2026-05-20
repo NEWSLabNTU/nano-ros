@@ -337,8 +337,7 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
         )));
     }
 
-    let binary_path =
-        example_dir.join(format!("{}/release/{}", rmw.target_dir(), binary_name));
+    let binary_path = example_dir.join(format!("{}/release/{}", rmw.target_dir(), binary_name));
     require_prebuilt_binary(&binary_path)
 }
 
@@ -351,11 +350,7 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
 /// `examples/<name>/<rmw.build_dir()>/<binary_name>`. The actual
 /// `cmake -B build-<rmw> -S . -DNROS_RMW=<rmw> && cmake --build
 /// build-<rmw>` invocation belongs to `just <plat> build-fixtures`.
-pub fn build_example_cmake_rmw(
-    name: &str,
-    binary_name: &str,
-    rmw: Rmw,
-) -> TestResult<PathBuf> {
+pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
     let root = project_root();
     let example_dir = root.join(format!("examples/{}", name));
 
@@ -488,11 +483,7 @@ pub fn build_native_rust_example_rmw(
 /// directory name under `examples/native/c/` (talker, listener,
 /// service-server, …); `binary_name` is the cmake target (e.g.
 /// `c_talker`, `c_service_server`, …).
-pub fn build_native_c_example_rmw(
-    case: &str,
-    binary_name: &str,
-    rmw: Rmw,
-) -> TestResult<PathBuf> {
+pub fn build_native_c_example_rmw(case: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
     build_example_cmake_rmw(&format!("native/c/{}", case), binary_name, rmw)
 }
 
@@ -580,11 +571,7 @@ pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf
 
 /// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Mirrors the Rust resolver.
-pub fn build_zephyr_cmake_example_rmw(
-    lang: &str,
-    case: &str,
-    rmw: Rmw,
-) -> TestResult<PathBuf> {
+pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
     let root = project_root();
     let example_dir = root.join(format!("examples/zephyr/{}/{}", lang, case));
     if !example_dir.exists() {

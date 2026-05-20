@@ -193,8 +193,8 @@ int nros_app_main(int argc, char** argv) {
         goto cleanup;
     }
 
-    NROS_LOG_INFO(g_logger, "Goal accepted! (uuid=%02x%02x%02x%02x...)", goal_uuid.uuid[0], goal_uuid.uuid[1],
-           goal_uuid.uuid[2], goal_uuid.uuid[3]);
+    NROS_LOG_INFO(g_logger, "Goal accepted! (uuid=%02x%02x%02x%02x...)", goal_uuid.uuid[0],
+                  goal_uuid.uuid[1], goal_uuid.uuid[2], goal_uuid.uuid[3]);
 
     // Wait for result with timeout
     signal(SIGINT, signal_handler);

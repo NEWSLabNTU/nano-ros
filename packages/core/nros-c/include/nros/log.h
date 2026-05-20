@@ -41,8 +41,8 @@ extern "C" {
 typedef enum nros_log_severity_t {
     NROS_LOG_SEVERITY_TRACE = 0,
     NROS_LOG_SEVERITY_DEBUG = 1,
-    NROS_LOG_SEVERITY_INFO  = 2,
-    NROS_LOG_SEVERITY_WARN  = 3,
+    NROS_LOG_SEVERITY_INFO = 2,
+    NROS_LOG_SEVERITY_WARN = 3,
     NROS_LOG_SEVERITY_ERROR = 4,
     NROS_LOG_SEVERITY_FATAL = 5,
 } nros_log_severity_t;
@@ -51,7 +51,7 @@ typedef enum nros_log_severity_t {
  * Opaque handle to a `&'static nros_log::Logger`. Obtain via
  * `nros_node_get_logger(...)`. NEVER free.
  */
-typedef const void *nros_logger_t;
+typedef const void* nros_logger_t;
 
 /**
  * Low-level emit. Renders `message` (already-formatted UTF-8 text;
@@ -67,22 +67,16 @@ typedef const void *nros_logger_t;
  * @param message   UTF-8 text; not required to be null-terminated.
  * @param message_len  Length of `message` in bytes.
  */
-void nros_log_emit(
-    nros_logger_t        logger,
-    nros_log_severity_t  severity,
-    const char          *message,
-    size_t               message_len);
+void nros_log_emit(nros_logger_t logger, nros_log_severity_t severity, const char* message,
+                   size_t message_len);
 
 /**
  * Internal helper used by the macros. Formats `fmt + args` into a
  * stack buffer, then calls `nros_log_emit`. Buffer size = 256 bytes;
  * overflow is truncated + appended `...`.
  */
-void nros_log_emit_fmt(
-    nros_logger_t        logger,
-    nros_log_severity_t  severity,
-    const char          *fmt,
-    ...) __attribute__((format(printf, 3, 4)));
+void nros_log_emit_fmt(nros_logger_t logger, nros_log_severity_t severity, const char* fmt, ...)
+    __attribute__((format(printf, 3, 4)));
 
 /* ---- Convenience macros ---- */
 /* The macros stage the printf args into the heapless stack buffer
@@ -90,12 +84,16 @@ void nros_log_emit_fmt(
  * Rust side via the per-logger threshold; no compile-time gating on
  * the C surface (use `if (...)` guards if you need it). */
 
-#define NROS_LOG_TRACE(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_TRACE, __VA_ARGS__)
-#define NROS_LOG_DEBUG(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_DEBUG, __VA_ARGS__)
-#define NROS_LOG_INFO(logger, ...)  nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_INFO,  __VA_ARGS__)
-#define NROS_LOG_WARN(logger, ...)  nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_WARN,  __VA_ARGS__)
-#define NROS_LOG_ERROR(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_ERROR, __VA_ARGS__)
-#define NROS_LOG_FATAL(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_FATAL, __VA_ARGS__)
+#define NROS_LOG_TRACE(logger, ...)                                                                \
+    nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_TRACE, __VA_ARGS__)
+#define NROS_LOG_DEBUG(logger, ...)                                                                \
+    nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_DEBUG, __VA_ARGS__)
+#define NROS_LOG_INFO(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_INFO, __VA_ARGS__)
+#define NROS_LOG_WARN(logger, ...) nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_WARN, __VA_ARGS__)
+#define NROS_LOG_ERROR(logger, ...)                                                                \
+    nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_ERROR, __VA_ARGS__)
+#define NROS_LOG_FATAL(logger, ...)                                                                \
+    nros_log_emit_fmt((logger), NROS_LOG_SEVERITY_FATAL, __VA_ARGS__)
 
 /**
  * Phase 88.16.H — explicit installation of the default sink list.
@@ -125,7 +123,7 @@ void nros_log_init(void);
 nros_logger_t nros_log_default_logger(void);
 
 #ifdef __cplusplus
-}  /* extern "C" */
+} /* extern "C" */
 #endif
 
 #endif /* NROS_LOG_H */

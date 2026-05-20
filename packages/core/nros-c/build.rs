@@ -503,7 +503,12 @@ fn picolibc_include() -> Option<String> {
         }
     }
     if let Ok(output) = std::process::Command::new("riscv64-unknown-elf-gcc")
-        .args(["-march=rv64gc", "-mabi=lp64d", "--specs=picolibc.specs", "-print-sysroot"])
+        .args([
+            "-march=rv64gc",
+            "-mabi=lp64d",
+            "--specs=picolibc.specs",
+            "-print-sysroot",
+        ])
         .output()
     {
         let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();

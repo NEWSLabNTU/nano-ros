@@ -58,7 +58,11 @@ use std_msgs::msg::Int32;
 // Phase 118 — RMW selection is build-time via the mutually
 // exclusive `rmw-{zenoh,cyclonedds,xrce}` features.
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-cyclonedds",
+    feature = "rmw-xrce"
+)))]
 compile_error!(
     "examples/native/rust/talker requires exactly one of \
      `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled. \

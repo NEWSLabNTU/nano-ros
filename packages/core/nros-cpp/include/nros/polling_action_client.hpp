@@ -77,7 +77,7 @@ template <typename A> class PollingActionClient {
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
         return Result(nros_cpp_action_client_send_goal_raw(
-            storage_, buf, len, reinterpret_cast<uint8_t (*)[16]>(goal_id_out)));
+            storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id_out)));
     }
 
     /// Try to receive the send_goal RPC reply (accept / reject).
@@ -99,7 +99,7 @@ template <typename A> class PollingActionClient {
     Result send_get_result_request(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_send_get_result_request_raw(
-            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id)));
+            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
     /// Try to receive the get_result reply as a typed result.
@@ -125,7 +125,7 @@ template <typename A> class PollingActionClient {
     Result send_cancel_request(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_send_cancel_request_raw(
-            storage_, reinterpret_cast<const uint8_t (*)[16]>(goal_id)));
+            storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
     /// Try to receive the cancel RPC reply (raw CDR bytes).
@@ -147,7 +147,7 @@ template <typename A> class PollingActionClient {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
         int32_t rc = nros_cpp_action_client_try_recv_feedback_raw(
-            storage_, buf, sizeof(buf), reinterpret_cast<uint8_t (*)[16]>(goal_id_out));
+            storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
         if (FeedbackType::ffi_deserialize(buf, static_cast<size_t>(rc), &out_fb) != 0)

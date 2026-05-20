@@ -214,6 +214,7 @@ format:
     set -e
     echo "Formatting examples..."
     find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
+        -not -path '*/build/*' -not -path '*/build-*/*' \
         -not -path '*/generated/*' -not -path '*/zephyr/*' \
         -not -path '*/multi-package-workspace/*' \
         -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
