@@ -401,11 +401,30 @@ Target matrix (after rename + new cells):
         compile + link clean against
         `-DCMAKE_PREFIX_PATH=build/install` (Cyclone DDS 0.10.5 from
         `just cyclonedds setup`). Verified 2026-05-20.
-      - [x] **rust** — **171.C.1.rust. Talker LANDED + runtime-verified
-        2026-05-20 (`b49b0b42e`): builds, creates publisher, publishes
-        `std_msgs/Int32` on `/chatter` at 1 Hz.** Remaining 5 rust cases
-        (listener / service-{server,client} / action-{server,client})
-        replicate the talker mechanically. Architecture resolved
+      - [x] **rust** — **171.C.1.rust. Talker + listener LANDED +
+        runtime-verified; service build-verified; action deferred.**
+        Per-cell status (2026-05-21):
+        - **talker** (`b49b0b42e`) — publishes `std_msgs/Int32` at 1 Hz.
+        - **listener** (`a17ad5ba5`) — subscribes `/chatter`; rust
+          talker → rust listener e2e delivers 0..4 over the wire.
+        - **service-{server,client}** (`e9f5f2b61`) — build clean
+          against the AddTwoInts cyclonedds typesupport. E2e round-trip
+          NOT yet passing: the rust client's first call races the
+          reply-path endpoint match (the C client hits the same race and
+          recovers on the next call), but the rust client API leaves the
+          request "in flight" after a timeout → calls 2..4 fail
+          `RequestInFlight` → 0/4. C-API service e2e works and rust topic
+          pub/sub works, so this is a rust-client service round-trip bug
+          on native cyclonedds (follow-up, not example scaffolding).
+        - **action-{server,client}** — NOT created. All-language action
+          over cyclonedds is blocked first: the cyclonedds branch of
+          `nros_generate_interfaces` only wires `.msg`/`.srv`
+          descriptors, not `.action`, so even the c/cpp action examples
+          build but fail at runtime (`register_action_* -> -1`). Wiring
+          action-type descriptors is the prerequisite (tracked with the
+          deferred 171.0.b action item).
+
+        Architecture resolved
         2026-05-20: a pure-cargo `nros-rmw-cyclonedds-staticlib`
         (the original plan, mirroring `nros-rmw-zenoh-staticlib`)
         will NOT work.** The Cyclone backend's raw-CDR path
@@ -504,7 +523,19 @@ Target matrix (after rename + new cells):
         Verified: native c + cpp talkers publish `std_msgs/Int32` at
         1 Hz, and a **C talker → C listener cross-process run delivers
         over the wire (`Received: 1..5`)** — full data-plane e2e, all
-        three languages.
+        three languages. **C + C++ service e2e** also works
+        (server↔client AddTwoInts: 10+20=30, 100+200=300, -5+10=5; first
+        call races discovery then recovers). **C/C++ action examples
+        build but fail at runtime** (`register_action_* -> -1`) — the
+        cyclonedds branch wires `.msg`/`.srv` descriptors only, not
+        `.action`; action-type descriptor wiring is the prerequisite
+        (deferred 171.0.b). Unblocking the service/action *builds*
+        required two fixes (`a17ad5ba5`): skip `wstring` interfaces
+        (Cyclone 0.10.5 idlc crashes on wide-string; the full ROS
+        `example_interfaces` from `AMENT_PREFIX_PATH` ships
+        `WString[MultiArray]`), and default the backend CTest harness ON
+        only when it is the top-level project (so an example's
+        `add_subdirectory` no longer builds the backend's own fixtures).
 
         **Hazard to design around (the reason this is not a quick
         spike):** the `rustapp` staticlib pulls the **Rust** nros
