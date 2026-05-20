@@ -262,12 +262,12 @@ pub fn build_example(
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Rmw {
     Zenoh,
-    Dds,
     Xrce,
     /// Phase 11W — Cyclone DDS. Today exercised by the Zephyr
     /// `prj-cyclonedds.conf` overlay path; native / FreeRTOS /
     /// ThreadX wiring follows once those platforms grow a
-    /// cyclonedds backend.
+    /// cyclonedds backend. (Phase 171.A removed the dead `Rmw::Dds`
+    /// dust-DDS variant — dust-DDS retired in Phase 169.)
     Cyclonedds,
 }
 
@@ -277,7 +277,6 @@ impl Rmw {
     pub fn cargo_feature(self) -> &'static str {
         match self {
             Rmw::Zenoh => "rmw-zenoh",
-            Rmw::Dds => "rmw-dds",
             Rmw::Xrce => "rmw-xrce",
             Rmw::Cyclonedds => "rmw-cyclonedds",
         }
@@ -287,7 +286,6 @@ impl Rmw {
     pub fn target_dir(self) -> &'static str {
         match self {
             Rmw::Zenoh => "target-zenoh",
-            Rmw::Dds => "target-dds",
             Rmw::Xrce => "target-xrce",
             Rmw::Cyclonedds => "target-cyclonedds",
         }
@@ -297,7 +295,6 @@ impl Rmw {
     pub fn cmake_value(self) -> &'static str {
         match self {
             Rmw::Zenoh => "zenoh",
-            Rmw::Dds => "dds",
             Rmw::Xrce => "xrce",
             Rmw::Cyclonedds => "cyclonedds",
         }
@@ -308,7 +305,6 @@ impl Rmw {
     pub fn build_dir(self) -> &'static str {
         match self {
             Rmw::Zenoh => "build-zenoh",
-            Rmw::Dds => "build-dds",
             Rmw::Xrce => "build-xrce",
             Rmw::Cyclonedds => "build-cyclonedds",
         }
@@ -373,12 +369,10 @@ pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestR
 /// `build-{zenoh,dds,xrce}/` dirs.
 pub fn build_native_c_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
-    static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
     static CYCLONEDDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_CELL,
-        Rmw::Dds => &DDS_CELL,
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
@@ -439,12 +433,10 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
 /// nextest run avoid filesystem-stat overhead.
 pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
-    static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
     static CYCLONEDDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_CELL,
-        Rmw::Dds => &DDS_CELL,
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
@@ -455,12 +447,10 @@ pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
 /// Phase 118 — collapsed-shape native listener, RMW-parametrized.
 pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
-    static DDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
     static CYCLONEDDS_CELL: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_CELL,
-        Rmw::Dds => &DDS_CELL,
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };

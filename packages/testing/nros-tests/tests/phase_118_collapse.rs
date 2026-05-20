@@ -23,7 +23,6 @@ use rstest::rstest;
 
 #[rstest]
 #[case::zenoh(Rmw::Zenoh)]
-#[case::dds(Rmw::Dds)]
 #[case::xrce(Rmw::Xrce)]
 fn test_native_talker_rmw_variant_exists(#[case] rmw: Rmw) {
     let binary = build_native_talker_rmw(rmw).unwrap_or_else(|e| {
@@ -68,7 +67,6 @@ fn test_native_talker_rmw_variant_exists(#[case] rmw: Rmw) {
 /// Phase 118.B.1 — collapsed-shape native Rust listener.
 #[rstest]
 #[case::zenoh(Rmw::Zenoh)]
-#[case::dds(Rmw::Dds)]
 #[case::xrce(Rmw::Xrce)]
 fn test_native_listener_rmw_variant_exists(#[case] rmw: Rmw) {
     let binary = build_native_listener_rmw(rmw).unwrap_or_else(|e| {
@@ -101,16 +99,12 @@ fn test_native_listener_rmw_variant_exists(#[case] rmw: Rmw) {
 /// parametrized test covers all 4 cases × 3 RMWs.
 #[rstest]
 #[case::ss_zenoh("service-server", Rmw::Zenoh)]
-#[case::ss_dds("service-server", Rmw::Dds)]
 #[case::ss_xrce("service-server", Rmw::Xrce)]
 #[case::sc_zenoh("service-client", Rmw::Zenoh)]
-#[case::sc_dds("service-client", Rmw::Dds)]
 #[case::sc_xrce("service-client", Rmw::Xrce)]
 #[case::as_zenoh("action-server", Rmw::Zenoh)]
-#[case::as_dds("action-server", Rmw::Dds)]
 #[case::as_xrce("action-server", Rmw::Xrce)]
 #[case::ac_zenoh("action-client", Rmw::Zenoh)]
-#[case::ac_dds("action-client", Rmw::Dds)]
 #[case::ac_xrce("action-client", Rmw::Xrce)]
 fn test_native_service_action_rmw_variant_exists(#[case] case: &str, #[case] rmw: Rmw) {
     let binary = build_native_rust_example_rmw(case, case, rmw).unwrap_or_else(|e| {
@@ -147,7 +141,6 @@ fn test_native_service_action_rmw_variant_exists(#[case] case: &str, #[case] rmw
 /// and gets dropped in Tier 5 cleanup.
 #[rstest]
 #[case::zenoh(Rmw::Zenoh)]
-#[case::dds(Rmw::Dds)]
 #[case::xrce(Rmw::Xrce)]
 fn test_native_c_talker_rmw_variant_exists(#[case] rmw: Rmw) {
     let binary = build_native_c_talker_rmw(rmw).unwrap_or_else(|e| {
@@ -194,19 +187,14 @@ fn test_native_c_talker_rmw_variant_exists(#[case] rmw: Rmw) {
 /// uses the typed bindings and builds under all three RMWs.
 #[rstest]
 #[case::listener_zenoh("listener", "c_listener", Rmw::Zenoh)]
-#[case::listener_dds("listener", "c_listener", Rmw::Dds)]
 #[case::listener_xrce("listener", "c_listener", Rmw::Xrce)]
 #[case::ss_zenoh("service-server", "c_service_server", Rmw::Zenoh)]
-#[case::ss_dds("service-server", "c_service_server", Rmw::Dds)]
 #[case::ss_xrce("service-server", "c_service_server", Rmw::Xrce)]
 #[case::sc_zenoh("service-client", "c_service_client", Rmw::Zenoh)]
-#[case::sc_dds("service-client", "c_service_client", Rmw::Dds)]
 #[case::sc_xrce("service-client", "c_service_client", Rmw::Xrce)]
 #[case::as_zenoh("action-server", "c_action_server", Rmw::Zenoh)]
-#[case::as_dds("action-server", "c_action_server", Rmw::Dds)]
 #[case::as_xrce("action-server", "c_action_server", Rmw::Xrce)]
 #[case::ac_zenoh("action-client", "c_action_client", Rmw::Zenoh)]
-#[case::ac_dds("action-client", "c_action_client", Rmw::Dds)]
 #[case::ac_xrce("action-client", "c_action_client", Rmw::Xrce)]
 fn test_native_c_listener_service_action_rmw_variant_exists(
     #[case] case: &str,
@@ -244,22 +232,16 @@ fn test_native_c_listener_service_action_rmw_variant_exists(
 /// across all three RMWs without per-RMW source changes.
 #[rstest]
 #[case::talker_zenoh("talker", "cpp_talker", Rmw::Zenoh)]
-#[case::talker_dds("talker", "cpp_talker", Rmw::Dds)]
 #[case::talker_xrce("talker", "cpp_talker", Rmw::Xrce)]
 #[case::listener_zenoh("listener", "cpp_listener", Rmw::Zenoh)]
-#[case::listener_dds("listener", "cpp_listener", Rmw::Dds)]
 #[case::listener_xrce("listener", "cpp_listener", Rmw::Xrce)]
 #[case::ss_zenoh("service-server", "cpp_service_server", Rmw::Zenoh)]
-#[case::ss_dds("service-server", "cpp_service_server", Rmw::Dds)]
 #[case::ss_xrce("service-server", "cpp_service_server", Rmw::Xrce)]
 #[case::sc_zenoh("service-client", "cpp_service_client", Rmw::Zenoh)]
-#[case::sc_dds("service-client", "cpp_service_client", Rmw::Dds)]
 #[case::sc_xrce("service-client", "cpp_service_client", Rmw::Xrce)]
 #[case::as_zenoh("action-server", "cpp_action_server", Rmw::Zenoh)]
-#[case::as_dds("action-server", "cpp_action_server", Rmw::Dds)]
 #[case::as_xrce("action-server", "cpp_action_server", Rmw::Xrce)]
 #[case::ac_zenoh("action-client", "cpp_action_client", Rmw::Zenoh)]
-#[case::ac_dds("action-client", "cpp_action_client", Rmw::Dds)]
 #[case::ac_xrce("action-client", "cpp_action_client", Rmw::Xrce)]
 fn test_native_cpp_rmw_variant_exists(#[case] case: &str, #[case] binary: &str, #[case] rmw: Rmw) {
     let path = build_native_cpp_example_rmw(case, binary, rmw).unwrap_or_else(|e| {
@@ -295,7 +277,6 @@ fn test_native_cpp_rmw_variant_exists(#[case] case: &str, #[case] binary: &str, 
 /// stays exactly as before. Same `--target-dir` isolation pattern.
 #[rstest]
 #[case::zenoh(Rmw::Zenoh)]
-#[case::dds(Rmw::Dds)]
 fn test_freertos_talker_rmw_variant_exists(#[case] rmw: Rmw) {
     let path = nros_tests::fixtures::build_freertos_rust_example_rmw(
         "talker",
@@ -323,9 +304,7 @@ fn test_freertos_talker_rmw_variant_exists(#[case] rmw: Rmw) {
 /// are zenoh-only (no pre-collapse DDS sibling).
 #[rstest]
 #[case::talker_zenoh("talker", "qemu-freertos-talker", Rmw::Zenoh)]
-#[case::talker_dds("talker", "qemu-freertos-talker", Rmw::Dds)]
 #[case::listener_zenoh("listener", "qemu-freertos-listener", Rmw::Zenoh)]
-#[case::listener_dds("listener", "qemu-freertos-listener", Rmw::Dds)]
 #[case::ss_zenoh("service-server", "qemu-freertos-service-server", Rmw::Zenoh)]
 #[case::sc_zenoh("service-client", "qemu-freertos-service-client", Rmw::Zenoh)]
 #[case::as_zenoh("action-server", "qemu-freertos-action-server", Rmw::Zenoh)]
@@ -440,9 +419,7 @@ fn test_nuttx_cmake_case_rmw_variant_exists(
 /// support {zenoh, dds}; service-* + action-* are zenoh-only.
 #[rstest]
 #[case::talker_zenoh("talker", "qemu-riscv64-threadx-talker", Rmw::Zenoh)]
-#[case::talker_dds("talker", "qemu-riscv64-threadx-talker", Rmw::Dds)]
 #[case::listener_zenoh("listener", "qemu-riscv64-threadx-listener", Rmw::Zenoh)]
-#[case::listener_dds("listener", "qemu-riscv64-threadx-listener", Rmw::Dds)]
 #[case::ss_zenoh("service-server", "qemu-riscv64-threadx-service-server", Rmw::Zenoh)]
 #[case::sc_zenoh("service-client", "qemu-riscv64-threadx-service-client", Rmw::Zenoh)]
 #[case::as_zenoh("action-server", "qemu-riscv64-threadx-action-server", Rmw::Zenoh)]
@@ -511,9 +488,7 @@ fn test_threadx_rv64_cmake_case_rmw_variant_exists(
 /// Phase 118.B.7 — ThreadX-Linux Rust cases.
 #[rstest]
 #[case::talker_zenoh("talker", "threadx-linux-talker", Rmw::Zenoh)]
-#[case::talker_dds("talker", "threadx-linux-talker", Rmw::Dds)]
 #[case::listener_zenoh("listener", "threadx-linux-listener", Rmw::Zenoh)]
-#[case::listener_dds("listener", "threadx-linux-listener", Rmw::Dds)]
 #[case::ss_zenoh("service-server", "threadx-linux-service-server", Rmw::Zenoh)]
 #[case::sc_zenoh("service-client", "threadx-linux-service-client", Rmw::Zenoh)]
 #[case::as_zenoh("action-server", "threadx-linux-action-server", Rmw::Zenoh)]
