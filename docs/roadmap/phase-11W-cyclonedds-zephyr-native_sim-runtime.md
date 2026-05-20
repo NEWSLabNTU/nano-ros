@@ -665,6 +665,42 @@ green.
   passes. **cyclonedds Rust talker now runs stably on Zephyr
   native_sim end to end.**
 
+- **11W.11 (2026-05-20) — discovery: mreq fixed, blocked on real
+  interface.** Pursued true talker↔listener discovery. The SPDP
+  multicast join (`IP_ADD_MEMBERSHIP`) was failing with two causes:
+  1. **mreq struct size (FIXED, `nsos-mcjoin-mreq-patch.sh`).** The
+     NSOS `IP_ADD_MEMBERSHIP` handler (from
+     `native-sim-ipproto-ip-patch.sh`) hard-coded
+     `optlen != sizeof(struct ip_mreqn)` (12 B) → EINVAL. Cyclone
+     passes `struct ip_mreq` (8 B, via the `zephyr_ipv4_compat.h`
+     shim). Both share the same first 8 bytes (multiaddr +
+     interface-IP); the patch reads the two leading `in_addr`s and
+     accepts either size. Confirmed the 8-byte mreq now reaches the
+     host setsockopt (`mreqsz=8`).
+  2. **Loopback interface can't join multicast (OPEN).** With the
+     mreq fix the host `setsockopt(IP_ADD_MEMBERSHIP,
+     group=239.255.0.1, interface=127.0.0.1)` still returns -1:
+     Linux can't join an arbitrary multicast group on the loopback
+     interface. The synthetic `ddsrt_getifaddrs` returns `127.0.0.1`
+     (`link_stubs.c`) — fine for unicast bind, not for a multicast
+     join. ddsi_ownip rejects `0.0.0.0` (unspecified), so a real,
+     multicast-capable host interface address is required.
+
+  **Path to discovery (Phase 11W.12):** implement a real
+  `ddsrt_getifaddrs` backed by an NSOS `getifaddrs` (host
+  `getifaddrs()` trampoline — a new NSOS feature, like getsockname /
+  recvmsg) so Cyclone selects the host's actual primary interface;
+  the multicast join then lands on a real interface and two
+  native_sim processes discover each other. Alternative: unicast
+  peer discovery (`Discovery/Peers` + NSOS `getaddrinfo`), needing
+  deterministic per-participant ports and a working `getaddrinfo`.
+
+  Current state: the mc-join-best-effort patch (11W.8) keeps the
+  failed join non-fatal, so talker (publishes) and listener
+  (subscribes) each run cleanly; they just don't discover each
+  other yet. The mreq optlen fix lands regardless — a correct NSOS
+  bug fix independent of the interface question.
+
   **Remaining for full E2E:** the build hardcodes
   `/opt/ros/humble/share/std_msgs` + `build/cyclonedds/bin/idlc`
   (acceptable: the cyclonedds Zephyr path already needs ROS +
