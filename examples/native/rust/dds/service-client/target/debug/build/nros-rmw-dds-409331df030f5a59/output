@@ -1,0 +1,3 @@
+cargo:rerun-if-env-changed=NROS_LOCAL_IPV4
+cargo:rerun-if-env-changed=DOTCONFIG
+cargo:rustc-env=NROS_LOCAL_IPV4_BYTES=127,0,0,1

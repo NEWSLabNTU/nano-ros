@@ -1,0 +1,1 @@
+{"rustc":7458672600737419911,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[11447550320967150745,"build_script_build",false,5125169265951136258]],"local":[{"RerunIfEnvChanged":{"var":"NROS_LOCAL_IPV4","val":null}},{"RerunIfEnvChanged":{"var":"DOTCONFIG","val":null}}],"rustflags":["-C","symbol-mangling-version=v0"],"config":0,"compile_kind":0}

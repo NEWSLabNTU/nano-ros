@@ -1,0 +1,10 @@
+cargo:rustc-check-cfg=cfg(has_rmw)
+cargo:rustc-cfg=has_rmw
+cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_CBS
+cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_SC
+cargo:rerun-if-env-changed=NROS_SUBSCRIPTION_BUFFER_SIZE
+cargo:rerun-if-env-changed=NROS_PARAM_SERVICE_BUFFER_SIZE
+cargo:rerun-if-env-changed=NROS_EXECUTOR_ARENA_SIZE
+cargo:max_cbs=4
+cargo:arena_size=74240
+cargo:rx_buf_size=1024

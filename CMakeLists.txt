@@ -283,6 +283,17 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
         else()
             target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)
         endif()
+        # Cyclone DDS's RMW wrapper is C++ (operator new/delete,
+        # std::nothrow). A C application linking `NanoRos::NanoRos`
+        # drives the link with the C compiler, which does NOT pull in
+        # the C++ runtime — so C examples (e.g. examples/native/c/
+        # cyclonedds/) fail with undefined `operator new`/`delete` /
+        # `std::nothrow`. Propagate the C++ stdlib through the INTERFACE
+        # so any C consumer resolves them. Harmless for C++ apps (the
+        # C++ driver already links it).
+        if(NOT APPLE)
+            target_link_libraries(NanoRos INTERFACE stdc++)
+        endif()
     endif()
 else()
     message(FATAL_ERROR

@@ -293,15 +293,28 @@ example is platform-agnostic enough to retarget at Cyclone DDS:
       (dust-DDS still on `main`) + a documented cyclonedds
       replacement (or an "intentionally empty cell" entry where
       Cyclone DDS can't fit the RTOS).
-- [ ] **171.B.3** For the rename candidates (`native`, `zephyr`,
-      `threadx-linux`): `git mv examples/<plat>/<lang>/dds/
-      examples/<plat>/<lang>/cyclonedds/` + flip the backend to
-      cyclonedds. **Gated on a verified cyclonedds build**
-      (171.C.1/.3): `third-party/dds/cyclonedds/` is populated but
-      not built (`build/cyclonedds/install/` absent), so flipping a
-      working dust example to an unverified cyclonedds backend
-      would break `just ci`. Run `just cyclonedds setup` + verify
-      the native cyclonedds build first.
+- [~] **171.B.3** For the rename candidates: `git mv
+      examples/<plat>/<lang>/dds/ .../cyclonedds/` + flip the
+      backend to cyclonedds.
+      - [x] **`native/c` + `native/cpp`** (the only tracked `dds/`
+        example dirs left after 169) renamed → `native/{c,cpp}/cyclonedds`,
+        cmake flipped `NANO_ROS_RMW dds` → `cyclonedds` + `project()`
+        prefixes renamed. **Verified**: `just cyclonedds setup` built
+        Cyclone DDS 0.10.5; native c + cpp `cyclonedds/talker` both
+        compile + link clean against `-DCMAKE_PREFIX_PATH=build/install`.
+        Surfaced + fixed a real build bug: a C app linking the C++
+        `nros-rmw-cyclonedds` failed with undefined `operator
+        new`/`delete` / `std::nothrow` — the C link driver omits the
+        C++ runtime. Fixed by propagating `stdc++` through the
+        `NanoRos` INTERFACE in the root cmake cyclonedds branch
+        (non-APPLE).
+      - [ ] **`native/rust`** + the RTOS rust `dds/` dirs are already
+        gutted by Phase 169 (source removed; only untracked
+        `generated/`+`target/` artifacts remain). No tracked source
+        to rename — these collapse into 171.B.2 (delete) / 171.C
+        (cyclonedds-staticlib re-add) follow-ups.
+      - [ ] **`threadx-linux`** rust cyclonedds — gated on the
+        `nros-rmw-cyclonedds-staticlib` Rust path (171.C.3).
 - [ ] **171.B.4** Update `examples/README.md` matrix: drop the
       `dds` column, mark every renamed cell under `cyclonedds`.
       (Follows B.2 + B.3.)
