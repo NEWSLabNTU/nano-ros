@@ -63,7 +63,7 @@ build-fixtures:
         echo "NuttX skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     echo "Building NuttX test fixtures..."
-    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     # Phase 160 follow-up — parallel cargo builds (per-example isolated
@@ -74,7 +74,7 @@ build-fixtures:
     done
     # Phase 169 retired dust-dds; the NuttX `rust/dds/<ex>` examples had
     # no Cyclone replacement (Cyclone needs a ddsrt NuttX port — see
-    # phase-170) and are no longer built.
+    # phase-175) and are no longer built.
     # Phase 88.15.c — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm")
     printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \

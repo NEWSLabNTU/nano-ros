@@ -61,7 +61,7 @@ build-fixtures:
         echo "ThreadX-Linux skip: THREADX_DIR unset and third-party/threadx/kernel absent"; exit 0
     fi
     echo "Building ThreadX-Linux test fixtures..."
-    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
@@ -105,7 +105,7 @@ build-fixtures:
         fi
         # Phase 169 retired dust-dds; Cyclone (its replacement) has no
         # pure-cargo build, so the migrated rmw-cyclonedds feature stays
-        # defined but unbuilt — deferred to phase-170. zenoh-only here.
+        # defined but unbuilt — deferred to phase-175. zenoh-only here.
         rmws="zenoh"
         for rmw in $rmws; do
             echo "  → threadx-linux/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"

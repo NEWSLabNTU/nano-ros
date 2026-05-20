@@ -137,7 +137,7 @@ build-examples: build \
 build-all: build-examples build-test-fixtures
     @echo "All builds completed (workspace + examples + test fixtures)."
 
-# Phase 173 — `build-all` under one GNU-make fifo jobserver shared across
+# Phase 176 — `build-all` under one GNU-make fifo jobserver shared across
 # every stage (cargo + build-script cc + ninja-via-west + cmake), instead
 # of the static per-platform `parallel --jobs` split. When the fast
 # platforms finish, their tokens flow to the long pole automatically.
@@ -233,13 +233,13 @@ check: \
 check-platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
 
-# Phase 173.4 — verify <nros/board.h> matches the Rust extern block
+# Phase 176.4 — verify <nros/board.h> matches the Rust extern block
 # and the `nros_board_export!` macro emission in nros-board-cffi.
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
 
-# Phase 173.3 — verify the orchestration generator's PlatformProfile
+# Phase 176.3 — verify the orchestration generator's PlatformProfile
 # board-crate references match the actual board crates (existence +
 # `run` entry). Skips when the colcon-nano-ros submodule is absent.
 [private]

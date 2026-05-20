@@ -3,13 +3,13 @@ set working-directory := '..'
 NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
 
 # Pinned ninja version. Ubuntu's apt `ninja-build` lags (1.10); we need
-# ≥1.13 for the GNU-jobserver client (Phase 173). Installed as a static
+# ≥1.13 for the GNU-jobserver client (Phase 176). Installed as a static
 # binary under `third-party/ninja/`; `.envrc` prepends it to PATH.
 NINJA_VERSION := "1.13.2"
 
 # Pinned GNU make version. Ubuntu ships 4.3, whose jobserver is
 # pipe-fd-based; ninja 1.13's jobserver client speaks ONLY the
-# fifo protocol (make ≥4.4, `--jobserver-style=fifo`). Phase 173's
+# fifo protocol (make ≥4.4, `--jobserver-style=fifo`). Phase 176's
 # unified jobserver needs 4.4. Built from source to third-party/make/;
 # `.envrc` prepends it to PATH.
 MAKE_VERSION := "4.4.1"
@@ -43,7 +43,7 @@ setup:
 # Build the pinned GNU make (>=4.4) from source under third-party/make/.
 # Ubuntu's make 4.3 jobserver is pipe-fd-based; ninja 1.13's jobserver
 # client only speaks fifo (make 4.4 `--jobserver-style=fifo`). Needed
-# for the Phase 173 unified jobserver. `.envrc` puts it first on PATH.
+# for the Phase 176 unified jobserver. `.envrc` puts it first on PATH.
 # Lives under third-party/ (survives `just clean`). Idempotent.
 install-make:
     #!/usr/bin/env bash
@@ -130,7 +130,7 @@ doctor:
         fail=1
     fi
 
-    # --- pinned ninja (>=1.13 for the GNU-jobserver client, Phase 173) ---
+    # --- pinned ninja (>=1.13 for the GNU-jobserver client, Phase 176) ---
     ninja_bin="third-party/ninja/ninja"
     if [ -x "$ninja_bin" ] && [ "$("$ninja_bin" --version 2>/dev/null)" = "{{NINJA_VERSION}}" ]; then
         echo "  [OK] ninja {{NINJA_VERSION}} (third-party/ninja; jobserver-capable)"
@@ -139,7 +139,7 @@ doctor:
         fail=1
     fi
 
-    # --- pinned make (>=4.4 for the fifo jobserver, Phase 173) ---
+    # --- pinned make (>=4.4 for the fifo jobserver, Phase 176) ---
     make_bin="third-party/make/make"
     if [ -x "$make_bin" ] && "$make_bin" --version 2>/dev/null | head -1 | grep -q "{{MAKE_VERSION}}"; then
         echo "  [OK] make {{MAKE_VERSION}} (third-party/make; fifo jobserver)"

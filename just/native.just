@@ -76,7 +76,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     echo "Building native test fixtures..."
-    # Phase 173 — cmake parallelism: under the fifo jobserver
+    # Phase 176 — cmake parallelism: under the fifo jobserver
     # (NROS_JOBSERVER=1) leave CMAKE_BUILD_PARALLEL_LEVEL unset so the
     # generator (ninja/make) inherits the shared pool; otherwise pin it
     # to the budget (the explicit `--parallel` flag was removed).
@@ -153,7 +153,7 @@ build-fixtures:
     # each Cargo.toml but is NOT built here — Cyclone-for-cargo-Rust
     # examples are deferred to their own phase (CMake/Corrosion glue for
     # native + a ddsrt RTOS port for embedded). See
-    # docs/roadmap/phase-170-cyclone-rust-example-build-path.md.
+    # docs/roadmap/phase-175-cyclone-rust-example-build-path.md.
     for collapsed_case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/rust/${collapsed_case} ]; then
             for rmw in zenoh xrce; do

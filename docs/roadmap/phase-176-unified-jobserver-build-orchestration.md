@@ -1,4 +1,4 @@
-# Phase 173 - Unified jobserver build orchestration
+# Phase 176 - Unified jobserver build orchestration
 
 **Goal.** Replace the static, per-platform parallelism split in
 `build-all` with a single GNU make jobserver shared across every build
@@ -8,11 +8,11 @@ build draws from one dynamically-allocated token pool. The long pole
 on a fixed 1/Nth share.
 
 **Status.** **Landed + validated end-to-end (A/B/C/D).** Pinned make
-4.4.1 + ninja 1.13.2 install (173.A); `build-all.mk` + `just
-build-all-jobserver` (173.B); all downstream `-j` stripped — zephyr
+4.4.1 + ninja 1.13.2 install (176.A); `build-all.mk` + `just
+build-all-jobserver` (176.B); all downstream `-j` stripped — zephyr
 `CMAKE_BUILD_PARALLEL_LEVEL`, cmake `--parallel` in the C/C++ recipes,
 + a `gmake`→make-4.4 alias so stray sub-makes don't choke on the fifo
-auth (173.C). **Full-sweep validation (173.D)**: `NROS_BUILD_JOBS=32
+auth (176.C). **Full-sweep validation (176.D)**: `NROS_BUILD_JOBS=32
 just build-all-jobserver` ran the whole build under one
 `make 4.4 -j32 --jobserver-style=fifo` pool — cargo rustc throttles to
 the pool, ninja 1.13 logged `Jobserver mode detected: fifo:…` in 55
@@ -94,7 +94,7 @@ over-count by ~1 per proc; make-as-scheduler is cleaner.)
 
 ## Work items
 
-### 173.A — toolchain
+### 176.A — toolchain
 
 - [ ] Build/pin ninja ≥1.13 (build-from-source under `third-party/`,
       mirror the patched-qemu recipe); test-harness/recipe path picks it
@@ -104,14 +104,14 @@ over-count by ~1 per proc; make-as-scheduler is cleaner.)
 - [ ] `just doctor` checks for ninja ≥1.13 + make ≥4.4; falls back to
       the static split when absent.
 
-### 173.B — `build-all.mk` generator
+### 176.B — `build-all.mk` generator
 
 - [ ] Generate independent targets for every build step from the same
       platform/example lists the current recipes walk.
 - [ ] `make -jN --jobserver-style=fifo -f build-all.mk` entry point;
       `NROS_BUILD_JOBS` → `N`.
 
-### 173.C — strip downstream job flags
+### 176.C — strip downstream job flags
 
 - [ ] Remove every explicit `-j` / `--parallel N` /
       `CMAKE_BUILD_PARALLEL_LEVEL` / cargo `-j` from the per-stage
@@ -121,7 +121,7 @@ over-count by ~1 per proc; make-as-scheduler is cleaner.)
 - [ ] Verify `MAKEFLAGS` propagates unmodified through `just` → recipe →
       tool (don't sanitize the env).
 
-### 173.D — validation
+### 176.D — validation
 
 - [ ] `htop` shows sustained ~N utilization through the whole build,
       including the zephyr tail (no idle cores once fast platforms
@@ -133,7 +133,7 @@ over-count by ~1 per proc; make-as-scheduler is cleaner.)
 ## Notes
 
 - Hard rule: **any** explicit job flag on **any** stage detaches it from
-  the pool — the audit in 173.C is the load-bearing part.
+  the pool — the audit in 176.C is the load-bearing part.
 - The fifo jobserver path must survive `cargo → build.rs → cc` and
   `west → cmake → ninja`; that's exactly why make 4.4 fifo (not 4.3
   pipe) is required.

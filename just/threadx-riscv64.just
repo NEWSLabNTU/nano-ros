@@ -94,7 +94,7 @@ build-fixtures:
         echo "ThreadX-RV64 skip: riscv64-unknown-elf-gcc not found"; exit 0
     fi
     echo "Building ThreadX-RV64 test fixtures..."
-    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
     toolchain="$root/cmake/toolchain/riscv64-threadx.cmake"

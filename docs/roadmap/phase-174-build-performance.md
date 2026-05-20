@@ -12,7 +12,7 @@ budget + parallel zephyr have landed; the larger structural wins
 **Priority.** P3 (ergonomics/CI throughput).
 
 **Depends on.** none for the landed work. The open items pull in
-Phase 173 (jobserver) and Phase 67 / #67 (SDK-prebuilt picolibc).
+Phase 176 (jobserver) and Phase 67 / #67 (SDK-prebuilt picolibc).
 
 ## Landed
 
@@ -70,7 +70,7 @@ SDK's prebuilt picolibc (`CONFIG_PICOLIBC_USE_MODULE=n`) to skip the
 ~1300-object compile entirely. native_sim (host gcc) has no SDK
 prebuilt → sccache stays the only lever there.
 
-### 174.D — unified jobserver (see Phase 173)
+### 174.D — unified jobserver (see Phase 176)
 
 One make-fifo jobserver shared across cargo + cc + ninja(≥1.13) + cmake,
 replacing the static `NROS_BUILD_JOBS` outer×inner split with dynamic
@@ -82,7 +82,7 @@ configure/link tax.
 
 - The landed knob + parallel-zephyr give most of the easy win; 174.A
   (per-example configure/link) is now the dominant zephyr cost and is
-  serial, so neither the knob nor Phase 173 addresses it — sysbuild /
+  serial, so neither the knob nor Phase 176 addresses it — sysbuild /
   shared-config-tree is the lever there.
 - All `just/*.just` recipes read `${NROS_BUILD_JOBS:-N}` for their inner
   fan-out; never re-introduce a hardcoded `--jobs` constant without

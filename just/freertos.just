@@ -74,7 +74,7 @@ build-fixtures:
         echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building FreeRTOS test fixtures..."
-    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     # Phase 160 follow-up — parallel cargo / cmake builds. Each example
     # has its own isolated `target/`; cmake builds use per-example

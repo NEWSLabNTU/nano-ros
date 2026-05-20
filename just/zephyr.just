@@ -217,7 +217,7 @@ build-fixtures:
         echo "Invalid NROS_ZEPHYR_NINJA_JOBS=$ninja_jobs; expected positive integer" >&2
         exit 2
     fi
-    # Phase 173 — under the unified fifo jobserver (NROS_JOBSERVER=1, set
+    # Phase 176 — under the unified fifo jobserver (NROS_JOBSERVER=1, set
     # by `just build-all-jobserver`), ninja >=1.13 draws its job tokens
     # from the shared pool via the fifo path in MAKEFLAGS. Pinning
     # CMAKE_BUILD_PARALLEL_LEVEL would override the jobserver and detach
