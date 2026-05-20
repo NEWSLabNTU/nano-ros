@@ -276,19 +276,35 @@ example is platform-agnostic enough to retarget at Cyclone DDS:
 - Examples that just point at "the DDS backend, whichever it is"
   via cmake / cargo feature — these get **renamed** in place.
 
-- [ ] **171.B.1** Survey every `examples/*/*/dds/` directory.
-      Classify: dust-DDS-bound vs backend-agnostic. Output:
-      `tmp/phase-169-example-classify.md` table.
-- [ ] **171.B.2** For dust-DDS-bound examples (every Rust RTOS DDS
-      example today): mark for deletion + matching cyclonedds
-      replacement under 171.C.
-- [ ] **171.B.3** For backend-agnostic examples (native C / cpp /
-      rust DDS, Zephyr-side DDS examples): `git mv
-      examples/<plat>/<lang>/dds/ examples/<plat>/<lang>/cyclonedds/`.
-      Update each example's per-dir `Cargo.toml` /
-      `CMakeLists.txt` to select the cyclonedds backend.
+- [x] **171.B.1** Surveyed every `examples/*/*/dds/` directory
+      (10 dirs) — classification table in
+      `tmp/phase-171-example-classify.md`. Outcome:
+      - **rename** candidates (Cyclone-DDS-viable platforms):
+        `native/{c,cpp,rust}` (6 cases each), `zephyr/rust` (8),
+        `threadx-linux/rust` (2).
+      - **delete** candidates (dust-bound, no Cyclone DDS port on
+        the platform): `qemu-arm-baremetal/rust`,
+        `qemu-arm-freertos/rust`, `qemu-arm-nuttx/rust`,
+        `qemu-esp32-baremetal/rust`, `qemu-riscv64-threadx/rust`
+        (2 cases each).
+- [ ] **171.B.2** For dust-DDS-bound examples (the five RTOS rust
+      cells above): mark for deletion + matching cyclonedds
+      replacement under 171.C. **Gated on Phase 169 landing**
+      (dust-DDS still on `main`) + a documented cyclonedds
+      replacement (or an "intentionally empty cell" entry where
+      Cyclone DDS can't fit the RTOS).
+- [ ] **171.B.3** For the rename candidates (`native`, `zephyr`,
+      `threadx-linux`): `git mv examples/<plat>/<lang>/dds/
+      examples/<plat>/<lang>/cyclonedds/` + flip the backend to
+      cyclonedds. **Gated on a verified cyclonedds build**
+      (171.C.1/.3): `third-party/dds/cyclonedds/` is populated but
+      not built (`build/cyclonedds/install/` absent), so flipping a
+      working dust example to an unverified cyclonedds backend
+      would break `just ci`. Run `just cyclonedds setup` + verify
+      the native cyclonedds build first.
 - [ ] **171.B.4** Update `examples/README.md` matrix: drop the
       `dds` column, mark every renamed cell under `cyclonedds`.
+      (Follows B.2 + B.3.)
 
 ### 171.C — Complete the cyclonedds example matrix
 
