@@ -19,17 +19,17 @@ comparison.
 | **First release** | 2024 | 2019 |
 | **Primary language** | Rust (with C + C++ bindings) | C (`rclc`) |
 | **User-facing APIs** | Rust + C + C++ | C only (`rclc`); experimental C++ in `rclcpp_lite` |
-| **RMW backend choice** | Zenoh, XRCE-DDS, dust-DDS, Cyclone DDS — pick at compile time | XRCE-DDS only |
-| **Network model** | Peer-to-peer (Zenoh / DDS / Cyclone) **or** agent-based (XRCE) | Agent-based only |
-| **Bridge process required?** | No for Zenoh / DDS / Cyclone; yes for XRCE | Yes (Micro-XRCE-DDS Agent) |
+| **RMW backend choice** | Zenoh, XRCE-DDS, Cyclone DDS — pick at compile time | XRCE-DDS only |
+| **Network model** | Peer-to-peer (Zenoh / Cyclone DDS) **or** agent-based (XRCE) | Agent-based only |
+| **Bridge process required?** | No for Zenoh / Cyclone DDS; yes for XRCE | Yes (Micro-XRCE-DDS Agent) |
 | **Supported RTOSes** | FreeRTOS, NuttX, ThreadX, Zephyr, ESP-IDF, PX4 (NuttX), POSIX, bare-metal | FreeRTOS, NuttX, Zephyr, ESP-IDF, POSIX; PX4 is the canonical deployment |
 | **`no_std` core** | Yes — entire client stack compiles `no_std` + heapless | No — `rclc` requires libc + a heap |
-| **Heap usage** | Optional on bare-metal (XRCE backend is fully static); required for Zenoh / DDS / Cyclone | Required (malloc-based DDS-XRCE client) |
+| **Heap usage** | Optional on bare-metal (XRCE backend is fully static); required for Zenoh / Cyclone DDS | Required (malloc-based DDS-XRCE client) |
 | **RT scheduling story** | SchedContext API: FIFO / EDF / Sporadic / TimeTriggered classes; ARINC-653 cyclic-executive surface; per-callback runtime accounting + overrun detection | rclc executor with priority callbacks; no SchedContext / EDF / TT story |
 | **Multi-executor preemption** | `Executor::open_threaded` per-RTOS via `PlatformScheduler` trait | Single executor per process |
 | **Multi-backend bridge in one binary** | Yes — `Executor::open_with_rmw` + multi-Node | No (single XRCE session per process) |
 | **Discovery** | Zenoh liveliness, RTPS SPDP, XRCE-via-Agent | XRCE-via-Agent |
-| **QoS support** | Backend-dependent matrix (Zenoh 4/7, XRCE 4/7, DDS 7/7, Cyclone 7/7) | Subset of XRCE QoS |
+| **QoS support** | Backend-dependent matrix (Zenoh 4/7, XRCE 4/7, Cyclone DDS 7/7) | Subset of XRCE QoS |
 | **Formal verification** | 160 Kani harnesses + 102 Verus proofs (CDR, scheduling, RMW glue) | None published |
 | **E2E safety protocol** | CRC-32/ISO-HDLC + sequence tracking, EN 50159-mapped (`safety-e2e` feature) | None |
 | **ROS 2 distro coverage** | Humble (Iron deferred — type-hash work pending) | Humble, Iron, Jazzy |

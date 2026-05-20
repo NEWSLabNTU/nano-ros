@@ -135,7 +135,6 @@ For a narrower fetch, invoke the per-platform recipe directly:
 | Target | Notes |
 |---|---|
 | `posix-zenoh` | host build, no cross-toolchain needed |
-| `posix-dds` | host build, dust-DDS Rust backend |
 | `posix-xrce` | host build, Micro-XRCE-DDS C backend |
 | `posix-cyclonedds` | host build, Cyclone DDS via the C++ vtable; requires `apt install` for Cyclone runtime |
 | `freertos-zenoh` | needs `gcc-arm-none-eabi` |

@@ -497,7 +497,7 @@ The mask actually advertised by each backend's
 
 | Backend | Reliability + Durability + History/Depth | Deadline | Lifespan | Liveliness Automatic | Liveliness Manual | Liveliness Lease | `avoid_ros_namespace_conventions` |
 |---------|-------------------------------------------|----------|----------|----------------------|--------------------|------------------|-----------------------------------|
-| dust-DDS | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ honoured |
+| Cyclone DDS | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ honoured |
 | XRCE-DDS | ✅ Native (binary `uxrQoS_t`) | ✅ Shim-side clock check (sub: `RequestedDeadlineMissed`; pub: `OfferedDeadlineMissed`) + agent-side via FastDDS XML profile | ✅ Agent-side via FastDDS XML profile | ✅ Native | ✅ Configured via XML | ✅ Configured via XML | ✅ honoured |
 | zenoh-pico | ✅ Shim-emulated | ✅ Clock-based check (sub + pub) | ✅ Subscriber-side filter using attachment timestamp | ✅ Trivial via session keepalive | ✅ Shim-side keepalive timer at pub publish path | ✅ Honoured | n/a (no `/rt/` prefix) |
 | uORB | ✅ CORE only (intra-process, no wire) | ❌ No rate concept | ❌ No expiry concept | ❌ No wire-level liveliness | ❌ | ❌ | n/a |
@@ -506,7 +506,10 @@ The mask actually advertised by each backend's
 
 - The default QoS profile (RELIABLE + VOLATILE + KEEP_LAST(10) + AUTOMATIC) works on every backend.
 - Apps that need extended QoS but want to stay backend-portable: check `supported_qos_policies()` at startup and degrade gracefully.
-- For full DDS QoS: dust-DDS (native) and XRCE-DDS (auto-routes through FastDDS XML profile when extended policies are set) are equivalent. Zenoh-pico fills the gap with shim-side emulation. uORB is intra-process only.
+- For full DDS QoS: Cyclone DDS is the native DDS path; XRCE-DDS
+  auto-routes through FastDDS XML profile when extended policies are
+  set. Zenoh-pico fills the gap with shim-side emulation. uORB is
+  intra-process only.
 
 See [Status events](../concepts/status-events.md) for how the
 deadline / liveliness / message-lost policies translate into
@@ -609,14 +612,15 @@ generate every event:
 
 | Backend | Liveliness | Deadline | Message lost |
 |---------|-----------|----------|--------------|
-| dust-DDS | ✅ Native (`DataReaderListener` / `DataWriterListener` bridges) | ✅ Native | ✅ Native (`SampleLost`) |
+| Cyclone DDS | 🟡 Not wired through nano-ros events yet | 🟡 Not wired yet | 🟡 Not wired yet |
 | XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | 🟡 Sub: shim-side clock check on `try_recv_raw`; pub: shim-side check on `publish_raw`. `LivelinessChanged` / `LivelinessLost` not feasible. | ❌ `topic_callback` carries no per-sample sequence |
 | zenoh-pico | ✅ Sub: per-publisher count via `zpico_liveliness_get_count` + wildcard keyexpr query; pub: shim-side keepalive timer fires `LivelinessLost` from `publish_raw` when `MANUAL_BY_*` lease expires. | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
 | uORB | ❌ No wire-level liveliness | ❌ No rate concept | ✅ Native: `RustSubscriptionCallback` publish-counter delta on host mock + real PX4 |
 
-`assert_liveliness()` (manual): only dust-DDS implements it natively.
-Other backends' default is `Ok(())` (no-op) since they don't honour
-`MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` liveliness kinds.
+`assert_liveliness()` (manual): not all backends expose manual
+liveliness through nano-ros yet. Unsupported backends' default is
+`Ok(())` (no-op) since they don't honour `MANUAL_BY_TOPIC` /
+`MANUAL_BY_NODE` liveliness kinds.
 
 ## 9. Loaned messages first-class
 

@@ -804,21 +804,30 @@ rename:
 The wrapper package itself (not Cyclone DDS core) is freestanding
 C++14 today. Tighten the audit:
 
-- [ ] **171.E.1** Grep `packages/dds/nros-rmw-cyclonedds/` for
+- [x] **171.E.1** Grep `packages/dds/nros-rmw-cyclonedds/` for
       every `std::vector`, `std::string`, `std::shared_ptr`,
       `std::unique_ptr`, `new` / `delete`. Replace with `nros::`
       equivalents or stack-allocated fixed-capacity types where
-      possible.
-- [ ] **171.E.2** Document remaining `alloc`-touching call sites
+      possible. Audit result: production wrapper has no STL containers
+      or smart pointers; remaining `new` / `delete` sites are scalar
+      per-session/per-entity state behind the C ABI's `void *`
+      backend handles plus `SertypeMin` helpers. Removing those
+      requires an ABI storage change, so they are documented rather
+      than replaced in this pass.
+- [x] **171.E.2** Document remaining `alloc`-touching call sites
       (Cyclone DDS's own API takes `dds_qos_t*` from
       `dds_create_qos()` which `malloc`s internally — that's
       transparent to nano-ros's wrapper but document the
-      transitive allocation budget per-platform).
-- [ ] **171.E.3** Add a CI check that
+      transitive allocation budget per-platform). See
+      `packages/dds/nros-rmw-cyclonedds/README.md` "Freestanding /
+      Allocation Audit".
+- [x] **171.E.3** Add a CI check that
       `nros-rmw-cyclonedds` compiles with
       `-fno-exceptions -fno-rtti -fno-threadsafe-statics` on every
       target — same flags Phase 117 already uses, but make the
-      assertion explicit.
+      assertion explicit. The backend target now carries all three
+      flags in `target_compile_options`; `just cyclonedds build-rmw`
+      and any in-tree `add_subdirectory` consumer inherit the check.
 
 ### 171.F — Acceptance + cleanup
 

@@ -62,7 +62,10 @@ startup.
 | XRCE | micro-XRCE-DDS-Client | C | `nros-rmw-xrce-cffi` (Rust shim over the C `nros-rmw-xrce` static lib; 115.K.2 ported) | keep |
 | zenoh-pico | zenoh-pico | C | `nros-rmw-zenoh` (Rust → vtable via `RustBackendAdapter<ZenohRmw>`) | keep |
 | uORB | PX4 module SDK | C++ | `nros-rmw-uorb` (C++ direct vtable; 115.K.4 port replaces legacy `nros-rmw-uorb` Rust crate) | keep |
-| ~~dust-DDS~~ | ~~dust-dds~~ | ~~Rust~~ | ~~`nros-rmw-dds`~~ | **Retired Phase 169 (2026-05-19)** — repeated bring-up failures on every embedded target; Cyclone now fills the DDS slot. |
+
+Dust-DDS was retired in Phase 169 (2026-05-19) after repeated
+bring-up failures on embedded targets. Cyclone DDS now fills the DDS
+slot.
 
 ### Rust-backend cffi shape
 

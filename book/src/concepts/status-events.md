@@ -151,14 +151,16 @@ Not every backend can generate every event. Apps must handle
 
 | Backend | `LivelinessChanged` / `Lost` | `DeadlineMissed` | `MessageLost` |
 |---------|------------------------------|------------------|---------------|
-| dust-DDS | ✓ Native (DataReader/Writer listeners) | ✓ Native | ✓ Native (`SampleLost`) |
+| Cyclone DDS | ✗ Not wired through the nano-ros event API yet | ✗ Not wired yet | ✗ Not wired yet |
 | XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✅ Shim-side clock check (sub: `has_data` / `try_recv_raw`; pub: `publish_raw`) | ✗ Not exposed |
 | zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
 | uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✅ Native (host mock + real PX4 via `RustSubscriptionCallback` publish-counter) |
 
 ✓ = wired and tested. 🟡 = surface API works (returns Err while pending), wiring planned. ✗ = not feasible at this layer.
 
-**Today (commit `861fc2cf`):** dust-DDS is the only backend with full Tier-1 event wiring. The others' `register_event_callback` returns `Err(Unsupported)`. Apps targeting non-dust-DDS backends should call `Subscriber::supports_event(kind)` first or design for graceful fallback.
+No current backend exposes the full Tier-1 event set through the
+nano-ros event API. Apps should call `Subscriber::supports_event(kind)`
+first or design for graceful fallback.
 
 The `Subscriber::supports_event(kind)` query lets applications check
 support before registering:

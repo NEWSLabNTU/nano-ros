@@ -58,21 +58,21 @@ may differ.
 
 - [ ] **Backend version pinned** to a tested tuple. Zenoh-pico
       1.7.2 (matches `rmw_zenoh_cpp`). Cyclone DDS 0.10.5 (matches
-      `ros-humble-cyclonedds`). dust-DDS at the workspace pin.
-      XRCE-DDS Micro-Client at its workspace pin.
+      `ros-humble-cyclonedds`). XRCE-DDS Micro-Client at its
+      workspace pin.
 - [ ] **All required QoS policies supported** by your backend. The
       [Choosing an RMW Backend](../user-guide/rmw-backends.md)
       capability matrix lists per-backend coverage (Zenoh: 4/7;
-      XRCE: 4/7; DDS: 7/7; Cyclone: 7/7).
+      XRCE: 4/7; Cyclone DDS: 7/7).
 - [ ] **Discovery stability** over your network topology.
       Zenoh-pico in client mode needs zenohd reachable; loss of
       router = lost routing but local node lives. XRCE needs
-      Agent uptime. DDS / Cyclone discover via multicast SPDP.
+      Agent uptime. Cyclone DDS discovers via multicast SPDP.
 - [ ] **Bridge stability** if multi-backend. Confirm no memory
       bloat over 72 h with two registered RMWs running.
-- [ ] **Cyclone DDS limitations checked.** Services + actions
-      return `NROS_RMW_RET_UNSUPPORTED`; status events not wired.
-      If your design needs either, use Zenoh or dust-DDS.
+- [ ] **Cyclone DDS limitations checked.** Status events and some
+      stock-ROS interop slices are still in progress; embedded RTOS
+      ports remain gated on a hosted Cyclone runtime.
 
 ## 4. Safety + formal verification
 
@@ -146,9 +146,8 @@ may differ.
       GPL copyleft, OK for proprietary firmware. Confirm your
       legal team is comfortable.
 - [ ] **Third-party dependencies**: zenoh-pico (Eclipse), Cyclone
-      DDS (Eclipse), dust-DDS (Apache-2), Micro-XRCE-DDS-Client
-      (Apache-2). All vendored as submodules; license files in
-      each `third-party/*/LICENSE`.
+      DDS (Eclipse), Micro-XRCE-DDS-Client (Apache-2). Vendored
+      dependencies carry license files in each `third-party/*/LICENSE`.
 - [ ] **Patent grant**: Apache 2.0 carries an explicit patent
       grant; MIT does not. Most adopters rely on the Apache half.
 - [ ] **Support model**: nano-ros has **no commercial support

@@ -100,7 +100,10 @@ endif()
 
 target_compile_options(nros_rmw_cyclonedds PRIVATE
     -Wall -Wextra -Wpedantic
-    -fno-exceptions -fno-rtti
+    # Phase 171.E: keep the wrapper freestanding-friendly. Cyclone DDS
+    # itself may allocate internally, but this wrapper must not rely on
+    # exceptions, RTTI, or guard variables for local statics.
+    -fno-exceptions -fno-rtti -fno-threadsafe-statics
 )
 
 set_target_properties(nros_rmw_cyclonedds PROPERTIES
