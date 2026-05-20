@@ -8,7 +8,16 @@ nostd-runtime actor-mailbox shape repeatedly blocked bring-up
 (Phase 101.7, 117.2e, 117.2g, 117.2h, 166.F) and the recurring fix
 cost outweighs maintaining a second DDS lineage.
 
-**Status.** Not Started.
+**Status.** COMPLETE — dust-dds is fully retired. The `dust-dds`
+submodule is deleted (gone from `.gitmodules`), the `nros-rmw-dds` crate
+is removed, the workspace `Cargo.lock` has no `dust_dds`, `CLAUDE.md`
+records the retirement (RMW-backend policy line), and the Rust examples
+were migrated onto `nros-rmw-cyclonedds-sys` (Phase 171.B.2). Cyclone DDS
+is the sole DDS RMW. The Phase 117 doc is archived with a superseded
+banner. **Deferred-forward (not blocking this phase):** 169.9 —
+Cyclone-DDS-on-Xtensa port — tracked under the cyclonedds-on-embedded
+work (Phase 171.0 / 175). Residual cosmetic doc mentions of "dust-dds"
+are retirement notes, not active backend rows.
 
 **Priority.** P1 — closes a long tail of vendored-submodule bugs
 (166.F, 117.2d, 117.2h) by deletion. Frees Phase 117 to retarget
