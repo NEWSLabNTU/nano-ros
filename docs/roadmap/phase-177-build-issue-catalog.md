@@ -32,15 +32,6 @@ CMake/Corrosion glue + a ddsrt RTOS port for embedded). Decision
 2026-05-21: keep Cyclone targeted at bare metal (don't delete the
 embedded cells) — see Phase 171.B.
 
-### 177.4 — esp_idf setup git-ref corruption (host environment)
-
-`just esp_idf setup` fails: `cannot update ref 'refs/heads/v5.3':
-trying to write non-commit object … to branch` in
-`esp-idf-workspace/esp-idf`. A corrupted local clone, not a code issue.
-esp_idf is `extended`-tier and NOT exercised by `just ci` / `test-all`,
-so it doesn't gate the default build. Remedy: re-clone the esp-idf
-workspace (`rm -rf esp-idf-workspace && just esp_idf setup`).
-
 ### 177.5 — NuttX C/C++ generated-package e2e needs pinned nightly (host)
 
 `fixture_workspace_builds_generated_nuttx_package` (codegen
@@ -52,6 +43,14 @@ package's `rust-toolchain.toml` pins it). Host-only.
 
 ## Fixed during the sweep (2026-05-20/21 — no longer issues)
 
+- **177.4** esp_idf setup git-ref corruption — root cause was the
+  `fetch origin v5.3:v5.3` refspec in `scripts/esp_idf/setup.sh` writing
+  the annotated `v5.3` *tag* into `refs/heads/v5.3` (a branch) →
+  `non-commit object` error. Fixed in `6be211ee4` (`fetch --depth 1
+  --tags origin <ref>` + `checkout <ref>`). The existing workspace was
+  not fundamentally corrupted (the bad write just failed); verified the
+  fixed fetch+checkout brings `esp-idf-workspace/esp-idf` to `v5.3`
+  cleanly — no destructive re-clone needed.
 - **177.1** cyclonedds-zephyr `nsos_adapt.c` duplicate `case
   NSOS_MID_IPPROTO_IP:` — `native-sim-ipproto-ip-patch.sh` (Phase 11W)
   already adds a complete IPPROTO_IP case (all IP_* multicast/membership
@@ -80,10 +79,11 @@ package's `rust-toolchain.toml` pins it). Host-only.
 
 ## Notes
 
-- This is an INDEX. 177.1 (the sole build-all blocker) is **fixed**, so
-  `just build-all` is green end-to-end modulo the host-only items
-  (177.4 / 177.5, which don't gate CI). Archive this doc once 177.2 /
-  177.3 migrate to their owning phases (171.0 / 175).
+- This is an INDEX. 177.1 (the sole build-all blocker) and 177.4 (the
+  esp_idf git-ref corruption) are **fixed**, so `just build-all` is green
+  end-to-end modulo the one host-only item (177.5, which doesn't gate
+  CI). Archive this doc once 177.2 / 177.3 migrate to their owning phases
+  (171.0 / 175).
 - The sweep also validated the Phase 176 unified jobserver
   (`build-all-jobserver`) end-to-end — not a build issue, recorded in
   Phase 176.
