@@ -251,24 +251,20 @@ collapsed.
       design below (scoped 2026-05-21 while doing 171.C). Two independent
       pieces, both required before any native cyclonedds action runs:
 
-      **Piece 1 — sub-type descriptor lookup (the `-1` blocker).**
-      `register_action_server` (`executor/action.rs`) passes the bare
-      action type `<pkg>::action::dds_::<A>_` to all three sub-services
-      (send_goal, get_result, feedback). The cyclonedds service path
-      (`service.cpp:service_type_name`) appends `_Request_`/`_Response_`,
-      so it looks up `<A>_Request_` — but the real DDS types are
-      `<A>_SendGoal_Request_`, `<A>_GetResult_Request_`,
-      `<A>_FeedbackMessage_`. Lookup misses → create_service_server
-      fails → `register_action_* -> -1`. Do NOT fix this by changing the
-      type name `action.rs` passes: the **zenoh** keyexpr embeds
-      `type_name` in its type-hash segment, so changing it shifts the
-      zenoh wire key (interop + test risk). Instead make the **cyclonedds
-      backend** action-aware: detect the action sub-service from its
-      keyexpr role (the send_goal / get_result / feedback key suffixes
-      `action_info.{send_goal,get_result,feedback}_key()` emit) and
-      derive `<A>_SendGoal_` / `<A>_GetResult_` / `<A>_FeedbackMessage_`
-      locally before the `_Request_`/`_Response_` suffix step. Keeps the
-      backend-agnostic contract (and zenoh) untouched.
+      **Piece 1 — sub-type descriptor lookup (the `-1` blocker). LANDED
+      `3db736aa1`.** `register_action_server` (`executor/action.rs`)
+      passes the bare action type `<pkg>::action::dds_::<A>_` to all
+      three sub-services (send_goal, get_result, feedback); the cyclonedds
+      service path appended `_Request_`/`_Response_` and looked up the
+      wrong descriptor. Fixed backend-locally (no change to the
+      backend-agnostic action contract → zenoh wire key untouched): the
+      cyclonedds service/topic create derives the real sub-type from the
+      entity keyexpr suffix — `/_action/send_goal` → `<A>_SendGoal_`,
+      `/_action/get_result` → `<A>_GetResult_` (`service.cpp`),
+      `/_action/feedback` → `<A>_FeedbackMessage_`
+      (`descriptors.{hpp,cpp}` + `publisher.cpp` + `subscriber.cpp`).
+      Pass-through for non-action entities; ctest 12/12 still pass. Dead
+      until Piece 2 supplies the descriptors.
 
       **Piece 2 — descriptor synthesis.** `msg_to_cyclone_idl.py` +
       the cyclonedds branch handle `.msg`/`.srv` only. Actions need the
@@ -291,6 +287,29 @@ collapsed.
       and require the example to `nros_generate_interfaces(action_msgs)`
       + `(unique_identifier_msgs)` into the shared idl/gen root so the
       cross-package `#include`s resolve.
+
+      **CRITICAL framing constraint (found 2026-05-21).** The wrapper
+      descriptors must match the **nros action layer's** CDR framing, NOT
+      stock `rmw_cyclonedds_cpp` — these two diverge, so native cyclonedds
+      actions are nano-ros↔nano-ros only:
+      - `action_core.rs::{read,write}_goal_id` frames `goal_id` as a CDR
+        `sequence<octet>` (4-byte length 16 + 16 bytes), *not* the stock
+        fixed `uint8[16]` UUID. The synthesized `*_Request_` / `*_Response_`
+        / `*_FeedbackMessage_` IDL must use `sequence<octet> goal_id`.
+      - send_goal / get_result go through the regular service path, so
+        their `_Request_`/`_Response_` structs must inline the 16-byte
+        service header (`rmw_writer_guid` + `rmw_sequence_number`) first,
+        like `.srv` (the converter's `inject_service_header` does this).
+        The feedback topic is a plain message — no header.
+      - The codegen emits only base `Fibonacci_{Goal,Result,Feedback}_`
+        structs (no wrapper structs); the action layer assembles
+        goal_id + base via `CdrWriter` directly. So the wrapper IDL is
+        `{header?, sequence<octet> goal_id, <Base> nested}` — derive it
+        to match, then verify a real goal→accept→feedback→result
+        round-trip before declaring done.
+      - Also register `action_msgs::srv::CancelGoal_` +
+        `action_msgs::msg::GoalStatusArray_` (literal names the action
+        server uses) from `nros_generate_interfaces(action_msgs)`.
 
       Also: the action client has a documented blocking-`zpico_get` hang
       risk (zenoh path). Not runtime-verifiable until both pieces land.
