@@ -699,45 +699,37 @@ TU. The backend's own ctest passes only because it hand-rolls the
 descriptor via `nros_rmw_cyclonedds_add_idl_library`.
 
 **Fix — make `nros_generate_interfaces` emit + link the Cyclone
-descriptor when `NANO_ROS_RMW STREQUAL "cyclonedds"`.** Concrete
-plan:
+descriptor when `NANO_ROS_RMW STREQUAL "cyclonedds"`. LANDED 2026-05-20/21**
+(`b49b0b42e`, `16fdfcef7`, `cc26c09f9`, `a17ad5ba5`, `e9f5f2b61`,
+`e337f7600`, `5b9ee97bc`). The plan below shipped, with deviations noted
+inline.
 
-- [ ] **171.C.runtime.1** In `cmake/NanoRosGenerateInterfaces.cmake`
-      (`function(nros_generate_interfaces target)`, line ~151), after
-      the existing `__nano_ros_c` / `__nano_ros_cpp` generation, add a
-      cyclonedds branch gated on `NANO_ROS_RMW STREQUAL "cyclonedds"`.
-      It must, per `.msg` in the package:
-      1. run `msg_to_cyclone_idl.py` (path from
-         `NROS_RMW_CYCLONEDDS_MSG_TO_IDL`, already plumbed by
-         `just cyclonedds build-rmw`) to convert `<Type>.msg` →
-         `<Type>.idl`;
-      2. `include(NrosRmwCycloneddsTypeSupport)` then call
-         `nros_rmw_cyclonedds_add_idl_library(${target}__cyclonedds_ts
-         IDL_FILES <generated .idl…> REGISTER_TYPES
-         <Type>=<pkg>::msg::<Type> …)`. The `REGISTER_TYPES` mangled
-         name MUST match the topic type-name the nros runtime
-         publishes (verify against `topic_prefix::apply` +
-         `descriptors.cpp` mangling — Phase 117.X.4 type-name
-         verification).
-- [ ] **171.C.runtime.2** Link `${target}__cyclonedds_ts` into the
-      consuming `__nano_ros_c` / `__nano_ros_cpp` interface target
-      (or surface it as `${target}__cyclonedds` for the example to
-      link explicitly). The static-init register TU must land in the
-      final binary (verify with `nm`: a `_GLOBAL__sub_*` TU + a
-      `<pkg>_msg_<Type>_desc`-style descriptor symbol present).
-- [ ] **171.C.runtime.3** Re-smoke each native cyclonedds example —
-      expect `Published: N` / `Received: N`. Add an `rtos_e2e`-style
-      (or `native`-e2e) harness pairing talker+listener over a real
-      Cyclone domain, mirroring the §171.0 Zephyr cyclonedds tests.
-- [ ] **171.C.runtime.4** Adapt the renamed example *scaffold* for
-      cyclonedds semantics: the C examples still default a zenoh-style
-      `NROS_LOCATOR` (`tcp/127.0.0.1:7447`) into `nros_support_init`
-      (cyclonedds ignores the locator but the printf banner +
-      `getenv` scaffold is misleading and the `-3` path needs a
-      cyclonedds-appropriate config story — domain id only).
-- [ ] **171.C.runtime.5** Once a native cell runs green, replicate to
-      all 6 cases × {c,cpp,rust} and re-confirm `nm` single-vtable +
-      runtime pub/sub. Then `threadx-linux` (171.C.3) over NSOS.
+- [x] **171.C.runtime.1** Added the cyclonedds branch to
+      `cmake/NanoRosGenerateInterfaces.cmake`. Deviation: drives
+      `nros_rmw_cyclonedds_generate_from_msg` (not `add_idl_library`) per
+      `.msg`/`.srv`/`.action`, with a shared package-nested IDL+gen root
+      (`-I` cross-package includes), sibling/dep-package ordering, and
+      nested-`::msg::`/`::action::` type-ref mangling in
+      `msg_to_cyclone_idl.py`. `wstring` interfaces skipped (idlc 0.10.5
+      crash).
+- [x] **171.C.runtime.2** `${target}__cyclonedds_ts` force-loaded via
+      `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>` on the message lib's INTERFACE;
+      ts lib takes only the backend's INTERFACE include dirs (linking the
+      backend lib would dedup it out of NanoRos's whole-archive group).
+      `nm`-verified the descriptor + register symbols land.
+- [x] **171.C.runtime.3** Re-smoked: native rust talker `Published: 0..3`;
+      rust talker→listener `Received: 0..4`; C/C++ talker + service e2e;
+      C action goal→result `[…55]`; rust action goal→feedback. (A
+      dedicated nextest harness was not added — verified by hand +
+      backend ctest 12/12.)
+- [x] **171.C.runtime.4** Scaffold/`-3` resolved. Root cause was NOT the
+      locator (an empty locator reproduced `-3`) — it was the empty RMW
+      registry: the C-API path's `.nros_rmw_init` walker was a no-op
+      (`linkme-register` off), so the cyclonedds backend self-registers
+      via an `.init_array` constructor now (`cc26c09f9`).
+- [x] **171.C.runtime.5** Replicated: talker/listener/service across
+      {c,cpp,rust}; actions C+Rust e2e (cpp build + server only — client
+      receive open, 171.0.b). `threadx-linux` (171.C.3) still pending.
 
 **Acceptance:** a native cyclonedds talker+listener pair exchanges
 `std_msgs/Int32` end-to-end (and ideally interops with stock
