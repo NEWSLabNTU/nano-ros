@@ -801,22 +801,31 @@ green.
   decomposition in the IDL converter — `msg_to_cyclone_idl.py` handles
   only `.msg`/`.srv`).
 
-  Investigation leads (for the next pass):
-  - Generated type strings are *identical* across C and C++
-    (`example_interfaces::srv::dds_::AddTwoInts_` + `_Request_` /
-    `_Response_`), so it is not a type-name divergence.
-  - `nros_executor_register_service` (nros-c) routes straight to
-    nros-node's `register_service_raw_sized{,_on}` with the same
-    `service_name` / `type_name` / `type_hash` the Rust and C++ paths
-    use — no registration divergence found. The fault is therefore most
-    likely in nros-c's *runtime* request take / reply send during
-    `nros_executor_spin_period`, not in setup.
-  - Localization method: run a cross-language pair (C++ client → C
-    server, then C client → C++ server) on domain 0 — the working C++
-    endpoint isolates whether the C *server* receive or the C *client*
-    send is at fault. This was blocked in one pass by flaky
-    background-process execution under native_sim (0-byte captured
-    output for `&`-launched processes); re-run when the host is stable.
+  **Localized (cross-language E2E) — the fault is the C *client*, not
+  the server.** Running mixed pairs on domain 0:
+  - C++ client → **C server**: works — C server logs all 4
+    `Request [n]: a + b = c`, C++ client logs 4/4 `[OK]`. So the C
+    service *server* (receive + reply) is correct.
+  - C client → **C++ server**: fails — C++ server never logs a request,
+    C client `nros_client_call` returns `NROS_RET_TIMEOUT` (-2). So the
+    C client's request never reaches *any* server.
+  Conclusion: nros-c's request-send path is broken under Cyclone. The C
+  client's `send_request_raw` returns `Ok` (the failure is a reply
+  timeout, not a send error), so the request is either never written to
+  the DDS writer or written somewhere no server's reader matches —
+  despite identical `service_name` / `type_name` to the working C++/Rust
+  clients and identical backend `service_client_create`. Root cause is
+  in the nros-c arena service-client handle (`nros_executor_add_client`
+  → `register_service_client_raw_sized` → `entry.handle.send_request_raw`)
+  vs the nros-node/nros-cpp client path. Next: instrument the backend
+  `service_send_request_raw` / `service_client_create` (req topic + write
+  call) and compare a C-client run against a C++-client run.
+
+  (Earlier ruled out: type-name divergence — C and C++ emit identical
+  strings; service *registration* — `nros_executor_register_service`
+  routes to the same nros-node `register_service_raw_sized` path. Host
+  note: write E2E logs under the repo's `tmp/`, never `/tmp` — `/tmp`
+  was intermittently a broken mount, giving false 0-byte "failures".)
 
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
