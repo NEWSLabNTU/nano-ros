@@ -12,24 +12,26 @@ boot/link shapes. Three cross-cutting factors shape the design:
    same — a Rust-only generic `run<B>` strands every C/C++ app. The
    abstraction therefore lands a board **C ABI**, mirroring the platform
    pattern, so the one `Board` impl serves Rust *and* C/C++ entry.
-2. **Lean on the embedded ecosystem; don't reinvent peripherals.**
-   `embedded-hal` / `embedded-nal` / `embedded-io` already standardise
-   the peripheral + network + byte-stream trait surfaces. nano-ros's
-   driver crates should consume those, not define a competing
-   `Peripheral` trait. nano-ros's *own* config concern is narrower: the
-   **transport ⟷ RMW binding** — which transport(s) (Ethernet / serial /
-   CAN) a build uses and which RMW rides each, with bridge mode being
-   2+ (transport, RMW) pairs. Per-transport hardware params (IP,
-   baudrate, pins) stay in the platform's native config (board
-   `config.toml`, RTOS Kconfig/devicetree), not a nano-ros invention.
-3. **Default-first UX.** Standard ROS users run with defaults and tune a
-   backend via one env var (`CYCLONEDDS_URI`, `ZENOH_LOCATOR`). nano-ros
-   moves the transport + RMW *shape* choice to compile time (a no_std
-   MCU can't carry every backend), but the default build must just boot
-   with zero config, and customisation must be one small declarative
-   surface (transport + RMW), with runtime values still env/`config.toml`
-   overridable.
-4. **Bounded essential variation.** Target triple, toolchain, boot entry
+2. **Configuration in files, not in code.** Nothing hardware- or
+   RMW-specific is hardcoded in hand-written code or hand-edited Cargo
+   manifests. Transport choice (Ethernet / serial / CAN), hardware
+   params (IP, baudrate), RMW choice, and locator are declared once in
+   a config file (`nros.toml`); `nros build` generates every downstream
+   artifact from it — board Cargo features, `Config` values, RMW deps +
+   `SessionSpec`s, and any RTOS-native config fragment. Changing
+   "ethernet → serial" or "zenoh → cyclonedds" is a config edit, never
+   a code/manifest edit. Bridge mode = 2+ (transport, RMW) entries.
+3. **Don't reinvent peripheral drivers.** `embedded-hal` /
+   `embedded-nal` / `embedded-io` already standardise the peripheral +
+   network + byte-stream trait surfaces; nano-ros driver crates consume
+   those rather than define a competing `Peripheral` trait. nano-ros's
+   own surface is the transport ⟷ RMW *binding* (point 2), not a driver
+   framework.
+4. **Default-first UX.** Standard ROS users run with defaults and tune a
+   backend via one config (`CYCLONEDDS_URI`, `ZENOH_LOCATOR`). nano-ros
+   keeps that shape: default build boots zero-config; customisation is
+   the single `nros.toml`; runtime values still env-overridable.
+5. **Bounded essential variation.** Target triple, toolchain, boot entry
    attribute, and link glue genuinely differ per platform and are kept
    behind small finite enums — not abstracted away, just centralised.
 
@@ -253,61 +255,84 @@ of `embedded-nal`/`embedded-io` so any conformant driver drops in.
 **173 does NOT add a `Peripheral`/`BaseBoard` trait** — that earlier
 sketch was a reinvention; it's dropped.
 
-**What nano-ros config actually owns: transport ⟷ RMW cooperation.**
-The board layer *already* does compile-time transport selection — the
-`ethernet` / `serial` / `wifi` Cargo features on board crates, with
-`#[cfg(feature = …)]` `Config` fields (`ip_addr`, `baudrate`,
-`zenoh_locator`). The nano-ros config surface is the *binding*:
+**Core principle: nothing hardware- or RMW-specific is hardcoded in
+hand-written code or hand-edited Cargo manifests. It is declared once
+in a config file, and the generator emits every platform artifact from
+it.** Today these decisions are scattered + hardcoded:
 
-- **which transport(s)** a build uses (ethernet / serial / CAN), and
-- **which RMW rides each transport**, and
-- for **bridge mode**, the 2+ (transport, RMW) pairs and their topology.
+- transport choice → a hand-set Cargo `feature` on the board dep,
+- IP / baudrate → hand-edited `Config::from_toml` fields or Rust
+  defaults baked in the board crate,
+- RMW choice → a hand-added Cargo `path` dep + feature,
+- locator → a hand-set env var or constant.
 
-That binding is the nano-ros-specific decision. It maps onto the
-existing `nros-bridge` `Executor::open_multi(&[SessionSpec])` surface
-(Phase 128.F) — a `SessionSpec` already names an RMW + a locator;
-extend the orchestration `nros.toml` / `nros-plan.json` to declare the
-(transport, RMW) pairs the generator turns into `SessionSpec`s + the
-matching board transport features.
+A user changing "ethernet → serial" or "zenoh → cyclonedds" or
+"192.168.1.5 → DHCP" edits Rust/Cargo today. That is the anti-pattern
+this phase removes.
 
-**Hardware params stay in the platform's native config — not a
-nano-ros invention.** IP address, serial baudrate, pin mux, CAN
-bitrate belong to the board/RTOS config the platform already has:
+**The nano-ros config file is the single authority.** `nros.toml`
+declares the hardware + RMW shape; `nros build` generates everything
+downstream — no hand-edited code or manifest:
 
-- bare-metal / esp-hal boards: `Config::from_toml` (the existing
-  `config.toml` with `ip_addr` / `baudrate` / `zenoh_locator` fields),
-- RTOS targets: the RTOS's own Kconfig / devicetree (Zephyr),
-  `defconfig` (NuttX), FreeRTOSConfig.h — already where these live.
+```toml
+# nros.toml — the ONE place a user touches
+[[transport]]
+kind   = "ethernet"          # ethernet | serial | can
+ip     = "10.0.2.50/24"      # or "dhcp"
+rmw    = "zenoh"             # which RMW rides this transport
+locator = "tcp/10.0.2.2:7447"
 
-nano-ros does not duplicate these knobs; it references the resulting
-locator string (`tcp/10.0.0.1:7448`, `serial/UART_0#baudrate=115200`),
-which already encodes transport + params.
+[[transport]]                # second entry ⇒ bridge mode
+kind    = "serial"
+device  = "UART0"
+baudrate = 115200
+rmw     = "cyclonedds"
+```
+
+From this the generator emits:
+
+- the board crate's transport Cargo **features** (`ethernet`, `serial`)
+  — user never hand-sets them,
+- the per-transport **`Config` values** (ip / baudrate / locator) into
+  the generated package (a generated `config.toml` or build.rs consts)
+  — user never hand-edits `Config::from_toml`,
+- the **RMW backend deps** + the `SessionSpec`s that
+  `Executor::open_multi` (Phase 128.F) consumes — user never hand-adds
+  an `nros-rmw-*` dep,
+- where an RTOS needs its native config touched (Zephyr Kconfig /
+  devicetree, NuttX defconfig), the generator emits the **fragment**
+  too — the user still only edits `nros.toml`, not the RTOS config.
+
+What stays in the board crate is only **board-intrinsic, non-user
+wiring**: the chip's UART pin mux, the fixed MAC base address — facts
+about the silicon, not user choices. User-tunable values
+(transport/IP/baudrate/RMW/locator) all live in `nros.toml`.
 
 ### 173.6 — UX: default-first, like standard ROS
 
 Standard ROS 2: users run with defaults; customise a backend via one
-env var (`CYCLONEDDS_URI`, `ZENOH_CONFIG`/`ZENOH_LOCATOR`). nano-ros
-shifts the *transport + RMW* choice to **compile time** (it must — a
-no_std MCU build can't carry every backend), but the UX target is the
-same default-first shape:
+config (`CYCLONEDDS_URI`, `ZENOH_CONFIG`/`ZENOH_LOCATOR`). nano-ros
+keeps the same default-first shape, with `nros.toml` as the single
+customisation file:
 
-- **Default build just works.** A board's default transport feature
-  (`ethernet` on most) + the single linked RMW → zero-config boot. No
-  `nros.toml` required for the common single-transport case.
-- **Customisation is one declarative surface.** When a user needs a
-  non-default transport, a second transport (bridge), or a specific
-  RMW, they say so once in `nros.toml` (the orchestration config) —
-  *transport + RMW only*, not hardware params. The generator turns
-  that into board features + `SessionSpec`s.
-- **Runtime knobs stay runtime.** Locator / IP / domain id remain
-  env-overridable (`ZENOH_LOCATOR`, `ROS_DOMAIN_ID`) exactly like
-  stock ROS, read through `ExecutorConfig::from_env` on hosted targets
-  and `Config::from_toml` on MCU targets. Compile-time config picks the
-  *shape*; runtime config tunes the *values*.
+- **Default build just works.** A board's default transport + the
+  single linked RMW → zero-config boot. No `nros.toml` required for the
+  common single-transport case; the generator falls back to board
+  defaults.
+- **Customisation is one file.** Transport, hardware params, RMW,
+  locator — all in `nros.toml`. No Rust edit, no Cargo-feature edit,
+  no RTOS-Kconfig edit. The generator translates.
+- **Runtime values still overridable at runtime.** The generated
+  config seeds the values, but `ZENOH_LOCATOR` / `ROS_DOMAIN_ID` env
+  (hosted) or a runtime `config.toml` (MCU) can still override without
+  a rebuild — same as stock ROS env overrides. Config file picks the
+  baseline; env tunes per-run.
 
-This keeps the nano-ros-specific cognitive load to one question —
-"which transport(s) talk which RMW?" — and delegates everything else
-to mechanisms users (or the RTOS) already know.
+Net: the nano-ros-specific cognitive load is one file, and that file
+never leaks into hand-written code. "Configuration in files, not in
+code" is the invariant 173 enforces — the generator is the only thing
+that turns config into Cargo features / `Config` values / `SessionSpec`s
+/ RTOS fragments.
 
 ## Acceptance criteria
 
@@ -331,16 +356,25 @@ to mechanisms users (or the RTOS) already know.
       path uses. `check-board-abi-mirror` keeps header ⟷ macro in sync.
 - [ ] Default build (board default transport + single RMW) boots with
       **no `nros.toml`** — the zero-config common case.
-- [ ] `nros.toml` declares a (transport, RMW) binding; the generator
-      turns it into the board transport feature(s) + `SessionSpec`(s).
-      A bridge build with 2 (transport, RMW) pairs opens via
-      `Executor::open_multi`.
+- [ ] `nros.toml` is the single authority: declaring transport + IP +
+      baudrate + RMW + locator there, the generator emits the board
+      Cargo feature(s), the `Config` values, the RMW dep(s), and the
+      `SessionSpec`(s). **No hand-edited Rust, Cargo feature, or RTOS
+      Kconfig** is needed to change transport/IP/baudrate/RMW/locator.
+- [ ] Changing one `nros.toml` line (`ethernet`→`serial`, or
+      `zenoh`→`cyclonedds`, or a static IP→`dhcp`) re-generates a
+      working build with zero code/manifest edits — verified by a test
+      that diffs two generated packages from two configs.
+- [ ] A bridge `nros.toml` with 2 (transport, RMW) entries generates a
+      package that opens both via `Executor::open_multi`.
+- [ ] Grep gate: generated packages contain no hand-authored
+      transport/IP/baudrate/RMW constants — every such value traces to
+      an `nros.toml` field (or a documented board-intrinsic default like
+      pin mux / MAC base).
 - [ ] At least one transport-bridge driver crate (`*-smoltcp`) is
       reworked to sit on `embedded-nal` (or documented why it can't),
       proving the "consume the ecosystem, don't reinvent" direction.
-- [ ] Hardware params (IP / baudrate) are sourced from board
-      `config.toml` / RTOS Kconfig — nano-ros adds **no** new param
-      knob; it only consumes the resulting locator string.
+
 ## Notes
 
 - The features layer (`nros-platform-api` + export macros + cffi ABI +
