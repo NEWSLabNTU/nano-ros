@@ -7,9 +7,14 @@ workspace of component packages, launch files as the system description, ROS
 launch manifests as graph requirements, and one generated nano-ros binary for
 the target.
 
-**Status.** MVP implementation integrated through schema, Rust metadata,
-planner/checker, and generated-package build scaffolding. Coverage phase is
-starting.
+**Status.** Complete (archived). MVP shipped end-to-end: schema,
+Rust source metadata, launch planner + checker, and generated
+per-board binaries. All milestones M1–M7 met; the M5 platform-
+coverage extension verified 9 boards (native, FreeRTOS, NuttX,
+Zephyr, ThreadX-Linux, ThreadX-riscv64, ESP32-C3, bare-metal
+Cortex-M, STM32F4), with Orin SPE triaged as a license-gated opt-in
+cell. The nine "Deliberate deferrals" moved to
+[Phase 172](../phase-172-orchestration-deferred.md).
 
 **Priority.** P1. This is the user workflow layer above Phase 123 build/API
 work and Phase 110 scheduling.
@@ -367,6 +372,9 @@ Group D can create placeholder generated packages before Group C is complete,
 but must consume real `nros-plan.json` by M4.
 
 ## Deliberate deferrals
+
+These nine items were kept out of the MVP and now live in
+[Phase 172 — Orchestration follow-ups](../phase-172-orchestration-deferred.md):
 
 - lifecycle node orchestration;
 - automatic callback-chain inference;
