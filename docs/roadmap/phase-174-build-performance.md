@@ -54,14 +54,26 @@ Each of ~21 zephyr fixtures pays, uncacheably and largely serially:
   Repeated `just zephyr build-fixtures` (dev inner-loop / warm-dir CI)
   now goes incremental.
 
-Remaining (the residual ~6 s/example warm overhead is west startup +
-cmake reconfigure-check + codegen):
-- Cache codegen output (`nros_generate_interfaces`) across examples that
-  share interfaces (re-runs every configure today).
+- [x] **ninja-direct incremental** (landed 2026-05-21). `west build`
+  ALWAYS re-runs the full cmake configure (devicetree regen,
+  Rust-target detect, codegen) — ~4 s even on a no-op, which is the bulk
+  of the warm `-p auto` time. When a build dir is already configured,
+  the recipe now builds with `ninja -C <dir>` directly; ninja
+  regenerates `build.ninja` itself only when a cmake input
+  (CMakeLists / prj.conf) actually changed, so it stays correct.
+  Measured on `zephyr/rust/talker` zenoh, no-change rebuild:
+  **west `-p auto` 6.10 s → ninja-direct 0.28 s** (0 reconfigure).
+  Combined with pristine=auto: cold 20 s → no-change 0.28 s/example.
+  Under the fifo jobserver ninja inherits the pool; else it gets the
+  per-build ninja-jobs budget. `pristine=always` still forces west.
+
+Remaining (deeper, lower-ROI):
+- Cache codegen output (`nros_generate_interfaces`) so even the FIRST
+  build of a fresh dir reuses shared-interface output.
 - **shared build dirs per RMW group** / Zephyr **sysbuild** so one
-  configured kernel+picolibc tree is reused across same-config examples
-  instead of reconfigure-checking each. Bigger; intersects the broken
-  cyclonedds-zephyr (Phase 171.0.d) so hard to validate cleanly there.
+  configured kernel+picolibc tree is reused across same-config examples.
+  Bigger; intersects the broken cyclonedds-zephyr (Phase 171.0.d) so
+  hard to validate cleanly there.
 
 ### 174.B — config-divergent cache misses (~40%)
 

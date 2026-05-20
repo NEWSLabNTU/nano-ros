@@ -396,14 +396,31 @@ build-fixtures:
         if [ "${#extra_args[@]}" -gt 0 ]; then
             west_extra=(-- "${extra_args[@]}")
         fi
+        # Phase 174.A residual — if the build dir is already configured,
+        # build with ninja directly instead of `west build`, which
+        # ALWAYS re-runs the full cmake configure (devicetree regen,
+        # Rust-target detect, codegen) — ~4 s/example even on a no-op.
+        # ninja regenerates build.ninja itself only when a cmake input
+        # (CMakeLists / prj.conf) actually changed, so this is correct;
+        # `pristine=always` still forces a clean west reconfigure. Under
+        # the fifo jobserver (NROS_JOBSERVER=1) ninja inherits the pool;
+        # otherwise it gets the per-build ninja-jobs budget.
+        if [ "$pristine" != "always" ] && [ -f "$workspace/$build_dir/build.ninja" ]; then
+            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+                build_argv=(ninja -C "$build_dir")
+            else
+                build_argv=(ninja -C "$build_dir" -j "$ninja_jobs")
+            fi
+        else
+            build_argv=(west build -b "$board" -d "$build_dir" -p "$pristine"
+                        "$nros_root/examples/$src" "${west_extra[@]}")
+        fi
         if [ "$jobs" -eq 1 ]; then
             set +e
             (
               cd "$workspace"
               SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
-                west build -b "$board" -d "$build_dir" -p "$pristine" \
-                    "$nros_root/examples/$src" \
-                    "${west_extra[@]}"
+                "${build_argv[@]}"
             ) 2>&1 | tee "$log"
             rc="${PIPESTATUS[0]}"
             set -e
@@ -419,9 +436,7 @@ build-fixtures:
             (
               cd "$workspace"
               SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
-                west build -b "$board" -d "$build_dir" -p "$pristine" \
-                    "$nros_root/examples/$src" \
-                    "${west_extra[@]}"
+                "${build_argv[@]}"
             ) > "$log" 2>&1 &
             running+=("$!|$src|$log|$best_effort")
             while [ "${#running[@]}" -ge "$jobs" ]; do
