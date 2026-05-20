@@ -602,11 +602,44 @@ green.
     explicit path; revisit when running cyclonedds on hardware.)
 
   **Open follow-up — Phase 11W.10 (runtime stability):** after
-  ~16k publishes the process `abort()`s, preceded by Zephyr
-  `os: tid <…> is in use!` warnings — dynamic-thread-pool churn /
-  resource exhaustion under the tight publish loop (sim clock
-  barely advances, timer effectively free-runs). The publish path
-  itself works; this is a stability / pacing issue.
+  ~16k publishes the process `abort()`s. Investigated 2026-05-20;
+  two distinct layers, the second being the real blocker:
+
+  1. **Main-thread publish free-run + writer-history OOM.** On the
+     no_std Zephyr path the executor's timer delta falls back to
+     crediting `spin_once`'s `timeout_ms` every call (no
+     `clock_us_fn` set in the cyclonedds `ExecutorConfig`), and the
+     poll-only cyclonedds `session_drive_io` returns instantly, so
+     the 1 Hz timer fires hundreds of times/second. With a reliable
+     writer and no reader, the writer-history cache grows until the
+     4 MB heap is exhausted → bare `ddsrt_malloc` `abort()`.
+     *Mitigable* — pacing `session_drive_io` (k_msleep timeout_ms)
+     and/or setting `clock_us_fn` fixes the delta; bounding writer
+     QoS avoids the OOM. But pacing the main thread exposes layer 2.
+
+  2. **NSOS UDP recv busy-spin (the real blocker).** The Cyclone
+     recv thread spins logging
+     `UDP recvmsg sock N: ret 0 retcode -1` millions of times: NSOS
+     `recvmsg` on a UDP socket returns 0 (not `-1`/`EWOULDBLOCK`)
+     while the socket-poll waitset keeps reporting the fd readable,
+     so `ddsi_udp_conn_read` treats it as an error and the recv
+     loop never blocks. On single-core native_sim this starves the
+     publish thread. Reproduces on both the unicast (sock 4) and
+     multicast (sock 5) recv sockets, and persists with multicast
+     fully disabled (`AllowMulticast=false`), so it is **not** the
+     failed multicast join — it is a Zephyr NSOS `recvmsg`/`poll`
+     semantics bug for UDP (poll signals readable, recvmsg yields
+     0, condition never clears). Fixing it needs NSOS-level work in
+     `zephyr/drivers/net/nsos_{sockets,adapt}.c` (return
+     `EWOULDBLOCK` for no-data, or make `poll` not over-report) —
+     beyond the in-repo cyclonedds patches and partly sandbox-gated.
+
+  The `6864b2550` state (talker publishes ~16k visible
+  `Published: N` lines, then OOM) is kept as the demonstrable
+  milestone; the experimental `drive_io`-pacing / `AllowMulticast`
+  /off changes were reverted because pacing the main thread just
+  surfaces the layer-2 recv-spin (no visible publishes). 11W.10
+  proper is gated on the NSOS UDP-recv fix.
 
   **Remaining for full E2E:** the build hardcodes
   `/opt/ros/humble/share/std_msgs` + `build/cyclonedds/bin/idlc`
