@@ -2,6 +2,11 @@ set working-directory := '..'
 
 NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
 
+# Pinned ninja version. Ubuntu's apt `ninja-build` lags (1.10); we need
+# ≥1.13 for the GNU-jobserver client (Phase 173). Installed as a static
+# binary under `third-party/ninja/`; `.envrc` prepends it to PATH.
+NINJA_VERSION := "1.13.2"
+
 # Workspace module — host-agnostic dev environment setup.
 #
 # "workspace" here means the developer's dev workspace (host OS packages,
@@ -22,9 +27,41 @@ default:
 # pinned in a TOML file and installed by `rust-pinned-toolchains`.
 setup:
     @just workspace apt-packages
+    @just workspace install-ninja
     @just workspace rust-pinned-toolchains
     @just workspace rust-targets
     @just workspace cargo-tools
+
+# Install the pinned ninja static binary under third-party/ninja/.
+# Ubuntu's apt ninja is too old (1.10) for the GNU-jobserver client;
+# `.envrc` puts third-party/ninja first on PATH so this one wins. Lives
+# under third-party/ (not build/) so `just clean` doesn't wipe it.
+# Idempotent: skips when the pinned version is already present.
+install-ninja:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want="{{NINJA_VERSION}}"
+    dest="third-party/ninja"
+    bin="$dest/ninja"
+    if [ -x "$bin" ] && [ "$("$bin" --version 2>/dev/null)" = "$want" ]; then
+        echo "[ninja] $want already installed ($bin)"
+        exit 0
+    fi
+    case "$(uname -m)" in
+        x86_64)  asset="ninja-linux.zip" ;;
+        aarch64) asset="ninja-linux-aarch64.zip" ;;
+        *) echo "[ninja] unsupported arch $(uname -m); install ninja >=1.13 manually" >&2; exit 1 ;;
+    esac
+    url="https://github.com/ninja-build/ninja/releases/download/v$want/$asset"
+    echo "[ninja] downloading $want ($asset)..."
+    mkdir -p "$dest"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    curl -fSL "$url" -o "$tmp/ninja.zip"
+    unzip -o "$tmp/ninja.zip" -d "$dest" >/dev/null
+    chmod +x "$bin"
+    echo "[ninja] installed: $("$bin" --version) ($bin)"
+    echo "[ninja] ensure third-party/ninja is on PATH (direnv .envrc does this)."
 
 # Diagnose workspace install status (read-only).
 # Returns exit 1 if anything is missing.
@@ -49,6 +86,15 @@ doctor:
         echo "  [OK] apt-packages"
     else
         echo "  [MISSING] apt-packages: ${apt_missing[*]} (run: just workspace apt-packages)"
+        fail=1
+    fi
+
+    # --- pinned ninja (>=1.13 for the GNU-jobserver client, Phase 173) ---
+    ninja_bin="third-party/ninja/ninja"
+    if [ -x "$ninja_bin" ] && [ "$("$ninja_bin" --version 2>/dev/null)" = "{{NINJA_VERSION}}" ]; then
+        echo "  [OK] ninja {{NINJA_VERSION}} (third-party/ninja; jobserver-capable)"
+    else
+        echo "  [MISSING] ninja {{NINJA_VERSION}} (run: just workspace install-ninja)"
         fail=1
     fi
 
