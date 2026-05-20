@@ -196,32 +196,6 @@ if(NANO_ROS_RMW STREQUAL "zenoh")
             target_link_libraries(NanoRos INTERFACE nros_rmw_zenoh_staticlib-static)
         endif()
     endif()
-elseif(NANO_ROS_RMW STREQUAL "dds")
-    # Phase 137.1 — dust-DDS via the standalone staticlib. Build it via
-    # Corrosion in-tree (parallels the zenoh-staticlib pattern). The
-    # crate lives at packages/dds/nros-rmw-dds-staticlib/.
-    corrosion_import_crate(
-        MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
-        CRATES        nros-rmw-dds-staticlib
-        CRATE_TYPES   staticlib
-        NO_DEFAULT_FEATURES
-        FEATURES      platform-${NANO_ROS_PLATFORM} ros-${NANO_ROS_ROS_EDITION}
-        LOCKED
-    )
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
-       OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
-        target_link_libraries(NanoRos INTERFACE
-            "-Wl,--whole-archive"
-            nros_rmw_dds_staticlib-static
-            "-Wl,--no-whole-archive"
-            "-Wl,--allow-multiple-definition")
-    elseif(APPLE)
-        target_link_libraries(NanoRos INTERFACE
-            "-Wl,-force_load,$<TARGET_FILE:nros_rmw_dds_staticlib-static>"
-            "-Wl,--allow-multiple-definition")
-    else()
-        target_link_libraries(NanoRos INTERFACE nros_rmw_dds_staticlib-static)
-    endif()
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 160.L — XRCE via `nros-rmw-xrce-cffi-staticlib` (the
     # standalone staticlib sibling that wraps the Rust C-FFI shim

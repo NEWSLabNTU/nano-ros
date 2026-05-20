@@ -42,12 +42,6 @@ config NROS_RMW_ZENOH
       Embedded zenoh client; full ROS 2 graph support, low
       footprint. Recommended default for most NuttX boards.
 
-config NROS_RMW_DDS
-    bool "DDS (dust-dds)"
-    help
-      Pure-Rust DDS stack. Heavier than zenoh-pico but compatible
-      with stock ROS 2 nodes via the DDS wire.
-
 config NROS_RMW_XRCE
     bool "XRCE-DDS (micro-XRCE-DDS-Client)"
     help

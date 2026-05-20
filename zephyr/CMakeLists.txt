@@ -176,23 +176,6 @@ elseif(CONFIG_NROS_RMW_XRCE)
         ${NROS_REPO_DIR}/packages/xrce/xrce-zephyr/include
     )
 
-elseif(CONFIG_NROS_RMW_DDS)
-    # -------------------------------------------------------------------------
-    # DDS (dust-dds) platform support — Phase 71.8
-    # -------------------------------------------------------------------------
-    # dust-dds itself is pure-Rust (no C shim), but the example wrapper
-    # `nros::platform::zephyr::wait_for_network` calls `zpico_zephyr_wait_network`
-    # — a generic L4-readiness helper that lives in the zpico-zephyr crate
-    # but is actually backend-agnostic. Pull it in for DDS too.
-    zephyr_library_sources(
-        ${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/src/zpico_zephyr.c
-    )
-    zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/include)
-    # zpico_zephyr.c #includes "zpico.h" for the session-init helpers we
-    # don't use under DDS, but the header is still parsed; expose the
-    # zpico-sys include dir so the compile succeeds.
-    zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include)
-
 elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # -------------------------------------------------------------------------
     # Cyclone DDS RMW backend — Phase 117 + ASI Phase 1D
@@ -483,8 +466,6 @@ if(CONFIG_NROS_C_API)
         # cffi shim's `platform-zephyr` feature drops every POSIX TU
         # and emits `UCLIENT_PLATFORM_ZEPHYR` in the generated config.
         set(_nros_features "rmw-cffi,cffi-xrce-c,platform-zephyr,ros-humble")
-    elseif(CONFIG_NROS_RMW_DDS)
-        set(_nros_features "rmw-cffi,cffi-dds-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # Phase 168.X gap 2.B — cyclonedds is now usable from the C
         # API too. The backend's `nros_rmw_cyclonedds_register`
@@ -619,9 +600,6 @@ if(CONFIG_NROS_CPP_API)
         # Phase 115.K.2.5.1.3-zephyr — same shape as the C path
         # above: cffi runtime + C backend + Zephyr platform feature.
         set(_nros_cpp_features "rmw-cffi,rmw-xrce-cffi,platform-zephyr,ros-humble")
-    elseif(CONFIG_NROS_RMW_DDS)
-        zephyr_compile_definitions(NROS_RMW_DDS_CFFI=1)
-        set(_nros_cpp_features "rmw-dds-cffi,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # cyclonedds bypasses Cargo: the standalone nros-rmw-cyclonedds
         # C++ lib (compiled into the Zephyr app library by the RMW
@@ -713,8 +691,6 @@ if(CONFIG_NROS_CPP_API)
         set(_nros_cpp_rmw_name "xrce")
     elseif(CONFIG_NROS_RMW_ZENOH)
         set(_nros_cpp_rmw_name "zenoh")
-    elseif(CONFIG_NROS_RMW_DDS)
-        set(_nros_cpp_rmw_name "dds")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         set(_nros_cpp_rmw_name "cyclonedds")
     endif()

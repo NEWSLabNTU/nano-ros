@@ -24,9 +24,6 @@ NROS_C_FEATURES := std ros-humble platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
 NROS_C_FEATURES += cffi-zenoh-cffi
 endif
-ifneq ($(CONFIG_NROS_RMW_DDS),)
-NROS_C_FEATURES += cffi-dds-cffi
-endif
 ifneq ($(CONFIG_NROS_RMW_XRCE),)
 NROS_C_FEATURES += cffi-xrce-c
 endif
@@ -43,9 +40,6 @@ endif
 NROS_CPP_FEATURES := std ros-humble platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
 NROS_CPP_FEATURES += rmw-zenoh-cffi
-endif
-ifneq ($(CONFIG_NROS_RMW_DDS),)
-NROS_CPP_FEATURES += rmw-dds-cffi
 endif
 ifneq ($(CONFIG_NROS_RMW_XRCE),)
 NROS_CPP_FEATURES += rmw-xrce-cffi
