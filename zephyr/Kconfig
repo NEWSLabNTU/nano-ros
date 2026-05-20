@@ -75,6 +75,32 @@ config NROS_RMW_DDS
 config NROS_RMW_CYCLONEDDS
     bool "Cyclone DDS (nros-rmw-cyclonedds)"
     depends on NET_SOCKETS && POSIX_API && CPP
+    # Phase 11W — universal Cyclone-DDS-on-Zephyr runtime requirements
+    # (formerly duplicated in every cyclonedds prj-cyclonedds.conf):
+    #   THREAD_LOCAL_STORAGE — Cyclone's `ddsrt_thread_local
+    #     tsd_thread_state` needs real per-thread `__thread` storage.
+    #   THREAD_CUSTOM_DATA — the cyclonedds-zephyr-threads patch uses
+    #     k_thread_custom_data in place of pthread TLS for ddsrt cleanup.
+    #   DYNAMIC_THREAD(+ALLOC) — Cyclone's worker threads (gc/recv/
+    #     lease/tev) are pthread_create'd with no explicit stack attr;
+    #     Zephyr needs the dynamic-thread stack pool or pthread_create
+    #     returns EINVAL. THREAD_STACK_INFO + THREAD_MONITOR are
+    #     DYNAMIC_THREAD's own dependencies.
+    # (NET_TCP — the sockwaitset self-pipe needs it, but selecting it
+    #  here forms a Kconfig dependency loop through NET_SOCKETS, so it
+    #  stays in the example overlay.)
+    # Int knobs (pthread pool sizes, malloc arena, stack size), NET_TCP,
+    # and the native_sim-only NSOS socket offload stay in the example
+    # overlays.
+    # `imply` (not `select`): set these on by default but respect each
+    # symbol's own dependencies (e.g. THREAD_LOCAL_STORAGE needs
+    # ARCH_HAS_THREAD_LOCAL_STORAGE) and avoid select dependency loops.
+    imply THREAD_LOCAL_STORAGE
+    imply THREAD_CUSTOM_DATA
+    imply THREAD_STACK_INFO
+    imply THREAD_MONITOR
+    imply DYNAMIC_THREAD
+    imply DYNAMIC_THREAD_ALLOC
     help
       Use Cyclone DDS (pinned to 0.10.5, matches ros-humble-cyclonedds)
       as the RMW transport backend. Wire-compatible with stock
