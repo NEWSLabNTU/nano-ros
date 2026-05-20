@@ -140,7 +140,14 @@ struct PlatformProfile {
     patches: &'static [(&'static str, &'static str)], // crate → workspace-relative path
     link_kind: LinkKind,                     // None | NuttxStaging | …
     entry_kind: EntryKind,
+    net_stack: NetStack,                     // who owns NIC + IP bring-up (173.7)
 }
+
+// RtosOwned   — RTOS brings up NIC + IP (Zephyr/NuttX/esp-idf); generator
+//               emits an additive RTOS-config fragment from nros.toml.
+// NanoRosOwned — board crate owns the stack (smoltcp/lwIP/NetX, bare-metal,
+//               esp-hal); nros.toml values flow into the board `Config`.
+enum NetStack { RtosOwned, NanoRosOwned }
 
 // HostedMain  — Rust `fn main` (posix).
 // BoardRun    — Rust `<board>::run(cfg, closure)` (RTOS/esp/bare-metal).
@@ -334,6 +341,61 @@ code" is the invariant 173 enforces — the generator is the only thing
 that turns config into Cargo features / `Config` values / `SessionSpec`s
 / RTOS fragments.
 
+### 173.7 — how `nros.toml` cooperates with each RTOS (and bare-metal)
+
+The hard part of "config in files" is that **each RTOS already owns a
+chunk of config** — kernel tick/heap/scheduler, driver enables, the IP
+stack. nano-ros must not duplicate or fight that. The rule:
+
+> nano-ros config never sets **kernel** params (tick / heap /
+> scheduler). It sets **transport selection + IP / baudrate / RMW /
+> locator**. *Where* those land depends on **who owns the network
+> stack** on that target.
+
+Three ownership models, captured as a `net_stack` field on
+`PlatformProfile` (`RtosOwned` | `NanoRosOwned`):
+
+| Platform | Kernel cfg owner | Net-stack owner | `nros.toml` →  generator emits |
+|---|---|---|---|
+| **posix** | OS | OS | nothing compile-time; values seed `ExecutorConfig::from_env` at runtime |
+| **Zephyr** | Zephyr Kconfig/DT | **Zephyr** (`CONFIG_NET_*`, DT NIC) | a `prj.conf` + DT-overlay **fragment** (net-enable + static-IP/DHCP from `nros.toml`), appended to the board base config — never replacing it |
+| **NuttX** | NuttX defconfig | **NuttX** (`CONFIG_NET_*`) | a `defconfig` **fragment** (net + IP) merged into the board defconfig |
+| **FreeRTOS** | `FreeRTOSConfig.h` (kernel only) | **nano-ros board** (bundled lwIP) | IP/locator flow into the generated board `Config`; `FreeRTOSConfig.h` untouched |
+| **ThreadX** | tx kernel cfg | **nano-ros board** (bundled NetX) | same — values into board `Config`; kernel cfg untouched |
+| **esp32 (esp-hal)** | none (bare-metal) | **nano-ros board** (smoltcp) | values straight into board `Config` |
+| **bare-metal (mps2 / stm32f4)** | none | **nano-ros board** (smoltcp) | values straight into board `Config` |
+
+Two emit paths, picked by `net_stack`:
+
+- **`RtosOwned`** (Zephyr, NuttX, esp-idf): the RTOS brings up the NIC +
+  IP stack; nano-ros rides it via BSD sockets. The generator translates
+  the `nros.toml` transport/IP into the RTOS's *own* config language as
+  an **additive fragment** (`prj.conf` lines, a DT overlay, a defconfig
+  patch) and the user still only edits `nros.toml`. nano-ros emits the
+  *net* knobs only; the kernel base config is the RTOS's, untouched.
+- **`NanoRosOwned`** (FreeRTOS+lwIP, ThreadX+NetX, all bare-metal +
+  esp-hal): nano-ros's board crate owns the stack (smoltcp / lwIP /
+  NetX, compiled by the board build.rs). The `nros.toml` values flow
+  straight into the generated board `Config` — no RTOS config touched
+  because the kernel config there is kernel-only (no net section).
+
+**Bare-metal is the simplest case, not a special one.** No RTOS, no
+kernel config, no net-stack owner but nano-ros itself → `nros.toml` is
+the *only* config and feeds the board `Config` directly. It's just
+`NanoRosOwned` with an empty kernel-config side.
+
+**Serial / CAN follow the same split.** Serial baudrate on an
+RtosOwned target (NuttX `CONFIG_UART0_BAUD`) → defconfig fragment; on a
+NanoRosOwned target (bare-metal `stm32f4-usart`) → board `Config`. CAN
+bitrate likewise. The transport *kind* always comes from `nros.toml`;
+the *value* lands wherever that platform's stack reads it.
+
+**What nano-ros never emits**, on any target: kernel tick rate, heap
+size, scheduler policy, stack sizes, non-net driver enables. Those stay
+the RTOS's (or the board crate's intrinsic) concern. If a user needs to
+tune them, they edit the RTOS config directly — that's outside the
+nano-ros transport⟷RMW surface by design.
+
 ## Acceptance criteria
 
 - [ ] One `pub fn run<B: Board, …>` in `nros-board-common`; the three
@@ -374,6 +436,17 @@ that turns config into Cargo features / `Config` values / `SessionSpec`s
 - [ ] At least one transport-bridge driver crate (`*-smoltcp`) is
       reworked to sit on `embedded-nal` (or documented why it can't),
       proving the "consume the ecosystem, don't reinvent" direction.
+- [ ] `NetStack::RtosOwned` path verified on one RTOS: `nros.toml` IP +
+      transport produce an additive Zephyr `prj.conf`/DT (or NuttX
+      defconfig) fragment that boots with the configured IP, and the
+      board's base kernel config is unmodified by the generator.
+- [ ] `NetStack::NanoRosOwned` path verified on one target (bare-metal
+      or FreeRTOS): `nros.toml` IP/baudrate land in the generated board
+      `Config`; no RTOS kernel config (`FreeRTOSConfig.h` etc.) is
+      touched.
+- [ ] Negative gate: the generator never emits kernel params (tick /
+      heap / scheduler / stack size / non-net driver enables) on any
+      target.
 
 ## Notes
 
