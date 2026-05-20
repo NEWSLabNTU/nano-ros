@@ -1,0 +1,33 @@
+[workspace]
+
+[package]
+name = "esp32s3-board-bringup"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "ESP32-S3 board-bringup smoke — links nros-board-esp32s3 into a real ELF"
+
+[[bin]]
+name = "esp32s3-board-bringup"
+test = false
+bench = false
+
+[dependencies]
+esp-backtrace = { version = "~0.18.0", features = [
+    "esp32s3",
+    "panic-handler",
+    "println",
+] }
+esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32s3"] }
+esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable"] }
+esp-println = { version = "~0.16.0", features = ["esp32s3"] }
+# The crate under test — exercises the board entry + esp-hal #[main] +
+# the full link, no RMW / zenoh-pico (board bringup only).
+nros-board-esp32s3 = { path = "../../../boards/nros-board-esp32s3" }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1
