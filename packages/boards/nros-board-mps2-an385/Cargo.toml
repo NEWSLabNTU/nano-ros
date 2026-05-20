@@ -9,6 +9,10 @@ description = "QEMU MPS2-AN385 board crate for nros (hardware + network init)"
 name = "nros_board_mps2_an385"
 
 [dependencies]
+# Phase 173.1 — Board super-trait + the generic direct-exec `run`.
+# no_std, zero-dep (default-features = false drops the build-helper
+# serde/toml/cc closure).
+nros-board-common = { path = "../nros-board-common", default-features = false }
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-mps2-an385 = { path = "../../platforms/nros-platform-mps2-an385" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385", "global-allocator", "critical-section"] }

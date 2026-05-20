@@ -1199,6 +1199,13 @@ name = "nros-baremetal-common"
 version = "0.1.0"
 
 [[package]]
+name = "nros-board-cffi"
+version = "0.1.0"
+dependencies = [
+ "nros-board-common",
+]
+
+[[package]]
 name = "nros-board-common"
 version = "0.1.0"
 dependencies = [

@@ -97,3 +97,54 @@ pub trait BoardExit {
     /// init step failed.
     fn exit_failure() -> !;
 }
+
+/// Phase 173.1 — the single board-entry super-trait.
+///
+/// Bundles the three split contracts so the generic [`run`] driver
+/// takes one bound instead of three. Blanket-implemented for any
+/// type carrying all three, so existing
+/// `BoardInit + BoardPrint + BoardExit` impls satisfy `Board` for
+/// free — no per-board boilerplate.
+pub trait Board: BoardInit + BoardPrint + BoardExit {}
+impl<T: BoardInit + BoardPrint + BoardExit> Board for T {}
+
+/// Phase 173.1 — the one **direct-exec** board entry driver.
+///
+/// `init_hardware` → run the user closure → exit. This is the shape
+/// the *direct-exec* board families use — bare-metal (MPS2-AN385,
+/// STM32F4) and esp-hal (ESP32), where the closure runs on the boot
+/// stack and control falls through to `exit_*` when it returns.
+///
+/// **Kernel-spawn families keep their own `run`.** FreeRTOS
+/// (`nros-board-freertos`) and ThreadX (`nros-board-threadx`) must
+/// allocate an app task, hand the closure to it, and start the
+/// scheduler — the closure runs in *task* context and the
+/// scheduler-start never returns, so the result is consumed inside
+/// the task, not here. That kernel bring-up is the bounded
+/// essential variation (Phase 173 factor 5); those crates still
+/// converge on the `Board` trait + `B::Config`, just not on this
+/// `run` body.
+///
+/// # Type parameters
+/// - `B: Board` — the board ZST (provides `init_hardware` / `println`
+///   / `exit_*` + the associated `Config`).
+/// - `F: FnOnce(&B::Config) -> Result<(), E>` — the user closure.
+/// - `E: Debug` — closure error type.
+pub fn run<B, F, E>(cfg: B::Config, f: F) -> !
+where
+    B: Board,
+    F: FnOnce(&B::Config) -> Result<(), E>,
+    E: core::fmt::Debug,
+{
+    B::init_hardware(&cfg);
+    match f(&cfg) {
+        Ok(()) => {
+            B::println(format_args!("nros: application complete"));
+            B::exit_success()
+        }
+        Err(e) => {
+            B::println(format_args!("nros: application error: {e:?}"));
+            B::exit_failure()
+        }
+    }
+}

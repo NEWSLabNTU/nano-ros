@@ -52,9 +52,9 @@ pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
 // Phase 127.D — re-export nros-smoltcp so RTIC examples can read the
 // poll/RX diagnostic counters without adding a direct dep.
 #[cfg(feature = "ethernet")]
-pub use nros_smoltcp;
-#[cfg(feature = "ethernet")]
 pub use lan9118_smoltcp;
+#[cfg(feature = "ethernet")]
+pub use nros_smoltcp;
 
 /// Phase 127.D — install `wfi` as the busy-wait idle hook so
 /// `Executor::open`'s connect/handshake polls release the CPU to

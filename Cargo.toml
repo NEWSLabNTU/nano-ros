@@ -18,6 +18,9 @@ members = [
     # link-feature policy) consumed by zpico-sys + the per-kernel
     # generic board crates as `[build-dependencies]`.
     "packages/boards/nros-board-common",
+    # Phase 173.4 — canonical board-entry C ABI (`<nros/board.h>` mirror
+    # + `nros_board_export!` macro). Sibling to `nros-platform-cffi`.
+    "packages/boards/nros-board-cffi",
     # Zenoh-pico FFI bindings
     "packages/zpico/zpico-sys",
     # Free-list allocator for z_malloc/z_free on bare-metal

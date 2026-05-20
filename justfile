@@ -189,7 +189,7 @@ format: format-workspace native::format format-c format-cpp format-python
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 check: \
     check-workspace check-workspace-embedded check-workspace-features \
-    check-platform-abi-mirror check-decoupling \
+    check-platform-abi-mirror check-board-abi-mirror check-decoupling \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
@@ -198,6 +198,12 @@ check: \
 [private]
 check-platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
+
+# Phase 173.4 — verify <nros/board.h> matches the Rust extern block
+# and the `nros_board_export!` macro emission in nros-board-cffi.
+[private]
+check-board-abi-mirror:
+    @bash scripts/check-board-abi-mirror.sh
 
 # Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
 # parity. For every defined `_z_f_link_*_<transport>` wrapper, the

@@ -19,8 +19,7 @@ use nros_platform_mps2_an385::random;
 #[cfg(feature = "ethernet")]
 use crate::network;
 
-use crate::config::Config;
-use crate::exit_failure;
+use crate::{config::Config, exit_failure};
 
 #[cfg(feature = "ethernet")]
 use crate::error::{Error, Result};
@@ -30,13 +29,13 @@ use crate::error::{Error, Result};
 #[cfg(feature = "ethernet")]
 use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
 #[cfg(feature = "ethernet")]
+use nros_smoltcp::SmoltcpBridge;
+#[cfg(feature = "ethernet")]
 use smoltcp::iface::{Interface, SocketSet};
 #[cfg(feature = "ethernet")]
 use smoltcp::phy::Device;
 #[cfg(feature = "ethernet")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-#[cfg(feature = "ethernet")]
-use nros_smoltcp::SmoltcpBridge;
 
 #[cfg(feature = "ethernet")]
 static mut ETH_DEVICE: MaybeUninit<Lan9118> = MaybeUninit::uninit();
@@ -140,7 +139,8 @@ impl EthernetDevice for Lan9118 {
 fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
     let mac = eth.mac_address();
     let mac_addr = EthernetAddress::from_bytes(&mac);
-    let now = smoltcp::time::Instant::from_millis(nros_platform_mps2_an385::clock::clock_ms() as i64);
+    let now =
+        smoltcp::time::Instant::from_millis(nros_platform_mps2_an385::clock::clock_ms() as i64);
     let iface_config = smoltcp::iface::Config::new(mac_addr.into());
     Interface::new(iface_config, eth, now)
 }
@@ -442,23 +442,38 @@ pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
-    init_hardware(&config);
+    // Phase 173.1 — delegate to the shared direct-exec driver
+    // (`init_hardware` → closure → `exit_*`) via the `Board` trait,
+    // instead of hand-rolling the init/match/exit dance here.
+    nros_board_common::run::<Mps2An385, F, E>(config, f)
+}
 
-    // Run user application
-    match f(&config) {
-        Ok(()) => {
-            hprintln!("");
-            hprintln!("Application completed successfully.");
-            hprintln!("");
-            hprintln!("========================================");
-            hprintln!("  Done");
-            hprintln!("========================================");
-            crate::exit_success();
-        }
-        Err(e) => {
-            hprintln!("");
-            hprintln!("Application error: {:?}", e);
-            exit_failure();
-        }
+/// Phase 173.1 — board ZST carrying the `Board` super-trait impls so
+/// the generic `nros_board_common::run` can drive this board. The
+/// three impls forward to the board's existing free functions /
+/// semihosting writer.
+pub struct Mps2An385;
+
+impl nros_board_common::BoardInit for Mps2An385 {
+    type Config = Config;
+
+    fn init_hardware(cfg: &Config) {
+        init_hardware(cfg);
+    }
+}
+
+impl nros_board_common::BoardPrint for Mps2An385 {
+    fn println(args: core::fmt::Arguments<'_>) {
+        hprintln!("{}", args);
+    }
+}
+
+impl nros_board_common::BoardExit for Mps2An385 {
+    fn exit_success() -> ! {
+        crate::exit_success()
+    }
+
+    fn exit_failure() -> ! {
+        crate::exit_failure()
     }
 }
