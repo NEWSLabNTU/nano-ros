@@ -60,6 +60,7 @@ cffi-export = [
     "nros-platform-stm32f4?/cffi-export",
     "nros-platform-esp32?/cffi-export",
     "nros-platform-esp32-qemu?/cffi-export",
+    "nros-platform-esp32s3?/cffi-export",
 ]
 # Phase 121.8.e — bare-metal embedded crates flip to CffiPlatform
 # routing. Each crate impls the full PlatformTcp/Udp/SocketHelpers/
@@ -86,6 +87,12 @@ platform-esp32-qemu = [
     "dep:nros-platform-esp32-qemu",
     "dep:nros-platform-cffi",
     "nros-platform-esp32-qemu/cffi-export",
+]
+# Phase 173.6 — ESP32-S3 (Xtensa LX7) real-hardware platform.
+platform-esp32s3 = [
+    "dep:nros-platform-esp32s3",
+    "dep:nros-platform-cffi",
+    "nros-platform-esp32s3/cffi-export",
 ]
 # Phase 121.3.deprecate-rust-remove (closed): the four RTOS platform
 # features still resolve `ConcretePlatform` to `CffiPlatform`. The
@@ -168,6 +175,7 @@ nros-platform-mps2-an385 = { version = "0.1.0", path = "../../platforms/nros-pla
 nros-platform-stm32f4 = { version = "0.1.0", path = "../../platforms/nros-platform-stm32f4", optional = true }
 nros-platform-esp32 = { version = "0.1.0", path = "../../platforms/nros-platform-esp32", optional = true }
 nros-platform-esp32-qemu = { version = "0.1.0", path = "../../platforms/nros-platform-esp32-qemu", optional = true }
+nros-platform-esp32s3 = { version = "0.1.0", path = "../../platforms/nros-platform-esp32s3", optional = true }
 # Phase 121.3.deprecate-rust-remove — nros-platform-{freertos,nuttx,
 # threadx,zephyr} Rust crates were deleted. `packages/core/nros-platform-{rtos}/`
 # now hosts the C port only. `platform-{rtos}` features just toggle
