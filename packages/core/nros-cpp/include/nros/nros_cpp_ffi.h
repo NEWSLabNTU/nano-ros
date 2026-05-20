@@ -152,7 +152,7 @@ typedef struct nros_cpp_node_options_t {
    */
   size_t namespace_len;
   /**
-   * RMW backend name (e.g. "zenoh", "dds"). Empty selects first-registered.
+   * RMW backend name (e.g. "zenoh", "cyclonedds"). Empty selects first-registered.
    */
   uint8_t rmw_name[NROS_CPP_RMW_NAME_LEN];
   /**

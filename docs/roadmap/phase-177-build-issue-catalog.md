@@ -11,8 +11,9 @@ are tracked here directly.
 test-failure catalog. Most refactor-fallout was fixed during the sweep
 (see "Fixed" below); the rows here are what remains.
 
-**Priority.** P2. 177.1 (the sole `build-all` blocker) is **fixed**; the
-rest are deferred-by-design or host-environment.
+**Priority.** P2. 177.1 (the sole `build-all` blocker), 177.4, and 177.5
+are **fixed**; the remaining rows (177.2 / 177.3) are deferred-by-design
+to their owning phases (171.0 / 175).
 
 ## Open issues
 
@@ -77,9 +78,10 @@ embedded cells) — see Phase 171.B.
   171.B.2); bare-metal fixture matrices reverted to zenoh-only.
 - Unified jobserver `gmake`→make-4.4 alias (stray make 4.3 choked on
   the inherited fifo `--jobserver-auth`) — Phase 176.
-- **177.5** NuttX/ESP32 `-Z build-std` e2e (`fixture_workspace_builds_
-  generated_{nuttx,esp32}_package`): verified green with the pinned
-  `nightly-2026-04-11` + `rust-src` installed. Added a
+- **177.5** NuttX/ESP32 `-Z build-std` e2e
+  (`fixture_workspace_builds_generated_{nuttx,esp32}_package`):
+  verified green with the pinned `nightly-2026-04-11` + `rust-src`
+  installed. Added a
   `build_std_nightly_skip()` precondition guard (reads the channel from
   `tools/rust-toolchain.toml`) so both skip cleanly with the exact
   `rustup` remedy when the toolchain is absent, instead of failing
