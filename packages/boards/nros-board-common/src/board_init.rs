@@ -148,3 +148,40 @@ where
         }
     }
 }
+
+/// Phase 173.4 — the full board *entry* contract behind the C ABI.
+///
+/// [`run`] (above) is the direct-exec driver; kernel-spawn families
+/// (FreeRTOS, ThreadX) have a different `run` body (allocate an app
+/// task, start the scheduler). `BoardEntry` abstracts over *both* so
+/// the `nros_board_export!` macro's `nros_board_run` symbol is
+/// family-agnostic — it just calls `<B as BoardEntry>::run`.
+///
+/// - **Direct-exec boards** opt in with the [`DirectExec`] marker and
+///   get the blanket `BoardEntry` impl (delegates to [`run`]) for free.
+/// - **Kernel-spawn boards** impl `BoardEntry` directly, delegating to
+///   their family `run` (`nros_board_freertos::run::<Self>` etc.).
+pub trait BoardEntry: Board {
+    /// Drive the full boot → user-closure → exit flow. Never returns.
+    fn run<F, E>(cfg: Self::Config, f: F) -> !
+    where
+        F: FnOnce(&Self::Config) -> Result<(), E>,
+        E: core::fmt::Debug;
+}
+
+/// Phase 173.4 — opt-in marker for **direct-exec** boards (bare-metal,
+/// esp-hal): the user closure runs on the boot stack and control falls
+/// through to `exit_*`. Implementing it grants the blanket
+/// [`BoardEntry`] impl that routes through [`run`]. Kernel-spawn boards
+/// must NOT implement this — they impl `BoardEntry` by hand.
+pub trait DirectExec: Board {}
+
+impl<T: DirectExec> BoardEntry for T {
+    fn run<F, E>(cfg: Self::Config, f: F) -> !
+    where
+        F: FnOnce(&Self::Config) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        run::<T, F, E>(cfg, f)
+    }
+}

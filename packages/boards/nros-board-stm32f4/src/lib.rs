@@ -25,9 +25,9 @@
 mod config;
 #[allow(dead_code)]
 mod error;
-mod node;
 #[cfg(feature = "ethernet")]
 pub mod network;
+mod node;
 
 // Re-export entry macro
 pub use cortex_m_rt::entry;
@@ -53,13 +53,17 @@ pub use nros_platform_stm32f4::pins;
 ///
 /// Use with: `use nros_board_stm32f4::prelude::*;`
 pub mod prelude {
-    pub use crate::config::Config;
-    pub use crate::node::{init_hardware, run};
+    pub use crate::{
+        config::Config,
+        node::{init_hardware, run},
+    };
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};
+    pub use nros_platform::BoardConfig;
     #[cfg(feature = "ethernet")]
     pub use nros_platform_stm32f4::phy::PhyType;
-    pub use nros_platform_stm32f4::pins::PinConfig;
-    pub use nros_platform_stm32f4::timing::{CycleCounter, MonotonicClock};
-    pub use nros_platform::BoardConfig;
+    pub use nros_platform_stm32f4::{
+        pins::PinConfig,
+        timing::{CycleCounter, MonotonicClock},
+    };
 }

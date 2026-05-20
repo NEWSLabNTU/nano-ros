@@ -14,11 +14,14 @@ use core::mem::MaybeUninit;
 use stm32f4xx_hal::gpio::GpioExt;
 use stm32f4xx_hal::{pac, prelude::*, rcc::RccExt};
 
-use nros_platform_stm32f4::clock;
-use nros_platform_stm32f4::random;
+use nros_platform_stm32f4::{clock, random};
 
 use crate::config::Config;
 
+#[cfg(feature = "ethernet")]
+use nros_platform_stm32f4::phy;
+#[cfg(feature = "ethernet")]
+use nros_smoltcp::SmoltcpBridge;
 #[cfg(feature = "ethernet")]
 use smoltcp::iface::{Interface, SocketSet};
 #[cfg(feature = "ethernet")]
@@ -28,10 +31,6 @@ use stm32_eth::{
     EthPins, Parts, PartsIn,
     dma::{RxRingEntry, TxRingEntry},
 };
-#[cfg(feature = "ethernet")]
-use nros_smoltcp::SmoltcpBridge;
-#[cfg(feature = "ethernet")]
-use nros_platform_stm32f4::phy;
 
 // ============================================================================
 // Static Buffer Allocation (ethernet)
@@ -107,9 +106,7 @@ pub fn init_hardware(
         // and register it with zpico-serial for zenoh-pico to use.
         //
         // Safety: called once during init, no concurrent RCC/GPIO access.
-        let usart = unsafe {
-            stm32f4_usart::init_usart(config.usart_index, config.baudrate)
-        };
+        let usart = unsafe { stm32f4_usart::init_usart(config.usart_index, config.baudrate) };
 
         // Store in static so the reference lives forever.
         static mut SERIAL_PORT: Option<stm32f4_usart::Stm32f4Usart> = None;
@@ -119,16 +116,15 @@ pub fn init_hardware(
         // `nros_platform_api::PlatformSerial`. Dispatches to the same
         // `SERIAL_PORT` that `zpico-serial::register_port(0, ...)` uses;
         // the two paths share state. `handle == 0` is the live UART.
-        unsafe fn plat_serial_open(_path: *const u8) -> u8 { 0 }
+        unsafe fn plat_serial_open(_path: *const u8) -> u8 {
+            0
+        }
         unsafe fn plat_serial_close(_h: u8) {}
-        unsafe fn plat_serial_configure(_h: u8, _baudrate: u32) -> i8 { -1 }
+        unsafe fn plat_serial_configure(_h: u8, _baudrate: u32) -> i8 {
+            -1
+        }
         #[allow(static_mut_refs)]
-        unsafe fn plat_serial_read(
-            h: u8,
-            buf: *mut u8,
-            len: usize,
-            _timeout_ms: u32,
-        ) -> usize {
+        unsafe fn plat_serial_read(h: u8, buf: *mut u8, len: usize, _timeout_ms: u32) -> usize {
             if h != 0 {
                 return usize::MAX;
             }
@@ -219,33 +215,56 @@ pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
-    let dp = pac::Peripherals::take().unwrap_or_else(|| {
-        defmt::error!("Device peripherals already taken");
-        loop {
-            cortex_m::asm::wfi();
-        }
-    });
-    let cp = cortex_m::Peripherals::take().unwrap_or_else(|| {
-        defmt::error!("Core peripherals already taken");
-        loop {
-            cortex_m::asm::wfi();
-        }
-    });
-    let _syst = init_hardware(&config, dp, cp);
+    // Phase 173.1 — delegate to the shared direct-exec driver via the
+    // `Board` trait. `Stm32F4::init_hardware` takes the PAC + core
+    // peripherals internally; `exit_*` is the `wfi` idle loop.
+    nros_board_common::run::<Stm32F4, F, E>(config, f)
+}
 
-    // Run user application
-    match f(&config) {
-        Ok(()) => {
-            defmt::info!("Application completed successfully");
-        }
-        Err(e) => {
-            defmt::error!("Application error: {:?}", defmt::Debug2Format(&e));
+/// Phase 173.1 — board ZST carrying the `Board` super-trait impls so
+/// `nros_board_common::run` drives STM32F4 boot.
+pub struct Stm32F4;
+
+impl nros_board_common::BoardInit for Stm32F4 {
+    type Config = Config;
+
+    fn init_hardware(cfg: &Config) {
+        let dp = pac::Peripherals::take().unwrap_or_else(|| {
+            defmt::error!("Device peripherals already taken");
+            loop {
+                cortex_m::asm::wfi();
+            }
+        });
+        let cp = cortex_m::Peripherals::take().unwrap_or_else(|| {
+            defmt::error!("Core peripherals already taken");
+            loop {
+                cortex_m::asm::wfi();
+            }
+        });
+        // SysTick returned by the free `init_hardware` is unused by the
+        // run path (it was `let _syst`); drop it here unchanged.
+        let _syst = init_hardware(cfg, dp, cp);
+    }
+}
+
+impl nros_board_common::BoardPrint for Stm32F4 {
+    fn println(args: core::fmt::Arguments<'_>) {
+        defmt::info!("{}", defmt::Display2Format(&args));
+    }
+}
+
+impl nros_board_common::BoardExit for Stm32F4 {
+    fn exit_success() -> ! {
+        defmt::info!("Entering idle loop");
+        loop {
+            cortex_m::asm::wfi();
         }
     }
 
-    defmt::info!("Entering idle loop");
-    loop {
-        cortex_m::asm::wfi();
+    fn exit_failure() -> ! {
+        loop {
+            cortex_m::asm::wfi();
+        }
     }
 }
 
@@ -384,8 +403,11 @@ unsafe fn setup_hardware(
         let iface_config = smoltcp::iface::Config::new(mac_addr.into());
 
         let mut dma_ref = &mut dma;
-        let mut iface =
-            Interface::new(iface_config, &mut dma_ref, smoltcp::time::Instant::from_millis(0));
+        let mut iface = Interface::new(
+            iface_config,
+            &mut dma_ref,
+            smoltcp::time::Instant::from_millis(0),
+        );
 
         // Set IP address
         iface.update_ip_addrs(|addrs| {
@@ -452,16 +474,12 @@ unsafe fn setup_hardware(
                 dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
             );
 
-            nros_smoltcp::set_poll_callback(
-                crate::network::smoltcp_network_poll,
-            );
+            nros_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
 
             // Register the network poll as the sleep callback so busy-wait
             // sleep polls the network stack to avoid missing packets during
             // zenoh-pico's connect handshake.
-            nros_platform_stm32f4::sleep::set_poll_callback(
-                crate::network::smoltcp_network_poll,
-            );
+            nros_platform_stm32f4::sleep::set_poll_callback(crate::network::smoltcp_network_poll);
         }
 
         defmt::info!("Network ready.");

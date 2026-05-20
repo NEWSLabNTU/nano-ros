@@ -171,7 +171,11 @@ That kernel bring-up is the bounded essential variation (factor 5). So:
     `esp_println`, `exit_*` → the ESP32 no-exit spin loop; `run`
     tail-calls the common driver. `logging_smoke_esp32_qemu` test
     re-verified green with the new `nros: application complete` banner.
-  - `stm32f4` not yet migrated (same shape as mps2; mechanical follow-up).
+  - `nros-board-stm32f4` migrated: `Stm32F4` ZST whose `init_hardware`
+    takes the PAC + core peripherals internally (dropping the unused
+    `SYST`), `println` → `defmt` via `Display2Format`, `exit_*` → the
+    `wfi` idle loop; `run` tail-calls the common driver. Checks clean on
+    `thumbv7em-none-eabihf`.
 - **Kernel-spawn families** (`nros-board-{freertos,threadx}`) — keep
   their own task-spawning `run` body, but converge on the `Board`
   super-trait + `B::Config`. ThreadX `run<B,C,F,E>` collapsed to
@@ -276,7 +280,8 @@ block + a `nros_board_export!` macro + the `<nros/board.h>` header.
    "no hardcoded hardware config in code" principle.
 2. **Five primitives, not one.** The ABI mirrors the full `Board`
    surface so the drift gate has real coverage and a C runtime can call
-   any single primitive: `nros_board_run` (direct-exec driver),
+   any single primitive: `nros_board_run` (full entry driver, routed via
+   `BoardEntry::run` so it serves both direct-exec and kernel-spawn),
    `nros_board_init_hardware`, `nros_board_println`,
    `nros_board_exit_success`, `nros_board_exit_failure`.
 
@@ -286,7 +291,7 @@ Header (`packages/boards/nros-board-cffi/include/nros/board.h`):
 /* Returns 0 on success, non-zero on error. `user` is threaded through. */
 typedef int32_t (*nros_board_app_fn)(void *user);
 
-/* Direct-exec driver: init_hardware(cfg) → app(user) → exit_*. noreturn. */
+/* Full entry driver (direct-exec OR kernel-spawn, via BoardEntry). noreturn. */
 void nros_board_run(const void *cfg, nros_board_app_fn app, void *user);
 
 void    nros_board_init_hardware(const void *cfg);
@@ -296,9 +301,11 @@ void    nros_board_exit_failure(void);   /* noreturn */
 ```
 
 Rust side — `nros_board_export!($ty)` monomorphises all five symbols
-over a `Board` impl, casting `cfg` → `&<$ty>::Config`, exactly like
-`nros_platform_export!`. A compile-link test (`tests/export_compiles.rs`)
-exercises the macro against a dummy `Board`.
+over a `BoardEntry` impl (`cfg` read out as `<$ty>::Config`), exactly
+like `nros_platform_export!`. Two compile-link tests exercise it:
+`tests/export_compiles.rs` (direct-exec board via the `DirectExec`
+marker) and `tests/export_kernel_spawn.rs` (a board impl'ing
+`BoardEntry` directly).
 
 - `scripts/check-board-abi-mirror.sh` (sibling of the platform gate,
   wired into `just check`) keeps `nros/board.h` ⟷ extern block ⟷ macro
@@ -505,18 +512,24 @@ nano-ros transport⟷RMW surface by design.
       `nros-board-cffi` crate; `check-board-abi-mirror` keeps header ⟷
       extern block ⟷ macro in sync (clean: 5 symbols), wired into
       `just check`. Macro proven via `tests/export_compiles.rs`.
-- [~] C-consumer ABI proof landed: `tests/board_consumer.c` includes
+- [x] C-consumer ABI proof landed: `tests/board_consumer.c` includes
       `<nros/board.h>`, defines an `nros_board_app_fn`, and calls
       `nros_board_run` + each primitive; `tests/c_abi.rs` compiles it
       under `-Werror -std=c11`. Pairs with `export_compiles.rs` (Rust
-      *emits*) to cover both ABI directions. **A *full* standalone
-      hosted-RTOS C app that links + boots is blocked on a design gap:**
-      the macro's `nros_board_run` is *direct-exec* (fits bare-metal,
-      which is out of C/C++ scope per the Phase 118 matrix), while the
-      hosted-RTOS boards (FreeRTOS/ThreadX) use *kernel-spawn* `run`.
-      Serving hosted-RTOS C apps needs a kernel-spawn variant of
-      `nros_board_export!` (or a hand-written `nros_board_run` in those
-      board crates) — a 173.4 follow-up, not a quick example add.
+      *emits*) to cover both ABI directions.
+- [x] **Kernel-spawn design gap closed.** The earlier limitation (macro
+      `nros_board_run` was direct-exec only) is fixed: `nros-board-common`
+      now has a `BoardEntry: Board` trait abstracting the full
+      boot→app→exit flow, plus a `DirectExec` marker whose blanket impl
+      routes direct-exec boards through `nros_board_common::run`.
+      Kernel-spawn boards impl `BoardEntry` directly (delegating to their
+      family `run`). The macro's `nros_board_run` now calls
+      `<B as BoardEntry>::run` — family-agnostic. Proven by two test
+      binaries: `export_compiles.rs` (direct-exec via `DirectExec`) and
+      `export_kernel_spawn.rs` (custom `BoardEntry`). A full hosted-RTOS
+      C app that links + boots still needs a board crate to *invoke* the
+      macro + an example project (Group D), but the ABI no longer blocks
+      it.
 - [ ] Default build (board default transport + single RMW) boots with
       **no `nros.toml`** — the zero-config common case.
 - [ ] `nros.toml` is the single authority: declaring transport + IP +

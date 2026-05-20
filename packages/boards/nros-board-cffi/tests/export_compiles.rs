@@ -8,7 +8,7 @@
 use core::ffi::c_void;
 
 use nros_board_cffi::nros_board_export;
-use nros_board_common::{BoardExit, BoardInit, BoardPrint};
+use nros_board_common::{BoardExit, BoardInit, BoardPrint, DirectExec};
 
 struct DummyConfig {
     _domain_id: u32,
@@ -33,6 +33,10 @@ impl BoardExit for DummyBoard {
         loop {}
     }
 }
+
+// Direct-exec board: the `DirectExec` marker grants `BoardEntry` for
+// free, so the macro's `nros_board_run` routes through the common run.
+impl DirectExec for DummyBoard {}
 
 nros_board_export!(DummyBoard);
 

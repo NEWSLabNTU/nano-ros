@@ -66,19 +66,22 @@ unsafe extern "C" {
 /// delegating to the [`Board`] trait impl on `$ty`.
 ///
 /// `$ty` is the board ZST (`pub struct MyBoard;` +
-/// `impl BoardInit/BoardPrint/BoardExit for MyBoard`). The emitted
-/// `nros_board_run` is the **direct-exec** driver — `init_hardware`
-/// → user app → `exit_*`, the same shape as
-/// [`nros_board_common::run`]. Kernel-spawn families (FreeRTOS,
-/// ThreadX) do not call this macro; their task-based driver exports a
-/// hand-written `nros_board_run`.
+/// `impl BoardInit/BoardPrint/BoardExit for MyBoard`) that also
+/// implements [`BoardEntry`] — directly for kernel-spawn families, or
+/// for free via the [`DirectExec`] marker for bare-metal / esp-hal
+/// boards. The emitted `nros_board_run` calls `<$ty as BoardEntry>::run`,
+/// so the macro serves **both** entry shapes; the four primitives
+/// (`init_hardware` / `println` / `exit_*`) delegate to the split
+/// traits.
 ///
-/// The opaque `cfg: *const c_void` is cast to `&<$ty>::Config`. The
-/// caller (C / C++ app) is responsible for passing a pointer to a
-/// live config object of the board's concrete type.
+/// The opaque `cfg: *const c_void` is read out as `<$ty>::Config`
+/// (`ptr::read`). The caller (C / C++ app) passes a pointer to a live
+/// config object of the board's concrete type and must not reuse it
+/// after the call (ownership transfers into `run`).
 ///
 /// [`Board`]: nros_board_common::Board
-/// [`nros_board_common::run`]: nros_board_common::run
+/// [`BoardEntry`]: nros_board_common::BoardEntry
+/// [`DirectExec`]: nros_board_common::DirectExec
 #[macro_export]
 macro_rules! nros_board_export {
     ($ty:ty) => {
@@ -119,20 +122,20 @@ macro_rules! nros_board_export {
             app: $crate::NrosBoardAppFn,
             user: *mut ::core::ffi::c_void,
         ) -> ! {
-            // SAFETY: see `nros_board_init_hardware`.
-            let cfg = unsafe { &*(cfg as *const <$ty as ::nros_board_common::BoardInit>::Config) };
-            <$ty as ::nros_board_common::BoardInit>::init_hardware(cfg);
-            if app(user) == 0 {
-                <$ty as ::nros_board_common::BoardPrint>::println(::core::format_args!(
-                    "nros: application complete"
-                ));
-                <$ty as ::nros_board_common::BoardExit>::exit_success()
-            } else {
-                <$ty as ::nros_board_common::BoardPrint>::println(::core::format_args!(
-                    "nros: application error"
-                ));
-                <$ty as ::nros_board_common::BoardExit>::exit_failure()
-            }
+            // SAFETY: caller passes a pointer to a live, owned config of
+            // the board's concrete type and does not reuse it after this
+            // call (ownership transfers into `run`).
+            let cfg = unsafe {
+                ::core::ptr::read(cfg as *const <$ty as ::nros_board_common::BoardInit>::Config)
+            };
+            // `BoardEntry::run` is family-agnostic: direct-exec boards
+            // route through `nros_board_common::run`; kernel-spawn boards
+            // route through their family `run`. The C `app` fn becomes
+            // the user closure; its non-zero return maps to `Err`.
+            <$ty as ::nros_board_common::BoardEntry>::run(cfg, move |_cfg| match app(user) {
+                0 => ::core::result::Result::Ok(()),
+                rc => ::core::result::Result::Err(rc),
+            })
         }
     };
 }
