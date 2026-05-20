@@ -10,9 +10,17 @@ name = "nros_smoltcp"
 
 [features]
 default = []
+# Phase 173.6 — expose the smoltcp socket layer through the
+# `embedded-nal` `TcpClientStack` / `UdpClientStack` ecosystem traits
+# (additive adapter over the existing C-ABI bridge ops).
+embedded-nal = ["dep:embedded-nal", "dep:nb"]
 
 [dependencies]
 nros-platform-api = { version = "0.1.0", path = "../../core/nros-platform-api" }
+# Phase 173.6 — optional `embedded-nal` adapter. `core::net`-based
+# network-stack traits; `nb` for the non-blocking result type.
+embedded-nal = { version = "0.9", optional = true }
+nb = { version = "1", optional = true }
 smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp",
     # Phase 71.26 — IGMP for RTPS SPDP multicast (239.255.0.1:7400+).

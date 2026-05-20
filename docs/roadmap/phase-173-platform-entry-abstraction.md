@@ -555,9 +555,19 @@ nano-ros transport⟷RMW surface by design.
       `zero_config_package_hardcodes_no_network_constants`: a no-transport
       generated `main.rs`/`build.rs` has no IPv4 literal + no
       `tcp/`/`serial/` locator.
-- [ ] At least one transport-bridge driver crate (`*-smoltcp`) is
-      reworked to sit on `embedded-nal` (or documented why it can't),
-      proving the "consume the ecosystem, don't reinvent" direction.
+- [x] At least one transport-bridge driver crate (`nros-smoltcp`)
+      exposes the `embedded-nal` `TcpClientStack` / `UdpClientStack`
+      traits — the "consume the ecosystem, don't reinvent" direction.
+      Landed as an **additive adapter** (`nros_smoltcp::nal::SmoltcpNalStack`,
+      behind the `embedded-nal` feature) delegating to the existing
+      `SmoltcpBridge` ops, so the C-ABI zenoh-pico path and the
+      `embedded-nal` path share one socket table + poll loop. A full
+      rewrite onto `embedded-nal` was rejected as the primary surface:
+      the bridge's C ABI is global / no-`self` with the board owning the
+      `Interface`/`Device` (via `set_network_state`) and a manual
+      poll/idle-callback model that `embedded-nal`/`smoltcp-nal` don't
+      expose; the adapter gets the ecosystem interop without that
+      restructure. Compiles on `thumbv7m-none-eabi`.
 - [x] `NetStack::RtosOwned` path verified (Zephyr): `nros.toml` IP +
       transport produce an additive `prj.conf` net fragment with the
       configured IP, and the board's base kernel config is unmodified
