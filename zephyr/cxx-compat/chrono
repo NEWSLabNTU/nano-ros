@@ -80,16 +80,17 @@ using hours        = duration<int64_t, ratio<3600, 1>>;
 struct steady_clock {
     using rep      = int64_t;
     using duration = nanoseconds;
-    using time_point_t = duration;
+    using time_point = duration;
+    using time_point_t = time_point;
 
-    static duration now() {
+    static time_point now() {
 #ifdef __ZEPHYR__
         // k_uptime_ticks() → tick count since boot; convert to ns.
         const int64_t ticks = k_uptime_ticks();
         const int64_t ns_per_tick = 1000000000LL / CONFIG_SYS_CLOCK_TICKS_PER_SEC;
-        return duration(ticks * ns_per_tick);
+        return time_point(ticks * ns_per_tick);
 #else
-        return duration(0);
+        return time_point(0);
 #endif
     }
 };

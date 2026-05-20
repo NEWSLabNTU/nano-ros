@@ -250,6 +250,9 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     #   - random/posix/random.c      → fopen("/dev/urandom") — replaced by
     #     the Zephyr-specific ddsrt_prng_makeseed override under
     #     zephyr/cyclonedds-zephyr/random_zephyr.c.
+    #   - process/posix/process.c    → fopen("/proc/self/cmdline") in
+    #     ddsrt_getprocessname(), which aborts through Zephyr fs_open()
+    #     when no filesystem is mounted.
     #   - sockets/posix/gethostname.c → empty under DDSRT_HAVE_GETHOSTNAME=0
     #     but drop for clarity.
     #   - filesystem/posix/filesystem.c → DDSRT_HAVE_FILESYSTEM=0 in config.h
@@ -258,6 +261,7 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     list(REMOVE_ITEM _cdds_ddsrt_posix
         ${CYCLONEDDS_DIR}/src/ddsrt/src/ifaddrs/posix/ifaddrs.c
         ${CYCLONEDDS_DIR}/src/ddsrt/src/dynlib/posix/dynlib.c
+        ${CYCLONEDDS_DIR}/src/ddsrt/src/process/posix/process.c
         ${CYCLONEDDS_DIR}/src/ddsrt/src/random/posix/random.c
         ${CYCLONEDDS_DIR}/src/ddsrt/src/sockets/posix/gethostname.c
         ${CYCLONEDDS_DIR}/src/ddsrt/src/filesystem/posix/filesystem.c
@@ -266,6 +270,7 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # Zephyr replacement TUs for the dropped POSIX bodies above.
     set(_cdds_zephyr_overrides
         ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/random_zephyr.c
+        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/process_zephyr.c
         # SHM stub fns — original ddsi_shm_transport.c dropped under
         # DDS_HAS_SHM=0 but downstream headers still publicly DDS_EXPORT
         # iox_sub_context_*() / shm_{lock,unlock}_iox_sub(). Stub bodies

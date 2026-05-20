@@ -922,6 +922,52 @@ fn test_zephyr_cpp_cyclonedds_service_e2e() {
     );
 }
 
+/// Phase 171.0.a — Cyclone DDS service roundtrip, C surface. This was the
+/// last Zephyr native_sim service gap after Rust + C++ passed: the C client
+/// wrote before the volatile service reader match and dropped the request.
+#[test]
+fn test_zephyr_c_cyclonedds_service_e2e() {
+    use std::time::Duration;
+
+    use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
+
+    let server_bin = nros_tests::fixtures::build_zephyr_cmake_example_rmw(
+        "c",
+        "service-server",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("zephyr/c/service-server cyclonedds not prebuilt: {:?}", e)
+    });
+    let client_bin = nros_tests::fixtures::build_zephyr_cmake_example_rmw(
+        "c",
+        "service-client",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("zephyr/c/service-client cyclonedds not prebuilt: {:?}", e)
+    });
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr c service-server (cyclonedds)");
+    std::thread::sleep(Duration::from_secs(2));
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr c service-client (cyclonedds)");
+
+    let output = client.wait_for_pattern("Result:", Duration::from_secs(20));
+
+    client.kill();
+    server.kill();
+
+    eprintln!("zephyr c cyclonedds service e2e client output:\n{}", output);
+
+    assert!(
+        output.contains("Result:"),
+        "cyclonedds c service client did not receive a reply (expected a \
+         `Result:` line)"
+    );
+}
+
 /// Phase 118.B.7 — ThreadX-Linux C / C++ cases (zenoh only).
 #[rstest]
 #[case::c_talker("c", "talker", "threadx_c_talker")]

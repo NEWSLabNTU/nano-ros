@@ -13,7 +13,7 @@ matches the RMW backend host-language policy frozen 2026-05-07).
 bring-up + Zephyr matrix-fill (formerly tracked as the standalone
 **Phase 11W**, now absorbed here — see §171.0 below) has **landed**:
 pub/sub works in all three languages (Rust/C/C++) and request/response
-services work in Rust + C++, with the supporting NSOS host patches,
+services work in Rust + C++ + C, with the supporting NSOS host patches,
 backend `service_type_name` fix, and a stock-`rmw_cyclonedds_cpp`
 double-slash topic-naming interop fix. The rust example migration off
 `nros-rmw-dds` → `nros-rmw-cyclonedds-sys` has **landed** (§171.B.2,
@@ -25,9 +25,8 @@ RTOS port, §171.C.gate / `phase-175`), rather than being deleted as the
 original 171.B draft proposed. Still open: the code-surface rename
 (§171.A), the `dds/` example *directory* renames (§171.B.3), the
 non-Zephyr matrix cells (§171.C.1/.3/.4/.5/.6), and the no-alloc audit
-(§171.E). Zephyr cyclonedds C-service delivery and Zephyr actions remain
-open inside §171.0. Native cpp+cpp CycloneDDS action `get_result` is
-fixed in `28e9e6502`.
+(§171.E). Zephyr cyclonedds actions remain open inside §171.0. Native
+cpp+cpp CycloneDDS action `get_result` is fixed in `28e9e6502`.
 
 **Priority.** P2 — paper-rename and matrix-fill on top of the
 already-decided 169 retirement.
@@ -235,19 +234,19 @@ collapsed.
       second label (idempotency guard already exists; the collision is
       cross-patch, not double-apply). Highest-priority 171.0 item — it
       gates everything else here.
-- [ ] **171.0.a — C service request delivery.** C service-*server*
-      works (handles a C++ client's requests), but the C *client*'s
-      request never reaches any server: `nros_client_call` writes
-      successfully (`write_rc=0`) to the correct, identical topic, the
-      server's reader is valid, yet the sample isn't delivered. Localized
-      via cross-language E2E (C++ client→C server works; C client→C++
-      server fails). Not naming/registration/topic (all ruled out;
-      identical across endpoints) — a DDS writer↔reader match/transmit
-      issue specific to the C-client writer. Needs cyclonedds-internal
-      SEDP match tracing (the busy-spin-starvation theory was ruled out:
-      `nros_client_call`'s loop `k_msleep`s via `session_drive_io`, so it
-      yields). Re-apply the C service-client `prj-cyclonedds.conf` (NSOS)
-      + descriptor-gen CMake (reverted while parked) when resuming.
+- [x] **171.0.a — C service request delivery.** FIXED 2026-05-21.
+      `test_zephyr_c_cyclonedds_service_e2e` now runs the C
+      `service-server` + C `service-client` on `native_sim/native/64`
+      and observes `Result: 5 + 3 = 8`. The C service examples now have
+      the same CycloneDDS descriptor-generation CMake branch used by the
+      Rust/C++ service examples, the C service overlays have matching
+      native_sim runtime sizing/offload config, and Zephyr uses local
+      CycloneDDS compatibility shims for `std::chrono::steady_clock` and
+      `ddsrt_getprocessname`/`ddsrt_getpid` instead of the POSIX
+      `/proc/self/cmdline` path. Also fixed the `just zephyr
+      build-fixtures` env-array invocation so fixture prebuilds execute
+      the `west build` argv instead of trying to run an env assignment as
+      a command.
       - **Root cause / fix (2026-05-21).** Service QoS is RELIABLE +
         **VOLATILE**, so a request written before the client writer
         matches the server request reader can be silently dropped.
@@ -509,7 +508,7 @@ Target matrix (after rename + new cells):
 | `native`               | c        | full 6          |
 | `native`               | cpp      | full 6          |
 | `native`               | rust     | full 6 (via `nros-rmw-cyclonedds-staticlib`) |
-| `zephyr`               | c        | pub/sub ✓ (collapsed shape); service ✗ 171.0.a; actions ✗ 171.0.b |
+| `zephyr`               | c        | pub/sub ✓ + service ✓ (collapsed shape); actions ✗ 171.0.b |
 | `zephyr`               | cpp      | pub/sub ✓ + service ✓ + `talker-aemv8r` (existing); actions ✗ 171.0.b |
 | `zephyr`               | rust     | pub/sub ✓ + service ✓ (collapsed shape); actions ✗ 171.0.b |
 | `threadx-linux`        | c        | full 6          |
@@ -693,8 +692,8 @@ Target matrix (after rename + new cells):
 - [~] **171.C.2** **`zephyr` × {c, cpp, rust}** — **largely landed in
       §171.0** (collapsed shape + `prj-cyclonedds.conf`, not a
       `cyclonedds/` subtree). Pub/sub done all three languages; services
-      done Rust + C++. Remaining: C service request delivery (171.0.a),
-      Zephyr actions all langs (171.0.b).
+      done Rust + C++ + C. Remaining: Zephyr actions all langs
+      (171.0.b).
 - [~] **171.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
       DDS over the NetX-Duo / NSOS BSD shim (`packages/drivers/nsos-netx`).
       C/C++ collapsed CMake now honors `-DNROS_RMW=cyclonedds`, and

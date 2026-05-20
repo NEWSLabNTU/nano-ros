@@ -419,7 +419,7 @@ build-fixtures:
             set +e
             (
               cd "$workspace"
-              SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
+              env SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
             ) 2>&1 | tee "$log"
             rc="${PIPESTATUS[0]}"
@@ -435,7 +435,7 @@ build-fixtures:
         else
             (
               cd "$workspace"
-              SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
+              env SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
             ) > "$log" 2>&1 &
             running+=("$!|$src|$log|$best_effort")
