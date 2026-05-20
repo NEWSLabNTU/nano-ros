@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
-project(dds_cpp_listener VERSION 0.1.0 LANGUAGES CXX)
+project(cyclonedds_cpp_listener VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Phase 144.4 — consume nano-ros via add_subdirectory(<repo-root>).
 set(NANO_ROS_PLATFORM posix)
-set(NANO_ROS_RMW     dds)
+set(NANO_ROS_RMW     cyclonedds)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
 nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)

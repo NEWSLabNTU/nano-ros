@@ -26,8 +26,8 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 
 | Platform                  | Language | zenoh | dds | xrce | cyclonedds | uorb |
 |---------------------------|----------|-------|-----|------|------------|------|
-| `native`                  | c        | 6+    | 6   | 6    | –          | –    |
-| `native`                  | cpp      | 6+    | 6   | –    | –          | –    |
+| `native`                  | c        | 6+    | –   | 6    | 6          | –    |
+| `native`                  | cpp      | 6+    | –   | –    | 6          | –    |
 | `native`                  | rust     | 6+    | 6   | 6+   | –          | –    |
 | `esp32`                   | rust     | 2     | –   | –    | –          | –    |
 | `stm32f4`                 | rust     | 1+rtic×6 | – | –   | –          | –    |
