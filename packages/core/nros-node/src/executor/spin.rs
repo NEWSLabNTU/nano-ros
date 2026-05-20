@@ -218,7 +218,7 @@ impl Executor {
     /// Phase 104.C.1 — open the Executor against a specific RMW
     /// backend by name. Selects from the named registry (Phase
     /// 104.B.2). `rmw_name` must match one of the names a backend
-    /// registered under (`"zenoh"`, `"dds"`, `"xrce"`, …).
+    /// registered under (`"zenoh"`, `"cyclonedds"`, `"xrce"`, …).
     ///
     /// Equivalent to [`Executor::open`] when the registry has exactly
     /// one backend (the default-backend fast path). Use this entry

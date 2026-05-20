@@ -349,30 +349,33 @@ collapsed.
 Mechanical rename across every non-example reference. Run BEFORE
 any deletion so the workspace stays buildable at every step.
 
-- [ ] **171.A.1** Workspace `Cargo.toml`: rename the workspace-
-      level `nros-rmw-dds` aliases that point at the staticlib;
-      add a new `rmw-cyclonedds` feature group; keep the dust-DDS
-      paths intact for now (deletion is step 171.D).
-- [ ] **171.A.2** `nros-core` / `nros-node` / `nros`: rename the
-      `Rmw::Dds` enum variant to `Rmw::CycloneDds`. Update every
-      `match` over the enum.
-- [ ] **171.A.3** Root `CMakeLists.txt`: rename the cmake
-      `NANO_ROS_RMW=dds` branch → `cyclonedds`. Re-export the
-      `NROS_RMW_DDS` C macro as `NROS_RMW_CYCLONEDDS`.
-- [ ] **171.A.4** Per-platform integration shells
-      (`integrations/{zephyr,esp-idf,nuttx,px4,platformio}/`): grep
-      for `dds` Kconfig / yaml / cmake values; rename each.
-- [ ] **171.A.5** `book/src/`: update every reference to the
-      `dds` RMW identifier. Files touched include
-      `internals/rmw-backends.md`, `user-guide/rmw-backends.md`,
-      `concepts/comparison-vs-microros.md`, every starter page,
-      `reference/build-commands.md`.
-- [ ] **171.A.6** Reserve the old `dds` identifier as a hard
-      compile-time error for one release: `compile_error!("the
-      'rmw-dds' Cargo feature was renamed to 'rmw-cyclonedds' in
-      Phase 169 — see docs/roadmap/phase-169-... for details");`
-      gated on the old feature name. Same shape for the cmake
-      cache-var alias. Remove the alias after one minor version.
+**Mostly landed.** Phase 169's dust-dds retirement + Group A's
+`f139a9df5`/`7216fbaff` scrub already deleted the `nros-rmw-dds` crate,
+the `rmw-dds` Cargo feature, the `Rmw::Dds` enum variant, and the
+`NROS_RMW_DDS` macro / `NANO_ROS_RMW=dds` cmake branch. This pass
+finished the residual stale `dds`-as-RMW-identifier strings.
+
+- [x] **171.A.1** Workspace `Cargo.toml` `nros-rmw-dds` aliases — gone
+      (Phase 169 deleted the crate; `rmw-cyclonedds` feature group present).
+- [x] **171.A.2** `Rmw::Dds` enum variant — gone (no `Rmw::Dds` /
+      `rmw-dds` / `nros-rmw-dds` left in the Rust surface; verified by grep).
+- [x] **171.A.3** Root `CMakeLists.txt`: RMW dispatch is
+      zenoh/xrce/cyclonedds (no `dds` branch); fixed the stale
+      `NANO_ROS_RMW` cache-var doc-string + the `Unknown NANO_ROS_RMW`
+      error message that still listed `dds`. `NROS_RMW_DDS` macro absent.
+- [x] **171.A.4** Integration shells: only a stale comment in
+      `integrations/nuttx/Makefile` (`rmw-{...,dds}-cffi`) remained →
+      `cyclonedds`. zephyr/esp-idf/px4/platformio carry no `dds` value.
+- [x] **171.A.5** `book/src/`: renamed the `dds` RMW identifier in
+      `internals/rmw-backends.md` (bridge example + registry slots),
+      `reference/{nros-toml,cli}.md`, `getting-started/integration-{nuttx,
+      zephyr}.md`. Historical "dust-dds retired" prose left intact. Also
+      updated the `e.g. "dds"` doc-comment examples in `nros-c`/`nros-cpp`/
+      `nros-node` Rust source (cbindgen regenerates the headers).
+- [~] **171.A.6** Reserve `rmw-dds` as a `compile_error!` — N/A as
+      written: Phase 169 *deleted* the feature rather than renaming it in
+      place, so enabling `rmw-dds` already fails with "unknown feature".
+      No alias to gate. Closing as not-needed.
 
 **Files (touched).** Every file under the grep
 `rmw-dds|rmw_dds|RMW_DDS|NROS_RMW.*dds|nros-rmw-dds` outside

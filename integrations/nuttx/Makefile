@@ -35,7 +35,7 @@ NROS_C_FEATURES := $(filter-out ros-humble,$(NROS_C_FEATURES)) ros-iron
 endif
 
 # nros-cpp features. Different per-backend feature names from nros-c
-# (rmw-{zenoh,xrce,dds}-cffi instead of cffi-{...}). Mirrors
+# (rmw-{zenoh,xrce,cyclonedds}-cffi instead of cffi-{...}). Mirrors
 # `packages/core/nros-cpp/CMakeLists.txt`.
 NROS_CPP_FEATURES := std ros-humble platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)

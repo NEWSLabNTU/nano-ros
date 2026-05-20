@@ -70,7 +70,7 @@ make menuconfig
 # Navigate to:
 #   Application Configuration → External Modules → nano-ros
 #   [*] nano-ros ROS 2 client
-#       RMW backend  →  zenoh           # zenoh | xrce | dds
+#       RMW backend  →  zenoh           # zenoh | xrce | cyclonedds
 #       ROS 2 edition →  humble
 ```
 

@@ -19,7 +19,7 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 # Options / cache vars (set BEFORE add_subdirectory in the user project).
 # ---------------------------------------------------------------------------
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
-set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or dds")
+set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or cyclonedds")
 set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds cyclonedds)
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
@@ -272,7 +272,7 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
 else()
     message(FATAL_ERROR
         "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
-        "(expected: zenoh, xrce, dds, or cyclonedds)")
+        "(expected: zenoh, xrce, or cyclonedds)")
 endif()
 
 # ---------------------------------------------------------------------------

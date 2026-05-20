@@ -117,7 +117,7 @@ pub struct nros_node_options_t {
     pub namespace: [u8; MAX_NAMESPACE_LEN],
     /// Length of `namespace` in bytes (excluding NUL).
     pub namespace_len: usize,
-    /// RMW backend name (e.g. "zenoh", "dds"). Empty selects first-
+    /// RMW backend name (e.g. "zenoh", "cyclonedds"). Empty selects first-
     /// registered (single-backend convenience).
     pub rmw_name: [u8; MAX_RMW_NAME_LEN],
     /// Length of `rmw_name`.
@@ -217,7 +217,7 @@ pub unsafe extern "C" fn nros_node_init(
 /// the legacy single-Node behaviour `nros_node_init` provides.
 ///
 /// The `rmw_name` selector drives Phase 104 multi-RMW Node binding: a
-/// bridge node can be initialised with `options.rmw_name = "dds"` while
+/// bridge node can be initialised with `options.rmw_name = "cyclonedds"` while
 /// the support context's primary backend is `"zenoh"`, and subsequent
 /// publishers/subscribers created via this Node route through the named
 /// backend's session. (Internal multi-Session dispatch piggy-backs on

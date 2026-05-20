@@ -65,7 +65,7 @@ Then per-application `prj.conf`:
 
 ```
 CONFIG_NROS=y
-CONFIG_NROS_RMW="zenoh"                 # zenoh | xrce | dds
+CONFIG_NROS_RMW="zenoh"                 # zenoh | xrce | cyclonedds
 CONFIG_NROS_ROS_EDITION="humble"        # humble | iron
 
 # Required for any networked RMW on QEMU / native_sim:

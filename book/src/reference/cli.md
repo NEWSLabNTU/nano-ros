@@ -32,7 +32,7 @@ chosen platform.
 | Flag | Values | Default |
 |---|---|---|
 | `--platform` | `native`, `freertos`, `nuttx`, `threadx`, `zephyr`, `esp32`, `posix`, `baremetal` | (required) |
-| `--rmw` | `zenoh`, `xrce`, `dds` | `zenoh` |
+| `--rmw` | `zenoh`, `xrce`, `cyclonedds` | `zenoh` |
 | `--lang` | `rust`, `c`, `cpp` | `rust` |
 | `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
 | `--force` | overwrite an existing directory | off |

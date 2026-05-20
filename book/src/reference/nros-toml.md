@@ -26,7 +26,7 @@ locator = "tcp/10.0.0.1:7447"
 
 [[node]]
 name    = "control"
-rmw     = "dds"
+rmw     = "cyclonedds"
 locator = "domain=0"
 
 [[bridge]]
@@ -54,7 +54,7 @@ rest open as extras keyed by `rmw`.
 | Key         | Type   | Default | Notes |
 |-------------|--------|---------|-------|
 | `name`      | string | required | Logical name. Bridge entries reference this. |
-| `rmw`       | string | required | Canonical backend name: `"zenoh"`, `"dds"`, `"xrce"`, `"cyclonedds"`. Must match a backend the binary linked in. |
+| `rmw`       | string | required | Canonical backend name: `"zenoh"`, `"xrce"`, `"cyclonedds"`. Must match a backend the binary linked in. |
 | `locator`   | string | `""` | Backend-specific locator. Zenoh uses `tcp/...`, `udp4/...`, `serial/...`; DDS uses `domain=<n>`; XRCE uses `udp4://...:port`. |
 | `domain_id` | u32    | `0` | ROS domain id passed to the backend. |
 | `namespace` | string | `"/"` | Default namespace applied to handles created on this node. |

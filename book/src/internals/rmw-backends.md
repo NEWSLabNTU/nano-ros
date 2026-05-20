@@ -201,7 +201,7 @@ collapse) and must not be relied on for correctness.
 Use the named entry points:
 
 - Rust: `Executor::open_with_rmw("zenoh", &cfg)` for the
-  primary session; `node_builder("name").rmw("dds").build()`
+  primary session; `node_builder("name").rmw("cyclonedds").build()`
   for additional Nodes.
 - C: `nros_node_init_ex` with `nros_node_options_t.rmw_name`
   set.
@@ -209,11 +209,11 @@ Use the named entry points:
   `nros::NodeBuilder::rmw(...)` mirror the Rust API (Phase
   104.C.9).
 
-The `examples/bridges/native-rust-zenoh-to-dds/` demo shows the
-pattern end-to-end: both Zenoh and DDS backend ctors fire at
-lib-load (so the registry has both `"zenoh"` and `"dds"` slots
-populated), and `open_with_rmw("zenoh", ...)` plus
-`node_builder("egress").rmw("dds")` pin each session to its
+The `examples/bridges/native-rust-zenoh-to-cyclonedds/` demo shows
+the pattern end-to-end: both Zenoh and Cyclone DDS backend ctors fire
+at lib-load (so the registry has both `"zenoh"` and `"cyclonedds"`
+slots populated), and `open_with_rmw("zenoh", ...)` plus
+`node_builder("egress").rmw("cyclonedds")` pin each session to its
 intended backend without depending on link-order luck.
 
 **Single-backend builds** keep the legacy ergonomics — only

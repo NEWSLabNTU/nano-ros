@@ -634,7 +634,7 @@ pub struct nros_cpp_node_options_t {
     pub namespace: [u8; NROS_CPP_NAMESPACE_LEN],
     /// Length of `namespace` in bytes (excluding NUL).
     pub namespace_len: usize,
-    /// RMW backend name (e.g. "zenoh", "dds"). Empty selects first-registered.
+    /// RMW backend name (e.g. "zenoh", "cyclonedds"). Empty selects first-registered.
     pub rmw_name: [u8; NROS_CPP_RMW_NAME_LEN],
     /// Length of `rmw_name`.
     pub rmw_name_len: usize,
