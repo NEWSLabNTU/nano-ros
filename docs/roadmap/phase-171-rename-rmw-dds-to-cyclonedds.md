@@ -431,9 +431,31 @@ Target matrix (after rename + new cells):
           `stdc++` with rpath from the root cmake cyclonedds branch).
 
         Net-new hybrid (corrosion rust-staticlib + cmake-time
-        Cyclone typesupport). Tractable but a multi-step
-        build-integration — left as the focused next 171.C task.
+        Cyclone typesupport). **Talker landed + build-verified
+        2026-05-20** at `examples/native/rust/cyclonedds/talker/`:
+        the `rustapp` staticlib + `corrosion_import_crate` +
+        `nros_generate_interfaces` + `NanoRos::NanoRos` +
+        `--allow-multiple-definition` recipe compiles + links clean.
+        **The split-vtable hazard is handled** — `nm` confirms a
+        single `T nros_rmw_cffi_register_named` (count = 1) and a
+        single `Registry` slot in the binary; the `#[no_mangle]`
+        REGISTRY collapsed the cross-language copies as designed.
+        Remaining 5 rust cases (listener / service-{server,client} /
+        action-{server,client}) replicate the talker mechanically.
         threadx-linux rust (171.C.3) inherits the same shape.
+
+        **Runtime caveat (applies to ALL native cyclonedds cells,
+        c/cpp/rust — not rust-specific):** these cells are
+        BUILD-verified, not runtime-verified. Smoke-running the
+        renamed examples surfaced that the dust→cyclonedds rename did
+        not adapt the example *runtime config*: the C talker passes a
+        zenoh-style locator to `nros_support_init` → `-3`; the rust
+        talker opens the executor + creates the node but stalls in
+        `create_publisher` (Cyclone descriptor registration /
+        discovery). A **171.C runtime follow-up** must adapt each
+        example's config + verify pub/sub e2e against a Cyclone peer
+        (the §171.0 Zephyr cells DID get runtime e2e; the native
+        cells have not yet).
 
         **Hazard to design around (the reason this is not a quick
         spike):** the `rustapp` staticlib pulls the **Rust** nros
