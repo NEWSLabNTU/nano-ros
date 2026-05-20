@@ -11,20 +11,10 @@ are tracked here directly.
 test-failure catalog. Most refactor-fallout was fixed during the sweep
 (see "Fixed" below); the rows here are what remains.
 
-**Priority.** P2. One row (177.1) is the sole blocker to a green
-`build-all`; the rest are deferred-by-design or host-environment.
+**Priority.** P2. 177.1 (the sole `build-all` blocker) is **fixed**; the
+rest are deferred-by-design or host-environment.
 
 ## Open issues
-
-### 177.1 — cyclonedds-zephyr `nsos_adapt.c` duplicate case → **Phase 171.0.d**
-
-The only thing failing `just build-all` on `main`. `nsos-adapt-ipproto-ip-patch.sh`
-(Phase 11W.12) adds a second `case NSOS_MID_IPPROTO_IP:` to the
-`nsos_adapt_setsockopt` switch that an earlier NSOS patch already
-populated → `error: duplicate case value` → all 54 cyclonedds-zephyr
-fixtures fail. The 7 cargo platforms + zenoh/xrce-zephyr build clean.
-**Owned by Phase 171.0.d** (fix: merge into the existing case, don't
-emit a second label).
 
 ### 177.2 — cyclonedds-zephyr feature gaps → **Phase 171.0.a / .b / .c**
 
@@ -62,6 +52,16 @@ package's `rust-toolchain.toml` pins it). Host-only.
 
 ## Fixed during the sweep (2026-05-20/21 — no longer issues)
 
+- **177.1** cyclonedds-zephyr `nsos_adapt.c` duplicate `case
+  NSOS_MID_IPPROTO_IP:` — `native-sim-ipproto-ip-patch.sh` (Phase 11W)
+  already adds a complete IPPROTO_IP case (all IP_* multicast/membership
+  optnames + getsockopt) to `nsos_adapt_setsockopt`; the redundant
+  `nsos-adapt-ipproto-ip-patch.sh` (11W.12) added a second label →
+  `duplicate case value`. Fixed: 11W.12 now skips when the case is
+  already present (it always is — runs after native-sim). The 54
+  cyclonedds-zephyr fixtures no longer hit the duplicate. Was the sole
+  `build-all` blocker.
+
 - qemu `build-zenoh-pico.sh`: missing `nros-platform-cffi/include` +
   `c/zpico` include paths (Phase 154 `<nros/platform_net.h>`).
 - `justfile build-workspace`: exclude `nros-rmw-xrce-cffi-staticlib`
@@ -80,9 +80,10 @@ package's `rust-toolchain.toml` pins it). Host-only.
 
 ## Notes
 
-- This is an INDEX. When 177.1 (the build-all blocker) closes, `just
-  build-all` is green end-to-end; strike its row. Archive this doc once
-  all rows resolve or migrate to their owning phases.
+- This is an INDEX. 177.1 (the sole build-all blocker) is **fixed**, so
+  `just build-all` is green end-to-end modulo the host-only items
+  (177.4 / 177.5, which don't gate CI). Archive this doc once 177.2 /
+  177.3 migrate to their owning phases (171.0 / 175).
 - The sweep also validated the Phase 176 unified jobserver
   (`build-all-jobserver`) end-to-end — not a build issue, recorded in
   Phase 176.

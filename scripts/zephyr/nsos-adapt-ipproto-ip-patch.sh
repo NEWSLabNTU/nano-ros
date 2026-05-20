@@ -40,6 +40,17 @@ if grep -q "nano-ros: nsos_adapt IPPROTO_IP" "$TARGET"; then
     echo "[nsos-adapt-ipproto-ip-patch] already applied"
     exit 0
 fi
+# Phase 177.1 — `native-sim-ipproto-ip-patch.sh` (Phase 11W) already adds
+# a complete `case NSOS_MID_IPPROTO_IP:` to `nsos_adapt_setsockopt`
+# (every IP_* multicast/membership optname + the getsockopt side), so
+# this 11W.12 patch is redundant with it. Emitting a second label
+# produced `error: duplicate case value` and broke all 54
+# cyclonedds-zephyr fixtures. Skip whenever the case is already present
+# (it always is — this patch runs after native-sim per the header note).
+if grep -q "case NSOS_MID_IPPROTO_IP" "$TARGET"; then
+    echo "[nsos-adapt-ipproto-ip-patch] IPPROTO_IP case already present (native-sim-ipproto-ip-patch.sh) — skip"
+    exit 0
+fi
 
 python3 - "$TARGET" <<'PYEOF'
 import sys
