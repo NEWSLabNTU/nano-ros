@@ -401,14 +401,61 @@ Target matrix (after rename + new cells):
         compile + link clean against
         `-DCMAKE_PREFIX_PATH=build/install` (Cyclone DDS 0.10.5 from
         `just cyclonedds setup`). Verified 2026-05-20.
-      - [ ] **rust**: blocked on a `nros-rmw-cyclonedds-staticlib`
-        crate. `nros-rmw-cyclonedds-sys` only exposes the C-linkage
-        `register()` shim — the C++ Cyclone DDS lib + `libddsc` come
-        from the cmake project, which a pure-cargo Rust example does
-        not invoke. A new staticlib crate (build.rs drives the
-        Cyclone cmake build + links `libddsc` + `stdc++`, mirroring
-        `nros-rmw-zenoh-staticlib`) is the prerequisite. Scoped as
-        **171.C.1.rust** follow-up.
+      - [ ] **rust** — **171.C.1.rust. Architecture resolved
+        2026-05-20: a pure-cargo `nros-rmw-cyclonedds-staticlib`
+        (the original plan, mirroring `nros-rmw-zenoh-staticlib`)
+        will NOT work.** The Cyclone backend's raw-CDR path
+        (`src/sertype_min.cpp`) needs a per-message
+        `dds_topic_descriptor_t`, which Cyclone's **idlc** emits at
+        **cmake time** via `nros_generate_interfaces(<pkg>)` +
+        `cmake/NrosRmwCycloneddsTypeSupport.cmake`. A pure-cargo
+        build has no idlc step, so it cannot produce the typesupport
+        the backend dereferences. (Contrast zenoh: zenoh-pico needs
+        no per-message C typesupport, so its staticlib is pure
+        Rust.)
+
+        **Therefore native rust cyclonedds must be cmake-driven**,
+        reusing the proven c/cpp path. The shape (matches the Zephyr
+        rust cyclonedds collapse, §171.0):
+        - rust crate as `[lib] crate-type=["staticlib"]
+          name="rustapp"` exporting `#[no_mangle] extern "C" fn
+          rust_main()` (Executor talker/listener/… loop + a
+          `nros_rmw_cyclonedds_sys::register()` call);
+        - per-example `CMakeLists.txt`: `corrosion_import_crate`
+          the rust staticlib + `set(NANO_ROS_RMW cyclonedds)` +
+          `add_subdirectory(<repo-root>)` +
+          `nros_generate_interfaces(std_msgs …)` (emits the Cyclone
+          IDL typesupport) + a tiny `main.c`/`main.cpp` calling
+          `rust_main()` + `target_link_libraries(app rustapp
+          NanoRos::NanoRos)` (NanoRos pulls cyclonedds + `libddsc` +
+          `stdc++` with rpath from the root cmake cyclonedds branch).
+
+        Net-new hybrid (corrosion rust-staticlib + cmake-time
+        Cyclone typesupport). Tractable but a multi-step
+        build-integration — left as the focused next 171.C task.
+        threadx-linux rust (171.C.3) inherits the same shape.
+
+        **Hazard to design around (the reason this is not a quick
+        spike):** the `rustapp` staticlib pulls the **Rust** nros
+        runtime (cargo `nros` → `nros-rmw-cffi`), while cmake's
+        `add_subdirectory(<repo-root>)` `NanoRos` pulls the **C**
+        nros runtime (`nros-c` → `nros-node` → `nros-rmw-cffi`).
+        Both carry `nros-rmw-cffi`'s vtable storage + the
+        `nros_rmw_cffi_register` symbol. Linking both into one
+        binary risks duplicate-symbol errors or — worse — a SPLIT
+        vtable (the C++ cyclonedds `register()` writes one copy, the
+        Rust `Executor` dispatches against the other → silent
+        no-op, the same failure shape as Phase 166.A's FreeRTOS
+        dup-symbol and the cyclonedds C-link `stdc++` gap). The
+        Zephyr rust path (§171.0) sidesteps this because its
+        `NanoRos`-equivalent provides ONLY cyclonedds + `libddsc`,
+        not the full nros-c runtime. The native cmake glue must do
+        the same: link the rust `rustapp` for the nros runtime +
+        ONLY the cyclonedds backend archive (`nros_rmw_cyclonedds` +
+        `libddsc` + `stdc++` + per-msg typesupport) from cmake — NOT
+        `nros-c`/`nros-node`. Verify with `nm` that
+        `nros_rmw_cffi_register` + the vtable static resolve to a
+        single definition before declaring the cell done.
 - [~] **171.C.2** **`zephyr` × {c, cpp, rust}** — **largely landed in
       §171.0** (collapsed shape + `prj-cyclonedds.conf`, not a
       `cyclonedds/` subtree). Pub/sub done all three languages; services
