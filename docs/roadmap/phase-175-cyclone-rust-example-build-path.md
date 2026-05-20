@@ -1,4 +1,4 @@
-# Phase 170 - Cyclone DDS build path for pure-Rust examples
+# Phase 175 - Cyclone DDS build path for pure-Rust examples
 
 **Goal.** Give the pure-cargo Rust examples a way to actually link the
 Cyclone DDS RMW backend. Phase 169 retired the pure-Rust dust-dds
@@ -53,7 +53,7 @@ The backend links today only when the build is **CMake-driven**:
 
 ## Work items
 
-### 170.A — Native Rust example Cyclone CMake/Corrosion path
+### 175.A — Native Rust example Cyclone CMake/Corrosion path
 
 **Achievable build-glue.** Cyclone builds for Linux (`just cyclonedds
 setup` installs it under `build/install/`). Give the native Rust
@@ -74,7 +74,7 @@ CMake instead of `cargo build`.
 **Acceptance:** native Rust talker/listener build + boot publishing on
 Cyclone, interop-tested against the C/C++ Cyclone examples.
 
-### 170.B — FreeRTOS / ThreadX Cyclone (ddsrt RTOS port)
+### 175.B — FreeRTOS / ThreadX Cyclone (ddsrt RTOS port)
 
 **Not build-glue — a port.** Cyclone DDS abstracts its OS dependencies
 (sockets, threads, time, sync) behind `ddsrt`. There is no FreeRTOS or
@@ -86,7 +86,7 @@ thumbv7m / riscv64 where there is no hosted socket stack.
 **Files** (new, large): a `ddsrt` port per RTOS; the embedded Cyclone
 link wiring once a port exists.
 
-**Acceptance:** out of scope for an estimate until 170.A lands and the
+**Acceptance:** out of scope for an estimate until 175.A lands and the
 embedded networking story (smoltcp/NetX/lwIP ↔ ddsrt sockets) is
 scoped on its own.
 
@@ -94,8 +94,8 @@ scoped on its own.
 
 - The migrated examples keep `rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]`
   in `Cargo.toml` so the manifest resolves and the intent is recorded;
-  the feature is simply never built by the fixture matrices until 170.A.
+  the feature is simply never built by the fixture matrices until 175.A.
 - Fixture recipes already reverted to zenoh-only on the pure-cargo
   paths: `just/{native,freertos,threadx-riscv64,threadx-linux,nuttx}.just`.
 - Do NOT re-introduce a `for rmw in ... cyclonedds` / `... dds` arm into
-  those pure-cargo loops without first landing 170.A.
+  those pure-cargo loops without first landing 175.A.
