@@ -1,5 +1,16 @@
 # Phase 117 — ESP32-S3-QEMU DDS pubsub bring-up
 
+> **ARCHIVED — fully superseded.** Two independent closures retire this
+> phase: (1) the DDS pubsub goal → **Phase 169** (dust-dds retired,
+> Cyclone DDS only); (2) the ESP32-S3 toolchain + platform + board
+> crates → **Phase 173** (`nros-platform-esp32s3` + `nros-board-esp32s3`
+> landed, building to a real `xtensa-esp32s3-none-elf` ELF via the
+> `+esp` toolchain — see the esp32-s3 port). The original premise is
+> also moot: ESP32-S3 is Xtensa with no QEMU machine, so "QEMU DDS
+> bring-up" never applies — the S3 board ships serial today, WiFi (and
+> any Cyclone-on-Xtensa) is a hardware-gated follow-up. Nothing here is
+> actionable; preserved for history.
+
 > **DDS pubsub bits retired 2026-05-19 — superseded by Phase 169
 > (Retire dust-dds; consolidate on Cyclone DDS).** The ESP32-S3
 > toolchain + platform crate + board crate + test infrastructure
