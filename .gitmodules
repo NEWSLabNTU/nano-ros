@@ -57,7 +57,8 @@
 	url = https://github.com/PX4/PX4-Autopilot.git
 [submodule "third-party/dds/cyclonedds"]
 	path = third-party/dds/cyclonedds
-	url = https://github.com/eclipse-cyclonedds/cyclonedds.git
+	url = https://github.com/NEWSLabNTU/cyclonedds.git
+	branch = nano-ros/zephyr-nsos-patches
 [submodule "third-party/qemu/qemu"]
 	path = third-party/qemu/qemu
 	url = https://github.com/NEWSLabNTU/qemu.git
