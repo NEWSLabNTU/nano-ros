@@ -70,6 +70,9 @@ namespace {
 constexpr std::size_t kRequestSlots = 32;
 constexpr std::size_t kMaxTopicName = 256;
 constexpr std::size_t kHeaderBytes  = 16;  // 8-byte guid + 8-byte seq
+// Per-call scratch ceiling. Tunable via env if a future user needs
+// it; 64 KiB covers ROS 2's default service payload size budget.
+constexpr std::size_t kWireScratch = 65536;
 
 struct RequestId {
     uint64_t guid;
@@ -105,11 +108,14 @@ struct ClientState {
     uint64_t                      my_guid{0};
     std::atomic<int64_t>          next_seq{0};
     // Phase 130.8 — non-blocking send/recv split. `pending_seq`
-    // tracks the most recent request issued via
-    // `service_send_request_raw`; `try_recv_reply_raw` polls for a
-    // matching reply without re-sending the request. -1 = no
-    // in-flight request.
+    // tracks the in-flight request issued via
+    // `service_send_request_raw`; `pending_request` holds the wire CDR
+    // until Cyclone reports the request writer matched a server reader.
+    // Service QoS is VOLATILE, so writing before the match can silently
+    // drop the request.
     std::atomic<int64_t>          pending_seq{-1};
+    uint8_t                       pending_request[kWireScratch]{};
+    std::size_t                   pending_request_len{0};
 };
 
 bool service_topic_name(const char *service_name, const char *prefix,
@@ -307,10 +313,6 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
     return static_cast<int32_t>(total);
 }
 
-// Per-call scratch ceiling. Tunable via env if a future user needs
-// it; 64 KiB covers ROS 2's default service payload size budget.
-constexpr std::size_t kWireScratch = 65536;
-
 // Action sub-services reuse one service-create path but each carries a
 // distinct DDS type. The action layer (`executor/action.rs`) passes the
 // bare action type `<pkg>::action::dds_::<A>_` for both the send_goal
@@ -380,6 +382,38 @@ uint64_t random_seed_word() {
 
 uint64_t random_guid64() {
     return random_seed_word();
+}
+
+bool request_writer_matched(dds_entity_t writer) {
+    dds_publication_matched_status_t status{};
+    return dds_get_publication_matched_status(writer, &status) == DDS_RETCODE_OK &&
+           status.current_count > 0;
+}
+
+nros_rmw_ret_t wait_for_request_match(
+    dds_entity_t writer,
+    const std::chrono::steady_clock::time_point &deadline) {
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (request_writer_matched(writer)) return NROS_RMW_RET_OK;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    return NROS_RMW_RET_TIMEOUT;
+}
+
+nros_rmw_ret_t maybe_flush_request(ClientState *state) {
+    if (state == nullptr || state->pending_request_len == 0) {
+        return NROS_RMW_RET_OK;
+    }
+    if (!request_writer_matched(state->writer)) {
+        return NROS_RMW_RET_NO_DATA;
+    }
+    nros_rmw_ret_t r = write_typed(state->writer, state->req_desc,
+                                   state->req_st, state->pending_request,
+                                   state->pending_request_len);
+    if (r == NROS_RMW_RET_OK) {
+        state->pending_request_len = 0;
+    }
+    return r;
 }
 
 } // namespace
@@ -664,6 +698,14 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
     my_id.guid = state->my_guid;
     my_id.seq  = state->next_seq.fetch_add(1, std::memory_order_relaxed);
 
+    // 5 s total timeout covers request-reader match plus reply. Service
+    // QoS is VOLATILE, so the first write must wait until discovery has
+    // matched the client writer with the server request reader.
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(5);
+    nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
+    if (match != NROS_RMW_RET_OK) return match;
+
     uint8_t wire_req[kWireScratch];
     int32_t wire_len = build_wire_with_header(request, req_len, my_id,
                                               wire_req, sizeof(wire_req));
@@ -673,13 +715,6 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
                                     static_cast<size_t>(wire_len));
     if (pr != NROS_RMW_RET_OK) return pr;
 
-    // 5 s reply timeout — long enough to absorb cross-participant
-    // SEDP propagation jitter on POSIX while still bounded so a
-    // misconfigured peer doesn't hang the caller forever. nano-ros
-    // applications that need a tighter deadline can wrap call_raw
-    // with their own watchdog.
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(5);
     while (std::chrono::steady_clock::now() < deadline) {
         uint32_t status = 0;
         if (dds_get_status_changes(state->reader, &status) == DDS_RETCODE_OK
@@ -724,6 +759,9 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto *state = static_cast<ClientState *>(client->backend_data);
+    if (state->pending_seq.load(std::memory_order_acquire) >= 0) {
+        return NROS_RMW_RET_WOULD_BLOCK;
+    }
 
     RequestId my_id{};
     my_id.guid = state->my_guid;
@@ -733,12 +771,16 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
     int32_t wire_len = build_wire_with_header(request, req_len, my_id,
                                               wire_req, sizeof(wire_req));
     if (wire_len < 0) return wire_len;
-    nros_rmw_ret_t pr = write_typed(state->writer, state->req_desc,
-                                    state->req_st, wire_req,
-                                    static_cast<size_t>(wire_len));
-    if (pr != NROS_RMW_RET_OK) return pr;
 
+    std::memcpy(state->pending_request, wire_req, static_cast<size_t>(wire_len));
+    state->pending_request_len = static_cast<size_t>(wire_len);
     state->pending_seq.store(my_id.seq, std::memory_order_release);
+    nros_rmw_ret_t pr = maybe_flush_request(state);
+    if (pr < 0 && pr != NROS_RMW_RET_NO_DATA) {
+        state->pending_request_len = 0;
+        state->pending_seq.store(-1, std::memory_order_release);
+        return pr;
+    }
     return NROS_RMW_RET_OK;
 }
 
@@ -754,6 +796,15 @@ int32_t service_try_recv_reply_raw(nros_rmw_service_client_t *client,
     int64_t pending = state->pending_seq.load(std::memory_order_acquire);
     if (pending < 0) {
         return NROS_RMW_RET_NO_DATA;
+    }
+
+    nros_rmw_ret_t flush = maybe_flush_request(state);
+    if (flush < 0) {
+        if (flush != NROS_RMW_RET_NO_DATA) {
+            state->pending_request_len = 0;
+            state->pending_seq.store(-1, std::memory_order_release);
+        }
+        return flush;
     }
 
     uint32_t status = 0;

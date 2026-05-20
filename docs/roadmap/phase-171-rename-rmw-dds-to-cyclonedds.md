@@ -247,6 +247,17 @@ collapsed.
       `nros_client_call`'s loop `k_msleep`s via `session_drive_io`, so it
       yields). Re-apply the C service-client `prj-cyclonedds.conf` (NSOS)
       + descriptor-gen CMake (reverted while parked) when resuming.
+      - **Root cause / fix (2026-05-21).** Service QoS is RELIABLE +
+        **VOLATILE**, so a request written before the client writer
+        matches the server request reader can be silently dropped.
+        `service.cpp` now gates the first blocking `call_raw` write on
+        `dds_get_publication_matched_status(writer).current_count > 0`.
+        The async split path buffers the wire request in `ClientState`
+        and flushes from `service_send_request_raw` /
+        `service_try_recv_reply_raw` once the match appears, preserving
+        non-blocking semantics. Verified locally with `ctest -R
+        nros_rmw_cyclonedds_service_roundtrip`; stock ROS 2 interop
+        tests still fail and remain separate Phase 117/171 work.
 - [~] **171.0.b — Actions.** **Native C + Rust LANDED + runtime-verified
       2026-05-21.** Both pieces built; design below. Native action e2e:
       - **C** (`examples/native/c/cyclonedds/action-{server,client}`):
