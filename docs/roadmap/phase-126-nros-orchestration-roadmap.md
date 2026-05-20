@@ -271,6 +271,57 @@ M4's generator + template work (codegen `555707e` /
 the runtime + build wiring; M5 just had to land the QEMU boot check
 + correct the assertion drift.
 
+#### M5 platform-coverage extension (beyond the single-RTOS bar)
+
+M5's acceptance only required ONE RTOS target (satisfied by FreeRTOS).
+The generator was then extended board-by-board so `nros build` emits a
+correct package for every supported board. Each board contributes a
+`render_platform_dependencies` arm + a `render_cargo_config` branch +
+a `main.rs.jinja` (or `lib.rs.jinja`) entry + a local `platform-*`
+feature alias + an `orchestration_e2e` fixture test.
+
+Three boards (mps2-an385, ESP32, STM32F4) share the single
+`nros/platform-bare-metal` nros feature; the generator disambiguates
+them with per-board discriminators (`esp32_chip()` / `stm32_chip()`)
++ DISTINCT local entry-gating aliases (`platform-bare-metal` /
+`platform-esp32-qemu` / `platform-stm32`) so exactly one board entry
+compiles. ThreadX likewise splits one `nros/platform-threadx` feature
+into `platform-threadx` (host-hosted Linux) + `platform-threadx-riscv64`
+(bare-metal RV64) by target.
+
+| Board | Target | Generated entry | e2e fixture | Status |
+|---|---|---|---|---|
+| native | host | `fn main` (from_env) | `fixture_workspace_plans_checks_and_builds_generated_package` | ✅ verified |
+| FreeRTOS (mps2-an385) | thumbv7m-none-eabi | `_start` → board run | `…_freertos_package` (QEMU boot) | ✅ verified |
+| NuttX (qemu-arm) | armv7a-nuttx-eabihf | `nsh_main` chain | `…_nuttx_package` | ✅ verified |
+| Zephyr (native_sim) | host (CMake) | staticlib `rust_main` | `…_zephyr_package_shape` | ✅ verified |
+| ThreadX-Linux | x86_64-linux | `fn main` → board run | `…_threadx_linux_package` | ✅ verified |
+| ThreadX-riscv64 | riscv64gc-none-elf | `#[no_mangle] extern "C" fn main` | `…_threadx_riscv64_package` | ✅ verified |
+| ESP32-C3 | riscv32imc-none-elf | `#[esp_hal::main]` | `…_esp32_package` (QEMU boot) | ✅ verified |
+| bare-metal Cortex-M | thumbv7m-none-eabi | `#[cortex_m_rt::entry]` | `…_bare_metal_package` | ✅ verified |
+| STM32F4 | thumbv7em-none-eabihf | `#[cortex_m_rt::entry]` + defmt | `…_stm32f4_package` | ✅ verified |
+| **Orin SPE (Cortex-R5F)** | armv7r-none-eabihf | C-entry `nros_app_rust_entry` (staticlib) | — | **opt-in / unverified** |
+
+**Orin SPE is a deliberate opt-in gap.** It is the only board whose
+dependency chain (down to `zpico-sys`'s build.rs) refuses to compile
+without an NVIDIA SDK Manager install exporting `$NV_SPE_FSP_DIR`
+(FreeRTOS FSP headers + `libtegra_aon_fsp.a`). Per `CLAUDE.md`'s SDK-
+tier policy — *"ARM FVP, NVIDIA SDK Manager, license-gated installs
+stay opt-in entirely"* — the generator is NOT extended to orin-spe:
+the codegen shape cannot be compiled, let alone verified, in CI or on
+a dev host without the license-gated SDK, so shipping blind codegen
+would violate trust-but-verify. The board also has no in-tree example
+to mirror and no QEMU path (real Cortex-R5F SPE hardware only).
+
+If a contributor with an SDK Manager install wants orin-spe codegen,
+the generator work mirrors the Zephyr staticlib pattern: a
+`crate-type = ["staticlib"]` package exporting
+`#[no_mangle] pub extern "C" fn nros_app_rust_entry()` that calls
+`nros_board_orin_spe::run(Config::default(), …)`, targeting
+`armv7r-none-eabihf`, consumed by NVIDIA's FSP Makefile via
+`ENABLE_NROS_APP := 1`. The e2e fixture would gate on `$NV_SPE_FSP_DIR`
+(skip when absent, like the NuttX `$NUTTX_DIR` gate).
+
 ### M6 - mixed-language components
 
 Merge C/C++ component ABI and generated archive linking.
