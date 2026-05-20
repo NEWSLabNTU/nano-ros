@@ -76,9 +76,56 @@ strings, rustflags lists, build-std sets, patch entries, three
 copy-pasted `run` fns) into data, while keeping the *essential*
 variation behind a small finite enum.
 
+## Parallel work groups
+
+The seven items factor into **four groups that can progress
+concurrently**, mirroring the Phase 126 group structure. Each group
+owns distinct crates/files so day-to-day work rarely collides; the only
+hard cross-group edges are listed below.
+
+| Group | Items | Owns | Can start | Blocks on |
+|---|---|---|---|---|
+| **A — Board layer** | 173.1, 173.4 | `nros-board-common`, `nros-board-cffi` (new), every `nros-board-*` | **now** | nothing |
+| **B — Generator core** | 173.2, 173.3 | `nros-cli-core/orchestration/generate.rs`, templates, drift-gate script | **now** (scaffolding + non-BoardRun arms) | A for the `EntryKind::BoardRun*` wire-up only |
+| **C — Config schema + cooperation** | 173.5, 173.7 | `nros.toml`/`nros-plan.json` schema, `SessionSpec` wiring, RTOS-fragment emitters | **now** (schema design) | B for the emit wiring (PlatformProfile fields) |
+| **D — UX + fixtures + gates** | 173.6, tests | examples, `orchestration_e2e` cases, config-diff + grep gates | tracks A/B/C; lands last | A+B+C for end-to-end gates |
+
+**Dependency edges (only these four):**
+
+```
+A (173.1 Board::run) ──▶ B (173.2 EntryKind::BoardRun emits <board>::run)
+A (173.1 Board trait) ──▶ A (173.4 nros_board_export! wraps it)   [intra-A]
+B (173.2 PlatformProfile{net_stack}) ──▶ C (173.7 emit path per NetStack)
+A+B+C ──▶ D (end-to-end gates)
+```
+
+Everything else is independent. Concretely, day-1 parallel starts:
+
+- **A**: define `Board` super-trait + the one `run<B>` in
+  `nros-board-common`; migrate boards. Land `nros/board.h` +
+  `nros_board_export!` once the trait exists (same group, no external
+  wait).
+- **B**: stand up `PlatformProfile` + the enums (`EntryKind`,
+  `Toolchain`, `LinkKind`, `NetStack`) and convert the
+  `HostedMain` / `ZephyrStaticlib` arms + the cargo-config / toolchain /
+  deps readers — none of which need A. Wire the `BoardRun` arm to
+  `<board>::run` after A lands the uniform signature.
+- **C**: design the `nros.toml` `[[transport]]` schema + the
+  `SessionSpec` mapping (pure data + serde) immediately; bolt the
+  per-`NetStack` fragment emitters on once B exposes the field.
+- **D**: write the config-diff + grep gates against the schema from C
+  as soon as it stabilises; flip them on when the generators land.
+
+Merge order: **A and B land first (independently), then C, then D.**
+A and B never block each other except at the single `BoardRun`
+wire-up, which is a one-line generator change once A is in.
+
 ## Work items
 
 ### 173.1 — One `Board` trait + one generic `run`
+
+*Group A · can start now · no blockers.*
+
 
 Add to `nros-board-common`:
 
@@ -125,6 +172,9 @@ Then:
 Net: every board exposes the identical `<board>::run(cfg, closure) -> !`.
 
 ### 173.2 — `PlatformProfile` descriptor + `EntryKind` in the generator
+
+*Group B · can start now (scaffolding + non-BoardRun arms) · the `EntryKind::BoardRun` arm waits on 173.1.*
+
 
 Replace the six match-arm functions with one lookup table:
 
@@ -173,6 +223,9 @@ fn profile(board: &str, target: &str) -> Option<PlatformProfile> { /* table */ }
 
 ### 173.3 — drift gate
 
+*Group B · after 173.1 + 173.2 (asserts profile ⟷ `Board` impl).*
+
+
 Mirror `check-platform-abi-mirror`: a test asserting every
 `PlatformProfile` row names a board crate that exists AND implements
 `Board` (compile-time check via a generated `const _: fn() = || { … }`
@@ -180,6 +233,9 @@ witness, or a runtime path-existence + `cargo metadata` check). Catches
 "added a profile row, forgot the board impl" and vice-versa.
 
 ### 173.4 — board C ABI (`nros/board.h` + `nros_board_export!`)
+
+*Group A · after 173.1 (the macro wraps the `Board` trait) · intra-group, no external wait.*
+
 
 The features layer crosses into C/C++ via `nros/platform.h`; the
 workflow layer must do the same so the *one* `Board` impl serves Rust
@@ -242,6 +298,9 @@ macro_rules! nros_board_export {
   `examples/<rtos>/{c,cpp}/` tree), not the generator's entry.
 
 ### 173.5 — transport ⟷ RMW binding config (NOT a new peripheral framework)
+
+*Group C · schema design can start now · `SessionSpec`/feature emit waits on 173.2.*
+
 
 **Don't reinvent the peripheral layer.** The Rust embedded ecosystem
 already standardises it, and nano-ros should consume those traits in
@@ -317,6 +376,9 @@ about the silicon, not user choices. User-tunable values
 
 ### 173.6 — UX: default-first, like standard ROS
 
+*Group D · tracks A/B/C; the zero-config + single-file behaviours land with 173.5.*
+
+
 Standard ROS 2: users run with defaults; customise a backend via one
 config (`CYCLONEDDS_URI`, `ZENOH_CONFIG`/`ZENOH_LOCATOR`). nano-ros
 keeps the same default-first shape, with `nros.toml` as the single
@@ -342,6 +404,9 @@ that turns config into Cargo features / `Config` values / `SessionSpec`s
 / RTOS fragments.
 
 ### 173.7 — how `nros.toml` cooperates with each RTOS (and bare-metal)
+
+*Group C · after 173.2 (`NetStack` field) + 173.5 (the values to emit).*
+
 
 The hard part of "config in files" is that **each RTOS already owns a
 chunk of config** — kernel tick/heap/scheduler, driver enables, the IP
