@@ -445,17 +445,38 @@ Target matrix (after rename + new cells):
         threadx-linux rust (171.C.3) inherits the same shape.
 
         **Runtime caveat (applies to ALL native cyclonedds cells,
-        c/cpp/rust — not rust-specific):** these cells are
-        BUILD-verified, not runtime-verified. Smoke-running the
-        renamed examples surfaced that the dust→cyclonedds rename did
-        not adapt the example *runtime config*: the C talker passes a
-        zenoh-style locator to `nros_support_init` → `-3`; the rust
-        talker opens the executor + creates the node but stalls in
-        `create_publisher` (Cyclone descriptor registration /
-        discovery). A **171.C runtime follow-up** must adapt each
-        example's config + verify pub/sub e2e against a Cyclone peer
-        (the §171.0 Zephyr cells DID get runtime e2e; the native
-        cells have not yet).
+        c/cpp/rust) — diagnosed 2026-05-20.** These cells are
+        BUILD-verified, not runtime-verified. The Cyclone backend
+        itself is healthy (`ctest -R pubsub|session|ros2_pubsub_e2e`
+        in `packages/dds/nros-rmw-cyclonedds/build` → 4/4 pass,
+        incl. an 18 s stock-`rmw_cyclonedds_cpp` interop e2e). The
+        examples fail because **`nros_generate_interfaces(<pkg>)`
+        does not emit the Cyclone topic descriptor for the standard
+        message packages** — it generates the C/CDR message bindings
+        (`<pkg>__nano_ros_c`) but NOT the idlc `dds_topic_descriptor_t`
+        + the static-init register TU. `nm` on the built rust talker
+        confirms: `nros_rmw_cyclonedds_register_descriptor` (the fn)
+        is present, but there is NO `std_msgs/Int32` descriptor
+        symbol and NO `_GLOBAL__sub_` TU calling it. So
+        `create_publisher::<Int32>` has no registered descriptor and
+        stalls. (The backend's own smoke works because it manually
+        builds the descriptor via `nros_rmw_cyclonedds_add_idl_library`
+        for its test type.)
+
+        **Fix path (171.C runtime follow-up):** teach
+        `nros_generate_interfaces` (for `NANO_ROS_RMW=cyclonedds`) to
+        ALSO run `msg_to_cyclone_idl.py` (`.msg`→`.idl`) +
+        `nros_rmw_cyclonedds_add_idl_library` per message, with
+        `REGISTER_TYPES <Type>=<pkg>::msg::<Type>` matching the
+        type-name the nros side publishes, and link the resulting
+        descriptor lib into the app. Then re-run each native
+        cyclonedds example against a Cyclone peer (mirror the §171.0
+        Zephyr `rtos_e2e` cyclonedds harness). The C example's
+        earlier `nros_support_init -> -3` is a *separate*,
+        smaller item — the renamed dust example still feeds a
+        zenoh-style locator default; cyclonedds ignores the locator
+        but the example's env/printf scaffold needs a cyclonedds-
+        appropriate cleanup pass too.
 
         **Hazard to design around (the reason this is not a quick
         spike):** the `rustapp` staticlib pulls the **Rust** nros
