@@ -158,5 +158,11 @@ pub use executor::{
     RawSubscription, RecvView, Subscription,
 };
 
+// Phase 173.5 — bridge multi-session spec (consumed by the generated
+// orchestration package's `Executor::open_multi`). Gated to match
+// `executor::SessionSpec` (needs the cffi vtable surface).
+#[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
+pub use executor::SessionSpec;
+
 #[cfg(all(feature = "std", any(has_rmw, test)))]
 pub use executor::SpinPeriodResult;
