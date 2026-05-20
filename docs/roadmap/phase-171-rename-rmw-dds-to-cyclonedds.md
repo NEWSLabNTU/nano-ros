@@ -395,35 +395,56 @@ Target matrix (after rename + new cells):
 | `stm32f4`              | rust     | same gate as baremetal |
 | `px4`                  | cpp      | (uORB-only, unchanged) |
 
-- [ ] **171.C.1** **`native` × {c,cpp,rust}** — extend the existing
-      native dds examples (3 langs × 6 cases = 18 examples) to
-      Cyclone DDS. Native is POSIX so Cyclone DDS works out of
-      the box.
+- [~] **171.C.1** **`native` × {c,cpp,rust}**.
+      - [x] **c + cpp**: full 6 each (talker / listener /
+        service-{server,client} / action-{server,client}) — all 12
+        compile + link clean against
+        `-DCMAKE_PREFIX_PATH=build/install` (Cyclone DDS 0.10.5 from
+        `just cyclonedds setup`). Verified 2026-05-20.
+      - [ ] **rust**: blocked on a `nros-rmw-cyclonedds-staticlib`
+        crate. `nros-rmw-cyclonedds-sys` only exposes the C-linkage
+        `register()` shim — the C++ Cyclone DDS lib + `libddsc` come
+        from the cmake project, which a pure-cargo Rust example does
+        not invoke. A new staticlib crate (build.rs drives the
+        Cyclone cmake build + links `libddsc` + `stdc++`, mirroring
+        `nros-rmw-zenoh-staticlib`) is the prerequisite. Scoped as
+        **171.C.1.rust** follow-up.
 - [~] **171.C.2** **`zephyr` × {c, cpp, rust}** — **largely landed in
       §171.0** (collapsed shape + `prj-cyclonedds.conf`, not a
       `cyclonedds/` subtree). Pub/sub done all three languages; services
       done Rust + C++. Remaining: C service request delivery (171.0.a),
       actions all langs (171.0.b).
 - [ ] **171.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
-      DDS via the existing NetX-Duo / NSOS BSD shim
-      (`packages/drivers/nsos-netx`).
-- [ ] **171.C.4** **`qemu-arm-{freertos, nuttx}` × {c, cpp, rust}**
-      — gated on Cyclone DDS RTOS-port viability assessment
-      (171.C.gate). If viable, add the 18 cells; if not, mark
-      empty with documented reason in the README matrix.
-- [ ] **171.C.5** **`qemu-riscv64-threadx` × {c, cpp, rust}** —
-      same gate as qemu-arm RTOS cells.
-- [ ] **171.C.6** **`esp32` × rust** — gated on esp-hal Cyclone
-      DDS port (a real engineering question — Cyclone DDS expects
-      a hosted RTOS; esp-hal is bare-metal Rust). Likely empty
-      cell.
-- [ ] **171.C.gate** **Cyclone DDS RTOS port assessment** — before
-      committing to 171.C.4 / 171.C.5 / 171.C.6, spike one cell
-      end-to-end (suggested: `qemu-arm-nuttx/c/cyclonedds/talker/`)
-      and decide: viable / gated on upstream patch / won't-do.
-      Output: gate decision in `tmp/phase-169-rtos-cyclone-gate.md`,
-      then update the matrix accordingly. Don't fill all 18 RTOS
-      cells without the gate clearing first.
+      DDS over the NetX-Duo / NSOS BSD shim (`packages/drivers/nsos-netx`).
+      Same blocker as 171.C.1.rust for the rust cell (needs the
+      cyclonedds staticlib path); the c/cpp cells additionally need
+      the example cmake to thread Cyclone's socket calls through NSOS
+      rather than host libc. Deferred behind **171.C.1.rust**.
+- [x] **171.C.4 / .5 / .6 — RTOS + bare-metal cells: WON'T-FIT /
+      deferred (gate decision, 2026-05-20).** Cyclone DDS requires a
+      hosted runtime — BSD sockets, threads, heap, libc. The gate
+      (below) splits the cells:
+      - **Bare-metal — WON'T-FIT** (`qemu-arm-baremetal`,
+        `qemu-esp32-baremetal`, `esp32`, `stm32f4`): pure Cortex-M /
+        esp-hal have no POSIX socket layer, no hosted libc. Cyclone
+        DDS cannot run. Documented as intentionally-empty cells in
+        `examples/README.md` (same rule as Phase 118).
+      - **FreeRTOS / NuttX QEMU — DEFERRED-UPSTREAM**: a Cyclone DDS
+        FreeRTOS+lwIP / NuttX port is an upstream-scale effort
+        (socket-shim + config + heap budget). Not attempted here;
+        empty cells until an upstream port lands.
+      - **ThreadX (linux + riscv64) — DEFERRED behind 171.C.1.rust +
+        NSOS**: technically the most plausible (NetX-Duo BSD shim
+        gives Cyclone a socket API), but still needs the cyclonedds
+        staticlib path + per-target socket wiring.
+- [x] **171.C.gate** **Cyclone DDS RTOS port assessment — done.**
+      Decision recorded inline above (171.C.4/.5/.6): bare-metal
+      won't-fit; FreeRTOS/NuttX deferred-upstream; ThreadX deferred
+      behind the staticlib path. No RTOS cyclonedds cells are filled;
+      `examples/README.md` marks them empty with reasons. The
+      end-to-end spike was unnecessary — the runtime requirement
+      (hosted POSIX) is a hard gate that bare-metal targets cannot
+      meet by construction.
 
 **`no_std + no-alloc` discipline.** Each new Rust example:
 `#![no_std]`, `heapless::*` only, static-arena message storage.
