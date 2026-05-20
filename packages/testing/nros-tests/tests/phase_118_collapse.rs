@@ -898,6 +898,55 @@ fn test_zephyr_rust_cyclonedds_service_e2e() {
     );
 }
 
+/// Phase 11W.12 — Cyclone DDS service roundtrip, C++ surface. Same
+/// overlay parity + srv descriptor generation as the Rust service; the
+/// C++ client logs `[OK]` for each successful call.
+#[test]
+fn test_zephyr_cpp_cyclonedds_service_e2e() {
+    use std::time::Duration;
+
+    use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
+
+    let server_bin = nros_tests::fixtures::build_zephyr_cmake_example_rmw(
+        "cpp",
+        "service-server",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("zephyr/cpp/service-server cyclonedds not prebuilt: {:?}", e)
+    });
+    let client_bin = nros_tests::fixtures::build_zephyr_cmake_example_rmw(
+        "cpp",
+        "service-client",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!("zephyr/cpp/service-client cyclonedds not prebuilt: {:?}", e)
+    });
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr cpp service-server (cyclonedds)");
+    std::thread::sleep(Duration::from_secs(2));
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr cpp service-client (cyclonedds)");
+
+    let output = client.wait_for_pattern("[OK]", Duration::from_secs(20));
+
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "zephyr cpp cyclonedds service e2e client output:\n{}",
+        output
+    );
+
+    assert!(
+        output.contains("[OK]"),
+        "cyclonedds cpp service client did not get a successful reply \
+         (expected a `[OK]` line)"
+    );
+}
+
 /// Phase 118.B.7 — ThreadX-Linux C / C++ cases (zenoh only).
 #[rstest]
 #[case::c_talker("c", "talker", "threadx_c_talker")]

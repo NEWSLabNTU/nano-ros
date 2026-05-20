@@ -777,9 +777,22 @@ green.
   descriptor and stock `rmw_cyclonedds_cpp` (no-op when the base has no
   trailing `_`, so the backend's own roundtrip tests still pass). With
   it `test_zephyr_rust_cyclonedds_service_e2e` passes — client gets
-  `Response: sum=` over the request/response roundtrip. C/C++ service +
-  all-language action examples are the remaining follow-up (actions
-  also need `.action` decomposition support in the IDL converter).
+  `Response: sum=` over the request/response roundtrip.
+
+  **Services (C++).** Same overlay parity + srv descriptor generation;
+  `test_zephyr_cpp_cyclonedds_service_e2e` passes (client logs 4/4
+  `[OK]` calls). The backend `service_type_name` fix covers C++ too.
+
+  **Services (C) — open.** The C overlay + srv descriptor generation
+  build and both endpoints create cleanly, but the C example's single
+  blocking `nros_client_call` at startup times out (`NROS_RET_TIMEOUT`)
+  under Cyclone DDS — the server never logs handling the request. C++
+  (which loops `fut.wait` over several calls) and Rust both succeed, so
+  this is a C-example single-shot-call-vs-discovery-timing issue (the C
+  client doesn't `service_server_available`-gate or retry), not a
+  backend gap. Tracked as a follow-up alongside all-language **action**
+  examples (actions also need `.action` decomposition in the IDL
+  converter — `msg_to_cyclone_idl.py` handles only `.msg`/`.srv`).
 
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
