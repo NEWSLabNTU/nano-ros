@@ -42,19 +42,26 @@ Phase 176 (jobserver) and Phase 67 / #67 (SDK-prebuilt picolibc).
 
 Each of ~21 zephyr fixtures pays, uncacheably and largely serially:
 `west`/python startup (~3 s) + **cmake reconfigure** + codegen
-(`nros_generate_interfaces`) + **link** (`zephyr.elf`). With
-`pristine=always` (default) the build dir is wiped every time, forcing a
-full reconfigure + ninja-graph eval. The *compile* is ~60% sccache-cached;
-this configure/codegen/link tax is not.
+(`nros_generate_interfaces`) + **link** (`zephyr.elf`). The *compile* is
+~60% sccache-cached; this configure/codegen/link tax is not.
 
-Ideas:
-- `pristine=auto` + **shared build dirs per RMW group** so one configured
-  kernel+picolibc tree is reused across same-config examples instead of
-  reconfiguring each.
-- Zephyr **sysbuild** / a single multi-image build instead of N
-  independent `west build`s.
+- [x] **`pristine=auto`** (landed 2026-05-21). Each build dir is
+  variant-unique (`build-<lang>-<ex>-<rmw>`, fixed board + overlay), so
+  its config never changes — `auto` is safe and rebuilds incrementally
+  instead of `always` wiping + full-rebuilding every run. Measured on
+  `zephyr/rust/talker` (zenoh): **cold 19.97 s → warm no-change rebuild
+  6.10 s (~3.3×)**. `NROS_ZEPHYR_PRISTINE=always` forces a clean rebuild.
+  Repeated `just zephyr build-fixtures` (dev inner-loop / warm-dir CI)
+  now goes incremental.
+
+Remaining (the residual ~6 s/example warm overhead is west startup +
+cmake reconfigure-check + codegen):
 - Cache codegen output (`nros_generate_interfaces`) across examples that
-  share interfaces.
+  share interfaces (re-runs every configure today).
+- **shared build dirs per RMW group** / Zephyr **sysbuild** so one
+  configured kernel+picolibc tree is reused across same-config examples
+  instead of reconfigure-checking each. Bigger; intersects the broken
+  cyclonedds-zephyr (Phase 171.0.d) so hard to validate cleanly there.
 
 ### 174.B — config-divergent cache misses (~40%)
 

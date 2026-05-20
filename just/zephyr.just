@@ -195,7 +195,15 @@ build-fixtures:
         echo "Invalid NROS_ZEPHYR_BUILD_JOBS=$jobs; expected positive integer" >&2
         exit 2
     fi
-    pristine="${NROS_ZEPHYR_PRISTINE:-always}"
+    # Phase 174.A — default `auto`, not `always`. Each build dir is
+    # variant-unique (`build-<lang>-<ex>-<rmw>`, fixed board + fixed
+    # prj overlay), so its cmake config never changes — `auto` only
+    # re-pristines when the cmake inputs actually change, otherwise it
+    # rebuilds incrementally. `always` wiped + full-rebuilt every
+    # example on every `just zephyr build-fixtures`, so repeated runs
+    # (dev inner-loop, warm-dir CI) never went incremental. Set
+    # NROS_ZEPHYR_PRISTINE=always to force a clean rebuild.
+    pristine="${NROS_ZEPHYR_PRISTINE:-auto}"
     case "$pristine" in
         auto|always|never) ;;
         *)
