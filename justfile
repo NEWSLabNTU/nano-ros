@@ -223,7 +223,7 @@ format: format-workspace native::format format-c format-cpp format-python
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 check: \
     check-workspace check-workspace-embedded check-workspace-features \
-    check-platform-abi-mirror check-board-abi-mirror check-decoupling \
+    check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-decoupling \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
@@ -238,6 +238,13 @@ check-platform-abi-mirror:
 [private]
 check-board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
+
+# Phase 173.3 — verify the orchestration generator's PlatformProfile
+# board-crate references match the actual board crates (existence +
+# `run` entry). Skips when the colcon-nano-ros submodule is absent.
+[private]
+check-profile-board-mirror:
+    @bash scripts/check-profile-board-mirror.sh
 
 # Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
 # parity. For every defined `_z_f_link_*_<transport>` wrapper, the
