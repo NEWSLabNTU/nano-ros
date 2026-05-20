@@ -20,6 +20,10 @@
 
 pub mod bridge;
 mod config;
+// Phase 173.6 — optional `embedded-nal` adapter (TcpClientStack /
+// UdpClientStack over the bridge socket ops).
+#[cfg(feature = "embedded-nal")]
+pub mod nal;
 mod network_state;
 mod platform_macro;
 pub mod util;
