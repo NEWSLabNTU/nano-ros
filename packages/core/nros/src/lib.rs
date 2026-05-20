@@ -411,7 +411,8 @@ pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawSubscription, RecvView, Subscription,
+    LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawSubscription, RecvView, SessionSpec,
+    Subscription,
 };
 
 // Phase 110.B / 110.G — scheduling-context API surface. Consumers
