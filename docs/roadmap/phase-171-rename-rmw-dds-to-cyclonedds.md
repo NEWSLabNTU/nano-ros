@@ -9,7 +9,17 @@ and audit the `nros-rmw-cyclonedds` wrapper for `no_std + no-alloc`
 discipline. The wrapper stays C++ (Cyclone DDS's native language;
 matches the RMW backend host-language policy frozen 2026-05-07).
 
-**Status.** Not Started.
+**Status.** In progress. The Zephyr `native_sim` Cyclone DDS runtime
+bring-up + Zephyr matrix-fill (formerly tracked as the standalone
+**Phase 11W**, now absorbed here — see §171.0 below) has **landed**:
+pub/sub works in all three languages (Rust/C/C++) and request/response
+services work in Rust + C++, with the supporting NSOS host patches,
+backend `service_type_name` fix, and a stock-`rmw_cyclonedds_cpp`
+double-slash topic-naming interop fix. The `dds`→`cyclonedds` rename
+(§171.A/B), the non-Zephyr matrix cells (§171.C.1/.3/.4/.5/.6), and the
+no-alloc audit (§171.E) are still open. Two Zephyr cyclonedds gaps
+remain open inside §171.0 (C-service request delivery; all-language
+actions).
 
 **Priority.** P2 — paper-rename and matrix-fill on top of the
 already-decided 169 retirement.
@@ -51,7 +61,10 @@ Today the workspace ships two DDS backends:
   match `ros-humble-cyclonedds`). Lands the canonical RTPS wire
   format used by the wider ROS 2 ecosystem; full wire-compat with
   stock `rmw_cyclonedds_cpp` is the explicit Phase 117 goal.
-  Currently surfaces only in `examples/zephyr/cpp/cyclonedds/`.
+  Surfaces on POSIX (Phase 117) and on Zephyr `native_sim` across all
+  three languages via the collapsed-shape `prj-cyclonedds.conf` overlay
+  (§171.0, formerly Phase 11W), plus the one-board FVP reference
+  `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`.
 
 Naming gap: every other surface (cargo features, cmake cache vars,
 Kconfig values, example-tree directories, book docs) uses bare
@@ -143,6 +156,80 @@ After this phase:
 
 ## Work items
 
+### 171.0 — Zephyr `native_sim` Cyclone DDS runtime (landed; absorbed Phase 11W)
+
+Originally a standalone phase (`phase-11W-cyclonedds-zephyr-native_sim-runtime.md`,
+now archived). It brought Cyclone DDS up to a working runtime on
+`native_sim/native/64` and filled the Zephyr cyclonedds example cells.
+Folded here because it *is* the Zephyr slice of §171.C.2 — but note the
+**shape correction below** vs. this phase's original `<lang>/cyclonedds/`
+assumption.
+
+**Shape correction.** This phase's matrix (§171.C, the table, and the
+"surfaces only in `examples/zephyr/cpp/cyclonedds/`" note) predates the
+Phase 168 collapse. On Zephyr there is **no `<lang>/cyclonedds/`
+directory** — the canonical shape is the collapsed
+`examples/zephyr/<lang>/<example>/` dir with RMW selected at build time
+via a `prj-cyclonedds.conf` overlay (`-DCONF_FILE="prj.conf;prj-cyclonedds.conf"`).
+So §171.C.2 for Zephyr is "add the `prj-cyclonedds.conf` overlay + the
+Cyclone C descriptor-gen CMake branch to each collapsed example", not
+"create a `cyclonedds/` subtree". The native / threadx-linux cells
+(§171.C.1/.3) keep the `<lang>/<rmw>/` shape since those trees weren't
+collapsed.
+
+**Landed (committed on `main`, phase-11W.12 commits):**
+- [x] Compile + link + boot smoke for all 6 cases × 3 languages on
+      `native_sim/native/64`.
+- [x] **Pub/sub discovery — Rust + C + C++.** `test_zephyr_{rust,cpp,c}_cyclonedds_pubsub_e2e`
+      (listener receives talker samples over SPDP multicast). Required:
+      NSOS `getifaddrs` host trampoline + host-side `IPPROTO_IP`
+      setsockopt forwarder (so `IP_ADD_MEMBERSHIP` reaches the host
+      kernel) + distinct `--seed` per process (native_sim's deterministic
+      test entropy otherwise yields identical Cyclone GUID prefixes →
+      SPDP self-ignore). Patches wired idempotently into `just zephyr setup`.
+- [x] **Services — Rust + C++.** `test_zephyr_{rust,cpp}_cyclonedds_service_e2e`
+      (request/response roundtrip). Surfaced + fixed a backend bug:
+      `service_type_name` concatenated `<base>_Request_` but the codegen
+      emits `SERVICE_NAME` with a trailing `_`, giving a double-underscore
+      lookup that missed the registered descriptor — now strips one
+      trailing `_` (matches stock `rmw_cyclonedds_cpp`; no-op when absent).
+- [x] **Stock-interop topic fix.** `topic_prefix::apply` no longer emits
+      a double slash for leading-slash names (`rq//x` → `rq/x`), matching
+      stock `rmw_cyclonedds_cpp`. Regression-checked against rust pub/sub
+      + service E2E.
+- [x] **nextest serialization.** `zephyr-native-cyclonedds` group
+      (`max-threads=1`) — these tests bind the fixed SPDP multicast port
+      and can't run concurrently (NSOS doesn't forward `SO_REUSEADDR`).
+- [x] Overlay runtime parity for c/cpp/rust talker/listener + rust/cpp
+      service examples (16 MiB malloc arena, NSOS offload forcing,
+      NET_TCP, pthread pools) so the participant inits instead of
+      crashing in picolibc libc-hooks.
+
+**Open (Zephyr cyclonedds):**
+- [ ] **171.0.a — C service request delivery.** C service-*server*
+      works (handles a C++ client's requests), but the C *client*'s
+      request never reaches any server: `nros_client_call` writes
+      successfully (`write_rc=0`) to the correct, identical topic, the
+      server's reader is valid, yet the sample isn't delivered. Localized
+      via cross-language E2E (C++ client→C server works; C client→C++
+      server fails). Not naming/registration/topic (all ruled out;
+      identical across endpoints) — a DDS writer↔reader match/transmit
+      issue specific to the C-client writer. Needs cyclonedds-internal
+      SEDP match tracing (the busy-spin-starvation theory was ruled out:
+      `nros_client_call`'s loop `k_msleep`s via `session_drive_io`, so it
+      yields). Re-apply the C service-client `prj-cyclonedds.conf` (NSOS)
+      + descriptor-gen CMake (reverted while parked) when resuming.
+- [ ] **171.0.b — Actions (all languages).** The IDL converter
+      (`scripts/cyclonedds/msg_to_cyclone_idl.py`) handles `.msg`/`.srv`
+      only; `.action` decomposition (Goal/Result/Feedback + SendGoal/
+      GetResult srvs + FeedbackMessage, pulling in action_msgs /
+      unique_identifier_msgs — ROS ships no `action2idl.py`) is unbuilt.
+      Plus the action client has a documented blocking-`zpico_get` hang
+      risk. Large; not runtime-verifiable until the converter lands.
+- [ ] **171.0.c — aemv8r regression.** Confirm the existing
+      `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` (FVP one-board
+      reference) still builds after the topic + service backend changes.
+
 ### 171.A — Rename `dds` → `cyclonedds` in code surface
 
 Mechanical rename across every non-example reference. Run BEFORE
@@ -217,9 +304,9 @@ Target matrix (after rename + new cells):
 | `native`               | c        | full 6          |
 | `native`               | cpp      | full 6          |
 | `native`               | rust     | full 6 (via `nros-rmw-cyclonedds-staticlib`) |
-| `zephyr`               | c        | full 6          |
-| `zephyr`               | cpp      | full 6 + `talker-aemv8r` (existing) |
-| `zephyr`               | rust     | full 6 (via staticlib) |
+| `zephyr`               | c        | pub/sub ✓ (collapsed shape); service ✗ 171.0.a; actions ✗ 171.0.b |
+| `zephyr`               | cpp      | pub/sub ✓ + service ✓ + `talker-aemv8r` (existing); actions ✗ 171.0.b |
+| `zephyr`               | rust     | pub/sub ✓ + service ✓ (collapsed shape); actions ✗ 171.0.b |
 | `threadx-linux`        | c        | full 6          |
 | `threadx-linux`        | cpp      | full 6          |
 | `threadx-linux`        | rust     | full 6 (via staticlib) |
@@ -240,9 +327,11 @@ Target matrix (after rename + new cells):
       native dds examples (3 langs × 6 cases = 18 examples) to
       Cyclone DDS. Native is POSIX so Cyclone DDS works out of
       the box.
-- [ ] **171.C.2** **`zephyr` × {c, rust}** — fill the gap left by
-      having only `zephyr/cpp/cyclonedds/` today. Cyclone DDS has
-      a Zephyr port in upstream tree.
+- [~] **171.C.2** **`zephyr` × {c, cpp, rust}** — **largely landed in
+      §171.0** (collapsed shape + `prj-cyclonedds.conf`, not a
+      `cyclonedds/` subtree). Pub/sub done all three languages; services
+      done Rust + C++. Remaining: C service request delivery (171.0.a),
+      actions all langs (171.0.b).
 - [ ] **171.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
       DDS via the existing NetX-Duo / NSOS BSD shim
       (`packages/drivers/nsos-netx`).

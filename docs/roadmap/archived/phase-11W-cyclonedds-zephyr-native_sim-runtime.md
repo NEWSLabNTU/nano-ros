@@ -1,5 +1,14 @@
 # Phase 11W — Cyclone DDS Zephyr nros-module runtime (native_sim path)
 
+> **ABSORBED into Phase 171 §171.0 (2026-05-20).** This standalone
+> phase is archived; its work — Zephyr `native_sim` Cyclone DDS runtime
+> bring-up + the Zephyr cyclonedds example cells — is the Zephyr slice
+> of Phase 171's matrix-fill. Landed/open status is tracked in
+> `docs/roadmap/phase-171-rename-rmw-dds-to-cyclonedds.md` §171.0
+> (open follow-ups: 171.0.a C-service delivery, 171.0.b actions,
+> 171.0.c aemv8r regression). Kept here for the detailed gap-by-gap
+> bring-up history (NSOS patches, cxx-compat shims, link stubs).
+
 **Goal.** Bring the Cyclone DDS RMW backend up to runtime on
 Zephyr `native_sim/native/64` so the Phase 168 collapsed examples
 (`examples/zephyr/{c,cpp,rust}/<case>/`) build clean with
