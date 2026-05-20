@@ -37,10 +37,16 @@
 #  - Generated .c / .h are written to `${CMAKE_CURRENT_BINARY_DIR}` so
 #    consumers don't have to manage their own scratch dirs.
 
-if(NOT TARGET CycloneDDS::ddsc)
+# Standalone-POSIX consumers link `CycloneDDS::ddsc` (from
+# find_package). Embedded consumers (the Zephyr nros module) compile
+# the Cyclone DDS sources directly into the app and have no imported
+# target — they only need idlc to generate descriptors, which they
+# supply via a pre-set `IDLC_EXECUTABLE`. Accept either.
+if(NOT TARGET CycloneDDS::ddsc AND NOT IDLC_EXECUTABLE)
     message(FATAL_ERROR
-        "NrosRmwCycloneddsTypeSupport.cmake requires CycloneDDS::ddsc; "
-        "include it after find_package(CycloneDDS).")
+        "NrosRmwCycloneddsTypeSupport.cmake requires CycloneDDS::ddsc "
+        "(include it after find_package(CycloneDDS)) or a pre-set "
+        "IDLC_EXECUTABLE for direct-compile (embedded) builds.")
 endif()
 
 # Locate idlc — Cyclone exports it as `CycloneDDS::idlc` when it's

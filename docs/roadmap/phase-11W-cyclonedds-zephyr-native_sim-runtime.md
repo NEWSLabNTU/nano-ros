@@ -577,6 +577,44 @@ green.
   Cyclone DDS participant-init path is resolved; the participant
   boots and initialises fully on native_sim. The remaining work is
   type-support codegen, not runtime/transport.
+
+- **11W.9 (2026-05-20) — cyclonedds Rust talker PUBLISHES on
+  native_sim.** Resolved the type-descriptor gap. The Cyclone DDS C
+  `dds_topic_descriptor_t` for `std_msgs/Int32` is now generated +
+  compiled into the talker and the publisher creates successfully;
+  the talker emits `Published: N` in a loop.
+
+  - `examples/zephyr/rust/talker/CMakeLists.txt` (cyclonedds branch)
+    generates the descriptor from `std_msgs/Int32.msg` via
+    `nros_rmw_cyclonedds_generate_from_msg`, pointing
+    `IDLC_EXECUTABLE` at the host-built
+    `build/cyclonedds/bin/idlc` and `PKG_DIR` at
+    `/opt/ros/humble/share/std_msgs`, then adds the generated `.c`
+    to the app.
+  - `NrosRmwCycloneddsTypeSupport.cmake` guard relaxed: accept a
+    pre-set `IDLC_EXECUTABLE` (embedded direct-compile build) in
+    addition to the `CycloneDDS::ddsc` imported target (POSIX
+    find_package build).
+  - **The `__attribute__((constructor))` self-registration DOES run
+    on native_sim** (it links as a host binary, so the host C
+    runtime executes constructors) — Task "explicit registration"
+    proved unnecessary. (Real Cortex-M targets may still need an
+    explicit path; revisit when running cyclonedds on hardware.)
+
+  **Open follow-up — Phase 11W.10 (runtime stability):** after
+  ~16k publishes the process `abort()`s, preceded by Zephyr
+  `os: tid <…> is in use!` warnings — dynamic-thread-pool churn /
+  resource exhaustion under the tight publish loop (sim clock
+  barely advances, timer effectively free-runs). The publish path
+  itself works; this is a stability / pacing issue.
+
+  **Remaining for full E2E:** the build hardcodes
+  `/opt/ros/humble/share/std_msgs` + `build/cyclonedds/bin/idlc`
+  (acceptable: the cyclonedds Zephyr path already needs ROS +
+  Cyclone host tools for codegen, but should be generalised to
+  resolve via the project's setup paths). Generalising descriptor
+  generation across all collapsed C/C++/Rust cyclonedds examples
+  (not just the talker) is the broader 11W.9 follow-up.
 - Phase 117's "follow-ups (post-117)" list is **separate**: 11X
   autoware, 11Y Phase 108 events, 11Z zero-copy sertype. 11W
   here is yet another post-117 follow-up.
