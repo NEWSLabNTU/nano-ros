@@ -416,3 +416,22 @@ impl nros_platform::BoardConfig for Config {
         self.domain_id
     }
 }
+
+// Phase 173.5 — nros.toml `[[transport]]` IP / baud into the board
+// `Config` (NanoRosOwned: this board owns the smoltcp stack).
+impl nros_platform::BoardTransportConfig for Config {
+    fn set_ipv4(&mut self, _addr: [u8; 4], _prefix: u8) {
+        #[cfg(feature = "ethernet")]
+        {
+            self.ip = _addr;
+            self.prefix = _prefix;
+        }
+    }
+
+    fn set_baudrate(&mut self, _baud: u32) {
+        #[cfg(feature = "serial")]
+        {
+            self.baudrate = _baud;
+        }
+    }
+}

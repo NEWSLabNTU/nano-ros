@@ -30,7 +30,7 @@
 mod board;
 mod resolve;
 
-pub use board::BoardConfig;
+pub use board::{BoardConfig, BoardTransportConfig};
 
 // Phase 129.C.3.b — `NET_*` constants exported unconditionally
 // (see `resolve.rs`). `ConcretePlatform` keeps its feature gate

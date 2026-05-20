@@ -38,3 +38,23 @@ pub trait BoardConfig {
     /// ROS 2 domain ID (default `0`).
     fn domain_id(&self) -> u32;
 }
+
+/// Phase 173.5 — mutable transport knobs the orchestration generator
+/// writes into a board `Config` from `nros.toml` `[[transport]]` (the
+/// `NanoRosOwned` net-stack path: the board owns smoltcp/lwIP/NetX, so
+/// the IP / baud value lands in the board `Config` rather than an RTOS
+/// config fragment).
+///
+/// Every method has a no-op default so a board only overrides the knobs
+/// it actually has (a serial-only board ignores `set_ipv4`; an
+/// ethernet-only board ignores `set_baudrate`). Boards whose net stack
+/// is owned by the RTOS (`RtosOwned`: Zephyr / NuttX) do **not** impl
+/// this — their IP lands in the emitted config fragment instead.
+pub trait BoardTransportConfig {
+    /// Static IPv4 address + prefix length for the board's ethernet
+    /// stack. Boards without a `prefix` field ignore that argument.
+    fn set_ipv4(&mut self, _addr: [u8; 4], _prefix: u8) {}
+
+    /// Serial line rate for the board's UART transport.
+    fn set_baudrate(&mut self, _baud: u32) {}
+}

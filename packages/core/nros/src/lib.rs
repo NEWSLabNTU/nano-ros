@@ -415,6 +415,13 @@ pub use nros_node::{
     Subscription,
 };
 
+// Phase 173.5 — board config traits. `BoardConfig` (read locator /
+// domain) + `BoardTransportConfig` (the generator writes nros.toml
+// `[[transport]]` IP / baud into a NanoRosOwned board `Config`).
+// Named `BoardTransportConfig` to avoid colliding with the
+// transport-layer `TransportConfig` already re-exported above.
+pub use nros_platform::{BoardConfig, BoardTransportConfig};
+
 // Phase 110.B / 110.G — scheduling-context API surface. Consumers
 // of the Phase 110 cyclic / TT scheduler need these types to
 // describe schedules and bind handles; re-exporting them here

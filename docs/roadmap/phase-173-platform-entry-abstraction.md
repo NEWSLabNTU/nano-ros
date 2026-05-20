@@ -561,11 +561,15 @@ nano-ros transport⟷RMW surface by design.
       (`generator_emits_no_kernel_params_in_net_fragment` + the
       `zephyr_fragment_*` unit tests). A booting hardware run is still
       open.
-- [ ] `NetStack::NanoRosOwned` path verified on one target (bare-metal
-      or FreeRTOS): `nros.toml` IP/baudrate land in the generated board
-      `Config`; no RTOS kernel config (`FreeRTOSConfig.h` etc.) is
-      touched. (Locator + transport-feature emit done + tested; the
-      IP/baudrate→`Config` field wiring + a boot check remain.)
+- [x] `NetStack::NanoRosOwned` path: `nros.toml` IP/baudrate land in the
+      generated board `Config` via the `BoardTransportConfig` trait
+      (`set_ipv4` / `set_baudrate`, impl'd by mps2-an385 / esp32 / stm32 /
+      freertos / threadx-{linux,riscv64}). The generator emits
+      `apply_transport_config` (gated NanoRosOwned + board entry +
+      static-ip/baud) and the board entry calls it on `Config::default()`
+      before `run`; no RTOS kernel config is emitted. Verified by the
+      extended `declared_serial_transport_selects_board_feature` test +
+      `orchestration_e2e` 12/12. A booting hardware run is still open.
 - [x] Negative gate: the generator never emits kernel params (tick /
       heap / scheduler / stack size / non-net driver enables) — the
       Zephyr net fragment is asserted net-only by
