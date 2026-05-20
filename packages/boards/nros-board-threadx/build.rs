@@ -33,8 +33,7 @@
 //! Bare `cargo check -p nros-board-threadx` (no env vars) is a
 //! no-op + warning so the crate's surface compiles standalone.
 
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 fn main() {
     let Some(threadx_dir) = env::var_os("THREADX_DIR").map(PathBuf::from) else {
@@ -53,7 +52,12 @@ fn main() {
         .expect("nros-board-threadx: THREADX_CONFIG_DIR must be set when THREADX_DIR is");
     let extra_kernel_includes: Vec<PathBuf> = env::var("THREADX_EXTRA_INCLUDES")
         .ok()
-        .map(|v| v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from).collect())
+        .map(|v| {
+            v.split(':')
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
         .unwrap_or_default();
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -98,7 +102,12 @@ fn main() {
         .expect("nros-board-threadx: NETX_DIR must be set (platform-threadx uses nx_bsd_*)");
     let extra_netx_includes: Vec<PathBuf> = env::var("NETX_EXTRA_INCLUDES")
         .ok()
-        .map(|v| v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from).collect())
+        .map(|v| {
+            v.split(':')
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
         .unwrap_or_default();
 
     let mut platform = cc::Build::new();
@@ -156,7 +165,10 @@ fn configure(build: &mut cc::Build) {
     // RISC-V cross-compile env. Detect by target triple, NOT by
     // THREADX_PORT, so a host-tooled `cargo check` doesn't
     // accidentally pick up the cross compiler.
-    if env::var("TARGET").map(|t| t.starts_with("riscv64")).unwrap_or(false) {
+    if env::var("TARGET")
+        .map(|t| t.starts_with("riscv64"))
+        .unwrap_or(false)
+    {
         build
             .compiler("riscv64-unknown-elf-gcc")
             .archiver("riscv64-unknown-elf-ar")

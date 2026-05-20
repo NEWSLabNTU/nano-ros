@@ -1,8 +1,7 @@
 //! Phase 152.2.B.4 — thin non-generic `run` + `init_hardware`
 //! wrappers over the generic `nros_board_threadx::run<B>` lift.
 
-use crate::config::Config;
-use crate::ThreadxQemuRiscv64;
+use crate::{ThreadxQemuRiscv64, config::Config};
 
 /// Initialize pre-kernel hardware for ThreadX QEMU RISC-V.
 ///
@@ -13,7 +12,7 @@ pub fn init_hardware(_config: &Config) {}
 
 /// Run an application on QEMU RISC-V with ThreadX + NetX Duo + virtio-net.
 ///
-/// Thin wrapper over `nros_board_threadx::run::<ThreadxQemuRiscv64, _, _, _>`.
+/// Thin wrapper over `nros_board_threadx::run::<ThreadxQemuRiscv64, _, _>`.
 ///
 /// # Example
 ///
@@ -33,7 +32,7 @@ where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
     register_log_writer();
-    nros_board_threadx::run::<ThreadxQemuRiscv64, Config, F, E>(config, f)
+    nros_board_threadx::run::<ThreadxQemuRiscv64, F, E>(config, f)
 }
 
 /// Phase 88 — register a UART writer with `nros-platform-threadx`'s

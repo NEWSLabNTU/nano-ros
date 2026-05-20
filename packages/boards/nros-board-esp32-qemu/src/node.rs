@@ -33,13 +33,13 @@ fn network_identity_seed(config: &Config) -> u32 {
 use core::mem::MaybeUninit;
 
 #[cfg(feature = "ethernet")]
+use nros_smoltcp::SmoltcpBridge;
+#[cfg(feature = "ethernet")]
 use openeth_smoltcp::OpenEth;
 #[cfg(feature = "ethernet")]
 use smoltcp::iface::{Interface, SocketSet};
 #[cfg(feature = "ethernet")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-#[cfg(feature = "ethernet")]
-use nros_smoltcp::SmoltcpBridge;
 
 // Static storage for network objects (initialized by init_hardware, must
 // outlive the function call so set_network_state pointers remain valid).
@@ -83,7 +83,12 @@ fn init_ethernet(config: &Config) {
     let mac = eth.mac_address();
     esp_println::println!(
         "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        mac[0],
+        mac[1],
+        mac[2],
+        mac[3],
+        mac[4],
+        mac[5]
     );
 
     // Create smoltcp interface
@@ -92,7 +97,11 @@ fn init_ethernet(config: &Config) {
 
     let mac_addr = EthernetAddress::from_bytes(&mac);
     let iface_config = smoltcp::iface::Config::new(mac_addr.into());
-    let iface = Interface::new(iface_config, eth, smoltcp::time::Instant::from_millis(nros_platform_esp32_qemu::clock::clock_ms() as i64));
+    let iface = Interface::new(
+        iface_config,
+        eth,
+        smoltcp::time::Instant::from_millis(nros_platform_esp32_qemu::clock::clock_ms() as i64),
+    );
     unsafe { NET_IFACE.write(iface) };
     let sockets = unsafe { create_socket_set() };
     unsafe { NET_SOCKETS.write(sockets) };
@@ -116,11 +125,18 @@ fn init_ethernet(config: &Config) {
 
     esp_println::println!(
         "  IP: {}.{}.{}.{}/{}",
-        config.ip[0], config.ip[1], config.ip[2], config.ip[3], config.prefix
+        config.ip[0],
+        config.ip[1],
+        config.ip[2],
+        config.ip[3],
+        config.prefix
     );
     esp_println::println!(
         "  Gateway: {}.{}.{}.{}",
-        config.gateway[0], config.gateway[1], config.gateway[2], config.gateway[3]
+        config.gateway[0],
+        config.gateway[1],
+        config.gateway[2],
+        config.gateway[3]
     );
 
     // Initialize transport bridge
@@ -147,9 +163,7 @@ fn init_ethernet(config: &Config) {
         // Register the network poll as the sleep callback so busy-wait
         // sleep polls the network stack to avoid missing packets during
         // zenoh-pico's connect handshake.
-        nros_platform_esp32_qemu::sleep::set_poll_callback(
-            crate::network::smoltcp_network_poll,
-        );
+        nros_platform_esp32_qemu::sleep::set_poll_callback(crate::network::smoltcp_network_poll);
     }
 
     esp_println::println!("Ethernet ready.");
@@ -266,29 +280,46 @@ pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
-    init_hardware(&config);
-    register_log_writer();
+    // Phase 173.1 — delegate to the shared direct-exec driver via the
+    // `Board` trait. `Esp32Qemu::init_hardware` folds in the log-writer
+    // registration; `exit_*` is the ESP32 no-exit spin loop.
+    nros_board_common::run::<Esp32Qemu, F, E>(config, f)
+}
 
-    // Run user application
-    match f(&config) {
-        Ok(()) => {
-            esp_println::println!("");
-            esp_println::println!("Application completed successfully.");
-            esp_println::println!("");
-            esp_println::println!("========================================");
-            esp_println::println!("  Done");
-            esp_println::println!("========================================");
-        }
-        Err(e) => {
-            esp_println::println!("");
-            esp_println::println!("Application error: {:?}", e);
+/// Phase 173.1 — board ZST carrying the `Board` super-trait impls so
+/// `nros_board_common::run` drives ESP32-C3 QEMU boot.
+pub struct Esp32Qemu;
+
+impl nros_board_common::BoardInit for Esp32Qemu {
+    type Config = Config;
+
+    fn init_hardware(cfg: &Config) {
+        init_hardware(cfg);
+        register_log_writer();
+    }
+}
+
+impl nros_board_common::BoardPrint for Esp32Qemu {
+    fn println(args: core::fmt::Arguments<'_>) {
+        esp_println::println!("{}", args);
+    }
+}
+
+impl nros_board_common::BoardExit for Esp32Qemu {
+    fn exit_success() -> ! {
+        // ESP32 has no process exit — spin forever (the test harness
+        // kills QEMU once it sees the completion banner).
+        #[allow(clippy::empty_loop)]
+        loop {
+            core::hint::spin_loop();
         }
     }
 
-    // Loop forever (ESP32 has no exit)
-    #[allow(clippy::empty_loop)]
-    loop {
-        core::hint::spin_loop();
+    fn exit_failure() -> ! {
+        #[allow(clippy::empty_loop)]
+        loop {
+            core::hint::spin_loop();
+        }
     }
 }
 

@@ -1,8 +1,7 @@
 //! Phase 152.2.B.4 — thin non-generic `run` + `init_hardware`
 //! wrappers over the generic `nros_board_threadx::run<B>` lift.
 
-use crate::config::Config;
-use crate::ThreadxLinux;
+use crate::{ThreadxLinux, config::Config};
 
 /// Initialize pre-kernel hardware for ThreadX Linux simulation.
 ///
@@ -12,7 +11,7 @@ pub fn init_hardware(_config: &Config) {}
 
 /// Run an application on Linux with ThreadX + NSOS.
 ///
-/// Thin wrapper over `nros_board_threadx::run::<ThreadxLinux, _, _, _>`
+/// Thin wrapper over `nros_board_threadx::run::<ThreadxLinux, _, _>`
 /// so users do not have to spell the trait turbofish.
 ///
 /// # Example
@@ -33,7 +32,7 @@ where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
     register_log_writer();
-    nros_board_threadx::run::<ThreadxLinux, Config, F, E>(config, f)
+    nros_board_threadx::run::<ThreadxLinux, F, E>(config, f)
 }
 
 /// Phase 88 — register a stdout writer with `nros-platform-threadx`'s

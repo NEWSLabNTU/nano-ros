@@ -42,11 +42,21 @@ impl BoardInit for ThreadxLinux {
 }
 
 impl ThreadxConfig for Config {
-    fn mac(&self) -> &[u8; 6] { &self.mac }
-    fn ip(&self) -> &[u8; 4] { &self.ip }
-    fn netmask(&self) -> &[u8; 4] { &self.netmask }
-    fn gateway(&self) -> &[u8; 4] { &self.gateway }
-    fn interface(&self) -> Option<&str> { Some(self.interface) }
+    fn mac(&self) -> &[u8; 6] {
+        &self.mac
+    }
+    fn ip(&self) -> &[u8; 4] {
+        &self.ip
+    }
+    fn netmask(&self) -> &[u8; 4] {
+        &self.netmask
+    }
+    fn gateway(&self) -> &[u8; 4] {
+        &self.gateway
+    }
+    fn interface(&self) -> Option<&str> {
+        Some(self.interface)
+    }
 }
 
 impl BoardPrint for ThreadxLinux {
@@ -92,7 +102,10 @@ pub(crate) struct NulBuf<const N: usize> {
 
 impl<const N: usize> NulBuf<N> {
     pub(crate) const fn new() -> Self {
-        Self { buf: [0; N], len: 0 }
+        Self {
+            buf: [0; N],
+            len: 0,
+        }
     }
 
     /// Returns a pointer to a NUL-terminated copy of the written

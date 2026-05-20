@@ -23,7 +23,7 @@
 
 use core::ffi::c_void;
 
-use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
+use nros_board_common::{Board, BoardExit, BoardPrint, ThreadxConfig};
 
 unsafe extern "C" {
     fn nros_threadx_set_config(
@@ -34,10 +34,7 @@ unsafe extern "C" {
         interface_name: *const u8,
     );
 
-    fn nros_threadx_set_app_callback(
-        entry: unsafe extern "C" fn(*mut c_void),
-        arg: *mut c_void,
-    );
+    fn nros_threadx_set_app_callback(entry: unsafe extern "C" fn(*mut c_void), arg: *mut c_void);
 
     #[link_name = "_tx_initialize_kernel_enter"]
     fn tx_kernel_enter();
@@ -78,7 +75,9 @@ where
     // Network stabilisation delay. Ticks at TX_TIMER_TICKS_PER_SECOND
     // (100 by default) — 200 ticks ≈ 2 s, matching the historical
     // per-overlay wait.
-    unsafe { tx_thread_sleep(200); }
+    unsafe {
+        tx_thread_sleep(200);
+    }
 
     // FnOnce — `ptr::read` because this task entry runs once.
     let closure = unsafe { core::ptr::read(&ctx.closure) };
@@ -108,17 +107,18 @@ where
 ///
 /// # Type parameters
 ///
-/// - `B: BoardInit<Config = C> + BoardPrint + BoardExit` —
-///   per-board glue (hardware init, print, exit).
-/// - `C: ThreadxConfig` — per-board config exposing
+/// - `B: Board` — per-board glue (hardware init, print, exit), the
+///   Phase 173.1 super-trait. `B::Config` is the board's config type;
+///   the former standalone `C` param collapsed onto it (173.1).
+/// - `B::Config: ThreadxConfig` — exposes
 ///   `mac/ip/netmask/gateway/interface()` accessors.
-/// - `F: FnOnce(&C) -> Result<(), E>` — user closure.
+/// - `F: FnOnce(&B::Config) -> Result<(), E>` — user closure.
 /// - `E: core::fmt::Debug` — error type the closure returns.
-pub fn run<B, C, F, E>(config: C, f: F) -> !
+pub fn run<B, F, E>(config: B::Config, f: F) -> !
 where
-    B: BoardInit<Config = C> + BoardPrint + BoardExit,
-    C: ThreadxConfig,
-    F: FnOnce(&C) -> Result<(), E>,
+    B: Board,
+    B::Config: ThreadxConfig,
+    F: FnOnce(&B::Config) -> Result<(), E>,
     E: core::fmt::Debug,
 {
     B::println(format_args!(""));
@@ -148,8 +148,8 @@ where
     // bounded by CTX_STORAGE_SIZE (8 KB) — asserted so overflow
     // is caught loudly instead of corrupting adjacent memory.
     let ctx_ptr = unsafe {
-        let size = core::mem::size_of::<AppContext<C, F>>();
-        let align = core::mem::align_of::<AppContext<C, F>>();
+        let size = core::mem::size_of::<AppContext<B::Config, F>>();
+        let align = core::mem::align_of::<AppContext<B::Config, F>>();
         assert!(
             size <= CTX_STORAGE_SIZE,
             "AppContext too large for CTX_STORAGE — bump CTX_STORAGE_SIZE"
@@ -162,7 +162,7 @@ where
             offset + size <= CTX_STORAGE_SIZE,
             "AppContext alignment + size exceeds CTX_STORAGE"
         );
-        let ptr = storage_ptr.add(offset) as *mut AppContext<C, F>;
+        let ptr = storage_ptr.add(offset) as *mut AppContext<B::Config, F>;
         core::ptr::write(ptr, AppContext { config, closure: f });
         ptr
     };
@@ -193,10 +193,7 @@ where
             cfg.mac().as_ptr(),
             iface_ptr,
         );
-        nros_threadx_set_app_callback(
-            app_task_entry::<B, C, F, E>,
-            ctx_ptr as *mut c_void,
-        );
+        nros_threadx_set_app_callback(app_task_entry::<B, B::Config, F, E>, ctx_ptr as *mut c_void);
 
         // Enter the ThreadX kernel — does not return.
         tx_kernel_enter();

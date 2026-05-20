@@ -104,10 +104,18 @@ impl BoardInit for ThreadxQemuRiscv64 {
 }
 
 impl ThreadxConfig for Config {
-    fn mac(&self) -> &[u8; 6] { &self.mac }
-    fn ip(&self) -> &[u8; 4] { &self.ip }
-    fn netmask(&self) -> &[u8; 4] { &self.netmask }
-    fn gateway(&self) -> &[u8; 4] { &self.gateway }
+    fn mac(&self) -> &[u8; 6] {
+        &self.mac
+    }
+    fn ip(&self) -> &[u8; 4] {
+        &self.ip
+    }
+    fn netmask(&self) -> &[u8; 4] {
+        &self.netmask
+    }
+    fn gateway(&self) -> &[u8; 4] {
+        &self.gateway
+    }
     // No host interface — bare-metal NetX-Duo + virtio-net.
 }
 

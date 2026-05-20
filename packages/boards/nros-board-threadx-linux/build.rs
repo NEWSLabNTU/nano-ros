@@ -20,8 +20,10 @@
 //! `THREADX_PORT` defaults to `linux/gnu` in the generic crate's
 //! `build.rs`, so this overlay does not need to override it.
 
-use std::env;
-use std::path::{Path, PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -33,16 +35,20 @@ fn main() {
         .and_then(|p| p.parent())
         .expect("Could not resolve workspace root");
 
-    let threadx_dir =
-        env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
+    let threadx_dir = env_path_or(
+        "THREADX_DIR",
+        workspace_root.join("third-party/threadx/kernel"),
+    );
     let threadx_port_dir = threadx_dir.join("ports/linux/gnu");
     assert!(
         threadx_port_dir.join("inc").exists(),
         "ThreadX Linux port not found at {}",
         threadx_port_dir.display()
     );
-    let netx_dir =
-        env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
+    let netx_dir = env_path_or(
+        "NETX_DIR",
+        workspace_root.join("third-party/threadx/netxduo"),
+    );
     assert!(
         netx_dir.join("common/inc").exists(),
         "NetX Duo common/inc/ not found at {} — run `just threadx_linux setup`",
@@ -55,7 +61,11 @@ fn main() {
         workspace_root.join("packages/drivers/nsos-netx"),
     );
     let nsos_src = nsos_netx_dir.join("src/nsos_netx.c");
-    assert!(nsos_src.exists(), "nsos-netx not found at {}", nsos_src.display());
+    assert!(
+        nsos_src.exists(),
+        "nsos-netx not found at {}",
+        nsos_src.display()
+    );
 
     let mut nsos = cc::Build::new();
     configure_linux(&mut nsos);

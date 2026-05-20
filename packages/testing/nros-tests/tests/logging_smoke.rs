@@ -164,9 +164,10 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
 /// `esp_println`-backed writer with `nros-platform-esp32-qemu`'s
 /// fn-ptr slot (Phase 88.15.f groundwork) before the user closure
 /// fires; the closure drives every Severity through `nros-log`.
-/// The board's tail `Application completed successfully.` banner
-/// is the harness's exit signal — `QemuProcess::wait_for_output`
-/// kills the process once it sees the completion marker.
+/// ESP32 has no process exit, so the board spins forever after the
+/// `nros: application complete` banner (Phase 173.1); the harness
+/// drains for the timeout window, then kills QEMU and asserts the
+/// expected severity lines.
 #[test]
 fn logging_smoke_esp32_qemu_emits_every_severity() {
     use std::process::Command;
