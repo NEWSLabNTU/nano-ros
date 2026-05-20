@@ -65,7 +65,12 @@ install-make:
     ( cd "$tmp/make-$want" && ./configure >/dev/null 2>&1 && ./build.sh >/dev/null 2>&1 )
     cp "$tmp/make-$want/make" "$bin"
     chmod +x "$bin"
-    echo "[make] installed: $("$bin" --version | head -1) ($bin)"
+    # Some sub-builds (cmake generators, RTOS kernel makefiles) invoke
+    # `gmake`, not `make`. Provide a gmake -> make 4.4 alias so they too
+    # are fifo-jobserver-capable; otherwise a stray make 4.3 chokes on
+    # the inherited `--jobserver-auth=fifo:` in MAKEFLAGS.
+    ln -sf make "$dest/gmake"
+    echo "[make] installed: $("$bin" --version | head -1) ($bin) (+ gmake alias)"
     echo "[make] ensure third-party/make is on PATH (direnv .envrc does this)."
 
 # Install the pinned ninja static binary under third-party/ninja/.

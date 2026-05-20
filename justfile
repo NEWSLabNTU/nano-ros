@@ -159,7 +159,12 @@ build-all-jobserver:
         exit 1
     fi
     n="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
+    # Sub-tools (cmake's make generator, west's ninja) must resolve to the
+    # fifo-capable pinned versions, not the apt make 4.3 / ninja 1.10 —
+    # .envrc does this interactively but the recipe must guarantee it.
+    export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
     echo "build-all (jobserver): $make_bin -j$n --jobserver-style=fifo -f build-all.mk"
+    echo "  make=$(make --version | head -1), ninja=$(ninja --version)"
     # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
     # --parallel so cargo / ninja / cmake inherit the fifo pool. NROS_BUILD_JOBS
     # stays the budget; GNU parallel only launches (the jobserver throttles).

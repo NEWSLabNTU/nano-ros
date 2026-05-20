@@ -61,6 +61,8 @@ build-fixtures:
         echo "ThreadX-Linux skip: THREADX_DIR unset and third-party/threadx/kernel absent"; exit 0
     fi
     echo "Building ThreadX-Linux test fixtures..."
+    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
     nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
@@ -93,7 +95,7 @@ build-fixtures:
            -DTHREADX_APP_DEFINE='$app_define' \
            -DCMAKE_BUILD_TYPE=Release \
            -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         cmake --build {}/build --parallel > /dev/null"
+         cmake --build {}/build > /dev/null"
 
     # Phase 118.B.7 — collapsed-shape threadx-linux Rust + C / C++.
     collapsed_rust_dirs=()
@@ -133,7 +135,7 @@ build-fixtures:
                -DTHREADX_APP_DEFINE='$app_define' \
                -DCMAKE_BUILD_TYPE=Release \
                -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             cmake --build {}/build-zenoh --parallel > /dev/null"
+             cmake --build {}/build-zenoh > /dev/null"
     fi
 
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.

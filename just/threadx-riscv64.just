@@ -94,6 +94,8 @@ build-fixtures:
         echo "ThreadX-RV64 skip: riscv64-unknown-elf-gcc not found"; exit 0
     fi
     echo "Building ThreadX-RV64 test fixtures..."
+    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
     toolchain="$root/cmake/toolchain/riscv64-threadx.cmake"
     threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
@@ -146,7 +148,7 @@ build-fixtures:
              -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
          THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
          THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-           cmake --build {}/build --parallel > /dev/null"
+           cmake --build {}/build > /dev/null"
 
     # Phase 118.B.6 — collapsed-shape ThreadX-RV64 Rust + C / C++,
     # zenoh-only matrix. Phase 169 retired dust-dds (pure-Rust); its
@@ -193,7 +195,7 @@ build-fixtures:
                  -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
              THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
              THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-               cmake --build {}/build-zenoh --parallel > /dev/null"
+               cmake --build {}/build-zenoh > /dev/null"
     fi
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.

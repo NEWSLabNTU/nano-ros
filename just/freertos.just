@@ -74,6 +74,8 @@ build-fixtures:
         echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
     fi
     echo "Building FreeRTOS test fixtures..."
+    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     # Phase 160 follow-up — parallel cargo / cmake builds. Each example
     # has its own isolated `target/`; cmake builds use per-example
     # `build/` dirs. No cross-fixture lock contention. Cap concurrency
@@ -132,7 +134,7 @@ build-fixtures:
            -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
            -DCMAKE_BUILD_TYPE=Release \
            -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         cmake --build {}/build --parallel > /dev/null"
+         cmake --build {}/build > /dev/null"
 
     # Phase 118.B.4 — collapsed-shape FreeRTOS C / C++ examples. Each
     # case builds under `-DNROS_RMW=zenoh` (no DDS C / C++ siblings
@@ -152,7 +154,7 @@ build-fixtures:
                -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
                -DCMAKE_BUILD_TYPE=Release \
                -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             cmake --build {}/build-zenoh --parallel > /dev/null"
+             cmake --build {}/build-zenoh > /dev/null"
     fi
 
 # Build every FreeRTOS tier: core libraries, examples, and test fixtures.

@@ -76,6 +76,11 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     echo "Building native test fixtures..."
+    # Phase 173 — cmake parallelism: under the fifo jobserver
+    # (NROS_JOBSERVER=1) leave CMAKE_BUILD_PARALLEL_LEVEL unset so the
+    # generator (ninja/make) inherits the shared pool; otherwise pin it
+    # to the budget (the explicit `--parallel` flag was removed).
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     # Talker is built with `--features param-services` so the params tests
     # see "Counter start value: 0" when the talker reads its declared param.
     # Same binary path as the default-feature talker, just feature-augmented.
@@ -177,7 +182,7 @@ build-fixtures:
                 echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 ( cd examples/native/c/${case} && \
                   cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
-                  cmake --build build-${rmw} -j > /dev/null ) &
+                  cmake --build build-${rmw} > /dev/null ) &
             done
         fi
     done
@@ -190,7 +195,7 @@ build-fixtures:
                 echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 ( cd examples/native/cpp/${case} && \
                   cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
-                  cmake --build build-${rmw} -j > /dev/null ) &
+                  cmake --build build-${rmw} > /dev/null ) &
             done
         fi
     done

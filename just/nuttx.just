@@ -63,6 +63,8 @@ build-fixtures:
         echo "NuttX skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
     echo "Building NuttX test fixtures..."
+    # Phase 173 — cmake parallelism via the fifo jobserver when present.
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     # Phase 160 follow-up — parallel cargo builds (per-example isolated
     # target/ dirs, no cross-fixture lock contention).
@@ -112,7 +114,7 @@ build-fixtures:
            -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
            -DCMAKE_BUILD_TYPE=Release \
            -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         cmake --build {}/build --parallel > /dev/null"
+         cmake --build {}/build > /dev/null"
 
     # Phase 118.B.5 — collapsed-shape NuttX C / C++ examples (zenoh
     # only; no DDS C / C++ NuttX siblings existed pre-collapse).
@@ -138,7 +140,7 @@ build-fixtures:
                -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
                -DCMAKE_BUILD_TYPE=Release \
                -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             cmake --build {}/build-zenoh --parallel > /dev/null"
+             cmake --build {}/build-zenoh > /dev/null"
     fi
 
 # Phase 157.C — stage the integration shell + every C/C++ example
