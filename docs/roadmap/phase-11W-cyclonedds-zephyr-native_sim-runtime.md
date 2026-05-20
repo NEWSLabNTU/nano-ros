@@ -809,23 +809,45 @@ green.
   - C client → **C++ server**: fails — C++ server never logs a request,
     C client `nros_client_call` returns `NROS_RET_TIMEOUT` (-2). So the
     C client's request never reaches *any* server.
-  Conclusion: nros-c's request-send path is broken under Cyclone. The C
-  client's `send_request_raw` returns `Ok` (the failure is a reply
-  timeout, not a send error), so the request is either never written to
-  the DDS writer or written somewhere no server's reader matches —
-  despite identical `service_name` / `type_name` to the working C++/Rust
-  clients and identical backend `service_client_create`. Root cause is
-  in the nros-c arena service-client handle (`nros_executor_add_client`
-  → `register_service_client_raw_sized` → `entry.handle.send_request_raw`)
-  vs the nros-node/nros-cpp client path. Next: instrument the backend
-  `service_send_request_raw` / `service_client_create` (req topic + write
-  call) and compare a C-client run against a C++-client run.
+  **Backend-instrumented (`service_client_create` / `service_send_request_raw`
+  / `service_server_create` DIAG logs) — narrowed past naming/registration
+  to DDS writer↔reader delivery.** A C-client → C++-server run shows:
+  - C client `client_create`: `req_topic=rq//add_two_intsRequest`,
+    `send_request writer=… seq=0 write_rc=0 wire_len=36` — the request
+    *is* written to the DDS writer, successfully.
+  - C++ server `server_create`: `req_topic=rq//add_two_intsRequest`,
+    `reader=…` (valid) — **identical** request topic, reader created.
+  - C++ server never logs handling the request.
+  So the request topic + type + the `dds_write` all succeed and both
+  endpoints are on the *same* topic, yet the C client's writer never
+  delivers to the C++ server's reader. (Note: `rq//add_two_ints` has a
+  double slash because the runtime passes a leading-slash service name
+  and `topic_prefix::apply` does a blind `prefix + "/" + name`; it's
+  *consistent across all four endpoints* so it is not the bug — though
+  stock `rmw_cyclonedds_cpp` would emit single-slash `rq/add_two_ints`,
+  a separate interop nit.)
+
+  Remaining hypothesis: the C-client writer never *matches* the server's
+  reader (SEDP) — and since the same backend creates both the working
+  C++-client writer and the broken C-client writer, the divergence is
+  the calling context. nros-c's `nros_client_call` drives a busy
+  `nros_executor_spin_some` loop, which on single-core native_sim can
+  starve Cyclone's discovery/transmit threads (the leaked C talkers in
+  this phase pegged a core at 99% — same spin shape), whereas nros-cpp's
+  `fut.wait` blocks and yields, letting discovery complete. Next: confirm
+  with `DDS_LC_DISCOVERY` match logs (carefully — `DDS_LC_ALL` to an
+  unbounded /tmp file is what filled the disk), and test whether adding a
+  yield/`k_msleep` in the C client's wait loop (or a pre-call
+  `nros_client_wait_for_service` that actually blocks) lets the match
+  complete.
 
   (Earlier ruled out: type-name divergence — C and C++ emit identical
   strings; service *registration* — `nros_executor_register_service`
-  routes to the same nros-node `register_service_raw_sized` path. Host
-  note: write E2E logs under the repo's `tmp/`, never `/tmp` — `/tmp`
-  was intermittently a broken mount, giving false 0-byte "failures".)
+  routes to the same nros-node `register_service_raw_sized` path; request
+  topic/type — identical across endpoints per the DIAG above. Host note:
+  write E2E logs under the repo's `tmp/`, never `/tmp` — `/tmp` filled to
+  100% from runaway `DDS_LC_ALL` trace logs held open by leaked
+  long-running native_sim processes, giving false 0-byte "failures".)
 
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
