@@ -35,7 +35,12 @@ boot/link shapes. Three cross-cutting factors shape the design:
    attribute, and link glue genuinely differ per platform and are kept
    behind small finite enums — not abstracted away, just centralised.
 
-**Status.** Proposed.
+**Status.** Feature-complete (Groups A–D landed; all acceptance criteria
+met). Verified: `orchestration_generate` 14/14, `orchestration_e2e`
+12/12, the platform/board/board-cffi ABI mirrors clean, and the
+esp32-s3 port links to a real Xtensa ELF. Open follow-ups are
+hardware-gated (esp32-s3 WiFi transport + physical-hardware boots), not
+acceptance items. **Move to `archived/` on merge.**
 
 **Priority.** P2. Pure consolidation; unblocks cheap esp32-s3 / stm32f4 /
 additional Cortex-M boards. Not blocking any open milestone, but the
@@ -497,11 +502,15 @@ nano-ros transport⟷RMW surface by design.
       migrated through the common `run`; `stm32f4` is a mechanical
       follow-up. `nuttx` stays on `run_generic` by design — `BoardInit`-
       only + 5 s warm-up + `process::exit` is essential variation.)
-- [ ] Every board crate exposes `<board>::run(cfg, closure) -> !` with
-      the identical *callsite* signature (body differs by family).
-- [ ] Generator's six per-platform functions collapse to
-      `PlatformProfile` lookups + a 3-arm `EntryKind` match in
-      `main.rs.jinja`.
+- [x] Every board crate exposes `<board>::run(cfg, closure) -> !` with
+      the identical *callsite* signature (body differs by family). The
+      generator emits one uniform `<board>::run(cfg, closure)` callsite
+      (`render_board_entry`); kernel-spawn families keep their own body.
+- [x] Generator's six per-platform functions collapse to
+      `PlatformProfile` lookups (173.2) + an `EntryKind`-driven
+      `render_main` (173.2b) — the static `main.rs.jinja` is gone; the
+      entry is emitted from `profile().board_entry` (`HostedMain` /
+      `BoardRun` / `ZephyrStaticlib`).
 - [x] Adding **esp32-s3** to the generator is a single `PlatformProfile`
       row + `impl Board for Esp32S3` + the (genuinely new) board/platform
       crate — **zero** edits to the collapsed render-arm functions. Landed:
@@ -513,8 +522,9 @@ nano-ros transport⟷RMW surface by design.
       `-Z build-std`). The generator picks the board crate / entry / esp
       toolchain / xtensa target purely from `profile().chip` (the
       `Esp32` arm branches on chip, no new match arm).
-- [ ] `orchestration_e2e` suite stays green across all existing platforms
-      (posix / freertos / nuttx / zephyr / threadx / esp32-c3 / bare-metal).
+- [x] `orchestration_e2e` suite stays green across all existing platforms
+      (posix / freertos / nuttx / zephyr / threadx / esp32-c3 / bare-metal)
+      — 12/12 throughout Groups A–D.
 - [x] Drift gate fails when a `PlatformProfile` row lacks a `Board` impl.
       (`check-profile-board-mirror.sh` now asserts each concrete board
       crate impls `BoardInit`+`BoardPrint`+`BoardExit`; verified red when
