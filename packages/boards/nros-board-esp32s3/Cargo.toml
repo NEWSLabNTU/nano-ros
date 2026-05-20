@@ -1,0 +1,48 @@
+[package]
+name = "nros-board-esp32s3"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "ESP32-S3 (Xtensa LX7) board crate for nros — serial transport"
+
+[lib]
+name = "nros_board_esp32s3"
+
+# Phase 173.6 — ESP32-S3 real-hardware board. Unlike `nros-board-esp32-qemu`
+# (ESP32-C3 under QEMU with the OpenCores Ethernet MAC), the S3 has no
+# QEMU NIC, so this board ships the serial transport (zenoh-pico built-in
+# serial — no NIC driver). WiFi (esp-wifi) is a follow-up.
+
+[dependencies]
+# Phase 173.1 — Board super-trait + the generic direct-exec `run`.
+nros-board-common = { path = "../nros-board-common", default-features = false }
+# Unified platform primitives (clock, memory, random, sleep, libc stubs).
+nros-platform-esp32s3 = { path = "../../platforms/nros-platform-esp32s3" }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = [
+    "platform-esp32s3",
+] }
+nros-platform-api = { path = "../../core/nros-platform-api" }
+
+# ESP32-S3 (Xtensa) HAL and support crates.
+esp-hal = { version = "~1.0.0", features = ["esp32s3", "unstable"] }
+esp-backtrace = { version = "~0.18.0", features = [
+    "esp32s3",
+    "panic-handler",
+    "println",
+] }
+esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32s3"] }
+esp-println = { version = "~0.16.0", features = ["esp32s3"] }
+esp-alloc = { version = "~0.9.0" }
+
+# Atomics: esp-hal single-core assumption (matches the C3 board).
+portable-atomic = { version = "1", default-features = false, features = [
+    "unsafe-assume-single-core",
+] }
+
+[features]
+default = ["serial", "rmw-zenoh"]
+# Phase 129.D — `rmw-zenoh` is a pure marker; symbols come from
+# `zpico-sys`'s default-on `platform-aliases` C TU via `nros-rmw-zenoh`.
+rmw-zenoh = []
+# Serial transport via zenoh-pico built-in serial (no extra deps).
+serial = []

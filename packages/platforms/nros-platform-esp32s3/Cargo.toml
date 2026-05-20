@@ -1,0 +1,29 @@
+[package]
+name = "nros-platform-esp32s3"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "nros platform implementation for ESP32-C3 QEMU bare-metal"
+publish = false
+
+[lib]
+name = "nros_platform_esp32s3"
+
+[features]
+default = []
+# Phase 97.3.esp32-qemu — DDS / DDS heap budget (256 KB,
+# tightest fit on ESP32-C3's 400 KB SRAM). Off by default so zenoh
+# / xrce builds keep their 32 KB footprint.
+dds-heap = []
+# Phase 121.2.embedded — canonical C ABI export.
+cffi-export = ["dep:nros-platform-cffi"]
+
+[dependencies]
+nros-platform-api = { path = "../../core/nros-platform-api" }
+nros-platform-cffi = { path = "../../core/nros-platform-cffi", optional = true }
+zpico-alloc = { path = "../../zpico/zpico-alloc" }
+esp-hal = { version = "1", features = ["esp32s3", "unstable"] }
+nros-smoltcp = { path = "../../drivers/nros-smoltcp" }
+# Shared bare-metal helpers (PRNG, sleep). esp-hal already provides
+# libc symbols, so we do NOT enable the `libc-stubs` feature here.
+nros-baremetal-common = { path = "../../drivers/nros-baremetal-common" }

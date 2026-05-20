@@ -502,9 +502,17 @@ nano-ros transport⟷RMW surface by design.
 - [ ] Generator's six per-platform functions collapse to
       `PlatformProfile` lookups + a 3-arm `EntryKind` match in
       `main.rs.jinja`.
-- [ ] Adding **esp32-s3** to the generator is a single `PlatformProfile`
+- [x] Adding **esp32-s3** to the generator is a single `PlatformProfile`
       row + `impl Board for Esp32S3` + the (genuinely new) board/platform
-      crate — **zero** edits to the six former match-arm functions.
+      crate — **zero** edits to the collapsed render-arm functions. Landed:
+      `nros-platform-esp32s3` (Xtensa LX7 — copy of the C3 platform with
+      the one chip-specific divergence, the `rsil`/`wsr.ps` critical
+      section) + `nros-board-esp32s3` (serial transport; the S3 has no
+      QEMU NIC) with `Board` + `BoardConfig` + `BoardTransportConfig`
+      impls. Both compile on `xtensa-esp32s3-none-elf` (`+esp` toolchain,
+      `-Z build-std`). The generator picks the board crate / entry / esp
+      toolchain / xtensa target purely from `profile().chip` (the
+      `Esp32` arm branches on chip, no new match arm).
 - [ ] `orchestration_e2e` suite stays green across all existing platforms
       (posix / freertos / nuttx / zephyr / threadx / esp32-c3 / bare-metal).
 - [x] Drift gate fails when a `PlatformProfile` row lacks a `Board` impl.
