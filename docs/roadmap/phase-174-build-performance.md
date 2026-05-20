@@ -82,12 +82,26 @@ The 3 RMW overlays (zenoh/xrce/cyclonedds) produce different
 cache-hit within it. Narrowing config divergence (or pre-staging a
 per-config kernel/picolibc tree) would raise the 60% hit rate.
 
-### 174.C — SDK-prebuilt picolibc (see #67)
+### 174.C — SDK-prebuilt picolibc — **already optimal, no change** (verified 2026-05-21)
 
-For SDK cross toolchains (aarch64/arm/riscv64-zephyr-elf) use the
-SDK's prebuilt picolibc (`CONFIG_PICOLIBC_USE_MODULE=n`) to skip the
-~1300-object compile entirely. native_sim (host gcc) has no SDK
-prebuilt → sccache stays the only lever there.
+Investigated: nothing to do. Zephyr's `lib/libc/picolibc/Kconfig`
+already does `default PICOLIBC_USE_TOOLCHAIN if … "$(TOOLCHAIN_HAS_PICOLIBC)" = "y"`,
+and the SDK cross toolchains ship prebuilt picolibc
+(`scripts/zephyr/sdk/.../{aarch64,arm,riscv64}-zephyr-elf/.../picolibc/.../libc.a`
+— 2/23/24 multilib `libc.a`). No nros config forces
+`PICOLIBC_USE_MODULE` (grepped examples + `zephyr/Kconfig` +
+`zephyr/CMakeLists.txt` + recipes). So the SDK cross targets
+(FVP-aemv8r = aarch64-zephyr-elf, S32Z = arm-zephyr-eabi) **already
+link the prebuilt** — they never compile the picolibc module.
+
+The fixture sweep, however, is **all `native_sim/native/64`** (host
+gcc), which has no picolibc → `TOOLCHAIN_HAS_PICOLIBC=n` →
+`PICOLIBC_USE_MODULE` is the only option (the host has no prebuilt to
+link). So the prebuilt route can't touch the dominant native_sim cost;
+it's covered by sccache (~60% C hit) + ninja-direct (warm skip) +
+pristine=auto. The only way to drop native_sim's picolibc compile is a
+libc SWAP (host glibc / minimal-libc), which is 174.B territory and
+intersects the cyclonedds picolibc requirement — out of scope here.
 
 ### 174.D — unified jobserver (see Phase 176)
 
