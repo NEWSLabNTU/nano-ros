@@ -213,8 +213,12 @@ collapsed.
       crashing in picolibc libc-hooks.
 
 **Open (Zephyr cyclonedds):**
-- [ ] **171.0.d — `nsos_adapt.c` duplicate-case build break (REGRESSION,
-      blocks ALL cyclonedds-zephyr).** After the Phase 11W.10–.12 NSOS
+- [x] **171.0.d — `nsos_adapt.c` duplicate-case build break (REGRESSION,
+      blocks ALL cyclonedds-zephyr).** FIXED (Phase 177.1): the redundant
+      `nsos-adapt-ipproto-ip-patch.sh` (11W.12) now skips when
+      `case NSOS_MID_IPPROTO_IP` is already present (native-sim-ipproto-ip-patch.sh
+      provides the complete case), so no second label is emitted. After
+      the Phase 11W.10–.12 NSOS
       patch set, `zephyr/drivers/net/nsos_adapt.c` has TWO
       `case NSOS_MID_IPPROTO_IP:` labels in the `nsos_adapt_setsockopt`
       switch (lines ~788 and ~841): `nsos-adapt-ipproto-ip-patch.sh`
