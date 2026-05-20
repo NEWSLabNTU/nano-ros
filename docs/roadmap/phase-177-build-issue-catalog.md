@@ -27,8 +27,12 @@ rest are deferred-by-design or host-environment.
 `nros_rmw_cyclonedds_register` lives only in the C++/CMake build, so
 `cargo build --features rmw-cyclonedds` of a native/freertos/threadx
 Rust example can't link it. Fixture matrices are zenoh-only; the
-feature stays defined-but-unbuilt. **Owned by Phase 175** (native
-CMake/Corrosion glue + a ddsrt RTOS port for embedded). Decision
+feature stays defined-but-unbuilt. **Owned by Phase 175.** **175.A
+build path landed 2026-05-21** — `examples/native/rust/{talker,listener}/CMakeLists.txt`
+link Cyclone via CMake/Corrosion. Native two-process user data is fixed
+too: hosted `session_drive_io(timeout_ms)` now sleeps for poll-only
+executor pacing, so talker timer publishes and listener receives on
+loopback. 175.B (embedded ddsrt port) still deferred. Decision
 2026-05-21: keep Cyclone targeted at bare metal (don't delete the
 embedded cells) — see Phase 171.B.
 

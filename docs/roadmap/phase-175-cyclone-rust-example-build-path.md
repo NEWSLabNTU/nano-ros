@@ -8,10 +8,46 @@ migrated from the deleted `nros-rmw-dds` crate onto
 `cargo build` on any target. This phase designs and lands the build
 path(s) that make `--features rmw-cyclonedds` link end-to-end.
 
-**Status.** Deferred / not started. The `rmw-cyclonedds` feature is
-defined in every migrated example's `Cargo.toml` but is intentionally
-NOT exercised by any fixture matrix; all pure-cargo fixture matrices
-build `zenoh` (+ `xrce` on native) only.
+**Status.** **175.A build path landed (2026-05-21)** for the native
+Rust talker + listener; 175.B (embedded ddsrt port) still deferred.
+
+The CMake/Corrosion glue at `examples/native/rust/{talker,listener}/CMakeLists.txt`
+now links the Cyclone backend into a pure-Rust example end-to-end:
+
+- `find_package(CycloneDDS)` + `add_subdirectory(packages/dds/nros-rmw-cyclonedds)`
+  builds the C++ backend (defines `nros_rmw_cyclonedds_register`);
+- `nros_rmw_cyclonedds_generate_from_msg(... std_msgs msg/Int32.msg)`
+  (host `idlc` at `build/cyclonedds/bin/idlc` + `scripts/cyclonedds/`)
+  emits the C `dds_topic_descriptor_t` + a static-init register TU,
+  compiled into `<bin>_cyc_types` STATIC and **whole-archived** into the
+  bin so `find_descriptor("std_msgs::msg::dds_::Int32_")` resolves;
+- `corrosion_import_crate(... NO_DEFAULT_FEATURES FEATURES rmw-cyclonedds)`
+  + `corrosion_link_libraries(<bin> nros_rmw_cyclonedds)`;
+- ddsc is linked via `corrosion_add_target_local_rustflags` link-args
+  (`$<TARGET_FILE:CycloneDDS::ddsc>` + rpath) — corrosion mangles the
+  namespaced imported SHARED target into a bogus `-lCycloneDDS::ddsc`,
+  so the resolved `.so` path is passed directly. whole-archive on the
+  descriptor lib is also done this way (corrosion_link_libraries rejects
+  raw `-Wl,` flags).
+
+**Verified:** both bins build + link + boot; talker creates the writer,
+listener the reader, and the two **fully match at the RTPS level**
+(`writer_add_connection(wr …103 prd …104)`) over loopback — same topic
+`rt/chatter`, type `std_msgs::msg::dds_::Int32_`, compatible QoS. The
+backend's in-process `nros_rmw_cyclonedds_data_roundtrip` test passes.
+
+**Runtime fix landed 2026-05-21:** two separate native Cyclone
+processes now exchange user data. Root cause: Cyclone is a poll-only
+backend (`set_wake_callback = NULL`) and the executor therefore passes
+the full per-iteration timeout into `session_drive_io(timeout_ms)` to
+pace wall-clock timer accumulation. The Zephyr path already honored
+this via `k_msleep`, but hosted/POSIX returned immediately, so
+`spin_blocking` busy-spun and the 1 Hz timer did not fire at the
+expected wall-clock cadence. POSIX now sleeps with
+`std::this_thread::sleep_for(timeout_ms)`. Verified talker logs
+`Published: 0/1` and listener logs `Received: 0/1` on loopback. The
+`rmw-cyclonedds` feature is still NOT wired into any pure-cargo fixture
+matrix; use this CMake/Corrosion path.
 
 **Priority.** P2. Does not block `just ci` / `just test-all` (DDS is a
 non-default example feature). Blocks DDS coverage for Rust examples.

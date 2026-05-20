@@ -10,7 +10,11 @@ use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-cyclonedds",
+    feature = "rmw-xrce"
+)))]
 compile_error!(
     "examples/native/rust/listener requires exactly one of \
      `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",
@@ -34,10 +38,20 @@ pub fn register_rmw() -> Result<(), &'static str> {
     Ok(())
 }
 
+const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
+    "Zenoh"
+} else if cfg!(feature = "rmw-cyclonedds") {
+    "CycloneDDS"
+} else if cfg!(feature = "rmw-xrce") {
+    "XRCE-DDS"
+} else {
+    "(none)"
+};
+
 /// Standard listener — subscribe to `std_msgs/Int32` on `/chatter` and
 /// log each message. Shared by `main()` and the C `rust_main()`.
 pub fn run() {
-    info!("nros Native Listener");
+    info!("nros Native Listener ({} Transport)", ACTIVE_RMW_NAME);
     info!("==========================================");
 
     register_rmw().expect("Failed to register RMW backend");
@@ -52,7 +66,14 @@ pub fn run() {
                 log::trace!(
                     "seq={} gid={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
                     info.publication_sequence_number(),
-                    gid[0], gid[1], gid[2], gid[3], gid[4], gid[5], gid[6], gid[7],
+                    gid[0],
+                    gid[1],
+                    gid[2],
+                    gid[3],
+                    gid[4],
+                    gid[5],
+                    gid[6],
+                    gid[7],
                 );
             }
         })
