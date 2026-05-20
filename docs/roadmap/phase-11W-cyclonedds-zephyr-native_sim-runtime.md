@@ -748,6 +748,19 @@ green.
   samples. Patches are wired into `just zephyr setup` (idempotent)
   after the mcjoin-mreq patch.
 
+  **C++ parity.** The C++ cyclonedds overlay
+  (`examples/zephyr/cpp/{talker,listener}/prj-cyclonedds.conf`) only
+  carried the Phase-117 link-time config — it lacked the 11W.8
+  runtime knobs, so the C++ talker hit `CODE_UNREACHABLE` in picolibc
+  libc-hooks (16 KiB malloc arena) and `Cannot create zeth` (no NSOS
+  forcing) before ever publishing. Brought to parity with the Rust
+  overlay (16 MiB `COMMON_LIBC_MALLOC_ARENA_SIZE`, NSOS offload
+  forcing, NET_TCP, bigger pthread pools, diagnostics) and added the
+  Cyclone C descriptor generation to the C++ CMake (the C++ codegen
+  emits only C++ types; the backend's `find_descriptor` needs the C
+  `dds_topic_descriptor_t`). `test_zephyr_cpp_cyclonedds_pubsub_e2e`
+  passes — C++ listener receives the C++ talker's samples.
+
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
   recvmsg) to Zephyr; the determinism gotcha is native_sim-specific

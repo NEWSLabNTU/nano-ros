@@ -759,6 +759,48 @@ fn test_zephyr_rust_cyclonedds_pubsub_e2e() {
     );
 }
 
+/// Phase 11W.12 — same talker→listener discovery, C++ surface. The
+/// C++ cyclonedds overlay now matches the Rust one (16 MiB malloc arena
+/// + NSOS offload forcing) and the C++ CMake generates the Cyclone C
+/// `dds_topic_descriptor_t` from std_msgs/Int32, so the C++ talker
+/// publishes and a C++ listener receives over SPDP multicast discovery.
+#[test]
+fn test_zephyr_cpp_cyclonedds_pubsub_e2e() {
+    use std::time::Duration;
+
+    use nros_tests::zephyr::{ZephyrPlatform, ZephyrProcess};
+
+    let listener_bin =
+        nros_tests::fixtures::build_zephyr_cmake_example_rmw("cpp", "listener", Rmw::Cyclonedds)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!("zephyr/cpp/listener cyclonedds not prebuilt: {:?}", e)
+            });
+    let talker_bin =
+        nros_tests::fixtures::build_zephyr_cmake_example_rmw("cpp", "talker", Rmw::Cyclonedds)
+            .unwrap_or_else(|e| {
+                nros_tests::skip!("zephyr/cpp/talker cyclonedds not prebuilt: {:?}", e)
+            });
+
+    let mut listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr cpp listener (cyclonedds)");
+    std::thread::sleep(Duration::from_secs(2));
+    let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
+        .expect("spawn zephyr cpp talker (cyclonedds)");
+
+    let output = listener.wait_for_pattern("Received", Duration::from_secs(20));
+
+    listener.kill();
+    talker.kill();
+
+    eprintln!("zephyr cpp cyclonedds e2e listener output:\n{}", output);
+
+    assert!(
+        output.contains("Received"),
+        "cyclonedds cpp listener did not receive any talker sample over \
+         SPDP discovery (expected a `Received` line)"
+    );
+}
+
 /// Phase 118.B.7 — ThreadX-Linux C / C++ cases (zenoh only).
 #[rstest]
 #[case::c_talker("c", "talker", "threadx_c_talker")]
