@@ -401,7 +401,11 @@ Target matrix (after rename + new cells):
         compile + link clean against
         `-DCMAKE_PREFIX_PATH=build/install` (Cyclone DDS 0.10.5 from
         `just cyclonedds setup`). Verified 2026-05-20.
-      - [ ] **rust** — **171.C.1.rust. Architecture resolved
+      - [x] **rust** — **171.C.1.rust. Talker LANDED + runtime-verified
+        2026-05-20 (`b49b0b42e`): builds, creates publisher, publishes
+        `std_msgs/Int32` on `/chatter` at 1 Hz.** Remaining 5 rust cases
+        (listener / service-{server,client} / action-{server,client})
+        replicate the talker mechanically. Architecture resolved
         2026-05-20: a pure-cargo `nros-rmw-cyclonedds-staticlib`
         (the original plan, mirroring `nros-rmw-zenoh-staticlib`)
         will NOT work.** The Cyclone backend's raw-CDR path
@@ -444,39 +448,57 @@ Target matrix (after rename + new cells):
         action-{server,client}) replicate the talker mechanically.
         threadx-linux rust (171.C.3) inherits the same shape.
 
-        **Runtime caveat (applies to ALL native cyclonedds cells,
-        c/cpp/rust) — diagnosed 2026-05-20.** These cells are
-        BUILD-verified, not runtime-verified. The Cyclone backend
-        itself is healthy (`ctest -R pubsub|session|ros2_pubsub_e2e`
-        in `packages/dds/nros-rmw-cyclonedds/build` → 4/4 pass,
-        incl. an 18 s stock-`rmw_cyclonedds_cpp` interop e2e). The
-        examples fail because **`nros_generate_interfaces(<pkg>)`
-        does not emit the Cyclone topic descriptor for the standard
-        message packages** — it generates the C/CDR message bindings
-        (`<pkg>__nano_ros_c`) but NOT the idlc `dds_topic_descriptor_t`
-        + the static-init register TU. `nm` on the built rust talker
-        confirms: `nros_rmw_cyclonedds_register_descriptor` (the fn)
-        is present, but there is NO `std_msgs/Int32` descriptor
-        symbol and NO `_GLOBAL__sub_` TU calling it. So
-        `create_publisher::<Int32>` has no registered descriptor and
-        stalls. (The backend's own smoke works because it manually
-        builds the descriptor via `nros_rmw_cyclonedds_add_idl_library`
-        for its test type.)
+        **Runtime fix — LANDED for the rust cell 2026-05-20
+        (`b49b0b42e`).** The native rust cyclonedds talker now builds,
+        creates its publisher, and **publishes `std_msgs/Int32` on
+        `/chatter` on a 1 Hz timer** (verified: `Published: 0..3` over a
+        5 s run). Root causes + fixes, all in that commit:
 
-        **Fix path (171.C runtime follow-up):** teach
-        `nros_generate_interfaces` (for `NANO_ROS_RMW=cyclonedds`) to
-        ALSO run `msg_to_cyclone_idl.py` (`.msg`→`.idl`) +
-        `nros_rmw_cyclonedds_add_idl_library` per message, with
-        `REGISTER_TYPES <Type>=<pkg>::msg::<Type>` matching the
-        type-name the nros side publishes, and link the resulting
-        descriptor lib into the app. Then re-run each native
-        cyclonedds example against a Cyclone peer (mirror the §171.0
-        Zephyr `rtos_e2e` cyclonedds harness). The C example's
-        earlier `nros_support_init -> -3` is a *separate*,
-        smaller item — the renamed dust example still feeds a
-        zenoh-style locator default; cyclonedds ignores the locator
-        but the example's env/printf scaffold needs a cyclonedds-
-        appropriate cleanup pass too.
+        1. **Descriptors never generated.** `nros_generate_interfaces`
+           emitted only the C/CDR bindings, not the idlc
+           `dds_topic_descriptor_t` + static-init register TU, so
+           `create_publisher::<Int32>` had no registered descriptor.
+           Fix: a cyclonedds branch in `nros_generate_interfaces` that
+           drives `nros_rmw_cyclonedds_generate_from_msg` per package
+           and WHOLE_ARCHIVE-links the self-registration TUs.
+        2. **idlc never ran.** `$<TARGET_FILE:CycloneDDS::idlc>`
+           expanded to `""` in the example's scope (imported target is
+           directory-scoped). Fix: resolve idlc to an absolute path
+           cached at module load in `NrosRmwCycloneddsTypeSupport.cmake`.
+        3. **Register-TU / idlc-header build race.** `OBJECT_DEPENDS`
+           on the register TU.
+        4. **Composite messages** (`Header`, `*MultiArray`) cross-`#include`
+           sibling / cross-package IDLs and reference nested types.
+           Fix: a shared package-nested IDL + gen root with `-I`,
+           sibling-`.idl` gating, dependency-package ts-lib ordering,
+           and `msg_to_cyclone_idl.py` now mangles nested member type
+           refs to `dds_::<Type>_` (previously only the top struct was
+           mangled → idlc crashed resolving `std_msgs::msg::MultiArrayDimension`).
+        5. **Spin/timer starvation.** `session_drive_io` returned
+           instantly on hosted POSIX, so the callback-less `spin_once`
+           free-ran sub-µs and the runtime's `elapsed.as_micros()` timer
+           credit truncated to 0 — timers never fired. Fix: `nanosleep`
+           the timeout, matching the Zephyr branch's pacing.
+        6. **C-driver link.** rust talker links `stdc++` last (opaque
+           `-Wl` flag, dodging CMake dedup) to resolve the C++ backend's
+           `std::nothrow`; the ts lib takes only the backend's INTERFACE
+           include dirs (not the lib) so `libnros_rmw_cyclonedds.a` stays
+           inside NanoRos's `--whole-archive` group.
+
+        **Still open for the C / C++ native cells (`nros_support_init
+        -> -3`).** The c/cpp examples build with all the above (descriptors
+        compile + link; cross-language verified) but fail at runtime: the
+        C-API path registers the cyclonedds backend via the
+        `.nros_rmw_init` section walker rather than an explicit
+        `register()` call, and on the native C link the walker comes up
+        empty (registry → `NROS_RET_INVALID_ARGUMENT`). The section entry
+        + walker symbols are present in the binary, so this is a
+        section-discovery / walker-invocation issue on the native C/C++
+        API path — distinct from the descriptor work, pre-existing (the
+        `-3` predates this commit), and the next runtime item. The rust
+        cell sidesteps it by calling `nros_rmw_cyclonedds_sys::register()`
+        explicitly. NOTE: the locator default is *not* the cause — an
+        empty locator reproduces the same `-3`.
 
         **Hazard to design around (the reason this is not a quick
         spike):** the `rustapp` staticlib pulls the **Rust** nros
