@@ -15,7 +15,7 @@ examples/
 
 - **Platform** (12): `native`, `esp32`, `stm32f4`, `px4`, `qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-esp32-baremetal`, `qemu-riscv64-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
-- **RMW**: `zenoh`, `dds`, `xrce`, `cyclonedds`, `uorb`
+- **RMW**: `zenoh`, `xrce`, `cyclonedds`, `uorb` (the legacy dust-DDS `dds` backend was retired in Phase 169; `cyclonedds` is the sole DDS backend)
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-embassy`, `-aemv8r`, etc.
 
 Each example is a standalone Cargo + CMake package — no walk-up to the parent tree, no workspace coupling. Copy any directory out, set `*_DIR` env vars (or `-D…`) for SDK paths, and it builds.
@@ -24,39 +24,38 @@ Each example is a standalone Cargo + CMake package — no walk-up to the parent 
 
 Cell content: `<count>` of `talker|listener|service-{server,client}|action-{server,client}` cases present (max 6). `+` suffix indicates extras (custom-msg, parameters, lifecycle, RTIC variants, custom-transport, serial, embassy, async, etc.).
 
-| Platform                  | Language | zenoh | dds | xrce | cyclonedds | uorb |
-|---------------------------|----------|-------|-----|------|------------|------|
-| `native`                  | c        | 6+    | –   | 6    | 6          | –    |
-| `native`                  | cpp      | 6+    | –   | –    | 6          | –    |
-| `native`                  | rust     | 6+    | 6   | 6+   | –          | –    |
-| `esp32`                   | rust     | 2     | –   | –    | –          | –    |
-| `stm32f4`                 | rust     | 1+rtic×6 | – | –   | –          | –    |
-| `px4`                     | cpp      | –     | –   | –    | –          | nros_register_check |
-| `px4`                     | rust     | –     | –   | –    | –          | (pending) |
-| `qemu-arm-baremetal`      | rust     | 6+rtic+serial | 2 | –  | –          | –    |
-| `qemu-arm-freertos`       | c        | 6     | –   | –    | –          | –    |
-| `qemu-arm-freertos`       | cpp      | 6     | –   | –    | –          | –    |
-| `qemu-arm-freertos`       | rust     | 6     | 2   | –    | –          | –    |
-| `qemu-arm-nuttx`          | c        | 6     | –   | –    | –          | –    |
-| `qemu-arm-nuttx`          | cpp      | 6     | –   | –    | –          | –    |
-| `qemu-arm-nuttx`          | rust     | 6     | 2   | –    | –          | –    |
-| `qemu-esp32-baremetal`    | rust     | 2     | 2   | –    | –          | –    |
-| `qemu-riscv64-threadx`    | c        | 6     | –   | –    | –          | –    |
-| `qemu-riscv64-threadx`    | cpp      | 6     | –   | –    | –          | –    |
-| `qemu-riscv64-threadx`    | rust     | 6     | 2   | –    | –          | –    |
-| `threadx-linux`           | c        | 6     | –   | –    | –          | –    |
-| `threadx-linux`           | cpp      | 6     | –   | –    | –          | –    |
-| `threadx-linux`           | rust     | 6     | 2   | –    | –          | –    |
-| `zephyr`                  | c        | 6     | 6   | 6    | –          | –    |
-| `zephyr`                  | cpp      | 6     | 6   | 6    | talker-aemv8r | – |
-| `zephyr`                  | rust     | 6+async | 6+async | 6 | –         | –    |
+| Platform                  | Language | zenoh | xrce | cyclonedds | uorb |
+|---------------------------|----------|-------|------|------------|------|
+| `native`                  | c        | 6+    | 6    | 6          | –    |
+| `native`                  | cpp      | 6+    | –    | 6          | –    |
+| `native`                  | rust     | 6+    | 6+   | (pending 171.C.1) | – |
+| `esp32`                   | rust     | 2     | –    | –          | –    |
+| `stm32f4`                 | rust     | 1+rtic×6 | –  | –          | –    |
+| `px4`                     | cpp      | –     | –    | –          | nros_register_check |
+| `px4`                     | rust     | –     | –    | –          | (pending) |
+| `qemu-arm-baremetal`      | rust     | 6+rtic+serial | – | –     | –    |
+| `qemu-arm-freertos`       | c        | 6     | –    | –          | –    |
+| `qemu-arm-freertos`       | cpp      | 6     | –    | –          | –    |
+| `qemu-arm-freertos`       | rust     | 6     | –    | –          | –    |
+| `qemu-arm-nuttx`          | c        | 6     | –    | –          | –    |
+| `qemu-arm-nuttx`          | cpp      | 6     | –    | –          | –    |
+| `qemu-arm-nuttx`          | rust     | 6     | –    | –          | –    |
+| `qemu-esp32-baremetal`    | rust     | 2     | –    | –          | –    |
+| `qemu-riscv64-threadx`    | c        | 6     | –    | –          | –    |
+| `qemu-riscv64-threadx`    | cpp      | 6     | –    | –          | –    |
+| `qemu-riscv64-threadx`    | rust     | 6     | –    | –          | –    |
+| `threadx-linux`           | c        | 6     | –    | –          | –    |
+| `threadx-linux`           | cpp      | 6     | –    | –          | –    |
+| `threadx-linux`           | rust     | 6     | –    | (pending 171.C.3) | – |
+| `zephyr`                  | c        | 6     | 6    | 2 (pub/sub; service 171.0.a) | – |
+| `zephyr`                  | cpp      | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
+| `zephyr`                  | rust     | 6+async | 6  | 4 (pub/sub+service) | – |
 
 Gap themes — see `docs/roadmap/phase-118-example-matrix-coverage.md` for the
 plan that fills these:
 
-- **DDS C/C++ on RTOS QEMU platforms** — Rust DDS present, C/C++ never followed.
+- **CycloneDDS matrix-fill** — Phase 171.C: native c/cpp landed; native/rust + threadx-linux/rust pending the `nros-rmw-cyclonedds-staticlib` Rust path (171.C.1/.3); RTOS QEMU cells gated on a Cyclone DDS RTOS port (171.C.gate). dust-DDS retired in Phase 169 — there is no `dds` column anymore.
 - **XRCE absent on every embedded platform except Zephyr** — Phase 115.K.2 header-only backend needs a Rust adapter for bare-metal targets.
-- **CycloneDDS** present only on `zephyr/cpp/cyclonedds/talker-aemv8r/` — Phase 117 RMW lands POSIX first.
 
 ### Intentionally empty cells
 

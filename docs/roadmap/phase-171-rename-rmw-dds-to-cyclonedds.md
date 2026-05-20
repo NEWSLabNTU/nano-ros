@@ -354,9 +354,13 @@ example is platform-agnostic enough to retarget at Cyclone DDS:
         (cyclonedds-staticlib re-add) follow-ups.
       - [ ] **`threadx-linux`** rust cyclonedds — gated on the
         `nros-rmw-cyclonedds-staticlib` Rust path (171.C.3).
-- [ ] **171.B.4** Update `examples/README.md` matrix: drop the
-      `dds` column, mark every renamed cell under `cyclonedds`.
-      (Follows B.2 + B.3.)
+- [x] **171.B.4** `examples/README.md` matrix: dropped the `dds`
+      column entirely (dust retired in 169); RMW list updated to
+      `zenoh / xrce / cyclonedds / uorb`. cyclonedds column reflects
+      reality — native c/cpp = 6 (verified), zephyr c = 2 (pub/sub),
+      zephyr cpp = 4+aemv8r, zephyr rust = 4, native/rust +
+      threadx-linux/rust = pending (171.C.1/.3), RTOS cells empty
+      (171.C.gate). Gap-themes section rewritten.
 
 ### 171.C — Complete the cyclonedds example matrix
 
