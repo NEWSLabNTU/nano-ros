@@ -820,12 +820,14 @@ green.
   - C++ server never logs handling the request.
   So the request topic + type + the `dds_write` all succeed and both
   endpoints are on the *same* topic, yet the C client's writer never
-  delivers to the C++ server's reader. (Note: `rq//add_two_ints` has a
-  double slash because the runtime passes a leading-slash service name
-  and `topic_prefix::apply` does a blind `prefix + "/" + name`; it's
-  *consistent across all four endpoints* so it is not the bug — though
-  stock `rmw_cyclonedds_cpp` would emit single-slash `rq/add_two_ints`,
-  a separate interop nit.)
+  delivers to the C++ server's reader. (The DIAG run originally showed a
+  double slash `rq//add_two_ints` — `topic_prefix::apply` did a blind
+  `prefix + "/" + name` on a leading-slash service name. It was
+  consistent across all four endpoints so not the cause of the C-client
+  bug, but it broke wire-compat with stock `rmw_cyclonedds_cpp`
+  (`rq/add_two_ints`); **fixed** — `apply` now treats a leading-slash
+  name's slash as the separator. Regression-checked: rust pub/sub +
+  rust service E2E still pass with the single-slash topics.)
 
   Remaining hypothesis: the C-client writer never *matches* the server's
   reader (SEDP) — and since the same backend creates both the working

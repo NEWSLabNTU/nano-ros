@@ -56,6 +56,14 @@ inline bool already_prefixed(const char *name) {
 // Apply @p prefix (e.g. "rt") + '/' + @p name into @p out (size
 // @p out_cap). Returns false on overflow. When the env opt-out is
 // set, or the name is already prefixed, copies @p name verbatim.
+//
+// When @p name already begins with '/', that leading slash IS the
+// separator — stock `rmw_cyclonedds_cpp` builds `rq` + `/add_two_ints`
+// = `rq/add_two_ints`, not `rq//add_two_ints`. Inserting our own '/'
+// unconditionally produced a double slash (`rq//…`), which is
+// internally consistent for nano-ros↔nano-ros but breaks wire-compat
+// with stock ROS 2. Only insert the separator when the name lacks a
+// leading slash.
 inline bool apply(const char *name, const char *prefix, char *out,
                   std::size_t out_cap) {
     if (name == nullptr || prefix == nullptr || out == nullptr) return false;
@@ -68,10 +76,12 @@ inline bool apply(const char *name, const char *prefix, char *out,
     }
 
     std::size_t prefix_len = std::strlen(prefix);
-    if (prefix_len + 1 + name_len + 1 > out_cap) return false;
+    bool leading_slash = (name_len > 0 && name[0] == '/');
+    std::size_t sep = leading_slash ? 0 : 1;
+    if (prefix_len + sep + name_len + 1 > out_cap) return false;
     std::memcpy(out, prefix, prefix_len);
-    out[prefix_len] = '/';
-    std::memcpy(out + prefix_len + 1, name, name_len + 1);
+    if (!leading_slash) out[prefix_len] = '/';
+    std::memcpy(out + prefix_len + sep, name, name_len + 1);
     return true;
 }
 
