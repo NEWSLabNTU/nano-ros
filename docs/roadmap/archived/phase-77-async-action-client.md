@@ -2,7 +2,22 @@
 
 **Goal**: Replace the blocking `zpico_get` (condvar wait) in C/C++ action client calls with a non-blocking, executor-polled pattern aligned with rclc and rclcpp conventions. This fixes FreeRTOS QEMU hangs where the condvar is never signaled.
 
-**Status**: In Progress (77.1–77.5 done)
+**Status**: Complete / Archived. All work items 77.1–77.25 landed; the
+executor-spin (no-`zpico_get`) action+service client pattern shipped for
+C and C++. The FreeRTOS-QEMU C++ action-server livelock that gated the
+last acceptance item was root-caused and fixed
+(`LWIP_NETCONN_SEM_PER_THREAD=1`, see "Known Issue" below); the
+`test_freertos_cpp_action_e2e` marker has since been retired from the
+suite, and native `test_cpp_action_communication` validates the C++
+action path.
+
+**Scope note (2026-05-21)**: This phase is **zenoh-pico-specific** — it
+is about `zpico_get` / the zenoh-pico read+lease tasks on FreeRTOS+lwIP.
+It does NOT cover the Cyclone DDS backend. The native **cyclonedds** C++
+action client's feedback / `get_result` receive gap (found in Phase 171)
+is a *separate* issue tracked under Phase 171.0.b — do not cite "Phase 77
+async" for it.
+
 **Priority**: High
 **Depends on**: Phase 68 (Alloc-free C/C++ bindings), Phase 69 (C/C++ action examples)
 
@@ -590,9 +605,12 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
 - [x] No user-side `poll()` calls needed — `spin_once` dispatches everything
 - [x] C header declarations match Rust FFI signatures
 - [x] `test_freertos_c_action_e2e` passes
-- [~] `test_freertos_cpp_action_e2e` passes — blocked on C++ server
-      entity declaration deadlock (documented under "Known Issue"
-      below). Tracked separately as a runtime issue, not Phase 77 scope.
+- [x] `test_freertos_cpp_action_e2e` — the C++ server entity-declaration
+      livelock was root-caused + fixed (`LWIP_NETCONN_SEM_PER_THREAD=1`,
+      see "Known Issue" below; verified 3/3). The dedicated FreeRTOS C++
+      action-e2e marker has since been retired from `nros-tests`; the C++
+      action path is now covered by native `test_cpp_action_communication`
+      (77.23) and the per-platform `rtos_e2e` action cases.
 - [x] `just ci` passes
 - [x] Existing Rust action API unchanged
 

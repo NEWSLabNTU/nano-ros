@@ -263,11 +263,15 @@ collapsed.
         transitive closure (builtin + unique_identifier_msgs + action_msgs).
         cpp action **server** runs full e2e (goal→accept→execute→complete
         `[0,1,1,2,3,5,8,13,21,34]`); cpp **client** warms up discovery
-        before the blocking send_goal (goal→accept works). STILL OPEN: the
-        cpp client's return paths — feedback stream + blocking get_result
-        — receive nothing (`-2`); the documented cpp-action async gap
-        (Phase 77), distinct from the FFI build gap. The deeper codegen
-        fix (make cpp-FFI `include!()` transitive) is a follow-up.
+        before the blocking send_goal (goal→accept works). STILL OPEN
+        (171.0.b follow-up): the cpp client's return paths — feedback
+        stream + get_result — receive nothing on **cyclonedds** while C +
+        Rust receive fine with the same descriptors. NOTE: this is NOT
+        "Phase 77" — Phase 77 (archived, complete) eliminated zenoh-pico's
+        blocking `zpico_get`; the cpp cyclonedds client already uses that
+        executor-spin pattern. This is a cyclonedds-specific cpp
+        receive/protocol bug. The deeper codegen fix (make cpp-FFI
+        `include!()` transitive) is a separate follow-up.
 
       Two pieces, both required before any native cyclonedds action runs:
 
