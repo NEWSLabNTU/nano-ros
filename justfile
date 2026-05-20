@@ -134,8 +134,20 @@ build-examples: build \
 
 # True superset: workspace + every example + per-test fixture variants.
 # Pre-populates everything `just test-all` consumes. Slow.
-build-all: build-examples build-test-fixtures
-    @echo "All builds completed (workspace + examples + test fixtures)."
+build-all:
+    #!/usr/bin/env bash
+    set -e
+    if [ -z "${NROS_NO_JOBSERVER:-}" ] \
+       && [ -x third-party/make/make ] \
+       && third-party/make/make --version | head -1 | grep -q "4.4" \
+       && [ -x third-party/ninja/ninja ]; then
+        echo "build-all: unified jobserver path (make 4.4 + ninja 1.13; NROS_NO_JOBSERVER=1 to opt out)"
+        exec just build-all-jobserver
+    fi
+    echo "build-all: static split (install make>=4.4 + ninja>=1.13 — just workspace install-make/install-ninja — for the jobserver path)"
+    just build-examples
+    just build-test-fixtures
+    echo "All builds completed (workspace + examples + test fixtures)."
 
 # Phase 176 — `build-all` under one GNU-make fifo jobserver shared across
 # every stage (cargo + build-script cc + ninja-via-west + cmake), instead

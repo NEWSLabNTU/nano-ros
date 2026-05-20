@@ -19,9 +19,10 @@ the pool, ninja 1.13 logged `Jobserver mode detected: fifo:…` in 55
 zephyr builds, 0 sub-make fifo errors. The only failure was the
 pre-existing cyclonedds-zephyr `nsos_adapt.c` duplicate-case patch bug
 (Phase 171.0.a, unrelated) — every other stage built clean under the
-shared pool. Supersedes the static `NROS_BUILD_JOBS` outer×inner split
-for `build-all-jobserver`; plain `build-all` keeps the static split as
-the no-extra-toolchain fallback.
+shared pool. `just build-all` now **auto-routes** to this jobserver
+path when the pinned make 4.4 + ninja 1.13 are present (same artifacts),
+falling back to the static `NROS_BUILD_JOBS` outer×inner split without
+them; `NROS_NO_JOBSERVER=1` forces static.
 
 **Priority.** P3 (perf/ergonomics). The current static split
 (`NROS_BUILD_JOBS` budget, `build-test-fixtures` pool + zephyr solo
