@@ -696,12 +696,12 @@ Target matrix (after rename + new cells):
       `cyclonedds/` subtree). Pub/sub done all three languages; services
       done Rust + C++. Remaining: C service request delivery (171.0.a),
       Zephyr actions all langs (171.0.b).
-- [ ] **171.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
+- [~] **171.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
       DDS over the NetX-Duo / NSOS BSD shim (`packages/drivers/nsos-netx`).
-      Same blocker as 171.C.1.rust for the rust cell (needs the
-      cyclonedds staticlib path); the c/cpp cells additionally need
-      the example cmake to thread Cyclone's socket calls through NSOS
-      rather than host libc. Deferred behind **171.C.1.rust**.
+      C/C++ collapsed CMake now honors `-DNROS_RMW=cyclonedds`, and
+      `threadx-linux build-fixtures` builds the Cyclone C/C++ cells
+      when local Cyclone artifacts are installed. Rust remains blocked
+      by the same 171.C.1.rust staticlib path.
 - [x] **171.C.4 / .5 / .6 — RTOS + bare-metal cells: WON'T-FIT /
       deferred (gate decision, 2026-05-20).** Cyclone DDS requires a
       hosted runtime — BSD sockets, threads, heap, libc. The gate

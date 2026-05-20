@@ -26,4 +26,4 @@ target_link_libraries(threadx_cpp_action_server PRIVATE
     example_interfaces__nano_ros_cpp
     NanoRos::NanoRosCpp)
 nros_platform_link_app(threadx_cpp_action_server)
-nano_ros_link_rmw(threadx_cpp_action_server RMW zenoh)
+nano_ros_link_rmw(threadx_cpp_action_server RMW "${NROS_RMW}")

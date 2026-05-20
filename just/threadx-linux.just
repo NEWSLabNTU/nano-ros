@@ -124,18 +124,26 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
+        cmake_rmws="zenoh"
+        if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
+            cmake_rmws="$cmake_rmws cyclonedds"
+        else
+            echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
+        fi
         printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
-            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
-             cmake -S {} -B {}/build-zenoh \
-               -DNROS_RMW=zenoh \
-               -DNANO_ROS_PLATFORM=threadx_linux \
-               -DTHREADX_DIR='$threadx_dir' \
-               -DNSOS_NETX_DIR='$nsos_netx_dir' \
-               -DTHREADX_CONFIG_DIR='$config_dir' \
-               -DTHREADX_APP_DEFINE='$app_define' \
-               -DCMAKE_BUILD_TYPE=Release \
-               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             cmake --build {}/build-zenoh > /dev/null"
+            "for rmw in $cmake_rmws; do \
+                 echo '  → {} (-DNROS_RMW='\$rmw', build-'\$rmw'/)' && rm -rf {}/build-\$rmw && \
+                 cmake -S {} -B {}/build-\$rmw \
+                   -DNROS_RMW=\$rmw \
+                   -DNANO_ROS_PLATFORM=threadx_linux \
+                   -DTHREADX_DIR='$threadx_dir' \
+                   -DNSOS_NETX_DIR='$nsos_netx_dir' \
+                   -DTHREADX_CONFIG_DIR='$config_dir' \
+                   -DTHREADX_APP_DEFINE='$app_define' \
+                   -DCMAKE_BUILD_TYPE=Release \
+                   -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+                 cmake --build {}/build-\$rmw > /dev/null; \
+             done"
     fi
 
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.

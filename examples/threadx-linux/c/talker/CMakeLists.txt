@@ -26,4 +26,4 @@ target_link_libraries(threadx_c_talker PRIVATE
     std_msgs__nano_ros_c
     NanoRos::NanoRos)
 nros_platform_link_app(threadx_c_talker)
-nano_ros_link_rmw(threadx_c_talker RMW zenoh)
+nano_ros_link_rmw(threadx_c_talker RMW "${NROS_RMW}")
