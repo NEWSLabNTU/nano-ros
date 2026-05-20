@@ -16,10 +16,15 @@ rest are deferred-by-design or host-environment.
 
 ## Open issues
 
-### 177.2 — cyclonedds-zephyr feature gaps → **Phase 171.0.a / .b / .c**
+### 177.2 — remaining Cyclone Zephyr/native action gaps → **Phase 171.0.b / .c**
 
-- C-service request delivery (C client→server) — 171.0.a.
-- Actions all languages (IDL `.action` converter unbuilt) — 171.0.b.
+- C-service request delivery (C client→server) is no longer an open
+  catalog item: Phase 171.0.a found the RELIABLE+VOLATILE request
+  match race and gates/buffers service requests before first write.
+- Actions are partially landed: native C + Rust action E2E are
+  runtime-verified; C++ action build + server E2E are fixed. Remaining
+  171.0.b gap is the C++ Cyclone action client return path
+  (feedback/get_result receive nothing while C/Rust receive fine).
 - aemv8r FVP reference re-verify — 171.0.c.
 
 ### 177.3 — Cyclone for pure-cargo Rust examples → **Phase 175**
