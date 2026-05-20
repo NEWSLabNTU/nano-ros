@@ -623,10 +623,12 @@ function(nros_generate_interfaces target)
   # the cyclonedds branch of the root CMake does).
   if(NANO_ROS_RMW STREQUAL "cyclonedds"
      AND COMMAND nros_rmw_cyclonedds_generate_from_msg)
-    # Only .msg / .srv carry data types; .action is not wired yet.
+    # .msg / .srv / .action all carry data types. Actions are
+    # synthesized into their eight wrapper descriptors by
+    # `msg_to_cyclone_idl.py` (see generate_from_msg's `.action` branch).
     set(_cyc_ifaces "")
     foreach(_if ${_interface_files})
-      if(_if MATCHES "\\.(msg|srv)$")
+      if(_if MATCHES "\\.(msg|srv|action)$")
         # Cyclone DDS 0.10.5's idlc crashes on `wstring` (wide-string)
         # fields — it parses the type then aborts in delete_const_expr.
         # The full ROS `example_interfaces` (resolved via

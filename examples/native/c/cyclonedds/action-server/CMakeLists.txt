@@ -9,7 +9,17 @@ set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     cyclonedds)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
-nros_generate_interfaces(example_interfaces SKIP_INSTALL)
+# Actions also need the action infrastructure types' Cyclone
+# descriptors: the action server creates a cancel_goal service
+# (`action_msgs/CancelGoal`) and a status topic
+# (`action_msgs/GoalStatusArray`), which transitively pull
+# `unique_identifier_msgs/UUID` + `builtin_interfaces`.
+nros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
+nros_generate_interfaces(unique_identifier_msgs SKIP_INSTALL)
+nros_generate_interfaces(action_msgs
+    DEPENDENCIES builtin_interfaces unique_identifier_msgs SKIP_INSTALL)
+nros_generate_interfaces(example_interfaces
+    DEPENDENCIES builtin_interfaces action_msgs SKIP_INSTALL)
 
 add_executable(c_action_server src/main.c)
 target_link_libraries(c_action_server PRIVATE

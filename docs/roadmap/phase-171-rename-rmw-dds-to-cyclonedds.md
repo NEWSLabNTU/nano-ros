@@ -247,9 +247,24 @@ collapsed.
       `nros_client_call`'s loop `k_msleep`s via `session_drive_io`, so it
       yields). Re-apply the C service-client `prj-cyclonedds.conf` (NSOS)
       + descriptor-gen CMake (reverted while parked) when resuming.
-- [ ] **171.0.b — Actions (all languages).** Phase-sized; concrete
-      design below (scoped 2026-05-21 while doing 171.C). Two independent
-      pieces, both required before any native cyclonedds action runs:
+- [~] **171.0.b — Actions.** **Native C + Rust LANDED + runtime-verified
+      2026-05-21.** Both pieces built; design below. Native action e2e:
+      - **C** (`examples/native/c/cyclonedds/action-{server,client}`):
+        goal → accept → feedback → **result** `[0,1,1,2,3,5,8,13,21,34,55]`.
+      - **Rust** (`examples/native/rust/cyclonedds/action-{server,client}`):
+        goal → accept → feedback `[0]`→`[0,1,1,2,3,5,8,13]`. The client
+        warms up discovery (~3 s spin) before the first `send_goal`,
+        mirroring the C client — `send_goal` is a service call and its
+        request races the writer↔reader match otherwise.
+      - **C++**: BLOCKED on a *separate* cpp-FFI codegen gap — the cpp
+        binding for `action_msgs/GoalInfo` references
+        `unique_identifier_msgs_msg_uuid_t` without pulling the
+        `unique_identifier_msgs` cpp FFI into scope (`E0425`). Not a
+        cyclonedds-descriptor issue; the cpp action CMakeLists were left
+        at `example_interfaces`-only (build OK, runtime `-1`) pending a
+        cpp-codegen cross-package fix.
+
+      Two pieces, both required before any native cyclonedds action runs:
 
       **Piece 1 — sub-type descriptor lookup (the `-1` blocker). LANDED
       `3db736aa1`.** `register_action_server` (`executor/action.rs`)

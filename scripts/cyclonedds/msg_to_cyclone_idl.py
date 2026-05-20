@@ -205,6 +205,159 @@ def mangle_idl(src: str, inject_service_header: bool = False) -> str:
     return "\n".join(out_lines) + "\n"
 
 
+# A field declaration line in rosidl_adapter IDL output, e.g.
+# `int32 order;` or `sequence<int32> sequence;`. Used to lift the base
+# Goal/Result/Feedback struct bodies out of msg2idl output so the action
+# synthesizer can reuse rosidl's type mapping without reimplementing it.
+_FIELD_DECL_RE = re.compile(r"^\s*[A-Za-z_][\w:<>, ]*\s+[A-Za-z_]\w*;\s*$")
+
+
+def _action_msg_fields(pkg_name: str, msg2idl: Path, body: str) -> list[str]:
+    """Run msg2idl on a synthetic `.msg` carrying @p body and return the
+    generated struct's field-declaration lines (rosidl-typed IDL). Empty
+    sections (e.g. an action with no feedback fields) yield ``[]``."""
+    if not body.strip():
+        return []
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp) / pkg_name
+        (scratch / "msg").mkdir(parents=True)
+        # rosidl_adapter requires a package.xml; a minimal stub suffices
+        # because we only consume the struct body, not package metadata.
+        (scratch / "package.xml").write_text(
+            f'<?xml version="1.0"?>\n<package format="3">'
+            f"<name>{pkg_name}</name><version>0.0.0</version>"
+            "<description>x</description>"
+            "<maintainer email=\"x@example.com\">x</maintainer>"
+            "<license>x</license></package>\n"
+        )
+        msg_path = scratch / "msg" / "ActionSection.msg"
+        msg_path.write_text(body if body.endswith("\n") else body + "\n")
+        idl = run_adapter(msg2idl, scratch, Path("msg/ActionSection.msg"))
+        raw = idl.read_text()
+    return [_escape_member(line.strip()) for line in raw.splitlines() if _FIELD_DECL_RE.match(line)]
+
+
+# IDL reserved words that can legally appear as ROS field names but
+# collide with the grammar as member identifiers (Cyclone 0.10.5's idlc
+# rejects them). `Fibonacci_Result` has a field literally named
+# `sequence`. Escape such members with a leading `_` (IDL escaped
+# identifier) — the wire CDR is positional, so the rename is invisible.
+_IDL_RESERVED = {
+    "sequence", "string", "wstring", "long", "short", "double", "float",
+    "char", "wchar", "boolean", "octet", "struct", "union", "enum",
+    "module", "interface", "typedef", "const", "fixed", "native", "any",
+    "void", "in", "out", "inout", "switch", "case", "default", "unsigned",
+}
+
+
+def _escape_member(decl: str) -> str:
+    m = re.match(r"^(?P<type>.*\s)(?P<name>[A-Za-z_]\w*);\s*$", decl)
+    if not m:
+        return decl
+    name = m.group("name")
+    if name in _IDL_RESERVED:
+        return f"{m.group('type')}_{name};"
+    return decl
+
+
+def synthesize_action_idl(pkg_name: str, action_path: Path, msg2idl: Path) -> str:
+    """Synthesize the Cyclone IDL for a ROS `.action`, matching the nros
+    action layer's wire framing (NOT stock rmw_cyclonedds_cpp):
+
+      - `goal_id` is a CDR `sequence<octet>` (`action_core::write_goal_id`
+        emits a 4-byte length 16 + 16 bytes), not a fixed `uint8[16]`.
+      - send_goal / get_result Request+Response carry the 16-byte service
+        header (`rmw_writer_guid` + `rmw_sequence_number`) inlined first,
+        like a `.srv`. The feedback message has no header.
+      - The accept reply / get_result reply / feedback are assembled by
+        the action layer from primitives (`bool accepted` + `int32 sec`
+        + `uint32 nanosec`; `int8 status` + result; goal_id + feedback),
+        so the wrappers nest the base structs / inline those primitives.
+
+    Emits all eight types in the `<pkg>::action::dds_::` namespace:
+    `<A>_{Goal,Result,Feedback}_`, `<A>_SendGoal_{Request,Response}_`,
+    `<A>_GetResult_{Request,Response}_`, `<A>_FeedbackMessage_`.
+    """
+    stem = action_path.stem
+    text = action_path.read_text()
+    sections: list[list[str]] = [[]]
+    for line in text.splitlines():
+        if line.strip() == "---":
+            sections.append([])
+        else:
+            sections[-1].append(line)
+    while len(sections) < 3:
+        sections.append([])
+    goal_fields = _action_msg_fields(pkg_name, msg2idl, "\n".join(sections[0]))
+    result_fields = _action_msg_fields(pkg_name, msg2idl, "\n".join(sections[1]))
+    feedback_fields = _action_msg_fields(pkg_name, msg2idl, "\n".join(sections[2]))
+
+    hdr = [
+        "unsigned long long rmw_writer_guid;",
+        "long long rmw_sequence_number;",
+    ]
+    ns = f"{pkg_name}::action::dds_"
+
+    def struct(name: str, fields: list[str]) -> list[str]:
+        out = [f"      struct {name} {{"]
+        out += [f"        {f}" for f in fields]
+        out.append("      };")
+        return out
+
+    body: list[str] = []
+    body += struct(f"{stem}_Goal_", goal_fields or ["uint8 structure_needs_at_least_one_member;"])
+    body += struct(f"{stem}_Result_", result_fields or ["uint8 structure_needs_at_least_one_member;"])
+    body += struct(f"{stem}_Feedback_", feedback_fields or ["uint8 structure_needs_at_least_one_member;"])
+    body += struct(
+        f"{stem}_SendGoal_Request_",
+        hdr + ["sequence<octet> goal_id;", f"{ns}::{stem}_Goal_ goal;"],
+    )
+    body += struct(
+        f"{stem}_SendGoal_Response_",
+        hdr + ["boolean accepted;", "int32 stamp_sec;", "uint32 stamp_nanosec;"],
+    )
+    body += struct(
+        f"{stem}_GetResult_Request_",
+        hdr + ["sequence<octet> goal_id;"],
+    )
+    body += struct(
+        f"{stem}_GetResult_Response_",
+        hdr + ["int8 status;", f"{ns}::{stem}_Result_ result;"],
+    )
+    body += struct(
+        f"{stem}_FeedbackMessage_",
+        ["sequence<octet> goal_id;", f"{ns}::{stem}_Feedback_ feedback;"],
+    )
+
+    lines = [
+        f"// Auto-synthesized by msg_to_cyclone_idl.py from {pkg_name}/action/{stem}.action.",
+        "// Matches the nros action layer's wire framing (goal_id as",
+        "// sequence<octet>, inlined service header) — nano-ros<->nano-ros.",
+        f"module {pkg_name} {{",
+        "  module action {",
+        "    module dds_ {",
+    ]
+    lines += body
+    lines += ["    };", "  };", "};", ""]
+    return "\n".join(lines)
+
+
+def action_type_names(pkg_name: str, stem: str) -> list[str]:
+    """The eight registrable type names an action emits, in the order the
+    backend looks them up."""
+    ns = f"{pkg_name}::action::dds_"
+    return [
+        f"{ns}::{stem}_Goal_",
+        f"{ns}::{stem}_Result_",
+        f"{ns}::{stem}_Feedback_",
+        f"{ns}::{stem}_SendGoal_Request_",
+        f"{ns}::{stem}_SendGoal_Response_",
+        f"{ns}::{stem}_GetResult_Request_",
+        f"{ns}::{stem}_GetResult_Response_",
+        f"{ns}::{stem}_FeedbackMessage_",
+    ]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="Convert .msg/.srv to Cyclone-DDS-shaped IDL.",
@@ -242,6 +395,17 @@ def main() -> int:
             iface_path = (args.pkg_dir / iface_path).resolve()
         rel = iface_path.relative_to(args.pkg_dir.resolve())
 
+        if iface_path.suffix == ".action":
+            # Actions are synthesized directly (rosidl ships no
+            # action2idl that emits the SendGoal/GetResult/FeedbackMessage
+            # wrappers, and the nros wire framing diverges from stock —
+            # see `synthesize_action_idl`).
+            mangled = synthesize_action_idl(args.pkg_name, iface_path, msg2idl)
+            out_idl = args.output_dir / iface_path.with_suffix(".idl").name
+            out_idl.write_text(mangled)
+            out_paths.append(out_idl.resolve())
+            continue
+
         if iface_path.suffix == ".msg":
             adapter = msg2idl
         elif iface_path.suffix == ".srv":
@@ -249,7 +413,7 @@ def main() -> int:
         else:
             sys.exit(
                 f"error: unsupported interface extension "
-                f"{iface_path.suffix} (expected .msg or .srv)"
+                f"{iface_path.suffix} (expected .msg, .srv, or .action)"
             )
 
         # rosidl_adapter writes <input>.idl next to the input. We may

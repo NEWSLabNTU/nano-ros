@@ -511,6 +511,29 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
                     "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Request_"
                     "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Response_"
             )
+        elseif(_iface_ext STREQUAL ".action")
+            # `msg_to_cyclone_idl.py` synthesizes the eight action wrapper
+            # types into one IDL (base Goal/Result/Feedback +
+            # SendGoal/GetResult Request/Response + FeedbackMessage),
+            # matching the nros action layer's wire framing. Register all
+            # eight; the backend derives which one a given sub-service /
+            # topic needs from its keyexpr role (Phase 171.0.b Piece 1).
+            set(_act "${_arg_PKG_NAME}::action::dds_::${_iface_stem}")
+            nros_rmw_cyclonedds_idlc_compile(_gen
+                IDL_FILE  "${_idl_path}"
+                OUTPUT_DIR "${_gen_dir}"
+                INCLUDE_DIRS ${_idlc_includes}
+                EXTRA_DEPENDS ${_pkg_idl_paths}
+                TYPE_NAMES
+                    "${_act}_Goal_"
+                    "${_act}_Result_"
+                    "${_act}_Feedback_"
+                    "${_act}_SendGoal_Request_"
+                    "${_act}_SendGoal_Response_"
+                    "${_act}_GetResult_Request_"
+                    "${_act}_GetResult_Response_"
+                    "${_act}_FeedbackMessage_"
+            )
         else()
             message(FATAL_ERROR
                 "nros_rmw_cyclonedds_generate_from_msg: unsupported "
