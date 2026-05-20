@@ -9,6 +9,8 @@ description = "STM32F4 board crate for nros (hardware + network init)"
 name = "nros_board_stm32f4"
 
 [dependencies]
+# Phase 173.1 — Board super-trait + the generic direct-exec `run`.
+nros-board-common = { path = "../nros-board-common", default-features = false }
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-stm32f4 = { path = "../../platforms/nros-platform-stm32f4" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4", "global-allocator", "critical-section"] }

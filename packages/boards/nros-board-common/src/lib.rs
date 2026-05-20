@@ -33,7 +33,7 @@
 
 pub mod board_init;
 pub mod threadx_config;
-pub use board_init::{Board, BoardExit, BoardInit, BoardPrint, run};
+pub use board_init::{Board, BoardEntry, BoardExit, BoardInit, BoardPrint, DirectExec, run};
 pub use threadx_config::ThreadxConfig;
 
 #[cfg(feature = "build-helpers")]

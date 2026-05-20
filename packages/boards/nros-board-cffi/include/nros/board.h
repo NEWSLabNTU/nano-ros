@@ -54,11 +54,13 @@ typedef int32_t (*nros_board_app_fn)(void *user);
 /* ---- Entry workflow ---- */
 
 /**
- * Direct-exec board entry driver: run hardware init, invoke the user
- * application, then exit. Used by direct-exec board families
- * (bare-metal, esp-hal) where the application runs on the boot stack.
- * Kernel-spawn families (FreeRTOS, ThreadX) ship their own task-based
- * driver and do not export this symbol. Never returns.
+ * Board entry driver: run the board's full boot flow with the user
+ * application, then exit. Family-agnostic — for direct-exec boards
+ * (bare-metal, esp-hal) the application runs on the boot stack; for
+ * kernel-spawn families (FreeRTOS, ThreadX) the board allocates an app
+ * task and starts the scheduler, running the application in task
+ * context. Both shapes export this same symbol (the Rust side routes
+ * through `BoardEntry::run`). Never returns.
  */
 void nros_board_run(const void *cfg, nros_board_app_fn app, void *user);
 
