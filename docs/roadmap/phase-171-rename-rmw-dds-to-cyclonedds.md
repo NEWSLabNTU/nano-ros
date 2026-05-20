@@ -534,21 +534,20 @@ Target matrix (after rename + new cells):
         compile + link clean against
         `-DCMAKE_PREFIX_PATH=build/install` (Cyclone DDS 0.10.5 from
         `just cyclonedds setup`). Verified 2026-05-20.
-      - [x] **rust** — **171.C.1.rust. Talker + listener LANDED +
-        runtime-verified; service build-verified; action deferred.**
+      - [x] **rust** — **171.C.1.rust. Talker + listener + service
+        LANDED + runtime-verified; action deferred.**
         Per-cell status (2026-05-21):
         - **talker** (`b49b0b42e`) — publishes `std_msgs/Int32` at 1 Hz.
         - **listener** (`a17ad5ba5`) — subscribes `/chatter`; rust
           talker → rust listener e2e delivers 0..4 over the wire.
-        - **service-{server,client}** (`e9f5f2b61`) — build clean
-          against the AddTwoInts cyclonedds typesupport. E2e round-trip
-          NOT yet passing: the rust client's first call races the
-          reply-path endpoint match (the C client hits the same race and
-          recovers on the next call), but the rust client API leaves the
-          request "in flight" after a timeout → calls 2..4 fail
-          `RequestInFlight` → 0/4. C-API service e2e works and rust topic
-          pub/sub works, so this is a rust-client service round-trip bug
-          on native cyclonedds (follow-up, not example scaffolding).
+        - **service-{server,client}** — build clean against the
+          AddTwoInts cyclonedds typesupport and e2e round-trip passes:
+          native rust server + native rust client completed **4/4**
+          calls (`5+3`, `10+20`, `100+200`, `-5+10`) on 2026-05-21.
+          Fix: the Cyclone backend now abandons a stale non-blocking
+          client `pending_seq` when the upper Rust/C layer has already
+          timed out and cleared its own in-flight guard, so a slow first
+          request no longer wedges all later calls.
         - **action-{server,client}** — NOT created. All-language action
           over cyclonedds is blocked first: the cyclonedds branch of
           `nros_generate_interfaces` only wires `.msg`/`.srv`
@@ -700,8 +699,10 @@ Target matrix (after rename + new cells):
       DDS over the NetX-Duo / NSOS BSD shim (`packages/drivers/nsos-netx`).
       C/C++ collapsed CMake now honors `-DNROS_RMW=cyclonedds`, and
       `threadx-linux build-fixtures` builds the Cyclone C/C++ cells
-      when local Cyclone artifacts are installed. Rust remains blocked
-      by the same 171.C.1.rust staticlib path.
+      when local Cyclone artifacts are installed. The native rust
+      service-client round-trip blocker from 171.C.1 is fixed; remaining
+      work is the cyclonedds staticlib path plus CMake wiring so Cyclone
+      socket calls route through NSOS rather than host libc.
 - [x] **171.C.4 / .5 / .6 — RTOS + bare-metal cells: WON'T-FIT /
       deferred (gate decision, 2026-05-20).** Cyclone DDS requires a
       hosted runtime — BSD sockets, threads, heap, libc. The gate

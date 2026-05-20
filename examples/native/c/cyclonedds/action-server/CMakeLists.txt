@@ -7,6 +7,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Phase 144.2 — consume nano-ros via add_subdirectory(<repo-root>).
 set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     cyclonedds)
+set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../scripts/cyclonedds/msg_to_cyclone_idl.py"
+    CACHE FILEPATH "nano-ros Cyclone DDS .msg/.srv to IDL converter" FORCE)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." nano_ros)
 
 # Actions also need the action infrastructure types' Cyclone

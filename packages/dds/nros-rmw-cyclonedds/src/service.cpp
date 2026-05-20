@@ -760,7 +760,11 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
     }
     auto *state = static_cast<ClientState *>(client->backend_data);
     if (state->pending_seq.load(std::memory_order_acquire) >= 0) {
-        return NROS_RMW_RET_WOULD_BLOCK;
+        // The upper layers clear their own in-flight guard on timeout before
+        // retrying. Mirror that abandon here so a slow first request doesn't
+        // wedge every later call; stale late replies are filtered by seq/guid.
+        state->pending_request_len = 0;
+        state->pending_seq.store(-1, std::memory_order_release);
     }
 
     RequestId my_id{};
