@@ -7,15 +7,21 @@ build draws from one dynamically-allocated token pool. The long pole
 (zephyr) soaks up tokens freed by finished platforms instead of idling
 on a fixed 1/Nth share.
 
-**Status.** Foundation landed + mechanism validated. Pinned make 4.4.1
-+ ninja 1.13.2 install (173.A) done; `build-all.mk` + `just
-build-all-jobserver` (173.B) + zephyr `-j` gating (173.C, partial)
-done. **Validated**: under `make 4.4 -j2 --jobserver-style=fifo`,
-ninja 1.13 throttles to 2 (`Jobserver mode detected: fifo:…`) and
-cargo's rustc concurrency caps at 2 — both draw from the shared pool.
-**Remaining**: gate the cmake `--parallel` in the C/C++ example recipes
-(173.C), and a full `build-all-jobserver` sweep + utilization check
-(173.D).
+**Status.** **Landed + validated end-to-end (A/B/C/D).** Pinned make
+4.4.1 + ninja 1.13.2 install (173.A); `build-all.mk` + `just
+build-all-jobserver` (173.B); all downstream `-j` stripped — zephyr
+`CMAKE_BUILD_PARALLEL_LEVEL`, cmake `--parallel` in the C/C++ recipes,
++ a `gmake`→make-4.4 alias so stray sub-makes don't choke on the fifo
+auth (173.C). **Full-sweep validation (173.D)**: `NROS_BUILD_JOBS=32
+just build-all-jobserver` ran the whole build under one
+`make 4.4 -j32 --jobserver-style=fifo` pool — cargo rustc throttles to
+the pool, ninja 1.13 logged `Jobserver mode detected: fifo:…` in 55
+zephyr builds, 0 sub-make fifo errors. The only failure was the
+pre-existing cyclonedds-zephyr `nsos_adapt.c` duplicate-case patch bug
+(Phase 171.0.a, unrelated) — every other stage built clean under the
+shared pool. Supersedes the static `NROS_BUILD_JOBS` outer×inner split
+for `build-all-jobserver`; plain `build-all` keeps the static split as
+the no-extra-toolchain fallback.
 
 **Priority.** P3 (perf/ergonomics). The current static split
 (`NROS_BUILD_JOBS` budget, `build-test-fixtures` pool + zephyr solo
