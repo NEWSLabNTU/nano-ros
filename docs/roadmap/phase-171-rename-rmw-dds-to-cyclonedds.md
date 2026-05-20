@@ -542,6 +542,63 @@ Each new C example: no `malloc` in user code, fixed `char[N]`
 scratch buffers. Each new C++ example: `NROS_CPP_STD=OFF`,
 freestanding C++14 only.
 
+### 171.C.runtime — Cyclone topic-descriptor typesupport wiring (the real runtime fix)
+
+**Problem (diagnosed, see 171.C.1):** native cyclonedds examples
+build but `create_publisher`/`create_subscription` stall at runtime
+because the per-message Cyclone `dds_topic_descriptor_t` is never
+registered. `nros_generate_interfaces` emits only the CDR/C(++)
+message bindings (`<pkg>__nano_ros_c` / `__nano_ros_cpp`), never the
+idlc descriptor + the static-init `nros_rmw_cyclonedds_register_descriptor`
+TU. The backend's own ctest passes only because it hand-rolls the
+descriptor via `nros_rmw_cyclonedds_add_idl_library`.
+
+**Fix — make `nros_generate_interfaces` emit + link the Cyclone
+descriptor when `NANO_ROS_RMW STREQUAL "cyclonedds"`.** Concrete
+plan:
+
+- [ ] **171.C.runtime.1** In `cmake/NanoRosGenerateInterfaces.cmake`
+      (`function(nros_generate_interfaces target)`, line ~151), after
+      the existing `__nano_ros_c` / `__nano_ros_cpp` generation, add a
+      cyclonedds branch gated on `NANO_ROS_RMW STREQUAL "cyclonedds"`.
+      It must, per `.msg` in the package:
+      1. run `msg_to_cyclone_idl.py` (path from
+         `NROS_RMW_CYCLONEDDS_MSG_TO_IDL`, already plumbed by
+         `just cyclonedds build-rmw`) to convert `<Type>.msg` →
+         `<Type>.idl`;
+      2. `include(NrosRmwCycloneddsTypeSupport)` then call
+         `nros_rmw_cyclonedds_add_idl_library(${target}__cyclonedds_ts
+         IDL_FILES <generated .idl…> REGISTER_TYPES
+         <Type>=<pkg>::msg::<Type> …)`. The `REGISTER_TYPES` mangled
+         name MUST match the topic type-name the nros runtime
+         publishes (verify against `topic_prefix::apply` +
+         `descriptors.cpp` mangling — Phase 117.X.4 type-name
+         verification).
+- [ ] **171.C.runtime.2** Link `${target}__cyclonedds_ts` into the
+      consuming `__nano_ros_c` / `__nano_ros_cpp` interface target
+      (or surface it as `${target}__cyclonedds` for the example to
+      link explicitly). The static-init register TU must land in the
+      final binary (verify with `nm`: a `_GLOBAL__sub_*` TU + a
+      `<pkg>_msg_<Type>_desc`-style descriptor symbol present).
+- [ ] **171.C.runtime.3** Re-smoke each native cyclonedds example —
+      expect `Published: N` / `Received: N`. Add an `rtos_e2e`-style
+      (or `native`-e2e) harness pairing talker+listener over a real
+      Cyclone domain, mirroring the §171.0 Zephyr cyclonedds tests.
+- [ ] **171.C.runtime.4** Adapt the renamed example *scaffold* for
+      cyclonedds semantics: the C examples still default a zenoh-style
+      `NROS_LOCATOR` (`tcp/127.0.0.1:7447`) into `nros_support_init`
+      (cyclonedds ignores the locator but the printf banner +
+      `getenv` scaffold is misleading and the `-3` path needs a
+      cyclonedds-appropriate config story — domain id only).
+- [ ] **171.C.runtime.5** Once a native cell runs green, replicate to
+      all 6 cases × {c,cpp,rust} and re-confirm `nm` single-vtable +
+      runtime pub/sub. Then `threadx-linux` (171.C.3) over NSOS.
+
+**Acceptance:** a native cyclonedds talker+listener pair exchanges
+`std_msgs/Int32` end-to-end (and ideally interops with stock
+`ros2 topic echo` under `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`,
+reusing the backend's existing `ros2_pubsub_e2e.sh` harness shape).
+
 ### 171.D — Deletion follow-ups left over from Phase 169
 
 Most dust-DDS deletion (crates + submodule + workspace refs) is
