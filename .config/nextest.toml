@@ -197,6 +197,16 @@ max-threads = 1
 [test-groups.native_api]
 max-threads = 1
 
+# Phase 11W.12 — the native_sim Cyclone DDS boot + pub/sub E2E tests
+# each spawn host native_sim processes that bind RTPS discovery on the
+# fixed SPDP multicast port (7400 + 250*domain, all domain 0) on the
+# host's real multicast interface. NSOS doesn't forward SO_REUSEADDR,
+# so two concurrent participants collide on that port and crash.
+# Serialize them; each test's processes are SIGKILLed on ZephyrProcess
+# Drop, freeing the port before the next test starts.
+[test-groups.zephyr-native-cyclonedds]
+max-threads = 1
+
 # XRCE-DDS tests: single Agent instance per test.
 [test-groups.xrce]
 max-threads = 1
@@ -419,6 +429,16 @@ filter = "binary(zephyr)"
 test-group = "qemu-zephyr"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
+
+# Phase 11W.12 — serialize the native_sim Cyclone DDS boot + pub/sub
+# E2E tests (in phase_118_collapse). They spawn host native_sim
+# processes that bind the fixed SPDP multicast port; concurrent runs
+# collide (NSOS doesn't forward SO_REUSEADDR). The `*_variant_exists`
+# tests only check file presence and stay in the parallel default.
+[[profile.default.overrides]]
+filter = "binary(phase_118_collapse) and (test(cyclonedds_boot) or test(cyclonedds_pubsub_e2e))"
+test-group = "zephyr-native-cyclonedds"
+slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(native_api)"
