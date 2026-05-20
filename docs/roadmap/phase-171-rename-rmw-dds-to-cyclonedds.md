@@ -25,8 +25,9 @@ RTOS port, §171.C.gate / `phase-175`), rather than being deleted as the
 original 171.B draft proposed. Still open: the code-surface rename
 (§171.A), the `dds/` example *directory* renames (§171.B.3), the
 non-Zephyr matrix cells (§171.C.1/.3/.4/.5/.6), and the no-alloc audit
-(§171.E). Two Zephyr cyclonedds gaps remain open inside §171.0
-(C-service request delivery; all-language actions).
+(§171.E). Zephyr cyclonedds C-service delivery and Zephyr actions remain
+open inside §171.0. Native cpp+cpp CycloneDDS action `get_result` is
+fixed in `28e9e6502`.
 
 **Priority.** P2 — paper-rename and matrix-fill on top of the
 already-decided 169 retirement.
@@ -258,8 +259,9 @@ collapsed.
         non-blocking semantics. Verified locally with `ctest -R
         nros_rmw_cyclonedds_service_roundtrip`; stock ROS 2 interop
         tests still fail and remain separate Phase 117/171 work.
-- [~] **171.0.b — Actions.** **Native C + Rust LANDED + runtime-verified
-      2026-05-21.** Both pieces built; design below. Native action e2e:
+- [~] **171.0.b — Actions.** **Native C + Rust + C++ LANDED +
+      runtime-verified 2026-05-21.** Both pieces built; design below.
+      Native action e2e:
       - **C** (`examples/native/c/cyclonedds/action-{server,client}`):
         goal → accept → feedback → **result** `[0,1,1,2,3,5,8,13,21,34,55]`.
       - **Rust** (`examples/native/rust/cyclonedds/action-{server,client}`):
@@ -267,20 +269,19 @@ collapsed.
         warms up discovery (~3 s spin) before the first `send_goal`,
         mirroring the C client — `send_goal` is a service call and its
         request races the writer↔reader match otherwise.
-      - **C++** (`5b9ee97bc`): BUILD fixed + server e2e. The cpp-FFI
+      - **C++** (`5b9ee97bc`, `28e9e6502`): BUILD fixed + cpp+cpp e2e.
+        The cpp-FFI
         cross-package gap (`action_msgs/GoalInfo` → `unique_identifier_msgs`
         types, `E0425`) was the cpp FFI `include!()` of a dependency's
         `.rs` not being transitive; the example CMakeLists now flatten the
         transitive closure (builtin + unique_identifier_msgs + action_msgs).
-        cpp action **server** runs full e2e (goal→accept→execute→complete
-        `[0,1,1,2,3,5,8,13,21,34]`); cpp **client** warms up discovery
-        before the blocking send_goal (goal→accept works). STILL OPEN
-        (171.0.b follow-up): **cpp+cpp** `get_result` times out (`-2`)
-        while **C+C** and **rust+rust** work e2e. NOTE: not "Phase 77"
-        (archived) — the cpp cyclonedds client already uses executor-spin.
+        cpp action **server** and **client** now run goal→accept→result
+        e2e (`[0,1,1,2,3,5,8,13,21,34]`). The client warms up discovery
+        before the blocking send_goal. NOTE: this was not a "Phase 77"
+        regression — the cpp cyclonedds client already uses executor-spin.
 
-        **Deep diagnosis 2026-05-21 (do NOT re-derive — instrument was
-        reverted):**
+        **Deep diagnosis 2026-05-21 (resolved by `28e9e6502`; do NOT
+        re-derive — instrument was reverted):**
         - Cross-impl matrix: C-server reply is delivered to C & cpp
           clients; cpp-server reply is delivered to neither — but the
           cpp **client** *does* receive (cpp-client+C-server returns `-1`
@@ -298,27 +299,21 @@ collapsed.
           working send_goal reply (`:203`). `service_send_reply` returns
           ok=true. `service_try_recv_reply_raw` **receives the reply and
           correlates it** (`got_seq==pending && got_guid==my_guid` true).
-        - So the break is **above the Cyclone backend.** Instrumenting
-          `nros_cpp_action_client_get_result` + `cpp_result_trampoline`:
-          a get_result request+reply round-trips *during the client's
-          feedback-poll phase, before* `get_result` is called; the
-          **result trampoline never fires**; and the seq counter shows
-          **two `seq=0` sends** (`ClientState::next_seq` not advancing as
-          expected). i.e. an unexpected early `send_get_result_request`
-          whose matched reply is consumed by the arena dispatch without
-          propagating to `BLOCKING_RESULT_LEN`, leaving the real
-          `get_result` send with no reply.
-        - **Next step:** find the early/duplicate `send_get_result_request`
-          caller (NOT the example, NOT header `get_result`) and why the
-          arena consumes its matched reply without firing
-          `cpp_result_trampoline`. Tried + ruled out: client re-send,
-          accept-before-callback reorder, deferred-execute server rewrite.
+        - So the break was **above the Cyclone backend.** The actual root
+          cause was C++ action result framing. `complete_goal_raw` stores
+          result **fields** only; C++ `ffi_serialize` / `ffi_deserialize`
+          use normal CDR buffers with a 4-byte header. The native Cyclone
+          typed `GetResult_Response_` descriptor expects fields, so storing
+          C++'s header-prefixed result corrupted the typed response path.
+          Fix: `nros_cpp_action_server_complete_goal` strips the CDR header
+          before storage, and `cpp_result_trampoline` re-adds the CDR header
+          before user callback / result stash delivery.
         - **Secondary (separate) issue:** the stock cpp action *server*
           example computes inline in the goal callback (instant) → its
           volatile feedback is dropped before the reader matches; C/rust
           pace with delays + execute after accept.
-        - Cross-impl pairings (rust↔C↔cpp) also diverge on feedback/result
-          CDR framing — only same-language pairs are supported.
+        - Cross-impl pairings (rust↔C↔cpp) still need explicit validation;
+          same-language native pairs are the supported/verified baseline.
         The deeper codegen fix (make cpp-FFI `include!()` transitive) is
         a separate follow-up.
 
@@ -700,7 +695,7 @@ Target matrix (after rename + new cells):
       §171.0** (collapsed shape + `prj-cyclonedds.conf`, not a
       `cyclonedds/` subtree). Pub/sub done all three languages; services
       done Rust + C++. Remaining: C service request delivery (171.0.a),
-      actions all langs (171.0.b).
+      Zephyr actions all langs (171.0.b).
 - [ ] **171.C.3** **`threadx-linux` × {c, cpp, rust}** — Cyclone
       DDS over the NetX-Duo / NSOS BSD shim (`packages/drivers/nsos-netx`).
       Same blocker as 171.C.1.rust for the rust cell (needs the
@@ -780,8 +775,9 @@ inline.
       (`linkme-register` off), so the cyclonedds backend self-registers
       via an `.init_array` constructor now (`cc26c09f9`).
 - [x] **171.C.runtime.5** Replicated: talker/listener/service across
-      {c,cpp,rust}; actions C+Rust e2e (cpp build + server only — client
-      receive open, 171.0.b). `threadx-linux` (171.C.3) still pending.
+      {c,cpp,rust}; native actions C+Rust+C++ e2e (cpp get_result fixed in
+      `28e9e6502`). `threadx-linux` (171.C.3) and Zephyr actions
+      (171.0.b) still pending.
 
 **Acceptance:** a native cyclonedds talker+listener pair exchanges
 `std_msgs/Int32` end-to-end (and ideally interops with stock
