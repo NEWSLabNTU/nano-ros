@@ -1,4 +1,0 @@
-cargo:rerun-if-env-changed=NROS_RMW_MAX_BACKENDS
-cargo:rustc-env=NROS_RMW_MAX_BACKENDS=8
-cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.c
-cargo:rerun-if-changed=tests/c_stubs/c_stub_transport.h

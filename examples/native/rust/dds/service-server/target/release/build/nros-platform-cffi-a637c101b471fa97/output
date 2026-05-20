@@ -1,5 +1,0 @@
-cargo:rerun-if-changed=tests/c_stubs/platform_stubs.c
-cargo:rerun-if-changed=tests/c_stubs/platform_stubs.h
-cargo:rerun-if-changed=../nros-platform-posix/src/platform.c
-cargo:rerun-if-changed=../nros-platform-posix/src/net.c
-cargo:rerun-if-changed=../nros-platform-posix/src/timer.c
