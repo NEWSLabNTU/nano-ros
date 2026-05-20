@@ -171,3 +171,25 @@ static void nros_rmw_cyclonedds_section_register(void) {
 }
 }
 NROS_RMW_REGISTER_BACKEND(nros_rmw_cyclonedds_section_register)
+
+#ifndef __ZEPHYR__
+// `.init_array` self-registration for the native / hosted C and C++
+// API path. The section walker above only fires when `nros-rmw-cffi`
+// is built with `linkme-register` ON, but `nros-node` pulls it with
+// `default-features = false` and its `rmw-cffi` feature does not
+// re-enable `linkme-register`, so on the C-API path the walker is the
+// no-op stub (returns 0) and the linkme entry is never invoked —
+// `nros_support_init` then comes up with an empty registry and returns
+// `NROS_RET_INVALID_ARGUMENT` (-3). A constructor runs before `main()`
+// (hence before `nros_support_init`) regardless of the walker. The
+// `--whole-archive` link keeps this object's `.init_array` slot.
+// `nros_rmw_cffi_register_named` is idempotent (same-name overwrite),
+// so this is harmless when the walker IS active (Rust-API builds).
+//
+// Gated off Zephyr: there `.init_array` constructors are not run by the
+// startup path, and registration is wired explicitly via
+// `nros_cpp_init` / `nros_app_register_backends` instead.
+__attribute__((constructor)) static void nros_rmw_cyclonedds_ctor_register(void) {
+    (void) nros_rmw_cyclonedds_register();
+}
+#endif

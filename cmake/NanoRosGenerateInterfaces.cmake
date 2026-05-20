@@ -631,6 +631,12 @@ function(nros_generate_interfaces target)
       endif()
     endforeach()
     if(_cyc_ifaces)
+      # NOTE: idlc emits the topic descriptors as C source, so the
+      # consuming project must enable the C language. C++ examples
+      # therefore declare `project(... LANGUAGES CXX C)` — see the
+      # native cpp/cyclonedds examples. (enable_language() from inside
+      # this function does not reliably register the C toolchain in the
+      # caller's directory scope, hence the project()-level requirement.)
       # PKG_DIR = the package root (parent of msg/ or srv/). All
       # interface files for one `target` share a package root.
       list(GET _cyc_ifaces 0 _cyc_first)
