@@ -1,124 +1,13 @@
-//! Native Service Client Example
-//!
-//! Demonstrates a ROS 2 service client using nros with the Promise API.
-//! The client sends a request (non-blocking), then waits for the reply
-//! using `promise.wait()` which drives I/O internally.
-//!
-//! # Usage
+//! Native Service Client — pure-`cargo` entry. Logic in
+//! `lib.rs::run()` (shared with the cyclonedds CMake build path). The
+//! cyclonedds variant builds via this dir's `CMakeLists.txt`.
 //!
 //! ```bash
-//! # Start zenoh router first:
-//! zenohd --listen tcp/127.0.0.1:7447
-//!
-//! # Start the service server:
-//! cargo run -p native-rs-service-server
-//!
-//! # Run the client:
+//! cargo run -p native-rs-service-server   # then this client
 //! cargo run -p native-rs-service-client
 //! ```
 
-use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use log::{error, info};
-use nros::prelude::*;
-
-// Phase 118 — RMW selection is build-time via mutually exclusive
-// `rmw-{zenoh,cyclonedds,xrce}` features. `register_rmw()` fans out under
-// `#[cfg(feature)]`; the rest of the file stays RMW-agnostic.
-
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-cyclonedds",
-    feature = "rmw-xrce"
-)))]
-compile_error!("this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",);
-
-fn register_rmw() -> Result<(), &'static str> {
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    #[cfg(feature = "rmw-cyclonedds")]
-    {
-        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
-    }
-    #[cfg(feature = "rmw-xrce")]
-    {
-        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
-    }
-    Ok(())
-}
-
 fn main() {
     env_logger::init();
-
-    info!("nros Service Client Example");
-    info!("================================");
-
-    // Create executor from environment
-    let config = ExecutorConfig::from_env().node_name("add_two_ints_client");
-    // Phase 115.L.5 — install zenoh-pico C-vtable backend.
-
-    // Phase 104.A — explicit RMW backend registration. The auto-ctor
-    // in `.init_array` doesn't survive Rust's archive-walk linkage
-    // when no symbol from the rlib is otherwise referenced.
-    register_rmw().expect("Failed to register RMW backend");
-    let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
-
-    // Create node and service client
-    let mut node = executor
-        .create_node("add_two_ints_client")
-        .expect("Failed to create node");
-    info!("Node created: add_two_ints_client");
-
-    let mut client = node
-        .create_client::<AddTwoInts>("/add_two_ints")
-        .expect("Failed to create client");
-    info!("Service client created for: /add_two_ints");
-
-    match client.wait_for_service(&mut executor, core::time::Duration::from_secs(5)) {
-        Ok(true) => info!("Service server is available"),
-        Ok(false) => {
-            error!("Timed out waiting for /add_two_ints service");
-            std::process::exit(1);
-        }
-        Err(e) => {
-            error!("Failed while waiting for service: {:?}", e);
-            std::process::exit(1);
-        }
-    }
-
-    // Make several service calls using the Promise pattern
-    let test_cases = [(5, 3), (10, 20), (100, 200), (-5, 10)];
-
-    for (a, b) in test_cases {
-        let request = AddTwoIntsRequest { a, b };
-        info!("Calling service: {} + {} = ?", a, b);
-
-        // Non-blocking: send request and get a promise
-        let mut promise = match client.call(&request) {
-            Ok(p) => p,
-            Err(e) => {
-                error!("Failed to send request: {:?}", e);
-                std::process::exit(1);
-            }
-        };
-
-        // Wait for the reply (drives I/O internally)
-        let response = match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
-            Ok(reply) => reply,
-            Err(e) => {
-                error!("Service call failed: {:?}", e);
-                error!("Make sure the service server is running:");
-                error!("  cargo run -p native-rs-service-server");
-                std::process::exit(1);
-            }
-        };
-
-        info!("Response: {} + {} = {}", a, b, response.sum);
-        assert_eq!(response.sum, a + b, "Sum mismatch!");
-
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-
-    info!("All service calls completed successfully!");
+    std::process::exit(native_rs_service_client::run());
 }

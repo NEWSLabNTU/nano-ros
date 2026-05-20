@@ -9,6 +9,13 @@ publish = false
 name = "service-server"
 path = "src/main.rs"
 
+# Phase 170.A — logic in lib.rs::run(); rlib for the cargo bin,
+# staticlib for the cyclonedds CMake build path.
+[lib]
+name = "native_rs_service_server"
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.
 default = ["rmw-zenoh"]

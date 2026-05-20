@@ -388,6 +388,7 @@ dependencies = [
  "log",
  "nros",
  "nros-platform-cffi",
+ "nros-rmw-cyclonedds-sys",
  "nros-rmw-xrce-cffi",
  "nros-rmw-zenoh",
 ]
@@ -503,6 +504,14 @@ dependencies = [
  "linkme",
  "nros-rmw",
  "portable-atomic",
+]
+
+[[package]]
+name = "nros-rmw-cyclonedds-sys"
+version = "0.1.0"
+dependencies = [
+ "linkme",
+ "nros-rmw-cffi",
 ]
 
 [[package]]
