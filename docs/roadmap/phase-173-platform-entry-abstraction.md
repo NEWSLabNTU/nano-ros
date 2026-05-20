@@ -548,10 +548,13 @@ nano-ros transport⟷RMW surface by design.
 - [x] A bridge `nros.toml` with 2 (transport, RMW) entries generates a
       package that opens both via `Executor::open_multi`
       (`bridge_two_transports_emit_open_multi_and_session_specs`).
-- [ ] Grep gate: generated packages contain no hand-authored
+- [x] Grep gate: generated packages contain no hand-authored
       transport/IP/baudrate/RMW constants — every such value traces to
-      an `nros.toml` field (or a documented board-intrinsic default like
-      pin mux / MAC base).
+      `nros.toml` or a board-intrinsic default (which lives in the board
+      crate's `Config::default`, not the generated package). Verified by
+      `zero_config_package_hardcodes_no_network_constants`: a no-transport
+      generated `main.rs`/`build.rs` has no IPv4 literal + no
+      `tcp/`/`serial/` locator.
 - [ ] At least one transport-bridge driver crate (`*-smoltcp`) is
       reworked to sit on `embedded-nal` (or documented why it can't),
       proving the "consume the ecosystem, don't reinvent" direction.
