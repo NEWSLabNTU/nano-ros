@@ -75,12 +75,30 @@ Remaining (deeper, lower-ROI):
   Bigger; intersects the broken cyclonedds-zephyr (Phase 171.0.d) so
   hard to validate cleanly there.
 
-### 174.B — config-divergent cache misses (~40%)
+### 174.B — config-divergent cache misses — **investigated, deferred** (2026-05-21)
 
-The 3 RMW overlays (zenoh/xrce/cyclonedds) produce different
-`autoconf.h`, so picolibc/kernel recompile **once per RMW config** then
-cache-hit within it. Narrowing config divergence (or pre-staging a
-per-config kernel/picolibc tree) would raise the 60% hit rate.
+Measured (talker, native_sim): the RMW overlays select **different
+libc footprints**, not just different `autoconf.h`. zenoh builds the
+full picolibc (934 TUs; zenoh-pico needs full libc); **xrce builds 0
+picolibc objects** (194 targets total, minimal libc). So the picolibc
+compile cost is the full-picolibc configs only (zenoh + cyclonedds),
+not xrce.
+
+Within a config, picolibc already dedups across examples via sccache
+(same autoconf → same preprocessed TU → cache hit) — that's most of the
+landed 60% C/C++ hit rate. The open question is **cross-config dedup**:
+do zenoh and cyclonedds (both full-picolibc) share picolibc objects?
+They likely don't fully — the cyclonedds overlay adds
+`COMMON_LIBC_MALLOC_ARENA_SIZE` / thread configs that perturb the
+autoconf the picolibc TUs see. Clean measurement is **blocked**: the
+local zephyr workspace's cyclonedds builds are wedged by the
+`nsos_adapt.c` duplicate-case (Phase 171.0.d — fixed upstream only on a
+clean tree; this workspace is already polluted, needs re-pristine).
+
+Achievable win is bounded + risky (narrowing the cyclonedds overlay's
+picolibc-relevant config to match zenoh's, to dedup ~934 TUs once —
+intersects cyclonedds runtime correctness). Deferred behind a clean
+cyclonedds-zephyr workspace; lower ROI than the landed 174.A / 176 wins.
 
 ### 174.C — SDK-prebuilt picolibc — **already optimal, no change** (verified 2026-05-21)
 
