@@ -36,7 +36,8 @@ build-examples JOBS="75%":
 
     find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
-                       -not -path '*/build/*' -not -path '*/zephyr/*' \
+                       -not -path '*/build/*' -not -path '*/build-*/*' \
+                       -not -path '*/_deps/*' -not -path '*/zephyr/*' \
                        -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
@@ -102,12 +103,6 @@ build-fixtures:
         native/rust/xrce/action-client
         native/rust/xrce/serial-talker
         native/rust/xrce/serial-listener
-        native/rust/dds/talker
-        native/rust/dds/listener
-        native/rust/dds/service-server
-        native/rust/dds/service-client
-        native/rust/dds/action-server
-        native/rust/dds/action-client
     )
     for ex in "${examples[@]}"; do
         echo "  → $ex"
@@ -142,13 +137,20 @@ build-fixtures:
       cargo build --release --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
     # Phase 118.A.2 — collapsed-shape native talker. Built once per RMW
     # feature into isolated target-<rmw>/ dirs so the test harness's
-    # `build_native_talker_rmw(Rmw::{Zenoh,Dds,Xrce})` resolver finds
-    # the matching binary. Param-services is zenoh-only (the gate
-    # references nros-rmw-zenoh's optional feature; rmw-dds / rmw-xrce
-    # builds omit it).
+    # `build_native_talker_rmw(Rmw::{Zenoh,Xrce})` resolver finds the
+    # matching binary. Param-services is zenoh-only (the gate references
+    # nros-rmw-zenoh's optional feature; rmw-xrce builds omit it).
+    #
+    # Phase 169 retired dust-dds (pure-Rust). Its Cyclone replacement is
+    # CMake-linked C++ (`nros_rmw_cyclonedds_register` has no pure-cargo
+    # build), so the migrated `rmw-cyclonedds` feature stays defined in
+    # each Cargo.toml but is NOT built here — Cyclone-for-cargo-Rust
+    # examples are deferred to their own phase (CMake/Corrosion glue for
+    # native + a ddsrt RTOS port for embedded). See
+    # docs/roadmap/phase-170-cyclone-rust-example-build-path.md.
     for collapsed_case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/rust/${collapsed_case} ]; then
-            for rmw in zenoh dds xrce; do
+            for rmw in zenoh xrce; do
                 feature_flags="--features rmw-${rmw}"
                 if [ "$rmw" = "zenoh" ] && [ "$collapsed_case" = "talker" ]; then
                     feature_flags="${feature_flags},param-services"
@@ -170,7 +172,7 @@ build-fixtures:
     # and is dropped by Tier 5 cleanup.
     for case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/c/${case} ]; then
-            for rmw in zenoh dds xrce; do
+            for rmw in zenoh xrce; do
                 echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 ( cd examples/native/c/${case} && \
                   cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
@@ -183,7 +185,7 @@ build-fixtures:
     # as the C side; the typed nros-cpp binding handles all three RMWs.
     for case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/cpp/${case} ]; then
-            for rmw in zenoh dds xrce; do
+            for rmw in zenoh xrce; do
                 echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 ( cd examples/native/cpp/${case} && \
                   cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \

@@ -7,14 +7,14 @@ use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use nros::prelude::*;
 use nros_board_threadx_linux::{Config, run};
 use std_msgs::msg::Int32;
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds")))]
-compile_error!("this example requires `rmw-zenoh` or `rmw-dds`");
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds")))]
+compile_error!("this example requires `rmw-zenoh` or `rmw-cyclonedds`");
 
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
     { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
-    #[cfg(feature = "rmw-dds")]
-    { nros_rmw_dds::register().map_err(|_| "dds register failed")?; }
+    #[cfg(feature = "rmw-cyclonedds")]
+    { nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?; }
     Ok(())
 }
 

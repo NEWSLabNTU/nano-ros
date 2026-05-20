@@ -56,13 +56,13 @@ use nros::prelude::*;
 use std_msgs::msg::Int32;
 
 // Phase 118 — RMW selection is build-time via mutually exclusive
-// `rmw-{zenoh,dds,xrce}` features. `register_rmw()` fans out under
+// `rmw-{zenoh,cyclonedds,xrce}` features. `register_rmw()` fans out under
 // `#[cfg(feature)]`; the rest of the file stays RMW-agnostic.
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
 compile_error!(
     "examples/native/rust/listener requires exactly one of \
-     `rmw-zenoh`, `rmw-dds`, or `rmw-xrce` to be enabled.",
+     `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",
 );
 
 fn register_rmw() -> Result<(), &'static str> {
@@ -70,9 +70,9 @@ fn register_rmw() -> Result<(), &'static str> {
     {
         nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
     }
-    #[cfg(feature = "rmw-dds")]
+    #[cfg(feature = "rmw-cyclonedds")]
     {
-        nros_rmw_dds::register().map_err(|_| "dds register failed")?;
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
     }
     #[cfg(feature = "rmw-xrce")]
     {

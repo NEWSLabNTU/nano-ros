@@ -9,19 +9,19 @@ use nros::prelude::*;
 use nros_board_threadx_qemu_riscv64::{Config, println, run};
 use std_msgs::msg::Int32;
 
-#[cfg(feature = "rmw-dds")]
+#[cfg(feature = "rmw-cyclonedds")]
 extern crate alloc;
-#[cfg(feature = "rmw-dds")]
+#[cfg(feature = "rmw-cyclonedds")]
 extern crate nros_platform_critical_section as _;
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds")))]
-compile_error!("this example requires `rmw-zenoh` or `rmw-dds`");
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds")))]
+compile_error!("this example requires `rmw-zenoh` or `rmw-cyclonedds`");
 
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
     { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
-    #[cfg(feature = "rmw-dds")]
-    { nros_rmw_dds::register().map_err(|_| "dds register failed")?; }
+    #[cfg(feature = "rmw-cyclonedds")]
+    { nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?; }
     Ok(())
 }
 

@@ -56,12 +56,12 @@ use nros::prelude::*;
 use std_msgs::msg::Int32;
 
 // Phase 118 — RMW selection is build-time via the mutually
-// exclusive `rmw-{zenoh,dds,xrce}` features.
+// exclusive `rmw-{zenoh,cyclonedds,xrce}` features.
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
 compile_error!(
     "examples/native/rust/talker requires exactly one of \
-     `rmw-zenoh`, `rmw-dds`, or `rmw-xrce` to be enabled. \
+     `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled. \
      The default feature set picks `rmw-zenoh`; pass \
      `--no-default-features --features rmw-X` to switch.",
 );
@@ -79,9 +79,9 @@ fn register_rmw() -> Result<(), &'static str> {
     {
         nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
     }
-    #[cfg(feature = "rmw-dds")]
+    #[cfg(feature = "rmw-cyclonedds")]
     {
-        nros_rmw_dds::register().map_err(|_| "dds register failed")?;
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
     }
     #[cfg(feature = "rmw-xrce")]
     {
@@ -92,13 +92,13 @@ fn register_rmw() -> Result<(), &'static str> {
 
 /// Per-RMW default locator. Overridden at runtime via
 /// `NROS_LOCATOR` env var (then `ZENOH_LOCATOR` for zenoh-specific
-/// back-compat; ignored on DDS / XRCE).
+/// back-compat; ignored on CycloneDDS / XRCE).
 fn default_locator() -> &'static str {
     #[cfg(feature = "rmw-zenoh")]
     {
         "tcp/127.0.0.1:7447"
     }
-    #[cfg(feature = "rmw-dds")]
+    #[cfg(feature = "rmw-cyclonedds")]
     {
         "" // brokerless RTPS — locator ignored
     }
@@ -110,8 +110,8 @@ fn default_locator() -> &'static str {
 
 const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
     "Zenoh"
-} else if cfg!(feature = "rmw-dds") {
-    "DDS"
+} else if cfg!(feature = "rmw-cyclonedds") {
+    "CycloneDDS"
 } else if cfg!(feature = "rmw-xrce") {
     "XRCE-DDS"
 } else {

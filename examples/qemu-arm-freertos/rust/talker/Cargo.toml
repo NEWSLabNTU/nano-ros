@@ -14,14 +14,14 @@ bench = false
 [features]
 # Phase 118 — RMW selected at build time. Default is `rmw-zenoh` so
 # `cargo build` Just Works for the docs-first path. The board crate's
-# zenoh-pico default features are gated under `rmw-zenoh`; rmw-dds
+# zenoh-pico default features are gated under `rmw-zenoh`; rmw-cyclonedds
 # disables them via the optional dep stanza below.
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-mps2-an385-freertos/rmw-zenoh"]
-rmw-dds   = ["dep:nros-rmw-dds", "dep:nros-platform-critical-section"]
+rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "dep:nros-platform-critical-section"]
 
 [dependencies]
-# Board crate — default features include zenoh-pico glue; `rmw-dds`
+# Board crate — default features include zenoh-pico glue; `rmw-cyclonedds`
 # leans on the non-zenoh init paths only.
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
@@ -31,6 +31,6 @@ panic-semihosting = { version = "0.6", features = ["exit"] }
 
 # Optional RMW deps — exactly one is enabled by the corresponding feature.
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-freertos", "ros-humble"], optional = true }
-nros-rmw-dds   = { path = "../../../../packages/dds/nros-rmw-dds",    features = ["platform-freertos"], optional = true }
-# Only needed by the DDS path — registers `critical_section::Impl`.
+nros-rmw-cyclonedds-sys   = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
+# Only needed by the CycloneDDS path — registers `critical_section::Impl`.
 nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }

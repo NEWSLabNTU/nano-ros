@@ -70,9 +70,9 @@ build-fixtures:
     for ex in talker listener service-server service-client action-server action-client; do
         rust_dirs+=("examples/qemu-arm-nuttx/rust/zenoh/$ex")
     done
-    for ex in talker listener; do
-        rust_dirs+=("examples/qemu-arm-nuttx/rust/dds/$ex")
-    done
+    # Phase 169 retired dust-dds; the NuttX `rust/dds/<ex>` examples had
+    # no Cyclone replacement (Cyclone needs a ddsrt NuttX port — see
+    # phase-170) and are no longer built.
     # Phase 88.15.c — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm")
     printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \

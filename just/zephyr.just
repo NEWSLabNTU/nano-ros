@@ -118,10 +118,18 @@ build-rust-examples:
 # rebuild (python startup + cmake reconfigure walk), but broad parallel
 # fan-out against one Zephyr workspace has proven racy in practice
 # (hung ninja children and follow-up rebuild cascades). Default to one
-# build at a time with one ninja job and sccache disabled; set
-# `NROS_ZEPHYR_BUILD_JOBS=<n>`, `NROS_ZEPHYR_NINJA_JOBS=<n>`, or
-# `NROS_ZEPHYR_SCCACHE_DISABLE=0` only when the local workspace is
-# known to tolerate more concurrency.
+# build at a time with one ninja job; set `NROS_ZEPHYR_BUILD_JOBS=<n>`
+# / `NROS_ZEPHYR_NINJA_JOBS=<n>` only when the local workspace is known
+# to tolerate more concurrency.
+#
+# Phase 165.perf — sccache is now ENABLED by default (it routes the
+# C/C++ compiler through sccache via CMAKE_*_COMPILER_LAUNCHER below).
+# The repeated cost here is picolibc (~1300 objects) + the Zephyr
+# kernel rebuilt fresh per example; same-RMW examples share an
+# identical prj overlay → identical autoconf.h → those objects become
+# cache hits. sccache falls back to a direct compile on anything
+# uncacheable, so it's safe even at the serial default. Set
+# `NROS_ZEPHYR_SCCACHE_DISABLE=1` to opt back out.
 build-fixtures:
     #!/usr/bin/env bash
     set -e
@@ -189,7 +197,7 @@ build-fixtures:
         echo "Invalid NROS_ZEPHYR_NINJA_JOBS=$ninja_jobs; expected positive integer" >&2
         exit 2
     fi
-    sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-1}"
+    sccache_disable="${NROS_ZEPHYR_SCCACHE_DISABLE:-0}"
     case "$sccache_disable" in
         0|1) ;;
         *)
@@ -331,6 +339,17 @@ build-fixtures:
         fi
         if [ -n "$conf_files" ]; then
             extra_args+=(-DCONF_FILE="$conf_files")
+        fi
+        # Phase 165.perf — route Zephyr's C/C++ compiles through sccache
+        # so the picolibc / kernel / Cyclone objects (identical across
+        # same-RMW examples → same autoconf.h) become cache hits instead
+        # of full per-example recompiles. sccache degrades to a direct
+        # compile on any uncacheable invocation, so this is safe; the
+        # only historical caution was parallel west fan-out (still
+        # gated behind NROS_ZEPHYR_BUILD_JOBS), not sccache itself.
+        if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            extra_args+=(-DCMAKE_C_COMPILER_LAUNCHER=sccache
+                         -DCMAKE_CXX_COMPILER_LAUNCHER=sccache)
         fi
         log="$log_dir/${build_dir}.log"
         # Phase 140 — pass extra_args only when populated; the example's

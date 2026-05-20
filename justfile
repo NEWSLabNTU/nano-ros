@@ -12,6 +12,13 @@ set dotenv-load
 # (verified on cargo 1.95).
 export RUSTC_WRAPPER := `command -v sccache 2>/dev/null || true`
 
+# Phase 165.perf — size the sccache disk cache for a full `build-all`
+# sweep. The default 10 GiB evicts mid-sweep once the ~150 standalone
+# example/fixture crates plus the Zephyr C objects (picolibc, kernel,
+# Cyclone) land in the cache; 30 GiB holds a whole sweep. Only read at
+# sccache server start, so it's harmless when sccache is absent.
+export SCCACHE_CACHE_SIZE := "30G"
+
 LOG_DIR := "test-logs"
 
 # Pinned nightly channel for workspace tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes).
@@ -556,8 +563,19 @@ build-workspace:
     cargo build --workspace --no-default-features \
         --exclude nros-c \
         --exclude nros-cpp \
-        --exclude nros-rmw-zenoh-staticlib
-    cargo nextest run --workspace --no-run
+        --exclude nros-rmw-zenoh-staticlib \
+        --exclude nros-rmw-xrce-cffi-staticlib
+    # Mirror the build excludes: under `--no-default-features` nros-c /
+    # nros-cpp reference the per-platform `nros_platform_log_write` ABI
+    # (Phase 88 log facade default sink) which no platform impl supplies
+    # without a platform feature, so their test binaries fail to link.
+    # The staticlib wrappers need a panic handler. All four are covered
+    # by the per-feature `test-*` matrices instead.
+    cargo nextest run --workspace --no-run \
+        --exclude nros-c \
+        --exclude nros-cpp \
+        --exclude nros-rmw-zenoh-staticlib \
+        --exclude nros-rmw-xrce-cffi-staticlib
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -1374,8 +1392,11 @@ clean: native::clean zephyr::clean clean-zenohd
     cargo clean --manifest-path packages/codegen/packages/Cargo.toml
     # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
-    # Clean CMake build dirs inside examples (stale caches break rebuild)
-    find examples -name build -type d -exec rm -rf {} + 2>/dev/null || true
+    # Clean CMake build dirs inside examples (stale caches break rebuild).
+    # Includes the per-RMW `build-<rmw>/` dirs — their Corrosion FetchContent
+    # `_deps/` trees carry Cargo.toml test crates that otherwise leak into
+    # the `build-examples` discovery walk.
+    find examples -type d \( -name build -o -name 'build-*' \) -exec rm -rf {} + 2>/dev/null || true
     rm -rf build
     @echo "All build artifacts cleaned"
 

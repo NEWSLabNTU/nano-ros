@@ -14,7 +14,7 @@ bench = false
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-mps2-an385-freertos/rmw-zenoh"]
-rmw-dds   = ["dep:nros-rmw-dds", "dep:nros-platform-critical-section"]
+rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "dep:nros-platform-critical-section"]
 
 [dependencies]
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
@@ -24,5 +24,5 @@ std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-freertos", "ros-humble"], optional = true }
-nros-rmw-dds   = { path = "../../../../packages/dds/nros-rmw-dds",    features = ["platform-freertos"], optional = true }
+nros-rmw-cyclonedds-sys   = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
 nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }

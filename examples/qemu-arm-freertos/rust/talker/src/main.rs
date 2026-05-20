@@ -1,18 +1,18 @@
 //! FreeRTOS QEMU Talker (Phase 118 collapsed)
 //!
 //! Publishes `std_msgs/Int32` messages on `/chatter`. RMW selected at
-//! build time via mutually exclusive `rmw-{zenoh,dds}` Cargo features;
+//! build time via mutually exclusive `rmw-{zenoh,cyclonedds}` Cargo features;
 //! source body stays RMW-agnostic.
 
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "rmw-dds")]
+#[cfg(feature = "rmw-cyclonedds")]
 extern crate alloc;
-// Phase 121.9 — DDS path needs the `critical_section::Impl`
+// Phase 121.9 — CycloneDDS path needs the `critical_section::Impl`
 // registration that the shim provides; without this `extern crate`
 // `--gc-sections` strips its static `set_impl!` invocation.
-#[cfg(feature = "rmw-dds")]
+#[cfg(feature = "rmw-cyclonedds")]
 extern crate nros_platform_critical_section as _;
 
 use nros::prelude::*;
@@ -20,9 +20,9 @@ use nros_board_mps2_an385_freertos::{Config, println, run};
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds")))]
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds")))]
 compile_error!(
-    "this FreeRTOS talker requires exactly one of `rmw-zenoh` or `rmw-dds`",
+    "this FreeRTOS talker requires exactly one of `rmw-zenoh` or `rmw-cyclonedds`",
 );
 
 fn register_rmw() -> Result<(), &'static str> {
@@ -30,9 +30,9 @@ fn register_rmw() -> Result<(), &'static str> {
     {
         nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
     }
-    #[cfg(feature = "rmw-dds")]
+    #[cfg(feature = "rmw-cyclonedds")]
     {
-        nros_rmw_dds::register().map_err(|_| "dds register failed")?;
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
     }
     Ok(())
 }
@@ -40,11 +40,11 @@ fn register_rmw() -> Result<(), &'static str> {
 #[unsafe(no_mangle)]
 extern "C" fn _start() -> ! {
     run(Config::from_toml(include_str!("../config.toml")), |config| {
-        // DDS uses domain_id only — locator string is ignored, the
+        // CycloneDDS uses domain_id only — locator string is ignored, the
         // RTPS port set is derived from the domain id.
         #[cfg(feature = "rmw-zenoh")]
         let locator = config.zenoh_locator;
-        #[cfg(feature = "rmw-dds")]
+        #[cfg(feature = "rmw-cyclonedds")]
         let locator = "";
         let exec_config = ExecutorConfig::new(locator)
             .domain_id(config.domain_id)

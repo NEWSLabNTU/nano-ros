@@ -14,11 +14,11 @@ path = "src/main.rs"
 # so `cargo run -p native-rs-listener` Just Works.
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-dds   = ["dep:nros-rmw-dds"]
+rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys"]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
 # Zenoh-specific feature carry-overs (silently no-op under
-# rmw-dds / rmw-xrce — the matrix lint only exposes `rmw-*`).
+# rmw-cyclonedds / rmw-xrce — the matrix lint only exposes `rmw-*`).
 safety-e2e         = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 unstable-zenoh-api = ["nros/unstable-zenoh-api"]
 link-tls           = ["nros/link-tls", "nros-rmw-zenoh?/link-tls"]
@@ -31,5 +31,5 @@ log = "0.4"
 env_logger = "0.11"
 
 nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"], optional = true }
-nros-rmw-dds      = { path = "../../../../packages/dds/nros-rmw-dds",    features = ["platform-posix"], optional = true }
+nros-rmw-cyclonedds-sys      = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }

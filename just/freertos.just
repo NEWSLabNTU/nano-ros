@@ -79,31 +79,29 @@ build-fixtures:
     # `build/` dirs. No cross-fixture lock contention. Cap concurrency
     # at 8 so on a 32-core host the per-cargo job server × 8 stays in
     # the same ballpark as nproc.
+    # Phase 118 collapsed the per-RMW `rust/<rmw>/<ex>` dirs onto a
+    # single `rust/<ex>` (RMW chosen via Cargo features); the collapsed
+    # loop below drives those. Only the standalone smoke fixture builds
+    # from a fixed path here.
     rust_dirs=()
-    for ex in talker listener service-server service-client action-server action-client; do
-        rust_dirs+=("examples/qemu-arm-freertos/rust/zenoh/$ex")
-    done
-    # Phase 97.4.freertos — DDS variant (talker + listener only).
-    for ex in talker listener; do
-        rust_dirs+=("examples/qemu-arm-freertos/rust/dds/$ex")
-    done
     # Phase 88.15.b — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-freertos-mps2")
     printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && cargo build --release --quiet'
 
-    # Phase 118.B.4 — collapsed-shape FreeRTOS Rust cases. Each case
-    # builds against the RMWs its Cargo.toml advertises: talker +
-    # listener under {zenoh, dds}; service-* + action-* under
-    # {zenoh} only (no DDS sibling existed pre-collapse).
+    # Phase 118.B.4 — collapsed-shape FreeRTOS Rust cases, zenoh-only
+    # matrix. Phase 169 retired dust-dds (pure-Rust, linked on
+    # bare-metal); its replacement Cyclone is a C++/CMake stack whose
+    # `nros_rmw_cyclonedds_register` C ABI symbol is only produced by a
+    # cross-built Cyclone library — there is no thumbv7m Cyclone build,
+    # so the migrated `rmw-cyclonedds` feature stays defined in each
+    # example's Cargo.toml but is NOT exercised in the FreeRTOS fixture
+    # matrix (it would fail at link with an undefined register symbol).
     for case in talker listener service-server service-client action-server action-client; do
         if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
             continue
         fi
         rmws="zenoh"
-        if [ "$case" = "talker" ] || [ "$case" = "listener" ]; then
-            rmws="zenoh dds"
-        fi
         for rmw in $rmws; do
             echo "  → freertos/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
             ( cd examples/qemu-arm-freertos/rust/${case} && \

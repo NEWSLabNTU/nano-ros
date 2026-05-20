@@ -22,19 +22,19 @@ use log::{error, info};
 use nros::prelude::*;
 
 // Phase 118 — RMW selection is build-time via mutually exclusive
-// `rmw-{zenoh,dds,xrce}` features. `register_rmw()` fans out under
+// `rmw-{zenoh,cyclonedds,xrce}` features. `register_rmw()` fans out under
 // `#[cfg(feature)]`; the rest of the file stays RMW-agnostic.
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-dds", feature = "rmw-xrce")))]
+#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
 compile_error!(
-    "this example requires exactly one of `rmw-zenoh`, `rmw-dds`, or `rmw-xrce`",
+    "this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",
 );
 
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
     { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
-    #[cfg(feature = "rmw-dds")]
-    { nros_rmw_dds::register().map_err(|_| "dds register failed")?; }
+    #[cfg(feature = "rmw-cyclonedds")]
+    { nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?; }
     #[cfg(feature = "rmw-xrce")]
     { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
     Ok(())

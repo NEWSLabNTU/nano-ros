@@ -28,6 +28,22 @@ doctor:
     fi
     if command -v riscv64-unknown-elf-gcc &>/dev/null; then
         echo "  [OK] riscv64-unknown-elf-gcc"
+        # The Ubuntu `gcc-riscv64-unknown-elf` package is a bare-metal
+        # compiler with NO C library — the C/C++ examples need libc
+        # headers (stdint.h etc.) from picolibc, found via
+        # `--specs=picolibc.specs` (the same way `riscv64-threadx.cmake`
+        # locates the picolibc sysroot). Probe by preprocessing a TU
+        # that pulls in stdint.h under those specs; a compiler-only
+        # install fails with `stdint.h: No such file or directory`.
+        if echo '#include <stdint.h>' | riscv64-unknown-elf-gcc --specs=picolibc.specs -E - &>/dev/null; then
+            echo "  [OK] riscv64 C library headers (picolibc)"
+        else
+            echo "  [MISSING] riscv64 C library headers — install picolibc:"
+            echo "             sudo apt install picolibc-riscv64-unknown-elf"
+            echo "             (or: just workspace apt-packages). Needed only for the"
+            echo "             C/C++ riscv64 examples; the Rust ones build without it."
+            fail=1
+        fi
     else
         echo "  [MISSING] riscv64-unknown-elf-gcc (run: just workspace apt-packages)"
         fail=1
@@ -86,13 +102,11 @@ build-fixtures:
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/virtio-net-netx"
     # Phase 160 follow-up — parallel cargo builds.
+    # Phase 118 collapsed the per-RMW `rust/<rmw>/<ex>` dirs onto a
+    # single `rust/<ex>` (RMW via Cargo features); the collapsed loop
+    # below drives those. Only the standalone smoke fixture builds from
+    # a fixed path here.
     rust_dirs=()
-    for ex in talker listener service-server service-client action-server action-client; do
-        rust_dirs+=("examples/qemu-riscv64-threadx/rust/zenoh/$ex")
-    done
-    for ex in talker listener; do
-        rust_dirs+=("examples/qemu-riscv64-threadx/rust/dds/$ex")
-    done
     # Phase 88.15.d — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64")
     # threadx-netx-sys/build.rs needs the rv64-specific NetX port
@@ -134,18 +148,18 @@ build-fixtures:
          THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
            cmake --build {}/build --parallel > /dev/null"
 
-    # Phase 118.B.6 — collapsed-shape ThreadX-RV64 Rust + C / C++.
-    # Rust: talker + listener × {zenoh, dds}; service/action × zenoh.
-    # C / C++: 6 cases × zenoh (no DDS C / C++ siblings pre-collapse).
+    # Phase 118.B.6 — collapsed-shape ThreadX-RV64 Rust + C / C++,
+    # zenoh-only matrix. Phase 169 retired dust-dds (pure-Rust); its
+    # Cyclone replacement is a C++/CMake stack whose
+    # `nros_rmw_cyclonedds_register` C ABI symbol has no riscv64 bare
+    # build, so the migrated `rmw-cyclonedds` feature stays defined in
+    # each Cargo.toml but is NOT exercised here (it would fail at link).
     rv64_rust_dirs=()
     for case in talker listener service-server service-client action-server action-client; do
         if [ ! -d examples/qemu-riscv64-threadx/rust/${case} ]; then
             continue
         fi
         rmws="zenoh"
-        if [ "$case" = "talker" ] || [ "$case" = "listener" ]; then
-            rmws="zenoh dds"
-        fi
         for rmw in $rmws; do
             echo "  → threadx-rv64/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
             ( cd examples/qemu-riscv64-threadx/rust/${case} && \

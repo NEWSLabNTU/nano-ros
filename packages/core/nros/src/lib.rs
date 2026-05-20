@@ -418,7 +418,10 @@ pub use nros_node::{
 // of the Phase 110 cyclic / TT scheduler need these types to
 // describe schedules and bind handles; re-exporting them here
 // keeps user code free of `nros_node::executor::sched_context`
-// path noise.
+// path noise. Gated on `rmw-cffi`: the source module is
+// `#[cfg(any(has_rmw, test))]` in nros-node, so it only exists once
+// an RMW backend is linked (matches the re-export block above).
+#[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::sched_context::{
     DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext, SchedContextId,
     TimeTriggeredSchedule, TimeTriggeredScheduleError, TimeTriggeredWindow,

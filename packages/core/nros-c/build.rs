@@ -30,25 +30,29 @@ fn main() {
     // strong def at final link.
     let stub_path = manifest_dir.join("c-stubs/weak_register_backends.c");
     println!("cargo:rerun-if-changed={}", stub_path.display());
-    cc::Build::new()
+    let mut weak_stubs = cc::Build::new();
+    weak_stubs
         .file(&stub_path)
         .warnings(true)
         .extra_warnings(true)
-        .flag_if_supported("-Wpedantic")
-        .compile("nros_c_weak_stubs");
+        .flag_if_supported("-Wpedantic");
+    apply_baremetal_libc(&mut weak_stubs);
+    weak_stubs.compile("nros_c_weak_stubs");
 
     // Phase 88.12 — `nros_log_emit_fmt` C shim. Implemented in C
     // because Rust's `c_variadic` feature is still unstable. The shim
     // vsnprintfs and forwards to the Rust-side `nros_log_emit`.
     let log_fmt_path = manifest_dir.join("c-stubs/log_fmt.c");
     println!("cargo:rerun-if-changed={}", log_fmt_path.display());
-    cc::Build::new()
+    let mut log_fmt = cc::Build::new();
+    log_fmt
         .file(&log_fmt_path)
         .include(manifest_dir.join("include"))
         .warnings(true)
         .extra_warnings(true)
-        .flag_if_supported("-Wpedantic")
-        .compile("nros_c_log_fmt");
+        .flag_if_supported("-Wpedantic");
+    apply_baremetal_libc(&mut log_fmt);
+    log_fmt.compile("nros_c_log_fmt");
 
     // Re-run if source files change (for library rebuild + header regen)
     println!("cargo:rerun-if-changed=src/");
@@ -459,6 +463,62 @@ fn generate_header(manifest_dir: &Path) {
             println!("cargo:warning=cbindgen header generation skipped: {e}");
         }
     }
+}
+
+/// Add the picolibc C-library include dir to a `cc::Build` when
+/// targeting bare-metal RISC-V (`riscv64*-none`).
+///
+/// The Debian/Ubuntu `gcc-riscv64-unknown-elf` package is a compiler
+/// with no C library; its `<stdint.h>` does `#include_next <stdint.h>`
+/// expecting libc to supply the real one. The C library is
+/// `picolibc-riscv64-unknown-elf`, installed at a non-default sysroot
+/// (`/usr/lib/picolibc/riscv64-unknown-elf`). The CMake toolchain adds
+/// this to cmake-compiled sources, but Corrosion does not forward it to
+/// these cargo build-script `cc` invocations — so we add it here.
+/// arm-none-eabi ships newlib at the default search path, so only the
+/// RISC-V toolchain needs this.
+fn apply_baremetal_libc(build: &mut cc::Build) {
+    let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if arch != "riscv64" || os != "none" {
+        return;
+    }
+    println!("cargo:rerun-if-env-changed=NROS_PICOLIBC_SYSROOT");
+    if let Some(include) = picolibc_include() {
+        // `-isystem <dir>` (two args) places picolibc on the system
+        // include path so gcc's `#include_next <stdint.h>` resolves.
+        build.flag("-isystem").flag(&include);
+    }
+}
+
+/// Resolve the picolibc `include/` dir for riscv64-unknown-elf:
+/// explicit `NROS_PICOLIBC_SYSROOT` override, then the gcc-reported
+/// sysroot under `--specs=picolibc.specs`, then the Debian/Ubuntu
+/// package path. Returns `None` if none exist.
+fn picolibc_include() -> Option<String> {
+    if let Ok(root) = env::var("NROS_PICOLIBC_SYSROOT") {
+        let include = format!("{root}/include");
+        if Path::new(&include).is_dir() {
+            return Some(include);
+        }
+    }
+    if let Ok(output) = std::process::Command::new("riscv64-unknown-elf-gcc")
+        .args(["-march=rv64gc", "-mabi=lp64d", "--specs=picolibc.specs", "-print-sysroot"])
+        .output()
+    {
+        let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !sysroot.is_empty() {
+            let include = format!("{sysroot}/include");
+            if Path::new(&include).is_dir() {
+                return Some(include);
+            }
+        }
+    }
+    let fallback = "/usr/lib/picolibc/riscv64-unknown-elf/include";
+    if Path::new(fallback).is_dir() {
+        return Some(fallback.to_string());
+    }
+    None
 }
 
 /// Read a usize from an environment variable, falling back to a default.

@@ -67,16 +67,10 @@ build-fixtures:
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
     app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
     # Phase 160 follow-up — parallel cargo builds.
-    rust_dirs=()
-    for ex in talker listener service-server service-client action-server action-client; do
-        rust_dirs+=("examples/threadx-linux/rust/zenoh/$ex")
-    done
-    # Phase 97.4.threadx-linux — DDS variants alongside zenoh.
-    for ex in talker listener; do
-        rust_dirs+=("examples/threadx-linux/rust/dds/$ex")
-    done
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && cargo build --release --quiet'
+    # Phase 118 collapsed the per-RMW `rust/<rmw>/<ex>` dirs onto a
+    # single `rust/<ex>` (RMW via Cargo features); the collapsed loop
+    # below drives those, so there are no fixed per-RMW Rust paths to
+    # build up front here.
 
     echo "  → host nros-codegen (cargo)"
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
@@ -107,10 +101,10 @@ build-fixtures:
         if [ ! -d examples/threadx-linux/rust/${case} ]; then
             continue
         fi
+        # Phase 169 retired dust-dds; Cyclone (its replacement) has no
+        # pure-cargo build, so the migrated rmw-cyclonedds feature stays
+        # defined but unbuilt — deferred to phase-170. zenoh-only here.
         rmws="zenoh"
-        if [ "$case" = "talker" ] || [ "$case" = "listener" ]; then
-            rmws="zenoh dds"
-        fi
         for rmw in $rmws; do
             echo "  → threadx-linux/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
             ( cd examples/threadx-linux/rust/${case} && \

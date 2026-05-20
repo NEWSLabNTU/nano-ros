@@ -7,7 +7,10 @@
 //! The opaque storage size is an upper bound. A compile-time assertion in
 //! lib.rs validates that `size_of::<CppContext>()` fits within this bound.
 
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 // Phase 87.11: `target_pointer_bytes()` and `align_up()` removed —
 // nros-cpp's storage sizes are now sourced from `nros::sizes` probes
@@ -23,17 +26,68 @@ fn main() {
 
     let stub_path = manifest_dir.join("c-stubs/weak_register_backends.c");
     println!("cargo:rerun-if-changed={}", stub_path.display());
-    cc::Build::new()
+    let mut weak_stubs = cc::Build::new();
+    weak_stubs
         .file(&stub_path)
         .warnings(true)
         .extra_warnings(true)
-        .flag_if_supported("-Wpedantic")
-        .compile("nros_cpp_weak_stubs");
+        .flag_if_supported("-Wpedantic");
+    apply_baremetal_libc(&mut weak_stubs);
+    weak_stubs.compile("nros_cpp_weak_stubs");
 
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
     println!("cargo:rerun-if-env-changed=CORROSION_BUILD_DIR");
+}
+
+/// Add the picolibc C-library include dir to a `cc::Build` when
+/// targeting bare-metal RISC-V (`riscv64*-none`). See the matching
+/// helper in `nros-c/build.rs` for the full rationale: the Debian
+/// `gcc-riscv64-unknown-elf` ships no libc, picolibc lives at a
+/// non-default sysroot, and Corrosion does not forward the CMake
+/// toolchain's `-isystem` to these cargo build-script `cc` runs.
+fn apply_baremetal_libc(build: &mut cc::Build) {
+    let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if arch != "riscv64" || os != "none" {
+        return;
+    }
+    println!("cargo:rerun-if-env-changed=NROS_PICOLIBC_SYSROOT");
+    if let Some(include) = picolibc_include() {
+        build.flag("-isystem").flag(&include);
+    }
+}
+
+fn picolibc_include() -> Option<String> {
+    if let Ok(root) = env::var("NROS_PICOLIBC_SYSROOT") {
+        let include = format!("{root}/include");
+        if Path::new(&include).is_dir() {
+            return Some(include);
+        }
+    }
+    if let Ok(output) = std::process::Command::new("riscv64-unknown-elf-gcc")
+        .args([
+            "-march=rv64gc",
+            "-mabi=lp64d",
+            "--specs=picolibc.specs",
+            "-print-sysroot",
+        ])
+        .output()
+    {
+        let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !sysroot.is_empty() {
+            let include = format!("{sysroot}/include");
+            if Path::new(&include).is_dir() {
+                return Some(include);
+            }
+        }
+    }
+    let fallback = "/usr/lib/picolibc/riscv64-unknown-elf/include";
+    if Path::new(fallback).is_dir() {
+        return Some(fallback.to_string());
+    }
+    None
 }
 
 /// Probe sizes exported by the `nros` crate via `export_size!`.
