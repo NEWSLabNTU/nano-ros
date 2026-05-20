@@ -58,4 +58,24 @@ impl nros_board_common::BoardInit for QemuArmVirt {
         node::init_hardware(cfg);
     }
 }
+
+/// Phase 173.1 — complete the `Board` super-trait. NuttX targets ship
+/// `std`, so printing + exit route through the hosted stdlib (same
+/// primitives `node::run` already uses).
+impl nros_board_common::BoardPrint for QemuArmVirt {
+    fn println(args: core::fmt::Arguments<'_>) {
+        println!("{args}");
+    }
+}
+
+impl nros_board_common::BoardExit for QemuArmVirt {
+    fn exit_success() -> ! {
+        std::process::exit(0)
+    }
+
+    fn exit_failure() -> ! {
+        std::process::exit(1)
+    }
+}
+
 pub use node::{init_hardware, run};
