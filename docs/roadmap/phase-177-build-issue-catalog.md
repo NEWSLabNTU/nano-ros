@@ -32,15 +32,6 @@ CMake/Corrosion glue + a ddsrt RTOS port for embedded). Decision
 2026-05-21: keep Cyclone targeted at bare metal (don't delete the
 embedded cells) — see Phase 171.B.
 
-### 177.5 — NuttX C/C++ generated-package e2e needs pinned nightly (host)
-
-`fixture_workspace_builds_generated_nuttx_package` (codegen
-orchestration e2e) builds `armv7a-nuttx-eabihf` via `-Z build-std`,
-which needs the pinned `nightly-2026-04-11` + `rust-src` (matches the
-in-tree libc fork). Skips/fails if that toolchain isn't installed.
-Remedy: `rustup toolchain install nightly-2026-04-11` (the generated
-package's `rust-toolchain.toml` pins it). Host-only.
-
 ## Fixed during the sweep (2026-05-20/21 — no longer issues)
 
 - **177.4** esp_idf setup git-ref corruption — root cause was the
@@ -76,14 +67,22 @@ package's `rust-toolchain.toml` pins it). Host-only.
   171.B.2); bare-metal fixture matrices reverted to zenoh-only.
 - Unified jobserver `gmake`→make-4.4 alias (stray make 4.3 choked on
   the inherited fifo `--jobserver-auth`) — Phase 176.
+- **177.5** NuttX/ESP32 `-Z build-std` e2e (`fixture_workspace_builds_
+  generated_{nuttx,esp32}_package`): verified green with the pinned
+  `nightly-2026-04-11` + `rust-src` installed. Added a
+  `build_std_nightly_skip()` precondition guard (reads the channel from
+  `tools/rust-toolchain.toml`) so both skip cleanly with the exact
+  `rustup` remedy when the toolchain is absent, instead of failing
+  partway through with an opaque `can't find crate for 'core'`. Host
+  remedy unchanged: `rustup toolchain install nightly-2026-04-11 &&
+  rustup component add rust-src --toolchain nightly-2026-04-11`.
 
 ## Notes
 
-- This is an INDEX. 177.1 (the sole build-all blocker) and 177.4 (the
-  esp_idf git-ref corruption) are **fixed**, so `just build-all` is green
-  end-to-end modulo the one host-only item (177.5, which doesn't gate
-  CI). Archive this doc once 177.2 / 177.3 migrate to their owning phases
-  (171.0 / 175).
+- This is an INDEX. 177.1 (the sole build-all blocker), 177.4 (esp_idf
+  git-ref corruption), and 177.5 (build-std e2e clean-skip guard) are
+  **fixed**, so `just build-all` is green end-to-end. Archive this doc
+  once 177.2 / 177.3 migrate to their owning phases (171.0 / 175).
 - The sweep also validated the Phase 176 unified jobserver
   (`build-all-jobserver`) end-to-end — not a build issue, recorded in
   Phase 176.
