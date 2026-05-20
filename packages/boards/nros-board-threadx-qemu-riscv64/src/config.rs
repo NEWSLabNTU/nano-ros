@@ -265,3 +265,20 @@ fn parse_u32(s: &str) -> Option<u32> {
     }
     if has_digit { Some(result) } else { None }
 }
+
+// Phase 173.5 — nros.toml `[[transport]]` IP into the board `Config`
+// (NanoRosOwned: this board owns the NetX Duo stack). ThreadX stores a
+// dotted netmask, so the prefix is expanded; no UART field ⇒ baudrate
+// keeps the trait's no-op default.
+impl nros_platform::BoardTransportConfig for Config {
+    fn set_ipv4(&mut self, addr: [u8; 4], prefix: u8) {
+        self.ip = addr;
+        let bits = u32::from(prefix.min(32));
+        let mask = if bits == 0 {
+            0
+        } else {
+            u32::MAX << (32 - bits)
+        };
+        self.netmask = mask.to_be_bytes();
+    }
+}
