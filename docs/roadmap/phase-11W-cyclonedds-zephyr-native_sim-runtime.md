@@ -783,16 +783,23 @@ green.
   `test_zephyr_cpp_cyclonedds_service_e2e` passes (client logs 4/4
   `[OK]` calls). The backend `service_type_name` fix covers C++ too.
 
-  **Services (C) — open.** The C overlay + srv descriptor generation
-  build and both endpoints create cleanly, but the C example's single
-  blocking `nros_client_call` at startup times out (`NROS_RET_TIMEOUT`)
-  under Cyclone DDS — the server never logs handling the request. C++
-  (which loops `fut.wait` over several calls) and Rust both succeed, so
-  this is a C-example single-shot-call-vs-discovery-timing issue (the C
-  client doesn't `service_server_available`-gate or retry), not a
-  backend gap. Tracked as a follow-up alongside all-language **action**
-  examples (actions also need `.action` decomposition in the IDL
-  converter — `msg_to_cyclone_idl.py` handles only `.msg`/`.srv`).
+  **Services (C) — open (data-plane bug, not timing).** With the C
+  overlay + srv descriptor generation, both C endpoints create cleanly
+  and discovery completes — gating the client on
+  `nros_client_wait_for_service` returns OK immediately (server visible)
+  — yet `nros_client_call` still times out (`NROS_RET_TIMEOUT`, -2) and
+  the server never logs handling the request. So this is *not* a
+  discovery-timing issue (the wait-for-service gate did not help); the
+  request→reply roundtrip itself fails for the C path while the C++ and
+  Rust paths (identical backend `service_*` slots) succeed. C client and
+  C server are self-consistent on topic (`/add_two_ints`) and type
+  (`example_interfaces::srv::dds_::AddTwoInts_` → backend strips the
+  trailing `_`), so the divergence is somewhere in the C-codegen request
+  serialization / `nros_client_call` capture path vs the C++ `fut.wait`
+  path. Needs focused backend tracing — deferred. Tracked alongside
+  all-language **action** examples (actions also need `.action`
+  decomposition in the IDL converter — `msg_to_cyclone_idl.py` handles
+  only `.msg`/`.srv`).
 
   Follow-ups: upstream the NSOS host patches (getifaddrs +
   adapt-side IPPROTO_IP, alongside the earlier getsockname /
