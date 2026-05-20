@@ -83,7 +83,7 @@ build-fixtures:
             [ -d "$dir" ] && cmake_dirs+=("$dir")
         done
     done
-    [ ${#cmake_dirs[@]} -gt 0 ] && printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+    [ ${#cmake_dirs[@]} -gt 0 ] && printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
         "echo '  → {} (cmake)' && rm -rf {}/build && \
          cmake -S {} -B {}/build \
            -DNANO_ROS_PLATFORM=threadx_linux \
@@ -122,7 +122,7 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
             "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
              cmake -S {} -B {}/build-zenoh \
                -DNROS_RMW=zenoh \

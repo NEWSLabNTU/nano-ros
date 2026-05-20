@@ -19,6 +19,17 @@ export RUSTC_WRAPPER := `command -v sccache 2>/dev/null || true`
 # sccache server start, so it's harmless when sccache is absent.
 export SCCACHE_CACHE_SIZE := "30G"
 
+# Phase 165.perf — single global parallelism budget (total cores to
+# use across a build). Defaults to nproc. Every parallel recipe reads
+# `${NROS_BUILD_JOBS:-…}` for its inner `parallel --jobs` / cargo /
+# ninja fan-out, so one knob scales the whole build:
+#   just build-all                       # uses nproc
+#   NROS_BUILD_JOBS=8 just build-all     # cap at 8 cores total
+# `build-test-fixtures` runs N platforms concurrently and re-exports
+# NROS_BUILD_JOBS = budget/N to each child so the product stays at the
+# budget (no platform-count × inner-jobs oversubscription).
+export NROS_BUILD_JOBS := env_var_or_default("NROS_BUILD_JOBS", `nproc 2>/dev/null || echo 8`)
+
 LOG_DIR := "test-logs"
 
 # Pinned nightly channel for workspace tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes).
@@ -376,24 +387,53 @@ build-test-fixtures: generate-bindings build-zenoh-posix-fixture
     # outer sequential `just <plat>` loop spending ~1 hour total
     # walking 150-ish standalone Cargo crates serially.
     #
-    # Concurrency: cap parallel platforms at 4. Each platform's
-    # internal cargo run spawns its own jobs server up to nproc, so
-    # 4 × ~8 = 32 jobs at the rough nproc=32 mark — without
-    # over-saturating on bigger hosts each platform's internal job
-    # count throttles naturally via the cargo job server (`-j` /
-    # `CARGO_BUILD_JOBS`).
+    # Phase 165.perf — single global budget. Run up to `outer`
+    # platforms concurrently and hand each child `NROS_BUILD_JOBS =
+    # budget / outer` inner jobs, so platform-count × inner-jobs stays
+    # at the budget instead of multiplying into oversubscription. The
+    # platform fan-out itself is capped at 4 (the historical safe value
+    # — more concurrent QEMU/west workspaces gets racy) but never more
+    # than the budget.
     #
     # Use `parallel --halt-on-error` so a single broken toolchain
     # surfaces fast instead of waiting for the remaining 7 platforms.
     # `--joblog` lands a per-recipe duration breakdown at
     # `tmp/build-test-fixtures.joblog` for follow-up tuning.
     mkdir -p tmp
-    parallel --jobs 4 --halt now,fail=1 \
+    budget="${NROS_BUILD_JOBS}"
+    outer=4
+    [ "$outer" -gt "$budget" ] && outer="$budget"
+    inner=$(( budget / outer )); [ "$inner" -lt 1 ] && inner=1
+    # Phase 165.perf — zephyr is the long pole (per-example west builds,
+    # picolibc compile) and outlasts every other platform. Run it on its
+    # own track with the FULL budget so it keeps saturating cores after
+    # the fast platforms finish, instead of idling on a 1/Nth share
+    # (zephyr internally splits its budget into BUILD_JOBS × ninja). The
+    # other 7 platforms share the divided budget in the parallel pool.
+    # Brief overlap oversubscription while the fast platforms drain is
+    # fine; the dominant cost is zephyr's solo tail at full budget.
+    echo "build-test-fixtures: budget=$budget, pool=$outer×$inner + zephyr=$budget (solo)"
+    NROS_BUILD_JOBS="$budget" just zephyr build-fixtures > tmp/build-test-fixtures-zephyr.log 2>&1 &
+    zephyr_pid=$!
+    pool_rc=0
+    NROS_BUILD_JOBS="$inner" parallel --jobs "$outer" --halt now,fail=1 \
              --joblog tmp/build-test-fixtures.joblog \
              --line-buffer \
              'echo "== {} ==" && just {} build-fixtures' ::: \
-        native qemu freertos nuttx threadx_linux threadx_riscv64 zephyr stm32f4
-    @echo "All test fixtures built."
+        native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 || pool_rc=$?
+    zephyr_rc=0
+    wait "$zephyr_pid" || zephyr_rc=$?
+    if [ "$zephyr_rc" -ne 0 ]; then
+        echo "== zephyr == (solo track) FAILED (rc=$zephyr_rc); log tail:"
+        tail -40 tmp/build-test-fixtures-zephyr.log || true
+    else
+        echo "== zephyr == (solo track) OK"
+    fi
+    if [ "$pool_rc" -ne 0 ] || [ "$zephyr_rc" -ne 0 ]; then
+        echo "build-test-fixtures FAILED (pool rc=$pool_rc, zephyr rc=$zephyr_rc)"
+        exit 1
+    fi
+    echo "All test fixtures built."
 
 # Phase 150.E rev3 — single deterministic fixture serving both
 # `nros-tests::zenoh_header_parity` (reads the canonical

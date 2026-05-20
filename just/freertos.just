@@ -86,7 +86,7 @@ build-fixtures:
     rust_dirs=()
     # Phase 88.15.b — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-freertos-mps2")
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && cargo build --release --quiet'
 
     # Phase 118.B.4 — collapsed-shape FreeRTOS Rust cases, zenoh-only
@@ -126,7 +126,7 @@ build-fixtures:
             cmake_dirs+=("examples/qemu-arm-freertos/$lang/zenoh/$ex")
         done
     done
-    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
         "echo '  → {} (cmake)' && rm -rf {}/build && \
          cmake -S {} -B {}/build \
            -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
@@ -145,7 +145,7 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
             "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
              cmake -S {} -B {}/build-zenoh \
                -DNROS_RMW=zenoh \

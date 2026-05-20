@@ -112,7 +112,7 @@ build-fixtures:
     # threadx-netx-sys/build.rs needs the rv64-specific NetX port
     # headers, not the threadx-linux defaults exported by the top-level
     # justfile. Pass via env to each parallel cargo.
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
         "echo '  → {}' && cd {} && \
          THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
          cargo build --release --quiet"
@@ -132,7 +132,7 @@ build-fixtures:
             cmake_dirs+=("examples/qemu-riscv64-threadx/$lang/zenoh/$ex")
         done
     done
-    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
         "echo '  → {} (cmake)' && rm -rf {}/build && \
          THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
          THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
@@ -178,7 +178,7 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
             "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
              THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
              THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \

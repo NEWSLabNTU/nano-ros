@@ -75,7 +75,7 @@ build-fixtures:
     # phase-170) and are no longer built.
     # Phase 88.15.c — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm")
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
          cargo build --release --quiet'
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
@@ -104,7 +104,7 @@ build-fixtures:
             cmake_dirs+=("examples/qemu-arm-nuttx/$lang/zenoh/$ex")
         done
     done
-    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
         "echo '  → {} (cmake)' && rm -rf {}/build && \
          cmake -S {} -B {}/build \
            -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
@@ -129,7 +129,7 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs 4 --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
             "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
              cmake -S {} -B {}/build-zenoh \
                -DNROS_RMW=zenoh \

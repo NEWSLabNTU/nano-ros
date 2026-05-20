@@ -118,9 +118,11 @@ build-rust-examples:
 # rebuild (python startup + cmake reconfigure walk), but broad parallel
 # fan-out against one Zephyr workspace has proven racy in practice
 # (hung ninja children and follow-up rebuild cascades). Default to one
-# build at a time with one ninja job; set `NROS_ZEPHYR_BUILD_JOBS=<n>`
-# / `NROS_ZEPHYR_NINJA_JOBS=<n>` only when the local workspace is known
-# to tolerate more concurrency.
+# west build at a time (NROS_ZEPHYR_BUILD_JOBS=1) — that's the racy
+# axis — but each build's ninja runs parallel (NROS_ZEPHYR_NINJA_JOBS
+# defaults to nproc/4; intra-build ninja parallelism is standard,
+# non-racy Zephyr usage). Raise NROS_ZEPHYR_BUILD_JOBS only when the
+# workspace is known to tolerate concurrent west builds.
 #
 # Phase 165.perf — sccache is now ENABLED by default (it routes the
 # C/C++ compiler through sccache via CMAKE_*_COMPILER_LAUNCHER below).
@@ -179,7 +181,16 @@ build-fixtures:
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen_tool="$nros_root/packages/codegen/packages/target/release/nros-codegen"
-    jobs="${NROS_ZEPHYR_BUILD_JOBS:-1}"
+    # Phase 165.perf — split the NROS_BUILD_JOBS budget into parallel
+    # example builds (BUILD_JOBS) × ninja-per-build. Each example uses
+    # an isolated `-d <build_dir>`, so concurrent west builds are safe
+    # (the historical raciness was a shared default build dir, since
+    # fixed). Default BUILD_JOBS = budget/8 so each concurrent build
+    # still gets ~8 ninja jobs for picolibc's parallel compile. Override
+    # with NROS_ZEPHYR_BUILD_JOBS (set =1 to fall back to serial).
+    zephyr_budget="${NROS_BUILD_JOBS:-8}"
+    default_build_jobs=$(( zephyr_budget / 8 )); [ "$default_build_jobs" -lt 1 ] && default_build_jobs=1
+    jobs="${NROS_ZEPHYR_BUILD_JOBS:-$default_build_jobs}"
     if ! [[ "$jobs" =~ ^[0-9]+$ ]] || [ "$jobs" -lt 1 ]; then
         echo "Invalid NROS_ZEPHYR_BUILD_JOBS=$jobs; expected positive integer" >&2
         exit 2
@@ -192,7 +203,16 @@ build-fixtures:
             exit 2
             ;;
     esac
-    ninja_jobs="${NROS_ZEPHYR_NINJA_JOBS:-1}"
+    # Phase 165.perf — ninja parallelism WITHIN a single west build is
+    # safe (standard Zephyr usage); the documented raciness was only
+    # ever about multiple simultaneous west builds (BUILD_JOBS>1) on the
+    # shared workspace. Default to the global NROS_BUILD_JOBS budget so
+    # picolibc's ~1300 objects compile in parallel. Under
+    # `build-test-fixtures` the budget is already pre-divided across the
+    # concurrent platforms, so this is the per-platform share; run
+    # standalone it's the full budget. NROS_ZEPHYR_NINJA_JOBS overrides.
+    default_ninja_jobs=$(( zephyr_budget / jobs )); [ "$default_ninja_jobs" -lt 1 ] && default_ninja_jobs=1
+    ninja_jobs="${NROS_ZEPHYR_NINJA_JOBS:-$default_ninja_jobs}"
     if ! [[ "$ninja_jobs" =~ ^[0-9]+$ ]] || [ "$ninja_jobs" -lt 1 ]; then
         echo "Invalid NROS_ZEPHYR_NINJA_JOBS=$ninja_jobs; expected positive integer" >&2
         exit 2

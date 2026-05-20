@@ -126,7 +126,7 @@ build-fixtures:
         packages/testing/nros-bench/large-msg-baremetal
         packages/reference/qemu-smoltcp-bridge
     )
-    printf '%s\n' "${dirs[@]}" | parallel --jobs 8 --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && cargo build --release --quiet'
 
 # Run all QEMU tests (non-networked)

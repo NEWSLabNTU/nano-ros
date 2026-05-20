@@ -20,10 +20,11 @@ build:
 #
 # Parallelised via GNU parallel — examples are independent standalone
 # crates (per the copy-out invariant in CLAUDE.md), so each cargo
-# invocation can run concurrently. JOBS defaults to 75 % of CPU cores
-# to leave headroom for rustc's per-process RAM (~1-3 GB). Override
-# with `just native build-examples JOBS=4` for tighter machines.
-build-examples JOBS="75%":
+# invocation can run concurrently. JOBS defaults to the global
+# NROS_BUILD_JOBS budget (itself nproc unless overridden), falling back
+# to 75 % of cores. Override per-invocation with
+# `just native build-examples JOBS=4` for tighter machines.
+build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     #!/usr/bin/env bash
     set -e
     echo "Building examples (parallel, JOBS={{JOBS}})..."
