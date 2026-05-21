@@ -56,13 +56,13 @@ qemu-riscv64-threadx/c/zenoh
 qemu-riscv64-threadx/cpp/zenoh
 qemu-riscv64-threadx/rust/zenoh
 stm32f4/rust/zenoh
-zephyr/cpp/cyclonedds
-zephyr/rust/dds
-zephyr/rust/xrce
 ```
 
 `px4/*/uorb` is a carve-out, not normal RMW-collapse debt. PX4 is
 uORB-only and the canonical live example is the C++ module/check path.
+`zephyr/cpp/cyclonedds/talker-aemv8r` is also a carve-out: it remains a
+one-board Cyclone DDS reference while normal Zephyr C++ examples use the
+collapsed `zephyr/cpp/<case>` layout with `prj-<rmw>.conf` overlays.
 
 ---
 
@@ -190,16 +190,18 @@ regression.
 Zephyr mostly uses collapsed dirs with `prj-<rmw>.conf` overlays.
 Remaining RMW-root dirs are legacy or special-case.
 
-- [ ] **118.F.1 — `examples/zephyr/rust/xrce/`**
-      Fold XRCE Rust cases into `examples/zephyr/rust/<case>/` or delete
-      if superseded by the collapsed overlay dirs.
-- [ ] **118.F.2 — `examples/zephyr/rust/dds/`**
-      Retire or migrate legacy DDS Rust dirs. After Phase 169, the DDS
-      backend is Cyclone; do not recreate dust-DDS paths.
-- [ ] **118.F.3 — `examples/zephyr/cpp/cyclonedds/`**
-      Decide whether `talker-aemv8r` remains a documented
-      one-board/one-RMW reference carve-out or gets folded into the
-      collapsed C++ talker overlays.
+- [x] **118.F.1 — `examples/zephyr/rust/xrce/`**
+      Superseded by `examples/zephyr/rust/<case>/` plus
+      `prj-xrce.conf`; only ignored generated leftovers remained and were
+      removed.
+- [x] **118.F.2 — `examples/zephyr/rust/dds/`**
+      Superseded by `examples/zephyr/rust/<case>/` plus
+      `prj-cyclonedds.conf`. After Phase 169, DDS means Cyclone; no
+      dust-DDS Zephyr Rust paths remain in the live tree.
+- [x] **118.F.3 — `examples/zephyr/cpp/cyclonedds/`**
+      `talker-aemv8r` remains a documented one-board Cyclone DDS
+      carve-out for the FVP/AEMv8R path; normal C++ cases stay collapsed
+      under `examples/zephyr/cpp/<case>/`.
 - [x] **118.F.4 — Zephyr C collapsed dirs**
       Current live C Zephyr examples are under `examples/zephyr/c/<case>/`.
 - [x] **118.F.5 — Zephyr C++ collapsed dirs**

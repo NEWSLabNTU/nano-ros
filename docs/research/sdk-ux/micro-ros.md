@@ -109,7 +109,7 @@ Multi-tier build: `just build`, `just build-examples`, `just build-test-fixtures
 `just build-all` (CLAUDE.md). For users, the actual command is
 `cmake -S examples/qemu-arm-freertos/c/zenoh/talker -B …/build && cmake
 --build` (book/freertos.md:97). For Zephyr it is
-`west build -b native_sim/native/64 nros/examples/zephyr/c/zenoh/talker`
+`west build -b native_sim/native/64 nros/examples/zephyr/c/talker`
 (book/zephyr.md:101). Both are idiomatic — the gap is
 *discovery*: the user must already know the example path and the toolchain
 path. No top-level `nano-ros build my-app` wrapper.
@@ -274,7 +274,7 @@ Compare:
 - FreeRTOS (`examples/qemu-arm-freertos/c/zenoh/talker/src/main.c`):
   uses `app_main(void)`, no network-wait, relies on
   `APP_ZENOH_LOCATOR` macro injected via CMake.
-- Zephyr (`examples/zephyr/c/zenoh/talker/src/main.c`):
+- Zephyr (`examples/zephyr/c/talker/src/main.c`):
   uses `int main(void)`, must call `zpico_zephyr_wait_network(...)` and
   reads `CONFIG_NROS_ZENOH_LOCATOR` from Kconfig.
 
@@ -557,7 +557,7 @@ Each entry: **problem · micro-ROS approach · proposed nano-ros change · effor
 
 - **Problem.** FreeRTOS example uses `void app_main(void)`, Zephyr uses
   `int main(void)` plus a manual `zpico_zephyr_wait_network()` call
-  (`examples/zephyr/c/zenoh/talker/src/main.c:32`). Bare-metal will be
+  (`examples/zephyr/c/talker/src/main.c:32`). Bare-metal will be
   different again. Users porting from one RTOS to another have to
   rewrite the entry shape and the network-ready dance.
 - **micro-ROS.** Same `int main(int, char **)` signature across hosts;
@@ -657,8 +657,8 @@ Rust core.
 | `examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt:5,7,11-26`                  | nros-c CMake                      |
 | `examples/qemu-arm-freertos/c/zenoh/talker/src/main.c:30-97`                          | nros-c FreeRTOS hello-world       |
 | `examples/qemu-arm-freertos/c/zenoh/talker/config.toml:1-22`                          | TOML knobs                        |
-| `examples/zephyr/c/zenoh/talker/src/main.c:25-95`                                     | nros-c Zephyr hello-world         |
-| `examples/zephyr/c/zenoh/talker/prj.conf:54-62`                                       | nros Zephyr Kconfig               |
+| `examples/zephyr/c/talker/src/main.c:25-95`                                           | nros-c Zephyr hello-world         |
+| `examples/zephyr/c/talker/prj.conf:54-62`                                             | nros Zephyr Kconfig               |
 | `book/src/getting-started/freertos.md:51-103`                                         | nano-ros FreeRTOS user docs       |
 | `book/src/getting-started/zephyr.md:55-170`                                           | nano-ros Zephyr user docs         |
 | `book/src/reference/c-api.md`                                                         | nros-c surface index              |

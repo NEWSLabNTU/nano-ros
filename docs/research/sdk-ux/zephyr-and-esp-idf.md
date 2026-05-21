@@ -15,7 +15,7 @@
 - **Both reference SDKs ship a project-template repository** (`example-application`, `esp-idf-template`) plus a `create-project` command (`west init`, `idf.py create-project`). nano-ros has `cargo nano-ros new` (in `packages/codegen/packages/cargo-nano-ros/src/main.rs`), but it is undocumented and not surfaced from `just`. There is no equivalent of `west init` that bootstraps an entire nano-ros workspace from a manifest URL.
 - **Configuration converges on Kconfig** in both SDKs, with a single interactive entry point (`menuconfig`/`guiconfig`) and one declarative file (`prj.conf` / `sdkconfig.defaults`). nano-ros today scatters config across `.cargo/config.toml`, Cargo `[features]`, top-level `cmake -D…` flags, per-example `prj.conf`, per-example `config.toml` parsed by `nano_ros_read_config()`, and `package.xml`.
 - **`idf.py build flash monitor` is the addictive loop**: a single chained command goes "edit C code → see UART output on the device" without leaving the shell. nano-ros has `cargo run` for ESP32 (via `espflash flash --monitor` runner), but no equivalent for FreeRTOS-on-QEMU, ThreadX-on-QEMU, Zephyr-on-`native_sim`, or any C/C++ example. Users have to compose `just <plat> build` + a hand-crafted `qemu-system-…` line.
-- **Module/component shipping is solved by `module.yml` (Zephyr) and `idf_component.yml` + the IDF Component Registry (Espressif).** nano-ros already integrates as a Zephyr module (good), but the user-side ergonomics (forcing `[patch.crates-io]` into every example's `.cargo/config.toml`, plus a "package name must be `rustapp`" rule in `examples/zephyr/rust/zenoh/talker/Cargo.toml`) leak nano-ros internals into user projects. There is no analogous IDF component manifest, so a hypothetical "nano-ros for ESP-IDF" user has nothing to depend on.
+- **Module/component shipping is solved by `module.yml` (Zephyr) and `idf_component.yml` + the IDF Component Registry (Espressif).** nano-ros already integrates as a Zephyr module (good), but the user-side ergonomics (forcing `[patch.crates-io]` into every example's `.cargo/config.toml`, plus a "package name must be `rustapp`" rule in `examples/zephyr/rust/talker/Cargo.toml`) leak nano-ros internals into user projects. There is no analogous IDF component manifest, so a hypothetical "nano-ros for ESP-IDF" user has nothing to depend on.
 
 ---
 
@@ -93,7 +93,7 @@ west build -b nucleo_f302r8 app -t flash       # one verb: build target picks ru
 just setup                              # 1 — pulls everything (Rust toolchains, west, SDK, zenohd, MicroXRCEAgent, …)
 just zephyr setup                       # 2 — separate from `just setup`; downloads ~1.5 GB SDK, creates sibling workspace
 source ../nano-ros-workspace/env.sh     # 3 — separate sibling workspace shape leaks
-cp -r examples/zephyr/rust/zenoh/talker my-talker
+cp -r examples/zephyr/rust/talker my-talker
 # 4 — hand-edit my-talker/.cargo/config.toml so [patch.crates-io] paths still resolve from new location
 # 5 — hand-edit my-talker/Cargo.toml: package name MUST stay "rustapp" for zephyr-lang-rust
 # 6 — hand-edit prj.conf if you want a different RMW backend
@@ -164,7 +164,7 @@ ESP-IDF Component Registry (https://components.espressif.com) is a public regist
 
 - **Zephyr side: works.** `zephyr/module.yml` + `west.yml` integrate cleanly; `find_package(Zephyr ...)` + `CONFIG_NROS=y` + `nros_generate_interfaces()` is a real win.
 - **Awkward bits:**
-  - Every Rust example needs `[patch.crates-io]` with relative paths. See `examples/zephyr/rust/zenoh/talker/.cargo/config.toml`. This breaks the moment the user copies the example out of the tree.
+  - Every Rust example needs `[patch.crates-io]` with relative paths. See `examples/zephyr/rust/talker/.cargo/config.toml`. This breaks the moment the user copies the example out of the tree.
   - Cargo package name must be `rustapp` to satisfy `zephyr-lang-rust`'s `rust_cargo_application()`. Documented as a code comment but not in the book.
   - `nano-ros-workspace` is a *sibling* directory of the repo, accessed via `zephyr-workspace -> ../nano-ros-workspace` symlink. Confusing for users who clone into `~/Code/nano-ros/` and end up with `~/Code/nano-ros-workspace/`.
 - **Non-Zephyr platforms: no module model.** FreeRTOS, NuttX, ThreadX users get `find_package(NanoRos CONFIG REQUIRED)` after running `just install-local` — and the `_cmake-cargo-stale-guard` recipe in `justfile:142` exists precisely because corrosion's per-build cargo target tree silently serves stale `.rlib`s when source content changes without an mtime bump. Users will hit this.
@@ -241,7 +241,7 @@ Each entry: **problem → reference SDK approach → proposed change → effort 
    *Effort:* L. *Risk:* High — public-API commitment, semver pressure. Phase 23 (Arduino lib) probably needs this anyway.
 
 5. **Drop the "Cargo package name must be `rustapp`" requirement.**
-   *Problem:* `examples/zephyr/rust/zenoh/talker/Cargo.toml` is named `rustapp` — a leak from `zephyr-lang-rust`'s `rust_cargo_application()`. Users renaming the package will get a cryptic CMake failure.
+   *Problem:* `examples/zephyr/rust/talker/Cargo.toml` is named `rustapp` — a leak from `zephyr-lang-rust`'s `rust_cargo_application()`. Users renaming the package will get a cryptic CMake failure.
    *Reference:* IDF / Zephyr-C never have this constraint.
    *Proposal:* Either upstream the relaxation to `zephyr-lang-rust`, or wrap `rust_cargo_application()` in a `nros_rust_application(<name>)` macro that aliases the static lib internally.
    *Effort:* M. *Risk:* Medium — touches an external module.
@@ -285,7 +285,7 @@ Each entry: **problem → reference SDK approach → proposed change → effort 
     *Effort:* S. *Risk:* None.
 
 12. **Single per-example `README.md` template generated by `cargo nano-ros new`.**
-    *Problem:* Some examples have READMEs (`examples/zephyr/rust/zenoh/talker/README.md`), most don't. New users opening `examples/qemu-arm-nuttx/c/zenoh/talker/` see no guidance.
+    *Problem:* Some examples have READMEs (`examples/zephyr/rust/talker/README.md`), most don't. New users opening `examples/qemu-arm-nuttx/c/zenoh/talker/` see no guidance.
     *Reference:* `external/example-application/README.md`, every IDF example has one.
     *Proposal:* `cargo nano-ros new` always writes a `README.md` with the build/run/expected-output snippet. Backfill existing examples via a script.
     *Effort:* S. *Risk:* None.

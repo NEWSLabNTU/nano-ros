@@ -330,14 +330,14 @@ Zephyr examples use nros as a **Zephyr module**. The module handles all transpor
 
 ### Directory Layout
 
-Examples follow a 4-level hierarchy: `examples/zephyr/{lang}/{rmw}/{use-case}/`
+Examples follow a collapsed hierarchy:
+`examples/zephyr/{lang}/{use-case}/`. Select the RMW with the
+`prj-<rmw>.conf` overlay.
 
 ```
 examples/zephyr/
-├── rust/zenoh/talker/    # Rust + zenoh
-├── rust/xrce/talker/     # Rust + XRCE-DDS
-├── c/zenoh/talker/       # C + zenoh
-└── c/xrce/talker/        # C + XRCE-DDS
+├── rust/talker/          # Rust, selected by prj-<rmw>.conf overlay
+└── c/talker/             # C, selected by prj-<rmw>.conf overlay
 ```
 
 ### Rust API Examples
@@ -345,7 +345,7 @@ examples/zephyr/
 #### Directory structure
 
 ```
-examples/zephyr/rust/zenoh/my-example/
+examples/zephyr/rust/my-example/
 ├── Cargo.toml
 ├── CMakeLists.txt
 ├── prj.conf
@@ -549,7 +549,7 @@ fn run() -> Result<(), EmbeddedNodeError> {
 #### Directory structure
 
 ```
-examples/zephyr/c/zenoh/my-example/
+examples/zephyr/c/my-example/
 ├── CMakeLists.txt
 ├── prj.conf
 ├── src/

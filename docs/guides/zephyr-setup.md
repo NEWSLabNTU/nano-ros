@@ -97,9 +97,10 @@ without bridge configuration.
 # Source environment
 source ../nano-ros-workspace/env.sh
 
-# Build Zephyr talker (Rust + zenoh, default backend)
+# Build Zephyr talker (Rust + Zenoh)
 cd ../nano-ros-workspace
-west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
+west build -b native_sim/native/64 nros/examples/zephyr/rust/talker \
+  -- -DEXTRA_CONF_FILE=prj-zenoh.conf
 
 # Run (no sudo needed)
 ./build/zephyr/zephyr.exe
