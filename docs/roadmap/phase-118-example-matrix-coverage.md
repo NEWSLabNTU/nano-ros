@@ -1,416 +1,322 @@
-# Phase 118: Example Matrix — Collapse Per-RMW Dirs + Matrix Lint
+# Phase 118: Example Matrix Collapse Tracker
 
-**Goal:** Replace the per-RMW directory axis
-(`examples/<plat>/<lang>/<rmw>/<case>/`) with a single
-`examples/<plat>/<lang>/<case>/` shape where the RMW is chosen at
-build time via a Cargo feature (Rust) or a cmake `-D` arg
-(C / C++). Test harness builds the same example under each
-supported RMW with isolated `--target-dir` / `-B build-<rmw>`.
-Result: one source-of-truth per (platform, language, case), ~30
-duplicated example dirs collapsed, RMW becomes a build-system
-flag instead of a directory.
+**Goal.** Collapse example source directories to:
 
-**Status:** Not Started.
+```text
+examples/<platform>/<language>/<case>/
+```
 
-**Priority:** Medium — quality-of-life + maintenance reduction.
-Per-RMW dirs duplicate ~95% of the source body (Cargo dep + 1
-register call + locator default are the only differences). Every
-new feature added to "talker" today fans out across N RMW dirs.
+The RMW becomes a build-time selection:
 
-**Depends on:** Phase 128 (Cargo-manifest / `target_link_libraries`
-RMW selection — landed), Phase 129 (platform-aliases + multi-RMW
-bridge mode — landed). The build-time selection mechanism is
-already in place; this phase wires it into the example tree.
+- Rust: `cargo build --no-default-features --features rmw-<rmw>`
+- C/C++: `cmake -B build-<rmw> -S . -DNROS_RMW=<rmw>`
+- Zephyr: `west build -- -DCONF_FILE="prj.conf;prj-<rmw>.conf"`
 
-**Supersedes:** the prior Phase 118 "fill every (plat × lang ×
-rmw × case) cell" scope. After the collapse the matrix axis
-`<rmw>` becomes a build matrix (test fixture toggle) rather than
-a directory axis, so the fill target shrinks from ~120 missing
-example crates to ~10–20 missing (plat × lang × case) cells. The
-documented out-of-scope cells (118.E.1 bare-metal C/C++, 118.E.2
-px4) carry over unchanged.
+The retired shape is:
+
+```text
+examples/<platform>/<language>/<rmw>/<case>/
+```
+
+**Status.** In progress. Many collapsed case dirs already exist, but
+legacy RMW-root dirs remain and the docs/tests still disagree about the
+canonical shape.
+
+**Absorbs.**
+
+- Phase 167: NuttX Rust collapse/link regression.
+- Phase 170: bare-metal Rust collapse.
+
+Those are no longer separate ownership docs; their blockers are tracked
+inline below.
+
+**Done means.** For each checkbox, source has moved into the collapsed
+`<platform>/<language>/<case>/` shape, build recipes select RMW by flag,
+tests/fixtures know the new path, and the legacy `<rmw>/` dir is deleted
+unless explicitly listed as a carve-out.
 
 ---
 
-## Overview
+## Current Snapshot
 
-### Current shape
+Directory scan on 2026-05-21 still shows these RMW-root directories:
 
-```
-examples/<plat>/<lang>/<rmw>/<case>/
-    Cargo.toml          # nros-rmw-<rmw> dep + features
-    src/main.rs         # nros_rmw_<rmw>::register() + locator default
-    .cargo/config.toml
-    package.xml         # name = "native-<rmw>-<case>"
-    CMakeLists.txt      # set(NANO_ROS_RMW <rmw>)
-```
-
-Per-RMW directories duplicate the entire example body. Diff
-between `native/rust/zenoh/talker` and `native/rust/dds/talker`
-is:
-
-- `Cargo.toml` — one `nros-rmw-<X>` dep line + features list
-- `src/main.rs` — one `nros_rmw_<X>::register()?` line + locator
-  default string
-- `package.xml` — name string
-- `.gitignore` — same boilerplate
-- everything else byte-identical
-
-For ~10 (plat × lang) cells × 3 RMWs = 30 dirs duplicate this
-diff. Adding a new feature to "talker" requires edits across all
-matching cells.
-
-### Target shape
-
-```
-examples/<plat>/<lang>/<case>/
-    Cargo.toml          # optional rmw deps gated by features
-    src/main.rs         # #[cfg(feature = "rmw-X")] register blocks
-    .cargo/config.toml
-    package.xml
-    CMakeLists.txt      # nano_ros_link_rmw(... RMW ${NROS_RMW})
+```text
+esp32/rust/zenoh
+native/c/cyclonedds
+native/c/xrce
+native/c/zenoh
+native/cpp/cyclonedds
+native/cpp/zenoh
+native/rust/xrce
+native/rust/zenoh
+px4/cpp/uorb
+px4/rust/uorb
+qemu-arm-baremetal/rust/zenoh
+qemu-arm-freertos/c/zenoh
+qemu-arm-freertos/cpp/zenoh
+qemu-arm-freertos/rust/zenoh
+qemu-arm-nuttx/c/zenoh
+qemu-arm-nuttx/cpp/zenoh
+qemu-arm-nuttx/rust/zenoh
+qemu-esp32-baremetal/rust/dds
+qemu-esp32-baremetal/rust/zenoh
+qemu-riscv64-threadx/c/zenoh
+qemu-riscv64-threadx/cpp/zenoh
+qemu-riscv64-threadx/rust/zenoh
+stm32f4/rust/zenoh
+threadx-linux/c/zenoh
+threadx-linux/cpp/zenoh
+threadx-linux/rust/zenoh
+zephyr/cpp/cyclonedds
+zephyr/rust/dds
+zephyr/rust/xrce
 ```
 
-RMW selection moves to the build invocation:
-
-- **Rust:** `cargo build --no-default-features --features rmw-dds`
-- **C / C++:** `cmake -B build -S . -DNROS_RMW=dds`
-- **No source change** to switch RMW.
-
-The matrix lint walks `examples/` and confirms every `(plat,
-lang, case)` cell carries the canonical six cases (talker,
-listener, service-{client,server}, action-{client,server}) and
-exposes the RMW build-matrix as `Cargo.toml` `[features]` keys
-plus the cmake `NANO_ROS_RMW` option set.
-
-### Conflict avoidance
-
-Phase 128 already established two RMWs can't be linked into the
-same Cargo unit simultaneously without bridge-mode opt-in (Phase
-129); each RMW pulls in mutually exclusive platform features.
-The collapse avoids that by:
-
-- **Per-RMW `--target-dir`** — same pattern as Phase 88 zero-copy
-  / safety-e2e variants documented in `CLAUDE.md`'s "Parallel
-  build isolation" note. `target-zenoh/`, `target-dds/`,
-  `target-xrce/` are gitignored under the example's per-dir
-  `.gitignore`.
-- **Optional Cargo deps** — each `nros-rmw-*` is `optional =
-  true`; the matching `rmw-<X>` feature gates the dep. Only the
-  selected RMW's rlib enters the dep graph.
-- **No `Cargo.lock` clobber** — Cargo writes the lockfile inside
-  the active `--target-dir` (Cargo's default behaviour) so
-  separate dirs hold separate locks. Source-tree `Cargo.lock`
-  matches the default feature.
-- **cmake per-RMW `-B build-<rmw>`** — analogous isolation for
-  C / C++ builds. The `nano_ros_link_rmw(... RMW ${NROS_RMW})`
-  function emits the strong `nros_app_register_backends()` stub
-  into the active build dir.
+`px4/*/uorb` is a carve-out, not normal RMW-collapse debt. PX4 is
+uORB-only and the canonical live example is the C++ module/check path.
 
 ---
 
-## Architecture
+## Tracker
 
-### A. Cargo feature scaffold
+### 118.A — Native Host Examples
+
+Native has collapsed case dirs, but legacy RMW-root source dirs still
+exist. Collapse/remove them after parity is verified.
+
+- [ ] **118.A.1 — `examples/native/c/zenoh/`**
+      Collapse remaining Zenoh C-only cases into `examples/native/c/<case>/`
+      or delete when superseded by the collapsed dirs.
+- [ ] **118.A.2 — `examples/native/c/xrce/`**
+      Fold XRCE C cases into `examples/native/c/<case>/` with
+      `-DNROS_RMW=xrce`.
+- [ ] **118.A.3 — `examples/native/c/cyclonedds/`**
+      Fold Cyclone C cases into `examples/native/c/<case>/` with
+      `-DNROS_RMW=cyclonedds`; preserve idlc converter plumbing.
+- [ ] **118.A.4 — `examples/native/cpp/zenoh/`**
+      Fold Zenoh C++ cases into `examples/native/cpp/<case>/`.
+- [ ] **118.A.5 — `examples/native/cpp/cyclonedds/`**
+      Fold Cyclone C++ cases into `examples/native/cpp/<case>/`.
+- [ ] **118.A.6 — `examples/native/rust/zenoh/`**
+      Fold remaining Zenoh-only Rust variants/cases into
+      `examples/native/rust/<case>/` where they are canonical cases.
+- [ ] **118.A.7 — `examples/native/rust/xrce/`**
+      Fold XRCE Rust cases into `examples/native/rust/<case>/` with
+      `rmw-xrce`.
+- [x] **118.A.8 — Native Rust Cyclone service runtime blocker**
+      Closed by 171.C.1: native Rust Cyclone service server/client
+      round-trip passed 4/4 after backend stale-pending cleanup.
+
+### 118.B — ThreadX Linux Host Examples
+
+Collapsed case dirs exist for C/C++/Rust. Legacy Zenoh roots remain.
+Cyclone C/C++ fixture support exists when local Cyclone artifacts are
+installed; Rust Cyclone still depends on Phase 175-style staticlib work.
+
+- [ ] **118.B.1 — `examples/threadx-linux/c/zenoh/`**
+      Delete after `examples/threadx-linux/c/<case>/ -DNROS_RMW=zenoh`
+      fixture parity is confirmed.
+- [ ] **118.B.2 — `examples/threadx-linux/cpp/zenoh/`**
+      Delete after collapsed C++ Zenoh fixture parity is confirmed.
+- [ ] **118.B.3 — `examples/threadx-linux/rust/zenoh/`**
+      Delete after collapsed Rust Zenoh fixture parity is confirmed.
+- [ ] **118.B.4 — ThreadX Linux Cyclone Rust path**
+      Add or explicitly defer the Rust Cyclone build path; pure cargo
+      cannot link the C++ Cyclone backend directly.
+
+### 118.C — ThreadX RISC-V QEMU Examples
+
+Collapsed case dirs exist for C/C++/Rust. Legacy Zenoh roots remain.
+
+- [ ] **118.C.1 — `examples/qemu-riscv64-threadx/c/zenoh/`**
+- [ ] **118.C.2 — `examples/qemu-riscv64-threadx/cpp/zenoh/`**
+- [ ] **118.C.3 — `examples/qemu-riscv64-threadx/rust/zenoh/`**
+- [ ] **118.C.4 — ThreadX RISC-V Cyclone availability decision**
+      Document whether Cyclone over NetX-Duo BSD shim is in scope for this
+      target or explicitly deferred.
+
+### 118.D — FreeRTOS QEMU Examples
+
+Collapsed case dirs exist for C/C++/Rust. Legacy Zenoh roots remain.
+Cyclone on FreeRTOS is intentionally gated on an upstream-scale Cyclone
+DDS RTOS/socket port.
+
+- [ ] **118.D.1 — `examples/qemu-arm-freertos/c/zenoh/`**
+- [ ] **118.D.2 — `examples/qemu-arm-freertos/cpp/zenoh/`**
+- [ ] **118.D.3 — `examples/qemu-arm-freertos/rust/zenoh/`**
+- [x] **118.D.4 — FreeRTOS Cyclone gate recorded**
+      Won't fit until Cyclone DDS gains the required FreeRTOS/lwIP hosted
+      runtime layer.
+
+### 118.E — NuttX QEMU Examples
+
+Absorbs Phase 167. C/C++ collapsed case dirs exist; Rust remains legacy
+because the depth-4 collapsed shape hit a `build-std`/newlib link
+regression.
+
+- [ ] **118.E.1 — `examples/qemu-arm-nuttx/c/zenoh/`**
+      Delete after collapsed C Zenoh fixture parity is confirmed.
+- [ ] **118.E.2 — `examples/qemu-arm-nuttx/cpp/zenoh/`**
+      Delete after collapsed C++ Zenoh fixture parity is confirmed.
+- [ ] **118.E.3 — `examples/qemu-arm-nuttx/rust/zenoh/`**
+      Collapse Rust Zenoh cases to `examples/qemu-arm-nuttx/rust/<case>/`
+      after 118.E.4 is fixed.
+- [ ] **118.E.4 — NuttX Rust collapsed-shape link regression**
+      Fix the absorbed Phase 167 blocker: the depth-4 Rust layout fails
+      with `undefined reference to __libc_init_array` /
+      `__libc_fini_array`, while the depth-5 legacy
+      `rust/zenoh/<case>` layout links. Investigate `build-std` libc
+      patch scope, newlib/libgloss startup selection, and emitted
+      `-nostartfiles` / `-nodefaultlibs`.
+- [x] **118.E.5 — NuttX Cyclone gate recorded**
+      Cyclone on NuttX is deferred behind a hosted NuttX socket/runtime
+      port for Cyclone DDS.
+
+### 118.F — Zephyr Examples
+
+Zephyr mostly uses collapsed dirs with `prj-<rmw>.conf` overlays.
+Remaining RMW-root dirs are legacy or special-case.
+
+- [ ] **118.F.1 — `examples/zephyr/rust/xrce/`**
+      Fold XRCE Rust cases into `examples/zephyr/rust/<case>/` or delete
+      if superseded by the collapsed overlay dirs.
+- [ ] **118.F.2 — `examples/zephyr/rust/dds/`**
+      Retire or migrate legacy DDS Rust dirs. After Phase 169, the DDS
+      backend is Cyclone; do not recreate dust-DDS paths.
+- [ ] **118.F.3 — `examples/zephyr/cpp/cyclonedds/`**
+      Decide whether `talker-aemv8r` remains a documented
+      one-board/one-RMW reference carve-out or gets folded into the
+      collapsed C++ talker overlays.
+- [x] **118.F.4 — Zephyr C collapsed dirs**
+      Current live C Zephyr examples are under `examples/zephyr/c/<case>/`.
+- [x] **118.F.5 — Zephyr C++ collapsed dirs**
+      Current live C++ Zephyr examples are under `examples/zephyr/cpp/<case>/`.
+- [x] **118.F.6 — Zephyr Rust collapsed dirs**
+      Current live Rust Zephyr examples are under `examples/zephyr/rust/<case>/`.
+
+### 118.G — Bare-Metal Rust Examples
+
+Absorbs Phase 170. These targets have board-specific feature gates, so
+collapse is per-board rather than mechanical.
+
+- [ ] **118.G.1 — `examples/qemu-arm-baremetal/rust/zenoh/`**
+      Collapse `talker`, `listener`, and RTIC variants that are canonical
+      standalone cases. Keep variant suffixes such as `talker-rtic`.
+- [ ] **118.G.2 — qemu-arm bare-metal DDS legacy decision**
+      Dust-DDS is retired; either remove old DDS cells if absent/stale or
+      document no Cyclone replacement because Cyclone requires a hosted
+      runtime.
+- [ ] **118.G.3 — `examples/qemu-esp32-baremetal/rust/zenoh/`**
+      Collapse `talker` and `listener` to `rust/<case>/`.
+- [ ] **118.G.4 — `examples/qemu-esp32-baremetal/rust/dds/`**
+      Retire dust-DDS dirs or replace with documented no-Cyclone decision.
+- [ ] **118.G.5 — `examples/esp32/rust/zenoh/`**
+      Collapse real ESP32 Zenoh `talker` and `listener` to `rust/<case>/`.
+- [ ] **118.G.6 — `examples/stm32f4/rust/zenoh/`**
+      Collapse Zenoh cases to `rust/<case>/`; keep RTIC/Embassy variants as
+      suffix-named cases.
+- [x] **118.G.7 — Bare-metal C/C++ empty cells documented**
+      No C/C++ bare-metal harness is expected in this phase.
+- [x] **118.G.8 — Bare-metal Cyclone gate recorded**
+      Cyclone DDS requires BSD sockets, threads, heap, and libc; pure
+      bare-metal cells use Zenoh/XRCE-class embedded backends instead.
+
+### 118.H — PX4 / uORB Carve-Outs
+
+PX4 is not a normal RMW matrix cell.
+
+- [x] **118.H.1 — `examples/px4/cpp/uorb/` carve-out**
+      PX4 uses uORB, and the live surface is C++.
+- [x] **118.H.2 — `examples/px4/rust/uorb/` README-only placeholder**
+      Historical Rust uORB path retained as documentation only unless a
+      future uORB Rust backend returns.
+
+### 118.I — Docs, Recipes, and Lint
+
+- [ ] **118.I.1 — `examples/README.md` canonical shape**
+      Rewrite stale README text that still calls
+      `<platform>/<language>/<rmw>/<case>` canonical.
+- [ ] **118.I.2 — `CLAUDE.md` / AGENTS consistency**
+      Keep the canonical shape in memory files aligned with this tracker.
+- [ ] **118.I.3 — Just recipes**
+      Build fixtures from collapsed dirs and pass RMW by feature/CMake arg
+      instead of walking legacy RMW roots.
+- [ ] **118.I.4 — Test fixture paths**
+      Remove remaining pre-collapse fixture paths from
+      `packages/testing/nros-tests`.
+- [ ] **118.I.5 — Matrix lint**
+      Add a script/test that fails on new untriaged
+      `<platform>/<language>/<rmw>/` roots.
+- [ ] **118.I.6 — Archive absorbed docs**
+      After this tracker is accepted, move Phase 167 and Phase 170 to
+      `docs/roadmap/archived/` or leave short stubs pointing here.
+
+---
+
+## Implementation Notes
+
+### Rust Shape
+
+Each collapsed Rust case owns optional RMW deps and mutually exclusive
+features:
 
 ```toml
-# examples/<plat>/<lang>/<case>/Cargo.toml
-[package]
-name = "<plat>-<lang>-<case>"
-edition = "2024"
-
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-dds   = ["dep:nros-rmw-dds"]
-rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
-
-[dependencies]
-nros            = { path = "../../../../packages/core/nros" }
-nros-rmw-zenoh  = { path = "../../../../packages/zpico/nros-rmw-zenoh",
-                    features = ["std", "platform-<plat>", "ros-humble"],
-                    optional = true }
-nros-rmw-dds    = { path = "../../../../packages/dds/nros-rmw-dds",
-                    features = ["platform-<plat>"],
-                    optional = true }
-nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi",
-                    optional = true }
+rmw-xrce = ["dep:nros-rmw-xrce-cffi"]
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 ```
 
-The exact `features = […]` per RMW dep is the per-platform tweak
-that Phase 128.D folded into each example today — preserved
-per-cell.
+Cyclone Rust is special: `nros-rmw-cyclonedds-sys` exposes the C
+registration shim, but pure Cargo cannot build/link the C++ Cyclone DDS
+backend and idlc descriptors. Native Rust Cyclone examples currently use
+CMake/Corrosion staticlib entry points; embedded Cyclone Rust remains
+owned by the Phase 175-class build path.
 
-### B. `src/main.rs` RMW-agnostic shape
+### C / C++ Shape
 
-```rust
-use nros::{Executor, ExecutorConfig};
-
-#[cfg(feature = "rmw-zenoh")]
-const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
-#[cfg(feature = "rmw-dds")]
-const DEFAULT_LOCATOR: &str = ""; // brokerless
-#[cfg(feature = "rmw-xrce")]
-const DEFAULT_LOCATOR: &str = "127.0.0.1:2019";
-
-fn register_active_rmw() -> Result<(), &'static str> {
-    #[cfg(feature = "rmw-zenoh")]
-    { nros_rmw_zenoh::register().map_err(|_| "zenoh register")?; }
-    #[cfg(feature = "rmw-dds")]
-    { nros_rmw_dds::register().map_err(|_| "dds register")?; }
-    #[cfg(feature = "rmw-xrce")]
-    { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register")?; }
-    Ok(())
-}
-
-fn main() {
-    register_active_rmw().expect("rmw register");
-    let config = ExecutorConfig::new(
-        std::env::var("NROS_LOCATOR").as_deref().unwrap_or(DEFAULT_LOCATOR),
-    );
-    let mut executor = Executor::open(&config).expect("open");
-    /* … rest of the case (talker / listener / service / action) … */
-}
-```
-
-`#[cfg]` chains are mutually exclusive at the feature level
-because at most one `rmw-*` feature is active per build. The
-default `rmw-zenoh` makes `cargo run` Just Work for the
-docs-first experience.
-
-### C. cmake glue
-
-`examples/<plat>/<lang>/<case>/CMakeLists.txt`:
+Each collapsed C/C++ case should configure with:
 
 ```cmake
-cmake_minimum_required(VERSION 3.16)
-project(<plat>-<lang>-<case> LANGUAGES C CXX)
-
-set(NANO_ROS_PLATFORM <plat>)
-set(NANO_ROS_RMW "${NROS_RMW}" CACHE STRING "Active RMW (zenoh|dds|xrce|cyclonedds)")
-
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../../../.. nano_ros)
-add_executable(<case> src/main.<c|cpp>)
-target_link_libraries(<case> PRIVATE NanoRos::NanoRos)
-nros_platform_link_app(<case>)
-nano_ros_link_rmw(<case> RMW ${NANO_ROS_RMW})
+set(NANO_ROS_RMW "${NROS_RMW}" CACHE STRING "zenoh|xrce|cyclonedds")
 ```
 
-`NROS_RMW` defaults to `zenoh` (matches Rust default feature) so
-out-of-the-box `cmake -B build && cmake --build build` produces
-the canonical experience.
+and build in isolated dirs:
 
-### D. Test harness build matrix
-
-`packages/testing/nros-tests/src/fixtures/binaries.rs` already
-runs per-example cargo / cmake builds. Extend to accept an RMW
-parameter:
-
-```rust
-pub fn build_rust_example(case: &str, rmw: Rmw) -> PathBuf {
-    let target_dir = format!("target-{}", rmw.feature_suffix()); // "zenoh" / "dds" / "xrce"
-    Command::new("cargo")
-        .args(["build", "--release",
-               "--no-default-features",
-               "--features", &rmw.cargo_feature(),
-               "--target-dir", &target_dir])
-        .current_dir(...)
-        .status()...
-}
+```text
+build-zenoh/
+build-xrce/
+build-cyclonedds/
 ```
 
-`tests/rtos_e2e.rs` / `tests/native_api.rs` parametrize over the
-allowed RMWs per cell (the matrix lint exposes which RMWs are
-compiled in for each example).
+### Zephyr Shape
 
-### E. Matrix snapshot script
+Zephyr keeps one source dir per case and selects RMW via overlays:
 
-`tools/example-matrix.py` walks `examples/`, reads each
-`Cargo.toml` `[features]` block to learn which RMWs are
-`optional` for that cell, and prints:
-
-```
-platform                 lang  case               zenoh dds xrce
-native                   rust  talker             Y     Y   Y
-native                   rust  listener           Y     Y   Y
-native                   rust  service-server     Y     Y   Y
-…
+```text
+prj.conf
+prj-zenoh.conf
+prj-xrce.conf
+prj-cyclonedds.conf
 ```
 
-Plus a "Deliberately empty" subsection for the documented holes
-(bare-metal C/C++, px4 row). `--lint` mode exits non-zero on:
-
-- A `(plat, lang, case)` cell present in `examples/` whose
-  `Cargo.toml` doesn't expose any `rmw-*` feature.
-- A `(plat, lang, case)` cell absent from `examples/` without
-  being named in `examples/README.md`'s "Deliberately empty"
-  subsection.
+Legacy `zephyr/<lang>/<rmw>/<case>/` dirs should disappear except for
+explicitly documented one-board reference cases.
 
 ---
 
-## Work Items
+## Acceptance Criteria
 
-### Tier 1 — Mechanism PoC
-
-- [ ] **118.A.1 — Collapse PoC on `native/rust/talker/`.** Take
-      the three sibling dirs (`zenoh`, `dds`, `xrce`) under
-      `native/rust/`, copy `zenoh/talker/` to `native/rust/talker/`,
-      merge the Cargo.toml feature scaffold (B), rewrite main.rs
-      to the cfg-dispatched shape (B). Build under each feature
-      with isolated `--target-dir`. Confirm `cargo build
-      --features rmw-{zenoh,dds,xrce}` all succeed.
-
-- [ ] **118.A.2 — Test-harness extension.** Add
-      `binaries::build_rust_example_rmw(case, rmw)` returning the
-      per-RMW binary path. Update one `native_api.rs` test
-      (pubsub-zenoh and pubsub-dds) to use it. Verify both still
-      green.
-
-- [ ] **118.A.3 — cmake glue draft on `native/c/talker/`.**
-      Single CMakeLists.txt with `nano_ros_link_rmw(... RMW
-      ${NROS_RMW})`. Build under `-DNROS_RMW=zenoh` and
-      `-DNROS_RMW=dds`, confirm both produce working talker bins.
-
-### Tier 2 — Roll-out per platform
-
-Each item collapses the per-RMW dirs under one (plat × lang)
-cell into a single per-case dir, and deletes the old per-RMW
-dirs after the matching test harness updates pass:
-
-- [ ] **118.B.1 — `native/rust/`.** Collapse zenoh + dds + xrce
-      siblings for all six cases.
-- [ ] **118.B.2 — `native/c/`.** Same.
-- [ ] **118.B.3 — `native/cpp/`.** Same.
-- [ ] **118.B.4 — `qemu-arm-freertos/{c,cpp,rust}/`.** Same.
-- [ ] **118.B.5 — `qemu-arm-nuttx/{c,cpp,rust}/`.** Same.
-- [ ] **118.B.6 — `qemu-riscv64-threadx/{c,cpp,rust}/`.** Same.
-- [ ] **118.B.7 — `threadx-linux/{c,cpp,rust}/`.** Same.
-- [ ] **118.B.8 — `zephyr/{c,cpp,rust}/`.** Same (Zephyr west
-      build needs a sibling cmake change to pass `NROS_RMW`
-      through to the integration shell).
-- [ ] **118.B.9 — `qemu-arm-baremetal/rust/`.** Zenoh + DDS
-      siblings only (no XRCE on bare-metal).
-- [ ] **118.B.10 — `qemu-esp32-baremetal/rust/`.** Same.
-- [ ] **118.B.11 — `esp32/rust/`.** Zenoh-only today; the
-      collapse is a no-op until a second RMW lands on ESP32, but
-      restructure the dir into the new `<case>/` shape so future
-      RMW work doesn't recreate the per-RMW axis.
-- [ ] **118.B.12 — `stm32f4/rust/`.** Same as ESP32 — zenoh-only,
-      restructure-only.
-
-### Tier 3 — Matrix lint + docs
-
-- [ ] **118.C.1 — `tools/example-matrix.py`.** Walks
-      `examples/`, prints the cell × RMW matrix (E). `--lint`
-      flag for CI.
-- [ ] **118.C.2 — `examples/README.md`.** Autogenerated table +
-      "Deliberately empty" subsection (carries the existing
-      118.E.1 / E.2 docs forward, retitled to the new schema).
-- [ ] **118.C.3 — `just check-example-matrix`.** Wraps the
-      script's `--lint` mode. Wired into `just ci`.
-- [ ] **118.C.4 — `nros_tests::matrix` integration test.**
-      Drives the same `--lint` from nextest; fails CI on
-      untriaged cells.
-
-### Tier 4 — Out-of-scope documentation
-
-(Carried forward from the prior Phase 118 — items already done.)
-
-- [x] **118.D.1 — Bare-metal C/C++ holes documented**
-      (`examples/README.md` "Intentionally empty cells",
-      Phase 118.E.1 from the original scope, 2026-05-17).
-- [x] **118.D.2 — `px4/{c,rust}` holes documented**
-      (Phase 118.E.2 from the original scope, 2026-05-17).
-
-### Tier 5 — Cleanup
-
-- [ ] **118.E.1 — Delete legacy `<plat>/<lang>/<rmw>/`
-      directories** after every Tier 2 item lands. Per-RMW
-      subdirs go away; per-case dirs are the canonical shape.
-- [ ] **118.E.2 — Update justfile build-fixtures recipes** to
-      iterate `(case, rmw)` tuples per platform. Each case
-      builds against every RMW its `Cargo.toml` features
-      declare available (so platforms where DDS isn't viable
-      just don't expose `rmw-dds` in the feature list).
-- [ ] **118.E.3 — CLAUDE.md "Examples = Standalone Projects"
-      update.** Replace the `<plat>/<lang>/<rmw>/<case>/`
-      canonical-shape pointer with the new `<plat>/<lang>/<case>/`
-      shape + a one-line note on the RMW feature/cmake-arg
-      mechanism. Phase 131's "canonical example shape" rule
-      gets a matching revision.
-
----
-
-## Files
-
-```
-tools/example-matrix.py                            (new, 118.C.1)
-examples/README.md                                 (rewritten, 118.C.2 + 118.D.x)
-examples/<plat>/<lang>/<case>/Cargo.toml           (one per cell, 118.B.x)
-examples/<plat>/<lang>/<case>/src/main.{rs,c,cpp}  (RMW-agnostic, 118.B.x)
-examples/<plat>/<lang>/<case>/CMakeLists.txt       (C/C++ cells, 118.B.x)
-packages/testing/nros-tests/src/fixtures/binaries.rs   (extended, 118.A.2)
-packages/testing/nros-tests/tests/example_matrix.rs    (new, 118.C.4)
-justfile                                           (118.C.3 + 118.E.2)
-CLAUDE.md                                          (118.E.3)
-```
-
----
-
-## Acceptance criteria
-
-- [ ] Every `examples/<plat>/<lang>/<case>/Cargo.toml` exposes
-      `rmw-*` features for the RMWs that compile on that
-      platform; no per-RMW directory remains.
-- [ ] `cargo build --no-default-features --features rmw-X` builds
-      every Rust example under `--target-dir target-X/` for every
-      `X` listed in the example's `Cargo.toml`.
-- [ ] `cmake -B build-X -DNROS_RMW=X` configures every C / C++
-      example for every supported RMW.
-- [ ] `tools/example-matrix.py --lint` exits 0 on `main` and the
-      `nros_tests::matrix` test passes in CI.
-- [ ] `just test-all` is bit-identical in pass / fail set to the
-      pre-collapse baseline (no regression — the collapse is a
-      refactor, not a feature change).
-- [ ] `examples/README.md` carries the autogenerated table and
-      the "Deliberately empty" subsection, regenerated whenever
-      a cell is added or removed.
-- [ ] CLAUDE.md "Examples = Standalone Projects" reflects the new
-      shape; Phase 131's canonical-shape rule is amended in step.
-
----
-
-## Notes
-
-- **Why optional Cargo deps over per-feature build profiles?**
-  Optional deps + features compose naturally with Cargo's
-  feature-unification rules. Profiles (`[profile.dev-zenoh]`)
-  don't gate dependency graph membership, so a `zenoh` profile
-  would still drag dds + xrce into the dep graph unless every
-  dep is `optional`. Once they're `optional`, profiles add no
-  extra value over `--features`.
-
-- **Why `--target-dir target-<rmw>/` instead of one
-  `target/` with feature-keyed subdirs?** Cargo writes its
-  fingerprint database keyed on the workspace's `target/`
-  hash — switching `--features` invalidates everything else
-  in `target/`, forcing a full rebuild every time the test
-  harness flips RMWs. Per-RMW `--target-dir` preserves
-  incremental state across RMW switches. Same reason CLAUDE.md
-  already requires this for the safety-e2e and zero-copy
-  variants.
-
-- **What about `cargo install` / `cargo run` ergonomics?**
-  The default `rmw-zenoh` feature keeps `cargo run` in an
-  example dir working out of the box — same one-line
-  `cargo run -p <example>` experience users have today.
-  Power users override with `--features` when they want a
-  non-default RMW.
-
-- **Why `nano_ros_link_rmw()` already does the C / C++ side
-  cleanly?** Phase 144.5.c established `add_subdirectory(<repo>)`
-  consumption + `nano_ros_link_rmw()` strong-stub emission as
-  the canonical C / C++ entry point. The cmake-side collapse
-  is pre-staged — only the per-example `set(NANO_ROS_RMW ...)`
-  line changes to read `NROS_RMW` from a `-D` arg instead of
-  being hardcoded per-dir.
+- [ ] No untriaged `examples/<platform>/<language>/<rmw>/` roots remain.
+- [ ] Every Rust collapsed case builds for each `rmw-*` feature it exposes
+      with isolated `target-<rmw>/`.
+- [ ] Every C/C++ collapsed case configures for each supported RMW with
+      isolated `build-<rmw>/`.
+- [ ] Zephyr collapsed cases select RMW through overlays, not source-dir
+      duplication.
+- [ ] `examples/README.md` and memory docs agree on the canonical shape.
+- [ ] Test fixture builders use collapsed dirs only, except documented
+      carve-outs.
+- [ ] A matrix lint prevents reintroducing the retired directory axis.
