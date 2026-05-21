@@ -26,4 +26,4 @@ target_link_libraries(riscv64_threadx_cpp_service_client PRIVATE
     example_interfaces__nano_ros_cpp
     NanoRos::NanoRosCpp)
 nros_platform_link_app(riscv64_threadx_cpp_service_client)
-nano_ros_link_rmw(riscv64_threadx_cpp_service_client RMW zenoh)
+nano_ros_link_rmw(riscv64_threadx_cpp_service_client RMW "${NROS_RMW}")

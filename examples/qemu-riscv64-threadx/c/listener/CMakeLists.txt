@@ -24,4 +24,4 @@ target_link_libraries(riscv64_threadx_c_listener PRIVATE
     std_msgs__nano_ros_c
     NanoRos::NanoRos)
 nros_platform_link_app(riscv64_threadx_c_listener)
-nano_ros_link_rmw(riscv64_threadx_c_listener RMW zenoh)
+nano_ros_link_rmw(riscv64_threadx_c_listener RMW "${NROS_RMW}")

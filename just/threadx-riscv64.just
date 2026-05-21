@@ -79,8 +79,10 @@ build-examples:
     rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
-        (cd examples/qemu-riscv64-threadx/rust/zenoh/$example && \
-         THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build --release)
+        (cd examples/qemu-riscv64-threadx/rust/$example && \
+         THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
+           cargo build --release --no-default-features --features rmw-zenoh \
+             --target-dir target-zenoh)
     done
     echo "ThreadX QEMU RISC-V examples built!"
 
@@ -128,29 +130,7 @@ build-fixtures:
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$root/packages/codegen/packages/target/release/nros-codegen"
-    cmake_dirs=()
-    for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
-            cmake_dirs+=("examples/qemu-riscv64-threadx/$lang/zenoh/$ex")
-        done
-    done
-    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
-        "echo '  → {} (cmake)' && rm -rf {}/build && \
-         THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
-         THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-           cmake -S {} -B {}/build \
-             -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-             -DTHREADX_DIR='$threadx_dir' \
-             -DNETX_DIR='$netx_dir' \
-             -DTHREADX_CONFIG_DIR='$config_dir' \
-             -DNETX_CONFIG_DIR='$config_dir' \
-             -DCMAKE_BUILD_TYPE=Release \
-             -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
-         THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-           cmake --build {}/build > /dev/null"
-
-    # Phase 118.B.6 — collapsed-shape ThreadX-RV64 Rust + C / C++,
+    # Phase 118.C — collapsed-shape ThreadX-RV64 Rust + C / C++,
     # zenoh-only matrix. Phase 169 retired dust-dds (pure-Rust); its
     # Cyclone replacement is a C++/CMake stack whose
     # `nros_rmw_cyclonedds_register` C ABI symbol has no riscv64 bare
@@ -250,13 +230,13 @@ _run-qemu example binary peer_index:
     #!/usr/bin/env bash
     set -e
     rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
-    cd "examples/qemu-riscv64-threadx/rust/zenoh/{{example}}"
-    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build --release
+    cd "examples/qemu-riscv64-threadx/rust/{{example}}"
+    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh
     MAC="52:54:00:12:34:$(printf '%02x' $((0x56 + {{peer_index}})))"
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-riscv64 -M virt -m 256M -bios none -nographic \
         -global virtio-mmio.force-legacy=false \
-        -kernel "target/riscv64gc-unknown-none-elf/release/{{binary}}" \
+        -kernel "target-zenoh/riscv64gc-unknown-none-elf/release/{{binary}}" \
         -netdev user,id=net0 \
         -device "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=$MAC" &
     PID=$!
@@ -289,6 +269,9 @@ clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-threadx-riscv64-zenoh
     for example in talker listener service-server service-client action-server action-client; do
-        rm -rf "examples/qemu-riscv64-threadx/rust/zenoh/$example/target"
+        rm -rf "examples/qemu-riscv64-threadx/rust/$example/target" \
+               "examples/qemu-riscv64-threadx/rust/$example/target-zenoh"
+        rm -rf "examples/qemu-riscv64-threadx/c/$example/build-zenoh" \
+               "examples/qemu-riscv64-threadx/cpp/$example/build-zenoh"
     done
     echo "ThreadX RISC-V build artifacts cleaned"

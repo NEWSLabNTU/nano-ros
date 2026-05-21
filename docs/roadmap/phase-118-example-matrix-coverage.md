@@ -52,9 +52,6 @@ qemu-arm-nuttx/cpp/zenoh
 qemu-arm-nuttx/rust/zenoh
 qemu-esp32-baremetal/rust/dds
 qemu-esp32-baremetal/rust/zenoh
-qemu-riscv64-threadx/c/zenoh
-qemu-riscv64-threadx/cpp/zenoh
-qemu-riscv64-threadx/rust/zenoh
 stm32f4/rust/zenoh
 ```
 
@@ -128,14 +125,27 @@ installed; Rust Cyclone still depends on Phase 175-style staticlib work.
 
 ### 118.C — ThreadX RISC-V QEMU Examples
 
-Collapsed case dirs exist for C/C++/Rust. Legacy Zenoh roots remain.
+Collapsed case dirs exist for C/C++/Rust. Legacy Zenoh roots were
+removed in 118.C; RMW selection now flows through `-DNROS_RMW=zenoh`
+for C/C++ and `--features rmw-zenoh --target-dir target-zenoh` for Rust.
 
-- [ ] **118.C.1 — `examples/qemu-riscv64-threadx/c/zenoh/`**
-- [ ] **118.C.2 — `examples/qemu-riscv64-threadx/cpp/zenoh/`**
-- [ ] **118.C.3 — `examples/qemu-riscv64-threadx/rust/zenoh/`**
-- [ ] **118.C.4 — ThreadX RISC-V Cyclone availability decision**
-      Document whether Cyclone over NetX-Duo BSD shim is in scope for this
-      target or explicitly deferred.
+- [x] **118.C.1 — `examples/qemu-riscv64-threadx/c/zenoh/`**
+      Deleted after collapsed `examples/qemu-riscv64-threadx/c/<case>/`
+      CMake fixtures were wired to `-DNROS_RMW=zenoh` and
+      `build-zenoh/`.
+- [x] **118.C.2 — `examples/qemu-riscv64-threadx/cpp/zenoh/`**
+      Deleted after collapsed `examples/qemu-riscv64-threadx/cpp/<case>/`
+      CMake fixtures were wired to `-DNROS_RMW=zenoh` and
+      `build-zenoh/`.
+- [x] **118.C.3 — `examples/qemu-riscv64-threadx/rust/zenoh/`**
+      Deleted after Rust recipes and fixture resolvers moved to
+      `examples/qemu-riscv64-threadx/rust/<case>/` with `rmw-zenoh`
+      and `target-zenoh/`.
+- [x] **118.C.4 — ThreadX RISC-V Cyclone availability decision**
+      Deferred. Cyclone DDS over this target needs the same hosted
+      NetX-Duo BSD/socket integration as the wider Phase 171/175
+      Cyclone RTOS gate; the migrated Rust `rmw-cyclonedds` feature
+      remains defined but is not built in the 118.C fixture tier.
 
 ### 118.D — FreeRTOS QEMU Examples
 

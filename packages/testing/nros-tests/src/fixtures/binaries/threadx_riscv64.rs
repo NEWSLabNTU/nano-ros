@@ -62,7 +62,7 @@ static THREADX_RV64_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/rust/zenoh/{}", name));
+    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/rust/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -72,7 +72,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     }
 
     let binary_path = example_dir.join(format!(
-        "target/riscv64gc-unknown-none-elf/release/{}",
+        "target-zenoh/riscv64gc-unknown-none-elf/release/{}",
         binary_name
     ));
     super::require_prebuilt_binary(&binary_path)
@@ -123,43 +123,6 @@ pub fn build_threadx_rv64_action_client() -> TestResult<&'static Path> {
 }
 
 // =============================================================================
-// ThreadX RISC-V DDS variant (Phase 97.4.threadx-riscv64)
-// =============================================================================
-
-static THREADX_RV64_DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_RV64_DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-fn build_dds_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/rust/dds/{}", name));
-
-    if !example_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "ThreadX RISC-V DDS example directory not found: {}",
-            example_dir.display()
-        )));
-    }
-
-    let binary_path = example_dir.join(format!(
-        "target/riscv64gc-unknown-none-elf/release/{}",
-        binary_name
-    ));
-    super::require_prebuilt_binary(&binary_path)
-}
-
-pub fn build_threadx_rv64_dds_talker() -> TestResult<&'static Path> {
-    THREADX_RV64_DDS_TALKER_BINARY
-        .get_or_try_init(|| build_dds_rust_example("talker", "qemu-riscv64-threadx-dds-talker"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_rv64_dds_listener() -> TestResult<&'static Path> {
-    THREADX_RV64_DDS_LISTENER_BINARY
-        .get_or_try_init(|| build_dds_rust_example("listener", "qemu-riscv64-threadx-dds-listener"))
-        .map(|p| p.as_path())
-}
-
-// =============================================================================
 // C / C++ binary builders (CMake with RISC-V toolchain)
 // =============================================================================
 
@@ -179,10 +142,7 @@ static RV64_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!(
-        "examples/qemu-riscv64-threadx/{}/zenoh/{}",
-        lang, name
-    ));
+    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/{}/{}", lang, name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -191,7 +151,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
         )));
     }
 
-    let build_dir = example_dir.join("build");
+    let build_dir = example_dir.join("build-zenoh");
     let binary_path = build_dir.join(binary_name);
     super::require_prebuilt_binary(&binary_path)
 }

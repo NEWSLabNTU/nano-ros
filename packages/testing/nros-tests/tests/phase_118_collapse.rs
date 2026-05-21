@@ -415,8 +415,7 @@ fn test_nuttx_cmake_case_rmw_variant_exists(
     );
 }
 
-/// Phase 118.B.6 — ThreadX-RV64 Rust cases. talker + listener
-/// support {zenoh, dds}; service-* + action-* are zenoh-only.
+/// Phase 118.C — ThreadX-RV64 Rust cases, collapsed shape.
 #[rstest]
 #[case::talker_zenoh("talker", "qemu-riscv64-threadx-talker", Rmw::Zenoh)]
 #[case::listener_zenoh("listener", "qemu-riscv64-threadx-listener", Rmw::Zenoh)]
@@ -447,7 +446,7 @@ fn test_threadx_rv64_rust_case_rmw_variant_exists(
     );
 }
 
-/// Phase 118.B.6 — ThreadX-RV64 C / C++ cases (zenoh only).
+/// Phase 118.C — ThreadX-RV64 C / C++ cases, collapsed shape.
 #[rstest]
 #[case::c_talker("c", "talker", "riscv64_threadx_c_talker")]
 #[case::c_listener("c", "listener", "riscv64_threadx_c_listener")]

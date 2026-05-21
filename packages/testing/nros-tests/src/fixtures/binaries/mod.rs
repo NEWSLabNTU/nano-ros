@@ -486,7 +486,7 @@ pub fn build_native_cpp_example_rmw(
     build_example_cmake_rmw(&format!("native/cpp/{}", case), binary_name, rmw)
 }
 
-/// Phase 118.B.6 — collapsed-shape ThreadX-RV64 Rust example resolver.
+/// Phase 118.C — collapsed-shape ThreadX-RV64 Rust example resolver.
 pub fn build_threadx_rv64_rust_example_rmw(
     case: &str,
     binary_name: &str,
@@ -579,7 +579,7 @@ pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestR
     require_prebuilt_binary(&binary_path)
 }
 
-/// Phase 118.B.6 — collapsed-shape ThreadX-RV64 C / C++ example resolver.
+/// Phase 118.C — collapsed-shape ThreadX-RV64 C / C++ example resolver.
 pub fn build_threadx_rv64_cmake_example_rmw(
     lang: &str,
     case: &str,
