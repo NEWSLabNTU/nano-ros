@@ -31,6 +31,7 @@
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
+#include <dds/ddsi/q_protocol.h>
 #include <dds/ddsi/ddsi_serdata_default.h>
 #include <dds/ddsi/ddsi_sertype.h>
 
@@ -65,6 +66,7 @@ class SertypeMin {
     const dds_topic_descriptor_t *desc_;
     struct ddsi_sertype_default   st_{};
     uint32_t                     *ops_copy_{nullptr};
+    ddsi_sertype_default_desc_key_t *keys_copy_{nullptr};
 };
 
 } // namespace nros_rmw_cyclonedds

@@ -264,8 +264,9 @@ def synthesize_action_idl(pkg_name: str, action_path: Path, msg2idl: Path) -> st
     """Synthesize the Cyclone IDL for a ROS `.action`, matching the nros
     action layer's wire framing (NOT stock rmw_cyclonedds_cpp):
 
-      - `goal_id` is a CDR `sequence<octet>` (`action_core::write_goal_id`
-        emits a 4-byte length 16 + 16 bytes), not a fixed `uint8[16]`.
+      - `goal_id` is a fixed `octet[16]`, matching ROS 2 UUID layout.
+        The Cyclone backend strips/reinserts the nano-ros raw-layer
+        4-byte length prefix at the service/topic boundary.
       - send_goal / get_result Request+Response carry the 16-byte service
         header (`rmw_writer_guid` + `rmw_sequence_number`) inlined first,
         like a `.srv`. The feedback message has no header.
@@ -310,7 +311,7 @@ def synthesize_action_idl(pkg_name: str, action_path: Path, msg2idl: Path) -> st
     body += struct(f"{stem}_Feedback_", feedback_fields or ["uint8 structure_needs_at_least_one_member;"])
     body += struct(
         f"{stem}_SendGoal_Request_",
-        hdr + ["sequence<octet> goal_id;", f"{ns}::{stem}_Goal_ goal;"],
+        hdr + ["octet goal_id[16];", f"{ns}::{stem}_Goal_ goal;"],
     )
     body += struct(
         f"{stem}_SendGoal_Response_",
@@ -318,7 +319,7 @@ def synthesize_action_idl(pkg_name: str, action_path: Path, msg2idl: Path) -> st
     )
     body += struct(
         f"{stem}_GetResult_Request_",
-        hdr + ["sequence<octet> goal_id;"],
+        hdr + ["octet goal_id[16];"],
     )
     body += struct(
         f"{stem}_GetResult_Response_",
@@ -326,13 +327,13 @@ def synthesize_action_idl(pkg_name: str, action_path: Path, msg2idl: Path) -> st
     )
     body += struct(
         f"{stem}_FeedbackMessage_",
-        ["sequence<octet> goal_id;", f"{ns}::{stem}_Feedback_ feedback;"],
+        ["octet goal_id[16];", f"{ns}::{stem}_Feedback_ feedback;"],
     )
 
     lines = [
         f"// Auto-synthesized by msg_to_cyclone_idl.py from {pkg_name}/action/{stem}.action.",
-        "// Matches the nros action layer's wire framing (goal_id as",
-        "// sequence<octet>, inlined service header) — nano-ros<->nano-ros.",
+        "// Uses ROS 2 UUID-compatible fixed goal_id storage; the Cyclone",
+        "// backend adapts the nano-ros raw length prefix at runtime.",
         f"module {pkg_name} {{",
         "  module action {",
         "    module dds_ {",

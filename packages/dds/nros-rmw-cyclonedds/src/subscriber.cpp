@@ -34,6 +34,30 @@ inline SubState *as_state(nros_rmw_subscriber_t *s) {
     return static_cast<SubState *>(s->backend_data);
 }
 
+bool type_ends_with(const dds_topic_descriptor_t *desc, const char *suffix) {
+    if (desc == nullptr || desc->m_typename == nullptr || suffix == nullptr) {
+        return false;
+    }
+    const std::size_t len = std::strlen(desc->m_typename);
+    const std::size_t slen = std::strlen(suffix);
+    return len >= slen && std::strcmp(desc->m_typename + len - slen, suffix) == 0;
+}
+
+bool insert_goal_id_len_at(uint8_t *buf, size_t len, size_t cap,
+                           size_t len_off, size_t *out_len) {
+    if (buf == nullptr || out_len == nullptr || len_off > len ||
+        len + 4 > cap) {
+        return false;
+    }
+    std::memmove(buf + len_off + 4, buf + len_off, len - len_off);
+    buf[len_off] = 16;
+    buf[len_off + 1] = 0;
+    buf[len_off + 2] = 0;
+    buf[len_off + 3] = 0;
+    *out_len = len + 4;
+    return true;
+}
+
 } // namespace
 
 nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
@@ -167,6 +191,10 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
 
     uint32_t paylen = os.m_index;
     uint32_t total  = paylen + 4;
+    bool insert_goal_len = type_ends_with(state->desc, "_FeedbackMessage_");
+    if (insert_goal_len) {
+        total += 4;
+    }
     if (buf_len < total) {
         dds_ostream_fini(&os);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
@@ -176,6 +204,14 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     buf[2] = kEncOpts[0];
     buf[3] = kEncOpts[1];
     std::memcpy(buf + 4, os.m_buffer, paylen);
+    if (insert_goal_len) {
+        size_t adjusted = 0;
+        if (!insert_goal_id_len_at(buf, paylen + 4, buf_len, 4, &adjusted)) {
+            dds_ostream_fini(&os);
+            return NROS_RMW_RET_BUFFER_TOO_SMALL;
+        }
+        total = static_cast<uint32_t>(adjusted);
+    }
     dds_ostream_fini(&os);
 
     return static_cast<int32_t>(total);

@@ -27,6 +27,9 @@ namespace nros_rmw_cyclonedds {
 
 namespace {
 
+constexpr uint8_t kCdrLeHeader[4] = {0x00, 0x01, 0x00, 0x00};
+constexpr std::size_t kScratchBytes = 65536;
+
 struct PubState {
     dds_entity_t topic{0};
     dds_entity_t writer{0};
@@ -56,6 +59,48 @@ uint32_t cdr_xcdr_version(const uint8_t *bytes) {
         return 2;
     }
     return 1;
+}
+
+bool type_ends_with(const dds_topic_descriptor_t *desc, const char *suffix) {
+    if (desc == nullptr || desc->m_typename == nullptr || suffix == nullptr) {
+        return false;
+    }
+    const std::size_t len = std::strlen(desc->m_typename);
+    const std::size_t slen = std::strlen(suffix);
+    return len >= slen && std::strcmp(desc->m_typename + len - slen, suffix) == 0;
+}
+
+bool strip_nested_cdr_at(const uint8_t *in, size_t in_len, size_t nested_off,
+                         uint8_t *out, size_t out_cap, size_t *out_len) {
+    if (in == nullptr || out == nullptr || out_len == nullptr ||
+        nested_off + sizeof(kCdrLeHeader) > in_len ||
+        in_len - sizeof(kCdrLeHeader) > out_cap) {
+        return false;
+    }
+    if (std::memcmp(in + nested_off, kCdrLeHeader, sizeof(kCdrLeHeader)) != 0) {
+        return false;
+    }
+    std::memcpy(out, in, nested_off);
+    std::memcpy(out + nested_off, in + nested_off + sizeof(kCdrLeHeader),
+                in_len - nested_off - sizeof(kCdrLeHeader));
+    *out_len = in_len - sizeof(kCdrLeHeader);
+    return true;
+}
+
+bool strip_goal_id_len_at(const uint8_t *in, size_t in_len, size_t len_off,
+                          uint8_t *out, size_t out_cap, size_t *out_len) {
+    if (in == nullptr || out == nullptr || out_len == nullptr ||
+        len_off + 4 > in_len || in_len - 4 > out_cap) {
+        return false;
+    }
+    if (in[len_off] != 16 || in[len_off + 1] != 0 ||
+        in[len_off + 2] != 0 || in[len_off + 3] != 0) {
+        return false;
+    }
+    std::memcpy(out, in, len_off);
+    std::memcpy(out + len_off, in + len_off + 4, in_len - len_off - 4);
+    *out_len = in_len - 4;
+    return true;
 }
 
 } // namespace
@@ -153,12 +198,31 @@ nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t *publisher,
         return NROS_RMW_RET_ERROR;
     }
     const dds_topic_descriptor_t *desc = state->desc;
+    uint8_t adjusted[kScratchBytes];
+    const uint8_t *read_data = data;
+    size_t read_len = len;
+    size_t adjusted_len = 0;
+    if (type_ends_with(desc, "_FeedbackMessage_")) {
+        // Raw action feedback layout:
+        // [encap][goal_id len+uuid][feedback fields]. Cyclone's generated
+        // FeedbackMessage_ stores goal_id as a fixed 16-octet array.
+        if (strip_goal_id_len_at(data, len, 4, adjusted, sizeof(adjusted),
+                                 &adjusted_len)) {
+            read_data = adjusted;
+            read_len = adjusted_len;
+        }
+        if (strip_nested_cdr_at(read_data, read_len, 4 + 16, adjusted,
+                                sizeof(adjusted), &adjusted_len)) {
+            read_data = adjusted;
+            read_len = adjusted_len;
+        }
+    }
 
     // Parse encapsulation, locate payload bytes after the 4-byte
     // header.
-    uint32_t xcdrv = cdr_xcdr_version(data);
-    const uint8_t *payload = data + 4;
-    uint32_t paylen = static_cast<uint32_t>(len - 4);
+    uint32_t xcdrv = cdr_xcdr_version(read_data);
+    const uint8_t *payload = read_data + 4;
+    uint32_t paylen = static_cast<uint32_t>(read_len - 4);
 
     // Allocate + zero typed sample buffer of the descriptor's static
     // size. `dds_stream_read_sample` walks the ops and fills it.

@@ -562,6 +562,8 @@ function(nros_generate_interfaces target)
     foreach(_dep ${_ARG_DEPENDENCIES})
       if(TARGET ${_dep}__nano_ros_cpp)
         target_link_libraries(${_lib_target} INTERFACE ${_dep}__nano_ros_cpp)
+        target_include_directories(${_lib_target} INTERFACE
+          "$<TARGET_PROPERTY:${_dep}__nano_ros_cpp,INTERFACE_INCLUDE_DIRECTORIES>")
       endif()
     endforeach()
   else()
@@ -711,9 +713,36 @@ function(nros_generate_interfaces target)
         # The descriptor self-registration is a static-init TU with no
         # symbol the app references directly, so a plain static-lib link
         # GC's it. Force-load it through the interface message lib so
-        # any consumer of `${_lib_target}` keeps the registrations.
-        target_link_libraries(${_lib_target} INTERFACE
-          "$<LINK_LIBRARY:WHOLE_ARCHIVE,${target}__cyclonedds_ts>")
+        # any consumer of `${_lib_target}` keeps the registrations. Do
+        # the same for dependency descriptor libs: action endpoints need
+        # action_msgs service/status descriptors even when the app only
+        # references the concrete user action type.
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+          foreach(_dep ${_ARG_DEPENDENCIES})
+            if(TARGET ${_dep}__cyclonedds_ts)
+              target_link_libraries(${_lib_target} INTERFACE
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,${_dep}__cyclonedds_ts>")
+            endif()
+          endforeach()
+          target_link_libraries(${_lib_target} INTERFACE
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,${target}__cyclonedds_ts>")
+        else()
+          set(_cyc_force_load_libs "")
+          foreach(_dep ${_ARG_DEPENDENCIES})
+            if(TARGET ${_dep}__cyclonedds_ts)
+              list(APPEND _cyc_force_load_libs ${_dep}__cyclonedds_ts)
+            endif()
+          endforeach()
+          list(APPEND _cyc_force_load_libs ${target}__cyclonedds_ts)
+          target_link_libraries(${_lib_target} INTERFACE
+            "-Wl,--whole-archive"
+            ${_cyc_force_load_libs}
+            "-Wl,--no-whole-archive")
+          if(TARGET nros_rmw_cyclonedds)
+            target_link_libraries(${_lib_target} INTERFACE
+              "$<TARGET_FILE:nros_rmw_cyclonedds>")
+          endif()
+        endif()
       endif()
     endif()
   endif()

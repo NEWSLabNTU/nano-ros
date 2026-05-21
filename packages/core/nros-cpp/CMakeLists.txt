@@ -130,13 +130,11 @@ cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../../.." CALL
 # itself transitively, and flip on the auto-register call inside
 # `nros::init` via the `NROS_RMW_CYCLONEDDS` macro.
 if(NANO_ROS_RMW STREQUAL "cyclonedds")
-    # Phase 140 — the root `CMakeLists.txt` cyclonedds branch
-    # add_subdirectory's `packages/dds/nros-rmw-cyclonedds`, which
-    # exports the `nros_rmw_cyclonedds` target directly. No more
-    # find_package against an install-local prefix.
-    if(TARGET nros_rmw_cyclonedds)
-        target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_cyclonedds)
-    endif()
+    # The root NanoRos umbrella owns Cyclone backend linkage. Linking
+    # nros_rmw_cyclonedds directly here places the archive before the
+    # umbrella's whole-archive group on CMake 3.22 and lets ld discard
+    # the registration constructor object, leaving the runtime with an
+    # empty backend registry.
     target_compile_definitions(nros-cpp-headers INTERFACE NROS_RMW_CYCLONEDDS=1)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     # Phase 144.3 — XRCE via the `nros-rmw-xrce-cffi` Rust shim, which

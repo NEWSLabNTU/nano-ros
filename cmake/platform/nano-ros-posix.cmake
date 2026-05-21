@@ -21,6 +21,8 @@ if(DEFINED _NROS_PLATFORM_POSIX_INCLUDED)
 endif()
 set(_NROS_PLATFORM_POSIX_INCLUDED TRUE)
 
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
+
 # Build the canonical libnros_platform_posix.a from its standalone
 # project. Phase 137 used the same add_subdirectory call inline; Phase
 # 138 hoists it into this module so the root CMakeLists.txt no longer
@@ -51,11 +53,20 @@ if(NOT TARGET NanoRos::Platform)
     add_library(NanoRos::Platform ALIAS nros_platform_posix_iface)
 endif()
 
-# Per-app fixup. POSIX needs nothing here — the umbrella target carries
-# every transitive dep. Function exists so per-example CMakeLists keep
-# the same shape across platforms.
+# Per-app fixup. POSIX has no linker script / startup files, but native
+# app targets still need the generated strong RMW registration stub from
+# NanoRosLink.cmake. Static archive constructor extraction is not reliable
+# enough for the CycloneDDS C/C++ examples.
 function(nros_platform_link_app target)
-    # Intentionally empty for POSIX. Override in board overlay or in the
-    # per-platform module when the platform needs link scripts / startup
-    # files / ISR vector wiring.
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR
+            "nros_platform_link_app: '${target}' is not a CMake target.")
+    endif()
+
+    if(COMMAND nano_ros_link_platform)
+        nano_ros_link_platform(${target})
+    endif()
+    if(COMMAND nano_ros_link_rmw)
+        nano_ros_link_rmw(${target})
+    endif()
 endfunction()

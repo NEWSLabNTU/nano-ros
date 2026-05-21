@@ -70,6 +70,7 @@ namespace {
 constexpr std::size_t kRequestSlots = 32;
 constexpr std::size_t kMaxTopicName = 256;
 constexpr std::size_t kHeaderBytes  = 16;  // 8-byte guid + 8-byte seq
+constexpr uint8_t kCdrLeHeader[4] = {0x00, 0x01, 0x00, 0x00};
 // Per-call scratch ceiling. Tunable via env if a future user needs
 // it; 64 KiB covers ROS 2's default service payload size budget.
 constexpr std::size_t kWireScratch = 65536;
@@ -192,6 +193,76 @@ inline int64_t get_le64(const uint8_t *in) {
     return v;
 }
 
+bool type_ends_with(const dds_topic_descriptor_t *desc, const char *suffix) {
+    if (desc == nullptr || desc->m_typename == nullptr || suffix == nullptr) {
+        return false;
+    }
+    const std::size_t len = std::strlen(desc->m_typename);
+    const std::size_t slen = std::strlen(suffix);
+    return len >= slen && std::strcmp(desc->m_typename + len - slen, suffix) == 0;
+}
+
+bool strip_nested_cdr_at(const uint8_t *in, size_t in_len, size_t nested_off,
+                         uint8_t *out, size_t out_cap, size_t *out_len) {
+    if (in == nullptr || out == nullptr || out_len == nullptr ||
+        nested_off + sizeof(kCdrLeHeader) > in_len ||
+        in_len - sizeof(kCdrLeHeader) > out_cap) {
+        return false;
+    }
+    if (std::memcmp(in + nested_off, kCdrLeHeader, sizeof(kCdrLeHeader)) != 0) {
+        return false;
+    }
+    std::memcpy(out, in, nested_off);
+    std::memcpy(out + nested_off, in + nested_off + sizeof(kCdrLeHeader),
+                in_len - nested_off - sizeof(kCdrLeHeader));
+    *out_len = in_len - sizeof(kCdrLeHeader);
+    return true;
+}
+
+bool strip_goal_id_len_at(const uint8_t *in, size_t in_len, size_t len_off,
+                          uint8_t *out, size_t out_cap, size_t *out_len) {
+    if (in == nullptr || out == nullptr || out_len == nullptr ||
+        len_off + 4 > in_len || in_len - 4 > out_cap) {
+        return false;
+    }
+    if (in[len_off] != 16 || in[len_off + 1] != 0 ||
+        in[len_off + 2] != 0 || in[len_off + 3] != 0) {
+        return false;
+    }
+    std::memcpy(out, in, len_off);
+    std::memcpy(out + len_off, in + len_off + 4, in_len - len_off - 4);
+    *out_len = in_len - 4;
+    return true;
+}
+
+bool insert_nested_cdr_at(uint8_t *buf, size_t len, size_t cap,
+                          size_t nested_off, size_t *out_len) {
+    if (buf == nullptr || out_len == nullptr || nested_off > len ||
+        len + sizeof(kCdrLeHeader) > cap) {
+        return false;
+    }
+    std::memmove(buf + nested_off + sizeof(kCdrLeHeader), buf + nested_off,
+                 len - nested_off);
+    std::memcpy(buf + nested_off, kCdrLeHeader, sizeof(kCdrLeHeader));
+    *out_len = len + sizeof(kCdrLeHeader);
+    return true;
+}
+
+bool insert_goal_id_len_at(uint8_t *buf, size_t len, size_t cap,
+                           size_t len_off, size_t *out_len) {
+    if (buf == nullptr || out_len == nullptr || len_off > len ||
+        len + 4 > cap) {
+        return false;
+    }
+    std::memmove(buf + len_off + 4, buf + len_off, len - len_off);
+    buf[len_off] = 16;
+    buf[len_off + 1] = 0;
+    buf[len_off + 2] = 0;
+    buf[len_off + 3] = 0;
+    *out_len = len + 4;
+    return true;
+}
+
 // Construct the wire CDR for a typed struct that has the 16-byte
 // request_header inlined at offset 0. Inputs:
 //   user_bytes    runtime-supplied CDR with 4-byte encap + user fields
@@ -225,6 +296,7 @@ int32_t build_wire_with_header(const uint8_t *user_bytes, size_t user_len,
 // Returns user-payload length (incl. 4-byte encap) on success, or
 // negative error.
 int32_t split_wire_header(const uint8_t *wire_cdr, size_t wire_len,
+                          const dds_topic_descriptor_t *payload_desc,
                           RequestId *out_id,
                           uint8_t *user_out, size_t user_cap) {
     if (wire_len < 4 + kHeaderBytes) return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -238,6 +310,20 @@ int32_t split_wire_header(const uint8_t *wire_cdr, size_t wire_len,
     std::memcpy(user_out, wire_cdr, 4);
     // User fields.
     std::memcpy(user_out + 4, wire_cdr + 4 + kHeaderBytes, user_len - 4);
+    if (type_ends_with(payload_desc, "_SendGoal_Request_") ||
+        type_ends_with(payload_desc, "_GetResult_Request_")) {
+        size_t adjusted = 0;
+        if (!insert_goal_id_len_at(user_out, user_len, user_cap, 4, &adjusted)) {
+            return NROS_RMW_RET_BUFFER_TOO_SMALL;
+        }
+        user_len = adjusted;
+    } else if (type_ends_with(payload_desc, "_GetResult_Response_")) {
+        size_t adjusted = 0;
+        if (!insert_nested_cdr_at(user_out, user_len, user_cap, 8, &adjusted)) {
+            return NROS_RMW_RET_BUFFER_TOO_SMALL;
+        }
+        user_len = adjusted;
+    }
     return static_cast<int32_t>(user_len);
 }
 
@@ -251,13 +337,52 @@ nros_rmw_ret_t write_typed(dds_entity_t writer,
         wire_cdr == nullptr || wire_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    uint32_t xcdrv = cdr_xcdr_version(wire_cdr);
+    uint8_t adjusted[kWireScratch];
+    const uint8_t *read_cdr = wire_cdr;
+    size_t read_len = wire_len;
+    size_t adjusted_len = 0;
+    if (type_ends_with(desc, "_SendGoal_Request_") ||
+        type_ends_with(desc, "_GetResult_Request_")) {
+        if (strip_goal_id_len_at(wire_cdr, wire_len, 4 + kHeaderBytes,
+                                 adjusted, sizeof(adjusted), &adjusted_len)) {
+            read_cdr = adjusted;
+            read_len = adjusted_len;
+        }
+    } else if (type_ends_with(desc, "_GetResult_Response_")) {
+        if (strip_nested_cdr_at(wire_cdr, wire_len, 4 + kHeaderBytes + 4,
+                                adjusted, sizeof(adjusted), &adjusted_len)) {
+            read_cdr = adjusted;
+            read_len = adjusted_len;
+        }
+    }
+    if (type_ends_with(desc, "_SendGoal_Request_")) {
+        if (strip_nested_cdr_at(read_cdr, read_len, 4 + kHeaderBytes + 16,
+                                adjusted, sizeof(adjusted), &adjusted_len)) {
+            read_cdr = adjusted;
+            read_len = adjusted_len;
+        }
+    }
+
+    if (type_ends_with(desc, "_SendGoal_Request_") ||
+        type_ends_with(desc, "_SendGoal_Response_") ||
+        type_ends_with(desc, "_GetResult_Request_")) {
+        void *sample = std::calloc(1, desc->m_size);
+        if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
+        size_t payload_len = read_len - 4;
+        if (payload_len > desc->m_size) payload_len = desc->m_size;
+        std::memcpy(sample, read_cdr + 4, payload_len);
+        dds_return_t r = dds_write(writer, sample);
+        std::free(sample);
+        return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
+    }
+
+    uint32_t xcdrv = cdr_xcdr_version(read_cdr);
     void *sample = std::calloc(1, desc->m_size);
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
 
     dds_istream_t is;
-    dds_istream_init(&is, static_cast<uint32_t>(wire_len - 4),
-                     wire_cdr + 4, xcdrv);
+    dds_istream_init(&is, static_cast<uint32_t>(read_len - 4),
+                     read_cdr + 4, xcdrv);
     dds_stream_read_sample(&is, sample, st->as_sertype());
     dds_istream_fini(&is);
 
@@ -286,6 +411,29 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
     dds_ostream_t os;
     dds_ostream_init(&os, 0, 1 /*xcdr1*/);
     bool ok = dds_stream_write_sample(&os, samples[0], st->as_sertype());
+    if (!ok && (type_ends_with(st->descriptor(), "_SendGoal_Request_") ||
+                type_ends_with(st->descriptor(), "_SendGoal_Response_") ||
+                type_ends_with(st->descriptor(), "_GetResult_Request_"))) {
+        uint32_t total = 4 + st->descriptor()->m_size;
+        if (out_cap < total) {
+            (void) dds_return_loan(reader, samples, taken);
+            dds_ostream_fini(&os);
+            return NROS_RMW_RET_BUFFER_TOO_SMALL;
+        }
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+        out_buf[0] = 0x00;
+        out_buf[1] = 0x01;
+#else
+        out_buf[0] = 0x00;
+        out_buf[1] = 0x00;
+#endif
+        out_buf[2] = 0;
+        out_buf[3] = 0;
+        std::memcpy(out_buf + 4, samples[0], st->descriptor()->m_size);
+        (void) dds_return_loan(reader, samples, taken);
+        dds_ostream_fini(&os);
+        return static_cast<int32_t>(total);
+    }
     (void) dds_return_loan(reader, samples, taken);
     if (!ok) {
         dds_ostream_fini(&os);
@@ -403,9 +551,6 @@ nros_rmw_ret_t wait_for_request_match(
 nros_rmw_ret_t maybe_flush_request(ClientState *state) {
     if (state == nullptr || state->pending_request_len == 0) {
         return NROS_RMW_RET_OK;
-    }
-    if (!request_writer_matched(state->writer)) {
-        return NROS_RMW_RET_NO_DATA;
     }
     nros_rmw_ret_t r = write_typed(state->writer, state->req_desc,
                                    state->req_st, state->pending_request,
@@ -530,7 +675,7 @@ int32_t service_try_recv_request(nros_rmw_service_server_t *server,
 
     RequestId id{};
     int32_t user_len = split_wire_header(wire, static_cast<size_t>(wire_len),
-                                         &id, buf, buf_len);
+                                         state->req_desc, &id, buf, buf_len);
     if (user_len < 0) return user_len;
 
     // Allocate a slot to remember the (writer_guid, seq) pair so the
@@ -567,6 +712,11 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t *server,
     if (!slot.in_use) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(5);
+    nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
+    if (match != NROS_RMW_RET_OK) return match;
+
     uint8_t wire[kWireScratch];
     int32_t wire_len = build_wire_with_header(data, len, slot.id,
                                               wire, sizeof(wire));
@@ -668,6 +818,12 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
         state->my_guid = random_guid64();
     }
 
+    // Cyclone DDS 0.10.5 can miss local delivery when multiple service
+    // clients are created back-to-back on one participant. Action clients
+    // create send_goal/cancel/get_result clients in sequence, so leave a
+    // small discovery window between creations.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     out->backend_data = state;
     return NROS_RMW_RET_OK;
 }
@@ -731,7 +887,7 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
             RequestId got_id{};
             int32_t user_len =
                 split_wire_header(wire_rep, static_cast<size_t>(wlen),
-                                  &got_id, reply_buf, reply_buf_len);
+                                  state->rep_desc, &got_id, reply_buf, reply_buf_len);
             if (user_len < 0) return user_len;
             if (got_id.seq == my_id.seq && got_id.guid == my_id.guid) {
                 return user_len;
@@ -826,7 +982,7 @@ int32_t service_try_recv_reply_raw(nros_rmw_service_client_t *client,
     RequestId got_id{};
     int32_t user_len =
         split_wire_header(wire_rep, static_cast<size_t>(wlen),
-                          &got_id, reply_buf, reply_buf_len);
+                          state->rep_desc, &got_id, reply_buf, reply_buf_len);
     if (user_len < 0) return user_len;
 
     if (got_id.seq == pending && got_id.guid == state->my_guid) {

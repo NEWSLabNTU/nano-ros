@@ -22,17 +22,31 @@ SertypeMin::SertypeMin(const dds_topic_descriptor_t *desc) : desc_(desc) {
         std::memcpy(ops_copy_, desc->m_ops, nops * sizeof(uint32_t));
     }
 
+    enum ddsi_sertype_extensibility type_ext;
+    if (dds_stream_extensibility(desc->m_ops, &type_ext)) {
+        st_.encoding_format = ddsi_sertype_extensibility_enc_format(type_ext);
+    } else {
+        st_.encoding_format = CDR_ENC_FORMAT_PLAIN;
+    }
+    st_.write_encoding_version = CDR_ENC_VERSION_1;
+
     st_.type.size    = desc->m_size;
     st_.type.align   = desc->m_align;
     st_.type.flagset = desc->m_flagset;
     st_.type.ops.nops = nops;
     st_.type.ops.ops  = ops_copy_;
-    // Keys: not strictly required by `dds_stream_read_sample` /
-    // `dds_stream_write_sample` (they walk `ops` only), but
-    // populating them keeps the struct internally consistent if a
-    // future code path peeks at the keys.
-    st_.type.keys.nkeys = 0;
-    st_.type.keys.keys  = nullptr;
+    st_.type.keys.nkeys = desc->m_nkeys;
+    if (desc->m_nkeys > 0) {
+        keys_copy_ = static_cast<ddsi_sertype_default_desc_key_t *>(
+            std::malloc(static_cast<size_t>(desc->m_nkeys) * sizeof(*keys_copy_)));
+        if (keys_copy_ != nullptr) {
+            for (uint32_t i = 0; i < desc->m_nkeys; ++i) {
+                keys_copy_[i].ops_offs = desc->m_keys[i].m_offset;
+                keys_copy_[i].idx = desc->m_keys[i].m_idx;
+            }
+        }
+    }
+    st_.type.keys.keys = keys_copy_;
 
     // `opt_size_xcdr1/2` is the fast-path "memcpy struct directly to
     // CDR" hint when the layout is identical. Compute it the same way
@@ -46,6 +60,10 @@ SertypeMin::~SertypeMin() {
     if (ops_copy_ != nullptr) {
         std::free(ops_copy_);
         ops_copy_ = nullptr;
+    }
+    if (keys_copy_ != nullptr) {
+        std::free(keys_copy_);
+        keys_copy_ = nullptr;
     }
 }
 
