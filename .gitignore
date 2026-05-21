@@ -60,6 +60,8 @@ tools/*
 # Claude Code session/agent state.
 /.claude/
 /external/
+/third-party/make/
+/third-party/ninja/
 /nros-0.1.0-linux-x86_64.tar.gz
 /target-zpico-build-matrix/
 /target-zpico-drift-gate/
