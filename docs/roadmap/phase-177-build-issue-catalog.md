@@ -148,6 +148,16 @@ and E2E failures that need focused owners.
   `nsos_adapt_getifaddrs`, and non-fatal Cortex-R Rust patch handling
   when upstream Kconfig is not writable.
 
+- [x] **177.18 - Zephyr native_sim inherited fifo jobserver failure.**
+  `just build-all` can run Zephyr under the unified make-4.4 fifo
+  jobserver, but Zephyr native_sim's final runner link invokes
+  CMake's `MAKE` cache entry from `scripts/native_simulator/Makefile`.
+  Ubuntu make 4.3 aborts on `--jobserver-auth=fifo:...` with
+  `invalid --jobserver-auth string`. Zephyr build recipes now prepend the
+  repo-local `third-party/make` and pass `-DMAKE=<repo>/third-party/make/make`
+  so the native_sim make hop uses GNU make 4.4 and remains on the shared
+  jobserver.
+
 ## Verification Notes
 
 - [x] `cargo +nightly-2026-04-11 fmt --check`
@@ -155,6 +165,8 @@ and E2E failures that need focused owners.
 - [x] `cargo test --no-run -p nros-c --lib`
 - [x] `just nuttx build-fixtures`
 - [x] One clean Zephyr `native_sim` fixture with the fixed flags.
+- [x] Zephyr native_sim runner make-hop with poisoned fifo `MAKEFLAGS`
+  routed through repo-local GNU make 4.4 instead of `/usr/bin/make`.
 - [ ] Full `just build-all` rerun after the final Zephyr follow-up fix.
 - [ ] Full `test-all` rerun with PX4/ESP-IDF/PlatformIO/bridge fixtures
   prepared.

@@ -184,6 +184,11 @@ build-fixtures:
     ccache_dir="${NROS_ZEPHYR_CCACHE_DIR:-$nros_root/build/zephyr-cache/ccache}"
     ccache_tmpdir="${NROS_ZEPHYR_CCACHE_TEMPDIR:-$nros_root/build/zephyr-cache/ccache-tmp}"
     mkdir -p "$ccache_dir" "$ccache_tmpdir"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
+    tool_path="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     # Phase 140 — Zephyr C/C++ DDS examples call nros_generate_interfaces()
     # which needs nros-codegen on the host. Cross builds (every Zephyr
     # board target) can't build it with the cross toolchain, so build
@@ -236,11 +241,10 @@ build-fixtures:
         echo "Invalid NROS_ZEPHYR_NINJA_JOBS=$ninja_jobs; expected positive integer" >&2
         exit 2
     fi
-    # Phase 176 — under the unified fifo jobserver (NROS_JOBSERVER=1, set
-    # by `just build-all-jobserver`), ninja >=1.13 draws its job tokens
-    # from the shared pool via the fifo path in MAKEFLAGS. Pinning
-    # CMAKE_BUILD_PARALLEL_LEVEL would override the jobserver and detach
-    # ninja from the pool, so we DON'T set it in that mode.
+    # Phase 177.18 — Zephyr native_sim's final runner link invokes
+    # Zephyr's scripts/native_simulator/Makefile through CMake's MAKE
+    # cache variable. Point it at the pinned GNU make 4.4 build from
+    # `just setup` so the fifo jobserver survives every build stage.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         cmake_build_env=()
     else
@@ -389,6 +393,7 @@ build-fixtures:
         echo "  → zephyr/$src (-d $actual_build_dir, $board${xrce_port:+, xrce-port=$xrce_port}${conf_files:+, conf=$conf_files})"
         extra_args=(-D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
                     -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR="$toolchain_cache_dir"
+                    -DMAKE="$make_bin"
                     -DUSE_CCACHE=0)
         if [ -n "$xrce_port" ]; then
             extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
@@ -420,10 +425,17 @@ build-fixtures:
         # Rust-target detect, codegen) — ~4 s/example even on a no-op.
         # ninja regenerates build.ninja itself only when a cmake input
         # (CMakeLists / prj.conf) actually changed, so this is correct;
-        # `pristine=always` still forces a clean west reconfigure. Under
+        # `pristine=always` still forces a clean west reconfigure. If an
+        # older build dir cached `/usr/bin/make`, re-run west once so
+        # `-DMAKE=$make_bin` reaches the native_sim runner rule. Under
         # the fifo jobserver (NROS_JOBSERVER=1) ninja inherits the pool;
         # otherwise it gets the per-build ninja-jobs budget.
-        if [ "$pristine" != "always" ] && [ -f "$actual_build_dir/build.ninja" ]; then
+        needs_west=0
+        cache_file="$actual_build_dir/CMakeCache.txt"
+        if [ -f "$cache_file" ] && ! grep -qxF "MAKE:FILEPATH=$make_bin" "$cache_file"; then
+            needs_west=1
+        fi
+        if [ "$pristine" != "always" ] && [ -f "$actual_build_dir/build.ninja" ] && [ "$needs_west" = "0" ]; then
             if [ "${NROS_JOBSERVER:-}" = "1" ]; then
                 build_argv=(ninja -C "$actual_build_dir")
             else
@@ -437,7 +449,7 @@ build-fixtures:
             set +e
             (
               cd "$workspace"
-              env SCCACHE_DISABLE="$sccache_disable" \
+              env PATH="$tool_path" SCCACHE_DISABLE="$sccache_disable" \
                 CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
                 "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
@@ -455,7 +467,7 @@ build-fixtures:
         else
             (
               cd "$workspace"
-              env SCCACHE_DISABLE="$sccache_disable" \
+              env PATH="$tool_path" SCCACHE_DISABLE="$sccache_disable" \
                 CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
                 "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
@@ -499,12 +511,17 @@ build-fvp-aemv8r:
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
     extra="$nros_root/packages/boards/nros-board-fvp-aemv8r-smp/boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf"
     cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-fvp-aemv8r-talker -p auto \
-        -- -DEXTRA_CONF_FILE="$extra"
+        -- -DEXTRA_CONF_FILE="$extra" -DMAKE="$make_bin"
     echo "FVP AEMv8-R Cortex-A SMP build smoke OK"
 
 # Phase 117.14 — Zephyr build smoke for the AEMv8-R Cortex-A SMP
@@ -533,13 +550,18 @@ build-fvp-aemv8r-cyclonedds:
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen_tool="$nros_root/packages/codegen/packages/target/release/nros-codegen"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
     cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     echo "Building examples/zephyr/cpp/cyclonedds/talker-aemv8r for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
     west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
         -d build-aemv8r-cyclonedds-talker -p auto \
         nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
-        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
@@ -565,8 +587,13 @@ build-s32z:
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/cortex-r-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
     extra="$nros_root/packages/boards/nros-board-s32z270dc2-r52/boards/s32z2xxdc2_s32z270_rtu0_D.conf"
     cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     # Use the zenoh talker rather than the DDS one — the eval board
     # has only 1 MiB SRAM, which Rust core overflows by
@@ -593,7 +620,7 @@ build-s32z:
     set +e
     west build -b "s32z2xxdc2@D/s32z270/rtu0" \
         -d build-s32z-talker -p auto \
-        -- -DEXTRA_CONF_FILE="$extra" \
+        -- -DEXTRA_CONF_FILE="$extra" -DMAKE="$make_bin" \
         > "$nros_root/build-s32z-output.log" 2>&1
     rc=$?
     set -e
@@ -641,6 +668,11 @@ build-logging-smoke:
         exit 1
     fi
     CODEGEN="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
+    MAKE_BIN="$(pwd)/third-party/make/make"
+    if [ ! -x "$MAKE_BIN" ]; then
+        MAKE_BIN="$(command -v make)"
+    fi
+    export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
     if [ ! -x "$CODEGEN" ]; then
         echo "  Building host nros-codegen..."
         cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
@@ -651,7 +683,7 @@ build-logging-smoke:
     echo "  Building logging-smoke-zephyr-native-sim -> build-logging-smoke/"
     west build -b native_sim/native/64 -d build-logging-smoke -p auto \
         $NROS/packages/testing/nros-tests/bins/logging-smoke-zephyr-native-sim \
-        -- -D_NANO_ROS_CODEGEN_TOOL="$CODEGEN"
+        -- -D_NANO_ROS_CODEGEN_TOOL="$CODEGEN" -DMAKE="$MAKE_BIN"
 
 # Build Zephyr C++ examples
 build-cpp:
@@ -734,9 +766,15 @@ build-c-port:
         echo "zephyr-workspace/env.sh missing — run: just zephyr setup" >&2
         exit 2
     fi
+    make_bin="$(pwd)/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
+    export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
     source zephyr-workspace/env.sh
     west build -b native_sim/native/64 \
-        -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke
+        -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke \
+        -- -DMAKE="$make_bin"
 
 # Phase 121.6 — run the Zephyr native_sim smoke test on the host.
 test-c-port: build-c-port
