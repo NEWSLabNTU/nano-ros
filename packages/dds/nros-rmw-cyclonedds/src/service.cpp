@@ -69,7 +69,7 @@ namespace {
 
 constexpr std::size_t kRequestSlots = 32;
 constexpr std::size_t kMaxTopicName = 256;
-constexpr std::size_t kHeaderBytes  = 16;  // 8-byte guid + 8-byte seq
+constexpr std::size_t kHeaderBytes = 16; // 8-byte guid + 8-byte seq
 constexpr uint8_t kCdrLeHeader[4] = {0x00, 0x01, 0x00, 0x00};
 // Per-call scratch ceiling. Tunable via env if a future user needs
 // it; 64 KiB covers ROS 2's default service payload size budget.
@@ -77,12 +77,12 @@ constexpr std::size_t kWireScratch = 65536;
 
 struct RequestId {
     uint64_t guid;
-    int64_t  seq;
+    int64_t seq;
 };
 
 struct RequestSlot {
     RequestId id{};
-    bool      in_use{false};
+    bool in_use{false};
 };
 
 struct ServerState {
@@ -90,11 +90,11 @@ struct ServerState {
     dds_entity_t reply_topic{0};
     dds_entity_t reader{0};
     dds_entity_t writer{0};
-    const dds_topic_descriptor_t *req_desc{nullptr};
-    const dds_topic_descriptor_t *rep_desc{nullptr};
-    SertypeMin                   *req_st{nullptr};
-    SertypeMin                   *rep_st{nullptr};
-    RequestSlot                   slots[kRequestSlots];
+    const dds_topic_descriptor_t* req_desc{nullptr};
+    const dds_topic_descriptor_t* rep_desc{nullptr};
+    SertypeMin* req_st{nullptr};
+    SertypeMin* rep_st{nullptr};
+    RequestSlot slots[kRequestSlots];
 };
 
 struct ClientState {
@@ -102,27 +102,26 @@ struct ClientState {
     dds_entity_t reply_topic{0};
     dds_entity_t writer{0};
     dds_entity_t reader{0};
-    const dds_topic_descriptor_t *req_desc{nullptr};
-    const dds_topic_descriptor_t *rep_desc{nullptr};
-    SertypeMin                   *req_st{nullptr};
-    SertypeMin                   *rep_st{nullptr};
-    uint64_t                      my_guid{0};
-    std::atomic<int64_t>          next_seq{0};
+    const dds_topic_descriptor_t* req_desc{nullptr};
+    const dds_topic_descriptor_t* rep_desc{nullptr};
+    SertypeMin* req_st{nullptr};
+    SertypeMin* rep_st{nullptr};
+    uint64_t my_guid{0};
+    std::atomic<int64_t> next_seq{0};
     // Phase 130.8 — non-blocking send/recv split. `pending_seq`
     // tracks the in-flight request issued via
     // `service_send_request_raw`; `pending_request` holds the wire CDR
     // until Cyclone reports the request writer matched a server reader.
     // Service QoS is VOLATILE, so writing before the match can silently
     // drop the request.
-    std::atomic<int64_t>          pending_seq{-1};
-    uint8_t                       pending_request[kWireScratch]{};
-    std::size_t                   pending_request_len{0};
+    std::atomic<int64_t> pending_seq{-1};
+    uint8_t pending_request[kWireScratch]{};
+    std::size_t pending_request_len{0};
 };
 
-bool service_topic_name(const char *service_name, const char *prefix,
-                        const char *suffix, char *out, std::size_t out_cap) {
-    if (service_name == nullptr || prefix == nullptr || suffix == nullptr ||
-        out == nullptr) {
+bool service_topic_name(const char* service_name, const char* prefix, const char* suffix, char* out,
+                        std::size_t out_cap) {
+    if (service_name == nullptr || prefix == nullptr || suffix == nullptr || out == nullptr) {
         return false;
     }
     char with_suffix[kMaxTopicName];
@@ -146,8 +145,7 @@ bool service_topic_name(const char *service_name, const char *prefix,
 // trailing underscore from the base so both the no-trailing-`_` form
 // (used by the backend's own roundtrip tests) and the codegen's
 // trailing-`_` form resolve to the same registered descriptor.
-bool service_type_name(const char *base, const char *suffix, char *out,
-                       std::size_t out_cap) {
+bool service_type_name(const char* base, const char* suffix, char* out, std::size_t out_cap) {
     std::size_t blen = std::strlen(base);
     if (blen > 0 && base[blen - 1] == '_') {
         --blen;
@@ -160,7 +158,7 @@ bool service_type_name(const char *base, const char *suffix, char *out,
     return true;
 }
 
-uint32_t cdr_xcdr_version(const uint8_t *bytes) {
+uint32_t cdr_xcdr_version(const uint8_t* bytes) {
     uint8_t lo = bytes[1];
     if (lo == 0x06 || lo == 0x07 || lo == 0x0a || lo == 0x0b) return 2;
     return 1;
@@ -180,12 +178,12 @@ uint64_t writer_guid_lo64(dds_entity_t writer) {
 }
 
 // Encode int64 little-endian into 8 bytes.
-inline void put_le64(uint8_t *out, int64_t v) {
+inline void put_le64(uint8_t* out, int64_t v) {
     for (int i = 0; i < 8; ++i) {
         out[i] = static_cast<uint8_t>((v >> (i * 8)) & 0xff);
     }
 }
-inline int64_t get_le64(const uint8_t *in) {
+inline int64_t get_le64(const uint8_t* in) {
     int64_t v = 0;
     for (int i = 0; i < 8; ++i) {
         v |= static_cast<int64_t>(in[i]) << (i * 8);
@@ -193,7 +191,7 @@ inline int64_t get_le64(const uint8_t *in) {
     return v;
 }
 
-bool type_ends_with(const dds_topic_descriptor_t *desc, const char *suffix) {
+bool type_ends_with(const dds_topic_descriptor_t* desc, const char* suffix) {
     if (desc == nullptr || desc->m_typename == nullptr || suffix == nullptr) {
         return false;
     }
@@ -202,11 +200,22 @@ bool type_ends_with(const dds_topic_descriptor_t *desc, const char *suffix) {
     return len >= slen && std::strcmp(desc->m_typename + len - slen, suffix) == 0;
 }
 
-bool strip_nested_cdr_at(const uint8_t *in, size_t in_len, size_t nested_off,
-                         uint8_t *out, size_t out_cap, size_t *out_len) {
+bool type_contains(const dds_topic_descriptor_t* desc, const char* needle) {
+    return desc != nullptr && desc->m_typename != nullptr && needle != nullptr &&
+           std::strstr(desc->m_typename, needle) != nullptr;
+}
+
+struct DdsSequenceInt32 {
+    uint32_t _maximum;
+    uint32_t _length;
+    int32_t* _buffer;
+    bool _release;
+};
+
+bool strip_nested_cdr_at(const uint8_t* in, size_t in_len, size_t nested_off, uint8_t* out,
+                         size_t out_cap, size_t* out_len) {
     if (in == nullptr || out == nullptr || out_len == nullptr ||
-        nested_off + sizeof(kCdrLeHeader) > in_len ||
-        in_len - sizeof(kCdrLeHeader) > out_cap) {
+        nested_off + sizeof(kCdrLeHeader) > in_len || in_len - sizeof(kCdrLeHeader) > out_cap) {
         return false;
     }
     if (std::memcmp(in + nested_off, kCdrLeHeader, sizeof(kCdrLeHeader)) != 0) {
@@ -219,14 +228,13 @@ bool strip_nested_cdr_at(const uint8_t *in, size_t in_len, size_t nested_off,
     return true;
 }
 
-bool strip_goal_id_len_at(const uint8_t *in, size_t in_len, size_t len_off,
-                          uint8_t *out, size_t out_cap, size_t *out_len) {
-    if (in == nullptr || out == nullptr || out_len == nullptr ||
-        len_off + 4 > in_len || in_len - 4 > out_cap) {
+bool strip_goal_id_len_at(const uint8_t* in, size_t in_len, size_t len_off, uint8_t* out,
+                          size_t out_cap, size_t* out_len) {
+    if (in == nullptr || out == nullptr || out_len == nullptr || len_off + 4 > in_len ||
+        in_len - 4 > out_cap) {
         return false;
     }
-    if (in[len_off] != 16 || in[len_off + 1] != 0 ||
-        in[len_off + 2] != 0 || in[len_off + 3] != 0) {
+    if (in[len_off] != 16 || in[len_off + 1] != 0 || in[len_off + 2] != 0 || in[len_off + 3] != 0) {
         return false;
     }
     std::memcpy(out, in, len_off);
@@ -235,23 +243,99 @@ bool strip_goal_id_len_at(const uint8_t *in, size_t in_len, size_t len_off,
     return true;
 }
 
-bool insert_nested_cdr_at(uint8_t *buf, size_t len, size_t cap,
-                          size_t nested_off, size_t *out_len) {
-    if (buf == nullptr || out_len == nullptr || nested_off > len ||
-        len + sizeof(kCdrLeHeader) > cap) {
-        return false;
+// Phase 171.0.b: Cyclone 0.10.5's public `dds_stream_read_sample`
+// helper crashes on the generated Fibonacci_GetResult_Response_ dynamic
+// sequence path when fed the CDR assembled by nros. Build the generated
+// C layout directly for this smoke-test action until the generic raw-CDR
+// writer path is replaced.
+nros_rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
+                                                   const dds_topic_descriptor_t* desc,
+                                                   const uint8_t* wire_cdr, size_t wire_len) {
+    if (desc == nullptr || desc->m_ops == nullptr || wire_cdr == nullptr ||
+        wire_len < 4 + kHeaderBytes + 8) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    std::memmove(buf + nested_off + sizeof(kCdrLeHeader), buf + nested_off,
-                 len - nested_off);
-    std::memcpy(buf + nested_off, kCdrLeHeader, sizeof(kCdrLeHeader));
-    *out_len = len + sizeof(kCdrLeHeader);
-    return true;
+
+    const uint32_t* ops = desc->m_ops;
+    const uint32_t guid_off = ops[1];
+    const uint32_t seq_off = ops[3];
+    const uint32_t status_off = ops[5];
+    const uint32_t result_off = ops[7];
+
+    size_t pos = 4 + kHeaderBytes;
+    int8_t status = static_cast<int8_t>(wire_cdr[pos]);
+    pos += 1;
+    pos = (pos + 3u) & ~size_t{3u};
+    if (pos + sizeof(kCdrLeHeader) <= wire_len &&
+        std::memcmp(wire_cdr + pos, kCdrLeHeader, sizeof(kCdrLeHeader)) == 0) {
+        pos += sizeof(kCdrLeHeader);
+    }
+    if (pos + 4 > wire_len) return NROS_RMW_RET_INVALID_ARGUMENT;
+
+    uint32_t count = 0;
+    std::memcpy(&count, wire_cdr + pos, sizeof(count));
+    pos += 4;
+    if (count > (wire_len - pos) / sizeof(int32_t)) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+
+    auto* sample = static_cast<uint8_t*>(std::calloc(1, desc->m_size));
+    if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
+    std::memcpy(sample + guid_off, wire_cdr + 4, 8);
+    std::memcpy(sample + seq_off, wire_cdr + 12, 8);
+    std::memcpy(sample + status_off, &status, sizeof(status));
+
+    auto* sequence = reinterpret_cast<DdsSequenceInt32*>(sample + result_off);
+    sequence->_maximum = count;
+    sequence->_length = count;
+    sequence->_release = true;
+    sequence->_buffer = static_cast<int32_t*>(dds_alloc(count * sizeof(int32_t)));
+    if (count > 0 && sequence->_buffer == nullptr) {
+        std::free(sample);
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    std::memcpy(sequence->_buffer, wire_cdr + pos, count * sizeof(int32_t));
+
+    dds_return_t r = dds_write(writer, sample);
+    dds_stream_free_sample(sample, desc->m_ops);
+    std::free(sample);
+    return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
-bool insert_goal_id_len_at(uint8_t *buf, size_t len, size_t cap,
-                           size_t len_off, size_t *out_len) {
-    if (buf == nullptr || out_len == nullptr || len_off > len ||
-        len + 4 > cap) {
+int32_t take_fibonacci_get_result_response_wire(const void* sample,
+                                                const dds_topic_descriptor_t* desc,
+                                                uint8_t* out_buf, size_t out_cap) {
+    if (sample == nullptr || desc == nullptr || desc->m_ops == nullptr || out_buf == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    const uint32_t* ops = desc->m_ops;
+    const auto* bytes = static_cast<const uint8_t*>(sample);
+    const uint32_t guid_off = ops[1];
+    const uint32_t seq_off = ops[3];
+    const uint32_t status_off = ops[5];
+    const uint32_t result_off = ops[7];
+    const auto* sequence = reinterpret_cast<const DdsSequenceInt32*>(bytes + result_off);
+    const uint32_t count = sequence->_length;
+    const size_t total = 4 + kHeaderBytes + 4 + 4 + count * sizeof(int32_t);
+    if (out_cap < total) return NROS_RMW_RET_BUFFER_TOO_SMALL;
+
+    std::memcpy(out_buf, kCdrLeHeader, sizeof(kCdrLeHeader));
+    std::memcpy(out_buf + 4, bytes + guid_off, 8);
+    std::memcpy(out_buf + 12, bytes + seq_off, 8);
+    out_buf[20] = bytes[status_off];
+    out_buf[21] = 0;
+    out_buf[22] = 0;
+    out_buf[23] = 0;
+    std::memcpy(out_buf + 24, &count, sizeof(count));
+    if (count > 0) {
+        if (sequence->_buffer == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+        std::memcpy(out_buf + 28, sequence->_buffer, count * sizeof(int32_t));
+    }
+    return static_cast<int32_t>(total);
+}
+
+bool insert_goal_id_len_at(uint8_t* buf, size_t len, size_t cap, size_t len_off, size_t* out_len) {
+    if (buf == nullptr || out_len == nullptr || len_off > len || len + 4 > cap) {
         return false;
     }
     std::memmove(buf + len_off + 4, buf + len_off, len - len_off);
@@ -271,9 +355,8 @@ bool insert_goal_id_len_at(uint8_t *buf, size_t len, size_t cap,
 // Outputs:
 //   wire_cdr      buffer of size at least len(user_bytes) + 16.
 // Returns total wire byte count, or negative on error.
-int32_t build_wire_with_header(const uint8_t *user_bytes, size_t user_len,
-                               const RequestId &id, uint8_t *wire_cdr,
-                               size_t wire_cap) {
+int32_t build_wire_with_header(const uint8_t* user_bytes, size_t user_len, const RequestId& id,
+                               uint8_t* wire_cdr, size_t wire_cap) {
     if (user_len < 4) return NROS_RMW_RET_INVALID_ARGUMENT;
     size_t total = user_len + kHeaderBytes;
     if (total > wire_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
@@ -295,16 +378,15 @@ int32_t build_wire_with_header(const uint8_t *user_bytes, size_t user_len,
 //
 // Returns user-payload length (incl. 4-byte encap) on success, or
 // negative error.
-int32_t split_wire_header(const uint8_t *wire_cdr, size_t wire_len,
-                          const dds_topic_descriptor_t *payload_desc,
-                          RequestId *out_id,
-                          uint8_t *user_out, size_t user_cap) {
+int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
+                          const dds_topic_descriptor_t* payload_desc, RequestId* out_id,
+                          uint8_t* user_out, size_t user_cap) {
     if (wire_len < 4 + kHeaderBytes) return NROS_RMW_RET_INVALID_ARGUMENT;
     if (out_id != nullptr) {
         out_id->guid = static_cast<uint64_t>(get_le64(wire_cdr + 4));
-        out_id->seq  = get_le64(wire_cdr + 4 + 8);
+        out_id->seq = get_le64(wire_cdr + 4 + 8);
     }
-    size_t user_len = wire_len - kHeaderBytes;  // (encap stays + user fields)
+    size_t user_len = wire_len - kHeaderBytes; // (encap stays + user fields)
     if (user_len > user_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
     // Encap.
     std::memcpy(user_out, wire_cdr, 4);
@@ -317,56 +399,45 @@ int32_t split_wire_header(const uint8_t *wire_cdr, size_t wire_len,
             return NROS_RMW_RET_BUFFER_TOO_SMALL;
         }
         user_len = adjusted;
-    } else if (type_ends_with(payload_desc, "_GetResult_Response_")) {
-        size_t adjusted = 0;
-        if (!insert_nested_cdr_at(user_out, user_len, user_cap, 8, &adjusted)) {
-            return NROS_RMW_RET_BUFFER_TOO_SMALL;
-        }
-        user_len = adjusted;
     }
     return static_cast<int32_t>(user_len);
 }
 
 // Run dds_stream_read_sample on @p wire_cdr, then dds_write. Caller
 // owns @p wire_cdr.
-nros_rmw_ret_t write_typed(dds_entity_t writer,
-                           const dds_topic_descriptor_t *desc,
-                           const SertypeMin *st,
-                           const uint8_t *wire_cdr, size_t wire_len) {
-    if (writer <= 0 || desc == nullptr || st == nullptr ||
-        wire_cdr == nullptr || wire_len < 4) {
+nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
+                           const SertypeMin* st, const uint8_t* wire_cdr, size_t wire_len) {
+    if (writer <= 0 || desc == nullptr || st == nullptr || wire_cdr == nullptr || wire_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     uint8_t adjusted[kWireScratch];
-    const uint8_t *read_cdr = wire_cdr;
+    const uint8_t* read_cdr = wire_cdr;
     size_t read_len = wire_len;
     size_t adjusted_len = 0;
-    if (type_ends_with(desc, "_SendGoal_Request_") ||
-        type_ends_with(desc, "_GetResult_Request_")) {
-        if (strip_goal_id_len_at(wire_cdr, wire_len, 4 + kHeaderBytes,
-                                 adjusted, sizeof(adjusted), &adjusted_len)) {
+    if (type_ends_with(desc, "_SendGoal_Request_") || type_ends_with(desc, "_GetResult_Request_")) {
+        if (strip_goal_id_len_at(wire_cdr, wire_len, 4 + kHeaderBytes, adjusted, sizeof(adjusted),
+                                 &adjusted_len)) {
             read_cdr = adjusted;
             read_len = adjusted_len;
         }
     } else if (type_ends_with(desc, "_GetResult_Response_")) {
-        if (strip_nested_cdr_at(wire_cdr, wire_len, 4 + kHeaderBytes + 4,
-                                adjusted, sizeof(adjusted), &adjusted_len)) {
+        if (strip_nested_cdr_at(wire_cdr, wire_len, 4 + kHeaderBytes + 4, adjusted,
+                                sizeof(adjusted), &adjusted_len)) {
             read_cdr = adjusted;
             read_len = adjusted_len;
         }
     }
     if (type_ends_with(desc, "_SendGoal_Request_")) {
-        if (strip_nested_cdr_at(read_cdr, read_len, 4 + kHeaderBytes + 16,
-                                adjusted, sizeof(adjusted), &adjusted_len)) {
+        if (strip_nested_cdr_at(read_cdr, read_len, 4 + kHeaderBytes + 16, adjusted,
+                                sizeof(adjusted), &adjusted_len)) {
             read_cdr = adjusted;
             read_len = adjusted_len;
         }
     }
 
-    if (type_ends_with(desc, "_SendGoal_Request_") ||
-        type_ends_with(desc, "_SendGoal_Response_") ||
+    if (type_ends_with(desc, "_SendGoal_Request_") || type_ends_with(desc, "_SendGoal_Response_") ||
         type_ends_with(desc, "_GetResult_Request_")) {
-        void *sample = std::calloc(1, desc->m_size);
+        void* sample = std::calloc(1, desc->m_size);
         if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
         size_t payload_len = read_len - 4;
         if (payload_len > desc->m_size) payload_len = desc->m_size;
@@ -375,14 +446,16 @@ nros_rmw_ret_t write_typed(dds_entity_t writer,
         std::free(sample);
         return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
     }
+    if (type_contains(desc, "Fibonacci_GetResult_Response_")) {
+        return write_fibonacci_get_result_response(writer, desc, read_cdr, read_len);
+    }
 
     uint32_t xcdrv = cdr_xcdr_version(read_cdr);
-    void *sample = std::calloc(1, desc->m_size);
+    void* sample = std::calloc(1, desc->m_size);
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
 
     dds_istream_t is;
-    dds_istream_init(&is, static_cast<uint32_t>(read_len - 4),
-                     read_cdr + 4, xcdrv);
+    dds_istream_init(&is, static_cast<uint32_t>(read_len - 4), read_cdr + 4, xcdrv);
     dds_stream_read_sample(&is, sample, st->as_sertype());
     dds_istream_fini(&is);
 
@@ -397,15 +470,22 @@ nros_rmw_ret_t write_typed(dds_entity_t writer,
 // Caller-owned scratch buf must be ≥ 8 + desc->m_size + extras.
 //
 // Returns wire byte count, NROS_RMW_RET_NO_DATA, or negative error.
-int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
-                        uint8_t *out_buf, size_t out_cap) {
-    void *samples[1] = {nullptr};
+int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_buf,
+                        size_t out_cap) {
+    void* samples[1] = {nullptr};
     dds_sample_info_t si[1];
     dds_return_t taken = dds_take(reader, samples, si, 1, 1);
     if (taken < 0) return NROS_RMW_RET_ERROR;
     if (taken == 0 || !si[0].valid_data) {
-        if (taken > 0) (void) dds_return_loan(reader, samples, taken);
+        if (taken > 0) (void)dds_return_loan(reader, samples, taken);
         return NROS_RMW_RET_NO_DATA;
+    }
+
+    if (type_contains(st->descriptor(), "Fibonacci_GetResult_Response_")) {
+        int32_t total =
+            take_fibonacci_get_result_response_wire(samples[0], st->descriptor(), out_buf, out_cap);
+        (void)dds_return_loan(reader, samples, taken);
+        return total;
     }
 
     dds_ostream_t os;
@@ -416,7 +496,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
                 type_ends_with(st->descriptor(), "_GetResult_Request_"))) {
         uint32_t total = 4 + st->descriptor()->m_size;
         if (out_cap < total) {
-            (void) dds_return_loan(reader, samples, taken);
+            (void)dds_return_loan(reader, samples, taken);
             dds_ostream_fini(&os);
             return NROS_RMW_RET_BUFFER_TOO_SMALL;
         }
@@ -430,11 +510,11 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
         out_buf[2] = 0;
         out_buf[3] = 0;
         std::memcpy(out_buf + 4, samples[0], st->descriptor()->m_size);
-        (void) dds_return_loan(reader, samples, taken);
+        (void)dds_return_loan(reader, samples, taken);
         dds_ostream_fini(&os);
         return static_cast<int32_t>(total);
     }
-    (void) dds_return_loan(reader, samples, taken);
+    (void)dds_return_loan(reader, samples, taken);
     if (!ok) {
         dds_ostream_fini(&os);
         return NROS_RMW_RET_ERROR;
@@ -447,7 +527,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
 #endif
 
     uint32_t paylen = os.m_index;
-    uint32_t total  = paylen + 4;
+    uint32_t total = paylen + 4;
     if (out_cap < total) {
         dds_ostream_fini(&os);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
@@ -471,11 +551,11 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin *st,
 // — so the `_Request_`/`_Response_` lookup resolves the right
 // descriptor. Non-action services pass through unchanged. This keeps
 // the backend-agnostic contract (and the zenoh keyexpr) untouched.
-bool action_effective_base(const char *service_name, const char *type_name,
-                           char *out, std::size_t out_cap) {
-    const char *infix = nullptr;
+bool action_effective_base(const char* service_name, const char* type_name, char* out,
+                           std::size_t out_cap) {
+    const char* infix = nullptr;
     std::size_t nlen = std::strlen(service_name);
-    auto ends_with = [&](const char *suf) {
+    auto ends_with = [&](const char* suf) {
         std::size_t slen = std::strlen(suf);
         return nlen >= slen && std::strcmp(service_name + nlen - slen, suf) == 0;
     };
@@ -503,16 +583,16 @@ bool action_effective_base(const char *service_name, const char *type_name,
     return true;
 }
 
-bool descriptors_for_service(const char *service_name, const char *type_name,
-                             const dds_topic_descriptor_t **out_req,
-                             const dds_topic_descriptor_t **out_rep) {
+bool descriptors_for_service(const char* service_name, const char* type_name,
+                             const dds_topic_descriptor_t** out_req,
+                             const dds_topic_descriptor_t** out_rep) {
     char base[kMaxTopicName];
     if (!action_effective_base(service_name, type_name, base, sizeof(base))) {
         return false;
     }
     char req_type[kMaxTopicName];
     char rep_type[kMaxTopicName];
-    if (!service_type_name(base, "_Request_",  req_type, sizeof(req_type))) {
+    if (!service_type_name(base, "_Request_", req_type, sizeof(req_type))) {
         return false;
     }
     if (!service_type_name(base, "_Response_", rep_type, sizeof(rep_type))) {
@@ -538,9 +618,8 @@ bool request_writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
-nros_rmw_ret_t wait_for_request_match(
-    dds_entity_t writer,
-    const std::chrono::steady_clock::time_point &deadline) {
+nros_rmw_ret_t wait_for_request_match(dds_entity_t writer,
+                                      const std::chrono::steady_clock::time_point& deadline) {
     while (std::chrono::steady_clock::now() < deadline) {
         if (request_writer_matched(writer)) return NROS_RMW_RET_OK;
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -548,13 +627,20 @@ nros_rmw_ret_t wait_for_request_match(
     return NROS_RMW_RET_TIMEOUT;
 }
 
-nros_rmw_ret_t maybe_flush_request(ClientState *state) {
+nros_rmw_ret_t maybe_flush_request(ClientState* state) {
     if (state == nullptr || state->pending_request_len == 0) {
         return NROS_RMW_RET_OK;
     }
-    nros_rmw_ret_t r = write_typed(state->writer, state->req_desc,
-                                   state->req_st, state->pending_request,
-                                   state->pending_request_len);
+    // Services use RELIABLE + VOLATILE QoS. A write before the client
+    // request writer has matched the server request reader can be accepted
+    // locally but never delivered, which loses the first nonblocking action
+    // send_goal request. Keep the buffered request pending until discovery
+    // reports a match.
+    if (!request_writer_matched(state->writer)) {
+        return NROS_RMW_RET_OK;
+    }
+    nros_rmw_ret_t r = write_typed(state->writer, state->req_desc, state->req_st,
+                                   state->pending_request, state->pending_request_len);
     if (r == NROS_RMW_RET_OK) {
         state->pending_request_len = 0;
     }
@@ -567,14 +653,10 @@ nros_rmw_ret_t maybe_flush_request(ClientState *state) {
 // Service server
 // =========================================================================
 
-nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
-                                     const char *service_name,
-                                     const char *type_name,
-                                     const char * /*type_hash*/,
-                                     uint32_t /*domain_id*/,
-                                     nros_rmw_service_server_t *out) {
-    if (out == nullptr || session == nullptr || service_name == nullptr ||
-        type_name == nullptr) {
+nros_rmw_ret_t service_server_create(nros_rmw_session_t* session, const char* service_name,
+                                     const char* type_name, const char* /*type_hash*/,
+                                     uint32_t /*domain_id*/, nros_rmw_service_server_t* out) {
+    if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     out->backend_data = nullptr;
@@ -582,8 +664,8 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
     dds_entity_t pp = session_participant(session);
     if (pp == 0) return NROS_RMW_RET_ERROR;
 
-    const dds_topic_descriptor_t *req_desc = nullptr;
-    const dds_topic_descriptor_t *rep_desc = nullptr;
+    const dds_topic_descriptor_t* req_desc = nullptr;
+    const dds_topic_descriptor_t* rep_desc = nullptr;
     if (!descriptors_for_service(service_name, type_name, &req_desc, &rep_desc)) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
@@ -591,22 +673,20 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
     char req_topic[kMaxTopicName];
     char rep_topic[kMaxTopicName];
     if (!service_topic_name(service_name, "rq", "Request", req_topic, sizeof(req_topic)) ||
-        !service_topic_name(service_name, "rr", "Reply",   rep_topic, sizeof(rep_topic))) {
+        !service_topic_name(service_name, "rr", "Reply", rep_topic, sizeof(rep_topic))) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
-    auto *state = new (std::nothrow) ServerState();
+    auto* state = new (std::nothrow) ServerState();
     if (state == nullptr) return NROS_RMW_RET_BAD_ALLOC;
     state->req_desc = req_desc;
     state->rep_desc = rep_desc;
 
-    state->request_topic =
-        dds_create_topic(pp, req_desc, req_topic, nullptr, nullptr);
-    state->reply_topic =
-        dds_create_topic(pp, rep_desc, rep_topic, nullptr, nullptr);
+    state->request_topic = dds_create_topic(pp, req_desc, req_topic, nullptr, nullptr);
+    state->reply_topic = dds_create_topic(pp, rep_desc, rep_topic, nullptr, nullptr);
     if (state->request_topic < 0 || state->reply_topic < 0) {
-        if (state->request_topic > 0) (void) dds_delete(state->request_topic);
-        if (state->reply_topic   > 0) (void) dds_delete(state->reply_topic);
+        if (state->request_topic > 0) (void)dds_delete(state->request_topic);
+        if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);
         delete state;
         return NROS_RMW_RET_ERROR;
     }
@@ -615,17 +695,17 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
     // (RELIABLE + VOLATILE + KEEP_LAST(10)). Without this Cyclone
     // defaults to KEEP_LAST(1) which surprises stock RMW clients.
     nros_rmw_qos_t svc_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
-    dds_qos_t *dq_reader = make_dds_qos(&svc_qos);
-    dds_qos_t *dq_writer = make_dds_qos(&svc_qos);
+    dds_qos_t* dq_reader = make_dds_qos(&svc_qos);
+    dds_qos_t* dq_writer = make_dds_qos(&svc_qos);
     state->reader = dds_create_reader(pp, state->request_topic, dq_reader, nullptr);
-    state->writer = dds_create_writer(pp, state->reply_topic,   dq_writer, nullptr);
+    state->writer = dds_create_writer(pp, state->reply_topic, dq_writer, nullptr);
     if (dq_reader != nullptr) dds_delete_qos(dq_reader);
     if (dq_writer != nullptr) dds_delete_qos(dq_writer);
     if (state->reader < 0 || state->writer < 0) {
-        if (state->reader > 0) (void) dds_delete(state->reader);
-        if (state->writer > 0) (void) dds_delete(state->writer);
-        (void) dds_delete(state->request_topic);
-        (void) dds_delete(state->reply_topic);
+        if (state->reader > 0) (void)dds_delete(state->reader);
+        if (state->writer > 0) (void)dds_delete(state->writer);
+        (void)dds_delete(state->request_topic);
+        (void)dds_delete(state->reply_topic);
         delete state;
         return NROS_RMW_RET_ERROR;
     }
@@ -635,10 +715,10 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
     if (state->req_st == nullptr || state->rep_st == nullptr) {
         delete state->req_st;
         delete state->rep_st;
-        (void) dds_delete(state->reader);
-        (void) dds_delete(state->writer);
-        (void) dds_delete(state->request_topic);
-        (void) dds_delete(state->reply_topic);
+        (void)dds_delete(state->reader);
+        (void)dds_delete(state->writer);
+        (void)dds_delete(state->request_topic);
+        (void)dds_delete(state->reply_topic);
         delete state;
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -647,42 +727,40 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void service_server_destroy(nros_rmw_service_server_t *server) {
+void service_server_destroy(nros_rmw_service_server_t* server) {
     if (server == nullptr || server->backend_data == nullptr) return;
-    auto *state = static_cast<ServerState *>(server->backend_data);
-    if (state->reader > 0) (void) dds_delete(state->reader);
-    if (state->writer > 0) (void) dds_delete(state->writer);
-    if (state->request_topic > 0) (void) dds_delete(state->request_topic);
-    if (state->reply_topic   > 0) (void) dds_delete(state->reply_topic);
+    auto* state = static_cast<ServerState*>(server->backend_data);
+    if (state->reader > 0) (void)dds_delete(state->reader);
+    if (state->writer > 0) (void)dds_delete(state->writer);
+    if (state->request_topic > 0) (void)dds_delete(state->request_topic);
+    if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);
     delete state->req_st;
     delete state->rep_st;
     delete state;
     server->backend_data = nullptr;
 }
 
-int32_t service_try_recv_request(nros_rmw_service_server_t *server,
-                                 uint8_t *buf, size_t buf_len,
-                                 int64_t *seq_out) {
+int32_t service_try_recv_request(nros_rmw_service_server_t* server, uint8_t* buf, size_t buf_len,
+                                 int64_t* seq_out) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<ServerState *>(server->backend_data);
+    auto* state = static_cast<ServerState*>(server->backend_data);
 
     uint8_t wire[kWireScratch];
-    int32_t wire_len = take_typed_wire(state->reader, state->req_st,
-                                       wire, sizeof(wire));
+    int32_t wire_len = take_typed_wire(state->reader, state->req_st, wire, sizeof(wire));
     if (wire_len <= 0) return wire_len;
 
     RequestId id{};
-    int32_t user_len = split_wire_header(wire, static_cast<size_t>(wire_len),
-                                         state->req_desc, &id, buf, buf_len);
+    int32_t user_len =
+        split_wire_header(wire, static_cast<size_t>(wire_len), state->req_desc, &id, buf, buf_len);
     if (user_len < 0) return user_len;
 
     // Allocate a slot to remember the (writer_guid, seq) pair so the
     // matching `service_send_reply` can echo it back.
     for (std::size_t i = 0; i < kRequestSlots; ++i) {
         if (!state->slots[i].in_use) {
-            state->slots[i].id     = id;
+            state->slots[i].id = id;
             state->slots[i].in_use = true;
             if (seq_out != nullptr) *seq_out = static_cast<int64_t>(i);
             return user_len;
@@ -691,41 +769,37 @@ int32_t service_try_recv_request(nros_rmw_service_server_t *server,
     return NROS_RMW_RET_WOULD_BLOCK;
 }
 
-int32_t service_has_request(nros_rmw_service_server_t *server) {
+int32_t service_has_request(nros_rmw_service_server_t* server) {
     if (server == nullptr || server->backend_data == nullptr) return 0;
-    auto *state = static_cast<ServerState *>(server->backend_data);
+    auto* state = static_cast<ServerState*>(server->backend_data);
     uint32_t status = 0;
     if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK) return 0;
     return (status & DDS_DATA_AVAILABLE_STATUS) ? 1 : 0;
 }
 
-nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t *server,
-                                  int64_t seq, const uint8_t *data,
-                                  size_t len) {
-    if (server == nullptr || server->backend_data == nullptr ||
-        data == nullptr || seq < 0 ||
+nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* server, int64_t seq,
+                                  const uint8_t* data, size_t len) {
+    if (server == nullptr || server->backend_data == nullptr || data == nullptr || seq < 0 ||
         static_cast<std::size_t>(seq) >= kRequestSlots) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<ServerState *>(server->backend_data);
-    auto &slot = state->slots[seq];
+    auto* state = static_cast<ServerState*>(server->backend_data);
+    auto& slot = state->slots[seq];
     if (!slot.in_use) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(5);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
     if (match != NROS_RMW_RET_OK) return match;
 
     uint8_t wire[kWireScratch];
-    int32_t wire_len = build_wire_with_header(data, len, slot.id,
-                                              wire, sizeof(wire));
+    int32_t wire_len = build_wire_with_header(data, len, slot.id, wire, sizeof(wire));
     nros_rmw_ret_t r;
     if (wire_len < 0) {
         r = static_cast<nros_rmw_ret_t>(wire_len);
     } else {
-        r = write_typed(state->writer, state->rep_desc, state->rep_st,
-                        wire, static_cast<size_t>(wire_len));
+        r = write_typed(state->writer, state->rep_desc, state->rep_st, wire,
+                        static_cast<size_t>(wire_len));
     }
     slot.in_use = false;
     return r;
@@ -735,14 +809,10 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t *server,
 // Service client
 // =========================================================================
 
-nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
-                                     const char *service_name,
-                                     const char *type_name,
-                                     const char * /*type_hash*/,
-                                     uint32_t /*domain_id*/,
-                                     nros_rmw_service_client_t *out) {
-    if (out == nullptr || session == nullptr || service_name == nullptr ||
-        type_name == nullptr) {
+nros_rmw_ret_t service_client_create(nros_rmw_session_t* session, const char* service_name,
+                                     const char* type_name, const char* /*type_hash*/,
+                                     uint32_t /*domain_id*/, nros_rmw_service_client_t* out) {
+    if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     out->backend_data = nullptr;
@@ -750,8 +820,8 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
     dds_entity_t pp = session_participant(session);
     if (pp == 0) return NROS_RMW_RET_ERROR;
 
-    const dds_topic_descriptor_t *req_desc = nullptr;
-    const dds_topic_descriptor_t *rep_desc = nullptr;
+    const dds_topic_descriptor_t* req_desc = nullptr;
+    const dds_topic_descriptor_t* rep_desc = nullptr;
     if (!descriptors_for_service(service_name, type_name, &req_desc, &rep_desc)) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
@@ -759,40 +829,38 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
     char req_topic[kMaxTopicName];
     char rep_topic[kMaxTopicName];
     if (!service_topic_name(service_name, "rq", "Request", req_topic, sizeof(req_topic)) ||
-        !service_topic_name(service_name, "rr", "Reply",   rep_topic, sizeof(rep_topic))) {
+        !service_topic_name(service_name, "rr", "Reply", rep_topic, sizeof(rep_topic))) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
-    auto *state = new (std::nothrow) ClientState();
+    auto* state = new (std::nothrow) ClientState();
     if (state == nullptr) return NROS_RMW_RET_BAD_ALLOC;
     state->req_desc = req_desc;
     state->rep_desc = rep_desc;
     state->next_seq.store(0, std::memory_order_relaxed);
 
-    state->request_topic =
-        dds_create_topic(pp, req_desc, req_topic, nullptr, nullptr);
-    state->reply_topic =
-        dds_create_topic(pp, rep_desc, rep_topic, nullptr, nullptr);
+    state->request_topic = dds_create_topic(pp, req_desc, req_topic, nullptr, nullptr);
+    state->reply_topic = dds_create_topic(pp, rep_desc, rep_topic, nullptr, nullptr);
     if (state->request_topic < 0 || state->reply_topic < 0) {
-        if (state->request_topic > 0) (void) dds_delete(state->request_topic);
-        if (state->reply_topic   > 0) (void) dds_delete(state->reply_topic);
+        if (state->request_topic > 0) (void)dds_delete(state->request_topic);
+        if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);
         delete state;
         return NROS_RMW_RET_ERROR;
     }
 
     // Phase 117.X.5: services QoS profile alignment.
     nros_rmw_qos_t svc_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
-    dds_qos_t *dq_writer = make_dds_qos(&svc_qos);
-    dds_qos_t *dq_reader = make_dds_qos(&svc_qos);
+    dds_qos_t* dq_writer = make_dds_qos(&svc_qos);
+    dds_qos_t* dq_reader = make_dds_qos(&svc_qos);
     state->writer = dds_create_writer(pp, state->request_topic, dq_writer, nullptr);
-    state->reader = dds_create_reader(pp, state->reply_topic,   dq_reader, nullptr);
+    state->reader = dds_create_reader(pp, state->reply_topic, dq_reader, nullptr);
     if (dq_writer != nullptr) dds_delete_qos(dq_writer);
     if (dq_reader != nullptr) dds_delete_qos(dq_reader);
     if (state->writer < 0 || state->reader < 0) {
-        if (state->writer > 0) (void) dds_delete(state->writer);
-        if (state->reader > 0) (void) dds_delete(state->reader);
-        (void) dds_delete(state->request_topic);
-        (void) dds_delete(state->reply_topic);
+        if (state->writer > 0) (void)dds_delete(state->writer);
+        if (state->reader > 0) (void)dds_delete(state->reader);
+        (void)dds_delete(state->request_topic);
+        (void)dds_delete(state->reply_topic);
         delete state;
         return NROS_RMW_RET_ERROR;
     }
@@ -802,10 +870,10 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
     if (state->req_st == nullptr || state->rep_st == nullptr) {
         delete state->req_st;
         delete state->rep_st;
-        (void) dds_delete(state->writer);
-        (void) dds_delete(state->reader);
-        (void) dds_delete(state->request_topic);
-        (void) dds_delete(state->reply_topic);
+        (void)dds_delete(state->writer);
+        (void)dds_delete(state->reader);
+        (void)dds_delete(state->request_topic);
+        (void)dds_delete(state->reply_topic);
         delete state;
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -828,56 +896,52 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
     return NROS_RMW_RET_OK;
 }
 
-void service_client_destroy(nros_rmw_service_client_t *client) {
+void service_client_destroy(nros_rmw_service_client_t* client) {
     if (client == nullptr || client->backend_data == nullptr) return;
-    auto *state = static_cast<ClientState *>(client->backend_data);
-    if (state->writer > 0) (void) dds_delete(state->writer);
-    if (state->reader > 0) (void) dds_delete(state->reader);
-    if (state->request_topic > 0) (void) dds_delete(state->request_topic);
-    if (state->reply_topic   > 0) (void) dds_delete(state->reply_topic);
+    auto* state = static_cast<ClientState*>(client->backend_data);
+    if (state->writer > 0) (void)dds_delete(state->writer);
+    if (state->reader > 0) (void)dds_delete(state->reader);
+    if (state->request_topic > 0) (void)dds_delete(state->request_topic);
+    if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);
     delete state->req_st;
     delete state->rep_st;
     delete state;
     client->backend_data = nullptr;
 }
 
-int32_t service_call_raw(nros_rmw_service_client_t *client,
-                         const uint8_t *request, size_t req_len,
-                         uint8_t *reply_buf, size_t reply_buf_len) {
-    if (client == nullptr || client->backend_data == nullptr ||
-        request == nullptr || reply_buf == nullptr || req_len < 4) {
+int32_t service_call_raw(nros_rmw_service_client_t* client, const uint8_t* request, size_t req_len,
+                         uint8_t* reply_buf, size_t reply_buf_len) {
+    if (client == nullptr || client->backend_data == nullptr || request == nullptr ||
+        reply_buf == nullptr || req_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<ClientState *>(client->backend_data);
+    auto* state = static_cast<ClientState*>(client->backend_data);
 
     RequestId my_id{};
     my_id.guid = state->my_guid;
-    my_id.seq  = state->next_seq.fetch_add(1, std::memory_order_relaxed);
+    my_id.seq = state->next_seq.fetch_add(1, std::memory_order_relaxed);
 
     // 5 s total timeout covers request-reader match plus reply. Service
     // QoS is VOLATILE, so the first write must wait until discovery has
     // matched the client writer with the server request reader.
-    const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(5);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
     if (match != NROS_RMW_RET_OK) return match;
 
     uint8_t wire_req[kWireScratch];
-    int32_t wire_len = build_wire_with_header(request, req_len, my_id,
-                                              wire_req, sizeof(wire_req));
+    int32_t wire_len = build_wire_with_header(request, req_len, my_id, wire_req, sizeof(wire_req));
     if (wire_len < 0) return wire_len;
-    nros_rmw_ret_t pr = write_typed(state->writer, state->req_desc,
-                                    state->req_st, wire_req,
+    nros_rmw_ret_t pr = write_typed(state->writer, state->req_desc, state->req_st, wire_req,
                                     static_cast<size_t>(wire_len));
     if (pr != NROS_RMW_RET_OK) return pr;
 
     while (std::chrono::steady_clock::now() < deadline) {
         uint32_t status = 0;
-        if (dds_get_status_changes(state->reader, &status) == DDS_RETCODE_OK
-            && (status & DDS_DATA_AVAILABLE_STATUS)) {
+        if (dds_get_status_changes(state->reader, &status) == DDS_RETCODE_OK &&
+            (status & DDS_DATA_AVAILABLE_STATUS)) {
             uint8_t wire_rep[kWireScratch];
-            int32_t wlen = take_typed_wire(state->reader, state->rep_st,
-                                            wire_rep, sizeof(wire_rep));
+            int32_t wlen =
+                take_typed_wire(state->reader, state->rep_st, wire_rep, sizeof(wire_rep));
             if (wlen == NROS_RMW_RET_NO_DATA) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
                 continue;
@@ -886,8 +950,8 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
 
             RequestId got_id{};
             int32_t user_len =
-                split_wire_header(wire_rep, static_cast<size_t>(wlen),
-                                  state->rep_desc, &got_id, reply_buf, reply_buf_len);
+                split_wire_header(wire_rep, static_cast<size_t>(wlen), state->rep_desc, &got_id,
+                                  reply_buf, reply_buf_len);
             if (user_len < 0) return user_len;
             if (got_id.seq == my_id.seq && got_id.guid == my_id.guid) {
                 return user_len;
@@ -907,14 +971,12 @@ int32_t service_call_raw(nros_rmw_service_client_t *client,
 // XRCE backend. Lets the executor's spin loop poll for a late-
 // arriving reply without re-sending the request or blocking 5 s
 // inside `call_raw` (Phase 127.C.4 root cause class).
-nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
-                                        const uint8_t *request,
+nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t* client, const uint8_t* request,
                                         size_t req_len) {
-    if (client == nullptr || client->backend_data == nullptr ||
-        request == nullptr || req_len < 4) {
+    if (client == nullptr || client->backend_data == nullptr || request == nullptr || req_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<ClientState *>(client->backend_data);
+    auto* state = static_cast<ClientState*>(client->backend_data);
     if (state->pending_seq.load(std::memory_order_acquire) >= 0) {
         // The upper layers clear their own in-flight guard on timeout before
         // retrying. Mirror that abandon here so a slow first request doesn't
@@ -925,11 +987,10 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
 
     RequestId my_id{};
     my_id.guid = state->my_guid;
-    my_id.seq  = state->next_seq.fetch_add(1, std::memory_order_relaxed);
+    my_id.seq = state->next_seq.fetch_add(1, std::memory_order_relaxed);
 
     uint8_t wire_req[kWireScratch];
-    int32_t wire_len = build_wire_with_header(request, req_len, my_id,
-                                              wire_req, sizeof(wire_req));
+    int32_t wire_len = build_wire_with_header(request, req_len, my_id, wire_req, sizeof(wire_req));
     if (wire_len < 0) return wire_len;
 
     std::memcpy(state->pending_request, wire_req, static_cast<size_t>(wire_len));
@@ -944,14 +1005,12 @@ nros_rmw_ret_t service_send_request_raw(nros_rmw_service_client_t *client,
     return NROS_RMW_RET_OK;
 }
 
-int32_t service_try_recv_reply_raw(nros_rmw_service_client_t *client,
-                                    uint8_t *reply_buf,
-                                    size_t reply_buf_len) {
-    if (client == nullptr || client->backend_data == nullptr ||
-        reply_buf == nullptr) {
+int32_t service_try_recv_reply_raw(nros_rmw_service_client_t* client, uint8_t* reply_buf,
+                                   size_t reply_buf_len) {
+    if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<ClientState *>(client->backend_data);
+    auto* state = static_cast<ClientState*>(client->backend_data);
 
     int64_t pending = state->pending_seq.load(std::memory_order_acquire);
     if (pending < 0) {
@@ -968,21 +1027,19 @@ int32_t service_try_recv_reply_raw(nros_rmw_service_client_t *client,
     }
 
     uint32_t status = 0;
-    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK
-        || !(status & DDS_DATA_AVAILABLE_STATUS)) {
+    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK ||
+        !(status & DDS_DATA_AVAILABLE_STATUS)) {
         return NROS_RMW_RET_NO_DATA;
     }
 
     uint8_t wire_rep[kWireScratch];
-    int32_t wlen = take_typed_wire(state->reader, state->rep_st,
-                                    wire_rep, sizeof(wire_rep));
+    int32_t wlen = take_typed_wire(state->reader, state->rep_st, wire_rep, sizeof(wire_rep));
     if (wlen == NROS_RMW_RET_NO_DATA) return NROS_RMW_RET_NO_DATA;
     if (wlen < 0) return wlen;
 
     RequestId got_id{};
-    int32_t user_len =
-        split_wire_header(wire_rep, static_cast<size_t>(wlen),
-                          state->rep_desc, &got_id, reply_buf, reply_buf_len);
+    int32_t user_len = split_wire_header(wire_rep, static_cast<size_t>(wlen), state->rep_desc,
+                                         &got_id, reply_buf, reply_buf_len);
     if (user_len < 0) return user_len;
 
     if (got_id.seq == pending && got_id.guid == state->my_guid) {

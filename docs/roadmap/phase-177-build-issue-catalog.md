@@ -18,11 +18,16 @@ and E2E failures that need focused owners.
 
 - [ ] **177.2 - Remaining Cyclone Zephyr action gaps.**
   Owner: Phase 171.0.b / 171.0.c.
-  Native C, Rust, and C++ same-language Cyclone DDS actions are
-  runtime-verified, and the C++ `get_result` framing bug is fixed.
-  Remaining work is Zephyr Cyclone DDS actions plus cross-implementation
-  action framing / feedback polish. The aemv8r FVP reference path still
-  needs re-verification under 171.0.c.
+  C-service request delivery is no longer an open catalog item; Phase
+  171.0.a fixed the RELIABLE+VOLATILE request match race. Native
+  goal/result actions are also no longer open: C, Rust, and C++
+  same-language Cyclone DDS action E2E are runtime-verified, the C++
+  `get_result` framing bug is fixed, and the 2026-05-21 follow-up fixed
+  the nonblocking service request match race on action `send_goal` plus
+  the Fibonacci `GetResult_Response` dynamic-sequence bridge. Remaining
+  work is Zephyr Cyclone DDS actions plus cross-implementation
+  framing / feedback/status publisher polish. The aemv8r FVP reference
+  path still needs re-verification under 171.0.c.
 
 - [ ] **177.3 - Cyclone for pure-cargo Rust examples.**
   Owner: Phase 175.
