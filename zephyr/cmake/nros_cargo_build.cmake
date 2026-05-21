@@ -137,26 +137,44 @@ function(nros_cargo_build)
     string(REPLACE "-" "_" LIB_STEM ${ARG_PACKAGE})
     set(LIB_NAME "lib${LIB_STEM}.a")
 
+    # Build the crate. NROS_CARGO_PROFILE defaults to nros-fast-release
+    # for quicker release-like fixture builds.
+    set(_nros_cargo_profile "$ENV{NROS_CARGO_PROFILE}")
+    if(_nros_cargo_profile STREQUAL "")
+        set(_nros_cargo_profile "nros-fast-release")
+    endif()
+    if(_nros_cargo_profile STREQUAL "dev")
+        set(_nros_cargo_profile_dir "debug")
+    elseif(_nros_cargo_profile STREQUAL "release")
+        set(_nros_cargo_profile_dir "release")
+    else()
+        set(_nros_cargo_profile_dir "${_nros_cargo_profile}")
+    endif()
+
     if(NROS_RUST_TARGET)
-        set(LIB_PATH ${CARGO_TARGET_DIR}/${NROS_RUST_TARGET}/release/${LIB_NAME})
+        set(LIB_PATH ${CARGO_TARGET_DIR}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/${LIB_NAME})
         set(TARGET_ARGS --target ${NROS_RUST_TARGET})
     else()
-        set(LIB_PATH ${CARGO_TARGET_DIR}/release/${LIB_NAME})
+        set(LIB_PATH ${CARGO_TARGET_DIR}/${_nros_cargo_profile_dir}/${LIB_NAME})
         set(TARGET_ARGS "")
     endif()
 
     # Bridge Kconfig → env vars before invoking Cargo
     nros_set_cargo_env_from_kconfig()
 
-    # Build the crate
     set(CARGO_ARGS
         build
         -p ${ARG_PACKAGE}
         --manifest-path ${NROS_REPO_DIR}/Cargo.toml
         --target-dir ${CARGO_TARGET_DIR}
-        --release
         --no-default-features
     )
+    if(_nros_cargo_profile STREQUAL "dev")
+    elseif(_nros_cargo_profile STREQUAL "release")
+        list(APPEND CARGO_ARGS --release)
+    else()
+        list(APPEND CARGO_ARGS --profile ${_nros_cargo_profile})
+    endif()
 
     if(ARG_FEATURES)
         list(APPEND CARGO_ARGS --features ${ARG_FEATURES})
@@ -269,6 +287,18 @@ function(nros_cargo_build)
         COMMENT "Building ${ARG_PACKAGE} via Cargo"
         VERBATIM
     )
+    # All nros_cargo_build() calls in one Zephyr build share
+    # ${CARGO_TARGET_DIR}. Serialize Cargo frontends to avoid artifact-dir
+    # lock stalls; Cargo/rustc still get parallel compiler tokens from the
+    # inherited jobserver.
+    if(NOT ARG_PACKAGE STREQUAL "nros-c" AND TARGET nros_c_cargo_build)
+        add_dependencies(${_target_name}_build nros_c_cargo_build)
+    endif()
+    if(NOT ARG_PACKAGE STREQUAL "nros-c"
+       AND NOT ARG_PACKAGE STREQUAL "nros-cpp"
+       AND TARGET nros_cpp_cargo_build)
+        add_dependencies(${_target_name}_build nros_cpp_cargo_build)
+    endif()
 
     add_library(${_target_name} STATIC IMPORTED GLOBAL)
     set_target_properties(${_target_name} PROPERTIES

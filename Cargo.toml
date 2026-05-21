@@ -442,6 +442,15 @@ panic = "abort"      # Smaller binary, no unwinding
 [profile.dev]
 opt-level = 1        # Some optimization even in dev for embedded
 
+[profile.nros-fast-release]
+inherits = "release"
+opt-level = 2
+codegen-units = 16
+incremental = true
+debug = 1
+lto = "off"
+panic = "abort"
+
 # Patches for generated crates that use version = "*"
 [patch.crates-io]
 nros-core = { path = "packages/core/nros-core" }

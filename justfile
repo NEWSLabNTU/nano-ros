@@ -30,6 +30,11 @@ export SCCACHE_CACHE_SIZE := "30G"
 # budget (no platform-count × inner-jobs oversubscription).
 export NROS_BUILD_JOBS := env_var_or_default("NROS_BUILD_JOBS", `nproc 2>/dev/null || echo 8`)
 
+# Cargo build profile for broad build recipes. `nros-fast-release` is
+# faster while retaining release-like optimization; set
+# NROS_CARGO_PROFILE=release for the historical profile.
+export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "nros-fast-release")
+
 LOG_DIR := "test-logs"
 
 # Pinned nightly channel for workspace tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes).
@@ -160,6 +165,7 @@ build-all:
 build-all-jobserver:
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/build/cargo.sh
     make_bin="third-party/make/make"
     ninja_bin="third-party/ninja/ninja"
     if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then
@@ -177,6 +183,10 @@ build-all-jobserver:
     export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
     echo "build-all (jobserver): $make_bin -j$n --jobserver-style=fifo -f build-all.mk"
     echo "  make=$(make --version | head -1), ninja=$(ninja --version)"
+    echo "  cargo-profile=$(nros_cargo_profile_name), cargo-frontends=${NROS_CARGO_FRONTENDS:-auto}"
+    echo "build-all: prefetching Cargo registries before broad fanout"
+    nros_cargo_fetch_root
+    nros_cargo_fetch_codegen
     # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
     # --parallel so cargo / ninja / cmake inherit the fifo pool. NROS_BUILD_JOBS
     # stays the budget; GNU parallel only launches (the jobserver throttles).
@@ -298,6 +308,9 @@ check-decoupling:
 # Workspace lib/bin/unit tests, excluding the integration crate.
 test-unit verbose="":
     #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     # `nros-rmw-{zenoh,dds,xrce}-cffi` excluded for the same reason as
     # `check-workspace`: their `*Rmw` type imports are platform-feature
     # gated, and `cargo nextest run --workspace` activates no features.
@@ -310,7 +323,7 @@ test-unit verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # nros-tests integration tests, skipping heavy cross-compile / QEMU groups.
 # Filters mirror the `test` recipe's `-E` predicate, just scoped to
@@ -318,12 +331,14 @@ test-unit verbose="":
 test-integration verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or group(=xrce_ros2_interop))'
     args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Shared helper: run a single nros-tests integration test binary with the
 # standard verbose-flag handling. Used by per-platform `test` / `test-all`
@@ -332,17 +347,23 @@ test-integration verbose="": build-zenohd
 _nextest-platform test_name verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --test {{test_name}} --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run rustdoc doctests for the `nros` umbrella crate.
 # Nextest does not execute doctests, so we run them separately.
 # This catches drift between rustdoc examples and the real API.
 test-doc:
-    cargo test --doc -p nros
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo test $cargo_profile_args --doc -p nros
 
 # Count real (non-[SKIPPED]) test failures from the latest junit.xml.
 # Tests that panic with `[SKIPPED] ...` (via the nros_tests::skip! macro)
@@ -398,6 +419,8 @@ _test-summary:
 # `[profile.fast]` default-filter.
 test verbose="": build-zenohd
     #!/usr/bin/env bash
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     set +e
     failed=0
     exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or group(=xrce_ros2_interop))'
@@ -405,7 +428,7 @@ test verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures)
     if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
@@ -530,6 +553,8 @@ build-zenoh-posix-fixture:
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
 test-all verbose="": build-zenohd
     #!/usr/bin/env bash
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     set +e
     failed=0
     just init-test-logs
@@ -537,7 +562,7 @@ test-all verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures)
     if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
@@ -583,19 +608,21 @@ test-all verbose="": build-zenohd
 rust-rtos-link-check:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
     if command -v arm-none-eabi-gcc >/dev/null; then
         echo "  freertos talker:"
         ( cd examples/qemu-arm-freertos/rust/talker && \
-            cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
+            cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
         echo "  nuttx talker:"
-        ( cd examples/qemu-arm-nuttx/rust/zenoh/talker && cargo build --release ) >/dev/null
+        ( cd examples/qemu-arm-nuttx/rust/zenoh/talker && cargo build $cargo_profile_args ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi
     echo "  threadx-linux talker:"
     ( cd examples/threadx-linux/rust/talker && \
-        cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
+        cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).
@@ -661,7 +688,12 @@ test-report:
 # concrete platform feature supplies the right runtime.
 [private]
 build-workspace:
-    cargo build --workspace --no-default-features \
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo build $cargo_profile_args --workspace --no-default-features \
         --exclude nros-c \
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
@@ -672,7 +704,7 @@ build-workspace:
     # without a platform feature, so their test binaries fail to link.
     # The staticlib wrappers need a panic handler. All four are covered
     # by the per-feature `test-*` matrices instead.
-    cargo nextest run --workspace --no-run \
+    cargo nextest run "${nextest_profile_args[@]}" --workspace --no-run \
         --exclude nros-c \
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
@@ -685,7 +717,11 @@ build-workspace:
 # staticlib/cdylib requires a platform-specific panic/runtime setup.
 [private]
 build-workspace-embedded:
-    cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo build $cargo_profile_args --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
         --exclude nros-tests \
         --exclude nros-c \

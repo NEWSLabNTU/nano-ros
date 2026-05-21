@@ -76,12 +76,14 @@ test-patched verbose="":
 build:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     echo "Building QEMU ARM examples..."
     for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' | sort); do
         dir="$(dirname "$toml")"
         echo "  build $dir"
-        (cd "$dir" && cargo build --release)
+        (cd "$dir" && cargo build $cargo_profile_args)
     done
     # Phase 131.B — bench/test-fixture binaries that used to live under
     # examples/qemu-arm-baremetal/rust/{core,standalone,zenoh/large-msg-test}
@@ -93,16 +95,20 @@ build:
         packages/testing/nros-bench/wcet-cycles-qemu \
         packages/testing/nros-bench/large-msg-baremetal; do
         echo "  build $dir"
-        (cd "$dir" && cargo build --release)
+        (cd "$dir" && cargo build $cargo_profile_args)
     done
     # Also build qemu-smoltcp-bridge (library in packages/reference/)
-    (cd packages/reference/qemu-smoltcp-bridge && cargo build --release)
+    (cd packages/reference/qemu-smoltcp-bridge && cargo build $cargo_profile_args)
 
 # Build all example binaries used as test fixtures (bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    cargo_frontends="$(nros_cargo_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "QEMU bare-metal skip: arm-none-eabi-gcc not found"; exit 0
     fi
@@ -126,8 +132,8 @@ build-fixtures:
         packages/testing/nros-bench/large-msg-baremetal
         packages/reference/qemu-smoltcp-bridge
     )
-    printf '%s\n' "${dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && cargo build --release --quiet'
+    printf '%s\n' "${dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
 
 # Run all QEMU tests (non-networked)
 test verbose="":
@@ -173,13 +179,15 @@ test-lan9118 verbose="": build
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --no-fail-fast \
           -E 'binary(emulator) or binary(large_msg)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Check if QEMU is installed
 check:

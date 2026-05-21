@@ -301,15 +301,19 @@ build:
         fi
     fi
     cd packages/boards/nros-board-orin-spe
-    cargo +{{NIGHTLY}} build --release
+    source ../../../scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo +{{NIGHTLY}} build $cargo_profile_args
 
 # Build Orin SPE examples.
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ -d examples/orin-spe/rust/zenoh/talker ]; then
         echo "  → orin-spe/rust/zenoh/talker"
-        ( cd examples/orin-spe/rust/zenoh/talker && cargo build --release )
+        ( cd examples/orin-spe/rust/zenoh/talker && cargo build $cargo_profile_args )
     else
         echo "No Orin SPE examples present."
     fi
@@ -319,8 +323,10 @@ build-examples:
 build-fixtures: build-examples
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     echo "Building Orin SPE POSIX fixtures..."
-    cargo build -p nvidia-ivc --features unix-mock --quiet
+    cargo build $cargo_profile_args -p nvidia-ivc --features unix-mock --quiet
 
 # Build every Orin SPE tier: core artifacts, examples, and test fixtures.
 build-all: build build-examples build-fixtures
@@ -332,8 +338,10 @@ build-all: build build-examples build-fixtures
 test verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     echo "=== nvidia-ivc unix-mock loopback ==="
-    cargo test -p nvidia-ivc --features unix-mock
+    cargo test $cargo_profile_args -p nvidia-ivc --features unix-mock
     echo ""
     echo "=== orin-spe POSIX mock-IVC E2E ==="
     just _nextest-platform orin_spe_mock_ivc '{{verbose}}'

@@ -40,6 +40,8 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
         echo "Skipping ThreadX Linux examples (ThreadX/NetX not found). Run: just threadx-linux setup"
         exit 0
@@ -48,7 +50,7 @@ build-examples:
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
         (cd examples/threadx-linux/rust/$example && \
-            cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh)
+            cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh)
     done
     echo "ThreadX Linux examples built!"
 
@@ -58,6 +60,11 @@ build-examples:
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    cargo_frontends="$(nros_cargo_frontend_jobs)"
+    cmake_frontends="$(nros_cmake_frontend_jobs)"
     if [ -z "${THREADX_DIR:-}" ] && [ ! -d third-party/threadx/kernel ]; then
         echo "ThreadX-Linux skip: THREADX_DIR unset and third-party/threadx/kernel absent"; exit 0
     fi
@@ -76,11 +83,11 @@ build-fixtures:
     # build up front here.
 
     echo "  → host nros-codegen (cargo)"
-    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
-    codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
+    codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     echo "  → logging-smoke-threadx-linux"
-    cargo build --release --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet
+    cargo build $cargo_profile_args --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet
     # Phase 118.B — collapsed-shape threadx-linux Rust + C / C++.
     collapsed_rust_dirs=()
     for case in talker listener service-server service-client action-server action-client; do
@@ -94,7 +101,7 @@ build-fixtures:
         for rmw in $rmws; do
             echo "  → threadx-linux/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
             ( cd examples/threadx-linux/rust/${case} && \
-              cargo build --release --no-default-features --features rmw-${rmw} \
+              cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
                   --target-dir target-${rmw} --quiet ) &
         done
     done
@@ -114,7 +121,7 @@ build-fixtures:
         else
             echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
         fi
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
             "for rmw in $cmake_rmws; do \
                  echo '  → {} (-DNROS_RMW='\$rmw', build-'\$rmw'/)' && rm -rf {}/build-\$rmw && \
                  cmake -S {} -B {}/build-\$rmw \
@@ -152,16 +159,18 @@ test verbose="": build-examples
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --test threadx_linux --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(ThreadxLinux)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${e2e_args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
 

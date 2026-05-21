@@ -16,6 +16,10 @@ build-examples:
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    cargo_frontends="$(nros_cargo_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "STM32F4 skip: arm-none-eabi-gcc not found"; exit 0
     fi
@@ -31,8 +35,8 @@ build-fixtures:
         fi
         rust_dirs+=("$dir")
     done
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && cargo build --release --target thumbv7em-none-eabihf --quiet'
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && cargo build $cargo_profile_args --target thumbv7em-none-eabihf --quiet'
 
 # Build every STM32F4 tier: core artifacts, examples, and test fixtures.
 build-all: build build-examples build-fixtures

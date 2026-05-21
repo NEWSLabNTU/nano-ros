@@ -51,6 +51,8 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
@@ -63,7 +65,7 @@ build-examples:
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
         (cd examples/qemu-arm-freertos/rust/$example && \
-            cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh)
+            cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh)
     done
     echo "FreeRTOS QEMU examples built!"
 
@@ -71,6 +73,11 @@ build-examples:
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    cargo_frontends="$(nros_cargo_frontend_jobs)"
+    cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "FreeRTOS skip: arm-none-eabi-gcc not found"; exit 0
     fi
@@ -89,8 +96,8 @@ build-fixtures:
     rust_dirs=()
     # Phase 88.15.b — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-freertos-mps2")
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && cargo build --release --quiet'
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+        'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
 
     # Phase 118.D — collapsed-shape FreeRTOS Rust cases, zenoh-only
     # matrix. Phase 169 retired dust-dds (pure-Rust, linked on
@@ -108,7 +115,7 @@ build-fixtures:
         for rmw in $rmws; do
             echo "  → freertos/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
             ( cd examples/qemu-arm-freertos/rust/${case} && \
-              cargo build --release --no-default-features --features rmw-${rmw} \
+              cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
                   --target-dir target-${rmw} --quiet ) &
         done
     done
@@ -120,9 +127,9 @@ build-fixtures:
     # tool with their cross toolchain, so build it once with the host
     # cargo and pass the absolute path via `-D_NANO_ROS_CODEGEN_TOOL`.
     echo "  → host nros-codegen (cargo)"
-    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
-    codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
+    codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     # Phase 118.D — collapsed-shape FreeRTOS C / C++ examples. Each
     # case builds under `-DNROS_RMW=zenoh` (no DDS C / C++ siblings
     # existed pre-collapse on FreeRTOS, so the matrix is zenoh-only).
@@ -134,7 +141,7 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
             "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
              cmake -S {} -B {}/build-zenoh \
                -DNROS_RMW=zenoh \
@@ -166,6 +173,8 @@ test verbose="": build-examples
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
         exit 1
@@ -179,13 +188,13 @@ test-all verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     # E2E networking tests (pubsub, service, action across RTOS platforms)
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(Freertos)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${e2e_args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
 
 # Phase 121.6 — build the FreeRTOS Posix-port smoke test for
 # nros-platform-freertos. Uses the in-tree FreeRTOS-Kernel + a

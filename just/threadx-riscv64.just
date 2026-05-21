@@ -67,6 +67,8 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
         echo "Skipping ThreadX QEMU RISC-V examples (ThreadX/NetX not found). Run: just threadx-linux setup"
         exit 0
@@ -81,7 +83,7 @@ build-examples:
         echo "  Building $example..."
         (cd examples/qemu-riscv64-threadx/rust/$example && \
          THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
-           cargo build --release --no-default-features --features rmw-zenoh \
+           cargo build $cargo_profile_args --no-default-features --features rmw-zenoh \
              --target-dir target-zenoh)
     done
     echo "ThreadX QEMU RISC-V examples built!"
@@ -92,6 +94,11 @@ build-examples:
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    cargo_frontends="$(nros_cargo_frontend_jobs)"
+    cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
         echo "ThreadX-RV64 skip: riscv64-unknown-elf-gcc not found"; exit 0
     fi
@@ -116,10 +123,10 @@ build-fixtures:
     # threadx-netx-sys/build.rs needs the rv64-specific NetX port
     # headers, not the threadx-linux defaults exported by the top-level
     # justfile. Pass via env to each parallel cargo.
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
         "echo '  → {}' && cd {} && \
          THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-         cargo build --release --quiet"
+         cargo build \$cargo_profile_args --quiet"
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
     # Corrosion handles the riscv64gc-unknown-none-elf cross under
     # the bundled toolchain file; the ThreadX + NetX Duo include
@@ -127,9 +134,9 @@ build-fixtures:
     # the Rust path's `.cargo/config.toml` env. Host nros-codegen is
     # still required for `nros_generate_interfaces()`.
     echo "  → host nros-codegen (cargo)"
-    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
-    codegen="$root/packages/codegen/packages/target/release/nros-codegen"
+    codegen="$root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     # Phase 118.C — collapsed-shape ThreadX-RV64 Rust + C / C++,
     # zenoh-only matrix. Phase 169 retired dust-dds (pure-Rust); its
     # Cyclone replacement is a C++/CMake stack whose
@@ -146,7 +153,7 @@ build-fixtures:
             echo "  → threadx-rv64/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
             ( cd examples/qemu-riscv64-threadx/rust/${case} && \
               THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-              cargo build --release --no-default-features --features rmw-${rmw} \
+              cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
                   --target-dir target-${rmw} --quiet ) &
         done
     done
@@ -160,7 +167,7 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
             "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
              THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
              THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
@@ -203,16 +210,18 @@ test verbose="": build-examples
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --test threadx_riscv64_qemu --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(ThreadxRiscv64)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${e2e_args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
 ci: doctor test

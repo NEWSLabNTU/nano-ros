@@ -27,7 +27,15 @@ build:
 build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     #!/usr/bin/env bash
     set -e
-    echo "Building examples (parallel, JOBS={{JOBS}})..."
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        cargo_frontends="$(nros_cargo_frontend_jobs)"
+    else
+        cargo_frontends="{{JOBS}}"
+    fi
+    echo "Building examples (parallel, cargo-frontends=$cargo_frontends, profile=$(nros_cargo_profile_name))..."
     if ! command -v parallel >/dev/null 2>&1; then
         echo "GNU parallel not found — falling back to serial build."
         SERIAL=1
@@ -49,16 +57,14 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         local toml="$1"
         local dir="$(dirname "$toml")"
         local platform="$(echo "$dir" | cut -d/ -f2)"
-        local flags=""
         local env_prefix=""
         local toolchain=""
-        if [ "$platform" != "native" ]; then flags="--release"; fi
         if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
             toolchain="+{{NIGHTLY}}"
         fi
         echo "  build $dir"
-        ( cd "$dir" && eval $env_prefix cargo $toolchain build $flags )
+        ( cd "$dir" && eval $env_prefix cargo $toolchain build $cargo_profile_args )
     }
     export -f build_one
     export NIGHTLY="{{NIGHTLY}}"
@@ -66,7 +72,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     if [ "$SERIAL" = "1" ]; then
         while read -r toml; do build_one "$toml"; done < /tmp/_nros_example_toml.list
     else
-        parallel --halt now,fail=1 --line-buffer -j {{JOBS}} build_one :::: /tmp/_nros_example_toml.list
+        parallel --halt now,fail=1 --line-buffer -j "$cargo_frontends" build_one :::: /tmp/_nros_example_toml.list
     fi
     rm -f /tmp/_nros_example_toml.list
     echo "All examples built!"
@@ -75,6 +81,10 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    cargo_frontends="$(nros_cargo_frontend_jobs)"
     echo "Building native test fixtures..."
     # Phase 176 — cmake parallelism: under the fifo jobserver
     # (NROS_JOBSERVER=1) leave CMAKE_BUILD_PARALLEL_LEVEL unset so the
@@ -94,7 +104,7 @@ build-fixtures:
     echo "  → native/rust/talker (--features param-services)"
     ensure_native_rust_generated native/rust/talker
     ( cd examples/native/rust/talker && \
-      cargo build --release --features param-services --quiet )
+      cargo build $cargo_profile_args --features param-services --quiet )
     examples=(
         native/rust/listener
         native/rust/lifecycle-node
@@ -115,7 +125,7 @@ build-fixtures:
     for ex in "${examples[@]}"; do
         echo "  → $ex"
         ensure_native_rust_generated "$ex"
-        ( cd "examples/$ex" && cargo build --release --quiet ) &
+        ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet ) &
     done
     # Phase 131.B — bench/smoke binaries relocated under packages/testing/.
     test_fixtures=(
@@ -126,29 +136,29 @@ build-fixtures:
     )
     for fx in "${test_fixtures[@]}"; do
         echo "  → $fx"
-        ( cd "$fx" && cargo build --release --quiet ) &
+        ( cd "$fx" && cargo build $cargo_profile_args --quiet ) &
     done
     wait
     echo "  → native/rust/{talker,listener} (--features link-tls)"
     ensure_native_rust_generated native/rust/talker
     ensure_native_rust_generated native/rust/listener
     ( cd examples/native/rust/talker && \
-      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
+      cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
     ( cd examples/native/rust/listener && \
-      cargo build --release --features link-tls --target-dir target-tls --quiet ) &
+      cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
     wait
     echo "  → native/rust/{talker,listener} (--features safety-e2e)"
     ensure_native_rust_generated native/rust/talker
     ensure_native_rust_generated native/rust/listener
     ( cd examples/native/rust/talker && \
-      cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
+      cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
     ( cd examples/native/rust/listener && \
-      cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
+      cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
     wait
     echo "  → native/rust/listener (--features unstable-zenoh-api)"
     ensure_native_rust_generated native/rust/listener
     ( cd examples/native/rust/listener && \
-      cargo build --release --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
+      cargo build $cargo_profile_args --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
     # Phase 118.A.2 — collapsed-shape native talker. Built once per RMW
     # feature into isolated target-<rmw>/ dirs so the test harness's
     # `build_native_talker_rmw(Rmw::{Zenoh,Xrce})` resolver finds the
@@ -172,7 +182,7 @@ build-fixtures:
                 fi
                 echo "  → native/rust/${collapsed_case} (--features rmw-${rmw}, target-${rmw}/)"
                 ( cd examples/native/rust/${collapsed_case} && \
-                  cargo build --release --no-default-features ${feature_flags} \
+                  cargo build $cargo_profile_args --no-default-features ${feature_flags} \
                       --target-dir target-${rmw} --quiet ) &
             done
         fi
@@ -211,7 +221,7 @@ build-fixtures:
     wait
     echo "  → packages/testing/nros-bench/stress-zenoh (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
     ( cd packages/testing/nros-bench/stress-zenoh && \
-      ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build --release --target-dir target-large-buf --quiet )
+      ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build $cargo_profile_args --target-dir target-large-buf --quiet )
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.
 build-all: build build-examples build-c build-c-xrce build-cpp build-fixtures
@@ -371,13 +381,15 @@ clean-cpp:
 test verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --no-fail-fast \
           -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run all native tests (integration + ROS 2 interop + large_msg + C/C++ API)
 test-all verbose="":
@@ -401,46 +413,54 @@ ci: check test
 test-large-msg verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --test large_msg --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run RMW abstraction integration tests
 test-rmw verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --test rmw --features rmw --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run ROS 2 interop tests (Rust test harness)
 test-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --test rmw_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
 # Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
 test-ros2-lifecycle verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --test ros2_lifecycle_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run ROS 2 interop tests (shell script)
 test-ros2-shell:
@@ -450,11 +470,13 @@ test-ros2-shell:
 test-dds-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --test dds_ros2_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run C codegen tests only (shell-based, no nextest)
 _test-c-codegen verbose="":
@@ -488,35 +510,41 @@ _test-orchestration-e2e verbose="":
 test-c verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     just init-test-logs
     args=(-p nros-tests --no-fail-fast -E 'binary(c_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     just native _test-c-codegen {{verbose}}
 
 # C++ API integration tests (needs cmake + zenohd)
 test-cpp verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --no-fail-fast -E 'binary(cpp_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
 test-c-xrce verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(c_xrce_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run executor fairness benchmark (requires zenohd)
 bench-fairness:

@@ -59,11 +59,13 @@ build:
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     echo "Building ESP32 examples..."
     for ex in talker listener; do
         echo "  Building esp32/rust/zenoh/$ex..."
         (cd examples/esp32/rust/zenoh/$ex && \
-         SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +{{NIGHTLY}} build --release)
+         SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +{{NIGHTLY}} build $cargo_profile_args)
     done
     echo "ESP32 examples built!"
 
@@ -71,17 +73,20 @@ build-examples:
 build-qemu:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building ESP32 QEMU examples..."
     for ex in talker listener; do
         echo "  Building qemu-esp32/rust/zenoh/$ex..."
-        (cd examples/qemu-esp32-baremetal/rust/zenoh/$ex && cargo +{{NIGHTLY}} build --release)
+        (cd examples/qemu-esp32-baremetal/rust/zenoh/$ex && cargo +{{NIGHTLY}} build $cargo_profile_args)
     done
     echo ""
     echo "Creating flash images..."
     mkdir -p build/esp32-qemu
     for ex in talker listener; do
         bin_name="esp32-qemu-$ex"
-        elf="examples/qemu-esp32-baremetal/rust/zenoh/$ex/target/riscv32imc-unknown-none-elf/release/$bin_name"
+        elf="examples/qemu-esp32-baremetal/rust/zenoh/$ex/target/riscv32imc-unknown-none-elf/$target_profile_dir/$bin_name"
         out="build/esp32-qemu/$bin_name.bin"
         if command -v espflash &>/dev/null; then
             espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
@@ -99,10 +104,13 @@ build-qemu:
 build-logging-smoke:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building logging-smoke-esp32-qemu..."
     fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
-    (cd "$fixture" && cargo +{{NIGHTLY}} build --release)
-    elf="$fixture/target/riscv32imc-unknown-none-elf/release/logging-smoke-esp32-qemu"
+    (cd "$fixture" && cargo +{{NIGHTLY}} build $cargo_profile_args)
+    elf="$fixture/target/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
     if command -v espflash &>/dev/null; then
         espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$bin"
@@ -151,11 +159,13 @@ test-basic: build-qemu
 test verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --test esp32_emulator --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run all ESP32 tests (same as test)
 test-all verbose="": (test verbose)

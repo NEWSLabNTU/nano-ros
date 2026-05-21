@@ -135,6 +135,7 @@ build-rust-examples:
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
     trap 'for pid in $(jobs -pr); do kill "$pid" 2>/dev/null || true; done; wait; exit 130' INT TERM
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr skip: west not found"; exit 0
@@ -194,9 +195,10 @@ build-fixtures:
     # board target) can't build it with the cross toolchain, so build
     # once with host cargo and pass the absolute path via west -D.
     echo "  → host nros-codegen (cargo)"
-    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
-    codegen_tool="$nros_root/packages/codegen/packages/target/release/nros-codegen"
+    codegen_tool="$nros_root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     # Phase 165.perf — split the NROS_BUILD_JOBS budget into parallel
     # example builds (BUILD_JOBS) × ninja-per-build. Each example uses
     # an isolated `-d <build_dir>`, so concurrent west builds are safe
@@ -547,9 +549,11 @@ build-fvp-aemv8r-cyclonedds:
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
     nros_root="$(pwd)"
     echo "  → host nros-codegen (cargo)"
-    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
-    codegen_tool="$nros_root/packages/codegen/packages/target/release/nros-codegen"
+    codegen_tool="$nros_root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     make_bin="$nros_root/third-party/make/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
@@ -667,7 +671,8 @@ build-logging-smoke:
         echo "Run: ./scripts/zephyr/setup.sh"
         exit 1
     fi
-    CODEGEN="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
+    source scripts/build/cargo.sh
+    CODEGEN="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     MAKE_BIN="$(pwd)/third-party/make/make"
     if [ ! -x "$MAKE_BIN" ]; then
         MAKE_BIN="$(command -v make)"
@@ -675,7 +680,8 @@ build-logging-smoke:
     export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
     if [ ! -x "$CODEGEN" ]; then
         echo "  Building host nros-codegen..."
-        cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+        cargo_profile_args="$(nros_cargo_profile_arg_string)"
+        cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
             -p nros-codegen-c --bin nros-codegen --quiet
     fi
     NROS="$(basename "$(pwd)")"
@@ -734,6 +740,8 @@ build-all: build build-examples build-fixtures
 test verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --test zephyr --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
@@ -741,7 +749,7 @@ test verbose="":
     else
         args+=(--success-output immediate --failure-output immediate)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run all Zephyr tests (zenoh + XRCE + C)
 test-all verbose="":
@@ -793,13 +801,15 @@ test-full verbose="": build-examples
 test-xrce verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --test zephyr --no-fail-fast -E 'test(xrce)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     else
         args+=(--success-output immediate --failure-output immediate)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run Zephyr C examples test
 test-c:

@@ -9,3 +9,12 @@
 # backtraces.
 [build]
 rustflags = ["-C", "symbol-mangling-version=v0"]
+
+[profile.nros-fast-release]
+inherits = "release"
+opt-level = 2
+codegen-units = 16
+incremental = true
+debug = 1
+lto = "off"
+panic = "abort"

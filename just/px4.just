@@ -73,7 +73,11 @@ doctor:
 
 # Build the px4 RMW + board crates (host-mock std mode).
 build:
-    cargo build -p nros-rmw-uorb -p nros-px4 --features std
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo build $cargo_profile_args -p nros-rmw-uorb -p nros-px4 --features std
 
 # Cross-build nros-rmw-uorb for every PX4 target triple in
 # `cmake/px4-rust.cmake`. Pre-flight check that Phase 90.2b's
@@ -81,14 +85,18 @@ build:
 # real PX4 modules deploy to: STM32F1/F4 (M3), Pixhawk 4 (M4F),
 # STM32H7 / NXP RT117x (M7).
 build-targets:
-    @echo "→ thumbv7m-none-eabi (Cortex-M3)"
-    cargo build -p nros-rmw-uorb \
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    echo "→ thumbv7m-none-eabi (Cortex-M3)"
+    cargo build $cargo_profile_args -p nros-rmw-uorb \
         --target thumbv7m-none-eabi --no-default-features --features alloc
-    @echo "→ thumbv7em-none-eabihf (Cortex-M4F / Pixhawk 4)"
-    cargo build -p nros-rmw-uorb \
+    echo "→ thumbv7em-none-eabihf (Cortex-M4F / Pixhawk 4)"
+    cargo build $cargo_profile_args -p nros-rmw-uorb \
         --target thumbv7em-none-eabihf --no-default-features --features alloc
-    @echo "→ thumbv8m.main-none-eabihf (Cortex-M7 / STM32H7)"
-    cargo build -p nros-rmw-uorb \
+    echo "→ thumbv8m.main-none-eabihf (Cortex-M7 / STM32H7)"
+    cargo build $cargo_profile_args -p nros-rmw-uorb \
         --target thumbv8m.main-none-eabihf --no-default-features --features alloc
 
 # Build PX4 SITL with the nano-ros uORB C++ register-check module
@@ -164,12 +172,20 @@ check:
 # - notify holds callback list lock + Vec<Arc<>> — fixes
 #   Subscription-Drop UAF in callback dispatch
 test:
-    cargo test -p nros-rmw-uorb --features std,test-helpers --lib --tests
-    cargo test -p nros-px4 --features test-helpers --tests
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo test $cargo_profile_args -p nros-rmw-uorb --features std,test-helpers --lib --tests
+    cargo test $cargo_profile_args -p nros-px4 --features test-helpers --tests
 
 # Run E2E test against PX4 SITL. Builds SITL first, then runs the test.
 test-sitl: build-sitl
-    cargo nextest run -p nros-tests --features px4-sitl --test px4_e2e
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo nextest run "${nextest_profile_args[@]}" -p nros-tests --features px4-sitl --test px4_e2e
 
 # Combined CI: check + unit tests (SITL gated separately via test-sitl).
 ci: check test build-targets

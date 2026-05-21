@@ -335,10 +335,22 @@ function(nros_generate_interfaces target)
       # Detect Rust target for cross-compilation
       nros_detect_rust_target()
 
-      if(NROS_RUST_TARGET)
-        set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/release/libnano_ros_cpp_ffi_${target}.a")
+      set(_nros_cargo_profile "$ENV{NROS_CARGO_PROFILE}")
+      if(_nros_cargo_profile STREQUAL "")
+        set(_nros_cargo_profile "nros-fast-release")
+      endif()
+      if(_nros_cargo_profile STREQUAL "dev")
+        set(_nros_cargo_profile_dir "debug")
+      elseif(_nros_cargo_profile STREQUAL "release")
+        set(_nros_cargo_profile_dir "release")
       else()
-        set(_ffi_lib "${_ffi_target_dir}/release/libnano_ros_cpp_ffi_${target}.a")
+        set(_nros_cargo_profile_dir "${_nros_cargo_profile}")
+      endif()
+
+      if(NROS_RUST_TARGET)
+        set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
+      else()
+        set(_ffi_lib "${_ffi_target_dir}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
       endif()
 
       # Generate Cargo.toml from template
@@ -350,6 +362,19 @@ function(nros_generate_interfaces target)
         "${_ffi_crate_dir}/Cargo.toml"
         @ONLY
       )
+      if(_nros_cargo_profile STREQUAL "nros-fast-release")
+        file(APPEND "${_ffi_crate_dir}/Cargo.toml"
+"
+[profile.nros-fast-release]
+inherits = \"release\"
+opt-level = 2
+codegen-units = 16
+incremental = true
+debug = 1
+lto = \"off\"
+panic = \"abort\"
+")
+      endif()
 
       # Generate lib.rs with include!() for cross-package FFI references.
       # Using include!() instead of mod keeps all types in the same scope,
@@ -399,10 +424,16 @@ targets = [\"${NROS_RUST_TARGET}\"]
       endif()
 
       # Build the FFI staticlib
-      set(_cargo_ffi_args build --release
+      set(_cargo_ffi_args build
         --manifest-path "${_ffi_crate_dir}/Cargo.toml"
         --target-dir "${_ffi_target_dir}"
       )
+      if(_nros_cargo_profile STREQUAL "dev")
+      elseif(_nros_cargo_profile STREQUAL "release")
+        list(APPEND _cargo_ffi_args --release)
+      else()
+        list(APPEND _cargo_ffi_args --profile ${_nros_cargo_profile})
+      endif()
 
       if(NROS_RUST_TARGET)
         list(APPEND _cargo_ffi_args --target ${NROS_RUST_TARGET})

@@ -39,6 +39,8 @@ build: build-kernel
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ ! -d "$NUTTX_DIR/include" ]; then
         echo "Skipping NuttX QEMU examples (NuttX not found). Run: just nuttx setup"
         exit 0
@@ -48,7 +50,7 @@ build-examples:
         echo "  Building $example..."
         # No +nightly override — the nightly version is pinned by
         # examples/qemu-arm-nuttx/rust-toolchain.toml (see comments there).
-        (cd examples/qemu-arm-nuttx/rust/zenoh/$example && cargo build --release)
+        (cd examples/qemu-arm-nuttx/rust/zenoh/$example && cargo build $cargo_profile_args)
     done
     echo "NuttX QEMU examples built!"
 
@@ -56,6 +58,11 @@ build-examples:
 build-fixtures:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    cargo_frontends="$(nros_cargo_frontend_jobs)"
+    cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         echo "NuttX skip: arm-none-eabi-gcc not found"; exit 0
     fi
@@ -77,9 +84,9 @@ build-fixtures:
     # phase-175) and are no longer built.
     # Phase 88.15.c — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm")
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-         cargo build --release --quiet'
+         cargo build $cargo_profile_args --quiet'
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
     # sidestepped by:
@@ -95,9 +102,9 @@ build-fixtures:
     #     NuttX armv7a-eabihf target.
     # Host nros-codegen is still required for `nros_generate_interfaces()`.
     echo "  → host nros-codegen (cargo)"
-    cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
+    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
-    codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
+    codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
     nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi"
     cmake_dirs=()
@@ -106,7 +113,7 @@ build-fixtures:
             cmake_dirs+=("examples/qemu-arm-nuttx/$lang/zenoh/$ex")
         done
     done
-    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
+    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
         "echo '  → {} (cmake)' && rm -rf {}/build && \
          cmake -S {} -B {}/build \
            -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
@@ -131,7 +138,7 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
+        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
             "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
              cmake -S {} -B {}/build-zenoh \
                -DNROS_RMW=zenoh \
@@ -277,16 +284,18 @@ test verbose="": build-examples
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
     args=(-p nros-tests --test nuttx_qemu --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(Nuttx)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${e2e_args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
 ci: doctor test
