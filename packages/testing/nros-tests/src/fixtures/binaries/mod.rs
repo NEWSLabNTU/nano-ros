@@ -413,7 +413,7 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/talker",
+                "native/rust/talker",
                 "talker",
                 Some(&["param-services"]),
                 None,
@@ -651,7 +651,7 @@ pub fn build_freertos_rust_example_rmw(
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
-        .get_or_try_init(|| build_example("native/rust/zenoh/listener", "listener", None, None))
+        .get_or_try_init(|| build_example("native/rust/listener", "listener", None, None))
         .map(|p| p.as_path())
 }
 
@@ -878,7 +878,7 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
     NATIVE_TALKER_TLS_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/zenoh/talker");
+            let example_dir = root.join("examples/native/rust/talker");
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join("release/talker");
             require_prebuilt_binary(&binary_path)
@@ -894,7 +894,7 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
     NATIVE_LISTENER_TLS_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/zenoh/listener");
+            let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-tls");
             let binary_path = target_dir.join("release/listener");
             require_prebuilt_binary(&binary_path)
@@ -922,12 +922,7 @@ pub fn listener_tls_binary() -> PathBuf {
 pub fn build_native_action_server() -> TestResult<&'static Path> {
     NATIVE_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/action-server",
-                "native-rs-action-server",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/action-server", "action-server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -936,12 +931,7 @@ pub fn build_native_action_server() -> TestResult<&'static Path> {
 pub fn build_native_action_client() -> TestResult<&'static Path> {
     NATIVE_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/action-client",
-                "native-rs-action-client",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/action-client", "action-client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -954,7 +944,7 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
     NATIVE_TALKER_SAFETY_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/zenoh/talker");
+            let example_dir = root.join("examples/native/rust/talker");
             let target_dir = example_dir.join("target-safety");
             let binary_path = target_dir.join("release/talker");
             require_prebuilt_binary(&binary_path)
@@ -970,7 +960,7 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
     NATIVE_LISTENER_SAFETY_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/zenoh/listener");
+            let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-safety");
             let binary_path = target_dir.join("release/listener");
             require_prebuilt_binary(&binary_path)
@@ -1002,7 +992,7 @@ pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
     NATIVE_LISTENER_ZERO_COPY_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/native/rust/zenoh/listener");
+            let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-zero-copy");
             let binary_path = target_dir.join("release/listener");
             require_prebuilt_binary(&binary_path)
@@ -1030,12 +1020,7 @@ pub fn action_client_binary() -> PathBuf {
 pub fn build_native_service_server() -> TestResult<&'static Path> {
     NATIVE_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/service-server",
-                "native-rs-service-server",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/service-server", "service-server", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -1044,12 +1029,7 @@ pub fn build_native_service_server() -> TestResult<&'static Path> {
 pub fn build_native_service_client() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/service-client",
-                "native-rs-service-client",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/service-client", "service-client", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -1394,14 +1374,14 @@ pub fn build_rtic_action_client() -> TestResult<&'static Path> {
 /// Build the xrce-talker example binary (cached).
 pub fn build_xrce_talker() -> TestResult<&'static Path> {
     XRCE_TALKER_BINARY
-        .get_or_try_init(|| build_example("native/rust/xrce/talker", "xrce-talker", None, None))
+        .get_or_try_init(|| build_example_rmw("native/rust/talker", "talker", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
 /// Build the xrce-listener example binary (cached).
 pub fn build_xrce_listener() -> TestResult<&'static Path> {
     XRCE_LISTENER_BINARY
-        .get_or_try_init(|| build_example("native/rust/xrce/listener", "xrce-listener", None, None))
+        .get_or_try_init(|| build_example_rmw("native/rust/listener", "listener", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -1425,12 +1405,7 @@ pub fn xrce_listener_binary() -> PathBuf {
 pub fn build_xrce_service_server() -> TestResult<&'static Path> {
     XRCE_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/xrce/service-server",
-                "xrce-service-server",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/service-server", "service-server", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -1439,12 +1414,7 @@ pub fn build_xrce_service_server() -> TestResult<&'static Path> {
 pub fn build_xrce_service_client() -> TestResult<&'static Path> {
     XRCE_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/xrce/service-client",
-                "xrce-service-client",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/service-client", "service-client", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -1469,12 +1439,7 @@ pub fn xrce_service_client_binary() -> PathBuf {
 pub fn build_xrce_action_server() -> TestResult<&'static Path> {
     XRCE_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/xrce/action-server",
-                "xrce-action-server",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/action-server", "action-server", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -1483,12 +1448,7 @@ pub fn build_xrce_action_server() -> TestResult<&'static Path> {
 pub fn build_xrce_action_client() -> TestResult<&'static Path> {
     XRCE_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/xrce/action-client",
-                "xrce-action-client",
-                None,
-                None,
-            )
+            build_example_rmw("native/rust/action-client", "action-client", Rmw::Xrce)
         })
         .map(|p| p.as_path())
 }
@@ -1689,7 +1649,7 @@ pub fn qemu_large_msg_test_binary() -> PathBuf {
 /// Build a CMake-based C example.
 ///
 /// # Arguments
-/// * `example_dir` - Path relative to `examples/` (e.g., "native/c/zenoh/talker")
+/// * `example_dir` - Path relative to `examples/` (e.g., "native/c/talker")
 /// * `binary_name` - Name of the output binary (e.g., "c_talker")
 ///
 /// Phase 140 — the example's `CMakeLists.txt` consumes nano-ros via
@@ -1771,14 +1731,14 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
 /// Build c-talker example (cached)
 pub fn build_c_talker() -> TestResult<&'static Path> {
     C_TALKER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/zenoh/talker", "c_talker"))
+        .get_or_try_init(|| build_c_example("native/c/talker", "c_talker"))
         .map(|p| p.as_path())
 }
 
 /// Build c-listener example (cached)
 pub fn build_c_listener() -> TestResult<&'static Path> {
     C_LISTENER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/zenoh/listener", "c_listener"))
+        .get_or_try_init(|| build_c_example("native/c/listener", "c_listener"))
         .map(|p| p.as_path())
 }
 
@@ -1801,28 +1761,28 @@ pub fn c_listener_binary() -> PathBuf {
 /// Build c-service-server example (cached)
 pub fn build_c_service_server() -> TestResult<&'static Path> {
     C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/zenoh/service-server", "c_service_server"))
+        .get_or_try_init(|| build_c_example("native/c/service-server", "c_service_server"))
         .map(|p| p.as_path())
 }
 
 /// Build c-service-client example (cached)
 pub fn build_c_service_client() -> TestResult<&'static Path> {
     C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_c_example("native/c/zenoh/service-client", "c_service_client"))
+        .get_or_try_init(|| build_c_example("native/c/service-client", "c_service_client"))
         .map(|p| p.as_path())
 }
 
 /// Build c-action-server example (cached)
 pub fn build_c_action_server() -> TestResult<&'static Path> {
     C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/zenoh/action-server", "c_action_server"))
+        .get_or_try_init(|| build_c_example("native/c/action-server", "c_action_server"))
         .map(|p| p.as_path())
 }
 
 /// Build c-action-client example (cached)
 pub fn build_c_action_client() -> TestResult<&'static Path> {
     C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_c_example("native/c/zenoh/action-client", "c_action_client"))
+        .get_or_try_init(|| build_c_example("native/c/action-client", "c_action_client"))
         .map(|p| p.as_path())
 }
 
@@ -1942,14 +1902,14 @@ pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<
 /// Build c-xrce-talker example (cached)
 pub fn build_c_xrce_talker() -> TestResult<&'static Path> {
     C_XRCE_TALKER_BINARY
-        .get_or_try_init(|| build_c_xrce_example("native/c/xrce/talker", "c_xrce_talker"))
+        .get_or_try_init(|| build_example_cmake_rmw("native/c/talker", "c_talker", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
 /// Build c-xrce-listener example (cached)
 pub fn build_c_xrce_listener() -> TestResult<&'static Path> {
     C_XRCE_LISTENER_BINARY
-        .get_or_try_init(|| build_c_xrce_example("native/c/xrce/listener", "c_xrce_listener"))
+        .get_or_try_init(|| build_example_cmake_rmw("native/c/listener", "c_listener", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -2146,7 +2106,7 @@ static CPP_PARAMETERS_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// the root CMakeLists.
 ///
 /// # Arguments
-/// * `example_dir` - Path relative to `examples/` (e.g., "native/cpp/zenoh/talker")
+/// * `example_dir` - Path relative to `examples/` (e.g., "native/cpp/talker")
 /// * `binary_name` - Name of the output binary (e.g., "cpp_talker")
 pub fn build_cpp_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
@@ -2222,32 +2182,28 @@ pub fn build_cpp_example(example_dir: &str, binary_name: &str) -> TestResult<Pat
 /// Build cpp-talker example (cached)
 pub fn build_cpp_talker() -> TestResult<&'static Path> {
     CPP_TALKER_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/zenoh/talker", "cpp_talker"))
+        .get_or_try_init(|| build_cpp_example("native/cpp/talker", "cpp_talker"))
         .map(|p| p.as_path())
 }
 
 /// Build cpp-listener example (cached)
 pub fn build_cpp_listener() -> TestResult<&'static Path> {
     CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/zenoh/listener", "cpp_listener"))
+        .get_or_try_init(|| build_cpp_example("native/cpp/listener", "cpp_listener"))
         .map(|p| p.as_path())
 }
 
 /// Build cpp-service-server example (cached)
 pub fn build_cpp_service_server() -> TestResult<&'static Path> {
     CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_cpp_example("native/cpp/zenoh/service-server", "cpp_service_server")
-        })
+        .get_or_try_init(|| build_cpp_example("native/cpp/service-server", "cpp_service_server"))
         .map(|p| p.as_path())
 }
 
 /// Build cpp-service-client example (cached)
 pub fn build_cpp_service_client() -> TestResult<&'static Path> {
     CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_cpp_example("native/cpp/zenoh/service-client", "cpp_service_client")
-        })
+        .get_or_try_init(|| build_cpp_example("native/cpp/service-client", "cpp_service_client"))
         .map(|p| p.as_path())
 }
 
@@ -2286,18 +2242,14 @@ pub fn cpp_service_client_binary() -> PathBuf {
 /// Build cpp-action-server example (cached)
 pub fn build_cpp_action_server() -> TestResult<&'static Path> {
     CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_cpp_example("native/cpp/zenoh/action-server", "cpp_action_server")
-        })
+        .get_or_try_init(|| build_cpp_example("native/cpp/action-server", "cpp_action_server"))
         .map(|p| p.as_path())
 }
 
 /// Build cpp-action-client example (cached)
 pub fn build_cpp_action_client() -> TestResult<&'static Path> {
     CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_cpp_example("native/cpp/zenoh/action-client", "cpp_action_client")
-        })
+        .get_or_try_init(|| build_cpp_example("native/cpp/action-client", "cpp_action_client"))
         .map(|p| p.as_path())
 }
 

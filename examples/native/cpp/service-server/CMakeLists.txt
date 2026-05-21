@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(cpp_service_server LANGUAGES CXX)
+project(cpp_service_server LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

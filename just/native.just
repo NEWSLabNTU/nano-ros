@@ -81,37 +81,40 @@ build-fixtures:
     # generator (ninja/make) inherits the shared pool; otherwise pin it
     # to the budget (the explicit `--parallel` flag was removed).
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    ensure_native_rust_generated() {
+        case "$1" in
+            native/rust/talker|native/rust/listener|native/rust/service-server|native/rust/service-client|native/rust/action-server|native/rust/action-client)
+                ( cd "examples/$1" && cargo nano-ros generate-rust --force )
+                ;;
+        esac
+    }
     # Talker is built with `--features param-services` so the params tests
     # see "Counter start value: 0" when the talker reads its declared param.
     # Same binary path as the default-feature talker, just feature-augmented.
-    echo "  → native/rust/zenoh/talker (--features param-services)"
-    ( cd examples/native/rust/zenoh/talker && \
+    echo "  → native/rust/talker (--features param-services)"
+    ensure_native_rust_generated native/rust/talker
+    ( cd examples/native/rust/talker && \
       cargo build --release --features param-services --quiet )
     examples=(
-        native/rust/zenoh/listener
+        native/rust/listener
         native/rust/zenoh/lifecycle-node
         native/rust/zenoh/custom-msg
-        native/rust/zenoh/service-server
-        native/rust/zenoh/service-client
-        native/rust/zenoh/action-server
-        native/rust/zenoh/action-client
+        native/rust/service-server
+        native/rust/service-client
+        native/rust/action-server
+        native/rust/action-client
         native/rust/zenoh/talker-rtic
         native/rust/zenoh/listener-rtic
         native/rust/zenoh/service-server-rtic
         native/rust/zenoh/service-client-rtic
         native/rust/zenoh/action-server-rtic
         native/rust/zenoh/action-client-rtic
-        native/rust/xrce/talker
-        native/rust/xrce/listener
-        native/rust/xrce/service-server
-        native/rust/xrce/service-client
-        native/rust/xrce/action-server
-        native/rust/xrce/action-client
         native/rust/xrce/serial-talker
         native/rust/xrce/serial-listener
     )
     for ex in "${examples[@]}"; do
         echo "  → $ex"
+        ensure_native_rust_generated "$ex"
         ( cd "examples/$ex" && cargo build --release --quiet ) &
     done
     # Phase 131.B — bench/smoke binaries relocated under packages/testing/.
@@ -126,20 +129,25 @@ build-fixtures:
         ( cd "$fx" && cargo build --release --quiet ) &
     done
     wait
-    echo "  → native/rust/zenoh/{talker,listener} (--features link-tls)"
-    ( cd examples/native/rust/zenoh/talker && \
+    echo "  → native/rust/{talker,listener} (--features link-tls)"
+    ensure_native_rust_generated native/rust/talker
+    ensure_native_rust_generated native/rust/listener
+    ( cd examples/native/rust/talker && \
       cargo build --release --features link-tls --target-dir target-tls --quiet ) &
-    ( cd examples/native/rust/zenoh/listener && \
+    ( cd examples/native/rust/listener && \
       cargo build --release --features link-tls --target-dir target-tls --quiet ) &
     wait
-    echo "  → native/rust/zenoh/{talker,listener} (--features safety-e2e)"
-    ( cd examples/native/rust/zenoh/talker && \
+    echo "  → native/rust/{talker,listener} (--features safety-e2e)"
+    ensure_native_rust_generated native/rust/talker
+    ensure_native_rust_generated native/rust/listener
+    ( cd examples/native/rust/talker && \
       cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
-    ( cd examples/native/rust/zenoh/listener && \
+    ( cd examples/native/rust/listener && \
       cargo build --release --features safety-e2e --target-dir target-safety --quiet ) &
     wait
-    echo "  → native/rust/zenoh/listener (--features unstable-zenoh-api)"
-    ( cd examples/native/rust/zenoh/listener && \
+    echo "  → native/rust/listener (--features unstable-zenoh-api)"
+    ensure_native_rust_generated native/rust/listener
+    ( cd examples/native/rust/listener && \
       cargo build --release --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
     # Phase 118.A.2 — collapsed-shape native talker. Built once per RMW
     # feature into isolated target-<rmw>/ dirs so the test harness's
@@ -156,6 +164,7 @@ build-fixtures:
     # docs/roadmap/phase-175-cyclone-rust-example-build-path.md.
     for collapsed_case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/rust/${collapsed_case} ]; then
+            ensure_native_rust_generated "native/rust/${collapsed_case}"
             for rmw in zenoh xrce; do
                 feature_flags="--features rmw-${rmw}"
                 if [ "$rmw" = "zenoh" ] && [ "$collapsed_case" = "talker" ]; then
@@ -301,15 +310,15 @@ _build-c-example dir *CMAKE_ARGS:
     set -e
     echo "Building {{dir}}..."
     cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
-    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh {{CMAKE_ARGS}} ..
+    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}} ..
     make
 
 # Build C examples only (no tests)
 build-c:
     #!/usr/bin/env bash
     set -e
-    just native _build-c-example examples/native/c/zenoh/talker
-    just native _build-c-example examples/native/c/zenoh/listener
+    just native _build-c-example examples/native/c/talker
+    just native _build-c-example examples/native/c/listener
     just native _build-c-example examples/native/c/zenoh/custom-msg
     echo "C examples built!"
 
@@ -317,14 +326,14 @@ build-c:
 build-c-xrce:
     #!/usr/bin/env bash
     set -e
-    just native _build-c-example examples/native/c/xrce/talker  "-DNANO_ROS_RMW=xrce"
-    just native _build-c-example examples/native/c/xrce/listener "-DNANO_ROS_RMW=xrce"
+    just native _build-c-example examples/native/c/talker  "-DNANO_ROS_RMW=xrce -DNROS_RMW=xrce"
+    just native _build-c-example examples/native/c/listener "-DNANO_ROS_RMW=xrce -DNROS_RMW=xrce"
     echo "C XRCE examples built!"
 
 # Clean C examples build
 clean-c:
-    rm -rf examples/native/c/zenoh/{talker,listener,custom-msg}/build
-    rm -rf examples/native/c/xrce/{talker,listener}/build
+    rm -rf examples/native/c/{talker,listener}/build
+    rm -rf examples/native/c/zenoh/custom-msg/build
     @echo "C examples build cleaned"
 
 # Build a single C++ example with CMake (Phase 140 — add_subdirectory shape).
@@ -334,24 +343,24 @@ _build-cpp-example dir *CMAKE_ARGS:
     set -e
     echo "Building {{dir}}..."
     cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
-    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh {{CMAKE_ARGS}} ..
+    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}} ..
     make
 
 # Build C++ examples only (no tests)
 build-cpp:
     #!/usr/bin/env bash
     set -e
-    just native _build-cpp-example examples/native/cpp/zenoh/talker
-    just native _build-cpp-example examples/native/cpp/zenoh/listener
-    just native _build-cpp-example examples/native/cpp/zenoh/service-server
-    just native _build-cpp-example examples/native/cpp/zenoh/service-client
-    just native _build-cpp-example examples/native/cpp/zenoh/action-server
-    just native _build-cpp-example examples/native/cpp/zenoh/action-client
+    just native _build-cpp-example examples/native/cpp/talker
+    just native _build-cpp-example examples/native/cpp/listener
+    just native _build-cpp-example examples/native/cpp/service-server
+    just native _build-cpp-example examples/native/cpp/service-client
+    just native _build-cpp-example examples/native/cpp/action-server
+    just native _build-cpp-example examples/native/cpp/action-client
     echo "C++ examples built!"
 
 # Clean C++ examples build
 clean-cpp:
-    rm -rf examples/native/cpp/zenoh/{talker,listener,service-server,service-client,action-server,action-client}/build
+    rm -rf examples/native/cpp/{talker,listener,service-server,service-client,action-server,action-client}/build
     @echo "C++ examples build cleaned"
 
 # =============================================================================
@@ -520,27 +529,27 @@ bench-fairness:
 
 # Run native Rust talker
 talker:
-    cd examples/native/rust/zenoh/talker && cargo run
+    cd examples/native/rust/talker && cargo run
 
 # Run native Rust listener
 listener:
-    cd examples/native/rust/zenoh/listener && cargo run
+    cd examples/native/rust/listener && cargo run
 
 # Run native Rust service server
 service-server:
-    cd examples/native/rust/zenoh/service-server && cargo run
+    cd examples/native/rust/service-server && cargo run
 
 # Run native Rust service client
 service-client:
-    cd examples/native/rust/zenoh/service-client && cargo run
+    cd examples/native/rust/service-client && cargo run
 
 # Run native Rust action server
 action-server:
-    cd examples/native/rust/zenoh/action-server && cargo run
+    cd examples/native/rust/action-server && cargo run
 
 # Run native Rust action client
 action-client:
-    cd examples/native/rust/zenoh/action-client && cargo run
+    cd examples/native/rust/action-client && cargo run
 
 # Start zenohd router for native examples (port 7447)
 zenohd:

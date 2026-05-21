@@ -32,7 +32,8 @@ inline below.
 
 **Done means.** For each checkbox, source has moved into the collapsed
 `<platform>/<language>/<case>/` shape, build recipes select RMW by flag,
-tests/fixtures know the new path, and the legacy `<rmw>/` dir is deleted
+tests/fixtures know the new path, runtime E2E coverage has been rerun
+for the touched standard cases, and the legacy `<rmw>/` dir is deleted
 unless explicitly listed as a carve-out.
 
 ---
@@ -43,10 +44,7 @@ Directory scan on 2026-05-21 still shows these RMW-root directories:
 
 ```text
 esp32/rust/zenoh
-native/c/cyclonedds
-native/c/xrce
 native/c/zenoh
-native/cpp/cyclonedds
 native/cpp/zenoh
 native/rust/xrce
 native/rust/zenoh
@@ -86,24 +84,31 @@ Native has collapsed case dirs, but legacy RMW-root source dirs still
 exist. Collapse/remove them after parity is verified.
 
 - [ ] **118.A.1 — `examples/native/c/zenoh/`**
-      Collapse remaining Zenoh C-only cases into `examples/native/c/<case>/`
-      or delete when superseded by the collapsed dirs.
-- [ ] **118.A.2 — `examples/native/c/xrce/`**
+      Standard six cases are deleted from the legacy RMW root; remaining
+      C-only cases (`custom-msg`, `custom-platform`,
+      `custom-transport-loopback`, `logging`) still need canonical
+      collapsed names or explicit carve-outs.
+- [x] **118.A.2 — `examples/native/c/xrce/`**
       Fold XRCE C cases into `examples/native/c/<case>/` with
       `-DNROS_RMW=xrce`.
-- [ ] **118.A.3 — `examples/native/c/cyclonedds/`**
+- [x] **118.A.3 — `examples/native/c/cyclonedds/`**
       Fold Cyclone C cases into `examples/native/c/<case>/` with
       `-DNROS_RMW=cyclonedds`; preserve idlc converter plumbing.
 - [ ] **118.A.4 — `examples/native/cpp/zenoh/`**
-      Fold Zenoh C++ cases into `examples/native/cpp/<case>/`.
-- [ ] **118.A.5 — `examples/native/cpp/cyclonedds/`**
+      Standard six cases are deleted from the legacy RMW root; remaining
+      C++-only cases (`logging`, `parameters`) still need canonical
+      collapsed names or explicit carve-outs.
+- [x] **118.A.5 — `examples/native/cpp/cyclonedds/`**
       Fold Cyclone C++ cases into `examples/native/cpp/<case>/`.
 - [ ] **118.A.6 — `examples/native/rust/zenoh/`**
-      Fold remaining Zenoh-only Rust variants/cases into
-      `examples/native/rust/<case>/` where they are canonical cases.
+      Standard six cases are deleted from the legacy RMW root; remaining
+      Zenoh-only variants (`*-rtic`, async service/action clients,
+      custom transport, custom message, lifecycle, logging) still need
+      canonical collapsed names or explicit carve-outs.
 - [ ] **118.A.7 — `examples/native/rust/xrce/`**
-      Fold XRCE Rust cases into `examples/native/rust/<case>/` with
-      `rmw-xrce`.
+      Standard six cases are folded into `examples/native/rust/<case>/`
+      with `rmw-xrce`; `serial-talker` and `serial-listener` remain as
+      XRCE-specific carve-out candidates.
 - [x] **118.A.8 — Native Rust Cyclone service runtime blocker**
       Closed by 171.C.1: native Rust Cyclone service server/client
       round-trip passed 4/4 after backend stale-pending cleanup.
@@ -314,6 +319,10 @@ explicitly documented one-board reference cases.
       with isolated `target-<rmw>/`.
 - [ ] Every C/C++ collapsed case configures for each supported RMW with
       isolated `build-<rmw>/`.
+- [ ] Runtime E2E tests are rerun after path-collapse edits, not only
+      build/path smokes. For native standard cases this means at least
+      `native_api`, Rust pubsub (`nano2nano`), Rust service (`services`),
+      and Rust action (`actions`) coverage after rebuilding fixtures.
 - [ ] Zephyr collapsed cases select RMW through overlays, not source-dir
       duplication.
 - [ ] `examples/README.md` and memory docs agree on the canonical shape.

@@ -137,8 +137,8 @@ Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` (`build/zenohd
 ### Native Rust + zenoh
 
 ```bash
-cd examples/native/rust/zenoh/talker   && cargo run     # terminal 2
-cd examples/native/rust/zenoh/listener && cargo run     # terminal 3
+cd examples/native/rust/talker   && cargo run     # terminal 2
+cd examples/native/rust/listener && cargo run     # terminal 3
 ```
 
 ### QEMU bare-metal Cortex-M3 (MPS2-AN385)
@@ -177,7 +177,7 @@ nano-ros pubs/subs are rmw_zenoh-compatible. Quickest round-trip:
 build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # terminal 2
-cd examples/native/rust/zenoh/talker && cargo run
+cd examples/native/rust/talker && cargo run
 
 # terminal 3
 source /opt/ros/humble/setup.bash
