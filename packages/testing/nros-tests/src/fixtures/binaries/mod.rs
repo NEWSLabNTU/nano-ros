@@ -659,12 +659,7 @@ pub fn build_native_listener() -> TestResult<&'static Path> {
 pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
     NATIVE_CT_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/custom-transport-talker",
-                "talker",
-                None,
-                None,
-            )
+            build_example("native/rust/custom-transport-talker", "talker", None, None)
         })
         .map(|p| p.as_path())
 }
@@ -674,7 +669,7 @@ pub fn build_native_custom_transport_listener() -> TestResult<&'static Path> {
     NATIVE_CT_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/custom-transport-listener",
+                "native/rust/custom-transport-listener",
                 "listener",
                 None,
                 None,
@@ -691,7 +686,7 @@ pub fn build_native_lifecycle_node() -> TestResult<&'static Path> {
     NATIVE_LIFECYCLE_NODE_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/lifecycle-node",
+                "native/rust/lifecycle-node",
                 "lifecycle-node",
                 Some(&["lifecycle-services"]),
                 None,
@@ -1069,13 +1064,13 @@ pub fn service_client_binary() -> PathBuf {
 /// Build native-rs-custom-msg (cached)
 pub fn build_native_custom_msg() -> TestResult<&'static Path> {
     NATIVE_CUSTOM_MSG_BINARY
-        .get_or_try_init(|| build_example("native/rust/zenoh/custom-msg", "custom_msg", None, None))
+        .get_or_try_init(|| build_example("native/rust/custom-msg", "custom_msg", None, None))
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-custom-msg (uncached, for serialization tests)
 pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
-    build_example("native/rust/zenoh/custom-msg", "custom_msg", None, None)
+    build_example("native/rust/custom-msg", "custom_msg", None, None)
 }
 
 /// rstest fixture that provides the native-rs-custom-msg binary path (with zenoh)
@@ -1251,23 +1246,14 @@ pub fn build_rtic_listener() -> TestResult<&'static Path> {
 /// Build native rtic-talker (cached)
 pub fn build_native_rtic_talker() -> TestResult<&'static Path> {
     NATIVE_RTIC_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example("native/rust/zenoh/talker-rtic", "rtic-talker", None, None)
-        })
+        .get_or_try_init(|| build_example("native/rust/talker-rtic", "rtic-talker", None, None))
         .map(|p| p.as_path())
 }
 
 /// Build native rtic-listener (cached)
 pub fn build_native_rtic_listener() -> TestResult<&'static Path> {
     NATIVE_RTIC_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/listener-rtic",
-                "rtic-listener",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| build_example("native/rust/listener-rtic", "rtic-listener", None, None))
         .map(|p| p.as_path())
 }
 
@@ -1276,7 +1262,7 @@ pub fn build_native_rtic_service_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/service-server-rtic",
+                "native/rust/service-server-rtic",
                 "rtic-service-server",
                 None,
                 None,
@@ -1290,7 +1276,7 @@ pub fn build_native_rtic_service_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/service-client-rtic",
+                "native/rust/service-client-rtic",
                 "rtic-service-client",
                 None,
                 None,
@@ -1332,7 +1318,7 @@ pub fn build_native_rtic_action_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/action-server-rtic",
+                "native/rust/action-server-rtic",
                 "rtic-action-server",
                 None,
                 None,
@@ -1346,7 +1332,7 @@ pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/zenoh/action-client-rtic",
+                "native/rust/action-client-rtic",
                 "rtic-action-client",
                 None,
                 None,
@@ -1490,7 +1476,7 @@ pub fn build_xrce_serial_talker() -> TestResult<&'static Path> {
     XRCE_SERIAL_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/xrce/serial-talker",
+                "native/rust/serial-talker",
                 "xrce-serial-talker",
                 None,
                 None,
@@ -1504,7 +1490,7 @@ pub fn build_xrce_serial_listener() -> TestResult<&'static Path> {
     XRCE_SERIAL_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rust/xrce/serial-listener",
+                "native/rust/serial-listener",
                 "xrce-serial-listener",
                 None,
                 None,
@@ -2288,7 +2274,7 @@ pub fn cpp_action_client_binary() -> PathBuf {
 /// Build cpp-parameters example (cached)
 pub fn build_cpp_parameters() -> TestResult<&'static Path> {
     CPP_PARAMETERS_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/zenoh/parameters", "cpp_parameters"))
+        .get_or_try_init(|| build_cpp_example("native/cpp/parameters", "cpp_parameters"))
         .map(|p| p.as_path())
 }
 

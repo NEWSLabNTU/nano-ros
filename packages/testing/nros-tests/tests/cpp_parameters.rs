@@ -4,7 +4,7 @@
 //! declare/get/set roundtrips through `nros::ParameterServer<Cap>` work
 //! end-to-end. The example exits with status 0 only when every
 //! roundtrip passes — non-zero exit codes encode which assertion
-//! failed (see `examples/native/cpp/zenoh/parameters/src/main.cpp`).
+//! failed (see `examples/native/cpp/parameters/src/main.cpp`).
 
 use std::process::Command;
 

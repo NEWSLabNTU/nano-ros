@@ -10,7 +10,7 @@
 //! zenohd --listen tcp/127.0.0.1:7447
 //!
 //! # 2. nros talker
-//! cd examples/native/rust/zenoh/talker
+//! cd examples/native/rust/talker
 //! RUST_LOG=info cargo run --features zenoh
 //!
 //! # 3. ROS 2 listener

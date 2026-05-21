@@ -1,0 +1,27 @@
+[package]
+name = "native-rs-custom-transport-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "listener"
+path = "src/main.rs"
+
+[features]
+default = []
+
+[dependencies]
+# Phase 115.L.5-custom-transport — see talker for migration notes.
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "link-custom", "ros-humble"] }
+nros-rmw = { path = "../../../../packages/core/nros-rmw", default-features = false, features = ["std"] }
+# Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
+# standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
+# cargo builds (no CMake glue) enable the feature so the library's
+# `build.rs` compiles the C port into the binary.
+nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+# Phase 88.16.B — diagnostics route through `nros-log`.
+nros-log = { path = "../../../../packages/core/nros-log" }
+std_msgs = { version = "*", default-features = false }

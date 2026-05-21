@@ -123,7 +123,7 @@ shell scripts run **after** the binary launches. Exit status 0 → pass.
 
 ### Example 1 — POSIX native talker
 
-`examples/native/rust/zenoh/talker/sample.yaml`:
+`examples/native/rust/talker/sample.yaml`:
 
 ```yaml
 sample:
@@ -150,7 +150,7 @@ tests:
       - NROS_RMW=zenoh
 ```
 
-`nros run examples/native/rust/zenoh/talker/` reads this file,
+`nros run examples/native/rust/talker/` reads this file,
 launches `zenohd` (because of `fixture: zenohd`), runs `cargo run`
 on the sibling crate, and waits up to 30 seconds for the literal
 string `Published: 5` to appear in stdout.

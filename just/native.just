@@ -97,20 +97,20 @@ build-fixtures:
       cargo build --release --features param-services --quiet )
     examples=(
         native/rust/listener
-        native/rust/zenoh/lifecycle-node
-        native/rust/zenoh/custom-msg
+        native/rust/lifecycle-node
+        native/rust/custom-msg
         native/rust/service-server
         native/rust/service-client
         native/rust/action-server
         native/rust/action-client
-        native/rust/zenoh/talker-rtic
-        native/rust/zenoh/listener-rtic
-        native/rust/zenoh/service-server-rtic
-        native/rust/zenoh/service-client-rtic
-        native/rust/zenoh/action-server-rtic
-        native/rust/zenoh/action-client-rtic
-        native/rust/xrce/serial-talker
-        native/rust/xrce/serial-listener
+        native/rust/talker-rtic
+        native/rust/listener-rtic
+        native/rust/service-server-rtic
+        native/rust/service-client-rtic
+        native/rust/action-server-rtic
+        native/rust/action-client-rtic
+        native/rust/serial-talker
+        native/rust/serial-listener
     )
     for ex in "${examples[@]}"; do
         echo "  → $ex"
@@ -319,7 +319,7 @@ build-c:
     set -e
     just native _build-c-example examples/native/c/talker
     just native _build-c-example examples/native/c/listener
-    just native _build-c-example examples/native/c/zenoh/custom-msg
+    just native _build-c-example examples/native/c/custom-msg
     echo "C examples built!"
 
 # Build C XRCE examples only (no tests)
@@ -333,7 +333,7 @@ build-c-xrce:
 # Clean C examples build
 clean-c:
     rm -rf examples/native/c/{talker,listener}/build
-    rm -rf examples/native/c/zenoh/custom-msg/build
+    rm -rf examples/native/c/custom-msg/build
     @echo "C examples build cleaned"
 
 # Build a single C++ example with CMake (Phase 140 — add_subdirectory shape).

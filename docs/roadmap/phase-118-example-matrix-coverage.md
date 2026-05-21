@@ -44,10 +44,6 @@ Directory scan on 2026-05-21 still shows these RMW-root directories:
 
 ```text
 esp32/rust/zenoh
-native/c/zenoh
-native/cpp/zenoh
-native/rust/xrce
-native/rust/zenoh
 px4/cpp/uorb
 px4/rust/uorb
 qemu-arm-baremetal/rust/zenoh
@@ -77,32 +73,30 @@ uORB-only and the canonical live example is the C++ module/check path.
 Native has collapsed case dirs, but legacy RMW-root source dirs still
 exist. Collapse/remove them after parity is verified.
 
-- [ ] **118.A.1 — `examples/native/c/zenoh/`**
-      Standard six cases are deleted from the legacy RMW root; remaining
-      C-only cases (`custom-msg`, `custom-platform`,
-      `custom-transport-loopback`, `logging`) still need canonical
-      collapsed names or explicit carve-outs.
+- [x] **118.A.1 — `examples/native/c/zenoh/`**
+      Standard six cases and C-only variants (`custom-msg`,
+      `custom-platform`, `custom-transport-loopback`, `logging`) are
+      collapsed under `examples/native/c/<case>/`.
 - [x] **118.A.2 — `examples/native/c/xrce/`**
       Fold XRCE C cases into `examples/native/c/<case>/` with
       `-DNROS_RMW=xrce`.
 - [x] **118.A.3 — `examples/native/c/cyclonedds/`**
       Fold Cyclone C cases into `examples/native/c/<case>/` with
       `-DNROS_RMW=cyclonedds`; preserve idlc converter plumbing.
-- [ ] **118.A.4 — `examples/native/cpp/zenoh/`**
-      Standard six cases are deleted from the legacy RMW root; remaining
-      C++-only cases (`logging`, `parameters`) still need canonical
-      collapsed names or explicit carve-outs.
+- [x] **118.A.4 — `examples/native/cpp/zenoh/`**
+      Standard six cases and C++-only variants (`logging`, `parameters`)
+      are collapsed under `examples/native/cpp/<case>/`.
 - [x] **118.A.5 — `examples/native/cpp/cyclonedds/`**
       Fold Cyclone C++ cases into `examples/native/cpp/<case>/`.
-- [ ] **118.A.6 — `examples/native/rust/zenoh/`**
-      Standard six cases are deleted from the legacy RMW root; remaining
-      Zenoh-only variants (`*-rtic`, async service/action clients,
-      custom transport, custom message, lifecycle, logging) still need
-      canonical collapsed names or explicit carve-outs.
-- [ ] **118.A.7 — `examples/native/rust/xrce/`**
-      Standard six cases are folded into `examples/native/rust/<case>/`
-      with `rmw-xrce`; `serial-talker` and `serial-listener` remain as
-      XRCE-specific carve-out candidates.
+- [x] **118.A.6 — `examples/native/rust/zenoh/`**
+      Standard six cases and Zenoh-only variants (`*-rtic`,
+      async service/action clients, custom transport, custom message,
+      lifecycle, logging) are collapsed under
+      `examples/native/rust/<case>/`.
+- [x] **118.A.7 — `examples/native/rust/xrce/`**
+      Standard six cases plus `serial-talker` and `serial-listener` are
+      folded into `examples/native/rust/<case>/`; serial examples remain
+      XRCE-only by feature/config, not by directory depth.
 - [x] **118.A.8 — Native Rust Cyclone service runtime blocker**
       Closed by 171.C.1: native Rust Cyclone service server/client
       round-trip passed 4/4 after backend stale-pending cleanup.

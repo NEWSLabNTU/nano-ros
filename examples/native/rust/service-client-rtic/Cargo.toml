@@ -1,0 +1,26 @@
+[package]
+name = "native-rtic-service-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Native service client using RTIC-pattern API (zero callbacks, spin_once(0), try_recv() loop)"
+
+[[bin]]
+name = "rtic-service-client"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+# Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend
+# via `nros_rmw_vtable_t`. `src/main.rs` calls `register()` before
+# `Executor::open`.
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-posix", "ros-humble"] }
+# Phase 123.A.1.x.2 — POSIX `nros_platform_*` C symbols ship as a
+# standalone C library inside `nros-platform-cffi[posix-c-port]`. Pure-
+# cargo builds (no CMake glue) enable the feature so the library's
+# `build.rs` compiles the C port into the binary.
+nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi", features = ["posix-c-port"] }
+# Phase 88.16.B — diagnostics route through `nros-log`.
+nros-log = { path = "../../../../packages/core/nros-log" }
+example_interfaces = { version = "*", default-features = false }

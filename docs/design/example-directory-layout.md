@@ -157,17 +157,17 @@ The leaf directory. Describes what the example demonstrates.
 
 | Current path | New path |
 |---|---|
-| `examples/native/rs-talker` | `examples/native/rust/zenoh/talker` |
-| `examples/native/rs-listener` | `examples/native/rust/zenoh/listener` |
-| `examples/native/rs-service-server` | `examples/native/rust/zenoh/service-server` |
-| `examples/native/rs-service-client` | `examples/native/rust/zenoh/service-client` |
-| `examples/native/rs-action-server` | `examples/native/rust/zenoh/action-server` |
-| `examples/native/rs-action-client` | `examples/native/rust/zenoh/action-client` |
-| `examples/native/rs-custom-msg` | `examples/native/rust/zenoh/custom-msg` |
-| `examples/native/c-talker` | `examples/native/c/zenoh/talker` |
-| `examples/native/c-listener` | `examples/native/c/zenoh/listener` |
-| `examples/native/c-custom-msg` | `examples/native/c/zenoh/custom-msg` |
-| `examples/native/c-baremetal-demo` | `examples/native/c/zenoh/baremetal-demo` |
+| `examples/native/rs-talker` | `examples/native/rust/talker` |
+| `examples/native/rs-listener` | `examples/native/rust/listener` |
+| `examples/native/rs-service-server` | `examples/native/rust/service-server` |
+| `examples/native/rs-service-client` | `examples/native/rust/service-client` |
+| `examples/native/rs-action-server` | `examples/native/rust/action-server` |
+| `examples/native/rs-action-client` | `examples/native/rust/action-client` |
+| `examples/native/rs-custom-msg` | `examples/native/rust/custom-msg` |
+| `examples/native/c-talker` | `examples/native/c/talker` |
+| `examples/native/c-listener` | `examples/native/c/listener` |
+| `examples/native/c-custom-msg` | `examples/native/c/custom-msg` |
+| `examples/native/c-baremetal-demo` | `examples/native/c/custom-platform` |
 | `examples/qemu/bsp-talker` | `examples/qemu-arm-baremetal/rust/zenoh/talker` |
 | `examples/qemu/bsp-listener` | `examples/qemu-arm-baremetal/rust/zenoh/listener` |
 | `examples/qemu/rs-test` | `examples/qemu-arm-baremetal/rust/core/cdr-test` |

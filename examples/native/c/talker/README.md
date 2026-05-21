@@ -11,7 +11,7 @@ The example's `CMakeLists.txt` pulls the nano-ros source tree
 directly via `add_subdirectory`. No install step, no install prefix.
 
 ```bash
-cd examples/native/c/zenoh/talker
+cd examples/native/c/talker
 cmake -B build -S .
 cmake --build build
 ./build/c_talker
@@ -61,7 +61,7 @@ Expected output:
 ```
 
 Pair with the matching listener example at
-`examples/native/c/zenoh/listener/` to verify end-to-end.
+`examples/native/c/listener/` to verify end-to-end.
 
 ## Source layout
 
@@ -77,4 +77,4 @@ Pair with the matching listener example at
   design notes for the root entry CMake.
 - `docs/release/migration-install-local-removal.md` — Phase 140
   migration note for downstream consumers.
-- `examples/native/c/zenoh/listener/` — receiver-side counterpart.
+- `examples/native/c/listener/` — receiver-side counterpart.

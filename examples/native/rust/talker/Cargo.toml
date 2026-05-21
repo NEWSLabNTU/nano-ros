@@ -31,7 +31,7 @@ rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys"]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
 # Carry-over feature gates that previously lived in
-# `native/rust/zenoh/talker/`. These are zenoh-specific and silently
+# `native/rust/talker/`. These are zenoh-specific and silently
 # no-op (or fail to compile) under the other RMWs — the matrix lint
 # advertises only `rmw-*` for each example; downstream tooling
 # should not combine zenoh-specific gates with `rmw-cyclonedds` /

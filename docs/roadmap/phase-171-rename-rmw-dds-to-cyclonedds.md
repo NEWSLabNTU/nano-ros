@@ -261,9 +261,9 @@ collapsed.
 - [~] **171.0.b — Actions.** **Native C + Rust + C++ LANDED +
       runtime-verified 2026-05-21.** Both pieces built; design below.
       Native action e2e:
-      - **C** (`examples/native/c/cyclonedds/action-{server,client}`):
+      - **C** (`examples/native/c/action-{server,client}`):
         goal → accept → feedback → **result** `[0,1,1,2,3,5,8,13,21,34,55]`.
-      - **Rust** (`examples/native/rust/cyclonedds/action-{server,client}`):
+      - **Rust** (`examples/native/rust/action-{server,client}`):
         goal → accept → feedback `[0]`→`[0,1,1,2,3,5,8,13]`. The client
         warms up discovery (~3 s spin) before the first `send_goal`,
         mirroring the C client — `send_goal` is a service call and its
@@ -317,7 +317,7 @@ collapsed.
           adding a narrow native publisher bridge for Fibonacci
           `FeedbackMessage_` plus `GoalStatusArray_`; both volatile topic
           writes wait for a matched reader before sending. Fresh
-          `examples/native/cpp/cyclonedds/action-{server,client}` build/run
+          `examples/native/cpp/action-{server,client}` build/run
           on 2026-05-21 prints feedback payload and result with
           `STATUS=0`.
         - Cross-impl pairings (rust↔C↔cpp) still need explicit validation;
@@ -595,7 +595,7 @@ Target matrix (after rename + new cells):
 
         Net-new hybrid (corrosion rust-staticlib + cmake-time
         Cyclone typesupport). **Talker landed + build-verified
-        2026-05-20** at `examples/native/rust/cyclonedds/talker/`:
+        2026-05-20** at `examples/native/rust/talker/`:
         the `rustapp` staticlib + `corrosion_import_crate` +
         `nros_generate_interfaces` + `NanoRos::NanoRos` +
         `--allow-multiple-definition` recipe compiles + links clean.

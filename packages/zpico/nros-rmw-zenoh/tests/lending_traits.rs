@@ -1,7 +1,7 @@
 //! Phase 99.F — verify SlotLending/SlotBorrowing trait conformance for
 //! the zenoh-pico backend at compile time. End-to-end zero-copy tests
 //! that exercise a real session are exercised by the
-//! `examples/native/rust/zenoh/{talker,listener}` migrations in 99.J.
+//! `examples/native/rust/{talker,listener}` migrations in 99.J.
 
 #![cfg(all(feature = "platform-posix", feature = "lending"))]
 

@@ -1,7 +1,7 @@
 // Phase 123.A.10 — minimal C talker demonstrating Pattern A.
 //
 // Publishes std_msgs/Int32 at 1 Hz on /chatter. Trimmed from
-// examples/native/c/zenoh/talker — this version omits parameter
+// examples/native/c/talker — this version omits parameter
 // + clock demos so the source stays focused on the multi-package
 // integration story.
 

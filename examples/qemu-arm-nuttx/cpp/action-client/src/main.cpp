@@ -1,7 +1,7 @@
 /// @file main.cpp
 /// @brief C++ action client — sends Fibonacci goal to /fibonacci (NuttX QEMU, async API)
 // Uses the callback-based async API. For the Future-based alternative,
-// see the native/cpp/zenoh/action-client example.
+// see the native/cpp/action-client example.
 
 #include <cstdint>
 #include <cstdio>

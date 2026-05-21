@@ -616,7 +616,7 @@ C++ examples use the `nros-cpp` header-only library with message types generated
 #### Directory structure
 
 ```
-examples/native/cpp/zenoh/my-example/
+examples/native/cpp/my-example/
 ├── CMakeLists.txt
 ├── msg/
 │   └── Int32.msg          # Interface files (resolved locally first)

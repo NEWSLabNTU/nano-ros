@@ -10,10 +10,10 @@ just build-zenohd
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Talker
-cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: Listener
-cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/listener && RUST_LOG=info cargo run --features zenoh
 ```
 
 ## UDP Transport
@@ -76,7 +76,7 @@ The CA certificate must be passed via `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` at 
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: nros talker
-cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
@@ -91,10 +91,10 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Action server (Fibonacci example)
-cd examples/native/rust/zenoh/action-server && cargo run
+cd examples/native/rust/action-server && cargo run
 
 # Terminal 3: Action client
-cd examples/native/rust/zenoh/action-client && cargo run
+cd examples/native/rust/action-client && cargo run
 ```
 
 **Zephyr action tests:**

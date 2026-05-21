@@ -88,7 +88,7 @@ the posix `target/release/` intact. Two options:
 2. **Per-platform target-dir.** Set `CARGO_TARGET_DIR` to a
    per-platform path so each platform keeps its own cache.
    Wasteful (~1 GB per platform) but switching is fast. Aligns
-   with how `examples/native/rust/zenoh/listener/target-{safety,tls,zero-copy}/`
+   with how `examples/native/rust/listener/target-{safety,tls,zero-copy}/`
    already partitions Rust target dirs by feature variant.
 
 Recommend (2) — per-platform target dir under
