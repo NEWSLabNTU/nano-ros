@@ -268,13 +268,14 @@ collapsed.
         warms up discovery (~3 s spin) before the first `send_goal`,
         mirroring the C client — `send_goal` is a service call and its
         request races the writer↔reader match otherwise.
-      - **C++** (`5b9ee97bc`, `28e9e6502`): BUILD fixed + cpp+cpp e2e.
+      - **C++** (`5b9ee97bc`, `28e9e6502`, 2026-05-21 follow-up): BUILD fixed
+        + cpp+cpp e2e.
         The cpp-FFI
         cross-package gap (`action_msgs/GoalInfo` → `unique_identifier_msgs`
         types, `E0425`) was the cpp FFI `include!()` of a dependency's
         `.rs` not being transitive; the example CMakeLists now flatten the
         transitive closure (builtin + unique_identifier_msgs + action_msgs).
-        cpp action **server** and **client** now run goal→accept→result
+        cpp action **server** and **client** now run goal→accept→feedback→result
         e2e (`[0,1,1,2,3,5,8,13,21,34]`). The client warms up discovery
         before the blocking send_goal. NOTE: this was not a "Phase 77"
         regression — the cpp cyclonedds client already uses executor-spin.
@@ -307,10 +308,18 @@ collapsed.
           Fix: `nros_cpp_action_server_complete_goal` strips the CDR header
           before storage, and `cpp_result_trampoline` re-adds the CDR header
           before user callback / result stash delivery.
-        - **Secondary (separate) issue:** the stock cpp action *server*
-          example computes inline in the goal callback (instant) → its
-          volatile feedback is dropped before the reader matches; C/rust
-          pace with delays + execute after accept.
+        - **Follow-up 2026-05-21:** feedback was published but C++ delivery
+          still exposed field bytes without the CDR header expected by
+          generated `ffi_deserialize`, and Cyclone's generic
+          `dds_stream_read_sample` path still could not build typed samples
+          for nested dynamic feedback/status sequences. Fixed by restoring
+          the CDR header in the C++ feedback trampoline/stream path and by
+          adding a narrow native publisher bridge for Fibonacci
+          `FeedbackMessage_` plus `GoalStatusArray_`; both volatile topic
+          writes wait for a matched reader before sending. Fresh
+          `examples/native/cpp/cyclonedds/action-{server,client}` build/run
+          on 2026-05-21 prints feedback payload and result with
+          `STATUS=0`.
         - Cross-impl pairings (rust↔C↔cpp) still need explicit validation;
           same-language native pairs are the supported/verified baseline.
         The deeper codegen fix (make cpp-FFI `include!()` transitive) is

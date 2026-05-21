@@ -22,12 +22,13 @@ and E2E failures that need focused owners.
   171.0.a fixed the RELIABLE+VOLATILE request match race. Native
   goal/result actions are also no longer open: C, Rust, and C++
   same-language Cyclone DDS action E2E are runtime-verified, the C++
-  `get_result` framing bug is fixed, and the 2026-05-21 follow-up fixed
-  the nonblocking service request match race on action `send_goal` plus
-  the Fibonacci `GetResult_Response` dynamic-sequence bridge. Remaining
-  work is Zephyr Cyclone DDS actions plus cross-implementation
-  framing / feedback/status publisher polish. The aemv8r FVP reference
-  path still needs re-verification under 171.0.c.
+  `get_result` framing bug is fixed, and the 2026-05-21 follow-ups fixed
+  the nonblocking service request match race on action `send_goal`, the
+  Fibonacci `GetResult_Response` dynamic-sequence bridge, the C++ feedback
+  CDR framing path, and native Cyclone feedback/status dynamic-sequence
+  publishing. Remaining work is Zephyr Cyclone DDS actions plus
+  cross-implementation validation. The aemv8r FVP reference path still
+  needs re-verification under 171.0.c.
 
 - [ ] **177.3 - Cyclone for pure-cargo Rust examples.**
   Owner: Phase 175.

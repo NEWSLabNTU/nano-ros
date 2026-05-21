@@ -587,16 +587,30 @@ unsafe extern "C" fn cpp_feedback_trampoline(
     feedback_len: usize,
     context: *mut c_void,
 ) {
+    let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
+    framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
+    let copy_len = feedback_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            feedback_data,
+            framed.as_mut_ptr().add(CDR_HEADER_LEN),
+            copy_len,
+        );
+    }
+    let framed_len = CDR_HEADER_LEN + copy_len;
+
     // Always stash the latest feedback for `try_recv_feedback` /
     // `feedback_stream().try_next()` polling.
     unsafe {
-        let copy_len = feedback_len.min(DEFAULT_RX_BUF_SIZE);
         core::ptr::copy_nonoverlapping(
-            feedback_data,
+            framed.as_ptr(),
             core::ptr::addr_of_mut!(FEEDBACK_STASH) as *mut u8,
-            copy_len,
+            framed_len,
         );
-        core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), copy_len as i32);
+        core::ptr::write(
+            core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN),
+            framed_len as i32,
+        );
         core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_GOAL_ID), *goal_id);
     }
 
@@ -606,8 +620,8 @@ unsafe extern "C" fn cpp_feedback_trampoline(
         unsafe {
             cb(
                 &(*goal_id).uuid,
-                feedback_data,
-                feedback_len,
+                framed.as_ptr(),
+                framed_len,
                 client.callbacks.context,
             )
         };
@@ -1077,10 +1091,20 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
             let buf = core.feedback_buffer_ref();
             if total_len > FEEDBACK_PAYLOAD_OFFSET {
                 let data = &buf[FEEDBACK_PAYLOAD_OFFSET..total_len];
-                if data.len() <= buf_len {
+                let framed_len = CDR_HEADER_LEN + data.len();
+                if framed_len <= buf_len {
                     unsafe {
-                        core::ptr::copy_nonoverlapping(data.as_ptr(), feedback_buf, data.len());
-                        *feedback_len = data.len();
+                        core::ptr::copy_nonoverlapping(
+                            nros::cdr::CDR_LE_HEADER.as_ptr(),
+                            feedback_buf,
+                            CDR_HEADER_LEN,
+                        );
+                        core::ptr::copy_nonoverlapping(
+                            data.as_ptr(),
+                            feedback_buf.add(CDR_HEADER_LEN),
+                            data.len(),
+                        );
+                        *feedback_len = framed_len;
                     }
                     return NROS_CPP_RET_OK;
                 }
