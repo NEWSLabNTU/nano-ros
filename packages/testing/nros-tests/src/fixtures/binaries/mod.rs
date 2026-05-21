@@ -1733,14 +1733,14 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
 /// Build c-talker example (cached)
 pub fn build_c_talker() -> TestResult<&'static Path> {
     C_TALKER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/talker", "c_talker"))
+        .get_or_try_init(|| build_example_cmake_rmw("native/c/talker", "c_talker", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
 /// Build c-listener example (cached)
 pub fn build_c_listener() -> TestResult<&'static Path> {
     C_LISTENER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/listener", "c_listener"))
+        .get_or_try_init(|| build_example_cmake_rmw("native/c/listener", "c_listener", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -1763,28 +1763,36 @@ pub fn c_listener_binary() -> PathBuf {
 /// Build c-service-server example (cached)
 pub fn build_c_service_server() -> TestResult<&'static Path> {
     C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/service-server", "c_service_server"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/c/service-server", "c_service_server", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build c-service-client example (cached)
 pub fn build_c_service_client() -> TestResult<&'static Path> {
     C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_c_example("native/c/service-client", "c_service_client"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/c/service-client", "c_service_client", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build c-action-server example (cached)
 pub fn build_c_action_server() -> TestResult<&'static Path> {
     C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_c_example("native/c/action-server", "c_action_server"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/c/action-server", "c_action_server", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build c-action-client example (cached)
 pub fn build_c_action_client() -> TestResult<&'static Path> {
     C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_c_example("native/c/action-client", "c_action_client"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/c/action-client", "c_action_client", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 
@@ -2184,28 +2192,42 @@ pub fn build_cpp_example(example_dir: &str, binary_name: &str) -> TestResult<Pat
 /// Build cpp-talker example (cached)
 pub fn build_cpp_talker() -> TestResult<&'static Path> {
     CPP_TALKER_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/talker", "cpp_talker"))
+        .get_or_try_init(|| build_example_cmake_rmw("native/cpp/talker", "cpp_talker", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
 /// Build cpp-listener example (cached)
 pub fn build_cpp_listener() -> TestResult<&'static Path> {
     CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/listener", "cpp_listener"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/cpp/listener", "cpp_listener", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build cpp-service-server example (cached)
 pub fn build_cpp_service_server() -> TestResult<&'static Path> {
     CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/service-server", "cpp_service_server"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw(
+                "native/cpp/service-server",
+                "cpp_service_server",
+                Rmw::Zenoh,
+            )
+        })
         .map(|p| p.as_path())
 }
 
 /// Build cpp-service-client example (cached)
 pub fn build_cpp_service_client() -> TestResult<&'static Path> {
     CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/service-client", "cpp_service_client"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw(
+                "native/cpp/service-client",
+                "cpp_service_client",
+                Rmw::Zenoh,
+            )
+        })
         .map(|p| p.as_path())
 }
 
@@ -2244,14 +2266,18 @@ pub fn cpp_service_client_binary() -> PathBuf {
 /// Build cpp-action-server example (cached)
 pub fn build_cpp_action_server() -> TestResult<&'static Path> {
     CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/action-server", "cpp_action_server"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/cpp/action-server", "cpp_action_server", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build cpp-action-client example (cached)
 pub fn build_cpp_action_client() -> TestResult<&'static Path> {
     CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/action-client", "cpp_action_client"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/cpp/action-client", "cpp_action_client", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 
@@ -2274,7 +2300,9 @@ pub fn cpp_action_client_binary() -> PathBuf {
 /// Build cpp-parameters example (cached)
 pub fn build_cpp_parameters() -> TestResult<&'static Path> {
     CPP_PARAMETERS_BINARY
-        .get_or_try_init(|| build_cpp_example("native/cpp/parameters", "cpp_parameters"))
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("native/cpp/parameters", "cpp_parameters", Rmw::Zenoh)
+        })
         .map(|p| p.as_path())
 }
 

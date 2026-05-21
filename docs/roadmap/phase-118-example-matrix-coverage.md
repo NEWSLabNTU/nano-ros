@@ -315,6 +315,11 @@ build-xrce/
 build-cyclonedds/
 ```
 
+Runtime tests must consume these prebuilt fixture binaries. They should
+not configure or compile examples inside nextest test bodies; missing
+fixtures should report a `[SKIPPED]` prerequisite and point back to
+`just <platform> build-fixtures`.
+
 ### Zephyr Shape
 
 Zephyr keeps one source dir per case and selects RMW via overlays:

@@ -72,7 +72,7 @@ impl Language {
             Language::C => build_c_talker(),
             Language::Cpp => build_cpp_talker(),
         }
-        .expect("failed to build native talker")
+        .unwrap_or_else(|e| skip_missing_fixture("native talker", e))
         .to_path_buf()
     }
 
@@ -81,7 +81,7 @@ impl Language {
             Language::C => build_c_listener(),
             Language::Cpp => build_cpp_listener(),
         }
-        .expect("failed to build native listener")
+        .unwrap_or_else(|e| skip_missing_fixture("native listener", e))
         .to_path_buf()
     }
 
@@ -90,7 +90,7 @@ impl Language {
             Language::C => build_c_service_server(),
             Language::Cpp => build_cpp_service_server(),
         }
-        .expect("failed to build native service server")
+        .unwrap_or_else(|e| skip_missing_fixture("native service server", e))
         .to_path_buf()
     }
 
@@ -99,7 +99,7 @@ impl Language {
             Language::C => build_c_service_client(),
             Language::Cpp => build_cpp_service_client(),
         }
-        .expect("failed to build native service client")
+        .unwrap_or_else(|e| skip_missing_fixture("native service client", e))
         .to_path_buf()
     }
 
@@ -108,7 +108,7 @@ impl Language {
             Language::C => build_c_action_server(),
             Language::Cpp => build_cpp_action_server(),
         }
-        .expect("failed to build native action server")
+        .unwrap_or_else(|e| skip_missing_fixture("native action server", e))
         .to_path_buf()
     }
 
@@ -117,8 +117,17 @@ impl Language {
             Language::C => build_c_action_client(),
             Language::Cpp => build_cpp_action_client(),
         }
-        .expect("failed to build native action client")
+        .unwrap_or_else(|e| skip_missing_fixture("native action client", e))
         .to_path_buf()
+    }
+}
+
+fn skip_missing_fixture(label: &str, err: nros_tests::TestError) -> ! {
+    match err {
+        nros_tests::TestError::BuildFailed(msg) if msg.contains("not prebuilt") => {
+            nros_tests::skip!("{label} fixture not prebuilt: {msg}");
+        }
+        other => panic!("failed to resolve {label} fixture: {other:?}"),
     }
 }
 
