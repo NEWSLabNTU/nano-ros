@@ -22,10 +22,12 @@ use nros_tests::{
     assert_output_contains,
     esp32::start_esp32_qemu,
     fixtures::{
-        QemuProcess, build_logging_smoke_esp32_qemu_flash, build_logging_smoke_freertos_mps2,
-        build_logging_smoke_mps2_baremetal, build_logging_smoke_nuttx_qemu_arm,
+        ManagedProcess, QemuProcess, build_logging_smoke_esp32_qemu_flash,
+        build_logging_smoke_freertos_mps2, build_logging_smoke_mps2_baremetal,
+        build_logging_smoke_nuttx_qemu_arm, build_logging_smoke_threadx_linux,
         build_logging_smoke_threadx_riscv64, build_logging_smoke_zephyr_native_sim,
         is_arm_toolchain_available, is_qemu_available, is_qemu_riscv64_available, nuttx,
+        threadx_linux,
     },
 };
 
@@ -157,6 +159,34 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);
+}
+
+/// ThreadX Linux runs as a host process but uses the ThreadX platform
+/// log writer registered by `nros-board-threadx-linux::run()`. The
+/// unified host-process harness must drain stderr as well as stdout:
+/// `nros-log` records are written to stderr, and this test fails if
+/// `ManagedProcess::wait_for_all_output` misses the success pattern.
+#[test]
+fn logging_smoke_threadx_linux_harness_captures_nros_log_stderr() {
+    if !threadx_linux::is_threadx_available() {
+        panic!("[SKIPPED] THREADX_DIR not set or invalid");
+    }
+    if !threadx_linux::is_nsos_netx_available() {
+        panic!("[SKIPPED] nsos-netx not found at packages/drivers/nsos-netx/");
+    }
+
+    let binary = build_logging_smoke_threadx_linux().expect(
+        "logging-smoke-threadx-linux fixture not built - run `just threadx_linux build-fixtures`",
+    );
+
+    let mut proc = ManagedProcess::spawn(binary, &[], "logging-smoke-threadx-linux")
+        .expect("failed to spawn ThreadX Linux logging smoke fixture");
+    let output = proc
+        .wait_for_all_output(Duration::from_secs(15))
+        .expect("ThreadX Linux logging smoke timed out waiting for output");
+
+    assert_output_contains(&output, EXPECTED_LINES);
+    assert_output_contains(&output, &["Application completed successfully."]);
 }
 
 /// Phase 88.15.f — ESP32-C3 under stock `qemu-system-riscv32 -M

@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "logging-smoke-threadx-linux"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "ThreadX Linux nros-log smoke fixture"
+
+[[bin]]
+name = "logging-smoke-threadx-linux"
+test = false
+bench = false
+
+[dependencies]
+nros-board-threadx-linux = { path = "../../../../boards/nros-board-threadx-linux" }
+nros-log = { path = "../../../../core/nros-log" }

@@ -47,7 +47,8 @@ build-examples:
     echo "Building ThreadX Linux examples..."
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
-        (cd examples/threadx-linux/rust/zenoh/$example && cargo build --release)
+        (cd examples/threadx-linux/rust/$example && \
+            cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh)
     done
     echo "ThreadX Linux examples built!"
 
@@ -78,26 +79,9 @@ build-fixtures:
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
-    cmake_dirs=()
-    for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
-            dir="examples/threadx-linux/$lang/zenoh/$ex"
-            [ -d "$dir" ] && cmake_dirs+=("$dir")
-        done
-    done
-    [ ${#cmake_dirs[@]} -gt 0 ] && printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
-        "echo '  → {} (cmake)' && rm -rf {}/build && \
-         cmake -S {} -B {}/build \
-           -DNANO_ROS_PLATFORM=threadx_linux \
-           -DTHREADX_DIR='$threadx_dir' \
-           -DNSOS_NETX_DIR='$nsos_netx_dir' \
-           -DTHREADX_CONFIG_DIR='$config_dir' \
-           -DTHREADX_APP_DEFINE='$app_define' \
-           -DCMAKE_BUILD_TYPE=Release \
-           -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         cmake --build {}/build > /dev/null"
-
-    # Phase 118.B.7 — collapsed-shape threadx-linux Rust + C / C++.
+    echo "  → logging-smoke-threadx-linux"
+    cargo build --release --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet
+    # Phase 118.B — collapsed-shape threadx-linux Rust + C / C++.
     collapsed_rust_dirs=()
     for case in talker listener service-server service-client action-server action-client; do
         if [ ! -d examples/threadx-linux/rust/${case} ]; then
@@ -211,9 +195,9 @@ ci: doctor test
 _run example:
     #!/usr/bin/env bash
     set -e
-    cd "examples/threadx-linux/rust/zenoh/{{example}}"
-    cargo build --release
-    exec target/release/threadx-linux-{{example}}
+    cd "examples/threadx-linux/rust/{{example}}"
+    cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh
+    exec target-zenoh/release/threadx-linux-{{example}}
 
 # Run ThreadX Linux talker
 talker: (_run "talker")
@@ -241,7 +225,12 @@ zenohd:
 clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-threadx-linux-zenoh
+    rm -rf packages/testing/nros-tests/bins/logging-smoke-threadx-linux/target
     for example in talker listener service-server service-client action-server action-client; do
-        rm -rf "examples/threadx-linux/rust/zenoh/$example/target"
+        rm -rf "examples/threadx-linux/rust/$example/target-zenoh"
+        rm -rf "examples/threadx-linux/c/$example/build-zenoh"
+        rm -rf "examples/threadx-linux/c/$example/build-cyclonedds"
+        rm -rf "examples/threadx-linux/cpp/$example/build-zenoh"
+        rm -rf "examples/threadx-linux/cpp/$example/build-cyclonedds"
     done
     echo "ThreadX Linux build artifacts cleaned"

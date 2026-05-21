@@ -586,14 +586,16 @@ rust-rtos-link-check:
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
     if command -v arm-none-eabi-gcc >/dev/null; then
         echo "  freertos talker:"
-        ( cd examples/qemu-arm-freertos/rust/zenoh/talker && cargo build --release ) >/dev/null
+        ( cd examples/qemu-arm-freertos/rust/talker && \
+            cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
         echo "  nuttx talker:"
         ( cd examples/qemu-arm-nuttx/rust/zenoh/talker && cargo build --release ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi
     echo "  threadx-linux talker:"
-    ( cd examples/threadx-linux/rust/zenoh/talker && cargo build --release ) >/dev/null
+    ( cd examples/threadx-linux/rust/talker && \
+        cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).

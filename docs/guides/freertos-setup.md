@@ -53,7 +53,7 @@ driver via the `cc` crate.
 
 ### Available Examples
 
-All examples are in `examples/qemu-arm-freertos/rust/zenoh/`:
+Rust examples are in `examples/qemu-arm-freertos/rust/`:
 
 | Example          | Description                                      |
 |------------------|--------------------------------------------------|

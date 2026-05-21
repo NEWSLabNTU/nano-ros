@@ -607,7 +607,7 @@ pub fn build_nuttx_cmake_example_rmw(
     )
 }
 
-/// Phase 118.B.4 — collapsed-shape FreeRTOS C / C++ example resolver.
+/// Phase 118.D — collapsed-shape FreeRTOS C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Binary lands at
 /// `examples/qemu-arm-freertos/<lang>/<case>/build-<rmw>/<binary>`.
 pub fn build_freertos_cmake_example_rmw(
@@ -623,7 +623,7 @@ pub fn build_freertos_cmake_example_rmw(
     )
 }
 
-/// Phase 118.B.4 — collapsed-shape FreeRTOS Rust example resolver.
+/// Phase 118.D — collapsed-shape FreeRTOS Rust example resolver.
 /// FreeRTOS examples are cross-compiled to `thumbv7m-none-eabi`, so
 /// the binary lives at
 /// `examples/qemu-arm-freertos/rust/<case>/target-<rmw>/thumbv7m-none-eabi/release/<binary>`.
@@ -755,6 +755,22 @@ pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
                 "nros-tests/bins/logging-smoke-threadx-riscv64",
                 "logging-smoke-threadx-riscv64",
                 Some("riscv64gc-unknown-none-elf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Cached path to the `logging-smoke-threadx-linux` fixture binary.
+static LOGGING_SMOKE_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt ThreadX Linux logging smoke binary.
+pub fn build_logging_smoke_threadx_linux() -> TestResult<&'static Path> {
+    LOGGING_SMOKE_THREADX_LINUX_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/logging-smoke-threadx-linux",
+                "logging-smoke-threadx-linux",
+                None,
             )
         })
         .map(|p| p.as_path())

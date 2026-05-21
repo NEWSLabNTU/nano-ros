@@ -51,9 +51,6 @@ native/rust/zenoh
 px4/cpp/uorb
 px4/rust/uorb
 qemu-arm-baremetal/rust/zenoh
-qemu-arm-freertos/c/zenoh
-qemu-arm-freertos/cpp/zenoh
-qemu-arm-freertos/rust/zenoh
 qemu-arm-nuttx/c/zenoh
 qemu-arm-nuttx/cpp/zenoh
 qemu-arm-nuttx/rust/zenoh
@@ -63,9 +60,6 @@ qemu-riscv64-threadx/c/zenoh
 qemu-riscv64-threadx/cpp/zenoh
 qemu-riscv64-threadx/rust/zenoh
 stm32f4/rust/zenoh
-threadx-linux/c/zenoh
-threadx-linux/cpp/zenoh
-threadx-linux/rust/zenoh
 zephyr/cpp/cyclonedds
 zephyr/rust/dds
 zephyr/rust/xrce
@@ -119,16 +113,24 @@ Collapsed case dirs exist for C/C++/Rust. Legacy Zenoh roots remain.
 Cyclone C/C++ fixture support exists when local Cyclone artifacts are
 installed; Rust Cyclone still depends on Phase 175-style staticlib work.
 
-- [ ] **118.B.1 — `examples/threadx-linux/c/zenoh/`**
-      Delete after `examples/threadx-linux/c/<case>/ -DNROS_RMW=zenoh`
-      fixture parity is confirmed.
-- [ ] **118.B.2 — `examples/threadx-linux/cpp/zenoh/`**
-      Delete after collapsed C++ Zenoh fixture parity is confirmed.
-- [ ] **118.B.3 — `examples/threadx-linux/rust/zenoh/`**
-      Delete after collapsed Rust Zenoh fixture parity is confirmed.
-- [ ] **118.B.4 — ThreadX Linux Cyclone Rust path**
-      Add or explicitly defer the Rust Cyclone build path; pure cargo
-      cannot link the C++ Cyclone backend directly.
+- [x] **118.B.1 — `examples/threadx-linux/c/zenoh/`**
+      Closed 2026-05-21: fixture builders and `just threadx_linux`
+      recipes use `examples/threadx-linux/c/<case>/` with
+      `-DNROS_RMW=zenoh`; the legacy Zenoh root was deleted.
+- [x] **118.B.2 — `examples/threadx-linux/cpp/zenoh/`**
+      Closed 2026-05-21: fixture builders and `just threadx_linux`
+      recipes use `examples/threadx-linux/cpp/<case>/` with
+      `-DNROS_RMW=zenoh`; the legacy Zenoh root was deleted.
+- [x] **118.B.3 — `examples/threadx-linux/rust/zenoh/`**
+      Closed 2026-05-21: `just threadx_linux build-examples`,
+      `build-fixtures`, run helpers, and tests use
+      `examples/threadx-linux/rust/<case>/` with
+      `--features rmw-zenoh --target-dir target-zenoh`; the legacy Zenoh
+      root was deleted.
+- [x] **118.B.4 — ThreadX Linux Cyclone Rust path**
+      Explicitly deferred to Phase 175: pure Cargo ThreadX Linux Rust
+      cannot link the C++ Cyclone backend directly until Cyclone staticlib
+      support is available for non-CMake Rust examples.
 
 ### 118.C — ThreadX RISC-V QEMU Examples
 
@@ -147,9 +149,20 @@ Collapsed case dirs exist for C/C++/Rust. Legacy Zenoh roots remain.
 Cyclone on FreeRTOS is intentionally gated on an upstream-scale Cyclone
 DDS RTOS/socket port.
 
-- [ ] **118.D.1 — `examples/qemu-arm-freertos/c/zenoh/`**
-- [ ] **118.D.2 — `examples/qemu-arm-freertos/cpp/zenoh/`**
-- [ ] **118.D.3 — `examples/qemu-arm-freertos/rust/zenoh/`**
+- [x] **118.D.1 — `examples/qemu-arm-freertos/c/zenoh/`**
+      Closed 2026-05-21: fixture builders and `just freertos`
+      recipes use `examples/qemu-arm-freertos/c/<case>/` with
+      `-DNROS_RMW=zenoh`; the legacy Zenoh root was deleted.
+- [x] **118.D.2 — `examples/qemu-arm-freertos/cpp/zenoh/`**
+      Closed 2026-05-21: fixture builders and `just freertos`
+      recipes use `examples/qemu-arm-freertos/cpp/<case>/` with
+      `-DNROS_RMW=zenoh`; the legacy Zenoh root was deleted.
+- [x] **118.D.3 — `examples/qemu-arm-freertos/rust/zenoh/`**
+      Closed 2026-05-21: `just freertos build-examples`,
+      `build-fixtures`, run helpers, trace helpers, and tests use
+      `examples/qemu-arm-freertos/rust/<case>/` with
+      `--features rmw-zenoh --target-dir target-zenoh`; the legacy
+      Zenoh root was deleted.
 - [x] **118.D.4 — FreeRTOS Cyclone gate recorded**
       Won't fit until Cyclone DDS gains the required FreeRTOS/lwIP hosted
       runtime layer.

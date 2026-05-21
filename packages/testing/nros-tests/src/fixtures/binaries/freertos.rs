@@ -63,7 +63,7 @@ static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/zenoh/{}", name));
+    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -72,8 +72,10 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
-    let binary_path =
-        example_dir.join(format!("target/thumbv7m-none-eabi/release/{}", binary_name));
+    let binary_path = example_dir.join(format!(
+        "target-zenoh/thumbv7m-none-eabi/release/{}",
+        binary_name
+    ));
 
     // Tests must not compile fixtures — run `just build-test-fixtures` first.
     super::require_prebuilt_binary(&binary_path)
@@ -141,10 +143,7 @@ static FREERTOS_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build a FreeRTOS CMake example (C or C++).
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!(
-        "examples/qemu-arm-freertos/{}/zenoh/{}",
-        lang, name
-    ));
+    let example_dir = root.join(format!("examples/qemu-arm-freertos/{}/{}", lang, name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -154,7 +153,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
         )));
     }
 
-    let build_dir = example_dir.join("build");
+    let build_dir = example_dir.join("build-zenoh");
     let binary_path = build_dir.join(binary_name);
     super::require_prebuilt_binary(&binary_path)
 }

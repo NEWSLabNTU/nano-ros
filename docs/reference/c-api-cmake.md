@@ -140,11 +140,9 @@ target RTOS. Pass `CMAKE_TOOLCHAIN_FILE` for the cross-compiler.
 **FreeRTOS (ARM Cortex-M3, MPS2-AN385):**
 
 ```bash
-cmake -S examples/qemu-arm-freertos/c/zenoh/talker -B build/talker \
+cmake -S examples/qemu-arm-freertos/c/talker -B build/talker \
     -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake \
-    -DNANO_ROS_PLATFORM=freertos \
-    -DNANO_ROS_BOARD=mps2-an385-freertos \
-    -DNANO_ROS_RMW=zenoh
+    -DNROS_RMW=zenoh
 cmake --build build/talker
 ```
 

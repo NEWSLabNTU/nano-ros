@@ -62,7 +62,8 @@ build-examples:
     fi
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
-        (cd examples/qemu-arm-freertos/rust/zenoh/$example && cargo build --release)
+        (cd examples/qemu-arm-freertos/rust/$example && \
+            cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh)
     done
     echo "FreeRTOS QEMU examples built!"
 
@@ -91,7 +92,7 @@ build-fixtures:
     printf '%s\n' "${rust_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-8} --halt now,fail=1 --line-buffer \
         'echo "  → {}" && cd {} && cargo build --release --quiet'
 
-    # Phase 118.B.4 — collapsed-shape FreeRTOS Rust cases, zenoh-only
+    # Phase 118.D — collapsed-shape FreeRTOS Rust cases, zenoh-only
     # matrix. Phase 169 retired dust-dds (pure-Rust, linked on
     # bare-metal); its replacement Cyclone is a C++/CMake stack whose
     # `nros_rmw_cyclonedds_register` C ABI symbol is only produced by a
@@ -122,21 +123,7 @@ build-fixtures:
     cargo build --release --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
-    cmake_dirs=()
-    for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
-            cmake_dirs+=("examples/qemu-arm-freertos/$lang/zenoh/$ex")
-        done
-    done
-    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs ${NROS_BUILD_JOBS:-4} --halt now,fail=1 --line-buffer \
-        "echo '  → {} (cmake)' && rm -rf {}/build && \
-         cmake -S {} -B {}/build \
-           -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-           -DCMAKE_BUILD_TYPE=Release \
-           -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         cmake --build {}/build > /dev/null"
-
-    # Phase 118.B.4 — collapsed-shape FreeRTOS C / C++ examples. Each
+    # Phase 118.D — collapsed-shape FreeRTOS C / C++ examples. Each
     # case builds under `-DNROS_RMW=zenoh` (no DDS C / C++ siblings
     # existed pre-collapse on FreeRTOS, so the matrix is zenoh-only).
     collapsed_cmake_dirs=()
@@ -225,7 +212,9 @@ clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-freertos-armcm3-zenoh
     for example in talker listener service-server service-client action-server action-client; do
-        rm -rf "examples/qemu-arm-freertos/rust/zenoh/$example/target"
+        rm -rf "examples/qemu-arm-freertos/rust/$example/target-zenoh"
+        rm -rf "examples/qemu-arm-freertos/c/$example/build-zenoh"
+        rm -rf "examples/qemu-arm-freertos/cpp/$example/build-zenoh"
     done
     echo "FreeRTOS build artifacts cleaned"
 
@@ -251,7 +240,7 @@ trace example="talker":
     set -e
 
     EXAMPLE="{{example}}"
-    EXAMPLE_DIR="examples/qemu-arm-freertos/rust/zenoh/$EXAMPLE"
+    EXAMPLE_DIR="examples/qemu-arm-freertos/rust/$EXAMPLE"
     TRACE_DIR="test-logs/freertos-trace/$EXAMPLE"
     mkdir -p "$TRACE_DIR"
 
@@ -261,11 +250,11 @@ trace example="talker":
     fi
 
     echo "=== Building $EXAMPLE with tracing ==="
-    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build --release)
+    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh)
 
     # Find the binary name from Cargo.toml
     BINARY=$(grep '^name = ' "$EXAMPLE_DIR/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
-    BINARY_PATH="$EXAMPLE_DIR/target/thumbv7m-none-eabi/release/$BINARY"
+    BINARY_PATH="$EXAMPLE_DIR/target-zenoh/thumbv7m-none-eabi/release/$BINARY"
     if [ ! -f "$BINARY_PATH" ]; then
         echo "ERROR: Binary not found: $BINARY_PATH"
         exit 1
@@ -330,12 +319,13 @@ trace example="talker":
 _run-qemu example binary:
     #!/usr/bin/env bash
     set -e
-    cd "examples/qemu-arm-freertos/rust/zenoh/{{example}}" && cargo build --release
+    cd "examples/qemu-arm-freertos/rust/{{example}}" && \
+        cargo build --release --no-default-features --features rmw-zenoh --target-dir target-zenoh
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
-        -kernel "target/thumbv7m-none-eabi/release/{{binary}}" \
+        -kernel "target-zenoh/thumbv7m-none-eabi/release/{{binary}}" \
         -nic user,model=lan9118 &
     PID=$!
     wait $PID
