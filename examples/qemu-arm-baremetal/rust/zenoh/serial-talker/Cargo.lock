@@ -475,6 +475,7 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "mps2-an385-pac",
+ "nros-board-common",
  "nros-platform",
  "nros-platform-api",
  "nros-platform-mps2-an385",

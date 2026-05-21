@@ -1,2 +1,7 @@
 /build/
 /target/
+/build-zenoh/
+/build-cyclonedds/
+/build-dds/
+/build-xrce/
+/generated/

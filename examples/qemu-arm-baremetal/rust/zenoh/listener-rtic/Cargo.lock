@@ -533,6 +533,7 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "lan9118-smoltcp",
+ "nros-board-common",
  "nros-platform",
  "nros-platform-api",
  "nros-platform-mps2-an385",

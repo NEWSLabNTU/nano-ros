@@ -10,3 +10,8 @@ generated/c/*/srv/*.o
 generated/c/*/action/*.o
 generated/include/
 generated/c/
+/build-zenoh/
+/build-cyclonedds/
+/build-dds/
+/build-xrce/
+/generated/
