@@ -26,3 +26,31 @@ __attribute__((weak))
 void nros_app_register_backends(void) {
     /* Intentionally empty — bare-metal stub overrides via strong def. */
 }
+
+/*
+ * Workspace test / metadata builds can link nros-c without selecting a
+ * platform crate. nros-log's default sink still references the platform log
+ * ABI, so provide weak no-op fallbacks for that no-platform link path. Real
+ * platform crates export strong definitions and override these.
+ */
+
+#include <stdint.h>
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
+#endif
+void nros_platform_log_write(uint8_t severity,
+                             const uint8_t *name_ptr, uintptr_t name_len,
+                             const uint8_t *msg_ptr, uintptr_t msg_len) {
+    (void) severity;
+    (void) name_ptr;
+    (void) name_len;
+    (void) msg_ptr;
+    (void) msg_len;
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
+#endif
+void nros_platform_log_flush(void) {
+}

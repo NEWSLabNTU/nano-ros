@@ -173,6 +173,17 @@ build-fixtures:
     nros_root="$(pwd)"
     log_dir="$nros_root/build/zephyr-fixtures"
     mkdir -p "$log_dir"
+    build_root="${NROS_ZEPHYR_BUILD_ROOT:-$workspace}"
+    if [ "$build_root" = "$workspace" ] && [ ! -w "$workspace" ]; then
+        build_root="$nros_root/build/zephyr-workspace-builds"
+        echo "  workspace not writable; using build root: $build_root"
+    fi
+    mkdir -p "$build_root"
+    toolchain_cache_dir="${NROS_ZEPHYR_TOOLCHAIN_CACHE_DIR:-$nros_root/build/zephyr-cache/ToolchainCapabilityDatabase}"
+    mkdir -p "$toolchain_cache_dir"
+    ccache_dir="${NROS_ZEPHYR_CCACHE_DIR:-$nros_root/build/zephyr-cache/ccache}"
+    ccache_tmpdir="${NROS_ZEPHYR_CCACHE_TEMPDIR:-$nros_root/build/zephyr-cache/ccache-tmp}"
+    mkdir -p "$ccache_dir" "$ccache_tmpdir"
     # Phase 140 — Zephyr C/C++ DDS examples call nros_generate_interfaces()
     # which needs nros-codegen on the host. Cross builds (every Zephyr
     # board target) can't build it with the cross toolchain, so build
@@ -370,8 +381,15 @@ build-fixtures:
         #      forwarded as `-DCONF_FILE="..."` for Phase 168.x
         #      collapsed cases that select RMW via prj overlay.
         IFS='|' read -r board build_dir src best_effort xrce_port conf_files <<< "$entry"
-        echo "  → zephyr/$src (-d $build_dir, $board${xrce_port:+, xrce-port=$xrce_port}${conf_files:+, conf=$conf_files})"
-        extra_args=(-D_NANO_ROS_CODEGEN_TOOL="$codegen_tool")
+        if [[ "$build_dir" = /* ]]; then
+            actual_build_dir="$build_dir"
+        else
+            actual_build_dir="$build_root/$build_dir"
+        fi
+        echo "  → zephyr/$src (-d $actual_build_dir, $board${xrce_port:+, xrce-port=$xrce_port}${conf_files:+, conf=$conf_files})"
+        extra_args=(-D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
+                    -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR="$toolchain_cache_dir"
+                    -DUSE_CCACHE=0)
         if [ -n "$xrce_port" ]; then
             extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
         fi
@@ -405,21 +423,23 @@ build-fixtures:
         # `pristine=always` still forces a clean west reconfigure. Under
         # the fifo jobserver (NROS_JOBSERVER=1) ninja inherits the pool;
         # otherwise it gets the per-build ninja-jobs budget.
-        if [ "$pristine" != "always" ] && [ -f "$workspace/$build_dir/build.ninja" ]; then
+        if [ "$pristine" != "always" ] && [ -f "$actual_build_dir/build.ninja" ]; then
             if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                build_argv=(ninja -C "$build_dir")
+                build_argv=(ninja -C "$actual_build_dir")
             else
-                build_argv=(ninja -C "$build_dir" -j "$ninja_jobs")
+                build_argv=(ninja -C "$actual_build_dir" -j "$ninja_jobs")
             fi
         else
-            build_argv=(west build -b "$board" -d "$build_dir" -p "$pristine"
+            build_argv=(west build -b "$board" -d "$actual_build_dir" -p "$pristine"
                         "$nros_root/examples/$src" "${west_extra[@]}")
         fi
         if [ "$jobs" -eq 1 ]; then
             set +e
             (
               cd "$workspace"
-              env SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
+              env SCCACHE_DISABLE="$sccache_disable" \
+                CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
+                "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
             ) 2>&1 | tee "$log"
             rc="${PIPESTATUS[0]}"
@@ -435,7 +455,9 @@ build-fixtures:
         else
             (
               cd "$workspace"
-              env SCCACHE_DISABLE="$sccache_disable" "${cmake_build_env[@]}" \
+              env SCCACHE_DISABLE="$sccache_disable" \
+                CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
+                "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
             ) > "$log" 2>&1 &
             running+=("$!|$src|$log|$best_effort")

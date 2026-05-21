@@ -30,6 +30,17 @@ struct nsos_mid_ifaddr {
 };
 int nsos_adapt_getifaddrs(struct nsos_mid_ifaddr *out);
 
+/* Some native_sim link paths do not pull the NSOS host adapter object into
+ * the final runner. Keep a weak fallback so Cyclone still links and uses the
+ * loopback path below when the host trampoline is unavailable. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
+#endif
+int nsos_adapt_getifaddrs(struct nsos_mid_ifaddr *out) {
+    (void)out;
+    return -1;
+}
+
 #ifndef IFF_UP
 #define IFF_UP        0x1
 #endif

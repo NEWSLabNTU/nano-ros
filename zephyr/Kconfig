@@ -83,11 +83,13 @@ config NROS_RMW_CYCLONEDDS
     # Int knobs (pthread pool sizes, malloc arena, stack size), NET_TCP,
     # and the native_sim-only NSOS socket offload stay in the example
     # overlays.
-    # `imply` (not `select`): set these on by default but respect each
-    # symbol's own dependencies (e.g. THREAD_LOCAL_STORAGE needs
-    # ARCH_HAS_THREAD_LOCAL_STORAGE) and avoid select dependency loops.
+    # `imply` (not `select`): set most of these on by default but
+    # respect each symbol's own dependencies (e.g. THREAD_LOCAL_STORAGE
+    # needs ARCH_HAS_THREAD_LOCAL_STORAGE) and avoid select dependency
+    # loops. THREAD_CUSTOM_DATA has no extra deps and is required at link
+    # time by the CycloneDDS Zephyr thread shim, so select it directly.
     imply THREAD_LOCAL_STORAGE
-    imply THREAD_CUSTOM_DATA
+    select THREAD_CUSTOM_DATA
     imply THREAD_STACK_INFO
     imply THREAD_MONITOR
     imply DYNAMIC_THREAD

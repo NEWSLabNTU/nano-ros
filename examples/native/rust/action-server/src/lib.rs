@@ -7,18 +7,26 @@ use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, Fi
 use log::{error, info};
 use nros::prelude::*;
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds", feature = "rmw-xrce")))]
-compile_error!(
-    "this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",
-);
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-cyclonedds",
+    feature = "rmw-xrce"
+)))]
+compile_error!("this example requires exactly one of `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce`",);
 
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
-    { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
+    {
+        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
+    }
     #[cfg(feature = "rmw-cyclonedds")]
-    { nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?; }
+    {
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
+    }
     #[cfg(feature = "rmw-xrce")]
-    { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
+    {
+        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
+    }
     Ok(())
 }
 
@@ -63,7 +71,9 @@ pub fn run() -> ! {
                             sequence[len - 1] + sequence[len - 2]
                         };
                         let _ = sequence.push(next_val);
-                        let feedback = FibonacciFeedback { sequence: sequence.clone() };
+                        let feedback = FibonacciFeedback {
+                            sequence: sequence.clone(),
+                        };
                         if server.publish_feedback(&goal_id, &feedback).is_ok() {
                             info!("Feedback: {:?}", feedback.sequence);
                         }

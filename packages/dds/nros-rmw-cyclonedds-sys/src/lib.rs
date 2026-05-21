@@ -9,16 +9,14 @@
 //! XRCE / Zenoh paths already use.
 //!
 //! Unlike `nros-rmw-xrce-cffi`, this crate does **not** compile any
-//! C / C++ sources itself. The Cyclone DDS C++ library and the
-//! `nros-rmw-cyclonedds` shim are heavy enough (cyclonedds submodule
-//! + cyclonedds-cxx + the project's own register glue) that their
-//! cmake build is the canonical entry point — both
-//! `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt` (standalone
-//! POSIX path) and `zephyr/CMakeLists.txt :: CONFIG_NROS_RMW_CYCLONEDDS`
-//! (Zephyr path) already compile it. This crate just declares the
-//! Rust-facing symbol so consumers (e.g. `nros-cpp`, future
-//! collapsed Rust examples) can link against the resulting archive
-//! without their own bindgen pass.
+//! C / C++ sources itself. The Cyclone DDS C++ library, the `cyclonedds-cxx`
+//! layer, and the project's own register glue make the cmake build the
+//! canonical entry point. Both
+//! `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt` (standalone POSIX path) and
+//! `zephyr/CMakeLists.txt :: CONFIG_NROS_RMW_CYCLONEDDS` (Zephyr path) already
+//! compile it. This crate just declares the Rust-facing symbol so consumers
+//! (e.g. `nros-cpp`, future collapsed Rust examples) can link against the
+//! resulting archive without their own bindgen pass.
 //!
 //! # Use
 //!

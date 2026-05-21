@@ -103,10 +103,12 @@ fn probe_nros_sizes() -> std::collections::HashMap<String, u64> {
         Ok(p) => p,
         Err(e) => {
             println!("cargo:warning=nros-cpp probe: {e}");
-            return HashMap::new();
+            let mut map = HashMap::new();
+            apply_nuttx_size_fallbacks(&mut map);
+            return map;
         }
     };
-    match nros_sizes_build::extract_sizes(&rlib, "__NROS_SIZE_") {
+    let mut map = match nros_sizes_build::extract_sizes(&rlib, "__NROS_SIZE_") {
         Ok(map) => map,
         Err(e) => {
             println!(
@@ -115,6 +117,41 @@ fn probe_nros_sizes() -> std::collections::HashMap<String, u64> {
             );
             HashMap::new()
         }
+    };
+    apply_nuttx_size_fallbacks(&mut map);
+    map
+}
+
+fn apply_nuttx_size_fallbacks(map: &mut std::collections::HashMap<String, u64>) {
+    let target = env::var("TARGET").unwrap_or_default();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os != "nuttx" && !target.contains("nuttx") {
+        return;
+    }
+    if map.get("EXECUTOR_SIZE").copied().unwrap_or(0) != 0 {
+        return;
+    }
+    println!(
+        "cargo:warning=nros-cpp probe returned no NuttX sizes; using committed NuttX fallback sizes"
+    );
+    for (name, value) in [
+        ("EXECUTOR_SIZE", 79_296),
+        ("GUARD_CONDITION_SIZE", 24),
+        ("PUBLISHER_SIZE", 560),
+        ("SUBSCRIBER_SIZE", 560),
+        ("SERVICE_CLIENT_SIZE", 4_632),
+        ("SERVICE_SERVER_SIZE", 528),
+        ("SESSION_SIZE", 528),
+        ("LIFECYCLE_CTX_SIZE", 64),
+        ("ACTION_SERVER_INTERNAL_SIZE", 96),
+        ("ACTION_SERVER_RAW_HANDLE_SIZE", 48),
+        ("RAW_SUBSCRIPTION_SIZE", 205 * 8),
+        ("RAW_SERVICE_SERVER_SIZE", 194 * 8),
+        ("RAW_SERVICE_CLIENT_SIZE", 707 * 8),
+        ("RAW_ACTION_SERVER_SIZE", 786 * 8),
+        ("RAW_ACTION_CLIENT_SIZE", 2_193 * 8),
+    ] {
+        map.insert(name.to_string(), value);
     }
 }
 
