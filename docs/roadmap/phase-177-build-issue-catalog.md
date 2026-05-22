@@ -67,6 +67,32 @@ and E2E failures that need focused owners.
   these groups with required fixtures/services prebuilt and split real
   product bugs from host/setup fallout.
 
+- [ ] **177.19 - ESP32-C3 QEMU OpenETH Zenoh pub/sub does not move user data.**
+  Focused `test_esp32_talker_listener_e2e` retries still reach
+  `Waiting for messages...`, but the listener receives 0 messages and
+  the talker publishes 0 messages. The added board diagnostic prints
+  `smoltcp poll callback registered: true` during Ethernet init, while
+  steady-state example diagnostics show `do_poll` increasing with
+  `cb_hits=0`, `bridge_polls=0`, and `tx_drained=0`. A post-`Executor::open`
+  poll-callback re-arm was tested and rejected because it exposed a
+  `smoltcp::iface::SocketSet` index panic (`len is 0 but index is 0`)
+  during subscription setup. Next work: identify why the callback state
+  visible at init is not the state used by runtime polling, without
+  reinitializing or invalidating the live `SocketSet`.
+
+- [ ] **177.20 - QEMU MPS2 serial Zenoh pub/sub stalls inside publish path.**
+  Focused `test_qemu_serial_pubsub_e2e` retries still produce
+  `published=0, received=0`. Both firmware images boot, the listener
+  declares its subscription, and the talker reaches
+  `Publishing messages over serial...`, but it never logs `Published:`.
+  Moving the talker's first publish before the 1 s pre-publish spin delay
+  did not change the result, so the stall is likely inside
+  `publisher.publish()` or the serial `_z_send_serial_internal`/CMSDK UART
+  send path rather than in the outer pre-publish spin loop. Next work:
+  instrument serial send/write return paths and the host PTY bridge to
+  distinguish blocked UART TX, partial COBS frame write, and zenoh serial
+  bridge handshake state.
+
 ## Closed
 
 ### Closed in the original 2026-05-20/21 sweep
@@ -169,7 +195,7 @@ and E2E failures that need focused owners.
   routed through repo-local GNU make 4.4 instead of `/usr/bin/make`.
 - [ ] Full `just build-all` rerun after the final Zephyr follow-up fix.
 - [ ] Full `test-all` rerun with PX4/ESP-IDF/PlatformIO/bridge fixtures
-  prepared.
+  prepared and 177.19/177.20 either fixed or explicitly expected-failed.
 
 ## Archive Rule
 
@@ -178,3 +204,5 @@ Archive this tracker only after:
 - [ ] 177.2 and 177.3 move fully into their owning phases or close.
 - [ ] 177.6 through 177.9 have owners and either close or move into more
   specific phase docs.
+- [ ] 177.19 and 177.20 close or move into platform-specific runtime
+  phases.
