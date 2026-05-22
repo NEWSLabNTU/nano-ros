@@ -245,7 +245,7 @@ format: format-workspace native::format format-c format-cpp format-python
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 check: \
     check-workspace check-workspace-embedded check-workspace-features \
-    check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-decoupling \
+    check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-decoupling check-example-matrix \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
 
@@ -267,6 +267,12 @@ check-board-abi-mirror:
 [private]
 check-profile-board-mirror:
     @bash scripts/check-profile-board-mirror.sh
+
+# Phase 118.I.5 — keep collapsed examples from regrowing a retired RMW
+# directory axis without an explicit documented carve-out.
+[private]
+check-example-matrix:
+    @bash scripts/check-example-matrix.sh
 
 # Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
 # parity. For every defined `_z_f_link_*_<transport>` wrapper, the
@@ -950,8 +956,8 @@ check-stack-elf elf top="30":
 
 # Analyze stack usage of C examples (requires cmake + gcc)
 # Usage: just check-stack-c [example-dir] [top]
-# Default: examples/native/c-talker, top 30
-check-stack-c example="examples/native/c/zenoh/talker" top="30":
+# Default: examples/native/c/talker, top 30
+check-stack-c example="examples/native/c/talker" top="30":
     ./scripts/stack-analysis-c.sh {{example}} --top {{top}}
 
 # Analyze stack usage of all examples (requires nightly + llvm-tools + cmake)
@@ -974,13 +980,13 @@ check-stack-all top="10":
     done
     # Rust examples (native — exclude tracing/regex infrastructure noise)
     for example in \
-        examples/native/rust/zenoh/talker \
-        examples/native/rust/zenoh/listener \
-        examples/native/rust/zenoh/custom-msg \
-        examples/native/rust/zenoh/service-server \
-        examples/native/rust/zenoh/service-client \
-        examples/native/rust/zenoh/action-server \
-        examples/native/rust/zenoh/action-client \
+        examples/native/rust/talker \
+        examples/native/rust/listener \
+        examples/native/rust/custom-msg \
+        examples/native/rust/service-server \
+        examples/native/rust/service-client \
+        examples/native/rust/action-server \
+        examples/native/rust/action-client \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis.sh "$example" --top {{top}} --exclude "regex_automata|regex_syntax|aho_corasick|env_filter|env_logger|driftsort" || { echo "[FAIL] $example"; failed=$((failed + 1)); }
@@ -988,10 +994,10 @@ check-stack-all top="10":
     done
     # C examples (native)
     for example in \
-        examples/native/c/zenoh/talker \
-        examples/native/c/zenoh/listener \
-        examples/native/c/zenoh/custom-msg \
-        examples/native/c/zenoh/baremetal-demo \
+        examples/native/c/talker \
+        examples/native/c/listener \
+        examples/native/c/custom-msg \
+        examples/native/c/custom-transport-loopback \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis-c.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }

@@ -1,6 +1,6 @@
 # nano-ros Examples
 
-Copy-out templates for users porting nano-ros to a new platform / language / RMW.
+Copy-out templates for users porting nano-ros to a new platform and language.
 
 **Non-example binaries live elsewhere** — see [Where else to look](#where-else-to-look).
 
@@ -8,17 +8,16 @@ Copy-out templates for users porting nano-ros to a new platform / language / RMW
 
 ```
 examples/
-├── <platform>/<language>/<rmw>/<example>/     # canonical
+├── <platform>/<language>/<example>/           # canonical
 ├── bridges/<name>/                            # cross-RMW gateways
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
 - **Platform** (12): `native`, `esp32`, `stm32f4`, `px4`, `qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-esp32-baremetal`, `qemu-riscv64-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
-- **RMW**: `zenoh`, `xrce`, `cyclonedds`, `uorb` (the legacy dust-DDS `dds` backend was retired in Phase 169; `cyclonedds` is the sole DDS backend)
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-embassy`, `-aemv8r`, etc.
 
-Each example is a standalone Cargo + CMake package — no walk-up to the parent tree, no workspace coupling. Copy any directory out, set `*_DIR` env vars (or `-D…`) for SDK paths, and it builds.
+Each example is a standalone Cargo + CMake package — no walk-up to the parent tree, no workspace coupling. Copy any directory out, set `*_DIR` env vars (or `-D…`) for SDK paths, and it builds. RMW is selected at build time: Cargo `rmw-*` features for Rust, `-DNROS_RMW=<backend>` for C/C++, and `prj-<backend>.conf` overlays for Zephyr. Supported backend names are `zenoh`, `xrce`, `cyclonedds`, and `uorb`; the legacy dust-DDS `dds` backend was retired in Phase 169.
 
 ## Coverage matrix
 
@@ -76,7 +75,7 @@ spin up examples here without first lifting the underlying constraint.
 
 If you believe one of these cells should be filled, please open an issue
 referencing the gating phase before adding directories — the lint in
-Phase 118.A blocks untriaged cells.
+Phase 118.I blocks untriaged retired RMW roots.
 
 ## Sibling categories
 

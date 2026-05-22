@@ -256,21 +256,21 @@ PX4 is not a normal RMW matrix cell.
 
 ### 118.I — Docs, Recipes, and Lint
 
-- [ ] **118.I.1 — `examples/README.md` canonical shape**
+- [x] **118.I.1 — `examples/README.md` canonical shape**
       Rewrite stale README text that still calls
       `<platform>/<language>/<rmw>/<case>` canonical.
-- [ ] **118.I.2 — `CLAUDE.md` / AGENTS consistency**
+- [x] **118.I.2 — `CLAUDE.md` / AGENTS consistency**
       Keep the canonical shape in memory files aligned with this tracker.
-- [ ] **118.I.3 — Just recipes**
+- [x] **118.I.3 — Just recipes**
       Build fixtures from collapsed dirs and pass RMW by feature/CMake arg
       instead of walking legacy RMW roots.
-- [ ] **118.I.4 — Test fixture paths**
+- [x] **118.I.4 — Test fixture paths**
       Remove remaining pre-collapse fixture paths from
       `packages/testing/nros-tests`.
-- [ ] **118.I.5 — Matrix lint**
+- [x] **118.I.5 — Matrix lint**
       Add a script/test that fails on new untriaged
       `<platform>/<language>/<rmw>/` roots.
-- [ ] **118.I.6 — Archive absorbed docs**
+- [x] **118.I.6 — Archive absorbed docs**
       After this tracker is accepted, move Phase 167 and Phase 170 to
       `docs/roadmap/archived/` or leave short stubs pointing here.
 
@@ -347,7 +347,7 @@ explicitly documented one-board reference cases.
       and Rust action (`actions`) coverage after rebuilding fixtures.
 - [ ] Zephyr collapsed cases select RMW through overlays, not source-dir
       duplication.
-- [ ] `examples/README.md` and memory docs agree on the canonical shape.
-- [ ] Test fixture builders use collapsed dirs only, except documented
+- [x] `examples/README.md` and memory docs agree on the canonical shape.
+- [x] Test fixture builders use collapsed dirs only, except documented
       carve-outs.
-- [ ] A matrix lint prevents reintroducing the retired directory axis.
+- [x] A matrix lint prevents reintroducing the retired directory axis.

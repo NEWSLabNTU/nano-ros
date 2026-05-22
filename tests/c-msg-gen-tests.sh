@@ -56,7 +56,7 @@ log_info "cargo-nano-ros built successfully: $GENERATOR"
 
 log_info "Configuring native-c-custom-msg example..."
 
-EXAMPLE_DIR="$PROJECT_ROOT/examples/native/c/zenoh/custom-msg"
+EXAMPLE_DIR="$PROJECT_ROOT/examples/native/c/custom-msg"
 BUILD_DIR="$EXAMPLE_DIR/build"
 
 # Clean any existing build

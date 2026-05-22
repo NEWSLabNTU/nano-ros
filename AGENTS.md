@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integration. Core crates live in `packages/core/`; RMW backends in `packages/zpico/`, `packages/dds/`, and `packages/xrce/`; board/platform support in `packages/platforms/`; and drivers in `packages/drivers/`. Rust integration tests are under `packages/testing/nros-tests/`; shell and smoke fixtures are in `tests/`. Examples are grouped by target in `examples/` (`native`, `qemu-arm-*`, `zephyr`, `stm32f4`). Build orchestration is in `justfile` and `just/*.just`; reference material is in `docs/`.
+This is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integration. Core crates live in `packages/core/`; RMW backends in `packages/zpico/`, `packages/dds/`, and `packages/xrce/`; board/platform support in `packages/platforms/`; and drivers in `packages/drivers/`. Rust integration tests are under `packages/testing/nros-tests/`; shell and smoke fixtures are in `tests/`. Examples are grouped by target in `examples/` (`native`, `qemu-arm-*`, `zephyr`, `stm32f4`) with canonical collapsed paths `examples/<platform>/<language>/<case>/`; RMW is selected by Cargo features, CMake `-DNROS_RMW=<backend>`, or Zephyr `prj-<backend>.conf` overlays. Build orchestration is in `justfile` and `just/*.just`; reference material is in `docs/`.
 
 ## Build, Test, and Development Commands
 
