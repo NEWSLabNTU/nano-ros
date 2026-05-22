@@ -2,44 +2,76 @@
 
 ## Project Structure & Module Organization
 
-This is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integration. Core crates live in `packages/core/`; RMW backends in `packages/zpico/`, `packages/dds/`, and `packages/xrce/`; board/platform support in `packages/platforms/`; and drivers in `packages/drivers/`. Rust integration tests are under `packages/testing/nros-tests/`; shell and smoke fixtures are in `tests/`. Examples are grouped by target in `examples/` (`native`, `qemu-arm-*`, `zephyr`, `stm32f4`) with canonical collapsed paths `examples/<platform>/<language>/<case>/`; RMW is selected by Cargo features, CMake `-DNROS_RMW=<backend>`, or Zephyr `prj-<backend>.conf` overlays. Build orchestration is in `justfile` and `just/*.just`; reference material is in `docs/`.
+nano-ros is a Rust workspace for a `no_std` ROS 2 client stack with C/C++ integration. Core crates live under `packages/core/`; RMW backends under `packages/zpico/`, `packages/xrce/`, and `packages/dds/`; board/platform support under `packages/boards/` and `packages/platforms/`; drivers under `packages/drivers/`; and reusable integration tests under `packages/testing/nros-tests/`. Shell and smoke fixtures live in `tests/`. Examples are standalone copy-out projects under `examples/`, with the canonical shape `examples/<platform>/<language>/<example>/`; the RMW is selected at build time.
+
+Reference and contributor docs live in `docs/`; user-facing mdBook docs live in `book/src/`; build orchestration lives in `justfile` and `just/*.just`.
 
 ## Build, Test, and Development Commands
 
 - `just --list`: show public recipes.
-- `just setup`: install toolchains and local tools.
-- `just build`: build the workspace plus generated bindings and transport artifacts for normal development.
-- `just build-examples`: compile the workspace and example matrix.
-- `just <platform> build`: build platform-scoped core artifacts when that target platform has them.
-- `just <platform> build-examples`: compile runnable examples for one target platform.
-- `just <platform> build-fixtures`: prebuild test fixtures for one target platform.
-- `just <platform> build-all`: run the target platform's full tier (`build`, `build-examples`, and `build-fixtures`) before using root `just build-all` for broad matrix coverage. Treat `<platform>` as target families such as `qemu`, `zephyr`, or board groups; support services such as `zenohd` and `cyclonedds` are not platform scopes.
+- `just setup`: install the default SDK/tooling tier.
+- `just setup tier=<minimal|default|extended>`: select the setup tier explicitly.
+- `just build`: build the workspace plus generated bindings and transport artifacts.
+- `just build-examples`: build the workspace and example matrix.
 - `just build-test-fixtures`: prebuild binaries required by the full test matrix.
-- `just test-unit`: run fast workspace unit tests with no external services.
-- `just test`: run the standard dev tier; skips heavy platform/ROS 2 groups.
-- `just test-all`: run the full matrix, doctests, Miri, and C codegen tests. Run `just build-test-fixtures` first.
-- `just check`: run formatting and clippy checks across Rust, C, C++, and Python surfaces.
+- `just build-all`: run the broad build tier; it auto-routes through the GNU make jobserver path when the pinned make/ninja tools are available.
+- `just <platform> build`, `just <platform> build-examples`, `just <platform> build-fixtures`, `just <platform> build-all`: run platform-scoped tiers first when a platform-specific failure appears.
+- `just test-unit`: fast workspace unit tests.
+- `just test`: standard dev tier; skips heavy platform/ROS 2 groups.
+- `just test-all`: full matrix, doctests, Miri, and C codegen tests. Run `just build-test-fixtures` first.
+- `just check`: formatting and clippy checks across Rust, C, C++, and Python surfaces.
+- `just ci`: `check` plus `test-all`.
+
+Treat `<platform>` as target families such as `qemu`, `zephyr`, `freertos`, `nuttx`, `threadx_linux`, `threadx_riscv64`, `esp32`, or board groups. Support services such as `zenohd`, `cyclonedds`, and `xrce` are not platform scopes.
 
 ## Coding Style & Naming Conventions
 
-Rust uses edition 2024 and `rustfmt.toml` with crate-level import grouping and formatted doc-comment examples. Run `just format` before broad changes. C and C++ follow `.clang-format` based on LLVM, 4-space indentation, and 100-column limits. Keep crate names and package paths in the existing `nros-*`, `zpico-*`, and backend-specific patterns.
+Rust uses edition 2024 and `rustfmt.toml` with nightly-only formatting options. Use `cargo +nightly fmt` or `rustup run nightly cargo fmt`; stable rustfmt produces different output. C and C++ follow `.clang-format` based on LLVM, 4-space indentation, and a 100-column limit. Keep crate names and package paths in the existing `nros-*`, `zpico-*`, backend-specific, and platform-specific patterns.
+
+Project naming:
+
+- `nano-ros`: prose and docs.
+- `nros`: crates, Rust/C identifiers, and `CONFIG_NROS_*`.
+- `nano_ros`: C header dir, CMake targets, and CMake helpers such as `nros_generate_interfaces()`.
 
 ## Testing Guidelines
 
-Prefer the narrowest tier that covers your change. Put Rust integration tests in `packages/testing/nros-tests/tests/` and use clear feature or backend names such as `services.rs`, `rmw_interop.rs`, or `custom_transport.rs`. Assign heavy platform tests to the right nextest group in `.config/nextest.toml` so `just test` remains fast.
+Prefer the narrowest tier that covers the change. Reusable Rust integration tests belong in `packages/testing/nros-tests/tests/`; shell tests belong in `tests/`; temporary tests can start as Bash and should be promoted when reused. Tests must fail on unmet preconditions with `assert!`, `bail!`, or the project skip helper; do not silently `eprintln!` and return from a test.
 
-## Commit & Pull Request Guidelines
+For platform failures, rerun the closest platform recipe first, for example `just zephyr build-all`, `just freertos build-fixtures`, or `just qemu build`, before spending time on root `just build-all`.
 
-Recent commits use short, imperative subjects with optional scopes, for example `ci: fix Deploy Book workflow` or `phase-124.F: session-level connectivity probe across the full stack`. Keep PRs focused, list tested commands, link issues or roadmap phases, and include logs or screenshots only when they clarify platform, ROS 2, or generated-artifact behavior.
+## C/C++ Integration Shape
 
-When integrating remote changes, prefer a linear history: use `git pull --rebase` or `git fetch` followed by `git rebase`, not merge commits. Only create a merge commit when the user explicitly asks for one.
+C and C++ consumers use source-tree CMake integration, not an installed package. The expected pattern is:
 
-## Agent-Specific Instructions
+```cmake
+set(NANO_ROS_PLATFORM <platform>)
+set(NANO_ROS_RMW <zenoh|xrce|cyclonedds>)
+add_subdirectory(<repo-root> nano_ros)
+target_link_libraries(<app> PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(<app>)
+```
 
-Do not modify vendored or generated content under `third-party/`, `packages/interfaces/*/generated/`, or build output directories unless the task explicitly requires regeneration. Preserve existing user changes in the worktree.
+Use `NanoRos::NanoRosCpp` for the C++ API where needed. There is no supported `find_package(NanoRos)` path and no `just install-local` flow. Per-platform CMake glue lives under `cmake/platform/`; RTOS-native integration shells live under `integrations/<rtos>/`.
 
-For platform-specific build failures, rerun the narrow target-platform recipe first, for example `just <platform> build`, `just <platform> build-examples`, `just <platform> build-fixtures`, or `just <platform> build-all`, before spending time on root `just build-all`.
+Never hard-code project-relative paths in example CMake, package CMake, build scripts, or in-tree tooling. The outer build driver should pass SDK paths and selection via cache variables or environment variables such as `NANO_ROS_PLATFORM`, `NANO_ROS_RMW`, `CMAKE_TOOLCHAIN_FILE`, `<SDK>_DIR`, or board-specific config paths.
 
-For Zephyr XRCE C++ service/action work, the C++ CFFI backend link/init issue was fixed in `ffdde60f`; do not assume POSIX-style Rust constructors run on Zephyr/native_sim, and prefer explicit backend registration. Force rebuild the XRCE C++ service/action fixtures or verify stale-fixture detection before focused E2E reruns. The runtime spin/cv-wait hang that starved reliable XRCE retransmission (service) and blocked `send_goal` (action) is patched: `Executor::spin_once` now skips the std `wake_cv.wait_timeout_while` on Zephyr+std and routes the full timeout into `drive_io`, so `nros_cpp_spin_once` calls `executor.spin_once` directly without a bypass. Do not reintroduce a `drive_io(0) + msleep` shortcut in `nros_cpp_spin_once` — that path starves reliable XRCE streams and skips arena dispatch.
+## Examples and Generated Content
 
-When pulling or rebasing the superproject, always inspect submodule changes. If a pull changes a submodule pointer and we also have local work in that submodule, enter the submodule, fetch its remote, rebase the local work onto the updated upstream commit, and then check out the rebased/up-to-date commit expected by the superproject. Record the resulting submodule commit in the parent commit. Do not leave a submodule at an older local commit after observing that the remote pointer advanced.
+Each `examples/` directory is a standalone copy-out template. Do not rely on workspace walk-up behavior from an example. Non-example test, benchmark, and smoke binaries belong under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not under `examples/`.
+
+Do not modify vendored or generated content under `third-party/`, `packages/interfaces/*/generated/`, or build output directories unless the task explicitly requires regeneration. Generated message code should come from the nano-ros codegen tools, not hand-written edits.
+
+## RMW and Platform Notes
+
+Active RMW choices are `zenoh`, `xrce`, and `cyclonedds`; the legacy dust-DDS backend was retired. Platform choices include POSIX, Zephyr, bare-metal, FreeRTOS, NuttX, and ThreadX. RMW backend registration must be explicit on targets such as Zephyr/native_sim; do not assume POSIX-style Rust constructors or linker sections run there.
+
+For Zephyr XRCE C++ service/action work, keep `nros_cpp_spin_once` routed through `executor.spin_once`. Do not reintroduce a `drive_io(0) + msleep` shortcut; that path starves reliable XRCE streams and skips arena dispatch.
+
+CycloneDDS work is active. Native C++ action result/feedback paths have recent fixes, but stock ROS 2 interop and some embedded Cyclone paths remain ongoing work. Pure-Cargo Rust Cyclone examples are not the supported path; use the CMake/Corrosion route for Cyclone.
+
+## Git and Worktree Rules
+
+Preserve existing user changes in the worktree. Do not revert unrelated changes. Use linear history when integrating remote changes: `git pull --rebase` or `git fetch` plus `git rebase`; create merge commits only when explicitly requested.
+
+When pulling or rebasing the superproject, inspect submodule changes. If a pull advances a submodule pointer and local work exists in that submodule, enter the submodule, fetch its remote, rebase local work onto the updated upstream commit, check out the commit expected by the superproject, and record the resulting submodule commit in the parent commit.
