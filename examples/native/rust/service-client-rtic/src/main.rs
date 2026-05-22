@@ -8,7 +8,7 @@
 //! Note: `Promise::wait()` is NOT usable in RTIC because it requires `&mut Executor`,
 //! which is `#[local]` to the `net_poll` task. Use `try_recv()` loop instead.
 //!
-//! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-service-client/`.
+//! This is the native equivalent of `examples/stm32f4/rust/rtic-service-client/`.
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use nros::prelude::*;

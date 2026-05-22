@@ -1,0 +1,35 @@
+[package]
+name = "esp32-qemu-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Simple QEMU OpenETH publisher example using nros-board-esp32-qemu"
+
+[[bin]]
+name = "esp32-qemu-talker"
+test = false
+bench = false
+
+[dependencies]
+# Platform crate - all you need for ESP32-C3 QEMU + OpenETH + zenoh
+nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-qemu" }
+
+# nros Executor API
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
+# Required for #[main] proc macro (references esp_hal crate directly)
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+
+# Panic handler (required for no_std)
+esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1

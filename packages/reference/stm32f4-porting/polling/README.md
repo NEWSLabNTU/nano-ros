@@ -118,6 +118,6 @@ probe-rs run --chip STM32F429ZITx target/thumbv7em-none-eabihf/release/stm32f4-r
 
 ## See Also
 
-- `examples/stm32f4/rust/zenoh/rtic/` - RTIC-based example with priority scheduling
+- `examples/stm32f4/rust/rtic/` - RTIC-based example with priority scheduling
 - `examples/stm32f4/rust/standalone/smoltcp/` - smoltcp validation without zenoh
 - `docs/reference/embedded-integration.md` - Full embedded integration guide

@@ -40,16 +40,14 @@ unless explicitly listed as a carve-out.
 
 ## Current Snapshot
 
-Directory scan on 2026-05-21 still shows these RMW-root directories:
+Directory scan on 2026-05-22 still shows these RMW-root directories:
 
 ```text
-esp32/rust/zenoh
 px4/cpp/uorb
 px4/rust/uorb
-qemu-arm-baremetal/rust/zenoh
-qemu-esp32-baremetal/rust/dds
-qemu-esp32-baremetal/rust/zenoh
-stm32f4/rust/zenoh
+qemu-arm-nuttx/c/zenoh
+qemu-arm-nuttx/cpp/zenoh
+qemu-arm-nuttx/rust/zenoh
 ```
 
 `px4/*/uorb` is a carve-out, not normal RMW-collapse debt. PX4 is
@@ -222,22 +220,59 @@ Remaining RMW-root dirs are legacy or special-case.
 Absorbs Phase 170. These targets have board-specific feature gates, so
 collapse is per-board rather than mechanical.
 
-- [ ] **118.G.1 — `examples/qemu-arm-baremetal/rust/zenoh/`**
-      Collapse `talker`, `listener`, and RTIC variants that are canonical
-      standalone cases. Keep variant suffixes such as `talker-rtic`.
-- [ ] **118.G.2 — qemu-arm bare-metal DDS legacy decision**
-      Dust-DDS is retired; either remove old DDS cells if absent/stale or
-      document no Cyclone replacement because Cyclone requires a hosted
-      runtime.
-- [ ] **118.G.3 — `examples/qemu-esp32-baremetal/rust/zenoh/`**
-      Collapse `talker` and `listener` to `rust/<case>/`.
-- [ ] **118.G.4 — `examples/qemu-esp32-baremetal/rust/dds/`**
-      Retire dust-DDS dirs or replace with documented no-Cyclone decision.
-- [ ] **118.G.5 — `examples/esp32/rust/zenoh/`**
-      Collapse real ESP32 Zenoh `talker` and `listener` to `rust/<case>/`.
-- [ ] **118.G.6 — `examples/stm32f4/rust/zenoh/`**
-      Collapse Zenoh cases to `rust/<case>/`; keep RTIC/Embassy variants as
-      suffix-named cases.
+#### 118.G Known Runtime Follow-Ups
+
+The 118.G directory collapse is complete, but the post-collapse E2E rerun
+found runtime transport failures that remain open. These are tracked here
+instead of reopening the source-layout checkboxes, because the moved
+examples build and the fixture resolver now finds the collapsed paths.
+
+- [ ] **118.G.runtime.1 — QEMU MPS2 serial Zenoh pub/sub**
+      `test_qemu_serial_pubsub_e2e` failed 5/5 focused retries on
+      2026-05-22. Both firmware images boot, the listener subscribes,
+      and the talker reaches `Publishing messages over serial...`, but no
+      `Published:` line appears and the test ends with
+      `published=0, received=0`. Suspect transport progress in the
+      serial/zenoh-pico path rather than stale fixture paths.
+- [ ] **118.G.runtime.2 — ESP32-C3 QEMU OpenETH Zenoh pub/sub**
+      The ESP32 E2E group failed 3/3 focused retries on 2026-05-22:
+      `test_esp32_talker_listener_e2e`, `test_esp32_to_native`, and
+      `test_native_to_esp32` all moved zero messages. Listener firmware
+      boots and subscribes; diagnostic counters show `do_poll` increasing
+      while `cb_hits=0`, `bridge_polls=0`, and `tx_drained=0`, which
+      points at the smoltcp poll callback not being reached from the
+      active zenoh-pico/nros-smoltcp path.
+- [x] **118.G.runtime.3 — XRCE large-message E2E setup gate**
+      Initial `just qemu test-all` reported four XRCE large-message
+      failures because `MicroXRCEAgent` was missing. Running
+      `just xrce setup` built `build/xrce-agent/MicroXRCEAgent`, and the
+      focused XRCE large-message subset then passed 4/4.
+
+- [x] **118.G.1 — qemu-arm bare-metal Zenoh collapse**
+      Closed 2026-05-22: `talker`, `listener`, serial, RTIC, and mixed RTIC
+      cases live under `examples/qemu-arm-baremetal/rust/<case>/`; workspace
+      members, `just qemu` run helpers, and fixture resolvers use the
+      collapsed paths.
+- [x] **118.G.2 — qemu-arm bare-metal DDS legacy decision**
+      Closed 2026-05-22: dust-DDS was already retired and no qemu-arm
+      bare-metal DDS source directory remains. No Cyclone replacement is
+      tracked here because Cyclone requires hosted sockets, threads, heap,
+      and libc.
+- [x] **118.G.3 — qemu-esp32 bare-metal Zenoh collapse**
+      Closed 2026-05-22: `talker` and `listener` live under
+      `examples/qemu-esp32-baremetal/rust/<case>/`; `just esp32 build-qemu`
+      and ESP32 fixture builders use the collapsed paths.
+- [x] **118.G.4 — qemu-esp32 bare-metal DDS legacy decision**
+      Closed 2026-05-22: the dust-DDS qemu-esp32 bare-metal dirs are absent;
+      no Cyclone replacement is expected for the pure bare-metal target.
+- [x] **118.G.5 — real ESP32 Zenoh collapse**
+      Closed 2026-05-22: real ESP32 `talker` and `listener` live under
+      `examples/esp32/rust/<case>/`; `just esp32 build-examples` uses the
+      collapsed paths.
+- [x] **118.G.6 — STM32F4 Zenoh collapse**
+      Closed 2026-05-22: STM32F4 `talker`, RTIC service/action cases, and
+      `talker-embassy` live under `examples/stm32f4/rust/<case>/`; fixture
+      recipes and binary resolvers use the collapsed paths.
 - [x] **118.G.7 — Bare-metal C/C++ empty cells documented**
       No C/C++ bare-metal harness is expected in this phase.
 - [x] **118.G.8 — Bare-metal Cyclone gate recorded**

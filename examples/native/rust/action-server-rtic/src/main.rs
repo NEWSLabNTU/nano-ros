@@ -6,7 +6,7 @@
 //! - `try_accept_goal()`, `publish_feedback()`, `complete_goal()`,
 //!   `try_handle_get_result()` (all manual polling)
 //!
-//! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-action-server/`.
+//! This is the native equivalent of `examples/stm32f4/rust/rtic-action-server/`.
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::prelude::*;

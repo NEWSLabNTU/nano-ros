@@ -117,7 +117,7 @@ examples/esp32/rust/
 └── standalone/
     └── hello-world/       # Minimal UART print (no nros deps)
 
-examples/qemu-esp32-baremetal/rust/zenoh/
+examples/qemu-esp32-baremetal/rust/
 ├── talker/                # QEMU publisher (nros-board-esp32-qemu BSP)
 └── listener/              # QEMU subscriber (nros-board-esp32-qemu BSP)
 ```
@@ -233,7 +233,7 @@ SSID=MyNetwork PASSWORD=secret just build-examples-esp32
 Connect the ESP32-C3 board via USB, then flash:
 
 ```bash
-cd examples/esp32/rust/zenoh/talker
+cd examples/esp32/rust/talker
 espflash flash --monitor target/riscv32imc-unknown-none-elf/release/esp32-bsp-talker
 ```
 

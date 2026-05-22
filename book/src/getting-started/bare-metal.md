@@ -19,7 +19,7 @@ for the policy.
 ## Project layout
 
 ```text
-examples/qemu-arm-baremetal/rust/zenoh/talker/
+examples/qemu-arm-baremetal/rust/talker/
 ├── Cargo.toml
 ├── .cargo/config.toml         # target = thumbv7m-none-eabi
 │                              # runner = qemu-system-arm ... -kernel
@@ -39,7 +39,7 @@ suffix — this is the bare-metal variant) which provides:
 ## Configure
 
 Mirror of the in-tree
-[`config.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/zenoh/talker/config.toml):
+[`config.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/talker/config.toml):
 
 ```toml
 [network]
@@ -62,7 +62,7 @@ start the router with `zenohd run --listen tcp/127.0.0.1:7450`
 ## Build
 
 ```bash
-cd examples/qemu-arm-baremetal/rust/zenoh/talker
+cd examples/qemu-arm-baremetal/rust/talker
 cargo build --release
 ```
 
@@ -76,7 +76,7 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 just zenohd run
 
 # 2. Boot the talker in QEMU. The .cargo/config.toml runner does:
-cd examples/qemu-arm-baremetal/rust/zenoh/talker
+cd examples/qemu-arm-baremetal/rust/talker
 cargo run --release
 # Expected serial-over-semihosting output:
 #   nros Bare-Metal Cortex-M3 Talker
@@ -110,7 +110,7 @@ seconds), expect `Published: 1` on semihosting stdout. If no
 ## GitHub source
 
 - Bare-metal talker:
-  [`examples/qemu-arm-baremetal/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-baremetal/rust/zenoh/talker)
+  [`examples/qemu-arm-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-baremetal/rust/talker)
 - Board crate:
   [`packages/boards/nros-board-mps2-an385/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-mps2-an385)
 
@@ -132,7 +132,7 @@ For Cortex-M3 with an RTOS, switch to the
 ## Next
 
 - Subscriber / service / action peers under the same
-  `examples/qemu-arm-baremetal/rust/zenoh/` tree.
+  `examples/qemu-arm-baremetal/rust/` tree.
 - Wake-callback opt-in: the `wake-callback` (latency-probe) bench
   under `packages/testing/nros-bench/wake-latency-cortex-m3/` shows
   how to feed a backend's transport-notify into the cooperative

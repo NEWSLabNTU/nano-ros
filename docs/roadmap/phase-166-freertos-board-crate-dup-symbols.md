@@ -331,7 +331,7 @@ Verification on `main`:
   plus `critical-section = "1"`, so feature unification gives the
   esp-hal binary a CAS polyfill via critical section.
 - `cargo build --release` from
-  `examples/esp32/rust/zenoh/talker/` succeeds on `main` with no
+  `examples/esp32/rust/talker/` succeeds on `main` with no
   errors (verified 2026-05-19, ~29s build, `riscv32imc-unknown-none-elf`).
 
 The agent's failure was a worktree-isolation artifact (similar to
@@ -344,7 +344,7 @@ The agent's failure was a worktree-isolation artifact (similar to
 - [x] **166.B.2** Verified `nros-log` already uses
       `portable_atomic::{AtomicPtr, AtomicBool}` at call sites.
 - [x] **166.B.3** Verified `cargo build` from
-      `examples/esp32/rust/zenoh/talker/` succeeds on `main`.
+      `examples/esp32/rust/talker/` succeeds on `main`.
 - [ ] **166.B.4** (Deferred follow-up) Add a CI matrix entry that
       cross-compiles `nros-log` for `riscv32imc-unknown-none-elf`
       so future regressions surface in CI rather than worktree

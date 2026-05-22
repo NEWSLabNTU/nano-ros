@@ -460,7 +460,7 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             FreeRTOS / ThreadX board pattern from Phase 88.11.
             Runtime verification deferred — Espressif QEMU fork
             not in auto-CI; user flashes via `cargo +nightly run`.
-      - [x] 88.16.F — `examples/stm32f4/rust/zenoh/talker` (the only
+      - [x] 88.16.F — `examples/stm32f4/rust/talker` (the only
             non-RTIC STM32F4 example) migrated. Defmt stays the wire
             sink: `nros-platform-stm32f4::PlatformLog` forwards every
             record to `defmt::{trace,debug,info,warn,error}!`, so the

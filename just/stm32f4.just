@@ -28,7 +28,7 @@ build-fixtures:
     rust_dirs=()
     for ex in talker talker-rtic listener-rtic service-server-rtic \
               service-client-rtic action-server-rtic action-client-rtic; do
-        dir="examples/stm32f4/rust/zenoh/$ex"
+        dir="examples/stm32f4/rust/$ex"
         if [ ! -d "$dir" ]; then
             echo "ERROR: $dir missing"
             exit 1

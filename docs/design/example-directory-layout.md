@@ -168,16 +168,16 @@ The leaf directory. Describes what the example demonstrates.
 | `examples/native/c-listener` | `examples/native/c/listener` |
 | `examples/native/c-custom-msg` | `examples/native/c/custom-msg` |
 | `examples/native/c-baremetal-demo` | `examples/native/c/custom-platform` |
-| `examples/qemu/bsp-talker` | `examples/qemu-arm-baremetal/rust/zenoh/talker` |
-| `examples/qemu/bsp-listener` | `examples/qemu-arm-baremetal/rust/zenoh/listener` |
+| `examples/qemu/bsp-talker` | `examples/qemu-arm-baremetal/rust/talker` |
+| `examples/qemu/bsp-listener` | `examples/qemu-arm-baremetal/rust/listener` |
 | `examples/qemu/rs-test` | `examples/qemu-arm-baremetal/rust/core/cdr-test` |
 | `examples/qemu/rs-wcet-bench` | `examples/qemu-arm-baremetal/rust/core/wcet-bench` |
-| `examples/esp32/bsp-talker` | `examples/esp32/rust/zenoh/talker` |
-| `examples/esp32/bsp-listener` | `examples/esp32/rust/zenoh/listener` |
+| `examples/esp32/bsp-talker` | `examples/esp32/rust/talker` |
+| `examples/esp32/bsp-listener` | `examples/esp32/rust/listener` |
 | `examples/esp32/hello-world` | `examples/esp32/rust/standalone/hello-world` |
-| `examples/esp32/qemu-talker` | `examples/qemu-esp32-baremetal/rust/zenoh/talker` |
-| `examples/esp32/qemu-listener` | `examples/qemu-esp32-baremetal/rust/zenoh/listener` |
-| `examples/stm32f4/bsp-talker` | `examples/stm32f4/rust/zenoh/talker` |
+| `examples/esp32/qemu-talker` | `examples/qemu-esp32-baremetal/rust/talker` |
+| `examples/esp32/qemu-listener` | `examples/qemu-esp32-baremetal/rust/listener` |
+| `examples/stm32f4/bsp-talker` | `examples/stm32f4/rust/talker` |
 | `examples/zephyr/rs-talker` | `examples/zephyr/rust/talker` |
 | `examples/zephyr/rs-listener` | `examples/zephyr/rust/listener` |
 | `examples/zephyr/rs-service-server` | `examples/zephyr/rust/service-server` |
@@ -187,8 +187,8 @@ The leaf directory. Describes what the example demonstrates.
 | `examples/zephyr/c-talker` | `examples/zephyr/c/talker` |
 | `examples/zephyr/c-listener` | `examples/zephyr/c/listener` |
 | `packages/reference/qemu-lan9118` | `examples/qemu-arm-baremetal/rust/standalone/lan9118` |
-| `packages/reference/stm32f4-polling` | `examples/stm32f4/rust/zenoh/polling` |
-| `packages/reference/stm32f4-rtic` | `examples/stm32f4/rust/zenoh/rtic` |
+| `packages/reference/stm32f4-polling` | `examples/stm32f4/rust/polling` |
+| `packages/reference/stm32f4-rtic` | `examples/stm32f4/rust/rtic` |
 | `packages/reference/stm32f4-embassy` | `examples/stm32f4/rust/core/embassy` |
 | `packages/reference/stm32f4-smoltcp` | `examples/stm32f4/rust/standalone/smoltcp` |
 

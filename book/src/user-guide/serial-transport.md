@@ -78,7 +78,7 @@ When both features are enabled, the transport is selected at runtime by the zeno
 ### 1. Build the Serial Talker
 
 ```bash
-cd examples/qemu-arm-baremetal/rust/zenoh/serial-talker
+cd examples/qemu-arm-baremetal/rust/serial-talker
 cargo nano-ros generate
 cargo build --release
 ```

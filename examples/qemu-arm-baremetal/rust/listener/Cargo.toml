@@ -1,0 +1,39 @@
+[package]
+name = "qemu-bsp-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Simple listener example using nros-board-mps2-an385"
+
+[[bin]]
+name = "qemu-bsp-listener"
+test = false
+bench = false
+
+[features]
+default = []
+# Use Docker network configuration (different IPs for container-based testing)
+docker = ["nros-board-mps2-an385/docker"]
+# TLS transport support (connects to zenohd over TLS)
+link-tls = [
+    "nros-board-mps2-an385/link-tls",
+    "nros/link-tls",
+    "nros-rmw-zenoh/link-tls",
+]
+
+[dependencies]
+# Board crate for hardware + network init
+nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }
+# Phase 88.16.C — user diagnostics route through `nros-log`.
+nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+
+# nros Executor API
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
+# Panic handler (required for no_std)
+panic-semihosting = { version = "0.6", features = ["exit"] }

@@ -10,7 +10,10 @@ pub mod threadx_riscv64;
 use crate::{TestError, TestResult, pinned_nightly, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;
-use std::path::{Path, PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 /// Cached path to the qemu-test binary
 static QEMU_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -164,19 +167,17 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
 
             eprintln!("Building qemu-test...");
 
-            let output = cmd!(
-                "cargo",
-                "build",
-                "--release",
-                "--target",
-                "thumbv7m-none-eabi"
-            )
-            .dir(&example_dir)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+            let mut args = cargo_build_args();
+            args.push("--target".to_string());
+            args.push("thumbv7m-none-eabi".to_string());
+
+            let output = cmd("cargo", args)
+                .dir(&example_dir)
+                .stderr_to_stdout()
+                .stdout_capture()
+                .unchecked()
+                .run()
+                .map_err(|e| TestError::BuildFailed(e.to_string()))?;
 
             if !output.status.success() {
                 return Err(TestError::BuildFailed(
@@ -184,7 +185,10 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
                 ));
             }
 
-            let binary_path = example_dir.join("target/thumbv7m-none-eabi/release/qemu-rs-test");
+            let binary_path = example_dir.join(format!(
+                "target/thumbv7m-none-eabi/{}/qemu-rs-test",
+                cargo_target_profile_dir()
+            ));
 
             if !binary_path.exists() {
                 return Err(TestError::BuildFailed(format!(
@@ -226,6 +230,30 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
     }
 }
 
+fn cargo_profile_name() -> String {
+    env::var("NROS_CARGO_PROFILE").unwrap_or_else(|_| "nros-fast-release".to_string())
+}
+
+fn cargo_target_profile_dir() -> String {
+    match cargo_profile_name().as_str() {
+        "dev" => "debug".to_string(),
+        "release" => "release".to_string(),
+        profile => profile.to_string(),
+    }
+}
+
+fn cargo_build_args() -> Vec<String> {
+    match cargo_profile_name().as_str() {
+        "dev" => vec!["build".to_string()],
+        "release" => vec!["build".to_string(), "--release".to_string()],
+        profile => vec![
+            "build".to_string(),
+            "--profile".to_string(),
+            profile.to_string(),
+        ],
+    }
+}
+
 pub fn build_example(
     name: &str,
     binary_name: &str,
@@ -242,10 +270,11 @@ pub fn build_example(
         )));
     }
 
+    let profile_dir = cargo_target_profile_dir();
     let binary_path = if let Some(target) = target {
-        example_dir.join(format!("target/{}/release/{}", target, binary_name))
+        example_dir.join(format!("target/{}/{}/{}", target, profile_dir, binary_name))
     } else {
-        example_dir.join(format!("target/release/{}", binary_name))
+        example_dir.join(format!("target/{}/{}", profile_dir, binary_name))
     };
 
     require_prebuilt_binary(&binary_path)
@@ -316,7 +345,7 @@ impl Rmw {
 /// `name` is the example dir under `examples/` (e.g. `"native/rust/talker"`,
 /// without a `<rmw>` axis). `binary_name` is the Cargo `[[bin]] name`.
 /// The build is expected to live at
-/// `examples/<name>/<rmw.target_dir()>/release/<binary_name>` — the
+/// `examples/<name>/<rmw.target_dir()>/<profile>/<binary_name>` — the
 /// harness asserts the binary exists, mirroring `require_prebuilt_binary`'s
 /// contract. The actual `cargo build --no-default-features --features <rmw>
 /// --target-dir <rmw.target_dir()>` invocation belongs to
@@ -332,7 +361,12 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
         )));
     }
 
-    let binary_path = example_dir.join(format!("{}/release/{}", rmw.target_dir(), binary_name));
+    let binary_path = example_dir.join(format!(
+        "{}/{}/{}",
+        rmw.target_dir(),
+        cargo_target_profile_dir(),
+        binary_name
+    ));
     require_prebuilt_binary(&binary_path)
 }
 
@@ -399,18 +433,11 @@ pub fn build_test_fixture(
         )));
     }
 
+    let profile_dir = cargo_target_profile_dir();
     let binary_path = if let Some(target) = target {
-        let fast = crate_dir.join(format!(
-            "target/{}/nros-fast-release/{}",
-            target, binary_name
-        ));
-        if fast.exists() {
-            fast
-        } else {
-            crate_dir.join(format!("target/{}/release/{}", target, binary_name))
-        }
+        crate_dir.join(format!("target/{}/{}/{}", target, profile_dir, binary_name))
     } else {
-        crate_dir.join(format!("target/release/{}", binary_name))
+        crate_dir.join(format!("target/{}/{}", profile_dir, binary_name))
     };
 
     require_prebuilt_binary(&binary_path)
@@ -509,8 +536,9 @@ pub fn build_threadx_rv64_rust_example_rmw(
         )));
     }
     let binary_path = example_dir.join(format!(
-        "{}/riscv64gc-unknown-none-elf/release/{}",
+        "{}/riscv64gc-unknown-none-elf/{}/{}",
         rmw.target_dir(),
+        cargo_target_profile_dir(),
         binary_name
     ));
     require_prebuilt_binary(&binary_path)
@@ -634,7 +662,7 @@ pub fn build_freertos_cmake_example_rmw(
 /// Phase 118.D — collapsed-shape FreeRTOS Rust example resolver.
 /// FreeRTOS examples are cross-compiled to `thumbv7m-none-eabi`, so
 /// the binary lives at
-/// `examples/qemu-arm-freertos/rust/<case>/target-<rmw>/thumbv7m-none-eabi/release/<binary>`.
+/// `examples/qemu-arm-freertos/rust/<case>/target-<rmw>/thumbv7m-none-eabi/<profile>/<binary>`.
 pub fn build_freertos_rust_example_rmw(
     case: &str,
     binary_name: &str,
@@ -649,8 +677,9 @@ pub fn build_freertos_rust_example_rmw(
         )));
     }
     let binary_path = example_dir.join(format!(
-        "{}/thumbv7m-none-eabi/release/{}",
+        "{}/thumbv7m-none-eabi/{}/{}",
         rmw.target_dir(),
+        cargo_target_profile_dir(),
         binary_name
     ));
     require_prebuilt_binary(&binary_path)
@@ -899,7 +928,7 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/talker");
             let target_dir = example_dir.join("target-tls");
-            let binary_path = target_dir.join("release/talker");
+            let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
             require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
@@ -915,7 +944,7 @@ pub fn build_native_listener_tls() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-tls");
-            let binary_path = target_dir.join("release/listener");
+            let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
             require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
@@ -965,7 +994,7 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/talker");
             let target_dir = example_dir.join("target-safety");
-            let binary_path = target_dir.join("release/talker");
+            let binary_path = target_dir.join(format!("{}/talker", cargo_target_profile_dir()));
             require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
@@ -981,7 +1010,7 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-safety");
-            let binary_path = target_dir.join("release/listener");
+            let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
             require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
@@ -1013,7 +1042,7 @@ pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("examples/native/rust/listener");
             let target_dir = example_dir.join("target-zero-copy");
-            let binary_path = target_dir.join("release/listener");
+            let binary_path = target_dir.join(format!("{}/listener", cargo_target_profile_dir()));
             require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
@@ -1094,7 +1123,7 @@ pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
     QEMU_BSP_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/talker",
+                "qemu-arm-baremetal/rust/talker",
                 "qemu-bsp-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1108,7 +1137,7 @@ pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
     QEMU_BSP_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/listener",
+                "qemu-arm-baremetal/rust/listener",
                 "qemu-bsp-listener",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1144,7 +1173,7 @@ pub fn build_qemu_serial_talker() -> TestResult<&'static Path> {
     QEMU_SERIAL_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/serial-talker",
+                "qemu-arm-baremetal/rust/serial-talker",
                 "qemu-serial-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1166,7 +1195,7 @@ pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
     QEMU_SERIAL_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/serial-listener",
+                "qemu-arm-baremetal/rust/serial-listener",
                 "qemu-serial-listener",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1228,7 +1257,7 @@ pub fn build_rtic_talker() -> TestResult<&'static Path> {
     RTIC_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/talker-rtic",
+                "stm32f4/rust/talker-rtic",
                 "stm32f4-rtic-talker",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -1242,7 +1271,7 @@ pub fn build_rtic_listener() -> TestResult<&'static Path> {
     RTIC_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/listener-rtic",
+                "stm32f4/rust/listener-rtic",
                 "stm32f4-rtic-listener",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -1298,7 +1327,7 @@ pub fn build_rtic_service_server() -> TestResult<&'static Path> {
     RTIC_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/service-server-rtic",
+                "stm32f4/rust/service-server-rtic",
                 "stm32f4-rtic-service-server",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -1312,7 +1341,7 @@ pub fn build_rtic_service_client() -> TestResult<&'static Path> {
     RTIC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/service-client-rtic",
+                "stm32f4/rust/service-client-rtic",
                 "stm32f4-rtic-service-client",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -1354,7 +1383,7 @@ pub fn build_rtic_action_server() -> TestResult<&'static Path> {
     RTIC_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/action-server-rtic",
+                "stm32f4/rust/action-server-rtic",
                 "stm32f4-rtic-action-server",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -1368,7 +1397,7 @@ pub fn build_rtic_action_client() -> TestResult<&'static Path> {
     RTIC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "stm32f4/rust/zenoh/action-client-rtic",
+                "stm32f4/rust/action-client-rtic",
                 "stm32f4-rtic-action-client",
                 None,
                 Some("thumbv7em-none-eabihf"),
@@ -1596,7 +1625,8 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
             let root = project_root();
             let example_dir = root.join("packages/testing/nros-bench/stress-zenoh");
             let target_dir = example_dir.join("target-large-buf");
-            let binary_path = target_dir.join("release/zenoh-stress-test");
+            let binary_path =
+                target_dir.join(format!("{}/zenoh-stress-test", cargo_target_profile_dir()));
             require_prebuilt_binary(&binary_path)
         })
         .map(|p| p.as_path())
@@ -1958,7 +1988,7 @@ pub fn c_xrce_listener_binary() -> PathBuf {
 /// The channel comes from `tools/rust-toolchain.toml` via [`pinned_nightly`].
 fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-esp32-baremetal/rust/zenoh/{}", name));
+    let example_dir = root.join(format!("examples/qemu-esp32-baremetal/rust/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -1967,10 +1997,11 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
         )));
     }
 
-    eprintln!("Building qemu-esp32/rust/zenoh/{}...", name);
+    eprintln!("Building qemu-esp32/rust/{}...", name);
 
-    let nightly = format!("+{}", pinned_nightly());
-    let output = cmd!("cargo", &nightly, "build", "--release")
+    let mut args = vec![format!("+{}", pinned_nightly())];
+    args.extend(cargo_build_args());
+    let output = cmd("cargo", args)
         .dir(&example_dir)
         .stderr_to_stdout()
         .stdout_capture()
@@ -1985,7 +2016,8 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
     }
 
     let binary_path = example_dir.join(format!(
-        "target/riscv32imc-unknown-none-elf/release/{}",
+        "target/riscv32imc-unknown-none-elf/{}/{}",
+        cargo_target_profile_dir(),
         binary_name
     ));
 
@@ -2034,7 +2066,7 @@ pub fn build_qemu_rtic_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/talker-rtic",
+                "qemu-arm-baremetal/rust/talker-rtic",
                 "qemu-rtic-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2048,7 +2080,7 @@ pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/listener-rtic",
+                "qemu-arm-baremetal/rust/listener-rtic",
                 "qemu-rtic-listener",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2068,7 +2100,7 @@ pub fn build_qemu_rtic_service_server() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/service-server-rtic",
+                "qemu-arm-baremetal/rust/service-server-rtic",
                 "qemu-rtic-service-server",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2082,7 +2114,7 @@ pub fn build_qemu_rtic_service_client() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/service-client-rtic",
+                "qemu-arm-baremetal/rust/service-client-rtic",
                 "qemu-rtic-service-client",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2333,7 +2365,7 @@ pub fn build_qemu_rtic_action_server() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/action-server-rtic",
+                "qemu-arm-baremetal/rust/action-server-rtic",
                 "qemu-rtic-action-server",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2347,7 +2379,7 @@ pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/action-client-rtic",
+                "qemu-arm-baremetal/rust/action-client-rtic",
                 "qemu-rtic-action-client",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2371,7 +2403,7 @@ pub fn build_qemu_rtic_mixed_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/talker-rtic-mixed",
+                "qemu-arm-baremetal/rust/talker-rtic-mixed",
                 "qemu-rtic-mixed-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -2385,7 +2417,7 @@ pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_MIXED_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm-baremetal/rust/zenoh/listener-rtic-mixed",
+                "qemu-arm-baremetal/rust/listener-rtic-mixed",
                 "qemu-rtic-mixed-listener",
                 None,
                 Some("thumbv7m-none-eabi"),

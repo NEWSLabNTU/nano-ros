@@ -9,7 +9,7 @@
 //! Note: `Promise::wait()` and `FeedbackStream::wait_next()` are NOT usable
 //! in RTIC because they require `&mut Executor`. Use `try_recv()` loops instead.
 //!
-//! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-action-client/`.
+//! This is the native equivalent of `examples/stm32f4/rust/rtic-action-client/`.
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::prelude::*;

@@ -152,7 +152,7 @@ just qemu-baremetal talker      # spawns QEMU + nros-rs-talker
 
 ```bash
 just stm32f4 setup
-cd examples/stm32f4/rust/zenoh/talker-rtic
+cd examples/stm32f4/rust/talker-rtic
 cargo build --release --target thumbv7em-none-eabihf
 # flash with probe-rs / openocd
 ```

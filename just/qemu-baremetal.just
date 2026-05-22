@@ -229,12 +229,12 @@ test-zenoh: build
     echo ""
     echo "To run manually:"
     echo "  Terminal 1: zenohd --listen tcp/0.0.0.0:7447"
-    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
-    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
+    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
+    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
     echo ""
     echo "Binaries built at:"
-    echo "  examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
-    echo "  examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
+    echo "  examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
+    echo "  examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
     echo ""
     echo "Note: Automated test not yet implemented (requires QEMU 7.0+)"
     echo "============================================"
@@ -398,22 +398,22 @@ _run-qemu-mps2 binary: build
     wait $PID
 
 # Run bare-metal talker on QEMU
-talker: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker")
+talker: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker")
 
 # Run bare-metal listener on QEMU
-listener: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener")
+listener: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener")
 
 # Run RTIC service server on QEMU
-rtic-service-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/service-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-server")
+rtic-service-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/service-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-server")
 
 # Run RTIC service client on QEMU
-rtic-service-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/service-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-client")
+rtic-service-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/service-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-client")
 
 # Run RTIC action server on QEMU
-rtic-action-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/action-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-server")
+rtic-action-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/action-server-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-server")
 
 # Run RTIC action client on QEMU
-rtic-action-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/action-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-client")
+rtic-action-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/action-client-rtic/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-client")
 
 # Start zenohd router for bare-metal QEMU examples (port 7450)
 zenohd:

@@ -114,7 +114,7 @@ patched QEMU.
 
 A complete reference app showing Wi-Fi + zenoh wiring on top of the
 component is not in-tree yet; the bare-metal
-[`examples/esp32/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/zenoh/talker)
+[`examples/esp32/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/talker)
 is the closest worked example.
 
 ## Next

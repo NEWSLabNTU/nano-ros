@@ -159,22 +159,22 @@ exclude = [
     # examples will be re-created once a Rust→Cyclone shim
     # lands (Phase 169.5 / 169.9).
     # QEMU ARM examples (bare-metal Cortex-M3)
-    "examples/qemu-arm-baremetal/rust/zenoh/talker",
-    "examples/qemu-arm-baremetal/rust/zenoh/listener",
+    "examples/qemu-arm-baremetal/rust/talker",
+    "examples/qemu-arm-baremetal/rust/listener",
     "packages/testing/nros-tests/bins/cdr-roundtrip-qemu",
     "packages/testing/nros-bench/wcet-cycles-qemu",
     "packages/testing/nros-bench/large-msg-baremetal",
     "packages/testing/nros-tests/bins/lan9118-qemu",
-    "examples/qemu-arm-baremetal/rust/zenoh/talker-rtic",
-    "examples/qemu-arm-baremetal/rust/zenoh/listener-rtic",
-    "examples/qemu-arm-baremetal/rust/zenoh/service-server-rtic",
-    "examples/qemu-arm-baremetal/rust/zenoh/service-client-rtic",
-    "examples/qemu-arm-baremetal/rust/zenoh/action-server-rtic",
-    "examples/qemu-arm-baremetal/rust/zenoh/action-client-rtic",
-    "examples/qemu-arm-baremetal/rust/zenoh/talker-rtic-mixed",
-    "examples/qemu-arm-baremetal/rust/zenoh/listener-rtic-mixed",
-    "examples/qemu-arm-baremetal/rust/zenoh/serial-talker",
-    "examples/qemu-arm-baremetal/rust/zenoh/serial-listener",
+    "examples/qemu-arm-baremetal/rust/talker-rtic",
+    "examples/qemu-arm-baremetal/rust/listener-rtic",
+    "examples/qemu-arm-baremetal/rust/service-server-rtic",
+    "examples/qemu-arm-baremetal/rust/service-client-rtic",
+    "examples/qemu-arm-baremetal/rust/action-server-rtic",
+    "examples/qemu-arm-baremetal/rust/action-client-rtic",
+    "examples/qemu-arm-baremetal/rust/talker-rtic-mixed",
+    "examples/qemu-arm-baremetal/rust/listener-rtic-mixed",
+    "examples/qemu-arm-baremetal/rust/serial-talker",
+    "examples/qemu-arm-baremetal/rust/serial-listener",
     # Phase 169.2 — Rust DDS examples deleted (no Rust→Cyclone
     # path yet; see Phase 169 doc work item .9).
     # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)
@@ -194,15 +194,15 @@ exclude = [
     "examples/qemu-arm-nuttx/rust/action-client",
     # Phase 169.2 — qemu-arm-nuttx rust/dds deleted.
     # STM32F4 examples
-    "examples/stm32f4/rust/zenoh/talker",
-    "examples/stm32f4/rust/zenoh/polling",
-    "examples/stm32f4/rust/zenoh/talker-rtic",
-    "examples/stm32f4/rust/zenoh/listener-rtic",
-    "examples/stm32f4/rust/zenoh/service-server-rtic",
-    "examples/stm32f4/rust/zenoh/service-client-rtic",
-    "examples/stm32f4/rust/zenoh/action-server-rtic",
-    "examples/stm32f4/rust/zenoh/action-client-rtic",
-    "examples/stm32f4/rust/zenoh/talker-embassy",
+    "examples/stm32f4/rust/talker",
+    "examples/stm32f4/rust/polling",
+    "examples/stm32f4/rust/talker-rtic",
+    "examples/stm32f4/rust/listener-rtic",
+    "examples/stm32f4/rust/service-server-rtic",
+    "examples/stm32f4/rust/service-client-rtic",
+    "examples/stm32f4/rust/action-server-rtic",
+    "examples/stm32f4/rust/action-client-rtic",
+    "examples/stm32f4/rust/talker-embassy",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples
     # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW
@@ -301,10 +301,10 @@ exclude = [
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
     "packages/testing/nros-smoke/esp32-hello-world",
-    "examples/esp32/rust/zenoh/talker",
-    "examples/esp32/rust/zenoh/listener",
-    "examples/qemu-esp32-baremetal/rust/zenoh/talker",
-    "examples/qemu-esp32-baremetal/rust/zenoh/listener",
+    "examples/esp32/rust/talker",
+    "examples/esp32/rust/listener",
+    "examples/qemu-esp32-baremetal/rust/talker",
+    "examples/qemu-esp32-baremetal/rust/listener",
     # Phase 169.2 — qemu-esp32-baremetal rust/dds deleted.
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",

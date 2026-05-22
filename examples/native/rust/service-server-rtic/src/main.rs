@@ -5,7 +5,7 @@
 //! - `spin_once(0)` (non-blocking I/O drive)
 //! - `service.handle_request()` (manual polling)
 //!
-//! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-service-server/`.
+//! This is the native equivalent of `examples/stm32f4/rust/rtic-service-server/`.
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::prelude::*;

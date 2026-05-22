@@ -18,7 +18,7 @@ Each example is a standalone Cargo package targeting
 `nros-board-esp32-qemu`) wraps the wifi / esp-hal init.
 
 ```text
-examples/esp32/rust/zenoh/talker/
+examples/esp32/rust/talker/
 ├── Cargo.toml
 ├── .cargo/config.toml         # target = riscv32imc-unknown-none-elf
 │                              # runner = espflash flash --monitor
@@ -64,7 +64,7 @@ For QEMU ESP32 (no real wifi) the example tree at
 ```bash
 # Real hardware (ESP32-C3):
 just esp32 setup           # rustup target add riscv32imc-unknown-none-elf
-cd examples/esp32/rust/zenoh/talker
+cd examples/esp32/rust/talker
 cargo build --release
 
 # QEMU ESP32 (qemu-system-xtensa or qemu-system-riscv32):
@@ -75,7 +75,7 @@ just esp32 build           # builds for the QEMU board crate
 
 ```bash
 # Real hardware:
-cd examples/esp32/rust/zenoh/talker
+cd examples/esp32/rust/talker
 cargo run --release        # invokes `espflash flash --monitor`
 # Expected serial output:
 #   ESP32-C3 booting...
@@ -107,9 +107,9 @@ QEMU ESP32: ~15 seconds. If no `Published:` line:
 ## GitHub source
 
 - esp-hal Rust:
-  [`examples/esp32/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/zenoh/talker)
+  [`examples/esp32/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32/rust/talker)
 - QEMU ESP32 talker:
-  [`examples/qemu-esp32-baremetal/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-esp32-baremetal/rust/zenoh/talker)
+  [`examples/qemu-esp32-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-esp32-baremetal/rust/talker)
 - Board crates:
   [`packages/boards/nros-board-esp32/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32),
   [`packages/boards/nros-board-esp32-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32-qemu)
@@ -117,7 +117,7 @@ QEMU ESP32: ~15 seconds. If no `Published:` line:
 ## Next
 
 - Subscriber + service + action peer directories under the same
-  `examples/esp32/rust/zenoh/`.
+  `examples/esp32/rust/`.
 - ESP-IDF component path for C / C++ apps:
   [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
 - PlatformIO library path:

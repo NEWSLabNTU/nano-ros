@@ -266,9 +266,7 @@ fn test_qemu_bsp_talker_builds() {
             let err_str = format!("{:?}", e);
             if err_str.contains("Permission denied") {
                 eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!(
-                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/talker/target"
-                );
+                eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/talker/target");
                 eprintln!("Skipping test...");
             } else {
                 panic!("qemu-bsp-talker build failed: {:?}", e);
@@ -299,9 +297,7 @@ fn test_qemu_bsp_listener_builds() {
             let err_str = format!("{:?}", e);
             if err_str.contains("Permission denied") {
                 eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!(
-                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/listener/target"
-                );
+                eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/listener/target");
                 eprintln!("Skipping test...");
             } else {
                 panic!("qemu-bsp-listener build failed: {:?}", e);
@@ -545,14 +541,12 @@ fn test_qemu_bsp_both_build() {
         }
         (Err(e), _) if has_perm_error(e) => {
             eprintln!("Talker build failed due to permission issues");
-            eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/talker/target");
+            eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/talker/target");
             eprintln!("Skipping test...");
         }
         (_, Err(e)) if has_perm_error(e) => {
             eprintln!("Listener build failed due to permission issues");
-            eprintln!(
-                "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/listener/target"
-            );
+            eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/listener/target");
             eprintln!("Skipping test...");
         }
         (Err(e), _) => panic!("BSP talker build failed: {:?}", e),
@@ -587,7 +581,7 @@ fn test_qemu_serial_talker_builds() {
             if err_str.contains("Permission denied") {
                 eprintln!("Build failed due to permission issues (likely from Docker build)");
                 eprintln!(
-                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/serial-talker/target"
+                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/serial-talker/target"
                 );
                 eprintln!("Skipping test...");
             } else {
@@ -623,7 +617,7 @@ fn test_qemu_serial_listener_builds() {
             if err_str.contains("Permission denied") {
                 eprintln!("Build failed due to permission issues (likely from Docker build)");
                 eprintln!(
-                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/serial-listener/target"
+                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/serial-listener/target"
                 );
                 eprintln!("Skipping test...");
             } else {

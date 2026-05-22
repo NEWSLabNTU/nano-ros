@@ -5,7 +5,7 @@
 //! - `spin_once(0)` (non-blocking I/O drive)
 //! - `subscription.try_recv()` (manual polling)
 //!
-//! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-listener/`.
+//! This is the native equivalent of `examples/stm32f4/rust/rtic-listener/`.
 
 use nros::prelude::*;
 use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};

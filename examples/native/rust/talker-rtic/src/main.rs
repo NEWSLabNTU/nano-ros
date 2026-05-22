@@ -5,7 +5,7 @@
 //! - `spin_once(0)` (non-blocking I/O drive)
 //! - `publisher.publish()` (independent of executor)
 //!
-//! This is the native equivalent of `examples/stm32f4/rust/zenoh/rtic-talker/`.
+//! This is the native equivalent of `examples/stm32f4/rust/rtic-talker/`.
 
 use nros::prelude::*;
 use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
