@@ -56,7 +56,7 @@ shell_extras="$EXT/nano-ros/extra_libs.mk"
 staged_dirs=()
 for lang in c cpp; do
     for example in talker listener service-server service-client action-server action-client; do
-        src="$ROOT/examples/qemu-arm-nuttx/$lang/zenoh/$example"
+        src="$ROOT/examples/qemu-arm-nuttx/$lang/$example"
         dst="$EXT/nano-ros-$example-$lang"
         if [ -d "$src" ]; then
             ln -sfn "$src" "$dst"
@@ -125,7 +125,7 @@ done
 # staticlibs include!() the most ffi.rs files).
 declare -A seen_basename
 declare -A path_for_basename
-for example_extras in $(ls -t "$ROOT"/examples/qemu-arm-nuttx/cpp/zenoh/*/generated/ffi/extra_libs.mk 2>/dev/null); do
+for example_extras in $(ls -t "$ROOT"/examples/qemu-arm-nuttx/cpp/*/generated/ffi/extra_libs.mk 2>/dev/null); do
     while IFS= read -r line; do
         # Line shape: `EXTRA_LIBS += <abs-path>`
         lib_path="${line##*= }"

@@ -339,7 +339,7 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             preprocesses NuttX's `dramboot.ld` linker script and
             pulls in `staging/lib{sched,drivers,boards,c,mm,arch,
             xx,apps,net,crypto,fs,binfmt,openamp,board}.a`, same
-            shape as `examples/qemu-arm-nuttx/rust/zenoh/talker`).
+            shape as `examples/qemu-arm-nuttx/rust/talker`).
             The NuttX C platform port (`nros-platform-posix`,
             shared via the `nros-platform-nuttx` shim) renders
             each record on stderr; the harness drains stderr

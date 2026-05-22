@@ -96,14 +96,10 @@ fn logging_smoke_freertos_mps2_emits_every_severity() {
 
 /// Phase 88.15.c — NuttX QEMU ARM virt. NuttX uses the POSIX C
 /// platform port (`nros-platform-posix`, shared via the
-/// `nros-platform-nuttx` shim); the POSIX
-/// `nros_platform_log_write` impl renders each record on stderr.
-/// `wait_for_output` already drains stderr (Phase 88.16.A) so the
-/// log lines reach the captured output. The fixture's
-/// `run()` closure returns `Ok` after emitting all six records;
-/// the board crate's `run()` then calls `std::process::exit(0)`,
-/// printing `Application completed successfully.` — the harness
-/// uses that line as the readiness marker.
+/// `nros-platform-nuttx` shim); on NuttX that writer routes records
+/// through syslog to the configured UART. The harness waits for the
+/// final nros-log record itself so the test fails if QEMU capture misses
+/// the log path.
 #[test]
 fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
     if !nuttx::is_nuttx_available() {
@@ -128,10 +124,7 @@ fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
     let mut qemu =
         QemuProcess::start_nuttx_virt(binary, true).expect("failed to start QEMU (nuttx-virt)");
     let output = qemu
-        .wait_for_output_pattern(
-            "Application completed successfully.",
-            Duration::from_secs(45),
-        )
+        .wait_for_output_pattern("[FATAL] smoke: fatal payload", Duration::from_secs(45))
         .expect("QEMU timed out waiting for log output");
 
     assert_output_contains(&output, EXPECTED_LINES);

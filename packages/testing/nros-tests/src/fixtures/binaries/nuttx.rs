@@ -80,7 +80,7 @@ static NUTTX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-nuttx/rust/zenoh/{}", name));
+    let example_dir = root.join(format!("examples/qemu-arm-nuttx/rust/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -89,10 +89,18 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
-    let binary_path = example_dir.join(format!(
-        "target/armv7a-nuttx-eabihf/release/{}",
+    let fast_binary_path = example_dir.join(format!(
+        "target/armv7a-nuttx-eabihf/nros-fast-release/{}",
         binary_name
     ));
+    let binary_path = if fast_binary_path.exists() {
+        fast_binary_path
+    } else {
+        example_dir.join(format!(
+            "target/armv7a-nuttx-eabihf/release/{}",
+            binary_name
+        ))
+    };
     super::require_prebuilt_binary(&binary_path)
 }
 
@@ -157,7 +165,7 @@ static NUTTX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-nuttx/{}/zenoh/{}", lang, name));
+    let example_dir = root.join(format!("examples/qemu-arm-nuttx/{}/{}", lang, name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -166,7 +174,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
         )));
     }
 
-    let build_dir = example_dir.join("build");
+    let build_dir = example_dir.join("build-zenoh");
     let binary_path = build_dir.join(binary_name);
     super::require_prebuilt_binary(&binary_path)
 }

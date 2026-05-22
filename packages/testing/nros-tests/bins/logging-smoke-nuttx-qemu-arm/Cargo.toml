@@ -14,8 +14,10 @@ test = false
 bench = false
 
 [dependencies]
-nros-board-nuttx-qemu-arm = { path = "../../../../boards/nros-board-nuttx-qemu-arm" }
 nros-log = { path = "../../../../core/nros-log" }
+
+[build-dependencies]
+cc = "1"
 
 [profile.release]
 opt-level = "s"

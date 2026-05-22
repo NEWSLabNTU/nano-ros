@@ -400,7 +400,15 @@ pub fn build_test_fixture(
     }
 
     let binary_path = if let Some(target) = target {
-        crate_dir.join(format!("target/{}/release/{}", target, binary_name))
+        let fast = crate_dir.join(format!(
+            "target/{}/nros-fast-release/{}",
+            target, binary_name
+        ));
+        if fast.exists() {
+            fast
+        } else {
+            crate_dir.join(format!("target/{}/release/{}", target, binary_name))
+        }
     } else {
         crate_dir.join(format!("target/release/{}", binary_name))
     };

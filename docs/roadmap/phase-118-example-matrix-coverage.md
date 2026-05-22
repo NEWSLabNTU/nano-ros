@@ -47,9 +47,6 @@ esp32/rust/zenoh
 px4/cpp/uorb
 px4/rust/uorb
 qemu-arm-baremetal/rust/zenoh
-qemu-arm-nuttx/c/zenoh
-qemu-arm-nuttx/cpp/zenoh
-qemu-arm-nuttx/rust/zenoh
 qemu-esp32-baremetal/rust/dds
 qemu-esp32-baremetal/rust/zenoh
 stm32f4/rust/zenoh
@@ -173,24 +170,25 @@ DDS RTOS/socket port.
 
 ### 118.E — NuttX QEMU Examples
 
-Absorbs Phase 167. C/C++ collapsed case dirs exist; Rust remains legacy
-because the depth-4 collapsed shape hit a `build-std`/newlib link
-regression.
+Absorbs Phase 167. NuttX now uses collapsed case dirs for C, C++, and
+Rust. Zenoh is the only live NuttX RMW; Cyclone stays gated below.
 
-- [ ] **118.E.1 — `examples/qemu-arm-nuttx/c/zenoh/`**
-      Delete after collapsed C Zenoh fixture parity is confirmed.
-- [ ] **118.E.2 — `examples/qemu-arm-nuttx/cpp/zenoh/`**
-      Delete after collapsed C++ Zenoh fixture parity is confirmed.
-- [ ] **118.E.3 — `examples/qemu-arm-nuttx/rust/zenoh/`**
-      Collapse Rust Zenoh cases to `examples/qemu-arm-nuttx/rust/<case>/`
-      after 118.E.4 is fixed.
-- [ ] **118.E.4 — NuttX Rust collapsed-shape link regression**
-      Fix the absorbed Phase 167 blocker: the depth-4 Rust layout fails
-      with `undefined reference to __libc_init_array` /
-      `__libc_fini_array`, while the depth-5 legacy
-      `rust/zenoh/<case>` layout links. Investigate `build-std` libc
-      patch scope, newlib/libgloss startup selection, and emitted
-      `-nostartfiles` / `-nodefaultlibs`.
+- [x] **118.E.1 — `examples/qemu-arm-nuttx/c/zenoh/`**
+      Closed 2026-05-22: fixture builders and tests use
+      `examples/qemu-arm-nuttx/c/<case>/` with
+      `-DNROS_RMW=zenoh`; the legacy Zenoh root was deleted.
+- [x] **118.E.2 — `examples/qemu-arm-nuttx/cpp/zenoh/`**
+      Closed 2026-05-22: fixture builders and tests use
+      `examples/qemu-arm-nuttx/cpp/<case>/` with
+      `-DNROS_RMW=zenoh`; the legacy Zenoh root was deleted.
+- [x] **118.E.3 — `examples/qemu-arm-nuttx/rust/zenoh/`**
+      Closed 2026-05-22: Rust Zenoh cases moved to
+      `examples/qemu-arm-nuttx/rust/<case>/`; just recipes and fixture
+      resolvers now use the collapsed paths.
+- [x] **118.E.4 — NuttX Rust collapsed-shape link regression**
+      Closed 2026-05-22: the collapsed Rust crates link after adjusting
+      their local dependency and `[patch.crates-io]` paths from the
+      former depth-5 layout to the depth-4 layout.
 - [x] **118.E.5 — NuttX Cyclone gate recorded**
       Cyclone on NuttX is deferred behind a hosted NuttX socket/runtime
       port for Cyclone DDS.

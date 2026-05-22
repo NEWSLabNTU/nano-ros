@@ -567,12 +567,15 @@ void nros_platform_critical_section_release(uint32_t token) {
 /* ============================================================
  *   Logging (Phase 88)
  *
- *   Render to stderr as `[<LEVEL>] <name>: <message>\n`. Body is
- *   pre-formatted by `nros-log`; we only prepend severity + name
- *   and append the newline. Mutex guards stderr so multi-thread
- *   writes land one line at a time. Not ISR-safe (POSIX has no ISR).
+ *   Render as `[<LEVEL>] <name>: <message>\n`. Body is pre-formatted
+ *   by `nros-log`; we only prepend severity + name and append the
+ *   newline. Mutex guards the sink so multi-thread writes land one line
+ *   at a time. Not ISR-safe (POSIX has no ISR).
  * ============================================================ */
 #include <stdio.h>
+#ifdef __NuttX__
+#include <syslog.h>
+#endif
 
 static const char *severity_label_log(uint8_t s) {
     switch (s) {
@@ -596,6 +599,18 @@ void nros_platform_log_write(uint8_t severity,
     }
     const char *label = severity_label_log(severity);
     pthread_mutex_lock(&s_log_mutex);
+#ifdef __NuttX__
+    if (name_ptr != NULL && name_len > 0) {
+        syslog(LOG_INFO, "[%s] %.*s: %.*s",
+               label,
+               (int) name_len, (const char *) name_ptr,
+               (int) msg_len,  (const char *) msg_ptr);
+    } else {
+        syslog(LOG_INFO, "[%s] %.*s",
+               label,
+               (int) msg_len, (const char *) msg_ptr);
+    }
+#else
     if (name_ptr != NULL && name_len > 0) {
         fprintf(stderr, "[%s] %.*s: %.*s\n",
                 label,
@@ -606,9 +621,12 @@ void nros_platform_log_write(uint8_t severity,
                 label,
                 (int) msg_len, (const char *) msg_ptr);
     }
+#endif
     pthread_mutex_unlock(&s_log_mutex);
 }
 
 void nros_platform_log_flush(void) {
+#ifndef __NuttX__
     fflush(stderr);
+#endif
 }

@@ -50,7 +50,7 @@ build-examples:
         echo "  Building $example..."
         # No +nightly override — the nightly version is pinned by
         # examples/qemu-arm-nuttx/rust-toolchain.toml (see comments there).
-        (cd examples/qemu-arm-nuttx/rust/zenoh/$example && cargo build $cargo_profile_args)
+        (cd examples/qemu-arm-nuttx/rust/$example && cargo build $cargo_profile_args)
     done
     echo "NuttX QEMU examples built!"
 
@@ -77,7 +77,7 @@ build-fixtures:
     # target/ dirs, no cross-fixture lock contention).
     rust_dirs=()
     for ex in talker listener service-server service-client action-server action-client; do
-        rust_dirs+=("examples/qemu-arm-nuttx/rust/zenoh/$ex")
+        rust_dirs+=("examples/qemu-arm-nuttx/rust/$ex")
     done
     # Phase 169 retired dust-dds; the NuttX `rust/dds/<ex>` examples had
     # no Cyclone replacement (Cyclone needs a ddsrt NuttX port — see
@@ -107,48 +107,24 @@ build-fixtures:
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
     nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi"
+    # Phase 118.E — collapsed-shape NuttX C / C++ examples (Zenoh only;
+    # Cyclone on NuttX is gated on a hosted socket/runtime port).
     cmake_dirs=()
     for lang in c cpp; do
         for ex in talker listener service-server service-client action-server action-client; do
-            cmake_dirs+=("examples/qemu-arm-nuttx/$lang/zenoh/$ex")
+            cmake_dirs+=("examples/qemu-arm-nuttx/$lang/$ex")
         done
     done
     printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-        "echo '  → {} (cmake)' && rm -rf {}/build && \
-         cmake -S {} -B {}/build \
+        "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+         cmake -S {} -B {}/build-zenoh \
+           -DNROS_RMW=zenoh \
            -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
            -DNUTTX_DIR='$nuttx_dir' \
            -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
            -DCMAKE_BUILD_TYPE=Release \
            -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         cmake --build {}/build > /dev/null"
-
-    # Phase 118.B.5 — collapsed-shape NuttX C / C++ examples (zenoh
-    # only; no DDS C / C++ NuttX siblings existed pre-collapse).
-    # Rust collapse deferred — `cargo build` on the 4-segment path
-    # hits a libgloss / newlib crt0 link issue that the original
-    # 5-segment-path zenoh sibling avoids (likely a build-std
-    # `[patch.crates-io] libc` resolution interaction with the
-    # rust-toolchain.toml file location). Track as 118.B.5.1.
-    collapsed_cmake_dirs=()
-    for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
-            dir="examples/qemu-arm-nuttx/$lang/$ex"
-            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
-        done
-    done
-    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
-             cmake -S {} -B {}/build-zenoh \
-               -DNROS_RMW=zenoh \
-               -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-               -DNUTTX_DIR='$nuttx_dir' \
-               -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
-               -DCMAKE_BUILD_TYPE=Release \
-               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             cmake --build {}/build-zenoh > /dev/null"
-    fi
+         cmake --build {}/build-zenoh > /dev/null"
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
@@ -411,7 +387,7 @@ doctor:
 _run-qemu example binary:
     #!/usr/bin/env bash
     set -e
-    cd "examples/qemu-arm-nuttx/rust/zenoh/{{example}}"
+    cd "examples/qemu-arm-nuttx/rust/{{example}}"
     # Nightly version pinned by examples/qemu-arm-nuttx/rust-toolchain.toml.
     CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build --release
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
@@ -474,6 +450,6 @@ clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-nuttx-armv7a-zenoh
     for example in talker listener service-server service-client action-server action-client; do
-        rm -rf "examples/qemu-arm-nuttx/rust/zenoh/$example/target"
+        rm -rf "examples/qemu-arm-nuttx/rust/$example/target"
     done
     echo "NuttX build artifacts cleaned"

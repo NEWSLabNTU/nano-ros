@@ -176,7 +176,7 @@ EOF
 for lang in c cpp; do
   for example in talker listener service-server service-client action-server action-client; do
     config_sym="NROS_EXAMPLE_$(upper_underscore "$example")_${lang^^}"
-    dir="$ROOT/examples/qemu-arm-nuttx/$lang/zenoh/$example"
+    dir="$ROOT/examples/qemu-arm-nuttx/$lang/$example"
     [ -d "$dir" ] || { echo "missing dir $dir" >&2; continue; }
     gen_kconfig "$example" "$lang" "$config_sym"  > "$dir/Kconfig"
     gen_make_defs "$example" "$lang" "$config_sym" > "$dir/Make.defs"
@@ -192,9 +192,9 @@ done
 # explanatory comment in place.
 for lang in c cpp; do
   for example in talker listener service-server service-client action-server action-client; do
-    mainfile="$ROOT/examples/qemu-arm-nuttx/$lang/zenoh/$example/src/main.${lang/cpp/cpp}"
-    [ "$lang" = "c" ] && mainfile="$ROOT/examples/qemu-arm-nuttx/$lang/zenoh/$example/src/main.c"
-    [ "$lang" = "cpp" ] && mainfile="$ROOT/examples/qemu-arm-nuttx/$lang/zenoh/$example/src/main.cpp"
+    mainfile="$ROOT/examples/qemu-arm-nuttx/$lang/$example/src/main.${lang/cpp/cpp}"
+    [ "$lang" = "c" ] && mainfile="$ROOT/examples/qemu-arm-nuttx/$lang/$example/src/main.c"
+    [ "$lang" = "cpp" ] && mainfile="$ROOT/examples/qemu-arm-nuttx/$lang/$example/src/main.cpp"
     [ -f "$mainfile" ] || continue
     if grep -q 'NROS_APP_MAIN_REGISTER_VOID()' "$mainfile"; then
       # Replace bare VOID call with explanatory comment + auto-detect.

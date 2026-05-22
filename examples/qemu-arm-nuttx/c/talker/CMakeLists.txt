@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Phase 144.6 — consume nano-ros via add_subdirectory(<repo-root>).
-# Five levels up from examples/qemu-arm-nuttx/<lang>/<rmw>/<example>/.
+# Four levels up from examples/qemu-arm-nuttx/<lang>/<example>/.
 set(NANO_ROS_PLATFORM nuttx)
 set(NROS_RMW "zenoh" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")

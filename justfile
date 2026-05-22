@@ -616,7 +616,7 @@ rust-rtos-link-check:
         ( cd examples/qemu-arm-freertos/rust/talker && \
             cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
         echo "  nuttx talker:"
-        ( cd examples/qemu-arm-nuttx/rust/zenoh/talker && cargo build $cargo_profile_args ) >/dev/null
+        ( cd examples/qemu-arm-nuttx/rust/talker && cargo build $cargo_profile_args ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi

@@ -149,7 +149,7 @@ cmake --build build/talker
 **NuttX (ARM Cortex-A7):**
 
 ```bash
-cmake -S examples/qemu-arm-nuttx/cpp/zenoh/talker -B build/talker \
+cmake -S examples/qemu-arm-nuttx/cpp/talker -B build/talker \
     -DNANO_ROS_PLATFORM=nuttx \
     -DNANO_ROS_BOARD=nuttx-qemu-arm
 cmake --build build/talker
