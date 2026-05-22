@@ -84,9 +84,17 @@ build-fixtures:
     # phase-175) and are no longer built.
     # Phase 88.15.c — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm")
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-         cargo build $cargo_profile_args --quiet'
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        for dir in "${rust_dirs[@]}"; do
+            echo "  → $dir"
+            ( cd "$dir" && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
+              cargo build $cargo_profile_args --quiet )
+        done
+    else
+        printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+            'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
+             cargo build $cargo_profile_args --quiet'
+    fi
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
     # sidestepped by:
@@ -115,16 +123,31 @@ build-fixtures:
             cmake_dirs+=("examples/qemu-arm-nuttx/$lang/$ex")
         done
     done
-    printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-        "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
-         cmake -S {} -B {}/build-zenoh \
-           -DNROS_RMW=zenoh \
-           -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-           -DNUTTX_DIR='$nuttx_dir' \
-           -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
-           -DCMAKE_BUILD_TYPE=Release \
-           -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-         cmake --build {}/build-zenoh > /dev/null"
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        for dir in "${cmake_dirs[@]}"; do
+            echo "  → $dir (-DNROS_RMW=zenoh, build-zenoh/)"
+            rm -rf "$dir/build-zenoh"
+            cmake -S "$dir" -B "$dir/build-zenoh" \
+              -DNROS_RMW=zenoh \
+              -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+              -DNUTTX_DIR="$nuttx_dir" \
+              -DNUTTX_FFI_CRATE_DIR="$nuttx_ffi" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
+            cmake --build "$dir/build-zenoh" > /dev/null
+        done
+    else
+        printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
+            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+             cmake -S {} -B {}/build-zenoh \
+               -DNROS_RMW=zenoh \
+               -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+               -DNUTTX_DIR='$nuttx_dir' \
+               -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
+               -DCMAKE_BUILD_TYPE=Release \
+               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+             cmake --build {}/build-zenoh > /dev/null"
+    fi
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,

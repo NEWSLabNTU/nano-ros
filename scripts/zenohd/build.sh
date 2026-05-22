@@ -53,9 +53,12 @@ echo ""
 cd "$ZENOH_DIR"
 cargo build -p zenohd --release --features "zenoh/transport_serial"
 
-# Copy binary to build directory
+# Publish the binary via rename so rebuilds do not fail with ETXTBSY when
+# an older build/zenohd/zenohd is still mapped by a running test router.
 mkdir -p "$BUILD_DIR"
-cp "$ZENOH_DIR/target/release/zenohd" "$BUILD_DIR/zenohd"
+tmp="$BUILD_DIR/zenohd.$$"
+install -m 0755 "$ZENOH_DIR/target/release/zenohd" "$tmp"
+mv -f "$tmp" "$BUILD_DIR/zenohd"
 
 # Show result
 echo ""

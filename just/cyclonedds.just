@@ -76,7 +76,11 @@ build-rmw: setup
         -DCMAKE_INSTALL_PREFIX="$PWD/build/install" \
         -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$SCRIPT" \
         -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE="$SCRIPT"
-    cmake --build "$PROJ/build" --parallel
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        cmake --build "$PROJ/build"
+    else
+        cmake --build "$PROJ/build" --parallel
+    fi
     cmake --install "$PROJ/build"
 
 # Run Cyclone DDS RMW tests via CTest.

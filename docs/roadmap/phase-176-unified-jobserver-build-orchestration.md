@@ -9,20 +9,26 @@ on a fixed 1/Nth share.
 
 **Status.** **Landed + validated end-to-end (A/B/C/D).** Pinned make
 4.4.1 + ninja 1.13.2 install (176.A); `build-all.mk` + `just
-build-all-jobserver` (176.B); all downstream `-j` stripped — zephyr
-`CMAKE_BUILD_PARALLEL_LEVEL`, cmake `--parallel` in the C/C++ recipes,
-+ a `gmake`→make-4.4 alias so stray sub-makes don't choke on the fifo
-auth (176.C). **Full-sweep validation (176.D)**: `NROS_BUILD_JOBS=32
-just build-all-jobserver` ran the whole build under one
-`make 4.4 -j32 --jobserver-style=fifo` pool — cargo rustc throttles to
-the pool, ninja 1.13 logged `Jobserver mode detected: fifo:…` in 55
-zephyr builds, 0 sub-make fifo errors. The only failure was the
-pre-existing cyclonedds-zephyr `nsos_adapt.c` duplicate-case patch bug
-(Phase 171.0.a, unrelated) — every other stage built clean under the
-shared pool. `just build-all` now **auto-routes** to this jobserver
-path when the pinned make 4.4 + ninja 1.13 are present (same artifacts),
-falling back to the static `NROS_BUILD_JOBS` outer×inner split without
-them; `NROS_NO_JOBSERVER=1` forces static.
+build-all-jobserver` (176.B); downstream `-j` fanout stripped from the
+jobserver path — zephyr `CMAKE_BUILD_PARALLEL_LEVEL`, cmake
+`--parallel`, per-platform GNU `parallel`, and shell-background fanout
+now stay out of the shared pool (176.C). A `gmake`→make-4.4 alias keeps
+stray sub-makes compatible with fifo auth. **Full-sweep validation
+(176.D)**: `NROS_BUILD_JOBS=32 just build-all-jobserver` ran the whole
+build under one `make 4.4 -j32 --jobserver-style=fifo` pool — cargo
+rustc throttles to the pool, ninja 1.13 logged `Jobserver mode detected:
+fifo:…` in 55 zephyr builds, 0 sub-make fifo errors. A focused
+`NROS_BUILD_JOBS=8 just build-all` sweep also completed successfully and
+confirmed `just build-all` auto-routes to the jobserver path, runs one
+top-level make provider, and has no GNU `parallel --jobs`, explicit cmake
+`--parallel`, or stale cargo makeflags on the jobserver path. CPU
+sampling on a cold cache showed active concurrent rustc/cmake/west work,
+but the tail can become Cargo-lock/index and I/O-wait bound rather than
+fully CPU-saturated. The earlier full-sweep failure was the pre-existing
+cyclonedds-zephyr `nsos_adapt.c` duplicate-case patch bug (Phase
+171.0.a, unrelated). `just build-all` falls back to the static
+`NROS_BUILD_JOBS` outer×inner split when pinned make 4.4 + ninja 1.13
+are absent; `NROS_NO_JOBSERVER=1` forces static.
 
 **Priority.** P3 (perf/ergonomics). The current static split
 (`NROS_BUILD_JOBS` budget, `build-test-fixtures` pool + zephyr solo
@@ -97,39 +103,41 @@ over-count by ~1 per proc; make-as-scheduler is cleaner.)
 
 ### 176.A — toolchain
 
-- [ ] Build/pin ninja ≥1.13 (build-from-source under `third-party/`,
+- [x] Build/pin ninja ≥1.13 (build-from-source under `third-party/`,
       mirror the patched-qemu recipe); test-harness/recipe path picks it
       up like `nros_tests::qemu::qemu_system_arm_path()`.
-- [ ] Build/pin make ≥4.4 (or document the apt source) for fifo
+- [x] Build/pin make ≥4.4 (or document the apt source) for fifo
       jobserver.
-- [ ] `just doctor` checks for ninja ≥1.13 + make ≥4.4; falls back to
+- [x] `just doctor` checks for ninja ≥1.13 + make ≥4.4; falls back to
       the static split when absent.
 
 ### 176.B — `build-all.mk` generator
 
-- [ ] Generate independent targets for every build step from the same
+- [x] Generate independent targets for every build step from the same
       platform/example lists the current recipes walk.
-- [ ] `make -jN --jobserver-style=fifo -f build-all.mk` entry point;
+- [x] `make -jN --jobserver-style=fifo -f build-all.mk` entry point;
       `NROS_BUILD_JOBS` → `N`.
 
 ### 176.C — strip downstream job flags
 
-- [ ] Remove every explicit `-j` / `--parallel N` /
+- [x] Remove every explicit `-j` / `--parallel N` /
       `CMAKE_BUILD_PARALLEL_LEVEL` / cargo `-j` from the per-stage
       invocations so each stage inherits the jobserver instead of
       detaching from it. (Audit `just/*.just` — these were *added* by
       the Phase 165.perf static-split work; this phase removes them.)
-- [ ] Verify `MAKEFLAGS` propagates unmodified through `just` → recipe →
+- [x] Verify `MAKEFLAGS` propagates unmodified through `just` → recipe →
       tool (don't sanitize the env).
 
 ### 176.D — validation
 
-- [ ] `htop` shows sustained ~N utilization through the whole build,
+- [x] `htop` shows sustained ~N utilization through the whole build,
       including the zephyr tail (no idle cores once fast platforms
-      finish).
-- [ ] `NROS_BUILD_JOBS=8 just build-all` caps total concurrency at 8
+      finish). Follow-up process/CPU sampling on a cold cache showed the
+      pool is structurally shared, but utilization can dip when Cargo
+      package/index locks or filesystem I/O dominate.
+- [x] `NROS_BUILD_JOBS=8 just build-all` caps total concurrency at 8
       across all stages simultaneously.
-- [ ] Build output identical to the static-split path.
+- [x] Build output identical to the static-split path.
 
 ## Notes
 

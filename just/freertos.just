@@ -96,8 +96,15 @@ build-fixtures:
     rust_dirs=()
     # Phase 88.15.b — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-freertos-mps2")
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        for dir in "${rust_dirs[@]}"; do
+            echo "  → $dir"
+            ( cd "$dir" && cargo build $cargo_profile_args --quiet )
+        done
+    else
+        printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+            'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
+    fi
 
     # Phase 118.D — collapsed-shape FreeRTOS Rust cases, zenoh-only
     # matrix. Phase 169 retired dust-dds (pure-Rust, linked on
@@ -114,9 +121,15 @@ build-fixtures:
         rmws="zenoh"
         for rmw in $rmws; do
             echo "  → freertos/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
-            ( cd examples/qemu-arm-freertos/rust/${case} && \
-              cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                  --target-dir target-${rmw} --quiet ) &
+            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+                ( cd examples/qemu-arm-freertos/rust/${case} && \
+                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
+                      --target-dir target-${rmw} --quiet )
+            else
+                ( cd examples/qemu-arm-freertos/rust/${case} && \
+                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
+                      --target-dir target-${rmw} --quiet ) &
+            fi
         done
     done
     wait
@@ -141,14 +154,27 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
-             cmake -S {} -B {}/build-zenoh \
-               -DNROS_RMW=zenoh \
-               -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-               -DCMAKE_BUILD_TYPE=Release \
-               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             cmake --build {}/build-zenoh > /dev/null"
+        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+            for dir in "${collapsed_cmake_dirs[@]}"; do
+                echo "  → $dir (-DNROS_RMW=zenoh, build-zenoh/)"
+                rm -rf "$dir/build-zenoh"
+                cmake -S "$dir" -B "$dir/build-zenoh" \
+                  -DNROS_RMW=zenoh \
+                  -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
+                cmake --build "$dir/build-zenoh" > /dev/null
+            done
+        else
+            printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
+                "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+                 cmake -S {} -B {}/build-zenoh \
+                   -DNROS_RMW=zenoh \
+                   -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+                   -DCMAKE_BUILD_TYPE=Release \
+                   -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+                 cmake --build {}/build-zenoh > /dev/null"
+        fi
     fi
 
 # Build every FreeRTOS tier: core libraries, examples, and test fixtures.

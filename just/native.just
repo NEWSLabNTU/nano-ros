@@ -36,7 +36,10 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         cargo_frontends="{{JOBS}}"
     fi
     echo "Building examples (parallel, cargo-frontends=$cargo_frontends, profile=$(nros_cargo_profile_name))..."
-    if ! command -v parallel >/dev/null 2>&1; then
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        echo "NROS_JOBSERVER=1 — serial launcher; cargo inherits fifo tokens."
+        SERIAL=1
+    elif ! command -v parallel >/dev/null 2>&1; then
         echo "GNU parallel not found — falling back to serial build."
         SERIAL=1
     else
@@ -125,7 +128,11 @@ build-fixtures:
     for ex in "${examples[@]}"; do
         echo "  → $ex"
         ensure_native_rust_generated "$ex"
-        ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet ) &
+        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet )
+        else
+            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet ) &
+        fi
     done
     # Phase 131.B — bench/smoke binaries relocated under packages/testing/.
     test_fixtures=(
@@ -136,24 +143,42 @@ build-fixtures:
     )
     for fx in "${test_fixtures[@]}"; do
         echo "  → $fx"
-        ( cd "$fx" && cargo build $cargo_profile_args --quiet ) &
+        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+            ( cd "$fx" && cargo build $cargo_profile_args --quiet )
+        else
+            ( cd "$fx" && cargo build $cargo_profile_args --quiet ) &
+        fi
     done
     wait
     echo "  → native/rust/{talker,listener} (--features link-tls)"
     ensure_native_rust_generated native/rust/talker
     ensure_native_rust_generated native/rust/listener
-    ( cd examples/native/rust/talker && \
-      cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
-    ( cd examples/native/rust/listener && \
-      cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        ( cd examples/native/rust/talker && \
+          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet )
+        ( cd examples/native/rust/listener && \
+          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet )
+    else
+        ( cd examples/native/rust/talker && \
+          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
+        ( cd examples/native/rust/listener && \
+          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
+    fi
     wait
     echo "  → native/rust/{talker,listener} (--features safety-e2e)"
     ensure_native_rust_generated native/rust/talker
     ensure_native_rust_generated native/rust/listener
-    ( cd examples/native/rust/talker && \
-      cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
-    ( cd examples/native/rust/listener && \
-      cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        ( cd examples/native/rust/talker && \
+          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet )
+        ( cd examples/native/rust/listener && \
+          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet )
+    else
+        ( cd examples/native/rust/talker && \
+          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
+        ( cd examples/native/rust/listener && \
+          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
+    fi
     wait
     echo "  → native/rust/listener (--features unstable-zenoh-api)"
     ensure_native_rust_generated native/rust/listener
@@ -181,9 +206,15 @@ build-fixtures:
                     feature_flags="${feature_flags},param-services"
                 fi
                 echo "  → native/rust/${collapsed_case} (--features rmw-${rmw}, target-${rmw}/)"
-                ( cd examples/native/rust/${collapsed_case} && \
-                  cargo build $cargo_profile_args --no-default-features ${feature_flags} \
-                      --target-dir target-${rmw} --quiet ) &
+                if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+                    ( cd examples/native/rust/${collapsed_case} && \
+                      cargo build $cargo_profile_args --no-default-features ${feature_flags} \
+                          --target-dir target-${rmw} --quiet )
+                else
+                    ( cd examples/native/rust/${collapsed_case} && \
+                      cargo build $cargo_profile_args --no-default-features ${feature_flags} \
+                          --target-dir target-${rmw} --quiet ) &
+                fi
             done
         fi
     done
@@ -199,9 +230,15 @@ build-fixtures:
         if [ -d examples/native/c/${case} ]; then
             for rmw in zenoh xrce; do
                 echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
-                ( cd examples/native/c/${case} && \
-                  cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
-                  cmake --build build-${rmw} > /dev/null ) &
+                if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+                    ( cd examples/native/c/${case} && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake --build build-${rmw} > /dev/null )
+                else
+                    ( cd examples/native/c/${case} && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake --build build-${rmw} > /dev/null ) &
+                fi
             done
         fi
     done
@@ -212,9 +249,15 @@ build-fixtures:
         if [ -d examples/native/cpp/${case} ]; then
             for rmw in zenoh xrce; do
                 echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
-                ( cd examples/native/cpp/${case} && \
-                  cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
-                  cmake --build build-${rmw} > /dev/null ) &
+                if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+                    ( cd examples/native/cpp/${case} && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake --build build-${rmw} > /dev/null )
+                else
+                    ( cd examples/native/cpp/${case} && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake --build build-${rmw} > /dev/null ) &
+                fi
             done
         fi
     done

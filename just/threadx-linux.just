@@ -100,9 +100,15 @@ build-fixtures:
         rmws="zenoh"
         for rmw in $rmws; do
             echo "  → threadx-linux/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
-            ( cd examples/threadx-linux/rust/${case} && \
-              cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                  --target-dir target-${rmw} --quiet ) &
+            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+                ( cd examples/threadx-linux/rust/${case} && \
+                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
+                      --target-dir target-${rmw} --quiet )
+            else
+                ( cd examples/threadx-linux/rust/${case} && \
+                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
+                      --target-dir target-${rmw} --quiet ) &
+            fi
         done
     done
     wait
@@ -121,20 +127,39 @@ build-fixtures:
         else
             echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
         fi
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-            "for rmw in $cmake_rmws; do \
-                 echo '  → {} (-DNROS_RMW='\$rmw', build-'\$rmw'/)' && rm -rf {}/build-\$rmw && \
-                 cmake -S {} -B {}/build-\$rmw \
-                   -DNROS_RMW=\$rmw \
-                   -DNANO_ROS_PLATFORM=threadx_linux \
-                   -DTHREADX_DIR='$threadx_dir' \
-                   -DNSOS_NETX_DIR='$nsos_netx_dir' \
-                   -DTHREADX_CONFIG_DIR='$config_dir' \
-                   -DTHREADX_APP_DEFINE='$app_define' \
-                   -DCMAKE_BUILD_TYPE=Release \
-                   -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-                 cmake --build {}/build-\$rmw > /dev/null; \
-             done"
+        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+            for dir in "${collapsed_cmake_dirs[@]}"; do
+                for rmw in $cmake_rmws; do
+                    echo "  → $dir (-DNROS_RMW=$rmw, build-$rmw/)"
+                    rm -rf "$dir/build-$rmw"
+                    cmake -S "$dir" -B "$dir/build-$rmw" \
+                      -DNROS_RMW="$rmw" \
+                      -DNANO_ROS_PLATFORM=threadx_linux \
+                      -DTHREADX_DIR="$threadx_dir" \
+                      -DNSOS_NETX_DIR="$nsos_netx_dir" \
+                      -DTHREADX_CONFIG_DIR="$config_dir" \
+                      -DTHREADX_APP_DEFINE="$app_define" \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
+                    cmake --build "$dir/build-$rmw" > /dev/null
+                done
+            done
+        else
+            printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
+                "for rmw in $cmake_rmws; do \
+                     echo '  → {} (-DNROS_RMW='\$rmw', build-'\$rmw'/)' && rm -rf {}/build-\$rmw && \
+                     cmake -S {} -B {}/build-\$rmw \
+                       -DNROS_RMW=\$rmw \
+                       -DNANO_ROS_PLATFORM=threadx_linux \
+                       -DTHREADX_DIR='$threadx_dir' \
+                       -DNSOS_NETX_DIR='$nsos_netx_dir' \
+                       -DTHREADX_CONFIG_DIR='$config_dir' \
+                       -DTHREADX_APP_DEFINE='$app_define' \
+                       -DCMAKE_BUILD_TYPE=Release \
+                       -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+                     cmake --build {}/build-\$rmw > /dev/null; \
+                 done"
+        fi
     fi
 
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.

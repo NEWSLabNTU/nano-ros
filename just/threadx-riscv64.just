@@ -123,10 +123,19 @@ build-fixtures:
     # threadx-netx-sys/build.rs needs the rv64-specific NetX port
     # headers, not the threadx-linux defaults exported by the top-level
     # justfile. Pass via env to each parallel cargo.
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-        "echo '  → {}' && cd {} && \
-         THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-         cargo build \$cargo_profile_args --quiet"
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        for dir in "${rust_dirs[@]}"; do
+            echo "  → $dir"
+            ( cd "$dir" && \
+              THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+              cargo build $cargo_profile_args --quiet )
+        done
+    else
+        printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+            "echo '  → {}' && cd {} && \
+             THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+             cargo build \$cargo_profile_args --quiet"
+    fi
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
     # Corrosion handles the riscv64gc-unknown-none-elf cross under
     # the bundled toolchain file; the ThreadX + NetX Duo include
@@ -151,10 +160,17 @@ build-fixtures:
         rmws="zenoh"
         for rmw in $rmws; do
             echo "  → threadx-rv64/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
-            ( cd examples/qemu-riscv64-threadx/rust/${case} && \
-              THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-              cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                  --target-dir target-${rmw} --quiet ) &
+            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+                ( cd examples/qemu-riscv64-threadx/rust/${case} && \
+                  THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
+                      --target-dir target-${rmw} --quiet )
+            else
+                ( cd examples/qemu-riscv64-threadx/rust/${case} && \
+                  THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
+                      --target-dir target-${rmw} --quiet ) &
+            fi
         done
     done
     wait
@@ -167,22 +183,43 @@ build-fixtures:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
-             THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
-             THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-               cmake -S {} -B {}/build-zenoh \
-                 -DNROS_RMW=zenoh \
-                 -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-                 -DTHREADX_DIR='$threadx_dir' \
-                 -DNETX_DIR='$netx_dir' \
-                 -DTHREADX_CONFIG_DIR='$config_dir' \
-                 -DNETX_CONFIG_DIR='$config_dir' \
-                 -DCMAKE_BUILD_TYPE=Release \
-                 -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
-             THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-               cmake --build {}/build-zenoh > /dev/null"
+        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+            for dir in "${collapsed_cmake_dirs[@]}"; do
+                echo "  → $dir (-DNROS_RMW=zenoh, build-zenoh/)"
+                rm -rf "$dir/build-zenoh"
+                THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
+                THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+                  cmake -S "$dir" -B "$dir/build-zenoh" \
+                    -DNROS_RMW=zenoh \
+                    -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+                    -DTHREADX_DIR="$threadx_dir" \
+                    -DNETX_DIR="$netx_dir" \
+                    -DTHREADX_CONFIG_DIR="$config_dir" \
+                    -DNETX_CONFIG_DIR="$config_dir" \
+                    -DCMAKE_BUILD_TYPE=Release \
+                    -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
+                THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
+                THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+                  cmake --build "$dir/build-zenoh" > /dev/null
+            done
+        else
+            printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
+                "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+                 THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
+                 THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+                   cmake -S {} -B {}/build-zenoh \
+                     -DNROS_RMW=zenoh \
+                     -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
+                     -DTHREADX_DIR='$threadx_dir' \
+                     -DNETX_DIR='$netx_dir' \
+                     -DTHREADX_CONFIG_DIR='$config_dir' \
+                     -DNETX_CONFIG_DIR='$config_dir' \
+                     -DCMAKE_BUILD_TYPE=Release \
+                     -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
+                 THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
+                 THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
+                   cmake --build {}/build-zenoh > /dev/null"
+        fi
     fi
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.

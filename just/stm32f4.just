@@ -35,8 +35,15 @@ build-fixtures:
         fi
         rust_dirs+=("$dir")
     done
-    printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && cargo build $cargo_profile_args --target thumbv7em-none-eabihf --quiet'
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        for dir in "${rust_dirs[@]}"; do
+            echo "  → $dir"
+            ( cd "$dir" && cargo build $cargo_profile_args --target thumbv7em-none-eabihf --quiet )
+        done
+    else
+        printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+            'echo "  → {}" && cd {} && cargo build $cargo_profile_args --target thumbv7em-none-eabihf --quiet'
+    fi
 
 # Build every STM32F4 tier: core artifacts, examples, and test fixtures.
 build-all: build build-examples build-fixtures

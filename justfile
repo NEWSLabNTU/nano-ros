@@ -188,9 +188,11 @@ build-all-jobserver:
     nros_cargo_fetch_root
     nros_cargo_fetch_codegen
     # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
-    # --parallel so cargo / ninja / cmake inherit the fifo pool. NROS_BUILD_JOBS
-    # stays the budget; GNU parallel only launches (the jobserver throttles).
-    exec env NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" \
+    # --parallel so cargo / ninja / cmake inherit the fifo pool. Clear any
+    # stale inherited jobserver env first; the top-level make below is the
+    # only provider for this run.
+    exec env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
+        NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" \
         "$make_bin" -j"$n" --jobserver-style=fifo -f build-all.mk
 
 # Internal: invalidate stale nros-* cargo fingerprints in a cmake build
@@ -489,6 +491,15 @@ build-test-fixtures: generate-bindings build-zenoh-posix-fixture
     # `tmp/build-test-fixtures.joblog` for follow-up tuning.
     mkdir -p tmp
     budget="${NROS_BUILD_JOBS}"
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        echo "build-test-fixtures: NROS_JOBSERVER=1 — serial launcher; child tools inherit fifo tokens"
+        just zephyr build-fixtures
+        for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4; do
+            echo "== $platform =="
+            just "$platform" build-fixtures
+        done
+        exit 0
+    fi
     outer=4
     [ "$outer" -gt "$budget" ] && outer="$budget"
     inner=$(( budget / outer )); [ "$inner" -lt 1 ] && inner=1

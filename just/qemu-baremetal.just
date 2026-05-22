@@ -132,8 +132,15 @@ build-fixtures:
         packages/testing/nros-bench/large-msg-baremetal
         packages/reference/qemu-smoltcp-bridge
     )
-    printf '%s\n' "${dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-        'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        for dir in "${dirs[@]}"; do
+            echo "  → $dir"
+            ( cd "$dir" && cargo build $cargo_profile_args --quiet )
+        done
+    else
+        printf '%s\n' "${dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
+            'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
+    fi
 
 # Run all QEMU tests (non-networked)
 test verbose="":

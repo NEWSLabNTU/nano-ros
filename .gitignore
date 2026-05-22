@@ -10,6 +10,7 @@ __pycache__/
 
 # Rust
 /target/
+**/target/
 # Phase 150.E rev3 — deterministic --target-dir for the shared
 # `nros-tests::zenoh_header_parity` + `zenoh_archive_symbols`
 # POSIX fixture (`just build-zenoh-posix-fixture`).
