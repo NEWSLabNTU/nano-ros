@@ -78,13 +78,13 @@ fn bridge_zenoh_to_dds_starts_and_opens_both_sessions() {
     drop(router);
 
     // Bridge can hit transient session-open failures in CI
-    // sandboxes (zenohd / dust-dds discovery timing). When the
+    // sandboxes (zenohd / DDS discovery timing). When the
     // bridge fails to reach its "Spinning" marker, skip cleanly
     // — full message-count E2E is tracked as 104.E follow-up.
     if !output.contains("Spinning") {
         nros_tests::skip!(
             "bridge didn't reach Spinning marker — likely session-open \
-             environment issue (zenoh router / dust-dds discovery). \
+             environment issue (zenoh router / DDS discovery). \
              Output:\n{}",
             output
         );

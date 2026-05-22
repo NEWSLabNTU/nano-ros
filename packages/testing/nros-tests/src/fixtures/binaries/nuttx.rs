@@ -142,7 +142,7 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 
 // =============================================================================
 // Phase 169.4b — NuttX Rust DDS fixture builders deleted alongside the
-// dust-dds retirement (Phase 169.2 deleted the example crates).
+// Rust DDS retirement (Phase 169.2 deleted the example crates).
 // =============================================================================
 
 // =============================================================================

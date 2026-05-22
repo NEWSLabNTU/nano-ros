@@ -150,9 +150,9 @@ extern "C" nros_rmw_ret_t nros_rmw_cyclonedds_register(void) {
     // advertises a routable address while letting the socket bind to
     // ANY.
 #endif
-    // Phase 169.5 — Cyclone is the sole DDS backend (dust-dds
-    // retired), registered under its canonical name "cyclonedds"
-    // ONLY. Callers select via `NROS_RMW=cyclonedds`; the generic
+    // Phase 169.5 — Cyclone is the sole DDS backend, registered
+    // under its canonical name "cyclonedds" ONLY. Callers select via
+    // `NROS_RMW=cyclonedds`; the generic
     // `"dds"` slot is not aliased per user direction (always
     // reference Cyclone by its specific name, not the generic one).
     return nros_rmw_cffi_register_named("cyclonedds", &kVtable);

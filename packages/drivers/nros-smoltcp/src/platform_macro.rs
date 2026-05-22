@@ -455,8 +455,8 @@ macro_rules! __define_smoltcp_platform_impl {
                     // path silently fell back to `SOCKET_TIMEOUT_MS`
                     // (10 s default), which made `udp_read` block the
                     // single-thread bare-metal app for 10 s per failed
-                    // poll → cooperative drain stalls and dust-dds
-                    // factory mailbox round-trips never complete.
+                    // poll → cooperative drain stalls and DDS factory
+                    // mailbox round-trips never complete.
                     unsafe {
                         UDP_RECV_TIMEOUT_MS = timeout_ms as u64;
                     }

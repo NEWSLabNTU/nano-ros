@@ -76,7 +76,7 @@ static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 // Phase 169.4 — bare-metal MPS2-AN385 DDS fixture statics removed
-// (Phase 97.3.mps2-an385 lineage; deleted with the dust-dds retirement).
+// (Phase 97.3.mps2-an385 lineage; deleted with the Rust DDS retirement).
 
 /// Cached path to the qemu-serial-talker binary
 static QEMU_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -91,7 +91,7 @@ static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static ESP32_QEMU_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 // Phase 169.4b — ESP32-C3 QEMU DDS fixture statics removed alongside
-// the dust-dds retirement (Phase 169.2 deleted the example crates).
+// the Rust DDS retirement (Phase 169.2 deleted the example crates).
 
 /// Cached path to the xrce-talker binary
 static XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -2047,7 +2047,7 @@ pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 169.4b — ESP32-C3 QEMU Rust DDS fixture builders deleted
-// alongside the dust-dds retirement (Phase 169.2 deleted the example
+// alongside the Rust DDS retirement (Phase 169.2 deleted the example
 // crates).
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -2431,7 +2431,7 @@ pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
 // ============================================================================
 
 // Phase 169.4b — native Rust DDS fixture builders + rstest fixtures
-// deleted alongside the dust-dds retirement (Phase 169.2 deleted the
+// deleted alongside the Rust DDS retirement (Phase 169.2 deleted the
 // example crates).
 
 // Phase 95.G — Native C DDS examples ----------------------------------------

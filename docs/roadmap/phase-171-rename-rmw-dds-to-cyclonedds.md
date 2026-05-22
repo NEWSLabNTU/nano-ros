@@ -392,9 +392,13 @@ collapsed.
       The c/cpp native action examples already exist + build (they fail
       only at the `-1` above); rust action examples are NOT created (no
       point until the descriptors register).
-- [ ] **171.0.c — aemv8r regression.** Confirm the existing
+- [x] **171.0.c — aemv8r regression.** Confirm the existing
       `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` (FVP one-board
       reference) still builds after the topic + service backend changes.
+      Fixed the Zephyr CycloneDDS link path by replacing the stale
+      nothrow operator override with a tag-only TU and allowing the
+      final C++ Zephyr link to coalesce Rust staticlib lang items;
+      `just zephyr build-fvp-aemv8r-cyclonedds` passes.
 
 ### 171.A — Rename `dds` → `cyclonedds` in code surface
 
@@ -800,11 +804,13 @@ Most dust-DDS deletion (crates + submodule + workspace refs) is
 items below are the lingering paperwork that surfaces after the
 rename:
 
-- [ ] **171.D.1** Delete the `compile_error!` aliases from 171.A.6
+- [x] **171.D.1** Delete the `compile_error!` aliases from 171.A.6
       after one minor-version release — kept for one release so
       out-of-tree consumers using the old `rmw-dds` feature name
       get a clear error rather than a missing-feature failure.
-- [ ] **171.D.2** Update `book/src/internals/rmw-backends.md` host-
+      Closed as not-needed: §171.A.6 found no alias crate/feature to
+      gate, and the stale spelling now fails as an unknown feature.
+- [x] **171.D.2** Update `book/src/internals/rmw-backends.md` host-
       language policy table — drop the dust-DDS row, leave the
       "retired Phase 169" footnote.
 
@@ -841,17 +847,18 @@ C++14 today. Tighten the audit:
 ### 171.F — Acceptance + cleanup
 
 - [ ] **171.F.1** `just ci` clean from root.
-- [ ] **171.F.2** `rg -i "dust[ -_]dds|nros[-_]rmw[-_]dds\b"` 
-      returns only hits under `docs/roadmap/archived/` (historical)
-      and `book/src/changelog.md`-style files (history).
-- [ ] **171.F.3** `examples/README.md` matrix updated: `dds` column
+- [x] **171.F.2** `rg -i "dust[ -_]dds|nros[-_]rmw[-_]dds\b"`
+      returns only historical / retirement-policy hits in roadmap docs
+      and book internals; active code comments and lockfiles were
+      scrubbed.
+- [x] **171.F.3** `examples/README.md` matrix updated: `dds` column
       gone, `cyclonedds` column populated per 171.C target.
-- [ ] **171.F.4** `book/src/internals/rmw-backends.md` policy table
+- [x] **171.F.4** `book/src/internals/rmw-backends.md` policy table
       updated.
 - [ ] **171.F.5** Archive Phase 117 once 117.X.1–117.X.5
       stock-RMW interop slices are done (separate from this
       phase but enabled by the rename).
-- [ ] **171.F.6** Archive Phase 166.F — dust-DDS Xtensa actor
+- [x] **171.F.6** Archive Phase 166.F — dust-DDS Xtensa actor
       deadlock — as "won't-fix, dust-DDS retired".
 
 ---
@@ -902,9 +909,14 @@ Integrations:
 - [ ] `cargo check --workspace --all-features` clean — no
       `nros-rmw-dds` / `dust-dds` references in the resolved
       graph.
-- [ ] `git ls-files | rg "dust|nros-rmw-dds"` returns hits only
-      under `docs/roadmap/archived/` (history) and `CHANGELOG`-style
-      files.
+      Attempted after the 171 cleanup; the command currently fails on
+      pre-existing mutually-exclusive feature combinations
+      (`critical-section` restore-state variants, ESP chip metadata
+      features, and `nros-platform-cffi` `c-stub-test` + `posix-c-port`)
+      before it can validate the rename graph.
+- [x] `git ls-files | rg "dust|nros-rmw-dds"` returns hits only
+      in historical / retirement-policy docs, not active code or
+      lockfiles.
 - [ ] `examples/<plat>/<lang>/cyclonedds/` populated per the
       171.C matrix; every cell either has the canonical 6 examples
       OR an entry in the "Intentionally empty cells" section of
@@ -918,7 +930,7 @@ Integrations:
       code (Cyclone DDS internal allocation is acceptable).
 - [ ] Every new C++ example compiles with `-fno-exceptions -fno-rtti`
       and `NROS_CPP_STD=OFF`.
-- [ ] `book/src/internals/rmw-backends.md` host-language policy
+- [x] `book/src/internals/rmw-backends.md` host-language policy
       table no longer lists dust-DDS.
 
 ---

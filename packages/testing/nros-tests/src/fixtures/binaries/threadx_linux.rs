@@ -102,7 +102,7 @@ pub fn build_threadx_action_client() -> TestResult<&'static Path> {
 
 // =============================================================================
 // Phase 169.4b — ThreadX-Linux Rust DDS fixture builders deleted
-// alongside the dust-dds retirement (Phase 169.2 deleted the example
+// alongside the Rust DDS retirement (Phase 169.2 deleted the example
 // crates).
 // =============================================================================
 

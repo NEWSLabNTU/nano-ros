@@ -435,11 +435,12 @@ each of the ~20 spawned tasks in FIFO order. Task index 16
 (a `dust_dds::dcps::actor::Actor<DcpsStatusCondition>::spawn`
 closure per the type-name spawn probe) never returns from `poll`.
 
-**Status.** Not Started. Blocks Phase 117 close-out (ESP32-S3
-QEMU DDS E2E). Workaround / probes already landed on the
-feature branch; this issue tracks the underlying root cause.
+**Status.** Closed / won't-fix. Phase 169 retired dust-DDS and
+removed the `nros-rmw-dds` runtime this bug belonged to. The
+workaround / probes remain only on the historical feature branch;
+this section is retained as archaeology, not active work.
 
-**Priority.** P2 — blocks one slice, not the whole DDS surface.
+**Priority.** None — superseded by Cyclone DDS consolidation.
 
 **Depends on.** Phase 117.2g + 117.2f (both landed). The fusion
 barriers are necessary preconditions to even REACH this hang
@@ -498,14 +499,16 @@ actor — exactly the nested-send shape above.
 
 ### Work items
 
-- [ ] **166.F.1** Confirm the hypothesis by instrumenting
+- [x] **166.F.1** Superseded: no instrumentation required after
+      dust-DDS retirement. Original task was to instrument
       `Actor::spawn`'s mailbox loop in
       `packages/dds/dust-dds/dds/src/dcps/actor.rs` with
       `dbg_log!` probes (gated behind the existing
       `nros-rmw-dds[debug-esp-println]` chain that's already
       wired through nros-rmw-dds → nros-rmw-cffi). Show the
       nested `critical_section::with` entry / exit pattern.
-- [ ] **166.F.2** Pick a fix path:
+- [x] **166.F.2** Superseded: fix path is Phase 169 retirement of
+      dust-DDS and consolidation on Cyclone DDS. Historical options:
       - **Option A — Patch dust-dds:** restructure the actor
         mailbox loop so message handlers complete fully BEFORE
         the next outbound send (no nested `with` on the same
@@ -521,7 +524,9 @@ actor — exactly the nested-send shape above.
         variant (esp-hal v1.0 has `xtensa-lx-rt` reentrant
         support behind a feature; verify it composes with
         embassy-sync's `critical-section[default]`).
-- [ ] **166.F.3** Once a fix lands, re-run
+- [x] **166.F.3** Superseded: the ESP32-S3 dust-DDS E2E no longer
+      exists on `main`; Cyclone DDS owns the remaining DDS runtime
+      validation. Historical rerun target:
       `cargo nextest run -p nros-tests --test esp32s3_qemu_dds
       --run-ignored=all` from `phase-117.0-esp32s3-toolchain`;
       expect `Publisher declared` → `Published: 0` → `Received: 0`

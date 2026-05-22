@@ -54,7 +54,7 @@ Go-via-cgo, Python-via-ctypes…) can implement a backend by filling
 in the vtable and calling `nros_rmw_cffi_register(&vtable)` once at
 startup.
 
-## Decision matrix (post-115.L)
+## Decision matrix (post-115.L, updated by Phase 171)
 
 | Backend | Underlying lib | Underlying lang | Shim crate | Verdict |
 |---------|----------------|-----------------|------------|---------|
@@ -64,8 +64,8 @@ startup.
 | uORB | PX4 module SDK | C++ | `nros-rmw-uorb` (C++ direct vtable; 115.K.4 port replaces legacy `nros-rmw-uorb` Rust crate) | keep |
 
 Dust-DDS was retired in Phase 169 (2026-05-19) after repeated
-bring-up failures on embedded targets. Cyclone DDS now fills the DDS
-slot.
+bring-up failures on embedded targets. It is intentionally absent
+from the active backend table; Cyclone DDS now fills the DDS slot.
 
 ### Rust-backend cffi shape
 

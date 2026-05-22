@@ -580,8 +580,7 @@ fn decode_alias(
         }
         // Cyclone DDS — C / C++ today; Rust path lands once Phase 169.5
         // ships `nros-rmw-cyclonedds-sys`. Legacy `zephyr-dds-*` aliases
-        // map to cyclonedds for source-compat after Phase 169.4 retired
-        // dust-dds.
+        // map to cyclonedds for source compatibility after Phase 169.4.
         "zephyr-dds-cpp-talker" => ("cpp", "talker", "cyclonedds", ""),
         "zephyr-dds-cpp-listener" => ("cpp", "listener", "cyclonedds", ""),
         "zephyr-dds-cpp-service-server" => ("cpp", "service-server", "cyclonedds", ""),
@@ -606,7 +605,8 @@ fn decode_alias(
         "zephyr-dds-c-service-client-a9" => ("c", "service-client", "cyclonedds", "-a9"),
         "zephyr-dds-c-action-server-a9" => ("c", "action-server", "cyclonedds", "-a9"),
         "zephyr-dds-c-action-client-a9" => ("c", "action-client", "cyclonedds", "-a9"),
-        // DDS Rust legacy aliases — Phase 169.4 retired dust-dds. These
+        // DDS Rust legacy aliases — Phase 169.4 retired the old Rust DDS
+        // backend. These
         // map to cyclonedds for now; the build dir + example path
         // resolve correctly only once Phase 169.5's `nros-rmw-cyclonedds-sys`
         // lands. Tests that invoke these aliases without the shim get

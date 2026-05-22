@@ -55,9 +55,8 @@ nros-node = { path = "../../core/nros-node", features = ["std", "rmw-cffi", "pla
 # loan E2E test. Optional so the default test build doesn't pull
 # zenoh-pico unnecessarily.
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["lending", "platform-posix"], optional = true }
-# Phase 169.2 — dust-DDS backend retired; the multi-RMW bridge test
-# was deleted alongside the Rust DDS examples. Optional
-# `nros-rmw-dds` dep removed.
+# Phase 169.2 — the retired Rust DDS backend and multi-RMW bridge test
+# were deleted alongside the Rust DDS examples.
 # Phase 124.A.8.b — posix C symbols (nros_platform_*) for the loan E2E
 # binary. Without `posix-c-port`, nros-platform-cffi declares the
 # canonical symbols extern without providing them, and link fails.
@@ -87,11 +86,11 @@ trigger-test = [
     "nros-node/rmw-cffi",
     "nros-node/std",
 ]
-# Phase 169.2 — multi-RMW bridge test deleted; dust-DDS retired.
+# Phase 169.2 — multi-RMW bridge test deleted with the retired Rust
+# DDS backend.
 # Feature kept commented for archaeology.
 # multi-rmw-bridge = [
 #     "trigger-test",
-#     "dep:nros-rmw-dds",
 # ]
 # Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.
 # Pulls nros-node + nros-rmw-zenoh with the `lending` feature so the

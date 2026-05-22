@@ -36,8 +36,8 @@ rmw-cffi = ["nros/rmw-cffi"]
 # `nros/rmw-*-cffi` (those were deleted); they just toggle
 # `rmw-cffi` plus the per-backend optional dep.
 rmw-xrce-cffi = ["rmw-cffi", "dep:nros-rmw-xrce-cffi"]
-# Phase 169.4 — DDS retired. `rmw-dds-cffi` removed; future
-# DDS path goes through Cyclone (Phase 169.5 shim).
+# Phase 169.4 — generic DDS CFFI feature removed; the DDS path goes
+# through Cyclone (Phase 169.5 shim).
 # Phase 161 — mirror nros-c's Phase 134.fix: drop `dep:nros-rmw-zenoh`.
 # Pulling the rlib bundled a duplicate copy of nros-rmw-zenoh's entire
 # dependency closure (including a second zenoh-pico C build) into

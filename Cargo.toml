@@ -39,8 +39,7 @@ members = [
     # `packages/dds/nros-rmw-cyclonedds/` CMake project or by the
     # Zephyr module's `CONFIG_NROS_RMW_CYCLONEDDS` branch.
     "packages/dds/nros-rmw-cyclonedds-sys",
-    # Phase 169.4 — dust-dds retired. nros-rmw-dds +
-    # nros-rmw-dds-staticlib crates deleted.
+    # Phase 169.4 — retired Rust DDS crates deleted.
     # Integration tests
     "packages/testing/nros-tests",
     # C API for embedded systems
@@ -154,10 +153,9 @@ exclude = [
     "examples/native/rust/action-server-rtic",
     "examples/native/rust/action-client-rtic",
     # Phase 169.2 — examples/bridges/native-rust-zenoh-to-dds
-    # + examples/native/rust/dds/* deleted along with the
-    # `nros-rmw-dds` (dust-dds) backend retirement. Rust DDS
-    # examples will be re-created once a Rust→Cyclone shim
-    # lands (Phase 169.5 / 169.9).
+    # + examples/native/rust/dds/* deleted with the retired Rust DDS
+    # backend. Rust DDS examples will be re-created once the
+    # Rust-to-Cyclone path lands (Phase 169.5 / 169.9).
     # QEMU ARM examples (bare-metal Cortex-M3)
     "examples/qemu-arm-baremetal/rust/talker",
     "examples/qemu-arm-baremetal/rust/listener",

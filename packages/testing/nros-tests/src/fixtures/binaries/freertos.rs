@@ -119,7 +119,7 @@ pub fn build_freertos_action_client() -> TestResult<&'static Path> {
 
 // =============================================================================
 // Phase 169.4b — FreeRTOS Rust DDS fixture builders deleted alongside
-// the dust-dds retirement (Phase 169.2 deleted the example crates).
+// the Rust DDS retirement (Phase 169.2 deleted the example crates).
 // =============================================================================
 
 // =============================================================================

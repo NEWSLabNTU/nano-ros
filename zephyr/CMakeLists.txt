@@ -276,10 +276,12 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # iox_sub_context_*() / shm_{lock,unlock}_iox_sub(). Stub bodies
         # satisfy the linker; never called at runtime.
         ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/shm_stubs.c
-        # Phase 11W.3 — nothrow placement-new overload + nothrow tag
-        # definition. Zephyr's `lib/cpp/minimal/include/new` declares
-        # but doesn't define them.
-        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/nothrow_new.cpp
+        # Phase 171.0.c — Zephyr's current minimal C++ runtime now
+        # defines the nothrow new/delete overloads itself, but leaves
+        # the `std::nothrow` tag object unresolved on AArch64 FVP.
+        # Keep a tag-only TU instead of the old Phase 11W.3 operator
+        # override, which now collides with Zephyr's cpp_new.cpp.
+        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/nothrow_tag.cpp
         # Phase 11W.4 — link-time stubs for the residual unreferenced
         # symbols (ddsi_vnet_init / ddsrt_getifaddrs / IN_MULTICAST
         # macro define). Most of the original 88 undef-references
@@ -439,6 +441,16 @@ if((CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API) AND
    (CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX))
     zephyr_ld_options(-Wl,--allow-multiple-definition)
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/heap_stub_native.c)
+endif()
+
+# C++ Zephyr builds can link several Rust staticlibs in one final ELF:
+# nros-cpp, optional generated message FFI libs, and sometimes nros-c for
+# shared C/C++ surfaces. Each no_std staticlib is a Rust binary artifact and
+# therefore carries allocator, panic, and critical-section lang items. Let the
+# first definition win at the final Zephyr link.
+if(CONFIG_NROS_CPP_API AND
+   NOT (CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX))
+    zephyr_ld_options(-Wl,--allow-multiple-definition)
 endif()
 
 # =============================================================================
