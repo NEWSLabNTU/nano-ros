@@ -260,5 +260,10 @@ path = "tests/logging.rs"
 name = "logging_smoke"
 path = "tests/logging_smoke.rs"
 
+# Phase 166.5 — static archive re-emission guard for board overlays.
+[[test]]
+name = "board_link_archives"
+path = "tests/board_link_archives.rs"
+
 [lints]
 workspace = true

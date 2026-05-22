@@ -146,7 +146,7 @@ consume). Matches the platform-cffi pattern documented in
         `nros-board-esp32{,-qemu}`: no `cc::Build::compile` chains
         or no sibling board deps. No risk.
       Only `nros-board-mps2-an385-freertos` (166.A) had the bug.
-- [ ] **166.5** Regression test in `nros-tests`: assert no
+- [x] **166.5** Regression test in `nros-tests`: assert no
       `cargo:rustc-link-lib=static=X` line names an archive that
       a transitive dep already compiles.
 
