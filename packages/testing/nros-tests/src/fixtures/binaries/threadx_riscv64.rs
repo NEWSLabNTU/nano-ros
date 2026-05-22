@@ -72,7 +72,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     }
 
     let binary_path = example_dir.join(format!(
-        "target-zenoh/riscv64gc-unknown-none-elf/release/{}",
+        "target-zenoh/riscv64gc-unknown-none-elf/nros-fast-release/{}",
         binary_name
     ));
     super::require_prebuilt_binary(&binary_path)

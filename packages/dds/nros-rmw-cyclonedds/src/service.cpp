@@ -61,11 +61,28 @@
 #include <cstring>
 #include <new>
 #include <random>
-#include <thread>
 
 namespace nros_rmw_cyclonedds {
 
 namespace {
+
+#if defined(NROS_PLATFORM_FREERTOS)
+struct ServiceAtomicI64 {
+    int64_t value;
+
+    explicit ServiceAtomicI64(int64_t initial = 0) : value(initial) {}
+
+    int64_t load(std::memory_order) const { return value; }
+    void store(int64_t next, std::memory_order) { value = next; }
+    int64_t fetch_add(int64_t delta, std::memory_order) {
+        int64_t previous = value;
+        value += delta;
+        return previous;
+    }
+};
+#else
+using ServiceAtomicI64 = std::atomic<int64_t>;
+#endif
 
 constexpr std::size_t kRequestSlots = 32;
 constexpr std::size_t kMaxTopicName = 256;
@@ -107,14 +124,14 @@ struct ClientState {
     SertypeMin* req_st{nullptr};
     SertypeMin* rep_st{nullptr};
     uint64_t my_guid{0};
-    std::atomic<int64_t> next_seq{0};
+    ServiceAtomicI64 next_seq{0};
     // Phase 130.8 — non-blocking send/recv split. `pending_seq`
     // tracks the in-flight request issued via
     // `service_send_request_raw`; `pending_request` holds the wire CDR
     // until Cyclone reports the request writer matched a server reader.
     // Service QoS is VOLATILE, so writing before the match can silently
     // drop the request.
-    std::atomic<int64_t> pending_seq{-1};
+    ServiceAtomicI64 pending_seq{-1};
     uint8_t pending_request[kWireScratch]{};
     std::size_t pending_request_len{0};
 };
@@ -622,7 +639,7 @@ nros_rmw_ret_t wait_for_request_match(dds_entity_t writer,
                                       const std::chrono::steady_clock::time_point& deadline) {
     while (std::chrono::steady_clock::now() < deadline) {
         if (request_writer_matched(writer)) return NROS_RMW_RET_OK;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        platform_sleep_ms(5);
     }
     return NROS_RMW_RET_TIMEOUT;
 }
@@ -890,7 +907,7 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t* session, const char* se
     // clients are created back-to-back on one participant. Action clients
     // create send_goal/cancel/get_result clients in sequence, so leave a
     // small discovery window between creations.
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    platform_sleep_ms(100);
 
     out->backend_data = state;
     return NROS_RMW_RET_OK;
@@ -943,7 +960,7 @@ int32_t service_call_raw(nros_rmw_service_client_t* client, const uint8_t* reque
             int32_t wlen =
                 take_typed_wire(state->reader, state->rep_st, wire_rep, sizeof(wire_rep));
             if (wlen == NROS_RMW_RET_NO_DATA) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                platform_sleep_ms(2);
                 continue;
             }
             if (wlen < 0) return wlen;
@@ -961,7 +978,7 @@ int32_t service_call_raw(nros_rmw_service_client_t* client, const uint8_t* reque
             // here). Drop and keep polling.
             continue;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        platform_sleep_ms(5);
     }
     return NROS_RMW_RET_TIMEOUT;
 }

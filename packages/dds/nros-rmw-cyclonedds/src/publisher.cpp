@@ -24,7 +24,6 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
-#include <thread>
 
 namespace nros_rmw_cyclonedds {
 
@@ -87,7 +86,7 @@ nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer,
                                      const std::chrono::steady_clock::time_point& deadline) {
     while (std::chrono::steady_clock::now() < deadline) {
         if (writer_matched(writer)) return NROS_RMW_RET_OK;
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        platform_sleep_ms(5);
     }
     return NROS_RMW_RET_TIMEOUT;
 }

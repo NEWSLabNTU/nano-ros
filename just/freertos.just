@@ -65,6 +65,7 @@ build-examples:
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
         (cd examples/qemu-arm-freertos/rust/$example && \
+            cargo nano-ros generate-rust --force >/dev/null && \
             cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh)
     done
     echo "FreeRTOS QEMU examples built!"
@@ -119,6 +120,23 @@ build-fixture-extras:
     cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+    if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ] && [ -d examples/qemu-arm-freertos/rust/talker ]; then
+        echo "  → freertos/rust/talker (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
+        ( cd examples/qemu-arm-freertos/rust/talker && cargo nano-ros generate-rust --force >/dev/null )
+        rm -rf examples/qemu-arm-freertos/rust/talker/build-cyclonedds
+        cmake -S examples/qemu-arm-freertos/rust/talker \
+              -B examples/qemu-arm-freertos/rust/talker/build-cyclonedds \
+              -DNROS_RMW=cyclonedds \
+              -DCMAKE_PREFIX_PATH="$(pwd)/build/cyclonedds-freertos-install" \
+              -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
+              -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$(pwd)/scripts/cyclonedds/msg_to_cyclone_idl.py" \
+              > /dev/null
+        cmake --build examples/qemu-arm-freertos/rust/talker/build-cyclonedds > /dev/null
+    else
+        echo "  → freertos/rust/talker cyclonedds skipped (run: just cyclonedds freertos-cross-probe)"
+    fi
     # Phase 118.D — collapsed-shape FreeRTOS C / C++ examples. Each
     # case builds under `-DNROS_RMW=zenoh` (no DDS C / C++ siblings
     # existed pre-collapse on FreeRTOS, so the matrix is zenoh-only).
@@ -235,6 +253,7 @@ clean:
     rm -rf build/cmake-freertos-armcm3-zenoh
     for example in talker listener service-server service-client action-server action-client; do
         rm -rf "examples/qemu-arm-freertos/rust/$example/target-zenoh"
+        rm -rf "examples/qemu-arm-freertos/rust/$example/build-cyclonedds"
         rm -rf "examples/qemu-arm-freertos/c/$example/build-zenoh"
         rm -rf "examples/qemu-arm-freertos/cpp/$example/build-zenoh"
     done

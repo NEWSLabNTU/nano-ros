@@ -271,10 +271,9 @@ fn test_native_cpp_rmw_variant_exists(#[case] case: &str, #[case] binary: &str, 
 }
 
 /// Phase 118.B.4 — collapsed-shape FreeRTOS Rust talker. Single
-/// `examples/qemu-arm-freertos/rust/talker/` builds against zenoh +
-/// dds via Cargo features. DDS-only build adds `extern crate alloc`
-/// + the `nros-platform-critical-section` registration; zenoh path
-/// stays exactly as before. Same `--target-dir` isolation pattern.
+/// `examples/qemu-arm-freertos/rust/talker/` still builds against
+/// zenoh via Cargo features. CycloneDDS is covered by the CMake-backed
+/// matrix case below because cargo alone cannot link its C++ backend.
 #[rstest]
 #[case::zenoh(Rmw::Zenoh)]
 fn test_freertos_talker_rmw_variant_exists(#[case] rmw: Rmw) {
@@ -299,11 +298,12 @@ fn test_freertos_talker_rmw_variant_exists(#[case] rmw: Rmw) {
     );
 }
 
-/// Phase 118.B.4 — full FreeRTOS Rust collapse coverage (6 cases).
-/// talker + listener support {zenoh, dds}; service-* + action-*
-/// are zenoh-only (no pre-collapse DDS sibling).
+/// Phase 118.B.4 — full FreeRTOS Rust collapse coverage. The zenoh
+/// cases build through cargo; Phase 175.B adds the talker CycloneDDS
+/// CMake/Corrosion path because Cyclone cannot link through pure cargo.
 #[rstest]
 #[case::talker_zenoh("talker", "qemu-freertos-talker", Rmw::Zenoh)]
+#[case::talker_cyclonedds("talker", "freertos_rust_talker_cyclonedds", Rmw::Cyclonedds)]
 #[case::listener_zenoh("listener", "qemu-freertos-listener", Rmw::Zenoh)]
 #[case::ss_zenoh("service-server", "qemu-freertos-service-server", Rmw::Zenoh)]
 #[case::sc_zenoh("service-client", "qemu-freertos-service-client", Rmw::Zenoh)]

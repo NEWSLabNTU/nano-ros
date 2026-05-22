@@ -18,6 +18,27 @@ passed static checks, RTOS link check, Cyclone CI, doctests, Miri, C
 codegen, and orchestration E2E, then failed in `test-all` with 39 real
 failures plus 8 environment skips.
 
+## Setup Contract
+
+Run the full sweep in this order:
+
+- [x] `just setup`
+- [x] `just build-test-fixtures`
+- [ ] `just test-all`
+
+`test-all` should consume fixture binaries built by
+`just build-test-fixtures`; it should not spend its runtime compiling
+examples. Rust fixture lookup must use the `nros-fast-release` Cargo
+profile directory, C/C++ fixture lookup must use the matching CMake
+`build-<rmw>` directory, and missing host tools should skip with an
+actionable setup remedy instead of surfacing as product failures.
+
+The 2026-05-22 rerun followed this setup sequence. `just setup` passed,
+`just build-test-fixtures` passed, and the follow-up `just test-all`
+completed with 960 tests run: 911 passed, 49 failed, and 9 skipped.
+Doctests, Miri, C codegen, C message generation, and orchestration E2E
+passed.
+
 ## Known Issues
 
 ### Build/Feature Ownership
@@ -51,20 +72,95 @@ failures plus 8 environment skips.
   and `px4` in the `everything` tier.
 
 - [ ] **177.8 - Full runtime matrix requires prebuilt fixtures.**
-  Several runtime/bridge groups failed because required binaries or
-  fixtures were not prebuilt before `test-all`. Clarify the required
-  `just build-test-fixtures` / service setup sequence or make `test-all`
-  detect and report missing fixtures precisely.
+  The latest sweep was run after `just setup` and
+  `just build-test-fixtures`, so the remaining fixture/setup failures are
+  narrower than the original broad prebuild issue. Keep this item open
+  until every fixture lookup uses the build-fixture artifact layout and
+  every optional host dependency reports a precise skip/remedy.
 
 ### Test-All Runtime / E2E
 
 - [ ] **177.9 - Runtime E2E failures need focused reruns.**
-  The latest root `just ci` tail reports 39 real failures plus 8
-  environment skips. Failures cluster in bridge startup/session-open,
-  CMake platform cells, ESP32/QEMU serial, C XRCE API, logging smoke,
-  NuttX/RTOS E2E, native XRCE actions/services/pubsub, and Zephyr E2E
-  groups. Rerun these groups with required fixtures/services prebuilt
-  and split real product bugs from host/setup fallout.
+  The 2026-05-22 `test-all` rerun reported 960 tests run: 911 passed, 49
+  failed, and 9 skipped after `just setup` and `just build-test-fixtures`
+  both passed. The remaining failures are grouped below so owners can
+  close them independently. Newer focused fixes closed 177.19 and 177.20;
+  rerun these groups with required fixtures/services prebuilt and split
+  remaining product bugs from host/setup fallout.
+
+#### 2026-05-22 Failed Tests by Group
+
+- [ ] **177.9.A - Host tools, fixture gates, and explicit prerequisites.**
+  These need clearer setup integration, automatic fixture discovery, or
+  explicit skip classification:
+  - [ ] `bridge_xrce_to_dds_e2e::bridge_xrce_to_dds_starts_and_opens_both_sessions`
+  - [ ] `bridge_zenoh_to_dds_e2e::bridge_zenoh_to_dds_starts_and_opens_both_sessions`
+  - [ ] `integration_esp_idf::esp_idf_integration_shell_smoke`
+  - [ ] `integration_px4::px4_integration_template_smoke`
+  - [ ] `cpp_parameters::cpp_parameters_roundtrip`
+
+- [ ] **177.9.B - Platform CMake, logging, and NuttX smoke coverage.**
+  These are build/smoke edges inside the test layer, not the main
+  `build-test-fixtures` prebuild path:
+  - [ ] `cmake_platform_matrix::cmake_platform_freertos`
+  - [ ] `cmake_platform_matrix::cmake_platform_nuttx`
+  - [ ] `cmake_platform_matrix::cmake_platform_threadx`
+  - [ ] `cmake_platform_matrix::cmake_platform_zephyr`
+  - [ ] `logging_smoke::logging_smoke_freertos_mps2_emits_every_severity`
+  - [ ] `logging_smoke::logging_smoke_mps2_baremetal_emits_every_severity`
+  - [ ] `logging_smoke::logging_smoke_nuttx_qemu_arm_emits_every_severity`
+  - [ ] `logging_smoke::logging_smoke_threadx_linux_harness_captures_nros_log_stderr`
+  - [ ] `logging_smoke::logging_smoke_threadx_riscv64_emits_every_severity`
+  - [ ] `logging_smoke::logging_smoke_zephyr_native_sim_emits_every_severity`
+  - [ ] `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary`
+
+- [ ] **177.9.C - Native C/XRCE runtime.**
+  - [ ] `c_xrce_api::test_c_xrce_listener_starts`
+  - [ ] `c_xrce_api::test_c_xrce_talker_listener_communication`
+  - [ ] `c_xrce_api::test_c_xrce_talker_starts`
+
+- [ ] **177.9.D - QEMU RTIC and QEMU zenoh/serial runtime.**
+  - [ ] `emulator::test_qemu_rtic_action_e2e`
+  - [ ] `emulator::test_qemu_rtic_mixed_priority_pubsub_e2e`
+  - [ ] `emulator::test_qemu_rtic_pubsub_e2e`
+  - [ ] `emulator::test_qemu_rtic_service_e2e`
+  - [ ] `emulator::test_qemu_serial_pubsub_e2e`
+  - [ ] `large_msg::test_qemu_zenoh_large_publish`
+
+- [ ] **177.9.E - XRCE runtime.**
+  - [ ] `xrce::test_xrce_action_fibonacci`
+  - [ ] `xrce::test_xrce_multiple_messages`
+  - [ ] `xrce::test_xrce_service_request_response`
+  - [ ] `xrce::test_xrce_talker_listener_communication`
+
+- [ ] **177.9.F - Zephyr native/cross E2E runtime.**
+  - [ ] `test_bidirectional_native_zephyr_e2e`
+  - [ ] `test_native_server_zephyr_client`
+  - [ ] `test_native_talker_to_zephyr_cpp_listener`
+  - [ ] `test_native_to_zephyr_e2e`
+  - [ ] `test_zephyr_action_e2e`
+  - [ ] `test_zephyr_cpp_action_server_to_client_e2e`
+  - [ ] `test_zephyr_cpp_service_server_to_client_e2e`
+  - [ ] `test_zephyr_cpp_talker_to_listener_e2e`
+  - [ ] `test_zephyr_cpp_talker_to_native_listener`
+  - [ ] `test_zephyr_to_native_e2e`
+  - [ ] `test_zephyr_talker_to_listener_e2e`
+  - [ ] `test_zephyr_xrce_c_talker_listener`
+  - [ ] `test_zephyr_xrce_cpp_action_e2e`
+  - [ ] `test_zephyr_xrce_cpp_service_e2e`
+  - [ ] `test_zephyr_xrce_cpp_talker_listener`
+  - [ ] `test_zephyr_xrce_rust_action_e2e`
+  - [ ] `test_zephyr_xrce_rust_service_e2e`
+  - [ ] `test_zephyr_xrce_rust_talker_listener`
+
+- [ ] **177.9.G - NuttX action E2E runtime.**
+  - [ ] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C`
+  - [ ] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp`
+
+- [ ] **177.9.H - Flaky but recovered.**
+  This passed on retry and should be watched separately from hard
+  failures:
+  - [ ] `rtos_e2e::test_rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux::lang_3_Lang__Cpp`
 
 - [x] **177.19 - ESP32-C3 QEMU OpenETH Zenoh pub/sub does not move user data.**
   Fixed the ESP32-C3 QEMU Zenoh examples by sizing their generated
@@ -210,12 +306,19 @@ failures plus 8 environment skips.
 - [x] One clean Zephyr `native_sim` fixture with the fixed flags.
 - [x] Zephyr native_sim runner make-hop with poisoned fifo `MAKEFLAGS`
   routed through repo-local GNU make 4.4 instead of `/usr/bin/make`.
+- [x] 2026-05-22 `just setup`.
+- [x] 2026-05-22 `just build-test-fixtures`.
+- [x] 2026-05-22 `just test-all` completed after setup and fixture
+  prebuild: 911 passed, 49 failed, and 9 skipped. Remaining failures are
+  grouped under 177.9.
 - [ ] Full `just build-all` rerun after the final Zephyr follow-up fix.
 - [~] Full root `just ci` rerun after Phase 171 archive prep: static
   gates passed, `test-all` failed with 39 real failures + 8 environment
   skips.
 - [ ] Full `test-all` rerun with PX4/ESP-IDF/PlatformIO/bridge fixtures
   prepared and 177.19/177.20 either fixed or explicitly expected-failed.
+- [ ] Full green `test-all` rerun after 177.9 fixture/setup/runtime
+  groups close.
 
 ## Archive Rule
 

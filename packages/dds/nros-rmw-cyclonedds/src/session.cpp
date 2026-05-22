@@ -19,7 +19,10 @@
 #include <cstring>
 #include <new>
 
-#ifndef __ZEPHYR__
+#if defined(NROS_PLATFORM_FREERTOS)
+#include <FreeRTOS.h>
+#include <task.h>
+#elif !defined(__ZEPHYR__)
 #include <ctime> // nanosleep / timespec (POSIX spin-loop pacing)
 #endif
 
@@ -114,9 +117,13 @@ nros_rmw_ret_t session_drive_io(nros_rmw_session_t * /*session*/,
     // iteration to 0 — so wall-clock timers never accumulate and never
     // fire. Sleeping `timeout_ms` paces the loop to real time exactly
     // like the Zephyr branch.
-#ifdef __ZEPHYR__
+#if defined(__ZEPHYR__)
     if (timeout_ms > 0) {
         (void) k_msleep(timeout_ms);
+    }
+#elif defined(NROS_PLATFORM_FREERTOS)
+    if (timeout_ms > 0) {
+        vTaskDelay(pdMS_TO_TICKS(timeout_ms));
     }
 #else
     if (timeout_ms > 0) {

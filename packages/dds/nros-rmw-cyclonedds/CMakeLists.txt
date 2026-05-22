@@ -84,6 +84,18 @@ target_include_directories(nros_rmw_cyclonedds
 
 target_link_libraries(nros_rmw_cyclonedds PUBLIC CycloneDDS::ddsc)
 
+if(DEFINED NANO_ROS_PLATFORM
+   AND (NANO_ROS_PLATFORM STREQUAL "freertos"
+        OR NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"))
+    target_compile_definitions(nros_rmw_cyclonedds PRIVATE NROS_PLATFORM_FREERTOS)
+    if(TARGET freertos_kernel)
+        target_link_libraries(nros_rmw_cyclonedds PRIVATE freertos_kernel)
+    endif()
+    if(TARGET lwip)
+        target_link_libraries(nros_rmw_cyclonedds PRIVATE lwip)
+    endif()
+endif()
+
 # Propagate Cyclone's install lib dir as a build-tree rpath so test
 # binaries find `libddsc.so` from `build/install/lib` instead of any
 # system-installed `ros-humble-cyclonedds` that ld.so happens to see

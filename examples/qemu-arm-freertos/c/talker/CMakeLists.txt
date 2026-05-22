@@ -26,4 +26,4 @@ target_link_libraries(freertos_c_talker PRIVATE
     std_msgs__nano_ros_c
     NanoRos::NanoRos)
 nros_platform_link_app(freertos_c_talker)
-nano_ros_link_rmw(freertos_c_talker RMW zenoh)
+nano_ros_link_rmw(freertos_c_talker RMW "${NROS_RMW}")

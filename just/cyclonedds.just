@@ -49,6 +49,19 @@ doctor:
     fi
     exit $missing
 
+# Phase 175.B — read-only inventory of the Cyclone DDS ddsrt RTOS port
+# surface. This does not claim RTOS Cyclone support is enabled; it
+# distinguishes the existing upstream FreeRTOS+lwIP ddsrt pieces from the
+# missing ThreadX/NetX Duo port.
+ddsrt-port-inventory:
+    bash ./scripts/cyclonedds/ddsrt-port-inventory.sh
+
+# Phase 175.B — configure/build probe for Cyclone DDS on the nano-ros
+# FreeRTOS MPS2 + lwIP target. This is diagnostic only; it does not enable
+# Cyclone fixture cells until the recorded port/config blockers are fixed.
+freertos-cross-probe:
+    bash ./scripts/cyclonedds/freertos-cross-probe.sh
+
 # Build Cyclone DDS (alias for `just cyclonedds setup`).
 build:
     ./scripts/cyclonedds/build.sh
