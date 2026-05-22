@@ -166,6 +166,10 @@ fn init_ethernet(config: &Config) {
         nros_platform_esp32_qemu::sleep::set_poll_callback(crate::network::smoltcp_network_poll);
     }
 
+    esp_println::println!(
+        "  smoltcp poll callback registered: {}",
+        nros_smoltcp::has_poll_callback()
+    );
     esp_println::println!("Ethernet ready.");
 }
 

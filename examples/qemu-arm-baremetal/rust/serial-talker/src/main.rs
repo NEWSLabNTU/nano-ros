@@ -53,16 +53,16 @@ fn main() -> ! {
 
             let mut count: i32 = 0;
             loop {
-                // Poll to process serial transport events (~1s between publishes)
-                for _ in 0..100u32 {
-                    executor.spin_once(core::time::Duration::from_millis(10));
-                }
-
                 match publisher.publish(&Int32 { data: count }) {
                     Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
                     Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
                 }
                 count = count.wrapping_add(1);
+
+                // Poll to process serial transport events (~1s between publishes)
+                for _ in 0..100u32 {
+                    executor.spin_once(core::time::Duration::from_millis(10));
+                }
             }
 
             #[allow(unreachable_code)]
