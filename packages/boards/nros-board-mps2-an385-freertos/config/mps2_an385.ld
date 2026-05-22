@@ -66,6 +66,12 @@ SECTIONS
         _sdata = .;
         *(.data)
         *(.data*)
+        . = ALIGN(8);
+        __tls_base = .;
+        *(.tdata)
+        *(.tdata*)
+        *(.tbss)
+        *(.tbss*)
         . = ALIGN(4);
         _edata = .;
     } > RAM

@@ -73,7 +73,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     }
 
     let binary_path = example_dir.join(format!(
-        "target-zenoh/thumbv7m-none-eabi/release/{}",
+        "target-zenoh/thumbv7m-none-eabi/nros-fast-release/{}",
         binary_name
     ));
 

@@ -663,9 +663,9 @@ pub fn build_freertos_cmake_example_rmw(
 }
 
 /// Phase 118.D — collapsed-shape FreeRTOS Rust example resolver.
-/// FreeRTOS examples are cross-compiled to `thumbv7m-none-eabi`, so
-/// the binary lives at
-/// `examples/qemu-arm-freertos/rust/<case>/target-<rmw>/thumbv7m-none-eabi/<profile>/<binary>`.
+/// FreeRTOS zenoh/xrce Rust examples are cross-compiled to
+/// `target-<rmw>/thumbv7m-none-eabi/<profile>/<binary>`. The CycloneDDS
+/// Rust fixture is linked through CMake and lands in `build-cyclonedds/`.
 pub fn build_freertos_rust_example_rmw(
     case: &str,
     binary_name: &str,
@@ -679,12 +679,16 @@ pub fn build_freertos_rust_example_rmw(
             example_dir.display()
         )));
     }
-    let binary_path = example_dir.join(format!(
-        "{}/thumbv7m-none-eabi/{}/{}",
-        rmw.target_dir(),
-        cargo_target_profile_dir(),
-        binary_name
-    ));
+    let binary_path = if rmw == Rmw::Cyclonedds {
+        example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name))
+    } else {
+        example_dir.join(format!(
+            "{}/thumbv7m-none-eabi/{}/{}",
+            rmw.target_dir(),
+            cargo_target_profile_dir(),
+            binary_name
+        ))
+    };
     require_prebuilt_binary(&binary_path)
 }
 

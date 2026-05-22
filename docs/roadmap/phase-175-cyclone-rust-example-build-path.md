@@ -9,7 +9,13 @@ migrated from the deleted `nros-rmw-dds` crate onto
 path(s) that make `--features rmw-cyclonedds` link end-to-end.
 
 **Status.** **175.A build path landed (2026-05-21)** for the native
-Rust talker + listener; 175.B (embedded ddsrt port) still deferred.
+Rust talker + listener. **175.B FreeRTOS compile/link path is partially
+landed (2026-05-22)** for the FreeRTOS C/C++ talker fixtures and the
+Rust talker fixture: the pinned Cyclone tree builds as a Cortex-M3
+static `libddsc.a`, installs into `build/cyclonedds-freertos-install`,
+and FreeRTOS C/C++/Rust talkers link against `NANO_ROS_RMW=cyclonedds`.
+Runtime boot/exchange remains open. ThreadX has no upstream ddsrt files
+and still needs a new NetX Duo-backed port.
 
 The CMake/Corrosion glue at `examples/native/rust/{talker,listener}/CMakeLists.txt`
 now links the Cyclone backend into a pure-Rust example end-to-end:
@@ -95,43 +101,178 @@ The backend links today only when the build is **CMake-driven**:
 setup` installs it under `build/install/`). Give the native Rust
 examples a CMakeLists.txt that:
 
-- pulls in the Cyclone C++ backend (`add_subdirectory(packages/dds/nros-rmw-cyclonedds)`
+- [x] Pulls in the Cyclone C++ backend (`add_subdirectory(packages/dds/nros-rmw-cyclonedds)`
   with `CMAKE_PREFIX_PATH` → the Cyclone install),
-- imports the Rust example bin via `corrosion_import_crate(... FEATURES rmw-cyclonedds NO_DEFAULT_FEATURES)`,
-- links the backend into the bin with
+- [x] Imports the Rust example bin via `corrosion_import_crate(... FEATURES rmw-cyclonedds NO_DEFAULT_FEATURES)`.
+- [x] Links the backend into the bin with
   `corrosion_link_libraries(<bin> -Wl,--whole-archive nros_rmw_cyclonedds -Wl,--no-whole-archive CycloneDDS::ddsc)`
   so `nros_rmw_cyclonedds_register` resolves and its
   `.linkm2_RMW_INIT_ENTRIES` section entry survives dead-strip.
+- [x] Adds native Rust `talker` / `listener` CMake entry points.
+- [x] Drives native Rust Cyclone fixtures through CMake/Corrosion
+  instead of the pure-Cargo fixture loop.
 
 **Files** (new): `examples/native/rust/<ex>/CMakeLists.txt`; a
 `just native build-fixtures` arm that drives the cyclone variant via
 CMake instead of `cargo build`.
 
-**Acceptance:** native Rust talker/listener build + boot publishing on
-Cyclone, interop-tested against the C/C++ Cyclone examples.
+**Acceptance:**
+
+- [x] Native Rust talker builds and links with Cyclone DDS.
+- [x] Native Rust listener builds and links with Cyclone DDS.
+- [x] Native Rust talker boots and creates the Cyclone writer.
+- [x] Native Rust listener boots and creates the Cyclone reader.
+- [x] Native Rust talker/listener exchange user data over loopback.
+- [ ] Native Rust Cyclone examples are interop-tested against the C/C++
+  Cyclone examples.
 
 ### 175.B — FreeRTOS / ThreadX Cyclone (ddsrt RTOS port)
 
 **Not build-glue — a port.** Cyclone DDS abstracts its OS dependencies
-(sockets, threads, time, sync) behind `ddsrt`. There is no FreeRTOS or
-ThreadX `ddsrt` port. Standing one up is a weeks-scale effort
-comparable to the Zephyr Cyclone bring-up (Phase 11W, still ongoing on
-`main`), and likely a research-grade undertaking on bare-metal
-thumbv7m / riscv64 where there is no hosted socket stack.
+(sockets, threads, time, sync) behind `ddsrt`. FreeRTOS can use
+Cyclone's upstream FreeRTOS/lwIP port with board compatibility shims;
+ThreadX still has no upstream `ddsrt` port. Standing up a new ThreadX
+port is a weeks-scale effort comparable to the Zephyr Cyclone bring-up
+(Phase 11W, still ongoing on `main`), and likely a research-grade
+undertaking on bare-metal thumbv7m / riscv64 where there is no hosted
+socket stack.
 
-**Files** (new, large): a `ddsrt` port per RTOS; the embedded Cyclone
-link wiring once a port exists.
+**Work items:**
 
-**Acceptance:** out of scope for an estimate until 175.A lands and the
-embedded networking story (smoltcp/NetX/lwIP ↔ ddsrt sockets) is
-scoped on its own.
+- [x] Inventory the pinned Cyclone `ddsrt` RTOS surface.
+- [x] Scope the embedded networking split:
+  - FreeRTOS: upstream `ddsrt` has `WITH_FREERTOS` plus `WITH_LWIP`
+    hooks and should use lwIP sockets first.
+  - ThreadX: no upstream `ddsrt` files exist; the port must be new and
+    backed by NetX Duo sockets.
+- [x] Add a FreeRTOS Cyclone cross-build probe using
+  `WITH_FREERTOS=ON`, `WITH_LWIP=ON`, the MPS2 toolchain, and the
+  checked-out FreeRTOS/lwIP trees.
+- [x] Resolve the first FreeRTOS probe blocker: Cyclone's lwIP
+  `ddsrt_getifaddrs` path expects `netif_list`, but the MPS2
+  `lwipopts.h` previously set `LWIP_SINGLE_NETIF=1`, which hides
+  `netif_list` and `struct netif::next`.
+- [x] Design the ThreadX `ddsrt` port API mapping.
+- [x] Implement the first embedded `ddsrt` link surface by using
+  Cyclone's upstream FreeRTOS/lwIP ddsrt port plus nano-ros MPS2
+  compatibility shims for TLS, wall-clock, hostname, FreeRTOS trace
+  API exposure, and bare-metal linker TLS placement.
+- [x] Add embedded Cyclone link wiring for the FreeRTOS C/C++ talker
+  fixtures.
+- [x] Add embedded Cyclone link wiring for the FreeRTOS Rust talker
+  fixture using a CMake/Corrosion staticlib entry point.
+- [x] Re-enable the relevant `rmw-cyclonedds` fixture matrix cell for
+  the first FreeRTOS Rust talker build.
+
+**Files** (new, large):
+
+- [x] FreeRTOS probe/link surface that consumes Cyclone's upstream
+  FreeRTOS/lwIP `ddsrt` port.
+- [ ] ThreadX `ddsrt` port.
+- [x] Embedded Cyclone link wiring for the first FreeRTOS C/C++/Rust
+  talker fixtures.
+
+**Acceptance:**
+
+- [x] Embedded networking story is scoped enough to estimate.
+- [x] At least one RTOS can build a Rust Cyclone DDS example.
+- [ ] At least one RTOS can boot a Rust Cyclone DDS example.
+- [ ] At least one RTOS Rust Cyclone DDS example exchanges user data.
+- [x] Fixture recipes build RTOS Rust Cyclone cells without pure-Cargo
+  link failures.
+- [x] FreeRTOS C talker links with `NANO_ROS_RMW=cyclonedds`.
+- [x] FreeRTOS C++ talker links with `NANO_ROS_RMW=cyclonedds`.
+- [x] FreeRTOS Rust talker links with `NANO_ROS_RMW=cyclonedds`.
+
+**Probe:**
+
+```bash
+just cyclonedds ddsrt-port-inventory
+just cyclonedds freertos-cross-probe
+```
+
+The inventory probe is read-only and verifies the upstream FreeRTOS/lwIP
+ddsrt files exist while recording that ThreadX/NetX Duo still has no
+ddsrt port.
+
+The FreeRTOS cross-build probe configures the pinned Cyclone tree with
+`WITH_FREERTOS=ON`, `WITH_LWIP=ON`, `BUILD_SHARED_LIBS=OFF`, the
+MPS2 ARM toolchain, and the checked-out FreeRTOS/lwIP headers. It uses
+`CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY` so CMake feature checks
+do not require hosted executables and disables Cyclone's optional
+FreeRTOS rusage path because the MPS2 config does not enable the trace
+facility/runtime-stats APIs it needs. The current result is:
+
+- configure passes;
+- `ddsc` compiles and installs as a static ARM Cortex-M3 library and
+  reaches the FreeRTOS/lwIP `ddsrt` sources;
+- the first port/config blocker was fixed by setting
+  `LWIP_SINGLE_NETIF=0` in the MPS2 board config, keeping lwIP's
+  linked-list netif model visible to
+  `src/ddsrt/src/ifaddrs/lwip/ifaddrs.c`;
+- the probe carries a temporary `-D__int64_t_defined=1` ARM-newlib guard
+  so Cyclone's `PRIu64`/`PRIu32` format macros are visible and the build
+  can get through the current compile probe.
+
+The FreeRTOS C/C++ talker link path additionally requires:
+
+- `cmake/board/nano-ros-board-mps2-an385-freertos.cmake` exposes
+  `configUSE_TRACE_FACILITY=1` to FreeRTOS so Cyclone's `ddsrt_gettid`
+  can resolve `vTaskGetInfo`;
+- `packages/core/nros-platform-freertos/src/cyclonedds_compat.c`
+  provides the bare-metal symbols Cyclone expects from hosted C/ARM
+  runtimes (`__aeabi_read_tp`, `clock_gettime`, `gethostname`);
+- the MPS2 linker script keeps Cyclone's TLS sections adjacent and
+  defines `__tls_base`;
+- the Cyclone wrapper avoids 64-bit libatomic dependencies on FreeRTOS
+  for service request sequence counters.
+
+The FreeRTOS Rust talker uses a CMake/Corrosion staticlib shape rather
+than pure cargo:
+
+- `examples/qemu-arm-freertos/rust/talker/src/lib.rs` owns the shared
+  app body;
+- the existing `src/main.rs::_start()` still drives the pure-cargo
+  zenoh path through the Rust board crate;
+- the Cyclone path imports the crate as a `staticlib` and exports
+  `app_main()` so the checked-in C startup creates the FreeRTOS task,
+  initializes networking, and then enters Rust;
+- `just freertos build-fixtures` regenerates Rust message crates before
+  cargo builds and adds the `freertos/rust/talker` Cyclone CMake cell
+  when `build/cyclonedds-freertos-install/lib/libddsc.a` exists.
+
+### ThreadX ddsrt port mapping
+
+ThreadX has no upstream Cyclone `ddsrt` implementation. A nano-ros
+ThreadX port should be a new `src/ddsrt/src/{sync,time,threads,sockets}/threadx`
+surface wired by a Cyclone cache option, not a fork of the POSIX port.
+Expected mapping:
+
+- time: `tx_time_get()` plus the configured ThreadX tick rate for
+  monotonic time, with an explicit wall-clock hook for APIs that need
+  real time;
+- sleep: `tx_thread_sleep()` with millisecond/tick rounding matching the
+  FreeRTOS `pdMS_TO_TICKS` behavior;
+- mutex/cond/semaphore: `TX_MUTEX`, `TX_SEMAPHORE`, and either
+  `tx_semaphore_get` timeouts or a small condition-variable adapter;
+- threads: `tx_thread_create()` with caller-provided stack storage or a
+  nano-ros heap-backed allocation wrapper, plus deterministic priority
+  mapping from normalized nano-ros priorities;
+- sockets/ifaddrs: NetX Duo BSD sockets if enabled, otherwise direct
+  NetX Duo UDP/TCP wrappers; interface enumeration must expose at least
+  IPv4 address/netmask/broadcast for Cyclone participant discovery;
+- TLS/errno/hostname: explicit shims matching the FreeRTOS compatibility
+  layer, because bare-metal ThreadX toolchains do not provide hosted
+  libc process/thread state.
 
 ## Notes
 
 - The migrated examples keep `rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]`
-  in `Cargo.toml` so the manifest resolves and the intent is recorded;
-  the feature is simply never built by the fixture matrices until 175.A.
-- Fixture recipes already reverted to zenoh-only on the pure-cargo
-  paths: `just/{native,freertos,threadx-riscv64,threadx-linux,nuttx}.just`.
+  in `Cargo.toml` so the manifest resolves and the intent is recorded.
+  Pure-cargo fixture loops must stay zenoh-only; Cyclone fixture cells
+  need a CMake/Corrosion path that can link the C++ backend.
+- Native and FreeRTOS now have CMake/Corrosion Cyclone fixture cells.
+  ThreadX, NuttX, and other pure-cargo RTOS fixture loops remain
+  zenoh-only until they grow equivalent CMake/backend wiring.
 - Do NOT re-introduce a `for rmw in ... cyclonedds` / `... dds` arm into
   those pure-cargo loops without first landing 175.A.

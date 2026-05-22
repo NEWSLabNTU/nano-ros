@@ -39,7 +39,7 @@ if(NOT DEFINED FREERTOS_LWIP_TARGET)
         "Name of the imported lwIP CMake target (optional)")
 endif()
 
-set(_nros_freertos_sources src/platform.c src/timer.c)
+set(_nros_freertos_sources src/platform.c src/timer.c src/cyclonedds_compat.c)
 
 # net.c pulls <lwip/sockets.h>; skip it when no lwIP target is around.
 # Downstream builds without networking (smoke tests, MCU profiles that

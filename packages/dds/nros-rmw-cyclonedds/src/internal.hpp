@@ -12,7 +12,28 @@
 #include "nros/rmw_event.h"
 #include "nros/rmw_ret.h"
 
+#include <cstdint>
+
+#if defined(NROS_PLATFORM_FREERTOS)
+#include <FreeRTOS.h>
+#include <task.h>
+#else
+#include <chrono>
+#include <thread>
+#endif
+
 namespace nros_rmw_cyclonedds {
+
+inline void platform_sleep_ms(uint32_t timeout_ms) {
+    if (timeout_ms == 0) {
+        return;
+    }
+#if defined(NROS_PLATFORM_FREERTOS)
+    vTaskDelay(pdMS_TO_TICKS(timeout_ms));
+#else
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+#endif
+}
 
 /* ---- session.cpp helpers ---- */
 /** Return the Cyclone participant handle for an open session, or 0

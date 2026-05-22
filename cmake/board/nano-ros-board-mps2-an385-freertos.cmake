@@ -103,6 +103,13 @@ nros_freertos_validate(REQUIRE LWIP_DIR FREERTOS_PORT)
 if(NOT TARGET freertos_kernel)
     nros_freertos_build_kernel(PORT "${FREERTOS_PORT}")
 endif()
+if(TARGET freertos_kernel)
+    # Cyclone DDS's FreeRTOS ddsrt_gettid() uses vTaskGetInfo(), which
+    # FreeRTOS only emits when configUSE_TRACE_FACILITY is enabled. This does
+    # not enable nano-ros's optional tband trace hooks; those remain gated by
+    # NROS_TRACE in FreeRTOSConfig.h.
+    target_compile_definitions(freertos_kernel PUBLIC configUSE_TRACE_FACILITY=1)
+endif()
 if(NOT TARGET lwip)
     nros_freertos_build_lwip()
 endif()

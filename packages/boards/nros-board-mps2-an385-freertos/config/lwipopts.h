@@ -95,7 +95,9 @@
 /* ---- Netif ---- */
 #define LWIP_NETIF_STATUS_CALLBACK      1
 #define LWIP_NETIF_LINK_CALLBACK        1
-#define LWIP_SINGLE_NETIF              1
+/* Cyclone DDS's lwIP ddsrt port enumerates interfaces through netif_list.
+ * Keep the linked-list netif model even though the QEMU board has one NIC. */
+#define LWIP_SINGLE_NETIF              0
 #define LWIP_NETIF_API                  1
 
 /* ---- Threading (FreeRTOS) ---- */

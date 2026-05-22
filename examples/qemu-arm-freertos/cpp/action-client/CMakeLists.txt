@@ -26,4 +26,4 @@ target_link_libraries(freertos_cpp_action_client PRIVATE
     example_interfaces__nano_ros_cpp
     NanoRos::NanoRosCpp)
 nros_platform_link_app(freertos_cpp_action_client)
-nano_ros_link_rmw(freertos_cpp_action_client RMW zenoh)
+nano_ros_link_rmw(freertos_cpp_action_client RMW "${NROS_RMW}")

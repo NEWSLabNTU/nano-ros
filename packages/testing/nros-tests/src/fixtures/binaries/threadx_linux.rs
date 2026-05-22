@@ -60,7 +60,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
-    let binary_path = example_dir.join(format!("target-zenoh/release/{}", binary_name));
+    let binary_path = example_dir.join(format!("target-zenoh/nros-fast-release/{}", binary_name));
     super::require_prebuilt_binary(&binary_path)
 }
 
