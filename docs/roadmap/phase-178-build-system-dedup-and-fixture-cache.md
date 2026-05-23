@@ -131,10 +131,14 @@ non-duplicating.
   embedded C/C++ fixture recipes now reuse unchanged `build-zenoh/` or
   `build-<rmw>/` dirs and only wipe/reconfigure on signature changes.
 
-- [ ] **178.E — keep Zephyr standalone app coverage.** Do not collapse
+- [x] **178.E — keep Zephyr standalone app coverage.** Do not collapse
   Zephyr roles into one runtime-dispatch image for this phase. The E2E
   value is that `examples/zephyr/<lang>/<role>` builds as a user-copyable
   standalone project.
+  Landed 2026-05-24 as an explicit guardrail. The existing Zephyr
+  fixture matrix already preserves this: `just/zephyr.just` generates one
+  image per `<lang>/<role>/<rmw>` and keeps the source rooted in
+  `examples/zephyr/<lang>/<role>`.
 
 - [x] **178.F — document timing output.** Preserve or improve the
   `build-test-fixtures` timing output and add equivalent stage timing

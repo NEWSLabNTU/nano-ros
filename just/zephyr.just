@@ -287,9 +287,11 @@ build-fixtures:
 
     # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
     entries=()
-    # Build every user-facing role as its own Zephyr app. RMW still
-    # varies by overlay, preserving the same shape a user copy-out build
-    # would exercise.
+    # Phase 178.E guardrail: keep Zephyr E2E coverage on the real
+    # user-copyable examples. Do not collapse roles into one runtime
+    # dispatch image here; each role remains its own Zephyr app/image so
+    # tests prove `examples/zephyr/<lang>/<role>` builds standalone.
+    # RMW still varies by overlay, matching the user build shape.
     for lang in $(nros_fixture_langs); do
         lang_tag="$(nros_zephyr_lang_tag "$lang")"
         for rmw in zenoh xrce cyclonedds; do
