@@ -76,7 +76,7 @@ PY
 fi
 
 # ---- Patch 2: modules/lang/rust/Kconfig ----
-if grep -q 'CPU_CORTEX_R\b' "$KCONFIG_FILE"; then
+if grep -q 'CPU_AARCH32_CORTEX_R\|CPU_CORTEX_R\b' "$KCONFIG_FILE"; then
     echo "[skip] Kconfig already lists Cortex-R in RUST_SUPPORTED"
 elif [ ! -w "$KCONFIG_FILE" ]; then
     echo "[skip] Kconfig is not writable: $KCONFIG_FILE"

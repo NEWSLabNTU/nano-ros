@@ -5,14 +5,18 @@ core utilization across the heterogeneous build (cargo + build-script
 `cc` + ninja-via-west + cmake). Captures what landed plus the
 remaining opportunities found while bringing `build-all` green on main.
 
-**Status.** Partially done — sccache wiring + a global parallelism
-budget + parallel zephyr have landed; the larger structural wins
-(jobserver, SDK-prebuilt picolibc, per-example overhead) are open.
+**Status.** Pragmatic scope done. The safe build-system wins have
+landed: sccache wiring, global parallelism budget, parallel Zephyr,
+Zephyr incremental rebuilds, ninja-direct warm rebuilds, and the
+unified jobserver from Phase 176. The only remaining 174.A/174.B ideas
+are Zephyr sysbuild/shared-image research and cross-config picolibc
+dedup measurement; both are intentionally deferred.
 
 **Priority.** P3 (ergonomics/CI throughput).
 
-**Depends on.** none for the landed work. The open items pull in
-Phase 176 (jobserver) and Phase 67 / #67 (SDK-prebuilt picolibc).
+**Depends on.** none for the landed work. Phase 176 supplied the
+jobserver path. SDK-prebuilt picolibc was verified already optimal for
+SDK targets and unavailable for native_sim host-toolchain fixtures.
 
 ## Landed
 
@@ -36,9 +40,9 @@ Phase 176 (jobserver) and Phase 67 / #67 (SDK-prebuilt picolibc).
   `ninja = budget/BUILD_JOBS`; per-example `-d` dirs isolate them. Was
   serial 1×8 (≤8 cores even alone); now 4×8 on a 32-core host.
 
-## Open opportunities
+## Closed / Deferred Opportunities
 
-### 174.A — zephyr per-example overhead (biggest residual)
+### 174.A — zephyr per-example overhead — **landed; residual research deferred**
 
 Each of ~21 zephyr fixtures pays, uncacheably and largely serially:
 `west`/python startup (~3 s) + **cmake reconfigure** + codegen
@@ -67,6 +71,21 @@ Each of ~21 zephyr fixtures pays, uncacheably and largely serially:
   Under the fifo jobserver ninja inherits the pool; else it gets the
   per-build ninja-jobs budget. `pristine=always` still forces west.
 
+- [x] **fixture signature guard** (landed 2026-05-23). The ninja-direct
+  fast path now records the configured fixture inputs beside each build
+  dir (`board`, app source, RMW overlays, XRCE port, codegen tool,
+  toolchain cache, `MAKE`, and compiler launcher). If any of those
+  change, the next build uses `west build` once to refresh CMake instead
+  of blindly reusing a stale `build.ninja`; unchanged dirs still take
+  the sub-second ninja path.
+
+- [x] **patch idempotence fix** (landed 2026-05-23). The Cortex-R
+  zephyr-lang-rust patch guard now detects the actual inserted
+  `CPU_AARCH32_CORTEX_R` token. Before this, `just zephyr
+  build-fixtures` touched Zephyr's Rust Kconfig on every run, causing
+  ninja to regenerate CMake and rebuild far more than the fixture
+  changed.
+
 **Deeper investigation (2026-05-21) — diminishing returns, deferred.**
 With the warm same-dir rebuild already at 0.28 s, the residual cost is
 the **cold first build of each fresh build dir**, which decomposes as:
@@ -86,10 +105,11 @@ levers fight Zephyr's **one-app-one-image** model:
   configure (~4 s) is likewise per-build-dir in Zephyr's model with no
   cheap share.
 
-Verdict: the clean, safe wins (pristine=auto + ninja-direct + sccache +
-the jobserver) are banked; further cold-build reduction needs a Zephyr
-sysbuild rework + a clean cyclonedds workspace. Deferred as a tracked
-research item rather than hacked in.
+Verdict: the clean, safe wins (pristine=auto + ninja-direct + fixture
+signatures + sccache + the jobserver) are banked. Further cold-build
+reduction needs a Zephyr sysbuild/shared-image rework + a clean
+cyclonedds workspace. Deferred as a tracked research item rather than
+hacked in.
 
 ### 174.B — config-divergent cache misses — **investigated, deferred** (2026-05-21)
 
@@ -145,12 +165,16 @@ allocation — frees the tail-platform from its fixed share. Needs ninja
 ≥1.13 + make ≥4.4. Note: helps the *parallel* axis, not 174.A's serial
 configure/link tax.
 
+**Status:** landed in Phase 176. `just build-all` auto-routes through
+the jobserver when pinned make/ninja are available; set
+`NROS_NO_JOBSERVER=1` to force the older static split.
+
 ## Notes
 
-- The landed knob + parallel-zephyr give most of the easy win; 174.A
-  (per-example configure/link) is now the dominant zephyr cost and is
-  serial, so neither the knob nor Phase 176 addresses it — sysbuild /
-  shared-config-tree is the lever there.
+- The landed knob + parallel-zephyr + jobserver cover the practical
+  parallelism wins. 174.A's remaining cold per-example configure/link
+  cost is structural Zephyr work; sysbuild/shared-config-tree is the
+  lever there.
 - All `just/*.just` recipes read `${NROS_BUILD_JOBS:-N}` for their inner
   fan-out; never re-introduce a hardcoded `--jobs` constant without
   threading the budget through.

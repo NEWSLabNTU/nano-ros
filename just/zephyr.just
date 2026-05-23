@@ -419,7 +419,9 @@ build-fixtures:
         # compile on any uncacheable invocation, so this is safe; the
         # only historical caution was parallel west fan-out (still
         # gated behind NROS_ZEPHYR_BUILD_JOBS), not sccache itself.
+        sccache_launcher=0
         if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
+            sccache_launcher=1
             extra_args+=(-DCMAKE_C_COMPILER_LAUNCHER=sccache
                          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache)
         fi
@@ -437,22 +439,37 @@ build-fixtures:
         # ninja regenerates build.ninja itself only when a cmake input
         # (CMakeLists / prj.conf) actually changed, so this is correct;
         # `pristine=always` still forces a clean west reconfigure. If an
-        # older build dir cached `/usr/bin/make`, re-run west once so
-        # `-DMAKE=$make_bin` reaches the native_sim runner rule. Under
-        # the fifo jobserver (NROS_JOBSERVER=1) ninja inherits the pool;
+        # older build dir cached different cmake inputs, re-run west
+        # once so the cache matches this fixture variant. Under the
+        # fifo jobserver (NROS_JOBSERVER=1) ninja inherits the pool;
         # otherwise it gets the per-build ninja-jobs budget.
+        sig_file="$actual_build_dir/.nros-zephyr-fixture.sig"
+        desired_sig="$(printf '%s\n' \
+            "board=$board" \
+            "src=$src" \
+            "xrce_port=$xrce_port" \
+            "conf_files=$conf_files" \
+            "codegen_tool=$codegen_tool" \
+            "toolchain_cache_dir=$toolchain_cache_dir" \
+            "make=$make_bin" \
+            "sccache_launcher=$sccache_launcher")"
         needs_west=0
         cache_file="$actual_build_dir/CMakeCache.txt"
         if [ -f "$cache_file" ] && ! grep -qxF "MAKE:FILEPATH=$make_bin" "$cache_file"; then
             needs_west=1
         fi
+        if [ ! -f "$sig_file" ] || [ "$(cat "$sig_file")" != "$desired_sig" ]; then
+            needs_west=1
+        fi
         if [ "$pristine" != "always" ] && [ -f "$actual_build_dir/build.ninja" ] && [ "$needs_west" = "0" ]; then
+            use_west=0
             if [ "${NROS_JOBSERVER:-}" = "1" ]; then
                 build_argv=(ninja -C "$actual_build_dir")
             else
                 build_argv=(ninja -C "$actual_build_dir" -j "$ninja_jobs")
             fi
         else
+            use_west=1
             build_argv=(west build -b "$board" -d "$actual_build_dir" -p "$pristine"
                         "$nros_root/examples/$src" "${west_extra[@]}")
         fi
@@ -464,6 +481,11 @@ build-fixtures:
                 CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
                 "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
+              rc=$?
+              if [ "$rc" -eq 0 ] && [ "$use_west" = "1" ]; then
+                printf '%s\n' "$desired_sig" > "$sig_file"
+              fi
+              exit "$rc"
             ) 2>&1 | tee "$log"
             rc="${PIPESTATUS[0]}"
             set -e
@@ -482,6 +504,11 @@ build-fixtures:
                 CCACHE_DIR="$ccache_dir" CCACHE_TEMPDIR="$ccache_tmpdir" \
                 "${cmake_build_env[@]}" \
                 "${build_argv[@]}"
+              rc=$?
+              if [ "$rc" -eq 0 ] && [ "$use_west" = "1" ]; then
+                printf '%s\n' "$desired_sig" > "$sig_file"
+              fi
+              exit "$rc"
             ) > "$log" 2>&1 &
             running+=("$!|$src|$log|$best_effort")
             while [ "${#running[@]}" -ge "$jobs" ]; do
