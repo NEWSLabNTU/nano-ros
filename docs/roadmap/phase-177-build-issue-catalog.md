@@ -189,6 +189,15 @@ passed.
 
 ## Closed
 
+- [x] **177.21 - `generate-bindings` should be incremental.**
+  Closed 2026-05-24. Fixed with
+  `scripts/build/generate-rust-incremental.sh`. Root `generate-bindings`
+  now hashes the package manifest, local interface files, the built
+  `nros` binary, ROS interface prefixes, and generator args before
+  deciding whether to call `nros generate-rust --force`. Unchanged
+  packages skip regeneration; package/interface/generator changes still
+  force a refresh.
+
 - [x] **177.2 - Remaining Cyclone Zephyr action gaps.**
   Closed 2026-05-23. Zephyr Cyclone DDS action examples now build and
   run end-to-end for C, C++, and Rust on `native_sim`. The fix adds a

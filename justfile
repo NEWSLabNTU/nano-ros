@@ -1247,96 +1247,33 @@ install-nros-cli:
 generate-bindings:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/generate-rust-incremental.sh
     echo "Building nros CLI..."
     cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
     NROS="$(pwd)/packages/codegen/packages/target/debug/nros"
-    echo "Regenerating Rust bindings..."
-    force="${NROS_GENERATE_BINDINGS_FORCE:-0}"
-
-    generator_input_hash="$(
-        {
-            "$NROS" --version
-            sha256sum "$NROS"
-            find packages/codegen/packages/cargo-nano-ros \
-                 packages/codegen/packages/nros-cli \
-                 packages/codegen/packages/nros-cli-core \
-                 packages/codegen/packages/rosidl-bindgen \
-                 packages/codegen/packages/rosidl-codegen \
-                 packages/codegen/packages/rosidl-parser \
-                 -type f \( -name '*.rs' -o -name 'Cargo.toml' \) -print 2>/dev/null \
-                | LC_ALL=C sort \
-                | xargs -r sha256sum
-        } | sha256sum | awk '{print $1}'
-    )"
-
-    interface_input_hash="$(
-        {
-            find packages/codegen -path '*/target/*' -prune -o \
-                \( -path '*/msg/*' -o -path '*/srv/*' -o -path '*/action/*' -o -name package.xml \) \
-                -type f -print 2>/dev/null
-            if [ -n "${AMENT_PREFIX_PATH:-}" ]; then
-                IFS=':' read -ra prefixes <<< "$AMENT_PREFIX_PATH"
-                for prefix in "${prefixes[@]}"; do
-                    share="$prefix/share"
-                    [ -d "$share" ] || continue
-                    find "$share" \
-                        \( -path '*/msg/*' -o -path '*/srv/*' -o -path '*/action/*' -o -name package.xml \) \
-                        -type f -print 2>/dev/null
-                done
-            fi
-        } | LC_ALL=C sort -u | xargs -r sha256sum | sha256sum | awk '{print $1}'
-    )"
-
-    generate_one() {
-        local dir="$1"
-        local stamp_key stamp
-        stamp_key="$(printf '%s\n' "$dir" | sha256sum | awk '{print $1}')"
-        stamp="target/nros-generate-bindings/${stamp_key}.sha256"
-        local current
-        current="$(
-            {
-                printf 'schema=178.L.v1\n'
-                printf 'generator=%s\n' "$generator_input_hash"
-                printf 'interfaces=%s\n' "$interface_input_hash"
-                sha256sum "$dir/package.xml"
-            } | sha256sum | awk '{print $1}'
-        )"
-        if [ "$force" != "1" ] \
-           && [ -f "$stamp" ] \
-           && [ "$(cat "$stamp")" = "$current" ] \
-           && find "$dir/generated" -mindepth 2 -maxdepth 2 -name Cargo.toml -print -quit 2>/dev/null | grep -q .; then
-            echo "  skip $dir"
-            return 0
-        fi
-        echo "  $dir"
-        (cd "$dir" && "$NROS" generate-rust --force)
-        mkdir -p "$(dirname "$stamp")"
-        printf '%s\n' "$current" > "$stamp"
-    }
-    export NROS generator_input_hash interface_input_hash force
-    export -f generate_one
+    echo "Refreshing Rust bindings..."
 
     # Internal crate (workspace member — manually maintained, do not auto-regenerate)
     # To update: run `nros generate-rust` in packages/interfaces/rcl-interfaces/
     # then apply nros- prefix rename to generated Cargo.toml and source files
 
     # Auto-discover all examples with package.xml (Rust only, not zephyr).
-    # `--force` so a system `apt upgrade ros-humble-*-msgs` actually
-    # propagates into the regenerated `generated/<pkg>/Cargo.toml`
-    # version field. Without it the per-package skip-if-exists check
-    # leaves the old crate version in place and downstream cargo
-    # rebuilds reuse the stale rlib.
-    find examples -name package.xml -not -path '*/target/*' -not -path '*/generated/*' \
-        | LC_ALL=C sort \
-        | while IFS= read -r pkg; do generate_one "$(dirname "$pkg")"; done
+    # The helper hashes package.xml, local interfaces, the nros binary, and
+    # ROS interface files. It still calls `nros generate-rust --force` when
+    # those inputs change so apt/setup ROS message updates refresh output.
+    for pkg in $(find examples -name package.xml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+        dir="$(dirname "$pkg")"
+        nros_generate_rust_if_needed "$dir" "$NROS"
+    done
     # Phase 131.B — bench/test-fixture crates relocated under packages/testing/
     # also ship a package.xml + generated/ tree.
-    find packages/testing/nros-bench packages/testing/nros-tests/bins packages/testing/nros-smoke \
-        -name package.xml -not -path '*/target/*' -not -path '*/generated/*' 2>/dev/null \
-        | LC_ALL=C sort \
-        | while IFS= read -r pkg; do generate_one "$(dirname "$pkg")"; done
+    for pkg in $(find packages/testing/nros-bench packages/testing/nros-tests/bins packages/testing/nros-smoke \
+                     -name package.xml -not -path '*/target/*' -not -path '*/generated/*' 2>/dev/null | sort); do
+        dir="$(dirname "$pkg")"
+        nros_generate_rust_if_needed "$dir" "$NROS"
+    done
 
-    echo "All bindings regenerated!"
+    echo "All bindings refreshed!"
 
 # Remove generated/ directories in examples (not rcl-interfaces — it's a workspace member)
 clean-bindings:

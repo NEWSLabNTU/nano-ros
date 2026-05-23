@@ -4,7 +4,8 @@
 the same platform examples/fixtures twice, and restore safe incremental
 reuse for CMake fixture build dirs.
 
-**Status.** In progress. Created from the 2026-05-24 build-all review.
+**Status.** Archived 2026-05-24. Remaining generate-bindings
+incrementality follow-up moved to Phase 177 as 177.21.
 
 **Priority.** P2 (developer and CI wall-clock).
 
@@ -213,11 +214,11 @@ non-duplicating.
   `package.xml`, generator version, requested interfaces, and source
   interface files so unchanged examples skip regeneration while ROS
   interface upgrades still force correct output refresh.
-  Done: root `generate-bindings` now computes a generator/source
-  interface hash, writes per-package stamps under
-  `target/nros-generate-bindings/`, and skips unchanged packages that
-  still have generated Cargo manifests. Set
-  `NROS_GENERATE_BINDINGS_FORCE=1` to force full regeneration.
+  Done with `scripts/build/generate-rust-incremental.sh`: root
+  `generate-bindings` now hashes the package manifest, local interface
+  files, the built `nros` binary, ROS interface prefixes, and generator
+  args before deciding whether to call `nros generate-rust --force`.
+  Set `NROS_GENERATE_BINDINGS_FORCE=1` to force full regeneration.
 
 ## Acceptance
 
