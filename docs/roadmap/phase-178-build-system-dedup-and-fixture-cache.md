@@ -207,12 +207,17 @@ non-duplicating.
   `just nuttx build-all-full` as the opt-in tier for the slower
   Kconfig/Application.mk external-app coverage.
 
-- [ ] **178.L — make generate-bindings incremental.** `generate-bindings`
+- [x] **178.L — make generate-bindings incremental.** `generate-bindings`
   currently builds `nros-cli` and runs `generate-rust --force` across
   discovered example `package.xml` dirs. Add a stamp/hash over
   `package.xml`, generator version, requested interfaces, and source
   interface files so unchanged examples skip regeneration while ROS
   interface upgrades still force correct output refresh.
+  Done: root `generate-bindings` now computes a generator/source
+  interface hash, writes per-package stamps under
+  `target/nros-generate-bindings/`, and skips unchanged packages that
+  still have generated Cargo manifests. Set
+  `NROS_GENERATE_BINDINGS_FORCE=1` to force full regeneration.
 
 ## Acceptance
 
