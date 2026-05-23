@@ -27,26 +27,27 @@ OVERLAP_FIXTURES := $(addprefix fixtures-,$(EXAMPLE_OVERLAP_PLATFORMS))
 INDEPENDENT_FIXTURES := $(addprefix fixtures-,$(INDEPENDENT_FIXTURE_PLATFORMS))
 FIXTURES := $(OVERLAP_FIXTURES) $(INDEPENDENT_FIXTURES)
 
-.PHONY: all prereqs build-examples $(FIXTURES)
+.PHONY: all prereqs build-example-extras $(FIXTURES)
 
-# Build examples once. Fixture targets that write the same target dirs as
-# root `build-examples` wait for it; independent fixture platforms still
-# run concurrently with the example tier.
-all: build-examples $(INDEPENDENT_FIXTURES) $(OVERLAP_FIXTURES)
+# Build non-fixture example leaves + every platform's fixtures concurrently;
+# all gated behind shared workspace/tooling prereqs.
+all: build-example-extras $(FIXTURES)
 
 # Serial prerequisites every parallel target needs. Each `+just` shares
-# the jobserver, so the cargo/cc inside still parallelizes against the
-# pool — only the three steps themselves are ordered.
+# the jobserver, so the cargo/cc inside still parallelizes against the pool.
 prereqs:
-	+just build-workspace
 	+just generate-bindings
+	+just build-workspace
+	+just build-workspace-embedded
+	+just build-zenohd
+	+just qemu build-zenoh-pico
 	+just build-zenoh-posix-fixture
 
-build-examples: prereqs
-	+just build-examples
+build-example-extras: prereqs
+	+just build-example-extras
 
 $(INDEPENDENT_FIXTURES): fixtures-%: prereqs
 	+just $* build-fixtures
 
-$(OVERLAP_FIXTURES): fixtures-%: build-examples
+$(OVERLAP_FIXTURES): fixtures-%: prereqs
 	+just $* build-fixtures

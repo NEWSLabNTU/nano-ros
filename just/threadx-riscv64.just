@@ -202,7 +202,7 @@ build-all: build-fixtures
     @echo "ThreadX RISC-V 64 build-all completed."
 
 # Run ThreadX QEMU RISC-V 64 integration tests
-test verbose="": build-examples
+test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ]; then

@@ -271,7 +271,7 @@ build-all: build build-examples build-fixtures build-fixtures-make
     @echo "NuttX build-all completed."
 
 # Run NuttX QEMU integration tests
-test verbose="": build-examples
+test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$NUTTX_DIR/include" ]; then

@@ -131,7 +131,55 @@ build-examples: build \
     freertos::build-examples threadx_linux::build-examples threadx_riscv64::build-examples
     @echo "Workspace + examples built."
 
-# True superset: workspace + every example + per-test fixture variants.
+# Internal build-all example tier. Public `build-examples` stays broad and
+# convenient, but build-all must not call it because fixture tiers rebuild
+# the same role examples for FreeRTOS, ThreadX, QEMU, and several native
+# cases. This recipe only builds Cargo examples that are not already staged
+# by platform fixture tiers.
+build-example-extras:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+        cargo_frontends="$(nros_cargo_frontend_jobs)"
+    else
+        cargo_frontends="${NROS_BUILD_JOBS:-75%}"
+    fi
+    echo "Building build-all example extras (cargo-frontends=$cargo_frontends, profile=$(nros_cargo_profile_name))..."
+    list="$(mktemp)"
+    rg --files examples -g Cargo.toml \
+        | sed 's#/Cargo.toml$##' \
+        | grep -Ev '^examples/(zephyr|qemu-arm-freertos|qemu-arm-nuttx|threadx-linux|qemu-riscv64-threadx|qemu-arm-baremetal|stm32f4)/' \
+        | grep -Ev '^examples/native/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
+        | sort > "$list"
+
+    build_one() {
+        local dir="$1"
+        local platform
+        platform="$(echo "$dir" | cut -d/ -f2)"
+        local env_prefix=""
+        local toolchain=""
+        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
+            env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
+            toolchain="+{{NIGHTLY}}"
+        fi
+        echo "  build $dir"
+        ( cd "$dir" && eval $env_prefix cargo $toolchain build $cargo_profile_args )
+    }
+    export -f build_one
+    export NIGHTLY="{{NIGHTLY}}"
+
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || ! command -v parallel >/dev/null 2>&1; then
+        while read -r dir; do build_one "$dir"; done < "$list"
+    else
+        parallel --halt now,fail=1 --line-buffer -j "$cargo_frontends" build_one :::: "$list"
+    fi
+    rm -f "$list"
+    echo "Build-all example extras built."
+
+# True superset: workspace + non-fixture examples + per-test fixture variants.
 # Pre-populates everything `just test-all` consumes. Slow.
 build-all:
     #!/usr/bin/env bash
@@ -144,7 +192,8 @@ build-all:
         exec just build-all-jobserver
     fi
     echo "build-all: static split (install make>=4.4 + ninja>=1.13 — just workspace install-make/install-ninja — for the jobserver path)"
-    just build-examples
+    just build
+    just build-example-extras
     just build-test-fixtures
     echo "All builds completed (workspace + examples + test fixtures)."
 

@@ -143,7 +143,7 @@ build-all: build-fixtures
     @echo "ThreadX Linux build-all completed."
 
 # Run ThreadX Linux integration tests
-test verbose="": build-examples
+test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ]; then

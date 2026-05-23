@@ -89,7 +89,7 @@ non-duplicating.
 
 ## Plan
 
-- [ ] **178.A — split aggregate UX from internal build-all graph.**
+- [x] **178.A — split aggregate UX from internal build-all graph.**
   Keep public `just build-examples`, but make `build-all` use internal
   leaf targets so the same platform examples are not rebuilt by both
   `build-examples` and `build-fixtures`.
@@ -115,10 +115,10 @@ non-duplicating.
   root `build-examples` concurrently with platform fixture targets that
   write the same target dirs. Use ordered or disjoint targets:
   prerequisites first, example tiers once, fixture extras once.
-  Landed 2026-05-24: native, FreeRTOS, ThreadX Linux, and ThreadX RV64
-  fixture targets now wait for root `build-examples`; qemu, NuttX,
-  Zephyr, and STM32F4 fixtures still run in parallel with the example
-  tier because they do not share the same target dirs.
+  Landed 2026-05-24: root `build-all` no longer launches public
+  `build-examples`; it runs `build-example-extras` plus platform fixture
+  leaves. Platforms with shared target dirs sequence their own
+  `build-examples`/fixture-extra split inside `build-fixtures`.
 
 - [ ] **178.D — add CMake fixture signatures.** Replace unconditional
   `rm -rf build-zenoh` in FreeRTOS, NuttX, ThreadX Linux, and ThreadX
@@ -137,7 +137,7 @@ non-duplicating.
   jobserver `build-all.mk`, so future regressions show which platform or
   fixture tier got slower.
 
-- [ ] **178.G — stop building examples in test-only prerequisite paths.**
+- [x] **178.G — stop building examples in test-only prerequisite paths.**
   Audit platform `test` / `test-all` dependencies that still pull in
   `build-examples` even though the tests consume binaries staged by
   `build-fixtures`. Keep public `just <platform> test` convenient, but

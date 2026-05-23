@@ -158,7 +158,7 @@ build-all: build-fixtures
     @echo "FreeRTOS build-all completed."
 
 # Run FreeRTOS QEMU integration tests
-test verbose="": build-examples
+test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
     if [ ! -d "$FREERTOS_DIR/include" ]; then
