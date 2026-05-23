@@ -2,4 +2,11 @@
 #ifndef _CXX_CSTDLIB
 #define _CXX_CSTDLIB
 #include <stdlib.h>
+namespace std {
+using ::calloc;
+using ::free;
+using ::getenv;
+using ::malloc;
+using ::realloc;
+}
 #endif

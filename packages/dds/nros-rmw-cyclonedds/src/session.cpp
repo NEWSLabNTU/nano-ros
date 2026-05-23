@@ -22,7 +22,7 @@
 #if defined(NROS_PLATFORM_FREERTOS)
 #include <FreeRTOS.h>
 #include <task.h>
-#elif !defined(__ZEPHYR__)
+#elif !defined(__ZEPHYR__) && !defined(NROS_PLATFORM_THREADX)
 #include <ctime> // nanosleep / timespec (POSIX spin-loop pacing)
 #endif
 
@@ -159,6 +159,10 @@ nros_rmw_ret_t session_drive_io(nros_rmw_session_t * /*session*/,
 #elif defined(NROS_PLATFORM_FREERTOS)
     if (timeout_ms > 0) {
         vTaskDelay(pdMS_TO_TICKS(timeout_ms));
+    }
+#elif defined(NROS_PLATFORM_THREADX)
+    if (timeout_ms > 0) {
+        platform_sleep_ms(static_cast<uint32_t>(timeout_ms));
     }
 #else
     if (timeout_ms > 0) {

@@ -85,6 +85,7 @@ c_flags=(
     "-ffunction-sections"
     "-fdata-sections"
     "-fno-builtin"
+    "-fno-lto"
     "-isystem $picolibc_sysroot/include"
     "-I$config_dir"
     "-I$threadx_dir/common/inc"
@@ -101,6 +102,7 @@ cmake_args=(
     "-DCMAKE_TOOLCHAIN_FILE=$toolchain"
     -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
     -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
     -DBUILD_SHARED_LIBS=OFF
     -DBUILD_IDLC=OFF
     -DBUILD_TESTING=OFF
@@ -108,6 +110,7 @@ cmake_args=(
     -DBUILD_EXAMPLES=OFF
     -DBUILD_DDSPERF=OFF
     -DBUILD_DOCS=OFF
+    -DENABLE_LTO=OFF
     -DENABLE_SECURITY=OFF
     -DENABLE_SSL=OFF
     -DENABLE_SHM=OFF

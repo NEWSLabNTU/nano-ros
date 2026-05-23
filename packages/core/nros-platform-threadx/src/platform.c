@@ -35,6 +35,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/types.h>
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #  define TX_TIMER_TICKS_PER_SECOND 100u
@@ -83,6 +84,62 @@ void nros_platform_dealloc(void *ptr) {
     if (ptr != NULL) {
         (void) tx_byte_release(ptr);
     }
+}
+
+void *z_malloc(size_t size) {
+    return nros_platform_alloc(size);
+}
+
+void z_free(void *ptr) {
+    nros_platform_dealloc(ptr);
+}
+
+/*
+ * Minimal POSIX/picolibc hooks for freestanding ThreadX links. Cyclone DDS
+ * avoids file I/O here; its ThreadX socket waitset path still references a
+ * few POSIX names, so provide weak stubs until the backend supplies native
+ * waitset plumbing.
+ */
+__attribute__((weak)) void *stdin = NULL;
+
+__attribute__((weak)) int open(const char *path, int flags, ...) {
+    (void) path;
+    (void) flags;
+    return -1;
+}
+
+__attribute__((weak)) int close(int fd) {
+    (void) fd;
+    return -1;
+}
+
+__attribute__((weak)) ssize_t read(int fd, void *buf, size_t count) {
+    (void) fd;
+    (void) buf;
+    (void) count;
+    return -1;
+}
+
+__attribute__((weak)) ssize_t write(int fd, const void *buf, size_t count) {
+    (void) fd;
+    (void) buf;
+    (void) count;
+    return -1;
+}
+
+__attribute__((weak)) off_t lseek(int fd, off_t offset, int whence) {
+    (void) fd;
+    (void) offset;
+    (void) whence;
+    return (off_t) -1;
+}
+
+__attribute__((weak)) int pipe(int fds[2]) {
+    if (fds != NULL) {
+        fds[0] = -1;
+        fds[1] = -1;
+    }
+    return -1;
 }
 
 /*

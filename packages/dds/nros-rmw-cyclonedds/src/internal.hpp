@@ -12,11 +12,18 @@
 #include "nros/rmw_event.h"
 #include "nros/rmw_ret.h"
 
+#include <cstddef>
 #include <cstdint>
 
 #if defined(NROS_PLATFORM_FREERTOS)
 #include <FreeRTOS.h>
 #include <task.h>
+#elif defined(NROS_PLATFORM_THREADX)
+extern "C" {
+uint64_t nros_platform_clock_ms(void);
+void nros_platform_sleep_ms(size_t ms);
+uint64_t nros_platform_random_u64(void);
+}
 #else
 #include <chrono>
 #include <thread>
@@ -30,8 +37,30 @@ inline void platform_sleep_ms(uint32_t timeout_ms) {
     }
 #if defined(NROS_PLATFORM_FREERTOS)
     vTaskDelay(pdMS_TO_TICKS(timeout_ms));
+#elif defined(NROS_PLATFORM_THREADX)
+    nros_platform_sleep_ms(static_cast<size_t>(timeout_ms));
 #else
     std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+#endif
+}
+
+inline uint64_t platform_now_ms() {
+#if defined(NROS_PLATFORM_FREERTOS)
+    return static_cast<uint64_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
+#elif defined(NROS_PLATFORM_THREADX)
+    return nros_platform_clock_ms();
+#else
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(now).count());
+#endif
+}
+
+inline uint64_t platform_random_u64() {
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+    return nros_platform_random_u64();
+#else
+    return 0;
 #endif
 }
 

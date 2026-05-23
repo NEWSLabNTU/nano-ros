@@ -54,19 +54,30 @@
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
 
-#include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#if !defined(NROS_PLATFORM_FREERTOS) && !defined(NROS_PLATFORM_THREADX)
+#include <atomic>
 #include <random>
+#endif
+
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+namespace std {
+enum memory_order {
+    memory_order_relaxed,
+    memory_order_acquire,
+    memory_order_release,
+};
+} // namespace std
+#endif
 
 namespace nros_rmw_cyclonedds {
 
 namespace {
 
-#if defined(NROS_PLATFORM_FREERTOS)
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
 struct ServiceAtomicI64 {
     int64_t value;
 
@@ -621,8 +632,12 @@ bool descriptors_for_service(const char* service_name, const char* type_name,
 }
 
 uint64_t random_seed_word() {
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+    return platform_random_u64();
+#else
     std::random_device rd;
     return (static_cast<uint64_t>(rd()) << 32) ^ rd();
+#endif
 }
 
 uint64_t random_guid64() {
@@ -635,9 +650,8 @@ bool request_writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
-nros_rmw_ret_t wait_for_request_match(dds_entity_t writer,
-                                      const std::chrono::steady_clock::time_point& deadline) {
-    while (std::chrono::steady_clock::now() < deadline) {
+nros_rmw_ret_t wait_for_request_match(dds_entity_t writer, uint64_t deadline_ms) {
+    while (platform_now_ms() < deadline_ms) {
         if (request_writer_matched(writer)) return NROS_RMW_RET_OK;
         platform_sleep_ms(5);
     }
@@ -805,7 +819,7 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* server, int64_t seq
     if (!slot.in_use) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    const uint64_t deadline = platform_now_ms() + 5000;
     nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
     if (match != NROS_RMW_RET_OK) return match;
 
@@ -941,7 +955,7 @@ int32_t service_call_raw(nros_rmw_service_client_t* client, const uint8_t* reque
     // 5 s total timeout covers request-reader match plus reply. Service
     // QoS is VOLATILE, so the first write must wait until discovery has
     // matched the client writer with the server request reader.
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    const uint64_t deadline = platform_now_ms() + 5000;
     nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
     if (match != NROS_RMW_RET_OK) return match;
 
@@ -952,7 +966,7 @@ int32_t service_call_raw(nros_rmw_service_client_t* client, const uint8_t* reque
                                     static_cast<size_t>(wire_len));
     if (pr != NROS_RMW_RET_OK) return pr;
 
-    while (std::chrono::steady_clock::now() < deadline) {
+    while (platform_now_ms() < deadline) {
         uint32_t status = 0;
         if (dds_get_status_changes(state->reader, &status) == DDS_RETCODE_OK &&
             (status & DDS_DATA_AVAILABLE_STATUS)) {

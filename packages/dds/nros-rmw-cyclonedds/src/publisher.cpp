@@ -19,7 +19,6 @@
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
 
-#include <chrono>
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
@@ -82,9 +81,8 @@ bool writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
-nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer,
-                                     const std::chrono::steady_clock::time_point& deadline) {
-    while (std::chrono::steady_clock::now() < deadline) {
+nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) {
+    while (platform_now_ms() < deadline_ms) {
         if (writer_matched(writer)) return NROS_RMW_RET_OK;
         platform_sleep_ms(5);
     }
@@ -159,7 +157,7 @@ nros_rmw_ret_t publish_fibonacci_feedback(dds_entity_t writer, const dds_topic_d
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    const uint64_t deadline = platform_now_ms() + 2000;
     if (wait_for_writer_match(writer, deadline) != NROS_RMW_RET_OK) {
         dds_stream_free_sample(sample, desc->m_ops);
         std::free(sample);
@@ -231,7 +229,7 @@ nros_rmw_ret_t publish_goal_status_array(dds_entity_t writer, const dds_topic_de
         pos += 1;
     }
 
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    const uint64_t deadline = platform_now_ms() + 2000;
     if (wait_for_writer_match(writer, deadline) != NROS_RMW_RET_OK) {
         dds_stream_free_sample(sample, desc->m_ops);
         std::free(sample);

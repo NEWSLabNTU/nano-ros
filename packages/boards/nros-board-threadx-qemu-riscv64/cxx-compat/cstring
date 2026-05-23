@@ -2,4 +2,13 @@
 #ifndef _CXX_CSTRING
 #define _CXX_CSTRING
 #include <string.h>
+namespace std {
+using ::memcmp;
+using ::memcpy;
+using ::memmove;
+using ::memset;
+using ::strcmp;
+using ::strlen;
+using ::strstr;
+}
 #endif
