@@ -145,3 +145,45 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
         output
     );
 }
+
+#[test]
+fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
+    if !require_freertos() {
+        nros_tests::skip!("require_freertos check failed");
+    }
+    if !is_qemu_available() {
+        nros_tests::skip!("qemu-system-arm not found");
+    }
+
+    let talker_path = build_freertos_rust_example_rmw(
+        "talker",
+        "freertos_rust_talker_cyclonedds",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "qemu-arm-freertos/rust/talker cyclonedds not prebuilt; run \
+             `just freertos build-fixtures` first: {:?}",
+            e
+        )
+    });
+
+    let mut qemu = QemuProcess::start_mps2_an385_networked(&talker_path)
+        .expect("spawn FreeRTOS Rust CycloneDDS local pubsub fixture");
+    let output = qemu
+        .wait_for_output_pattern("Loopback received:", Duration::from_secs(90))
+        .unwrap_or_default();
+    qemu.kill();
+
+    eprintln!("FreeRTOS Rust CycloneDDS local pubsub output:\n{}", output);
+    assert!(
+        output.contains("Published:"),
+        "CycloneDDS talker did not publish.\nOutput:\n{}",
+        output
+    );
+    assert!(
+        output.contains("Loopback received:"),
+        "CycloneDDS local subscriber did not receive a sample.\nOutput:\n{}",
+        output
+    );
+}

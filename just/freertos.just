@@ -120,22 +120,27 @@ build-fixture-extras:
     cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
-    if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ] && [ -d examples/qemu-arm-freertos/rust/talker ]; then
-        echo "  → freertos/rust/talker (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
-        ( cd examples/qemu-arm-freertos/rust/talker && cargo nano-ros generate-rust --force >/dev/null )
-        rm -rf examples/qemu-arm-freertos/rust/talker/build-cyclonedds
-        cmake -S examples/qemu-arm-freertos/rust/talker \
-              -B examples/qemu-arm-freertos/rust/talker/build-cyclonedds \
-              -DNROS_RMW=cyclonedds \
-              -DCMAKE_PREFIX_PATH="$(pwd)/build/cyclonedds-freertos-install" \
-              -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-              -DCMAKE_BUILD_TYPE=Release \
-              -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
-              -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$(pwd)/scripts/cyclonedds/msg_to_cyclone_idl.py" \
-              > /dev/null
-        cmake --build examples/qemu-arm-freertos/rust/talker/build-cyclonedds > /dev/null
+    if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
+        for case in talker listener; do
+            if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
+                continue
+            fi
+            echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
+            ( cd examples/qemu-arm-freertos/rust/${case} && cargo nano-ros generate-rust --force >/dev/null )
+            rm -rf examples/qemu-arm-freertos/rust/${case}/build-cyclonedds
+            cmake -S examples/qemu-arm-freertos/rust/${case} \
+                  -B examples/qemu-arm-freertos/rust/${case}/build-cyclonedds \
+                  -DNROS_RMW=cyclonedds \
+                  -DCMAKE_PREFIX_PATH="$(pwd)/build/cyclonedds-freertos-install" \
+                  -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
+                  -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$(pwd)/scripts/cyclonedds/msg_to_cyclone_idl.py" \
+                  > /dev/null
+            cmake --build examples/qemu-arm-freertos/rust/${case}/build-cyclonedds > /dev/null
+        done
     else
-        echo "  → freertos/rust/talker cyclonedds skipped (run: just cyclonedds freertos-cross-probe)"
+        echo "  → freertos/rust/{talker,listener} cyclonedds skipped (run: just cyclonedds freertos-cross-probe)"
     fi
     # Phase 118.D — collapsed-shape FreeRTOS C / C++ examples. Each
     # case builds under `-DNROS_RMW=zenoh` (no DDS C / C++ siblings

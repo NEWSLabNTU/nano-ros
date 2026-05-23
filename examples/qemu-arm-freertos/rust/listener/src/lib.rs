@@ -1,4 +1,4 @@
-//! FreeRTOS QEMU talker shared logic.
+//! FreeRTOS QEMU listener shared logic.
 //!
 //! The pure-cargo path enters through `src/main.rs::_start()` and lets
 //! the Rust board crate create the FreeRTOS application task. The
@@ -22,7 +22,7 @@ use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
 #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-cyclonedds")))]
-compile_error!("this FreeRTOS talker requires exactly one of `rmw-zenoh` or `rmw-cyclonedds`",);
+compile_error!("this FreeRTOS listener requires exactly one of `rmw-zenoh` or `rmw-cyclonedds`",);
 
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
@@ -45,7 +45,7 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
 
     let exec_config = ExecutorConfig::new(locator)
         .domain_id(config.domain_id)
-        .node_name("talker");
+        .node_name("listener");
 
     // Bare-metal targets do not walk POSIX-style constructor sections,
     // so examples register the active backend explicitly.
@@ -54,30 +54,15 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
     println!("Opening executor");
     let mut executor = Executor::open(&exec_config)?;
     println!("Executor open");
-    #[cfg(feature = "rmw-cyclonedds")]
-    {
-        executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-            println!("Loopback received: {}", msg.data);
-        })?;
-        println!("Loopback subscriber declared");
-    }
+    let _node = executor.create_node("listener")?;
 
-    let publisher = {
-        let mut node = executor.create_node("talker")?;
-        println!("Declaring publisher on /chatter (std_msgs/Int32)");
-        node.create_publisher::<Int32>("/chatter")?
-    };
-    println!("Publisher declared");
-    println!("Publishing messages...");
-
-    let mut count: i32 = 0;
-    executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
-        match publisher.publish(&Int32 { data: count }) {
-            Ok(()) => println!("Published: {}", count),
-            Err(e) => println!("Publish failed: {:?}", e),
-        }
-        count = count.wrapping_add(1);
+    println!("Subscribing to /chatter (std_msgs/Int32)");
+    executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+        println!("Received: {}", msg.data);
     })?;
+
+    println!("Subscriber declared");
+    println!("Waiting for messages...");
 
     loop {
         executor.spin_once(core::time::Duration::from_millis(10));
@@ -93,7 +78,7 @@ pub fn start_from_reset() -> ! {
 #[cfg(feature = "rmw-cyclonedds")]
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
-    println!("Starting Rust CycloneDDS talker");
+    println!("Starting Rust CycloneDDS listener");
     let config = Config::from_toml(include_str!("../config.toml"));
     if let Err(e) = run_app(&config) {
         println!("Application error: {:?}", e);

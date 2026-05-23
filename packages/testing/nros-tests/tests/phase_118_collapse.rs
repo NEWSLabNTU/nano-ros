@@ -299,12 +299,14 @@ fn test_freertos_talker_rmw_variant_exists(#[case] rmw: Rmw) {
 }
 
 /// Phase 118.B.4 — full FreeRTOS Rust collapse coverage. The zenoh
-/// cases build through cargo; Phase 175.B adds the talker CycloneDDS
-/// CMake/Corrosion path because Cyclone cannot link through pure cargo.
+/// cases build through cargo; Phase 175.B adds the talker/listener
+/// CycloneDDS CMake/Corrosion paths because Cyclone cannot link
+/// through pure cargo.
 #[rstest]
 #[case::talker_zenoh("talker", "qemu-freertos-talker", Rmw::Zenoh)]
 #[case::talker_cyclonedds("talker", "freertos_rust_talker_cyclonedds", Rmw::Cyclonedds)]
 #[case::listener_zenoh("listener", "qemu-freertos-listener", Rmw::Zenoh)]
+#[case::listener_cyclonedds("listener", "freertos_rust_listener_cyclonedds", Rmw::Cyclonedds)]
 #[case::ss_zenoh("service-server", "qemu-freertos-service-server", Rmw::Zenoh)]
 #[case::sc_zenoh("service-client", "qemu-freertos-service-client", Rmw::Zenoh)]
 #[case::as_zenoh("action-server", "qemu-freertos-action-server", Rmw::Zenoh)]
