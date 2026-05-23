@@ -1,0 +1,49 @@
+#ifndef NROS_THREADX_RISCV64_CXX_COMPAT_NEW
+#define NROS_THREADX_RISCV64_CXX_COMPAT_NEW
+
+#include <stddef.h>
+#include <stdlib.h>
+
+namespace std {
+
+struct nothrow_t {
+    explicit nothrow_t() = default;
+};
+
+inline const nothrow_t nothrow{};
+
+} // namespace std
+
+inline void *operator new(size_t size) noexcept(false) {
+    return malloc(size);
+}
+
+inline void *operator new[](size_t size) noexcept(false) {
+    return malloc(size);
+}
+
+inline void *operator new(size_t size, const std::nothrow_t &) noexcept {
+    return malloc(size);
+}
+
+inline void *operator new[](size_t size, const std::nothrow_t &) noexcept {
+    return malloc(size);
+}
+
+inline void operator delete(void *ptr) noexcept {
+    free(ptr);
+}
+
+inline void operator delete[](void *ptr) noexcept {
+    free(ptr);
+}
+
+inline void operator delete(void *ptr, size_t) noexcept {
+    free(ptr);
+}
+
+inline void operator delete[](void *ptr, size_t) noexcept {
+    free(ptr);
+}
+
+#endif // NROS_THREADX_RISCV64_CXX_COMPAT_NEW

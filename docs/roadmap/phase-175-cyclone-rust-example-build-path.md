@@ -18,7 +18,9 @@ FreeRTOS Rust CycloneDDS talker boot/publish and local pub/sub data
 exchange are verified under QEMU. **ThreadX ddsrt compile surface is
 experimental (2026-05-23):** the nano-ros Cyclone fork has a new
 NetX Duo-backed ThreadX port, and the RISC-V64 `ddsc` static-library
-probe builds; ThreadX example fixture wiring is still pending.
+probe builds. **ThreadX C/C++/Rust talker fixture link checks now pass
+(2026-05-24)** with `NANO_ROS_RMW=cyclonedds`; the Rust fixture uses the
+same CMake/Corrosion staticlib `app_main()` path as FreeRTOS.
 
 The CMake/Corrosion glue at `examples/native/rust/{talker,listener}/CMakeLists.txt`
 now links the Cyclone backend into a pure-Rust example end-to-end:
@@ -198,7 +200,7 @@ socket stack.
 - [x] FreeRTOS C++ talker links with `NANO_ROS_RMW=cyclonedds`.
 - [x] FreeRTOS Rust talker links with `NANO_ROS_RMW=cyclonedds`.
 - [x] ThreadX RISC-V64 Cyclone `ddsc` builds against ThreadX + NetX Duo.
-- [ ] ThreadX C/C++/Rust example fixtures link with
+- [x] ThreadX C/C++/Rust talker fixtures link with
   `NANO_ROS_RMW=cyclonedds`.
 
 **Verified 2026-05-23:**
@@ -215,6 +217,21 @@ publisher, and reaches `Published: 0`. The local pub/sub E2E also
 declares a CycloneDDS subscriber in the same FreeRTOS process and
 verifies `Loopback received: 0`, covering writer/reader matching,
 sample delivery, CDR decode, and executor dispatch on the RTOS path.
+
+**Verified 2026-05-24:**
+
+```bash
+just cyclonedds threadx-cross-probe
+cmake --build examples/qemu-riscv64-threadx/c/talker/build-cyclonedds --parallel 4
+cmake --build examples/qemu-riscv64-threadx/cpp/talker/build-cyclonedds --parallel 4
+cmake --build examples/qemu-riscv64-threadx/rust/talker/build-cyclonedds --parallel 4
+```
+
+The ThreadX Rust fixture is CMake-owned, imports
+`qemu-riscv64-threadx-talker` as a staticlib with
+`FEATURES rmw-cyclonedds`, generates `std_msgs/Int32` CycloneDDS
+descriptors with `idlc`, exports Rust `app_main()`, and links the
+RISC-V64 ThreadX executable through `nros_platform_link_app`.
 
 **Probe:**
 
@@ -278,15 +295,47 @@ than pure cargo:
 **ThreadX verified 2026-05-23:**
 
 ```bash
-cmake --build build/cyclonedds-threadx-rv64-probe --target ddsc --parallel 4
+just cyclonedds threadx-cross-probe
+
+cmake -S examples/qemu-riscv64-threadx/c/talker \
+  -B examples/qemu-riscv64-threadx/c/talker/build-cyclonedds \
+  -DNROS_RMW=cyclonedds \
+  -DCMAKE_PREFIX_PATH="$PWD/build/cyclonedds-threadx-rv64-install" \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/toolchain/riscv64-threadx.cmake" \
+  -DTHREADX_DIR="$PWD/third-party/threadx/kernel" \
+  -DNETX_DIR="$PWD/third-party/threadx/netxduo" \
+  -DTHREADX_CONFIG_DIR="$PWD/packages/boards/nros-board-threadx-qemu-riscv64/config" \
+  -DNETX_CONFIG_DIR="$PWD/packages/boards/nros-board-threadx-qemu-riscv64/config" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DIDLC_EXECUTABLE="$PWD/build/install/bin/idlc" \
+  -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$PWD/scripts/cyclonedds/msg_to_cyclone_idl.py"
+cmake --build examples/qemu-riscv64-threadx/c/talker/build-cyclonedds --parallel 4
+
+cmake -S examples/qemu-riscv64-threadx/cpp/talker \
+  -B examples/qemu-riscv64-threadx/cpp/talker/build-cyclonedds \
+  -DNROS_RMW=cyclonedds \
+  -DCMAKE_PREFIX_PATH="$PWD/build/cyclonedds-threadx-rv64-install" \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/toolchain/riscv64-threadx.cmake" \
+  -DTHREADX_DIR="$PWD/third-party/threadx/kernel" \
+  -DNETX_DIR="$PWD/third-party/threadx/netxduo" \
+  -DTHREADX_CONFIG_DIR="$PWD/packages/boards/nros-board-threadx-qemu-riscv64/config" \
+  -DNETX_CONFIG_DIR="$PWD/packages/boards/nros-board-threadx-qemu-riscv64/config" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DIDLC_EXECUTABLE="$PWD/build/install/bin/idlc" \
+  -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$PWD/scripts/cyclonedds/msg_to_cyclone_idl.py"
+cmake --build examples/qemu-riscv64-threadx/cpp/talker/build-cyclonedds --parallel 4
 ```
 
 The ThreadX probe builds Cyclone DDS `ddsc` as a RISC-V64 static
 library using `WITH_THREADX=ON`, the nano-ros
 `riscv64-threadx.cmake` toolchain, ThreadX kernel headers, NetX Duo BSD
-headers, and the QEMU RISC-V64 board config. This validates the new
-`ddsrt` compile/link surface only; it does not yet wire ThreadX
-Cyclone example fixtures or run RTPS over QEMU.
+headers, and the QEMU RISC-V64 board config. The probe disables
+Cyclone's `ENABLE_LTO` path so `rust-lld` can consume real ELF objects
+instead of GCC LTO-slim archive members. The C/C++/Rust talker fixture
+links also validate the ThreadX C++ compatibility headers, the
+freestanding picolibc/POSIX weak stubs, the Generic-target Cyclone
+archive ordering fix, and the Rust CMake/Corrosion `app_main()`
+staticlib path. Runtime RTPS over QEMU is still open.
 
 ### ThreadX ddsrt port mapping
 
@@ -318,8 +367,9 @@ ThreadX port is a new
   in `Cargo.toml` so the manifest resolves and the intent is recorded.
   Pure-cargo fixture loops must stay zenoh-only; Cyclone fixture cells
   need a CMake/Corrosion path that can link the C++ backend.
-- Native and FreeRTOS now have CMake/Corrosion Cyclone fixture cells.
-  ThreadX, NuttX, and other pure-cargo RTOS fixture loops remain
-  zenoh-only until they grow equivalent CMake/backend wiring.
+- Native, FreeRTOS, and ThreadX now have CMake/Corrosion Cyclone Rust
+  fixture cells. ThreadX is verified at build/link level for the talker;
+  runtime RTPS over QEMU remains future work. NuttX and other
+  pure-cargo RTOS fixture loops remain zenoh-only.
 - Do NOT re-introduce a `for rmw in ... cyclonedds` / `... dds` arm into
   those pure-cargo loops without first landing 175.A.

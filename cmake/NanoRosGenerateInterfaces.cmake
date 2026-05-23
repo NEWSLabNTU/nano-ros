@@ -765,10 +765,6 @@ function(nros_generate_interfaces target)
             "-Wl,--whole-archive"
             ${_cyc_force_load_libs}
             "-Wl,--no-whole-archive")
-          if(TARGET nros_rmw_cyclonedds)
-            target_link_libraries(${_lib_target} INTERFACE
-              "$<TARGET_FILE:nros_rmw_cyclonedds>")
-          endif()
         endif()
       endif()
     endif()

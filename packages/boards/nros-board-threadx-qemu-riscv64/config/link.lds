@@ -50,5 +50,11 @@ SECTIONS
     _sysstack_end = .;
   }
 
+  .heap (NOLOAD) : {
+    . = ALIGN(16);
+    __heap_start = .;
+    __heap_end = .;
+  }
+
   PROVIDE(_end = .);
 }

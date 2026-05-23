@@ -94,6 +94,14 @@ if(DEFINED NANO_ROS_PLATFORM
     if(TARGET lwip)
         target_link_libraries(nros_rmw_cyclonedds PRIVATE lwip)
     endif()
+elseif(DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx")
+    target_compile_definitions(nros_rmw_cyclonedds PRIVATE NROS_PLATFORM_THREADX)
+    if(TARGET threadx_kernel)
+        target_link_libraries(nros_rmw_cyclonedds PRIVATE threadx_kernel)
+    endif()
+    if(TARGET nros_platform_threadx)
+        target_link_libraries(nros_rmw_cyclonedds PRIVATE nros_platform_threadx)
+    endif()
 endif()
 
 # Propagate Cyclone's install lib dir as a build-tree rpath so test
@@ -106,6 +114,8 @@ if(NOT _ddsc_loc)
 endif()
 if(_ddsc_loc)
     get_filename_component(_ddsc_libdir "${_ddsc_loc}" DIRECTORY)
+    set(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY "${_ddsc_loc}"
+        CACHE FILEPATH "Resolved Cyclone DDS ddsc library path")
     set_property(TARGET nros_rmw_cyclonedds APPEND PROPERTY
         INTERFACE_LINK_OPTIONS "LINKER:-rpath,${_ddsc_libdir}")
 endif()

@@ -2,4 +2,8 @@
 #ifndef _CXX_CSTDIO
 #define _CXX_CSTDIO
 #include <stdio.h>
+namespace std {
+using ::printf;
+using ::snprintf;
+}
 #endif

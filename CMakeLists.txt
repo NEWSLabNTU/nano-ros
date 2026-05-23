@@ -245,11 +245,15 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     if(TARGET nros_rmw_cyclonedds)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
            OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
-            target_link_libraries(NanoRos INTERFACE
-                "-Wl,--whole-archive"
-                nros_rmw_cyclonedds
-                "-Wl,--no-whole-archive"
-                "-Wl,--allow-multiple-definition")
+            if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
+                target_link_libraries(NanoRos INTERFACE
+                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive"
+                    "-Wl,--allow-multiple-definition")
+            else()
+                target_link_libraries(NanoRos INTERFACE
+                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive"
+                    "-Wl,--allow-multiple-definition")
+            endif()
         elseif(APPLE)
             target_link_libraries(NanoRos INTERFACE
                 "-Wl,-force_load,$<TARGET_FILE:nros_rmw_cyclonedds>"
@@ -265,7 +269,8 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
         # `std::nothrow`. Propagate the C++ stdlib through the INTERFACE
         # so any C consumer resolves them. Harmless for C++ apps (the
         # C++ driver already links it).
-        if(NOT APPLE)
+        if(NOT APPLE
+           AND NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
             target_link_libraries(NanoRos INTERFACE stdc++)
         endif()
     endif()
