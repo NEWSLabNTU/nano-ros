@@ -49,7 +49,7 @@ failures plus 8 environment skips.
 
 - [x] **177.6 - PX4 tests require explicit PX4 workspace setup.**
   `test-all` failures include missing or invalid `PX4_AUTOPILOT_DIR`.
-  Fixed: `justfile` now provides the repo-local default
+  Fixed: `just/sdk-env.just` now provides the repo-local default
   `PX4_AUTOPILOT_DIR`, `.env.example` documents position-independent
   overrides, and PX4 tests consume only that environment variable with
   the exact setup remedy when it is invalid.
@@ -58,7 +58,7 @@ failures plus 8 environment skips.
   ESP-IDF and PlatformIO groups require `idf.py` and `pio`; the minimal
   sweep environment did not provide them. Fixed: the ESP-IDF smoke
   detects the env shim path supplied by `NROS_ESP_IDF_ENV_SHIM`, and
-  `justfile` defines the default ESP-IDF workspace, env shim, and
+  `just/sdk-env.just` defines the default ESP-IDF workspace, env shim, and
   user-local tool PATH used by PlatformIO. `.env.example` documents
   overrides, while `.envrc` remains optional direnv glue for loading
   `.env`. Full `just setup` already includes `platformio`, `esp_idf`,
