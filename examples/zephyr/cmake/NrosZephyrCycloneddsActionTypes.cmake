@@ -6,8 +6,8 @@ function(nros_zephyr_add_cyclonedds_action_descriptors target)
     endif()
 
     set(_nros_repo "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../..")
-    set(IDLC_EXECUTABLE "${_nros_repo}/build/cyclonedds/bin/idlc"
-        CACHE FILEPATH "Host Cyclone DDS idlc for descriptor generation")
+    set(IDLC_EXECUTABLE "${_nros_repo}/build/install/bin/idlc"
+        CACHE FILEPATH "Host Cyclone DDS idlc for descriptor generation" FORCE)
     set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${_nros_repo}/scripts/cyclonedds")
     include("${_nros_repo}/packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 

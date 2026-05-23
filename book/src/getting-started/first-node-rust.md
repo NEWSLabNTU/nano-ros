@@ -17,7 +17,7 @@ The talker is a **standalone Cargo package** that pulls nano-ros in
 via a path dependency. Three files matter:
 
 ```text
-examples/native/rust/zenoh/talker/
+examples/native/rust/talker/
 ├── Cargo.toml          # path dep on `nros` + `nros-rmw-zenoh`
 ├── package.xml         # ROS-style manifest (drives codegen tooling)
 ├── generated/          # auto-generated message bindings (gitignored)
@@ -75,7 +75,7 @@ domain_id = 0
 ## Build
 
 ```bash
-cd examples/native/rust/zenoh/talker
+cd examples/native/rust/talker
 cargo build           # or: cargo build --release
 ```
 
@@ -90,12 +90,10 @@ Three terminals (each command below blocks; keep them open):
 # Each terminal:  source ./setup.bash    (first command after cd-ing in)
 
 # Terminal 1 — in-tree zenoh router. Blocks the shell until Ctrl-C.
-zenohd                               # provided by setup.bash; equivalent
-                                     # to `just zenohd run` or
-                                     # ./build/zenohd/zenohd directly
+zenohd                               # provided by setup.bash
 
 # Terminal 2 — the talker.
-cd examples/native/rust/zenoh/talker
+cd examples/native/rust/talker
 cargo run
 # Expected output:
 #   nros Native Talker (Zenoh Transport)
@@ -138,7 +136,7 @@ should print `Published: 1`. If no `Published:` line in 30 seconds:
 ## GitHub source
 
 Canonical, copy-out:
-[`examples/native/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/zenoh/talker)
+[`examples/native/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/talker)
 
 Copy the directory, rename the package, and your starter is ready to
 modify.
@@ -146,7 +144,7 @@ modify.
 ## Next
 
 - Add a subscription:
-  [`examples/native/rust/zenoh/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/zenoh/listener)
+  [`examples/native/rust/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/listener)
 - Generate bindings for custom `.msg` / `.srv` / `.action` files:
   [Message Generation](../user-guide/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from

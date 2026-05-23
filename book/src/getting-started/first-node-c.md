@@ -16,7 +16,7 @@ The talker is a **standalone CMake project** that pulls nano-ros via
 `add_subdirectory(<repo-root>)`. Four files matter:
 
 ```text
-examples/native/c/zenoh/talker/
+examples/native/c/talker/
 ├── CMakeLists.txt      # add_subdirectory + targets
 ├── package.xml         # ROS-style manifest (drives codegen tooling)
 ├── config.toml         # runtime locator + domain id (optional)
@@ -96,7 +96,7 @@ Rust starter; the C runtime reads it only when wired explicitly via
 ## Build
 
 ```bash
-cd examples/native/c/zenoh/talker
+cd examples/native/c/talker
 cmake -B build
 cmake --build build
 ```
@@ -110,12 +110,10 @@ Three terminals.
 
 ```bash
 # 1. Start the in-tree zenoh router:
-zenohd                               # provided by `source ./setup.bash`;
-                                     # equivalent to `just zenohd run` or
-                                     # `./build/zenohd/zenohd` directly
+zenohd                               # provided by `source ./setup.bash`
 
 # 2. Run the talker:
-cd examples/native/c/zenoh/talker
+cd examples/native/c/talker
 ./build/c_talker
 # Expected output:
 #   nros C Talker
@@ -145,15 +143,15 @@ line in 30 seconds:
 ## GitHub source
 
 Canonical, copy-out:
-[`examples/native/c/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/zenoh/talker)
+[`examples/native/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/talker)
 
 ## Next
 
 - Add a subscription:
-  [`examples/native/c/zenoh/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/zenoh/listener)
+  [`examples/native/c/listener/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/listener)
 - Service / action shapes:
-  [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/zenoh/service-client),
-  [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/zenoh/action-client)
+  [`service-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/service-client),
+  [`action-client/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/c/action-client)
 - Custom `.msg` / `.srv` / `.action`:
   [Message Generation](../user-guide/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from

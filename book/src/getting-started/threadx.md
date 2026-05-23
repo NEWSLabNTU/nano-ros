@@ -29,24 +29,24 @@ source ./setup.bash
 ## Project layout
 
 Each example is a standalone Cargo or CMake project under
-`examples/threadx-{linux,riscv64}/<lang>/zenoh/<example>/`:
+`examples/threadx-{linux,riscv64}/<lang>/<example>/`:
 
 ```text
 examples/threadx-linux/
-├── rust/zenoh/talker/                 # Cargo, target = x86_64-unknown-linux-gnu
+├── rust/talker/                 # Cargo, target = x86_64-unknown-linux-gnu
 │   ├── Cargo.toml
 │   ├── package.xml
 │   ├── generated/
 │   └── src/main.rs
-└── c/zenoh/talker/                    # CMake, add_subdirectory
+└── c/talker/                    # CMake, add_subdirectory
     ├── CMakeLists.txt
     ├── package.xml
     └── src/main.c
 
 examples/qemu-riscv64-threadx/
-├── rust/zenoh/talker/                 # Cargo, target = riscv64gc-unknown-linux-gnu
+├── rust/talker/                 # Cargo, target = riscv64gc-unknown-linux-gnu
 │   └── ...
-└── c/zenoh/talker/
+└── c/talker/
     └── ...
 ```
 
@@ -98,7 +98,7 @@ FreeRTOS QEMU flow.
 just threadx_linux build-fixtures   # build all rust + c examples
 
 # Single example:
-cd examples/threadx-linux/rust/zenoh/talker
+cd examples/threadx-linux/rust/talker
 cargo build --release
 
 # threadx-riscv64:
@@ -113,7 +113,7 @@ builds finish in seconds.
 ```bash
 # threadx-linux (no QEMU):
 just zenohd setup && just zenohd run        # bring up router
-cd examples/threadx-linux/rust/zenoh/talker
+cd examples/threadx-linux/rust/talker
 cargo run --release
 # Expected:
 #   nros ThreadX-Linux Talker
@@ -150,11 +150,11 @@ seconds of QEMU boot. If no `Published:` line:
 ## GitHub source
 
 - ThreadX-Linux Rust:
-  [`examples/threadx-linux/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/rust/zenoh/talker)
+  [`examples/threadx-linux/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/rust/talker)
 - ThreadX-Linux C:
-  [`examples/threadx-linux/c/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/c/zenoh/talker)
+  [`examples/threadx-linux/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/c/talker)
 - ThreadX-RISC-V64 Rust:
-  [`examples/qemu-riscv64-threadx/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-riscv64-threadx/rust/zenoh/talker)
+  [`examples/qemu-riscv64-threadx/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-riscv64-threadx/rust/talker)
 - Board crates:
   [`packages/boards/nros-board-threadx-linux/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-threadx-linux),
   [`packages/boards/nros-board-riscv64-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-riscv64-qemu)

@@ -130,9 +130,9 @@ no `Published:` line in 30 seconds:
 - Zephyr module shell:
   [`integrations/zephyr/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/zephyr)
 - Worked examples:
-  [`examples/zephyr/rust/zenoh/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/rust/zenoh),
-  [`examples/zephyr/c/zenoh/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/zenoh),
-  [`examples/zephyr/cpp/zenoh/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp/zenoh)
+  [`examples/zephyr/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/rust),
+  [`examples/zephyr/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c),
+  [`examples/zephyr/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp)
 - Module manifest:
   [`integrations/zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/zephyr/module.yml)
 

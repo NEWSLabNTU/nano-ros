@@ -72,7 +72,7 @@ Stuck on something else?
 
 ## What success looks like
 
-A correctly-running Rust Linux talker (`examples/native/rust/zenoh/talker`)
+A correctly-running Rust Linux talker (`examples/native/rust/talker`)
 prints something like this on stderr (with `RUST_LOG=info`):
 
 ```text
@@ -85,7 +85,7 @@ prints something like this on stderr (with `RUST_LOG=info`):
 [INFO  native_rs_talker] Published: 3
 ```
 
-A correctly-running C talker (`examples/native/c/zenoh/talker`)
+A correctly-running C talker (`examples/native/c/talker`)
 prints on stdout:
 
 ```text

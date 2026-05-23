@@ -1296,7 +1296,11 @@ setup target="" tier="":
           "  scripts/bootstrap.sh         # installs/checks just, then shows this menu" \
           "  scripts/bootstrap.sh base" \
           "  scripts/bootstrap.sh platform zephyr" \
-          "  scripts/bootstrap.sh all"
+          "  scripts/bootstrap.sh all" \
+          "" \
+          "After setup:" \
+          "" \
+          "  source ./setup.bash          # get nano-ros binaries on PATH"
         exit 0
     fi
     if [[ -n "$target" ]]; then

@@ -28,9 +28,9 @@ nros/
 │   ├── CMakeLists.txt                # Transport C sources + nros-c build
 │   └── cmake/                        # nros_cargo_build(), nros_generate_interfaces()
 ├── examples/zephyr/
-│   ├── rust/zenoh/                   # Rust + zenoh (talker, listener, ...)
+│   ├── rust/                   # Rust + zenoh (talker, listener, ...)
 │   ├── rust/xrce/                    # Rust + XRCE-DDS (talker, listener)
-│   ├── c/zenoh/                      # C + zenoh (talker, listener)
+│   ├── c/                      # C + zenoh (talker, listener)
 │   └── c/xrce/                       # C + XRCE-DDS (talker, listener)
 ├── west.yml                          # West manifest
 └── zephyr-workspace/                 # Created by setup.sh (gitignored)
@@ -111,7 +111,7 @@ source zephyr-workspace/env.sh
 
 # Build Zephyr talker (Rust + zenoh, default backend)
 cd zephyr-workspace
-west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
+west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
 
 # Run (no sudo needed)
 ./build/zephyr/zephyr.exe

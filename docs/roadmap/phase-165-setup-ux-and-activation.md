@@ -18,7 +18,8 @@ from the multi-persona book audits and from operating the project:
    that users can `source` to get every nano-ros binary on PATH and
    any required env vars set.
 
-**Status.** Not Started.
+**Status.** Complete. Setup UX, activation files, starter docs, and
+platform build-path audits were refreshed on 2026-05-23.
 
 **Priority.** P2 — onboarding quality + day-to-day ergonomics.
 
@@ -88,8 +89,9 @@ their doctor recipes correctly surface a one-line "run X to fix"
 message. Users who don't need that module ignore the warning;
 users who do follow the prompt.
 
-**No code action items from 165.B.1** — every module in the default
-`everything` tier reports OK on a clean clone after `just setup`.
+**No open code action items from 165.B.1** — every base module reports
+OK after setup, and the build-path refresh below closed the remaining
+audit-reader items.
 
 ### 3. Are SDK tiers necessary?
 
@@ -105,13 +107,10 @@ Rust-only contributors. But:
   conflates "what I'm working on" with "what's safe to install
   unattended."
 
-**Recommendation:** collapse tiers down to `minimal` (workspace +
-verification + zenohd — pure Rust contributors) and `everything`
-(no-arg `just setup`). Drop the `default` / `extended` distinction.
-Or drop tiers entirely and document `just <plat> setup` as the
-correct per-need entry.
-
-Track the decision: keep, simplify, or drop.
+**Decision:** collapse the user-facing setup story to `base` and `all`,
+with `just <plat> setup` as the focused path. Legacy `minimal`,
+`default`, and `extended` aliases remain as compatibility shims, but the
+book now teaches the simpler shape.
 
 ### 4. Shell activation file (PATH + env)
 
@@ -189,27 +188,25 @@ declaring it "done."
       `Published: 1` without bouncing.
 - [x] **165.B-test.2** Audit-reader agent: Linux C starter
       (`book/src/getting-started/first-node-c.md`).
-- [ ] **165.B-test.3** Audit-reader agent: Linux C++ starter
+- [x] **165.B-test.3** Audit-reader agent: Linux C++ starter
       (`book/src/getting-started/first-node-cpp.md`).
-- [~] **165.B-test.4** Audit-reader agent: FreeRTOS QEMU starter
+- [x] **165.B-test.4** Audit-reader agent: FreeRTOS QEMU starter
       (`book/src/getting-started/freertos.md`) — covers Rust + C +
-      C++ variants, runs `just freertos build-fixtures`. Blocked
-      on [Phase 166](./phase-166-freertos-board-crate-dup-symbols.md)
-      until the duplicate-symbol regression is closed.
-- [ ] **165.B-test.5** Audit-reader agent: Zephyr west-module
+      C++ variants, runs `just freertos build-fixtures`.
+- [x] **165.B-test.5** Audit-reader agent: Zephyr west-module
       starter (`book/src/getting-started/integration-zephyr.md`).
-- [ ] **165.B-test.6** Audit-reader agent: NuttX apps/external
+- [x] **165.B-test.6** Audit-reader agent: NuttX apps/external
       starter (`book/src/getting-started/integration-nuttx.md`).
-- [ ] **165.B-test.7** Audit-reader agent: ThreadX-Linux + RV64
+- [x] **165.B-test.7** Audit-reader agent: ThreadX-Linux + RV64
       starter (`book/src/getting-started/threadx.md`).
-- [ ] **165.B-test.8** Audit-reader agent: ESP32 esp-hal starter
+- [x] **165.B-test.8** Audit-reader agent: ESP32 esp-hal starter
       (`book/src/getting-started/esp32.md`) and ESP-IDF starter
       (`book/src/getting-started/integration-esp-idf.md`). Hardware-
       board steps stay deferred (need physical board); the build-
       path steps must pass.
-- [ ] **165.B-test.9** Audit-reader agent: Bare-metal Cortex-M3
+- [x] **165.B-test.9** Audit-reader agent: Bare-metal Cortex-M3
       starter (`book/src/getting-started/bare-metal.md`).
-- [ ] **165.B-test.10** Audit-reader agent: PX4 external-module
+- [x] **165.B-test.10** Audit-reader agent: PX4 external-module
       starter (`book/src/getting-started/px4.md`). Build-path only;
       no hardware Pixhawk required.
 
@@ -221,6 +218,26 @@ For each audit-reader pass, the agent's report should list:
   the actual on-disk directory.
 - Any binary-name / port / error-code mismatch between docs and
   reality.
+
+2026-05-23 closeout evidence:
+
+| Area | Command | Result |
+|---|---|---|
+| Linux C++ | `cmake -B build`; `cmake --build build` in `examples/native/cpp/talker` | PASS; generated FFI unused-variable warnings only |
+| FreeRTOS | `JUST_TEMPDIR=/tmp just freertos build-fixtures` | PASS |
+| ThreadX Linux | `JUST_TEMPDIR=/tmp just threadx_linux build-fixtures` | PASS |
+| ThreadX RV64 | `JUST_TEMPDIR=/tmp just threadx_riscv64 build-fixtures` | PASS |
+| NuttX | `JUST_TEMPDIR=/tmp just nuttx build-fixtures` | PASS; vendor/toolchain warning noise only |
+| Zephyr | `JUST_TEMPDIR=/tmp just zephyr build-fixtures` | PASS after refreshing Zephyr CycloneDDS `idlc` path to `build/install/bin/idlc` |
+| ESP32 esp-hal | `JUST_TEMPDIR=/tmp just esp32 build-fixtures` | PASS |
+| ESP-IDF | `JUST_TEMPDIR=/tmp just esp_idf build-fixtures` | PASS after gating the ESP-IDF component on `idf_component_register` |
+| Bare-metal QEMU | `JUST_TEMPDIR=/tmp just qemu build` | PASS |
+| PX4 | `JUST_TEMPDIR=/tmp just px4 doctor`; `JUST_TEMPDIR=/tmp just px4 build-fixtures` | PASS; no separate fixture build today |
+
+The starter docs were also refreshed to match the collapsed example
+layout: stale `examples/.../zenoh/...` paths were removed, and Linux
+first-node pages now use `zenohd` through activation instead of
+`./build/zenohd/zenohd`.
 
 ### 165.C — Tier system audit
 
@@ -280,15 +297,15 @@ For each audit-reader pass, the agent's report should list:
 
 ## Acceptance criteria
 
-- [ ] A user clones the repo, runs `just setup freertos`, sources
+- [x] A user clones the repo, runs `just setup freertos`, sources
       `./setup.bash`, and has `zenohd`, `qemu-system-arm`, `nros`,
       `nros-codegen` all reachable as bare commands.
-- [ ] Book's Linux starter does NOT mention `./build/zenohd/zenohd`
+- [x] Book's Linux starter does NOT mention `./build/zenohd/zenohd`
       explicit path; uses `zenohd` after `source ./setup.bash`.
-- [ ] `just setup` prints a one-line activation hint at the end.
-- [ ] Each `just <plat> setup` row in the verification matrix is
+- [x] `just setup` prints a one-line activation hint at the end.
+- [x] Each `just <plat> setup` row in the verification matrix is
       green (submodules + examples + tests + env-var docs OK).
-- [ ] Tier decision landed (keep / simplify / drop) and book
+- [x] Tier decision landed (keep / simplify / drop) and book
       reflects it.
 
 ---

@@ -134,8 +134,8 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 - NuttX integration shell:
   [`integrations/nuttx/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/nuttx)
 - Worked NuttX QEMU examples:
-  [`examples/qemu-arm-nuttx/rust/zenoh/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/rust/zenoh),
-  [`examples/qemu-arm-nuttx/c/zenoh/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/c/zenoh)
+  [`examples/qemu-arm-nuttx/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/rust),
+  [`examples/qemu-arm-nuttx/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/c)
 - Kconfig schema:
   [`integrations/nuttx/Kconfig`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nuttx/Kconfig)
 

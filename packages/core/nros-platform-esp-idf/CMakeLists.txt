@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.20)
 # `cmake -B build` outside an IDF project still produces a sensible
 # error message instead of silent garbage.
 
-if(DEFINED IDF_VERSION)
+if(COMMAND idf_component_register)
     idf_component_register(
         SRCS src/platform.c src/net.c src/timer.c
         INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../nros-platform-cffi/include"

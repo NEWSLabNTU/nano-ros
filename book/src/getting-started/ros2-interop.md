@@ -18,12 +18,12 @@ Open three terminals:
 
 ```bash
 # Terminal 1: Start the zenoh router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+zenohd --listen tcp/127.0.0.1:7447
 ```
 
 ```bash
 # Terminal 2: Run the nano-ros talker
-cd examples/native/rust/zenoh/talker
+cd examples/native/rust/talker
 RUST_LOG=info cargo run
 ```
 
@@ -50,7 +50,7 @@ ROS 2 publishers also work with nano-ros subscribers:
 
 ```bash
 # Terminal 2: Run the nano-ros listener instead
-cd examples/native/rust/zenoh/listener
+cd examples/native/rust/listener
 RUST_LOG=info cargo run
 
 # Terminal 3: ROS 2 talker

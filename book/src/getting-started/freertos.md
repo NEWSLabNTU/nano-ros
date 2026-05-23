@@ -22,23 +22,23 @@ source ./setup.bash
 
 Each language uses the standard nano-ros canonical example shape —
 standalone Cargo (Rust) or CMake (C / C++) project under
-`examples/qemu-arm-freertos/<lang>/zenoh/<example>/`.
+`examples/qemu-arm-freertos/<lang>/<example>/`.
 
 ```text
 examples/qemu-arm-freertos/
-├── rust/zenoh/talker/             # Cargo package, cross-compile target = thumbv7m-none-eabi
+├── rust/talker/             # Cargo package, cross-compile target = thumbv7m-none-eabi
 │   ├── Cargo.toml
 │   ├── .cargo/config.toml          # target + QEMU runner
 │   ├── config.toml                 # network + zenoh locator + scheduling
 │   ├── package.xml
 │   ├── generated/                  # codegen output (gitignored)
 │   └── src/main.rs
-├── c/zenoh/talker/                 # CMake project, add_subdirectory consumption
+├── c/talker/                 # CMake project, add_subdirectory consumption
 │   ├── CMakeLists.txt
 │   ├── config.toml
 │   ├── package.xml
 │   └── src/main.c
-└── cpp/zenoh/talker/               # CMake C++14 project
+└── cpp/talker/               # CMake C++14 project
     ├── CMakeLists.txt
     ├── config.toml
     ├── package.xml
@@ -69,7 +69,7 @@ locator   = "tcp/10.0.2.2:7451"   # host's zenohd reached via Slirp
 domain_id = 0                      # Per-language test-fixture ports:
                                    #   Rust  → 7451   C → 7551   C++ → 7651
                                    # The talker / listener under each
-                                   # `<lang>/zenoh/` use the matching
+                                   # `<lang>/` use the matching
                                    # port; start `zenohd` on the one
                                    # you intend to test against.
 
@@ -89,7 +89,7 @@ Slirp gateway that forwards to host loopback. No TAP, no sudo.
 
 ```bash
 # Rust:
-cd examples/qemu-arm-freertos/rust/zenoh/talker
+cd examples/qemu-arm-freertos/rust/talker
 cargo build --release
 
 # C / C++ — use the cross-toolchain CMake invocation:
@@ -98,7 +98,7 @@ just freertos build-fixtures        # builds every in-tree zenoh +
 # Or single-example:
 toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
 codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
-cd examples/qemu-arm-freertos/c/zenoh/talker
+cd examples/qemu-arm-freertos/c/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
               -DCMAKE_BUILD_TYPE=Release \
               -D_NANO_ROS_CODEGEN_TOOL="$codegen"
@@ -112,10 +112,10 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 
 ```bash
 # 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451):
-just zenohd run                           # or: ./build/zenohd/zenohd
+just zenohd run
 
 # 2. Boot the talker in QEMU:
-cd examples/qemu-arm-freertos/rust/zenoh/talker
+cd examples/qemu-arm-freertos/rust/talker
 cargo run --release
 # Or for C / C++ (binary names carry the `freertos_` prefix from
 # the CMake project() declaration in each example):
@@ -155,9 +155,9 @@ typically takes 10–15 s. If no `Published:` line in 30 seconds:
 
 Canonical, copy-out:
 
-- Rust: [`examples/qemu-arm-freertos/rust/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/rust/zenoh/talker)
-- C: [`examples/qemu-arm-freertos/c/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/c/zenoh/talker)
-- C++: [`examples/qemu-arm-freertos/cpp/zenoh/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/cpp/zenoh/talker)
+- Rust: [`examples/qemu-arm-freertos/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/rust/talker)
+- C: [`examples/qemu-arm-freertos/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/c/talker)
+- C++: [`examples/qemu-arm-freertos/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/cpp/talker)
 
 ## Next
 

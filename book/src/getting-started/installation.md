@@ -130,7 +130,7 @@ builds (e.g. `just xrce setup`) to pick up newly-built tools.
 > terminal and start the router before launching any example:
 >
 > ```bash
-> just zenohd run        # or: ./build/zenohd/zenohd
+> just zenohd run
 > ```
 >
 > Leave that terminal open for the entire session. Default ports:

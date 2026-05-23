@@ -73,6 +73,6 @@ NuttX / PX4 manifests into the same root CMake. Each shell is a
 
 ## Worked example
 
-The `examples/native/c/zenoh/talker/CMakeLists.txt` is the canonical
+The `examples/native/c/talker/CMakeLists.txt` is the canonical
 copy-out template — 20 lines including codegen + per-app fixup. All
 83 in-tree C/C++ examples follow the same shape after.

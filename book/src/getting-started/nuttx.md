@@ -76,7 +76,7 @@ layer, which provides sockets, pthreads, and standard I/O.
 
 ### Available Examples
 
-All examples are in `examples/qemu-arm-nuttx/rust/zenoh/`:
+All examples are in `examples/qemu-arm-nuttx/rust/`:
 
 | Example          | Description                                      |
 |------------------|--------------------------------------------------|
