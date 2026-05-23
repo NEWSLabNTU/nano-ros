@@ -66,12 +66,17 @@ fn main() -> ! {
                 if now_ms >= next_dump_ms {
                     let (do_poll_calls, cb_hits, bridge_polls, tx_drained) =
                         nros_board_esp32_qemu::nros_smoltcp::poll_diagnostics();
+                    let (cb_registered, cb_sets, cb_lost) =
+                        nros_board_esp32_qemu::nros_smoltcp::poll_callback_diagnostics();
                     esp_println::println!(
-                        "[poll] do_poll={} cb_hits={} bridge_polls={} tx_drained={}",
+                        "[poll] do_poll={} cb_hits={} bridge_polls={} tx_drained={} cb_registered={} cb_sets={} cb_lost={}",
                         do_poll_calls,
                         cb_hits,
                         bridge_polls,
                         tx_drained,
+                        cb_registered,
+                        cb_sets,
+                        cb_lost,
                     );
                     next_dump_ms = now_ms + 5000;
                 }

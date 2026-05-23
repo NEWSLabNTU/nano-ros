@@ -21,6 +21,8 @@ rustflags = [
 
 [env]
 ESP_LOG = "info"
+NROS_EXECUTOR_ARENA_SIZE = "16384"
+NROS_SMOLTCP_MAX_UDP_SOCKETS = "2"
 
 [unstable]
 build-std = ["core", "alloc"]

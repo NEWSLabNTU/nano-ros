@@ -73,18 +73,18 @@ failures plus 8 environment skips.
   groups. Rerun these groups with required fixtures/services prebuilt
   and split real product bugs from host/setup fallout.
 
-- [ ] **177.19 - ESP32-C3 QEMU OpenETH Zenoh pub/sub does not move user data.**
-  Focused `test_esp32_talker_listener_e2e` retries still reach
-  `Waiting for messages...`, but the listener receives 0 messages and
-  the talker publishes 0 messages. The added board diagnostic prints
-  `smoltcp poll callback registered: true` during Ethernet init, while
-  steady-state example diagnostics show `do_poll` increasing with
-  `cb_hits=0`, `bridge_polls=0`, and `tx_drained=0`. A post-`Executor::open`
-  poll-callback re-arm was tested and rejected because it exposed a
-  `smoltcp::iface::SocketSet` index panic (`len is 0 but index is 0`)
-  during subscription setup. Next work: identify why the callback state
-  visible at init is not the state used by runtime polling, without
-  reinitializing or invalidating the live `SocketSet`.
+- [x] **177.19 - ESP32-C3 QEMU OpenETH Zenoh pub/sub does not move user data.**
+  Fixed the ESP32-C3 QEMU Zenoh examples by sizing their generated
+  executor arena for pub/sub instead of carrying the default action-capable
+  74 KB arena on the main stack. The oversized stack-local `Executor`
+  overflowed into adjacent `.bss`, clearing the smoltcp poll-callback
+  slot after Ethernet init had registered it; runtime diagnostics showed
+  `cb_registered=false` and `cb_sets=0` while `do_poll` climbed. The
+  examples now set `NROS_EXECUTOR_ARENA_SIZE=16384` and trim Zenoh's
+  unused UDP socket slots with `NROS_SMOLTCP_MAX_UDP_SOCKETS=2`. Focused
+  verification passed:
+  `XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp cargo test -p nros-tests --test esp32_emulator test_esp32_talker_listener_e2e -- --nocapture`
+  (`1 passed`, `8.66s`).
 
 ## Closed
 
@@ -210,5 +210,5 @@ Archive this tracker only after:
 - [ ] 177.2 and 177.3 close or move into newer, more specific phase docs.
 - [ ] 177.6 through 177.9 have owners and either close or move into more
   specific phase docs.
-- [ ] 177.19 and 177.20 close or move into platform-specific runtime
+- [x] 177.19 and 177.20 close or move into platform-specific runtime
   phases.

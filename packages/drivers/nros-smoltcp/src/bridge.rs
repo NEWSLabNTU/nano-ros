@@ -438,6 +438,8 @@ static BRIDGE_POLL_CALLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU3
 static BRIDGE_TX_DRAINED_BYTES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 static BRIDGE_RX_DRAINED_BYTES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 static TCP_RECV_BYTES_OUT: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static POLL_CALLBACK_SET_CALLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+static POLL_CALLBACK_LOST_POLLS: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 
 /// Snapshot of `do_poll`/bridge-poll diagnostic counters.
 ///
@@ -466,8 +468,24 @@ pub fn rx_diagnostics() -> (u32, u32) {
     )
 }
 
+/// Snapshot of poll-callback registration diagnostics.
+///
+/// Returns `(registered, set_calls, lost_polls_after_set)`. `lost_polls_after_set`
+/// increments when `do_poll` observes no registered callback after an earlier
+/// `set_poll_callback` call.
+pub fn poll_callback_diagnostics() -> (bool, u32, u32) {
+    use portable_atomic::Ordering;
+    (
+        has_poll_callback(),
+        POLL_CALLBACK_SET_CALLS.load(Ordering::Relaxed),
+        POLL_CALLBACK_LOST_POLLS.load(Ordering::Relaxed),
+    )
+}
+
 /// Set the poll callback function.
 pub fn set_poll_callback(callback: unsafe extern "C" fn()) {
+    use portable_atomic::Ordering;
+    POLL_CALLBACK_SET_CALLS.fetch_add(1, Ordering::Relaxed);
     unsafe {
         POLL_CALLBACK = Some(callback);
     }
@@ -508,6 +526,9 @@ pub fn do_poll() -> i32 {
             callback();
             0
         } else {
+            if POLL_CALLBACK_SET_CALLS.load(Ordering::Relaxed) != 0 {
+                POLL_CALLBACK_LOST_POLLS.fetch_add(1, Ordering::Relaxed);
+            }
             -1
         }
     };
