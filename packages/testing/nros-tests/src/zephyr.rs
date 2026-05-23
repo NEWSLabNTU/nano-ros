@@ -505,16 +505,8 @@ pub fn require_zephyr() -> bool {
 }
 
 // =============================================================================
-// Zephyr Build Helpers
+// Zephyr Fixture Helpers
 // =============================================================================
-
-use once_cell::sync::OnceCell;
-
-/// Cached path to built zephyr-rs-talker binary
-static ZEPHYR_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to built zephyr-rs-listener binary
-static ZEPHYR_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Get the build directory name for an example
 ///
@@ -681,25 +673,21 @@ fn conf_files_for_example(example_name: &str) -> Option<String> {
         .map(|(_lang, _case, rmw, _suffix)| format!("prj.conf;prj-{rmw}.conf"))
 }
 
-/// Get path to Zephyr binary, using an existing fixture by default
+/// Get path to a prebuilt Zephyr fixture binary.
 ///
 /// This function checks if a Zephyr binary already exists in the build directory
-/// and returns it when it is fresh. Normal tests must not build fixtures in
-/// their bodies; stale or missing fixtures report a setup error that points to
-/// `just zephyr build-fixtures`. Passing `force_build=true` keeps the explicit
-/// build path available for callers that intentionally rebuild.
+/// and returns it when it is fresh. Tests must not build fixtures in their
+/// bodies; stale or missing fixtures report a setup error that points to
+/// `just zephyr build-fixtures`.
 ///
 /// # Arguments
 /// * `example_name` - Name of the example directory (e.g., "zephyr-rs-talker")
 /// * `platform` - Target platform
-/// * `force_build` - If true, always rebuild even if binary exists
-///
 /// # Returns
 /// Path to the binary
-pub fn get_or_build_zephyr_example(
+pub fn get_prebuilt_zephyr_example(
     example_name: &str,
     platform: ZephyrPlatform,
-    force_build: bool,
 ) -> TestResult<PathBuf> {
     let workspace = zephyr_workspace_path()
         .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
@@ -715,20 +703,16 @@ pub fn get_or_build_zephyr_example(
         }
     };
 
-    if !force_build {
-        let binary = crate::fixtures::require_prebuilt_binary(&binary_path)?;
-        if is_binary_stale(&binary, example_name) {
-            return Err(TestError::BuildFailed(format!(
-                "Zephyr fixture binary is stale: {}\n\
-                 Run `just zephyr build-fixtures` before running Zephyr tests.",
-                binary.display()
-            )));
-        }
-        eprintln!("Using prebuilt Zephyr binary: {}", binary.display());
-        return Ok(binary);
+    let binary = crate::fixtures::require_prebuilt_binary(&binary_path)?;
+    if is_binary_stale(&binary, example_name) {
+        return Err(TestError::BuildFailed(format!(
+            "Zephyr fixture binary is stale: {}\n\
+             Run `just zephyr build-fixtures` before running Zephyr tests.",
+            binary.display()
+        )));
     }
-
-    build_zephyr_example(example_name, platform)
+    eprintln!("Using prebuilt Zephyr binary: {}", binary.display());
+    Ok(binary)
 }
 
 /// Return true if the built binary is older than the example or shared nros
@@ -800,151 +784,6 @@ fn path_newer_than(path: &Path, cutoff: std::time::SystemTime) -> bool {
         }
     }
     false
-}
-
-/// Build a Zephyr example using west (cached)
-///
-/// For zephyr-rs-talker and zephyr-rs-listener, results are cached to avoid
-/// repeated builds within the same test run.
-pub fn build_zephyr_example_cached(
-    example_name: &str,
-    platform: ZephyrPlatform,
-) -> TestResult<&'static Path> {
-    match example_name {
-        "zephyr-rs-talker" => ZEPHYR_TALKER_BINARY
-            .get_or_try_init(|| build_zephyr_example(example_name, platform))
-            .map(|p| p.as_path()),
-        "zephyr-rs-listener" => ZEPHYR_LISTENER_BINARY
-            .get_or_try_init(|| build_zephyr_example(example_name, platform))
-            .map(|p| p.as_path()),
-        _ => build_zephyr_example(example_name, platform)
-            .map(|p| Box::leak(Box::new(p)) as &'static Path),
-    }
-}
-
-/// Build a Zephyr example using west
-///
-/// Each example is built to its own directory (build-talker/, build-listener/)
-/// to allow both to exist simultaneously.
-///
-/// # Arguments
-/// * `example_name` - Name of the example directory (e.g., "zephyr-rs-talker")
-/// * `platform` - Target platform
-///
-/// # Returns
-/// Path to the built binary
-pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> TestResult<PathBuf> {
-    let workspace = zephyr_workspace_path()
-        .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
-
-    let root = project_root();
-    let example_rel_path = example_path_for_name(example_name);
-    let example_path = root.join("examples").join(&example_rel_path);
-
-    if !example_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Example not found: {}",
-            example_path.display()
-        )));
-    }
-
-    let build_root = zephyr_build_root(&workspace);
-    let build_dir = build_dir_for_example(example_name);
-    let actual_build_dir = build_root.join(&build_dir);
-
-    let binary_path = match platform {
-        ZephyrPlatform::NativeSim => actual_build_dir.join("zephyr/zephyr.exe"),
-        ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA9 => {
-            actual_build_dir.join("zephyr/zephyr.elf")
-        }
-    };
-
-    // Phase 140 — Zephyr examples consume nano-ros via the Phase 139
-    // integration shell (`integrations/zephyr/`) which `add_subdirectory`s
-    // the root CMake. No CMAKE_PREFIX_PATH override is needed.
-    let mut cmd = Command::new("west");
-    cmd.current_dir(&workspace)
-        .env(
-            "SCCACHE_DISABLE",
-            std::env::var("NROS_ZEPHYR_SCCACHE_DISABLE").unwrap_or_else(|_| "1".to_string()),
-        )
-        .env(
-            "CMAKE_BUILD_PARALLEL_LEVEL",
-            std::env::var("NROS_ZEPHYR_NINJA_JOBS").unwrap_or_else(|_| "1".to_string()),
-        )
-        .arg("build")
-        .arg("-b")
-        .arg(platform.board_spec())
-        .arg("-d")
-        .arg(&actual_build_dir)
-        .arg("-p")
-        .arg(std::env::var("NROS_ZEPHYR_PRISTINE").unwrap_or_else(|_| "auto".to_string()))
-        .arg(&example_path);
-
-    // Phase 168.6.B — collapsed examples select RMW via a Kconfig
-    // overlay (prj-<rmw>.conf). Inject CONF_FILE for any alias that
-    // resolves to a collapsed cell; legacy/unmapped names keep their
-    // pre-collapse single-prj.conf semantics.
-    let mut west_extras: Vec<String> = Vec::new();
-    if let Some(conf) = conf_files_for_example(example_name) {
-        west_extras.push(format!("-DCONF_FILE={conf}"));
-    }
-    if let Some(port) = xrce_agent_port_for_example(example_name) {
-        west_extras.push(format!("-DCONFIG_NROS_XRCE_AGENT_PORT={port}"));
-    }
-    if !west_extras.is_empty() {
-        cmd.arg("--");
-        for arg in &west_extras {
-            cmd.arg(arg);
-        }
-    }
-
-    let output = cmd.output().map_err(|e| {
-        TestError::BuildFailed(format!("Failed to start west for {example_name}: {e}"))
-    })?;
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(format!(
-            "west build failed for {example_name} ({})\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        )));
-    }
-
-    crate::fixtures::require_prebuilt_binary(&binary_path)
-}
-
-fn xrce_agent_port_for_example(example_name: &str) -> Option<u16> {
-    match example_name {
-        "zephyr-xrce-rs-talker"
-        | "xrce-rs-talker"
-        | "zephyr-xrce-rs-listener"
-        | "xrce-rs-listener" => Some(2018),
-        "zephyr-xrce-rs-service-server"
-        | "xrce-rs-service-server"
-        | "zephyr-xrce-rs-service-client"
-        | "xrce-rs-service-client" => Some(2028),
-        "zephyr-xrce-rs-action-server"
-        | "xrce-rs-action-server"
-        | "zephyr-xrce-rs-action-client"
-        | "xrce-rs-action-client" => Some(2038),
-        "zephyr-xrce-c-talker" | "xrce-c-talker" | "zephyr-xrce-c-listener" | "xrce-c-listener" => {
-            Some(2118)
-        }
-        "zephyr-xrce-cpp-talker"
-        | "xrce-cpp-talker"
-        | "zephyr-xrce-cpp-listener"
-        | "xrce-cpp-listener" => Some(2218),
-        "zephyr-xrce-cpp-service-server"
-        | "xrce-cpp-service-server"
-        | "zephyr-xrce-cpp-service-client"
-        | "xrce-cpp-service-client" => Some(2228),
-        "zephyr-xrce-cpp-action-server"
-        | "xrce-cpp-action-server"
-        | "zephyr-xrce-cpp-action-client"
-        | "xrce-cpp-action-client" => Some(2238),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

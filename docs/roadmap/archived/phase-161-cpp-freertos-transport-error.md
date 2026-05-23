@@ -127,20 +127,20 @@ is step 1 of the triage.
 
 ## Work items
 
-- [ ] **161.1 — Surface real NodeError variant.** Patch
+- [x] **161.1 — Surface real NodeError variant.** Patch
       `node_error_to_cpp_ret` (`nros-cpp/src/lib.rs:535-554`)
       to `eprintln!("[nros_cpp_init] {err:?}")` once before
       returning the mapped code, gated on `feature = "std"`
       OR a dedicated `feature = "diagnose-init"` so the no_std
       embedded build doesn't drag `format!` in.
 
-- [ ] **161.2 — Re-run C++ FreeRTOS pubsub with the probe.**
+- [x] **161.2 — Re-run C++ FreeRTOS pubsub with the probe.**
       Capture the exact NodeError variant. Expected:
       `Transport(ConnectionFailed)` — but `Transport(Other(_))`,
       `NotInitialized`, or `Serialization` would each point at
       a different root cause.
 
-- [ ] **161.3 — Linkage diff.** Compare `nm
+- [x] **161.3 — Linkage diff.** Compare `nm
       target/.../freertos_c_listener.elf` vs `freertos_cpp_listener.elf`
       for:
       - `nros_rmw_zenoh_register` symbol presence
@@ -154,14 +154,14 @@ is step 1 of the triage.
       build is missing the strong stub AND linkme isn't running,
       the registry is empty.
 
-- [ ] **161.4 — Compare init paths.** `nros_c_init`
+- [x] **161.4 — Compare init paths.** `nros_c_init`
       (`packages/core/nros-c/src/lib.rs`) vs `nros_cpp_init`
       (`packages/core/nros-cpp/src/lib.rs:453-530`) — the C path
       works on FreeRTOS, the C++ path doesn't. The diff in the
       `register()` cfg-feature scaffold (lines 470-481) is the
       obvious suspect once 161.2 confirms which backend is missing.
 
-- [ ] **161.5 — Land the fix.** Probably one of:
+- [x] **161.5 — Land the fix.** Probably one of:
       - Add the missing feature flag to `nros-cpp` at the FreeRTOS
         consumer side (CMakeLists snippet or `Cargo.toml` of the
         cpp shim crate).
@@ -170,7 +170,7 @@ is step 1 of the triage.
       - Add an explicit `nros_rmw_zenoh_register()` call from
         the strong stub if linkme isn't running on the target.
 
-- [ ] **161.6 — Verify the Phase 141 regression gate.**
+- [x] **161.6 — Verify the Phase 141 regression gate.**
       `just freertos test-all` returns 9/9 PASS.
 
 ## Files (when 161.5 lands)
@@ -184,12 +184,12 @@ is step 1 of the triage.
 
 ## Acceptance criteria
 
-- [ ] `cargo nextest run -p nros-tests --test rtos_e2e
+- [x] `cargo nextest run -p nros-tests --test rtos_e2e
       "test_rtos_*_e2e::platform_1_Platform__Freertos::lang_3_Lang__Cpp"`
       passes all 3 C++ FreeRTOS variants.
-- [ ] `just freertos test-all` returns 9/9 PASS.
-- [ ] No regression on Rust + C variants (already 6/6 PASS).
-- [ ] Probe `eprintln!` from 161.1 either reverted before
+- [x] `just freertos test-all` returns 9/9 PASS.
+- [x] No regression on Rust + C variants (already 6/6 PASS).
+- [x] Probe `eprintln!` from 161.1 either reverted before
       landing OR moved behind an explicit diagnostic feature
       that isn't enabled by default.
 

@@ -27,7 +27,7 @@ use nros_tests::{
     },
     platform,
     zephyr::{
-        ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_zephyr_available,
+        ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example, is_zephyr_available,
         require_zephyr, zephyr_workspace_path,
     },
 };
@@ -40,15 +40,15 @@ fn count_zephyr_received(output: &str) -> usize {
         .count()
 }
 
-/// Get or build Zephyr talker for native_sim (uses existing binary if available)
+/// Get prebuilt Zephyr talker for native_sim (uses existing binary if available)
 fn get_zephyr_talker_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-rs-talker binary")
 }
 
-/// Get or build Zephyr listener for native_sim (uses existing binary if available)
+/// Get prebuilt Zephyr listener for native_sim (uses existing binary if available)
 fn get_zephyr_listener_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-rs-listener", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-rs-listener", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-rs-listener binary")
 }
 
@@ -98,7 +98,7 @@ fn test_zephyr_talker_to_listener_e2e() {
     // Give zenohd time to start
     std::thread::sleep(Duration::from_millis(500));
 
-    // Build both examples (to separate directories)
+    // Resolve prebuilt examples (to separate directories)
     let talker_binary = get_zephyr_talker_native_sim();
     let listener_binary = get_zephyr_listener_native_sim();
 
@@ -665,19 +665,19 @@ fn test_zephyr_listener_smoke() {
 // Build Tests
 // =============================================================================
 
-/// Test: Zephyr talker can be built or found
+/// Test: Zephyr talker uses a prebuilt fixture
 #[test]
 fn test_zephyr_talker_build() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let result = get_or_build_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim, false);
+    let result = get_prebuilt_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim);
 
     match result {
         Ok(path) => {
             assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found/built talker at {}", path.display());
+            eprintln!("SUCCESS: Found prebuilt talker at {}", path.display());
         }
         Err(e) => {
             panic!("Failed to get zephyr-rs-talker: {}", e);
@@ -685,20 +685,19 @@ fn test_zephyr_talker_build() {
     }
 }
 
-/// Test: Zephyr listener can be built or found
+/// Test: Zephyr listener uses a prebuilt fixture
 #[test]
 fn test_zephyr_listener_build() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let result =
-        get_or_build_zephyr_example("zephyr-rs-listener", ZephyrPlatform::NativeSim, false);
+    let result = get_prebuilt_zephyr_example("zephyr-rs-listener", ZephyrPlatform::NativeSim);
 
     match result {
         Ok(path) => {
             assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found/built listener at {}", path.display());
+            eprintln!("SUCCESS: Found prebuilt listener at {}", path.display());
         }
         Err(e) => {
             panic!("Failed to get zephyr-rs-listener: {}", e);
@@ -710,32 +709,34 @@ fn test_zephyr_listener_build() {
 // Zephyr Action Examples
 // =============================================================================
 
-/// Get or build Zephyr action server for native_sim
+/// Get prebuilt Zephyr action server for native_sim
 fn get_zephyr_action_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-rs-action-server", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-rs-action-server", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-rs-action-server binary")
 }
 
-/// Get or build Zephyr action client for native_sim
+/// Get prebuilt Zephyr action client for native_sim
 fn get_zephyr_action_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-rs-action-client", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-rs-action-client", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-rs-action-client binary")
 }
 
-/// Test: Zephyr action server can be built or found
+/// Test: Zephyr action server uses a prebuilt fixture
 #[test]
 fn test_zephyr_action_server_build() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let result =
-        get_or_build_zephyr_example("zephyr-rs-action-server", ZephyrPlatform::NativeSim, false);
+    let result = get_prebuilt_zephyr_example("zephyr-rs-action-server", ZephyrPlatform::NativeSim);
 
     match result {
         Ok(path) => {
             assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found/built action server at {}", path.display());
+            eprintln!(
+                "SUCCESS: Found prebuilt action server at {}",
+                path.display()
+            );
         }
         Err(e) => {
             panic!("Failed to get zephyr-rs-action-server: {}", e);
@@ -743,20 +744,22 @@ fn test_zephyr_action_server_build() {
     }
 }
 
-/// Test: Zephyr action client can be built or found
+/// Test: Zephyr action client uses a prebuilt fixture
 #[test]
 fn test_zephyr_action_client_build() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let result =
-        get_or_build_zephyr_example("zephyr-rs-action-client", ZephyrPlatform::NativeSim, false);
+    let result = get_prebuilt_zephyr_example("zephyr-rs-action-client", ZephyrPlatform::NativeSim);
 
     match result {
         Ok(path) => {
             assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found/built action client at {}", path.display());
+            eprintln!(
+                "SUCCESS: Found prebuilt action client at {}",
+                path.display()
+            );
         }
         Err(e) => {
             panic!("Failed to get zephyr-rs-action-client: {}", e);
@@ -864,7 +867,7 @@ fn test_zephyr_action_e2e() {
 
     std::thread::sleep(Duration::from_millis(500));
 
-    // Build both examples
+    // Resolve prebuilt examples
     let server_binary = get_zephyr_action_server_native_sim();
     let client_binary = get_zephyr_action_client_native_sim();
 
@@ -992,32 +995,34 @@ fn test_zephyr_action_e2e() {
 // Zephyr Service Examples
 // =============================================================================
 
-/// Get or build Zephyr service server for native_sim
+/// Get prebuilt Zephyr service server for native_sim
 fn get_zephyr_service_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-rs-service-server binary")
 }
 
-/// Get or build Zephyr service client for native_sim
+/// Get prebuilt Zephyr service client for native_sim
 fn get_zephyr_service_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-rs-service-client binary")
 }
 
-/// Test: Zephyr service server can be built or found
+/// Test: Zephyr service server uses a prebuilt fixture
 #[test]
 fn test_zephyr_service_server_build() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let result =
-        get_or_build_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim, false);
+    let result = get_prebuilt_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim);
 
     match result {
         Ok(path) => {
             assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found/built service server at {}", path.display());
+            eprintln!(
+                "SUCCESS: Found prebuilt service server at {}",
+                path.display()
+            );
         }
         Err(e) => {
             panic!("Failed to get zephyr-rs-service-server: {}", e);
@@ -1025,20 +1030,22 @@ fn test_zephyr_service_server_build() {
     }
 }
 
-/// Test: Zephyr service client can be built or found
+/// Test: Zephyr service client uses a prebuilt fixture
 #[test]
 fn test_zephyr_service_client_build() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let result =
-        get_or_build_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim, false);
+    let result = get_prebuilt_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim);
 
     match result {
         Ok(path) => {
             assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found/built service client at {}", path.display());
+            eprintln!(
+                "SUCCESS: Found prebuilt service client at {}",
+                path.display()
+            );
         }
         Err(e) => {
             panic!("Failed to get zephyr-rs-service-client: {}", e);
@@ -1233,7 +1240,7 @@ fn test_native_server_zephyr_client() {
             "Zephyr service E2E failed — client sent requests but all timed out.\n\
              Server received request: {}\n\
              This indicates a zenoh queryable discovery issue. Verify:\n\
-             - Zephyr binary rebuilt after CMakeLists.txt changes: `west build`\n\
+             - Zephyr binary rebuilt after CMakeLists.txt changes: `just zephyr build-fixtures`\n\
              - zenohd running on bridge IP and reachable from both native and Zephyr processes",
             server_received
         );
@@ -1241,7 +1248,7 @@ fn test_native_server_zephyr_client() {
         panic!(
             "Zephyr service E2E failed — client did not connect to zenohd.\n\
              Verify:\n\
-             - Zephyr binary up to date: rebuild with `west build`\n\
+             - Zephyr binary up to date: run `just zephyr build-fixtures`\n\
              - zenohd reachable on tcp/127.0.0.1:7456 (NSOS forwards sockets to host loopback)"
         );
     } else {
@@ -1257,27 +1264,27 @@ fn test_native_server_zephyr_client() {
 // Zephyr XRCE-DDS E2E Tests (with XRCE Agent)
 // =============================================================================
 
-/// Get or build Zephyr XRCE Rust talker for native_sim
+/// Get prebuilt Zephyr XRCE Rust talker for native_sim
 fn get_zephyr_xrce_rs_talker_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-xrce-rs-talker", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-xrce-rs-talker", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-xrce-rs-talker binary")
 }
 
-/// Get or build Zephyr XRCE Rust listener for native_sim
+/// Get prebuilt Zephyr XRCE Rust listener for native_sim
 fn get_zephyr_xrce_rs_listener_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-xrce-rs-listener", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-xrce-rs-listener", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-xrce-rs-listener binary")
 }
 
-/// Get or build Zephyr XRCE C talker for native_sim
+/// Get prebuilt Zephyr XRCE C talker for native_sim
 fn get_zephyr_xrce_c_talker_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-xrce-c-talker", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-xrce-c-talker", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-xrce-c-talker binary")
 }
 
-/// Get or build Zephyr XRCE C listener for native_sim
+/// Get prebuilt Zephyr XRCE C listener for native_sim
 fn get_zephyr_xrce_c_listener_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-xrce-c-listener", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-xrce-c-listener", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-xrce-c-listener binary")
 }
 
@@ -1312,7 +1319,7 @@ fn test_zephyr_xrce_rust_talker_listener() {
     // Give agent time to start
     std::thread::sleep(Duration::from_millis(500));
 
-    // Build both examples
+    // Resolve prebuilt examples
     let talker_binary = get_zephyr_xrce_rs_talker_native_sim();
     let listener_binary = get_zephyr_xrce_rs_listener_native_sim();
 
@@ -1411,7 +1418,7 @@ fn test_zephyr_xrce_c_talker_listener() {
     // Give agent time to start
     std::thread::sleep(Duration::from_millis(500));
 
-    // Build both examples
+    // Resolve prebuilt examples
     let talker_binary = get_zephyr_xrce_c_talker_native_sim();
     let listener_binary = get_zephyr_xrce_c_listener_native_sim();
 
@@ -1488,39 +1495,23 @@ fn test_zephyr_xrce_c_talker_listener() {
 // =============================================================================
 
 fn get_zephyr_xrce_rs_service_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-rs-service-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-rs-service-server binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-rs-service-server", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-rs-service-server binary")
 }
 
 fn get_zephyr_xrce_rs_service_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-rs-service-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-rs-service-client binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-rs-service-client", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-rs-service-client binary")
 }
 
 fn get_zephyr_xrce_rs_action_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-rs-action-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-rs-action-server binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-rs-action-server", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-rs-action-server binary")
 }
 
 fn get_zephyr_xrce_rs_action_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-rs-action-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-rs-action-client binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-rs-action-client", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-rs-action-client binary")
 }
 
 /// Test: Zephyr XRCE Rust service server → Zephyr XRCE Rust service client
@@ -1787,9 +1778,8 @@ fn test_zephyr_dds_cpp_talker_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin =
-        get_or_build_zephyr_example("zephyr-dds-cpp-talker", ZephyrPlatform::NativeSim, false)
-            .expect("Failed to get zephyr-dds-cpp-talker binary");
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-cpp-talker", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-dds-cpp-talker binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds talker");
     let out = p.wait_for_pattern("nros Zephyr C++ Talker", Duration::from_secs(10));
@@ -1804,9 +1794,8 @@ fn test_zephyr_dds_cpp_listener_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin =
-        get_or_build_zephyr_example("zephyr-dds-cpp-listener", ZephyrPlatform::NativeSim, false)
-            .expect("Failed to get zephyr-dds-cpp-listener binary");
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-cpp-listener", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-dds-cpp-listener binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds listener");
     let out = p.wait_for_pattern("nros Zephyr C++ Listener", Duration::from_secs(10));
@@ -1821,12 +1810,9 @@ fn test_zephyr_dds_cpp_service_server_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-cpp-service-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-cpp-service-server binary");
+    let bin =
+        get_prebuilt_zephyr_example("zephyr-dds-cpp-service-server", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-cpp-service-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds service server");
     let out = p.wait_for_pattern("nros Zephyr C++ Service Server", Duration::from_secs(10));
@@ -1841,12 +1827,9 @@ fn test_zephyr_dds_cpp_service_client_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-cpp-service-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-cpp-service-client binary");
+    let bin =
+        get_prebuilt_zephyr_example("zephyr-dds-cpp-service-client", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-cpp-service-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds service client");
     let out = p.wait_for_pattern("nros Zephyr C++ Service Client", Duration::from_secs(10));
@@ -1861,12 +1844,9 @@ fn test_zephyr_dds_cpp_action_server_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-cpp-action-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-cpp-action-server binary");
+    let bin =
+        get_prebuilt_zephyr_example("zephyr-dds-cpp-action-server", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-cpp-action-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds action server");
     let out = p.wait_for_pattern("nros Zephyr C++ Action Server", Duration::from_secs(10));
@@ -1881,12 +1861,9 @@ fn test_zephyr_dds_cpp_action_client_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-cpp-action-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-cpp-action-client binary");
+    let bin =
+        get_prebuilt_zephyr_example("zephyr-dds-cpp-action-client", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-cpp-action-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds action client");
     let out = p.wait_for_pattern("nros Zephyr C++ Action Client", Duration::from_secs(10));
@@ -1902,18 +1879,12 @@ fn test_zephyr_dds_cpp_action_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let server_bin = get_or_build_zephyr_example(
-        "zephyr-dds-cpp-action-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-cpp-action-server binary");
-    let client_bin = get_or_build_zephyr_example(
-        "zephyr-dds-cpp-action-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-cpp-action-client binary");
+    let server_bin =
+        get_prebuilt_zephyr_example("zephyr-dds-cpp-action-server", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-cpp-action-server binary");
+    let client_bin =
+        get_prebuilt_zephyr_example("zephyr-dds-cpp-action-client", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-cpp-action-client binary");
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/dds action server");
@@ -1960,18 +1931,12 @@ fn test_zephyr_dds_rs_action_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let server_bin = get_or_build_zephyr_example(
-        "zephyr-dds-rs-action-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-rs-action-server binary");
-    let client_bin = get_or_build_zephyr_example(
-        "zephyr-dds-rs-action-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-rs-action-client binary");
+    let server_bin =
+        get_prebuilt_zephyr_example("zephyr-dds-rs-action-server", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-rs-action-server binary");
+    let client_bin =
+        get_prebuilt_zephyr_example("zephyr-dds-rs-action-client", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-rs-action-client binary");
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start rs/dds action server");
@@ -2022,7 +1987,7 @@ fn test_zephyr_dds_c_talker_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example("zephyr-dds-c-talker", ZephyrPlatform::NativeSim, false)
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-talker", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-dds-c-talker binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds talker");
@@ -2038,9 +2003,8 @@ fn test_zephyr_dds_c_listener_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin =
-        get_or_build_zephyr_example("zephyr-dds-c-listener", ZephyrPlatform::NativeSim, false)
-            .expect("Failed to get zephyr-dds-c-listener binary");
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-listener", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-dds-c-listener binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds listener");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -2055,12 +2019,8 @@ fn test_zephyr_dds_c_service_server_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-c-service-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-c-service-server binary");
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-service-server", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-dds-c-service-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds service server");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -2075,12 +2035,8 @@ fn test_zephyr_dds_c_service_client_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-c-service-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-c-service-client binary");
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-service-client", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-dds-c-service-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds service client");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -2095,12 +2051,8 @@ fn test_zephyr_dds_c_action_server_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-c-action-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-c-action-server binary");
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-action-server", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-dds-c-action-server binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds action server");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -2115,12 +2067,8 @@ fn test_zephyr_dds_c_action_client_boots() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
     }
-    let bin = get_or_build_zephyr_example(
-        "zephyr-dds-c-action-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-c-action-client binary");
+    let bin = get_prebuilt_zephyr_example("zephyr-dds-c-action-client", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-dds-c-action-client binary");
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds action client");
     let out = p.wait_for_pattern("Booting Zephyr OS", Duration::from_secs(10));
@@ -2136,18 +2084,12 @@ fn test_zephyr_dds_c_action_e2e() {
         nros_tests::skip!("Zephyr not available");
     }
 
-    let server_bin = get_or_build_zephyr_example(
-        "zephyr-dds-c-action-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-c-action-server binary");
-    let client_bin = get_or_build_zephyr_example(
-        "zephyr-dds-c-action-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-dds-c-action-client binary");
+    let server_bin =
+        get_prebuilt_zephyr_example("zephyr-dds-c-action-server", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-c-action-server binary");
+    let client_bin =
+        get_prebuilt_zephyr_example("zephyr-dds-c-action-client", ZephyrPlatform::NativeSim)
+            .expect("Failed to get zephyr-dds-c-action-client binary");
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start c/dds action server");
@@ -2192,49 +2134,33 @@ fn test_zephyr_dds_c_action_e2e() {
 // =============================================================================
 
 fn get_zephyr_xrce_cpp_talker_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-xrce-cpp-talker", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-xrce-cpp-talker", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-xrce-cpp-talker binary")
 }
 
 fn get_zephyr_xrce_cpp_listener_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("zephyr-xrce-cpp-listener", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("zephyr-xrce-cpp-listener", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-xrce-cpp-listener binary")
 }
 
 fn get_zephyr_xrce_cpp_service_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-cpp-service-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-cpp-service-server binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-cpp-service-server", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-cpp-service-server binary")
 }
 
 fn get_zephyr_xrce_cpp_service_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-cpp-service-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-cpp-service-client binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-cpp-service-client", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-cpp-service-client binary")
 }
 
 fn get_zephyr_xrce_cpp_action_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-cpp-action-server",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-cpp-action-server binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-cpp-action-server", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-cpp-action-server binary")
 }
 
 fn get_zephyr_xrce_cpp_action_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example(
-        "zephyr-xrce-cpp-action-client",
-        ZephyrPlatform::NativeSim,
-        false,
-    )
-    .expect("Failed to get zephyr-xrce-cpp-action-client binary")
+    get_prebuilt_zephyr_example("zephyr-xrce-cpp-action-client", ZephyrPlatform::NativeSim)
+        .expect("Failed to get zephyr-xrce-cpp-action-client binary")
 }
 
 /// Phase 96.1 — cpp/xrce talker→listener interop on a shared agent.
@@ -2528,15 +2454,15 @@ fn test_zephyr_server_native_client() {
 // Zephyr C++ E2E Tests
 // =============================================================================
 
-/// Get or build Zephyr C++ talker for native_sim
+/// Get prebuilt Zephyr C++ talker for native_sim
 fn get_zephyr_cpp_talker_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("cpp-talker", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("cpp-talker", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-cpp-talker binary")
 }
 
-/// Get or build Zephyr C++ listener for native_sim
+/// Get prebuilt Zephyr C++ listener for native_sim
 fn get_zephyr_cpp_listener_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("cpp-listener", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("cpp-listener", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-cpp-listener binary")
 }
 
@@ -2798,15 +2724,15 @@ fn test_native_talker_to_zephyr_cpp_listener() {
 // Zephyr C++ Service E2E Tests
 // =============================================================================
 
-/// Get or build Zephyr C++ service server for native_sim
+/// Get prebuilt Zephyr C++ service server for native_sim
 fn get_zephyr_cpp_service_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("cpp-service-server", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("cpp-service-server", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-cpp-service-server binary")
 }
 
-/// Get or build Zephyr C++ service client for native_sim
+/// Get prebuilt Zephyr C++ service client for native_sim
 fn get_zephyr_cpp_service_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("cpp-service-client", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("cpp-service-client", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-cpp-service-client binary")
 }
 
@@ -2885,15 +2811,15 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
 // Zephyr C++ Action E2E Tests
 // =============================================================================
 
-/// Get or build Zephyr C++ action server for native_sim
+/// Get prebuilt Zephyr C++ action server for native_sim
 fn get_zephyr_cpp_action_server_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("cpp-action-server", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("cpp-action-server", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-cpp-action-server binary")
 }
 
-/// Get or build Zephyr C++ action client for native_sim
+/// Get prebuilt Zephyr C++ action client for native_sim
 fn get_zephyr_cpp_action_client_native_sim() -> PathBuf {
-    get_or_build_zephyr_example("cpp-action-client", ZephyrPlatform::NativeSim, false)
+    get_prebuilt_zephyr_example("cpp-action-client", ZephyrPlatform::NativeSim)
         .expect("Failed to get zephyr-cpp-action-client binary")
 }
 
