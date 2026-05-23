@@ -12,6 +12,8 @@ elseif(CONFIG_NROS_RMW_XRCE)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-xrce)
 elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-cyclonedds)
+    include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NrosZephyrCycloneddsActionTypes.cmake")
+    nros_zephyr_add_cyclonedds_action_descriptors(app)
 else()
     message(FATAL_ERROR
         "Phase 168 requires an RMW overlay. Build with: "

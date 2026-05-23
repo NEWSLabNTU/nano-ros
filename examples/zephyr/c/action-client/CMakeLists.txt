@@ -8,4 +8,7 @@ project(nros_zephyr_zenoh_action_client_c)
 
 nros_generate_interfaces(example_interfaces "action/Fibonacci.action")
 
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NrosZephyrCycloneddsActionTypes.cmake")
+nros_zephyr_add_cyclonedds_action_descriptors(app)
+
 target_sources(app PRIVATE src/main.c)

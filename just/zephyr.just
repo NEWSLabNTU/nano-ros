@@ -260,7 +260,11 @@ build-fixtures:
             exit 2
             ;;
     esac
+    fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
     echo "  concurrency: $jobs; ninja-jobs: $ninja_jobs; pristine: $pristine; sccache-disable: $sccache_disable (logs: $log_dir)"
+    if [ -n "$fixture_filter" ]; then
+        echo "  fixture-filter: $fixture_filter"
+    fi
 
     # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
     entries=(
@@ -377,6 +381,7 @@ build-fixtures:
         fi
     }
 
+    selected=0
     for entry in "${entries[@]}"; do
         # Columns:
         #   5  xrce_agent_port (optional) — forwarded as
@@ -387,6 +392,10 @@ build-fixtures:
         #      forwarded as `-DCONF_FILE="..."` for Phase 168.x
         #      collapsed cases that select RMW via prj overlay.
         IFS='|' read -r board build_dir src best_effort xrce_port conf_files <<< "$entry"
+        if [ -n "$fixture_filter" ] && ! [[ "$board $build_dir $src $conf_files" =~ $fixture_filter ]]; then
+            continue
+        fi
+        selected=$((selected + 1))
         if [[ "$build_dir" = /* ]]; then
             actual_build_dir="$build_dir"
         else
@@ -483,6 +492,10 @@ build-fixtures:
     while [ "${#running[@]}" -gt 0 ]; do
         wait_one
     done
+    if [ "$selected" -eq 0 ]; then
+        echo "  ✗ no Zephyr fixtures matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter"
+        exit 1
+    fi
     if [ ${#failures[@]} -gt 0 ]; then
         printf '  ✗ failed: %s\n' "${failures[@]}"
         exit 1

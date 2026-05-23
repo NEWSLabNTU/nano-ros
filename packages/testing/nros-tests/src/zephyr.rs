@@ -681,11 +681,13 @@ fn conf_files_for_example(example_name: &str) -> Option<String> {
         .map(|(_lang, _case, rmw, _suffix)| format!("prj.conf;prj-{rmw}.conf"))
 }
 
-/// Get path to Zephyr binary, using existing build if available
+/// Get path to Zephyr binary, using an existing fixture by default
 ///
 /// This function checks if a Zephyr binary already exists in the build directory
-/// and returns it without rebuilding when it is fresh. If the binary is missing,
-/// stale, or `force_build` is true, it invokes `west build` for the fixture.
+/// and returns it when it is fresh. Normal tests must not build fixtures in
+/// their bodies; stale or missing fixtures report a setup error that points to
+/// `just zephyr build-fixtures`. Passing `force_build=true` keeps the explicit
+/// build path available for callers that intentionally rebuild.
 ///
 /// # Arguments
 /// * `example_name` - Name of the example directory (e.g., "zephyr-rs-talker")
@@ -713,27 +715,19 @@ pub fn get_or_build_zephyr_example(
         }
     };
 
-    // If binary exists and we're not forcing a rebuild, check that it's
-    // fresher than the example's sources before reusing it. Without this
-    // staleness check, a `prj.conf` edit (e.g. the 89.Zephyr per-variant
-    // port split) leaves tests using a cached binary that still has the
-    // old `CONFIG_NROS_ZENOH_LOCATOR` baked in — binary connects to
-    // port 7456 while the test starts zenohd on 7466, test reports
-    // `Transport(ConnectionFailed)` or `Init failed: -100` with no
-    // hint that the culprit is a stale build.
-    if !force_build && binary_path.exists() && !is_binary_stale(&binary_path, example_name) {
-        eprintln!("Using existing Zephyr binary: {}", binary_path.display());
-        return Ok(binary_path);
+    if !force_build {
+        let binary = crate::fixtures::require_prebuilt_binary(&binary_path)?;
+        if is_binary_stale(&binary, example_name) {
+            return Err(TestError::BuildFailed(format!(
+                "Zephyr fixture binary is stale: {}\n\
+                 Run `just zephyr build-fixtures` before running Zephyr tests.",
+                binary.display()
+            )));
+        }
+        eprintln!("Using prebuilt Zephyr binary: {}", binary.display());
+        return Ok(binary);
     }
 
-    if binary_path.exists() {
-        eprintln!(
-            "Zephyr binary out-of-date vs sources, rebuilding: {}",
-            binary_path.display()
-        );
-    }
-
-    // Otherwise, build it
     build_zephyr_example(example_name, platform)
 }
 
@@ -755,7 +749,7 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
     // dependency changes. The package set catches shared nros backend/platform
     // edits; otherwise tests can report stale Zephyr runtime failures after a
     // library fix has already landed.
-    let candidates = vec![
+    let mut candidates = vec![
         example_dir.join("prj.conf"),
         example_dir.join("CMakeLists.txt"),
         example_dir.join("Cargo.toml"),
@@ -768,6 +762,11 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         root.join("packages/xrce"),
         root.join("packages/zpico"),
     ];
+    if let Some(conf_files) = conf_files_for_example(example_name) {
+        for conf_file in conf_files.split(';') {
+            candidates.push(example_dir.join(conf_file));
+        }
+    }
     for p in &candidates {
         if path_newer_than(p, binary_mtime) {
             return true;

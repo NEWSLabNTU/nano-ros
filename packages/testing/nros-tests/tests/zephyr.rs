@@ -1896,6 +1896,123 @@ fn test_zephyr_dds_cpp_action_client_boots() {
     }
 }
 
+#[test]
+fn test_zephyr_dds_cpp_action_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+
+    let server_bin = get_or_build_zephyr_example(
+        "zephyr-dds-cpp-action-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-cpp-action-server binary");
+    let client_bin = get_or_build_zephyr_example(
+        "zephyr-dds-cpp-action-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-cpp-action-client binary");
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds action server");
+    let server_ready =
+        server.wait_for_pattern("Waiting for goal requests", Duration::from_secs(30));
+    if !server_ready.contains("Waiting for goal requests") {
+        panic!(
+            "Zephyr C++ Cyclone action server didn't reach readiness.\nOutput:\n{}",
+            server_ready
+        );
+    }
+
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start cpp/dds action client");
+    let client_output = client.wait_for_pattern("Result received", Duration::from_secs(60));
+    let server_output = server
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "\n=== Zephyr C++ Cyclone action server output ===\n{}",
+        server_output
+    );
+    eprintln!(
+        "\n=== Zephyr C++ Cyclone action client output ===\n{}",
+        client_output
+    );
+
+    let server_completed = server_output.contains("Goal completed");
+    let client_completed = client_output.contains("Result received");
+    if !(server_completed && client_completed) {
+        panic!(
+            "C++ Cyclone action E2E failed (server_completed={}, client_completed={}).",
+            server_completed, client_completed
+        );
+    }
+}
+
+#[test]
+fn test_zephyr_dds_rs_action_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+
+    let server_bin = get_or_build_zephyr_example(
+        "zephyr-dds-rs-action-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-action-server binary");
+    let client_bin = get_or_build_zephyr_example(
+        "zephyr-dds-rs-action-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-rs-action-client binary");
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start rs/dds action server");
+    let server_ready =
+        server.wait_for_pattern("Action server ready: /fibonacci", Duration::from_secs(30));
+    if !server_ready.contains("Action server ready: /fibonacci") {
+        panic!(
+            "Zephyr Rust Cyclone action server didn't reach readiness.\nOutput:\n{}",
+            server_ready
+        );
+    }
+
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start rs/dds action client");
+    let client_output = client.wait_for_pattern("Action client finished", Duration::from_secs(90));
+    let server_output = server
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "\n=== Zephyr Rust Cyclone action server output ===\n{}",
+        server_output
+    );
+    eprintln!(
+        "\n=== Zephyr Rust Cyclone action client output ===\n{}",
+        client_output
+    );
+
+    let server_received_goal = server_output.contains("Goal request");
+    let client_completed =
+        client_output.contains("Action client finished") && client_output.contains("Result:");
+    if !(server_received_goal && client_completed) {
+        panic!(
+            "Rust Cyclone action E2E failed (server_received_goal={}, client_completed={}).",
+            server_received_goal, client_completed
+        );
+    }
+}
+
 // =============================================================================
 // Phase 95.E — Zephyr DDS C talker/listener/svc/action boot tests
 // =============================================================================
@@ -2010,6 +2127,63 @@ fn test_zephyr_dds_c_action_client_boots() {
     p.kill();
     if !out.contains("Booting Zephyr OS") {
         panic!("c/dds action client didn't print Zephyr banner:\n{}", out);
+    }
+}
+
+#[test]
+fn test_zephyr_dds_c_action_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+
+    let server_bin = get_or_build_zephyr_example(
+        "zephyr-dds-c-action-server",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-c-action-server binary");
+    let client_bin = get_or_build_zephyr_example(
+        "zephyr-dds-c-action-client",
+        ZephyrPlatform::NativeSim,
+        false,
+    )
+    .expect("Failed to get zephyr-dds-c-action-client binary");
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds action server");
+    let server_ready = server.wait_for_pattern("Waiting for goals", Duration::from_secs(30));
+    if !server_ready.contains("Waiting for goals") {
+        panic!(
+            "Zephyr C Cyclone action server didn't reach readiness.\nOutput:\n{}",
+            server_ready
+        );
+    }
+
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
+        .expect("Failed to start c/dds action client");
+    let client_output = client.wait_for_pattern("Sequence length", Duration::from_secs(60));
+    let server_output = server
+        .wait_for_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "\n=== Zephyr C Cyclone action server output ===\n{}",
+        server_output
+    );
+    eprintln!(
+        "\n=== Zephyr C Cyclone action client output ===\n{}",
+        client_output
+    );
+
+    let server_completed = server_output.contains("Goal completed");
+    let client_completed = client_output.contains("Sequence length");
+    if !(server_completed && client_completed) {
+        panic!(
+            "C Cyclone action E2E failed (server_completed={}, client_completed={}).",
+            server_completed, client_completed
+        );
     }
 }
 

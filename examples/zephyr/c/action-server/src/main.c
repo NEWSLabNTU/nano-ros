@@ -84,7 +84,9 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
 
     uint8_t result_buf[512];
     int32_t result_len = example_interfaces_action_fibonacci_result_serialize(&result, result_buf, sizeof(result_buf));
-    if (result_len > 0) nros_action_succeed(server, goal, result_buf, (size_t)result_len);
+    if (result_len > 0 && nros_action_succeed(server, goal, result_buf, (size_t)result_len) == NROS_RET_OK) {
+        NROS_LOG_INFO(g_logger, "Goal completed (len=%u)", result.sequence.size);
+    }
 }
 
 int nros_app_main(int argc, char **argv)

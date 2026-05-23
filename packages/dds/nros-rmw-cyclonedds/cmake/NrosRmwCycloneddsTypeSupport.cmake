@@ -391,7 +391,7 @@ endfunction()
 function(nros_rmw_cyclonedds_generate_from_msg output_var)
     set(_options "")
     set(_one    PKG_NAME PKG_DIR OUTPUT_DIR INCLUDE_ROOT GEN_ROOT)
-    set(_multi  INTERFACES)
+    set(_multi  INTERFACES IDL_DEPENDS)
     cmake_parse_arguments(_arg "${_options}" "${_one}" "${_multi}" ${ARGN})
 
     if(NOT _arg_PKG_NAME OR NOT _arg_PKG_DIR OR NOT _arg_INTERFACES)
@@ -498,7 +498,7 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
                 IDL_FILE  "${_idl_path}"
                 OUTPUT_DIR "${_gen_dir}"
                 INCLUDE_DIRS ${_idlc_includes}
-                EXTRA_DEPENDS ${_pkg_idl_paths}
+                EXTRA_DEPENDS ${_pkg_idl_paths} ${_arg_IDL_DEPENDS}
                 TYPE_NAME "${_arg_PKG_NAME}::msg::dds_::${_iface_stem}_"
             )
         elseif(_iface_ext STREQUAL ".srv")
@@ -506,7 +506,7 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
                 IDL_FILE  "${_idl_path}"
                 OUTPUT_DIR "${_gen_dir}"
                 INCLUDE_DIRS ${_idlc_includes}
-                EXTRA_DEPENDS ${_pkg_idl_paths}
+                EXTRA_DEPENDS ${_pkg_idl_paths} ${_arg_IDL_DEPENDS}
                 TYPE_NAMES
                     "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Request_"
                     "${_arg_PKG_NAME}::srv::dds_::${_iface_stem}_Response_"
@@ -523,7 +523,7 @@ function(nros_rmw_cyclonedds_generate_from_msg output_var)
                 IDL_FILE  "${_idl_path}"
                 OUTPUT_DIR "${_gen_dir}"
                 INCLUDE_DIRS ${_idlc_includes}
-                EXTRA_DEPENDS ${_pkg_idl_paths}
+                EXTRA_DEPENDS ${_pkg_idl_paths} ${_arg_IDL_DEPENDS}
                 TYPE_NAMES
                     "${_act}_Goal_"
                     "${_act}_Result_"

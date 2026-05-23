@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(nros_zephyr_action_server_cpp LANGUAGES CXX)
+project(nros_zephyr_action_server_cpp LANGUAGES CXX C)
 
 # nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
 # platform support, and the nros-cpp library automatically.
@@ -13,5 +13,8 @@ nros_generate_interfaces(example_interfaces
     "action/Fibonacci.action"
     LANGUAGE CPP
 )
+
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NrosZephyrCycloneddsActionTypes.cmake")
+nros_zephyr_add_cyclonedds_action_descriptors(app)
 
 target_sources(app PRIVATE src/main.cpp)

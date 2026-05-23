@@ -22,20 +22,6 @@ failures plus 8 environment skips.
 
 ### Build/Feature Ownership
 
-- [ ] **177.2 - Remaining Cyclone Zephyr action gaps.**
-  Owner: Phase 177, inherited from archived Phase 171.0.b / 171.0.c.
-  C-service request delivery is no longer an open catalog item; Phase
-  171.0.a fixed the RELIABLE+VOLATILE request match race. Native
-  goal/result actions are also no longer open: C, Rust, and C++
-  same-language Cyclone DDS action E2E are runtime-verified, the C++
-  `get_result` framing bug is fixed, and the 2026-05-21 follow-ups fixed
-  the nonblocking service request match race on action `send_goal`, the
-  Fibonacci `GetResult_Response` dynamic-sequence bridge, the C++ feedback
-  CDR framing path, and native Cyclone feedback/status dynamic-sequence
-  publishing. Remaining work is Zephyr Cyclone DDS actions plus
-  cross-implementation validation. The aemv8r FVP reference path still
-  needs re-verification under 171.0.c.
-
 - [ ] **177.3 - Cyclone for pure-cargo Rust examples.**
   Owner: Phase 175.
   `nros_rmw_cyclonedds_register` lives only in the C++/CMake build, so
@@ -94,6 +80,27 @@ failures plus 8 environment skips.
   (`1 passed`, `8.66s`).
 
 ## Closed
+
+- [x] **177.2 - Remaining Cyclone Zephyr action gaps.**
+  Closed 2026-05-23. Zephyr Cyclone DDS action examples now build and
+  run end-to-end for C, C++, and Rust on `native_sim`. The fix adds a
+  shared Zephyr CMake helper that generates and links the Cyclone DDS
+  descriptors required by action endpoints:
+  `builtin_interfaces/Time`, `unique_identifier_msgs/UUID`,
+  `action_msgs/{GoalInfo,GoalStatus,GoalStatusArray,CancelGoal}`, and
+  `example_interfaces/action/Fibonacci`. The action overlays also use
+  NSOS host sockets and larger heap/pthread resources, avoiding the old
+  zeth/TAP panic path. The test harness now treats Zephyr fixtures as
+  prebuilt inputs and reports stale/missing binaries with the `just
+  zephyr build-fixtures` remedy instead of building inside tests.
+  Focused verification passed:
+  `NROS_ZEPHYR_FIXTURE_FILTER='build-(rs|c|cpp)-action-(server|client)-cyclonedds' NROS_ZEPHYR_BUILD_JOBS=1 NROS_ZEPHYR_NINJA_JOBS=8 just zephyr build-fixtures`,
+  `XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp cargo test -p nros-tests --test zephyr test_zephyr_dds_cpp_action_e2e -- --nocapture --test-threads=1`,
+  `XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp cargo test -p nros-tests --test zephyr test_zephyr_dds_c_action_e2e -- --nocapture --test-threads=1`,
+  and
+  `XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp cargo test -p nros-tests --test zephyr test_zephyr_dds_rs_action_e2e -- --nocapture --test-threads=1`.
+  The aemv8r/FVP reference path remains a separate platform
+  re-verification item if that target is re-enabled.
 
 - [x] **177.20 - QEMU MPS2 serial Zenoh pub/sub stalls inside publish path.**
   Fixed in the `zenoh-pico` submodule by starting publisher write filters
@@ -214,7 +221,7 @@ failures plus 8 environment skips.
 
 Archive this tracker only after:
 
-- [ ] 177.2 and 177.3 close or move into newer, more specific phase docs.
+- [ ] 177.3 closes or moves into a newer, more specific phase doc.
 - [ ] 177.6 through 177.9 have owners and either close or move into more
   specific phase docs.
 - [x] 177.19 and 177.20 close or move into platform-specific runtime
