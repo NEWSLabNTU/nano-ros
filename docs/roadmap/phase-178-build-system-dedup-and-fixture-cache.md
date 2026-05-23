@@ -186,12 +186,18 @@ non-duplicating.
   `NROS_ZEPHYR_GENERATE_RUST_FORCE=1` to force refresh all Zephyr Rust
   example bindings.
 
-- [ ] **178.K — survey NuttX make fixture tier.** `nuttx
+- [x] **178.K — survey NuttX make fixture tier.** `nuttx
   build-fixtures-make` validates the native NuttX external-app
   integration path that CMake fixtures bypass, but it may not need to be
   part of every `build-all` if that target is meant to pre-stage
   `test-all` artifacts. Decide whether it belongs in `build-all`, a
   slower `build-all-full`, or CI-only coverage.
+  Decision: keep it out of standard `nuttx build-all` and root
+  `build-all`; those pre-stage artifacts consumed by the normal
+  `test-all` flow, while `nuttx_make_e2e` already skips unless the
+  make-built `$NUTTX_DIR/nuttx` was explicitly staged. Added
+  `just nuttx build-all-full` as the opt-in tier for the slower
+  Kconfig/Application.mk external-app coverage.
 
 - [ ] **178.L — make generate-bindings incremental.** `generate-bindings`
   currently builds `nros-cli` and runs `generate-rust --force` across

@@ -277,13 +277,17 @@ build-fixtures-make:
     ( cd "$nuttx_dir" && make )
     echo "NuttX external-app build complete. Binary: $nuttx_dir/nuttx"
 
-# Build every NuttX tier: core artifacts, examples, and test fixtures.
-# Phase 157.C — `build-fixtures-make` runs alongside `build-fixtures`
-# (cmake smoke) so both paths exercise: cmake smoke catches QEMU /
-# Rust shim regressions fast, make path catches NuttX Kconfig /
-# Application.mk / EXTRA_LIBS integration bugs the cmake path can't.
-build-all: build build-examples build-fixtures build-fixtures-make
+# Build NuttX artifacts needed by the standard example + test fixture tiers.
+build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
+
+# Build every NuttX tier, including the native NuttX external-app make path.
+# Phase 178.K — keep this slower Kconfig/Application.mk coverage explicit:
+# root `build-all` and standard `nuttx build-all` only pre-stage artifacts
+# consumed by the normal `test-all` flow; `nuttx_make_e2e` skips unless this
+# target (or `build-fixtures-make`) has intentionally staged the NuttX ELF.
+build-all-full: build-all build-fixtures-make
+    @echo "NuttX full build-all completed."
 
 # Run NuttX QEMU integration tests
 test verbose="": build-fixtures
