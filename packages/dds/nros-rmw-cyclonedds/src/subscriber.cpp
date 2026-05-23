@@ -152,18 +152,20 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
         return NROS_RMW_RET_ERROR;
     }
 
-    void *samples[1] = {nullptr};
+    void *sample = std::calloc(1, state->desc->m_size);
+    if (sample == nullptr) {
+        return NROS_RMW_RET_BAD_ALLOC;
+    }
+    void *samples[1] = {sample};
     dds_sample_info_t si[1];
     dds_return_t taken = dds_take(state->reader, samples, si, 1, 1);
     if (taken < 0) {
+        std::free(sample);
         return NROS_RMW_RET_ERROR;
     }
     if (taken == 0 || !si[0].valid_data) {
-        if (taken > 0) {
-            // We allocated a sample (Cyclone borrowed-on-take with
-            // NULL pre-init), return the loan.
-            (void) dds_return_loan(state->reader, samples, taken);
-        }
+        dds_stream_free_sample(sample, state->desc->m_ops);
+        std::free(sample);
         return NROS_RMW_RET_NO_DATA;
     }
 
@@ -171,11 +173,12 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     // order). Cyclone's ostream grows on demand via realloc.
     dds_ostream_t os;
     dds_ostream_init(&os, 0, 1 /*xcdr1*/);
-    bool ok = dds_stream_write_sample(&os, samples[0], state->st->as_sertype());
-    (void) dds_return_loan(state->reader, samples, taken);
+    bool ok = dds_stream_write_sample(&os, sample, state->st->as_sertype());
 
     if (!ok) {
         dds_ostream_fini(&os);
+        dds_stream_free_sample(sample, state->desc->m_ops);
+        std::free(sample);
         return NROS_RMW_RET_ERROR;
     }
 
@@ -197,6 +200,8 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     }
     if (buf_len < total) {
         dds_ostream_fini(&os);
+        dds_stream_free_sample(sample, state->desc->m_ops);
+        std::free(sample);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
     buf[0] = kEncId[0];
@@ -208,11 +213,15 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
         size_t adjusted = 0;
         if (!insert_goal_id_len_at(buf, paylen + 4, buf_len, 4, &adjusted)) {
             dds_ostream_fini(&os);
+            dds_stream_free_sample(sample, state->desc->m_ops);
+            std::free(sample);
             return NROS_RMW_RET_BUFFER_TOO_SMALL;
         }
         total = static_cast<uint32_t>(adjusted);
     }
     dds_ostream_fini(&os);
+    dds_stream_free_sample(sample, state->desc->m_ops);
+    std::free(sample);
 
     return static_cast<int32_t>(total);
 }
@@ -304,12 +313,12 @@ int32_t subscriber_try_recv_sequence(nros_rmw_subscriber_t *subscriber,
 
 int32_t subscriber_has_data(nros_rmw_subscriber_t *subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) return 0;
-    SubState *state = as_state(subscriber);
-    uint32_t status = 0;
-    if (dds_get_status_changes(state->reader, &status) != DDS_RETCODE_OK) {
-        return 0;
-    }
-    return (status & DDS_DATA_AVAILABLE_STATUS) ? 1 : 0;
+    // Cyclone's DATA_AVAILABLE status is edge-like for our executor use:
+    // querying it as a pre-filter can clear/suppress the subsequent take
+    // path while samples remain readable. This backend is poll-only, so a
+    // conservative "maybe" keeps dispatch correct; try_recv_raw remains the
+    // authoritative non-blocking check.
+    return 1;
 }
 
 dds_entity_t subscriber_reader(const nros_rmw_subscriber_t *subscriber) {

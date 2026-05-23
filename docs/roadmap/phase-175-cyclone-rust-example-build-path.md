@@ -123,7 +123,7 @@ CMake instead of `cargo build`.
 - [x] Native Rust talker boots and creates the Cyclone writer.
 - [x] Native Rust listener boots and creates the Cyclone reader.
 - [x] Native Rust talker/listener exchange user data over loopback.
-- [ ] Native Rust Cyclone examples are interop-tested against the C/C++
+- [x] Native Rust Cyclone examples are interop-tested against the C/C++
   Cyclone examples.
 
 ### 175.B — FreeRTOS / ThreadX Cyclone (ddsrt RTOS port)
