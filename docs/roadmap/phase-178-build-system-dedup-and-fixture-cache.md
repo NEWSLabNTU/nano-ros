@@ -120,12 +120,16 @@ non-duplicating.
   leaves. Platforms with shared target dirs sequence their own
   `build-examples`/fixture-extra split inside `build-fixtures`.
 
-- [ ] **178.D — add CMake fixture signatures.** Replace unconditional
+- [x] **178.D — add CMake fixture signatures.** Replace unconditional
   `rm -rf build-zenoh` in FreeRTOS, NuttX, ThreadX Linux, and ThreadX
   RV64 C/C++ fixture recipes with a signature file covering:
   platform, RMW, toolchain file, SDK/config dirs, codegen binary,
   source dir, and CMake cache inputs. Reconfigure on signature change;
   otherwise run `cmake --build` directly.
+  Landed 2026-05-24: shared `nros_cmake_fixture_build` records
+  `.nros-cmake-fixture.sig` in each CMake fixture build dir. The four
+  embedded C/C++ fixture recipes now reuse unchanged `build-zenoh/` or
+  `build-<rmw>/` dirs and only wipe/reconfigure on signature changes.
 
 - [ ] **178.E — keep Zephyr standalone app coverage.** Do not collapse
   Zephyr roles into one runtime-dispatch image for this phase. The E2E

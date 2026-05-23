@@ -124,30 +124,45 @@ build-fixtures:
             cmake_dirs+=("examples/qemu-arm-nuttx/$lang/$ex")
         done
     done
+    export toolchain nuttx_dir nuttx_ffi codegen
+    export -f nros_cmake_fixture_build
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         for dir in "${cmake_dirs[@]}"; do
             echo "  → $dir (-DNROS_RMW=zenoh, build-zenoh/)"
-            rm -rf "$dir/build-zenoh"
-            cmake -S "$dir" -B "$dir/build-zenoh" \
+            sig="$(printf '%s\n' \
+              "platform=nuttx" \
+              "rmw=zenoh" \
+              "src=$dir" \
+              "toolchain=$toolchain" \
+              "nuttx_dir=$nuttx_dir" \
+              "nuttx_ffi=$nuttx_ffi" \
+              "codegen=$codegen")"
+            nros_cmake_fixture_build "$dir" "$dir/build-zenoh" "$sig" \
               -DNROS_RMW=zenoh \
               -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
               -DNUTTX_DIR="$nuttx_dir" \
               -DNUTTX_FFI_CRATE_DIR="$nuttx_ffi" \
               -DCMAKE_BUILD_TYPE=Release \
               -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-            cmake --build "$dir/build-zenoh" > /dev/null
         done
     else
         printf '%s\n' "${cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
-             cmake -S {} -B {}/build-zenoh \
+            "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && \
+             sig=\$(printf '%s\n' \
+               'platform=nuttx' \
+               'rmw=zenoh' \
+               'src={}' \
+               'toolchain=$toolchain' \
+               'nuttx_dir=$nuttx_dir' \
+               'nuttx_ffi=$nuttx_ffi' \
+               'codegen=$codegen') && \
+             nros_cmake_fixture_build {} {}/build-zenoh \"\$sig\" \
                -DNROS_RMW=zenoh \
                -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
                -DNUTTX_DIR='$nuttx_dir' \
                -DNUTTX_FFI_CRATE_DIR='$nuttx_ffi' \
                -DCMAKE_BUILD_TYPE=Release \
-               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-             cmake --build {}/build-zenoh > /dev/null"
+               -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null"
     fi
 
 # Phase 157.C — stage the integration shell + every C/C++ example

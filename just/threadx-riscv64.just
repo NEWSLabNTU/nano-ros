@@ -158,13 +158,23 @@ build-fixture-extras:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
+        export toolchain threadx_dir netx_dir config_dir codegen
+        export -f nros_cmake_fixture_build
         if [ "${NROS_JOBSERVER:-}" = "1" ]; then
             for dir in "${collapsed_cmake_dirs[@]}"; do
                 echo "  → $dir (-DNROS_RMW=zenoh, build-zenoh/)"
-                rm -rf "$dir/build-zenoh"
+                sig="$(printf '%s\n' \
+                  "platform=threadx_riscv64" \
+                  "rmw=zenoh" \
+                  "src=$dir" \
+                  "toolchain=$toolchain" \
+                  "threadx_dir=$threadx_dir" \
+                  "netx_dir=$netx_dir" \
+                  "config_dir=$config_dir" \
+                  "codegen=$codegen")"
                 THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
                 THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-                  cmake -S "$dir" -B "$dir/build-zenoh" \
+                  nros_cmake_fixture_build "$dir" "$dir/build-zenoh" "$sig" \
                     -DNROS_RMW=zenoh \
                     -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
                     -DTHREADX_DIR="$threadx_dir" \
@@ -173,16 +183,22 @@ build-fixture-extras:
                     -DNETX_CONFIG_DIR="$config_dir" \
                     -DCMAKE_BUILD_TYPE=Release \
                     -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-                THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
-                THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-                  cmake --build "$dir/build-zenoh" > /dev/null
             done
         else
             printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-                "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && rm -rf {}/build-zenoh && \
+                "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && \
+                 sig=\$(printf '%s\n' \
+                   'platform=threadx_riscv64' \
+                   'rmw=zenoh' \
+                   'src={}' \
+                   'toolchain=$toolchain' \
+                   'threadx_dir=$threadx_dir' \
+                   'netx_dir=$netx_dir' \
+                   'config_dir=$config_dir' \
+                   'codegen=$codegen') && \
                  THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
                  THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-                   cmake -S {} -B {}/build-zenoh \
+                   nros_cmake_fixture_build {} {}/build-zenoh \"\$sig\" \
                      -DNROS_RMW=zenoh \
                      -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
                      -DTHREADX_DIR='$threadx_dir' \
@@ -190,10 +206,7 @@ build-fixture-extras:
                      -DTHREADX_CONFIG_DIR='$config_dir' \
                      -DNETX_CONFIG_DIR='$config_dir' \
                      -DCMAKE_BUILD_TYPE=Release \
-                     -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-                 THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
-                 THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-                   cmake --build {}/build-zenoh > /dev/null"
+                     -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null"
         fi
     fi
 

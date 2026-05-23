@@ -103,12 +103,22 @@ build-fixture-extras:
         else
             echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
         fi
+        export threadx_dir nsos_netx_dir config_dir app_define codegen
+        export -f nros_cmake_fixture_build
         if [ "${NROS_JOBSERVER:-}" = "1" ]; then
             for dir in "${collapsed_cmake_dirs[@]}"; do
                 for rmw in $cmake_rmws; do
                     echo "  → $dir (-DNROS_RMW=$rmw, build-$rmw/)"
-                    rm -rf "$dir/build-$rmw"
-                    cmake -S "$dir" -B "$dir/build-$rmw" \
+                    sig="$(printf '%s\n' \
+                      "platform=threadx_linux" \
+                      "rmw=$rmw" \
+                      "src=$dir" \
+                      "threadx_dir=$threadx_dir" \
+                      "nsos_netx_dir=$nsos_netx_dir" \
+                      "config_dir=$config_dir" \
+                      "app_define=$app_define" \
+                      "codegen=$codegen")"
+                    nros_cmake_fixture_build "$dir" "$dir/build-$rmw" "$sig" \
                       -DNROS_RMW="$rmw" \
                       -DNANO_ROS_PLATFORM=threadx_linux \
                       -DTHREADX_DIR="$threadx_dir" \
@@ -117,14 +127,22 @@ build-fixture-extras:
                       -DTHREADX_APP_DEFINE="$app_define" \
                       -DCMAKE_BUILD_TYPE=Release \
                       -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-                    cmake --build "$dir/build-$rmw" > /dev/null
                 done
             done
         else
             printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
                 "for rmw in $cmake_rmws; do \
-                     echo '  → {} (-DNROS_RMW='\$rmw', build-'\$rmw'/)' && rm -rf {}/build-\$rmw && \
-                     cmake -S {} -B {}/build-\$rmw \
+                     echo '  → {} (-DNROS_RMW='\$rmw', build-'\$rmw'/)' && \
+                     sig=\$(printf '%s\n' \
+                       'platform=threadx_linux' \
+                       'rmw='\$rmw \
+                       'src={}' \
+                       'threadx_dir=$threadx_dir' \
+                       'nsos_netx_dir=$nsos_netx_dir' \
+                       'config_dir=$config_dir' \
+                       'app_define=$app_define' \
+                       'codegen=$codegen') && \
+                     nros_cmake_fixture_build {} {}/build-\$rmw \"\$sig\" \
                        -DNROS_RMW=\$rmw \
                        -DNANO_ROS_PLATFORM=threadx_linux \
                        -DTHREADX_DIR='$threadx_dir' \
@@ -132,8 +150,7 @@ build-fixture-extras:
                        -DTHREADX_CONFIG_DIR='$config_dir' \
                        -DTHREADX_APP_DEFINE='$app_define' \
                        -DCMAKE_BUILD_TYPE=Release \
-                       -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null && \
-                     cmake --build {}/build-\$rmw > /dev/null; \
+                       -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null; \
                  done"
         fi
     fi
