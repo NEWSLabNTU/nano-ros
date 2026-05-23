@@ -19,14 +19,14 @@
 # Resolution order:
 #   1. `_NANO_ROS_CODEGEN_TOOL` already in cache (caller pre-set
 #      via `-D_NANO_ROS_CODEGEN_TOOL=<path>`) — honored as-is.
-#   2. `<repo>/packages/codegen/packages/target/release/nros-codegen`
-#      — canonical host build output of `cargo build --release
+#   2. `<repo>/packages/codegen/packages/target/<profile>/nros-codegen`
+#      — canonical host build output of `cargo build --profile <profile>
 #      -p nros-codegen-c` inside the codegen workspace.
 #   3. System `PATH` — last resort for users who `cargo install`d
 #      the tool globally.
 #   4. None of the above + `NROS_AUTO_BOOTSTRAP_CODEGEN=ON` (default
 #      ON for cross-compile platforms) — runs `cargo build
-#      --release -p nros-codegen-c` once at configure time + caches
+#      --profile <profile> -p nros-codegen-c` once at configure time + caches
 #      the resulting binary path. Adds ~3 s to the first configure;
 #      subsequent configures hit cache.
 #
@@ -43,9 +43,19 @@ option(NROS_AUTO_BOOTSTRAP_CODEGEN
 
 function(nros_bootstrap_codegen)
     if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
-       AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "_NANO_ROS_CODEGEN_TOOL-NOTFOUND")
+       AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "_NANO_ROS_CODEGEN_TOOL-NOTFOUND"
+       AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
         # User pre-set it, nothing to do.
         return()
+    endif()
+    if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
+       AND _NANO_ROS_CODEGEN_TOOL
+       AND NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+        message(STATUS
+            "Cached nros codegen tool no longer exists: "
+            "${_NANO_ROS_CODEGEN_TOOL}; re-detecting")
+        unset(_NANO_ROS_CODEGEN_TOOL CACHE)
+        unset(_NANO_ROS_CODEGEN_TOOL)
     endif()
 
     if(NOT DEFINED _NANO_ROS_PREFIX OR _NANO_ROS_PREFIX STREQUAL "")
@@ -57,8 +67,24 @@ function(nros_bootstrap_codegen)
 
     set(_codegen_workspace
         "${_NANO_ROS_PREFIX}/packages/codegen/packages")
+    set(NROS_CODEGEN_CARGO_PROFILE "$ENV{NROS_CARGO_PROFILE}" CACHE STRING
+        "Cargo profile used when bootstrapping host nros-codegen")
+    if(NROS_CODEGEN_CARGO_PROFILE STREQUAL "")
+        set(NROS_CODEGEN_CARGO_PROFILE "nros-fast-release" CACHE STRING
+            "Cargo profile used when bootstrapping host nros-codegen" FORCE)
+    endif()
+    if(NROS_CODEGEN_CARGO_PROFILE STREQUAL "dev")
+        set(_nros_codegen_target_profile_dir "debug")
+        set(_cargo_profile_hint "")
+    elseif(NROS_CODEGEN_CARGO_PROFILE STREQUAL "release")
+        set(_nros_codegen_target_profile_dir "release")
+        set(_cargo_profile_hint "--release")
+    else()
+        set(_nros_codegen_target_profile_dir "${NROS_CODEGEN_CARGO_PROFILE}")
+        set(_cargo_profile_hint "--profile ${NROS_CODEGEN_CARGO_PROFILE}")
+    endif()
     set(_codegen_bin
-        "${_codegen_workspace}/target/release/nros-codegen")
+        "${_codegen_workspace}/target/${_nros_codegen_target_profile_dir}/nros-codegen")
 
     # Probe canonical host-build output first.
     if(EXISTS "${_codegen_bin}")
@@ -81,7 +107,7 @@ function(nros_bootstrap_codegen)
             "NROS_AUTO_BOOTSTRAP_CODEGEN=OFF. Cross-compile builds "
             "that call nros_generate_interfaces() will fail. Set "
             "-D_NANO_ROS_CODEGEN_TOOL=<path> or pre-build via "
-            "`cargo build --release -p nros-codegen-c` inside "
+            "`cargo build ${_cargo_profile_hint} -p nros-codegen-c` inside "
             "${_codegen_workspace}.")
         return()
     endif()
@@ -95,8 +121,15 @@ function(nros_bootstrap_codegen)
     endif()
 
     message(STATUS "nano-ros: bootstrapping host nros-codegen (one-shot, ~3-10 s)")
+    if(NROS_CODEGEN_CARGO_PROFILE STREQUAL "dev")
+        set(_cargo_profile_args "")
+    elseif(NROS_CODEGEN_CARGO_PROFILE STREQUAL "release")
+        set(_cargo_profile_args "--release")
+    else()
+        set(_cargo_profile_args "--profile" "${NROS_CODEGEN_CARGO_PROFILE}")
+    endif()
     execute_process(
-        COMMAND "${_cargo_bin}" build --release -p nros-codegen-c
+        COMMAND "${_cargo_bin}" build ${_cargo_profile_args} -p nros-codegen-c
         WORKING_DIRECTORY "${_codegen_workspace}"
         RESULT_VARIABLE _rc
         OUTPUT_VARIABLE _out

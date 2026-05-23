@@ -1152,13 +1152,13 @@ install-cargo-nano-ros:
 generate-bindings:
     #!/usr/bin/env bash
     set -e
-    echo "Building nano-ros codegen tool..."
-    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
-    NANO_ROS="$(pwd)/packages/codegen/packages/target/debug/nano-ros"
+    echo "Building nros CLI..."
+    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+    NROS="$(pwd)/packages/codegen/packages/target/debug/nros"
     echo "Regenerating Rust bindings..."
 
     # Internal crate (workspace member — manually maintained, do not auto-regenerate)
-    # To update: run `cargo nano-ros generate-rust` in packages/interfaces/rcl-interfaces/
+    # To update: run `nros generate-rust` in packages/interfaces/rcl-interfaces/
     # then apply nros- prefix rename to generated Cargo.toml and source files
 
     # Auto-discover all examples with package.xml (Rust only, not zephyr).
@@ -1170,7 +1170,7 @@ generate-bindings:
     for pkg in $(find examples -name package.xml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
         dir="$(dirname "$pkg")"
         echo "  $dir"
-        (cd "$dir" && $NANO_ROS generate-rust --force)
+        (cd "$dir" && $NROS generate-rust --force)
     done
     # Phase 131.B — bench/test-fixture crates relocated under packages/testing/
     # also ship a package.xml + generated/ tree.
@@ -1178,7 +1178,7 @@ generate-bindings:
                      -name package.xml -not -path '*/target/*' -not -path '*/generated/*' 2>/dev/null | sort); do
         dir="$(dirname "$pkg")"
         echo "  $dir"
-        (cd "$dir" && $NANO_ROS generate-rust --force)
+        (cd "$dir" && $NROS generate-rust --force)
     done
 
     echo "All bindings regenerated!"
@@ -1206,13 +1206,13 @@ clean-bindings:
 generate-rcl-interfaces:
     #!/usr/bin/env bash
     set -e
-    echo "Building nano-ros codegen tool..."
-    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
-    NANO_ROS="$(pwd)/packages/codegen/packages/target/debug/nano-ros"
+    echo "Building nros CLI..."
+    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+    NROS="$(pwd)/packages/codegen/packages/target/debug/nros"
     echo "Regenerating rcl-interfaces bindings..."
     cd packages/interfaces/rcl-interfaces
     rm -rf generated/humble/nros-builtin-interfaces generated/humble/nros-rcl-interfaces
-    $NANO_ROS generate-rust --force -o generated/humble \
+    $NROS generate-rust --force -o generated/humble \
         --rename builtin_interfaces=nros-builtin-interfaces \
         --rename rcl_interfaces=nros-rcl-interfaces
     echo "✓ rcl-interfaces regenerated"
@@ -1222,13 +1222,13 @@ generate-rcl-interfaces:
 generate-lifecycle-msgs:
     #!/usr/bin/env bash
     set -e
-    echo "Building nano-ros codegen tool..."
-    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
-    NANO_ROS="$(pwd)/packages/codegen/packages/target/debug/nano-ros"
+    echo "Building nros CLI..."
+    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+    NROS="$(pwd)/packages/codegen/packages/target/debug/nros"
     echo "Regenerating lifecycle-msgs bindings..."
     cd packages/interfaces/lifecycle-msgs
     rm -rf generated/humble/nros-lifecycle-msgs
-    $NANO_ROS generate-rust --force -o generated/humble \
+    $NROS generate-rust --force -o generated/humble \
         --rename lifecycle_msgs=nros-lifecycle-msgs
     echo "✓ lifecycle-msgs regenerated"
     echo "NOTE: re-apply workspace inheritance to the generated Cargo.toml"

@@ -52,12 +52,33 @@ Prerequisites:
 # Locate nros-codegen (once per configure)
 # =========================================================================
 
-if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
-  # 1. Pre-set cache var: west build -- -D_NANO_ROS_CODEGEN_TOOL=...
-  if(DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "")
-    set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}")
+# 1. Pre-set cache var: west build -- -D_NANO_ROS_CODEGEN_TOOL=...
+#
+# This value is supplied by the just recipes and may change when the global
+# Cargo profile changes. Prefer it over the internal cache so existing Zephyr
+# build directories do not keep pointing at an old/nonexistent codegen binary
+# such as target/release/nros-codegen after the default profile moved to
+# nros-fast-release.
+if(DEFINED _NANO_ROS_CODEGEN_TOOL AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "")
+  if(NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+    message(FATAL_ERROR
+      "_NANO_ROS_CODEGEN_TOOL points at a missing nros-codegen binary:\n"
+      "  ${_NANO_ROS_CODEGEN_TOOL}\n"
+      "Rebuild the host codegen tool or update the CMake cache path.")
   endif()
+  if(NOT _NROS_ZEPHYR_CODEGEN_TOOL STREQUAL _NANO_ROS_CODEGEN_TOOL)
+    set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}")
+    set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NROS_ZEPHYR_CODEGEN_TOOL}"
+      CACHE INTERNAL "Path to nros codegen tool (Zephyr)" FORCE)
+  endif()
+endif()
 
+if(_NROS_ZEPHYR_CODEGEN_TOOL AND NOT EXISTS "${_NROS_ZEPHYR_CODEGEN_TOOL}")
+  unset(_NROS_ZEPHYR_CODEGEN_TOOL CACHE)
+  unset(_NROS_ZEPHYR_CODEGEN_TOOL)
+endif()
+
+if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
   # 2. Kconfig: CONFIG_NROS_CODEGEN_TOOL set in prj.conf
   if(NOT _NROS_ZEPHYR_CODEGEN_TOOL
      AND DEFINED CONFIG_NROS_CODEGEN_TOOL
@@ -81,7 +102,7 @@ if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
   endif()
 
   set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NROS_ZEPHYR_CODEGEN_TOOL}"
-    CACHE INTERNAL "Path to nros codegen tool (Zephyr)")
+    CACHE INTERNAL "Path to nros codegen tool (Zephyr)" FORCE)
 
   message(STATUS "Found nros codegen tool: ${_NROS_ZEPHYR_CODEGEN_TOOL}")
 endif()
@@ -212,7 +233,7 @@ function(nros_generate_interfaces target)
     string(APPEND _deps_json "\n    \"${_dep}\"")
   endforeach()
 
-  file(WRITE "${_args_file}" "{
+  set(_args_content "{
   \"package_name\": \"${target}\",
   \"output_dir\": \"${_output_dir}\",
   \"interface_files\": [${_files_json}
@@ -222,6 +243,62 @@ function(nros_generate_interfaces target)
   \"ros_edition\": \"${_ARG_ROS_EDITION}\"
 }
 ")
+  set(_should_write_args TRUE)
+  if(EXISTS "${_args_file}")
+    file(READ "${_args_file}" _existing_args_content)
+    if(_existing_args_content STREQUAL _args_content)
+      set(_should_write_args FALSE)
+    endif()
+  endif()
+  if(_should_write_args)
+    file(WRITE "${_args_file}" "${_args_content}")
+  endif()
+
+  set(_expected_outputs "")
+  foreach(_file ${_interface_files})
+    get_filename_component(_name "${_file}" NAME_WE)
+    get_filename_component(_ext "${_file}" EXT)
+    string(REGEX REPLACE "([a-z])([A-Z])" "\\1_\\2" _name_snake "${_name}")
+    string(TOLOWER "${_name_snake}" _name_lower)
+    string(REPLACE "-" "_" _c_pkg "${target}")
+
+    if(_ext STREQUAL ".msg")
+      set(_kind "msg")
+    elseif(_ext STREQUAL ".srv")
+      set(_kind "srv")
+    elseif(_ext STREQUAL ".action")
+      set(_kind "action")
+    else()
+      message(FATAL_ERROR "Unknown interface file extension: ${_ext}")
+    endif()
+
+    if(_ARG_LANGUAGE STREQUAL "CPP")
+      list(APPEND _expected_outputs
+        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.hpp")
+      if(_kind STREQUAL "msg")
+        list(APPEND _expected_outputs
+          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_ffi.rs")
+      elseif(_kind STREQUAL "srv")
+        list(APPEND _expected_outputs
+          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_request_ffi.rs"
+          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_response_ffi.rs")
+      elseif(_kind STREQUAL "action")
+        list(APPEND _expected_outputs
+          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_goal_ffi.rs"
+          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_result_ffi.rs"
+          "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}_feedback_ffi.rs")
+      endif()
+    else()
+      list(APPEND _expected_outputs
+        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.h"
+        "${_output_dir}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}.c")
+    endif()
+  endforeach()
+  if(_ARG_LANGUAGE STREQUAL "CPP")
+    list(APPEND _expected_outputs "${_output_dir}/${target}.hpp" "${_output_dir}/mod.rs")
+  else()
+    list(APPEND _expected_outputs "${_output_dir}/${target}.h")
+  endif()
 
   # ---- Run codegen at configure time ----
   if(_ARG_LANGUAGE STREQUAL "CPP")
@@ -232,17 +309,38 @@ function(nros_generate_interfaces target)
     message(STATUS "Generating nros C interfaces for ${target}")
   endif()
 
-  execute_process(
-    COMMAND ${_codegen_cmd}
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    RESULT_VARIABLE _codegen_result
-    OUTPUT_VARIABLE _codegen_output
-    ERROR_VARIABLE  _codegen_error
-  )
+  set(_codegen_needed FALSE)
+  foreach(_out ${_expected_outputs})
+    if(NOT EXISTS "${_out}")
+      set(_codegen_needed TRUE)
+    endif()
+  endforeach()
+  foreach(_dep ${_interface_files} "${_args_file}" "${_NROS_ZEPHYR_CODEGEN_TOOL}")
+    foreach(_out ${_expected_outputs})
+      if(EXISTS "${_out}" AND "${_dep}" IS_NEWER_THAN "${_out}")
+        set(_codegen_needed TRUE)
+      endif()
+    endforeach()
+  endforeach()
+
+  if(_codegen_needed)
+    execute_process(
+      COMMAND ${_codegen_cmd}
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+      RESULT_VARIABLE _codegen_result
+      OUTPUT_VARIABLE _codegen_output
+      ERROR_VARIABLE  _codegen_error
+    )
+  else()
+    set(_codegen_result 0)
+    set(_codegen_output "")
+    set(_codegen_error "")
+  endif()
 
   if(NOT _codegen_result EQUAL 0)
     message(FATAL_ERROR
-      "nros-codegen failed for ${target}:\n"
+      "nros-codegen failed for ${target} (exit ${_codegen_result}):\n"
+      "  command: ${_codegen_cmd}\n"
       "  stdout: ${_codegen_output}\n"
       "  stderr: ${_codegen_error}")
   endif()

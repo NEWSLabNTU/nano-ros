@@ -69,6 +69,28 @@ set(_NANO_ROS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 # Locate the nros-codegen tool
 # =========================================================================
 
+set(NROS_CODEGEN_CARGO_PROFILE "$ENV{NROS_CARGO_PROFILE}" CACHE STRING
+    "Cargo profile whose target directory is searched for nros-codegen")
+if(NROS_CODEGEN_CARGO_PROFILE STREQUAL "")
+  set(NROS_CODEGEN_CARGO_PROFILE "nros-fast-release" CACHE STRING
+      "Cargo profile whose target directory is searched for nros-codegen" FORCE)
+endif()
+if(NROS_CODEGEN_CARGO_PROFILE STREQUAL "dev")
+  set(_NROS_CODEGEN_TARGET_PROFILE_DIR "debug")
+else()
+  set(_NROS_CODEGEN_TARGET_PROFILE_DIR "${NROS_CODEGEN_CARGO_PROFILE}")
+endif()
+
+if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
+   AND _NANO_ROS_CODEGEN_TOOL
+   AND NOT _NANO_ROS_CODEGEN_TOOL MATCHES "^\\$<"
+   AND NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+  message(STATUS
+    "Cached nros codegen tool no longer exists: ${_NANO_ROS_CODEGEN_TOOL}; re-detecting")
+  unset(_NANO_ROS_CODEGEN_TOOL CACHE)
+  unset(_NANO_ROS_CODEGEN_TOOL)
+endif()
+
 if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
   # Phase 157.A — last-ditch fallback. The POSIX branch of the root
   # `CMakeLists.txt` pre-caches this via `$<TARGET_FILE:nros-codegen>`
@@ -80,6 +102,7 @@ if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
   # through the standard modules working.
   find_program(_NANO_ROS_CODEGEN_TOOL nros-codegen
     PATHS
+      "${_NANO_ROS_PREFIX}/packages/codegen/packages/target/${_NROS_CODEGEN_TARGET_PROFILE_DIR}"
       "${_NANO_ROS_PREFIX}/packages/codegen/packages/target/release"
   )
 
@@ -98,7 +121,7 @@ if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
   endif()
 
   set(_NANO_ROS_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}"
-    CACHE INTERNAL "Path to nros C codegen tool")
+    CACHE INTERNAL "Path to nros C codegen tool" FORCE)
 
   message(STATUS "Found nros codegen tool: ${_NANO_ROS_CODEGEN_TOOL}")
 endif()
@@ -383,7 +406,7 @@ function(nros_generate_interfaces target)
   add_custom_command(
     OUTPUT ${_generated_headers} ${_generated_sources} ${_generated_rs_files}
     COMMAND "${_NANO_ROS_CODEGEN_TOOL}" --language "${_lang_flag}" --args-file "${_args_file}"
-    DEPENDS ${_interface_files} "${_args_file}"
+    DEPENDS ${_interface_files} "${_args_file}" "${_NANO_ROS_CODEGEN_TOOL}"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "Generating nros ${_ARG_LANGUAGE} interfaces for ${target}"
     VERBATIM

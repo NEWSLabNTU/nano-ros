@@ -94,10 +94,14 @@ build-fixtures:
     # generator (ninja/make) inherits the shared pool; otherwise pin it
     # to the budget (the explicit `--parallel` flag was removed).
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
+    nros_cli="$(pwd)/packages/codegen/packages/target/debug/nros"
+    if [ ! -x "$nros_cli" ]; then
+        cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros --quiet
+    fi
     ensure_native_rust_generated() {
         case "$1" in
             native/rust/talker|native/rust/listener|native/rust/service-server|native/rust/service-client|native/rust/action-server|native/rust/action-client)
-                ( cd "examples/$1" && cargo nano-ros generate-rust --force )
+                ( cd "examples/$1" && "$nros_cli" generate-rust --force )
                 ;;
         esac
     }
