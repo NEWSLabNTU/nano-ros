@@ -33,16 +33,16 @@ loading.
 ## nano-ros Flow
 
 nano-ros is **shipped as source** (archive — no crates.io,
-no precompiled SDK, no binary tarball). Clone, run `just setup`, then
-build the example tree (or your own package) directly:
+no precompiled SDK, no binary tarball). Clone, choose a setup path,
+then build the example tree (or your own package) directly:
 
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
 
-# One-shot SDK fetch.
-just setup                       # every safe / idempotent module
-# just setup tier=minimal        # workspace + verification + zenohd only
+# Choose setup path, then run the one you need.
+just setup                       # prints choices; no fetch/install
+just setup base                  # workspace tools + zenohd for native examples
 source ./setup.bash               # zenohd / nros / qemu-system-arm on PATH
 
 # Build + run an example (POSIX):
@@ -55,20 +55,24 @@ For embedded targets, the per-platform `just <plat> build` /
 (see [Build Commands](../reference/build-commands.md)):
 
 ```bash
+just setup freertos            # QEMU FreeRTOS dependencies
+just setup zephyr              # west + Zephyr workspace
+just setup nuttx               # NuttX kernel/apps
+
 just freertos build-fixtures   # QEMU FreeRTOS Cortex-M3 examples
 just zephyr  build-fixtures    # west + Zephyr-SDK
 just nuttx   build-fixtures    # NuttX kernel + ARM Cortex-M3
 ```
 
-Two tiers:
+Setup choices:
 
-- **No-arg `just setup`** (default) — every safe / idempotent
-  module: workspace, verification, zenohd, QEMU, FreeRTOS, NuttX,
-  ThreadX (Linux + RV64), ESP32, Zephyr, XRCE, rmw_zenoh, Orin SPE,
-  Cyclone DDS, PlatformIO, ESP-IDF, PX4.
-- **`just setup tier=minimal`** — workspace + verification +
-  zenohd only. For Rust-only contributors who don't want any cross
-  toolchains pulled in.
+- **`just setup`** — print choices only.
+- **`just setup base`** — workspace tools + zenohd for first-time
+  Linux/native use.
+- **`just setup <platform>`** — focused platform dependencies, e.g.
+  `freertos`, `zephyr`, `nuttx`, `esp_idf`, or `px4`.
+- **`just setup all`** — every supported SDK/service module for
+  contributors preparing `just test-all`.
 
 For platform-specific work prefer the narrower `just <plat> setup`
 recipes — they fetch only one RTOS's deps without pulling the rest.
@@ -115,9 +119,10 @@ Multi-RMW bridges (one binary, two or more backends) use
   no Arduino zip / ESP-IDF binary component / PlatformIO library /
   GitHub Releases artifact. The locked policy is `git clone --branch=v<X.Y.Z>` +
   in-tree build.
-- **Target-aware setup.** `just <plat> setup` fetches only the
-  submodules + toolchains needed for one RTOS. No-arg `just setup`
-  fetches everything safe.
+- **Target-aware setup.** `just setup` prints choices only.
+  `just setup <platform>` fetches only the submodules + toolchains
+  needed for one RTOS. `just setup all` fetches every supported
+  SDK/service module for full-matrix contributors.
 - **Compile-time RMW + platform.** Embedded targets can't `dlopen`,
   so the RMW and platform combination is locked in by CMake cache
   vars (`NANO_ROS_PLATFORM`, `NANO_ROS_RMW`) and Cargo features at

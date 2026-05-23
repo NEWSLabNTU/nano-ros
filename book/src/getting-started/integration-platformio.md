@@ -5,8 +5,14 @@ Single-node starter via the **PlatformIO library** path —
 orchestrator. Useful for Arduino-shaped or vendor-IDE-shaped
 projects.
 
-> **Prereqs.** PlatformIO Core ≥ 6.1 installed (`pip install
-> platformio` or via the IDE plugin).
+> **Prereqs.** PlatformIO Core ≥ 6.1 installed. From a nano-ros
+> checkout, `just setup platformio` installs/checks the CLI through
+> the same path used by the test harness.
+
+```bash
+just setup platformio       # equivalent to: just platformio setup
+just platformio doctor
+```
 
 ## Project layout
 

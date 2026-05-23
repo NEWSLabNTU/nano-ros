@@ -5,21 +5,23 @@ entrypoint for a fresh checkout with no `just` installed yet; once `just`
 is available, all paths delegate to the same recipes.
 
 ```
-scripts/bootstrap.sh                 # first-time quick start
+scripts/bootstrap.sh                 # install/check just, then show setup choices
+scripts/bootstrap.sh base            # first-time quick start
 scripts/bootstrap.sh platform zephyr # focused platform developer
 scripts/bootstrap.sh all             # contributor / full test-all setup
 
-just setup                           # base quick-start tier
+just setup                           # print setup choices
+just setup base                      # base quick-start tier
 just setup all                       # full contributor / test-all tier
 just <platform> setup                # focused platform setup
 just doctor                          # diagnose base tier
 just doctor tier=all                 # diagnose full tier
 ```
 
-`NROS_SETUP_TIER` overrides the default no-argument `just setup` /
-`just doctor` tier. Valid tiers are `base` and `all`. Legacy aliases
-`minimal` and `default` map to `base`; `extended` and `everything` map
-to `all`.
+`just setup` with no argument is a menu and does not fetch/install.
+`NROS_SETUP_TIER` still overrides the default no-argument `just doctor`
+tier. Valid tiers are `base` and `all`. Legacy aliases `minimal` and
+`default` map to `base`; `extended` and `everything` map to `all`.
 
 ## Tiers
 

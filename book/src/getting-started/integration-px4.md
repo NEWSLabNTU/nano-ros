@@ -15,6 +15,13 @@ their copy.
 - The full PX4 SITL build toolchain (`make px4_sitl_default` works
   standalone)
 
+For nano-ros's in-repo PX4 checks:
+
+```bash
+just setup px4              # equivalent to: just px4 setup
+just px4 doctor
+```
+
 ## One-liner vendor
 
 ```bash

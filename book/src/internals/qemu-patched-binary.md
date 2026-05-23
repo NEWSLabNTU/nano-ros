@@ -53,7 +53,8 @@ small.
 
 ## Build
 
-`just qemu setup-qemu` (pulled in by `just setup`) does the full
+`just qemu setup-qemu` (pulled in by `just setup qemu` and
+`just setup all`) does the full
 build:
 
 ```bash

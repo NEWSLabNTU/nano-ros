@@ -65,7 +65,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ## Step 1: Initialize Workspace (One-Time)
 
 ```bash
-just zephyr setup
+just setup base
+just setup zephyr          # equivalent to: just zephyr setup
+source ./setup.bash
 ```
 
 This recipe automatically:
@@ -258,7 +260,7 @@ just zephyr ci              # Doctor + test (CI shortcut)
 | `west: command not found` | Run `pip3 install --user west` and add `~/.local/bin` to PATH |
 | `Connection refused` | Start `zenohd` / `MicroXRCEAgent` on the host loopback (e.g. `tcp/127.0.0.1:7456`) |
 | `Build fails` | Source environment: `source zephyr-workspace/env.sh` |
-| `XRCE Agent not found` | Install: `just setup` (installs MicroXRCEAgent) |
+| `XRCE Agent not found` | Install: `just setup xrce` or `just setup all` |
 | Zenoh mutex exhaustion | Increase `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (default 5 is too low) |
 
 ## Network Architecture

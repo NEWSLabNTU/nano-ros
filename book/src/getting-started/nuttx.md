@@ -41,10 +41,13 @@ points and `println!` -- no semihosting or custom panic handlers needed.
 
 ## Setup
 
-Download the NuttX source and apps:
+Set up base tools, zenohd, the NuttX source tree, and staged external
+apps:
 
 ```bash
-just nuttx setup
+just setup base
+just setup nuttx            # equivalent to: just nuttx setup
+source ./setup.bash
 ```
 
 This places the sources in `third-party/nuttx/nuttx/` and `third-party/nuttx/nuttx-apps/`.

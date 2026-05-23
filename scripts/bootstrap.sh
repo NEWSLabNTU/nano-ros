@@ -9,8 +9,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 usage() {
     cat <<'EOF'
 Usage:
-  scripts/bootstrap.sh                 # base quick-start setup
-  scripts/bootstrap.sh base            # same as above
+  scripts/bootstrap.sh                 # install/check just, then show setup choices
+  scripts/bootstrap.sh base            # base quick-start setup
   scripts/bootstrap.sh all             # full contributor / test-all setup
   scripts/bootstrap.sh platform <name> # focused platform setup
   scripts/bootstrap.sh doctor [tier]   # read-only diagnosis
@@ -73,9 +73,12 @@ main() {
     ensure_just
     cd "$REPO_ROOT"
 
-    case "${1:-base}" in
-        ""|base|quickstart|default|minimal)
+    case "${1:-}" in
+        "")
             exec just setup
+            ;;
+        base|quickstart|default|minimal)
+            exec just setup base
             ;;
         all|everything|contributor|extended)
             echo "bootstrap: full setup will fetch/install all supported platform SDKs."

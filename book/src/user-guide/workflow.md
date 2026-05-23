@@ -7,12 +7,13 @@ a technical question.
 ## 1. Prepare Workspace and Package
 
 nano-ros is shipped source-only. Clone it next to (or inside) your
-workspace and run `just setup`:
+workspace and choose the setup path you need:
 
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup      # SDK tiers: minimal | default | extended
+just setup       # print choices
+just setup base  # native/ROS/zenoh quick start
 ```
 
 For multi-package workspaces (Pattern A — recommended for POSIX +

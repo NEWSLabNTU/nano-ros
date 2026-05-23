@@ -70,7 +70,8 @@ See [Getting Started](docs/guides/getting-started.md) for a complete walkthrough
 ```bash
 git clone https://github.com/jerry73204/nano-ros.git
 cd nano-ros
-scripts/bootstrap.sh  # Install/check just, then run the base setup tier
+scripts/bootstrap.sh       # Install/check just, then show setup choices
+just setup base            # Native/ROS/zenoh quick start
 source ./setup.bash
 ```
 

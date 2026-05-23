@@ -1240,7 +1240,8 @@ regenerate-bindings: clean-bindings generate-bindings
 # =============================================================================
 # Setup & Doctor orchestrators
 #
-# `just setup`     — safe quick-start setup (workspace + zenohd).
+# `just setup`     — print setup choices; does not fetch/install.
+# `just setup base` — safe quick-start setup (workspace + zenohd).
 # `just setup all` — full contributor setup (all platforms + services).
 # `just doctor`    — read-only diagnosis of install status.
 #
@@ -1252,20 +1253,52 @@ regenerate-bindings: clean-bindings generate-bindings
 # Install SDK/tooling dependencies.
 #
 # Common flows:
-#   just setup              # base quick-start tier
+#   just setup              # print choices
+#   just setup base         # base quick-start tier
 #   just setup all          # full contributor / test-all tier
 #   just setup tier=all     # explicit tier form
 #   just setup zephyr       # shorthand for: just zephyr setup
 #   just zephyr setup       # focused platform setup
 #
-# Phase 123.A.4 — optional positional `target` (e.g. `just setup
-# posix-zenoh`) shim to `tools/setup.sh --target=<target>` is retained
-# for non-module target names.
+# Print setup choices with no args; otherwise run a tier or focused setup.
 setup target="" tier="":
     #!/usr/bin/env bash
     set -e
     chosen_tier="{{tier}}"
     target="{{target}}"
+    if [[ -z "$target" && -z "$chosen_tier" ]]; then
+        printf '%s\n' \
+          "nano-ros setup choices:" \
+          "" \
+          "  just setup base              # first-time native/ROS/zenoh quick start" \
+          "  just setup <platform>        # focused platform setup, e.g. zephyr, freertos, nuttx" \
+          "  just setup all               # full contributor/test-all setup; fetches all SDKs" \
+          "" \
+          "Common platform setup commands:" \
+          "" \
+          "  just setup zephyr" \
+          "  just setup freertos" \
+          "  just setup nuttx" \
+          "  just setup threadx_linux" \
+          "  just setup threadx_riscv64" \
+          "  just setup esp32" \
+          "  just setup esp_idf" \
+          "  just setup platformio" \
+          "  just setup px4" \
+          "" \
+          "Readiness checks:" \
+          "" \
+          "  just doctor                  # base readiness" \
+          "  just doctor tier=all         # full contributor readiness" \
+          "" \
+          "Fresh checkout without just:" \
+          "" \
+          "  scripts/bootstrap.sh         # installs/checks just, then shows this menu" \
+          "  scripts/bootstrap.sh base" \
+          "  scripts/bootstrap.sh platform zephyr" \
+          "  scripts/bootstrap.sh all"
+        exit 0
+    fi
     if [[ -n "$target" ]]; then
         case "$target" in
             tier=*)
@@ -1281,9 +1314,6 @@ setup target="" tier="":
                 exec "$(pwd)/tools/setup.sh" --target="$target"
                 ;;
         esac
-    fi
-    if [[ -z "$chosen_tier" ]]; then
-        chosen_tier="${NROS_SETUP_TIER:-base}"
     fi
     just _orchestrate setup "$chosen_tier"
     echo ""

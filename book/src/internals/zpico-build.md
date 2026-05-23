@@ -95,7 +95,7 @@ the source is included (use `name` alone for unconditional `None`).
 ```toml
 required_env = [
   { name = "THREADX_DIR",
-    help = "ThreadX kernel source. just setup-threadx; export THREADX_DIR=$PWD/third-party/threadx/kernel",
+    help = "ThreadX kernel source. Run just setup threadx_linux or export THREADX_DIR=$PWD/third-party/threadx/kernel",
     validate_subdir = "common/inc" },
 ]
 ```

@@ -9,10 +9,12 @@ Reference and contributor docs live in `docs/`; user-facing mdBook docs live in 
 ## Build, Test, and Development Commands
 
 - `just --list`: show public recipes.
-- `scripts/bootstrap.sh`: first-time entrypoint; installs/checks `just`, then runs the base setup tier.
+- `scripts/bootstrap.sh`: first-time entrypoint; installs/checks `just`, then prints setup choices.
+- `scripts/bootstrap.sh base`: first-time native/ROS/zenoh quick-start setup.
 - `scripts/bootstrap.sh all`: contributor/full-matrix setup; pulls and installs every supported SDK tier.
 - `scripts/bootstrap.sh platform <platform>`: first-time focused setup for one platform.
-- `just setup`: install the base quick-start SDK/tooling tier.
+- `just setup`: print setup choices; does not fetch/install.
+- `just setup base`: install the base quick-start SDK/tooling tier.
 - `just setup all` or `just setup tier=all`: install the full contributor/test-all tier.
 - `just <platform> setup`: install a focused platform SDK/tooling tier.
 - `just doctor` and `just doctor tier=all`: diagnose base or full setup readiness.

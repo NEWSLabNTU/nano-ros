@@ -3,8 +3,9 @@
 ## Manual Testing
 
 ```bash
-# Build zenohd first (one-time)
-just build-zenohd
+# Base setup builds/checks the in-tree zenoh router.
+just setup base
+source ./setup.bash
 
 # Terminal 1: Router
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
@@ -41,7 +42,7 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
   -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
 ```
 
-**Native/POSIX** (requires `libmbedtls-dev` -- installed by `just setup`):
+**Native/POSIX** (requires `libmbedtls-dev` -- installed by `just setup base`):
 
 ```bash
 # Terminal 1: Router with TLS

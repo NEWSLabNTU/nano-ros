@@ -4,10 +4,14 @@ This chapter covers the development workflow for nano-ros.
 
 ## Development Setup
 
-Install all toolchains, cargo tools, and download third-party SDKs (FreeRTOS, NuttX):
+Choose the setup tier. `base` is enough for most code review and
+native development; `all` prepares the full `test-all` matrix:
 
 ```bash
-just setup
+just setup               # print setup choices
+just setup base          # workspace tools + zenohd
+just setup all           # all supported SDKs/services
+source ./setup.bash
 ```
 
 Build the entire workspace including examples:

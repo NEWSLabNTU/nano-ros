@@ -132,8 +132,8 @@ shell.
 
 ### SDK Paths
 
-Auto-resolved by `just setup-*` recipes. Override if SDKs are installed
-elsewhere.
+Auto-resolved by `just setup <platform>` and `just <platform> setup`
+recipes. Override if SDKs are installed elsewhere.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

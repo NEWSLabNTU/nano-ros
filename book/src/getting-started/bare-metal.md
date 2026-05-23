@@ -13,8 +13,15 @@ for the policy.
 > or any RTOS, use the [FreeRTOS starter](./freertos.md) instead —
 > it's more ergonomic and produces smaller code overall.
 
-> **Prereqs.** Clone with `just setup` already run.
-> Need `qemu-system-arm` + the Rust `thumbv7m-none-eabi` target.
+> **Prereqs.** From the repo root, run `just setup base` and
+> `just setup qemu`, then `source ./setup.bash`. Need
+> `qemu-system-arm` + the Rust `thumbv7m-none-eabi` target.
+
+```bash
+just setup base
+just setup qemu
+source ./setup.bash
+```
 
 ## Project layout
 

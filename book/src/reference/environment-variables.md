@@ -34,7 +34,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 
 ### TLS Notes
 
-- **POSIX**: requires `libmbedtls-dev` (`just setup` installs it). File-path and base64 cert loading are both supported.
+- **POSIX**: requires `libmbedtls-dev` (`just setup base` checks it). File-path and base64 cert loading are both supported.
 - **Bare-metal**: only `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` is supported (no filesystem). The certificate is embedded at build time.
 - The `link-tls` Cargo feature must be enabled on both the example and the `nros` crate.
 

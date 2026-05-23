@@ -6,7 +6,8 @@ to be pre-installed (the repo ships `zenohd`).
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
 >
-> **Prereqs.** A clone with `just setup` already run.
+> **Prereqs.** A clone with `just setup base` already run, followed by
+> `source ./setup.bash`.
 > See [Install + first build (Linux)](./installation.md) if you
 > haven't.
 

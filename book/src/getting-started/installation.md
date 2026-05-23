@@ -64,18 +64,28 @@ That is the entire consumption shape. See
 [build-as-subdirectory.md](build-as-subdirectory.md) for the full
 walkthrough.
 
-## One-shot bootstrap
+## Setup chooser
 
 ```bash
 git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
 
-just setup                       # one-shot fetch + build of every module
+scripts/bootstrap.sh              # install/check just, then print setup choices
+just setup                        # print the same setup choices once just exists
+```
+
+`just setup` is intentionally informational. It does not fetch
+submodules or install SDKs until you choose a tier or platform:
+
+```bash
+just setup base                   # first-time native/ROS/zenoh quick start
+just setup zephyr                 # focused platform setup
+just setup all                    # full contributor/test-all setup
 source ./setup.bash               # zenohd, nros, nros-codegen, qemu-system-arm on PATH
                                   # (use ./setup.fish for fish)
 ```
 
-`just setup` is the only entry point you need. It:
+The selected setup command:
 
 1. Picks the submodules required for the modules in scope.
 2. Runs `git submodule update --init --depth=1` selectively (no
@@ -84,20 +94,31 @@ source ./setup.bash               # zenohd, nros, nros-codegen, qemu-system-arm 
 4. Surfaces missing apt cross-toolchain packages on Linux. **Never**
    runs sudo automatically; reports what to install.
 
-The optional `tier=minimal` argument scopes the install down to
-the workspace + verification + zenohd (Rust-only contributors who
-don't want any cross toolchains pulled in):
+The base tier is for first-time users who want Linux/native examples
+and standard ROS/zenoh workflows:
 
 ```bash
-just setup tier=minimal          # no cross toolchains; Rust + zenohd only
-just setup                       # the everything tier — every safe module
+just setup base                  # workspace tools + in-tree zenohd
 ```
 
-Most users can ignore the tier knob entirely. For platform-specific
-work prefer the narrower `just <plat> setup` recipes documented
-below.
+For platform-specific work, run the platform setup directly:
 
-After `just setup`, `source ./setup.bash` puts every shipped
+```bash
+just setup freertos              # equivalent to: just freertos setup
+just setup nuttx
+just setup zephyr
+just setup threadx_linux
+just setup esp_idf
+just setup px4
+```
+
+For contributors preparing the broad matrix:
+
+```bash
+just setup all                   # all supported platform SDKs and services
+```
+
+After a setup command, `source ./setup.bash` puts every shipped
 binary on PATH for the current shell session — same idiom as
 `source /opt/ros/humble/setup.bash`. Re-source after subsequent
 builds (e.g. `just xrce setup`) to pick up newly-built tools.
@@ -121,9 +142,14 @@ For a narrower fetch, invoke the per-platform recipe directly:
 
 | Form | Effect |
 |---|---|
+| `just setup` | print setup choices; no fetch/install |
+| `just setup base` | workspace tools + in-tree zenohd for first-time native use |
+| `just setup all` | full contributor/test-all tier |
 | `just <platform> setup` | platform-only fetch + build (`just freertos setup`, `just zephyr setup`, etc.) |
+| `just setup <platform>` | shorthand for `just <platform> setup` |
 | `just <platform> doctor` | read-only check of that platform's prereqs |
-| `just doctor` | aggregate doctor across the chosen tier |
+| `just doctor` | base readiness check |
+| `just doctor tier=all` | full contributor readiness check |
 
 > **Power-user escape hatch.** The underlying script `tools/setup.sh`
 > takes `--target=<plat>-<rmw>` for exact-pair fetch + `--list-targets`,
@@ -174,19 +200,18 @@ for the pattern.
 
 ## Contributor setup (working on nano-ros itself)
 
-Same `just setup` entry point — the no-arg invocation fetches every
-module:
+Use the explicit full tier when you need broad `test-all` coverage:
 
 ```bash
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup                    # every safe / idempotent module
+just setup all                # every supported SDK/service module
 ```
 
 Diagnose missing tools (read-only):
 
 ```bash
-just doctor
+just doctor tier=all
 ```
 
 Set up just one module:

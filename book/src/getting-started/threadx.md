@@ -12,9 +12,19 @@ Rust and C are supported on both flavours; nros-cpp does not target
 ThreadX (not in the
 [coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)).
 
-> **Prereqs.** Clone with `just setup` already run. For
-> threadx-riscv64 also need a `riscv64-unknown-elf-gcc` (bare-metal)
+> **Prereqs.** From the repo root, run `just setup base` and the
+> ThreadX flavour you need, then `source ./setup.bash`. For
+> threadx-riscv64 also need a `riscv64-unknown-elf-gcc` bare-metal
 > cross toolchain on `PATH` plus `qemu-system-riscv64`.
+
+## Setup
+
+```bash
+just setup base
+just setup threadx_linux      # equivalent to: just threadx_linux setup
+just setup threadx_riscv64    # only if you need the RISC-V64 QEMU flow
+source ./setup.bash
+```
 
 ## Project layout
 
@@ -85,7 +95,6 @@ FreeRTOS QEMU flow.
 
 ```bash
 # threadx-linux:
-just threadx_linux setup            # build ThreadX + NetX Duo + NSOS shim
 just threadx_linux build-fixtures   # build all rust + c examples
 
 # Single example:
@@ -93,7 +102,6 @@ cd examples/threadx-linux/rust/zenoh/talker
 cargo build --release
 
 # threadx-riscv64:
-just threadx_riscv64 setup
 just threadx_riscv64 build-fixtures
 ```
 

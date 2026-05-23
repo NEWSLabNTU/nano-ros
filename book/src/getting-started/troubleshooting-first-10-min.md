@@ -1,6 +1,6 @@
 # Troubleshooting — First 10 Minutes
 
-The Linux starter walkthroughs assume `just setup` has run, `zenohd`
+The Linux starter walkthroughs assume `just setup base` has run, `zenohd`
 is reachable, and the right Rust target is installed. When something
 goes wrong in the first ten minutes, the error you see usually
 points at one of the predictable misses below.
@@ -12,7 +12,7 @@ Did `cargo build` / `cmake --build` fail?
 ├─ error[E0432]: unresolved import `nros`
 ├─ error: failed to load source for dependency `nros`
 ├─ error: could not find `nros-rmw-zenoh`
-│   → Run `just setup` from the repo root. The
+│   → Run `just setup base` from the repo root. The
 │     path-dep in the example's Cargo.toml points at the
 │     in-tree `packages/core/nros`; if the SDK fetch didn't
 │     run, transitive deps are missing.

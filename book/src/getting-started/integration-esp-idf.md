@@ -5,11 +5,18 @@ component path** — Espressif's native C / C++ build system. For the
 bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 
 > **Building nano-ros's own ESP32 examples from this repository?**
-> The ESP-IDF C-port runs via `just esp_idf setup`, separate from
+> The ESP-IDF C-port runs via `just setup esp_idf`, separate from
 > the user-facing component documented here.
 
 > **Prereqs.** ESP-IDF ≥ 5.1 installed and `idf.py` on `PATH`
 > (`source $IDF_PATH/export.sh`).
+
+For in-repo smoke builds:
+
+```bash
+just setup esp_idf          # equivalent to: just esp_idf setup
+source ./setup.bash
+```
 
 ## Project layout
 

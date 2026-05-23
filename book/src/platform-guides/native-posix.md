@@ -18,8 +18,8 @@ embedded targets.
 From the nano-ros clone:
 
 ```bash
-just setup
-just zenohd setup        # build the in-tree zenoh router (optional if system zenohd is on PATH)
+just setup base          # workspace tools + in-tree zenoh router
+source ./setup.bash
 ```
 
 For a narrower fetch (POSIX + zenoh only):

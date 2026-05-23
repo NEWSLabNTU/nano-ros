@@ -31,10 +31,15 @@ my_drone_firmware/
                     └── nano_ros_app.cpp    # the user-editable app
 ```
 
-> **Prereq.** PX4 is an extended-tier dependency. Run
-> `just px4 setup` first to populate `third-party/px4/PX4-Autopilot`
+> **Prereq.** PX4 is a full-tier dependency. Run
+> `just setup px4` first to populate `third-party/px4/PX4-Autopilot`
 > and `third-party/px4/px4-rs`. `just px4 doctor` reports the gap
 > on a fresh clone.
+
+```bash
+just setup px4              # equivalent to: just px4 setup
+just px4 doctor
+```
 
 Vendor the template into your firmware repo, then point PX4 at its
 parent directory + tell the template where nano-ros lives via
