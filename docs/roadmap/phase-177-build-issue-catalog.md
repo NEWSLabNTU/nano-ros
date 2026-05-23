@@ -86,20 +86,17 @@ failures plus 8 environment skips.
   visible at init is not the state used by runtime polling, without
   reinitializing or invalidating the live `SocketSet`.
 
-- [ ] **177.20 - QEMU MPS2 serial Zenoh pub/sub stalls inside publish path.**
-  Focused `test_qemu_serial_pubsub_e2e` retries still produce
-  `published=0, received=0`. Both firmware images boot, the listener
-  declares its subscription, and the talker reaches
-  `Publishing messages over serial...`, but it never logs `Published:`.
-  Moving the talker's first publish before the 1 s pre-publish spin delay
-  did not change the result, so the stall is likely inside
-  `publisher.publish()` or the serial `_z_send_serial_internal`/CMSDK UART
-  send path rather than in the outer pre-publish spin loop. Next work:
-  instrument serial send/write return paths and the host PTY bridge to
-  distinguish blocked UART TX, partial COBS frame write, and zenoh serial
-  bridge handshake state.
-
 ## Closed
+
+- [x] **177.20 - QEMU MPS2 serial Zenoh pub/sub stalls inside publish path.**
+  Fixed in the `zenoh-pico` submodule by starting publisher write filters
+  open for `Z_FEATURE_MULTI_THREAD == 0` builds. Single-threaded embedded
+  clients do not have a background read task to learn remote subscriber
+  matches before the application's first write, so the previous default
+  suppressed the first serial publish before it reached the router.
+  Verified 2026-05-23 with
+  `XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp cargo test -p nros-tests --test emulator test_qemu_serial_pubsub_e2e -- --nocapture`
+  (`published=1, received=1`, 7.68 s).
 
 ### Closed in the original 2026-05-20/21 sweep
 
