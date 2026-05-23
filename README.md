@@ -85,10 +85,10 @@ Run the demo:
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Talker
-cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/talker && RUST_LOG=info cargo run --no-default-features --features rmw-zenoh
 
 # Terminal 3: Listener
-cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/listener && RUST_LOG=info cargo run --no-default-features --features rmw-zenoh
 ```
 
 ## Quick Start (C API)
@@ -97,7 +97,7 @@ Consume nano-ros from a CMake project via `add_subdirectory`:
 
 ```bash
 # Clone alongside (or as a submodule of) your project.
-cd examples/native/c/zenoh/talker
+cd examples/native/c/talker
 cmake -B build -S .
 cmake --build build
 ./build/c_talker
@@ -129,7 +129,7 @@ nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: nano-ros talker
-cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/talker && RUST_LOG=info cargo run --no-default-features --features rmw-zenoh
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash

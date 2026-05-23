@@ -689,7 +689,7 @@ int main() {
 #### Directory structure
 
 ```
-examples/zephyr/cpp/zenoh/my-example/
+examples/zephyr/cpp/my-example/
 ├── CMakeLists.txt
 ├── prj.conf
 └── src/

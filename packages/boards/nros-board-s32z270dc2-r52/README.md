@@ -17,7 +17,7 @@ Or manually:
 west build \
     -b s32z2xxdc2/s32z270/rtu0/D \
     -d build-s32z \
-    examples/zephyr/rust/dds/talker \
+    examples/zephyr/rust/talker \
     -- -DEXTRA_CONF_FILE=$NROS_ROOT/packages/boards/nros-board-s32z270dc2-r52/boards/s32z2xxdc2_s32z270_rtu0_D.conf
 ```
 

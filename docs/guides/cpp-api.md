@@ -472,8 +472,8 @@ int main(void)
 | `examples/native/cpp/listener/` | Subscribe to `/chatter` (native Linux) |
 | `examples/native/cpp/service-server/` | AddTwoInts server (native Linux) |
 | `examples/native/cpp/service-client/` | AddTwoInts client (native Linux) |
-| `examples/zephyr/cpp/zenoh/talker/` | Publish Int32 on `/chatter` (Zephyr) |
-| `examples/zephyr/cpp/zenoh/listener/` | Subscribe to `/chatter` (Zephyr) |
+| `examples/zephyr/cpp/talker/` | Publish Int32 on `/chatter` (Zephyr) |
+| `examples/zephyr/cpp/listener/` | Subscribe to `/chatter` (Zephyr) |
 
 ## See Also
 

@@ -21,10 +21,10 @@ repos/
 │   │   ├── CMakeLists.txt        # Transport C sources + nros-c build
 │   │   └── cmake/                # nros_cargo_build(), nros_generate_interfaces()
 │   ├── examples/zephyr/
-│   │   ├── rust/zenoh/           # Rust + zenoh (talker, listener, ...)
-│   │   ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener)
-│   │   ├── c/zenoh/              # C + zenoh (talker, listener)
-│   │   └── c/xrce/              # C + XRCE-DDS (talker, listener)
+│   │   ├── rust/                 # Rust examples; RMW selected by prj-<rmw>.conf
+│   │   ├── c/                    # C examples; RMW selected by prj-<rmw>.conf
+│   │   ├── cpp/                  # C++ examples; RMW selected by prj-<rmw>.conf
+│   │   └── cmake/                # Shared Zephyr example helpers
 │   ├── zephyr-workspace -> ../nano-ros-workspace/  # Symlink (gitignored)
 │   └── west.yml                  # West manifest
 │

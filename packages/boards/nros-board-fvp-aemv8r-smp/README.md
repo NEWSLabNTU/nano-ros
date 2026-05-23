@@ -11,7 +11,7 @@ just zephyr setup       # one-time: workspace + SDK + zephyr-lang-rust
 west build \
     -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
     -d build-fvp \
-    examples/zephyr/rust/dds/talker
+    examples/zephyr/cpp/cyclonedds/talker-aemv8r
 ```
 
 The crate's `boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf` and

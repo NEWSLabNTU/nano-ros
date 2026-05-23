@@ -157,7 +157,7 @@ string `Published: 5` to appear in stdout.
 
 ### Example 2 — Zephyr `talker` across multiple boards
 
-`examples/zephyr/cpp/zenoh/talker/sample.yaml`:
+`examples/zephyr/cpp/talker/sample.yaml`:
 
 ```yaml
 sample:
@@ -204,7 +204,7 @@ tests:
 ```
 
 Twister consumes this file directly via
-`west twister -T examples/zephyr/cpp/zenoh/talker/`. The non-Twister
+`west twister -T examples/zephyr/cpp/talker/`. The non-Twister
 nano-ros path also runs the `native_sim` scenario through
 `nros run --platform native_sim`.
 
