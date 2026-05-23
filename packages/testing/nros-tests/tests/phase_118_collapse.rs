@@ -420,6 +420,7 @@ fn test_nuttx_cmake_case_rmw_variant_exists(
 /// Phase 118.C — ThreadX-RV64 Rust cases, collapsed shape.
 #[rstest]
 #[case::talker_zenoh("talker", "qemu-riscv64-threadx-talker", Rmw::Zenoh)]
+#[case::talker_cyclonedds("talker", "riscv64_threadx_rust_talker_cyclonedds", Rmw::Cyclonedds)]
 #[case::listener_zenoh("listener", "qemu-riscv64-threadx-listener", Rmw::Zenoh)]
 #[case::ss_zenoh("service-server", "qemu-riscv64-threadx-service-server", Rmw::Zenoh)]
 #[case::sc_zenoh("service-client", "qemu-riscv64-threadx-service-client", Rmw::Zenoh)]
@@ -450,38 +451,44 @@ fn test_threadx_rv64_rust_case_rmw_variant_exists(
 
 /// Phase 118.C — ThreadX-RV64 C / C++ cases, collapsed shape.
 #[rstest]
-#[case::c_talker("c", "talker", "riscv64_threadx_c_talker")]
-#[case::c_listener("c", "listener", "riscv64_threadx_c_listener")]
-#[case::c_ss("c", "service-server", "riscv64_threadx_c_service_server")]
-#[case::c_sc("c", "service-client", "riscv64_threadx_c_service_client")]
-#[case::c_as("c", "action-server", "riscv64_threadx_c_action_server")]
-#[case::c_ac("c", "action-client", "riscv64_threadx_c_action_client")]
-#[case::cpp_talker("cpp", "talker", "riscv64_threadx_cpp_talker")]
-#[case::cpp_listener("cpp", "listener", "riscv64_threadx_cpp_listener")]
-#[case::cpp_ss("cpp", "service-server", "riscv64_threadx_cpp_service_server")]
-#[case::cpp_sc("cpp", "service-client", "riscv64_threadx_cpp_service_client")]
-#[case::cpp_as("cpp", "action-server", "riscv64_threadx_cpp_action_server")]
-#[case::cpp_ac("cpp", "action-client", "riscv64_threadx_cpp_action_client")]
+#[case::c_talker("c", "talker", "riscv64_threadx_c_talker", Rmw::Zenoh)]
+#[case::c_talker_cyclonedds("c", "talker", "riscv64_threadx_c_talker", Rmw::Cyclonedds)]
+#[case::c_listener("c", "listener", "riscv64_threadx_c_listener", Rmw::Zenoh)]
+#[case::c_listener_cyclonedds("c", "listener", "riscv64_threadx_c_listener", Rmw::Cyclonedds)]
+#[case::c_ss("c", "service-server", "riscv64_threadx_c_service_server", Rmw::Zenoh)]
+#[case::c_sc("c", "service-client", "riscv64_threadx_c_service_client", Rmw::Zenoh)]
+#[case::c_as("c", "action-server", "riscv64_threadx_c_action_server", Rmw::Zenoh)]
+#[case::c_ac("c", "action-client", "riscv64_threadx_c_action_client", Rmw::Zenoh)]
+#[case::cpp_talker("cpp", "talker", "riscv64_threadx_cpp_talker", Rmw::Zenoh)]
+#[case::cpp_talker_cyclonedds("cpp", "talker", "riscv64_threadx_cpp_talker", Rmw::Cyclonedds)]
+#[case::cpp_listener("cpp", "listener", "riscv64_threadx_cpp_listener", Rmw::Zenoh)]
+#[case::cpp_listener_cyclonedds("cpp", "listener", "riscv64_threadx_cpp_listener", Rmw::Cyclonedds)]
+#[case::cpp_ss("cpp", "service-server", "riscv64_threadx_cpp_service_server", Rmw::Zenoh)]
+#[case::cpp_sc("cpp", "service-client", "riscv64_threadx_cpp_service_client", Rmw::Zenoh)]
+#[case::cpp_as("cpp", "action-server", "riscv64_threadx_cpp_action_server", Rmw::Zenoh)]
+#[case::cpp_ac("cpp", "action-client", "riscv64_threadx_cpp_action_client", Rmw::Zenoh)]
 fn test_threadx_rv64_cmake_case_rmw_variant_exists(
     #[case] lang: &str,
     #[case] case: &str,
     #[case] binary: &str,
+    #[case] rmw: Rmw,
 ) {
-    let path =
-        nros_tests::fixtures::build_threadx_rv64_cmake_example_rmw(lang, case, binary, Rmw::Zenoh)
-            .unwrap_or_else(|e| {
-                nros_tests::skip!(
-                    "qemu-riscv64-threadx/{}/{} zenoh not prebuilt: {:?}",
-                    lang,
-                    case,
-                    e
-                )
-            });
+    let path = nros_tests::fixtures::build_threadx_rv64_cmake_example_rmw(lang, case, binary, rmw)
+        .unwrap_or_else(|e| {
+            nros_tests::skip!(
+                "qemu-riscv64-threadx/{}/{} {:?} not prebuilt: {:?}",
+                lang,
+                case,
+                rmw,
+                e
+            )
+        });
     assert!(
         path.exists(),
-        "threadx-rv64 {}/{} zenoh missing: {}",
+        "threadx-rv64 {}/{} {:?} missing: {}",
         lang,
         case,
+        rmw,
         path.display()
     );
 }

@@ -5,7 +5,7 @@
  * and `nros-board-threadx-qemu-riscv64`'s `c/app_define.c`. Owns
  * the parts that were byte-for-byte identical:
  *
- *   - 2 MB byte pool create + registration with both
+ *   - 4 MB byte pool create + registration with both
  *     `nros_platform_threadx_set_byte_pool` and the legacy
  *     `zpico_threadx_byte_pool` global.
  *   - RNG seed (`srand` + `nros_platform_threadx_seed_rng`).
@@ -41,7 +41,7 @@
 #include "tx_api.h"
 
 /* ---- Sizing constants ---- */
-#define BYTE_POOL_SIZE          (2 * 1024 * 1024)
+#define BYTE_POOL_SIZE          (4 * 1024 * 1024)
 
 /* ---- Overlay-tunable parameters (weak — overlay strong-overrides) ----
  *

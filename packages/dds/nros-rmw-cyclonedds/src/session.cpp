@@ -22,6 +22,8 @@
 #if defined(NROS_PLATFORM_FREERTOS)
 #include <FreeRTOS.h>
 #include <task.h>
+#elif defined(NROS_PLATFORM_THREADX)
+#include <nros/platform.h>
 #elif !defined(__ZEPHYR__) && !defined(NROS_PLATFORM_THREADX)
 #include <ctime> // nanosleep / timespec (POSIX spin-loop pacing)
 #endif
@@ -46,6 +48,32 @@ struct SessionState {
 
 inline SessionState *as_state(nros_rmw_session_t *s) {
     return static_cast<SessionState *>(s->backend_data);
+}
+
+SessionState *alloc_session_state() {
+#if defined(NROS_PLATFORM_THREADX)
+    void *mem = nros_platform_alloc(sizeof(SessionState));
+    if (mem == nullptr) {
+        return nullptr;
+    }
+    auto *state = static_cast<SessionState *>(mem);
+    state->domain = 0;
+    state->participant = 0;
+    return state;
+#else
+    return new (std::nothrow) SessionState();
+#endif
+}
+
+void free_session_state(SessionState *state) {
+    if (state == nullptr) {
+        return;
+    }
+#if defined(NROS_PLATFORM_THREADX)
+    nros_platform_dealloc(state);
+#else
+    delete state;
+#endif
 }
 
 #if defined(NROS_PLATFORM_FREERTOS)
@@ -75,7 +103,7 @@ nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
     }
 
     NROS_CYC_TRACE("session_open: domain=%u entering", domain_id);
-    auto *state = new (std::nothrow) SessionState();
+    auto *state = alloc_session_state();
     if (state == nullptr) {
         NROS_CYC_TRACE("session_open: BAD_ALLOC for SessionState");
         return NROS_RMW_RET_BAD_ALLOC;
@@ -84,7 +112,7 @@ nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
 #if defined(NROS_PLATFORM_FREERTOS)
     dds_entity_t domain = dds_create_domain(domain_id, kEmbeddedCycloneConfig);
     if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
-        delete state;
+        free_session_state(state);
         return NROS_RMW_RET_ERROR;
     }
     if (domain > 0) {
@@ -99,7 +127,7 @@ nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
         if (state->domain > 0) {
             (void) dds_delete(state->domain);
         }
-        delete state;
+        free_session_state(state);
         return NROS_RMW_RET_ERROR;
     }
     state->participant = pp;
@@ -123,7 +151,7 @@ nros_rmw_ret_t session_close(nros_rmw_session_t *session) {
     if (state->domain > 0) {
         (void) dds_delete(state->domain);
     }
-    delete state;
+    free_session_state(state);
     session->backend_data = nullptr;
     return NROS_RMW_RET_OK;
 }

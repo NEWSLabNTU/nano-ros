@@ -2,7 +2,8 @@
 #define NROS_THREADX_RISCV64_CXX_COMPAT_NEW
 
 #include <stddef.h>
-#include <stdlib.h>
+
+#include <nros/platform.h>
 
 namespace std {
 
@@ -15,35 +16,35 @@ inline const nothrow_t nothrow{};
 } // namespace std
 
 inline void *operator new(size_t size) noexcept(false) {
-    return malloc(size);
+    return nros_platform_alloc(size);
 }
 
 inline void *operator new[](size_t size) noexcept(false) {
-    return malloc(size);
+    return nros_platform_alloc(size);
 }
 
 inline void *operator new(size_t size, const std::nothrow_t &) noexcept {
-    return malloc(size);
+    return nros_platform_alloc(size);
 }
 
 inline void *operator new[](size_t size, const std::nothrow_t &) noexcept {
-    return malloc(size);
+    return nros_platform_alloc(size);
 }
 
 inline void operator delete(void *ptr) noexcept {
-    free(ptr);
+    nros_platform_dealloc(ptr);
 }
 
 inline void operator delete[](void *ptr) noexcept {
-    free(ptr);
+    nros_platform_dealloc(ptr);
 }
 
 inline void operator delete(void *ptr, size_t) noexcept {
-    free(ptr);
+    nros_platform_dealloc(ptr);
 }
 
 inline void operator delete[](void *ptr, size_t) noexcept {
-    free(ptr);
+    nros_platform_dealloc(ptr);
 }
 
 #endif // NROS_THREADX_RISCV64_CXX_COMPAT_NEW

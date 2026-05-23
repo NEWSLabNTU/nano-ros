@@ -86,11 +86,11 @@ void nros_platform_dealloc(void *ptr) {
     }
 }
 
-void *z_malloc(size_t size) {
+__attribute__((weak)) void *z_malloc(size_t size) {
     return nros_platform_alloc(size);
 }
 
-void z_free(void *ptr) {
+__attribute__((weak)) void z_free(void *ptr) {
     nros_platform_dealloc(ptr);
 }
 

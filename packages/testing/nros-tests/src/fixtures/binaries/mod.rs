@@ -533,6 +533,8 @@ pub fn build_native_cpp_example_rmw(
 }
 
 /// Phase 118.C — collapsed-shape ThreadX-RV64 Rust example resolver.
+/// Zenoh uses the pure-cargo target dir; CycloneDDS uses the
+/// CMake/Corrosion staticlib path added in Phase 175.B.
 pub fn build_threadx_rv64_rust_example_rmw(
     case: &str,
     binary_name: &str,
@@ -546,12 +548,16 @@ pub fn build_threadx_rv64_rust_example_rmw(
             example_dir.display()
         )));
     }
-    let binary_path = example_dir.join(format!(
-        "{}/riscv64gc-unknown-none-elf/{}/{}",
-        rmw.target_dir(),
-        cargo_target_profile_dir(),
-        binary_name
-    ));
+    let binary_path = if rmw == Rmw::Cyclonedds {
+        example_dir.join(format!("{}/{}", rmw.build_dir(), binary_name))
+    } else {
+        example_dir.join(format!(
+            "{}/riscv64gc-unknown-none-elf/{}/{}",
+            rmw.target_dir(),
+            cargo_target_profile_dir(),
+            binary_name
+        ))
+    };
     require_prebuilt_binary(&binary_path)
 }
 
