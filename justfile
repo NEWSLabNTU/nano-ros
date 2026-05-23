@@ -241,6 +241,7 @@ format: format-workspace native::format format-c format-cpp format-python
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 check: \
     check-workspace check-workspace-embedded check-workspace-features \
+    check-nros-log-riscv32 \
     check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-decoupling check-example-matrix \
     native::check check-c check-cpp check-python
     @echo "All checks passed!"
@@ -740,7 +741,7 @@ build-workspace-embedded:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-rmw-xrce-cffi-staticlib
         --exclude nros-rmw-uorb \
         --exclude nros-px4
 
@@ -786,6 +787,14 @@ check-workspace-embedded:
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib \
+
+# Phase 166.R.5 — guard `nros-log` on CAS-less ESP32-C3 /
+# riscv32imc so portable-atomic fallback regressions surface in
+# the standard check tier.
+[private]
+check-nros-log-riscv32:
+    @echo "Checking nros-log for riscv32imc..."
+    cargo check -p nros-log --target riscv32imc-unknown-none-elf --no-default-features
 
 # Check workspace with various feature combinations
 [private]

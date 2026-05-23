@@ -5,16 +5,60 @@ audit-reader pass found while following starter pages. The book-side
 docs are corrected as the audits run; this phase tracks the
 underlying code / build bugs.
 
+**Status.** Complete 2026-05-24. The original regressions are fixed,
+closed as worktree artifacts, or superseded. Remaining verification
+was refreshed after the Phase 118 example collapse and Phase 176
+build-orchestration changes. `nros-log` now has a standard check-tier
+guard for `riscv32imc-unknown-none-elf`.
+
 ## Open issues
 
 | # | Module / file | Symptom | Severity | Status |
 |---|---|---|---|---|
-| 166.A | `nros-board-freertos` + `nros-board-mps2-an385-freertos` | Duplicate `nros_platform_*` symbols at link time | P1 — blocks FreeRTOS DDS build | **Fixed** — mps2 build.rs no longer re-emits `cargo:rustc-link-lib` mirrors |
+| 166.A | `nros-board-freertos` + `nros-board-mps2-an385-freertos` | Duplicate `nros_platform_*` symbols at link time | P1 — blocked FreeRTOS builds | **Fixed + verified** — mps2 build.rs no longer re-emits `cargo:rustc-link-lib` mirrors. Acceptance commands were refreshed for the collapsed example layout and `nros-fast-release` default profile. |
 | 166.B | `nros-log` on `riscv32imc-none-elf` | `AtomicPtr::compare_exchange` not available — needs `portable-atomic` | P1 — blocks esp-hal Rust build | **Already-fixed / worktree artifact** — in-tree `nros-log` already uses `portable_atomic::*`; esp32 talker builds clean on `main` |
 | 166.C | `examples/native/{cpp,c}/zenoh/talker/` CMake | Transitive submodule fetch pulls dust-dds + px4-rs even for posix+zenoh; first build aborts | P2 | **Worktree artifact** — submodules present + populated on `main` |
 | 166.D | `examples/threadx-linux/rust/talker/Cargo.toml` (and siblings) | Missing empty `[workspace]` table — `cargo build` from inside the repo discovers parent workspace + crate not listed → error | P2 | **Worktree artifact** — all example Cargo.tomls verified on `main` (either in root workspace `members` or have own `[workspace]`); Phase 118.B deleted the legacy `rust/zenoh/` root |
 | 166.E | `integrations/nuttx/` template | `external-Kconfig.in` + `external-Make.defs.in` staging step not wired into `just nuttx setup`; user following the shell-symlink instruction can't reach example apps via menuconfig | P3 | **Fixed** — `just nuttx setup` now invokes `scripts/nuttx/stage-external-apps.sh` |
 | 166.F | ~~`packages/dds/dust-dds/dds/src/dcps/actor.rs` + nros-rmw-dds nostd runtime~~ | ~~`Actor<DcpsStatusCondition>::poll` blocks during the first `CreateTopic` mailbox handler on `xtensa-esp32s3-none-elf` (Phase 117.2h). Blocks two-instance ESP32-S3 QEMU DDS E2E.~~ **Won't-Fix — superseded by Phase 169** (Retire dust-dds; consolidate on Cyclone DDS). Closed by deleting the dust-dds submodule, not by patching it. | Closed |
+
+## Remaining work
+
+- [x] **166.R.1** Rerun `just freertos build-fixtures` on current
+      `main`. This now exercises the collapsed FreeRTOS example
+      matrix, inherits the global `NROS_CARGO_PROFILE` default
+      (`nros-fast-release`), and uses the Phase 176 jobserver path
+      when the pinned make/ninja tools are available. Verified with
+      `env XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp just freertos build-fixtures`.
+- [x] **166.R.2** Rerun the standalone FreeRTOS example checks using
+      the current directory shape:
+      `examples/qemu-arm-freertos/rust/<case>` via
+      `cargo build --no-default-features --features rmw-zenoh
+      --target-dir target-zenoh`, and
+      `examples/qemu-arm-freertos/{c,cpp}/<case>` via CMake with
+      `-DNROS_RMW=zenoh`. The old
+      `examples/qemu-arm-freertos/<lang>/<rmw>/<case>` wording is
+      obsolete after Phase 118. Covered by the same
+      `just freertos build-fixtures` run.
+- [x] **166.R.3** Recheck the archive ownership invariant with `nm`:
+      `libnros_board_mps2_an385_freertos-*.rlib` should not define
+      `nros_platform_*`; those symbols should come from the generic
+      `nros-board-freertos` archive path. Verified with
+      `arm-none-eabi-nm --defined-only ...libnros_board_mps2_an385_freertos-*.rlib`;
+      no `nros_platform_*` definitions were present. The generic
+      `libnros_board_freertos-*.rlib` does define the platform ABI.
+- [x] **166.R.4** Rerun the same-overlay regression set for other RTOS
+      targets that have parent/child board crates:
+      `just threadx_linux build`, `just threadx_riscv64 build`, and
+      `just nuttx build-fixtures` or their current platform-scoped
+      fixture recipes. Verified with
+      `env XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp just threadx_linux build`,
+      `env XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp just threadx_riscv64 build`,
+      and `env XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp just nuttx build-fixtures`.
+- [x] **166.R.5** Add a CI/check recipe that cross-compiles
+      `nros-log` for `riscv32imc-unknown-none-elf`, closing
+      deferred item 166.B.4. Added `check-nros-log-riscv32` to the
+      standard `just check` dependency chain.
 
 ---
 
@@ -162,15 +206,22 @@ consume). Matches the platform-cffi pattern documented in
 
 ## Acceptance criteria
 
-- [ ] `just freertos build-fixtures` runs clean — all 20 binaries
-      (rust + c + cpp × {pubsub, service, action} + DDS pair) build.
-- [ ] `cargo build` from each `examples/qemu-arm-freertos/<lang>/<rmw>/<ex>/`
-      links without `duplicate symbol` errors.
-- [ ] `nm libnros_board_mps2_an385_freertos-*.rlib` shows zero
-      `nros_platform_*` symbols defined in the rlib (they should
-      resolve from the platform crate's staticlib).
-- [ ] No regression on other RTOS targets that exercise the same
+- [x] Current `just freertos build-fixtures` runs clean under the
+      active build orchestration (global Cargo profile +
+      jobserver-aware recipes when available).
+- [x] Current standalone FreeRTOS example paths build without
+      `duplicate symbol` errors:
+      `examples/qemu-arm-freertos/rust/<case>` with
+      `--features rmw-zenoh`, and
+      `examples/qemu-arm-freertos/{c,cpp}/<case>` with
+      `-DNROS_RMW=zenoh`.
+- [x] `nm libnros_board_mps2_an385_freertos-*.rlib` shows zero
+      `nros_platform_*` symbols defined in the mps2 overlay rlib
+      (they should resolve from the generic FreeRTOS archive path).
+- [x] No regression on other RTOS targets that exercise the same
       board-overlay pattern.
+- [x] `nros-log` has an automated `riscv32imc-unknown-none-elf`
+      cross-compile guard.
 
 ## Notes
 
@@ -345,10 +396,12 @@ The agent's failure was a worktree-isolation artifact (similar to
       `portable_atomic::{AtomicPtr, AtomicBool}` at call sites.
 - [x] **166.B.3** Verified `cargo build` from
       `examples/esp32/rust/talker/` succeeds on `main`.
-- [ ] **166.B.4** (Deferred follow-up) Add a CI matrix entry that
+- [x] **166.B.4** (same as 166.R.5) Add a CI
+      matrix entry or local check recipe that
       cross-compiles `nros-log` for `riscv32imc-unknown-none-elf`
-      so future regressions surface in CI rather than worktree
-      audits.
+      so future regressions surface in the standard check tier rather
+      than worktree audits. Implemented as `check-nros-log-riscv32`,
+      called by `just check`.
 
 ---
 
