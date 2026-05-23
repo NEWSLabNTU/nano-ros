@@ -70,9 +70,13 @@ See [Getting Started](docs/guides/getting-started.md) for a complete walkthrough
 ```bash
 git clone https://github.com/jerry73204/nano-ros.git
 cd nano-ros
-just setup         # Install toolchains + tools
-just build-zenohd  # Build zenohd from submodule
+scripts/bootstrap.sh  # Install/check just, then run the base setup tier
+source ./setup.bash
 ```
+
+Platform developers can run `scripts/bootstrap.sh platform zephyr`
+or `just <platform> setup`. Contributors preparing the full matrix use
+`scripts/bootstrap.sh all`.
 
 Run the demo:
 

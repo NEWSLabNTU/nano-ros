@@ -1240,38 +1240,50 @@ regenerate-bindings: clean-bindings generate-bindings
 # =============================================================================
 # Setup & Doctor orchestrators
 #
-# `just setup`  — idempotently install everything (workspace + platforms + services).
-# `just doctor` — read-only diagnosis of install status.
+# `just setup`     — safe quick-start setup (workspace + zenohd).
+# `just setup all` — full contributor setup (all platforms + services).
+# `just doctor`    — read-only diagnosis of install status.
 #
 # Each module has its own `setup`/`doctor` recipes. The orchestrator walks
 # them all, treats individual failures as non-fatal, and prints a summary.
 # Run any module independently: e.g. `just nuttx setup`, `just zephyr doctor`.
 # =============================================================================
 
-# Install everything: workspace + verification + all platforms + services.
+# Install SDK/tooling dependencies.
+#
+# Common flows:
+#   just setup              # base quick-start tier
+#   just setup all          # full contributor / test-all tier
+#   just setup tier=all     # explicit tier form
+#   just setup zephyr       # shorthand for: just zephyr setup
+#   just zephyr setup       # focused platform setup
 #
 # Phase 123.A.4 — optional positional `target` (e.g. `just setup
-# posix-zenoh`) shim to `tools/setup.sh --target=<target>`. When
-# `target` is empty (`just setup`), runs the full contributor
-# orchestrator that walks every per-platform module.
-# Phase 142 — tiered orchestrator. `tier` ∈ {minimal,default,extended}.
-# `NROS_SETUP_TIER` env overrides the default when no positional arg
-# is passed. See docs/contributing/sdk-tiers.md for tier criteria.
-#
-# Phase 123.A.4 — optional positional `target` (e.g. `just setup
-# posix-zenoh`) shim to `tools/setup.sh --target=<target>` is retained:
-# `just setup <target>` invokes the per-target SDK setup script
-# (interactive flow). Tier orchestration applies only to the no-arg
-# `just setup` / explicit `just setup tier=<tier>` form.
+# posix-zenoh`) shim to `tools/setup.sh --target=<target>` is retained
+# for non-module target names.
 setup target="" tier="":
     #!/usr/bin/env bash
     set -e
-    if [[ -n "{{target}}" ]]; then
-        exec "$(pwd)/tools/setup.sh" --target="{{target}}"
-    fi
     chosen_tier="{{tier}}"
+    target="{{target}}"
+    if [[ -n "$target" ]]; then
+        case "$target" in
+            tier=*)
+                chosen_tier="${target#tier=}"
+                ;;
+            base|quickstart|minimal|default|all|everything|contributor|extended)
+                chosen_tier="$target"
+                ;;
+            workspace|verification|zenohd|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|orin_spe|cyclonedds|platformio|esp_idf|px4)
+                exec just "$target" setup
+                ;;
+            *)
+                exec "$(pwd)/tools/setup.sh" --target="$target"
+                ;;
+        esac
+    fi
     if [[ -z "$chosen_tier" ]]; then
-        chosen_tier="${NROS_SETUP_TIER:-everything}"
+        chosen_tier="${NROS_SETUP_TIER:-base}"
     fi
     just _orchestrate setup "$chosen_tier"
     echo ""
@@ -1282,20 +1294,27 @@ setup target="" tier="":
     echo "     source ./setup.fish      # fish"
     echo ""
 
+# Focused platform setup. Equivalent to `just <platform> setup`.
+setup-platform platform:
+    @just "{{platform}}" setup
+
 # Diagnose install status (read-only). Tier matches `just setup`.
 doctor tier="":
     #!/usr/bin/env bash
     set -e
     chosen_tier="{{tier}}"
+    if [[ "$chosen_tier" == tier=* ]]; then
+        chosen_tier="${chosen_tier#tier=}"
+    fi
     if [[ -z "$chosen_tier" ]]; then
-        chosen_tier="${NROS_SETUP_TIER:-everything}"
+        chosen_tier="${NROS_SETUP_TIER:-base}"
     fi
     just _orchestrate doctor "$chosen_tier"
 
 # Internal: walk every module in `tier` calling the requested recipe
-# (setup or doctor). Tiers are strict supersets: minimal ⊂ default ⊂
-# extended. Unknown tier exits non-zero so a typo doesn't silently
-# pick the wrong module list.
+# (setup or doctor). `base` is the safe quick-start tier; `all` is the
+# full contributor/test-all tier. Unknown tier exits non-zero so a typo
+# doesn't silently pick the wrong module list.
 [private]
 _orchestrate verb tier="everything":
     #!/usr/bin/env bash
@@ -1311,18 +1330,18 @@ _orchestrate verb tier="everything":
             failed+=("$mod")
         fi
     }
-    # Tiers (collapsed 2026-05-19): only two surfaces remain.
-    #   - `minimal`     : Rust-only contributors (workspace + verification + zenohd)
-    #   - `everything`  : default; every safe / idempotent module
-    # The legacy names `default` and `extended` alias to `everything`
-    # so existing scripts + NROS_SETUP_TIER values keep working.
+    # Tiers:
+    #   - `base` : quick start for first-time users (workspace + zenohd)
+    #   - `all`  : full contributor / test-all setup
+    # Legacy aliases:
+    #   - `minimal` and `default` -> base
+    #   - `everything` and `extended` -> all
     case "{{tier}}" in
-        minimal)
+        base|quickstart|minimal|default)
             run workspace
-            run verification
             run zenohd
             ;;
-        everything|default|extended)
+        all|everything|contributor|extended)
             run workspace
             run verification
             run zenohd
@@ -1342,8 +1361,8 @@ _orchestrate verb tier="everything":
             run px4
             ;;
         *)
-            echo "unknown tier '{{tier}}' — expected one of: minimal, everything" >&2
-            echo "(legacy aliases default / extended also accepted)" >&2
+            echo "unknown tier '{{tier}}' — expected one of: base, all" >&2
+            echo "(aliases: quickstart/minimal/default -> base; contributor/everything/extended -> all)" >&2
             exit 2
             ;;
     esac
@@ -1351,9 +1370,9 @@ _orchestrate verb tier="everything":
     # Phase 142.6 — repeat the qemu < 7.2 PPA hint at the end of
     # `just doctor` so users don't scroll past it during the qemu
     # block. Skipped for `setup` (it would just duplicate the
-    # `just qemu setup` output) and for `minimal` (no qemu in
+    # `just qemu setup` output) and for `base` (no qemu in
     # that tier). Best-effort: silent if qemu missing entirely.
-    if [[ "{{verb}}" == "doctor" && "{{tier}}" != "minimal" ]]; then
+    if [[ "{{verb}}" == "doctor" && "{{tier}}" != "base" && "{{tier}}" != "quickstart" && "{{tier}}" != "minimal" && "{{tier}}" != "default" ]]; then
         if command -v qemu-system-arm >/dev/null 2>&1; then
             ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
             major=${ver%%.*}

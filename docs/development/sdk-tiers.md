@@ -1,50 +1,52 @@
-# SDK Tiers for `just setup`
+# SDK Tiers for Setup
 
-`just setup` orchestrates per-module setup recipes. Phase 142
-introduces tiered selection so contributors can pick coverage
-explicitly instead of getting a two-hour first-run install on a
-laptop they only use to fix a `nros-core` typo.
+Setup is split by customer workflow. `scripts/bootstrap.sh` is the
+entrypoint for a fresh checkout with no `just` installed yet; once `just`
+is available, all paths delegate to the same recipes.
 
 ```
-just setup                  # default tier (recommended)
-just setup tier=minimal     # Rust-only contributor, no embedded
-just setup tier=extended    # adds heavy / private-SDK modules
-NROS_SETUP_TIER=extended just setup
+scripts/bootstrap.sh                 # first-time quick start
+scripts/bootstrap.sh platform zephyr # focused platform developer
+scripts/bootstrap.sh all             # contributor / full test-all setup
+
+just setup                           # base quick-start tier
+just setup all                       # full contributor / test-all tier
+just <platform> setup                # focused platform setup
+just doctor                          # diagnose base tier
+just doctor tier=all                 # diagnose full tier
 ```
 
-`just doctor [tier=<tier>]` mirrors the same selection so diagnosis
-output matches the install. CI matrix selects per runner.
+`NROS_SETUP_TIER` overrides the default no-argument `just setup` /
+`just doctor` tier. Valid tiers are `base` and `all`. Legacy aliases
+`minimal` and `default` map to `base`; `extended` and `everything` map
+to `all`.
 
 ## Tiers
 
 | Tier | Modules | Use case |
 |------|---------|----------|
-| `minimal` | `workspace`, `verification`, `zenohd` | Rust-only contributor working on `nros-core` / `nros-rmw` / `nros-platform-api` |
-| `default` | `minimal` + `qemu`, `freertos`, `nuttx`, `threadx_{linux,riscv64}`, `esp32`, `zephyr`, `xrce`, `rmw_zenoh`, `orin_spe`, `cyclonedds`, `platformio` | Full `just ci` coverage; what every contributor should run unless they have a specific reason not to |
-| `extended` | `default` + `esp_idf`, `px4` | Every Phase 139 integration smoke test runnable |
+| `base` | `workspace`, `zenohd` | First-time users who want native nano-ros examples and standard ROS/zenoh workflows without every RTOS SDK |
+| platform-specific | one module, e.g. `zephyr`, `nuttx`, `esp_idf`, `px4` | Developers focused on one target platform |
+| `all` | `workspace`, `verification`, `zenohd`, `qemu`, `freertos`, `nuttx`, `threadx_{linux,riscv64}`, `esp32`, `zephyr`, `xrce`, `rmw_zenoh`, `orin_spe`, `cyclonedds`, `platformio`, `esp_idf`, `px4` | Contributors preparing for `just build-test-fixtures` and `just test-all` |
 
-Tiers are strict supersets: `minimal ⊂ default ⊂ extended`. A
-module never moves between tiers without bumping this document
-and the orchestrator switch in `justfile::_orchestrate`.
+`all` is intentionally explicit because it pulls many submodules and
+installs large SDKs. A module never moves between tiers without bumping
+this document and the orchestrator switch in `justfile::_orchestrate`.
 
-## Policy: when does a module join `default`?
+## Policy: when does a module join `base`?
 
-A module joins `default` when **all** of:
+A module joins `base` when **all** of:
 
-1. **Cheap to install.** ≤ 500 MB on disk AND ≤ 5 min wall-clock on
-   a standard contributor laptop.
-2. **Exercised by `just test-all`.** At least one
-   `nros_tests::skip!` call (or a `cmake` / `cargo build` smoke
-   step in a `tests/` integration test) references SDK paths /
-   binaries the module provides.
+1. **Expected by first-time users.** It supports native examples,
+   standard ROS/zenoh interop, or core workspace development.
+2. **Moderate surprise.** It does not fetch large platform SDKs such as
+   PX4-Autopilot, ESP-IDF, Zephyr, or full RTOS trees.
 3. **Idempotent on re-run.** No destructive ops, no `sudo`, no
    network-only stages that flap.
 
-A module joins `extended` when (1) or (2) fails but the module is
-still needed by some Phase 139 integration shell or supported
-platform. Examples: ESP-IDF (≈ 2 GB clone + Python deps + xtensa
-toolchain — fails (1)); PX4 (PX4-Autopilot clone + gz-sim + Python
-deps — fails (1)).
+A module joins `all` when it is needed by full-matrix development or
+`just test-all`, but is too heavy or platform-specific for the default
+quick start.
 
 A module stays **opt-in entirely** (neither tier) when it pulls
 in private SDKs, requires `sudo`, or carries license-restricted
@@ -59,11 +61,11 @@ When introducing a new RTOS / SDK module:
 1. Land `just/<module>.just` with `setup` (idempotent) and
    `doctor` (read-only) recipes.
 2. Add `mod <module> 'just/<module>.just'` to `justfile`.
-3. Decide tier per §Policy above.
+3. Decide whether it belongs in `base`, `all`, or platform-only setup.
 4. Add `run <module>` to the matching tier branch of
    `_orchestrate` in `justfile`.
 5. Update the table in §Tiers in this doc.
-6. Update `CLAUDE.md`'s "## Build" section if the change is
+6. Update `AGENTS.md`'s "Build, Test, and Development Commands" if the change is
    user-facing.
 
 If the module is opt-in entirely, skip steps 3–5 and add a note
@@ -71,11 +73,17 @@ to its own README explaining why.
 
 ## Cold-start verification
 
-Phase 135.4's deferred `rm -rf build && rm -rf
-target* && just setup && just ci` check assumes `tier=default`
-(the documented contract). Re-run with `tier=extended` only when
-verifying Phase 139 integration shells end-to-end on a fresh
-checkout.
+For full-matrix cold start, run:
+
+```
+rm -rf build target*
+scripts/bootstrap.sh all
+source ./setup.bash
+just build-test-fixtures
+just test-all
+```
+
+For quick-start cold start, use `scripts/bootstrap.sh` without `all`.
 
 ## Relation to Cargo features
 
