@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(pkg_cpp_listener LANGUAGES CXX)
+project(pkg_cpp_listener LANGUAGES C CXX)
 
 # Phase 140 — multi-package workspace demo, add_subdirectory shape.
 # C++ listener counterpart to pkg_c_talker. Both packages
