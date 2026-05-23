@@ -385,8 +385,11 @@ Verification on `main`:
   `examples/esp32/rust/talker/` succeeds on `main` with no
   errors (verified 2026-05-19, ~29s build, `riscv32imc-unknown-none-elf`).
 
-The agent's failure was a worktree-isolation artifact (similar to
-166.C/.D). No code change required.
+The agent's original esp-hal example failure was a worktree-isolation
+artifact (similar to 166.C/.D). The direct crate check still needs an
+explicit portable-atomic fallback, so `nros-log` scopes
+`unsafe-assume-single-core` to the RISC-V `imc` target and both
+`just check` and CI cross-check that target.
 
 ### Work items
 
@@ -400,8 +403,8 @@ The agent's failure was a worktree-isolation artifact (similar to
       matrix entry or local check recipe that
       cross-compiles `nros-log` for `riscv32imc-unknown-none-elf`
       so future regressions surface in the standard check tier rather
-      than worktree audits. Implemented as `check-nros-log-riscv32`,
-      called by `just check`.
+      than worktree audits. Implemented as `check-nros-log-riscv32`
+      in `just check` and as `.github/workflows/ci.yml`.
 
 ---
 

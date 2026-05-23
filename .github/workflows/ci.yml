@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/core/nros-log/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/core/nros-log/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+jobs:
+  rust-cross-check:
+    name: ${{ matrix.package }} / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: nros-log
+            target: riscv32imc-unknown-none-elf
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+        # This job checks a self-contained core crate. Avoid recursive
+        # submodules so unrelated platform/runtime pointers cannot block CI.
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cross-check ${{ matrix.package }}
+        run: |
+          cargo check \
+            -p "${{ matrix.package }}" \
+            --target "${{ matrix.target }}" \
+            --no-default-features
