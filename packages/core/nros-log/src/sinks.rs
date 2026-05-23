@@ -32,7 +32,7 @@ unsafe extern "C" {
 ///
 /// Zero-sized. Threading + ISR safety inherit from the linked
 /// `nros-platform-<rtos>` impl — see the table in
-/// `docs/roadmap/phase-88-nros-log.md`.
+/// `docs/roadmap/archived/phase-88-nros-log.md`.
 pub struct PlatformSink;
 
 impl LogSink for PlatformSink {

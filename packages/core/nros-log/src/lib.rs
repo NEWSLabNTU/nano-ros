@@ -1,6 +1,6 @@
 //! Phase 88 — portable leveled-logging facade for nano-ros.
 //!
-//! See [`docs/roadmap/phase-88-nros-log.md`](../../../docs/roadmap/phase-88-nros-log.md)
+//! See [`docs/roadmap/archived/phase-88-nros-log.md`](../../../docs/roadmap/archived/phase-88-nros-log.md)
 //! for the design and acceptance criteria.
 //!
 //! ## Layering
@@ -167,7 +167,7 @@ pub struct Record<'a> {
 ///
 /// Implementations must be `Sync` so the dispatcher can hold them
 /// in `&'static [&dyn LogSink]`. ISR-safety is per-impl — see the
-/// table in `docs/roadmap/phase-88-nros-log.md`.
+/// table in `docs/roadmap/archived/phase-88-nros-log.md`.
 pub trait LogSink: Sync {
     /// Render `record`. Called only when the record's severity passes
     /// both the compile-time ceiling AND the [`Logger`]'s runtime
@@ -513,9 +513,34 @@ mod tests {
     }
 
     #[test]
-    fn compile_time_ceiling_default_is_trace() {
-        // Default features include `max-level-trace` → everything passes.
-        assert!(severity_enabled_at_compile_time(Severity::Trace));
-        assert!(severity_enabled_at_compile_time(Severity::Fatal));
+    fn compile_time_ceiling_matches_enabled_feature() {
+        let expected = if cfg!(feature = "max-level-off") {
+            None
+        } else if cfg!(feature = "max-level-trace") {
+            Some(Severity::Trace)
+        } else if cfg!(feature = "max-level-debug") {
+            Some(Severity::Debug)
+        } else if cfg!(feature = "max-level-info") {
+            Some(Severity::Info)
+        } else if cfg!(feature = "max-level-warn") {
+            Some(Severity::Warn)
+        } else if cfg!(feature = "max-level-error") {
+            Some(Severity::Error)
+        } else {
+            // No ceiling feature = treat as `max-level-trace`.
+            Some(Severity::Trace)
+        };
+
+        for severity in [
+            Severity::Trace,
+            Severity::Debug,
+            Severity::Info,
+            Severity::Warn,
+            Severity::Error,
+            Severity::Fatal,
+        ] {
+            let enabled = expected.is_some_and(|ceiling| severity >= ceiling);
+            assert_eq!(severity_enabled_at_compile_time(severity), enabled);
+        }
     }
 }

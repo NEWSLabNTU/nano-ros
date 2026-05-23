@@ -65,8 +65,8 @@ Overflow truncates + appends `…`; `log()` never fails.
 
 ## Backend delivery (per platform)
 
-See `docs/roadmap/phase-88-nros-log.md` for the per-platform impl
-table. Summary: POSIX → stderr; Zephyr → `LOG_*`; ESP-IDF →
+See `docs/roadmap/archived/phase-88-nros-log.md` for the per-platform
+impl table. Summary: POSIX → stderr; Zephyr → `LOG_*`; ESP-IDF →
 `ESP_LOG_*`; NuttX → `syslog`; FreeRTOS / ThreadX / bare-metal →
 board-registered UART / semihosting / defmt writer fn-ptr.
 
@@ -76,6 +76,6 @@ this crate.
 
 ## Phase status
 
-See `docs/roadmap/phase-88-nros-log.md`. v1 = facade + macros +
+See `docs/roadmap/archived/phase-88-nros-log.md`. v1 = facade + macros +
 ABI + POSIX impl + PlatformSink + the Rust API. C/C++ bindings,
 per-RTOS impls, examples, and tests land incrementally.

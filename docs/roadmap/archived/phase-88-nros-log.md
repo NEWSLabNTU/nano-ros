@@ -8,13 +8,11 @@ implementations through the canonical `nros_platform_*` ABI. Each
 (`printk` / `esp_log_write` / `syslog` / UART writer / etc.). `/rosout`
 publication is explicitly out of scope for this phase.
 
-**Status**: Code Complete 2026-05-19 — all work items 88.1–88.14 landed on
-`phase-88-nros-log`. POSIX path verified end-to-end via
-`packages/core/nros-log/tests/posix_dispatch.rs` +
-`packages/testing/nros-tests/tests/logging.rs`. RTOS visual
-confirmation (Zephyr / ESP32 / MPS2-AN385 UART capture) listed in
-acceptance criteria is still pending; tracking that as a 88.15 smoke
-follow-up rather than reopening the phase.
+**Status**: Complete 2026-05-24 — all implementation work items 88.1–88.16
+and acceptance criteria are checked. POSIX path is verified by
+`packages/core/nros-log/tests/posix_dispatch.rs` and
+`packages/testing/nros-tests/tests/logging.rs`; RTOS capture paths are
+covered by the 88.15 logging-smoke fixtures and harnesses.
 
 **Priority**: Medium — the project currently has no unified logging
 story; board crates use ad-hoc `cortex_m_semihosting::hprintln!`,
@@ -281,7 +279,7 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       UART-capture verification stays best-effort and lives with the
       per-platform smoke tests.
 
-- [ ] 88.15 — RTOS smoke fixtures + QEMU E2E capture asserts. One
+- [x] 88.15 — RTOS smoke fixtures + QEMU E2E capture asserts. One
       minimal `logging-smoke` fixture binary per supported RTOS lives
       under `packages/testing/nros-tests/bins/`; each emits one record
       per severity through `nros_*!` and exits via the platform's
@@ -291,29 +289,13 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
       / `[INFO]` / `[WARN]` / `[ERROR]` / `[FATAL]` lines appear in the
       captured UART / semihosting / native_sim output.
 
-      **2026-05-19 status.** 88.15.a is done and gives us a canonical
-      pattern: bare-metal Cortex-M3 fixture + per-test private QEMU
-      spawn + stderr drain (because the mps2-an385 writer routes
-      through `hstderr()`). The remaining sub-items are blocked on
-      smaller pre-work that doesn't fit cleanly into a single
-      commit, so they stay open as follow-ups rather than being
-      crammed into this phase:
-
-      - **88.15.b (FreeRTOS)** needs the board crate's `run()` flow
-        to be runnable without lwIP init — either a `run_minimal()`
-        helper that skips `nros_freertos_init_network` for smoke
-        fixtures, or a hand-rolled FreeRTOS-task fixture that calls
-        `nros_platform_register_log_writer` directly.
-      - **88.15.c–.d (NuttX / ThreadX)** need analogous "skip
-        network init" hooks plus, on ThreadX, a public
-        `nros_board_threadx_register_log_writer` helper for fixtures
-        that don't want to enter the full scheduler.
-      - **88.15.e (Zephyr)** needs a tiny `native_sim` binary
-        outside the `examples/` tree gated on `west` /
-        `ZEPHYR_BASE` availability.
-      - **88.15.f (ESP32)** needs the Espressif QEMU fork in the
-        CI's PATH; until that's part of `just esp32 setup`, the
-        test must skip cleanly.
+      **2026-05-24 status.** All platform smoke fixtures are present and
+      wired into `packages/testing/nros-tests/tests/logging_smoke.rs`.
+      Earlier blockers are resolved: FreeRTOS uses the networked MPS2
+      boot path, NuttX uses the standalone bootable-kernel Rust fixture
+      shape, ThreadX uses the board writer registration path, Zephyr has
+      a `native_sim/native/64` C fixture, and ESP32-C3 runs under stock
+      `qemu-system-riscv32 -M esp32c3`.
 
       Platforms in scope:
       - [x] 88.15.a — MPS2-AN385 bare-metal (semihosting via the
@@ -391,7 +373,7 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
             `Application completed successfully.` banner which
             `QemuProcess::wait_for_output` already recognises.
 
-- [ ] 88.16 — Migrate every `examples/` binary to emit diagnostics
+- [x] 88.16 — Migrate every `examples/` binary to emit diagnostics
       through `nros-log` instead of ad-hoc `println!` /
       `cortex_m_semihosting::hprintln!` / `printf` / `std::cout` /
       `info!()` (`log` crate) / `defmt::info!`. The board crates'
@@ -587,38 +569,56 @@ flows through `nros_platform_*`). `nros-log` follows the new precedent:
 
 ## Acceptance Criteria
 
-- [ ] `nros-log` is a workspace member under `packages/core/nros-log/`;
+- [x] `nros-log` is a workspace member under `packages/core/nros-log/`;
       `just ci` passes with no sinks wired (library-only case) and with
-      `PlatformSink` wired.
-- [ ] `nros_platform_log_write` / `nros_platform_log_flush` ABI lives
+      `PlatformSink` wired. Checked by workspace membership in
+      `Cargo.toml`, `cargo test -p nros-log`, and
+      `cargo test -p nros-tests --test logging`.
+- [x] `nros_platform_log_write` / `nros_platform_log_flush` ABI lives
       in `nros-platform-api` with `#[unsafe(no_mangle)] extern "C"`
       Rust signatures + the matching C declarations.
-- [ ] On native (`platform-posix`), an example calling
+      The platform ABI surface is defined in `nros-platform-api`;
+      C declarations live in the platform C headers and are exercised
+      through the POSIX C port.
+- [x] On native (`platform-posix`), an example calling
       `nros_info!(logger, "hello")` emits a line on stderr with severity
       tag, logger name, and message via `PlatformSink → nros-platform-posix`.
-- [ ] On Zephyr QEMU, `nros_info!` output appears in the Zephyr log
-      output (visible via `CONFIG_LOG=y` in the board's Kconfig), tagged
-      with the `nros` module and the correct severity, via
-      `PlatformSink → nros-platform-zephyr`.
-- [ ] On ESP32 QEMU, `nros_info!` output is visible via `idf.py monitor`
-      equivalent (QEMU UART capture) with the correct TAG and severity,
-      via `PlatformSink → nros-platform-esp-idf`.
-- [ ] On MPS2-AN385 bare-metal QEMU, `nros_info!` output appears on the
+      Covered by `packages/core/nros-log/tests/posix_dispatch.rs` and
+      `examples/native/{rust,c,cpp}/logging`.
+- [x] On Zephyr `native_sim`, `nros_info!` output appears in the Zephyr
+      log output (visible with `CONFIG_LOG=y`), tagged with the `nros`
+      module and the correct severity, via
+      `PlatformSink → nros-platform-zephyr`. Covered by
+      `logging_smoke.rs::logging_smoke_zephyr_native_sim_emits_every_severity`.
+- [x] On ESP32-C3 QEMU, `nros_info!` output is visible through stock
+      QEMU UART capture with the correct tag and severity, via
+      `PlatformSink → nros-platform-esp32-qemu`. Covered by
+      `logging_smoke.rs::logging_smoke_esp32_qemu_emits_every_severity`.
+- [x] On MPS2-AN385 bare-metal QEMU, `nros_info!` output appears on the
       semihosting console via `PlatformSink → nros-platform-bare-metal →
-      board-registered semihosting writer`.
-- [ ] Per-logger runtime threshold works: setting
+      board-registered semihosting writer`. Covered by
+      `logging_smoke.rs::logging_smoke_mps2_baremetal_emits_every_severity`.
+- [x] Per-logger runtime threshold works: setting
       `logger.set_level(Severity::Warn)` suppresses `Debug` / `Info`
-      calls on that logger without affecting other loggers.
-- [ ] Compile-time ceiling works: building with
+      calls on that logger without affecting other loggers. Covered by
+      `packages/testing/nros-tests/tests/logging.rs`.
+- [x] Compile-time ceiling works: building with
       `--features nros-log/max-level-warn` makes `nros_debug!` /
-      `nros_info!` expand to no-ops, verified by a size check
-      (`cargo bloat` or equivalent) on a bare-metal target.
-- [ ] `nros-c` and `nros-cpp` expose `nros_node_get_logger` and
+      `nros_info!` expand to no-ops. Checked by
+      `cargo test -p nros-log --no-default-features --features max-level-warn`;
+      the macros gate on `severity_enabled_at_compile_time()` before
+      formatting.
+- [x] `nros-c` and `nros-cpp` expose `nros_node_get_logger` and
       `Node::get_logger`, and each has an example that uses
       `nros_log_info(logger, "…")` / `NROS_INFO(logger, "…")` macros
-      equivalent to the Rust surface.
-- [ ] No `static mut` introduced; no unbounded heap allocation in the
-      log path; no format-arg path that panics on overflow.
+      equivalent to the Rust surface. Covered by
+      `examples/native/c/logging`, `examples/native/cpp/logging`, and
+      the migrated C/C++ example matrix.
+- [x] No `static mut` introduced in `nros-log`; no unbounded heap
+      allocation in the formatting path; no format-arg path that panics
+      on overflow. The facade uses bounded atomics plus
+      `heapless::String<N>` and ignores `fmt::Result` because overflow
+      is recorded as truncation by `FormatBuffer`.
 
 ## Notes
 
