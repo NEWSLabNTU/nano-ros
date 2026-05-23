@@ -139,6 +139,7 @@ build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/cmake-incremental.sh
     source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
@@ -256,8 +257,7 @@ build-fixture-extras:
             echo "  → native/rust/${collapsed_case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
             ensure_native_rust_generated "native/rust/${collapsed_case}"
             ( cd "examples/native/rust/${collapsed_case}" && \
-              cmake -B build-cyclonedds -S . \
-                  -DNROS_RMW=cyclonedds \
+              nros_cmake_configure_if_needed . build-cyclonedds -DNROS_RMW=cyclonedds \
                   -DCMAKE_BUILD_TYPE=Release \
                   -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
               cmake --build build-cyclonedds > /dev/null ) &
@@ -279,13 +279,13 @@ build-fixture-extras:
                 echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 if [ "${NROS_JOBSERVER:-}" = "1" ]; then
                     ( cd examples/native/c/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null )
                 else
                     ( cd examples/native/c/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null ) &
@@ -302,13 +302,13 @@ build-fixture-extras:
                 echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 if [ "${NROS_JOBSERVER:-}" = "1" ]; then
                     ( cd examples/native/cpp/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null )
                 else
                     ( cd examples/native/cpp/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null ) &
@@ -328,7 +328,7 @@ build-fixture-extras:
                 esac
                 echo "  → native/${lang}/${case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
                 ( cd examples/native/${lang}/${case} && \
-                  cmake -B build-cyclonedds -S . -DNROS_RMW=cyclonedds \
+                  nros_cmake_configure_if_needed . build-cyclonedds -DNROS_RMW=cyclonedds \
                       -DCMAKE_BUILD_TYPE=Release \
                       -DCMAKE_PREFIX_PATH="${repo_root}/build/install" \
                       -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null && \
@@ -441,10 +441,11 @@ clean: clean-c clean-cpp
 _build-c-example dir *CMAKE_ARGS:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cmake-incremental.sh
     echo "Building {{dir}}..."
-    cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
-    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}} ..
-    make
+    nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
+        -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}}
+    cmake --build "{{dir}}/build"
 
 # Build C examples only (no tests)
 build-c:
@@ -474,10 +475,11 @@ clean-c:
 _build-cpp-example dir *CMAKE_ARGS:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cmake-incremental.sh
     echo "Building {{dir}}..."
-    cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
-    cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}} ..
-    make
+    nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
+        -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}}
+    cmake --build "{{dir}}/build"
 
 # Build C++ examples only (no tests)
 build-cpp:

@@ -160,11 +160,15 @@ non-duplicating.
   `build-fixtures`. Keep public `just <platform> test` convenient, but
   avoid compiling examples twice in the `build-all`/`test-all` flow.
 
-- [ ] **178.H — make native CMake examples incremental.** Native C/C++
+- [x] **178.H — make native CMake examples incremental.** Native C/C++
   helper recipes still use `rm -rf build && cmake ...` in some paths.
   Apply the same signature-based reuse planned for embedded
   `build-zenoh/`: reconfigure only when source/RMW/toolchain/codegen
   inputs change, otherwise run `cmake --build`.
+  Done with `scripts/build/cmake-incremental.sh`. Native C/C++ helper
+  recipes and native fixture C/C++ loops now compare a build-dir
+  signature before running CMake configure, then always invoke
+  `cmake --build`.
 
 - [x] **178.I — reduce root build repetition inside aggregate paths.**
   Root `build-examples` depends on root `build`, while the jobserver
