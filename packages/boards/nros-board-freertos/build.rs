@@ -167,6 +167,20 @@ fn main() {
     println!("cargo:rerun-if-changed=c/freertos_hooks.c");
     println!("cargo:rerun-if-changed=c/network_glue.c");
     println!("cargo:rerun-if-changed=build.rs");
+    println!(
+        "cargo:rerun-if-changed={}",
+        freertos_config_dir.join("FreeRTOSConfig.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        freertos_config_dir.join("lwipopts.h").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        freertos_config_dir.join("arch/cc.h").display()
+    );
+    println!("cargo:rerun-if-changed={}", freertos_dir.display());
+    println!("cargo:rerun-if-changed={}", lwip_dir.display());
     println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
     println!("cargo:rerun-if-env-changed=LWIP_DIR");

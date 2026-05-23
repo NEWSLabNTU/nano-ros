@@ -28,10 +28,11 @@
 /* ---- Memory ---- */
 #define configSUPPORT_STATIC_ALLOCATION         0
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-/* Phase 97.4.freertos — DDS DcpsDomainParticipant + DDS builtin
- * topics / readers / writers consume far more heap than the zenoh-pico
- * baseline. Bumped from 256 to 2048 KB on the 4 MB MPS2-AN385 SRAM. */
-#define configTOTAL_HEAP_SIZE                   ((size_t)(2048 * 1024))
+/* Phase 175.B — CycloneDDS participant startup on FreeRTOS creates the
+ * builtin discovery endpoints plus lwIP socket semaphores before the Rust
+ * talker can publish. Keep enough heap for that boot path while staying within
+ * the 4 MiB MPS2-AN385 SRAM budget. */
+#define configTOTAL_HEAP_SIZE                   ((size_t)(3072 * 1024))
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* ---- Synchronisation ---- */

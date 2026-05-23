@@ -40,12 +40,25 @@ namespace nros_rmw_cyclonedds {
 namespace {
 
 struct SessionState {
+    dds_entity_t domain{0};
     dds_entity_t participant{0};
 };
 
 inline SessionState *as_state(nros_rmw_session_t *s) {
     return static_cast<SessionState *>(s->backend_data);
 }
+
+#if defined(NROS_PLATFORM_FREERTOS)
+constexpr const char *kEmbeddedCycloneConfig =
+    "<CycloneDDS>"
+    "<Domain Id=\"any\">"
+    "<Sizing>"
+    "<ReceiveBufferSize>64 KiB</ReceiveBufferSize>"
+    "<ReceiveBufferChunkSize>16 KiB</ReceiveBufferChunkSize>"
+    "</Sizing>"
+    "</Domain>"
+    "</CycloneDDS>";
+#endif
 
 } // namespace
 
@@ -63,10 +76,24 @@ nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
+#if defined(NROS_PLATFORM_FREERTOS)
+    dds_entity_t domain = dds_create_domain(domain_id, kEmbeddedCycloneConfig);
+    if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
+        delete state;
+        return NROS_RMW_RET_ERROR;
+    }
+    if (domain > 0) {
+        state->domain = domain;
+    }
+#endif
+
     NROS_CYC_TRACE("session_open: calling dds_create_participant");
     dds_entity_t pp = dds_create_participant(domain_id, nullptr, nullptr);
     NROS_CYC_TRACE("session_open: dds_create_participant returned %d", (int)pp);
     if (pp < 0) {
+        if (state->domain > 0) {
+            (void) dds_delete(state->domain);
+        }
         delete state;
         return NROS_RMW_RET_ERROR;
     }
@@ -87,6 +114,9 @@ nros_rmw_ret_t session_close(nros_rmw_session_t *session) {
         // dds_delete on the participant cascades to every child
         // entity (writers, readers, topics) it owns.
         (void) dds_delete(state->participant);
+    }
+    if (state->domain > 0) {
+        (void) dds_delete(state->domain);
     }
     delete state;
     session->backend_data = nullptr;

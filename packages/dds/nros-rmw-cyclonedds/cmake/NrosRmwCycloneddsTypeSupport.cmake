@@ -289,10 +289,14 @@ extern const dds_topic_descriptor_t ${_desc_sym};
 void nros_rmw_cyclonedds_register_descriptor(
     const char *type_name, const dds_topic_descriptor_t *desc);
 
-__attribute__((constructor))
-static void ${_ctor}(void) {
+void ${_ctor}(void) {
     nros_rmw_cyclonedds_register_descriptor(
         \"${_tn}\", &${_desc_sym});
+}
+
+__attribute__((constructor))
+static void ${_ctor}_constructor(void) {
+    ${_ctor}();
 }
 ")
         configure_file("${_reg}.in" "${_reg}" COPYONLY)

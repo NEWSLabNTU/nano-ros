@@ -131,7 +131,10 @@ void zephyr_log_sink(void *userdata, const dds_log_data_t *data) {
 } // namespace
 #endif
 
+extern "C" __attribute__((weak)) void nros_rmw_cyclonedds_register_app_descriptors(void) {}
+
 extern "C" nros_rmw_ret_t nros_rmw_cyclonedds_register(void) {
+    nros_rmw_cyclonedds_register_app_descriptors();
 #ifdef __ZEPHYR__
     dds_set_log_sink(zephyr_log_sink, nullptr);
     dds_set_trace_sink(zephyr_log_sink, nullptr);
