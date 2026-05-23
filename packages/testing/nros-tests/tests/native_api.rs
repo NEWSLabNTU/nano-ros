@@ -12,17 +12,19 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_c_action_client, build_c_action_server,
+        ManagedProcess, Rmw, ZenohRouter, build_c_action_client, build_c_action_server,
         build_c_listener, build_c_service_client, build_c_service_server, build_c_talker,
         build_cpp_action_client, build_cpp_action_server, build_cpp_listener,
-        build_cpp_service_client, build_cpp_service_server, build_cpp_talker, require_cmake,
-        require_zenohd, zenohd_unique,
+        build_cpp_service_client, build_cpp_service_server, build_cpp_talker,
+        build_native_c_example_rmw, build_native_cpp_example_rmw, build_native_listener_rmw,
+        build_native_talker_rmw, require_cmake, require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
 use std::{
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicU8, Ordering},
     time::Duration,
 };
 
@@ -670,6 +672,141 @@ fn test_cpp_rust_pubsub_interop(zenohd_unique: ZenohRouter) {
         return;
     }
     native_rust_pubsub_interop(Language::Cpp, &zenohd_unique.locator());
+}
+
+// =============================================================================
+// Cyclone DDS cross-language interop (C/C++ ↔ Rust, brokerless RTPS)
+// =============================================================================
+
+static NEXT_CYCLONEDDS_DOMAIN: AtomicU8 = AtomicU8::new(40);
+
+fn next_cyclonedds_domain() -> String {
+    NEXT_CYCLONEDDS_DOMAIN
+        .fetch_add(1, Ordering::Relaxed)
+        .to_string()
+}
+
+fn cyclone_talker_binary(lang: Language) -> PathBuf {
+    match lang {
+        Language::C => build_native_c_example_rmw("talker", "c_talker", Rmw::Cyclonedds),
+        Language::Cpp => build_native_cpp_example_rmw("talker", "cpp_talker", Rmw::Cyclonedds),
+    }
+    .unwrap_or_else(|e| skip_missing_fixture("native cyclonedds talker", e))
+}
+
+fn cyclone_listener_binary(lang: Language) -> PathBuf {
+    match lang {
+        Language::C => build_native_c_example_rmw("listener", "c_listener", Rmw::Cyclonedds),
+        Language::Cpp => build_native_cpp_example_rmw("listener", "cpp_listener", Rmw::Cyclonedds),
+    }
+    .unwrap_or_else(|e| skip_missing_fixture("native cyclonedds listener", e))
+}
+
+fn rust_cyclone_talker_binary() -> PathBuf {
+    build_native_talker_rmw(Rmw::Cyclonedds)
+        .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds talker", e))
+        .to_path_buf()
+}
+
+fn rust_cyclone_listener_binary() -> PathBuf {
+    build_native_listener_rmw(Rmw::Cyclonedds)
+        .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds listener", e))
+        .to_path_buf()
+}
+
+fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedProcess {
+    let mut cmd = stdbuf_command(binary);
+    cmd.env("ROS_DOMAIN_ID", domain_id);
+    cmd.env("RUST_LOG", "info");
+    ManagedProcess::spawn_command(cmd, name).unwrap_or_else(|_| panic!("Failed to start {name}"))
+}
+
+#[rstest]
+fn test_native_cyclonedds_talker_to_rust_listener(
+    #[values(Language::C, Language::Cpp)] lang: Language,
+) {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let domain_id = next_cyclonedds_domain();
+    let listener_bin = rust_cyclone_listener_binary();
+    let talker_bin = cyclone_talker_binary(lang);
+
+    let mut listener = spawn_cyclone_binary(&listener_bin, "rust-cyclonedds-listener", &domain_id);
+    listener
+        .wait_for_output_pattern("Subscriber created", Duration::from_secs(30))
+        .expect("rust cyclonedds listener did not become ready");
+
+    let mut talker = spawn_cyclone_binary(
+        &talker_bin,
+        &format!("{}-cyclonedds-talker", lang.tag()),
+        &domain_id,
+    );
+
+    std::thread::sleep(Duration::from_secs(6));
+    talker.kill();
+
+    let listener_output = listener
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+    eprintln!(
+        "Rust Cyclone listener output ({} talker):\n{}",
+        lang.label(),
+        listener_output
+    );
+
+    let received_count = count_pattern(&listener_output, "Received");
+    assert!(
+        received_count >= 2,
+        "Expected at least 2 CycloneDDS samples from {} talker, got {}.\nOutput:\n{}",
+        lang.label(),
+        received_count,
+        listener_output
+    );
+}
+
+#[rstest]
+fn test_native_cyclonedds_rust_talker_to_listener(
+    #[values(Language::C, Language::Cpp)] lang: Language,
+) {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let domain_id = next_cyclonedds_domain();
+    let listener_bin = cyclone_listener_binary(lang);
+    let talker_bin = rust_cyclone_talker_binary();
+
+    let mut listener = spawn_cyclone_binary(
+        &listener_bin,
+        &format!("{}-cyclonedds-listener", lang.tag()),
+        &domain_id,
+    );
+    let listener_boot_output = listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("cyclonedds listener did not become ready");
+
+    let mut talker = spawn_cyclone_binary(&talker_bin, "rust-cyclonedds-talker", &domain_id);
+
+    std::thread::sleep(Duration::from_secs(6));
+    talker.kill();
+
+    let listener_tail = listener
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+    let listener_output = listener_boot_output + &listener_tail;
+    eprintln!(
+        "{} Cyclone listener output (Rust talker):\n{}",
+        lang.label(),
+        listener_output
+    );
+
+    let received_count = count_pattern(&listener_output, "Received");
+    assert!(
+        received_count >= 2,
+        "Expected at least 2 CycloneDDS samples from Rust talker, got {}.\nOutput:\n{}",
+        received_count,
+        listener_output
+    );
 }
 
 fn native_rust_service_interop(lang: Language, locator: &str) {

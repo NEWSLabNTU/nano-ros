@@ -460,11 +460,10 @@ pub fn build_native_talker() -> TestResult<&'static Path> {
 /// Phase 118 — collapsed-shape native talker, RMW-parametrized.
 ///
 /// Returns the prebuilt binary for the named RMW. The fixture build
-/// chain (`just native build-fixtures`) compiles
-/// `examples/native/rust/talker/` once per RMW into separate
-/// `target-{zenoh,dds,xrce}/` dirs; this helper resolves whichever
-/// the caller asked for. Cached per RMW so repeated lookups in a
-/// nextest run avoid filesystem-stat overhead.
+/// chain (`just native build-fixtures`) compiles zenoh/xrce with cargo
+/// into `target-<rmw>/` dirs and Cyclone DDS with CMake/Corrosion into
+/// `build-cyclonedds/`. Cached per RMW so repeated lookups in a nextest
+/// run avoid filesystem-stat overhead.
 pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_CELL: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_CELL: OnceCell<PathBuf> = OnceCell::new();
@@ -474,8 +473,14 @@ pub fn build_native_talker_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| build_example_rmw("native/rust/talker", "talker", rmw))
-        .map(|p| p.as_path())
+    cell.get_or_try_init(|| {
+        if rmw == Rmw::Cyclonedds {
+            build_example_cmake_rmw("native/rust/talker", "talker_cyclonedds", rmw)
+        } else {
+            build_example_rmw("native/rust/talker", "talker", rmw)
+        }
+    })
+    .map(|p| p.as_path())
 }
 
 /// Phase 118 — collapsed-shape native listener, RMW-parametrized.
@@ -488,8 +493,14 @@ pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| build_example_rmw("native/rust/listener", "listener", rmw))
-        .map(|p| p.as_path())
+    cell.get_or_try_init(|| {
+        if rmw == Rmw::Cyclonedds {
+            build_example_cmake_rmw("native/rust/listener", "listener_cyclonedds", rmw)
+        } else {
+            build_example_rmw("native/rust/listener", "listener", rmw)
+        }
+    })
+    .map(|p| p.as_path())
 }
 
 /// Phase 118 — generic native Rust example resolver. Cuts repetition

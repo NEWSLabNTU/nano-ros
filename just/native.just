@@ -88,6 +88,7 @@ build-fixtures:
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
+    repo_root="$PWD"
     echo "Building native test fixtures..."
     # Phase 176 — cmake parallelism: under the fifo jobserver
     # (NROS_JOBSERVER=1) leave CMAKE_BUILD_PARALLEL_LEVEL unset so the
@@ -196,11 +197,9 @@ build-fixtures:
     #
     # Phase 169 retired dust-dds (pure-Rust). Its Cyclone replacement is
     # CMake-linked C++ (`nros_rmw_cyclonedds_register` has no pure-cargo
-    # build), so the migrated `rmw-cyclonedds` feature stays defined in
-    # each Cargo.toml but is NOT built here — Cyclone-for-cargo-Rust
-    # examples are deferred to their own phase (CMake/Corrosion glue for
-    # native + a ddsrt RTOS port for embedded). See
-    # docs/roadmap/phase-175-cyclone-rust-example-build-path.md.
+    # build), so this pure-cargo loop stays zenoh/xrce-only. The native
+    # talker/listener Cyclone cells are built by the CMake/Corrosion
+    # block below when `just cyclonedds setup` has populated build/install.
     for collapsed_case in talker listener service-server service-client action-server action-client; do
         if [ -d examples/native/rust/${collapsed_case} ]; then
             ensure_native_rust_generated "native/rust/${collapsed_case}"
@@ -223,6 +222,21 @@ build-fixtures:
         fi
     done
     wait
+    if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
+        for collapsed_case in talker listener; do
+            echo "  → native/rust/${collapsed_case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
+            ensure_native_rust_generated "native/rust/${collapsed_case}"
+            ( cd "examples/native/rust/${collapsed_case}" && \
+              cmake -B build-cyclonedds -S . \
+                  -DNROS_RMW=cyclonedds \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
+              cmake --build build-cyclonedds > /dev/null ) &
+        done
+        wait
+    else
+        echo "  → native/rust/{talker,listener} cyclonedds skipped (run: just cyclonedds setup)"
+    fi
     # Phase 118.A.3 / 118.B.2 — collapsed-shape native C examples. Each
     # case built once per RMW via cmake `-DNROS_RMW=<rmw>` into
     # isolated build-<rmw>/ dirs. The canonical zenoh-style main.c
@@ -236,11 +250,15 @@ build-fixtures:
                 echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 if [ "${NROS_JOBSERVER:-}" = "1" ]; then
                     ( cd examples/native/c/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                          -DCMAKE_BUILD_TYPE=Release \
+                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null )
                 else
                     ( cd examples/native/c/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                          -DCMAKE_BUILD_TYPE=Release \
+                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null ) &
                 fi
             done
@@ -255,17 +273,43 @@ build-fixtures:
                 echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
                 if [ "${NROS_JOBSERVER:-}" = "1" ]; then
                     ( cd examples/native/cpp/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                          -DCMAKE_BUILD_TYPE=Release \
+                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null )
                 else
                     ( cd examples/native/cpp/${case} && \
-                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} -DCMAKE_BUILD_TYPE=Release > /dev/null && \
+                      cmake -B build-${rmw} -S . -DNROS_RMW=${rmw} \
+                          -DCMAKE_BUILD_TYPE=Release \
+                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null ) &
                 fi
             done
         fi
     done
     wait
+    if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
+        for lang in c cpp; do
+            for case in talker listener; do
+                case "$lang/$case" in
+                    c/talker) binary="c_talker" ;;
+                    c/listener) binary="c_listener" ;;
+                    cpp/talker) binary="cpp_talker" ;;
+                    cpp/listener) binary="cpp_listener" ;;
+                esac
+                echo "  → native/${lang}/${case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
+                ( cd examples/native/${lang}/${case} && \
+                  cmake -B build-cyclonedds -S . -DNROS_RMW=cyclonedds \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_PREFIX_PATH="${repo_root}/build/install" \
+                      -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null && \
+                  cmake --build build-cyclonedds --target "$binary" > /dev/null ) &
+            done
+        done
+        wait
+    else
+        echo "  → native c/cpp cyclonedds skipped (run: just cyclonedds setup)"
+    fi
     echo "  → packages/testing/nros-bench/stress-zenoh (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
     ( cd packages/testing/nros-bench/stress-zenoh && \
       ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build $cargo_profile_args --target-dir target-large-buf --quiet )

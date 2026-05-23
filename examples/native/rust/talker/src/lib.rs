@@ -86,7 +86,13 @@ pub fn run() {
     let locator = std::env::var("NROS_LOCATOR")
         .or_else(|_| std::env::var("ZENOH_LOCATOR"))
         .unwrap_or_else(|_| default_locator().to_string());
-    let config = ExecutorConfig::new(&locator).node_name("talker");
+    let domain_id = std::env::var("ROS_DOMAIN_ID")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let config = ExecutorConfig::new(&locator)
+        .node_name("talker")
+        .domain_id(domain_id);
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
     #[cfg(feature = "param-services")]
