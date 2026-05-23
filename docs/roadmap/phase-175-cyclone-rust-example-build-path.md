@@ -14,9 +14,11 @@ landed (2026-05-22)** for the FreeRTOS C/C++ talker fixtures and the
 Rust talker fixture: the pinned Cyclone tree builds as a Cortex-M3
 static `libddsc.a`, installs into `build/cyclonedds-freertos-install`,
 and FreeRTOS C/C++/Rust talkers link against `NANO_ROS_RMW=cyclonedds`.
-FreeRTOS Rust CycloneDDS talker boot/publish is verified under QEMU;
-data exchange remains open. ThreadX has no upstream ddsrt files and
-still needs a new NetX Duo-backed port.
+FreeRTOS Rust CycloneDDS talker boot/publish and local pub/sub data
+exchange are verified under QEMU. **ThreadX ddsrt compile surface is
+experimental (2026-05-23):** the nano-ros Cyclone fork has a new
+NetX Duo-backed ThreadX port, and the RISC-V64 `ddsc` static-library
+probe builds; ThreadX example fixture wiring is still pending.
 
 The CMake/Corrosion glue at `examples/native/rust/{talker,listener}/CMakeLists.txt`
 now links the Cyclone backend into a pure-Rust example end-to-end:
@@ -157,6 +159,11 @@ socket stack.
   `lwipopts.h` previously set `LWIP_SINGLE_NETIF=1`, which hides
   `netif_list` and `struct netif::next`.
 - [x] Design the ThreadX `ddsrt` port API mapping.
+- [x] Add an experimental ThreadX `ddsrt` port using ThreadX kernel
+  primitives and NetX Duo BSD sockets.
+- [x] Add a ThreadX Cyclone cross-build probe using `WITH_THREADX=ON`,
+  the RISC-V64 ThreadX toolchain, and the checked-out ThreadX/NetX Duo
+  trees.
 - [x] Implement the first embedded `ddsrt` link surface by using
   Cyclone's upstream FreeRTOS/lwIP ddsrt port plus nano-ros MPS2
   compatibility shims for TLS, wall-clock, hostname, FreeRTOS trace
@@ -172,45 +179,55 @@ socket stack.
 
 - [x] FreeRTOS probe/link surface that consumes Cyclone's upstream
   FreeRTOS/lwIP `ddsrt` port.
-- [ ] ThreadX `ddsrt` port.
+- [x] ThreadX `ddsrt` port.
+- [x] ThreadX RISC-V64 `ddsc` static-library probe.
 - [x] Embedded Cyclone link wiring for the first FreeRTOS C/C++/Rust
   talker fixtures.
 - [x] FreeRTOS Rust Cyclone boot/run recipe or E2E fixture.
-- [ ] FreeRTOS Rust Cyclone data-exchange fixture.
+- [x] FreeRTOS Rust Cyclone data-exchange fixture.
 
 **Acceptance criteria:**
 
 - [x] Embedded networking story is scoped enough to estimate.
 - [x] At least one RTOS can build a Rust Cyclone DDS example.
 - [x] At least one RTOS can boot a Rust Cyclone DDS example.
-- [ ] At least one RTOS Rust Cyclone DDS example exchanges user data.
+- [x] At least one RTOS Rust Cyclone DDS example exchanges user data.
 - [x] Fixture recipes build RTOS Rust Cyclone cells without pure-Cargo
   link failures.
 - [x] FreeRTOS C talker links with `NANO_ROS_RMW=cyclonedds`.
 - [x] FreeRTOS C++ talker links with `NANO_ROS_RMW=cyclonedds`.
 - [x] FreeRTOS Rust talker links with `NANO_ROS_RMW=cyclonedds`.
+- [x] ThreadX RISC-V64 Cyclone `ddsc` builds against ThreadX + NetX Duo.
+- [ ] ThreadX C/C++/Rust example fixtures link with
+  `NANO_ROS_RMW=cyclonedds`.
 
 **Verified 2026-05-23:**
 
 ```bash
 cmake --build examples/qemu-arm-freertos/rust/talker/build-cyclonedds --target freertos_rust_talker_cyclonedds
 timeout 180s cargo test -p nros-tests --test freertos_qemu test_freertos_rust_talker_cyclonedds_boot -- --nocapture
+timeout 180s cargo test -p nros-tests --test freertos_qemu test_freertos_rust_cyclonedds_local_pubsub_e2e -- --nocapture
 ```
 
 The focused E2E boots `freertos_rust_talker_cyclonedds` under QEMU,
 opens the CycloneDDS-backed executor, declares the `/chatter`
-publisher, and reaches `Published: 0`.
+publisher, and reaches `Published: 0`. The local pub/sub E2E also
+declares a CycloneDDS subscriber in the same FreeRTOS process and
+verifies `Loopback received: 0`, covering writer/reader matching,
+sample delivery, CDR decode, and executor dispatch on the RTOS path.
 
 **Probe:**
 
 ```bash
 just cyclonedds ddsrt-port-inventory
 just cyclonedds freertos-cross-probe
+just cyclonedds threadx-cross-probe
 ```
 
 The inventory probe is read-only and verifies the upstream FreeRTOS/lwIP
-ddsrt files exist while recording that ThreadX/NetX Duo still has no
-ddsrt port.
+ddsrt files exist while recording that upstream Cyclone has no
+ThreadX/NetX Duo port; nano-ros now carries the experimental port in
+this tree.
 
 The FreeRTOS cross-build probe configures the pinned Cyclone tree with
 `WITH_FREERTOS=ON`, `WITH_LWIP=ON`, `BUILD_SHARED_LIBS=OFF`, the
@@ -258,12 +275,25 @@ than pure cargo:
   cargo builds and adds the `freertos/rust/talker` Cyclone CMake cell
   when `build/cyclonedds-freertos-install/lib/libddsc.a` exists.
 
+**ThreadX verified 2026-05-23:**
+
+```bash
+cmake --build build/cyclonedds-threadx-rv64-probe --target ddsc --parallel 4
+```
+
+The ThreadX probe builds Cyclone DDS `ddsc` as a RISC-V64 static
+library using `WITH_THREADX=ON`, the nano-ros
+`riscv64-threadx.cmake` toolchain, ThreadX kernel headers, NetX Duo BSD
+headers, and the QEMU RISC-V64 board config. This validates the new
+`ddsrt` compile/link surface only; it does not yet wire ThreadX
+Cyclone example fixtures or run RTPS over QEMU.
+
 ### ThreadX ddsrt port mapping
 
-ThreadX has no upstream Cyclone `ddsrt` implementation. A nano-ros
-ThreadX port should be a new `src/ddsrt/src/{sync,time,threads,sockets}/threadx`
-surface wired by a Cyclone cache option, not a fork of the POSIX port.
-Expected mapping:
+ThreadX has no upstream Cyclone `ddsrt` implementation. The nano-ros
+ThreadX port is a new
+`src/ddsrt/src/{sync,time,threads,sockets}/threadx` surface wired by
+`WITH_THREADX=ON`, not a fork of the POSIX port. Current mapping:
 
 - time: `tx_time_get()` plus the configured ThreadX tick rate for
   monotonic time, with an explicit wall-clock hook for APIs that need

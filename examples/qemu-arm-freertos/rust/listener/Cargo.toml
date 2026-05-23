@@ -11,6 +11,15 @@ name = "qemu-freertos-listener"
 test = false
 bench = false
 
+# Phase 175.B — the CycloneDDS FreeRTOS path is CMake-driven because
+# the backend is C++ plus cmake-time idlc descriptors. The `rlib`
+# keeps the existing pure-cargo `_start` binary path intact; the
+# `staticlib` exposes `app_main` for the C startup used by CMake.
+[lib]
+name = "qemu_freertos_listener"
+crate-type = ["staticlib", "rlib"]
+path = "src/lib.rs"
+
 [features]
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-mps2-an385-freertos/rmw-zenoh"]

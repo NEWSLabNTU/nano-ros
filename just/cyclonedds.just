@@ -62,6 +62,12 @@ ddsrt-port-inventory:
 freertos-cross-probe:
     bash ./scripts/cyclonedds/freertos-cross-probe.sh
 
+# Phase 175.B — configure/build probe for Cyclone DDS on the nano-ros
+# ThreadX RISC-V64 + NetX Duo target. This validates the experimental
+# nano-ros ThreadX ddsrt port before fixture cells are enabled.
+threadx-cross-probe:
+    bash ./scripts/cyclonedds/threadx-cross-probe.sh
+
 # Build Cyclone DDS (alias for `just cyclonedds setup`).
 build:
     ./scripts/cyclonedds/build.sh

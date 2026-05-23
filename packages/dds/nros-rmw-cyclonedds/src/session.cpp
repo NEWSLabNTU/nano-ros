@@ -56,6 +56,11 @@ constexpr const char *kEmbeddedCycloneConfig =
     "<ReceiveBufferSize>64 KiB</ReceiveBufferSize>"
     "<ReceiveBufferChunkSize>16 KiB</ReceiveBufferChunkSize>"
     "</Sizing>"
+    "<Threads>"
+    "<Thread Name=\"dq.builtins\">"
+    "<StackSize>64 KiB</StackSize>"
+    "</Thread>"
+    "</Threads>"
     "</Domain>"
     "</CycloneDDS>";
 #endif

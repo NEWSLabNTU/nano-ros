@@ -53,16 +53,16 @@ check_dir "$repo_root/third-party/freertos/lwip/src/include/lwip" "lwIP headers"
 check_dir "$repo_root/third-party/threadx/netxduo" "NetX Duo tree"
 
 if find "$ddsrt_dir" -path '*threadx*' -print -quit | grep -q .; then
-    echo "  [OK]      ThreadX ddsrt files exist"
+    echo "  [OK]      ThreadX ddsrt files exist in this nano-ros tree"
 else
     echo "  [TODO]    ThreadX ddsrt port is not present upstream"
 fi
 
 echo
 echo "Phase 175.B split:"
-echo "  FreeRTOS: upstream ddsrt + lwIP surface exists; next step is a"
-echo "            nano-ros cross-build probe with WITH_FREERTOS/WITH_LWIP."
-echo "  ThreadX:  no upstream ddsrt surface; needs a new NetX Duo-backed"
-echo "            ddsrt port before Cyclone fixtures can be enabled."
+echo "  FreeRTOS: upstream ddsrt + lwIP surface exists; nano-ros carries"
+echo "            the MPS2 cross-build and fixture wiring."
+echo "  ThreadX:  upstream Cyclone has no ddsrt surface; nano-ros carries"
+echo "            an experimental NetX Duo-backed port plus cross-build probe."
 
 exit "$missing"
