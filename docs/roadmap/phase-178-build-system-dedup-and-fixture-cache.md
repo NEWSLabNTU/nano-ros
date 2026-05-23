@@ -4,7 +4,7 @@
 the same platform examples/fixtures twice, and restore safe incremental
 reuse for CMake fixture build dirs.
 
-**Status.** Planned. Created from the 2026-05-24 build-all review.
+**Status.** In progress. Created from the 2026-05-24 build-all review.
 
 **Priority.** P2 (developer and CI wall-clock).
 
@@ -111,10 +111,14 @@ non-duplicating.
   public `native build-examples` is a broad repository-level Rust
   example aggregate rather than a native-only fixture role target.
 
-- [ ] **178.C — fix jobserver DAG.** In `build-all.mk`, avoid running
+- [x] **178.C — fix jobserver DAG.** In `build-all.mk`, avoid running
   root `build-examples` concurrently with platform fixture targets that
   write the same target dirs. Use ordered or disjoint targets:
   prerequisites first, example tiers once, fixture extras once.
+  Landed 2026-05-24: native, FreeRTOS, ThreadX Linux, and ThreadX RV64
+  fixture targets now wait for root `build-examples`; qemu, NuttX,
+  Zephyr, and STM32F4 fixtures still run in parallel with the example
+  tier because they do not share the same target dirs.
 
 - [ ] **178.D — add CMake fixture signatures.** Replace unconditional
   `rm -rf build-zenoh` in FreeRTOS, NuttX, ThreadX Linux, and ThreadX

@@ -21,13 +21,18 @@
 # GNU parallel — is the real throttle.
 
 PLATFORMS := native qemu freertos nuttx threadx_linux threadx_riscv64 zephyr stm32f4
-FIXTURES  := $(addprefix fixtures-,$(PLATFORMS))
+EXAMPLE_OVERLAP_PLATFORMS := native freertos threadx_linux threadx_riscv64
+INDEPENDENT_FIXTURE_PLATFORMS := qemu nuttx zephyr stm32f4
+OVERLAP_FIXTURES := $(addprefix fixtures-,$(EXAMPLE_OVERLAP_PLATFORMS))
+INDEPENDENT_FIXTURES := $(addprefix fixtures-,$(INDEPENDENT_FIXTURE_PLATFORMS))
+FIXTURES := $(OVERLAP_FIXTURES) $(INDEPENDENT_FIXTURES)
 
 .PHONY: all prereqs build-examples $(FIXTURES)
 
-# build-examples + every platform's fixtures run concurrently; all gated
-# behind the shared prereqs (workspace + bindings + zenoh posix fixture).
-all: build-examples $(FIXTURES)
+# Build examples once. Fixture targets that write the same target dirs as
+# root `build-examples` wait for it; independent fixture platforms still
+# run concurrently with the example tier.
+all: build-examples $(INDEPENDENT_FIXTURES) $(OVERLAP_FIXTURES)
 
 # Serial prerequisites every parallel target needs. Each `+just` shares
 # the jobserver, so the cargo/cc inside still parallelizes against the
@@ -40,5 +45,8 @@ prereqs:
 build-examples: prereqs
 	+just build-examples
 
-$(FIXTURES): fixtures-%: prereqs
+$(INDEPENDENT_FIXTURES): fixtures-%: prereqs
+	+just $* build-fixtures
+
+$(OVERLAP_FIXTURES): fixtures-%: build-examples
 	+just $* build-fixtures
