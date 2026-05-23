@@ -109,7 +109,7 @@ list-all:
 #                       (--target-dir target-tls / target-safety / target-zero-copy
 #                       / target-large-buf) and C / C++ fixture binaries built via
 #                       cmake. Required before `just test-all`.
-#   build-all           = build-examples + build-test-fixtures. True superset.
+#   build-all           = build + non-fixture examples + fixture leaves.
 #                       Slow — expect 15-40 min depending on machine.
 #
 # Default `build` recipe: refresh bindings + workspace + transports.
@@ -194,7 +194,7 @@ build-all:
     echo "build-all: static split (install make>=4.4 + ninja>=1.13 — just workspace install-make/install-ninja — for the jobserver path)"
     just build
     just build-example-extras
-    just build-test-fixtures
+    just build-test-fixtures-leaves
     echo "All builds completed (workspace + examples + test fixtures)."
 
 # Phase 176 — `build-all` under one GNU-make fifo jobserver shared across
@@ -516,7 +516,13 @@ test verbose="": build-zenohd
 # `unable to update generated/builtin_interfaces`. Make the dep
 # explicit so `just build-test-fixtures` (and `just test-all` via
 # the bench fixtures it consumes) is self-contained.
-build-test-fixtures: generate-bindings build-zenoh-posix-fixture
+build-test-fixtures: generate-bindings build-zenoh-posix-fixture build-test-fixtures-leaves
+
+# Internal fixture fan-out without root prereqs. Public `build-test-fixtures`
+# keeps the self-contained UX; aggregate paths that already ran `build` use
+# this to avoid repeating `generate-bindings` and `build-zenoh-posix-fixture`.
+[private]
+build-test-fixtures-leaves:
     #!/usr/bin/env bash
     set -e
     # Phase 160 follow-up — parallelize per-platform fixture builds.

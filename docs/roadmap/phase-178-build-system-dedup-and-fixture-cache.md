@@ -158,12 +158,17 @@ non-duplicating.
   `build-zenoh/`: reconfigure only when source/RMW/toolchain/codegen
   inputs change, otherwise run `cmake --build`.
 
-- [ ] **178.I — reduce root build repetition inside aggregate paths.**
+- [x] **178.I — reduce root build repetition inside aggregate paths.**
   Root `build-examples` depends on root `build`, while the jobserver
   graph already has explicit prereqs (`build-workspace`,
   `generate-bindings`, `build-zenoh-posix-fixture`). Split internal
   aggregate targets so public UX stays simple but `build-all` does not
   rerun broad setup work.
+  Landed 2026-05-24: public `build-test-fixtures` keeps its
+  self-contained `generate-bindings` and `build-zenoh-posix-fixture`
+  prereqs, while root `build-all` calls internal
+  `build-test-fixtures-leaves` after `build` has already run those
+  prerequisites.
 
 - [x] **178.J — Zephyr Rust generated-dir preflight.** Before launching
   expensive Zephyr fixture builds, verify or regenerate the Rust
