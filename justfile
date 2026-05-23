@@ -227,6 +227,11 @@ build-all-jobserver:
     echo "build-all (jobserver): $make_bin -j$n --jobserver-style=fifo -f build-all.mk"
     echo "  make=$(make --version | head -1), ninja=$(ninja --version)"
     echo "  cargo-profile=$(nros_cargo_profile_name), cargo-frontends=${NROS_CARGO_FRONTENDS:-auto}"
+    log_dir="${NROS_BUILD_LOG_DIR:-$(pwd)/tmp/build-all-$(date +%Y%m%d-%H%M%S)-$$}"
+    mkdir -p "$log_dir" tmp
+    log_dir="$(cd "$log_dir" && pwd)"
+    ln -sfn "$log_dir" tmp/build-all-latest
+    echo "  log-dir=$log_dir"
     echo "build-all: prefetching Cargo registries before broad fanout"
     nros_cargo_fetch_root
     nros_cargo_fetch_codegen
@@ -235,7 +240,7 @@ build-all-jobserver:
     # stale inherited jobserver env first; the top-level make below is the
     # only provider for this run.
     exec env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
-        NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" \
+        NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" NROS_BUILD_LOG_DIR="$log_dir" \
         "$make_bin" -j"$n" --jobserver-style=fifo -f build-all.mk
 
 # Internal: invalidate stale nros-* cargo fingerprints in a cmake build
@@ -531,16 +536,34 @@ build-test-fixtures: generate-bindings build-zenoh-posix-fixture
     #
     # Use `parallel --halt-on-error` so a single broken toolchain
     # surfaces fast instead of waiting for the remaining 7 platforms.
-    # `--joblog` lands a per-recipe duration breakdown at
-    # `tmp/build-test-fixtures.joblog` for follow-up tuning.
-    mkdir -p tmp
+    # Per-run joblogs land under `tmp/build-test-fixtures-*/`; the
+    # `tmp/build-test-fixtures-latest` symlink points at the newest run.
+    log_dir="${NROS_BUILD_LOG_DIR:-$(pwd)/tmp/build-test-fixtures-$(date +%Y%m%d-%H%M%S)-$$}"
+    mkdir -p "$log_dir" tmp
+    log_dir="$(cd "$log_dir" && pwd)"
+    ln -sfn "$log_dir" tmp/build-test-fixtures-latest
+    joblog="$log_dir/build-test-fixtures.joblog"
+    zephyr_log="$log_dir/zephyr.log"
+    printf 'stage\tstart_epoch\tend_epoch\tduration_seconds\tstatus\n' > "$joblog"
+    echo "build-test-fixtures: log-dir=$log_dir"
+    run_stage() {
+        local stage="$1"
+        shift
+        local start end status
+        start="$(date +%s)"
+        status=0
+        echo "== $stage =="
+        "$@" || status=$?
+        end="$(date +%s)"
+        printf '%s\t%s\t%s\t%s\t%s\n' "$stage" "$start" "$end" "$((end - start))" "$status" >> "$joblog"
+        return "$status"
+    }
     budget="${NROS_BUILD_JOBS}"
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
         echo "build-test-fixtures: NROS_JOBSERVER=1 — serial launcher; child tools inherit fifo tokens"
-        just zephyr build-fixtures
+        run_stage zephyr just zephyr build-fixtures
         for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4; do
-            echo "== $platform =="
-            just "$platform" build-fixtures
+            run_stage "$platform" just "$platform" build-fixtures
         done
         exit 0
     fi
@@ -556,19 +579,27 @@ build-test-fixtures: generate-bindings build-zenoh-posix-fixture
     # Brief overlap oversubscription while the fast platforms drain is
     # fine; the dominant cost is zephyr's solo tail at full budget.
     echo "build-test-fixtures: budget=$budget, pool=$outer×$inner + zephyr=$budget (solo)"
-    NROS_BUILD_JOBS="$budget" just zephyr build-fixtures > tmp/build-test-fixtures-zephyr.log 2>&1 &
+    (
+        start="$(date +%s)"
+        status=0
+        NROS_BUILD_JOBS="$budget" just zephyr build-fixtures || status=$?
+        end="$(date +%s)"
+        printf '%s\t%s\t%s\t%s\t%s\n' zephyr "$start" "$end" "$((end - start))" "$status" >> "$joblog"
+        exit "$status"
+    ) > "$zephyr_log" 2>&1 &
     zephyr_pid=$!
     pool_rc=0
+    export joblog
     NROS_BUILD_JOBS="$inner" parallel --jobs "$outer" --halt now,fail=1 \
-             --joblog tmp/build-test-fixtures.joblog \
+             --joblog "$log_dir/parallel.joblog" \
              --line-buffer \
-             'echo "== {} ==" && just {} build-fixtures' ::: \
+             'start=$(date +%s); status=0; echo "== {} =="; just {} build-fixtures || status=$?; end=$(date +%s); printf "%s\t%s\t%s\t%s\t%s\n" "{}" "$start" "$end" "$((end - start))" "$status" >> "$joblog"; exit "$status"' ::: \
         native qemu freertos nuttx threadx_linux threadx_riscv64 stm32f4 || pool_rc=$?
     zephyr_rc=0
     wait "$zephyr_pid" || zephyr_rc=$?
     if [ "$zephyr_rc" -ne 0 ]; then
         echo "== zephyr == (solo track) FAILED (rc=$zephyr_rc); log tail:"
-        tail -40 tmp/build-test-fixtures-zephyr.log || true
+        tail -40 "$zephyr_log" || true
     else
         echo "== zephyr == (solo track) OK"
     fi

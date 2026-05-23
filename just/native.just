@@ -46,6 +46,9 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         SERIAL=0
     fi
 
+    toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_example_toml.XXXXXX")"
+    trap 'rm -f "$toml_list"' EXIT
+
     find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
@@ -54,7 +57,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
                        -not -path '*/qemu-riscv64-threadx/*' \
-                       -not -path '*/px4/*' | sort > /tmp/_nros_example_toml.list
+                       -not -path '*/px4/*' | sort > "$toml_list"
 
     build_one() {
         local toml="$1"
@@ -73,11 +76,10 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     export NIGHTLY="{{NIGHTLY}}"
 
     if [ "$SERIAL" = "1" ]; then
-        while read -r toml; do build_one "$toml"; done < /tmp/_nros_example_toml.list
+        while read -r toml; do build_one "$toml"; done < "$toml_list"
     else
-        parallel --halt now,fail=1 --line-buffer -j "$cargo_frontends" build_one :::: /tmp/_nros_example_toml.list
+        parallel --halt now,fail=1 --line-buffer -j "$cargo_frontends" build_one :::: "$toml_list"
     fi
-    rm -f /tmp/_nros_example_toml.list
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
@@ -330,6 +332,9 @@ check JOBS="75%":
         SERIAL=0
     fi
 
+    toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_check_toml.XXXXXX")"
+    trap 'rm -f "$toml_list"' EXIT
+
     find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
@@ -339,7 +344,7 @@ check JOBS="75%":
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
                        -not -path '*/qemu-riscv64-threadx/*' \
-                       -not -path '*/px4/*' | sort > /tmp/_nros_check_toml.list
+                       -not -path '*/px4/*' | sort > "$toml_list"
 
     check_one() {
         local toml="$1"
@@ -358,11 +363,10 @@ check JOBS="75%":
     export NIGHTLY="{{NIGHTLY}}"
 
     if [ "$SERIAL" = "1" ]; then
-        while read -r toml; do check_one "$toml"; done < /tmp/_nros_check_toml.list
+        while read -r toml; do check_one "$toml"; done < "$toml_list"
     else
-        parallel --halt now,fail=1 --line-buffer -j {{JOBS}} check_one :::: /tmp/_nros_check_toml.list
+        parallel --halt now,fail=1 --line-buffer -j {{JOBS}} check_one :::: "$toml_list"
     fi
-    rm -f /tmp/_nros_check_toml.list
     echo "All examples check passed!"
 
 # Show embedded example binary sizes

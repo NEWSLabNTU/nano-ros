@@ -27,7 +27,25 @@ OVERLAP_FIXTURES := $(addprefix fixtures-,$(EXAMPLE_OVERLAP_PLATFORMS))
 INDEPENDENT_FIXTURES := $(addprefix fixtures-,$(INDEPENDENT_FIXTURE_PLATFORMS))
 FIXTURES := $(OVERLAP_FIXTURES) $(INDEPENDENT_FIXTURES)
 
+BUILD_ALL_LOG_DIR ?= $(NROS_BUILD_LOG_DIR)
+ifeq ($(strip $(BUILD_ALL_LOG_DIR)),)
+BUILD_ALL_LOG_DIR := tmp/build-all-$(shell date +%Y%m%d-%H%M%S)-$(shell mktemp -u XXXXXXXX)
+endif
+BUILD_ALL_JOBLOG := $(BUILD_ALL_LOG_DIR)/build-all.joblog
+
 .PHONY: all prereqs build-example-extras $(FIXTURES)
+
+define timed_stage
++@mkdir -p tmp; \
+	mkdir -p "$(BUILD_ALL_LOG_DIR)"; \
+	start=$$(date +%s); \
+	status=0; \
+	echo "==> $(1)"; \
+	$(2) || status=$$?; \
+	end=$$(date +%s); \
+	printf '%s\t%s\t%s\t%s\t%s\n' '$(1)' "$$start" "$$end" "$$((end - start))" "$$status" >> "$(BUILD_ALL_JOBLOG)"; \
+	exit $$status
+endef
 
 # Build non-fixture example leaves + every platform's fixtures concurrently;
 # all gated behind shared workspace/tooling prereqs.
@@ -36,18 +54,22 @@ all: build-example-extras $(FIXTURES)
 # Serial prerequisites every parallel target needs. Each `+just` shares
 # the jobserver, so the cargo/cc inside still parallelizes against the pool.
 prereqs:
-	+just generate-bindings
-	+just build-workspace
-	+just build-workspace-embedded
-	+just build-zenohd
-	+just qemu build-zenoh-pico
-	+just build-zenoh-posix-fixture
+	@mkdir -p tmp "$(BUILD_ALL_LOG_DIR)"
+	@log_dir="$(BUILD_ALL_LOG_DIR)"; case "$$log_dir" in /*) link="$$log_dir";; *) link="$$(pwd)/$$log_dir";; esac; ln -sfn "$$link" tmp/build-all-latest
+	@echo "build-all joblog: $(BUILD_ALL_JOBLOG)"
+	@printf 'stage\tstart_epoch\tend_epoch\tduration_seconds\tstatus\n' > "$(BUILD_ALL_JOBLOG)"
+	$(call timed_stage,prereq: generate-bindings,just generate-bindings)
+	$(call timed_stage,prereq: build-workspace,just build-workspace)
+	$(call timed_stage,prereq: build-workspace-embedded,just build-workspace-embedded)
+	$(call timed_stage,prereq: build-zenohd,just build-zenohd)
+	$(call timed_stage,prereq: qemu build-zenoh-pico,just qemu build-zenoh-pico)
+	$(call timed_stage,prereq: build-zenoh-posix-fixture,just build-zenoh-posix-fixture)
 
 build-example-extras: prereqs
-	+just build-example-extras
+	$(call timed_stage,build-example-extras,just build-example-extras)
 
 $(INDEPENDENT_FIXTURES): fixtures-%: prereqs
-	+just $* build-fixtures
+	$(call timed_stage,fixtures-$*,just $* build-fixtures)
 
 $(OVERLAP_FIXTURES): fixtures-%: prereqs
-	+just $* build-fixtures
+	$(call timed_stage,fixtures-$*,just $* build-fixtures)

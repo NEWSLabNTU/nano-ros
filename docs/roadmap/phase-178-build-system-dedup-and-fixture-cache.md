@@ -132,10 +132,19 @@ non-duplicating.
   value is that `examples/zephyr/<lang>/<role>` builds as a user-copyable
   standalone project.
 
-- [ ] **178.F — document timing output.** Preserve or improve
-  `tmp/build-test-fixtures.joblog` and add equivalent stage timing for
-  jobserver `build-all.mk`, so future regressions show which platform or
-  fixture tier got slower.
+- [x] **178.F — document timing output.** Preserve or improve the
+  `build-test-fixtures` timing output and add equivalent stage timing
+  for jobserver `build-all.mk`, so future regressions show which
+  platform or fixture tier got slower.
+  Done with per-run log directories to avoid concurrent runs overwriting
+  shared files:
+  - static `build-test-fixtures`: `tmp/build-test-fixtures-*/`
+    contains `build-test-fixtures.joblog`, `parallel.joblog`, and
+    `zephyr.log`; `tmp/build-test-fixtures-latest` points at the newest
+    run.
+  - jobserver `build-all.mk`: `tmp/build-all-*/build-all.joblog`
+    records prereqs, root examples, and each platform fixture stage;
+    `tmp/build-all-latest` points at the newest run.
 
 - [x] **178.G — stop building examples in test-only prerequisite paths.**
   Audit platform `test` / `test-all` dependencies that still pull in
