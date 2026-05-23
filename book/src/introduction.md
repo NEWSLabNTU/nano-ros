@@ -16,7 +16,7 @@ as well as Linux and macOS. The entire core stack is `no_std` compatible.
   following rclc conventions.
 - **True `no_std`** — runs on bare-metal Cortex-M3 with no heap allocator.
   The `alloc` and `std` features are opt-in.
-- **Standalone tooling** — `cargo nano-ros generate` produces message
+- **Standalone tooling** — `nros generate-rust` produces message
   bindings without a ROS 2 installation (bundled interface definitions).
 - **Formally verified** — 160 Kani bounded model checking harnesses and 102
   Verus deductive proofs cover CDR serialization, scheduling, and protocol

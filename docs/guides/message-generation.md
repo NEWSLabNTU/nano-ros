@@ -1,11 +1,11 @@
 # Message Binding Generation
 
-nros uses generated Rust bindings for ROS 2 message types. The `nros generate-rust` (or `cargo nano-ros generate-rust`) command generates `no_std` compatible bindings from `package.xml` dependencies.
+nros uses generated Rust bindings for ROS 2 message types. The `nros generate-rust` command generates `no_std` compatible bindings from `package.xml` dependencies.
 
 ## Overview
 
-The binding generator lives in `packages/codegen/packages/cargo-nano-ros/` and provides:
-- `nros` standalone binary and `cargo nano-ros` subcommand
+The binding generator lives in `packages/codegen/packages/nros-cli/` and provides:
+- `nros` standalone binary
 - Pure Rust, `no_std` compatible output using `heapless` types
 - Automatic dependency resolution via ament index or bundled interfaces
 - `.cargo/config.toml` generation for crate patches
@@ -32,13 +32,13 @@ The binding generator lives in `packages/codegen/packages/cargo-nano-ros/` and p
 2. **nros tool installed**
    ```bash
    # From the nros repository root
-   just install-cargo-nano-ros
+   just install-nros-cli
 
    # Or manually:
-   cargo install --path packages/codegen/packages/cargo-nano-ros --locked
+   cargo install --path packages/codegen/packages/nros-cli --locked
 
    # Or from git (external users):
-   cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/cargo-nano-ros
+   cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/nros-cli
    ```
 
 3. **ROS 2 environment** (optional for standard types)
@@ -64,8 +64,7 @@ Declare your ROS interface dependencies in `<depend>` tags:
 
 ```bash
 cd my_project
-nros generate-rust              # standalone binary
-# or: cargo nano-ros generate-rust  # cargo subcommand (equivalent)
+nros generate-rust
 ```
 
 This will:
@@ -101,7 +100,7 @@ std_msgs = { version = "*", default-features = false }
 **Step 3:** Generate bindings with git patches:
 ```bash
 source /opt/ros/humble/setup.bash
-cargo nano-ros generate-rust --config --nano-ros-git
+nros generate-rust --config --nano-ros-git
 ```
 
 This generates `.cargo/config.toml` with git-based patches:
@@ -126,10 +125,9 @@ let msg = Int32 { data: 42 };
 
 ```bash
 nros generate-rust [OPTIONS]
-# or: cargo nano-ros generate-rust [OPTIONS]
 
 Options:
-      --manifest-path <PATH>  Path to package.xml [default: package.xml]
+      --manifest <PATH>       Path to package.xml [default: package.xml]
   -o, --output <DIR>          Output directory [default: generated]
       --config                Generate .cargo/config.toml with [patch.crates-io] entries
       --nano-ros-path <PATH>  Path to nros crates (for config patches, local dev)
@@ -211,7 +209,7 @@ cd examples/native/rust/service-client && cargo build --features zenoh
 
 To regenerate after ROS package updates or dependency changes:
 ```bash
-cargo nano-ros generate-rust --force
+nros generate-rust --force
 ```
 
 ## Bundled Interfaces

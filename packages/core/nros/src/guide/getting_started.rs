@@ -50,14 +50,14 @@
 //!
 //! ```bash
 //! cargo install --git https://github.com/jerry73204/nano-ros \
-//!     --path packages/codegen/packages/cargo-nano-ros
+//!     --path packages/codegen/packages/nros-cli
 //! ```
 //!
 //! Generate bindings (for packages beyond `std_msgs`/`builtin_interfaces`,
 //! source a ROS 2 environment first):
 //!
 //! ```bash
-//! cargo nano-ros generate-rust --config --nano-ros-git
+//! nros generate-rust --config --nano-ros-git
 //! ```
 //!
 //! This creates:

@@ -100,7 +100,7 @@ All core crates support `#![no_std]` with optional `std`/`alloc` features:
 Message types are always generated, never hand-written. Use the codegen tool:
 
 ```bash
-cargo nano-ros generate-rust
+nros generate-rust
 ```
 
 Bundled interface definitions live in `packages/codegen/interfaces/`. Example `generated/` directories are gitignored and recreated by `just generate-bindings`. Only `packages/interfaces/rcl-interfaces/generated/` is checked into git.

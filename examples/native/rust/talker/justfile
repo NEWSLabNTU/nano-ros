@@ -6,7 +6,7 @@ default:
 
 # Generate bindings from package.xml dependencies
 generate:
-    cargo nano-ros generate --force
+    nros generate-rust --force
 
 # Build the crate
 build:

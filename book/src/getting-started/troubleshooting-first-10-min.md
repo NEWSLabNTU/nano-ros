@@ -17,7 +17,7 @@ Did `cargo build` / `cmake --build` fail?
 │     in-tree `packages/core/nros`; if the SDK fetch didn't
 │     run, transitive deps are missing.
 │
-├─ error: failed to find tool. Is `cargo-nano-ros` installed?
+├─ error: failed to find tool. Is `nros` installed?
 ├─ error: `nros-codegen` not found
 │   → Build the host codegen tool first:
 │       cargo build --release \

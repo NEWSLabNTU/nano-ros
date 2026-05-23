@@ -4,7 +4,7 @@
 # Configures + builds + installs Cyclone DDS into the project's shared
 # install prefix (`build/install/`), so downstream consumers (the
 # `nros-rmw-cyclonedds` C++ backend in Phase 117 and the
-# `cargo nano-ros generate-cyclonedds-types` codegen path) can locate
+# `nros` CycloneDDS codegen path) can locate
 # `libddsc.a`, the public headers, and the `idlc` IDL compiler via
 # `find_package(CycloneDDS)` against `CMAKE_PREFIX_PATH=build/install`.
 #

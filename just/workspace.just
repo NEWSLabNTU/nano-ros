@@ -201,7 +201,7 @@ doctor:
 
     # --- cargo-tools ---
     tool_missing=()
-    for t in cargo-nextest cargo-llvm-cov espflash cargo-nano-ros; do
+    for t in cargo-nextest cargo-llvm-cov espflash nros; do
         check command -v "$t" || tool_missing+=("$t")
     done
     if [ ${#tool_missing[@]} -eq 0 ]; then
@@ -357,7 +357,7 @@ rust-targets:
         echo "  WARNING: armv7a-nuttx-eabi not in nightly target list — NuttX builds may fail"
     fi
 
-# Install cargo tools (nextest, llvm-cov, espflash, nano-ros codegen).
+# Install cargo tools (nextest, llvm-cov, espflash, nano-ros CLI).
 cargo-tools:
     #!/usr/bin/env bash
     set -e
@@ -366,4 +366,4 @@ cargo-tools:
     cargo install espflash --locked      || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked      || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
-    cargo install --path packages/codegen/packages/cargo-nano-ros --locked
+    cargo install --path packages/codegen/packages/nros-cli --locked

@@ -1,7 +1,7 @@
 //! Core ROS type traits.
 //!
 //! [`RosMessage`] and [`RosService`] are implemented by code-generated message
-//! and service types (via `cargo nano-ros generate`). Each type carries a
+//! and service types (via `nros generate-rust`). Each type carries a
 //! DDS-format type name and RIHS hash used for topic matching and type safety.
 
 /// Trait for ROS message types

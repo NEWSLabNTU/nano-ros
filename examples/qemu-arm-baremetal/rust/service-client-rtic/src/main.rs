@@ -9,7 +9,7 @@
 //! # Running
 //!
 //! ```bash
-//! cargo nano-ros generate
+//! nros generate-rust
 //! cargo run --release
 //! ```
 

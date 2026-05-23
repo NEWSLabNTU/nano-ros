@@ -1,6 +1,6 @@
 # Codegen Type Mapping Reference
 
-How `cargo nano-ros generate` maps ROS 2 message fields to Rust, C, and C++ types.
+How `nros generate-rust` maps ROS 2 message fields to Rust, C, and C++ types.
 
 ## Overview
 
@@ -210,7 +210,7 @@ impl RosAction for MyAction {
 
 ## Package name remapping
 
-`cargo nano-ros generate --rename old_pkg=new_crate_name` renames:
+`nros generate-rust --rename old_pkg=new_crate_name` renames:
 - Output directory
 - `[package] name` in Cargo.toml
 - Dependency names and paths in Cargo.toml

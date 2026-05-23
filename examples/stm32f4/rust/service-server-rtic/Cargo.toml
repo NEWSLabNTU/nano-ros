@@ -17,7 +17,7 @@ nros-board-stm32f4 = { path = "../../../../packages/boards/nros-board-stm32f4" }
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 
-# Generated message types (from package.xml via cargo nano-ros generate)
+# Generated message types (from package.xml via nros generate-rust)
 example_interfaces = { version = "*", default-features = false }
 
 # RTIC v2

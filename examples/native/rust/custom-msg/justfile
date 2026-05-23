@@ -28,4 +28,4 @@ clean:
 
 # Generate message bindings (requires ROS 2 environment)
 generate:
-    cargo nano-ros generate --force
+    nros generate-rust --force

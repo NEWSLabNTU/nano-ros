@@ -55,12 +55,12 @@ descriptor must be generated from the same `.idl` as the peer.
 > picks — **not** automatically the rosidl-shaped
 > `<pkg>::msg::dds_::<Type>_` pattern stock RMW expects. **Stock
 > ROS 2 type matching is broken** until Phase 117.X.1 lands
-> rosidl_adapter integration in `cargo-nano-ros`.
+> rosidl_adapter integration in the `nros` codegen path.
 
 Two viable production paths:
 
 1. **rosidl_adapter codegen (Phase 117.X.1 — pending).** Extend
-   `cargo-nano-ros` so `.msg` / `.srv` files map through ROS 2's
+   `nros` codegen so `.msg` / `.srv` files map through ROS 2's
    canonical IDL conventions before idlc runs. Output type names
    match stock RMW.
 2. **Manual descriptor link (interim).** Pull the descriptor from

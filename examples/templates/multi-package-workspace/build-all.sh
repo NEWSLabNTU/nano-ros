@@ -30,10 +30,10 @@ build_cargo_pkg() {
     echo "=== build ${pkg} (cargo) ==="
     # Regenerate Rust msg bindings into the package's `generated/`
     # dir so the path dependencies in Cargo.toml resolve. Mirrors
-    # what `cargo nano-ros generate-rust` does in standalone Rust
+    # what `nros generate-rust` does in standalone Rust
     # examples; this is per-package because the Rust codegen
     # cache (A.7 follow-up) isn't shared yet.
-    (cd "${src}" && cargo nano-ros generate-rust > /dev/null)
+    (cd "${src}" && nros generate-rust > /dev/null)
     (cd "${src}" && cargo build --release)
 }
 

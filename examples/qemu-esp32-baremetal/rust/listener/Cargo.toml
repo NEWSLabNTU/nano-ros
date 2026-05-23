@@ -19,7 +19,7 @@ nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-q
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 
-# Generated message types (from package.xml via cargo nano-ros generate)
+# Generated message types (from package.xml via nros generate-rust)
 std_msgs = { version = "*", default-features = false }
 
 # Required for #[main] proc macro (references esp_hal crate directly)

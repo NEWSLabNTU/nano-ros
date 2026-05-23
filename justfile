@@ -1142,10 +1142,10 @@ build-zenoh-pico:
 # Message Bindings
 # =============================================================================
 
-# Install cargo-nano-ros (requires ROS 2 environment)
-install-cargo-nano-ros:
-    @echo "Installing cargo-nano-ros..."
-    cargo install --path packages/codegen/packages/cargo-nano-ros --locked
+# Install the canonical nros CLI.
+install-nros-cli:
+    @echo "Installing nros CLI..."
+    cargo install --path packages/codegen/packages/nros-cli --locked
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required

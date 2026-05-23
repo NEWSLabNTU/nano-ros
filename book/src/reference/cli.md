@@ -39,8 +39,9 @@ chosen platform.
 
 ### `nros generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
 
-Generate ROS 2 message bindings from a `package.xml`. Wraps the
-existing `cargo nano-ros generate-{rust,c,cpp}` surface.
+Generate ROS 2 message bindings from a `package.xml`. Rust users should
+prefer the direct `nros generate-rust` command; C and C++ users normally
+use the CMake integration.
 
 | Argument | Values | Default |
 |---|---|---|
@@ -143,18 +144,17 @@ Emit shell completion scripts to stdout.
 | `fish` | `nros completions fish > ~/.config/fish/completions/nros.fish` |
 | `powershell` | `nros completions powershell > $PROFILE.parent\nros.ps1` |
 
-## Comparison: `nros` vs. `cargo nano-ros` vs. `just`
+## Comparison: `nros` vs. `just`
 
 | Want to … | Use |
 |---|---|
 | Scaffold / build / run a single project | `nros …` |
-| Generate bindings inside an existing Cargo workflow | `cargo nano-ros generate-{rust,c,cpp}` |
+| Generate Rust bindings | `nros generate-rust` |
 | Plan + check a multi-component system from a ROS 2 launch file | `nros metadata` → `nros plan` → `nros check` → `nros build` |
 | Orchestrate the workspace (setup, doctor, CI, multi-platform sweeps) | `just …` |
 
-`nros` and `cargo nano-ros` route through the same `nros-cli-core`
-library, so they always agree on output. `just` recipes that wrap
-user-flow operations call into `nros` for consistency; internal
+`nros` routes through the `nros-cli-core` library. `just` recipes that
+wrap user-flow operations call into `nros` for consistency; internal
 recipes (build matrices, CI orchestration) keep their current shape.
 
 ## Release pipeline status

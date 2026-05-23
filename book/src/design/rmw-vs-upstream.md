@@ -344,7 +344,7 @@ function-pointer table per field type, dependence on dynamic
 allocators for nested sequences, megabytes of generated symbol tables
 linked even for one message. Splitting the layers means:
 
-- Codegen (`cargo nano-ros generate-c`) writes a fixed-shape C struct
+- Codegen (`nros_generate_interfaces()` from CMake) writes a fixed-shape C struct
   per message and a single `<MsgType>_serialize_cdr(...)` function.
 - The runtime calls it before handing bytes to the RMW.
 - The RMW backend stays transport-only — no rosidl, no typesupport,

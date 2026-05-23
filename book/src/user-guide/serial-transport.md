@@ -79,7 +79,7 @@ When both features are enabled, the transport is selected at runtime by the zeno
 
 ```bash
 cd examples/qemu-arm-baremetal/rust/serial-talker
-cargo nano-ros generate
+nros generate-rust
 cargo build --release
 ```
 

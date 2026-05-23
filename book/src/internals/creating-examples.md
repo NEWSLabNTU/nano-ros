@@ -124,14 +124,14 @@ aside).
 
 ```bash
 source /opt/ros/humble/setup.sh        # for rosidl tooling
-cargo nano-ros generate-rust            # or generate-c / generate-cpp / generate-all
+nros generate-rust            # or generate-c / generate-cpp / generate-all
 ```
 
 For BSP / cross-target examples that maintain their own
 `.cargo/config.toml`, pass `--config --nano-ros-path <relative>`:
 
 ```bash
-cargo nano-ros generate --config --nano-ros-path ../../../packages
+nros generate-rust --config --nano-ros-path ../../../packages
 ```
 
 The `--config` flag uses `ConfigPatcher` to idempotently add
@@ -158,7 +158,7 @@ full reference + `package.xml` schema.
 3. **Update names + `package.xml`.** Rename `Cargo.toml`'s `name`
    and `[[bin]]` entries (Rust) or `project(...)` and `add_executable(...)`
    targets (CMake).
-4. **Regenerate bindings.** Run `cargo nano-ros generate-*` against
+4. **Regenerate bindings.** Run `nros generate-rust-*` against
    the new `package.xml`. Custom messages need their own `package.xml`
    in the consuming example.
 5. **Build standalone.** `cargo build` or
