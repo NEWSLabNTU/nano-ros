@@ -150,6 +150,41 @@ build-fixture-extras:
     codegen="$root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     # Phase 118.C — collapsed-shape ThreadX-RV64 C / C++. The Rust
     # zenoh role binaries are produced by `build-examples`.
+    # Phase 175.B adds CMake/Corrosion Cyclone cells for talker/listener
+    # coverage because Cyclone is a C++ backend and cannot link from
+    # cargo alone.
+
+    build_threadx_cmake_rmw() {
+        local dir="$1"
+        local rmw="$2"
+        local build_dir="$3"
+        echo "  → $dir (-DNROS_RMW=$rmw, $build_dir/)"
+        local sig
+        sig="$(printf '%s\n' \
+          "platform=threadx_riscv64" \
+          "rmw=$rmw" \
+          "src=$dir" \
+          "toolchain=$toolchain" \
+          "threadx_dir=$threadx_dir" \
+          "netx_dir=$netx_dir" \
+          "config_dir=$config_dir" \
+          "codegen=$codegen" \
+          "cyclonedds_prefix=${cyclonedds_prefix:-}")"
+        THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
+        THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+          nros_cmake_fixture_build "$dir" "$dir/$build_dir" "$sig" \
+            -DNROS_RMW="$rmw" \
+            -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+            -DTHREADX_DIR="$threadx_dir" \
+            -DNETX_DIR="$netx_dir" \
+            -DTHREADX_CONFIG_DIR="$config_dir" \
+            -DNETX_CONFIG_DIR="$config_dir" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
+            -DIDLC_EXECUTABLE="$root/build/install/bin/idlc" \
+            -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$root/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null
+    }
+
     collapsed_cmake_dirs=()
     for lang in c cpp; do
         for ex in $(nros_fixture_roles); do
@@ -158,56 +193,33 @@ build-fixture-extras:
         done
     done
     if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        export toolchain threadx_dir netx_dir config_dir codegen
-        export -f nros_cmake_fixture_build
+        export root toolchain threadx_dir netx_dir config_dir codegen
+        export -f nros_cmake_fixture_build build_threadx_cmake_rmw
         if [ "${NROS_JOBSERVER:-}" = "1" ]; then
             for dir in "${collapsed_cmake_dirs[@]}"; do
-                echo "  → $dir (-DNROS_RMW=zenoh, build-zenoh/)"
-                sig="$(printf '%s\n' \
-                  "platform=threadx_riscv64" \
-                  "rmw=zenoh" \
-                  "src=$dir" \
-                  "toolchain=$toolchain" \
-                  "threadx_dir=$threadx_dir" \
-                  "netx_dir=$netx_dir" \
-                  "config_dir=$config_dir" \
-                  "codegen=$codegen")"
-                THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
-                THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-                  nros_cmake_fixture_build "$dir" "$dir/build-zenoh" "$sig" \
-                    -DNROS_RMW=zenoh \
-                    -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                    -DTHREADX_DIR="$threadx_dir" \
-                    -DNETX_DIR="$netx_dir" \
-                    -DTHREADX_CONFIG_DIR="$config_dir" \
-                    -DNETX_CONFIG_DIR="$config_dir" \
-                    -DCMAKE_BUILD_TYPE=Release \
-                    -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
+                build_threadx_cmake_rmw "$dir" zenoh build-zenoh
             done
         else
             printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-                "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && \
-                 sig=\$(printf '%s\n' \
-                   'platform=threadx_riscv64' \
-                   'rmw=zenoh' \
-                   'src={}' \
-                   'toolchain=$toolchain' \
-                   'threadx_dir=$threadx_dir' \
-                   'netx_dir=$netx_dir' \
-                   'config_dir=$config_dir' \
-                   'codegen=$codegen') && \
-                 THREADX_DIR='$threadx_dir' NETX_DIR='$netx_dir' \
-                 THREADX_CONFIG_DIR='$config_dir' NETX_CONFIG_DIR='$config_dir' \
-                   nros_cmake_fixture_build {} {}/build-zenoh \"\$sig\" \
-                     -DNROS_RMW=zenoh \
-                     -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-                     -DTHREADX_DIR='$threadx_dir' \
-                     -DNETX_DIR='$netx_dir' \
-                     -DTHREADX_CONFIG_DIR='$config_dir' \
-                     -DNETX_CONFIG_DIR='$config_dir' \
-                     -DCMAKE_BUILD_TYPE=Release \
-                     -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null"
+                "build_threadx_cmake_rmw {} zenoh build-zenoh"
         fi
+    fi
+
+    cyclonedds_prefix="$root/build/cyclonedds-threadx-rv64-install"
+    if [ -f "$cyclonedds_prefix/lib/libddsc.a" ] && [ -x "$root/build/install/bin/idlc" ]; then
+        cyclone_dirs=(
+            "examples/qemu-riscv64-threadx/c/talker"
+            "examples/qemu-riscv64-threadx/c/listener"
+            "examples/qemu-riscv64-threadx/cpp/talker"
+            "examples/qemu-riscv64-threadx/cpp/listener"
+            "examples/qemu-riscv64-threadx/rust/talker"
+        )
+        for dir in "${cyclone_dirs[@]}"; do
+            CMAKE_PREFIX_PATH="$cyclonedds_prefix" \
+              build_threadx_cmake_rmw "$dir" cyclonedds build-cyclonedds
+        done
+    else
+        echo "  → skipping ThreadX-RV64 Cyclone fixtures (run: just cyclonedds setup && just cyclonedds threadx-cross-probe)"
     fi
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.

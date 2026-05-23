@@ -76,6 +76,7 @@ static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WR
  * We provide the definition. The 'const' qualifier is on the pointer,
  * not the FILE — so the FILE itself is mutable. */
 FILE *const stdout = &_uart_file;
+FILE *const stderr = &_uart_file;
 
 /* picolibc _write syscall for other output (fprintf to fd, etc.) */
 int _write(int fd, const char *buf, int len) {

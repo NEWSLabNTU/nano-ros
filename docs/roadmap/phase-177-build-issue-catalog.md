@@ -47,10 +47,22 @@ passed.
   Owner: Phase 175.
   `nros_rmw_cyclonedds_register` lives only in the C++/CMake build, so
   `cargo build --features rmw-cyclonedds` of native/freertos/threadx
-  Rust examples cannot link it. 175.A landed the native
-  `examples/native/rust/{talker,listener}/CMakeLists.txt` CMake path and
-  fixed native two-process user data. 175.B remains: embedded ddsrt port
-  and bare-metal Cyclone enablement.
+  Rust examples cannot link it directly; Cyclone-backed fixtures must go
+  through the CMake/Corrosion path. Phase 175 landed that path for native
+  Rust and added embedded Cyclone fixture wiring for FreeRTOS and ThreadX.
+  FreeRTOS Rust Cyclone boots and exchanges user data. ThreadX RISC-V64
+  now builds the Cyclone `ddsc` static-library probe and links the C,
+  C++, and Rust talker/listener fixtures, but the runtime still fails
+  during Cyclone participant initialization before RTPS traffic starts.
+  The 2026-05-24 manual two-QEMU probe boots ThreadX, initializes NetX Duo
+  and BSD sockets, then reports `nros_support_init -> -1` on the listener;
+  the talker traps with `mcause=0x7` at picolibc tinystdio
+  `__file_str_put` (`mepc=0x80074270`, `mtval=0x10016c008`,
+  `tinystdio/filestrput.c:44`). Phase 175 fixed the prerequisite
+  allocation/link issues (`z_malloc`/`z_free`, C++ `new/delete`,
+  Cyclone session-state allocation, and `stderr` binding); the remaining
+  177-side bug is to diagnose the Cyclone/picolibc stdio string-buffer
+  state used during participant initialization on ThreadX.
 
 ### Test-All Environment / Setup
 
