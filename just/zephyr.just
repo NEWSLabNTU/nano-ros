@@ -191,6 +191,24 @@ build-fixtures:
         make_bin="$(command -v make)"
     fi
     tool_path="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    # Phase 178.J — fail/regenerate Zephyr Rust generated crates before
+    # scheduling expensive west builds. Direct `just zephyr build-fixtures`
+    # is allowed, so do not rely solely on the root `generate-bindings`
+    # prerequisite.
+    echo "  → zephyr Rust generated-dir preflight"
+    nros_cli="$nros_root/packages/codegen/packages/target/debug/nros"
+    if [ ! -x "$nros_cli" ]; then
+        cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros --quiet
+    fi
+    while IFS= read -r pkg; do
+        dir="$(dirname "$pkg")"
+        stamp="$dir/generated/.nros-generate-rust.stamp"
+        if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ]; then
+            echo "    generate-rust: $dir"
+            ( cd "$dir" && "$nros_cli" generate-rust --force )
+            touch "$stamp"
+        fi
+    done < <(find examples/zephyr/rust -mindepth 2 -maxdepth 2 -name package.xml | sort)
     # Phase 140 — Zephyr C/C++ DDS examples call nros_generate_interfaces()
     # which needs nros-codegen on the host. Cross builds (every Zephyr
     # board target) can't build it with the cross toolchain, so build

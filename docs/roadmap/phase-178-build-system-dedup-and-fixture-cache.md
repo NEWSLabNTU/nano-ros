@@ -165,11 +165,17 @@ non-duplicating.
   aggregate targets so public UX stays simple but `build-all` does not
   rerun broad setup work.
 
-- [ ] **178.J — Zephyr Rust generated-dir preflight.** Before launching
+- [x] **178.J — Zephyr Rust generated-dir preflight.** Before launching
   expensive Zephyr fixture builds, verify or regenerate the Rust
   `generated/<pkg>/` dirs for Zephyr Rust examples. This catches missing
   generated message crates before the Zephyr graph schedules kernel,
   picolibc, and link work.
+  Done in `just zephyr build-fixtures`: before the west fixture matrix
+  is scheduled, the recipe builds the canonical `nros` CLI if needed
+  and runs `nros generate-rust` for any Zephyr Rust example with a
+  missing or older `generated/Cargo.toml`. Set
+  `NROS_ZEPHYR_GENERATE_RUST_FORCE=1` to force refresh all Zephyr Rust
+  example bindings.
 
 - [ ] **178.K — survey NuttX make fixture tier.** `nuttx
   build-fixtures-make` validates the native NuttX external-app
