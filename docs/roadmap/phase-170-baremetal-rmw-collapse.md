@@ -1,11 +1,10 @@
 # Phase 170 — Absorbed by Phase 118
 
-**Status.** Absorbed into
-`docs/roadmap/phase-118-example-matrix-coverage.md`.
+**Status.** Absorbed into archived tracker
+`docs/roadmap/archived/phase-118-example-matrix-coverage.md`.
 
-Bare-metal Rust example collapse is now tracked under **118.G**. Keep
-active progress and checkboxes there so example-collapse ownership stays
-in one place.
+Bare-metal Rust example collapse was completed under **118.G**. Remaining
+runtime transport issues moved to Phase 177.
 
 ## Original Scope
 
@@ -23,10 +22,4 @@ RMW selection should happen through Cargo features rather than
 
 ## Remaining Work
 
-See **118.G** for the live checklist:
-
-- qemu-arm bare-metal Zenoh and DDS/dust-DDS retirement decision.
-- qemu-esp32 bare-metal Zenoh and DDS/dust-DDS retirement decision.
-- real ESP32 Zenoh collapse.
-- STM32F4 Zenoh collapse.
-- board-specific feature proxying and fixture updates.
+None in this phase. Follow runtime transport issues in Phase 177.

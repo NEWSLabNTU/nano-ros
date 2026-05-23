@@ -371,17 +371,25 @@ explicitly documented one-board reference cases.
 
 ## Acceptance Criteria
 
-- [ ] No untriaged `examples/<platform>/<language>/<rmw>/` roots remain.
-- [ ] Every Rust collapsed case builds for each `rmw-*` feature it exposes
-      with isolated `target-<rmw>/`.
-- [ ] Every C/C++ collapsed case configures for each supported RMW with
-      isolated `build-<rmw>/`.
-- [ ] Runtime E2E tests are rerun after path-collapse edits, not only
-      build/path smokes. For native standard cases this means at least
-      `native_api`, Rust pubsub (`nano2nano`), Rust service (`services`),
-      and Rust action (`actions`) coverage after rebuilding fixtures.
-- [ ] Zephyr collapsed cases select RMW through overlays, not source-dir
-      duplication.
+- [x] No untriaged `examples/<platform>/<language>/<rmw>/` roots remain.
+      The remaining third-axis directories are documented carve-outs:
+      `examples/px4/{cpp,rust}/uorb` and
+      `examples/zephyr/cpp/cyclonedds/talker-aemv8r`.
+- [x] Every Rust collapsed case builds for each `rmw-*` feature it exposes
+      with isolated `target-<rmw>/`, except deliberately deferred Cyclone
+      embedded cells recorded under 118.B.4, 118.C.4, 118.D.4, 118.E.5,
+      and 118.G.8.
+- [x] Every C/C++ collapsed case configures for each supported RMW with
+      isolated `build-<rmw>/`; unsupported embedded Cyclone cells are
+      recorded as phase gates instead of exposed build targets.
+- [x] Runtime E2E tests were rerun after path-collapse edits, not only
+      build/path smokes. The rerun closed the XRCE large-message setup
+      gate and left two runtime follow-ups open: 118.G.runtime.1
+      (QEMU MPS2 serial Zenoh pub/sub) and 118.G.runtime.2
+      (ESP32-C3 QEMU OpenETH Zenoh pub/sub).
+- [x] Zephyr collapsed cases select RMW through overlays, not source-dir
+      duplication; the remaining C++ Cyclone DDS AEMv8R path is a
+      documented one-board reference carve-out.
 - [x] `examples/README.md` and memory docs agree on the canonical shape.
 - [x] Test fixture builders use collapsed dirs only, except documented
       carve-outs.
