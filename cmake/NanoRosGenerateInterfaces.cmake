@@ -725,6 +725,9 @@ function(nros_generate_interfaces target)
           target_include_directories(${target}__cyclonedds_ts PRIVATE
             "$<TARGET_PROPERTY:nros_rmw_cyclonedds,INTERFACE_INCLUDE_DIRECTORIES>")
         endif()
+        if(TARGET freertos_kernel)
+          target_link_libraries(${target}__cyclonedds_ts PRIVATE freertos_kernel)
+        endif()
         # Cross-package include ordering: a dependency package's IDLs
         # must populate the shared root before this package's idlc runs.
         # idlc reads them at generate-time, so order the ts-lib targets.
@@ -740,7 +743,8 @@ function(nros_generate_interfaces target)
         # the same for dependency descriptor libs: action endpoints need
         # action_msgs service/status descriptors even when the app only
         # references the concrete user action type.
-        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24")
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24"
+           AND NOT CMAKE_SYSTEM_NAME STREQUAL "Generic")
           foreach(_dep ${_ARG_DEPENDENCIES})
             if(TARGET ${_dep}__cyclonedds_ts)
               target_link_libraries(${_lib_target} INTERFACE

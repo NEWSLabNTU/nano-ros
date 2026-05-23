@@ -14,8 +14,9 @@ landed (2026-05-22)** for the FreeRTOS C/C++ talker fixtures and the
 Rust talker fixture: the pinned Cyclone tree builds as a Cortex-M3
 static `libddsc.a`, installs into `build/cyclonedds-freertos-install`,
 and FreeRTOS C/C++/Rust talkers link against `NANO_ROS_RMW=cyclonedds`.
-Runtime boot/exchange remains open. ThreadX has no upstream ddsrt files
-and still needs a new NetX Duo-backed port.
+FreeRTOS Rust CycloneDDS talker boot/publish is verified under QEMU;
+data exchange remains open. ThreadX has no upstream ddsrt files and
+still needs a new NetX Duo-backed port.
 
 The CMake/Corrosion glue at `examples/native/rust/{talker,listener}/CMakeLists.txt`
 now links the Cyclone backend into a pure-Rust example end-to-end:
@@ -112,11 +113,14 @@ examples a CMakeLists.txt that:
 - [x] Drives native Rust Cyclone fixtures through CMake/Corrosion
   instead of the pure-Cargo fixture loop.
 
-**Files** (new): `examples/native/rust/<ex>/CMakeLists.txt`; a
-`just native build-fixtures` arm that drives the cyclone variant via
-CMake instead of `cargo build`.
+**Files / recipe work:**
 
-**Acceptance:**
+- [x] Add `examples/native/rust/talker/CMakeLists.txt`.
+- [x] Add `examples/native/rust/listener/CMakeLists.txt`.
+- [x] Add a `just native build-fixtures` arm that drives the Cyclone
+  variant via CMake instead of `cargo build`.
+
+**Acceptance criteria:**
 
 - [x] Native Rust talker builds and links with Cyclone DDS.
 - [x] Native Rust listener builds and links with Cyclone DDS.
@@ -140,10 +144,10 @@ socket stack.
 **Work items:**
 
 - [x] Inventory the pinned Cyclone `ddsrt` RTOS surface.
-- [x] Scope the embedded networking split:
-  - FreeRTOS: upstream `ddsrt` has `WITH_FREERTOS` plus `WITH_LWIP`
+- [x] Scope the embedded networking split.
+  - [x] FreeRTOS: upstream `ddsrt` has `WITH_FREERTOS` plus `WITH_LWIP`
     hooks and should use lwIP sockets first.
-  - ThreadX: no upstream `ddsrt` files exist; the port must be new and
+  - [x] ThreadX: no upstream `ddsrt` files exist; the port must be new and
     backed by NetX Duo sockets.
 - [x] Add a FreeRTOS Cyclone cross-build probe using
   `WITH_FREERTOS=ON`, `WITH_LWIP=ON`, the MPS2 toolchain, and the
@@ -164,25 +168,38 @@ socket stack.
 - [x] Re-enable the relevant `rmw-cyclonedds` fixture matrix cell for
   the first FreeRTOS Rust talker build.
 
-**Files** (new, large):
+**Files / recipe work:**
 
 - [x] FreeRTOS probe/link surface that consumes Cyclone's upstream
   FreeRTOS/lwIP `ddsrt` port.
 - [ ] ThreadX `ddsrt` port.
 - [x] Embedded Cyclone link wiring for the first FreeRTOS C/C++/Rust
   talker fixtures.
+- [x] FreeRTOS Rust Cyclone boot/run recipe or E2E fixture.
+- [ ] FreeRTOS Rust Cyclone data-exchange fixture.
 
-**Acceptance:**
+**Acceptance criteria:**
 
 - [x] Embedded networking story is scoped enough to estimate.
 - [x] At least one RTOS can build a Rust Cyclone DDS example.
-- [ ] At least one RTOS can boot a Rust Cyclone DDS example.
+- [x] At least one RTOS can boot a Rust Cyclone DDS example.
 - [ ] At least one RTOS Rust Cyclone DDS example exchanges user data.
 - [x] Fixture recipes build RTOS Rust Cyclone cells without pure-Cargo
   link failures.
 - [x] FreeRTOS C talker links with `NANO_ROS_RMW=cyclonedds`.
 - [x] FreeRTOS C++ talker links with `NANO_ROS_RMW=cyclonedds`.
 - [x] FreeRTOS Rust talker links with `NANO_ROS_RMW=cyclonedds`.
+
+**Verified 2026-05-23:**
+
+```bash
+cmake --build examples/qemu-arm-freertos/rust/talker/build-cyclonedds --target freertos_rust_talker_cyclonedds
+timeout 180s cargo test -p nros-tests --test freertos_qemu test_freertos_rust_talker_cyclonedds_boot -- --nocapture
+```
+
+The focused E2E boots `freertos_rust_talker_cyclonedds` under QEMU,
+opens the CycloneDDS-backed executor, declares the `/chatter`
+publisher, and reaches `Published: 0`.
 
 **Probe:**
 

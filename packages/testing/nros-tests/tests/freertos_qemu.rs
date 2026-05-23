@@ -18,6 +18,7 @@
 //! Or: `cargo nextest run -p nros-tests --test freertos_qemu`
 
 use nros_tests::fixtures::{
+    QemuProcess, Rmw, build_freertos_rust_example_rmw,
     freertos::{
         build_freertos_action_client, build_freertos_action_server, build_freertos_listener,
         build_freertos_service_client, build_freertos_service_server, build_freertos_talker,
@@ -25,6 +26,7 @@ use nros_tests::fixtures::{
     },
     is_qemu_available, is_zenohd_available,
 };
+use std::time::Duration;
 
 // =============================================================================
 // Prerequisite checks
@@ -99,4 +101,47 @@ fn test_freertos_all_examples_build() {
     }
 
     assert!(all_ok, "Not all FreeRTOS examples built successfully");
+}
+
+#[test]
+fn test_freertos_rust_talker_cyclonedds_boot() {
+    if !require_freertos() {
+        nros_tests::skip!("require_freertos check failed");
+    }
+    if !is_qemu_available() {
+        nros_tests::skip!("qemu-system-arm not found");
+    }
+
+    let path = build_freertos_rust_example_rmw(
+        "talker",
+        "freertos_rust_talker_cyclonedds",
+        Rmw::Cyclonedds,
+    )
+    .unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "qemu-arm-freertos/rust/talker cyclonedds not prebuilt; run \
+             `just freertos build-fixtures` first: {:?}",
+            e
+        )
+    });
+
+    let mut qemu = QemuProcess::start_mps2_an385_networked(&path)
+        .expect("spawn FreeRTOS Rust CycloneDDS talker");
+    let output = qemu
+        .wait_for_output_pattern("Published:", Duration::from_secs(90))
+        .unwrap_or_default();
+    qemu.kill();
+
+    eprintln!("FreeRTOS Rust CycloneDDS talker output:\n{}", output);
+
+    assert!(
+        output.contains("Publisher declared") || output.contains("Publishing messages"),
+        "CycloneDDS talker did not reach publisher startup.\nOutput:\n{}",
+        output
+    );
+    assert!(
+        output.contains("Published:"),
+        "CycloneDDS talker did not publish.\nOutput:\n{}",
+        output
+    );
 }

@@ -51,7 +51,9 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
     // so examples register the active backend explicitly.
     register_rmw().expect("Failed to register RMW backend");
 
+    println!("Opening executor");
     let mut executor = Executor::open(&exec_config)?;
+    println!("Executor open");
     let publisher = {
         let mut node = executor.create_node("talker")?;
         println!("Declaring publisher on /chatter (std_msgs/Int32)");
@@ -83,6 +85,7 @@ pub fn start_from_reset() -> ! {
 #[cfg(feature = "rmw-cyclonedds")]
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
+    println!("Starting Rust CycloneDDS talker");
     let config = Config::from_toml(include_str!("../config.toml"));
     if let Err(e) = run_app(&config) {
         println!("Application error: {:?}", e);
