@@ -81,7 +81,59 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
-build-fixtures:
+build-fixtures: build-fixture-role-examples build-fixture-extras
+    @echo "Native test fixtures built."
+
+# Internal Phase 178.B target: default native Rust role binaries consumed by
+# tests. This is intentionally narrower than public `build-examples`, which is
+# a broad repository-level Rust example aggregate.
+build-fixture-role-examples:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    nros_cli="$(pwd)/packages/codegen/packages/target/debug/nros"
+    if [ ! -x "$nros_cli" ]; then
+        cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros --quiet
+    fi
+    ensure_native_rust_generated() {
+        case "$1" in
+            native/rust/talker|native/rust/listener|native/rust/service-server|native/rust/service-client|native/rust/action-server|native/rust/action-client)
+                ( cd "examples/$1" && "$nros_cli" generate-rust --force )
+                ;;
+        esac
+    }
+    examples=(
+        native/rust/listener
+        native/rust/lifecycle-node
+        native/rust/custom-msg
+        native/rust/service-server
+        native/rust/service-client
+        native/rust/action-server
+        native/rust/action-client
+        native/rust/talker-rtic
+        native/rust/listener-rtic
+        native/rust/service-server-rtic
+        native/rust/service-client-rtic
+        native/rust/action-server-rtic
+        native/rust/action-client-rtic
+        native/rust/serial-talker
+        native/rust/serial-listener
+    )
+    for ex in "${examples[@]}"; do
+        echo "  → $ex"
+        ensure_native_rust_generated "$ex"
+        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet )
+        else
+            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet ) &
+        fi
+    done
+    wait
+
+# Internal Phase 178.B target: only fixture artifacts not already covered by
+# `build-fixture-role-examples`.
+build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -113,32 +165,6 @@ build-fixtures:
     ensure_native_rust_generated native/rust/talker
     ( cd examples/native/rust/talker && \
       cargo build $cargo_profile_args --features param-services --quiet )
-    examples=(
-        native/rust/listener
-        native/rust/lifecycle-node
-        native/rust/custom-msg
-        native/rust/service-server
-        native/rust/service-client
-        native/rust/action-server
-        native/rust/action-client
-        native/rust/talker-rtic
-        native/rust/listener-rtic
-        native/rust/service-server-rtic
-        native/rust/service-client-rtic
-        native/rust/action-server-rtic
-        native/rust/action-client-rtic
-        native/rust/serial-talker
-        native/rust/serial-listener
-    )
-    for ex in "${examples[@]}"; do
-        echo "  → $ex"
-        ensure_native_rust_generated "$ex"
-        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet )
-        else
-            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet ) &
-        fi
-    done
     # Phase 131.B — bench/smoke binaries relocated under packages/testing/.
     test_fixtures=(
         packages/testing/nros-bench/stress-zenoh

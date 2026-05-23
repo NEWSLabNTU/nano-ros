@@ -55,9 +55,13 @@ build-examples:
     echo "ThreadX Linux examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
-# Mirrors the cmake -D set used by the test fixture builders in
-# `nros_tests::fixtures::binaries::threadx_linux::build_cmake_example`.
-build-fixtures:
+build-fixtures: build-examples build-fixture-extras
+    @echo "ThreadX-Linux test fixtures built."
+
+# Internal Phase 178.B target: only fixture artifacts not already covered by
+# `build-examples`. Mirrors the cmake -D set used by the test fixture builders
+# in `nros_tests::fixtures::binaries::threadx_linux::build_cmake_example`.
+build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -77,43 +81,14 @@ build-fixtures:
     nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
     app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
-    # Phase 160 follow-up — parallel cargo builds.
-    # Phase 118 collapsed the per-RMW `rust/<rmw>/<ex>` dirs onto a
-    # single `rust/<ex>` (RMW via Cargo features); the collapsed loop
-    # below drives those, so there are no fixed per-RMW Rust paths to
-    # build up front here.
-
     echo "  → host nros-codegen (cargo)"
     cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     echo "  → logging-smoke-threadx-linux"
     cargo build $cargo_profile_args --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet
-    # Phase 118.B — collapsed-shape threadx-linux Rust + C / C++.
-    collapsed_rust_dirs=()
-    for case in $(nros_fixture_roles); do
-        if [ ! -d examples/threadx-linux/rust/${case} ]; then
-            continue
-        fi
-        # Phase 169 retired dust-dds; Cyclone (its replacement) has no
-        # pure-cargo build, so the migrated rmw-cyclonedds feature stays
-        # defined but unbuilt — deferred to phase-175. zenoh-only here.
-        rmws="zenoh"
-        for rmw in $rmws; do
-            echo "  → threadx-linux/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
-            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                ( cd examples/threadx-linux/rust/${case} && \
-                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                      --target-dir target-${rmw} --quiet )
-            else
-                ( cd examples/threadx-linux/rust/${case} && \
-                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                      --target-dir target-${rmw} --quiet ) &
-            fi
-        done
-    done
-    wait
-
+    # Phase 118.B — collapsed-shape threadx-linux C / C++. The Rust
+    # zenoh role binaries are produced by `build-examples`.
     collapsed_cmake_dirs=()
     for lang in c cpp; do
         for ex in $(nros_fixture_roles); do
@@ -164,7 +139,7 @@ build-fixtures:
     fi
 
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.
-build-all: build build-examples build-fixtures
+build-all: build-fixtures
     @echo "ThreadX Linux build-all completed."
 
 # Run ThreadX Linux integration tests

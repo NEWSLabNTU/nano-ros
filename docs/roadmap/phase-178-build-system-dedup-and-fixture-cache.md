@@ -94,7 +94,7 @@ non-duplicating.
   leaf targets so the same platform examples are not rebuilt by both
   `build-examples` and `build-fixtures`.
 
-- [ ] **178.B — define fixture-only platform targets.** For platforms
+- [x] **178.B — define fixture-only platform targets.** For platforms
   where `build-fixtures` currently rebuilds the normal role examples,
   split into:
   - `build-examples`: user-facing example compile smoke.
@@ -102,6 +102,14 @@ non-duplicating.
   - internal `build-fixture-extras`: only feature variants, C/C++ cells,
     smoke binaries, and test-only artifacts not already covered by
     `build-examples`.
+  Done for FreeRTOS, ThreadX Linux, and ThreadX RV64: public
+  `build-fixtures` now depends on `build-examples` plus
+  `build-fixture-extras`, and the extras target omits the duplicate
+  normal Rust role loop where `build-examples` already produces the same
+  `target-zenoh` artifacts. Native is split into a narrower
+  `build-fixture-role-examples` plus `build-fixture-extras`, because
+  public `native build-examples` is a broad repository-level Rust
+  example aggregate rather than a native-only fixture role target.
 
 - [ ] **178.C — fix jobserver DAG.** In `build-all.mk`, avoid running
   root `build-examples` concurrently with platform fixture targets that

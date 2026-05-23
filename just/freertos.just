@@ -70,7 +70,12 @@ build-examples:
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
-build-fixtures:
+build-fixtures: build-examples build-fixture-extras
+    @echo "FreeRTOS test fixtures built."
+
+# Internal Phase 178.B target: only fixture artifacts not already covered by
+# `build-examples`.
+build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -90,10 +95,8 @@ build-fixtures:
     # `build/` dirs. No cross-fixture lock contention. Cap concurrency
     # at 8 so on a 32-core host the per-cargo job server × 8 stays in
     # the same ballpark as nproc.
-    # Phase 118 collapsed the per-RMW `rust/<rmw>/<ex>` dirs onto a
-    # single `rust/<ex>` (RMW chosen via Cargo features); the collapsed
-    # loop below drives those. Only the standalone smoke fixture builds
-    # from a fixed path here.
+    # The normal Rust role examples are produced by `build-examples`.
+    # Only the standalone smoke fixture builds from a fixed path here.
     rust_dirs=()
     # Phase 88.15.b — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-freertos-mps2")
@@ -106,34 +109,6 @@ build-fixtures:
         printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
             'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
     fi
-
-    # Phase 118.D — collapsed-shape FreeRTOS Rust cases, zenoh-only
-    # matrix. Phase 169 retired dust-dds (pure-Rust, linked on
-    # bare-metal); its replacement Cyclone is a C++/CMake stack whose
-    # `nros_rmw_cyclonedds_register` C ABI symbol is only produced by a
-    # cross-built Cyclone library — there is no thumbv7m Cyclone build,
-    # so the migrated `rmw-cyclonedds` feature stays defined in each
-    # example's Cargo.toml but is NOT exercised in the FreeRTOS fixture
-    # matrix (it would fail at link with an undefined register symbol).
-    for case in $(nros_fixture_roles); do
-        if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
-            continue
-        fi
-        rmws="zenoh"
-        for rmw in $rmws; do
-            echo "  → freertos/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
-            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                ( cd examples/qemu-arm-freertos/rust/${case} && \
-                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                      --target-dir target-${rmw} --quiet )
-            else
-                ( cd examples/qemu-arm-freertos/rust/${case} && \
-                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                      --target-dir target-${rmw} --quiet ) &
-            fi
-        done
-    done
-    wait
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install
@@ -179,7 +154,7 @@ build-fixtures:
     fi
 
 # Build every FreeRTOS tier: core libraries, examples, and test fixtures.
-build-all: build build-examples build-fixtures
+build-all: build-fixtures
     @echo "FreeRTOS build-all completed."
 
 # Run FreeRTOS QEMU integration tests

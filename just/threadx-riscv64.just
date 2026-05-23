@@ -89,9 +89,13 @@ build-examples:
     echo "ThreadX QEMU RISC-V examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
-# Mirrors the cmake -D set used by the test fixture builders in
-# `nros_tests::fixtures::binaries::threadx_riscv64::build_cmake_example`.
-build-fixtures:
+build-fixtures: build-examples build-fixture-extras
+    @echo "ThreadX-RV64 test fixtures built."
+
+# Internal Phase 178.B target: only fixture artifacts not already covered by
+# `build-examples`. Mirrors the cmake -D set used by the test fixture builders
+# in `nros_tests::fixtures::binaries::threadx_riscv64::build_cmake_example`.
+build-fixture-extras:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -113,11 +117,8 @@ build-fixtures:
     config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/virtio-net-netx"
-    # Phase 160 follow-up — parallel cargo builds.
-    # Phase 118 collapsed the per-RMW `rust/<rmw>/<ex>` dirs onto a
-    # single `rust/<ex>` (RMW via Cargo features); the collapsed loop
-    # below drives those. Only the standalone smoke fixture builds from
-    # a fixed path here.
+    # The normal Rust role examples are produced by `build-examples`.
+    # Only the standalone smoke fixture builds from a fixed path here.
     rust_dirs=()
     # Phase 88.15.d — nros-log severity-coverage smoke fixture.
     rust_dirs+=("packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64")
@@ -147,35 +148,8 @@ build-fixtures:
     cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
         -p nros-codegen-c --bin nros-codegen --quiet
     codegen="$root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
-    # Phase 118.C — collapsed-shape ThreadX-RV64 Rust + C / C++,
-    # zenoh-only matrix. Phase 169 retired dust-dds (pure-Rust); its
-    # Cyclone replacement is a C++/CMake stack whose
-    # `nros_rmw_cyclonedds_register` C ABI symbol has no riscv64 bare
-    # build, so the migrated `rmw-cyclonedds` feature stays defined in
-    # each Cargo.toml but is NOT exercised here (it would fail at link).
-    rv64_rust_dirs=()
-    for case in $(nros_fixture_roles); do
-        if [ ! -d examples/qemu-riscv64-threadx/rust/${case} ]; then
-            continue
-        fi
-        rmws="zenoh"
-        for rmw in $rmws; do
-            echo "  → threadx-rv64/rust/${case} (--features rmw-${rmw}, target-${rmw}/)"
-            if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                ( cd examples/qemu-riscv64-threadx/rust/${case} && \
-                  THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                      --target-dir target-${rmw} --quiet )
-            else
-                ( cd examples/qemu-riscv64-threadx/rust/${case} && \
-                  THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-                  cargo build $cargo_profile_args --no-default-features --features rmw-${rmw} \
-                      --target-dir target-${rmw} --quiet ) &
-            fi
-        done
-    done
-    wait
-
+    # Phase 118.C — collapsed-shape ThreadX-RV64 C / C++. The Rust
+    # zenoh role binaries are produced by `build-examples`.
     collapsed_cmake_dirs=()
     for lang in c cpp; do
         for ex in $(nros_fixture_roles); do
@@ -224,7 +198,7 @@ build-fixtures:
     fi
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.
-build-all: build build-examples build-fixtures
+build-all: build-fixtures
     @echo "ThreadX RISC-V 64 build-all completed."
 
 # Run ThreadX QEMU RISC-V 64 integration tests
