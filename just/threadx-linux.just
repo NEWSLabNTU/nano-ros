@@ -61,6 +61,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
@@ -90,7 +91,7 @@ build-fixtures:
     cargo build $cargo_profile_args --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet
     # Phase 118.B — collapsed-shape threadx-linux Rust + C / C++.
     collapsed_rust_dirs=()
-    for case in talker listener service-server service-client action-server action-client; do
+    for case in $(nros_fixture_roles); do
         if [ ! -d examples/threadx-linux/rust/${case} ]; then
             continue
         fi
@@ -115,7 +116,7 @@ build-fixtures:
 
     collapsed_cmake_dirs=()
     for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
+        for ex in $(nros_fixture_roles); do
             dir="examples/threadx-linux/$lang/$ex"
             [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
         done

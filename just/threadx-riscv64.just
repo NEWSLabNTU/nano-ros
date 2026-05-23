@@ -95,6 +95,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
@@ -153,7 +154,7 @@ build-fixtures:
     # build, so the migrated `rmw-cyclonedds` feature stays defined in
     # each Cargo.toml but is NOT exercised here (it would fail at link).
     rv64_rust_dirs=()
-    for case in talker listener service-server service-client action-server action-client; do
+    for case in $(nros_fixture_roles); do
         if [ ! -d examples/qemu-riscv64-threadx/rust/${case} ]; then
             continue
         fi
@@ -177,7 +178,7 @@ build-fixtures:
 
     collapsed_cmake_dirs=()
     for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
+        for ex in $(nros_fixture_roles); do
             dir="examples/qemu-riscv64-threadx/$lang/$ex"
             [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
         done

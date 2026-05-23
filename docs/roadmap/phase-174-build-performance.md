@@ -8,9 +8,10 @@ remaining opportunities found while bringing `build-all` green on main.
 **Status.** Pragmatic scope done. The safe build-system wins have
 landed: sccache wiring, global parallelism budget, parallel Zephyr,
 Zephyr incremental rebuilds, ninja-direct warm rebuilds, and the
-unified jobserver from Phase 176. The only remaining 174.A/174.B ideas
-are Zephyr sysbuild/shared-image research and cross-config picolibc
-dedup measurement; both are intentionally deferred.
+unified jobserver from Phase 176. The remaining 174.A sysbuild/shared
+image research was completed on 2026-05-24 and rejected as the wrong
+lever for this fixture matrix. The remaining 174.B cross-config
+picolibc dedup measurement is intentionally deferred.
 
 **Priority.** P3 (ergonomics/CI throughput).
 
@@ -86,7 +87,7 @@ Each of ~21 zephyr fixtures pays, uncacheably and largely serially:
   ninja to regenerate CMake and rebuild far more than the fixture
   changed.
 
-**Deeper investigation (2026-05-21) — diminishing returns, deferred.**
+**Deeper investigation (2026-05-21) — diminishing returns.**
 With the warm same-dir rebuild already at 0.28 s, the residual cost is
 the **cold first build of each fresh build dir**, which decomposes as:
 per-dir cmake configure (~4 s: devicetree regen + Rust-target detect)
@@ -110,6 +111,53 @@ signatures + sccache + the jobserver) are banked. Further cold-build
 reduction needs a Zephyr sysbuild/shared-image rework + a clean
 cyclonedds workspace. Deferred as a tracked research item rather than
 hacked in.
+
+**Final sysbuild/shared-image research (2026-05-24) — no implementation.**
+The current fixture list has 55 Zephyr `native_sim/native/64` images:
+19 zenoh, 18 xrce, and 18 cyclonedds. A narrow probe of
+`build-rs-{talker,listener}-zenoh` after a clean pull reached the
+same 1300-target Zephyr graph in **each** build dir and rebuilt/link-staged
+`modules/picolibc/libc.a` separately. The probe then failed at the Rust
+message-crate step because the local generated `examples/zephyr/rust/*/generated`
+directories had been cleaned; that does not affect the build-graph
+finding, because the duplicated kernel/picolibc work had already been
+scheduled in both dirs.
+
+Local Zephyr 3.7 sysbuild sources confirm why it does not solve this:
+
+- `doc/build/sysbuild/index.rst` defines sysbuild as a higher-level layer
+  that manages one or more Zephyr build systems/domains and emits one
+  image per managed build system.
+- `share/sysbuild/cmake/modules/sysbuild_extensions.cmake` implements
+  `ExternalZephyrProject_Add()` with `ExternalProject_Add()`, a per-image
+  `BINARY_DIR=${CMAKE_BINARY_DIR}/${APPLICATION}`, and later
+  `ExternalZephyrProject_Cmake()` invokes CMake for each image with its
+  own `-B${BINARY_DIR}` / `-S${SOURCE_DIR}`.
+- `share/sysbuild/images/CMakeLists.txt` adds the main app as the first
+  image, then additional bootloader/module/board/SoC images. It orders
+  multiple image builds; it does not create a shared Zephyr kernel/libc
+  artifact that several app images link against.
+
+So converting the fixture sweep to sysbuild would mostly replace many
+top-level `west build` invocations with one top-level sysbuild
+invocation that still configures and builds many nested Zephyr images.
+It might trim a little `west` process startup, but the expensive parts
+remain: per-image devicetree/Kconfig/autoconf, generated include paths,
+picolibc archive, Zephyr kernel archive, app archive, and final
+`zephyr.elf`/native_sim executable link. Reusing those artifacts outside
+the image build would fight Zephyr's normal dependency model because
+they are compiled against each image's generated headers, config,
+linker state, and app-selected modules. The safe reuse layer for that is
+already sccache.
+
+The only credible next cold-build win is not sysbuild; it is a
+source-level fixture collapse: create fewer test-only Zephyr apps under
+`packages/testing/` (not `examples/`) that can select talker/listener,
+service, or action roles at runtime for a fixed board/RMW/language. That
+could cut app image count, but it changes test fixture shape and would
+need new runtime argument plumbing plus parity checks against the
+standalone examples. Treat that as a new phase, not more 174.A build
+glue.
 
 ### 174.B — config-divergent cache misses — **investigated, deferred** (2026-05-21)
 

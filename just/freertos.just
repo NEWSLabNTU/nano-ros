@@ -74,6 +74,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
@@ -114,7 +115,7 @@ build-fixtures:
     # so the migrated `rmw-cyclonedds` feature stays defined in each
     # example's Cargo.toml but is NOT exercised in the FreeRTOS fixture
     # matrix (it would fail at link with an undefined register symbol).
-    for case in talker listener service-server service-client action-server action-client; do
+    for case in $(nros_fixture_roles); do
         if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
             continue
         fi
@@ -148,7 +149,7 @@ build-fixtures:
     # existed pre-collapse on FreeRTOS, so the matrix is zenoh-only).
     collapsed_cmake_dirs=()
     for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
+        for ex in $(nros_fixture_roles); do
             dir="examples/qemu-arm-freertos/$lang/$ex"
             [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
         done

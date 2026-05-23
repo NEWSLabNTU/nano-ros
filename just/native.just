@@ -85,6 +85,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
@@ -201,7 +202,7 @@ build-fixtures:
     # examples are deferred to their own phase (CMake/Corrosion glue for
     # native + a ddsrt RTOS port for embedded). See
     # docs/roadmap/phase-175-cyclone-rust-example-build-path.md.
-    for collapsed_case in talker listener service-server service-client action-server action-client; do
+    for collapsed_case in $(nros_fixture_roles); do
         if [ -d examples/native/rust/${collapsed_case} ]; then
             ensure_native_rust_generated "native/rust/${collapsed_case}"
             for rmw in zenoh xrce; do
@@ -230,7 +231,7 @@ build-fixtures:
     # cleanly under all three RMWs (zenoh, dds, xrce); the legacy
     # `c/xrce/<case>/` siblings' manual-CDR variant is now redundant
     # and is dropped by Tier 5 cleanup.
-    for case in talker listener service-server service-client action-server action-client; do
+    for case in $(nros_fixture_roles); do
         if [ -d examples/native/c/${case} ]; then
             for rmw in zenoh xrce; do
                 echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
@@ -249,7 +250,7 @@ build-fixtures:
     wait
     # Phase 118.B.3 — collapsed-shape native C++ examples. Same shape
     # as the C side; the typed nros-cpp binding handles all three RMWs.
-    for case in talker listener service-server service-client action-server action-client; do
+    for case in $(nros_fixture_roles); do
         if [ -d examples/native/cpp/${case} ]; then
             for rmw in zenoh xrce; do
                 echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"

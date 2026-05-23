@@ -136,6 +136,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixture-matrix.sh
     trap 'for pid in $(jobs -pr); do kill "$pid" 2>/dev/null || true; done; wait; exit 130' INT TERM
     if ! command -v west >/dev/null 2>&1; then
         echo "Zephyr skip: west not found"; exit 0
@@ -267,94 +268,23 @@ build-fixtures:
     fi
 
     # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
-    entries=(
-      # Zenoh Rust (native_sim)
-      # Zenoh C++ (native_sim) — talker/listener required, service+action best-effort
-      # XRCE entries carry a 5th `xrce_agent_port` column so each
-      # (variant, lang) pair builds with its dedicated Kconfig port —
-      # mirrors `nros_tests::platform::ZEPHYR.xrce_agent_port_for`.
-      # Pubsub uses base; service / action add 10 / 20; lang stride 100.
-      # Pairs that share a test (talker+listener, server+client) MUST
-      # have the same port.
-      #
-      # Phase 95.A — XRCE Rust full 6-set (build dirs match `nros_tests::zephyr`)
-      # XRCE C
-      # Phase 95.C — XRCE C++ full 6-set
-      # Phase 71.8 + Phase 93 DDS native_sim boot smoke (best-effort).
-      # Keep this list in sync with the qemu_cortex_a9 set below — the
-      # zephyr boots tests in nros-tests/tests/zephyr.rs expect every
-      # example here as a native_sim binary.
-      # Phase 92 + 95.B — DDS Rust full 7-set on qemu_cortex_a9 (real IGMP/GEM/ARP)
-      # Phase 95.D — DDS C++ full 6-set on both native_sim and qemu_cortex_a9
-      # Phase 95.E — DDS C full 6-set on both native_sim and qemu_cortex_a9
-
-      # Phase 168.3 — collapsed Rust cases (single dir, RMW via prj overlay).
-      "native_sim/native/64|build-rs-talker-zenoh|zephyr/rust/talker|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-talker-xrce|zephyr/rust/talker|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-rs-listener-zenoh|zephyr/rust/listener|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-listener-xrce|zephyr/rust/listener|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-rs-service-server-zenoh|zephyr/rust/service-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-service-server-xrce|zephyr/rust/service-server|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-rs-service-client-zenoh|zephyr/rust/service-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-service-client-xrce|zephyr/rust/service-client|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-rs-action-server-zenoh|zephyr/rust/action-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-action-server-xrce|zephyr/rust/action-server|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-rs-action-client-zenoh|zephyr/rust/action-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-rs-action-client-xrce|zephyr/rust/action-client|0||prj.conf;prj-xrce.conf"
+    entries=()
+    # Build every user-facing role as its own Zephyr app. RMW still
+    # varies by overlay, preserving the same shape a user copy-out build
+    # would exercise.
+    for lang in $(nros_fixture_langs); do
+        lang_tag="$(nros_zephyr_lang_tag "$lang")"
+        for rmw in zenoh xrce cyclonedds; do
+            for case in $(nros_fixture_roles); do
+                entries+=(
+                  "native_sim/native/64|build-${lang_tag}-${case}-${rmw}|zephyr/${lang}/${case}|0||prj.conf;prj-${rmw}.conf"
+                )
+            done
+        done
+    done
+    # Extra Rust async fixture. Not part of the universal role set.
+    entries+=(
       "native_sim/native/64|build-rs-service-client-async-zenoh|zephyr/rust/service-client-async|0||prj.conf;prj-zenoh.conf"
-
-      # Phase 168.4 — collapsed C cases (zenoh + xrce; dds deferred
-      # to Phase 168.X — see docs/roadmap/phase-168-X-zephyr-cmake-build-gaps.md).
-      "native_sim/native/64|build-c-talker-zenoh|zephyr/c/talker|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-c-talker-xrce|zephyr/c/talker|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-c-listener-zenoh|zephyr/c/listener|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-c-listener-xrce|zephyr/c/listener|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-c-service-server-zenoh|zephyr/c/service-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-c-service-server-xrce|zephyr/c/service-server|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-c-service-client-zenoh|zephyr/c/service-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-c-service-client-xrce|zephyr/c/service-client|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-c-action-server-zenoh|zephyr/c/action-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-c-action-server-xrce|zephyr/c/action-server|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-c-action-client-zenoh|zephyr/c/action-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-c-action-client-xrce|zephyr/c/action-client|0||prj.conf;prj-xrce.conf"
-
-      # Phase 168.X gap 1 unblocked — collapsed C++ cases. cyclonedds
-      # native_sim hits an upstream Zephyr cmake gen-expr bug; FVP /
-      # aemv8r path remains in `examples/zephyr/cpp/cyclonedds/talker-aemv8r/`.
-      "native_sim/native/64|build-cpp-talker-zenoh|zephyr/cpp/talker|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-cpp-talker-xrce|zephyr/cpp/talker|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-cpp-listener-zenoh|zephyr/cpp/listener|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-cpp-listener-xrce|zephyr/cpp/listener|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-cpp-service-server-zenoh|zephyr/cpp/service-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-cpp-service-server-xrce|zephyr/cpp/service-server|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-cpp-service-client-zenoh|zephyr/cpp/service-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-cpp-service-client-xrce|zephyr/cpp/service-client|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-cpp-action-server-zenoh|zephyr/cpp/action-server|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-cpp-action-server-xrce|zephyr/cpp/action-server|0||prj.conf;prj-xrce.conf"
-      "native_sim/native/64|build-cpp-action-client-zenoh|zephyr/cpp/action-client|0||prj.conf;prj-zenoh.conf"
-      "native_sim/native/64|build-cpp-action-client-xrce|zephyr/cpp/action-client|0||prj.conf;prj-xrce.conf"
-
-      # Phase 11W — Cyclone DDS native_sim. Compile + link path
-      # unblocked by Phase 168.X.fvp llext-edk patch + cxx-compat
-      # shims + DDS_HAS_* `#ifdef`-fix + link stubs.
-      "native_sim/native/64|build-rs-talker-cyclonedds|zephyr/rust/talker|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-rs-listener-cyclonedds|zephyr/rust/listener|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-rs-service-server-cyclonedds|zephyr/rust/service-server|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-rs-service-client-cyclonedds|zephyr/rust/service-client|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-rs-action-server-cyclonedds|zephyr/rust/action-server|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-rs-action-client-cyclonedds|zephyr/rust/action-client|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-c-talker-cyclonedds|zephyr/c/talker|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-c-listener-cyclonedds|zephyr/c/listener|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-c-service-server-cyclonedds|zephyr/c/service-server|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-c-service-client-cyclonedds|zephyr/c/service-client|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-c-action-server-cyclonedds|zephyr/c/action-server|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-c-action-client-cyclonedds|zephyr/c/action-client|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-cpp-talker-cyclonedds|zephyr/cpp/talker|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-cpp-listener-cyclonedds|zephyr/cpp/listener|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-cpp-service-server-cyclonedds|zephyr/cpp/service-server|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-cpp-service-client-cyclonedds|zephyr/cpp/service-client|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-cpp-action-server-cyclonedds|zephyr/cpp/action-server|0||prj.conf;prj-cyclonedds.conf"
-      "native_sim/native/64|build-cpp-action-client-cyclonedds|zephyr/cpp/action-client|0||prj.conf;prj-cyclonedds.conf"
     )
 
     failures=()

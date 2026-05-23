@@ -59,6 +59,7 @@ build-fixtures:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
@@ -76,7 +77,7 @@ build-fixtures:
     # Phase 160 follow-up — parallel cargo builds (per-example isolated
     # target/ dirs, no cross-fixture lock contention).
     rust_dirs=()
-    for ex in talker listener service-server service-client action-server action-client; do
+    for ex in $(nros_fixture_roles); do
         rust_dirs+=("examples/qemu-arm-nuttx/rust/$ex")
     done
     # Phase 169 retired dust-dds; the NuttX `rust/dds/<ex>` examples had
@@ -119,7 +120,7 @@ build-fixtures:
     # Cyclone on NuttX is gated on a hosted socket/runtime port).
     cmake_dirs=()
     for lang in c cpp; do
-        for ex in talker listener service-server service-client action-server action-client; do
+        for ex in $(nros_fixture_roles); do
             cmake_dirs+=("examples/qemu-arm-nuttx/$lang/$ex")
         done
     done
