@@ -32,6 +32,7 @@ unset _nros_script
 # exist on a given clone depending on which `just <module> setup`
 # recipes have run.
 _nros_bin_dirs=(
+    "${HOME}/.local/bin"                                               # pipx / pip --user tools (pio, west, etc.)
     "${NROS_ROOT}/build/zenohd"                                          # zenohd
     "${NROS_ROOT}/build/qemu/bin"                                        # patched qemu-system-arm + qemu-ga
     "${NROS_ROOT}/build/xrce-agent"                                      # MicroXRCEAgent
@@ -44,7 +45,7 @@ _nros_strip_path() {
     local IFS=':' p clean=()
     for p in $PATH; do
         case "$p" in
-            "${NROS_ROOT}/build/"*|"${NROS_ROOT}/packages/codegen/"*) ;;
+            "${HOME}/.local/bin"|"${NROS_ROOT}/build/"*|"${NROS_ROOT}/packages/codegen/"*) ;;
             *) clean+=("$p") ;;
         esac
     done

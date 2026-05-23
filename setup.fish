@@ -17,6 +17,7 @@ set -gx NROS_ROOT (realpath (dirname $_nros_script))
 
 # Binary directories shipped by nano-ros builds.
 set -l _nros_bin_dirs \
+    "$HOME/.local/bin" \
     "$NROS_ROOT/build/zenohd" \
     "$NROS_ROOT/build/qemu/bin" \
     "$NROS_ROOT/build/xrce-agent" \
@@ -25,7 +26,8 @@ set -l _nros_bin_dirs \
 # Strip any previous nano-ros entries from PATH before re-adding.
 set -l _nros_clean
 for p in $PATH
-    if not string match -q "$NROS_ROOT/build/*" -- $p
+    if test "$p" != "$HOME/.local/bin"
+        and not string match -q "$NROS_ROOT/build/*" -- $p
         and not string match -q "$NROS_ROOT/packages/codegen/*" -- $p
         set -a _nros_clean $p
     end

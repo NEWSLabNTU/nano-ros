@@ -35,6 +35,10 @@ export NROS_BUILD_JOBS := env_var_or_default("NROS_BUILD_JOBS", `nproc 2>/dev/nu
 # NROS_CARGO_PROFILE=release for the historical profile.
 export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "nros-fast-release")
 
+# User-local tools installed by setup modules (for example PlatformIO via
+# pipx/pip --user) should be visible to all just-driven tests.
+export PATH := env("HOME") / ".local/bin" + ":" + env_var_or_default("PATH", "")
+
 LOG_DIR := "test-logs"
 
 # Pinned nightly channel for workspace tooling (fmt, miri, llvm-cov, build-std, emit-stack-sizes).
@@ -53,6 +57,10 @@ export THREADX_DIR := env("THREADX_DIR", justfile_directory() / "third-party/thr
 export THREADX_CONFIG_DIR := env("THREADX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-board-threadx-linux/config")
 export NETX_DIR := env("NETX_DIR", justfile_directory() / "third-party/threadx/netxduo")
 export NETX_CONFIG_DIR := env("NETX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-board-threadx-linux/config")
+export PX4_AUTOPILOT_DIR := env("PX4_AUTOPILOT_DIR", justfile_directory() / "third-party/px4/PX4-Autopilot")
+export NROS_ESP_IDF_WORKSPACE := env("NROS_ESP_IDF_WORKSPACE", justfile_directory() / "esp-idf-workspace/esp-idf")
+export NROS_ESP_IDF_ENV_SHIM := env("NROS_ESP_IDF_ENV_SHIM", justfile_directory() / "esp-idf-workspace/env.sh")
+export IDF_PATH := env("IDF_PATH", env("NROS_ESP_IDF_WORKSPACE", justfile_directory() / "esp-idf-workspace/esp-idf"))
 
 # =============================================================================
 # Platform modules (just <platform> <recipe>)

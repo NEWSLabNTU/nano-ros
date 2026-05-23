@@ -8,11 +8,10 @@
 //!
 //! ## Preconditions
 //!
-//! - `third-party/px4/PX4-Autopilot` submodule populated recursively
-//!   (run `just px4 setup`).
-//! - `third-party/px4/px4-rs` submodule populated (run `just px4 setup`).
+//! - px4-rs SITL test dependency populated (run `just px4 setup`).
 //! - PX4 SITL build prerequisites installed (cmake, ninja, gcc, py3).
-//! - `PX4_AUTOPILOT_DIR` env var (optional; defaults to vendored submodule).
+//! - `PX4_AUTOPILOT_DIR` env var pointing at a PX4-Autopilot checkout
+//!   (provided by `just px4 test-sitl`, `just test-all`, or `.envrc`).
 //!
 //! Per CLAUDE.md's "no silent skip" rule, this test PANICS (does not
 //! report PASS via a [SKIPPED] line) when preconditions are unmet.
@@ -48,36 +47,20 @@ fn project_root() -> PathBuf {
         .expect("canonicalize project root")
 }
 
-/// Resolve the PX4-Autopilot tree. Order:
-///   1. `PX4_AUTOPILOT_DIR` env var (user override).
-///   2. Vendored submodule at `third-party/px4/PX4-Autopilot`.
-///
 /// Per CLAUDE.md no-silent-skip rule, panics with an actionable
-/// message if neither path is valid.
+/// message if the configured path is invalid.
 fn ensure_px4_autopilot_dir() -> PathBuf {
-    if let Ok(dir) = env::var("PX4_AUTOPILOT_DIR") {
-        let path = PathBuf::from(&dir);
-        assert!(
-            path.join("Tools").is_dir(),
-            "PX4_AUTOPILOT_DIR={dir} does not look like a PX4 checkout (missing Tools/)"
-        );
-        return path;
-    }
-    let submodule = project_root().join("third-party/px4/PX4-Autopilot");
-    assert!(
-        submodule.join("Tools").is_dir(),
-        "PX4-Autopilot submodule not populated at {}. \
-         Run `just px4 setup` (or set PX4_AUTOPILOT_DIR \
-         to your own PX4 checkout).",
-        submodule.display()
+    let dir = env::var("PX4_AUTOPILOT_DIR").expect(
+        "PX4_AUTOPILOT_DIR unset. Run via `just px4 test-sitl`, \
+         `just test-all`, load `.envrc`, or set it to a PX4-Autopilot checkout.",
     );
-    // Set the env var so px4-sitl-tests' own helpers see it if they need it.
-    // SAFETY: env var mutation in tests is benign because nextest runs each
-    // test in a separate process via the px4-sitl group's max-threads = 1.
-    unsafe {
-        env::set_var("PX4_AUTOPILOT_DIR", &submodule);
-    }
-    submodule
+    let path = PathBuf::from(&dir);
+    assert!(
+        path.join("Tools").is_dir(),
+        "PX4_AUTOPILOT_DIR={dir} does not look like a PX4 checkout (missing Tools/). \
+         Run `just px4 setup` or set PX4_AUTOPILOT_DIR."
+    );
+    path
 }
 
 /// Invoke `make px4_sitl_default EXTERNAL_MODULES_LOCATION=…` to build

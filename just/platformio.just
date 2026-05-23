@@ -13,6 +13,7 @@ default:
 setup:
     #!/usr/bin/env bash
     set -e
+    export PATH="$HOME/.local/bin:$PATH"
     if command -v pio >/dev/null 2>&1; then
         echo "PlatformIO already installed: $(pio --version)"
         exit 0
@@ -36,6 +37,7 @@ setup:
 doctor:
     #!/usr/bin/env bash
     set +e
+    export PATH="$HOME/.local/bin:$PATH"
     if command -v pio >/dev/null 2>&1; then
         echo "  [OK] PlatformIO Core: $(pio --version)"
         exit 0

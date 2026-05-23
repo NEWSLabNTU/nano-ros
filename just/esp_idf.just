@@ -2,14 +2,14 @@ set working-directory := '..'
 
 # Path to the ESP-IDF workspace created by `scripts/esp_idf/setup.sh`.
 # Default mirrors the setup script's NROS_ESP_IDF_WORKSPACE default.
-ESP_IDF_WORKSPACE := env_var_or_default('NROS_ESP_IDF_WORKSPACE', justfile_directory() + '/../esp-idf-workspace/esp-idf')
+ESP_IDF_WORKSPACE := env_var_or_default('NROS_ESP_IDF_WORKSPACE', justfile_directory() + '/esp-idf-workspace/esp-idf')
 
 default:
     @just --list --justfile {{source_file()}}
 
-# Install ESP-IDF (clone + ./install.sh). Opt-in — NOT pulled by top-level
-# `just setup`, which uses esp-hal bare-metal instead. Required only when
-# driving the nros-platform-esp-idf C port.
+# Install ESP-IDF (clone + ./install.sh). Required when driving the
+# nros-platform-esp-idf C port and included in the full `just setup`
+# tier so `just test-all` can discover the canonical env shim.
 #
 # Re-running is idempotent: refreshes the checkout + re-runs install.sh.
 setup *args:

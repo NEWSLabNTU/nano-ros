@@ -27,34 +27,19 @@ fn have(cmd: &str) -> bool {
 fn esp_idf_integration_shell_smoke() {
     let root = workspace_root();
 
-    // Phase 150.G — auto-detect IDF_PATH at the canonical in-tree
-    // location (`<root>/external/esp-idf/`) when the caller hasn't
-    // exported it AND prepend `<IDF_PATH>/tools` to PATH so the
-    // `--version`-only smoke probe below resolves `idf.py` without
-    // requiring the caller to source `export.sh` (which sets up
-    // the full Python venv too — out of scope for a smoke test).
-    if std::env::var("IDF_PATH").is_err() {
-        let candidate = root.join("external/esp-idf");
-        if candidate.join("export.sh").exists() {
-            // SAFETY: nextest runs each test in its own process;
-            // no cross-test race.
-            unsafe { std::env::set_var("IDF_PATH", &candidate) };
-            let tools = candidate.join("tools");
-            if tools.join("idf.py").exists() {
-                let path = std::env::var("PATH").unwrap_or_default();
-                let new_path = format!("{}:{}", tools.display(), path);
-                unsafe { std::env::set_var("PATH", new_path) };
-            }
-        }
-    }
-
-    if !have("idf.py") {
-        nros_tests::skip!("idf.py not on PATH — install ESP-IDF >=5.1 + source export.sh");
+    let env_shim = std::env::var("NROS_ESP_IDF_ENV_SHIM")
+        .ok()
+        .map(PathBuf::from);
+    if !have("idf.py") && !env_shim.as_ref().is_some_and(|p| p.exists()) {
+        nros_tests::skip!(
+            "idf.py not on PATH and NROS_ESP_IDF_ENV_SHIM is unset — run via \
+             `just test-all`, load `.envrc`, or run `just esp_idf setup`"
+        );
     }
     if std::env::var("IDF_PATH").is_err() {
         nros_tests::skip!(
-            "IDF_PATH unset and no in-tree external/esp-idf — \
-             run `just esp_idf setup` or `. $IDF_PATH/export.sh`"
+            "IDF_PATH unset — run via `just test-all`, load `.envrc`, \
+             or source `$IDF_PATH/export.sh`"
         );
     }
 
@@ -94,10 +79,21 @@ fn esp_idf_integration_shell_smoke() {
     // wired; if the venv isn't sourced (`/usr/bin/env: python`
     // missing, etc.) skip cleanly — full env setup is `just esp_idf
     // setup`'s job, not this smoke test's.
-    let version = Command::new("idf.py")
-        .arg("--version")
-        .output()
-        .expect("invoke idf.py --version");
+    let version = if let Some(env_shim) = env_shim.filter(|p| p.exists()) {
+        Command::new("bash")
+            .arg("-lc")
+            .arg(format!(
+                "source '{}' >/dev/null 2>&1 && idf.py --version",
+                env_shim.display()
+            ))
+            .output()
+            .expect("invoke idf.py --version through NROS_ESP_IDF_ENV_SHIM")
+    } else {
+        Command::new("idf.py")
+            .arg("--version")
+            .output()
+            .expect("invoke idf.py --version")
+    };
     if !version.status.success() {
         nros_tests::skip!(
             "idf.py --version failed (likely missing Python venv from `. \

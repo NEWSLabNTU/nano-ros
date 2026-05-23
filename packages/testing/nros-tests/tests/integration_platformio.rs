@@ -23,11 +23,21 @@ fn have(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn platformio_bin() -> Option<PathBuf> {
+    if have("pio") {
+        return Some(PathBuf::from("pio"));
+    }
+    if have("platformio") {
+        return Some(PathBuf::from("platformio"));
+    }
+    None
+}
+
 #[test]
 fn platformio_integration_shell_smoke() {
-    if !have("pio") && !have("platformio") {
-        nros_tests::skip!("pio CLI not on PATH — install PlatformIO Core");
-    }
+    let Some(bin) = platformio_bin() else {
+        nros_tests::skip!("pio CLI not available — run `just platformio setup`");
+    };
 
     let root = workspace_root();
     let shell = root.join("integrations/platformio");
@@ -61,15 +71,14 @@ fn platformio_integration_shell_smoke() {
     // platform package (espidf / native) — that's a heavy step gated
     // to per-RTOS CI. Here we run `pio --version` as the cheap
     // smoke that the CLI is functional when present.
-    let bin = if have("pio") { "pio" } else { "platformio" };
-    let version = Command::new(bin)
+    let version = Command::new(&bin)
         .arg("--version")
         .output()
         .expect("invoke pio --version");
     assert!(
         version.status.success(),
         "{} --version failed: {}",
-        bin,
+        bin.display(),
         String::from_utf8_lossy(&version.stderr)
     );
 }

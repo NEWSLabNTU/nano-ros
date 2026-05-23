@@ -4,10 +4,10 @@
 //! requires an exact `src/CMakeLists.txt` +
 //! `src/modules/<name>/CMakeLists.txt` layout) and runs
 //! `make px4_sitl_default` with `EXTERNAL_MODULES_LOCATION=`
-//! pointing at the template when `PX4_AUTOPILOT_DIR` is set.
+//! pointing at the template when PX4 is available.
 //!
-//! Skips cleanly via `nros_tests::skip!` when `PX4_AUTOPILOT_DIR` is
-//! absent (the heavy SITL build is a per-RTOS CI concern).
+//! Uses `PX4_AUTOPILOT_DIR`, whose default is provided by `justfile`
+//! and `.envrc`.
 
 use std::{path::PathBuf, process::Command};
 
@@ -62,12 +62,14 @@ fn px4_integration_template_smoke() {
     let px4_dir = match std::env::var("PX4_AUTOPILOT_DIR") {
         Ok(d) => PathBuf::from(d),
         Err(_) => nros_tests::skip!(
-            "PX4_AUTOPILOT_DIR unset — point at a checkout of PX4-Autopilot to run px4_sitl_default"
+            "PX4_AUTOPILOT_DIR unset — run via `just test-all`, load `.envrc`, \
+             or set it to a PX4-Autopilot checkout"
         ),
     };
     if !px4_dir.join("Makefile").exists() {
         nros_tests::skip!(
-            "PX4_AUTOPILOT_DIR={} does not look like a PX4 checkout (no Makefile)",
+            "PX4_AUTOPILOT_DIR={} does not look like a PX4 checkout (no Makefile) — \
+             run `just px4 setup` or set PX4_AUTOPILOT_DIR",
             px4_dir.display()
         );
     }
