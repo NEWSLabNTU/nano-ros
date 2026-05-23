@@ -301,7 +301,8 @@ check JOBS="75%":
 
     find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
-                       -not -path '*/build/*' -not -path '*/zephyr/*' \
+                       -not -path '*/build/*' -not -path '*/build-*/*' \
+                       -not -path '*/zephyr/*' \
                        -not -path '*/multi-package-workspace/*' \
                        -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \

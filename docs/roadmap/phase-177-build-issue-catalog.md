@@ -8,16 +8,22 @@ open items stay in "Known issues"; completed items move to "Closed".
 tail. Issues owned by a more specific phase are linked here but should be
 resolved in that owning phase.
 
-**Current status.** Build quality gates are green after the follow-up
-fixes, but the full runtime `test-all` layer still has environment/setup
-and E2E failures that need focused owners.
+**Current status.** Phase 171 is archived and this tracker now owns the
+remaining build/test cleanup. Build quality gates are green after the
+follow-up fixes, but the full runtime `test-all` layer still has
+environment/setup and E2E failures that need focused owners. Latest
+171.F.1 root `just ci` attempt (2026-05-22, with
+`NROS_ZEPHYR_BUILD_ROOT=/home/aeon/repos/nano-ros/build/zephyr-workspace-builds`)
+passed static checks, RTOS link check, Cyclone CI, doctests, Miri, C
+codegen, and orchestration E2E, then failed in `test-all` with 39 real
+failures plus 8 environment skips.
 
 ## Known Issues
 
 ### Build/Feature Ownership
 
 - [ ] **177.2 - Remaining Cyclone Zephyr action gaps.**
-  Owner: Phase 171.0.b / 171.0.c.
+  Owner: Phase 177, inherited from archived Phase 171.0.b / 171.0.c.
   C-service request delivery is no longer an open catalog item; Phase
   171.0.a fixed the RELIABLE+VOLATILE request match race. Native
   goal/result actions are also no longer open: C, Rust, and C++
@@ -60,12 +66,12 @@ and E2E failures that need focused owners.
 ### Test-All Runtime / E2E
 
 - [ ] **177.9 - Runtime E2E failures need focused reruns.**
-  The broad `test-all` tail reported 957 tests run: 876 passed, 79
-  failed, 2 timed out, and 9 skipped. The harness summarized this as 29
-  real failures out of 81 total failures/timeouts. Failures clustered in
-  nano2nano, bridge, Zephyr, and service orchestration groups. Rerun
-  these groups with required fixtures/services prebuilt and split real
-  product bugs from host/setup fallout.
+  The latest root `just ci` tail reports 39 real failures plus 8
+  environment skips. Failures cluster in bridge startup/session-open,
+  CMake platform cells, ESP32/QEMU serial, C XRCE API, logging smoke,
+  NuttX/RTOS E2E, native XRCE actions/services/pubsub, and Zephyr E2E
+  groups. Rerun these groups with required fixtures/services prebuilt
+  and split real product bugs from host/setup fallout.
 
 - [ ] **177.19 - ESP32-C3 QEMU OpenETH Zenoh pub/sub does not move user data.**
   Focused `test_esp32_talker_listener_e2e` retries still reach
@@ -194,6 +200,9 @@ and E2E failures that need focused owners.
 - [x] Zephyr native_sim runner make-hop with poisoned fifo `MAKEFLAGS`
   routed through repo-local GNU make 4.4 instead of `/usr/bin/make`.
 - [ ] Full `just build-all` rerun after the final Zephyr follow-up fix.
+- [~] Full root `just ci` rerun after Phase 171 archive prep: static
+  gates passed, `test-all` failed with 39 real failures + 8 environment
+  skips.
 - [ ] Full `test-all` rerun with PX4/ESP-IDF/PlatformIO/bridge fixtures
   prepared and 177.19/177.20 either fixed or explicitly expected-failed.
 
@@ -201,7 +210,7 @@ and E2E failures that need focused owners.
 
 Archive this tracker only after:
 
-- [ ] 177.2 and 177.3 move fully into their owning phases or close.
+- [ ] 177.2 and 177.3 close or move into newer, more specific phase docs.
 - [ ] 177.6 through 177.9 have owners and either close or move into more
   specific phase docs.
 - [ ] 177.19 and 177.20 close or move into platform-specific runtime

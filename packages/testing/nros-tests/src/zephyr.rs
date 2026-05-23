@@ -451,6 +451,12 @@ pub fn zephyr_workspace_path() -> Option<PathBuf> {
     None
 }
 
+fn zephyr_build_root(workspace: &Path) -> PathBuf {
+    std::env::var_os("NROS_ZEPHYR_BUILD_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| workspace.to_path_buf())
+}
+
 /// Check if west command is available
 pub fn is_west_available() -> bool {
     Command::new("west")
@@ -696,13 +702,14 @@ pub fn get_or_build_zephyr_example(
     let workspace = zephyr_workspace_path()
         .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
 
+    let build_root = zephyr_build_root(&workspace);
     let build_dir = build_dir_for_example(example_name);
 
     // Determine binary path based on platform
     let binary_path = match platform {
-        ZephyrPlatform::NativeSim => workspace.join(format!("{}/zephyr/zephyr.exe", build_dir)),
+        ZephyrPlatform::NativeSim => build_root.join(format!("{}/zephyr/zephyr.exe", build_dir)),
         ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA9 => {
-            workspace.join(format!("{}/zephyr/zephyr.elf", build_dir))
+            build_root.join(format!("{}/zephyr/zephyr.elf", build_dir))
         }
     };
 
@@ -842,12 +849,14 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         )));
     }
 
+    let build_root = zephyr_build_root(&workspace);
     let build_dir = build_dir_for_example(example_name);
+    let actual_build_dir = build_root.join(&build_dir);
 
     let binary_path = match platform {
-        ZephyrPlatform::NativeSim => workspace.join(format!("{}/zephyr/zephyr.exe", build_dir)),
+        ZephyrPlatform::NativeSim => actual_build_dir.join("zephyr/zephyr.exe"),
         ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA9 => {
-            workspace.join(format!("{}/zephyr/zephyr.elf", build_dir))
+            actual_build_dir.join("zephyr/zephyr.elf")
         }
     };
 
@@ -868,7 +877,7 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         .arg("-b")
         .arg(platform.board_spec())
         .arg("-d")
-        .arg(&build_dir)
+        .arg(&actual_build_dir)
         .arg("-p")
         .arg(std::env::var("NROS_ZEPHYR_PRISTINE").unwrap_or_else(|_| "auto".to_string()))
         .arg(&example_path);

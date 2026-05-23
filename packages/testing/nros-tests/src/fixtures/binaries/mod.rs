@@ -574,7 +574,12 @@ pub fn build_threadx_linux_cmake_example_rmw(
 /// inside the example dir), so this helper resolves to that path
 /// instead of using `build_example_rmw`. `case` is the directory
 /// name under `examples/zephyr/rust/` (talker, listener, …).
-///
+fn zephyr_build_root() -> PathBuf {
+    std::env::var_os("NROS_ZEPHYR_BUILD_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| project_root().join("zephyr-workspace"))
+}
+
 /// Build orchestration lives in `just/zephyr.just :: build-fixtures`.
 pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf> {
     let root = project_root();
@@ -585,8 +590,7 @@ pub fn build_zephyr_rust_example_rmw(case: &str, rmw: Rmw) -> TestResult<PathBuf
             example_dir.display()
         )));
     }
-    let workspace = root.join("zephyr-workspace");
-    let binary_path = workspace.join(format!(
+    let binary_path = zephyr_build_root().join(format!(
         "build-rs-{}-{}/zephyr/zephyr.exe",
         case,
         rmw.cmake_value()
@@ -605,8 +609,7 @@ pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestR
             example_dir.display()
         )));
     }
-    let workspace = root.join("zephyr-workspace");
-    let binary_path = workspace.join(format!(
+    let binary_path = zephyr_build_root().join(format!(
         "build-{}-{}-{}/zephyr/zephyr.exe",
         lang,
         case,
@@ -861,8 +864,7 @@ static LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY: OnceCell<PathBuf> = OnceCell::new
 pub fn build_logging_smoke_zephyr_native_sim() -> TestResult<&'static Path> {
     LOGGING_SMOKE_ZEPHYR_NATIVE_SIM_BINARY
         .get_or_try_init(|| {
-            let root = crate::project_root();
-            let binary = root.join("zephyr-workspace/build-logging-smoke/zephyr/zephyr.exe");
+            let binary = zephyr_build_root().join("build-logging-smoke/zephyr/zephyr.exe");
             require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())

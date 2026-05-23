@@ -822,7 +822,7 @@ format-c:
     echo "Formatting C code..."
     find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format -i
     clang-format -i packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
-    find examples/native/c -name '*.c' -not -path '*/build/*' -print0 | xargs -0 clang-format -i
+    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 clang-format -i
     echo "C code formatted."
 
 # Format C++ headers (nros-cpp) with clang-format
@@ -851,7 +851,7 @@ check-c:
     echo "  - clang-format (zpico C)"
     clang-format --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
     echo "  - clang-format (C examples)"
-    find examples/native/c -name '*.c' -not -path '*/build/*' -print0 | xargs -0 clang-format --dry-run --Werror
+    find examples/native/c -name '*.c' -not -path '*/build/*' -not -path '*/build-*/*' -print0 | xargs -0 clang-format --dry-run --Werror
     echo "  - syntax (nros-c umbrella header)"
     # The per-variant `<nros/nros_config_generated.h>` (defining the
     # OPAQUE_U64S macros referenced by `<nros/nros_generated.h>`) is

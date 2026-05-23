@@ -3,8 +3,8 @@
 > **ABSORBED into Phase 171 §171.0 (2026-05-20).** This standalone
 > phase is archived; its work — Zephyr `native_sim` Cyclone DDS runtime
 > bring-up + the Zephyr cyclonedds example cells — is the Zephyr slice
-> of Phase 171's matrix-fill. Landed/open status is tracked in
-> `docs/roadmap/phase-171-rename-rmw-dds-to-cyclonedds.md` §171.0
+> of Phase 171's matrix-fill. Historical status is tracked in
+> `docs/roadmap/archived/phase-171-rename-rmw-dds-to-cyclonedds.md` §171.0
 > (open follow-ups: 171.0.a C-service delivery, 171.0.b actions,
 > 171.0.c aemv8r regression). Kept here for the detailed gap-by-gap
 > bring-up history (NSOS patches, cxx-compat shims, link stubs).

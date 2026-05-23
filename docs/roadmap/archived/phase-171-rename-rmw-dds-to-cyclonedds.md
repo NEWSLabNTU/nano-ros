@@ -1,5 +1,14 @@
 # Phase 171 — Rename `dds` RMW → `cyclonedds`; complete example matrix; no-alloc audit
 
+> **Archived 2026-05-23.** The rename and CycloneDDS consolidation
+> work has landed far enough that remaining work is no longer tracked
+> here as an active implementation phase. Open runtime/build failures
+> found while trying to close 171.F.1 moved to Phase 177
+> (`phase-177-build-issue-catalog.md`). Pure-Cargo embedded CycloneDDS
+> enablement remains Phase 175, and stock-RMW interop remains Phase 117.
+> Keep this file as historical context for the rename, matrix decisions,
+> and deferred Zephyr/Cyclone action notes.
+
 **Goal.** Once Phase 169 retires dust-DDS, do the follow-on rename
 + matrix sweep: rename the RMW backend identifier `dds` →
 `cyclonedds` everywhere it surfaces (Cargo features, CMake cache
@@ -9,23 +18,22 @@ and audit the `nros-rmw-cyclonedds` wrapper for `no_std + no-alloc`
 discipline. The wrapper stays C++ (Cyclone DDS's native language;
 matches the RMW backend host-language policy frozen 2026-05-07).
 
-**Status.** In progress. The Zephyr `native_sim` Cyclone DDS runtime
-bring-up + Zephyr matrix-fill (formerly tracked as the standalone
-**Phase 11W**, now absorbed here — see §171.0 below) has **landed**:
-pub/sub works in all three languages (Rust/C/C++) and request/response
-services work in Rust + C++ + C, with the supporting NSOS host patches,
-backend `service_type_name` fix, and a stock-`rmw_cyclonedds_cpp`
-double-slash topic-naming interop fix. The rust example migration off
+**Status.** Archived / superseded by Phase 177 for active failure
+fixing. The Zephyr `native_sim` Cyclone DDS runtime bring-up + Zephyr
+matrix-fill (formerly tracked as the standalone **Phase 11W**, now
+absorbed here — see §171.0 below) has **landed**: pub/sub works in all
+three languages (Rust/C/C++) and request/response services work in
+Rust + C++ + C, with the supporting NSOS host patches, backend
+`service_type_name` fix, and a stock-`rmw_cyclonedds_cpp` double-slash
+topic-naming interop fix. The rust example migration off
 `nros-rmw-dds` → `nros-rmw-cyclonedds-sys` has **landed** (§171.B.2,
 commit `40efd9319`) for native / freertos / threadx-{linux,riscv64}.
 **Decision 2026-05-21: keep Cyclone DDS support targeted at bare metal**
 — the freertos / nuttx / baremetal / esp32 / riscv64-threadx rust cells
 keep the `rmw-cyclonedds` feature *defined* (build gated on the Cyclone
 RTOS port, §171.C.gate / `phase-175`), rather than being deleted as the
-original 171.B draft proposed. Still open: the code-surface rename
-(§171.A), the `dds/` example *directory* renames (§171.B.3), the
-non-Zephyr matrix cells (§171.C.1/.3/.4/.5/.6), and the no-alloc audit
-(§171.E). Zephyr cyclonedds actions remain open inside §171.0. Native
+original 171.B draft proposed. Remaining CI/runtime failures are tracked
+in Phase 177. Zephyr cyclonedds actions remain open under 177.2. Native
 cpp+cpp CycloneDDS action `get_result` is fixed in `28e9e6502`.
 
 **Priority.** P2 — paper-rename and matrix-fill on top of the
@@ -257,7 +265,7 @@ collapsed.
         `service_try_recv_reply_raw` once the match appears, preserving
         non-blocking semantics. Verified locally with `ctest -R
         nros_rmw_cyclonedds_service_roundtrip`; stock ROS 2 interop
-        tests still fail and remain separate Phase 117/171 work.
+        tests still fail and remain separate Phase 117 / Phase 177 work.
 - [~] **171.0.b — Actions.** **Native C + Rust + C++ LANDED +
       runtime-verified 2026-05-21.** Both pieces built; design below.
       Native action e2e:
@@ -847,6 +855,21 @@ C++14 today. Tighten the audit:
 ### 171.F — Acceptance + cleanup
 
 - [ ] **171.F.1** `just ci` clean from root.
+      2026-05-22: root `just ci` still fails in `test-all` after
+      static checks, RTOS link check, Cyclone CI, doctests, Miri, C
+      codegen, and orchestration E2E pass. Latest run reports 39 real
+      failures plus 8 environment skips. Fixed two local harness
+      blockers surfaced by the run: native/C check scans now ignore
+      stale `build-*` scratch trees under `examples/native/c`, and the
+      Zephyr test resolvers honor `NROS_ZEPHYR_BUILD_ROOT` so sandboxed
+      fixture builds can live under `build/zephyr-workspace-builds`
+      instead of the sibling `nano-ros-workspace`.
+      Verified: `just check-c`; `just zephyr build-fixtures` with
+      `NROS_ZEPHYR_BUILD_ROOT=/home/aeon/repos/nano-ros/build/zephyr-workspace-builds`;
+      `cargo check -p nros-tests --tests`; Zephyr CMake/Rust fixture
+      existence checks; `cargo test -p nros-tests --test zephyr
+      test_zephyr_talker_build -- --nocapture`. Not ticked until a
+      full root `just ci` is clean.
 - [x] **171.F.2** `rg -i "dust[ -_]dds|nros[-_]rmw[-_]dds\b"`
       returns only historical / retirement-policy hits in roadmap docs
       and book internals; active code comments and lockfiles were

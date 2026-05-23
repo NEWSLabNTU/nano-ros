@@ -138,7 +138,7 @@ for C/C++ and `--features rmw-zenoh --target-dir target-zenoh` for Rust.
       and `target-zenoh/`.
 - [x] **118.C.4 — ThreadX RISC-V Cyclone availability decision**
       Deferred. Cyclone DDS over this target needs the same hosted
-      NetX-Duo BSD/socket integration as the wider Phase 171/175
+      NetX-Duo BSD/socket integration as the wider Phase 175
       Cyclone RTOS gate; the migrated Rust `rmw-cyclonedds` feature
       remains defined but is not built in the 118.C fixture tier.
 
