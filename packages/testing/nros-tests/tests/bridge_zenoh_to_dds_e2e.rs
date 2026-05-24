@@ -40,6 +40,15 @@ fn rust_bridge_binary() -> PathBuf {
 
 #[test]
 fn bridge_zenoh_to_dds_starts_and_opens_both_sessions() {
+    let source_dir = project_root().join("examples/bridges/native-rust-zenoh-to-dds");
+    if !source_dir.exists() {
+        nros_tests::skip!(
+            "rust Zenoh-to-DDS bridge source is not present at {} — this stale Phase 104.D \
+             smoke target is not part of the current collapsed examples tree",
+            source_dir.display()
+        );
+    }
+
     if !is_zenohd_available() || !require_zenohd() {
         nros_tests::skip!("zenohd not found — bridge needs Zenoh router for ingress");
     }

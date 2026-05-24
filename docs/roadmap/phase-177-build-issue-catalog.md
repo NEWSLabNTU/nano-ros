@@ -126,14 +126,33 @@ passed.
 
 #### 2026-05-22 Failed Tests by Group
 
-- [ ] **177.9.A - Host tools, fixture gates, and explicit prerequisites.**
-  These need clearer setup integration, automatic fixture discovery, or
-  explicit skip classification:
-  - [ ] `bridge_xrce_to_dds_e2e::bridge_xrce_to_dds_starts_and_opens_both_sessions`
-  - [ ] `bridge_zenoh_to_dds_e2e::bridge_zenoh_to_dds_starts_and_opens_both_sessions`
-  - [ ] `integration_esp_idf::esp_idf_integration_shell_smoke`
-  - [ ] `integration_px4::px4_integration_template_smoke`
-  - [ ] `cpp_parameters::cpp_parameters_roundtrip`
+- [x] **177.9.A - Host tools, fixture gates, and explicit prerequisites.**
+  Focused rerun on 2026-05-25:
+  `cargo nextest run --cargo-profile nros-fast-release -p nros-tests
+  --no-fail-fast --test bridge_xrce_to_dds_e2e --test
+  bridge_zenoh_to_dds_e2e --test integration_esp_idf --test
+  integration_px4 --test cpp_parameters`.
+  Result: 3 passed, 2 environment-skipped, 0 real failures after applying
+  the project `[SKIPPED]` classifier. The SDK-dependent tests were also
+  rerun through `just _nextest-platform <test-binary>` so
+  `just/sdk-env.just` provided the repo-local SDK defaults, and direct
+  Cargo was verified with `source scripts/sdk-env.sh` before invoking
+  `cargo nextest`.
+  - [x] `bridge_xrce_to_dds_e2e::bridge_xrce_to_dds_starts_and_opens_both_sessions`
+        now reports the missing retired source path explicitly; the old
+        `examples/native/c/bridge/xrce-to-dds` tree is not present in the
+        current collapsed examples layout.
+  - [x] `bridge_zenoh_to_dds_e2e::bridge_zenoh_to_dds_starts_and_opens_both_sessions`
+        now reports the missing retired source path explicitly; the old
+        `examples/bridges/native-rust-zenoh-to-dds` tree is not present in
+        the current collapsed examples layout.
+  - [x] `integration_esp_idf::esp_idf_integration_shell_smoke` passes when
+        run via `just`, which exports `NROS_ESP_IDF_ENV_SHIM` and
+        `IDF_PATH` from `just/sdk-env.just`.
+  - [x] `integration_px4::px4_integration_template_smoke` passes when run
+        via `just`, which exports `PX4_AUTOPILOT_DIR` from
+        `just/sdk-env.just`.
+  - [x] `cpp_parameters::cpp_parameters_roundtrip` passes.
 
 - [ ] **177.9.B - Platform CMake, logging, and NuttX smoke coverage.**
   These are build/smoke edges inside the test layer, not the main

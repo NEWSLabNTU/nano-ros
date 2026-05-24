@@ -40,6 +40,15 @@ fn c_bridge_binary() -> PathBuf {
 
 #[test]
 fn bridge_xrce_to_dds_starts_and_opens_both_sessions() {
+    let source_dir = project_root().join("examples/native/c/bridge/xrce-to-dds");
+    if !source_dir.exists() {
+        nros_tests::skip!(
+            "c XRCE-to-DDS bridge source is not present at {} — this stale Phase 104.D \
+             smoke target is not part of the current collapsed examples tree",
+            source_dir.display()
+        );
+    }
+
     let binary = c_bridge_binary();
     if !binary.exists() {
         nros_tests::skip!(

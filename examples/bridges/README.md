@@ -6,14 +6,11 @@ session and republishing on a DDS session. Because a bridge spans
 transport slots, it does not belong to a single
 `<plat>/<lang>/<rmw>/<example>` cell and lives outside that tree.
 
-Directory naming follows `<plat>-<lang>-<from>-to-<to>/` so the
-RMW pair stays visible at a glance.
+Current bridge examples live under the normal example tree when they
+also exercise a platform/language-specific feature.
 
 ## Contents
 
-- `native-rust-zenoh-to-dds/` — POSIX Rust binary; Zenoh
-  subscriber, DDS publisher. Demonstrates the Phase 104 multi-RMW
-  registry: both backend ctors fire at lib-load, then
-  `Executor::open_with_rmw("zenoh", ...)` and
-  `node_builder.rmw("cyclonedds")` pin each session to its intended
-  backend.
+- `../native/rust/bridge/tt-zenoh-to-xrce/` — POSIX Rust binary;
+  Zenoh subscriber, XRCE publisher. Demonstrates the multi-RMW
+  registry plus the Phase 110.G time-triggered scheduling path.
