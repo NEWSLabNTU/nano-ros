@@ -11,6 +11,7 @@ default:
 # itself is cross-compiled by `zpico-sys/build.rs` during the
 # example's cargo build; no standalone library build step is needed
 # or wired up anywhere in the project.
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -26,6 +27,7 @@ setup:
     fi
 
 # Diagnose ESP32 install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -52,10 +54,12 @@ doctor:
     exit $fail
 
 # Build ESP32 core artifacts.
+[group("main")]
 build:
     @echo "ESP32 has no separate core build; use 'just esp32 build-examples' for examples."
 
 # Build ESP32 examples (requires nightly)
+[group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
@@ -70,6 +74,7 @@ build-examples:
     echo "ESP32 examples built!"
 
 # Build ESP32 QEMU examples (requires nightly)
+[group("examples")]
 build-qemu:
     #!/usr/bin/env bash
     set -e
@@ -101,6 +106,7 @@ build-qemu:
 # Phase 88.15.f — build the ESP32-C3 nros-log smoke fixture +
 # espflash-pack the flash image alongside the ELF so the harness
 # can pick it up via `build_logging_smoke_esp32_qemu_flash`.
+[group("examples")]
 build-logging-smoke:
     #!/usr/bin/env bash
     set -e
@@ -121,14 +127,17 @@ build-logging-smoke:
     fi
 
 # Build ESP32 test fixtures.
+[group("full-matrix")]
 build-fixtures: build-qemu build-logging-smoke
     @echo "ESP32 fixtures built."
 
 # Build every ESP32 tier: core artifacts, examples, and test fixtures.
+[group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "ESP32 build-all completed."
 
 # Run basic QEMU ESP32-C3 boot test
+[group("debug")]
 test-basic: build-qemu
     #!/usr/bin/env bash
     echo "ESP32-C3 QEMU boot test"
@@ -156,6 +165,7 @@ test-basic: build-qemu
     fi
 
 # Run ESP32-C3 QEMU integration tests (build, boot, E2E via nextest)
+[group("main")]
 test verbose="":
     #!/usr/bin/env bash
     set -e
@@ -168,12 +178,15 @@ test verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run all ESP32 tests (same as test)
+[group("full-matrix")]
 test-all verbose="": (test verbose)
 
 # CI: doctor + test
+[group("full-matrix")]
 ci: doctor test
 
 # Clean ESP32 build artifacts
+[group("main")]
 clean:
     #!/usr/bin/env bash
     for ex in talker listener; do

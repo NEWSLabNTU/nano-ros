@@ -13,6 +13,7 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # =============================================================================
 
 # Build native core artifacts.
+[group("main")]
 build:
     @echo "Native example module has no separate core build; use 'just native build-examples' for examples."
 
@@ -24,6 +25,7 @@ build:
 # NROS_BUILD_JOBS budget (itself nproc unless overridden), falling back
 # to 75 % of cores. Override per-invocation with
 # `just native build-examples JOBS=4` for tighter machines.
+[group("main")]
 build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     #!/usr/bin/env bash
     set -e
@@ -83,12 +85,14 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
+[group("full-matrix")]
 build-fixtures: build-fixture-role-examples build-fixture-extras
     @echo "Native test fixtures built."
 
 # Internal Phase 178.B target: default native Rust role binaries consumed by
 # tests. This is intentionally narrower than public `build-examples`, which is
 # a broad repository-level Rust example aggregate.
+[group("examples")]
 build-fixture-role-examples:
     #!/usr/bin/env bash
     set -e
@@ -135,6 +139,7 @@ build-fixture-role-examples:
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-fixture-role-examples`.
+[group("examples")]
 build-fixture-extras:
     #!/usr/bin/env bash
     set -e
@@ -344,6 +349,7 @@ build-fixture-extras:
       ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build $cargo_profile_args --target-dir target-large-buf --quiet )
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.
+[group("full-matrix")]
 build-all: build build-examples build-c build-c-xrce build-cpp build-fixtures
     @echo "Native build-all completed."
 
@@ -424,6 +430,7 @@ size: build-examples
     @size packages/testing/nros-smoke/stm32f4-smoltcp-echo/target/thumbv7em-none-eabihf/release/stm32f4-rs-smoltcp 2>/dev/null || echo "stm32f4-smoltcp-echo: build failed"
 
 # Clean native example build artifacts.
+[group("main")]
 clean:
     #!/usr/bin/env bash
     find examples/native -type d \( -name target -o -name build -o -name 'build-*' \) \
@@ -446,6 +453,7 @@ _build-c-example dir *CMAKE_ARGS:
     cmake --build "{{dir}}/build"
 
 # Build C examples only (no tests)
+[group("examples")]
 build-c:
     #!/usr/bin/env bash
     set -e
@@ -455,6 +463,7 @@ build-c:
     echo "C examples built!"
 
 # Build C XRCE examples only (no tests)
+[group("examples")]
 build-c-xrce:
     #!/usr/bin/env bash
     set -e
@@ -463,6 +472,7 @@ build-c-xrce:
     echo "C XRCE examples built!"
 
 # Clean C examples build
+[group("main")]
 clean-c:
     find examples/native/c -type d \( -name build -o -name 'build-*' \) \
         -prune -exec rm -rf {} + 2>/dev/null || true
@@ -480,6 +490,7 @@ _build-cpp-example dir *CMAKE_ARGS:
     cmake --build "{{dir}}/build"
 
 # Build C++ examples only (no tests)
+[group("examples")]
 build-cpp:
     #!/usr/bin/env bash
     set -e
@@ -492,6 +503,7 @@ build-cpp:
     echo "C++ examples built!"
 
 # Clean C++ examples build
+[group("main")]
 clean-cpp:
     find examples/native/cpp -type d \( -name build -o -name 'build-*' \) \
         -prune -exec rm -rf {} + 2>/dev/null || true
@@ -502,6 +514,7 @@ clean-cpp:
 # =============================================================================
 
 # Run integration tests only (requires zenohd)
+[group("main")]
 test verbose="":
     #!/usr/bin/env bash
     set -e
@@ -516,6 +529,7 @@ test verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run all native tests (integration + ROS 2 interop + large_msg + C/C++ API)
+[group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
     set +e
@@ -531,9 +545,11 @@ test-all verbose="":
     fi
 
 # CI: check + test
+[group("full-matrix")]
 ci: check test
 
 # Run large message & throughput stress tests
+[group("debug")]
 test-large-msg verbose="":
     #!/usr/bin/env bash
     set -e
@@ -547,6 +563,7 @@ test-large-msg verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run RMW abstraction integration tests
+[group("debug")]
 test-rmw verbose="":
     #!/usr/bin/env bash
     set -e
@@ -560,6 +577,7 @@ test-rmw verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run ROS 2 interop tests (Rust test harness)
+[group("debug")]
 test-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
@@ -574,6 +592,7 @@ test-ros2 verbose="":
 
 # Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
 # Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
+[group("debug")]
 test-ros2-lifecycle verbose="":
     #!/usr/bin/env bash
     set -e
@@ -587,10 +606,12 @@ test-ros2-lifecycle verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run ROS 2 interop tests (shell script)
+[group("debug")]
 test-ros2-shell:
     ./tests/ros2-interop.sh
 
 # Run DDS ROS 2 interop tests (requires ROS 2 + rmw_cyclonedds_cpp)
+[group("debug")]
 test-dds-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
@@ -631,6 +652,7 @@ _test-orchestration-e2e verbose="":
         bash -c 'cd packages/codegen/packages && cargo test -p nros-cli-core --test orchestration_e2e -- --nocapture'
 
 # Run all C tests (integration + codegen)
+[group("debug")]
 test-c verbose="":
     #!/usr/bin/env bash
     set -e
@@ -646,6 +668,7 @@ test-c verbose="":
     just native _test-c-codegen {{verbose}}
 
 # C++ API integration tests (needs cmake + zenohd)
+[group("debug")]
 test-cpp verbose="":
     #!/usr/bin/env bash
     set -e
@@ -659,6 +682,7 @@ test-cpp verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
+[group("debug")]
 test-c-xrce verbose="":
     #!/usr/bin/env bash
     set -e

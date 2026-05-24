@@ -6,10 +6,12 @@ default:
 # Install ThreadX Linux prerequisites: initialize submodules.
 # Does NOT build example binaries — use `just threadx_linux build-examples` for that.
 # Phase 123.A.8 — submodule fetch delegates to tools/setup.sh.
+[group("setup")]
 setup:
     @"{{justfile_directory()}}/tools/setup.sh" --platform=threadx --skip-apt-check
 
 # Diagnose ThreadX Linux install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -33,10 +35,12 @@ doctor:
 # (Phase 144.8) — no install prefix needed.
 
 # Build ThreadX Linux examples (canonical "did the core link clean?" smoke).
+[group("main")]
 build: build-examples
     @echo "ThreadX Linux examples built."
 
 # Build ThreadX Linux examples
+[group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
@@ -55,12 +59,14 @@ build-examples:
     echo "ThreadX Linux examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
+[group("full-matrix")]
 build-fixtures: build-examples build-fixture-extras
     @echo "ThreadX-Linux test fixtures built."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-examples`. Mirrors the cmake -D set used by the test fixture builders
 # in `nros_tests::fixtures::binaries::threadx_linux::build_cmake_example`.
+[group("examples")]
 build-fixture-extras:
     #!/usr/bin/env bash
     set -e
@@ -156,10 +162,12 @@ build-fixture-extras:
     fi
 
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.
+[group("full-matrix")]
 build-all: build-fixtures
     @echo "ThreadX Linux build-all completed."
 
 # Run ThreadX Linux integration tests
+[group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
@@ -174,6 +182,7 @@ test verbose="": build-fixtures
     just _nextest-platform threadx_linux '{{verbose}}'
 
 # Run all ThreadX Linux tests including networked E2E
+[group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
@@ -195,6 +204,7 @@ test-all verbose="":
 # Phase 121.6 — build the ThreadX-linux smoke test for
 # nros-platform-threadx. Uses the in-tree ThreadX linux/gnu port +
 # in-crate platform.c + timer.c. Excludes net.c (no NetX Duo).
+[group("examples")]
 build-c-port:
     #!/usr/bin/env bash
     set -e
@@ -203,11 +213,13 @@ build-c-port:
     cmake --build build
 
 # Phase 121.6 — run the ThreadX-linux smoke test on the host.
+[group("debug")]
 test-c-port: build-c-port
     #!/usr/bin/env bash
     set -e
     timeout 15 ./tests/threadx-c-smoke/build/nros_threadx_c_smoke
 
+[group("full-matrix")]
 ci: doctor test
 
 # =============================================================================
@@ -249,6 +261,7 @@ zenohd:
     build/zenohd/zenohd --listen tcp/0.0.0.0:7455 --no-multicast-scouting
 
 # Clean ThreadX Linux build artifacts
+[group("main")]
 clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-threadx-linux-zenoh

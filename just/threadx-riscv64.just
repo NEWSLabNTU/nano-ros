@@ -6,10 +6,12 @@ default:
 # Install ThreadX RISC-V 64 prerequisites: initialize submodules.
 # Does NOT build example binaries — use `just threadx_riscv64 build-examples` for that.
 # Phase 123.A.8 — submodule fetch delegates to tools/setup.sh.
+[group("setup")]
 setup:
     @"{{justfile_directory()}}/tools/setup.sh" --platform=threadx --skip-apt-check
 
 # Diagnose ThreadX RISC-V 64 install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -60,10 +62,12 @@ doctor:
 # consume nano-ros via `add_subdirectory(<repo-root>)` (Phase 144.7).
 
 # Build ThreadX RISC-V 64 examples (canonical core-link smoke).
+[group("main")]
 build: build-examples
     @echo "ThreadX RISC-V 64 examples built."
 
 # Build ThreadX QEMU RISC-V 64 examples
+[group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
@@ -89,12 +93,14 @@ build-examples:
     echo "ThreadX QEMU RISC-V examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
+[group("full-matrix")]
 build-fixtures: build-examples build-fixture-extras
     @echo "ThreadX-RV64 test fixtures built."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-examples`. Mirrors the cmake -D set used by the test fixture builders
 # in `nros_tests::fixtures::binaries::threadx_riscv64::build_cmake_example`.
+[group("examples")]
 build-fixture-extras:
     #!/usr/bin/env bash
     set -e
@@ -223,10 +229,12 @@ build-fixture-extras:
     fi
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.
+[group("full-matrix")]
 build-all: build-fixtures
     @echo "ThreadX RISC-V 64 build-all completed."
 
 # Run ThreadX QEMU RISC-V 64 integration tests
+[group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
@@ -244,6 +252,7 @@ test verbose="": build-fixtures
     just _nextest-platform threadx_riscv64_qemu '{{verbose}}'
 
 # Run all ThreadX RISC-V tests including networked E2E
+[group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
@@ -261,6 +270,7 @@ test-all verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
+[group("full-matrix")]
 ci: doctor test
 
 # =============================================================================
@@ -311,6 +321,7 @@ zenohd:
     build/zenohd/zenohd --listen tcp/127.0.0.1:7453 --no-multicast-scouting
 
 # Clean ThreadX RISC-V build artifacts
+[group("main")]
 clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-threadx-riscv64-zenoh

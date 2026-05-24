@@ -16,6 +16,7 @@ QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
 # build/qemu/. Subsequent runs are no-ops unless the patches change
 # (touch a patch to force a rebuild) — wire the test runner with
 # QEMU_SYSTEM_ARM=$(just qemu qemu-bin) to pick this up.
+[group("setup")]
 setup-qemu:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -68,11 +69,13 @@ qemu-bin:
 # Run all qemu-baremetal tests with the patched qemu-system-arm.
 # Wraps `just qemu test` with QEMU_SYSTEM_ARM exported so the test
 # runner picks the project-local build instead of system qemu.
+[group("debug")]
 test-patched verbose="":
     @just qemu setup-qemu
     QEMU_SYSTEM_ARM={{QEMU_BIN}} just qemu test {{verbose}}
 
 # Build QEMU ARM bare-metal examples
+[group("main")]
 build:
     #!/usr/bin/env bash
     set -e
@@ -102,6 +105,7 @@ build:
 
 # Build all example binaries used as test fixtures (bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
+[group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
     set -e
@@ -143,6 +147,7 @@ build-fixtures:
     fi
 
 # Run all QEMU tests (non-networked)
+[group("main")]
 test verbose="":
     #!/usr/bin/env bash
     set +e
@@ -159,6 +164,7 @@ test verbose="":
     fi
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
+[group("debug")]
 test-basic verbose="": build
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
@@ -167,6 +173,7 @@ test-basic verbose="": build
             -kernel packages/testing/nros-tests/bins/cdr-roundtrip-qemu/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
+[group("debug")]
 test-wcet verbose="": build
     ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
@@ -175,6 +182,7 @@ test-wcet verbose="": build
             -kernel packages/testing/nros-bench/wcet-cycles-qemu/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
+[group("debug")]
 test-lan9118 verbose="": build
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
@@ -183,6 +191,7 @@ test-lan9118 verbose="": build
             -kernel packages/testing/nros-tests/bins/lan9118-qemu/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Run all QEMU tests including networked E2E and RTIC
+[group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
@@ -202,9 +211,11 @@ check:
     @echo "QEMU ARM is installed"
 
 # CI: check + test
+[group("full-matrix")]
 ci: check test
 
 # Setup QEMU TAP network bridge (requires sudo)
+[group("setup")]
 setup-network:
     sudo ./scripts/qemu/setup-network.sh
 
@@ -217,6 +228,7 @@ status-network:
     ./scripts/qemu/setup-network.sh --status
 
 # Test QEMU zenoh-pico communication (requires zenohd + TAP network)
+[group("debug")]
 test-zenoh: build
     #!/usr/bin/env bash
     set -e
@@ -254,9 +266,11 @@ run-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
 # qemu-system-arm under build/qemu/). Building patched QEMU is
 # idempotent and short-circuits when build/qemu/bin/qemu-system-arm
 # is newer than every patch file.
+[group("setup")]
 setup: build-zenoh-pico setup-qemu
 
 # Diagnose QEMU bare-metal install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -329,10 +343,12 @@ doctor:
     exit $fail
 
 # Build zenoh-pico for ARM Cortex-M3 (required for QEMU examples)
+[group("examples")]
 build-zenoh-pico:
     @./scripts/qemu/build-zenoh-pico.sh
 
 # Clean zenoh-pico ARM build
+[group("main")]
 clean-zenoh-pico:
     ./scripts/qemu/build-zenoh-pico.sh --clean
 
@@ -369,6 +385,7 @@ help:
     @echo "For more details: ./scripts/qemu/launch-mps2-an385.sh --help"
 
 # Clean QEMU bare-metal build artifacts
+[group("main")]
 clean: clean-zenoh-pico
     #!/usr/bin/env bash
     for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \

@@ -13,6 +13,7 @@ default:
 # (Phase 144.6) or the `integrations/nuttx/` shell (Phase 139).
 
 # Build NuttX kernel (requires arm-none-eabi-gcc + kconfig tools)
+[group("examples")]
 build-kernel:
     #!/usr/bin/env bash
     set -e
@@ -32,10 +33,12 @@ build-kernel:
         packages/boards/nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh
 
 # Build NuttX core artifacts.
+[group("main")]
 build: build-kernel
     @echo "NuttX core artifacts built."
 
 # Build NuttX QEMU ARM virt examples
+[group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
@@ -55,6 +58,7 @@ build-examples:
     echo "NuttX QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
+[group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
     set -e
@@ -177,6 +181,7 @@ build-fixtures:
 # `packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig`
 # which already has the full networking + TLS_NELEM + virtio-net
 # stack zenoh-pico needs. Same defconfig the cmake bring-up uses.
+[group("full-matrix")]
 build-fixtures-make:
     #!/usr/bin/env bash
     set -e
@@ -278,6 +283,7 @@ build-fixtures-make:
     echo "NuttX external-app build complete. Binary: $nuttx_dir/nuttx"
 
 # Build NuttX artifacts needed by the standard example + test fixture tiers.
+[group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
 
@@ -286,10 +292,12 @@ build-all: build build-examples build-fixtures
 # root `build-all` and standard `nuttx build-all` only pre-stage artifacts
 # consumed by the normal `test-all` flow; `nuttx_make_e2e` skips unless this
 # target (or `build-fixtures-make`) has intentionally staged the NuttX ELF.
+[group("full-matrix")]
 build-all-full: build-all build-fixtures-make
     @echo "NuttX full build-all completed."
 
 # Run NuttX QEMU integration tests
+[group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
@@ -300,6 +308,7 @@ test verbose="": build-fixtures
     just _nextest-platform nuttx_qemu '{{verbose}}'
 
 # Run all NuttX tests including networked E2E
+[group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
@@ -317,11 +326,13 @@ test-all verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
+[group("full-matrix")]
 ci: doctor test
 
 # Install NuttX prerequisites: initialize submodules + build kernel.
 # Phase 123.A.8 — submodule fetch delegated to tools/setup.sh; kernel
 # build stays here (NuttX-specific make invocation).
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -341,6 +352,7 @@ setup:
     echo "NuttX setup complete!"
 
 # Diagnose NuttX install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -476,6 +488,7 @@ zenohd:
 # RTPS SPDP frames and the DDS listener receives 0 messages.
 #
 # Idempotent — re-running drops + re-adds the routes. Requires sudo.
+[group("setup")]
 setup-mcast-route:
     #!/usr/bin/env bash
     set -e
@@ -489,6 +502,7 @@ setup-mcast-route:
     ip route show 239.0.0.0/8
 
 # Clean NuttX build artifacts
+[group("main")]
 clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-nuttx-armv7a-zenoh

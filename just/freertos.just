@@ -9,10 +9,12 @@ default:
 # Install FreeRTOS prerequisites: initialize the FreeRTOS + lwIP submodules.
 # Phase 123.A.8 — delegates to `tools/setup.sh --platform=freertos`,
 # single source of truth.
+[group("setup")]
 setup:
     @"{{justfile_directory()}}/tools/setup.sh" --platform=freertos --skip-apt-check
 
 # Diagnose FreeRTOS install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -44,10 +46,12 @@ doctor:
 # below now drives only the example tree.
 
 # Build FreeRTOS examples (the canonical "did the core link clean?" smoke).
+[group("main")]
 build: build-examples
     @echo "FreeRTOS examples built."
 
 # Build FreeRTOS QEMU MPS2-AN385 Rust examples
+[group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
@@ -71,11 +75,13 @@ build-examples:
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
+[group("full-matrix")]
 build-fixtures: build-examples build-fixture-extras
     @echo "FreeRTOS test fixtures built."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-examples`.
+[group("examples")]
 build-fixture-extras:
     #!/usr/bin/env bash
     set -e
@@ -188,10 +194,12 @@ build-fixture-extras:
     fi
 
 # Build every FreeRTOS tier: core libraries, examples, and test fixtures.
+[group("full-matrix")]
 build-all: build-fixtures
     @echo "FreeRTOS build-all completed."
 
 # Run FreeRTOS QEMU integration tests
+[group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
     set -e
@@ -206,6 +214,7 @@ test verbose="": build-fixtures
     just _nextest-platform freertos_qemu '{{verbose}}'
 
 # Run all FreeRTOS tests including networked E2E
+[group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
     set -e
@@ -235,6 +244,7 @@ test-all verbose="":
 # Phase 121.6 — build the FreeRTOS Posix-port smoke test for
 # nros-platform-freertos. Uses the in-tree FreeRTOS-Kernel + a
 # minimal FreeRTOSConfig.h. Excludes net.c (no lwIP in this harness).
+[group("examples")]
 build-c-port:
     #!/usr/bin/env bash
     set -e
@@ -244,15 +254,18 @@ build-c-port:
 
 # Phase 121.6 — run the FreeRTOS Posix-port smoke test on the host.
 # Boots FreeRTOS, runs the smoke task, exits with status 0 on PASS.
+[group("debug")]
 test-c-port: build-c-port
     #!/usr/bin/env bash
     set -e
     timeout 15 ./tests/freertos-c-smoke/build/nros_freertos_c_smoke
 
 # CI: check prerequisites + test
+[group("full-matrix")]
 ci: doctor test
 
 # Clean FreeRTOS build artifacts
+[group("main")]
 clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-freertos-armcm3-zenoh

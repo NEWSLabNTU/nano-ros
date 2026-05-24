@@ -12,10 +12,12 @@ default:
 # tier so `just test-all` can discover the canonical env shim.
 #
 # Re-running is idempotent: refreshes the checkout + re-runs install.sh.
+[group("setup")]
 setup *args:
     @bash scripts/esp_idf/setup.sh {{args}}
 
 # Diagnose ESP-IDF install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -45,6 +47,7 @@ doctor:
 
 # Build the ESP-IDF smoke project that pulls nros-platform-esp-idf.
 # Targets are taken from IDF_TARGET (default: esp32c3).
+[group("examples")]
 build-c-port target='esp32c3':
     #!/usr/bin/env bash
     set -e
@@ -58,23 +61,28 @@ build-c-port target='esp32c3':
     idf.py build
 
 # Build ESP-IDF core artifacts.
+[group("main")]
 build target='esp32c3': (build-c-port target)
     @echo "ESP-IDF core artifacts built."
 
 # Build ESP-IDF examples.
+[group("main")]
 build-examples:
     @echo "ESP-IDF has no standalone examples beyond the C-port smoke project."
 
 # Build ESP-IDF test fixtures.
+[group("full-matrix")]
 build-fixtures target='esp32c3': (build-c-port target)
     @echo "ESP-IDF fixtures built."
 
 # Build every ESP-IDF tier: core artifacts, examples, and test fixtures.
+[group("full-matrix")]
 build-all target='esp32c3': (build target) build-examples (build-fixtures target)
     @echo "ESP-IDF build-all completed."
 
 # Run the smoke project on qemu-system-{riscv32,xtensa}. Requires the
 # Espressif QEMU fork (installed via `just esp32 setup`).
+[group("debug")]
 test-c-port target='esp32c3':
     #!/usr/bin/env bash
     set -e
@@ -100,10 +108,12 @@ test-c-port target='esp32c3':
         -drive "file=$project_bin,if=mtd,format=raw" -nic none
 
 # Clean smoke-project build.
+[group("main")]
 clean:
     rm -rf tests/esp-idf-smoke/build \
            tests/esp-idf-smoke/sdkconfig \
            tests/esp-idf-smoke/sdkconfig.old
 
 # CI: doctor + build-c-port.
+[group("full-matrix")]
 ci: doctor build-c-port

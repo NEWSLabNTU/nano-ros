@@ -73,11 +73,13 @@ mod orin_spe 'just/orin-spe.just'
 mod cyclonedds 'just/cyclonedds.just'
 mod platformio 'just/platformio.just'
 
+[group("main")]
 default:
     @just --list
 
 # Show every recipe including private/internal ones.
 # Maintainer/CI flow. End users want `just --list`.
+[group("debug")]
 list-all:
     #!/usr/bin/env bash
     set -e
@@ -117,6 +119,7 @@ list-all:
 # Phase 140 — `install-local` removed; `add_subdirectory(<repo-root>)`
 # is the only supported C/C++ consumption shape. CMake-driven crates
 # build in-tree via Corrosion when an example invokes them.
+[group("main")]
 build: \
     generate-bindings \
     build-workspace build-workspace-embedded \
@@ -126,6 +129,7 @@ build: \
 # `build` + every example crate + per-RTOS example builds (native,
 # freertos, threadx_linux, threadx_riscv64). Use to verify the
 # example matrix still compiles after a core change.
+[group("main")]
 build-examples: build \
     native::build-examples \
     freertos::build-examples threadx_linux::build-examples threadx_riscv64::build-examples
@@ -136,6 +140,7 @@ build-examples: build \
 # the same role examples for FreeRTOS, ThreadX, QEMU, and several native
 # cases. This recipe only builds Cargo examples that are not already staged
 # by platform fixture tiers.
+[group("full-matrix")]
 build-example-extras:
     #!/usr/bin/env bash
     set -e
@@ -181,6 +186,7 @@ build-example-extras:
 
 # True superset: workspace + non-fixture examples + per-test fixture variants.
 # Pre-populates everything `just test-all` consumes. Slow.
+[group("full-matrix")]
 build-all:
     #!/usr/bin/env bash
     set -e
@@ -205,6 +211,7 @@ build-all:
 # / install-ninja). NROS_BUILD_JOBS (default nproc) = the token budget.
 # Recipes detect the inherited jobserver (NROS_JOBSERVER=1) and skip their
 # own explicit -j so the tools draw from the shared pool.
+[group("full-matrix")]
 build-all-jobserver:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -289,10 +296,12 @@ _cmake-cargo-stale-guard build_dir:
 # per-example `build/` directories; flush by removing those.
 
 # Format everything: Rust workspace + examples, C, C++, Python
+[group("main")]
 format: format-workspace native::format format-c format-cpp format-python
     @echo "All formatting completed!"
 
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
+[group("main")]
 check: \
     check-workspace check-workspace-embedded check-workspace-features \
     check-nros-log-riscv32 \
@@ -331,6 +340,7 @@ check-example-matrix:
 # the POSIX CMake path shipped wrappers without multicast impls and
 # every C/C++ native link broke. Run after
 # `cargo build -p nros-rmw-zenoh-staticlib --release`.
+[group("debug")]
 check-zenoh-archive:
     @bash scripts/check-zenoh-archive-symbols.sh target/release/libnros_rmw_zenoh_staticlib.a
 
@@ -342,6 +352,7 @@ check-zenoh-archive:
 # Today this guard is EXPECTED TO FAIL — Phase 104.A is the migration
 # that brings it to green. Wire it as a required check once the
 # migration completes.
+[group("debug")]
 check-decoupling:
     @bash scripts/check-decoupling.sh
 
@@ -363,6 +374,7 @@ check-decoupling:
 # the matching just/<plat>.just files — see CLAUDE.md for the matrix.
 
 # Workspace lib/bin/unit tests, excluding the integration crate.
+[group("main")]
 test-unit verbose="":
     #!/usr/bin/env bash
     set -e
@@ -385,6 +397,7 @@ test-unit verbose="":
 # nros-tests integration tests, skipping heavy cross-compile / QEMU groups.
 # Filters mirror the `test` recipe's `-E` predicate, just scoped to
 # `package(nros-tests)` so the workspace unit tests aren't re-run.
+[group("main")]
 test-integration verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
@@ -415,6 +428,7 @@ _nextest-platform test_name verbose="":
 # Run rustdoc doctests for the `nros` umbrella crate.
 # Nextest does not execute doctests, so we run them separately.
 # This catches drift between rustdoc examples and the real API.
+[group("main")]
 test-doc:
     #!/usr/bin/env bash
     set -e
@@ -474,6 +488,7 @@ _test-summary:
 # `.config/nextest.toml`. `group(...)` is a CLI-only predicate
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
+[group("main")]
 test verbose="": build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
@@ -516,6 +531,7 @@ test verbose="": build-zenohd
 # `unable to update generated/builtin_interfaces`. Make the dep
 # explicit so `just build-test-fixtures` (and `just test-all` via
 # the bench fixtures it consumes) is self-contained.
+[group("full-matrix")]
 build-test-fixtures: generate-bindings build-zenoh-posix-fixture build-test-fixtures-leaves
 
 # Internal fixture fan-out without root prereqs. Public `build-test-fixtures`
@@ -639,6 +655,7 @@ build-test-fixtures-leaves:
 # recipe and was written against `target/release/`. Sticking to
 # release keeps both tests symmetric and matches the archive-
 # parity script's expectation.
+[group("full-matrix")]
 build-zenoh-posix-fixture:
     cargo build --release \
         -p nros-rmw-zenoh-staticlib \
@@ -649,6 +666,7 @@ build-zenoh-posix-fixture:
 # Single nextest run (entire workspace) + Miri + C codegen
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
+[group("full-matrix")]
 test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
@@ -703,6 +721,7 @@ test-all verbose="": build-zenohd
 #
 # Best-effort: each RTOS's build skips cleanly if its cross
 # toolchain or board crate prerequisites are absent.
+[private]
 rust-rtos-link-check:
     #!/usr/bin/env bash
     set -e
@@ -730,6 +749,7 @@ rust-rtos-link-check:
 # `rmw_cyclonedds_cpp`). Phase 146.3 adds the `rust-rtos-link-check`
 # gate ahead of `test-all` so the embedded-RTOS link-symbol
 # regression class surfaces immediately on `just ci`.
+[group("full-matrix")]
 ci: check rust-rtos-link-check test-all cyclonedds-ci
     @echo "CI passed!"
 
@@ -737,6 +757,7 @@ ci: check rust-rtos-link-check test-all cyclonedds-ci
 # pinned Cyclone submodule hasn't been initialised (typical for
 # contributors not touching Phase 117). The `cyclonedds::ci` recipe
 # itself fails hard on actual test failures.
+[private]
 cyclonedds-ci:
     #!/usr/bin/env bash
     set -e
@@ -752,6 +773,7 @@ cyclonedds-ci:
 # =============================================================================
 
 # Kill orphaned test processes from previous runs
+[group("maintenance")]
 test-kill-orphans:
     #!/usr/bin/env bash
     echo "Killing orphaned test processes..."
@@ -773,6 +795,7 @@ init-test-logs:
     ln -sfn "$timestamp" "{{LOG_DIR}}/latest"
 
 # View JUnit XML test report (requires: npm install -g junit-cli-report-viewer)
+[group("debug")]
 test-report:
     @junit-cli-report-viewer target/nextest/default/junit.xml
 
@@ -995,6 +1018,7 @@ check-python:
     @echo "All Python checks passed!"
 
 # Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
+[group("debug")]
 test-miri:
     @echo "Running Miri on embedded-safe crates..."
     CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo +{{NIGHTLY}} miri test -p nros-serdes -p nros-core -p nros-params
@@ -1010,6 +1034,7 @@ test-miri:
 #   just show-asm nros-serdes 'CdrWriter::write_string'
 #   just show-asm nros-serdes 'CdrWriter::write_string' thumbv7m-none-eabi
 #   just show-asm nros-core 'Duration::from_nanos'
+[group("debug")]
 show-asm pkg fn target="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1021,6 +1046,7 @@ show-asm pkg fn target="":
 
 # Show llvm-mca throughput analysis for a function (requires cargo-show-asm)
 # Usage: just show-asm-mca <package> <function> [target]
+[group("debug")]
 show-asm-mca pkg fn target="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1032,6 +1058,7 @@ show-asm-mca pkg fn target="":
 
 # List all non-inlined functions in a crate (useful for finding inspectable symbols)
 # Usage: just show-asm-list <package> [target]
+[group("debug")]
 show-asm-list pkg target="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1044,23 +1071,27 @@ show-asm-list pkg target="":
 # Analyze per-function stack usage (requires nightly + llvm-tools)
 # Usage: just check-stack [example-dir] [top]
 # Default: examples/qemu/rs-wcet-bench, top 30
+[group("debug")]
 check-stack example="packages/testing/nros-bench/wcet-cycles-qemu" top="30":
     ./scripts/stack-analysis.sh {{example}} --top {{top}}
 
 # Analyze stack usage of a pre-built ELF (e.g. Zephyr west build output)
 # Usage: just check-stack-elf <path-to-elf> [top]
+[group("debug")]
 check-stack-elf elf top="30":
     ./scripts/stack-analysis.sh --elf {{elf}} --top {{top}}
 
 # Analyze stack usage of C examples (requires cmake + gcc)
 # Usage: just check-stack-c [example-dir] [top]
 # Default: examples/native/c/talker, top 30
+[group("debug")]
 check-stack-c example="examples/native/c/talker" top="30":
     ./scripts/stack-analysis-c.sh {{example}} --top {{top}}
 
 # Analyze stack usage of all examples (requires nightly + llvm-tools + cmake)
 # Covers: QEMU ARM, native Rust, and native C examples
 # ESP32/STM32F4 excluded (need platform-specific SDKs)
+[group("debug")]
 check-stack-all top="10":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1109,6 +1140,7 @@ check-stack-all top="10":
 
 # Run Kani bounded model checking on core crates (requires kani-verifier)
 # Proves panic-freedom, roundtrip correctness, and bounded behavior
+[group("verification")]
 verify-kani:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1131,6 +1163,7 @@ verify-kani:
 
 # Run Verus unbounded deductive verification (requires Verus toolchain)
 # Proves properties for ALL inputs using Z3 SMT solver
+[group("verification")]
 verify-verus:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1148,14 +1181,17 @@ verify-verus:
 
 # Verify Phase 118.E size-probe rigorization: cross-mode parity,
 # cross-target build under isolated mode, concurrency soak.
+[group("debug")]
 verify-size-probe:
     bash packages/testing/nros-tests/tests/size_probe_verify.sh
 
 # Run all verification: Kani bounded model checking + Verus deductive verification
+[group("verification")]
 verify: verify-kani verify-verus
 
 # Run branch coverage on safety-critical crates (requires nightly + cargo-llvm-cov)
 # MC/DC is attempted first; falls back to branch-only if unsupported
+[group("verification")]
 coverage:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1217,13 +1253,16 @@ check-zenoh:
     cargo clippy -p nros-rmw --features std
 
 # Build zenohd from submodule (alias for `just zenohd build`).
+[group("maintenance")]
 build-zenohd: zenohd::build
 
 # Clean zenohd build (alias for `just zenohd clean`).
+[group("maintenance")]
 clean-zenohd: zenohd::clean
 
 
 # Build zenoh-pico C library (standalone, for debugging)
+[group("debug")]
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
     cd packages/zpico/zpico-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
@@ -1236,12 +1275,14 @@ build-zenoh-pico:
 # =============================================================================
 
 # Install the canonical nros CLI.
+[group("maintenance")]
 install-nros-cli:
     @echo "Installing nros CLI..."
     cargo install --path packages/codegen/packages/nros-cli --locked
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
+[group("maintenance")]
 generate-bindings:
     #!/usr/bin/env bash
     set -e
@@ -1274,6 +1315,7 @@ generate-bindings:
     echo "All bindings refreshed!"
 
 # Remove generated/ directories in examples (not rcl-interfaces — it's a workspace member)
+[group("maintenance")]
 clean-bindings:
     #!/usr/bin/env bash
     set -e
@@ -1325,6 +1367,7 @@ generate-lifecycle-msgs:
     echo "      (version.workspace, edition.workspace, etc.) — see rcl-interfaces."
 
 # Clean and regenerate all bindings from scratch
+[group("maintenance")]
 regenerate-bindings: clean-bindings generate-bindings
 
 # =============================================================================
@@ -1351,6 +1394,7 @@ regenerate-bindings: clean-bindings generate-bindings
 #   just zephyr setup       # focused platform setup
 #
 # Print setup choices with no args; otherwise run a tier or focused setup.
+[group("setup")]
 setup target="" tier="":
     #!/usr/bin/env bash
     set -e
@@ -1419,10 +1463,12 @@ setup target="" tier="":
     echo ""
 
 # Focused platform setup. Equivalent to `just <platform> setup`.
+[group("setup")]
 setup-platform platform:
     @just "{{platform}}" setup
 
 # Diagnose install status (read-only). Tier matches `just setup`.
+[group("setup")]
 doctor tier="":
     #!/usr/bin/env bash
     set -e
@@ -1530,19 +1576,15 @@ _orchestrate verb tier="everything":
     fi
     echo "{{verb}} complete! (tier: {{tier}})"
 
-# Setup bridge network for ThreadX Linux sim (requires sudo; Zephyr native_sim uses NSOS and needs no bridge)
-setup-network: qemu::setup-network
-
-# Teardown bridge network (requires sudo)
-teardown-network: qemu::teardown-network
-
 # Generate Rust API documentation (rustdoc)
+[group("docs")]
 doc-rust:
     cargo doc --workspace --no-deps
 
 # Generate C API documentation (Doxygen)
 # Requires doxygen — skips with a warning if not installed.
 # The generated header must exist (run `cargo build -p nros-c` first).
+[group("docs")]
 doc-c:
     #!/usr/bin/env bash
     set -e
@@ -1574,6 +1616,7 @@ doc-c-check:
     echo "All C headers are syntactically correct."
 
 # Generate C++ API documentation (Doxygen).
+[group("docs")]
 doc-cpp:
     #!/usr/bin/env bash
     set -e
@@ -1620,6 +1663,7 @@ doc-platform-cffi:
     echo "platform-cffi docs generated: target/doxygen/platform-cffi/html/index.html"
 
 # Generate all documentation (Rust + C + C++ + cffi vtables + book).
+[group("docs")]
 doc: doc-rust doc-c doc-cpp doc-rmw-cffi doc-platform-cffi
 
 # Build mdBook + stage rustdoc/Doxygen output beneath book/book/api/.
@@ -1629,6 +1673,7 @@ doc: doc-rust doc-c doc-cpp doc-rmw-cffi doc-platform-cffi
 # `target/doc/` is wiped before `cargo doc` so prior `cargo doc --workspace`
 # runs don't leak into the deployed rustdoc tree (everything under
 # target/doc/ gets copied verbatim).
+[group("docs")]
 book:
     #!/usr/bin/env bash
     set -e
@@ -1673,10 +1718,12 @@ book:
 
 # Serve mdBook with live reload (book chapters only — does not rebuild
 # rustdoc/Doxygen API docs; use `just book` for the full deployed view).
+[group("docs")]
 book-serve:
     mdbook serve book/ --open
 
 # Clean example build artifacts across platform namespaces.
+[group("maintenance")]
 clean-examples:
     just native clean
     just qemu clean
@@ -1694,6 +1741,7 @@ clean-examples:
     @echo "All example artifacts cleaned"
 
 # Clean fixture-only orchestration outputs.
+[group("maintenance")]
 clean-fixtures:
     #!/usr/bin/env bash
     set -e
@@ -1706,6 +1754,7 @@ clean-fixtures:
     echo "Fixture orchestration artifacts cleaned"
 
 # Clean all build artifacts created by broad build and test-fixture recipes.
+[group("maintenance")]
 clean: clean-examples clean-fixtures clean-zenohd
     cargo clean
     # Clean codegen workspace (separate Cargo workspace, not covered by cargo clean)
@@ -1714,10 +1763,6 @@ clean: clean-examples clean-fixtures clean-zenohd
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
     rm -rf build
     @echo "All build artifacts cleaned"
-
-# Show Zephyr build instructions
-zephyr-help:
-    just zephyr help
 
 # =============================================================================
 # Docker: use `just docker build`, `just docker shell`, `just docker test`, etc.

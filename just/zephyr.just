@@ -11,6 +11,7 @@ ZEPHYR_WORKSPACE := env("NROS_ZEPHYR_WORKSPACE", if path_exists("zephyr-workspac
 # Idempotent: skips if the workspace already exists.
 # Set $NROS_ZEPHYR_WORKSPACE to install elsewhere.
 # Extra args are forwarded: e.g. `just zephyr setup --force --skip-sdk`.
+[group("setup")]
 setup *ARGS:
     #!/usr/bin/env bash
     set -e
@@ -63,6 +64,7 @@ setup *ARGS:
     bash ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
 
 # Diagnose Zephyr install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -90,10 +92,12 @@ doctor:
     exit $fail
 
 # Build Zephyr core artifacts.
+[group("main")]
 build:
     @echo "Zephyr has no separate core build; use 'just zephyr build-examples' for examples."
 
 # Build Zephyr Rust examples (all Rust examples for native_sim)
+[group("examples")]
 build-rust-examples:
     #!/usr/bin/env bash
     set -e
@@ -132,6 +136,7 @@ build-rust-examples:
 # cache hits. sccache falls back to a direct compile on anything
 # uncacheable, so it's safe even at the serial default. Set
 # `NROS_ZEPHYR_SCCACHE_DISABLE=1` to opt back out.
+[group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
     set -e
@@ -491,6 +496,7 @@ build-fixtures:
 # board config + nros module compile clean for AArch64. Skips
 # cleanly when west / Zephyr workspace / aarch64-zephyr-elf SDK
 # aren't available.
+[group("examples")]
 build-fvp-aemv8r:
     #!/usr/bin/env bash
     set -e
@@ -526,6 +532,7 @@ build-fvp-aemv8r:
 # nros C++ pub/sub example. Validates the Zephyr build of the
 # `nros-cpp` API + codegen pipeline through to a linked
 # `zephyr.elf` for the FVP target.
+[group("examples")]
 build-fvp-aemv8r-cyclonedds:
     #!/usr/bin/env bash
     set -e
@@ -568,6 +575,7 @@ build-fvp-aemv8r-cyclonedds:
 # RTU0 Cortex-R52 target (Phase 117.11's reference platform). Reuses
 # cleanly when west / Zephyr workspace / arm-zephyr-eabi SDK aren't
 # available.
+[group("examples")]
 build-s32z:
     #!/usr/bin/env bash
     set -e
@@ -639,6 +647,7 @@ build-s32z:
     fi
 
 # Build Zephyr C examples
+[group("examples")]
 build-c:
     #!/usr/bin/env bash
     set -e
@@ -658,6 +667,7 @@ build-c:
 # emits every Severity via the nros-log facade, and exits through
 # `nsi_exit(0)`). Consumed by
 # `packages/testing/nros-tests/tests/logging_smoke.rs`.
+[group("examples")]
 build-logging-smoke:
     #!/usr/bin/env bash
     set -e
@@ -688,6 +698,7 @@ build-logging-smoke:
         -- -D_NANO_ROS_CODEGEN_TOOL="$CODEGEN" -DMAKE="$MAKE_BIN"
 
 # Build Zephyr C++ examples
+[group("examples")]
 build-cpp:
     #!/usr/bin/env bash
     set -e
@@ -705,6 +716,7 @@ build-cpp:
     echo "Zephyr C++ examples built successfully!"
 
 # Build Zephyr XRCE examples (Rust + C for XRCE-DDS backend)
+[group("examples")]
 build-xrce:
     #!/usr/bin/env bash
     set -e
@@ -725,14 +737,17 @@ build-xrce:
     echo "Zephyr XRCE examples built successfully!"
 
 # Build all Zephyr examples (Rust + C + C++ + XRCE)
+[group("main")]
 build-examples: build-rust-examples build-c build-cpp build-xrce
     @echo "All Zephyr examples built!"
 
 # Build every Zephyr tier: core artifacts, examples, and test fixtures.
+[group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "Zephyr build-all completed."
 
 # Run Zephyr E2E tests (requires pre-built Zephyr examples; native_sim uses NSOS on host loopback)
+[group("main")]
 test verbose="":
     #!/usr/bin/env bash
     set -e
@@ -748,6 +763,7 @@ test verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run all Zephyr tests (zenoh + XRCE + C)
+[group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
     set +e
@@ -763,6 +779,7 @@ test-all verbose="":
 # Phase 121.6 — build the Zephyr native_sim smoke test for
 # nros-platform-zephyr. Pulls platform.c + timer.c (not net.c)
 # directly into a minimal Zephyr application and links via west.
+[group("examples")]
 build-c-port:
     #!/usr/bin/env bash
     set -e
@@ -781,19 +798,23 @@ build-c-port:
         -- -DMAKE="$make_bin"
 
 # Phase 121.6 — run the Zephyr native_sim smoke test on the host.
+[group("debug")]
 test-c-port: build-c-port
     #!/usr/bin/env bash
     set -e
     timeout 15 ./tests/zephyr-c-smoke/build/zephyr/zephyr.exe
 
 # CI: doctor + test
+[group("full-matrix")]
 ci: doctor test
 
 # Run Zephyr tests with full rebuild
+[group("debug")]
 test-full verbose="": build-examples
     just zephyr test {{verbose}}
 
 # Run Zephyr XRCE E2E tests
+[group("debug")]
 test-xrce verbose="":
     #!/usr/bin/env bash
     set -e
@@ -808,11 +829,13 @@ test-xrce verbose="":
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
 
 # Run Zephyr C examples test
+[group("debug")]
 test-c:
     just build-zenohd
     ./tests/zephyr/run-c.sh
 
 # Clean Zephyr build directories
+[group("main")]
 clean:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"

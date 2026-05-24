@@ -4,15 +4,18 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Build STM32F4 core artifacts.
+[group("main")]
 build:
     @echo "STM32F4 has no separate core build; example coverage lives in fixtures today."
 
 # Build STM32F4 examples.
+[group("main")]
 build-examples:
     @echo "STM32F4 examples are currently covered by 'just stm32f4 build-fixtures'."
 
 # Build all example binaries used as test fixtures (STM32F4 bare-metal Rust).
 # Skips cleanly if the ARM cross-toolchain is missing.
+[group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
     set -e
@@ -46,10 +49,12 @@ build-fixtures:
     fi
 
 # Build every STM32F4 tier: core artifacts, examples, and test fixtures.
+[group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "STM32F4 build-all completed."
 
 # Clean STM32F4 example and fixture build artifacts.
+[group("main")]
 clean:
     #!/usr/bin/env bash
     for ex in talker talker-rtic listener-rtic service-server-rtic \

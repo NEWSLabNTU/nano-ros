@@ -9,6 +9,7 @@ default:
 # PX4-Autopilot has ~50 own sub-submodules (cmake, mavlink, ecl, …).
 # All cloned shallow; total ~500 MB. Required for `just px4 build-sitl`
 # and `just px4 test-sitl`.
+[group("setup")]
 setup:
     git submodule update --init --depth 1 --recommend-shallow \
         third-party/px4/px4-rs \
@@ -22,6 +23,7 @@ setup:
     pip3 install --user -r third-party/px4/PX4-Autopilot/Tools/setup/requirements.txt
 
 # Diagnose PX4 install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -72,6 +74,7 @@ doctor:
     exit $fail
 
 # Build the px4 RMW + board crates (host-mock std mode).
+[group("main")]
 build:
     #!/usr/bin/env bash
     set -e
@@ -84,6 +87,7 @@ build:
 # no_std + alloc registry path actually links on the platforms
 # real PX4 modules deploy to: STM32F1/F4 (M3), Pixhawk 4 (M4F),
 # STM32H7 / NXP RT117x (M7).
+[group("examples")]
 build-targets:
     #!/usr/bin/env bash
     set -e
@@ -108,6 +112,7 @@ build-targets:
 # a SITL build).
 #
 # Cold build ~10 min; warm <2 s. Requires `just px4 setup`.
+[group("examples")]
 build-sitl-cpp:
     #!/usr/bin/env bash
     set -e
@@ -126,6 +131,7 @@ build-sitl-cpp:
 # EXTERNAL_MODULES_LOCATION. Cold build ~10 min; warm <2 s (ninja
 # "no work to do"). Requires `just px4 setup` to have populated
 # PX4-Autopilot recursively.
+[group("examples")]
 build-sitl:
     #!/usr/bin/env bash
     set -e
@@ -141,14 +147,17 @@ build-sitl:
         EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
 # Build PX4 examples.
+[group("main")]
 build-examples: build-sitl build-sitl-cpp
     @echo "PX4 examples built."
 
 # Build PX4 test fixtures.
+[group("full-matrix")]
 build-fixtures:
     @echo "PX4 has no separate test fixture build today."
 
 # Build every PX4 tier: core crates, example integrations, and fixtures.
+[group("full-matrix")]
 build-all: build build-targets build-examples build-fixtures
     @echo "PX4 build-all completed."
 
@@ -171,6 +180,7 @@ check:
 # - HRT cancel evicts queue entries — fixes Sleep-Drop UAF
 # - notify holds callback list lock + Vec<Arc<>> — fixes
 #   Subscription-Drop UAF in callback dispatch
+[group("main")]
 test:
     #!/usr/bin/env bash
     set -e
@@ -180,6 +190,7 @@ test:
     cargo test $cargo_profile_args -p nros-px4 --features test-helpers --tests
 
 # Run E2E test against PX4 SITL. Builds SITL first, then runs the test.
+[group("debug")]
 test-sitl: build-sitl
     #!/usr/bin/env bash
     set -e
@@ -188,9 +199,11 @@ test-sitl: build-sitl
     cargo nextest run "${nextest_profile_args[@]}" -p nros-tests --features px4-sitl --test px4_e2e
 
 # Combined CI: check + unit tests (SITL gated separately via test-sitl).
+[group("full-matrix")]
 ci: check test build-targets
 
 # Clean PX4 example build artifacts without touching downloaded submodules.
+[group("main")]
 clean:
     #!/usr/bin/env bash
     set -e
