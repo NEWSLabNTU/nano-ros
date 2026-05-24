@@ -144,8 +144,8 @@ nros_cargo_fetch_standalone_manifests() {
         examples \
         packages/testing/nros-tests/bins \
         packages/testing/nros-bench \
-        packages/reference \
         -g Cargo.toml \
+        -g '!examples/zephyr/**' \
         -g '!**/target/**' \
         -g '!**/generated/**' \
         -g '!**/build/**' \
@@ -156,7 +156,7 @@ nros_cargo_fetch_standalone_manifests() {
     while IFS= read -r manifest; do
         manifest_dir="$(dirname "$manifest")"
         if [ -f "$manifest_dir/Cargo.lock" ]; then
-            cargo fetch --locked --manifest-path "$manifest"
+            ( cd "$manifest_dir" && cargo fetch --quiet --locked )
         fi
     done < "$list"
 }
