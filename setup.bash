@@ -28,6 +28,13 @@ NROS_ROOT="$(cd "$(dirname "${_nros_script}")" && pwd)"
 export NROS_ROOT
 unset _nros_script
 
+# Export repo-local SDK defaults from the just/sdk-env.just SSoT.
+# Existing caller-provided variables are preserved.
+if [ -f "${NROS_ROOT}/scripts/sdk-env.sh" ]; then
+    # shellcheck source=/dev/null
+    source "${NROS_ROOT}/scripts/sdk-env.sh"
+fi
+
 # Binary directories shipped by nano-ros builds. Each may or may not
 # exist on a given clone depending on which `just <module> setup`
 # recipes have run.

@@ -15,6 +15,12 @@
 set -l _nros_script (status --current-filename)
 set -gx NROS_ROOT (realpath (dirname $_nros_script))
 
+# Export repo-local SDK defaults from the just/sdk-env.just SSoT.
+# Existing caller-provided variables are preserved by scripts/sdk-env.sh.
+if test -f "$NROS_ROOT/scripts/sdk-env.sh"; and type -q bash; and type -q just
+    eval (bash "$NROS_ROOT/scripts/sdk-env.sh" --fish)
+end
+
 # Binary directories shipped by nano-ros builds.
 set -l _nros_bin_dirs \
     "$HOME/.local/bin" \
