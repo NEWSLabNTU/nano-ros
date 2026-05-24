@@ -505,6 +505,7 @@ _nextest-slow-tests limit="20":
 test verbose="": build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
+    source scripts/test/nextest-profile.sh
     nextest_profile_args=($(nros_nextest_profile_args))
     set +e
     failed=0
@@ -513,8 +514,11 @@ test verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    nros_nextest_profile_begin test
+    nros_nextest_profile_write_command \
+        cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
     rm -f target/nextest/default/junit.xml
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures)
     if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
@@ -524,6 +528,8 @@ test verbose="": build-zenohd
     just _test-summary
     echo ""
     just _nextest-slow-tests
+    echo ""
+    nros_nextest_profile_finish
     echo ""
     echo "JUnit XML: target/nextest/default/junit.xml"
     if [ $failed -ne 0 ]; then
@@ -686,6 +692,7 @@ build-zenoh-posix-fixture:
 test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
+    source scripts/test/nextest-profile.sh
     nextest_profile_args=($(nros_nextest_profile_args))
     set +e
     failed=0
@@ -694,8 +701,11 @@ test-all verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    nros_nextest_profile_begin test-all
+    nros_nextest_profile_write_command \
+        cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
     rm -f target/nextest/default/junit.xml
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures)
     if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
@@ -705,6 +715,8 @@ test-all verbose="": build-zenohd
     just _test-summary
     echo ""
     just _nextest-slow-tests
+    echo ""
+    nros_nextest_profile_finish
     echo ""
     echo "=== Doctests ==="
     just test-doc || failed=1

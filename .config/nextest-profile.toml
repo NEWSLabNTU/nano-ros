@@ -1,0 +1,10 @@
+# Optional nextest run-recording overlay.
+#
+# `just test` and `just test-all` pass this as a user config only when
+# NROS_NEXTEST_PROFILE=1, so normal test runs keep the default nextest path.
+
+[experimental]
+record = true
+
+[record]
+enabled = true

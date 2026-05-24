@@ -105,28 +105,80 @@ of Phase 178's fixture stage.
   `just _nextest-slow-tests` helper, called by `just test` and
   `just test-all` after `_test-summary`.
 
-- [ ] **179.B - add an opt-in nextest profile recipe.** Add a recipe
-  such as `just test-all-nextest-profile` or an environment knob that
-  runs the same nextest command with `NEXTEST_EXPERIMENTAL_RECORD=1`,
-  preserves normal nextest parallelism, and writes profiling artifacts
-  under a timestamped `tmp/nextest-profile-*/` directory.
+- [x] **179.B - add opt-in nextest profiling options.** Do not add new
+  public recipes. Keep `just test` and `just test-all` as the only
+  user-facing entry points, and enable profiling with environment
+  options:
 
-- [ ] **179.C - export replayable nextest logs.** For profiled runs,
+  ```sh
+  NROS_NEXTEST_PROFILE=1 just test
+  NROS_NEXTEST_PROFILE=1 just test-all
+  ```
+
+  Implement this through a shared private nextest runner helper so the
+  normal and profiled paths use the same nextest arguments, filters,
+  cargo profile args, verbose handling, and parallelism. Profiling must
+  preserve the existing nextest execution model; it only enables
+  recording and artifact export.
+
+  Suggested knobs:
+
+  - `NROS_NEXTEST_PROFILE=1`: enable nextest run recording and artifact
+    export.
+  - `NROS_NEXTEST_PROFILE_DIR=<path>`: override the timestamped output
+    directory.
+  - `NROS_NEXTEST_REPLAY_LOG=1`: emit a full replay log with captured
+    stdout/stderr. Keep this optional because successful-test output can
+    be large.
+  - `NROS_NEXTEST_TRACE_GROUP_BY=slot|binary`: choose Perfetto grouping;
+    default to `slot` for wall-clock/concurrency analysis.
+  - `NROS_NEXTEST_PROFILE_KEEP_STATE=1`: keep the temporary
+    `NEXTEST_STATE_DIR`; otherwise remove it after archive/trace export.
+
+  Default artifact layout:
+
+  ```text
+  tmp/nextest-profile-test-YYYYMMDD-HHMMSS/
+  tmp/nextest-profile-test-latest -> nextest-profile-test-YYYYMMDD-HHMMSS
+  tmp/nextest-profile-test-all-YYYYMMDD-HHMMSS/
+  tmp/nextest-profile-test-all-latest -> nextest-profile-test-all-YYYYMMDD-HHMMSS
+  ```
+
+  Landed as `scripts/test/nextest-profile.sh`, sourced by `just test`
+  and `just test-all`, plus the persistent
+  `.config/nextest-profile.toml` overlay for nextest's experimental
+  recording mode. The default path is unchanged; setting
+  `NROS_NEXTEST_PROFILE=1` enables recording and artifact export while
+  preserving the existing nextest args, filters, cargo profile, verbose
+  handling, and parallelism.
+
+- [x] **179.C - export replayable nextest logs.** For profiled runs,
   export the latest recording with `cargo nextest store export latest`.
-  Keep the archive path stable via `tmp/nextest-profile-latest/` so a
-  failing run can be replayed with full captured output, including
-  successful test output when needed.
+  Write `nextest-run.zip` under the profile directory so a failing run
+  can be replayed with full captured output, including successful test
+  output when needed. Use a profile-local `NEXTEST_STATE_DIR` so opt-in
+  profiling does not pollute the user's global nextest record store.
+  Landed with `nextest-run.zip` export and optional
+  `NROS_NEXTEST_REPLAY_LOG=1` replay-log generation.
 
-- [ ] **179.D - export Perfetto timeline traces.** For profiled runs,
+- [x] **179.D - export Perfetto timeline traces.** For profiled runs,
   export `cargo nextest store export-chrome-trace latest --group-by slot`
-  to a JSON trace. This is the canonical artifact for concurrency,
-  group bottlenecks, idle slots, retries, and long-pole visualization.
+  to `nextest-trace.json`, or use the `NROS_NEXTEST_TRACE_GROUP_BY`
+  override. This is the canonical artifact for concurrency, group
+  bottlenecks, idle slots, retries, and long-pole visualization. Also
+  copy `target/nextest/default/junit.xml` to the profile directory as
+  `junit.xml`.
+  Landed with `nextest-trace.json` and `junit.xml` in each profile
+  directory. `NROS_NEXTEST_TRACE_GROUP_BY` accepts `slot` or `binary`
+  and defaults to `slot`.
 
 - [ ] **179.E - document profiling overhead and retention.** Recording
   adds event/output-store writes and archive export can create sizable
-  artifacts on chatty tests. Keep recording opt-in for local runs, avoid
-  `--no-capture` because it serializes execution, and document how to
-  prune the nextest store.
+  artifacts on chatty tests. Keep recording opt-in for local runs,
+  avoid `--no-capture` because it serializes execution, and document
+  the profile env vars in the test section. If `NROS_NEXTEST_REPLAY_LOG`
+  is enabled, write `nextest-replay.log`; otherwise rely on the portable
+  archive for full replay.
 
 - [x] **179.F - find remaining test-body builds.** Add a review pass for
   helpers named like `build_*` or tests that call cargo, CMake, west,
@@ -251,10 +303,11 @@ of Phase 178's fixture stage.
 
 - The slowest nextest tests are visible in normal output from JUnit
   parsing or nextest status output.
-- An opt-in nextest profiling recipe records the run without changing
+- `NROS_NEXTEST_PROFILE=1` records `just test` and `just test-all`
+  nextest runs without adding new public recipe names or changing
   nextest parallelism.
 - Profiled runs leave a replayable nextest archive and a
-  Chrome/Perfetto trace under a stable `tmp/*-latest` path.
+  Chrome/Perfetto trace under stable `tmp/*-latest` paths.
 - A first profiling run identifies long-pole tests, serialized groups,
   idle slots, and retry-heavy tests without manual XML/log digging.
 - Fixed sleeps that are not semantically required are replaced by
