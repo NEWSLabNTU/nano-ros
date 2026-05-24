@@ -1,7 +1,6 @@
 //! Phase 136 E2E.1 + E2E.7 — `zpico-sys` build-matrix gate.
 //!
-//! E2E.1 — build every supported platform feature through the
-//! unified cc-rs path and assert the resulting archive contains
+//! E2E.1 — assert the prebuilt POSIX fixture archive contains
 //! the `_z_f_link_*` symbol set the platform's `link.*` policy
 //! resolves to. Pre-136 the per-RTOS branches in `build.rs` each
 //! had their own symbol-set; post-136 the single
@@ -12,13 +11,13 @@
 //! Phase 136.3 deleted the `cmake = "0.1"` dep; this guards against
 //! it sneaking back in via a transitive dep or revert.
 //!
-//! The matrix is intentionally narrow on the test runner — only
-//! the host-runnable POSIX platform is exercised here. Cross-
-//! compile builds for FreeRTOS / NuttX / ThreadX / Zephyr embedded
-//! targets are covered by their per-platform `just <plat>
-//! build-fixtures` recipes (driven from `just build-test-fixtures`);
-//! re-running them inside this nextest would double the per-PR CI
-//! wall-clock for no extra coverage.
+//! The matrix is intentionally narrow on the test runner. The
+//! host-runnable POSIX archive is built by `just build-test-fixtures`
+//! at `target-zenoh-fixture-posix/`; cross-compile builds for FreeRTOS
+//! / NuttX / ThreadX / Zephyr embedded targets are covered by their
+//! per-platform `just <plat> build-fixtures` recipes. Re-running any of
+//! those builds inside nextest would double CI wall-clock for no extra
+//! coverage.
 
 use std::{
     path::{Path, PathBuf},
@@ -76,48 +75,31 @@ fn zpico_sys_has_no_cmake_dep() {
     );
 }
 
-/// E2E.1 — POSIX platform built through the unified cc-rs path
-/// emits the canonical link-feature symbols. We deliberately pin
-/// the platform to POSIX so the test runs on every CI box without
-/// cross toolchains; the per-platform symbol-set contract for
-/// embedded targets is enforced by the manifest's `link.*` policy
-/// itself plus the existing `tests/zenoh_header_parity.rs` gate.
+fn prebuilt_posix_archive(root: &Path) -> PathBuf {
+    for profile in ["release", "debug"] {
+        let archive = root
+            .join("target-zenoh-fixture-posix")
+            .join(profile)
+            .join("libnros_rmw_zenoh_staticlib.a");
+        if archive.is_file() {
+            return archive;
+        }
+    }
+    panic!(
+        "POSIX zenoh staticlib fixture not built. Run `just build-test-fixtures` \
+         or `just build-zenoh-posix-fixture` first; searched {}",
+        root.join("target-zenoh-fixture-posix").display()
+    );
+}
+
+/// E2E.1 — POSIX platform archive built through the unified cc-rs path
+/// emits the canonical link-feature symbols. The archive is prebuilt by
+/// the fixture stage so `just test-all` does not compile it inside the
+/// test body.
 #[test]
 fn zpico_posix_archive_carries_link_feature_symbols() {
     let root = workspace_root();
-    let target_dir = root.join("target-zpico-build-matrix").join("posix");
-
-    // Build the standalone staticlib (sibling of `zpico-sys`'s rlib)
-    // because that's the artifact downstream consumers link, and
-    // its archive is where `_z_f_link_*` symbols ultimately show up.
-    let status = Command::new("cargo")
-        .args([
-            "build",
-            "-p",
-            "nros-rmw-zenoh-staticlib",
-            "--release",
-            "--no-default-features",
-            "--features",
-            "platform-posix,ros-humble",
-            "--target-dir",
-        ])
-        .arg(&target_dir)
-        .current_dir(&root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .status()
-        .expect("cargo build failed to spawn");
-    assert!(
-        status.success(),
-        "cargo build -p nros-rmw-zenoh-staticlib --features platform-posix failed"
-    );
-
-    let archive = target_dir.join("release/libnros_rmw_zenoh_staticlib.a");
-    assert!(
-        archive.exists(),
-        "expected staticlib at {} but it was not produced",
-        archive.display()
-    );
+    let archive = prebuilt_posix_archive(&root);
 
     // POSIX's `LinkPolicy` enables tcp / udp_unicast / udp_multicast,
     // disables serial / ws / bluetooth / raweth / tls (link-tls is

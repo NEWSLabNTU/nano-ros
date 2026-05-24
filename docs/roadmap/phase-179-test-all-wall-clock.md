@@ -114,11 +114,49 @@ stage.
   out clearly. Start with C XRCE API, custom transport loopback,
   zero-copy, safety E2E, and ROS 2 lifecycle interop.
 
-- [ ] **179.F - find remaining test-body builds.** Add a review pass for
+- [x] **179.F - find remaining test-body builds.** Add a review pass for
   helpers named like `build_*` or tests that call cargo, CMake, west,
   make, or platform build scripts during `test-all`. Move expensive
   required artifacts into `build-test-fixtures`, or document why the
   build must stay inside the test.
+
+  Completed 2026-05-25. Added `scripts/test-audit-builds.sh` as the
+  repeatable review pass. It reports direct build-tool spawns, shell
+  command strings mentioning build tools, and `build_*` fixture resolver
+  call sites that can be mistaken for in-test compiles.
+
+  Moved one avoidable build out of the test body:
+  `zpico_build_matrix::zpico_posix_archive_carries_link_feature_symbols`
+  now consumes the deterministic POSIX staticlib staged by
+  `just build-test-fixtures` / `just build-zenoh-posix-fixture` at
+  `target-zenoh-fixture-posix/` instead of running its own
+  `cargo build -p nros-rmw-zenoh-staticlib`.
+
+  Remaining direct build-tool invocations are intentional:
+
+  - `zpico_build_matrix::zpico_sys_has_no_cmake_dep` runs `cargo tree`;
+    this is metadata inspection, not a compile.
+  - `zpico_drift_gate` runs sandboxed `cargo build -p zpico-sys` twice
+    because the build-script failure/success path is the product under
+    test.
+  - `cmake_add_subdirectory` and `cmake_platform_matrix` configure and
+    build tiny throwaway consumers because CMake source-distribution
+    linkability is the product under test.
+  - `integration_zephyr` uses `west list` and `integration_esp_idf`
+    uses `idf.py --version`; both are setup probes, not builds.
+  - `integration_px4` uses `make help` and `px4_e2e` builds PX4 SITL,
+    but `px4_e2e` is behind the non-default `px4-sitl` feature and is
+    not part of the default `cargo nextest run --workspace` in
+    `just test-all`.
+  - `nros-cli-core` orchestration E2E tests invoke `nros build` /
+    `build::run` and compile small native counter archives because they
+    validate the build command and generated-package link behavior
+    directly. These remain outside `nros-tests` fixture staging.
+  - `build_*` helpers under
+    `packages/testing/nros-tests/src/fixtures/binaries/` are fixture
+    resolvers by contract; they should only return prebuilt paths or a
+    missing-fixture remedy. Any future cargo/CMake/west/make command in
+    those helpers is a 179.F regression.
 
 - [ ] **179.G - split shared native C/C++ artifacts.** Native API tests
   serialize because zenoh and XRCE variants share
