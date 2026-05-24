@@ -31,6 +31,21 @@ Reference and contributor docs live in `docs/`; user-facing mdBook docs live in 
 
 Treat `<platform>` as target families such as `qemu`, `zephyr`, `freertos`, `nuttx`, `threadx_linux`, `threadx_riscv64`, `esp32`, or board groups. Support services such as `zenohd`, `cyclonedds`, and `xrce` are not platform scopes.
 
+Codex sandbox notes:
+
+- `just` may fail before running a recipe if the default runtime
+  directory is read-only, with an error about creating a temporary
+  directory under `/run/user/.../just`. In that environment, rerun with
+  `XDG_RUNTIME_DIR=/tmp`.
+- Cargo commands inside `just` may need to update the user's registry
+  cache under `$HOME/.cargo`. If a recipe fails with read-only
+  filesystem errors in `.cargo/registry`, rerun the same command with
+  sandbox escalation rather than treating it as a project failure.
+- A failed pre-nextest Cargo setup can leave an old
+  `target/nextest/default/junit.xml` in place. If a recipe prints
+  slow-test output after such a setup failure, verify whether nextest
+  actually ran before trusting the timing report.
+
 ## Coding Style & Naming Conventions
 
 Rust uses edition 2024 and `rustfmt.toml` with nightly-only formatting options. Use `cargo +nightly fmt` or `rustup run nightly cargo fmt`; stable rustfmt produces different output. C and C++ follow `.clang-format` based on LLVM, 4-space indentation, and a 100-column limit. Keep crate names and package paths in the existing `nros-*`, `zpico-*`, backend-specific, and platform-specific patterns.
