@@ -43,8 +43,8 @@ passed.
 
 ### Build/Feature Ownership
 
-- [ ] **177.3 - Cyclone for pure-cargo Rust examples.**
-  Owner: Phase 175.
+- [x] **177.3 - Cyclone CMake/Corrosion path for Rust examples.**
+  Closed 2026-05-25 by the merged Phase 175 work.
   `nros_rmw_cyclonedds_register` lives only in the C++/CMake build, so
   `cargo build --features rmw-cyclonedds` of native/freertos/threadx
   Rust examples cannot link it directly; Cyclone-backed fixtures must go
@@ -52,17 +52,24 @@ passed.
   Rust and added embedded Cyclone fixture wiring for FreeRTOS and ThreadX.
   FreeRTOS Rust Cyclone boots and exchanges user data. ThreadX RISC-V64
   now builds the Cyclone `ddsc` static-library probe and links the C,
-  C++, and Rust talker/listener fixtures, but the runtime still fails
-  during Cyclone participant initialization before RTPS traffic starts.
+  C++, and Rust talker/listener fixtures. The original build/link
+  ownership issue is closed; remaining ThreadX runtime diagnosis is
+  tracked separately under 177.22.
+
+- [ ] **177.22 - ThreadX Cyclone participant init runtime trap.**
+  Owner: Phase 177 runtime/Cyclone follow-up.
+  ThreadX RISC-V64 Cyclone fixtures now build and link, but runtime
+  still fails during Cyclone participant initialization before RTPS
+  traffic starts.
   The 2026-05-24 manual two-QEMU probe boots ThreadX, initializes NetX Duo
   and BSD sockets, then reports `nros_support_init -> -1` on the listener;
   the talker traps with `mcause=0x7` at picolibc tinystdio
   `__file_str_put` (`mepc=0x80074270`, `mtval=0x10016c008`,
   `tinystdio/filestrput.c:44`). Phase 175 fixed the prerequisite
   allocation/link issues (`z_malloc`/`z_free`, C++ `new/delete`,
-  Cyclone session-state allocation, and `stderr` binding); the remaining
-  177-side bug is to diagnose the Cyclone/picolibc stdio string-buffer
-  state used during participant initialization on ThreadX.
+  Cyclone session-state allocation, and `stderr` binding). The remaining
+  bug is to diagnose the Cyclone/picolibc stdio string-buffer state used
+  during participant initialization on ThreadX.
 
 ### Test-All Environment / Setup
 
@@ -345,7 +352,7 @@ passed.
 
 Archive this tracker only after:
 
-- [ ] 177.3 closes or moves into a newer, more specific phase doc.
+- [x] 177.3 closes or moves into a newer, more specific phase doc.
 - [ ] 177.6 through 177.9 have owners and either close or move into more
   specific phase docs.
 - [x] 177.19 and 177.20 close or move into platform-specific runtime

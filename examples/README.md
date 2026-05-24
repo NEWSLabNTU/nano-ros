@@ -53,7 +53,14 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 Gap themes — see `docs/roadmap/phase-118-example-matrix-coverage.md` for the
 plan that fills these:
 
-- **CycloneDDS matrix-fill** — Phase 171.C: native c/cpp landed; native/rust + threadx-linux/rust pending the `nros-rmw-cyclonedds-staticlib` Rust path (171.C.1/.3); RTOS QEMU cells gated on a Cyclone DDS RTOS port (171.C.gate). dust-DDS retired in Phase 169 — there is no `dds` column anymore.
+- **CycloneDDS matrix-fill** — Phase 175 replaced the old
+  `nros-rmw-cyclonedds-staticlib` idea with CMake/Corrosion fixture
+  paths: native Rust talker/listener link and exchange user data, and
+  FreeRTOS plus ThreadX RISC-V64 Cyclone fixture build/link coverage is
+  wired. FreeRTOS Rust Cyclone also boots and exchanges user data.
+  ThreadX RISC-V64 runtime still needs participant-init diagnosis
+  (Phase 177.22). dust-DDS retired in Phase 169 — there is no `dds`
+  column anymore.
 - **XRCE absent on every embedded platform except Zephyr** — Phase 115.K.2 header-only backend needs a Rust adapter for bare-metal targets.
 
 ### Intentionally empty cells
@@ -70,8 +77,8 @@ spin up examples here without first lifting the underlying constraint.
 | `stm32f4/{c,cpp}/*`                                    | Same bare-metal Cortex-M constraint; the STM32F4 examples are RTIC / embassy Rust apps with no C-facing startup story.                                                                                                                                             | Same as above.                                                                                                                                                                 |
 | `px4/{c,rust}/*` (everything except `px4/cpp/uorb/`)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `examples/px4/cpp/uorb/nros-register-check/` is the canonical surface; `examples/px4/rust/uorb/` is a README-only placeholder retained for the historical Rust path. | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
 | `cyclonedds` on bare-metal (`qemu-arm-baremetal`, `qemu-esp32-baremetal`, `esp32`, `stm32f4`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M / esp-hal bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. |
-| `cyclonedds` on FreeRTOS / NuttX QEMU (`qemu-arm-freertos`, `qemu-arm-nuttx` × all langs) | Deferred-upstream (Phase 171.C.gate): a Cyclone DDS FreeRTOS+lwIP / NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. | An upstream Cyclone DDS RTOS port (socket shim + config + heap budget), then a nano-ros example cell. |
-| `cyclonedds` rust on `native` / `threadx-linux` | Pending the `nros-rmw-cyclonedds-staticlib` crate (Phase 171.C.1.rust): `nros-rmw-cyclonedds-sys` exposes only the C register shim; a pure-cargo Rust binary has no way to build+link the C++ Cyclone lib + `libddsc`. | Add the staticlib crate (build.rs drives the Cyclone cmake build + links `libddsc`/`stdc++`, mirroring `nros-rmw-zenoh-staticlib`). |
+| `cyclonedds` on NuttX QEMU (`qemu-arm-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
+| pure-cargo `cyclonedds` Rust binaries on `native` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
 
 If you believe one of these cells should be filled, please open an issue
 referencing the gating phase before adding directories — the lint in
