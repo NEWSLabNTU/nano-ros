@@ -343,8 +343,12 @@ setup:
     # `menuconfig → Application Configuration → External Modules`.
     nuttx_apps_dir="${NUTTX_APPS_DIR:-$(pwd)/third-party/nuttx/nuttx-apps}"
     if [ -f "$nuttx_apps_dir/Make.defs" ]; then
+        source scripts/build/cargo.sh
+        echo "  → host nros-codegen (cargo)"
+        nros_cargo_ensure_codegen_c
+        codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
         echo "Staging nano-ros external apps into $nuttx_apps_dir/external/..."
-        scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir"
+        scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir" "$codegen"
     else
         echo "Skipping external-app staging: $nuttx_apps_dir/Make.defs not found"
     fi

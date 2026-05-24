@@ -8,7 +8,7 @@
 # files outside $NUTTX_APPS_DIR/external/.
 #
 # Usage:
-#   stage-external-apps.sh <nuttx-apps-dir>
+#   stage-external-apps.sh <nuttx-apps-dir> [nros-codegen-binary]
 #
 # Required: <nuttx-apps-dir> must exist and look like a NuttX apps
 # tree (has a `Make.defs` at the top level).
@@ -23,6 +23,7 @@ fi
 NUTTX_APPS_DIR="$1"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 INTEGRATION="$ROOT/integrations/nuttx"
+CODEGEN="${2:-${NROS_CODEGEN:-$ROOT/packages/codegen/packages/target/release/nros-codegen}}"
 
 if [ ! -f "$NUTTX_APPS_DIR/Make.defs" ]; then
     echo "error: $NUTTX_APPS_DIR doesn't look like a NuttX apps tree (no Make.defs)" >&2
@@ -71,7 +72,7 @@ for lang in c cpp; do
             # nros_generate_interfaces() calls from the example's
             # CMakeLists.txt). Skips gracefully if AMENT_PREFIX_PATH
             # is unset / interfaces can't be resolved.
-            python3 "$ROOT/scripts/nuttx/gen-interfaces.py" "$src" || true
+            python3 "$ROOT/scripts/nuttx/gen-interfaces.py" "$src" "$CODEGEN" || true
             # Phase 157.C.16 — for CPP examples, also build the
             # per-package `nano_ros_cpp_ffi_<pkg>` staticlib crate
             # (cmake's nros_generate_interfaces equivalent for the
@@ -83,7 +84,7 @@ for lang in c cpp; do
                 extras_mk="$src/generated/ffi/extra_libs.mk"
                 mkdir -p "$(dirname "$extras_mk")"
                 : > "$extras_mk"
-                python3 "$ROOT/scripts/nuttx/gen-cpp-ffi-crates.py" "$src" \
+                python3 "$ROOT/scripts/nuttx/gen-cpp-ffi-crates.py" "$src" "$CODEGEN" \
                     | while read -r lib_path; do
                         printf 'EXTRA_LIBS += %s\n' "$lib_path" >> "$extras_mk"
                     done

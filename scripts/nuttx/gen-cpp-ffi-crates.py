@@ -39,7 +39,10 @@ TEMPLATE_FFI_RS = REPO_ROOT / "cmake" / "ffi_lib_rs.in"
 
 SERDES_DIR = REPO_ROOT / "packages" / "core" / "nros-serdes"
 LIBC_DIR = REPO_ROOT / "third-party" / "nuttx" / "libc"
-CODEGEN = REPO_ROOT / "packages" / "codegen" / "packages" / "target" / "release" / "nros-codegen"
+DEFAULT_CODEGEN = (
+    REPO_ROOT / "packages" / "codegen" / "packages" / "target" / "release" / "nros-codegen"
+)
+CODEGEN = DEFAULT_CODEGEN
 
 RESOLVED_PKG_LIST_RE = re.compile(r'set\(_NROS_RESOLVED_PACKAGES "([^"]*)"\)')
 
@@ -225,10 +228,22 @@ def build_crate(crate_dir: Path) -> Path:
 
 
 def main(argv: list[str]) -> int:
+    global CODEGEN
     if len(argv) < 2:
-        print("usage: gen-cpp-ffi-crates.py <example-dir>", file=sys.stderr)
+        print(
+            "usage: gen-cpp-ffi-crates.py <example-dir> [nros-codegen-binary]",
+            file=sys.stderr,
+        )
         return 2
     example_dir = Path(argv[1]).resolve()
+    if len(argv) >= 3:
+        CODEGEN = Path(argv[2]).resolve()
+    if not CODEGEN.exists():
+        print(
+            f"warning: nros-codegen not at {CODEGEN}; skipping {example_dir.name}",
+            file=sys.stderr,
+        )
+        return 0
     pkg_dirs = find_packages(example_dir)
     if not pkg_dirs:
         # Not a CPP example or codegen hasn't run; nothing to do.

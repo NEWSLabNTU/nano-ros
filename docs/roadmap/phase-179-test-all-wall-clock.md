@@ -262,11 +262,24 @@ of Phase 178's fixture stage.
   and 0 skipped. The native C/C++ API tests can now use nextest's
   default scheduler.
 
-- [ ] **179.I - re-evaluate Zephyr test serialization.** Confirm which
+- [x] **179.I - re-evaluate Zephyr test serialization.** Confirm which
   Zephyr tests still configure/build inside the test body. Runtime-only
   tests that consume prebuilt images and use unique ports may be able to
   leave the historical `qemu-zephyr max-threads = 1` bottleneck without
   reintroducing the old CMake corruption.
+
+  Completed 2026-05-25:
+  - Audited `zephyr`, `integration_zephyr`, `logging_smoke`, and
+    `phase_118_collapse`: Zephyr runtime tests resolve prebuilt images
+    through `get_prebuilt_zephyr_example` or Phase 118 fixture resolvers;
+    they no longer run `west build`/CMake inside the test body.
+    `integration_zephyr` still uses `west list` only as a setup probe.
+  - Restored `qemu-zephyr max-threads = 6` for non-DDS fall-through tests
+    because they only boot prebuilt images, check paths/staleness, or
+    inspect Zephyr setup state.
+  - Routed `binary(zephyr) and test(dds)` to the existing serial
+    `qemu-zephyr-dds` group so Cyclone DDS native_sim fixed RTPS ports do
+    not collide while non-DDS Zephyr smoke/build checks can overlap.
 
 - [x] **179.J - isolate ROS 2 and XRCE interop enough to parallelize.**
   Survey use of ROS domain IDs, daemon behavior, DDS discovery ports,
