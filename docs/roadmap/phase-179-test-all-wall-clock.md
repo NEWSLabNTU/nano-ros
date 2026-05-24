@@ -178,11 +178,37 @@ of Phase 178's fixture stage.
   out clearly. Start with C XRCE API, custom transport loopback,
   zero-copy, safety E2E, and ROS 2 lifecycle interop.
 
-- [ ] **179.H - split shared native C/C++ artifacts.** Native API tests
+- [x] **179.H - split shared native C/C++ artifacts.** Native API tests
   serialize because zenoh and XRCE variants share
   `target/release/libnros_c.a`. Move those tests to per-RMW target dirs
   or fixture archives so they can run concurrently and stop overwriting
   each other.
+
+  Completed 2026-05-25. The native C/C++ resolver path already consumes
+  prebuilt per-RMW CMake fixture directories:
+  `examples/native/{c,cpp}/<case>/build-zenoh`,
+  `build-xrce`, and `build-cyclonedds`. The remaining blocker was stale
+  test infrastructure: `.config/nextest.toml` still serialized
+  `native_api` and `c_xrce_api` because older test helpers could rebuild
+  shared `target/release/libnros_c.a` in the test body. Removed the
+  `native_api` single-thread group assignment, documented that
+  `c_xrce_api` uses prebuilt `build-xrce` fixtures plus per-test
+  ephemeral XRCE Agent ports, fixed the C XRCE tests to pass those
+  per-test locators through the `NROS_LOCATOR` environment variable that
+  the examples actually read, and deleted dead C/C++ helper paths that
+  still contained direct CMake builds for retired DDS examples.
+
+  Follow-up race cleanup fixed the remaining unfiltered failures:
+  `nros_cmake_configure_if_needed` now rejects half-configured CMake
+  build dirs with no `Makefile`/`build.ninja`, `NanoRos` explicitly
+  depends on the CMake CycloneDDS backend target when the Linux/BSD
+  whole-archive linker flag path uses `$<TARGET_FILE:...>`, CycloneDDS
+  runtime tests set `LD_LIBRARY_PATH` to the local `build/install/lib`,
+  and the old ignored C service/action cases were unignored after
+  passing. A parallel nextest run over `native_api`, `c_xrce_api`, and
+  `cpp_parameters` now passes unfiltered with 41 tests run, 41 passed,
+  and 0 skipped. The native C/C++ API tests can now use nextest's
+  default scheduler.
 
 - [ ] **179.I - re-evaluate Zephyr test serialization.** Confirm which
   Zephyr tests still configure/build inside the test body. Runtime-only

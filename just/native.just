@@ -322,6 +322,14 @@ build-fixture-extras:
         fi
     done
     wait
+    if [ -d examples/native/cpp/parameters ]; then
+        echo "  → native/cpp/parameters (-DNROS_RMW=zenoh, build-zenoh/)"
+        ( cd examples/native/cpp/parameters && \
+          nros_cmake_configure_if_needed . build-zenoh -DNROS_RMW=zenoh \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
+          cmake --build build-zenoh --target cpp_parameters > /dev/null )
+    fi
     if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
         for lang in c cpp; do
             for case in talker listener; do

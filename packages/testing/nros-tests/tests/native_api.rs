@@ -1,8 +1,10 @@
 //! Native C / C++ API integration tests.
 //!
-//! Exercises the CMake-built C and C++ examples (talker, listener,
+//! Exercises the prebuilt CMake C and C++ examples (talker, listener,
 //! service-server/-client, action-server/-client) as a single parametrised
-//! suite. Language-agnostic tests are generated as two cases
+//! suite. `just native build-fixtures` stages these under isolated
+//! `build-<rmw>/` dirs so tests do not compile or overwrite native
+//! archives at runtime. Language-agnostic tests are generated as two cases
 //! (`::case_1_C` and `::case_2_Cpp`) via `#[rstest]`; language-specific
 //! tests (interop tests that always pair with Rust, the C++ goal-rejection
 //! test, the C action blocking case) stay as named functions below.
@@ -154,7 +156,7 @@ fn require_native_env() -> bool {
 }
 
 // =============================================================================
-// Build tests (parametrised)
+// Fixture presence tests (parametrised)
 // =============================================================================
 
 #[rstest]
@@ -468,11 +470,11 @@ fn test_native_service_communication(
 }
 
 // =============================================================================
-// Action communication (one function per language — c is `#[ignore]`'d)
+// Action communication (one function per language)
 // =============================================================================
 //
-// `rstest`'s `#[values]` doesn't let a single case be `#[ignore]`'d while
-// another runs, so these stay as two small wrappers around a shared body.
+// These stay as two small wrappers around a shared body so failures keep
+// clear language-specific names.
 
 fn native_action_communication_body(lang: Language, locator: &str) {
     let server_bin = lang.action_server_binary();
@@ -538,7 +540,6 @@ fn native_action_communication_body(lang: Language, locator: &str) {
 }
 
 #[rstest]
-#[ignore = "Phase 77 WIP: blocking zpico_get in send_goal returns Timeout immediately"]
 fn test_c_action_communication(zenohd_unique: ZenohRouter) {
     if !require_native_env() {
         return;
@@ -718,6 +719,16 @@ fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedPr
     let mut cmd = stdbuf_command(binary);
     cmd.env("ROS_DOMAIN_ID", domain_id);
     cmd.env("RUST_LOG", "info");
+    let cyclone_lib = nros_tests::project_root().join("build/install/lib");
+    let ld_library_path = match std::env::var_os("LD_LIBRARY_PATH") {
+        Some(existing) if !existing.is_empty() => {
+            let mut paths = vec![cyclone_lib];
+            paths.extend(std::env::split_paths(&existing));
+            std::env::join_paths(paths).expect("valid LD_LIBRARY_PATH")
+        }
+        _ => cyclone_lib.into_os_string(),
+    };
+    cmd.env("LD_LIBRARY_PATH", ld_library_path);
     ManagedProcess::spawn_command(cmd, name).unwrap_or_else(|_| panic!("Failed to start {name}"))
 }
 
@@ -866,7 +877,6 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
 }
 
 #[rstest]
-#[ignore = "Phase 77 WIP: blocking zpico_get in service call returns Timeout immediately"]
 fn test_c_rust_service_interop(zenohd_unique: ZenohRouter) {
     if !require_native_env() {
         return;

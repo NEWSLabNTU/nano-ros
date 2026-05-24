@@ -1,11 +1,13 @@
 //! C XRCE-DDS API integration tests
 //!
-//! Tests the C examples (c-xrce-talker, c-xrce-listener) built with CMake
-//! using the XRCE-DDS backend.
+//! Tests the C examples (c-xrce-talker, c-xrce-listener) prebuilt with
+//! CMake using the XRCE-DDS backend. `just native build-fixtures` stages
+//! them under `examples/native/c/{talker,listener}/build-xrce/`; test
+//! bodies only resolve and execute those binaries.
 //!
 //! Prerequisites:
 //!   just build-xrce-agent   # Build the Micro-XRCE-DDS Agent from source
-//!   cmake                   # Required for building C examples
+//!   just native build-fixtures  # Prebuild C XRCE example binaries
 
 use nros_tests::{
     count_pattern,
@@ -30,7 +32,7 @@ fn stdbuf_command(binary: &Path) -> Command {
 }
 
 // =============================================================================
-// Build Tests
+// Fixture presence tests
 // =============================================================================
 
 #[test]
@@ -93,7 +95,7 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = stdbuf_command(&c_xrce_talker_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr);
+    cmd.env("NROS_LOCATOR", &addr);
     let mut talker =
         ManagedProcess::spawn_command(cmd, "c-xrce-talker").expect("Failed to start c-xrce-talker");
 
@@ -127,7 +129,7 @@ fn test_c_xrce_listener_starts(c_xrce_listener_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = stdbuf_command(&c_xrce_listener_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr);
+    cmd.env("NROS_LOCATOR", &addr);
     let mut listener = ManagedProcess::spawn_command(cmd, "c-xrce-listener")
         .expect("Failed to start c-xrce-listener");
 
@@ -169,7 +171,7 @@ fn test_c_xrce_talker_listener_communication(
 
     // Start listener first (subscribe before publishing)
     let mut listener_cmd = stdbuf_command(&c_xrce_listener_binary);
-    listener_cmd.env("XRCE_AGENT_ADDR", &addr);
+    listener_cmd.env("NROS_LOCATOR", &addr);
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "c-xrce-listener")
         .expect("Failed to start c-xrce-listener");
 
@@ -178,7 +180,7 @@ fn test_c_xrce_talker_listener_communication(
 
     // Start talker
     let mut talker_cmd = stdbuf_command(&c_xrce_talker_binary);
-    talker_cmd.env("XRCE_AGENT_ADDR", &addr);
+    talker_cmd.env("NROS_LOCATOR", &addr);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "c-xrce-talker")
         .expect("Failed to start c-xrce-talker");
 

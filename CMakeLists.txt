@@ -243,6 +243,11 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # itself (third-party C++ library, not part of nano-ros).
     add_subdirectory(packages/dds/nros-rmw-cyclonedds)
     if(TARGET nros_rmw_cyclonedds)
+        # The Linux/BSD link path below whole-archives the backend via a raw
+        # linker flag so the registration object cannot be dropped. Raw
+        # `$<TARGET_FILE:...>` link flags do not add a build-order edge for
+        # consumers of this INTERFACE library, so keep the dependency explicit.
+        add_dependencies(NanoRos nros_rmw_cyclonedds)
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
            OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
             if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)

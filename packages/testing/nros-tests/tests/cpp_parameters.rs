@@ -1,10 +1,11 @@
 //! C++ parameter wrapper integration test (Phase 117.9).
 //!
-//! Builds and runs the `cpp_parameters` example, asserting that
+//! Runs the prebuilt `cpp_parameters` example, asserting that
 //! declare/get/set roundtrips through `nros::ParameterServer<Cap>` work
 //! end-to-end. The example exits with status 0 only when every
 //! roundtrip passes — non-zero exit codes encode which assertion
-//! failed (see `examples/native/cpp/parameters/src/main.cpp`).
+//! failed (see `examples/native/cpp/parameters/src/main.cpp`). Build it
+//! ahead of time with `just native build-fixtures`.
 
 use std::process::Command;
 
@@ -17,7 +18,7 @@ fn cpp_parameters_roundtrip() {
         "cpp_parameters_roundtrip requires `cmake` on PATH"
     );
 
-    let binary = build_cpp_parameters().expect("failed to build cpp-parameters example");
+    let binary = build_cpp_parameters().expect("cpp-parameters fixture not prebuilt");
 
     let output = Command::new(binary)
         .output()

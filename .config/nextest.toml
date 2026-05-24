@@ -190,13 +190,6 @@ max-threads = 7
 [test-groups.qemu-zephyr-dds]
 max-threads = 1
 
-# Native C / C++ API tests share the same `target/release/libnros_c.a`
-# between zenoh and XRCE-DDS variants, so running them concurrently
-# causes library overwrites and link-time failures. c_xrce_api lives
-# in the same group for the same reason.
-[test-groups.native_api]
-max-threads = 1
-
 # Phase 11W.12 — the native_sim Cyclone DDS boot + pub/sub E2E tests
 # each spawn host native_sim processes that bind RTPS discovery on the
 # fixed SPDP multicast port (7400 + 250*domain, all domain 0) on the
@@ -442,17 +435,16 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(native_api)"
-test-group = "native_api"
-# Phase 89.14 follow-up: tests in `native_api` build native cargo example
-# binaries (talker/listener/rtic-action) inside the test body. On a cold
-# `target/`, those builds easily exceed the 60 s default ceiling because
-# multiple parallel tests contend on the same target dir. 5×60 s = 300 s
-# accommodates cold-start with concurrent cargo invocations.
+# Phase 179.G: native C/C++ API tests consume prebuilt per-RMW CMake
+# fixture dirs (`build-zenoh`, `build-xrce`, `build-cyclonedds`) instead
+# of compiling in the test body, so they no longer need the old
+# single-thread native_api group. Keep the longer timeout for runtime
+# startup/E2E cases under host load.
 slow-timeout = { period = "60s", terminate-after = 5 }
 
-# Phase 89.14 follow-up: same rationale as native_api — `nano2nano` tests
-# build native examples (rtic-action-server/client, link-tls talker, etc.)
-# inside the test body and cold-start under load can blow past 60 s.
+# Phase 89.14 follow-up: `nano2nano` tests still exercise slower native
+# fixture variants (rtic-action-server/client, link-tls talker, etc.) and
+# can blow past 60 s under load.
 [[profile.default.overrides]]
 filter = "binary(nano2nano)"
 slow-timeout = { period = "60s", terminate-after = 5 }
@@ -466,7 +458,9 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(c_xrce_api)"
-test-group = "native_api"
+# Phase 179.G: C XRCE API tests use the prebuilt `build-xrce` fixtures
+# and an ephemeral XRCE Agent port per runtime test, so they can run with
+# the default scheduler.
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 [[profile.default.overrides]]
