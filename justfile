@@ -477,6 +477,14 @@ _test-summary:
     fi
     echo "Real failures: $real / $total total failures"
 
+# Print the slowest nextest tests from junit.xml.
+[private]
+_nextest-slow-tests limit="20":
+    #!/usr/bin/env bash
+    python3 scripts/test/nextest-slow-tests.py \
+        target/nextest/default/junit.xml \
+        --limit {{limit}}
+
 # Default dev tier — workspace unit tests + integration tests, with
 # heavy QEMU / Zephyr / ROS-2-interop groups skipped. Does NOT run
 # Miri (use `test-miri` or `test-all` for that).
@@ -500,6 +508,7 @@ test verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    rm -f target/nextest/default/junit.xml
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures)
@@ -508,6 +517,8 @@ test verbose="": build-zenohd
     fi
     echo ""
     just _test-summary
+    echo ""
+    just _nextest-slow-tests
     echo ""
     echo "JUnit XML: target/nextest/default/junit.xml"
     if [ $failed -ne 0 ]; then
@@ -678,6 +689,7 @@ test-all verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    rm -f target/nextest/default/junit.xml
     cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures)
@@ -686,6 +698,8 @@ test-all verbose="": build-zenohd
     fi
     echo ""
     just _test-summary
+    echo ""
+    just _nextest-slow-tests
     echo ""
     echo "=== Doctests ==="
     just test-doc || failed=1

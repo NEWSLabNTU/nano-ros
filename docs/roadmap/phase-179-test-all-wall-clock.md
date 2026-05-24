@@ -1,22 +1,22 @@
-# Phase 179 - test-all wall-clock profiling and fixups
+# Phase 179 - nextest runtime profiling and fixups
 
-**Goal.** Turn `just test-all` from an opaque hour-long full sweep into a
-measured pipeline, then remove avoidable serial waits, hidden builds, and
-over-broad stage composition without reducing coverage.
+**Goal.** Make the `cargo nextest run` portion of `just test-all`
+measurable and replayable, then remove avoidable serial waits, hidden
+runtime builds, and over-broad serialization without reducing coverage.
 
 **Status.** Proposed. Created from the 2026-05-24 `just test-all`
 review.
 
 **Priority.** P2 (developer and CI wall-clock).
 
-**Depends on.** Phase 178 for fixture/build de-dup. This phase starts
-with measurement because the current runtime is spread across nextest,
-doctests, Miri, C codegen, orchestration E2E, ROS 2 CLI work, and
-platform runtime tests.
+**Depends on.** Phase 178 for fixture/build de-dup. This phase covers
+only the nextest run. Doctests, Miri, C codegen, orchestration E2E, and
+other outer `just test-all` stages are intentionally out of scope unless
+they are moved under nextest later.
 
 ## Findings
 
-### test-all is a serial aggregate
+### test-all has one large nextest stage
 
 `just test-all` currently runs these stages in order:
 
@@ -31,7 +31,7 @@ platform runtime tests.
 Fixtures are intentionally not built by this recipe; callers are
 expected to run `just build-test-fixtures` first. If a measured "test
 all" run includes fixture staging, the build side belongs to Phase 178.
-This phase tracks the test runner side.
+This phase tracks the nextest stage only.
 
 ### nextest contains most platform runtime work
 
@@ -40,6 +40,26 @@ FreeRTOS, NuttX, ThreadX, XRCE, ROS 2 interop, native C/C++ API, bridges,
 large messages, zero-copy, safety, and other integration binaries. The
 single nextest invocation is convenient, but its slowest tests are not
 surfaced in the top-level `test-all` output beyond the JUnit file.
+
+### nextest already has the profiling primitives
+
+Do not build custom per-test timing. Nextest already provides the
+needed data:
+
+- `target/nextest/default/junit.xml` records per-test `time` values and
+  the whole nextest run time.
+- `--status-level` and `--final-status-level` can surface slow tests in
+  normal output.
+- Experimental run recording (`NEXTEST_EXPERIMENTAL_RECORD=1`) captures
+  a full event stream and captured stdout/stderr for every test.
+- Recorded runs can be replayed, exported as portable archives, and
+  exported as Chrome/Perfetto traces.
+- Perfetto trace export includes test begin/end timestamps, global slot
+  assignment, binary id, test name, command line, result, duration,
+  attempt count, `is_slow`, and `test_group`.
+
+The nextest trace covers the nextest test execution phase only. That is
+acceptable for this phase because nextest timing is the requested scope.
 
 ### Several test groups are deliberately serialized
 
@@ -66,57 +86,51 @@ custom transport loopback, zero-copy, safety E2E, and ROS 2 lifecycle
 interop tests. These waits accumulate even when the process was ready
 earlier.
 
-### Post-nextest stages have poor visibility
-
-Doctests, Miri, C codegen, and orchestration E2E run after nextest and
-outside nextest scheduling. The top-level summary is printed before
-those later stages, so a slow or failing late stage is not reflected in
-the same timing/reporting surface as the workspace tests.
-
 ### Hidden builds may still exist inside tests
 
 The full test suite should consume artifacts from
 `just build-test-fixtures` where practical. Any remaining test-body
-builds make runtime unpredictable, increase target-dir contention, and
-hide build regressions inside `test-all` instead of Phase 178's fixture
-stage.
+builds make nextest runtime unpredictable, increase target-dir
+contention, and hide build regressions inside the nextest stage instead
+of Phase 178's fixture stage.
 
 ## Plan
 
-- [ ] **179.A - add a profiling script for test-all.** Add a small
-  script, for example `scripts/test/profile-test-all.sh`, that runs the
-  same stages as `just test-all` with per-stage timers, captures stdout
-  and stderr under `tmp/test-all-*/`, records command lines, exit codes,
-  host/core information, and points `tmp/test-all-latest` at the newest
-  run. The script should support a dry-run or command-print mode so CI
-  logs show exactly what will run.
+- [x] **179.A - add nextest slow-test reporting.** Parse
+  `target/nextest/default/junit.xml` after the nextest run and print the
+  slowest tests with binary, test name, duration, and status. Keep this
+  lightweight and available for normal `just test` / `just test-all`
+  output.
+  Landed as `scripts/test/nextest-slow-tests.py` plus the private
+  `just _nextest-slow-tests` helper, called by `just test` and
+  `just test-all` after `_test-summary`.
 
-- [ ] **179.B - wire stage timing into just test-all.** Either call the
-  profiling script from the recipe or share a helper so normal
-  `just test-all` prints durations for `build-zenohd`, nextest,
-  doctests, Miri, C codegen, and orchestration E2E. Keep the current
-  pass/fail behavior.
+- [ ] **179.B - add an opt-in nextest profile recipe.** Add a recipe
+  such as `just test-all-nextest-profile` or an environment knob that
+  runs the same nextest command with `NEXTEST_EXPERIMENTAL_RECORD=1`,
+  preserves normal nextest parallelism, and writes profiling artifacts
+  under a timestamped `tmp/nextest-profile-*/` directory.
 
-- [ ] **179.C - report slowest nextest tests.** After nextest completes,
-  parse `target/nextest/default/junit.xml` and print the slowest tests
-  with binary, test name, duration, retry count when available, and
-  group if it can be recovered from nextest metadata. This makes the
-  long pole visible without opening XML by hand.
+- [ ] **179.C - export replayable nextest logs.** For profiled runs,
+  export the latest recording with `cargo nextest store export latest`.
+  Keep the archive path stable via `tmp/nextest-profile-latest/` so a
+  failing run can be replayed with full captured output, including
+  successful test output when needed.
 
-- [ ] **179.D - include late stages in the final summary.** Extend the
-  summary output so doctests, Miri, C codegen, and orchestration E2E
-  appear with status and duration beside the nextest result. The final
-  failure message should identify the failing stage.
+- [ ] **179.D - export Perfetto timeline traces.** For profiled runs,
+  export `cargo nextest store export-chrome-trace latest --group-by slot`
+  to a JSON trace. This is the canonical artifact for concurrency,
+  group bottlenecks, idle slots, retries, and long-pole visualization.
 
-- [ ] **179.E - audit and remove fixed sleeps.** Replace fixed sleeps in
-  E2E tests with readiness polling, log-pattern waits, port-open waits,
-  or first-message deadlines. Keep upper bounds so failures still time
-  out clearly. Start with C XRCE API, custom transport loopback,
-  zero-copy, safety E2E, and ROS 2 lifecycle interop.
+- [ ] **179.E - document profiling overhead and retention.** Recording
+  adds event/output-store writes and archive export can create sizable
+  artifacts on chatty tests. Keep recording opt-in for local runs, avoid
+  `--no-capture` because it serializes execution, and document how to
+  prune the nextest store.
 
 - [x] **179.F - find remaining test-body builds.** Add a review pass for
   helpers named like `build_*` or tests that call cargo, CMake, west,
-  make, or platform build scripts during `test-all`. Move expensive
+  make, or platform build scripts during nextest. Move expensive
   required artifacts into `build-test-fixtures`, or document why the
   build must stay inside the test.
 
@@ -158,48 +172,49 @@ stage.
     missing-fixture remedy. Any future cargo/CMake/west/make command in
     those helpers is a 179.F regression.
 
-- [ ] **179.G - split shared native C/C++ artifacts.** Native API tests
+- [ ] **179.G - audit and remove fixed sleeps.** Replace fixed sleeps in
+  E2E tests with readiness polling, log-pattern waits, port-open waits,
+  or first-message deadlines. Keep upper bounds so failures still time
+  out clearly. Start with C XRCE API, custom transport loopback,
+  zero-copy, safety E2E, and ROS 2 lifecycle interop.
+
+- [ ] **179.H - split shared native C/C++ artifacts.** Native API tests
   serialize because zenoh and XRCE variants share
   `target/release/libnros_c.a`. Move those tests to per-RMW target dirs
   or fixture archives so they can run concurrently and stop overwriting
   each other.
 
-- [ ] **179.H - re-evaluate Zephyr test serialization.** Confirm which
+- [ ] **179.I - re-evaluate Zephyr test serialization.** Confirm which
   Zephyr tests still configure/build inside the test body. Runtime-only
   tests that consume prebuilt images and use unique ports may be able to
   leave the historical `qemu-zephyr max-threads = 1` bottleneck without
   reintroducing the old CMake corruption.
 
-- [ ] **179.I - isolate ROS 2 and XRCE interop enough to parallelize.**
+- [ ] **179.J - isolate ROS 2 and XRCE interop enough to parallelize.**
   Survey use of ROS domain IDs, daemon behavior, DDS discovery ports,
   XRCE Agent ports, and temp dirs. Where tests can own unique domains
   and ports, split them out of the global serialized groups.
 
-- [ ] **179.J - parallelize post-nextest stages safely.** After stage
-  timing exists, run doctests, Miri, C codegen, and orchestration E2E in
-  parallel when their target dirs and external services do not collide.
-  Keep per-stage logs and a combined exit status.
+- [ ] **179.K - add focused nextest lanes.** Keep full nextest coverage
+  available, but add documented filterset lanes such as runtime-only,
+  ROS 2 interop, Zephyr, RTOS, or native API if profiling shows
+  developers repeatedly need only one slow slice.
 
-- [ ] **179.K - add focused full-suite lanes.** Keep `just test-all` as
-  the exhaustive local/CI gate, but add documented lanes such as
-  `test-all-runtime`, `test-all-ros2`, `test-all-miri`, and
-  `test-all-codegen` if profiling shows developers repeatedly need only
-  one slow slice.
-
-- [ ] **179.L - add a fast-fail variant.** Preserve the current
+- [ ] **179.L - add a nextest fast-fail variant.** Preserve the current
   `--no-fail-fast` full report behavior, but provide an opt-in
   fail-fast recipe or environment knob for local diagnosis when a slow
   platform is already known broken.
 
 ## Acceptance
 
-- `just test-all` prints per-stage durations and points to a stable log
-  directory for the run.
-- The slowest nextest tests are visible in normal output.
-- Doctests, Miri, C codegen, and orchestration E2E are represented in
-  the final status summary.
-- A first profiling run identifies the top long-pole tests and stages
-  without manual XML/log digging.
+- The slowest nextest tests are visible in normal output from JUnit
+  parsing or nextest status output.
+- An opt-in nextest profiling recipe records the run without changing
+  nextest parallelism.
+- Profiled runs leave a replayable nextest archive and a
+  Chrome/Perfetto trace under a stable `tmp/*-latest` path.
+- A first profiling run identifies long-pole tests, serialized groups,
+  idle slots, and retry-heavy tests without manual XML/log digging.
 - Fixed sleeps that are not semantically required are replaced by
   readiness waits with explicit deadlines.
 - Remaining test-body builds are either moved to fixture staging or
