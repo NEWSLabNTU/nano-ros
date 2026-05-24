@@ -15,7 +15,7 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 - **Formal verification ready**: Kani proofs for panic-freedom, CBMC harnesses for C API pointer safety, DWT cycle counting for WCET baselines
 - **Zero-copy CDR serialization**: `no_std` serializer with compile-time buffer bounds
 - **C API**: rclc-style interface for integration with C/C++ projects
-- **Code generation**: `cargo nano-ros generate` produces Rust bindings from `.msg`/`.srv`/`.action` files
+- **Code generation**: `nros generate rust` produces Rust bindings from `.msg`/`.srv`/`.action` files
 
 ## Status
 
@@ -50,15 +50,15 @@ nros = { git = "https://github.com/jerry73204/nano-ros", default-features = fals
 std_msgs = { version = "*", default-features = false }
 ```
 
-Generate message bindings with `cargo nano-ros`:
+Generate message bindings with `nros`:
 
 ```bash
 # Install the binding generator
-cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/cargo-nano-ros
+cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/nros-cli
 
 # Source ROS 2 and generate bindings
 source /opt/ros/humble/setup.bash
-cargo nano-ros generate --config --nano-ros-git
+nros generate rust --generate-config --nano-ros-git
 ```
 
 This creates `generated/` with Rust types for your ROS 2 messages and a `.cargo/config.toml` with the necessary patch entries.
@@ -161,12 +161,12 @@ packages/
 ├── drivers/                   # Hardware drivers (lan9118, openeth)
 ├── testing/                   # Integration test infrastructure
 ├── reference/                 # Low-level platform reference implementations
-└── codegen/                   # Message binding generator (cargo nano-ros)
+└── codegen/                   # Message binding generator (`nros`)
 ```
 
 ## Message Generation
 
-nano-ros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
+nano-ros uses `nros generate rust` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
 
 ## Documentation
 

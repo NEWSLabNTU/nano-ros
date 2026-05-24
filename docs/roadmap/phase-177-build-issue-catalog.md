@@ -196,6 +196,19 @@ passed.
 
 ## Closed
 
+- [x] **177.22 - Make `nros` the canonical build/test CLI.**
+  Closed 2026-05-25. Build and test recipes should not compile the
+  `nros-cli` binary as a side effect, and should not use or provide the
+  legacy `cargo nano-ros` command. Setup owns installing the canonical
+  `nros` binary (`just setup base` via workspace cargo tools).
+  Later stages resolve `nros` from `PATH` or `NROS_CLI=/path/to/nros`
+  and fail with an actionable setup hint if it is missing. Root
+  binding generation, native fixture generation, FreeRTOS examples, and
+  the Zephyr Rust generated-dir preflight now use that canonical
+  resolver. The old `cargo-nano-ros` package remains only as an internal
+  Rust library until its codegen APIs are renamed or split; it no longer
+  builds a Cargo subcommand binary.
+
 - [x] **177.21 - `generate-bindings` should be incremental.**
   Closed 2026-05-24. Fixed with
   `scripts/build/generate-rust-incremental.sh`. Root `generate-bindings`

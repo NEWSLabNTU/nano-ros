@@ -1328,10 +1328,9 @@ install-nros-cli:
 generate-bindings:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
     source scripts/build/generate-rust-incremental.sh
-    echo "Building nros CLI..."
-    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
-    NROS="$(pwd)/packages/codegen/packages/target/debug/nros"
+    NROS="$(nros_cli_bin)"
     echo "Refreshing Rust bindings..."
 
     # Internal crate (workspace member — manually maintained, do not auto-regenerate)
@@ -1380,9 +1379,8 @@ clean-bindings:
 generate-rcl-interfaces:
     #!/usr/bin/env bash
     set -e
-    echo "Building nros CLI..."
-    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
-    NROS="$(pwd)/packages/codegen/packages/target/debug/nros"
+    source scripts/build/cargo.sh
+    NROS="$(nros_cli_bin)"
     echo "Regenerating rcl-interfaces bindings..."
     cd packages/interfaces/rcl-interfaces
     rm -rf generated/humble/nros-builtin-interfaces generated/humble/nros-rcl-interfaces
@@ -1396,9 +1394,8 @@ generate-rcl-interfaces:
 generate-lifecycle-msgs:
     #!/usr/bin/env bash
     set -e
-    echo "Building nros CLI..."
-    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
-    NROS="$(pwd)/packages/codegen/packages/target/debug/nros"
+    source scripts/build/cargo.sh
+    NROS="$(nros_cli_bin)"
     echo "Regenerating lifecycle-msgs bindings..."
     cd packages/interfaces/lifecycle-msgs
     rm -rf generated/humble/nros-lifecycle-msgs

@@ -3,18 +3,18 @@
 # This workspace tests nros integration with generated message bindings.
 # Supports two build modes:
 #   1. colcon mode: Uses colcon-nros for automatic bindgen + compilation
-#   2. standalone mode: Uses cargo nano-ros generate + cargo build (for RTOS)
+#   2. standalone mode: Uses nros generate + cargo build (for RTOS)
 #
 # Prerequisites (colcon mode):
 #   - direnv installed and `direnv allow` run in this directory
 #   - OR manually source the .envrc file
 #
 # Prerequisites (standalone mode):
-#   - cargo-nano-ros installed: cargo install --path ../../packages/codegen/packages/cargo-nano-ros
+#   - nros installed: just install-nros-cli
 #   - ROS 2 sourced: source /opt/ros/humble/setup.bash
 
-# Path to cargo-nano-ros (absolute, resolved at runtime)
-cargo_nano_ros := `realpath ../../packages/codegen/packages/target/release/cargo-nano-ros 2>/dev/null || echo cargo-nano-ros`
+# Path to nros (absolute, resolved at runtime)
+nros_cli := `if [ -n "${NROS_CLI:-}" ]; then printf '%s' "$NROS_CLI"; else command -v nros 2>/dev/null || printf nros; fi`
 
 # Default recipe
 default: build
@@ -58,26 +58,32 @@ run package:
 # STANDALONE MODE (for Zephyr/RTOS builds without colcon)
 # =============================================================================
 
-# Build cargo-nano-ros tool
-build-tool:
-    cargo build --release -p cargo-nano-ros --manifest-path ../../packages/codegen/packages/Cargo.toml
+# Check nros CLI availability
+check-tool:
+    #!/usr/bin/env bash
+    set -e
+    nros_cli="{{nros_cli}}"
+    if [ ! -x "$nros_cli" ] && ! command -v "$nros_cli" >/dev/null 2>&1; then
+        echo "nros CLI not found. Run: just install-nros-cli, or set NROS_CLI=/path/to/nros." >&2
+        exit 2
+    fi
 
 # Path to nros crates (for patching in config.toml)
 nano_ros_crates := `realpath ../../packages 2>/dev/null || echo ""`
 
-# Generate bindings for a package using cargo nano-ros
+# Generate bindings for a package using nros
 generate package:
     #!/usr/bin/env bash
     source /opt/ros/humble/setup.bash
     cd src/{{package}}
-    {{cargo_nano_ros}} nros generate -v --output generated --config --nano-ros-path "{{nano_ros_crates}}"
+    "{{nros_cli}}" generate rust -v --output generated --generate-config --nano-ros-path "{{nano_ros_crates}}"
 
 # Clean generated bindings for a package
 clean-generated package:
     rm -rf src/{{package}}/generated src/{{package}}/.cargo/config.toml
 
 # Generate bindings for all packages
-generate-all: build-tool
+generate-all: check-tool
     #!/usr/bin/env bash
     source /opt/ros/humble/setup.bash
     NANO_ROS_CRATES="{{nano_ros_crates}}"
@@ -85,7 +91,7 @@ generate-all: build-tool
         if [ -f "$pkg/package.xml" ]; then
             echo "=== Generating bindings for $(basename $pkg) ==="
             cd "$pkg"
-            {{cargo_nano_ros}} nros generate -v --output generated --config --nano-ros-path "$NANO_ROS_CRATES"
+            "{{nros_cli}}" generate rust -v --output generated --generate-config --nano-ros-path "$NANO_ROS_CRATES"
             cd ../..
         fi
     done
@@ -95,4 +101,4 @@ build-standalone package:
     cd src/{{package}} && cargo build
 
 # Full standalone workflow: generate + build
-standalone package: build-tool (generate package) (build-standalone package)
+standalone package: check-tool (generate package) (build-standalone package)

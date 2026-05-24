@@ -36,7 +36,7 @@ _nros_bin_dirs=(
     "${NROS_ROOT}/build/zenohd"                                          # zenohd
     "${NROS_ROOT}/build/qemu/bin"                                        # patched qemu-system-arm + qemu-ga
     "${NROS_ROOT}/build/xrce-agent"                                      # MicroXRCEAgent
-    "${NROS_ROOT}/packages/codegen/packages/target/release"              # nros, nros-codegen, cargo-nano-ros
+    "${NROS_ROOT}/packages/codegen/packages/target/release"              # nros, nros-codegen
 )
 
 # Strip any previous nano-ros entries from PATH before re-adding, so

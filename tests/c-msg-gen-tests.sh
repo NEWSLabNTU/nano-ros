@@ -2,7 +2,7 @@
 # Integration test for C message generation
 #
 # This script tests the full pipeline:
-# 1. Build cargo-nano-ros
+# 1. Check the canonical nros CLI is installed
 # 2. Build nros-c library
 # 3. Run CMake on native-c-custom-msg example
 # 4. Build and run the test executable
@@ -20,6 +20,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
+# shellcheck source=../scripts/build/cargo.sh
+source "$PROJECT_ROOT/scripts/build/cargo.sh"
 
 # Clean up on exit
 cleanup() {
@@ -31,21 +33,11 @@ cleanup() {
 trap cleanup EXIT
 
 # ============================================================================
-# Step 1: Build cargo-nano-ros
+# Step 1: Check nros CLI
 # ============================================================================
 
-log_info "Building cargo-nano-ros..."
-cd "$PROJECT_ROOT/packages/codegen/packages"
-
-cargo build --release --package cargo-nano-ros
-
-GENERATOR="$PROJECT_ROOT/packages/codegen/packages/target/release/cargo-nano-ros"
-if [ ! -f "$GENERATOR" ]; then
-    log_error "cargo-nano-ros not found at: $GENERATOR"
-    exit 1
-fi
-
-log_info "cargo-nano-ros built successfully: $GENERATOR"
+NROS_CLI_BIN="$(nros_cli_bin)"
+log_info "Using nros CLI: $NROS_CLI_BIN"
 
 # ============================================================================
 # Step 2: Configure native-c-custom-msg example

@@ -28,7 +28,7 @@
 
 [required]
 # colcon-nano-ros codegen tooling. Even pure-Rust users depend on
-# `cargo nano-ros generate-rust`, which lives here.
+# `nros generate-rust`, which lives here.
 paths = ["packages/codegen"]
 recursive = false
 

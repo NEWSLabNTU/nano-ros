@@ -113,6 +113,25 @@ nros_cargo_fetch_codegen() {
     cargo fetch --locked --manifest-path packages/codegen/packages/Cargo.toml
 }
 
+nros_cli_bin() {
+    if [ -n "${NROS_CLI:-}" ]; then
+        if [ -x "$NROS_CLI" ]; then
+            printf '%s\n' "$NROS_CLI"
+            return 0
+        fi
+        echo "NROS_CLI points to a non-executable path: $NROS_CLI" >&2
+        return 2
+    fi
+    if command -v nros >/dev/null 2>&1; then
+        command -v nros
+        return 0
+    fi
+    echo "nros CLI not found on PATH." >&2
+    echo "Run: just setup base" >&2
+    echo "Or set NROS_CLI=/path/to/nros." >&2
+    return 2
+}
+
 nros_cargo_codegen_c_bin() {
     printf '%s\n' "packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
 }

@@ -57,6 +57,7 @@ build-examples:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    nros_cli="$(nros_cli_bin)"
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
@@ -69,7 +70,7 @@ build-examples:
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
         (cd examples/qemu-arm-freertos/rust/$example && \
-            cargo nano-ros generate-rust --force >/dev/null && \
+            "$nros_cli" generate-rust --force >/dev/null && \
             cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh)
     done
     echo "FreeRTOS QEMU examples built!"
@@ -88,6 +89,7 @@ build-fixture-extras:
     source scripts/build/cargo.sh
     source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    nros_cli="$(nros_cli_bin)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
@@ -131,7 +133,7 @@ build-fixture-extras:
                 continue
             fi
             echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
-            ( cd examples/qemu-arm-freertos/rust/${case} && cargo nano-ros generate-rust --force >/dev/null )
+            ( cd examples/qemu-arm-freertos/rust/${case} && "$nros_cli" generate-rust --force >/dev/null )
             rm -rf examples/qemu-arm-freertos/rust/${case}/build-cyclonedds
             cmake -S examples/qemu-arm-freertos/rust/${case} \
                   -B examples/qemu-arm-freertos/rust/${case}/build-cyclonedds \

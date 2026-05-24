@@ -201,10 +201,7 @@ build-fixtures:
     # is allowed, so do not rely solely on the root `generate-bindings`
     # prerequisite.
     echo "  → zephyr Rust generated-dir preflight"
-    nros_cli="$nros_root/packages/codegen/packages/target/debug/nros"
-    if [ ! -x "$nros_cli" ]; then
-        cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros --quiet
-    fi
+    nros_cli="$(nros_cli_bin)"
     while IFS= read -r pkg; do
         dir="$(dirname "$pkg")"
         stamp="$dir/generated/.nros-generate-rust.stamp"

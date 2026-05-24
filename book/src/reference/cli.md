@@ -4,9 +4,8 @@ The `nros` binary is the user entry point for nano-ros: scaffolding,
 message codegen, configuration, build, run, diagnostics, and
 workflow orchestration on top of ROS 2 launch files.
 
-The `cargo nano-ros …` cargo subcommand keeps working — both
-front-ends dispatch through the shared `nros-cli-core` library and
-stay in lockstep.
+The old `cargo nano-ros …` cargo subcommand has been removed. Use `nros`
+directly.
 
 ## Install
 
