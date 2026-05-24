@@ -289,10 +289,29 @@ of Phase 178's fixture stage.
   Keep `ros2-interop` at `max-threads = 1` until every helper is
   converted to a no-daemon or otherwise process-local path.
 
-- [ ] **179.K - add focused nextest lanes.** Keep full nextest coverage
+- [x] **179.K - add focused nextest lanes.** Keep full nextest coverage
   available, but add documented filterset lanes such as runtime-only,
   ROS 2 interop, Zephyr, RTOS, or native API if profiling shows
   developers repeatedly need only one slow slice.
+
+  Completed 2026-05-25. The focused lanes follow the current
+  namespace-oriented just layout rather than adding new root aliases.
+  Existing backend/platform lanes remain the public entry points:
+  `just xrce test`, `just xrce test-ros2`, `just xrce test-c`,
+  `just zephyr test`, `just zephyr test-xrce`, and the RTOS
+  namespace tests (`just freertos test`, `just nuttx test`,
+  `just threadx_linux test`, `just threadx_riscv64 test`).
+
+  Added missing native slices under `just native`: `test-ros2-params`
+  for the parameter CLI interop binary and `test-native-api` for the
+  full native C/C++ API lane (`native_api` plus `cpp_parameters`).
+  The existing `test-c` / `test-cpp` recipes now target real nextest
+  filters inside `native_api` / `cpp_parameters` instead of the stale
+  removed `c_api` / `cpp_api` binary names. The default
+  `just native test` excludes these slower focused slices; `just native
+  test-all` fans out through the focused lanes and the C codegen shell
+  tests. Fixture-consuming lanes keep the project policy that callers
+  run `just build-test-fixtures` before full-matrix use.
 
 - [ ] **179.L - add a nextest fast-fail variant.** Preserve the current
   `--no-fail-fast` full report behavior, but provide an opt-in

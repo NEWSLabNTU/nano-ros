@@ -543,7 +543,9 @@ clean-cpp:
 # Integration tests
 # =============================================================================
 
-# Run integration tests only (requires zenohd)
+# Run integration tests only (requires zenohd). Focused ROS 2, large-msg,
+# native C/C++, and XRCE C API lanes live below; this default native tier
+# keeps those slower slices out of the broad local loop.
 [group("main")]
 test verbose="":
     #!/usr/bin/env bash
@@ -552,7 +554,7 @@ test verbose="":
     nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --no-fail-fast \
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(params) and not binary(ros2_lifecycle_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg) and not binary(native_api) and not binary(cpp_parameters) and not binary(c_xrce_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -567,8 +569,11 @@ test-all verbose="":
     just native test {{verbose}} || failed=1
     just native test-large-msg {{verbose}} || failed=1
     just native test-ros2 {{verbose}} || failed=1
-    just native test-c {{verbose}} || failed=1
-    just native test-cpp {{verbose}} || failed=1
+    just native test-ros2-params {{verbose}} || failed=1
+    just native test-ros2-lifecycle {{verbose}} || failed=1
+    just native test-native-api {{verbose}} || failed=1
+    just native test-c-xrce {{verbose}} || failed=1
+    just native _test-c-codegen {{verbose}} || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some native tests failed."
         exit 1
@@ -615,6 +620,21 @@ test-ros2 verbose="":
     nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     args=(-p nros-tests --test rmw_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+
+# Run ROS 2 parameter interop tests.
+# Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
+[group("debug")]
+test-ros2-params verbose="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
+    just build-zenohd
+    args=(-p nros-tests --test params --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -681,6 +701,22 @@ _test-orchestration-e2e verbose="":
         --log {{LOG_DIR}}/latest/orchestration-e2e.log $v -- \
         bash -c 'cd packages/codegen/packages && cargo test -p nros-cli-core --test orchestration_e2e -- --nocapture'
 
+# Run the full native C/C++ API nextest lane.
+[group("debug")]
+test-native-api verbose="":
+    #!/usr/bin/env bash
+    set -e
+    # Consumes prebuilt per-RMW CMake fixtures; run
+    # `just build-test-fixtures` first for the full matrix.
+    source scripts/build/cargo.sh
+    nextest_profile_args=($(nros_nextest_profile_args))
+    just build-zenohd
+    args=(-p nros-tests --test native_api --test cpp_parameters --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+
 # Run all C tests (integration + codegen)
 [group("debug")]
 test-c verbose="":
@@ -690,7 +726,8 @@ test-c verbose="":
     nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
     just init-test-logs
-    args=(-p nros-tests --no-fail-fast -E 'binary(c_api)')
+    args=(-p nros-tests --test native_api --no-fail-fast \
+          -E 'test(/Language__C$/) or test(test_c_)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -705,7 +742,8 @@ test-cpp verbose="":
     source scripts/build/cargo.sh
     nextest_profile_args=($(nros_nextest_profile_args))
     just build-zenohd
-    args=(-p nros-tests --no-fail-fast -E 'binary(cpp_api)')
+    args=(-p nros-tests --no-fail-fast \
+          -E '(binary(native_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(cpp_parameters)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
