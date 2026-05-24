@@ -18,7 +18,7 @@ use std::{
 };
 use std_msgs::msg::Int32;
 
-use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
+use nros_log::{Logger, nros_info, nros_warn};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("serial-listener");

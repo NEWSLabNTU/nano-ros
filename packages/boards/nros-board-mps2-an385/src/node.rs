@@ -19,7 +19,9 @@ use nros_platform_mps2_an385::random;
 #[cfg(feature = "ethernet")]
 use crate::network;
 
-use crate::{config::Config, exit_failure};
+use crate::config::Config;
+#[cfg(feature = "ethernet")]
+use crate::exit_failure;
 
 #[cfg(feature = "ethernet")]
 use crate::error::{Error, Result};

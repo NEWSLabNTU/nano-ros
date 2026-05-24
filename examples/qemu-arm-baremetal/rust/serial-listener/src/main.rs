@@ -18,7 +18,7 @@
 
 use nros::prelude::*;
 use nros_board_mps2_an385::{Config, run};
-use nros_log::{Logger, nros_error, nros_info};
+use nros_log::{Logger, nros_info};
 
 // Phase 88.16.C — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("serial-listener");

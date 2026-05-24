@@ -34,7 +34,7 @@ use nros::{
     Executor, ExecutorConfig,
     lifecycle::{LifecycleCallbackSlot, TransitionResult},
 };
-use nros_log::{Logger, nros_debug, nros_error, nros_info, nros_trace, nros_warn};
+use nros_log::{Logger, nros_info};
 
 // Phase 88.16.B — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("lifecycle-node");

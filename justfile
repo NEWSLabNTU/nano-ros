@@ -828,8 +828,6 @@ build-workspace-embedded:
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib
-        --exclude nros-rmw-uorb \
-        --exclude nros-px4
 
 # Format workspace code
 [private]
@@ -872,7 +870,7 @@ check-workspace-embedded:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-rmw-xrce-cffi-staticlib
 
 # Phase 166.R.5 — guard `nros-log` on CAS-less ESP32-C3 /
 # riscv32imc so portable-atomic fallback regressions surface in

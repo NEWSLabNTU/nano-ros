@@ -6,7 +6,7 @@
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use nros::prelude::*;
 use nros_board_nuttx_qemu_arm::{Config, run};
-use nros_log::{Logger, nros_error, nros_info, nros_warn};
+use nros_log::{Logger, nros_info};
 
 // Phase 88.16.D — diagnostics route through `nros-log`.
 static LOGGER: Logger = Logger::new("service-server");

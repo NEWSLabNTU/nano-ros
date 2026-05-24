@@ -292,9 +292,15 @@ build-fixtures:
     # dispatch image here; each role remains its own Zephyr app/image so
     # tests prove `examples/zephyr/<lang>/<role>` builds standalone.
     # RMW still varies by overlay, matching the user build shape.
+    fixture_rmws=(zenoh xrce)
+    if [ -x "$nros_root/build/install/bin/idlc" ]; then
+        fixture_rmws+=(cyclonedds)
+    else
+        echo "  → zephyr cyclonedds fixtures skipped (run: just cyclonedds setup)"
+    fi
     for lang in $(nros_fixture_langs); do
         lang_tag="$(nros_zephyr_lang_tag "$lang")"
-        for rmw in zenoh xrce cyclonedds; do
+        for rmw in "${fixture_rmws[@]}"; do
             for case in $(nros_fixture_roles); do
                 entries+=(
                   "native_sim/native/64|build-${lang_tag}-${case}-${rmw}|zephyr/${lang}/${case}|0||prj.conf;prj-${rmw}.conf"

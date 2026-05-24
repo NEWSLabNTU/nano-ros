@@ -463,10 +463,30 @@ fn test_threadx_rv64_rust_case_rmw_variant_exists(
 #[case::cpp_talker_cyclonedds("cpp", "talker", "riscv64_threadx_cpp_talker", Rmw::Cyclonedds)]
 #[case::cpp_listener("cpp", "listener", "riscv64_threadx_cpp_listener", Rmw::Zenoh)]
 #[case::cpp_listener_cyclonedds("cpp", "listener", "riscv64_threadx_cpp_listener", Rmw::Cyclonedds)]
-#[case::cpp_ss("cpp", "service-server", "riscv64_threadx_cpp_service_server", Rmw::Zenoh)]
-#[case::cpp_sc("cpp", "service-client", "riscv64_threadx_cpp_service_client", Rmw::Zenoh)]
-#[case::cpp_as("cpp", "action-server", "riscv64_threadx_cpp_action_server", Rmw::Zenoh)]
-#[case::cpp_ac("cpp", "action-client", "riscv64_threadx_cpp_action_client", Rmw::Zenoh)]
+#[case::cpp_ss(
+    "cpp",
+    "service-server",
+    "riscv64_threadx_cpp_service_server",
+    Rmw::Zenoh
+)]
+#[case::cpp_sc(
+    "cpp",
+    "service-client",
+    "riscv64_threadx_cpp_service_client",
+    Rmw::Zenoh
+)]
+#[case::cpp_as(
+    "cpp",
+    "action-server",
+    "riscv64_threadx_cpp_action_server",
+    Rmw::Zenoh
+)]
+#[case::cpp_ac(
+    "cpp",
+    "action-client",
+    "riscv64_threadx_cpp_action_client",
+    Rmw::Zenoh
+)]
 fn test_threadx_rv64_cmake_case_rmw_variant_exists(
     #[case] lang: &str,
     #[case] case: &str,
