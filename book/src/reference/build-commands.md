@@ -1,5 +1,38 @@
 # Quick Reference
 
+## Finding Commands
+
+Root commands are grouped by audience:
+
+```bash
+just --list                         # grouped root command overview
+just --groups                       # group names
+just --group main --list            # normal development workflows
+just --group full-matrix --list     # build-all / fixtures / test-all / ci
+just --group setup --list           # setup and doctor entry points
+just --group maintenance --list     # clean and generated-binding commands
+just --group docs --list            # book and API docs
+```
+
+Platform and backend commands stay namespaced:
+
+```bash
+just --group full-matrix --list zephyr
+just zephyr build-fixtures
+just zephyr build-all
+just qemu setup-network             # QEMU TAP networking only
+just zephyr help                    # Zephyr-specific help
+just zenohd build                   # Build the pinned zenoh router
+```
+
+Install the local book tooling before previewing docs:
+
+```bash
+just setup-docs                     # mdbook + mdbook-mermaid
+just book-serve                     # serve book/src with live reload
+just book                           # full deployed preview with API docs
+```
+
 ## Manual Testing
 
 ```bash

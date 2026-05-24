@@ -1680,6 +1680,40 @@ doc-platform-cffi:
 [group("docs")]
 doc: doc-rust doc-c doc-cpp doc-rmw-cffi doc-platform-cffi
 
+# Install mdBook tooling used by `just book` and `just book-serve`.
+[group("docs")]
+setup-docs:
+    #!/usr/bin/env bash
+    set -e
+    ensure_cargo_tool() {
+        local tool="$1"
+        local crate="$2"
+        local version="$3"
+        local current=""
+        if command -v "$tool" >/dev/null 2>&1; then
+            current="$($tool --version | head -1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+        fi
+        if [ "$current" = "$version" ]; then
+            echo "  [OK] $tool: $($tool --version | head -1)"
+        else
+            if [ -n "$current" ]; then
+                echo "Installing $tool $version (current: $current)..."
+            else
+                echo "Installing $tool $version..."
+            fi
+            cargo install --locked --force "$crate" --version "$version"
+        fi
+    }
+    ensure_cargo_tool mdbook mdbook 0.4.36
+    # mdbook-mermaid 0.17 uses the mdBook 0.5 preprocessor protocol and
+    # fails with mdbook 0.4.x. Keep the pair pinned until mdBook upgrades.
+    ensure_cargo_tool mdbook-mermaid mdbook-mermaid 0.14.0
+    if ! command -v doxygen >/dev/null 2>&1; then
+        echo "  [INFO] doxygen not found; install with your package manager for API docs."
+    else
+        echo "  [OK] doxygen: $(doxygen --version | head -1)"
+    fi
+
 # Build mdBook + stage rustdoc/Doxygen output beneath book/book/api/.
 # Mirrors the deploy-book.yml workflow so contributors can preview the
 # full deployed site (book + native API docs) locally.

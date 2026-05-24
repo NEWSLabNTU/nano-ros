@@ -74,6 +74,24 @@ scripts/bootstrap.sh              # install/check just, then print setup choices
 just setup                        # print the same setup choices once just exists
 ```
 
+Use recipe groups to discover the command surface without scrolling
+through every platform/backend recipe:
+
+```bash
+just --groups
+just --group main --list
+just --group setup --list
+just --group full-matrix --list
+just --group full-matrix --list zephyr
+```
+
+For local documentation preview:
+
+```bash
+just setup-docs
+just book-serve
+```
+
 `just setup` is intentionally informational. It does not fetch
 submodules or install SDKs until you choose a tier or platform:
 
@@ -150,6 +168,11 @@ For a narrower fetch, invoke the per-platform recipe directly:
 | `just <platform> doctor` | read-only check of that platform's prereqs |
 | `just doctor` | base readiness check |
 | `just doctor tier=all` | full contributor readiness check |
+
+Root commands are workflows (`build`, `test`, `check`, `clean`,
+`build-all`, `test-all`). Platform-specific setup, networking, and help
+stay under the platform namespace, for example `just qemu setup-network`
+and `just zephyr help`.
 
 > **Power-user escape hatch.** The underlying script `tools/setup.sh`
 > takes `--target=<plat>-<rmw>` for exact-pair fetch + `--list-targets`,

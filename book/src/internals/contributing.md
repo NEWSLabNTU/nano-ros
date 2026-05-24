@@ -20,15 +20,25 @@ Build the entire workspace including examples:
 just build
 ```
 
+Use groups to inspect the command surface:
+
+```bash
+just --group main --list
+just --group full-matrix --list
+just --group full-matrix --list zephyr
+```
+
 ## Quality Checks
 
-**Always run `just ci` after completing a task.** This runs formatting checks, Clippy lints, unit tests, Miri, and QEMU examples in one command:
+**Always run `just ci` after completing a task that needs the full
+maintainer gate.** This runs the normal checks plus the full test matrix
+entry points:
 
 ```bash
 just ci
 ```
 
-It is equivalent to running `just check` + `just test` sequentially.
+For a narrower local iteration, run `just check` and `just test`.
 
 For platform-specific CI, use `just <platform> ci` (e.g., `just freertos ci`).
 

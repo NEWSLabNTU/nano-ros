@@ -103,6 +103,9 @@ just freertos build-fixtures
 just zephyr  build-fixtures
 just nuttx   build-fixtures
 
+# Discover full-matrix commands for a platform:
+just --group full-matrix --list zephyr
+
 # Multi-component system (orchestration):
 nros metadata my_system
 nros plan my_system launch/my_system.launch.py

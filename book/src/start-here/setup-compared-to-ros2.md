@@ -77,6 +77,14 @@ Setup choices:
 For platform-specific work prefer the narrower `just <plat> setup`
 recipes — they fetch only one RTOS's deps without pulling the rest.
 
+Command discovery is grouped:
+
+```bash
+just --group main --list
+just --group full-matrix --list
+just --group full-matrix --list freertos
+```
+
 ## Choosing platform + RMW
 
 Unlike standard ROS 2, RMW and platform are **compile-time** choices —
