@@ -1676,18 +1676,42 @@ book:
 book-serve:
     mdbook serve book/ --open
 
-# Clean all build artifacts created by `just build`
-clean: native::clean zephyr::clean clean-zenohd
+# Clean example build artifacts across platform namespaces.
+clean-examples:
+    just native clean
+    just qemu clean
+    just freertos clean
+    just nuttx clean
+    just threadx_linux clean
+    just threadx_riscv64 clean
+    just zephyr clean
+    just esp32 clean
+    just esp_idf clean
+    just stm32f4 clean
+    just px4 clean
+    just orin_spe clean
+    just platformio clean
+    @echo "All example artifacts cleaned"
+
+# Clean fixture-only orchestration outputs.
+clean-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    rm -rf tmp/build-test-fixtures-* tmp/build-test-fixtures-latest
+    rm -rf target-zenoh-fixture-posix
+    rm -rf build/zephyr-fixtures
+    find tests -maxdepth 2 -type d -name build -exec rm -rf {} + 2>/dev/null || true
+    find tests -maxdepth 2 -type f \( -name sdkconfig -o -name 'sdkconfig.old' \) \
+        -delete 2>/dev/null || true
+    echo "Fixture orchestration artifacts cleaned"
+
+# Clean all build artifacts created by broad build and test-fixture recipes.
+clean: clean-examples clean-fixtures clean-zenohd
     cargo clean
     # Clean codegen workspace (separate Cargo workspace, not covered by cargo clean)
     cargo clean --manifest-path packages/codegen/packages/Cargo.toml
     # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
-    # Clean CMake build dirs inside examples (stale caches break rebuild).
-    # Includes the per-RMW `build-<rmw>/` dirs — their Corrosion FetchContent
-    # `_deps/` trees carry Cargo.toml test crates that otherwise leak into
-    # the `build-examples` discovery walk.
-    find examples -type d \( -name build -o -name 'build-*' \) -exec rm -rf {} + 2>/dev/null || true
     rm -rf build
     @echo "All build artifacts cleaned"
 

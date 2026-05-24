@@ -48,3 +48,12 @@ build-fixtures:
 # Build every STM32F4 tier: core artifacts, examples, and test fixtures.
 build-all: build build-examples build-fixtures
     @echo "STM32F4 build-all completed."
+
+# Clean STM32F4 example and fixture build artifacts.
+clean:
+    #!/usr/bin/env bash
+    for ex in talker talker-rtic listener-rtic service-server-rtic \
+              service-client-rtic action-server-rtic action-client-rtic; do
+        rm -rf "examples/stm32f4/rust/$ex/target"
+    done
+    echo "STM32F4 build artifacts cleaned"

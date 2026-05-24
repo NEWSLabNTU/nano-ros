@@ -189,3 +189,17 @@ test-sitl: build-sitl
 
 # Combined CI: check + unit tests (SITL gated separately via test-sitl).
 ci: check test build-targets
+
+# Clean PX4 example build artifacts without touching downloaded submodules.
+clean:
+    #!/usr/bin/env bash
+    set -e
+    PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"
+    rm -rf packages/rmw/nros-rmw-uorb/target packages/platforms/nros-px4/target
+    if [ -d examples/px4 ]; then
+        find examples/px4 -type d -name target -exec rm -rf {} + 2>/dev/null || true
+    fi
+    if [ -d "$PX4_DIR/build" ]; then
+        rm -rf "$PX4_DIR"/build/px4_sitl_default "$PX4_DIR"/build/px4_fmu-v6x_default
+    fi
+    echo "PX4 build artifacts cleaned"

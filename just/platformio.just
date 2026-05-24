@@ -45,3 +45,11 @@ doctor:
         echo "  [MISSING] PlatformIO Core (run: just platformio setup)"
         exit 1
     fi
+
+# Clean PlatformIO integration example build artifacts.
+clean:
+    #!/usr/bin/env bash
+    if [ -d integrations/platformio/examples ]; then
+        find integrations/platformio/examples -type d \( -name .pio -o -name build \) -exec rm -rf {} + 2>/dev/null || true
+    fi
+    echo "PlatformIO build artifacts cleaned"

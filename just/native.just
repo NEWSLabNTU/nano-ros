@@ -423,14 +423,12 @@ size: build-examples
     @size packages/reference/stm32f4-porting/polling/target/thumbv7em-none-eabihf/release/stm32f4-rs-polling-example 2>/dev/null || echo "Polling: build failed"
     @size packages/testing/nros-smoke/stm32f4-smoltcp-echo/target/thumbv7em-none-eabihf/release/stm32f4-rs-smoltcp 2>/dev/null || echo "stm32f4-smoltcp-echo: build failed"
 
-# Clean all example build artifacts
-clean: clean-c clean-cpp
+# Clean native example build artifacts.
+clean:
     #!/usr/bin/env bash
-    for toml in $(find examples -mindepth 4 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*'); do
-        rm -rf "$(dirname "$toml")/target"
-    done
-    echo "All example build artifacts cleaned"
+    find examples/native -type d \( -name target -o -name build -o -name 'build-*' \) \
+        -prune -exec rm -rf {} + 2>/dev/null || true
+    echo "Native example build artifacts cleaned"
 
 # =============================================================================
 # Native C/C++ examples (CMake-based)
@@ -466,8 +464,8 @@ build-c-xrce:
 
 # Clean C examples build
 clean-c:
-    rm -rf examples/native/c/{talker,listener}/build
-    rm -rf examples/native/c/custom-msg/build
+    find examples/native/c -type d \( -name build -o -name 'build-*' \) \
+        -prune -exec rm -rf {} + 2>/dev/null || true
     @echo "C examples build cleaned"
 
 # Build a single C++ example with CMake (Phase 140 — add_subdirectory shape).
@@ -495,7 +493,8 @@ build-cpp:
 
 # Clean C++ examples build
 clean-cpp:
-    rm -rf examples/native/cpp/{talker,listener,service-server,service-client,action-server,action-client}/build
+    find examples/native/cpp -type d \( -name build -o -name 'build-*' \) \
+        -prune -exec rm -rf {} + 2>/dev/null || true
     @echo "C++ examples build cleaned"
 
 # =============================================================================

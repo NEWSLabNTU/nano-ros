@@ -101,7 +101,9 @@ test-c-port target='esp32c3':
 
 # Clean smoke-project build.
 clean:
-    rm -rf tests/esp-idf-smoke/build tests/esp-idf-smoke/sdkconfig*
+    rm -rf tests/esp-idf-smoke/build \
+           tests/esp-idf-smoke/sdkconfig \
+           tests/esp-idf-smoke/sdkconfig.old
 
 # CI: doctor + build-c-port.
 ci: doctor build-c-port
