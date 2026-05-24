@@ -115,8 +115,7 @@ build-fixtures:
     #     NuttX armv7a-eabihf target.
     # Host nros-codegen is still required for `nros_generate_interfaces()`.
     echo "  → host nros-codegen (cargo)"
-    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-codegen-c --bin nros-codegen --quiet
+    nros_cargo_ensure_codegen_c
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
     nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi"

@@ -151,8 +151,7 @@ build-fixture-extras:
     # the Rust path's `.cargo/config.toml` env. Host nros-codegen is
     # still required for `nros_generate_interfaces()`.
     echo "  → host nros-codegen (cargo)"
-    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-codegen-c --bin nros-codegen --quiet
+    nros_cargo_ensure_codegen_c
     codegen="$root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     # Phase 118.C — collapsed-shape ThreadX-RV64 C / C++. The Rust
     # zenoh role binaries are produced by `build-examples`.

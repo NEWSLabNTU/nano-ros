@@ -123,8 +123,7 @@ build-fixture-extras:
     # tool with their cross toolchain, so build it once with the host
     # cargo and pass the absolute path via `-D_NANO_ROS_CODEGEN_TOOL`.
     echo "  → host nros-codegen (cargo)"
-    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-codegen-c --bin nros-codegen --quiet
+    nros_cargo_ensure_codegen_c
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
         for case in talker listener; do

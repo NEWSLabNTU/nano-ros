@@ -88,8 +88,7 @@ build-fixture-extras:
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
     app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
     echo "  → host nros-codegen (cargo)"
-    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-codegen-c --bin nros-codegen --quiet
+    nros_cargo_ensure_codegen_c
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     echo "  → logging-smoke-threadx-linux"
     cargo build $cargo_profile_args --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet

@@ -242,12 +242,17 @@ build-all-jobserver:
     echo "build-all: prefetching Cargo registries before broad fanout"
     nros_cargo_fetch_root
     nros_cargo_fetch_codegen
+    echo "build-all: prefetching standalone Cargo manifests"
+    nros_cargo_fetch_standalone_manifests
+    echo "build-all: prebuilding host nros-codegen"
+    nros_cargo_build_codegen_c
     # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
     # --parallel so cargo / ninja / cmake inherit the fifo pool. Clear any
     # stale inherited jobserver env first; the top-level make below is the
     # only provider for this run.
     exec env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
         NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" NROS_BUILD_LOG_DIR="$log_dir" \
+        NROS_CODEGEN_C_PREBUILT=1 \
         "$make_bin" -j"$n" --jobserver-style=fifo -f build-all.mk
 
 # Internal: invalidate stale nros-* cargo fingerprints in a cmake build

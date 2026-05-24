@@ -220,8 +220,7 @@ build-fixtures:
     # once with host cargo and pass the absolute path via west -D.
     echo "  → host nros-codegen (cargo)"
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-codegen-c --bin nros-codegen --quiet
+    nros_cargo_ensure_codegen_c
     codegen_tool="$nros_root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     # Phase 165.perf — split the NROS_BUILD_JOBS budget into parallel
     # example builds (BUILD_JOBS) × ninja-per-build. Each example uses
@@ -554,8 +553,7 @@ build-fvp-aemv8r-cyclonedds:
     echo "  → host nros-codegen (cargo)"
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-codegen-c --bin nros-codegen --quiet
+    nros_cargo_ensure_codegen_c
     codegen_tool="$nros_root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     make_bin="$nros_root/third-party/make/make"
     if [ ! -x "$make_bin" ]; then
@@ -687,8 +685,7 @@ build-logging-smoke:
     if [ ! -x "$CODEGEN" ]; then
         echo "  Building host nros-codegen..."
         cargo_profile_args="$(nros_cargo_profile_arg_string)"
-        cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-            -p nros-codegen-c --bin nros-codegen --quiet
+        nros_cargo_ensure_codegen_c
     fi
     NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"

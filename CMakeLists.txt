@@ -327,11 +327,11 @@ endif()
 set(_nros_codegen_module
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_codegen_module}"
-   AND NANO_ROS_BUILD_CODEGEN
-   AND NANO_ROS_PLATFORM STREQUAL "posix"
-   AND TARGET nros-codegen)
-    set(_NANO_ROS_CODEGEN_TOOL "$<TARGET_FILE:nros-codegen>"
-        CACHE INTERNAL "Path to nros C codegen tool (in-tree Corrosion target)")
+   AND NANO_ROS_PLATFORM STREQUAL "posix")
+    if(NANO_ROS_BUILD_CODEGEN AND TARGET nros-codegen)
+        set(_NANO_ROS_CODEGEN_TOOL "$<TARGET_FILE:nros-codegen>"
+            CACHE INTERNAL "Path to nros C codegen tool (in-tree Corrosion target)")
+    endif()
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}")
     include("${_nros_codegen_module}")
 endif()

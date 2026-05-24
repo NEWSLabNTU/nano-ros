@@ -112,3 +112,51 @@ nros_cargo_fetch_root() {
 nros_cargo_fetch_codegen() {
     cargo fetch --locked --manifest-path packages/codegen/packages/Cargo.toml
 }
+
+nros_cargo_codegen_c_bin() {
+    printf '%s\n' "packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+}
+
+nros_cargo_build_codegen_c() {
+    local cargo_profile_args
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
+        -p nros-codegen-c --bin nros-codegen --quiet
+}
+
+nros_cargo_ensure_codegen_c() {
+    local codegen_bin
+    codegen_bin="$(nros_cargo_codegen_c_bin)"
+    if [ "${NROS_CODEGEN_C_PREBUILT:-0}" = "1" ] && [ -x "$codegen_bin" ]; then
+        return 0
+    fi
+    nros_cargo_build_codegen_c
+}
+
+nros_cargo_fetch_standalone_manifests() {
+    local manifest
+    local manifest_dir
+    local list
+    list="$(mktemp "${TMPDIR:-/tmp}/nros_cargo_fetch.XXXXXX")"
+    trap 'rm -f "$list"' RETURN
+
+    rg --files \
+        examples \
+        packages/testing/nros-tests/bins \
+        packages/testing/nros-bench \
+        packages/reference \
+        -g Cargo.toml \
+        -g '!**/target/**' \
+        -g '!**/generated/**' \
+        -g '!**/build/**' \
+        -g '!**/build-*/**' \
+        -g '!**/_deps/**' \
+        | sort > "$list"
+
+    while IFS= read -r manifest; do
+        manifest_dir="$(dirname "$manifest")"
+        if [ -f "$manifest_dir/Cargo.lock" ]; then
+            cargo fetch --locked --manifest-path "$manifest"
+        fi
+    done < "$list"
+}

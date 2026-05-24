@@ -160,6 +160,8 @@ build-fixture-extras:
     if [ ! -x "$nros_cli" ]; then
         cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros --quiet
     fi
+    nros_cargo_ensure_codegen_c
+    codegen_tool="${repo_root}/$(nros_cargo_codegen_c_bin)"
     ensure_native_rust_generated() {
         case "$1" in
             native/rust/talker|native/rust/listener|native/rust/service-server|native/rust/service-client|native/rust/action-server|native/rust/action-client)
@@ -264,6 +266,8 @@ build-fixture-extras:
             ( cd "examples/native/rust/${collapsed_case}" && \
               nros_cmake_configure_if_needed . build-cyclonedds -DNROS_RMW=cyclonedds \
                   -DCMAKE_BUILD_TYPE=Release \
+                  -DNANO_ROS_BUILD_CODEGEN=OFF \
+                  -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
                   -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
               cmake --build build-cyclonedds > /dev/null ) &
         done
@@ -286,12 +290,16 @@ build-fixture-extras:
                     ( cd examples/native/c/${case} && \
                       nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
+                          -DNANO_ROS_BUILD_CODEGEN=OFF \
+                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null )
                 else
                     ( cd examples/native/c/${case} && \
                       nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
+                          -DNANO_ROS_BUILD_CODEGEN=OFF \
+                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null ) &
                 fi
@@ -309,12 +317,16 @@ build-fixture-extras:
                     ( cd examples/native/cpp/${case} && \
                       nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
+                          -DNANO_ROS_BUILD_CODEGEN=OFF \
+                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null )
                 else
                     ( cd examples/native/cpp/${case} && \
                       nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
                           -DCMAKE_BUILD_TYPE=Release \
+                          -DNANO_ROS_BUILD_CODEGEN=OFF \
+                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
                           -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
                       cmake --build build-${rmw} > /dev/null ) &
                 fi
@@ -343,6 +355,8 @@ build-fixture-extras:
                 ( cd examples/native/${lang}/${case} && \
                   nros_cmake_configure_if_needed . build-cyclonedds -DNROS_RMW=cyclonedds \
                       -DCMAKE_BUILD_TYPE=Release \
+                      -DNANO_ROS_BUILD_CODEGEN=OFF \
+                      -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
                       -DCMAKE_PREFIX_PATH="${repo_root}/build/install" \
                       -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null && \
                   cmake --build build-cyclonedds --target "$binary" > /dev/null ) &
@@ -454,10 +468,14 @@ clean:
 _build-c-example dir *CMAKE_ARGS:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
     source scripts/build/cmake-incremental.sh
     echo "Building {{dir}}..."
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$(pwd)/$(nros_cargo_codegen_c_bin)"
     nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
-        -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}}
+        -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh \
+        -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" {{CMAKE_ARGS}}
     cmake --build "{{dir}}/build"
 
 # Build C examples only (no tests)
@@ -491,10 +509,14 @@ clean-c:
 _build-cpp-example dir *CMAKE_ARGS:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
     source scripts/build/cmake-incremental.sh
     echo "Building {{dir}}..."
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$(pwd)/$(nros_cargo_codegen_c_bin)"
     nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
-        -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh {{CMAKE_ARGS}}
+        -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh \
+        -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" {{CMAKE_ARGS}}
     cmake --build "{{dir}}/build"
 
 # Build C++ examples only (no tests)
