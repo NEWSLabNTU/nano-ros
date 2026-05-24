@@ -692,9 +692,15 @@ pub fn require_ros2_dds() -> bool {
 /// Unlike the zenoh variant, no locator or zenoh config is needed —
 /// DDS uses multicast discovery on the local network.
 pub fn ros2_env_setup_dds(distro: &str) -> String {
+    ros2_env_setup_dds_with_domain(distro, 0)
+}
+
+/// Get ROS 2 environment setup command for DDS with an explicit domain.
+pub fn ros2_env_setup_dds_with_domain(distro: &str, domain_id: u8) -> String {
     format!(
         "source /opt/ros/{distro}/setup.bash && \
-         export RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+         export RMW_IMPLEMENTATION=rmw_fastrtps_cpp && \
+         export ROS_DOMAIN_ID={domain_id}"
     )
 }
 
@@ -731,7 +737,17 @@ impl Ros2DdsProcess {
     /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn topic_echo(topic: &str, msg_type: &str, distro: &str) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_dds(distro);
+        Self::topic_echo_with_domain(topic, msg_type, distro, 0)
+    }
+
+    /// Start a ROS 2 DDS topic echo subscriber on a specific ROS domain.
+    pub fn topic_echo_with_domain(
+        topic: &str,
+        msg_type: &str,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
@@ -753,7 +769,19 @@ impl Ros2DdsProcess {
         rate: u32,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_dds(distro);
+        Self::topic_pub_with_domain(topic, msg_type, data, rate, distro, 0)
+    }
+
+    /// Start a ROS 2 DDS topic publisher on a specific ROS domain.
+    pub fn topic_pub_with_domain(
+        topic: &str,
+        msg_type: &str,
+        data: &str,
+        rate: u32,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
@@ -773,7 +801,18 @@ impl Ros2DdsProcess {
         request: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_dds(distro);
+        Self::service_call_with_domain(service_name, service_type, request, distro, 0)
+    }
+
+    /// Start a ROS 2 DDS service call on a specific ROS domain.
+    pub fn service_call_with_domain(
+        service_name: &str,
+        service_type: &str,
+        request: &str,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
         );

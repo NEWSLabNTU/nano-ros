@@ -79,6 +79,17 @@ pub fn unique_domain_id() -> u32 {
     (pid << 8) | (seq & 0xFF)
 }
 
+/// Returns a process-local ROS domain ID in the DDS-valid 1..=232 range.
+///
+/// Use this for tests that must pass the value to ROS 2 or a DDS backend.
+/// The wider [`unique_domain_id`] is useful for zenoh keyexpr isolation, but
+/// ROS 2/DDS implementations reject domain IDs outside their supported range.
+pub fn unique_ros_domain_id() -> u8 {
+    let pid = std::process::id();
+    let seq = DOMAIN_SEQ.fetch_add(1, Ordering::Relaxed);
+    (((pid + seq) % 232) + 1) as u8
+}
+
 /// Poll a file descriptor for readability using poll(2).
 ///
 /// Returns `true` if the fd is readable, `false` on timeout.

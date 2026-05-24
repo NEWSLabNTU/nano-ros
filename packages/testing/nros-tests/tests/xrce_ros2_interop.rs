@@ -29,6 +29,7 @@ use nros_tests::{
         is_ros2_available, require_ros2_dds, require_xrce_agent, xrce_listener_binary,
         xrce_service_server_binary, xrce_talker_binary,
     },
+    unique_ros_domain_id,
 };
 use rstest::rstest;
 use std::{path::PathBuf, time::Duration};
@@ -68,17 +69,22 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     // Start XRCE Agent on ephemeral port
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
 
     // Start ROS 2 DDS listener (uses rmw_fastrtps_cpp, DDS multicast discovery)
     eprintln!("Starting ROS 2 DDS topic echo...");
-    let mut ros2_listener =
-        match Ros2DdsProcess::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Failed to start ROS 2 DDS listener: {}", e);
-                return;
-            }
-        };
+    let mut ros2_listener = match Ros2DdsProcess::topic_echo_with_domain(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        DEFAULT_ROS_DISTRO,
+        domain_id,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 DDS listener: {}", e);
+            return;
+        }
+    };
 
     // Wait for DDS discovery + XRCE Agent to propagate
     std::thread::sleep(Duration::from_secs(1));
@@ -86,7 +92,9 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     // Start XRCE talker
     eprintln!("Starting XRCE talker...");
     let mut talker_cmd = Command::new(&xrce_talker_binary);
-    talker_cmd.env("XRCE_AGENT_ADDR", &addr);
+    talker_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string());
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
 
@@ -140,12 +148,14 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     // Start XRCE Agent on ephemeral port
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
 
     // Start XRCE listener (subscribe before publishing)
     eprintln!("Starting XRCE listener...");
     let mut listener_cmd = Command::new(&xrce_listener_binary);
     listener_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_MSG_COUNT", "3");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
         .expect("Failed to start listener");
@@ -158,12 +168,13 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
 
     // Start ROS 2 DDS publisher
     eprintln!("Starting ROS 2 DDS topic pub...");
-    let mut ros2_publisher = match Ros2DdsProcess::topic_pub(
+    let mut ros2_publisher = match Ros2DdsProcess::topic_pub_with_domain(
         "/chatter",
         "std_msgs/msg/Int32",
         "{data: 42}",
         2,
         DEFAULT_ROS_DISTRO,
+        domain_id,
     ) {
         Ok(p) => p,
         Err(e) => {
@@ -222,12 +233,14 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     // Start XRCE Agent on ephemeral port
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
 
     // Start XRCE service server
     eprintln!("Starting XRCE service server...");
     let mut server_cmd = Command::new(&xrce_service_server_binary);
     server_cmd
         .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
         .env("XRCE_TIMEOUT", "30");
     let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-server")
         .expect("Failed to start service server");
@@ -240,11 +253,12 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
 
     // Call service from ROS 2 DDS
     eprintln!("Calling service from ROS 2 DDS...");
-    let mut ros2_client = match Ros2DdsProcess::service_call(
+    let mut ros2_client = match Ros2DdsProcess::service_call_with_domain(
         "/add_two_ints",
         "example_interfaces/srv/AddTwoInts",
         "{a: 5, b: 3}",
         DEFAULT_ROS_DISTRO,
+        domain_id,
     ) {
         Ok(p) => p,
         Err(e) => {

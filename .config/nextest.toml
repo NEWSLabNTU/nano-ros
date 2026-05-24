@@ -204,13 +204,18 @@ max-threads = 1
 [test-groups.xrce]
 max-threads = 1
 
-# XRCE ↔ ROS 2 DDS interop: needs XRCE Agent + ROS 2 + rmw_fastrtps.
+# XRCE ↔ ROS 2 DDS interop: each test starts its own XRCE Agent on an
+# ephemeral UDP port and assigns XRCE + ROS 2 DDS participants to a
+# per-test ROS_DOMAIN_ID, so the three pub/sub/service checks can run
+# concurrently without DDS topic/service cross-talk.
 [test-groups.xrce_ros2_interop]
-max-threads = 1
+max-threads = 3
 
 # ROS 2 interop tests: ros2 CLI commands with rmw_zenoh_cpp are
 # heavyweight (each spawns zenoh sessions for discovery). Running in
-# parallel causes resource contention and discovery timeouts.
+# parallel causes resource contention and discovery timeouts. Some list/info
+# helpers are still daemon-sensitive, so keep this group serial until the CLI
+# paths are all no-daemon or otherwise process-local.
 [test-groups.ros2-interop]
 max-threads = 1
 

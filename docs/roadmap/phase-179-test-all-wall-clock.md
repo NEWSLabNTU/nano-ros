@@ -216,10 +216,26 @@ of Phase 178's fixture stage.
   leave the historical `qemu-zephyr max-threads = 1` bottleneck without
   reintroducing the old CMake corruption.
 
-- [ ] **179.J - isolate ROS 2 and XRCE interop enough to parallelize.**
+- [x] **179.J - isolate ROS 2 and XRCE interop enough to parallelize.**
   Survey use of ROS domain IDs, daemon behavior, DDS discovery ports,
   XRCE Agent ports, and temp dirs. Where tests can own unique domains
   and ports, split them out of the global serialized groups.
+
+  Completed 2026-05-25. XRCE↔ROS 2 DDS interop now isolates each
+  test with an ephemeral XRCE Agent UDP port plus a per-test
+  `ROS_DOMAIN_ID` applied to both the nros XRCE process and the ROS 2
+  `rmw_fastrtps_cpp` CLI process. `Ros2DdsProcess` grew explicit
+  domain-aware spawn helpers so DDS tests can opt into this isolation
+  without changing the default domain-0 helpers. The
+  `xrce_ros2_interop` nextest group is raised from 1 to 3, matching
+  the three runtime checks.
+
+  The rmw_zenoh ROS 2 interop group remains serial for now: those tests
+  already use unique zenoh router ports and per-process session config
+  files, but several ROS 2 list/info/param CLI helpers still rely on
+  daemon-sensitive behavior (`ros2 daemon stop` before the command).
+  Keep `ros2-interop` at `max-threads = 1` until every helper is
+  converted to a no-daemon or otherwise process-local path.
 
 - [ ] **179.K - add focused nextest lanes.** Keep full nextest coverage
   available, but add documented filterset lanes such as runtime-only,
