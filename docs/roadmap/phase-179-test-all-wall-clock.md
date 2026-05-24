@@ -86,6 +86,40 @@ custom transport loopback, zero-copy, safety E2E, and ROS 2 lifecycle
 interop tests. These waits accumulate even when the process was ready
 earlier.
 
+#### 179.G sleep audit
+
+Initial 179.G pass replaced the named fixed sleeps with bounded
+readiness/count waits:
+
+- `c_xrce_api.rs`: startup waits now watch for `Support initialized`;
+  talker/listener communication waits for three `Received` lines instead
+  of sleeping for the whole message window.
+- `custom_transport_loopback.rs`: retains bounded sleeps with explicit
+  comments because the custom-transport session-open/subscription path
+  has no stable readiness marker before subscriber declaration, and
+  immediate declaration has been observed to fail or stall.
+- `zero_copy.rs`: subscription-propagation sleeps were removed; tests
+  wait for three received messages or two `seq=` trace markers.
+- `safety_e2e.rs`: subscription-propagation sleeps were removed; tests
+  wait for three `crc=ok` messages or two standard `Received:` messages.
+- `ros2_lifecycle_interop.rs`: rmw_zenoh graph and post-configure waits
+  now poll the ROS 2 lifecycle CLI until `/lifecycle_demo` or `inactive`
+  appears.
+
+Follow-up 179.G slices also replaced fixed sleeps in `large_msg.rs`,
+`qos.rs`, `phase_118_collapse.rs`, `multi_node.rs`,
+`error_handling.rs`, `rmw_interop.rs`, and `zephyr.rs`. Remaining sleeps
+in these audited files are limited to bounded poll/backoff intervals, a
+throughput benchmark's intentional measurement window, the documented
+custom-transport readiness gap, and the documented Zephyr XRCE action
+propagation guard.
+
+### Post-nextest stages have poor visibility
+
+Doctests, Miri, C codegen, and orchestration E2E run after nextest and
+outside nextest scheduling. The top-level summary is printed before
+those later stages, so a slow or failing late stage is not reflected in
+the same timing/reporting surface as the workspace tests.
 ### Hidden builds may still exist inside tests
 
 The full test suite should consume artifacts from
@@ -224,11 +258,14 @@ of Phase 178's fixture stage.
     missing-fixture remedy. Any future cargo/CMake/west/make command in
     those helpers is a 179.F regression.
 
-- [ ] **179.G - audit and remove fixed sleeps.** Replace fixed sleeps in
+- [x] **179.G - audit and remove fixed sleeps.** Replace fixed sleeps in
   E2E tests with readiness polling, log-pattern waits, port-open waits,
   or first-message deadlines. Keep upper bounds so failures still time
   out clearly. Start with C XRCE API, custom transport loopback,
   zero-copy, safety E2E, and ROS 2 lifecycle interop.
+
+  Completed 2026-05-25. See the 179.G sleep audit above for per-file
+  details and retained-sleep rationale.
 
 - [x] **179.H - split shared native C/C++ artifacts.** Native API tests
   serialize because zenoh and XRCE variants share

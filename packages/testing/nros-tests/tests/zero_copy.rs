@@ -81,9 +81,6 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
         .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
         .expect("Zero-copy listener did not start");
 
-    // Stabilization delay: let subscription propagate through zenohd
-    std::thread::sleep(Duration::from_secs(3));
-
     // Start standard talker
     let mut talker_cmd = Command::new(talker_path);
     talker_cmd
@@ -92,10 +89,9 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
     let _talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Wait for listener to receive multiple messages
     let output = listener
-        .wait_for_all_output(Duration::from_secs(30))
-        .expect("Failed to collect listener output");
+        .wait_for_output_count("Received:", 3, Duration::from_secs(30))
+        .expect("Zero-copy listener did not receive 3 messages");
 
     let result = nros_tests::output::assert_listener(&output, 3);
     let received_count = result.received_count;
@@ -141,24 +137,19 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
         .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
         .expect("Zero-copy listener did not start");
 
-    // Stabilization delay
-    std::thread::sleep(Duration::from_secs(3));
-
     // Start talker
     let mut talker_cmd = Command::new(talker_path);
     talker_cmd.env("NROS_LOCATOR", &locator);
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Wait for several messages
-    std::thread::sleep(Duration::from_secs(6));
+    let output = listener
+        .wait_for_output_count("seq=", 2, Duration::from_secs(30))
+        .expect("Zero-copy listener did not emit 2 sequence markers");
 
     // Kill processes and collect output
     talker.kill();
     listener.kill();
-    let output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     eprintln!("Zero-copy listener trace output:\n{}", output);
 

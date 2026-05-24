@@ -23,6 +23,17 @@ use nros_tests::{
 use rstest::rstest;
 use std::{process::Command, time::Duration};
 
+fn received_values(output: &str) -> Vec<i32> {
+    output
+        .lines()
+        .filter_map(|line| {
+            line.split("Received:")
+                .nth(1)
+                .and_then(|data| data.trim().parse().ok())
+        })
+        .collect()
+}
+
 // =============================================================================
 // Multiple Publishers Tests
 // =============================================================================
@@ -51,7 +62,9 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start 3 talkers
     let mut talkers = Vec::new();
@@ -66,19 +79,15 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
         talkers.push(proc);
     }
 
-    // Let them communicate for 5 seconds (subscription propagation across
-    // 3 simultaneous sessions + 1s timer period needs extra headroom)
-    std::thread::sleep(Duration::from_secs(5));
+    let listener_output = listener
+        .wait_for_output_count("Received:", 3, Duration::from_secs(12))
+        .expect("listener did not receive from publishers");
 
     // Kill all processes
     for mut talker in talkers {
         talker.kill();
     }
     listener.kill();
-
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     println!("=== Listener output (3 publishers) ===");
     println!("{}", listener_output);
@@ -128,7 +137,11 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
         listeners.push(proc);
     }
 
-    std::thread::sleep(Duration::from_secs(1));
+    for listener in &mut listeners {
+        listener
+            .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+            .expect("listener did not become ready");
+    }
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -140,22 +153,17 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Kill talker
-    talker.kill();
-
     // Collect output from all listeners
     let mut receive_counts = Vec::new();
     for mut listener in listeners {
-        listener.kill();
         let output = listener
-            .wait_for_all_output(Duration::from_secs(2))
-            .unwrap_or_default();
+            .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+            .expect("listener did not receive a message");
+        listener.kill();
         let count = count_pattern(&output, "Received:");
         receive_counts.push(count);
     }
+    talker.kill();
 
     println!("Listener receive counts: {:?}", receive_counts);
 
@@ -219,7 +227,11 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
         listeners.push(proc);
     }
 
-    std::thread::sleep(Duration::from_secs(1));
+    for listener in &mut listeners {
+        listener
+            .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+            .expect("listener did not become ready");
+    }
 
     // Start 2 talkers
     let mut talkers = Vec::new();
@@ -234,22 +246,17 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
         talkers.push(proc);
     }
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Kill all
-    for mut talker in talkers {
-        talker.kill();
-    }
-
     let mut receive_counts = Vec::new();
     for mut listener in listeners {
-        listener.kill();
         let output = listener
-            .wait_for_all_output(Duration::from_secs(2))
-            .unwrap_or_default();
+            .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+            .expect("listener did not receive 2 messages");
+        listener.kill();
         let count = count_pattern(&output, "Received:");
         receive_counts.push(count);
+    }
+    for mut talker in talkers {
+        talker.kill();
     }
 
     println!("Many-to-many receive counts: {:?}", receive_counts);
@@ -294,7 +301,9 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -306,18 +315,15 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Run for 7 seconds
-    std::thread::sleep(Duration::from_secs(7));
+    let talker_output = talker
+        .wait_for_output_count("Published:", 5, Duration::from_secs(10))
+        .expect("talker did not publish 5 messages");
+    let listener_output = listener
+        .wait_for_output_count("Received:", 4, Duration::from_secs(10))
+        .expect("listener did not receive 4 messages");
 
     talker.kill();
     listener.kill();
-
-    let talker_output = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     let published = count_pattern(&talker_output, "Published:");
     let received = count_pattern(&listener_output, "Received:");
@@ -366,7 +372,9 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -378,26 +386,14 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Run for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    let listener_output = listener
+        .wait_for_output_count("Received:", 3, Duration::from_secs(10))
+        .expect("listener did not receive 3 messages");
 
     talker.kill();
     listener.kill();
 
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-
-    // Extract received values
-    let mut received_values: Vec<i32> = Vec::new();
-    for line in listener_output.lines() {
-        if line.contains("Received:")
-            && let Some(data_part) = line.split("Received:").nth(1)
-            && let Ok(num) = data_part.trim().parse()
-        {
-            received_values.push(num);
-        }
-    }
+    let received_values = received_values(&listener_output);
 
     println!("Received values: {:?}", received_values);
 
@@ -466,12 +462,13 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
         let proc = ManagedProcess::spawn_command(cmd, format!("listener_{}", i))
             .expect("Failed to start listener");
         listeners.push(proc);
-
-        // Stagger startup slightly
-        std::thread::sleep(Duration::from_millis(200));
     }
 
-    std::thread::sleep(Duration::from_secs(1));
+    for listener in &mut listeners {
+        listener
+            .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+            .expect("listener did not become ready");
+    }
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -483,21 +480,17 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
-
-    talker.kill();
-
     // Collect results
     let mut receive_counts = Vec::new();
     for mut listener in listeners {
-        listener.kill();
         let output = listener
-            .wait_for_all_output(Duration::from_secs(2))
-            .unwrap_or_default();
+            .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+            .expect("listener did not receive a message");
+        listener.kill();
         let count = count_pattern(&output, "Received:");
         receive_counts.push(count);
     }
+    talker.kill();
 
     println!(
         "Scalability test - {} listeners: {:?}",
@@ -543,7 +536,9 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start 5 talkers
     let num_talkers = 5;
@@ -558,13 +553,11 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
         let proc = ManagedProcess::spawn_command(cmd, format!("talker_{}", i))
             .expect("Failed to start talker");
         talkers.push(proc);
-
-        // Stagger startup slightly
-        std::thread::sleep(Duration::from_millis(200));
     }
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    let listener_output = listener
+        .wait_for_output_count("Received:", 5, Duration::from_secs(12))
+        .expect("listener did not receive from 5 publishers");
 
     // Kill all talkers
     for mut talker in talkers {
@@ -572,10 +565,6 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     }
 
     listener.kill();
-
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     let received = count_pattern(&listener_output, "Received:");
 
@@ -645,21 +634,17 @@ fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
     let mut talker2 =
         ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker2");
 
-    // Let them run for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    let listener1_output = listener1
+        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .unwrap_or_default();
+    let listener2_output = listener2
+        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .unwrap_or_default();
 
-    // Kill all
     talker1.kill();
     talker2.kill();
     listener1.kill();
     listener2.kill();
-
-    let listener1_output = listener1
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener2_output = listener2
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     let received1 = count_pattern(&listener1_output, "Received:");
     let received2 = count_pattern(&listener2_output, "Received:");

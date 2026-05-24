@@ -50,11 +50,6 @@ fn test_connection_timeout_talker() {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Wait a bit and then kill - we're testing that it doesn't hang
-    std::thread::sleep(Duration::from_secs(2));
-
-    proc.kill();
-
     let output = proc
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
@@ -113,11 +108,6 @@ fn test_connection_timeout_listener() {
     let mut proc =
         ManagedProcess::spawn_command(cmd, "listener").expect("Failed to start listener");
 
-    // Wait a bit and then kill
-    std::thread::sleep(Duration::from_secs(2));
-
-    proc.kill();
-
     let output = proc
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
@@ -160,20 +150,17 @@ fn test_router_disconnect(zenohd_unique: ZenohRouter) {
 
     let mut talker = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Let it run for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    let first_output = talker
+        .wait_for_output_count("Published:", 1, Duration::from_secs(5))
+        .expect("talker did not publish before router disconnect");
 
     // Drop the router (kills zenohd)
     drop(zenohd_unique);
 
-    // Let the talker run for 2 more seconds without router
-    std::thread::sleep(Duration::from_secs(2));
-
-    talker.kill();
-
     let output = talker
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let output = format!("{first_output}{output}");
 
     println!("=== Talker output (router disconnect) ===");
     println!("{}", output);
@@ -235,9 +222,6 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
 
     // Kill router mid-communication
     drop(zenohd_unique);
-
-    // Let them run for 1 more second without router
-    std::thread::sleep(Duration::from_secs(1));
 
     talker.kill();
     listener.kill();
@@ -408,11 +392,6 @@ fn test_rapid_start_stop(zenohd_unique: ZenohRouter) {
         let mut proc = ManagedProcess::spawn_command(cmd, format!("talker_{}", i))
             .expect("Failed to start talker");
 
-        // Run for just 1 second
-        std::thread::sleep(Duration::from_secs(1));
-
-        proc.kill();
-
         let output = proc
             .wait_for_all_output(Duration::from_secs(1))
             .unwrap_or_default();
@@ -441,13 +420,8 @@ fn test_minimal_runtime(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Kill almost immediately (0.5 seconds)
-    std::thread::sleep(Duration::from_millis(500));
-
-    proc.kill();
-
     let output = proc
-        .wait_for_all_output(Duration::from_secs(1))
+        .wait_for_all_output(Duration::from_millis(500))
         .unwrap_or_default();
 
     // Just verify it didn't crash

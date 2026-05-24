@@ -742,8 +742,7 @@ fn test_zephyr_rust_cyclonedds_pubsub_e2e() {
 
     let mut listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr listener (cyclonedds)");
-    // Let the listener join the SPDP group before the talker announces.
-    std::thread::sleep(Duration::from_secs(2));
+    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
     let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr talker (cyclonedds)");
 
@@ -786,7 +785,7 @@ fn test_zephyr_cpp_cyclonedds_pubsub_e2e() {
 
     let mut listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr cpp listener (cyclonedds)");
-    std::thread::sleep(Duration::from_secs(2));
+    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
     let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr cpp talker (cyclonedds)");
 
@@ -829,7 +828,7 @@ fn test_zephyr_c_cyclonedds_pubsub_e2e() {
 
     let mut listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr c listener (cyclonedds)");
-    std::thread::sleep(Duration::from_secs(2));
+    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
     let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr c talker (cyclonedds)");
 
@@ -880,7 +879,7 @@ fn test_zephyr_rust_cyclonedds_service_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr service-server (cyclonedds)");
-    std::thread::sleep(Duration::from_secs(2));
+    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr service-client (cyclonedds)");
 
@@ -929,7 +928,7 @@ fn test_zephyr_cpp_cyclonedds_service_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr cpp service-server (cyclonedds)");
-    std::thread::sleep(Duration::from_secs(2));
+    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr cpp service-client (cyclonedds)");
 
@@ -978,7 +977,7 @@ fn test_zephyr_c_cyclonedds_service_e2e() {
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr c service-server (cyclonedds)");
-    std::thread::sleep(Duration::from_secs(2));
+    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("spawn zephyr c service-client (cyclonedds)");
 

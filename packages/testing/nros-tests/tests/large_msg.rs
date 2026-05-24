@@ -16,7 +16,9 @@ use nros_tests::{
     },
 };
 use rstest::rstest;
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Mutex, time::Duration};
+
+static XRCE_LARGE_MSG_LOCK: Mutex<()> = Mutex::new(());
 
 // =============================================================================
 // Zenoh Large Message Tests
@@ -76,11 +78,9 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-stress-listener")
         .expect("Failed to start listener");
 
-    // Wait for listener readiness
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-
-    // Stabilization delay for zenoh subscription propagation
-    std::thread::sleep(Duration::from_secs(2));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(5))
+        .expect("zenoh stress listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -143,8 +143,9 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
         ManagedProcess::spawn_command(listener_cmd, "zenoh-stress-overflow-listener")
             .expect("Failed to start listener");
 
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-    std::thread::sleep(Duration::from_secs(2));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(5))
+        .expect("zenoh overflow listener did not become ready");
 
     // Talker sends 2048B payloads (larger than default 1024B receiver buffer)
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -237,8 +238,9 @@ fn test_zenoh_e2e_large_receive(
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-large-recv-listener")
         .expect("spawn listener");
 
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-    std::thread::sleep(Duration::from_secs(2));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(5))
+        .expect("zenoh large receive listener did not become ready");
 
     // Talker (same large-buf binary)
     let mut talker_cmd = Command::new(&zenoh_stress_test_large_buf_binary);
@@ -298,8 +300,9 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-100hz-listener")
         .expect("Failed to start listener");
 
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-    std::thread::sleep(Duration::from_secs(2));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(5))
+        .expect("zenoh 100Hz listener did not become ready");
 
     // Start talker at 100 Hz
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -352,8 +355,9 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-burst-listener")
         .expect("Failed to start listener");
 
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-    std::thread::sleep(Duration::from_secs(2));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(5))
+        .expect("zenoh burst listener did not become ready");
 
     // Start talker with no delay (burst)
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -398,6 +402,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
         nros_tests::skip!("XRCE agent not available");
     }
 
+    let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 
@@ -412,8 +417,9 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-stress-listener")
         .expect("Failed to start listener");
 
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(10));
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(10))
+        .expect("XRCE stress listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
@@ -462,6 +468,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
         nros_tests::skip!("XRCE agent not available");
     }
 
+    let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 
@@ -504,6 +511,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
         nros_tests::skip!("XRCE agent not available");
     }
 
+    let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 
@@ -517,8 +525,9 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-100hz-listener")
         .expect("Failed to start listener");
 
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(10));
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(10))
+        .expect("XRCE 100Hz listener did not become ready");
 
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
     talker_cmd
@@ -559,6 +568,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
         nros_tests::skip!("XRCE agent not available");
     }
 
+    let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 
@@ -572,8 +582,9 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-burst-listener")
         .expect("Failed to start listener");
 
-    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(10));
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Ready: listening", Duration::from_secs(10))
+        .expect("XRCE burst listener did not become ready");
 
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
     talker_cmd

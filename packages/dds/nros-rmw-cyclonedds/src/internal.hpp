@@ -18,6 +18,15 @@
 #if defined(NROS_PLATFORM_FREERTOS)
 #include <FreeRTOS.h>
 #include <task.h>
+extern "C" {
+uint64_t nros_platform_random_u64(void);
+}
+#elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
+extern "C" {
+uint64_t nros_platform_time_ns(void);
+void nros_platform_sleep_ms(size_t ms);
+uint64_t nros_platform_random_u64(void);
+}
 #elif defined(NROS_PLATFORM_THREADX)
 extern "C" {
 uint64_t nros_platform_clock_ms(void);
@@ -37,6 +46,8 @@ inline void platform_sleep_ms(uint32_t timeout_ms) {
     }
 #if defined(NROS_PLATFORM_FREERTOS)
     vTaskDelay(pdMS_TO_TICKS(timeout_ms));
+#elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
+    nros_platform_sleep_ms(static_cast<size_t>(timeout_ms));
 #elif defined(NROS_PLATFORM_THREADX)
     nros_platform_sleep_ms(static_cast<size_t>(timeout_ms));
 #else
@@ -47,6 +58,8 @@ inline void platform_sleep_ms(uint32_t timeout_ms) {
 inline uint64_t platform_now_ms() {
 #if defined(NROS_PLATFORM_FREERTOS)
     return static_cast<uint64_t>(xTaskGetTickCount()) * portTICK_PERIOD_MS;
+#elif defined(NROS_PLATFORM_ZEPHYR) || defined(__ZEPHYR__)
+    return nros_platform_time_ns() / 1000000ULL;
 #elif defined(NROS_PLATFORM_THREADX)
     return nros_platform_clock_ms();
 #else
@@ -57,7 +70,9 @@ inline uint64_t platform_now_ms() {
 }
 
 inline uint64_t platform_random_u64() {
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_ZEPHYR) || \
+    defined(__ZEPHYR__) || \
+    defined(NROS_PLATFORM_THREADX)
     return nros_platform_random_u64();
 #else
     return 0;

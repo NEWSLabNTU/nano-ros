@@ -17,7 +17,11 @@ use nros_tests::{
     skip,
 };
 use rstest::rstest;
-use std::{path::PathBuf, process::Command, time::Duration};
+use std::{
+    path::PathBuf,
+    process::Command,
+    time::{Duration, Instant},
+};
 
 /// Run `ros2 <subcommand>` against the given zenoh locator and return combined stdout+stderr.
 ///
@@ -36,6 +40,22 @@ fn run_ros2(locator: &str, subcommand: &str) -> String {
         .output()
         .expect("failed to spawn bash for ros2 invocation");
     String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Duration) -> String {
+    let deadline = Instant::now() + timeout;
+    let mut last_output = String::new();
+    let marker = marker.to_lowercase();
+
+    while Instant::now() < deadline {
+        last_output = run_ros2(locator, subcommand);
+        if last_output.to_lowercase().contains(&marker) {
+            return last_output;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    last_output
 }
 
 /// Get the next open TCP port on loopback; used to spawn a fresh zenohd.
@@ -75,11 +95,13 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
         "boot log missing service-registration marker: {boot_log}"
     );
 
-    // Give rmw_zenoh's router-graph a moment to see the liveliness tokens.
-    std::thread::sleep(Duration::from_secs(2));
-
     // ── Assertion A: `ros2 lifecycle nodes` discovers /lifecycle_demo
-    let nodes = run_ros2(&locator, "lifecycle nodes --no-daemon --spin-time 0.1");
+    let nodes = poll_ros2_until(
+        &locator,
+        "lifecycle nodes --no-daemon --spin-time 0.1",
+        "/lifecycle_demo",
+        Duration::from_secs(10),
+    );
     eprintln!("--- ros2 lifecycle nodes ---\n{nodes}");
     assert!(
         nodes.contains("/lifecycle_demo"),
@@ -108,18 +130,6 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
         "configure did not report success:\n{configure_out}"
     );
 
-    // Allow the executor one more spin cycle before querying again.
-    std::thread::sleep(Duration::from_millis(500));
-    let state_after = run_ros2(
-        &locator,
-        "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
-    );
-    eprintln!("--- ros2 lifecycle get (after configure) ---\n{state_after}");
-    assert!(
-        state_after.to_lowercase().contains("inactive"),
-        "expected Inactive after configure, got:\n{state_after}"
-    );
-
     // The on_configure callback should have logged to the node's stdout.
     let callback_log = node
         .wait_for_output_pattern("on_configure", Duration::from_secs(3))
@@ -127,6 +137,18 @@ fn ros2_lifecycle_full_cycle(lifecycle_node_binary: PathBuf) {
     assert!(
         callback_log.contains("on_configure"),
         "on_configure callback marker missing from node stdout"
+    );
+
+    let state_after = poll_ros2_until(
+        &locator,
+        "lifecycle get --no-daemon --spin-time 0.1 /lifecycle_demo",
+        "inactive",
+        Duration::from_secs(5),
+    );
+    eprintln!("--- ros2 lifecycle get (after configure) ---\n{state_after}");
+    assert!(
+        state_after.to_lowercase().contains("inactive"),
+        "expected Inactive after configure, got:\n{state_after}"
     );
 
     // ── Assertion D: list shows reachable transitions from Inactive

@@ -54,7 +54,9 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         .to_string();
 
     // Listener first so it's subscribed before the talker starts
-    // emitting (zenoh-pico is volatile-by-default).
+    // emitting (zenoh-pico is volatile-by-default). This custom-transport
+    // path has no stable readiness marker before subscriber declaration;
+    // keep a bounded guard for the session-open/declaration race.
     let mut listener_cmd = Command::new(listener_bin);
     listener_cmd
         .env("RUST_LOG", "info")
@@ -72,7 +74,7 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         .env("NROS_TALKER_COUNT", "20");
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "talker").expect("spawn talker");
 
-    // Let them communicate.
+    // Let subscription declaration and volatile pub/sub matching propagate.
     std::thread::sleep(Duration::from_secs(5));
 
     talker.kill();

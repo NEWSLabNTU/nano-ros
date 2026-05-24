@@ -99,12 +99,9 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
     let mut talker =
         ManagedProcess::spawn_command(cmd, "c-xrce-talker").expect("Failed to start c-xrce-talker");
 
-    // Wait for initialization
-    std::thread::sleep(Duration::from_secs(3));
-
     let output = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
+        .expect("C XRCE talker did not initialize");
 
     eprintln!("C XRCE talker output:\n{}", output);
 
@@ -133,12 +130,9 @@ fn test_c_xrce_listener_starts(c_xrce_listener_binary: PathBuf) {
     let mut listener = ManagedProcess::spawn_command(cmd, "c-xrce-listener")
         .expect("Failed to start c-xrce-listener");
 
-    // Wait for initialization
-    std::thread::sleep(Duration::from_secs(3));
-
     let output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
+        .expect("C XRCE listener did not initialize");
 
     eprintln!("C XRCE listener output:\n{}", output);
 
@@ -175,8 +169,10 @@ fn test_c_xrce_talker_listener_communication(
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "c-xrce-listener")
         .expect("Failed to start c-xrce-listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(3));
+    let init_output = listener
+        .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
+        .expect("C XRCE listener did not initialize");
+    eprintln!("C XRCE listener initialized:\n{}", init_output);
 
     // Start talker
     let mut talker_cmd = stdbuf_command(&c_xrce_talker_binary);
@@ -184,16 +180,12 @@ fn test_c_xrce_talker_listener_communication(
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "c-xrce-talker")
         .expect("Failed to start c-xrce-talker");
 
-    // Wait for messages to flow
-    std::thread::sleep(Duration::from_secs(8));
+    let message_output = listener
+        .wait_for_output_count("Received", 3, Duration::from_secs(12))
+        .expect("C XRCE listener did not receive 3 messages");
+    let listener_output = format!("{init_output}{message_output}");
 
-    // Kill talker first
     talker.kill();
-
-    // Collect listener output
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     eprintln!("C XRCE listener output:\n{}", listener_output);
 

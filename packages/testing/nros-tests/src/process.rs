@@ -123,8 +123,7 @@ pub fn graceful_kill_process_group(handle: &mut Child) {
 ///
 /// ```ignore
 /// let mut proc = ManagedProcess::spawn(&binary_path, &["--tcp", "127.0.0.1:7447"], "talker")?;
-/// std::thread::sleep(Duration::from_secs(5));
-/// let output = proc.wait_for_output(Duration::from_secs(2))?;
+/// let output = proc.wait_for_output_count("Published:", 1, Duration::from_secs(5))?;
 /// // Process is automatically killed on drop
 /// ```
 pub struct ManagedProcess {
@@ -380,6 +379,121 @@ impl ManagedProcess {
         self.handle.stdout = stdout;
         self.handle.stderr = stderr;
         Ok(output)
+    }
+
+    /// Wait until a pattern appears at least `expected` times in stdout+stderr.
+    pub fn wait_for_output_count(
+        &mut self,
+        pattern: &str,
+        expected: usize,
+        timeout: Duration,
+    ) -> Result<String, TestError> {
+        use std::io::Read;
+        #[cfg(unix)]
+        use std::os::unix::io::AsRawFd;
+
+        let start = std::time::Instant::now();
+        let mut output = String::new();
+        let mut stdout = self.handle.stdout.take();
+        let mut stderr = self.handle.stderr.take();
+        let mut buf = [0u8; 4096];
+
+        #[cfg(unix)]
+        {
+            if let Some(ref out) = stdout {
+                let fd = out.as_raw_fd();
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+            if let Some(ref err) = stderr {
+                let fd = err.as_raw_fd();
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+        }
+
+        loop {
+            if output.matches(pattern).count() >= expected {
+                self.handle.stdout = stdout;
+                self.handle.stderr = stderr;
+                return Ok(output);
+            }
+
+            if start.elapsed() > timeout {
+                self.handle.stdout = stdout;
+                self.handle.stderr = stderr;
+                return Err(TestError::Timeout);
+            }
+
+            if let Ok(Some(_)) = self.handle.try_wait() {
+                if let Some(ref mut out) = stdout {
+                    let _ = out.read_to_string(&mut output);
+                }
+                if let Some(ref mut err) = stderr {
+                    let _ = err.read_to_string(&mut output);
+                }
+                self.handle.stdout = stdout;
+                self.handle.stderr = stderr;
+                return if output.matches(pattern).count() >= expected {
+                    Ok(output)
+                } else {
+                    Err(TestError::ProcessFailed(format!(
+                        "{} exited before `{}` appeared {} times. Output:\n{}",
+                        self.name, pattern, expected, output
+                    )))
+                };
+            }
+
+            let mut got_data = false;
+            if let Some(ref mut out) = stdout
+                && let Ok(n) = out.read(&mut buf)
+                && n > 0
+            {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                got_data = true;
+            }
+            if let Some(ref mut err) = stderr
+                && let Ok(n) = err.read(&mut buf)
+                && n > 0
+            {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                got_data = true;
+            }
+
+            if !got_data {
+                #[cfg(unix)]
+                {
+                    let remaining = timeout.saturating_sub(start.elapsed());
+                    let ms = remaining.as_millis().min(500) as i32;
+                    let mut fds = Vec::new();
+                    if let Some(ref out) = stdout {
+                        fds.push(libc::pollfd {
+                            fd: out.as_raw_fd(),
+                            events: libc::POLLIN,
+                            revents: 0,
+                        });
+                    }
+                    if let Some(ref err) = stderr {
+                        fds.push(libc::pollfd {
+                            fd: err.as_raw_fd(),
+                            events: libc::POLLIN,
+                            revents: 0,
+                        });
+                    }
+                    if !fds.is_empty() {
+                        unsafe {
+                            libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, ms);
+                        }
+                    }
+                }
+                #[cfg(not(unix))]
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
     }
 
     /// Kill the process group and wait for it to exit

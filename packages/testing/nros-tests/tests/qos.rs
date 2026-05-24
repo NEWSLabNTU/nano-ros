@@ -23,6 +23,17 @@ use nros_tests::{
 use rstest::rstest;
 use std::{process::Command, time::Duration};
 
+fn received_values(output: &str) -> Vec<i32> {
+    output
+        .lines()
+        .filter_map(|line| {
+            line.split("Received:")
+                .nth(1)
+                .and_then(|data| data.trim().parse().ok())
+        })
+        .collect()
+}
+
 // =============================================================================
 // Reliability Tests
 // =============================================================================
@@ -50,8 +61,9 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -63,18 +75,15 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    let listener_output = listener
+        .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+        .expect("listener did not receive messages");
+    let talker_output = talker
+        .wait_for_output_count("Published:", 1, Duration::from_secs(5))
+        .expect("talker did not publish");
 
     talker.kill();
     listener.kill();
-
-    let talker_output = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     println!("=== Talker output ===");
     println!("{}", talker_output);
@@ -130,8 +139,9 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -143,29 +153,17 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 3 seconds (more time for steady state)
-    std::thread::sleep(Duration::from_secs(3));
+    let listener_output = listener
+        .wait_for_output_count("Received:", 3, Duration::from_secs(10))
+        .expect("listener did not receive 3 messages");
 
     talker.kill();
     listener.kill();
 
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-
     println!("=== Listener output ===");
     println!("{}", listener_output);
 
-    // Extract received values
-    let mut received_values: Vec<i32> = Vec::new();
-    for line in listener_output.lines() {
-        if line.contains("Received:")
-            && let Some(data_part) = line.split("Received:").nth(1)
-            && let Ok(num) = data_part.trim().parse()
-        {
-            received_values.push(num);
-        }
-    }
+    let received_values = received_values(&listener_output);
 
     println!("Received values: {:?}", received_values);
 
@@ -225,7 +223,9 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -237,25 +237,14 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(3));
+    let listener_output = listener
+        .wait_for_output_count("Received:", 2, Duration::from_secs(10))
+        .expect("listener did not receive 2 messages");
 
     talker.kill();
     listener.kill();
 
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-
-    // Extract received values
-    let mut received_values: Vec<i32> = Vec::new();
-    for line in listener_output.lines() {
-        if line.contains("Received:")
-            && let Some(data_part) = line.split("Received:").nth(1)
-            && let Ok(num) = data_part.trim().parse()
-        {
-            received_values.push(num);
-        }
-    }
+    let received_values = received_values(&listener_output);
 
     println!("Received values: {:?}", received_values);
 
@@ -304,7 +293,9 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -316,17 +307,15 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(3));
+    let listener_output = listener
+        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .expect("listener did not receive a message");
+    let talker_output = talker
+        .wait_for_output_count("Published:", 1, Duration::from_secs(5))
+        .expect("talker did not publish");
 
     talker.kill();
     listener.kill();
-
-    let talker_output = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     // Verify no QoS incompatibility errors
     assert!(
@@ -376,7 +365,12 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     let mut listener2 = ManagedProcess::spawn_command(listener2_cmd, "listener2")
         .expect("Failed to start listener2");
 
-    std::thread::sleep(Duration::from_secs(1));
+    listener1
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener1 did not become ready");
+    listener2
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("listener2 did not become ready");
 
     // Start talker
     let mut talker_cmd = Command::new(talker_binary);
@@ -388,18 +382,16 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(3));
+    let listener1_output = listener1
+        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .expect("listener1 did not receive a message");
+    let listener2_output = listener2
+        .wait_for_output_count("Received:", 1, Duration::from_secs(10))
+        .expect("listener2 did not receive a message");
 
     talker.kill();
     listener1.kill();
     listener2.kill();
-
-    let listener1_output = listener1
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener2_output = listener2
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     let received1 = count_pattern(&listener1_output, "Received:");
     let received2 = count_pattern(&listener2_output, "Received:");

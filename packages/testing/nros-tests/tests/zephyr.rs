@@ -95,9 +95,6 @@ fn test_zephyr_talker_to_listener_e2e() {
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust)
     );
 
-    // Give zenohd time to start
-    std::thread::sleep(Duration::from_millis(500));
-
     // Resolve prebuilt examples (to separate directories)
     let talker_binary = get_zephyr_talker_native_sim();
     let listener_binary = get_zephyr_listener_native_sim();
@@ -122,10 +119,6 @@ fn test_zephyr_talker_to_listener_e2e() {
             listener_ready
         );
     }
-    // Small additional delay so the subscription declaration can
-    // reach the router even after the listener's log line was
-    // emitted.
-    std::thread::sleep(Duration::from_millis(500));
     let mut listener = listener;
 
     // Start talker
@@ -242,9 +235,6 @@ fn test_zephyr_to_native_e2e() {
     .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
-    // Give zenohd time to start
-    std::thread::sleep(Duration::from_millis(500));
-
     // Build native listener
     let listener_path = build_native_listener().expect("Failed to build native-rs-listener");
 
@@ -271,8 +261,9 @@ fn test_zephyr_to_native_e2e() {
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
-    // Give listener time to connect and subscribe
-    std::thread::sleep(Duration::from_secs(1));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("native listener did not become ready");
 
     // Start Zephyr talker
     eprintln!("Starting Zephyr talker...");
@@ -343,9 +334,6 @@ fn test_native_to_zephyr_e2e() {
     .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
-    // Give zenohd time to start
-    std::thread::sleep(Duration::from_millis(500));
-
     // Build native talker
     let talker_path = build_native_talker().expect("Failed to build native-rs-talker");
 
@@ -358,8 +346,7 @@ fn test_native_to_zephyr_e2e() {
     let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr listener");
 
-    // Give listener time to connect and subscribe
-    std::thread::sleep(Duration::from_secs(1));
+    let _ = zephyr.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
 
     // Start native talker connecting to zenohd
     use nros_tests::process::ManagedProcess;
@@ -452,8 +439,6 @@ fn test_bidirectional_native_zephyr_e2e() {
     .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
-    std::thread::sleep(Duration::from_millis(500));
-
     // Build all binaries
     let native_talker_path = build_native_talker().expect("Failed to build native-rs-talker");
     let native_listener_path = build_native_listener().expect("Failed to build native-rs-listener");
@@ -492,8 +477,10 @@ fn test_bidirectional_native_zephyr_e2e() {
         ZephyrProcess::start(&zephyr_listener_binary, ZephyrPlatform::NativeSim)
             .expect("Failed to start Zephyr listener");
 
-    // Give listeners time to connect and subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    native_listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("native listener did not become ready");
+    let _ = zephyr_listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
 
     // Start talkers
     eprintln!("Starting talkers...");
@@ -515,14 +502,17 @@ fn test_bidirectional_native_zephyr_e2e() {
     let mut zephyr_talker = ZephyrProcess::start(&zephyr_talker_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr talker");
 
-    // Wait for communication in both directions
     eprintln!("Waiting for bidirectional communication...");
-    std::thread::sleep(Duration::from_secs(5));
+    let native_ready_output = native_listener
+        .wait_for_output_count("Received:", 1, Duration::from_secs(30))
+        .unwrap_or_default();
+    let _ = zephyr_listener.wait_for_pattern("Received", Duration::from_secs(30));
 
     // Collect outputs
-    let native_listener_output = native_listener
+    let native_remaining = native_listener
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let native_listener_output = format!("{native_ready_output}{native_remaining}");
     let zephyr_listener_output = zephyr_listener
         .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
@@ -865,8 +855,6 @@ fn test_zephyr_action_e2e() {
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust)
     );
 
-    std::thread::sleep(Duration::from_millis(500));
-
     // Resolve prebuilt examples
     let server_binary = get_zephyr_action_server_native_sim();
     let client_binary = get_zephyr_action_client_native_sim();
@@ -903,7 +891,6 @@ fn test_zephyr_action_e2e() {
             server_ready
         );
     }
-    std::thread::sleep(Duration::from_millis(500));
     let mut server = server;
 
     // Start action client
@@ -1148,8 +1135,6 @@ fn test_native_server_zephyr_client() {
     .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
-    std::thread::sleep(Duration::from_millis(500));
-
     // Build native service server
     let server_path =
         build_native_service_server().expect("Failed to build native-rs-service-server");
@@ -1176,8 +1161,9 @@ fn test_native_server_zephyr_client() {
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start native service server");
 
-    // Give server time to set up
-    std::thread::sleep(Duration::from_secs(2));
+    server
+        .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
+        .expect("native service server did not become ready");
 
     if !server.is_running() {
         let output = server
@@ -1316,9 +1302,6 @@ fn test_zephyr_xrce_rust_talker_listener() {
     eprintln!("Starting XRCE Agent on port {}...", port);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
 
-    // Give agent time to start
-    std::thread::sleep(Duration::from_millis(500));
-
     // Resolve prebuilt examples
     let talker_binary = get_zephyr_xrce_rs_talker_native_sim();
     let listener_binary = get_zephyr_xrce_rs_listener_native_sim();
@@ -1331,8 +1314,7 @@ fn test_zephyr_xrce_rust_talker_listener() {
     let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE listener");
 
-    // Give listener time to connect and create subscription
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
 
     // Start talker
     eprintln!("Starting Zephyr XRCE talker...");
@@ -1415,9 +1397,6 @@ fn test_zephyr_xrce_c_talker_listener() {
     eprintln!("Starting XRCE Agent on port {}...", port);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
 
-    // Give agent time to start
-    std::thread::sleep(Duration::from_millis(500));
-
     // Resolve prebuilt examples
     let talker_binary = get_zephyr_xrce_c_talker_native_sim();
     let listener_binary = get_zephyr_xrce_c_listener_native_sim();
@@ -1430,8 +1409,7 @@ fn test_zephyr_xrce_c_talker_listener() {
     let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE C listener");
 
-    // Give listener time to connect and create subscription
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
 
     // Start talker
     eprintln!("Starting Zephyr XRCE C talker...");
@@ -1533,8 +1511,6 @@ fn test_zephyr_xrce_rust_service_e2e() {
         .xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::Rust);
     eprintln!("Starting XRCE Agent on port {}...", port);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    std::thread::sleep(Duration::from_millis(500));
-
     let server_binary = get_zephyr_xrce_rs_service_server_native_sim();
     let client_binary = get_zephyr_xrce_rs_service_client_native_sim();
 
@@ -1544,7 +1520,7 @@ fn test_zephyr_xrce_rust_service_e2e() {
     eprintln!("Starting Zephyr XRCE service server...");
     let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr XRCE service server");
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = server.wait_for_pattern("Service server ready", Duration::from_secs(30));
 
     eprintln!("Starting Zephyr XRCE service client...");
     let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim)
@@ -1603,8 +1579,6 @@ fn test_zephyr_xrce_rust_action_e2e() {
         .xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::Rust);
     eprintln!("Starting XRCE Agent on port {}...", port);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    std::thread::sleep(Duration::from_millis(500));
-
     let server_binary = get_zephyr_xrce_rs_action_server_native_sim();
     let client_binary = get_zephyr_xrce_rs_action_client_native_sim();
 
@@ -2183,14 +2157,12 @@ fn test_zephyr_xrce_cpp_talker_listener() {
     let port = platform::ZEPHYR
         .xrce_agent_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    std::thread::sleep(Duration::from_millis(500));
-
     let talker_bin = get_zephyr_xrce_cpp_talker_native_sim();
     let listener_bin = get_zephyr_xrce_cpp_listener_native_sim();
 
     let mut listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr cpp/xrce listener");
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
 
     let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr cpp/xrce talker");
@@ -2233,14 +2205,12 @@ fn test_zephyr_xrce_cpp_service_e2e() {
     let port = platform::ZEPHYR
         .xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::Cpp);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    std::thread::sleep(Duration::from_millis(500));
-
     let server_bin = get_zephyr_xrce_cpp_service_server_native_sim();
     let client_bin = get_zephyr_xrce_cpp_service_client_native_sim();
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce service server");
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = server.wait_for_pattern("Waiting for service", Duration::from_secs(30));
 
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce service client");
@@ -2297,14 +2267,12 @@ fn test_zephyr_xrce_cpp_action_e2e() {
     let port = platform::ZEPHYR
         .xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::Cpp);
     let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
-    std::thread::sleep(Duration::from_millis(500));
-
     let server_bin = get_zephyr_xrce_cpp_action_server_native_sim();
     let client_bin = get_zephyr_xrce_cpp_action_client_native_sim();
 
     let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce action server");
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = server.wait_for_pattern("Waiting for goal", Duration::from_secs(30));
 
     let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim)
         .expect("Failed to start cpp/xrce action client");
@@ -2356,8 +2324,6 @@ fn test_zephyr_server_native_client() {
     .expect("Failed to start zenohd");
     eprintln!("zenohd locator: {}", router.locator());
 
-    std::thread::sleep(Duration::from_millis(500));
-
     // Build native service client
     let client_path =
         build_native_service_client().expect("Failed to build native-rs-service-client");
@@ -2371,8 +2337,7 @@ fn test_zephyr_server_native_client() {
     let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
         .expect("Failed to start Zephyr service server");
 
-    // Give Zephyr server time to set up queryables
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = zephyr.wait_for_pattern("Service server ready", Duration::from_secs(30));
 
     // Start native service client
     use nros_tests::process::ManagedProcess;
@@ -2392,13 +2357,9 @@ fn test_zephyr_server_native_client() {
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
         .expect("Failed to start native service client");
 
-    // Wait for service communication
-    eprintln!("Waiting for Zephyr server ↔ Native client communication...");
-    std::thread::sleep(Duration::from_secs(8));
-
     // Get outputs
     let client_output = client
-        .wait_for_all_output(Duration::from_secs(3))
+        .wait_for_output_count("Response:", 1, Duration::from_secs(30))
         .unwrap_or_default();
     let zephyr_output = zephyr
         .wait_for_output(Duration::from_secs(2))
@@ -2483,8 +2444,6 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp),
     )
     .expect("Failed to start zenohd");
-    std::thread::sleep(Duration::from_millis(500));
-
     let talker_binary = get_zephyr_cpp_talker_native_sim();
     let listener_binary = get_zephyr_cpp_listener_native_sim();
 
@@ -2503,7 +2462,6 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
             listener_ready
         );
     }
-    std::thread::sleep(Duration::from_millis(500));
     let mut listener = listener;
 
     // Start talker
@@ -2564,8 +2522,6 @@ fn test_zephyr_cpp_talker_to_native_listener() {
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp),
     )
     .expect("Failed to start zenohd");
-    std::thread::sleep(Duration::from_millis(500));
-
     // Build native Rust listener
     let native_listener = match build_native_listener() {
         Ok(p) => p.to_path_buf(),
@@ -2593,16 +2549,15 @@ fn test_zephyr_cpp_talker_to_native_listener() {
         nros_tests::fixtures::ManagedProcess::spawn_command(listener_cmd, "native-listener")
             .expect("Failed to start native listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .expect("native listener did not become ready");
 
     // Start Zephyr C++ talker
     let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim).unwrap();
 
-    // Wait for messages
-    std::thread::sleep(Duration::from_secs(8));
-
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(3))
+        .wait_for_output_count("Received:", 1, Duration::from_secs(30))
         .unwrap_or_default();
     let talker_output = talker
         .wait_for_output(Duration::from_secs(2))
@@ -2642,8 +2597,6 @@ fn test_native_talker_to_zephyr_cpp_listener() {
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Cpp),
     )
     .expect("Failed to start zenohd");
-    std::thread::sleep(Duration::from_millis(500));
-
     // Build native Rust talker
     let native_talker = match build_native_talker() {
         Ok(p) => p.to_path_buf(),
@@ -2667,7 +2620,6 @@ fn test_native_talker_to_zephyr_cpp_listener() {
             listener_ready
         );
     }
-    std::thread::sleep(Duration::from_millis(500));
     let mut listener = listener;
 
     // Start native talker (connects to zenohd)
@@ -2753,8 +2705,6 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Cpp),
     )
     .expect("Failed to start zenohd");
-    std::thread::sleep(Duration::from_millis(500));
-
     let server_binary = get_zephyr_cpp_service_server_native_sim();
     let client_binary = get_zephyr_cpp_service_client_native_sim();
 
@@ -2763,7 +2713,7 @@ fn test_zephyr_cpp_service_server_to_client_e2e() {
 
     // Start server first
     let mut server = ZephyrProcess::start(&server_binary, ZephyrPlatform::NativeSim).unwrap();
-    std::thread::sleep(Duration::from_secs(3));
+    let _ = server.wait_for_pattern("Waiting for service", Duration::from_secs(30));
 
     // Start client
     let mut client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim).unwrap();
@@ -2840,8 +2790,6 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Cpp),
     )
     .expect("Failed to start zenohd");
-    std::thread::sleep(Duration::from_millis(500));
-
     let server_binary = get_zephyr_cpp_action_server_native_sim();
     let client_binary = get_zephyr_cpp_action_client_native_sim();
 
@@ -2865,8 +2813,6 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
             server_ready
         );
     }
-    std::thread::sleep(Duration::from_millis(500));
-
     // Start action client
     let client = ZephyrProcess::start(&client_binary, ZephyrPlatform::NativeSim).unwrap();
 
