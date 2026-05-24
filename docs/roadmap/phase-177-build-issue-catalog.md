@@ -97,6 +97,23 @@ passed.
   until every fixture lookup uses the build-fixture artifact layout and
   every optional host dependency reports a precise skip/remedy.
 
+- [ ] **177.22 - Zephyr CycloneDDS fixtures fail after Cyclone setup.**
+  Rechecked 2026-05-25 after `just setup all`. `just cyclonedds doctor`
+  passes and the expected host artifacts exist at
+  `build/install/bin/idlc` and `build/install/lib/libddsc.so`, so this is
+  no longer a missing CycloneDDS setup/install issue. The Zephyr fixture
+  prebuild now attempts the CycloneDDS cells, but `just zephyr
+  build-fixtures` fails for all Rust, C, and C++ CycloneDDS fixture
+  variants. The common compile blocker is
+  `packages/dds/nros-rmw-cyclonedds/src/internal.hpp::platform_now_ms()`:
+  the fallback path calls
+  `std::chrono::steady_clock::now().time_since_epoch()` and
+  `std::chrono::duration_cast`, but Zephyr's minimal C++ chrono shim used
+  by `native_sim` does not expose those APIs. Route Zephyr through the
+  existing platform clock shim instead; `zephyr/nros_platform_zephyr_shims.c`
+  already provides `nros_platform_clock_ms()` via `k_uptime_get()`. Do not
+  rerun full Zephyr E2E until `just zephyr build-fixtures` is green again.
+
 ### Test-All Runtime / E2E
 
 - [ ] **177.9 - Runtime E2E failures need focused reruns.**
