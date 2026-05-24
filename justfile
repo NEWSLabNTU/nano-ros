@@ -249,10 +249,11 @@ build-all-jobserver:
     # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
     # --parallel so cargo / ninja / cmake inherit the fifo pool. Clear any
     # stale inherited jobserver env first; the top-level make below is the
-    # only provider for this run.
+    # only provider for this run. Cargo registries were prefetched above, so
+    # fanout runs offline to avoid registry/package-cache lock contention.
     exec env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
         NROS_JOBSERVER=1 NROS_BUILD_JOBS="$n" NROS_BUILD_LOG_DIR="$log_dir" \
-        NROS_CODEGEN_C_PREBUILT=1 \
+        NROS_CODEGEN_C_PREBUILT=1 CARGO_NET_OFFLINE=true \
         "$make_bin" -j"$n" --jobserver-style=fifo -f build-all.mk
 
 # Internal: invalidate stale nros-* cargo fingerprints in a cmake build
