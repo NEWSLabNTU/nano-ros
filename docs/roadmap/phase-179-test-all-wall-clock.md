@@ -313,10 +313,26 @@ of Phase 178's fixture stage.
   tests. Fixture-consuming lanes keep the project policy that callers
   run `just build-test-fixtures` before full-matrix use.
 
-- [ ] **179.L - add a nextest fast-fail variant.** Preserve the current
+- [x] **179.L - add a nextest fast-fail variant.** Preserve the current
   `--no-fail-fast` full report behavior, but provide an opt-in
-  fail-fast recipe or environment knob for local diagnosis when a slow
-  platform is already known broken.
+  fail-fast configuration for local diagnosis when a slow platform is
+  already known broken.
+
+  Completed 2026-05-25. Added a persistent
+  `.config/nextest.toml` `fail-fast` profile and taught `just test` /
+  `just test-all` to select a nextest run profile with:
+
+  ```sh
+  NROS_NEXTEST_RUN_PROFILE=fail-fast just test
+  NROS_NEXTEST_RUN_PROFILE=fail-fast just test-all
+  ```
+
+  The default run profile still passes `--no-fail-fast`, preserving the
+  full-report behavior for normal local and CI runs. Non-default
+  profiles rely on nextest config, so profile-specific behavior stays in
+  `.config/nextest.toml` rather than proliferating `just` recipes.
+  Reporting helpers use the active profile's JUnit path, e.g.
+  `target/nextest/fail-fast/junit.xml` for the fail-fast profile.
 
 ## Acceptance
 

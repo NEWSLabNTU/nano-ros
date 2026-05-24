@@ -446,9 +446,9 @@ test-doc:
 # are environment-conditional skips and excluded from the real failure count.
 # Counts only `<failure ` entries whose `message=` attribute contains [SKIPPED],
 # not raw `[SKIPPED]` strings (which also appear in `<system-err>`).
-_count-real-failures:
+_count-real-failures junit="target/nextest/default/junit.xml":
     #!/usr/bin/env bash
-    junit=target/nextest/default/junit.xml
+    junit="{{junit}}"
     if [ ! -f "$junit" ]; then
         echo 0
         exit 0
@@ -464,9 +464,9 @@ _count-real-failures:
     echo "$real"
 
 # Print a one-line summary of test outcomes from junit.xml.
-_test-summary:
+_test-summary junit="target/nextest/default/junit.xml":
     #!/usr/bin/env bash
-    junit=target/nextest/default/junit.xml
+    junit="{{junit}}"
     if [ ! -f "$junit" ]; then
         echo "No junit.xml found"
         exit 0
@@ -484,10 +484,10 @@ _test-summary:
 
 # Print the slowest nextest tests from junit.xml.
 [private]
-_nextest-slow-tests limit="20":
+_nextest-slow-tests junit="target/nextest/default/junit.xml" limit="20":
     #!/usr/bin/env bash
     python3 scripts/test/nextest-slow-tests.py \
-        target/nextest/default/junit.xml \
+        "{{junit}}" \
         --limit {{limit}}
 
 # Default dev tier — workspace unit tests + integration tests, with
@@ -507,31 +507,36 @@ test verbose="": build-zenohd
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
     nextest_profile_args=($(nros_nextest_profile_args))
+    nextest_run_profile_args=($(nros_nextest_run_profile_args))
+    nextest_fail_fast_args=($(nros_nextest_fail_fast_args))
+    junit="$(nros_nextest_junit_path)"
     set +e
     failed=0
     exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or group(=xrce_ros2_interop))'
-    args=(--workspace --no-fail-fast -E "$exclude")
+    args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}" -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
     nros_nextest_profile_begin test
     nros_nextest_profile_write_command \
         cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
-    rm -f target/nextest/default/junit.xml
+    rm -f "$junit"
     cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
-    real_failures=$(just _count-real-failures)
-    if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
+    real_failures=$(just _count-real-failures "$junit")
+    if [ "$nextest_exit" -ne 0 ] && [ ! -f "$junit" ]; then
+        failed=1
+    elif [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
         failed=1
     fi
     echo ""
-    just _test-summary
+    just _test-summary "$junit"
     echo ""
-    just _nextest-slow-tests
+    just _nextest-slow-tests "$junit"
     echo ""
     nros_nextest_profile_finish
     echo ""
-    echo "JUnit XML: target/nextest/default/junit.xml"
+    echo "JUnit XML: $junit"
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."
         exit 1
@@ -694,27 +699,32 @@ test-all verbose="": build-zenohd
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
     nextest_profile_args=($(nros_nextest_profile_args))
+    nextest_run_profile_args=($(nros_nextest_run_profile_args))
+    nextest_fail_fast_args=($(nros_nextest_fail_fast_args))
+    junit="$(nros_nextest_junit_path)"
     set +e
     failed=0
     just init-test-logs
-    args=(--workspace --no-fail-fast)
+    args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
     nros_nextest_profile_begin test-all
     nros_nextest_profile_write_command \
         cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
-    rm -f target/nextest/default/junit.xml
+    rm -f "$junit"
     cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
-    real_failures=$(just _count-real-failures)
-    if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
+    real_failures=$(just _count-real-failures "$junit")
+    if [ "$nextest_exit" -ne 0 ] && [ ! -f "$junit" ]; then
+        failed=1
+    elif [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
         failed=1
     fi
     echo ""
-    just _test-summary
+    just _test-summary "$junit"
     echo ""
-    just _nextest-slow-tests
+    just _nextest-slow-tests "$junit"
     echo ""
     nros_nextest_profile_finish
     echo ""
@@ -730,7 +740,7 @@ test-all verbose="": build-zenohd
     echo "=== Orchestration E2E (Phase 126) ==="
     just native _test-orchestration-e2e {{verbose}} || failed=1
     echo ""
-    echo "JUnit XML:  target/nextest/default/junit.xml"
+    echo "JUnit XML:  $junit"
     echo "Other logs: {{LOG_DIR}}/latest/"
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."

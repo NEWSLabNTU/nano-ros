@@ -1,8 +1,32 @@
 #!/usr/bin/env bash
 
-# Shared helpers for optional cargo-nextest run profiling.
+# Shared helpers for cargo-nextest run options and optional profiling.
 
 NROS_NEXTEST_PROFILE_ARGS=()
+
+nros_nextest_run_profile_name() {
+    printf '%s\n' "${NROS_NEXTEST_RUN_PROFILE:-default}"
+}
+
+nros_nextest_run_profile_args() {
+    local profile
+    profile="$(nros_nextest_run_profile_name)"
+    if [ "$profile" != "default" ]; then
+        printf '%s\n' "-P" "$profile"
+    fi
+}
+
+nros_nextest_fail_fast_args() {
+    local profile
+    profile="$(nros_nextest_run_profile_name)"
+    if [ "$profile" = "default" ]; then
+        printf '%s\n' "--no-fail-fast"
+    fi
+}
+
+nros_nextest_junit_path() {
+    printf 'target/nextest/%s/junit.xml\n' "$(nros_nextest_run_profile_name)"
+}
 
 nros_nextest_profile_enabled() {
     [ -n "${NROS_NEXTEST_PROFILE:-}" ] && [ "${NROS_NEXTEST_PROFILE:-}" != "0" ]
@@ -31,6 +55,7 @@ nros_nextest_profile_begin() {
     export NROS_NEXTEST_PROFILE_RUN_DIR="$run_dir"
     export NEXTEST_EXPERIMENTAL_RECORD=1
     export NEXTEST_STATE_DIR="$run_dir/state"
+    export NROS_NEXTEST_JUNIT_PATH="$(nros_nextest_junit_path)"
     config_file="${NROS_NEXTEST_PROFILE_CONFIG:-.config/nextest-profile.toml}"
     export NROS_NEXTEST_PROFILE_CONFIG="$config_file"
     NROS_NEXTEST_PROFILE_ARGS=(--user-config-file "$config_file")
@@ -51,6 +76,8 @@ nros_nextest_profile_begin() {
         printf 'NROS_NEXTEST_REPLAY_LOG=%s\n' "${NROS_NEXTEST_REPLAY_LOG:-}"
         printf 'NROS_NEXTEST_TRACE_GROUP_BY=%s\n' "${NROS_NEXTEST_TRACE_GROUP_BY:-}"
         printf 'NROS_NEXTEST_PROFILE_KEEP_STATE=%s\n' "${NROS_NEXTEST_PROFILE_KEEP_STATE:-}"
+        printf 'NROS_NEXTEST_RUN_PROFILE=%s\n' "$(nros_nextest_run_profile_name)"
+        printf 'NROS_NEXTEST_JUNIT_PATH=%s\n' "$NROS_NEXTEST_JUNIT_PATH"
         printf 'NEXTEST_STATE_DIR=%s\n' "$NEXTEST_STATE_DIR"
         printf 'NROS_NEXTEST_PROFILE_CONFIG=%s\n' "$NROS_NEXTEST_PROFILE_CONFIG"
     } > "$run_dir/env.txt"
@@ -85,10 +112,12 @@ nros_nextest_profile_finish() {
         return 0
     fi
 
-    if [ -f target/nextest/default/junit.xml ]; then
-        cp target/nextest/default/junit.xml "$run_dir/junit.xml"
+    local junit
+    junit="${NROS_NEXTEST_JUNIT_PATH:-$(nros_nextest_junit_path)}"
+    if [ -f "$junit" ]; then
+        cp "$junit" "$run_dir/junit.xml"
     else
-        echo "warning: target/nextest/default/junit.xml missing; skipping JUnit copy" >&2
+        echo "warning: $junit missing; skipping JUnit copy" >&2
     fi
 
     if ! cargo nextest store export latest "${NROS_NEXTEST_PROFILE_ARGS[@]}" \
