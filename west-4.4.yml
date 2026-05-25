@@ -1,0 +1,52 @@
+# nros West Manifest — Zephyr 4.4 variant (Phase 180.A)
+#
+# Sibling of west.yml (the 3.7 LTS pin). Selected by
+# NROS_ZEPHYR_VERSION=4.4 (Phase 180.A Task 2). Used to bring up a
+# 4.4 workspace alongside the 3.7 one so the module can be made to
+# build on both lines.
+#
+#   NROS_ZEPHYR_WORKSPACE=../nano-ros-workspace-4.4 \
+#     west init -l --mf west-4.4.yml <manifest-repo>
+#   west update
+
+manifest:
+  version: "1.0"
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    # Zephyr RTOS — 4.4 (latest rolling; 3.7 LTS lives in west.yml)
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.4.0
+      import:
+        name-allowlist:
+          # Core
+          - cmsis
+          - picolibc
+          # Crypto
+          - mbedtls
+          - tinycrypt
+          # HALs
+          - hal_stm32
+          - hal_nordic
+          - hal_espressif
+          - hal_nxp
+          # Bootloader
+          - mcuboot
+          # Tools
+          - net-tools
+
+    # Rust language support. NOTE: pinned to main here only for the
+    # initial clone — Phase 180.A Task 9 pins this to the rev matching
+    # Zephyr 4.4 and re-verifies the 4 Rust patch anchors against the
+    # official (4.1+) module's CMake shape.
+    - name: zephyr-lang-rust
+      remote: zephyrproject-rtos
+      revision: main
+      path: modules/lang/rust
+
+  self:
+    path: nros
