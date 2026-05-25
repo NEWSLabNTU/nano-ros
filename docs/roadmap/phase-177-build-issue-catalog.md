@@ -101,26 +101,43 @@ passed.
   - One run confirmed SPDP discovery is now *attempted* (was fully
     suppressed before), but every write fails:
     `tev: ddsi_udp_conn_write to udp/1.0.255.239:7400 failed with retcode -12`.
-    `1.0.255.239` is the DDSI SPDP group `239.255.0.1` with its 4 bytes
-    reversed (`0xEFFF0001` → `0x0100FFEF`). The listener then aborts at
-    `nros_executor_register_subscription -> -1` (reader create depends on
-    the failing discovery write).
+    The listener also aborts at
+    `nros_executor_register_subscription -> -1`.
 
-  **Root cause.** NetX Duo keeps IPv4 addresses in *host* byte order.
-  `nx_bsd_inet_pton`/`nx_bsd_inet_addr` (`third-party/threadx/netxduo/addons/BSD/nxd_bsd.c:13620,6237`)
-  return that host-order value, but the ThreadX ddsrt port maps POSIX
-  `inet_pton`/`inet_addr` straight onto them
-  (`third-party/dds/cyclonedds/src/ddsrt/include/dds/ddsrt/sockets/threadx.h:70,73`).
-  Cyclone's locator code expects network byte order, so on little-endian
-  RISC-V64 every IPv4 locator (and the SPDP multicast group) comes out
-  byte-reversed.
+  **Diagnosis (corrected 2026-05-25).** An earlier commit guessed a
+  byte-order root cause from the `1.0.255.239` print. That print *is* the
+  SPDP group `239.255.0.1` byte-reversed, but it is **cosmetic and
+  self-consistent**, not the blocker: NetX Duo's BSD layer defines
+  `htonl`/`ntohl` as no-ops (`nxd_bsd.h:357-368`) and uses host-order
+  sockaddr throughout (`nx_bsd_inet_aton` does `htonl(value)` =
+  no-op; `nx_bsd_sendto` does `htonl(sin_addr)` = no-op,
+  `nxd_bsd.c:3948`). The bytes round-trip through that convention so the
+  *actual* UDP destination resolves back to `239.255.0.1` correctly. The
+  failure is downstream of the address.
 
-  **Next.** Make the ThreadX ddsrt `inet_pton`/`inet_addr` (and the
-  matching `inet_ntop`/`inet_ntoa` and any `sin_addr` round-trips) honor
-  network byte order — e.g. a wrapper that `htonl`-corrects the NetX
-  host-order result rather than `#define`-aliasing the raw `nx_bsd_*`
-  call. Then re-run the `#[ignore]`d test (`--ignored`) and confirm the
-  listener decodes a sample; only then is two-node RTPS proven.
+  **Real blocker.** ddsrt `-12` = `DDS_RETCODE_ILLEGAL_OPERATION`, mapped
+  by the port's `errno_to_retcode` (`socket.c:55-60`) from `EDESTADDRREQ`,
+  which NetX sets on `NX_IP_ADDRESS_ERROR` (`nxd_bsd.c:3525-3526`). So
+  `nxd_udp_socket_send` to the class-D group fails route resolution —
+  **NetX cannot resolve a multicast egress interface** on the virtio-net
+  link. The IGMP join path looks correct on inspection (the `imr_multiaddr`
+  and `imr_interface` matching in `nx_bsd_setsockopt`, `nxd_bsd.c:7183-7219`,
+  resolve to `239.255.0.1` / the board interface), so the listener's
+  reader-create `-1` is most likely the same egress/route failure rather
+  than a bad join.
+
+  **Next.**
+  1. Instrumented two-QEMU run to capture the exact `nxd_udp_socket_send`
+     status, the `IP_ADD_MEMBERSHIP` join status, and the IP-instance
+     interface/multicast-entry state — confirm route-find vs join.
+  2. Likely fix is to make multicast TX use an explicit interface
+     (`nxd_udp_socket_interface_send`, the `socket.c:3370` path taken when
+     the BSD socket has a bound interface) instead of the route-find
+     `nxd_udp_socket_send` path, or to set the socket's multicast egress
+     interface so route-find succeeds. This is NetX-multicast-port work,
+     not a byte-order or config one-liner.
+  3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on
+     the listener proves two-node RTPS.
 
 ### Test-All Environment / Setup
 

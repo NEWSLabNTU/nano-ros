@@ -124,14 +124,16 @@ fn test_threadx_riscv64_all_examples_build() {
 ///   just cyclonedds threadx-cross-probe
 ///   NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures
 ///
-/// Ignored: blocked on a byte-order defect in the ThreadX ddsrt port —
-/// `nx_bsd_inet_pton`/`inet_addr` return NetX's host-order IPv4 value, but
-/// Cyclone's locator code expects network byte order, so the SPDP multicast
-/// group `239.255.0.1` is used reversed (`1.0.255.239`) and discovery writes
-/// fail with `-12`. Tracked as Phase 177.26. Run explicitly with
-/// `--ignored` once the address conversion is fixed.
+/// Ignored: blocked on NetX Duo multicast egress over virtio-net. SPDP
+/// writes to the class-D group fail with `NX_IP_ADDRESS_ERROR` →
+/// `EDESTADDRREQ` → ddsrt `-12`; NetX cannot resolve a multicast egress
+/// interface via the route-find send path. (The `1.0.255.239` seen in
+/// traces is the group byte-reversed, but that is cosmetic and
+/// self-consistent under NetX's no-op `htonl`/`ntohl` convention — the
+/// actual destination resolves correctly.) Tracked as Phase 177.26. Run
+/// explicitly with `--ignored` once multicast TX is wired.
 #[test]
-#[ignore = "Phase 177.26: ThreadX ddsrt inet_pton byte-order bug reverses the SPDP multicast address"]
+#[ignore = "Phase 177.26: NetX Duo multicast egress over virtio-net not yet resolved (NX_IP_ADDRESS_ERROR)"]
 fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     if !require_threadx_riscv64() {
         nros_tests::skip!("require_threadx_riscv64 check failed");
