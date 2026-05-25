@@ -142,31 +142,40 @@ passed.
   registration in the listener binary, not an executor/arena issue — see
   177.28. The listener now registers and reaches `Waiting for messages...`.
 
-  **Current blocker — two-node discovery does not complete.** A 40 s
-  two-QEMU dgram run with a `filter-dump` pcap shows **SPDP participant
-  announcements crossing both ways** (`10.0.2.40` and `10.0.2.41` →
-  `239.255.0.1:7400`, plus IGMPv2 reports from both) — multicast TX **and**
-  RX work over the link. But discovery never advances: **no SEDP / no data**,
-  and both nodes repeatedly ARP the (nonexistent) gateway `10.0.2.2`. That
-  signature means each node received the peer's SPDP but cannot reach the
-  peer's **advertised unicast locator** — it routes off-subnet via the
-  gateway instead of ARPing the peer directly. Prime suspect: the unicast
-  locator advertised in the SPDP payload is byte-swapped.
-  `src/ddsrt/src/ifaddrs/threadx/ifaddrs.c:78` does
-  `sa.sin_addr.s_addr = addr` with `addr` in **host** byte order (from the
-  board `ddsrt_threadx_get_primary_ipv4` hook), while Cyclone/NetX (real
-  `htonl`/`ntohl`) treat `sin_addr` as **network** order — so the advertised
-  locator decodes to a bogus off-subnet address on the peer.
+  **Locator byte order — root cause found + fixed (local submodule commit
+  `5558c6ae`, on top of `e8ce7315`; fork push pending — agent is hard-blocked
+  from pushing the external cyclonedds fork).** The reversed locators traced
+  to a single ThreadX defect: `ddsrt_sockaddrfromstr`'s `WITH_THREADX` branch
+  (`src/ddsrt/src/sockets.c:208`) wrote `sin_addr.s_addr` in **host** byte
+  order, so every parsed locator — including the SPDP multicast group — came
+  out reversed (Cyclone logged `SPDP MC: udp/1.0.255.239`). `htonl` it. The
+  ThreadX ifaddrs port (`ifaddrs.c:78`) had the same bug for the board's
+  interface address (host-order → byte-swapped advertised unicast locator);
+  `htonl` addr/netmask/broadcast there too. With the sources network-ordered,
+  the earlier `socket.c` band-aids (imr_multiaddr swap, multicast-dest swap)
+  were **removed** (they would double-swap); the multi-iovec `sendmsg`
+  coalescing stays. Verified after the fix: `SPDP MC: udp/239.255.0.1`, IGMP
+  join + SPDP TX work band-aid-free, SPDP crosses both ways, advertised
+  unicast locator is `udp/10.0.2.41`, and the gateway-ARP churn is gone.
+
+  **Current blocker — NetX multicast RX not delivered to Cyclone.** With all
+  locators correct, the listener still logs **no incoming-packet trace** at
+  `finest` verbosity (`recv` and `recvUC` threads start; no SPDP is ingested,
+  no proxy participant is created) even though the pcap shows the peer's SPDP
+  arriving on `net0`. So NetX Duo is not surfacing the joined multicast
+  datagrams to Cyclone's `recv` thread — likely `nx_bsd_select` not reporting
+  the multicast-joined socket readable, or the multicast receive socket
+  bind/port wiring. This is NetX-multicast-RX-port work, distinct from the
+  (now fixed) TX/locator byte-order issues.
 
   **Next.**
-  1. Maintainer: push cyclonedds `e8ce7315`, bump the submodule pointer
-     (the multicast TX + descriptor fixes; the listener descriptor fix in
-     177.28 is in the nano-ros repo and lands directly).
-  2. Try network-ordering the ThreadX ifaddrs address
-     (`sa.sin_addr.s_addr = htonl(addr)` for addr/netmask/broadcast) so the
-     advertised SPDP locator is correct; confirm via pcap that the peer then
-     ARPs the peer IP (not the gateway) and SEDP/data follow. Verify the
-     IGMP-join interface match still resolves.
+  1. Maintainer: push cyclonedds `5558c6ae` to `nano-ros-fork`
+     (`nano-ros/zephyr-nsos-patches`) and bump the submodule pointer. (The
+     177.28 listener descriptor fix is already in the nano-ros repo.)
+  2. Diagnose NetX multicast RX delivery: confirm whether `nx_bsd_select`
+     flags the SPDP multicast socket readable on datagram arrival and whether
+     `ddsrt_recvmsg` returns the data; fix the RX/select path so Cyclone
+     ingests the peer SPDP → proxy participant → SEDP → data.
   3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on the
      listener proves two-node RTPS.
 
