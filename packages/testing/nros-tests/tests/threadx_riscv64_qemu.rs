@@ -124,16 +124,18 @@ fn test_threadx_riscv64_all_examples_build() {
 ///   just cyclonedds threadx-cross-probe
 ///   NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures
 ///
-/// Ignored: blocked on NetX Duo multicast egress over virtio-net. SPDP
-/// writes to the class-D group fail with `NX_IP_ADDRESS_ERROR` →
-/// `EDESTADDRREQ` → ddsrt `-12`; NetX cannot resolve a multicast egress
-/// interface via the route-find send path. (The `1.0.255.239` seen in
-/// traces is the group byte-reversed, but that is cosmetic and
-/// self-consistent under NetX's no-op `htonl`/`ntohl` convention — the
-/// actual destination resolves correctly.) Tracked as Phase 177.26. Run
-/// explicitly with `--ignored` once multicast TX is wired.
+/// Ignored: multicast discovery now works on the publisher side — the
+/// ThreadX ddsrt port fixes (multicast byte-order join + multi-iovec
+/// datagram `sendto`, cyclonedds fork `e8ce7315`) let the talker join the
+/// SPDP group and publish without `conn_write` errors. The remaining
+/// blocker is a *distinct, pre-existing* issue: the listener aborts at
+/// `nros_executor_register_subscription -> -1` inside the nano-ros Rust
+/// executor (arena/capacity), before the Cyclone subscriber is created —
+/// orthogonal to multicast. Tracked as Phase 177.26. Run with `--ignored`
+/// once the subscriber can be registered (and `e8ce7315` is on the pinned
+/// cyclonedds commit).
 #[test]
-#[ignore = "Phase 177.26: NetX Duo multicast egress over virtio-net not yet resolved (NX_IP_ADDRESS_ERROR)"]
+#[ignore = "Phase 177.26: listener register_subscription fails in the nano-ros executor (arena), pre-existing; multicast discovery TX is fixed"]
 fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     if !require_threadx_riscv64() {
         nros_tests::skip!("require_threadx_riscv64 check failed");

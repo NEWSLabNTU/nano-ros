@@ -104,40 +104,58 @@ passed.
     The listener also aborts at
     `nros_executor_register_subscription -> -1`.
 
-  **Diagnosis (corrected 2026-05-25).** An earlier commit guessed a
-  byte-order root cause from the `1.0.255.239` print. That print *is* the
-  SPDP group `239.255.0.1` byte-reversed, but it is **cosmetic and
-  self-consistent**, not the blocker: NetX Duo's BSD layer defines
-  `htonl`/`ntohl` as no-ops (`nxd_bsd.h:357-368`) and uses host-order
-  sockaddr throughout (`nx_bsd_inet_aton` does `htonl(value)` =
-  no-op; `nx_bsd_sendto` does `htonl(sin_addr)` = no-op,
-  `nxd_bsd.c:3948`). The bytes round-trip through that convention so the
-  *actual* UDP destination resolves back to `239.255.0.1` correctly. The
-  failure is downstream of the address.
+  **Diagnosis — final, instrumentation-verified 2026-05-25.** The board's
+  `nx_port.h` *does* define real `htonl`/`ntohl` (`__builtin_bswap32`), and
+  `NX_IP_CLASS_D_TYPE = 0xE0000000` (`nx_api.h:991`); instrumentation of the
+  two-QEMU dgram run pinned **two** real defects in the ThreadX ddsrt port
+  (`src/ddsrt/src/sockets/threadx/socket.c`), both since fixed:
 
-  **Real blocker.** ddsrt `-12` = `DDS_RETCODE_ILLEGAL_OPERATION`, mapped
-  by the port's `errno_to_retcode` (`socket.c:55-60`) from `EDESTADDRREQ`,
-  which NetX sets on `NX_IP_ADDRESS_ERROR` (`nxd_bsd.c:3525-3526`). So
-  `nxd_udp_socket_send` to the class-D group fails route resolution —
-  **NetX cannot resolve a multicast egress interface** on the virtio-net
-  link. The IGMP join path looks correct on inspection (the `imr_multiaddr`
-  and `imr_interface` matching in `nx_bsd_setsockopt`, `nxd_bsd.c:7183-7219`,
-  resolve to `239.255.0.1` / the board interface), so the listener's
-  reader-create `-1` is most likely the same egress/route failure rather
-  than a bad join.
+  1. **IGMP join byte order.** `setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP)`
+     returned `EINVAL`. Cyclone hands the multicast group to the BSD layer
+     in *host* byte order (`maddr=0xefff0001`) while NetX's class-D check
+     `imr_multiaddr & ntohl(NX_IP_CLASS_D_TYPE)` expects *network* order
+     (`nxd_bsd.c:7124`); `0xefff0001 & 0x000000e0 = 0 ≠ 0xe0` → reject. The
+     interface address (`0x2902000a`) already arrived network-ordered. Fix:
+     normalise `imr_multiaddr` to network byte order in `ddsrt_setsockopt`.
+  2. **Multi-iovec datagram send.** SPDP/RTPS `ddsi_udp_conn_write` failed
+     with `-12` (`EDESTADDRREQ`/`ENOTCONN`). RTPS messages are multi-iovec
+     (header + submessages), so `ddsrt_sendmsg` fell into the per-iov
+     `nx_bsd_send` loop, which is a *connected* send with **no destination**
+     — wrong for connectionless UDP. Fix: when a destination is present,
+     coalesce the iovecs into one buffer and `nx_bsd_sendto` once (also
+     applying the multicast byte-order swap to the destination).
+
+  Both fixes are committed in the cyclonedds fork (`NEWSLabNTU/cyclonedds`
+  branch `nano-ros/zephyr-nsos-patches`, local commit `e8ce7315`). **Not yet
+  pushed / superproject pointer not bumped** — the agent is not permitted to
+  push the external fork; a maintainer must push it and bump the submodule
+  pointer. The earlier byte-order/multicast-egress write-ups in this item
+  were partially wrong (the diagnosis zig-zagged); this block supersedes
+  them.
+
+  **Verified.** With the fixes, the ThreadX RISC-V64 Cyclone C talker joins
+  the SPDP group and publishes 24/24 with **zero** `conn_write` errors over
+  a two-QEMU AF_UNIX-dgram link. Multicast discovery TX is working.
+
+  **Remaining blocker (distinct subsystem, pre-existing).** The listener
+  still aborts at `nros_executor_register_subscription -> -1`. Instrumentation
+  shows the backend `subscriber_create` is **never reached** — the failure is
+  in the nano-ros Rust executor `register_subscription_raw_with_qos_sized`
+  (`packages/core/nros-c/src/executor.rs:771`) *before* the Cyclone create,
+  i.e. an arena/capacity allocation for the subscription's
+  `MESSAGE_BUFFER_SIZE` buffer. This is orthogonal to multicast discovery and
+  reproduced on the first run before any of the above changes (the talker
+  registers no subscription, so it never hits it). Two-node RTPS stays
+  unproven until the subscriber can be created.
 
   **Next.**
-  1. Instrumented two-QEMU run to capture the exact `nxd_udp_socket_send`
-     status, the `IP_ADD_MEMBERSHIP` join status, and the IP-instance
-     interface/multicast-entry state — confirm route-find vs join.
-  2. Likely fix is to make multicast TX use an explicit interface
-     (`nxd_udp_socket_interface_send`, the `socket.c:3370` path taken when
-     the BSD socket has a bound interface) instead of the route-find
-     `nxd_udp_socket_send` path, or to set the socket's multicast egress
-     interface so route-find succeeds. This is NetX-multicast-port work,
-     not a byte-order or config one-liner.
-  3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on
-     the listener proves two-node RTPS.
+  1. Maintainer: push cyclonedds `e8ce7315`, bump the submodule pointer.
+  2. Diagnose the Rust executor subscription-register failure (arena sizing
+     vs capacity) for the ThreadX Cyclone listener fixture; likely a
+     `NROS_EXECUTOR_ARENA_SIZE` / `MESSAGE_BUFFER_SIZE` mismatch in the
+     listener build config, not a Cyclone/NetX issue.
+  3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on the
+     listener proves two-node RTPS.
 
 ### Test-All Environment / Setup
 
