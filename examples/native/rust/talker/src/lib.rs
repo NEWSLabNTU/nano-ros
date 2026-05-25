@@ -125,22 +125,41 @@ pub fn run() {
     #[cfg(not(feature = "param-services"))]
     let counter_start = 0i32;
 
-    let mut count: i32 = counter_start;
-    executor
-        .register_timer(nros::TimerDuration::from_millis(1000), move || {
+    #[cfg(feature = "rmw-xrce")]
+    {
+        let mut count: i32 = counter_start;
+        info!("Publishing Int32 messages every 1s...");
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
             let msg = Int32 { data: count };
             match publisher.publish(&msg) {
                 Ok(()) => info!("Published: {}", count),
                 Err(e) => error!("Publish error: {:?}", e),
             }
             count = count.wrapping_add(1);
-        })
-        .expect("Failed to register publish timer");
-    info!("Publishing Int32 messages every 1s...");
+            let _ = executor.spin_once(core::time::Duration::from_millis(10));
+        }
+    }
 
-    executor
-        .spin_blocking(SpinOptions::default())
-        .expect("spin_blocking error");
+    #[cfg(not(feature = "rmw-xrce"))]
+    {
+        let mut count: i32 = counter_start;
+        executor
+            .register_timer(nros::TimerDuration::from_millis(1000), move || {
+                let msg = Int32 { data: count };
+                match publisher.publish(&msg) {
+                    Ok(()) => info!("Published: {}", count),
+                    Err(e) => error!("Publish error: {:?}", e),
+                }
+                count = count.wrapping_add(1);
+            })
+            .expect("Failed to register publish timer");
+        info!("Publishing Int32 messages every 1s...");
+
+        executor
+            .spin_blocking(SpinOptions::default())
+            .expect("spin_blocking error");
+    }
 }
 
 /// C entry point for the cyclonedds CMake build path (`src/cyclonedds_main.c`

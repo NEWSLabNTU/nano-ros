@@ -13,7 +13,13 @@ use nros_tests::fixtures::{
     xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
 };
 use rstest::rstest;
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, process::Command, time::Duration};
+
+fn set_xrce_udp_locator<'a>(cmd: &'a mut Command, addr: &str) -> &'a mut Command {
+    cmd.env("NROS_LOCATOR", addr)
+        .env("XRCE_AGENT_ADDR", addr)
+        .env("RUST_LOG", "info")
+}
 
 // =============================================================================
 // XRCE Pub/Sub Tests
@@ -21,8 +27,6 @@ use std::{path::PathBuf, time::Duration};
 
 #[rstest]
 fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -31,7 +35,7 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = Command::new(&xrce_talker_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr);
+    set_xrce_udp_locator(&mut cmd, &addr);
     let mut talker =
         ManagedProcess::spawn_command(cmd, "xrce-talker").expect("Failed to start talker");
 
@@ -50,8 +54,6 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
 
 #[rstest]
 fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -60,7 +62,7 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = Command::new(&xrce_listener_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr).env("XRCE_MSG_COUNT", "1"); // Just test that it starts
+    set_xrce_udp_locator(&mut cmd, &addr).env("XRCE_MSG_COUNT", "1"); // Just test that it starts
     let mut listener =
         ManagedProcess::spawn_command(cmd, "xrce-listener").expect("Failed to start listener");
 
@@ -84,8 +86,6 @@ fn test_xrce_talker_listener_communication(
     xrce_talker_binary: PathBuf,
     xrce_listener_binary: PathBuf,
 ) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -95,9 +95,7 @@ fn test_xrce_talker_listener_communication(
 
     // Start listener first (subscribe before publishing)
     let mut listener_cmd = Command::new(&xrce_listener_binary);
-    listener_cmd
-        .env("XRCE_AGENT_ADDR", &addr)
-        .env("XRCE_MSG_COUNT", "3");
+    set_xrce_udp_locator(&mut listener_cmd, &addr).env("XRCE_MSG_COUNT", "3");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
         .expect("Failed to start listener");
 
@@ -109,7 +107,7 @@ fn test_xrce_talker_listener_communication(
 
     // Start talker
     let mut talker_cmd = Command::new(&xrce_talker_binary);
-    talker_cmd.env("XRCE_AGENT_ADDR", &addr);
+    set_xrce_udp_locator(&mut talker_cmd, &addr);
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
 
@@ -130,8 +128,6 @@ fn test_xrce_talker_listener_communication(
 
 #[rstest]
 fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -141,9 +137,7 @@ fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary
 
     // Start listener first, expect 5 messages
     let mut listener_cmd = Command::new(&xrce_listener_binary);
-    listener_cmd
-        .env("XRCE_AGENT_ADDR", &addr)
-        .env("XRCE_MSG_COUNT", "5");
+    set_xrce_udp_locator(&mut listener_cmd, &addr).env("XRCE_MSG_COUNT", "5");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
         .expect("Failed to start listener");
 
@@ -152,13 +146,13 @@ fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary
 
     // Start talker (publishes 20 messages at 500ms intervals)
     let mut talker_cmd = Command::new(&xrce_talker_binary);
-    talker_cmd.env("XRCE_AGENT_ADDR", &addr);
+    set_xrce_udp_locator(&mut talker_cmd, &addr);
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
 
     // Wait for listener to receive enough messages (or exit on its own after 5)
     let listener_output = listener
-        .wait_for_output_pattern("Received 5 messages", Duration::from_secs(20))
+        .wait_for_output_count("Received:", 5, Duration::from_secs(20))
         .unwrap_or_default();
 
     talker.kill();
@@ -175,8 +169,6 @@ fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary
 
 #[rstest]
 fn test_xrce_service_server_starts(xrce_service_server_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -185,12 +177,12 @@ fn test_xrce_service_server_starts(xrce_service_server_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = Command::new(&xrce_service_server_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr).env("XRCE_TIMEOUT", "10");
+    set_xrce_udp_locator(&mut cmd, &addr).env("XRCE_TIMEOUT", "10");
     let mut server = ManagedProcess::spawn_command(cmd, "xrce-service-server")
         .expect("Failed to start service server");
 
     // Wait for readiness marker
-    match server.wait_for_output_pattern("Service server ready", Duration::from_secs(30)) {
+    match server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-service-server started successfully"),
         Err(_) => {
             if server.is_running() {
@@ -207,8 +199,6 @@ fn test_xrce_service_server_starts(xrce_service_server_binary: PathBuf) {
 
 #[rstest]
 fn test_xrce_service_client_starts(xrce_service_client_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -217,13 +207,12 @@ fn test_xrce_service_client_starts(xrce_service_client_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = Command::new(&xrce_service_client_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr)
-        .env("XRCE_REQUEST_COUNT", "1");
+    set_xrce_udp_locator(&mut cmd, &addr).env("XRCE_REQUEST_COUNT", "1");
     let mut client = ManagedProcess::spawn_command(cmd, "xrce-service-client")
         .expect("Failed to start service client");
 
     // Wait for readiness marker (client will timeout without a server)
-    match client.wait_for_output_pattern("Service client ready", Duration::from_secs(30)) {
+    match client.wait_for_output_pattern("Service client created", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-service-client started successfully"),
         Err(_) => {
             if client.is_running() {
@@ -244,7 +233,6 @@ fn test_xrce_service_request_response(
     xrce_service_client_binary: PathBuf,
 ) {
     use nros_tests::count_pattern;
-    use std::process::Command;
 
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
@@ -255,29 +243,25 @@ fn test_xrce_service_request_response(
 
     // Start service server first
     let mut server_cmd = Command::new(&xrce_service_server_binary);
-    server_cmd
-        .env("XRCE_AGENT_ADDR", &addr)
-        .env("XRCE_TIMEOUT", "30");
+    set_xrce_udp_locator(&mut server_cmd, &addr).env("XRCE_TIMEOUT", "30");
     let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-server")
         .expect("Failed to start service server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Service server ready", Duration::from_secs(30));
+    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30));
 
     // Stabilization delay — let XRCE Agent propagate the service
     std::thread::sleep(Duration::from_secs(2));
 
     // Start service client
     let mut client_cmd = Command::new(&xrce_service_client_binary);
-    client_cmd
-        .env("XRCE_AGENT_ADDR", &addr)
-        .env("XRCE_REQUEST_COUNT", "3");
+    set_xrce_udp_locator(&mut client_cmd, &addr).env("XRCE_REQUEST_COUNT", "3");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
         .expect("Failed to start service client");
 
     // Wait for client to complete requests
     let client_output = client
-        .wait_for_output_pattern("Completed", Duration::from_secs(30))
+        .wait_for_output_pattern("service calls succeeded", Duration::from_secs(30))
         .unwrap_or_default();
 
     // Give server time to flush output, then collect
@@ -294,7 +278,7 @@ fn test_xrce_service_request_response(
     eprintln!("Server output:\n{}", server_output);
 
     // Verify client received replies
-    let reply_count = count_pattern(&client_output, "Received reply:");
+    let reply_count = count_pattern(&client_output, "Response:");
     eprintln!("Client received {} replies", reply_count);
     assert!(
         reply_count >= 1,
@@ -311,8 +295,6 @@ fn test_xrce_service_request_response(
 
 #[rstest]
 fn test_xrce_action_server_starts(xrce_action_server_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -321,11 +303,11 @@ fn test_xrce_action_server_starts(xrce_action_server_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = Command::new(&xrce_action_server_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr).env("XRCE_TIMEOUT", "10");
+    set_xrce_udp_locator(&mut cmd, &addr).env("XRCE_TIMEOUT", "10");
     let mut server = ManagedProcess::spawn_command(cmd, "xrce-action-server")
         .expect("Failed to start action server");
 
-    match server.wait_for_output_pattern("Action server ready", Duration::from_secs(30)) {
+    match server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-action-server started successfully"),
         Err(_) => {
             if server.is_running() {
@@ -342,8 +324,6 @@ fn test_xrce_action_server_starts(xrce_action_server_binary: PathBuf) {
 
 #[rstest]
 fn test_xrce_action_client_starts(xrce_action_client_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -352,11 +332,11 @@ fn test_xrce_action_client_starts(xrce_action_client_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = Command::new(&xrce_action_client_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr);
+    set_xrce_udp_locator(&mut cmd, &addr);
     let mut client = ManagedProcess::spawn_command(cmd, "xrce-action-client")
         .expect("Failed to start action client");
 
-    match client.wait_for_output_pattern("Action client ready", Duration::from_secs(30)) {
+    match client.wait_for_output_pattern("Action client created", Duration::from_secs(30)) {
         Ok(_) => eprintln!("xrce-action-client started successfully"),
         Err(_) => {
             if client.is_running() {
@@ -377,7 +357,6 @@ fn test_xrce_action_fibonacci(
     xrce_action_client_binary: PathBuf,
 ) {
     use nros_tests::count_pattern;
-    use std::process::Command;
 
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
@@ -388,29 +367,25 @@ fn test_xrce_action_fibonacci(
 
     // Start action server first
     let mut server_cmd = Command::new(&xrce_action_server_binary);
-    server_cmd
-        .env("XRCE_AGENT_ADDR", &addr)
-        .env("XRCE_TIMEOUT", "30");
+    set_xrce_udp_locator(&mut server_cmd, &addr).env("XRCE_TIMEOUT", "30");
     let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server")
         .expect("Failed to start action server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(30));
+    let _ = server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(30));
 
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(2));
 
     // Start action client (requests Fibonacci order=5)
     let mut client_cmd = Command::new(&xrce_action_client_binary);
-    client_cmd
-        .env("XRCE_AGENT_ADDR", &addr)
-        .env("XRCE_FIBONACCI_ORDER", "5");
+    set_xrce_udp_locator(&mut client_cmd, &addr).env("XRCE_FIBONACCI_ORDER", "5");
     let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
         .expect("Failed to start action client");
 
     // Wait for client to complete
     let client_output = client
-        .wait_for_output_pattern("Action client done", Duration::from_secs(30))
+        .wait_for_output_pattern("Action client finished", Duration::from_secs(30))
         .unwrap_or_default();
 
     // Give server time to flush output
@@ -443,8 +418,8 @@ fn test_xrce_action_fibonacci(
 
     // Verify result was received
     assert!(
-        client_output.contains("Result:"),
-        "Client should have received result.\nClient output:\n{}",
+        client_output.contains("Action client finished"),
+        "Client should have completed the action.\nClient output:\n{}",
         client_output,
     );
 
@@ -459,8 +434,6 @@ fn test_xrce_action_fibonacci(
 /// slot, exercising the fragmented output stream path (Phase 40.3).
 #[rstest]
 fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
-    use std::process::Command;
-
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -469,7 +442,7 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
     let addr = agent.addr();
 
     let mut cmd = Command::new(&xrce_large_msg_test_binary);
-    cmd.env("XRCE_AGENT_ADDR", &addr);
+    set_xrce_udp_locator(&mut cmd, &addr);
     let mut test_proc = ManagedProcess::spawn_command(cmd, "xrce-large-msg-test")
         .expect("Failed to start large-msg-test");
 

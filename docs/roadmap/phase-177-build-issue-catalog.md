@@ -228,11 +228,22 @@ passed.
   - [ ] `emulator::test_qemu_serial_pubsub_e2e`
   - [ ] `large_msg::test_qemu_zenoh_large_publish`
 
-- [ ] **177.9.E - XRCE runtime.**
-  - [ ] `xrce::test_xrce_action_fibonacci`
-  - [ ] `xrce::test_xrce_multiple_messages`
-  - [ ] `xrce::test_xrce_service_request_response`
-  - [ ] `xrce::test_xrce_talker_listener_communication`
+- [x] **177.9.E - XRCE runtime.**
+  Closed 2026-05-25. The XRCE harness now passes the canonical
+  `NROS_LOCATOR` and enables `RUST_LOG=info` so `wait_for_output_*`
+  observes the current env-logger markers. The service/action assertions
+  were aligned with the current example output, and the multi-message
+  test now waits for real `Received:` counts instead of a stale summary
+  marker. Runtime fixes: the XRCE talker drives IO after each manual
+  publish so repeated samples flush, and the action server periodically
+  drives IO around goal accept/status/feedback/result work instead of
+  relying on a typed action loop with no executor spin.
+  Verification: `cargo nextest run --cargo-profile nros-fast-release -p
+  nros-tests --no-fail-fast --test xrce` (14 passed, 0 skipped).
+  - [x] `xrce::test_xrce_action_fibonacci`
+  - [x] `xrce::test_xrce_multiple_messages`
+  - [x] `xrce::test_xrce_service_request_response`
+  - [x] `xrce::test_xrce_talker_listener_communication`
 
 - [ ] **177.9.F - Zephyr native/cross E2E runtime.**
   - [ ] `test_bidirectional_native_zephyr_e2e`

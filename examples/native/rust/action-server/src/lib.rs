@@ -51,15 +51,18 @@ pub fn run() -> ! {
     info!("Waiting for action goals...");
 
     loop {
+        let _ = executor.spin_once(core::time::Duration::from_millis(10));
         match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
             info!("Received goal request: order={}", goal.order);
             GoalResponse::AcceptAndExecute
         }) {
             Ok(Some(goal_id)) => {
                 info!("Goal accepted: {}", goal_id);
+                let _ = executor.spin_once(core::time::Duration::from_millis(10));
                 if let Some(active_goal) = server.get_goal(&goal_id) {
                     let order = active_goal.goal.order;
                     server.set_goal_status(&goal_id, GoalStatus::Executing);
+                    let _ = executor.spin_once(core::time::Duration::from_millis(10));
                     let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
                     for i in 0..=order {
                         let next_val = if i == 0 {
@@ -77,11 +80,13 @@ pub fn run() -> ! {
                         if server.publish_feedback(&goal_id, &feedback).is_ok() {
                             info!("Feedback: {:?}", feedback.sequence);
                         }
+                        let _ = executor.spin_once(core::time::Duration::from_millis(10));
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
                     let result = FibonacciResult { sequence };
                     info!("Goal completed: {:?}", result.sequence);
                     server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
+                    let _ = executor.spin_once(core::time::Duration::from_millis(10));
                 }
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
