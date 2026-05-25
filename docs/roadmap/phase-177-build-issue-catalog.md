@@ -338,24 +338,57 @@ passed.
   - [x] `xrce::test_xrce_talker_listener_communication`
 
 - [ ] **177.9.F - Zephyr native/cross E2E runtime.**
-  - [ ] `test_bidirectional_native_zephyr_e2e`
-  - [ ] `test_native_server_zephyr_client`
-  - [ ] `test_native_talker_to_zephyr_cpp_listener`
-  - [ ] `test_native_to_zephyr_e2e`
-  - [ ] `test_zephyr_action_e2e`
-  - [ ] `test_zephyr_cpp_action_server_to_client_e2e`
-  - [ ] `test_zephyr_cpp_service_server_to_client_e2e`
-  - [ ] `test_zephyr_cpp_talker_to_listener_e2e`
-  - [ ] `test_zephyr_cpp_talker_to_native_listener`
-  - [ ] `test_zephyr_to_native_e2e`
-  - [ ] `test_zephyr_talker_to_listener_e2e`
-  - [ ] `test_zephyr_xrce_c_talker_listener`
-  - [ ] `test_zephyr_xrce_cpp_action_e2e`
-  - [ ] `test_zephyr_xrce_cpp_service_e2e`
-  - [ ] `test_zephyr_xrce_cpp_talker_listener`
-  - [ ] `test_zephyr_xrce_rust_action_e2e`
-  - [ ] `test_zephyr_xrce_rust_service_e2e`
-  - [ ] `test_zephyr_xrce_rust_talker_listener`
+  Focused rerun on 2026-05-25:
+  `NROS_ZEPHYR_BUILD_ROOT=/home/aeon/repos/nano-ros/build/zephyr-workspace-builds
+  cargo nextest run --cargo-profile nros-fast-release -p nros-tests
+  --no-fail-fast --test zephyr` with the 177.9.F Zenoh test filter.
+  Result: 11/11 Zenoh tests passed after rebuilding native_sim fixtures
+  with the shared NSOS overlay and per-language/per-role Zenoh locator
+  Kconfig overrides. The prior `eth_posix: Cannot create zeth (0)`
+  failure is gone; fixture logs report `Network ready (NSOS - host
+  kernel sockets)`. C++ action also now emits the same `[OK]` success
+  marker that the test harness waits for.
+
+  XRCE follow-up on 2026-05-25 moved the Agent prerequisite into
+  `just zephyr setup` and `just zephyr doctor`, then rebuilt the XRCE
+  fixture subset with the NSOS overlay. The first live-agent run exposed
+  stale fixture wiring: C and C++ XRCE tests start agents on per-language
+  ports, but `just zephyr build-fixtures` was compiling every XRCE
+  fixture against the default port 2018. The fixture matrix now passes
+  `CONFIG_NROS_XRCE_AGENT_PORT` for each `(language, role)` cell:
+  Rust 2018/2028/2038, C 2118/2128/2138, and C++ 2218/2228/2238.
+  After rebuilding, the focused XRCE subset ran 7 tests: 2 passed and
+  5 failed. Those 5 failures are no longer skipped setup fallout; they
+  are runtime/backend issues after successful Agent/session setup.
+  - [x] `test_bidirectional_native_zephyr_e2e` passes.
+  - [x] `test_native_server_zephyr_client` passes.
+  - [x] `test_native_talker_to_zephyr_cpp_listener` passes.
+  - [x] `test_native_to_zephyr_e2e` passes.
+  - [x] `test_zephyr_action_e2e` passes.
+  - [x] `test_zephyr_cpp_action_server_to_client_e2e` passes.
+  - [x] `test_zephyr_cpp_service_server_to_client_e2e` passes.
+  - [x] `test_zephyr_cpp_talker_to_listener_e2e` passes.
+  - [x] `test_zephyr_cpp_talker_to_native_listener` passes.
+  - [x] `test_zephyr_to_native_e2e` passes.
+  - [x] `test_zephyr_talker_to_listener_e2e` passes.
+  - [x] `test_zephyr_xrce_c_talker_listener` passes with `just zephyr setup`
+        provided Agent and fixtures rebuilt against port 2118.
+  - [x] `test_zephyr_xrce_rust_talker_listener` passes with `just zephyr setup`
+        provided Agent and fixtures rebuilt against port 2018; the harness now
+        accepts the Rust fixture's `Received[n]:` log format.
+  - [ ] `test_zephyr_xrce_cpp_talker_listener` initializes and publishes on
+        port 2218, but the C++ listener remains at "Waiting for messages" and
+        receives no samples.
+  - [ ] `test_zephyr_xrce_cpp_service_e2e` initializes on port 2228, but the
+        client reports `0/4 calls succeeded` and the server logs no requests.
+  - [ ] `test_zephyr_xrce_cpp_action_e2e` initializes on port 2238, but the
+        client times out sending the goal with `Failed to send goal: -2`.
+  - [ ] `test_zephyr_xrce_rust_service_e2e` still reports
+        `Transport(ConnectionFailed)` on port 2028 even though pub/sub on
+        port 2018 passes; inspect service fixture Kconfig/code path.
+  - [ ] `test_zephyr_xrce_rust_action_e2e` still reports
+        `Transport(ConnectionFailed)` on port 2038 even though pub/sub on
+        port 2018 passes; inspect action fixture Kconfig/code path.
 
 - [x] **177.9.G - NuttX action E2E runtime.**
   Closed 2026-05-25. Focused rerun passed after building the required

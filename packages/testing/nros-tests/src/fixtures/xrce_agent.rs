@@ -132,7 +132,7 @@ pub fn is_xrce_agent_available() -> bool {
 /// Returns `true` if the agent is available and the test should proceed.
 pub fn require_xrce_agent() -> bool {
     if !is_xrce_agent_available() {
-        eprintln!("Skipping test: XRCE Agent not found (run `just build-xrce-agent`)");
+        eprintln!("Skipping test: XRCE Agent not found (run `just xrce setup`)");
         return false;
     }
     true

@@ -78,7 +78,7 @@ int nros_app_main(int argc, char **argv)
     auto result_fut = client.get_result_future(goal_id);
     Fibonacci::Result result;
     ret = result_fut.wait(nros::global_handle(), 10000, result);
-    if (ret.ok()) LOG_INF("Result received: length=%d", result.sequence.length());
+    if (ret.ok()) LOG_INF("Result received: length=%d [OK]", result.sequence.length());
     else LOG_ERR("Failed to get result: %d", ret.raw());
 
     nros::shutdown();

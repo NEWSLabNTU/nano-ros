@@ -62,6 +62,8 @@ setup *ARGS:
     bash ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
     echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
     bash ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
+    echo "[zephyr setup] ensuring Micro XRCE-DDS Agent for Zephyr XRCE tests..."
+    just xrce setup
 
 # Diagnose Zephyr install status (read-only).
 [group("setup")]
@@ -86,6 +88,11 @@ doctor:
         echo "  [OK] armv7a-none-eabi rust target (qemu_cortex_a9 DDS)"
     else
         echo "  [MISSING] armv7a-none-eabi rust target (run: just zephyr setup)"
+        fail=1
+    fi
+    if just xrce doctor; then
+        :
+    else
         fail=1
     fi
     # native_sim uses NSOS (host loopback) — no TAP bridge required.
@@ -288,6 +295,7 @@ build-fixtures:
 
     # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
     entries=()
+    native_sim_nsos_conf="$nros_root/zephyr/native-sim-nsos.conf"
     # Phase 178.E guardrail: keep Zephyr E2E coverage on the real
     # user-copyable examples. Do not collapse roles into one runtime
     # dispatch image here; each role remains its own Zephyr app/image so
@@ -303,15 +311,37 @@ build-fixtures:
         lang_tag="$(nros_zephyr_lang_tag "$lang")"
         for rmw in "${fixture_rmws[@]}"; do
             for case in $(nros_fixture_roles); do
+                xrce_port=""
+                if [ "$rmw" = "xrce" ]; then
+                    case "$lang" in
+                        rust) lang_offset=0 ;;
+                        c) lang_offset=100 ;;
+                        cpp) lang_offset=200 ;;
+                        *)
+                            echo "Unknown Zephyr fixture language: $lang" >&2
+                            exit 2
+                            ;;
+                    esac
+                    case "$case" in
+                        talker|listener) variant_offset=0 ;;
+                        service-server|service-client|service-client-async) variant_offset=10 ;;
+                        action-server|action-client) variant_offset=20 ;;
+                        *)
+                            echo "Unknown Zephyr fixture role: $case" >&2
+                            exit 2
+                            ;;
+                    esac
+                    xrce_port=$((2018 + lang_offset + variant_offset))
+                fi
                 entries+=(
-                  "native_sim/native/64|build-${lang_tag}-${case}-${rmw}|zephyr/${lang}/${case}|0||prj.conf;prj-${rmw}.conf"
+                  "native_sim/native/64|build-${lang_tag}-${case}-${rmw}|zephyr/${lang}/${case}|0|$xrce_port|prj.conf;prj-${rmw}.conf;$native_sim_nsos_conf"
                 )
             done
         done
     done
     # Extra Rust async fixture. Not part of the universal role set.
     entries+=(
-      "native_sim/native/64|build-rs-service-client-async-zenoh|zephyr/rust/service-client-async|0||prj.conf;prj-zenoh.conf"
+      "native_sim/native/64|build-rs-service-client-async-zenoh|zephyr/rust/service-client-async|0||prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
     )
 
     failures=()
@@ -366,6 +396,33 @@ build-fixtures:
         if [ -n "$xrce_port" ]; then
             extra_args+=(-DCONFIG_NROS_XRCE_AGENT_PORT="$xrce_port")
         fi
+        zenoh_locator=""
+        if [[ "$build_dir" == *-zenoh ]]; then
+            src_tail="${src#zephyr/}"
+            fixture_lang="${src_tail%%/*}"
+            fixture_role="${src_tail#*/}"
+            case "$fixture_lang" in
+                rust) lang_offset=0 ;;
+                c) lang_offset=100 ;;
+                cpp) lang_offset=200 ;;
+                *)
+                    echo "Unknown Zephyr fixture language in $src" >&2
+                    exit 2
+                    ;;
+            esac
+            case "$fixture_role" in
+                talker|listener) variant_offset=0 ;;
+                service-server|service-client|service-client-async) variant_offset=10 ;;
+                action-server|action-client) variant_offset=20 ;;
+                *)
+                    echo "Unknown Zephyr fixture role in $src" >&2
+                    exit 2
+                    ;;
+            esac
+            zenoh_port=$((7456 + lang_offset + variant_offset))
+            zenoh_locator="tcp/127.0.0.1:$zenoh_port"
+            extra_args+=(-DCONFIG_NROS_ZENOH_LOCATOR="\"$zenoh_locator\"")
+        fi
         if [ -n "$conf_files" ]; then
             extra_args+=(-DCONF_FILE="$conf_files")
         fi
@@ -406,6 +463,7 @@ build-fixtures:
             "src=$src" \
             "xrce_port=$xrce_port" \
             "conf_files=$conf_files" \
+            "zenoh_locator=$zenoh_locator" \
             "codegen_tool=$codegen_tool" \
             "toolchain_cache_dir=$toolchain_cache_dir" \
             "make=$make_bin" \

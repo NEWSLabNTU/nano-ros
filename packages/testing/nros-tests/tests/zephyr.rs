@@ -1284,7 +1284,7 @@ fn get_zephyr_xrce_c_listener_native_sim() -> PathBuf {
 ///
 /// Requires:
 /// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
-/// - XRCE Agent available: `just build-xrce-agent`
+/// - XRCE Agent available: `just zephyr setup` or `just xrce setup`
 #[test]
 fn test_zephyr_xrce_rust_talker_listener() {
     if !require_zephyr() {
@@ -1343,7 +1343,8 @@ fn test_zephyr_xrce_rust_talker_listener() {
     let talker_error = talker_output.contains("Error:");
 
     // Check listener status
-    let listener_received = listener_output.contains("Received:");
+    let listener_received =
+        listener_output.contains("Received:") || listener_output.contains("Received[");
     let listener_waiting = listener_output.contains("Waiting for messages");
     let listener_error = listener_output.contains("Error:");
 
@@ -1355,7 +1356,8 @@ fn test_zephyr_xrce_rust_talker_listener() {
     }
 
     if listener_received {
-        let count = count_pattern(&listener_output, "Received:");
+        let count = count_pattern(&listener_output, "Received:")
+            + count_pattern(&listener_output, "Received[");
         eprintln!(
             "\nSUCCESS: Zephyr XRCE listener received {} messages from talker",
             count
@@ -1380,7 +1382,7 @@ fn test_zephyr_xrce_rust_talker_listener() {
 ///
 /// Requires:
 /// - NSOS board overlays in examples/zephyr/*/boards/ (checked into git)
-/// - XRCE Agent available: `just build-xrce-agent`
+/// - XRCE Agent available: `just zephyr setup` or `just xrce setup`
 #[test]
 // Previously #[ignore]: C talker didn't flush XRCE output stream after publish (fixed)
 fn test_zephyr_xrce_c_talker_listener() {
