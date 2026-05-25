@@ -341,7 +341,7 @@ passed.
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
-  177.9.F's cpp/xrce action feedback, fixed in `85da52f44`).
+  177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
   The 2026-05-22 `test-all` rerun reported 960 tests run: 911 passed, 49
   failed, and 9 skipped after `just setup` and `just build-test-fixtures`
   both passed. The remaining failures are grouped below so owners can
@@ -545,7 +545,7 @@ passed.
   Closed 2026-05-25 — all 18 subtests pass: Zenoh/cpp (12/12), CycloneDDS
   `dds` group (15/15), and the full XRCE subset, after the session-key
   collision fix (`5b9ad9aab`) and the action-feedback double-CDR-header fix
-  (`85da52f44`).
+  (`57ebb8182`).
   Focused rerun on 2026-05-25:
   `NROS_ZEPHYR_BUILD_ROOT=/home/aeon/repos/nano-ros/build/zephyr-workspace-builds
   cargo nextest run --cargo-profile nros-fast-release -p nros-tests
@@ -573,7 +573,7 @@ passed.
   `test_zephyr_xrce_cpp_talker_listener` was then fixed (session-key
   collision, `5b9ad9aab`). The last XRCE failure,
   `test_zephyr_xrce_cpp_action_e2e` (`feedback=0` — cpp action feedback
-  double-CDR-header), is now also fixed (`85da52f44`, see below), so the
+  double-CDR-header), is now also fixed (`57ebb8182`, see below), so the
   **full XRCE subset passes**. Combined with the Zenoh/cpp subset (12/12)
   and the CycloneDDS (`dds`) subset (**15/15**: `binary(zephyr) and
   test(dds)`, boots + c/cpp/rs action e2e on fresh NSOS fixtures, see the
@@ -660,7 +660,7 @@ passed.
           **flat** layout Cyclone produces; XRCE's verbatim nested layout
           double-frames.
 
-        **Fix LANDED 2026-05-25 (`85da52f44`) — FFI-level strip, verified on
+        **Fix LANDED 2026-05-25 (`57ebb8182`) — FFI-level strip, verified on
         both backends.** Instead of the broader publish_feedback_raw +
         trampoline + Cyclone-bridge refactor, the strip was applied one layer
         up, at the FFI boundary: `nros_cpp_action_server_publish_feedback`
