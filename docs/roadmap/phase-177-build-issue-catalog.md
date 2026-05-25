@@ -610,6 +610,31 @@ passed.
         → ring → `try_recv` path within one stable generation to find why
         buffered samples aren't drained by `try_recv`.
 
+        **Restart further characterized 2026-05-25 (more temporary printk,
+        reverted).** Per-loop-position markers (`pre-spin`/`post-spin`/
+        `post-recv` + iteration counter) prove:
+        * It is a **genuine whole-image reboot** — the iteration counter
+          resets `0…~190 → reboot → 0…~163 → reboot`, and `main` re-runs.
+        * The reboot fires **inside `nros::spin_once`** (the last marker before
+          a boot banner is always `<it> A pre-spin`, never `B post-spin`).
+        * It is **not** data-correlated: the talker finishes publishing by
+          ~10 s, but the reboots land at a roughly constant ~160–190 loop
+          iterations (~18–20 s) into each generation.
+        * Overriding `sys_reboot()` in the listener did **not** fire (0 prints)
+          yet it still rebooted 3× → not the Zephyr `sys_reboot` API.
+        * No `CONFIG_WATCHDOG` / `CONFIG_TASK_WDT` in the build (same as the
+          C listener), so not a watchdog. The only build-config delta vs the
+          working C listener is `CONFIG_CPP=y` + `CONFIG_MINIMAL_LIBCPP=y`
+          (C++ runtime); heap/stack sizes are identical, and the C++ XRCE
+          *service* uses the same runtime and does **not** reboot — so it is
+          specific to the C++ XRCE *pubsub* spin path.
+        Net: a non-fatal, non-`sys_reboot` whole-image re-init triggered from
+        inside `spin_once` after ~190 iterations, only on the C++ XRCE pubsub
+        listener. Remaining unknowns (need gdb / native_sim internals): the
+        native_sim code path that re-inits the image, and what accumulates
+        over ~190 spins (executor arena / heap / uClient stream resource) that
+        trips it.
+
   **CycloneDDS slice — `native_sim` runtime, root-caused 2026-05-25
   (Phase 179.G).** 177.24 unblocked the Cyclone *fixture build*; the
   *runtime* is the open half of that slice and is a real port defect, not a
