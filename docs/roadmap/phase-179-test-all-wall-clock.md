@@ -118,11 +118,13 @@ propagation guard.
 
 The post-audit rerun found four follow-ups:
 
-- `custom_transport_loopback.rs` still reports `Published: 0,
-  Received: 0` even after both processes register the custom transport
-  vtable. The bounded sleeps remain documented until the test has a
-  reliable session/subscription readiness signal or the custom transport
-  runtime path is fixed.
+- `custom_transport_loopback.rs` still reports one of three custom-link
+  runtime failures: `Published: 0, Received: 0`, listener
+  `SubscriberCreationFailed`, or talker `PublisherCreationFailed`.
+  A marker-wait rewrite was tested but not kept because the underlying
+  custom transport declaration path is not stable enough to provide a
+  reliable readiness marker. The bounded sleeps remain documented until
+  the custom-link runtime path is fixed.
 - `threadx_riscv64 build-fixtures` failed in the CycloneDDS native C
   fixture link with unresolved `dds_*` symbols from
   `libnros_rmw_cyclonedds.a`. The generated link line already includes
