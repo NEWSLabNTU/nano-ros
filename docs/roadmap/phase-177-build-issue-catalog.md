@@ -84,13 +84,43 @@ passed.
 - [ ] **177.26 - ThreadX Cyclone peer interop / multicast discovery.**
   Owner: Phase 177 runtime/Cyclone follow-up. Split out of 177.22
   (participant-init trap, closed). The ThreadX RISC-V64 Cyclone C talker
-  boots, creates the publisher, and publishes locally, but the QEMU
-  filter-dump pcap is empty: the ThreadX Cyclone profile disables
-  multicast discovery, so no inter-QEMU DDS traffic leaves the node. No
-  two-node ThreadX↔ThreadX or ThreadX↔native RTPS exchange has been
-  demonstrated. Re-enable a discovery path (multicast, or a unicast peer
-  list via Cyclone config/`CYCLONEDDS_URI`) over NetX Duo and demonstrate
-  a bounded two-QEMU pub/sub exchange.
+  boots, creates the publisher, and publishes locally, but no two-node
+  ThreadX↔ThreadX or ThreadX↔native RTPS exchange has been demonstrated.
+
+  **2026-05-25 — discovery re-enabled, surfaced a byte-order defect.**
+  - Flipped the ThreadX Cyclone profile from `<AllowMulticast>false</AllowMulticast>`
+    to `spdp` (`packages/dds/nros-rmw-cyclonedds/src/session.cpp`). The
+    board already enables IGMPv2 (`nx_igmp_enable`) and the virtio-net
+    driver accepts all multicast on RX, so this is the right discovery
+    path; data stays unicast.
+  - Added a two-QEMU AF_UNIX-dgram e2e (shared L2, no slirp isolation):
+    `packages/testing/nros-tests/tests/threadx_riscv64_qemu.rs::test_threadx_riscv64_cyclonedds_two_qemu_pubsub`.
+    `#[ignore]`d until the bug below is fixed. Talker `10.0.2.40`/`:56`,
+    listener `10.0.2.41`/`:57` (already distinct via each `config.toml`,
+    applied through `startup.c` → `nros_board_set_network_config`).
+  - One run confirmed SPDP discovery is now *attempted* (was fully
+    suppressed before), but every write fails:
+    `tev: ddsi_udp_conn_write to udp/1.0.255.239:7400 failed with retcode -12`.
+    `1.0.255.239` is the DDSI SPDP group `239.255.0.1` with its 4 bytes
+    reversed (`0xEFFF0001` → `0x0100FFEF`). The listener then aborts at
+    `nros_executor_register_subscription -> -1` (reader create depends on
+    the failing discovery write).
+
+  **Root cause.** NetX Duo keeps IPv4 addresses in *host* byte order.
+  `nx_bsd_inet_pton`/`nx_bsd_inet_addr` (`third-party/threadx/netxduo/addons/BSD/nxd_bsd.c:13620,6237`)
+  return that host-order value, but the ThreadX ddsrt port maps POSIX
+  `inet_pton`/`inet_addr` straight onto them
+  (`third-party/dds/cyclonedds/src/ddsrt/include/dds/ddsrt/sockets/threadx.h:70,73`).
+  Cyclone's locator code expects network byte order, so on little-endian
+  RISC-V64 every IPv4 locator (and the SPDP multicast group) comes out
+  byte-reversed.
+
+  **Next.** Make the ThreadX ddsrt `inet_pton`/`inet_addr` (and the
+  matching `inet_ntop`/`inet_ntoa` and any `sin_addr` round-trips) honor
+  network byte order — e.g. a wrapper that `htonl`-corrects the NetX
+  host-order result rather than `#define`-aliasing the raw `nx_bsd_*`
+  call. Then re-run the `#[ignore]`d test (`--ignored`) and confirm the
+  listener decodes a sample; only then is two-node RTPS proven.
 
 ### Test-All Environment / Setup
 

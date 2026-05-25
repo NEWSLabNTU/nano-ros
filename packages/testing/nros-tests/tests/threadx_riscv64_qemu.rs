@@ -17,8 +17,10 @@
 //! Run with: `just test-threadx-riscv64`
 //! Or: `cargo nextest run -p nros-tests --test threadx_riscv64_qemu`
 
+use std::time::Duration;
+
 use nros_tests::fixtures::{
-    is_qemu_riscv64_available, is_zenohd_available,
+    QemuProcess, is_qemu_riscv64_available, is_zenohd_available, qemu_supports_dgram_unix,
     threadx_riscv64::{
         build_threadx_rv64_action_client, build_threadx_rv64_action_server,
         build_threadx_rv64_listener, build_threadx_rv64_service_client,
@@ -103,4 +105,106 @@ fn test_threadx_riscv64_all_examples_build() {
         all_ok,
         "Not all ThreadX QEMU RISC-V examples built successfully"
     );
+}
+
+// =============================================================================
+// CycloneDDS two-QEMU peer interop (Phase 177.26)
+// =============================================================================
+
+/// Two ThreadX RISC-V64 QEMU nodes running the CycloneDDS C talker and
+/// listener, wired together over an AF_UNIX SOCK_DGRAM L2 tunnel (no slirp
+/// isolation), exchange a `std_msgs/Int32` sample on `/chatter`.
+///
+/// This exercises the real cross-node RTPS path: SPDP multicast discovery
+/// over NetX Duo + IGMP (Phase 177.26 flips the ThreadX Cyclone profile's
+/// `AllowMulticast` from `false` to `spdp`), unicast RTPS data delivery,
+/// and CDR decode on the subscriber.
+///
+/// Requires the CycloneDDS fixtures to be prebuilt:
+///   just cyclonedds threadx-cross-probe
+///   NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures
+///
+/// Ignored: blocked on a byte-order defect in the ThreadX ddsrt port —
+/// `nx_bsd_inet_pton`/`inet_addr` return NetX's host-order IPv4 value, but
+/// Cyclone's locator code expects network byte order, so the SPDP multicast
+/// group `239.255.0.1` is used reversed (`1.0.255.239`) and discovery writes
+/// fail with `-12`. Tracked as Phase 177.26. Run explicitly with
+/// `--ignored` once the address conversion is fixed.
+#[test]
+#[ignore = "Phase 177.26: ThreadX ddsrt inet_pton byte-order bug reverses the SPDP multicast address"]
+fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
+    if !require_threadx_riscv64() {
+        nros_tests::skip!("require_threadx_riscv64 check failed");
+    }
+    if !is_qemu_riscv64_available() {
+        nros_tests::skip!("qemu-system-riscv64 not found");
+    }
+    if !qemu_supports_dgram_unix() {
+        nros_tests::skip!(
+            "qemu-system-riscv64 does not support `-netdev dgram` (needs QEMU >= 7.2)"
+        );
+    }
+
+    let root = nros_tests::project_root();
+    let talker_bin = root
+        .join("examples/qemu-riscv64-threadx/c/talker/build-cyclonedds/riscv64_threadx_c_talker");
+    let listener_bin = root.join(
+        "examples/qemu-riscv64-threadx/c/listener/build-cyclonedds/riscv64_threadx_c_listener",
+    );
+    if !talker_bin.exists() || !listener_bin.exists() {
+        nros_tests::skip!(
+            "CycloneDDS ThreadX fixtures missing; build with: \
+             just cyclonedds threadx-cross-probe && \
+             NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures"
+        );
+    }
+
+    // AF_UNIX dgram socket pair (kept short to stay under sun_path's 108-byte
+    // limit). Each QEMU binds its `local` path and sends to the peer's path.
+    let sock_dir = root.join("tmp");
+    std::fs::create_dir_all(&sock_dir).expect("create tmp dir");
+    let sock_talker = sock_dir.join("tx_rv64_cyc_talker.sock");
+    let sock_listener = sock_dir.join("tx_rv64_cyc_listener.sock");
+    let _ = std::fs::remove_file(&sock_talker);
+    let _ = std::fs::remove_file(&sock_listener);
+    let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
+    let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
+
+    // MACs match each node's config.toml (talker 10.0.2.40/:56,
+    // listener 10.0.2.41/:57) so QEMU's device MAC equals the NetX-assigned
+    // address.
+    const TALKER_MAC: &str = "52:54:00:12:34:56";
+    const LISTENER_MAC: &str = "52:54:00:12:34:57";
+
+    // Subscriber first so it has joined the SPDP multicast group before the
+    // talker announces; SPDP re-announces periodically regardless.
+    let mut listener = QemuProcess::start_riscv64_virt_dgram(
+        &listener_bin,
+        sock_listener,
+        sock_talker,
+        LISTENER_MAC,
+    )
+    .expect("start listener QEMU");
+    let _talker =
+        QemuProcess::start_riscv64_virt_dgram(&talker_bin, sock_talker, sock_listener, TALKER_MAC)
+            .expect("start talker QEMU");
+
+    // Wait for the listener to decode at least one sample. Discovery +
+    // first delivery completes in a few seconds when it works; the generous
+    // window covers SPDP retry cadence. `_talker` is dropped (and killed) at
+    // end of scope.
+    let result = listener.wait_for_output_pattern("Received:", Duration::from_secs(90));
+    listener.kill();
+
+    match result {
+        Ok(output) => {
+            assert!(
+                output.contains("Received:"),
+                "listener did not decode a sample.\n--- listener output ---\n{output}"
+            );
+        }
+        Err(e) => {
+            panic!("listener never received a CycloneDDS sample from the peer ThreadX node: {e:?}")
+        }
+    }
 }
