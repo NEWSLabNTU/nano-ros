@@ -1250,6 +1250,43 @@ robustness/consistency follow-ups, not regressions.
     (Rust + C + C++ × pubsub/service/action) PASS; no regression to the
     C/C++ paths (which now link glibc's real `pipe`/`read`/`write` — exactly
     what Cyclone's self-pipe waitset wants).
+
+  - [ ] **177.8.c - NuttX-QEMU-ARM Rust nodes miscompiled at the fixture's
+    optimization level (toolchain codegen bug; OPEN).** All four Nuttx
+    failures (`rtos_e2e` Rust pubsub/service/action + the Cpp-action axis)
+    trace to the Rust nodes never reaching user `fn main()` — the image is
+    silent and QEMU reboot-loops. Forensic trail (gdb-multiarch remote to
+    `qemu -s -S`, armv7a-nuttx-eabihf):
+      * Entry chain is fine: `nxtask_startup → nsh_main` (our override) →
+        `nsh_initialize()` (returns) → C `main` → `std::rt::lang_start` →
+        `lang_start_internal`; `rt::init()` runs and returns.
+      * At `rt.rs:175` `panic::catch_unwind(main)` dispatches the `&dyn Fn`
+        main closure: `call_once` does `ldr r1,[r1,#0x14]; bx r1`, but the
+        vtable/fat-pointer register holds garbage (`0x8`) → `bx` to ~NULL →
+        executes zero-filled low memory → init task dies → reboot loop,
+        *before any user output*. Raw `write(2)` works throughout (console
+        is fine); the init-task stack is 512 KB (ample).
+      * So a trait-object/closure fat-pointer is corrupt in optimized
+        codegen, and it is **optimization-sensitive + non-deterministic**:
+        `opt-level=0` (dev) reliably works (boots, prints the banner,
+        reaches `Executor::open`); the fixture profile `nros-fast-release`
+        (opt-level=2, codegen-units=16, lto=off, incremental, debug=1,
+        panic=abort) reliably miscompiles. Bisection found *no single* knob
+        is the trigger — `{panic=abort, debug=1, incremental}` break in any
+        pair but not alone, `codegen-units=1` doesn't fix it, and identical
+        logical flags flip WORKS/BROKEN across rebuilds — the signature of a
+        non-deterministic cross-CGU/codegen miscompile in rustc/LLVM for
+        this target, not a nano-ros logic bug.
+      * C/C++ Nuttx examples are unaffected (they don't route through Rust
+        `lang_start`'s closure dispatch).
+    Candidate mitigations (need a decision): (a) build the NuttX Rust
+    examples/fixtures at `opt-level=0` (correctness over size — verified to
+    work, but large/slow, diverges from the shared profile); (b) hunt a
+    deterministic safe optimized point / pin a known-good rustc; (c)
+    escalate upstream as an armv7a-nuttx-eabihf codegen bug. Until then
+    Nuttx Rust `rtos_e2e` stays red; Nuttx C/C++ pass. The Nuttx
+    **Cpp-action** failure (`rtos_e2e.rs:844`) is a separate
+    action-completion axis, not this codegen bug.
 - Two build-all-after-clean fragilities surfaced by the nuke gate:
   - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
     --locked` on standalone example/fixture dirs whose gitignored
