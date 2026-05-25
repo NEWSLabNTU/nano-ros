@@ -1129,6 +1129,30 @@ robustness/consistency follow-ups, not regressions.
   prepared and 177.19/177.20 either fixed or explicitly expected-failed.
 - [ ] Full green `test-all` rerun after 177.9 fixture/setup/runtime
   groups close.
+- [~] 2026-05-25 full nuke gate (`just clean` → `just setup all` →
+  `build-all` → `build-test-fixtures` → `test-all`). `clean`/`setup`/
+  `build-all` (4817s)/`build-fix` (1710s) all OK; `test-all` (755s) ran
+  978 tests with **13 real failures** + 15 `[SKIPPED]` (env / opt-in
+  fixtures). None touch the Zephyr XRCE/cpp work closed under 177.9.F.
+  The 13 cluster as: ROS 2 detection ×2 (`ros2::test_ros2_detection`,
+  `test_rmw_fastrtps_detection` — no sourced ROS 2 in the run env),
+  `integration_esp_idf` smoke ×1 (idf.py env not active), `rtos_e2e`
+  Rust+Cpp ×7 (Nuttx Rust pubsub/service/action + Nuttx Cpp action +
+  ThreadxLinux Rust pubsub/service/action — Rust-host variants, not the
+  C/Cpp paths closed in 177.9.G/H), `logging_smoke` ×2 (esp32_qemu,
+  zephyr_native_sim), `zpico_drift_gate_fires_on_corrupted_include` ×1.
+  Pre-existing, untriaged.
+- Two build-all-after-clean fragilities surfaced by the nuke gate:
+  - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
+    --locked` on standalone example/fixture dirs whose gitignored
+    `Cargo.lock` goes stale after a clean+setup → hard-fail. Dropped
+    `--locked` in `scripts/build/cargo.sh::nros_cargo_fetch_standalone_manifests`.
+  - **(open, worked around)** `build-all` jobserver prefetch assumes
+    example `generated/` dirs exist, but they are gitignored and a clean
+    wipes them; esp32 prefetch failed until I pre-ran `nros generate-rust`
+    across the 74 Rust examples. The codegen step must run (or be
+    tolerated) before the prefetch fanout — systemic ordering bug, not
+    yet fixed. Candidate 177 follow-up.
 
 ## Archive Rule
 
