@@ -140,6 +140,25 @@ have **no clean detect-only "would it rebuild?"** from the build tool:
   WOULD be a clean detect-only oracle (ninja has no phantom always-run target).
   nano-ros already pins ninja ≥1.13 for the jobserver, so switching the fixture
   generator to Ninja is a future option to get cargo-style precise staleness.
+
+  **Online convention (checked 2026-05-25).** Confirmed by CMake docs +
+  Discourse + the Ninja manual: CMake has **no native "is it stale" query** —
+  you delegate to the generator. The recommended convention to get a clean
+  detect-only staleness check is the **Ninja generator** + `ninja -n` (dry run:
+  prints what would build; `ninja: no work to do.` = up-to-date) or `ninja -d
+  explain` (prints *why* each target is stale); the `-t deps`/`-t targets`
+  subtools inspect the graph. The Make path is explicitly the unreliable one:
+  `make -n`/`make -q` invoke CMake's `--check-build-system` (regenerates the
+  build files), so they report work even when nothing changed — the CMake
+  Discourse "infinite re-run loop" / "skip dependency checks" threads are about
+  exactly this. **Recommendation for 181.5:** build the cmake fixtures with
+  `-G Ninja` (nano-ros already pins ninja ≥1.13), then the staleness probe is
+  `ninja -C <build-<rmw>> -n` per the manifest's per-RMW dirs — precise (uses
+  cmake's real dependency graph, incl. linked nano-ros crates via
+  add_subdirectory), detect-only (no rebuild → fits C/C++ warn-only), and the
+  direct analog of cargo's `fresh`. This would supersede the coarse
+  `.nros-fixture.inputsig` content hash for configured cells (keep the hash
+  only as a fallback when no build dir exists yet).
 - Therefore the cmake staleness signal stays a **content hash**: the existing
   `.nros-fixture.inputsig` (177.9 — sha1 of the cell sources + shared
   crates/lockfile/toolchain/SDK pins), written per `build-<rmw>/` dir on a
