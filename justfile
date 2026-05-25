@@ -577,6 +577,11 @@ build-test-fixtures: generate-bindings build-zenoh-posix-fixture build-test-fixt
 build-test-fixtures-leaves:
     #!/usr/bin/env bash
     set -e
+    # Phase 177.9 — compute the shared fixture-input hash once and export it
+    # so the per-platform/per-cell builds (and their `parallel` children)
+    # reuse it instead of re-hashing the workspace for every cell.
+    source scripts/build/fixture-matrix.sh
+    export NROS_FIXTURE_SHARED_SIG="$(nros_fixture_shared_sig)"
     # Phase 160 follow-up — parallelize per-platform fixture builds.
     # Each platform writes into its own per-example `target/` dirs (no
     # workspace `target/` sharing across `examples/<plat>/...`), so the
@@ -762,12 +767,41 @@ _require-fixtures:
         exit 1
     fi
 
+# Warn (non-fatal) about prebuilt C/C++ fixture cells whose inputs changed
+# since the binary was built — sources edited without re-running
+# build-fixtures, so the harness would silently use a stale binary. Compares
+# each cell's stored .nros-fixture.inputsig (Phase 177.9, content hash of the
+# cell sources + shared crates/lockfile/toolchain/SDK pins) against a fresh
+# recompute. Skipped under NROS_SKIP_FIXTURE_CHECK=1. (Rust cells: follow-up.)
+[private]
+_check-fixtures-stale:
+    #!/usr/bin/env bash
+    if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
+        exit 0
+    fi
+    source scripts/build/fixture-matrix.sh
+    export NROS_FIXTURE_SHARED_SIG="$(nros_fixture_shared_sig)"
+    stale=()
+    while IFS= read -r sigfile; do
+        build_dir="$(dirname "$sigfile")"
+        src_dir="$(dirname "$build_dir")"
+        if [ "$(cat "$sigfile" 2>/dev/null)" != "$(nros_fixture_cell_sig "$src_dir")" ]; then
+            stale+=("$build_dir")
+        fi
+    done < <(find examples -type f -name .nros-fixture.inputsig 2>/dev/null)
+    if [ ${#stale[@]} -gt 0 ]; then
+        echo "WARNING: ${#stale[@]} prebuilt fixture cell(s) look STALE (sources changed since build):" >&2
+        printf '  %s\n' "${stale[@]}" >&2
+        echo "  Rebuild (incremental — only changed cells):  just build-test-fixtures" >&2
+        echo "  (bypass this check with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+    fi
+
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
 [group("full-matrix")]
-test-all verbose="": _require-fixtures build-zenohd
+test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh

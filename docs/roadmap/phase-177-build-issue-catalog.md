@@ -375,8 +375,28 @@ passed.
   when the stamp is absent. Bypass with `NROS_SKIP_FIXTURE_CHECK=1` when
   fixtures were built another way (e.g. scoped `just <plat> build-fixtures`).
   Only `test-all` is gated — `test`/`test-integration` stay ungated for
-  partial-fixture quick iteration. The stamp is presence-only (does not
-  detect stale fixtures).
+  partial-fixture quick iteration.
+
+  **Staleness detection (added 2026-05-25, content-hash).** Beyond presence,
+  C/C++ fixture cells now carry a content-hash input signature so an *edited
+  but not-rebuilt* source is caught (the harness consumes prebuilt binaries,
+  so a stale binary would otherwise be used silently). `nros_cmake_fixture_build`
+  (`scripts/build/fixture-matrix.sh`, the chokepoint every C/C++ cell routes
+  through) writes `<build-dir>/.nros-fixture.inputsig` on successful build =
+  `sha1(shared-inputs + cell tracked sources)`, where shared-inputs =
+  `git ls-files packages/ Cargo.lock rust-toolchain.toml cmake/` + the
+  third-party submodule gitlinks (SDK pins). `test-all` runs a
+  `_check-fixtures-stale` preflight that recomputes each cell's signature and
+  **warns (non-fatal)** with the list of stale cells + a
+  `just build-test-fixtures` hint (incremental — only changed cells rebuild).
+  Content-hash (not mtime) so `git checkout`/`touch` don't trigger false
+  staleness; granularity is per cell (a cpp-only edit flags only cpp cells; a
+  shared-crate edit flags all — correct, they all link it). Honest limits: the
+  shared-input set is coarse (all of `packages/`) so any crate edit flags every
+  cell (safe over-invalidation); it's a heuristic, not the cargo/cmake
+  dependency graph; **Rust cells are not yet covered** (cargo owns their
+  incrementality; a follow-up would hash the rust example + linked crates the
+  same way). Bypass everything with `NROS_SKIP_FIXTURE_CHECK=1`.
 
 #### 2026-05-22 Failed Tests by Group
 
