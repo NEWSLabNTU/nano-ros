@@ -141,8 +141,30 @@ them requires the full cyclonedds-on-4.4 bring-up (cyclonedds submodule patches,
 host idlc, cmake glue) plus a 2-node runtime discovery test — a separate effort
 tracked alongside the cyclonedds-4.4 work, not the zenoh baseline.
 
-**Reproducibility note:** the build above ran via `tmp/zephyr-44-orchestrate.sh`
-(builds host codegen, prepends the 3.12 venv to PATH, passes the codegen tool).
-Folding this into a `just zephyr build NROS_ZEPHYR_VERSION=4.4` path (version-
-gating the `build-fixtures` recipe, which currently inlines 3.7 patches) is the
-remaining orchestration polish.
+## Update — orchestration polish: `just zephyr build-one` (2026-05-25)
+
+Added a focused `build-one <example> <rmw>` recipe (`just/zephyr.just`) that
+reproduces the orchestration first-class on either line: it resolves the
+versioned workspace, (4.4) prepends the Python 3.12 venv to PATH + selects the
+host toolchain, builds host `nros-codegen`, and `west build`s the example with
+`-D_NANO_ROS_CODEGEN_TOOL`. **Verified on 4.4:**
+`NROS_ZEPHYR_VERSION=4.4 just zephyr build-one c/talker zenoh` →
+`zephyr.elf`. The 3.7 path uses the established ambient toolchain (same,
+simpler branch — not re-run here). The whole `build-fixtures` matrix is *not*
+version-gated yet (it inlines 3.7 patches + builds C++/cyclonedds that aren't
+4.4-ready); `build-one` is the reproducible 4.4 entry point meanwhile.
+
+### First version-aware-overlay case: ETH_NATIVE_POSIX → ETH_NATIVE_TAP
+
+Adding the NSOS board overlay (`boards/native_sim_native_64.conf`) to the 4.4
+build surfaced a genuine version-divergent symbol: the overlay sets
+`CONFIG_ETH_NATIVE_POSIX=n` (disable the native eth driver so NSOS offload is
+used), but 4.4 renamed it `CONFIG_ETH_NATIVE_TAP` (driver `eth_native_posix`
+→ `eth_native_tap`). Unlike `MAX_PTHREAD_COUNT` (deprecated/redundant →
+deletable), this `=n` is **meaningful on both lines**, so it cannot just be
+dropped — it needs a per-line value in a SHARED overlay. **This is the first
+concrete case that requires the version-aware overlay mechanism** Task 8
+deferred (a 4.x snippet / per-line conf selection — Phase 180.C). Until that
+lands, `build-one` omits the board overlay on 4.4; the build still
+compiles+boots using the default tap driver (no NSOS). Tracked as a Task 7
+follow-up / input to Phase 180.C.

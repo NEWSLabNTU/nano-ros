@@ -122,7 +122,52 @@ doctor:
 # Build Zephyr core artifacts.
 [group("main")]
 build:
-    @echo "Zephyr has no separate core build; use 'just zephyr build-examples' for examples."
+    @echo "Zephyr has no separate core build; use 'just zephyr build-examples' for the matrix, or 'just zephyr build-one <example> <rmw>' for one."
+
+# Build ONE Zephyr example for the selected line (NROS_ZEPHYR_VERSION).
+# Reproduces the Phase 180.A orchestration: host nros-codegen + (4.4) the
+# Python 3.12 venv on PATH + host toolchain. Assumes `just zephyr setup`
+# already ran (it applies the 3.7 patch set / provisions the 4.4 venv).
+#   just zephyr build-one c/talker zenoh
+#   NROS_ZEPHYR_VERSION=4.4 just zephyr build-one c/talker zenoh
+[group("examples")]
+build-one example rmw="zenoh" board="native_sim/native/64":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr {{NROS_ZEPHYR_VERSION}} workspace not set up — run:"
+        echo "  NROS_ZEPHYR_VERSION={{NROS_ZEPHYR_VERSION}} just zephyr setup"
+        exit 1
+    fi
+    # 4.4 line: run west through the Python 3.12 venv (Task 2b) and use the
+    # host toolchain (native_sim = host gcc; avoids an SDK-version dependency).
+    venvbin="{{ZEPHYR_VENV_BIN}}"
+    if [ -n "$venvbin" ]; then
+        export PATH="$(realpath "$venvbin"):$PATH"
+        export ZEPHYR_TOOLCHAIN_VARIANT=host
+    fi
+    # Host codegen tool — nros_generate_interfaces() needs it (version-independent).
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+    src="$(pwd)/examples/zephyr/{{example}}"
+    [ -d "$src" ] || { echo "no example at $src"; exit 1; }
+    # CONF_FILE = base + RMW overlay. The native_sim NSOS board overlay
+    # (boards/<board>.conf) is intentionally NOT added on the 4.4 line yet:
+    # it sets CONFIG_ETH_NATIVE_POSIX=n, renamed to CONFIG_ETH_NATIVE_TAP on
+    # 4.4 (driver eth_native_posix -> eth_native_tap). That is a genuine
+    # version-divergent symbol in a SHARED overlay and needs the version-aware
+    # overlay mechanism (Phase 180.C / Task 7 follow-up), not a polish hack.
+    # Without it the 4.4 build still compiles+boots (using the default tap
+    # driver), which is what this recipe reproduces.
+    conf="prj.conf;prj-{{rmw}}.conf"
+    bd="build-$(echo '{{example}}' | tr '/' '-')-{{rmw}}"
+    echo "Zephyr {{NROS_ZEPHYR_VERSION}}: building zephyr/{{example}} ({{rmw}}, {{board}}) -> $workspace/$bd"
+    cd "$workspace"
+    west build -b "{{board}}" -d "$bd" "$src" -- \
+        -DCONF_FILE="$conf" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
+    echo "Built: $workspace/$bd/zephyr/zephyr.elf"
 
 # Build Zephyr Rust examples (all Rust examples for native_sim)
 [group("examples")]
