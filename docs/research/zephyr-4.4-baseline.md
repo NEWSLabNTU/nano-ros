@@ -190,3 +190,15 @@ NSOS line overlay → nros cargo + zenoh-pico) holds together end-to-end.
 
 Run via `tmp/zephyr-44-e2e.sh` (ad-hoc). Promoting it to a proper
 nextest/`nros-tests` case for both Zephyr lines is part of Task 10 (dual CI).
+
+## Update — build-fixtures version-gated (2026-05-26)
+
+`just zephyr build-fixtures` is now version-aware. On the 4.4 line it: runs
+west via the 3.12 venv + host toolchain, skips the 3.7-only patch set, uses
+the version-aware NSOS overlay (`cmake/zephyr/native-sim-line-4.4.conf`), and
+restricts the matrix to the proven **zenoh native_sim** subset (xrce +
+cyclonedds gated off pending Tasks 5–6 / cyclonedds-on-4.4). 3.7 is unchanged.
+Verified: `NROS_ZEPHYR_VERSION=4.4 NROS_ZEPHYR_FIXTURE_FILTER='build-c-(talker|listener)-zenoh'
+just zephyr build-fixtures` builds both ELFs via the full recipe path
+("Zephyr test fixtures built successfully"). The 4.4 matrix expands to rust/cpp
++ other RMWs as they become 4.4-ready.
