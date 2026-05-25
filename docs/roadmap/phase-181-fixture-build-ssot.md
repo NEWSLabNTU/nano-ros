@@ -73,34 +73,64 @@ follow-up). Does not block `just ci` once landed.
 - **Files**: `just/native.just`, `scripts/build/fixtures-manifest.py`,
   `scripts/test/rust-fixture-stale.sh`.
 
-### 181.4 — Roll out remaining rust platforms
-- [x] Shared build loop extracted to `scripts/build/fixtures-build.sh
-  <platform> [lang]` (DRY foundation every platform reuses; per-platform env +
-  codegen stay in the recipe, per-fixture options from the manifest). Honors
-  NROS_JOBSERVER + parallel/serial.
-- [x] native `build-fixture-rust` refactored onto the shared script (verified:
-  40 entries, 2 s).
-- [x] qemu-arm-baremetal rust entries authored (12, plain cargo; cross target
-  via each example's `.cargo/config`); verified building through
-  `fixtures-build.sh qemu-arm-baremetal rust` (cortex-m3, 17 s). Probe covers
-  them automatically.
-- [ ] Remaining: freertos, nuttx, threadx-linux, threadx-riscv64 (plain-cargo
-  zenoh variants), esp32 (`+nightly`, xtensa toolchain), stm32f4. Each: author
-  entries + point the recipe at `fixtures-build.sh`, verify `build-fixtures`.
-  Several are SDK-gated (FREERTOS/NETX/IDF env). zephyr rust uses `west build`
-  (not cargo) — out of the cargo-manifest scope; revisit with C/C++ (181.5).
-- [ ] Wire qemu-arm-baremetal's build recipe to `fixtures-build.sh` (today the
-  broad `native build-examples` find still builds them; manifest + recipe
-  match, so no thrash — recipe migration is a 181.6 cleanup).
-- **Files**: `scripts/build/fixtures-build.sh`, `just/native.just`,
-  `examples/fixtures.toml`.
+### 181.4 — Rust fixture migration (per platform)
 
-### 181.5 — C/C++ cells
-- [ ] Add `cmake_defs` to manifest entries for C/C++ cells; `build-fixtures`
-  recipes + `nros_cmake_fixture_build` callers read them. Probe stays on the
-  `.nros-fixture.inputsig` content hash (no rebuild).
-- **Files**: `examples/fixtures.toml`, `just/*.just`,
-  `scripts/build/fixture-matrix.sh`.
+Shared mechanism (done): `scripts/build/fixtures-build.sh <platform> [lang]`
+— DRY build loop every platform reuses. Per platform: author manifest entries
+→ point the platform's rust `build-fixtures`/`build-examples` at
+`fixtures-build.sh <plat> rust` → verify the build → probe stays automatic.
+
+- [x] **181.4.a native** — 40 entries; `build-fixture-rust` → shared script.
+  Verified (2 s).
+- [x] **181.4.b qemu-arm-baremetal** — 12 plain-cargo entries (cross target via
+  each example's `.cargo/config`); verified via the shared script (17 s).
+  Recipe still built by the broad `native build-examples` find → wire in 181.6.
+- [ ] **181.4.c stm32f4** — plain cargo, thumbv7em; no SDK gate. Currently
+  built by `native build-examples`. **Files**: `just/native.just`,
+  `examples/fixtures.toml`.
+- [ ] **181.4.d freertos** — plain-cargo zenoh (`--no-default-features
+  --features rmw-zenoh --target-dir target-zenoh`) + role examples. SDK-gated:
+  `FREERTOS_DIR`/`LWIP_DIR` (direnv `FREERTOS_PORT`). Cyclone rust is cmake →
+  181.5. **Files**: `just/freertos.just`.
+- [ ] **181.4.e nuttx** — plain cargo (`-Z build-std`, pinned nightly +
+  `rust-src`). SDK-gated: nuttx kernel + external apps. **Files**:
+  `just/nuttx.just`.
+- [ ] **181.4.f threadx-linux** — plain-cargo zenoh (`target-zenoh`) +
+  `--manifest-path` bins (`logging-smoke-threadx-linux`) + `--release` host
+  variants. SDK-gated: threadx/netx linux (NSOS). **Files**:
+  `just/threadx-linux.just`.
+- [ ] **181.4.g threadx-riscv64** — plain-cargo zenoh. SDK-gated: threadx/netx
+  + riscv64 toolchain. Cyclone rust is cmake → 181.5. **Files**:
+  `just/threadx-riscv64.just`.
+- [ ] **181.4.h esp32 / qemu-esp32-baremetal** — `cargo +nightly`; xtensa/riscv
+  ESP toolchain (not installed in the default dev env). **Files**:
+  `just/esp32.just`.
+- [ ] **181.4.i zephyr** — rust builds via `west build`, NOT cargo, so the
+  cargo manifest + `fixtures-build.sh` do not apply. Decide: a west-aware entry
+  type, or keep zephyr rust outside the SSOT. **Files**: `just/zephyr.just`.
+- [ ] **181.4.j px4** — uORB is C++-only (no rust/C fixture cells per CLAUDE.md).
+  N/A; close when 181 lands.
+
+### 181.5 — C/C++ (cmake) fixture migration (per platform)
+
+Add `cmake_defs` to manifest entries for C/C++ cells; the `build-fixtures`
+recipes and `nros_cmake_fixture_build` callers read them. Staleness is already
+covered by the `.nros-fixture.inputsig` content hash (no rebuild needed), so
+this consolidates BUILD options only.
+
+- [ ] **181.5.a native** c/cpp — `-DNROS_RMW={zenoh,xrce,cyclonedds}` cells
+  (talker/listener/service/action) + `cpp parameters`. **Files**:
+  `just/native.just`.
+- [ ] **181.5.b freertos** c/cpp — cyclone talker fixtures. **Files**:
+  `just/freertos.just`.
+- [ ] **181.5.c nuttx** c/cpp. **Files**: `just/nuttx.just`.
+- [ ] **181.5.d threadx-linux** c/cpp. **Files**: `just/threadx-linux.just`.
+- [ ] **181.5.e threadx-riscv64** c/cpp + cmake/corrosion cyclone rust cells.
+  **Files**: `just/threadx-riscv64.just`.
+- [ ] **181.5.f zephyr** c/cpp/rust — west/cmake cells. **Files**:
+  `just/zephyr.just`.
+- [ ] **181.5.g esp32** c/cpp (if any). **Files**: `just/esp32.just`.
+- [ ] **181.5.h px4** cpp uORB register-check. **Files**: `just/px4.just`.
 
 ### 181.6 — Remove duplicated options from recipes (true SSOT)
 - [ ] After each migration, delete the now-redundant inline build options so
