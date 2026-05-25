@@ -545,15 +545,36 @@ passed.
         (`try_recv`/`borrow`; no callback-registration variant like the Rust
         `executor.register_subscription` the working Rust listener uses), so
         there is no example-side workaround — the fix must be runtime-side.
-        Pinning the exact mismatch (DataReader create / type name /
-        `request_data` stream config in the C++ path vs the working C path)
-        needs Agent-side DataReader/DataWriter match logs, which are
-        currently unobservable here: a manually launched `MicroXRCEAgent`
-        exits 144 under the sandbox, and the nextest-spawned agent is
-        SIGKILLed on drop before its `-v6` trace flushes. Next step: capture
-        agent `-v6` output (graceful agent shutdown, or run outside the
-        sandbox) and/or add firmware-side XRCE create/read trace to compare
-        the C++ vs C DataReader registration.
+
+        **Root cause pinned 2026-05-25** via temporary `printf` traces in the
+        XRCE C backend (`session.c` / `subscriber.c` / `publisher.c`, since
+        reverted). Agent-side `-v6` was unusable (a manual `MicroXRCEAgent`
+        exits 144 under the sandbox; the nextest-spawned agent is SIGKILLed
+        before flush), so the diagnosis is firmware-side:
+        * Topic/type match perfectly — pub and sub both register
+          `rt/chatter` / `std_msgs::msg::dds_::Int32_`.
+        * The talker's `uxr_buffer_topic` writes succeed, and the **listener's
+          `xrce_topic_callback` DOES fire** (`oid.id=4 type=6 len=8`) — data
+          reaches the listener's input stream.
+        * But the callback finds **every `st->subscriber_slots[i]` with
+          `active=0, dr_id=0`** even though the subscription was registered
+          (`dr_id=4, active=1`) on the *same* `st` pointer.
+        * Session-lifecycle trace shows **multiple `create_session` calls per
+          listener process**: each one `calloc`s a fresh `xrce_session_state_t`
+          (zeroing `subscriber_slots`) and, because the previous one was freed,
+          frequently reuses the same heap address. The subscription is
+          registered in one session generation, the session is then
+          re-created (slots wiped), and when topic data arrives the callback
+          iterates a zeroed slot array → no match → ring never fills →
+          `try_recv` returns nothing.
+        The C path creates its session once and never loses the slot; the C++
+        listener path (nros-cpp init / executor / session open) re-creates the
+        XRCE session repeatedly. **Fix target:** stop the C++ listener path
+        from re-creating the XRCE session after entities are registered (create
+        once + reuse), or re-apply subscriber-slot registrations after a
+        session re-create. Next step: trace the `create_session` caller in the
+        nros-cpp / nros-node session-open + executor flow to find the repeated
+        open.
 
   **CycloneDDS slice — `native_sim` runtime, root-caused 2026-05-25
   (Phase 179.G).** 177.24 unblocked the Cyclone *fixture build*; the
