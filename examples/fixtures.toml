@@ -641,3 +641,160 @@ target_dir = "target-zenoh"
 # C/C++ cells (content hash, no rebuild needed), so the manifest mainly
 # consolidates their BUILD options. To be filled during migration.
 # ===========================================================================
+
+# ===========================================================================
+# native — C / C++ (cmake). Role examples x {zenoh,xrce} into build-<rmw>/.
+# Codegen tool + idlc paths are platform/recipe-level (not per-cell).
+# Cyclone C/C++ cells are gated on `just cyclonedds setup` — added later.
+# ===========================================================================
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/talker"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "xrce"
+dir = "examples/native/c/talker"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/listener"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "xrce"
+dir = "examples/native/c/listener"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/service-server"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "xrce"
+dir = "examples/native/c/service-server"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/service-client"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "xrce"
+dir = "examples/native/c/service-client"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/action-server"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "xrce"
+dir = "examples/native/c/action-server"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/native/c/action-client"
+
+[[fixture]]
+platform = "native"
+lang = "c"
+rmw = "xrce"
+dir = "examples/native/c/action-client"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/talker"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/native/cpp/talker"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/listener"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/native/cpp/listener"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/service-server"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/native/cpp/service-server"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/service-client"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/native/cpp/service-client"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/action-server"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/native/cpp/action-server"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/action-client"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/native/cpp/action-client"
+
+[[fixture]]
+platform = "native"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/native/cpp/parameters"
+target = "cpp_parameters"

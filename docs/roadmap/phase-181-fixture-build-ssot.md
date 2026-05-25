@@ -128,9 +128,20 @@ recipes and `nros_cmake_fixture_build` callers read them. Staleness is already
 covered by the `.nros-fixture.inputsig` content hash (no rebuild needed), so
 this consolidates BUILD options only.
 
-- [ ] **181.5.a native** c/cpp — `-DNROS_RMW={zenoh,xrce,cyclonedds}` cells
-  (talker/listener/service/action) + `cpp parameters`. **Files**:
-  `just/native.just`.
+- [~] **181.5.a native** c/cpp — entries authored (roles × {zenoh,xrce} for
+  c+cpp + `cpp parameters` target); `fixtures-manifest.py` now emits cmake
+  records `<dir>\x1f<build-subdir>\x1f<-D defs>\x1f<target>`. **Remaining**
+  (the substantial part): a shared cmake build path + recipe migration. Needs
+  (1) one cmake builder that configures-on-sig-change, builds (optionally a
+  single `--target`), and writes `.nros-fixture.inputsig` — today native uses
+  `nros_cmake_configure_if_needed` (no inputsig) while cross platforms use
+  `nros_cmake_fixture_build` (writes inputsig); unify them; (2) platform `-D`
+  injection (codegen tool, idlc, toolchain) stays recipe-supplied via env;
+  (3) cyclone cells gated on `just cyclonedds setup` (verify-gated). Note
+  native C/C++ cells currently get NO staleness probe (only fixture-matrix
+  cells write `.inputsig`) — unifying on the builder fixes that too.
+  **Files**: `just/native.just`, `scripts/build/fixtures-build.sh`,
+  `scripts/build/fixture-matrix.sh`.
 - [ ] **181.5.b freertos** c/cpp — cyclone talker fixtures. **Files**:
   `just/freertos.just`.
 - [ ] **181.5.c nuttx** c/cpp. **Files**: `just/nuttx.just`.

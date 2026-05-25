@@ -53,6 +53,15 @@ def env_str(entry):
     return " ".join(f"{k}={v}" for k, v in (entry.get("env") or {}).items())
 
 
+def cmake_defs(entry):
+    # `rmw` shorthand expands to -DNROS_RMW=<rmw>; explicit cmake_defs override.
+    defs = {}
+    if entry.get("rmw"):
+        defs["NROS_RMW"] = entry["rmw"]
+    defs.update(entry.get("cmake_defs") or {})
+    return " ".join(f"-D{k}={v}" for k, v in defs.items())
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("command", choices=["list"])
@@ -69,7 +78,15 @@ def main():
             continue
         if a.rmw and e.get("rmw") != a.rmw:
             continue
-        sys.stdout.write(f"{e['dir']}{SEP}{env_str(e)}{SEP}{cargo_args(e)}\n")
+        if e.get("lang") in ("c", "cpp"):
+            # cmake record: <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>
+            sub = e.get("build_subdir") or (f"build-{e['rmw']}" if e.get("rmw") else "build")
+            sys.stdout.write(
+                f"{e['dir']}{SEP}{sub}{SEP}{cmake_defs(e)}{SEP}{e.get('target', '')}\n"
+            )
+        else:
+            # cargo record: <dir>\x1f<env>\x1f<cargo-args>
+            sys.stdout.write(f"{e['dir']}{SEP}{env_str(e)}{SEP}{cargo_args(e)}\n")
 
 
 if __name__ == "__main__":
