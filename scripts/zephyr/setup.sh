@@ -56,6 +56,10 @@ else
     WORKSPACE_DIR="$IN_TREE_DEFAULT"
 fi
 
+# Phase 180.A — west manifest selector. west.yml = 3.7 LTS (default),
+# west-4.4.yml = 4.4 rolling. Set via NROS_ZEPHYR_MANIFEST.
+MANIFEST="${NROS_ZEPHYR_MANIFEST:-west.yml}"
+
 DOWNLOAD_DIR="$SCRIPT_DIR/downloads"
 SDK_INSTALL_DIR="$SCRIPT_DIR/sdk"
 
@@ -382,10 +386,10 @@ cd "$WORKSPACE_DIR"
 # Create manifest directory with west.yml, then replace with symlink
 # (west init -l follows symlinks during init, so we copy first)
 mkdir -p "$WORKSPACE_DIR/$NANO_ROS_NAME"
-cp "$NANO_ROS_ROOT/west.yml" "$WORKSPACE_DIR/$NANO_ROS_NAME/west.yml"
+cp "$NANO_ROS_ROOT/$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME/$MANIFEST"
 
-# Initialize west
-west init -l "$WORKSPACE_DIR/$NANO_ROS_NAME"
+# Initialize west (--mf selects the 3.7 vs 4.4 manifest)
+west init -l --mf "$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 
 # Replace with symlink to real nros
 rm -rf "$WORKSPACE_DIR/$NANO_ROS_NAME"

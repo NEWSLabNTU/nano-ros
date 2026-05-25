@@ -2,10 +2,19 @@ set working-directory := '..'
 
 default:
     @just --list --justfile {{source_file()}}
+# Zephyr line selector (Phase 180.A). "3.7" = LTS (default, west.yml);
+# "4.4" = latest rolling (west-4.4.yml, sibling workspace). Set
+# $NROS_ZEPHYR_VERSION to pick.
+NROS_ZEPHYR_VERSION := env("NROS_ZEPHYR_VERSION", "3.7")
+
+# West manifest for the selected line.
+ZEPHYR_MANIFEST := if NROS_ZEPHYR_VERSION == "4.4" { "west-4.4.yml" } else { "west.yml" }
+
 # Zephyr workspace path. Default: in-tree (gitignored) `zephyr-workspace/`.
 # Falls back to legacy sibling `../nano-ros-workspace` for users set up
-# before the in-tree default. Set $NROS_ZEPHYR_WORKSPACE to override.
-ZEPHYR_WORKSPACE := env("NROS_ZEPHYR_WORKSPACE", if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else if path_exists("../nano-ros-workspace") == "true" { "../nano-ros-workspace" } else { "zephyr-workspace" })
+# before the in-tree default. The 4.4 line uses its own sibling so the
+# two trees coexist. Set $NROS_ZEPHYR_WORKSPACE to override either.
+ZEPHYR_WORKSPACE := env("NROS_ZEPHYR_WORKSPACE", if NROS_ZEPHYR_VERSION == "4.4" { "../nano-ros-workspace-4.4" } else if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else if path_exists("../nano-ros-workspace") == "true" { "../nano-ros-workspace" } else { "zephyr-workspace" })
 
 # Install the Zephyr workspace at $repo/zephyr-workspace/ (large download).
 # Idempotent: skips if the workspace already exists.
@@ -21,7 +30,7 @@ setup *ARGS:
         echo "Zephyr workspace already present at $WORKSPACE"
         echo "To reinstall, run: just zephyr setup --force"
     else
-        ./scripts/zephyr/setup.sh $ARGS
+        NROS_ZEPHYR_MANIFEST="{{ZEPHYR_MANIFEST}}" NROS_ZEPHYR_WORKSPACE="$WORKSPACE" ./scripts/zephyr/setup.sh $ARGS
     fi
     # Phase 160.B — ensure the Cortex-A9 (qemu_cortex_a9) toolchain
     #   1. `armv7a-none-eabi` rust target (no_std core / compiler_builtins)
@@ -31,6 +40,9 @@ setup *ARGS:
     # Both are idempotent — safe to run on every `just zephyr setup`.
     echo "[zephyr setup] ensuring armv7a-none-eabi Rust target..."
     rustup target add armv7a-none-eabi
+    if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
+        echo "[zephyr setup] 4.4 line: patch set is Phase 180.A Tasks 4-9 (WIP) — skipping legacy 3.7 patches"
+    else
     echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
     echo "[zephyr setup] applying AArch64 / Cortex-R Rust patches (idempotent)..."
@@ -62,6 +74,7 @@ setup *ARGS:
     bash ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
     echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
     bash ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
+    fi
     echo "[zephyr setup] ensuring Micro XRCE-DDS Agent for Zephyr XRCE tests..."
     just xrce setup
 
