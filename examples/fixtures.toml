@@ -374,8 +374,266 @@ lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/serial-listener"
 
 # ===========================================================================
-# C/C++ cells (cmake) and remaining cross platforms (freertos, nuttx,
-# threadx*, esp32, stm32f4, zephyr) — ROLLOUT PENDING.
+# stm32f4 — Rust (cortex-m4 thumbv7em; cross target via .cargo/config).
+# Plain cargo; no feature variants.
+# ===========================================================================
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/talker"
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/talker-rtic"
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/talker-embassy"
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/listener-rtic"
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/service-server-rtic"
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/service-client-rtic"
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/action-server-rtic"
+
+[[fixture]]
+platform = "stm32f4"
+lang = "rust"
+dir = "examples/stm32f4/rust/action-client-rtic"
+
+# ===========================================================================
+# freertos (qemu MPS2-AN385) — Rust. Role examples, zenoh RMW into
+# target-zenoh/ (cyclonedds is cmake — see 181.5). Codegen runs in the recipe.
+# ===========================================================================
+
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/rust/talker"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/rust/listener"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/rust/service-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/rust/service-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/rust/action-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/rust/action-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+# ===========================================================================
+# nuttx (qemu ARM virt) — Rust role examples. Plain cargo (nightly pinned by
+# the example's rust-toolchain.toml). Codegen runs in the recipe.
+# ===========================================================================
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+dir = "examples/qemu-arm-nuttx/rust/talker"
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+dir = "examples/qemu-arm-nuttx/rust/listener"
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+dir = "examples/qemu-arm-nuttx/rust/service-server"
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+dir = "examples/qemu-arm-nuttx/rust/service-client"
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+dir = "examples/qemu-arm-nuttx/rust/action-server"
+
+[[fixture]]
+platform = "nuttx"
+lang = "rust"
+dir = "examples/qemu-arm-nuttx/rust/action-client"
+
+# ===========================================================================
+# threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples,
+# zenoh RMW into target-zenoh/.
+# ===========================================================================
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/talker"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/listener"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/service-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/service-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/action-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/threadx-linux/rust/action-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+# ===========================================================================
+# threadx-riscv64 (qemu RISC-V64 ThreadX/NetX) — Rust role examples, zenoh RMW
+# into target-zenoh/. The board config dirs (THREADX_CONFIG_DIR/NETX_CONFIG_DIR)
+# are platform env exported by the recipe before the shared builder.
+# ===========================================================================
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/rust/talker"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/rust/listener"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/rust/service-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/rust/service-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/rust/action-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/rust/action-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+# ===========================================================================
+# C/C++ cells (cmake) + esp32 (+nightly) + zephyr (west) + threadx-linux
+# host bins / variants — ROLLOUT PENDING (see phase doc 181.4.h/i, 181.5).
 #
 # Same idea applies: each C/C++ cell's cmake -D options (NROS_RMW, board cache
 # vars) become `cmake_defs` here, so nros_cmake_fixture_build and the recipes

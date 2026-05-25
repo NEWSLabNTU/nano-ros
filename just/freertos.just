@@ -67,12 +67,12 @@ build-examples:
         echo "ERROR: lwIP not found at $LWIP_DIR. Run: just setup-freertos"
         exit 1
     fi
+    # Codegen prep (per-platform); build options come from the SSOT manifest
+    # (examples/fixtures.toml) via the shared builder. Phase 181.4.d.
     for example in talker listener service-server service-client action-server action-client; do
-        echo "  Building $example..."
-        (cd examples/qemu-arm-freertos/rust/$example && \
-            "$nros_cli" generate-rust --force >/dev/null && \
-            cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh)
+        ( cd examples/qemu-arm-freertos/rust/$example && "$nros_cli" generate-rust --force >/dev/null )
     done
+    bash scripts/build/fixtures-build.sh freertos rust
     echo "FreeRTOS QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

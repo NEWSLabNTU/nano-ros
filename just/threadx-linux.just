@@ -51,11 +51,8 @@ build-examples:
         exit 0
     fi
     echo "Building ThreadX Linux examples..."
-    for example in talker listener service-server service-client action-server action-client; do
-        echo "  Building $example..."
-        (cd examples/threadx-linux/rust/$example && \
-            cargo build $cargo_profile_args --no-default-features --features rmw-zenoh --target-dir target-zenoh)
-    done
+    # Build options from the SSOT manifest (examples/fixtures.toml). Phase 181.4.f.
+    bash scripts/build/fixtures-build.sh threadx-linux rust
     echo "ThreadX Linux examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

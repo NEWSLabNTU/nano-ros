@@ -82,14 +82,12 @@ build-examples:
         exit 0
     fi
     echo "Building ThreadX QEMU RISC-V 64 examples..."
+    # Board config dirs are platform env (same for every fixture) — export them
+    # for the shared builder; per-fixture options come from the SSOT manifest
+    # (examples/fixtures.toml). Phase 181.4.g.
     rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
-    for example in talker listener service-server service-client action-server action-client; do
-        echo "  Building $example..."
-        (cd examples/qemu-riscv64-threadx/rust/$example && \
-         THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
-           cargo build $cargo_profile_args --no-default-features --features rmw-zenoh \
-             --target-dir target-zenoh)
-    done
+    export THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config"
+    bash scripts/build/fixtures-build.sh threadx-riscv64 rust
     echo "ThreadX QEMU RISC-V examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

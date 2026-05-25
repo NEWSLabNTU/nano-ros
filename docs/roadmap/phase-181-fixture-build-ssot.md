@@ -85,21 +85,21 @@ Shared mechanism (done): `scripts/build/fixtures-build.sh <platform> [lang]`
 - [x] **181.4.b qemu-arm-baremetal** — 12 plain-cargo entries (cross target via
   each example's `.cargo/config`); verified via the shared script (17 s).
   Recipe still built by the broad `native build-examples` find → wire in 181.6.
-- [ ] **181.4.c stm32f4** — plain cargo, thumbv7em; no SDK gate. Currently
+- [x] **181.4.c stm32f4** — plain cargo, thumbv7em; no SDK gate. Currently
   built by `native build-examples`. **Files**: `just/native.just`,
   `examples/fixtures.toml`.
-- [ ] **181.4.d freertos** — plain-cargo zenoh (`--no-default-features
+- [x] **181.4.d freertos** — plain-cargo zenoh (`--no-default-features
   --features rmw-zenoh --target-dir target-zenoh`) + role examples. SDK-gated:
   `FREERTOS_DIR`/`LWIP_DIR` (direnv `FREERTOS_PORT`). Cyclone rust is cmake →
   181.5. **Files**: `just/freertos.just`.
-- [ ] **181.4.e nuttx** — plain cargo (`-Z build-std`, pinned nightly +
+- [x] **181.4.e nuttx** — plain cargo (`-Z build-std`, pinned nightly +
   `rust-src`). SDK-gated: nuttx kernel + external apps. **Files**:
   `just/nuttx.just`.
-- [ ] **181.4.f threadx-linux** — plain-cargo zenoh (`target-zenoh`) +
+- [x] **181.4.f threadx-linux** — plain-cargo zenoh (`target-zenoh`) +
   `--manifest-path` bins (`logging-smoke-threadx-linux`) + `--release` host
   variants. SDK-gated: threadx/netx linux (NSOS). **Files**:
   `just/threadx-linux.just`.
-- [ ] **181.4.g threadx-riscv64** — plain-cargo zenoh. SDK-gated: threadx/netx
+- [x] **181.4.g threadx-riscv64** — plain-cargo zenoh. SDK-gated: threadx/netx
   + riscv64 toolchain. Cyclone rust is cmake → 181.5. **Files**:
   `just/threadx-riscv64.just`.
 - [ ] **181.4.h esp32 / qemu-esp32-baremetal** — `cargo +nightly`; xtensa/riscv

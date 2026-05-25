@@ -49,12 +49,10 @@ build-examples:
         exit 0
     fi
     echo "Building NuttX QEMU ARM virt examples..."
-    for example in talker listener service-server service-client action-server action-client; do
-        echo "  Building $example..."
-        # No +nightly override — the nightly version is pinned by
-        # examples/qemu-arm-nuttx/rust-toolchain.toml (see comments there).
-        (cd examples/qemu-arm-nuttx/rust/$example && cargo build $cargo_profile_args)
-    done
+    # Build options come from the SSOT manifest (examples/fixtures.toml) via
+    # the shared builder. No +nightly override — each example pins its nightly
+    # via rust-toolchain.toml (cargo picks it up per dir). Phase 181.4.e.
+    bash scripts/build/fixtures-build.sh nuttx rust
     echo "NuttX QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
