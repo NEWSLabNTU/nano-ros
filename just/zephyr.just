@@ -49,7 +49,11 @@ setup *ARGS:
     if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
         echo "[zephyr setup] 4.4 line: provisioning Python 3.12 venv (Zephyr 4.4 requires >=3.12)..."
         bash ./scripts/zephyr/provision-py312-venv.sh "$WORKSPACE"
-        echo "[zephyr setup] 4.4 line: patch set is Phase 180.A Tasks 4-9 (WIP) — skipping legacy 3.7 patches"
+        echo "[zephyr setup] 4.4 line: applying 4.4 NSOS patches (Phase 180.A)..."
+        # Task 5 — NSOS recvmsg (cyclonedds UDP receive). Task 6 multicast
+        # patches join here as they are re-anchored to the 4.4 nsos shape.
+        bash ./scripts/zephyr/nsos-recvmsg-patch-4.4.sh "$WORKSPACE"
+        echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"
     else
     echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
