@@ -235,6 +235,53 @@ generator-neutral — generator is a configure-time flag):
 - [ ] **181.5.g esp32** c/cpp (if any). **Files**: `just/esp32.just`.
 - [ ] **181.5.h px4** cpp uORB register-check. **Files**: `just/px4.just`.
 
+### 181.7 — Simplify cmake recipes via native cmake/ninja + build audit
+
+**Simplification (leverage cmake/ninja instead of reimplementing).** The two
+custom helpers reimplement what cmake+ninja already do:
+- `cmake --build` auto-reconfigures on CMakeLists/source-graph change
+  (`cmake_check_build_system` is in the generated Makefile — verified), so the
+  custom reconfigure content-hash (`nros_cmake_configure_if_needed`'s
+  `.nros-cmake.sig`) is largely redundant.
+- per-RMW build dirs have FIXED args (`build-zenoh/` is always `-DNROS_RMW=zenoh`),
+  so there's no arg-change reconfigure to track (the reason both sigs existed).
+- ninja gives build staleness (`ninja -n`), replacing the `.nros-fixture.inputsig`
+  content hash.
+
+  Target pattern (one shared helper, replaces both):
+  ```sh
+  [ -f "$bd/CMakeCache.txt" ] || cmake -S "$src" -B "$bd" -G Ninja "$@"   # configure once
+  cmake --build "$bd"                                                      # auto-reconfig + incremental
+  ```
+  Drops `nros_cmake_configure_if_needed` + `nros_cmake_fixture_build`'s sig
+  machinery and all three sig-file kinds (~36 files). Staleness probe becomes
+  `ninja -C "$bd" -n`. CMakePresets were considered but cmake 3.22 lacks preset
+  `include` (added in 3.23), so shared presets can't be factored without
+  generating per-example presets from the manifest — heavier; revisit if cmake
+  is bumped to ≥3.23.
+
+**Build audit (2026-05-26).**
+1. **C/C++ staleness probe is currently non-functional** — `.nros-fixture.inputsig`
+   = 0 files on disk. The 177.9 hook writes it only via `nros_cmake_fixture_build`
+   on a successful build (none since the hook landed), and native C/C++ uses
+   `configure_if_needed` which never writes it. So `_check-fixtures-stale`'s C/C++
+   path checks nothing today. The Ninja `ninja -n` probe fixes this properly.
+2. **Three inconsistent sig mechanisms** — `.nros-cmake.sig` (31, native,
+   content-hash reconfigure-gate), `.nros-cmake-fixture.sig` (5, cross, identity
+   reconfigure-gate), `.nros-fixture.inputsig` (0, probe). Two helpers, same job,
+   different logic → unify/drop per the simplification above.
+3. **Generator = Unix Makefiles** (all 138 dirs) → `make -q` unreliable; the
+   staleness gap. → Ninja.
+4. **Dual fixture enumeration** — qemu-arm-baremetal + stm32f4 are built by the
+   broad `native build-examples` find AND listed in the manifest → two sources;
+   181.6 should point the find at the manifest (or drop the overlap).
+5. **Transitional rust duplication** — `native build-fixture-extras` still
+   hard-codes rust builds (now cargo no-ops); 181.6 removes them.
+6. **Open build issues elsewhere** — Phase 177: 177.8 (fixtures-prebuild
+   contract), 177.9 / 177.9.F (runtime E2E reruns, zephyr), 177.26 (ThreadX
+   Cyclone peer interop). Phase 180 (zephyr consumable module): 20 open items —
+   separate effort.
+
 ### 181.6 — Remove duplicated options from recipes (true SSOT)
 - [ ] After each migration, delete the now-redundant inline build options so
   the manifest is the only source. `examples/README.md` coverage matrix and
