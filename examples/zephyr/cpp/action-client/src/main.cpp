@@ -42,8 +42,12 @@ int nros_app_main(int argc, char **argv)
 #if defined(CONFIG_NROS_RMW_ZENOH)
     NROS_TRY_RET(nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
 #elif defined(CONFIG_NROS_RMW_XRCE)
+    /* Distinct XRCE session name (Phase 177.9.F) — the 2-arg nros::init
+     * defaults the client key to "nros_cpp", colliding with the peer on
+     * the same Agent (the Agent resets the shared client); use this
+     * process's node name. */
     NROS_TRY_RET(nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
-                            CONFIG_NROS_DOMAIN_ID), 1);
+                            CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_action_client"), 1);
 #elif defined(CONFIG_NROS_RMW_CYCLONEDDS)
     NROS_TRY_RET(nros::init("", CONFIG_NROS_DOMAIN_ID), 1);
 #else

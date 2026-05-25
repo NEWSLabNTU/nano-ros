@@ -524,12 +524,46 @@ passed.
   - [x] `test_zephyr_xrce_cpp_service_e2e` — passes after the incoming
         `cf34366fd` ("fix: wire Zephyr XRCE setup") landed and the XRCE
         fixtures were rebuilt (2026-05-25 rerun).
-  - [x] `test_zephyr_xrce_cpp_action_e2e` — passes (same fix + rebuild).
+  - [ ] `test_zephyr_xrce_cpp_action_e2e` — **residual, separate bug.** With
+        the session-name fix below the goal is sent/received/completed but the
+        client gets `feedback=0` (deterministic across reruns). Feedback is a
+        volatile pub/sub stream; this is a distinct feedback-delivery defect,
+        NOT the session-key collision (it fails identically with collided or
+        distinct session names). Tracked as the remaining 177.9.F XRCE item.
   - [x] `test_zephyr_xrce_rust_service_e2e` — passes (same fix + rebuild);
         the earlier `Transport(ConnectionFailed)` is gone.
   - [x] `test_zephyr_xrce_rust_action_e2e` — passes (same fix + rebuild).
-  - [ ] `test_zephyr_xrce_cpp_talker_listener` — **only remaining failure.**
-        Deep-dived 2026-05-25. Talker publishes 1..N on port 2218; the C++
+  - [x] `test_zephyr_xrce_cpp_talker_listener` — **FIXED 2026-05-25 (root
+        cause: XRCE session-key collision).**
+
+        **RESOLUTION.** Every Zephyr C++ example calls the 2-arg
+        `nros::init(addr, domain)`, whose wrapper defaults the session name to
+        `"nros_cpp"` (`node.hpp::init` → `init(..., "nros_cpp")`). The XRCE
+        client key is `hash_session_key(session_name)` (`session.c`), so the
+        cpp talker AND cpp listener registered with the **same client key** on
+        the same Agent. XRCE-DDS treats same-key connections as one client and
+        **resets the existing session when the second connects**, dropping the
+        listener's DataReader → `try_recv` returns 0. The fix: pass a distinct
+        session name per process (its node name) to the 3-arg
+        `nros::init(addr, domain, session_name)` in
+        `examples/zephyr/cpp/{talker,listener,service-server,service-client,
+        action-server,action-client}/src/main.cpp`. Verified: the standalone
+        repro went 0 → 15/16 received and 3 boots → 1 boot; the nextest
+        `test_zephyr_xrce_cpp_talker_listener` now **passes**, and
+        `test_zephyr_xrce_cpp_service_e2e` (which had the same collision —
+        server+client both `"nros_cpp"`) now **passes** too (it failed when
+        reverted to the shared name, passes with distinct names). The
+        **reboot loop** documented below was a *symptom* of the collision
+        churn amplified under nextest load — the gdb standalone reproduced the
+        `receives 0` with **no reboot** (ran clean to iter 457), proving the
+        reboots were not the disease. **Footgun follow-up:** the 2-arg
+        `nros::init` default `"nros_cpp"` collides for any two cpp XRCE nodes
+        on one Agent; consider making the default client key unique per
+        process at the API level.
+
+        --- Original investigation history (the reboot saga; superseded by the
+        resolution above) ---
+        Talker publishes 1..N on port 2218; the C++
         listener stays at "Waiting for messages" and receives 0. Root cause
         isolated by differential:
         * The C++ *zenoh* pubsub test passes with the same `sub.try_recv()`
