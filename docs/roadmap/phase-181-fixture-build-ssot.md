@@ -176,6 +176,40 @@ have **no clean detect-only "would it rebuild?"** from the build tool:
 This consolidates cmake BUILD options into the manifest; staleness stays the
 content hash above (no rebuild needed).
 
+**Applying Ninja across all cmake examples/fixtures — plan.** Every fixture
+cmake configure funnels through exactly two helpers, so this is a 2-line change,
+not a per-example/per-recipe edit (examples' `CMakeLists.txt` stay
+generator-neutral — generator is a configure-time flag):
+1. **Flip the generator at the chokepoints** — add `-G Ninja` to the `cmake -S
+   -B` inside `nros_cmake_configure_if_needed`
+   (`scripts/build/cmake-incremental.sh`, covers native's 9 callsites) and
+   `nros_cmake_fixture_build` (`scripts/build/fixture-matrix.sh`, covers
+   freertos/nuttx/threadx×2). Gate on `command -v ninja` (fall back to the
+   default Make generator when ninja is absent) — nano-ros already puts the
+   pinned `third-party/ninja` (≥1.13) on PATH via `.envrc`.
+2. **Handle the in-place generator switch** — existing `build-*/` dirs are
+   Make-configured; cmake errors if the generator changes in-place. Both helpers
+   read `CMAKE_GENERATOR` from `CMakeCache.txt` and `rm -rf` the build dir when
+   it differs from the desired one (one-time reconfigure; also future-proof).
+   (`cmake-incremental.sh` already reconfigures on its content-sig; add the
+   generator-mismatch wipe; `fixture-matrix.sh` already `rm -rf`s on sig change
+   — extend it to also wipe on generator mismatch since `-G` isn't in its
+   caller-supplied identity sig.)
+3. **Staleness probe** — `scripts/test/cmake-fixture-stale.sh <build-dir>` runs
+   `ninja -C <build-dir> -n`; `ninja: no work to do.` ⇒ fresh, any planned
+   command ⇒ stale. `_check-fixtures-stale` adds a cmake pass iterating the
+   manifest's c/cpp entries → per `build-<rmw>/` dir → `ninja -n` (warn-only;
+   C/C++ needs SDK/cmake env to rebuild). Supersedes `.nros-fixture.inputsig`
+   for configured cells (keep the hash as a pre-first-build fallback).
+4. **Rollout / verify** — land 1+2, wipe + reconfigure a representative cell
+   (native/c/talker `build-zenoh`) and confirm it builds under Ninja, then 3;
+   per-platform fixtures already route through the helpers so no recipe edits.
+   Notes: zephyr (west) and esp-idf already use Ninja internally (not our
+   helpers) — unaffected; the few raw `cmake -B build` calls
+   (`freertos.just:253`, `threadx-linux.just:223`, `cyclonedds.just`) are
+   non-fixture integration/module builds — out of scope. Ninja also fits the
+   Phase 176 fifo jobserver better than recursive Make.
+
 - [~] **181.5.a native** c/cpp — entries authored (roles × {zenoh,xrce} for
   c+cpp + `cpp parameters` target); `fixtures-manifest.py` now emits cmake
   records `<dir>\x1f<build-subdir>\x1f<-D defs>\x1f<target>`. **Remaining**
