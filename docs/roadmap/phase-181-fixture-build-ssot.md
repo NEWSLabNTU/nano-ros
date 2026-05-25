@@ -49,9 +49,13 @@ follow-up). Does not block `just ci` once landed.
 - [x] `scripts/build/fixtures-manifest.py` reader (`tomllib`/`tomli`).
 
 ### 181.2 — Rust staleness probe reads the manifest (A)
-- [ ] `scripts/test/rust-fixture-stale.sh` builds each fixture with the
-  manifest's exact features/target-dir/env (not default features).
-- [ ] `just _check-fixtures-stale` drives the rust pass from the manifest.
+- [x] `scripts/test/rust-fixture-stale.sh` takes a manifest TSV record and
+  builds with the exact features/target-dir/env (not default features).
+- [x] `just _check-fixtures-stale` drives the rust pass from
+  `fixtures-manifest.py list --lang rust`.
+- Verified: full run over all 40 native-rust entries with their real options
+  finished in ~15 s, flagged only the 2 genuinely-stale custom-transport
+  cells (self-healed), no feature-thrash.
 - **Files**: `scripts/test/rust-fixture-stale.sh`, `justfile`.
 
 ### 181.3 — Native rust build recipe reads the manifest (B, proof)

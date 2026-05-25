@@ -806,28 +806,21 @@ _check-fixtures-stale:
         echo "  (bypass this check with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
     fi
     # Rust cells — reuse cargo's own fingerprint instead of a custom hash.
-    # `cargo build` is a no-op when fresh and rebuilds stale units
-    # incrementally, so this both detects AND self-heals stale rust fixtures
-    # (unlike C/C++ above, which only warns — those need the SDK/CMake env to
-    # rebuild). `scripts/test/rust-fixture-stale.sh` reports a dir iff cargo
-    # had to rebuild it (a `"fresh":false` artifact). Phase 177.9.
-    source scripts/build/cargo.sh
-    profile="$(nros_cargo_profile_name)"
-    rust_dirs=()
-    for dd in examples/*/rust/*; do
-        [ -f "$dd/Cargo.toml" ] && [ -d "$dd/target/$profile" ] && rust_dirs+=("$dd")
-    done
+    # Build options come from the SSOT manifest (examples/fixtures.toml) so the
+    # probe rebuilds each fixture with its EXACT features/target-dir/env — not
+    # default features, which would feature-thrash. `cargo build` is a no-op
+    # when fresh and rebuilds stale units incrementally, so this both detects
+    # AND self-heals stale rust fixtures (unlike C/C++ above, which only warns).
+    # Phase 177.9 / 181.
     rust_stale=()
-    if [ ${#rust_dirs[@]} -gt 0 ]; then
-        if command -v parallel >/dev/null 2>&1; then
-            mapfile -t rust_stale < <(printf '%s\n' "${rust_dirs[@]}" \
-                | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
-        else
-            for dd in "${rust_dirs[@]}"; do
-                out="$(bash scripts/test/rust-fixture-stale.sh "$dd")"
-                [ -n "$out" ] && rust_stale+=("$out")
-            done
-        fi
+    if command -v parallel >/dev/null 2>&1; then
+        mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --lang rust \
+            | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
+    else
+        while IFS= read -r line; do
+            out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
+            [ -n "$out" ] && rust_stale+=("$out")
+        done < <(python3 scripts/build/fixtures-manifest.py list --lang rust)
     fi
     if [ ${#rust_stale[@]} -gt 0 ]; then
         echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
