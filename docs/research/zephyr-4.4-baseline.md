@@ -259,3 +259,18 @@ IP-multicast re-anchor, **Task 6**, runtime not build; (b) **`os: tid ... is in
 use!`** — a 4.x cyclone-threads issue (the cyclonedds-zephyr threads patch /
 dynamic-thread reuse needs 4.4 re-verification). Tasks 5–6 + threads are the
 runtime follow-up; the cyclonedds-on-4.4 BUILD + participant init are proven.
+
+## Runtime drill — Task 5 (NSOS recvmsg) fixed on 4.4 (2026-05-26)
+
+Longer run of the cyclonedds 4.4 talker: cyclone **publishes** (data plane up),
+but **receive busy-spun** with `UDP recvmsg sock N: ret 0 retcode -1` — the 4.x
+NSOS `nsos_recvmsg` is an ENOTSUP stub. Ported the 3.7 fill to 4.4
+(`scripts/zephyr/nsos-recvmsg-patch-4.4.sh`): delegate the single-iovec form to
+`nsos_recvfrom`, adapted to `struct net_msghdr` + `net_sockaddr`/`net_socklen_t`.
+**Verified:** recvmsg `-1` flood drops from hundreds to **0** in a 5 s run;
+publish still works. Wired into `just zephyr setup` (4.4 branch). The patch is
+idempotent + reproducible (revert→apply→re-apply checked).
+
+Remaining runtime: **Task 6** (NSOS IP-multicast — `IP_ADD_MEMBERSHIP`, for SPDP
+discovery; currently `multicast join failed … unicast-only`) and the
+`os: tid … is in use!` cyclone-threads noise (non-fatal — publish/receive work).
