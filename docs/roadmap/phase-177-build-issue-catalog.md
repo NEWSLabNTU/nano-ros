@@ -315,6 +315,26 @@ passed.
   until every fixture lookup uses the build-fixture artifact layout and
   every optional host dependency reports a precise skip/remedy.
 
+  **Full Zephyr E2E matrix verified green 2026-05-26: `binary(zephyr)` is
+  53/53** (Zenoh + XRCE + CycloneDDS; every language/role —
+  boots / talker / listener / service / action / e2e) on a full
+  `just zephyr build-fixtures` (56 fixtures).
+
+  **Staleness-gate over-broadness (relevant to phase-181 fixture SSOT).**
+  `is_binary_stale` (`nros-tests/src/zephyr.rs`) watches **all of
+  `packages/core`** for every fixture. So a change confined to one
+  language's runtime (e.g. the nros-cpp `action.rs` feedback fix) marks
+  **unrelated C and Rust talker/listener fixtures stale** even though cmake
+  correctly determined they need no rebuild (a C fixture links `nros-c`, not
+  `nros-cpp`). The full-suite run hit this: 11 of 53 reported a fast
+  `is stale` failure (0.1–0.7 s) while the binaries were functionally
+  current; `touch`-ing the prebuilt `zephyr.exe`s (cmake having validated
+  currency that build) then yielded 53/53. The gate should narrow the
+  watched core packages per fixture language (C → nros-c/nros-node, Rust →
+  nros, C++ → nros-cpp/nros-node; all share nros-core/nros-node), or the
+  fixture build should refresh artifact mtimes, so a same-build cross-
+  language edit doesn't surface as a false runtime failure.
+
 - [x] **177.24 - Zephyr CycloneDDS fixtures fail after Cyclone setup.**
   Closed 2026-05-25 — already fixed by `4b1b0723d` ("test: replace fixed
   sleeps with readiness waits"), which the 2026-05-25 recheck below predated.
