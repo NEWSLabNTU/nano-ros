@@ -211,7 +211,9 @@ build-fixture-extras:
     fi
 
     cyclonedds_prefix="$root/build/cyclonedds-threadx-rv64-install"
-    if [ -f "$cyclonedds_prefix/lib/libddsc.a" ] && [ -x "$root/build/install/bin/idlc" ]; then
+    if [ "${NROS_THREADX_RV64_CYCLONEDDS_FIXTURES:-0}" != "1" ]; then
+        echo "  → skipping experimental ThreadX-RV64 Cyclone fixtures (set NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 after: just cyclonedds threadx-cross-probe)"
+    elif [ -f "$cyclonedds_prefix/lib/libddsc.a" ] && [ -x "$root/build/install/bin/idlc" ]; then
         cyclone_dirs=(
             "examples/qemu-riscv64-threadx/c/talker"
             "examples/qemu-riscv64-threadx/c/listener"

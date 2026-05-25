@@ -452,9 +452,20 @@ pub fn zephyr_workspace_path() -> Option<PathBuf> {
 }
 
 fn zephyr_build_root(workspace: &Path) -> PathBuf {
-    std::env::var_os("NROS_ZEPHYR_BUILD_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| workspace.to_path_buf())
+    if let Some(path) = std::env::var_os("NROS_ZEPHYR_BUILD_ROOT") {
+        return PathBuf::from(path);
+    }
+    if workspace_is_writable(workspace) {
+        workspace.to_path_buf()
+    } else {
+        project_root().join("build/zephyr-workspace-builds")
+    }
+}
+
+fn workspace_is_writable(path: &Path) -> bool {
+    path.metadata()
+        .map(|m| !m.permissions().readonly())
+        .unwrap_or(false)
 }
 
 /// Check if west command is available
@@ -742,10 +753,17 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         example_dir.join("src"),
         root.join("zephyr"),
         root.join("packages/core"),
-        root.join("packages/dds"),
-        root.join("packages/xrce"),
-        root.join("packages/zpico"),
     ];
+    match decode_alias(example_name).map(|(_, _, rmw, _)| rmw) {
+        Some("cyclonedds") => candidates.push(root.join("packages/dds")),
+        Some("xrce") => candidates.push(root.join("packages/xrce")),
+        Some("zenoh") => candidates.push(root.join("packages/zpico")),
+        _ => {
+            candidates.push(root.join("packages/dds"));
+            candidates.push(root.join("packages/xrce"));
+            candidates.push(root.join("packages/zpico"));
+        }
+    }
     if let Some(conf_files) = conf_files_for_example(example_name) {
         for conf_file in conf_files.split(';') {
             candidates.push(example_dir.join(conf_file));

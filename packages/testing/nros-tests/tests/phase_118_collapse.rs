@@ -21,6 +21,11 @@ use nros_tests::fixtures::{
 };
 use rstest::rstest;
 
+fn threadx_rv64_cyclonedds_fixtures_enabled() -> bool {
+    std::env::var_os("NROS_THREADX_RV64_CYCLONEDDS_FIXTURES").as_deref()
+        == Some(std::ffi::OsStr::new("1"))
+}
+
 #[rstest]
 #[case::zenoh(Rmw::Zenoh)]
 #[case::xrce(Rmw::Xrce)]
@@ -431,6 +436,9 @@ fn test_threadx_rv64_rust_case_rmw_variant_exists(
     #[case] binary: &str,
     #[case] rmw: Rmw,
 ) {
+    if matches!(rmw, Rmw::Cyclonedds) && !threadx_rv64_cyclonedds_fixtures_enabled() {
+        return;
+    }
     let path = nros_tests::fixtures::build_threadx_rv64_rust_example_rmw(case, binary, rmw)
         .unwrap_or_else(|e| {
             nros_tests::skip!(
@@ -493,6 +501,9 @@ fn test_threadx_rv64_cmake_case_rmw_variant_exists(
     #[case] binary: &str,
     #[case] rmw: Rmw,
 ) {
+    if matches!(rmw, Rmw::Cyclonedds) && !threadx_rv64_cyclonedds_fixtures_enabled() {
+        return;
+    }
     let path = nros_tests::fixtures::build_threadx_rv64_cmake_example_rmw(lang, case, binary, rmw)
         .unwrap_or_else(|e| {
             nros_tests::skip!(

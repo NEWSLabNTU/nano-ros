@@ -114,6 +114,40 @@ throughput benchmark's intentional measurement window, the documented
 custom-transport readiness gap, and the documented Zephyr XRCE action
 propagation guard.
 
+#### 179.G remaining follow-ups
+
+The post-audit rerun found four follow-ups:
+
+- `custom_transport_loopback.rs` still reports `Published: 0,
+  Received: 0` even after both processes register the custom transport
+  vtable. The bounded sleeps remain documented until the test has a
+  reliable session/subscription readiness signal or the custom transport
+  runtime path is fixed.
+- `threadx_riscv64 build-fixtures` failed in the CycloneDDS native C
+  fixture link with unresolved `dds_*` symbols from
+  `libnros_rmw_cyclonedds.a`. The generated link line already includes
+  the ThreadX Cyclone `libddsc.a`; the remaining failure is in the
+  experimental ThreadX Cyclone link path, not in normal setup
+  provisioning. `just setup all` installs host CycloneDDS but does not
+  run `just cyclonedds threadx-cross-probe`, so
+  `threadx_riscv64 build-fixtures` now skips these experimental
+  fixtures unless `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1` is set; the
+  Phase 118 fixture-presence test uses the same opt-in gate.
+- Zephyr tests could report stale or missing fixtures after
+  `just zephyr build-fixtures` because the build recipe falls back to
+  `build/zephyr-workspace-builds` when the sibling workspace is not
+  writable, while the test resolver still defaulted to
+  `zephyr-workspace`. The resolver now mirrors the build recipe and
+  still honors `NROS_ZEPHYR_BUILD_ROOT`.
+- Zephyr fixture stale checks watched all RMW source trees for every RMW,
+  so a CycloneDDS edit could make Zenoh or XRCE fixtures look stale. The
+  check now watches only the backend package that matches the fixture
+  RMW, with an all-backend fallback for unknown names.
+
+Zephyr CycloneDDS `native_sim` runtime failures remain open after the
+fixture-resolution cleanup. The observed failures are process panics such
+as `tid ... is in use!` and timeouts, not fixed-sleep regressions.
+
 ### Post-nextest stages have poor visibility
 
 Doctests, Miri, C codegen, and orchestration E2E run after nextest and

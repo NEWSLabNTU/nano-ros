@@ -592,9 +592,20 @@ pub fn build_threadx_linux_cmake_example_rmw(
 /// instead of using `build_example_rmw`. `case` is the directory
 /// name under `examples/zephyr/rust/` (talker, listener, …).
 fn zephyr_build_root() -> PathBuf {
-    std::env::var_os("NROS_ZEPHYR_BUILD_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| project_root().join("zephyr-workspace"))
+    if let Some(path) = std::env::var_os("NROS_ZEPHYR_BUILD_ROOT") {
+        return PathBuf::from(path);
+    }
+    let root = project_root();
+    let workspace = root.join("zephyr-workspace");
+    if workspace
+        .metadata()
+        .map(|m| !m.permissions().readonly())
+        .unwrap_or(false)
+    {
+        workspace
+    } else {
+        root.join("build/zephyr-workspace-builds")
+    }
 }
 
 /// Build orchestration lives in `just/zephyr.just :: build-fixtures`.
