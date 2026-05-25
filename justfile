@@ -385,7 +385,7 @@ test-unit verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     # `nros-rmw-{zenoh,dds,xrce}-cffi` excluded for the same reason as
     # `check-workspace`: their `*Rmw` type imports are platform-feature
     # gated, and `cargo nextest run --workspace` activates no features.
@@ -398,7 +398,7 @@ test-unit verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # nros-tests integration tests, skipping heavy cross-compile / QEMU groups.
 # Filters mirror the `test` recipe's `-E` predicate, just scoped to
@@ -408,13 +408,13 @@ test-integration verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     exclude='not (group(=qemu-baremetal) or group(=qemu-baremetal-shared) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or group(=qemu-esp32) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=ros2-interop) or group(=xrce_ros2_interop))'
     args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Shared helper: run a single nros-tests integration test binary with the
 # standard verbose-flag handling. Used by per-platform `test` / `test-all`
@@ -424,12 +424,12 @@ _nextest-platform test_name verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test {{test_name}} --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run rustdoc doctests for the `nros` umbrella crate.
 # Nextest does not execute doctests, so we run them separately.
@@ -507,7 +507,7 @@ test verbose="": build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     nextest_run_profile_args=($(nros_nextest_run_profile_args))
     nextest_fail_fast_args=($(nros_nextest_fail_fast_args))
     junit="$(nros_nextest_junit_path)"
@@ -518,11 +518,11 @@ test verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    nros_nextest_profile_begin test
-    nros_nextest_profile_write_command \
-        cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
+    nros_nextest_record_begin test
+    nros_nextest_record_write_command \
+        cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     rm -f "$junit"
-    cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures "$junit")
     if [ "$nextest_exit" -ne 0 ] && [ ! -f "$junit" ]; then
@@ -535,7 +535,7 @@ test verbose="": build-zenohd
     echo ""
     just _nextest-slow-tests "$junit"
     echo ""
-    nros_nextest_profile_finish
+    nros_nextest_record_finish
     echo ""
     echo "JUnit XML: $junit"
     if [ $failed -ne 0 ]; then
@@ -699,7 +699,7 @@ test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     nextest_run_profile_args=($(nros_nextest_run_profile_args))
     nextest_fail_fast_args=($(nros_nextest_fail_fast_args))
     junit="$(nros_nextest_junit_path)"
@@ -710,11 +710,11 @@ test-all verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    nros_nextest_profile_begin test-all
-    nros_nextest_profile_write_command \
-        cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
+    nros_nextest_record_begin test-all
+    nros_nextest_record_write_command \
+        cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     rm -f "$junit"
-    cargo nextest run "${nextest_profile_args[@]}" "${NROS_NEXTEST_PROFILE_ARGS[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
     real_failures=$(just _count-real-failures "$junit")
     if [ "$nextest_exit" -ne 0 ] && [ ! -f "$junit" ]; then
@@ -727,7 +727,7 @@ test-all verbose="": build-zenohd
     echo ""
     just _nextest-slow-tests "$junit"
     echo ""
-    nros_nextest_profile_finish
+    nros_nextest_record_finish
     echo ""
     echo "=== Doctests ==="
     just test-doc || failed=1
@@ -855,7 +855,7 @@ build-workspace:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     cargo build $cargo_profile_args --workspace --no-default-features \
         --exclude nros-c \
         --exclude nros-cpp \
@@ -867,7 +867,7 @@ build-workspace:
     # without a platform feature, so their test binaries fail to link.
     # The staticlib wrappers need a panic handler. All four are covered
     # by the per-feature `test-*` matrices instead.
-    cargo nextest run "${nextest_profile_args[@]}" --workspace --no-run \
+    cargo nextest run "${cargo_nextest_args[@]}" --workspace --no-run \
         --exclude nros-c \
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \

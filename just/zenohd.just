@@ -6,6 +6,7 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Build zenohd from the pinned submodule (skipped if already built).
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -17,6 +18,7 @@ setup:
     fi
 
 # Diagnose zenohd install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -35,11 +37,13 @@ doctor:
     fi
 
 # Build zenohd from the pinned submodule (alias for `just zenohd setup`).
+[group("main")]
 build:
     ./scripts/zenohd/build.sh
 
 # Run the built zenoh router. Blocks the shell until Ctrl-C.
 # Accepts any zenohd flags as positional args (forwarded verbatim).
+[group("main")]
 run *args:
     #!/usr/bin/env bash
     set -e
@@ -50,5 +54,6 @@ run *args:
     exec ./build/zenohd/zenohd {{args}}
 
 # Clean zenohd build artifacts.
+[group("main")]
 clean:
     ./scripts/zenohd/build.sh --clean

@@ -746,7 +746,7 @@ test verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --test zephyr --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
@@ -754,7 +754,7 @@ test verbose="":
     else
         args+=(--success-output immediate --failure-output immediate)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run all Zephyr tests (zenoh + XRCE + C)
 [group("full-matrix")]
@@ -813,14 +813,14 @@ test-xrce verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test zephyr --no-fail-fast -E 'test(xrce)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     else
         args+=(--success-output immediate --failure-output immediate)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run Zephyr C examples test
 [group("debug")]

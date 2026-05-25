@@ -195,8 +195,8 @@ test-sitl: build-sitl
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
-    cargo nextest run "${nextest_profile_args[@]}" -p nros-tests --features px4-sitl --test px4_e2e
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests --features px4-sitl --test px4_e2e
 
 # Combined CI: check + unit tests (SITL gated separately via test-sitl).
 [group("full-matrix")]

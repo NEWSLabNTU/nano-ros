@@ -32,6 +32,7 @@ default:
 # examples/**/, packages/verification/nros-verification/). No bare
 # `stable`/`nightly` channels are installed here — every version is
 # pinned in a TOML file and installed by `rust-pinned-toolchains`.
+[group("setup")]
 setup:
     @just workspace apt-packages
     @just workspace install-ninja
@@ -45,6 +46,7 @@ setup:
 # client only speaks fifo (make 4.4 `--jobserver-style=fifo`). Needed
 # for the Phase 176 unified jobserver. `.envrc` puts it first on PATH.
 # Lives under third-party/ (survives `just clean`). Idempotent.
+[group("setup")]
 install-make:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -78,6 +80,7 @@ install-make:
 # `.envrc` puts third-party/ninja first on PATH so this one wins. Lives
 # under third-party/ (not build/) so `just clean` doesn't wipe it.
 # Idempotent: skips when the pinned version is already present.
+[group("setup")]
 install-ninja:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -106,6 +109,7 @@ install-ninja:
 
 # Diagnose workspace install status (read-only).
 # Returns exit 1 if anything is missing.
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -232,6 +236,7 @@ doctor:
 # =============================================================================
 
 # Install required system packages via apt (requires sudo).
+[group("setup")]
 apt-packages:
     #!/usr/bin/env bash
     set -e
@@ -315,6 +320,7 @@ _pinned-toolchain-files:
 # TOML files are authoritative. Running cargo in a directory triggers
 # rustup's auto-download of the channel, but *not* of declared
 # components — so this recipe installs both explicitly.
+[group("setup")]
 rust-pinned-toolchains:
     #!/usr/bin/env bash
     set -e
@@ -337,6 +343,7 @@ rust-pinned-toolchains:
     done < <(just workspace _pinned-toolchain-files)
 
 # Install cross-compilation targets.
+[group("setup")]
 rust-targets:
     #!/usr/bin/env bash
     set -e
@@ -358,6 +365,7 @@ rust-targets:
     fi
 
 # Install cargo tools (nextest, llvm-cov, espflash, nano-ros CLI).
+[group("setup")]
 cargo-tools:
     #!/usr/bin/env bash
     set -e

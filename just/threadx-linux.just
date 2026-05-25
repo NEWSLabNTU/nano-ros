@@ -186,17 +186,17 @@ test-all verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test threadx_linux --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(ThreadxLinux)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
 

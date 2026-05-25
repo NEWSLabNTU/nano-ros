@@ -16,6 +16,7 @@ default:
 # internal cargo build (pinned Rust 1.75) doesn't walk up into our
 # `edition = "2024"` root workspace manifest. The final `install/` dir is
 # symlinked back into `build/rmw_zenoh_ws/install/` for discoverability.
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -63,6 +64,7 @@ setup:
     echo "✓ rmw_zenoh overlay built: build/rmw_zenoh_ws/install/setup.bash"
 
 # Diagnose rmw_zenoh install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -82,6 +84,7 @@ doctor:
     fi
 
 # Clean the rmw_zenoh colcon workspace (both the scratch tree and the symlink).
+[group("main")]
 clean:
     #!/usr/bin/env bash
     set -e

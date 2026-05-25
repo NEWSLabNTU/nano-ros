@@ -54,7 +54,13 @@ SertypeMin::SertypeMin(const dds_topic_descriptor_t *desc) : desc_(desc) {
     // CDR" hint when the layout is identical. ThreadX skips this optional
     // precompute because its embedded Cyclone path has tripped in the ops
     // walker; the normal stream encoder/decoder remains in use.
-#if DDSRT_WITH_THREADX
+    //
+    // Guard on `NROS_PLATFORM_THREADX` (set PRIVATE on this target in
+    // CMakeLists.txt), not Cyclone's internal `DDSRT_WITH_THREADX`: the
+    // latter only reaches this TU via a transitive `dds/config.h` include,
+    // so a `#if` on it fails open (re-enables the trapping fast path with
+    // no error) if that header ever drops out of the chain.
+#if defined(NROS_PLATFORM_THREADX)
     st_.opt_size_xcdr1 = 0;
     st_.opt_size_xcdr2 = 0;
 #else

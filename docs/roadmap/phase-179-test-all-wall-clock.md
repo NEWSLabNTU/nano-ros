@@ -181,8 +181,8 @@ of Phase 178's fixture stage.
   options:
 
   ```sh
-  NROS_NEXTEST_PROFILE=1 just test
-  NROS_NEXTEST_PROFILE=1 just test-all
+  NROS_NEXTEST_RECORD=1 just test
+  NROS_NEXTEST_RECORD=1 just test-all
   ```
 
   Implement this through a shared private nextest runner helper so the
@@ -193,16 +193,16 @@ of Phase 178's fixture stage.
 
   Suggested knobs:
 
-  - `NROS_NEXTEST_PROFILE=1`: enable nextest run recording and artifact
+  - `NROS_NEXTEST_RECORD=1`: enable nextest run recording and artifact
     export.
-  - `NROS_NEXTEST_PROFILE_DIR=<path>`: override the timestamped output
+  - `NROS_NEXTEST_RECORD_DIR=<path>`: override the timestamped output
     directory.
   - `NROS_NEXTEST_REPLAY_LOG=1`: emit a full replay log with captured
     stdout/stderr. Keep this optional because successful-test output can
     be large.
   - `NROS_NEXTEST_TRACE_GROUP_BY=slot|binary`: choose Perfetto grouping;
     default to `slot` for wall-clock/concurrency analysis.
-  - `NROS_NEXTEST_PROFILE_KEEP_STATE=1`: keep the temporary
+  - `NROS_NEXTEST_RECORD_KEEP_STATE=1`: keep the temporary
     `NEXTEST_STATE_DIR`; otherwise remove it after archive/trace export.
 
   Default artifact layout:
@@ -216,9 +216,9 @@ of Phase 178's fixture stage.
 
   Landed as `scripts/test/nextest-profile.sh`, sourced by `just test`
   and `just test-all`, plus the persistent
-  `.config/nextest-profile.toml` overlay for nextest's experimental
+  `.config/nextest-record.toml` overlay for nextest's experimental
   recording mode. The default path is unchanged; setting
-  `NROS_NEXTEST_PROFILE=1` enables recording and artifact export while
+  `NROS_NEXTEST_RECORD=1` enables recording and artifact export while
   preserving the existing nextest args, filters, cargo profile, verbose
   handling, and parallelism.
 
@@ -424,7 +424,7 @@ of Phase 178's fixture stage.
 
 - The slowest nextest tests are visible in normal output from JUnit
   parsing or nextest status output.
-- `NROS_NEXTEST_PROFILE=1` records `just test` and `just test-all`
+- `NROS_NEXTEST_RECORD=1` records `just test` and `just test-all`
   nextest runs without adding new public recipe names or changing
   nextest parallelism.
 - Profiled runs leave a replayable nextest archive and a

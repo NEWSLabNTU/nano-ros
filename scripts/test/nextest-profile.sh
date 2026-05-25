@@ -2,7 +2,7 @@
 
 # Shared helpers for cargo-nextest run options and optional profiling.
 
-NROS_NEXTEST_PROFILE_ARGS=()
+NROS_NEXTEST_RECORD_ARGS=()
 
 nros_nextest_run_profile_name() {
     printf '%s\n' "${NROS_NEXTEST_RUN_PROFILE:-default}"
@@ -28,22 +28,22 @@ nros_nextest_junit_path() {
     printf 'target/nextest/%s/junit.xml\n' "$(nros_nextest_run_profile_name)"
 }
 
-nros_nextest_profile_enabled() {
-    [ -n "${NROS_NEXTEST_PROFILE:-}" ] && [ "${NROS_NEXTEST_PROFILE:-}" != "0" ]
+nros_nextest_record_enabled() {
+    [ -n "${NROS_NEXTEST_RECORD:-}" ] && [ "${NROS_NEXTEST_RECORD:-}" != "0" ]
 }
 
-nros_nextest_profile_begin() {
+nros_nextest_record_begin() {
     local scope="$1"
 
-    if ! nros_nextest_profile_enabled; then
+    if ! nros_nextest_record_enabled; then
         return 0
     fi
 
     local timestamp run_dir latest_link group_by config_file
     timestamp="$(date +%Y%m%d-%H%M%S)"
-    if [ -n "${NROS_NEXTEST_PROFILE_DIR:-}" ]; then
-        run_dir="$NROS_NEXTEST_PROFILE_DIR"
-        latest_link="${NROS_NEXTEST_PROFILE_DIR}-latest"
+    if [ -n "${NROS_NEXTEST_RECORD_DIR:-}" ]; then
+        run_dir="$NROS_NEXTEST_RECORD_DIR"
+        latest_link="${NROS_NEXTEST_RECORD_DIR}-latest"
     else
         run_dir="tmp/nextest-profile-${scope}-${timestamp}"
         latest_link="tmp/nextest-profile-${scope}-latest"
@@ -52,13 +52,13 @@ nros_nextest_profile_begin() {
     mkdir -p "$run_dir"
     ln -sfn "$(basename "$run_dir")" "$latest_link"
 
-    export NROS_NEXTEST_PROFILE_RUN_DIR="$run_dir"
+    export NROS_NEXTEST_RECORD_RUN_DIR="$run_dir"
     export NEXTEST_EXPERIMENTAL_RECORD=1
     export NEXTEST_STATE_DIR="$run_dir/state"
     export NROS_NEXTEST_JUNIT_PATH="$(nros_nextest_junit_path)"
-    config_file="${NROS_NEXTEST_PROFILE_CONFIG:-.config/nextest-profile.toml}"
-    export NROS_NEXTEST_PROFILE_CONFIG="$config_file"
-    NROS_NEXTEST_PROFILE_ARGS=(--user-config-file "$config_file")
+    config_file="${NROS_NEXTEST_RECORD_CONFIG:-.config/nextest-record.toml}"
+    export NROS_NEXTEST_RECORD_CONFIG="$config_file"
+    NROS_NEXTEST_RECORD_ARGS=(--user-config-file "$config_file")
     group_by="${NROS_NEXTEST_TRACE_GROUP_BY:-slot}"
     case "$group_by" in
         slot|binary)
@@ -71,27 +71,27 @@ nros_nextest_profile_begin() {
     export NROS_NEXTEST_TRACE_GROUP_BY_EFFECTIVE="$group_by"
 
     {
-        printf 'NROS_NEXTEST_PROFILE=%s\n' "${NROS_NEXTEST_PROFILE:-}"
-        printf 'NROS_NEXTEST_PROFILE_DIR=%s\n' "${NROS_NEXTEST_PROFILE_DIR:-}"
+        printf 'NROS_NEXTEST_RECORD=%s\n' "${NROS_NEXTEST_RECORD:-}"
+        printf 'NROS_NEXTEST_RECORD_DIR=%s\n' "${NROS_NEXTEST_RECORD_DIR:-}"
         printf 'NROS_NEXTEST_REPLAY_LOG=%s\n' "${NROS_NEXTEST_REPLAY_LOG:-}"
         printf 'NROS_NEXTEST_TRACE_GROUP_BY=%s\n' "${NROS_NEXTEST_TRACE_GROUP_BY:-}"
-        printf 'NROS_NEXTEST_PROFILE_KEEP_STATE=%s\n' "${NROS_NEXTEST_PROFILE_KEEP_STATE:-}"
+        printf 'NROS_NEXTEST_RECORD_KEEP_STATE=%s\n' "${NROS_NEXTEST_RECORD_KEEP_STATE:-}"
         printf 'NROS_NEXTEST_RUN_PROFILE=%s\n' "$(nros_nextest_run_profile_name)"
         printf 'NROS_NEXTEST_JUNIT_PATH=%s\n' "$NROS_NEXTEST_JUNIT_PATH"
         printf 'NEXTEST_STATE_DIR=%s\n' "$NEXTEST_STATE_DIR"
-        printf 'NROS_NEXTEST_PROFILE_CONFIG=%s\n' "$NROS_NEXTEST_PROFILE_CONFIG"
+        printf 'NROS_NEXTEST_RECORD_CONFIG=%s\n' "$NROS_NEXTEST_RECORD_CONFIG"
     } > "$run_dir/env.txt"
 
     echo "Nextest profiling enabled: $run_dir"
 }
 
-nros_nextest_profile_write_command() {
-    if ! nros_nextest_profile_enabled; then
+nros_nextest_record_write_command() {
+    if ! nros_nextest_record_enabled; then
         return 0
     fi
 
     local run_dir
-    run_dir="${NROS_NEXTEST_PROFILE_RUN_DIR:-}"
+    run_dir="${NROS_NEXTEST_RECORD_RUN_DIR:-}"
     if [ -z "$run_dir" ] || [ ! -d "$run_dir" ]; then
         return 0
     fi
@@ -100,13 +100,13 @@ nros_nextest_profile_write_command() {
     printf '\n' >> "$run_dir/command.txt"
 }
 
-nros_nextest_profile_finish() {
-    if ! nros_nextest_profile_enabled; then
+nros_nextest_record_finish() {
+    if ! nros_nextest_record_enabled; then
         return 0
     fi
 
     local run_dir group_by
-    run_dir="${NROS_NEXTEST_PROFILE_RUN_DIR:-}"
+    run_dir="${NROS_NEXTEST_RECORD_RUN_DIR:-}"
     if [ -z "$run_dir" ] || [ ! -d "$run_dir" ]; then
         echo "warning: nextest profile directory missing; skipping artifact export" >&2
         return 0
@@ -120,19 +120,19 @@ nros_nextest_profile_finish() {
         echo "warning: $junit missing; skipping JUnit copy" >&2
     fi
 
-    if ! cargo nextest store export latest "${NROS_NEXTEST_PROFILE_ARGS[@]}" \
+    if ! cargo nextest store export latest "${NROS_NEXTEST_RECORD_ARGS[@]}" \
         --archive-file "$run_dir/nextest-run.zip"; then
         echo "warning: failed to export nextest recording archive" >&2
     fi
 
     group_by="${NROS_NEXTEST_TRACE_GROUP_BY_EFFECTIVE:-slot}"
-    if ! cargo nextest store export-chrome-trace latest "${NROS_NEXTEST_PROFILE_ARGS[@]}" \
+    if ! cargo nextest store export-chrome-trace latest "${NROS_NEXTEST_RECORD_ARGS[@]}" \
         --group-by "$group_by" -o "$run_dir/nextest-trace.json"; then
         echo "warning: failed to export nextest chrome trace" >&2
     fi
 
     if [ -n "${NROS_NEXTEST_REPLAY_LOG:-}" ] && [ "${NROS_NEXTEST_REPLAY_LOG:-}" != "0" ]; then
-        if ! cargo nextest replay "${NROS_NEXTEST_PROFILE_ARGS[@]}" \
+        if ! cargo nextest replay "${NROS_NEXTEST_RECORD_ARGS[@]}" \
             --success-output immediate \
             --failure-output immediate \
             --status-level all \
@@ -142,8 +142,8 @@ nros_nextest_profile_finish() {
         fi
     fi
 
-    if [ -z "${NROS_NEXTEST_PROFILE_KEEP_STATE:-}" ] || \
-        [ "${NROS_NEXTEST_PROFILE_KEEP_STATE:-}" = "0" ]; then
+    if [ -z "${NROS_NEXTEST_RECORD_KEEP_STATE:-}" ] || \
+        [ "${NROS_NEXTEST_RECORD_KEEP_STATE:-}" = "0" ]; then
         rm -rf "$run_dir/state"
     fi
 

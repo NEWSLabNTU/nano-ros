@@ -10,6 +10,7 @@ default:
 # Tries `pipx install platformio` first (isolated, user-local); falls
 # back to `pip install --user platformio` when pipx is absent.
 # Re-runs are idempotent — `pipx upgrade` / `pip install --upgrade`.
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -34,6 +35,7 @@ setup:
     echo "PlatformIO ready: $(pio --version)"
 
 # Diagnose PlatformIO install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -47,6 +49,7 @@ doctor:
     fi
 
 # Clean PlatformIO integration example build artifacts.
+[group("main")]
 clean:
     #!/usr/bin/env bash
     if [ -d integrations/platformio/examples ]; then

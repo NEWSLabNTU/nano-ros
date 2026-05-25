@@ -6,11 +6,13 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Install Kani + Verus.
+[group("setup")]
 setup:
     @just verification kani
     @just verification verus
 
 # Diagnose verification tool install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -32,6 +34,7 @@ doctor:
     exit $fail
 
 # Install Kani bounded model checker (skipped if already installed).
+[group("verification")]
 kani:
     #!/usr/bin/env bash
     set -e
@@ -43,5 +46,6 @@ kani:
     fi
 
 # Download Verus binary from GitHub releases to tools/verus.
+[group("verification")]
 verus:
     ./scripts/setup-verus.sh

@@ -3,12 +3,14 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 # Build Docker image for QEMU ARM development
+[group("main")]
 build:
     @echo "Building Docker image..."
     docker build -t nano-ros-qemu -f tests/qemu-baremetal/Dockerfile .
     @echo "Docker image 'nano-ros-qemu' built successfully!"
 
 # Start Docker container with interactive shell
+[group("main")]
 shell:
     @echo "Starting Docker container..."
     docker run -it --rm \
@@ -19,6 +21,7 @@ shell:
         nano-ros-qemu
 
 # Start Docker container with TAP networking support
+[group("debug")]
 shell-network:
     @echo "Starting Docker container with networking support..."
     docker run -it --rm \
@@ -31,6 +34,7 @@ shell-network:
         nano-ros-qemu
 
 # Run bare-metal QEMU talker/listener test using Docker Compose
+[group("debug")]
 test-qemu: build
     @echo "Running bare-metal QEMU talker/listener test..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
@@ -39,6 +43,7 @@ test-qemu: build
     @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run QEMU build inside Docker container
+[group("debug")]
 build-qemu: build
     @echo "Building QEMU examples inside Docker..."
     docker run --rm \
@@ -50,14 +55,17 @@ build-qemu: build
         bash -c "cd /work && just qemu build-examples"
 
 # Start Docker Compose services (QEMU + zenohd)
+[group("main")]
 up:
     docker compose -f docker/docker-compose.yml up -d
 
 # Stop Docker Compose services
+[group("main")]
 down:
     docker compose -f docker/docker-compose.yml down
 
 # Execute command in running Docker container
+[group("debug")]
 exec CMD="bash":
     docker compose -f docker/docker-compose.yml exec qemu {{CMD}}
 
@@ -69,12 +77,14 @@ exec CMD="bash":
 #   just docker test test-threadx-linux   # ThreadX Linux E2E (needs CAP_NET_RAW)
 #   just docker test test-freertos        # FreeRTOS QEMU E2E
 #   just docker test test                 # All tests
+[group("main")]
 test RECIPE="test":
     HOST_UID=$(id -u) HOST_GID=$(id -g) \
         docker compose -f docker/docker-compose.yml run --rm test \
         just {{RECIPE}}
 
 # Show Docker help
+[group("main")]
 help:
     @echo "Docker Development Environment"
     @echo "==============================="

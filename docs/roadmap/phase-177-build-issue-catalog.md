@@ -107,7 +107,7 @@ passed.
   until every fixture lookup uses the build-fixture artifact layout and
   every optional host dependency reports a precise skip/remedy.
 
-- [ ] **177.22 - Zephyr CycloneDDS fixtures fail after Cyclone setup.**
+- [ ] **177.24 - Zephyr CycloneDDS fixtures fail after Cyclone setup.**
   Rechecked 2026-05-25 after `just setup all`. `just cyclonedds doctor`
   passes and the expected host artifacts exist at
   `build/install/bin/idlc` and `build/install/lib/libddsc.so`, so this is
@@ -303,57 +303,68 @@ re-org (`23c750514` just groups, `6fd5bd671`/`b38bcbadf` nextest profiles,
 `6644372dd` focused native lanes). Functional today; items below are
 robustness/consistency follow-ups, not regressions.
 
-- [ ] **177.23.A - `sertype_min.cpp` ThreadX guard fails open.**
-  The CDR `opt_size_xcdr1/2` disable is gated on `#if DDSRT_WITH_THREADX`
-  (`packages/dds/nros-rmw-cyclonedds/src/sertype_min.cpp`). That macro is
-  Cyclone-internal — defined in the generated `dds/config.h` from
-  `set(DDSRT_WITH_THREADX ${WITH_THREADX})` — and reaches the TU only by
-  transitive include. If `config.h` ever drops out of the include chain the
-  `#if` silently evaluates 0, the optimization re-enables, and the ThreadX
-  ops-walker trap returns with **no compile error**. The sibling
-  `session.cpp` uses `NROS_PLATFORM_THREADX`, set explicitly `PRIVATE` on the
-  target (`CMakeLists.txt:98`) — guaranteed defined. Fix: guard on
-  `NROS_PLATFORM_THREADX` for consistency, or `#ifndef DDSRT_WITH_THREADX
-  #error` to make the dependency loud. Resolves today because the runtime
-  was verified green, but the guard is brittle.
+- [x] **177.23.A - `sertype_min.cpp` ThreadX guard fails open.**
+  Fixed 2026-05-25. The CDR `opt_size_xcdr1/2` disable was gated on
+  `#if DDSRT_WITH_THREADX` (`packages/dds/nros-rmw-cyclonedds/src/sertype_min.cpp`).
+  That macro is Cyclone-internal — defined in the generated `dds/config.h`
+  from `set(DDSRT_WITH_THREADX ${WITH_THREADX})` — and reached the TU only by
+  transitive include, so if `config.h` ever left the include chain the `#if`
+  evaluated 0, the optimization re-enabled, and the ThreadX ops-walker trap
+  returned with **no compile error**. Now guarded on `NROS_PLATFORM_THREADX`,
+  set explicitly `PRIVATE` on the target (`CMakeLists.txt:98`), matching the
+  sibling `session.cpp`. The `#else` branch (non-ThreadX) is unchanged, so
+  native/POSIX builds are unaffected.
 
-- [ ] **177.23.B - Two divergent fast-path test filters.**
-  Root `just test` excludes heavy groups with the clean
-  `not (group(=qemu-baremetal) or …)` filterset — matches the
-  `.config/nextest.toml` intent and auto-picks up new binaries assigned to
-  a group. `just native test` (`just/native.just`) instead grows a
-  `not binary(zephyr) and not binary(params) and not binary(...)` chain that
-  must be hand-edited per new binary and drifts from the canonical path.
-  Unify the native lane on the `group(=…)` exclusion.
+- [x] **177.23.B - Two divergent fast-path test filters.**
+  Fixed 2026-05-25. `just native test` (`just/native.just`) replaced the
+  growing `not binary(...)` chain for the ROS 2 / XRCE-interop binaries with
+  the `group(=ros2-interop)` + `group(=xrce_ros2_interop)` exclusion (same
+  set as the old `params`/`rmw_interop`/`ros2_lifecycle_interop`/
+  `xrce_ros2_interop` list, now drift-proof). The remaining explicit
+  `binary(...)` excludes (`zephyr`, `esp32_emulator`, `large_msg`,
+  `native_api`, `cpp_parameters`, `c_xrce_api`) are deliberate carve-outs
+  with their own focused lane and no shared group. Unlike root `just test`,
+  this lane intentionally keeps the QEMU RTOS e2e groups in, so it is not a
+  verbatim copy of the root exclusion.
 
-- [ ] **177.23.C - just `[group(...)]` pass incomplete.**
-  Platform modules are grouped, but these module files carry zero group
-  attrs and dump into the default bucket: `just/workspace.just`,
+- [x] **177.23.C - just `[group(...)]` pass incomplete.**
+  Fixed 2026-05-25. Added `[group(...)]` to the lifecycle recipes (setup/
+  doctor → setup; build/test/clean/run → main; build-all/ci/*-fixtures/
+  test-all → full-matrix; focused tests/probes → debug; kani/verus →
+  verification) in the nine ungrouped module files (`just/workspace.just`,
   `verification.just`, `xrce.just`, `cyclonedds.just`, `rmw_zenoh.just`,
-  `zenohd.just`, `docker.just`, `orin-spe.just`, `platformio.just`. Several
-  root public recipes are also ungrouped (`build-test-fixtures-leaves`,
-  `cyclonedds-ci`, `rust-rtos-link-check`, `check-*-mirror`,
-  `check-example-matrix`, `format-{c,cpp,python}`, `check-{c,cpp,python}`,
-  `build-workspace*`). Finish the grouping pass so `just --list` is fully
-  bucketed.
+  `zenohd.just`, `docker.just`, `orin-spe.just`, `platformio.just`) — 65
+  attrs total, matching the `freertos.just` convention (`default` + ad-hoc
+  launchers stay ungrouped). **Root-recipe correction:** the root recipes
+  flagged earlier (`build-test-fixtures-leaves`, `cyclonedds-ci`,
+  `rust-rtos-link-check`, `check-*-mirror`, `check-example-matrix`,
+  `format-{c,cpp,python}`, `check-{c,cpp,python}`, `build-workspace*`) are
+  all `[private]`, so `just --list` already hides them — no grouping needed.
 
-- [ ] **177.23.D - "profile" name collides two nextest concepts.**
-  `scripts/test/nextest-profile.sh` mixes nextest *run profiles*
-  (`-P fail-fast`, `nros_nextest_run_profile_*`) with the *recording overlay*
-  (`.config/nextest-profile.toml`, `NEXTEST_EXPERIMENTAL_RECORD`,
-  `nros_nextest_profile_*`). Both spelled "profile". Rename the recording
-  surface to "record"/"trace" to avoid `-P` confusion. The recording path
-  also leans on experimental nextest APIs (`store export`) — pin the nextest
-  version. Gated behind `NROS_NEXTEST_PROFILE=1`, so normal runs unaffected.
+- [x] **177.23.D - "profile" name collides three concepts.**
+  Fixed 2026-05-25. Review found **three** distinct "profile" concepts, not
+  two: (1) the cargo build profile (`nros_nextest_profile_args` in
+  `scripts/build/cargo.sh`, the `nros-fast-release` arg emitter — the worst
+  offender), (2) the nextest run-profile `-P` (`nros_nextest_run_profile_*`),
+  and (3) the recording overlay (`nros_nextest_profile_*`, `NROS_NEXTEST_PROFILE`,
+  `.config/nextest-profile.toml`). Renamed (1) → `nros_cargo_nextest_args`
+  (+ local var `cargo_nextest_args`) and (3) → `nros_nextest_record_*` /
+  `NROS_NEXTEST_RECORD*` / `.config/nextest-record.toml`; (2) kept (already
+  `run_`-prefixed). The recording path still leans on experimental nextest
+  APIs (`store export`) — pin the nextest version when that surface
+  stabilizes. Recording stays gated behind `NROS_NEXTEST_RECORD=1`, so
+  normal runs are unaffected.
 
-- [ ] **177.23.E - Duplicate `177.22` item number.**
-  This doc has two `177.22` items: "ThreadX Cyclone participant init runtime
-  trap" (Known Issues) and "Make `nros` the canonical build/test CLI"
-  (Closed). Renumber the canonical-CLI item on next edit.
+- [x] **177.23.E - Duplicate `177.22` item number.**
+  Fixed 2026-05-25. Three items shared `177.22`: "ThreadX Cyclone
+  participant init runtime trap" (kept — matches commit `db0e4fbb5` and the
+  CLAUDE.md reference), "Zephyr CycloneDDS fixtures fail after Cyclone setup"
+  (renumbered 177.24), and "Make `nros` the canonical build/test CLI"
+  (renumbered 177.25).
 
 ## Closed
 
-- [x] **177.22 - Make `nros` the canonical build/test CLI.**
+- [x] **177.25 - Make `nros` the canonical build/test CLI.**
   Closed 2026-05-25. Build and test recipes should not compile the
   `nros-cli` binary as a side effect, and should not use or provide the
   legacy `cargo nano-ros` command. Setup owns installing the canonical

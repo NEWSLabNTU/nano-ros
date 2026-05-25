@@ -545,14 +545,23 @@ test verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
+    # Drop ROS 2 / XRCE-interop binaries by their nextest test-groups
+    # (`.config/nextest.toml`) so new interop binaries assigned to those
+    # groups are excluded automatically — no per-binary chain to maintain.
+    # The remaining explicit `binary(...)` excludes are carve-outs with
+    # their own focused lane and no shared group: zephyr (native_sim
+    # fixtures), esp32_emulator, large_msg (test-large-msg), and the
+    # native_api / cpp_parameters / c_xrce_api fixture lanes
+    # (test-native-api, test-c-xrce). Unlike root `just test`, this lane
+    # keeps the QEMU RTOS e2e groups in.
     args=(-p nros-tests --no-fail-fast \
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(params) and not binary(ros2_lifecycle_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg) and not binary(native_api) and not binary(cpp_parameters) and not binary(c_xrce_api)')
+          -E 'not (group(=ros2-interop) or group(=xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(native_api) or binary(cpp_parameters) or binary(c_xrce_api))')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run all native tests (integration + ROS 2 interop + large_msg + C/C++ API)
 [group("full-matrix")]
@@ -583,13 +592,13 @@ test-large-msg verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --test large_msg --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run RMW abstraction integration tests
 [group("debug")]
@@ -597,13 +606,13 @@ test-rmw verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --test rmw --features rmw --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run ROS 2 interop tests (Rust test harness)
 [group("debug")]
@@ -611,13 +620,13 @@ test-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --test rmw_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run ROS 2 parameter interop tests.
 # Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
@@ -626,13 +635,13 @@ test-ros2-params verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --test params --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
 # Requires `just rmw_zenoh setup` first so rmw_zenoh_cpp matches our zenoh-pico pin.
@@ -641,13 +650,13 @@ test-ros2-lifecycle verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --test ros2_lifecycle_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run ROS 2 interop tests (shell script)
 [group("debug")]
@@ -660,12 +669,12 @@ test-dds-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --test dds_ros2_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run C codegen tests only (shell-based, no nextest)
 _test-c-codegen verbose="":
@@ -703,13 +712,13 @@ test-native-api verbose="":
     # Consumes prebuilt per-RMW CMake fixtures; run
     # `just build-test-fixtures` first for the full matrix.
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --test native_api --test cpp_parameters --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run all C tests (integration + codegen)
 [group("debug")]
@@ -717,7 +726,7 @@ test-c verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     just init-test-logs
     args=(-p nros-tests --test native_api --no-fail-fast \
@@ -725,7 +734,7 @@ test-c verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     just native _test-c-codegen {{verbose}}
 
 # C++ API integration tests (needs cmake + zenohd)
@@ -734,14 +743,14 @@ test-cpp verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     just build-zenohd
     args=(-p nros-tests --no-fail-fast \
           -E '(binary(native_api) and (test(Language__Cpp) or test(test_cpp_))) or binary(cpp_parameters)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
 [group("debug")]
@@ -749,12 +758,12 @@ test-c-xrce verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(c_xrce_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Run executor fairness benchmark (requires zenohd)
 bench-fairness:

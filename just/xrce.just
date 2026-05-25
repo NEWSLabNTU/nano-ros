@@ -4,6 +4,7 @@ default:
     @just --list --justfile {{source_file()}}
 
 # Install XRCE prerequisites: build Micro-XRCE-DDS Agent from source.
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -14,6 +15,7 @@ setup:
     fi
 
 # Diagnose XRCE install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -26,10 +28,12 @@ doctor:
     fi
 
 # Build Micro-XRCE-DDS Agent from source (alias for `just xrce setup`).
+[group("main")]
 build-agent:
     ./scripts/xrce-agent/build.sh
 
 # Clean XRCE Agent build
+[group("main")]
 clean-agent:
     ./scripts/xrce-agent/build.sh --clean
 
@@ -42,45 +46,49 @@ clean-agent:
 # in-tree validation.
 
 # Run XRCE-DDS integration tests (requires: just xrce build-agent)
+[group("main")]
 test verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(xrce)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # XRCE ↔ ROS 2 DDS interop tests (needs XRCE Agent + ROS 2 + rmw_fastrtps)
+[group("debug")]
 test-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(xrce_ros2_interop)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
+[group("debug")]
 test-c verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E 'binary(c_xrce_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
 # Phase 121.7.i — `cargo check` the out-of-workspace nros-rmw-xrce Rust
 # crate so CI catches drift after platform-API or trait-surface changes.
 # Workspace `cargo check` skips it (it's workspace-excluded for xrce-sys
 # linking reasons), so this recipe is the only place it gets compiled.
+[group("debug")]
 check-rust-rmw:
     #!/usr/bin/env bash
     set -e
@@ -88,4 +96,5 @@ check-rust-rmw:
     cargo check --quiet
 
 # Clean XRCE build artifacts
+[group("main")]
 clean: clean-agent

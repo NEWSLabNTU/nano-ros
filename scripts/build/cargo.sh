@@ -30,7 +30,7 @@ nros_cargo_profile_args() {
     esac
 }
 
-nros_nextest_profile_args() {
+nros_cargo_nextest_args() {
     local profile
     profile="$(nros_cargo_profile_name)"
     case "$profile" in

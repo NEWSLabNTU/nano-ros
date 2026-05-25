@@ -24,6 +24,7 @@ default:
 # the workspace nightly + a verbose "you also need NV_SPE_FSP_DIR"
 # notice. The FSP itself ships under NVIDIA's SDK Manager EULA and
 # cannot be auto-installed.
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -44,6 +45,7 @@ setup:
     fi
 
 # Diagnose Orin SPE install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -101,6 +103,7 @@ doctor:
 # an already-extracted tree (e.g. autoware_sentinel's
 # `scripts/spe/downloads/spe-freertos-bsp/`), this recipe reuses it
 # instead of re-downloading.
+[group("setup")]
 bsp-download:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -168,6 +171,7 @@ bsp-download:
 # The upstream Makefile only ever builds an ELF; we re-use its `.o`
 # outputs because reconstructing its include / preprocessor flag set
 # from scratch would be brittle across NVIDIA SDK Manager versions.
+[group("setup")]
 bsp-build:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -284,6 +288,7 @@ bsp-build:
 #   packages/boards/nros-board-orin-spe/target/armv7r-none-eabihf/release/
 # The firmware crate (downstream — autoware_sentinel side) wraps this
 # rlib into a staticlib and links via NVIDIA's Makefile.
+[group("main")]
 build:
     #!/usr/bin/env bash
     set -e
@@ -306,6 +311,7 @@ build:
     cargo +{{NIGHTLY}} build $cargo_profile_args
 
 # Build Orin SPE examples.
+[group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
@@ -320,6 +326,7 @@ build-examples:
 
 # Build POSIX-side fixtures used by the mock-IVC test (Phase 100.8).
 # These exercise the unix-mock backend and don't need NV_SPE_FSP_DIR.
+[group("full-matrix")]
 build-fixtures: build-examples
     #!/usr/bin/env bash
     set -e
@@ -329,12 +336,14 @@ build-fixtures: build-examples
     cargo build $cargo_profile_args -p nvidia-ivc --features unix-mock --quiet
 
 # Build every Orin SPE tier: core artifacts, examples, and test fixtures.
+[group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "Orin SPE build-all completed."
 
 # Run Orin SPE tests — POSIX mock-IVC E2E in nros-tests, plus the
 # nvidia-ivc unix-mock loopback. Real-hardware tests live in
 # autoware_sentinel Phase 11.7.
+[group("main")]
 test verbose="":
     #!/usr/bin/env bash
     set -e
@@ -351,6 +360,7 @@ test verbose="":
 # $L4T_BSP_DIR (typically ~/nvidia/Linux_for_Tegra) and root for
 # flash.sh's USB access. QSPI hardware firewall blocks userland dd
 # from Linux, so host USB recovery is the only single-partition path.
+[group("main")]
 flash:
     #!/usr/bin/env bash
     set -e
@@ -370,9 +380,11 @@ flash:
     sudo ./flash.sh -k A_spe-fw jetson-agx-orin-devkit mmcblk0p1
 
 # CI: doctor + test (POSIX path only — hardware tests are downstream).
+[group("full-matrix")]
 ci: doctor test
 
 # Clean Orin SPE build artifacts.
+[group("main")]
 clean:
     #!/usr/bin/env bash
     rm -rf packages/boards/nros-board-orin-spe/target
@@ -386,6 +398,7 @@ clean:
 # rebuild. Leaves `external/spe-fsp/downloads/` (tarballs + extracted
 # BSP source) in place — re-fetch with `just orin_spe bsp-download`
 # only if you want to discard the source tree as well.
+[group("main")]
 bsp-clean:
     #!/usr/bin/env bash
     set -e

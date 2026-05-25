@@ -220,7 +220,7 @@ test-all verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    nextest_profile_args=($(nros_nextest_profile_args))
+    cargo_nextest_args=($(nros_cargo_nextest_args))
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
         exit 1
@@ -234,13 +234,13 @@ test-all verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     # E2E networking tests (pubsub, service, action across RTOS platforms)
     e2e_args=(-p nros-tests --test rtos_e2e -E 'test(Freertos)' --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         e2e_args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${nextest_profile_args[@]}" "${e2e_args[@]}"
+    cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 
 # Phase 121.6 — build the FreeRTOS Posix-port smoke test for
 # nros-platform-freertos. Uses the in-tree FreeRTOS-Kernel + a

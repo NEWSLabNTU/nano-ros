@@ -12,6 +12,7 @@ default:
 # `find_package(CycloneDDS)` finds it via `CMAKE_PREFIX_PATH`.
 #
 # Initialises the submodule on first run; idempotent on re-runs.
+[group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
@@ -25,6 +26,7 @@ setup:
     fi
 
 # Diagnose Cyclone DDS install status (read-only).
+[group("setup")]
 doctor:
     #!/usr/bin/env bash
     set +e
@@ -53,26 +55,31 @@ doctor:
 # surface. This does not claim RTOS Cyclone support is enabled; it
 # distinguishes the existing upstream FreeRTOS+lwIP ddsrt pieces from the
 # missing ThreadX/NetX Duo port.
+[group("debug")]
 ddsrt-port-inventory:
     bash ./scripts/cyclonedds/ddsrt-port-inventory.sh
 
 # Phase 175.B — configure/build probe for Cyclone DDS on the nano-ros
 # FreeRTOS MPS2 + lwIP target. This is diagnostic only; it does not enable
 # Cyclone fixture cells until the recorded port/config blockers are fixed.
+[group("debug")]
 freertos-cross-probe:
     bash ./scripts/cyclonedds/freertos-cross-probe.sh
 
 # Phase 175.B — configure/build probe for Cyclone DDS on the nano-ros
 # ThreadX RISC-V64 + NetX Duo target. This validates the experimental
 # nano-ros ThreadX ddsrt port before fixture cells are enabled.
+[group("debug")]
 threadx-cross-probe:
     bash ./scripts/cyclonedds/threadx-cross-probe.sh
 
 # Build Cyclone DDS (alias for `just cyclonedds setup`).
+[group("main")]
 build:
     ./scripts/cyclonedds/build.sh
 
 # Clean Cyclone DDS build artifacts (does not touch the submodule).
+[group("main")]
 clean:
     ./scripts/cyclonedds/build.sh --clean
 
@@ -81,6 +88,7 @@ clean:
 # Configures + builds + installs into the shared `build/install/`
 # prefix so downstream nros-cpp examples can find it via
 # `find_package(NrosRmwCyclonedds)`.
+[group("main")]
 build-rmw: setup
     #!/usr/bin/env bash
     set -e
@@ -105,10 +113,12 @@ build-rmw: setup
 # Run Cyclone DDS RMW tests via CTest.
 # Phase 117.3 ships only the register-vtable smoke test; 117.12 adds
 # the POSIX E2E pub/sub interop harness against stock rmw_cyclonedds.
+[group("main")]
 test: build-rmw
     ctest --test-dir packages/dds/nros-rmw-cyclonedds/build --output-on-failure
 
 # Composite: setup Cyclone + build RMW backend + run tests. Wired
 # into top-level `just ci` via the `cyclonedds-ci` wrapper as of
 # Phase 117.16.
+[group("full-matrix")]
 ci: setup build-rmw test
