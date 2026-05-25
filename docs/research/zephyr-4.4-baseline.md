@@ -93,3 +93,21 @@ devicetree are clean. The audit's two High-risk unknowns are now bounded:
 POSIX Kconfig = a single removed symbol (this doc); Rust module = still
 pending its own live-tree check (Task 9). The 4.4 line needs a Python-3.12
 provisioning step folded into setup (Task 2b).
+
+## Update — Task 8 applied (2026-05-25)
+
+`CONFIG_MAX_PTHREAD_COUNT` removed/migrated across 42 non-vendored confs
+(deleted where `POSIX_THREAD_THREADS_MAX` was already set — redundant since
+3.7's deprecated `MAX_PTHREAD_COUNT` defaults to it; migrated to
+`POSIX_THREAD_THREADS_MAX` in the one conf lacking it). Behavior-preserving
+on 3.7, valid on 4.4. Vendored zenoh-pico doc conf left untouched.
+
+Rebuild result: **Kconfig now completes on 4.4** (autoconf.h generated), and
+the build advances through host gcc/ld/asm detection to the **next blocker —
+`nros-codegen not found`** (`zephyr/cmake/nros_generate_interfaces.cmake:95`).
+That is a generic host-tool prerequisite common to *both* Zephyr lines (the
+`build-fixtures` recipe builds the host codegen tool and passes
+`_NANO_ROS_CODEGEN_TOOL`), **not** a 4.4 divergence — so it belongs to the
+build-orchestration/version-gating work (Tasks 4–10), not the POSIX fix.
+
+No further 4.4-specific Kconfig divergence observed up to the codegen gate.
