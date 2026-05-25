@@ -1147,12 +1147,23 @@ robustness/consistency follow-ups, not regressions.
     --locked` on standalone example/fixture dirs whose gitignored
     `Cargo.lock` goes stale after a clean+setup → hard-fail. Dropped
     `--locked` in `scripts/build/cargo.sh::nros_cargo_fetch_standalone_manifests`.
-  - **(open, worked around)** `build-all` jobserver prefetch assumes
-    example `generated/` dirs exist, but they are gitignored and a clean
-    wipes them; esp32 prefetch failed until I pre-ran `nros generate-rust`
-    across the 74 Rust examples. The codegen step must run (or be
-    tolerated) before the prefetch fanout — systemic ordering bug, not
-    yet fixed. Candidate 177 follow-up.
+  - **(fixed)** `build-all-jobserver` prefetch assumed example
+    `generated/` dirs exist, but they are gitignored and a clean wipes
+    them; the standalone-manifest prefetch (`cargo fetch` in dirs whose
+    `.cargo/config.toml` `[patch.crates-io]` points at `generated/<pkg>`)
+    hard-failed `unable to update generated/<pkg>` → `No such file or
+    directory`. Root cause: codegen (`just generate-bindings` + the
+    per-platform `ensure_native_rust_generated` steps) only ran *inside*
+    `build-all.mk`, but the standalone prefetch ran in the recipe *before*
+    the mk — and the fetches must stay there because the mk runs
+    `CARGO_NET_OFFLINE=true`. Fix: run `just generate-bindings` (the
+    existing incremental global Rust-example codegen sweep) in the recipe
+    ahead of `nros_cargo_fetch_standalone_manifests`. C/C++ examples never
+    hit this — their codegen is a cmake step. The mk keeps generate-bindings
+    as a prereq for the direct `make -f build-all.mk` path; the incremental
+    helper makes the recipe's earlier pass cheap on a warm tree. Verified
+    by wiping one example's `generated/` (`cargo fetch` rc=101), running
+    `generate-bindings`, re-fetching (rc=0).
 
 ## Archive Rule
 

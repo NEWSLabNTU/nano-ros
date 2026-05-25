@@ -242,6 +242,16 @@ build-all-jobserver:
     echo "build-all: prefetching Cargo registries before broad fanout"
     nros_cargo_fetch_root
     nros_cargo_fetch_codegen
+    # Rust example/fixture codegen MUST precede the standalone-manifest
+    # prefetch: those manifests carry `[patch.crates-io]` paths into their
+    # gitignored `generated/<pkg>/` crates, and a clean tree has no
+    # generated/ yet, so `cargo fetch` there hard-fails "unable to update
+    # generated/<pkg>". C/C++ examples don't hit this — their codegen runs
+    # inside cmake. The mk re-runs generate-bindings as a prereq (covers the
+    # direct `make -f build-all.mk` path); the incremental helper makes this
+    # first pass cheap on a warm tree and authoritative on a clean one.
+    echo "build-all: generating Rust example bindings before standalone prefetch"
+    just generate-bindings
     echo "build-all: prefetching standalone Cargo manifests"
     nros_cargo_fetch_standalone_manifests
     echo "build-all: prebuilding host nros-codegen"
