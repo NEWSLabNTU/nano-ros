@@ -6,17 +6,21 @@ they build each fixture with identical features/target-dir/env.
 
   fixtures-manifest.py list --platform native --lang rust [--rmw zenoh]
 
-emits one TAB-separated record per matching entry:
+emits one record per matching entry, fields separated by the unit-separator
+byte 0x1F (NOT tab — tab is IFS-whitespace, so bash `read` would collapse the
+empty <env> field and shift the columns):
 
-  <dir>\t<env>\t<cargo-args>
+  <dir>\x1f<env>\x1f<cargo-args>
 
-where <env> is space-joined `KEY=VAL` (or empty) and <cargo-args> is the
-cargo build flags (--no-default-features / --features a,b / --target-dir D /
---target TRIPLE) — the profile is added by the caller. Word-split <cargo-args>
-on whitespace into an argv array.
+Read it in bash with `IFS=$'\x1f' read -r dir env args`. <env> is space-joined
+`KEY=VAL` (or empty), <cargo-args> is the cargo build flags
+(--no-default-features / --features a,b / --target-dir D / --target TRIPLE) —
+the profile is added by the caller; word-split <cargo-args> into an argv array.
 """
 import argparse
 import sys
+
+SEP = "\x1f"
 
 try:
     import tomllib  # Python 3.11+
@@ -65,7 +69,7 @@ def main():
             continue
         if a.rmw and e.get("rmw") != a.rmw:
             continue
-        sys.stdout.write(f"{e['dir']}\t{env_str(e)}\t{cargo_args(e)}\n")
+        sys.stdout.write(f"{e['dir']}{SEP}{env_str(e)}{SEP}{cargo_args(e)}\n")
 
 
 if __name__ == "__main__":

@@ -86,53 +86,44 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
 [group("full-matrix")]
-build-fixtures: build-fixture-role-examples build-fixture-extras
+build-fixtures: build-fixture-rust build-fixture-extras
     @echo "Native test fixtures built."
 
-# Internal Phase 178.B target: default native Rust role binaries consumed by
-# tests. This is intentionally narrower than public `build-examples`, which is
-# a broad repository-level Rust example aggregate.
+# Build every native Rust test fixture from the SSOT manifest
+# (examples/fixtures.toml). Per-fixture build options — features, target-dir,
+# env, per-RMW variants — live in the manifest; this recipe owns only the
+# codegen prep and the build loop, so the build and the test-all staleness
+# probe (scripts/test/rust-fixture-stale.sh) consume identical options.
+# Phase 181.3.
 [group("examples")]
-build-fixture-role-examples:
+build-fixture-rust:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
     nros_cli="$(nros_cli_bin)"
-    ensure_native_rust_generated() {
-        case "$1" in
-            native/rust/talker|native/rust/listener|native/rust/service-server|native/rust/service-client|native/rust/action-server|native/rust/action-client)
-                ( cd "examples/$1" && "$nros_cli" generate-rust --force )
-                ;;
-        esac
-    }
-    examples=(
-        native/rust/listener
-        native/rust/lifecycle-node
-        native/rust/custom-msg
-        native/rust/service-server
-        native/rust/service-client
-        native/rust/action-server
-        native/rust/action-client
-        native/rust/talker-rtic
-        native/rust/listener-rtic
-        native/rust/service-server-rtic
-        native/rust/service-client-rtic
-        native/rust/action-server-rtic
-        native/rust/action-client-rtic
-        native/rust/serial-talker
-        native/rust/serial-listener
-    )
-    for ex in "${examples[@]}"; do
-        echo "  → $ex"
-        ensure_native_rust_generated "$ex"
-        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet )
-        else
-            ( cd "examples/$ex" && cargo build $cargo_profile_args --quiet ) &
-        fi
+    # Codegen the fixtures that consume generated message crates (idempotent —
+    # --force is a no-op when the .msg inputs are unchanged).
+    for ex in talker listener service-server service-client action-server \
+              action-client custom-transport-talker custom-transport-listener; do
+        ( cd "examples/native/rust/$ex" && "$nros_cli" generate-rust --force > /dev/null )
     done
-    wait
+    build_one() {
+        local dir envstr args
+        IFS=$'\x1f' read -r dir envstr args <<< "$1"
+        echo "  → $dir ${args}"
+        # shellcheck disable=SC2086
+        ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
+    }
+    export -f build_one
+    manifest() { python3 scripts/build/fixtures-manifest.py list --platform native --lang rust; }
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || ! command -v parallel >/dev/null 2>&1; then
+        while IFS= read -r l; do build_one "$l"; done < <(manifest)
+    else
+        manifest | parallel --halt now,fail=1 --line-buffer -j "$(nros_cargo_frontend_jobs)" build_one {}
+    fi
+    echo "Native rust fixtures built (from examples/fixtures.toml)."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-fixture-role-examples`.

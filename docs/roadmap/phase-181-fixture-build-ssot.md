@@ -59,9 +59,19 @@ follow-up). Does not block `just ci` once landed.
 - **Files**: `scripts/test/rust-fixture-stale.sh`, `justfile`.
 
 ### 181.3 — Native rust build recipe reads the manifest (B, proof)
-- [ ] `just native build-fixtures` rust builds loop the manifest instead of
-  hard-coded `cargo build ...` lines; verify `just native build-fixtures`.
-- **Files**: `just/native.just`.
+- [x] New `build-fixture-rust` recipe builds every native rust fixture from
+  `fixtures-manifest.py list --platform native --lang rust` (codegen prep +
+  manifest-driven cargo loop); `build-fixtures` now depends on it (replaced
+  `build-fixture-role-examples`). Verified: builds all 40 entries with their
+  exact options; `_check-fixtures-stale` clean afterwards.
+- Separator fix: the reader uses `0x1F` (unit separator), not tab — tab is
+  IFS-whitespace so bash `read` collapsed the empty `<env>` field and shifted
+  columns. Consumers use `IFS=$'\x1f'` + a subshell `export` (not `env`, which
+  mis-parses a leading `--` when the env field is empty).
+- Transitional: `build-fixture-extras` still has its hard-coded rust builds
+  (now cargo no-ops since options match the manifest); 181.6 removes them.
+- **Files**: `just/native.just`, `scripts/build/fixtures-manifest.py`,
+  `scripts/test/rust-fixture-stale.sh`.
 
 ### 181.4 — Roll out remaining rust platforms
 - [ ] Author manifest entries + migrate recipes for: qemu-arm-baremetal,
