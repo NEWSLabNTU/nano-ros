@@ -74,17 +74,22 @@ making the remaining C/C++ work trivial.
    (gitignored; cleared on the next generator-mismatch wipe). → fixes audit #2.
    (`nros_fixture_cell_sig`/`nros_fixture_shared_sig` + the dead `.inputsig`
    pass in `_check-fixtures-stale` are now unused — removed in 181.7c.)
-3. **181.7c — C/C++ staleness probe** (approach revised by the 181.7a finding).
-   Pure `ninja -n` won't work (Corrosion's cargo step always pending). Options:
-   (a) **`cmake --build` self-heal** — incremental, near-no-op when fresh
-   (cargo fingerprint + ninja skip), rebuilds when stale; consistent with the
-   rust cargo self-heal; the SDK/cmake env is present in the fixture/test-all
-   context (direnv). (b) `ninja -n` **filtered** — ignore the corrosion/cargo
-   line(s); if the remaining (real C/C++ compile/link) work is empty AND the
-   linked rust crates are cargo-`fresh`, treat as fresh. (a) is simpler and the
-   likely choice. Either way, wire a cmake pass into `_check-fixtures-stale`
-   over the manifest's per-RMW dirs; drop the dead `.nros-fixture.inputsig`.
-   → fixes audit #1.
+3. **[x] 181.7c — C/C++ staleness probe** (2026-05-26, `cmake --build`
+   self-heal). `scripts/test/cmake-fixture-stale.sh` runs `cmake --build` on a
+   cell's `build-<rmw>/` (near-no-op when fresh: cargo fingerprint + ninja/make
+   skip) and reports the cell iff the output shows real compile/link work
+   (`Building (C|CXX|ASM) object` / `Linking` / cargo `Compiling <crate> v`).
+   Chosen over `ninja -n` because Corrosion's cargo step always shows pending
+   there. `_check-fixtures-stale` now runs a cmake pass over the manifest's
+   c/cpp entries (per `build-<rmw>/`, parallel), replacing the dead
+   `.nros-fixture.inputsig` pass; removed the now-unused `nros_fixture_cell_sig`
+   / `nros_fixture_shared_sig` + their `.inputsig` write. Verified: a fresh
+   Ninja cell is silent; a first run self-healed 23 genuinely-stale (old
+   Make-configured) cells and the **second run was clean (7 s)** — no
+   false-stale loop, robust on both Make and Ninja dirs. → fixes audit #1 and #2
+   (sig sprawl: the content-hash + identity sigs are gone; only the transient
+   `.nros-cmake.sig`/`.nros-cmake-fixture.sig` files left in old build dirs,
+   never re-created).
 4. **181.5 — C/C++ manifest migration** (now trivial: manifest `cmake_defs` +
    unified builder + ninja-n probe), per platform 181.5.a..h.
 5. **181.6 — strip duplication / converge enumeration**. Remove the redundant

@@ -789,29 +789,37 @@ _check-fixtures-stale:
     if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
         exit 0
     fi
-    source scripts/build/fixture-matrix.sh
-    export NROS_FIXTURE_SHARED_SIG="$(nros_fixture_shared_sig)"
-    stale=()
-    while IFS= read -r sigfile; do
-        build_dir="$(dirname "$sigfile")"
-        src_dir="$(dirname "$build_dir")"
-        if [ "$(cat "$sigfile" 2>/dev/null)" != "$(nros_fixture_cell_sig "$src_dir")" ]; then
-            stale+=("$build_dir")
-        fi
-    done < <(find examples -type f -name .nros-fixture.inputsig 2>/dev/null)
-    if [ ${#stale[@]} -gt 0 ]; then
-        echo "WARNING: ${#stale[@]} prebuilt C/C++ fixture cell(s) look STALE (sources changed since build):" >&2
-        printf '  %s\n' "${stale[@]}" >&2
-        echo "  Rebuild (incremental — only changed cells):  just build-test-fixtures" >&2
-        echo "  (bypass this check with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+    # C/C++ cells — reuse cmake/ninja's incremental build (self-heal) over the
+    # SSOT manifest's per-RMW build dirs. `ninja -n` can't be a clean
+    # detect-only signal here: Corrosion's cargo step (nros-c/nros-cpp) is an
+    # always-run custom command, so ninja -n always reports it pending. Instead
+    # run the incremental `cmake --build` (near-no-op when fresh) and report the
+    # cells that actually rebuilt. Phase 181.7c.
+    cmake_records() {
+        python3 scripts/build/fixtures-manifest.py list --lang c
+        python3 scripts/build/fixtures-manifest.py list --lang cpp
+    }
+    cmake_stale=()
+    if command -v parallel >/dev/null 2>&1; then
+        mapfile -t cmake_stale < <(cmake_records | parallel --jobs "$(nproc)" bash scripts/test/cmake-fixture-stale.sh {} 2>/dev/null)
+    else
+        while IFS= read -r line; do
+            out="$(bash scripts/test/cmake-fixture-stale.sh "$line")"
+            [ -n "$out" ] && cmake_stale+=("$out")
+        done < <(cmake_records)
+    fi
+    if [ ${#cmake_stale[@]} -gt 0 ]; then
+        echo "WARNING: ${#cmake_stale[@]} C/C++ fixture cell(s) were STALE and have now been rebuilt (cmake):" >&2
+        printf '  %s\n' "${cmake_stale[@]}" >&2
+        echo "  (cmake/ninja incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
     fi
     # Rust cells — reuse cargo's own fingerprint instead of a custom hash.
     # Build options come from the SSOT manifest (examples/fixtures.toml) so the
     # probe rebuilds each fixture with its EXACT features/target-dir/env — not
     # default features, which would feature-thrash. `cargo build` is a no-op
     # when fresh and rebuilds stale units incrementally, so this both detects
-    # AND self-heals stale rust fixtures (unlike C/C++ above, which only warns).
-    # Phase 177.9 / 181.
+    # AND self-heals stale rust fixtures (C/C++ above self-heals via
+    # `cmake --build` the same way). Phase 177.9 / 181.
     rust_stale=()
     if command -v parallel >/dev/null 2>&1; then
         mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --lang rust \
