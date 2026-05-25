@@ -585,10 +585,30 @@ passed.
         topic/type naming, session-key collision (distinct node names),
         `nros_cpp_spin_once` routing (already `executor.spin_once`), the
         backend poll ring (works for C), and `Executor::open`/spin/drive_io/
-        try_recv re-opening (each opens at most once per boot). Next step:
-        run the listener `native_sim` `.exe` under a debugger / with fault
-        output (needs a non-sandboxed env — the binary binds a UDP socket the
-        sandbox kills) to capture the fault site in the C++ receive loop.
+        try_recv re-opening (each opens at most once per boot).
+
+        **Fault-handler experiment 2026-05-25 (temporary, reverted).** Added a
+        `k_sys_fatal_error_handler` override to the listener that prints the
+        reason and halts instead of rebooting, plus per-iteration loop markers.
+        Result: the override **never fired** (FATAL count 0) yet the listener
+        **still rebooted 3×** — so the restarts do **not** go through Zephyr's
+        fatal path (not a `k_panic`/exception/`__ASSERT`). And in the
+        longest-lived generation the loop ran cleanly to `iter=192`
+        (spin_once + try_recv each iteration, no halt) while still receiving
+        **0** messages, with the talker publishing 1..8 normally and booting
+        once. So there are two intertwined problems:
+        1. A **non-fatal listener restart** (sys_reboot-style or a native_sim
+           process re-exec — not a Zephyr fatal), specific to the C++ XRCE
+           listener.
+        2. **C++ XRCE pubsub `try_recv` delivers 0 even within a single
+           stable generation** that never restarts — so reception is broken
+           independently of the restarts.
+        Next step needs interactive debugging the sandbox can't provide: run
+        the listener `native_sim` `.exe` under gdb outside the sandbox (the
+        binary binds a UDP socket the sandbox SIGKILLs → exit 144) to catch
+        the restart trigger, and trace the XRCE input-stream → `xrce_topic_callback`
+        → ring → `try_recv` path within one stable generation to find why
+        buffered samples aren't drained by `try_recv`.
 
   **CycloneDDS slice — `native_sim` runtime, root-caused 2026-05-25
   (Phase 179.G).** 177.24 unblocked the Cyclone *fixture build*; the
