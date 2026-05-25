@@ -13,7 +13,11 @@ fixes both.
 done; **181.4 done** — 7 rust platforms migrated to the SSOT + verified
 (native, qemu-arm-baremetal, stm32f4, freertos, nuttx, threadx-linux,
 threadx-riscv64), esp32 deferred on toolchain, zephyr/px4 N/A to the cargo
-manifest. Next: 181.5 (C/C++ cmake) + 181.6 (strip recipe duplication).
+manifest. **181.5.a–e done** — native + freertos + nuttx + threadx-linux +
+threadx-riscv64 C/C++ cells migrated to the SSOT manifest + the shared
+`fixtures-build.sh` cmake path (native/freertos/threadx-linux build-verified;
+cyclone passes gated). Next: 181.5.f–h (zephyr/esp32/px4) + 181.6 (strip recipe
+duplication).
 
 **Priority.** P2 — improves `just test-all` correctness/UX (Phase 177.9
 follow-up). Does not block `just ci` once landed.
@@ -279,12 +283,34 @@ generator-neutral — generator is a configure-time flag):
   end — build (12 c + 13 cpp cells incl. parameters), idempotent no-op rerun
   (1.4 s, 0 compile/link lines), probe reports all fresh. **Files**:
   `just/native.just`, `scripts/build/fixtures-build.sh`.
-- [ ] **181.5.b freertos** c/cpp — cyclone talker fixtures. **Files**:
-  `just/freertos.just`.
-- [ ] **181.5.c nuttx** c/cpp. **Files**: `just/nuttx.just`.
-- [ ] **181.5.d threadx-linux** c/cpp. **Files**: `just/threadx-linux.just`.
-- [ ] **181.5.e threadx-riscv64** c/cpp + cmake/corrosion cyclone rust cells.
-  **Files**: `just/threadx-riscv64.just`.
+  Cross-platform RMW gating: `fixtures-build.sh` grew an optional 3rd arg
+  `<rmw>` (passes `--rmw` to the manifest reader) so a recipe can build one RMW
+  at a time and gate optional backends (cyclone).
+- [x] **181.5.b freertos** c/cpp — done. Manifest rows (12 zenoh c/cpp cells);
+  recipe replaced the hand-rolled C + C++ loops with `fixtures-build.sh freertos
+  {c,cpp} zenoh` + `NROS_CMAKE_EXTRA_DEFS` (toolchain, build-type, codegen
+  tool). Verified: `freertos_c_talker` builds as a thumbv7m ARM ELF via the
+  manifest path under bash. **Files**: `just/freertos.just`, `examples/fixtures.toml`.
+- [x] **181.5.c nuttx** c/cpp — done. 12 zenoh manifest rows; recipe → two
+  `fixtures-build.sh nuttx {c,cpp} zenoh` calls + EXTRA_DEFS (toolchain,
+  NUTTX_DIR, NUTTX_FFI_CRATE_DIR, build-type, codegen). Same ARM-cross wiring as
+  freertos. **Files**: `just/nuttx.just`, `examples/fixtures.toml`.
+- [x] **181.5.d threadx-linux** c/cpp — done. 12 zenoh + 12 cyclone manifest
+  rows; recipe → `fixtures-build.sh threadx-linux {c,cpp} zenoh` then a
+  `libddsc.so`-gated cyclone pass. Verified: all 6 `threadx_c_*` zenoh cells
+  build via the manifest under bash. **Files**: `just/threadx-linux.just`,
+  `examples/fixtures.toml`.
+- [x] **181.5.e threadx-riscv64** c/cpp — done. 12 zenoh + 4 cyclone
+  (talker/listener) manifest rows; recipe exports the NetX/ThreadX configure
+  env then runs `fixtures-build.sh threadx-riscv64 {c,cpp} zenoh` + a
+  double-gated cyclone pass. The Cyclone `rust/talker` cmake/corrosion cell
+  (Phase 175.B) is **not** a c/cpp manifest row, so it stays built directly via
+  the retained `build_threadx_cmake_rmw` helper. **Files**:
+  `just/threadx-riscv64.just`, `examples/fixtures.toml`.
+- Note: the cyclone c/cpp passes (threadx-linux/-riscv64) are unverifiable here
+  (no DDS host/cross libs in this tree) but reproduce the prior `-D` set exactly
+  via EXTRA_DEFS; `just <plat> build-fixtures` after `just cyclonedds setup` is
+  the verification.
 - [ ] **181.5.f zephyr** c/cpp/rust — west/cmake cells. **Files**:
   `just/zephyr.just`.
 - [ ] **181.5.g esp32** c/cpp (if any). **Files**: `just/esp32.just`.

@@ -100,77 +100,22 @@ build-fixture-extras:
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     echo "  → logging-smoke-threadx-linux"
     cargo build $cargo_profile_args --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet
-    # Phase 118.B — collapsed-shape threadx-linux C / C++. The Rust
-    # zenoh role binaries are produced by `build-examples`.
-    collapsed_cmake_dirs=()
-    for lang in c cpp; do
-        for ex in $(nros_fixture_roles); do
-            dir="examples/threadx-linux/$lang/$ex"
-            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
-        done
-    done
-    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        cmake_rmws="zenoh"
-        if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
-            cmake_rmws="$cmake_rmws cyclonedds"
-        else
-            echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
-        fi
-        export threadx_dir nsos_netx_dir config_dir app_define codegen msg_to_idl cyclone_prefix
-        export -f nros_cmake_fixture_build
-        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-            for dir in "${collapsed_cmake_dirs[@]}"; do
-                for rmw in $cmake_rmws; do
-                    echo "  → $dir (-DNROS_RMW=$rmw, build-$rmw/)"
-                    sig="$(printf '%s\n' \
-                      "platform=threadx_linux" \
-                      "rmw=$rmw" \
-                      "src=$dir" \
-                      "threadx_dir=$threadx_dir" \
-                      "nsos_netx_dir=$nsos_netx_dir" \
-                      "config_dir=$config_dir" \
-                      "app_define=$app_define" \
-                      "codegen=$codegen")"
-                    nros_cmake_fixture_build "$dir" "$dir/build-$rmw" "$sig" \
-                      -DNROS_RMW="$rmw" \
-                      -DNANO_ROS_PLATFORM=threadx_linux \
-                      -DTHREADX_DIR="$threadx_dir" \
-                      -DNSOS_NETX_DIR="$nsos_netx_dir" \
-                      -DTHREADX_CONFIG_DIR="$config_dir" \
-                      -DTHREADX_APP_DEFINE="$app_define" \
-                      -DCMAKE_BUILD_TYPE=Release \
-                      -DCMAKE_PREFIX_PATH="$cyclone_prefix" \
-                      -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$msg_to_idl" \
-                      -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-                done
-            done
-        else
-            printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-                "for rmw in $cmake_rmws; do \
-                     echo '  → {} (-DNROS_RMW='\$rmw', build-'\$rmw'/)' && \
-                     sig=\$(printf '%s\n' \
-                       'platform=threadx_linux' \
-                       'rmw='\$rmw \
-                       'src={}' \
-                       'threadx_dir=$threadx_dir' \
-                       'nsos_netx_dir=$nsos_netx_dir' \
-                       'config_dir=$config_dir' \
-                       'app_define=$app_define' \
-                       'codegen=$codegen') && \
-                     nros_cmake_fixture_build {} {}/build-\$rmw \"\$sig\" \
-                       -DNROS_RMW=\$rmw \
-                       -DNANO_ROS_PLATFORM=threadx_linux \
-                       -DTHREADX_DIR='$threadx_dir' \
-                       -DNSOS_NETX_DIR='$nsos_netx_dir' \
-                       -DTHREADX_CONFIG_DIR='$config_dir' \
-                       -DTHREADX_APP_DEFINE='$app_define' \
-                       -DCMAKE_BUILD_TYPE=Release \
-                       -DCMAKE_PREFIX_PATH='$cyclone_prefix' \
-                       -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL='$msg_to_idl' \
-                       -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null; \
-                 done"
-        fi
+    # Phase 181.5.d — collapsed-shape threadx-linux C / C++ from the SSOT
+    # manifest. The Rust zenoh role binaries are produced by `build-examples`.
+    # The full -D set (incl. the cyclone prefix / msg_to_idl, harmless for the
+    # zenoh pass per the note above) is injected via NROS_CMAKE_EXTRA_DEFS and
+    # reused for the gated cyclone pass; per-cell RMW + build-<rmw>/ subdir come
+    # from the manifest.
+    export NROS_CMAKE_EXTRA_DEFS="-DNANO_ROS_PLATFORM=threadx_linux -DTHREADX_DIR=$threadx_dir -DNSOS_NETX_DIR=$nsos_netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DTHREADX_APP_DEFINE=$app_define -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$cyclone_prefix -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$msg_to_idl -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    bash scripts/build/fixtures-build.sh threadx-linux c zenoh
+    bash scripts/build/fixtures-build.sh threadx-linux cpp zenoh
+    if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
+        bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
+        bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
+    else
+        echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
     fi
+    unset NROS_CMAKE_EXTRA_DEFS
 
 # Build every ThreadX Linux tier: core libraries, examples, and test fixtures.
 [group("full-matrix")]

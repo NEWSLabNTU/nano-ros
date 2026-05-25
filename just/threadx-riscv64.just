@@ -188,44 +188,37 @@ build-fixture-extras:
             -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$root/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null
     }
 
-    collapsed_cmake_dirs=()
-    for lang in c cpp; do
-        for ex in $(nros_fixture_roles); do
-            dir="examples/qemu-riscv64-threadx/$lang/$ex"
-            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
-        done
-    done
-    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        export root toolchain threadx_dir netx_dir config_dir codegen
-        export -f nros_cmake_fixture_build build_threadx_cmake_rmw
-        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-            for dir in "${collapsed_cmake_dirs[@]}"; do
-                build_threadx_cmake_rmw "$dir" zenoh build-zenoh
-            done
-        else
-            printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-                "build_threadx_cmake_rmw {} zenoh build-zenoh"
-        fi
-    fi
+    # Phase 181.5.e — collapsed-shape ThreadX-RV64 C / C++ from the SSOT
+    # manifest. The Rust zenoh role binaries are produced by `build-examples`.
+    # The example CMakeLists read the NetX / ThreadX include paths from env at
+    # configure time (matching the Rust path's .cargo/config.toml), so export
+    # them; the rest of the -D set goes through NROS_CMAKE_EXTRA_DEFS. The
+    # IDLC / msg_to_idl defs are harmless for the zenoh pass.
+    export THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
+           THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir"
+    base_defs="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DIDLC_EXECUTABLE=$root/build/install/bin/idlc -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    export NROS_CMAKE_EXTRA_DEFS="$base_defs"
+    bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
+    bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh
 
     cyclonedds_prefix="$root/build/cyclonedds-threadx-rv64-install"
     if [ "${NROS_THREADX_RV64_CYCLONEDDS_FIXTURES:-0}" != "1" ]; then
         echo "  → skipping experimental ThreadX-RV64 Cyclone fixtures (set NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 after: just cyclonedds threadx-cross-probe)"
     elif [ -f "$cyclonedds_prefix/lib/libddsc.a" ] && [ -x "$root/build/install/bin/idlc" ]; then
-        cyclone_dirs=(
-            "examples/qemu-riscv64-threadx/c/talker"
-            "examples/qemu-riscv64-threadx/c/listener"
-            "examples/qemu-riscv64-threadx/cpp/talker"
-            "examples/qemu-riscv64-threadx/cpp/listener"
-            "examples/qemu-riscv64-threadx/rust/talker"
-        )
-        for dir in "${cyclone_dirs[@]}"; do
+        # Cyclone C/C++ cells (talker/listener) are manifest rows; the
+        # rust/talker Cyclone cell is a cmake/corrosion rust cell (Phase 175.B),
+        # not a c/cpp manifest entry, so it is built directly via the helper.
+        export NROS_CMAKE_EXTRA_DEFS="$base_defs -DCMAKE_PREFIX_PATH=$cyclonedds_prefix"
+        bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
+        bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
+        if [ -d examples/qemu-riscv64-threadx/rust/talker ]; then
             CMAKE_PREFIX_PATH="$cyclonedds_prefix" \
-              build_threadx_cmake_rmw "$dir" cyclonedds build-cyclonedds
-        done
+              build_threadx_cmake_rmw examples/qemu-riscv64-threadx/rust/talker cyclonedds build-cyclonedds
+        fi
     else
         echo "  → skipping ThreadX-RV64 Cyclone fixtures (run: just cyclonedds setup && just cyclonedds threadx-cross-probe)"
     fi
+    unset NROS_CMAKE_EXTRA_DEFS
 
 # Build every ThreadX RISC-V 64 tier: core libraries, examples, and test fixtures.
 [group("full-matrix")]

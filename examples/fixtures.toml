@@ -798,3 +798,415 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/native/cpp/parameters"
 target = "cpp_parameters"
+
+# ===========================================================================
+# freertos — C / C++ (cmake). Zenoh only (no DDS C/C++ siblings pre-collapse).
+# Toolchain / SDK / codegen -D defs are platform-recipe-level (NROS_CMAKE_EXTRA_DEFS).
+# ===========================================================================
+
+[[fixture]]
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/c/talker"
+
+[[fixture]]
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/c/listener"
+
+[[fixture]]
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/c/service-server"
+
+[[fixture]]
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/c/service-client"
+
+[[fixture]]
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/c/action-server"
+
+[[fixture]]
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/c/action-client"
+
+[[fixture]]
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/cpp/talker"
+
+[[fixture]]
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/cpp/listener"
+
+[[fixture]]
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/cpp/service-server"
+
+[[fixture]]
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/cpp/service-client"
+
+[[fixture]]
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/cpp/action-server"
+
+[[fixture]]
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-freertos/cpp/action-client"
+
+# ===========================================================================
+# nuttx — C / C++ (cmake). Zenoh only (Cyclone gated on a hosted NuttX port).
+# Toolchain / SDK / codegen -D defs are platform-recipe-level (NROS_CMAKE_EXTRA_DEFS).
+# ===========================================================================
+
+[[fixture]]
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/c/talker"
+
+[[fixture]]
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/c/listener"
+
+[[fixture]]
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/c/service-server"
+
+[[fixture]]
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/c/service-client"
+
+[[fixture]]
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/c/action-server"
+
+[[fixture]]
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/c/action-client"
+
+[[fixture]]
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/cpp/talker"
+
+[[fixture]]
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/cpp/listener"
+
+[[fixture]]
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/cpp/service-server"
+
+[[fixture]]
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/cpp/service-client"
+
+[[fixture]]
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/cpp/action-server"
+
+[[fixture]]
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-arm-nuttx/cpp/action-client"
+
+# ===========================================================================
+# threadx-linux — C / C++ (cmake). Zenoh here; Cyclone cells stay gated inline.
+# Toolchain / SDK / codegen -D defs are platform-recipe-level (NROS_CMAKE_EXTRA_DEFS).
+# ===========================================================================
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/threadx-linux/c/talker"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/threadx-linux/c/listener"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/threadx-linux/c/service-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/threadx-linux/c/service-client"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/threadx-linux/c/action-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/threadx-linux/c/action-client"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/threadx-linux/cpp/talker"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/threadx-linux/cpp/listener"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/threadx-linux/cpp/service-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/threadx-linux/cpp/service-client"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/threadx-linux/cpp/action-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/threadx-linux/cpp/action-client"
+
+# ===========================================================================
+# threadx-riscv64 — C / C++ (cmake). Zenoh here; experimental Cyclone gated inline.
+# Toolchain / SDK / codegen -D defs are platform-recipe-level (NROS_CMAKE_EXTRA_DEFS).
+# ===========================================================================
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/c/talker"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/c/listener"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/c/service-server"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/c/service-client"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/c/action-server"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/c/action-client"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/cpp/talker"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/cpp/listener"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/cpp/service-server"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/cpp/service-client"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/cpp/action-server"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/qemu-riscv64-threadx/cpp/action-client"
+
+# ===========================================================================
+# threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).
+# ===========================================================================
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/c/talker"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/c/listener"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/c/service-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/c/service-client"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/c/action-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/c/action-client"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/cpp/talker"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/cpp/listener"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/cpp/service-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/cpp/service-client"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/cpp/action-server"
+
+[[fixture]]
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/threadx-linux/cpp/action-client"
+
+# ===========================================================================
+# threadx-riscv64 — experimental Cyclone C / C++ (gated; talker/listener only).
+# ===========================================================================
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/qemu-riscv64-threadx/c/talker"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/qemu-riscv64-threadx/c/listener"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/qemu-riscv64-threadx/cpp/talker"
+
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/qemu-riscv64-threadx/cpp/listener"

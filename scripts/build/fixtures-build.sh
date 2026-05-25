@@ -12,19 +12,25 @@
 #           <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>.
 #
 # Usage (from repo root):
-#   scripts/build/fixtures-build.sh <platform> [<lang>]   # lang default: rust
+#   scripts/build/fixtures-build.sh <platform> [<lang>] [<rmw>]
+#     lang default: rust. rmw (optional) restricts to one RMW — recipes use it
+#     to gate optional backends (e.g. cyclonedds only when set up).
 #
 # Honors NROS_JOBSERVER=1 (serial; tools inherit fifo tokens) and falls back to
 # serial when GNU parallel is absent.
 set -euo pipefail
 
-platform="${1:?usage: fixtures-build.sh <platform> [lang]}"
+platform="${1:?usage: fixtures-build.sh <platform> [lang] [rmw]}"
 lang="${2:-rust}"
+rmw="${3:-}"
 
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh
 
-manifest() { python3 scripts/build/fixtures-manifest.py list --platform "$platform" --lang "$lang"; }
+manifest() {
+    python3 scripts/build/fixtures-manifest.py list \
+        --platform "$platform" --lang "$lang" ${rmw:+--rmw "$rmw"}
+}
 
 run() {
     local fn="$1"

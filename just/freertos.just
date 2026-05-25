@@ -149,50 +149,15 @@ build-fixture-extras:
     else
         echo "  → freertos/rust/{talker,listener} cyclonedds skipped (run: just cyclonedds freertos-cross-probe)"
     fi
-    # Phase 118.D — collapsed-shape FreeRTOS C / C++ examples. Each
-    # case builds under `-DNROS_RMW=zenoh` (no DDS C / C++ siblings
-    # existed pre-collapse on FreeRTOS, so the matrix is zenoh-only).
-    collapsed_cmake_dirs=()
-    for lang in c cpp; do
-        for ex in $(nros_fixture_roles); do
-            dir="examples/qemu-arm-freertos/$lang/$ex"
-            [ -d "$dir" ] && collapsed_cmake_dirs+=("$dir")
-        done
-    done
-    if [ ${#collapsed_cmake_dirs[@]} -gt 0 ]; then
-        export toolchain codegen
-        export -f nros_cmake_fixture_build
-        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-            for dir in "${collapsed_cmake_dirs[@]}"; do
-                echo "  → $dir (-DNROS_RMW=zenoh, build-zenoh/)"
-                sig="$(printf '%s\n' \
-                  "platform=freertos" \
-                  "rmw=zenoh" \
-                  "src=$dir" \
-                  "toolchain=$toolchain" \
-                  "codegen=$codegen")"
-                nros_cmake_fixture_build "$dir" "$dir/build-zenoh" "$sig" \
-                  -DNROS_RMW=zenoh \
-                  -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                  -DCMAKE_BUILD_TYPE=Release \
-                  -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
-            done
-        else
-            printf '%s\n' "${collapsed_cmake_dirs[@]}" | parallel --jobs "$cmake_frontends" --halt now,fail=1 --line-buffer \
-                "echo '  → {} (-DNROS_RMW=zenoh, build-zenoh/)' && \
-                 sig=\$(printf '%s\n' \
-                   'platform=freertos' \
-                   'rmw=zenoh' \
-                   'src={}' \
-                   'toolchain=$toolchain' \
-                   'codegen=$codegen') && \
-                 nros_cmake_fixture_build {} {}/build-zenoh \"\$sig\" \
-                   -DNROS_RMW=zenoh \
-                   -DCMAKE_TOOLCHAIN_FILE='$toolchain' \
-                   -DCMAKE_BUILD_TYPE=Release \
-                   -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null"
-        fi
-    fi
+    # Phase 181.5.b — collapsed-shape FreeRTOS C / C++ examples from the SSOT
+    # manifest (examples/fixtures.toml). Zenoh-only (no DDS C/C++ siblings
+    # existed pre-collapse on FreeRTOS). Per-cell RMW + build-subdir come from
+    # the manifest; the platform-wide toolchain / codegen-tool -D defs are
+    # injected via the shared builder's NROS_CMAKE_EXTRA_DEFS contract.
+    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    bash scripts/build/fixtures-build.sh freertos c zenoh
+    bash scripts/build/fixtures-build.sh freertos cpp zenoh
+    unset NROS_CMAKE_EXTRA_DEFS
 
 # Build every FreeRTOS tier: core libraries, examples, and test fixtures.
 [group("full-matrix")]
