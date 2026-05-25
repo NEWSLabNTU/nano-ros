@@ -202,3 +202,28 @@ Verified: `NROS_ZEPHYR_VERSION=4.4 NROS_ZEPHYR_FIXTURE_FILTER='build-c-(talker|l
 just zephyr build-fixtures` builds both ELFs via the full recipe path
 ("Zephyr test fixtures built successfully"). The 4.4 matrix expands to rust/cpp
 + other RMWs as they become 4.4-ready.
+
+## cyclonedds-on-4.4 — progress + first blocker (2026-05-26)
+
+Prep done: host `idlc` built (`build/install/bin/idlc`); dropped the inline
+`CONFIG_ETH_NATIVE_POSIX=n` from all 18 `prj-cyclonedds.conf` (the eth-disable
+now comes from the appended version-aware NSOS line overlay, same as zenoh —
+3.7-safe because build-fixtures/build-one always append an NSOS overlay).
+
+`build-one c/talker cyclonedds` on 4.4 then gets **far** — past configure,
+957/1346 build steps (cyclonedds core + nros-c cargo) — and stops at the
+**first real 4.4 cyclonedds blocker:**
+
+```
+zephyr/include/zephyr/kernel.h:6248: fatal error: zephyr/heap_constants.h: No such file or directory
+  (via the force-included zephyr_ipv4_compat.h -> <zephyr/net/socket.h> -> kernel.h)
+```
+
+`heap_constants.h` is **4.x-new** (3.7 kernel.h doesn't include it) and is a
+build-time-generated header (`heap_constants` cmake target). The cyclonedds
+sub-build's TUs lack the dependency/generated-include path for it on 4.4 —
+a cyclonedds-Zephyr-4.4 build-integration gap (the cyclonedds module needs
+Zephyr's generated-include dir + ordering against the `heap_constants` target).
+Likely the first of several integration blockers; cyclonedds-on-4.4 is a
+focused multi-iteration effort. Tasks 5–6 (NSOS recvmsg/IP-multicast) are
+runtime-after-build, still pending behind this.
