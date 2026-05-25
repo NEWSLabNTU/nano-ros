@@ -200,22 +200,27 @@ passed.
   until every fixture lookup uses the build-fixture artifact layout and
   every optional host dependency reports a precise skip/remedy.
 
-- [ ] **177.24 - Zephyr CycloneDDS fixtures fail after Cyclone setup.**
-  Rechecked 2026-05-25 after `just setup all`. `just cyclonedds doctor`
-  passes and the expected host artifacts exist at
-  `build/install/bin/idlc` and `build/install/lib/libddsc.so`, so this is
-  no longer a missing CycloneDDS setup/install issue. The Zephyr fixture
-  prebuild now attempts the CycloneDDS cells, but `just zephyr
-  build-fixtures` fails for all Rust, C, and C++ CycloneDDS fixture
-  variants. The common compile blocker is
-  `packages/dds/nros-rmw-cyclonedds/src/internal.hpp::platform_now_ms()`:
-  the fallback path calls
-  `std::chrono::steady_clock::now().time_since_epoch()` and
-  `std::chrono::duration_cast`, but Zephyr's minimal C++ chrono shim used
-  by `native_sim` does not expose those APIs. Route Zephyr through the
-  existing platform clock shim instead; `zephyr/nros_platform_zephyr_shims.c`
-  already provides `nros_platform_clock_ms()` via `k_uptime_get()`. Do not
-  rerun full Zephyr E2E until `just zephyr build-fixtures` is green again.
+- [x] **177.24 - Zephyr CycloneDDS fixtures fail after Cyclone setup.**
+  Closed 2026-05-25 — already fixed by `4b1b0723d` ("test: replace fixed
+  sleeps with readiness waits"), which the 2026-05-25 recheck below predated.
+  The recorded blocker was `internal.hpp::platform_now_ms()` /
+  `platform_sleep_ms()` falling into the `#else` branch that uses
+  `std::chrono::steady_clock` / `std::this_thread::sleep_for`, which Zephyr's
+  minimal `native_sim` C++ shim does not expose. `4b1b0723d` added explicit
+  `NROS_PLATFORM_ZEPHYR || __ZEPHYR__` branches that route through the C
+  shim (`nros_platform_time_ns()` / `nros_platform_sleep_ms()`) and confined
+  the `<chrono>` / `<thread>` includes to the non-RTOS `#else`. Because the
+  Zephyr fixtures compile nros-rmw-cyclonedds through the Zephyr toolchain
+  (`__ZEPHYR__` is always defined there), the embedded branch now engages and
+  no chrono shim is pulled. Verified 2026-05-25 by building the CycloneDDS
+  talker fixtures for all three languages — they compile and link clean:
+  `NROS_ZEPHYR_FIXTURE_FILTER='build-cpp-talker-cyclonedds' just zephyr build-fixtures`
+  then `NROS_ZEPHYR_FIXTURE_FILTER='build-(rs|c)-talker-cyclonedds' just zephyr build-fixtures`
+  both report "Zephyr test fixtures built successfully" (nros-rmw-cyclonedds
+  `session/sertype_min/publisher/subscriber/service/vtable.cpp` all build).
+  Original recheck context retained: `just cyclonedds doctor` passes and the
+  host artifacts exist at `build/install/bin/idlc` + `lib/libddsc.so`. This
+  unblocks the CycloneDDS slice of 177.9.F (Zephyr E2E runtime).
 
 ### Test-All Runtime / E2E
 
