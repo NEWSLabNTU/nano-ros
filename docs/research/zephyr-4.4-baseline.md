@@ -111,3 +111,38 @@ That is a generic host-tool prerequisite common to *both* Zephyr lines (the
 build-orchestration/version-gating work (Tasks 4–10), not the POSIX fix.
 
 No further 4.4-specific Kconfig divergence observed up to the codegen gate.
+
+## Update — orchestration: first green 4.4 build (2026-05-25)
+
+With the host `nros-codegen` built and passed via
+`-D_NANO_ROS_CODEGEN_TOOL`, **c/talker zenoh builds end-to-end on Zephyr
+4.4** (`native_sim/native/64`, host toolchain): 1303 ninja steps through
+nros cargo (Corrosion) + zenoh-pico + std_msgs C codegen → `zephyr.elf`
+(27 MB) + `zephyr.exe`. It also **boots and runs**: `*** Booting Zephyr OS
+build v4.4.0 ***`, nros C talker initializes and reaches the network-wait
+(fails to connect only because no zenohd/NSOS overlay in the smoke run —
+expected). 3 non-fatal warnings. The zenoh native_sim line needed **zero
+NSOS patches** (TCP transport).
+
+**Tasks 4 + 7 resolved by this build:**
+- **Task 4** (drop the upstreamed getsockname patch): confirmed — `getsockname`
+  is upstream in 4.4 and zenoh built/booted without the patch.
+- **Task 7** (socket/native_sim Kconfig + header renames): **no-op** — none of
+  `CONFIG_NET_SOCKETS_POLL_MAX`, `zephyr/net/buf.h`,
+  `CONFIG_NATIVE_SIM_NATIVE_POSIX_COMPAT`, `CONFIG_NATIVE_APPLICATION` are used
+  anywhere in nano-ros examples / module / in-tree (0 files); the clean build
+  corroborates. Nothing to rename.
+
+**Tasks 5–6 (recvmsg reshape, IP-multicast + getifaddrs re-anchor): deferred,
+runtime-only.** They do not block compile/link (verified — zenoh builds, and
+the symbols are runtime mid-handling, not link deps). They matter only for the
+**cyclonedds** native_sim path (RTPS multicast discovery via NSOS). Verifying
+them requires the full cyclonedds-on-4.4 bring-up (cyclonedds submodule patches,
+host idlc, cmake glue) plus a 2-node runtime discovery test — a separate effort
+tracked alongside the cyclonedds-4.4 work, not the zenoh baseline.
+
+**Reproducibility note:** the build above ran via `tmp/zephyr-44-orchestrate.sh`
+(builds host codegen, prepends the 3.12 venv to PATH, passes the codegen tool).
+Folding this into a `just zephyr build NROS_ZEPHYR_VERSION=4.4` path (version-
+gating the `build-fixtures` recipe, which currently inlines 3.7 patches) is the
+remaining orchestration polish.
