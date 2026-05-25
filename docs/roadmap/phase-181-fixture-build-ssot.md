@@ -43,6 +43,46 @@ follow-up). Does not block `just ci` once landed.
   cmake `-D` BUILD options (the recipe still provides platform toolchain/board
   cache vars).
 
+## Migration plan (ordered) + fixup checklist
+
+Sequence chosen so the keystone (Ninja + native cmake) lands first — it
+simplifies the recipes, removes the sig sprawl, and fixes the dead C/C++ probe,
+making the remaining C/C++ work trivial.
+
+1. **[x] 181.7a — Ninja flip** (keystone, 2026-05-26). Added `-G Ninja` (gated
+   on `ninja` present) + a generator-mismatch `rm -rf` (reads
+   `CMAKE_GENERATOR` from `CMakeCache.txt`) to both cmake helpers
+   (`cmake-incremental.sh`, `fixture-matrix.sh`); callers unchanged. Verified:
+   `examples/native/c/talker/build-zenoh` wiped its Make cache, reconfigured
+   under Ninja (`build.ninja` present), and built OK. → fixes audit #3.
+   **Finding that revises 181.7c:** `ninja -n` is NOT a clean fresh signal for
+   our C/C++ cells — they link nros-c/nros-cpp via **Corrosion**, whose cargo
+   build is an always-run custom command (cargo owns that incrementality), so
+   `ninja -n` always lists a pending `cargo rustc` step (`[0/46] cd …/nros-c &&
+   cargo rustc …`) even when nothing changed. Same class of pollution as
+   `make -q`'s `cmake_check_build_system`.
+2. **181.7b — unified cmake builder**. Replace the two helpers' sig machinery
+   with `configure-once (if no cache) + cmake --build` (cmake auto-reconfigures;
+   per-RMW dirs have fixed args). Drop `.nros-cmake.sig` + `.nros-cmake-fixture.sig`.
+   → fixes audit #2.
+3. **181.7c — C/C++ staleness probe** (approach revised by the 181.7a finding).
+   Pure `ninja -n` won't work (Corrosion's cargo step always pending). Options:
+   (a) **`cmake --build` self-heal** — incremental, near-no-op when fresh
+   (cargo fingerprint + ninja skip), rebuilds when stale; consistent with the
+   rust cargo self-heal; the SDK/cmake env is present in the fixture/test-all
+   context (direnv). (b) `ninja -n` **filtered** — ignore the corrosion/cargo
+   line(s); if the remaining (real C/C++ compile/link) work is empty AND the
+   linked rust crates are cargo-`fresh`, treat as fresh. (a) is simpler and the
+   likely choice. Either way, wire a cmake pass into `_check-fixtures-stale`
+   over the manifest's per-RMW dirs; drop the dead `.nros-fixture.inputsig`.
+   → fixes audit #1.
+4. **181.5 — C/C++ manifest migration** (now trivial: manifest `cmake_defs` +
+   unified builder + ninja-n probe), per platform 181.5.a..h.
+5. **181.6 — strip duplication / converge enumeration**. Remove the redundant
+   hard-coded rust builds from `native build-fixture-extras` (audit #5); point
+   the broad `native build-examples` find at the manifest, or drop the
+   baremetal/stm32f4 overlap (audit #4). Grep-clean = true SSOT.
+
 ## Work Items
 
 ### 181.1 — Manifest + reader (foundation)
