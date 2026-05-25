@@ -61,10 +61,19 @@ making the remaining C/C++ work trivial.
    `ninja -n` always lists a pending `cargo rustc` step (`[0/46] cd …/nros-c &&
    cargo rustc …`) even when nothing changed. Same class of pollution as
    `make -q`'s `cmake_check_build_system`.
-2. **181.7b — unified cmake builder**. Replace the two helpers' sig machinery
-   with `configure-once (if no cache) + cmake --build` (cmake auto-reconfigures;
-   per-RMW dirs have fixed args). Drop `.nros-cmake.sig` + `.nros-cmake-fixture.sig`.
-   → fixes audit #2.
+2. **[x] 181.7b — native cmake pattern** (2026-05-26). Both helpers now
+   "configure once (if no cache or no generated build system) + `cmake --build`"
+   — no content-hash / identity sigs (cmake auto-reconfigures; per-RMW dirs have
+   fixed args; the old content-hash never tracked msg/srv/action and only
+   re-did what the generator already handles). `nros_cmake_fixture_build` keeps
+   its `$3` param for caller compat but ignores it, and no longer writes
+   `.nros-cmake-fixture.sig` / `.nros-fixture.inputsig`. Verified: native/c/talker
+   (cache → skip-configure + no-op build) and a fresh native/c/listener
+   (configure under Ninja + build) both OK; no new sig files. Leftover
+   `.nros-cmake.sig`/`.nros-cmake-fixture.sig` in already-built dirs are now dead
+   (gitignored; cleared on the next generator-mismatch wipe). → fixes audit #2.
+   (`nros_fixture_cell_sig`/`nros_fixture_shared_sig` + the dead `.inputsig`
+   pass in `_check-fixtures-stale` are now unused — removed in 181.7c.)
 3. **181.7c — C/C++ staleness probe** (approach revised by the 181.7a finding).
    Pure `ninja -n` won't work (Corrosion's cargo step always pending). Options:
    (a) **`cmake --build` self-heal** — incremental, near-no-op when fresh

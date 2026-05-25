@@ -85,11 +85,13 @@ export -f nros_fixture_shared_sig nros_fixture_cell_sig 2>/dev/null || true
 nros_cmake_fixture_build() {
     local src_dir="$1"
     local build_dir="$2"
-    local signature="$3"
+    # $3 (the old identity signature) is accepted for caller compatibility but
+    # unused: per-RMW build dirs have fixed args, so there is no arg-change
+    # reconfigure to track; `cmake --build` auto-reconfigures on CMakeLists /
+    # dependency-graph changes (Phase 181.7b).
     shift 3
 
-    # Phase 181.7a — prefer the Ninja generator when available (clean `ninja -n`
-    # staleness; better fifo-jobserver fit); fall back to CMake's default.
+    # Prefer Ninja when available; fall back to CMake's default generator.
     local gen=()
     local want_gen="default"
     if command -v ninja >/dev/null 2>&1; then
@@ -97,44 +99,23 @@ nros_cmake_fixture_build() {
         want_gen="Ninja"
     fi
 
-    local sig_file="$build_dir/.nros-cmake-fixture.sig"
-    local needs_configure=0
-    if [ ! -f "$build_dir/CMakeCache.txt" ] || [ ! -f "$sig_file" ]; then
-        needs_configure=1
-    elif [ "$(cat "$sig_file")" != "$signature" ]; then
-        needs_configure=1
-    else
-        # The generator isn't part of the caller's identity signature, so detect
-        # an in-place generator switch (Make<->Ninja) and reconfigure.
+    # Wipe a dir configured with a different generator so the switch reconfigures.
+    if [ -f "$build_dir/CMakeCache.txt" ]; then
         local cur_gen
         cur_gen="$(sed -n 's/^CMAKE_GENERATOR:INTERNAL=//p' "$build_dir/CMakeCache.txt")"
         if { [ "$want_gen" = "Ninja" ] && [ "$cur_gen" != "Ninja" ]; } || \
            { [ "$want_gen" = "default" ] && [ "$cur_gen" = "Ninja" ]; }; then
-            needs_configure=1
+            rm -rf "$build_dir"
         fi
     fi
 
-    if [ "$needs_configure" = "1" ]; then
-        rm -rf "$build_dir"
-        # Record the signature ONLY after a successful configure. Writing it
-        # unconditionally (the old behaviour) poisoned the build dir on a
-        # failed configure: a later retry with the env fixed saw a matching
-        # signature, skipped reconfigure, and ran `cmake --build` on a build
-        # dir with no generated build system → "gmake: Makefile: No such
-        # file". The parallel callers run each job in a `set +e` bash -c, so
-        # the failure could not abort the function on its own.
+    # Configure once: missing cache, or a cache with no generated build system
+    # (a previously-failed configure). `cmake --build` then handles reconfigure.
+    if [ ! -f "$build_dir/CMakeCache.txt" ] || \
+       { [ ! -f "$build_dir/build.ninja" ] && [ ! -f "$build_dir/Makefile" ]; }; then
         if ! cmake -S "$src_dir" -B "$build_dir" "${gen[@]}" "$@"; then
             return 1
         fi
-        printf '%s\n' "$signature" > "$sig_file"
     fi
-    if cmake --build "$build_dir"; then
-        # Record the input-content signature so the test-all preflight can
-        # detect a stale prebuilt fixture (sources edited without rebuild).
-        # Written only after a successful build; best-effort (never fail the
-        # build over a signature write).
-        nros_fixture_cell_sig "$src_dir" > "$build_dir/.nros-fixture.inputsig" 2>/dev/null || true
-        return 0
-    fi
-    return 1
+    cmake --build "$build_dir"
 }
