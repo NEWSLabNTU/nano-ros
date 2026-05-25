@@ -56,12 +56,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-board-threadx"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "nros-board-common",
+]
+
+[[package]]
 name = "nros-board-threadx-linux"
 version = "0.1.0"
 dependencies = [
  "cc",
  "nros-board-common",
+ "nros-board-threadx",
  "nros-platform",
+ "nros-platform-cffi",
 ]
 
 [[package]]

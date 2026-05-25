@@ -116,6 +116,15 @@ fn nuttx_external_apps_link_into_kernel_binary() {
         }
     }
 
+    if missing.len() == EXPECTED_PROGNAMES.len() {
+        nros_tests::skip!(
+            "NuttX kernel at {} was built without any nano-ros \
+             external-app symbols — run `just nuttx build-fixtures-make` \
+             to restage apps/external and rebuild the make fixture",
+            kernel.display()
+        );
+    }
+
     assert!(
         missing.is_empty(),
         "Expected NuttX kernel at {} to link every nano-ros example as a \

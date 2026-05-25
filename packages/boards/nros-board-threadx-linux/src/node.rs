@@ -32,7 +32,13 @@ where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
     register_log_writer();
-    nros_board_threadx::run::<ThreadxLinux, F, E>(config, f)
+    nros_board_threadx::run::<ThreadxLinux, _, E>(config, move |config| {
+        // The Linux ThreadX kernel bring-up may reset C static state
+        // before the app thread starts, so refresh the platform log
+        // slot in task context immediately before user code can log.
+        register_log_writer();
+        f(config)
+    })
 }
 
 /// Phase 88 — register a stdout writer with `nros-platform-threadx`'s
@@ -68,20 +74,32 @@ fn register_log_writer() {
         } else {
             unsafe { core::slice::from_raw_parts(msg_ptr, msg_len) }
         };
+        let mut line = [0u8; 512];
+        let mut used = 0usize;
+        fn append(dst: &mut [u8], used: &mut usize, src: &[u8]) {
+            let remaining = dst.len().saturating_sub(*used);
+            let n = src.len().min(remaining);
+            dst[*used..*used + n].copy_from_slice(&src[..n]);
+            *used += n;
+        }
+        append(&mut line, &mut used, label_bytes);
+        if !name.is_empty() {
+            append(&mut line, &mut used, name);
+            append(&mut line, &mut used, b": ");
+        }
+        append(&mut line, &mut used, msg);
+        append(&mut line, &mut used, b"\n");
+
         unsafe extern "C" {
-            fn write(fd: i32, buf: *const u8, n: usize) -> isize;
+            fn syscall(num: isize, ...) -> isize;
         }
         const STDERR_FD: i32 = 2;
-        // SAFETY: stderr is always open on POSIX; each write is a
-        // single syscall — partial writes are tolerated.
+        const SYS_WRITE: isize = 1;
+        // SAFETY: stderr is always open on Linux/POSIX; use the
+        // syscall path directly because the ThreadX Linux port
+        // provides a weak `write` symbol that does not write host fds.
         unsafe {
-            write(STDERR_FD, label_bytes.as_ptr(), label_bytes.len());
-            if !name.is_empty() {
-                write(STDERR_FD, name.as_ptr(), name.len());
-                write(STDERR_FD, b": ".as_ptr(), 2);
-            }
-            write(STDERR_FD, msg.as_ptr(), msg.len());
-            write(STDERR_FD, b"\n".as_ptr(), 1);
+            syscall(SYS_WRITE, STDERR_FD, line.as_ptr(), used);
         }
     }
     // SAFETY: extern decl matches `<nros/platform.h>`; the writer
