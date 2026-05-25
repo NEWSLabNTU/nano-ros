@@ -168,6 +168,24 @@ passed.
   bind/port wiring. This is NetX-multicast-RX-port work, distinct from the
   (now fixed) TX/locator byte-order issues.
 
+  - [ ] **177.26.RX — NetX Duo multicast RX not delivered to Cyclone (the
+    remaining 177.26 blocker).** TX/locator byte-order (`5558c6ae`) and the
+    listener `register_subscription` (177.28) are fixed and re-verified
+    2026-05-26: with the cross `libddsc.a` rebuilt from cyclonedds
+    `5558c6ae`, the threadx-rv64 C talker publishes with **zero `conn_write`
+    errors** (`-12` gone) and the C listener reaches `Waiting for
+    messages...`. But two-node RTPS does **not** complete — the listener
+    ingests no SPDP. A manual two-QEMU run (`-netdev socket,mcast`, since
+    this host's QEMU is 6.2 < the 7.2 the test's `-netdev dgram` needs)
+    reproduced it: talker `Published: 14` clean, listener `Received: 0`.
+    Fix the NetX BSD multicast receive path (`nx_bsd_select` reporting the
+    joined mcast socket readable / RX socket bind+port) so Cyclone's `recv`
+    thread ingests the peer SPDP → proxy participant → SEDP → data, then
+    un-`#[ignore]` `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` and run
+    it on QEMU ≥ 7.2. The test's `#[ignore]` reason
+    (`listener register_subscription fails`) is **stale** — that is fixed;
+    update it to the NetX-multicast-RX gate.
+
   **Next.**
   1. Maintainer: push cyclonedds `5558c6ae` to `nano-ros-fork`
      (`nano-ros/zephyr-nsos-patches`) and bump the submodule pointer. (The
