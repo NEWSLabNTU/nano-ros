@@ -25,7 +25,13 @@
  * Zephyr only ships the newer form — so we keep that one below. */
 #include <zephyr/net/socket.h>  /* struct ip_mreqn (Zephyr ≥3.7) */
 
-#ifndef NROS_HAVE_STRUCT_IP_MREQ
+/* Phase 180.A — Zephyr 4.x's <zephyr/net/net_compat.h> provides
+ * `#define ip_mreq net_ip_mreq` (struct net_ip_mreq lives in net_ip.h).
+ * Defining our own `struct ip_mreq` there macro-expands to a redefinition
+ * of struct net_ip_mreq. So only define it when Zephyr does NOT already
+ * provide ip_mreq (3.7 / pre-net_compat); the `ip_mreq` macro is the
+ * version-agnostic feature detector. */
+#if !defined(NROS_HAVE_STRUCT_IP_MREQ) && !defined(ip_mreq)
 #define NROS_HAVE_STRUCT_IP_MREQ 1
 struct ip_mreq {
     struct in_addr imr_multiaddr;

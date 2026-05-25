@@ -141,12 +141,18 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         echo "  NROS_ZEPHYR_VERSION={{NROS_ZEPHYR_VERSION}} just zephyr setup"
         exit 1
     fi
-    # 4.4 line: run west through the Python 3.12 venv (Task 2b) and use the
-    # host toolchain (native_sim = host gcc; avoids an SDK-version dependency).
+    # 4.4 line: run west through the Python 3.12 venv (Task 2b) + host
+    # toolchain (native_sim = host gcc). Invoke west via the venv interpreter
+    # EXPLICITLY rather than prepending the venv to PATH — a PATH prepend also
+    # shadows `python3` for build subprocesses, which breaks the cyclonedds
+    # descriptor codegen (ROS msg2idl needs catkin_pkg/rosidl_adapter from the
+    # system ROS python 3.10, not the venv 3.12). west passes WEST_PYTHON to
+    # cmake so find_package(Python3>=3.12) is still satisfied.
     venvbin="{{ZEPHYR_VENV_BIN}}"
+    west_cmd=(west)
     if [ -n "$venvbin" ]; then
-        export PATH="$(realpath "$venvbin"):$PATH"
         export ZEPHYR_TOOLCHAIN_VARIANT=host
+        west_cmd=("$(realpath "$venvbin")/python" -m west)
     fi
     # Host codegen tool — nros_generate_interfaces() needs it (version-independent).
     nros_cargo_ensure_codegen_c
@@ -174,7 +180,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     bd="build-$(echo '{{example}}' | tr '/' '-')-{{rmw}}"
     echo "Zephyr {{NROS_ZEPHYR_VERSION}}: building zephyr/{{example}} ({{rmw}}, {{board}}) -> $workspace/$bd"
     cd "$workspace"
-    west build -b "{{board}}" -d "$bd" "$src" -- \
+    "${west_cmd[@]}" build -b "{{board}}" -d "$bd" "$src" -- \
         -DCONF_FILE="$conf" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
     echo "Built: $workspace/$bd/zephyr/zephyr.elf"
 

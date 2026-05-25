@@ -210,14 +210,25 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # path, so prepend our shim dir to the include search path.
     zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config)
 
-    # Force-include a Zephyr IPv4 compat header on every C/C++ TU
-    # (NOT .S assembly — `-include` of a C header into asm
-    # breaks). Provides `struct ip_mreq` where Cyclone references
-    # it directly. Actual multicast joins go through the IGMP API
+    # Force-include a Zephyr IPv4 compat header (NOT .S assembly — `-include`
+    # of a C header into asm breaks). Provides `struct ip_mreq` where Cyclone
+    # references it directly. Actual multicast joins go through the IGMP API
     # in nros-platform-zephyr/src/net.c.
-    zephyr_compile_options(
-        $<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:SHELL:-include ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h>
-    )
+    #
+    # Phase 180.A — on Zephyr 4.x scope this to the nros library (where the
+    # cyclonedds TUs live), NOT globally. A global zephyr_compile_options
+    # force-include also lands on Zephyr's own heap_constants.c bootstrap TU,
+    # whose 4.x kernel.h pulls the not-yet-generated <zephyr/heap_constants.h>
+    # (chicken-and-egg: that TU is compiled to generate the header). 3.7's
+    # kernel.h has no such include, so the global form is harmless there —
+    # kept to avoid disturbing the LTS line.
+    set(_nros_cdds_ipv4_compat
+        "$<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:SHELL:-include ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-config/zephyr_ipv4_compat.h>")
+    if(Zephyr_VERSION VERSION_GREATER_EQUAL 4.0)
+        target_compile_options(nros PRIVATE ${_nros_cdds_ipv4_compat})
+    else()
+        zephyr_compile_options(${_nros_cdds_ipv4_compat})
+    endif()
 
     # Phase 11W.1 — Cyclone DDS atomics use unprefixed `asm
     # volatile` in `ddsrt/atomics/gcc.h`. Zephyr's default -std=c11
