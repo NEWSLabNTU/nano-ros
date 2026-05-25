@@ -494,9 +494,14 @@ passed.
   fixture against the default port 2018. The fixture matrix now passes
   `CONFIG_NROS_XRCE_AGENT_PORT` for each `(language, role)` cell:
   Rust 2018/2028/2038, C 2118/2128/2138, and C++ 2218/2228/2238.
-  After rebuilding, the focused XRCE subset ran 7 tests: 2 passed and
-  5 failed. Those 5 failures are no longer skipped setup fallout; they
-  are runtime/backend issues after successful Agent/session setup.
+  After rebuilding, the focused XRCE subset initially ran 7 tests: 2 passed
+  and 5 failed (runtime/backend issues, not setup fallout). **Update
+  2026-05-25:** after the incoming `cf34366fd` ("fix: wire Zephyr XRCE
+  setup") landed and the XRCE fixtures were rebuilt with the NSOS overlay,
+  the XRCE subset is now **6/7** — only `test_zephyr_xrce_cpp_talker_listener`
+  remains. Combined with the Zenoh/cpp subset (12/12, including the
+  `test_zephyr_cpp_talker_to_native_listener` count-wait fix below), 177.9.F
+  stands at **17/18**.
   - [x] `test_bidirectional_native_zephyr_e2e` passes.
   - [x] `test_native_server_zephyr_client` passes.
   - [x] `test_native_talker_to_zephyr_cpp_listener` passes.
@@ -505,7 +510,10 @@ passed.
   - [x] `test_zephyr_cpp_action_server_to_client_e2e` passes.
   - [x] `test_zephyr_cpp_service_server_to_client_e2e` passes.
   - [x] `test_zephyr_cpp_talker_to_listener_e2e` passes.
-  - [x] `test_zephyr_cpp_talker_to_native_listener` passes.
+  - [x] `test_zephyr_cpp_talker_to_native_listener` passes after the
+        2026-05-25 count-wait fix: it waited for only 1 "Received:" but
+        asserted `>= 2`, failing deterministically once fixtures were staged;
+        now waits for 2.
   - [x] `test_zephyr_to_native_e2e` passes.
   - [x] `test_zephyr_talker_to_listener_e2e` passes.
   - [x] `test_zephyr_xrce_c_talker_listener` passes with `just zephyr setup`
@@ -513,19 +521,39 @@ passed.
   - [x] `test_zephyr_xrce_rust_talker_listener` passes with `just zephyr setup`
         provided Agent and fixtures rebuilt against port 2018; the harness now
         accepts the Rust fixture's `Received[n]:` log format.
-  - [ ] `test_zephyr_xrce_cpp_talker_listener` initializes and publishes on
-        port 2218, but the C++ listener remains at "Waiting for messages" and
-        receives no samples.
-  - [ ] `test_zephyr_xrce_cpp_service_e2e` initializes on port 2228, but the
-        client reports `0/4 calls succeeded` and the server logs no requests.
-  - [ ] `test_zephyr_xrce_cpp_action_e2e` initializes on port 2238, but the
-        client times out sending the goal with `Failed to send goal: -2`.
-  - [ ] `test_zephyr_xrce_rust_service_e2e` still reports
-        `Transport(ConnectionFailed)` on port 2028 even though pub/sub on
-        port 2018 passes; inspect service fixture Kconfig/code path.
-  - [ ] `test_zephyr_xrce_rust_action_e2e` still reports
-        `Transport(ConnectionFailed)` on port 2038 even though pub/sub on
-        port 2018 passes; inspect action fixture Kconfig/code path.
+  - [x] `test_zephyr_xrce_cpp_service_e2e` — passes after the incoming
+        `cf34366fd` ("fix: wire Zephyr XRCE setup") landed and the XRCE
+        fixtures were rebuilt (2026-05-25 rerun).
+  - [x] `test_zephyr_xrce_cpp_action_e2e` — passes (same fix + rebuild).
+  - [x] `test_zephyr_xrce_rust_service_e2e` — passes (same fix + rebuild);
+        the earlier `Transport(ConnectionFailed)` is gone.
+  - [x] `test_zephyr_xrce_rust_action_e2e` — passes (same fix + rebuild).
+  - [ ] `test_zephyr_xrce_cpp_talker_listener` — **only remaining failure.**
+        Deep-dived 2026-05-25. Talker publishes 1..N on port 2218; the C++
+        listener stays at "Waiting for messages" and receives 0. Root cause
+        isolated by differential:
+        * The C++ *zenoh* pubsub test passes with the same `sub.try_recv()`
+          poll API → not a test/timing bug.
+        * `test_zephyr_xrce_c_talker_listener` (C, same XRCE backend +
+          `subscriber.c` ring buffer) passes → the backend's poll path
+          (`xrce_topic_callback` → ring → `xrce_subscriber_try_recv_raw`)
+          works.
+        * C++ XRCE service + action pass → the C++ executor spin pumps the
+          XRCE session fine.
+        So the failure is specific to the **C++ pubsub DataReader** receive
+        over XRCE. nros-cpp's subscription API is poll-only
+        (`try_recv`/`borrow`; no callback-registration variant like the Rust
+        `executor.register_subscription` the working Rust listener uses), so
+        there is no example-side workaround — the fix must be runtime-side.
+        Pinning the exact mismatch (DataReader create / type name /
+        `request_data` stream config in the C++ path vs the working C path)
+        needs Agent-side DataReader/DataWriter match logs, which are
+        currently unobservable here: a manually launched `MicroXRCEAgent`
+        exits 144 under the sandbox, and the nextest-spawned agent is
+        SIGKILLed on drop before its `-v6` trace flushes. Next step: capture
+        agent `-v6` output (graceful agent shutdown, or run outside the
+        sandbox) and/or add firmware-side XRCE create/read trace to compare
+        the C++ vs C DataReader registration.
 
   **CycloneDDS slice — `native_sim` runtime, root-caused 2026-05-25
   (Phase 179.G).** 177.24 unblocked the Cyclone *fixture build*; the
