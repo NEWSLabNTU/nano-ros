@@ -8,7 +8,10 @@ migrated from the deleted `nros-rmw-dds` crate onto
 `cargo build` on any target. This phase designs and lands the build
 path(s) that make `--features rmw-cyclonedds` link end-to-end.
 
-**Status.** **175.A build path landed (2026-05-21)** for the native
+**Status.** **Archived 2026-05-25.** Both work items complete; the
+ThreadX Cyclone participant-init runtime trap noted below moved to and
+closed under **Phase 177 §177.22** (`docs/roadmap/phase-177-build-issue-catalog.md`).
+**175.A build path landed (2026-05-21)** for the native
 Rust talker + listener. **175.B FreeRTOS compile/link path is partially
 landed (2026-05-22)** for the FreeRTOS C/C++ talker fixtures and the
 Rust talker fixture: the pinned Cyclone tree builds as a Cortex-M3
@@ -341,20 +344,14 @@ freestanding picolibc/POSIX weak stubs, the Generic-target Cyclone
 archive ordering fix, and the Rust CMake/Corrosion `app_main()`
 staticlib path.
 
-**ThreadX runtime probe 2026-05-24:** a bounded two-QEMU AF_UNIX dgram
-run using the C Cyclone listener/talker boots ThreadX, initializes NetX
-Duo and BSD sockets, and enters each app thread. The runtime does not
-yet reach RTPS discovery. The listener returns `nros_support_init -> -1`
-from Cyclone participant creation. The talker still traps during
-participant initialization with a Store/AMO access fault at
-`__file_str_put` (`mepc=0x80074270`, `mtval=0x10016c008`), which
-resolves to picolibc `tinystdio/filestrput.c:44`. The investigation
-fixed two prerequisite issues: ThreadX C++ `new`/`delete` now route
-through `nros_platform_alloc`/`nros_platform_dealloc`, and the RISC-V64
-startup exports `stderr` to the same UART stream as `stdout`. Runtime
-RTPS remains blocked on Cyclone/picolibc stdio or string-buffer state
-during participant initialization, before any inter-QEMU DDS traffic is
-attempted.
+**ThreadX runtime probe 2026-05-24 → moved to Phase 177 §177.22 (closed
+2026-05-25).** The participant-init runtime trap (Store/AMO access fault
+at picolibc `__file_str_put`, `tinystdio/filestrput.c:44`;
+`nros_support_init -> -1` on the listener) is no longer tracked here.
+Phase 177 §177.22 owns and closed it: ThreadX RISC-V64 Cyclone fixtures
+now build, link, boot, create the C talker publisher, and publish
+repeatedly without trapping (`Published: 0..18`). See
+`docs/roadmap/phase-177-build-issue-catalog.md`.
 
 ### ThreadX ddsrt port mapping
 
@@ -388,8 +385,9 @@ ThreadX port is a new
   need a CMake/Corrosion path that can link the C++ backend.
 - Native, FreeRTOS, and ThreadX now have CMake/Corrosion Cyclone Rust
   fixture cells. ThreadX is verified at build/link level for the Rust
-  talker and C/C++ talker/listener; runtime RTPS over QEMU is blocked
-  in Cyclone participant initialization. NuttX and other
-  pure-cargo RTOS fixture loops remain zenoh-only.
+  talker and C/C++ talker/listener; the ThreadX participant-init runtime
+  trap moved to Phase 177 §177.22 and closed there (C talker now boots,
+  creates the publisher, and publishes). NuttX and other pure-cargo RTOS
+  fixture loops remain zenoh-only.
 - Do NOT re-introduce a `for rmw in ... cyclonedds` / `... dds` arm into
   those pure-cargo loops without first landing 175.A.
