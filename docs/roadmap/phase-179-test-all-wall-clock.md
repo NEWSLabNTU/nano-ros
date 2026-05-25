@@ -289,13 +289,21 @@ of Phase 178's fixture stage.
   directory. `NROS_NEXTEST_TRACE_GROUP_BY` accepts `slot` or `binary`
   and defaults to `slot`.
 
-- [ ] **179.E - document profiling overhead and retention.** Recording
+- [x] **179.E - document profiling overhead and retention.** Recording
   adds event/output-store writes and archive export can create sizable
   artifacts on chatty tests. Keep recording opt-in for local runs,
   avoid `--no-capture` because it serializes execution, and document
   the profile env vars in the test section. If `NROS_NEXTEST_REPLAY_LOG`
   is enabled, write `nextest-replay.log`; otherwise rely on the portable
   archive for full replay.
+
+  Completed 2026-05-25. Documented in
+  `book/src/reference/build-commands.md` under "Test profiling &
+  slow-test reporting": the always-on top-20 slow-test report, the opt-in
+  `NROS_NEXTEST_RECORD=1` profiling path, the `tmp/nextest-profile-*`
+  artifact layout (`nextest-run.zip` / `nextest-trace.json` / `junit.xml`
+  / `env.txt` / `command.txt`), every `NROS_NEXTEST_*` knob, the
+  overhead/retention guidance, and the `--no-capture` caveat.
 
 - [x] **179.F - find remaining test-body builds.** Add a review pass for
   helpers named like `build_*` or tests that call cargo, CMake, west,

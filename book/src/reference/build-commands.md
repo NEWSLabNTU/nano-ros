@@ -33,6 +33,60 @@ just book-serve                     # serve book/src with live reload
 just book                           # full deployed preview with API docs
 ```
 
+## Test profiling & slow-test reporting
+
+`just test` and `just test-all` always print the slowest tests after the
+run summary — the top 20 by duration (binary, test name, time, status),
+parsed from the active profile's `target/nextest/<profile>/junit.xml`. No
+flag needed; it is part of the normal output.
+
+Deeper profiling is **opt-in** and adds nextest's experimental event/output
+recording plus artifact export. It preserves the normal nextest execution
+model (same filters, cargo profile, parallelism) — it only records and
+exports, so leave it off for routine runs:
+
+```bash
+NROS_NEXTEST_RECORD=1 just test
+NROS_NEXTEST_RECORD=1 just test-all
+```
+
+Each profiled run writes a timestamped directory under `tmp/` with a
+stable `-latest` symlink:
+
+```text
+tmp/nextest-profile-test-YYYYMMDD-HHMMSS/      tmp/nextest-profile-test-latest -> …
+tmp/nextest-profile-test-all-YYYYMMDD-HHMMSS/  tmp/nextest-profile-test-all-latest -> …
+```
+
+Artifacts in that directory:
+
+- `nextest-run.zip` — portable recording archive; replay with full
+  captured output (incl. successful tests) via `cargo nextest replay`.
+- `nextest-trace.json` — Chrome/Perfetto timeline (slot/group occupancy,
+  idle slots, retries, long-pole tests). Canonical concurrency artifact.
+- `junit.xml` — copy of the run's JUnit report.
+- `env.txt`, `command.txt` — the knobs and exact command used.
+
+Knobs:
+
+| Variable | Effect |
+|----------|--------|
+| `NROS_NEXTEST_RECORD=1` | Enable recording + artifact export. |
+| `NROS_NEXTEST_RECORD_DIR=<path>` | Override the output dir (and its `-latest` link). |
+| `NROS_NEXTEST_TRACE_GROUP_BY=slot\|binary` | Perfetto grouping; default `slot` (wall-clock/concurrency view). |
+| `NROS_NEXTEST_REPLAY_LOG=1` | Also write `nextest-replay.log` (full captured stdout/stderr — can be large on chatty tests). Off by default; rely on the portable archive otherwise. |
+| `NROS_NEXTEST_RECORD_KEEP_STATE=1` | Keep the temp `NEXTEST_STATE_DIR` (`<dir>/state`); removed after export otherwise. |
+| `NROS_NEXTEST_RUN_PROFILE=fail-fast` | Stop at the first failure instead of the default `--no-fail-fast` full report (uses `target/nextest/fail-fast/junit.xml`). |
+
+Overhead and retention: recording adds event/output-store writes during
+the run, and `nextest-run.zip` (plus an enabled `nextest-replay.log`) can
+get sizable on output-heavy suites — keep it opt-in for local runs and
+prune old `tmp/nextest-profile-*` directories. Recording uses a
+profile-local `NEXTEST_STATE_DIR`, so it never pollutes the user's global
+nextest record store. Do **not** reach for `--no-capture` to inspect
+output: it serializes execution and skews every timing. Use the replay
+archive instead.
+
 ## Manual Testing
 
 ```bash
