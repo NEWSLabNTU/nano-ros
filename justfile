@@ -690,6 +690,50 @@ build-zenoh-posix-fixture:
         --features platform-posix \
         --target-dir target-zenoh-fixture-posix
 
+# Rerun ONLY the real (non-[SKIPPED]) failed tests from the latest JUnit run.
+#
+# Workflow (Phase 177.9): `just test-all` (full coverage) → read the failures →
+# debug/fix → `just test-failed` (reruns just those) → repeat until clean.
+# Reuses the same cargo profile + nextest run-profile + per-platform groups as
+# the full run; builds a nextest `-E` filterset from the JUnit report and
+# overwrites it with the subset result, so each rerun naturally shrinks.
+[group("full-matrix")]
+test-failed verbose="":
+    #!/usr/bin/env bash
+    source scripts/build/cargo.sh
+    source scripts/test/nextest-profile.sh
+    junit="$(nros_nextest_junit_path)"
+    if [ ! -f "$junit" ]; then
+        echo "No JUnit report at $junit — run 'just test-all' (or 'just test') first."
+        exit 1
+    fi
+    filterset="$(python3 scripts/test/failed-filterset.py "$junit")"
+    if [ -z "$filterset" ]; then
+        echo "No real (non-[SKIPPED]) failures in $junit — nothing to rerun."
+        exit 0
+    fi
+    count="$(python3 scripts/test/failed-filterset.py "$junit" --names | grep -c . || true)"
+    echo "Rerunning $count failed test(s) from $junit:"
+    python3 scripts/test/failed-filterset.py "$junit" --names | sed 's/^/  /'
+    echo ""
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    nextest_run_profile_args=($(nros_nextest_run_profile_args))
+    args=(--workspace "${nextest_run_profile_args[@]}" --no-fail-fast -E "$filterset")
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output immediate)
+    fi
+    rm -f "$junit"
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    nextest_exit=$?
+    echo ""
+    just _test-summary "$junit"
+    real_failures=$(just _count-real-failures "$junit")
+    if [ "$real_failures" -gt 0 ]; then
+        echo "Still failing: $real_failures — fix and rerun 'just test-failed'."
+        exit 1
+    fi
+    echo "All previously-failing tests now pass."
+
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
 #

@@ -347,6 +347,26 @@ passed.
   rerun these groups with required fixtures/services prebuilt and split
   remaining product bugs from host/setup fallout.
 
+  **Rerun-failed workflow (added 2026-05-25).** The full → list → fix →
+  rerun-failed loop is now a recipe, reusing the existing JUnit + nextest
+  run-profile infra:
+  1. `just test-all` — full coverage; writes `target/nextest/default/junit.xml`
+     and prints `_test-summary` (real failures vs `[SKIPPED]` env-skips).
+  2. Debug/fix the failures.
+  3. `just test-failed` — reruns **only** the real (non-`[SKIPPED]`) failures
+     from that JUnit report. `scripts/test/failed-filterset.py` turns each
+     failed `<testcase>` into `(binary_id(=<classname>) & test(=<name>))`,
+     unioned into one nextest `-E` filterset; the rerun uses the same
+     `nros_cargo_nextest_args` cargo profile, run-profile, and per-platform
+     groups (retries/serialization) as the full run, and overwrites the
+     JUnit report with the subset result — so repeating step 3 naturally
+     shrinks the set until `test-failed` reports all clear.
+  Notes: `test-failed` reruns from whatever the latest JUnit holds, so run a
+  full `test-all` (or a scoped `just <plat> test`) first; `[SKIPPED]`
+  environment-skips are never rerun (they need the missing prerequisite, not
+  a code fix). Fixture-dependent groups still need `just build-test-fixtures`
+  / SDK env before the rerun will pass.
+
 #### 2026-05-22 Failed Tests by Group
 
 - [x] **177.9.A - Host tools, fixture gates, and explicit prerequisites.**
