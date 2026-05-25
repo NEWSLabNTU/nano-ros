@@ -220,6 +220,20 @@ build-fixture-extras:
     ensure_native_rust_generated native/rust/listener
     ( cd examples/native/rust/listener && \
       cargo build $cargo_profile_args --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
+    # Phase 115.F / 179.G — custom-transport loopback fixtures. These
+    # bridge zenoh-pico's `Z_LINK_TYPE_CUSTOM` over a user TcpStream and
+    # back the `custom_transport_loopback` integration test. They use the
+    # std_msgs binding, so codegen must run before the cargo build.
+    for ct_case in custom-transport-talker custom-transport-listener; do
+        echo "  → native/rust/${ct_case}"
+        ( cd examples/native/rust/${ct_case} && "$nros_cli" generate-rust --force > /dev/null )
+        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
+            ( cd examples/native/rust/${ct_case} && cargo build $cargo_profile_args --quiet )
+        else
+            ( cd examples/native/rust/${ct_case} && cargo build $cargo_profile_args --quiet ) &
+        fi
+    done
+    wait
     # Phase 118.A.2 — collapsed-shape native talker. Built once per RMW
     # feature into isolated target-<rmw>/ dirs so the test harness's
     # `build_native_talker_rmw(Rmw::{Zenoh,Xrce})` resolver finds the

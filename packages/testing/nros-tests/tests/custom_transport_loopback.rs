@@ -53,19 +53,25 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         .expect("zenohd locator is tcp/...")
         .to_string();
 
-    // Listener first so it's subscribed before the talker starts
-    // emitting (zenoh-pico is volatile-by-default). This custom-transport
-    // path has no stable readiness marker before subscriber declaration;
-    // keep a bounded guard for the session-open/declaration race.
+    // Listener first so it's subscribed before the talker starts emitting
+    // (zenoh-pico is volatile-by-default). The listener stays up long
+    // enough for the readiness + count waits below to drive the test;
+    // the waits, not the lifetime, bound how long this test runs.
     let mut listener_cmd = Command::new(listener_bin);
     listener_cmd
         .env("RUST_LOG", "info")
         .env("NROS_CUSTOM_TCP_TARGET", &tcp_target)
-        .env("NROS_LISTENER_SECS", "8");
+        .env("NROS_LISTENER_SECS", "20");
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("spawn listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for the subscription declaration to complete instead of a fixed
+    // sleep — "Subscriber created on /chatter" is the listener's readiness
+    // marker (Phase 179.G; the custom-link declaration path was unblocked
+    // once the full-duplex TcpStream deadlock was fixed).
+    listener
+        .wait_for_output_pattern("Subscriber created", Duration::from_secs(15))
+        .expect("listener did not declare its subscription");
 
     let mut talker_cmd = Command::new(talker_bin);
     talker_cmd
@@ -74,30 +80,31 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         .env("NROS_TALKER_COUNT", "20");
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "talker").expect("spawn talker");
 
-    // Let subscription declaration and volatile pub/sub matching propagate.
-    std::thread::sleep(Duration::from_secs(5));
+    // Talker must publish at least one message.
+    let talker_out = talker
+        .wait_for_output_count("Published:", 1, Duration::from_secs(15))
+        .expect("talker did not publish any message");
+
+    // Listener must receive messages through the custom-transport loopback.
+    // Waiting for three (rather than one) confirms the data plane keeps
+    // flowing after pub/sub matching, not just a single lucky frame.
+    let listener_out = listener
+        .wait_for_output_count("Received:", 3, Duration::from_secs(20))
+        .expect("listener did not receive messages via custom-transport loopback");
 
     talker.kill();
     listener.kill();
-
-    let talker_out = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener_out = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     println!("=== Talker output ===\n{talker_out}");
     println!("=== Listener output ===\n{listener_out}");
 
     let published = count_pattern(&talker_out, "Published:");
     let received = count_pattern(&listener_out, "Received:");
-
     println!("Published: {published}, Received: {received}");
 
     assert!(published > 0, "talker must publish at least one message");
     assert!(
-        received > 0,
-        "listener must receive at least one message via custom-transport loopback"
+        received >= 3,
+        "listener must receive multiple messages via custom-transport loopback"
     );
 }

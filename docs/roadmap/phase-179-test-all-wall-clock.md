@@ -94,10 +94,11 @@ readiness/count waits:
 - `c_xrce_api.rs`: startup waits now watch for `Support initialized`;
   talker/listener communication waits for three `Received` lines instead
   of sleeping for the whole message window.
-- `custom_transport_loopback.rs`: retains bounded sleeps with explicit
-  comments because the custom-transport session-open/subscription path
-  has no stable readiness marker before subscriber declaration, and
-  immediate declaration has been observed to fail or stall.
+- `custom_transport_loopback.rs`: fixed sleeps removed (2026-05-25). The
+  test now waits for the listener's `Subscriber created` readiness marker
+  and for bounded `Published:` / `Received:` counts. This was unblocked by
+  fixing the underlying custom-link runtime deadlock — see the resolved
+  follow-up below.
 - `zero_copy.rs`: subscription-propagation sleeps were removed; tests
   wait for three received messages or two `seq=` trace markers.
 - `safety_e2e.rs`: subscription-propagation sleeps were removed; tests
@@ -118,13 +119,22 @@ propagation guard.
 
 The post-audit rerun found four follow-ups:
 
-- `custom_transport_loopback.rs` still reports one of three custom-link
-  runtime failures: `Published: 0, Received: 0`, listener
-  `SubscriberCreationFailed`, or talker `PublisherCreationFailed`.
-  A marker-wait rewrite was tested but not kept because the underlying
-  custom transport declaration path is not stable enough to provide a
-  reliable readiness marker. The bounded sleeps remain documented until
-  the custom-link runtime path is fixed.
+- `custom_transport_loopback.rs` **resolved 2026-05-25.** The hang was a
+  full-duplex deadlock in the example transport bridge, not a flaky
+  readiness race. The talker/listener bridged the socket through a single
+  `Mutex<Option<TcpStream>>`; zenoh-pico drives reads on a dedicated
+  read-task thread while the main/tx thread writes, so the read task held
+  the mutex across its back-to-back blocking `recv` and starved the tx
+  thread. `create_publisher` → `z_declare_publisher` → `_z_add_interest`
+  → the write callback blocked forever on `bridge.stream.lock()` (gdb
+  all-thread backtrace). Fix: drop the mutex and use `&TcpStream`, which
+  implements `Read`/`Write` for shared refs, so the two directions run
+  concurrently — exactly how zenoh-pico's native `tcp.c` drives the raw
+  fd from both threads. With the runtime path fixed, the fixed sleeps
+  were replaced by readiness/count waits (test now passes in ~0.5s with
+  `Published: 20, Received: 19`). The two example binaries are now built
+  by `just native build-fixture-extras` (with `generate-rust` codegen) so
+  `just build-test-fixtures` stages them for `just test-all`.
 - `threadx_riscv64 build-fixtures` failed in the CycloneDDS native C
   fixture link with unresolved `dds_*` symbols from
   `libnros_rmw_cyclonedds.a`. The generated link line already includes

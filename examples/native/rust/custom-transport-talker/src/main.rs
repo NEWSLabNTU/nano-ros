@@ -39,7 +39,6 @@ use core::ffi::c_void;
 use std::{
     io::{ErrorKind, Read, Write},
     net::{Shutdown, TcpStream},
-    sync::Mutex,
     time::Duration,
 };
 
@@ -57,8 +56,16 @@ extern crate nros_platform_cffi as _;
 // ============================================================================
 
 /// Per-bridge state passed as `user_data` to every callback.
+///
+/// The stream is stored directly (no `Mutex`): zenoh-pico drives the
+/// `read` callback on a dedicated read-task thread while the main/tx
+/// thread drives `write` concurrently. TCP is full-duplex, and
+/// `std::net::TcpStream` implements `Read`/`Write` for `&TcpStream`, so
+/// both directions operate on a shared `&self` without serializing.
+/// A shared mutex held across the blocking `recv` would starve the tx
+/// thread and deadlock session declaration (Phase 179.G).
 struct TcpBridge {
-    stream: Mutex<Option<TcpStream>>,
+    stream: TcpStream,
 }
 
 impl TcpBridge {
@@ -67,9 +74,7 @@ impl TcpBridge {
         stream.set_nodelay(true)?;
         stream.set_read_timeout(Some(Duration::from_millis(50)))?;
         stream.set_write_timeout(Some(Duration::from_millis(1000)))?;
-        Ok(Self {
-            stream: Mutex::new(Some(stream)),
-        })
+        Ok(Self { stream })
     }
 }
 
@@ -81,11 +86,7 @@ unsafe extern "C" fn cb_open(_ud: *mut c_void, _params: *const c_void) -> i32 {
 
 unsafe extern "C" fn cb_close(ud: *mut c_void) {
     let bridge = unsafe { &*(ud as *const TcpBridge) };
-    if let Ok(mut guard) = bridge.stream.lock()
-        && let Some(s) = guard.take()
-    {
-        let _ = s.shutdown(Shutdown::Both);
-    }
+    let _ = bridge.stream.shutdown(Shutdown::Both);
 }
 
 // zenoh-pico's `Z_LINK_TYPE_CUSTOM` is declared stream-flow, so the
@@ -94,33 +95,21 @@ unsafe extern "C" fn cb_close(ud: *mut c_void) {
 unsafe extern "C" fn cb_write(ud: *mut c_void, buf: *const u8, len: usize) -> i32 {
     let bridge = unsafe { &*(ud as *const TcpBridge) };
     let slice = unsafe { std::slice::from_raw_parts(buf, len) };
-    let mut guard = match bridge.stream.lock() {
-        Ok(g) => g,
-        Err(_) => return -1,
-    };
-    let Some(stream) = guard.as_mut() else {
-        return -1;
-    };
-    if stream.write_all(slice).is_err() {
+    // `Write` is implemented for `&TcpStream`, so this runs concurrently
+    // with `cb_read` on the read-task thread (full-duplex, no lock).
+    if (&bridge.stream).write_all(slice).is_err() {
         return -1;
     }
-    let _ = stream.flush();
+    let _ = (&bridge.stream).flush();
     0
 }
 
 unsafe extern "C" fn cb_read(ud: *mut c_void, buf: *mut u8, len: usize, timeout_ms: u32) -> i32 {
     let bridge = unsafe { &*(ud as *const TcpBridge) };
     let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
-    let mut guard = match bridge.stream.lock() {
-        Ok(g) => g,
-        Err(_) => return -1,
-    };
-    let Some(stream) = guard.as_mut() else {
-        return -1;
-    };
     let to = Duration::from_millis(timeout_ms.max(1) as u64);
-    let _ = stream.set_read_timeout(Some(to));
-    match stream.read(slice) {
+    let _ = bridge.stream.set_read_timeout(Some(to));
+    match (&bridge.stream).read(slice) {
         Ok(0) => -1, // peer closed
         Ok(n) => n as i32,
         Err(e) if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut => 0,
