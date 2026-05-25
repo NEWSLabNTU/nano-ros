@@ -74,11 +74,26 @@ follow-up). Does not block `just ci` once landed.
   `scripts/test/rust-fixture-stale.sh`.
 
 ### 181.4 — Roll out remaining rust platforms
-- [ ] Author manifest entries + migrate recipes for: qemu-arm-baremetal,
-  freertos, nuttx, threadx-linux, threadx-riscv64, esp32, stm32f4, zephyr,
-  px4. Cross `--target` + per-platform env handled by the recipe; per-fixture
-  options from the manifest. Verify each platform's `build-fixtures`.
-- **Files**: `just/*.just`, `examples/fixtures.toml`.
+- [x] Shared build loop extracted to `scripts/build/fixtures-build.sh
+  <platform> [lang]` (DRY foundation every platform reuses; per-platform env +
+  codegen stay in the recipe, per-fixture options from the manifest). Honors
+  NROS_JOBSERVER + parallel/serial.
+- [x] native `build-fixture-rust` refactored onto the shared script (verified:
+  40 entries, 2 s).
+- [x] qemu-arm-baremetal rust entries authored (12, plain cargo; cross target
+  via each example's `.cargo/config`); verified building through
+  `fixtures-build.sh qemu-arm-baremetal rust` (cortex-m3, 17 s). Probe covers
+  them automatically.
+- [ ] Remaining: freertos, nuttx, threadx-linux, threadx-riscv64 (plain-cargo
+  zenoh variants), esp32 (`+nightly`, xtensa toolchain), stm32f4. Each: author
+  entries + point the recipe at `fixtures-build.sh`, verify `build-fixtures`.
+  Several are SDK-gated (FREERTOS/NETX/IDF env). zephyr rust uses `west build`
+  (not cargo) — out of the cargo-manifest scope; revisit with C/C++ (181.5).
+- [ ] Wire qemu-arm-baremetal's build recipe to `fixtures-build.sh` (today the
+  broad `native build-examples` find still builds them; manifest + recipe
+  match, so no thrash — recipe migration is a 181.6 cleanup).
+- **Files**: `scripts/build/fixtures-build.sh`, `just/native.just`,
+  `examples/fixtures.toml`.
 
 ### 181.5 — C/C++ cells
 - [ ] Add `cmake_defs` to manifest entries for C/C++ cells; `build-fixtures`

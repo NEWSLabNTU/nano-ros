@@ -308,8 +308,74 @@ target_dir = "target-large-buf"
 env = { ZPICO_SUBSCRIBER_BUFFER_SIZE = "8192" }
 
 # ===========================================================================
-# C/C++ cells (cmake) and cross platforms (freertos, nuttx, threadx*, esp32,
-# stm32f4, zephyr, qemu-arm-baremetal) — ROLLOUT PENDING.
+# qemu-arm-baremetal — Rust (cortex-m3; cross target via each example's
+# .cargo/config.toml = thumbv7m-none-eabi, so no --target here). Default
+# features; no feature variants.
+# ===========================================================================
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/talker"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/listener"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/talker-rtic"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/listener-rtic"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/talker-rtic-mixed"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/listener-rtic-mixed"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/service-server-rtic"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/service-client-rtic"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/action-server-rtic"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/action-client-rtic"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/serial-talker"
+
+[[fixture]]
+platform = "qemu-arm-baremetal"
+lang = "rust"
+dir = "examples/qemu-arm-baremetal/rust/serial-listener"
+
+# ===========================================================================
+# C/C++ cells (cmake) and remaining cross platforms (freertos, nuttx,
+# threadx*, esp32, stm32f4, zephyr) — ROLLOUT PENDING.
 #
 # Same idea applies: each C/C++ cell's cmake -D options (NROS_RMW, board cache
 # vars) become `cmake_defs` here, so nros_cmake_fixture_build and the recipes

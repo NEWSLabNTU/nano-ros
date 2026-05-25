@@ -100,29 +100,16 @@ build-fixture-rust:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    export cargo_profile_args
     nros_cli="$(nros_cli_bin)"
     # Codegen the fixtures that consume generated message crates (idempotent —
-    # --force is a no-op when the .msg inputs are unchanged).
+    # --force is a no-op when the .msg inputs are unchanged). Codegen is a
+    # per-platform prep step, so it stays in the recipe; the build loop itself
+    # is the shared, manifest-driven scripts/build/fixtures-build.sh.
     for ex in talker listener service-server service-client action-server \
               action-client custom-transport-talker custom-transport-listener; do
         ( cd "examples/native/rust/$ex" && "$nros_cli" generate-rust --force > /dev/null )
     done
-    build_one() {
-        local dir envstr args
-        IFS=$'\x1f' read -r dir envstr args <<< "$1"
-        echo "  → $dir ${args}"
-        # shellcheck disable=SC2086
-        ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
-    }
-    export -f build_one
-    manifest() { python3 scripts/build/fixtures-manifest.py list --platform native --lang rust; }
-    if [ "${NROS_JOBSERVER:-}" = "1" ] || ! command -v parallel >/dev/null 2>&1; then
-        while IFS= read -r l; do build_one "$l"; done < <(manifest)
-    else
-        manifest | parallel --halt now,fail=1 --line-buffer -j "$(nros_cargo_frontend_jobs)" build_one {}
-    fi
+    bash scripts/build/fixtures-build.sh native rust
     echo "Native rust fixtures built (from examples/fixtures.toml)."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
