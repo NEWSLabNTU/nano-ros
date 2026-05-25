@@ -524,12 +524,34 @@ passed.
   - [x] `test_zephyr_xrce_cpp_service_e2e` — passes after the incoming
         `cf34366fd` ("fix: wire Zephyr XRCE setup") landed and the XRCE
         fixtures were rebuilt (2026-05-25 rerun).
-  - [ ] `test_zephyr_xrce_cpp_action_e2e` — **residual, separate bug.** With
-        the session-name fix below the goal is sent/received/completed but the
-        client gets `feedback=0` (deterministic across reruns). Feedback is a
-        volatile pub/sub stream; this is a distinct feedback-delivery defect,
-        NOT the session-key collision (it fails identically with collided or
-        distinct session names). Tracked as the remaining 177.9.F XRCE item.
+  - [ ] `test_zephyr_xrce_cpp_action_e2e` — **residual, separate bug
+        (gdb-characterized 2026-05-25).** With the session-name fix the goal is
+        sent/received and the result arrives `[OK]`, but the client logs
+        `feedback=0` (deterministic). Not the session-key collision (fails
+        identically with collided or distinct names; the listener-style reboot
+        is gone — boots once). Standalone (agent + action-server + client)
+        findings via a temporary `printk` in `xrce_topic_callback` (reverted):
+        * Feedback **is delivered to the client**: the callback fires with the
+          feedback DataReader's `object_id` and a growing `len` (48, 72 → the
+          Fibonacci sequence), matching the one active subscriber slot.
+        * But only ~2 of the server's 10 feedbacks arrive — the server
+          publishes all 10 in a ~1 ms burst (synchronous goal callback,
+          `examples/zephyr/cpp/action-server/src/main.cpp`), and feedback is
+          volatile, so most are lost before the client's reader drains them.
+        * `try_recv_feedback` still returns 0 even for the 2 that arrive:
+          adding a feedback drain after `result_fut.wait` did **not** recover
+          them, so the cpp action client does not surface feedback through the
+          plain `xrce_subscriber` ring that the callback fills — it likely
+          routes feedback through the C++ arena trampoline/stash (cf. the
+          cpp action feedback trampolines in CLAUDE.md / `action.rs`), which
+          is not being driven on the XRCE poll path.
+        Two compounding sub-issues: (a) volatile burst feedback is largely
+        lost (server should pace feedback and/or use a buffering QoS, or wait
+        for a matched reader before bursting — like the Cyclone path does);
+        (b) the cpp action client's feedback delivery to `try_recv_feedback`
+        over XRCE does not drain the buffered callback samples. Both are
+        distinct from the pubsub session-key collision. Remaining 177.9.F XRCE
+        item; needs the action-feedback arena/stash path traced under gdb.
   - [x] `test_zephyr_xrce_rust_service_e2e` — passes (same fix + rebuild);
         the earlier `Transport(ConnectionFailed)` is gone.
   - [x] `test_zephyr_xrce_rust_action_e2e` — passes (same fix + rebuild).
