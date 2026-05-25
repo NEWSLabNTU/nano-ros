@@ -209,10 +209,16 @@ passed.
         `just _count-real-failures target/nextest/default/junit.xml` returned
         `0`.
 
-- [ ] **177.9.C - Native C/XRCE runtime.**
-  - [ ] `c_xrce_api::test_c_xrce_listener_starts`
-  - [ ] `c_xrce_api::test_c_xrce_talker_listener_communication`
-  - [ ] `c_xrce_api::test_c_xrce_talker_starts`
+- [x] **177.9.C - Native C/XRCE runtime.**
+  Closed 2026-05-25. Initial focused rerun failed because the native C
+  XRCE fixtures were not prebuilt:
+  `examples/native/c/{talker,listener}/build-xrce/c_{talker,listener}`.
+  After `just native build-fixtures`, the runtime-only C/XRCE group passed:
+  `just native test-c-xrce verbose` reported 5 tests run, 5 passed, 0
+  skipped.
+  - [x] `c_xrce_api::test_c_xrce_listener_starts`
+  - [x] `c_xrce_api::test_c_xrce_talker_listener_communication`
+  - [x] `c_xrce_api::test_c_xrce_talker_starts`
 
 - [ ] **177.9.D - QEMU RTIC and QEMU zenoh/serial runtime.**
   - [ ] `emulator::test_qemu_rtic_action_e2e`
