@@ -339,7 +339,9 @@ passed.
 
 ### Test-All Runtime / E2E
 
-- [ ] **177.9 - Runtime E2E failures need focused reruns.**
+- [x] **177.9 - Runtime E2E failures need focused reruns.**
+  Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
+  177.9.F's cpp/xrce action feedback, fixed in `85da52f44`).
   The 2026-05-22 `test-all` rerun reported 960 tests run: 911 passed, 49
   failed, and 9 skipped after `just setup` and `just build-test-fixtures`
   both passed. The remaining failures are grouped below so owners can
@@ -539,7 +541,11 @@ passed.
   - [x] `xrce::test_xrce_service_request_response`
   - [x] `xrce::test_xrce_talker_listener_communication`
 
-- [ ] **177.9.F - Zephyr native/cross E2E runtime.**
+- [x] **177.9.F - Zephyr native/cross E2E runtime.**
+  Closed 2026-05-25 — all 18 subtests pass: Zenoh/cpp (12/12), CycloneDDS
+  `dds` group (15/15), and the full XRCE subset, after the session-key
+  collision fix (`5b9ad9aab`) and the action-feedback double-CDR-header fix
+  (`85da52f44`).
   Focused rerun on 2026-05-25:
   `NROS_ZEPHYR_BUILD_ROOT=/home/aeon/repos/nano-ros/build/zephyr-workspace-builds
   cargo nextest run --cargo-profile nros-fast-release -p nros-tests
@@ -565,14 +571,14 @@ passed.
   setup") landed and the XRCE fixtures were rebuilt with the NSOS overlay,
   the XRCE pub/sub+service subset reached **6/7** and
   `test_zephyr_xrce_cpp_talker_listener` was then fixed (session-key
-  collision, `5b9ad9aab`). The **one remaining XRCE failure** is
+  collision, `5b9ad9aab`). The last XRCE failure,
   `test_zephyr_xrce_cpp_action_e2e` (`feedback=0` — cpp action feedback
-  double-CDR-header, root-caused + localized below, fix not yet landed).
-  Combined with the Zenoh/cpp subset (12/12) and the CycloneDDS (`dds`)
-  subset (**15/15**: `binary(zephyr) and test(dds)`, boots + c/cpp/rs action
-  e2e on fresh NSOS fixtures, see the CycloneDDS slice below), Zephyr
-  native/cross E2E runtime is green across Zenoh and CycloneDDS and all of
-  XRCE **except** the cpp action feedback item.
+  double-CDR-header), is now also fixed (`85da52f44`, see below), so the
+  **full XRCE subset passes**. Combined with the Zenoh/cpp subset (12/12)
+  and the CycloneDDS (`dds`) subset (**15/15**: `binary(zephyr) and
+  test(dds)`, boots + c/cpp/rs action e2e on fresh NSOS fixtures, see the
+  CycloneDDS slice below), Zephyr native/cross E2E runtime is **green across
+  Zenoh, XRCE, and CycloneDDS — 18/18**.
   - [x] `test_bidirectional_native_zephyr_e2e` passes.
   - [x] `test_native_server_zephyr_client` passes.
   - [x] `test_native_talker_to_zephyr_cpp_listener` passes.
