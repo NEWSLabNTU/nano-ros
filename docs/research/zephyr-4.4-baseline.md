@@ -177,3 +177,16 @@ builds clean and boots with **`Network ready (NSOS — host kernel sockets)`**
 per-line config divergence (extend the two line confs); the broader
 snippet-based form remains Phase 180.C. The legacy per-example board overlays
 are untouched, awaiting the not-yet-version-gated `build-fixtures` path.
+
+## E2E proof — 4.4 zenoh pub/sub over NSOS (2026-05-25)
+
+Ran c/talker → c/listener on Zephyr 4.4 (`native_sim/native/64`, NSOS host
+loopback) through `build/zenohd/zenohd` on `tcp/127.0.0.1:7456` (the default
+zephyr locator). Subscriber-first, 6 s stabilization. **Result: PASS** —
+talker published 0..15, listener received 0..15 (16/16). Confirms the 4.4
+zenoh native_sim line does real pub/sub at runtime, not just build/boot:
+the full chain (version selector → Python 3.12 → POSIX Kconfig migration →
+NSOS line overlay → nros cargo + zenoh-pico) holds together end-to-end.
+
+Run via `tmp/zephyr-44-e2e.sh` (ad-hoc). Promoting it to a proper
+nextest/`nros-tests` case for both Zephyr lines is part of Task 10 (dual CI).
