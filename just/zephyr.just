@@ -233,6 +233,16 @@ build-fixtures:
         echo "Zephyr skip: {{ZEPHYR_WORKSPACE}} not set up (run \`just zephyr setup\`)"
         exit 0
     fi
+    # Phase 180.A — 4.4 line: run west via the Python 3.12 venv + host
+    # toolchain, and skip the 3.7-only patch set. The proven 4.4 fixture
+    # subset is zenoh native_sim, which needs none of these patches (NSOS
+    # multicast/recvmsg re-anchors are Tasks 5-6, only the cyclonedds path).
+    venvbin="{{ZEPHYR_VENV_BIN}}"
+    if [ -n "$venvbin" ]; then
+        export PATH="$(realpath "$venvbin"):$PATH"
+        export ZEPHYR_TOOLCHAIN_VARIANT=host
+    fi
+    if [ "{{NROS_ZEPHYR_VERSION}}" != "4.4" ]; then
     # Apply Cortex-A9 patches (idempotent; required for the
     # build-dds-a9-{talker,listener} entries below).
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
@@ -254,6 +264,7 @@ build-fixtures:
     # minimal toolchain `compiler` property set without tripping the
     # llext-edk gen-expr evaluator.
     bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$workspace"
+    fi
     echo "Building Zephyr test fixtures..."
     # Phase 140 — Zephyr examples consume nano-ros via the Phase 139
     # integration shell (`integrations/zephyr/`) under `west build`.
@@ -370,17 +381,32 @@ build-fixtures:
 
     # entries: "<board>|<build_dir>|<src_path_under_examples>|<best_effort?>"
     entries=()
-    native_sim_nsos_conf="$nros_root/zephyr/native-sim-nsos.conf"
+    # Phase 180.A — version-aware NSOS overlay. 4.4 renamed the native eth
+    # driver disable (ETH_NATIVE_POSIX -> ETH_NATIVE_TAP), so the 4.4 line
+    # uses the per-line overlay; 3.7 keeps the legacy conf.
+    if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
+        native_sim_nsos_conf="$nros_root/cmake/zephyr/native-sim-line-4.4.conf"
+    else
+        native_sim_nsos_conf="$nros_root/zephyr/native-sim-nsos.conf"
+    fi
     # Phase 178.E guardrail: keep Zephyr E2E coverage on the real
     # user-copyable examples. Do not collapse roles into one runtime
     # dispatch image here; each role remains its own Zephyr app/image so
     # tests prove `examples/zephyr/<lang>/<role>` builds standalone.
     # RMW still varies by overlay, matching the user build shape.
+    if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
+        # Phase 180.A — only the zenoh native_sim line is proven on 4.4.
+        # xrce + cyclonedds on 4.4 await Tasks 5-6 / the cyclonedds-on-4.4
+        # bring-up; restrict the 4.4 matrix to zenoh until they land.
+        fixture_rmws=(zenoh)
+        echo "  → 4.4 line: zenoh fixtures only (xrce/cyclonedds pending)"
+    else
     fixture_rmws=(zenoh xrce)
     if [ -x "$nros_root/build/install/bin/idlc" ]; then
         fixture_rmws+=(cyclonedds)
     else
         echo "  → zephyr cyclonedds fixtures skipped (run: just cyclonedds setup)"
+    fi
     fi
     for lang in $(nros_fixture_langs); do
         lang_tag="$(nros_zephyr_lang_tag "$lang")"
