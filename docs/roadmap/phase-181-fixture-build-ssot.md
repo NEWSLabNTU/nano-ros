@@ -124,9 +124,38 @@ Shared mechanism (done): `scripts/build/fixtures-build.sh <platform> [lang]`
 ### 181.5 — C/C++ (cmake) fixture migration (per platform)
 
 Add `cmake_defs` to manifest entries for C/C++ cells; the `build-fixtures`
-recipes and `nros_cmake_fixture_build` callers read them. Staleness is already
-covered by the `.nros-fixture.inputsig` content hash (no rebuild needed), so
-this consolidates BUILD options only.
+recipes and `nros_cmake_fixture_build` callers read them. The manifest's
+per-RMW entries map 1:1 to the separate `build-<rmw>/` dirs cmake projects use
+for each RMW selection — that enumeration is the fixture-list payoff for cmake.
+
+**Staleness for cmake cells — exploration (2026-05-25).** Unlike rust (where we
+reuse `cargo build --message-format=json`'s `fresh` flag), the cmake fixtures
+have **no clean detect-only "would it rebuild?"** from the build tool:
+- Generator is **Unix Makefiles** (all 138 configured fixture build dirs).
+  `make -q` (question mode) is **unreliable** here — cmake-generated Makefiles
+  inject a `cmake_check_build_system` phantom target that always reruns, so
+  `make -q` reports "stale" even on a freshly-built dir (verified: exit 1 with
+  no source change). So `make -q`/`make -n` can't gate staleness.
+- If the generator were **Ninja**, `ninja -C <dir> -n` (dry run) / `-d explain`
+  WOULD be a clean detect-only oracle (ninja has no phantom always-run target).
+  nano-ros already pins ninja ≥1.13 for the jobserver, so switching the fixture
+  generator to Ninja is a future option to get cargo-style precise staleness.
+- Therefore the cmake staleness signal stays a **content hash**: the existing
+  `.nros-fixture.inputsig` (177.9 — sha1 of the cell sources + shared
+  crates/lockfile/toolchain/SDK pins), written per `build-<rmw>/` dir on a
+  successful build, compared by `_check-fixtures-stale` (warn-only — C/C++
+  needs the SDK/cmake env to rebuild, so no self-heal).
+- Two related sigs already exist and stay: `.nros-cmake.sig`
+  (`cmake-incremental.sh`, content hash of cmake sources → gates *reconfigure*
+  / re-glob) and `.nros-cmake-fixture.sig` (`fixture-matrix.sh`, identity →
+  gates reconfigure). Gap: native C/C++ cells (built via
+  `nros_cmake_configure_if_needed`) write `.nros-cmake.sig` but NOT
+  `.nros-fixture.inputsig`, so they get no test-all staleness probe — unifying
+  the native + cross cmake build paths on one builder that writes `.inputsig`
+  closes that (181.5.a remaining work).
+
+This consolidates cmake BUILD options into the manifest; staleness stays the
+content hash above (no rebuild needed).
 
 - [~] **181.5.a native** c/cpp — entries authored (roles × {zenoh,xrce} for
   c+cpp + `cpp parameters` target); `fixtures-manifest.py` now emits cmake
