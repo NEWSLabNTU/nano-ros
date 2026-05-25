@@ -76,10 +76,15 @@ void free_session_state(SessionState *state) {
 #endif
 }
 
-#if defined(NROS_PLATFORM_FREERTOS)
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
 constexpr const char *kEmbeddedCycloneConfig =
     "<CycloneDDS>"
     "<Domain Id=\"any\">"
+    "<General>"
+#if defined(NROS_PLATFORM_THREADX)
+    "<AllowMulticast>false</AllowMulticast>"
+#endif
+    "</General>"
     "<Sizing>"
     "<ReceiveBufferSize>64 KiB</ReceiveBufferSize>"
     "<ReceiveBufferChunkSize>16 KiB</ReceiveBufferChunkSize>"
@@ -109,7 +114,7 @@ nros_rmw_ret_t session_open(const char * /*locator*/, uint8_t /*mode*/,
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
-#if defined(NROS_PLATFORM_FREERTOS)
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
     dds_entity_t domain = dds_create_domain(domain_id, kEmbeddedCycloneConfig);
     if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
         free_session_state(state);

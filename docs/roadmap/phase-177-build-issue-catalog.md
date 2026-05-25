@@ -56,20 +56,30 @@ passed.
   ownership issue is closed; remaining ThreadX runtime diagnosis is
   tracked separately under 177.22.
 
-- [ ] **177.22 - ThreadX Cyclone participant init runtime trap.**
+- [x] **177.22 - ThreadX Cyclone participant init runtime trap.**
   Owner: Phase 177 runtime/Cyclone follow-up.
-  ThreadX RISC-V64 Cyclone fixtures now build and link, but runtime
-  still fails during Cyclone participant initialization before RTPS
-  traffic starts.
+  Closed 2026-05-25. ThreadX RISC-V64 Cyclone fixtures build, link, boot,
+  create the C talker publisher, and publish repeatedly without trapping.
   The 2026-05-24 manual two-QEMU probe boots ThreadX, initializes NetX Duo
   and BSD sockets, then reports `nros_support_init -> -1` on the listener;
   the talker traps with `mcause=0x7` at picolibc tinystdio
   `__file_str_put` (`mepc=0x80074270`, `mtval=0x10016c008`,
   `tinystdio/filestrput.c:44`). Phase 175 fixed the prerequisite
   allocation/link issues (`z_malloc`/`z_free`, C++ `new/delete`,
-  Cyclone session-state allocation, and `stderr` binding). The remaining
-  bug is to diagnose the Cyclone/picolibc stdio string-buffer state used
-  during participant initialization on ThreadX.
+  Cyclone session-state allocation, and `stderr` binding). The runtime fix
+  moves the Cyclone log buffer off ThreadX TLS, provides the board IPv4
+  address to Cyclone, treats unsupported NetX socket options as
+  unsupported instead of dereferencing TCP-only state, avoids the ThreadX
+  socket waitset self-pipe path, disables the optional CDR stream
+  optimization precompute on ThreadX, registers the C talker descriptor
+  explicitly instead of relying on constructors, and uses Cyclone's `ddsrt`
+  heap for transient publish samples. The focused verification was:
+  `just cyclonedds threadx-cross-probe`, a sourced ROS rebuild of
+  `riscv64_threadx_c_talker`, and a 20-second QEMU run showing
+  `Publisher created for topic: /chatter` followed by `Published: 0..18`.
+  The QEMU filter-dump pcap remains empty because the ThreadX Cyclone
+  profile now disables multicast discovery; peer interop traffic is a
+  separate follow-up, not the participant-init trap.
 
 ### Test-All Environment / Setup
 

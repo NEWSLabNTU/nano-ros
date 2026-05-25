@@ -19,7 +19,12 @@ nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
-add_executable(riscv64_threadx_c_talker src/main.c)
+set(_app_sources src/main.c)
+if(NROS_RMW STREQUAL "cyclonedds")
+    list(APPEND _app_sources src/cyclonedds_app.c)
+endif()
+
+add_executable(riscv64_threadx_c_talker ${_app_sources})
 target_include_directories(riscv64_threadx_c_talker PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(riscv64_threadx_c_talker PRIVATE

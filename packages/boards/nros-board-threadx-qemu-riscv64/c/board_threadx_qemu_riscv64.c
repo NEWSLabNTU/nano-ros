@@ -123,6 +123,27 @@ void nros_board_compute_rng_seed(uint32_t *out)
     *out = seed;
 }
 
+int ddsrt_threadx_get_primary_ipv4(
+    uint32_t *addr,
+    uint32_t *netmask,
+    uint32_t *broadcast,
+    char *name,
+    size_t name_size)
+{
+    uint32_t ip = ((uint32_t)cfg_ip[0] << 24) | ((uint32_t)cfg_ip[1] << 16)
+                | ((uint32_t)cfg_ip[2] << 8)  | (uint32_t)cfg_ip[3];
+    uint32_t mask = ((uint32_t)cfg_netmask[0] << 24) | ((uint32_t)cfg_netmask[1] << 16)
+                  | ((uint32_t)cfg_netmask[2] << 8)  | (uint32_t)cfg_netmask[3];
+    if (addr) { *addr = ip; }
+    if (netmask) { *netmask = mask; }
+    if (broadcast) { *broadcast = ip | ~mask; }
+    if (name && name_size > 0) {
+        strncpy(name, "nx0", name_size - 1);
+        name[name_size - 1] = '\0';
+    }
+    return 0;
+}
+
 /* nros_board_init_eth — called from the generic
  * `tx_application_define` after byte-pool create + RNG seed. Owns
  * the entire NetX-Duo + virtio-net + BSD bring-up. We re-fetch the

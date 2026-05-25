@@ -18,6 +18,7 @@
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
+#include <dds/ddsrt/heap.h>
 
 #include <cstdlib>
 #include <cstdint>
@@ -142,7 +143,7 @@ nros_rmw_ret_t publish_fibonacci_feedback(dds_entity_t writer, const dds_topic_d
     pos += 4;
     if (uuid_len != 16 || pos + 16 > len) return NROS_RMW_RET_INVALID_ARGUMENT;
 
-    auto* sample = static_cast<uint8_t*>(std::calloc(1, desc->m_size));
+    auto* sample = static_cast<uint8_t*>(ddsrt_calloc(1, desc->m_size));
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
     std::memcpy(sample + goal_id_off, data + pos, 16);
     pos += 16;
@@ -153,19 +154,19 @@ nros_rmw_ret_t publish_fibonacci_feedback(dds_entity_t writer, const dds_topic_d
 
     auto* sequence = reinterpret_cast<DdsSequenceInt32*>(sample + feedback_off + sequence_off);
     if (!parse_sequence_int32(data, len, &pos, sequence)) {
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
     const uint64_t deadline = platform_now_ms() + 2000;
     if (wait_for_writer_match(writer, deadline) != NROS_RMW_RET_OK) {
         dds_stream_free_sample(sample, desc->m_ops);
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_OK;
     }
     dds_return_t r = dds_write(writer, sample);
     dds_stream_free_sample(sample, desc->m_ops);
-    std::free(sample);
+    ddsrt_free(sample);
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
@@ -192,7 +193,7 @@ nros_rmw_ret_t publish_goal_status_array(dds_entity_t writer, const dds_topic_de
     pos += 4;
     if (count > (len - pos) / 25u) return NROS_RMW_RET_INVALID_ARGUMENT;
 
-    auto* sample = static_cast<uint8_t*>(std::calloc(1, desc->m_size));
+    auto* sample = static_cast<uint8_t*>(ddsrt_calloc(1, desc->m_size));
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
     auto* list = reinterpret_cast<DdsSequenceStruct*>(sample + list_off);
     list->_maximum = count;
@@ -202,7 +203,7 @@ nros_rmw_ret_t publish_goal_status_array(dds_entity_t writer, const dds_topic_de
     if (count > 0) {
         list->_buffer = dds_alloc(count * elem_size);
         if (list->_buffer == nullptr) {
-            std::free(sample);
+            ddsrt_free(sample);
             return NROS_RMW_RET_BAD_ALLOC;
         }
         std::memset(list->_buffer, 0, count * elem_size);
@@ -212,7 +213,7 @@ nros_rmw_ret_t publish_goal_status_array(dds_entity_t writer, const dds_topic_de
     for (uint32_t i = 0; i < count; ++i) {
         if (pos + 16 + 4 + 4 + 1 > len) {
             dds_stream_free_sample(sample, desc->m_ops);
-            std::free(sample);
+            ddsrt_free(sample);
             return NROS_RMW_RET_INVALID_ARGUMENT;
         }
         uint8_t* item = items + i * elem_size;
@@ -232,12 +233,12 @@ nros_rmw_ret_t publish_goal_status_array(dds_entity_t writer, const dds_topic_de
     const uint64_t deadline = platform_now_ms() + 2000;
     if (wait_for_writer_match(writer, deadline) != NROS_RMW_RET_OK) {
         dds_stream_free_sample(sample, desc->m_ops);
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_OK;
     }
     dds_return_t r = dds_write(writer, sample);
     dds_stream_free_sample(sample, desc->m_ops);
-    std::free(sample);
+    ddsrt_free(sample);
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
@@ -353,7 +354,7 @@ nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint
 
     // Allocate + zero typed sample buffer of the descriptor's static
     // size. `dds_stream_read_sample` walks the ops and fills it.
-    void* sample = std::calloc(1, desc->m_size);
+    void* sample = ddsrt_calloc(1, desc->m_size);
     if (sample == nullptr) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -366,7 +367,7 @@ nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint
     dds_return_t r = dds_write(state->writer, sample);
 
     dds_stream_free_sample(sample, desc->m_ops);
-    std::free(sample);
+    ddsrt_free(sample);
 
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
