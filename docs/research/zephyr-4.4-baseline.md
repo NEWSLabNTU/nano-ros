@@ -274,3 +274,23 @@ idempotent + reproducible (revert→apply→re-apply checked).
 Remaining runtime: **Task 6** (NSOS IP-multicast — `IP_ADD_MEMBERSHIP`, for SPDP
 discovery; currently `multicast join failed … unicast-only`) and the
 `os: tid … is in use!` cyclone-threads noise (non-fatal — publish/receive work).
+
+## Runtime drill — Task 6 (NSOS IP-multicast) fixed on 4.4 (2026-05-26)
+
+Ported the 3 legacy NSOS IPv4-multicast patches to 4.4 as two scripts
+(`native-sim-ipproto-ip-patch-4.4.sh` = guest half: NSOS_MID_IP_* + struct
+nsos_mid_ip_mreq + nsos_setsockopt/getsockopt `case NET_IPPROTO_IP` marshalling,
+folding in the dual-mreq-size logic; `nsos-adapt-ipproto-ip-patch-4.4.sh` = host
+half: unmarshal + real host setsockopt(IP_ADD_MEMBERSHIP)). Re-anchored to 4.4's
+`net_`-typed shapes; reuse 4.4 net_compat.h's IP_*/ip_mreq constants (only the
+NSOS wire-format MIDs+struct are added). Wired into the 4.4 setup branch.
+**Verified:** build ok; the `multicast join failed … unicast-only` line is GONE
+(`IP_ADD_MEMBERSHIP` reaches the host); `dds_create_participant` ok; publishes.
+
+**Remaining (final e2e blocker): `os: tid … is in use!` → abort() (FATAL ERROR
+4).** With recvmsg + multicast fixed, cyclone now spawns its discovery/receive
+threads, which trip a 4.x thread-table clash and kernel-panic right after
+`Published: 1`. This is a cyclone-zephyr **thread-model** issue on 4.4 (ddsrt
+thread registration / kEmbeddedCycloneConfig, cf. Phase 177.22), distinct from
+the socket-layer NSOS work. It is the last blocker before a 2-node cyclonedds
+e2e on 4.4.
