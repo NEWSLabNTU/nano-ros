@@ -16,6 +16,12 @@ ZEPHYR_MANIFEST := if NROS_ZEPHYR_VERSION == "4.4" { "west-4.4.yml" } else { "we
 # two trees coexist. Set $NROS_ZEPHYR_WORKSPACE to override either.
 ZEPHYR_WORKSPACE := env("NROS_ZEPHYR_WORKSPACE", if NROS_ZEPHYR_VERSION == "4.4" { "../nano-ros-workspace-4.4" } else if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else if path_exists("../nano-ros-workspace") == "true" { "../nano-ros-workspace" } else { "zephyr-workspace" })
 
+# Python 3.12 venv bin for the 4.4 line (Task 2b). 4.4's
+# find_package(Python3) requires >=3.12; the venv provisions it without
+# sudo. Recipes that invoke `west` on the 4.4 line prepend this to PATH
+# so bare `west` resolves to the venv's (3.12) one. Empty on 3.7.
+ZEPHYR_VENV_BIN := if NROS_ZEPHYR_VERSION == "4.4" { ZEPHYR_WORKSPACE / ".venv312/bin" } else { "" }
+
 # Install the Zephyr workspace at $repo/zephyr-workspace/ (large download).
 # Idempotent: skips if the workspace already exists.
 # Set $NROS_ZEPHYR_WORKSPACE to install elsewhere.
@@ -41,6 +47,8 @@ setup *ARGS:
     echo "[zephyr setup] ensuring armv7a-none-eabi Rust target..."
     rustup target add armv7a-none-eabi
     if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
+        echo "[zephyr setup] 4.4 line: provisioning Python 3.12 venv (Zephyr 4.4 requires >=3.12)..."
+        bash ./scripts/zephyr/provision-py312-venv.sh "$WORKSPACE"
         echo "[zephyr setup] 4.4 line: patch set is Phase 180.A Tasks 4-9 (WIP) — skipping legacy 3.7 patches"
     else
     echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
