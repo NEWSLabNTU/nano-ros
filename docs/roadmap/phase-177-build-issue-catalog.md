@@ -595,11 +595,13 @@ passed.
   - [x] `test_zephyr_xrce_cpp_service_e2e` — passes after the incoming
         `cf34366fd` ("fix: wire Zephyr XRCE setup") landed and the XRCE
         fixtures were rebuilt (2026-05-25 rerun).
-  - [ ] `test_zephyr_xrce_cpp_action_e2e` — **root cause pinned 2026-05-25:
-        XRCE feedback carries a double CDR header. Fix is XRCE-side.** With the
-        session-name fix the goal/result round-trip is `[OK]`, but the client
-        logs `feedback=0`. Fully traced with NSOS fixtures + a runnable agent
-        (all instrumentation since reverted):
+  - [x] `test_zephyr_xrce_cpp_action_e2e` — **FIXED 2026-05-25 (double CDR
+        header on the feedback path).** Two independent investigations pinned
+        the same root cause; the fix landed is the shared-path strip, after
+        verifying it does NOT regress Cyclone (see "Fix + Cyclone verification"
+        below). With the session-name fix the goal/result round-trip is `[OK]`,
+        but the client logged `feedback=0`. Fully traced with NSOS fixtures +
+        a runnable agent (all instrumentation since reverted):
         * The full path works up to the C++ deserializer: `xrce_topic_callback`
           fires for the feedback DataReader (`oid=7 len=72`), the C-side
           `xrce_subscriber_try_recv_raw` returns it (`dr=7 count=1 len=72`),
@@ -652,21 +654,32 @@ passed.
           **flat** layout Cyclone produces; XRCE's verbatim nested layout
           double-frames.
 
-        **Fix (coordinated, not landed — needs maintainer review).** Make the
-        feedback message a single flat CDR on the wire for all backends:
-        `publish_feedback_raw` should embed `feedback_cdr[CDR_HEADER_LEN..]`
-        (strip the inner header) so the message is `[CDR + GoalId + fields]`,
-        and **drop** the `CDR_LE_HEADER` prepend in `cpp_feedback_trampoline` +
-        the direct path (`action.rs`) so `[24..]` (now `[fields]` for every
-        backend) is framed once. This also requires re-checking Cyclone's
-        `publish_fibonacci_feedback` parse offsets (it parses the published
-        `data`, which loses 4 bytes) and Cyclone's `subscriber.cpp` rebuild
-        (which would then match without special-casing). Not landed here
-        because it touches the working Cyclone publish/receive bridge + the
-        shared trampoline; needs a from→to test on Cyclone **and** XRCE
-        (pub/sub, service, result, feedback) before merge. Secondary: pace the
-        server's 10-feedback burst (volatile, ~1 ms) so ≥1 survives. Remaining
-        177.9.F XRCE item.
+        **Fix LANDED 2026-05-25 (`85da52f44`) — FFI-level strip, verified on
+        both backends.** Instead of the broader publish_feedback_raw +
+        trampoline + Cyclone-bridge refactor, the strip was applied one layer
+        up, at the FFI boundary: `nros_cpp_action_server_publish_feedback`
+        (`nros-cpp/src/action.rs`) now strips the C++ serializer's CDR header
+        before `publish_feedback_raw`, exactly mirroring
+        `nros_cpp_action_server_complete_goal` (results already do this). The
+        published feedback message becomes the flat `[outer CDR + GoalId +
+        fields]` for *every* backend, so the offset-24 slice + the
+        `cpp_feedback_trampoline` prepend frame it once. Because this is the
+        *shared* path, the cross-RMW concern was tested directly rather than
+        assumed: with the strip, BOTH `test_zephyr_xrce_cpp_action_e2e`
+        (feedback `length=7`, `length=10`; cpp/xrce zephyr subset 9/9) **and**
+        `test_zephyr_dds_cpp_action_e2e` (Zephyr CycloneDDS) **pass**. So the
+        feared Cyclone regression did not occur — Cyclone's flatten-on-receive
+        path (`subscriber.cpp`) consumes the now-already-flat wire fine, and
+        its result path already relied on fields-only.
+
+        The broader refactor described above (strip in `publish_feedback_raw`,
+        drop the trampoline prepend, simplify Cyclone's `subscriber.cpp`
+        rebuild) remains a valid cleanup if one canonical framing is preferred;
+        the FFI strip is the minimal landed fix. **Parallel-work note:** this
+        item was investigated concurrently from two directions (the
+        localization above + the landed FFI fix) — fold the FFI strip into the
+        broader refactor if that path is taken. Secondary follow-up: pace the
+        server's 10-feedback burst (volatile, ~1 ms) so ≥1 reliably survives.
   - [x] `test_zephyr_xrce_rust_service_e2e` — passes (same fix + rebuild);
         the earlier `Transport(ConnectionFailed)` is gone.
   - [x] `test_zephyr_xrce_rust_action_e2e` — passes (same fix + rebuild).

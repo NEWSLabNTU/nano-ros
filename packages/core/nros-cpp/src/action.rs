@@ -329,12 +329,21 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback(
         uuid: unsafe { *goal_id },
     };
     let data = unsafe { core::slice::from_raw_parts(feedback_buf, feedback_len) };
+    // Phase 177.9.F — strip the C++ serializer's CDR header before handing
+    // feedback to the core, exactly as `nros_cpp_action_server_complete_goal`
+    // does for results. The core action storage keeps FIELDS ONLY; the
+    // client-side `cpp_feedback_trampoline` re-adds a CDR header before C++
+    // deserialize. Without this strip the feedback travelled with its header,
+    // the trampoline added a second one, and the C++ deserializer read the
+    // inner header's bytes as the sequence length → garbage → `feedback=0`
+    // on the cpp/xrce action E2E.
+    let feedback_fields = strip_cdr_header(data);
 
     let h = match &server.handle {
         Some(h) => h,
         None => return NROS_CPP_RET_ERROR,
     };
-    match h.publish_feedback_raw(&mut ctx.executor, &id, data) {
+    match h.publish_feedback_raw(&mut ctx.executor, &id, feedback_fields) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
