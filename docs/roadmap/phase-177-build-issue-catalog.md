@@ -394,9 +394,23 @@ passed.
   shared-crate edit flags all — correct, they all link it). Honest limits: the
   shared-input set is coarse (all of `packages/`) so any crate edit flags every
   cell (safe over-invalidation); it's a heuristic, not the cargo/cmake
-  dependency graph; **Rust cells are not yet covered** (cargo owns their
-  incrementality; a follow-up would hash the rust example + linked crates the
-  same way). Bypass everything with `NROS_SKIP_FIXTURE_CHECK=1`.
+  dependency graph. Bypass everything with `NROS_SKIP_FIXTURE_CHECK=1`.
+
+  **Rust cells (added 2026-05-25, reuse cargo).** Rather than a custom hash,
+  rust fixtures delegate staleness to cargo's own fingerprint:
+  `scripts/test/rust-fixture-stale.sh` runs `cargo build <fixture-profile>
+  --message-format=json` per built rust example dir
+  (`examples/*/rust/* with target/<profile>/`); a `"fresh":false` artifact
+  means cargo had to rebuild it (= it was stale). Because `cargo build` is a
+  no-op when fresh and incremental when stale, this both **detects and
+  self-heals** rust fixtures (C/C++ only warns — they need the SDK/CMake env
+  to rebuild). `_check-fixtures-stale` runs the per-dir probes in parallel and
+  reports which were rebuilt. Default-feature build (matches
+  `just <plat> build-examples`); cyclonedds-rust cells go through the CMake
+  path and are covered by the `.inputsig` hash instead. Verified: a real run
+  caught + rebuilt 29 stale rust fixtures. Cost: ~no-op when all fresh
+  (parallel), up to an incremental rebuild when many are stale (e.g. after a
+  core-crate edit) — bypass with `NROS_SKIP_FIXTURE_CHECK=1`.
 
 #### 2026-05-22 Failed Tests by Group
 

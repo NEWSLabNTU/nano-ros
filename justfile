@@ -790,10 +790,39 @@ _check-fixtures-stale:
         fi
     done < <(find examples -type f -name .nros-fixture.inputsig 2>/dev/null)
     if [ ${#stale[@]} -gt 0 ]; then
-        echo "WARNING: ${#stale[@]} prebuilt fixture cell(s) look STALE (sources changed since build):" >&2
+        echo "WARNING: ${#stale[@]} prebuilt C/C++ fixture cell(s) look STALE (sources changed since build):" >&2
         printf '  %s\n' "${stale[@]}" >&2
         echo "  Rebuild (incremental — only changed cells):  just build-test-fixtures" >&2
         echo "  (bypass this check with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+    fi
+    # Rust cells — reuse cargo's own fingerprint instead of a custom hash.
+    # `cargo build` is a no-op when fresh and rebuilds stale units
+    # incrementally, so this both detects AND self-heals stale rust fixtures
+    # (unlike C/C++ above, which only warns — those need the SDK/CMake env to
+    # rebuild). `scripts/test/rust-fixture-stale.sh` reports a dir iff cargo
+    # had to rebuild it (a `"fresh":false` artifact). Phase 177.9.
+    source scripts/build/cargo.sh
+    profile="$(nros_cargo_profile_name)"
+    rust_dirs=()
+    for dd in examples/*/rust/*; do
+        [ -f "$dd/Cargo.toml" ] && [ -d "$dd/target/$profile" ] && rust_dirs+=("$dd")
+    done
+    rust_stale=()
+    if [ ${#rust_dirs[@]} -gt 0 ]; then
+        if command -v parallel >/dev/null 2>&1; then
+            mapfile -t rust_stale < <(printf '%s\n' "${rust_dirs[@]}" \
+                | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
+        else
+            for dd in "${rust_dirs[@]}"; do
+                out="$(bash scripts/test/rust-fixture-stale.sh "$dd")"
+                [ -n "$out" ] && rust_stale+=("$out")
+            done
+        fi
+    fi
+    if [ ${#rust_stale[@]} -gt 0 ]; then
+        echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
+        printf '  %s\n' "${rust_stale[@]}" >&2
+        echo "  (cargo incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
     fi
 
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
