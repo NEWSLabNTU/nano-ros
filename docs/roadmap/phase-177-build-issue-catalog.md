@@ -231,13 +231,29 @@ passed.
   - [x] `c_xrce_api::test_c_xrce_talker_listener_communication`
   - [x] `c_xrce_api::test_c_xrce_talker_starts`
 
-- [ ] **177.9.D - QEMU RTIC and QEMU zenoh/serial runtime.**
-  - [ ] `emulator::test_qemu_rtic_action_e2e`
-  - [ ] `emulator::test_qemu_rtic_mixed_priority_pubsub_e2e`
-  - [ ] `emulator::test_qemu_rtic_pubsub_e2e`
-  - [ ] `emulator::test_qemu_rtic_service_e2e`
-  - [ ] `emulator::test_qemu_serial_pubsub_e2e`
-  - [ ] `large_msg::test_qemu_zenoh_large_publish`
+- [x] **177.9.D - QEMU RTIC and QEMU zenoh/serial runtime.**
+  Closed 2026-05-25. Not a runtime bug — every failure was a missing
+  prebuilt fixture, and the fixture build itself was broken. The
+  qemu-arm-baremetal examples wire `std_msgs` / `builtin_interfaces`
+  through `[patch.crates-io] -> generated/` in their `.cargo/config.toml`,
+  but `just qemu build-fixtures` ran `cargo build` without first running
+  `nros generate-rust`, so cargo could not load the (gitignored) generated
+  crates. The plain `listener`/`talker` build failed on the absent
+  `generated/builtin_interfaces`, and `parallel --halt now,fail=1` then
+  killed every in-flight fixture build — so none of the RTIC/serial/large-msg
+  binaries the 177.9.D tests resolve were ever staged. Fixed by adding a
+  codegen step (gated on `package.xml`) before `cargo build` in
+  `just/qemu-baremetal.just::build-fixtures`, mirroring the native recipe's
+  `ensure_native_rust_generated`. After `just qemu build-fixtures`, all six
+  tests pass:
+  `cargo nextest run -p nros-tests --no-fail-fast -E '(binary(emulator) and (test(test_qemu_rtic_pubsub_e2e) or test(test_qemu_rtic_service_e2e) or test(test_qemu_rtic_action_e2e) or test(test_qemu_rtic_mixed_priority_pubsub_e2e) or test(test_qemu_serial_pubsub_e2e))) or (binary(large_msg) and test(test_qemu_zenoh_large_publish))'`
+  → `6 passed`.
+  - [x] `emulator::test_qemu_rtic_action_e2e`
+  - [x] `emulator::test_qemu_rtic_mixed_priority_pubsub_e2e`
+  - [x] `emulator::test_qemu_rtic_pubsub_e2e`
+  - [x] `emulator::test_qemu_rtic_service_e2e`
+  - [x] `emulator::test_qemu_serial_pubsub_e2e`
+  - [x] `large_msg::test_qemu_zenoh_large_publish`
 
 - [x] **177.9.E - XRCE runtime.**
   Closed 2026-05-25. The XRCE harness now passes the canonical

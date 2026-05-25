@@ -136,14 +136,27 @@ build-fixtures:
         packages/testing/nros-bench/large-msg-baremetal
         packages/reference/qemu-smoltcp-bridge
     )
+    export NROS_CLI="$(nros_cli_bin)"
+    build_one() {
+        local dir="$1"
+        echo "  → $dir"
+        # Phase 177.9.D — examples that depend on generated message crates
+        # (std_msgs / builtin_interfaces, wired via `[patch.crates-io]` ->
+        # generated/ in .cargo/config.toml) need codegen before cargo can
+        # resolve the patch path. The gitignored generated/ dirs are
+        # produced by `nros generate-rust` from package.xml. Bench/bin
+        # crates have no package.xml and skip this. Mirrors the native
+        # build-fixture recipe's `ensure_native_rust_generated`.
+        if [ -f "$dir/package.xml" ]; then
+            ( cd "$dir" && "$NROS_CLI" generate-rust --force >/dev/null )
+        fi
+        ( cd "$dir" && cargo build $cargo_profile_args --quiet )
+    }
+    export -f build_one
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        for dir in "${dirs[@]}"; do
-            echo "  → $dir"
-            ( cd "$dir" && cargo build $cargo_profile_args --quiet )
-        done
+        for dir in "${dirs[@]}"; do build_one "$dir"; done
     else
-        printf '%s\n' "${dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
-            'echo "  → {}" && cd {} && cargo build $cargo_profile_args --quiet'
+        printf '%s\n' "${dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer build_one
     fi
 
 # Run all QEMU tests (non-networked)
