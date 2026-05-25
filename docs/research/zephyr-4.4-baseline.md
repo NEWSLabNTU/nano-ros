@@ -227,3 +227,35 @@ Zephyr's generated-include dir + ordering against the `heap_constants` target).
 Likely the first of several integration blockers; cyclonedds-on-4.4 is a
 focused multi-iteration effort. Tasks 5–6 (NSOS recvmsg/IP-multicast) are
 runtime-after-build, still pending behind this.
+
+## cyclonedds-on-4.4 — BUILDS + cyclone init works (2026-05-26)
+
+`build-one c/talker cyclonedds` on 4.4 now builds to `zephyr.elf` (39 MB)
+after fixing 4 blockers (all version-safe; 3.7 unaffected):
+
+1. **heap_constants force-include** (`zephyr/CMakeLists.txt`): the cyclonedds
+   `-include zephyr_ipv4_compat.h` was a GLOBAL `zephyr_compile_options`, so it
+   hit Zephyr's own `heap_constants.c` bootstrap TU, whose 4.x kernel.h pulls
+   the not-yet-generated `<zephyr/heap_constants.h>`. Scoped to the `nros`
+   library on Zephyr ≥4.0 (global kept on 3.7).
+2. **net_ip_mreq redefinition** (`zephyr_ipv4_compat.h`): 4.x net_compat.h does
+   `#define ip_mreq net_ip_mreq`, so our `struct ip_mreq` macro-expanded to a
+   redefinition. Guarded with `!defined(ip_mreq)` (version-agnostic feature
+   detect).
+3. **venv shadows ROS codegen python** (`just/zephyr.just` build-one): the 4.4
+   PATH-prepend shadowed `python3`, breaking the cyclonedds descriptor codegen
+   (ROS `msg2idl` needs catkin_pkg/rosidl_adapter from system python 3.10).
+   Now west is invoked via the venv interpreter explicitly (`WEST_PYTHON`=3.12
+   for cmake) without prepending the venv to PATH.
+4. **cbprintf extern-C** (`nros-rmw-cyclonedds/src/vtable.cpp`): `<zephyr/
+   logging/log.h>` was wrapped in `extern "C"`; on 4.x log.h pulls cbprintf_cxx.h
+   (C++ overloads) which break under extern "C". Removed the wrap (log.h is
+   C++-safe). Harmless on 3.7, fatal on 4.4.
+
+**Boot smoke:** boots, `dds_create_participant` succeeds, cyclone app thread
+starts. Two RUNTIME items remain (build is done): (a) **multicast join fails**
+(`join conn (udp/239.255.0.1) ... continuing unicast-only`) — the NSOS
+IP-multicast re-anchor, **Task 6**, runtime not build; (b) **`os: tid ... is in
+use!`** — a 4.x cyclone-threads issue (the cyclonedds-zephyr threads patch /
+dynamic-thread reuse needs 4.4 re-verification). Tasks 5–6 + threads are the
+runtime follow-up; the cyclonedds-on-4.4 BUILD + participant init are proven.

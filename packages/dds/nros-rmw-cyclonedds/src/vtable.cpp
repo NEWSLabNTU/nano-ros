@@ -111,9 +111,12 @@ const nros_rmw_vtable_t kVtable = {
 // silently drops on native_sim; result is a bare `abort()` with no
 // diagnostic. Installing a sink that hands the message to Zephyr's
 // printk gives us readable failure messages.
-extern "C" {
+// Phase 180.A — do NOT wrap <zephyr/logging/log.h> in extern "C": it is
+// C++-safe (self-guards its own C symbols), and on Zephyr 4.x cbprintf.h
+// pulls cbprintf_cxx.h (overloaded z_cbprintf_cxx_is_pchar) which a
+// surrounding extern "C" turns into conflicting C functions. The manual
+// wrap was harmless on 3.7 but fatal on 4.4.
 #include <zephyr/logging/log.h>
-}
 LOG_MODULE_REGISTER(cyclonedds, LOG_LEVEL_INF);
 
 #include <dds/ddsrt/log.h>
