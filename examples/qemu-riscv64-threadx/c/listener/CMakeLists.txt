@@ -17,7 +17,16 @@ nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
-add_executable(riscv64_threadx_c_listener src/main.c)
+set(_app_sources src/main.c)
+if(NROS_RMW STREQUAL "cyclonedds")
+    # CycloneDDS needs the std_msgs/Int32 type descriptor registered
+    # explicitly (the backend's weak nros_rmw_cyclonedds_register_app_descriptors
+    # is a no-op); mirrors the talker. Without it find_descriptor returns
+    # null and subscriber creation fails. Phase 177.28.
+    list(APPEND _app_sources src/cyclonedds_app.c)
+endif()
+
+add_executable(riscv64_threadx_c_listener ${_app_sources})
 target_include_directories(riscv64_threadx_c_listener PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(riscv64_threadx_c_listener PRIVATE

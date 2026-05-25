@@ -137,20 +137,36 @@ passed.
   the SPDP group and publishes 24/24 with **zero** `conn_write` errors over
   a two-QEMU AF_UNIX-dgram link. Multicast discovery TX is working.
 
-  **Remaining blocker (distinct subsystem, pre-existing).** The listener
-  still aborts at `nros_executor_register_subscription -> -1`. Instrumentation
-  shows the backend `subscriber_create` is **never reached** — the failure is
-  in the nano-ros Rust executor `register_subscription_raw_with_qos_sized`
-  (`packages/core/nros-c/src/executor.rs:771`) *before* the Cyclone create,
-  i.e. an arena/capacity allocation for the subscription's
-  `MESSAGE_BUFFER_SIZE` buffer. This is orthogonal to multicast discovery and
-  reproduced on the first run before any of the above changes (the talker
-  registers no subscription, so it never hits it). Two-node RTPS stays
-  unproven until the subscriber can be created.
+  **Listener subscription: fixed (177.28).** The listener's
+  `register_subscription -> -1` was a missing CycloneDDS type-descriptor
+  registration in the listener binary, not an executor/arena issue — see
+  177.28. The listener now registers and reaches `Waiting for messages...`.
+
+  **Current blocker — two-node discovery does not complete.** A 40 s
+  two-QEMU dgram run with a `filter-dump` pcap shows **SPDP participant
+  announcements crossing both ways** (`10.0.2.40` and `10.0.2.41` →
+  `239.255.0.1:7400`, plus IGMPv2 reports from both) — multicast TX **and**
+  RX work over the link. But discovery never advances: **no SEDP / no data**,
+  and both nodes repeatedly ARP the (nonexistent) gateway `10.0.2.2`. That
+  signature means each node received the peer's SPDP but cannot reach the
+  peer's **advertised unicast locator** — it routes off-subnet via the
+  gateway instead of ARPing the peer directly. Prime suspect: the unicast
+  locator advertised in the SPDP payload is byte-swapped.
+  `src/ddsrt/src/ifaddrs/threadx/ifaddrs.c:78` does
+  `sa.sin_addr.s_addr = addr` with `addr` in **host** byte order (from the
+  board `ddsrt_threadx_get_primary_ipv4` hook), while Cyclone/NetX (real
+  `htonl`/`ntohl`) treat `sin_addr` as **network** order — so the advertised
+  locator decodes to a bogus off-subnet address on the peer.
 
   **Next.**
-  1. Maintainer: push cyclonedds `e8ce7315`, bump the submodule pointer.
-  2. Resolve 177.28 (the subscriber-register blocker below).
+  1. Maintainer: push cyclonedds `e8ce7315`, bump the submodule pointer
+     (the multicast TX + descriptor fixes; the listener descriptor fix in
+     177.28 is in the nano-ros repo and lands directly).
+  2. Try network-ordering the ThreadX ifaddrs address
+     (`sa.sin_addr.s_addr = htonl(addr)` for addr/netmask/broadcast) so the
+     advertised SPDP locator is correct; confirm via pcap that the peer then
+     ARPs the peer IP (not the gateway) and SEDP/data follow. Verify the
+     IGMP-join interface match still resolves.
   3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on the
      listener proves two-node RTPS.
 
@@ -187,8 +203,24 @@ passed.
   under 177.9.F. Sibling of 177.24 (Zephyr CycloneDDS) but distinct root
   causes.
 
-- [ ] **177.28 - ThreadX Cyclone listener: `register_subscription` fails in
+- [x] **177.28 - ThreadX Cyclone listener: `register_subscription` fails in
   the nano-ros executor before backend create.**
+  **Closed 2026-05-25.** Root cause: the C **listener** never registered the
+  CycloneDDS `std_msgs/Int32` type descriptor. The backend calls a *weak*
+  `nros_rmw_cyclonedds_register_app_descriptors` (no-op default,
+  `vtable.cpp:134`); the **talker** overrides it via `src/cyclonedds_app.c`
+  (→ `register_Int32_0()`), but the listener's `CMakeLists.txt` had no
+  cyclonedds source block, so `find_descriptor("std_msgs::msg::dds_::Int32_")`
+  returned null and `subscriber_create` failed `UNSUPPORTED` → executor
+  `Transport` error → C `-1`. (The earlier "Rust executor / arena" guess was
+  wrong — arena alloc is *after* the backend create, which was reached.) Fix:
+  add `examples/qemu-riscv64-threadx/c/listener/src/cyclonedds_app.c` and the
+  `if(NROS_RMW STREQUAL "cyclonedds") list(APPEND _app_sources …)` block,
+  mirroring the talker. Verified: the listener now registers the subscription
+  and reaches `Waiting for messages...`. The remaining two-node *data*
+  exchange is tracked under 177.26 (see the SPDP/locator finding there).
+
+  *Original investigation (superseded by the close above):*
   Owner: Phase 177 runtime/executor follow-up. Split out of 177.26 (which
   fixed the multicast discovery TX path). **Pre-existing** — reproduced on
   the first ThreadX RISC-V64 Cyclone listener run before any 177.26 change,
