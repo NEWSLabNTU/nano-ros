@@ -79,7 +79,18 @@ passed.
   `Publisher created for topic: /chatter` followed by `Published: 0..18`.
   The QEMU filter-dump pcap remains empty because the ThreadX Cyclone
   profile now disables multicast discovery; peer interop traffic is a
-  separate follow-up, not the participant-init trap.
+  separate follow-up tracked under 177.26, not the participant-init trap.
+
+- [ ] **177.26 - ThreadX Cyclone peer interop / multicast discovery.**
+  Owner: Phase 177 runtime/Cyclone follow-up. Split out of 177.22
+  (participant-init trap, closed). The ThreadX RISC-V64 Cyclone C talker
+  boots, creates the publisher, and publishes locally, but the QEMU
+  filter-dump pcap is empty: the ThreadX Cyclone profile disables
+  multicast discovery, so no inter-QEMU DDS traffic leaves the node. No
+  two-node ThreadX↔ThreadX or ThreadX↔native RTPS exchange has been
+  demonstrated. Re-enable a discovery path (multicast, or a unicast peer
+  list via Cyclone config/`CYCLONEDDS_URI`) over NetX Duo and demonstrate
+  a bounded two-QEMU pub/sub exchange.
 
 ### Test-All Environment / Setup
 
