@@ -135,16 +135,28 @@ The post-audit rerun found four follow-ups:
   `Published: 20, Received: 19`). The two example binaries are now built
   by `just native build-fixture-extras` (with `generate-rust` codegen) so
   `just build-test-fixtures` stages them for `just test-all`.
-- `threadx_riscv64 build-fixtures` failed in the CycloneDDS native C
-  fixture link with unresolved `dds_*` symbols from
-  `libnros_rmw_cyclonedds.a`. The generated link line already includes
-  the ThreadX Cyclone `libddsc.a`; the remaining failure is in the
-  experimental ThreadX Cyclone link path, not in normal setup
-  provisioning. `just setup all` installs host CycloneDDS but does not
-  run `just cyclonedds threadx-cross-probe`, so
-  `threadx_riscv64 build-fixtures` now skips these experimental
-  fixtures unless `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1` is set; the
-  Phase 118 fixture-presence test uses the same opt-in gate.
+- `threadx_riscv64 build-fixtures` failed in the CycloneDDS C / C++
+  fixture link with unresolved `dds_*` / `ddsrt_*` / `ddsi_*` symbols
+  from `libnros_rmw_cyclonedds.a`. **Root-caused and fixed 2026-05-25.**
+  The cross `libddsc.a` *was* on the link line (whole-archived with the
+  backend), and GNU `nm` saw all 498 `dds_*` symbols — but `llvm-nm`
+  saw zero, only a `__gnu_lto_slim` marker. The archive held GCC
+  *slim-LTO* objects (GIMPLE bytecode, no machine code); rust-lld, the
+  linker for the ThreadX examples, cannot consume GCC LTO objects
+  without GCC's LTO plugin, so every Cyclone symbol was undefined even
+  under `--whole-archive`. The cross-probe script already sets
+  `-fno-lto` + `ENABLE_LTO=OFF` (added 2026-05-24), but the build dir
+  carried a stale `ENABLE_LTO:BOOL=ON` cache from a 2026-05-23 configure
+  and an incremental `--mode build` reused it. Fix:
+  `scripts/cyclonedds/threadx-cross-probe.sh` now wipes the build dir for
+  a clean reconfigure whenever the cached LTO setting is not
+  `ENABLE_LTO:BOOL=OFF`, so the rebuild emits real linkable objects.
+  After a clean rebuild, `llvm-nm` resolves the symbols and the C and
+  C++ ThreadX-RV64 Cyclone talkers link to RISC-V ELF executables. The
+  fixtures stay gated behind `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`
+  (run `just cyclonedds threadx-cross-probe` first); `just setup all`
+  still does not cross-build Cyclone, so the gate keeps the default
+  `threadx_riscv64 build-fixtures` path provisioning-free.
 - Zephyr tests could report stale or missing fixtures after
   `just zephyr build-fixtures` because the build recipe falls back to
   `build/zephyr-workspace-builds` when the sibling workspace is not
@@ -157,8 +169,33 @@ The post-audit rerun found four follow-ups:
   RMW, with an all-backend fallback for unknown names.
 
 Zephyr CycloneDDS `native_sim` runtime failures remain open after the
-fixture-resolution cleanup. The observed failures are process panics such
-as `tid ... is in use!` and timeouts, not fixed-sleep regressions.
+fixture-resolution cleanup. **Root cause identified 2026-05-25** (this is
+a port defect, not a fixed-sleep regression):
+
+`zephyr/CMakeLists.txt` globs ddsrt's POSIX backends — `file(GLOB
+_cdds_ddsrt_posix ${CYCLONEDDS_DIR}/src/ddsrt/src/*/posix/*.c)` — which
+pulls in `src/threads/posix/threads.c`, the raw `pthread_create` thread
+port. On `native_sim` the Zephyr kernel runs atop the native simulator,
+which models every `k_thread` as a host thread under its own control.
+CycloneDDS spawns ~7 worker threads (recv / dq.builtins / tev / gc / …)
+via raw `pthread_create` at `dds_create_participant`; those host threads
+are created outside the simulator's bookkeeping, so each one trips the
+kernel's `os: tid 0x... is in use!` check the moment it calls a Zephyr
+API. Reproduced directly: `build/zephyr-workspace-builds/build-cpp-
+talker-cyclonedds/zephyr/zephyr.exe` logs seven `tid ... is in use!`
+errors at participant creation; a talker+listener pair exchanges **zero**
+messages (data plane dead). The talker's own publish loop still runs
+because it is the main `k_thread`, which is why the boot-banner tests
+pass while the e2e tests time out.
+
+The correct fix is a `k_thread`-based ddsrt Zephyr thread port (new
+`threads/zephyr` backend using `k_thread_create` + dynamic stacks,
+excluded from the POSIX glob), parallel to the existing `freertos` and
+`threadx` ports. That is a bounded but non-trivial RTOS port and belongs
+to the Zephyr CycloneDDS work tracked under Phase 177.2; it is not a
+test-harness fix. Until then these `native_sim` Cyclone e2e tests stay in
+the serial `zephyr-native-cyclonedds` group and are expected to fail at
+runtime.
 
 ### Post-nextest stages have poor visibility
 

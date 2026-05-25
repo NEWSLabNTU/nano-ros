@@ -120,6 +120,19 @@ cmake_args=(
 )
 
 echo
+# Phase 179.G — self-heal a stale CMake cache. A build dir configured
+# before LTO was disabled keeps `ENABLE_LTO:BOOL=ON`, and an incremental
+# reconfigure leaves the GCC slim-LTO objects in place. Those objects
+# carry GIMPLE bytecode, not machine code, so rust-lld (the linker for
+# the ThreadX examples) cannot resolve any `dds_*` symbol from them. Wipe
+# the build dir whenever the cached LTO setting does not match the
+# LTO-off config so the rebuild produces real, linkable objects.
+cache="$build_dir/CMakeCache.txt"
+if [ -f "$cache" ] && ! grep -q '^ENABLE_LTO:BOOL=OFF' "$cache"; then
+    echo "Stale CMake cache (LTO not disabled) — wiping $build_dir for a clean reconfigure"
+    rm -rf "$build_dir"
+fi
+
 echo "Configuring Cyclone DDS for ThreadX+NetX Duo..."
 cmake "${cmake_args[@]}"
 
