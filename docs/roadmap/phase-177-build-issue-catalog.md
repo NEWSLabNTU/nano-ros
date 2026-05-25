@@ -581,52 +581,47 @@ passed.
   - [x] `test_zephyr_xrce_cpp_service_e2e` — passes after the incoming
         `cf34366fd` ("fix: wire Zephyr XRCE setup") landed and the XRCE
         fixtures were rebuilt (2026-05-25 rerun).
-  - [ ] `test_zephyr_xrce_cpp_action_e2e` — **residual, separate bug
-        (gdb-characterized 2026-05-25).** With the session-name fix the goal is
-        sent/received and the result arrives `[OK]`, but the client logs
-        `feedback=0` (deterministic). Not the session-key collision (fails
-        identically with collided or distinct names; the listener-style reboot
-        is gone — boots once). Standalone (agent + action-server + client)
-        findings via a temporary `printk` in `xrce_topic_callback` (reverted):
-        * Feedback **is delivered to the client**: the callback fires with the
-          feedback DataReader's `object_id` and a growing `len` (48, 72 → the
-          Fibonacci sequence), matching the one active subscriber slot.
-        * But only ~2 of the server's 10 feedbacks arrive — the server
-          publishes all 10 in a ~1 ms burst (synchronous goal callback,
-          `examples/zephyr/cpp/action-server/src/main.cpp`), and feedback is
-          volatile, so most are lost before the client's reader drains them.
-        * `try_recv_feedback` still returns 0 even for the 2 that arrive:
-          adding a feedback drain after `result_fut.wait` did **not** recover
-          them, so the cpp action client does not surface feedback through the
-          plain `xrce_subscriber` ring that the callback fills — it likely
-          routes feedback through the C++ arena trampoline/stash (cf. the
-          cpp action feedback trampolines in CLAUDE.md / `action.rs`), which
-          is not being driven on the XRCE poll path.
-        Two compounding sub-issues: (a) volatile burst feedback is largely
-        lost (server should pace feedback and/or use a buffering QoS, or wait
-        for a matched reader before bursting — like the Cyclone path does);
-        (b) the cpp action client's feedback delivery to `try_recv_feedback`
-        over XRCE does not drain the buffered callback samples. Both are
-        distinct from the pubsub session-key collision.
-
-        **Code path narrowed (not example-fixable).** `cpp_feedback_trampoline`
-        IS registered as the arena entry's `feedback_callback`
-        (`nros-cpp/src/action.rs:747,760`), and
-        `arena.rs::action_client_raw_try_process` drains feedback via
-        `core.try_recv_feedback_raw()` and forwards to that trampoline → the
-        single-slot stash that `try_recv_feedback` reads. So the wiring exists.
-        But two example-level fixes FAILED to surface feedback: (1) draining
-        `try_recv_feedback` after `result_fut.wait`, and (2) pumping
-        `spin_once` (full arena dispatch) then draining. So the break is in the
-        runtime, not the example: either `action_client_raw_try_process` is not
-        dispatched on the XRCE poll path during/after feedback arrival, or
-        `core.try_recv_feedback_raw()` does not read the same per-DataReader
-        ring that `xrce_topic_callback` fills (the callback was confirmed to
-        fire with the feedback reader's `object_id` and growing `len`). Next:
-        trace, under gdb, whether `action_client_raw_try_process` runs for the
-        feedback entry during the result wait and whether
-        `core.try_recv_feedback_raw()` pulls from the cb-filled subscriber
-        slot. Remaining 177.9.F XRCE item.
+  - [ ] `test_zephyr_xrce_cpp_action_e2e` — **root cause pinned 2026-05-25:
+        XRCE feedback carries a double CDR header. Fix is XRCE-side.** With the
+        session-name fix the goal/result round-trip is `[OK]`, but the client
+        logs `feedback=0`. Fully traced with NSOS fixtures + a runnable agent
+        (all instrumentation since reverted):
+        * The full path works up to the C++ deserializer: `xrce_topic_callback`
+          fires for the feedback DataReader (`oid=7 len=72`), the C-side
+          `xrce_subscriber_try_recv_raw` returns it (`dr=7 count=1 len=72`),
+          `action_client_raw_try_process` drains it, `cpp_feedback_trampoline`
+          **stashes** it, and `nros_cpp_action_client_try_recv_feedback`
+          **reads the stash (STASH-HIT)** and returns OK. So the wiring +
+          dispatch are fine — the doc's earlier "not dispatched / wrong ring"
+          guesses were wrong.
+        * The break is `FeedbackType::ffi_deserialize` failing in the C++
+          `try_recv_feedback` wrapper (`action_client.hpp:219`) → `Result(Error)`
+          → the example's `while(try_recv_feedback)` skips logging → `feedback=0`.
+        * **Why it fails — double CDR header (XRCE-specific).** A byte dump of
+          the arena feedback payload showed `feedback_data[0..8] = 00 01 00 00
+          0a 00 00 00`: it **already begins with `CDR_LE_HEADER`**. But
+          `cpp_feedback_trampoline` (`action.rs`) and the direct path in
+          `try_recv_feedback` both **prepend `CDR_LE_HEADER` again**, so the
+          deserializer reads the second header as the first field → fails.
+        * **It is NOT the common trampoline** — Zephyr **Cyclone** cpp action
+          feedback works (verified: `Feedback: length=10`). For Cyclone the
+          arena payload is **raw fields** (no header), so the trampoline's
+          prepend is correct. XRCE delivers the feedback payload **with** an
+          inner CDR header that Cyclone doesn't, so the same prepend
+          double-frames it. The asymmetry (XRCE action feedback payload carries
+          an extra CDR encapsulation vs Cyclone) is the bug; the fix belongs on
+          the XRCE feedback framing, NOT the shared `cpp_feedback_trampoline`
+          (changing that would break the working Cyclone path).
+        * Secondary: feedback is volatile and the server bursts all 10 in a
+          ~1 ms synchronous callback, so only ~1–2 reach the client even when
+          deserialization is fixed. Test needs `feedback >= 1`, so one
+          surviving + correctly-deserialized frame suffices; pacing the server
+          would make it robust.
+        Next: dump the client feedback message layout (`feedback_buffer[0..28]`)
+        for XRCE vs Cyclone to locate where the extra inner header enters
+        (publish framing in the XRCE action path vs the `FEEDBACK_PAYLOAD_OFFSET`
+        = 24 slice), then strip/adjust it on the XRCE side so the arena payload
+        matches Cyclone's (raw fields). Remaining 177.9.F XRCE item.
   - [x] `test_zephyr_xrce_rust_service_e2e` — passes (same fix + rebuild);
         the earlier `Transport(ConnectionFailed)` is gone.
   - [x] `test_zephyr_xrce_rust_action_e2e` — passes (same fix + rebuild).
