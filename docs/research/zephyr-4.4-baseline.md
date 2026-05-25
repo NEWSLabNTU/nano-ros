@@ -164,7 +164,16 @@ used), but 4.4 renamed it `CONFIG_ETH_NATIVE_TAP` (driver `eth_native_posix`
 deletable), this `=n` is **meaningful on both lines**, so it cannot just be
 dropped — it needs a per-line value in a SHARED overlay. **This is the first
 concrete case that requires the version-aware overlay mechanism** Task 8
-deferred (a 4.x snippet / per-line conf selection — Phase 180.C). Until that
-lands, `build-one` omits the board overlay on 4.4; the build still
-compiles+boots using the default tap driver (no NSOS). Tracked as a Task 7
-follow-up / input to Phase 180.C.
+deferred (a 4.x snippet / per-line conf selection — Phase 180.C). **RESOLVED (version-aware overlay mechanism, 2026-05-25).** Added per-line
+native_sim overlays `cmake/zephyr/native-sim-line-{3.7,4.4}.conf` (identical
+NSOS settings; only the eth-disable symbol differs —
+`CONFIG_ETH_NATIVE_POSIX=n` vs `CONFIG_ETH_NATIVE_TAP=n`). `build-one` selects
+the file by `NROS_ZEPHYR_VERSION` and appends it to `CONF_FILE` for native_sim
+boards, superseding the legacy per-example `boards/native_sim_*.conf`.
+**Verified:** `NROS_ZEPHYR_VERSION=4.4 just zephyr build-one c/talker zenoh`
+builds clean and boots with **`Network ready (NSOS — host kernel sockets)`**
+— NSOS is now active on 4.4 (previously the tap driver failed on
+`eth_tap: Cannot create zeth`). This is the reusable hook for any future
+per-line config divergence (extend the two line confs); the broader
+snippet-based form remains Phase 180.C. The legacy per-example board overlays
+are untouched, awaiting the not-yet-version-gated `build-fixtures` path.

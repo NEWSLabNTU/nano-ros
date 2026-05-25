@@ -153,15 +153,24 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     codegen_tool="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     src="$(pwd)/examples/zephyr/{{example}}"
     [ -d "$src" ] || { echo "no example at $src"; exit 1; }
-    # CONF_FILE = base + RMW overlay. The native_sim NSOS board overlay
-    # (boards/<board>.conf) is intentionally NOT added on the 4.4 line yet:
-    # it sets CONFIG_ETH_NATIVE_POSIX=n, renamed to CONFIG_ETH_NATIVE_TAP on
-    # 4.4 (driver eth_native_posix -> eth_native_tap). That is a genuine
-    # version-divergent symbol in a SHARED overlay and needs the version-aware
-    # overlay mechanism (Phase 180.C / Task 7 follow-up), not a polish hack.
-    # Without it the 4.4 build still compiles+boots (using the default tap
-    # driver), which is what this recipe reproduces.
+    # CONF_FILE = base + RMW overlay + (native_sim) the version-aware NSOS
+    # line overlay. The line overlay (cmake/zephyr/native-sim-line-<v>.conf)
+    # supplies the native-eth-driver disable under the right symbol for the
+    # line (ETH_NATIVE_POSIX on 3.7, ETH_NATIVE_TAP on 4.4) plus the shared
+    # NSOS settings — so NSOS works on BOTH lines. It supersedes the legacy
+    # per-example boards/native_sim_*.conf (which hardcodes the 3.7 symbol);
+    # that file is left for the not-yet-version-gated build-fixtures path.
     conf="prj.conf;prj-{{rmw}}.conf"
+    case "{{board}}" in
+    native_sim*)
+        line_overlay="$(pwd)/cmake/zephyr/native-sim-line-{{NROS_ZEPHYR_VERSION}}.conf"
+        if [ -f "$line_overlay" ]; then
+            conf="$conf;$line_overlay"
+        else
+            echo "WARN: no native_sim line overlay at $line_overlay" >&2
+        fi
+        ;;
+    esac
     bd="build-$(echo '{{example}}' | tr '/' '-')-{{rmw}}"
     echo "Zephyr {{NROS_ZEPHYR_VERSION}}: building zephyr/{{example}} ({{rmw}}, {{board}}) -> $workspace/$bd"
     cd "$workspace"
