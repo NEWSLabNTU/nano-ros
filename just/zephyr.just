@@ -609,9 +609,29 @@ build-fixtures:
     while [ "${#running[@]}" -gt 0 ]; do
         wait_one
     done
-    if [ "$selected" -eq 0 ]; then
+    # Phase 177.9 — the logging-smoke native_sim fixture is consumed by
+    # logging_smoke.rs but lives under packages/testing/.../bins (not
+    # examples/), so it's outside the entries loop above. build-all puts
+    # zephyr in its fixture fanout, so build it here too — otherwise
+    # build-all is not a superset of test-all's fixture needs and
+    # logging_smoke_zephyr_native_sim hard-fails "fixture not built".
+    # Honor the same filter; count it toward `selected` so a
+    # logging-only filter doesn't trip the "no fixtures matched" guard.
+    want_logging=0
+    if [ -z "$fixture_filter" ] || [[ "logging-smoke-zephyr-native-sim" =~ $fixture_filter ]]; then
+        want_logging=1
+    fi
+    if [ "$selected" -eq 0 ] && [ "$want_logging" -eq 0 ]; then
         echo "  ✗ no Zephyr fixtures matched NROS_ZEPHYR_FIXTURE_FILTER=$fixture_filter"
         exit 1
+    fi
+    if [ "$want_logging" -eq 1 ]; then
+        # Reuse the standalone recipe so the build dir matches exactly what
+        # logging_smoke.rs's fixture helper looks for (test path contract).
+        echo "  → logging-smoke-zephyr-native-sim"
+        if ! ( cd "$nros_root" && just zephyr build-logging-smoke ); then
+            failures+=("logging-smoke-zephyr-native-sim")
+        fi
     fi
     if [ ${#failures[@]} -gt 0 ]; then
         printf '  ✗ failed: %s\n' "${failures[@]}"

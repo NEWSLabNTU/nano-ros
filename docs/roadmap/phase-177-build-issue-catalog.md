@@ -335,6 +335,30 @@ passed.
   fixture build should refresh artifact mtimes, so a same-build cross-
   language edit doesn't surface as a false runtime failure.
 
+  - [x] **177.8.a - `build-all` fixture set was not a superset of
+    test-all's fixture needs (logging-smoke).** The 2026-05-25 full-nuke
+    gate surfaced `logging_smoke_esp32_qemu` + `logging_smoke_zephyr_native_sim`
+    hard-failing "fixture not built", even though `build-all` ran. Two
+    structural holes: (1) `build-all.mk` omitted `esp32` from its fixture
+    fanout entirely, so `just esp32 build-fixtures` (which chains
+    `build-logging-smoke` → `logging-smoke-esp32-qemu.bin`) never ran; (2)
+    `just zephyr build-fixtures` did not chain the separate
+    `build-logging-smoke` recipe, so `logging-smoke-zephyr-native-sim`
+    (`<workspace>/build-logging-smoke/zephyr/zephyr.exe`) was never built.
+    Because both tests resolve a *prebuilt* artifact via `.expect(...)`
+    (not `skip!`), the gap counted as a real failure, not a skip. Fix:
+    add `esp32` to `build-all.mk` `INDEPENDENT_FIXTURE_PLATFORMS`, and
+    build the logging-smoke fixture at the end of `just zephyr
+    build-fixtures` (reusing the standalone recipe so the build dir
+    matches the test's path contract; honoring `NROS_ZEPHYR_FIXTURE_FILTER`
+    and counting it toward `selected` so a logging-only filter doesn't
+    trip the "no fixtures matched" guard). Verified: filtered zephyr build
+    builds only logging-smoke without false-exit; `just esp32
+    build-logging-smoke` produces the `.bin`; both tests then PASS
+    (`logging_smoke_zephyr_native_sim` 0.13s, `logging_smoke_esp32_qemu`
+    30s). The 15 `[SKIPPED]` cyclone fixtures remain *intentional* opt-in
+    (`just cyclonedds freertos-cross-probe`) and stay out of `build-all`.
+
 - [x] **177.24 - Zephyr CycloneDDS fixtures fail after Cyclone setup.**
   Closed 2026-05-25 — already fixed by `4b1b0723d` ("test: replace fixed
   sleeps with readiness waits"), which the 2026-05-25 recheck below predated.
@@ -1161,7 +1185,12 @@ robustness/consistency follow-ups, not regressions.
   ThreadxLinux Rust pubsub/service/action — Rust-host variants, not the
   C/Cpp paths closed in 177.9.G/H), `logging_smoke` ×2 (esp32_qemu,
   zephyr_native_sim), `zpico_drift_gate_fires_on_corrupted_include` ×1.
-  Pre-existing, untriaged.
+  Triage 2026-05-26: `logging_smoke` ×2 were a build-tier coverage gap,
+  fixed under **177.8.a** (both now PASS). `ros2::*` ×2 + `integration_esp_idf`
+  + `zpico_drift_gate` were 60 s TIMEOUTs (no panic) — env/contention, to
+  re-run in isolation. `rtos_e2e` ×7 are genuine Rust-host (Nuttx +
+  ThreadxLinux) + Nuttx-Cpp-action regressions (panic at `rtos_e2e.rs:547`
+  readiness / `:844` action-complete) — open.
 - Two build-all-after-clean fragilities surfaced by the nuke gate:
   - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
     --locked` on standalone example/fixture dirs whose gitignored
