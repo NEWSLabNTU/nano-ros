@@ -2558,8 +2558,13 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     // Start Zephyr C++ talker
     let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim).unwrap();
 
+    // Wait for 2 messages: this test asserts `received_count >= 2` below, so
+    // waiting for only 1 returned as soon as the first arrived and captured a
+    // single "Received:" line, failing deterministically. The Zephyr C++
+    // talker publishes repeatedly (~every 2.5 s after a 5 s warm-up), so 2
+    // messages arrive well within the 30 s budget.
     let listener_output = listener
-        .wait_for_output_count("Received:", 1, Duration::from_secs(30))
+        .wait_for_output_count("Received:", 2, Duration::from_secs(30))
         .unwrap_or_default();
     let talker_output = talker
         .wait_for_output(Duration::from_secs(2))
