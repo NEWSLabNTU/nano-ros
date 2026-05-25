@@ -264,6 +264,31 @@ passed.
   3. Unblocks the 177.26 two-QEMU e2e
      (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`, currently `#[ignore]`d).
 
+- [x] **177.29 - ThreadX-RV64 Cyclone fixtures fail to link: GCC slim-LTO
+  `libddsc.a` vs rust-lld.** Surfaced by Phase 179.G; closed 2026-05-25.
+  `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures`
+  failed linking the C/C++ Cyclone fixtures with unresolved `dds_*` /
+  `ddsrt_*` / `ddsi_*` from `libnros_rmw_cyclonedds.a`. Distinct root cause
+  from 177.27 (threadx-**linux**, which was a missing `CMAKE_PREFIX_PATH` /
+  `find_package`): the cross `build/cyclonedds-threadx-rv64-install/lib/
+  libddsc.a` *was* on the link line (whole-archived) and GNU `nm` saw all
+  498 `dds_*` symbols, but `llvm-nm` saw **zero** — only `__gnu_lto_slim`.
+  The archive held GCC slim-LTO objects (GIMPLE bytecode, not machine code);
+  rust-lld (the linker for ThreadX examples, via
+  `cmake/toolchain/riscv64-lld-wrapper.sh`) cannot consume GCC LTO objects
+  without GCC's LTO plugin, so every symbol was undefined even under
+  `--whole-archive`. The cross-probe already set `-fno-lto` +
+  `ENABLE_LTO=OFF` (2026-05-24), but the build dir kept a stale
+  `ENABLE_LTO:BOOL=ON` cache and an incremental `--mode build` reused it.
+  Fix: `scripts/cyclonedds/threadx-cross-probe.sh` now wipes the build dir
+  for a clean reconfigure whenever the cached LTO setting is not
+  `ENABLE_LTO:BOOL=OFF` (`941353aa4`). Verified: after a clean rebuild
+  `llvm-nm` resolves the symbols, all four C/C++ Cyclone fixtures link to
+  RISC-V ELF, and `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just
+  threadx_riscv64 build-fixtures` exits 0. Runtime is still gated by 177.26
+  (multicast) — the talker boots, creates the publisher, and publishes; the
+  two-node data plane is the 177.26 / 177.28 work.
+
 ### Test-All Environment / Setup
 
 - [x] **177.6 - PX4 tests require explicit PX4 workspace setup.**
@@ -501,6 +526,32 @@ passed.
   - [ ] `test_zephyr_xrce_rust_action_e2e` still reports
         `Transport(ConnectionFailed)` on port 2038 even though pub/sub on
         port 2018 passes; inspect action fixture Kconfig/code path.
+
+  **CycloneDDS slice — `native_sim` runtime, root-caused 2026-05-25
+  (Phase 179.G).** 177.24 unblocked the Cyclone *fixture build*; the
+  *runtime* is the open half of that slice and is a real port defect, not a
+  fixed-sleep/setup regression. `zephyr/CMakeLists.txt` globs ddsrt's POSIX
+  backends (`file(GLOB _cdds_ddsrt_posix .../ddsrt/src/*/posix/*.c)`), which
+  pulls in `src/threads/posix/threads.c` — the raw `pthread_create` thread
+  port. On `native_sim` the kernel runs atop the native simulator, which
+  owns every `k_thread` as a host thread; CycloneDDS spawns ~7 worker
+  threads (recv / dq.builtins / tev / gc / …) via raw `pthread_create` at
+  `dds_create_participant`, and each trips the kernel's
+  `os: tid 0x... is in use!` check the moment it calls a Zephyr API.
+  Reproduced: `build/zephyr-workspace-builds/build-cpp-talker-cyclonedds/
+  zephyr/zephyr.exe` logs seven `tid ... is in use!` errors at participant
+  creation; a talker+listener pair exchanges **zero** messages (data plane
+  dead). The boot-banner tests pass only because the publish loop runs on
+  the main `k_thread`. CycloneDDS ddsrt has freertos + threadx + posix +
+  windows thread ports but **no Zephyr port**; the fix is a `k_thread`-based
+  ddsrt Zephyr thread port (`threads/zephyr`, `k_thread_create` + dynamic
+  stacks, excluded from the POSIX glob), parallel to the freertos/threadx
+  ports. Bounded but non-trivial RTOS port — overlaps the Phase 177.2
+  Zephyr CycloneDDS scope. Until then the `zephyr-native-cyclonedds` nextest
+  group is expected to fail at runtime.
+  - [ ] `test_zephyr_dds_cpp_talker_to_listener_e2e` (and the C / Rust
+        Cyclone pub/sub + service + action e2e cases) — blocked on the
+        ddsrt Zephyr thread port above.
 
 - [x] **177.9.G - NuttX action E2E runtime.**
   Closed 2026-05-25. Focused rerun passed after building the required

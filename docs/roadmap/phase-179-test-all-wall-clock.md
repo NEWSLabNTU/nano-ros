@@ -156,7 +156,9 @@ The post-audit rerun found four follow-ups:
   fixtures stay gated behind `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`
   (run `just cyclonedds threadx-cross-probe` first); `just setup all`
   still does not cross-build Cyclone, so the gate keeps the default
-  `threadx_riscv64 build-fixtures` path provisioning-free.
+  `threadx_riscv64 build-fixtures` path provisioning-free. Cataloged as
+  **177.29** (closed). Runtime is still gated by **177.26** (multicast) /
+  **177.28** (listener subscription).
 - Zephyr tests could report stale or missing fixtures after
   `just zephyr build-fixtures` because the build recipe falls back to
   `build/zephyr-workspace-builds` when the sibling workspace is not
@@ -195,7 +197,7 @@ excluded from the POSIX glob), parallel to the existing `freertos` and
 to the Zephyr CycloneDDS work tracked under Phase 177.2; it is not a
 test-harness fix. Until then these `native_sim` Cyclone e2e tests stay in
 the serial `zephyr-native-cyclonedds` group and are expected to fail at
-runtime.
+runtime. Cataloged as the CycloneDDS-runtime slice of **177.9.F**.
 
 ### Post-nextest stages have poor visibility
 
