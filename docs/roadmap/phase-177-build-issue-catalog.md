@@ -157,6 +157,23 @@ passed.
   3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on the
      listener proves two-node RTPS.
 
+- [ ] **177.27 - ThreadX-Linux C/C++ CycloneDDS fixtures fail to build.**
+  Found 2026-05-25 while staging fixtures for 177.9.H. When Cyclone is set
+  up (`build/install/lib/libddsc.so` + `bin/idlc` present),
+  `just threadx_linux build-fixtures` adds the `cyclonedds` RMW to the C/C++
+  fixture matrix, but the build fails: `nros_rmw_cyclonedds_generate_from_msg
+  requires msg_to_cyclone_idl.py — set NROS_RMW_CYCLONEDDS_SCRIPTS_DIR`. The
+  script exists at `scripts/cyclonedds/msg_to_cyclone_idl.py`; the
+  `build-fixture-extras` recipe in `just/threadx-linux.just` simply does not
+  export `NROS_RMW_CYCLONEDDS_SCRIPTS_DIR` (nor pass
+  `-DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=`) for the cyclonedds cmake invocations,
+  and `parallel --halt now,fail=1` then aborts the whole fixture build. The
+  zenoh fixtures are unaffected (built directly to unblock 177.9.H). Likely a
+  one-line export in the recipe, plus verification that the threadx-linux
+  C/C++ cyclonedds fixtures then build and the corresponding `rtos_e2e`
+  cyclonedds cases run. Sibling of 177.24 (Zephyr CycloneDDS fixtures) but a
+  distinct root cause (script-path wiring vs chrono shim).
+
 ### Test-All Environment / Setup
 
 - [x] **177.6 - PX4 tests require explicit PX4 workspace setup.**
@@ -403,10 +420,21 @@ passed.
   - [x] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C`
   - [x] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp`
 
-- [ ] **177.9.H - Flaky but recovered.**
-  This passed on retry and should be watched separately from hard
-  failures:
-  - [ ] `rtos_e2e::test_rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux::lang_3_Lang__Cpp`
+- [x] **177.9.H - Flaky but recovered.**
+  Closed 2026-05-25. Not reproducible under focused rerun: after staging
+  the ThreadX-Linux zenoh C++ fixtures
+  (`examples/threadx-linux/cpp/{talker,listener}/build-zenoh/`), the test
+  passed 17/17 consecutive runs (16 retries-off + 1 verbose), the verbose
+  run showing the talker publishing 0..9+ and `messages received: 11`.
+  Command:
+  `cargo nextest run -p nros-tests --retries 0 -E 'binary(rtos_e2e) and test(test_rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux::lang_3_Lang__Cpp)'`.
+  The lone 2026-05-22 failure was a host-load hiccup during the heavy
+  parallel `test-all` sweep, not a product bug. The post-sweep readiness
+  gate (`ensure_ready` waits for the listener's "Waiting for messages"
+  marker before the talker window, `4b1b0723d`) plus the test design
+  (talker publishes repeatedly across a 15 s window, listener collects for
+  30 s and needs only one message) make the discovery race non-fatal.
+  - [x] `rtos_e2e::test_rtos_pubsub_e2e::platform_3_Platform__ThreadxLinux::lang_3_Lang__Cpp`
 
 - [x] **177.19 - ESP32-C3 QEMU OpenETH Zenoh pub/sub does not move user data.**
   Fixed the ESP32-C3 QEMU Zenoh examples by sizing their generated
