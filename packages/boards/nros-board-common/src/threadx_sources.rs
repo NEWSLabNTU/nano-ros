@@ -158,9 +158,15 @@ pub fn add_nros_platform_threadx_build(build: &mut cc::Build, workspace_root: &P
     let cffi_include = workspace_root.join("packages/core/nros-platform-cffi/include");
 
     build.include(&cffi_include);
-    build.file(src_dir.join("platform.c"));
-    build.file(src_dir.join("net.c"));
-    build.file(src_dir.join("timer.c"));
+    for f in ["platform.c", "net.c", "timer.c"] {
+        let path = src_dir.join(f);
+        build.file(&path);
+        // Per-FILE rerun trigger: a directory-level `rerun-if-changed`
+        // only fires when entries are added/removed (the dir mtime), not
+        // when a watched file's *contents* change, so editing platform.c
+        // would otherwise reuse a stale object.
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
 
     println!("cargo:rerun-if-changed={}", src_dir.display());
     println!("cargo:rerun-if-changed={}", cffi_include.display());

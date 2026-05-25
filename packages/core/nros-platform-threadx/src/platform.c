@@ -99,7 +99,21 @@ __attribute__((weak)) void z_free(void *ptr) {
  * avoids file I/O here; its ThreadX socket waitset path still references a
  * few POSIX names, so provide weak stubs until the backend supplies native
  * waitset plumbing.
+ *
+ * HOSTED EXCEPTION (`__linux__`): the ThreadX *linux* port (threadx-linux)
+ * runs as a real Linux process linked against glibc, which already provides
+ * strong open/close/read/write/lseek/pipe and a real `stdin`. A *weak*
+ * definition living in the main executable still shadows the glibc public
+ * symbol for the dynamic lookup, so these stubs would hijack every public
+ * `write(2)` etc. C/C++ stdio escapes this because glibc routes printf
+ * through the internal `__write` alias, but Rust's `std::io::Stdout` calls
+ * the public `write`, gets the stub's unconditional `-1`, and panics
+ * ("failed printing to stdout"); with `panic = "abort"` that SIGABRTs the
+ * whole node before it prints its readiness banner. So compile these only
+ * for the freestanding (bare-metal) ThreadX targets — the riscv64 cross
+ * toolchain does not define `__linux__`; the hosted linux port does.
  */
+#if !defined(__linux__)
 __attribute__((weak)) void *stdin = NULL;
 
 __attribute__((weak)) int open(const char *path, int flags, ...) {
@@ -141,6 +155,7 @@ __attribute__((weak)) int pipe(int fds[2]) {
     }
     return -1;
 }
+#endif /* !__linux__ */
 
 /*
  * tx_byte_allocate has no "remaining size" query; mirror the Rust

@@ -1206,9 +1206,35 @@ robustness/consistency follow-ups, not regressions.
   Triage 2026-05-26: `logging_smoke` ×2 were a build-tier coverage gap,
   fixed under **177.8.a** (both now PASS). `ros2::*` ×2 + `integration_esp_idf`
   + `zpico_drift_gate` were 60 s TIMEOUTs (no panic) — env/contention, to
-  re-run in isolation. `rtos_e2e` ×7 are genuine Rust-host (Nuttx +
-  ThreadxLinux) + Nuttx-Cpp-action regressions (panic at `rtos_e2e.rs:547`
-  readiness / `:844` action-complete) — open.
+  re-run in isolation. `rtos_e2e` ×7: the 3 **ThreadxLinux Rust** failures are
+  fixed under **177.8.b** (all 9 ThreadxLinux lang×variant now PASS); the 4
+  **Nuttx** (Rust pubsub/service/action + Cpp action) remain open.
+
+  - [x] **177.8.b - ThreadX-Linux Rust nodes SIGABRT on first `println!`
+    after `Executor::open`.** All three ThreadxLinux Rust e2e
+    (pubsub/service/action) failed `ensure_ready` (`rtos_e2e.rs:547`) — the
+    node produced zero output (block-buffered pipe + abort discards it) and
+    exited in ~2 s. Root cause (gdb + strace): `nros-platform-threadx`'s
+    `src/platform.c` defines **weak POSIX stubs** (`open/close/read/write/
+    lseek/pipe` + `stdin`) that unconditionally `return -1`. They are meant
+    for *freestanding* bare-metal ThreadX (threadx-riscv64) where Cyclone's
+    socket-waitset references those names and there is no libc. But the
+    ThreadX *linux* port runs as a hosted Linux process linked to glibc, and
+    a *weak* definition in the main executable still shadows glibc's public
+    `write` for the dynamic lookup. Rust's `std::io::Stdout` calls the public
+    `write` → stub's `-1` → `println!` panics "failed printing to stdout" →
+    `panic = "abort"` → SIGABRT, before the readiness banner. C/C++ escape it
+    because glibc stdio routes through the internal `__write` alias — that is
+    the exact Rust-only asymmetry. Fix: gate the stubs behind
+    `#if !defined(__linux__)` (the riscv64 cross toolchain doesn't define it;
+    the hosted linux port does). Also fixed a latent build-hygiene bug:
+    `nros-board-common::threadx_sources` emitted only a *directory*-level
+    `cargo:rerun-if-changed` for the platform-threadx C sources, which does
+    not fire on file-*content* edits — added per-file triggers for
+    `platform.c`/`net.c`/`timer.c`. Verified: full ThreadxLinux matrix 9/9
+    (Rust + C + C++ × pubsub/service/action) PASS; no regression to the
+    C/C++ paths (which now link glibc's real `pipe`/`read`/`write` — exactly
+    what Cyclone's self-pipe waitset wants).
 - Two build-all-after-clean fragilities surfaced by the nuke gate:
   - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
     --locked` on standalone example/fixture dirs whose gitignored
