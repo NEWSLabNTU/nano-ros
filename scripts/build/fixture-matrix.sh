@@ -44,8 +44,16 @@ nros_cmake_fixture_build() {
 
     if [ "$needs_configure" = "1" ]; then
         rm -rf "$build_dir"
-        cmake -S "$src_dir" -B "$build_dir" "$@"
-        mkdir -p "$build_dir"
+        # Record the signature ONLY after a successful configure. Writing it
+        # unconditionally (the old behaviour) poisoned the build dir on a
+        # failed configure: a later retry with the env fixed saw a matching
+        # signature, skipped reconfigure, and ran `cmake --build` on a build
+        # dir with no generated build system → "gmake: Makefile: No such
+        # file". The parallel callers run each job in a `set +e` bash -c, so
+        # the failure could not abort the function on its own.
+        if ! cmake -S "$src_dir" -B "$build_dir" "$@"; then
+            return 1
+        fi
         printf '%s\n' "$signature" > "$sig_file"
     fi
     cmake --build "$build_dir"

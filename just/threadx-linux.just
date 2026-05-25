@@ -87,6 +87,17 @@ build-fixture-extras:
     nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/nsos-netx}"
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
     app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
+    # Phase 177.27 — the cyclonedds RMW needs two flags native.just /
+    # cyclonedds.just already pass; threadx-linux omitted both. Harmless for
+    # the zenoh pass (it ignores them):
+    #   1. msg_to_cyclone_idl.py — the .msg→IDL converter for
+    #      nros_rmw_cyclonedds_generate_from_msg (find_program can't locate
+    #      it in the source tree).
+    #   2. CMAKE_PREFIX_PATH=build/install — so find_package(CycloneDDS)
+    #      resolves the host ddsc/ddsrt libs; without it the fixtures fail to
+    #      link (undefined dds_qset_*/ddsrt_*/dds_stream_* references).
+    msg_to_idl="$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    cyclone_prefix="$root/build/install"
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
@@ -108,7 +119,7 @@ build-fixture-extras:
         else
             echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
         fi
-        export threadx_dir nsos_netx_dir config_dir app_define codegen
+        export threadx_dir nsos_netx_dir config_dir app_define codegen msg_to_idl cyclone_prefix
         export -f nros_cmake_fixture_build
         if [ "${NROS_JOBSERVER:-}" = "1" ]; then
             for dir in "${collapsed_cmake_dirs[@]}"; do
@@ -131,6 +142,8 @@ build-fixture-extras:
                       -DTHREADX_CONFIG_DIR="$config_dir" \
                       -DTHREADX_APP_DEFINE="$app_define" \
                       -DCMAKE_BUILD_TYPE=Release \
+                      -DCMAKE_PREFIX_PATH="$cyclone_prefix" \
+                      -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$msg_to_idl" \
                       -D_NANO_ROS_CODEGEN_TOOL="$codegen" > /dev/null
                 done
             done
@@ -155,6 +168,8 @@ build-fixture-extras:
                        -DTHREADX_CONFIG_DIR='$config_dir' \
                        -DTHREADX_APP_DEFINE='$app_define' \
                        -DCMAKE_BUILD_TYPE=Release \
+                       -DCMAKE_PREFIX_PATH='$cyclone_prefix' \
+                       -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL='$msg_to_idl' \
                        -D_NANO_ROS_CODEGEN_TOOL='$codegen' > /dev/null; \
                  done"
         fi

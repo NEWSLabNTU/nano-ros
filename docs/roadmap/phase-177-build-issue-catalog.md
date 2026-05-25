@@ -157,22 +157,38 @@ passed.
   3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on the
      listener proves two-node RTPS.
 
-- [ ] **177.27 - ThreadX-Linux C/C++ CycloneDDS fixtures fail to build.**
-  Found 2026-05-25 while staging fixtures for 177.9.H. When Cyclone is set
-  up (`build/install/lib/libddsc.so` + `bin/idlc` present),
-  `just threadx_linux build-fixtures` adds the `cyclonedds` RMW to the C/C++
-  fixture matrix, but the build fails: `nros_rmw_cyclonedds_generate_from_msg
-  requires msg_to_cyclone_idl.py — set NROS_RMW_CYCLONEDDS_SCRIPTS_DIR`. The
-  script exists at `scripts/cyclonedds/msg_to_cyclone_idl.py`; the
-  `build-fixture-extras` recipe in `just/threadx-linux.just` simply does not
-  export `NROS_RMW_CYCLONEDDS_SCRIPTS_DIR` (nor pass
-  `-DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=`) for the cyclonedds cmake invocations,
-  and `parallel --halt now,fail=1` then aborts the whole fixture build. The
-  zenoh fixtures are unaffected (built directly to unblock 177.9.H). Likely a
-  one-line export in the recipe, plus verification that the threadx-linux
-  C/C++ cyclonedds fixtures then build and the corresponding `rtos_e2e`
-  cyclonedds cases run. Sibling of 177.24 (Zephyr CycloneDDS fixtures) but a
-  distinct root cause (script-path wiring vs chrono shim).
+- [x] **177.27 - ThreadX-Linux C/C++ CycloneDDS fixtures fail to build.**
+  Found 2026-05-25 while staging fixtures for 177.9.H; closed 2026-05-25.
+  Was not one bug but four layered gaps in the never-completed threadx-linux
+  cyclonedds fixture path, each surfacing only after the previous was fixed:
+  1. **Configure** — `nros_rmw_cyclonedds_generate_from_msg` couldn't find
+     `msg_to_cyclone_idl.py`; the `build-fixture-extras` recipe in
+     `just/threadx-linux.just` never passed `-DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=`
+     (native.just / cyclonedds.just both do). Added it.
+  2. **Stale-dir retry trap** — `nros_cmake_fixture_build`
+     (`scripts/build/fixture-matrix.sh`) wrote its `.sig` even when `cmake`
+     configure failed, so a retry with the env fixed saw a matching signature,
+     skipped reconfigure, and ran `cmake --build` on a build dir with no
+     generated build system → `gmake: Makefile: No such file`. Now writes the
+     signature only after a successful configure (general fix; benefits every
+     platform's fixture build).
+  3. **ddsc link** — the recipe never passed
+     `-DCMAKE_PREFIX_PATH=build/install`, so `find_package(CycloneDDS)` didn't
+     resolve and the C++ fixtures failed to link (`undefined dds_qset_* /
+     ddsrt_* / dds_stream_*`). Added it (native.just passes it too).
+  4. **C++ runtime link for C apps** — the **C** examples link the C++
+     cyclonedds backend, but CMake selected the C linker driver and failed on
+     `operator new/delete` / `std::nothrow`. (Native gets the C++ driver via
+     automatic link-language propagation; the threadx whole-archive transitive
+     path loses it.) `nano_ros_link_rmw` (`cmake/NanoRosLink.cmake`) now forces
+     `LINKER_LANGUAGE CXX` on the target whenever the C++ `cyclonedds` backend
+     is linked — idempotent for C++ apps and hosts where it already works.
+  Verified 2026-05-25: `just threadx_linux build-fixture-extras` exits 0 and
+  produces all 24 c/cpp fixtures (zenoh + cyclonedds × talker/listener/
+  service-server/service-client/action-server/action-client). Runtime
+  `rtos_e2e` cyclonedds cases were not run here (build-only scope); they fall
+  under 177.9.F. Sibling of 177.24 (Zephyr CycloneDDS) but distinct root
+  causes.
 
 ### Test-All Environment / Setup
 

@@ -105,4 +105,16 @@ function(nano_ros_link_rmw TARGET)
     string(APPEND _stub_content "}\n")
     file(WRITE "${_stub_path}" "${_stub_content}")
     target_sources(${TARGET} PRIVATE "${_stub_path}")
+
+    # Phase 177.27 — the cyclonedds backend is C++ (operator new/delete,
+    # std::nothrow in publisher/subscriber/sertype_min). When a C executable
+    # links it, CMake's link-language propagation from the C++ static lib can
+    # be lost — the backend is pulled in transitively (and whole-archived for
+    # the register TU) rather than by target name — so the C linker driver is
+    # selected and fails on unresolved C++ runtime symbols. Force the C++
+    # linker driver so libstdc++ is linked. Idempotent / harmless for C++ apps
+    # (already CXX) and for hosts where propagation already works.
+    if("cyclonedds" IN_LIST _existing_rmws)
+        set_target_properties(${TARGET} PROPERTIES LINKER_LANGUAGE CXX)
+    endif()
 endfunction()
