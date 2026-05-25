@@ -563,16 +563,16 @@ passed.
   and 5 failed (runtime/backend issues, not setup fallout). **Update
   2026-05-25:** after the incoming `cf34366fd` ("fix: wire Zephyr XRCE
   setup") landed and the XRCE fixtures were rebuilt with the NSOS overlay,
-  the XRCE subset reached **6/7**; the last failure
-  (`test_zephyr_xrce_cpp_talker_listener`) was then fixed (session-key
-  collision, `5b9ad9aab` — see the `[x]` entry below), so the XRCE subset is
-  **7/7**. Combined with the Zenoh/cpp subset (12/12, including the
-  `test_zephyr_cpp_talker_to_native_listener` count-wait fix below), the
-  Zenoh + XRCE subsets are **18/18**. **Update 2026-05-25:** the CycloneDDS
-  (`dds`) subset is also green — `binary(zephyr) and test(dds)` is **15/15**
-  (boots + c/cpp/rs action e2e) on fresh NSOS fixtures (see the CycloneDDS
-  slice below). Zephyr native/cross E2E runtime is now fully green across
-  Zenoh, XRCE, and CycloneDDS.
+  the XRCE pub/sub+service subset reached **6/7** and
+  `test_zephyr_xrce_cpp_talker_listener` was then fixed (session-key
+  collision, `5b9ad9aab`). The **one remaining XRCE failure** is
+  `test_zephyr_xrce_cpp_action_e2e` (`feedback=0` — cpp action feedback
+  double-CDR-header, root-caused + localized below, fix not yet landed).
+  Combined with the Zenoh/cpp subset (12/12) and the CycloneDDS (`dds`)
+  subset (**15/15**: `binary(zephyr) and test(dds)`, boots + c/cpp/rs action
+  e2e on fresh NSOS fixtures, see the CycloneDDS slice below), Zephyr
+  native/cross E2E runtime is green across Zenoh and CycloneDDS and all of
+  XRCE **except** the cpp action feedback item.
   - [x] `test_bidirectional_native_zephyr_e2e` passes.
   - [x] `test_native_server_zephyr_client` passes.
   - [x] `test_native_talker_to_zephyr_cpp_listener` passes.
@@ -631,11 +631,42 @@ passed.
           deserialization is fixed. Test needs `feedback >= 1`, so one
           surviving + correctly-deserialized frame suffices; pacing the server
           would make it robust.
-        Next: dump the client feedback message layout (`feedback_buffer[0..28]`)
-        for XRCE vs Cyclone to locate where the extra inner header enters
-        (publish framing in the XRCE action path vs the `FEEDBACK_PAYLOAD_OFFSET`
-        = 24 slice), then strip/adjust it on the XRCE side so the arena payload
-        matches Cyclone's (raw fields). Remaining 177.9.F XRCE item.
+        **Localized fully 2026-05-25** by dumping `feedback_buffer[0..28]` on
+        both backends (instrumentation reverted):
+        * Server publish is **identical** for both — `publish_feedback_raw`
+          (`action_core.rs`) embeds `[outer CDR(4) + GoalId(20) + feedback_cdr]`
+          where `feedback_cdr` is the C++ `ffi_serialize` output and **keeps its
+          own CDR header** (`SRV feedback_cdr [0..8] = 00 01 00 00 04 00 00 00`
+          on both XRCE and Cyclone). So the published feedback message is a
+          *nested* CDR: `[CDR + GoalId + (CDR + fields)]`.
+        * Client receive **differs**: XRCE delivers the bytes **verbatim** —
+          `feedback_buffer[0..28] = 00 01 00 00 | <GoalId 20> | 00 01 00 00`
+          (len 72), so `[24..]` is `[inner CDR + fields]`. Cyclone's backend
+          **reconstructs the message flat** — `… | <GoalId 20> | 0a 00 00 00`
+          (len 68), so `[24..]` is `[fields]` (no inner header). The flattening
+          is Cyclone-specific code: `packages/dds/nros-rmw-cyclonedds/src/
+          subscriber.cpp:185-197` (rebuilds `[CDR + GoalId-len + fields]` from
+          the DDS dynamic sample) paired with `publisher.cpp::
+          publish_fibonacci_feedback`.
+        * So the arena offset-24 + `cpp_feedback_trampoline` prepend assume the
+          **flat** layout Cyclone produces; XRCE's verbatim nested layout
+          double-frames.
+
+        **Fix (coordinated, not landed — needs maintainer review).** Make the
+        feedback message a single flat CDR on the wire for all backends:
+        `publish_feedback_raw` should embed `feedback_cdr[CDR_HEADER_LEN..]`
+        (strip the inner header) so the message is `[CDR + GoalId + fields]`,
+        and **drop** the `CDR_LE_HEADER` prepend in `cpp_feedback_trampoline` +
+        the direct path (`action.rs`) so `[24..]` (now `[fields]` for every
+        backend) is framed once. This also requires re-checking Cyclone's
+        `publish_fibonacci_feedback` parse offsets (it parses the published
+        `data`, which loses 4 bytes) and Cyclone's `subscriber.cpp` rebuild
+        (which would then match without special-casing). Not landed here
+        because it touches the working Cyclone publish/receive bridge + the
+        shared trampoline; needs a from→to test on Cyclone **and** XRCE
+        (pub/sub, service, result, feedback) before merge. Secondary: pace the
+        server's 10-feedback burst (volatile, ~1 ms) so ≥1 survives. Remaining
+        177.9.F XRCE item.
   - [x] `test_zephyr_xrce_rust_service_e2e` — passes (same fix + rebuild);
         the earlier `Transport(ConnectionFailed)` is gone.
   - [x] `test_zephyr_xrce_rust_action_e2e` — passes (same fix + rebuild).
