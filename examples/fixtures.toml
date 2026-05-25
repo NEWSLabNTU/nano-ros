@@ -1,0 +1,319 @@
+# Single source of truth for example/test FIXTURE build options.
+#
+# Phase 177.9. Consumed by BOTH the fixture build recipes (`just <plat>
+# build-fixtures`, via scripts/build/fixtures-manifest.py) AND the test-all
+# staleness probe (scripts/test/rust-fixture-stale.sh). Keeping the build
+# options here — rather than scattered across just/*.just — guarantees the
+# probe rebuilds each fixture with the EXACT same features/target-dir/env the
+# real build used (mismatched features cause feature-thrash rebuilds and false
+# staleness, so default-feature probing is not acceptable).
+#
+# Scope: per-FIXTURE build options only. Platform ENV (toolchain paths, board
+# cache vars, SDK dirs) stays in the recipes — it is platform-level, not
+# per-fixture.
+#
+# Entry schema ([[fixture]]):
+#   platform   required  "native" | "qemu-arm-baremetal" | "freertos" | ...
+#   lang       required  "rust" | "c" | "cpp"
+#   dir        required  build cwd (cargo: the crate dir; cmake: the example dir)
+#   rmw        optional  "zenoh" | "xrce" | "cyclonedds" (informational/filter)
+#   id         optional  stable id (default: derived from dir+target_dir+features)
+#   # --- rust (cargo) ---
+#   features            optional  string[] passed as --features a,b
+#   no_default_features optional  bool      adds --no-default-features
+#   target_dir          optional  --target-dir <dir> (relative to `dir`)
+#   target              optional  --target <triple> (cross)
+#   env                 optional  { KEY = "VAL" } exported for the build
+#   # --- cmake (c/cpp) — rollout pending; see C/C++ section below ---
+#   cmake_defs          optional  { NROS_RMW = "zenoh", ... } -> -D<K>=<V>
+#
+# Migration status: native rust = authored + consumed by the probe. Build-recipe
+# consumption (B) + C/C++ cmake cells + cross platforms = rollout in progress.
+
+# ===========================================================================
+# native — Rust (host, profile nros-fast-release)
+# ===========================================================================
+
+# Collapsed role examples — default features, default target dir.
+# (talker is NOT here: its default-target fixture is the param-services build
+#  below, matching just/native.just build-fixture-extras.)
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/listener"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/lifecycle-node"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/custom-msg"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/service-server"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/service-client"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/action-server"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/action-client"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/talker-rtic"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/listener-rtic"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/service-server-rtic"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/service-client-rtic"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/action-server-rtic"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/action-client-rtic"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/serial-talker"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/serial-listener"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/custom-transport-talker"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/custom-transport-listener"
+
+# talker default-target fixture is feature-augmented with param-services so the
+# params tests see the talker's declared parameter.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/talker"
+features = ["param-services"]
+
+# TLS variant (isolated target dir).
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/talker"
+features = ["link-tls"]
+target_dir = "target-tls"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/listener"
+features = ["link-tls"]
+target_dir = "target-tls"
+
+# Safety-e2e variant.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/talker"
+features = ["safety-e2e"]
+target_dir = "target-safety"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/listener"
+features = ["safety-e2e"]
+target_dir = "target-safety"
+
+# Zero-copy (unstable zenoh receive API) variant.
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "examples/native/rust/listener"
+features = ["unstable-zenoh-api"]
+target_dir = "target-zero-copy"
+
+# Per-RMW collapsed talker/listener/service/action, isolated target-<rmw>/ dirs.
+# (zenoh talker also carries param-services, matching the recipe.)
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/native/rust/talker"
+no_default_features = true
+features = ["rmw-zenoh", "param-services"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/native/rust/listener"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/native/rust/service-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/native/rust/service-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/native/rust/action-server"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/native/rust/action-client"
+no_default_features = true
+features = ["rmw-zenoh"]
+target_dir = "target-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/native/rust/talker"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/native/rust/listener"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/native/rust/service-server"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/native/rust/service-client"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/native/rust/action-server"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/native/rust/action-client"
+no_default_features = true
+features = ["rmw-xrce"]
+target_dir = "target-xrce"
+
+# Bench / stress fixtures (default features).
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-bench/stress-zenoh"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-bench/executor-fairness"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-bench/stress-xrce"
+
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-bench/large-msg-xrce"
+
+# Large-buffer variant of stress-zenoh (env-tuned subscriber buffer).
+[[fixture]]
+platform = "native"
+lang = "rust"
+dir = "packages/testing/nros-bench/stress-zenoh"
+target_dir = "target-large-buf"
+env = { ZPICO_SUBSCRIBER_BUFFER_SIZE = "8192" }
+
+# ===========================================================================
+# C/C++ cells (cmake) and cross platforms (freertos, nuttx, threadx*, esp32,
+# stm32f4, zephyr, qemu-arm-baremetal) — ROLLOUT PENDING.
+#
+# Same idea applies: each C/C++ cell's cmake -D options (NROS_RMW, board cache
+# vars) become `cmake_defs` here, so nros_cmake_fixture_build and the recipes
+# read one source. The .nros-fixture.inputsig staleness check already covers
+# C/C++ cells (content hash, no rebuild needed), so the manifest mainly
+# consolidates their BUILD options. To be filled during migration.
+# ===========================================================================
