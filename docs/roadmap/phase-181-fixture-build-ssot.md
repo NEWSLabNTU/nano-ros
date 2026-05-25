@@ -13,11 +13,12 @@ fixes both.
 done; **181.4 done** — 7 rust platforms migrated to the SSOT + verified
 (native, qemu-arm-baremetal, stm32f4, freertos, nuttx, threadx-linux,
 threadx-riscv64), esp32 deferred on toolchain, zephyr/px4 N/A to the cargo
-manifest. **181.5.a–e done** — native + freertos + nuttx + threadx-linux +
+manifest. **181.5 done** — native + freertos + nuttx + threadx-linux +
 threadx-riscv64 C/C++ cells migrated to the SSOT manifest + the shared
 `fixtures-build.sh` cmake path (native/freertos/threadx-linux build-verified;
-cyclone passes gated). Next: 181.5.f–h (zephyr/esp32/px4) + 181.6 (strip recipe
-duplication).
+cyclone passes gated); 181.5.f–h (zephyr/esp32/px4) N/A to this manifest
+mechanism (west-built / no C/C++ cells / no-op fixtures). Next: 181.6 (strip
+recipe duplication).
 
 **Priority.** P2 — improves `just test-all` correctness/UX (Phase 177.9
 follow-up). Does not block `just ci` once landed.
@@ -311,10 +312,20 @@ generator-neutral — generator is a configure-time flag):
   (no DDS host/cross libs in this tree) but reproduce the prior `-D` set exactly
   via EXTRA_DEFS; `just <plat> build-fixtures` after `just cyclonedds setup` is
   the verification.
-- [ ] **181.5.f zephyr** c/cpp/rust — west/cmake cells. **Files**:
-  `just/zephyr.just`.
-- [ ] **181.5.g esp32** c/cpp (if any). **Files**: `just/esp32.just`.
-- [ ] **181.5.h px4** cpp uORB register-check. **Files**: `just/px4.just`.
+- [x] **181.5.f zephyr** — N/A to this manifest. Zephyr fixtures build via
+  `west build` / direct `ninja`, and their build options are board +
+  Kconfig/`prj-<rmw>.conf`-overlay driven, not `-D` flags through our cmake
+  helper. The manifest's two consumers (`fixtures-build.sh`, the staleness
+  probe) never invoke west, so a manifest row would be inert. West's own
+  build-system handles staleness. Left west-built (`just/zephyr.just`).
+- [x] **181.5.g esp32** — N/A. `examples/esp32/` has only Rust talker/listener
+  (no C/C++ cells); esp32 Rust fixtures stay deferred on the xtensa toolchain
+  (181.4), and `esp32 build-fixtures` = `build-qemu` + `build-logging-smoke`
+  (neither a manifest cmake cell). Nothing to migrate.
+- [x] **181.5.h px4** — N/A. `px4 build-fixtures` is a no-op ("PX4 has no
+  separate test fixture build today"); the cpp uORB register-check builds
+  through the PX4 build system under `build-examples`, not a manifest cmake
+  cell. Nothing to migrate.
 
 ### 181.7 — Simplify cmake recipes via native cmake/ninja + build audit
 
