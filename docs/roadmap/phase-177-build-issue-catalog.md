@@ -186,6 +186,21 @@ passed.
     (`listener register_subscription fails`) is **stale** — that is fixed;
     update it to the NetX-multicast-RX gate.
 
+    **Drop localized to NetX core (2026-05-26).** Instrumented the in-repo
+    virtio driver RX (`virtio-net-netx/src/virtio_net_nx.c`, marker since
+    reverted) and ran the two-QEMU socket-mcast pair: the listener's virtio
+    RX received **7 multicast IP frames** (the peer's SPDP) while Cyclone
+    ingested **0**. So the chain up to NetX is sound — the frames arrive at
+    the NIC, the driver classifies them as IP multicast and hands them to
+    `_nx_ip_packet_deferred_receive(interface[0])` — and the drop is **inside
+    NetX core, after the driver**: the joined-group multicast UDP datagram is
+    not surfaced to Cyclone's `recv`/BSD socket. NOT the transport (socket-
+    mcast bridges) and NOT the virtio driver. Narrow the fix to NetX's IPv4
+    multicast receive → UDP-socket demux → BSD readability path (likely
+    `_nx_ipv4_packet_receive` multicast-group match vs the joined entry, or
+    `nx_udp_packet_receive` socket lookup, or `nx_bsd_select` not flagging the
+    joined socket). This is external NetX-fork work.
+
   **Next.**
   1. Maintainer: push cyclonedds `5558c6ae` to `nano-ros-fork`
      (`nano-ros/zephyr-nsos-patches`) and bump the submodule pointer. (The
