@@ -559,22 +559,36 @@ passed.
         * But the callback finds **every `st->subscriber_slots[i]` with
           `active=0, dr_id=0`** even though the subscription was registered
           (`dr_id=4, active=1`) on the *same* `st` pointer.
-        * Session-lifecycle trace shows **multiple `create_session` calls per
-          listener process**: each one `calloc`s a fresh `xrce_session_state_t`
-          (zeroing `subscriber_slots`) and, because the previous one was freed,
-          frequently reuses the same heap address. The subscription is
-          registered in one session generation, the session is then
-          re-created (slots wiped), and when topic data arrives the callback
-          iterates a zeroed slot array → no match → ring never fills →
-          `try_recv` returns nothing.
-        The C path creates its session once and never loses the slot; the C++
-        listener path (nros-cpp init / executor / session open) re-creates the
-        XRCE session repeatedly. **Fix target:** stop the C++ listener path
-        from re-creating the XRCE session after entities are registered (create
-        once + reuse), or re-apply subscriber-slot registrations after a
-        session re-create. Next step: trace the `create_session` caller in the
-        nros-cpp / nros-node session-open + executor flow to find the repeated
-        open.
+        * Session-lifecycle trace showed multiple `create_session` calls per
+          listener process (each `calloc`s a fresh `xrce_session_state_t`,
+          zeroing `subscriber_slots`), so the slot registered in one generation
+          was gone when data arrived → callback iterates a zeroed array → no
+          match → ring empty → `try_recv` returns nothing.
+
+        **Actual root cause (the repeated `create_session` is a symptom):
+        the C++ XRCE listener firmware reboots in a loop.** Counting Zephyr
+        boot banners in each captured firmware's output: the **talker boots
+        once** (stays up and publishes 1..N) while the **listener boots 3×**
+        in the ~20 s window. Each reboot re-runs `main` → `init` (new session
+        `create_session`) → `create_subscription` (re-register) → "Waiting for
+        messages", and some boots open the session but reboot before
+        re-registering, so inbound data (the agent still holds the old
+        `dr_id=4`) hits a slot-less session → `NO-MATCH`. The listener never
+        stays alive long enough to deliver a message to the test. No crash
+        dump / FATAL / fault line is printed before the reboots (silent
+        restart). The C listener and the C++ talker do **not** reboot, so this
+        is specific to the **C++ XRCE listener** runtime path.
+
+        **Fix target:** find why the C++ XRCE listener restarts (a fault in the
+        spin/`try_recv` receive loop that native_sim turns into a silent
+        re-boot, or an unhandled exit). Ruled out as the *cause* of the loop:
+        topic/type naming, session-key collision (distinct node names),
+        `nros_cpp_spin_once` routing (already `executor.spin_once`), the
+        backend poll ring (works for C), and `Executor::open`/spin/drive_io/
+        try_recv re-opening (each opens at most once per boot). Next step:
+        run the listener `native_sim` `.exe` under a debugger / with fault
+        output (needs a non-sandboxed env — the binary binds a UDP socket the
+        sandbox kills) to capture the fault site in the C++ receive loop.
 
   **CycloneDDS slice — `native_sim` runtime, root-caused 2026-05-25
   (Phase 179.G).** 177.24 unblocked the Cyclone *fixture build*; the
