@@ -261,73 +261,20 @@ build-fixture-extras:
     else
         echo "  → native/rust/{talker,listener} cyclonedds skipped (run: just cyclonedds setup)"
     fi
-    # Phase 118.A.3 / 118.B.2 — collapsed-shape native C examples. Each
-    # case built once per RMW via cmake `-DNROS_RMW=<rmw>` into
-    # isolated build-<rmw>/ dirs. The canonical zenoh-style main.c
-    # uses the typed std_msgs / example_interfaces binding and builds
-    # cleanly under all three RMWs (zenoh, dds, xrce); the legacy
-    # `c/xrce/<case>/` siblings' manual-CDR variant is now redundant
-    # and is dropped by Tier 5 cleanup.
-    for case in $(nros_fixture_roles); do
-        if [ -d examples/native/c/${case} ]; then
-            for rmw in zenoh xrce; do
-                echo "  → native/c/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
-                if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                    ( cd examples/native/c/${case} && \
-                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
-                          -DCMAKE_BUILD_TYPE=Release \
-                          -DNANO_ROS_BUILD_CODEGEN=OFF \
-                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
-                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
-                      cmake --build build-${rmw} > /dev/null )
-                else
-                    ( cd examples/native/c/${case} && \
-                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
-                          -DCMAKE_BUILD_TYPE=Release \
-                          -DNANO_ROS_BUILD_CODEGEN=OFF \
-                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
-                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
-                      cmake --build build-${rmw} > /dev/null ) &
-                fi
-            done
-        fi
-    done
-    wait
-    # Phase 118.B.3 — collapsed-shape native C++ examples. Same shape
-    # as the C side; the typed nros-cpp binding handles all three RMWs.
-    for case in $(nros_fixture_roles); do
-        if [ -d examples/native/cpp/${case} ]; then
-            for rmw in zenoh xrce; do
-                echo "  → native/cpp/${case} (-DNROS_RMW=${rmw}, build-${rmw}/)"
-                if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                    ( cd examples/native/cpp/${case} && \
-                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
-                          -DCMAKE_BUILD_TYPE=Release \
-                          -DNANO_ROS_BUILD_CODEGEN=OFF \
-                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
-                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
-                      cmake --build build-${rmw} > /dev/null )
-                else
-                    ( cd examples/native/cpp/${case} && \
-                      nros_cmake_configure_if_needed . build-${rmw} -DNROS_RMW=${rmw} \
-                          -DCMAKE_BUILD_TYPE=Release \
-                          -DNANO_ROS_BUILD_CODEGEN=OFF \
-                          -D_NANO_ROS_CODEGEN_TOOL="${codegen_tool}" \
-                          -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
-                      cmake --build build-${rmw} > /dev/null ) &
-                fi
-            done
-        fi
-    done
-    wait
-    if [ -d examples/native/cpp/parameters ]; then
-        echo "  → native/cpp/parameters (-DNROS_RMW=zenoh, build-zenoh/)"
-        ( cd examples/native/cpp/parameters && \
-          nros_cmake_configure_if_needed . build-zenoh -DNROS_RMW=zenoh \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_PREFIX_PATH="${repo_root}/build/install" > /dev/null && \
-          cmake --build build-zenoh --target cpp_parameters > /dev/null )
-    fi
+    # Phase 181.5 — collapsed-shape native C / C++ examples from the SSOT
+    # manifest (examples/fixtures.toml). Per-cell RMW (`-DNROS_RMW`),
+    # per-RMW build-subdir (`build-<rmw>/`) and any cmake target come from
+    # the manifest; the platform-wide defs (build type, the C codegen tool,
+    # codegen-off, cyclone prefix) are injected here via the shared builder's
+    # NROS_CMAKE_EXTRA_DEFS contract. The canonical typed std_msgs /
+    # example_interfaces bindings build cleanly under zenoh + xrce; the
+    # cyclone cells stay in the gated block below (need `just cyclonedds
+    # setup`). The cpp/parameters cell (target cpp_parameters) is a manifest
+    # row too, so it builds in the same pass.
+    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_PREFIX_PATH=${repo_root}/build/install"
+    bash scripts/build/fixtures-build.sh native c
+    bash scripts/build/fixtures-build.sh native cpp
+    unset NROS_CMAKE_EXTRA_DEFS
     if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
         for lang in c cpp; do
             for case in talker listener; do

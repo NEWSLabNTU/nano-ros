@@ -264,20 +264,21 @@ generator-neutral — generator is a configure-time flag):
    non-fixture integration/module builds — out of scope. Ninja also fits the
    Phase 176 fifo jobserver better than recursive Make.
 
-- [~] **181.5.a native** c/cpp — entries authored (roles × {zenoh,xrce} for
-  c+cpp + `cpp parameters` target); `fixtures-manifest.py` now emits cmake
-  records `<dir>\x1f<build-subdir>\x1f<-D defs>\x1f<target>`. **Remaining**
-  (the substantial part): a shared cmake build path + recipe migration. Needs
-  (1) one cmake builder that configures-on-sig-change, builds (optionally a
-  single `--target`), and writes `.nros-fixture.inputsig` — today native uses
-  `nros_cmake_configure_if_needed` (no inputsig) while cross platforms use
-  `nros_cmake_fixture_build` (writes inputsig); unify them; (2) platform `-D`
-  injection (codegen tool, idlc, toolchain) stays recipe-supplied via env;
-  (3) cyclone cells gated on `just cyclonedds setup` (verify-gated). Note
-  native C/C++ cells currently get NO staleness probe (only fixture-matrix
-  cells write `.inputsig`) — unifying on the builder fixes that too.
-  **Files**: `just/native.just`, `scripts/build/fixtures-build.sh`,
-  `scripts/build/fixture-matrix.sh`.
+- [x] **181.5.a native** c/cpp — done. `fixtures-build.sh` grew a cmake branch
+  (`lang c|cpp`): reads the manifest cmake records `<dir>\x1f<build-subdir>\x1f<-D
+  defs>\x1f<target>`, runs `nros_cmake_configure_if_needed` + `cmake --build
+  [--target …]` per cell, with the same parallel/jobserver dispatch as the rust
+  branch. Platform `-D` injection (codegen tool, build-type, codegen-off, cyclone
+  prefix) is recipe-supplied via the `NROS_CMAKE_EXTRA_DEFS` contract.
+  `just/native.just build-fixture-extras` replaced its hand-rolled C + C++
+  per-RMW loops **and** the standalone `cpp parameters` block with two
+  `fixtures-build.sh native {c,cpp}` calls (parameters is a manifest row with
+  `target=cpp_parameters`). Cyclone c/cpp cells stay in the gated block (need
+  `just cyclonedds setup`). Staleness now covered: the 181.7c
+  `cmake-fixture-stale.sh` probe runs over these manifest rows. Verified end to
+  end — build (12 c + 13 cpp cells incl. parameters), idempotent no-op rerun
+  (1.4 s, 0 compile/link lines), probe reports all fresh. **Files**:
+  `just/native.just`, `scripts/build/fixtures-build.sh`.
 - [ ] **181.5.b freertos** c/cpp — cyclone talker fixtures. **Files**:
   `just/freertos.just`.
 - [ ] **181.5.c nuttx** c/cpp. **Files**: `just/nuttx.just`.

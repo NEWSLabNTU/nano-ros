@@ -2,11 +2,14 @@
 # Build all <platform> [<lang>] fixtures from the SSOT manifest
 # (examples/fixtures.toml). Phase 181.
 #
-# Per-fixture options (features / --no-default-features / --target-dir / cross
-# --target / build env) come from the manifest; per-PLATFORM env (toolchain
-# paths, SDK dirs, +nightly, cross target via the example's .cargo/config) is
-# the caller's responsibility and must already be exported. Codegen
-# (`nros generate-rust`) is also a caller/recipe concern — run it before this.
+# Per-fixture options come from the manifest; per-PLATFORM env is the caller's
+# responsibility (already exported):
+#   rust  — toolchain/+nightly/SDK dirs; codegen (`nros generate-rust`) run by
+#           the recipe before this. Manifest record: <dir>\x1f<env>\x1f<cargo-args>.
+#   c/cpp — toolchain/SDK cache vars + the codegen tool / idlc paths via
+#           $NROS_CMAKE_EXTRA_DEFS (appended to every cmake configure; C/C++
+#           message codegen runs inside cmake). Record:
+#           <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>.
 #
 # Usage (from repo root):
 #   scripts/build/fixtures-build.sh <platform> [<lang>]   # lang default: rust
@@ -20,23 +23,49 @@ lang="${2:-rust}"
 
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh
-cargo_profile_args="$(nros_cargo_profile_arg_string)"
-export cargo_profile_args
-
-nros_fixture_build_one() {
-    local dir envstr args
-    IFS=$'\x1f' read -r dir envstr args <<< "$1"
-    [ -n "$dir" ] || return 0
-    echo "  → $dir ${args}"
-    # shellcheck disable=SC2086
-    ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
-}
-export -f nros_fixture_build_one
 
 manifest() { python3 scripts/build/fixtures-manifest.py list --platform "$platform" --lang "$lang"; }
 
-if [ "${NROS_JOBSERVER:-}" = "1" ] || ! command -v parallel >/dev/null 2>&1; then
-    while IFS= read -r line; do nros_fixture_build_one "$line"; done < <(manifest)
+run() {
+    local fn="$1"
+    if [ "${NROS_JOBSERVER:-}" = "1" ] || ! command -v parallel >/dev/null 2>&1; then
+        local line
+        while IFS= read -r line; do "$fn" "$line"; done < <(manifest)
+    else
+        manifest | parallel --halt now,fail=1 --line-buffer -j "$(nros_cargo_frontend_jobs)" "$fn" {}
+    fi
+}
+
+if [ "$lang" = "c" ] || [ "$lang" = "cpp" ]; then
+    # cmake cells — configure once (Ninja via the helper) + cmake --build.
+    # shellcheck source=/dev/null
+    source scripts/build/cmake-incremental.sh
+    export NROS_CMAKE_EXTRA_DEFS="${NROS_CMAKE_EXTRA_DEFS:-}"
+    nros_fixture_build_cmake() {
+        local dir sub defs target
+        IFS=$'\x1f' read -r dir sub defs target <<< "$1"
+        [ -n "$dir" ] && [ -n "$sub" ] || return 0
+        echo "  → $dir/$sub ${defs}${target:+ (target $target)}"
+        # shellcheck disable=SC2086
+        nros_cmake_configure_if_needed "$dir" "$dir/$sub" $defs $NROS_CMAKE_EXTRA_DEFS
+        local ba=(--build "$dir/$sub")
+        [ -n "$target" ] && ba+=(--target "$target")
+        cmake "${ba[@]}"
+    }
+    export -f nros_fixture_build_cmake nros_cmake_configure_if_needed
+    run nros_fixture_build_cmake
 else
-    manifest | parallel --halt now,fail=1 --line-buffer -j "$(nros_cargo_frontend_jobs)" nros_fixture_build_one {}
+    # rust cells — cargo build with the manifest's exact features/target-dir/env.
+    cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    export cargo_profile_args
+    nros_fixture_build_one() {
+        local dir envstr args
+        IFS=$'\x1f' read -r dir envstr args <<< "$1"
+        [ -n "$dir" ] || return 0
+        echo "  → $dir ${args}"
+        # shellcheck disable=SC2086
+        ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
+    }
+    export -f nros_fixture_build_one
+    run nros_fixture_build_one
 fi
