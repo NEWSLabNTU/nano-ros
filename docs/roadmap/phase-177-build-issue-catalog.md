@@ -150,10 +150,7 @@ passed.
 
   **Next.**
   1. Maintainer: push cyclonedds `e8ce7315`, bump the submodule pointer.
-  2. Diagnose the Rust executor subscription-register failure (arena sizing
-     vs capacity) for the ThreadX Cyclone listener fixture; likely a
-     `NROS_EXECUTOR_ARENA_SIZE` / `MESSAGE_BUFFER_SIZE` mismatch in the
-     listener build config, not a Cyclone/NetX issue.
+  2. Resolve 177.28 (the subscriber-register blocker below).
   3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on the
      listener proves two-node RTPS.
 
@@ -189,6 +186,42 @@ passed.
   `rtos_e2e` cyclonedds cases were not run here (build-only scope); they fall
   under 177.9.F. Sibling of 177.24 (Zephyr CycloneDDS) but distinct root
   causes.
+
+- [ ] **177.28 - ThreadX Cyclone listener: `register_subscription` fails in
+  the nano-ros executor before backend create.**
+  Owner: Phase 177 runtime/executor follow-up. Split out of 177.26 (which
+  fixed the multicast discovery TX path). **Pre-existing** — reproduced on
+  the first ThreadX RISC-V64 Cyclone listener run before any 177.26 change,
+  and orthogonal to multicast/Cyclone.
+
+  **Symptom.** The C listener aborts at
+  `nros_executor_register_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA) -> -1`
+  (`examples/qemu-riscv64-threadx/c/listener/src/main.c:68`). The talker
+  (publisher only) is unaffected — it registers no subscription.
+
+  **Localised.** Instrumentation of the Cyclone backend showed
+  `subscriber_create` (`packages/dds/nros-rmw-cyclonedds/src/subscriber.cpp`)
+  is **never called**, and no socket/`setsockopt`/`bind` op runs for the
+  reader. So the `-1` originates in the nano-ros Rust executor
+  `register_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>`
+  (`packages/core/nros-c/src/executor.rs:771`) *before* it reaches the RMW
+  backend. The C-level capacity guard (`handle_count >= max_handles`,
+  `executor.rs:718`) is not the cause — the listener registers its first of
+  four handles. The likely cause is the executor arena allocation for the
+  subscription entry + `MESSAGE_BUFFER_SIZE` receive buffer failing, i.e. a
+  `NROS_EXECUTOR_ARENA_SIZE` / `MESSAGE_BUFFER_SIZE` mismatch in the ThreadX
+  Cyclone listener build config (`.cargo`/CMake-injected env), not a
+  Cyclone/NetX defect.
+
+  **Next.**
+  1. Confirm the failing arm in `register_subscription_raw_with_qos_sized`
+     (arena reserve vs another precondition) — instrument the Rust executor
+     or compare the arena size against `size_of` the subscription entry +
+     `MESSAGE_BUFFER_SIZE`.
+  2. If arena sizing: raise `NROS_EXECUTOR_ARENA_SIZE` for the ThreadX
+     Cyclone listener fixture (and document the per-RMW requirement).
+  3. Unblocks the 177.26 two-QEMU e2e
+     (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`, currently `#[ignore]`d).
 
 ### Test-All Environment / Setup
 
