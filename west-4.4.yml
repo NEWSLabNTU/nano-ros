@@ -39,13 +39,17 @@ manifest:
           # Tools
           - net-tools
 
-    # Rust language support. NOTE: pinned to main here only for the
-    # initial clone — Phase 180.A Task 9 pins this to the rev matching
-    # Zephyr 4.4 and re-verifies the 4 Rust patch anchors against the
-    # official (4.1+) module's CMake shape.
+    # Rust language support. Pinned (Phase 180.A Task 9) for reproducible
+    # 4.4 bringup. Task 9 verified the 4 nano-ros Rust patches against this
+    # rev: native_sim (x86_64/aarch64 host) is upstream-supported by
+    # _rust_map_target, so the native_sim line needs none of them; the 3
+    # arch patches (aarch64/cortex-a9/cortex-r) remain re-anchorable and
+    # travel with the FVP/S32Z/Zynq board targets; cargo-features re-anchors
+    # into rust_cargo_application. zephyr-lang-rust has no Zephyr-version tag,
+    # so we pin the SHA that 4.4 main resolved to.
     - name: zephyr-lang-rust
       remote: zephyrproject-rtos
-      revision: main
+      revision: a763400f31e92994d5c5aa0836346e19048f5bde
       path: modules/lang/rust
 
   self:

@@ -84,6 +84,20 @@ pinned 3.7-era checkout. **Pin `zephyr-lang-rust` to the rev matching each
 Zephyr line and re-verify all 4 anchors against it.** Likely the largest
 single chunk of 180.A.
 
+**RESOLVED (Task 9, 2026-05-25).** Verified against the 4.4-cloned
+`zephyr-lang-rust` (pinned to `a763400f` in `west-4.4.yml`). Findings:
+`_rust_map_target` already maps `ARCH_POSIX + 64BIT + x86_64/aarch64` host
+→ `x86_64/aarch64-unknown-none`, so **native_sim is upstream-supported and
+needs none of the patches**. The 3 arch patches (aarch64 / cortex-a9 /
+cortex-r) are **still needed but re-anchorable** — the `_rust_map_target`
+`elseif(CONFIG_CPU_*)` chain has the same shape as 3.7 and still lacks the
+AArch64-baremetal / Cortex-A / Cortex-R branches (grep=0); they travel with
+the FVP / S32Z / Zynq board targets, not native_sim. `cargo-features`
+re-anchors into the still-present `rust_cargo_application()`. **None
+obsolete; all re-anchorable; risk downgraded High → Low/Medium.** The "largest
+chunk" framing was wrong — the official-module shape is conceptually
+unchanged from the 3.7-era checkout.
+
 ### Build / libc — low risk
 - HWMv1 removed in 4.2 → any nano-ros-contributed boards (`board_root`,
   Phase 180.C) must be HWMv2. native_sim is already HWMv2; current overlays
