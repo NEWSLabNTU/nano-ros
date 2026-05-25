@@ -175,7 +175,13 @@ nros_cargo_fetch_standalone_manifests() {
     while IFS= read -r manifest; do
         manifest_dir="$(dirname "$manifest")"
         if [ -f "$manifest_dir/Cargo.lock" ]; then
-            ( cd "$manifest_dir" && cargo fetch --quiet --locked )
+            # No --locked: these are standalone examples/fixtures whose
+            # Cargo.lock is gitignored (not reproducibility-critical), and a
+            # clean+setup can leave them stale (deps shrank/bumped). `--locked`
+            # made the prefetch hard-fail ("cannot update the lock file …")
+            # instead of refreshing them; this prefetch is just cache-warming
+            # for the offline fanout, so allow the lock to refresh here.
+            ( cd "$manifest_dir" && cargo fetch --quiet )
         fi
     done < "$list"
 }
