@@ -498,10 +498,16 @@ passed.
   and 5 failed (runtime/backend issues, not setup fallout). **Update
   2026-05-25:** after the incoming `cf34366fd` ("fix: wire Zephyr XRCE
   setup") landed and the XRCE fixtures were rebuilt with the NSOS overlay,
-  the XRCE subset is now **6/7** — only `test_zephyr_xrce_cpp_talker_listener`
-  remains. Combined with the Zenoh/cpp subset (12/12, including the
-  `test_zephyr_cpp_talker_to_native_listener` count-wait fix below), 177.9.F
-  stands at **17/18**.
+  the XRCE subset reached **6/7**; the last failure
+  (`test_zephyr_xrce_cpp_talker_listener`) was then fixed (session-key
+  collision, `5b9ad9aab` — see the `[x]` entry below), so the XRCE subset is
+  **7/7**. Combined with the Zenoh/cpp subset (12/12, including the
+  `test_zephyr_cpp_talker_to_native_listener` count-wait fix below), the
+  Zenoh + XRCE subsets are **18/18**. **Update 2026-05-25:** the CycloneDDS
+  (`dds`) subset is also green — `binary(zephyr) and test(dds)` is **15/15**
+  (boots + c/cpp/rs action e2e) on fresh NSOS fixtures (see the CycloneDDS
+  slice below). Zephyr native/cross E2E runtime is now fully green across
+  Zenoh, XRCE, and CycloneDDS.
   - [x] `test_bidirectional_native_zephyr_e2e` passes.
   - [x] `test_native_server_zephyr_client` passes.
   - [x] `test_native_talker_to_zephyr_cpp_listener` passes.
@@ -709,31 +715,35 @@ passed.
         over ~190 spins (executor arena / heap / uClient stream resource) that
         trips it.
 
-  **CycloneDDS slice — `native_sim` runtime, root-caused 2026-05-25
-  (Phase 179.G).** 177.24 unblocked the Cyclone *fixture build*; the
-  *runtime* is the open half of that slice and is a real port defect, not a
-  fixed-sleep/setup regression. `zephyr/CMakeLists.txt` globs ddsrt's POSIX
-  backends (`file(GLOB _cdds_ddsrt_posix .../ddsrt/src/*/posix/*.c)`), which
-  pulls in `src/threads/posix/threads.c` — the raw `pthread_create` thread
-  port. On `native_sim` the kernel runs atop the native simulator, which
-  owns every `k_thread` as a host thread; CycloneDDS spawns ~7 worker
-  threads (recv / dq.builtins / tev / gc / …) via raw `pthread_create` at
-  `dds_create_participant`, and each trips the kernel's
-  `os: tid 0x... is in use!` check the moment it calls a Zephyr API.
-  Reproduced: `build/zephyr-workspace-builds/build-cpp-talker-cyclonedds/
-  zephyr/zephyr.exe` logs seven `tid ... is in use!` errors at participant
-  creation; a talker+listener pair exchanges **zero** messages (data plane
-  dead). The boot-banner tests pass only because the publish loop runs on
-  the main `k_thread`. CycloneDDS ddsrt has freertos + threadx + posix +
-  windows thread ports but **no Zephyr port**; the fix is a `k_thread`-based
-  ddsrt Zephyr thread port (`threads/zephyr`, `k_thread_create` + dynamic
-  stacks, excluded from the POSIX glob), parallel to the freertos/threadx
-  ports. Bounded but non-trivial RTOS port — overlaps the Phase 177.2
-  Zephyr CycloneDDS scope. Until then the `zephyr-native-cyclonedds` nextest
-  group is expected to fail at runtime.
-  - [ ] `test_zephyr_dds_cpp_talker_to_listener_e2e` (and the C / Rust
-        Cyclone pub/sub + service + action e2e cases) — blocked on the
-        ddsrt Zephyr thread port above.
+  **CycloneDDS slice — `native_sim` runtime: GREEN 2026-05-25.** An earlier
+  write-up here claimed the runtime was blocked on a missing `k_thread`
+  ddsrt Zephyr thread port (`tid ... is in use!` → "data plane dead"). That
+  was **wrong** — it was diagnosed against *stale `eth_posix` fixtures* with
+  no network. Corrected with fresh NSOS-overlay fixtures (rebuilt via
+  `NROS_ZEPHYR_FIXTURE_FILTER='build-.*-cyclonedds' just zephyr
+  build-fixtures`):
+  - The Cyclone worker threads **are** `k_thread`s — `CONFIG_POSIX_THREADS=y`
+    routes ddsrt's `pthread_create` to Zephyr's POSIX pthread, and
+    `CONFIG_DYNAMIC_THREAD=y` gives them dynamic stacks. There is no
+    host-pthread / no-Zephyr-port problem.
+  - The `os: tid ... is in use!` lines are **benign**. They come from
+    `kernel/dynamic.c:132` (`z_impl_k_thread_stack_free` refuses to free a
+    dynamic stack whose thread is still alive, returns `-EBUSY`); the free is
+    simply declined and the thread keeps running. The participant is created
+    and the data plane runs normally despite the log noise.
+  - Verified: a 2-node native_sim cpp talker↔listener exchanges data
+    (`Received: 13`), and the full `dds` nextest group is **15/15 PASS**
+    (`binary(zephyr) and test(dds)`, NSOS fixtures): all c/cpp talker /
+    listener / service / action boots **plus** `*_action_e2e` for C, C++,
+    and Rust.
+
+  No ddsrt thread port is needed. Remaining Cyclone-on-Zephyr nits (e.g. the
+  C++ action feedback drain characterized in the action-feedback follow-up)
+  are tracked separately, not by this slice. The `tid ... is in use!` log
+  spam could optionally be silenced by giving ddsrt threads a non-dynamic
+  stack, but that is cosmetic.
+  - [x] `test_zephyr_dds_{c,cpp}_{talker,listener,service_*,action_*}_boots`,
+        `test_zephyr_dds_{c,cpp,rs}_action_e2e` — 15/15 pass on NSOS fixtures.
 
 - [x] **177.9.G - NuttX action E2E runtime.**
   Closed 2026-05-25. Focused rerun passed after building the required
