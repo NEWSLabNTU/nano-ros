@@ -550,8 +550,26 @@ passed.
         for a matched reader before bursting — like the Cyclone path does);
         (b) the cpp action client's feedback delivery to `try_recv_feedback`
         over XRCE does not drain the buffered callback samples. Both are
-        distinct from the pubsub session-key collision. Remaining 177.9.F XRCE
-        item; needs the action-feedback arena/stash path traced under gdb.
+        distinct from the pubsub session-key collision.
+
+        **Code path narrowed (not example-fixable).** `cpp_feedback_trampoline`
+        IS registered as the arena entry's `feedback_callback`
+        (`nros-cpp/src/action.rs:747,760`), and
+        `arena.rs::action_client_raw_try_process` drains feedback via
+        `core.try_recv_feedback_raw()` and forwards to that trampoline → the
+        single-slot stash that `try_recv_feedback` reads. So the wiring exists.
+        But two example-level fixes FAILED to surface feedback: (1) draining
+        `try_recv_feedback` after `result_fut.wait`, and (2) pumping
+        `spin_once` (full arena dispatch) then draining. So the break is in the
+        runtime, not the example: either `action_client_raw_try_process` is not
+        dispatched on the XRCE poll path during/after feedback arrival, or
+        `core.try_recv_feedback_raw()` does not read the same per-DataReader
+        ring that `xrce_topic_callback` fills (the callback was confirmed to
+        fire with the feedback reader's `object_id` and growing `len`). Next:
+        trace, under gdb, whether `action_client_raw_try_process` runs for the
+        feedback entry during the result wait and whether
+        `core.try_recv_feedback_raw()` pulls from the cb-filled subscriber
+        slot. Remaining 177.9.F XRCE item.
   - [x] `test_zephyr_xrce_rust_service_e2e` — passes (same fix + rebuild);
         the earlier `Transport(ConnectionFailed)` is gone.
   - [x] `test_zephyr_xrce_rust_action_e2e` — passes (same fix + rebuild).
