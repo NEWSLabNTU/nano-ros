@@ -561,6 +561,14 @@ test verbose="": build-zenohd
 # the bench fixtures it consumes) is self-contained.
 [group("full-matrix")]
 build-test-fixtures: generate-bindings build-zenoh-posix-fixture build-test-fixtures-leaves
+    #!/usr/bin/env bash
+    # Drop a stamp so `_require-fixtures` (the test-all/test preflight) can
+    # fast-fail with a build hint instead of letting the suite run and
+    # surface dozens of "Binary not found" failures. The body only runs
+    # after every dependency above succeeds. Phase 177.9.
+    mkdir -p target/nextest
+    date -u +%Y-%m-%dT%H:%M:%SZ > target/nextest/.fixtures-built
+    echo "build-test-fixtures: stamped target/nextest/.fixtures-built"
 
 # Internal fixture fan-out without root prereqs. Public `build-test-fixtures`
 # keeps the self-contained UX; aggregate paths that already ran `build` use
@@ -690,13 +698,13 @@ build-zenoh-posix-fixture:
         --features platform-posix \
         --target-dir target-zenoh-fixture-posix
 
-# Rerun ONLY the real (non-[SKIPPED]) failed tests from the latest JUnit run.
-#
 # Workflow (Phase 177.9): `just test-all` (full coverage) → read the failures →
 # debug/fix → `just test-failed` (reruns just those) → repeat until clean.
 # Reuses the same cargo profile + nextest run-profile + per-platform groups as
 # the full run; builds a nextest `-E` filterset from the JUnit report and
 # overwrites it with the subset result, so each rerun naturally shrinks.
+#
+# Rerun only the real (non-[SKIPPED]) failed tests from the latest JUnit run.
 [group("full-matrix")]
 test-failed verbose="":
     #!/usr/bin/env bash
@@ -734,12 +742,32 @@ test-failed verbose="":
     fi
     echo "All previously-failing tests now pass."
 
+# Preflight for the full suite: fast-fail with a build hint if test fixtures
+# were never built, instead of running the whole matrix and surfacing dozens
+# of "Binary not found" failures. The stamp is written by build-test-fixtures.
+# Bypass with NROS_SKIP_FIXTURE_CHECK=1 if fixtures were built another way
+# (e.g. scoped `just <plat> build-fixtures`). Phase 177.9.
+[private]
+_require-fixtures:
+    #!/usr/bin/env bash
+    if [ "${NROS_SKIP_FIXTURE_CHECK:-0}" != "0" ]; then
+        exit 0
+    fi
+    if [ ! -f target/nextest/.fixtures-built ]; then
+        echo "ERROR: test fixtures not built — 'just test-all' would mass-fail with 'Binary not found'." >&2
+        echo "" >&2
+        echo "  Run:  just build-test-fixtures" >&2
+        echo "" >&2
+        echo "  (built them another way? bypass with  NROS_SKIP_FIXTURE_CHECK=1 just test-all )" >&2
+        exit 1
+    fi
+
 # Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
 #
 # Fixtures are NOT auto-built — run `just build-test-fixtures` first.
 [group("full-matrix")]
-test-all verbose="": build-zenohd
+test-all verbose="": _require-fixtures build-zenohd
     #!/usr/bin/env bash
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh

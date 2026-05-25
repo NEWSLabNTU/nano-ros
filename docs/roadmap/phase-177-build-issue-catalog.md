@@ -367,6 +367,17 @@ passed.
   a code fix). Fixture-dependent groups still need `just build-test-fixtures`
   / SDK env before the rerun will pass.
 
+  **Fixtures preflight (added 2026-05-25).** To stop the common "forgot to
+  build fixtures → whole matrix mass-fails with `Binary not found`" trap,
+  `build-test-fixtures` now stamps `target/nextest/.fixtures-built` on
+  success, and `just test-all` gains a `_require-fixtures` preflight that
+  fast-fails (~1 s, before any build) with a `just build-test-fixtures` hint
+  when the stamp is absent. Bypass with `NROS_SKIP_FIXTURE_CHECK=1` when
+  fixtures were built another way (e.g. scoped `just <plat> build-fixtures`).
+  Only `test-all` is gated — `test`/`test-integration` stay ungated for
+  partial-fixture quick iteration. The stamp is presence-only (does not
+  detect stale fixtures).
+
 #### 2026-05-22 Failed Tests by Group
 
 - [x] **177.9.A - Host tools, fixture gates, and explicit prerequisites.**
