@@ -265,9 +265,18 @@ passed.
   - [ ] `test_zephyr_xrce_rust_service_e2e`
   - [ ] `test_zephyr_xrce_rust_talker_listener`
 
-- [ ] **177.9.G - NuttX action E2E runtime.**
-  - [ ] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C`
-  - [ ] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp`
+- [x] **177.9.G - NuttX action E2E runtime.**
+  Closed 2026-05-25. Focused rerun passed after building the required
+  NuttX fixtures with the repo SDK environment:
+  `source scripts/sdk-env.sh; just nuttx build-fixtures`, then
+  `cargo nextest run --cargo-profile nros-fast-release -p nros-tests
+  --test rtos_e2e --no-fail-fast -E "binary(rtos_e2e) and
+  test(test_rtos_action_e2e::platform_2_Platform__Nuttx) and
+  (test(lang_2_Lang__C) or test(lang_3_Lang__Cpp))"`. The setup needed
+  `build/zenohd/zenohd` and `rust-src` for the pinned NuttX nightly so
+  the C++ generated FFI crates could use `-Z build-std`.
+  - [x] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_2_Lang__C`
+  - [x] `rtos_e2e::test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp`
 
 - [ ] **177.9.H - Flaky but recovered.**
   This passed on retry and should be watched separately from hard
