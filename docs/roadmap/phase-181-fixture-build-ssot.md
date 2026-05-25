@@ -9,8 +9,11 @@ probe cannot know them, so it fell back to default features — which gives a
 false staleness signal and triggers feature-thrash rebuilds. One manifest
 fixes both.
 
-**Status.** In progress (started on branch `phase-181-fixture-build-ssot`).
-Foundation + native-rust authored; rollout ongoing.
+**Status.** In progress (branch `phase-181-fixture-build-ssot`). 181.1–181.3
+done; **181.4 done** — 7 rust platforms migrated to the SSOT + verified
+(native, qemu-arm-baremetal, stm32f4, freertos, nuttx, threadx-linux,
+threadx-riscv64), esp32 deferred on toolchain, zephyr/px4 N/A to the cargo
+manifest. Next: 181.5 (C/C++ cmake) + 181.6 (strip recipe duplication).
 
 **Priority.** P2 — improves `just test-all` correctness/UX (Phase 177.9
 follow-up). Does not block `just ci` once landed.
@@ -102,14 +105,21 @@ Shared mechanism (done): `scripts/build/fixtures-build.sh <platform> [lang]`
 - [x] **181.4.g threadx-riscv64** — plain-cargo zenoh. SDK-gated: threadx/netx
   + riscv64 toolchain. Cyclone rust is cmake → 181.5. **Files**:
   `just/threadx-riscv64.just`.
-- [ ] **181.4.h esp32 / qemu-esp32-baremetal** — `cargo +nightly`; xtensa/riscv
-  ESP toolchain (not installed in the default dev env). **Files**:
-  `just/esp32.just`.
-- [ ] **181.4.i zephyr** — rust builds via `west build`, NOT cargo, so the
-  cargo manifest + `fixtures-build.sh` do not apply. Decide: a west-aware entry
-  type, or keep zephyr rust outside the SSOT. **Files**: `just/zephyr.just`.
-- [ ] **181.4.j px4** — uORB is C++-only (no rust/C fixture cells per CLAUDE.md).
-  N/A; close when 181 lands.
+- [~] **181.4.h esp32 / qemu-esp32-baremetal** — DEFERRED (toolchain). esp32 is
+  xtensa via espup (esp_idf is the `extended` SDK tier, not in the default dev
+  env); qemu-esp32-baremetal is riscv32imc but built with the ESP nightly.
+  Can't verify a migration without the toolchain, so left unmigrated rather
+  than risk an unverified recipe change. Mechanically identical to the others:
+  the recipe exports the ESP toolchain/`RUSTUP_TOOLCHAIN` (platform env) then
+  calls `fixtures-build.sh esp32 rust`; author entries (esp32/rust + qemu-
+  esp32-baremetal/rust talker+listener) when the toolchain is available.
+  **Files**: `just/esp32.just`, `just/native.just`.
+- [x] **181.4.i zephyr** — N/A to the cargo manifest by design: zephyr rust
+  builds via `west build` (kernel-linked), not `cargo build`, so
+  `fixtures-build.sh` cannot drive it. Zephyr fixtures (rust/c/cpp) are tracked
+  under 181.5.f (west/cmake cells); they stay west-built.
+- [x] **181.4.j px4** — N/A: uORB is C++-only (no rust/C fixture cells per
+  CLAUDE.md); the cpp register-check is tracked under 181.5.h.
 
 ### 181.5 — C/C++ (cmake) fixture migration (per platform)
 
