@@ -435,5 +435,16 @@ deliberate k_mutex strictness).
 
 **Verified single-node:** with all NSOS patches + this fix, c/talker cyclonedds
 on 4.4 runs the full window (no abort, exit 137 not 134), recvmsg flood = 0,
-multicast join = OK, and **publishes 1→6** (one per second). A 2-node e2e
-(talker→listener over NSOS multicast) is the remaining confirmation.
+multicast join = OK, and **publishes 1→6** (one per second). A 2-node e2e (talker→listener over NSOS multicast) was attempted:
+**both nodes run stably (no abort — the k_mutex fix holds for talker AND
+listener), the talker publishes 1→11, but the listener Receives 0.** cyclone
+is peer-to-peer (no router), so it relies on **multicast SPDP discovery between
+two separate native_sim NSOS processes on host loopback** — which does not
+bridge here (single-process multicast join succeeds, but cross-process
+multicast RX on `lo` between two native_sim instances doesn't close discovery).
+This is a **discovery-transport gap, distinct from the (resolved) k_mutex
+runtime abort**; the likely fix is a unicast-peer cyclone config for native_sim
+(`<Peers><Peer address="localhost"/>`, like ThreadX's AllowMulticast=false
+path) rather than relying on loopback multicast. Tracked as a follow-on; the
+cyclonedds-4.4 *runtime* (stable participant + publish/receive machinery, no
+abort) is proven per-node.
