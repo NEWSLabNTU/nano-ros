@@ -651,6 +651,55 @@ passed.
   uniformly and letting the per-example C change above be retired. Cpp
   action fixtures otherwise build + fail at runtime exactly like the C path did.
 
+  **Reference: how stock `rmw_cyclonedds_cpp` (humble) handles types, and what
+  the RTOS port should become.** Read the upstream source
+  (`ros2/rmw_cyclonedds`, branch `humble`, `rmw_cyclonedds_cpp/src/`) for the
+  contrasting design:
+  - **Stock = runtime introspection + custom sertype, never a static
+    descriptor.** `rmw_node.cpp::create_topic()` builds the topic from a
+    runtime-constructed `ddsi_sertype` via `dds_create_topic_sertype(...)` (not
+    `dds_create_topic` with an idlc `dds_topic_descriptor_t`). `serdata.cpp::
+    create_sertype()` wires `sertype_rmw`/`serdata_rmw` vtables
+    (`ddsi_sertype_init_flags(..., &sertype_rmw_ops, &serdata_rmw_ops, ...)`).
+  - **Serialization walks the rosidl introspection member tables at runtime.**
+    `sertype_rmw` (`serdata.hpp`) carries a `BaseCDRWriter` + `CddsTypeSupport`;
+    `TypeSupport2.hpp` builds a polymorphic `AnyValueType` tree
+    (`make_message_value_type` / `make_request_response_value_types`) over
+    `rosidl_typesupport_introspection_{c,cpp}` `MessageMembers`/`ServiceMembers`
+    and iterates fields per (de)serialize.
+  - **Generic across ALL types — no per-type DDS codegen.** Any type
+    (std_msgs, `action_msgs/CancelGoal`, `GoalStatusArray`,
+    `unique_identifier_msgs/UUID`) "just works" with only its always-present
+    rosidl introspection typesupport linked. Services/actions use the same path
+    (`rmw_init_cs` builds request + response sertypes; actions are plain
+    services + topics, so the shared `action_msgs` types flow through it for
+    free — this is exactly why stock RMW never hits our cancel-service gap).
+  - **Cost = hosted runtime.** That genericity requires pervasive heap
+    (`new` per sertype, `std::unique_ptr<byte[]>` per `serdata`), the polymorphic
+    `AnyValueType` tree (vtables), `std::mutex`/`std::string`, exceptions, and
+    the introspection tables + walker linked for every package. There is **no
+    `no_std` story** — it assumes libstdc++, heap, and threads.
+
+  **Conclusion for the embedded/RTOS Cyclone port.** Keep nano-ros's **static
+  `dds_topic_descriptor_t`-per-type (host-idlc)** model — it is the correct one
+  for `no_std`/RTOS: type metadata is `const` flash/rodata, topic creation
+  needs no per-type heap allocation, no runtime type-walker / polymorphic
+  value-type tree, no introspection runtime, deterministic footprint. This is
+  already the Phase 175/177 pattern (host `idlc` descriptors whole-archived with
+  explicit register TUs, no constructor reliance — see 177.22). Do **not** adopt
+  the stock introspection+sertype path on embedded. The price of static
+  descriptors is that arbitrary types don't auto-appear — so the **codegen must
+  guarantee the transitive closure of an action's dependency types**: generating
+  an action must automatically emit + register the descriptors for the shared
+  `action_msgs` types (CancelGoal request/response, GoalStatus, GoalStatusArray,
+  GoalInfo) and `unique_identifier_msgs/UUID`, so any action builds end-to-end
+  without the example author hand-wiring per-message `DEPENDENCIES` (the gap that
+  stock RMW sidesteps for free via introspection). Concretely this is the
+  `.action`-synthesis extension recommended above (emit the shared `action_msgs`
+  descriptors with `goal_id` inlined as `octet[16]`), which also unblocks C++
+  without per-package CPP generation. Cross-checked against
+  `serdata.{hpp,cpp}`, `rmw_node.cpp`, `TypeSupport2.hpp` upstream.
+
 ### Test-All Runtime / E2E
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
