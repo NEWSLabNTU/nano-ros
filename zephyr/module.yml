@@ -6,3 +6,15 @@ name: nros
 build:
   cmake: zephyr
   kconfig: zephyr/Kconfig
+  settings:
+    # Phase 180.C — module-contributed snippets (Zephyr 4.x only). The
+    # snippet_root is interpreted relative to the MODULE ROOT (the dir
+    # containing zephyr/module.yml = the repo root), and snippets.py then
+    # scans `<snippet_root>/snippets/`. Pointing it at `zephyr` makes
+    # Zephyr discover `zephyr/snippets/*/snippet.yml`, so a downstream
+    # user can select the nano-ros RMW with `west build -S nros-<rmw>`
+    # instead of `-DCONF_FILE="...;prj-<rmw>.conf"`. Additive to the
+    # existing CONF_FILE overlay path (which 3.7 — no snippet support —
+    # still relies on). `.` would scan `<repo-root>/snippets/`; the
+    # snippets live under `zephyr/`, so `zephyr` is the correct root.
+    snippet_root: zephyr

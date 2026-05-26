@@ -129,10 +129,10 @@ under `samples:` with `sample.yaml` + Twister; contribute boards via
 **Files.** `zephyr/module.yml` (`settings:`),
 `snippets/nros-*/snippet.yml`, `examples/zephyr/*/sample.yaml`,
 `boards/` (module board_root), `just/zephyr.just`.
-- [ ] `snippet_root` + per-RMW snippets carrying the Kconfig overlay
+- [x] `snippet_root` + per-RMW snippets (`nros-{zenoh,cyclonedds,xrce}`) carrying the RMW Kconfig (4.x; verified `-S nros-cyclonedds` discovered + applied + built)
 - [ ] `samples:` + `sample.yaml` + Twister cases for the example matrix
 - [ ] `board_root` for nano-ros board configs
-- [ ] Document `-S nros-<rmw>` selection on 4.x
+- [x] Document `-S nros-<rmw>` selection on 4.x
 
 ### 180.D — patch story / upstreaming
 3.7 keeps sed-scripts; author `patches.yml` for 4.x consumed by

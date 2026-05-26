@@ -1,0 +1,14 @@
+# Phase 180.C — nano-ros XRCE-DDS RMW snippet (Zephyr 4.x only).
+#
+# 4.x-native equivalent of the per-example `prj-xrce.conf` overlay.
+# Selecting `-S nros-xrce` appends xrce.conf (RMW select + agent addr/port
+# + transport + resource sizing) to the build's Kconfig fragments — the
+# same settings the legacy `-DCONF_FILE="...;prj-xrce.conf"` path supplies.
+#
+# Additive: the prj-xrce.conf overlays are NOT removed, and 3.7 (no snippet
+# support) keeps using CONF_FILE. This snippet is RMW-only; the native_sim
+# NSOS / line overlay (cmake/zephyr/native-sim-line-<v>.conf) is board+line
+# specific and stays on the -D / board-overlay path.
+name: nros-xrce
+append:
+  EXTRA_CONF_FILE: xrce.conf
