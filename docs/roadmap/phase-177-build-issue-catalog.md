@@ -1231,6 +1231,56 @@ passed.
   capture the wire on the *nextest* run's port to see if the client's query
   even leaves the guest there.
 
+  **Update 3 2026-05-26 — wire capture: the goal query never reaches TCP.**
+  Ran the retry-hardened client under nextest (240s window) with `tshark` on
+  the zenohd port. 479 frames captured. On the wire: only the `SS`/`SC`
+  liveliness DECLAREs for `…/send_goal/…` (the 185–186 B frame pairs) plus
+  len=3 keep-alives — **no goal-query frame at all**, zero TCP
+  retransmissions, zero zero-window. The client log shows it reaches
+  `Sending goal: order=5` and `send_goal_async` returns **OK** (no failure
+  print on any of the resends), yet nothing is transmitted. So Update 2's
+  "it's just slowness / needs a bigger window" lean was **wrong**: the
+  request never leaves the client. It is a *silent `z_get` query-TX no-op*
+  under native nextest timing — `send_goal_async → z_get → _z_send_n_msg`
+  returns success but emits no bytes — while the very same code transmits and
+  completes the full chain under a direct lightly-loaded boot **and** under
+  gdb. Classic Heisenbug: any timing perturbation (gdb single-step, light
+  load) makes the send fire. Not a deadlock (the recursive-mutex experiment
+  already ruled the session/TX mutexes out), not the timeout, not slowness.
+  Six hypotheses (lease-task, mutex deadlock, recursive mutex, syscall ring
+  buffer, timeout bump, async resend) have each only relocated the
+  timing-sensitivity — per systematic-debugging this is the "question the
+  approach, stop blind fix #7" point. The blocking **C** action client does
+  not hit this: its `send_goal` spins-and-retries *inside* zenoh-pico
+  context, driving the session until the query actually flushes; the C++
+  async `send_goal_async` returns to the app loop trusting `z_get` to have
+  sent synchronously.
+  Code-path comparison (done): C++ `send_goal_async` → `send_goal_raw` →
+  `send_request_raw` → `Session::get_start` → `zpico_get_start`, which calls
+  `z_get` **synchronously** (`zpico.c:2236`) — it does *not* defer the send.
+  The C blocking client → `send_goal_blocking` → `call_raw` → `zpico_get`,
+  also `z_get`, but then keeps spinning/reading inside zenoh-pico context.
+  Since the async path's `z_get` is synchronous yet emits no bytes (and the
+  resend fires it repeatedly to no effect — 240 s of `spin_once` would have
+  flushed anything merely batched), the drop is **inside `z_get` itself**
+  (`_z_query`/`_z_send_n_msg`), not an async-defer or unpumped-TX-queue issue.
+  Keep-alives on the same transport flush fine, so the transport isn't dead —
+  the query message specifically is being built and dropped under this timing.
+  **Recommended next steps (do NOT use gdb — it perturbs the bug away):**
+  1. Instrument `_z_query` / `_z_send_n_msg` in the fork with an in-guest,
+     self-dumping ring (entry, the per-message serialize result, and the
+     socket-write return value) to see whether the query message is built,
+     whether the write is attempted, and what it returns — the async path's
+     `z_get` returns OK with zero bytes on the wire, so the loss is in there.
+  2. Add an in-guest, non-gdb trace: a small ring buffer written at
+     `_z_send_n_msg` entry/exit + the socket-write return, dumped to the NuttX
+     console on a timer (the gdb `.bss` read returns 0 at the hang, so the
+     trace must self-dump, not be read externally).
+  3. If the root cause stays out of reach, the honest interim is to gate the
+     NuttX/Cpp action e2e behind an `#[ignore]`/feature like the other
+     experimental fixtures and keep the C variant (which passes) as the
+     action coverage on NuttX — rather than leave a permanently-red E2E.
+
 #### 2026-05-26 Clean-Rebuild Test-All by Group
 
 Full clean-room validation after the Phase 181 fixture-build-SSOT work landed
