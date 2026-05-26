@@ -6,10 +6,10 @@
 //! `ROS_DOMAIN_ID` and check they exchange data over RTPS/SPDP — the test
 //! analogue of `rmw_interop.rs` (zenoh ↔ ROS 2) and `xrce_ros2_interop.rs`.
 //!
-//! ## Status (2026-05-26): partially passing.
+//! ## Status (2026-05-27): all three functional tests pass.
 //!
-//! 117.12 (stock-RMW Cyclone interop) is mostly done — re-verified here against
-//! ROS 2 humble + `rmw_cyclonedds_cpp`:
+//! 117.12 (stock-RMW Cyclone interop) is done for pub/sub (both directions) and
+//! services — re-verified here against ROS 2 humble + `rmw_cyclonedds_cpp`:
 //! - **`nano_to_ros2_pubsub`** — nano-ros Cyclone talker → stock `ros2 topic
 //!   echo`: **PASSES** (un-`#[ignore]`d). Gated on `require_ros2_cyclonedds()`,
 //!   so it skips cleanly without ROS 2.
@@ -30,9 +30,9 @@
 //!   service fixture (`just native build-fixture-extras`, which builds it since
 //!   Phase 177.31 fixed the example link gap); skips cleanly if absent.
 //!
-//! Run the ignored ones with
-//! `cargo nextest run --run-ignored all -E 'binary(cyclonedds_ros2_interop)'`;
-//! drop each `#[ignore]` as its gap closes.
+//! Run them with
+//! `cargo nextest run -E 'binary(cyclonedds_ros2_interop)'` (none are
+//! `#[ignore]`d now); they require the prerequisites below or skip cleanly.
 //!
 //! Prerequisites (else the tests skip cleanly):
 //! - ROS 2 + `rmw_cyclonedds_cpp` (`require_ros2_cyclonedds`)
