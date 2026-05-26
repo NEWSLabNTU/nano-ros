@@ -265,6 +265,64 @@ Mirror the `rmw_interop` zenoh action/service-both-ways shape, gated on the
 Micro XRCE-DDS Agent + ROS 2 DDS. **Files**: `tests/xrce_ros2_interop.rs`.
 **Est.**: ~3 tests.
 
+### 183.7 — Relax over-serialized nextest groups (parallelism opportunities)
+
+Audit of every `max-threads = 1` group in `.config/nextest.toml`, prompted by
+the 177.33 fix. The native-Cyclone flake was **not** discovery contention — it
+was a domain-ID collision (`next_cyclonedds_domain()` used a process-local
+`AtomicU8` that resets in each nextest process → every concurrent Cyclone test
+got domain 40). The fix gave each test process a unique domain
+(`nros_tests::unique_ros_domain_id()`, PID-seeded) and let the group run **fully
+parallel** — no `max-threads` cap needed. That raised the question: which other
+serialized groups are masking a *fixable* isolation gap rather than a hard
+resource limit?
+
+**The trap to avoid when relaxing.** `unique_ros_domain_id()` increments per
+call, so a talker+listener (or server+client) **pair within one test** must
+allocate **one** domain and pass the same value to both endpoints — exactly how
+`test_native_cyclonedds_{service,action}` do it (`let domain = …; .env(
+"ROS_DOMAIN_ID", &domain)` on both). Allocating per-spawn would put the pair on
+different domains and they'd never discover each other.
+
+#### Relaxable (same class as 177.33 — serialization masks a fixable gap)
+
+- [ ] **`xrce`** (binary `xrce`, ~10 tests; currently `max-threads = 1`,
+  reason "single Agent per test"). Transport is **already** isolated: each test
+  starts its own Agent on an ephemeral UDP port (`XrceAgent::start_unique`) or a
+  per-test `tempfile::tempdir()` PTY pair (`XrceSerialAgent`). The only shared
+  resource left is the **DDS domain the Agent bridges to** — in XRCE-DDS the
+  *client* picks the participant domain via `ROS_DOMAIN_ID`, and the tests never
+  set it, so every Agent's DDS side defaults to domain 0 and concurrent tests can
+  cross-talk (low impact for pub/sub, but breaks service/action request↔reply
+  correlation — the same failure mode as the Cyclone action). **Fix**: allocate
+  one `unique_ros_domain_id()` per test and set `ROS_DOMAIN_ID` on both endpoint
+  spawns (helper: extend `set_xrce_udp_locator` callers, ~8 tests); confirm the
+  XRCE example binaries read `ROS_DOMAIN_ID` for their participant domain; then
+  drop `max-threads = 1` from the `xrce` group. Verify with repeated parallel
+  runs (the 177.33 method: `--retries 0 --test-threads N`, several iterations).
+  **Files**: `tests/xrce.rs`, `.config/nextest.toml`, possibly
+  `src/fixtures/xrce_agent.rs`. **Est.**: ~1 helper change + group edit.
+
+#### Blocked (hard resource limit, NOT a masking bug — leave serial)
+
+- **`zephyr-native-cyclonedds`, `qemu-zephyr-dds`** — native_sim processes bind
+  the fixed SPDP port (7400 + 250·domain), all domain 0; NSOS doesn't forward
+  `SO_REUSEADDR` so concurrent participants collide on the bind. Relaxing needs a
+  **runtime**-settable per-test domain, but the native_sim image likely bakes the
+  domain via Kconfig (would require per-domain rebuilt fixtures), and the
+  listener+talker pair must still share one domain. Bigger change — verify
+  runtime-domain support before touching.
+- **`ros2-interop`** — ros2 CLI is heavyweight and **daemon-sensitive** (shared
+  ROS daemon state, not just domains). Stays serial until the CLI paths are all
+  no-daemon / process-local.
+- **`qemu-zephyr-{pubsub,service,action}-{rust,cpp}`** — **multiple tests per
+  (variant, lang) slot share a single zenohd port**; serial *within* the slot is
+  required. Cross-slot parallelism already exists (separate sub-groups).
+- **`qemu-esp32`** — pubsub-only today; no service/action variants to port-split.
+  Relax when those examples land.
+- **`qemu-baremetal-shared`** — port-7450 sharers; bare-metal smoltcp socket
+  limits, not a domain issue.
+
 ## Not in scope (tracked elsewhere — do not blind-fill)
 
 - **nuttx + threadx-riscv64 zenoh action** — examples exist, E2E deliberately
