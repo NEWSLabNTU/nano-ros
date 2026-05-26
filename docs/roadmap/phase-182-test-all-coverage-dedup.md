@@ -18,7 +18,9 @@ fewer tests + one fewer ~160 s cmake configure. **182.3 done** — 50 of 53
 redundant boot-smokes, audited per-fixture against sibling e2e — zero coverage
 loss). **182.5 landed** (action matrix trimmed to the reliable platforms — all 3
 langs kept, NuttX + ThreadX-RISCV64 action cells dropped, −6 of the priciest
-cells). 182.6 open.
+cells). **182.6 partial** — `rtos_e2e` (the 4799 s critical path) stabilised:
+blind full-window output collects replaced with early-exit success-marker waits
+(service C/Cpp 60 s→1.3 s); zephyr/emulator/large_msg conversion is follow-up.
 
 **Priority.** P2 (developer + CI wall-clock).
 
@@ -224,7 +226,7 @@ Verified: compiles clean; the kept ThreadX-Linux action cells pass all 3 langs
 artifact not a bug). **Files**: `tests/rtos_e2e.rs` (`test_rtos_action_e2e`
 `#[values]` platform list). No `.config/nextest.toml` group-sizing change needed.
 
-### 182.6 — Orthogonal lever: stabilise flaky E2E to kill retry inflation
+### 182.6 — Orthogonal lever: stabilise flaky E2E to kill retry inflation — `rtos_e2e` DONE 2026-05-26
 
 `retries = 2` triples a flaky test's CPU cost and can extend the critical path
 (a flake forces a serial re-run inside a `max-threads`-capped group). The
@@ -233,10 +235,30 @@ runtime. Pattern (from Phase 177 / G6): root-cause the flake — usually an
 in-test `wait_for_output_pattern` timing out under host saturation, a fixed
 `sleep(N)` stabilisation (CLAUDE.md says replace with readiness waits), or
 `.unwrap_or_default()` masking a timeout — then fix the readiness wait rather
-than leaning on the retry. Targets: the flaky members of `rtos_e2e`, `zephyr`,
-`emulator`, `large_msg`. Retries stay as a safety net, but should not be the
-routine path. **Files**: the flaky tests' bodies + their fixtures'
-readiness markers.
+than leaning on the retry.
+
+**Done — `rtos_e2e` (the 4799 s critical path).** All three scenarios
+blind-collected the listener/client output for the *whole* timeout window
+(pubsub 30/90 s, service 60/180 s, action 60/180 s) before asserting — burning
+the full window every run even on success, which saturates the host and is the
+named root cause of the parallel-matrix flake. Replaced each assert-driving
+collect with an **early-exit `wait_for_output_pattern(success_marker, window)`**:
+- pubsub → `"Received"`, service → `"All service calls completed"`,
+  action → `"Action completed successfully"`.
+- Safe by construction: `wait_for_output_pattern` returns the collected buffer
+  on timeout too (errors only if *nothing* was read), so it never collects less
+  than the old blind wait — variants with a different terminal marker fall back
+  to identical behaviour. Same `window` failure deadline kept.
+
+Verified (ThreadX-Linux, host process): pubsub Rust 9.7 s (was the 30 s window),
+**service C/Cpp 1.3 s (was the 60 s window)**, action 7.8–10 s — all pass. The
+per-test time drop is the stabiliser: faster tests stop saturating the host, so
+the retries stop firing. **Files**: `tests/rtos_e2e.rs`.
+
+**Follow-up (open):** apply the same readiness-wait conversion to the flaky
+members of `zephyr` / `emulator` / `large_msg` (each still uses blind
+`wait_for_output(window).unwrap_or_default()` collects). Retries stay as a
+safety net, not the routine path.
 
 ## Acceptance
 
@@ -247,7 +269,9 @@ readiness markers.
   trimmed 173 → 8 (build-only presence matrices removed, 8 Cyclone e2e kept),
   the two cmake smokes merged into one. ~167 fewer tests + one fewer ~160 s
   clean cmake configure. Verified: compiles clean, merged cmake test passes.
-- [ ] Flaky count trends down (182.6); retry budget is a net, not the norm.
+- [~] Flaky count trends down (182.6); retry budget is a net, not the norm.
+  `rtos_e2e` done (early-exit success-marker waits, big per-test time drop);
+  zephyr/emulator/large_msg follow-up.
 - [x] `rtos_e2e` matrix decision recorded (trim or keep, with rationale) — 182.5:
   keep all 3 langs, trim action platforms to Freertos + ThreadxLinux (drop
   NuttX + ThreadxRiscv64); −6 action cells, coverage preserved.

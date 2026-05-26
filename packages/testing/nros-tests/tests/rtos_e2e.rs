@@ -636,13 +636,18 @@ fn test_rtos_pubsub_e2e(
     };
     let talker_out = talker.wait_for_output(talker_window).unwrap_or_default();
 
-    // Collect more listener output to capture "Received:" lines.
+    // Phase 182.6 — early-exit on the first delivered sample instead of
+    // blind-collecting for the whole window. `wait_for_output_pattern` returns
+    // as soon as "Received" appears (typically a few seconds) yet still waits up
+    // to `listener_window` before giving up, so it both de-flakes (less host
+    // saturation from tests that used to burn the full 30 s / 90 s every run)
+    // and keeps the same failure deadline. The assert only needs ≥1 sample.
     let listener_window = match (platform, lang) {
         (Platform::Nuttx, Lang::C) => Duration::from_secs(90),
         _ => Duration::from_secs(30),
     };
     let final_out = listener
-        .wait_for_output(listener_window)
+        .wait_for_output_pattern("Received", listener_window)
         .unwrap_or_default();
     let full_listener = format!("{}{}", listener_boot, final_out);
 
@@ -727,7 +732,14 @@ fn test_rtos_service_e2e(
         (Platform::Nuttx, Lang::C) => Duration::from_secs(180),
         _ => Duration::from_secs(60),
     };
-    let client_out = client.wait_for_output(client_timeout).unwrap_or_default();
+    // Phase 182.6 — early-exit when the client reports it finished all calls,
+    // rather than blind-collecting the full timeout. On timeout
+    // `wait_for_output_pattern` still returns whatever it read (it only errors
+    // when nothing was captured), so this never collects less than the old
+    // blind wait — it just returns as soon as the run completes.
+    let client_out = client
+        .wait_for_output_pattern("All service calls completed", client_timeout)
+        .unwrap_or_default();
 
     server.kill();
     client.kill();
@@ -841,7 +853,14 @@ fn test_rtos_action_e2e(
         (Platform::Nuttx, Lang::Cpp) => Duration::from_secs(240),
         _ => Duration::from_secs(60),
     };
-    let client_out = client.wait_for_output(client_timeout).unwrap_or_default();
+    // Phase 182.6 — early-exit on the action-completed marker rather than
+    // blind-collecting the full timeout. `wait_for_output_pattern` returns the
+    // collected output on timeout too (errors only when nothing was read), so
+    // variants that print a different terminal ("Result (status=", etc.) fall
+    // back to exactly the old blind-wait behaviour — never collecting less.
+    let client_out = client
+        .wait_for_output_pattern("Action completed successfully", client_timeout)
+        .unwrap_or_default();
 
     let server_post = server
         .wait_for_output(Duration::from_secs(2))
