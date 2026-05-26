@@ -14,13 +14,13 @@ E2E test, the new tests follow suite conventions, and the matrix is clean.
 closed: the reply-writer match-gate fix + the listener stdout line-buffering fix
 un-`#[ignore]`d every case). **183.1 + 183.3 landed** — zephyr C zenoh+xrce E2E
 (5 tests; also covers 183.2's zephyr half) + zephyr rust zenoh service.
-**183.2 native done** (verified PASS). **183.4: link gap fixed (177.31) → service
-e2e PASS (C+C++); action blocked on 177.32** (Cyclone action-server executor
-register). **183.6 done** — XRCE↔ROS 2 action (both dirs) + reverse-direction
-service (3 tests, run green). Remaining non-✓ cells are tracked elsewhere:
-183.4-action (→177.32), 183.1's zenoh-C-action `#[ignore]` (server-create hang),
-the nuttx/threadx action drops (177.30/182.5), and freertos/threadx cyclone
-service+action (171.C.3/177.22).
+**183.2 native done** (verified PASS). **183.4 fully done** — link gap fixed
+(177.31) → service e2e PASS (C+C++); action register fixed (**177.32 landed
+2026-05-27**) → `test_native_cyclonedds_action` PASSES C+C++. **183.6 done** —
+XRCE↔ROS 2 action (both dirs) + reverse-direction service (3 tests, run green).
+Remaining non-✓ cells are tracked elsewhere: 183.1's zenoh-C-action `#[ignore]`
+(server-create hang), the nuttx/threadx action drops (177.30/182.5), and
+freertos/threadx cyclone service+action (171.C.3/177.22).
 
 **Priority.** P2 (test coverage / regression confidence). The CycloneDDS↔ROS 2
 item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
@@ -74,7 +74,7 @@ only non-✓ cells left are tracked exemptions.
 | platform | langs | pubsub | service | action |
 |----------|-------|:---:|:---:|:---:|
 | zephyr | c/cpp/rust | ✓ | ✓ | ✓ |
-| native | c/cpp(+rust) | ✓ | ✓ (183.4) | pend (177.32 register) |
+| native | c/cpp(+rust) | ✓ | ✓ (183.4) | ✓ (183.4; 177.32 register fixed 2026-05-27, C+C++ PASS) |
 | freertos | rust | ✓ (local boot) | pend | pend |
 | threadx-linux | →native | ✓ | pend (171.C.3) | pend |
 | threadx-riscv64 | c | ✓ (two-QEMU, gated) | pend (177.22) | pend |
@@ -283,9 +283,11 @@ Micro XRCE-DDS Agent + ROS 2 DDS. **Files**: `tests/xrce_ros2_interop.rs`.
   matching runtime E2E test (or a tracked-elsewhere exemption noted above).
   **2026-05-27 audit:** all in-scope cells covered; the only non-✓ service/action
   cells are tracked exemptions — zephyr-c-zenoh-action (`#[ignore]` server-create
-  hang, 183.1), native-cyclone-action (177.32 executor register), nuttx /
-  threadx-riscv64 zenoh action (dropped 177.30 / 182.5), freertos / threadx
-  cyclone service+action (pend 171.C.3 / 177.22).
+  hang, 183.1), nuttx / threadx-riscv64 zenoh action (dropped 177.30 / 182.5),
+  freertos / threadx cyclone service+action (pend 171.C.3 / 177.22).
+  (native-cyclone-action was such an exemption pending 177.32; **177.32 landed
+  2026-05-27** and `test_native_cyclonedds_action` now PASSES C+C++, so that cell
+  is ✓.)
 - [x] CycloneDDS has ROS 2 interop coverage (183.5), even if some cases start
   `#[ignore]`d pending 117.X. **All four `cyclonedds_ros2_interop` tests now pass**
   (117.12 closed — pub/sub both ways + nano-server↔ros2-client service); none
