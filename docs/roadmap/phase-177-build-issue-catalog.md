@@ -56,49 +56,6 @@ passed.
   ownership issue is closed; remaining ThreadX runtime diagnosis is
   tracked separately under 177.22.
 
-- [x] **177.31 - native C (and Rust) Cyclone example fixtures emit no runnable
-  exe.** Owner: Phase 177 native-fixture follow-up. **Closed 2026-05-26.**
-  `just native build-fixture-extras` builds the native Cyclone example fixtures
-  via CMake/Corrosion. The **C++** cells produce a runnable top-level ELF
-  (`examples/native/cpp/{talker,listener}/build-cyclonedds/cpp_{talker,listener}`),
-  but the **C** cells (and the Rust cells) do not. A clean `-G Ninja` configure +
-  build exits 0 and ninja reports `Linking CXX executable c_talker`, yet no
-  top-level `c_talker` ELF appears: the platform-link staging path
-  `_nano_ros_link/c_talker/` is left as a *directory* (holding the generated
-  `nros_app_register_backends.c`) and the final relinked executable is never
-  emitted at the path the harness expects (`build-cyclonedds/c_talker`). With
-  the Makefile generator the configure step fails outright with
-  `CMake Error: Error required internal CMake variable not set ...
-  CMAKE_CXX_LINK_EXECUTABLE` — the C example links a C++ executable for Cyclone
-  (C++ runtime), but the link-language wiring trips CMake's generate step.
-  **Effect:** `nros-tests::native_api test_native_cyclonedds_*` C and Rust cases
-  `[SKIPPED]` ("fixture not prebuilt"), which nextest counts as failures.
-  **Scope:** the C++ pair runs end-to-end (manual `cpp_talker -> cpp_listener`
-  exchanges data, Published 7 / Received 7), so `nros-rmw-cyclonedds` itself is
-  sound — this is a native C/Rust example CMake / `nros_platform_link_app`
-  output-placement bug, not an RMW defect. Likely surfaced by the cyclonedds
-  submodule bump on 2026-05-26 (CLAUDE.md last verified native C+C 2026-05-21).
-  Independent of the Phase 180 native_sim 2-node fix — a `.cpp` source change in
-  the RMW lib cannot affect where the example links its app.
-  **Root cause + fix (2026-05-26):** `nano_ros_link_rmw` (cmake/NanoRosLink.cmake)
-  sets `LINKER_LANGUAGE CXX` on the app when Cyclone is selected (the backend is
-  C++), which requires `CMAKE_CXX_LINK_EXECUTABLE` — i.e. CXX enabled in the
-  *app target's directory scope*. The native C/Rust examples used
-  `project(<app> LANGUAGES C)`; the nano-ros `add_subdirectory` enables CXX only
-  in its own subtree, which does **not** propagate up to the example's scope, so
-  the C target's CXX link command was never generated (Makefiles: generate
-  error; Ninja: no top-level exe, only the `_nano_ros_link/<app>/` staging dir).
-  cpp examples worked because they are `LANGUAGES C CXX`. Fix: enable CXX in the
-  example's own scope for the Cyclone RMW — `examples/native/c/{talker,listener,
-  service-client,service-server,action-client,action-server}` guard with
-  `if(NROS_RMW STREQUAL "cyclonedds") enable_language(CXX) endif()`; the
-  Cyclone-dedicated `examples/native/rust/{talker,listener}` use
-  `project(... LANGUAGES C CXX)` directly. Verified: all 6 native Cyclone
-  fixtures build as top-level ELF via `just native build-fixture-extras`, and
-  `nros-tests::native_api test_native_cyclonedds_*` (4 cases, C↔Rust + Cpp↔Rust)
-  all PASS (~8 s each, real RTPS). C+C manual e2e: Published 7 / Received 7.
-  zenoh/xrce C builds unaffected (the enable is Cyclone-guarded).
-
 - [x] **177.22 - ThreadX Cyclone participant init runtime trap.**
   Owner: Phase 177 runtime/Cyclone follow-up.
   Closed 2026-05-25. ThreadX RISC-V64 Cyclone fixtures build, link, boot,
@@ -583,9 +540,9 @@ passed.
   host artifacts exist at `build/install/bin/idlc` + `lib/libddsc.so`. This
   unblocks the CycloneDDS slice of 177.9.F (Zephyr E2E runtime).
 
-- [ ] **177.31 - Native CycloneDDS service/action example executables don't
-  link (no-op `: && :` link rule).** Found 2026-05-26 while adding the native
-  Cyclone service/action E2E tests (Phase 183.4). Building any native
+- [x] **177.31 - Native CycloneDDS service/action example executables don't
+  link (no-op `: && :` link rule).** **Resolved 2026-05-26.** Found while adding
+  the native Cyclone service/action E2E tests (Phase 183.4). Building any native
   `service-{server,client}` / `action-{server,client}` example under
   `-DNROS_RMW=cyclonedds` compiles the objects but produces **no executable** —
   the target's final link step is a literal shell no-op:
@@ -616,6 +573,28 @@ passed.
   no-op `build-cyclonedds` for the same role. **Owner**: Phase 117 / 175
   (Cyclone example wiring). **Unblocks**: Phase 183.4 native Cyclone
   service/action e2e (tests already written + skipping).
+
+  **Root cause + fix (2026-05-26).** The no-op `: && :` link is ninja's empty
+  `CMAKE_CXX_LINK_EXECUTABLE`: `nano_ros_link_rmw` (cmake/NanoRosLink.cmake) sets
+  `LINKER_LANGUAGE CXX` on the app when Cyclone is selected (the backend is C++),
+  but the native C/Rust examples were `project(<app> LANGUAGES C)` and the
+  nano-ros `add_subdirectory` enables CXX only in *its own* subtree — that does
+  not propagate up to the example's directory scope, so the C target's CXX link
+  command is empty. cpp examples worked because they are `LANGUAGES C CXX`. This
+  is the same defect as the talker/listener fixtures (which earlier produced no
+  top-level ELF, only a `_nano_ros_link/<app>/` staging dir). **Fix:** enable CXX
+  in the example's own scope for the Cyclone RMW —
+  `examples/native/c/{talker,listener,service-client,service-server,
+  action-client,action-server}` guard `enable_language(CXX)` on
+  `NROS_RMW STREQUAL "cyclonedds"`; the Cyclone-dedicated
+  `examples/native/rust/{talker,listener}` use `project(... LANGUAGES C CXX)`.
+  **Verified:** all 6 native Cyclone talker/listener fixtures build as top-level
+  ELF via `just native build-fixture-extras`; `nros-tests::native_api
+  test_native_cyclonedds_*` (4 cases, C↔Rust + Cpp↔Rust) PASS (real RTPS);
+  manual C+C pub/sub Published 7 / Received 7; the service/action examples now
+  configure + generate cleanly under Cyclone (the `: && :` no-op is gone).
+  Phase 183.4 service/action e2e fixtures should now build — final 183.4 run is
+  the remaining check. zenoh/xrce C builds unaffected (the enable is guarded).
 
 ### Test-All Runtime / E2E
 
