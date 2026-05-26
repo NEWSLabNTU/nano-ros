@@ -2696,14 +2696,19 @@ fn test_zephyr_c_service_server_to_client_e2e() {
 
 /// Zephyr C zenoh action server ↔ client.
 ///
-/// Phase 177.30 — `#[ignore]`d: runtime-verified to hang. The C action client
-/// prints `Sending goal: order=N` then never gets accept/feedback/result —
-/// the same zenoh-pico action-`send_goal` `z_get` race that blocks NuttX Cpp
-/// action (177.30). pub/sub + service pass on the *same* fixture; only the
-/// action `send_goal` `z_get` blocks. Matches how nuttx/threadx-riscv64 zenoh
-/// action are `drop (177.30)`. Run with `--ignored` once 177.30 is fixed.
+/// `#[ignore]`d — runtime-verified to fail (re-verified 2026-05-26 with fresh
+/// NSOS fixtures + latest code). **Not 177.30** (that was the NuttX *C++*
+/// `fflush(stdout)` deadlock, now fixed; the zephyr C app uses Zephyr `LOG_INF`,
+/// no libc stdout lock). The failure is on the **server side**: the C zenoh
+/// action server boots and logs "Network ready (NSOS)" but **never reaches
+/// "Waiting for goals"** — it hangs during `create_action_server` (the
+/// zenoh-pico declare path for the goal/cancel/result/feedback/status entities),
+/// so the client never even sends. The zephyr **cpp + rust** zenoh action
+/// servers reach readiness and pass, so this is **C-specific** (the nros-c
+/// action-server setup over zenoh-pico on zephyr). pub/sub + service C pass on
+/// the same fixture. Distinct open gap — needs its own investigation.
 #[test]
-#[ignore = "177.30: zenoh-pico action send_goal z_get hang (zephyr C); pub/sub+service pass"]
+#[ignore = "zephyr C zenoh action server hangs in create_action_server (never reaches 'Waiting for goals'); C-specific, NOT 177.30; cpp/rust pass"]
 fn test_zephyr_c_action_server_to_client_e2e() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
