@@ -1281,6 +1281,45 @@ passed.
      experimental fixtures and keep the C variant (which passes) as the
      action coverage on NuttX — rather than leave a permanently-red E2E.
 
+  **Update 4 2026-05-26 — ROOT CAUSE FOUND + FIXED (Updates 2 & 3 were both
+  wrong).** Probe-bisected the client with unbuffered `write(2)` markers
+  (libc-`FILE*`-lock-free) at every layer (main loop, C++ header send method,
+  Rust FFI, zpico_get_start, `_z_query`) plus QEMU `-d int` exception logging.
+  Findings, in order:
+  - QEMU `-d int` showed **only timer IRQs** at the hang — the guest is alive
+    and *blocked*, not crashed.
+  - The client reaches `printf("Sending goal…")` then wedges in the **very next
+    statement, `fflush(stdout)`**: the `write(2)` marker placed *before* the
+    fflush prints, the one *after* it never does.
+  So the bug is a **deadlock on the NuttX libc stdout `FILE*` lock**
+  (`flockfile`): the application thread's explicit `fflush(stdout)` blocks
+  against the zenoh-pico background read/lease threads that also touch stdout.
+  The main thread never reached `send_goal_async`, so the goal request never
+  left the guest — which is why Update 3 saw "no query on the wire" (the query
+  was never *attempted*, not dropped in `z_get`), and why Update 2's "slowness"
+  was wrong (it is a hard deadlock, not a slow path). `printf("…\n")` itself is
+  fine (line-buffered, flushes on the newline); only the *explicit, redundant*
+  `fflush` deadlocks.
+  **Fix (`examples/qemu-arm-nuttx/cpp/action-client/src/main.cpp`):** remove
+  every `fflush(stdout)` from the example (with a DO-NOT-RE-ADD comment).
+  **Verified:** a full 2-QEMU manual boot (zenohd + cpp action server + cpp
+  action client) now runs the complete chain — server logs `Goal request [1]:
+  order=5`; client logs `Goal accepted! → Feedback: [0] → Result:
+  [0, 1, 1, 2, 3, 5] → Action completed successfully` — reproducibly. The
+  goal-request query is on the wire (tshark) and zenohd forwards it to the
+  server.
+  **Still open (separate, harness-only):** under the *nextest* harness the
+  same fixed binaries still fail — the client sends (11 query frames on the
+  wire) and the server declares its `send_goal` queryable, but zenohd does not
+  forward the query to the server (no `7672 → <server>` frame), whereas the
+  byte-identical manual boot forwards it. nextest shows ~5 TCP streams to
+  zenohd (vs 2 manual; the extras are host-side readiness probes from
+  `ZenohRouter`, not stale guests — verified zero leftover QEMUs). This is a
+  harness-level zenohd-routing/timing artifact under `-icount` + test-runner
+  CPU load, NOT the (now-fixed) deadlock and NOT a product bug — the action
+  works in a real boot. Tracking the routing delta is the remaining 177.30
+  item; the deadlock fix lands independently.
+
 #### 2026-05-26 Clean-Rebuild Test-All by Group
 
 Full clean-room validation after the Phase 181 fixture-build-SSOT work landed

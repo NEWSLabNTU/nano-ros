@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 
-#define NROS_TRY_LOG(file, line, expr, ret) \
+#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -20,21 +20,30 @@ static volatile bool g_result_received = false;
 static volatile bool g_goal_accepted = false;
 static nros::ActionClient<Fibonacci>* g_client_ptr;
 
+// Phase 177.30 — DO NOT add fflush(stdout) anywhere in this file.
+//
+// On NuttX QEMU, an explicit fflush(stdout) from the application thread
+// DEADLOCKS against the zenoh-pico background read/lease threads on the libc
+// stdout FILE* lock (flockfile). The symptom was the client printing
+// "Sending goal: order=5" and then hanging forever — gdb/wire traces showed
+// the goal request never left the guest because the main thread was wedged
+// inside fflush, never reaching send_goal_async. printf("...\n") already
+// flushes line-buffered stdout, so fflush is redundant here; dropping it lets
+// the goal→accept→feedback→result chain run. See
+// docs/roadmap/phase-177-build-issue-catalog.md (177.30).
+
 static void goal_response_cb(bool accepted, const uint8_t goal_id[16], void* ctx) {
     (void)ctx;
     if (accepted) {
         printf("Goal accepted!\n");
-        fflush(stdout);
         g_goal_accepted = true;
         g_client_ptr->get_result_async(goal_id);
     } else {
         printf("Goal rejected!\n");
-        fflush(stdout);
     }
 }
 
-static void feedback_cb(const uint8_t goal_id[16], const uint8_t* data,
-                        size_t len, void* ctx) {
+static void feedback_cb(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
     (void)goal_id;
     (void)ctx;
 
@@ -49,8 +58,8 @@ static void feedback_cb(const uint8_t goal_id[16], const uint8_t* data,
     }
 }
 
-static void result_cb(const uint8_t goal_id[16], int32_t status,
-                      const uint8_t* data, size_t len, void* ctx) {
+static void result_cb(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len,
+                      void* ctx) {
     (void)goal_id;
     (void)status;
     (void)ctx;
@@ -66,14 +75,13 @@ static void result_cb(const uint8_t goal_id[16], int32_t status,
     }
 
     printf("\nAction completed successfully.\n");
-    fflush(stdout);
     g_result_received = true;
 }
 
 #ifndef __NuttX__
 extern "C" int sleep(unsigned int);
 #endif
-int nros_app_main(int argc, char **argv) {
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
@@ -117,34 +125,26 @@ int nros_app_main(int argc, char **argv) {
     goal.order = 5;
 
     printf("Sending goal: order=%d\n", goal.order);
-    fflush(stdout);
 
     uint8_t goal_id[16];
 
     // Phase 177.30 — DO NOT shrink this ceiling, and keep the resend.
     //
-    // The full goal→accept→feedback→result chain is very slow on NuttX QEMU
-    // under `-icount` + heavy `test-all` host load (two QEMU guests + zenohd
-    // all competing): each `spin_once(10)` can cost >200 ms of wall time, so
-    // the old 1000-iteration cap gave up (printing "Timeout waiting for
-    // result", accepted=false) BEFORE the goal was even accepted — which
-    // looked like a hang/deadlock but is plain slowness (a direct,
-    // lightly-loaded boot completes: accepted + feedback + result
-    // [0,1,1,2,3,5]). Two robustness measures, both needed:
-    //   1. High ceiling — the loop breaks immediately on completion, so this
-    //      only matters when the host is slow; the real wall-clock bound is
-    //      the harness's `client_timeout` (rtos_e2e.rs — also DO NOT shrink).
-    //   2. Resend until accepted — `send_goal_async` is a one-shot zenoh
-    //      query; on a cold NuttX boot it can fire before the server's
-    //      queryable is discovered and be silently dropped. The blocking C
-    //      action client survives because its `send_goal` spins-and-retries
-    //      internally; this async example must resend explicitly.
+    // The full goal→accept→feedback→result chain is slow on NuttX QEMU under
+    // `-icount` + heavy `test-all` host load (two QEMU guests + zenohd all
+    // competing): each `spin_once(10)` can cost >200 ms of wall time. The loop
+    // breaks immediately on completion, so a high ceiling only matters when the
+    // host is slow; the real wall-clock bound is the harness's `client_timeout`
+    // (rtos_e2e.rs — also DO NOT shrink). The resend covers the cold-boot
+    // discovery race: `send_goal_async` is a one-shot zenoh query that can fire
+    // before the server's queryable is discovered and be silently dropped. The
+    // blocking C action client survives because its `send_goal` spins-and-retries
+    // internally; this async example must resend explicitly.
     for (int i = 0; i < 60000 && !g_result_received; i++) {
         if (!g_goal_accepted && (i % 300) == 0) {
             ret = client.send_goal_async(goal, goal_id);
             if (!ret.ok()) {
                 printf("send_goal_async failed: %d (will retry)\n", ret.raw());
-                fflush(stdout);
             }
         }
         nros::spin_once(10);
@@ -153,7 +153,6 @@ int nros_app_main(int argc, char **argv) {
 
     if (!g_result_received) {
         printf("Timeout waiting for result\n");
-        fflush(stdout);
     }
 
     nros::shutdown();
