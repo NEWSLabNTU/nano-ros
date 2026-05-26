@@ -796,8 +796,8 @@ _check-fixtures-stale:
     # run the incremental `cmake --build` (near-no-op when fresh) and report the
     # cells that actually rebuilt. Phase 181.7c.
     cmake_records() {
-        python3 scripts/build/fixtures-manifest.py list --lang c
-        python3 scripts/build/fixtures-manifest.py list --lang cpp
+        python3 scripts/build/fixtures-manifest.py list --for-probe --lang c
+        python3 scripts/build/fixtures-manifest.py list --for-probe --lang cpp
     }
     cmake_stale=()
     if command -v parallel >/dev/null 2>&1; then
@@ -822,13 +822,13 @@ _check-fixtures-stale:
     # `cmake --build` the same way). Phase 177.9 / 181.
     rust_stale=()
     if command -v parallel >/dev/null 2>&1; then
-        mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --lang rust \
+        mapfile -t rust_stale < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust \
             | parallel --jobs "$(nproc)" bash scripts/test/rust-fixture-stale.sh {} 2>/dev/null)
     else
         while IFS= read -r line; do
             out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
             [ -n "$out" ] && rust_stale+=("$out")
-        done < <(python3 scripts/build/fixtures-manifest.py list --lang rust)
+        done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --lang rust)
     fi
     if [ ${#rust_stale[@]} -gt 0 ]; then
         echo "WARNING: ${#rust_stale[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2

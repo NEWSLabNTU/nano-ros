@@ -69,6 +69,12 @@ def main():
     p.add_argument("--platform")
     p.add_argument("--lang")
     p.add_argument("--rmw")
+    # The test-all staleness probe builds with the default (stable) toolchain
+    # and can't replicate a recipe-injected platform toolchain (e.g. the ESP32
+    # nightly + build-std). Such cells set `skip_probe = true` so --for-probe
+    # omits them — otherwise the probe rebuilds them under the wrong toolchain
+    # every preflight (toolchain-fingerprint thrash → permanent false-stale).
+    p.add_argument("--for-probe", action="store_true")
     a = p.parse_args()
 
     for e in load(a.manifest):
@@ -77,6 +83,8 @@ def main():
         if a.lang and e.get("lang") != a.lang:
             continue
         if a.rmw and e.get("rmw") != a.rmw:
+            continue
+        if a.for_probe and e.get("skip_probe"):
             continue
         if e.get("lang") in ("c", "cpp"):
             # cmake record: <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>

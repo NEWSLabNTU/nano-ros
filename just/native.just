@@ -51,37 +51,33 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_example_toml.XXXXXX")"
     trap 'rm -f "$toml_list"' EXIT
 
-    # Phase 181.6 — qemu-arm-baremetal + stm32f4 are excluded here and built
-    # from the SSOT manifest below instead, so they have a single enumeration
-    # source (matching the test-all staleness probe). The remaining platforms
-    # have no manifest rows for this broad find, or are built by their own
-    # platform recipes (freertos/nuttx/threadx/zephyr/px4).
+    # Phase 181.6 / 181.4.h — qemu-arm-baremetal, stm32f4, esp32 and
+    # qemu-esp32-baremetal are excluded here and built from the SSOT manifest
+    # below instead, so each has a single enumeration source (matching the
+    # test-all staleness probe). The remaining platforms have no manifest rows
+    # for this broad find, or are built by their own platform recipes
+    # (freertos/nuttx/threadx/zephyr/px4).
     find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
                        -not -path '*/_deps/*' -not -path '*/zephyr/*' \
-                       -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
                        -not -path '*/qemu-riscv64-threadx/*' \
                        -not -path '*/qemu-arm-baremetal/*' -not -path '*/stm32f4/*' \
+                       -not -path '*/esp32/*' -not -path '*/qemu-esp32-baremetal/*' \
                        -not -path '*/px4/*' | sort > "$toml_list"
 
+    # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
+    # are excluded from this find and built from the manifest below, so this
+    # loop only sees host examples — a plain `cargo build` suffices.
     build_one() {
         local toml="$1"
         local dir="$(dirname "$toml")"
-        local platform="$(echo "$dir" | cut -d/ -f2)"
-        local env_prefix=""
-        local toolchain=""
-        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
-            env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
-            toolchain="+{{NIGHTLY}}"
-        fi
         echo "  build $dir"
-        ( cd "$dir" && eval $env_prefix cargo $toolchain build $cargo_profile_args )
+        ( cd "$dir" && cargo build $cargo_profile_args )
     }
     export -f build_one
-    export NIGHTLY="{{NIGHTLY}}"
 
     if [ "$SERIAL" = "1" ]; then
         while read -r toml; do build_one "$toml"; done < "$toml_list"
@@ -93,6 +89,13 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # the cross target). No codegen prep needed (no generated-msg consumers).
     bash scripts/build/fixtures-build.sh qemu-arm-baremetal rust
     bash scripts/build/fixtures-build.sh stm32f4 rust
+    # Phase 181.4.h — esp32 + qemu-esp32-baremetal (ESP32-C3, riscv32imc) from
+    # the manifest. They need the workspace nightly + rust-src/build-std (NOT
+    # xtensa/espup) + SSID/PASSWORD; inject those as platform env.
+    RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
+        bash scripts/build/fixtures-build.sh esp32 rust
+    RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
+        bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).

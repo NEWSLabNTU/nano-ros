@@ -58,19 +58,19 @@ doctor:
 build:
     @echo "ESP32 has no separate core build; use 'just esp32 build-examples' for examples."
 
-# Build ESP32 examples (requires nightly)
+# Build ESP32 examples (requires the workspace nightly — ESP32-C3 / riscv32imc).
 [group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
-    source scripts/build/cargo.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    echo "Building ESP32 examples..."
-    for ex in talker listener; do
-        echo "  Building esp32/rust/$ex..."
-        (cd examples/esp32/rust/$ex && \
-         SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +{{NIGHTLY}} build $cargo_profile_args)
-    done
+    # Phase 181.4.h — esp32 rust examples build from the SSOT manifest
+    # (examples/fixtures.toml). ESP32-C3 targets riscv32imc-unknown-none-elf via
+    # each example's .cargo/config.toml; the nightly toolchain + rust-src +
+    # build-std come from the workspace (NOT xtensa/espup). RUSTUP_TOOLCHAIN +
+    # SSID/PASSWORD are platform env, injected here for the shared builder.
+    echo "Building ESP32 examples (from examples/fixtures.toml)..."
+    RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
+        bash scripts/build/fixtures-build.sh esp32 rust
     echo "ESP32 examples built!"
 
 # Build ESP32 QEMU examples (requires nightly)

@@ -10,10 +10,10 @@ false staleness signal and triggers feature-thrash rebuilds. One manifest
 fixes both.
 
 **Status.** In progress (branch `phase-181-fixture-build-ssot`). 181.1–181.3
-done; **181.4 done** — 7 rust platforms migrated to the SSOT + verified
+done; **181.4 done** — all rust platforms migrated to the SSOT + verified
 (native, qemu-arm-baremetal, stm32f4, freertos, nuttx, threadx-linux,
-threadx-riscv64), esp32 deferred on toolchain, zephyr/px4 N/A to the cargo
-manifest. **181.5 done** — native + freertos + nuttx + threadx-linux +
+threadx-riscv64, **esp32 + qemu-esp32-baremetal** — ESP32-C3 riscv32imc, not
+xtensa; see 181.4.h), zephyr/px4 N/A to the cargo manifest. **181.5 done** — native + freertos + nuttx + threadx-linux +
 threadx-riscv64 C/C++ cells migrated to the SSOT manifest + the shared
 `fixtures-build.sh` cmake path (native/freertos/threadx-linux build-verified;
 cyclone passes gated); 181.5.f–h (zephyr/esp32/px4) N/A to this manifest
@@ -168,15 +168,24 @@ Shared mechanism (done): `scripts/build/fixtures-build.sh <platform> [lang]`
 - [x] **181.4.g threadx-riscv64** — plain-cargo zenoh. SDK-gated: threadx/netx
   + riscv64 toolchain. Cyclone rust is cmake → 181.5. **Files**:
   `just/threadx-riscv64.just`.
-- [~] **181.4.h esp32 / qemu-esp32-baremetal** — DEFERRED (toolchain). esp32 is
-  xtensa via espup (esp_idf is the `extended` SDK tier, not in the default dev
-  env); qemu-esp32-baremetal is riscv32imc but built with the ESP nightly.
-  Can't verify a migration without the toolchain, so left unmigrated rather
-  than risk an unverified recipe change. Mechanically identical to the others:
-  the recipe exports the ESP toolchain/`RUSTUP_TOOLCHAIN` (platform env) then
-  calls `fixtures-build.sh esp32 rust`; author entries (esp32/rust + qemu-
-  esp32-baremetal/rust talker+listener) when the toolchain is available.
-  **Files**: `just/esp32.just`, `just/native.just`.
+- [x] **181.4.h esp32 / qemu-esp32-baremetal** — done. **Correction:** the
+  earlier "xtensa via espup, deferred" note was a misread — it conflated the
+  ESP32-**S3** Xtensa path (espup `esp` channel; `nros run` codegen target only,
+  no `examples/` fixtures) with these `examples/esp32/` + `examples/qemu-esp32-
+  baremetal/` Rust fixtures, which are **ESP32-C3 = riscv32imc-unknown-none-elf**
+  built with the workspace nightly + `rust-src` + `build-std` (NO xtensa/espup).
+  All prereqs are in the default dev env. 4 plain manifest rows; `just esp32
+  build-examples` + the broad `native build-examples` find both route through
+  `fixtures-build.sh <plat> rust` (esp excluded from the find), injecting
+  `RUSTUP_TOOLCHAIN={{NIGHTLY}}` + `SSID`/`PASSWORD` as platform env. The rows
+  carry `skip_probe = true`: the test-all staleness probe runs the default
+  (stable) toolchain and can't supply the nightly, so probing them would thrash
+  (toolchain-fingerprint mismatch → permanent false-stale); the reader's new
+  `--for-probe` flag omits them, and the build recipe + cargo incremental still
+  self-heal. Verified: all 4 cells build via the manifest (riscv32imc, exit 0);
+  `--for-probe` drops esp from the probe while the build path keeps them.
+  **Files**: `just/esp32.just`, `just/native.just`,
+  `scripts/build/fixtures-manifest.py`, `examples/fixtures.toml`, `justfile`.
 - [x] **181.4.i zephyr** — N/A to the cargo manifest by design: zephyr rust
   builds via `west build` (kernel-linked), not `cargo build`, so
   `fixtures-build.sh` cannot drive it. Zephyr fixtures (rust/c/cpp) are tracked
@@ -322,10 +331,10 @@ generator-neutral — generator is a configure-time flag):
   helper. The manifest's two consumers (`fixtures-build.sh`, the staleness
   probe) never invoke west, so a manifest row would be inert. West's own
   build-system handles staleness. Left west-built (`just/zephyr.just`).
-- [x] **181.5.g esp32** — N/A. `examples/esp32/` has only Rust talker/listener
-  (no C/C++ cells); esp32 Rust fixtures stay deferred on the xtensa toolchain
-  (181.4), and `esp32 build-fixtures` = `build-qemu` + `build-logging-smoke`
-  (neither a manifest cmake cell). Nothing to migrate.
+- [x] **181.5.g esp32** — N/A to the C/C++ pass. `examples/esp32/` has only Rust
+  talker/listener (no C/C++ cells); the Rust cells are migrated under 181.4.h
+  (ESP32-C3 riscv32imc, not xtensa). `esp32 build-fixtures` = `build-qemu` +
+  `build-logging-smoke` (neither a manifest cmake cell). Nothing to migrate here.
 - [x] **181.5.h px4** — N/A. `px4 build-fixtures` is a no-op ("PX4 has no
   separate test fixture build today"); the cpp uORB register-check builds
   through the PX4 build system under `build-examples`, not a manifest cmake
