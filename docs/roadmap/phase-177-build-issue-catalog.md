@@ -2019,19 +2019,28 @@ robustness/consistency follow-ups, not regressions.
 - [x] 2026-05-22 `just test-all` completed after setup and fixture
   prebuild: 911 passed, 49 failed, and 9 skipped. Remaining failures are
   grouped under 177.9.
-- [~] Full `just build-all` rerun after the final Zephyr follow-up fix.
-  **2026-05-27 (post G4/177.30 fixes + connect-retry):** `just check` green
-  (all Rust/C/C++/Python static gates); `just build-all` exit 2 with **exactly
-  two root failures, both environmental SDK/tooling — no compile regression**:
-  (1) `fixtures-zephyr` Error 1 (needs the Zephyr SDK / `west` fixtures, not set
-  up on this host); (2) `cyclonedds-ts` exit 127 ×6 (Cyclone `idlc` codegen tool
-  not on PATH for the Cyclone *Rust* example builds — `build/cyclonedds/bin/idlc`
-  present but not exported in the `build-all` env). Core + every non-Zephyr
-  platform example (incl. the changed native talker/listener/service) compiled
-  clean. So the residual build-all blockers are env/SDK setup, not code — the
-  `cyclonedds-ts` idlc-PATH gap is a real (small) build-all infra item:
-  the Cyclone Rust example cmake invokes `idlc` by bare name; `build-all` should
-  export `build/cyclonedds/bin` on PATH (or pass `-DCYCLONEDDS_IDLC=`).
+- [x] Full `just build-all` rerun after the final Zephyr follow-up fix.
+  **2026-05-27 (post G4/177.30 fixes + connect-retry):** `just check` green (all
+  static gates); first `just build-all` exit 2 with two root failures
+  (`fixtures-zephyr` + `cyclonedds-ts` idlc exit 127 ×6); core + every non-Zephyr
+  platform example compiled clean. **Root cause of both = one bug, now fixed
+  (`06edda778`):** the Cyclone `idlc` path is a *sticky* INTERNAL cache var
+  (`NROS_RMW_CYCLONEDDS_IDLC`) resolved only `if(NOT …)`; fixture build dirs
+  configured under the pre-180.B layout kept
+  `.../examples/zephyr/cmake/../../../build/install/bin/idlc`, and 180.B deleted
+  `examples/zephyr/cmake` → ENOENT through the missing component → `idlc: not
+  found`. (Not a PATH/SDK gap — idlc is installed + functional; my earlier
+  "idlc not on PATH" note was wrong.) Fix: re-resolve when the cached path
+  `NOT EXISTS`. **Verified end-to-end 2026-05-27:** with the harden,
+  `just zephyr build-fixtures` → **exit 0, zero idlc-127, no failed fixtures**;
+  the formerly-unbuildable Cyclone Zephyr tests now run — `binary(zephyr) &
+  test(dds)` + zephyr cyclonedds = **12 pass / 7 fail**, where the 7 are
+  pre-existing Cyclone *runtime* issues unaffected by a build fix: 3×
+  `test_zephyr_dds_*_action_e2e` (the known Cyclone-action register blocker,
+  177.31/177.32) + 4× cyclonedds pubsub/cpp-service SPDP-discovery flakiness on
+  native_sim (nodes boot, no `Received` line). Before the fix all of these
+  *fast-failed with no fixture at all*, so this is a strict improvement +
+  confirms the idlc fix.
 - [~] Full root `just ci` rerun after Phase 171 archive prep: static
   gates passed, `test-all` failed with 39 real failures + 8 environment
   skips.
