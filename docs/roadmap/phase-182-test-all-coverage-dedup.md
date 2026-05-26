@@ -11,12 +11,12 @@ analysis (full `clean` → `build-all` → `test-all`: 978 tests, 339 s wall,
 ~5000 s CPU). **182.1 + 182.2 landed** (the safe zero-coverage-loss wins): −165
 build-only presence cases from `phase_118_collapse` (kept its 8 real Cyclone
 e2e tests) and the two duplicate clean-cmake smokes merged into one. Net ~167
-fewer tests + one fewer ~160 s cmake configure. **182.3 partial** — 19 of 53
-`_builds` dropped (the native/host cells with build-all + e2e coverage); the
-cross-platform `_all_examples_build` / `emulator` / `zephyr` `_builds` deferred
-(per-file import surgery + e2e-pairing audit). **182.4 landed** (−12 redundant
-boot-smokes, audited per-fixture against sibling e2e — zero coverage loss).
-182.5 / 182.6 open.
+fewer tests + one fewer ~160 s cmake configure. **182.3 done** — 50 of 53
+`_builds` dropped (build-only fixture-compile assertions redundant with
+`build-all` + the `_require-fixtures` preflight + runtime e2e siblings); 3 kept
+(cffi ABI + qemu_patched infra, not fixture-compile). **182.4 landed** (−12
+redundant boot-smokes, audited per-fixture against sibling e2e — zero coverage
+loss). 182.5 / 182.6 open.
 
 **Priority.** P2 (developer + CI wall-clock).
 
@@ -93,7 +93,7 @@ PASSES (configure + build + `nros_platform_link_app`), one fewer ~160 s clean
 cmake configure. **Files**: `tests/cmake_add_subdirectory.rs`,
 `tests/cmake_platform_matrix.rs`.
 
-### 182.3 — Drop `_builds` cells that duplicate `build-all` — PARTIAL
+### 182.3 — Drop `_builds` cells that duplicate `build-all` — DONE
 
 The `*_builds` tests assert a fixture compiles — exactly what `build-all` does
 for every fixture (Phase 181), and a broken fixture fails `build-all` /
@@ -128,17 +128,34 @@ the `rtos_e2e` Platform__* tests. Removed each file's now-orphaned
 and the cyclonedds boot / two-QEMU e2e tests. Verified: all 4 compile clean
 (no unused-import warnings), 0 `_all_examples_build` remain.
 
-**Deferred (need e2e-pairing audit):**
-- `emulator` — 20 (qemu-arm-baremetal); the rtic/serial talker+listener are
-  covered by the pubsub e2e, but the action/service rtic roles have no e2e — they
-  rely on `build-all` compile only (true, but confirm before dropping).
-- `zephyr` (6) + `platform` (2) — Zephyr is west-built (not `build-all`); confirm
-  each has a build-fixtures + e2e counterpart first.
+**Done (28 more) — emulator + zephyr + platform:**
+- `emulator` — 19 (qemu-arm-baremetal): the qemu-rtic / serial / mixed `_builds`
+  share their `build_qemu_*` helpers with the e2e tests below (which build+run
+  both ends), so removing the `_builds` left the helpers used; the bsp
+  `_builds` + `bsp_both_build` + the stm32f4 `test_rtic_*_builds` were the sole
+  users of `build_qemu_bsp_*` / `require_arm_m4_toolchain` / the `build_rtic_*`
+  resolvers, removed with them. Surviving: cdr/node/type/all-tests firmware
+  runner, lan9118 driver, wcet bench, the 4 rtic e2e + serial e2e, detection,
+  bsp `_starts` stubs (182.4). build-all covers the bsp compile (no bsp e2e here).
+- `zephyr` — 6 (`test_zephyr_{talker,listener,action_server,action_client,
+  service_server,service_client}_build`): `get_prebuilt_zephyr_example` presence
+  checks, redundant with `just zephyr build-fixtures` (the west prebuild test-all
+  depends on) + the zephyr e2e tests. The shared resolver stays (used by the
+  action-e2e helpers).
+- `platform` — 2 (`test_zephyr_{talker,listener}_build`): env-only checks that
+  used the bare `eprintln!`+`return` skip (falsely PASS, contra CLAUDE.md);
+  Zephyr presence is covered by build-fixtures + zephyr.rs e2e.
+
+Verified: all compile clean (no unused-import/dead-fn warnings), 0 `_builds`/`_build`
+remain in any of them.
 
 **Keep permanently (not fixture-compile):** `nros-board-cffi::{c_consumer_compiles_against_board_header,
 exported_symbols_are_addressable}` (C ABI/header compile surface) and
 `qemu_patched_binary::test_qemu_system_arm_resolves_to_patched_build` (infra).
-**Files**: `tests/{native_api,esp32_emulator,c_xrce_api,params,services}.rs`.
+
+**182.3 complete — 50 of 53 `_builds` dropped** (3 kept as above), across
+`tests/{native_api,esp32_emulator,c_xrce_api,params,services,freertos_qemu,
+nuttx_qemu,threadx_linux,threadx_riscv64_qemu,emulator,zephyr,platform}.rs`.
 
 ### 182.4 — Audit redundant BOOT-smoke (`_starts` / `_boots`) — DONE 2026-05-26
 

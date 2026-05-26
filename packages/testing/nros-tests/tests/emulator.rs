@@ -14,7 +14,7 @@
 use nros_tests::{
     assert_output_contains, assert_output_excludes, count_pattern,
     fixtures::{
-        QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker,
+        QemuProcess, SocatPtyPair, ZenohRouter,
         build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
         build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
         build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
@@ -244,229 +244,12 @@ fn test_arm_toolchain_detection() {
 // Tests for the simplified nros-board-mps2-an385 API (Board Support Package).
 // These examples use a higher-level API than the rs-* examples.
 
-/// Test that qemu-bsp-talker builds successfully
-#[test]
-fn test_qemu_bsp_talker_builds() {
-    require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
-
-    let result = build_qemu_bsp_talker();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!("SUCCESS: qemu-bsp-talker builds at {}", binary.display());
-        }
-        Err(e) => {
-            let err_str = format!("{:?}", e);
-            if err_str.contains("Permission denied") {
-                eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/talker/target");
-                eprintln!("Skipping test...");
-            } else {
-                panic!("qemu-bsp-talker build failed: {:?}", e);
-            }
-        }
-    }
-}
-
-/// Test that qemu-bsp-listener builds successfully
-#[test]
-fn test_qemu_bsp_listener_builds() {
-    require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
-
-    let result = build_qemu_bsp_listener();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!("SUCCESS: qemu-bsp-listener builds at {}", binary.display());
-        }
-        Err(e) => {
-            let err_str = format!("{:?}", e);
-            if err_str.contains("Permission denied") {
-                eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/listener/target");
-                eprintln!("Skipping test...");
-            } else {
-                panic!("qemu-bsp-listener build failed: {:?}", e);
-            }
-        }
-    }
-}
-
-// =============================================================================
-// RTIC Build Tests (STM32F4, cross-compiled only — no QEMU for this board)
-// =============================================================================
-
-/// Check if thumbv7em-none-eabihf target is installed (STM32F4/Cortex-M4F)
-fn require_arm_m4_toolchain() {
-    if !std::process::Command::new("rustup")
-        .args(["target", "list", "--installed"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("thumbv7em-none-eabihf"))
-        .unwrap_or(false)
-    {
-        eprintln!("Skipping test: thumbv7em-none-eabihf target not installed");
-    }
-}
-
-/// Test that stm32f4-rtic-talker builds successfully.
-/// Unlike QEMU BSP tests, STM32F4 examples build zenoh-pico from source
-/// during cargo build (via zpico-sys build script) — no pre-built library needed.
-#[test]
-fn test_rtic_talker_builds() {
-    require_arm_m4_toolchain();
-
-    let result = nros_tests::fixtures::build_rtic_talker();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!(
-                "SUCCESS: stm32f4-rtic-talker builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            panic!("stm32f4-rtic-talker build failed: {:?}", e);
-        }
-    }
-}
-
-/// Test that stm32f4-rtic-listener builds successfully.
-#[test]
-fn test_rtic_listener_builds() {
-    require_arm_m4_toolchain();
-
-    let result = nros_tests::fixtures::build_rtic_listener();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!(
-                "SUCCESS: stm32f4-rtic-listener builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            panic!("stm32f4-rtic-listener build failed: {:?}", e);
-        }
-    }
-}
-
-/// Test that stm32f4-rtic-service-server builds successfully.
-#[test]
-fn test_rtic_service_server_builds() {
-    require_arm_m4_toolchain();
-
-    let result = nros_tests::fixtures::build_rtic_service_server();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!(
-                "SUCCESS: stm32f4-rtic-service-server builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            panic!("stm32f4-rtic-service-server build failed: {:?}", e);
-        }
-    }
-}
-
-/// Test that stm32f4-rtic-service-client builds successfully.
-#[test]
-fn test_rtic_service_client_builds() {
-    require_arm_m4_toolchain();
-
-    let result = nros_tests::fixtures::build_rtic_service_client();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!(
-                "SUCCESS: stm32f4-rtic-service-client builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            panic!("stm32f4-rtic-service-client build failed: {:?}", e);
-        }
-    }
-}
-
-/// Test that stm32f4-rtic-action-server builds successfully.
-#[test]
-fn test_rtic_action_server_builds() {
-    require_arm_m4_toolchain();
-
-    let result = nros_tests::fixtures::build_rtic_action_server();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!(
-                "SUCCESS: stm32f4-rtic-action-server builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            panic!("stm32f4-rtic-action-server build failed: {:?}", e);
-        }
-    }
-}
-
-/// Test that stm32f4-rtic-action-client builds successfully.
-#[test]
-fn test_rtic_action_client_builds() {
-    require_arm_m4_toolchain();
-
-    let result = nros_tests::fixtures::build_rtic_action_client();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!(
-                "SUCCESS: stm32f4-rtic-action-client builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            panic!("stm32f4-rtic-action-client build failed: {:?}", e);
-        }
-    }
-}
+// (Phase 182.3) The qemu-bsp + stm32f4-rtic `*_builds` presence tests were
+// removed — they only asserted a fixture compiled, covered by `build-all`
+// (qemu-arm-baremetal + stm32f4 are manifest rows, Phase 181.4/181.6) + the
+// `_require-fixtures` preflight. (The BSP examples have no e2e here — they need
+// Docker/slirp networking, see the skipped start tests below — so their compile
+// coverage now lives solely in `build-all`, which is the test-all prerequisite.)
 
 // =============================================================================
 // BSP Network Tests (Require Docker or slirp networking)
@@ -510,122 +293,9 @@ fn test_qemu_bsp_listener_starts() {
     println!("INFO: BSP network tests skipped (use Docker for full test)");
 }
 
-/// Test that both BSP binaries can be built in sequence
-///
-/// This verifies the build system handles multiple BSP binaries correctly.
-#[test]
-fn test_qemu_bsp_both_build() {
-    require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
-
-    let talker = build_qemu_bsp_talker();
-    let listener = build_qemu_bsp_listener();
-
-    // Handle permission errors gracefully
-    let has_perm_error = |e: &dyn std::fmt::Debug| format!("{:?}", e).contains("Permission denied");
-
-    match (&talker, &listener) {
-        (Ok(talker_path), Ok(listener_path)) => {
-            // Verify they're different binaries
-            assert_ne!(
-                talker_path.file_name(),
-                listener_path.file_name(),
-                "Talker and listener should be different binaries"
-            );
-
-            println!("SUCCESS: Both BSP binaries build correctly");
-            println!("  Talker:   {}", talker_path.display());
-            println!("  Listener: {}", listener_path.display());
-        }
-        (Err(e), _) if has_perm_error(e) => {
-            eprintln!("Talker build failed due to permission issues");
-            eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/talker/target");
-            eprintln!("Skipping test...");
-        }
-        (_, Err(e)) if has_perm_error(e) => {
-            eprintln!("Listener build failed due to permission issues");
-            eprintln!("Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/listener/target");
-            eprintln!("Skipping test...");
-        }
-        (Err(e), _) => panic!("BSP talker build failed: {:?}", e),
-        (_, Err(e)) => panic!("BSP listener build failed: {:?}", e),
-    }
-}
-
-// =============================================================================
-// Serial QEMU Build Tests (MPS2-AN385 + CMSDK UART)
-// =============================================================================
-
-/// Test that qemu-serial-talker builds successfully
-#[test]
-fn test_qemu_serial_talker_builds() {
-    require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
-
-    let result = build_qemu_serial_talker();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!("SUCCESS: qemu-serial-talker builds at {}", binary.display());
-        }
-        Err(e) => {
-            let err_str = format!("{:?}", e);
-            if err_str.contains("Permission denied") {
-                eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!(
-                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/serial-talker/target"
-                );
-                eprintln!("Skipping test...");
-            } else {
-                panic!("qemu-serial-talker build failed: {:?}", e);
-            }
-        }
-    }
-}
-
-/// Test that qemu-serial-listener builds successfully
-#[test]
-fn test_qemu_serial_listener_builds() {
-    require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
-
-    let result = build_qemu_serial_listener();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            println!(
-                "SUCCESS: qemu-serial-listener builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            let err_str = format!("{:?}", e);
-            if err_str.contains("Permission denied") {
-                eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!(
-                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/serial-listener/target"
-                );
-                eprintln!("Skipping test...");
-            } else {
-                panic!("qemu-serial-listener build failed: {:?}", e);
-            }
-        }
-    }
-}
+// (Phase 182.3) `test_qemu_bsp_both_build` + `test_qemu_serial_{talker,listener}_builds`
+// removed — build-only, covered by `build-all` (the serial talker/listener are
+// also built+run by `test_qemu_serial_pubsub_e2e` below).
 
 // =============================================================================
 // Serial QEMU E2E Tests (MPS2-AN385 + CMSDK UART + zenohd serial)
@@ -732,28 +402,12 @@ fn test_qemu_serial_pubsub_e2e() {
 }
 
 // =============================================================================
-// RTIC QEMU Build Tests (MPS2-AN385)
-// =============================================================================
-
-#[test]
-fn test_qemu_rtic_talker_builds() {
-    require_arm_toolchain();
-
-    let binary = build_qemu_rtic_talker().expect("Failed to build qemu-rtic-talker");
-    println!("SUCCESS: qemu-rtic-talker builds at {}", binary.display());
-}
-
-#[test]
-fn test_qemu_rtic_listener_builds() {
-    require_arm_toolchain();
-
-    let binary = build_qemu_rtic_listener().expect("Failed to build qemu-rtic-listener");
-    println!("SUCCESS: qemu-rtic-listener builds at {}", binary.display());
-}
-
-// =============================================================================
 // RTIC QEMU Networked Tests (MPS2-AN385 + LAN9118 + zenohd)
 // =============================================================================
+//
+// (Phase 182.3) The `test_qemu_rtic_*_builds` presence tests were removed —
+// build-only, covered by `build-all` + the e2e tests below, which build+run
+// the same talker/listener/server/client/mixed binaries.
 
 #[test]
 fn test_qemu_rtic_pubsub_e2e() {
@@ -822,56 +476,6 @@ fn test_qemu_rtic_pubsub_e2e() {
 
     assert!(received > 0, "RTIC QEMU listener received 0 messages");
     assert!(published > 0, "RTIC QEMU talker published 0 messages");
-}
-
-// =============================================================================
-// RTIC QEMU Service/Action Build Tests (MPS2-AN385)
-// =============================================================================
-
-#[test]
-fn test_qemu_rtic_service_server_builds() {
-    require_arm_toolchain();
-
-    let binary =
-        build_qemu_rtic_service_server().expect("Failed to build qemu-rtic-service-server");
-    println!(
-        "SUCCESS: qemu-rtic-service-server builds at {}",
-        binary.display()
-    );
-}
-
-#[test]
-fn test_qemu_rtic_service_client_builds() {
-    require_arm_toolchain();
-
-    let binary =
-        build_qemu_rtic_service_client().expect("Failed to build qemu-rtic-service-client");
-    println!(
-        "SUCCESS: qemu-rtic-service-client builds at {}",
-        binary.display()
-    );
-}
-
-#[test]
-fn test_qemu_rtic_action_server_builds() {
-    require_arm_toolchain();
-
-    let binary = build_qemu_rtic_action_server().expect("Failed to build qemu-rtic-action-server");
-    println!(
-        "SUCCESS: qemu-rtic-action-server builds at {}",
-        binary.display()
-    );
-}
-
-#[test]
-fn test_qemu_rtic_action_client_builds() {
-    require_arm_toolchain();
-
-    let binary = build_qemu_rtic_action_client().expect("Failed to build qemu-rtic-action-client");
-    println!(
-        "SUCCESS: qemu-rtic-action-client builds at {}",
-        binary.display()
-    );
 }
 
 // =============================================================================
@@ -1026,33 +630,6 @@ fn test_qemu_rtic_action_e2e() {
     assert!(
         server_output.contains("Goal accepted"),
         "RTIC QEMU action server did not accept goal"
-    );
-}
-
-// =============================================================================
-// RTIC Mixed-Priority QEMU Build Tests (MPS2-AN385, ffi-sync)
-// =============================================================================
-
-#[test]
-fn test_qemu_rtic_mixed_talker_builds() {
-    require_arm_toolchain();
-
-    let binary = build_qemu_rtic_mixed_talker().expect("Failed to build qemu-rtic-mixed-talker");
-    println!(
-        "SUCCESS: qemu-rtic-mixed-talker builds at {}",
-        binary.display()
-    );
-}
-
-#[test]
-fn test_qemu_rtic_mixed_listener_builds() {
-    require_arm_toolchain();
-
-    let binary =
-        build_qemu_rtic_mixed_listener().expect("Failed to build qemu-rtic-mixed-listener");
-    println!(
-        "SUCCESS: qemu-rtic-mixed-listener builds at {}",
-        binary.display()
     );
 }
 

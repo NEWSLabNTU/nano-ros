@@ -655,45 +655,10 @@ fn test_zephyr_listener_smoke() {
 // Build Tests
 // =============================================================================
 
-/// Test: Zephyr talker uses a prebuilt fixture
-#[test]
-fn test_zephyr_talker_build() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let result = get_prebuilt_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim);
-
-    match result {
-        Ok(path) => {
-            assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found prebuilt talker at {}", path.display());
-        }
-        Err(e) => {
-            panic!("Failed to get zephyr-rs-talker: {}", e);
-        }
-    }
-}
-
-/// Test: Zephyr listener uses a prebuilt fixture
-#[test]
-fn test_zephyr_listener_build() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let result = get_prebuilt_zephyr_example("zephyr-rs-listener", ZephyrPlatform::NativeSim);
-
-    match result {
-        Ok(path) => {
-            assert!(path.exists(), "Binary should exist");
-            eprintln!("SUCCESS: Found prebuilt listener at {}", path.display());
-        }
-        Err(e) => {
-            panic!("Failed to get zephyr-rs-listener: {}", e);
-        }
-    }
-}
+// (Phase 182.3) `test_zephyr_{talker,listener}_build` removed — build-only
+// fixture-presence checks, covered by `just zephyr build-fixtures` (the west
+// prebuild that test-all depends on) + the zephyr pub/sub e2e tests that
+// build+run the same prebuilt binaries.
 
 // =============================================================================
 // Zephyr Action Examples
@@ -711,51 +676,9 @@ fn get_zephyr_action_client_native_sim() -> PathBuf {
         .expect("Failed to get zephyr-rs-action-client binary")
 }
 
-/// Test: Zephyr action server uses a prebuilt fixture
-#[test]
-fn test_zephyr_action_server_build() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let result = get_prebuilt_zephyr_example("zephyr-rs-action-server", ZephyrPlatform::NativeSim);
-
-    match result {
-        Ok(path) => {
-            assert!(path.exists(), "Binary should exist");
-            eprintln!(
-                "SUCCESS: Found prebuilt action server at {}",
-                path.display()
-            );
-        }
-        Err(e) => {
-            panic!("Failed to get zephyr-rs-action-server: {}", e);
-        }
-    }
-}
-
-/// Test: Zephyr action client uses a prebuilt fixture
-#[test]
-fn test_zephyr_action_client_build() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let result = get_prebuilt_zephyr_example("zephyr-rs-action-client", ZephyrPlatform::NativeSim);
-
-    match result {
-        Ok(path) => {
-            assert!(path.exists(), "Binary should exist");
-            eprintln!(
-                "SUCCESS: Found prebuilt action client at {}",
-                path.display()
-            );
-        }
-        Err(e) => {
-            panic!("Failed to get zephyr-rs-action-client: {}", e);
-        }
-    }
-}
+// (Phase 182.3) `test_zephyr_action_{server,client}_build` removed — build-only
+// presence checks (see the note above). The action e2e tests below build+run
+// the same prebuilt binaries via `get_zephyr_action_{server,client}_native_sim`.
 
 /// Test: Zephyr action server starts correctly
 ///
@@ -994,51 +917,9 @@ fn get_zephyr_service_client_native_sim() -> PathBuf {
         .expect("Failed to get zephyr-rs-service-client binary")
 }
 
-/// Test: Zephyr service server uses a prebuilt fixture
-#[test]
-fn test_zephyr_service_server_build() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let result = get_prebuilt_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim);
-
-    match result {
-        Ok(path) => {
-            assert!(path.exists(), "Binary should exist");
-            eprintln!(
-                "SUCCESS: Found prebuilt service server at {}",
-                path.display()
-            );
-        }
-        Err(e) => {
-            panic!("Failed to get zephyr-rs-service-server: {}", e);
-        }
-    }
-}
-
-/// Test: Zephyr service client uses a prebuilt fixture
-#[test]
-fn test_zephyr_service_client_build() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-
-    let result = get_prebuilt_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim);
-
-    match result {
-        Ok(path) => {
-            assert!(path.exists(), "Binary should exist");
-            eprintln!(
-                "SUCCESS: Found prebuilt service client at {}",
-                path.display()
-            );
-        }
-        Err(e) => {
-            panic!("Failed to get zephyr-rs-service-client: {}", e);
-        }
-    }
-}
+// (Phase 182.3) `test_zephyr_service_{server,client}_build` removed — build-only
+// presence checks (see the note above the action examples). The service smoke /
+// e2e tests below build+run the same prebuilt binaries.
 
 /// Test: Zephyr service server starts correctly
 ///

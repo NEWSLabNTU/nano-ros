@@ -84,81 +84,11 @@ fn test_zephyr_workspace_detection() {
     }
 }
 
-// =============================================================================
-// Zephyr Build Tests (require Zephyr environment)
-// =============================================================================
-
-#[test]
-fn test_zephyr_talker_build() {
-    if !is_zephyr_available() {
-        eprintln!("Skipping test: Zephyr environment not available");
-        return;
-    }
-
-    if !is_west_available() {
-        eprintln!("Skipping test: west not available");
-        return;
-    }
-
-    let workspace = match zephyr_workspace() {
-        Some(w) => w,
-        None => {
-            eprintln!("Skipping test: Zephyr workspace not found");
-            return;
-        }
-    };
-
-    // Verify the example exists
-    let example_path = workspace.join("nros/examples/zephyr/rust/talker");
-    if !example_path.exists() {
-        eprintln!(
-            "Skipping test: zephyr-rs-talker example not found at {}",
-            example_path.display()
-        );
-        return;
-    }
-
-    eprintln!("Zephyr talker example found at: {}", example_path.display());
-
-    // Note: Actually building Zephyr apps is expensive and should be done
-    // in dedicated CI. This test just verifies the environment is set up.
-}
-
-#[test]
-fn test_zephyr_listener_build() {
-    if !is_zephyr_available() {
-        eprintln!("Skipping test: Zephyr environment not available");
-        return;
-    }
-
-    if !is_west_available() {
-        eprintln!("Skipping test: west not available");
-        return;
-    }
-
-    let workspace = match zephyr_workspace() {
-        Some(w) => w,
-        None => {
-            eprintln!("Skipping test: Zephyr workspace not found");
-            return;
-        }
-    };
-
-    // Verify the example exists
-    let example_path = workspace.join("nros/examples/zephyr/rust/listener");
-    if !example_path.exists() {
-        eprintln!(
-            "Skipping test: zephyr-rs-listener example not found at {}",
-            example_path.display()
-        );
-        return;
-    }
-
-    eprintln!(
-        "Zephyr listener example found at: {}",
-        example_path.display()
-    );
-}
+// (Phase 182.3) `test_zephyr_{talker,listener}_build` removed — they only
+// checked the Zephyr example dir + env existed (no build; and used the bare
+// `eprintln!`+`return` skip that falsely reports PASS, contra CLAUDE.md).
+// Zephyr example presence/build is covered by `just zephyr build-fixtures` +
+// the zephyr.rs e2e tests.
 
 // =============================================================================
 // QEMU Emulation Tests (require QEMU)
