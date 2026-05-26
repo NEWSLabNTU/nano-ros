@@ -8,6 +8,10 @@
 #include "native_c_custom_msg.h" // Umbrella header
 
 int main(void) {
+    // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
+    // a test harness each line must flush on its newline (Phase 177.34).
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     printf("Testing generated C message bindings...\n\n");
 
     // Test Temperature message

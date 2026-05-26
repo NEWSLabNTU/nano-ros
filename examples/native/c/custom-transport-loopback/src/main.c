@@ -177,6 +177,10 @@ int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
+    // Line-buffer stdout: glibc full-buffers non-tty stdout, so when piped to
+    // a test harness each line must flush on its newline (Phase 177.34).
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     memset(&app, 0, sizeof(app));
 
     /* 1. Install the custom transport BEFORE session bring-up. */

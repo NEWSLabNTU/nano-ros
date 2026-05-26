@@ -756,9 +756,9 @@ passed.
   product defect; the RMW + fixtures are correct (177.31/177.32 verified). Until
   grouped, re-run a failed native-Cyclone case in isolation to confirm.
 
-- [ ] **177.34 - native C examples block-buffer stdout → harness reads nothing
-  within its window.** Owner: examples (listener fixed 2026-05-27; siblings
-  open). Found closing the 117.12 Cyclone ros2→nano pubsub test
+- [x] **177.34 - native C examples block-buffer stdout → harness reads nothing
+  within its window.** Owner: examples (resolved 2026-05-27). Found closing the
+  117.12 Cyclone ros2→nano pubsub test
   (`test_cyclonedds_ros2_to_nano_pubsub`): the test reported "no sample", but
   the native-C listener *was* receiving the data — its `printf` stdout was
   **block-buffered**. glibc full-buffers stdout (4 KiB) when it is a pipe rather
@@ -771,13 +771,12 @@ passed.
   run redirected to a file shows everything (stdio flushes at exit).
   **Fix:** `setvbuf(stdout, NULL, _IOLBF, 0)` at the top of `main` so each line
   flushes on its newline (tty-like). Landed for `examples/native/c/listener`
-  (`2292b7814`). **Open:** the sibling native C examples (`talker`,
-  `service-{server,client}`, `action-{server,client}`, `logging`, `custom-*`)
-  share the same `printf`-without-flush pattern and lack `setvbuf`. They pass
-  today only because no nano-side harness reads them live within a tight window
-  (the ros2 peer's stdout, which the e2e reads, is unaffected). Apply the same
-  one-liner if one starts flaking, or proactively for consistency. Same class as
-  the Phase 177.30 NuttX C++ action `fflush(stdout)` deadlock.
+  (`2292b7814`), then applied proactively to every other native C example
+  (`talker`, `service-{server,client}`, `action-{server,client}`, `logging`,
+  `custom-{msg,platform,transport-loopback}`) so the whole tree is consistent
+  and no nano-side harness reading one live can hit the same window miss. All
+  nine build clean under zenoh (`just native build-c`). Same class as the Phase
+  177.30 NuttX C++ action `fflush(stdout)` deadlock.
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
