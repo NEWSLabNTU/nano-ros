@@ -11,7 +11,10 @@ analysis (full `clean` → `build-all` → `test-all`: 978 tests, 339 s wall,
 ~5000 s CPU). **182.1 + 182.2 landed** (the safe zero-coverage-loss wins): −165
 build-only presence cases from `phase_118_collapse` (kept its 8 real Cyclone
 e2e tests) and the two duplicate clean-cmake smokes merged into one. Net ~167
-fewer tests + one fewer ~160 s cmake configure. 182.3–182.6 open.
+fewer tests + one fewer ~160 s cmake configure. **182.3 partial** — 19 of 53
+`_builds` dropped (the native/host cells with build-all + e2e coverage); the
+cross-platform `_all_examples_build` / `emulator` / `zephyr` `_builds` deferred
+(per-file import surgery + e2e-pairing audit). 182.4–182.6 open.
 
 **Priority.** P2 (developer + CI wall-clock).
 
@@ -88,15 +91,46 @@ PASSES (configure + build + `nros_platform_link_app`), one fewer ~160 s clean
 cmake configure. **Files**: `tests/cmake_add_subdirectory.rs`,
 `tests/cmake_platform_matrix.rs`.
 
-### 182.3 — Drop or relocate `_builds` cells (54, ~70 s)
+### 182.3 — Drop `_builds` cells that duplicate `build-all` — PARTIAL
 
 The `*_builds` tests assert a fixture compiles — exactly what `build-all` does
-for every fixture (Phase 181). A `build-all` failure already surfaces a broken
-fixture before `test-all` runs (the `_require-fixtures` preflight). → **Drop the
-pure-compile assertions from the nextest stage**, or gate them behind a
-`build`-tier filter that `test-all` skips. Keep any `_builds` that compile a
-*configuration not covered by `build-all`* (audit first). **Files**: per-binary
-(`emulator`, `zephyr`, `esp32_emulator`, `c_xrce_api`, …).
+for every fixture (Phase 181), and a broken fixture fails `build-all` /
+`build-test-fixtures` before `test-all` even starts (the `_require-fixtures`
+preflight). 53 such tests existed; audited per-file.
+
+**Done (19 dropped) — native/host cells, build-all + a runtime e2e sibling both
+cover them:**
+- `native_api` — 12 (`test_native_{talker,listener,service-server,service-client,
+  action-server,action-client}_builds` × {C,Cpp}). The native pub/sub / service /
+  action interop e2e build+run the same binaries; resolvers (`lang.*_binary()`)
+  kept.
+- `esp32_emulator` — 2 (`test_esp32_qemu_{talker,listener}_builds`); boot + e2e
+  tests build them.
+- `c_xrce_api` — 2; the C XRCE runtime tests build them. Removed now-unused
+  `build_c_xrce_*` imports.
+- `params` — 1 (`test_talker_with_params_builds`); param e2e build it.
+- `services` — 2; service e2e build them. Removed now-unused
+  `build_native_service_*` imports.
+
+Verified: the 5 binaries compile clean (no unused-import warnings), 0 `_builds`
+remain in them.
+
+**Deferred (need per-file surgery / e2e-pairing audit):**
+- 4 `*_all_examples_build` (`freertos_qemu`, `nuttx_qemu`, `threadx_linux`,
+  `threadx_riscv64_qemu`) — pure `build-all` duplication, but each is likely the
+  sole user of its platform's `build_<plat>_{talker,listener,service_*,action_*}`
+  helpers, so deletion needs the matching import removals + a check those helpers
+  aren't used by the file's runtime tests.
+- `emulator` — 20 (qemu-arm-baremetal); the rtic/serial talker+listener are
+  covered by the pubsub e2e, but the action/service rtic roles have no e2e — they
+  rely on `build-all` compile only (true, but confirm before dropping).
+- `zephyr` (6) + `platform` (2) — Zephyr is west-built (not `build-all`); confirm
+  each has a build-fixtures + e2e counterpart first.
+
+**Keep permanently (not fixture-compile):** `nros-board-cffi::{c_consumer_compiles_against_board_header,
+exported_symbols_are_addressable}` (C ABI/header compile surface) and
+`qemu_patched_binary::test_qemu_system_arm_resolves_to_patched_build` (infra).
+**Files**: `tests/{native_api,esp32_emulator,c_xrce_api,params,services}.rs`.
 
 ### 182.4 — Audit redundant BOOT-smoke (`_starts` / `_boots`, 71, ~399 s)
 

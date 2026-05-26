@@ -14,16 +14,10 @@ use std::{process::Command, time::Duration};
 // Parameter Declaration Tests
 // =============================================================================
 
-/// Test that talker with parameters builds successfully
-#[rstest]
-fn test_talker_with_params_builds() {
-    let binary = build_native_talker().expect("Failed to build native-rs-talker");
-    assert!(binary.exists(), "Binary should exist: {}", binary.display());
-    println!(
-        "SUCCESS: Built talker with parameters: {}",
-        binary.display()
-    );
-}
+// (Phase 182.3) `test_talker_with_params_builds` removed — it only asserted
+// the param-services talker compiled, covered by `build-all` (the manifest
+// builds talker `--features param-services`) + the param e2e tests below
+// (which build the same binary via the shared `build_native_talker` resolver).
 
 /// Test that talker starts and uses default parameter value
 #[rstest]

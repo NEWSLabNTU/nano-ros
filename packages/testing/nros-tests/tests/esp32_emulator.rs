@@ -29,73 +29,11 @@ use nros_tests::{
 use std::{process::Command, time::Duration};
 
 // =============================================================================
-// Build Tests (no QEMU needed)
+// (Phase 182.3) `test_esp32_qemu_{talker,listener}_builds` removed — they only
+// asserted the riscv32 fixture compiled, covered by `build-all` (Phase 181.4.h)
+// + the boot / talker-listener e2e tests below (which build the same binaries
+// via the shared `build_esp32_qemu_*` resolvers).
 // =============================================================================
-
-/// Verify esp32-qemu-talker builds with cargo +nightly
-#[test]
-fn test_esp32_qemu_talker_builds() {
-    if !require_riscv32_target() {
-        nros_tests::skip!("riscv32 target not available");
-    }
-
-    let result = build_esp32_qemu_talker();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            eprintln!("SUCCESS: esp32-qemu-talker builds at {}", binary.display());
-        }
-        Err(e) => {
-            let err_str = format!("{:?}", e);
-            if err_str.contains("Permission denied") {
-                eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!("Fix with: sudo rm -rf examples/qemu-esp32-baremetal/rust/talker/target");
-                eprintln!("Skipping test...");
-            } else {
-                panic!("esp32-qemu-talker build failed: {:?}", e);
-            }
-        }
-    }
-}
-
-/// Verify esp32-qemu-listener builds with cargo +nightly
-#[test]
-fn test_esp32_qemu_listener_builds() {
-    if !require_riscv32_target() {
-        nros_tests::skip!("riscv32 target not available");
-    }
-
-    let result = build_esp32_qemu_listener();
-    match result {
-        Ok(binary) => {
-            assert!(
-                binary.exists(),
-                "Binary should exist at {}",
-                binary.display()
-            );
-            eprintln!(
-                "SUCCESS: esp32-qemu-listener builds at {}",
-                binary.display()
-            );
-        }
-        Err(e) => {
-            let err_str = format!("{:?}", e);
-            if err_str.contains("Permission denied") {
-                eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!(
-                    "Fix with: sudo rm -rf examples/qemu-esp32-baremetal/rust/listener/target"
-                );
-                eprintln!("Skipping test...");
-            } else {
-                panic!("esp32-qemu-listener build failed: {:?}", e);
-            }
-        }
-    }
-}
 
 // =============================================================================
 // Boot Test (QEMU needed, no networking)

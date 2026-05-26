@@ -156,92 +156,12 @@ fn require_native_env() -> bool {
 }
 
 // =============================================================================
-// Fixture presence tests (parametrised)
+// (Phase 182.3) The per-role/-lang `*_builds` presence tests were removed —
+// they only asserted a fixture binary built, coverage already provided by
+// `build-all` (Phase 181) + the `_require-fixtures` preflight, and the
+// startup / pub-sub / service / action e2e tests below build+run the same
+// binaries. The `lang.*_binary()` resolvers live on; the e2e tests use them.
 // =============================================================================
-
-#[rstest]
-fn test_native_talker_builds(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    let path = lang.talker_binary();
-    eprintln!(
-        "[PASS] {} talker binary built: {}",
-        lang.label(),
-        path.display()
-    );
-    assert!(path.exists());
-}
-
-#[rstest]
-fn test_native_listener_builds(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    let path = lang.listener_binary();
-    eprintln!(
-        "[PASS] {} listener binary built: {}",
-        lang.label(),
-        path.display()
-    );
-    assert!(path.exists());
-}
-
-#[rstest]
-fn test_native_service_server_builds(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    let path = lang.service_server_binary();
-    eprintln!(
-        "[PASS] {} service server binary built: {}",
-        lang.label(),
-        path.display()
-    );
-    assert!(path.exists());
-}
-
-#[rstest]
-fn test_native_service_client_builds(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    let path = lang.service_client_binary();
-    eprintln!(
-        "[PASS] {} service client binary built: {}",
-        lang.label(),
-        path.display()
-    );
-    assert!(path.exists());
-}
-
-#[rstest]
-fn test_native_action_server_builds(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    let path = lang.action_server_binary();
-    eprintln!(
-        "[PASS] {} action server binary built: {}",
-        lang.label(),
-        path.display()
-    );
-    assert!(path.exists());
-}
-
-#[rstest]
-fn test_native_action_client_builds(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-    let path = lang.action_client_binary();
-    eprintln!(
-        "[PASS] {} action client binary built: {}",
-        lang.label(),
-        path.display()
-    );
-    assert!(path.exists());
-}
 
 // =============================================================================
 // Startup tests (parametrised)

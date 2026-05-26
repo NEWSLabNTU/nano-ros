@@ -12,8 +12,8 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, build_c_xrce_listener, build_c_xrce_talker,
-        c_xrce_listener_binary, c_xrce_talker_binary, require_cmake, require_xrce_agent,
+        ManagedProcess, XrceAgent, c_xrce_listener_binary, c_xrce_talker_binary, require_cmake,
+        require_xrce_agent,
     },
 };
 use rstest::rstest;
@@ -32,50 +32,11 @@ fn stdbuf_command(binary: &Path) -> Command {
 }
 
 // =============================================================================
-// Fixture presence tests
+// (Phase 182.3) `test_c_xrce_{talker,listener}_builds` removed — they only
+// asserted the C XRCE fixtures compiled, covered by `build-all` + the C XRCE
+// runtime tests below (which build the same binaries via the shared
+// `build_c_xrce_*` resolvers).
 // =============================================================================
-
-#[test]
-fn test_c_xrce_talker_builds() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    match build_c_xrce_talker() {
-        Ok(path) => {
-            eprintln!("[PASS] C XRCE talker binary built: {}", path.display());
-            assert!(path.exists());
-        }
-        Err(e) => {
-            eprintln!("[FAIL] Could not build C XRCE talker: {}", e);
-            panic!("C XRCE talker build failed: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_c_xrce_listener_builds() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
-
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    match build_c_xrce_listener() {
-        Ok(path) => {
-            eprintln!("[PASS] C XRCE listener binary built: {}", path.display());
-            assert!(path.exists());
-        }
-        Err(e) => {
-            eprintln!("[FAIL] Could not build C XRCE listener: {}", e);
-            panic!("C XRCE listener build failed: {}", e);
-        }
-    }
-}
 
 // =============================================================================
 // Startup Tests

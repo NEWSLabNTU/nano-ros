@@ -6,44 +6,19 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_service_client, build_native_service_server,
-        require_zenohd, service_client_binary, service_server_binary, zenohd_unique,
+        ManagedProcess, ZenohRouter, require_zenohd, service_client_binary, service_server_binary,
+        zenohd_unique,
     },
 };
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
 // =============================================================================
-// Build/Detection Tests
+// (Phase 182.3) `test_service_{server,client}_builds` removed — they only
+// asserted the service fixtures compiled, covered by `build-all` + the service
+// e2e tests below (which build the same binaries via the shared
+// `build_native_service_*` resolvers).
 // =============================================================================
-
-#[test]
-fn test_service_server_builds() {
-    match build_native_service_server() {
-        Ok(path) => {
-            eprintln!("[PASS] Service server binary built: {}", path.display());
-            assert!(path.exists());
-        }
-        Err(e) => {
-            eprintln!("[FAIL] Could not build service server: {}", e);
-            panic!("Service server build failed: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_service_client_builds() {
-    match build_native_service_client() {
-        Ok(path) => {
-            eprintln!("[PASS] Service client binary built: {}", path.display());
-            assert!(path.exists());
-        }
-        Err(e) => {
-            eprintln!("[FAIL] Could not build service client: {}", e);
-            panic!("Service client build failed: {}", e);
-        }
-    }
-}
 
 // =============================================================================
 // Server Startup Tests
