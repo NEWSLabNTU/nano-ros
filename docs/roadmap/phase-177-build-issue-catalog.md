@@ -1212,12 +1212,15 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   Active NuttX work: the Rust-fixture codegen bug (**177.8.c**, mitigated by the
   pulled `8e5855c29` "build NuttX Rust fixtures at release/lto") and the NuttX
   Cpp action lease-task ↔ `z_get` race (**177.30**). Owned there.
-- [ ] **G5 - Native Cyclone DDS interop (4).**
+- [x] **G5 - Native Cyclone DDS interop (4). RESOLVED 2026-05-26 — stale run.**
   `native_api::test_native_cyclonedds_{rust_talker_to_listener,talker_to_rust_listener}`
-  for both `Language__C` and `Language__Cpp`. Active Cyclone embedded/interop
-  work — the RX-buffer ddsrt-heap fixes landed on main mid-rebase
-  (`c2786def1` 177.26.RX.2, submodule bumped to `12b4af2c`). Tracked under
-  **117 / 177.26**.
+  for both `Language__C` and `Language__Cpp`. The failures were a mid-rebase
+  artifact: the test-all clean-rebuild ran while `c2786def1` (177.26.RX.2) and
+  the cyclone submodule bump to `12b4af2c` were still settling on main, so the
+  fixtures linked an inconsistent Cyclone backend. Re-verified twice with main
+  consistent — **all 4 PASS** (~8 s each, isolated). No code change needed.
+  Tracked under **117 / 177.26** (both now reflect working native Cyclone
+  pub/sub).
 - [ ] **G6 - XRCE runtime (2).**
   `xrce::test_xrce_large_message_publish`, `xrce::test_xrce_service_request_response`.
   XRCE large-message / service-reply paths; same family as **177.9.E** (other
@@ -1227,8 +1230,11 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
 **Conclusion.** Phase 181 build-SSOT is validated: clean rebuild green, migrated
 fixtures (native + esp32-C3 + threadx-linux build-verified earlier; safety /
 large-buf pass here), staleness probe clean post-build. The exit=1 is pre-existing
-known-hard E2E — G1/G2/G3 are non-bugs (skips/retired-paths/flake), G4/G5/G6 are
-owned by 177.8/177.30, 117/177.26, and the XRCE items respectively.
+known-hard E2E. Follow-up 2026-05-26: G1/G2/G3 non-bugs (G2's 2 retired tests
+deleted), **G5 resolved** (stale mid-rebase run — all 4 native Cyclone interop
+tests pass with main consistent), **G4 NuttX-Rust half fixed** (177.8.c codegen,
+release/lto). Still open: G4's NuttX-Cpp action (177.30 / 177.8.e), G6 XRCE
+runtime (177.9.E family).
 
 ### Code Review Findings (2026-05-25)
 
