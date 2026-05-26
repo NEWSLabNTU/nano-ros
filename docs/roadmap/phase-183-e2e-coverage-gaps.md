@@ -87,6 +87,37 @@ talker/listener boot. The Rust + C++ zephyr E2E suites (in `tests/zephyr.rs` +
 Use `build_zephyr_cmake_example_rmw("c", …)` (already used by the cyclonedds C
 e2e) + `ZephyrProcess`. **Files**: `tests/zephyr.rs`. **Est.**: ~6 tests.
 
+**Attempt 2026-05-26 — BLOCKED on the C fixtures, not the tests.** Drafted the 5
+tests (zenoh pubsub/service/action + xrce service/action) mirroring the passing
+cyclonedds C e2e — same resolver (`build_zephyr_cmake_example_rmw("c", …)`,
+build root `build/zephyr-workspace-builds/`), same `ZephyrProcess` harness, C
+client success markers `Result:` (service) / `Result status:` (action). They
+compile clean but **all 5 fail at runtime** because the C zenoh/xrce fixtures in
+that build root don't reach the app:
+- **zenoh C (all 3):** the node logs `zpico_zephyr: Network not ready after
+  2000 ms` → `nros_listener: Network not ready` and exits before publishing.
+  The C and Cpp zenoh `prj.conf` + `prj-zenoh.conf` net configs are **identical**
+  (both NSOS, neither has `NET_CONNECTION_MANAGER`), and the C *cyclonedds*
+  fixtures in the **same** build root pass — so it's specific to zenoh-pico's
+  `zpico_zephyr_wait_network` timing out on native_sim in this build, not the
+  test or the net Kconfig.
+- **xrce C service/action:** client gets no `Result:`/`Result status:`. The
+  *existing* passing xrce-C pubsub e2e (`test_zephyr_xrce_c_talker_listener`)
+  resolves via `get_zephyr_xrce_c_*_native_sim` → the **`nano-ros-workspace/`**
+  in-place west build (build system #1), a *different* fixture set than the
+  `build/zephyr-workspace-builds/` SSOT root (#2) the new tests + cyclone e2e
+  use. So the two build systems are not yet aligned for zenoh/xrce.
+
+**Root issue to resolve first (then the tests pass as-is):** the Phase-181 SSOT
+build root (`build/zephyr-workspace-builds/`) produces working *cyclonedds* C
+fixtures but zenoh/xrce C fixtures that fail native_sim network-readiness, while
+the legacy `nano-ros-workspace/` builds (used by the surviving zenoh/xrce e2e,
+now flagged stale by the staleness gate) worked. Align the two: either fix the
+SSOT zenoh/xrce native_sim build (why `wait_network` times out there) or point
+the C e2e at the build system that the Rust/Cpp zenoh/xrce e2e use. The test
+code itself is proven (cyclone C e2e use the identical pattern and pass);
+reverted pending the fixture fix to avoid red tests in `test-all`.
+
 ### 183.2 — Native + Zephyr XRCE C service/action E2E
 
 C XRCE examples exist (native 6, zephyr 6) but only pubsub is exercised.
