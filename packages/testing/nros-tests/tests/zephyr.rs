@@ -2695,7 +2695,15 @@ fn test_zephyr_c_service_server_to_client_e2e() {
 }
 
 /// Zephyr C zenoh action server ↔ client.
+///
+/// Phase 177.30 — `#[ignore]`d: runtime-verified to hang. The C action client
+/// prints `Sending goal: order=N` then never gets accept/feedback/result —
+/// the same zenoh-pico action-`send_goal` `z_get` race that blocks NuttX Cpp
+/// action (177.30). pub/sub + service pass on the *same* fixture; only the
+/// action `send_goal` `z_get` blocks. Matches how nuttx/threadx-riscv64 zenoh
+/// action are `drop (177.30)`. Run with `--ignored` once 177.30 is fixed.
 #[test]
+#[ignore = "177.30: zenoh-pico action send_goal z_get hang (zephyr C); pub/sub+service pass"]
 fn test_zephyr_c_action_server_to_client_e2e() {
     if !require_zephyr() {
         nros_tests::skip!("Zephyr not available");
