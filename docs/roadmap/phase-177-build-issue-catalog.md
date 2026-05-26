@@ -737,8 +737,10 @@ passed.
 
 ### Test-All Runtime / E2E
 
-- [x] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
-  test-harness (FIXED 2026-05-27). The native-Cyclone `nros-tests::native_api`
+- [ ] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
+  test-harness (REOPENED 2026-05-27 — the PID-domain fix reduced but did not
+  eliminate the flake; see "Residual flake" below). The native-Cyclone
+  `nros-tests::native_api`
   cases — `test_native_cyclonedds_{talker_to_rust_listener,rust_talker_to_listener}`
   (pub/sub) and the Phase 183.4 `test_native_cyclonedds_{service,action}` (C +
   C++) — each passed **run alone** but failed when nextest ran them in parallel.
@@ -771,6 +773,17 @@ passed.
   Verified 2026-05-27: 5/5 concurrent runs (`-E 'binary(native_api) and
   test(cyclonedds)'`, `--retries 0 --test-threads 8`) pass 9/9, runtime back to
   ~11 s. Not a product defect; RMW + fixtures are correct (177.31/177.32 verified).
+
+  **Residual flake (REOPENED 2026-05-27).** With the PID-domain fix in place, an
+  8-way concurrent run (`-E 'test(test_native_cyclonedds)'`, all 8 cases incl. the
+  newly-built service+action C/C++ fixtures) still failed `action::C` — but at
+  **0.6 s** (vs the ~18 s domain-collision signature, and vs ~10 s for a clean
+  pass), and the case passes deterministically in isolation. The fast-fail
+  profile means it is *not* the domain-collision path (that one reached
+  `Failed to send goal: -2` after a full discovery window) — a different
+  concurrent-run failure mode. Under investigation: capture the failing case's
+  output under load to classify (early abort / spawn race / residual cross-talk).
+  The PID-seeded `unique_ros_domain_id()` fix stands; this is an additional mode.
 
 - [x] **177.34 - native C examples block-buffer stdout → harness reads nothing
   within its window.** Owner: examples (resolved 2026-05-27). Found closing the
