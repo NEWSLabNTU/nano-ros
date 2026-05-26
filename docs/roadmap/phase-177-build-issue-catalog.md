@@ -1093,6 +1093,67 @@ passed.
   `XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp cargo test -p nros-tests --test esp32_emulator test_esp32_talker_listener_e2e -- --nocapture`
   (`1 passed`, `8.66s`).
 
+- [ ] **177.30 - NuttX-QEMU Cpp action goal hangs: zenoh-pico lease-task ↔
+  `z_get` lock-ordering race.** `test_rtos_action_e2e`
+  (`platform_2_Platform__Nuttx::lang_3_Lang__Cpp`) hangs: the client prints
+  `Sending goal: order=5` then never gets an accept; the server stays at
+  "Waiting for goals" and never logs a goal request. NuttX Cpp pub/sub +
+  service pass and the NuttX **C** action passes, so transport, service
+  request/reply, and the server's action queryable all work — it is specific
+  to the Cpp action goal path on NuttX. (Investigation log: 177.8.e.)
+
+  **Root cause (confirmed via tshark + gdb-multiarch, 2026-05-26).** It is a
+  timing-dependent concurrency race in the vendored zenoh-pico (1.7.2)
+  multi-threaded runtime, NOT an nros logic bug:
+  - tshark on `lo:7672` shows the goal **query never reaches the wire** —
+    after discovery (both endpoints declare `…/_action/send_goal` liveliness,
+    server `SS` / client `SC`) the two guest↔zenohd connections carry only
+    3-byte keep-alives. The client blocks in the send path before it
+    transmits.
+  - gdb chain at the block: `nros_app_main → send_goal[_async] →
+    send_goal_raw → CffiServiceClient::send_request_raw → zpico_get_start →
+    z_get → _z_query → _z_send_n_msg`. `_z_mutex_lock` tracing shows the
+    unicast **lease task** (`_zp_unicast_lease_task →
+    _z_pending_query_process_timeout`) contending the session/pending-query
+    mutex against the app thread's `z_get` TX + reply-final path.
+  - **Heisenbug proof:** with the server up and the client run *under gdb*
+    (perturbed timing), `z_get` returns and the server logs
+    `Goal request [1]: order=5` — the action completes. At native speed the
+    two paths deadlock. `_z_query` unlocks the session mutex
+    (`src/net/primitives.c:542`) *before* `_z_send_n_msg` (`:558`), so it is
+    NOT a session-mutex AB-BA inside `_z_query`; the cycle is between the
+    TX/reply-final path and the lease task's session-locked timeout sweep.
+  - **Why the action path and not pub/sub or service:** the action client
+    carries far more concurrent pending-query churn — send_goal + get_result
+    + cancel_goal service clients plus feedback/status subscriptions, and the
+    warm-up `poll()` loop issues queries the lease task is timing out at the
+    exact moment send_goal's `z_get` fires, widening the race window.
+
+  **Roadmap (fix plan; nothing landed yet — vendored + cross-platform risky):**
+  1. **Reproduce deterministically.** Add a NuttX stress harness that fires
+     `z_get` while the lease task runs `_z_pending_query_process_timeout`
+     (short lease interval + several in-flight pending queries) so the race
+     is hittable without QEMU timing luck.
+  2. **Fix the lock ordering in zenoh-pico.** Narrow the lease task's hold:
+     `_z_pending_query_process_timeout` must not keep the session mutex while
+     touching the TX path, OR enforce a single global order (session →
+     transport TX) on every site that takes both (`_z_send_n_msg`,
+     `_z_trigger_reply_final`, the lease sweep). Land as a tracked patch over
+     the pinned 1.7.2 tree (mirror the existing `_z_query` /
+     `_z_unsafe_register_pending_query` patch in `src/net/primitives.c`).
+  3. **Cross-platform reverify** the patch on every multi-threaded zenoh-pico
+     backend — POSIX, Zephyr, FreeRTOS+lwIP, ThreadX+NetX, NuttX — since the
+     lease task is shared. `just test-all` for each platform's `rtos_e2e` +
+     pub/sub + service, not just NuttX action.
+  4. **Re-enable** NuttX Cpp action in `rtos_e2e` once green; drop 177.8.e's
+     "open" note.
+
+  **Acceptance:** `test_rtos_action_e2e` NuttX/Cpp passes at native speed
+  (no gdb), the server logs the goal + result, and no regression on the other
+  zenoh-pico backends' rtos_e2e/pub-sub/service suites. **Depends on:** none
+  (self-contained zenoh-pico concurrency work). **Priority:** medium —
+  isolated to NuttX Cpp actions; C actions + all other NuttX paths work.
+
 ### Code Review Findings (2026-05-25)
 
 Post-merge review of the `db0e4fbb5` ThreadX Cyclone fix plus the build/test
@@ -1506,7 +1567,9 @@ robustness/consistency follow-ups, not regressions.
     Fix is a vendored zenoh-pico (1.7.2) lock-ordering change between the
     unicast lease task's `_z_pending_query_process_timeout` and the query
     TX / reply-final paths — cross-platform-risky, so left for a focused
-    zenoh-pico concurrency task, not landed here.
+    zenoh-pico concurrency task, not landed here. **Promoted to first-class
+    item 177.30** (root cause + fix roadmap + acceptance); this entry is the
+    investigation log.
 - Two build-all-after-clean fragilities surfaced by the nuke gate:
   - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
     --locked` on standalone example/fixture dirs whose gitignored
