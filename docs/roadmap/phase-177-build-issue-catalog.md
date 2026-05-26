@@ -1179,12 +1179,18 @@ subsystems untouched by Phase 181. The harness builds its fixtures via
 `fixtures/binaries/mod.rs`, a path independent of the migrated `just` recipes,
 so these E2E outcomes are orthogonal to the refactor. Grouped:
 
-- [x] **G1 - Intentional `skip!` deferrals counted as failures (4).**
-  `cmake_platform_matrix::cmake_platform_{freertos,nuttx,threadx,zephyr}`. Each
-  panics with `[SKIPPED] Phase 138.6 … deferred — needs board-driver paths
-  (FREERTOS_DIR + LWIP_DIR) the smoke project doesn't supply`. Same as **177.9.B**
-  — the raw-CMake smoke intentionally omits SDK board paths; real coverage is in
-  the platform recipes. `cmake_platform_posix` passes. Not bugs.
+- [x] **G1 - Placeholder `skip!` cells — DELETED (was 4).**
+  `cmake_platform_matrix::cmake_platform_{freertos,nuttx,threadx,zephyr}` were
+  unconditional `skip!`s from the file's first commit (`044d7fd6d`), deferred to
+  a "Phase 139" that has no roadmap doc. Investigation (2026-05-26) found their
+  intended coverage — the `cmake/platform/<plat>.cmake` module contract — is
+  already exercised end-to-end by the real C/C++ example builds + `rtos_e2e`
+  (each example configures `add_subdirectory(<root>) + NANO_ROS_PLATFORM=<plat>`,
+  the build path migrated in Phase 181.5) and the Phase 139 `integrations/<rtos>/`
+  shells. So they were zombie placeholders (4 permanent raw "failures", 0 real
+  per `_test-summary`). **Deleted** the 4 cells + the now-dead `require_cmd_or_skip`
+  helper; `cmake_platform_posix` (dispatch guard) + `cmake_platform_threadx_requires_board`
+  (real FATAL_ERROR check) stay. Supersedes the deferral half of **177.9.B**.
 - [x] **G2 - Retired bridge-source paths (2). RESOLVED 2026-05-26 — tests deleted.**
   `bridge_xrce_to_dds_e2e`, `bridge_zenoh_to_dds_e2e` targeted the retired
   **dust-dds** RMW (Phase 169); their example trees

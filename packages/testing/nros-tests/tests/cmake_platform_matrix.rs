@@ -12,11 +12,14 @@
 //!   `cmake_add_subdirectory` smoke test but explicitly parameterised
 //!   on `NANO_ROS_PLATFORM=posix`. Failure ⇒ Phase 138 dispatch
 //!   regression.
-//! - Cross-compile platforms (zephyr, freertos, nuttx, threadx) skip
-//!   cleanly via `nros_tests::skip!` when their cross-toolchain isn't
-//!   installed. CLAUDE.md "Tests must fail on unmet preconditions" rule
-//!   carves out the `skip!` macro for matrix cells that genuinely
-//!   cannot run without optional system deps.
+//! - Cross-compile platforms (zephyr, freertos, nuttx, threadx) are NOT
+//!   smoke-tested here. Their `cmake/platform/<plat>.cmake` modules are
+//!   exercised end-to-end by the real C/C++ example builds + `rtos_e2e`
+//!   (each example configures `add_subdirectory(<root>) +
+//!   NANO_ROS_PLATFORM=<plat>` with the board paths a minimal smoke can't
+//!   supply) and the Phase 139 `integrations/<rtos>/` shells. The
+//!   placeholder matrix cells (which only ever `skip!`ed, deferred to a
+//!   never-tracked "Phase 139") were removed. POSIX guards the dispatch path.
 //! - bare-metal exercises the FATAL_ERROR path in
 //!   `nros-baremetal.cmake` (missing `NANO_ROS_BOARD`) via a configure-
 //!   only check; the rest of the link is board-specific and lives in
@@ -134,66 +137,12 @@ fn cmake_platform_posix() {
 }
 
 // -----------------------------------------------------------------------
-// Cross-compile platforms — skip cleanly when toolchains aren't present.
-// Detection heuristics match the legacy per-platform recipes in
-// `justfile`; replace with actual cross-build invocation once Phase 139's
-// integration shells are in place.
+// Cross-compile platforms (zephyr, freertos, nuttx, threadx) intentionally
+// have no smoke cell here — their cmake/platform modules are covered by the
+// real C/C++ example builds + rtos_e2e + the Phase 139 integration shells
+// (see the module header). The previous placeholder cells only ever
+// `skip!`ed and were removed.
 // -----------------------------------------------------------------------
-
-fn require_cmd_or_skip(cmd: &str, hint: &str) {
-    // Avoid pulling in a `which`-crate dep; PATH walk is enough for a
-    // configure-time skip gate.
-    let Some(path) = std::env::var_os("PATH") else {
-        nros_tests::skip!("PATH unset — cannot detect {}", cmd);
-    };
-    let found = std::env::split_paths(&path).any(|dir| dir.join(cmd).is_file());
-    if !found {
-        nros_tests::skip!("{} not on PATH — {}", cmd, hint);
-    }
-}
-
-#[test]
-fn cmake_platform_zephyr() {
-    require_codegen_or_skip();
-    // Zephyr's normal entry is `west`. Skip cleanly when absent —
-    // Phase 139 will wire the west-driven integration shell.
-    require_cmd_or_skip("west", "install zephyr SDK (`just zephyr setup`)");
-    nros_tests::skip!("Phase 138.6 zephyr cell deferred to Phase 139's west / module integration");
-}
-
-#[test]
-fn cmake_platform_freertos() {
-    require_codegen_or_skip();
-    require_cmd_or_skip(
-        "arm-none-eabi-gcc",
-        "install gcc-arm-none-eabi (`just freertos setup`)",
-    );
-    nros_tests::skip!(
-        "Phase 138.6 freertos cell deferred — needs board-driver paths (FREERTOS_DIR + LWIP_DIR) the smoke project doesn't supply"
-    );
-}
-
-#[test]
-fn cmake_platform_nuttx() {
-    require_codegen_or_skip();
-    require_cmd_or_skip(
-        "arm-none-eabi-gcc",
-        "install nuttx toolchain (`just nuttx setup`)",
-    );
-    nros_tests::skip!(
-        "Phase 138.6 nuttx cell deferred — NuttX builds via cargo / `just nuttx build`, not raw cmake"
-    );
-}
-
-#[test]
-fn cmake_platform_threadx() {
-    require_codegen_or_skip();
-    // ThreadX on Linux uses the host compiler; matrix-test the linux
-    // variant once Phase 139 wires the threadx-linux integration shell.
-    nros_tests::skip!(
-        "Phase 138.6 threadx cell deferred to Phase 139's threadx-linux integration shell"
-    );
-}
 
 #[test]
 fn cmake_platform_threadx_requires_board() {
