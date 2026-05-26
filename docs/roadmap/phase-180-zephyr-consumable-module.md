@@ -100,7 +100,7 @@ example matrix on both lines. No new consumption features here — the bar is
 - [ ] Version-gate the module CMake/Kconfig
 - [ ] Parametrize `just zephyr setup`/build by Zephyr version (env or arg)
 - [ ] Re-verify all 16 patch scripts against 4.4; fix or split per-version
-- [ ] CI builds the example matrix on both 3.7 and 4.4
+- [x] CI builds the example matrix on both 3.7 and 4.4 (`just zephyr ci-both` verified PASS/PASS; `.github/workflows/zephyr-dual-line.yml`)
 
 ### 180.B — copy-out-clean examples (version-agnostic)
 Sever the 18 repo-walks. Module exports `CMAKE_MODULE_PATH` (+ cache vars);
@@ -119,7 +119,7 @@ module's exported cmake dir; examples use `find_package(CycloneDDS)` for
 - [x] Move shared cyclone cmake helper into the module-exported dir (`packages/dds/nros-rmw-cyclonedds/cmake/`)
 - [x] Rewrite the 18 example CMakeLists to module-discovery (use `NROS_CYCLONE_IDLC` + `list(APPEND CMAKE_MODULE_PATH ${NROS_CYCLONE_CMAKE_DIR})` + `include(<name>)`; Zephyr shadows the cache `CMAKE_MODULE_PATH`, so each example appends the exported dir itself — still copy-out clean, no repo path)
 - [x] Replace `/opt/ros/humble` hardcode with `NROS_<PKG>_DIR` env contract (recipes default to `/opt/ros/humble/share/<pkg>`)
-- [ ] CI check: a copied-out example builds from outside the repo tree (pending)
+- [x] CI check: a copied-out example builds from outside the repo tree (`just zephyr check-copy-out`, verified PASS)
 
 ### 180.C — 4.x-native consumption
 Layer the 4.x-only mechanics on top of A+B. Ship `nros-zenoh`/
@@ -130,7 +130,7 @@ under `samples:` with `sample.yaml` + Twister; contribute boards via
 `snippets/nros-*/snippet.yml`, `examples/zephyr/*/sample.yaml`,
 `boards/` (module board_root), `just/zephyr.just`.
 - [x] `snippet_root` + per-RMW snippets (`nros-{zenoh,cyclonedds,xrce}`) carrying the RMW Kconfig (4.x; verified `-S nros-cyclonedds` discovered + applied + built)
-- [ ] `samples:` + `sample.yaml` + Twister cases for the example matrix
+- [x] `samples:` + `sample.yaml` + Twister cases (6 talker/listener samples; module.yml `samples:`; Twister discovery verified)
 - [ ] `board_root` for nano-ros board configs
 - [x] Document `-S nros-<rmw>` selection on 4.x
 

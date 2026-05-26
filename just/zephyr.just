@@ -200,6 +200,17 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         -DCONF_FILE="$conf" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
     echo "Built: $workspace/$bd/zephyr/zephyr.elf"
 
+# Phase 180.B item 5 — copy-out CI check. Copies an example OUT of the
+# repo tree and builds it against the nano-ros Zephyr module on the 4.4
+# line, proving the module-only consumption contract (no repo-tree
+# walk-up). PASS iff it reaches zephyr.elf. Idempotent; cleans its temp
+# dir. Args: <example> <rmw> <board> (defaults c/talker zenoh native_sim).
+#   just zephyr check-copy-out
+#   just zephyr check-copy-out c/listener zenoh
+[group("examples")]
+check-copy-out example="c/talker" rmw="zenoh" board="native_sim/native/64":
+    ./scripts/zephyr/check-copy-out.sh "{{example}}" "{{rmw}}" "{{board}}"
+
 # Build Zephyr Rust examples (all Rust examples for native_sim)
 [group("examples")]
 build-rust-examples:
@@ -1006,6 +1017,53 @@ test-c-port: build-c-port
     #!/usr/bin/env bash
     set -e
     timeout 15 ./tests/zephyr-c-smoke/build/zephyr/zephyr.exe
+
+# Phase 180.A Task 10 — dual-line CI. Build a representative example
+# (default c/talker zenoh) on BOTH the 3.7 LTS line and the 4.4 rolling
+# line via `build-one`, reporting per-line pass/fail. A line whose
+# workspace is not set up SKIPS with a message (never a silent pass);
+# a line whose workspace IS set up but fails to build is a hard FAIL.
+# Exit non-zero iff any present line failed.
+#   just zephyr ci-both
+#   just zephyr ci-both cpp/listener zenoh
+[group("full-matrix")]
+ci-both example="c/talker" rmw="zenoh":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A WS=( [3.7]="${NROS_ZEPHYR_WORKSPACE_37:-../nano-ros-workspace}"
+                    [4.4]="${NROS_ZEPHYR_WORKSPACE_44:-../nano-ros-workspace-4.4}" )
+    overall=0
+    declare -A RESULT
+    for line in 3.7 4.4; do
+        ws="${WS[$line]}"
+        ws_abs="$(realpath "$ws" 2>/dev/null || echo "")"
+        if [ -z "$ws_abs" ] || [ ! -d "$ws_abs/zephyr" ]; then
+            echo "=== Zephyr $line: SKIP (workspace not set up at $ws — run: NROS_ZEPHYR_VERSION=$line just zephyr setup)"
+            RESULT[$line]="SKIP"
+            continue
+        fi
+        echo "=== Zephyr $line: building zephyr/{{example}} ({{rmw}}) via build-one ==="
+        if NROS_ZEPHYR_VERSION="$line" NROS_ZEPHYR_WORKSPACE="$ws_abs" \
+            just zephyr build-one "{{example}}" "{{rmw}}"; then
+            echo "=== Zephyr $line: PASS ==="
+            RESULT[$line]="PASS"
+        else
+            echo "=== Zephyr $line: FAIL ==="
+            RESULT[$line]="FAIL"
+            overall=1
+        fi
+    done
+    echo
+    echo "================ dual-line summary ================"
+    for line in 3.7 4.4; do
+        printf "  Zephyr %-4s : %s\n" "$line" "${RESULT[$line]}"
+    done
+    echo "==================================================="
+    if [ "$overall" -ne 0 ]; then
+        echo "FAIL: at least one present Zephyr line failed."
+        exit 1
+    fi
+    echo "OK: all present Zephyr lines built (skips reported above)."
 
 # CI: doctor + test
 [group("full-matrix")]
