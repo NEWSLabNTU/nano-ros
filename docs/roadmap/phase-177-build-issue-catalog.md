@@ -1458,6 +1458,38 @@ robustness/consistency follow-ups, not regressions.
     All exploratory edits reverted; tree + fixture left at the committed
     state. Tracks with the other open NuttX items (177.8.c); needs focused
     NuttX zenoh-pico action-path work.
+
+    **Wire + gdb follow-up (2026-05-26, tshark on lo:7672 + gdb-multiarch):**
+      * tshark proves the **goal query never reaches the wire**: after
+        discovery (~32 s — both endpoints declare liveliness for
+        `…/_action/send_goal`, server `SS`, client `SC`), the two
+        guest↔zenohd TCP connections carry **only 3-byte keep-alives**, no
+        query frame. So the client blocks in the send path *before*
+        transmitting (consistent with gdb: the app thread is parked).
+      * gdb call chain at the block: `nros_app_main → send_goal_async →
+        send_goal_raw → CffiServiceClient::send_request_raw →
+        zpico_get_start → z_get → _z_query → _z_send_n_msg`. Tracing
+        `_z_mutex_lock` shows the **lease task**
+        (`_zp_unicast_lease_task → _z_pending_query_process_timeout`)
+        contending the session/pending-query mutex against the app thread's
+        `z_get` send + reply-final path.
+      * **It's a timing race, not a hard hang.** With the server present and
+        the client run *under gdb* (perturbed timing), `z_get` RETURNS and
+        the server logs `Goal request [1]: order=5` — the action completes.
+        At native speed the lease task and `z_get`'s `_z_send_n_msg` /
+        reply-final processing deadlock. Note `_z_query` itself unlocks the
+        session mutex (`primitives.c:542`) *before* `_z_send_n_msg`
+        (`:558`), so it is not a session-mutex AB-BA inside `_z_query`; the
+        cycle is between the TX path and the lease task's session-locked
+        timeout sweep. The action client hits it (and pub/sub + service
+        mostly don't) because it carries far more concurrent pending-query
+        churn — send_goal + get_result + cancel_goal clients plus
+        feedback/status subs, with the warm-up `poll()` issuing queries the
+        lease task is timing out exactly when send_goal's `z_get` fires.
+    Fix is a vendored zenoh-pico (1.7.2) lock-ordering change between the
+    unicast lease task's `_z_pending_query_process_timeout` and the query
+    TX / reply-final paths — cross-platform-risky, so left for a focused
+    zenoh-pico concurrency task, not landed here.
 - Two build-all-after-clean fragilities surfaced by the nuke gate:
   - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
     --locked` on standalone example/fixture dirs whose gitignored
