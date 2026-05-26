@@ -1413,6 +1413,41 @@ robustness/consistency follow-ups, not regressions.
         busy → a `120s × 3` slow-timeout bump (no group) is enough.
     Fix lands in `.config/nextest.toml`. Verified all four PASS in isolation
     (ros2 detection ~0.3s, esp_idf ~35s, drift_gate ~26s).
+
+  - [ ] **177.8.e - NuttX-QEMU-ARM Cpp action goal never reaches the server
+    (OPEN; not fixed).** `test_rtos_action_e2e` Nuttx/Cpp: the client prints
+    `Sending goal: order=5`, then nothing — `goal_accepted=false`, and the
+    server's post-boot log is empty (it sits at "Waiting for goals" and never
+    logs a goal request). So the **send_goal query never reaches the server**.
+    Nuttx Cpp **pub/sub + service** pass and the Nuttx **C** action passes, so
+    the transport, service request/reply, and the server's action queryable
+    all work in isolation — it is specific to the Cpp action goal path.
+    Investigation (extensive, 2026-05-26):
+      * The Cpp `send_goal_async` AND the "blocking" `send_goal` both route
+        through `core.send_goal_raw` → `ServiceClient::send_request_raw` →
+        `zpico_get_start` → `z_get`, which **blocks and never returns** on
+        NuttX zenoh-pico when issued outside a spin loop (gdb: app thread
+        parked; the fflush'd print after the send call never fires). The
+        `send_request_raw` std deadline-retry loop is bounded, so the hang is
+        inside `z_get` itself, not the loop.
+      * Rerouting the Cpp blocking `send_goal` to `core.send_goal_blocking`
+        (the `call_raw` path that Cpp **service** + the C action client use
+        successfully on NuttX) was verified to link (disasm shows `call_raw`,
+        not `send_goal_raw`) — but the client **still** hangs at "Sending
+        goal" and the server still receives nothing. So even `call_raw` to the
+        action `send_goal` queryable does not deliver on NuttX-Cpp, despite
+        the identical `call_raw` working for Cpp service and for the C action
+        client. Root cause not yet isolated (candidate: action send_goal
+        queryable keyexpr match / discovery between the Cpp client and Cpp
+        server on NuttX, or a NuttX-specific zenoh-pico get/query interaction).
+      * Build caveat learned: a bare `cmake --build <build-zenoh>` does NOT
+        apply the justfile's stale-`nros-*`-fingerprint guard (justfile:259),
+        so nros-cpp edits silently kept a stale rlib — a full `cargo-target`
+        wipe (or the `just` recipe) is required to retest core-crate changes
+        for a cmake fixture.
+    All exploratory edits reverted; tree + fixture left at the committed
+    state. Tracks with the other open NuttX items (177.8.c); needs focused
+    NuttX zenoh-pico action-path work.
 - Two build-all-after-clean fragilities surfaced by the nuke gate:
   - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
     --locked` on standalone example/fixture dirs whose gitignored
