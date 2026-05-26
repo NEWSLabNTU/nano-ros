@@ -26,7 +26,6 @@ use rstest::rstest;
 use std::{
     path::{Path, PathBuf},
     process::Command,
-    sync::atomic::{AtomicU8, Ordering},
     time::Duration,
 };
 
@@ -599,12 +598,18 @@ fn test_cpp_rust_pubsub_interop(zenohd_unique: ZenohRouter) {
 // Cyclone DDS cross-language interop (C/C++ ↔ Rust, brokerless RTPS)
 // =============================================================================
 
-static NEXT_CYCLONEDDS_DOMAIN: AtomicU8 = AtomicU8::new(40);
-
 fn next_cyclonedds_domain() -> String {
-    NEXT_CYCLONEDDS_DOMAIN
-        .fetch_add(1, Ordering::Relaxed)
-        .to_string()
+    // Cyclone is brokerless RTPS: every participant runs SPDP discovery on the
+    // host's interfaces, so two test processes sharing a domain cross-talk —
+    // a goal/result gets matched by the wrong server. nextest runs each test in
+    // its OWN process, so a process-local atomic counter is NOT unique across
+    // concurrent tests: every process restarts it at the same base and they all
+    // collide on one domain (observed: a C action server `Executing goal [1]`
+    // *and* `[2]` from a concurrent C++ client → the C client's result is stolen
+    // and it never reaches `Final result`). Delegate to the PID-seeded allocator
+    // that is unique across concurrent nextest processes (concurrently-spawned
+    // tests have near-consecutive PIDs, so `(pid % 232) + 1` is collision-free).
+    nros_tests::unique_ros_domain_id().to_string()
 }
 
 fn cyclone_talker_binary(lang: Language) -> PathBuf {

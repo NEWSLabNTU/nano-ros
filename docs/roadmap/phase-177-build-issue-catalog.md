@@ -737,24 +737,40 @@ passed.
 
 ### Test-All Runtime / E2E
 
-- [ ] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
-  test-harness (open, 2026-05-27). The native-Cyclone `nros-tests::native_api`
+- [x] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
+  test-harness (FIXED 2026-05-27). The native-Cyclone `nros-tests::native_api`
   cases — `test_native_cyclonedds_{talker_to_rust_listener,rust_talker_to_listener}`
   (pub/sub) and the Phase 183.4 `test_native_cyclonedds_{service,action}` (C +
-  C++) — each pass **run alone** but can fail when nextest runs them in parallel.
-  Cyclone is brokerless RTPS: every participant does SPDP discovery on the host's
-  real interfaces, so several test processes alive at once cross-talk during
-  discovery (and contend on the loopback/multicast path) even though each test
-  uses a distinct `ROS_DOMAIN_ID` (`next_cyclonedds_domain()`); a slow/!matched
-  discovery makes a client miss its window (e.g. action client never reaches
-  `Final result`, ~18 s before the harness gives up). Observed 2026-05-27: a
-  4-test concurrent run failed `…action::lang_1_Language__C` while the other 3
-  passed; the same case passed in isolation (9.9 s). **Fix:** put all native
-  Cyclone `native_api` cases in a serialized nextest test-group
-  (`max-threads = 1`) in `.config/nextest.toml` — the same pattern the QEMU
-  networked tests already use (per-platform `max-threads = 1` groups). Not a
-  product defect; the RMW + fixtures are correct (177.31/177.32 verified). Until
-  grouped, re-run a failed native-Cyclone case in isolation to confirm.
+  C++) — each passed **run alone** but failed when nextest ran them in parallel.
+
+  **Root cause (NOT discovery contention — domain-ID collision).** The original
+  diagnosis above (serialize the group) was wrong; it would have *masked* the
+  bug. `next_cyclonedds_domain()` allocated domains from a process-local
+  `static NEXT_CYCLONEDDS_DOMAIN: AtomicU8 = AtomicU8::new(40)`. nextest runs
+  **each test fn in its own process**, so that atomic restarts at 40 in *every*
+  process → every concurrent Cyclone test got **domain 40**. Cyclone is
+  brokerless RTPS with multicast SPDP, so all the domain-40 processes discovered
+  each other and cross-talked on `/fibonacci`. The failing run proved it: the C
+  action server printed `Executing goal [1]` **and** `[2]` (its own client's goal
+  *plus* the concurrent C++ client's goal — both `order=10 uuid=0100…`), and the
+  C client's result was answered by the wrong server → `Failed to send goal: -2`,
+  never reaching `Final result`. The C-case failed *deterministically* (3/3) under
+  load and passed *deterministically* (3/3) alone — a contention/timing flake
+  would be random, not deterministic. The collision was also slowing discovery
+  (concurrent run ~18-20 s vs ~10 s isolated).
+
+  **Fix (`packages/testing/nros-tests/tests/native_api.rs`):** delete the broken
+  in-process atomic; `next_cyclonedds_domain()` now delegates to
+  `nros_tests::unique_ros_domain_id()` — the PID-seeded allocator already in
+  `nros-tests/src/lib.rs`, whose doc comment literally calls out this exact
+  pitfall ("avoids a global counter that resets per process — all processes would
+  start at the same value"). Concurrently-spawned tests have near-consecutive
+  PIDs, so `(pid % 232) + 1` is collision-free among them (a collision needs two
+  PIDs differing by exactly 232 — impossible within a spawn window). **No nextest
+  test-group / `max-threads` serialization needed** — the tests run fully parallel.
+  Verified 2026-05-27: 5/5 concurrent runs (`-E 'binary(native_api) and
+  test(cyclonedds)'`, `--retries 0 --test-threads 8`) pass 9/9, runtime back to
+  ~11 s. Not a product defect; RMW + fixtures are correct (177.31/177.32 verified).
 
 - [x] **177.34 - native C examples block-buffer stdout → harness reads nothing
   within its window.** Owner: examples (resolved 2026-05-27). Found closing the
