@@ -76,19 +76,33 @@ void free_session_state(SessionState* state) {
 #endif
 }
 
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) || defined(CONFIG_BOARD_NATIVE_SIM)
 constexpr const char* kEmbeddedCycloneConfig =
     "<CycloneDDS>"
     "<Domain Id=\"any\">"
     "<General>"
 #if defined(NROS_PLATFORM_THREADX)
-    // Phase 177.26 — SPDP multicast discovery over NetX Duo. The board
-    // enables IGMPv2 (`nx_igmp_enable`) and the virtio-net driver accepts
-    // all multicast on RX, so peers can discover each other via the
-    // default DDSI multicast group; RTPS data then flows unicast.
+    // Phase 177.26 — SPDP multicast discovery over NetX Duo. NetX enables
+    // IGMPv2 (`nx_igmp_enable`) and virtio-net accepts all multicast on RX;
+    // peers discover via the default DDSI multicast group, data unicast.
     "<AllowMulticast>spdp</AllowMulticast>"
+#elif defined(CONFIG_BOARD_NATIVE_SIM)
+    // Phase 180 — native_sim (NSOS). Multicast breaks cyclone's select-based
+    // socket waitset here (the multicast RX fd select()s as failed), so
+    // disable it and discover via unicast SPDP to 127.0.0.1 (Peers, below).
+    "<AllowMulticast>false</AllowMulticast>"
 #endif
     "</General>"
+#if defined(CONFIG_BOARD_NATIVE_SIM)
+    // Unicast SPDP to localhost (numeric IP — NSOS getaddrinfo can't resolve
+    // the name). Widen the participant-index scan so the talker reaches the
+    // listener even when host-port collisions bump it to a higher index.
+    "<Discovery>"
+    "<ParticipantIndex>auto</ParticipantIndex>"
+    "<MaxAutoParticipantIndex>20</MaxAutoParticipantIndex>"
+    "<Peers><Peer Address=\"127.0.0.1\"/></Peers>"
+    "</Discovery>"
+#endif
     "<Sizing>"
     "<ReceiveBufferSize>64 KiB</ReceiveBufferSize>"
     "<ReceiveBufferChunkSize>16 KiB</ReceiveBufferChunkSize>"
@@ -117,7 +131,7 @@ nros_rmw_ret_t session_open(const char* /*locator*/, uint8_t /*mode*/, uint32_t 
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) || defined(CONFIG_BOARD_NATIVE_SIM)
     dds_entity_t domain = dds_create_domain(domain_id, kEmbeddedCycloneConfig);
     if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
         free_session_state(state);

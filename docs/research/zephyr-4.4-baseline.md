@@ -448,3 +448,44 @@ runtime abort**; the likely fix is a unicast-peer cyclone config for native_sim
 path) rather than relying on loopback multicast. Tracked as a follow-on; the
 cyclonedds-4.4 *runtime* (stable participant + publish/receive machinery, no
 abort) is proven per-node.
+
+## RESOLVED — cyclonedds-4.4 2-node discovery on native_sim (2026-05-26)
+
+**c/talker → c/listener now exchanges data on native_sim: Published 11,
+Received 10** (msgs 2–11; the first is lost during discovery, as expected).
+Two compounding root causes, neither of which was the k_mutex runtime:
+
+1. **Identical GUID prefix (the real blocker).** native_sim's fake entropy
+   driver seeds from a *fixed* seed by default (`Using a test - not safe -
+   entropy source` at boot). Two native_sim processes therefore produced the
+   **same** cyclone participant GUID prefix (e.g. both
+   `110462d:1f23f4a1:af20f854`). DDSI requires per-participant unique GUIDs;
+   with identical GUIDs each node treats the other's SPDP as *its own* and
+   drops it → no proxy participant → no match (the `finest` trace showed
+   `spdp_write` + `nn_xpack_send 320` going out, but `match_writer_with_proxy_readers
+   … tgt=0`). **Fix: distinct `--seed` per process** (native_sim accepts
+   `--seed=<n>` / `--seed-random`). The e2e launches listener `--seed=11`,
+   talker `--seed=22`; GUIDs then differ (`110595b:…` vs `110e5b4:…`) and
+   discovery closes (16 proxy-participant SPDP events). **Any two native_sim
+   cyclone nodes must be given different seeds.**
+
+2. **Multicast breaks cyclone's select-based waitset on native_sim.** Enabling
+   multicast SPDP (`AllowMulticast=spdp` + an `INADDR_ANY` join, ported from the
+   ThreadX path) made `os_sockWaitsetWait: select failed` spam and stalled the
+   talker at Published 1. native_sim's NSOS multicast RX fd does not survive
+   cyclone's `select()` waitset. So native_sim uses **unicast SPDP** instead:
+   `<AllowMulticast>false</AllowMulticast>` + `<Discovery><Peers><Peer
+   Address="127.0.0.1"/></Peers><MaxAutoParticipantIndex>20</…></Discovery>`.
+   Numeric `127.0.0.1` is required — NSOS `getaddrinfo` rejects the name
+   `localhost` (`add_peer_addresses: localhost: not a valid address`).
+
+**Delivery:** `packages/dds/nros-rmw-cyclonedds/src/session.cpp` —
+`kEmbeddedCycloneConfig` is now also defined and passed to `dds_create_domain`
+for `CONFIG_BOARD_NATIVE_SIM` (previously FreeRTOS/ThreadX only; native_sim
+fell through to `dds_create_participant(domain, nullptr)` with the default
+multicast config), with the unicast-discovery block above. The `ddsi_udp.c`
+multicast-join experiment was reverted (multicast is a dead-end here per #2).
+
+**Net (native_sim, 4.4):** BUILD ✓ · publish ✓ · recvmsg ✓ · k_mutex ✓ ·
+**2-node unicast discovery ✓ · pub→sub data ✓.** Caveat: the `--seed`
+requirement is native_sim-specific (real hardware/host has real entropy).

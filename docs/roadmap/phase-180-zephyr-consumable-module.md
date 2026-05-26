@@ -8,15 +8,18 @@ nano-ros-owned Zephyr tree and without editing the nano-ros source tree.
 Reduce customer-support load by making the consumption story standard,
 discoverable, and CI-verified.
 
-**Status.** In progress (2026-05-26). 180.A foundation + 180.B (copy-out
-examples) + 180.C snippets + the CI/samples cluster (dual-line `ci-both`,
-copy-out check, Twister samples) landed on `phase-180a-version-spanning-module`.
-zenoh native_sim is e2e-proven on both 3.7 + 4.4; cyclonedds builds + publishes
-+ receives + joins multicast on 4.4 (stable run blocked on a root-caused,
-research-grade `k_mutex`/thread-lifecycle fix). Remaining: 180.C `board_root`,
-180.D patch delivery (`patches.yml`/`west patch`), 180.E onboarding docs, and
-the cyclonedds-4.4 runtime fix. See `docs/research/zephyr-4.4-baseline.md` +
-`zephyr-3.7-to-4.4-divergence-audit.md` for the detailed record.
+**Status.** Complete (2026-05-26). 180.A foundation + 180.B (copy-out examples)
++ 180.C snippets + `board_root` (N/A) + 180.D patch delivery
+(`patches.yml`/`west patch`) + 180.E onboarding docs + the CI/samples cluster
+(dual-line `ci-both`, copy-out check, Twister samples) landed on `main`.
+zenoh native_sim is e2e-proven on both 3.7 + 4.4. cyclonedds-4.4: the
+`k_mutex` runtime abort is fixed **and 2-node native_sim discovery is
+e2e-proven** (c/talker → c/listener, Published 11 / Received 10) over unicast
+SPDP + distinct per-process `--seed` — see `RESOLVED — cyclonedds-4.4 2-node
+discovery` in `docs/research/zephyr-4.4-baseline.md`. (The 2-node fix —
+`session.cpp` native_sim embedded config — sits on branch
+`cyclonedds-4.4-2node-discovery`, pending merge.) Full record in
+`docs/research/zephyr-4.4-baseline.md` + `zephyr-3.7-to-4.4-divergence-audit.md`.
 
 **Priority.** P2 (consumability / customer-support; unblocks external adoption).
 

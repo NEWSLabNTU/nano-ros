@@ -138,6 +138,19 @@ The `--seed` parameter initializes the test entropy source with a different valu
 
 **For automated tests**: The test framework (`packages/testing/nros-tests`) automatically assigns unique seeds to each process.
 
+### Cyclone DDS: Two native_sim Nodes Never Discover Each Other
+
+**Symptom**: Two native_sim nodes with the **Cyclone DDS** RMW (e.g. talker + listener) each start, the publisher reports `Published: N`, but the subscriber stays at `Received: 0` — no abort, no error.
+
+**Root Cause**: Same fixed-entropy issue as above. Cyclone derives each participant's DDSI **GUID prefix** from the entropy source; with identical entropy, both processes get the *same* GUID. DDSI requires per-participant unique GUIDs — a node treats SPDP from a peer that shares its own GUID as a self-announcement and drops it, so the two never form a proxy-participant pair and discovery never closes.
+
+**Solution**: Pass different `--seed` values per instance (exactly as above):
+```bash
+./build-listener/zephyr/zephyr.exe --seed=11
+./build-talker/zephyr/zephyr.exe   --seed=22
+```
+With distinct seeds the GUID prefixes differ and SPDP discovery completes. (native_sim Cyclone discovery is unicast-only — the embedded config points `<Peers>` at `127.0.0.1`; native_sim's NSOS multicast RX fd does not survive Cyclone's `select()`-based socket waitset. Real hardware has real entropy and full multicast, so neither workaround is needed off native_sim.)
+
 ---
 
 ## Network Configuration Issues
