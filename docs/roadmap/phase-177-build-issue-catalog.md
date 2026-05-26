@@ -643,13 +643,12 @@ passed.
   action_msgs must be CPP), but the action_msgs **CPP** Rust FFI glue can't
   resolve `unique_identifier_msgs_msg_uuid_t` / `serialize_..._fields` (E0425) —
   a cpp-codegen cross-package dependency gap in the Rust glue, distinct from the
-  descriptor issue. Recommended fix: extend the `.action` synthesis to also emit
-  the shared `action_msgs` descriptors (`CancelGoal_*`, `GoalStatus*`,
-  `GoalInfo_`) with `goal_id` inlined as `octet[16]` (matching the existing
-  action-wrapper framing, no `unique_identifier_msgs` dep) — that registers them
-  for *any* action via `example_interfaces`'s Fibonacci.action, fixing C and C++
-  uniformly and letting the per-example C change above be retired. Cpp
-  action fixtures otherwise build + fail at runtime exactly like the C path did.
+  descriptor issue. **The fix is NOT a synthesis** (see the correction in the
+  RTOS conclusion below — the backend hard-codes the *real* action_msgs
+  descriptor op layout): keep the C path's real-descriptor generation and fix the
+  cpp-codegen Rust-glue cross-package gap so the `action_msgs` /
+  `unique_identifier_msgs` CPP bindings resolve their dependency types. Cpp action
+  fixtures otherwise build + fail at runtime exactly like the C path did.
 
   **Reference: how stock `rmw_cyclonedds_cpp` (humble) handles types, and what
   the RTOS port should become.** Read the upstream source
@@ -694,11 +693,26 @@ passed.
   `action_msgs` types (CancelGoal request/response, GoalStatus, GoalStatusArray,
   GoalInfo) and `unique_identifier_msgs/UUID`, so any action builds end-to-end
   without the example author hand-wiring per-message `DEPENDENCIES` (the gap that
-  stock RMW sidesteps for free via introspection). Concretely this is the
-  `.action`-synthesis extension recommended above (emit the shared `action_msgs`
-  descriptors with `goal_id` inlined as `octet[16]`), which also unblocks C++
-  without per-package CPP generation. Cross-checked against
-  `serdata.{hpp,cpp}`, `rmw_node.cpp`, `TypeSupport2.hpp` upstream.
+  stock RMW sidesteps for free via introspection).
+
+  **Correction (2026-05-27) — use REAL action_msgs descriptors, NOT a synthesis.**
+  Reading the Cyclone backend settles the framing question against synthesis: the
+  status-publish bridge `publish_goal_status_array` (`publisher.cpp`) reads the
+  descriptor `m_ops` at hard-coded offsets (`ops[1,2,6,9,12,15,19,23,25]`) that
+  match the *real* `action_msgs/GoalStatusArray_` op layout (status_list seq →
+  GoalStatus → GoalInfo → UUID `octet[16]` + Time), and the cancel service falls
+  through `descriptors_for_service` to the plain path (only send_goal/get_result
+  get the synthesized-type remap in `service.cpp`), so it looks up the *real*
+  `action_msgs::srv::dds_::CancelGoal_Request_/Response_`. A synthesized
+  custom-framed descriptor would carry *different* ops and break the status
+  bridge. So the correct transitive-closure mechanism is to generate the **real**
+  `action_msgs` (+ `unique_identifier_msgs`) via `nros_generate_interfaces` and
+  chain `example_interfaces`'s DEPENDENCIES — exactly the landed C fix. The
+  codegen should do that automatically when an action is present (so the example
+  author needn't hand-wire it); the remaining work is the **cpp-codegen Rust-glue
+  cross-package fix** so the same real-descriptor generation links under C++ (the
+  E0425 above). Cross-checked against the backend `publisher.cpp` + `service.cpp`
+  and upstream `serdata.{hpp,cpp}` / `rmw_node.cpp` / `TypeSupport2.hpp`.
 
 ### Test-All Runtime / E2E
 
