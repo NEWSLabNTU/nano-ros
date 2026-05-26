@@ -1,0 +1,145 @@
+diff --git a/drivers/net/nsos_socket.h b/drivers/net/nsos_socket.h
+index 66f54130d17..432311eecb1 100644
+--- a/drivers/net/nsos_socket.h
++++ b/drivers/net/nsos_socket.h
+@@ -129,6 +129,36 @@ struct nsos_mid_timeval {
+  */
+ #define NSOS_MID_IPV6_RECVPKTINFO 49
+ 
++
++/**
++ * @name IPv4 level options (NSOS_MID_IPPROTO_IP)
++ * @{
++ */
++/* Socket options for NSOS_MID_IPPROTO_IP level */
++
++/** Set the IPv4 multicast interface. */
++#define NSOS_MID_IP_MULTICAST_IF 32
++
++/** Set the multicast TTL for the socket. */
++#define NSOS_MID_IP_MULTICAST_TTL 33
++
++/** Toggle IPv4 multicast loopback. */
++#define NSOS_MID_IP_MULTICAST_LOOP 34
++
++/** Join an IPv4 multicast group. */
++#define NSOS_MID_IP_ADD_MEMBERSHIP 35
++
++/** Leave an IPv4 multicast group. */
++#define NSOS_MID_IP_DROP_MEMBERSHIP 36
++
++/** IPv4 mreq wire-format (mirrors host `struct ip_mreq`). */
++struct nsos_mid_ip_mreq {
++	uint32_t imr_multiaddr;	/* Multicast group (network byte order) */
++	uint32_t imr_interface;	/* Local interface IP (network byte order) */
++};
++
++/** @} */
++
+ /** @} */
+ 
+ #endif /* __DRIVERS_NET_NSOS_SOCKET_H__ */
+diff --git a/drivers/net/nsos_sockets.c b/drivers/net/nsos_sockets.c
+index 29fba9434eb..2b730b938b5 100644
+--- a/drivers/net/nsos_sockets.c
++++ b/drivers/net/nsos_sockets.c
+@@ -1246,6 +1246,20 @@ static int nsos_getsockopt(void *obj, int level, int optname,
+ 		}
+ 		break;
+ 
++	/* nano-ros: nsos IPPROTO_IP guest — Phase 180.A. */
++	case NET_IPPROTO_IP:
++		switch (optname) {
++		case ZSOCK_IP_MULTICAST_TTL:
++			return nsos_getsockopt_int(sock,
++					   NSOS_MID_IPPROTO_IP, NSOS_MID_IP_MULTICAST_TTL,
++					   optval, optlen);
++		case ZSOCK_IP_MULTICAST_LOOP:
++			return nsos_getsockopt_int(sock,
++					   NSOS_MID_IPPROTO_IP, NSOS_MID_IP_MULTICAST_LOOP,
++					   optval, optlen);
++		}
++		break;
++
+ 	case NET_IPPROTO_IPV6:
+ 		switch (optname) {
+ 		case ZSOCK_IPV6_V6ONLY:
+@@ -1415,6 +1429,78 @@ static int nsos_setsockopt(void *obj, int level, int optname,
+ 		}
+ 		break;
+ 
++	/* nano-ros: nsos IPPROTO_IP guest — Phase 180.A (4.4 port of
++	 * Phase 11W.10/11). Marshal the IPv4 multicast setsockopts into
++	 * the NSOS midplane so the host adapt half can forward them to
++	 * the host kernel; without this SPDP multicast join fails and
++	 * cyclonedds discovery never works on native_sim. */
++	case NET_IPPROTO_IP:
++		switch (optname) {
++		case ZSOCK_IP_MULTICAST_TTL:
++			return nsos_setsockopt_int(sock,
++					   NSOS_MID_IPPROTO_IP, NSOS_MID_IP_MULTICAST_TTL,
++					   optval, optlen);
++		case ZSOCK_IP_MULTICAST_LOOP:
++			return nsos_setsockopt_int(sock,
++					   NSOS_MID_IPPROTO_IP, NSOS_MID_IP_MULTICAST_LOOP,
++					   optval, optlen);
++		case ZSOCK_IP_MULTICAST_IF: {
++			const struct net_in_addr *iface = optval;
++			uint32_t addr_be;
++			int err;
++
++			if (optlen != sizeof(struct net_in_addr)) {
++				errno = EINVAL;
++				return -1;
++			}
++			addr_be = iface->s_addr;
++
++			err = nsos_adapt_setsockopt(sock->poll.mid.fd, NSOS_MID_IPPROTO_IP,
++						    NSOS_MID_IP_MULTICAST_IF, &addr_be,
++						    sizeof(addr_be));
++			if (err) {
++				errno = nsi_errno_from_mid(-err);
++				return -1;
++			}
++			return 0;
++		}
++		case ZSOCK_IP_ADD_MEMBERSHIP:
++		case ZSOCK_IP_DROP_MEMBERSHIP: {
++			/* nano-ros: dual ip_mreq/ip_mreqn. Accept both
++			 * struct net_ip_mreq (8B: multiaddr+interface, what
++			 * Cyclone DDS passes) and struct net_ip_mreqn (12B:
++			 * multiaddr+address+ifindex). Both share the same
++			 * first 8 bytes (multiaddr, then the interface IP),
++			 * so read the two leading net_in_addrs and ignore any
++			 * trailing ifindex. Marshal into the 8-byte wire-format
++			 * nsos_mid_ip_mreq and let the host adapt forward it. */
++			const struct net_in_addr *mreq_addrs = optval;
++			struct nsos_mid_ip_mreq nsos_mid_mreq;
++			int nsos_mid_optname = (optname == ZSOCK_IP_ADD_MEMBERSHIP)
++				? NSOS_MID_IP_ADD_MEMBERSHIP
++				: NSOS_MID_IP_DROP_MEMBERSHIP;
++			int err;
++
++			if (optlen < 2 * sizeof(struct net_in_addr)) {
++				errno = EINVAL;
++				return -1;
++			}
++
++			nsos_mid_mreq.imr_multiaddr = mreq_addrs[0].s_addr;
++			nsos_mid_mreq.imr_interface = mreq_addrs[1].s_addr;
++
++			err = nsos_adapt_setsockopt(sock->poll.mid.fd, NSOS_MID_IPPROTO_IP,
++						    nsos_mid_optname, &nsos_mid_mreq,
++						    sizeof(nsos_mid_mreq));
++			if (err) {
++				errno = nsi_errno_from_mid(-err);
++				return -1;
++			}
++			return 0;
++		}
++		}
++		break;
++
+ 	case NET_IPPROTO_IPV6:
+ 		switch (optname) {
+ 		case ZSOCK_IPV6_V6ONLY:
