@@ -143,6 +143,14 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/cargo.sh
+    # Phase 180.B — examples read the ROS interface package dirs from env
+    # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the
+    # stock Humble install; override per package if your ROS lives elsewhere.
+    export NROS_STD_MSGS_DIR="${NROS_STD_MSGS_DIR:-/opt/ros/humble/share/std_msgs}"
+    export NROS_EXAMPLE_INTERFACES_DIR="${NROS_EXAMPLE_INTERFACES_DIR:-/opt/ros/humble/share/example_interfaces}"
+    export NROS_BUILTIN_INTERFACES_DIR="${NROS_BUILTIN_INTERFACES_DIR:-/opt/ros/humble/share/builtin_interfaces}"
+    export NROS_UNIQUE_IDENTIFIER_MSGS_DIR="${NROS_UNIQUE_IDENTIFIER_MSGS_DIR:-/opt/ros/humble/share/unique_identifier_msgs}"
+    export NROS_ACTION_MSGS_DIR="${NROS_ACTION_MSGS_DIR:-/opt/ros/humble/share/action_msgs}"
     workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
     if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
         echo "Zephyr {{NROS_ZEPHYR_VERSION}} workspace not set up — run:"
@@ -247,6 +255,14 @@ build-fixtures:
         echo "Zephyr skip: {{ZEPHYR_WORKSPACE}} not set up (run \`just zephyr setup\`)"
         exit 0
     fi
+    # Phase 180.B — examples read the ROS interface package dirs from env
+    # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the
+    # stock Humble install; override per package if your ROS lives elsewhere.
+    export NROS_STD_MSGS_DIR="${NROS_STD_MSGS_DIR:-/opt/ros/humble/share/std_msgs}"
+    export NROS_EXAMPLE_INTERFACES_DIR="${NROS_EXAMPLE_INTERFACES_DIR:-/opt/ros/humble/share/example_interfaces}"
+    export NROS_BUILTIN_INTERFACES_DIR="${NROS_BUILTIN_INTERFACES_DIR:-/opt/ros/humble/share/builtin_interfaces}"
+    export NROS_UNIQUE_IDENTIFIER_MSGS_DIR="${NROS_UNIQUE_IDENTIFIER_MSGS_DIR:-/opt/ros/humble/share/unique_identifier_msgs}"
+    export NROS_ACTION_MSGS_DIR="${NROS_ACTION_MSGS_DIR:-/opt/ros/humble/share/action_msgs}"
     # Phase 180.A — 4.4 line: run west via the Python 3.12 venv + host
     # toolchain, and skip the 3.7-only patch set. The proven 4.4 fixture
     # subset is zenoh native_sim, which needs none of these patches (NSOS

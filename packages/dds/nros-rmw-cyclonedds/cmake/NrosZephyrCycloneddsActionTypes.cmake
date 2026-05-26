@@ -5,11 +5,14 @@ function(nros_zephyr_add_cyclonedds_action_descriptors target)
         return()
     endif()
 
-    set(_nros_repo "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../..")
-    set(IDLC_EXECUTABLE "${_nros_repo}/build/install/bin/idlc"
+    # Phase 180.B — copy-out clean: no repo-tree walk. The nano-ros Zephyr
+    # module exports NROS_CYCLONE_IDLC / NROS_CYCLONE_SCRIPTS_DIR and puts
+    # this dir on CMAKE_MODULE_PATH, so the descriptor codegen tooling is
+    # discoverable by bare name regardless of where west cloned the module.
+    set(IDLC_EXECUTABLE "${NROS_CYCLONE_IDLC}"
         CACHE FILEPATH "Host Cyclone DDS idlc for descriptor generation" FORCE)
-    set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${_nros_repo}/scripts/cyclonedds")
-    include("${_nros_repo}/packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
+    set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${NROS_CYCLONE_SCRIPTS_DIR}")
+    include(NrosRmwCycloneddsTypeSupport)
 
     set(_idl_root "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/_idlroot")
     set(_gen_root "${CMAKE_CURRENT_BINARY_DIR}/cyclonedds-ts/_genroot")
@@ -26,7 +29,7 @@ function(nros_zephyr_add_cyclonedds_action_descriptors target)
 
     nros_rmw_cyclonedds_generate_from_msg(_builtin_types
         PKG_NAME builtin_interfaces
-        PKG_DIR /opt/ros/humble/share/builtin_interfaces
+        PKG_DIR "$ENV{NROS_BUILTIN_INTERFACES_DIR}"
         INTERFACES msg/Time.msg
         INCLUDE_ROOT "${_idl_root}"
         GEN_ROOT "${_gen_root}"
@@ -34,7 +37,7 @@ function(nros_zephyr_add_cyclonedds_action_descriptors target)
 
     nros_rmw_cyclonedds_generate_from_msg(_uuid_types
         PKG_NAME unique_identifier_msgs
-        PKG_DIR /opt/ros/humble/share/unique_identifier_msgs
+        PKG_DIR "$ENV{NROS_UNIQUE_IDENTIFIER_MSGS_DIR}"
         INTERFACES msg/UUID.msg
         INCLUDE_ROOT "${_idl_root}"
         GEN_ROOT "${_gen_root}"
@@ -42,7 +45,7 @@ function(nros_zephyr_add_cyclonedds_action_descriptors target)
 
     nros_rmw_cyclonedds_generate_from_msg(_action_types
         PKG_NAME action_msgs
-        PKG_DIR /opt/ros/humble/share/action_msgs
+        PKG_DIR "$ENV{NROS_ACTION_MSGS_DIR}"
         INTERFACES
             msg/GoalInfo.msg
             msg/GoalStatus.msg
@@ -55,7 +58,7 @@ function(nros_zephyr_add_cyclonedds_action_descriptors target)
 
     nros_rmw_cyclonedds_generate_from_msg(_example_types
         PKG_NAME example_interfaces
-        PKG_DIR /opt/ros/humble/share/example_interfaces
+        PKG_DIR "$ENV{NROS_EXAMPLE_INTERFACES_DIR}"
         INTERFACES action/Fibonacci.action
         IDL_DEPENDS ${_builtin_idls} ${_uuid_idls} ${_action_idls}
         INCLUDE_ROOT "${_idl_root}"

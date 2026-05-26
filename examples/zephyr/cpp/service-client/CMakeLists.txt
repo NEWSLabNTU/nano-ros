@@ -21,14 +21,13 @@ nros_generate_interfaces(example_interfaces
 # converter emits the _Request_ / _Response_ structs) and compile them
 # into the app.
 if(CONFIG_NROS_RMW_CYCLONEDDS)
-    set(_nros_repo ${CMAKE_CURRENT_LIST_DIR}/../../../..)
-    set(IDLC_EXECUTABLE "${_nros_repo}/build/install/bin/idlc"
-        CACHE FILEPATH "Host Cyclone DDS idlc for descriptor generation" FORCE)
-    set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${_nros_repo}/scripts/cyclonedds")
-    include("${_nros_repo}/packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
+    list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
+    set(IDLC_EXECUTABLE "${NROS_CYCLONE_IDLC}" CACHE FILEPATH "" FORCE)
+    set(ENV{NROS_RMW_CYCLONEDDS_SCRIPTS_DIR} "${NROS_CYCLONE_SCRIPTS_DIR}")
+    include(NrosRmwCycloneddsTypeSupport)
     nros_rmw_cyclonedds_generate_from_msg(_nros_cyc_types
         PKG_NAME   example_interfaces
-        PKG_DIR    /opt/ros/humble/share/example_interfaces
+        PKG_DIR    "$ENV{NROS_EXAMPLE_INTERFACES_DIR}"
         INTERFACES srv/AddTwoInts.srv)
     target_sources(app PRIVATE ${_nros_cyc_types})
 endif()

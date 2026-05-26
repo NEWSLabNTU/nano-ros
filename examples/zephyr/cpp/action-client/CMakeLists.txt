@@ -14,7 +14,10 @@ nros_generate_interfaces(example_interfaces
     LANGUAGE CPP
 )
 
-include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NrosZephyrCycloneddsActionTypes.cmake")
-nros_zephyr_add_cyclonedds_action_descriptors(app)
+if(CONFIG_NROS_RMW_CYCLONEDDS)
+    list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
+    include(NrosZephyrCycloneddsActionTypes)
+    nros_zephyr_add_cyclonedds_action_descriptors(app)
+endif()
 
 target_sources(app PRIVATE src/main.cpp)

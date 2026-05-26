@@ -436,6 +436,25 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         ${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include
     )
 
+    # ---- Phase 180.B — module exports for copy-out-clean examples ----------
+    # Examples must never walk the repo tree (`../../../..`) to find the
+    # Cyclone descriptor-codegen tooling. Export the host idlc, the
+    # descriptor-gen scripts dir, and the descriptor cmake helper dir as
+    # cache vars. An example then references only these names (no repo
+    # path): it `list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")`
+    # and `include(NrosRmwCycloneddsTypeSupport)` by bare name. (A cache
+    # re-export of CMAKE_MODULE_PATH itself does NOT work — Zephyr's
+    # find_package sets a *normal* CMAKE_MODULE_PATH in the app scope that
+    # shadows the INTERNAL cache value, so the append must happen in the
+    # app scope.) NROS_REPO_DIR is the repo root here (set above).
+    set(NROS_CYCLONE_IDLC "${NROS_REPO_DIR}/build/install/bin/idlc"
+        CACHE FILEPATH "host Cyclone idlc")
+    set(NROS_CYCLONE_SCRIPTS_DIR "${NROS_REPO_DIR}/scripts/cyclonedds"
+        CACHE PATH "cyclone descriptor-gen scripts")
+    set(NROS_CYCLONE_CMAKE_DIR "${NROS_RMW_CDDS_DIR}/cmake"
+        CACHE PATH "nros-rmw-cyclonedds cmake helper dir")
+    list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")
+
 endif() # RMW backend
 
 # =============================================================================
