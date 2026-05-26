@@ -13,6 +13,7 @@
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
+#include <dds/ddsrt/heap.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -152,7 +153,14 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
         return NROS_RMW_RET_ERROR;
     }
 
-    void *sample = std::calloc(1, state->desc->m_size);
+    // Phase 177.26.RX.2 — allocate the transient take buffer from Cyclone's
+    // ddsrt heap, not libc. On RTOS targets (ThreadX, FreeRTOS) the libc heap
+    // is separate from (and may be unconfigured relative to) the ddsrt heap, so
+    // std::calloc returns nullptr and every take fails BAD_ALLOC. dds_take
+    // deserialises into this buffer and dds_stream_free_sample frees nested
+    // members through the ddsrt heap, so the buffer itself must match. Mirrors
+    // the publisher path (Phase 177.22).
+    void *sample = ddsrt_calloc(1, state->desc->m_size);
     if (sample == nullptr) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -160,12 +168,12 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     dds_sample_info_t si[1];
     dds_return_t taken = dds_take(state->reader, samples, si, 1, 1);
     if (taken < 0) {
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_ERROR;
     }
     if (taken == 0 || !si[0].valid_data) {
         dds_stream_free_sample(sample, state->desc->m_ops);
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_NO_DATA;
     }
 
@@ -178,7 +186,7 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     if (!ok) {
         dds_ostream_fini(&os);
         dds_stream_free_sample(sample, state->desc->m_ops);
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_ERROR;
     }
 
@@ -201,7 +209,7 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
     if (buf_len < total) {
         dds_ostream_fini(&os);
         dds_stream_free_sample(sample, state->desc->m_ops);
-        std::free(sample);
+        ddsrt_free(sample);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
     buf[0] = kEncId[0];
@@ -214,14 +222,14 @@ int32_t subscriber_try_recv_raw(nros_rmw_subscriber_t *subscriber,
         if (!insert_goal_id_len_at(buf, paylen + 4, buf_len, 4, &adjusted)) {
             dds_ostream_fini(&os);
             dds_stream_free_sample(sample, state->desc->m_ops);
-            std::free(sample);
+            ddsrt_free(sample);
             return NROS_RMW_RET_BUFFER_TOO_SMALL;
         }
         total = static_cast<uint32_t>(adjusted);
     }
     dds_ostream_fini(&os);
     dds_stream_free_sample(sample, state->desc->m_ops);
-    std::free(sample);
+    ddsrt_free(sample);
 
     return static_cast<int32_t>(total);
 }

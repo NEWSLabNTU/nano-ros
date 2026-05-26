@@ -168,49 +168,115 @@ passed.
   bind/port wiring. This is NetX-multicast-RX-port work, distinct from the
   (now fixed) TX/locator byte-order issues.
 
-  - [ ] **177.26.RX — NetX Duo multicast RX not delivered to Cyclone (the
-    remaining 177.26 blocker).** TX/locator byte-order (`5558c6ae`) and the
-    listener `register_subscription` (177.28) are fixed and re-verified
-    2026-05-26: with the cross `libddsc.a` rebuilt from cyclonedds
-    `5558c6ae`, the threadx-rv64 C talker publishes with **zero `conn_write`
-    errors** (`-12` gone) and the C listener reaches `Waiting for
-    messages...`. But two-node RTPS does **not** complete — the listener
-    ingests no SPDP. A manual two-QEMU run (`-netdev socket,mcast`, since
-    this host's QEMU is 6.2 < the 7.2 the test's `-netdev dgram` needs)
-    reproduced it: talker `Published: 14` clean, listener `Received: 0`.
-    Fix the NetX BSD multicast receive path (`nx_bsd_select` reporting the
-    joined mcast socket readable / RX socket bind+port) so Cyclone's `recv`
-    thread ingests the peer SPDP → proxy participant → SEDP → data, then
-    un-`#[ignore]` `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` and run
-    it on QEMU ≥ 7.2. The test's `#[ignore]` reason
-    (`listener register_subscription fails`) is **stale** — that is fixed;
-    update it to the NetX-multicast-RX gate.
+  - [x] **177.26.RX — ThreadX Cyclone two-node pubsub now works end-to-end
+    (FIXED + VERIFIED 2026-05-26).** Two distinct bugs, both root-caused and
+    fixed: (1) **177.26.RX — multicast group never joined**: NetX's BSD
+    `IP_ADD_MEMBERSHIP` interface lookup `ntohl()`s `imr_interface` while
+    Cyclone supplies it in host order → `EINVAL` → every peer SPDP frame dropped
+    at the IP-accept gate. Fixed in cyclonedds `ddsi_udp.c` (`INADDR_ANY` under
+    `DDSRT_WITH_THREADX`). (2) **177.26.RX.2 — receive take path used libc heap**:
+    `subscriber_try_recv_raw` allocated its deserialise buffer with `std::calloc`,
+    which returns `nullptr` on ThreadX (unwired libc heap) → every take bailed
+    `BAD_ALLOC` before `dds_take`. Fixed in
+    `packages/dds/nros-rmw-cyclonedds/src/subscriber.cpp` (`ddsrt_calloc`/`ddsrt_free`,
+    Phase 177.22 hazard on the RX side). **Verified** on a clean build: the
+    two-QEMU `socket,mcast` pair gives listener `Received: 21` (consecutive
+    `0,1,2,…`) vs talker `Published: 21`. TX/locator byte-order (`5558c6ae`) and
+    listener `register_subscription` (177.28) were already fixed. Remaining:
+    maintainer pushes the cyclonedds `ddsi_udp.c` fix to the fork + bumps the
+    pointer; then un-`#[ignore]`
+    `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` and run on QEMU ≥ 7.2
+    (`-netdev dgram`) — the lossy `socket,mcast` workaround already shows 21/21.
+    Update the test's stale `#[ignore]` reason (`listener register_subscription
+    fails`).
 
-    **Drop localized to NetX core (2026-05-26).** Instrumented the in-repo
-    virtio driver RX (`virtio-net-netx/src/virtio_net_nx.c`, marker since
-    reverted) and ran the two-QEMU socket-mcast pair: the listener's virtio
-    RX received **7 multicast IP frames** (the peer's SPDP) while Cyclone
-    ingested **0**. So the chain up to NetX is sound — the frames arrive at
-    the NIC, the driver classifies them as IP multicast and hands them to
-    `_nx_ip_packet_deferred_receive(interface[0])` — and the drop is **inside
-    NetX core, after the driver**: the joined-group multicast UDP datagram is
-    not surfaced to Cyclone's `recv`/BSD socket. NOT the transport (socket-
-    mcast bridges) and NOT the virtio driver. Narrow the fix to NetX's IPv4
-    multicast receive → UDP-socket demux → BSD readability path (likely
-    `_nx_ipv4_packet_receive` multicast-group match vs the joined entry, or
-    `nx_udp_packet_receive` socket lookup, or `nx_bsd_select` not flagging the
-    joined socket). This is external NetX-fork work.
+    **ROOT CAUSE CONFIRMED — the multicast group was never joined (2026-05-26).**
+    The earlier "drop inside NetX core RX/select" hypothesis was **wrong**.
+    Marker instrumentation (in `nx_igmp_multicast_check.c`,
+    `nxd_bsd.c`, cyclonedds `q_init.c` / `ddsi_mcgroup.c`; **all reverted**) on
+    a two-QEMU socket-mcast pair gave decisive evidence:
+    - Peer SPDP frames **do** reach NetX IP: `_nx_igmp_multicast_check` is
+      called with the correct group `0xefff0001` (239.255.0.1).
+    - But the joined-group list is **empty** (`nx_ipv4_multicast_entry[0] == 0`)
+      → `_nx_igmp_multicast_check` returns FALSE (`MISS-GROUP`) → every SPDP
+      frame is dropped at the IP-accept gate, before UDP/BSD. (So RX/select
+      was never the issue.)
+    - The BSD `IP_ADD_MEMBERSHIP` handler is **never reached** by a successful
+      join. Tracing forward through Cyclone: `joinleave_spdp_defmcip`
+      (`allowMulticast = DDSI_AMC_SPDP`) → `joinleave_mcgroups`
+      (`recvips_mode = PREFERRED`, 1 interface, `mc_capable = 1`) →
+      `joinleave_mcgroup` (kinds match, UDPv4) → `ddsi_join_mc`
+      (fresh, not already-joined) → `joinleave_asm_mcgroup` →
+      `ddsrt_setsockopt(IPPROTO_IP, IP_ADD_MEMBERSHIP)` → `nx_bsd_setsockopt`.
+      Constants match (Cyclone's `threadx.h` `#include <nxd_bsd.h>`, so
+      `IPPROTO_IP=2`, `IP_ADD_MEMBERSHIP=32`). The class-D validation passes.
+      The handler then **aborts with `EINVAL` at the interface-match loop**
+      (`nxd_bsd.c` ~line 7168): it computes `addr = ntohl(imr_interface.s_addr)`
+      and compares against `nx_ip_interface[i].nx_interface_ip_address`. But on
+      this port Cyclone supplies `imr_interface` in **host** order
+      (`0x0a000229` = 10.0.2.41) — **the same order as
+      `nx_interface_ip_address` (`0x0a000229`)** — so the `ntohl` corrupts it
+      to `0x2902000a`, which matches nothing → `EINVAL` → group never joined.
+      This is a facet of the 177.26 host-vs-network locator byte-order mismatch
+      (`interf->loc.address+12` is host-order; the BSD handler expects network
+      order per standard BSD).
+
+    **Fix (verified, in cyclonedds working tree — maintainer to commit/push).**
+    `ddsi_udp.c::joinleave_asm_mcgroup`, under `#if DDSRT_WITH_THREADX`, pass
+    `mreq.imr_interface.s_addr = htonl(INADDR_ANY)` instead of
+    `memcpy(interf->loc.address+12)`. The handler's `INADDR_ANY` branch picks
+    interface 0 directly (single-homed embedded — `n_interfaces == 1`),
+    sidestepping the byte-order-sensitive lookup, and the join's stored
+    interface (`interface[0]`) then matches the RX packet's interface in
+    `_nx_igmp_multicast_check`. After the fix, the two-QEMU socket-mcast run
+    shows **both nodes `JOINg: 2`, `MCK=HIT`, `MISS-GROUP: 0`** — bidirectional
+    SPDP multicast is now accepted at the IP layer. (Diff lives in the
+    cyclonedds submodule working tree; not pushed — external fork.)
+
+    **177.26.RX.2 — ROOT-CAUSED + FIXED + VERIFIED 2026-05-26.** With the
+    multicast join fixed the listener still showed `Received: 0`. The
+    "unicast-locator byte order" hypothesis was **disproved**: marker
+    instrumentation (all reverted) on the two-QEMU socket-mcast pair showed the
+    whole RTPS pipeline actually working — 41 datagrams reach Cyclone (SPDP on
+    the mc socket, SEDP/Heartbeat/AckNack on the unicast socket, bidirectional),
+    21 application DATA samples are delivered (`deliver_user_data`, `rdary=1`
+    matched reader), deserialised (`get_serdata` sd≠NULL, sz=8), stored
+    (`dds_rhc_default_store` → `notify_data_available=1`, `dds_reader_data_available_cb`
+    fires). So discovery, matching, reliability, data transfer and RHC store all
+    work between two ThreadX peers — the locator byte order is fine.
+
+    The actual break was in **nano-ros's receive take path**: the nros executor
+    polls the Cyclone subscriber every spin (`subscriber_try_recv_raw`), but that
+    function allocated its transient deserialise buffer with **`std::calloc`**
+    (libc heap). On ThreadX the libc/newlib heap is unwired, so
+    `std::calloc(1, 4)` for an `Int32` returns `nullptr` → every take bails
+    `NROS_RMW_RET_BAD_ALLOC` before `dds_take`, and the stored samples are never
+    handed to the app. This is the **Phase 177.22 hazard on the receive side** —
+    177.22 migrated only the *publish* path to `ddsrt_*`; the subscriber path
+    was missed.
+
+    **Fix (in-tree, `packages/dds/nros-rmw-cyclonedds/src/subscriber.cpp`):**
+    `subscriber_try_recv_raw` now uses `ddsrt_calloc` / `ddsrt_free`
+    (`<dds/ddsrt/heap.h>`) instead of `std::calloc` / `std::free`, mirroring
+    `publisher.cpp` (Phase 177.22). `subscriber_try_recv_sequence` was already
+    loan-based (`dds_return_loan`) so it was unaffected. **Verified end-to-end on
+    a clean build (no instrumentation):** the two-QEMU socket-mcast pair now
+    gives listener `Received: 21` (consecutive `0,1,2,…`) against talker
+    `Published: 21`. Full chain GREEN: SPDP multicast join → discovery → SEDP →
+    reliability → DATA → RHC store → executor poll → app callback.
 
   **Next.**
-  1. Maintainer: push cyclonedds `5558c6ae` to `nano-ros-fork`
+  1. Maintainer: commit the `ddsi_udp.c` threadx multicast-join fix + push
+     cyclonedds (with `5558c6ae`) to `nano-ros-fork`
      (`nano-ros/zephyr-nsos-patches`) and bump the submodule pointer. (The
-     177.28 listener descriptor fix is already in the nano-ros repo.)
-  2. Diagnose NetX multicast RX delivery: confirm whether `nx_bsd_select`
-     flags the SPDP multicast socket readable on datagram arrival and whether
-     `ddsrt_recvmsg` returns the data; fix the RX/select path so Cyclone
-     ingests the peer SPDP → proxy participant → SEDP → data.
-  3. Re-run the `#[ignore]`d test (`--ignored`); only a decoded sample on the
-     listener proves two-node RTPS.
+     177.28 listener descriptor fix + the `subscriber.cpp` ddsrt-heap fix are
+     already in the nano-ros repo.)
+  2. Audit the other RTOS Cyclone backends (FreeRTOS) for any remaining libc
+     `std::malloc/calloc/free` on hot paths — same hazard class as 177.22 /
+     177.26.RX.2.
+  3. Un-`#[ignore]` `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` and run it
+     on QEMU ≥ 7.2 (`-netdev dgram`); this host's 6.2 only does the lossy
+     `socket,mcast` workaround, but that already shows 21/21 with both fixes.
 
 - [x] **177.27 - ThreadX-Linux C/C++ CycloneDDS fixtures fail to build.**
   Found 2026-05-25 while staging fixtures for 177.9.H; closed 2026-05-25.
