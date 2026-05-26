@@ -869,3 +869,125 @@ fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter) {
     }
     native_rust_service_interop(Language::Cpp, &zenohd_unique.locator());
 }
+
+// =============================================================================
+// Native CycloneDDS service + action E2E (Phase 183.4)
+//
+// native/{c,cpp} cyclonedds ship 6 cases but only pub/sub had an e2e
+// (test_native_cyclonedds_*_talker_to_listener). These add the service +
+// action roundtrips for C and C++ — the CMake/Corrosion `build-cyclonedds/`
+// binaries (Phase 175) on a per-test ROS_DOMAIN_ID over SPDP discovery,
+// pinning the Cyclone C++ action get_result/feedback path (28e9e6502 +
+// Phase 171.0.b). Skip cleanly when `just cyclonedds setup` hasn't built them.
+// =============================================================================
+
+/// Resolve a native Cyclone C/C++ example role binary (prebuilt), or skip.
+fn cyclone_role_binary(lang: Language, case: &str) -> PathBuf {
+    let snake = case.replace('-', "_");
+    match lang {
+        Language::C => {
+            let bin = format!("c_{snake}");
+            build_native_c_example_rmw(case, &bin, Rmw::Cyclonedds)
+        }
+        Language::Cpp => {
+            let bin = format!("cpp_{snake}");
+            build_native_cpp_example_rmw(case, &bin, Rmw::Cyclonedds)
+        }
+    }
+    .unwrap_or_else(|e| {
+        skip_missing_fixture(&format!("native {} cyclonedds {case}", lang.label()), e)
+    })
+}
+
+/// Native CycloneDDS service server ↔ client (AddTwoInts).
+#[rstest]
+fn test_native_cyclonedds_service(#[values(Language::C, Language::Cpp)] lang: Language) {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let domain = next_cyclonedds_domain();
+    let server_bin = cyclone_role_binary(lang, "service-server");
+    let client_bin = cyclone_role_binary(lang, "service-client");
+
+    let mut server = spawn_cyclone_binary(
+        &server_bin,
+        &format!("{}-cyclonedds-service-server", lang.tag()),
+        &domain,
+    );
+    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30));
+    let mut client = spawn_cyclone_binary(
+        &client_bin,
+        &format!("{}-cyclonedds-service-client", lang.tag()),
+        &domain,
+    );
+
+    let client_out = client
+        .wait_for_output_pattern("calls succeeded", Duration::from_secs(30))
+        .unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(500));
+    let server_out = server
+        .wait_for_output_pattern("Request", Duration::from_secs(2))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "{} Cyclone service client:\n{client_out}\n--- server ---\n{server_out}",
+        lang.label()
+    );
+    let calls = count_pattern(&client_out, "Call [");
+    let handled = count_pattern(&server_out, "Request");
+    assert!(
+        calls >= 1 || handled >= 1,
+        "{} Cyclone service roundtrip produced no calls/requests.\nclient:\n{client_out}\nserver:\n{server_out}",
+        lang.label()
+    );
+}
+
+/// Native CycloneDDS action server ↔ client (Fibonacci goal → feedback → result).
+#[rstest]
+fn test_native_cyclonedds_action(#[values(Language::C, Language::Cpp)] lang: Language) {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    // C and C++ action examples print different ready/result markers.
+    let (server_ready, client_done): (&str, &str) = match lang {
+        Language::C => ("Waiting for action goals", "Final result"),
+        Language::Cpp => ("Waiting for goal requests", "Result: sequence="),
+    };
+    let domain = next_cyclonedds_domain();
+    let server_bin = cyclone_role_binary(lang, "action-server");
+    let client_bin = cyclone_role_binary(lang, "action-client");
+
+    let mut server = spawn_cyclone_binary(
+        &server_bin,
+        &format!("{}-cyclonedds-action-server", lang.tag()),
+        &domain,
+    );
+    let _ = server.wait_for_output_pattern(server_ready, Duration::from_secs(30));
+    let mut client = spawn_cyclone_binary(
+        &client_bin,
+        &format!("{}-cyclonedds-action-client", lang.tag()),
+        &domain,
+    );
+
+    let client_out = client
+        .wait_for_output_pattern(client_done, Duration::from_secs(40))
+        .unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(500));
+    let server_out = server
+        .wait_for_output_pattern("Goal request", Duration::from_secs(2))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!(
+        "{} Cyclone action client:\n{client_out}\n--- server ---\n{server_out}",
+        lang.label()
+    );
+    assert!(
+        client_out.contains(client_done),
+        "{} Cyclone action client did not reach a result (expected `{client_done}`).\nclient:\n{client_out}\nserver:\n{server_out}",
+        lang.label()
+    );
+}

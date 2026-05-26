@@ -188,14 +188,16 @@ build-fixture-extras:
     bash scripts/build/fixtures-build.sh native cpp
     unset NROS_CMAKE_EXTRA_DEFS
     if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
+        # NOTE (Phase 183.4): only talker/listener (pub/sub) build runnable
+        # Cyclone executables today. The service/action native Cyclone examples
+        # link as a no-op (`: && :`) under `-DNROS_RMW=cyclonedds` — objects
+        # compile but no exe is produced — so they're omitted here. Add them
+        # back once the example-CMake executable wiring for Cyclone
+        # service/action is fixed (Phase 117 / 175); the e2e tests in
+        # native_api.rs already skip cleanly until then.
         for lang in c cpp; do
             for case in talker listener; do
-                case "$lang/$case" in
-                    c/talker) binary="c_talker" ;;
-                    c/listener) binary="c_listener" ;;
-                    cpp/talker) binary="cpp_talker" ;;
-                    cpp/listener) binary="cpp_listener" ;;
-                esac
+                binary="${lang}_${case//-/_}"
                 echo "  → native/${lang}/${case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
                 ( cd examples/native/${lang}/${case} && \
                   nros_cmake_configure_if_needed . build-cyclonedds -DNROS_RMW=cyclonedds \

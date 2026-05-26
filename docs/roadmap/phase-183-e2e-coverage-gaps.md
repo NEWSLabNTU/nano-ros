@@ -12,9 +12,11 @@ matrix, after Phase 182's test de-dup). **183.5 landed** — the CycloneDDS↔RO
 interop test scaffolding (detection passes; interop cases `#[ignore]`d pending
 the 117.12 product work). **183.1 + 183.3 landed** — zephyr C zenoh+xrce E2E
 (5 tests; also covers 183.2's zephyr half) + zephyr rust zenoh service.
-**183.2 native done** — native C XRCE service + action e2e (verified PASS).
-Remaining: 183.4 (native Cyclone service/action), 183.6 (XRCE↔ROS 2 action +
-reverse service); 183.1 (zephyr C) owned by the concurrent agent.
+**183.2 native done** (verified PASS). **183.4 tests added but blocked** — the
+native Cyclone service/action example *executables don't link* (no-op `: && :`
+link rule; a Phase 117/175 example-CMake gap), so the 4 tests skip until that's
+fixed. Remaining: 183.6 (XRCE↔ROS 2 action + reverse service); 183.1 (zephyr C)
+owned by the concurrent agent.
 
 **Priority.** P2 (test coverage / regression confidence). The CycloneDDS↔ROS 2
 item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
@@ -156,14 +158,29 @@ compiles clean, lists. **Files**: `tests/zephyr.rs`.
 sibling (`test_zephyr_cpp_service_server_to_client_e2e`) is the template. Add
 `test_zephyr_rust_service_e2e` (zenoh). **Files**: `tests/zephyr.rs`. **Est.**: 1.
 
-### 183.4 — Native CycloneDDS service + action E2E
+### 183.4 — Native CycloneDDS service + action E2E — TESTS ADDED, blocked on a build gap
 
-`examples/native/{c,cpp}/` cyclonedds ships 6 cases each but `tests/native_api.rs`
-only e2e-tests pubsub (`test_native_cyclonedds_*_talker_to_listener`). Add
-service + action e2e for the native Cyclone path (CMake/Corrosion fixtures,
-Phase 175). The Cyclone C++ action get_result/feedback path landed in
-`28e9e6502` + the Phase 171.0.b follow-ups — this test pins it. **Files**:
-`tests/native_api.rs`. **Est.**: ~4 tests (service + action × {c, cpp}).
+**Tests landed (4):** `tests/native_api.rs` gained
+`test_native_cyclonedds_{service,action}` parametrised over `#[values(C, Cpp)]`,
+driving the `build-cyclonedds/` server+client on a per-test `ROS_DOMAIN_ID` (the
+existing `spawn_cyclone_binary` + `next_cyclonedds_domain` helpers + a new
+`cyclone_role_binary(lang, case)` resolver). C/C++ action markers differ
+("Waiting for action goals"/"Final result" vs "Waiting for goal requests"/"Result:
+sequence="), keyed per lang. Compile clean.
+
+**Blocked — discovered build gap (route to Phase 117 / 175):** the native Cyclone
+**service + action** example *executables don't link*. Under `-DNROS_RMW=cyclonedds`
+the `c_service_server` / `cpp_action_client` / … targets compile their objects but
+their final link rule is a **no-op (`: && :`)** — no top-level exe is produced
+(verified via `ninja -v`: `[206/206] : && :`). zenoh + xrce produce real ELFs, and
+Cyclone **talker/listener** (pub/sub) link fine (CLAUDE.md: native pub/sub passes),
+so this is specific to the service/action example-CMake executable wiring for
+Cyclone. Until that's fixed, the 4 tests **skip cleanly** (the prebuilt resolver
+finds no binary) — tracked coverage, not a silent gap, that goes green once the
+exe links. The `native build-fixture-extras` Cyclone loop was therefore left at
+talker/listener (extending it to service/action only builds no-op targets).
+**Files**: `tests/native_api.rs`, `just/native.just` (note). **Owner of the link
+fix**: Phase 117 / 175.
 
 ### 183.5 — CycloneDDS ↔ ROS 2 interop — DONE (scaffolding; interop pending 117.12)
 
