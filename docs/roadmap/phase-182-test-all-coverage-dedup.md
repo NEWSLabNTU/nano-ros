@@ -18,9 +18,10 @@ fewer tests + one fewer ~160 s cmake configure. **182.3 done** — 50 of 53
 redundant boot-smokes, audited per-fixture against sibling e2e — zero coverage
 loss). **182.5 landed** (action matrix trimmed to the reliable platforms — all 3
 langs kept, NuttX + ThreadX-RISCV64 action cells dropped, −6 of the priciest
-cells). **182.6 partial** — `rtos_e2e` (the 4799 s critical path) stabilised:
-blind full-window output collects replaced with early-exit success-marker waits
-(service C/Cpp 60 s→1.3 s); zephyr/emulator/large_msg conversion is follow-up.
+cells). **182.6 done** — `rtos_e2e` (the 4799 s critical path) + the emulator
+service/action collects converted to early-exit success-marker waits (service
+C/Cpp 60 s→1.3 s); zephyr (Phase 89.12) + large_msg were already
+readiness-driven. **All of 182.1–182.6 landed.**
 
 **Priority.** P2 (developer + CI wall-clock).
 
@@ -255,10 +256,26 @@ Verified (ThreadX-Linux, host process): pubsub Rust 9.7 s (was the 30 s window),
 per-test time drop is the stabiliser: faster tests stop saturating the host, so
 the retries stop firing. **Files**: `tests/rtos_e2e.rs`.
 
-**Follow-up (open):** apply the same readiness-wait conversion to the flaky
-members of `zephyr` / `emulator` / `large_msg` (each still uses blind
-`wait_for_output(window).unwrap_or_default()` collects). Retries stay as a
-safety net, not the routine path.
+**Follow-up — DONE 2026-05-26.** Audited the other named files; almost all were
+already early-exit:
+- `zephyr` — already converted in Phase 89.12: every e2e polls
+  `wait_for_pattern("Waiting for messages" / "Published: N" / "Received", 30 s)`
+  then a short 2 s drain. No blind full-window collect remained.
+- `large_msg` — the flaky `test_zenoh_overflow_detection` already uses
+  `wait_for_output_pattern("RECV_DONE:", 15 s)`; the rest are count-based
+  (`received >= N`) where a full-window collect is correct (early-exit would
+  under-count). Its G3 flake was host saturation, now relieved by the rtos_e2e
+  speedup.
+- `emulator` — the pub/sub listener collects already used
+  `wait_for_output_pattern("Received:", 60 s)`. Converted the two remaining big
+  blind collects: rtic **service** client → `"All service calls completed"`
+  (was blind 90 s) and rtic **action** client → `"feedback messages"` (was blind
+  60 s). Left the WCET-bench collect blind on purpose — its `[PASS]`/`[FAIL]`
+  line prints *after* "Benchmark complete", so it must capture trailing output.
+
+So `rtos_e2e` (critical path) + the emulator service/action collects were the
+only remaining blind full-window waits; everything else was already
+readiness-driven. Retries stay a safety net, not the routine path.
 
 ## Acceptance
 
@@ -269,9 +286,10 @@ safety net, not the routine path.
   trimmed 173 → 8 (build-only presence matrices removed, 8 Cyclone e2e kept),
   the two cmake smokes merged into one. ~167 fewer tests + one fewer ~160 s
   clean cmake configure. Verified: compiles clean, merged cmake test passes.
-- [~] Flaky count trends down (182.6); retry budget is a net, not the norm.
-  `rtos_e2e` done (early-exit success-marker waits, big per-test time drop);
-  zephyr/emulator/large_msg follow-up.
+- [x] Flaky count trends down (182.6); retry budget is a net, not the norm.
+  `rtos_e2e` + emulator service/action converted to early-exit success-marker
+  waits (big per-test time drop); zephyr (89.12) + large_msg were already
+  readiness-driven.
 - [x] `rtos_e2e` matrix decision recorded (trim or keep, with rationale) — 182.5:
   keep all 3 langs, trim action platforms to Freertos + ThreadxLinux (drop
   NuttX + ThreadxRiscv64); −6 action cells, coverage preserved.

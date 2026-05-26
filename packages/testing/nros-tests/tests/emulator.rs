@@ -527,9 +527,12 @@ fn test_qemu_rtic_service_e2e() {
     let mut client =
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
-    // Wait for client to complete (it exits after 4 service calls)
+    // Wait for client to complete (it exits after 4 service calls).
+    // Phase 182.6 — early-exit on the completion marker; on timeout
+    // `wait_for_output_pattern` still returns whatever it collected, so this
+    // never captures less than the old blind 90 s wait.
     let client_output = client
-        .wait_for_output(Duration::from_secs(90))
+        .wait_for_output_pattern("All service calls completed", Duration::from_secs(90))
         .unwrap_or_default();
 
     // Collect server output
@@ -602,9 +605,12 @@ fn test_qemu_rtic_action_e2e() {
     let mut client =
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
-    // Wait for client to complete (it exits after receiving feedback)
+    // Wait for client to complete (it exits after receiving feedback).
+    // Phase 182.6 — early-exit on the feedback-summary marker; on timeout the
+    // collected output is still returned, so this never captures less than the
+    // old blind 60 s wait.
     let client_output = client
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output_pattern("feedback messages", Duration::from_secs(60))
         .unwrap_or_default();
 
     // Collect server output
