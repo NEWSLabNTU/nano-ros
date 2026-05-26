@@ -950,13 +950,23 @@ pub fn is_qemu_riscv64_available() -> bool {
 /// netdev that replaces the lossy `socket,mcast=` cross-process
 /// path)? `dgram` was added in QEMU 7.2.
 pub fn qemu_supports_dgram_unix() -> bool {
-    let out = qemu_system_arm_cmd()
-        .args(["-M", "virt", "-netdev", "help"])
-        .output();
-    match out {
+    qemu_cmd_supports_dgram(qemu_system_arm_cmd())
+}
+
+/// `-netdev dgram` support for `qemu-system-riscv64` specifically. The
+/// patched ARM binary (stable-11.0) always has it, but the RISC-V64 binary is
+/// the unpatched system one — on this host QEMU 6.2, which predates `dgram`
+/// (added in 7.2). Checking the ARM binary's help here would be wrong, so the
+/// ThreadX-RV64 two-node test gates on this and falls back to `socket,mcast`.
+pub fn qemu_riscv64_supports_dgram_unix() -> bool {
+    qemu_cmd_supports_dgram(Command::new("qemu-system-riscv64"))
+}
+
+/// `-netdev help` lists backend types one per line; "dgram" appears iff
+/// QEMU >= 7.2.
+fn qemu_cmd_supports_dgram(mut cmd: Command) -> bool {
+    match cmd.args(["-M", "virt", "-netdev", "help"]).output() {
         Ok(o) => {
-            // `-netdev help` lists backend types one per line; "dgram"
-            // appears iff QEMU >= 7.2.
             String::from_utf8_lossy(&o.stdout)
                 .lines()
                 .any(|l| l.trim() == "dgram")

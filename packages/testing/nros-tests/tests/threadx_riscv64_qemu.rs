@@ -20,7 +20,7 @@
 use std::time::Duration;
 
 use nros_tests::fixtures::{
-    QemuProcess, is_qemu_riscv64_available, is_zenohd_available, qemu_supports_dgram_unix,
+    QemuProcess, is_qemu_riscv64_available, is_zenohd_available, qemu_riscv64_supports_dgram_unix,
     threadx_riscv64::{
         build_threadx_rv64_action_client, build_threadx_rv64_action_server,
         build_threadx_rv64_listener, build_threadx_rv64_service_client,
@@ -124,29 +124,25 @@ fn test_threadx_riscv64_all_examples_build() {
 ///   just cyclonedds threadx-cross-probe
 ///   NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures
 ///
-/// Ignored: multicast discovery now works on the publisher side — the
-/// ThreadX ddsrt port fixes (multicast byte-order join + multi-iovec
-/// datagram `sendto`, cyclonedds fork `e8ce7315`) let the talker join the
-/// SPDP group and publish without `conn_write` errors. The remaining
-/// blocker is a *distinct, pre-existing* issue: the listener aborts at
-/// `nros_executor_register_subscription -> -1` inside the nano-ros Rust
-/// executor (arena/capacity), before the Cyclone subscriber is created —
-/// orthogonal to multicast. Tracked as Phase 177.26. Run with `--ignored`
-/// once the subscriber can be registered (and `e8ce7315` is on the pinned
-/// cyclonedds commit).
+/// Phase 177.26 — ThreadX↔ThreadX Cyclone RTPS works end-to-end. Two fixes
+/// landed it: the cyclonedds ThreadX ddsrt port joins SPDP multicast with an
+/// `INADDR_ANY` interface (NetX BSD `IP_ADD_MEMBERSHIP` byte-order, fork
+/// `nano-ros`@`12b4af2c`), and the nano-ros Cyclone subscriber allocates its
+/// RX take buffer from the ddsrt heap rather than libc (`std::calloc` returns
+/// NULL on the unwired ThreadX libc heap; 177.26.RX.2). The earlier
+/// `register_subscription -> -1` symptom closed under 177.28.
+///
+/// Transport: prefers `-netdev dgram` (QEMU ≥ 7.2 — point-to-point AF_UNIX
+/// pair, CI-isolated). On older QEMU it falls back to `-netdev socket,mcast`
+/// (shared host L2). Both put the two nodes on one link; reliable RTPS
+/// retransmission covers any cross-process loss on the mcast path.
 #[test]
-#[ignore = "Phase 177.26: listener register_subscription fails in the nano-ros executor (arena), pre-existing; multicast discovery TX is fixed"]
 fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     if !require_threadx_riscv64() {
         nros_tests::skip!("require_threadx_riscv64 check failed");
     }
     if !is_qemu_riscv64_available() {
         nros_tests::skip!("qemu-system-riscv64 not found");
-    }
-    if !qemu_supports_dgram_unix() {
-        nros_tests::skip!(
-            "qemu-system-riscv64 does not support `-netdev dgram` (needs QEMU >= 7.2)"
-        );
     }
 
     let root = nros_tests::project_root();
@@ -163,17 +159,6 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
         );
     }
 
-    // AF_UNIX dgram socket pair (kept short to stay under sun_path's 108-byte
-    // limit). Each QEMU binds its `local` path and sends to the peer's path.
-    let sock_dir = root.join("tmp");
-    std::fs::create_dir_all(&sock_dir).expect("create tmp dir");
-    let sock_talker = sock_dir.join("tx_rv64_cyc_talker.sock");
-    let sock_listener = sock_dir.join("tx_rv64_cyc_listener.sock");
-    let _ = std::fs::remove_file(&sock_talker);
-    let _ = std::fs::remove_file(&sock_listener);
-    let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
-    let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
-
     // MACs match each node's config.toml (talker 10.0.2.40/:56,
     // listener 10.0.2.41/:57) so QEMU's device MAC equals the NetX-assigned
     // address.
@@ -181,17 +166,49 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     const LISTENER_MAC: &str = "52:54:00:12:34:57";
 
     // Subscriber first so it has joined the SPDP multicast group before the
-    // talker announces; SPDP re-announces periodically regardless.
-    let mut listener = QemuProcess::start_riscv64_virt_dgram(
-        &listener_bin,
-        sock_listener,
-        sock_talker,
-        LISTENER_MAC,
-    )
-    .expect("start listener QEMU");
-    let _talker =
-        QemuProcess::start_riscv64_virt_dgram(&talker_bin, sock_talker, sock_listener, TALKER_MAC)
-            .expect("start talker QEMU");
+    // talker announces (CLAUDE.md QEMU-test convention; SPDP re-announces
+    // periodically regardless). Both transports place the pair on one L2 link.
+    let (mut listener, _talker) = if qemu_riscv64_supports_dgram_unix() {
+        // AF_UNIX dgram pair (kept short to stay under sun_path's 108-byte
+        // limit). Each QEMU binds its `local` path, sends to the peer's.
+        let sock_dir = root.join("tmp");
+        std::fs::create_dir_all(&sock_dir).expect("create tmp dir");
+        let sock_talker = sock_dir.join("tx_rv64_cyc_talker.sock");
+        let sock_listener = sock_dir.join("tx_rv64_cyc_listener.sock");
+        let _ = std::fs::remove_file(&sock_talker);
+        let _ = std::fs::remove_file(&sock_listener);
+        let sock_talker = sock_talker.to_str().expect("utf-8 socket path");
+        let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
+
+        let listener = QemuProcess::start_riscv64_virt_dgram(
+            &listener_bin,
+            sock_listener,
+            sock_talker,
+            LISTENER_MAC,
+        )
+        .expect("start listener QEMU (dgram)");
+        std::thread::sleep(Duration::from_secs(4));
+        let talker = QemuProcess::start_riscv64_virt_dgram(
+            &talker_bin,
+            sock_talker,
+            sock_listener,
+            TALKER_MAC,
+        )
+        .expect("start talker QEMU (dgram)");
+        (listener, talker)
+    } else {
+        // QEMU < 7.2 fallback: shared `-netdev socket,mcast` segment. The
+        // group is dedicated to this test so it can't cross-talk with other
+        // platforms' mcast-socket harnesses (threadx tests run single-threaded
+        // in their nextest group).
+        const MCAST: &str = "230.0.0.7:11700";
+        let listener = QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
+            .expect("start listener QEMU (socket,mcast)");
+        std::thread::sleep(Duration::from_secs(4));
+        let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
+            .expect("start talker QEMU (socket,mcast)");
+        (listener, talker)
+    };
 
     // Wait for the listener to decode at least one sample. Discovery +
     // first delivery completes in a few seconds when it works; the generous
