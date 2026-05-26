@@ -6,18 +6,21 @@ runtime E2E test exercising its pub/sub, service, and action cases, and each RMW
 backend should have ROS 2 interop coverage proportional to its purpose. Fill the
 gaps; do **not** invent tests for intentionally-empty cells.
 
-**Status.** In progress. Created 2026-05-26 from the E2E completeness audit (run
-against the `cargo nextest list` inventory + the `examples/README.md` coverage
-matrix, after Phase 182's test de-dup). **183.5 landed** — the CycloneDDS↔ROS 2
-interop test scaffolding (detection passes; interop cases `#[ignore]`d pending
-the 117.12 product work). **183.1 + 183.3 landed** — zephyr C zenoh+xrce E2E
+**Status.** Complete (2026-05-27). All six work items landed and the
+2026-05-27 acceptance audit (`cargo nextest list` × `examples/README.md`)
+closed the three open checkboxes — every in-scope example cell maps to a runtime
+E2E test, the new tests follow suite conventions, and the matrix is clean.
+**183.5 landed** — CycloneDDS↔ROS 2 interop; all four tests now **pass** (117.12
+closed: the reply-writer match-gate fix + the listener stdout line-buffering fix
+un-`#[ignore]`d every case). **183.1 + 183.3 landed** — zephyr C zenoh+xrce E2E
 (5 tests; also covers 183.2's zephyr half) + zephyr rust zenoh service.
 **183.2 native done** (verified PASS). **183.4: link gap fixed (177.31) → service
 e2e PASS (C+C++); action blocked on 177.32** (Cyclone action-server executor
 register). **183.6 done** — XRCE↔ROS 2 action (both dirs) + reverse-direction
-service (3 tests, run green). All 183 items landed except: 183.4-action (→177.32)
-and 183.1's zenoh-C-action `#[ignore]` (server-create hang) — both tracked
-elsewhere.
+service (3 tests, run green). Remaining non-✓ cells are tracked elsewhere:
+183.4-action (→177.32), 183.1's zenoh-C-action `#[ignore]` (server-create hang),
+the nuttx/threadx action drops (177.30/182.5), and freertos/threadx cyclone
+service+action (171.C.3/177.22).
 
 **Priority.** P2 (test coverage / regression confidence). The CycloneDDS↔ROS 2
 item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
@@ -35,11 +38,13 @@ item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
 - **Phase 171.C.3 / 177.22** — pending CycloneDDS service/action on
   threadx-linux / threadx-riscv64; bounds 183.3.
 
-## Coverage matrix (2026-05-26)
+## Coverage matrix (2026-05-27, post-audit)
 
 Cases: pubsub / service / action. ✓ = E2E exists. `—` = no example (out of
-scope). **✗** = example exists but **no E2E** (a gap). "drop"/"pend" = tracked
-elsewhere (not a blind-fill target).
+scope). **✗** = example exists but **no E2E** (a gap). "drop"/"pend"/"ign" =
+tracked elsewhere (not a blind-fill target). The 2026-05-27 audit
+(`cargo nextest list` × `examples/README.md`) closed every in-scope gap; the
+only non-✓ cells left are tracked exemptions.
 
 ### Zenoh
 | platform | langs | pubsub | service | action |
@@ -53,23 +58,23 @@ elsewhere (not a blind-fill target).
 | esp32 / qemu-esp32 | rust | ✓ | — | — |
 | stm32f4 | rust | — (no QEMU; cross-build only) | | |
 | zephyr | cpp | ✓ | ✓ | ✓ |
-| zephyr | rust | ✓ | **✗** | ✓ |
-| zephyr | c | **✗** | **✗** | **✗** |
+| zephyr | rust | ✓ | ✓ (183.3) | ✓ |
+| zephyr | c | ✓ (183.1) | ✓ (183.1) | ign (183.1 server-create hang) |
 
 ### XRCE (examples exist only on native + zephyr)
 | platform | lang | pubsub | service | action |
 |----------|------|:---:|:---:|:---:|
 | native | rust | ✓ | ✓ | ✓ |
-| native | c | ✓ | **✗** | **✗** |
+| native | c | ✓ | ✓ (183.2) | ✓ (183.2) |
 | zephyr | rust | ✓ | ✓ | ✓ |
 | zephyr | cpp | ✓ | ✓ | ✓ |
-| zephyr | c | ✓ | **✗** | **✗** |
+| zephyr | c | ✓ | ✓ (183.1) | ✓ (183.1) |
 
 ### CycloneDDS
 | platform | langs | pubsub | service | action |
 |----------|-------|:---:|:---:|:---:|
 | zephyr | c/cpp/rust | ✓ | ✓ | ✓ |
-| native | c/cpp(+rust) | ✓ | **✗** | **✗** |
+| native | c/cpp(+rust) | ✓ | ✓ (183.4) | pend (177.32 register) |
 | freertos | rust | ✓ (local boot) | pend | pend |
 | threadx-linux | →native | ✓ | pend (171.C.3) | pend |
 | threadx-riscv64 | c | ✓ (two-QEMU, gated) | pend (177.22) | pend |
@@ -78,8 +83,8 @@ elsewhere (not a blind-fill target).
 | backend | pubsub | service | action | extras |
 |---------|:---:|:---:|:---:|--------|
 | zenoh (`rmw_interop`) | ✓ 2-way | ✓ 2-way | ✓ 2-way | discovery, qos, latency, throughput — complete |
-| xrce (`xrce_ros2_interop`) | ✓ 2-way | ✓ 1-way only | **✗** | dds_detection |
-| cyclonedds | **✗** | **✗** | **✗** | none |
+| xrce (`xrce_ros2_interop`) | ✓ 2-way | ✓ 2-way (183.6) | ✓ 2-way (183.6) | dds_detection |
+| cyclonedds (`cyclonedds_ros2_interop`) | ✓ 2-way (117.12) | ✓ nano-srv↔ros2-cli (117.12.B.1) | **✗** (no cyclone action interop test) | detection |
 | lifecycle | `ros2_lifecycle_full_cycle` | | | |
 
 ## Work Items
@@ -274,17 +279,26 @@ Micro XRCE-DDS Agent + ROS 2 DDS. **Files**: `tests/xrce_ros2_interop.rs`.
 
 ## Acceptance
 
-- [ ] Every non-empty `examples/README.md` cell with a service/action case has a
+- [x] Every non-empty `examples/README.md` cell with a service/action case has a
   matching runtime E2E test (or a tracked-elsewhere exemption noted above).
+  **2026-05-27 audit:** all in-scope cells covered; the only non-✓ service/action
+  cells are tracked exemptions — zephyr-c-zenoh-action (`#[ignore]` server-create
+  hang, 183.1), native-cyclone-action (177.32 executor register), nuttx /
+  threadx-riscv64 zenoh action (dropped 177.30 / 182.5), freertos / threadx
+  cyclone service+action (pend 171.C.3 / 177.22).
 - [x] CycloneDDS has ROS 2 interop coverage (183.5), even if some cases start
-  `#[ignore]`d pending 117.X.
+  `#[ignore]`d pending 117.X. **All four `cyclonedds_ros2_interop` tests now pass**
+  (117.12 closed — pub/sub both ways + nano-server↔ros2-client service); none
+  `#[ignore]`d.
 - [x] XRCE↔ROS 2 covers action + both service directions (183.6).
-- [ ] New tests follow the suite conventions: `nros_tests::skip!` on unmet
-  preconditions (never silent early-return), per-platform nextest groups +
-  `retries` for process-heavy E2E (Phase 177/G6), readiness waits not fixed
-  sleeps.
-- [ ] `examples/README.md` coverage matrix and the E2E suite agree (a follow-up
-  audit reproduces a clean matrix).
+- [x] New tests follow the suite conventions: `nros_tests::skip!` on unmet
+  preconditions (no silent early-returns — verified), `xrce_ros2_interop` +
+  `cyclonedds_ros2_interop` nextest groups with `retries = 2`, readiness waits
+  (`wait_for_output_pattern`) not fixed sleeps.
+- [x] `examples/README.md` coverage matrix and the E2E suite agree — the
+  2026-05-27 audit (`cargo nextest list` × `examples/README.md`) reproduced a
+  clean matrix (the table above); every existing example cell maps to a test or
+  a tracked exemption.
 
 ## Notes
 
