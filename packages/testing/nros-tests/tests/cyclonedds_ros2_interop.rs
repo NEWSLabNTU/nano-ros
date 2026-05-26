@@ -13,10 +13,12 @@
 //! - **`nano_to_ros2_pubsub`** — nano-ros Cyclone talker → stock `ros2 topic
 //!   echo`: **PASSES** (un-`#[ignore]`d). Gated on `require_ros2_cyclonedds()`,
 //!   so it skips cleanly without ROS 2.
-//! - **`ros2_to_nano_pubsub`** — still `#[ignore]`d: the *native-C* listener
-//!   (`build_native_c_example_rmw`) receives no sample, even though the C++
-//!   CTest `ros2_sub` (`tests/ros2_pubsub_e2e.sh`) passes both directions — a
-//!   native-C-listener discovery/timing gap, not a wire-compat gap.
+//! - **`ros2_to_nano_pubsub`** — **PASSES** (un-`#[ignore]`d). The native-C
+//!   listener *did* receive the samples all along; its stdout was block-
+//!   buffered (glibc's 4 KiB default when piped), so the `Received:` lines
+//!   never reached the harness inside the 10 s window. Fix:
+//!   `setvbuf(stdout, NULL, _IOLBF, 0)` in `examples/native/c/listener` — not a
+//!   wire-compat or discovery gap at all.
 //! - **`service_nano_server_ros2_client`** — **PASSES** (un-`#[ignore]`d). The
 //!   old 117.12.B.1 failure was a reply-writer match-gate bug:
 //!   `service_send_reply` waited for `current_count > 0` on the reply writer,
@@ -130,7 +132,6 @@ fn test_cyclonedds_nano_to_ros2_pubsub() {
 
 /// ROS 2 (`rmw_cyclonedds_cpp`) publisher → nano-ros Cyclone subscriber.
 #[test]
-#[ignore = "117.12: ros2→nano native-C listener gets no sample (the C++ CTest ros2_sub passes both ways; native-C-listener discovery/timing gap)"]
 fn test_cyclonedds_ros2_to_nano_pubsub() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");

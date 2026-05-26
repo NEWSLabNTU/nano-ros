@@ -75,6 +75,13 @@ int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
+    // Line-buffer stdout so each printf flushes on its newline. When stdout is
+    // a pipe (e.g. a test harness capturing output) glibc defaults to 4 KiB
+    // block buffering, so "Received: N" lines would sit unflushed for a long
+    // time and an observer waiting on them sees nothing. Line buffering makes
+    // the output appear live, matching interactive (tty) behaviour.
+    setvbuf(stdout, NULL, _IOLBF, 0);
+
     printf("nros C Listener\n");
     printf("===================\n");
 
