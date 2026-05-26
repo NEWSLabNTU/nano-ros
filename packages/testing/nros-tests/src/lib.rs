@@ -79,14 +79,37 @@ pub fn unique_domain_id() -> u32 {
     (pid << 8) | (seq & 0xFF)
 }
 
-/// Returns a process-local ROS domain ID in the DDS-valid 1..=232 range.
+/// Returns a ROS domain ID in the DDS-valid 1..=232 range, unique among
+/// concurrently-running tests.
 ///
-/// Use this for tests that must pass the value to ROS 2 or a DDS backend.
-/// The wider [`unique_domain_id`] is useful for zenoh keyexpr isolation, but
-/// ROS 2/DDS implementations reject domain IDs outside their supported range.
+/// Use this for tests that must pass the value to ROS 2 or a DDS backend
+/// (especially brokerless RTPS like CycloneDDS, where the UDP ports are derived
+/// from the domain ID — two live participants on the same domain collide on the
+/// SPDP/user-traffic ports). The wider [`unique_domain_id`] is useful for zenoh
+/// keyexpr isolation, but ROS 2/DDS implementations reject domain IDs outside
+/// their supported range.
+///
+/// Allocation prefers nextest's `NEXTEST_TEST_GLOBAL_SLOT` — a slot index that
+/// is **guaranteed unique among the tests running concurrently** (0..test-threads,
+/// reused only after a test finishes). Deriving the domain from the slot is
+/// collision-free between live tests. The previous PID-hash (`(pid + seq) % 232`)
+/// was only collision-*rare*: two test PIDs congruent mod 232 land on the same
+/// domain, and under load (intervening PID consumption) that happens often enough
+/// to flake (Phase 177.33: `ddsi_udp_create_conn: failed to bind … address in
+/// use`). Off nextest (no slot env), fall back to the PID hash.
+///
+/// `seq` (intra-process) spaces out the rare case of one test needing multiple
+/// distinct domains; the `* 64` stride keeps those distinct from each other and,
+/// for any realistic `test-threads` (≤ 64), from other slots' first domains.
 pub fn unique_ros_domain_id() -> u8 {
-    let pid = std::process::id();
     let seq = DOMAIN_SEQ.fetch_add(1, Ordering::Relaxed);
+    if let Some(slot) = std::env::var("NEXTEST_TEST_GLOBAL_SLOT")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    {
+        return (((slot + seq * 64) % 232) + 1) as u8;
+    }
+    let pid = std::process::id();
     (((pid + seq) % 232) + 1) as u8
 }
 

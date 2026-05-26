@@ -737,10 +737,10 @@ passed.
 
 ### Test-All Runtime / E2E
 
-- [ ] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
-  test-harness (REOPENED 2026-05-27 — the PID-domain fix reduced but did not
-  eliminate the flake; see "Residual flake" below). The native-Cyclone
-  `nros-tests::native_api`
+- [x] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
+  test-harness (FIXED 2026-05-27 — slot-based domain allocation; the earlier
+  PID-domain fix was collision-rare, not collision-free; see "real root cause +
+  final fix" below). The native-Cyclone `nros-tests::native_api`
   cases — `test_native_cyclonedds_{talker_to_rust_listener,rust_talker_to_listener}`
   (pub/sub) and the Phase 183.4 `test_native_cyclonedds_{service,action}` (C +
   C++) — each passed **run alone** but failed when nextest ran them in parallel.
@@ -774,16 +774,29 @@ passed.
   test(cyclonedds)'`, `--retries 0 --test-threads 8`) pass 9/9, runtime back to
   ~11 s. Not a product defect; RMW + fixtures are correct (177.31/177.32 verified).
 
-  **Residual flake (REOPENED 2026-05-27).** With the PID-domain fix in place, an
-  8-way concurrent run (`-E 'test(test_native_cyclonedds)'`, all 8 cases incl. the
-  newly-built service+action C/C++ fixtures) still failed `action::C` — but at
-  **0.6 s** (vs the ~18 s domain-collision signature, and vs ~10 s for a clean
-  pass), and the case passes deterministically in isolation. The fast-fail
-  profile means it is *not* the domain-collision path (that one reached
-  `Failed to send goal: -2` after a full discovery window) — a different
-  concurrent-run failure mode. Under investigation: capture the failing case's
-  output under load to classify (early abort / spawn race / residual cross-talk).
-  The PID-seeded `unique_ros_domain_id()` fix stands; this is an additional mode.
+  **Residual flake → real root cause + final fix (2026-05-27).** The PID-domain
+  fix above was incomplete: an 8-way concurrent run (all 8 cases incl. the
+  service+action C/C++ fixtures) still failed at **0.6 s** under load. Captured
+  output classified it — *not* a fast/early abort but a **domain collision after
+  all**: `ddsi_udp_create_conn: failed to bind to ANY:59401: address in use`.
+  Port 59401 is the Cyclone RTPS port for **domain 208** (`7400 + 250·208 + 1`),
+  so two concurrent processes had both landed on domain 208. The PID hash
+  `(pid + seq) % 232` is collision-*rare*, not collision-*free*: two test PIDs
+  congruent mod 232 collide, and under load (the parallel build consumes PIDs
+  between spawns) that congruence happens often enough to flake (~1/6 under
+  load). The "impossible within a spawn window" claim was wrong.
+
+  **Final fix (`nros-tests/src/lib.rs::unique_ros_domain_id`):** derive the domain
+  from nextest's `NEXTEST_TEST_GLOBAL_SLOT` — a slot index **guaranteed unique
+  among concurrently-running tests** (0..test-threads), which is exactly the
+  cross-process resource-allocation primitive nextest provides. `domain =
+  (slot + seq*64) % 232 + 1`: slots are unique among live tests so first-domain
+  values never collide (test-threads ≪ 232), and the `*64` stride keeps a test's
+  multiple domains distinct. Falls back to the PID hash off nextest. Verified
+  2026-05-27: the under-load reproduction that failed 1/6 now passes **0/8**, and
+  **0/12** clean concurrent runs — 20/20 post-fix. No `max-threads`
+  serialization needed (tests stay fully parallel). Not a product defect; RMW +
+  fixtures correct (177.31/177.32 verified).
 
 - [x] **177.34 - native C examples block-buffer stdout → harness reads nothing
   within its window.** Owner: examples (resolved 2026-05-27). Found closing the
