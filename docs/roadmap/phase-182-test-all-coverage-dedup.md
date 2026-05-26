@@ -16,7 +16,9 @@ fewer tests + one fewer ~160 s cmake configure. **182.3 done** — 50 of 53
 `build-all` + the `_require-fixtures` preflight + runtime e2e siblings); 3 kept
 (cffi ABI + qemu_patched infra, not fixture-compile). **182.4 landed** (−12
 redundant boot-smokes, audited per-fixture against sibling e2e — zero coverage
-loss). 182.5 / 182.6 open.
+loss). **182.5 landed** (action matrix trimmed to the reliable platforms — all 3
+langs kept, NuttX + ThreadX-RISCV64 action cells dropped, −6 of the priciest
+cells). 182.6 open.
 
 **Priority.** P2 (developer + CI wall-clock).
 
@@ -194,21 +196,33 @@ this session: zephyr 53/53, xrce G6 / 177.9.E):**
 Net: **−12 boot-smoke tests** (−244 lines), zero coverage loss. Compiles clean;
 the removed `#[rstest]` fixtures stay used by the runtime tests.
 
-### 182.5 — Trim the `rtos_e2e` matrix (the wall-clock critical path)
+### 182.5 — Trim the `rtos_e2e` matrix (the wall-clock critical path) — DONE 2026-05-26
 
-`rtos_e2e` = 4 platforms × {pubsub, service, action} × {Rust, C, Cpp} = 36 base
-combos, ×`retries = 2` = the 4799 s CPU critical path. The three language
-bindings exercise the *same wire path* per (platform, scenario). Proposal:
-- keep **all langs for pubsub** (cheapest scenario; proves transport + each
-  binding end to end);
-- trim **action** (slowest + flakiest scenario — where the NuttX/Cpp hang of
-  **177.30** lives) to **Rust + one of {C, Cpp} per platform**;
-- keep **service** as-is or trim symmetrically.
+`rtos_e2e` was 4 platforms × {pubsub, service, action} × {Rust, C, Cpp} = 36
+base combos × `retries = 2` — the 4799 s CPU critical path, dominated by
+**action** (90–270 s/cell).
 
-Biggest single wall-clock win. **Risk:** a language-specific *action* regression
-could slip if its lang cell is dropped — this is a coverage-vs-speed judgment for
-the maintainer, not a safe mechanical change. **Files**: `tests/rtos_e2e.rs`
-(`#[case]` matrix), `.config/nextest.toml` (group sizing).
+**Decision (maintainer): keep all three language bindings, trim the action
+*platform* axis** — rather than dropping a binding. The three bindings exercise
+distinct goal/feedback/result serialization, so all three are worth keeping;
+the cheap win is dropping the action cells on the platforms where action is slow
+and/or unreliable:
+- **action** now runs on `Freertos` + `ThreadxLinux` only (×3 langs = 6 cells,
+  was 12). Dropped **`Nuttx`** (the 270 s `z_get`/lease hang — 177.30, tracked +
+  red there; keeping it just burned the retry budget) and **`ThreadxRiscv64`**
+  (slow QEMU, no unique binding coverage). ThreadX-Linux runs as a host process
+  (NSOS, ~seconds); FreeRTOS-QEMU action is reliable.
+- **pubsub + service** keep all 4 platforms × 3 langs (cheaper; full coverage).
+
+**Coverage preserved:** every binding's action path still runs on 2 platforms
+here, plus native (Cyclone C/Cpp action) and zephyr (xrce/dds cpp action e2e).
+The dropped NuttX-action regression signal lives in **177.30**'s own acceptance.
+
+Net: **−6 action cells** (the most expensive, incl. the NuttX hang) × retries.
+Verified: compiles clean; the kept ThreadX-Linux action cells pass all 3 langs
+(Rust 9.9 s, C/Cpp ~63 s — Rust needed a fixture rebuild first, a staleness
+artifact not a bug). **Files**: `tests/rtos_e2e.rs` (`test_rtos_action_e2e`
+`#[values]` platform list). No `.config/nextest.toml` group-sizing change needed.
 
 ### 182.6 — Orthogonal lever: stabilise flaky E2E to kill retry inflation
 
@@ -234,7 +248,9 @@ readiness markers.
   the two cmake smokes merged into one. ~167 fewer tests + one fewer ~160 s
   clean cmake configure. Verified: compiles clean, merged cmake test passes.
 - [ ] Flaky count trends down (182.6); retry budget is a net, not the norm.
-- [ ] `rtos_e2e` matrix decision recorded (trim or keep, with rationale) — 182.5.
+- [x] `rtos_e2e` matrix decision recorded (trim or keep, with rationale) — 182.5:
+  keep all 3 langs, trim action platforms to Freertos + ThreadxLinux (drop
+  NuttX + ThreadxRiscv64); −6 action cells, coverage preserved.
 - [ ] `examples/README.md` coverage matrix still agrees with the surviving tests.
 
 ## Notes

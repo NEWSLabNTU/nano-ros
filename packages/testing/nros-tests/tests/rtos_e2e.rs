@@ -766,15 +766,18 @@ fn test_rtos_service_e2e(
 /// action server; second is the action client. We assert the client
 /// saw "Goal accepted" plus either "Action completed successfully" or
 /// "Result (status=..." (NuttX C action example uses the latter).
+// Phase 182.5 — action is the wall-clock critical path (90–270 s/cell ×
+// retries). Keep **all three language bindings** (each exercises distinct
+// goal/feedback/result serialization), but only on the platforms where action
+// runs reliably and cheaply: ThreadX-Linux (host process / NSOS, ~seconds) and
+// FreeRTOS-QEMU. The QEMU-heavy NuttX + ThreadX-RISCV64 action cells are
+// dropped — NuttX action is the 270 s `z_get`/lease hang (177.30, tracked +
+// red there) and ThreadX-RISCV64 QEMU action is slow with no unique binding
+// coverage. pubsub + service keep all 4 platforms × 3 langs. Cpp/C action
+// bindings remain covered on native (Cyclone) and zephyr (xrce/dds) e2e.
 #[rstest]
 fn test_rtos_action_e2e(
-    #[values(
-        Platform::Freertos,
-        Platform::Nuttx,
-        Platform::ThreadxLinux,
-        Platform::ThreadxRiscv64
-    )]
-    platform: Platform,
+    #[values(Platform::Freertos, Platform::ThreadxLinux)] platform: Platform,
     #[values(Lang::Rust, Lang::C, Lang::Cpp)] lang: Lang,
 ) {
     if maybe_skip(platform, lang, Variant::Action) {
