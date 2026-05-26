@@ -115,11 +115,11 @@ module's exported cmake dir; examples use `find_package(CycloneDDS)` for
 `examples/zephyr/*/CMakeLists.txt` (18 edits),
 `examples/zephyr/cmake/NrosZephyrCycloneddsActionTypes.cmake` (move),
 `examples/README.md`.
-- [ ] Add module exports (`CMAKE_MODULE_PATH`, `NROS_CYCLONE_SCRIPTS_DIR`)
-- [ ] Move shared cyclone cmake helper into the module-exported dir
-- [ ] Rewrite the 18 example CMakeLists to module-discovery + `find_package(CycloneDDS)`
-- [ ] Replace `/opt/ros/humble` hardcode with `NROS_STD_MSGS_DIR` env contract
-- [ ] CI check: a copied-out example builds from outside the repo tree
+- [x] Add module exports (`NROS_CYCLONE_IDLC` / `NROS_CYCLONE_SCRIPTS_DIR` / `NROS_CYCLONE_CMAKE_DIR`)
+- [x] Move shared cyclone cmake helper into the module-exported dir (`packages/dds/nros-rmw-cyclonedds/cmake/`)
+- [x] Rewrite the 18 example CMakeLists to module-discovery (use `NROS_CYCLONE_IDLC` + `list(APPEND CMAKE_MODULE_PATH ${NROS_CYCLONE_CMAKE_DIR})` + `include(<name>)`; Zephyr shadows the cache `CMAKE_MODULE_PATH`, so each example appends the exported dir itself — still copy-out clean, no repo path)
+- [x] Replace `/opt/ros/humble` hardcode with `NROS_<PKG>_DIR` env contract (recipes default to `/opt/ros/humble/share/<pkg>`)
+- [ ] CI check: a copied-out example builds from outside the repo tree (pending)
 
 ### 180.C — 4.x-native consumption
 Layer the 4.x-only mechanics on top of A+B. Ship `nros-zenoh`/
