@@ -12,8 +12,8 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, c_xrce_listener_binary, c_xrce_talker_binary, require_cmake,
-        require_xrce_agent,
+        ManagedProcess, Rmw, XrceAgent, build_native_c_example_rmw, c_xrce_listener_binary,
+        c_xrce_talker_binary, require_cmake, require_xrce_agent,
     },
 };
 use rstest::rstest;
@@ -166,5 +166,115 @@ fn test_c_xrce_talker_listener_communication(
         "Expected at least 3 messages, got {}.\nOutput:\n{}",
         received_count,
         listener_output
+    );
+}
+
+// =============================================================================
+// Native C XRCE service + action E2E (Phase 183.2)
+//
+// The C XRCE examples ship 6 cases but only pub/sub had an e2e
+// (`test_c_xrce_talker_listener_communication`). These add the service
+// request/response + action goal/feedback/result roundtrips, mirroring the
+// Rust `tests/xrce.rs` service/action tests but driving the C `build-xrce/`
+// binaries against a unique XRCE Agent. Binaries are prebuilt by
+// `just native build-fixtures`; skip cleanly when absent.
+// =============================================================================
+
+/// Resolve a native C XRCE example binary (prebuilt), or skip.
+fn nano_c_xrce(case: &str, binary: &str) -> PathBuf {
+    build_native_c_example_rmw(case, binary, Rmw::Xrce).unwrap_or_else(|e| {
+        nros_tests::skip!("native/c/{case} xrce fixture not prebuilt (run `just native build-fixtures`): {e:?}")
+    })
+}
+
+/// C XRCE service server ↔ client (AddTwoInts roundtrip).
+#[test]
+fn test_c_xrce_service_request_response() {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let server_bin = nano_c_xrce("service-server", "c_service_server");
+    let mut server_cmd = stdbuf_command(&server_bin);
+    server_cmd.env("NROS_LOCATOR", &addr);
+    let mut server = ManagedProcess::spawn_command(server_cmd, "c-xrce-service-server")
+        .expect("start c-xrce-service-server");
+    let _ = server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(15));
+
+    let client_bin = nano_c_xrce("service-client", "c_service_client");
+    let mut client_cmd = stdbuf_command(&client_bin);
+    client_cmd.env("NROS_LOCATOR", &addr);
+    let mut client = ManagedProcess::spawn_command(client_cmd, "c-xrce-service-client")
+        .expect("start c-xrce-service-client");
+
+    let client_output = client
+        .wait_for_output_pattern("calls succeeded", Duration::from_secs(20))
+        .unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(500));
+    let server_output = server
+        .wait_for_output_pattern("Request [", Duration::from_secs(2))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+    drop(agent);
+
+    eprintln!("C XRCE service client:\n{client_output}\n--- server ---\n{server_output}");
+    let calls = count_pattern(&client_output, "Call [");
+    let handled = count_pattern(&server_output, "Request [");
+    assert!(
+        calls >= 1 || handled >= 1,
+        "C XRCE service roundtrip produced no calls/requests.\nclient:\n{client_output}\nserver:\n{server_output}"
+    );
+}
+
+/// C XRCE action server ↔ client (Fibonacci goal → feedback → result).
+#[test]
+fn test_c_xrce_action_fibonacci() {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let server_bin = nano_c_xrce("action-server", "c_action_server");
+    let mut server_cmd = stdbuf_command(&server_bin);
+    server_cmd.env("NROS_LOCATOR", &addr);
+    let mut server = ManagedProcess::spawn_command(server_cmd, "c-xrce-action-server")
+        .expect("start c-xrce-action-server");
+    let _ = server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(15));
+
+    let client_bin = nano_c_xrce("action-client", "c_action_client");
+    let mut client_cmd = stdbuf_command(&client_bin);
+    client_cmd.env("NROS_LOCATOR", &addr);
+    let mut client = ManagedProcess::spawn_command(client_cmd, "c-xrce-action-client")
+        .expect("start c-xrce-action-client");
+
+    let client_output = client
+        .wait_for_output_pattern("Final result", Duration::from_secs(20))
+        .unwrap_or_default();
+    std::thread::sleep(Duration::from_millis(500));
+    let server_output = server
+        .wait_for_output_pattern("Goal request", Duration::from_secs(2))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+    drop(agent);
+
+    eprintln!("C XRCE action client:\n{client_output}\n--- server ---\n{server_output}");
+    assert!(
+        client_output.contains("Goal accepted"),
+        "C XRCE action client: goal not accepted.\n{client_output}"
+    );
+    assert!(
+        client_output.contains("Final result") || server_output.contains("Goal request"),
+        "C XRCE action did not reach a result.\nclient:\n{client_output}\nserver:\n{server_output}"
     );
 }

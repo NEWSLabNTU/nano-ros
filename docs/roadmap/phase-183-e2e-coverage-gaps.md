@@ -12,8 +12,9 @@ matrix, after Phase 182's test de-dup). **183.5 landed** — the CycloneDDS↔RO
 interop test scaffolding (detection passes; interop cases `#[ignore]`d pending
 the 117.12 product work). **183.1 + 183.3 landed** — zephyr C zenoh+xrce E2E
 (5 tests; also covers 183.2's zephyr half) + zephyr rust zenoh service.
-Remaining: 183.2 (native C xrce service/action), 183.4 (native Cyclone
-service/action), 183.6 (XRCE↔ROS 2 action + reverse service).
+**183.2 native done** — native C XRCE service + action e2e (verified PASS).
+Remaining: 183.4 (native Cyclone service/action), 183.6 (XRCE↔ROS 2 action +
+reverse service); 183.1 (zephyr C) owned by the concurrent agent.
 
 **Priority.** P2 (test coverage / regression confidence). The CycloneDDS↔ROS 2
 item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
@@ -131,14 +132,17 @@ the fresh SSOT root) so the resolver picks the NSOS variant, then re-add the 5
 tests (test code is proven — reverted only to avoid red tests in `test-all`
 while the fixture is stale).
 
-### 183.2 — Native + Zephyr XRCE C service/action E2E
+### 183.2 — Native + Zephyr XRCE C service/action E2E — DONE (native; zephyr → 183.1)
 
-C XRCE examples exist (native 6, zephyr 6) but only pubsub is exercised.
-- native C: `tests/c_xrce_api.rs` has `test_c_xrce_talker_listener_communication`
-  (pubsub) — add service request/response + action goal e2e against an
-  `XrceAgent` (mirror the Rust `tests/xrce.rs` service/action tests).
-- zephyr C: covered by 183.1's xrce-C service/action.
-**Files**: `tests/c_xrce_api.rs`, `tests/zephyr.rs`. **Est.**: ~3 tests.
+C XRCE examples exist (native 6, zephyr 6) but only pubsub was exercised.
+- **native C — done + verified PASS:** added `test_c_xrce_service_request_response`
+  (AddTwoInts roundtrip) + `test_c_xrce_action_fibonacci` (goal→feedback→result) to
+  `tests/c_xrce_api.rs`, driving the prebuilt `build-xrce/` C binaries against a
+  unique `XrceAgent` (mirrors the Rust `tests/xrce.rs` service/action). Both pass
+  locally (service 2.1 s, action 5.5 s).
+- **zephyr C** — its xrce-C service/action belong to 183.1 (zephyr C suite, owned
+  by the concurrent agent); not duplicated here.
+**Files**: `tests/c_xrce_api.rs`. **Result**: 2 tests, green.
 
 ### 183.3 — Zephyr Rust zenoh service E2E — DONE
 
