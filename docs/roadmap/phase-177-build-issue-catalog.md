@@ -1433,6 +1433,23 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
      attempts), matching the blocking C client's internal robustness. Verified
      `[PASS]` 3/3 in nextest + a manual 2-QEMU boot (4/4 responses, ~30 s).
      The query/queryable keyexprs were never the issue.
+
+  **Verification rerun caveat (2026-05-26) — residual connect-layer churn flake.**
+  Isolated single-boot runs of the NuttX Rust e2e are reliable: service/Rust
+  `[PASS]` **6/6** and pubsub/Rust green when run on their own. But a batch run
+  (`(pubsub|service) & Nuttx`, all langs) and a rapid 5×-back-to-back boot loop
+  both showed the Rust **server** intermittently failing `Executor::open` with
+  `Transport(ConnectionFailed)` (1/5 connected in the rapid loop) → "readiness
+  pattern never observed" boot failure. C/C++ servers were green throughout.
+  This is a *connection-establishment* flake (zenoh-pico TCP connect to zenohd
+  over slirp under rapid QEMU churn), **distinct from the round-trip race fixed
+  above** and from any code I changed (the server is unmodified). It is the same
+  "QEMU-under-load is brutal" sensitivity 182.5 cited when dropping NuttX
+  *action* from CI; *pubsub + service* keep NuttX, so they remain exposed under
+  a fully-parallel `test-all`. **Open follow-up (separate item):** make the Rust
+  `Executor::open` connect retry/back off on `ConnectionFailed` (the C path is
+  more tolerant) so the boot stage is churn-robust, OR give the NuttX Rust e2e
+  more boot headroom / serialize its zenohd startup. Not the G4 round-trip bug.
 - [x] **G5 - Native Cyclone DDS interop (4). RESOLVED 2026-05-26 — stale run.**
   `native_api::test_native_cyclonedds_{rust_talker_to_listener,talker_to_rust_listener}`
   for both `Language__C` and `Language__Cpp`. The failures were a mid-rebase
