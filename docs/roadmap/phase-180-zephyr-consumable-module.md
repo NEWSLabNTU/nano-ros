@@ -8,7 +8,15 @@ nano-ros-owned Zephyr tree and without editing the nano-ros source tree.
 Reduce customer-support load by making the consumption story standard,
 discoverable, and CI-verified.
 
-**Status.** Planned. Brainstormed 2026-05-25. No work items started.
+**Status.** In progress (2026-05-26). 180.A foundation + 180.B (copy-out
+examples) + 180.C snippets + the CI/samples cluster (dual-line `ci-both`,
+copy-out check, Twister samples) landed on `phase-180a-version-spanning-module`.
+zenoh native_sim is e2e-proven on both 3.7 + 4.4; cyclonedds builds + publishes
++ receives + joins multicast on 4.4 (stable run blocked on a root-caused,
+research-grade `k_mutex`/thread-lifecycle fix). Remaining: 180.C `board_root`,
+180.D patch delivery (`patches.yml`/`west patch`), 180.E onboarding docs, and
+the cyclonedds-4.4 runtime fix. See `docs/research/zephyr-4.4-baseline.md` +
+`zephyr-3.7-to-4.4-divergence-audit.md` for the detailed record.
 
 **Priority.** P2 (consumability / customer-support; unblocks external adoption).
 
@@ -96,10 +104,10 @@ example matrix on both lines. No new consumption features here — the bar is
 `integrations/zephyr/west.yml`, `just/zephyr.just`,
 `scripts/zephyr/*-patch.sh` (re-verify against 4.x tree shapes),
 `docs/guides/zephyr-setup.md`.
-- [ ] Audit 3.7↔4.4 API divergence touching the module (NSOS, net/socket, Kconfig renames)
-- [ ] Version-gate the module CMake/Kconfig
-- [ ] Parametrize `just zephyr setup`/build by Zephyr version (env or arg)
-- [ ] Re-verify all 16 patch scripts against 4.4; fix or split per-version
+- [x] Audit 3.7↔4.4 API divergence (`zephyr-3.7-to-4.4-divergence-audit.md`)
+- [x] Version-gate the module CMake/Kconfig (force-include scoping, net_ip_mreq guard, version-aware NSOS line overlay)
+- [x] Parametrize `just zephyr` by NROS_ZEPHYR_VERSION (manifest/workspace/venv/build-one/build-fixtures)
+- [~] Re-verify 16 patches vs 4.4: NSOS recvmsg+multicast ported (4.4 scripts), getsockname dropped, Rust audited, Kconfig no-op; cyclone-submodule patches (threads/log/sockwaitset) + the k_mutex runtime issue remain
 - [x] CI builds the example matrix on both 3.7 and 4.4 (`just zephyr ci-both` verified PASS/PASS; `.github/workflows/zephyr-dual-line.yml`)
 
 ### 180.B — copy-out-clean examples (version-agnostic)
