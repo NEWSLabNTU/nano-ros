@@ -51,6 +51,11 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     toml_list="$(mktemp "${TMPDIR:-/tmp}/nros_example_toml.XXXXXX")"
     trap 'rm -f "$toml_list"' EXIT
 
+    # Phase 181.6 — qemu-arm-baremetal + stm32f4 are excluded here and built
+    # from the SSOT manifest below instead, so they have a single enumeration
+    # source (matching the test-all staleness probe). The remaining platforms
+    # have no manifest rows for this broad find, or are built by their own
+    # platform recipes (freertos/nuttx/threadx/zephyr/px4).
     find examples -mindepth 4 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
@@ -59,6 +64,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
                        -not -path '*/threadx-linux/*' \
                        -not -path '*/qemu-riscv64-threadx/*' \
+                       -not -path '*/qemu-arm-baremetal/*' -not -path '*/stm32f4/*' \
                        -not -path '*/px4/*' | sort > "$toml_list"
 
     build_one() {
@@ -82,6 +88,11 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     else
         parallel --halt now,fail=1 --line-buffer -j "$cargo_frontends" build_one :::: "$toml_list"
     fi
+    # Phase 181.6 — qemu-arm-baremetal + stm32f4 rust examples from the SSOT
+    # manifest (plain default builds; each example's .cargo/config.toml selects
+    # the cross target). No codegen prep needed (no generated-msg consumers).
+    bash scripts/build/fixtures-build.sh qemu-arm-baremetal rust
+    bash scripts/build/fixtures-build.sh stm32f4 rust
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
@@ -120,131 +131,29 @@ build-fixture-extras:
     set -e
     source scripts/build/cargo.sh
     source scripts/build/cmake-incremental.sh
-    source scripts/build/fixture-matrix.sh
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    export cargo_profile_args
-    cargo_frontends="$(nros_cargo_frontend_jobs)"
     repo_root="$PWD"
-    echo "Building native test fixtures..."
-    # Phase 176 — cmake parallelism: under the fifo jobserver
-    # (NROS_JOBSERVER=1) leave CMAKE_BUILD_PARALLEL_LEVEL unset so the
-    # generator (ninja/make) inherits the shared pool; otherwise pin it
-    # to the budget (the explicit `--parallel` flag was removed).
+    echo "Building native C/C++ + Cyclone test fixtures..."
+    # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nros_cli="$(nros_cli_bin)"
     nros_cargo_ensure_codegen_c
     codegen_tool="${repo_root}/$(nros_cargo_codegen_c_bin)"
+    # Phase 181.6 — every native *Rust* fixture (the param-services talker; the
+    # link-tls / safety-e2e / unstable-zenoh-api variants; the per-RMW
+    # target-<rmw>/ collapsed roles; the custom-transport pair; the nros-bench
+    # binaries; the large-buf stress build) is now a row in
+    # examples/fixtures.toml and built by `build-fixture-rust`. This recipe owns
+    # only what the manifest can't express: the gated CMake/Corrosion Cyclone
+    # cells (no pure-cargo register symbol) and the C/C++ manifest passes.
     ensure_native_rust_generated() {
         case "$1" in
-            native/rust/talker|native/rust/listener|native/rust/service-server|native/rust/service-client|native/rust/action-server|native/rust/action-client)
-                ( cd "examples/$1" && "$nros_cli" generate-rust --force )
-                ;;
+            native/rust/talker|native/rust/listener)
+                ( cd "examples/$1" && "$nros_cli" generate-rust --force ) ;;
         esac
     }
-    # Talker is built with `--features param-services` so the params tests
-    # see "Counter start value: 0" when the talker reads its declared param.
-    # Same binary path as the default-feature talker, just feature-augmented.
-    echo "  → native/rust/talker (--features param-services)"
-    ensure_native_rust_generated native/rust/talker
-    ( cd examples/native/rust/talker && \
-      cargo build $cargo_profile_args --features param-services --quiet )
-    # Phase 131.B — bench/smoke binaries relocated under packages/testing/.
-    test_fixtures=(
-        packages/testing/nros-bench/stress-zenoh
-        packages/testing/nros-bench/executor-fairness
-        packages/testing/nros-bench/stress-xrce
-        packages/testing/nros-bench/large-msg-xrce
-    )
-    for fx in "${test_fixtures[@]}"; do
-        echo "  → $fx"
-        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-            ( cd "$fx" && cargo build $cargo_profile_args --quiet )
-        else
-            ( cd "$fx" && cargo build $cargo_profile_args --quiet ) &
-        fi
-    done
-    wait
-    echo "  → native/rust/{talker,listener} (--features link-tls)"
-    ensure_native_rust_generated native/rust/talker
-    ensure_native_rust_generated native/rust/listener
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        ( cd examples/native/rust/talker && \
-          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet )
-        ( cd examples/native/rust/listener && \
-          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet )
-    else
-        ( cd examples/native/rust/talker && \
-          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
-        ( cd examples/native/rust/listener && \
-          cargo build $cargo_profile_args --features link-tls --target-dir target-tls --quiet ) &
-    fi
-    wait
-    echo "  → native/rust/{talker,listener} (--features safety-e2e)"
-    ensure_native_rust_generated native/rust/talker
-    ensure_native_rust_generated native/rust/listener
-    if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-        ( cd examples/native/rust/talker && \
-          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet )
-        ( cd examples/native/rust/listener && \
-          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet )
-    else
-        ( cd examples/native/rust/talker && \
-          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
-        ( cd examples/native/rust/listener && \
-          cargo build $cargo_profile_args --features safety-e2e --target-dir target-safety --quiet ) &
-    fi
-    wait
-    echo "  → native/rust/listener (--features unstable-zenoh-api)"
-    ensure_native_rust_generated native/rust/listener
-    ( cd examples/native/rust/listener && \
-      cargo build $cargo_profile_args --features unstable-zenoh-api --target-dir target-zero-copy --quiet )
-    # Phase 115.F / 179.G — custom-transport loopback fixtures. These
-    # bridge zenoh-pico's `Z_LINK_TYPE_CUSTOM` over a user TcpStream and
-    # back the `custom_transport_loopback` integration test. They use the
-    # std_msgs binding, so codegen must run before the cargo build.
-    for ct_case in custom-transport-talker custom-transport-listener; do
-        echo "  → native/rust/${ct_case}"
-        ( cd examples/native/rust/${ct_case} && "$nros_cli" generate-rust --force > /dev/null )
-        if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-            ( cd examples/native/rust/${ct_case} && cargo build $cargo_profile_args --quiet )
-        else
-            ( cd examples/native/rust/${ct_case} && cargo build $cargo_profile_args --quiet ) &
-        fi
-    done
-    wait
-    # Phase 118.A.2 — collapsed-shape native talker. Built once per RMW
-    # feature into isolated target-<rmw>/ dirs so the test harness's
-    # `build_native_talker_rmw(Rmw::{Zenoh,Xrce})` resolver finds the
-    # matching binary. Param-services is zenoh-only (the gate references
-    # nros-rmw-zenoh's optional feature; rmw-xrce builds omit it).
-    #
-    # Phase 169 retired dust-dds (pure-Rust). Its Cyclone replacement is
-    # CMake-linked C++ (`nros_rmw_cyclonedds_register` has no pure-cargo
-    # build), so this pure-cargo loop stays zenoh/xrce-only. The native
-    # talker/listener Cyclone cells are built by the CMake/Corrosion
-    # block below when `just cyclonedds setup` has populated build/install.
-    for collapsed_case in $(nros_fixture_roles); do
-        if [ -d examples/native/rust/${collapsed_case} ]; then
-            ensure_native_rust_generated "native/rust/${collapsed_case}"
-            for rmw in zenoh xrce; do
-                feature_flags="--features rmw-${rmw}"
-                if [ "$rmw" = "zenoh" ] && [ "$collapsed_case" = "talker" ]; then
-                    feature_flags="${feature_flags},param-services"
-                fi
-                echo "  → native/rust/${collapsed_case} (--features rmw-${rmw}, target-${rmw}/)"
-                if [ "${NROS_JOBSERVER:-}" = "1" ]; then
-                    ( cd examples/native/rust/${collapsed_case} && \
-                      cargo build $cargo_profile_args --no-default-features ${feature_flags} \
-                          --target-dir target-${rmw} --quiet )
-                else
-                    ( cd examples/native/rust/${collapsed_case} && \
-                      cargo build $cargo_profile_args --no-default-features ${feature_flags} \
-                          --target-dir target-${rmw} --quiet ) &
-                fi
-            done
-        fi
-    done
-    wait
+    # Phase 169/175 — native talker/listener Cyclone cells. Pure-cargo can't
+    # link `nros_rmw_cyclonedds_register`, so they build via CMake/Corrosion
+    # when `just cyclonedds setup` has populated build/install.
     if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
         for collapsed_case in talker listener; do
             echo "  → native/rust/${collapsed_case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
@@ -299,9 +208,6 @@ build-fixture-extras:
     else
         echo "  → native c/cpp cyclonedds skipped (run: just cyclonedds setup)"
     fi
-    echo "  → packages/testing/nros-bench/stress-zenoh (ZPICO_SUBSCRIBER_BUFFER_SIZE=8192)"
-    ( cd packages/testing/nros-bench/stress-zenoh && \
-      ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 cargo build $cargo_profile_args --target-dir target-large-buf --quiet )
 
 # Build every native tier: core artifacts, Rust/C/C++ examples, and test fixtures.
 [group("full-matrix")]

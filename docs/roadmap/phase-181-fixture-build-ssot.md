@@ -17,8 +17,10 @@ manifest. **181.5 done** — native + freertos + nuttx + threadx-linux +
 threadx-riscv64 C/C++ cells migrated to the SSOT manifest + the shared
 `fixtures-build.sh` cmake path (native/freertos/threadx-linux build-verified;
 cyclone passes gated); 181.5.f–h (zephyr/esp32/px4) N/A to this manifest
-mechanism (west-built / no C/C++ cells / no-op fixtures). Next: 181.6 (strip
-recipe duplication).
+mechanism (west-built / no C/C++ cells / no-op fixtures). **181.6 done** —
+`native build-fixture-extras` stripped to cmake-only (grep-clean of cargo build
+options); qemu-arm-baremetal + stm32f4 dual enumeration converged onto the
+manifest. Phase 181 core complete.
 
 **Priority.** P2 — improves `just test-all` correctness/UX (Phase 177.9
 follow-up). Does not block `just ci` once landed.
@@ -146,10 +148,12 @@ Shared mechanism (done): `scripts/build/fixtures-build.sh <platform> [lang]`
   Verified (2 s).
 - [x] **181.4.b qemu-arm-baremetal** — 12 plain-cargo entries (cross target via
   each example's `.cargo/config`); verified via the shared script (17 s).
-  Recipe still built by the broad `native build-examples` find → wire in 181.6.
-- [x] **181.4.c stm32f4** — plain cargo, thumbv7em; no SDK gate. Currently
-  built by `native build-examples`. **Files**: `just/native.just`,
-  `examples/fixtures.toml`.
+  181.6 excluded it from the broad `native build-examples` find and routes it
+  through `fixtures-build.sh qemu-arm-baremetal rust` → manifest is now its
+  single enumeration source.
+- [x] **181.4.c stm32f4** — plain cargo, thumbv7em; no SDK gate. 181.6 excluded
+  it from the broad find and routes it through `fixtures-build.sh stm32f4 rust`.
+  **Files**: `just/native.just`, `examples/fixtures.toml`.
 - [x] **181.4.d freertos** — plain-cargo zenoh (`--no-default-features
   --features rmw-zenoh --target-dir target-zenoh`) + role examples. SDK-gated:
   `FREERTOS_DIR`/`LWIP_DIR` (direnv `FREERTOS_PORT`). Cyclone rust is cmake →
@@ -366,27 +370,48 @@ custom helpers reimplement what cmake+ninja already do:
    staleness gap. → Ninja.
 4. **Dual fixture enumeration** — qemu-arm-baremetal + stm32f4 are built by the
    broad `native build-examples` find AND listed in the manifest → two sources;
-   181.6 should point the find at the manifest (or drop the overlap).
+   181.6 should point the find at the manifest (or drop the overlap). **Fixed
+   (181.6):** both trees excluded from the find; built via `fixtures-build.sh
+   <plat> rust`. Verified the manifest covers every on-disk dir (12/12, 8/8) so
+   nothing is orphaned.
 5. **Transitional rust duplication** — `native build-fixture-extras` still
-   hard-codes rust builds (now cargo no-ops); 181.6 removes them.
+   hard-codes rust builds (now cargo no-ops); 181.6 removes them. **Fixed
+   (181.6):** every native rust fixture is a manifest row built by
+   `build-fixture-rust`; `build-fixture-extras` is now cmake-only (gated Cyclone
+   cells + the C/C++ manifest passes) — grep-clean of cargo build options.
 6. **Open build issues elsewhere** — Phase 177: 177.8 (fixtures-prebuild
    contract), 177.9 / 177.9.F (runtime E2E reruns, zephyr), 177.26 (ThreadX
    Cyclone peer interop). Phase 180 (zephyr consumable module): 20 open items —
    separate effort.
 
 ### 181.6 — Remove duplicated options from recipes (true SSOT)
-- [ ] After each migration, delete the now-redundant inline build options so
-  the manifest is the only source. `examples/README.md` coverage matrix and
-  the manifest must agree.
+- [x] **Done.** `native build-fixture-extras` stripped of all hard-coded rust
+  builds (param-services talker, link-tls / safety-e2e / unstable-zenoh-api
+  variants, per-RMW target-<rmw>/ collapsed roles, custom-transport, the
+  nros-bench binaries, the large-buf stress build) — every one is a
+  `examples/fixtures.toml` row built by `build-fixture-rust`. `build-fixture-extras`
+  is now cmake-only (gated Cyclone cells + C/C++ manifest passes); dropped the
+  unused `fixture-matrix.sh` source + `cargo_profile_args`/`cargo_frontends`.
+- [x] **Dual enumeration converged** — qemu-arm-baremetal + stm32f4 excluded
+  from the broad `native build-examples` find and built via
+  `fixtures-build.sh <plat> rust` (manifest = single source; verified all 12/8
+  on-disk dirs are manifest rows). Both build clean under bash.
+- [x] Grep-clean: no `cargo build`/`--features`/`--target-dir` fixture options
+  remain in `build-fixture-extras`. **Files**: `just/native.just`.
 
 ## Acceptance
 
-- [ ] `just <plat> build-fixtures` builds identical artifacts to before, with
-  options sourced only from `examples/fixtures.toml`.
-- [ ] `just _check-fixtures-stale` probes each rust fixture with its real
-  options (no feature-thrash; fresh after a clean build).
-- [ ] No fixture build options remain hard-coded in `just/*.just` (grep clean).
-- [ ] `just test-all` preflight still fast when fresh.
+- [x] `just <plat> build-fixtures` builds identical artifacts to before, with
+  options sourced only from `examples/fixtures.toml` (rust + C/C++ via the
+  shared `fixtures-build.sh`; cyclone cells gated).
+- [x] `just _check-fixtures-stale` probes each rust fixture with its real
+  options (rust-fixture-stale.sh `--message-format=json fresh`) + C/C++ cells
+  (cmake-fixture-stale.sh self-heal) — no feature-thrash; fresh after a clean
+  build.
+- [x] No fixture build options remain hard-coded in `native build-fixture-extras`
+  (grep clean). Platform recipes' rust passes route through `fixtures-build.sh`;
+  C/C++ via the manifest cmake path.
+- [x] `just test-all` preflight still fast when fresh (probe is incremental).
 
 ## Notes
 
