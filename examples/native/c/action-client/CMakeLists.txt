@@ -24,7 +24,15 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
 nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
-nros_generate_interfaces(example_interfaces DEPENDENCIES builtin_interfaces SKIP_INSTALL)
+# Cyclone needs IDL descriptors for the shared action_msgs types (CancelGoal +
+# GoalStatusArray/GoalStatus/GoalInfo) that every action's cancel service and
+# status topic use; action_msgs/GoalInfo in turn needs unique_identifier_msgs
+# (UUID). Generate them and chain example_interfaces' dependency so the
+# descriptor ts-libs are whole-archived into the app. zenoh/xrce don't use IDL
+# descriptors — harmless there.
+nros_generate_interfaces(unique_identifier_msgs SKIP_INSTALL)
+nros_generate_interfaces(action_msgs DEPENDENCIES builtin_interfaces unique_identifier_msgs SKIP_INSTALL)
+nros_generate_interfaces(example_interfaces DEPENDENCIES builtin_interfaces action_msgs SKIP_INSTALL)
 
 
 

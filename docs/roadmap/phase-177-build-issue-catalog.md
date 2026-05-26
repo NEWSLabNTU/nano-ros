@@ -611,9 +611,45 @@ passed.
   (`register_action_server_raw_sized`); Cyclone *services* work (177.31 service
   e2e passes) and *pub/sub* works, so the failure is in the action-specific
   composition on Cyclone. Matches the known remaining Cyclone-action work (recent
-  `docs(177.26)`: "remaining blocker is executor register"; Phase 177.2). Next:
-  instrument `register_action_server_raw_sized` to find which sub-entity returns
-  the error on the Cyclone backend. Service path is unaffected.
+  `docs(177.26)`: "remaining blocker is executor register"; Phase 177.2).
+
+  **Root cause (2026-05-26, instrumented `register_action_server_raw_sized`).**
+  The five entities create in order; `send_goal_server` succeeds, then
+  `cancel_goal_server` **fails**. `descriptors_for_service` (Cyclone
+  `service.cpp`) is registry-only — it needs a `dds_topic_descriptor_t`
+  registered for the request/response types. The action's *own* types
+  (Fibonacci `SendGoal`/`GetResult`/`Feedback`) are emitted by the `.action`
+  synthesis (`msg_to_cyclone_idl.py`, goal_id inlined as `octet[16]`), but the
+  **shared `action_msgs` types** — `CancelGoal_Request/Response` (cancel
+  service) and `GoalStatusArray_`/`GoalStatus_`/`GoalInfo_` (status pub) — are
+  never generated, because the action examples generate `example_interfaces`
+  without `action_msgs`. Cyclone services require the IDL descriptor; zenoh/xrce
+  don't, which is why this is Cyclone-only.
+
+  **C path — FIXED + validated.** Generate `action_msgs` (+ its
+  `unique_identifier_msgs`/UUID dependency) and chain `example_interfaces`'s
+  DEPENDENCIES so the descriptor ts-libs are whole-archived in:
+  `examples/native/c/{action-server,action-client}/CMakeLists.txt` add
+  `nros_generate_interfaces(unique_identifier_msgs …)` +
+  `nros_generate_interfaces(action_msgs DEPENDENCIES builtin_interfaces unique_identifier_msgs …)`
+  + `example_interfaces DEPENDENCIES … action_msgs`. Result: all 5 entities
+  register, server reaches "Waiting for action goals", and
+  `test_native_cyclonedds_action::lang_1_Language__C` **PASSES** (real goal →
+  feedback → result, ~10 s). `test_native_cyclonedds_service` (C + C++) also
+  passes.
+
+  **C++ path — still open.** The same explicit generation breaks the C++ build:
+  cpp `example_interfaces.hpp` `#include`s `action_msgs/action_msgs.hpp` (so
+  action_msgs must be CPP), but the action_msgs **CPP** Rust FFI glue can't
+  resolve `unique_identifier_msgs_msg_uuid_t` / `serialize_..._fields` (E0425) —
+  a cpp-codegen cross-package dependency gap in the Rust glue, distinct from the
+  descriptor issue. Recommended fix: extend the `.action` synthesis to also emit
+  the shared `action_msgs` descriptors (`CancelGoal_*`, `GoalStatus*`,
+  `GoalInfo_`) with `goal_id` inlined as `octet[16]` (matching the existing
+  action-wrapper framing, no `unique_identifier_msgs` dep) — that registers them
+  for *any* action via `example_interfaces`'s Fibonacci.action, fixing C and C++
+  uniformly and letting the per-example C change above be retired. Cpp
+  action fixtures otherwise build + fail at runtime exactly like the C path did.
 
 ### Test-All Runtime / E2E
 
