@@ -1111,6 +1111,17 @@ passed.
   request/reply, and the server's action queryable all work — it is specific
   to the Cpp action goal path on NuttX. (Investigation log: 177.8.e.)
 
+  **Scope correction (2026-05-26 full-matrix rerun — see G4).** The
+  "Cpp-action-specific / C action passes" framing is **too narrow**: a clean
+  rerun of the whole NuttX `rtos_e2e` matrix shows the race is
+  **non-deterministic and language-agnostic** on the query/reply paths —
+  Rust *service* failed all 3 tries, **C action hung 270 s** (hard `z_get`
+  timeout), and Cpp action failed; meanwhile Rust service/action *flaky-passed*
+  in an earlier run. Only **pubsub** (Rust/C/Cpp) is reliably green, because it
+  never issues a `z_get` query. So 177.30 is the root cause of **all** NuttX
+  service+action flakiness/hangs across every language, not just Cpp action;
+  the "C action passes" observation was one lucky timing.
+
   **Root cause (confirmed via tshark + gdb-multiarch, 2026-05-26).** It is a
   timing-dependent concurrency race in the vendored zenoh-pico (1.7.2)
   multi-threaded runtime, NOT an nros logic bug:
@@ -1239,11 +1250,37 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   `overflow_drops=5`). Host-load discovery hiccups under the heavy parallel
   matrix, same character as **177.9.H**. Confirms the Phase 181 `target-safety` /
   `target-large-buf` fixtures build and run correctly.
-- [ ] **G4 - NuttX runtime E2E (6).** `rtos_e2e::test_rtos_{action,pubsub,service}_e2e`
-  on `Platform__Nuttx` (Rust/C/Cpp variants) + `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary`.
-  Active NuttX work: the Rust-fixture codegen bug (**177.8.c**, mitigated by the
-  pulled `8e5855c29` "build NuttX Rust fixtures at release/lto") and the NuttX
-  Cpp action lease-task ↔ `z_get` race (**177.30**). Owned there.
+- [ ] **G4 - NuttX runtime E2E. PARTIALLY RESOLVED 2026-05-26 — split into two
+  root causes by a full-matrix rerun.** `rtos_e2e::test_rtos_{action,pubsub,service}_e2e`
+  on `Platform__Nuttx` × {Rust,C,Cpp} + `nuttx_make_e2e`. Rerun result
+  (10 tests, 6 pass / 4 fail):
+
+  | test | Rust | C | Cpp |
+  |---|---|---|---|
+  | pubsub  | ✅ | ✅ | ✅ |
+  | service | ❌ | ✅ | ✅ |
+  | action  | ✅* | ❌ (270 s hang) | ❌ |
+
+  (* action/Rust flaky-passed; service/Rust flaky-passed earlier this session,
+  failed all 3 tries here.) Plus `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary`
+  → `[SKIPPED]` precondition (the make fixture isn't staged — run
+  `just nuttx build-fixtures-make`; not a product bug).
+
+  **Resolved portion — the codegen bug (177.8.c).** All three **pubsub** cells
+  are green: pub/sub issues no `z_get` query, so once the Rust nodes reach
+  `main` (the release/lto fix, `8e5855c29`) they run clean. This confirms
+  177.8.c is genuinely fixed for the codegen axis.
+
+  **Unresolved portion — the `z_get`/lease race (177.30), BROADER than first
+  documented.** The remaining failures are the query-based paths (**service +
+  action**), and they are **not Cpp-action-specific** — they hit Rust service,
+  C action (a hard 270 s `z_get` hang), and Cpp action, **non-deterministically**
+  (Rust service/action flip pass/fail across runs; the earlier "C action passes"
+  was one lucky timing). pubsub is immune precisely because it never calls
+  `z_get`. So 177.30 is a general NuttX zenoh-pico query/reply concurrency race
+  (lease task ↔ app-thread `z_get` TX/reply-final on the session/pending-query
+  mutex), affecting every service/action path regardless of language — the
+  scope should be widened from "Cpp action" to "all NuttX `z_get` query/reply".
 - [x] **G5 - Native Cyclone DDS interop (4). RESOLVED 2026-05-26 — stale run.**
   `native_api::test_native_cyclonedds_{rust_talker_to_listener,talker_to_rust_listener}`
   for both `Language__C` and `Language__Cpp`. The failures were a mid-rebase
