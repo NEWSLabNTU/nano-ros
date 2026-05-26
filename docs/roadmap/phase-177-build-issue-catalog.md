@@ -540,6 +540,40 @@ passed.
   host artifacts exist at `build/install/bin/idlc` + `lib/libddsc.so`. This
   unblocks the CycloneDDS slice of 177.9.F (Zephyr E2E runtime).
 
+- [ ] **177.31 - Native CycloneDDS service/action example executables don't
+  link (no-op `: && :` link rule).** Found 2026-05-26 while adding the native
+  Cyclone service/action E2E tests (Phase 183.4). Building any native
+  `service-{server,client}` / `action-{server,client}` example under
+  `-DNROS_RMW=cyclonedds` compiles the objects but produces **no executable** —
+  the target's final link step is a literal shell no-op:
+  ```
+  $ ninja -C examples/native/c/service-server/build-cyclonedds -v c_service_server
+  ...
+  [206/206] : && :
+  $ ls build-cyclonedds/c_service_server   # absent
+  ```
+  Contrast: the **zenoh** and **xrce** builds of the same targets produce real
+  ELFs (`build-{zenoh,xrce}/c_service_server`), and the Cyclone **talker /
+  listener** (pub/sub) executables link fine (native Cyclone pub/sub passes —
+  see the Phase 117 notes in CLAUDE.md). So the gap is specific to the
+  **service + action** example-CMake executable wiring under the Cyclone RMW:
+  the `add_executable` / `nros_platform_link_app` (or RMW-conditional target)
+  path for those four roles links to nothing on Cyclone.
+
+  **Impact.** The native Cyclone service/action fixtures can't be built, so the
+  Phase 183.4 e2e tests (`test_native_cyclonedds_{service,action}` in
+  `native_api.rs`) skip indefinitely. `just native build-fixture-extras` was
+  left building only Cyclone talker/listener for this reason.
+
+  **Where to look.** The per-example `CMakeLists.txt` under
+  `examples/native/{c,cpp}/{service-*,action-*}` + the platform/RMW link glue
+  (`cmake/platform/nano-ros-posix.cmake`, `nros_platform_link_app`, and the
+  `packages/dds/nros-rmw-cyclonedds` `NanoRos::Rmw::cyclonedds` interface) —
+  diff the resolved executable target between a working `build-zenoh` and the
+  no-op `build-cyclonedds` for the same role. **Owner**: Phase 117 / 175
+  (Cyclone example wiring). **Unblocks**: Phase 183.4 native Cyclone
+  service/action e2e (tests already written + skipping).
+
 ### Test-All Runtime / E2E
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
