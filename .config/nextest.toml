@@ -212,18 +212,19 @@ max-threads = 1
 [test-groups.xrce]
 max-threads = 9
 
-# XRCE ↔ ROS 2 DDS interop: each test starts its own XRCE Agent on an
-# ephemeral UDP port and assigns XRCE + ROS 2 DDS participants to a
-# per-test ROS_DOMAIN_ID, so the three pub/sub/service checks can run
-# concurrently without DDS topic/service cross-talk.
-[test-groups.xrce_ros2_interop]
-max-threads = 3
-
-# CycloneDDS ↔ ROS 2 interop (Phase 183.5): each test uses a distinct
-# ROS_DOMAIN_ID so the nano + ROS 2 Cyclone participants don't cross-talk;
-# cap concurrency the same as the XRCE↔ROS 2 suite. (Most cases are
-# #[ignore]'d pending 117.12, so this mainly bounds the --run-ignored runs.)
-[test-groups.cyclonedds_ros2_interop]
+# Host-DDS ROS 2 interop — XRCE ↔ ROS 2 *and* CycloneDDS ↔ ROS 2 share ONE
+# group. Both suites run real DDS (RTPS) participants on the host's interfaces
+# and isolate each test with a per-test ROS_DOMAIN_ID from the shared PID-seeded
+# `unique_ros_domain_id()`. With separate per-suite groups the two RMW suites
+# run *concurrently with each other*, and two PID-seeded domains can still
+# collide modulo the 232-slot DDS domain space — a cross-RMW domain clash (an
+# XRCE test and a Cyclone test landing on the same domain → topic/service
+# cross-talk → wrong counts). One shared group bounds *total* concurrent
+# host-DDS interop to max-threads (the two suites compete for the same slots),
+# and the per-suite `retries` below re-roll the PID → domain on the rare
+# residual collision. (zenoh ROS 2 interop is unaffected — it isolates via the
+# zenoh router + keyexpr on the default domain, disjoint from 1..=232.)
+[test-groups.host-dds-ros2-interop]
 max-threads = 3
 
 # ROS 2 interop tests: ros2 CLI commands with rmw_zenoh_cpp are
@@ -496,12 +497,13 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(xrce_ros2_interop)"
-test-group = "xrce_ros2_interop"
+test-group = "host-dds-ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
+retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(cyclonedds_ros2_interop)"
-test-group = "cyclonedds_ros2_interop"
+test-group = "host-dds-ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
 retries = 2
 

@@ -103,7 +103,10 @@ fn test_cyclonedds_nano_to_ros2_pubsub() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
-    let domain: u8 = 71;
+    // PID-seeded so this test never shares a ROS_DOMAIN_ID with any other
+    // concurrent interop test — across RMWs too (a fixed domain here could
+    // collide with another RMW's PID-seeded `unique_ros_domain_id()` pick).
+    let domain = nros_tests::unique_ros_domain_id();
     let talker_bin = nano_cyclone_c_binary("talker", "c_talker");
 
     // ROS 2 subscriber first, then the nano publisher.
@@ -136,7 +139,7 @@ fn test_cyclonedds_ros2_to_nano_pubsub() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
-    let domain: u8 = 72;
+    let domain = nros_tests::unique_ros_domain_id();
     let listener_bin = nano_cyclone_c_binary("listener", "c_listener");
 
     // nano subscriber first, then the ROS 2 publisher.
@@ -175,7 +178,7 @@ fn test_cyclonedds_service_nano_server_ros2_client() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
-    let domain: u8 = 73;
+    let domain = nros_tests::unique_ros_domain_id();
     let server_bin = nano_cyclone_c_binary("service-server", "c_service_server");
 
     let mut server = spawn_nano_cyclone(&server_bin, "nano-cyclone-service-server", domain);

@@ -820,6 +820,31 @@ passed.
   nine build clean under zenoh (`just native build-c`). Same class as the Phase
   177.30 NuttX C++ action `fflush(stdout)` deadlock.
 
+- [x] **177.35 - cross-RMW domain-ID collision between ROS 2 interop suites.**
+  Owner: test-harness (fixed 2026-05-27). Generalizes 177.33 across RMWs: the
+  per-RMW ROS 2 interop suites can collide on a shared `ROS_DOMAIN_ID` when run
+  concurrently — a zenoh/XRCE/Cyclone interop test sharing a domain with another
+  RMW's interop test. Two real DDS (RTPS) participants on the same domain + same
+  topic name discover each other → wrong message counts → flaky failure. Two
+  causes:
+  (a) **inconsistent allocation:** `cyclonedds_ros2_interop` used *hard-coded*
+      domains (71/72/73) while the XRCE + native-Cyclone suites use the
+      PID-seeded `unique_ros_domain_id()` (1..=232) — a PID-seeded test landing
+      on 71/72/73 collided with the Cyclone↔ROS 2 suite (systematic);
+  (b) **independent groups:** `cyclonedds_ros2_interop` and `xrce_ros2_interop`
+      were *separate* nextest groups, so the two host-DDS suites ran
+      concurrently and two PID-seeded domains can still collide modulo the
+      232-slot DDS domain space.
+  **Fix:** (a) `cyclonedds_ros2_interop` now allocates each test's domain via
+  `nros_tests::unique_ros_domain_id()` — one PID-seeded scheme for ALL interop
+  suites; (b) merged the two host-DDS interop groups into one shared nextest
+  group `host-dds-ros2-interop` (`.config/nextest.toml`) so XRCE + Cyclone
+  interop never run concurrently with each other, with `retries=2` on both to
+  re-roll the PID → domain on the rare residual modulo collision. zenoh ROS 2
+  interop is unaffected — it isolates via the zenoh router + keyexpr on the
+  default domain, disjoint from 1..=232. Verified: config parses, the cyclone
+  interop edit compiles.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
