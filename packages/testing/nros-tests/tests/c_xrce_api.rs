@@ -183,7 +183,9 @@ fn test_c_xrce_talker_listener_communication(
 /// Resolve a native C XRCE example binary (prebuilt), or skip.
 fn nano_c_xrce(case: &str, binary: &str) -> PathBuf {
     build_native_c_example_rmw(case, binary, Rmw::Xrce).unwrap_or_else(|e| {
-        nros_tests::skip!("native/c/{case} xrce fixture not prebuilt (run `just native build-fixtures`): {e:?}")
+        nros_tests::skip!(
+            "native/c/{case} xrce fixture not prebuilt (run `just native build-fixtures`): {e:?}"
+        )
     })
 }
 

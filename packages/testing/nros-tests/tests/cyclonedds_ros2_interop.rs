@@ -21,16 +21,12 @@
 //! - the native Cyclone fixtures (`just cyclonedds setup` → `build/install` +
 //!   the CMake/Corrosion `build-cyclonedds/` binaries, Phase 175)
 
-use std::{
-    path::Path,
-    process::Command,
-    time::Duration,
-};
+use std::{path::Path, process::Command, time::Duration};
 
 use nros_tests::{
     count_pattern,
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, Rmw, build_native_c_example_rmw,
+        DEFAULT_ROS_DISTRO, ManagedProcess, Rmw, Ros2DdsProcess, build_native_c_example_rmw,
         require_ros2_cyclonedds,
     },
 };
@@ -94,18 +90,27 @@ fn test_cyclonedds_nano_to_ros2_pubsub() {
     let talker_bin = nano_cyclone_c_binary("talker", "c_talker");
 
     // ROS 2 subscriber first, then the nano publisher.
-    let mut ros2_sub =
-        Ros2DdsProcess::topic_echo_cyclonedds_with_domain(TOPIC, MSG_TYPE, DEFAULT_ROS_DISTRO, domain)
-            .expect("start ros2 cyclone echo");
+    let mut ros2_sub = Ros2DdsProcess::topic_echo_cyclonedds_with_domain(
+        TOPIC,
+        MSG_TYPE,
+        DEFAULT_ROS_DISTRO,
+        domain,
+    )
+    .expect("start ros2 cyclone echo");
     std::thread::sleep(Duration::from_secs(2));
     let mut talker = spawn_nano_cyclone(&talker_bin, "nano-cyclone-talker", domain);
 
-    let ros2_output = ros2_sub.wait_for_output(Duration::from_secs(10)).unwrap_or_default();
+    let ros2_output = ros2_sub
+        .wait_for_output(Duration::from_secs(10))
+        .unwrap_or_default();
     talker.kill();
 
     eprintln!("ROS 2 cyclone subscriber output:\n{ros2_output}");
     let n = count_pattern(&ros2_output, "data:");
-    assert!(n > 0, "ROS 2 cyclone subscriber received no samples from the nano talker, got:\n{ros2_output}");
+    assert!(
+        n > 0,
+        "ROS 2 cyclone subscriber received no samples from the nano talker, got:\n{ros2_output}"
+    );
 }
 
 /// ROS 2 (`rmw_cyclonedds_cpp`) publisher → nano-ros Cyclone subscriber.
@@ -122,7 +127,12 @@ fn test_cyclonedds_ros2_to_nano_pubsub() {
     let mut listener = spawn_nano_cyclone(&listener_bin, "nano-cyclone-listener", domain);
     std::thread::sleep(Duration::from_secs(3));
     let mut ros2_pub = Ros2DdsProcess::topic_pub_cyclonedds_with_domain(
-        TOPIC, MSG_TYPE, "{data: 42}", 5, DEFAULT_ROS_DISTRO, domain,
+        TOPIC,
+        MSG_TYPE,
+        "{data: 42}",
+        5,
+        DEFAULT_ROS_DISTRO,
+        domain,
     )
     .expect("start ros2 cyclone pub");
 
@@ -157,11 +167,17 @@ fn test_cyclonedds_service_nano_server_ros2_client() {
     // Services need queryable/endpoint discovery before the client call.
     std::thread::sleep(Duration::from_secs(4));
     let mut client = Ros2DdsProcess::service_call_cyclonedds_with_domain(
-        SRV, SRV_TYPE, "{a: 5, b: 3}", DEFAULT_ROS_DISTRO, domain,
+        SRV,
+        SRV_TYPE,
+        "{a: 5, b: 3}",
+        DEFAULT_ROS_DISTRO,
+        domain,
     )
     .expect("start ros2 cyclone service call");
 
-    let client_output = client.wait_for_output(Duration::from_secs(10)).unwrap_or_default();
+    let client_output = client
+        .wait_for_output(Duration::from_secs(10))
+        .unwrap_or_default();
     client.kill();
     server.kill();
 
