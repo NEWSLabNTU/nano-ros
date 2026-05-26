@@ -159,9 +159,9 @@ module, pick an RMW, copy out an example, build. Make the support story
 self-serve.
 **Files.** `book/src/getting-started/zephyr-module.md` (new),
 `integrations/zephyr/README.md`, `examples/README.md`.
-- [ ] BYO-workspace quickstart (3.7 path + 4.x path)
-- [ ] Troubleshooting / version-compatibility matrix
-- [ ] Link from the top-level README + book
+- [x] BYO-workspace quickstart, 3.7 + 4.x paths (`book/src/getting-started/integration-zephyr.md`: import, west patch, -S snippet, copy-out)
+- [x] Version-compatibility matrix (3.7 vs 4.x) + 4.x build-gotcha troubleshooting
+- [x] Linked from top-level README + book SUMMARY
 
 ## Acceptance
 
