@@ -60,9 +60,33 @@ fn main() {
                 let request = AddTwoIntsRequest { a, b };
                 nros_info!(&LOGGER, "Calling: {} + {} = ?", a, b);
 
-                let mut promise = client.call(&request)?;
-                let response =
-                    promise.wait(&mut executor, core::time::Duration::from_millis(5000))?;
+                // Retry the call until a reply arrives. On NuttX QEMU cold boot
+                // the server's *queryable* registration at the router can lag
+                // the *liveliness* token that `wait_for_service` gates on, so
+                // the first query can race ahead of the queryable and be
+                // silently dropped → the reply never comes. Re-issuing (once
+                // the queryable registers) makes a later query land — the same
+                // robustness the blocking C client gets internally.
+                // `reset_in_flight()` abandons each timed-out call so the next
+                // `call()` isn't rejected with `RequestInFlight`.
+                let mut response = None;
+                for _ in 0..12 {
+                    let timed_out = {
+                        let mut promise = client.call(&request)?;
+                        match promise.wait(&mut executor, core::time::Duration::from_millis(5000)) {
+                            Ok(reply) => {
+                                response = Some(reply);
+                                false
+                            }
+                            Err(_) => true,
+                        }
+                    };
+                    if !timed_out {
+                        break;
+                    }
+                    client.reset_in_flight();
+                }
+                let response = response.ok_or(NodeError::Timeout)?;
 
                 nros_info!(&LOGGER, "Response: {} + {} = {}", a, b, response.sum);
             }

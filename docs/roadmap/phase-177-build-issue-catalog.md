@@ -1372,8 +1372,10 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   `overflow_drops=5`). Host-load discovery hiccups under the heavy parallel
   matrix, same character as **177.9.H**. Confirms the Phase 181 `target-safety` /
   `target-large-buf` fixtures build and run correctly.
-- [ ] **G4 - NuttX runtime E2E. PARTIALLY RESOLVED 2026-05-26 — split into two
-  root causes by a full-matrix rerun.** `rtos_e2e::test_rtos_{action,pubsub,service}_e2e`
+- [x] **G4 - NuttX runtime E2E. RESOLVED 2026-05-26.** (pubsub all-green;
+  action NuttX dropped from CI in 182.5 + Cpp fflush fix in 177.30; service/Rust
+  fixed below.) Original split-by-root-cause notes follow.
+  `rtos_e2e::test_rtos_{action,pubsub,service}_e2e`
   on `Platform__Nuttx` × {Rust,C,Cpp} + `nuttx_make_e2e`. Rerun result
   (10 tests, 6 pass / 4 fail):
 
@@ -1404,10 +1406,26 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   - **service** — still all 4 platforms in CI. NuttX **Cpp + C service PASS**,
     so there is **no general NuttX query/reply race** (a `z_get` race would sink
     Cpp/C service too). Only **NuttX service/Rust** flakes (flip pass/fail).
-  **Remaining real item:** NuttX **service/Rust** flakiness — cause TBD, but
-  narrow (Rust-only; Cpp/C service pass), NOT the fflush deadlock and NOT a
-  broad `z_get` race. Likely a discovery/timing flake on the Rust service
-  client's first `call` under QEMU cold-boot load.
+  **NuttX service/Rust — RESOLVED 2026-05-26.** Two distinct causes, both fixed:
+  1. **Boot (fixture profile).** The local prebuilt Rust service fixtures
+     existed only at `target/.../nros-fast-release/` (no `release/` build), and
+     the harness falls back to that buggy profile (177.8.c CGU codegen bug →
+     reboot loop before `main` → zero output → "Waiting for requests" never
+     observed). `just nuttx build-fixtures` *does* build at `release`, so CI is
+     fine; this was stale local artifacts. Rebuilt at `release`.
+  2. **Round-trip race (the real one).** Reproduced in a clean manual 2-QEMU
+     boot (C service round-trips perfectly with byte-identical keyexprs, so it
+     was Rust-service-specific, not a general routing bug): the Rust client
+     gates its first `call()` on `wait_for_service` (a *liveliness* token), but
+     the server's *queryable* registration at the router lags that token, so
+     the first query races ahead of the queryable and is dropped — `call(&req)?`
+     then `promise.wait(…)?` aborts on the first `Transport(Timeout)`. The wire
+     showed the query going client→router but the router never forwarding to the
+     server. **Fix:** the Rust service-client example now retries the call
+     (re-issuing once the queryable registers, `reset_in_flight()` between
+     attempts), matching the blocking C client's internal robustness. Verified
+     `[PASS]` 3/3 in nextest + a manual 2-QEMU boot (4/4 responses, ~30 s).
+     The query/queryable keyexprs were never the issue.
 - [x] **G5 - Native Cyclone DDS interop (4). RESOLVED 2026-05-26 — stale run.**
   `native_api::test_native_cyclonedds_{rust_talker_to_listener,talker_to_rust_listener}`
   for both `Language__C` and `Language__Cpp`. The failures were a mid-rebase
