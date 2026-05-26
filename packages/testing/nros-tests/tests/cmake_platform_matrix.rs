@@ -8,10 +8,11 @@
 //! against `NanoRos::NanoRos`.
 //!
 //! Coverage:
-//! - POSIX always runs. Same shape as Phase 137's
-//!   `cmake_add_subdirectory` smoke test but explicitly parameterised
-//!   on `NANO_ROS_PLATFORM=posix`. Failure ⇒ Phase 138 dispatch
-//!   regression.
+//! - POSIX dispatch (configure + build + `nros_platform_link_app`) lives in
+//!   `cmake_add_subdirectory::cmake_add_subdirectory_smoke` — Phase 182.2
+//!   merged the near-identical `cmake_platform_posix` cell into it (same
+//!   clean configure+build of the same stack). This file keeps only the
+//!   non-overlapping bare-metal FATAL_ERROR check below.
 //! - Cross-compile platforms (zephyr, freertos, nuttx, threadx) are NOT
 //!   smoke-tested here. Their `cmake/platform/<plat>.cmake` modules are
 //!   exercised end-to-end by the real C/C++ example builds + `rtos_e2e`
@@ -77,71 +78,19 @@ int main(void) {
 }
 "#;
 
-fn run_platform_cell(platform: &str, tmp_subdir: &str) {
-    let root = workspace_root();
-    let tmp = root.join("tmp").join(tmp_subdir);
-    if tmp.exists() {
-        fs::remove_dir_all(&tmp).expect("clear previous tmp dir");
-    }
-    let user = tmp.join("user_project");
-    let build = tmp.join("build");
-    fs::create_dir_all(&user).expect("create user_project dir");
-
-    let cmake_body = USER_CMAKE_TEMPLATE
-        .replace("@PLATFORM@", platform)
-        .replace("@NANO_ROS_ROOT@", root.to_str().unwrap());
-    fs::write(user.join("CMakeLists.txt"), cmake_body).expect("write user CMakeLists.txt");
-    fs::write(user.join("main.c"), USER_MAIN_C).expect("write user main.c");
-
-    let configure = Command::new("cmake")
-        .args(["-S", user.to_str().unwrap(), "-B", build.to_str().unwrap()])
-        .output()
-        .expect("failed to invoke cmake configure");
-    assert!(
-        configure.status.success(),
-        "cmake configure failed for NANO_ROS_PLATFORM={}\nstdout:\n{}\nstderr:\n{}",
-        platform,
-        String::from_utf8_lossy(&configure.stdout),
-        String::from_utf8_lossy(&configure.stderr)
-    );
-
-    let build_cmd = Command::new("cmake")
-        .args(["--build", build.to_str().unwrap(), "--target", "plat_smoke"])
-        .output()
-        .expect("failed to invoke cmake --build");
-    assert!(
-        build_cmd.status.success(),
-        "cmake --build failed for NANO_ROS_PLATFORM={}\nstdout:\n{}\nstderr:\n{}",
-        platform,
-        String::from_utf8_lossy(&build_cmd.stdout),
-        String::from_utf8_lossy(&build_cmd.stderr)
-    );
-
-    let bin = build.join("plat_smoke");
-    assert!(
-        bin.exists(),
-        "plat_smoke binary not produced at {} — Phase 138 dispatch regression for {}",
-        bin.display(),
-        platform
-    );
-}
-
 // -----------------------------------------------------------------------
-// POSIX — always runs. Mirrors Phase 137 smoke but routed through the
-// Phase 138 per-platform module.
-// -----------------------------------------------------------------------
-#[test]
-fn cmake_platform_posix() {
-    require_codegen_or_skip();
-    run_platform_cell("posix", "phase-138-smoke-posix");
-}
-
-// -----------------------------------------------------------------------
-// Cross-compile platforms (zephyr, freertos, nuttx, threadx) intentionally
-// have no smoke cell here — their cmake/platform modules are covered by the
-// real C/C++ example builds + rtos_e2e + the Phase 139 integration shells
-// (see the module header). The previous placeholder cells only ever
-// `skip!`ed and were removed.
+// POSIX dispatch + cross-compile platforms intentionally have no smoke cell
+// here:
+// - The POSIX §A path (configure + build + `nros_platform_link_app`) is
+//   covered by `cmake_add_subdirectory::cmake_add_subdirectory_smoke`, which
+//   was a near-identical clean configure+build of the same stack; Phase 182.2
+//   merged the two and kept the add_subdirectory variant (it carries the same
+//   `nros_platform_link_app(target)` assertion now).
+// - Cross-compile platforms (zephyr, freertos, nuttx, threadx) are covered by
+//   the real C/C++ example builds + `rtos_e2e` + the Phase 139
+//   `integrations/<rtos>/` shells (see the module header). Their placeholder
+//   cells only ever `skip!`ed and were removed.
+// The one remaining cell below is the non-overlapping FATAL_ERROR check.
 // -----------------------------------------------------------------------
 
 #[test]

@@ -18,6 +18,11 @@
 //!   (Phase 137 in-tree mirror regression).
 //! - Static-archive link-order regressions (RMW staticlib + platform
 //!   shim ordering inside the umbrella target's INTERFACE_LINK_LIBRARIES).
+//! - §A per-platform dispatch: `nros_platform_link_app(target)` is defined
+//!   for `NANO_ROS_PLATFORM=posix` (merged here from the former
+//!   `cmake_platform_matrix::cmake_platform_posix` in Phase 182.2 — it was a
+//!   near-identical clean configure+build of the same stack; the matrix keeps
+//!   only its non-overlapping `cmake_platform_threadx_requires_board` check).
 //!
 //! Test FAILS (not skips) when cmake / a C compiler are absent — Phase 137
 //! presumes a working host toolchain, matching the project-wide "no
@@ -53,6 +58,7 @@ add_subdirectory("@NANO_ROS_ROOT@" nano_ros)
 
 add_executable(smoke main.c)
 target_link_libraries(smoke PRIVATE NanoRos::NanoRos)
+nros_platform_link_app(smoke)
 "#;
 
 const USER_MAIN_C: &str = r#"/* Phase 137.4 smoke test — link-correctness only. */

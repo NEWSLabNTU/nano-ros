@@ -6,9 +6,12 @@ near-identical tests, and trimming over-parametrised matrices — **without
 losing real coverage**. Plus one orthogonal lever: stabilise flaky E2E so the
 retry budget stops tripling their cost.
 
-**Status.** Proposed. Created 2026-05-26 from the clean-rebuild `test-all`
+**Status.** In progress. Created 2026-05-26 from the clean-rebuild `test-all`
 analysis (full `clean` → `build-all` → `test-all`: 978 tests, 339 s wall,
-~5000 s CPU).
+~5000 s CPU). **182.1 + 182.2 landed** (the safe zero-coverage-loss wins): −165
+build-only presence cases from `phase_118_collapse` (kept its 8 real Cyclone
+e2e tests) and the two duplicate clean-cmake smokes merged into one. Net ~167
+fewer tests + one fewer ~160 s cmake configure. 182.3–182.6 open.
 
 **Priority.** P2 (developer + CI wall-clock).
 
@@ -45,32 +48,44 @@ test), the two ~164 s clean-cmake configs, `zephyr` action (113 s / 91 s),
 
 ## Work Items
 
-### 182.1 — Drop `phase_118_collapse` (173 build-only presence checks)
+### 182.1 — Drop the `phase_118_collapse` build-only presence matrices — DONE
 
-`tests/phase_118_collapse.rs` is 173 `rstest` cases that assert "the per-RMW
-fixture binary exists with the expected name" (`build_native_*_rmw()` resolver).
-It builds nothing itself; the binaries are produced by `build-all`
-(Phase 181), their presence is gated by the `_require-fixtures` stamp, and the
-`native_api` / `rtos_e2e` runtime tests consume them (failing loudly on a
-missing/misnamed binary). The file's own header concedes "the pubsub / service /
-action runtime smoke tests cover one RMW per scenario already." → **Drop the
-file, or collapse to ~6 data-driven sanity rows** (one per role, not per
-role×RMW). Saves ~56 s CPU + 173 from the count, zero coverage loss.
+**Scope correction (found on implementation):** `phase_118_collapse.rs` was
+**not** a clean 173-build-only-checks file as first assumed — it was *mixed*:
+~16 `*_rmw_variant_exists` `rstest` matrices (~165 build-only presence/name
+cases) **plus 8 real Phase 11W Zephyr Cyclone DDS native_sim runtime E2E +
+boot tests** (`test_zephyr_*_cyclonedds_{pubsub,service}_e2e` / `_boot`) that
+spawn `ZephyrProcess` and assert delivered samples / replies (up to 33 s each;
+all PASS). Blindly "dropping the file" would have deleted real coverage, and a
+`.config/nextest.toml` override (`binary(phase_118_collapse) and test(cyclonedds)
+…`) routes those e2e tests.
+
+**Done:** removed the ~16 presence matrices + the dead `require_cmd`-style
+helper + dead imports; **kept the 8 Cyclone e2e tests** in place (the binary
+name is retained so the nextest override still matches). Build-only coverage is
+provided by `build-all` (Phase 181) + the runtime tests that consume the
+binaries. Result: `phase_118_collapse` went **173 → 8 tests** (−165), zero
+runtime-coverage loss. Verified: compiles with no warnings, all 8 e2e tests
+list. Follow-up (optional): rename the file to `zephyr_cyclonedds_e2e.rs` and
+update the nextest filter — deferred to avoid the config churn now.
 **Files**: `packages/testing/nros-tests/tests/phase_118_collapse.rs`.
 
-### 182.2 — Merge the two clean-cmake configure smokes
+### 182.2 — Merge the two clean-cmake configure smokes — DONE
 
-`cmake_add_subdirectory::cmake_add_subdirectory_smoke` (Phase 137.4, 164 s) and
-`cmake_platform_matrix::cmake_platform_posix` (Phase 138.6, 164 s) are
-near-identical: both write a minimal user project (`NANO_ROS_PLATFORM=posix`,
-`NANO_ROS_RMW=zenoh`), `add_subdirectory(<root>)`, link `NanoRos::NanoRos`, call
-`nros_support_get_zero_initialized()`, then `cmake` configure + build the full
-nros-c/cpp stack from a clean dir. The matrix header already states posix is
-"the same shape as Phase 137's `cmake_add_subdirectory` smoke." → **Merge into
-one test** holding the union of assertions (umbrella `NanoRos::NanoRos` target +
-header/link-order regression checks + §A `nros_platform_link_app` dispatch).
-Saves ~164 s CPU (and likely wall-clock — these slow clean configures serialize
-against each other). **Files**: `tests/cmake_add_subdirectory.rs`,
+`cmake_add_subdirectory::cmake_add_subdirectory_smoke` (Phase 137.4) and
+`cmake_platform_matrix::cmake_platform_posix` (Phase 138.6) were near-identical:
+both wrote a minimal user project (`NANO_ROS_PLATFORM=posix`,
+`NANO_ROS_RMW=zenoh`), `add_subdirectory(<root>)`, linked `NanoRos::NanoRos`,
+called `nros_support_get_zero_initialized()`, then `cmake` configure + build the
+full nros-c/cpp stack from a clean dir.
+
+**Done:** added the §A dispatch assertion (`nros_platform_link_app(smoke)`) to
+the surviving `cmake_add_subdirectory_smoke` template, then deleted
+`cmake_platform_posix` + its now-dead `run_platform_cell` helper from the matrix
+file. `cmake_platform_matrix` keeps only its non-overlapping
+`cmake_platform_threadx_requires_board` FATAL_ERROR check. Verified: merged test
+PASSES (configure + build + `nros_platform_link_app`), one fewer ~160 s clean
+cmake configure. **Files**: `tests/cmake_add_subdirectory.rs`,
 `tests/cmake_platform_matrix.rs`.
 
 ### 182.3 — Drop or relocate `_builds` cells (54, ~70 s)
@@ -126,8 +141,10 @@ readiness markers.
 - [ ] `just test-all` runs fewer tests with **no loss of real coverage** —
   every dropped test's path is provably covered by `build-all` or a sibling
   `_e2e` (documented per drop).
-- [ ] 182.1 + 182.2 landed (the safe, zero-coverage-loss wins): `phase_118_collapse`
-  dropped/collapsed, the two cmake smokes merged. ~220 s CPU off, ~174 fewer tests.
+- [x] 182.1 + 182.2 landed (the safe, zero-coverage-loss wins): `phase_118_collapse`
+  trimmed 173 → 8 (build-only presence matrices removed, 8 Cyclone e2e kept),
+  the two cmake smokes merged into one. ~167 fewer tests + one fewer ~160 s
+  clean cmake configure. Verified: compiles clean, merged cmake test passes.
 - [ ] Flaky count trends down (182.6); retry budget is a net, not the norm.
 - [ ] `rtos_e2e` matrix decision recorded (trim or keep, with rationale) — 182.5.
 - [ ] `examples/README.md` coverage matrix still agrees with the surviving tests.
