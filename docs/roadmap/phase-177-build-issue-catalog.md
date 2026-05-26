@@ -593,8 +593,27 @@ passed.
   test_native_cyclonedds_*` (4 cases, C↔Rust + Cpp↔Rust) PASS (real RTPS);
   manual C+C pub/sub Published 7 / Received 7; the service/action examples now
   configure + generate cleanly under Cyclone (the `: && :` no-op is gone).
-  Phase 183.4 service/action e2e fixtures should now build — final 183.4 run is
-  the remaining check. zenoh/xrce C builds unaffected (the enable is guarded).
+  zenoh/xrce C builds unaffected (the enable is guarded). **183.4 run
+  (2026-05-26):** all 8 native Cyclone service/action fixtures build as ELF;
+  `test_native_cyclonedds_service` **PASS** (C + C++, real AddTwoInts roundtrip).
+  `test_native_cyclonedds_action` still fails — but on a *separate* runtime
+  blocker, not this link gap: see 177.32.
+
+- [ ] **177.32 - Native Cyclone action server: `nros_executor_register_action_server`
+  returns -1.** Owner: Phase 177.2 / Cyclone actions (open, 2026-05-26). With the
+  177.31 link gap fixed, the native Cyclone action fixtures build + boot, the
+  action server *object* initializes (`nros_action_server_init` ok — prints
+  "Action server created: /fibonacci"), but registering it with the executor
+  fails: `nros_executor_register_action_server(...) -> -1`, so the server exits
+  before serving and the 183.4 `test_native_cyclonedds_action` (C + C++) client
+  never reaches `Final result`. The register composes the action's goal/result/
+  cancel **services** + feedback/status **pubs** in nros-node
+  (`register_action_server_raw_sized`); Cyclone *services* work (177.31 service
+  e2e passes) and *pub/sub* works, so the failure is in the action-specific
+  composition on Cyclone. Matches the known remaining Cyclone-action work (recent
+  `docs(177.26)`: "remaining blocker is executor register"; Phase 177.2). Next:
+  instrument `register_action_server_raw_sized` to find which sub-entity returns
+  the error on the Cyclone backend. Service path is unaffected.
 
 ### Test-All Runtime / E2E
 
