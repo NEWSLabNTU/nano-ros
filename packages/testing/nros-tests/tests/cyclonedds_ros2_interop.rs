@@ -6,15 +6,25 @@
 //! `ROS_DOMAIN_ID` and check they exchange data over RTPS/SPDP — the test
 //! analogue of `rmw_interop.rs` (zenoh ↔ ROS 2) and `xrce_ros2_interop.rs`.
 //!
-//! ## Status: gated + `#[ignore]`d pending Phase 117.12
+//! ## Status (2026-05-26): partially passing.
 //!
-//! Stock-RMW Cyclone interop does not pass yet (CLAUDE.md: "Stock-RMW interop
-//! pending"; `just cyclonedds test` stock interop still fails — Phase 117.X /
-//! 117.12 work). These tests therefore carry `#[ignore]` with a 117.12 reason:
-//! they EXIST as tracked, runnable coverage (run with
-//! `cargo nextest run --run-ignored all -E 'binary(cyclonedds_ros2_interop)'`)
-//! rather than being a silent gap, and flip to passing once 117.12 lands.
-//! Drop the `#[ignore]` per test as each interop case starts working.
+//! 117.12 (stock-RMW Cyclone interop) is mostly done — re-verified here against
+//! ROS 2 humble + `rmw_cyclonedds_cpp`:
+//! - **`nano_to_ros2_pubsub`** — nano-ros Cyclone talker → stock `ros2 topic
+//!   echo`: **PASSES** (un-`#[ignore]`d). Gated on `require_ros2_cyclonedds()`,
+//!   so it skips cleanly without ROS 2.
+//! - **`ros2_to_nano_pubsub`** — still `#[ignore]`d: the *native-C* listener
+//!   (`build_native_c_example_rmw`) receives no sample, even though the C++
+//!   CTest `ros2_sub` (`tests/ros2_pubsub_e2e.sh`) passes both directions — a
+//!   native-C-listener discovery/timing gap, not a wire-compat gap.
+//! - **`service_nano_server_ros2_client`** — still `#[ignore]`d: the nano
+//!   Cyclone server's `send_reply` to a stock ROS 2 client fails (rc=4), a
+//!   117.12.B.1 regression (the nano-client ↔ ros2-server direction works, per
+//!   `tests/ros2_srv_e2e.sh`).
+//!
+//! Run the ignored ones with
+//! `cargo nextest run --run-ignored all -E 'binary(cyclonedds_ros2_interop)'`;
+//! drop each `#[ignore]` as its gap closes.
 //!
 //! Prerequisites (else the tests skip cleanly):
 //! - ROS 2 + `rmw_cyclonedds_cpp` (`require_ros2_cyclonedds`)
@@ -81,7 +91,6 @@ fn test_cyclonedds_ros2_detection() {
 
 /// nano-ros Cyclone talker → ROS 2 (`rmw_cyclonedds_cpp`) subscriber.
 #[test]
-#[ignore = "Phase 117.12 — stock rmw_cyclonedds_cpp wire interop not passing yet"]
 fn test_cyclonedds_nano_to_ros2_pubsub() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
@@ -115,7 +124,7 @@ fn test_cyclonedds_nano_to_ros2_pubsub() {
 
 /// ROS 2 (`rmw_cyclonedds_cpp`) publisher → nano-ros Cyclone subscriber.
 #[test]
-#[ignore = "Phase 117.12 — stock rmw_cyclonedds_cpp wire interop not passing yet"]
+#[ignore = "117.12: ros2→nano native-C listener gets no sample (the C++ CTest ros2_sub passes both ways; native-C-listener discovery/timing gap)"]
 fn test_cyclonedds_ros2_to_nano_pubsub() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
@@ -155,7 +164,7 @@ fn test_cyclonedds_ros2_to_nano_pubsub() {
 
 /// nano-ros Cyclone service server ↔ ROS 2 (`rmw_cyclonedds_cpp`) client.
 #[test]
-#[ignore = "Phase 117.12 — stock rmw_cyclonedds_cpp wire interop not passing yet"]
+#[ignore = "117.12.B.1 regression: nano server send_reply to a stock ROS 2 client fails (rc=4); nano-client↔ros2-server direction works"]
 fn test_cyclonedds_service_nano_server_ros2_client() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
