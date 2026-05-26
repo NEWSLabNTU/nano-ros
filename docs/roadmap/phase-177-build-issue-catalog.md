@@ -1221,20 +1221,25 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   consistent — **all 4 PASS** (~8 s each, isolated). No code change needed.
   Tracked under **117 / 177.26** (both now reflect working native Cyclone
   pub/sub).
-- [ ] **G6 - XRCE runtime (2).**
+- [x] **G6 - XRCE runtime (2). RESOLVED 2026-05-26 — flake, not product bug.**
   `xrce::test_xrce_large_message_publish`, `xrce::test_xrce_service_request_response`.
-  XRCE large-message / service-reply paths; same family as **177.9.E** (other
-  XRCE tests — action fibonacci, multiple messages, serial — pass). Rerun under a
-  focused XRCE filter to split flake from product bug.
+  Reran under a focused XRCE filter as this entry asked (split flake from
+  product bug): **both PASS** (~1.5 s + 5.8 s; the harness builds/launches its
+  own agent). Same host-load discovery flake under the heavy parallel matrix as
+  G3 / 177.9.H — not a product defect. The rest of the XRCE family (action
+  fibonacci, multiple messages, serial) already passed.
 
 **Conclusion.** Phase 181 build-SSOT is validated: clean rebuild green, migrated
 fixtures (native + esp32-C3 + threadx-linux build-verified earlier; safety /
 large-buf pass here), staleness probe clean post-build. The exit=1 is pre-existing
 known-hard E2E. Follow-up 2026-05-26: G1/G2/G3 non-bugs (G2's 2 retired tests
 deleted), **G5 resolved** (stale mid-rebase run — all 4 native Cyclone interop
-tests pass with main consistent), **G4 NuttX-Rust half fixed** (177.8.c codegen,
-release/lto). Still open: G4's NuttX-Cpp action (177.30 / 177.8.e), G6 XRCE
-runtime (177.9.E family).
+tests pass with main consistent), **G6 resolved** (both XRCE tests pass on a
+focused rerun — host-load flake, not a product bug), **G4 NuttX-Rust half
+fixed** (177.8.c codegen, release/lto). **Only G4's NuttX-Cpp action remains**
+(177.30 / 177.8.e — vendored zenoh-pico lease-task ↔ `z_get` timing race). Of
+the original 20 test-all failures: G2 (−2) deleted, G5 (−4) + G6 (−2) stale/
+flake, G4-Rust (−3) fixed → ~9 left, all the NuttX-Cpp action axis.
 
 ### Code Review Findings (2026-05-25)
 
