@@ -71,7 +71,16 @@ endif()
 # expand `$<TARGET_FILE:CycloneDDS::idlc>` — the genex resolves to an
 # empty string and idlc never runs. The cached absolute path is
 # visible from every scope.
-if(NOT NROS_RMW_CYCLONEDDS_IDLC)
+#
+# Re-resolve when the cached path no longer exists, not just when it is
+# unset: the value is a sticky INTERNAL cache entry, so a build dir
+# configured under an older repo layout keeps a path that may now point
+# through a deleted directory (e.g. Phase 180.B removed `examples/zephyr/
+# cmake`, leaving stale `.../examples/zephyr/cmake/../../../build/install/
+# bin/idlc` caches that fail to resolve → `idlc: not found` / exit 127).
+# `NOT EXISTS` forces a fresh resolution from the current layout; the
+# INTERNAL `set` below implies FORCE, so it overwrites the stale value.
+if(NOT NROS_RMW_CYCLONEDDS_IDLC OR NOT EXISTS "${NROS_RMW_CYCLONEDDS_IDLC}")
     set(_idlc_loc "")
     # Prefer the imported target's location (covers per-config suffixes).
     if(TARGET CycloneDDS::idlc)
