@@ -10,7 +10,10 @@ gaps; do **not** invent tests for intentionally-empty cells.
 against the `cargo nextest list` inventory + the `examples/README.md` coverage
 matrix, after Phase 182's test de-dup). **183.5 landed** — the CycloneDDS↔ROS 2
 interop test scaffolding (detection passes; interop cases `#[ignore]`d pending
-the 117.12 product work). 183.1–183.4, 183.6 open.
+the 117.12 product work). **183.1 + 183.3 landed** — zephyr C zenoh+xrce E2E
+(5 tests; also covers 183.2's zephyr half) + zephyr rust zenoh service.
+Remaining: 183.2 (native C xrce service/action), 183.4 (native Cyclone
+service/action), 183.6 (XRCE↔ROS 2 action + reverse service).
 
 **Priority.** P2 (test coverage / regression confidence). The CycloneDDS↔ROS 2
 item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
@@ -77,7 +80,18 @@ elsewhere (not a blind-fill target).
 
 ## Work Items
 
-### 183.1 — Zephyr C zenoh + xrce E2E (largest hole)
+### 183.1 — Zephyr C zenoh + xrce E2E (largest hole) — DONE
+
+Added 5 C E2E tests to `tests/zephyr.rs` (xrce C pubsub already existed as
+`test_zephyr_xrce_c_talker_listener`): `test_zephyr_c_{talker_to_listener,
+service_server_to_client,action_server_to_client}_e2e` (zenoh) +
+`test_zephyr_xrce_c_{service,action}_e2e`. Binaries resolve via
+`build_zephyr_cmake_example_rmw("c", case, rmw)` (per-cell west prebuild); each
+skips cleanly when the fixture isn't built. Not `#[ignore]`d — zephyr C is
+expected to run (the cyclone C e2e already does). Verified: compiles clean, all
+5 list. This also satisfies the zephyr half of 183.2. **Files**: `tests/zephyr.rs`.
+
+#### original plan
 
 `examples/zephyr/c/` ships 6 zenoh + 6 xrce cases but the only C E2E is the xrce
 talker/listener boot. The Rust + C++ zephyr E2E suites (in `tests/zephyr.rs` +
@@ -126,7 +140,13 @@ C XRCE examples exist (native 6, zephyr 6) but only pubsub is exercised.
 - zephyr C: covered by 183.1's xrce-C service/action.
 **Files**: `tests/c_xrce_api.rs`, `tests/zephyr.rs`. **Est.**: ~3 tests.
 
-### 183.3 — Zephyr Rust zenoh service E2E
+### 183.3 — Zephyr Rust zenoh service E2E — DONE
+
+Added `test_zephyr_rust_service_e2e` to `tests/zephyr.rs`, reusing the existing
+`get_zephyr_service_{server,client}_native_sim` (rust zenoh) resolvers. Verified:
+compiles clean, lists. **Files**: `tests/zephyr.rs`.
+
+#### original plan
 
 `tests/zephyr.rs` has rust zenoh pubsub + action e2e but no service; the cpp
 sibling (`test_zephyr_cpp_service_server_to_client_e2e`) is the template. Add

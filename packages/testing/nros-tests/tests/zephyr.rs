@@ -2613,3 +2613,209 @@ fn test_zephyr_cpp_action_server_to_client_e2e() {
         );
     }
 }
+
+// =============================================================================
+// Zephyr C E2E (Phase 183.1) — close the zephyr/c hole.
+//
+// `examples/zephyr/c/` ships 6 zenoh + 6 xrce cases, but the only C runtime
+// coverage was `test_zephyr_xrce_c_talker_listener` (xrce pubsub). These add
+// the C zenoh pub/sub + service + action e2e and the C xrce service + action,
+// mirroring the cpp/rust suites. Binaries resolve via the per-(lang,case,rmw)
+// CMake/Corrosion prebuild (`build-c-<case>-<rmw>/zephyr/zephyr.exe`), so each
+// skips cleanly when `just zephyr build-fixtures` hasn't produced the cell.
+// Not `#[ignore]`d: zephyr C zenoh/xrce are expected to run (the cyclone C
+// e2e already does) — a runtime failure here is a real bug to surface.
+// =============================================================================
+
+/// Resolve a prebuilt zephyr C example for `case` + `rmw`, or skip.
+fn zephyr_c_example(case: &str, rmw: nros_tests::fixtures::Rmw) -> std::path::PathBuf {
+    nros_tests::fixtures::build_zephyr_cmake_example_rmw("c", case, rmw).unwrap_or_else(|e| {
+        nros_tests::skip!(
+            "zephyr/c/{case} {rmw:?} not prebuilt (run `just zephyr build-fixtures`): {e:?}"
+        )
+    })
+}
+
+/// Zephyr C zenoh talker → listener pub/sub.
+#[test]
+fn test_zephyr_c_talker_to_listener_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::C),
+    )
+    .expect("Failed to start zenohd");
+    let listener_bin = zephyr_c_example("listener", nros_tests::fixtures::Rmw::Zenoh);
+    let talker_bin = zephyr_c_example("talker", nros_tests::fixtures::Rmw::Zenoh);
+
+    let listener = ZephyrProcess::start(&listener_bin, ZephyrPlatform::NativeSim).unwrap();
+    let ready = listener.wait_for_pattern("Waiting for messages", Duration::from_secs(30));
+    if !ready.contains("Waiting for messages") {
+        panic!("Zephyr C zenoh listener not ready in 30 s.\nOutput:\n{ready}");
+    }
+    let mut listener = listener;
+    let mut talker = ZephyrProcess::start(&talker_bin, ZephyrPlatform::NativeSim).unwrap();
+
+    let listener_out = listener.wait_for_pattern("Received", Duration::from_secs(30));
+    talker.kill();
+    listener.kill();
+    eprintln!("=== zephyr C zenoh listener ===\n{listener_out}");
+    assert!(
+        listener_out.contains("Received"),
+        "zephyr C zenoh listener received no sample:\n{listener_out}"
+    );
+}
+
+/// Zephyr C zenoh service server ↔ client.
+#[test]
+fn test_zephyr_c_service_server_to_client_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::C),
+    )
+    .expect("Failed to start zenohd");
+    let server_bin = zephyr_c_example("service-server", nros_tests::fixtures::Rmw::Zenoh);
+    let client_bin = zephyr_c_example("service-client", nros_tests::fixtures::Rmw::Zenoh);
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
+    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
+
+    let client_out = client.wait_for_pattern("Result:", Duration::from_secs(30));
+    client.kill();
+    server.kill();
+    eprintln!("=== zephyr C zenoh service client ===\n{client_out}");
+    assert!(
+        client_out.contains("Result:"),
+        "zephyr C zenoh service client got no reply:\n{client_out}"
+    );
+}
+
+/// Zephyr C zenoh action server ↔ client.
+#[test]
+fn test_zephyr_c_action_server_to_client_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Action, platform::TestLang::C),
+    )
+    .expect("Failed to start zenohd");
+    let server_bin = zephyr_c_example("action-server", nros_tests::fixtures::Rmw::Zenoh);
+    let client_bin = zephyr_c_example("action-client", nros_tests::fixtures::Rmw::Zenoh);
+
+    let server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
+    let ready = server.wait_for_pattern("Waiting for goals", Duration::from_secs(30));
+    if !ready.contains("Waiting for goals") {
+        panic!("Zephyr C zenoh action server not ready in 30 s.\nOutput:\n{ready}");
+    }
+    let mut server = server;
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
+
+    let client_out = client.wait_for_pattern("Sequence length", Duration::from_secs(60));
+    client.kill();
+    server.kill();
+    eprintln!("=== zephyr C zenoh action client ===\n{client_out}");
+    assert!(
+        client_out.contains("Sequence length"),
+        "zephyr C zenoh action client did not complete:\n{client_out}"
+    );
+}
+
+/// Zephyr C XRCE service server ↔ client.
+#[test]
+fn test_zephyr_xrce_c_service_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    let port =
+        platform::ZEPHYR.xrce_agent_port_for(platform::TestVariant::Service, platform::TestLang::C);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
+    let server_bin = zephyr_c_example("service-server", nros_tests::fixtures::Rmw::Xrce);
+    let client_bin = zephyr_c_example("service-client", nros_tests::fixtures::Rmw::Xrce);
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
+    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
+
+    let client_out = client.wait_for_pattern("Result:", Duration::from_secs(30));
+    client.kill();
+    server.kill();
+    eprintln!("=== zephyr C xrce service client ===\n{client_out}");
+    assert!(
+        client_out.contains("Result:"),
+        "zephyr C xrce service client got no reply:\n{client_out}"
+    );
+}
+
+/// Zephyr C XRCE action server ↔ client.
+#[test]
+fn test_zephyr_xrce_c_action_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    let port =
+        platform::ZEPHYR.xrce_agent_port_for(platform::TestVariant::Action, platform::TestLang::C);
+    let _agent = XrceAgent::start(port).expect("Failed to start XRCE Agent");
+    let server_bin = zephyr_c_example("action-server", nros_tests::fixtures::Rmw::Xrce);
+    let client_bin = zephyr_c_example("action-client", nros_tests::fixtures::Rmw::Xrce);
+
+    let server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
+    let ready = server.wait_for_pattern("Waiting for goals", Duration::from_secs(30));
+    if !ready.contains("Waiting for goals") {
+        panic!("Zephyr C xrce action server not ready in 30 s.\nOutput:\n{ready}");
+    }
+    let mut server = server;
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
+
+    let client_out = client.wait_for_pattern("Sequence length", Duration::from_secs(60));
+    client.kill();
+    server.kill();
+    eprintln!("=== zephyr C xrce action client ===\n{client_out}");
+    assert!(
+        client_out.contains("Sequence length"),
+        "zephyr C xrce action client did not complete:\n{client_out}"
+    );
+}
+
+// =============================================================================
+// Zephyr Rust zenoh service E2E (Phase 183.3) — rust had pubsub + action e2e
+// but no service (the cpp sibling did). Reuses the existing
+// `get_zephyr_service_{server,client}_native_sim` (rust zenoh) resolvers.
+// =============================================================================
+
+/// Zephyr Rust zenoh service server ↔ client.
+#[test]
+fn test_zephyr_rust_service_e2e() {
+    if !require_zephyr() {
+        nros_tests::skip!("Zephyr not available");
+    }
+    let _router = ZenohRouter::start(
+        platform::ZEPHYR.zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
+    )
+    .expect("Failed to start zenohd");
+    let server_bin = get_zephyr_service_server_native_sim();
+    let client_bin = get_zephyr_service_client_native_sim();
+
+    let mut server = ZephyrProcess::start(&server_bin, ZephyrPlatform::NativeSim).unwrap();
+    let _ = server.wait_for_pattern("Waiting", Duration::from_secs(30));
+    let mut client = ZephyrProcess::start(&client_bin, ZephyrPlatform::NativeSim).unwrap();
+
+    let client_out = client.wait_for_pattern("Response: sum=", Duration::from_secs(30));
+    client.kill();
+    server.kill();
+    eprintln!("=== zephyr rust zenoh service client ===\n{client_out}");
+    assert!(
+        client_out.contains("Response: sum=") || client_out.contains("sum="),
+        "zephyr rust zenoh service client got no reply:\n{client_out}"
+    );
+}
