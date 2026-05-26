@@ -107,7 +107,7 @@ example matrix on both lines. No new consumption features here — the bar is
 - [x] Audit 3.7↔4.4 API divergence (`zephyr-3.7-to-4.4-divergence-audit.md`)
 - [x] Version-gate the module CMake/Kconfig (force-include scoping, net_ip_mreq guard, version-aware NSOS line overlay)
 - [x] Parametrize `just zephyr` by NROS_ZEPHYR_VERSION (manifest/workspace/venv/build-one/build-fixtures)
-- [~] Re-verify 16 patches vs 4.4: NSOS recvmsg+multicast ported (4.4 scripts), getsockname dropped, Rust audited, Kconfig no-op; cyclone-submodule patches (threads/log/sockwaitset) + the k_mutex runtime issue remain
+- [x] Re-verify 16 patches vs 4.4: NSOS recvmsg+multicast+adapt ported (4.4 scripts), getsockname dropped (upstream), Rust audited (native_sim needs none), Kconfig no-op, k_mutex runtime fix landed; cyclone-submodule patches baked into the pinned cyclonedds commit (no diff)
 - [x] CI builds the example matrix on both 3.7 and 4.4 (`just zephyr ci-both` verified PASS/PASS; `.github/workflows/zephyr-dual-line.yml`)
 
 ### 180.B — copy-out-clean examples (version-agnostic)
