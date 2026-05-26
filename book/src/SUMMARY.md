@@ -84,6 +84,7 @@
 - [Opaque Storage Sizing](./internals/opaque-storage-sizing.md)
 - [Scheduling Models](./internals/scheduling-models.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
+- [Build System & Caching](./internals/build-system.md)
 - [zpico-sys Build Architecture](./internals/zpico-build.md)
 - [Formal Verification](./internals/verification.md)
 - [Safety Protocol](./internals/safety.md)
