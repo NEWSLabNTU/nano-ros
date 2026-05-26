@@ -121,6 +121,15 @@ nros_platform_link_app(c_talker)
 
 See [Getting Started](docs/guides/getting-started.md) for a complete C walkthrough.
 
+## On Zephyr (west module)
+
+nano-ros is consumable as a Zephyr **module** from your own west workspace,
+on both **Zephyr 3.7 LTS and 4.x**: import via `west.yml`, apply patches
+(`west patch apply` on 4.x), pick an RMW (`-S nros-<rmw>` snippet on 4.x),
+and copy out a worked example. See
+[Zephyr (west module)](book/src/getting-started/integration-zephyr.md) for
+the version-spanning consumption guide + compatibility matrix.
+
 ## ROS 2 Interoperability
 
 nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
