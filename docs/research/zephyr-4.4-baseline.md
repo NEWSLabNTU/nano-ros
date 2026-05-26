@@ -330,3 +330,39 @@ cyclonedds run + 2-node e2e on 4.4.
 stable run ✗ (cyclone↔k_mutex ownership). Zenoh line is fully e2e-proven on
 both 3.7 + 4.4; the cyclonedds runtime concurrency adaptation is the tracked
 follow-up.
+
+### Refinement (deeper gdb drill, 2026-05-26)
+
+Two findings correct the earlier note:
+
+1. **`tid in use` is benign noise**, not the root. gdb backtrace shows it fires
+   from `ddsrt_thread_create` → `pthread_attr_destroy` (pthread.c) →
+   `k_thread_stack_free`: cyclone destroys the pthread_attr immediately after
+   `pthread_create` (standard POSIX), but Zephyr 4.4's `pthread_attr_destroy`
+   tries to free `attr->stack` — which is the just-created thread's live stack.
+   `k_thread_stack_free` sees the thread is not `_THREAD_DEAD` and **refuses
+   (`-EBUSY`)**, so the stack is intact; only a `LOG_ERR` is emitted. (4.4's
+   pthread model has the attr own the stack and expects the caller to destroy
+   the attr *after* join — incompatible with cyclone's immediate destroy, but
+   harmless because the free is refused.)
+
+2. **The actual `abort()` is the `k_mutex` owner-only-unlock EPERM** in the
+   xevent thread (`ddsrt_mutex_unlock(xevq->lock)`), independent of #1. gdb
+   can't introspect the owner (`pthread_mutex_t` is an opaque pool index, not a
+   struct), so cross-thread-unlock vs stale-owner (from dynamic-thread k_thread
+   reuse) is unresolved without deeper instrumentation.
+
+**Fix directions (research-grade, pick during the focused follow-up):**
+- *Zephyr pthread/k_mutex*: make `pthread_mutex_unlock` for
+  `PTHREAD_MUTEX_NORMAL/DEFAULT` not abort on non-owner unlock (POSIX leaves it
+  undefined; Linux/3.7 tolerated it) — e.g. an owner-agnostic unlock path.
+- *cyclone ddsrt sync*: map ddsrt mutex onto a non-ownership primitive, or make
+  `ddsrt_mutex_unlock` tolerate the Zephyr EPERM.
+- *cyclone threads patch*: if the EPERM is stale-owner from dynamic-thread
+  reuse, stabilise thread identity (static pthread pool: drop DYNAMIC_THREAD,
+  size POSIX_THREAD_THREADS_MAX with static stacks) and/or defer
+  `pthread_attr_destroy` to join.
+
+The minimal experiment to disambiguate is to disable CONFIG_DYNAMIC_THREAD for
+the cyclonedds 4.4 build and see whether the mutex EPERM disappears (stable
+k_thread identity). Deferred to the focused concurrency follow-up.
