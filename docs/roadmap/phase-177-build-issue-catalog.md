@@ -1102,8 +1102,16 @@ passed.
   `XDG_RUNTIME_DIR=/tmp TMPDIR=/tmp cargo test -p nros-tests --test esp32_emulator test_esp32_talker_listener_e2e -- --nocapture`
   (`1 passed`, `8.66s`).
 
-- [ ] **177.30 - NuttX-QEMU Cpp action goal hangs: zenoh-pico lease-task ↔
-  `z_get` lock-ordering race.** `test_rtos_action_e2e`
+- [x] **177.30 - NuttX-QEMU Cpp action goal hang: RESOLVED — `fflush(stdout)`
+  deadlock (NOT a lease/`z_get` race).** Root cause (Update 4): the example's
+  application thread blocked in `fflush(stdout)` on the libc stdout `FILE*`
+  lock (`flockfile`) against zenoh-pico's background read/lease threads, so it
+  never reached `send_goal_async`. Fixed by removing the redundant `fflush`
+  calls (`1804f7ce9`); a manual 2-QEMU boot now runs the full
+  goal→accept→feedback→result chain. The CI cell itself was removed in 182.5
+  (QEMU-heavy) — out of the matrix for cost, not breakage. The original
+  (incorrect) lease/`z_get` diagnosis is preserved below for the record.
+  `test_rtos_action_e2e`
   (`platform_2_Platform__Nuttx::lang_3_Lang__Cpp`) hangs: the client prints
   `Sending goal: order=5` then never gets an accept; the server stays at
   "Waiting for goals" and never logs a goal request. NuttX Cpp pub/sub +
@@ -1385,16 +1393,21 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   `main` (the release/lto fix, `8e5855c29`) they run clean. This confirms
   177.8.c is genuinely fixed for the codegen axis.
 
-  **Unresolved portion — the `z_get`/lease race (177.30), BROADER than first
-  documented.** The remaining failures are the query-based paths (**service +
-  action**), and they are **not Cpp-action-specific** — they hit Rust service,
-  C action (a hard 270 s `z_get` hang), and Cpp action, **non-deterministically**
-  (Rust service/action flip pass/fail across runs; the earlier "C action passes"
-  was one lucky timing). pubsub is immune precisely because it never calls
-  `z_get`. So 177.30 is a general NuttX zenoh-pico query/reply concurrency race
-  (lease task ↔ app-thread `z_get` TX/reply-final on the session/pending-query
-  mutex), affecting every service/action path regardless of language — the
-  scope should be widened from "Cpp action" to "all NuttX `z_get` query/reply".
+  **Correction 2026-05-26 — the "broad `z_get`/lease race" theory was WRONG.**
+  The Cpp-action hang was a `fflush(stdout)` deadlock, not a `z_get`/lease race
+  (177.30 Update 4 — fixed in `1804f7ce9`; full chain verified on a manual
+  2-QEMU boot). Current matrix reality after 182.5 + the fflush fix:
+  - **pubsub** — all 4 platforms green (never calls `z_get`).
+  - **action** — NuttX + ThreadX-RISCV64 **removed from CI** (182.5, QEMU-heavy).
+    NuttX Cpp action is fixed (fflush); NuttX C action was also dropped (the C
+    example fflushes the same way — not retested, but out of the matrix).
+  - **service** — still all 4 platforms in CI. NuttX **Cpp + C service PASS**,
+    so there is **no general NuttX query/reply race** (a `z_get` race would sink
+    Cpp/C service too). Only **NuttX service/Rust** flakes (flip pass/fail).
+  **Remaining real item:** NuttX **service/Rust** flakiness — cause TBD, but
+  narrow (Rust-only; Cpp/C service pass), NOT the fflush deadlock and NOT a
+  broad `z_get` race. Likely a discovery/timing flake on the Rust service
+  client's first `call` under QEMU cold-boot load.
 - [x] **G5 - Native Cyclone DDS interop (4). RESOLVED 2026-05-26 — stale run.**
   `native_api::test_native_cyclonedds_{rust_talker_to_listener,talker_to_rust_listener}`
   for both `Language__C` and `Language__Cpp`. The failures were a mid-rebase
@@ -1783,8 +1796,16 @@ robustness/consistency follow-ups, not regressions.
     Fix lands in `.config/nextest.toml`. Verified all four PASS in isolation
     (ros2 detection ~0.3s, esp_idf ~35s, drift_gate ~26s).
 
-  - [ ] **177.8.e - NuttX-QEMU-ARM Cpp action goal never reaches the server
-    (OPEN; not fixed).** `test_rtos_action_e2e` Nuttx/Cpp: the client prints
+  - [x] **177.8.e - NuttX-QEMU-ARM Cpp action goal never reaches the server —
+    RESOLVED (`fflush` deadlock; see 177.30 Update 4).** The "client prints
+    `Sending goal` then nothing" symptom was the app thread blocking in the
+    `fflush(stdout)` right after that print (libc stdout `FILE*` lock vs
+    zenoh-pico bg threads) — it never reached `send_goal_async`, so the query
+    was never sent. The "z_get blocks and never returns" note below was the
+    mistaken read (gdb parked the thread *in fflush*, upstream of z_get). Fixed
+    by dropping the example's `fflush` calls (`1804f7ce9`); full chain verified
+    on a manual 2-QEMU boot. Original investigation preserved below.
+    `test_rtos_action_e2e` Nuttx/Cpp: the client prints
     `Sending goal: order=5`, then nothing — `goal_accepted=false`, and the
     server's post-boot log is empty (it sits at "Waiting for goals" and never
     logs a goal request). So the **send_goal query never reaches the server**.
