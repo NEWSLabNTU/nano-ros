@@ -81,7 +81,14 @@ passed.
   profile now disables multicast discovery; peer interop traffic is a
   separate follow-up tracked under 177.26, not the participant-init trap.
 
-- [ ] **177.26 - ThreadX Cyclone peer interop / multicast discovery.**
+- [x] **177.26 - ThreadX Cyclone peer interop / multicast discovery (CLOSED
+  2026-05-26).** ThreadX Cyclone interoperates with peer nano-ros Cyclone
+  nodes on both axes: **ThreadX↔ThreadX** (two-QEMU ThreadX-RV64, item 1) and
+  **ThreadX↔native** (threadx-linux↔native POSIX on loopback, item 2) — both
+  fixed, verified, and covered by passing tests. Residuals are out of this
+  item's scope: QEMU-RISCV64↔native is infra-gated (host↔QEMU bridge = root,
+  not a code defect) and **stock `rmw_cyclonedds` (real ROS 2) interop is a
+  Phase 117.X deliverable** (cross-platform wire-compat, not threadx-specific).
   Owner: Phase 177 runtime/Cyclone follow-up. Split out of 177.22
   (participant-init trap, closed).
 
