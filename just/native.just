@@ -188,15 +188,15 @@ build-fixture-extras:
     bash scripts/build/fixtures-build.sh native cpp
     unset NROS_CMAKE_EXTRA_DEFS
     if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
-        # NOTE (Phase 183.4): only talker/listener (pub/sub) build runnable
-        # Cyclone executables today. The service/action native Cyclone examples
-        # link as a no-op (`: && :`) under `-DNROS_RMW=cyclonedds` — objects
-        # compile but no exe is produced — so they're omitted here. Add them
-        # back once the example-CMake executable wiring for Cyclone
-        # service/action is fixed (Phase 117 / 175); the e2e tests in
-        # native_api.rs already skip cleanly until then.
+        # Phase 177.31 (resolved 2026-05-26) fixed the Cyclone example link gap
+        # (the old `: && :` no-op under `-DNROS_RMW=cyclonedds`): every native
+        # Cyclone example now links a real ELF, so service/action fixtures build
+        # alongside talker/listener. The Cyclone service e2e passes; the Cyclone
+        # *action* e2e is still blocked on a runtime bug (177.32 —
+        # `nros_executor_register_action_server` returns -1), so its tests skip
+        # at runtime, but the fixtures still build cleanly here.
         for lang in c cpp; do
-            for case in talker listener; do
+            for case in talker listener service-server service-client action-server action-client; do
                 binary="${lang}_${case//-/_}"
                 echo "  → native/${lang}/${case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
                 ( cd examples/native/${lang}/${case} && \
