@@ -168,66 +168,6 @@ fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary
 // =============================================================================
 
 #[rstest]
-fn test_xrce_service_server_starts(xrce_service_server_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-
-    let mut cmd = Command::new(&xrce_service_server_binary);
-    set_xrce_udp_locator(&mut cmd, &addr).env("XRCE_TIMEOUT", "10");
-    let mut server = ManagedProcess::spawn_command(cmd, "xrce-service-server")
-        .expect("Failed to start service server");
-
-    // Wait for readiness marker
-    match server.wait_for_output_pattern("Waiting for service requests", Duration::from_secs(30)) {
-        Ok(_) => eprintln!("xrce-service-server started successfully"),
-        Err(_) => {
-            if server.is_running() {
-                eprintln!("xrce-service-server running (no readiness marker yet)");
-            } else {
-                eprintln!("xrce-service-server exited early");
-            }
-        }
-    }
-
-    server.kill();
-    drop(agent);
-}
-
-#[rstest]
-fn test_xrce_service_client_starts(xrce_service_client_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-
-    let mut cmd = Command::new(&xrce_service_client_binary);
-    set_xrce_udp_locator(&mut cmd, &addr).env("XRCE_REQUEST_COUNT", "1");
-    let mut client = ManagedProcess::spawn_command(cmd, "xrce-service-client")
-        .expect("Failed to start service client");
-
-    // Wait for readiness marker (client will timeout without a server)
-    match client.wait_for_output_pattern("Service client created", Duration::from_secs(30)) {
-        Ok(_) => eprintln!("xrce-service-client started successfully"),
-        Err(_) => {
-            if client.is_running() {
-                eprintln!("xrce-service-client running (no readiness marker yet)");
-            } else {
-                eprintln!("xrce-service-client exited early");
-            }
-        }
-    }
-
-    client.kill();
-    drop(agent);
-}
-
-#[rstest]
 fn test_xrce_service_request_response(
     xrce_service_server_binary: PathBuf,
     xrce_service_client_binary: PathBuf,
@@ -292,64 +232,6 @@ fn test_xrce_service_request_response(
 // =============================================================================
 // XRCE Action Tests
 // =============================================================================
-
-#[rstest]
-fn test_xrce_action_server_starts(xrce_action_server_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-
-    let mut cmd = Command::new(&xrce_action_server_binary);
-    set_xrce_udp_locator(&mut cmd, &addr).env("XRCE_TIMEOUT", "10");
-    let mut server = ManagedProcess::spawn_command(cmd, "xrce-action-server")
-        .expect("Failed to start action server");
-
-    match server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(30)) {
-        Ok(_) => eprintln!("xrce-action-server started successfully"),
-        Err(_) => {
-            if server.is_running() {
-                eprintln!("xrce-action-server running (no readiness marker yet)");
-            } else {
-                eprintln!("xrce-action-server exited early");
-            }
-        }
-    }
-
-    server.kill();
-    drop(agent);
-}
-
-#[rstest]
-fn test_xrce_action_client_starts(xrce_action_client_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-
-    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
-    let addr = agent.addr();
-
-    let mut cmd = Command::new(&xrce_action_client_binary);
-    set_xrce_udp_locator(&mut cmd, &addr);
-    let mut client = ManagedProcess::spawn_command(cmd, "xrce-action-client")
-        .expect("Failed to start action client");
-
-    match client.wait_for_output_pattern("Action client created", Duration::from_secs(30)) {
-        Ok(_) => eprintln!("xrce-action-client started successfully"),
-        Err(_) => {
-            if client.is_running() {
-                eprintln!("xrce-action-client running (no readiness marker yet)");
-            } else {
-                eprintln!("xrce-action-client exited early");
-            }
-        }
-    }
-
-    client.kill();
-    drop(agent);
-}
 
 #[rstest]
 fn test_xrce_action_fibonacci(

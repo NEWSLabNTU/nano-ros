@@ -14,7 +14,9 @@ e2e tests) and the two duplicate clean-cmake smokes merged into one. Net ~167
 fewer tests + one fewer ~160 s cmake configure. **182.3 partial** — 19 of 53
 `_builds` dropped (the native/host cells with build-all + e2e coverage); the
 cross-platform `_all_examples_build` / `emulator` / `zephyr` `_builds` deferred
-(per-file import surgery + e2e-pairing audit). 182.4–182.6 open.
+(per-file import surgery + e2e-pairing audit). **182.4 landed** (−12 redundant
+boot-smokes, audited per-fixture against sibling e2e — zero coverage loss).
+182.5 / 182.6 open.
 
 **Priority.** P2 (developer + CI wall-clock).
 
@@ -138,13 +140,42 @@ exported_symbols_are_addressable}` (C ABI/header compile surface) and
 `qemu_patched_binary::test_qemu_system_arm_resolves_to_patched_build` (infra).
 **Files**: `tests/{native_api,esp32_emulator,c_xrce_api,params,services}.rs`.
 
-### 182.4 — Audit redundant BOOT-smoke (`_starts` / `_boots`, 71, ~399 s)
+### 182.4 — Audit redundant BOOT-smoke (`_starts` / `_boots`) — DONE 2026-05-26
 
 Where an `_e2e` test exists for the same fixture, it already boots that binary
-and does more, so the sibling `_starts`/`_boots` is redundant. → **Audit each
-`_starts`/`_boots`; drop the ones whose fixture is already booted by an `_e2e`.**
-Keep boot-smokes for fixtures with *no* e2e counterpart (bring-up-only boards).
-**Files**: `emulator`, `zephyr`, `esp32_emulator`, `xrce`, `freertos_qemu`.
+and does more, so the sibling `_starts`/`_boots` is redundant. Audited the 30
+boot-smokes in the five files by mapping each to the **fixture getter/builder**
+it boots, then matching against the fixtures each `_e2e`/runtime test boots.
+
+**Dropped — 12, each provably booted by a passing sibling e2e (verified green
+this session: zephyr 53/53, xrce G6 / 177.9.E):**
+
+| dropped boot-smoke | covered by (boots same fixture) |
+|---|---|
+| `zephyr_xrce_cpp_service_{server,client}_boots` | `test_zephyr_xrce_cpp_service_e2e` (`get_zephyr_xrce_cpp_service_{server,client}_native_sim`) |
+| `zephyr_xrce_cpp_action_{server,client}_boots` | `test_zephyr_xrce_cpp_action_e2e` |
+| `zephyr_dds_cpp_action_{server,client}_boots` | `test_zephyr_dds_cpp_action_e2e` (`zephyr-dds-cpp-action-{server,client}`) |
+| `zephyr_dds_c_action_{server,client}_boots` | `test_zephyr_dds_c_action_e2e` |
+| `xrce_service_{server,client}_starts` | `test_xrce_service_request_response` (`xrce_service_{server,client}_binary`) |
+| `xrce_action_{server,client}_starts` | `test_xrce_action_fibonacci` (`xrce_action_{server,client}_binary`) |
+
+**Kept — fixture has no e2e counterpart (the boot is its only runtime check):**
+- `zephyr_xrce_cpp_{talker,listener}_boots`, `zephyr_dds_{cpp,c}_{talker,listener}_boots`,
+  `zephyr_dds_{cpp,c}_service_{server,client}_boots` — no zephyr **pubsub** e2e for
+  xrce/dds, and no **dds service** e2e (the generic `cpp_*_e2e` / `talker_to_listener_e2e`
+  boot the *zenoh* `get_zephyr_cpp_*` / `get_zephyr_*` fixtures, not dds/xrce).
+- `xrce_{talker,listener}_starts` + `xrce_serial_{talker,listener}_starts` — `large_message_publish`
+  boots a separate `xrce_large_msg_test_binary`, not `xrce_talker_binary`; no plain xrce pubsub e2e.
+- `emulator` `qemu_bsp_{talker,listener}_starts` — `build_qemu_bsp_talker` is used only by the
+  boot + two `_builds` tests; the emulator e2e use `serial`/`rtic` fixtures. No e2e boots the bsp.
+- `esp32_qemu_talker_boots` — the e2e uses `build_esp32_flash_images` (networked), a different
+  builder than the boot's `build_esp32_qemu_talker`; can't prove same fixture.
+- `freertos_rust_talker_cyclonedds_boot` — kept conservatively (the cyclonedds
+  `local_pubsub_e2e` boots the same `build_freertos_rust_example_rmw` talker, but FreeRTOS
+  Cyclone e2e reliability wasn't re-verified this session).
+
+Net: **−12 boot-smoke tests** (−244 lines), zero coverage loss. Compiles clean;
+the removed `#[rstest]` fixtures stay used by the runtime tests.
 
 ### 182.5 — Trim the `rtos_e2e` matrix (the wall-clock critical path)
 
