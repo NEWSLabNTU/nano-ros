@@ -27,10 +27,8 @@
 use nros_tests::fixtures::{
     QemuProcess, is_qemu_available, is_zenohd_available,
     nuttx::{
-        build_nuttx_action_client, build_nuttx_action_server, build_nuttx_cpp_action_client,
-        build_nuttx_cpp_action_server, build_nuttx_cpp_listener, build_nuttx_cpp_service_client,
-        build_nuttx_cpp_service_server, build_nuttx_cpp_talker, build_nuttx_listener,
-        build_nuttx_service_client, build_nuttx_service_server, build_nuttx_talker,
+        build_nuttx_cpp_action_client, build_nuttx_cpp_action_server, build_nuttx_cpp_listener,
+        build_nuttx_cpp_service_client, build_nuttx_cpp_service_server, build_nuttx_cpp_talker,
         is_arm_gcc_available, is_cmake_available, is_nuttx_available, is_nuttx_configured,
         is_nuttx_toolchain_available, nuttx_kernel_path,
     },
@@ -110,37 +108,12 @@ fn test_nuttx_detection() {
 }
 
 // =============================================================================
-// Build tests (require NUTTX_DIR + nightly toolchain)
+// (Phase 182.3) `test_nuttx_all_examples_build` removed — it rebuilt every
+// NuttX **Rust** example, which `build-all` / `build-test-fixtures` already do
+// before `test-all` (the `_require-fixtures` preflight). The per-role binaries
+// are consumed by the `rtos_e2e` Platform__Nuttx tests. (The NuttX C++
+// build/boot tests below keep their own `build_nuttx_cpp_*` coverage.)
 // =============================================================================
-
-#[test]
-fn test_nuttx_all_examples_build() {
-    if !require_nuttx() {
-        nros_tests::skip!("require_nuttx check failed");
-    }
-
-    let results = [
-        ("talker", build_nuttx_talker()),
-        ("listener", build_nuttx_listener()),
-        ("service-server", build_nuttx_service_server()),
-        ("service-client", build_nuttx_service_client()),
-        ("action-server", build_nuttx_action_server()),
-        ("action-client", build_nuttx_action_client()),
-    ];
-
-    let mut all_ok = true;
-    for (name, result) in &results {
-        match result {
-            Ok(path) => eprintln!("  OK: {} -> {}", name, path.display()),
-            Err(e) => {
-                eprintln!("  FAIL: {} -> {:?}", name, e);
-                all_ok = false;
-            }
-        }
-    }
-
-    assert!(all_ok, "Not all NuttX examples built successfully");
-}
 
 // =============================================================================
 // NuttX kernel boot test (require QEMU + NuttX kernel image)

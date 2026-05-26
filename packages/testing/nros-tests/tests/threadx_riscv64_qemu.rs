@@ -21,12 +21,7 @@ use std::time::Duration;
 
 use nros_tests::fixtures::{
     QemuProcess, is_qemu_riscv64_available, is_zenohd_available, qemu_riscv64_supports_dgram_unix,
-    threadx_riscv64::{
-        build_threadx_rv64_action_client, build_threadx_rv64_action_server,
-        build_threadx_rv64_listener, build_threadx_rv64_service_client,
-        build_threadx_rv64_service_server, build_threadx_rv64_talker, is_netx_available,
-        is_riscv_gcc_available, is_threadx_available,
-    },
+    threadx_riscv64::{is_netx_available, is_riscv_gcc_available, is_threadx_available},
 };
 
 // =============================================================================
@@ -72,40 +67,11 @@ fn test_threadx_riscv64_detection() {
 }
 
 // =============================================================================
-// Build tests (require THREADX_DIR + NETX_DIR + riscv64-unknown-elf-gcc)
+// (Phase 182.3) `test_threadx_riscv64_all_examples_build` removed — it rebuilt
+// every ThreadX-RV64 example, which `build-all` / `build-test-fixtures` already
+// do before `test-all` (the `_require-fixtures` preflight). The per-role
+// binaries are consumed by the `rtos_e2e` Platform__ThreadxRiscv64 tests.
 // =============================================================================
-
-#[test]
-fn test_threadx_riscv64_all_examples_build() {
-    if !require_threadx_riscv64() {
-        nros_tests::skip!("require_threadx_riscv64 check failed");
-    }
-
-    let results = [
-        ("talker", build_threadx_rv64_talker()),
-        ("listener", build_threadx_rv64_listener()),
-        ("service-server", build_threadx_rv64_service_server()),
-        ("service-client", build_threadx_rv64_service_client()),
-        ("action-server", build_threadx_rv64_action_server()),
-        ("action-client", build_threadx_rv64_action_client()),
-    ];
-
-    let mut all_ok = true;
-    for (name, result) in &results {
-        match result {
-            Ok(path) => eprintln!("  OK: {} -> {}", name, path.display()),
-            Err(e) => {
-                eprintln!("  FAIL: {} -> {:?}", name, e);
-                all_ok = false;
-            }
-        }
-    }
-
-    assert!(
-        all_ok,
-        "Not all ThreadX QEMU RISC-V examples built successfully"
-    );
-}
 
 // =============================================================================
 // CycloneDDS two-QEMU peer interop (Phase 177.26)

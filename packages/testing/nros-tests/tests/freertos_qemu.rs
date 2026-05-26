@@ -19,11 +19,7 @@
 
 use nros_tests::fixtures::{
     QemuProcess, Rmw, build_freertos_rust_example_rmw,
-    freertos::{
-        build_freertos_action_client, build_freertos_action_server, build_freertos_listener,
-        build_freertos_service_client, build_freertos_service_server, build_freertos_talker,
-        is_arm_gcc_available, is_freertos_available, is_lwip_available,
-    },
+    freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available},
     is_qemu_available, is_zenohd_available,
 };
 use std::time::Duration;
@@ -71,37 +67,11 @@ fn test_freertos_detection() {
 }
 
 // =============================================================================
-// Build tests (require FREERTOS_DIR + LWIP_DIR + arm-none-eabi-gcc)
+// (Phase 182.3) `test_freertos_all_examples_build` removed — it rebuilt every
+// FreeRTOS example, exactly what `build-all` / `build-test-fixtures` does
+// before `test-all` (the `_require-fixtures` preflight gates on it). The
+// per-role binaries are consumed by the `rtos_e2e` Platform__Freertos tests.
 // =============================================================================
-
-#[test]
-fn test_freertos_all_examples_build() {
-    if !require_freertos() {
-        nros_tests::skip!("require_freertos check failed");
-    }
-
-    let results = [
-        ("talker", build_freertos_talker()),
-        ("listener", build_freertos_listener()),
-        ("service-server", build_freertos_service_server()),
-        ("service-client", build_freertos_service_client()),
-        ("action-server", build_freertos_action_server()),
-        ("action-client", build_freertos_action_client()),
-    ];
-
-    let mut all_ok = true;
-    for (name, result) in &results {
-        match result {
-            Ok(path) => eprintln!("  OK: {} -> {}", name, path.display()),
-            Err(e) => {
-                eprintln!("  FAIL: {} -> {:?}", name, e);
-                all_ok = false;
-            }
-        }
-    }
-
-    assert!(all_ok, "Not all FreeRTOS examples built successfully");
-}
 
 #[test]
 fn test_freertos_rust_talker_cyclonedds_boot() {

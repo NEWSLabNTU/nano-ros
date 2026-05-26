@@ -115,12 +115,18 @@ cover them:**
 Verified: the 5 binaries compile clean (no unused-import warnings), 0 `_builds`
 remain in them.
 
-**Deferred (need per-file surgery / e2e-pairing audit):**
-- 4 `*_all_examples_build` (`freertos_qemu`, `nuttx_qemu`, `threadx_linux`,
-  `threadx_riscv64_qemu`) — pure `build-all` duplication, but each is likely the
-  sole user of its platform's `build_<plat>_{talker,listener,service_*,action_*}`
-  helpers, so deletion needs the matching import removals + a check those helpers
-  aren't used by the file's runtime tests.
+**Done (4 more) — the aggregate `*_all_examples_build`:** removed from
+`freertos_qemu`, `nuttx_qemu`, `threadx_linux`, `threadx_riscv64_qemu`. Each
+rebuilt every platform example = exactly `build-all` / `build-test-fixtures`
+(the `_require-fixtures` preflight gates on it), and the per-role binaries feed
+the `rtos_e2e` Platform__* tests. Removed each file's now-orphaned
+`build_<plat>_{talker,listener,service_*,action_*}` (rust) imports — and
+`threadx_linux`'s orphaned `require_threadx` helper; kept the cpp builders
+(used by other tests), the `require_*`/`is_*` detection used by surviving tests,
+and the cyclonedds boot / two-QEMU e2e tests. Verified: all 4 compile clean
+(no unused-import warnings), 0 `_all_examples_build` remain.
+
+**Deferred (need e2e-pairing audit):**
 - `emulator` — 20 (qemu-arm-baremetal); the rtic/serial talker+listener are
   covered by the pubsub e2e, but the action/service rtic roles have no e2e — they
   rely on `build-all` compile only (true, but confirm before dropping).
