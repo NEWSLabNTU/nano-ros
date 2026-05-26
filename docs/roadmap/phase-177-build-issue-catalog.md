@@ -1163,6 +1163,38 @@ passed.
   (self-contained zenoh-pico concurrency work). **Priority:** medium —
   isolated to NuttX Cpp actions; C actions + all other NuttX paths work.
 
+  **Progress 2026-05-26 (experiments in the jerry73204/zenoh-pico fork; all
+  reverted, tree clean). Two leading hypotheses ELIMINATED — it is NOT a
+  mutex deadlock:**
+  - **Lease-task sweep — eliminated.** No-op'd `_z_pending_query_process_timeout`
+    (the session-mutex sweep), rebuilt client+server, retested: still hangs.
+    (Also: `SERVICE_DEFAULT_TIMEOUT_MS = 30000`, so the sweep never actually
+    drops the in-flight goal query anyway.)
+  - **Re-entrant session self-deadlock — eliminated.** Routed the
+    non-recursive `_z_mutex_*` to the recursive platform impl (so a thread
+    re-locking the session mutex can't self-deadlock — the async
+    `goal_response_cb → get_result_async` re-enters `z_get`), rebuilt,
+    retested: still hangs. So a non-recursive re-entrant lock is not it.
+  - **Confirmed facts:** the goal query never reaches the wire; keep-alives
+    keep flowing during the hang (so the app thread is NOT holding the
+    transport-peer mutex); it works under gdb (timing race). NuttX `_z_mutex_*`
+    routes through `platform_aliases.c → nros_platform_mutex_*` (pthread),
+    NOT zenoh-pico's `system/unix/system.c`.
+  - **Tooling blocker:** gdb-multiarch on the QEMU NuttX gdbstub cannot read
+    the app's `.bss` at the hang — it halts in kernel context (PC in a
+    high `??` region) and a lock-event ring buffer (placed in
+    `platform_aliases.c`, symbol present + linked, `_z_mutex_lock` verified
+    to call it) reads `idx = 0` at 45 s AND 85 s wall. So the gdb-memory
+    observe path is dead here.
+  - **Refined hypothesis:** a missed-wakeup / condvar (or spin-sem) race in
+    the get/reply path, or a NuttX socket-send stall — not a lock cycle.
+  - **Next concrete step:** observe via the *console* instead of gdb — emit
+    the lock/condvar-wait event ring with a raw `write(1, …)` from a watchdog
+    (or unbuffered per-event), since QEMU stdout is readable and gdb `.bss`
+    reads are not. Then inspect the `g_spin`/condvar wakeup in
+    `zpico_get_check` / `call_raw` against the reply-final dropper's
+    `_zpico_notify_spin()`.
+
 #### 2026-05-26 Clean-Rebuild Test-All by Group
 
 Full clean-room validation after the Phase 181 fixture-build-SSOT work landed
