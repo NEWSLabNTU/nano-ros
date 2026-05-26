@@ -1,0 +1,103 @@
+# nano-ros — west patch index (Phase 180.D)
+#
+# Default index consumed by `west patch` (Zephyr 4.x only). The manifest
+# repo is nano-ros, so `west patch` looks here:
+#   <manifest-repo>/zephyr/patches.yml  +  <manifest-repo>/zephyr/patches/
+#
+# This is the ADDITIVE delivery path for downstream BYO Zephyr 4.x
+# workspaces. nano-ros's own in-tree build still applies these as sed/
+# python scripts under scripts/zephyr/*.sh (that path also covers Zephyr
+# 3.7 LTS, which has no `west patch`). Keep both in sync.
+#
+# From a 4.x workspace, after `west update`:
+#   west patch list      # show entries (parses this file)
+#   west patch apply     # apply all patches (verifies each sha256)
+#   west patch clean      # roll back to manifest checkout
+#
+# SCOPE: only the Zephyr-module (drivers/net/nsos_*) patches live here.
+# The five cyclonedds-on-Zephyr patches (threads, log-flush, sockwaitset,
+# udp-rcvbuf, mcjoin) are NOT listed: Cyclone DDS is consumed via the
+# nano-ros submodule third-party/dds/cyclonedds, pinned at a commit that
+# already has them baked in (0.10.5-11-g56e6170a). Re-running their sed
+# scripts against that submodule produces no diff, so there is nothing
+# for `west patch` to apply — they are not west-managed projects and need
+# no patches.yml entry. (Downstream users who vendor Cyclone some other
+# way must apply scripts/zephyr/cyclonedds-zephyr-*.sh themselves.)
+
+# Rollback for `west patch clean`. Our patches only edit tracked files,
+# so `git checkout .` fully reverts them. We deliberately leave
+# clean-command empty: the schema default (`git clean -d -f -x`) would
+# also delete every untracked/ignored file in the module (e.g. the
+# zephyr module's scripts/**/__pycache__, parsetab.py, and any build
+# output) — unwanted collateral for a patch rollback.
+checkout-command: "git checkout ."
+clean-command: ""
+
+patches:
+  # 1. NSOS recvmsg() — implement the ENOTSUP stub by delegating the
+  #    single-iovec form to nsos_recvfrom. Cyclone DDS' UDP read uses
+  #    recvmsg; without this every receive fails and busy-spins the recv
+  #    thread. Must apply before native-sim-ipproto-ip (both touch
+  #    nsos_sockets.c; this one lands first).
+  - path: nsos-recvmsg-4.4.patch
+    sha256sum: 55fa4a4653d22b3fe673844c68e58ff50d731107e1bf39fe6e7fc3bc41bdd78b
+    module: zephyr
+    author: nano-ros contributors
+    email: nano-ros@newslab.csie.ntu.edu.tw
+    date: 2026-05-26
+    upstreamable: true
+    comments: |
+      Phase 180.A (4.4 port of Phase 11W.10). Implements nsos_recvmsg() in
+      Zephyr's Native Simulator Offloaded Sockets (NSOS), which upstream
+      leaves an ENOTSUP stub. Cyclone DDS reads UDP via recvmsg with one
+      iovec + msg_name; we delegate that form to nsos_recvfrom and reuse
+      its poll/block + sockaddr translation.
+      UPSTREAMABLE: yes — generic NSOS gap, not nano-ros-specific. Human
+      follow-up: open a Zephyr PR (no PR opened by this phase).
+
+  # 2. NSOS IPv4 multicast setsockopt/getsockopt — GUEST half. Adds the
+  #    NSOS_MID_IP_* constants + struct nsos_mid_ip_mreq (nsos_socket.h)
+  #    and a NET_IPPROTO_IP case to guest nsos_setsockopt/nsos_getsockopt
+  #    (nsos_sockets.c) that marshals IP_ADD_MEMBERSHIP / IP_MULTICAST_*
+  #    into the NSOS midplane. Pairs with patch 3 (host half).
+  - path: native-sim-ipproto-ip-4.4.patch
+    sha256sum: bdb0c42027bd15e608059480b0a42c99e1037d52ba770db56d1959993e079a76
+    module: zephyr
+    author: nano-ros contributors
+    email: nano-ros@newslab.csie.ntu.edu.tw
+    date: 2026-05-26
+    upstreamable: true
+    comments: |
+      Phase 180.A (4.4 port of Phase 11W.10/11). Guest-side IPv4 multicast
+      setsockopt forwarding for NSOS. Without it guest
+      setsockopt(IP_ADD_MEMBERSHIP) returns EOPNOTSUPP, the listener never
+      joins 239.255.0.1 host-side, SPDP multicast frames never arrive, and
+      cyclonedds discovery on native_sim is dead-on-arrival. Reads the two
+      leading net_in_addrs so a single arm covers both net_ip_mreq (8B,
+      what Cyclone passes) and net_ip_mreqn (12B).
+      Depends on patch 1 (both edit nsos_sockets.c; apply order is fixed
+      by this file). Must also be paired with patch 3 (host forwarder).
+      UPSTREAMABLE: yes — generic IPv4-multicast support for native_sim
+      NSOS. Human follow-up: open a Zephyr PR alongside the host half.
+
+  # 3. NSOS IPv4 multicast setsockopt/getsockopt — HOST half. Adds the
+  #    NSOS_MID_IPPROTO_IP case to host nsos_adapt_setsockopt/getsockopt
+  #    (nsos_adapt.c) that unmarshals nsos_mid_ip_mreq back into the host
+  #    struct ip_mreq / in_addr / int and calls the real host
+  #    setsockopt(IPPROTO_IP, ...). Independent file from patches 1-2.
+  - path: nsos-adapt-ipproto-ip-4.4.patch
+    sha256sum: 5ecf9eacfaa47db6fcd80b70f1df25596ea08564e9ecda06cffadb90a1011a79
+    module: zephyr
+    author: nano-ros contributors
+    email: nano-ros@newslab.csie.ntu.edu.tw
+    date: 2026-05-26
+    upstreamable: true
+    comments: |
+      Phase 180.A (4.4 port of Phase 11W.12). Host (bottom-half) forwarder
+      for the IPv4 multicast setsockopts the guest (patch 2) marshals;
+      without it the midplane call returns EOPNOTSUPP and the SPDP
+      multicast join never reaches the host kernel. Uses the real host
+      struct ip_mreq / in_addr from <netinet/in.h>.
+      UPSTREAMABLE: yes — completes the native_sim NSOS IPv4-multicast
+      support together with patch 2. Human follow-up: open a Zephyr PR
+      (guest + host as one PR).

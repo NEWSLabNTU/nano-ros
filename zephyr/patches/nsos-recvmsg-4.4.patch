@@ -1,0 +1,44 @@
+diff --git a/drivers/net/nsos_sockets.c b/drivers/net/nsos_sockets.c
+index 34f97113ce8..29fba9434eb 100644
+--- a/drivers/net/nsos_sockets.c
++++ b/drivers/net/nsos_sockets.c
+@@ -965,8 +965,37 @@ return_ret:
+ 
+ static ssize_t nsos_recvmsg(void *obj, struct net_msghdr *msg, int flags)
+ {
+-	errno = ENOTSUP;
+-	return -1;
++	/* nano-ros: nsos recvmsg (Phase 180.A, 4.4 port of Phase 11W.10).
++	 * Upstream leaves this an ENOTSUP stub; Cyclone DDS' UDP read uses
++	 * recvmsg, so every receive fails and busy-spins the recv thread
++	 * ("UDP recvmsg sock N: ret 0 retcode -1"). Delegate the single-iovec
++	 * form (Cyclone uses one iovec + msg_name) to nsos_recvfrom, reusing
++	 * its poll/block + sockaddr translation. */
++	void *buf = NULL;
++	size_t len = 0;
++	net_socklen_t namelen;
++	ssize_t ret;
++
++	if (msg == NULL) {
++		errno = EINVAL;
++		return -1;
++	}
++	for (size_t i = 0; i < msg->msg_iovlen; i++) {
++		if (msg->msg_iov && msg->msg_iov[i].iov_len > 0) {
++			buf = msg->msg_iov[i].iov_base;
++			len = msg->msg_iov[i].iov_len;
++			break;
++		}
++	}
++
++	namelen = msg->msg_namelen;
++	ret = nsos_recvfrom(obj, buf, len, flags,
++			    (struct net_sockaddr *)msg->msg_name, &namelen);
++	if (ret >= 0) {
++		msg->msg_namelen = namelen;
++		msg->msg_flags = 0;
++	}
++	return ret;
+ }
+ 
+ static int socket_type_from_nsos_mid(int type_mid, int *type)

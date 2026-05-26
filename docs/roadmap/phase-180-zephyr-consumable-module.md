@@ -149,9 +149,9 @@ upstream to shrink both sets. Patch delivery to a BYO workspace becomes the
 manifest import + `west patch apply`.
 **Files.** `patches.yml`, `scripts/zephyr/*-patch.sh` (3.7 retained),
 `integrations/zephyr/west.yml`, `docs/development/zephyr-patches.md` (new).
-- [ ] Convert the 4.x-relevant patches to `patches.yml` entries with sha256sum
-- [ ] Triage `upstreamable`; open upstream PRs for the tractable ones
-- [ ] Wire `west patch apply` into the downstream-import flow + document
+- [x] Convert the 4.x-relevant patches to `patches.yml` (3 NSOS patches, sha256sum, module: zephyr; cyclone patches baked into the pinned submodule — excluded)
+- [~] Triage `upstreamable`: 3 NSOS patches marked upstreamable to Zephyr; opening the upstream PR(s) is a human follow-up
+- [x] Wire `west patch apply` into the downstream flow + document (`integrations/zephyr/README.md`; verified list/apply/clean on 4.4)
 
 ### 180.E — support / onboarding docs
 A BYO-consumer onboarding guide covering both Zephyr lines: import the

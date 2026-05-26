@@ -1,0 +1,84 @@
+diff --git a/drivers/net/nsos_adapt.c b/drivers/net/nsos_adapt.c
+index cf1e99f6b77..d31858c43df 100644
+--- a/drivers/net/nsos_adapt.c
++++ b/drivers/net/nsos_adapt.c
+@@ -731,6 +731,17 @@ int nsos_adapt_getsockopt(int fd, int nsos_mid_level, int nsos_mid_optname,
+ 		}
+ 		break;
+ 
++	/* nano-ros: nsos_adapt IPPROTO_IP — Phase 180.A. */
++	case NSOS_MID_IPPROTO_IP:
++		switch (nsos_mid_optname) {
++		case NSOS_MID_IP_MULTICAST_TTL:
++			return nsos_adapt_getsockopt_int(fd, IPPROTO_IP, IP_MULTICAST_TTL,
++							 nsos_mid_optval, nsos_mid_optlen);
++		case NSOS_MID_IP_MULTICAST_LOOP:
++			return nsos_adapt_getsockopt_int(fd, IPPROTO_IP, IP_MULTICAST_LOOP,
++							 nsos_mid_optval, nsos_mid_optlen);
++		}
++		break;
+ 	case NSOS_MID_IPPROTO_IPV6:
+ 		switch (nsos_mid_optname) {
+ 		case NSOS_MID_IPV6_V6ONLY:
+@@ -836,6 +847,61 @@ int nsos_adapt_setsockopt(int fd, int nsos_mid_level, int nsos_mid_optname,
+ 		}
+ 		break;
+ 
++	/* nano-ros: nsos_adapt IPPROTO_IP — Phase 180.A (4.4 port of
++	 * Phase 11W.12). Host-side forwarder for the IPv4 multicast
++	 * setsockopts the guest marshals; without it the midplane
++	 * returned EOPNOTSUPP and the SPDP multicast join never reached
++	 * the host kernel. Uses the real host struct ip_mreq / in_addr
++	 * (from <netinet/in.h>). */
++	case NSOS_MID_IPPROTO_IP:
++		switch (nsos_mid_optname) {
++		case NSOS_MID_IP_ADD_MEMBERSHIP:
++		case NSOS_MID_IP_DROP_MEMBERSHIP: {
++			const struct nsos_mid_ip_mreq *m = nsos_mid_optval;
++			struct ip_mreq mreq;
++			int ret;
++
++			if (nsos_mid_optlen != sizeof(struct nsos_mid_ip_mreq)) {
++				return -NSI_ERRNO_MID_EINVAL;
++			}
++
++			memset(&mreq, 0, sizeof(mreq));
++			mreq.imr_multiaddr.s_addr = m->imr_multiaddr;
++			mreq.imr_interface.s_addr = m->imr_interface;
++			ret = setsockopt(fd, IPPROTO_IP,
++					 (nsos_mid_optname == NSOS_MID_IP_ADD_MEMBERSHIP)
++						 ? IP_ADD_MEMBERSHIP : IP_DROP_MEMBERSHIP,
++					 &mreq, sizeof(mreq));
++			if (ret < 0) {
++				return -nsi_errno_to_mid(errno);
++			}
++			return 0;
++		}
++		case NSOS_MID_IP_MULTICAST_IF: {
++			struct in_addr ia;
++			int ret;
++
++			if (nsos_mid_optlen != sizeof(uint32_t)) {
++				return -NSI_ERRNO_MID_EINVAL;
++			}
++			memset(&ia, 0, sizeof(ia));
++			ia.s_addr = *(const unsigned int *)nsos_mid_optval;
++			ret = setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF,
++					 &ia, sizeof(ia));
++			if (ret < 0) {
++				return -nsi_errno_to_mid(errno);
++			}
++			return 0;
++		}
++		case NSOS_MID_IP_MULTICAST_TTL:
++			return nsos_adapt_setsockopt_int(fd, IPPROTO_IP, IP_MULTICAST_TTL,
++							 nsos_mid_optval, nsos_mid_optlen);
++		case NSOS_MID_IP_MULTICAST_LOOP:
++			return nsos_adapt_setsockopt_int(fd, IPPROTO_IP, IP_MULTICAST_LOOP,
++							 nsos_mid_optval, nsos_mid_optlen);
++		}
++		break;
++
+ 	case NSOS_MID_IPPROTO_IPV6:
+ 		switch (nsos_mid_optname) {
+ 		case NSOS_MID_IPV6_V6ONLY:
