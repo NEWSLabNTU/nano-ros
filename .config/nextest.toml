@@ -495,6 +495,39 @@ filter = "binary(ros2_lifecycle_interop)"
 test-group = "ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# Phase 177.8.d — three under-provisioned heavy tests TIMED OUT (not failed)
+# under full `test-all` load. Root causes differ:
+#
+#  * The lib `ros2::tests::*` detection tests cold-start the ROS 2 CLI
+#    (`ros2 --help` / `ros2 pkg list`), which touches the singleton ROS 2
+#    daemon + DDS discovery. They were UNGROUPED, so they ran concurrently
+#    with each other and the `rmw_interop` suite — exactly the daemon/
+#    discovery contention the `ros2-interop` group (max-threads = 1) exists
+#    to serialize. Fix is the GROUP assignment (kills the resource conflict);
+#    the 120s × 3 budget is belt-and-suspenders for cold-start under load.
+#    Scope to `ros2::tests::` only — the other lib detection probes
+#    (zenohd/cmake/west/espflash) are cheap binary-existence checks with no
+#    shared resource and must NOT be force-serialized here.
+[[profile.default.overrides]]
+filter = "package(nros-tests) and kind(lib) and test(ros2::tests::)"
+test-group = "ros2-interop"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+#  * `integration_esp_idf` (`idf.py build`) and `zpico_drift_gate`
+#    (`cargo build -p zpico-sys` ×2) are NOT resource conflicts — esp_idf
+#    binds no ports, and drift_gate builds into a dedicated
+#    `target-zpico-drift-gate/` dir (no cargo target-lock contention). They
+#    are CPU/IO-bound cold builds that just need headroom past the 60s
+#    default when every core is busy, so a slow-timeout bump (no group) is
+#    sufficient. Verified: esp_idf ~35s, drift_gate ~26s standalone.
+[[profile.default.overrides]]
+filter = "binary(integration_esp_idf)"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = "binary(zpico_drift_gate)"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
 # Phase 169.4 — `binary(dds_ros2_interop)` removed (test deleted).
 
 # Safety E2E tests: 3s stabilization + 30s collection = ~33s expected runtime

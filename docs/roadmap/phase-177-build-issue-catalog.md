@@ -1379,6 +1379,40 @@ robustness/consistency follow-ups, not regressions.
     Nuttx Rust `rtos_e2e` stays red; Nuttx C/C++ pass. The Nuttx
     **Cpp-action** failure (`rtos_e2e.rs:844`) is a separate
     action-completion axis, not this codegen bug.
+
+  - [x] **177.8.d - heavy subprocess tests TIMEOUT under full-suite load
+    (not env/setup/fixture gaps).** The four group-C failures from the nuke
+    gate — `ros2::tests::test_ros2_detection`, `..::test_rmw_fastrtps_detection`
+    (lib unit tests), `integration_esp_idf::esp_idf_integration_shell_smoke`,
+    `zpico_drift_gate::..._fires_on_corrupted_include` — all hit the 60s
+    nextest terminate (30s × 2) as TIMEOUTs, not assertion failures.
+    Investigated per the env/setup/fixtures angle and ruled all three out:
+    ROS 2 *is* installed (`/opt/ros/humble`) with the `build/rmw_zenoh_ws`
+    overlay; the ESP-IDF env is provisioned (`IDF_PATH` + the 177.7 env
+    shim); none of these tests consume a `build-fixtures` artifact (they
+    probe ROS 2 / run `idf.py build` / `cargo build -p zpico-sys` ×2
+    themselves). Two distinct root causes (the second is a genuine
+    resource conflict, not just CPU starvation):
+      * **ros2 detection (lib `ros2::tests::*`) — ROS 2 daemon / DDS
+        discovery contention.** `is_ros2_available` / `is_rmw_fastrtps_available`
+        cold-start the ROS 2 CLI (`ros2 --help` / `ros2 pkg list`), which
+        touches the *singleton* ROS 2 daemon + DDS discovery ports. The
+        `ros2-interop` test-group is `max-threads = 1` precisely to serialize
+        this ("parallel causes resource contention and discovery timeouts …
+        daemon-sensitive"), but the *lib* detection copies were UNGROUPED, so
+        they ran concurrently with each other and `rmw_interop` → daemon/
+        discovery contention → 60s hang. Fix: assign them to `ros2-interop`
+        (the group serialization kills the conflict); the `120s × 3` budget
+        is belt-and-suspenders. Scoped to `ros2::tests::` only so the cheap
+        binary-existence probes (zenohd/cmake/west/espflash) are NOT
+        force-serialized.
+      * **esp_idf / zpico_drift_gate — CPU/IO-bound cold builds, no resource
+        conflict.** `idf.py build` binds no ports; drift_gate builds into a
+        dedicated `target-zpico-drift-gate/` dir (no cargo target-lock
+        contention). They simply exceed the 60s default when every core is
+        busy → a `120s × 3` slow-timeout bump (no group) is enough.
+    Fix lands in `.config/nextest.toml`. Verified all four PASS in isolation
+    (ros2 detection ~0.3s, esp_idf ~35s, drift_gate ~26s).
 - Two build-all-after-clean fragilities surfaced by the nuke gate:
   - **(fixed, `6e1d26dee`)** jobserver prefetch ran `cargo fetch
     --locked` on standalone example/fixture dirs whose gitignored
