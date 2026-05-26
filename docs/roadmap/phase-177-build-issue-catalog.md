@@ -727,6 +727,25 @@ passed.
 
 ### Test-All Runtime / E2E
 
+- [ ] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
+  test-harness (open, 2026-05-27). The native-Cyclone `nros-tests::native_api`
+  cases — `test_native_cyclonedds_{talker_to_rust_listener,rust_talker_to_listener}`
+  (pub/sub) and the Phase 183.4 `test_native_cyclonedds_{service,action}` (C +
+  C++) — each pass **run alone** but can fail when nextest runs them in parallel.
+  Cyclone is brokerless RTPS: every participant does SPDP discovery on the host's
+  real interfaces, so several test processes alive at once cross-talk during
+  discovery (and contend on the loopback/multicast path) even though each test
+  uses a distinct `ROS_DOMAIN_ID` (`next_cyclonedds_domain()`); a slow/!matched
+  discovery makes a client miss its window (e.g. action client never reaches
+  `Final result`, ~18 s before the harness gives up). Observed 2026-05-27: a
+  4-test concurrent run failed `…action::lang_1_Language__C` while the other 3
+  passed; the same case passed in isolation (9.9 s). **Fix:** put all native
+  Cyclone `native_api` cases in a serialized nextest test-group
+  (`max-threads = 1`) in `.config/nextest.toml` — the same pattern the QEMU
+  networked tests already use (per-platform `max-threads = 1` groups). Not a
+  product defect; the RMW + fixtures are correct (177.31/177.32 verified). Until
+  grouped, re-run a failed native-Cyclone case in isolation to confirm.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
