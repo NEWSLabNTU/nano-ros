@@ -89,15 +89,20 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         )));
     }
 
-    let fast_binary_path = example_dir.join(format!(
-        "target/armv7a-nuttx-eabihf/nros-fast-release/{}",
+    // Phase 177.8.c — NuttX Rust fixtures are built at the `release` profile
+    // (lto=true) to dodge the armv7a-nuttx-eabihf cross-CGU codegen miscompile
+    // that the default `nros-fast-release` (lto=off) hits. Prefer the `release`
+    // artifact; fall back to `nros-fast-release` only if that's all that's
+    // present (a fresh `release` build is always picked over a stale broken one).
+    let release_binary_path = example_dir.join(format!(
+        "target/armv7a-nuttx-eabihf/release/{}",
         binary_name
     ));
-    let binary_path = if fast_binary_path.exists() {
-        fast_binary_path
+    let binary_path = if release_binary_path.exists() {
+        release_binary_path
     } else {
         example_dir.join(format!(
-            "target/armv7a-nuttx-eabihf/release/{}",
+            "target/armv7a-nuttx-eabihf/nros-fast-release/{}",
             binary_name
         ))
     };

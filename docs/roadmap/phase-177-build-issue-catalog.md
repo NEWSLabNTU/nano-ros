@@ -1436,12 +1436,23 @@ robustness/consistency follow-ups, not regressions.
     C/C++ paths (which now link glibc's real `pipe`/`read`/`write` — exactly
     what Cyclone's self-pipe waitset wants).
 
-  - [ ] **177.8.c - NuttX-QEMU-ARM Rust nodes miscompiled at the fixture's
-    optimization level (toolchain codegen bug; OPEN).** All four Nuttx
-    failures (`rtos_e2e` Rust pubsub/service/action + the Cpp-action axis)
-    trace to the Rust nodes never reaching user `fn main()` — the image is
-    silent and QEMU reboot-loops. Forensic trail (gdb-multiarch remote to
-    `qemu -s -S`, armv7a-nuttx-eabihf):
+  - [x] **177.8.c - NuttX-QEMU-ARM Rust nodes miscompiled at the fixture's
+    optimization level (toolchain codegen bug; FIXED 2026-05-26).**
+    **Fix:** build the NuttX Rust fixtures at the `release` profile
+    (`opt-level="s"`, `lto=true`) instead of the default `nros-fast-release`
+    (`lto=off`). Fat LTO merges the codegen units, so the *cross-CGU*
+    fat-pointer miscompile cannot occur — a deterministic elimination of the
+    mechanism, not a lucky flag flip, and it **preserves optimization**
+    (opt-level=0 was rejected for the perf loss). Wired in `just/nuttx.just`
+    (`build-examples` + `build-fixtures` build Rust via
+    `NROS_CARGO_PROFILE=release`; C/C++ keep `nros-fast-release`) and the
+    fixture lookup (`nuttx.rs`) now prefers the `release` artifact. **Verified:**
+    `test_rtos_pubsub_e2e` nuttx/Rust PASSES (18 messages, clean); service +
+    action nuttx/Rust PASS (flaky-pass on retry — the residual is the NuttX
+    zenoh-pico `z_get` timing race, **177.8.e** class, not the codegen bug:
+    the nodes now reach `main` and complete instead of booting silent). The C++
+    action axis remains 177.8.e. Forensic trail that pinned the bug
+    (gdb-multiarch remote to `qemu -s -S`, armv7a-nuttx-eabihf):
       * Entry chain is fine: `nxtask_startup → nsh_main` (our override) →
         `nsh_initialize()` (returns) → C `main` → `std::rt::lang_start` →
         `lang_start_internal`; `rt::init()` runs and returns.

@@ -52,7 +52,15 @@ build-examples:
     # Build options come from the SSOT manifest (examples/fixtures.toml) via
     # the shared builder. No +nightly override — each example pins its nightly
     # via rust-toolchain.toml (cargo picks it up per dir). Phase 181.4.e.
-    bash scripts/build/fixtures-build.sh nuttx rust
+    #
+    # Phase 177.8.c — NuttX Rust nodes are built at the `release` profile
+    # (lto=true), NOT the default `nros-fast-release` (lto=off). The latter
+    # triggers a non-deterministic armv7a-nuttx-eabihf cross-CGU codegen bug
+    # that corrupts the std `lang_start` main-closure fat pointer → `bx` to
+    # ~NULL → reboot loop before `main` (silent). Fat LTO merges the codegen
+    # units, eliminating the cross-CGU miscompile, while keeping optimization
+    # (opt-level="s"). Verified: talker boots reliably under `release`.
+    NROS_CARGO_PROFILE=release bash scripts/build/fixtures-build.sh nuttx rust
     echo "NuttX QEMU examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
@@ -64,6 +72,14 @@ build-fixtures:
     source scripts/build/fixture-matrix.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
+    # Phase 177.8.c — NuttX Rust nodes miscompile under nros-fast-release
+    # (lto=off): a non-deterministic armv7a-nuttx-eabihf cross-CGU codegen bug
+    # corrupts the std lang_start main-closure fat pointer → reboot loop before
+    # main. Build the Rust fixtures at `release` (lto=true) instead — fat LTO
+    # merges CGUs and eliminates the bug while keeping optimization. C/C++
+    # fixtures keep cargo_profile_args (unaffected by the bug).
+    nuttx_rust_profile_args="$(NROS_CARGO_PROFILE=release nros_cargo_profile_arg_string)"
+    export nuttx_rust_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
@@ -91,12 +107,12 @@ build-fixtures:
         for dir in "${rust_dirs[@]}"; do
             echo "  → $dir"
             ( cd "$dir" && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-              cargo build $cargo_profile_args --quiet )
+              cargo build $nuttx_rust_profile_args --quiet )
         done
     else
         printf '%s\n' "${rust_dirs[@]}" | parallel --jobs "$cargo_frontends" --halt now,fail=1 --line-buffer \
             'echo "  → {}" && cd {} && CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-             cargo build $cargo_profile_args --quiet'
+             cargo build $nuttx_rust_profile_args --quiet'
     fi
     # Phase 160.D — NuttX C/C++ examples now build via cmake. The
     # tier-3 nros-c cross-Corrosion problem (no `-Z build-std`) is
