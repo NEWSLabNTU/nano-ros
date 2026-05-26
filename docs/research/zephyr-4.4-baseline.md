@@ -294,3 +294,39 @@ threads, which trip a 4.x thread-table clash and kernel-panic right after
 thread registration / kEmbeddedCycloneConfig, cf. Phase 177.22), distinct from
 the socket-layer NSOS work. It is the last blocker before a 2-node cyclonedds
 e2e on 4.4.
+
+## Runtime drill — final blocker root-caused (gdb): cyclone mutex/thread semantics on 4.4 (2026-05-26)
+
+After Tasks 5+6, cyclonedds 4.4 builds, publishes, and joins multicast, but
+`abort()`s right after `Published: 1`. gdb backtrace pins it precisely:
+
+```
+abort() <- ddsrt_mutex_unlock (sync/posix/sync.c:63)
+       <- handle_individual_xevent (q_xevent.c:1126, unlock xevq->lock)
+       <- xevent_thread
+```
+
+`ddsrt_mutex_unlock` aborts because `pthread_mutex_unlock` -> `k_mutex_unlock`
+returns **`-EPERM`**: Zephyr's `k_mutex` enforces **owner-only unlock**, but
+cyclone's ddsrt assumes POSIX `PTHREAD_MUTEX_NORMAL` semantics (unlock not tied
+to the locking thread). Linux / 3.7 tolerated it; 4.4 does not.
+
+Linked symptom during `dds_create_participant`: `os: tid 0x… is in use!` from
+`z_impl_k_thread_stack_free` (kernel/dynamic.c:121) — 4.x refuses to free a
+dynamic thread's stack unless the thread is `_THREAD_DEAD`/`_THREAD_DUMMY`;
+cyclone's pthreads free stacks before the threads terminate. The mutex-owner
+EPERM is likely downstream of this thread-identity churn.
+
+**Root:** cyclone's POSIX thread/mutex assumptions vs Zephyr 4.4's stricter
+`k_mutex` ownership + dynamic-thread stack-free lifecycle. The 3.7
+`cyclonedds-zephyr-threads` patch needs a 4.4 adaptation (stable thread
+identity + join-before-stack-free, and either owner-preserving unlock or a
+ddsrt sync shim that tolerates the Zephyr `k_mutex` ownership model). This is a
+deep, near-research-grade concurrency fix — distinct from the socket-layer NSOS
+work (Tasks 5/6, done). It is the sole remaining blocker before a stable
+cyclonedds run + 2-node e2e on 4.4.
+
+**cyclonedds-on-4.4 net:** BUILD ✓ · publish ✓ · recvmsg ✓ · multicast join ✓ ·
+stable run ✗ (cyclone↔k_mutex ownership). Zenoh line is fully e2e-proven on
+both 3.7 + 4.4; the cyclonedds runtime concurrency adaptation is the tracked
+follow-up.
