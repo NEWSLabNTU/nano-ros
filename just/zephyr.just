@@ -57,6 +57,10 @@ setup *ARGS:
         bash ./scripts/zephyr/nsos-recvmsg-patch-4.4.sh "$WORKSPACE"
         bash ./scripts/zephyr/native-sim-ipproto-ip-patch-4.4.sh "$WORKSPACE"
         bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch-4.4.sh "$WORKSPACE"
+        # Cyclone DDS runtime: relax pthread_mutex_unlock to Linux/glibc
+        # NORMAL semantics (Zephyr 4.x k_mutex owner-only-unlock aborts
+        # ddsrt's xevent thread right after the first publish).
+        bash ./scripts/zephyr/pthread-mutex-unlock-patch-4.4.sh "$WORKSPACE"
         echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"
     else
     echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
