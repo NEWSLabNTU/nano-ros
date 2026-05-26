@@ -100,18 +100,28 @@ passed.
     `dds_take`; Phase 177.22 hazard on the receive side).
 
   **Remaining scope (why this stays open):**
-  1. Un-`#[ignore]` `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` and run
-     it on **QEMU ≥ 7.2** (`-netdev dgram`). The fix is proven on the lossy
-     `socket,mcast` workaround (this host's QEMU is 6.2 < 7.2); the gated test
-     needs the dgram peer pair for CI. Update the test's stale `#[ignore]`
-     reason (`listener register_subscription fails` — that closed under 177.28).
+  1. ✅ **DONE 2026-05-26** — `test_threadx_riscv64_cyclonedds_two_qemu_pubsub`
+     un-`#[ignore]`d and **passing**. It prefers `-netdev dgram` (QEMU ≥ 7.2,
+     CI-isolated) and falls back to `-netdev socket,mcast` on older QEMU;
+     reliable RTPS covers any mcast cross-process loss. Added
+     `qemu_riscv64_supports_dgram_unix()` — the old `qemu_supports_dgram_unix()`
+     probed the patched ARM binary (always has dgram) but this test runs
+     `qemu-system-riscv64` (system 6.2, no dgram), so it wrongly took the dgram
+     path. Verified PASS via `socket,mcast` on this host (listener decodes
+     `Received`).
   2. **ThreadX↔native** and **stock `rmw_cyclonedds`** interop not yet
-     demonstrated (only ThreadX↔ThreadX). The same `nano-ros`/ROS-2 wire
-     conventions (`rt/` topic prefix, type hash) are exercised on native under
-     117.X, but a mixed ThreadX↔native run is unverified.
-  3. The historical byte-order/discovery investigation below is retained for
-     the record; its `-12 conn_write` / `register_subscription -1` symptoms
-     are **resolved**.
+     demonstrated (only ThreadX↔ThreadX). **Blocked on networking infra, not a
+     code defect:** the bare-metal ThreadX-QEMU-RISCV64 node reaches its peer
+     only over QEMU's `-netdev dgram`/`socket,mcast` L2 (raw ethernet frames in
+     an AF_UNIX/UDP transport). A *native* Cyclone or stock ROS 2 peer speaks
+     real UDP on the host network and cannot join that L2 without a host↔QEMU
+     bridge (TAP/veth = root), which the slirp-only, no-sudo test infra
+     deliberately avoids — and slirp does not forward multicast SPDP. The
+     realistic ThreadX↔native route is the **threadx-linux** target (NSOS-NetX
+     as a host process on a veth, `ZenohRouter::start_on`), but veth creation
+     also needs root. Needs a maintainer decision on test-network provisioning
+     (TAP/veth harness) before it can be exercised; the wire conventions
+     (`rt/` prefix, type hash) are already validated native-side under 117.X.
 
   **2026-05-25 — discovery re-enabled, surfaced a byte-order defect (historical).**
   - Flipped the ThreadX Cyclone profile from `<AllowMulticast>false</AllowMulticast>`
