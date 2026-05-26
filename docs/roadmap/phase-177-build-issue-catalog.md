@@ -1159,6 +1159,63 @@ passed.
   (self-contained zenoh-pico concurrency work). **Priority:** medium —
   isolated to NuttX Cpp actions; C actions + all other NuttX paths work.
 
+#### 2026-05-26 Clean-Rebuild Test-All by Group
+
+Full clean-room validation after the Phase 181 fixture-build-SSOT work landed
+on main: `cargo clean` + `clean-examples`/`clean-fixtures` (17.2 GB freed, SDK
+installs in `build/` preserved) → `just build-all` (**exit 0**) → `just test-all`.
+Result: **978 tests run, 958 passed, 20 failed, 8 skipped, 26 flaky** (339 s).
+
+Purpose was to confirm the build-orchestration refactor (manifest +
+`fixtures-build.sh` + the `_check-fixtures-stale` probe) introduced no
+regressions. It did not: the rust staleness probe ran **clean** after the full
+build (esp cells correctly excluded via `skip_probe`/`--for-probe`, every other
+platform fresh), and all 20 failures reproduce known groups or land in
+subsystems untouched by Phase 181. The harness builds its fixtures via
+`fixtures/binaries/mod.rs`, a path independent of the migrated `just` recipes,
+so these E2E outcomes are orthogonal to the refactor. Grouped:
+
+- [x] **G1 - Intentional `skip!` deferrals counted as failures (4).**
+  `cmake_platform_matrix::cmake_platform_{freertos,nuttx,threadx,zephyr}`. Each
+  panics with `[SKIPPED] Phase 138.6 … deferred — needs board-driver paths
+  (FREERTOS_DIR + LWIP_DIR) the smoke project doesn't supply`. Same as **177.9.B**
+  — the raw-CMake smoke intentionally omits SDK board paths; real coverage is in
+  the platform recipes. `cmake_platform_posix` passes. Not bugs.
+- [x] **G2 - Retired bridge-source paths (2).**
+  `bridge_xrce_to_dds_e2e`, `bridge_zenoh_to_dds_e2e`. Same as **177.9.A** — the
+  pre-collapse bridge example trees no longer exist; the tests report the missing
+  retired source explicitly. Not bugs (test fixtures need relocating to the
+  collapsed layout).
+- [x] **G3 - Flaky, pass on isolated rerun (2).**
+  `safety_e2e::test_safety_e2e_talker_listener` (ran 40 s then failed in the
+  parallel sweep; isolated rerun "safety-e2e results: 3 ok, 0 fail") and
+  `large_msg::test_zenoh_overflow_detection` (isolated rerun PASS, 15 s,
+  `overflow_drops=5`). Host-load discovery hiccups under the heavy parallel
+  matrix, same character as **177.9.H**. Confirms the Phase 181 `target-safety` /
+  `target-large-buf` fixtures build and run correctly.
+- [ ] **G4 - NuttX runtime E2E (6).** `rtos_e2e::test_rtos_{action,pubsub,service}_e2e`
+  on `Platform__Nuttx` (Rust/C/Cpp variants) + `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary`.
+  Active NuttX work: the Rust-fixture codegen bug (**177.8.c**, mitigated by the
+  pulled `8e5855c29` "build NuttX Rust fixtures at release/lto") and the NuttX
+  Cpp action lease-task ↔ `z_get` race (**177.30**). Owned there.
+- [ ] **G5 - Native Cyclone DDS interop (4).**
+  `native_api::test_native_cyclonedds_{rust_talker_to_listener,talker_to_rust_listener}`
+  for both `Language__C` and `Language__Cpp`. Active Cyclone embedded/interop
+  work — the RX-buffer ddsrt-heap fixes landed on main mid-rebase
+  (`c2786def1` 177.26.RX.2, submodule bumped to `12b4af2c`). Tracked under
+  **117 / 177.26**.
+- [ ] **G6 - XRCE runtime (2).**
+  `xrce::test_xrce_large_message_publish`, `xrce::test_xrce_service_request_response`.
+  XRCE large-message / service-reply paths; same family as **177.9.E** (other
+  XRCE tests — action fibonacci, multiple messages, serial — pass). Rerun under a
+  focused XRCE filter to split flake from product bug.
+
+**Conclusion.** Phase 181 build-SSOT is validated: clean rebuild green, migrated
+fixtures (native + esp32-C3 + threadx-linux build-verified earlier; safety /
+large-buf pass here), staleness probe clean post-build. The exit=1 is pre-existing
+known-hard E2E — G1/G2/G3 are non-bugs (skips/retired-paths/flake), G4/G5/G6 are
+owned by 177.8/177.30, 117/177.26, and the XRCE items respectively.
+
 ### Code Review Findings (2026-05-25)
 
 Post-merge review of the `db0e4fbb5` ThreadX Cyclone fix plus the build/test
