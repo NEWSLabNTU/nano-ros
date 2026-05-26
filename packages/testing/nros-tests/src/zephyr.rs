@@ -728,6 +728,18 @@ pub fn get_prebuilt_zephyr_example(
 
 /// Return true if the built binary is older than the example or shared nros
 /// sources that are linked into Zephyr fixtures.
+/// Whether a `packages/core/<crate>` subdir should be watched for staleness
+/// of a fixture whose language API crate is `lang_api_crate` (`Some("nros-c")`
+/// for C, `Some("nros-cpp")` for C++, `Some("nros")` for Rust, `None` if the
+/// language is unknown). Drops only the *other* languages' API crates; every
+/// shared/platform/rmw crate stays watched (Phase 177.8). Unknown language →
+/// watch everything (never under-watch).
+fn core_crate_is_watched(crate_name: &str, lang_api_crate: Option<&str>) -> bool {
+    let is_lang_api = matches!(crate_name, "nros" | "nros-c" | "nros-cpp");
+    let is_other_lang_api = is_lang_api && lang_api_crate.is_some_and(|c| c != crate_name);
+    !is_other_lang_api
+}
+
 fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
     let Ok(binary_mtime) = binary_path.metadata().and_then(|m| m.modified()) else {
         // Can't stat the binary — assume stale so we rebuild and get a
@@ -752,8 +764,37 @@ fn is_binary_stale(binary_path: &Path, example_name: &str) -> bool {
         example_dir.join("boards"),
         example_dir.join("src"),
         root.join("zephyr"),
-        root.join("packages/core"),
     ];
+
+    // Watch `packages/core`, but skip the *other* languages' API crates so a
+    // single-language core edit (e.g. an `nros-cpp` change) doesn't falsely
+    // mark unrelated C/Rust fixtures stale — cmake correctly leaves them
+    // un-rebuilt (a C fixture links `nros-c`, not `nros-cpp`), yet the gate
+    // would report a spurious runtime "is stale" failure (Phase 177.8). Every
+    // shared/platform/rmw crate (nros-core, nros-node, nros-rmw, nros-serdes,
+    // nros-platform-*, …) stays watched, and new crates are picked up
+    // automatically; only the two non-matching language API crates are
+    // dropped. `nros` = Rust API, `nros-c` = C API, `nros-cpp` = C++ API.
+    let lang_api_crate = match decode_alias(example_name).map(|(lang, _, _, _)| lang) {
+        Some("c") => Some("nros-c"),
+        Some("cpp") => Some("nros-cpp"),
+        Some("rust") => Some("nros"),
+        _ => None,
+    };
+    let core_dir = root.join("packages/core");
+    match std::fs::read_dir(&core_dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if core_crate_is_watched(&name.to_string_lossy(), lang_api_crate) {
+                    candidates.push(entry.path());
+                }
+            }
+        }
+        // Can't enumerate — fall back to watching the whole tree (safe: never
+        // under-watches, at worst keeps the old over-broad behaviour).
+        Err(_) => candidates.push(core_dir),
+    }
     match decode_alias(example_name).map(|(_, _, rmw, _)| rmw) {
         Some("cyclonedds") => candidates.push(root.join("packages/dds")),
         Some("xrce") => candidates.push(root.join("packages/xrce")),
@@ -807,6 +848,35 @@ fn path_newer_than(path: &Path, cutoff: std::time::SystemTime) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_core_crate_is_watched_per_language() {
+        // Shared crates: always watched, regardless of fixture language.
+        for lang in [Some("nros-c"), Some("nros-cpp"), Some("nros"), None] {
+            for shared in ["nros-core", "nros-node", "nros-rmw", "nros-platform-zephyr"] {
+                assert!(
+                    core_crate_is_watched(shared, lang),
+                    "shared crate {shared} must stay watched for lang {lang:?}"
+                );
+            }
+        }
+        // C fixture: watches nros-c, drops the other two language API crates.
+        assert!(core_crate_is_watched("nros-c", Some("nros-c")));
+        assert!(!core_crate_is_watched("nros-cpp", Some("nros-c")));
+        assert!(!core_crate_is_watched("nros", Some("nros-c")));
+        // C++ fixture.
+        assert!(core_crate_is_watched("nros-cpp", Some("nros-cpp")));
+        assert!(!core_crate_is_watched("nros-c", Some("nros-cpp")));
+        assert!(!core_crate_is_watched("nros", Some("nros-cpp")));
+        // Rust fixture.
+        assert!(core_crate_is_watched("nros", Some("nros")));
+        assert!(!core_crate_is_watched("nros-c", Some("nros")));
+        assert!(!core_crate_is_watched("nros-cpp", Some("nros")));
+        // Unknown language: never under-watch — all language crates kept.
+        assert!(core_crate_is_watched("nros-c", None));
+        assert!(core_crate_is_watched("nros-cpp", None));
+        assert!(core_crate_is_watched("nros", None));
+    }
 
     #[test]
     fn test_platform_board_spec() {

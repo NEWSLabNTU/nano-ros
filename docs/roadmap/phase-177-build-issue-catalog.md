@@ -472,20 +472,25 @@ passed.
   boots / talker / listener / service / action / e2e) on a full
   `just zephyr build-fixtures` (56 fixtures).
 
-  **Staleness-gate over-broadness (relevant to phase-181 fixture SSOT).**
-  `is_binary_stale` (`nros-tests/src/zephyr.rs`) watches **all of
-  `packages/core`** for every fixture. So a change confined to one
-  language's runtime (e.g. the nros-cpp `action.rs` feedback fix) marks
-  **unrelated C and Rust talker/listener fixtures stale** even though cmake
-  correctly determined they need no rebuild (a C fixture links `nros-c`, not
-  `nros-cpp`). The full-suite run hit this: 11 of 53 reported a fast
-  `is stale` failure (0.1–0.7 s) while the binaries were functionally
-  current; `touch`-ing the prebuilt `zephyr.exe`s (cmake having validated
-  currency that build) then yielded 53/53. The gate should narrow the
-  watched core packages per fixture language (C → nros-c/nros-node, Rust →
-  nros, C++ → nros-cpp/nros-node; all share nros-core/nros-node), or the
-  fixture build should refresh artifact mtimes, so a same-build cross-
-  language edit doesn't surface as a false runtime failure.
+  **Staleness-gate over-broadness — FIXED 2026-05-26.**
+  `is_binary_stale` (`nros-tests/src/zephyr.rs`) used to watch **all of
+  `packages/core`** for every fixture, so a change confined to one language's
+  runtime (e.g. the nros-cpp `action.rs` feedback fix) marked **unrelated C
+  and Rust talker/listener fixtures stale** even though cmake correctly left
+  them un-rebuilt (a C fixture links `nros-c`, not `nros-cpp`). The full-suite
+  run hit this: 11 of 53 reported a fast `is stale` failure (0.1–0.7 s) while
+  the binaries were functionally current. Fixed: the gate now enumerates
+  `packages/core` and watches every crate **except the two non-matching
+  language API crates** — `nros` (Rust) / `nros-c` / `nros-cpp` — via
+  `core_crate_is_watched(crate, lang_api_crate)`. Every shared/platform/rmw
+  crate (nros-core, nros-node, nros-rmw, nros-platform-*, …) stays watched and
+  new crates are picked up automatically, so it never under-watches; only the
+  documented false-positive (one language's edit tripping another's fixture)
+  is removed. Unknown-language and `read_dir`-failure paths fall back to the
+  old whole-tree watch. Covered by
+  `zephyr::tests::test_core_crate_is_watched_per_language` (PASS). The
+  alternative (refresh artifact mtimes at build time) remains relevant to
+  phase-181 fixture SSOT but is no longer needed to clear the false failures.
 
   - [x] **177.8.a - `build-all` fixture set was not a superset of
     test-all's fixture needs (logging-smoke).** The 2026-05-25 full-nuke
