@@ -56,6 +56,31 @@ passed.
   ownership issue is closed; remaining ThreadX runtime diagnosis is
   tracked separately under 177.22.
 
+- [ ] **177.31 - native C (and Rust) Cyclone example fixtures emit no runnable
+  exe.** Owner: Phase 177 native-fixture follow-up (open, 2026-05-26).
+  `just native build-fixture-extras` builds the native Cyclone example fixtures
+  via CMake/Corrosion. The **C++** cells produce a runnable top-level ELF
+  (`examples/native/cpp/{talker,listener}/build-cyclonedds/cpp_{talker,listener}`),
+  but the **C** cells (and the Rust cells) do not. A clean `-G Ninja` configure +
+  build exits 0 and ninja reports `Linking CXX executable c_talker`, yet no
+  top-level `c_talker` ELF appears: the platform-link staging path
+  `_nano_ros_link/c_talker/` is left as a *directory* (holding the generated
+  `nros_app_register_backends.c`) and the final relinked executable is never
+  emitted at the path the harness expects (`build-cyclonedds/c_talker`). With
+  the Makefile generator the configure step fails outright with
+  `CMake Error: Error required internal CMake variable not set ...
+  CMAKE_CXX_LINK_EXECUTABLE` — the C example links a C++ executable for Cyclone
+  (C++ runtime), but the link-language wiring trips CMake's generate step.
+  **Effect:** `nros-tests::native_api test_native_cyclonedds_*` C and Rust cases
+  `[SKIPPED]` ("fixture not prebuilt"), which nextest counts as failures.
+  **Scope:** the C++ pair runs end-to-end (manual `cpp_talker -> cpp_listener`
+  exchanges data, Published 7 / Received 7), so `nros-rmw-cyclonedds` itself is
+  sound — this is a native C/Rust example CMake / `nros_platform_link_app`
+  output-placement bug, not an RMW defect. Likely surfaced by the cyclonedds
+  submodule bump on 2026-05-26 (CLAUDE.md last verified native C+C 2026-05-21).
+  Independent of the Phase 180 native_sim 2-node fix — a `.cpp` source change in
+  the RMW lib cannot affect where the example links its app.
+
 - [x] **177.22 - ThreadX Cyclone participant init runtime trap.**
   Owner: Phase 177 runtime/Cyclone follow-up.
   Closed 2026-05-25. ThreadX RISC-V64 Cyclone fixtures build, link, boot,
