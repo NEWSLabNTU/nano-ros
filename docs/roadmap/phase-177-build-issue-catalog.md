@@ -1994,7 +1994,19 @@ robustness/consistency follow-ups, not regressions.
 - [x] 2026-05-22 `just test-all` completed after setup and fixture
   prebuild: 911 passed, 49 failed, and 9 skipped. Remaining failures are
   grouped under 177.9.
-- [ ] Full `just build-all` rerun after the final Zephyr follow-up fix.
+- [~] Full `just build-all` rerun after the final Zephyr follow-up fix.
+  **2026-05-27 (post G4/177.30 fixes + connect-retry):** `just check` green
+  (all Rust/C/C++/Python static gates); `just build-all` exit 2 with **exactly
+  two root failures, both environmental SDK/tooling — no compile regression**:
+  (1) `fixtures-zephyr` Error 1 (needs the Zephyr SDK / `west` fixtures, not set
+  up on this host); (2) `cyclonedds-ts` exit 127 ×6 (Cyclone `idlc` codegen tool
+  not on PATH for the Cyclone *Rust* example builds — `build/cyclonedds/bin/idlc`
+  present but not exported in the `build-all` env). Core + every non-Zephyr
+  platform example (incl. the changed native talker/listener/service) compiled
+  clean. So the residual build-all blockers are env/SDK setup, not code — the
+  `cyclonedds-ts` idlc-PATH gap is a real (small) build-all infra item:
+  the Cyclone Rust example cmake invokes `idlc` by bare name; `build-all` should
+  export `build/cyclonedds/bin` on PATH (or pass `-DCYCLONEDDS_IDLC=`).
 - [~] Full root `just ci` rerun after Phase 171 archive prep: static
   gates passed, `test-all` failed with 39 real failures + 8 environment
   skips.
@@ -2002,6 +2014,18 @@ robustness/consistency follow-ups, not regressions.
   prepared and 177.19/177.20 either fixed or explicitly expected-failed.
 - [ ] Full green `test-all` rerun after 177.9 fixture/setup/runtime
   groups close.
+  **2026-05-27 `just test` (host tier, no full `just setup`):** 606+/646 pass;
+  ~38 fail — **all environmental, zero zenoh/code regression** from the G4 +
+  177.30 + connect-retry work: 36× `native_api` Cyclone (fast-fail 0.04 s =
+  native Cyclone fixtures not prebuilt + the known 177.31/177.32 Cyclone-action
+  register blocker), Zephyr cells (no fixtures), `cmake_*`/`platformio`/`c_xrce`
+  (SDK/fixture preconditions), `c_port_posix_net` (sandbox loopback). The NuttX
+  rtos_e2e service/Rust + FreeRTOS action `TRY 1 FAIL`→retry-recovered ("flaky"
+  bucket) is the documented full-suite QEMU-contention caveat (cap concurrency
+  with `-j`). NuttX/ThreadX-Linux pubsub + ThreadX-Linux service all green; the
+  NuttX Rust service e2e is **6/6 run serially** (`--test-threads=1`). Full-green
+  `test-all` still needs a CI-class host (12-QEMU parallelism) + full `just setup`
+  (Zephyr SDK, native Cyclone fixtures, PlatformIO) — environment, not code.
 - [~] 2026-05-25 full nuke gate (`just clean` → `just setup all` →
   `build-all` → `build-test-fixtures` → `test-all`). `clean`/`setup`/
   `build-all` (4817s)/`build-fix` (1710s) all OK; `test-all` (755s) ran
