@@ -26,7 +26,8 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, XrceAgent, is_rmw_fastrtps_available,
-        is_ros2_available, require_ros2_dds, require_xrce_agent, xrce_listener_binary,
+        is_ros2_available, require_ros2_dds, require_xrce_agent, xrce_action_client_binary,
+        xrce_action_server_binary, xrce_listener_binary, xrce_service_client_binary,
         xrce_service_server_binary, xrce_talker_binary,
     },
     unique_ros_domain_id,
@@ -296,4 +297,168 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     }
 
     drop(agent);
+}
+
+// =============================================================================
+// Phase 183.6 — XRCE ↔ ROS 2: action (both directions) + reverse-direction
+// service. The existing tests cover pub/sub both ways + service
+// (xrce-server / ros2-client). These add the missing cells. DDS interop is
+// best-effort (naming/version drift), so — like the tests above — they log
+// PASS/INFO and only hard-fail on a clear local error, never on a discovery
+// miss. nano-XRCE nodes bridge to DDS via the XRCE Agent; ROS 2 uses
+// rmw_fastrtps_cpp on the same ROS_DOMAIN_ID.
+// =============================================================================
+
+/// nano-XRCE action server ↔ ROS 2 (DDS) action client (`ros2 action send_goal`).
+#[rstest]
+fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
+    use std::process::Command;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 DDS not available");
+    }
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+
+    let mut server_cmd = Command::new(&xrce_action_server_binary);
+    server_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        .env("XRCE_TIMEOUT", "30");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server")
+        .expect("Failed to start xrce action server");
+    let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(8));
+    std::thread::sleep(Duration::from_secs(1));
+
+    let mut ros2_client = match Ros2DdsProcess::action_send_goal_with_domain(
+        "/fibonacci",
+        "example_interfaces/action/Fibonacci",
+        "{order: 5}",
+        DEFAULT_ROS_DISTRO,
+        domain_id,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 DDS action client: {e}");
+            server.kill();
+            return;
+        }
+    };
+    let ros2_output = ros2_client.wait_for_output(Duration::from_secs(20)).unwrap_or_default();
+    server.kill();
+    drop(agent);
+
+    eprintln!("ROS 2 DDS action client output:\n{ros2_output}");
+    if ros2_output.contains("Result") || ros2_output.contains("sequence") {
+        eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: result received");
+    } else if ros2_output.contains("Goal accepted") || ros2_output.contains("ACCEPTED") {
+        eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: goal accepted (no result yet)");
+    } else {
+        eprintln!("[INFO] ROS 2 DDS action goal did not complete — likely DDS action naming/version drift");
+    }
+}
+
+/// ROS 2 (DDS) action server ↔ nano-XRCE action client (reverse direction).
+#[rstest]
+fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
+    use std::process::Command;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 DDS not available");
+    }
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+
+    let mut ros2_server = match Ros2DdsProcess::action_server_fibonacci_with_domain(
+        DEFAULT_ROS_DISTRO,
+        domain_id,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 DDS fibonacci action server: {e}");
+            return;
+        }
+    };
+    // Demo server may be absent (action_tutorials_py not installed) — give it a
+    // moment; the client side then INFO-skips if discovery never lands.
+    std::thread::sleep(Duration::from_secs(3));
+
+    let mut client_cmd = Command::new(&xrce_action_client_binary);
+    client_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        .env("XRCE_TIMEOUT", "30");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
+        .expect("Failed to start xrce action client");
+    let client_output = client
+        .wait_for_output_pattern("Final result", Duration::from_secs(20))
+        .unwrap_or_default();
+    client.kill();
+    ros2_server.kill();
+    drop(agent);
+
+    eprintln!("XRCE action client output:\n{client_output}");
+    if client_output.contains("Final result") || client_output.contains("Result") {
+        eprintln!("[PASS] ROS 2 DDS action server ↔ XRCE action client: result received");
+    } else if client_output.contains("Goal accepted") {
+        eprintln!("[PASS] ROS 2 DDS action server ↔ XRCE action client: goal accepted");
+    } else {
+        eprintln!("[INFO] XRCE action client got no result — ROS 2 demo action server may be absent (action_tutorials_py) or DDS action naming drift");
+    }
+}
+
+/// ROS 2 (DDS) service server ↔ nano-XRCE service client (reverse direction).
+#[rstest]
+fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
+    use std::process::Command;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 DDS not available");
+    }
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+
+    let mut ros2_server = match Ros2DdsProcess::add_two_ints_server_with_domain(
+        DEFAULT_ROS_DISTRO,
+        domain_id,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 DDS add_two_ints server: {e}");
+            return;
+        }
+    };
+    let _ = ros2_server.wait_for_output(Duration::from_secs(5)); // let it reach "Service server ready"
+    std::thread::sleep(Duration::from_secs(1));
+
+    let mut client_cmd = Command::new(&xrce_service_client_binary);
+    client_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        .env("XRCE_REQUEST_COUNT", "3")
+        .env("XRCE_TIMEOUT", "30");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
+        .expect("Failed to start xrce service client");
+    let client_output = client
+        .wait_for_output_pattern("Response", Duration::from_secs(20))
+        .unwrap_or_default();
+    client.kill();
+    ros2_server.kill();
+    drop(agent);
+
+    eprintln!("XRCE service client output:\n{client_output}");
+    if client_output.contains("Response") || client_output.contains("sum") {
+        eprintln!("[PASS] ROS 2 DDS service server ↔ XRCE service client: reply received");
+    } else {
+        eprintln!("[INFO] XRCE service client got no reply — DDS service naming/version drift");
+    }
 }

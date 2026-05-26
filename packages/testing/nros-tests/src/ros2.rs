@@ -911,6 +911,63 @@ impl Ros2DdsProcess {
         Self::spawn_bash(&cmd, format!("ros2-cyclone service call {service_name}"))
     }
 
+    // --- DDS server / action side (Phase 183.6) — the reverse interop
+    // directions: a ROS 2 (rmw_fastrtps_cpp) service/action SERVER + an action
+    // goal CLIENT, on an explicit ROS_DOMAIN_ID, for nano-XRCE ↔ ROS 2. ---
+
+    /// ROS 2 DDS `add_two_ints` service server (rclpy one-liner) on a domain.
+    pub fn add_two_ints_server_with_domain(distro: &str, domain_id: u8) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let python_script = r#"
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts
+
+class Server(Node):
+    def __init__(self):
+        super().__init__('add_two_ints_server')
+        self.srv = self.create_service(AddTwoInts, '/add_two_ints', self.callback)
+        self.get_logger().info('Service server ready')
+    def callback(self, request, response):
+        response.sum = request.a + request.b
+        self.get_logger().info(f'Request: {request.a} + {request.b} = {response.sum}')
+        return response
+
+rclpy.init()
+node = Server()
+rclpy.spin(node)
+"#;
+        let cmd = format!(
+            "{env_setup} && timeout 60 python3 -c '{}'",
+            python_script.replace('\n', "\\n").replace('\'', "\\'")
+        );
+        Self::spawn_bash(&cmd, "ros2-dds add_two_ints_server")
+    }
+
+    /// ROS 2 DDS Fibonacci action server (`action_tutorials_py`) on a domain.
+    pub fn action_server_fibonacci_with_domain(distro: &str, domain_id: u8) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let cmd = format!(
+            "{env_setup} && timeout 60 ros2 run action_tutorials_py fibonacci_action_server"
+        );
+        Self::spawn_bash(&cmd, "ros2-dds fibonacci_action_server")
+    }
+
+    /// ROS 2 DDS `ros2 action send_goal --feedback` on a domain.
+    pub fn action_send_goal_with_domain(
+        action_name: &str,
+        action_type: &str,
+        goal: &str,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let cmd = format!(
+            "{env_setup} && timeout 20 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
+        );
+        Self::spawn_bash(&cmd, format!("ros2-dds action send_goal {action_name}"))
+    }
+
     /// Wait for output and return it
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
         use std::io::Read;

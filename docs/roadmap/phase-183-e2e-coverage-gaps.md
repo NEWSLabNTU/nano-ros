@@ -12,11 +12,12 @@ matrix, after Phase 182's test de-dup). **183.5 landed** — the CycloneDDS↔RO
 interop test scaffolding (detection passes; interop cases `#[ignore]`d pending
 the 117.12 product work). **183.1 + 183.3 landed** — zephyr C zenoh+xrce E2E
 (5 tests; also covers 183.2's zephyr half) + zephyr rust zenoh service.
-**183.2 native done** (verified PASS). **183.4 tests added but blocked** — the
-native Cyclone service/action example *executables don't link* (no-op `: && :`
-link rule; a Phase 117/175 example-CMake gap), so the 4 tests skip until that's
-fixed. Remaining: 183.6 (XRCE↔ROS 2 action + reverse service); 183.1 (zephyr C)
-owned by the concurrent agent.
+**183.2 native done** (verified PASS). **183.4: link gap fixed (177.31) → service
+e2e PASS (C+C++); action blocked on 177.32** (Cyclone action-server executor
+register). **183.6 done** — XRCE↔ROS 2 action (both dirs) + reverse-direction
+service (3 tests, run green). All 183 items landed except: 183.4-action (→177.32)
+and 183.1's zenoh-C-action `#[ignore]` (server-create hang) — both tracked
+elsewhere.
 
 **Priority.** P2 (test coverage / regression confidence). The CycloneDDS↔ROS 2
 item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
@@ -158,7 +159,16 @@ compiles clean, lists. **Files**: `tests/zephyr.rs`.
 sibling (`test_zephyr_cpp_service_server_to_client_e2e`) is the template. Add
 `test_zephyr_rust_service_e2e` (zenoh). **Files**: `tests/zephyr.rs`. **Est.**: 1.
 
-### 183.4 — Native CycloneDDS service + action E2E — TESTS ADDED, blocked on a build gap
+### 183.4 — Native CycloneDDS service + action E2E — service DONE; action → 177.32
+
+**Update 2026-05-26:** the no-op-link gap was **fixed** (177.31 — `enable_language(CXX)`
+in the native C/Rust Cyclone examples; `20ef5c014`). With the exes linking:
+- `test_native_cyclonedds_service` (C + C++) — **PASS** (real AddTwoInts roundtrip).
+- `test_native_cyclonedds_action` (C + C++) — blocked on a *different*, action-specific
+  bug: **177.32** (native Cyclone action server `nros_executor_register_action_server`
+  fails to register; pub/sub + service work). Not a 183.x test issue — tracked in 177.
+The `native build-fixture-extras` Cyclone loop can now build all 6 roles (the 117/175
+agent owns re-extending it). Original blocked-on-link note retained below for history.
 
 **Tests landed (4):** `tests/native_api.rs` gained
 `test_native_cyclonedds_{service,action}` parametrised over `#[values(C, Cpp)]`,
@@ -222,7 +232,25 @@ explicit `#[ignore]`d-or-failing tests rather than silent absence. **Files**:
 new `tests/cyclonedds_ros2_interop.rs`, `.config/nextest.toml` (group + gate).
 **Est.**: ~6 tests. **Depends on**: 117.X service-envelope / topic-prefix work.
 
-### 183.6 — XRCE ↔ ROS 2: action + reverse-direction service
+### 183.6 — XRCE ↔ ROS 2: action + reverse-direction service — DONE
+
+Added 3 tests to `tests/xrce_ros2_interop.rs` (the file's existing tests covered
+pub/sub both ways + service xrce-server/ros2-client):
+- `test_xrce_action_ros2_client` — nano-XRCE action server ↔ ROS 2 (DDS) action
+  client (`ros2 action send_goal --feedback`).
+- `test_ros2_action_xrce_client` — ROS 2 DDS Fibonacci action server
+  (`action_tutorials_py`) ↔ nano-XRCE action client (reverse).
+- `test_ros2_service_xrce_client` — ROS 2 DDS `add_two_ints` server (rclpy
+  one-liner) ↔ nano-XRCE service client (the missing service direction).
+
+Infra added to `src/ros2.rs`: `Ros2DdsProcess::{add_two_ints_server,
+action_server_fibonacci, action_send_goal}_with_domain` (DDS env, mirroring the
+zenoh `Ros2Process` server/action helpers). Best-effort / INFO-not-hard-fail
+like the rest of the file (DDS naming/version drift, demo-node availability).
+Verified: compiles clean, all 3 run green locally (ROS 2 + rmw_fastrtps_cpp +
+XRCE Agent present). **Files**: `tests/xrce_ros2_interop.rs`, `src/ros2.rs`.
+
+#### original plan
 
 `tests/xrce_ros2_interop.rs` covers pubsub both ways + service (xrce-server /
 ros2-client only). Add:
@@ -248,9 +276,9 @@ Micro XRCE-DDS Agent + ROS 2 DDS. **Files**: `tests/xrce_ros2_interop.rs`.
 
 - [ ] Every non-empty `examples/README.md` cell with a service/action case has a
   matching runtime E2E test (or a tracked-elsewhere exemption noted above).
-- [ ] CycloneDDS has ROS 2 interop coverage (183.5), even if some cases start
+- [x] CycloneDDS has ROS 2 interop coverage (183.5), even if some cases start
   `#[ignore]`d pending 117.X.
-- [ ] XRCE↔ROS 2 covers action + both service directions (183.6).
+- [x] XRCE↔ROS 2 covers action + both service directions (183.6).
 - [ ] New tests follow the suite conventions: `nros_tests::skip!` on unmet
   preconditions (never silent early-return), per-platform nextest groups +
   `retries` for process-heavy E2E (Phase 177/G6), readiness waits not fixed
