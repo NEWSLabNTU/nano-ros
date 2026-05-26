@@ -599,7 +599,7 @@ passed.
   `test_native_cyclonedds_action` still fails — but on a *separate* runtime
   blocker, not this link gap: see 177.32.
 
-- [ ] **177.32 - Native Cyclone action server: `nros_executor_register_action_server`
+- [x] **177.32 - Native Cyclone action server: `nros_executor_register_action_server`
   returns -1.** Owner: Phase 177.2 / Cyclone actions (open, 2026-05-26). With the
   177.31 link gap fixed, the native Cyclone action fixtures build + boot, the
   action server *object* initializes (`nros_action_server_init` ok — prints
@@ -638,17 +638,28 @@ passed.
   feedback → result, ~10 s). `test_native_cyclonedds_service` (C + C++) also
   passes.
 
-  **C++ path — still open.** The same explicit generation breaks the C++ build:
-  cpp `example_interfaces.hpp` `#include`s `action_msgs/action_msgs.hpp` (so
-  action_msgs must be CPP), but the action_msgs **CPP** Rust FFI glue can't
-  resolve `unique_identifier_msgs_msg_uuid_t` / `serialize_..._fields` (E0425) —
-  a cpp-codegen cross-package dependency gap in the Rust glue, distinct from the
-  descriptor issue. **The fix is NOT a synthesis** (see the correction in the
-  RTOS conclusion below — the backend hard-codes the *real* action_msgs
-  descriptor op layout): keep the C path's real-descriptor generation and fix the
-  cpp-codegen Rust-glue cross-package gap so the `action_msgs` /
-  `unique_identifier_msgs` CPP bindings resolve their dependency types. Cpp action
-  fixtures otherwise build + fail at runtime exactly like the C path did.
+  **C++ path — FIXED (2026-05-27).** Same real-descriptor generation as C, plus a
+  codegen fix. The cpp build first failed because cpp `example_interfaces.hpp`
+  `#include`s `action_msgs/action_msgs.hpp` (so action_msgs must be CPP) and the
+  cpp Rust FFI glue then couldn't resolve `unique_identifier_msgs_msg_uuid_t` /
+  `serialize_..._fields` (E0425). Root cause: the cpp glue crate `include!()`s
+  each package's FFI `.rs` into one flat scope, but the
+  `<pkg>_GENERATED_RS_FILES` variable held only that package's *own* files and the
+  `lib.rs` include-list (`cmake/NanoRosGenerateInterfaces.cmake`) walked only the
+  *direct* `DEPENDENCIES` — so `example_interfaces -> action_msgs ->
+  unique_identifier_msgs` pulled action_msgs's glue but not the transitive
+  unique_identifier_msgs glue it references (std_msgs->builtin_interfaces is a
+  single level, so it never surfaced). **Fix:** make `<pkg>_GENERATED_RS_FILES`
+  carry the *transitive closure* (own + each dep's, de-duped) and de-dup the
+  `lib.rs` include-list — so the full closure shares one scope exactly once.
+  With that, the cpp action examples generate the real `action_msgs` /
+  `unique_identifier_msgs` (CPP) like C, the cpp glue compiles, and
+  `test_native_cyclonedds_action::lang_2_Language__Cpp` **PASSES** (real
+  goal→feedback→result). C action + service (C/C++) also pass. **Caveat:** the
+  four 183.4 native-Cyclone tests can flake when run concurrently (host RTPS
+  discovery crosstalk between same-host participants); each passes run alone —
+  they likely need a serialized nextest group (max-threads=1), a test-harness
+  follow-up orthogonal to this fix.
 
   **Reference: how stock `rmw_cyclonedds_cpp` (humble) handles types, and what
   the RTOS port should become.** Read the upstream source

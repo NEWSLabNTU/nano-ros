@@ -482,21 +482,25 @@ function(nros_generate_interfaces target)
       # semicolons, so no CMake list-escaping issues arise.
       set(NROS_CPP_FFI_INCLUDES "")
 
-      # include!() dependency FFI .rs files (so their types are in scope)
+      # Collect the dependency FFI .rs files (each dep's variable already holds
+      # ITS transitive closure) plus our own, de-dup, then include!() each so all
+      # cross-package types — direct AND transitive (e.g. example_interfaces ->
+      # action_msgs -> unique_identifier_msgs) — share one flat scope. De-dup is
+      # required: a diamond dependency would otherwise be include!()d twice
+      # (duplicate-definition error). Order is irrelevant — include!() drops the
+      # items into one module and Rust allows forward references within it.
+      set(_ffi_rs_all "")
       foreach(_dep ${_ARG_DEPENDENCIES})
         if(DEFINED ${_dep}_GENERATED_RS_FILES)
-          foreach(_rs_file ${${_dep}_GENERATED_RS_FILES})
-            # Skip mod.rs — we use include!() instead
-            get_filename_component(_rs_name "${_rs_file}" NAME)
-            if(NOT _rs_name STREQUAL "mod.rs")
-              string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
-            endif()
-          endforeach()
+          list(APPEND _ffi_rs_all ${${_dep}_GENERATED_RS_FILES})
         endif()
       endforeach()
-
-      # include!() own FFI .rs files
-      foreach(_rs_file ${_generated_rs_files})
+      list(APPEND _ffi_rs_all ${_generated_rs_files})
+      if(_ffi_rs_all)
+        list(REMOVE_DUPLICATES _ffi_rs_all)
+      endif()
+      foreach(_rs_file ${_ffi_rs_all})
+        # Skip mod.rs — we use include!() instead
         get_filename_component(_rs_name "${_rs_file}" NAME)
         if(NOT _rs_name STREQUAL "mod.rs")
           string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
@@ -804,7 +808,23 @@ function(nros_generate_interfaces target)
   set(${target}_LIBRARIES "${_lib_target}" PARENT_SCOPE)
   set(${target}_GENERATED_HEADERS "${_generated_headers}" PARENT_SCOPE)
   set(${target}_GENERATED_SOURCES "${_generated_sources}" PARENT_SCOPE)
-  set(${target}_GENERATED_RS_FILES "${_generated_rs_files}" PARENT_SCOPE)
+  # Carry the TRANSITIVE closure of generated FFI .rs files: this package's own
+  # plus every dependency's (each dep's variable already holds *its* transitive
+  # closure). A consumer include!()s a direct dependency's list and must also get
+  # that dep's nested cross-package types (e.g. example_interfaces -> action_msgs
+  # -> unique_identifier_msgs); without the closure the deeper types are absent
+  # and the FFI glue fails to compile (E0425). De-dup so a diamond dependency
+  # isn't carried twice.
+  set(_rs_closure "${_generated_rs_files}")
+  foreach(_dep ${_ARG_DEPENDENCIES})
+    if(DEFINED ${_dep}_GENERATED_RS_FILES)
+      list(APPEND _rs_closure ${${_dep}_GENERATED_RS_FILES})
+    endif()
+  endforeach()
+  if(_rs_closure)
+    list(REMOVE_DUPLICATES _rs_closure)
+  endif()
+  set(${target}_GENERATED_RS_FILES "${_rs_closure}" PARENT_SCOPE)
 endfunction()
 
 
