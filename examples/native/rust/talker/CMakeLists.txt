@@ -14,7 +14,9 @@ cmake_minimum_required(VERSION 3.22)
 # `target_link_libraries`, which handles the `NanoRos::NanoRos`
 # INTERFACE genexes — hence the staticlib + C-main shape. idlc emits
 # the descriptors as C source, so the project enables C.
-project(native_rust_talker_cyclonedds VERSION 0.1.0 LANGUAGES C)
+# CXX: the Cyclone DDS backend is C++ and nano_ros_link_rmw links this app with
+# the C++ driver (LINKER_LANGUAGE CXX), so CXX must be enabled in this scope.
+project(native_rust_talker_cyclonedds VERSION 0.1.0 LANGUAGES C CXX)
 
 set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     cyclonedds)

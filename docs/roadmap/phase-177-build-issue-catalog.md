@@ -56,8 +56,8 @@ passed.
   ownership issue is closed; remaining ThreadX runtime diagnosis is
   tracked separately under 177.22.
 
-- [ ] **177.31 - native C (and Rust) Cyclone example fixtures emit no runnable
-  exe.** Owner: Phase 177 native-fixture follow-up (open, 2026-05-26).
+- [x] **177.31 - native C (and Rust) Cyclone example fixtures emit no runnable
+  exe.** Owner: Phase 177 native-fixture follow-up. **Closed 2026-05-26.**
   `just native build-fixture-extras` builds the native Cyclone example fixtures
   via CMake/Corrosion. The **C++** cells produce a runnable top-level ELF
   (`examples/native/cpp/{talker,listener}/build-cyclonedds/cpp_{talker,listener}`),
@@ -80,6 +80,24 @@ passed.
   submodule bump on 2026-05-26 (CLAUDE.md last verified native C+C 2026-05-21).
   Independent of the Phase 180 native_sim 2-node fix — a `.cpp` source change in
   the RMW lib cannot affect where the example links its app.
+  **Root cause + fix (2026-05-26):** `nano_ros_link_rmw` (cmake/NanoRosLink.cmake)
+  sets `LINKER_LANGUAGE CXX` on the app when Cyclone is selected (the backend is
+  C++), which requires `CMAKE_CXX_LINK_EXECUTABLE` — i.e. CXX enabled in the
+  *app target's directory scope*. The native C/Rust examples used
+  `project(<app> LANGUAGES C)`; the nano-ros `add_subdirectory` enables CXX only
+  in its own subtree, which does **not** propagate up to the example's scope, so
+  the C target's CXX link command was never generated (Makefiles: generate
+  error; Ninja: no top-level exe, only the `_nano_ros_link/<app>/` staging dir).
+  cpp examples worked because they are `LANGUAGES C CXX`. Fix: enable CXX in the
+  example's own scope for the Cyclone RMW — `examples/native/c/{talker,listener,
+  service-client,service-server,action-client,action-server}` guard with
+  `if(NROS_RMW STREQUAL "cyclonedds") enable_language(CXX) endif()`; the
+  Cyclone-dedicated `examples/native/rust/{talker,listener}` use
+  `project(... LANGUAGES C CXX)` directly. Verified: all 6 native Cyclone
+  fixtures build as top-level ELF via `just native build-fixture-extras`, and
+  `nros-tests::native_api test_native_cyclonedds_*` (4 cases, C↔Rust + Cpp↔Rust)
+  all PASS (~8 s each, real RTPS). C+C manual e2e: Published 7 / Received 7.
+  zenoh/xrce C builds unaffected (the enable is Cyclone-guarded).
 
 - [x] **177.22 - ThreadX Cyclone participant init runtime trap.**
   Owner: Phase 177 runtime/Cyclone follow-up.

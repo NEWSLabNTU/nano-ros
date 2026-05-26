@@ -10,6 +10,16 @@ set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
 set(NANO_ROS_RMW "${NROS_RMW}")
+
+# The Cyclone DDS backend is C++ (operator new/delete, std::nothrow). A C app
+# linking it gets LINKER_LANGUAGE CXX (set by nano_ros_link_rmw), which needs
+# CMAKE_CXX_LINK_EXECUTABLE — i.e. CXX enabled in *this* directory scope. The
+# nano-ros add_subdirectory enables CXX only in its own subtree, so enable it
+# here for the Cyclone RMW. (zenoh / xrce stay pure C.)
+if(NROS_RMW STREQUAL "cyclonedds")
+    enable_language(CXX)
+endif()
+
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_generate_interfaces(builtin_interfaces SKIP_INSTALL)

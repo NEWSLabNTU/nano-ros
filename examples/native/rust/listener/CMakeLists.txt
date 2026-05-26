@@ -4,7 +4,9 @@ cmake_minimum_required(VERSION 3.22)
 # corrosion can't link the C++ backend into a corrosion-imported bin,
 # so import the crate's staticlib + link via a C main). idlc emits the
 # descriptors as C source, so the project enables C.
-project(native_rust_listener_cyclonedds VERSION 0.1.0 LANGUAGES C)
+# CXX: the Cyclone DDS backend is C++ and nano_ros_link_rmw links this app with
+# the C++ driver (LINKER_LANGUAGE CXX), so CXX must be enabled in this scope.
+project(native_rust_listener_cyclonedds VERSION 0.1.0 LANGUAGES C CXX)
 
 set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     cyclonedds)
