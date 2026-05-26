@@ -783,10 +783,14 @@ fn test_rtos_service_e2e(
 // goal/feedback/result serialization), but only on the platforms where action
 // runs reliably and cheaply: ThreadX-Linux (host process / NSOS, ~seconds) and
 // FreeRTOS-QEMU. The QEMU-heavy NuttX + ThreadX-RISCV64 action cells are
-// dropped — NuttX action is the 270 s `z_get`/lease hang (177.30, tracked +
-// red there) and ThreadX-RISCV64 QEMU action is slow with no unique binding
-// coverage. pubsub + service keep all 4 platforms × 3 langs. Cpp/C action
-// bindings remain covered on native (Cyclone) and zephyr (xrce/dds) e2e.
+// dropped — they are QEMU-heavy (270 s/cell × retries) and add no unique
+// binding coverage. (NuttX action itself is fixed: the C++ client's hang was a
+// real `fflush(stdout)` deadlock against zenoh-pico's background threads on the
+// libc stdout FILE* lock — found + fixed in 177.30; a manual 2-QEMU boot now
+// runs goal→accept→feedback→result. It stays out of the CI matrix only because
+// the QEMU round-trip is slow/expensive, not because it is broken.) pubsub +
+// service keep all 4 platforms × 3 langs. Cpp/C action bindings remain covered
+// on native (Cyclone) and zephyr (xrce/dds) e2e.
 #[rstest]
 fn test_rtos_action_e2e(
     #[values(Platform::Freertos, Platform::ThreadxLinux)] platform: Platform,
@@ -826,31 +830,20 @@ fn test_rtos_action_e2e(
         std::thread::sleep(platform.stabilization_delay());
     }
 
-    // ⚠️ DO NOT SHRINK these NuttX/FreeRTOS action windows. ⚠️
+    // ⚠️ DO NOT SHRINK the FreeRTOS-C action window. ⚠️
     //
-    // The full goal→accept→feedback→result chain is very slow on QEMU under
-    // `-icount` + heavy `test-all` host load (two QEMU guests + zenohd all
-    // competing for the host CPU). NuttX C action: QEMU boot + 5s net wait +
-    // session open + goal round-trip + feedback + result routinely takes
-    // ~130s, and far longer under a full parallel `test-all`.
+    // The full goal→accept→feedback→result chain is slow on FreeRTOS QEMU under
+    // `-icount` + heavy `test-all` host load (two QEMU guests + zenohd competing
+    // for the host CPU): boot + 5 s net wait + session open + goal round-trip +
+    // feedback + result, far longer under a full parallel `test-all`. 90 s is
+    // the empirical floor with margin. ThreadX-Linux is a host process (NSOS)
+    // and finishes in seconds, so it uses the 60 s default.
     //
-    // NuttX **C++** action (Phase 177.30): just as slow. The old 60s default
-    // killed the client mid-run, BEFORE "Goal accepted" — which looked like a
-    // hang/deadlock and burned a long investigation (gdb/tshark/zenoh-pico
-    // fork experiments). It is NOT a deadlock: with enough wall time the C++
-    // action completes (accepted + feedback [0]/[0,1,1] + result
-    // [0,1,1,2,3,5] — verified on a direct boot). "Works under gdb" was just
-    // gdb granting more wall time; "no query on the wire in 90s" was the
-    // client not having reached the send yet under load, not a lost query.
-    // The C++ client (examples/.../cpp/action-client) was also hardened to
-    // resend the one-shot async goal + not self-limit its result loop — see
-    // its matching "DO NOT shrink" comment. If this E2E flakes, the answer is
-    // a LONGER window (and/or less host parallelism), never a shorter one.
+    // (NuttX/ThreadX-RISCV64 were dropped from the matrix in 182.5 — see the
+    // header comment. The NuttX C++ client's hang was a real fflush(stdout)
+    // deadlock, fixed in 177.30, not a timeout issue.)
     let client_timeout = match (platform, lang) {
         (Platform::Freertos, Lang::C) => Duration::from_secs(90),
-        (Platform::Nuttx, Lang::C) => Duration::from_secs(240),
-        // NuttX C++ action — see the DO-NOT-SHRINK note above (177.30).
-        (Platform::Nuttx, Lang::Cpp) => Duration::from_secs(240),
         _ => Duration::from_secs(60),
     };
     // Phase 182.6 — early-exit on the action-completed marker rather than
