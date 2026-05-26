@@ -746,6 +746,29 @@ passed.
   product defect; the RMW + fixtures are correct (177.31/177.32 verified). Until
   grouped, re-run a failed native-Cyclone case in isolation to confirm.
 
+- [ ] **177.34 - native C examples block-buffer stdout → harness reads nothing
+  within its window.** Owner: examples (listener fixed 2026-05-27; siblings
+  open). Found closing the 117.12 Cyclone ros2→nano pubsub test
+  (`test_cyclonedds_ros2_to_nano_pubsub`): the test reported "no sample", but
+  the native-C listener *was* receiving the data — its `printf` stdout was
+  **block-buffered**. glibc full-buffers stdout (4 KiB) when it is a pipe rather
+  than a tty, so at 5 Hz × ~13-byte `Received: N` lines the buffer never filled
+  inside the harness's 10 s `wait_for_output_pattern` window; nextest saw empty
+  output (even the startup banner) and the test failed. Distinct from 177.8.b
+  (ThreadX-Linux's weak `write` stub aborting on first `println!`) — here the
+  process runs fine and the data arrives, only the *observation* is delayed.
+  Diagnostic tell: nextest's captured output is completely empty, yet a manual
+  run redirected to a file shows everything (stdio flushes at exit).
+  **Fix:** `setvbuf(stdout, NULL, _IOLBF, 0)` at the top of `main` so each line
+  flushes on its newline (tty-like). Landed for `examples/native/c/listener`
+  (`2292b7814`). **Open:** the sibling native C examples (`talker`,
+  `service-{server,client}`, `action-{server,client}`, `logging`, `custom-*`)
+  share the same `printf`-without-flush pattern and lack `setvbuf`. They pass
+  today only because no nano-side harness reads them live within a tight window
+  (the ros2 peer's stdout, which the e2e reads, is unaffected). Apply the same
+  one-liner if one starts flaking, or proactively for consistency. Same class as
+  the Phase 177.30 NuttX C++ action `fflush(stdout)` deadlock.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
