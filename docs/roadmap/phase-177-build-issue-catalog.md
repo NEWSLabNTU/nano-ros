@@ -460,12 +460,14 @@ passed.
   `.env`. Full `just setup` already includes `platformio`, `esp_idf`,
   and `px4` in the `everything` tier.
 
-- [ ] **177.8 - Full runtime matrix requires prebuilt fixtures.**
+- [x] **177.8 - Full runtime matrix requires prebuilt fixtures. RESOLVED
+  2026-05-26.** All concrete sub-items (177.8.a–e) are closed and every
+  optional host dependency now reports a precise skip/remedy. The residual
+  "every fixture lookup uses the build-fixture artifact layout" goal is the
+  scope of **Phase 181 (fixture-build SSOT)** and is tracked there, not here.
   The latest sweep was run after `just setup` and
   `just build-test-fixtures`, so the remaining fixture/setup failures are
-  narrower than the original broad prebuild issue. Keep this item open
-  until every fixture lookup uses the build-fixture artifact layout and
-  every optional host dependency reports a precise skip/remedy.
+  narrower than the original broad prebuild issue.
 
   **Full Zephyr E2E matrix verified green 2026-05-26: `binary(zephyr)` is
   53/53** (Zenoh + XRCE + CycloneDDS; every language/role —
@@ -1412,7 +1414,12 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
      the harness falls back to that buggy profile (177.8.c CGU codegen bug →
      reboot loop before `main` → zero output → "Waiting for requests" never
      observed). `just nuttx build-fixtures` *does* build at `release`, so CI is
-     fine; this was stale local artifacts. Rebuilt at `release`.
+     fine; this was stale local artifacts. Rebuilt at `release`. The harness's
+     `build_rust_example` fallback (`release` → `nros-fast-release`) now
+     **eprintln-warns** when it takes the fast-release path, so a stale/partial
+     local build is recognised instead of silently booting the known-broken
+     profile with zero diagnostics
+     (`packages/testing/nros-tests/src/fixtures/binaries/nuttx.rs`).
   2. **Round-trip race (the real one).** Reproduced in a clean manual 2-QEMU
      boot (C service round-trips perfectly with byte-identical keyexprs, so it
      was Rust-service-specific, not a general routing bug): the Rust client
@@ -1918,7 +1925,8 @@ robustness/consistency follow-ups, not regressions.
 Archive this tracker only after:
 
 - [x] 177.3 closes or moves into a newer, more specific phase doc.
-- [ ] 177.6 through 177.9 have owners and either close or move into more
-  specific phase docs.
+- [x] 177.6 through 177.9 have owners and either close or move into more
+  specific phase docs. (2026-05-26: 177.6/177.7/177.9 closed; 177.8 closed with
+  its residual layout goal moved to Phase 181 fixture-build SSOT.)
 - [x] 177.19 and 177.20 close or move into platform-specific runtime
   phases.

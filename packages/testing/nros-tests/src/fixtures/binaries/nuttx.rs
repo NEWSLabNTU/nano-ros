@@ -101,6 +101,22 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let binary_path = if release_binary_path.exists() {
         release_binary_path
     } else {
+        // Phase 177 / G4 — the `nros-fast-release` binary hits the 177.8.c CGU
+        // codegen miscompile (reboot loop before `main`, zero console output),
+        // which surfaces as a "readiness pattern never observed" boot failure
+        // with no diagnostics. Warn loudly so a stale/partial local build is
+        // recognised instead of silently exercising the known-broken profile.
+        // CI builds `release` via `just nuttx build-fixtures`, so this path is
+        // a local-dev fallback only.
+        eprintln!(
+            "[nros-tests] WARNING: no `release` build of NuttX Rust fixture `{}` \
+             found at {}; falling back to the `nros-fast-release` profile, which \
+             hits the 177.8.c armv7a-nuttx-eabihf codegen bug (reboot loop before \
+             main → no output → boot-readiness failure). Run `just nuttx \
+             build-fixtures` to produce the `release` build.",
+            binary_name,
+            release_binary_path.display(),
+        );
         example_dir.join(format!(
             "target/armv7a-nuttx-eabihf/nros-fast-release/{}",
             binary_name
