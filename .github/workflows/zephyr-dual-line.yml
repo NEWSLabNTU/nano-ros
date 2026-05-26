@@ -1,0 +1,132 @@
+# Phase 180.A Task 10 — dual-line Zephyr CI.
+#
+# Builds the representative nano-ros Zephyr examples on BOTH Zephyr lines
+# (3.7 LTS via west.yml, 4.4 rolling via west-4.4.yml) and runs the
+# Phase 180.B copy-out check. Selection mirrors the local recipes:
+#   - per-line example builds : `NROS_ZEPHYR_VERSION=<line> just zephyr build-one`
+#   - dual-line one-shot       : `just zephyr ci-both`
+#   - copy-out promise         : `just zephyr check-copy-out`
+#
+# NOTE: This workflow is CI-only and has NOT been validated by a live
+# GitHub Actions run from this change — only the underlying recipes
+# (`build-one`, `ci-both`, `check-copy-out`) were verified locally. The
+# job/step shapes are written to match the local mechanics; a first CI
+# run may need runner-specific tweaks (SDK cache keys, apt deps, the
+# Python 3.12 provisioning the 4.4 line requires).
+name: Zephyr dual-line
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/zephyr/**"
+      - "packages/**"
+      - "cmake/**"
+      - "zephyr/**"
+      - "scripts/zephyr/**"
+      - "just/zephyr.just"
+      - ".github/workflows/zephyr-dual-line.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "examples/zephyr/**"
+      - "packages/**"
+      - "cmake/**"
+      - "zephyr/**"
+      - "scripts/zephyr/**"
+      - "just/zephyr.just"
+      - ".github/workflows/zephyr-dual-line.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: zephyr-dual-line-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- Per-line example matrix -------------------------------------------
+  # Builds the c/cpp/rust talker+listener (zenoh) on each line via
+  # `just zephyr build-one`. The 4.4 line provisions a Python 3.12 venv
+  # (Zephyr 4.4 requires >=3.12) during `just zephyr setup`.
+  example-matrix:
+    name: ${{ matrix.line }} / ${{ matrix.example }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        line: ["3.7", "4.4"]
+        example:
+          - c/talker
+          - c/listener
+          - cpp/talker
+          - cpp/listener
+          - rust/talker
+          - rust/listener
+    env:
+      NROS_ZEPHYR_VERSION: ${{ matrix.line }}
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Set up Rust toolchain
+        run: rustup show && rustup target add armv7a-none-eabi
+
+      # Provisions the Zephyr workspace for the selected line, including
+      # the 4.4 Python 3.12 venv + NSOS patches (see just/zephyr.just
+      # setup recipe). Heavy step — caching the workspace/SDK across runs
+      # is recommended once the workflow is stabilized.
+      - name: Set up Zephyr ${{ matrix.line }} workspace
+        run: just zephyr setup
+
+      - name: Build zephyr/${{ matrix.example }} (zenoh) on ${{ matrix.line }}
+        run: just zephyr build-one "${{ matrix.example }}" zenoh
+
+  # --- Dual-line one-shot ------------------------------------------------
+  # Runs the `ci-both` recipe directly so the per-line summary table
+  # (PASS / FAIL / SKIP) lands in one job's log. Requires both
+  # workspaces; if a line is absent it SKIPS (never silently passes).
+  dual-line-summary:
+    name: ci-both (3.7 + 4.4)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Set up Rust toolchain
+        run: rustup show && rustup target add armv7a-none-eabi
+
+      - name: Set up Zephyr 3.7 workspace
+        run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup
+
+      - name: Set up Zephyr 4.4 workspace
+        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup
+
+      - name: Dual-line build (c/talker zenoh)
+        run: just zephyr ci-both c/talker zenoh
+
+  # --- Copy-out promise --------------------------------------------------
+  # Proves a copied-out example builds from OUTSIDE the repo tree against
+  # the nano-ros Zephyr module (Phase 180.B item 5). Runs on the 4.4 line.
+  copy-out:
+    name: copy-out check (4.4)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Set up Rust toolchain
+        run: rustup show && rustup target add armv7a-none-eabi
+
+      - name: Set up Zephyr 4.4 workspace
+        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup
+
+      - name: Copy-out build check
+        run: just zephyr check-copy-out c/talker zenoh

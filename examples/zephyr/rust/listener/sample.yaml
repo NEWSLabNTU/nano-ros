@@ -1,0 +1,23 @@
+# Phase 180.C — nano-ros Rust listener as a Zephyr sample (Twister-discoverable).
+# See examples/zephyr/c/talker/sample.yaml for the mechanism.
+sample:
+  name: nano-ros Rust Listener
+  description: nano-ros ROS 2 subscriber (Rust API) on Zephyr, zenoh RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "nros Zephyr Listener"
+tests:
+  sample.nano-ros.rust.listener.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_args:
+      - SNIPPET=nros-zenoh

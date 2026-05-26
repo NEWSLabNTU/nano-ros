@@ -1,0 +1,23 @@
+# Phase 180.C — nano-ros C++ talker as a Zephyr sample (Twister-discoverable).
+# See examples/zephyr/c/talker/sample.yaml for the mechanism.
+sample:
+  name: nano-ros C++ Talker
+  description: nano-ros ROS 2 publisher (C++ API) on Zephyr, zenoh RMW
+common:
+  tags:
+    - nano-ros
+    - nros
+  harness: console
+  harness_config:
+    type: one_line
+    regex:
+      - "nros Zephyr C\\+\\+ Talker"
+tests:
+  sample.nano-ros.cpp.talker.zenoh:
+    build_only: true
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64
+    extra_args:
+      - SNIPPET=nros-zenoh

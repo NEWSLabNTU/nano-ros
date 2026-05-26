@@ -18,3 +18,19 @@ build:
     # still relies on). `.` would scan `<repo-root>/snippets/`; the
     # snippets live under `zephyr/`, so `zephyr` is the correct root.
     snippet_root: zephyr
+
+# Phase 180.C — module-contributed Twister samples. Each path is relative
+# to the MODULE ROOT (the repo root; the `nano-ros` west project) and is
+# emitted by `zephyr_module.py::process_twister` as a `-T <module>/<path>`
+# argument to Twister. So `west twister` / `scripts/twister` (run from the
+# workspace) discovers + builds these nano-ros examples as samples, each
+# carrying its own `sample.yaml` (board + RMW snippet). Build-coverage
+# only (build_only: true) — the data plane is exercised by the nros-tests
+# Zephyr E2E suite, which pairs talker+listener with a zenohd router.
+samples:
+  - examples/zephyr/c/talker
+  - examples/zephyr/c/listener
+  - examples/zephyr/cpp/talker
+  - examples/zephyr/cpp/listener
+  - examples/zephyr/rust/talker
+  - examples/zephyr/rust/listener
