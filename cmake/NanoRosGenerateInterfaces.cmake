@@ -254,6 +254,41 @@ function(nros_generate_interfaces target)
     set(_lang_flag "c")
   endif()
 
+  # ---- Action auto-closure (177.32) ----
+  # A package that carries a `.action` uses the shared action_msgs types at
+  # runtime: the cancel service (action_msgs/CancelGoal) and the status topic
+  # (action_msgs/GoalStatusArray), which in turn pull unique_identifier_msgs
+  # (UUID). The Cyclone backend resolves those as *real* IDL descriptors (the
+  # status-publish bridge reads the real GoalStatusArray_ op layout; the cancel
+  # service uses the plain real-CancelGoal_ path), so the consuming package must
+  # generate + depend on action_msgs (+ its UUID dep) — otherwise the descriptor
+  # ts-lib doesn't whole-archive in and the cpp FFI glue can't close over the
+  # types. Do it automatically so action examples need NO per-package wiring.
+  # Guarded by target existence (idempotent across packages) and skipped when
+  # generating action_msgs / unique_identifier_msgs themselves (no recursion).
+  set(_nros_has_action FALSE)
+  foreach(_if ${_interface_files})
+    if(_if MATCHES "\\.action$")
+      set(_nros_has_action TRUE)
+    endif()
+  endforeach()
+  if(_nros_has_action
+     AND NOT target STREQUAL "action_msgs"
+     AND NOT target STREQUAL "unique_identifier_msgs")
+    if(NOT TARGET unique_identifier_msgs__nano_ros_${_lang_flag})
+      nros_generate_interfaces(unique_identifier_msgs
+        LANGUAGE ${_ARG_LANGUAGE} SKIP_INSTALL)
+    endif()
+    if(NOT TARGET action_msgs__nano_ros_${_lang_flag})
+      nros_generate_interfaces(action_msgs
+        DEPENDENCIES builtin_interfaces unique_identifier_msgs
+        LANGUAGE ${_ARG_LANGUAGE} SKIP_INSTALL)
+    endif()
+    if(NOT "action_msgs" IN_LIST _ARG_DEPENDENCIES)
+      list(APPEND _ARG_DEPENDENCIES "action_msgs")
+    endif()
+  endif()
+
   # Phase 123.A.7 — workspace-shared codegen cache.
   # When NANO_ROS_GEN_CACHE_DIR is set (cmake var or env var), all
   # packages emit codegen into the same shared dir keyed by

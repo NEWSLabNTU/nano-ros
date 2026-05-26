@@ -725,6 +725,16 @@ passed.
   E0425 above). Cross-checked against the backend `publisher.cpp` + `service.cpp`
   and upstream `serdata.{hpp,cpp}` / `rmw_node.cpp` / `TypeSupport2.hpp`.
 
+  **Auto-closure landed (2026-05-27).** `nros_generate_interfaces` now detects a
+  `.action` in the package and automatically generates + depends on the real
+  `action_msgs` (+ `unique_identifier_msgs`) in the matching language (guarded by
+  target existence, idempotent across packages, skipped for action_msgs /
+  unique_identifier_msgs themselves). The four native action examples (C + C++)
+  were reverted to plain `nros_generate_interfaces(example_interfaces …)` — no
+  per-example action_msgs wiring — and all four `test_native_cyclonedds_action`/
+  `_service` cases pass. So an action package now "just builds" on Cyclone, the
+  closest static-descriptor analogue to stock RMW's introspection genericity.
+
 ### Test-All Runtime / E2E
 
 - [ ] **177.33 - native Cyclone E2E tests flake when run concurrently.** Owner:
