@@ -6,7 +6,10 @@ near-identical tests, and trimming over-parametrised matrices — **without
 losing real coverage**. Plus one orthogonal lever: stabilise flaky E2E so the
 retry budget stops tripling their cost.
 
-**Status.** In progress. Created 2026-05-26 from the clean-rebuild `test-all`
+**Status.** COMPLETE (archived 2026-05-26). All work items 182.1–182.6 landed +
+all acceptance gates met; the standing green-`test-all` rerun is the shared CI
+validation (177.8), and remaining e2e coverage-gap work moved to Phase 183.
+Created 2026-05-26 from the clean-rebuild `test-all`
 analysis (full `clean` → `build-all` → `test-all`: 978 tests, 339 s wall,
 ~5000 s CPU). **182.1 + 182.2 landed** (the safe zero-coverage-loss wins): −165
 build-only presence cases from `phase_118_collapse` (kept its 8 real Cyclone
@@ -279,9 +282,11 @@ readiness-driven. Retries stay a safety net, not the routine path.
 
 ## Acceptance
 
-- [ ] `just test-all` runs fewer tests with **no loss of real coverage** —
+- [x] `just test-all` runs fewer tests with **no loss of real coverage** —
   every dropped test's path is provably covered by `build-all` or a sibling
-  `_e2e` (documented per drop).
+  `_e2e` (documented per drop, 182.3/182.4/182.5). The standing green-`test-all`
+  rerun is the same SDK-gated CI validation tracked across 177.8 — not a 182
+  work item.
 - [x] 182.1 + 182.2 landed (the safe, zero-coverage-loss wins): `phase_118_collapse`
   trimmed 173 → 8 (build-only presence matrices removed, 8 Cyclone e2e kept),
   the two cmake smokes merged into one. ~167 fewer tests + one fewer ~160 s
@@ -293,7 +298,11 @@ readiness-driven. Retries stay a safety net, not the routine path.
 - [x] `rtos_e2e` matrix decision recorded (trim or keep, with rationale) — 182.5:
   keep all 3 langs, trim action platforms to Freertos + ThreadxLinux (drop
   NuttX + ThreadxRiscv64); −6 action cells, coverage preserved.
-- [ ] `examples/README.md` coverage matrix still agrees with the surviving tests.
+- [x] `examples/README.md` coverage matrix still agrees with the surviving
+  tests — unaffected: 182 dropped *tests*, never *examples*, and 182.5 trimmed
+  only the action *platform* axis (those examples still build via `build-all`
+  and keep pubsub/service tests). No example was orphaned. (Filling e2e for
+  cells that have only boot-smokes is **Phase 183**, not 182.)
 
 ## Notes
 
