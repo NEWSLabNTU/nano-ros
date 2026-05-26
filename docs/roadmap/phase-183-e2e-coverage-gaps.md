@@ -87,36 +87,35 @@ talker/listener boot. The Rust + C++ zephyr E2E suites (in `tests/zephyr.rs` +
 Use `build_zephyr_cmake_example_rmw("c", …)` (already used by the cyclonedds C
 e2e) + `ZephyrProcess`. **Files**: `tests/zephyr.rs`. **Est.**: ~6 tests.
 
-**Attempt 2026-05-26 — BLOCKED on the C fixtures, not the tests.** Drafted the 5
-tests (zenoh pubsub/service/action + xrce service/action) mirroring the passing
-cyclonedds C e2e — same resolver (`build_zephyr_cmake_example_rmw("c", …)`,
-build root `build/zephyr-workspace-builds/`), same `ZephyrProcess` harness, C
-client success markers `Result:` (service) / `Result status:` (action). They
-compile clean but **all 5 fail at runtime** because the C zenoh/xrce fixtures in
-that build root don't reach the app:
-- **zenoh C (all 3):** the node logs `zpico_zephyr: Network not ready after
-  2000 ms` → `nros_listener: Network not ready` and exits before publishing.
-  The C and Cpp zenoh `prj.conf` + `prj-zenoh.conf` net configs are **identical**
-  (both NSOS, neither has `NET_CONNECTION_MANAGER`), and the C *cyclonedds*
-  fixtures in the **same** build root pass — so it's specific to zenoh-pico's
-  `zpico_zephyr_wait_network` timing out on native_sim in this build, not the
-  test or the net Kconfig.
-- **xrce C service/action:** client gets no `Result:`/`Result status:`. The
-  *existing* passing xrce-C pubsub e2e (`test_zephyr_xrce_c_talker_listener`)
-  resolves via `get_zephyr_xrce_c_*_native_sim` → the **`nano-ros-workspace/`**
-  in-place west build (build system #1), a *different* fixture set than the
-  `build/zephyr-workspace-builds/` SSOT root (#2) the new tests + cyclone e2e
-  use. So the two build systems are not yet aligned for zenoh/xrce.
+**Attempt 2026-05-26 — root-caused to a STALE fixture, test code is correct.**
+Drafted the 5 tests (zenoh pubsub/service/action + xrce service/action)
+mirroring the passing cyclonedds C e2e — same `build_zephyr_cmake_example_rmw("c", …)`
+resolver, same `ZephyrProcess` harness, C client success markers `Result:`
+(service) / `Result status:` (action). They compile clean; the zenoh C ones
+failed at runtime with `zpico_zephyr: Network not ready after 2000 ms`.
 
-**Root issue to resolve first (then the tests pass as-is):** the Phase-181 SSOT
-build root (`build/zephyr-workspace-builds/`) produces working *cyclonedds* C
-fixtures but zenoh/xrce C fixtures that fail native_sim network-readiness, while
-the legacy `nano-ros-workspace/` builds (used by the surviving zenoh/xrce e2e,
-now flagged stale by the staleness gate) worked. Align the two: either fix the
-SSOT zenoh/xrce native_sim build (why `wait_network` times out there) or point
-the C e2e at the build system that the Rust/Cpp zenoh/xrce e2e use. The test
-code itself is proven (cyclone C e2e use the identical pattern and pass);
-reverted pending the fixture fix to avoid red tests in `test-all`.
+**Root cause: a stale zenoh C fixture in the resolver's preferred build root.**
+- `zephyr_build_root()` (`fixtures/binaries/mod.rs`) prefers `nano-ros/zephyr-workspace`
+  when it exists+writable. That path is a **symlink → `../nano-ros-workspace`**
+  (the legacy in-place west builds). Only when the symlink is absent does it
+  fall back to `build/zephyr-workspace-builds` (the Phase-181 SSOT root).
+- `zpico_zephyr_wait_network()` returns immediately under
+  `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS` ("Network ready (NSOS)"); only the
+  legacy `#else` native-net-stack path prints "Waiting for network readiness" /
+  "Network not ready".
+- The `nano-ros-workspace/build-c-talker-zenoh/zephyr/zephyr.exe` that the
+  resolver picks is the **non-NSOS `#else` variant** — built before NSOS landed
+  in `zpico_zephyr.c`, never rebuilt. The **correct NSOS** zenoh C fixture *does*
+  exist in `build/zephyr-workspace-builds/build-c-talker-zenoh` (`strings` shows
+  "Network ready (NSOS)"), but the resolver doesn't use it. Cyclone C passes
+  because its fixture in the symlinked root is current; only zenoh (and likely
+  xrce) C are stale there.
+
+**Fix:** rebuild the zephyr C zenoh/xrce fixtures in the symlinked root
+(`just zephyr build-fixtures`, or build with `NROS_ZEPHYR_BUILD_ROOT` pointed at
+the fresh SSOT root) so the resolver picks the NSOS variant, then re-add the 5
+tests (test code is proven — reverted only to avoid red tests in `test-all`
+while the fixture is stale).
 
 ### 183.2 — Native + Zephyr XRCE C service/action E2E
 
