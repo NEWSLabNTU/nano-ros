@@ -695,13 +695,56 @@ pub fn ros2_env_setup_dds(distro: &str) -> String {
     ros2_env_setup_dds_with_domain(distro, 0)
 }
 
-/// Get ROS 2 environment setup command for DDS with an explicit domain.
+/// Get ROS 2 environment setup command for DDS with an explicit domain
+/// (defaults the middleware to `rmw_fastrtps_cpp`).
 pub fn ros2_env_setup_dds_with_domain(distro: &str, domain_id: u8) -> String {
+    ros2_env_setup_rmw_with_domain(distro, "rmw_fastrtps_cpp", domain_id)
+}
+
+/// Get ROS 2 environment setup for an explicit RMW + domain. No zenoh locator —
+/// DDS RMWs use multicast discovery on the local network. The `rmw` string
+/// selects the ROS 2 middleware (`rmw_fastrtps_cpp`, `rmw_cyclonedds_cpp`, …).
+pub fn ros2_env_setup_rmw_with_domain(distro: &str, rmw: &str, domain_id: u8) -> String {
     format!(
         "source /opt/ros/{distro}/setup.bash && \
-         export RMW_IMPLEMENTATION=rmw_fastrtps_cpp && \
+         export RMW_IMPLEMENTATION={rmw} && \
          export ROS_DOMAIN_ID={domain_id}"
     )
+}
+
+/// Get ROS 2 environment setup for CycloneDDS (`rmw_cyclonedds_cpp`) + domain.
+/// Used by the CycloneDDS ↔ ROS 2 interop suite (Phase 183.5) — nano-ros's
+/// Cyclone backend and a stock `rmw_cyclonedds_cpp` ROS 2 node share a
+/// `ROS_DOMAIN_ID` and discover over RTPS/SPDP.
+pub fn ros2_env_setup_cyclonedds_with_domain(distro: &str, domain_id: u8) -> String {
+    ros2_env_setup_rmw_with_domain(distro, "rmw_cyclonedds_cpp", domain_id)
+}
+
+/// Check if `rmw_cyclonedds_cpp` is available in the ROS 2 install.
+pub fn is_rmw_cyclonedds_available() -> bool {
+    Command::new("bash")
+        .args([
+            "-c",
+            "source /opt/ros/humble/setup.bash && ros2 pkg list | grep -q rmw_cyclonedds_cpp",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Require ROS 2 with CycloneDDS (`rmw_cyclonedds_cpp`) for a test.
+pub fn require_ros2_cyclonedds() -> bool {
+    if !is_ros2_available() {
+        eprintln!("Skipping test: ROS 2 not found");
+        return false;
+    }
+    if !is_rmw_cyclonedds_available() {
+        eprintln!("Skipping test: rmw_cyclonedds_cpp not found");
+        return false;
+    }
+    true
 }
 
 /// Managed ROS 2 process using DDS (rmw_fastrtps_cpp).
@@ -817,6 +860,55 @@ impl Ros2DdsProcess {
             "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
         );
         Self::spawn_bash(&cmd, format!("ros2-dds service call {service_name}"))
+    }
+
+    // --- CycloneDDS variants (Phase 183.5) — same `ros2` CLI, but with
+    // RMW_IMPLEMENTATION=rmw_cyclonedds_cpp so the ROS 2 node speaks Cyclone
+    // RTPS to nano-ros's CycloneDDS backend on a shared ROS_DOMAIN_ID. ---
+
+    /// CycloneDDS topic echo subscriber on a specific ROS domain.
+    pub fn topic_echo_cyclonedds_with_domain(
+        topic: &str,
+        msg_type: &str,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
+        let cmd = format!(
+            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
+        );
+        Self::spawn_bash(&cmd, format!("ros2-cyclone topic echo {topic}"))
+    }
+
+    /// CycloneDDS topic publisher on a specific ROS domain.
+    pub fn topic_pub_cyclonedds_with_domain(
+        topic: &str,
+        msg_type: &str,
+        data: &str,
+        rate: u32,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
+        let cmd = format!(
+            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
+        );
+        Self::spawn_bash(&cmd, format!("ros2-cyclone topic pub {topic}"))
+    }
+
+    /// CycloneDDS service call on a specific ROS domain.
+    pub fn service_call_cyclonedds_with_domain(
+        service_name: &str,
+        service_type: &str,
+        request: &str,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
+        let cmd = format!(
+            "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
+        );
+        Self::spawn_bash(&cmd, format!("ros2-cyclone service call {service_name}"))
     }
 
     /// Wait for output and return it

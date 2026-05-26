@@ -6,9 +6,11 @@ runtime E2E test exercising its pub/sub, service, and action cases, and each RMW
 backend should have ROS 2 interop coverage proportional to its purpose. Fill the
 gaps; do **not** invent tests for intentionally-empty cells.
 
-**Status.** Proposed. Created 2026-05-26 from the E2E completeness audit (run
+**Status.** In progress. Created 2026-05-26 from the E2E completeness audit (run
 against the `cargo nextest list` inventory + the `examples/README.md` coverage
-matrix, after Phase 182's test de-dup).
+matrix, after Phase 182's test de-dup). **183.5 landed** — the CycloneDDS↔ROS 2
+interop test scaffolding (detection passes; interop cases `#[ignore]`d pending
+the 117.12 product work). 183.1–183.4, 183.6 open.
 
 **Priority.** P2 (test coverage / regression confidence). The CycloneDDS↔ROS 2
 item (183.4) is P1-adjacent — it is Phase 117's core goal and currently has
@@ -109,7 +111,34 @@ Phase 175). The Cyclone C++ action get_result/feedback path landed in
 `28e9e6502` + the Phase 171.0.b follow-ups — this test pins it. **Files**:
 `tests/native_api.rs`. **Est.**: ~4 tests (service + action × {c, cpp}).
 
-### 183.5 — CycloneDDS ↔ ROS 2 interop (Phase 117 core goal, zero coverage today)
+### 183.5 — CycloneDDS ↔ ROS 2 interop — DONE (scaffolding; interop pending 117.12)
+
+**Landed:** new `tests/cyclonedds_ros2_interop.rs` mirroring `rmw_interop.rs` /
+`xrce_ros2_interop.rs` — a nano-ros Cyclone node + a stock `rmw_cyclonedds_cpp`
+ROS 2 node on a shared `ROS_DOMAIN_ID`:
+- `test_cyclonedds_ros2_detection` (always runs; reports ROS 2 + rmw_cyclonedds
+  availability — verified PASS locally, both present).
+- `test_cyclonedds_nano_to_ros2_pubsub`, `test_cyclonedds_ros2_to_nano_pubsub`,
+  `test_cyclonedds_service_nano_server_ros2_client` — `#[ignore]`d with a 117.12
+  reason (stock Cyclone wire interop not passing yet), so they exist as tracked,
+  runnable coverage (`--run-ignored all`) rather than a silent gap, and flip to
+  passing as 117.X lands. Each skips cleanly when ROS 2/`rmw_cyclonedds_cpp` or
+  the native Cyclone fixtures are absent.
+
+Infra added to `src/ros2.rs`: `is_rmw_cyclonedds_available` / `require_ros2_cyclonedds`,
+`ros2_env_setup_rmw_with_domain` (RMW-parametrized; the fastrtps `_dds_` setup now
+delegates to it) + `ros2_env_setup_cyclonedds_with_domain`, and three
+`Ros2DdsProcess::*_cyclonedds_with_domain` constructors (topic echo/pub, service
+call). `.config/nextest.toml` gets a `cyclonedds_ros2_interop` group (max-threads
+3, per-test distinct domains) + `retries = 2`.
+
+Verified: compiles clean, detection passes, the interop harness reaches a clean
+`skip!` when the Cyclone C fixtures aren't prebuilt. Remaining (the product side,
+**not this phase**): make the interop actually pass — Phase 117.12 / 117.X stock
+`rmw_cyclonedds_cpp` wire-compat. Drop each `#[ignore]` as its case starts
+working (run after `just cyclonedds setup` + `just build-test-fixtures`).
+
+#### original plan
 
 **Highest-value gap.** CycloneDDS exists to be wire-compatible with stock
 `rmw_cyclonedds_cpp`, yet no test exercises nano-ros↔ROS 2 over Cyclone. Stand up
