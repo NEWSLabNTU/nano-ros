@@ -143,12 +143,25 @@ migrate from a pre-140 checkout.
       for cbindgen.toml + the build.rs itself.
       **Files.** `packages/**/build.rs`.
 
-- [ ] **145.4 — Verify Phase 134.5 source-list drift gate landed
-      and extend if not.** If it has landed in nros-rmw-zenoh-staticlib's
-      shape, mirror into other Rust crates that ship vendored
-      C/C++ source lists (zpico-sys, nros-rmw-dds, ...).
-      **Files.** `packages/zpico/zpico-sys/build.rs`,
-      `packages/dds/nros-rmw-dds-staticlib/build.rs` (if exists).
+- [x] **145.4 — Verify the source-list drift gate landed and extend if not.**
+      DONE 2026-05-26. **Verified:** the gate landed in `zpico-sys/build.rs`
+      (Phase 136.6 — every `zenoh_platforms.toml` `include` root is checked to
+      resolve to a real dir with `.c` files, panics on drift, + per-dir
+      `rerun-if-changed`; backed by `tests/zpico_drift_gate.rs`). The doc's
+      `nros-rmw-zenoh-staticlib` has no build.rs (no vendored list), and
+      `nros-rmw-dds-staticlib` no longer exists (dust-dds retired Phase 169).
+      `nros-c/build.rs` vendors no external source list (compiles its own
+      `src/` + has `rerun-if-changed`). **Extended:** the one remaining
+      vendored-C build.rs — `nros-rmw-xrce-cffi` (uxr / micro-cdr submodule
+      sources) — had `rerun-if-changed` but no presence check, so a missing
+      submodule / upstream layout bump surfaced as a confusing cc-rs
+      "file not found". Added a mirror of the 136.6 gate: verify the three
+      vendored roots (`micro-xrce-dds-client/src/c`, `micro-cdr/src/c`,
+      `nros-rmw-xrce/src`) resolve to dirs with sources, panic up front with a
+      `git submodule update --init` hint, + `rerun-if-changed`. Verified: xrce
+      stack recompiles clean (gate passes with submodules present).
+      **Files.** `packages/xrce/nros-rmw-xrce-cffi/build.rs` (gate added);
+      `packages/zpico/zpico-sys/build.rs` (verified, already present).
 
 - [ ] **145.5 — `just cleanup-stale-examples` recipe.**
       One-shot housekeeping for pre-140 users.

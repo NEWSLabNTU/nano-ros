@@ -25,6 +25,48 @@ fn main() {
     let microcdr = xrce_sys.join("micro-cdr");
     let microxrce = xrce_sys.join("micro-xrce-dds-client");
 
+    // Phase 145.4 — source-list drift / submodule-presence gate (mirrors the
+    // zpico-sys 136.6 gate). The vendored uxr / micro-cdr C sources come from
+    // git submodules; a missing checkout or an upstream bump that renamed a
+    // source dir would otherwise surface as a confusing cc-rs "file not found"
+    // mid-compile. Verify each vendored root resolves to a directory with .c
+    // files (or subdirs) up front, with a clear init hint, and emit
+    // rerun-if-changed so a submodule bump retriggers the build.
+    for (label, root, hint) in [
+        (
+            "micro-xrce-dds-client",
+            microxrce.join("src/c"),
+            "git submodule update --init packages/xrce/xrce-sys/micro-xrce-dds-client",
+        ),
+        (
+            "micro-cdr",
+            microcdr.join("src/c"),
+            "git submodule update --init packages/xrce/xrce-sys/micro-cdr",
+        ),
+        (
+            "nros-rmw-xrce",
+            xrce_c.join("src"),
+            "in-repo wrapper — expected at packages/xrce/nros-rmw-xrce/src",
+        ),
+    ] {
+        let has_sources = std::fs::read_dir(&root)
+            .map(|entries| {
+                entries.flatten().any(|e| {
+                    e.path().extension().is_some_and(|x| x == "c")
+                        || e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        if !root.is_dir() || !has_sources {
+            panic!(
+                "nros-rmw-xrce-cffi: vendored `{label}` source root {} is missing or has no \
+                 .c files — submodule not initialised or upstream layout drifted. Fix: {hint}",
+                root.display()
+            );
+        }
+        println!("cargo:rerun-if-changed={}", root.display());
+    }
+
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Phase 129.C.1 — platform fanout driven by `target_os` alone.
