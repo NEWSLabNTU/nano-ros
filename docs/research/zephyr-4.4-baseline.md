@@ -366,3 +366,53 @@ Two findings correct the earlier note:
 The minimal experiment to disambiguate is to disable CONFIG_DYNAMIC_THREAD for
 the cyclonedds 4.4 build and see whether the mutex EPERM disappears (stable
 k_thread identity). Deferred to the focused concurrency follow-up.
+
+## Phase 180.C — module-shipped snippets (`west build -S nros-<rmw>`)
+
+Zephyr 4.x can ship snippets from a module via `zephyr/module.yml`
+`build.settings.snippet_root`. nano-ros now contributes three RMW snippets so a
+downstream user selects the nano-ros RMW the 4.x-native way:
+
+```sh
+west build -b native_sim/native/64 -S nros-cyclonedds <app>
+# RMW alternatives: -S nros-zenoh  /  -S nros-xrce
+```
+
+instead of the legacy overlay form:
+
+```sh
+west build -b native_sim/native/64 <app> -- -DCONF_FILE="prj.conf;prj-cyclonedds.conf"
+```
+
+**This is 4.x-only and purely additive.** Zephyr 3.7 has no snippet support, so
+the `prj-<rmw>.conf` overlays and the `-DCONF_FILE=...` build path stay in place
+and unchanged; `just zephyr build-one` still uses CONF_FILE for both lines.
+
+Layout:
+
+- `zephyr/module.yml` → `build.settings.snippet_root: zephyr`. The snippet root
+  is resolved **relative to the module root** (the dir containing
+  `zephyr/module.yml` = the repo root), and Zephyr's `snippets.py` then scans
+  `<snippet_root>/snippets/`. Pointing it at `zephyr` makes Zephyr discover
+  `zephyr/snippets/*/snippet.yml`. (`.` would scan `<repo-root>/snippets/`,
+  which is the wrong place.)
+- `zephyr/snippets/nros-{zenoh,cyclonedds,xrce}/snippet.yml` — each appends a
+  sibling `<rmw>.conf` to `EXTRA_CONF_FILE`.
+- `zephyr/snippets/nros-{zenoh,cyclonedds,xrce}/<rmw>.conf` — the RMW-common
+  Kconfig (RMW select + transport + POSIX/threads + resource sizing), derived
+  from the canonical `examples/zephyr/c/talker/prj-<rmw>.conf` overlay and kept
+  in lockstep with it.
+
+The snippets are **RMW-only**. The native_sim NSOS / line overlay
+(`cmake/zephyr/native-sim-line-<v>.conf`, which sets `ETH_NATIVE_TAP=n` +
+`NET_SOCKETS_OFFLOAD` etc.) is board+line specific and is deliberately *not*
+baked into the snippet — it continues to be supplied via the `-D` / board
+overlay path.
+
+**Verified on 4.4** (2026-05-26): a `native_sim/native/64` build of
+`examples/zephyr/c/talker` with `-S nros-cyclonedds` (and the NSOS line overlay
+still via `-DCONF_FILE`) reports `Snippet(s): nros-cyclonedds`, merges
+`zephyr/snippets/nros-cyclonedds/cyclonedds.conf`, applies
+`CONFIG_NROS_RMW_CYCLONEDDS=y` + `CONFIG_CPP=y` + `CONFIG_NET_IPV4_IGMP=y` +
+the heavy resource sizing into the merged `.config`, and links `zephyr.elf`.
+`zephyr_settings.txt` carries `"SNIPPET_ROOT":".../nano-ros/zephyr"`.
