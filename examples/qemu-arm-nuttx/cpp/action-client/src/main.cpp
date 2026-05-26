@@ -17,15 +17,19 @@
 using Fibonacci = example_interfaces::action::Fibonacci;
 
 static volatile bool g_result_received = false;
+static volatile bool g_goal_accepted = false;
 static nros::ActionClient<Fibonacci>* g_client_ptr;
 
 static void goal_response_cb(bool accepted, const uint8_t goal_id[16], void* ctx) {
     (void)ctx;
     if (accepted) {
         printf("Goal accepted!\n");
+        fflush(stdout);
+        g_goal_accepted = true;
         g_client_ptr->get_result_async(goal_id);
     } else {
         printf("Goal rejected!\n");
+        fflush(stdout);
     }
 }
 
@@ -62,6 +66,7 @@ static void result_cb(const uint8_t goal_id[16], int32_t status,
     }
 
     printf("\nAction completed successfully.\n");
+    fflush(stdout);
     g_result_received = true;
 }
 
@@ -112,22 +117,43 @@ int nros_app_main(int argc, char **argv) {
     goal.order = 5;
 
     printf("Sending goal: order=%d\n", goal.order);
+    fflush(stdout);
 
     uint8_t goal_id[16];
-    ret = client.send_goal_async(goal, goal_id);
-    if (!ret.ok()) {
-        printf("Failed to send goal: %d\n", ret.raw());
-        nros::shutdown();
-        return 1;
-    }
 
-    for (int i = 0; i < 1000 && !g_result_received; i++) {
+    // Phase 177.30 — DO NOT shrink this ceiling, and keep the resend.
+    //
+    // The full goal→accept→feedback→result chain is very slow on NuttX QEMU
+    // under `-icount` + heavy `test-all` host load (two QEMU guests + zenohd
+    // all competing): each `spin_once(10)` can cost >200 ms of wall time, so
+    // the old 1000-iteration cap gave up (printing "Timeout waiting for
+    // result", accepted=false) BEFORE the goal was even accepted — which
+    // looked like a hang/deadlock but is plain slowness (a direct,
+    // lightly-loaded boot completes: accepted + feedback + result
+    // [0,1,1,2,3,5]). Two robustness measures, both needed:
+    //   1. High ceiling — the loop breaks immediately on completion, so this
+    //      only matters when the host is slow; the real wall-clock bound is
+    //      the harness's `client_timeout` (rtos_e2e.rs — also DO NOT shrink).
+    //   2. Resend until accepted — `send_goal_async` is a one-shot zenoh
+    //      query; on a cold NuttX boot it can fire before the server's
+    //      queryable is discovered and be silently dropped. The blocking C
+    //      action client survives because its `send_goal` spins-and-retries
+    //      internally; this async example must resend explicitly.
+    for (int i = 0; i < 60000 && !g_result_received; i++) {
+        if (!g_goal_accepted && (i % 300) == 0) {
+            ret = client.send_goal_async(goal, goal_id);
+            if (!ret.ok()) {
+                printf("send_goal_async failed: %d (will retry)\n", ret.raw());
+                fflush(stdout);
+            }
+        }
         nros::spin_once(10);
         client.poll();
     }
 
     if (!g_result_received) {
         printf("Timeout waiting for result\n");
+        fflush(stdout);
     }
 
     nros::shutdown();

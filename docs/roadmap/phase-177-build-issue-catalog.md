@@ -1206,6 +1206,31 @@ passed.
     `zpico_get_check` / `call_raw` against the reply-final dropper's
     `_zpico_notify_spin()`.
 
+  **Update 2 2026-05-26 — it is NOT a deadlock; the action code is correct.**
+  A direct, lightly-loaded boot (zenohd `0.0.0.0:7672 --no-multicast-scouting`
+  + server QEMU + client QEMU, no nextest) runs the **full** chain to
+  completion: `Sending goal → Feedback [0] → Goal accepted! → Feedback
+  [0,1,1] → Result [0,1,1,2,3,5] → Action completed successfully`, and the
+  server logs `Goal request [1]: order=5`. So all the earlier
+  "hang/deadlock/Heisenbug" symptoms were the client being killed before the
+  (very slow, under `-icount` + load) chain finished. Two real weaknesses in
+  the async example were hardened (see `examples/.../cpp/action-client`):
+  the result-wait loop no longer self-limits at 1000 iterations, and the
+  one-shot `send_goal_async` is now resent until accepted (matching the
+  blocking C client's internal retry). The harness window for NuttX/Cpp
+  action was raised 60s→240s (= the C variant) with a DO-NOT-SHRINK comment.
+  **STILL OPEN, narrowed:** under the *nextest harness* the server never
+  receives the goal (`Server post-boot:` empty) even at 240s, whereas the
+  *direct boot* — with byte-identical zenohd args (`start_slirp` =
+  `--listen tcp/0.0.0.0:<port> --no-multicast-scouting`), QEMU args, fixtures,
+  and server-then-client order — routes it fine. The remaining delta is
+  harness-level (a discovery/routing or process-sequencing difference between
+  the in-test launch and a direct boot), NOT a zenoh-pico lock bug and NOT the
+  60s timeout. Next: diff the exact QemuProcess launch vs the direct boot
+  (env, fd setup, slirp options, start ordering / inter-launch delay) and
+  capture the wire on the *nextest* run's port to see if the client's query
+  even leaves the guest there.
+
 #### 2026-05-26 Clean-Rebuild Test-All by Group
 
 Full clean-room validation after the Phase 181 fixture-build-SSOT work landed

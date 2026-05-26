@@ -811,15 +811,31 @@ fn test_rtos_action_e2e(
         std::thread::sleep(platform.stabilization_delay());
     }
 
-    // Some platforms (NuttX C action, FreeRTOS C action) need a longer
-    // overall window because each failed send_goal retries several times.
-    // NuttX C action is especially slow: QEMU boot + 5s network wait +
-    // session open + goal round-trip + 11 feedback messages (order=10) +
-    // result round-trip routinely takes ~130s on a loaded host, so the
-    // 120s budget used to fail occasionally; bump to 180s.
+    // ⚠️ DO NOT SHRINK these NuttX/FreeRTOS action windows. ⚠️
+    //
+    // The full goal→accept→feedback→result chain is very slow on QEMU under
+    // `-icount` + heavy `test-all` host load (two QEMU guests + zenohd all
+    // competing for the host CPU). NuttX C action: QEMU boot + 5s net wait +
+    // session open + goal round-trip + feedback + result routinely takes
+    // ~130s, and far longer under a full parallel `test-all`.
+    //
+    // NuttX **C++** action (Phase 177.30): just as slow. The old 60s default
+    // killed the client mid-run, BEFORE "Goal accepted" — which looked like a
+    // hang/deadlock and burned a long investigation (gdb/tshark/zenoh-pico
+    // fork experiments). It is NOT a deadlock: with enough wall time the C++
+    // action completes (accepted + feedback [0]/[0,1,1] + result
+    // [0,1,1,2,3,5] — verified on a direct boot). "Works under gdb" was just
+    // gdb granting more wall time; "no query on the wire in 90s" was the
+    // client not having reached the send yet under load, not a lost query.
+    // The C++ client (examples/.../cpp/action-client) was also hardened to
+    // resend the one-shot async goal + not self-limit its result loop — see
+    // its matching "DO NOT shrink" comment. If this E2E flakes, the answer is
+    // a LONGER window (and/or less host parallelism), never a shorter one.
     let client_timeout = match (platform, lang) {
         (Platform::Freertos, Lang::C) => Duration::from_secs(90),
         (Platform::Nuttx, Lang::C) => Duration::from_secs(240),
+        // NuttX C++ action — see the DO-NOT-SHRINK note above (177.30).
+        (Platform::Nuttx, Lang::Cpp) => Duration::from_secs(240),
         _ => Duration::from_secs(60),
     };
     let client_out = client.wait_for_output(client_timeout).unwrap_or_default();
