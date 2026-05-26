@@ -355,18 +355,79 @@ impl Context {
     /// # Errors
     ///
     /// Returns an error if initialization or session opening fails.
+    /// Backoff between connect attempts. Mirrors the service-client retry's
+    /// platform split: a real `z_sleep_ms` everywhere except ThreadX, whose
+    /// sleep is driven through the cooperative spin path.
+    #[inline]
+    fn connect_backoff_ms(ms: usize) {
+        #[cfg(not(feature = "platform-threadx"))]
+        {
+            unsafe extern "C" {
+                fn z_sleep_ms(time: usize) -> i8;
+            }
+            unsafe {
+                let _ = z_sleep_ms(ms);
+            }
+        }
+        #[cfg(feature = "platform-threadx")]
+        {
+            unsafe {
+                let _ = zpico_sys::zpico_spin_once(ms as u32);
+            }
+        }
+    }
+
+    /// Run an `init + open` attempt with a bounded retry on a transient connect
+    /// failure.
+    ///
+    /// `attempt` performs `zpico_init*` + `zpico_open` and returns `Ok(())` on
+    /// success or `Err((error, retryable))` — `retryable` is `true` only for the
+    /// `zpico_open` (connect) step, `false` for deterministic init/config errors.
+    ///
+    /// Why: `zpico_open`'s `z_open` TCP connect to the router can flake under
+    /// rapid QEMU churn (NuttX cold boot / a fully parallel `test-all`) — a
+    /// single connect races the router's accept and returns `ZPICO_ERR_SESSION`
+    /// → `ConnectionFailed`, aborting node startup ("readiness pattern never
+    /// observed"). Re-running the whole `init + open` (so `zpico_init` rebuilds
+    /// the config that `z_open` consumes via `z_config_move`) with a short
+    /// backoff recovers the transient failure, matching the robustness the
+    /// blocking C client path has. Bounded (~3 s worst case) so a genuinely
+    /// wrong locator still fails promptly. See phase-177 G4 connect-churn note.
+    fn connect_with_retry(
+        mut attempt: impl FnMut() -> core::result::Result<(), (ZpicoError, bool)>,
+    ) -> Result<()> {
+        const MAX_ATTEMPTS: u32 = 10;
+        const BACKOFF_MS: usize = 300;
+        let mut last_err = ZpicoError::Session;
+        for i in 0..MAX_ATTEMPTS {
+            match attempt() {
+                Ok(()) => return Ok(()),
+                Err((err, retryable)) => {
+                    last_err = err;
+                    if !retryable || i + 1 == MAX_ATTEMPTS {
+                        return Err(last_err);
+                    }
+                    Self::connect_backoff_ms(BACKOFF_MS);
+                }
+            }
+        }
+        Err(last_err)
+    }
+
     pub fn new(locator: &[u8]) -> Result<Self> {
         ffi_guard(|| {
-            // Safety: locator is a valid byte slice, cast to c_char for C string
-            let ret = unsafe { zpico_init(locator.as_ptr().cast()) };
-            if ret < 0 {
-                return Err(ZpicoError::from_code(ret));
-            }
-
-            let ret = unsafe { zpico_open() };
-            if ret < 0 {
-                return Err(ZpicoError::from_code(ret));
-            }
+            Self::connect_with_retry(|| {
+                // Safety: locator is a valid byte slice, cast to c_char for C string
+                let ret = unsafe { zpico_init(locator.as_ptr().cast()) };
+                if ret < 0 {
+                    return Err((ZpicoError::from_code(ret), false));
+                }
+                let ret = unsafe { zpico_open() };
+                if ret < 0 {
+                    return Err((ZpicoError::from_code(ret), true));
+                }
+                Ok(())
+            })?;
 
             Ok(Context {
                 _private: PhantomData,
@@ -402,22 +463,24 @@ impl Context {
             properties.as_ptr()
         };
         ffi_guard(|| {
-            let ret = unsafe {
-                zpico_init_with_config(
-                    locator_ptr,
-                    mode.as_ptr().cast(),
-                    props_ptr,
-                    properties.len(),
-                )
-            };
-            if ret < 0 {
-                return Err(ZpicoError::from_code(ret));
-            }
-
-            let ret = unsafe { zpico_open() };
-            if ret < 0 {
-                return Err(ZpicoError::from_code(ret));
-            }
+            Self::connect_with_retry(|| {
+                let ret = unsafe {
+                    zpico_init_with_config(
+                        locator_ptr,
+                        mode.as_ptr().cast(),
+                        props_ptr,
+                        properties.len(),
+                    )
+                };
+                if ret < 0 {
+                    return Err((ZpicoError::from_code(ret), false));
+                }
+                let ret = unsafe { zpico_open() };
+                if ret < 0 {
+                    return Err((ZpicoError::from_code(ret), true));
+                }
+                Ok(())
+            })?;
 
             Ok(Context {
                 _private: PhantomData,

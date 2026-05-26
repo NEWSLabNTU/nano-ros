@@ -1480,10 +1480,23 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   above** and from any code I changed (the server is unmodified). It is the same
   "QEMU-under-load is brutal" sensitivity 182.5 cited when dropping NuttX
   *action* from CI; *pubsub + service* keep NuttX, so they remain exposed under
-  a fully-parallel `test-all`. **Open follow-up (separate item):** make the Rust
-  `Executor::open` connect retry/back off on `ConnectionFailed` (the C path is
-  more tolerant) so the boot stage is churn-robust, OR give the NuttX Rust e2e
-  more boot headroom / serialize its zenohd startup. Not the G4 round-trip bug.
+  a fully-parallel `test-all`. **RESOLVED 2026-05-26.** `Context::{new,with_config}`
+  in `nros-rmw-zenoh` now wrap the `zpico_init` + `zpico_open` sequence in a
+  bounded connect-retry (10 attempts, 300 ms backoff via `z_sleep_ms`, ThreadX
+  via the spin path): a transient `zpico_open`/`z_open` `ConnectionFailed` re-runs
+  the whole init+open (so `zpico_init` rebuilds the config `z_open` consumed)
+  instead of aborting node startup; config/init errors are non-retryable so a
+  wrong locator still fails promptly. Fixes all Rust nodes (talker/listener/
+  service/action), not just service. **Verified:** rapid 5×-back-to-back server
+  boot went **1/5 → 5/5**; the NuttX e2e (pubsub + service × 3 langs) is **6/6**
+  run serially (`--test-threads=1`).
+  **Caveat (host capacity, not a bug):** the nextest config lets the NuttX QEMU
+  e2e run up to 6 pairs (12 QEMU guests) in parallel (`qemu-nuttx` max-threads=9,
+  per-variant=3) — fine on a CI-class host, but a capacity-limited dev box melts
+  down and times out regardless of this fix. Run the NuttX e2e with `-j`-limited
+  concurrency locally (`--test-threads=1` → 6/6 here). Tracked: that parallelism
+  budget vs typical-dev-host capacity is a Phase 179 (test-all wall-clock) tuning
+  question, not an `rtos_e2e` correctness bug.
 - [x] **G5 - Native Cyclone DDS interop (4). RESOLVED 2026-05-26 — stale run.**
   `native_api::test_native_cyclonedds_{rust_talker_to_listener,talker_to_rust_listener}`
   for both `Language__C` and `Language__Cpp`. The failures were a mid-rebase
