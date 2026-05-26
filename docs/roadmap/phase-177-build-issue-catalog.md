@@ -83,11 +83,37 @@ passed.
 
 - [ ] **177.26 - ThreadX Cyclone peer interop / multicast discovery.**
   Owner: Phase 177 runtime/Cyclone follow-up. Split out of 177.22
-  (participant-init trap, closed). The ThreadX RISC-V64 Cyclone C talker
-  boots, creates the publisher, and publishes locally, but no two-node
-  ThreadX↔ThreadX or ThreadX↔native RTPS exchange has been demonstrated.
+  (participant-init trap, closed).
 
-  **2026-05-25 — discovery re-enabled, surfaced a byte-order defect.**
+  **Status 2026-05-26 — ThreadX↔ThreadX RTPS WORKS end-to-end.** The
+  multicast-discovery + data-plane blockers are fixed and verified (see
+  177.26.RX / RX.2 below): a two-QEMU ThreadX-RV64 Cyclone pair now runs
+  SPDP join → discovery → SEDP → reliability → DATA → app delivery, with the
+  listener decoding `Received: 21` against the talker's `Published: 21` over a
+  shared-L2 `socket,mcast` segment. The two fixes:
+  - cyclonedds `ddsi_udp.c` (fork `nano-ros` @ `12b4af2c`) — join multicast
+    with `INADDR_ANY` interface under `DDSRT_WITH_THREADX` (NetX BSD
+    `IP_ADD_MEMBERSHIP` `ntohl`s `imr_interface` vs host-order
+    `nx_interface_ip_address` → `EINVAL` → group never joined).
+  - in-tree `subscriber.cpp` — RX take buffer from `ddsrt_calloc`, not
+    `std::calloc` (unwired libc heap on ThreadX → `BAD_ALLOC` before
+    `dds_take`; Phase 177.22 hazard on the receive side).
+
+  **Remaining scope (why this stays open):**
+  1. Un-`#[ignore]` `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` and run
+     it on **QEMU ≥ 7.2** (`-netdev dgram`). The fix is proven on the lossy
+     `socket,mcast` workaround (this host's QEMU is 6.2 < 7.2); the gated test
+     needs the dgram peer pair for CI. Update the test's stale `#[ignore]`
+     reason (`listener register_subscription fails` — that closed under 177.28).
+  2. **ThreadX↔native** and **stock `rmw_cyclonedds`** interop not yet
+     demonstrated (only ThreadX↔ThreadX). The same `nano-ros`/ROS-2 wire
+     conventions (`rt/` topic prefix, type hash) are exercised on native under
+     117.X, but a mixed ThreadX↔native run is unverified.
+  3. The historical byte-order/discovery investigation below is retained for
+     the record; its `-12 conn_write` / `register_subscription -1` symptoms
+     are **resolved**.
+
+  **2026-05-25 — discovery re-enabled, surfaced a byte-order defect (historical).**
   - Flipped the ThreadX Cyclone profile from `<AllowMulticast>false</AllowMulticast>`
     to `spdp` (`packages/dds/nros-rmw-cyclonedds/src/session.cpp`). The
     board already enables IGMPv2 (`nx_igmp_enable`) and the virtio-net
