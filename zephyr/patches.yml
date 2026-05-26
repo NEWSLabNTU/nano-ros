@@ -101,3 +101,24 @@ patches:
       UPSTREAMABLE: yes — completes the native_sim NSOS IPv4-multicast
       support together with patch 2. Human follow-up: open a Zephyr PR
       (guest + host as one PR).
+
+  # 4. Cyclone DDS runtime — relax pthread_mutex_unlock to Linux/glibc
+  #    NORMAL semantics. Independent of the NSOS patches (different file).
+  - path: pthread-mutex-unlock-4.4.patch
+    sha256sum: 968f867826f3668c25efdeece84fc7ad572e57abff0d69dd853d0346317e9a69
+    module: zephyr
+    author: nano-ros contributors
+    email: nano-ros@newslab.csie.ntu.edu.tw
+    date: 2026-05-26
+    upstreamable: false
+    apply-command: git apply
+    comments: |
+      Phase 180.A — cyclonedds-4.4 runtime fix. Zephyr maps pthread mutexes
+      onto k_mutex (owner-only unlock + rejects unlocking an unlocked mutex,
+      -EPERM); POSIX leaves both UNDEFINED for NORMAL/DEFAULT and Linux/glibc
+      just perform the unlock. Cyclone DDS' ddsrt xevent thread relies on the
+      Linux behaviour, so ddsrt_mutex_unlock() abort()s on 4.x right after the
+      first publish. Force a releasable state (owner=caller, lock_count>=1) so
+      the unlock succeeds.
+      DOWNSTREAM-ONLY: changes Zephyr's deliberate k_mutex POSIX-strictness; an
+      upstream fix would more likely add a per-mutex NORMAL/robust flag.

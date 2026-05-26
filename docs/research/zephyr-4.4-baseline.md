@@ -416,3 +416,24 @@ still via `-DCONF_FILE`) reports `Snippet(s): nros-cyclonedds`, merges
 `CONFIG_NROS_RMW_CYCLONEDDS=y` + `CONFIG_CPP=y` + `CONFIG_NET_IPV4_IGMP=y` +
 the heavy resource sizing into the merged `.config`, and links `zephyr.elf`.
 `zephyr_settings.txt` carries `"SNIPPET_ROOT":".../nano-ros/zephyr"`.
+
+## RESOLVED — cyclonedds-4.4 runtime: k_mutex fix (2026-05-26)
+
+The `ddsrt_mutex_unlock` → `k_mutex` owner-only-unlock `-EPERM` → `abort()`
+(root-caused above) is **fixed**. Zephyr maps pthread mutexes onto `k_mutex`,
+which rejects unlock by a non-owner *and* unlock of an unlocked mutex with
+`-EPERM`; POSIX leaves both UNDEFINED for `NORMAL`/`DEFAULT` and Linux/glibc
+just perform the unlock — which cyclonedds' ddsrt relies on. The fix relaxes
+`pthread_mutex_unlock` to force a releasable state (`owner=caller`,
+`lock_count>=1`) so the unlock always succeeds (the first, narrower
+non-owner-only attempt missed the `owner==NULL`/`lock_count==0` case).
+
+Delivered as `scripts/zephyr/pthread-mutex-unlock-patch-4.4.sh` (wired into the
+4.4 `just zephyr setup` branch) + `zephyr/patches/pthread-mutex-unlock-4.4.patch`
+in `patches.yml` (BYO `west patch`; `upstreamable: false` — it changes Zephyr's
+deliberate k_mutex strictness).
+
+**Verified single-node:** with all NSOS patches + this fix, c/talker cyclonedds
+on 4.4 runs the full window (no abort, exit 137 not 134), recvmsg flood = 0,
+multicast join = OK, and **publishes 1→6** (one per second). A 2-node e2e
+(talker→listener over NSOS multicast) is the remaining confirmation.

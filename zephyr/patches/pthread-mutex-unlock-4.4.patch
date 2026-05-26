@@ -1,0 +1,24 @@
+diff --git a/lib/posix/options/mutex.c b/lib/posix/options/mutex.c
+index 219c6dbaf89..3aa2655841d 100644
+--- a/lib/posix/options/mutex.c
++++ b/lib/posix/options/mutex.c
+@@ -275,6 +275,19 @@ int pthread_mutex_unlock(pthread_mutex_t *mu)
+ 		return EINVAL;
+ 	}
+ 
++	/* nano-ros (Phase 180.A) — POSIX PTHREAD_MUTEX_NORMAL/DEFAULT leaves
++	 * unlock by a non-owning thread (or unlock of an unlocked mutex)
++	 * UNDEFINED; Linux/glibc permit it, and Cyclone DDS' ddsrt relies on
++	 * that — its xevent thread unlocks xevq->lock in a pattern Zephyr's
++	 * k_mutex rejects (owner != current OR lock_count == 0 -> -EPERM),
++	 * which makes ddsrt_mutex_unlock() abort(). Force a releasable state so
++	 * the unlock always succeeds, matching the Linux behaviour cyclonedds
++	 * was written against. */
++	if (m->owner != k_current_get() || m->lock_count == 0U) {
++		m->owner = k_current_get();
++		m->lock_count = 1U;
++	}
++
+ 	ret = k_mutex_unlock(m);
+ 	if (ret < 0) {
+ 		LOG_DBG("k_mutex_unlock() failed: %d", ret);
