@@ -819,9 +819,34 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* server, int64_t seq
     if (!slot.in_use) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    // Wait for the reply reader before writing (services are RELIABLE +
+    // VOLATILE, so a write before the reader matches is silently dropped).
+    // Prefer the firm `current_count > 0` match (the nano-ros↔nano-ros fast
+    // path). But stock `rmw_cyclonedds_cpp` clients on Cyclone 0.10.5 can leave
+    // the writer's `current_count` at 0 even after the reply reader has been
+    // discovered (`total_count > 0`) and is waiting — an under-reported
+    // cross-RMW match-state. In that case, after a short grace, write anyway:
+    // the discovered reader is present and the VOLATILE write reaches it.
+    // Without this the server hangs the full timeout and the stock
+    // `ros2 service call` gives up (117.12.B.1).
     const uint64_t deadline = platform_now_ms() + 5000;
-    nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
-    if (match != NROS_RMW_RET_OK) return match;
+    const uint64_t grace_until = platform_now_ms() + 750;
+    bool ready = false;
+    while (platform_now_ms() < deadline) {
+        dds_publication_matched_status_t st{};
+        if (dds_get_publication_matched_status(state->writer, &st) == DDS_RETCODE_OK) {
+            if (st.current_count > 0) {
+                ready = true;
+                break;
+            }
+            if (st.total_count > 0 && platform_now_ms() >= grace_until) {
+                ready = true;
+                break;
+            }
+        }
+        platform_sleep_ms(5);
+    }
+    if (!ready) return NROS_RMW_RET_TIMEOUT;
 
     uint8_t wire[kWireScratch];
     int32_t wire_len = build_wire_with_header(data, len, slot.id, wire, sizeof(wire));

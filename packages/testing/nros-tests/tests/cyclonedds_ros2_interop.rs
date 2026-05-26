@@ -17,10 +17,18 @@
 //!   (`build_native_c_example_rmw`) receives no sample, even though the C++
 //!   CTest `ros2_sub` (`tests/ros2_pubsub_e2e.sh`) passes both directions — a
 //!   native-C-listener discovery/timing gap, not a wire-compat gap.
-//! - **`service_nano_server_ros2_client`** — still `#[ignore]`d: the nano
-//!   Cyclone server's `send_reply` to a stock ROS 2 client fails (rc=4), a
-//!   117.12.B.1 regression (the nano-client ↔ ros2-server direction works, per
-//!   `tests/ros2_srv_e2e.sh`).
+//! - **`service_nano_server_ros2_client`** — still `#[ignore]`d, but the
+//!   *backend* `send_reply` bug behind the old 117.12.B.1 failure is now
+//!   **fixed + verified** by the C++ CTest `ros2_srv_e2e`
+//!   (`tests/ros2_srv_e2e.sh`, 5/5). It was a reply-writer match-gate bug:
+//!   `service_send_reply` waited for `current_count > 0` on the reply writer,
+//!   but Cyclone 0.10.5 under-reports `current_count` for a stock
+//!   `rmw_cyclonedds_cpp` reply reader that is in fact discovered + waiting.
+//!   Fix: write once the reader is *discovered* (`total_count > 0`) after a
+//!   short grace, not only on `current_count > 0` (`src/service.cpp`). This
+//!   Rust-level test stays ignored only because the native Cyclone service
+//!   *example* produces no executable under `-DNROS_RMW=cyclonedds` yet
+//!   (example-CMake wiring gap, Phase 117/175 — `just/native.just:191`).
 //!
 //! Run the ignored ones with
 //! `cargo nextest run --run-ignored all -E 'binary(cyclonedds_ros2_interop)'`;
@@ -164,7 +172,7 @@ fn test_cyclonedds_ros2_to_nano_pubsub() {
 
 /// nano-ros Cyclone service server ↔ ROS 2 (`rmw_cyclonedds_cpp`) client.
 #[test]
-#[ignore = "117.12.B.1 regression: nano server send_reply to a stock ROS 2 client fails (rc=4); nano-client↔ros2-server direction works"]
+#[ignore = "native Cyclone service example produces no exe under -DNROS_RMW=cyclonedds (example-CMake wiring gap, Phase 117/175; see just/native.just:191). The send_reply backend bug is fixed + verified by the C++ ctest ros2_srv_e2e."]
 fn test_cyclonedds_service_nano_server_ros2_client() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
