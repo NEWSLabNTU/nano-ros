@@ -202,9 +202,15 @@ max-threads = 1
 [test-groups.zephyr-native-cyclonedds]
 max-threads = 1
 
-# XRCE-DDS tests: single Agent instance per test.
+# XRCE-DDS tests (Phase 183.7): each test starts its OWN Agent (ephemeral UDP
+# port via XrceAgent::start_unique, or a per-test tempdir PTY pair via
+# XrceSerialAgent) AND now assigns a per-test ROS_DOMAIN_ID so the Agent's DDS
+# bridge can't cross-talk with concurrent tests. With transport + DDS domain
+# both isolated, the suite runs fully parallel (no max-threads cap). The old
+# max-threads=1 ("single Agent per test") was stale — it serialized to avoid a
+# cross-talk that tolerant assertions were already hiding.
 [test-groups.xrce]
-max-threads = 1
+max-threads = 9
 
 # XRCE ↔ ROS 2 DDS interop: each test starts its own XRCE Agent on an
 # ephemeral UDP port and assigns XRCE + ROS 2 DDS participants to a
@@ -475,8 +481,8 @@ filter = "binary(xrce)"
 test-group = "xrce"
 slow-timeout = { period = "60s", terminate-after = 3 }
 # Phase 177/G6 — same retry budget as the other process-heavy E2E groups
-# (rtos_e2e/emulator/large_msg). max-threads=1 only serializes within the
-# xrce group; these tests still share the host with the wide QEMU groups, so
+# (rtos_e2e/emulator/large_msg). The xrce group now runs parallel (Phase
+# 183.7), but these tests still share the host with the wide QEMU groups, so
 # a transient CPU-starvation timeout (the in-test wait_for_output_pattern
 # expiring) was a hard fail with 0 retries. retries=2 recovers it.
 retries = 2

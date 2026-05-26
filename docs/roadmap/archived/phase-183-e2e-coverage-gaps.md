@@ -286,22 +286,26 @@ different domains and they'd never discover each other.
 
 #### Relaxable (same class as 177.33 — serialization masks a fixable gap)
 
-- [ ] **`xrce`** (binary `xrce`, ~10 tests; currently `max-threads = 1`,
-  reason "single Agent per test"). Transport is **already** isolated: each test
-  starts its own Agent on an ephemeral UDP port (`XrceAgent::start_unique`) or a
-  per-test `tempfile::tempdir()` PTY pair (`XrceSerialAgent`). The only shared
-  resource left is the **DDS domain the Agent bridges to** — in XRCE-DDS the
-  *client* picks the participant domain via `ROS_DOMAIN_ID`, and the tests never
-  set it, so every Agent's DDS side defaults to domain 0 and concurrent tests can
-  cross-talk (low impact for pub/sub, but breaks service/action request↔reply
-  correlation — the same failure mode as the Cyclone action). **Fix**: allocate
-  one `unique_ros_domain_id()` per test and set `ROS_DOMAIN_ID` on both endpoint
-  spawns (helper: extend `set_xrce_udp_locator` callers, ~8 tests); confirm the
-  XRCE example binaries read `ROS_DOMAIN_ID` for their participant domain; then
-  drop `max-threads = 1` from the `xrce` group. Verify with repeated parallel
-  runs (the 177.33 method: `--retries 0 --test-threads N`, several iterations).
-  **Files**: `tests/xrce.rs`, `.config/nextest.toml`, possibly
-  `src/fixtures/xrce_agent.rs`. **Est.**: ~1 helper change + group edit.
+- [x] **`xrce`** (binary `xrce`, 10 tests) — **DONE 2026-05-27.** Was
+  `max-threads = 1`, reason "single Agent per test". Transport was **already**
+  isolated: each test starts its own Agent on an ephemeral UDP port
+  (`XrceAgent::start_unique`) or a per-test `tempfile::tempdir()` PTY pair
+  (`XrceSerialAgent`). The only shared resource left was the **DDS domain the
+  Agent bridges to** — in XRCE-DDS the *client* picks the participant domain via
+  `ROS_DOMAIN_ID`, and the tests never set it, so every Agent's DDS side defaulted
+  to domain 0. **Empirical finding:** relaxing the cap *without* a domain fix still
+  passed 3/3 parallel — the cross-talk was real but invisible, because every XRCE
+  server is the *same* binary (a wrong-server AddTwoInts/Fibonacci reply is still
+  the correct answer) and the assertions are tolerant (≥1 message). Unlike the
+  Cyclone action (177.33), where a C client's goal answered by a C++ server with
+  different result framing corrupted the result. **Fix (defense-in-depth, makes
+  isolation real not accidental):** `set_xrce_udp_locator` gained a `domain`
+  param; each test allocates one `nros_tests::unique_ros_domain_id()` and sets
+  `ROS_DOMAIN_ID` on **both** endpoints (UDP + serial); the `xrce` group cap was
+  lifted to `max-threads = 9`. Verified: 5/5 fully-parallel runs of the whole
+  `binary(xrce)` (incl. serial) pass 10/10, `--retries 0 --test-threads 9`; the
+  G6 `retries = 2` budget stays for cross-group CPU-starvation under `test-all`.
+  **Files**: `tests/xrce.rs`, `.config/nextest.toml`.
 
 #### Blocked (hard resource limit, NOT a masking bug — leave serial)
 

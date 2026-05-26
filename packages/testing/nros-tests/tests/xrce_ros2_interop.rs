@@ -347,7 +347,9 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
             return;
         }
     };
-    let ros2_output = ros2_client.wait_for_output(Duration::from_secs(20)).unwrap_or_default();
+    let ros2_output = ros2_client
+        .wait_for_output(Duration::from_secs(20))
+        .unwrap_or_default();
     server.kill();
     drop(agent);
 
@@ -357,7 +359,9 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
     } else if ros2_output.contains("Goal accepted") || ros2_output.contains("ACCEPTED") {
         eprintln!("[PASS] XRCE action server ↔ ROS 2 DDS client: goal accepted (no result yet)");
     } else {
-        eprintln!("[INFO] ROS 2 DDS action goal did not complete — likely DDS action naming/version drift");
+        eprintln!(
+            "[INFO] ROS 2 DDS action goal did not complete — likely DDS action naming/version drift"
+        );
     }
 }
 
@@ -375,16 +379,14 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
 
-    let mut ros2_server = match Ros2DdsProcess::action_server_fibonacci_with_domain(
-        DEFAULT_ROS_DISTRO,
-        domain_id,
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to start ROS 2 DDS fibonacci action server: {e}");
-            return;
-        }
-    };
+    let mut ros2_server =
+        match Ros2DdsProcess::action_server_fibonacci_with_domain(DEFAULT_ROS_DISTRO, domain_id) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to start ROS 2 DDS fibonacci action server: {e}");
+                return;
+            }
+        };
     // Demo server may be absent (action_tutorials_py not installed) — give it a
     // moment; the client side then INFO-skips if discovery never lands.
     std::thread::sleep(Duration::from_secs(3));
@@ -409,7 +411,9 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
     } else if client_output.contains("Goal accepted") {
         eprintln!("[PASS] ROS 2 DDS action server ↔ XRCE action client: goal accepted");
     } else {
-        eprintln!("[INFO] XRCE action client got no result — ROS 2 demo action server may be absent (action_tutorials_py) or DDS action naming drift");
+        eprintln!(
+            "[INFO] XRCE action client got no result — ROS 2 demo action server may be absent (action_tutorials_py) or DDS action naming drift"
+        );
     }
 }
 
@@ -427,16 +431,14 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
 
-    let mut ros2_server = match Ros2DdsProcess::add_two_ints_server_with_domain(
-        DEFAULT_ROS_DISTRO,
-        domain_id,
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Failed to start ROS 2 DDS add_two_ints server: {e}");
-            return;
-        }
-    };
+    let mut ros2_server =
+        match Ros2DdsProcess::add_two_ints_server_with_domain(DEFAULT_ROS_DISTRO, domain_id) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to start ROS 2 DDS add_two_ints server: {e}");
+                return;
+            }
+        };
     let _ = ros2_server.wait_for_output(Duration::from_secs(5)); // let it reach "Service server ready"
     std::thread::sleep(Duration::from_secs(1));
 
