@@ -820,6 +820,64 @@ fn test_native_cyclonedds_rust_talker_to_listener(
     );
 }
 
+/// Phase 177.26 — ThreadX↔native CycloneDDS interop. A **threadx-linux** node
+/// (ThreadX kernel + NetX Duo over NSOS host sockets) talks to a **native**
+/// POSIX node over the same Cyclone backend on loopback. Proves the
+/// `nano-ros` Cyclone wire (SPDP discovery + `rt/`-prefixed RTPS data) is
+/// platform-agnostic: an RTOS node and a native node interoperate with no
+/// bridge.
+///
+/// The threadx-linux talker is fixed to domain 0 by its `config.toml` (it
+/// ignores `ROS_DOMAIN_ID`), so the native listener runs on domain 0 too.
+/// Domain 0 is free of the auto-allocated test domains (`next_cyclonedds_domain`
+/// starts at 40).
+///
+/// Fixtures: `just cyclonedds setup` + `just threadx_linux build-fixture-extras`
+/// (the cyclone fixtures are gated on the Cyclone install).
+#[test]
+fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+    let cyclone_lib = nros_tests::project_root().join("build/install/lib/libddsc.so");
+    if !cyclone_lib.exists() {
+        nros_tests::skip!("CycloneDDS not installed (run: just cyclonedds setup)");
+    }
+    let talker_bin = nros_tests::project_root()
+        .join("examples/threadx-linux/c/talker/build-cyclonedds/threadx_c_talker");
+    if !talker_bin.exists() {
+        nros_tests::skip!(
+            "threadx-linux CycloneDDS talker missing; build with: \
+             just cyclonedds setup && just threadx_linux build-fixture-extras"
+        );
+    }
+    // Native C Cyclone listener built via the standard fixture path.
+    let listener_bin = cyclone_listener_binary(Language::C);
+
+    // domain 0 — matches the threadx-linux talker's config.toml.
+    let mut listener = spawn_cyclone_binary(&listener_bin, "native-c-cyclonedds-listener", "0");
+    listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
+        .expect("native cyclonedds listener did not become ready");
+
+    let mut talker = spawn_cyclone_binary(&talker_bin, "threadx-linux-cyclonedds-talker", "0");
+
+    std::thread::sleep(Duration::from_secs(8));
+    talker.kill();
+
+    let listener_output = listener
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+    eprintln!("Native listener output (threadx-linux talker):\n{listener_output}");
+
+    let received_count = count_pattern(&listener_output, "Received");
+    assert!(
+        received_count >= 2,
+        "Expected ≥2 CycloneDDS samples from the threadx-linux talker, got {received_count}.\n\
+         Output:\n{listener_output}"
+    );
+}
+
 fn native_rust_service_interop(lang: Language, locator: &str) {
     let rust_client = match nros_tests::fixtures::build_native_service_client() {
         Ok(p) => p.to_path_buf(),

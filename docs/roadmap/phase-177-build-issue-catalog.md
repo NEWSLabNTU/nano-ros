@@ -109,19 +109,29 @@ passed.
      `qemu-system-riscv64` (system 6.2, no dgram), so it wrongly took the dgram
      path. Verified PASS via `socket,mcast` on this host (listener decodes
      `Received`).
-  2. **ThreadX↔native** and **stock `rmw_cyclonedds`** interop not yet
-     demonstrated (only ThreadX↔ThreadX). **Blocked on networking infra, not a
-     code defect:** the bare-metal ThreadX-QEMU-RISCV64 node reaches its peer
-     only over QEMU's `-netdev dgram`/`socket,mcast` L2 (raw ethernet frames in
-     an AF_UNIX/UDP transport). A *native* Cyclone or stock ROS 2 peer speaks
-     real UDP on the host network and cannot join that L2 without a host↔QEMU
-     bridge (TAP/veth = root), which the slirp-only, no-sudo test infra
-     deliberately avoids — and slirp does not forward multicast SPDP. The
-     realistic ThreadX↔native route is the **threadx-linux** target (NSOS-NetX
-     as a host process on a veth, `ZenohRouter::start_on`), but veth creation
-     also needs root. Needs a maintainer decision on test-network provisioning
-     (TAP/veth harness) before it can be exercised; the wire conventions
-     (`rt/` prefix, type hash) are already validated native-side under 117.X.
+  2. ✅ **ThreadX↔native DONE 2026-05-26** — demonstrated via the
+     **threadx-linux** target, not QEMU. A threadx-linux Cyclone talker
+     (ThreadX kernel + NetX Duo over NSOS host sockets) and a native POSIX
+     Cyclone listener interoperate on loopback with **no bridge**: NSOS routes
+     the RTOS node's UDP through the host stack, so SPDP discovery + `rt/`
+     RTPS data flow directly to the native peer. Tracked by
+     `native_api::test_threadx_linux_cyclonedds_talker_to_native_listener`
+     (native listener decodes ≥2 samples; PASS). Domain 0 (the threadx-linux
+     talker's `config.toml`; it ignores `ROS_DOMAIN_ID`), free of the
+     auto-allocated test domains (40+).
+
+     The **bare-metal ThreadX-QEMU-RISCV64** node can't do this loopback trick
+     — it reaches peers only over QEMU's `-netdev dgram`/`socket,mcast` L2
+     (raw ethernet frames in an AF_UNIX/UDP transport); a native/stock peer on
+     real host UDP can't join without a host↔QEMU bridge (TAP/veth = root),
+     which the slirp-only no-sudo infra avoids (and slirp doesn't forward
+     multicast SPDP). So QEMU-RISCV64↔native stays infra-gated, but the
+     platform-agnostic-wire claim is proven by the threadx-linux path above.
+  3. **Stock `rmw_cyclonedds` (real ROS 2) interop** still pending — needs a
+     ROS 2 install + the Phase 117.X stock-RMW wire-compat work (`rt/`/`rq/`/
+     `rr/` prefixes, `cdds_request_header_t`, type-hash mangling). nano-ros
+     Cyclone↔Cyclone (incl. RTOS↔native) is proven; nano-ros↔**stock** is a
+     117 deliverable, not threadx-specific.
 
   **2026-05-25 — discovery re-enabled, surfaced a byte-order defect (historical).**
   - Flipped the ThreadX Cyclone profile from `<AllowMulticast>false</AllowMulticast>`
