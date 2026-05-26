@@ -467,6 +467,12 @@ slow-timeout = { period = "60s", terminate-after = 5 }
 filter = "binary(xrce)"
 test-group = "xrce"
 slow-timeout = { period = "60s", terminate-after = 3 }
+# Phase 177/G6 — same retry budget as the other process-heavy E2E groups
+# (rtos_e2e/emulator/large_msg). max-threads=1 only serializes within the
+# xrce group; these tests still share the host with the wide QEMU groups, so
+# a transient CPU-starvation timeout (the in-test wait_for_output_pattern
+# expiring) was a hard fail with 0 retries. retries=2 recovers it.
+retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(c_xrce_api)"
