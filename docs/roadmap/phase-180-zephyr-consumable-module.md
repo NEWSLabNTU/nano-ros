@@ -139,7 +139,7 @@ under `samples:` with `sample.yaml` + Twister; contribute boards via
 `boards/` (module board_root), `just/zephyr.just`.
 - [x] `snippet_root` + per-RMW snippets (`nros-{zenoh,cyclonedds,xrce}`) carrying the RMW Kconfig (4.x; verified `-S nros-cyclonedds` discovered + applied + built)
 - [x] `samples:` + `sample.yaml` + Twister cases (6 talker/listener samples; module.yml `samples:`; Twister discovery verified)
-- [ ] `board_root` for nano-ros board configs
+- [x] `board_root` — N/A (resolved): nano-ros ships NO Zephyr board definitions (no board.yml/_defconfig/.dts in-repo); it targets upstream/vendor boards (native_sim, fvp_baser_aemv8r, s32z2xxdc2, qemu_cortex_a9) with app-level overlays only. board_root contributes board DEFINITIONS, so there is nothing to export; per-board CONF travels via the example/snippet path. No work needed.
 - [x] Document `-S nros-<rmw>` selection on 4.x
 
 ### 180.D — patch story / upstreaming
