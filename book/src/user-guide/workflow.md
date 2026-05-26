@@ -90,11 +90,11 @@ For each canonical entry point:
 
 ```bash
 # Single example (POSIX, Pattern A or B):
-cd examples/native/rust/zenoh/talker
+cd examples/native/rust/talker
 cargo run
 
 # Single C/C++ example (CMake + add_subdirectory):
-cd examples/qemu-arm-freertos/cpp/zenoh/talker
+cd examples/qemu-arm-freertos/cpp/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=$PWD/../../../../../cmake/toolchain/arm-freertos-armcm3.cmake
 cmake --build build
 

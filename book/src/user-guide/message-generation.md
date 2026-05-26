@@ -201,8 +201,8 @@ impl RosService for AddTwoInts {
 
 Examples are configured as standalone packages (excluded from workspace) because each has its own `.cargo/config.toml` patches. Build each example from its own directory:
 ```bash
-cd examples/native/rust/zenoh/talker && cargo build --features zenoh
-cd examples/native/rust/zenoh/service-client && cargo build --features zenoh
+cd examples/native/rust/talker && cargo build --features zenoh
+cd examples/native/rust/service-client && cargo build --features zenoh
 ```
 
 ## Regenerating Bindings
@@ -249,4 +249,4 @@ no install step required.
 
 ### Usage
 
-See `examples/native/c/zenoh/custom-msg/CMakeLists.txt` for a complete example.
+See `examples/native/c/custom-msg/CMakeLists.txt` for a complete example.

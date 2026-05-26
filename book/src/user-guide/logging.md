@@ -191,9 +191,9 @@ no Fatal).
 
 ## Working examples
 
-- Rust: `examples/native/rust/zenoh/logging/`
-- C: `examples/native/c/zenoh/logging/`
-- C++: `examples/native/cpp/zenoh/logging/`
+- Rust: `examples/native/rust/logging/`
+- C: `examples/native/c/logging/`
+- C++: `examples/native/cpp/logging/`
 
 Each demonstrates per-severity macros + the runtime threshold
 filter.

@@ -10,7 +10,7 @@ Three equivalent entry points; pick by workspace shape:
 
 ```bash
 # Per-example (Pattern B or any single binary):
-cd examples/native/rust/zenoh/talker
+cd examples/native/rust/talker
 cargo run
 
 # Multi-component system orchestration:
@@ -62,7 +62,7 @@ Zephyr deployment uses `west`:
 ```bash
 just zephyr setup
 source zephyr-workspace/env.sh
-west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
+west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
 ./build/zephyr/zephyr.exe
 ```
 

@@ -46,7 +46,7 @@ just setup base                  # workspace tools + zenohd for native examples
 source ./setup.bash               # zenohd / nros / qemu-system-arm on PATH
 
 # Build + run an example (POSIX):
-cd examples/native/rust/zenoh/talker
+cd examples/native/rust/talker
 cargo run
 ```
 

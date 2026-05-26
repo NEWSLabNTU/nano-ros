@@ -153,7 +153,7 @@ full reference + `package.xml` schema.
 1. **Pick the canonical cell.** Confirm `<plat>/<lang>/<rmw>/<name>`
    isn't in the "intentionally empty" list in `examples/README.md`.
 2. **Copy the nearest peer.** Identical-RMW + adjacent-platform is
-   the lowest-risk template (e.g. copy `examples/qemu-arm-freertos/c/zenoh/talker`
+   the lowest-risk template (e.g. copy `examples/qemu-arm-freertos/c/talker`
    to make a new FreeRTOS C/zenoh example).
 3. **Update names + `package.xml`.** Rename `Cargo.toml`'s `name`
    and `[[bin]]` entries (Rust) or `project(...)` and `add_executable(...)`
