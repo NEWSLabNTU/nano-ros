@@ -637,6 +637,10 @@ passed.
         now reports the missing retired source path explicitly; the old
         `examples/bridges/native-rust-zenoh-to-dds` tree is not present in
         the current collapsed examples layout.
+  - **Update 2026-05-26:** both `*_to_dds` bridge test files were **deleted**
+    (see G2) — they targeted the retired dust-dds RMW (Phase 169) with no
+    replacement, so the above `--test bridge_{xrce,zenoh}_to_dds_e2e` arms no
+    longer exist.
   - [x] `integration_esp_idf::esp_idf_integration_shell_smoke` passes when
         run via `just`, which exports `NROS_ESP_IDF_ENV_SHIM` and
         `IDF_PATH` from `just/sdk-env.just`.
@@ -1181,11 +1185,15 @@ so these E2E outcomes are orthogonal to the refactor. Grouped:
   (FREERTOS_DIR + LWIP_DIR) the smoke project doesn't supply`. Same as **177.9.B**
   — the raw-CMake smoke intentionally omits SDK board paths; real coverage is in
   the platform recipes. `cmake_platform_posix` passes. Not bugs.
-- [x] **G2 - Retired bridge-source paths (2).**
-  `bridge_xrce_to_dds_e2e`, `bridge_zenoh_to_dds_e2e`. Same as **177.9.A** — the
-  pre-collapse bridge example trees no longer exist; the tests report the missing
-  retired source explicitly. Not bugs (test fixtures need relocating to the
-  collapsed layout).
+- [x] **G2 - Retired bridge-source paths (2). RESOLVED 2026-05-26 — tests deleted.**
+  `bridge_xrce_to_dds_e2e`, `bridge_zenoh_to_dds_e2e` targeted the retired
+  **dust-dds** RMW (Phase 169); their example trees
+  (`examples/native/c/bridge/xrce-to-dds`,
+  `examples/bridges/native-rust-zenoh-to-dds`) were deleted in the Phase 118
+  collapse with no DDS replacement (a Cyclone bridge would be a new example
+  under `examples/bridges/`, not these). The tests could only ever `skip!`
+  (which panics → counted RED in the nextest tally). Both test files removed —
+  there was nothing to relocate to. -2 from the failure count.
 - [x] **G3 - Flaky, pass on isolated rerun (2).**
   `safety_e2e::test_safety_e2e_talker_listener` (ran 40 s then failed in the
   parallel sweep; isolated rerun "safety-e2e results: 3 ok, 0 fail") and
