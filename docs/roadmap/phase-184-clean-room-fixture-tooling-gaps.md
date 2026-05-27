@@ -11,7 +11,11 @@ and one codegen-link gap.
 2026-05-27 (most reds were fixture-not-built preconditions + one test-timing bug,
 now fixed). **184.8 OPEN** — the 3 zephyr cyclonedds action e2e tests DO
 reproduce a hard failure here on fresh fixtures (real product gap, 177.2;
-contradicts the 184.7 zephyr "GREEN" row).
+contradicts the 184.7 zephyr "GREEN" row); isolated to **post-match reliable
+data delivery** (write OK, server RHC empty), prime lead frozen Cyclone clock
+on native_sim (unverified). **184.9 OPEN** — Zephyr Cyclone fixture incremental
+build misses backend source edits (stale binaries) — blocks iterative 177.2
+diagnosis; fix rebuild reliability first.
 **Priority:** Medium.
 **Depends on:** Phase 177 (archived — product fixes incl. the Cyclone idlc
 re-resolve harden), Phase 175 (native Cyclone CMake/Corrosion fixtures).
@@ -340,15 +344,44 @@ reverted).** New facts:
      extra threads (more endpoints ⇒ more Cyclone workers) push a tid collision
      that drops the **timed-event / xmit** thread.
 
-**Next step:** verify whether `ddsrt_time_monotonic()` / the Cyclone time source
-advances on native_sim (instrument it, or check the ddsrt Zephyr port), and
-whether the timed-event thread actually runs (the `tid in use` set). If the
-clock is frozen, fixing the ddsrt clock on native_sim likely unblocks reliable
-retransmit for the action channel (and is the real 177.2 fix).
+**Clock check attempted (2026-05-28) — INVALIDATED + surfaced a build blocker.**
+Tried to log `dds_time()` vs the app clock in `session_drive_io`, but:
+1. The probe used an invalid `extern "C"` declaration *inside a function body* (a
+   compile error), and
+2. **`just zephyr build-fixtures` did not recompile the changed backend** — the
+   built `zephyr.exe` still contained the *previous* round's (reverted)
+   `[cyc-dbg]` strings and lacked the new one (verified with `strings`). The
+   incremental fixture build silently skipped the cyclone-backend recompile, so
+   the probe ran against a **stale binary** — and the staleness also masked the
+   compile error until a forced `rm -rf build-*-cyclonedds && just zephyr
+   build-fixtures` exposed it.
+So the clock lead is **UNVERIFIED**. (The earlier *match-succeeds* and
+*write-succeeds / RHC-empty* findings remain trustworthy — those binaries
+provably contained their diagnostics: the Cyclone trace + the `flush WRITE`
+string were present in the artifacts that produced them.)
+
+### 184.9 — Zephyr Cyclone fixture incremental build misses backend source changes (diagnosis blocker)
+Editing `packages/dds/nros-rmw-cyclonedds/src/*.cpp` and re-running `just zephyr
+build-fixtures` (exit 0) frequently **does not relink** the affected
+`zephyr.exe` (the cyclone backend lib is cached / its rebuild not triggered by
+the source edit). Symptoms: tests run a **stale binary**; injected diagnostics
+don't appear; compile errors stay hidden. Forcing it needs
+`rm -rf ../<workspace>/build-<lang>-<role>-cyclonedds && just zephyr
+build-fixtures` (and a full `build-fixtures` can fail on *unrelated* cpp action
+fixtures, aborting the batch). This makes iterative backend diagnosis on Zephyr
+Cyclone unreliable + expensive — **fix this rebuild reliability first** before
+resuming 177.2 backend instrumentation. (Separately, the nros-tests staleness
+gate over-fires on `.gitignore`/mtime noise — 184.8 note above.)
+
+**Next step (once rebuilds are reliable):** re-run the `dds_time()`-vs-app-clock
+check on a **force-clean** build to confirm/deny the frozen-clock hypothesis;
+if frozen, fix the ddsrt time source on the native_sim port — likely the real
+177.2 fix.
 
 Owner: **177.2** — isolated to **post-match reliable data delivery** (write OK,
-server RHC empty); leads = **frozen Cyclone clock + tid-reuse on native_sim**.
-~18 trace/build cycles spent; discovery/QoS/naming/gate/timeout all ruled out.
+server RHC empty); prime lead = **frozen Cyclone clock / timed-event thread on
+native_sim** (UNVERIFIED, blocked by 184.9). ~24 trace/build cycles spent;
+discovery/QoS/naming/gate/timeout all ruled out by evidence.
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).
