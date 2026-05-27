@@ -218,8 +218,18 @@ example migration (K), then the audit/docs (N).
         green. The full `SESSION_SPECS`-by-id wiring is the K.5 runtime step;
         K.4 lands the schema + generator + the binding field.
   - [ ] **172.K.5 — runtime `create_node_on`-by-id.** Bind a node to a session
-        by transport `id` (not just `rmw`); only required when two transports
-        share an `rmw` — deferrable until a same-rmw multi-transport build exists.
+        by transport `id` (not just `rmw`); only required for **case D**
+        (segregated same-rmw sessions) in the transport taxonomy — deferrable
+        until such a build exists.
+  - [ ] **172.K.7 — multi-homing `[[transport]].interfaces` (list).** A single
+        session spanning several NICs as one merged graph (taxonomy cases B/C —
+        the common "node reachable on multiple interfaces" need, what stock
+        DDS/zenoh do natively). Generalize the current single `interface` field
+        to a list; generator maps it per backend (zenoh listen/connect per NIC +
+        scouting iface; Cyclone `<Interfaces>`; Fast DDS whitelist). Distinct
+        from K.5 (merge vs segregate). Design:
+        [`docs/design/configuration-and-transports.md`](../design/configuration-and-transports.md)
+        ("Two axes" taxonomy).
   - [x] **172.K.6 — drop the legacy arms + delete `config.toml`.** DONE
         2026-05-27. All 88 examples + 2 nros-bench fixtures on `nros.toml`
         (0 source `config.toml` repo-wide); legacy `[network]`/`[zenoh]`/
