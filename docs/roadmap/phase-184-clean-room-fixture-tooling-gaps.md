@@ -222,7 +222,10 @@ regressions — Group-1 touches only additive board `from_toml` parsers + the mp
 baremetal example's `nros.toml` + the 184.6 zephyr build fix; none of these test
 paths.
 
-### 184.8 — Zephyr CycloneDDS actions DO reproduce a hard failure here (contradicts the 184.7 "GREEN" row)
+### 184.8 — Zephyr CycloneDDS actions hard-fail (forwarded owner; Phase 177 archived)
+*Phase 177 (incl. 177.2) is archived/closed. This live action-goal-delivery gap
+is now owned here under 184.8; "177.2" below is the historical reference only.*
+
 **Re-verified 2026-05-27 with a full `just zephyr setup` + `just zephyr
 build-fixtures` in this env.** Contrary to the 184.7 zephyr row above (which
 records 177.2 as GREEN / 15-15 PASS, "not re-run in this SDK-less env"), all
@@ -378,14 +381,16 @@ check on a **force-clean** build to confirm/deny the frozen-clock hypothesis;
 if frozen, fix the ddsrt time source on the native_sim port — likely the real
 177.2 fix.
 
-Owner: **177.2** — isolated to **post-match reliable data delivery** (write OK,
-server RHC empty); prime lead = **frozen Cyclone clock / timed-event thread on
-native_sim** (UNVERIFIED, blocked by 184.9). ~24 trace/build cycles spent;
-discovery/QoS/naming/gate/timeout all ruled out by evidence.
+Owner: **184.8** (forwarded from **177.2**, which is **archived** — Phase 177 is
+closed, so this live action-delivery gap is now tracked here). Isolated to
+**post-match reliable data delivery** (write OK, server RHC empty); prime lead =
+**frozen Cyclone clock / timed-event thread on native_sim** (UNVERIFIED, blocked
+by 184.9). ~24 trace/build cycles spent; discovery/QoS/naming/gate/timeout all
+ruled out by evidence.
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).
-> Treat 177.2 as **open**.
+> Treat as **open**, owned by 184.8 (177.2 archived).
 
 ## Acceptance
 - A clean-room `clean → setup → build-all → build-test-fixtures → test-all` on a
