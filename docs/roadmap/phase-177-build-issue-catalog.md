@@ -1055,16 +1055,24 @@ passed.
   clean, so it's unaffected; only in-place reruns hit this. (The Rust/`option_env!`
   path is fine — rustc tracks the env and recompiles.)
 
-  **Verified end-to-end (2026-05-27): threadx-linux = 61.** Clean-rebuilt the
-  threadx-linux Cyclone fixtures (`app_config.h` now bakes `.domain_id = 61`) and
-  `test_threadx_linux_cyclonedds_talker_to_native_listener` **PASSES** (talker
-  baked 61 ↔ native listener spawned 61); the full Cyclone regression set is green
-  (13/13: native talker/listener/service/action C+C++ + the three functional
-  `cyclonedds_ros2_interop` tests + threadx-linux). freertos (60) / threadx-rv64
-  (62) Cyclone *fixture builds* need their cross SDKs (freertos cross-`libddsc.a`,
-  threadx-rv64 cross probe) not in this sandbox, but use the same verified
-  override path (freertos/threadx-rv64/stm32f4 example builds confirmed
-  env-tracked).
+  **Verified end-to-end (2026-05-27): ALL THREE embedded-Cyclone targets
+  clean-rebuilt + tested PASS** (the cross-libs *were* present —
+  `build/cyclonedds-{freertos,threadx-rv64}-install/lib/libddsc.a` — so the
+  earlier "need cross SDKs not in sandbox" note was wrong):
+  - **threadx-linux = 61** — `app_config.h` bakes `.domain_id = 61`;
+    `test_threadx_linux_cyclonedds_talker_to_native_listener` PASSES (talker baked
+    61 ↔ native listener spawned 61).
+  - **freertos = 60** — Rust/`option_env!` fixture rebuilt;
+    `test_freertos_rust_talker_cyclonedds_boot` + `…_local_pubsub_e2e` PASS.
+  - **threadx-rv64 = 62** — C fixtures bake `.domain_id = 62`;
+    `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` PASSES (built with
+    `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`).
+  Plus the full native Cyclone regression (13/13). **Recipe-edit bug found + fixed
+  while doing this:** the threadx-rv64 helper first used a `${_dom:+NROS_DOMAIN_ID=$_dom}`
+  *inline env-prefix*, but a `VAR=val` prefix produced by parameter expansion is
+  parsed by bash as a *command* (`NROS_DOMAIN_ID=62: command not found`, exit 127),
+  not an assignment — switched to an explicit `export`. (The `-D…` *argument* form
+  is fine; only assignment-prefixes have this rule.)
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,

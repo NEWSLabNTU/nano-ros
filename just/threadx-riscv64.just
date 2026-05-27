@@ -180,9 +180,13 @@ build-fixture-extras:
           "config_dir=$config_dir" \
           "codegen=$codegen" \
           "cyclonedds_prefix=${cyclonedds_prefix:-}")"
+        # Export the domain (not an inline VAR=val prefix — a prefix produced by
+        # ${_dom:+…} expansion is parsed as a command, not an assignment). The
+        # Rust/Corrosion build reads it via option_env!; the -D below covers the
+        # C/C++ glue. Only set for Cyclone (_dom non-empty).
+        [ -n "$_dom" ] && export NROS_DOMAIN_ID="$_dom"
         THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
         THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-        ${_dom:+NROS_DOMAIN_ID=$_dom} \
           nros_cmake_fixture_build "$dir" "$dir/$build_dir" "$sig" \
             -DNROS_RMW="$rmw" \
             ${_dom:+-DNROS_DOMAIN_ID=$_dom} \
