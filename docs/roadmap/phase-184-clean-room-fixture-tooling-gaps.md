@@ -149,6 +149,46 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   184.1). Folded into 184.2; tracked separately only to confirm after the
   fixture build lands.
 
+### 184.6 — `graph.cpp` (177.36 `ros_discovery_info`) breaks the **zephyr cyclonedds** build (`build-all` RED)
+- [x] **FIXED** on `feature/phase-172-group1-config` (`15a2ac982`), pending merge
+  to main — so as of 2026-05-27 a fresh `build-all` on plain main is **RED**
+  (contradicts the stale "build-all is green" note below).
+- 177.36 (`00bc53ef3`) added `packages/dds/nros-rmw-cyclonedds/src/graph.cpp`,
+  which `#include "rmw_dds_common_graph.h"` — an **idlc-generated** header. The
+  standalone `nros-rmw-cyclonedds/CMakeLists.txt` generates it via
+  `NrosRmwCycloneddsTypeSupport` (idlc on `src/idl/rmw_dds_common_graph.idl`).
+  The **Zephyr** path (`zephyr/CMakeLists.txt`) compiles the backend by
+  `file(GLOB src/*.cpp)` — so it picked up `graph.cpp` but **never ran the
+  graph-types codegen nor added its include dir** → all **36** zephyr cyclonedds
+  fixtures (rust+c talker/listener/service/action) fail:
+  `fatal error: rmw_dds_common_graph.h: No such file or directory`.
+- **Fix (landed on the feature branch):** mirror the standalone codegen in the
+  zephyr cyclonedds block — pre-set `IDLC_EXECUTABLE` (host idlc; no imported
+  `CycloneDDS::ddsc` target on embedded), `include(NrosRmwCycloneddsTypeSupport)`,
+  `nros_rmw_cyclonedds_idlc_compile(... rmw_dds_common_graph.idl ...)`, add the
+  generated descriptor + register TU to the library sources and the output dir to
+  the include path. `build-all` → exit 0 after the fix.
+- Note: the earlier `CONFIG_NROS_DOMAIN_ID`-not-found error on the same fixtures
+  was a **stale build dir** (cached `kconfig.rs` predating 177.38's symbol) — a
+  clean rebuild cleared it and unmasked this graph.cpp gap.
+
+### 184.7 — runtime `test-all` reds (product gaps, owned elsewhere; not 184 tooling)
+`test-all` (post-184.6 fix, fixtures green) = 761 run, 753 passed (22
+flaky-recovered), **7 hard failures** (exhaust `retries=2`) + 1 `[SKIPPED]`
+(`nuttx_make_e2e`, see 184.4). The 7 are **product** gaps tracked in their own
+phases — listed here only so the clean-room baseline is honest, not as 184 work:
+
+| Test | Owning phase |
+|------|--------------|
+| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** — zephyr cyclonedds actions (CLAUDE.md: pending). Now *builds* (184.6) so it runs + hits the runtime gap |
+| `threadx_riscv64_qemu test_threadx_riscv64_cyclonedds_two_qemu_pubsub`, `native_api test_threadx_linux_cyclonedds_talker_to_native_listener` | **177.26** — ThreadX Cyclone peer interop / multicast discovery |
+| `rtos_e2e test_rtos_pubsub_e2e::Nuttx::Rust` | **177.30** — NuttX `z_open` hang |
+| `large_msg test_zenoh_overflow_detection` | flake-class (zenoh overflow); re-run-sensitive |
+
+None are Phase-172 (Group-1) regressions — Group-1 touches only additive board
+`from_toml` parsers + the mps2 baremetal example's `nros.toml` + the 184.6 zephyr
+build fix; none of these test paths.
+
 ## Acceptance
 - A clean-room `clean → setup → build-all → build-test-fixtures → test-all` on a
   capacity-adequate host is green with no manual per-tool steps (184.1–184.3),
@@ -157,10 +197,12 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
 - `nuttx_make_e2e` links (184.4).
 
 ## Notes
-- The product work is done + verified: `build-all` is green (the 177 idlc
-  re-resolve harden eliminated the idlc-127 that previously made `build-all`
-  exit 2), and the 177 zenoh fixes (fflush deadlock, service round-trip retry,
-  `Executor::open` connect-retry) are in archived Phase 177.
+- ~~`build-all` is green~~ **Correction (2026-05-27, see 184.6):** the 177 idlc
+  re-resolve harden fixed the idlc-127, but 177.36's `graph.cpp` then broke the
+  **zephyr cyclonedds** build (36 fixtures) — `build-all` on plain main is RED
+  until the 184.6 fix merges. The other 177 fixes (idlc re-resolve, zenoh fflush
+  deadlock, service round-trip retry, `Executor::open` connect-retry) are in
+  archived Phase 177 and hold.
 - Cyclone test-runner domain isolation (concurrent native_sim nodes sharing DDS
   domains → SPDP cross-talk) is a *separate* concern tracked under 177.33/177.35;
   the 184 native_sim Cyclone fails here were missing-fixture, not concurrency
