@@ -2,6 +2,11 @@
 // Provides `std::this_thread::sleep_for(chrono::duration)` —
 // the only API surface Cyclone DDS service.cpp uses today.
 // Forwards to Zephyr's `k_sleep`. No `std::thread` class.
+// Phase 177 (ASI bump) — defer to the real libstdc++ <thread> when reachable
+// (this defining shim collides with it otherwise). See cxx-compat/atomic.
+#if defined(__has_include) && __has_include(<bits/std_thread.h>)
+#include_next <thread>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_THREAD
 #define NROS_ZEPHYR_CXX_COMPAT_THREAD
 
@@ -40,3 +45,4 @@ inline void yield() {
 } // namespace std
 
 #endif // NROS_ZEPHYR_CXX_COMPAT_THREAD
+#endif // __has_include(<bits/std_thread.h>)

@@ -8,6 +8,16 @@
 // NOT a drop-in libstdc++ replacement. Embedded callers that
 // need richer atomic ops should land them here on demand or
 // switch to the underlying `<stdatomic.h>` primitives directly.
+// Phase 177 (ASI bump) — when the toolchain's full libstdc++ <atomic> is
+// reachable, defer to it via #include_next. These Phase 11W.3 shims DEFINE
+// std symbols (std::atomic<>, atomic_thread_fence, memory_order), so layering
+// them on top of a real <atomic> that a consumer also pulls (e.g. via
+// <memory>) is a redefinition error. The shim is only for Zephyr targets
+// whose libstdc++ layer is absent — probe a libstdc++-internal header the
+// shim does not shadow.
+#if defined(__has_include) && __has_include(<bits/atomic_base.h>)
+#include_next <atomic>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_ATOMIC
 #define NROS_ZEPHYR_CXX_COMPAT_ATOMIC
 
@@ -115,3 +125,4 @@ inline void atomic_signal_fence(memory_order order) noexcept {
 } // namespace std
 
 #endif // NROS_ZEPHYR_CXX_COMPAT_ATOMIC
+#endif // __has_include(<bits/atomic_base.h>)
