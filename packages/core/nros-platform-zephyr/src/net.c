@@ -279,8 +279,8 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
 
 /* ---- UDP multicast ----
  *
- * Zephyr's zsock layer exposes IP_ADD_MEMBERSHIP + struct ip_mreqn.
- * Requires CONFIG_NET_IPV4_IGMP=y. iface resolution skipped —
+ * Zephyr's zsock layer exposes IP_ADD_MEMBERSHIP + a membership-request
+ * struct. Requires CONFIG_NET_IPV4_IGMP=y. iface resolution skipped —
  * Zephyr applications that need iface-pinned multicast can
  * `net_if_ipv4_select_src_iface` and post-set IP_MULTICAST_IF.
  */
@@ -296,6 +296,26 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
 #  define NROS_NET_USE_IGMP_HELPER 1
 #  include <zephyr/net/igmp.h>
 #  include <zephyr/net/net_if.h>
+#endif
+
+#ifndef NROS_NET_USE_IGMP_HELPER
+/* Phase 184.B — the IP_ADD_MEMBERSHIP membership-request struct differs by
+ * the active libc. newlib's <netinet/in.h> ships the BSD `struct ip_mreq`
+ * (imr_multiaddr + imr_interface) and NOT the Linux `ip_mreqn` extension —
+ * so on CONFIG_NEWLIB_LIBC targets (e.g. fvp_baser_aemv8r) `struct ip_mreqn`
+ * is an incomplete type. Zephyr's own minimal/picolibc BSD layer ships
+ * `ip_mreqn` (imr_multiaddr + imr_address + imr_ifindex). Zephyr's
+ * IP_ADD_MEMBERSHIP accepts both the 8-byte and 12-byte forms (see the NSOS
+ * multicast patch in zephyr/patches), so use whichever the active libc
+ * actually defines. INADDR_ANY in the interface field = default iface,
+ * identical semantics across both structs. */
+#  if defined(CONFIG_NEWLIB_LIBC)
+typedef struct ip_mreq  nros_mcast_membership_t;
+#    define NROS_MCAST_IFACE(m) ((m).imr_interface)
+#  else
+typedef struct ip_mreqn nros_mcast_membership_t;
+#    define NROS_MCAST_IFACE(m) ((m).imr_address)
+#  endif
 #endif
 
 typedef struct {
@@ -396,7 +416,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         }
     }
 #else
-    struct ip_mreqn mreq;
+    nros_mcast_membership_t mreq;
     memset(&mreq, 0, sizeof(mreq));
     if (join != NULL
         && zsock_inet_pton(AF_INET, (const char *) join, &mreq.imr_multiaddr) != 1) {
@@ -405,7 +425,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
     if (join == NULL) {
         mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
     }
-    mreq.imr_address.s_addr = htonl(INADDR_ANY);
+    NROS_MCAST_IFACE(mreq).s_addr = htonl(INADDR_ANY);
     if (zsock_setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                          &mreq, sizeof(mreq)) < 0) {
         zsock_close(fd); sock->fd = -1; return -1;
@@ -431,10 +451,10 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
             (void) net_ipv4_igmp_leave(nif, &mcast);
         }
 #else
-        struct ip_mreqn mreq;
+        nros_mcast_membership_t mreq;
         memset(&mreq, 0, sizeof(mreq));
         mreq.imr_multiaddr = ((const struct sockaddr_in *) ai->ai_addr)->sin_addr;
-        mreq.imr_address.s_addr = htonl(INADDR_ANY);
+        NROS_MCAST_IFACE(mreq).s_addr = htonl(INADDR_ANY);
         (void) zsock_setsockopt(sockrecv->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                                 &mreq, sizeof(mreq));
 #endif

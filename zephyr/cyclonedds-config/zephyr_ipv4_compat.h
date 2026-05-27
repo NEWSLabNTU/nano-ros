@@ -19,11 +19,15 @@
 #ifdef __ZEPHYR__
 
 #include <zephyr/net/net_ip.h>  /* struct in_addr */
-/* Zephyr ≥3.7 defines `struct ip_mreqn` in <zephyr/net/socket.h>.
- * Pull it in so our compat shim doesn't redefine it (Phase 117 +
- * 168.X.fvp). `struct ip_mreq` (no trailing n) is still missing —
- * Zephyr only ships the newer form — so we keep that one below. */
-#include <zephyr/net/socket.h>  /* struct ip_mreqn (Zephyr ≥3.7) */
+/* Zephyr ≥3.7's own BSD layer defines `struct ip_mreqn` in
+ * <zephyr/net/socket.h>. Pull it in so our compat shim doesn't redefine it
+ * (Phase 117 + 168.X.fvp). `struct ip_mreq` (no trailing n) is still missing
+ * from Zephyr's own headers — it ships only the newer form — so we keep that
+ * one below. NOTE (Phase 184.B): on CONFIG_NEWLIB_LIBC targets newlib's
+ * <netinet/in.h> ships the reverse — `struct ip_mreq` but not `ip_mreqn`; the
+ * net.c multicast path picks the right struct by libc. This Cyclone-TU header
+ * is independent (Cyclone's ddsi_udp.c uses `ip_mreq`, defined below). */
+#include <zephyr/net/socket.h>  /* struct ip_mreqn (Zephyr's own BSD layer) */
 
 /* Phase 180.A — Zephyr 4.x's <zephyr/net/net_compat.h> provides
  * `#define ip_mreq net_ip_mreq` (struct net_ip_mreq lives in net_ip.h).

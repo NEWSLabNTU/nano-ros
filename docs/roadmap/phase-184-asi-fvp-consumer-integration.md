@@ -10,7 +10,8 @@ surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 
 **Status.** In progress (2026-05-27). Surfaced by the autoware-safety-island
 (ASI) west-pin bump `70ab6227d → be4c51364` (610 commits). 184.A landed
-(cxx-compat passthrough guard). 184.B–184.E open.
+(cxx-compat passthrough guard) + 184.B landed (libc-gated multicast struct,
+`net.c.obj` verified on the FVP newlib profile). 184.C–184.E open.
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
@@ -113,16 +114,22 @@ The fixes stay on the nano-ros side of the module boundary:
 **Files.** `packages/core/nros-platform-zephyr/src/net.c`,
 `zephyr/cyclonedds-config/zephyr_ipv4_compat.h`.
 
-- [ ] Reproduce: `IP_ADD_MEMBERSHIP` defined + `struct ip_mreqn` incomplete on
+- [x] Reproduce: `IP_ADD_MEMBERSHIP` defined + `struct ip_mreqn` incomplete on
       `fvp_baser_aemv8r_smp` + `CONFIG_NEWLIB_LIBC=y` (root: newlib provides
       `ip_mreq`, not the Linux `ip_mreqn`)
-- [ ] Switch the join/leave path to portable `struct ip_mreq`
-      (`imr_multiaddr` + `imr_interface`), or add a separate `ip_mreqn`
-      availability probe alongside the existing `IP_ADD_MEMBERSHIP` gate
-- [ ] Fix `zephyr_ipv4_compat.h`'s "≥3.7 defines `ip_mreqn`" assumption for the
-      newlib profile
-- [ ] Confirm the existing native_sim NSOS dual-`net_ip_mreq`/`net_ip_mreqn`
-      path is unaffected
+- [x] Switch the join/leave path to a libc-gated membership struct
+      (`nros_mcast_membership_t`: `struct ip_mreq` + `imr_interface` on
+      `CONFIG_NEWLIB_LIBC`, `struct ip_mreqn` + `imr_address` otherwise);
+      Zephyr's IP_ADD_MEMBERSHIP accepts both the 8B/12B forms. Verified:
+      `net.c.obj` compiles clean on the FVP newlib profile (was an `ip_mreqn`
+      incomplete-type error)
+- [x] `zephyr_ipv4_compat.h` is Cyclone-TU-only (force-included on Cyclone DDS
+      TUs, not net.c); its Cyclone TUs compiled clean on the FVP build, so its
+      `ip_mreq`/`ip_mreqn` handling is unaffected. Refreshed its stale "≥3.7
+      defines `ip_mreqn`" comment to note the newlib nuance
+- [x] native_sim path unaffected by construction — only the
+      `CONFIG_NEWLIB_LIBC` branch changed; minimal/picolibc targets keep the
+      existing `ip_mreqn` + `imr_address` path the Phase 180 native_sim runs proved
 
 ### 184.C — downstream C++ app std C-library names on newlib
 
