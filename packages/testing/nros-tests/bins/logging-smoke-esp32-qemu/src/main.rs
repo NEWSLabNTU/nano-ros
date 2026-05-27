@@ -23,15 +23,15 @@ nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 static LOGGER: Logger = Logger::new("smoke");
 
 const CONFIG: &str = "\
-[network]\n\
-ip = \"10.0.2.50\"\n\
+[node]\n\
+domain_id = 0\n\
+\n\
+[[transport]]\n\
+kind = \"ethernet\"\n\
+ip = \"10.0.2.50/24\"\n\
 mac = \"02:00:00:00:00:99\"\n\
 gateway = \"10.0.2.2\"\n\
-prefix = 24\n\
-\n\
-[zenoh]\n\
 locator = \"tcp/10.0.2.2:7454\"\n\
-domain_id = 0\n\
 ";
 
 #[entry]

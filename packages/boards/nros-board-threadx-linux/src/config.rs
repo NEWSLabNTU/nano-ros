@@ -161,39 +161,8 @@ impl Config {
                 };
 
                 match (section, key) {
-                    ("network", "ip") => {
-                        if let Some(ip) = parse_ipv4(value) {
-                            config.ip = ip;
-                        }
-                    }
-                    ("network", "mac") => {
-                        if let Some(mac) = parse_mac(value) {
-                            config.mac = mac;
-                        }
-                    }
-                    ("network", "gateway") => {
-                        if let Some(gw) = parse_ipv4(value) {
-                            config.gateway = gw;
-                        }
-                    }
-                    ("network", "netmask") => {
-                        if let Some(nm) = parse_ipv4(value) {
-                            config.netmask = nm;
-                        }
-                    }
-                    ("platform", "interface") => {
-                        config.interface = value;
-                    }
-                    ("zenoh", "locator") => {
-                        config.zenoh_locator = value;
-                    }
-                    ("zenoh", "domain_id") => {
-                        if let Some(d) = parse_u32(value) {
-                            config.domain_id = d;
-                        }
-                    }
-
-                    // Phase 172.K — direct-mode nros.toml.
+                    // Phase 172.K — direct-mode nros.toml only; legacy
+                    // `[network]`/`[platform]`/`[zenoh]` arms dropped in K.6.
                     ("transport", "ip") => {
                         let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
                         if let Some(ip) = parse_ipv4(addr) {

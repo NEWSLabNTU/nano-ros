@@ -18,15 +18,15 @@ use nros_log::{
 static LOGGER: Logger = Logger::new("smoke");
 
 const CONFIG: &str = "\
-[network]\n\
-ip = \"10.0.2.40\"\n\
+[node]\n\
+domain_id = 0\n\
+\n\
+[[transport]]\n\
+kind = \"ethernet\"\n\
+ip = \"10.0.2.40/24\"\n\
 mac = \"52:54:00:12:34:99\"\n\
 gateway = \"10.0.2.2\"\n\
-netmask = \"255.255.255.0\"\n\
-\n\
-[zenoh]\n\
 locator = \"tcp/10.0.2.2:7453\"\n\
-domain_id = 0\n\
 ";
 
 #[unsafe(no_mangle)]

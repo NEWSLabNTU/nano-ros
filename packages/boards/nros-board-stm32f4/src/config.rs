@@ -268,52 +268,8 @@ impl Config {
                 };
 
                 match (section, key) {
-                    #[cfg(feature = "ethernet")]
-                    ("network", "ip") => {
-                        if let Some(ip) = parse_ipv4(value) {
-                            config.ip = ip;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("network", "mac") => {
-                        if let Some(mac) = parse_mac(value) {
-                            config.mac = mac;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("network", "gateway") => {
-                        if let Some(gw) = parse_ipv4(value) {
-                            config.gateway = gw;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("network", "prefix") => {
-                        if let Some(p) = parse_u32(value) {
-                            config.prefix = p as u8;
-                        }
-                    }
-                    #[cfg(feature = "serial")]
-                    ("serial", "baudrate") => {
-                        if let Some(b) = parse_u32(value) {
-                            config.baudrate = b;
-                        }
-                    }
-                    #[cfg(feature = "serial")]
-                    ("serial", "usart_index") => {
-                        if let Some(u) = parse_u32(value) {
-                            config.usart_index = u as u8;
-                        }
-                    }
-                    ("zenoh", "locator") => {
-                        config.zenoh_locator = value;
-                    }
-                    ("zenoh", "domain_id") => {
-                        if let Some(d) = parse_u32(value) {
-                            config.domain_id = d;
-                        }
-                    }
-
-                    // Phase 172.K — direct-mode nros.toml.
+                    // Phase 172.K — direct-mode nros.toml only; legacy
+                    // `[network]`/`[serial]`/`[zenoh]` arms dropped in K.6.
                     #[cfg(feature = "ethernet")]
                     ("transport", "ip") => {
                         let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));

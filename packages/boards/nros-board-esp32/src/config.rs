@@ -229,87 +229,8 @@ impl NodeConfig {
                 };
 
                 match (section, key) {
-                    #[cfg(feature = "wifi")]
-                    ("wifi", "ssid") => {
-                        config.wifi.ssid = value;
-                    }
-                    #[cfg(feature = "wifi")]
-                    ("wifi", "password") => {
-                        config.wifi.password = value;
-                    }
-                    #[cfg(feature = "wifi")]
-                    ("network", "ip") => {
-                        if let Some(ip) = parse_ipv4(value) {
-                            // Parse prefix from existing static config or default to 24
-                            let (existing_prefix, existing_gateway) = match &config.ip_mode {
-                                IpMode::Static {
-                                    prefix, gateway, ..
-                                } => (*prefix, *gateway),
-                                IpMode::Dhcp => (24, [0, 0, 0, 0]),
-                            };
-                            config.ip_mode = IpMode::Static {
-                                ip,
-                                prefix: existing_prefix,
-                                gateway: existing_gateway,
-                            };
-                        }
-                    }
-                    #[cfg(feature = "wifi")]
-                    ("network", "gateway") => {
-                        if let Some(gw) = parse_ipv4(value) {
-                            match &config.ip_mode {
-                                IpMode::Static { ip, prefix, .. } => {
-                                    config.ip_mode = IpMode::Static {
-                                        ip: *ip,
-                                        prefix: *prefix,
-                                        gateway: gw,
-                                    };
-                                }
-                                IpMode::Dhcp => {
-                                    config.ip_mode = IpMode::Static {
-                                        ip: [0, 0, 0, 0],
-                                        prefix: 24,
-                                        gateway: gw,
-                                    };
-                                }
-                            }
-                        }
-                    }
-                    #[cfg(feature = "wifi")]
-                    ("network", "prefix") => {
-                        if let Some(p) = parse_u32(value) {
-                            match &config.ip_mode {
-                                IpMode::Static { ip, gateway, .. } => {
-                                    config.ip_mode = IpMode::Static {
-                                        ip: *ip,
-                                        prefix: p as u8,
-                                        gateway: *gateway,
-                                    };
-                                }
-                                IpMode::Dhcp => {
-                                    config.ip_mode = IpMode::Static {
-                                        ip: [0, 0, 0, 0],
-                                        prefix: p as u8,
-                                        gateway: [0, 0, 0, 0],
-                                    };
-                                }
-                            }
-                        }
-                    }
-                    #[cfg(feature = "serial")]
-                    ("serial", "baudrate") => {
-                        if let Some(b) = parse_u32(value) {
-                            config.baudrate = b;
-                        }
-                    }
-                    ("zenoh", "locator") => {
-                        config.zenoh_locator = value;
-                    }
-                    ("zenoh", "domain_id") => {
-                        if let Some(d) = parse_u32(value) {
-                            config.domain_id = d;
-                        }
-                    }
+                    // Phase 172.K — direct-mode nros.toml only; legacy
+                    // `[wifi]`/`[network]`/`[serial]`/`[zenoh]` arms dropped in K.6.
 
                     // Phase 172.K — direct-mode nros.toml: `[[transport]]`
                     // kind=wifi (ssid/password + optional static ip/gateway) +

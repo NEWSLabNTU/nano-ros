@@ -352,47 +352,9 @@ impl Config {
                 };
 
                 match (section, key) {
-                    #[cfg(feature = "ethernet")]
-                    ("network", "ip") => {
-                        if let Some(ip) = parse_ipv4(value) {
-                            config.ip = ip;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("network", "mac") => {
-                        if let Some(mac) = parse_mac(value) {
-                            config.mac = mac;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("network", "gateway") => {
-                        if let Some(gw) = parse_ipv4(value) {
-                            config.gateway = gw;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("network", "prefix") => {
-                        if let Some(p) = parse_u32(value) {
-                            config.prefix = p as u8;
-                        }
-                    }
-                    #[cfg(feature = "serial")]
-                    ("serial", "baudrate") => {
-                        if let Some(b) = parse_u32(value) {
-                            config.baudrate = b;
-                        }
-                    }
-                    ("zenoh", "locator") => {
-                        config.zenoh_locator = value;
-                    }
-                    ("zenoh", "domain_id") | ("dds", "domain_id") => {
-                        if let Some(d) = parse_u32(value) {
-                            config.domain_id = d;
-                        }
-                    }
-
-                    // Phase 172.K — direct-mode nros.toml shape:
-                    // `[[transport]]` (ip as CIDR carries the prefix) + `[node]`.
+                    // Phase 172.K — direct-mode nros.toml only (`[[transport]]`
+                    // ip as CIDR carries the prefix, + `[node]`). The legacy
+                    // `[network]`/`[zenoh]`/`[serial]` arms were dropped in K.6.
                     #[cfg(feature = "ethernet")]
                     ("transport", "ip") => {
                         let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));

@@ -204,76 +204,10 @@ impl Config {
                 };
 
                 match (section, key) {
-                    ("network", "ip") => {
-                        if let Some(ip) = parse_ipv4(value) {
-                            config.ip = ip;
-                        }
-                    }
-                    ("network", "mac") => {
-                        if let Some(mac) = parse_mac(value) {
-                            config.mac = mac;
-                        }
-                    }
-                    ("network", "gateway") => {
-                        if let Some(gw) = parse_ipv4(value) {
-                            config.gateway = gw;
-                        }
-                    }
-                    ("network", "netmask") => {
-                        if let Some(nm) = parse_ipv4(value) {
-                            config.netmask = nm;
-                        }
-                    }
-                    ("zenoh", "locator") => {
-                        config.zenoh_locator = value;
-                    }
-                    ("zenoh", "domain_id") | ("dds", "domain_id") => {
-                        if let Some(d) = parse_u32(value) {
-                            config.domain_id = d;
-                        }
-                    }
-                    ("scheduling", "app_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.app_priority = v.min(31) as u8;
-                        }
-                    }
-                    ("scheduling", "app_stack_bytes") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.app_stack_bytes = v;
-                        }
-                    }
-                    ("scheduling", "zenoh_read_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_read_priority = v.min(31) as u8;
-                        }
-                    }
-                    ("scheduling", "zenoh_read_stack_bytes") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_read_stack_bytes = v;
-                        }
-                    }
-                    ("scheduling", "zenoh_lease_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_lease_priority = v.min(31) as u8;
-                        }
-                    }
-                    ("scheduling", "zenoh_lease_stack_bytes") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_lease_stack_bytes = v;
-                        }
-                    }
-                    ("scheduling", "poll_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.poll_priority = v.min(31) as u8;
-                        }
-                    }
-                    ("scheduling", "poll_interval_ms") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.poll_interval_ms = v;
-                        }
-                    }
+                    // Phase 172.K — direct-mode nros.toml only; legacy
+                    // `[network]`/`[zenoh]`/`[scheduling]` arms dropped in K.6.
 
-                    // Phase 172.K — direct-mode nros.toml: `[[transport]]`
+                    // direct-mode nros.toml: `[[transport]]`
                     // (ip CIDR → ip + netmask) + `[node]` + `[node.rt]`.
                     ("transport", "ip") => {
                         let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
