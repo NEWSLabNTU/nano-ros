@@ -1082,42 +1082,40 @@ passed.
   `build/zephyr-workspace-builds`); `.config` now bakes the 177.37 map
   (rs-talker=50, rs-service=51, rs-action=52, c-*=53/54/55, cpp-*=56/57/58 —
   pairs share). Parallel run: **8/8 pass** (pub/sub + boots + C/C++ service all
-  clean; the **Rust** Cyclone *service* e2e is a timing-sensitive contention flake
-  — TRY 1 FAIL → TRY 2 PASS — passes alone in 32 s and C/C++ service pass at the
-  same concurrency, so it's load, not a domain collision). Added `retries = 2` to
-  the `zephyr-native-cyclonedds` nextest group to absorb it (the host-DDS interop
-  groups already retry).
+  clean; the **Rust** Cyclone *service* e2e initially flaked under load — now
+  root-fixed in 177.39, not retried).
 
   **Net: every embedded target runs in parallel on a distinct compile-time
   domain, green** — freertos(60)/threadx-linux(61)/threadx-rv64(62)/native(runtime
-  slots ~1..30) = 16/16 with no flake; zephyr(50..58) = 8/8 (1 retry-recovered).
+  slots ~1..30) = 16/16; zephyr(50..58) = 8/8, all with no flake and `--retries 0`
+  (after 177.39).
 
-- [ ] **177.39 - Rust CycloneDDS service e2e on Zephyr native_sim flakes under
-  parallel load (currently masked by `retries = 2`).** Owner: Cyclone runtime /
-  Zephyr (open, 2026-05-27). `test_zephyr_rust_cyclonedds_service_e2e`
-  (`phase_118_collapse.rs`) passes **alone** (~32 s) but flakes when the
-  `zephyr-native-cyclonedds` group runs ≥2 native_sim processes concurrently:
-  the service client's RELIABLE request→reply roundtrip misses its 5 s window —
-  `[0] Call failed: Timeout` then `Error: RequestInFlight`, no
-  `Response: sum=`. **Not a domain collision** (177.38 baked distinct domains;
-  the service client+server share domain 51 correctly) and **not the backend**
-  (the **C and C++** Cyclone service e2e pass at the *same* concurrency). So it
-  is specific to the **Rust** Cyclone service *client* path being more
-  timing-fragile under native_sim CPU contention than the C/C++ clients —
-  slower discovery/match or a tighter/blocking poll loop so the first call
-  times out before the reply-writer matches.
+- [x] **177.39 - Rust CycloneDDS service e2e on Zephyr native_sim flaked under
+  parallel load (FIXED 2026-05-27).** `test_zephyr_rust_cyclonedds_service_e2e`
+  (`phase_118_collapse.rs`) passed alone (~32 s) but flaked when the
+  `zephyr-native-cyclonedds` group ran ≥2 native_sim processes concurrently:
+  `[0] Call failed: Timeout` then `Error: RequestInFlight`, no `Response: sum=`.
+  Ruled out domain collision (177.38 baked distinct domains; client+server share
+  51) and the backend (**C and C++** service e2e pass at the same concurrency).
 
-  **Interim mitigation (landed):** `retries = 2` on the `zephyr-native-cyclonedds`
-  nextest group (`.config/nextest.toml`) — the retry runs with less momentary
-  contention and passes (TRY 1 FAIL → TRY 2 PASS, observed). Keeps the parallel
-  suite green but only papers over it.
+  **Root cause.** The Rust client capped each call at `CALL_TIMEOUT_MS = 5_000`
+  (`promise.wait(executor, 5 s)`), while the **C** client uses a *blocking*
+  `nros_client_call` that spins until the reply (effectively unbounded). Cyclone
+  services are RELIABLE + VOLATILE, so the client's request is buffered until its
+  request-writer matches the server's reader (Phase 171.0.a); under native_sim
+  CPU contention that discovery/match + roundtrip exceeds 5 s, so the Rust call
+  timed out — and the timed-out request left the client in `RequestInFlight`, so
+  the next call errored too. `wait_for_service` is the zenoh liveliness path, not
+  applicable to the brokerless Cyclone backend.
 
-  **Proper fix (TODO):** root-cause the Rust client's slow service match under
-  load — compare its discovery/spin timing to the C/C++ clients (which pass),
-  and either pace the executor like the C/C++ path or raise the request timeout /
-  pre-wait for the service to be available before the first call. Then the retry
-  can be dropped. Pub/sub + C/C++ service + all other embedded Cyclone parallel
-  runs are unaffected.
+  **Fix.** Raise the example's `CALL_TIMEOUT_MS` to `15_000`
+  (`examples/zephyr/rust/service-client/src/lib.rs`) to match the C client's
+  blocking tolerance — `promise.wait` spins the executor the whole time, which is
+  what drives the Cyclone match + buffered-request flush + reply. Harmless for
+  zenoh (returns early on the fast reply). **Verified: 3/3 parallel runs with
+  `--retries 0`** (rust service ~32 s wall, call completes within the 15 s
+  budget). Dropped the interim `retries = 2` from the `zephyr-native-cyclonedds`
+  group — the root fix stands on its own; no masking.
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,

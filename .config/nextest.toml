@@ -461,13 +461,11 @@ retries = 2
 filter = "binary(phase_118_collapse) and test(cyclonedds) and (test(_boot) or test(_e2e))"
 test-group = "zephyr-native-cyclonedds"
 slow-timeout = { period = "120s", terminate-after = 3 }
-# Phase 177.38 — distinct per-role-set domains (177.37) let these run parallel
-# (max-threads = 4), but the Rust Cyclone *service* e2e is timing-sensitive: its
-# RELIABLE request→reply roundtrip can miss the client's window under native_sim
-# load (passes alone + C/C++ service pass at the same concurrency, so it's
-# contention, not a domain collision or product bug). Retry to absorb the
-# momentary contention — the same handling the host DDS interop groups use.
-retries = 2
+# Phase 177.37 baked distinct per-role-set domains so these run parallel
+# (max-threads = 4). No retries needed: 177.39 root-fixed the Rust Cyclone
+# service e2e's under-load flake (its 5 s call budget was too tight for the
+# slow native_sim discovery/match; raised to 15 s in the example to match the
+# C client's blocking tolerance) — verified 3/3 parallel runs with --retries 0.
 
 [[profile.default.overrides]]
 filter = "binary(native_api)"

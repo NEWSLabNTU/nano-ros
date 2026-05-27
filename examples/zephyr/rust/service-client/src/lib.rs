@@ -58,7 +58,14 @@ fn make_config() -> ExecutorConfig<'static> {
     }
 }
 
-const CALL_TIMEOUT_MS: u64 = 5_000;
+// 177.39 — generous per-call budget. `promise.wait` spins the executor for the
+// whole duration, which is what drives Cyclone's RELIABLE+VOLATILE service
+// discovery/match (the request is buffered until the request-writer matches the
+// server's reader, Phase 171.0.a). Under native_sim CPU contention that
+// match + roundtrip can exceed a few seconds, so a 5 s cap timed out (177.39).
+// The C client tolerates this via a blocking `nros_client_call`; match that
+// tolerance here. Harmless for zenoh (returns early on the fast reply).
+const CALL_TIMEOUT_MS: u64 = 15_000;
 
 #[no_mangle]
 extern "C" fn rust_main() {
