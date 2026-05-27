@@ -985,16 +985,31 @@ passed.
     /fibonacci` → **Action servers: 1**; `ros2 node info` recognizes the full
     `/fibonacci: example_interfaces/action/Fibonacci` **Action Server** (was 0 /
     invisible). No regression — pub/sub + service interop + native Cyclone 8/8.
-  - **Remaining follow-on (narrower):** `ros2 action send_goal`'s
-    `wait_for_server()` still doesn't complete despite the server being fully
-    graph-visible. `rcl_action_server_is_available` → `rcl_service_server_is_available`
-    is **match-based** (the send_goal client's service-clients matching the nano
-    server's service-servers), i.e. the 117.12.B.1 `current_count`-under-report
-    class applied to the action's 3 composed services — NOT the graph. The action
-    interop test (`test_cyclonedds_action_nano_server_ros2_client`) stays
-    `#[ignore]`d on this narrower gap. Single-service `ros2 service call` interop
-    works (117.12.B.1), so the fix is to extend that match handling to the
-    action's service endpoints.
+  - **Remaining follow-on — characterized 2026-05-27 (deeper than 117.12.B.1).**
+    `ros2 action send_goal`'s `wait_for_server()` still doesn't complete. Ruled
+    out the obvious suspects by reproduction:
+    - **Graph delivery is fine, incl. late-join.** A *fresh* ROS 2 daemon started
+      *after* the nano server (`ros2 daemon stop` then `ros2 node list`) sees the
+      node `/nros_<pid>`; `ros2 action info /fibonacci` → Action servers: 1;
+      `ros2 node info` shows the full `example_interfaces/action/Fibonacci`
+      server. So TRANSIENT_LOCAL latched delivery to late rmw readers works. (A
+      `ros2 topic echo /ros_discovery_info` reads nothing, but that's the CLI
+      mishandling the hidden topic — the rmw-level readers get it.)
+    - **The action's 3 services advertise the correct stock types**
+      (`Fibonacci_SendGoal`, `Fibonacci_GetResult`, `action_msgs/srv/CancelGoal`)
+      under the right `_action/*` names, and feedback/status pubs are present.
+    So the blocker is the **match-based** part of `rcl_action_server_is_available`
+    → `rmw_service_server_is_available`, which (in rmw_cyclonedds) counts the
+    send_goal client's request-writer / response-reader *matched* counts against
+    the nano server's service endpoints — NOT the graph. Single-service
+    `ros2 service call` interop works (117.12.B.1), so a *plain* service matches;
+    something about the action client's 3 service-clients vs the nano server's
+    action service-servers doesn't reach matched. **Needs rmw-level / Cyclone
+    match instrumentation to localize** (which of the 3 services, and whether it's
+    a QoS-profile or a discovery-timing mismatch) — not a one-line extension of
+    the 117.12.B.1 send_reply gate. The action interop test stays `#[ignore]`d on
+    this. The graph prerequisite (this item's core) is done; this is a separate
+    service-availability follow-on.
 
 - [x] **177.37 - parallelize the Zephyr native_sim Cyclone test groups via a
   COMPILE-TIME per-role-set domain.** Owner: test-harness (landed 2026-05-27).
