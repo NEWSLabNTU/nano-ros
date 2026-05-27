@@ -845,6 +845,51 @@ build-fvp-aemv8r-cyclonedds:
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
+# Phase 184.D — FVP AEMv8-R Cyclone C++ build with the FULL libstdc++ profile
+# (CONFIG_NEWLIB_LIBC + CONFIG_GLIBCXX_LIBCPP), mirroring the Autoware
+# safety-island actuation consumer. The default build-fvp-aemv8r-cyclonedds
+# above uses Zephyr's minimal libcpp, which never touches the cxx-compat-vs-
+# real-libstdc++ passthrough (184.A/C), so it cannot catch the FVP-consumer
+# regressions. This guard does. Build-only; skips cleanly without the
+# workspace/SDK like its sibling.
+build-fvp-aemv8r-cyclonedds-full-libcpp:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v west >/dev/null 2>&1; then
+        echo "Zephyr/FVP-Cyclone-full-libcpp skip: west not found"; exit 0
+    fi
+    workspace="$(realpath {{ZEPHYR_WORKSPACE}} 2>/dev/null || echo "")"
+    if [ -z "$workspace" ] || [ ! -d "$workspace/zephyr" ]; then
+        echo "Zephyr/FVP-Cyclone-full-libcpp skip: {{ZEPHYR_WORKSPACE}} not set up"; exit 0
+    fi
+    sdk="$(pwd)/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
+        echo "Zephyr/FVP-Cyclone-full-libcpp skip: aarch64-zephyr-elf toolchain missing"
+        exit 0
+    fi
+    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
+    bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"
+    nros_root="$(pwd)"
+    echo "  → host nros-codegen (cargo)"
+    source scripts/build/cargo.sh
+    nros_cargo_ensure_codegen_c
+    codegen_tool="$nros_root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+    make_bin="$nros_root/third-party/make/make"
+    if [ ! -x "$make_bin" ]; then
+        make_bin="$(command -v make)"
+    fi
+    overlay="$nros_root/examples/zephyr/cpp/cyclonedds/talker-aemv8r/full-libcpp.conf"
+    cd "$workspace"
+    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export ZEPHYR_SDK_INSTALL_DIR="$sdk"
+    echo "Building talker-aemv8r (full libstdc++) for fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp..."
+    west build -b "fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp" \
+        -d build-aemv8r-cyclonedds-talker-full-libcpp -p auto \
+        nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
+        -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
+           -DEXTRA_CONF_FILE="$overlay"
+    echo "Phase 184.D FVP AEMv8-R full-libstdc++ Cyclone build guard OK"
+
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
 # RTU0 Cortex-R52 target (Phase 117.11's reference platform). Reuses
 # cleanly when west / Zephyr workspace / arm-zephyr-eabi SDK aren't

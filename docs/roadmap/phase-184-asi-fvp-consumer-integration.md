@@ -15,8 +15,10 @@ surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 `cstring`/`utility`/`cstdarg`/`cstddef`/`cstdint` defer to real libstdc++).
 **Deep-validated end-to-end: the full ASI actuation_module COMPILES + LINKS to
 `zephyr.elf` against bumped nano-ros** (184.A–G; 52 MB, 0 undefined refs).
-Runtime (boot + DDS) needs the ARM FVP simulator, deferred. 184.D (FVP CI
-smoke) + 184.E (RMW migration docs) open; 184.F optional RMW-gate-out open.
+Runtime (boot + DDS) needs the ARM FVP simulator, deferred. 184.D landed the
+full-libstdc++ FVP build guard (overlay + recipe; CI-job wiring is a follow-up
+since no FVP CI lane exists). 184.E (RMW migration docs) open; 184.F optional
+RMW-gate-out open.
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
@@ -171,14 +173,34 @@ the shim is transparent.
 
 ### 184.D — FVP / full-C++ consumer smoke in CI
 
-**Files.** `examples/` or `packages/testing/nros-smoke/` (new minimal FVP
-C++ smoke), `just/zephyr.just`, `.github/workflows/`.
+**Files.** `examples/zephyr/cpp/cyclonedds/talker-aemv8r/full-libcpp.conf`
+(new overlay), `just/zephyr.just` (`build-fvp-aemv8r-cyclonedds-full-libcpp`),
+`.github/workflows/` (CI-job wiring — follow-up).
 
-- [ ] Add a minimal `nros-cpp` + CycloneDDS C++ smoke targeting
-      `fvp_baser_aemv8r_smp` with `CONFIG_NEWLIB_LIBC=y` + `CONFIG_GLIBCXX_LIBCPP=y`
-- [ ] Wire it into the Zephyr CI cluster so 184.A/184.B regressions are caught
-- [ ] Keep it build-only if FVP run-time is licence/SDK-gated (mirror Phase
-      180 Twister `build_only`)
+Insight: the existing `talker-aemv8r` example + its `build-fvp-aemv8r-cyclonedds`
+recipe build on the FVP board with Zephyr's **minimal libcpp**, which never
+touches the cxx-compat-vs-real-libstdc++ passthrough (184.A/C) — so it could
+never catch the FVP-consumer regressions. Building the SAME example with the
+full-libstdc++ profile (`CONFIG_NEWLIB_LIBC` + `CONFIG_GLIBCXX_LIBCPP`, what a
+real downstream C++ app uses) does: nros-cpp + Cyclone TUs pull
+`<memory>`/`<atomic>`/`<utility>`/… (184.A/C), net.c multicast (184.B),
+zpico net_if (184.F), Cyclone ddsrt POSIX (184.G).
+
+- [x] Add the `full-libcpp.conf` overlay (`CONFIG_NEWLIB_LIBC` +
+      `CONFIG_GLIBCXX_LIBCPP`) + the `build-fvp-aemv8r-cyclonedds-full-libcpp`
+      recipe (build-only; self-skips without workspace/SDK like its sibling)
+- [x] Validated by analogy: the ASI `actuation_module` — the identical profile
+      (fvp_baser_aemv8r + newlib + GLIBCXX_LIBCPP + Cyclone + nros-cpp), a strict
+      superset of this guard — COMPILES + LINKS with 184.A–G. The guard is the
+      lightweight in-tree equivalent
+- [ ] CI-job wiring: neither this nor the pre-existing minimal
+      `build-fvp-aemv8r-cyclonedds` is in any aggregate (`build-fixtures` /
+      `ci`) or GitHub workflow — there is no FVP CI lane yet. Adding one (build
+      the guard against nano-ros's own Zephyr where the example `prj.conf` is
+      valid) is the remaining step. NB: the example `prj.conf` targets
+      nano-ros's Zephyr; it does NOT build against ASI's older 3.5.99 pin
+      (`POSIX_THREAD_THREADS_MAX` undefined, `NET_TCP_ISN_RFC6528`→mbedtls) —
+      an orthogonal example-vs-ASI-Zephyr-version mismatch, not a 184 fix gap
 
 ### 184.E — RMW migration guidance for downstream consumers
 
