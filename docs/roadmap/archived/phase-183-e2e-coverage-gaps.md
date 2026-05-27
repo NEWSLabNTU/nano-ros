@@ -84,7 +84,7 @@ only non-✓ cells left are tracked exemptions.
 |---------|:---:|:---:|:---:|--------|
 | zenoh (`rmw_interop`) | ✓ 2-way | ✓ 2-way | ✓ 2-way | discovery, qos, latency, throughput — complete |
 | xrce (`xrce_ros2_interop`) | ✓ 2-way | ✓ 2-way (183.6) | ✓ 2-way (183.6) | dds_detection |
-| cyclonedds (`cyclonedds_ros2_interop`) | ✓ 2-way (117.12) | ✓ nano-srv↔ros2-cli (117.12.B.1) | **✗** (no cyclone action interop test) | detection |
+| cyclonedds (`cyclonedds_ros2_interop`) | ✓ 2-way (117.12) | ✓ nano-srv↔ros2-cli (117.12.B.1) | `#[ignore]` tracked (177.36: `_action/*` endpoint naming) | detection |
 | lifecycle | `ros2_lifecycle_full_cycle` | | | |
 
 ## Work Items

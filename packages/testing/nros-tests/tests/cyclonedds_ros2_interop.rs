@@ -53,6 +53,8 @@ const TOPIC: &str = "/chatter";
 const MSG_TYPE: &str = "std_msgs/msg/Int32";
 const SRV: &str = "/add_two_ints";
 const SRV_TYPE: &str = "example_interfaces/srv/AddTwoInts";
+const ACTION: &str = "/fibonacci";
+const ACTION_TYPE: &str = "example_interfaces/action/Fibonacci";
 
 /// Resolve (building if needed) a native Cyclone C example binary, or skip when
 /// the fixtures aren't set up (`just cyclonedds setup`).
@@ -203,5 +205,68 @@ fn test_cyclonedds_service_nano_server_ros2_client() {
     assert!(
         client_output.contains("sum=8") || client_output.contains("response"),
         "ROS 2 cyclone client did not get the AddTwoInts reply (expected sum=8), got:\n{client_output}"
+    );
+}
+
+// =============================================================================
+// Action interop
+// =============================================================================
+
+/// nano-ros Cyclone action server ↔ ROS 2 (`rmw_cyclonedds_cpp`) action client.
+///
+/// `ros2 action send_goal --feedback /fibonacci example_interfaces/action/Fibonacci
+/// "{order: 5}"` against the native Cyclone Fibonacci action server. Fibonacci(5)
+/// → sequence `[0, 1, 1, 2, 3, 5]`.
+///
+/// `#[ignore]`d — surfaces a tracked Phase 117 action wire-compat gap (runnable
+/// with `--run-ignored all`). Diagnosed 2026-05-27: the nano Cyclone action
+/// server boots and reaches "Waiting for action goals", and `ros2 action list`
+/// even shows `/fibonacci [example_interfaces/action/Fibonacci]`, BUT
+/// `ros2 action info /fibonacci` reports **0 action servers** and none of the
+/// `/fibonacci/_action/{send_goal,get_result,cancel_goal}` services or
+/// `/fibonacci/_action/{feedback,status}` topics appear in `ros2 service/topic
+/// list`. So the action's composed sub-endpoints aren't exposed under the stock
+/// ROS 2 `<action>/_action/*` naming over Cyclone, and the stock client's
+/// `wait_for_server` introspection finds nothing ("Waiting for an action server
+/// to become available"). Zenoh action interop works 2-way, so the nano-node
+/// action *composition* is correct — this is Cyclone-backend action sub-endpoint
+/// naming/mangling (parallel to 117.X.2 topic-prefix + 117.X.4 type-mangling,
+/// but applied to action endpoints). Single-service interop already works
+/// (117.12.B.1), so the per-endpoint match path is sound; the gap is the
+/// `_action/` sub-namespace naming on Cyclone.
+#[test]
+#[ignore = "Phase 117 action wire-compat: nano Cyclone action sub-endpoints not under stock <action>/_action/* names → ros2 action info shows 0 servers, send_goal wait_for_server never matches. Service+pubsub interop work; this is the action-endpoint naming/mangling follow-up."]
+fn test_cyclonedds_action_nano_server_ros2_client() {
+    if !require_ros2_cyclonedds() {
+        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
+    }
+    let domain = nros_tests::unique_ros_domain_id();
+    let server_bin = nano_cyclone_c_binary("action-server", "c_action_server");
+
+    let mut server = spawn_nano_cyclone(&server_bin, "nano-cyclone-action-server", domain);
+    // Actions compose goal/result/cancel services + feedback/status pubs; give
+    // the server time to register all of them before the client sends a goal.
+    let _ = server.wait_for_output_pattern("Waiting for action goals", Duration::from_secs(8));
+    std::thread::sleep(Duration::from_secs(2));
+
+    let mut client = Ros2DdsProcess::action_send_goal_cyclonedds_with_domain(
+        ACTION,
+        ACTION_TYPE,
+        "{order: 5}",
+        DEFAULT_ROS_DISTRO,
+        domain,
+    )
+    .expect("start ros2 cyclone action send_goal");
+
+    let client_output = client
+        .wait_for_output(Duration::from_secs(20))
+        .unwrap_or_default();
+    client.kill();
+    server.kill();
+
+    eprintln!("ROS 2 cyclone action send_goal output:\n{client_output}");
+    assert!(
+        client_output.contains("sequence:") || client_output.contains("Result"),
+        "ROS 2 cyclone action client did not get the Fibonacci result, got:\n{client_output}"
     );
 }

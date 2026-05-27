@@ -911,6 +911,21 @@ impl Ros2DdsProcess {
         Self::spawn_bash(&cmd, format!("ros2-cyclone service call {service_name}"))
     }
 
+    /// CycloneDDS action `send_goal --feedback` on a specific ROS domain.
+    pub fn action_send_goal_cyclonedds_with_domain(
+        action_name: &str,
+        action_type: &str,
+        goal: &str,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
+        let cmd = format!(
+            "{env_setup} && timeout 20 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
+        );
+        Self::spawn_bash(&cmd, format!("ros2-cyclone action send_goal {action_name}"))
+    }
+
     // --- DDS server / action side (Phase 183.6) — the reverse interop
     // directions: a ROS 2 (rmw_fastrtps_cpp) service/action SERVER + an action
     // goal CLIENT, on an explicit ROS_DOMAIN_ID, for nano-XRCE ↔ ROS 2. ---
