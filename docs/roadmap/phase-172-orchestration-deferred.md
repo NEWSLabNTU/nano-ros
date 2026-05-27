@@ -649,6 +649,18 @@ The three items are independent of each other.
       extract source metadata. Harden that execution (resource
       limits, filesystem/network restrictions) so untrusted
       component crates can't escape during metadata extraction.
+      **DRIVER LANDED 2026-05-28; sandbox still deferred.** The
+      metadata-mode *driver* (the thing this item must sandbox) is now
+      implemented — `orchestration/metadata_build.rs`
+      `build_metadata()` generates a tiny host harness (path-deps the
+      component + `nros[std]`), `cargo run`s it; the harness runs
+      `Component::register` against the in-memory `MetadataRecorder`
+      (no transport/RTOS) and serializes via `to_source_metadata_json`.
+      Verified by a real `orchestration_e2e` test building `demo_pkg`'s
+      metadata. This unblocks real `nros metadata` / `nros deploy`
+      end-to-end. **The sandbox hardening (this item) remains open** —
+      it wraps the `cargo` invocation in `build_metadata`. The original
+      deferral analysis (now resolved by the driver) follows.
       **DEFERRED 2026-05-27 — blocked on the driver.** Investigation
       (2026-05-27): there is nothing to sandbox yet. `nros metadata`
       (`cmd/metadata.rs`) only *discovers* the workspace, checks each
@@ -903,8 +915,10 @@ steps are inherently ordered (templates → migrate → delete). Files:
 
 **Re-evaluated under the model:** **172.K.7** (multi-homing
 `[[transport]].interfaces`) is transport-schema work orthogonal to
-deployment — carries forward as-is. **172.E** (metadata-mode sandboxing)
-stays blocked-on-driver, independent of Group 5.
+deployment — carries forward as-is. **172.E**: its *driver* (metadata-mode
+build+run) landed 2026-05-28 (`metadata_build.rs`), unblocking real
+`nros metadata`/`nros deploy`; the *sandbox* hardening stays open,
+independent of Group 5.
 
 ## Acceptance criteria
 
