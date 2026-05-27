@@ -234,14 +234,18 @@ example migration (K), then the audit/docs (N).
         build (177.36, landed on main `4c6ce2520`) + the converter `#`-in-serial-
         locator bug + the rust-example CMakeLists `nano_ros_read_config` repoint.
 
-- [ ] **172.N — Audit `.cargo/config.toml` to dep-injection only.**
-      Confirm every example `.cargo/config.toml` holds **only**
-      `[patch.crates-io]` (local crate + generated msg paths) — no
-      nano-ros semantic config. Move any stray config into `nros.toml`.
-      Document the one-lane-per-file model
-      (`Cargo.toml`/`CMakeLists.txt` = build; `package.xml` = identity +
-      msg deps; `.cargo/config.toml` = patch injection; `nros.toml` =
-      nano-ros config) in `book/src/user-guide/configuration.md`.
+- [x] **172.N — Audit `.cargo/config.toml` to dep-injection only.** DONE
+      2026-05-27. **Audit PASS:** every example `.cargo/config.toml` holds only
+      legit cargo sections (`[patch.crates-io]` dep-injection + `[build]`/
+      `[target]`/`[env]`/`[unstable]` cargo knobs) — zero nano-ros semantic
+      config (locator/domain/ip/mac) leaked (the one grep hit was a comment).
+      Rewrote `book/src/user-guide/configuration.md` around the one-lane-per-file
+      model (file-ownership table + the `nros.toml` `[node]`/`[[transport]]`/
+      `[node.rt]` shape + direct-vs-planned read modes + link-vs-active RMW).
+      **Follow-up (separate doc sweep, not 172):** ~10 getting-started/reference
+      book pages still show the retired per-example `config.toml` in tutorials
+      (`first-node-rust`, `freertos`, `bare-metal`, `cli`, …) — update to
+      `nros.toml` for new-user correctness.
 
 ### Group 2 — Planner & scheduling
 
