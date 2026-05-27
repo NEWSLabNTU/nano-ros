@@ -1045,13 +1045,26 @@ passed.
     `rmw == cyclonedds` and folds `domain` into the cache `sig` so a change
     forces a rebuild. The two-QEMU pair shares the domain.
 
-  **Rebuild caveat (177.37):** after this change the Cyclone fixtures must be
-  rebuilt (`just <plat> build-fixtures`) so the new baked domain takes effect; a
-  stale domain-0 fixture run against a 61/62-configured peer/listener would
-  mismatch. Verification of the freertos/threadx Cyclone *fixture builds* needs
-  their cross SDKs (freertos cross-`libddsc.a`, threadx SDK) which aren't in this
-  sandbox; the override *mechanism* itself is verified (freertos/threadx-rv64/
-  stm32f4 examples build with `NROS_DOMAIN_ID`, env-tracked recompile).
+  **Rebuild caveat — must be a *clean* rebuild for C/C++.** `fixtures-build.sh`
+  configures via `nros_cmake_configure_if_needed`, which **skips reconfigure when
+  the build dir already exists** — so a changed `-DNROS_DOMAIN_ID` does NOT
+  regenerate `app_config.h` on an incremental build (the binary relinks but keeps
+  the old baked domain; observed live — talker stayed at 0). After changing a
+  platform's domain, `rm -rf examples/<plat>/<lang>/<case>/build-cyclonedds`
+  (or `just <plat> clean`) before `just <plat> build-fixtures`. CI builds from
+  clean, so it's unaffected; only in-place reruns hit this. (The Rust/`option_env!`
+  path is fine — rustc tracks the env and recompiles.)
+
+  **Verified end-to-end (2026-05-27): threadx-linux = 61.** Clean-rebuilt the
+  threadx-linux Cyclone fixtures (`app_config.h` now bakes `.domain_id = 61`) and
+  `test_threadx_linux_cyclonedds_talker_to_native_listener` **PASSES** (talker
+  baked 61 ↔ native listener spawned 61); the full Cyclone regression set is green
+  (13/13: native talker/listener/service/action C+C++ + the three functional
+  `cyclonedds_ros2_interop` tests + threadx-linux). freertos (60) / threadx-rv64
+  (62) Cyclone *fixture builds* need their cross SDKs (freertos cross-`libddsc.a`,
+  threadx-rv64 cross probe) not in this sandbox, but use the same verified
+  override path (freertos/threadx-rv64/stm32f4 example builds confirmed
+  env-tracked).
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
