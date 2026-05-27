@@ -1074,6 +1074,24 @@ passed.
   not an assignment — switched to an explicit `export`. (The `-D…` *argument* form
   is fine; only assignment-prefixes have this rule.)
 
+  **Zephyr (= 50..58) rebuilt + parallel-verified (2026-05-27).** The native_sim
+  Cyclone fixtures in this checkout were stale at `CONFIG_NROS_DOMAIN_ID=0` (never
+  rebuilt after 177.37) → collided under parallel. Rebuilt via
+  `NROS_ZEPHYR_FIXTURE_FILTER=cyclonedds just zephyr build-fixtures` (into the
+  resolver-preferred `nano-ros-workspace` symlink root, NOT the stale
+  `build/zephyr-workspace-builds`); `.config` now bakes the 177.37 map
+  (rs-talker=50, rs-service=51, rs-action=52, c-*=53/54/55, cpp-*=56/57/58 —
+  pairs share). Parallel run: **8/8 pass** (pub/sub + boots + C/C++ service all
+  clean; the **Rust** Cyclone *service* e2e is a timing-sensitive contention flake
+  — TRY 1 FAIL → TRY 2 PASS — passes alone in 32 s and C/C++ service pass at the
+  same concurrency, so it's load, not a domain collision). Added `retries = 2` to
+  the `zephyr-native-cyclonedds` nextest group to absorb it (the host-DDS interop
+  groups already retry).
+
+  **Net: every embedded target runs in parallel on a distinct compile-time
+  domain, green** — freertos(60)/threadx-linux(61)/threadx-rv64(62)/native(runtime
+  slots ~1..30) = 16/16 with no flake; zephyr(50..58) = 8/8 (1 retry-recovered).
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
