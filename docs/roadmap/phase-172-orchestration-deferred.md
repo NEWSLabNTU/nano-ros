@@ -162,16 +162,47 @@ example migration (K), then the audit/docs (N).
       direct-mode `Config::from_toml`. This is the one genuine schema
       gap from 116.
 
-- [ ] **172.K — Retire `config.toml` into `nros.toml` (direct mode).**
-      Define the single-node **direct mode**: a hand-written one-node
-      app reads a `system nros.toml` subset (`target.rmw`,
-      `target.network`, node namespace/params, `[node.rt]`) via
-      `Config::from_toml` — no launch file, no planner, no generated
-      `main`. Migrate the 88 example `config.toml` files, 86
-      `include_str!("config.toml")` call sites, and the 8 board
-      `Config::from_toml` parsers + 5 board `build.rs` to `nros.toml`.
-      Delete `config.toml`. Preserves the copy-out-template examples
-      (`boilerplate IS lesson`) — they keep their hand-written `main()`.
+- **172.K — Retire `config.toml` into `nros.toml` (direct mode).** Define
+      the single-node **direct mode**: a hand-written one-node app reads its
+      `nros.toml` via `Config::from_toml` (compile-baked with `include_str!`
+      on embedded, fs/env on hosted) — no launch file, no planner, no
+      generated `main`; the copy-out-template examples keep their hand-written
+      `main()`. Schema = `[node]` (domain/namespace) + top-level
+      `[[transport]]` (id-addressable session: kind/ip-CIDR/mac/gateway/rmw/
+      locator/device/baudrate/ssid/password/interface) + `[node.rt]`
+      (scheduling). Nodes bind to transports by `id` (0/1 implicit, N explicit).
+      **Approved design: [`docs/design/configuration-and-transports.md`](../design/configuration-and-transports.md).**
+      Migrate the 88 example `config.toml`, 86 `include_str!("config.toml")`
+      sites, the 8 board `Config::from_toml` parsers, and the 5 board
+      `build.rs`; then delete `config.toml`. Staged sub-items:
+
+  - [x] **172.K.1 — direct-mode parser support (additive) + pilot.** Board
+        `Config::from_toml` parses the new `[[transport]]`/`[node]`/`[node.rt]`
+        shape **alongside** the legacy `[network]`/`[zenoh]`/`[scheduling]`
+        (section parser handles `[[...]]` array-of-tables + dotted sections),
+        so boards + examples migrate independently with no flag day. Pilot:
+        `nros-board-mps2-an385` + the qemu-arm-baremetal rust talker → `nros.toml`,
+        `cargo check` (thumbv7m) green. (`38d342a89`.)
+  - [ ] **172.K.2 — roll out the 7 remaining board `from_toml` parsers.**
+        freertos (+`[node.rt]` scheduling), threadx-linux (+`interface`),
+        threadx-riscv64, esp32 (+wifi), esp32-qemu, stm32f4, nuttx-qemu-arm.
+        Plus the 5 board `build.rs` bakers.
+  - [ ] **172.K.3 — migrate the 87 remaining example `config.toml` → `nros.toml`**
+        + `include_str!` switches, per platform, with a build/boot check per
+        platform family (slirp QEMU where available; Docker-gated baremetal/
+        freertos as their suites require).
+  - [ ] **172.K.4 — planned-mode parity (submodule `colcon-nano-ros`).**
+        `PlanTransport` gains `id` + wifi `ssid`/`password`; `TransportKind::Wifi`;
+        per-instance `transport` binding in `SystemConfig`/planner; generator
+        emits `SESSION_SPECS` tagged by id + wifi setters in
+        `apply_transport_config`.
+  - [ ] **172.K.5 — runtime `create_node_on`-by-id.** Bind a node to a session
+        by transport `id` (not just `rmw`); only required when two transports
+        share an `rmw` — deferrable until a same-rmw multi-transport build exists.
+  - [ ] **172.K.6 — drop the legacy arms + delete `config.toml`.** Once every
+        example is on `nros.toml`, remove the `[network]`/`[zenoh]`/`[scheduling]`
+        match arms from all 8 board parsers and delete the last `config.toml`;
+        full per-platform e2e verification.
 
 - [ ] **172.N — Audit `.cargo/config.toml` to dep-injection only.**
       Confirm every example `.cargo/config.toml` holds **only**
