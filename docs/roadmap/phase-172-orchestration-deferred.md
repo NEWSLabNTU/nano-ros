@@ -749,6 +749,65 @@ var-set** (`{self}` / `{entry_lib}` / `{entry_src}` / `{entry_header}` /
 the lib emit; WP-B builds against it stubbing the runner; they meet when
 both land.
 
+##### Kickoff interface — pinned 2026-05-28 (WP-B owner)
+
+Concrete contract both packages build against. `<sys>` is the system
+name, lowercased with non-alphanumerics → `_` (same rule as
+`SHARED_<ID>`). The entry lib exposes **both** a Rust-native surface
+(for `self`'s generated thin shim — no FFI cost) and an identical C ABI
+(for vendor startup in C/C++/`make`/`west`). The C ABI reuses
+`nros-c`'s opaque-`Executor` handle convention (Phase 118) rather than
+inventing one — same storage/owning model, so vendor code that already
+links `nros-c` sees a familiar type.
+
+**Entry-lib C ABI** (compiled + source forms export identical symbols):
+
+```c
+typedef struct NrosExecutor NrosExecutor;   // opaque, as in nros-c
+typedef struct NrosConfig   NrosConfig;     // optional runtime override
+
+// Build the executor (opens the RMW session(s)); cfg = NULL ⇒ baked/env
+// config (precedence: param > env > baked). NULL return ⇒ error.
+NrosExecutor *nros_<sys>_build_executor(const NrosConfig *cfg);
+// Register sched contexts + every node + lifecycle + param persistence.
+int32_t nros_<sys>_register_all(NrosExecutor *exec);
+// Granular per-node registration (register_all calls these in plan order).
+int32_t nros_<sys>_register_<node>(NrosExecutor *exec);
+// Convenience blocking spin for vendor startup that just wants to run.
+int32_t nros_<sys>_spin(NrosExecutor *exec);
+void    nros_<sys>_destroy(NrosExecutor *exec);
+```
+
+Rust-native mirror (same module, used by `self`'s shim):
+`pub fn build_executor(cfg: Option<&Config>) -> Result<Executor>`,
+`pub fn register_all(exec: &mut Executor) -> Result<()>`. The C ABI
+functions are thin `#[unsafe(no_mangle)] extern "C"` wrappers over these;
+cbindgen emits `<sys>.h` (config committed in the generated crate,
+mirroring `nros-c`'s `cbindgen.toml`).
+
+**`[deploy.<name>]` schema** (root `nros.toml`):
+
+| key | type | notes |
+|---|---|---|
+| `kind` | `self` \| `vendor-lib` \| `vendor-module` | default `self` |
+| `target` | string | triple or platform token; required |
+| `board` | string | required for vendor-module / bare-metal |
+| `rmw` | string | optional; overrides `[system].rmw` |
+| `emit` | `compiled` \| `source` | default by kind: self/vendor-lib → `compiled`, vendor-module → `source` |
+| `self` | path | code dir (`deploy/<name>/`); startup shim / vendor shell |
+| `vendor.dir` | `{ env = "VAR" }` \| path | vendor SDK root |
+| `vendor.pin` | string | `"<name> <version>"`, asserted before build |
+| `build` | string[] | ordered build steps (vendor shell lines) |
+| `package` | string[] | ordered post-build artifacting |
+
+**Runner var-set** (substituted into `build[]` / `package[]`):
+`{self}` (abs `deploy/<name>/`), `{entry_lib}` (compiled: `lib<sys>.a`),
+`{entry_src}` (source: generated crate dir), `{entry_header}`
+(`<sys>.h`), `{board}`, `{target}`, `{vendor.dir}` (resolved).
+
+WP-A builds the runner/scaffolders against this; WP-B emits the lib +
+header + source CMake fragment exporting exactly these symbols.
+
 #### WP-A — Config & host CLI  *(parallel with WP-B; was 172.O + Q + T)*
 
 Owns the `nros.toml` config scope + the `nros` command surface. Files:
