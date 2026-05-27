@@ -49,6 +49,10 @@ pub struct ParameterServer {
     entries: [Option<ParameterEntry>; MAX_PARAMETERS],
     /// Number of parameters currently stored
     count: usize,
+    /// Phase 172.H — set whenever a value changes via [`set`](Self::set) /
+    /// [`unset`](Self::unset), so the persistence layer flushes only after a
+    /// real change. Declaring defaults does not dirty the server.
+    dirty: bool,
 }
 
 impl Default for ParameterServer {
@@ -65,7 +69,15 @@ impl ParameterServer {
         Self {
             entries: [const { None }; MAX_PARAMETERS],
             count: 0,
+            dirty: false,
         }
+    }
+
+    /// Phase 172.H — take the dirty flag, clearing it. Returns `true` if a
+    /// value changed (via [`set`](Self::set) / [`unset`](Self::unset)) since
+    /// the last call, signalling the persistence layer to flush.
+    pub fn take_dirty(&mut self) -> bool {
+        core::mem::take(&mut self.dirty)
     }
 
     /// Get the number of parameters stored
@@ -190,6 +202,7 @@ impl ParameterServer {
         }
 
         entry.param.value = value;
+        self.dirty = true;
         SetParameterResult::Success
     }
 
@@ -216,6 +229,7 @@ impl ParameterServer {
         }
 
         entry.param.value = ParameterValue::NotSet;
+        self.dirty = true;
         SetParameterResult::Success
     }
 
@@ -478,6 +492,29 @@ mod tests {
         assert_eq!(server.get_bool("my_bool"), Some(true));
         assert_eq!(server.get_integer("my_int"), Some(42));
         assert_eq!(server.get_double("my_double"), Some(3.14));
+    }
+
+    #[test]
+    fn test_dirty_tracks_value_changes_not_declarations() {
+        // Phase 172.H — declaring defaults must not dirty the server, but a
+        // value change (set/unset) must, and take_dirty clears the flag.
+        let mut server = ParameterServer::new();
+        assert!(server.declare("count", ParameterValue::Integer(0)));
+        assert!(!server.take_dirty(), "declare must not dirty");
+
+        assert_eq!(server.set_integer("count", 10), SetParameterResult::Success);
+        assert!(server.take_dirty(), "set must dirty");
+        assert!(!server.take_dirty(), "take_dirty clears");
+
+        // A failed set (unknown name) must not dirty.
+        assert_eq!(
+            server.set("missing", ParameterValue::Integer(1)),
+            SetParameterResult::NotFound
+        );
+        assert!(!server.take_dirty(), "failed set must not dirty");
+
+        assert_eq!(server.unset("count"), SetParameterResult::Success);
+        assert!(server.take_dirty(), "unset must dirty");
     }
 
     #[test]
