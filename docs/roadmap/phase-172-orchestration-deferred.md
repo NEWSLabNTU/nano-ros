@@ -949,6 +949,38 @@ build+run) landed 2026-05-28 (`metadata_build.rs`), unblocking real
 `nros metadata`/`nros deploy`; the *sandbox* hardening stays open,
 independent of Group 5.
 
+### Revision (2026-05-28, post-review)
+
+A workflow/UX review (self-model proven on QEMU/native; vendor models
+designed + scaffolded but not yet real-built) raised four items; design +
+the cheap fix landed, the rest are tracked here:
+
+- **W.1 — Cargo-style manifest resolution** (config footgun: root vs
+  direct-mode `nros.toml` share a name). *Designed* in
+  `docs/design/configuration-and-transports.md` ("Manifest kinds &
+  resolution"): one `nros.toml` schema, kind decided by sections present
+  (`[workspace]` / `[component]` / `[node]`, combinations allowed like
+  Cargo's root package), walk-up resolution, `component_nros.toml` folds
+  into a `[component]` table (deprecation window). *To implement:* the
+  section-discriminating loader + walk-up resolver + the fold + the
+  "this is a direct-mode node, not a workspace root" error.
+- **W.2 — bridge schema-ahead-of-impl.** DONE — `nros check` on a root
+  `nros.toml` now warns when `[[bridge]]`/`[[domain]]` are declared but
+  per-node session routing isn't emitted (`cmd/check.rs`
+  `pending_routing_warning`). Removed when 172.K.5 (per-node
+  `create_node_on` binding) lands.
+- **W.3 — `[component]` UX.** *To implement:* `#[serde(default)]` on
+  `ComponentOverrides` + its `parameters`/`remaps` (today a minimal
+  manifest fails *"missing field `parameters`"*); `nros new` emits the
+  `[component]` table so the first `nros deploy` works unedited;
+  `metadata --build` derives `linkage` from `package.xml`/crate where it
+  can. Rationale + when-used documented in the design doc.
+- **W.4 — validation reach.** The model is only proven end-to-end for
+  `self` on QEMU/native; vendor-lib (Orin) is mock-IVC, vendor-module
+  (Zephyr/PX4/…) is shape-only. Prioritize one real vendor-module
+  (Zephyr `west` or PX4-SITL) + one real vendor-lib link before claiming
+  the three-ownership-model workflow is proven.
+
 ## Acceptance criteria
 
 Each work item is independently shippable. A work item is done when:

@@ -22,6 +22,96 @@ two ways from the **same** schema:
 `.cargo/config.toml` is dep-injection only; `Cargo.toml`/`CMakeLists.txt` own the
 build. `nros.toml` owns all nano-ros runtime/deployment config.
 
+## Manifest kinds & resolution (Cargo-style) — revision 2026-05-28
+
+**Problem the revision fixes.** Three config roles exist, and two are *both*
+named `nros.toml` — the workspace-root deployment SSOT and the direct-mode
+single-node config — discriminated only by whether a `[workspace]` table is
+present. A direct-mode `nros.toml` handed to `nros deploy --config nros.toml`
+(which assumes a root) fails confusingly. The third role,
+`component_nros.toml`, at least has a distinct name, but that asymmetry is its
+own surprise.
+
+**The fix: borrow Cargo.** Cargo solved exactly this — one `Cargo.toml` schema,
+with `[package]` and/or `[workspace]` sections; the *sections present* decide
+what the file is, and a "root package" is simply a file with **both**. Commands
+resolve by walking up to the nearest `[workspace]`. nano-ros adopts the same:
+
+**One `nros.toml` schema; the kind is decided by which sections are present
+(never by filename or a separate file):**
+
+| Section(s) present | Manifest kind | Cargo analogue |
+|---|---|---|
+| `[workspace]` | **workspace root** — deployment SSOT (`[system]`/`[systems.*]`, `[deploy.*]`, `[overlays.*]`, `[[bridge]]`) | `[workspace]` |
+| `[component]` | **component manifest** — a reusable node (linkage, metadata, default overrides). *Replaces `component_nros.toml`.* | `[package]` (a library crate) |
+| `[node]` / `[[transport]]` | **direct-mode node** — a standalone single-node binary's runtime config | a standalone `[package]` (binary) |
+| `[workspace]` + `[component]` | **root component** — a component that is also the workspace root (the common single-project case) | root package (`[package]` + `[workspace]`) |
+| `[workspace]` + `[node]` | **root node** — a single-node project whose one file is also the deploy SSOT | — |
+
+**Resolution (Cargo-identical):**
+
+1. A command (`nros deploy`/`build`/`check`) finds the nearest `nros.toml`.
+2. If it has `[workspace]`, that file *is* the workspace root.
+3. If it has only `[component]`/`[node]` and no `[workspace]`, the command
+   **walks up** to the enclosing `[workspace]` root (a member). If none is
+   found, the file is a **standalone** project (direct-mode node, or a
+   detached component) — exactly Cargo's "package with no workspace".
+4. `nros deploy` requires a `[workspace]` (it deploys *systems*); fed a
+   bare `[node]` file with no enclosing workspace, it says so plainly:
+   *"this is a direct-mode node config (no `[workspace]`) — build it
+   directly, or add it to a workspace's `[system].components`."*
+
+**Migration.** `component_nros.toml` folds into `nros.toml` as a `[component]`
+table (a deprecation window accepts the old filename, warning once). Direct-mode
+and root `nros.toml` are unchanged in content — only the *resolution* (walk-up +
+section-discrimination) and the error messages change. `deny_unknown_fields`
+stays per-table, so a file mixing a typo'd section is still caught.
+
+### When is `[component]` (today's `component_nros.toml`) used?
+
+It is the component **declaration**, and it is a **planned-mode** artifact only:
+
+- **Planned mode** (orchestration): `nros plan`/`nros deploy` discover each
+  `[system].components` entry through its `[component]` manifest — they need its
+  **linkage** (`executable` / `exported_symbol` / `crate_name`), the
+  `source_metadata` path, and the component's default `[overrides]`
+  (namespace/params/remaps a launch overlay can then override). Without it,
+  planning bails *"package has no exported nros component"*.
+- **Direct mode**: **not used.** The hand-written `main()` *is* the component;
+  there is no declaration, no planner, no metadata file.
+
+**UX fixes (the boilerplate friction):**
+- Fold it into `nros.toml` `[component]` — one file per package, not two.
+- `[overrides]` and its `parameters`/`remaps` become `#[serde(default)]` — an
+  empty/absent `[overrides]` is legal (today they are wrongly required, so a
+  minimal manifest fails with *"missing field `parameters`"*).
+- `nros new` emits the `[component]` table for the package it scaffolds, so the
+  first `nros deploy` works with no hand-editing.
+- `nros metadata --build` derives `linkage` from `package.xml` + the crate where
+  it can, so the human writes as little as possible.
+
+### When are `{vars}` used in `build[]` / `package[]`?
+
+Only inside a `[deploy.<name>].build[]` / `package[]` shell step, substituted by
+`nros deploy` **at deploy time, after the entry lib is emitted**. They are not
+config a node reads — they are paths the runner fills into the vendor's own
+shell lines:
+
+| var | resolves to | which kinds use it |
+|---|---|---|
+| `{self}` | abs `deploy/<name>/` (your startup/shell/linker dir) | vendor-lib, vendor-module |
+| `{entry_lib}` | the compiled `lib<sys>.a` | vendor-lib (link line) |
+| `{entry_src}` | the generated entry crate dir (source form) | vendor-module (`add_subdirectory`) |
+| `{entry_header}` | the cbindgen `<sys>.h` | vendor-lib / vendor-module C callers |
+| `{board}` / `{target}` | `[deploy].board` / `[deploy].target` | any |
+| `{vendor.dir}` | the resolved vendor SDK root | vendor-lib / vendor-module |
+
+`self` deploys have **no** `build[]` — the generated self-shim *is* the binary,
+so no vars are substituted. An unknown `{token}` that is not in this set is left
+verbatim (it is shell brace syntax); a *known* var the target can't resolve is a
+hard error. See the pinned interface in
+`docs/roadmap/phase-172-orchestration-deferred.md`.
+
 ## Transports are top-level, decoupled, `id`-addressable
 
 A **transport** is a physical link + the RMW session that rides it. Transports are
