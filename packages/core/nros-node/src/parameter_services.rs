@@ -598,6 +598,19 @@ impl ParamServiceProcessor for ParameterServiceServers {
 pub(crate) struct ParamState {
     pub(crate) server: ParameterServer,
     pub(crate) services: Box<dyn ParamServiceProcessor>,
+    /// Phase 172.H — runtime override persistence. `NullParamStore` until a
+    /// backend is attached via `Executor::enable_parameter_persistence`.
+    pub(crate) store: Box<dyn nros_params::ParamStore>,
+}
+
+/// Phase 172.H — after the parameter services run, flush the full parameter
+/// set to the persistence backend iff a value actually changed this tick
+/// (`take_dirty`). A no-op for `NullParamStore` or when nothing changed.
+pub(crate) fn flush_param_store(state: &mut ParamState) {
+    if state.server.take_dirty() {
+        let mut entries = state.server.iter().map(|p| (p.name(), &p.value));
+        let _ = state.store.save(&mut entries);
+    }
 }
 
 #[cfg(test)]

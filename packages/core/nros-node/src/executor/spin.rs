@@ -3828,8 +3828,14 @@ impl Executor {
             // regardless of trigger state, otherwise ROS 2 param queries time out.
             #[cfg(feature = "param-services")]
             if let Some(params) = &mut self.params {
-                let crate::parameter_services::ParamState { server, services } = &mut **params;
-                let _ = services.process_services(server);
+                {
+                    let crate::parameter_services::ParamState {
+                        server, services, ..
+                    } = &mut **params;
+                    let _ = services.process_services(server);
+                }
+                // Phase 172.H — persist any runtime override applied this tick.
+                crate::parameter_services::flush_param_store(params);
             }
 
             // Same treatment for lifecycle services — `ros2 lifecycle get`
@@ -4210,10 +4216,16 @@ impl Executor {
         // Process parameter services (outside the arena)
         #[cfg(feature = "param-services")]
         if let Some(params) = &mut self.params {
-            let crate::parameter_services::ParamState { server, services } = &mut **params;
-            if let Ok(n) = services.process_services(server) {
-                result.services_handled += n;
+            {
+                let crate::parameter_services::ParamState {
+                    server, services, ..
+                } = &mut **params;
+                if let Ok(n) = services.process_services(server) {
+                    result.services_handled += n;
+                }
             }
+            // Phase 172.H — persist any runtime override applied this tick.
+            crate::parameter_services::flush_param_store(params);
         }
 
         // Process lifecycle services (outside the arena).
@@ -4493,10 +4505,48 @@ impl Executor {
             crate::parameter_services::ParamState {
                 server: nros_params::ParameterServer::new(),
                 services: alloc::boxed::Box::new(servers),
+                store: alloc::boxed::Box::new(nros_params::NullParamStore),
             },
         ));
 
         Ok(())
+    }
+
+    /// Phase 172.H — attach a parameter-override persistence backend.
+    ///
+    /// Call this **after** [`register_parameter_services`](Self::register_parameter_services)
+    /// and after declaring the plan's default parameters, so persisted
+    /// overrides win over compile-time defaults. It immediately overlays any
+    /// values the backend already holds onto the declared parameters, then
+    /// keeps the store to flush future runtime `set_parameters` changes (the
+    /// executor flushes from its spin loop whenever a value changed).
+    ///
+    /// Returns [`NodeError::NotInitialized`] if parameter services have not
+    /// been registered yet.
+    pub fn enable_parameter_persistence(
+        &mut self,
+        store: alloc::boxed::Box<dyn nros_params::ParamStore>,
+    ) -> Result<(), NodeError> {
+        let state = self.params.as_mut().ok_or(NodeError::NotInitialized)?;
+        // Overlay persisted overrides onto the declared defaults.
+        store.load(&mut |name, value| {
+            let _ = state.server.set(name, value);
+        });
+        // Loading persisted state is restoration, not a new runtime change —
+        // don't let it trigger an immediate re-flush.
+        state.server.take_dirty();
+        state.store = store;
+        Ok(())
+    }
+
+    /// Phase 172.H — like [`enable_parameter_persistence`](Self::enable_parameter_persistence)
+    /// but boxes the backend for you, so callers (and generated code) need no
+    /// `Box` import.
+    pub fn enable_parameter_persistence_with<S>(&mut self, store: S) -> Result<(), NodeError>
+    where
+        S: nros_params::ParamStore + 'static,
+    {
+        self.enable_parameter_persistence(alloc::boxed::Box::new(store))
     }
 }
 

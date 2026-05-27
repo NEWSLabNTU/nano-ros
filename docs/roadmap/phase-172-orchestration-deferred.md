@@ -375,11 +375,35 @@ three are independent of each other; A (lifecycle) is the largest.
       default-success path), and gating callback dispatch on the
       `Active` state.
 
-- [ ] **172.H — Runtime parameter-override persistence.** Persist
+- [x] **172.H — Runtime parameter-override persistence.** Persist
       runtime parameter overrides (set after boot) across restarts.
       Today parameters come from the plan + launch manifest at
       generation time only. Scope: a persistence backend (flash /
-      file) + load-on-boot in the generated runtime.
+      file) + load-on-boot in the generated runtime. **Landed
+      (hosted file backend):** a `ParamStore` trait + `NullParamStore`
+      (no-op) + `FileParamStore` (`std`, atomic text file) in
+      `nros-params`, with the `ParameterServer` tracking a `dirty` flag
+      on `set`/`unset`. `Executor::enable_parameter_persistence[_with]`
+      (`nros-node`, `param-services`) overlays persisted overrides onto
+      the declared defaults at boot, and the spin loop flushes the full
+      set whenever a runtime `set_parameters` changed a value
+      (`flush_param_store` gated on `take_dirty`). The plan carries an
+      optional `param_persistence: { backend, path }`
+      (`PlanParamPersistence`, read from nros.toml `[param_persistence]`
+      via `collect_param_persistence`); codegen emits
+      `apply_param_persistence` — a no-op for plans without the block
+      (no param services, byte-equivalent), else register-services +
+      declare-params + attach `FileParamStore` — called from
+      `run_executor` after `apply_lifecycle`, and a persistence plan
+      pulls `nros/param-services`. `nros` re-exports
+      `FileParamStore`/`ParamStore`. Tests: store round-trip + dirty
+      tracking + boot-overlay→flush (nros-params), planner collect,
+      generator render (no-op + file), and a real
+      generate→build→link of a persistence package in
+      `orchestration_e2e`. **Deferred:** flash / NVS backends for
+      embedded targets (the trait is backend-agnostic; only the hosted
+      file backend ships today), and array-typed parameter values
+      (scalars only persist in v1).
 
 - [x] **172.I — Generated shared state.** Support shared state
       between components in one generated binary (e.g. a shared
