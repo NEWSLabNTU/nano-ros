@@ -779,13 +779,18 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     // Native C Cyclone listener built via the standard fixture path.
     let listener_bin = cyclone_listener_binary(Language::C);
 
-    // domain 0 — matches the threadx-linux talker's config.toml.
-    let mut listener = spawn_cyclone_binary(&listener_bin, "native-c-cyclonedds-listener", "0");
+    // domain 61 — matches the threadx-linux talker's baked Cyclone domain
+    // (Phase 177.38: `just threadx_linux build-fixtures` bakes -DNROS_DOMAIN_ID=61
+    // into the cyclonedds fixture). The native listener reads the domain from the
+    // env at runtime (host exception), so set it to 61 to pair with the talker.
+    let mut listener = spawn_cyclone_binary(&listener_bin, "native-c-cyclonedds-listener", "61");
     listener
         .wait_for_output_pattern("Waiting for", Duration::from_secs(30))
         .expect("native cyclonedds listener did not become ready");
 
-    let mut talker = spawn_cyclone_binary(&talker_bin, "threadx-linux-cyclonedds-talker", "0");
+    // The threadx-linux talker is embedded: it uses its baked domain (61) and
+    // ignores this env arg; passed for parity with the listener.
+    let mut talker = spawn_cyclone_binary(&talker_bin, "threadx-linux-cyclonedds-talker", "61");
 
     std::thread::sleep(Duration::from_secs(8));
     talker.kill();

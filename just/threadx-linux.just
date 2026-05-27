@@ -110,8 +110,16 @@ build-fixture-extras:
     bash scripts/build/fixtures-build.sh threadx-linux c zenoh
     bash scripts/build/fixtures-build.sh threadx-linux cpp zenoh
     if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
-        bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
-        bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
+        # Phase 177.38 — bake this platform's Cyclone role-set onto domain 61
+        # (C/C++ → cmake -DNROS_DOMAIN_ID via NanoRosConfig.cmake) so its host
+        # RTPS ports stay disjoint from other host Cyclone fixtures. Only the
+        # cyclonedds pass gets it; zenoh keeps the config.toml default. The paired
+        # native listener spawns at domain 61 in native_api.rs's
+        # test_threadx_linux_cyclonedds_talker_to_native_listener.
+        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=61" \
+            bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
+        NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=61" \
+            bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
     else
         echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
     fi

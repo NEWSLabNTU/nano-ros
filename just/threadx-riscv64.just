@@ -162,10 +162,17 @@ build-fixture-extras:
         local rmw="$2"
         local build_dir="$3"
         echo "  → $dir (-DNROS_RMW=$rmw, $build_dir/)"
+        # Phase 177.38 — Cyclone fixtures bake domain 62 (env for the
+        # Rust/Corrosion build + -D for the C/C++ glue); fold it into the cache
+        # sig so a domain change forces a rebuild. Empty for non-Cyclone (keeps
+        # the config.toml default).
+        local _dom=""
+        [ "$rmw" = "cyclonedds" ] && _dom="62"
         local sig
         sig="$(printf '%s\n' \
           "platform=threadx_riscv64" \
           "rmw=$rmw" \
+          "domain=${_dom}" \
           "src=$dir" \
           "toolchain=$toolchain" \
           "threadx_dir=$threadx_dir" \
@@ -175,8 +182,10 @@ build-fixture-extras:
           "cyclonedds_prefix=${cyclonedds_prefix:-}")"
         THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
         THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+        ${_dom:+NROS_DOMAIN_ID=$_dom} \
           nros_cmake_fixture_build "$dir" "$dir/$build_dir" "$sig" \
             -DNROS_RMW="$rmw" \
+            ${_dom:+-DNROS_DOMAIN_ID=$_dom} \
             -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
             -DTHREADX_DIR="$threadx_dir" \
             -DNETX_DIR="$netx_dir" \
@@ -208,7 +217,11 @@ build-fixture-extras:
         # Cyclone C/C++ cells (talker/listener) are manifest rows; the
         # rust/talker Cyclone cell is a cmake/corrosion rust cell (Phase 175.B),
         # not a c/cpp manifest entry, so it is built directly via the helper.
-        export NROS_CMAKE_EXTRA_DEFS="$base_defs -DCMAKE_PREFIX_PATH=$cyclonedds_prefix"
+        # Phase 177.38 — bake the ThreadX-RV64 Cyclone role-set onto domain 62
+        # (talker+listener pair shares it). C/C++ get it via cmake -DNROS_DOMAIN_ID
+        # (NanoRosConfig.cmake); the rust/talker cell gets it through the helper
+        # below (env + -D + sig). Only the cyclonedds pass; zenoh keeps default.
+        export NROS_CMAKE_EXTRA_DEFS="$base_defs -DCMAKE_PREFIX_PATH=$cyclonedds_prefix -DNROS_DOMAIN_ID=62"
         bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
         bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
         if [ -d examples/qemu-riscv64-threadx/rust/talker ]; then

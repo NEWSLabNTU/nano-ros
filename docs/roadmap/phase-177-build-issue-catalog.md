@@ -1027,31 +1027,31 @@ passed.
   Suggested per-platform domain map (disjoint from Zephyr's 50..58 and native's
   slot-based 1..~30): freertos=60, threadx-linux=61, threadx-rv64=62.
 
-  **Wiring status (2026-05-27).** No embedded Cyclone fixture *collides* today —
-  QEMU targets (freertos loopback, threadx-rv64 gated two-QEMU pair) are network
-  -isolated (slirp / dedicated mcast segment), and threadx-linux Cyclone sits on
-  domain 0 while host `native_api` Cyclone uses slot-based domains (~1..30),
-  disjoint. The override is applied for consistency/future-proofing per the map:
-  - **freertos = 60 — WIRED.** `just/freertos.just` exports `NROS_DOMAIN_ID=60`
-    for the Cyclone fixture loop (Rust/Corrosion reads the env). Self-contained
-    (talker+listener loopback in one QEMU), so no cross-process/test coupling.
-  - **threadx-linux = 61 — documented, wire when touched.** Its Cyclone C talker
-    pairs with a *native* listener (`native_api.rs::
-    test_threadx_linux_cyclonedds_talker_to_native_listener`, listener spawned at
-    domain "0"). Wiring needs BOTH sides moved together: inject
+  **Wiring status (2026-05-27) — all embedded-Cyclone targets now WIRED to
+  distinct domains** (consistency/future-proofing; none collide *today* — host
+  `native_api` Cyclone uses slot domains ~1..30, the QEMU/two-QEMU targets are
+  network-isolated, so the map below pre-empts any future overlap):
+  - **freertos = 60.** `just/freertos.just` exports `NROS_DOMAIN_ID=60` for the
+    Cyclone fixture loop (Rust/Corrosion reads the env). Self-contained
+    (talker+listener loopback in one QEMU), no cross-process coupling.
+  - **threadx-linux = 61.** `just/threadx-linux.just` injects
     `-DNROS_DOMAIN_ID=61` on the two `fixtures-build.sh threadx-linux {c,cpp}
-    cyclonedds` calls in `just/threadx-linux.just` **and** change the test's
-    native-listener domain `"0"`→`"61"`, then rebuild the fixture (a stale
-    domain-0 fixture + a 61 listener would mismatch — the 177.37 rebuild caveat).
-  - **threadx-rv64 = 62 — documented, wire when touched.** Two-QEMU pair shares
-    the domain; inject `-DNROS_DOMAIN_ID=62` (C/C++) / `NROS_DOMAIN_ID=62` env
-    (Rust) in `build_threadx_cmake_rmw` gated on `rmw == cyclonedds`, and add it
-    to the build `sig` so the fixture rebuilds.
+    cyclonedds` calls (C/C++ → `NanoRosConfig.cmake`); the paired *native*
+    listener in `native_api.rs::test_threadx_linux_cyclonedds_talker_to_native_listener`
+    is spawned at domain "61" to match the baked talker.
+  - **threadx-rv64 = 62.** `just/threadx-riscv64.just` adds `-DNROS_DOMAIN_ID=62`
+    to the C/C++ Cyclone defs, and `build_threadx_cmake_rmw` (the rust/talker
+    cell) gates `NROS_DOMAIN_ID=62` env + `-DNROS_DOMAIN_ID=62` on
+    `rmw == cyclonedds` and folds `domain` into the cache `sig` so a change
+    forces a rebuild. The two-QEMU pair shares the domain.
 
-  The cross-process platforms (threadx-linux, threadx-rv64) are left documented-
-  but-unwired because wiring them couples the test to the baked domain + needs a
-  fixture rebuild, for zero current collision benefit; apply the recipe edits
-  above when that platform's Cyclone fixtures are next rebuilt.
+  **Rebuild caveat (177.37):** after this change the Cyclone fixtures must be
+  rebuilt (`just <plat> build-fixtures`) so the new baked domain takes effect; a
+  stale domain-0 fixture run against a 61/62-configured peer/listener would
+  mismatch. Verification of the freertos/threadx Cyclone *fixture builds* needs
+  their cross SDKs (freertos cross-`libddsc.a`, threadx SDK) which aren't in this
+  sandbox; the override *mechanism* itself is verified (freertos/threadx-rv64/
+  stm32f4 examples build with `NROS_DOMAIN_ID`, env-tracked recompile).
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
