@@ -170,34 +170,31 @@ The post-audit rerun found four follow-ups:
   check now watches only the backend package that matches the fixture
   RMW, with an all-backend fallback for unknown names.
 
-Zephyr CycloneDDS `native_sim` runtime failures remain open after the
-fixture-resolution cleanup. **Root cause identified 2026-05-25** (this is
-a port defect, not a fixed-sleep regression):
+Zephyr CycloneDDS `native_sim` runtime is **GREEN** (Phase 177.2 closed
+2026-05-23; runtime re-verified 2026-05-25). An earlier write-up here
+claimed an open port defect — a missing `k_thread` ddsrt thread port,
+with `os: tid ... is in use!` log lines and "zero messages / data plane
+dead." **That diagnosis was wrong:** it was made against stale
+`eth_posix` fixtures with no network. With fresh NSOS-overlay fixtures:
 
-`zephyr/CMakeLists.txt` globs ddsrt's POSIX backends — `file(GLOB
-_cdds_ddsrt_posix ${CYCLONEDDS_DIR}/src/ddsrt/src/*/posix/*.c)` — which
-pulls in `src/threads/posix/threads.c`, the raw `pthread_create` thread
-port. On `native_sim` the Zephyr kernel runs atop the native simulator,
-which models every `k_thread` as a host thread under its own control.
-CycloneDDS spawns ~7 worker threads (recv / dq.builtins / tev / gc / …)
-via raw `pthread_create` at `dds_create_participant`; those host threads
-are created outside the simulator's bookkeeping, so each one trips the
-kernel's `os: tid 0x... is in use!` check the moment it calls a Zephyr
-API. Reproduced directly: `build/zephyr-workspace-builds/build-cpp-
-talker-cyclonedds/zephyr/zephyr.exe` logs seven `tid ... is in use!`
-errors at participant creation; a talker+listener pair exchanges **zero**
-messages (data plane dead). The talker's own publish loop still runs
-because it is the main `k_thread`, which is why the boot-banner tests
-pass while the e2e tests time out.
+- The Cyclone worker threads **are** `k_thread`s — `CONFIG_POSIX_THREADS=y`
+  routes ddsrt's `pthread_create` to Zephyr's POSIX pthread and
+  `CONFIG_DYNAMIC_THREAD=y` gives them dynamic stacks. No host-pthread /
+  no-Zephyr-port problem; no `threads/zephyr` ddsrt backend is needed.
+- The `os: tid ... is in use!` lines are **benign** — `kernel/dynamic.c`
+  declines to free a dynamic stack whose thread is still alive (`-EBUSY`)
+  and the thread keeps running. The participant is created and the data
+  plane runs normally despite the log noise.
+- Verified: a 2-node native_sim cpp talker↔listener exchanges data, and
+  the full `binary(zephyr) and test(dds)` nextest group is **15/15 PASS**
+  on NSOS fixtures — every c/cpp talker / listener / service / action
+  boot **plus** `*_action_e2e` for C, C++, and Rust.
 
-The correct fix is a `k_thread`-based ddsrt Zephyr thread port (new
-`threads/zephyr` backend using `k_thread_create` + dynamic stacks,
-excluded from the POSIX glob), parallel to the existing `freertos` and
-`threadx` ports. That is a bounded but non-trivial RTOS port and belongs
-to the Zephyr CycloneDDS work tracked under Phase 177.2; it is not a
-test-harness fix. Until then these `native_sim` Cyclone e2e tests stay in
-the serial `zephyr-native-cyclonedds` group and are expected to fail at
-runtime. Cataloged as the CycloneDDS-runtime slice of **177.9.F**.
+These tests stay in the serial `zephyr-native-cyclonedds` group only for
+fixed RTPS port/domain isolation, not because they fail. The cosmetic
+`tid ... is in use!` log spam could optionally be silenced with
+non-dynamic ddsrt stacks. See the archived Phase 177 catalog
+(177.2 / 177.9.F CycloneDDS slice) for the full correction.
 
 ### Post-nextest stages have poor visibility
 

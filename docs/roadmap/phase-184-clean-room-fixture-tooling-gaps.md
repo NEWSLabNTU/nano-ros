@@ -206,7 +206,7 @@ fixture-not-built preconditions (the product fixes had already landed under
 | `rtos_e2e test_rtos_pubsub_e2e::Nuttx::Rust` | **177.30** | **already fixed; was fixture-missing.** Cold run fell back to `nros-fast-release` (177.8.c reboot loop). After `just nuttx build-fixtures`: **PASS** (45s). |
 | `threadx_riscv64_qemu test_threadx_riscv64_cyclonedds_two_qemu_pubsub` | **177.26** | **already fixed; was Cyclone-fixture-missing.** After `just cyclonedds threadx-cross-probe` + `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures`: **PASS** (5.2s) — the "executor register" blocker is resolved. |
 | `native_api test_threadx_linux_cyclonedds_talker_to_native_listener` | **177.26** | **already fixed; was fixture-missing.** After `just cyclonedds setup` + `just threadx_linux build-fixture-extras`: **PASS** (10.1s). |
-| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** | **Not re-verified here** — needs a full `just zephyr setup` (Zephyr SDK absent in this env). Builds since 184.6; runtime status tracked under 177.2. |
+| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** | **GREEN (not a product gap).** 177.2 closed 2026-05-23; the `k_thread`-ddsrt-port theory was debunked 2026-05-25 (diagnosed against stale `eth_posix` fixtures — Cyclone workers ARE `k_thread`s, `tid in use!` benign). On fresh NSOS fixtures the full `binary(zephyr) & test(dds)` group is **15/15 PASS** incl. all `*_action_e2e`. Clean-room reds were stale-fixture / `zephyr-native-cyclonedds` domain cross-talk (177.33/177.35). Not re-run in this SDK-less env. |
 
 **Takeaway:** the clean-room `test-all` reds are dominated by *fixtures not built
 for the specific platform* (the per-test `[SKIPPED]`/fallback messages name the
