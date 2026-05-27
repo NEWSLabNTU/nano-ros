@@ -558,7 +558,7 @@ impl<'a> Node<'a> {
         );
         let feedback_publisher = self
             .session
-            .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
+            .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
@@ -572,7 +572,10 @@ impl<'a> Node<'a> {
         );
         let status_publisher = self
             .session
-            .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
+            .create_publisher(
+                &status_topic,
+                QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
+            )
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(super::action_core::ActionServerCore {
@@ -772,7 +775,7 @@ impl<'a> Node<'a> {
         );
         let feedback_publisher = self
             .session
-            .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
+            .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
@@ -786,7 +789,10 @@ impl<'a> Node<'a> {
         );
         let status_publisher = self
             .session
-            .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
+            .create_publisher(
+                &status_topic,
+                QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
+            )
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(ActionServer {

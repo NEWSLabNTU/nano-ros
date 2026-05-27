@@ -1004,12 +1004,34 @@ passed.
     the nano server's service endpoints — NOT the graph. Single-service
     `ros2 service call` interop works (117.12.B.1), so a *plain* service matches;
     something about the action client's 3 service-clients vs the nano server's
-    action service-servers doesn't reach matched. **Needs rmw-level / Cyclone
-    match instrumentation to localize** (which of the 3 services, and whether it's
-    a QoS-profile or a discovery-timing mismatch) — not a one-line extension of
-    the 117.12.B.1 send_reply gate. The action interop test stays `#[ignore]`d on
-    this. The graph prerequisite (this item's core) is done; this is a separate
-    service-availability follow-on.
+    action service-servers doesn't reach matched.
+
+  **Cyclone-trace investigation + one real bug fixed (2026-05-27).** Traced the
+  stock send_goal client (`CYCLONEDDS_URI` discovery tracing — no rmw rebuild
+  needed) against the nano action server:
+  - **The 3 action services DO connect at the DDS level** — the trace shows
+    `proxy_reader_add_connection(wr <client send_goal req-writer> prd <nano
+    req-reader>)` + `reader_add_connection(pwr <nano reply-writer> rd <client
+    reply-reader>)` for send_goal (and the others); no "incompatible qos". So the
+    request-writer↔reader and reply-reader↔writer matches succeed.
+  - **Found + fixed a real QoS bug:** the action server created its **feedback +
+    status publishers with `QosSettings::BEST_EFFORT`** (`node.rs`), while ROS 2
+    actions require feedback=RELIABLE and status=RELIABLE+TRANSIENT_LOCAL — so a
+    stock client's (RELIABLE) feedback/status subscriptions can't match the nano
+    (best-effort) pubs. Changed feedback→`QOS_PROFILE_DEFAULT`,
+    status→`QOS_PROFILE_ACTION_STATUS_DEFAULT` (the latter already existed,
+    unused). Verified non-regressing: nano↔nano cyclone action + zenoh action
+    still PASS.
+  - **But that did NOT unlock `wait_for_server`** — and on reflection
+    `rcl_action_server_is_available` checks only the 3 *services*, not
+    feedback/status. So the standing puzzle: the 3 services connect at DDS, yet
+    `rmw_service_server_is_available` still returns false. That decision is
+    *inside* rmw_cyclonedds_cpp and the non-source diagnostics here are exhausted
+    (`ros2 topic info -v` hangs; only the `.so` is installed). **Next: build
+    `rmw_cyclonedds_cpp` from source with debug / RMW logging** to see why
+    is_available returns false despite the DDS-level connect. The QoS fix is
+    correct + landed regardless; the graph prerequisite is done. Action interop
+    test stays `#[ignore]`d on this rmw-internal puzzle.
 
 - [x] **177.37 - parallelize the Zephyr native_sim Cyclone test groups via a
   COMPILE-TIME per-role-set domain.** Owner: test-harness (landed 2026-05-27).
