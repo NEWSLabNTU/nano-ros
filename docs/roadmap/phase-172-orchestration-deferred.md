@@ -220,10 +220,19 @@ example migration (K), then the audit/docs (N).
   - [ ] **172.K.5 — runtime `create_node_on`-by-id.** Bind a node to a session
         by transport `id` (not just `rmw`); only required when two transports
         share an `rmw` — deferrable until a same-rmw multi-transport build exists.
-  - [ ] **172.K.6 — drop the legacy arms + delete `config.toml`.** Once every
-        example is on `nros.toml`, remove the `[network]`/`[zenoh]`/`[scheduling]`
-        match arms from all 8 board parsers and delete the last `config.toml`;
-        full per-platform e2e verification.
+  - [x] **172.K.6 — drop the legacy arms + delete `config.toml`.** DONE
+        2026-05-27. All 88 examples + 2 nros-bench fixtures on `nros.toml`
+        (0 source `config.toml` repo-wide); legacy `[network]`/`[zenoh]`/
+        `[scheduling]`/`[platform]`/`[wifi]`/`[serial]` arms removed from all 8
+        board `from_toml` parsers + both CMake parsers (`NanoRosConfig.cmake`,
+        `nros-c/NanoRosReadConfig.cmake`) — parsers accept only the direct-mode
+        `[node]`/`[[transport]]`/`[node.rt]` shape. Last runtime consumers
+        migrated first (3 logging-smoke bins; `nros new` scaffolder → `nros.toml`,
+        colcon-nano-ros `d37a692`). **Verified: `build-all` green across every
+        platform** (board drops + the CMake C/C++ path); both CMake parsers
+        parser-driven. Also fixed along the way: zephyr cyclonedds graph-types
+        build (177.36, landed on main `4c6ce2520`) + the converter `#`-in-serial-
+        locator bug + the rust-example CMakeLists `nano_ros_read_config` repoint.
 
 - [ ] **172.N — Audit `.cargo/config.toml` to dep-injection only.**
       Confirm every example `.cargo/config.toml` holds **only**
