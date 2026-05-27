@@ -55,6 +55,18 @@ pub trait BoardTransportConfig {
     /// stack. Boards without a `prefix` field ignore that argument.
     fn set_ipv4(&mut self, _addr: [u8; 4], _prefix: u8) {}
 
+    /// Ethernet MAC address. Boards with a fixed/fused MAC ignore this.
+    /// (Phase 172.J — the orchestration generator writes it from
+    /// `nros.toml` `[[transport]]` `mac`, replacing `config.toml`'s
+    /// `[network].mac`.)
+    fn set_mac(&mut self, _mac: [u8; 6]) {}
+
+    /// Default IPv4 gateway for the board's ethernet stack. Boards on a
+    /// flat link (no gateway) ignore this. (Phase 172.J — from
+    /// `nros.toml` `[[transport]]` `gateway`, replacing `config.toml`'s
+    /// `[network].gateway`.)
+    fn set_gateway(&mut self, _addr: [u8; 4]) {}
+
     /// Serial line rate for the board's UART transport.
     fn set_baudrate(&mut self, _baud: u32) {}
 }
