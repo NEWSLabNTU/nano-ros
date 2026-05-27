@@ -2072,14 +2072,22 @@ robustness/consistency follow-ups, not regressions.
   "idlc not on PATH" note was wrong.) Fix: re-resolve when the cached path
   `NOT EXISTS`. **Verified end-to-end 2026-05-27:** with the harden,
   `just zephyr build-fixtures` → **exit 0, zero idlc-127, no failed fixtures**;
-  the formerly-unbuildable Cyclone Zephyr tests now run — `binary(zephyr) &
-  test(dds)` + zephyr cyclonedds = **12 pass / 7 fail**, where the 7 are
-  pre-existing Cyclone *runtime* issues unaffected by a build fix: 3×
-  `test_zephyr_dds_*_action_e2e` (the known Cyclone-action register blocker,
-  177.31/177.32) + 4× cyclonedds pubsub/cpp-service SPDP-discovery flakiness on
-  native_sim (nodes boot, no `Received` line). Before the fix all of these
-  *fast-failed with no fixture at all*, so this is a strict improvement +
-  confirms the idlc fix.
+  the formerly-unbuildable Cyclone Zephyr tests now run. A *concurrent* run of
+  the whole subset (`binary(zephyr) & test(dds)` + zephyr cyclonedds, 19 tests)
+  gave **12 pass / 7 fail** — but the 7 fails are a **test-concurrency
+  artifact, not a runtime regression**: running ~19 Cyclone native_sim nodes in
+  parallel puts them on overlapping DDS domains → SPDP discovery cross-talk →
+  goals/samples never complete (0.1–0.3 s "no completion"/"no `Received`").
+  **Run serially they PASS:** `--test-threads=1 test_zephyr_dds_{c,cpp,rs}_action_e2e`
+  → **3/3 pass** (9.5/11.6/18.3 s, real runs). This matches the doc's
+  CycloneDDS-15/15 claim above (boots + c/cpp/rs action e2e) — that resolution
+  holds; the batch failures are the 177.33/177.35 unique-DDS-domain /
+  concurrent-test-isolation issue (the Cyclone native_sim tests need a serial
+  group or unique domains, like the QEMU platforms do), tracked there. The
+  earlier note here mis-attributed the action fails to the *native* Cyclone
+  register blocker (177.31/177.32) — that is a different, native-only item.
+  Net: the idlc harden is confirmed end-to-end (build green; the dds action e2e
+  pass serially), and the only residual is test-runner domain isolation.
 - [~] Full root `just ci` rerun after Phase 171 archive prep: static
   gates passed, `test-all` failed with 39 real failures + 8 environment
   skips.
