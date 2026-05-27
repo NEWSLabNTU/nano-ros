@@ -128,6 +128,14 @@ build-fixture-extras:
     nros_cargo_ensure_codegen_c
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
     if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
+        # Phase 177.38 — bake this platform's Cyclone role-set onto a distinct
+        # ROS domain so its fixtures never collide with other host/QEMU Cyclone
+        # fixtures on the derived RTPS ports (7400 + 250*domain). The Rust
+        # examples read it via option_env! at build time, so it must be in the
+        # ENV for the corrosion cargo build (not a -D cmake var). talker+listener
+        # share (they communicate). Per-platform map in docs/roadmap (177.38):
+        # freertos=60, threadx-linux=61, threadx-rv64=62.
+        export NROS_DOMAIN_ID=60
         for case in talker listener; do
             if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
                 continue
