@@ -138,7 +138,11 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
         .env("MODE", "listener")
         .env("PAYLOAD_SIZE", "512")
         .env("EXPECTED_COUNT", "5")
-        .env("TIMEOUT_SECS", "15");
+        // Every 2048B payload overflows the 1024B shim buffer and is dropped,
+        // so the listener never reaches EXPECTED_COUNT — it runs the full
+        // timeout, then prints the RECV_DONE summary. Keep it short; the test's
+        // RECV_DONE wait below must exceed it.
+        .env("TIMEOUT_SECS", "8");
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "zenoh-stress-overflow-listener")
             .expect("Failed to start listener");
@@ -158,10 +162,15 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "zenoh-stress-overflow-talker")
         .expect("Failed to start talker");
 
-    // Wait for listener to time out or detect overflow
+    // Wait for the listener's RECV_DONE summary. It prints only after the
+    // listener's internal 8s timeout (all payloads overflow + drop, so
+    // EXPECTED_COUNT is never reached), so this wait must comfortably exceed
+    // that — 25s leaves margin for slow CI. Failing here (rather than
+    // `unwrap_or_default`) surfaces a real hang instead of a misleading
+    // `overflow_drops=0`.
     let listener_output = listener
-        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(15))
-        .unwrap_or_default();
+        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(25))
+        .expect("zenoh overflow listener never printed RECV_DONE summary");
 
     talker.kill();
     listener.kill();

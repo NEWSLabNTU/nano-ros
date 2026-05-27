@@ -6,7 +6,10 @@ cycle (`just clean` → `just setup` → `just build-all` → `just build-test-f
 green. None of these are product regressions — they are setup/fixture-aggregation
 and one codegen-link gap.
 
-**Status:** 184.1–.5 RESOLVED 2026-05-27 (184.1/.2/.3/.5 = clean build-only; 184.4 = build-fixtures-make builds host codegen).
+**Status:** 184.1–.5 RESOLVED 2026-05-27 (184.1/.2/.3/.5 = clean build-only;
+184.4 = build-fixtures-make builds host codegen); 184.6 fixed; 184.7 RE-VERIFIED
+2026-05-27 (reds were fixture-not-built preconditions + one test-timing bug, now
+fixed — not live product gaps).
 **Priority:** Medium.
 **Depends on:** Phase 177 (archived — product fixes incl. the Cyclone idlc
 re-resolve harden), Phase 175 (native Cyclone CMake/Corrosion fixtures).
@@ -189,22 +192,29 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   was a **stale build dir** (cached `kconfig.rs` predating 177.38's symbol) — a
   clean rebuild cleared it and unmasked this graph.cpp gap.
 
-### 184.7 — runtime `test-all` reds (product gaps, owned elsewhere; not 184 tooling)
-`test-all` (post-184.6 fix, fixtures green) = 761 run, 753 passed (22
-flaky-recovered), **7 hard failures** (exhaust `retries=2`) + 1 `[SKIPPED]`
-(`nuttx_make_e2e`, see 184.4). The 7 are **product** gaps tracked in their own
-phases — listed here only so the clean-room baseline is honest, not as 184 work:
+### 184.7 — [RE-VERIFIED 2026-05-27] runtime `test-all` reds were NOT live product bugs
+The baseline `test-all` (post-184.6) showed **7 hard failures** + 1 `[SKIPPED]`
+(`nuttx_make_e2e`, see 184.4). Re-verification by **building each platform's
+release/Cyclone fixtures and re-running the specific test** found that none of
+the reproducible reds is a live product bug — they were stale-baseline /
+fixture-not-built preconditions (the product fixes had already landed under
+177.x), plus one genuine **test**-timing bug:
 
-| Test | Owning phase |
-|------|--------------|
-| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** — zephyr cyclonedds actions (CLAUDE.md: pending). Now *builds* (184.6) so it runs + hits the runtime gap |
-| `threadx_riscv64_qemu test_threadx_riscv64_cyclonedds_two_qemu_pubsub`, `native_api test_threadx_linux_cyclonedds_talker_to_native_listener` | **177.26** — ThreadX Cyclone peer interop / multicast discovery |
-| `rtos_e2e test_rtos_pubsub_e2e::Nuttx::Rust` | **177.30** — NuttX `z_open` hang |
-| `large_msg test_zenoh_overflow_detection` | flake-class (zenoh overflow); re-run-sensitive |
+| Test | Owning phase | Re-verified status (2026-05-27) |
+|------|--------------|----------------------------------|
+| `large_msg test_zenoh_overflow_detection` | — | **FIXED (test bug, not flake).** The listener only prints `RECV_DONE:` at its internal timeout (every 2048B payload correctly overflows the 1024B shim buffer ⇒ `received=0`, `EXPECTED_COUNT` never reached); the test's `wait_for_output_pattern` raced that exact 15s deadline ⇒ missed the line ⇒ parsed `overflow_drops=0`. Product was correct (`overflow_drops=5`). Fix in `large_msg.rs`: listener `TIMEOUT_SECS` 15→8, test wait 15→25s, `unwrap_or_default`→`expect`. **PASS** (8.2s). |
+| `rtos_e2e test_rtos_pubsub_e2e::Nuttx::Rust` | **177.30** | **already fixed; was fixture-missing.** Cold run fell back to `nros-fast-release` (177.8.c reboot loop). After `just nuttx build-fixtures`: **PASS** (45s). |
+| `threadx_riscv64_qemu test_threadx_riscv64_cyclonedds_two_qemu_pubsub` | **177.26** | **already fixed; was Cyclone-fixture-missing.** After `just cyclonedds threadx-cross-probe` + `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures`: **PASS** (5.2s) — the "executor register" blocker is resolved. |
+| `native_api test_threadx_linux_cyclonedds_talker_to_native_listener` | **177.26** | **already fixed; was fixture-missing.** After `just cyclonedds setup` + `just threadx_linux build-fixture-extras`: **PASS** (10.1s). |
+| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** | **Not re-verified here** — needs a full `just zephyr setup` (Zephyr SDK absent in this env). Builds since 184.6; runtime status tracked under 177.2. |
 
-None are Phase-172 (Group-1) regressions — Group-1 touches only additive board
-`from_toml` parsers + the mps2 baremetal example's `nros.toml` + the 184.6 zephyr
-build fix; none of these test paths.
+**Takeaway:** the clean-room `test-all` reds are dominated by *fixtures not built
+for the specific platform* (the per-test `[SKIPPED]`/fallback messages name the
+exact `just … build-fixtures` step). Only `test_zenoh_overflow_detection` was a
+real defect — a test-side timing race, now fixed. None are Phase-172 (Group-1)
+regressions — Group-1 touches only additive board `from_toml` parsers + the mps2
+baremetal example's `nros.toml` + the 184.6 zephyr build fix; none of these test
+paths.
 
 ## Acceptance
 - A clean-room `clean → setup → build-all → build-test-fixtures → test-all` on a
