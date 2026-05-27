@@ -128,8 +128,13 @@ impl Config {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
+            // Phase 172.K — `[[transport]]` array-of-tables + dotted sections.
             if line.starts_with('[') {
-                if let Some(end) = line.find(']') {
+                if line.starts_with("[[") {
+                    if let Some(end) = line.find("]]") {
+                        section = line[2..end].trim();
+                    }
+                } else if let Some(end) = line.find(']') {
                     section = line[1..end].trim();
                 }
                 continue;
@@ -165,6 +170,30 @@ impl Config {
                         config.zenoh_locator = value;
                     }
                     ("zenoh", "domain_id") => {
+                        if let Some(d) = parse_u32(value) {
+                            config.domain_id = d;
+                        }
+                    }
+
+                    // Phase 172.K — direct-mode nros.toml (NuttX owns no MAC).
+                    ("transport", "ip") => {
+                        let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
+                        if let Some(ip) = parse_ipv4(addr) {
+                            config.ip = ip;
+                        }
+                        if let Some(p) = parse_u32(pfx) {
+                            config.prefix = p as u8;
+                        }
+                    }
+                    ("transport", "gateway") => {
+                        if let Some(gw) = parse_ipv4(value) {
+                            config.gateway = gw;
+                        }
+                    }
+                    ("transport", "locator") => {
+                        config.zenoh_locator = value;
+                    }
+                    ("node", "domain_id") => {
                         if let Some(d) = parse_u32(value) {
                             config.domain_id = d;
                         }

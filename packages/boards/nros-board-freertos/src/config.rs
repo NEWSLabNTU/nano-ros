@@ -181,8 +181,13 @@ impl Config {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
+            // Phase 172.K — `[[transport]]` array-of-tables + dotted `[node.rt]`.
             if line.starts_with('[') {
-                if let Some(end) = line.find(']') {
+                if line.starts_with("[[") {
+                    if let Some(end) = line.find("]]") {
+                        section = line[2..end].trim();
+                    }
+                } else if let Some(end) = line.find(']') {
                     section = line[1..end].trim();
                 }
                 continue;
@@ -267,6 +272,76 @@ impl Config {
                             config.poll_interval_ms = v;
                         }
                     }
+
+                    // Phase 172.K — direct-mode nros.toml: `[[transport]]`
+                    // (ip CIDR → ip + netmask) + `[node]` + `[node.rt]`.
+                    ("transport", "ip") => {
+                        let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
+                        if let Some(ip) = parse_ipv4(addr) {
+                            config.ip = ip;
+                        }
+                        if let Some(p) = parse_u32(pfx) {
+                            config.netmask = prefix_to_netmask(p as u8);
+                        }
+                    }
+                    ("transport", "mac") => {
+                        if let Some(mac) = parse_mac(value) {
+                            config.mac = mac;
+                        }
+                    }
+                    ("transport", "gateway") => {
+                        if let Some(gw) = parse_ipv4(value) {
+                            config.gateway = gw;
+                        }
+                    }
+                    ("transport", "locator") => {
+                        config.zenoh_locator = value;
+                    }
+                    ("node", "domain_id") => {
+                        if let Some(d) = parse_u32(value) {
+                            config.domain_id = d;
+                        }
+                    }
+                    ("node.rt", "app_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.app_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("node.rt", "app_stack_bytes") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.app_stack_bytes = v;
+                        }
+                    }
+                    ("node.rt", "zenoh_read_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_read_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("node.rt", "zenoh_read_stack_bytes") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_read_stack_bytes = v;
+                        }
+                    }
+                    ("node.rt", "zenoh_lease_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_lease_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("node.rt", "zenoh_lease_stack_bytes") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_lease_stack_bytes = v;
+                        }
+                    }
+                    ("node.rt", "poll_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.poll_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("node.rt", "poll_interval_ms") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.poll_interval_ms = v;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -287,6 +362,15 @@ impl Config {
 }
 
 // ── Minimal no_std parsers ──────────────────────────────────────────────
+
+/// Convert a CIDR prefix length (0..=32) to a dotted netmask. Phase 172.K —
+/// the nros.toml `[[transport]]` `ip` carries the prefix as CIDR; this board
+/// stores a `netmask`.
+fn prefix_to_netmask(prefix: u8) -> [u8; 4] {
+    let p = prefix.min(32);
+    let mask: u32 = if p == 0 { 0 } else { u32::MAX << (32 - p) };
+    mask.to_be_bytes()
+}
 
 /// Parse an IPv4 address string ("192.0.3.10") into [u8; 4].
 fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
