@@ -257,7 +257,7 @@ can be staffed and shipped in parallel:
 | **2 — Planner & scheduling** | host planner dataflow, plan-schema sched representation, generated executor wiring | B, C, G | B → C → G |
 | **3 — Generated-runtime capabilities** | `nros-orchestration` runtime, generated `main`, plan representation of runtime features | A, H, I | independent (A largest) |
 | **4 — Host tooling & DX** | host CLI only; no runtime/plan-schema coupling | D, E, F | independent |
-| **5 — Revised deployment model (ACTIVE, no-compat)** | root `nros.toml` SSOT, two-form entry lib, `nros deploy` command-runner, `deploy/` dirs, config lowering, bridges, eject gradient, per-vendor templates, migration + deletion | O, P.M, P, Q, R, S, T, V, U | **Group 1** contracts (O.1, P.0, Q.0, R.0, P.M) → **SYNC 1** → **Group 2** wide parallel (O.2/3, P.1/2, Q.1/2, R, S, T, V.\*) → **SYNC 2** → **Group 3** flip (P.3, U, V validation) → **SYNC 3**. See *Parallelization plan*. |
+| **5 — Revised deployment model (ACTIVE, no-compat)** | root `nros.toml` SSOT, two-form entry lib, `nros deploy` command-runner, `deploy/` dirs, config lowering, bridges, eject gradient, per-vendor templates, migration + deletion | 3 packages: **WP-A** config & CLI, **WP-B** generator, **WP-C** platforms & cutover | **WP-A ‖ WP-B** (parallel; agree the interface at kickoff) → **WP-C** (sequential, after both). See *Work packages*. |
 
 **Shared contract.** Groups 1–3 all touch the `nros-plan.json` schema
 (Group 1 feeds `SystemConfig` → plan inputs; Group 2's planner writes
@@ -415,9 +415,10 @@ example migration (K), then the audit/docs (N).
   - [ ] **172.K.5 — runtime `create_node_on`-by-id.** Bind a node to a session
         by transport `id` (not just `rmw`); only required for **case D**
         (segregated same-rmw sessions) in the transport taxonomy.
-        **SUBSUMED by 172.S** (2026-05-28): per-node session assignment for
-        in-binary multi-domain/bridge builds is exactly this binding —
-        implement it there against the `[[domain]]`/`[[bridge]]` root config.
+        **SUBSUMED by WP-B / bridges** (2026-05-28): per-node session
+        assignment for in-binary multi-domain/bridge builds is exactly this
+        binding — implement it there against the `[[domain]]`/`[[bridge]]`
+        root config.
   - [ ] **172.K.7 — multi-homing `[[transport]].interfaces` (list).** A single
         session spanning several NICs as one merged graph (taxonomy cases B/C —
         the common "node reachable on multiple interfaces" need, what stock
@@ -713,259 +714,130 @@ vendor-module). Reuses the plan IR + planner + runtime features (Groups
 **No backward compatibility — what this replaces (deleted, not kept
 alongside):**
 - the per-platform generated **`main`** (`EntryKind` / `render_main` in
-  `generate.rs`) → the two-form **entry lib** (172.P);
+  `generate.rs`) → the two-form **entry lib** (WP-B);
 - the flag-driven **`nros build --launch/--system-plan/--system-output/
   --target/--rmw/…`** system interface → **`nros build|deploy <name>`**
-  reading the root `nros.toml` (172.Q);
+  reading the root `nros.toml` (WP-A);
 - the per-package **`system nros.toml` with `target.{triple,board}`** →
-  the **root `nros.toml`** SSOT + `[deploy.<name>]` (172.O).
+  the **root `nros.toml`** SSOT + `[deploy.<name>]` (WP-A).
 
 These are removed in the item that supersedes them; no dual-read, no
 compat shim. Direct-mode **component/example** `nros.toml` (172.K) is a
 *different scope* (a self-contained single-node project) and is
 unaffected.
 
-**Parallelization plan (built for many hands).** The naive order
-(O→P→Q→R‖S‖T→U) is mostly serial. Break it into **parallel groups
-separated by sync barriers**: inside a group, tickets run concurrently
-with no shared files (see the lane-ownership table); at each sync point
-all of the group's work merges and must meet the barrier's exit criteria
-before the next group starts. Two moves make the groups wide: **(1)
-contracts first** (Parallel Group 1 freezes the interfaces), and **(2)
-`generate.rs` modularized** (172.P.M) so the generator lanes own
-different files.
+**Work packages (3 large, coherent units).** Coarse-grained on purpose:
+each package is one owner's end-to-end responsibility, not a pile of
+tickets. Only **WP-A and WP-B are inherently parallel** (different
+subsystems — host CLI vs generator); **WP-C is inherently sequential**
+(the cutover needs both) and is kept whole.
 
 ```
-branch off main
-  │
-  ├─ PARALLEL GROUP 1 — Contracts & enablers  (independent; distinct files/docs)
-  │     O.1 root schema · P.0 C-ABI header · Q.0 runner var/step · R.0 lowering spec · P.M split generate.rs
-  ▼
- ══ SYNC 1 "Contracts frozen" ══════════════════════════════════════════
-  │   exit: schema round-trips; C-ABI header frozen + documented;
-  │   generate.rs modular with all existing tests green; specs reviewed.
-  │   Tag the contract commit — Group 2 rebases on it. (the critical barrier)
-  │
-  ├─ PARALLEL GROUP 2 — Build-out  (file-isolated lanes; as many hands as available)
-  │     LANE config   O.2 check + O.3 loader            → cmd/check.rs, loader
-  │     LANE deploy   Q.1 runner + Q.2 resolution       → cmd/deploy.rs, cmd/build.rs (stubs entry-lib until P)
-  │     LANE entrylib P.1 compiled + P.2 source         → generate/entry_lib.rs
-  │     LANE lowering R                                 → generate/config_lower.rs
-  │     LANE bridge   S                                 → generate/bridge.rs + planner
-  │     LANE scaffold T                                 → cmd/new.rs
-  │     LANE vendor   V.* (~10, own parallel sub-group) → deploy/<vendor>/  (authoring only)
-  ▼
- ══ SYNC 2 "Build-out integrated" ══════════════════════════════════════
-  │   exit: every lane unit-green; ONE self system goes
-  │   entry-lib → deploy → config-lower → boot end-to-end; vendor
-  │   templates authored; render_main now unreferenced.
-  │
-  ├─ PARALLEL GROUP 3 — Flip & cleanup  (independent again)
-  │     P.3 delete render_main · U:migrate-fixtures · U:delete-dead-paths
-  │     U:docs (per book page) · V.* sim/HW validation (per platform)
-  ▼
- ══ SYNC 3 "Model is the only path" ════════════════════════════════════
-      exit: zero refs to deleted surfaces; `just ci` green; 3 sample
-      systems (self / vendor-lib / vendor-module) deploy from one root
-      file. Merge to main — the flip.
+   WP-A  Config & host CLI       ┐
+                                 ├─ parallel ─┐
+   WP-B  Generator (entry lib)   ┘            ├─▶  WP-C  Platforms & cutover
+        (agree the interface at kickoff)      ┘        (after A + B land)
 ```
 
-**Barrier discipline.** Each sync point is a hard merge gate, not a
-suggestion: a lane that misses a barrier blocks only the *next* group,
-not its peers (peers already merged). The two barriers that matter most
-are **SYNC 1** (freeze before anyone builds against the contract —
-re-opening it forces a Group-2-wide rebase) and **SYNC 3** (the flip —
-nothing deletes a superseded surface until the new path is proven at
-SYNC 2). The **172.V vendor matrix straddles Groups 2→3**: template
-*authoring* is Group 2 (parallel, against the Q.0 contract); per-platform
-*sim/HW validation* joins Group 3 (needs the runner + the platform's gen
-lane).
+**Interface to agree at kickoff** (a short note, not a work package): the
+entry-lib **C ABI** (`nros_<sys>_register_all(exec)`, per-node
+`register_<node>`, `build_executor`, `Config` + the optional-override
+entrypoint), the **`[deploy.<name>]` schema** (kind / target / board /
+rmw / self / vendor.{dir,pin} / build[] / package[]), and the **runner
+var-set** (`{self}` / `{entry_lib}` / `{entry_src}` / `{entry_header}` /
+`{board}` / `{target}` / `{vendor.dir}`). WP-A builds against it stubbing
+the lib emit; WP-B builds against it stubbing the runner; they meet when
+both land.
 
-**Lane ownership (conflict-free concurrency within a group).**
+#### WP-A — Config & host CLI  *(parallel with WP-B; was 172.O + Q + T)*
 
-Column **Grp** = parallel group (1/2/3) from the fork-join above.
+Owns the `nros.toml` config scope + the `nros` command surface. Files:
+`nros-cli-core` orchestration loader + `cmd/{check,deploy,build,new}.rs`.
 
-| Item | Grp | Owns (files) | Depends on | Runs parallel with |
-|---|---|---|---|---|
-| O.1 schema types | 1 | `orchestration/root_config.rs` (new) | — | P.0, Q.0, R.0, P.M |
-| P.0 C-ABI header | 1 | `<sys>.h` template + ABI doc | — | O.1, Q.0, R.0, P.M |
-| Q.0 var/step contract | 1 | deploy-runner spec | — | O.1, P.0, R.0, P.M |
-| R.0 lowering matrix | 1 | lowering spec table | — | O.1, P.0, Q.0, P.M |
-| P.M split generate.rs | 1 | `generate/mod.rs` + submodules (mechanical) | — | the other Wave-1 items |
-| O.2 `nros check` rules | 2 | `cmd/check.rs` | O.1 | everything in Wave 2 |
-| O.3 loader → plan/runner | 2 | `orchestration/{root_config,planner}` glue | O.1 | P/Q/R/S/T/V |
-| P.1 compiled form | 2 | `generate/entry_lib.rs` | P.0, P.M | R, S, Q, T, V |
-| P.2 source form | 2 | `generate/entry_lib.rs` (source path) + corrosion frag | P.0, P.M | R, S, Q, T, V (coordinate w/ P.1 in same file) |
-| Q.1 runner | 2 | `cmd/deploy.rs` (new) | O.1, O.3, Q.0 | P, R, S, T, V |
-| Q.2 resolution + strip flags | 2 | `cmd/build.rs` | O.1, Q.0 | P, R, S, T, V |
-| R config lowering | 2 | `generate/config_lower.rs` | R.0, P.M, 172.J | P, S, Q, T, V |
-| S bridges | 2 | `generate/bridge.rs` + planner bridge inference | O.1, P.M | P, R, Q, T, V |
-| T scaffolders | 2 | `cmd/new.rs` + `deploy/` templates | O.1, Q.0 | P, R, S, Q, V |
-| V.* vendor templates | 2 | `deploy/<vendor>/` (one dir each) | Q.0 (content) | each other + all of Wave 2 |
-| P.3 delete render_main | 3 | `generate/render.rs` removal | P.1, P.2 | — |
-| U flip + delete + docs | 3 | fixtures, dead-path removal, book | all | — |
+- **Root `nros.toml` SSOT.** The workspace-root config (marked by
+  `[workspace]`, distinct from per-package `nros.toml`): `[workspace]`
+  (`default`), `[system]` / `[systems.<name>]` (launch path, component
+  refs, default `rmw` + `domain_id`, `[overlays.*]`,
+  `[[domain]]` / `[[bridge]]`), `[deploy.<name>]` tables. Loader + schema +
+  `nros check` validation. **Deletes** the per-package "system
+  `nros.toml` with `target.{triple,board}`" reader — triple/board live in
+  `[deploy.<name>]`. Component `nros.toml` stays optional (reusable
+  intrinsics) and must not carry `rmw` / `domain`.
+- **`nros deploy` / `nros build <name>` command-runner.** Assert
+  `vendor.pin` → emit the entry-lib form → run `build[]` → `package[]`,
+  substituting the var-set. Three kinds (`self` / `vendor-lib` /
+  `vendor-module`), **no per-vendor code** (steps are user shell lines).
+  Pin-drift `nros doctor` check; `package[]` owns post-build artifacting
+  (mkifs / sign / `.px4`). **Deletes** the flag-driven system-build
+  interface (`--launch` / `--system-plan` / `--system-output` /
+  `--target` / `--rmw` ad-hoc); plain single-crate `nros build` autodetect
+  stays.
+- **Scaffolders + eject gradient.** `nros new --deploy <name> --kind <k>
+  --target <t>` scaffolds `deploy/<name>/` + appends a `[deploy.<name>]`
+  table to root; `--from-launch` / `--from-profile`. Implicit `nros build`
+  → `[workspace].default`; `nros build <name>` resolves a profile or a
+  `deploy/<name>/` dir (one namespace) — no long commands.
 
-- [ ] **172.O — Root `nros.toml` workspace config (SSOT).**
-      *(Sub-items per the lane table: O.1 schema types (Wave 1) · O.2
-      `nros check` rules · O.3 loader → plan/runner.)*
-      Add the workspace-scope config file at the repo root (marked by
-      `[workspace]`, distinct from per-package `nros.toml`): `[workspace]`
-      (`default` deploy), `[system]` / `[systems.<name>]` (launch path,
-      component refs, default `rmw` + `domain_id`, `[overlays.*]`), and
-      `[deploy.<name>]` tables. Loader + schema + `nros check` validation.
-      **Supersedes** the per-package "system `nros.toml` with
-      `target.{triple,board}`" — triple/board move to `[deploy.<name>]`.
-      Component `nros.toml` stays optional (reusable intrinsics only) and
-      **must not** carry `rmw`/`domain`. Files: `nros-cli-core`
-      orchestration loader, `cmd/check`, the schema types. Foundation for
-      O–T.
+#### WP-B — Generator: entry lib, config lowering, bridges  *(parallel with WP-A; was 172.P + R + S)*
 
-- [ ] **172.P.M — Modularize `generate.rs` (Wave 1 enabler).** Mechanical
-      refactor splitting the monolithic `orchestration/generate.rs` into
-      `generate/{mod,entry_lib,config_lower,bridge,render}.rs` along the
-      seams the parallel lanes need: entry-lib emission (172.P),
-      config lowering (172.R), bridge/open_multi (172.S), and the shared
-      render helpers. **No behavior change** — pure move + re-export,
-      verified by the existing `orchestration_*` tests staying green. This
-      is what lets P/R/S run concurrently without colliding in one file;
-      do it first, fast, by one hand.
+Owns everything the generator emits. Files: `orchestration/generate.rs`
+(+ planner for bridges), cbindgen. The owner may modularize `generate.rs`
+into submodules if it helps — their call, not a mandated step.
 
-- [ ] **172.P — Two-form entry lib (neutral wiring + granular C ABI).**
-      *(Sub-items per the lane table: P.0 freeze ABI · P.1 compiled form ·
-      P.2 source form · P.3 delete `render_main`.)*
-      Make the generator emit the wiring as a **library**, not a
-      per-platform `main`: a granular C ABI (`nros_<sys>_register_all`,
-      per-node `register_<node>`, `build_executor`, `Config`) in one of
-      two forms — **compiled** (`lib<sys>.a` + cbindgen `<sys>.h`) or
-      **source** (generated crate + a vendor-includable CMake fragment via
-      `add_subdirectory` + corrosion). `[deploy].emit` (or kind) selects;
-      vendor-owns-toolchain → source. **DELETE** the `EntryKind` /
-      `render_main` per-platform `main` emitter and the
-      `HostedMain`/`BoardRun`/`ZephyrStaticlib` branching (`generate.rs`) —
-      there is no generated `main` anymore; platform startup lives on the
-      deploy side (self's startup is a thin generated `deploy/<default>/`
-      shim calling the C ABI). Re-express the Zephyr staticlib path as the
-      unified source-form lib. Files: `orchestration/generate.rs` (remove
-      `render_main`), cbindgen header emit, the C-ABI surface.
+- **Two-form entry lib + delete `render_main`.** Emit the wiring as a
+  **library** with a granular C ABI, in two forms: **compiled**
+  (`lib<sys>.a` + cbindgen `<sys>.h`) and **source** (crate + a
+  vendor-includable CMake fragment via `add_subdirectory` + corrosion);
+  `[deploy].emit` / kind selects, vendor-owns-toolchain → source.
+  **Delete** the `EntryKind` / `render_main` per-platform `main` emitter —
+  there is no generated `main`; platform startup is deploy-side (self's is
+  a thin generated shim). Re-express the Zephyr staticlib path as the
+  unified source-form lib.
+- **Config lowering.** Lower the plan's config (domain, locator,
+  transport, params) per `(net_owner × host/embedded)`: host → env at
+  runtime; embedded + NanoRosOwned → baked board `Config` + shared
+  `<sys>_config.h`; embedded + RtosOwned → domain/locator baked + NIC
+  config as a vendor Kconfig/defconfig fragment in `{self}`; vendor-link
+  (IVC) → channel in the shared header; uORB → params baked. C-ABI entry
+  takes an optional `Config` override; precedence **param > env > baked**.
+  Builds on 172.J + Phase 173.7 + the `NetStack` enum.
+- **Bridges + multi-domain** (subsumes 172.K.5). Node = one session
+  (rmw + domain); bridge spans sessions, not a node. OUT bridge = runtime
+  `nros-bridge.toml` (172.L, unchanged) as its own deployable. IN bridge =
+  build-time `[[bridge]]` / `[[domain]]` in root `nros.toml` →
+  planner/generator emit `Executor::open_multi([SessionSpec])` + per-node
+  `create_node_on` session assignment (this *is* the old K.5 by-id
+  binding). `build.rmw` becomes a *set* for in-binary cross-RMW;
+  `nros check` warns when a target can't link the set.
 
-- [ ] **172.Q — `nros deploy` command-runner + `deploy/<name>/`.**
-      *(Sub-items: Q.0 var-set + step-model contract (Wave 1) · Q.1 runner ·
-      Q.2 name resolution + strip the old build flags. Q.1 devs against a
-      stub entry-lib emit until 172.P lands.)*
-      New `nros deploy <name>` (and `nros build <name>` as the
-      self/vendor-lib alias): assert `vendor.pin` → emit the entry-lib form → run
-      `[deploy.<name>].build[]` → `package[]`, substituting `{self}`
-      (= `deploy/<name>/`), `{entry_lib}`, `{entry_src}`, `{entry_header}`,
-      `{board}`, `{target}`, `{vendor.dir}`. Three kinds — `self` /
-      `vendor-lib` / `vendor-module` — with **no per-vendor code in
-      nano-ros** (vendor steps are user-authored shell lines). `vendor.pin`
-      drift assert + `nros doctor` check (closes the old G3); `package[]`
-      owns post-build artifacting (mkifs / sign / `.px4`; old G4).
-      **DELETE** the flag-driven system-build interface in `cmd/build.rs`
-      (`--launch` one-shot, `--system-plan`, `--system-output`,
-      `--system-package`, `--nano-ros-workspace`, `--target`/`--rmw`
-      ad-hoc) — `nros build|deploy <name>` reading the root `nros.toml` is
-      the only system path; the plain project-flavor `nros build`
-      (cargo/cmake/west autodetect for a single crate) stays. Files:
-      `cmd/deploy.rs` (new), `cmd/build.rs` (strip system flags + name
-      resolution), the `[deploy.<name>]` runner.
+#### WP-C — Platforms & cutover  *(sequential, after WP-A + WP-B; was 172.V + U)*
 
-- [ ] **172.R — Config lowering across net-owner × host/embedded.**
-      *(Sub-items: R.0 lowering-matrix spec (Wave 1) · R lowering impl in
-      `generate/config_lower.rs`.)*
-      Lower
-      the plan's config (domain, locator, transport, params) at generation
-      per `(net_owner × host/embedded)`: host → env at runtime; embedded +
-      NanoRosOwned → baked board `Config` + shared `<sys>_config.h`;
-      embedded + RtosOwned → domain/locator baked + NIC config as a vendor
-      Kconfig/defconfig fragment in `{self}` (deploy merges via the
-      vendor's include hook); vendor-link (IVC) → channel in the shared
-      header; uORB → params baked. C-ABI entry takes an optional `Config`
-      override (`cfg = NULL` ⇒ baked/env); precedence **param > env >
-      baked**. Builds on 172.J (`PlanTransport`) + Phase 173.7
-      (`nuttx-net.defconfig`) + the `NetStack` enum. `[deploy].config.{fragment,merge}`
-      expresses the RtosOwned fragment + its merge command.
+Make the model real across platforms, then flip `main`. Kept whole — the
+steps are inherently ordered (templates → migrate → delete). Files:
+`deploy/<vendor>/` templates, `integrations/` re-home, fixtures, book.
 
-- [ ] **172.S — Bridge placement + multi-domain in one binary.** Establish
-      **node = one session (rmw + domain); bridge = spans sessions, not a
-      node.** OUT bridge stays runtime `nros-bridge.toml` (172.L,
-      unchanged) as its own deployable. IN bridge = build-time `[[bridge]]`
-      + `[[domain]]` groups in root `nros.toml` → planner/generator emit
-      `Executor::open_multi([SessionSpec])` + per-node `create_node_on`
-      session assignment (the K.5 by-id binding generalizes here).
-      `build.rmw` becomes a *set* when an in-binary cross-RMW bridge is
-      present (linkme multi-backend); `nros check` warns when the target
-      can't link the set → recommend an OUT bridge. Files: planner
-      (`[[bridge]]`/`[[domain]]` → plan), `generate.rs` (open_multi main),
-      `cmd/check` (feasibility).
+- **Per-platform `deploy/<vendor>/` templates.** One template per platform
+  — self/posix, bare-metal, freertos, nuttx, threadx, zephyr, esp-idf,
+  px4, orin-spe, qnx — each the kind-specific shell (link line /
+  `add_subdirectory` fragment / vendor-module manifest) + example
+  `build[]` / `package[]` + config-fragment hook + a sim/HW validation.
+  Re-home the existing `integrations/<rtos>/` shells (Phase 139) as these.
+  The owner sequences the platforms (or sub-delegates if staffed); the
+  roadmap does not pre-split them into separate tickets.
+- **Migrate + flip.** Convert the `orchestration_e2e` fixtures + at least
+  one self, one vendor-lib (Orin POSIX sim), one vendor-module (Zephyr or
+  PX4-SITL) system to a root `nros.toml` + `nros deploy <name>`. **Then
+  delete the superseded code** (the `render_main` remnants WP-B left, the
+  old `cmd/build.rs` system flags + tests, the per-package triple/board
+  reader). Update the book (`ros2-user-workflow`, `configuration`, CLI
+  ref). Done when `grep` shows zero references to the deleted surfaces,
+  `just ci` is green, and the three sample systems deploy from one root
+  file.
 
-- [ ] **172.T — `nros new` scaffolders + eject gradient + implicit
-      shortcut.** `nros new --deploy <name> --kind <k> --target <t>`
-      scaffolds `deploy/<name>/` (kind-specific: self main is generated so
-      none; vendor-lib startup stub + linker script; vendor-module CMake
-      shell + Kconfig + module entry) **and** appends a `[deploy.<name>]`
-      table to root `nros.toml`. Implicit path: bare `nros build` →
-      `[workspace].default`; `nros build <name>` resolves a `[deploy.<name>]`
-      profile or a `deploy/<name>/` dir (one namespace) — no long flags.
-      `--from-launch`/`--from-profile` to materialize from existing config.
-      Files: `cmd/new.rs`, the `deploy/<name>/` templates per kind.
-
-- [ ] **172.V — Per-vendor deploy templates (PARALLEL MATRIX — one task
-      per platform).** The biggest fan-out for many hands: each platform's
-      `deploy/<vendor>/` template is an **independent** unit — the
-      kind-specific shell (compiled `.a` link line / `add_subdirectory`
-      source fragment / vendor-module manifest), the `[deploy.<name>]`
-      `build[]`/`package[]` example lines, the config-fragment hook
-      (172.R), and a **sim/HW validation** (CI surface). Author against the
-      Wave-1 var-set contract (172.Q.0) — no need to wait on the runner.
-      Each row below is a separately assignable ticket (172.V.<plat>):
-
-  - [ ] **V.posix** — `self`, hosted native (the `[workspace].default`); a
-        thin generated startup shim calling the C ABI. Reference template.
-  - [ ] **V.bare-metal** — `self`, cortex-m / riscv32 QEMU (linker script +
-        `board::run` startup). 
-  - [ ] **V.freertos** — `self`/`vendor-lib` (FreeRTOS-Kernel link). 
-  - [ ] **V.zephyr** — `vendor-module`, source form via
-        `rust_cargo_application` + west; re-home `integrations/zephyr/`. 
-  - [ ] **V.nuttx** — `vendor-module`, external-app Kconfig/Make.defs;
-        re-home `integrations/nuttx/`; RtosOwned defconfig fragment (172.R). 
-  - [ ] **V.threadx** — `self`/`vendor-lib` (ThreadX + NetX). 
-  - [ ] **V.esp-idf** — `vendor-module`, ESP-IDF component; re-home
-        `integrations/esp-idf/`. 
-  - [ ] **V.px4** — `vendor-module`, `EXTERNAL_MODULES_LOCATION` + uORB;
-        re-home `integrations/px4/`; SITL as the CI surface. 
-  - [ ] **V.orin-spe** — `vendor-lib`, FSP link via `NV_SPE_FSP_DIR` +
-        IVC startup + secure-boot `package[]`; POSIX sim as the CI surface. 
-  - [ ] **V.qnx** — `vendor-lib`/`self`, `qcc` toolchain file + `mkifs`
-        `package[]`; QEMU image as the CI surface (new platform port — may
-        spike a `platform-qnx` first). 
-
-  Templates land independently; 172.U wires them into the fixture sweep +
-  deletes the old `integrations/` shells they replace.
-
-- [ ] **172.U — Migrate to the model + delete the dead paths (the flip).**
-      The cut-over that makes the revised model the *only* model. Re-home
-      the `integrations/<rtos>/` shells (Phase 139) as the `deploy/<name>/`
-      vendor-module templates 172.T scaffolds (they already are per-RTOS
-      shells re-exporting the root CMake). Convert the orchestration
-      fixtures (`orchestration_e2e`) + at least one self, one vendor-lib
-      (Orin POSIX sim), and one vendor-module (Zephyr or PX4-SITL) system
-      to a root `nros.toml` + `nros deploy <name>`, replacing the
-      generated-`main` fixtures. **Delete the superseded code** once
-      nothing references it: the `render_main`/`EntryKind` remnants, the
-      old `cmd/build.rs` system flags + their tests, the per-package
-      `system nros.toml` triple/board reader, and any
-      `build_generated_package` `main`-mode paths. Update the book
-      (`ros2-user-workflow`, `configuration`, CLI ref) to the root-config +
-      `nros deploy` workflow. Acceptance: `grep` shows zero references to
-      the deleted surfaces; `just ci` green; the three sample systems
-      deploy from one root file.
-
-  - Re-evaluated under the model: **172.K.7** (multi-homing
-    `[[transport]].interfaces`) still applies — it is transport-schema
-    work orthogonal to deployment, carries forward as-is. **172.E**
-    (metadata-mode sandboxing) stays blocked-on-driver, independent of
-    Group 5.
+**Re-evaluated under the model:** **172.K.7** (multi-homing
+`[[transport]].interfaces`) is transport-schema work orthogonal to
+deployment — carries forward as-is. **172.E** (metadata-mode sandboxing)
+stays blocked-on-driver, independent of Group 5.
 
 ## Acceptance criteria
 
@@ -1021,17 +893,17 @@ Group 5 (deployment model) additionally:
 - Groups 1–3 share the `nros-plan.json` schema — coordinate additive,
   version-bumped changes; don't let two groups mutate the schema in the
   same window without rebasing.
-- **Group 5 (O–T)** builds on the now-complete planning half (Groups
+- **Group 5 (WP-A/B/C)** builds on the now-complete planning half (Groups
   1–4): it reuses the plan IR and changes only how the generated wiring
-  is *shipped*. It owns a new config scope (root `nros.toml`) and the
-  `nros deploy` surface; it touches `generate.rs` (entry-lib forms,
-  172.P) and the planner (in-binary bridges, 172.S), so coordinate those
-  with any late Group 2/3 work. **Decided 2026-05-28:** ejected
-  deployment code lives under a top-level **`deploy/<name>/`** (not
-  `src/<name>/`) — it is deployment glue, not an application package, and
-  keeping it out of `src/` stops colcon from treating vendor module
-  shells as buildable workspace packages. **Open fork** (172.S): whether
-  an in-workspace bridge always anchors its own deployable vs. living in
-  a normal app system's root config — leaning "its own deployable" to
+  is *shipped*. WP-A owns a new config scope (root `nros.toml`) + the
+  `nros deploy` surface; WP-B touches `generate.rs` (entry-lib forms +
+  in-binary bridges in the planner), so coordinate those with any late
+  Group 2/3 work. **Decided 2026-05-28:** ejected deployment code lives
+  under a top-level **`deploy/<name>/`** (not `src/<name>/`) — it is
+  deployment glue, not an application package, and keeping it out of
+  `src/` stops colcon from treating vendor module shells as buildable
+  workspace packages. **Open fork** (WP-B bridges): whether an
+  in-workspace bridge always anchors its own deployable vs. living in a
+  normal app system's root config — leaning "its own deployable" to
   keep the node = one-session invariant + RMW-set feasibility analysis
   clean.
