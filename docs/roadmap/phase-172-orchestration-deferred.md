@@ -91,6 +91,29 @@ the plan; Group 3's runtime reads it). Schema changes must be
 **additive + version-bumped** and coordinated across these three.
 **Group 4 is fully independent** — it only reads existing artifacts.
 
+> **Schema log (`PLAN_VERSION`).** v1 → **v2** (Group 2, 172.B/C):
+> two additive top-level arrays on `NrosPlan`, both
+> `#[serde(default, skip_serializing_if = "Vec::is_empty")]` so a
+> plan with neither serializes byte-identically to v1:
+> - `callback_chains: Vec<PlanCallbackChain>` (172.B) — `{ id,
+>   callbacks, links: [{from,to,topic}], inferred }`.
+> - `callback_groups: Vec<PlanCallbackGroup>` (172.C) — `{ id,
+>   kind: CallbackGroupKind (mutually_exclusive|reentrant), callbacks,
+>   inferred }`.
+>
+> No `PLAN_VERSION` bump for 172.G — it adds no field; `sched_contexts`
+> already existed. But the planner now **consumes**
+> nros.toml `[[scheduling.contexts]]` (172.G), previously parsed-and-
+> ignored. **Group 1 (config owner):** that key is now live — a
+> declared tier id is matched against each callback's `group`.
+>
+> Group 1/3 agents: rebase onto these. Two **pre-existing** schema
+> bugs found + fixed in the same pass (HEAD's `orchestration_schema`
+> round-trip was already red): the `PlanEntity` `callback: Option`
+> fields and `PlanBuildOptions.transports: Vec` both serialized
+> `null`/`[]` while the golden fixtures omit them — added
+> `skip_serializing_if` to all five.
+
 ## Work items
 
 ### Group 1 — Configuration & build inputs
@@ -159,23 +182,65 @@ example migration (K), then the audit/docs (N).
 B infers the chains, C groups callbacks from those chains, G consumes
 the grouping into multi-tier scheduling — so run B → C → G.
 
-- [ ] **172.B — Automatic callback-chain inference.** Infer
+- [x] **172.B — Automatic callback-chain inference.** Infer
       callback execution chains (which callback feeds which) from
       the topic graph instead of requiring explicit bindings.
       Scope: dataflow analysis in the planner; emit inferred chains
       into the plan with an override escape hatch.
+      *Done:* `infer_callback_chains` (planner.rs) walks
+      instance publisher→subscriber dataflow, union-finds
+      weakly-connected components, Kahn-topo-orders each into a
+      `PlanCallbackChain`; emitted into the plan (`callback_chains`).
+      `inferred: true`; an explicit `[[chain]]` override sets it
+      false. 3 unit tests.
 
-- [ ] **172.C — Automatic callback-group inference.** Derive
+- [x] **172.C — Automatic callback-group inference.** Derive
       callback groups (mutually-exclusive vs reentrant) from the
       graph + scheduling annotations rather than hand-authored
       groups. Scope: planner heuristic + `nros-plan.json`
       representation + generated `SchedContext` binding.
+      *Done:* `infer_callback_groups` derives groups from the
+      172.B chains — each chain → one `mutually_exclusive` group
+      (dataflow-coupled stages serialize); each chain-less callback
+      → its own `reentrant` singleton group (no coupling ⇒
+      concurrent-safe). `PlanCallbackGroup` + `CallbackGroupKind`
+      in the plan; 3 unit tests. The generated single-threaded
+      executor already serializes all callbacks, so group **kinds**
+      become observable only with the 172.G multi-tier executor —
+      the runtime enforcement of `reentrant` concurrency lands there.
 
-- [ ] **172.G — Multi-tier scheduling.** Extend the single-tier
+- [x] **172.G — Multi-tier scheduling.** Extend the single-tier
       `SchedContext` model to multiple scheduling tiers (e.g. a
       high-rate RT tier + a best-effort tier within one executor).
       Depends on the Phase 110 scheduling primitives. Scope: plan
       schema for tiers + generated multi-tier executor wiring.
+      *Done (config-driven):* the runtime already dispatches across
+      Phase 110.C's three `Priority` buckets (FIFO/EDF by class) and
+      the generated `run_executor` already creates **N** sched-contexts
+      in one executor + binds callbacks — multi-tier was wired at the
+      runtime + codegen layers. The gap was the **planner**, which
+      hardcoded a single `best_effort` `default_executor` and bound
+      every callback to it. Now `collect_sched_contexts` reads the
+      nros.toml `[[scheduling.contexts]]` tiers (author-declared, not
+      inferred — launch files carry no scheduling, source metadata only
+      a `group`) into the plan's `sched_contexts`; each callback binds
+      to the tier whose id equals its `group` (**group name = tier id**),
+      falling back to `default_executor` (still emitted only when used,
+      so single-tier plans stay byte-identical). The binding onto a
+      declared tier carries its priority + `source: "nros.toml"`. 4
+      tests (3 unit + 1 end-to-end `plan`→`check` in
+      `orchestration_cli.rs`). **Tier→callback binding is by `group`
+      name only**; an explicit `[[scheduling.bindings]]` table
+      (decoupling group names from tier ids) is a deferred follow-up if
+      that proves too rigid.
+
+> **172.G binding source.** nros.toml `[scheduling]`
+> (`config::SchedulingConfig`) was a fully-designed but **unwired**
+> schema — parsed as raw `Value`, only the `[build]` block consumed.
+> 172.G wires `[[scheduling.contexts]]` through `schema_plan_json`.
+> `config::SchedContextConfig` already mirrors `PlanSchedContext`
+> field-for-field, so a TOML context maps straight onto a plan tier
+> (absent optional keys normalised to null/defaults).
 
 ### Group 3 — Generated-runtime capabilities
 
