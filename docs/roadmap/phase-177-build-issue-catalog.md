@@ -1092,6 +1092,33 @@ passed.
   domain, green** — freertos(60)/threadx-linux(61)/threadx-rv64(62)/native(runtime
   slots ~1..30) = 16/16 with no flake; zephyr(50..58) = 8/8 (1 retry-recovered).
 
+- [ ] **177.39 - Rust CycloneDDS service e2e on Zephyr native_sim flakes under
+  parallel load (currently masked by `retries = 2`).** Owner: Cyclone runtime /
+  Zephyr (open, 2026-05-27). `test_zephyr_rust_cyclonedds_service_e2e`
+  (`phase_118_collapse.rs`) passes **alone** (~32 s) but flakes when the
+  `zephyr-native-cyclonedds` group runs ≥2 native_sim processes concurrently:
+  the service client's RELIABLE request→reply roundtrip misses its 5 s window —
+  `[0] Call failed: Timeout` then `Error: RequestInFlight`, no
+  `Response: sum=`. **Not a domain collision** (177.38 baked distinct domains;
+  the service client+server share domain 51 correctly) and **not the backend**
+  (the **C and C++** Cyclone service e2e pass at the *same* concurrency). So it
+  is specific to the **Rust** Cyclone service *client* path being more
+  timing-fragile under native_sim CPU contention than the C/C++ clients —
+  slower discovery/match or a tighter/blocking poll loop so the first call
+  times out before the reply-writer matches.
+
+  **Interim mitigation (landed):** `retries = 2` on the `zephyr-native-cyclonedds`
+  nextest group (`.config/nextest.toml`) — the retry runs with less momentary
+  contention and passes (TRY 1 FAIL → TRY 2 PASS, observed). Keeps the parallel
+  suite green but only papers over it.
+
+  **Proper fix (TODO):** root-cause the Rust client's slow service match under
+  load — compare its discovery/spin timing to the C/C++ clients (which pass),
+  and either pace the executor like the C/C++ path or raise the request timeout /
+  pre-wait for the service to be available before the first call. Then the retry
+  can be dropped. Pub/sub + C/C++ service + all other embedded Cyclone parallel
+  runs are unaffected.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
