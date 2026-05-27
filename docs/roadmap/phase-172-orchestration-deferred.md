@@ -381,11 +381,25 @@ three are independent of each other; A (lifecycle) is the largest.
       generation time only. Scope: a persistence backend (flash /
       file) + load-on-boot in the generated runtime.
 
-- [ ] **172.I — Generated shared state.** Support shared state
+- [x] **172.I — Generated shared state.** Support shared state
       between components in one generated binary (e.g. a shared
       blackboard / typed shared region) instead of every component
       owning isolated state. Scope: plan representation + generated
-      `static` shared-region tables + access discipline.
+      `static` shared-region tables + access discipline. **Landed** —
+      `nros.toml` `[[shared_state]]` entries (`id` + `bytes`) flow
+      `collect_shared_state` (planner) → `NrosPlan.shared_state:
+      Vec<PlanSharedRegion>` (additive, skip-if-empty so v1 plans stay
+      byte-identical) → `render_shared_state` emits `pub static
+      SHARED_<ID>: SharedRegion<bytes> = SharedRegion::new();` per region
+      (id uppercased, non-alphanumeric folded to `_`). The runtime
+      `SharedRegion<const N>` (`packages/core/nros-orchestration/src/lib.rs`)
+      is a const-constructible zero-init `UnsafeCell<[u8; N]>` whose
+      single `with(|&mut [u8; N]|)` accessor relies on the executor's
+      cooperative single-thread dispatch (access discipline, not a lock —
+      a future preemptive executor wraps it in the platform critical
+      section). A component overlays its own typed view onto the bytes.
+      Tests: planner collect filter/merge, generator render output +
+      empty-renders-nothing, runtime static zero-init + mutate.
 
 ### Group 4 — Host tooling & DX
 
