@@ -6,7 +6,7 @@ cycle (`just clean` → `just setup` → `just build-all` → `just build-test-f
 green. None of these are product regressions — they are setup/fixture-aggregation
 and one codegen-link gap.
 
-**Status:** 184.1/.2/.3/.5 RESOLVED 2026-05-27 (one root cause); 184.4 open.
+**Status:** 184.1–.5 RESOLVED 2026-05-27 (184.1/.2/.3/.5 = clean build-only; 184.4 = build-fixtures-make builds host codegen).
 **Priority:** Medium.
 **Depends on:** Phase 177 (archived — product fixes incl. the Cyclone idlc
 re-resolve harden), Phase 175 (native Cyclone CMake/Corrosion fixtures).
@@ -119,8 +119,8 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   succeeded, so the earlier `build/xrce` absence was a not-yet-built state, not a
   hard network block.
 
-### 184.4 — `nuttx_make_e2e` C++ make-fixture link failure (real codegen/link gap)
-- [ ] `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary` fails because
+### 184.4 — [RESOLVED] `nuttx_make_e2e` C++ make-fixture link failure (real codegen/link gap)
+- [x] `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary` fails because
   `just nuttx build-fixtures-make` (the NuttX external-apps → kernel link path,
   not the cmake `build-fixtures`) **fails to link the C++ examples**:
   ```
@@ -135,12 +135,21 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   (`nros_cpp_{serialize,deserialize,publish}_<pkg>_<msg>`) that are **not provided
   in the make/kernel link** (the cmake `build-fixtures` path links them, but the
   apps/external make path's `libapps.a` does not pull the codegen FFI archive).
-- This is **not** an infra/setup gap — it is a real link/codegen wiring bug in
-  the NuttX external-apps C++ path. Pre-existing (the make fixture has long been
-  a `[SKIPPED]` precondition in `test-all`); now it hard-fails when staged.
-- **Fix:** wire the per-example C++ codegen FFI object/archive into the NuttX
-  external-app (`apps/external/<name>`) link, mirroring how the cmake
-  `build-fixtures` path links `nros-cpp` + the example FFI staticlib.
+- **Actual root cause:** the link hook already exists — each cpp example
+  Makefile `-include`s `generated/ffi/extra_libs.mk`, populated by
+  `scripts/nuttx/gen-cpp-ffi-crates.py` (builds the per-package
+  `nano_ros_cpp_ffi_<pkg>` staticlibs). But that script needs the host
+  `nros-codegen` binary, and **`build-fixtures-make` never built it** (the cmake
+  `build-fixtures` does, via `nros_cargo_ensure_codegen_c`). After `just clean`
+  removed the codegen build, `gen-cpp-ffi` printed "nros-codegen not at …;
+  skipping" → empty `extra_libs.mk` → undefined `nros_cpp_*` at kernel link.
+- **Fix (RESOLVED, `just/nuttx.just`):** `build-fixtures-make` now sources
+  `cargo.sh`, runs `nros_cargo_ensure_codegen_c`, and exports `NROS_CODEGEN` at
+  the active profile dir before `stage-external-apps.sh` (mirroring the cmake
+  path; `gen-cpp-ffi`/`gen-interfaces` read it). **Verified:** `gen-cpp-ffi`
+  emits all 4 FFI staticlibs (incl. `example_interfaces`); a full
+  `just nuttx build-fixtures-make` links the kernel ELF clean
+  (`NMAKE_EXIT=0`, no `undefined reference`, `extra_libs.mk` = 4 lines).
 
 ### 184.5 — [RESOLVED via 184.1]  `test_threadx_linux_cyclonedds_talker_to_native_listener` (missing fixture)
 - [x] Fast-fails (0.046 s) the same way the native Cyclone tests did — the
