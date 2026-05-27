@@ -13,7 +13,11 @@ now fixed). **184.8 OPEN** — the 3 zephyr cyclonedds action e2e tests DO
 reproduce a hard failure here on fresh fixtures (real product gap, 177.2;
 contradicts the 184.7 zephyr "GREEN" row); isolated to **post-match reliable
 data delivery** (write OK, server RHC empty), frozen-clock lead REJECTED (Cyclone
-clock advances; remaining lead is post-match DATA transmission on the channel).
+clock advances). **Pinpointed to the wire:** the goal DATA is transmitted to the
+server's data port (`udp/127.0.0.1:20411`) but the server's user-data-socket RX
+never receives it (discovery/meta port works both ways; reliable retransmit
+never recovers) — leading lead = NSOS sockwaitset / data-socket receive on
+native_sim (a native_sim-layer fix, not Cyclone/QoS).
 **184.9 FIXED** — Zephyr Cyclone fixture build now force-reconfigures when a
 backend source is newer than the linked binary (was: stale binaries broke
 iterative diagnosis).
@@ -397,10 +401,43 @@ Owner: **184.8** (forwarded from archived **177.2**). Isolated to **post-match
 reliable data delivery on the action send_goal channel** — match succeeds, goal
 `dds_write` succeeds (`ret=0`), Cyclone clock advances, server RHC stays empty.
 Discovery / QoS / naming / gate / timeout / frozen-clock **all ruled out by
-evidence**. **Remaining lead:** the goal DATA either never transmits over NSOS
-unicast loopback for this channel, or is dropped at the reader — needs a
-**finest** RTPS `DATA`/`HEARTBEAT`/`ACKNACK` isolation on `rq/…send_goalRequest`
-(now feasible thanks to the 184.9 rebuild fix). ~26 trace/build cycles spent.
+evidence**.
+
+**Wire-level pinpoint (2026-05-28, `category=trace,radmin` + `dds_wait_for_acks`
+probe, reverted) — the writer transmits; the server's user-data RX never
+receives.** Per the RTPS trace, at the 3.304 s goal write:
+- the writer **does** emit the sample: `write_sample …:203 #1` (payload
+  `{…,{10}}` = order 10) → `data(…:203:#1/1)` → `nn_xpack_send 128` to
+  **`udp/127.0.0.1:20411`** → `traffic-xmit (1) 128`, plus a piggyback
+  HEARTBEAT. `20411` is confirmed the **server**'s `default_unicast_locator`
+  (data port; disc=20410).
+- `dds_wait_for_acks(writer, 3 s)` = **`DDS_RETCODE_TIMEOUT (-10)`** — no
+  matched reader acked the sample.
+- the server **never receives any client→server user-data after discovery**:
+  no `traffic-recv`, and the only `acknack 204 -> 203` is at 0.079 s
+  (`F#1:1/0` = "expecting seq 1, have nothing"); **none after the 3.3 s write**,
+  so the reader never even sees a heartbeat to NACK ⇒ reliable retransmit never
+  recovers.
+- all Cyclone RX threads start on both processes (`recvUC`, `recv`, `dq.user`,
+  …); the 12× `tid in use` is the benign native_sim k_thread id-reuse, **not** a
+  failed thread.
+
+So: **discovery (meta port 20410) works both ways, but client→server
+*user-data* on the data port 20411 never arrives at the server** — the writer
+sends to the right port, the server's data-socket RX doesn't surface it, and
+nothing retransmits. pubsub + plain service deliver over the same transport
+(continuous flow / example retry masks any single-datagram loss; the action's
+**one** goal datagram has no second chance).
+
+**Leading hypothesis + next step:** the **NSOS sockwaitset / data-socket
+receive** path on native_sim — `cyclone-zephyr-sockwaitset-patch.sh` already
+exists for the select-over-multiple-sockets issue; suspect it doesn't reliably
+service the **data** socket (20411) vs the metatraffic socket (20410) for this
+participant. Next: host-socket forensics — `strace`/`tcpdump -i lo port 20411`
+on the two native_sim processes to confirm the datagram physically reaches the
+server's socket, then audit the NSOS sockwaitset / `recvUC` poll set. This is a
+native_sim/NSOS-layer fix, not a Cyclone-backend or QoS change. ~30 trace/build
+cycles spent.
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).
