@@ -218,24 +218,18 @@ fn test_cyclonedds_service_nano_server_ros2_client() {
 /// "{order: 5}"` against the native Cyclone Fibonacci action server. Fibonacci(5)
 /// → sequence `[0, 1, 1, 2, 3, 5]`.
 ///
-/// `#[ignore]`d — surfaces a tracked Phase 117 action wire-compat gap (runnable
-/// with `--run-ignored all`). Diagnosed 2026-05-27: the nano Cyclone action
-/// server boots and reaches "Waiting for action goals", and `ros2 action list`
-/// even shows `/fibonacci [example_interfaces/action/Fibonacci]`, BUT
-/// `ros2 action info /fibonacci` reports **0 action servers** and none of the
-/// `/fibonacci/_action/{send_goal,get_result,cancel_goal}` services or
-/// `/fibonacci/_action/{feedback,status}` topics appear in `ros2 service/topic
-/// list`. So the action's composed sub-endpoints aren't exposed under the stock
-/// ROS 2 `<action>/_action/*` naming over Cyclone, and the stock client's
-/// `wait_for_server` introspection finds nothing ("Waiting for an action server
-/// to become available"). Zenoh action interop works 2-way, so the nano-node
-/// action *composition* is correct — this is Cyclone-backend action sub-endpoint
-/// naming/mangling (parallel to 117.X.2 topic-prefix + 117.X.4 type-mangling,
-/// but applied to action endpoints). Single-service interop already works
-/// (117.12.B.1), so the per-endpoint match path is sound; the gap is the
-/// `_action/` sub-namespace naming on Cyclone.
+/// `#[ignore]`d — surfaces a tracked gap (177.36; runnable with `--run-ignored
+/// all`). Diagnosed 2026-05-27: the nano Cyclone action server boots, and its
+/// five `_action/*` sub-endpoints DO exist under the correct stock names (visible
+/// with `ros2 {topic,service} list --include-hidden-*`). But the nano node never
+/// appears in `ros2 node list` and `/ros_discovery_info` has no publisher, so
+/// stock `rmw_cyclonedds_cpp` associates the endpoints with **no node** →
+/// `ros2 action info` = 0 servers and `wait_for_server` never completes. The gap
+/// is the rmw node-graph announcement (`ParticipantEntitiesInfo` on
+/// `ros_discovery_info`), not endpoint naming. Pub/sub + service interop match at
+/// the endpoint level and are unaffected.
 #[test]
-#[ignore = "Phase 117 action wire-compat: nano Cyclone action sub-endpoints not under stock <action>/_action/* names → ros2 action info shows 0 servers, send_goal wait_for_server never matches. Service+pubsub interop work; this is the action-endpoint naming/mangling follow-up."]
+#[ignore = "177.36: nano Cyclone backend doesn't publish /ros_discovery_info, so stock ROS 2 sees the action's endpoints but no NODE → ros2 action info = 0 servers, send_goal wait_for_server never completes. Endpoint names are correct (the _action/* sub-endpoints exist under --include-hidden); the gap is the rmw node-graph announcement. Pub/sub + service interop unaffected."]
 fn test_cyclonedds_action_nano_server_ros2_client() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");

@@ -845,35 +845,44 @@ passed.
   default domain, disjoint from 1..=232. Verified: config parses, the cyclone
   interop edit compiles.
 
-- [ ] **177.36 - Cyclone action server not introspectable by a stock ROS 2
-  action client (`_action/*` endpoint naming).** Owner: Phase 117 action
-  interop (open, 2026-05-27). Found standing up `cyclonedds_ros2_interop`'s
-  action test (`test_cyclonedds_action_nano_server_ros2_client`, landed
-  `#[ignore]`d). The native Cyclone Fibonacci action server boots + reaches
-  "Waiting for action goals", and `ros2 action list` (cyclone) even shows
-  `/fibonacci [example_interfaces/action/Fibonacci]` — **but**
-  `ros2 action info /fibonacci` reports **0 action servers**, and *none* of the
-  expected sub-endpoints —
-  `/fibonacci/_action/{send_goal,get_result,cancel_goal}` (services) +
-  `/fibonacci/_action/{feedback,status}` (topics) — appear in
-  `ros2 service list` / `ros2 topic list`. So `ros2 action send_goal`'s
-  `wait_for_server()` introspection finds nothing ("Waiting for an action server
-  to become available") and the goal never lands.
+- [ ] **177.36 - Cyclone backend doesn't publish `ros_discovery_info` → stock
+  ROS 2 graph/action introspection sees no node.** Owner: Phase 117 (open,
+  2026-05-27). Found standing up `cyclonedds_ros2_interop`'s action test
+  (`test_cyclonedds_action_nano_server_ros2_client`, landed `#[ignore]`d).
 
-  **Scope.** *Not* a composition bug: zenoh action interop is 2-way (`rmw_interop`),
-  so nano-node composes the action's services/pubs correctly. *Not* a per-service
-  match bug: single-service Cyclone interop works (117.12.B.1). The gap is
-  Cyclone-backend **action sub-endpoint naming/mangling** — the composed
-  endpoints must be exposed under stock ROS 2's `<action>/_action/*` namespace
-  (with the `rq`/`rr`/`rt` prefixes + 117.X.4 type mangling) so a stock
-  `rmw_cyclonedds_cpp` action client discovers + matches them. Parallel to
-  117.X.2 (topic-prefix) / 117.X.4 (type-mangling) but applied to the action's
-  composed endpoints. **Next:** dump the DDS topic/service names the Cyclone
-  action server actually advertises (`ros2 daemon stop`; CYCLONEDDS trace, or
-  `ddsperf`/`cyclonedds ls`) and compare against stock
-  `action_tutorials`/`rmw_cyclonedds_cpp` for the same action; align the
-  `_action/` sub-namespace + mangling in the Cyclone backend's action path.
-  Pub/sub + service interop unaffected.
+  **Corrected root cause (the first "endpoint naming" diagnosis was wrong).** The
+  endpoint names ARE correct: with `--include-hidden-{topics,services}`, all five
+  action sub-endpoints show under the exact stock names —
+  `/fibonacci/_action/{send_goal,get_result,cancel_goal}` (services) +
+  `/fibonacci/_action/{feedback,status}` (topics). (My earlier check missed them
+  because `ros2 service/topic list` *hides* `_`-prefixed names by default.) The
+  real gap: **`ros2 node list --all` shows only the daemon — the nano
+  `c_action_server` node is absent**, and `/ros_discovery_info` has no publisher.
+  rmw_cyclonedds_cpp builds the ROS **node → endpoint graph** from the
+  `ros_discovery_info` topic (a `rmw_dds_common::msg::ParticipantEntitiesInfo`
+  per participant, listing each node's name/namespace + its reader/writer GIDs).
+  The nano Cyclone backend never publishes it, so stock tooling sees endpoints
+  (raw DDS SEDP) but associates them with **no node** → `ros2 action info` = 0
+  servers, `ros2 action send_goal`'s `wait_for_server()` never completes
+  ("Waiting for an action server to become available").
+
+  **Why pub/sub + service interop still work:** those match at the endpoint level
+  (topic/service name SEDP), which needs no node graph; `ros2 topic echo` /
+  `ros2 service call` resolve by name. Only graph-level introspection
+  (`ros2 node list/info`, `ros2 action info`, action `wait_for_server`) needs
+  `ros_discovery_info`. Zenoh action interop works because rmw_zenoh advertises
+  the graph via its own liveliness-token scheme, which nano-zenoh implements.
+
+  **Fix (substantial — a real rmw graph feature):** publish
+  `ParticipantEntitiesInfo` on `ros_discovery_info` (TRANSIENT_LOCAL + RELIABLE +
+  KEEP_LAST, keyed by participant GID) from the Cyclone backend, (re)published on
+  every node/endpoint create+destroy, tracking each node's reader/writer GIDs.
+  This unblocks ALL Cyclone graph introspection (`ros2 node list/info`, action
+  interop), not just this test. **Next:** confirm a stock cyclone node's
+  `ros_discovery_info` shape (`ros2 topic echo /ros_discovery_info`), define the
+  CDR for `ParticipantEntitiesInfo`/`NodeEntitiesInfo`/`Gid`, wire a per-session
+  publisher + GID bookkeeping into the node/endpoint create paths. Pub/sub +
+  service interop unaffected.
 
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
