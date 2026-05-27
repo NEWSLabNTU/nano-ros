@@ -18,41 +18,29 @@ passed static checks, RTOS link check, Cyclone CI, doctests, Miri, C
 codegen, and orchestration E2E, then failed in `test-all` with 39 real
 failures plus 8 environment skips.
 
-## Remaining work (2026-05-27)
+## Status: ARCHIVED (2026-05-27) — all product work closed
 
-Nearly all of Phase 177 is closed (177.1–177.35, 177.37–177.38, and the
-177.9.A–H runtime groups). **Two threads remain open:**
+**Every numbered work item is done (177.1–177.39, incl. the 177.9.A–H runtime
+groups).** The last product item, **177.36** — Cyclone `ros_discovery_info`
+node-graph publication — is **RESOLVED**: the backend now publishes
+`ParticipantEntitiesInfo`, so stock ROS 2 sees nano Cyclone nodes, and with the
+companion action feedback/status QoS fix, **Cyclone↔ROS 2 pub/sub + service +
+action interop all work end-to-end** (completing Phase 117's stock-Cyclone goal;
+ROS 2 actions now work on all three RMW backends — zenoh, XRCE, Cyclone).
 
-1. **177.36 — Cyclone `ros_discovery_info` node-graph publication (the one open
-   *product* feature).** The Cyclone backend matches endpoints via raw DDS SEDP,
-   so pub/sub + service interop with stock `rmw_cyclonedds_cpp` work — but it
-   never publishes the per-participant `rmw_dds_common::msg::ParticipantEntitiesInfo`
-   on the `ros_discovery_info` topic. So stock ROS 2 graph introspection
-   (`ros2 node list/info`, `ros2 action info`, action `wait_for_server`) sees the
-   endpoints but **no node**, which blocks Cyclone↔ROS 2 *action* interop (the
-   `cyclonedds_ros2_interop` action test is `#[ignore]`d on exactly this). Fix is
-   a real rmw-graph feature: publish ParticipantEntitiesInfo (TRANSIENT_LOCAL +
-   RELIABLE + KEEP_LAST, keyed by participant GID), tracking each node's
-   reader/writer GIDs, (re)published on every endpoint create/destroy. Full
-   diagnosis + next steps under the 177.36 item below. **This is the highest-value
-   remaining item** — it completes Phase 117's stock-Cyclone interop goal for
-   actions and lights up `ros2 node`/graph tooling for the Cyclone backend.
+**Only non-code work remains, and it's deferred to CI (not blocking this
+archive):** a clean full-green `just test-all` / `build-all` / root `just ci` on
+a **CI-class host** with the full `just setup` (Zephyr SDK, ESP-IDF, PlatformIO,
+native-Cyclone fixtures) + the ~12-QEMU parallelism budget. The residual failures
+in the past partial sweeps (the `[~]`/`[ ]` items in "Test-All Runtime / E2E"
+below, 2026-05-22 / 25 / 27) were **all environmental** — missing host
+SDKs/tools, unbuilt fixtures, ROS 2 not sourced, or QEMU contention under high
+parallelism — with no known code regression. That full-green CI run is an
+infra/run-environment task tracked for whoever runs the next CI-class sweep.
 
-2. **A clean full-green `just test-all` / `build-all` / root `just ci` on a
-   CI-class host (verification, not code).** The residual `test-all` failures are
-   **all environmental** — missing host SDKs/tools (Zephyr SDK, ESP-IDF,
-   PlatformIO), unbuilt native-Cyclone fixtures, ROS 2 not sourced in the run
-   env, or QEMU contention under high parallelism (flaky-but-retry-recovered, cap
-   with `-j` / serial groups). No open *code* regression is known. A clean run
-   needs a CI-class host with the full `just setup` (all SDKs) + the ~12-QEMU
-   parallelism budget; the `[~]`/`[ ]` rerun items in "Test-All Runtime / E2E"
-   below track the last partial sweeps (2026-05-22 / 25 / 27). This is an
-   infra/run-environment task, not a fix.
-
-Smaller follow-ups noted inline (not blocking): the per-fixture `NROS_DOMAIN_ID`
-override (177.38) is landed but only *wired* on Zephyr (177.37); apply it to a
-non-Zephyr embedded-Cyclone `build-fixtures` recipe if/when that platform's
-parallel suite grows enough to collide (none do today).
+Smaller follow-up noted inline (not blocking): the per-fixture `NROS_DOMAIN_ID`
+override (177.38) is wired on all embedded Cyclone targets; apply it to any new
+embedded-Cyclone `build-fixtures` recipe as those suites grow.
 
 ## Setup Contract
 
