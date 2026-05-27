@@ -1,4 +1,11 @@
 // C++ compat for Zephyr picolibc targets without full libc++ headers.
+// Phase 184.C — defer to the real libstdc++ <cstdio> when reachable (the
+// re-export shim breaks via the <stdio.h> -> <cstdio> guard chain on a full
+// libstdc++; see cxx-compat/cstdlib). Minimal shim stays for picolibc /
+// minimal-libcpp targets (probe header absent).
+#if defined(__has_include) && __has_include(<bits/c++config.h>)
+#include_next <cstdio>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDIO
 #define NROS_ZEPHYR_CXX_COMPAT_CSTDIO
 #include <stdio.h>
@@ -23,4 +30,5 @@ using ::vprintf;
 using ::vsnprintf;
 using ::vsprintf;
 }
-#endif
+#endif  // NROS_ZEPHYR_CXX_COMPAT_CSTDIO
+#endif  // __has_include(<bits/c++config.h>)

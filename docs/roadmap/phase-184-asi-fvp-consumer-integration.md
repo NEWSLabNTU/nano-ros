@@ -11,7 +11,9 @@ surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 **Status.** In progress (2026-05-27). Surfaced by the autoware-safety-island
 (ASI) west-pin bump `70ab6227d → be4c51364` (610 commits). 184.A landed
 (cxx-compat passthrough guard) + 184.B landed (libc-gated multicast struct,
-`net.c.obj` verified on the FVP newlib profile). 184.C–184.E open.
+`net.c.obj` verified) + 184.C landed (re-export shims `cstdlib`/`cstdio`/
+`cstring` defer to real libstdc++; `std::rand`/`std::exit`/… verified under
+autoware-TU flags). 184.D–184.E open; full-build deep-validation in progress.
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
@@ -133,18 +135,31 @@ The fixes stay on the nano-ros side of the module boundary:
 
 ### 184.C — downstream C++ app std C-library names on newlib
 
-**Files.** `zephyr/cxx-compat/` (possible public opt-in header),
-`book/src/getting-started/integration-zephyr.md`.
+**Files.** `zephyr/cxx-compat/{cstdlib,cstdio,cstring}`.
 
-- [ ] Decide the nano-ros role: (a) export an opt-in `<nros/...>` std-C-lib
-      compat header a consumer force-includes; (b) document the consumer-side
-      recipe only (force-include / newlib `<cstdlib>` config); (c) nothing —
-      pure consumer concern. Record the decision + rationale
-- [ ] Implement the chosen option (header and/or docs)
-- [ ] Note: the re-export must be valid under the actuation build flags — the
-      naive `#include <stdlib.h>` + `using ::name;` failed in-TU during the ASI
-      spike (the in-TU `<stdlib.h>` returned no decls); understand why before
-      shipping a recommendation
+Root cause (resolved): NOT a missing consumer header — the same shim-vs-real-
+libstdc++ issue as 184.A. The cxx-compat dir is on every consumer TU's include
+path; a TU's `#include <stdlib.h>` resolves through libstdc++'s `<stdlib.h>`
+wrapper → `<cstdlib>` → the cxx-compat `cstdlib` shim. The shim's
+`#include <stdlib.h>` then hits the wrapper's already-set include guard, so the
+C declarations are absent and `using ::abort;`/`::rand;`/… fail
+("'abort' has not been declared in '::'"). That is exactly why the spike's
+naive force-include also failed. So the consumer needs no header at all once
+the shim is transparent.
+
+- [x] Decision: option (c)+fix — nano-ros makes the cxx-compat dir fully
+      transparent on full-libstdc++ profiles; no public opt-in header, no
+      consumer force-include. Consistent with 184.A
+- [x] Guard the re-export shims (`cstdlib`, `cstdio`, `cstring`) with
+      `#if __has_include(<bits/c++config.h>)` → `#include_next` the real header;
+      keep the minimal shim for picolibc / minimal-libcpp (probe absent)
+- [x] Verified: `std::rand`/`std::exit`/`std::abs`/`std::memcpy` compile under
+      the exact autoware-TU flags (`compile_commands.json`) with cxx-compat on
+      the path — previously every `using ::name` errored. Fixes both the
+      Eigen `std::rand` and the Autoware `std::exit` classes with no autoware
+      source edits
+- [ ] Deep-validate: full ASI actuation build compiles the autoware/Eigen TUs
+      (in progress)
 
 ### 184.D — FVP / full-C++ consumer smoke in CI
 

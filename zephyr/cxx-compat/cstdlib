@@ -1,4 +1,16 @@
 // C++ compat for Zephyr picolibc targets without full libc++ headers.
+// Phase 184.C — when a full libstdc++ is reachable (a downstream consumer on a
+// newlib + GLIBCXX_LIBCPP profile, e.g. the Autoware safety-island FVP build),
+// defer to its <cstdlib>. The `#include <stdlib.h>` + `using ::name;` re-export
+// breaks when this shim is reached via libstdc++'s <stdlib.h> -> <cstdlib>
+// chain: <stdlib.h>'s include guard is already set, so the C declarations are
+// absent and every using-declaration fails ("'abort' has not been declared in
+// '::'"). #include_next hands off to the real <cstdlib>, which orders the
+// includes correctly. The minimal shim stays for picolibc / minimal-libcpp
+// targets, where the probe header is absent.
+#if defined(__has_include) && __has_include(<bits/c++config.h>)
+#include_next <cstdlib>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
 #define NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
 #include <stdlib.h>
@@ -34,4 +46,5 @@ using ::strtoll;
 using ::strtoul;
 using ::strtoull;
 }
-#endif
+#endif  // NROS_ZEPHYR_CXX_COMPAT_CSTDLIB
+#endif  // __has_include(<bits/c++config.h>)
