@@ -1,3 +1,11 @@
+// Phase 184.C — defer to the real libstdc++ <utility> when reachable. This
+// shim DEFINES std::remove_reference + std::move, which collide with the real
+// <type_traits>/<utility> a consumer pulls on a full-libstdc++ profile. Keep
+// the minimal shim for picolibc / minimal-libcpp (probe absent). See
+// cxx-compat/cstdlib.
+#if defined(__has_include) && __has_include(<bits/c++config.h>)
+#include_next <utility>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_UTILITY
 #define NROS_ZEPHYR_CXX_COMPAT_UTILITY
 
@@ -26,3 +34,4 @@ constexpr typename remove_reference<T>::type&& move(T&& value) noexcept {
 } // namespace std
 
 #endif // NROS_ZEPHYR_CXX_COMPAT_UTILITY
+#endif // __has_include(<bits/c++config.h>)

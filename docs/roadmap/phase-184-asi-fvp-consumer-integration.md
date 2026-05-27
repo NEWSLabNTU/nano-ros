@@ -12,8 +12,9 @@ surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 (ASI) west-pin bump `70ab6227d → be4c51364` (610 commits). 184.A landed
 (cxx-compat passthrough guard) + 184.B landed (libc-gated multicast struct,
 `net.c.obj` verified) + 184.C landed (re-export shims `cstdlib`/`cstdio`/
-`cstring` defer to real libstdc++; `std::rand`/`std::exit`/… verified under
-autoware-TU flags). 184.D–184.E open; full-build deep-validation in progress.
+`cstring`/`utility`/`cstdarg`/`cstddef`/`cstdint` defer to real libstdc++).
+Deep-validated: full ASI build compiles the entire autoware/Eigen/Cyclone C++
+stack. 184.F (zpico-zephyr net_if 3.7-vs-4.x) is the next blocker; 184.D–184.E open.
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
@@ -158,8 +159,13 @@ the shim is transparent.
       the path — previously every `using ::name` errored. Fixes both the
       Eigen `std::rand` and the Autoware `std::exit` classes with no autoware
       source edits
-- [ ] Deep-validate: full ASI actuation build compiles the autoware/Eigen TUs
-      (in progress)
+- [x] Guard the remaining cxx-compat shims the same way: `utility` (defining —
+      `std::remove_reference`/`std::move`, collided with libstdc++ `<utility>`/
+      `<type_traits>`) + the `cstdarg`/`cstddef`/`cstdint` re-exports. The whole
+      cxx-compat dir is now transparent on full-libstdc++ profiles
+- [x] Deep-validate: full ASI actuation build now compiles the entire
+      autoware/Eigen/Cyclone C++ stack ([116/123], past all CXX TUs). Remaining
+      blocker is unrelated (zpico-zephyr net_if API, 184.F)
 
 ### 184.D — FVP / full-C++ consumer smoke in CI
 
@@ -181,6 +187,27 @@ C++ smoke), `just/zephyr.just`, `.github/workflows/`.
       removed; consumers move to `CONFIG_NROS_RMW_CYCLONEDDS` (or zenoh/xrce)
 - [ ] Note the Cyclone-vs-zenoh transport implication (Cyclone RTPS/UDP pulls
       no mbedtls; a TCP-`NET_TCP_ISN_RFC6528` consumer must disable it)
+
+### 184.F — zpico-zephyr net_if IPv4 API version-spanning (3.7 vs 4.x)
+
+**Files.** `packages/zpico/zpico-zephyr/src/zpico_zephyr.c`.
+
+`nros_platform_net_wait_ready` reads `ipv4->unicast[i].ipv4.is_used` — the
+`struct net_if_addr_ipv4` wrapper form, which Zephyr added in 4.x. On the ASI
+Zephyr 3.7.0 LTS pin `unicast[]` is `struct net_if_addr` directly (no `.ipv4`
+sub-struct, `struct net_if_addr_ipv4` does not exist), so the TU fails to
+compile (`'struct net_if_addr' has no member named 'ipv4'`). Surfaced only
+after 184.A–C let the build reach the nros library TUs. Note this is the
+zenoh-pico glue, compiled even for a Cyclone-only build.
+
+- [x] Reproduce: `unicast[i].ipv4` on `fvp_baser_aemv8r_smp` + Zephyr 3.7.0
+      (`net_if.h`: `struct net_if_addr unicast[NET_IF_MAX_IPV4_ADDR]`)
+- [ ] Version-gate the unicast access (`<zephyr/version.h>`:
+      `KERNEL_VERSION_NUMBER >= 0x040000` → `.ipv4.is_used`, else `.is_used`),
+      matching the 3.7-LTS-vs-4.x split Phase 180 already spans
+- [ ] (Optional) gate zpico-zephyr out of the build when the selected RMW is
+      not zenoh, so a Cyclone-only consumer never compiles the zenoh glue
+- [ ] Re-verify the FVP actuation build links to `zephyr.elf`
 
 ## Acceptance
 

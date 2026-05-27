@@ -1,4 +1,9 @@
 // C++ compat for Zephyr picolibc targets without full libc++ headers.
+// Phase 184.C — defer to the real libstdc++ <cstddef> when reachable; keep the
+// minimal shim for picolibc / minimal-libcpp (probe absent). See cxx-compat/cstdlib.
+#if defined(__has_include) && __has_include(<bits/c++config.h>)
+#include_next <cstddef>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_CSTDDEF
 #define NROS_ZEPHYR_CXX_COMPAT_CSTDDEF
 #include <stddef.h>
@@ -8,3 +13,4 @@ using ::ptrdiff_t;
 using ::size_t;
 }
 #endif
+#endif // __has_include(<bits/c++config.h>)
