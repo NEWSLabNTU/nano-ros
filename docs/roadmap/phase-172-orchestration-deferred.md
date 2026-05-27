@@ -393,11 +393,34 @@ three are independent of each other; A (lifecycle) is the largest.
 runtime code or plan schema, so it is fully independent of Groups 1–3.
 The three items are independent of each other.
 
-- [ ] **172.D — Incremental / staleness-aware build.** Skip
+- [x] **172.D — Incremental / staleness-aware build.** Skip
       regeneration + recompilation when the plan + sources are
       unchanged. Today `nros build` regenerates the package every
       run. Scope: content-hash the plan + component metadata; gate
       `generate_package` + the cargo invocation on staleness.
+      **Landed** — `build_generated_package`
+      (`packages/nros-cli-core/src/orchestration/build.rs`) now
+      fingerprints the *generation* inputs (generator version + plan
+      bytes + the paths baked into the manifest/build-script:
+      `package_name`, `workspace_root`, `component_workspace`) with a
+      `DefaultHasher` digest, records it in a `.nros-build-stamp` under
+      the generated package root after a clean generation, and skips
+      `generate_package` entirely when the stamp matches and the crate
+      is present (printing "generated package up to date … skipping
+      regeneration"). `nros build --force` / `NROS_BUILD_FORCE=1`
+      bypasses the gate. **Recompilation is owned by cargo, not
+      re-implemented:** the generated crate path-depends on the
+      component crates, so cargo's own incremental fingerprinting is
+      the authority on component-source staleness — `nros build`
+      always invokes cargo (a no-op in ~0.06 s when nothing changed)
+      rather than gate it on the plan hash, which would ship a stale
+      binary whenever component source changed under an unchanged
+      plan. The generator version is in the fingerprint so a CLI
+      upgrade re-generates even on a byte-identical plan. Verified:
+      unit tests for the fingerprint's input-sensitivity + the
+      freshness predicate; the `orchestration_e2e` build test asserts
+      the stamp is written; a real rebuild prints the skip line + cargo
+      no-ops, and `--force` regenerates.
 
 - [ ] **172.E — Hardened metadata-mode sandboxing.** The
       `nros metadata` mode compiles + runs component code to
