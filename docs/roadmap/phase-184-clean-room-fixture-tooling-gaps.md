@@ -462,19 +462,47 @@ theory; the stable state is 1 socket, so that theory is **rejected**.]
   (hence Recv-Q=0) but the reader/RHC drops it (action `SendGoal_Request_`
   type/QoS/dedup) so it never reaches the goal callback.
 
-**Next step (decisive, one instrument):** log in Cyclone's UDP read path
-(`ddsi_udp.c` `ddsi_udp_conn_read` / the recvUC handler) every datagram received
-on the data conn after 3.3 s — if the server logs a datagram from the client's
-data port ⇒ **(b)** (reader-side drop, a Cyclone/type issue); if none ⇒ **(a)**
-(host-loopback loss, an NSOS `sendto`/recv issue). `tcpdump -i lo udp port 20411`
-would also split a/b but needs CAP_NET_RAW (unavailable here, no sudo). Web refs:
-native_sim offloaded-sockets driver [zephyr#65116], offloaded poll/recvfrom
-history [zephyr#94161].
+**`tshark` on lo (no sudo — `dumpcap` has `cap_net_raw`) — the goal IS on the
+wire.** Captured `udp portrange 20400-20500` during the run; the **goal DATA
+submessage is physically transmitted to the server's data port**:
+`3.353 s  <client> → 127.0.0.1:20411  rtps DATA  wrEntityId=0x00000203` (the
+send_goal request writer), followed by the writer's periodic HEARTBEATs (3.45,
+3.55, …) to 20411. So **case (a) "never reaches the wire" is ruled out** — the
+datagram reaches the loopback addressed to the server's data port.
+
+**recvmsg works on the server's data socket.** A recv-path probe (later reverted,
+see crash note) showed the server's `ddsi_udp_conn_read`/recvmsg returning
+discovery datagrams on its data socket (sock=3, 176–900 B) — so recvmsg
+functions; the data socket is being read during discovery.
+
+**⚠️ `fprintf` from the recvUC k_thread crashes native_sim** — adding a raw
+`fprintf(stderr, …)` in `ddsi_udp_conn_read` aborted the server (`ZEPHYR FATAL
+ERROR 4: Kernel panic`, ~0.25 s) before the goal. The recvUC k_thread can't
+safely call libc stdio on native_sim. **Any recv-path instrument must use
+Cyclone's own `GVTRACE`/`category=trace` logging (thread-safe, already routed to
+stderr by the log-flush patch), or gdb — not `fprintf`.**
+
+**Refined split (still open):** the goal is on the wire to 20411 + recvmsg works
+for discovery, yet the server's Cyclone shows **no goal processing after ~0.25 s**
+(no traffic-recv/acknack/RHC; `server_received=false`), and the finite-timeout
+select re-poll did **not** recover it. So either:
+- the recvUC `select(DDS_INFINITY)` never wakes for the data socket once
+  discovery traffic stops (NSOS select doesn't signal that fd's readiness for the
+  one-shot goal), leaving the datagram unread in the kernel buffer; or
+- the datagram is read but dropped at the reader/RHC.
+
+**Next step (decisive, SAFE instrument):** add a `GVTRACE(gv, …)` (NOT `fprintf`)
+in `ddsi_udp_conn_read` logging recv size + src after 3.3 s, OR `gdb` break on
+`ddsi_udp_conn_read` in the server process; if the server recvmsg's the goal
+datagram ⇒ reader-drop, else ⇒ select/kernel-delivery. (`tcpdump -i lo` already
+confirmed the wire side.)
 
 **Ruled out by evidence (cumulative):** discovery, writer↔reader match, QoS,
 topic/type naming, the 171.0.a gate, client timeout, frozen clock, RX-thread
 startup, select-miss (tested fix), SO_REUSEPORT socket-split (transient
-mis-read). ~36 trace/build cycles spent; the a/b split is the clean next move.
+mis-read), send-side / wire loss (tshark: goal DATA on the wire to 20411). ~40
+trace/build cycles spent. Web refs: native_sim offloaded-sockets driver
+[zephyr#65116], offloaded poll/recvfrom history [zephyr#94161].
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).
