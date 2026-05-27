@@ -69,4 +69,13 @@ pub trait BoardTransportConfig {
 
     /// Serial line rate for the board's UART transport.
     fn set_baudrate(&mut self, _baud: u32) {}
+
+    /// WiFi SSID for boards with a WiFi transport (ESP32). Wired boards
+    /// ignore it. (Phase 172.K.4 — from `nros.toml` `[[transport]]` `ssid`,
+    /// replacing `config.toml`'s `[wifi].ssid`.)
+    fn set_ssid(&mut self, _ssid: &str) {}
+
+    /// WiFi password (paired with [`set_ssid`]). (Phase 172.K.4 —
+    /// `[[transport]]` `password`, replacing `config.toml`'s `[wifi].password`.)
+    fn set_password(&mut self, _password: &str) {}
 }
