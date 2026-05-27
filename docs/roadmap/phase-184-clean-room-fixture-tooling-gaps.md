@@ -8,8 +8,10 @@ and one codegen-link gap.
 
 **Status:** 184.1–.5 RESOLVED 2026-05-27 (184.1/.2/.3/.5 = clean build-only;
 184.4 = build-fixtures-make builds host codegen); 184.6 fixed; 184.7 RE-VERIFIED
-2026-05-27 (reds were fixture-not-built preconditions + one test-timing bug, now
-fixed — not live product gaps).
+2026-05-27 (most reds were fixture-not-built preconditions + one test-timing bug,
+now fixed). **184.8 OPEN** — the 3 zephyr cyclonedds action e2e tests DO
+reproduce a hard failure here on fresh fixtures (real product gap, 177.2;
+contradicts the 184.7 zephyr "GREEN" row).
 **Priority:** Medium.
 **Depends on:** Phase 177 (archived — product fixes incl. the Cyclone idlc
 re-resolve harden), Phase 175 (native Cyclone CMake/Corrosion fixtures).
@@ -206,7 +208,7 @@ fixture-not-built preconditions (the product fixes had already landed under
 | `rtos_e2e test_rtos_pubsub_e2e::Nuttx::Rust` | **177.30** | **already fixed; was fixture-missing.** Cold run fell back to `nros-fast-release` (177.8.c reboot loop). After `just nuttx build-fixtures`: **PASS** (45s). |
 | `threadx_riscv64_qemu test_threadx_riscv64_cyclonedds_two_qemu_pubsub` | **177.26** | **already fixed; was Cyclone-fixture-missing.** After `just cyclonedds threadx-cross-probe` + `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures`: **PASS** (5.2s) — the "executor register" blocker is resolved. |
 | `native_api test_threadx_linux_cyclonedds_talker_to_native_listener` | **177.26** | **already fixed; was fixture-missing.** After `just cyclonedds setup` + `just threadx_linux build-fixture-extras`: **PASS** (10.1s). |
-| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** | **GREEN (not a product gap).** 177.2 closed 2026-05-23; the `k_thread`-ddsrt-port theory was debunked 2026-05-25 (diagnosed against stale `eth_posix` fixtures — Cyclone workers ARE `k_thread`s, `tid in use!` benign). On fresh NSOS fixtures the full `binary(zephyr) & test(dds)` group is **15/15 PASS** incl. all `*_action_e2e`. Clean-room reds were stale-fixture / `zephyr-native-cyclonedds` domain cross-talk (177.33/177.35). Not re-run in this SDK-less env. |
+| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** | **GREEN (not a product gap).** 177.2 closed 2026-05-23; the `k_thread`-ddsrt-port theory was debunked 2026-05-25 (diagnosed against stale `eth_posix` fixtures — Cyclone workers ARE `k_thread`s, `tid in use!` benign). On fresh NSOS fixtures the full `binary(zephyr) & test(dds)` group is **15/15 PASS** incl. all `*_action_e2e`. Clean-room reds were stale-fixture / `zephyr-native-cyclonedds` domain cross-talk (177.33/177.35). Not re-run in this SDK-less env. **⚠️ CONTRADICTED — see 184.8:** with a full `just zephyr setup` + fresh fixtures in this env, all 3 `*_action_e2e` deterministically FAIL (`server_received_goal=false`), solo + distinct domains. Treat 177.2 as OPEN. |
 
 **Takeaway:** the clean-room `test-all` reds are dominated by *fixtures not built
 for the specific platform* (the per-test `[SKIPPED]`/fallback messages name the
@@ -215,6 +217,124 @@ real defect — a test-side timing race, now fixed. None are Phase-172 (Group-1)
 regressions — Group-1 touches only additive board `from_toml` parsers + the mps2
 baremetal example's `nros.toml` + the 184.6 zephyr build fix; none of these test
 paths.
+
+### 184.8 — Zephyr CycloneDDS actions DO reproduce a hard failure here (contradicts the 184.7 "GREEN" row)
+**Re-verified 2026-05-27 with a full `just zephyr setup` + `just zephyr
+build-fixtures` in this env.** Contrary to the 184.7 zephyr row above (which
+records 177.2 as GREEN / 15-15 PASS, "not re-run in this SDK-less env"), all
+three `test_zephyr_dds_{c,cpp,rs}_action_e2e` **deterministically FAIL** here —
+solo *and* grouped, on freshly-built fixtures, with distinct baked Cyclone
+domains (c=52 / cpp=55 / rs=58, so not 177.33/177.35 cross-talk):
+
+```
+Action server ready: /fibonacci          (server, at boot)
+Action client ready: /fibonacci          (client, +0.3s)
+Sending goal: order=10                    (+3.3s)
+Goal acceptance failed: Timeout           (client gives up)
+Rust Cyclone action E2E failed (server_received_goal=false, client_completed=false)
+```
+
+**Not a timeout / discovery-wait issue.** Bumping the Rust client's goal-accept
+wait 10 s → 45 s only moves the give-up to +49 s — still `server_received_goal=
+false`. The goal request never reaches the server no matter how long the client
+spins.
+
+**Not transport-wide.** On the *same* Zephyr Cyclone fixtures,
+`test_zephyr_rust_cyclonedds_pubsub_e2e` **PASS** (2 s) and
+`test_zephyr_rust_cyclonedds_service_e2e` **PASS** (32 s — plain service match
+is slow but converges). Only the **action goal service** fails to deliver.
+
+**Root cause (CONFIRMED 2026-05-27 via instrumented `[cyc-dbg]` trace, since
+reverted).** Action goals route through the *same* gated service-client path as
+plain services: `ActionClientCore::send_goal` → `send_request_raw`/`call_raw` →
+Cyclone `service_send_request_raw` → `maybe_flush_request` (`service.cpp`),
+which buffers the request until `request_writer_matched()`
+(`dds_get_publication_matched_status.current_count > 0`, the Phase 171.0.a
+gate). The trace ruled out the earlier candidates:
+- **descriptor OK / reader created** — no `NO-DESCRIPTOR` log; the server's
+  send_goal request reader is created fine.
+- **the gate opens + the request IS written** — `flush writer=… MATCHED,
+  writing 44 bytes` fires (client-side `publication_matched.current_count > 0`).
+- **but the server reader never matches** — server-side `POLL reader=…
+  matched=0` (its `subscription_matched.current_count` stays 0); `server TOOK
+  request` never fires.
+
+> **CORRECTION (2026-05-28) — the "asymmetric match" reading above was a
+> sampling artifact; the match actually SUCCEEDS.** Enabling Cyclone's own
+> `<Tracing>Verbosity=finer` on the embedded config (since reverted) shows the
+> send_goal request endpoints **fully connect, both directions**, at ~16–66 ms —
+> well before the 3.3 s goal send:
+> ```
+> new_reader(… rq/fibonacci/_action/send_goalRequest/…Fibonacci_SendGoal_Request_)   # server
+> new_writer(… rq/fibonacci/_action/send_goalRequest/…)                              # client
+> reader_add_connection(pwr <client-wr>:203 rd <server-rd>:204)                      # server side matched
+> writer_add_connection(wr <client-wr>:203 prd <server-rd>:204) - ack seq 0          # client side matched
+> ```
+> No `incompatible qos` / reject lines; client + server both on **domain 52**;
+> topic + type **identical** on both sides (logged:
+> `svc='/fibonacci/_action/send_goal' type='…Fibonacci_'
+> req_topic='rq/fibonacci/_action/send_goalRequest'`). The earlier
+> `subscription_matched=0` was the throttled poll catching the *pre*-match
+> instant. So **discovery / matching / QoS / naming are all fine.**
+>
+> **The real failure is POST-MATCH reliable data delivery.** With the channel
+> matched and the goal written *after* the match, the server's reader still never
+> surfaces the sample: the action-server example spins correctly
+> (`spin_once(100 ms)` + `try_accept_goal` every loop, `examples/zephyr/rust/
+> action-server/src/lib.rs:82-98`) yet never logs `Goal request: order=` →
+> `service_try_recv_request`/`dds_take` returns nothing. Cyclone delivers data via
+> its own RX/dq `k_thread`s (the backend's `session_drive_io` only sleeps —
+> `session.cpp:197`), so the goal DATA submessage either never leaves the client
+> writer, never reaches the server via NSOS unicast loopback, or is dropped before
+> the reader cache — **on this one action channel, while pubsub + plain service
+> deliver fine over the same transport.**
+
+**Fix attempts — ruled out (2026-05-27/28):**
+- **Request QoS → TRANSIENT_LOCAL: REJECTED.** Stock ROS 2's goal/cancel/result
+  services are RELIABLE+**VOLATILE** (`QOS_PROFILE_SERVICES_DEFAULT`,
+  `nros-rmw/src/traits.rs:460`; only the *status* topic is TRANSIENT_LOCAL,
+  :492). A TRANSIENT_LOCAL reader needs a TRANSIENT_LOCAL+ writer, so this is a
+  durability mismatch that **breaks stock-ROS 2 action interop** (the goal of
+  Phase 117). Off the table.
+- **Client goal-accept timeout bump (10 s → 45 s): NO EFFECT.** Still
+  `server_received_goal=false`; the request is written once at `send_goal` and
+  dropped — spinning longer can't resend it.
+- **Backend bidirectional flush gate (`maybe_flush_request` requires request-
+  writer `publication_matched` AND reply-reader `subscription_matched`, the rmw
+  `service_server_is_available` semantics) + 40 s client spin: STILL FAILS.**
+  With the stricter gate the client waits the full 40 s and never gets accept —
+  i.e. the action `send_goal` service's **reply-reader never matches either**, so
+  the gate never opens. Reverted (it also risks regressing the *working* plain-
+  service path, which only ever needed the unidirectional gate + example retry).
+
+**What's ruled out (evidence, not speculation):** topic/type-name mismatch
+(logged identical), QoS incompatibility (no reject in finer trace), discovery /
+endpoint matching (trace shows full bidirectional `*_add_connection` at ~66 ms),
+client-side gate/timeout (goal written after match; 45 s spin no help),
+action-server spin (server polls `try_accept_goal` every 100 ms),
+TRANSIENT_LOCAL (breaks stock interop). The bug is **narrower than any of
+these**: a matched RELIABLE+VOLATILE write on the action `send_goalRequest`
+channel does not surface at the server reader, **specifically** — pubsub + plain
+service on the same participant pair / transport deliver fine.
+
+**Next step (deeper, not yet done — finest data-path trace):** set Cyclone
+`<Tracing>Verbosity=finest` (or `category=trace,radmin,rhc`) and watch the
+goal's RTPS **DATA submessage + HEARTBEAT/ACKNACK** on `rq/…send_goalRequest`
+after the 3.3 s write — does the client writer emit the DATA, does the server's
+NSOS socket receive it, does the RHC (reader history cache) accept or drop it?
+That isolates: (a) writer never xmits (writer-history/whc issue), (b) lost on
+the NSOS loopback socket, or (c) dropped at the reader (rhc/QoS/resource).
+Suspect the action participant's **many endpoints** (3 services + 2 topics,
+incl. the TRANSIENT_LOCAL status writer) stress a native_sim/NSOS limit that a
+single plain service never hits.
+
+Owner: **177.2** — symptom precisely isolated to **post-match reliable data
+delivery on the action send_goal channel**; discovery/QoS/naming/gate/timeout
+all ruled out by trace evidence; next is a finest RTPS data-path trace.
+
+> **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
+> goal data on this channel; here it deterministically doesn't (post-match).
+> Treat 177.2 as **open**.
 
 ## Acceptance
 - A clean-room `clean → setup → build-all → build-test-fixtures → test-all` on a
