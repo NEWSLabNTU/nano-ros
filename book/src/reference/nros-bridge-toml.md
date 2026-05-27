@@ -1,6 +1,13 @@
-# `nros.toml` — bridge configuration schema entrypoint. Consumed by
-`nros::run_from_config` (Rust) and the future C/C++ mirror
+# `nros-bridge.toml` — bridge configuration schema
+
+Consumed by `nros::run_from_config` (Rust) and the future C/C++ mirror
 (`nros::run_from_config` in `nros-cpp`).
+
+> **Not the orchestration `nros.toml`.** This is the **bridge** runtime
+> config (multi-RMW byte forwarding). It is named `nros-bridge.toml` to
+> avoid colliding with the Phase 126 orchestration `nros.toml`
+> (component/system build config) — different lifecycle, different
+> schema (Phase 172.L).
 
 The file lives next to the binary (or anywhere the program can read
 it) and selects:
@@ -18,7 +25,7 @@ that don't match a linked backend surface as
 ## Top-level structure
 
 ```toml
-# nros.toml — sibling of the binary
+# nros-bridge.toml — sibling of the binary
 [[node]]
 name    = "field"
 rmw     = "zenoh"
@@ -40,8 +47,8 @@ Run via:
 
 ```rust
 fn main() -> Result<(), nros_bridge::ConfigError> {
-    nros_bridge::run_from_config("nros.toml")
-    // or, via the umbrella feature: nros::run_from_config("nros.toml")
+    nros_bridge::run_from_config("nros-bridge.toml")
+    // or, via the umbrella feature: nros::run_from_config("nros-bridge.toml")
 }
 ```
 

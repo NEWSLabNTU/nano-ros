@@ -1,14 +1,18 @@
 //! TOML-driven entrypoint (Phase 128.G).
 //!
 //! Lets a binary that links one or more RMW backends boot directly
-//! from a `nros.toml` file — no backend name appears in source.
+//! from a `nros-bridge.toml` file — no backend name appears in source.
 //! Selection lives entirely in the manifest (Cargo `[dependencies]`)
 //! plus the config file.
+//!
+//! Note: this is the **bridge** config, distinct from the orchestration
+//! `nros.toml` (Phase 126 component/system config). The bridge file is
+//! named `nros-bridge.toml` to avoid the collision (Phase 172.L).
 //!
 //! # Schema
 //!
 //! ```toml
-//! # nros.toml — sibling of the binary
+//! # nros-bridge.toml — sibling of the binary
 //! [[node]]
 //! name    = "field"
 //! rmw     = "zenoh"
@@ -30,7 +34,7 @@
 //!
 //! ```ignore
 //! fn main() -> Result<(), nros_bridge::ConfigError> {
-//!     nros_bridge::run_from_config("nros.toml")
+//!     nros_bridge::run_from_config("nros-bridge.toml")
 //! }
 //! ```
 //!
