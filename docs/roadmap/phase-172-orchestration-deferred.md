@@ -131,7 +131,10 @@ identity-only; `nros.toml` schema; examples; colcon task; `nros build`;
 L + M first (small, unblock the rest), then the schema (J), then the
 example migration (K), then the audit/docs (N).
 
-- [ ] **172.L — Resolve the `nros.toml` name collision.** Two
+- [x] **172.L — Resolve the `nros.toml` name collision.** DONE 2026-05-27 —
+      bridge config renamed to `nros-bridge.toml` (`run_from_config` is
+      path-agnostic; updated doc comments + the book page + SUMMARY link).
+      Two
       incompatible schemas currently share the filename: the Phase 124
       **bridge** config (`nros_bridge::run_from_config`, runtime
       `[[node]]`/`[[bridge]]` multi-RMW forwarding) and the Phase 126
@@ -142,7 +145,12 @@ example migration (K), then the audit/docs (N).
       and any callers). No example ships the bridge file today, so the
       blast radius is small.
 
-- [ ] **172.M — Wire RMW from `system.target.rmw`.** Make
+- [x] **172.M — Wire RMW from `system.target.rmw`.** DONE 2026-05-27 — the
+      orchestration generator already threads `build.rmw`; the colcon task's
+      hardcoded `zenoh` + dead `find_package(NanoRos)` were fixed (RMW from
+      `NANO_ROS_RMW` env via `resolve_rmw()`; platform from the parsed token;
+      zephyr `prj-<rmw>.conf` overlay).
+      Make
       `system.target.rmw` the single source for RMW selection across
       every build path: the colcon task (`colcon_nano_ros/task/nros/build.py`)
       currently **hardcodes `-DNANO_ROS_RMW=zenoh`** and references the
@@ -152,7 +160,13 @@ example migration (K), then the audit/docs (N).
       reads it. Manual `cargo`/`cmake` builds keep working by passing the
       selection by hand.
 
-- [ ] **172.J — Peripheral/network config in `SystemConfig`.** Extend
+- [x] **172.J — Peripheral/network config in `SystemConfig`.** DONE 2026-05-27 —
+      Phase 173.5 already parses `[[transport]]` (kind/ip/device/baudrate/rmw/
+      locator); added the remaining `config.toml [network]` fields `mac` +
+      `gateway` to `PlanTransport` (+ `BoardTransportConfig::{set_mac,set_gateway}`
+      + generator emission + validate). (172.K.4/K.7 added wifi `ssid`/`password`
+      + the `interfaces` multi-homing list on top.)
+      Original scope: extend
       the Phase 126.A `SystemConfig` schema with `target.network`
       (ip/mac/gateway/prefix) and `target.transport`
       (ethernet/wifi/serial + their params). Today this lives only in
