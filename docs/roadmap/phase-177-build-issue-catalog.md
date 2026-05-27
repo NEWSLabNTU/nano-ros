@@ -930,6 +930,36 @@ passed.
   effect; a stale fixture still on domain 0 will collide under the now-parallel
   groups.
 
+- [x] **177.38 - domain-ID policy: compile-time on embedded, runtime env on
+  native (host).** Owner: test-harness (codified 2026-05-27). Generalizes
+  177.37's Zephyr-specific choice into a project-wide rule (now in CLAUDE.md's
+  "QEMU Networked Tests" section).
+
+  **Policy.** Every *embedded* target (Zephyr, FreeRTOS, NuttX, ThreadX,
+  bare-metal, ESP32) sets `ROS_DOMAIN_ID` at **build time** — Zephyr via Kconfig
+  `CONFIG_NROS_DOMAIN_ID`, the others via each example's `config.toml`
+  `domain_id` → generated `app_config.h` (consumed by `nros::init` /
+  `.domain_id(config.domain_id)`). A *runtime* env/arg domain doesn't reach an
+  embedded backend (native_sim libc `getenv` has no host trampoline; a cmdline
+  arg is un-embedded). For **Cyclone** (RTPS ports `7400 + 250*domain`), parallel
+  fixtures must bake a *distinct* domain per communicating role-set
+  (talker+listener / server+client share; unrelated sets differ) so concurrent
+  QEMU/native_sim processes don't collide on ports — the 177.37 per-`(lang,
+  variant)` pattern. **Native/host is the exception:** host Cyclone reads the env
+  at runtime via `nros_tests::unique_ros_domain_id()` (slot-unique per concurrent
+  test; 177.33/177.35) — env works through the host libc there.
+
+  **Audit (2026-05-27).** No hardcoded-`domain_id(0)` bug outside the one 177.37
+  already fixed: every non-Zephyr embedded example reads `config.domain_id` /
+  `NROS_APP_CONFIG.…domain_id` (grep `domain_id(0)` across `examples/` is clean).
+  So the embedded mechanism is already compile-time + sound; only the *distinct*
+  per-role-set baking for parallel-Cyclone safety remains, and only where a
+  parallel embedded-Cyclone e2e suite exists: **Zephyr done (177.37)**; FreeRTOS
+  Cyclone is boot-only and ThreadX-RV64 Cyclone is a gated communicating *pair*
+  (shares domain 0 — correct, no collision), so neither needs distinct baking
+  today. Apply the 177.37 pattern to those `build-fixtures` recipes when their
+  parallel Cyclone suites land. No code change needed now.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
