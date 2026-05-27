@@ -107,6 +107,13 @@ the plan; Group 3's runtime reads it). Schema changes must be
 > ignored. **Group 1 (config owner):** that key is now live — a
 > declared tier id is matched against each callback's `group`.
 >
+> 172.A adds one additive top-level field on `NrosPlan` (still v2):
+> `lifecycle: Option<PlanLifecycle>` (`{ autostart:
+> none|configure|active }`), `#[serde(default,
+> skip_serializing_if = "Option::is_none")]`, read from nros.toml
+> `[lifecycle]`. **Group 1 (config owner):** `[lifecycle]` is now a
+> live key.
+>
 > Group 1/3 agents: rebase onto these. Two **pre-existing** schema
 > bugs found + fixed in the same pass (HEAD's `orchestration_schema`
 > round-trip was already red): the `PlanEntity` `callback: Option`
@@ -248,13 +255,36 @@ the grouping into multi-tier scheduling — so run B → C → G.
 generated `main` + the plan's representation of runtime features. The
 three are independent of each other; A (lifecycle) is the largest.
 
-- [ ] **172.A — Lifecycle node orchestration.** Model
+- [x] **172.A — Lifecycle node orchestration.** Model
       managed-lifecycle nodes (configure / activate / deactivate /
       cleanup transitions) in the plan schema + generated runtime.
       Today every instance is a plain node brought up once at boot.
       Scope: lifecycle state in `nros-plan.json`, transition
       callbacks in the generated runtime, `nros check` validation
       of lifecycle graphs.
+      *Done (system-level, config-driven):* the REP-2002 state
+      machine (`nros-core`/`nros-node` `lifecycle*.rs`) + the
+      executor services (`Executor::register_lifecycle_services`,
+      `lifecycle-services` feature) already exist. The plan now
+      carries an optional `lifecycle: { autostart: none|configure|
+      active }` block (`PlanLifecycle` / `LifecycleAutostart`),
+      read from nros.toml `[lifecycle]` (`collect_lifecycle`).
+      Codegen emits `apply_lifecycle(&mut executor)` — a no-op for
+      unmanaged plans (no feature, byte-equivalent), else
+      `register_lifecycle_services()` + the boot autostart
+      transitions; `run_executor` calls it after binding callbacks,
+      and a managed plan enables `nros/lifecycle-services`. `nros
+      check` validates via the `NrosPlan` parse (autostart enum). 4
+      tests (planner unit + plan→check e2e + managed/unmanaged
+      codegen); the no-op path is compile-checked by the real-build
+      e2e suite. **Scope note:** the runtime models **one** lifecycle
+      SM per executor, so this is *system-level* (the generated
+      binary's node is managed). **Deferred (needs new runtime
+      core):** per-instance lifecycle (multiple managed nodes in one
+      binary, requiring a per-node SM registry), component-provided
+      transition callbacks (today's transitions take the
+      default-success path), and gating callback dispatch on the
+      `Active` state.
 
 - [ ] **172.H — Runtime parameter-override persistence.** Persist
       runtime parameter overrides (set after boot) across restarts.
