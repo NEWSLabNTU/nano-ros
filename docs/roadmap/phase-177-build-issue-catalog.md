@@ -882,8 +882,9 @@ passed.
   interop edit compiles.
 
 - [ ] **177.36 - Cyclone backend doesn't publish `ros_discovery_info` → stock
-  ROS 2 graph/action introspection sees no node.** Owner: Phase 117 (open,
-  2026-05-27). Found standing up `cyclonedds_ros2_interop`'s action test
+  ROS 2 graph/action introspection sees no node.** Owner: Phase 117
+  (**graph IMPLEMENTED + working 2026-05-27; one narrower follow-on open** — see
+  "Implemented" below). Found standing up `cyclonedds_ros2_interop`'s action test
   (`test_cyclonedds_action_nano_server_ros2_client`, landed `#[ignore]`d).
 
   **Corrected root cause (the first "endpoint naming" diagnosis was wrong).** The
@@ -961,6 +962,39 @@ passed.
     (2) exact idlc typename mangling to `dds_::…_`; (3) single-node-per-participant
     assumption (fine for nano-ros today); (4) TRANSIENT_LOCAL latched writer on
     embedded alloc budget — consider gating the graph writer to hosted targets.
+
+  **Implemented (2026-05-27) — graph publishing works; one narrower follow-on.**
+  Landed the full graph publisher:
+  - `src/idl/rmw_dds_common_graph.idl` — hand-mangled `dds_::{Gid_,
+    NodeEntitiesInfo_,ParticipantEntitiesInfo_}` (idlc → wire type
+    `rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_`), baked into the backend
+    static lib via `nros_rmw_cyclonedds_idlc_compile` in `CMakeLists.txt`.
+  - `src/graph.{hpp,cpp}` — per-session `GraphState` (participant gid + latched
+    `ros_discovery_info` writer (RELIABLE+TRANSIENT_LOCAL+KEEP_LAST(1)) + fixed-cap
+    reader/writer gid tables). gid = `dds_get_guid` 16 bytes zero-padded to 24.
+    Publishes the full `ParticipantEntitiesInfo` (stack-built typed sample +
+    `dds_write`, no heap) on every endpoint change. `graph.cpp` calls the
+    generated `register_rmw_dds_common_graph_0()` to force-link the descriptor.
+    Note: bounded `string<256>` → idlc emits a fixed `char[257]` field (copy, not
+    pointer-assign).
+  - Hooks: `session_open` (init + participant gid), `publisher_create`,
+    `subscriber_create`, `service_{server,client}_create` (track both endpoints).
+    `session_open` no longer drops `node_name`. v1 tracks on create only (no
+    untrack-on-destroy — endpoints live for the node's lifetime; refinement TODO).
+  - **Verified:** `ros2 node list` now shows the nano node; `ros2 action info
+    /fibonacci` → **Action servers: 1**; `ros2 node info` recognizes the full
+    `/fibonacci: example_interfaces/action/Fibonacci` **Action Server** (was 0 /
+    invisible). No regression — pub/sub + service interop + native Cyclone 8/8.
+  - **Remaining follow-on (narrower):** `ros2 action send_goal`'s
+    `wait_for_server()` still doesn't complete despite the server being fully
+    graph-visible. `rcl_action_server_is_available` → `rcl_service_server_is_available`
+    is **match-based** (the send_goal client's service-clients matching the nano
+    server's service-servers), i.e. the 117.12.B.1 `current_count`-under-report
+    class applied to the action's 3 composed services — NOT the graph. The action
+    interop test (`test_cyclonedds_action_nano_server_ros2_client`) stays
+    `#[ignore]`d on this narrower gap. Single-service `ros2 service call` interop
+    works (117.12.B.1), so the fix is to extend that match handling to the
+    action's service endpoints.
 
 - [x] **177.37 - parallelize the Zephyr native_sim Cyclone test groups via a
   COMPILE-TIME per-role-set domain.** Owner: test-harness (landed 2026-05-27).

@@ -129,6 +129,7 @@ nros_rmw_ret_t subscriber_create(nros_rmw_session_t *session,
     }
 
     out->backend_data = state;
+    graph_track_reader(session_graph(session), reader);  // Phase 177.36
     return NROS_RMW_RET_OK;
 }
 

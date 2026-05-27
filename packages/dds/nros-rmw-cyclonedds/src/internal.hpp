@@ -8,6 +8,7 @@
 
 #include <dds/dds.h>
 
+#include "graph.hpp"  // Phase 177.36 — GraphState + ros_discovery_info API
 #include "nros/rmw_entity.h"
 #include "nros/rmw_event.h"
 #include "nros/rmw_ret.h"
@@ -83,6 +84,11 @@ inline uint64_t platform_random_u64() {
 /** Return the Cyclone participant handle for an open session, or 0
  *  if the session is uninitialised / closed. */
 dds_entity_t session_participant(const nros_rmw_session_t *session);
+
+/** Phase 177.36 — the per-session ros_discovery_info graph state, or nullptr
+ *  for an unopened session. Endpoint-create paths register their reader/writer
+ *  GIDs via graph_track_*. */
+GraphState *session_graph(nros_rmw_session_t *session);
 
 /* ---- publisher.cpp / subscriber.cpp helpers ---- */
 /** Return the Cyclone writer handle for a publisher created by

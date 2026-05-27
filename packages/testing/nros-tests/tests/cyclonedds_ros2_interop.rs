@@ -229,7 +229,7 @@ fn test_cyclonedds_service_nano_server_ros2_client() {
 /// `ros_discovery_info`), not endpoint naming. Pub/sub + service interop match at
 /// the endpoint level and are unaffected.
 #[test]
-#[ignore = "177.36: nano Cyclone backend doesn't publish /ros_discovery_info, so stock ROS 2 sees the action's endpoints but no NODE → ros2 action info = 0 servers, send_goal wait_for_server never completes. Endpoint names are correct (the _action/* sub-endpoints exist under --include-hidden); the gap is the rmw node-graph announcement. Pub/sub + service interop unaffected."]
+#[ignore = "177.36: graph now lands — the backend publishes /ros_discovery_info, so `ros2 node list` shows the nano node and `ros2 action info` / `ros2 node info` recognize the full action server (`/fibonacci: example_interfaces/action/Fibonacci`, Action servers: 1). But `ros2 action send_goal`'s wait_for_server still doesn't complete — a narrower MATCH-based gap (rcl_action_server_is_available → rcl_service_server_is_available checks the client's service-client↔server-service match, the 117.12.B.1 current_count class on the action's services), not the graph. Pub/sub + service interop unaffected."]
 fn test_cyclonedds_action_nano_server_ros2_client() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");

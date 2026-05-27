@@ -55,6 +55,19 @@ endif()
 # step runs.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
+# Phase 177.36 — bake the rmw_dds_common ParticipantEntitiesInfo descriptor into
+# the backend so every Cyclone node can publish `ros_discovery_info` (the ROS 2
+# node→endpoint graph stock tooling + action `wait_for_server` read). The
+# hand-mangled IDL (src/idl/rmw_dds_common_graph.idl) yields the exact wire type
+# `rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_`. graph.cpp calls the
+# generated `register_rmw_dds_common_graph_0()` explicitly so the descriptor TU
+# is linked (no whole-archive needed).
+set(_NROS_GRAPH_TYPES_DIR "${CMAKE_CURRENT_BINARY_DIR}/graph-types")
+nros_rmw_cyclonedds_idlc_compile(_NROS_GRAPH_DESC_SRCS
+    IDL_FILE   "${CMAKE_CURRENT_SOURCE_DIR}/src/idl/rmw_dds_common_graph.idl"
+    OUTPUT_DIR "${_NROS_GRAPH_TYPES_DIR}"
+    TYPE_NAME  "rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_")
+
 # Phase 117.X.3: service request-id correlation now uses an in-payload
 # `cdds_request_header_t` (writer_guid[16] + sequence_number) injected
 # at IDL-codegen time by `msg_to_cyclone_idl.py` for every `.srv`
@@ -68,8 +81,10 @@ add_library(nros_rmw_cyclonedds STATIC
     src/subscriber.cpp
     src/service.cpp
     src/descriptors.cpp
+    src/graph.cpp
     src/qos.cpp
     src/sertype_min.cpp
+    ${_NROS_GRAPH_DESC_SRCS}
 )
 add_library(NrosRmwCyclonedds::NrosRmwCyclonedds ALIAS nros_rmw_cyclonedds)
 
@@ -80,6 +95,7 @@ target_include_directories(nros_rmw_cyclonedds
     PRIVATE
         ${NROS_RMW_CFFI_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${_NROS_GRAPH_TYPES_DIR}
 )
 
 target_link_libraries(nros_rmw_cyclonedds PUBLIC CycloneDDS::ddsc)

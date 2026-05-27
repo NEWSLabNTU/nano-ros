@@ -15,6 +15,8 @@
 
 #include <dds/dds.h>
 
+#include "graph.hpp"  // Phase 177.36 — ros_discovery_info node graph
+
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -44,6 +46,7 @@ namespace {
 struct SessionState {
     dds_entity_t domain{0};
     dds_entity_t participant{0};
+    GraphState graph{};  // Phase 177.36 — ros_discovery_info publisher state
 };
 
 inline SessionState* as_state(nros_rmw_session_t* s) {
@@ -119,7 +122,7 @@ constexpr const char* kEmbeddedCycloneConfig =
 } // namespace
 
 nros_rmw_ret_t session_open(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,
-                            const char* /*node_name*/, nros_rmw_session_t* out) {
+                            const char* node_name, nros_rmw_session_t* out) {
     if (out == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -154,7 +157,20 @@ nros_rmw_ret_t session_open(const char* /*locator*/, uint8_t /*mode*/, uint32_t 
     }
     state->participant = pp;
     out->backend_data = state;
+
+    // Phase 177.36 — stand up the ros_discovery_info graph publisher so stock
+    // ROS 2 sees this participant as a node. Best-effort: if the descriptor /
+    // writer can't be created the graph stays inactive and interop degrades to
+    // endpoint-only (pre-177.36) behaviour.
+    graph_init(&state->graph, pp, node_name, "/");
     return NROS_RMW_RET_OK;
+}
+
+// Phase 177.36 — expose the per-session graph so the endpoint-create paths
+// (publisher/subscriber/service) can register their reader/writer GIDs.
+GraphState* session_graph(nros_rmw_session_t* session) {
+    if (session == nullptr || session->backend_data == nullptr) return nullptr;
+    return &as_state(session)->graph;
 }
 
 nros_rmw_ret_t session_close(nros_rmw_session_t* session) {

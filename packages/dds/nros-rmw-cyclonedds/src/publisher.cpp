@@ -310,6 +310,7 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t* session, const char* topic_n
     }
 
     out->backend_data = state;
+    graph_track_writer(session_graph(session), writer);  // Phase 177.36
     return NROS_RMW_RET_OK;
 }
 

@@ -1,0 +1,34 @@
+// Phase 177.36 — rmw_dds_common graph types for `ros_discovery_info`.
+//
+// Hand-written in the `dds_::<Type>_` mangling that stock
+// `rmw_cyclonedds_cpp` emits (matching the `.msg`→IDL convention of
+// scripts/cyclonedds/msg_to_cyclone_idl.py), so the on-the-wire type name is
+// `rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_` and idlc's descriptor
+// symbol is `rmw_dds_common_msg_dds__ParticipantEntitiesInfo__desc`. The field
+// order + types mirror rmw_dds_common/msg/{Gid,NodeEntitiesInfo,
+// ParticipantEntitiesInfo}.msg exactly (CDR is positional with type-info off),
+// so a stock node deserializes our sample and a stock graph cache associates
+// the listed reader/writer GIDs with our node.
+module rmw_dds_common {
+  module msg {
+    module dds_ {
+
+      struct Gid_ {
+        octet data[24];
+      };
+
+      struct NodeEntitiesInfo_ {
+        string<256> node_namespace;
+        string<256> node_name;
+        sequence<rmw_dds_common::msg::dds_::Gid_> reader_gid_seq;
+        sequence<rmw_dds_common::msg::dds_::Gid_> writer_gid_seq;
+      };
+
+      struct ParticipantEntitiesInfo_ {
+        rmw_dds_common::msg::dds_::Gid_ gid;
+        sequence<rmw_dds_common::msg::dds_::NodeEntitiesInfo_> node_entities_info_seq;
+      };
+
+    };
+  };
+};

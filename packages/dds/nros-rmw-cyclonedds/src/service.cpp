@@ -755,6 +755,10 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t* session, const char* se
     }
 
     out->backend_data = state;
+    // Phase 177.36 — register both endpoints with the node graph (server:
+    // request reader + reply writer; client: request writer + reply reader).
+    graph_track_reader(session_graph(session), state->reader);
+    graph_track_writer(session_graph(session), state->writer);
     return NROS_RMW_RET_OK;
 }
 
@@ -949,6 +953,10 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t* session, const char* se
     platform_sleep_ms(100);
 
     out->backend_data = state;
+    // Phase 177.36 — register both endpoints with the node graph (server:
+    // request reader + reply writer; client: request writer + reply reader).
+    graph_track_reader(session_graph(session), state->reader);
+    graph_track_writer(session_graph(session), state->writer);
     return NROS_RMW_RET_OK;
 }
 
