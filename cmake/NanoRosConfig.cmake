@@ -133,6 +133,16 @@ function(nano_ros_read_config CONFIG_FILE)
     set(NROS_CONFIG_NETMASK "${_netmask}" PARENT_SCOPE)
     set(NROS_CONFIG_PREFIX "${_prefix}" PARENT_SCOPE)
     set(NROS_CONFIG_ZENOH_LOCATOR "${_locator}" PARENT_SCOPE)
+    # Phase 177.38 — build-time ROS-domain override. A test-fixture build can bake
+    # a distinct domain into the same example source (without editing config.toml)
+    # by passing `-DNROS_DOMAIN_ID=<n>`. build-fixtures uses this to give each
+    # communicating role-set its own domain so concurrent Cyclone fixtures don't
+    # collide on the derived RTPS ports (`7400 + 250*domain`) — the same
+    # compile-time approach as Zephyr's `-DCONFIG_NROS_DOMAIN_ID` (177.37).
+    # Empty/unset keeps the config.toml value (the example's own default).
+    if(DEFINED NROS_DOMAIN_ID AND NOT "${NROS_DOMAIN_ID}" STREQUAL "")
+        set(_domain_id "${NROS_DOMAIN_ID}")
+    endif()
     set(NROS_CONFIG_DOMAIN_ID "${_domain_id}" PARENT_SCOPE)
     set(NROS_CONFIG_INTERFACE "${_interface}" PARENT_SCOPE)
     set(NROS_CONFIG_APP_PRIORITY "${_app_priority}" PARENT_SCOPE)
