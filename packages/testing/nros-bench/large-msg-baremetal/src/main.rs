@@ -39,7 +39,7 @@ fn build_payload(buf: &mut [u8], seq: u32, size: usize) {
 #[nros_board_mps2_an385::entry]
 fn main() -> ! {
     run(
-        Config::from_toml(include_str!("../config.toml")),
+        Config::from_toml(include_str!("../nros.toml")),
         |config| {
             let exec_config = ExecutorConfig::new(config.zenoh_locator)
                 .domain_id(config.domain_id)
