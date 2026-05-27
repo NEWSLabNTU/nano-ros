@@ -13,8 +13,10 @@ surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 (cxx-compat passthrough guard) + 184.B landed (libc-gated multicast struct,
 `net.c.obj` verified) + 184.C landed (re-export shims `cstdlib`/`cstdio`/
 `cstring`/`utility`/`cstdarg`/`cstddef`/`cstdint` defer to real libstdc++).
-Deep-validated: full ASI build compiles the entire autoware/Eigen/Cyclone C++
-stack. 184.F (zpico-zephyr net_if 3.7-vs-4.x) is the next blocker; 184.D–184.E open.
+Deep-validated: full ASI build compiles EVERY TU (autoware/Eigen/Cyclone C++
+stack + nros library, incl. 184.F zpico-zephyr net_if gate) and reaches the
+final link. 184.G (Cyclone ddsrt POSIX link gaps) is the remaining blocker;
+184.D–184.E open.
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
@@ -200,14 +202,41 @@ compile (`'struct net_if_addr' has no member named 'ipv4'`). Surfaced only
 after 184.A–C let the build reach the nros library TUs. Note this is the
 zenoh-pico glue, compiled even for a Cyclone-only build.
 
-- [x] Reproduce: `unicast[i].ipv4` on `fvp_baser_aemv8r_smp` + Zephyr 3.7.0
-      (`net_if.h`: `struct net_if_addr unicast[NET_IF_MAX_IPV4_ADDR]`)
-- [ ] Version-gate the unicast access (`<zephyr/version.h>`:
-      `KERNEL_VERSION_NUMBER >= 0x040000` → `.ipv4.is_used`, else `.is_used`),
-      matching the 3.7-LTS-vs-4.x split Phase 180 already spans
+- [x] Reproduce: `unicast[i].ipv4` on `fvp_baser_aemv8r_smp` + the ASI pin
+      (`net_if.h`: `struct net_if_addr unicast[NET_IF_MAX_IPV4_ADDR]`; the pin
+      reports `KERNEL_VERSION_NUMBER 0x30563` = 3.5.99, pre the 3.6 wrapper)
+- [x] Version-gate the unicast access at the wrapper's 3.6 introduction
+      (`KERNEL_VERSION_NUMBER >= 0x030600` → `.ipv4`, else flat `net_if_addr`).
+      `KERNEL_VERSION_NUMBER` comes via a robust dual include
+      (`__has_include(<zephyr/version.h>)` 4.x layout, else bare `<version.h>`
+      generated layout, else fall back to flat). Verified: `zpico_zephyr.c`
+      compiles on the FVP profile; the build now reaches the final link
 - [ ] (Optional) gate zpico-zephyr out of the build when the selected RMW is
       not zenoh, so a Cyclone-only consumer never compiles the zenoh glue
-- [ ] Re-verify the FVP actuation build links to `zephyr.elf`
+- [~] FVP build now compiles every TU; final link blocked on Cyclone ddsrt
+      POSIX symbols → 184.G
+
+### 184.G — Cyclone ddsrt POSIX link gaps on the FVP profile
+
+**Files.** ASI `prj_actuation.conf` (POSIX Kconfig), possibly
+`packages/dds/nros-rmw-cyclonedds` / `zephyr/cyclonedds-zephyr/` (ddsrt
+stubs), Cyclone `src/ddsrt/src/{sockets,threads}/posix/`.
+
+After 184.A–F the FVP actuation build compiles every TU and reaches the final
+link, which then fails on undefined references from Cyclone's POSIX ddsrt
+backend: `recvmsg` (`ddsrt/src/sockets/posix/socket.c`),
+`pthread_attr_setscope` / `pthread_attr_setinheritsched` / `pthread_sigmask`
+(`ddsrt/src/threads/posix/threads.c`), and newlib's `_open` syscall stub. The
+FVP Zephyr POSIX layer does not provide these out of the box. This is the
+Cyclone-on-Zephyr bring-up for the FVP aarch64-r profile (cf. Phase 177
+embedded-Cyclone for FreeRTOS/ThreadX, Phase 180 native_sim).
+
+- [ ] Triage which are ASI Kconfig (e.g. fuller `CONFIG_POSIX_API` /
+      `CONFIG_POSIX_THREADS` / sockets options provide recvmsg + the pthread
+      attr/sigmask symbols + `_open` libc hook) vs nano-ros-side ddsrt stubs
+- [ ] Provide the missing symbols (Kconfig and/or weak stubs in the
+      cyclonedds-zephyr glue), mirroring the Phase 177 embedded-Cyclone approach
+- [ ] Link `zephyr.elf` on `fvp_baser_aemv8r_smp`
 
 ## Acceptance
 
