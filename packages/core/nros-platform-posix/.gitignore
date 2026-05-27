@@ -1,1 +1,4 @@
 /build/
+
+# NuttX apps `make` build artifacts (objects emitted beside sources)
+/src/*.o
