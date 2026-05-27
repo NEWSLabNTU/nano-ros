@@ -960,6 +960,20 @@ passed.
   today. Apply the 177.37 pattern to those `build-fixtures` recipes when their
   parallel Cyclone suites land. No code change needed now.
 
+  **Full-config audit (2026-05-27).** Extended the check from `domain_id` to all
+  config (locator, domain, transport, scheduling): the principle "embedded =
+  compile-time, native = runtime env" holds across **every example and fixture,
+  zero violations**. No embedded runtime source (`src/main.{c,cpp,rs}`,
+  `lib.rs`) reads `getenv`/`env::var`; embedded config comes from `config.toml`
+  → generated `app_config.h` (freertos/nuttx/threadx/threadx-linux/baremetal/
+  esp32), Kconfig `CONFIG_NROS_*` (zephyr), or an inline board-default `Config`
+  constructor (stm32f4 — `Config::nucleo_f429zi()`, the lone example tree with no
+  `config.toml`; still compile-time, just inline). Native examples + the
+  host-run `nros-bench` fixtures read the env (the exception); the embedded
+  `nros-smoke` board-bringup fixtures do not. The only `getenv`/`env::var` in
+  embedded trees are in **build scripts** (`build.rs` reading `NUTTX_DIR` /
+  `OUT_DIR`) — build-time on the host, correct. No code change needed.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
