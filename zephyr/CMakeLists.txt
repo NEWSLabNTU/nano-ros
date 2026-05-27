@@ -414,12 +414,32 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     )
 
     # ---- nros-rmw-cyclonedds C++ register glue ------------------------------
+    # Phase 172.K — generate the rmw_dds_common ParticipantEntitiesInfo
+    # descriptor + register TU that src/graph.cpp (177.36 ros_discovery_info)
+    # needs. The standalone CMakeLists does this via the TypeSupport helper;
+    # the Zephyr direct-compile path GLOBs src/*.cpp (now including graph.cpp),
+    # so it must run the same idlc codegen and add the generated header dir to
+    # the include path — else graph.cpp fails on
+    # `#include "rmw_dds_common_graph.h"`. The helper has no imported
+    # CycloneDDS::ddsc target on embedded, so pre-set IDLC_EXECUTABLE (the host
+    # idlc built by `just cyclonedds setup`).
+    set(IDLC_EXECUTABLE "${NROS_REPO_DIR}/build/install/bin/idlc"
+        CACHE FILEPATH "host Cyclone idlc (graph-types codegen)")
+    list(APPEND CMAKE_MODULE_PATH "${NROS_RMW_CDDS_DIR}/cmake")
+    include(NrosRmwCycloneddsTypeSupport)
+    set(_nros_graph_types_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-graph-types")
+    nros_rmw_cyclonedds_idlc_compile(_nros_graph_desc_srcs
+        IDL_FILE   "${NROS_RMW_CDDS_DIR}/src/idl/rmw_dds_common_graph.idl"
+        OUTPUT_DIR "${_nros_graph_types_dir}"
+        TYPE_NAME  "rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_")
+
     file(GLOB _nros_cdds_cpp ${NROS_RMW_CDDS_DIR}/src/*.cpp)
-    zephyr_library_sources(${_nros_cdds_cpp})
+    zephyr_library_sources(${_nros_cdds_cpp} ${_nros_graph_desc_srcs})
     zephyr_include_directories(
         ${NROS_RMW_CDDS_DIR}/include
         ${NROS_RMW_CDDS_DIR}/src
         ${NROS_REPO_DIR}/packages/core/nros-rmw-cffi/include
+        ${_nros_graph_types_dir}
     )
 
     # Flips the auto-register hook in packages/core/nros-cpp/include/nros/node.hpp
