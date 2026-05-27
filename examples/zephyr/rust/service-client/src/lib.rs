@@ -33,7 +33,12 @@ fn make_config() -> ExecutorConfig<'static> {
 
 #[cfg(feature = "rmw-cyclonedds")]
 fn make_config() -> ExecutorConfig<'static> {
-    ExecutorConfig::new("").domain_id(0).node_name("cyclonedds_service_client")
+    // Domain from Kconfig (CONFIG_NROS_DOMAIN_ID) — compile-time, embedded-style.
+    // Test fixtures build distinct domains per role-set via -DCONFIG_NROS_DOMAIN_ID
+    // so the native_sim Cyclone tests run in parallel (distinct RTPS ports).
+    ExecutorConfig::new("")
+        .domain_id(zephyr::kconfig::CONFIG_NROS_DOMAIN_ID as u32)
+        .node_name("cyclonedds_service_client")
 }
 
 #[cfg(feature = "rmw-xrce")]

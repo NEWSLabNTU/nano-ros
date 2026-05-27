@@ -569,6 +569,32 @@ build-fixtures:
             zenoh_locator="tcp/127.0.0.1:$zenoh_port"
             extra_args+=(-DCONFIG_NROS_ZENOH_LOCATOR="\"$zenoh_locator\"")
         fi
+        # Cyclone (native_sim): bake a distinct ROS_DOMAIN_ID per communicating
+        # role-set so the native_sim Cyclone test groups run in PARALLEL. Cyclone
+        # derives its RTPS ports from the domain (7400 + 250*domain); a talker+
+        # listener / server+client pair shares one domain (same lang+variant),
+        # unrelated sets differ → no cross-test port collision. Compile-time
+        # (Kconfig), matching the embedded model — no runtime arg or env.
+        if [[ "$build_dir" == *-cyclonedds ]]; then
+            src_tail="${src#zephyr/}"
+            fixture_lang="${src_tail%%/*}"
+            fixture_role="${src_tail#*/}"
+            case "$fixture_lang" in
+                rust) lang_idx=0 ;;
+                c) lang_idx=1 ;;
+                cpp) lang_idx=2 ;;
+                *) echo "Unknown Zephyr fixture language in $src" >&2; exit 2 ;;
+            esac
+            case "$fixture_role" in
+                talker|listener) variant_idx=0 ;;
+                service-server|service-client|service-client-async) variant_idx=1 ;;
+                action-server|action-client) variant_idx=2 ;;
+                *) echo "Unknown Zephyr fixture role in $src" >&2; exit 2 ;;
+            esac
+            # 50..58: 3 langs x 3 variants, all <= 232 (DDS-valid).
+            cyclone_domain=$((50 + lang_idx * 3 + variant_idx))
+            extra_args+=(-DCONFIG_NROS_DOMAIN_ID="$cyclone_domain")
+        fi
         if [ -n "$conf_files" ]; then
             extra_args+=(-DCONF_FILE="$conf_files")
         fi

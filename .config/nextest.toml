@@ -185,22 +185,25 @@ max-threads = 1
 [test-groups.qemu-zephyr-xrce]
 max-threads = 7
 
-# Zephyr Cyclone DDS native_sim tests bind fixed RTPS discovery ports on
-# the host multicast interface. Running two DDS native_sim processes in
-# parallel can collide, so route them out of the generic qemu-zephyr
-# fall-through and keep this group serial.
+# Zephyr Cyclone DDS native_sim tests. Each fixture now BAKES a distinct
+# ROS_DOMAIN_ID per communicating role-set: build-fixtures passes
+# -DCONFIG_NROS_DOMAIN_ID per (lang, variant) (domains 50..58), so a
+# talker+listener / server+client pair shares one domain and unrelated sets
+# differ. Cyclone derives its RTPS ports from the domain (7400 + 250*domain),
+# so concurrent tests no longer collide on the old domain-0 ports. Parallel-safe;
+# capped at 4 to bound host load (each native_sim Cyclone process carries
+# discovery threads). Compile-time (Kconfig) — no runtime arg/env (177.37).
 [test-groups.qemu-zephyr-dds]
-max-threads = 1
+max-threads = 4
 
-# Phase 11W.12 — the native_sim Cyclone DDS boot + pub/sub E2E tests
-# each spawn host native_sim processes that bind RTPS discovery on the
-# fixed SPDP multicast port (7400 + 250*domain, all domain 0) on the
-# host's real multicast interface. NSOS doesn't forward SO_REUSEADDR,
-# so two concurrent participants collide on that port and crash.
-# Serialize them; each test's processes are SIGKILLed on ZephyrProcess
-# Drop, freeing the port before the next test starts.
+# Phase 11W.12 — native_sim Cyclone DDS boot + pub/sub + service E2E tests.
+# Previously serial: all fixtures baked CONFIG_NROS_DOMAIN_ID=0, so every
+# participant bound the same RTPS ports and NSOS (no SO_REUSEADDR) aborted on
+# the collision. Now build-fixtures bakes a distinct domain per (lang, variant)
+# set via -DCONFIG_NROS_DOMAIN_ID (pairs share, sets differ → distinct ports),
+# so they run in parallel. Capped at 4 to bound host load (177.37).
 [test-groups.zephyr-native-cyclonedds]
-max-threads = 1
+max-threads = 4
 
 # XRCE-DDS tests (Phase 183.7): each test starts its OWN Agent (ephemeral UDP
 # port via XrceAgent::start_unique, or a per-test tempdir PTY pair via

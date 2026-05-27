@@ -884,6 +884,52 @@ passed.
   publisher + GID bookkeeping into the node/endpoint create paths. Pub/sub +
   service interop unaffected.
 
+- [x] **177.37 - parallelize the Zephyr native_sim Cyclone test groups via a
+  COMPILE-TIME per-role-set domain.** Owner: test-harness (landed 2026-05-27).
+  `qemu-zephyr-dds` (binary `zephyr`, `*_dds_*` tests) and
+  `zephyr-native-cyclonedds` (binary `phase_118_collapse`, `*_cyclonedds_*`
+  boot/pubsub/service tests) were `max-threads = 1` because every native_sim
+  fixture baked `CONFIG_NROS_DOMAIN_ID = 0` (`zephyr/Kconfig:426`) and Cyclone
+  derives its RTPS ports from the domain (`7400 + 250*domain`), so all
+  participants collided on the domain-0 ports (NSOS doesn't forward
+  `SO_REUSEADDR` → `abort()` / `ZEPHYR FATAL ERROR` under parallelism).
+
+  **Approach = compile-time, NOT runtime.** Domain stays a baked Kconfig value
+  (correct for an embedded build); parallelism comes from baking a *distinct*
+  domain into each *communicating role-set* at build time. **Do NOT** reach for
+  a runtime override: a `ROS_DOMAIN_ID` *env* read in the backend does not work
+  on Zephyr native_sim (its libc `getenv` doesn't read the host env — no
+  `nsi_host_getenv` trampoline), and a native `--ros-domain` cmdline arg was
+  rejected as un-embedded. (Env *does* work on **host** Cyclone —
+  `cyclonedds_ros2_interop`/`native_api` read it via the host libc — which is
+  why those are already parallel; that's a different platform.)
+
+  **What landed:**
+  - `build-fixtures` (`just/zephyr.just`): for every `*-cyclonedds` fixture,
+    pass `-DCONFIG_NROS_DOMAIN_ID=$((50 + lang_idx*3 + variant_idx))` —
+    `lang_idx` rust/c/cpp = 0/1/2, `variant_idx` {talker,listener}=0 /
+    {service-*}=1 / {action-*}=2 → domains **50..58**, all DDS-valid. A
+    talker+listener / server+client pair shares a domain (same lang+variant);
+    unrelated sets differ. Mirrors the existing per-(lang,variant) zenoh-port
+    block in the same recipe.
+  - rust examples (`examples/zephyr/rust/{talker,listener,service-server,
+    service-client,action-server,action-client}/src/lib.rs`): the
+    `rmw-cyclonedds` `make_config()` previously **hard-coded `.domain_id(0)`**
+    (a latent bug — ignored Kconfig); now reads
+    `.domain_id(zephyr::kconfig::CONFIG_NROS_DOMAIN_ID as u32)` so the `-D`
+    override takes effect. C/C++ examples already used `CONFIG_NROS_DOMAIN_ID`.
+  - `.config/nextest.toml`: both groups lifted to `max-threads = 4` (capped to
+    bound host load; each native_sim Cyclone process carries discovery threads).
+  - No test-code change — tests just consume the prebuilt fixtures. A boot test
+    reuses its e2e's fixture → shares that set's domain (≤3 procs/domain;
+    benign — extra publisher still satisfies "Received"; stateless service
+    reply still satisfies the assert).
+
+  **Caveat for re-runs:** the native_sim Cyclone fixtures must be rebuilt
+  (`just zephyr build-fixtures`) after this change so the new baked domains take
+  effect; a stale fixture still on domain 0 will collide under the now-parallel
+  groups.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
