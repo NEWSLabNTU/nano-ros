@@ -6,11 +6,47 @@ cycle (`just clean` → `just setup` → `just build-all` → `just build-test-f
 green. None of these are product regressions — they are setup/fixture-aggregation
 and one codegen-link gap.
 
-**Status:** Open (surfaced 2026-05-27, after Phase 177 was archived).
-**Priority:** Medium — they inflate `test-all` red on a fresh clean checkout;
-each has a known manual workaround.
+**Status:** 184.1/.2/.3/.5 RESOLVED 2026-05-27 (one root cause); 184.4 open.
+**Priority:** Medium.
 **Depends on:** Phase 177 (archived — product fixes incl. the Cyclone idlc
 re-resolve harden), Phase 175 (native Cyclone CMake/Corrosion fixtures).
+
+## Resolution (2026-05-27) — one root cause: `clean` nuked the setup stage
+
+All four "infra" symptoms below trace to a single bug: **`just clean` ran
+`rm -rf build` (+ depended on `clean-zenohd`)**, deleting the SDK/tool installs
+that `just setup` produces under `build/` (`build/{install,cyclonedds,qemu,
+xrce-agent,zenohd,zephyr-cache}`). After a clean, the default (**base**-tier)
+`just setup` is idempotent and doesn't rebuild them, so Cyclone (`build/install`
+→ native/threadx cyclone fixtures skip their `[ -f build/install/lib/libddsc.so
+]` gate), the XRCE Agent, and the patched qemu were all gone → the ~76 test-all
+fails. (`build/install`, the XRCE Agent, and the patched qemu ARE installed by
+`just setup tier=all` — `run xrce` + `run qemu` [→ `setup-qemu`] + `run
+cyclonedds`; the clean-room run used base tier *and* clean had erased them.)
+
+**Fix:** `clean` is now **build-stage only** — it removes examples, fixtures,
+cargo `target/`, and the build-stage `build/` subdirs (`zephyr-fixtures`,
+`esp32-qemu`, `qemu-zenoh-pico`), and **preserves the setup installs**. A new
+**`clean-setup`** recipe removes the SDK/tool installs explicitly (full
+re-setup). The per-platform `clean`s already only remove build-stage trees
+(`build/cmake-*`, `build/rmw_zenoh_ws`), not the expensive installs.
+
+**Setup vs build (the classification this enforces):**
+
+| `build/` dir | stage | `clean` | produced by |
+|---|---|---|---|
+| `install`, `cyclonedds`, `qemu`(patched), `xrce-agent`, `zenohd`, `zephyr-cache` | **setup** | preserved | `just setup tier=all` (per-module) |
+| `zephyr-fixtures`, `esp32-qemu`, `qemu-zenoh-pico`, `cmake-*`, `target/`, example `build-*/` | **build** | removed | `just build-all` / `build-test-fixtures` |
+
+**Corrected workflow:** `just setup tier=all` **once** → then `clean → build-all
+→ build-test-fixtures → test-all` repeatedly; the setup installs now survive
+`clean`, so native/threadx Cyclone fixtures build (gate satisfied) and the XRCE
+Agent + patched qemu stay present. `just clean-setup` only when you want a full
+SDK re-install. **Per-platform setup-undo** (uninstall one platform's SDKs) is
+deferred pending design discussion — `clean-setup` is a blanket nuke for now.
+
+Only **184.4** (NuttX-cpp make-fixture link gap) remains — a real codegen/link
+bug, unrelated to clean/setup.
 
 ## Overview
 
@@ -32,8 +68,8 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
 
 ## Work Items
 
-### 184.1 — `just clean` removes the Cyclone install; `just setup` doesn't restore it
-- [ ] `just clean` (→ `clean-examples clean-fixtures clean-zenohd`) removes
+### 184.1 — [RESOLVED]  `just clean` removes the Cyclone install; `just setup` doesn't restore it
+- [x] `just clean` (→ `clean-examples clean-fixtures clean-zenohd`) removes
   `build/install/` (the Cyclone DDS install: `build/install/bin/idlc` +
   `build/install/lib/libddsc.so`). The umbrella `just setup` (default tier) is
   idempotent and, on a tree where `build/install` is gone, **does not detect or
@@ -52,8 +88,8 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   `build/install/{bin/idlc,lib/libddsc.so}` is missing, not skip on a stale
   "already set up" marker.
 
-### 184.2 — `just build-test-fixtures` does not build the native / ThreadX-Linux Cyclone fixtures
-- [ ] The native Cyclone fixtures (`examples/native/<lang>/<case>/build-cyclonedds/`)
+### 184.2 — [RESOLVED via 184.1]  `just build-test-fixtures` does not build the native / ThreadX-Linux Cyclone fixtures
+- [x] The native Cyclone fixtures (`examples/native/<lang>/<case>/build-cyclonedds/`)
   are the Phase-175 CMake/Corrosion path built by **`just native build-fixtures`**
   (gated on 184.1's Cyclone install), and the ThreadX-Linux Cyclone fixtures by
   the threadx-linux path — **neither is invoked by the root
@@ -65,8 +101,8 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   fixture aggregation that `test-all` depends on (or document them as a required
   separate step in the clean-room runbook + the test skip messages).
 
-### 184.3 — Default `just setup` omits the XRCE Agent and the patched qemu
-- [ ] On a fresh clean, `test-all` reports ~16 false fails because the default
+### 184.3 — [RESOLVED via 184.1]  Default `just setup` omits the XRCE Agent and the patched qemu
+- [x] On a fresh clean, `test-all` reports ~16 false fails because the default
   tier does not produce two tools the tests require:
   - **XRCE Agent** — `build/xrce-agent/MicroXRCEAgent`, built by `just xrce setup`
     (~1.5 min). Without it the 10 `c_xrce_api` tests fail.
@@ -106,8 +142,8 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   external-app (`apps/external/<name>`) link, mirroring how the cmake
   `build-fixtures` path links `nros-cpp` + the example FFI staticlib.
 
-### 184.5 — `test_threadx_linux_cyclonedds_talker_to_native_listener` (missing fixture)
-- [ ] Fast-fails (0.046 s) the same way the native Cyclone tests did — the
+### 184.5 — [RESOLVED via 184.1]  `test_threadx_linux_cyclonedds_talker_to_native_listener` (missing fixture)
+- [x] Fast-fails (0.046 s) the same way the native Cyclone tests did — the
   ThreadX-Linux Cyclone fixture is not built by the clean-room aggregation
   (184.2). Should pass once that fixture is built (Cyclone install present after
   184.1). Folded into 184.2; tracked separately only to confirm after the

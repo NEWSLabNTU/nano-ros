@@ -1972,16 +1972,36 @@ clean-fixtures:
         -delete 2>/dev/null || true
     echo "Fixture orchestration artifacts cleaned"
 
-# Clean all build artifacts created by broad build and test-fixture recipes.
+# Clean BUILD-stage artifacts (examples, fixtures, cargo target) created by the
+# broad build + test-fixture recipes.
+#
+# Phase 184.1 — `clean` removes only build-stage outputs; it MUST NOT delete
+# SDK/tool installs produced by `just setup` (build/{install,cyclonedds,qemu,
+# xrce-agent,zenohd,zephyr-cache}). The old `rm -rf build` + `clean-zenohd`
+# nuked those, so a `clean → setup → build → test` cycle on the default (base)
+# tier left Cyclone (build/install), the XRCE Agent, and the patched qemu gone,
+# producing ~16+ false test-all failures. Build-stage subdirs under build/ are
+# removed explicitly below; everything else under build/ is a setup install and
+# survives. Use `just clean-setup` to remove the SDK installs (full re-setup).
 [group("maintenance")]
-clean: clean-examples clean-fixtures clean-zenohd
+clean: clean-examples clean-fixtures
     cargo clean
     # Clean codegen workspace (separate Cargo workspace, not covered by cargo clean)
     cargo clean --manifest-path packages/codegen/packages/Cargo.toml
     # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
-    rm -rf build
-    @echo "All build artifacts cleaned"
+    # Build-stage outputs under build/ (SDK installs preserved — see clean-setup).
+    rm -rf build/zephyr-fixtures build/esp32-qemu build/qemu-zenoh-pico
+    @echo "Build artifacts cleaned (SDK installs in build/ preserved; 'just clean-setup' to remove them)"
+
+# Remove SDK/tool installs produced by `just setup` (Cyclone, XRCE Agent,
+# patched qemu, zenohd, zephyr cache). Full blanket nuke — re-run
+# `just setup tier=all` afterwards. Phase 184: per-platform setup-undo
+# (uninstall just one platform's SDKs) is deferred pending design discussion.
+[group("maintenance")]
+clean-setup: clean-zenohd
+    rm -rf build/install build/cyclonedds build/qemu build/xrce-agent build/zephyr-cache
+    @echo "SDK/tool installs removed. Re-run 'just setup tier=all'."
 
 # =============================================================================
 # Docker: use `just docker build`, `just docker shell`, `just docker test`, etc.
