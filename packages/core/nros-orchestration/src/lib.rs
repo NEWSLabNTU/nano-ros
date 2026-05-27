@@ -249,6 +249,55 @@ impl SystemSpec {
     }
 }
 
+/// Phase 172.I — a fixed-size shared byte region that co-located components in
+/// one generated binary read/write (a blackboard); the generator emits one
+/// `static` per `nros.toml` `[[shared_state]]` entry, and a component overlays
+/// its own typed view onto the bytes.
+///
+/// **Access discipline (not a lock).** nano-ros executors dispatch callbacks
+/// cooperatively on a single spin thread, so accesses do not overlap — `with`
+/// hands out a `&mut [u8; N]` directly, dependency-free. Do **not** hold two
+/// `with` borrows at once, and on a future preemptive/multi-tier executor wrap
+/// access in the platform critical section.
+pub struct SharedRegion<const N: usize> {
+    cell: core::cell::UnsafeCell<[u8; N]>,
+}
+
+// SAFETY: cooperative single-threaded dispatch (see the access-discipline note);
+// `with` is the only accessor and never yields a borrow across a callback.
+unsafe impl<const N: usize> Sync for SharedRegion<N> {}
+
+impl<const N: usize> SharedRegion<N> {
+    /// Create a zero-initialized region (const, for `static` placement).
+    pub const fn new() -> Self {
+        Self {
+            cell: core::cell::UnsafeCell::new([0u8; N]),
+        }
+    }
+
+    /// Run `f` with mutable access to the region's bytes.
+    pub fn with<R>(&self, f: impl FnOnce(&mut [u8; N]) -> R) -> R {
+        // SAFETY: see the type-level access-discipline note — non-overlapping
+        // access under cooperative single-threaded dispatch.
+        unsafe { f(&mut *self.cell.get()) }
+    }
+
+    /// Region size in bytes.
+    pub const fn len(&self) -> usize {
+        N
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        N == 0
+    }
+}
+
+impl<const N: usize> Default for SharedRegion<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Runtime orchestration errors that are independent of transport errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrchestrationError {
@@ -296,6 +345,19 @@ mod tests {
         assert_eq!(sc.os_pri, 42);
         assert_eq!(sc.tt_window_offset_us.raw(), 2_000);
         assert_eq!(sc.tt_window_duration_us.raw(), 4_000);
+    }
+
+    // Mirrors the exact shape `render_shared_state` emits into generated code.
+    static SHARED_BLACKBOARD: SharedRegion<8> = SharedRegion::new();
+
+    #[test]
+    fn shared_region_static_zero_init_and_mutate() {
+        assert_eq!(SHARED_BLACKBOARD.len(), 8);
+        assert!(!SHARED_BLACKBOARD.is_empty());
+        SHARED_BLACKBOARD.with(|bytes| assert_eq!(*bytes, [0u8; 8]));
+        SHARED_BLACKBOARD.with(|bytes| bytes[0] = 0xAB);
+        let read = SHARED_BLACKBOARD.with(|bytes| bytes[0]);
+        assert_eq!(read, 0xAB);
     }
 
     #[test]
