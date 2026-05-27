@@ -3,6 +3,11 @@
 // generator with seed + uniform distribution). Backed by
 // Zephyr's `sys_rand32_get()` — no entropy guarantees beyond
 // Zephyr's PRNG.
+// Phase 177 (ASI bump) — defer to the real libstdc++ <random> when reachable
+// (this defining shim collides with it otherwise). See cxx-compat/atomic.
+#if defined(__has_include) && __has_include(<bits/random.h>)
+#include_next <random>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_RANDOM
 #define NROS_ZEPHYR_CXX_COMPAT_RANDOM
 
@@ -78,3 +83,4 @@ private:
 } // namespace std
 
 #endif // NROS_ZEPHYR_CXX_COMPAT_RANDOM
+#endif // __has_include(<bits/random.h>)

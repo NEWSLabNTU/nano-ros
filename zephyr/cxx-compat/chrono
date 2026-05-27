@@ -6,6 +6,11 @@
 // Runtime semantics: `steady_clock::now()` returns Zephyr's
 // monotonic kernel time via `k_uptime_ticks()`. Resolution =
 // `CONFIG_SYS_CLOCK_TICKS_PER_SEC`.
+// Phase 177 (ASI bump) — defer to the real libstdc++ <chrono> when reachable
+// (this defining shim collides with it otherwise). See cxx-compat/atomic.
+#if defined(__has_include) && __has_include(<bits/chrono.h>)
+#include_next <chrono>
+#else
 #ifndef NROS_ZEPHYR_CXX_COMPAT_CHRONO
 #define NROS_ZEPHYR_CXX_COMPAT_CHRONO
 
@@ -113,3 +118,4 @@ constexpr bool operator<(const duration<Rep1, P1>& a, const duration<Rep2, P2>& 
 } // namespace std
 
 #endif // NROS_ZEPHYR_CXX_COMPAT_CHRONO
+#endif // __has_include(<bits/chrono.h>)
