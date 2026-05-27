@@ -206,8 +206,13 @@ impl NodeConfig {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
+            // Phase 172.K — `[[transport]]` array-of-tables + dotted sections.
             if line.starts_with('[') {
-                if let Some(end) = line.find(']') {
+                if line.starts_with("[[") {
+                    if let Some(end) = line.find("]]") {
+                        section = line[2..end].trim();
+                    }
+                } else if let Some(end) = line.find(']') {
                     section = line[1..end].trim();
                 }
                 continue;
@@ -301,6 +306,71 @@ impl NodeConfig {
                         config.zenoh_locator = value;
                     }
                     ("zenoh", "domain_id") => {
+                        if let Some(d) = parse_u32(value) {
+                            config.domain_id = d;
+                        }
+                    }
+
+                    // Phase 172.K — direct-mode nros.toml: `[[transport]]`
+                    // kind=wifi (ssid/password + optional static ip/gateway) +
+                    // `[node]`. `ip` CIDR carries the prefix.
+                    #[cfg(feature = "wifi")]
+                    ("transport", "ssid") => {
+                        config.wifi.ssid = value;
+                    }
+                    #[cfg(feature = "wifi")]
+                    ("transport", "password") => {
+                        config.wifi.password = value;
+                    }
+                    #[cfg(feature = "wifi")]
+                    ("transport", "ip") => {
+                        let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
+                        if let Some(ip) = parse_ipv4(addr) {
+                            let (existing_prefix, existing_gateway) = match &config.ip_mode {
+                                IpMode::Static {
+                                    prefix, gateway, ..
+                                } => (*prefix, *gateway),
+                                IpMode::Dhcp => (24, [0, 0, 0, 0]),
+                            };
+                            let prefix = parse_u32(pfx).map(|p| p as u8).unwrap_or(existing_prefix);
+                            config.ip_mode = IpMode::Static {
+                                ip,
+                                prefix,
+                                gateway: existing_gateway,
+                            };
+                        }
+                    }
+                    #[cfg(feature = "wifi")]
+                    ("transport", "gateway") => {
+                        if let Some(gw) = parse_ipv4(value) {
+                            match &config.ip_mode {
+                                IpMode::Static { ip, prefix, .. } => {
+                                    config.ip_mode = IpMode::Static {
+                                        ip: *ip,
+                                        prefix: *prefix,
+                                        gateway: gw,
+                                    };
+                                }
+                                IpMode::Dhcp => {
+                                    config.ip_mode = IpMode::Static {
+                                        ip: [0, 0, 0, 0],
+                                        prefix: 24,
+                                        gateway: gw,
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    #[cfg(feature = "serial")]
+                    ("transport", "baudrate") => {
+                        if let Some(b) = parse_u32(value) {
+                            config.baudrate = b;
+                        }
+                    }
+                    ("transport", "locator") => {
+                        config.zenoh_locator = value;
+                    }
+                    ("node", "domain_id") => {
                         if let Some(d) = parse_u32(value) {
                             config.domain_id = d;
                         }
