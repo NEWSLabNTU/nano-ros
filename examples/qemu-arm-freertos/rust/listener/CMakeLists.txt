@@ -21,9 +21,9 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
+nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
 nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
 corrosion_import_crate(
