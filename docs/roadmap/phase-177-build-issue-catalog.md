@@ -974,6 +974,31 @@ passed.
   embedded trees are in **build scripts** (`build.rs` reading `NUTTX_DIR` /
   `OUT_DIR`) — build-time on the host, correct. No code change needed.
 
+  **Per-fixture domain override landed (`df2e46a9e`).** To "create fixtures for
+  different ROS domains" while keeping each example's `config.toml`/default
+  clean, a *build-time* `NROS_DOMAIN_ID` override now bakes a distinct domain
+  into the same source. **How to wire it (the two paths differ):**
+  - **C/C++** examples: pass `-DNROS_DOMAIN_ID=<n>` to cmake — `NanoRosConfig.cmake`
+    overrides the `config.toml` domain when generating `app_config.h`.
+  - **Rust** examples: set `NROS_DOMAIN_ID=<n>` in the **environment** of the
+    cargo build (all 8 board crates' `Config::from_toml` honor
+    `option_env!("NROS_DOMAIN_ID")`; rustc registers it as a build dep so the
+    fixture recompiles on change). For Cyclone-via-CMake/Corrosion fixtures the
+    Rust path still reads the *env*, not the `-D` var, so `export NROS_DOMAIN_ID`
+    before the cmake build. Verified on freertos/threadx-rv64/stm32f4
+    (`60→70` recompiles, re-`70` cached).
+  - Both are no-ops when unset (example keeps its `config.toml` default).
+  Suggested per-platform domain map (disjoint from Zephyr's 50..58 and native's
+  slot-based 1..~30): freertos=60, threadx-linux=61, threadx-rv64=62.
+
+  **Wiring is per-need, not yet applied to the non-Zephyr recipes.** No embedded
+  Cyclone fixture collides today: QEMU targets (freertos boot/loopback,
+  threadx-rv64 gated pair) are slirp-network-isolated, and threadx-linux Cyclone
+  sits on domain 0 while host `native_api` Cyclone now uses slot-based domains
+  (~1..30) — disjoint. Apply the override in a platform's `build-fixtures` recipe
+  (the Zephyr 177.37 block is the template) if/when its parallel Cyclone suite
+  grows enough to collide.
+
 - [x] **177.9 - Runtime E2E failures need focused reruns.**
   Closed 2026-05-25 — all groups 177.9.A–H are resolved (the last,
   177.9.F's cpp/xrce action feedback, fixed in `57ebb8182`).
