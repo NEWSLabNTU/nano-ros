@@ -86,7 +86,7 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
 
 /// Pure-cargo entry used by the existing zenoh fixture path.
 pub fn start_from_reset() -> ! {
-    run(Config::from_toml(include_str!("../config.toml")), run_app)
+    run(Config::from_toml(include_str!("../nros.toml")), run_app)
 }
 
 /// C entry point used by the CMake/CycloneDDS staticlib path.
@@ -94,7 +94,7 @@ pub fn start_from_reset() -> ! {
 #[unsafe(no_mangle)]
 pub extern "C" fn app_main() -> ! {
     println!("Starting Rust CycloneDDS talker");
-    let config = Config::from_toml(include_str!("../config.toml"));
+    let config = Config::from_toml(include_str!("../nros.toml"));
     if let Err(e) = run_app(&config) {
         println!("Application error: {:?}", e);
     }

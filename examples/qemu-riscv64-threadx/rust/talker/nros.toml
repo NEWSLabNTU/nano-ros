@@ -1,0 +1,12 @@
+# nano-ros config (direct mode). See
+# docs/design/configuration-and-transports.md.
+
+[node]
+domain_id = 0
+
+[[transport]]
+kind    = "ethernet"
+ip      = "10.0.2.40/24"
+mac     = "52:54:00:12:34:56"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7453"

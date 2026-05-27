@@ -19,7 +19,7 @@ fn register_rmw() -> Result<(), &'static str> {
 
 #[unsafe(no_mangle)]
 extern "C" fn _start() -> ! {
-    run(Config::from_toml(include_str!("../config.toml")), |config| {
+    run(Config::from_toml(include_str!("../nros.toml")), |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_client");

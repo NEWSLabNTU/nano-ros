@@ -1,0 +1,11 @@
+# nano-ros config (direct mode). See
+# docs/design/configuration-and-transports.md.
+
+[node]
+domain_id = 0
+
+[[transport]]
+kind    = "wifi"
+ssid     = "MyNetwork"
+password = "secret"
+locator = "tcp/192.168.1.1:7447"
