@@ -317,20 +317,38 @@ these**: a matched RELIABLE+VOLATILE write on the action `send_goalRequest`
 channel does not surface at the server reader, **specifically** — pubsub + plain
 service on the same participant pair / transport deliver fine.
 
-**Next step (deeper, not yet done — finest data-path trace):** set Cyclone
-`<Tracing>Verbosity=finest` (or `category=trace,radmin,rhc`) and watch the
-goal's RTPS **DATA submessage + HEARTBEAT/ACKNACK** on `rq/…send_goalRequest`
-after the 3.3 s write — does the client writer emit the DATA, does the server's
-NSOS socket receive it, does the RHC (reader history cache) accept or drop it?
-That isolates: (a) writer never xmits (writer-history/whc issue), (b) lost on
-the NSOS loopback socket, or (c) dropped at the reader (rhc/QoS/resource).
-Suspect the action participant's **many endpoints** (3 services + 2 topics,
-incl. the TRANSIENT_LOCAL status writer) stress a native_sim/NSOS limit that a
-single plain service never hits.
+**Data-path trace done (2026-05-28, `category=data,whc,rhc,traffic,radmin`,
+reverted).** New facts:
+- **The goal `dds_write` SUCCEEDS:** `flush WRITE writer=… len=44 ret=0
+  pub_matched=1` — the client writes the 44-byte goal to a matched writer, no
+  error.
+- **The server reader's RHC receives nothing** — no `rhc`/store/deliver line for
+  the server's `send_goalRequest` reader; the server-app never logs `Goal
+  request: order=`. The sample is lost **between the client whc and the server
+  rhc**, despite a successful matched write.
+- **Two strong leads in the trace:**
+  1. **Every Cyclone trace line is timestamped `00:00:00.000,002`** (frozen)
+     while the app clock advances (3.3 s, 14.3 s). If the Cyclone threads see a
+     **frozen ddsrt monotonic clock** on native_sim, the reliable
+     heartbeat/NACK/retransmit **timers never fire** — a sample that isn't
+     delivered by the single inline DATA write is never retransmitted. (Why
+     plain RELIABLE service survives but the action doesn't is the open
+     question — possibly the action's larger endpoint set shifts the inline-vs-
+     timed delivery, or a per-channel inline-send difference.)
+  2. **`<err> os: tid 0x… is in use!`** repeated at Cyclone startup (the k_thread
+     tid-reuse 184.7 called "benign") — worth re-checking whether the action's
+     extra threads (more endpoints ⇒ more Cyclone workers) push a tid collision
+     that drops the **timed-event / xmit** thread.
 
-Owner: **177.2** — symptom precisely isolated to **post-match reliable data
-delivery on the action send_goal channel**; discovery/QoS/naming/gate/timeout
-all ruled out by trace evidence; next is a finest RTPS data-path trace.
+**Next step:** verify whether `ddsrt_time_monotonic()` / the Cyclone time source
+advances on native_sim (instrument it, or check the ddsrt Zephyr port), and
+whether the timed-event thread actually runs (the `tid in use` set). If the
+clock is frozen, fixing the ddsrt clock on native_sim likely unblocks reliable
+retransmit for the action channel (and is the real 177.2 fix).
+
+Owner: **177.2** — isolated to **post-match reliable data delivery** (write OK,
+server RHC empty); leads = **frozen Cyclone clock + tid-reuse on native_sim**.
+~18 trace/build cycles spent; discovery/QoS/naming/gate/timeout all ruled out.
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).
