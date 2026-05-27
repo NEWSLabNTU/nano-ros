@@ -13,9 +13,9 @@ set(NANO_ROS_BOARD    nuttx-qemu-arm)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_generate_interfaces(example_interfaces "action/Fibonacci.action" LANGUAGE C SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
+nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
 nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
 add_executable(nuttx_c_action_client

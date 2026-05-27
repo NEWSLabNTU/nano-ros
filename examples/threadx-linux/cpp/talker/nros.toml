@@ -1,0 +1,13 @@
+# nano-ros config (direct mode). See
+# docs/design/configuration-and-transports.md.
+
+[node]
+domain_id = 0
+
+[[transport]]
+kind    = "ethernet"
+ip      = "192.0.3.10/24"
+mac     = "02:00:00:00:00:00"
+gateway = "192.0.3.1"
+interface = "veth-tx0"
+locator = "tcp/127.0.0.1:7655"
