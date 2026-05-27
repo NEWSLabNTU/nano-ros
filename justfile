@@ -1986,22 +1986,27 @@ clean-fixtures:
 [group("maintenance")]
 clean: clean-examples clean-fixtures
     cargo clean
-    # Clean codegen workspace (separate Cargo workspace, not covered by cargo clean)
-    cargo clean --manifest-path packages/codegen/packages/Cargo.toml
+    # The codegen workspace (packages/codegen/packages) is NOT cleaned: the host
+    # `nros-codegen` CLI it produces is a setup-stage TOOL (built by
+    # `just workspace build-codegen` / `just setup`, like idlc/zenohd), so it
+    # survives `clean`. The find below already excludes it. `just clean-setup`
+    # removes it for a full tool re-build.
     # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
     # Build-stage outputs under build/ (SDK installs preserved — see clean-setup).
     rm -rf build/zephyr-fixtures build/esp32-qemu build/qemu-zenoh-pico
-    @echo "Build artifacts cleaned (SDK installs in build/ preserved; 'just clean-setup' to remove them)"
+    @echo "Build artifacts cleaned (SDK installs + host nros-codegen preserved; 'just clean-setup' to remove them)"
 
 # Remove SDK/tool installs produced by `just setup` (Cyclone, XRCE Agent,
-# patched qemu, zenohd, zephyr cache). Full blanket nuke — re-run
-# `just setup tier=all` afterwards. Phase 184: per-platform setup-undo
+# patched qemu, zenohd, zephyr cache, host nros-codegen). Full blanket nuke —
+# re-run `just setup tier=all` afterwards. Phase 184: per-platform setup-undo
 # (uninstall just one platform's SDKs) is deferred pending design discussion.
 [group("maintenance")]
 clean-setup: clean-zenohd
     rm -rf build/install build/cyclonedds build/qemu build/xrce-agent build/zephyr-cache
-    @echo "SDK/tool installs removed. Re-run 'just setup tier=all'."
+    # host nros-codegen CLI (setup-stage tool — preserved by `clean`, removed here)
+    cargo clean --manifest-path packages/codegen/packages/Cargo.toml
+    @echo "SDK/tool installs + host nros-codegen removed. Re-run 'just setup tier=all'."
 
 # =============================================================================
 # Docker: use `just docker build`, `just docker shell`, `just docker test`, etc.

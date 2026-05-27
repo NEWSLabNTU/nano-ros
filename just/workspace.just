@@ -40,6 +40,21 @@ setup:
     @just workspace rust-pinned-toolchains
     @just workspace rust-targets
     @just workspace cargo-tools
+    @just workspace build-codegen
+
+# Build the host `nros-codegen` CLI (the message/IDL codegen tool used by
+# `nros generate-*`, the cmake `nano_ros_generate_interfaces()` path, and the
+# NuttX external-app FFI staging). It is a host TOOL (like idlc/zenohd), so it
+# belongs in setup, not in every build recipe — built once here and preserved
+# by `just clean` (the codegen cargo workspace is excluded from clean). Build
+# recipes keep `nros_cargo_ensure_codegen_c` as an idempotent safety net.
+[group("setup")]
+build-codegen:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    nros_cargo_ensure_codegen_c
+    echo "[codegen] built: $(nros_cargo_codegen_c_bin)"
 
 # Build the pinned GNU make (>=4.4) from source under third-party/make/.
 # Ubuntu's make 4.3 jobserver is pipe-fd-based; ninja 1.13's jobserver

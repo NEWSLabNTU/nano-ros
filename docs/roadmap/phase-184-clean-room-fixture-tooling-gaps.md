@@ -33,10 +33,19 @@ re-setup). The per-platform `clean`s already only remove build-stage trees
 
 **Setup vs build (the classification this enforces):**
 
-| `build/` dir | stage | `clean` | produced by |
+| artifact | stage | `clean` | produced by |
 |---|---|---|---|
-| `install`, `cyclonedds`, `qemu`(patched), `xrce-agent`, `zenohd`, `zephyr-cache` | **setup** | preserved | `just setup tier=all` (per-module) |
-| `zephyr-fixtures`, `esp32-qemu`, `qemu-zenoh-pico`, `cmake-*`, `target/`, example `build-*/` | **build** | removed | `just build-all` / `build-test-fixtures` |
+| `build/{install,cyclonedds,qemu(patched),xrce-agent,zenohd,zephyr-cache}` | **setup** | preserved | `just setup tier=all` (per-module) |
+| host `nros-codegen` CLI (`packages/codegen/packages/target/<profile>/nros-codegen`) | **setup** | preserved | `just setup` → `just workspace build-codegen` |
+| `build/{zephyr-fixtures,esp32-qemu,qemu-zenoh-pico}`, `cmake-*`, `target/`, example `build-*/` | **build** | removed | `just build-all` / `build-test-fixtures` |
+
+The host `nros-codegen` (the `nros` CLI / message-IDL codegen tool) is a
+setup-stage TOOL: `just setup` builds it via `just workspace build-codegen`,
+`clean` preserves it (the codegen cargo workspace is excluded), and
+`clean-setup` removes it. Build recipes keep `nros_cargo_ensure_codegen_c` as an
+idempotent safety net (now usually a no-op since setup built it). This is the
+deeper fix behind 184.4 — `build-fixtures-make`'s FFI staging no longer depends
+on a build recipe having happened to build codegen.
 
 **Corrected workflow:** `just setup tier=all` **once** → then `clean → build-all
 → build-test-fixtures → test-all` repeatedly; the setup installs now survive
