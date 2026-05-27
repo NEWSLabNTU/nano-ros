@@ -106,7 +106,7 @@
 - [Supported Boards](./reference/supported-boards.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Build Commands](./reference/build-commands.md)
-- [`nros.toml` Schema](./reference/nros-toml.md)
+- [`nros-bridge.toml` Schema](./reference/nros-bridge-toml.md)
 
 # Release Notes
 
