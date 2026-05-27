@@ -16,8 +16,10 @@ data delivery** (write OK, server RHC empty), frozen-clock lead REJECTED (Cyclon
 clock advances). **Pinpointed to the wire:** the goal DATA is transmitted to the
 server's data port (`udp/127.0.0.1:20411`) but the server's user-data-socket RX
 never receives it (discovery/meta port works both ways; reliable retransmit
-never recovers) — leading lead = NSOS sockwaitset / data-socket receive on
-native_sim (a native_sim-layer fix, not Cyclone/QoS).
+never recovers). Select-miss ruled out (a finite-timeout select re-poll didn't
+recover ⇒ the datagram isn't even in the server's socket) — narrowed to an
+**NSOS offloaded-socket** loss on the host-loopback/bind path for the data UDP
+socket (not Cyclone/QoS); next = host-socket forensics (ss/tcpdump/strace).
 **184.9 FIXED** — Zephyr Cyclone fixture build now force-reconfigures when a
 backend source is newer than the linked binary (was: stale binaries broke
 iterative diagnosis).
@@ -429,15 +431,33 @@ nothing retransmits. pubsub + plain service deliver over the same transport
 (continuous flow / example retry masks any single-datagram loss; the action's
 **one** goal datagram has no second chance).
 
-**Leading hypothesis + next step:** the **NSOS sockwaitset / data-socket
-receive** path on native_sim — `cyclone-zephyr-sockwaitset-patch.sh` already
-exists for the select-over-multiple-sockets issue; suspect it doesn't reliably
-service the **data** socket (20411) vs the metatraffic socket (20410) for this
-participant. Next: host-socket forensics — `strace`/`tcpdump -i lo port 20411`
-on the two native_sim processes to confirm the datagram physically reaches the
-server's socket, then audit the NSOS sockwaitset / `recvUC` poll set. This is a
-native_sim/NSOS-layer fix, not a Cyclone-backend or QoS change. ~30 trace/build
-cycles spent.
+**NSOS sockwaitset audit done — select-miss RULED OUT.** Cyclone's
+`os_sockWaitsetWait` (`q_sockwaitset.c`) uses `ddsrt_select(..., DDS_INFINITY)`
+(the `MODE_SELECT` POSIX path; native_sim is not LWIP/THREADX/WIN32). Hypothesis:
+NSOS select drops a single readability event for the data socket → the recv
+thread blocks forever on the one-shot goal datagram (continuous pub/sub traffic
+self-recovers). **Tested:** patched the timeout to `DDS_MSECS(50)` under
+`__ZEPHYR__` (level-triggered re-poll; verified compiled in — obj newer than the
+edit, the select string present in the exe). Result: **still
+`server_received=false`** — re-polling never found the datagram. So the datagram
+is **not buffered in the server's socket** ⇒ **not a select-miss**; it never
+reaches the server's `20411` host socket at all. (Reverted the patch.)
+
+**Refined conclusion + next step.** The goal DATA is *sent* by the client to
+`udp/127.0.0.1:20411` (writer-xmit confirmed) but is **lost on the host-loopback
+/ NSOS send-or-bind path before reaching the server's data socket** — while
+discovery on the metatraffic socket (`20410`) flows both ways. So it's an
+**NSOS offloaded-socket** issue (host kernel sockets via wrapped BSD API; the
+data UDP socket specifically), **not** Cyclone select/QoS/discovery. Next:
+**host-socket forensics** — `ss -ulnp` to confirm the server actually binds host
+port 20411; `tcpdump -i lo udp port 20411` (or `strace -f -e trace=network` on
+each native_sim process) to see whether the datagram physically leaves the
+client and arrives at the server's socket; then audit NSOS `bind`/`sendto`/
+`recvmsg` for the *second* (data) UDP socket vs the first (meta). Web refs:
+native_sim offloaded-sockets driver [zephyr#65116], offloaded-sockets poll/
+recvfrom history [zephyr#94161] — NSOS historically had partial recvfrom/poll
+support. This is a **native_sim/NSOS-layer** fix, not Cyclone-backend or QoS.
+~33 trace/build cycles spent.
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).
