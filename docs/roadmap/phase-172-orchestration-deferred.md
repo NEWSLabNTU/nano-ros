@@ -183,10 +183,15 @@ example migration (K), then the audit/docs (N).
         so boards + examples migrate independently with no flag day. Pilot:
         `nros-board-mps2-an385` + the qemu-arm-baremetal rust talker → `nros.toml`,
         `cargo check` (thumbv7m) green. (`38d342a89`.)
-  - [ ] **172.K.2 — roll out the 7 remaining board `from_toml` parsers.**
-        freertos (+`[node.rt]` scheduling), threadx-linux (+`interface`),
-        threadx-riscv64, esp32 (+wifi), esp32-qemu, stm32f4, nuttx-qemu-arm.
-        Plus the 5 board `build.rs` bakers.
+  - [x] **172.K.2 — roll out the 7 remaining board `from_toml` parsers.**
+        Done (`96120466d`): freertos (+`[node.rt]` scheduling, CIDR→netmask),
+        threadx-linux (+`interface`), threadx-riscv64 (CIDR→netmask), esp32
+        (+wifi via `IpMode`), esp32-qemu, stm32f4 (+`usart_index`),
+        nuttx-qemu-arm (no MAC) — all additive alongside the legacy arms.
+        freertos + threadx-linux compile-verified via their examples; the
+        prefix/serial boards mirror the verified mps2 pilot (compile-checked in
+        K.3 per-platform builds). The 5 board `build.rs` bakers move with their
+        examples in K.3.
   - [ ] **172.K.3 — migrate the 87 remaining example `config.toml` → `nros.toml`**
         + `include_str!` switches, per platform, with a build/boot check per
         platform family (slirp QEMU where available; Docker-gated baremetal/
