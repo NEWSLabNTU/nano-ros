@@ -9,19 +9,21 @@ and one codegen-link gap.
 **Status:** 184.1–.5 RESOLVED 2026-05-27 (184.1/.2/.3/.5 = clean build-only;
 184.4 = build-fixtures-make builds host codegen); 184.6 fixed; 184.7 RE-VERIFIED
 2026-05-27 (most reds were fixture-not-built preconditions + one test-timing bug,
-now fixed). **184.8 OPEN** — the 3 zephyr cyclonedds action e2e tests DO
-reproduce a hard failure here on fresh fixtures (real product gap, 177.2;
-contradicts the 184.7 zephyr "GREEN" row); isolated to **post-match reliable
-data delivery** (write OK, server RHC empty), frozen-clock lead REJECTED (Cyclone
-clock advances). **Pinpointed to the wire:** the goal DATA is transmitted to the
-server's data port (`udp/127.0.0.1:20411`) but the server's user-data-socket RX
-never receives it (discovery/meta port works both ways; reliable retransmit
-never recovers). Select-miss ruled out (a finite-timeout
-select re-poll didn't recover); socket layout normal (1 data socket, like the
-working fixtures; Recv-Q=0). Down to two sub-cases — **(a)** loopback loss
-(datagram never reaches the server socket) vs **(b)** read-then-discard
-(reader/RHC drops the action SendGoal request) — split by one Cyclone UDP-read
-log (`ddsi_udp_conn_read`). Not Cyclone select/QoS/discovery.
+now fixed). **184.8 RESOLVED 2026-05-28** — the 3 zephyr cyclonedds action e2e
+tests failed because the **action server crashes (`abort()` → kernel panic) at
+~0.25 s during SEDP discovery**, before the client ever sends the goal — so
+`server_received_goal=false`. Root cause: Zephyr's POSIX mutex pool
+(`CONFIG_MAX_PTHREAD_MUTEX_COUNT`, default 256 in the conf) is **exhausted** by
+the action's much larger endpoint count (goal/cancel/result services +
+feedback/status publishers + their discovered proxies); `ddsrt_mutex_init`
+ignores `pthread_mutex_init`'s `ENOMEM`, leaving the mutex unallocated, so the
+next `ddsrt_mutex_lock` aborts. Fix: bump the pool to 2048 (+ cond 1024) in all
+six Zephyr action `prj-cyclonedds.conf`. rs e2e now 3/3 PASS; c/cpp pending build
+verify. *(Every earlier "post-match reliable data delivery / RHC-drop / loopback
+loss" reading was an artifact of running the manual repro without the per-process
+`--seed` the harness passes — identical entropy ⇒ identical GUIDs/ports ⇒ no
+discovery ⇒ no crash and no delivery; under gdb the crash is a Heisenbug. With
+distinct seeds + a real peer the gdb backtrace pinned it instantly.)
 **184.9 FIXED** — Zephyr Cyclone fixture build now force-reconfigures when a
 backend source is newer than the linked binary (was: stale binaries broke
 iterative diagnosis).
@@ -221,7 +223,7 @@ fixture-not-built preconditions (the product fixes had already landed under
 | `rtos_e2e test_rtos_pubsub_e2e::Nuttx::Rust` | **177.30** | **already fixed; was fixture-missing.** Cold run fell back to `nros-fast-release` (177.8.c reboot loop). After `just nuttx build-fixtures`: **PASS** (45s). |
 | `threadx_riscv64_qemu test_threadx_riscv64_cyclonedds_two_qemu_pubsub` | **177.26** | **already fixed; was Cyclone-fixture-missing.** After `just cyclonedds threadx-cross-probe` + `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures`: **PASS** (5.2s) — the "executor register" blocker is resolved. |
 | `native_api test_threadx_linux_cyclonedds_talker_to_native_listener` | **177.26** | **already fixed; was fixture-missing.** After `just cyclonedds setup` + `just threadx_linux build-fixture-extras`: **PASS** (10.1s). |
-| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** | **GREEN (not a product gap).** 177.2 closed 2026-05-23; the `k_thread`-ddsrt-port theory was debunked 2026-05-25 (diagnosed against stale `eth_posix` fixtures — Cyclone workers ARE `k_thread`s, `tid in use!` benign). On fresh NSOS fixtures the full `binary(zephyr) & test(dds)` group is **15/15 PASS** incl. all `*_action_e2e`. Clean-room reds were stale-fixture / `zephyr-native-cyclonedds` domain cross-talk (177.33/177.35). Not re-run in this SDK-less env. **⚠️ CONTRADICTED — see 184.8:** with a full `just zephyr setup` + fresh fixtures in this env, all 3 `*_action_e2e` deterministically FAIL (`server_received_goal=false`), solo + distinct domains. Treat 177.2 as OPEN. |
+| `zephyr test_zephyr_dds_{c,cpp,rs}_action_e2e` (3) | **177.2** | **GREEN (not a product gap).** 177.2 closed 2026-05-23; the `k_thread`-ddsrt-port theory was debunked 2026-05-25 (diagnosed against stale `eth_posix` fixtures — Cyclone workers ARE `k_thread`s, `tid in use!` benign). On fresh NSOS fixtures the full `binary(zephyr) & test(dds)` group is **15/15 PASS** incl. all `*_action_e2e`. Clean-room reds were stale-fixture / `zephyr-native-cyclonedds` domain cross-talk (177.33/177.35). Not re-run in this SDK-less env. **⚠️ WAS A REAL GAP — now RESOLVED under 184.8 (2026-05-28):** all 3 deterministically FAILED here because the action **server crashes (`abort()`/kernel panic) at ~0.25 s during SEDP** — Zephyr POSIX mutex-pool exhaustion (256 too small for the action's endpoint count; `ddsrt_mutex_init` ignores `ENOMEM` → next lock aborts). Pool bumped to 2048/1024 in all 6 action `prj-cyclonedds.conf`; rs **3/3 PASS**, c **PASS**, cpp **PASS**. (The "15/15 GREEN" 177.2 reading was on fixtures whose confs happened to predate the crash window / different timing; the crash is load+timing sensitive.) |
 
 **Takeaway:** the clean-room `test-all` reds are dominated by *fixtures not built
 for the specific platform* (the per-test `[SKIPPED]`/fallback messages name the
@@ -234,6 +236,62 @@ paths.
 ### 184.8 — Zephyr CycloneDDS actions hard-fail (forwarded owner; Phase 177 archived)
 *Phase 177 (incl. 177.2) is archived/closed. This live action-goal-delivery gap
 is now owned here under 184.8; "177.2" below is the historical reference only.*
+
+> **✅ RESOLVED 2026-05-28 — POSIX mutex-pool exhaustion crashes the action server.**
+>
+> **Symptom (real, deterministic):** the action **server** calls `abort()` →
+> `ZEPHYR FATAL ERROR 4: Kernel panic` at **~0.25 s, during discovery**, right
+> after `Action server ready: /fibonacci`. It is dead long before the client's
+> 3.3 s goal, hence `server_received_goal=false`. pubsub + plain service on the
+> same NSOS/Cyclone stack are fine — only actions crash.
+>
+> **gdb backtrace (server, distinct `--seed` + live client peer):**
+> ```
+> #0 abort ()
+> #1 ddsrt_mutex_lock (sync.c:42)            // pthread_mutex_lock != 0 → abort()
+> #2 local_reader_ary_setfastpath_ok         // locks a reader's rdary_lock
+> #3 proxy_writer_add_connection
+> #4 connect_proxy_writer_with_reader
+> #7 ddsi_new_proxy_writer
+> #8 handle_sedp_alive_endpoint              // mid-SEDP, adding a discovered proxy
+> #11 dqueue_thread
+> ```
+>
+> **Root cause:** Zephyr's POSIX mutexes come from a *fixed* static pool
+> `posix_mutex_pool[CONFIG_MAX_PTHREAD_MUTEX_COUNT]` (`zephyr/lib/posix/options/
+> mutex.c`). The action server stands up far more Cyclone endpoints than pub/sub
+> (1) or a plain service (2) — goal/cancel/result service readers+writers,
+> feedback+status writers, **plus** the proxies it discovers — and each draws
+> several locks. Past 256 the pool's `sys_bitarray_alloc` fails, so
+> `pthread_mutex_init` returns `ENOMEM`. But `ddsrt_mutex_init`
+> (`ddsrt/src/sync/posix/sync.c:26`) **ignores the return value**, leaving the
+> mutex unallocated; the next `ddsrt_mutex_lock` on it returns nonzero →
+> `abort()`. (`ddsrt` can't be patched here per the vendored-fork rule, and the
+> upstream "init can't fail" assumption is reasonable on a normal POSIX host —
+> only Zephyr's bounded pool breaks it.)
+>
+> **Fix:** raise the pool in every Zephyr action overlay —
+> `CONFIG_MAX_PTHREAD_MUTEX_COUNT` 256 → **2048**, `CONFIG_MAX_PTHREAD_COND_COUNT`
+> 256 → **1024** — in `examples/zephyr/{rust,c,cpp}/action-{server,client}/
+> prj-cyclonedds.conf` (6 files). native_sim is hosted, so the extra pool
+> (~few-hundred KB of `k_mutex`/`k_condvar` slots) is free.
+>
+> **Verification:** all three PASS on fresh fixtures — `test_zephyr_dds_rs_action_e2e`
+> **3/3 PASS** (18 s; full goal→accept→11×feedback→`Result: Succeeded
+> [0,1,1,2,3,5,8,13,21,34,55]`→`Action client finished`),
+> `test_zephyr_dds_c_action_e2e` **PASS** (9.5 s), `test_zephyr_dds_cpp_action_e2e`
+> **PASS** (11.6 s).
+>
+> **Method note — why this took so long:** the manual repro must pass a unique
+> `--seed` per native_sim process (harness does, at `nros-tests/src/zephyr.rs:166`);
+> without it both processes share the test entropy source → identical GUIDs +
+> ephemeral ports → they never discover → no crash *and* no delivery, which looked
+> like a data-plane bug. Recv-path logging (fprintf/GVWARNING/`Verbosity=finer`)
+> crashes native_sim on its own (small Cyclone-thread stacks), and the crash is a
+> Heisenbug under gdb *unless* a real peer drives discovery. Distinct seeds + a
+> live peer made gdb catch the abort on the first attempt. Everything below this
+> box (post-match RHC-drop, loopback loss, the 171.0.a flush-gate theories) was
+> chasing that seed-less artifact and is **superseded**.
 
 **Re-verified 2026-05-27 with a full `just zephyr setup` + `just zephyr
 build-fixtures` in this env.** Contrary to the 184.7 zephyr row above (which
