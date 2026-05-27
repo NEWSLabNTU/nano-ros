@@ -883,6 +883,14 @@ steps are inherently ordered (templates → migrate → delete). Files:
   Re-home the existing `integrations/<rtos>/` shells (Phase 139) as these.
   The owner sequences the platforms (or sub-delegates if staffed); the
   roadmap does not pre-split them into separate tickets.
+  *In progress:* the **vendor-lib** template landed
+  (`examples/templates/deploy/vendor-lib/` — `startup.c` driving the WP-B
+  `nros_<sys>_*` C ABI + a README with the `[deploy]` table / `build[]` link
+  line), validated host-side by a `nros deploy --dry-run` e2e (resolve +
+  var-set substitution). The remaining platforms (self/posix [generated
+  shim, no dir], bare-metal, freertos, nuttx, threadx, zephyr, esp-idf, px4,
+  orin-spe HW, qnx) + each one's real sim/HW build validation are SDK/HW-bound
+  and pending an environment with those toolchains.
 - **Migrate + flip.** Convert the `orchestration_e2e` fixtures + at least
   one self, one vendor-lib (Orin POSIX sim), one vendor-module (Zephyr or
   PX4-SITL) system to a root `nros.toml` + `nros deploy <name>`. **Then
