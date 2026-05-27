@@ -1,5 +1,17 @@
 # Phase 116: Configuration Redesign — one `nros.toml`, native build files stay native
 
+> **Archived 2026-05-27 — subsumed by Phase 172.** Investigation showed
+> configuration is not a standalone concern: it is the **input contract of the
+> compile-time orchestration pipeline** that Phase 126 already shipped
+> (launch + component/system `nros.toml` → `nros-plan.json` → generated single
+> binary). The surviving config work (network/peripheral schema, `config.toml`
+> retirement, `nros.toml` name-collision fix, colcon RMW wiring, single-node
+> "direct mode") moved into **Phase 172** (orchestration follow-ups) as items
+> 172.J–172.N. This file is retained as the design exploration that led there;
+> its single-`[node]` schema and the package.xml-vs-`nros.toml` (A/B) framing
+> are **superseded** by the Phase 126 component/system model — do not implement
+> from this doc, see Phase 172.
+
 **Goal:** Collapse the nano-ros config surface to a clear one-lane-per-file model.
 `nros.toml` becomes the single, language-agnostic nano-ros config (RMW activation,
 peripherals/transport, per-node options, real-time/scheduling). The two
