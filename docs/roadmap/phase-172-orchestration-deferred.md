@@ -427,6 +427,37 @@ The three items are independent of each other.
       extract source metadata. Harden that execution (resource
       limits, filesystem/network restrictions) so untrusted
       component crates can't escape during metadata extraction.
+      **DEFERRED 2026-05-27 — blocked on the driver.** Investigation
+      (2026-05-27): there is nothing to sandbox yet. `nros metadata`
+      (`cmd/metadata.rs`) only *discovers* the workspace, checks each
+      declared component produced its `source-metadata.json`, and
+      validates + copies it — it compiles/runs nothing (the
+      `orchestration_e2e` fixture's `talker.metadata.json` is
+      hand-written). The "compile each component in a host-side
+      metadata mode and invoke its entry path with a fake
+      `ComponentContext`" step (`docs/design/ros2-user-workflow.md`)
+      — build component in metadata mode → run a harness that calls
+      the macro-exported `__nros_component_register` against the host
+      recorder → emit JSON — is **not implemented in `nros-cli-core`**
+      (only the export glue exists: `nros-macros` →
+      `__nros_component_register` + `__NROS_COMPONENT_EXPORT_PRESENT`,
+      host recorder in `nros/src/component.rs`). Hardening a
+      non-existent execution step is premature, so 172.E waits on that
+      driver. **Design notes for when it lands** (so the work is
+      pre-thought): untrusted code runs at *two* moments — compile
+      (`build.rs` + proc-macros, inherent to `cargo build`) and run
+      (`register()` + module static ctors); the compile-time vector is
+      the elephant, so any real sandbox must wrap the whole `cargo
+      build`, not just the harness exec. Recommended layered shape: a
+      `sandbox` module wrapping the build+run `Command` — always-on
+      `setrlimit` (CPU/AS/fsize/nproc, core=0) + env allowlist via
+      `pre_exec`; an opt-in `strict` level (`--sandbox=off|limits|strict`
+      / `NROS_METADATA_SANDBOX`) that prefixes the invocation with
+      `bwrap --unshare-net --ro-bind <ws> --ro-bind <registry> --tmpfs
+      <target> --die-with-parent`, degrading loudly (error, never
+      silent) when `bwrap` is absent. Linux-first (namespaces/Landlock
+      are Linux-only; macOS gets rlimits only). Host already has
+      kernel 6.8 + `bwrap` 0.6.1 + rootless userns.
 
 - [x] **172.F — Polished `nros explain`.** A user-facing command
       that explains the generated plan: which launch node maps to
