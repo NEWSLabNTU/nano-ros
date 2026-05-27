@@ -12,10 +12,11 @@ and one codegen-link gap.
 now fixed). **184.8 OPEN** — the 3 zephyr cyclonedds action e2e tests DO
 reproduce a hard failure here on fresh fixtures (real product gap, 177.2;
 contradicts the 184.7 zephyr "GREEN" row); isolated to **post-match reliable
-data delivery** (write OK, server RHC empty), prime lead frozen Cyclone clock
-on native_sim (unverified). **184.9 OPEN** — Zephyr Cyclone fixture incremental
-build misses backend source edits (stale binaries) — blocks iterative 177.2
-diagnosis; fix rebuild reliability first.
+data delivery** (write OK, server RHC empty), frozen-clock lead REJECTED (Cyclone
+clock advances; remaining lead is post-match DATA transmission on the channel).
+**184.9 FIXED** — Zephyr Cyclone fixture build now force-reconfigures when a
+backend source is newer than the linked binary (was: stale binaries broke
+iterative diagnosis).
 **Priority:** Medium.
 **Depends on:** Phase 177 (archived — product fixes incl. the Cyclone idlc
 re-resolve harden), Phase 175 (native Cyclone CMake/Corrosion fixtures).
@@ -363,30 +364,43 @@ So the clock lead is **UNVERIFIED**. (The earlier *match-succeeds* and
 provably contained their diagnostics: the Cyclone trace + the `flush WRITE`
 string were present in the artifacts that produced them.)
 
-### 184.9 — Zephyr Cyclone fixture incremental build misses backend source changes (diagnosis blocker)
-Editing `packages/dds/nros-rmw-cyclonedds/src/*.cpp` and re-running `just zephyr
-build-fixtures` (exit 0) frequently **does not relink** the affected
-`zephyr.exe` (the cyclone backend lib is cached / its rebuild not triggered by
-the source edit). Symptoms: tests run a **stale binary**; injected diagnostics
-don't appear; compile errors stay hidden. Forcing it needs
-`rm -rf ../<workspace>/build-<lang>-<role>-cyclonedds && just zephyr
-build-fixtures` (and a full `build-fixtures` can fail on *unrelated* cpp action
-fixtures, aborting the batch). This makes iterative backend diagnosis on Zephyr
-Cyclone unreliable + expensive — **fix this rebuild reliability first** before
-resuming 177.2 backend instrumentation. (Separately, the nros-tests staleness
-gate over-fires on `.gitignore`/mtime noise — 184.8 note above.)
+### 184.9 — [FIXED 2026-05-28] Zephyr Cyclone fixture incremental build could reuse a stale backend binary
+Observed: after editing `packages/dds/nros-rmw-cyclonedds/src/*.cpp`, `just
+zephyr build-fixtures` (exit 0) sometimes did **not** relink the affected
+`zephyr.exe` — the per-fixture incremental path runs bare `ninja -C <dir>`, and
+a churned / half-failed build dir reused a stale backend object → **stale
+binary**. This silently broke 184.8 diagnosis: a probe ran against an old binary
+(verified via `strings`: the binary still held a *previous, reverted* `[cyc-dbg]`
+marker), and the staleness even **hid a compile error** in the probe until a
+forced `rm -rf build-*-cyclonedds` exposed it. (Intermittent — on fresh dirs
+incremental works; the failure came from accumulated edit/rm churn.)
 
-**Next step (once rebuilds are reliable):** re-run the `dds_time()`-vs-app-clock
-check on a **force-clean** build to confirm/deny the frozen-clock hypothesis;
-if frozen, fix the ddsrt time source on the native_sim port — likely the real
-177.2 fix.
+**Fix (`just/zephyr.just`, the per-fixture build-arg selection):** for
+`*cyclonedds*` fixtures, if any `nros-rmw-cyclonedds/src` source is **newer than
+the fixture's linked `zephyr.exe`**, force `needs_west=1` + `pristine=always` —
+a clean west reconfigure that always picks up the backend edit. Fires **only**
+right after a backend edit (`find … -newer …/zephyr.exe`), so a normal
+`build-test-fixtures` (backend unchanged ⇒ exe newer than src) is unaffected,
+and non-cyclone fixtures never trigger it. **Validated:** a marker added to
+`session.cpp` then `just zephyr build-fixtures` (no `rm`) now lands in the
+cyclone `zephyr.exe` (was `0`, now `1`).
 
-Owner: **184.8** (forwarded from **177.2**, which is **archived** — Phase 177 is
-closed, so this live action-delivery gap is now tracked here). Isolated to
-**post-match reliable data delivery** (write OK, server RHC empty); prime lead =
-**frozen Cyclone clock / timed-event thread on native_sim** (UNVERIFIED, blocked
-by 184.9). ~24 trace/build cycles spent; discovery/QoS/naming/gate/timeout all
-ruled out by evidence.
+**Now-unblocked clock check (184.8) — DONE, hypothesis REJECTED.** With reliable
+rebuilds, logged `dds_time()` vs the app clock in `session_drive_io`: Cyclone's
+clock **advances in lockstep** (`dds_time_ns == app_ms·1e6`, e.g.
+`3524000000 ns` at `app_ms=3524`). **Not frozen** — the earlier "frozen
+`00:00:00.000,002`" trace prefixes were a Zephyr LOG artifact, not Cyclone's
+time source. So the frozen-clock / dead-timer lead is **wrong**; the reliable
+heartbeat/retransmit timers do tick.
+
+Owner: **184.8** (forwarded from archived **177.2**). Isolated to **post-match
+reliable data delivery on the action send_goal channel** — match succeeds, goal
+`dds_write` succeeds (`ret=0`), Cyclone clock advances, server RHC stays empty.
+Discovery / QoS / naming / gate / timeout / frozen-clock **all ruled out by
+evidence**. **Remaining lead:** the goal DATA either never transmits over NSOS
+unicast loopback for this channel, or is dropped at the reader — needs a
+**finest** RTPS `DATA`/`HEARTBEAT`/`ACKNACK` isolation on `rq/…send_goalRequest`
+(now feasible thanks to the 184.9 rebuild fix). ~26 trace/build cycles spent.
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).

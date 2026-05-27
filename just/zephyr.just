@@ -648,7 +648,28 @@ build-fixtures:
         if [ ! -f "$sig_file" ] || [ "$(cat "$sig_file")" != "$desired_sig" ]; then
             needs_west=1
         fi
-        if [ "$pristine" != "always" ] && [ -f "$actual_build_dir/build.ninja" ] && [ "$needs_west" = "0" ]; then
+        # 184.9 — guard against stale incremental builds. Bare `ninja -C` has
+        # intermittently failed to pick up a cyclone-backend edit (a churned/
+        # half-failed build dir reuses a stale object → stale binary), which
+        # silently broke 184.8 backend diagnosis (a probe ran against an old
+        # binary, even hiding a compile error). For cyclonedds fixtures, if any
+        # `nros-rmw-cyclonedds/src` source is newer than this fixture's linked
+        # binary, force a clean west reconfigure so backend edits always land.
+        # Fires only right after a backend edit; no effect on normal builds or
+        # on non-cyclone fixtures.
+        eff_pristine="$pristine"
+        case "$actual_build_dir" in
+            *cyclonedds*)
+                if [ -f "$actual_build_dir/zephyr/zephyr.exe" ] && [ -n "$(find \
+                        "$nros_root/packages/dds/nros-rmw-cyclonedds/src" \
+                        \( -name '*.cpp' -o -name '*.hpp' \) \
+                        -newer "$actual_build_dir/zephyr/zephyr.exe" -print -quit 2>/dev/null)" ]; then
+                    needs_west=1
+                    eff_pristine=always
+                fi
+                ;;
+        esac
+        if [ "$eff_pristine" != "always" ] && [ -f "$actual_build_dir/build.ninja" ] && [ "$needs_west" = "0" ]; then
             use_west=0
             if [ "${NROS_JOBSERVER:-}" = "1" ]; then
                 build_argv=(ninja -C "$actual_build_dir")
@@ -657,7 +678,7 @@ build-fixtures:
             fi
         else
             use_west=1
-            build_argv=(west build -b "$board" -d "$actual_build_dir" -p "$pristine"
+            build_argv=(west build -b "$board" -d "$actual_build_dir" -p "$eff_pristine"
                         "$nros_root/examples/$src" "${west_extra[@]}")
         fi
         if [ "$jobs" -eq 1 ]; then
