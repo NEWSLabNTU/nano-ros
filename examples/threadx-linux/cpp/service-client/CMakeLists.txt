@@ -14,9 +14,9 @@ set(NANO_ROS_BOARD    threadx-linux)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
+nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
 nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/config.toml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
     "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
 add_executable(threadx_cpp_service_client src/main.cpp)
