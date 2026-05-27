@@ -36,6 +36,9 @@ mac     = "02:00:00:00:00:01"
 gateway = "10.0.2.2"
 rmw     = "zenoh"          # the RMW session this transport runs
 locator = "tcp/10.0.2.2:7447"
+# interfaces = ["eth0", "eth1"]  # multi-homing: this ONE session spans both
+                                 # NICs as one graph (see the taxonomy below).
+                                 # Single-NIC: omit, or `interface = "eth0"`.
 
 [[transport]]
 id       = "bus"
@@ -52,13 +55,59 @@ Per-kind field rules (validated by `PlanBuildOptions::validate_transports`):
 
 | kind | fields |
 |------|--------|
-| `ethernet` | `ip` (CIDR), `mac`, `gateway` |
-| `wifi` | `ip` (optional/static), `ssid`, `password` |
+| `ethernet` | `ip` (CIDR), `mac`, `gateway`, `interface`/`interfaces` |
+| `wifi` | `ip` (optional/static), `ssid`, `password`, `interface`/`interfaces` |
 | `serial` / `can` | `device`, `baudrate` |
 | all | `id`, `rmw`, `locator` |
 
 The `id` makes a transport first-class and addressable, and disambiguates two
 transports that share an `rmw` (which a bind-by-`rmw` scheme cannot).
+
+`interfaces` (a list) **multi-homes one session over several NICs** — the
+session listens/connects on each and folds them into **one** discovery graph.
+This is distinct from declaring two `[[transport]]` entries (two *separate*
+sessions). See the taxonomy below.
+
+## Two axes: interfaces-per-transport × transports-per-rmw
+
+A transport is *a session over a set of interfaces*; a node binds to a
+transport. Two orthogonal axes generate the full design space:
+
+- **interfaces per transport** (1 vs N) — multi-homing: one session, one merged
+  graph, reachable across several NICs.
+- **transports per rmw** (1 vs N) — one session vs multiple *segregated*
+  sessions of the same backend.
+
+| Case | transports | rmw | interfaces / transport | node binding |
+|------|-----------|-----|------------------------|--------------|
+| **A. cross-RMW bridge** | N | **distinct** per node | 1 each | by `rmw` (works today) |
+| **B. single node, multi-homed** | 1 | one | **list** `["eth0","eth1"]` | implicit |
+| **C. cross-RMW bridge, multi-homed** | N | distinct (e.g. zenoh + uORB) | **list** each | by `rmw` |
+| **D. segregated same-rmw** | N | **same** (e.g. two zenoh) | 1+ each, **not merged** | by `id` (needs the K.5 runtime) |
+
+Cases **A–C bind by `rmw`** (distinct or single) and need only the
+**`interfaces` list** for multi-homing (B, C). Only case **D** — two *separate*
+sessions of the *same* backend, intentionally not merged — needs
+`create_node_on`-by-`id` (Phase 172.K.5); `interfaces` (merge) is the opposite
+intent from D (segregate).
+
+**Multi-homing vs DDS/zenoh native behavior.** Folding several NICs into one
+graph IS what stock Fast DDS (all interfaces by default), Cyclone
+(`<General><Interfaces>` list), and zenoh (multiple `listen`/`connect`
+endpoints + scouting interface) already do — `interfaces` just surfaces that
+config through `nros.toml`. The generator maps it per backend: zenoh → one
+listen/connect endpoint per NIC + `scouting.multicast.interface`; Cyclone →
+the `<Interfaces>` list; Fast DDS → whitelist (or none). Case D (separate
+sessions) is the thing the middleware does *not* give you for free.
+
+```toml
+# Case C — two multi-homed sessions, distinct rmw (bind by rmw)
+[[transport]]
+id = "z"; kind = "ethernet"; rmw = "zenoh"; interfaces = ["eth0", "eth1"]
+[[transport]]
+id = "u"; kind = "ethernet"; rmw = "uorb";  interfaces = ["eth2", "eth3"]
+# node_zenoh → "z" (one graph over eth0+eth1); node_uorb → "u" (over eth2+eth3)
+```
 
 ## Runtime mapping
 
