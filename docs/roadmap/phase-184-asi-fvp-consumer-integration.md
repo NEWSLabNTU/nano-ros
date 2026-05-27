@@ -13,10 +13,10 @@ surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 (cxx-compat passthrough guard) + 184.B landed (libc-gated multicast struct,
 `net.c.obj` verified) + 184.C landed (re-export shims `cstdlib`/`cstdio`/
 `cstring`/`utility`/`cstdarg`/`cstddef`/`cstdint` defer to real libstdc++).
-Deep-validated: full ASI build compiles EVERY TU (autoware/Eigen/Cyclone C++
-stack + nros library, incl. 184.F zpico-zephyr net_if gate) and reaches the
-final link. 184.G (Cyclone ddsrt POSIX link gaps) is the remaining blocker;
-184.D–184.E open.
+**Deep-validated end-to-end: the full ASI actuation_module COMPILES + LINKS to
+`zephyr.elf` against bumped nano-ros** (184.A–G; 52 MB, 0 undefined refs).
+Runtime (boot + DDS) needs the ARM FVP simulator, deferred. 184.D (FVP CI
+smoke) + 184.E (RMW migration docs) open; 184.F optional RMW-gate-out open.
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
@@ -231,12 +231,25 @@ FVP Zephyr POSIX layer does not provide these out of the box. This is the
 Cyclone-on-Zephyr bring-up for the FVP aarch64-r profile (cf. Phase 177
 embedded-Cyclone for FreeRTOS/ThreadX, Phase 180 native_sim).
 
-- [ ] Triage which are ASI Kconfig (e.g. fuller `CONFIG_POSIX_API` /
-      `CONFIG_POSIX_THREADS` / sockets options provide recvmsg + the pthread
-      attr/sigmask symbols + `_open` libc hook) vs nano-ros-side ddsrt stubs
-- [ ] Provide the missing symbols (Kconfig and/or weak stubs in the
-      cyclonedds-zephyr glue), mirroring the Phase 177 embedded-Cyclone approach
-- [ ] Link `zephyr.elf` on `fvp_baser_aemv8r_smp`
+- [x] Triage: all are nano-ros-side (Kconfig can't help — the symbols don't
+      exist in this Zephyr). `recvmsg`: Cyclone's own single-iovec shim is
+      gated `#if LWIP_SOCKET`, off on Zephyr. `pthread_attr_setscope`/
+      `setinheritsched`/`pthread_sigmask`: absent from Zephyr 3.5.99's pthread.
+      `_open`: Zephyr's libc-hooks gates `_open`/`_read`/`_write`
+      `#ifndef CONFIG_POSIX_API`, but this profile sets `CONFIG_POSIX_API=y`, so
+      they're compiled out while the SDK libc.a's `_open_r` still needs `_open`
+- [x] Provide them as **weak** symbols in a new
+      `zephyr/cyclonedds-zephyr/posix_compat_zephyr.c` (wired into the module
+      source list): `recvmsg` → `recvfrom` single-iovec (identical to Cyclone's
+      lwIP shim, matching its `msg_iovlen==1` assert), pthread attr/sigmask
+      no-ops (Zephyr threads are system-scope, no signal delivery), `_open`
+      `-1/ENOSYS` (Cyclone has `DDSRT_HAVE_FILESYSTEM=0`). Weak so a 4.x with
+      real impls wins
+- [x] Links `zephyr.elf` on `fvp_baser_aemv8r_smp` (52 MB, RAM 3.55 MB / 128 MB,
+      0 undefined refs) — full ASI actuation_module now COMPILES + LINKS against
+      bumped nano-ros
+- [ ] Runtime validation (boot + DDS data plane) needs the ARM FVP simulator
+      (licence/SDK-gated) — deferred, not exercisable in this environment
 
 ## Acceptance
 

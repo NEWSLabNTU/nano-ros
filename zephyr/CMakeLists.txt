@@ -302,6 +302,12 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         # disappeared once `DDS_HAS_*` was switched from `=0` to
         # leave-undefined; only these three needed explicit stubs.
         ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/link_stubs.c
+        # Phase 184.G — weak POSIX symbols the kept posix ddsrt backend
+        # (sockets/posix/socket.c recvmsg; threads/posix/threads.c
+        # pthread_attr_setscope/setinheritsched/pthread_sigmask) references but
+        # that the 3.5/3.7-LTS Zephyr POSIX layer (FVP profile) lacks. Weak, so
+        # a 4.x that provides real ones wins.
+        ${CMAKE_CURRENT_LIST_DIR}/cyclonedds-zephyr/posix_compat_zephyr.c
     )
 
     # ddsi: protocol engine. ddsc: public C API. `.part.c` files
