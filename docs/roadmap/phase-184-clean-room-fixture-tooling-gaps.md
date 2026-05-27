@@ -150,9 +150,8 @@ the per-issue workarounds, the 76 collapse to **2 residual hard fails**
   fixture build lands.
 
 ### 184.6 — `graph.cpp` (177.36 `ros_discovery_info`) breaks the **zephyr cyclonedds** build (`build-all` RED)
-- [x] **FIXED** on `feature/phase-172-group1-config` (`15a2ac982`), pending merge
-  to main — so as of 2026-05-27 a fresh `build-all` on plain main is **RED**
-  (contradicts the stale "build-all is green" note below).
+- [x] **FIXED + landed on main** (`4c6ce2520`, 2026-05-27). Before this a fresh
+  `build-all` on plain main was **RED** (36 zephyr cyclonedds fixtures); green now.
 - 177.36 (`00bc53ef3`) added `packages/dds/nros-rmw-cyclonedds/src/graph.cpp`,
   which `#include "rmw_dds_common_graph.h"` — an **idlc-generated** header. The
   standalone `nros-rmw-cyclonedds/CMakeLists.txt` generates it via
