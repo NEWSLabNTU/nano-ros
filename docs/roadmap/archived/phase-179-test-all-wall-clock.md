@@ -4,8 +4,13 @@
 measurable and replayable, then remove avoidable serial waits, hidden
 runtime builds, and over-broad serialization without reducing coverage.
 
-**Status.** Proposed. Created from the 2026-05-24 `just test-all`
-review.
+**Status.** Done / archived 2026-05-27. All plan items (179.A–179.L)
+landed; the slow-test report, opt-in profiling (`NROS_NEXTEST_RECORD=1`),
+replay/trace export, fixed-sleep audit, shared-artifact splits, and
+focused/fail-fast lanes are in tree. Remaining runtime reds called out in
+the findings (ThreadX Cyclone peer interop) are owned by Phase 177, not
+this phase; Zephyr Cyclone native_sim is GREEN. Created from the
+2026-05-24 `just test-all` review.
 
 **Priority.** P2 (developer and CI wall-clock).
 
