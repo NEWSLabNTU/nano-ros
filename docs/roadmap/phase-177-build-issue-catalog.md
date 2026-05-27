@@ -914,11 +914,53 @@ passed.
   KEEP_LAST, keyed by participant GID) from the Cyclone backend, (re)published on
   every node/endpoint create+destroy, tracking each node's reader/writer GIDs.
   This unblocks ALL Cyclone graph introspection (`ros2 node list/info`, action
-  interop), not just this test. **Next:** confirm a stock cyclone node's
-  `ros_discovery_info` shape (`ros2 topic echo /ros_discovery_info`), define the
-  CDR for `ParticipantEntitiesInfo`/`NodeEntitiesInfo`/`Gid`, wire a per-session
-  publisher + GID bookkeeping into the node/endpoint create paths. Pub/sub +
-  service interop unaffected.
+  interop), not just this test. Pub/sub + service interop unaffected.
+
+  **Implementation plan (2026-05-27, researched).**
+  - **Wire contract:** topic `ros_discovery_info` (literally, NO `rt/` prefix —
+    stock sets `avoid_ros_namespace_conventions`; the backend's `topic_prefix`
+    path must be bypassed for this one topic). Type name
+    `rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_`. QoS = RELIABLE +
+    TRANSIENT_LOCAL + KEEP_LAST(1) (latched, so late-joining stock tooling gets
+    the current sample).
+  - **Gid:** `memset(gid,0,24); dds_get_guid(entity,&g); memcpy(gid,g.v,16)` —
+    full 16 bytes zero-padded to 24, on the *participant* (for
+    `ParticipantEntitiesInfo.gid`) and each *reader/writer* (for the gid seqs).
+    NOT `service.cpp::writer_guid_lo64` (that takes the lower 8 for request-id
+    correlation — different concern). Add `entity_gid_24()`. Stock derives the
+    same bytes from SEDP, so endpoints auto-associate.
+  - **CDR:** don't hand-roll — build the idlc-generated typed sample (struct
+    with `dds_sequence_t` + `char*`) and `dds_write`; Cyclone serializes. Mirror
+    `publisher.cpp::publish_goal_status_array` (nested seq-of-structs precedent).
+  - **Descriptor:** `nros_rmw_cyclonedds_idlc_compile` the three rmw_dds_common
+    IDLs (`/opt/ros/humble/share/rmw_dds_common/msg/{Gid,NodeEntitiesInfo,
+    ParticipantEntitiesInfo}.idl`) into the backend static lib (so every Cyclone
+    node gets it), TYPE_NAME `…::dds_::ParticipantEntitiesInfo_`. Must route the
+    IDL through the same `dds_::`+`_` mangling the `.msg` path uses
+    (`msg_to_cyclone_idl.py`) — plain idlc yields the unmangled name. Whole-archive
+    the register TU.
+  - **New `src/graph.{hpp,cpp}`** (backend lib): per-session graph state — the
+    participant gid + a single latched `ros_discovery_info` writer + fixed-cap
+    (≤32) reader/writer gid tables + node name/namespace (from `session->node_name`
+    /`namespace_`; `session_open` currently drops the arg — read the struct field,
+    capturing lazily on first endpoint if the runtime sets it after `open`).
+    `graph_track_{writer,reader}/untrack/publish` re-emit the full
+    `ParticipantEntitiesInfo` (one NodeEntitiesInfo) on each change.
+  - **Hooks:** `session_open` (capture participant gid + create latched writer);
+    `publisher_create`/`destroy` (writer gid); `subscriber_create`/`destroy`
+    (reader gid); `service_server_create`/`client_create` (track BOTH the request
+    reader + reply writer — this is what makes `ros2 action info` associate the
+    action's send_goal/get_result/cancel services with the node). Stay within
+    the lib's `-fno-exceptions/-fno-rtti` + alloc-light constraints (fixed arrays,
+    `dds_string_dup`/`dds_sample_free` for the typed sample).
+  - **Verify** (`ros2 topic info -v` hangs in-sandbox): primary = the ignored
+    `test_cyclonedds_action_nano_server_ros2_client` going green; dev smoke =
+    `ros2 node list` showing the nano node + a backend unit test that reads back
+    the published sample and checks the gid bytes vs `dds_get_guid`.
+  - **Riskiest unknowns:** (1) `session->node_name` population ordering vs `open`;
+    (2) exact idlc typename mangling to `dds_::…_`; (3) single-node-per-participant
+    assumption (fine for nano-ros today); (4) TRANSIENT_LOCAL latched writer on
+    embedded alloc budget — consider gating the graph writer to hosted targets.
 
 - [x] **177.37 - parallelize the Zephyr native_sim Cyclone test groups via a
   COMPILE-TIME per-role-set domain.** Owner: test-harness (landed 2026-05-27).
