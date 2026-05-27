@@ -192,10 +192,19 @@ example migration (K), then the audit/docs (N).
         prefix/serial boards mirror the verified mps2 pilot (compile-checked in
         K.3 per-platform builds). The 5 board `build.rs` bakers move with their
         examples in K.3.
-  - [ ] **172.K.3 — migrate the 87 remaining example `config.toml` → `nros.toml`**
-        + `include_str!` switches, per platform, with a build/boot check per
-        platform family (slirp QEMU where available; Docker-gated baremetal/
-        freertos as their suites require).
+  - [x] **172.K.3 — migrate the 88 example `config.toml` → `nros.toml`.** DONE
+        2026-05-27. **Rust** (40) — `include_str!` switched; board `from_toml`
+        parses the shape. **C/C++** (47, freertos/nuttx/threadx-{linux,riscv64}
+        × c+cpp) consume config via the CMake `nano_ros_read_config` →
+        `NROS_APP_CONFIG` path, so **both** parser copies
+        (`cmake/NanoRosConfig.cmake` + `packages/core/nros-c/cmake/NanoRosReadConfig.cmake`)
+        were taught the `[node]`/`[[transport]]`/`[node.rt]` shape (additive) and
+        each CMakeLists `nano_ros_read_config` path repointed. 0 source
+        `config.toml` remain. Verified: representative Rust cargo-checks (mps2/
+        freertos/threadx-linux) + both CMake parsers emit correct
+        `NROS_APP_CONFIG` from a converted file. Full per-platform cross-build
+        rides the K.6 `build-all`. (Board `build.rs` needed no change — they read
+        `.cargo/config.toml` only.)
   - [ ] **172.K.4 — planned-mode parity (submodule `colcon-nano-ros`).**
         `PlanTransport` gains `id` + wifi `ssid`/`password`; `TransportKind::Wifi`;
         per-instance `transport` binding in `SystemConfig`/planner; generator
