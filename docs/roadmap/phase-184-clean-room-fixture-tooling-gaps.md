@@ -16,10 +16,12 @@ data delivery** (write OK, server RHC empty), frozen-clock lead REJECTED (Cyclon
 clock advances). **Pinpointed to the wire:** the goal DATA is transmitted to the
 server's data port (`udp/127.0.0.1:20411`) but the server's user-data-socket RX
 never receives it (discovery/meta port works both ways; reliable retransmit
-never recovers). Select-miss ruled out (a finite-timeout select re-poll didn't
-recover ⇒ the datagram isn't even in the server's socket) — narrowed to an
-**NSOS offloaded-socket** loss on the host-loopback/bind path for the data UDP
-socket (not Cyclone/QoS); next = host-socket forensics (ss/tcpdump/strace).
+never recovers). Select-miss ruled out (a finite-timeout
+select re-poll didn't recover); socket layout normal (1 data socket, like the
+working fixtures; Recv-Q=0). Down to two sub-cases — **(a)** loopback loss
+(datagram never reaches the server socket) vs **(b)** read-then-discard
+(reader/RHC drops the action SendGoal request) — split by one Cyclone UDP-read
+log (`ddsi_udp_conn_read`). Not Cyclone select/QoS/discovery.
 **184.9 FIXED** — Zephyr Cyclone fixture build now force-reconfigures when a
 backend source is newer than the linked binary (was: stale binaries broke
 iterative diagnosis).
@@ -439,25 +441,40 @@ thread blocks forever on the one-shot goal datagram (continuous pub/sub traffic
 self-recovers). **Tested:** patched the timeout to `DDS_MSECS(50)` under
 `__ZEPHYR__` (level-triggered re-poll; verified compiled in — obj newer than the
 edit, the select string present in the exe). Result: **still
-`server_received=false`** — re-polling never found the datagram. So the datagram
-is **not buffered in the server's socket** ⇒ **not a select-miss**; it never
-reaches the server's `20411` host socket at all. (Reverted the patch.)
+`server_received=false`** — re-polling never surfaced the goal. So it is **not a
+select-miss** (a buffered datagram would have been drained on re-poll). The
+datagram either never arrives or is read-and-discarded — split below. (Reverted
+the patch.)
 
-**Refined conclusion + next step.** The goal DATA is *sent* by the client to
-`udp/127.0.0.1:20411` (writer-xmit confirmed) but is **lost on the host-loopback
-/ NSOS send-or-bind path before reaching the server's data socket** — while
-discovery on the metatraffic socket (`20410`) flows both ways. So it's an
-**NSOS offloaded-socket** issue (host kernel sockets via wrapped BSD API; the
-data UDP socket specifically), **not** Cyclone select/QoS/discovery. Next:
-**host-socket forensics** — `ss -ulnp` to confirm the server actually binds host
-port 20411; `tcpdump -i lo udp port 20411` (or `strace -f -e trace=network` on
-each native_sim process) to see whether the datagram physically leaves the
-client and arrives at the server's socket; then audit NSOS `bind`/`sendto`/
-`recvmsg` for the *second* (data) UDP socket vs the first (meta). Web refs:
-native_sim offloaded-sockets driver [zephyr#65116], offloaded-sockets poll/
-recvfrom history [zephyr#94161] — NSOS historically had partial recvfrom/poll
-support. This is a **native_sim/NSOS-layer** fix, not Cyclone-backend or QoS.
-~33 trace/build cycles spent.
+**Host-socket forensics (`ss -ulnp`, running the fixtures standalone).** The
+server **does** bind its data port: stable `0.0.0.0:20411` (data) + `:20410`
+(meta) + an ephemeral — **one** socket per port, with `Recv-Q = 0` on 20411 (no
+datagram sits buffered-unread). Socket layout is identical to the *working*
+talker / listener / service-server fixtures (each binds 1 data socket). [A first
+snapshot caught a startup **transient** of 2 fds on 20411 → an SO_REUSEPORT-split
+theory; the stable state is 1 socket, so that theory is **rejected**.]
+
+**Two remaining sub-cases (need to be split):**
+- **(a) loopback loss** — the client's datagram never reaches the server's 20411
+  host socket (NSOS `sendto`/loopback). Consistent with: writer-xmit confirmed,
+  Recv-Q=0, finite-timeout re-poll found nothing.
+- **(b) read-then-discard** — the datagram arrives + Cyclone's recvUC reads it
+  (hence Recv-Q=0) but the reader/RHC drops it (action `SendGoal_Request_`
+  type/QoS/dedup) so it never reaches the goal callback.
+
+**Next step (decisive, one instrument):** log in Cyclone's UDP read path
+(`ddsi_udp.c` `ddsi_udp_conn_read` / the recvUC handler) every datagram received
+on the data conn after 3.3 s — if the server logs a datagram from the client's
+data port ⇒ **(b)** (reader-side drop, a Cyclone/type issue); if none ⇒ **(a)**
+(host-loopback loss, an NSOS `sendto`/recv issue). `tcpdump -i lo udp port 20411`
+would also split a/b but needs CAP_NET_RAW (unavailable here, no sudo). Web refs:
+native_sim offloaded-sockets driver [zephyr#65116], offloaded poll/recvfrom
+history [zephyr#94161].
+
+**Ruled out by evidence (cumulative):** discovery, writer↔reader match, QoS,
+topic/type naming, the 171.0.a gate, client timeout, frozen clock, RX-thread
+startup, select-miss (tested fix), SO_REUSEPORT socket-split (transient
+mis-read). ~36 trace/build cycles spent; the a/b split is the clean next move.
 
 > **Reconcile with the 184.7 row:** the prior "15/15 PASS" run delivered the
 > goal data on this channel; here it deterministically doesn't (post-match).
