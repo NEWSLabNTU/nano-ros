@@ -1,109 +1,92 @@
 # Configuration Guide
 
-nano-ros configuration spans four layers, from runtime to compile-time.
-This guide explains what each layer controls, how they interact, and
-which variables matter for each deployment scenario.
+A nano-ros project keeps configuration in **one file per lane** — no setting
+lives in two places. This guide covers what each file owns and the `nros.toml`
+format that carries all nano-ros runtime/deployment config.
 
-## Configuration Layers
+## One lane per file
 
-```
-┌─────────────────────────────────────────────┐
-│  Layer 1: config.toml (per-example)         │  Network, zenoh, scheduling
-│  Baked into binary at compile time          │
-├─────────────────────────────────────────────┤
-│  Layer 2: Environment variables (.env)      │  SDK paths, buffer tuning
-│  Read at build time by build.rs / justfile  │
-├─────────────────────────────────────────────┤
-│  Layer 3: Cargo features                    │  RMW backend, platform, std/alloc
-│  Selected in Cargo.toml                     │
-├─────────────────────────────────────────────┤
-│  Layer 4: Runtime (POSIX only)              │  ExecutorConfig::from_env()
-│  Read from environment at process startup   │
-└─────────────────────────────────────────────┘
-```
+| File | Owns | Per |
+|------|------|-----|
+| `Cargo.toml` | Rust build: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) | Rust project |
+| `CMakeLists.txt` | C/C++ build: targets, language deps, `add_subdirectory(<repo>)`, the `NROS_RMW` option | C/C++ project |
+| `.cargo/config.toml` | **`[patch.crates-io]` dependency injection only** (local crate + generated-msg paths), plus the cargo `[build]`/`[target]`/`[env]` knobs (target triple, runner, rustflags). **No nano-ros runtime config.** | Rust project |
+| `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros generate`) | all |
+| **`nros.toml`** | **All nano-ros runtime/deployment config** — node, transport(s), scheduling | universal (Rust/C/C++) |
 
-On embedded targets, all configuration is resolved at compile time
-(layers 1–3). Layer 4 only applies to POSIX (Linux/macOS) where the
-process has access to environment variables at runtime.
+> **Boundary rule.** If a knob changes *what is compiled/linked*, it lives in the
+> build file (`Cargo.toml` feature / `CMakeLists.txt` option). If it changes
+> *what nano-ros does at run time*, it lives in `nros.toml`.
 
-## Layer 1: config.toml
+Full design rationale: [`docs/design/configuration-and-transports.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/configuration-and-transports.md).
+For the multi-RMW runtime topic-forwarding bridge (a separate file/feature), see
+[`nros-bridge.toml`](../reference/nros-bridge-toml.md) — do not confuse it with
+this build/deploy `nros.toml`.
 
-Each example includes a `config.toml` that defines hardware and network
-settings. The file is embedded into the binary via `include_str!` (Rust)
-or parsed by CMake at configure time (C/C++).
+## `nros.toml`
 
-See the config.toml section below for
-the full format reference.
+The single, language-agnostic nano-ros config. Read two ways from the same
+schema:
 
-### Network Section
+- **Direct mode** — a hand-written single-node app reads `nros.toml` via the
+  board `Config::from_toml` (compile-baked with `include_str!` on embedded;
+  filesystem/env on hosted). No launch file, no planner. This is what the
+  `examples/**` copy-out templates use.
+- **Planned mode** — the orchestration pipeline (launch files + `nros plan` →
+  `nros-plan.json` → generated `main()`) consumes the same schema for multi-node
+  systems.
 
-```toml
-[network]
-ip = "192.0.3.10"
-mac = "02:00:00:00:00:00"
-gateway = "192.0.3.1"
-prefix = 24
-```
-
-| Field | Used By | Description |
-|-------|---------|-------------|
-| `ip` | All except DHCP | Static IPv4 address |
-| `mac` | Bare-metal, FreeRTOS | Ethernet MAC (colon-separated hex) |
-| `gateway` | All with static IP | Default gateway for zenohd routing |
-| `prefix` | Bare-metal, NuttX, ESP32 | CIDR subnet prefix length |
-| `netmask` | FreeRTOS only | Dotted-quad subnet mask (alternative to `prefix`) |
-
-### WiFi Section (ESP32 only)
+### Shape
 
 ```toml
-[wifi]
-ssid = "MyNetwork"
-password = "secret"
-```
+# nros.toml
 
-### Serial Section
+[node]
+domain_id = 0              # ROS 2 domain ID (0–232)
+# namespace = "/"
+# rmw = "zenoh"            # ACTIVE backend; must match a LINKED backend
+                           # (the build file picks what is linked)
 
-```toml
-[serial]
-baudrate = 115200
-```
+# One transport per session. A single ethernet/wifi/serial entry is the
+# common case; multiple entries = a multi-RMW bridge (planned mode).
+[[transport]]
+kind    = "ethernet"       # ethernet | wifi | serial | can
+ip      = "10.0.2.10/24"   # CIDR — the prefix rides the address
+mac     = "02:00:00:00:00:00"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7447"
+# id      = "eth"          # bind key for multi-transport (defaults to rmw)
+# interface = "tap-tx0"    # host interface (threadx-linux)
 
-Used when the `serial` transport feature is enabled instead of `ethernet`.
-
-### Zenoh Section
-
-```toml
-[zenoh]
-locator = "tcp/192.0.3.1:7447"
-domain_id = 0
-```
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| `locator` | zenohd router address (`tcp/host:port` or `serial/device#baudrate=N`) | `tcp/192.0.3.1:7447` |
-| `domain_id` | ROS 2 domain ID (0–232) | `0` |
-
-### Scheduling Section (RTOS)
-
-```toml
-[scheduling]
-app_priority = 12
-zenoh_read_priority = 16
+[node.rt]                  # scheduling / real-time (RTOS); omit for defaults
+app_priority         = 12
+app_stack_bytes      = 65536
+zenoh_read_priority  = 16
 zenoh_lease_priority = 16
-app_stack_bytes = 65536
+poll_priority        = 16
+poll_interval_ms     = 5
 ```
 
-See the config.toml section below for the full
-priority scale and constraints.
+Per-kind transport fields:
 
-### How config.toml is consumed
+| kind | fields |
+|------|--------|
+| `ethernet` | `ip` (CIDR), `mac`, `gateway`, `interface` |
+| `wifi` | `ssid`, `password`, optional static `ip`/`gateway` |
+| `serial` / `can` | `device`, `baudrate` |
+| all | `id`, `rmw`, `locator` |
 
-**Rust:**
+`ip` is CIDR (`10.0.2.10/24`) — the board derives the prefix or netmask from it.
+A serial locator carrying `#` (`serial/UART_0#baudrate=115200`) is fine — quote it.
+
+### How `nros.toml` is consumed
+
+**Rust** (board `Config::from_toml`, compile-baked):
 ```rust
 use nros_board_mps2_an385::{Config, run};
 
 fn main() -> ! {
-    run(Config::from_toml(include_str!("../config.toml")), |config| {
+    run(Config::from_toml(include_str!("../nros.toml")), |config| {
         let exec = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id);
         // ...
@@ -111,195 +94,85 @@ fn main() -> ! {
 }
 ```
 
-**C/C++ (CMake):**
+**C/C++** (CMake parses it into the `NROS_APP_CONFIG` struct):
 ```cmake
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
-# Sets: NROS_CONFIG_IP, NROS_CONFIG_MAC, NROS_CONFIG_GATEWAY, etc.
+nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
+# Sets NROS_CONFIG_ZENOH_LOCATOR, NROS_CONFIG_DOMAIN_ID, NROS_CONFIG_IP, …
 ```
-
-**C/C++ (NuttX Makefile):**
 ```c
-#ifndef APP_ZENOH_LOCATOR
-#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
-#endif
+nros_support_init(&support, NROS_APP_CONFIG.zenoh.locator,
+                  NROS_APP_CONFIG.zenoh.domain_id);
 ```
 
-## Layer 2: Environment Variables (Build-Time)
+`nros new` scaffolds an `nros.toml` for embedded targets automatically.
 
-These are read during `cargo build` (by `build.rs` scripts) or by justfile
-recipes. Set them in `.env` at the project root, or export them in your
-shell.
+## Build-time environment variables
 
-### SDK Paths
+Read during `cargo build` (by `build.rs`) or by justfile recipes. Set in `.env`
+or export in your shell.
 
-Auto-resolved by `just setup <platform>` and `just <platform> setup`
-recipes. Override if SDKs are installed elsewhere.
+### SDK paths
+
+Auto-resolved by `just setup <platform>`; override if SDKs live elsewhere.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FREERTOS_DIR` | `third-party/freertos/kernel` | FreeRTOS kernel source |
 | `FREERTOS_PORT` | `GCC/ARM_CM3` | FreeRTOS portable layer |
 | `LWIP_DIR` | `third-party/freertos/lwip` | lwIP source |
-| `FREERTOS_CONFIG_DIR` | Board crate's `config/` | `FreeRTOSConfig.h` location |
-| `NUTTX_DIR` | `third-party/nuttx/nuttx` | NuttX RTOS source |
-| `NUTTX_APPS_DIR` | `third-party/nuttx/nuttx-apps` | NuttX apps source |
-| `THREADX_DIR` | `third-party/threadx/kernel` | ThreadX kernel source |
-| `THREADX_CONFIG_DIR` | Board crate's `config/` | ThreadX config (`tx_user.h`) |
-| `NETX_DIR` | `third-party/threadx/netxduo` | NetX Duo source |
-| `NETX_CONFIG_DIR` | Board crate's `config/` | NetX Duo config (`nx_user.h`) |
+| `FREERTOS_CONFIG_DIR` | Board crate's `config/` | `FreeRTOSConfig.h` |
+| `NUTTX_DIR` / `NUTTX_APPS_DIR` | `third-party/nuttx/…` | NuttX RTOS + apps |
+| `THREADX_DIR` / `NETX_DIR` | `third-party/threadx/…` | ThreadX + NetX Duo |
+| `THREADX_CONFIG_DIR` / `NETX_CONFIG_DIR` | Board crate's `config/` | `tx_user.h` / `nx_user.h` |
 
-### Build Options
+Buffer-tuning vars (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional — see the
+[Environment Variables Reference](../reference/environment-variables.md).
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `ZENOH_PICO_DIR` | Pre-built zenoh-pico install prefix | Only with `system-zenohpico` feature |
-| `SSID` | WiFi SSID for ESP32 examples | `build-examples-esp32` |
-| `PASSWORD` | WiFi password for ESP32 examples | `build-examples-esp32` |
+## Cargo features (which RMW/platform is *linked*)
 
-### Buffer Tuning
-
-All buffer tuning variables (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional -- platform-appropriate defaults apply if unset. See the [Environment Variables Reference](../reference/environment-variables.md) for the complete list of all buffer tuning variables. For detailed sizing guidance, memory budget estimation, and recommended configurations by RAM class.
-
-## Layer 3: Cargo Features
-
-Features select the RMW backend, platform, ROS edition, and optional
-capabilities. The complete matrix and mutual-exclusion rules live in
-[Platform Model](../concepts/platform-model.md); this page only shows
-the shape used by downstream projects. decoupled the `nros` umbrella from concrete RMW crates.
-A consuming `Cargo.toml` lists `nros` (with `rmw-cffi` + a
-`platform-*` feature) plus the chosen backend crate directly:
+Features select the **linked** RMW backend, platform, and ROS edition. The
+`nros.toml` `node.rmw` picks which *linked* backend is *active* — the two are
+different layers (link vs run). Matrix + mutual-exclusion rules:
+[Platform Model](../concepts/platform-model.md).
 
 ```toml
 [dependencies]
 nros = { path = "…/nros", default-features = false, features = [
     "rmw-cffi",            # generic C-vtable runtime registry
-
-    # Platform (pick one)
-    "platform-bare-metal", # or "platform-freertos", "platform-nuttx",
-                           # "platform-threadx", "platform-zephyr", "platform-posix"
-
-    # ROS edition (pick one)
-    "ros-humble",          # or "ros-iron"
-
-    # Optional
-    "std",                 # std-dependent APIs
-    "alloc",               # heap-dependent APIs
-    "safety-e2e",          # CRC-32 integrity
-    "param-services",      # ROS 2 parameter handlers (implies alloc)
-    "ffi-sync",            # critical_section wrapping for RTOS
+    "platform-bare-metal", # or platform-{freertos,nuttx,threadx,zephyr,posix}
+    "ros-humble",          # or ros-iron
+    "std", "alloc",        # optional, target-dependent
 ] }
-
-# RMW backend crate — pick one. Its `#[ctor]` registers the vtable
-# with `nros-rmw-cffi`'s registry before `main`.
+# Exactly one RMW backend crate; its registration runs before main:
 nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal", "link-tcp", "ros-humble"] }
-# …or nros-rmw-xrce-cffi
-
-# POSIX only: ships the `nros_platform_*` C symbols for pure-cargo builds.
-# nros-platform-cffi = { path = "…/nros-platform-cffi", features = ["posix-c-port"] }
+# …or nros-rmw-xrce-cffi / the cyclonedds CMake backend
 ```
 
-Pick exactly one RMW backend crate, one platform feature, and one ROS
-edition for a complete application build. Cross-cutting features such
-as `std`, `alloc`, `safety-e2e`, and `param-services` are optional and
-depend on target capability.
+## Runtime environment (POSIX only)
 
-## Layer 4: Runtime Environment (POSIX only)
-
-On Linux/macOS, `ExecutorConfig::from_env()` reads environment variables
-at process startup:
+On Linux/macOS, `ExecutorConfig::from_env()` reads at process start (embedded
+targets bake `nros.toml` instead):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ROS_DOMAIN_ID` | ROS 2 domain ID | `0` |
-| `NROS_LOCATOR` | Router address (legacy alias: `ZENOH_LOCATOR`) | `tcp/127.0.0.1:7447` |
-| `NROS_SESSION_MODE` | Session mode, `client` / `peer` (legacy alias: `ZENOH_MODE`) | `client` |
-| `ZENOH_TLS_ROOT_CA_CERTIFICATE` | Path to CA certificate (PEM) | (none) |
-| `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA cert | (none) |
-| `ZENOH_TLS_VERIFY_NAME_ON_CONNECT` | Verify hostname (`true`/`false`) | (none) |
+| `NROS_LOCATOR` | Router address (legacy alias `ZENOH_LOCATOR`) | `tcp/127.0.0.1:7447` |
+| `NROS_SESSION_MODE` | `client` / `peer` (legacy alias `ZENOH_MODE`) | `client` |
+| `ZENOH_TLS_ROOT_CA_CERTIFICATE*` | TLS CA cert (path / base64) | (none) |
 
-```rust
-// POSIX example — reads from environment at runtime
-let config = ExecutorConfig::from_env()
-    .node_name("talker");
-let mut executor = Executor::open(&config)?;
-```
+## By deployment scenario
 
-Embedded examples cannot use `from_env()` — they get their configuration
-from `config.toml` (layer 1).
+| Scenario | `nros.toml` | Cargo features | Notes |
+|----------|-------------|----------------|-------|
+| Desktop (POSIX) | — (uses env) | `rmw-cffi, platform-posix, std` + zenoh dep | `ExecutorConfig::from_env()`; run zenohd locally |
+| QEMU bare-metal | `[[transport]]` ethernet ip/mac/gateway | `rmw-cffi, platform-bare-metal, ros-humble` + zenoh | TAP/slirp bridge |
+| FreeRTOS hardware | + `[node.rt]` | `…, platform-freertos, …` | `FREERTOS_DIR`/`LWIP_DIR` |
+| ESP32 WiFi | `[[transport]] kind="wifi"` ssid/password | `…, platform-bare-metal, …` | `SSID`/`PASSWORD` build env |
+| Zephyr module | (Kconfig overlay, not `nros.toml`) | (Kconfig → features) | `prj-<rmw>.conf` |
+| Minimal RAM (XRCE serial) | `[[transport]] kind="serial"` baudrate | `…` + xrce dep | `XRCE_*` buffer tuning |
 
-## Configuration by Deployment Scenario
-
-### Desktop development (POSIX)
-
-```
-Layer 4: NROS_LOCATOR=tcp/127.0.0.1:7447  (shell export or .env)
-Layer 3: nros features = ["rmw-cffi", "platform-posix", "std"]
-         + nros-rmw-zenoh dep
-```
-
-No config.toml needed. Start zenohd locally and set environment variables.
-
-### QEMU bare-metal testing
-
-```
-Layer 1: config.toml with ip/mac/gateway for TAP bridge
-Layer 2: (defaults are fine)
-Layer 3: nros features = ["rmw-cffi", "platform-bare-metal", "ros-humble"]
-         + nros-rmw-zenoh dep
-```
-
-### FreeRTOS on real hardware
-
-```
-Layer 1: config.toml with your board's IP, MAC, zenohd address
-Layer 2: FREERTOS_DIR, LWIP_DIR (if not using `just freertos setup`)
-Layer 3: nros features = ["rmw-cffi", "platform-freertos", "ros-humble"]
-         + nros-rmw-zenoh dep
-```
-
-### ESP32 with WiFi
-
-```
-Layer 1: config.toml with [wifi] ssid/password and [zenoh] locator
-Layer 2: SSID, PASSWORD (for build-time WiFi config)
-Layer 3: nros features = ["rmw-cffi", "platform-bare-metal", "ros-humble"]
-         + nros-rmw-zenoh dep
-```
-
-### Zephyr module
-
-```
-Layer 1: Kconfig (CONFIG_NROS_RMW_ZENOH=y, CONFIG_NROS_CPP_API=y)
-Layer 2: (managed by west/cmake)
-Layer 3: (managed by Kconfig → Cargo features)
-```
-
-### Minimal RAM (XRCE-DDS over serial)
-
-```
-Layer 1: config.toml with [serial] baudrate
-Layer 2: XRCE_TRANSPORT_MTU=512, XRCE_BUFFER_SIZE=512
-Layer 3: nros features = ["rmw-cffi", "platform-bare-metal", "ros-humble"]
-         + nros-rmw-xrce-cffi dep
-```
-
-## Precedence
-
-When the same setting can be specified at multiple layers:
-
-1. **Shell export** overrides `.env`
-2. **`.env`** overrides justfile defaults
-3. **config.toml** is the definitive source for embedded hardware settings
-4. **Cargo feature defaults** (`default-features = true` gives `std` only)
-
-## `.env` Setup
+## `.env`
 
 ```bash
-cp .env.example .env
-# Edit .env — uncomment and adjust values as needed
+cp .env.example .env   # uncomment + adjust; gitignored; auto-loaded by just + direnv
 ```
-
-The `.env` file is:
-- Auto-loaded by justfile recipes
-- Auto-loaded by direnv (via `.envrc`)
-- Gitignored — safe for local overrides
