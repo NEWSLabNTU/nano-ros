@@ -24,7 +24,7 @@ static COUNT: AtomicI32 = AtomicI32::new(0);
 static DONE: AtomicBool = AtomicBool::new(false);
 
 fn main() {
-    run(Config::from_toml(include_str!("../config.toml")), |config| {
+    run(Config::from_toml(include_str!("../nros.toml")), |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("talker");
