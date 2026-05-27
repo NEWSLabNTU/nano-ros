@@ -880,6 +880,18 @@ into submodules if it helps — their call, not a mandated step.
   `create_node_on` session assignment (this *is* the old K.5 by-id
   binding). `build.rmw` becomes a *set* for in-binary cross-RMW;
   `nros check` warns when a target can't link the set.
+  *Landed:* the RMW-set feasibility warning (`nros check`); the SESSION_SPECS
+  emission (`Executor::open_multi`, ≥2-transport bridge plans); and
+  **multi-domain session opening** — `PlanTransport` gained `domain` and
+  SESSION_SPECS now emits `SessionSpec::new(rmw, locator).domain_id(d)`, so a
+  bridge opens same-rmw sessions on distinct domains. *Blocked (the per-node
+  routing half):* binding each node to its session needs the
+  `[[bridge]]`/`[[domain]]` → planner → plan chain — `PlanInstance`/`PlanNode`
+  carry no transport/session binding yet (nodes have `domain_id` only), so the
+  generator can't route `build_component_node` via `.rmw(session)`/the K.5
+  by-id binding. That mapping is planner work consuming root_config's
+  `BridgeSpec`/`SystemComponent.transport` (WP-A-coupled); the runtime
+  primitives (`create_node_on`, `SessionSpec.domain_id`) are already in place.
 
 #### WP-C — Platforms & cutover  *(sequential, after WP-A + WP-B; was 172.V + U)*
 
