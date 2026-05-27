@@ -39,11 +39,15 @@ extern crate std;
 extern crate alloc;
 
 pub(crate) mod config;
+pub mod persist;
 pub mod server;
 pub mod typed;
 pub mod types;
 
 // Re-export main types
+#[cfg(feature = "std")]
+pub use persist::FileParamStore;
+pub use persist::{NullParamStore, ParamStore, ParamStoreError};
 pub use server::{LegacyParameterBuilder, ParameterServer};
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,
