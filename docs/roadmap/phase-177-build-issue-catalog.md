@@ -881,9 +881,10 @@ passed.
   default domain, disjoint from 1..=232. Verified: config parses, the cyclone
   interop edit compiles.
 
-- [ ] **177.36 - Cyclone backend doesn't publish `ros_discovery_info` → stock
+- [x] **177.36 - Cyclone backend doesn't publish `ros_discovery_info` → stock
   ROS 2 graph/action introspection sees no node.** Owner: Phase 117
-  (**graph IMPLEMENTED + working 2026-05-27; one narrower follow-on open** — see
+  (**RESOLVED 2026-05-27 — graph + action-QoS fix → Cyclone↔ROS 2 action interop
+  works end-to-end** — see
   "Implemented" below). Found standing up `cyclonedds_ros2_interop`'s action test
   (`test_cyclonedds_action_nano_server_ros2_client`, landed `#[ignore]`d).
 
@@ -1022,16 +1023,24 @@ passed.
     status→`QOS_PROFILE_ACTION_STATUS_DEFAULT` (the latter already existed,
     unused). Verified non-regressing: nano↔nano cyclone action + zenoh action
     still PASS.
-  - **But that did NOT unlock `wait_for_server`** — and on reflection
-    `rcl_action_server_is_available` checks only the 3 *services*, not
-    feedback/status. So the standing puzzle: the 3 services connect at DDS, yet
-    `rmw_service_server_is_available` still returns false. That decision is
-    *inside* rmw_cyclonedds_cpp and the non-source diagnostics here are exhausted
-    (`ros2 topic info -v` hangs; only the `.so` is installed). **Next: build
-    `rmw_cyclonedds_cpp` from source with debug / RMW logging** to see why
-    is_available returns false despite the DDS-level connect. The QoS fix is
-    correct + landed regardless; the graph prerequisite is done. Action interop
-    test stays `#[ignore]`d on this rmw-internal puzzle.
+  - **RESOLVED — the QoS fix was in the wrong path; fixing the right one unlocked
+    it.** The first QoS edit hit `node.rs` (the typed-Rust action-server path),
+    but the C/raw-sized action server (what the example uses) creates its
+    feedback/status pubs in **`action.rs`** (`register_action_server_raw_sized`).
+    Those were still `BEST_EFFORT`. An rclpy probe confirmed: the fresh client
+    saw the node + 3 services + the 2 pubs in its graph, but the status/feedback
+    pubs reported `rel=BEST_EFFORT, dur=VOLATILE` and `server_is_ready=False`.
+    `rcl_action_server_is_available` **does** require the status publisher to be
+    matched (not just the 3 services) — and the best-effort status pub never
+    matched the stock client's RELIABLE+TRANSIENT_LOCAL status subscription.
+    Fixed the `action.rs` pubs (feedback→`QOS_PROFILE_DEFAULT`,
+    status→`QOS_PROFILE_ACTION_STATUS_DEFAULT`); the probe then flipped to
+    `server_is_ready=True at iter 0`, and
+    **`test_cyclonedds_action_nano_server_ros2_client` PASSES end-to-end**
+    (goal→feedback→result). Un-`#[ignore]`d. Verified non-regressing: native
+    Cyclone action C+C++ (nano↔nano) + zenoh action still PASS. **177.36 done:
+    Cyclone↔ROS 2 pub/sub + service + action interop all work** (graph publisher
+    + the action feedback/status QoS fix).
 
 - [x] **177.37 - parallelize the Zephyr native_sim Cyclone test groups via a
   COMPILE-TIME per-role-set domain.** Owner: test-harness (landed 2026-05-27).

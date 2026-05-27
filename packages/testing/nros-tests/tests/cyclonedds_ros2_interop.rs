@@ -6,10 +6,10 @@
 //! `ROS_DOMAIN_ID` and check they exchange data over RTPS/SPDP — the test
 //! analogue of `rmw_interop.rs` (zenoh ↔ ROS 2) and `xrce_ros2_interop.rs`.
 //!
-//! ## Status (2026-05-27): all three functional tests pass.
+//! ## Status (2026-05-27): all functional tests pass — pub/sub, service, action.
 //!
-//! 117.12 (stock-RMW Cyclone interop) is done for pub/sub (both directions) and
-//! services — re-verified here against ROS 2 humble + `rmw_cyclonedds_cpp`:
+//! Stock-RMW Cyclone interop is done for pub/sub (both directions), services, and
+//! actions (117.12 + 177.36) — verified against ROS 2 humble + `rmw_cyclonedds_cpp`:
 //! - **`nano_to_ros2_pubsub`** — nano-ros Cyclone talker → stock `ros2 topic
 //!   echo`: **PASSES** (un-`#[ignore]`d). Gated on `require_ros2_cyclonedds()`,
 //!   so it skips cleanly without ROS 2.
@@ -218,18 +218,13 @@ fn test_cyclonedds_service_nano_server_ros2_client() {
 /// "{order: 5}"` against the native Cyclone Fibonacci action server. Fibonacci(5)
 /// → sequence `[0, 1, 1, 2, 3, 5]`.
 ///
-/// `#[ignore]`d — surfaces a tracked gap (177.36; runnable with `--run-ignored
-/// all`). Diagnosed 2026-05-27: the nano Cyclone action server boots, and its
-/// five `_action/*` sub-endpoints DO exist under the correct stock names (visible
-/// with `ros2 {topic,service} list --include-hidden-*`). But the nano node never
-/// appears in `ros2 node list` and `/ros_discovery_info` has no publisher, so
-/// stock `rmw_cyclonedds_cpp` associates the endpoints with **no node** →
-/// `ros2 action info` = 0 servers and `wait_for_server` never completes. The gap
-/// is the rmw node-graph announcement (`ParticipantEntitiesInfo` on
-/// `ros_discovery_info`), not endpoint naming. Pub/sub + service interop match at
-/// the endpoint level and are unaffected.
+/// **PASSES** (177.36). Two pieces unlocked it: the backend publishes
+/// `ros_discovery_info` so stock ROS 2 sees the node + action server, and the
+/// action server's feedback/status pubs now use the ROS 2 action QoS
+/// (status=RELIABLE+TRANSIENT_LOCAL) so the client's status subscription matches
+/// — `rcl_action_server_is_available` requires that, so best-effort never
+/// completed `wait_for_server`.
 #[test]
-#[ignore = "177.36: graph lands (backend publishes /ros_discovery_info) — `ros2 node list`/`node info`/`action info` all show the full action server, verified incl. late-join (fresh daemon). But `ros2 action send_goal`'s wait_for_server still returns not-available via the C rmw_service_server_is_available on the action's 3 services, despite the graph showing them — needs rmw_cyclonedds source-level debugging to localize (which service, QoS vs discovery-timing). Graph/durability/types ruled out. Pub/sub + single-service interop unaffected. See 177.36."]
 fn test_cyclonedds_action_nano_server_ros2_client() {
     if !require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");

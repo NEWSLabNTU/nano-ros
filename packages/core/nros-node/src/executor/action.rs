@@ -130,7 +130,7 @@ impl Executor {
             TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
         let feedback_publisher = self
             .session
-            .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
+            .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
@@ -142,7 +142,10 @@ impl Executor {
         .with_domain(0);
         let status_publisher = self
             .session
-            .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
+            .create_publisher(
+                &status_topic,
+                QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
+            )
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let server = ActionServer {
@@ -598,10 +601,13 @@ impl Executor {
                     .create_service_server(&get_result_info)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
+                    .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
+                    .create_publisher(
+                        &status_topic,
+                        QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
+                    )
                     .map_err(|_| NodeError::ActionCreationFailed)?,
             )
         };
