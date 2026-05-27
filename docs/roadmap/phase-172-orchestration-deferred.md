@@ -205,11 +205,18 @@ example migration (K), then the audit/docs (N).
         `NROS_APP_CONFIG` from a converted file. Full per-platform cross-build
         rides the K.6 `build-all`. (Board `build.rs` needed no change — they read
         `.cargo/config.toml` only.)
-  - [ ] **172.K.4 — planned-mode parity (submodule `colcon-nano-ros`).**
-        `PlanTransport` gains `id` + wifi `ssid`/`password`; `TransportKind::Wifi`;
-        per-instance `transport` binding in `SystemConfig`/planner; generator
-        emits `SESSION_SPECS` tagged by id + wifi setters in
-        `apply_transport_config`.
+  - [x] **172.K.4 — planned-mode parity (submodule `colcon-nano-ros`).** DONE
+        2026-05-27 (`ea695e3` on colcon-nano-ros main; superproject pointer
+        bumped). `PlanTransport` gained `id` + wifi `ssid`/`password`;
+        `TransportKind::Wifi` (+`cargo_feature "wifi"`); `validate_transports`
+        Wifi kind + ssid/password=wifi-only; generator emits
+        `c.set_ssid`/`c.set_password` in `apply_transport_config` (matching the
+        new no-op-default `BoardTransportConfig::{set_ssid,set_password}`
+        superproject setters); `SystemComponent` gained `transport: Option<String>`
+        carrying the per-instance bind through system config → plan. Additive +
+        serde-default (existing plans round-trip). 47 lib + all integration tests
+        green. The full `SESSION_SPECS`-by-id wiring is the K.5 runtime step;
+        K.4 lands the schema + generator + the binding field.
   - [ ] **172.K.5 — runtime `create_node_on`-by-id.** Bind a node to a session
         by transport `id` (not just `rmw`); only required when two transports
         share an `rmw` — deferrable until a same-rmw multi-transport build exists.
