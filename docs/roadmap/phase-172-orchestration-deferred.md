@@ -912,6 +912,22 @@ steps are inherently ordered (templates → migrate → delete). Files:
   ref). Done when `grep` shows zero references to the deleted surfaces,
   `just ci` is green, and the three sample systems deploy from one root
   file.
+  *In progress:* the `orchestration_e2e` fixture now carries a root
+  `nros.toml` (`[workspace]`/`[system]`/`[deploy.native]`) and a
+  `deploy_native_self_from_root_nros_toml` e2e proves the **config-unification
+  half** — the whole `self` deploy *resolves* from one root file (default →
+  deploy → system, pin, var-set) via `nros deploy`. **Blocker for the real
+  build + the deletion:** `nros deploy` does **not** yet collect component
+  source metadata — `emit_entry_lib` calls `metadata::run` with an empty list
+  and no auto-extraction, so the metadata→plan step fails
+  `missing-source-metadata`. Wiring metadata collection into deploy (run the
+  172.E `build_metadata` driver per `[system].components` entry, or add a
+  `--metadata` / cached-artifact input) is the gating WP-A/172.E follow-up;
+  until it lands the deploy-driven build + the `render_main`/old-flag deletion
+  stay blocked. The native `self` build path itself is already proven
+  end-to-end by `fixture_workspace_plans_checks_and_builds_generated_package`
+  (metadata→plan→entry lib→boot) — only the deploy-driven metadata step is
+  missing.
 
 **Re-evaluated under the model:** **172.K.7** (multi-homing
 `[[transport]].interfaces`) is transport-schema work orthogonal to
