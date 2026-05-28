@@ -301,11 +301,13 @@ function(nros_generate_interfaces target)
   endif()
 
   # ---- Run codegen at configure time ----
+  # Phase 196.1 — the codegen CLI is the `nros codegen` subcommand (Phase 195
+  # folded the standalone nros-codegen binary into it); invoke it as such.
   if(_ARG_LANGUAGE STREQUAL "CPP")
-    set(_codegen_cmd "${_NROS_ZEPHYR_CODEGEN_TOOL}" --language cpp --args-file "${_args_file}")
+    set(_codegen_cmd "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --language cpp --args-file "${_args_file}")
     message(STATUS "Generating nros C++ interfaces for ${target}")
   else()
-    set(_codegen_cmd "${_NROS_ZEPHYR_CODEGEN_TOOL}" --args-file "${_args_file}")
+    set(_codegen_cmd "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --args-file "${_args_file}")
     message(STATUS "Generating nros C interfaces for ${target}")
   endif()
 
