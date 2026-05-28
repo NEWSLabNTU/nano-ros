@@ -112,6 +112,54 @@ west build -b s32z270dc2_rtu0_r52@D \
     nano-ros/examples/zephyr-s32z-cyclonedds
 ```
 
+## 6. Run on a remote / Corellium AVH FVP (route-safe)
+
+The ARM FVP simulator is licence-gated — nano-ros never bundles it
+(Phase 187: FVP is never hosted/fetched/built). Bring your own: a local
+`FVP_BaseR_AEMv8R` (Step 2) or a hosted device such as **Corellium AVH**,
+which exposes the device over an OpenVPN tunnel. nano-ros ships only the
+load + monitor glue (`fvp/` scripts); the run flow is standalone, not yet
+wired into the `nros` CLI.
+
+Corellium AVH gives you a `.ovpn` + a `debug_accelerator` binary; place them
+in `fvp/`. The device is reachable at a fixed IP (e.g. `10.11.1.8`) with the
+gdb stub on `:4000` and the UART console on `:2000`.
+
+**Route-safe VPN.** The tunnel must not clobber the host's default route.
+`fvp/start-fvp-vpn.sh` starts OpenVPN with `--route-nopull` (ignore *every*
+server-pushed route, incl. any `redirect-gateway`) and then adds **only** the
+device subnet via the tap interface — the host default route is never touched:
+
+```bash
+sudo bash fvp/start-fvp-vpn.sh        # brings up fvptap0, adds <device>/22 route
+# verify: `ip route show default` is unchanged; `ping <device>` works
+sudo bash fvp/stop-fvp-vpn.sh         # tears down tunnel + the one route
+```
+
+If the tap address is not in `10.11.1.0/24`, set `FVP_SUBNET=<addr>/<mask>`
+(the Corellium tap typically lands on a `10.11.0.0/22`).
+
+**Attach + console.** `lldb` is optional; `gdb-multiarch` works against the
+AArch64 stub:
+
+```bash
+nc <device> 2000                                  # UART console (Zephyr shell)
+gdb-multiarch -ex "target remote <device>:4000"   # or: lldb --one-line "gdb-remote <device>:4000"
+```
+
+**Loading an image.** Corellium AVH boots its own device image; to run a
+nano-ros `zephyr.elf`, load it through the gdb stub (`target remote …` →
+`load` → `continue`) or swap the device image via the AVH console. Watch the
+boot + RMW traffic on the UART console (`:2000`).
+
+A healthy boot looks like (stock sample shown):
+
+```
+*** Booting Zephyr OS build zephyr-v3.5.0-… ***
+<inf> net_config: IPv4 address: 10.11.0.8
+Secondary CPU core 1/2/3 is up
+```
+
 ## Troubleshooting
 
 - **`zephyr-sdk` directory exists but the new toolchain isn't

@@ -299,6 +299,52 @@ consumer (ASI) runs neither, so the build fails:
 - [ ] (nano-ros) consider documenting the `-DIDLC_EXECUTABLE` contract for
       downstream Zephyr consumers in the integration guide (190.E neighbour)
 
+### 190.I — collapse the Zephyr board Cargo crates (version-spanning)
+
+**Files.** `packages/boards/nros-board-fvp-aemv8r-smp`,
+`packages/boards/nros-board-s32z270dc2-r52`, `examples/zephyr/.../*-aemv8r/`,
+`integrations/zephyr/`, `docs/reference/zephyr-armv8r-setup.md`.
+
+**Decision (2026-05-28).** Per `docs/design/board-bsp-integration-architecture.md`
+(feature/phase-172): *"Generic board crate not needed for Zephyr; Zephyr owns
+the board contract via DTS. Layer 2 collapses into Layer 3."* The two remaining
+Zephyr board **Cargo** crates (`nros-board-fvp-aemv8r-smp`,
+`nros-board-s32z270dc2-r52`) are the legacy Phase-117 per-board model and couple
+a board to a pinned Zephyr — a new Zephyr forces a crate rebuild. Retire them:
+the board is a Zephyr **DTS** board (vendor/upstream-owned), consumed via the
+west module; the single version-coupled touchpoint becomes
+`nros-platform-zephyr` (gated by `KERNEL_VERSION_NUMBER`, the 190.B/190.F
+pattern). New Zephyr ⇒ at most a version gate in `nros-platform-zephyr`, no
+board-crate churn.
+
+- [ ] Move each crate's `boards/*.conf` + `*.overlay` to the example/west-module
+      consumption path (DTS overlay + `prj.conf`), delete the Cargo crate +
+      its `src/{config,node,lib}.rs`
+- [ ] Drop the two crates from the workspace `Cargo.toml`; update
+      `book/src/concepts/platform-model.md` + `zephyr-armv8r-setup.md`
+- [ ] Confirm the FVP / s32z examples still build via the west module on ≥2
+      Zephyr versions (3.5.x FVP + 4.x), proving the version decoupling
+- [ ] Note: this is phase-172 (board-BSP) territory; tracked here because the
+      FVP bump surfaced the coupling. Coordinate if 172 lands first.
+
+### 190.J — FVP run/debug: standalone `fvp/` scripts + doc
+
+**Files.** `fvp/start-fvp-vpn.sh`, `fvp/stop-fvp-vpn.sh` (in the ASI repo),
+`docs/reference/zephyr-armv8r-setup.md` §6.
+
+**Decision (2026-05-28).** Keep the FVP run/debug flow as standalone helper
+scripts + a doc recipe, NOT wired into the `nros` CLI yet (revisit when the
+Phase-172 `nros run`/deploy model lands). FVP simulator stays BYO/licence-gated
+(Phase 187).
+
+- [x] Route-safe VPN scripts (`--route-nopull` + single device-subnet route;
+      host default route untouched) — validated against Corellium AVH:
+      `fvp_baser_aemv8r`, Zephyr 3.5.x, device `10.11.1.8`, gdb `:4000` +
+      console `:2000` reachable, default route intact
+- [x] Documented the run recipe (VPN + `gdb-multiarch`/`lldb` + `nc` console +
+      image-load) in `zephyr-armv8r-setup.md` §6
+- [ ] (later) fold into Phase-172 `nros run --board fvp-aemv8r` when that lands
+
 ## Acceptance
 
 - The ASI `actuation_module` (or an equivalent in-tree FVP full-C++ smoke)
