@@ -56,8 +56,7 @@ const TIMER1_IRQ_NUM: u8 = 9;
 static CALLBACK_FN: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
 
 /// Registered callback user data.
-static CALLBACK_CTX: AtomicPtr<core::ffi::c_void> =
-    AtomicPtr::new(core::ptr::null_mut());
+static CALLBACK_CTX: AtomicPtr<core::ffi::c_void> = AtomicPtr::new(core::ptr::null_mut());
 
 /// Tracks whether the timer hardware has been initialised so
 /// `destroy` can stop it idempotently.
@@ -146,7 +145,6 @@ pub extern "C" fn TIMER1() {
     // mutation path (true: `register_periodic` is the sole writer,
     // and it stores ctx before fn so the IRQ never sees a fn with
     // stale ctx).
-    let cb: extern "C" fn(*mut core::ffi::c_void) =
-        unsafe { core::mem::transmute(cb_raw) };
+    let cb: extern "C" fn(*mut core::ffi::c_void) = unsafe { core::mem::transmute(cb_raw) };
     cb(ctx);
 }

@@ -155,12 +155,14 @@ pub fn add_nros_platform_threadx_build(build: &mut cc::Build) {
     // .envrc), not a build.rs repo-root walk-up.
     println!("cargo:rerun-if-env-changed=NROS_PLATFORM_THREADX_SRC");
     println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
-    let src_dir = PathBuf::from(std::env::var("NROS_PLATFORM_THREADX_SRC").expect(
-        "NROS_PLATFORM_THREADX_SRC not set (direnv allow, or build via just)",
-    ));
-    let cffi_include = PathBuf::from(std::env::var("NROS_PLATFORM_CFFI_INCLUDE").expect(
-        "NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)",
-    ));
+    let src_dir = PathBuf::from(
+        std::env::var("NROS_PLATFORM_THREADX_SRC")
+            .expect("NROS_PLATFORM_THREADX_SRC not set (direnv allow, or build via just)"),
+    );
+    let cffi_include = PathBuf::from(
+        std::env::var("NROS_PLATFORM_CFFI_INCLUDE")
+            .expect("NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)"),
+    );
 
     build.include(&cffi_include);
     for f in ["platform.c", "net.c", "timer.c"] {
