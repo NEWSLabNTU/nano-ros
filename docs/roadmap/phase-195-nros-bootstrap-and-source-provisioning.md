@@ -237,14 +237,16 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
   - Then: drop the gitlink. **Installing the host binary alone is NOT sufficient**
         — the submodule is today a *build* dependency of nano-ros (the 92 hooks),
         not just the CLI's home.
-- [ ] **195.E — Refresh the `nros-cli` repo's README + CLI help text.** The
-      repo's `README.md` and several command help/`about` strings still describe
-      the old `colcon-nano-ros` / colcon-extension framing and predate the
-      current `nros` surface (`setup`, `deploy`, `codegen`, board resolution).
-      Rewrite the README around the `nros` CLI as the headline product (the
-      renamed `NEWSLabNTU/nros-cli` repo), audit every subcommand's clap
-      `about`/long-help for staleness, and drop dead references. Lands as
-      `nros-cli` (`packages/codegen`) submodule commits.
+- [x] **195.E — Refresh the `nros-cli` repo's README + CLI help text.** DONE
+      (`da75c37`). `README.md` rewritten around the `nros` CLI (was the
+      colcon-cargo-ros2 / PyPI doc): prebuilt install (`curl|sh install.sh`), the
+      **unified `nros setup <board>`** flow (board-scoped toolchains **+** source
+      provisioning from the SDK index — verified `qemu-arm-freertos` pulls
+      arm-gcc + qemu + FreeRTOS-Kernel + lwip), user-import vs contributor build
+      paths, the command list, and the "generic tool, no baked nano-ros layout"
+      principle. Top-level `--help` long_about gained a quick-start. (Also:
+      the failing colcon/python CI workflows were removed + ci.yaml rewritten
+      Rust-only — green; see the workflow commits.)
 
 ## Acceptance criteria
 
