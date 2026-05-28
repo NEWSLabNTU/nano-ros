@@ -231,29 +231,37 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         `nros-cli`). Removed the crate + its workspace-member entry; codegen
         workspace builds clean. Root cmake doc + `NanoRosBootstrapCodegen.cmake`
         comments de-stale'd (single canonical module).
-  - [ ] **Drop the gitlink — ATTEMPTED, BLOCKED (2026-05-29).** Rewired the
-        build to resolve a **prebuilt/installed `nros`** (cargo.sh resolver →
-        `$NROS`/PATH/`$NROS_HOME/bin`; the recipe `codegen=` literals) instead of
-        building from the submodule, and installed the `nros-v0.2.0` prebuilt.
-        **Verification failed:** the prebuilt `nros codegen resolve-deps` did not
-        wire `builtin_interfaces` as an `action_msgs` dependency → the generated
-        `action_msgs_msg_goal_info.h` couldn't find
-        `builtin_interfaces_msg_time.h` (nuttx C build). The submodule-built `nros`
-        resolves it fine — yet `cargo-nano-ros` (the resolve-deps engine) is
-        byte-identical between the prebuilt's commit and main, so the discrepancy
-        is unexplained (build-profile? a stale-config artifact?). **Reverted the
-        rewire** to keep the build working. **Conclusion:** full-drop needs the
-        prebuilt to *exactly* reproduce the workspace's codegen, which (a) is not
-        currently true and (b) would force a re-release of `nros` before any
-        codegen-affecting workspace change — impractical for active dev + kills
-        in-tree co-development. **Recommend the optional-submodule end-state**
-        instead: build prefers the prebuilt/installed `nros`, falls back to the
-        submodule when present — a fresh clone doesn't *need* it (the 195.D goal)
-        without losing co-dev. The submodule stays gitlinked for now.
-  - Residual (for the optional-submodule path): confirm the non-CLI tenants
-        (`cargo-nano-ros`, `rosidl-*`, `colcon-cargo-ros2`) aren't separately
-        needed in-tree, and the resolve-deps discrepancy above is understood
-        before trusting the prebuilt codegen path.
+  - [ ] **Drop the gitlink — blockers inspected (2026-05-29).** A first attempt
+        (rewire the build to a prebuilt/installed `nros`, install `nros-v0.2.0`)
+        appeared to fail on `action_msgs → builtin_interfaces` not resolving — but
+        **that was a self-inflicted stale-cache artifact**, not a real limitation:
+        a broken `~/.cargo/bin/nros` (a pre-`codegen`-merge cargo-install) was on
+        PATH, failed `resolve-deps`, and left a bad cmake cache. With it removed,
+        the prebuilt's `nros codegen resolve-deps action_msgs` correctly lists
+        `builtin_interfaces` + `unique_identifier_msgs`. **The codegen engine is
+        NOT a blocker** (and `cargo-nano-ros` is byte-identical da75c37→main). The
+        genuine blockers to a clean drop:
+    1. **Bundled-interfaces locator.** `cargo-nano-ros::bundled_interfaces_dir()`
+       finds the no-ROS fallback `.msg` defs by walking up from the binary to
+       `packages/codegen/interfaces` — an installed prebuilt can't. Moot when a
+       ROS env is sourced (`AMENT_PREFIX_PATH` provides them; the in-tree
+       `interfaces/` dir is in fact absent in this checkout), but a **no-ROS host**
+       would fail. Fix: embed the defs in the binary (`include_dir!`), ship them
+       in the release + locate via the install layout, or an `NROS_INTERFACES_DIR`
+       env.
+    2. **Build-flow.** 28 recipe/script sites + the POSIX root `CMakeLists`
+       Corrosion build `nros` from the submodule. Rewire them to a resolved
+       installed `nros` (cargo.sh resolver `$NROS`/PATH/`$NROS_HOME/bin` —
+       prototyped + reverted) and wire `just setup`/CI to install it (`install.sh`)
+       so the build finds it.
+    3. **Co-development** (accepted trade-off): no in-tree `nros` source ⇒
+       changing `nros` = edit the `nros-cli` repo → release / `cargo install --git`.
+       Re-cut a release tracking main + pin it in `[tool.nros]` before the drop.
+  - Path to drop: (1) embed/ship the bundled interfaces with the prebuilt; (2)
+        rewire the 28 sites + Corrosion to the resolved `nros`; (3) wire
+        setup/CI to install `nros`; (4) re-cut a main-tracking release + pin it;
+        (5) remove the gitlink. None are hard — the feared codegen mismatch was
+        a false alarm.
 - [x] **195.E — Refresh the `nros-cli` repo's README + CLI help text.** DONE
       (`da75c37`). `README.md` rewritten around the `nros` CLI (was the
       colcon-cargo-ros2 / PyPI doc): prebuilt install (`curl|sh install.sh`), the
