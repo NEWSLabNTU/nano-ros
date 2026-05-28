@@ -5,17 +5,28 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
-# Build zenohd from the pinned submodule (skipped if already built).
+# Provision zenohd (skipped if already present).
+#
+# Phase 187.6: a thin caller of `nros setup` — fetches the prebuilt zenohd from
+# the nano-ros-sdk Releases into build/zenohd/bin/ (or source-builds from the
+# index recipe on an unsupported host), then symlinks the flat
+# build/zenohd/zenohd path the harness + other recipes read. Version lives only
+# in nros-sdk-index.toml. Requires the nros CLI (`just setup base` builds it);
+# `just zenohd build` still source-builds from the submodule.
 [group("setup")]
 setup:
     #!/usr/bin/env bash
-    set -e
+    set -euo pipefail
     if [ -x build/zenohd/zenohd ]; then
-        echo "zenohd already built: build/zenohd/zenohd"
-        echo "To rebuild, run: just zenohd clean && just zenohd setup"
-    else
-        ./scripts/zenohd/build.sh
+        echo "zenohd present: build/zenohd/zenohd"
+        exit 0
     fi
+    source scripts/build/cargo.sh
+    nros="$(nros_cli_bin)"
+    "$nros" setup --tool zenohd --prefix "$(pwd)/build/zenohd" --index "$(pwd)/nros-sdk-index.toml"
+    # Bridge the store bin/ layout to the flat path consumers expect.
+    ln -sf bin/zenohd build/zenohd/zenohd
+    build/zenohd/zenohd --version 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^zenohd v' | tail -1 || true
 
 # Diagnose zenohd install status (read-only).
 [group("setup")]
