@@ -127,9 +127,12 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         `.sha256` from the nros-cli Releases (`nros-v<version>`), verifies, installs
         to `$NROS_HOME/bin`, prints PATH guidance. No cargo/just/checkout.
         (Activates once the first `nros-v*` release exists.)
-  - [ ] `scripts/bootstrap.sh`: offer the prebuilt path alongside the existing
-        rustup+just source path; default to prebuilt when a `dist` for the host
-        exists.
+  - [x] **`scripts/bootstrap.sh nros`** (DONE). A `nros` verb — the just-free
+        prebuilt route — runs the in-tree `packages/codegen/install.sh` (or
+        fetches it over the network) to install the prebuilt `nros`, *before*
+        `ensure_just` (no rustup/just/cargo). The existing `""`/`base`/`all`
+        verbs keep the contributor rustup+just+`just setup` source route. (The
+        download activates once the first `nros-v*` release exists.)
 - [x] **195.B — Data-driven `[source.*]` provisioning (Gap B). DONE
       (2026-05-29).** Mechanism + data + the `tools/setup.sh` consumer rewiring
       all landed; the index is the SSOT for source refs.
