@@ -1020,10 +1020,182 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
     }
 }
 
+/// An executor-borrowing node handle — `exec.node(id)`. Hosts the
+/// callback-registering entity builders (subscriptions register into the
+/// executor's dispatch arena). It is a **short-lived `&mut Executor` borrow**:
+/// create entities, then drop it before acquiring the next node handle; entity
+/// handles (`HandleId`, publishers) are owned and outlive it (no `Arc` — see
+/// `docs/design/entity-api-tiers.md` §Borrow model).
+pub struct NodeCtx<'e> {
+    executor: &'e mut super::spin::Executor,
+    node_id: super::node_record::NodeId,
+}
+
+impl<'e> NodeCtx<'e> {
+    pub(crate) fn new(
+        executor: &'e mut super::spin::Executor,
+        node_id: super::node_record::NodeId,
+    ) -> Self {
+        Self { executor, node_id }
+    }
+
+    /// Subscription builder (the `clone` tier). Pick a mode with `.typed::<M>()`
+    /// or `.generic(type, hash)`, set knobs (`.qos`), then `.build(callback)`.
+    pub fn subscription<'t>(&mut self, topic: &'t str) -> SubscriptionBuilder<'_, 'e, 't> {
+        SubscriptionBuilder {
+            ctx: self,
+            topic,
+            qos: QosSettings::default(),
+        }
+    }
+
+    /// Convenient typed subscription (the `fork` tier — rclcpp/rclrs shape).
+    /// Sugar over the builder with default QoS + buffer.
+    pub fn create_subscription<M, F>(
+        &mut self,
+        topic: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+    {
+        self.executor
+            .register_subscription_buffered_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+                self.node_id,
+                topic,
+                QosSettings::default(),
+                callback,
+            )
+    }
+
+    /// Convenient generic (type-erased) subscription — rclcpp `create_generic_*`.
+    pub fn create_generic_subscription<F>(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut(&[u8]) + 'static,
+    {
+        self.executor
+            .register_subscription_buffered_raw_on::<F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+                self.node_id,
+                topic,
+                type_name,
+                type_hash,
+                QosSettings::default(),
+                callback,
+            )
+    }
+}
+
+/// Subscription builder — `node.subscription(topic)`.
+pub struct SubscriptionBuilder<'c, 'e, 't> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    qos: QosSettings,
+}
+
+impl<'c, 'e, 't> SubscriptionBuilder<'c, 'e, 't> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    /// Typed subscription for a ROS message `M`.
+    pub fn typed<M: RosMessage + 'static>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, M> {
+        TypedSubscriptionBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Generic (type-erased) subscription — raw CDR bytes to the callback.
+    pub fn generic(
+        self,
+        type_name: &'t str,
+        type_hash: &'t str,
+    ) -> GenericSubscriptionBuilder<'c, 'e, 't> {
+        GenericSubscriptionBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            type_name,
+            type_hash,
+            qos: self.qos,
+        }
+    }
+}
+
+/// Typed subscription builder (`.typed::<M>()`).
+pub struct TypedSubscriptionBuilder<'c, 'e, 't, M> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    qos: QosSettings,
+    _phantom: PhantomData<M>,
+}
+
+impl<'c, 'e, 't, M: RosMessage + 'static> TypedSubscriptionBuilder<'c, 'e, 't, M> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build<F: FnMut(&M) + 'static>(
+        self,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError> {
+        self.ctx
+            .executor
+            .register_subscription_buffered_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+                self.ctx.node_id,
+                self.topic,
+                self.qos,
+                callback,
+            )
+    }
+}
+
+/// Generic (type-erased) subscription builder (`.generic(type, hash)`).
+pub struct GenericSubscriptionBuilder<'c, 'e, 't> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    type_name: &'t str,
+    type_hash: &'t str,
+    qos: QosSettings,
+}
+
+impl<'c, 'e, 't> GenericSubscriptionBuilder<'c, 'e, 't> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build<F: FnMut(&[u8]) + 'static>(
+        self,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError> {
+        self.ctx
+            .executor
+            .register_subscription_buffered_raw_on::<F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+                self.ctx.node_id,
+                self.topic,
+                self.type_name,
+                self.type_hash,
+                self.qos,
+                callback,
+            )
+    }
+}
+
 #[cfg(test)]
 mod builder_tests {
     use super::*;
-    use crate::mock::MockSession;
+    use crate::{executor::Executor, mock::MockSession};
     use nros_core::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Serialize};
 
     struct TestMsg;
@@ -1066,5 +1238,34 @@ mod builder_tests {
             .generic("std_msgs/msg/Int32", "hash")
             .build()
             .expect("generic publisher builds");
+    }
+
+    #[test]
+    fn subscription_builder_and_convenient() {
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        let id = exec.node_builder("n").build().expect("node");
+
+        // builder: typed
+        let _h = exec
+            .node_mut(id)
+            .subscription("/chatter")
+            .typed::<TestMsg>()
+            .qos(QosSettings::default().keep_last(5))
+            .build(|_m: &TestMsg| {})
+            .expect("typed subscription builds");
+
+        // builder: generic (raw bytes)
+        let _g = exec
+            .node_mut(id)
+            .subscription("/raw")
+            .generic("std_msgs/msg/Int32", "hash")
+            .build(|_b: &[u8]| {})
+            .expect("generic subscription builds");
+
+        // convenient (fork tier) — one node-ctx at a time, re-acquired
+        let _c = exec
+            .node_mut(id)
+            .create_subscription::<TestMsg, _>("/conv", |_m: &TestMsg| {})
+            .expect("convenient typed subscription builds");
     }
 }

@@ -1431,6 +1431,14 @@ impl Executor {
         self.nodes.get(id.index())
     }
 
+    /// Phase 189.M1 — an executor-borrowing node handle for the entity builders
+    /// (`exec.node_mut(id).subscription(t)...` / `.create_subscription(...)`).
+    /// A short-lived `&mut Executor` borrow — use one at a time; entity handles
+    /// are owned and outlive it (see `NodeCtx`).
+    pub fn node_mut(&mut self, id: super::node_record::NodeId) -> super::node::NodeCtx<'_> {
+        super::node::NodeCtx::new(self, id)
+    }
+
     /// Phase 104.C.3 — resolve a session-slot index to a mutable
     /// session reference. Slot 0 = the Executor's primary session;
     /// slots 1..=N = the `extra_sessions` vec opened by
