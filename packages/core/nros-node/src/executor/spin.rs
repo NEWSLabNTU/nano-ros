@@ -3172,7 +3172,7 @@ impl Executor {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.register_subscription_raw_with_qos_sized_inner::<RX_BUF>(
+        self.add_arena_subscription_c_callback::<RX_BUF>(
             None, topic_name, type_name, type_hash, qos, callback, context,
         )
     }
@@ -3192,7 +3192,7 @@ impl Executor {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.register_subscription_raw_with_qos_sized_inner::<RX_BUF>(
+        self.add_arena_subscription_c_callback::<RX_BUF>(
             Some(node_id),
             topic_name,
             type_name,
@@ -3203,8 +3203,14 @@ impl Executor {
         )
     }
 
+    /// The kept C-FFI subscription core (Phase 189.M2.b): registers a
+    /// raw `RawSubscriptionCallback` fn-ptr + `context` against an
+    /// optional node's session. The Rust ergonomic surface is the
+    /// `node.subscription(t)` builder (closures); this is the single
+    /// primitive the `nros-c` thin wrapper lowers to. `node_id == None`
+    /// is the legacy single-node path.
     #[allow(clippy::too_many_arguments)]
-    fn register_subscription_raw_with_qos_sized_inner<const RX_BUF: usize>(
+    pub(crate) fn add_arena_subscription_c_callback<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,

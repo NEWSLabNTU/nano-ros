@@ -757,26 +757,18 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
         } else {
             (*subscription_ref.node).node_id
         };
-        let result = if node_raw_id != 0 {
-            rust_exec.register_subscription_raw_with_qos_sized_on::<MESSAGE_BUFFER_SIZE>(
-                nros_node::executor::NodeId::from_raw(node_raw_id),
-                topic_str,
-                type_str,
-                type_hash_str,
-                qos,
-                callback,
-                context,
-            )
-        } else {
-            rust_exec.register_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>(
-                topic_str,
-                type_str,
-                type_hash_str,
-                qos,
-                callback,
-                context,
-            )
-        };
+        // Phase 189.M2.b — the single kept C-FFI subscription core.
+        let node_id =
+            (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
+        let result = rust_exec.add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
+            node_id,
+            topic_str,
+            type_str,
+            type_hash_str,
+            qos,
+            callback,
+            context,
+        );
 
         match result {
             Ok(handle_id) => {
