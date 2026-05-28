@@ -34,7 +34,7 @@ fn main() {
              /// Service request buffer size (set via ZPICO_SERVICE_BUFFER_SIZE, default 1024).\n\
              pub const SERVICE_BUFFER_SIZE: usize = {svc_size};\n\
              /// Default service client RPC timeout in milliseconds\n\
-             /// (set via NROS_SERVICE_TIMEOUT_MS, default 10000).\n\
+             /// (set via NROS_SERVICE_TIMEOUT_MS, default 30000).\n\
              pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = {service_timeout_ms};\n\
              /// Maximum key expression string size for topic/service names\n\
              /// (set via NROS_KEYEXPR_STRING_SIZE, default 256).\n\

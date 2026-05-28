@@ -42,7 +42,8 @@ if [ -z "$DOWNLOAD_URL" ]; then
     exit 1
 fi
 echo "Downloading $DOWNLOAD_URL..."
-ZIPFILE="/tmp/verus-${PLATFORM}.zip"
+# Phase 192.4 — honor TMPDIR instead of hardcoding /tmp.
+ZIPFILE="${TMPDIR:-/tmp}/verus-${PLATFORM}.zip"
 curl -fsSL "$DOWNLOAD_URL" -o "$ZIPFILE"
 # Extract to tools/ (zip contains verus-<platform>/ directory)
 TMPDIR=$(mktemp -d)

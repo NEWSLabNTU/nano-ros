@@ -114,9 +114,19 @@ Backends bake values the zenoh path makes tunable; defaults even disagree.
 - `scripts/qemu/setup-network.sh:47-51` — bridge name/IP/subnet → `NROS_QEMU_*`
 - `scripts/setup-verus.sh:45` — `/tmp/verus-*.zip` → `${TMPDIR:-/tmp}` / project `tmp/`
 
-- [ ] C service timeout reads `NROS_SERVICE_TIMEOUT_MS`; default matches zenoh.
-- [ ] Cyclone runtime profile + match timeouts tunable without recompiling.
-- [ ] QEMU bridge subnet overridable (CI subnet-collision safe).
+- [x] C service timeout reads `NROS_SERVICE_TIMEOUT_MS`; default matches zenoh.
+  nros-c `build.rs` bakes `SERVICE_DEFAULT_TIMEOUT_MS` from the env var (default
+  `30000`, same as `nros-rmw-zenoh/build.rs`); `service.rs` const points at it.
+  Fixed the stale "default 10000" comments in the zenoh path (code was already
+  `30_000`).
+- [x] Cyclone runtime profile + match timeouts tunable without recompiling.
+  `session.cpp` honors a user `CYCLONEDDS_URI` (inline XML / `file://`) over the
+  baked embedded profile; `service.cpp` reads `NROS_CYCLONE_MATCH_TIMEOUT_MS`
+  (5000) + `NROS_CYCLONE_MATCH_POLL_MS` (5) via an embedded-safe `env_u64`
+  helper (no function-local statics).
+- [x] QEMU bridge subnet overridable (CI subnet-collision safe).
+  `setup-network.sh` reads `NROS_QEMU_{BRIDGE,TAP_PREFIX,HOST_IP,NETMASK,NUM_TAPS}`.
+  `setup-verus.sh` zip path honors `${TMPDIR:-/tmp}`.
 
 ### 192.5 — [P3] Name magic numbers / replace hand-alignment
 - `packages/core/nros-cpp/src/lib.rs:596,598,728,730,829,832` — `[u8; 64]` `name`

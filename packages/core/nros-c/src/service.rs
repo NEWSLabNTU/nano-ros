@@ -733,7 +733,11 @@ impl Default for ServiceServerInternal {
 /// `nros_client_call` reads this from `ServiceClientInternal.timeout_ms`,
 /// which is initialised to this value by `nros_client_init` and can be
 /// changed at any time via `nros_client_set_timeout`.
-const NROS_DEFAULT_SERVICE_TIMEOUT_MS: u32 = 5000;
+///
+/// Phase 192.4 — baked from `NROS_SERVICE_TIMEOUT_MS` at build time (default
+/// 30000), the same env var and default the zenoh backend uses, so the two
+/// RMW paths no longer disagree.
+const NROS_DEFAULT_SERVICE_TIMEOUT_MS: u32 = crate::config::SERVICE_DEFAULT_TIMEOUT_MS;
 
 /// Service-client response callback type (Phase 82).
 ///
@@ -2176,7 +2180,7 @@ mod verification {
 
         client.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
         client._internal.executor_ptr = &mut executor as *mut _ as *mut core::ffi::c_void;
-        client._internal.timeout_ms = 5000;
+        client._internal.timeout_ms = NROS_DEFAULT_SERVICE_TIMEOUT_MS;
 
         let req = [0u8; 8];
         let mut resp = [0u8; 8];

@@ -135,7 +135,17 @@ nros_rmw_ret_t session_open(const char* /*locator*/, uint8_t /*mode*/, uint32_t 
     }
 
 #if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) || defined(CONFIG_BOARD_NATIVE_SIM)
-    dds_entity_t domain = dds_create_domain(domain_id, kEmbeddedCycloneConfig);
+    // Phase 192.4 — honor a user-supplied CYCLONEDDS_URI (inline XML or
+    // `file://` ref) so the baked embedded runtime profile (buffer/stack
+    // sizes, MaxAutoParticipantIndex, the 127.0.0.1 peer) is overridable
+    // without recompiling. Falls back to the built-in profile when unset
+    // (FreeRTOS/ThreadX have no env, so getenv returns null there). The
+    // hosted POSIX path below creates the participant directly and already
+    // honors CYCLONEDDS_URI via Cyclone's own config loader.
+    const char* user_uri = std::getenv("CYCLONEDDS_URI");
+    const char* cyc_config =
+        (user_uri != nullptr && user_uri[0] != '\0') ? user_uri : kEmbeddedCycloneConfig;
+    dds_entity_t domain = dds_create_domain(domain_id, cyc_config);
     if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
         free_session_state(state);
         return NROS_RMW_RET_ERROR;
