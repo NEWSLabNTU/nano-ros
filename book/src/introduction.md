@@ -4,13 +4,61 @@ nano-ros is a lightweight ROS 2 client library for embedded real-time systems.
 It runs on bare-metal microcontrollers, FreeRTOS, NuttX, ThreadX, and Zephyr,
 as well as Linux and macOS. The entire core stack is `no_std` compatible.
 
+```mermaid
+flowchart TB
+    App["<b>Application</b><br/>Rust / C / C++ node code"]
+    Core["<b>nano-ros core</b><br/>Executor · Node · pub/sub · services · actions · CDR"]
+    RMW["<b>RMW backend</b><br/>Zenoh · XRCE-DDS · Cyclone DDS · custom"]
+    Plat["<b>Platform</b><br/>clock · heap · threads · sleep · sockets · libc"]
+    Wire(["ROS 2 / DDS / Zenoh wire"])
+    App --> Core --> RMW --> Plat
+    RMW -. wire-compatible .-> Wire
+```
+
+Four layers, swappable independently: the same node code runs over any RMW
+backend on any platform. Here is a complete Linux publisher — register a
+backend, open the executor, publish `std_msgs/Int32` on `/chatter` once a
+second:
+
+```rust
+use nros::prelude::*;
+use std_msgs::msg::Int32;
+
+fn main() {
+    // Pick the backend at compile time; this one line registers it.
+    nros_rmw_zenoh::register().unwrap();
+
+    let config = ExecutorConfig::new("tcp/127.0.0.1:7447").node_name("talker");
+    let mut executor: Executor = Executor::open(&config).unwrap();
+
+    let mut node = executor.create_node("talker").unwrap();
+    let publisher = node.create_publisher::<Int32>("/chatter").unwrap();
+
+    let mut count = 0i32;
+    executor
+        .register_timer(nros::TimerDuration::from_millis(1000), move || {
+            publisher.publish(&Int32 { data: count }).unwrap();
+            count += 1;
+        })
+        .unwrap();
+
+    executor.spin_blocking(SpinOptions::default()).unwrap();
+}
+```
+
+The same program in C and C++ is in the First Node guides:
+[Rust](./getting-started/first-node-rust.md) ·
+[C](./getting-started/first-node-c.md) ·
+[C++](./getting-started/first-node-cpp.md).
+
 ## Key Features
 
 - **Minimal stack** — three software layers (application, nano-ros,
   transport). Lean dependency tree, fast compile times.
-- **Dual middleware** — choose Zenoh (agent-less, direct peer
-  communication) or XRCE-DDS (agent-based) at compile time. Same
-  application code either way.
+- **Pluggable middleware** — choose Zenoh (agent-less, direct peer
+  communication), XRCE-DDS (agent-based), or Cyclone DDS (RTPS
+  wire-compatible with stock ROS 2) at compile time. Same application
+  code regardless of backend.
 - **Rust-first with C API** — the core is written in Rust for memory safety
   and ergonomics, with a thin C FFI (Foreign Function Interface) layer
   following rclc conventions.
@@ -79,9 +127,24 @@ Cargo feature flag or Zephyr Kconfig option.
 
 ## Project Status
 
-nano-ros is under active development. The Rust API, C API, Zenoh backend,
-XRCE-DDS backend, and all listed platforms are functional. See the platform
-chapters for current status of each target.
+nano-ros is under active development. Core capabilities are functional and
+exercised in CI; see the platform chapters for per-target detail.
+
+| Capability       | Status   |
+|------------------|----------|
+| Pub/Sub          | Complete |
+| Services         | Complete |
+| Actions          | Complete |
+| Parameters       | Complete |
+| ROS 2 interop    | Complete |
+| Zenoh backend    | Complete |
+| XRCE-DDS backend | Complete |
+| Cyclone DDS backend | Complete (native + embedded; some embedded action paths in progress) |
+| Zephyr support   | Complete |
+| QEMU bare-metal  | Complete |
+| C API            | Complete |
+| C++ API          | Complete |
+| Message codegen  | Complete |
 
 ## How This Book Is Organized
 
