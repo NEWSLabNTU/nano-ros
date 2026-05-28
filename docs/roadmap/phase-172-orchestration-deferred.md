@@ -70,6 +70,42 @@ checker, generator, and per-board templates this phase extends.
 **Subsumes.** Phase 116 (configuration redesign, archived). See *Why
 configuration lives here* below.
 
+## Milestones
+
+- [x] **M1 — Planning foundation** (Groups 1–4): config → `nros-plan.json` →
+      planner/checker → generated runtime features (L, M, J, K.1–K.6, N · B, C,
+      G · A, H, I · D, F).
+- [x] **M2 — Config consolidation:** `config.toml` retired into `nros.toml`;
+      **Cargo-style manifest fold** — one `nros.toml`, section-discriminated
+      (`[workspace]`/`[component]`/`[node]`), walk-up resolution,
+      `component_nros.toml` → `[component]` (W.1).
+- [x] **M3 — Two-form entry lib** (WP-B): compiled `lib<sys>.a`+header **or**
+      source crate+CMake; granular C ABI (`build_executor`/`register_all`/…) +
+      runtime `NrosConfig` override (param>env>baked); RMW-set feasibility check;
+      multi-domain `SESSION_SPECS`.
+- [x] **M4 — Deployment SSOT** (WP-A): one root `nros.toml`; `nros deploy`/`build
+      <name>` command-runner; `nros new` scaffolder; `nros doctor` vendor-pin
+      check; `metadata --build` auto-collection.
+- [x] **M5 — The flip** (WP-C): entry lib generalized to *every* non-bridge
+      platform; `render_main`/`EntryKind`-main + dead `SystemConfig` deleted; all
+      three "no-compat" replacements executed (generated-`main`, `--launch/
+      --system-plan` flags, per-package `system nros.toml`).
+- [x] **M6 — `self` proven end-to-end** (QEMU/native): `nros deploy native`
+      builds + boots from one root file.
+- [x] **M7 — vendor-module proven** (2026-05-28): `nros deploy zephyr-mod` drives
+      a real `west` cross-build → boots native_sim (data-plane TAP networking is
+      a runtime-env follow-up, not codegen).
+- [ ] **M8 — vendor-lib proven:** blocked on the license-gated NVIDIA SPE FSP
+      (template + dry-run landed, 172.V); unblocks on SDK install or a
+      non-NVIDIA vendor static lib.
+- [ ] **M9 — in-binary bridge routing** (172.K.5): per-node `create_node_on`
+      session/domain binding (the `nros check` warning guards it meanwhile).
+
+**Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
+independents (172.E sandbox, 172.K.7 multi-homing) can trail. The first-image
+toolchain/SDK-distribution work (former W.5) is **split out to Phase 185**
+(*Toolchain & SDK distribution*) — see below.
+
 ## Background
 
 Phase 126's "Deliberate deferrals" enumerated nine items (the original
@@ -1059,25 +1095,14 @@ the cheap fix landed, the rest are tracked here:
   (Zephyr/PX4/…) is shape-only. Prioritize one real vendor-module
   (Zephyr `west` or PX4-SITL) + one real vendor-lib link before claiming
   the three-ownership-model workflow is proven on hardware.
-- **W.5 — board-scoped first-image setup** (from the build/config/deploy study,
-  `docs/research/build-config-deploy-comparison.md`). `just setup` pulls **all**
-  platform SDKs (`third-party/` ≈ 7.4 GB, incl. a 2.7 GB QEMU *source* build) —
-  a workspace-developer action. A first-image *user* who wants one board pays
-  that whole cost, vs micro-ROS's board-scoped `create_firmware_ws.sh <board>`
-  (~0.5 GB) / a 14–22 MB Arduino lib. *To implement:* `nros setup <board>` /
-  `just setup board=<x>` that fetches only that target's SDK (e.g. FreeRTOS+lwIP
-  for a Nucleo) + a prebuilt/vendored QEMU instead of the source build. This is
-  the **largest first-image UX delta vs micro-ROS** — bigger than flash floor or
-  precompiled libs (both deliberate tradeoffs). The Phase 172 ownership model
-  scopes the *build*; setup/fetch is the missing scoping. **Designed** in
-  `docs/design/nros-setup-toolchain-management.md`: a first-class `nros setup
-  <board>` (no `just` needed) that fetches **prebuilt** toolchains/deps from a
-  versioned package index (Android `sdkmanager` / PlatformIO model — prebuilt
-  per host, board→package resolution, sha256-verified, shared store + lockfile,
-  license gates for NVIDIA/ARM-FVP), build-from-source only as fallback;
-  notably a **prebuilt QEMU** instead of the 2.7 GB source build. `just
-  <module> setup` stays the contributor/source path (today's per-platform
-  recipes already exist but clone+build from source + require `just`).
+- **W.5 — board-scoped first-image setup → split out to Phase 185.** The
+  toolchain/SDK-distribution work (the first-image UX delta: `just setup` pulls
+  all platform SDKs ≈ 7.4 GB incl. a 2.7 GB QEMU source build, vs a board-scoped
+  prebuilt fetch) is a distinct concern — *dependency/toolchain management +
+  distribution infra* (`nros setup`, a versioned package index + lockfile,
+  GitHub-Releases hosting, a CI bump→release gate), orthogonal to orchestration.
+  Tracked in **`docs/roadmap/phase-185-toolchain-sdk-distribution.md`**; designed
+  in `docs/design/nros-setup-toolchain-management.md`.
 
 Each work item is independently shippable. A work item is done when:
 
