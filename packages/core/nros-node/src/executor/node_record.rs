@@ -116,6 +116,14 @@ pub struct NodeBuilder<'a, 'cfg> {
     pub(crate) locator: Option<&'cfg str>,
     pub(crate) domain_id: Option<u32>,
     pub(crate) sched: Option<SchedContextId>,
+    /// Phase 172.K.5 — explicit session slot (index into the sessions opened
+    /// by `open_multi`: 0 = primary, N = `extra_sessions[N-1]`). When set,
+    /// `build()` binds the Node directly to this session and **bypasses** the
+    /// rmw-based `resolve_session_slot` — the planner/generator already knows
+    /// which `SESSION_SPECS` slot each node belongs to (e.g. its domain group),
+    /// so no rmw/domain inference is needed. `None` ⇒ the legacy rmw-resolved
+    /// slot.
+    pub(crate) session_idx: Option<u8>,
 }
 
 impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
@@ -142,6 +150,15 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
     /// Override the domain id for this Node's session.
     pub fn domain_id(mut self, domain_id: u32) -> Self {
         self.domain_id = Some(domain_id);
+        self
+    }
+
+    /// Phase 172.K.5 — bind this Node to an explicit session slot (index into
+    /// the sessions opened by [`Executor::open_multi`]: `0` = primary,
+    /// `N` = `extra_sessions[N-1]`). Bypasses the rmw-based session resolution
+    /// — the caller (generated multi-domain wiring) already knows the slot.
+    pub fn session_idx(mut self, idx: u8) -> Self {
+        self.session_idx = Some(idx);
         self
     }
 
@@ -294,11 +311,20 @@ impl<'a, 'cfg> NodeBuilder<'a, 'cfg> {
             loc_buf = Some(s);
         }
 
-        // Phase 104.C.3 — resolve session_idx. If no rmw was named,
-        // or the rmw name matches the implicit primary backend, use
-        // slot 0. Otherwise, open a fresh session via
-        // `CffiRmw::open_with_rmw` and stash it in `extra_sessions`.
-        let session_idx = self.resolve_session_slot()?;
+        // Phase 172.K.5 — an explicit `.session_idx(n)` binds the Node to a
+        // pre-opened `open_multi` session directly (validated against the
+        // opened set), bypassing rmw resolution. Otherwise (Phase 104.C.3)
+        // resolve by rmw: slot 0 for no/primary-matching rmw, else open/reuse
+        // an extra session.
+        let session_idx = match self.session_idx {
+            Some(idx) => {
+                if idx as usize > self.executor.extra_sessions.len() {
+                    return Err(NodeError::NodeTableFull);
+                }
+                idx
+            }
+            None => self.resolve_session_slot()?,
+        };
 
         let record = NodeRecord {
             name: name_buf,

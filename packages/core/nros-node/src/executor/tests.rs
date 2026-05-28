@@ -2240,3 +2240,28 @@ fn test_spin_once_does_not_credit_timeout_to_timer_delta() {
          timeout (1000 ms) to the timer delta.",
     );
 }
+
+// ====================================================================
+// Phase 172.K.5 — explicit per-node session-slot selection
+// ====================================================================
+
+/// `NodeBuilder::session_idx(n)` binds a Node directly to a pre-opened
+/// session slot (the multi-domain routing primitive), bypassing rmw
+/// resolution, and validates the slot against the opened set.
+#[test]
+fn node_builder_session_idx_binds_explicit_slot_and_validates() {
+    let mut executor: Executor = Executor::from_session(MockSession::new());
+    // Simulate `open_multi` having opened one extra session (slot 1).
+    assert!(executor.extra_sessions.push(MockSession::new()).is_ok());
+
+    // Slot 0 = primary.
+    let n0 = executor.node_builder("n0").session_idx(0).build().unwrap();
+    assert_eq!(executor.node(n0).unwrap().session_idx, 0);
+
+    // Slot 1 = the extra session.
+    let n1 = executor.node_builder("n1").session_idx(1).build().unwrap();
+    assert_eq!(executor.node(n1).unwrap().session_idx, 1);
+
+    // Out-of-range slot (only 0 + 1 exist) → error, not a silent bad bind.
+    assert!(executor.node_builder("bad").session_idx(2).build().is_err());
+}
