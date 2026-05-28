@@ -36,6 +36,8 @@ chosen platform.
 | `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
 | `--force` | overwrite an existing directory | off |
 
+**Deploy mode (Phase 172):** `nros new --deploy <name> --kind <self|vendor-lib|vendor-module> [--target <triple>] [--board <b>] [--from-launch <path>] [--from-profile <name>]` scaffolds a `[deploy.<name>]` target into the root `nros.toml` (and, for vendor kinds, a `deploy/<name>/` glue dir), instead of a project. `--from-launch` also seeds `[system].launch`; `--from-profile` forks an existing deploy target.
+
 ### `nros generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
 
 Generate ROS 2 message bindings from a `package.xml`. Rust users should
@@ -50,10 +52,14 @@ use the CMake integration.
 | `--ros-edition` | `humble`, `iron` | `humble` |
 | `--generate-config` | emit `.cargo/config.toml` patches (Rust only) | off |
 
-### `nros metadata <system_pkg> [--workspace <path>] [--out-dir <dir>] [--metadata <existing.json>]` — walk a colcon-style workspace under `<workspace>/src/`
+### `nros metadata <system_pkg> [--workspace <path>] [--out-dir <dir>] [--metadata <existing.json>] [--build [--nano-ros-workspace <path>]]` — walk a colcon-style workspace under `<workspace>/src/`
 collecting component source metadata into
 `build/<system_pkg>/nros/source-metadata.json`. The result feeds
-`nros plan`.
+`nros plan`. With `--build`, any declared component (`component_nros.toml`)
+missing its source-metadata is produced by the **metadata-mode build**:
+nano-ros compiles + runs the component against an in-memory recorder to
+emit the JSON (Phase 172.E driver). `--build` needs the nano-ros workspace
+(`--nano-ros-workspace` or `NROS_WORKSPACE`).
 
 ### `nros plan <system_pkg> <launch_file> [LAUNCH_ARGS...] [options]` — resolve a ROS 2 launch file (or a precomputed
 `play_launch_parser` `record.json`) plus the source metadata into a
@@ -72,20 +78,34 @@ generated-package layout.
 
 ### `nros check [plan]`
 
-Validate an `nros-plan.json` (default
-`build/nros/nros-plan.json`). Static checker — catches
-unconnected required topics, conflicting QoS, missing parameters,
-and SchedContext binding errors before `nros build` runs.
+Validate an `nros-plan.json` (default `build/nros/nros-plan.json`):
+static checker — catches unconnected required topics, conflicting QoS,
+missing parameters, and SchedContext binding errors before `nros build`
+runs. A `.toml` argument is instead validated as a **root `nros.toml`**
+(the workspace deployment SSOT) — `[system]`/`[deploy.<name>]` shape,
+default-deploy + system references, bridge endpoints, etc.
+
+### `nros deploy [name] [--config <root.toml>] [--nano-ros-workspace <path>] [--dry-run]`
+
+Run a `[deploy.<name>]` target from the root `nros.toml` (Phase 172). Omit
+`name` to use `[workspace].default`. The runner asserts the vendor pin →
+generates + builds the **entry lib** (the system wiring as a library) →
+runs the target's `build[]` then `package[]` shell steps, substituting
+`{self}` / `{entry_lib}` / `{entry_src}` / `{entry_header}` / `{board}` /
+`{target}` / `{vendor.dir}`. Three build-ownership kinds: `self` (nano-ros
+builds the binary), `vendor-lib` (links a vendor static lib), `vendor-module`
+(the vendor's `make`/`west`/`idf.py` compiles the entry source). `--dry-run`
+prints the resolved steps without generating/building. No per-vendor code
+lives in nano-ros — vendor knowledge is the user's `build[]`/`package[]` lines.
 
 ### `nros config show [--config <path>]` / `nros config check [--config <path>]`
 
-`show` parses the project's `config.toml` (and any Kconfig overlay
+`show` parses the project's `nros.toml` (and any Kconfig overlay
 on Zephyr) and pretty-prints it, plus reports any `ROS_DOMAIN_ID`
 env override.
 
-`check` validates `config.toml` syntactically and warns when
-`zenoh.locator` or `zenoh.domain_id` are missing. Exits non-zero on
-warnings.
+`check` validates `nros.toml` syntactically and warns when the
+locator or domain are missing. Exits non-zero on warnings.
 
 ### `nros build [--project <path>] [-- ...]`
 
@@ -99,6 +119,12 @@ Auto-detect the project flavor and delegate. Detection precedence:
 Trailing arguments after `--` forward verbatim to the underlying tool.
 Builds consume nano-ros via `add_subdirectory(<repo-root>)`
 — there is no install layout to find first.
+
+`nros build <name>` (in a workspace with a root `nros.toml`) is an alias
+for `nros deploy <name>`; bare `nros build` there builds
+`[workspace].default`. A component `nros.toml` (direct-mode `[node]`) is
+not a workspace root, so it falls through to the project-flavor autodetect
+above.
 
 ### `nros run [--project <path>] [--env <name>] [-- ...]`
 
