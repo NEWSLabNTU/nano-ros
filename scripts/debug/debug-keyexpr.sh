@@ -10,11 +10,11 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # Paths
 TALKER="$PROJECT_ROOT/target/release/talker"
 Z_SUB="$PROJECT_ROOT/packages/zpico/zpico-sys/zenoh-pico/build/examples/z_sub"
-LOCATOR="tcp/127.0.0.1:7447"
+LOCATOR="${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
 
 # Check dependencies
 if ! pgrep -x zenohd > /dev/null; then
-    echo "ERROR: zenohd not running. Start it with: zenohd --listen tcp/127.0.0.1:7447"
+    echo "ERROR: zenohd not running. Start it with: zenohd --listen ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
     exit 1
 fi
 

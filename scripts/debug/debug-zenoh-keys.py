@@ -14,7 +14,9 @@ def main():
     print("Opening Zenoh session in client mode...")
     config = zenoh.Config()
     config.insert_json5("mode", '"client"')
-    config.insert_json5("connect/endpoints", '["tcp/127.0.0.1:7447"]')
+    import os
+    _loc = os.environ.get("ZENOH_LOCATOR", "tcp/127.0.0.1:7447")
+    config.insert_json5("connect/endpoints", f'["{_loc}"]')
 
     session = zenoh.open(config)
     print(f"Session opened, ZID: {session.zid()}")

@@ -645,6 +645,6 @@ action-server:
 action-client:
     cd examples/native/rust/action-client && cargo run
 
-# Start zenohd router for native examples (port 7447)
+# Start zenohd router for native examples (override bind via $ZENOH_LOCATOR)
 zenohd:
-    build/zenohd/zenohd --listen tcp/127.0.0.1:7447 --no-multicast-scouting
+    build/zenohd/zenohd --listen {{ env_var_or_default("ZENOH_LOCATOR", "tcp/127.0.0.1:7447") }} --no-multicast-scouting
