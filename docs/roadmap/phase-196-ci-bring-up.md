@@ -131,19 +131,18 @@ once before being trusted:
       (each job currently re-installs the ~1 GB Zephyr SDK + west-updates from
       scratch; cache `scripts/zephyr/sdk` + the workspace).
 
-### 196.4 — [P2] Codify the CI provisioning conventions
-Write the bring-up patterns down so new workflows work first-try (a short
-`docs/development/ci-conventions.md` + reusable composite action / step
-snippets):
-- minimal submodule init (`git submodule update --init --recursive <paths>`),
-  never recursive-all (platform/RTOS submodules are large + fork-pinned);
-- ROS provisioning (jammy + `setup-ros` + `source` for AMENT-resolved codegen);
-- Python 3.12 via `uv` for the Zephyr 4.4 line;
-- runner OS choice (Humble ⇒ jammy `ubuntu-22.04`);
-- the `NROS_ZEPHYR_SKIP_XRCE_AGENT` knob + when RMW-specific host tools are
-  actually needed;
-- **the rule: a new workflow MUST be `workflow_dispatch`-validated on a branch
-  before its `paths:` make it fire on every push.**
+### 196.4 — [DONE] Codify the CI provisioning conventions
+- [x] **DONE.** `docs/development/ci-conventions.md` written: the "runner is a
+      fresh clone" model + eight conventions with copy-paste step snippets —
+      minimal submodule init (never recursive-all; *and* the don't-hand-init-what-
+      `nros setup`-provisions exception), ROS provisioning (jammy + `setup-ros` +
+      `source`), runner-OS-follows-distro (Humble ⇒ jammy), Python 3.12 via `uv`,
+      build-the-`nros`-CLI-from-source (published bin is stale), canonical
+      `nros codegen` invocation (196.2), `cancel-in-progress` concurrency (+ the
+      "cancelled = dedup, not failure" note), and path-filter triggers. Plus a
+      cost-discipline section (dep-chain vs full builds, SDK caching), the
+      fail-loud precondition rule, and a worked-examples table mapping each
+      convention to a live workflow.
 
 ### 196.5 — [P3] Workflow trigger hygiene
 `zephyr-dual-line` (and others) trigger on `packages/**` — nearly every push.
