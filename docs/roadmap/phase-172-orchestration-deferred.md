@@ -126,9 +126,14 @@ configuration lives here* below.
       non-NVIDIA vendor static lib.
 - [~] **M9 — in-binary multi-session routing** (172.K.5): per-node session
       binding. **Multi-domain DONE** (2026-05-28 — `NodeBuilder::session_idx` +
-      generator per-domain `SESSION_SPECS` + `[[domain]]`→plan). Bridge per-node
-      routing (topic-forwarding) still pending; the `nros check` warning guards
-      that half.
+      generator per-domain `SESSION_SPECS` + `[[domain]]`→plan). **Bridge
+      topic-forwarding:** config→plan foundation DONE (`PlanBridge` +
+      `apply_bridges`, codegen `64effd0`); generator + executor (runtime) half
+      designed in
+      [`docs/design/bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md)
+      (reuse `nros-bridge::PubSubBridge`, recommended Option A = an executor
+      bridge-registry pumped by `spin_once`; sessions from `connect`; type/QoS
+      from `interfaces`). The `nros check` `[[bridge]]` warning guards it.
 
 **Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
 independents (172.E sandbox, 172.K.7 multi-homing) can trail. The first-image
