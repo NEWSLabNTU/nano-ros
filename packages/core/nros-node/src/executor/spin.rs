@@ -2584,7 +2584,12 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
-        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(None, topic_name, callback)
+        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(
+            None,
+            topic_name,
+            QosSettings::default(),
+            callback,
+        )
     }
 
     /// Phase 104.C.3.3.a — Node-aware variant of
@@ -2602,6 +2607,7 @@ impl Executor {
         self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(
             Some(node_id),
             topic_name,
+            QosSettings::default(),
             callback,
         )
     }
@@ -2623,10 +2629,11 @@ impl Executor {
         )
     }
 
-    fn register_subscription_with_info_sized_inner<M, F, const RX_BUF: usize>(
+    pub(crate) fn register_subscription_with_info_sized_inner<M, F, const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
+        qos: QosSettings,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -2655,7 +2662,7 @@ impl Executor {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, QosSettings::default())
+                .create_subscriber(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
@@ -2733,7 +2740,10 @@ impl Executor {
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
         self.register_subscription_with_safety_sized_inner::<M, F, RX_BUF>(
-            None, topic_name, callback,
+            None,
+            topic_name,
+            QosSettings::default(),
+            callback,
         )
     }
 
@@ -2753,6 +2763,7 @@ impl Executor {
         self.register_subscription_with_safety_sized_inner::<M, F, RX_BUF>(
             Some(node_id),
             topic_name,
+            QosSettings::default(),
             callback,
         )
     }
@@ -2776,10 +2787,11 @@ impl Executor {
     }
 
     #[cfg(feature = "safety-e2e")]
-    fn register_subscription_with_safety_sized_inner<M, F, const RX_BUF: usize>(
+    pub(crate) fn register_subscription_with_safety_sized_inner<M, F, const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
+        qos: QosSettings,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -2808,7 +2820,7 @@ impl Executor {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_subscriber(&topic, QosSettings::default())
+                .create_subscriber(&topic, qos)
                 .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
         };
 
