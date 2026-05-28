@@ -20,7 +20,7 @@ Core runtime
   message traits, CDR serialization
 
 RMW backend
-  Zenoh, XRCE-DDS, DDS, Cyclone DDS, or a custom backend
+  Zenoh, XRCE-DDS, Cyclone DDS, or a custom backend
 
 Platform
   Clock, allocation, threading, sleep, random, sockets, libc,

@@ -71,6 +71,29 @@ against a real example.
 **Files**
 - `book/src/introduction.md` (all four items)
 
+### 188.D — Accuracy follow-on + README badges
+
+- [x] **188.D.1 — Architecture-page backend drift.**
+  `concepts/architecture.md` RMW-layer block listed "Zenoh, XRCE-DDS,
+  **DDS**, Cyclone DDS" — the standalone "DDS" was retired dust-dds
+  (Phase 169). Dropped it → "Zenoh, XRCE-DDS, Cyclone DDS, or a custom
+  backend". (Checked `concepts/no-std.md` too: its "all **four** backend
+  crates" is correct — the table lists exactly 4 zenoh/xrce-family crates,
+  not dust-dds. Left as-is.)
+- [x] **188.D.2 — README badges.** Added a badge row under the title: CI
+  (Actions `ci.yml`), Book (→ site), `no_std`, Rust edition 2024, ROS 2
+  Humble | Iron. **License badge intentionally omitted** — see note.
+
+**Files**
+- `book/src/concepts/architecture.md`, `README.md`
+
+> **Flag (not fixed — needs a maintainer call):** license metadata is
+> inconsistent and unbadged. Root `Cargo.toml` declares
+> `license = "MIT OR Apache-2.0"`, but `packages/core/nros/Cargo.toml`
+> declares `license = "Apache-2.0"`, there is **no root `LICENSE` file**,
+> and GitHub reports `licenseInfo: null`. Resolve the SPDX choice + add the
+> license file(s) before adding a license badge.
+
 ### 188.B — Visual identity (deferred follow-up)
 
 - [ ] **188.B.1** Favicon + logo (`book/theme/`), wired via

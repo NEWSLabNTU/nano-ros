@@ -1,5 +1,11 @@
 # nano-ros
 
+[![CI](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/ci.yml/badge.svg)](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/ci.yml)
+[![Book](https://img.shields.io/badge/docs-book-blue)](https://newslabntu.github.io/nano-ros-book/)
+![no_std](https://img.shields.io/badge/no__std-yes-success)
+![Rust](https://img.shields.io/badge/rust-edition%202024-orange)
+![ROS 2](https://img.shields.io/badge/ROS%202-Humble%20%7C%20Iron-22314E)
+
 A `no_std` ROS 2 client library for bare-metal and RTOS targets, written in Rust. Built on [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico) for lightweight pub/sub, services, and actions over TCP, serial, or raw Ethernet.
 
 nano-ros runs directly on microcontrollers without an OS, on RTOS kernels like Zephyr, and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 and ESP32-C3, enabling full integration testing without hardware.
