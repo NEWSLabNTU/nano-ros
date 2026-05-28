@@ -37,10 +37,10 @@ Application
     v
 Board crate (nros-my-board)
     |
-    +-- Platform crate (nros-platform-freertos)
+    +-- Platform crate (nros-platform-<name>)
     +-- Driver crate (lan9118-smoltcp)
     +-- Transport bridge (nros-smoltcp or zpico-serial)
-    +-- Shim crate (zpico-platform-shim)
+    +-- zpico-sys (its default-on alias TU supplies zenoh-pico z_* symbols)
 ```
 
 ## Crate structure
@@ -73,8 +73,9 @@ name = "nros_my_board"
 nros-platform = { path = "../../core/nros-platform", features = ["platform-freertos"] }
 nros-platform-freertos = { path = "../../core/nros-platform-freertos" }
 
-# Force-link shim crate (provides zenoh-pico C symbols)
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", features = ["active"] }
+# zenoh-pico FFI. Its default-on `platform-aliases` C TU emits every
+# `z_*` / `_z_*` symbol zenoh-pico needs, forwarding to `nros_platform_*`.
+# (Phase 129 retired the separate `zpico-platform-shim` crate.)
 zpico-sys = { path = "../../zpico/zpico-sys", default-features = false }
 
 # Ethernet transport (optional, gated by feature)
@@ -107,10 +108,12 @@ The lib module force-links shim crates and re-exports the public API.
 ```rust,ignore
 #![no_std]
 
-// Force-link: ensures the platform shim's C symbols (zpico FFI) are
-// included in the final binary even though Rust code never calls them
-// directly. Without this, the linker drops them and zenoh-pico fails.
-extern crate zpico_platform_shim;
+// Force-link: ensures `zpico-sys` (and its default-on `platform-aliases`
+// C alias TU, which emits zenoh-pico's `z_*` FFI symbols) is pulled into
+// the final binary even though Rust code never calls it directly. Without
+// this, the linker drops the rlib and zenoh-pico fails to resolve. Phase
+// 129 retired the separate `zpico-platform-shim` keep-alive.
+extern crate zpico_sys;
 
 mod config;
 mod node;

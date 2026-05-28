@@ -93,50 +93,40 @@ pub type ConcretePlatform = nros_platform_myos::MyOsPlatform;
 
 In `packages/core/nros/Cargo.toml`, add `platform-myos` to the feature list so users can write `nros = { features = ["rmw-zenoh", "platform-myos"] }`.
 
-### 5. Activate the shim(s)
+### 5. Register your platform as an ABI marker
 
-Each RMW backend has its own platform shim crate. Enable the ones your
-platform will support:
+The platform shim crates are gone (Phase 129). Each transport C library's
+platform symbols now come from a **default-on C alias translation unit** that
+forwards to the canonical `nros_platform_*` ABI — `zpico-sys`'s
+`platform-aliases` feature for zenoh-pico (`z_*` / `_z_*`), and
+`nros-rmw-xrce`'s always-compiled `src/platform_aliases.c` for XRCE-DDS
+(`uxr_*`). You do not activate or configure a shim.
+
+What you add is a **pure ABI marker** feature so each transport crate's
+`build.rs` can do per-platform source selection (e.g. strip the vendor
+`system/<rtos>/system.c`, gate the alias TU's network section to bare-metal):
 
 ```toml
-# packages/zpico/zpico-sys/Cargo.toml  (needed for rmw-zenoh)
+# packages/zpico/zpico-sys/Cargo.toml  (rmw-zenoh)
 [features]
-myos = [
-    "dep:zpico-platform-shim",
-    "zpico-platform-shim?/active",
-    "zpico-platform-shim?/network",
-]
+myos = []   # ABI marker only — no shim dependency
 
-# packages/xrce/xrce-sys/Cargo.toml  (needed for rmw-xrce)
+# packages/xrce/xrce-sys/Cargo.toml  (rmw-xrce)
 [features]
-myos = [
-    "dep:xrce-platform-shim",
-    "xrce-platform-shim?/active",
-]
+myos = []   # ABI marker only
 ```
 
-Shim feature flags:
-
-| Feature | When to enable |
-|---------|----------------|
-| `active` | Always, when this platform should claim the shim's symbols |
-| `network` | Rust-native TCP/UDP path — forwards `_z_open_tcp`/`_z_read_tcp`/etc. to your `PlatformTcp`/`PlatformUdp` impl. Omit if you compile zenoh-pico's C `network.c` directly (see "Networking" below). |
-| `skip-clock-symbols` | Your platform provides its own `_z_time_elapsed_us` etc. (e.g. NuttX ships clock functions in libc). Skips the shim's default clock forwarders to avoid duplicate-symbol link errors. |
-| `network-smoltcp-bridge` | Bare-metal smoltcp integration (implies `network`). |
-
-The shim picks up `ConcretePlatform` automatically through Cargo
-feature unification — no changes inside the shim itself.
-
-Build-script contract: the shim's `build.rs` reads
-`DEP_ZPICO_SOCKET_SIZE` / `DEP_ZPICO_ENDPOINT_SIZE` (exported by
-`zpico-sys`'s `build.rs`) so it can size socket-handle slabs correctly.
-If you replace `zpico-sys` with a custom transport crate, export the
-same `DEP_*` variables from its `build.rs` or the shim will fall back
-to defaults.
+The alias TU (default-on `platform-aliases`) covers the full `z_*` surface —
+memory, sleep, random, time, yield, threading, condvar, clock, and network.
+`zpico-sys`'s `build.rs` defines `NROS_PLATFORM_ALIASES` and emits the network
+wrappers only where the vendor stack doesn't already provide them (bare-metal).
+If your RTOS's vendor `system.c` already supplies these symbols natively (as on
+Orin SPE's FSP FreeRTOS), turn `platform-aliases` **off** for that platform to
+avoid duplicate-symbol link errors.
 
 ## Rust path
 
-This is the recommended approach. Create a ZST and implement each capability as inherent methods (not trait impls). The shim calls these methods directly through the `ConcretePlatform` type alias.
+This is the recommended approach. Create a ZST and implement each capability as inherent methods (not trait impls). `nros-platform-cffi` exposes these methods as the canonical `nros_platform_*` C symbols, which the alias TUs call.
 
 ### Skeleton
 

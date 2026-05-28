@@ -2,17 +2,25 @@
 
 XRCE-DDS has a minimal platform abstraction layer. It is single-threaded,
 heap-less, and delegates networking to user-provided transport callbacks.
-The 2-3 required FFI symbols are provided by `xrce-platform-shim` (inside
-`xrce-sys`), which forwards `uxr_*` calls to the `ConcretePlatform` type
-alias from `nros-platform`. When porting to a new platform, you implement an
-`nros-platform-<name>` crate (see [Custom Platform](../../porting/custom-platform.md))
-rather than providing these symbols directly.
+The 2-3 required FFI symbols (`uxr_millis`, `uxr_nanos`) are provided by
+`nros-rmw-xrce`'s C alias translation unit (`src/platform_aliases.c`,
+compiled into `nros-rmw-xrce-cffi` on every target), which forwards them to
+the canonical `nros_platform_*` ABI. When porting to a new platform, you
+implement an `nros-platform-<name>` crate (see
+[Custom Platform](../../porting/custom-platform.md)) that supplies the
+`nros_platform_*` symbols — you do **not** provide the `uxr_*` symbols
+directly.
+
+> Historical note: this mapping used to live in a separate
+> `xrce-platform-shim` crate; Phase 129 deleted it and moved the `uxr_*`
+> forwarders into the `nros-rmw-xrce` alias TU.
 
 ## Platform crate structure
 
 The XRCE-DDS clock symbols are a subset of what the platform crate provides.
-Your `nros-platform-<name>` crate provides the clock primitives and
-`xrce-platform-shim` maps them to the `uxr_*` symbols XRCE-DDS expects.
+Your `nros-platform-<name>` crate provides the canonical clock primitives
+(`nros_platform_time_now_ms`, `nros_platform_clock_us`) and the alias TU
+maps them to the `uxr_*` symbols XRCE-DDS expects.
 
 ```
 packages/core/nros-platform-<name>/
@@ -118,8 +126,10 @@ the clock symbols.
 
 1. **Create the platform crate** — `nros-platform-<name>/` (see
    [Custom Platform](../../porting/custom-platform.md))
-2. **Implement the clock primitives** — `clock_ms()` and friends; the
-   `xrce-platform-shim` maps these to `uxr_millis()` and `uxr_nanos()`
+2. **Implement the canonical clock primitives** —
+   `nros_platform_time_now_ms()` / `nros_platform_clock_us()`; the alias TU
+   (`nros-rmw-xrce/src/platform_aliases.c`) maps these to `uxr_millis()` /
+   `uxr_nanos()` for you
 3. **Implement `smoltcp_clock_now_ms()`** if using smoltcp transport
 4. **Add a feature to `xrce-sys`** for the new platform if needed
 5. **Choose or implement a transport crate** — reuse `xrce-smoltcp` for
@@ -131,25 +141,25 @@ the clock symbols.
 
 ## Example: bare-metal MPS2-AN385
 
-The simplest reference is `nros-platform-mps2-an385`, which provides clock
-primitives that `xrce-platform-shim` maps to three symbols:
+The simplest reference is `nros-platform-mps2-an385`. It supplies the
+canonical `nros_platform_*` clock symbols; the XRCE alias TU
+(`nros-rmw-xrce/src/platform_aliases.c`) then derives `uxr_millis` /
+`uxr_nanos` from them — you never hand-write the `uxr_*` symbols:
 
-```rust
-#[unsafe(no_mangle)]
-pub extern "C" fn uxr_millis() -> i64 {
-    clock_ms() as i64
+```c
+/* nros-rmw-xrce/src/platform_aliases.c — provided for you, not the porter */
+int64_t uxr_millis(void) {
+    return (int64_t) nros_platform_time_now_ms();
 }
-
-#[unsafe(no_mangle)]
-pub extern "C" fn uxr_nanos() -> i64 {
-    clock_ms() as i64 * 1_000_000
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
-    clock_ms()
+int64_t uxr_nanos(void) {
+    return (int64_t) nros_platform_clock_us() * 1000;
 }
 ```
+
+So a porter only implements the canonical primitives in their platform crate
+(`nros_platform_time_now_ms`, `nros_platform_clock_us`), plus
+`smoltcp_clock_now_ms()` if using the smoltcp transport. The MPS2-AN385
+platform reads these from a hardware timer with wrap detection.
 
 Where `clock_ms()` reads from a hardware timer with wrap detection.
 

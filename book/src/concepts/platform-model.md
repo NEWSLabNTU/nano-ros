@@ -169,9 +169,13 @@ no RMW crate dependency. Instead:
   the consumer's build site — `posix-c-port` for pure-cargo POSIX
   builds, the standalone `lib<…>.a` for CMake builds, or the kernel
   build system for NuttX / Zephyr.
-- **Shims.** `zpico-platform-shim` / `xrce-platform-shim` forward the
-  transport C library's `z_*` / `uxr_*` platform calls to the
-  `nros_platform_*` symbols.
+- **Alias TUs.** C translation units forward each transport C library's
+  `z_*` / `uxr_*` platform calls to the canonical `nros_platform_*` symbols:
+  `zpico-sys/c/zpico/platform_aliases.c` (default-on `platform-aliases`
+  feature) for zenoh-pico, and `nros-rmw-xrce/src/platform_aliases.c` (always
+  compiled into `nros-rmw-xrce-cffi`) for XRCE-DDS. (These replaced the
+  former `zpico-platform-shim` / `xrce-platform-shim` crates, deleted in
+  Phase 129.)
 
 The default feature set is `std` only. No RMW backend or platform is
 selected by default — the consuming crate chooses explicitly.

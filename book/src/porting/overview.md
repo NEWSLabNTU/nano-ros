@@ -24,8 +24,8 @@ The following core packages define the interfaces you implement. They compile an
 | `nros-node` | Executor, Node, pub/sub/service/action handles |
 | `nros-rmw` | RMW trait definitions (Session, Publisher, Subscriber, etc.) |
 | `nros-platform` | Platform trait definitions and `ConcretePlatform` type alias |
-| `zpico-platform-shim` | Maps zenoh-pico C symbols to `ConcretePlatform` |
-| `xrce-platform-shim` | Maps XRCE-DDS C symbols to `ConcretePlatform` |
+| `zpico-sys` alias TU | Maps zenoh-pico `z_*` C symbols to `nros_platform_*` (default-on `platform-aliases`) |
+| `nros-rmw-xrce` alias TU | Maps XRCE-DDS `uxr_*` C symbols to `nros_platform_*` |
 | `nros-c`, `nros-cpp` | C and C++ API wrappers |
 
 These define the interfaces. You implement them; you do not modify them.

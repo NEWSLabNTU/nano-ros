@@ -1,13 +1,19 @@
 # Zenoh-pico Symbol Reference
 
 This page documents the ~55 FFI symbols that zenoh-pico requires at link time.
-These symbols are provided by `zpico-platform-shim` (inside `zpico-sys`), which
-forwards each `z_*` / `_z_*` call to the `ConcretePlatform` type alias from
-`nros-platform`. When porting to a new platform, you implement an
+These symbols are provided by `zpico-sys`'s C alias translation unit
+(`c/zpico/platform_aliases.c`, built by the default-on `platform-aliases`
+feature), which forwards each `z_*` / `_z_*` call to the canonical
+`nros_platform_*` ABI. When porting to a new platform, you implement an
 `nros-platform-<name>` crate (see [Custom Platform](../../porting/custom-platform.md))
-rather than providing these symbols directly.
+that supplies the `nros_platform_*` symbols — you do **not** provide the
+`z_*` symbols directly.
 
-This page serves as a reference for understanding what the shim layer maps
+> Historical note: this mapping used to live in a separate
+> `zpico-platform-shim` crate; Phase 129 deleted it and folded the
+> forwarders into the `zpico-sys` alias TU.
+
+This page serves as a reference for understanding what the alias TU maps
 and what capabilities your `nros-platform-<name>` crate must provide.
 
 ## Platform crate structure

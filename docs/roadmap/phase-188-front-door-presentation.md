@@ -140,19 +140,38 @@ Swept `book/src/` for pre-Cyclone / pre-Phase-169 framing.
   retirement). `concepts/no-std.md`'s "four backend crates" verified correct
   (4 zenoh/xrce crates, not dust-dds).
 
-> **Follow-up flagged — 188.G (retired shim crates in porting docs).** Phase
-> 129 deleted `zpico-platform-shim` + `xrce-platform-shim`; their symbols now
-> come from C alias TUs (`zpico-sys/c/zpico/platform_aliases.c`,
-> `nros-rmw-xrce/src/platform_aliases.c` → canonical `nros_platform_*`).
-> Confirmed both crates are gone from git and the alias TUs exist. The book
-> still references the deleted shim crates in **6 places** —
-> `internals/porting-platform/zenoh-pico.md`, `…/xrce-dds.md` (×4),
-> `concepts/platform-model.md`, `porting/custom-board.md` (diagram **and a
-> copy-paste `path = "…/zpico-platform-shim"` dependency that no longer
-> exists**), and `porting/overview.md`. This is a porting-mechanism rewrite
-> (must describe the alias-TU model correctly against the current board
-> crates), not a sweep touch-up — deferred so it is done from code, not
-> memory. `custom-board.md`'s broken dependency line is the priority within it.
+### 188.G — Retired shim crates in porting docs
+
+Phase 129 deleted `zpico-platform-shim` + `xrce-platform-shim`; their symbols
+now come from default-on C alias TUs (`zpico-sys/c/zpico/platform_aliases.c`
+under the `platform-aliases` feature; `nros-rmw-xrce/src/platform_aliases.c`
+always compiled into `nros-rmw-xrce-cffi`) forwarding to the canonical
+`nros_platform_*` ABI. Rewritten from the archived Phase 129 doc + the actual
+`zpico-sys` features and current board crates (not from memory).
+
+- [x] **188.G.1** `internals/porting-platform/zenoh-pico.md` — symbols come
+  from the `zpico-sys` alias TU; porter supplies `nros_platform_*`, not `z_*`.
+- [x] **188.G.2** `internals/porting-platform/xrce-dds.md` (×4 spots incl. the
+  Rust example that hand-wrote `uxr_millis`) — porter implements canonical
+  `nros_platform_time_now_ms`/`clock_us`; the alias TU derives `uxr_*`.
+- [x] **188.G.3** `concepts/platform-model.md` — "Shims" bullet → "Alias TUs".
+- [x] **188.G.4** `porting/overview.md` — crate table rows → alias TUs.
+- [x] **188.G.5** `porting/custom-board.md` — fixed the **broken dependency**
+  (`path = "…/zpico-platform-shim"`, a crate that no longer exists) → just
+  `zpico-sys`; fixed the diagram and the `extern crate zpico_platform_shim`
+  keep-alive → `extern crate zpico_sys` (matches real boards).
+- [x] **188.G.6** `porting/custom-platform.md` — rewrote the whole "Activate
+  the shim(s)" section (shim-feature table + build-script contract were all
+  pre-129) → ABI-marker features + default-on alias TU; fixed the
+  `ConcretePlatform`-calls-the-shim line.
+
+Verified: only historical "Phase 129 retired" notes mention the shim names
+now; `mdbook build book` clean.
+
+> **Minor follow-up (out of scope, code comments not book):** a few stale
+> source comments still name the shims — `nros-board-mps2-an385/src/lib.rs:19`,
+> `nros-board-orin-spe/src/node.rs`, `nros-platform-api/src/lib.rs` (×2).
+> Harmless (comments), worth a cleanup pass with the next platform-crate edit.
 
 ### 188.B — Visual identity (deferred follow-up)
 
