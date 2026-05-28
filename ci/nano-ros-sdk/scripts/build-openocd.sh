@@ -4,9 +4,11 @@
 #   build-openocd.sh <version> <host-key>   ->   dist/openocd-<host-key>.tar.zst
 set -euo pipefail
 
-version="${1:?usage: build-openocd.sh <version> <host-key>}"
-host="${2:?usage: build-openocd.sh <version> <host-key>}"
-upstream="v${version%-nros*}" # 0.12.0 -> v0.12.0
+version="${1:?usage: build-openocd.sh <version> <host-key> <upstream>}"
+host="${2:?usage: build-openocd.sh <version> <host-key> <upstream>}"
+# Upstream tag (e.g. v0.12.0) — SSOT is the index [tool.*].upstream, passed by
+# build-tool.yml. No longer hand-derived from the version label.
+upstream="${3:?usage: build-openocd.sh <version> <host-key> <upstream>}"
 
 root="$(pwd)"
 prefix="$root/out/openocd"

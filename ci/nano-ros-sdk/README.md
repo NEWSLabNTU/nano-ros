@@ -41,11 +41,12 @@ fetched the prebuilt or built from the index's `[tool.*.source]` recipe.
 ## Building / seeding
 
 ```
-gh workflow run build-tool.yml -f tool=qemu -f version=11.0-nros1
+gh workflow run build-tool.yml -f tool=qemu -f version=11.0.0-nros2 \
+  -f upstream=nano-ros-v11.0.0-patches   # upstream = nros-sdk-index.toml [tool.*].upstream
 ```
 
 `build-tool.yml` runs the host matrix, each runner calls
-`scripts/build-<tool>.sh <version> <host-key>` (must produce
+`scripts/build-<tool>.sh <version> <host-key> <upstream>` (must produce
 `dist/<tool>-<host>.tar.zst`), then publishes the Release. After seeding, fill
 the matching `dist.<host> = { url, sha256 }` in nano-ros's `nros-sdk-index.toml`
 — the `sdk-index-gate` CI there verifies it before merge.

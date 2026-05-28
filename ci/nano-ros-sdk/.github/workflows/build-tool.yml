@@ -3,11 +3,14 @@ name: build-tool
 # Phase 187.5 — build/repackage one host tool across the host matrix and publish
 # it to a Release. Drop-in for NEWSLabNTU/nano-ros-sdk.
 #
-#   gh workflow run build-tool.yml -f tool=qemu -f version=11.0-nros1
+#   gh workflow run build-tool.yml -f tool=qemu -f version=11.0.0-nros2 \
+#       -f upstream=nano-ros-v11.0.0-patches
 #
-# Each runner calls scripts/build-<tool>.sh <version> <host-key>, which must
-# produce dist/<tool>-<host>.tar.zst. We add the .sha256 and publish:
-#   tag = <tool>-<version>,  assets = <tool>-<host>.tar.zst (+ .sha256)
+# Each runner calls scripts/build-<tool>.sh <version> <host-key> <upstream>,
+# which must produce dist/<tool>-<host>.tar.zst. `upstream` is the exact upstream
+# rev — read it from nano-ros's nros-sdk-index.toml `[tool.<tool>].upstream`
+# (the SSOT); the scripts no longer hardcode/derive it (Phase 191.2). We add the
+# .sha256 and publish: tag = <tool>-<version>, assets = <tool>-<host>.tar.zst.
 
 on:
   workflow_dispatch:
@@ -16,7 +19,10 @@ on:
         description: "tool name (qemu, arm-none-eabi-gcc, riscv-none-elf-gcc, zenohd, openocd)"
         required: true
       version:
-        description: "version, e.g. 11.0-nros1"
+        description: "version, e.g. 11.0.0-nros2"
+        required: true
+      upstream:
+        description: "exact upstream rev from the index [tool.*].upstream (e.g. 13.2.rel1, 14.2.0-3, nano-ros-v11.0.0-patches)"
         required: true
 
 permissions:
@@ -40,7 +46,7 @@ jobs:
       - name: Build + package ${{ inputs.tool }} for ${{ matrix.host.key }}
         run: |
           chmod +x "scripts/build-${{ inputs.tool }}.sh"
-          "./scripts/build-${{ inputs.tool }}.sh" "${{ inputs.version }}" "${{ matrix.host.key }}"
+          "./scripts/build-${{ inputs.tool }}.sh" "${{ inputs.version }}" "${{ matrix.host.key }}" "${{ inputs.upstream }}"
           test -f "dist/${{ inputs.tool }}-${{ matrix.host.key }}.tar.zst"
 
       - name: sha256

@@ -5,11 +5,11 @@
 #   build-zenohd.sh <version> <host-key>   ->   dist/zenohd-<host-key>.tar.zst
 set -euo pipefail
 
-version="${1:?usage: build-zenohd.sh <version> <host-key>}"
-host="${2:?usage: build-zenohd.sh <version> <host-key>}"
-
-# Index version is <upstream>-nros<n>; build from the upstream tag.
-upstream="${version%-nros*}"
+version="${1:?usage: build-zenohd.sh <version> <host-key> <upstream>}"
+host="${2:?usage: build-zenohd.sh <version> <host-key> <upstream>}"
+# Upstream tag (e.g. 1.7.2) — SSOT is the index [tool.*].upstream, passed by
+# build-tool.yml. No longer derived from the version label.
+upstream="${3:?usage: build-zenohd.sh <version> <host-key> <upstream>}"
 
 root="$(pwd)"
 prefix="$root/out/zenohd"
