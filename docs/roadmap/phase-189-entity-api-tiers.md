@@ -12,8 +12,11 @@ customizable entity builder** that carries every knob (raw/typed, QoS,
 `verb_noun_axis_axis_axis` identifiers — a new axis is one short builder method,
 never a longer name.
 
-**Status.** Not started — design approved
-([`docs/design/entity-api-tiers.md`](../design/entity-api-tiers.md)), split out
+**Status (2026-05-28).** **M1 + M2 DONE** — the Rust entity builder +
+convenient surface landed (M1), and the `register_subscription_*` zoo was
+removed with all ~63 callers migrated (M2). **M3 + M4 remain** (C/C++
+named-options parity; the M4 sweep folded into M2). Design approved in
+([`docs/design/entity-api-tiers.md`](../design/entity-api-tiers.md)); split out
 of Phase 172 (2026-05-28). Same precedent as Phase 187 (split from 172 W.5): a
 cross-cutting refactor that doesn't belong inside the orchestration follow-ups.
 
