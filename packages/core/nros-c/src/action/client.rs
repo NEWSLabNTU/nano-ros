@@ -118,6 +118,12 @@ pub struct nros_action_client_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
+    /// Phase 189.M3.3.b — scheduling-context slot to bind the action client's
+    /// executor handle to. `0` = inherit the executor / Node default; set via
+    /// `nros_action_client_init_with_options`. When non-zero,
+    /// `nros_executor_register_action_client` binds the handle after
+    /// registration. No effect on the L1 polling path.
+    pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field.
     pub _internal: ActionClientInternal,
@@ -146,6 +152,7 @@ impl Default for nros_action_client_t {
             result_callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
+            sched_context_id: 0,
             _internal: ActionClientInternal::new(),
             _opaque: [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
         }
@@ -203,6 +210,53 @@ pub unsafe extern "C" fn nros_action_client_init(
 
     client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
 
+    NROS_RET_OK
+}
+
+/// Phase 189.M3.3.b — rclc-style named action-client options (action clients
+/// carry no QoS field, so this is options-only). Zero-init = default behaviour.
+#[repr(C)]
+#[derive(Default)]
+pub struct nros_action_client_options_t {
+    /// Scheduling-context slot to bind the action client's executor handle to.
+    /// `0` = inherit the executor / Node default. A non-zero value must be an id
+    /// from `nros_executor_create_sched_context`; the bind is applied by
+    /// `nros_executor_register_action_client` once the handle exists. No effect
+    /// on the L1 polling path.
+    pub sched_context: crate::executor::nros_sched_context_id_t,
+    /// Reserved for future use; must be zero. Pads for ABI stability.
+    pub _reserved: [u8; 3],
+}
+
+/// Get a zero-initialised [`nros_action_client_options_t`] (`sched_context = 0`).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_action_client_get_default_options() -> nros_action_client_options_t {
+    nros_action_client_options_t::default()
+}
+
+/// Phase 189.M3.3.b — initialize an action client with named options. Like
+/// [`nros_action_client_init`] except a non-zero `options->sched_context` is
+/// stashed so [`nros_executor_register_action_client`] binds the resulting
+/// executor handle to that scheduling context once known.
+///
+/// # Safety
+/// All non-NULL pointers must be valid + the node initialized; `options` may be
+/// NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_init_with_options(
+    client: *mut nros_action_client_t,
+    node: *const nros_node_t,
+    action_name: *const core::ffi::c_char,
+    type_info: *const nros_action_type_t,
+    options: *const nros_action_client_options_t,
+) -> nros_ret_t {
+    let ret = nros_action_client_init(client, node, action_name, type_info);
+    if ret != NROS_RET_OK {
+        return ret;
+    }
+    if !options.is_null() {
+        (*client).sched_context_id = (*options).sched_context;
+    }
     NROS_RET_OK
 }
 

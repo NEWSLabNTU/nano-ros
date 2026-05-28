@@ -77,6 +77,13 @@ pub struct nros_action_server_t {
     /// profile (RELIABLE+VOLATILE+KEEP_LAST(10)); set via
     /// `nros_action_server_init_with_qos`.
     pub qos: crate::qos::nros_qos_t,
+    /// Phase 189.M3.3.b — scheduling-context slot to bind the action server's
+    /// executor handle to (the goal-service slot; governs the action's callback
+    /// dispatch). `0` = inherit the executor / Node default; set via
+    /// `nros_action_server_init_with_options`. When non-zero,
+    /// `nros_executor_register_action_server` binds the handle after
+    /// registration. No effect on the L1 polling path.
+    pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Internal state — set by `nros_executor_register_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
@@ -102,6 +109,7 @@ impl Default for nros_action_server_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             qos: crate::qos::nros_qos_t::default(),
+            sched_context_id: 0,
             _internal: ActionServerInternal::invalid_default(),
             _opaque: [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S],
         }
@@ -420,6 +428,69 @@ pub unsafe extern "C" fn nros_action_server_init_with_qos(
         (*server).qos = *qos;
     }
     ret
+}
+
+/// Phase 189.M3.3.b — rclc-style named action-server options. QoS is passed
+/// separately; this carries the non-QoS axes. Zero-init = default behaviour.
+#[repr(C)]
+#[derive(Default)]
+pub struct nros_action_server_options_t {
+    /// Scheduling-context slot to bind the action server's executor handle to.
+    /// `0` = inherit the executor / Node default. A non-zero value must be an id
+    /// from `nros_executor_create_sched_context`; the bind is applied by
+    /// `nros_executor_register_action_server` once the handle exists. No effect
+    /// on the L1 polling path.
+    pub sched_context: crate::executor::nros_sched_context_id_t,
+    /// Reserved for future use; must be zero. Pads for ABI stability.
+    pub _reserved: [u8; 3],
+}
+
+/// Get a zero-initialised [`nros_action_server_options_t`] (`sched_context = 0`).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_action_server_get_default_options() -> nros_action_server_options_t {
+    nros_action_server_options_t::default()
+}
+
+/// Phase 189.M3.3.b — initialize an action server with custom QoS + named
+/// options. Like [`nros_action_server_init_with_qos`] except a non-zero
+/// `options->sched_context` is stashed so [`nros_executor_register_action_server`]
+/// binds the resulting executor handle to that scheduling context once known.
+///
+/// # Safety
+/// All non-NULL pointers must be valid + the node initialized; `qos` / `options`
+/// may be NULL.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_action_server_init_with_options(
+    server: *mut nros_action_server_t,
+    node: *const nros_node_t,
+    action_name: *const core::ffi::c_char,
+    type_info: *const nros_action_type_t,
+    goal_callback: nros_goal_callback_t,
+    cancel_callback: nros_cancel_callback_t,
+    accepted_callback: nros_accepted_callback_t,
+    context: *mut c_void,
+    qos: *const crate::qos::nros_qos_t,
+    options: *const nros_action_server_options_t,
+) -> nros_ret_t {
+    let ret = nros_action_server_init_with_qos(
+        server,
+        node,
+        action_name,
+        type_info,
+        goal_callback,
+        cancel_callback,
+        accepted_callback,
+        context,
+        qos,
+    );
+    if ret != NROS_RET_OK {
+        return ret;
+    }
+    if !options.is_null() {
+        (*server).sched_context_id = (*options).sched_context;
+    }
+    NROS_RET_OK
 }
 
 /// Publish feedback for an active goal.

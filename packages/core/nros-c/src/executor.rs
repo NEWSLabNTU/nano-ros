@@ -1340,6 +1340,9 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
         // nros_action_server_init). Applies to the three underlying service
         // servers.
         let server_qos = server_ref.get_qos_settings();
+        // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
+        // Ok arm using the action server's goal-service handle).
+        let requested_sc = server_ref.sched_context_id;
         let node_id = if node_raw_id != 0 {
             Some(nros_node::executor::NodeId::from_raw(node_raw_id))
         } else {
@@ -1362,6 +1365,19 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
 
         match result {
             Ok(handle) => {
+                // Phase 189.M3.3.b — bind the action's goal-service handle to the
+                // requested sched context (governs the action's callback
+                // dispatch). `0` = inherit (no-op); an unknown slot fails
+                // registration (mirrors subscriptions/services).
+                if requested_sc != 0 {
+                    let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
+                    if rust_exec
+                        .bind_handle_to_sched_context(handle.handle_id(), sc_id)
+                        .is_err()
+                    {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                }
                 // Fill in the handle now that registration succeeded
                 server_mut._internal.handle = handle;
                 executor.handle_count += 1;
@@ -1457,6 +1473,9 @@ pub unsafe extern "C" fn nros_executor_register_action_client(
         } else {
             None
         };
+        // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
+        // Ok arm; the client handle's entry_index is its callback slot).
+        let requested_sc = client_ref.sched_context_id;
 
         // Create a NEW ActionClientCore in the arena via register_action_client_raw.
         // The async send functions will use this core (not the client's original).
@@ -1478,6 +1497,20 @@ pub unsafe extern "C" fn nros_executor_register_action_client(
                 let client_mut = &mut *client;
                 client_mut._internal.arena_entry_index = handle.entry_index() as i32;
                 client_mut._internal.executor_ptr = opaque_ptr;
+
+                // Phase 189.M3.3.b — bind the client's callback slot to the
+                // requested sched context (the handle's entry_index is the
+                // entries[] slot). `0` = inherit (no-op); unknown slot fails.
+                if requested_sc != 0 {
+                    let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
+                    let handle_id = nros_node::executor::HandleId(handle.entry_index());
+                    if rust_exec
+                        .bind_handle_to_sched_context(handle_id, sc_id)
+                        .is_err()
+                    {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                }
 
                 executor.handle_count += 1;
                 NROS_RET_OK
