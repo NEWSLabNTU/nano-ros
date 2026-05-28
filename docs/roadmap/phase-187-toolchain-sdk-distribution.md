@@ -105,15 +105,20 @@ The model (Android `sdkmanager` + PlatformIO):
         source), warn-not-fail on unavailable, no-op away from a workspace /
         under `NROS_NO_AUTO_SETUP`. e2e deploy tests set that env to stay
         hermetic.
-  - [ ] **`just <module> setup` → index** (deferred): the install-path mismatch
-        is the blocker — `just qemu/zenohd setup` land in `build/qemu`,
-        `build/zenohd` (read by the test harness via
-        `nros_tests::qemu::qemu_system_arm_path()`), cross-gcc via system apt,
-        RTOS sources in `third-party/` — none under `$NROS_HOME/sdk/<tool>/<ver>`.
-        Unifying needs either the harness to also probe the store, or the store
-        prefixes symlinked into `build/`. Touches the protected test wiring →
-        its own slice. Until then `just setup` keeps its recipes; drift risk is
-        the duplicated version pins (qemu stable-11.0, zenoh 1.7.2).
+  - [ ] **Env activation (no test-code probe)** — direction set 2026-05-28: the
+        store tools become **PATH prerequisites**, not something test code hunts
+        for. `nros setup` installs to `$NROS_HOME/sdk/<tool>/<ver>/` + writes the
+        lock; `nros env` prints PATH exports for the locked versions
+        (rustup/direnv print-and-eval model — **no subshell**); the project's
+        `.envrc` (direnv, already required) sources it so every shell in the tree
+        gets the tools on PATH. Then the harness resolves via its existing system
+        `$PATH` fallback (no `build/`-vs-store probe), and `just <module> setup`
+        delegates to `nros setup`. Android model for comparison: a single root
+        var (`ANDROID_HOME`/`NROS_HOME`) + the build tool resolving from it;
+        PlatformIO: the build tool resolves from `~/.platformio` (no user PATH).
+        Survey + `nros env` design is the next slice. Until then `just setup`
+        keeps source-building into `build/` (the harness's `build/` tier still
+        wins for devs); duplicated version pins remain the drift to remove.
 - [x] **187.7 — License gates.** `nros doctor` reads the index's `[gated.*]`
       (NVIDIA SPE, ARM FVP) and reports each: `[OK]` env→dir resolves, `[--]`
       unset (informational — not targeting that board), `[!!]` set-but-missing
