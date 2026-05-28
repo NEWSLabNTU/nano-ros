@@ -124,16 +124,17 @@ register_bridges(executor):
     for topic in bridge.topics:
       (type_name, type_hash, qos) = resolve from plan.interfaces   // err if undeclared
       for (src, dst) in ordered session pairs of bridge.connect:
-        // Tier-2 entity builder (see entity-api-tiers.md) — no bespoke fn:
-        dst_pub = node_dst.publisher(topic).generic(type_name, type_hash)
-                          .qos(qos).session(dst).build()
-        node_src.subscription(topic).generic(type_name, type_hash).qos(qos)
-                .message_info()          // for the bridge_origin echo check
-                .session(src)            // 172.K.5 selector
+        // node-centric builders (entity-api-tiers.md), node-ctx used one at a
+        // time; the dest publisher is owned and outlives its node-ctx:
+        let dst_pub = exec.node_on(dst).publisher(topic)        // NodeCtx dropped here
+                          .generic(type_name, type_hash).qos(qos).build()?;
+        exec.node_on(src).subscription(topic)                   // re-borrow exec
+                .generic(type_name, type_hash).qos(qos)
+                .message_info()          // bridge_origin echo check
                 .build(move |payload, info| {
                     if parse_bridge_origin(info.attachment()) == Some(ORIGIN) { return; }
                     let _ = dst_pub.publish_raw_with_attachment(payload, &ORIGIN_ATT);
-                })
+                })?;
 register_all(...) { ...; register_bridges(executor)?; }
 ```
 
