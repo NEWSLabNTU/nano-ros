@@ -71,7 +71,7 @@ application code.
       relay (`exec.node_mut(dst).publisher(t).generic(..).build()` then
       `exec.node_mut(src).subscription(t).generic(..).message_info().build(cb)`)
       is verified expressible in `builder_tests::nodectx_publisher_and_bridge_shape`.
-- [~] **M2 — Remove the `register_subscription_*` zoo + migrate all callers.**
+- [x] **M2 — Remove the `register_subscription_*` zoo + migrate all callers.**
       **No deprecation window** (decided 2026-05-28): the zoo is an internal
       surface (only the generator + tests/examples + the C FFI call it), so
       delete outright and migrate callers in the same change — a deprecation
@@ -112,14 +112,28 @@ application code.
         `register_subscription_with_safety{,_sized,_sized_on,_on}`,
         `register_subscription_raw{,_sized}`, `register_subscription_raw_with_qos{,_sized}`.
 
-      **Slices:** *M2.a DONE* (`650c52b02`) — typed `.message_info()`
-      (`FnMut(&M, Option<&MessageInfo>)`) + `.safety()` (`cfg safety-e2e`)
-      builder knobs; the typed-info/safety `_inner` cores are now `pub(crate)`
-      + qos-threaded. *M2.b* settle + `pub(crate)` the 3 closure cores; introduce the clean C-FFI
-      core. *M2.c* migrate Rust callers (14 examples, ~45 unit tests, 4 benches/
-      integration, 4 doc comments, 5 node.rs delegations). *M2.d* re-point the 2
-      C-FFI callsites. *M2.e* delete the public zoo; `grep` shows no
-      `register_subscription_*` public method outside the kept cores; `just ci`.
+      **Slices — ALL DONE:** *M2.a* (`650c52b02`) typed `.message_info()` +
+      `.safety()` knobs, typed-info/safety `_inner` cores `pub(crate)` +
+      qos-threaded. *M2.b+d* (`d72cbe22b`) C-FFI core
+      `add_arena_subscription_c_callback` (`pub` — cross-crate) + `nros-c`
+      repoint. *M2.c+e* (`9e99c9cb4`) migrated every caller (16 examples, ~45
+      unit tests, 2 benches, 2 integration tests, 5 doc comments) + deleted the
+      19 public zoo methods + repaired intra-doc links.
+
+      **Kept cores (final):** 3 closure lowering targets
+      (`register_subscription_buffered_on` / `_raw_on` / `_raw_info_on`, now
+      `pub(crate)`), the typed info/safety `_inner` cores (`pub(crate)`),
+      `add_arena_subscription_callback` (`pub` — `nros-px4` external), and
+      `add_arena_subscription_c_callback` (`pub` — `nros-c` FFI). No
+      `verb_noun_axis_axis_axis` public identifier remains.
+
+      **Verified:** `cargo doc -D warnings` clean; nros-node 145/146 tests
+      (default/safety-e2e); nros-c/nros/nros-cpp build; native examples build;
+      9 embedded examples cross-compile (baremetal{,-serial}, freertos
+      listener+talker, nuttx, threadx-riscv64, threadx-linux, esp32,
+      esp32-qemu-baremetal). Zephyr Rust example: source migrated (identical
+      builder pattern) but its `just zephyr build-rust-examples` recipe has a
+      pre-existing shell-syntax bug — verify once that's fixed.
 - [ ] **M3 — C / C++ named-options parity (rclc / rclcpp mirrors).** A
       `SubscriptionOptions` / `PublisherOptions` struct on the C/C++ surfaces
       (named fields + defaults, the idiomatic shape there) lowering to the same
