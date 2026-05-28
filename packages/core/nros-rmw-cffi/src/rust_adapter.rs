@@ -830,12 +830,13 @@ unsafe extern "C" fn try_recv_reply_raw_trampoline<R: RustBackend>(
 }
 
 // ============================================================================
-// Trampolines — events / liveliness / deadline (TODO: wire through)
-// ============================================================================
-
-// ============================================================================
 // Event-callback bridge (Phase 115.L.0.events)
 // ============================================================================
+//
+// Events / liveliness / deadline are wired through the vtable (see the
+// `register_subscriber_event` / `register_publisher_event` /
+// `assert_publisher_liveliness` / `next_deadline_ms` trampolines registered
+// above) — the stale "TODO: wire through" header was removed (Phase 192.9).
 //
 // `NrosRmwEventCallback` (cffi shape) and `nros_rmw::EventCallback`
 // (trait shape) have *layout-identical* arguments:
