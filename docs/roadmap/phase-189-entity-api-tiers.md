@@ -55,11 +55,15 @@ application code.
       [`entity-api-tiers.md` §Borrow model](../design/entity-api-tiers.md)). The
       bridge builds the dest publisher on one `NodeCtx` (dropped), then registers
       the source subscription on another.
-      *Slice 1 DONE* (`5940a0c4f`): the publisher builder on the session-borrowing
-      `Node` (`node.publisher(t).typed/.generic.qos.build`) + permissive
-      `MockSession` QoS. *Remaining:* the `NodeCtx` + the subscription builder
-      (typed/generic, `rx_buffer`, `.message_info()` raw+info path, `sched_context`)
-      + re-point the convenient ctors.
+      *Slice 1 DONE* (`5940a0c4f`): publisher builder on the session-borrowing
+      `Node` + permissive `MockSession` QoS. *Slice 2 DONE* (`edae5e01d`):
+      `Executor::node_mut(id) -> NodeCtx` + the subscription builder
+      (`.typed::<M>()`/`.generic()`/`.qos()`/`.build(cb)`) + convenient
+      `create_subscription` / `create_generic_subscription`, delegating to
+      `register_subscription_buffered_on`/`_raw_on`. *Remaining (slice 3):*
+      const-generic `.rx_buffer::<N>()`, `.message_info()` (the raw+info arena
+      path — the 172 bridge dep), `.sched_context()`, `NodeCtx.publisher`
+      symmetry, and re-pointing/retiring the executor `register_*` zoo (M2).
 - [ ] **M2 — Retire the `register_*_*_*` zoo.** One release as `#[deprecated]`
       shims over the builder, then deleted. **The generator emits builder calls**
       (replacing the `register_subscription_raw_with_qos_sized_on` etc. it emits
