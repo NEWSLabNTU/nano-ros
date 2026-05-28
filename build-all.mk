@@ -52,8 +52,14 @@ define timed_stage
 endef
 
 # Build non-fixture example leaves + every platform's fixtures concurrently;
-# all gated behind shared workspace/tooling prereqs.
+# all gated behind shared workspace/tooling prereqs. Drop the same
+# `.fixtures-built` stamp the public `build-test-fixtures` writes (justfile)
+# so the `_require-fixtures` preflight lets `test-all` run after `build-all`
+# — build-all builds every fixture, so it must vouch for them too.
 all: build-example-extras $(FIXTURES)
+	@mkdir -p target/nextest
+	@date -u +%Y-%m-%dT%H:%M:%SZ > target/nextest/.fixtures-built
+	@echo "build-all: stamped target/nextest/.fixtures-built"
 
 # Serial prerequisites every parallel target needs. Each `+just` shares
 # the jobserver, so the cargo/cc inside still parallelizes against the pool.
