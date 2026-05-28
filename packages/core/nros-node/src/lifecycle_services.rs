@@ -544,7 +544,9 @@ mod tests {
 
     /// Encode `value` to CDR, decode it back, and assert equality.
     fn round_trip<T: Serialize + Deserialize + PartialEq + core::fmt::Debug>(value: T) {
-        let mut buf = [0u8; 4096];
+        // Generous scratch for the largest lifecycle message under test.
+        const ROUND_TRIP_BUF: usize = 4096;
+        let mut buf = [0u8; ROUND_TRIP_BUF];
         let mut writer = CdrWriter::new_with_header(&mut buf).expect("writer init");
         value.serialize(&mut writer).expect("serialize");
         let len = writer.position();

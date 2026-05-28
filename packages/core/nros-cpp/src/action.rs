@@ -16,6 +16,12 @@ use crate::{
     nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
+/// Scratch buffer for re-framing an incoming goal payload before handing
+/// it to the user goal callback: strip the action framing
+/// (`[CDR_HDR][seq_prefix][UUID]`) and re-prepend a plain CDR header so the
+/// callback sees a normal `[CDR_HDR][goal_fields]` message.
+const GOAL_USER_BUF: usize = 512;
+
 // Phase 87.11: opaque storage sizes are now driven by layout-mirror
 // structs in `nros::sizes` (see `CppActionServerLayout` /
 // `CppActionClientLayout`). The asserts below ensure the real
@@ -100,7 +106,7 @@ unsafe extern "C" fn goal_callback_trampoline(
     // User-facing framing: [CDR_HDR][goal_fields].
     let framing_len = CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
     let slice = unsafe { core::slice::from_raw_parts(goal_data, goal_len) };
-    let mut user_buf = [0u8; 512];
+    let mut user_buf = [0u8; GOAL_USER_BUF];
     let (ptr, len) = if goal_len > framing_len {
         let fields = &slice[framing_len..];
         user_buf[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);

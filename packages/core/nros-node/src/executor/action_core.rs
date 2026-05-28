@@ -13,6 +13,17 @@ use nros_rmw::{Publisher, ServiceClientTrait, ServiceServerTrait, Subscriber, Tr
 use super::types::NodeError;
 use crate::session;
 
+/// Scratch buffer for a decoded CancelGoal request. Cancel payloads are
+/// tiny (a `GoalId` + a `builtin_interfaces/Time` stamp), so a fixed
+/// 256-byte buffer covers them without a const-generic parameter like the
+/// goal/result/feedback slabs.
+pub(crate) const CANCEL_BUF: usize = 256;
+
+/// Scratch buffer for serializing a `GoalStatusArray` before publishing it
+/// on the status topic. 512 bytes holds the CDR header plus a status entry
+/// (`GoalInfo` + status enum) for every concurrently-tracked goal.
+const STATUS_ARRAY_BUF: usize = 512;
+
 // ============================================================================
 // Supporting types
 // ============================================================================
@@ -126,7 +137,7 @@ pub struct ActionServerCore<
     pub(crate) result_slab_used: usize,
     pub(crate) goal_buffer: [u8; GOAL_BUF],
     pub(crate) feedback_buffer: [u8; FEEDBACK_BUF],
-    pub(crate) cancel_buffer: [u8; 256],
+    pub(crate) cancel_buffer: [u8; CANCEL_BUF],
 }
 
 impl<
@@ -159,7 +170,7 @@ impl<
             result_slab_used: 0,
             goal_buffer: [0u8; GOAL_BUF],
             feedback_buffer: [0u8; FEEDBACK_BUF],
-            cancel_buffer: [0u8; 256],
+            cancel_buffer: [0u8; CANCEL_BUF],
         }
     }
 
@@ -624,7 +635,7 @@ impl<
 
     /// Publish the current GoalStatusArray on the status topic.
     pub fn publish_status_array(&self) -> Result<(), NodeError> {
-        let mut buf = [0u8; 512];
+        let mut buf = [0u8; STATUS_ARRAY_BUF];
         let mut writer =
             CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
 

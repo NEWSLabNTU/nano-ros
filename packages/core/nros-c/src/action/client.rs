@@ -527,9 +527,10 @@ pub unsafe extern "C" fn nros_action_get_result(
 
     // Install temporary result callback that captures the result into static buffers.
     let client_ref = &mut *client;
+    const BLK_RESULT_BUF_LEN: usize = 1024; // max captured action-result CDR
     static mut BLK_RESULT_LEN: i32 = -1;
     static mut BLK_RESULT_STATUS: u8 = 0;
-    static mut BLK_RESULT_BUF: [u8; 1024] = [0u8; 1024];
+    static mut BLK_RESULT_BUF: [u8; BLK_RESULT_BUF_LEN] = [0u8; BLK_RESULT_BUF_LEN];
     BLK_RESULT_LEN = -1;
 
     let orig_cb = client_ref.result_callback;
@@ -631,7 +632,9 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
                 let fb_fields_len = len.saturating_sub(FEEDBACK_FRAMING_LEN);
 
                 if fb_fields_len > 0 {
-                    let mut fb_buf = [0u8; 512];
+                    // Re-framed feedback: [CDR_HEADER][feedback_fields].
+                    const FB_USER_BUF: usize = 512;
+                    let mut fb_buf = [0u8; FB_USER_BUF];
                     let payload =
                         write_cdr_le_header(&mut fb_buf).expect("fb_buf >= CDR_HEADER_LEN");
                     let copy_len = fb_fields_len.min(payload.len());

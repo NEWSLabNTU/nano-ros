@@ -214,7 +214,8 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     let goal_slice = core::slice::from_raw_parts(goal_data, goal_len);
 
     // Build [CDR_HEADER][goal_fields] on the stack (must outlive the callback)
-    let mut cb_buf = [0u8; 512];
+    const GOAL_CB_BUF: usize = 512;
+    let mut cb_buf = [0u8; GOAL_CB_BUF];
     let (cb_ptr, cb_len) = if goal_len > GOAL_REQUEST_FRAMING_LEN {
         let fields = &goal_slice[GOAL_REQUEST_FRAMING_LEN..];
         let payload = write_cdr_le_header(&mut cb_buf).expect("cb_buf >= CDR_HEADER_LEN");
