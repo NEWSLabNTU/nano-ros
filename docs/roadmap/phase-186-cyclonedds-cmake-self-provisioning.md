@@ -111,9 +111,16 @@ cross C-flags out of the shell scripts into CMake).
       add_subdirectory. `ProvideCycloneDDS.cmake` (macro) + backend wiring.
 - [x] Root CMakeLists defaults `CYCLONEDDS_SOURCE_DIR` to the pinned submodule
       (root owns third-party/) → bare cmake build self-provisions, no `-D` needed.
-- [ ] Per-platform Cyclone flags live in CMake (no shell), one fragment per target
-      — **remaining** (WITH_FREERTOS/WITH_LWIP + cross includes still in the shell
-      scripts; needed for a real embedded cross self-provision).
+- [x] Per-platform Cyclone flags live in CMake — **freertos done**: the
+      `nano-ros-freertos.cmake` platform module stages WITH_FREERTOS/WITH_LWIP +
+      the feature trims + ddsrt FreeRTOS/lwIP include flags (gated on the
+      cyclonedds RMW), and the backend adds Cyclone's internal/generated include
+      roots + the ddsc whole-archive lib on the source path. **Validated:** a bare
+      `cmake` of `examples/qemu-arm-freertos/rust/talker` with no
+      `-DCMAKE_PREFIX_PATH` (only the cross toolchain) self-provisions Cyclone,
+      compiles it for Cortex-M3, and links a 32-bit ARM ELF — no `just cyclonedds`
+      pre-step. find_package path (with prefix) still selected (regression-clean).
+      *(threadx + native fragments remain — same pattern.)*
 - [x] `nros-rmw-cyclonedds` links `CycloneDDS::ddsc` unchanged regardless of source
       (find_package path regression-clean).
 

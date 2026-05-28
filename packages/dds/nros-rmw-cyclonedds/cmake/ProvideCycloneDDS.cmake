@@ -55,6 +55,9 @@ macro(nros_provide_cyclonedds)
             # EXCLUDE_FROM_ALL: built only because nros_rmw_cyclonedds links
             # CycloneDDS::ddsc, not as part of `all`.
             add_subdirectory("${CYCLONEDDS_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/_cyclonedds" EXCLUDE_FROM_ALL)
+            # Where Cyclone generated its headers (dds/config.h, version.h, …) —
+            # the backend needs this on the source path (see CMakeLists.txt).
+            set(NROS_CYCLONEDDS_SOURCE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/_cyclonedds")
             set(NROS_CYCLONEDDS_PROVENANCE "source")
         else()
             message(FATAL_ERROR

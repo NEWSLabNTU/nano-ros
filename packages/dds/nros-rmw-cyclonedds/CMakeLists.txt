@@ -103,6 +103,29 @@ target_include_directories(nros_rmw_cyclonedds
 
 target_link_libraries(nros_rmw_cyclonedds PUBLIC CycloneDDS::ddsc)
 
+# Phase 186 — on the self-provision (source) path, CycloneDDS::ddsc is an
+# add_subdirectory target that interface-exports only Cyclone's *public* headers.
+# The wrapper (sertype_min.hpp) compiles against a few semi-internal ddsi/ddsrt
+# headers that the *install* bundles but the build-tree target does not export
+# (dds/ddsi/ddsi_cdrstream.h, q_protocol.h, ddsi_serdata_default.h, ddsi_sertype.h,
+# plus generated dds/config.h + version.h). Add the source + generated roots
+# directly. The find_package path already gets them from the install include dir.
+if(NROS_CYCLONEDDS_PROVENANCE STREQUAL "source")
+    target_include_directories(nros_rmw_cyclonedds PRIVATE
+        "${CYCLONEDDS_SOURCE_DIR}/src/core/ddsi/include"
+        "${CYCLONEDDS_SOURCE_DIR}/src/core/ddsc/include"
+        "${CYCLONEDDS_SOURCE_DIR}/src/ddsrt/include"
+        "${NROS_CYCLONEDDS_SOURCE_BUILD_DIR}/src/ddsrt/include")
+    # The root CMakeLists whole-archives the backend together with
+    # ${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}; on the find_package path that's the
+    # imported libddsc, set by the rpath block below. On the source path ddsc is
+    # an in-tree static target, so point the var at its build artifact (a genex,
+    # evaluated when the root expands the link flag) — otherwise the final link
+    # drops every dds_*/ddsrt_* symbol. Phase 186.
+    set(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY "$<TARGET_FILE:CycloneDDS::ddsc>"
+        CACHE STRING "Resolved Cyclone DDS ddsc library (source path)" FORCE)
+endif()
+
 if(DEFINED NANO_ROS_PLATFORM
    AND (NANO_ROS_PLATFORM STREQUAL "freertos"
         OR NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"))

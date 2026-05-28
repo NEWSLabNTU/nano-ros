@@ -117,6 +117,49 @@ endif()
 include("${_nros_freertos_board_module}")
 
 # ---------------------------------------------------------------------------
+# Phase 186 — CycloneDDS self-provision flags (FreeRTOS + lwIP).
+#
+# When the Cyclone backend self-provisions Cyclone from source (no prebuilt
+# install on CMAKE_PREFIX_PATH — see nros_provide_cyclonedds()), the Cyclone
+# add_subdirectory needs the same WITH_*/feature knobs + ddsrt FreeRTOS/lwIP
+# include paths the retired scripts/cyclonedds/cross-build-ddsc.sh used to pass.
+# Stage them here, after the board overlay resolved FREERTOS_DIR / LWIP_DIR /
+# FREERTOS_CONFIG_DIR, and before the cyclonedds branch's add_subdirectory.
+# Guarded on the cyclonedds RMW; inert for other RMWs and for the prebuilt path
+# (find_package wins → the WITH_* cache vars go unused).
+# ---------------------------------------------------------------------------
+if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NOT DEFINED NROS_CYCLONE_FREERTOS_FLAGS_STAGED)
+    set(NROS_CYCLONE_FREERTOS_FLAGS_STAGED TRUE)
+    foreach(_off BUILD_SHARED_LIBS BUILD_IDLC BUILD_TESTING BUILD_IDLC_TESTING
+                 BUILD_EXAMPLES BUILD_DDSPERF BUILD_DOCS ENABLE_SECURITY ENABLE_SSL
+                 ENABLE_SHM ENABLE_IPV6 DDSRT_HAVE_RUSAGE)
+        set(${_off} OFF CACHE BOOL "Cyclone cross trim (Phase 186)" FORCE)
+    endforeach()
+    set(WITH_FREERTOS ON CACHE BOOL "Cyclone ddsrt FreeRTOS port (Phase 186)" FORCE)
+    set(WITH_LWIP ON CACHE BOOL "Cyclone lwIP transport (Phase 186)" FORCE)
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+    # cmake/platform/ glue legitimately knows the repo layout (CLAUDE.md); fall
+    # back to the pinned third-party trees if the board overlay left them unset.
+    if(NOT FREERTOS_DIR)
+        set(FREERTOS_DIR "${CMAKE_CURRENT_LIST_DIR}/../../third-party/freertos/kernel")
+    endif()
+    if(NOT LWIP_DIR)
+        set(LWIP_DIR "${CMAKE_CURRENT_LIST_DIR}/../../third-party/freertos/lwip")
+    endif()
+    set(_cyc_freertos_inc
+        "-I${FREERTOS_CONFIG_DIR}"
+        "-I${FREERTOS_CONFIG_DIR}/arch"
+        "-I${FREERTOS_DIR}/include"
+        "-I${FREERTOS_DIR}/portable/GCC/ARM_CM3"
+        "-I${LWIP_DIR}/src/include"
+        "-I${LWIP_DIR}/contrib/ports/freertos/include")
+    string(JOIN " " _cyc_freertos_inc_str ${_cyc_freertos_inc})
+    set(CMAKE_C_FLAGS
+        "${CMAKE_C_FLAGS} ${_cyc_freertos_inc_str} -D__int64_t_defined=1 -DconfigUSE_TRACE_FACILITY=1"
+        CACHE STRING "" FORCE)
+endif()
+
+# ---------------------------------------------------------------------------
 # Native-C platform shim (`packages/core/nros-platform-freertos`). The
 # board overlay must have declared `freertos_kernel` + `lwip` (the shim
 # CMakeLists picks them up via FREERTOS_KERNEL_TARGET / FREERTOS_LWIP_TARGET
