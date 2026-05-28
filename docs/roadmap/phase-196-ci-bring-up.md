@@ -129,6 +129,52 @@ triggers (core changes do affect Zephyr), but ensure `concurrency:
 cancel-in-progress` (already set) and consider path-narrowing where a workflow
 genuinely doesn't depend on a subtree.
 
+### 196.6 — [P1] Per-platform **dependency-chain** validation (light, not full builds)
+
+**Distribution model (confirmed):** nano-ros ships as a **source release +
+prebuilt host toolchains** (`nros setup` fetches the toolchains; the crates are
+consumed from the source tree, **not** crates.io). So the dep chain per platform
+is: `example → nros (path) + <backend> (path) + generated std_msgs (path, made
+by codegen) + the prebuilt host toolchain (nros setup)`.
+
+The goal of this CI is to **prove that dep chain resolves for every
+`(platform, rmw)`**, *not* to run the heavy full-build matrix (that stays in the
+sparse `just build-all` / `zephyr-dual-line` lanes). Per `(board, example, rmw)`:
+
+- [ ] **Toolchain side:** `nros setup <board> --rmw <rmw> --dry-run` resolves the
+      right prebuilt host tools (validates the `[board.*]`/`[rmw.*]` index wiring,
+      Phase 191.6) — instant, no fetch.
+- [ ] **Codegen step:** run `nros generate-rust` (or the build's codegen
+      pre-step) so the example's `generated/std_msgs` path-crate exists.
+      **Gotcha:** the examples declare `std_msgs = "*"`, a *generated* crate; with
+      no codegen run, even `cargo tree` fails (`failed to select std_msgs … crates.io`).
+      Codegen needs ROS-sourced `.msg` defs (`AMENT_PREFIX_PATH`), so this lane
+      installs ROS like the dual-line.
+- [ ] **Crate/feature side:** `cargo tree --target <triple> --no-default-features
+      --features <combo> -e features` (resolution only — **no compile**) proves
+      the feature graph pulls the right backend/platform crates, unifies, and the
+      target-cfg deps line up. This is the cheap "dep chain correct" check.
+- [ ] Matrix over the **board × rmw** cells from `examples/README.md` (the
+      authoritative triple list). Each cell is seconds, so all platforms fit one
+      cheap workflow; the full compile stays opt-in.
+
+Distinct from the heavy lanes: this catches a broken feature/crate/toolchain
+wiring (a missing optional dep, a feature that doesn't resolve on a target, a
+board→toolchain typo) in seconds, without compiling every platform.
+
+### 196.7 — [P2] Fix the dep convention for the source-release model
+The three conventions (191.6 review) must collapse to the source-release reality:
+- [ ] `nros new` scaffolds `nros = { version = "0.1" }` (crates.io — **the crates
+      are not published**). Change it to the source-release dep: a path/relative
+      reference into the installed source tree (or a documented `git =
+      "https://github.com/NEWSLabNTU/nano-ros"` for out-of-tree projects) — match
+      whatever the source-release layout actually places the crates at.
+- [ ] README install line: wrong org + contradictory `--git`＋`--path`. Correct to
+      `cargo install --git https://github.com/NEWSLabNTU/nano-ros nros-cli` (or the
+      source-release's documented CLI install).
+- [ ] The user-journey CI lane (196 background) builds a scaffolded project end to
+      end, so this convention is exercised, not assumed.
+
 ---
 
 ## Acceptance criteria
@@ -138,6 +184,11 @@ genuinely doesn't depend on a subtree.
 - [ ] Every `.github/workflows/*.yml` has had ≥1 successful live run on the
       current `main` (or a tracking branch), recorded here.
 - [ ] `ci.yml` runs a meaningful workspace check, not a single-crate stub.
+- [ ] A light **per-platform dep-chain** lane (196.6) green over the board × rmw
+      matrix: `nros setup --dry-run` + codegen + `cargo tree --target`
+      (resolution, no full build) for every cell.
+- [ ] `nros new` scaffolds a dep that resolves under the source-release model
+      (196.7); a scaffolded project builds in the user-journey lane.
 - [ ] `docs/development/ci-conventions.md` exists and the dual-line + ci
       workflows follow it.
 
