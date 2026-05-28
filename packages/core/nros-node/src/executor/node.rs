@@ -354,6 +354,12 @@ impl<'a> Node<'a> {
         service_name: &str,
         qos: QosSettings,
     ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
+        // Phase 193.5 — validate the service profile against the backend's
+        // supported policies (mirrors pub/sub); no silent downgrade. RELIABLE is
+        // effectively required for request/reply, so a backend that only honours
+        // a fixed profile rejects an incompatible request here.
+        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
+            .map_err(NodeError::Transport)?;
         let info = Self::service_info(
             self.domain_id,
             &self.name,
@@ -397,6 +403,10 @@ impl<'a> Node<'a> {
         service_name: &str,
         qos: QosSettings,
     ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
+        // Phase 193.5 — validate against the backend's supported policies (no
+        // silent downgrade); request/reply effectively requires RELIABLE.
+        qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
+            .map_err(NodeError::Transport)?;
         let info = Self::service_info(
             self.domain_id,
             &self.name,

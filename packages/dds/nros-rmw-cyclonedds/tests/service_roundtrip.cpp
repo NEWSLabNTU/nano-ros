@@ -56,11 +56,23 @@ int main() {
         return 2;
     }
 
+    // Phase 193.5 — exercise the non-default QoS path (not the `nullptr` ⇒
+    // SERVICES_DEFAULT branch). A RELIABLE + VOLATILE + KEEP_LAST(5) profile is a
+    // valid non-default for request/reply (RELIABLE is effectively required); the
+    // same profile on both endpoints keeps the reader/writer matched. This drives
+    // Cyclone's `qos != nullptr ? *qos : SERVICES_DEFAULT` branch end-to-end.
+    nros_rmw_qos_t qos{};
+    qos.reliability     = NROS_RMW_RELIABILITY_RELIABLE;
+    qos.durability      = NROS_RMW_DURABILITY_VOLATILE;
+    qos.history         = NROS_RMW_HISTORY_KEEP_LAST;
+    qos.liveliness_kind = NROS_RMW_LIVELINESS_NONE;
+    qos.depth           = 5;
+
     nros_rmw_service_server_t srv{};
     srv.service_name = "svc_roundtrip";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
-                                    99, nullptr, &srv) != NROS_RMW_RET_OK) {
+                                    99, &qos, &srv) != NROS_RMW_RET_OK) {
         return 3;
     }
 
@@ -68,7 +80,7 @@ int main() {
     cli.service_name = "svc_roundtrip";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_client(&s, cli.service_name, cli.type_name, "",
-                                    99, nullptr, &cli) != NROS_RMW_RET_OK) {
+                                    99, &qos, &cli) != NROS_RMW_RET_OK) {
         g_vt->destroy_service_server(&srv);
         (void) g_vt->close(&s);
         return 4;
