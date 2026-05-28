@@ -132,19 +132,22 @@ configuration lives here* below.
 - [ ] **M8 — vendor-lib proven:** blocked on the license-gated NVIDIA SPE FSP
       (template + dry-run landed, 172.V); unblocks on SDK install or a
       non-NVIDIA vendor static lib.
-- [~] **M9 — in-binary multi-session routing** (172.K.5): per-node session
+- [x] **M9 — in-binary multi-session routing** (172.K.5): per-node session
       binding. **Multi-domain DONE** (2026-05-28 — `NodeBuilder::session_idx` +
       generator per-domain `SESSION_SPECS` + `[[domain]]`→plan). **Bridge
-      topic-forwarding:** config→plan foundation DONE (`PlanBridge` +
-      `apply_bridges`, codegen `64effd0`); generator + executor (runtime) half
-      designed in
-      [`docs/design/bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md):
-      kept in the **rclcpp/rclrs/rclc shape** — the `domain_bridge` pattern (a
-      generic subscription whose callback re-publishes) in our `create_*_raw`
-      API; add-ons = a `MessageInfo`-carrying raw-sub callback (mirrors rclcpp's
-      `(msg, MessageInfo)`) for echo metadata + one bridge node per session via
-      the K.5 `session_idx` selector. Sessions from `connect`, type/QoS from
-      `interfaces`. The `nros check` `[[bridge]]` warning guards it.
+      topic-forwarding DONE** (2026-05-28): config→plan (`PlanBridge` +
+      `apply_bridges`, codegen `64effd0`) + the generator runtime half —
+      `register_bridges` emits a bridge node per `connect` endpoint (via the K.5
+      `session_idx` selector, idx matched to its `SESSION_SPECS` slot) and, per
+      forwarded topic per ordered endpoint pair, the `domain_bridge`-shape relay
+      (generic publisher + generic `.message_info()` subscription on the Phase
+      189.M1 builder) with `nros-bridge` `bridge_origin` echo suppression.
+      `validate_bridges` resolves each topic's type from `interfaces` (errors on
+      undeclared / unopened-session / wildcard); the build enables `nros/bridge`.
+      The `[[bridge]]` `nros check` warning is dropped (routing now emitted). The
+      emitted relay was compile-verified against `nros`; runtime e2e (2 live RMW
+      agents) stays gated. See
+      [`docs/design/bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md).
 
 **Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
 independents (172.E sandbox, 172.K.7 multi-homing) can trail. The first-image

@@ -5,9 +5,11 @@ Design for in-binary **topic-forwarding bridges**: a `[[bridge]]` in the root
 relays declared topics between them — one process, multiple sessions, raw CDR
 forwarding. The public API stays in the **rclcpp / rclrs / rclc shape** (the
 `domain_bridge` pattern expressed in our mirrored client API), with nano-ros
-add-ons layered on. Status: the config→plan layer landed (`PlanBridge` +
-`nros deploy` `apply_bridges`, codegen `64effd0`); this doc designs the
-remaining generator + executor (runtime) half.
+add-ons layered on. **Status: DONE** — the config→plan layer (`PlanBridge` +
+`nros deploy` `apply_bridges`, codegen `64effd0`) and the generator runtime half
+(`register_bridges` + the node-centric relay on Phase 189.M1, the `[[bridge]]`
+check warning dropped) have landed. Runtime e2e against two live RMW agents
+stays gated. This doc records the design.
 
 ## Related work (what it teaches)
 
@@ -140,25 +142,31 @@ register_all(...) { ...; register_bridges(executor)?; }
 
 ## Work breakdown
 
-1. **nros-node — depends on [Phase 189](../roadmap/phase-189-entity-api-tiers.md)
-   M1.** The `MessageInfo` (`&[u8]` payload + `attachment()`) and `session` axes
-   are builder knobs on the Tier-2 entity builder
-   ([`entity-api-tiers.md`](entity-api-tiers.md)), NOT a new
-   `register_*_with_info_on`. So this half lands on top of 189.M1 (which adds
-   the builder + `.message_info()` + `.session()`). Minimal core delta — the
-   buffered-raw plumbing already reads the attachment via
-   `try_recv_raw_with_attachment`; 189.M1 surfaces it on the callback path.
-2. **generator** — `SESSION_SPECS` from `connect`; `register_bridges` emitting
-   the generic-sub-callback relay per (topic, session pair) via the K.5
-   selector + `nros-bridge` origin codec; call it in `register_all`. Resolve
-   type/QoS from `interfaces`; error on undeclared topic.
+1. **nros-node — DONE** (Phase 189.M1). The `MessageInfo` (`&[u8]` payload +
+   `attachment()`) axis is a builder knob — generic
+   `.message_info()` yields `FnMut(&[u8], &RawMessageInfo)` (the relay's
+   callback), not a new `register_*_with_info_on`. `NodeCtx::publisher`/
+   `subscription` + `RawMessageInfo` (wire attachment) landed in 189.M1.
+2. **generator — DONE.** `register_bridges` (`generate.rs`) emits, per bridge:
+   one bridge node per `connect` endpoint (bound via `node_builder().session_idx(idx)`,
+   idx matched to the endpoint's `SESSION_SPECS` slot), then per forwarded topic
+   per ordered endpoint pair `(i→j)` a generic publisher on `j` + a generic +
+   `.message_info()` subscription on `i` whose callback re-publishes through it,
+   with `nros-bridge` `bridge_origin` echo suppression. Called from
+   `register_all` when bridges exist; `validate_bridges` resolves each topic's
+   type from `interfaces` (errors on undeclared / unopened-session / wildcard) +
+   the build enables `nros/bridge`.
 3. **plan** — DONE (`PlanBridge`).
 4. **deploy** — DONE (`apply_bridges`).
-5. **check** — drop the `[[bridge]]` half of `pending_routing_warning` once (1)+(2) land.
-6. **tests** — generate-shape (bridge plan → `SESSION_SPECS` from endpoints +
-   `register_bridges` + the generic-sub-callback relay); a nros-node
-   `MessageInfo`-callback unit test; runtime e2e is agent/HW-bound (2 RMW
-   agents) — gate it.
+5. **check — DONE.** The `[[bridge]]` "routing not yet emitted" warning is gone
+   (routing is emitted).
+6. **tests — DONE** (compile/shape).
+   `generate::register_bridges_emits_relay` (bridge plan → bridge nodes +
+   the generic-sub-callback relay + origin codec) +
+   `validate_bridges_rejects_undeclared_topic`; the emitted relay was
+   compile-verified against `nros` (builder + `nros::bridge` codec +
+   `RawMessageInfo` + `publish_raw_with_attachment` + the `bridge` feature).
+   Runtime e2e is agent/HW-bound (2 RMW agents) — still gated.
 
 ## Deferred
 
