@@ -83,17 +83,15 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
       + publish the host binaries on its own Releases (cleaner separation than
       adding `nros` to `nano-ros-sdk`'s tool matrix; the CLI versions track the
       CLI repo, not the toolchain repo).
-  - [ ] **Merge `nros-codegen` into `nros` first** (recommended, zero dep cost):
-        `nros` already deps `cargo-nano-ros` (the codegen engine `nros-codegen-c`
-        wraps) and already has `generate`/`generate-rust`/`generate-c`
-        subcommands — its dep tree is a **superset** of `nros-codegen`'s, so
-        folding the build-tool-shaped surface (`--args-file <json>`,
-        `resolve-deps`, `generate-c/cpp`) in as `nros codegen …` adds nothing.
-        Keep the JSON `--args-file` call shape stable so the 92 in-tree consumers
-        (195.D) change only the binary name (`nros-codegen …` → `nros codegen …`).
-        Payoff: **one** host artifact to build/ship/install, one fewer thing to
-        switch. The only reason to keep it separate (a leaner build-time tool)
-        evaporates once it's prebuilt.
+  - [x] **Merge `nros-codegen` into `nros`** (DONE — `nros codegen` subcommand,
+        `cmd/codegen.rs`). Zero dep cost: `nros` already deps `cargo-nano-ros`
+        (the codegen engine `nros-codegen-c` wraps), so folding the build-tool
+        surface (`--args-file <json>`, `resolve-deps`, `--language c|cpp`) in as
+        `nros codegen …` added nothing. Call shape kept identical to the old
+        binary so the 195.D consumer switch is a binary-name change only.
+        Additive — `nros-codegen-c` retained until the consumers switch + it is
+        deleted (195.D). Verified `nros codegen --help` mirrors the old surface;
+        `nros-cli-core` tests green.
   - [ ] In the (renamed) `nros-cli` repo: a release workflow building `nros`
         (one binary, post-merge) per host (linux-x86_64, linux-arm64,
         macos-arm64), `cargo build --release` (the `packages/` build-infra
@@ -161,6 +159,14 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
   - Then: drop the gitlink. **Installing the host binary alone is NOT sufficient**
         — the submodule is today a *build* dependency of nano-ros (the 92 hooks),
         not just the CLI's home.
+- [ ] **195.E — Refresh the `nros-cli` repo's README + CLI help text.** The
+      repo's `README.md` and several command help/`about` strings still describe
+      the old `colcon-nano-ros` / colcon-extension framing and predate the
+      current `nros` surface (`setup`, `deploy`, `codegen`, board resolution).
+      Rewrite the README around the `nros` CLI as the headline product (the
+      renamed `NEWSLabNTU/nros-cli` repo), audit every subcommand's clap
+      `about`/long-help for staleness, and drop dead references. Lands as
+      `nros-cli` (`packages/codegen`) submodule commits.
 
 ## Acceptance criteria
 
