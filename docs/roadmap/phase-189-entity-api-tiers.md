@@ -112,8 +112,10 @@ application code.
         `register_subscription_with_safety{,_sized,_sized_on,_on}`,
         `register_subscription_raw{,_sized}`, `register_subscription_raw_with_qos{,_sized}`.
 
-      **Slices:** *M2.a* builder typed `.message_info()` + `.safety()` knobs.
-      *M2.b* settle + `pub(crate)` the 3 closure cores; introduce the clean C-FFI
+      **Slices:** *M2.a DONE* (`650c52b02`) — typed `.message_info()`
+      (`FnMut(&M, Option<&MessageInfo>)`) + `.safety()` (`cfg safety-e2e`)
+      builder knobs; the typed-info/safety `_inner` cores are now `pub(crate)`
+      + qos-threaded. *M2.b* settle + `pub(crate)` the 3 closure cores; introduce the clean C-FFI
       core. *M2.c* migrate Rust callers (14 examples, ~45 unit tests, 4 benches/
       integration, 4 doc comments, 5 node.rs delegations). *M2.d* re-point the 2
       C-FFI callsites. *M2.e* delete the public zoo; `grep` shows no
