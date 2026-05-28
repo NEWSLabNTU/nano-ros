@@ -70,11 +70,17 @@ Cyclone. Code comments document a real off-by-N bug this caused.
   `CDR_HEADER_LEN + 4 + UUID_LEN` vs `4 + 4 + UUID_LEN` vs `CDR_HEADER_LEN + 4 + 16` (inconsistent)
 - `packages/core/nros-c/src/action/{client,server}.rs` — `GOAL_ID_SEQ_PREFIX_LEN`
 
-- [ ] One shared `ACTION_GOAL_FRAMING_LEN` / `FEEDBACK_PAYLOAD_OFFSET` /
-      `GOAL_ID_SEQ_PREFIX_LEN` next to `CDR_HEADER_LEN`/`UUID_LEN`, consumed by
-      C/C++/Cyclone.
-- [ ] `service.cpp` raw `4`/`8` → `sizeof(kCdrLeHeader)` / `kGuidBytes`; `(pos+3)&~3`
-      → a `cdr_align4()` helper.
+- [x] Canonical **`GoalId::SEQ_PREFIX_LEN`** (nros-core, next to `UUID_LEN`) — the
+      single source for the `4`-byte seq prefix. `nros-cpp/src/action.rs` (4
+      inlined `+ 4 +` / `4 + 4 +` / `+ 16` sites → `CDR_HEADER_LEN +
+      GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN`) and `nros-c` client/server
+      (`GOAL_ID_SEQ_PREFIX_LEN = GoalId::SEQ_PREFIX_LEN`, de-duped) all route to
+      it. Behavior-preserving (every site = 24). `cargo check -p nros-core nros-cpp
+      nros-c` clean.
+- [ ] **Cyclone `service.cpp`** raw `4`/`8` offsets + `(pos+3)&~3` →
+      `sizeof(kCdrLeHeader)` / `kGuidBytes` / a `cdr_align4()` helper — **deferred**:
+      delicate C++ CDR/result bridge (validated in 184.8/186) in the action path
+      other agents are actively editing; do as a coordinated follow-up.
 
 ### 192.3 — [P2] build.rs source-tree walk-ups → `DEP_*`/env injection
 Board/`zpico-sys` `build.rs` reach sibling first-party crates + `third-party/` by

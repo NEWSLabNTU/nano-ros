@@ -98,7 +98,7 @@ unsafe extern "C" fn goal_callback_trampoline(
 
     // Incoming framing: [CDR_HDR][seq_prefix(4)][UUID(16)][goal_fields].
     // User-facing framing: [CDR_HDR][goal_fields].
-    let framing_len = CDR_HEADER_LEN + 4 + GoalId::UUID_LEN;
+    let framing_len = CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
     let slice = unsafe { core::slice::from_raw_parts(goal_data, goal_len) };
     let mut user_buf = [0u8; 512];
     let (ptr, len) = if goal_len > framing_len {
@@ -1096,7 +1096,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
             // Skip 24 bytes to land on the payload — the prior
             // `CDR_HEADER_LEN + GoalId::UUID_LEN` (= 20) missed
             // the GoalId length-prefix u32.
-            const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 4 + GoalId::UUID_LEN;
+            const FEEDBACK_PAYLOAD_OFFSET: usize =
+                CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
             let buf = core.feedback_buffer_ref();
             if total_len > FEEDBACK_PAYLOAD_OFFSET {
                 let data = &buf[FEEDBACK_PAYLOAD_OFFSET..total_len];
@@ -1492,7 +1493,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
         // used `CDR_HEADER_LEN + GoalId::UUID_LEN` (= 20) and missed
         // the `write_u32(16)` length-prefix that `write_goal_id`
         // emits before the UUID bytes.
-        const FEEDBACK_PAYLOAD_OFFSET: usize = CDR_HEADER_LEN + 4 + GoalId::UUID_LEN;
+        const FEEDBACK_PAYLOAD_OFFSET: usize = CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
         if total_len > FEEDBACK_PAYLOAD_OFFSET {
             let buf = core.feedback_buffer_ref();
             unsafe {
@@ -1741,7 +1742,8 @@ type PollingActionClientCore =
 
 // CDR framing bytes prefixing the goal payload in send_goal requests
 // (CDR encapsulation header + GoalId sequence length prefix + UUID).
-const POLLING_GOAL_REQUEST_FRAMING_LEN: usize = CDR_HEADER_LEN + 4 + 16;
+const POLLING_GOAL_REQUEST_FRAMING_LEN: usize =
+    CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
 
 /// Phase 122.3.d — initialize an L1 polling-mode action server.
 ///
