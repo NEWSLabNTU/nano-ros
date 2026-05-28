@@ -1,0 +1,36 @@
+# Phase 195.C — board profile descriptor. ESP32-C3 under QEMU (esp-hal).
+
+[[board]]
+names = ["esp32-qemu", "esp32", "esp32c3", "esp32-c3"]
+platform = "esp32"
+toolchain = "nightly"
+platform_feature = "platform-bare-metal"
+local_aliases = ["platform-esp32-qemu"]
+link_kind = "none"
+entry_kind = "board-run"
+net_stack = "nanoros-owned"
+chip = "esp32c3"
+board_crate = "nros-board-esp32-qemu"
+cargo_config = '''
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[target.riscv32imc-unknown-none-elf]
+rustflags = [
+    "-C", "link-arg=-Tlinkall.x",
+    "-C", "force-frame-pointers",
+]
+
+[env]
+ESP_LOG = "info"
+
+[unstable]
+build-std = ["core", "alloc"]
+'''
+
+[board.entry]
+crate_name = "nros_board_esp32_qemu"
+comment = "// Phase 126.M5.esp32 — esp-hal `#[main]` entry. The board's `run()`\n// initialises the chip + network + log writer, then drives the user\n// closure and loops forever (ESP32 has no process exit). The board\n// `Config` carries the zenoh locator + domain id (defaults from the\n// board crate; override via a config.toml the generator could embed\n// in a follow-up)."
+signature = "#[esp_hal::main]\nfn main() -> !"
+crate_root_extra = "use esp_backtrace as _;\nnros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();"
+closure_extra = "\n                .clock_us(nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_us)"

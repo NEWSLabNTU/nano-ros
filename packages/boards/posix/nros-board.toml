@@ -1,0 +1,12 @@
+# Phase 195.C — board profile descriptor for the host (native / POSIX) target.
+# Crate-less: there is no `nros-board-*` crate; the generated package depends on
+# `nros-platform-cffi` (emitted by the CLI's per-platform extra-deps path).
+
+[[board]]
+names = ["native", "posix"]
+platform = "posix"
+toolchain = "stable"
+platform_feature = "platform-posix"
+link_kind = "none"
+entry_kind = "hosted-main"
+net_stack = "nanoros-owned"
