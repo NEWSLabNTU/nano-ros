@@ -4,8 +4,8 @@
 Phase 187 toolchain/SDK surface — chiefly the board→package keyword heuristic and
 the toolchain version pins duplicated between the index and the build scripts.
 
-**Status.** In progress — 191.1 + 191.2 landing now; 191.3+ are tracked
-follow-ups.
+**Status.** 191.1 + 191.2 done (codegen `d3ecb85`, super `cced177c2`, sdk-repo
+`26fee59`); 191.3–5 are tracked follow-ups.
 
 **Priority.** P2 — correctness/maintainability of a landed feature; the heuristic
 already produced one bug (esp32 mis-resolved as Xtensa, fixed in 187 cleanup).
@@ -33,8 +33,11 @@ records the rest.
 
 ## Work items
 
-- [ ] **191.1 — Board→package resolution is data, not a keyword heuristic
-      (audit #1, HIGH).** `resolve_packages` matches board-name/target substrings
+- [x] **191.1 — Board→package resolution is data, not a keyword heuristic
+      (audit #1, HIGH).** DONE. `resolve_packages(index, board)` reads a
+      `[board.*]` table (arch/platform/packages); 14 boards mapped; unknown board
+      → error listing known boards; esp32 = riscv32 / no host-tool. Dropped the
+      dead `--target` flag + `ensure_tools`'s unused `target` param. `resolve_packages` matches board-name/target substrings
       (`b.contains("esp32")`, `"stm32"`, `"mps2"`, `"freertos"`, …) with tool
       names as bare `&'static str` — re-encoding board facts that belong to the
       board, and silently wrong for any board the match doesn't anticipate (the
@@ -43,8 +46,11 @@ records the rest.
       derives tools from the declared arch/platform via a small stable mapping
       (arch families don't churn). Unknown board → clear error, not a silent
       wrong guess. **Files:** `sdk_index.rs`, `cmd/setup.rs`, `nros-sdk-index.toml`.
-- [ ] **191.2 — Toolchain upstream pin is recorded in the index (audit #2,
-      HIGH).** The exact upstream rev of a repackaged tool lives only in the
+- [x] **191.2 — Toolchain upstream pin is recorded in the index (audit #2,
+      HIGH).** DONE. `[tool.*].upstream` records the exact rev (13.2.rel1,
+      14.2.0-3, the qemu fork branch, …); `build-tool.yml` takes an `upstream`
+      input + the 5 build scripts read it as `$3` (no hardcoded/hand-derived
+      pins). Synced to the nano-ros-sdk repo. The exact upstream rev of a repackaged tool lives only in the
       build script (`build-riscv-none-elf-gcc.sh` hardcodes xPack `14.2.0-3`;
       `build-arm` hand-derives `13.2.rel1` from the version string). The index —
       the supposed SSOT — is lossy. Add an `upstream` field to `[tool.*]`
