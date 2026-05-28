@@ -229,9 +229,11 @@ build-rust-examples:
     # Apply Cortex-A9 patches (idempotent; no-op if already applied).
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
     echo "Building Zephyr Rust examples in $WORKSPACE..."
-    NROS="$(basename "$(pwd)")"
-    cd "$WORKSPACE"
+    # Delegate each role to the maintained single-example builder
+    # (`build-one` owns the west-invocation + workspace setup; run from
+    # the repo root, so do NOT cd into the workspace here).
     for ex in talker listener service-server service-client action-server action-client service-client-async; do
+        just zephyr build-one "rust/$ex" zenoh
     done
     echo "Zephyr Rust examples built successfully!"
 
