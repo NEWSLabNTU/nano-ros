@@ -410,7 +410,7 @@ pub unsafe extern "C" fn nros_service_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
-        match session.create_service_server(&info, QosSettings::services_default()) {
+        match session.create_service_server(&info, nros_node::QosSettings::services_default()) {
             Ok(handle) => {
                 let raw = nros_node::RawServiceServer::<
                     { crate::config::MESSAGE_BUFFER_SIZE },
@@ -1126,7 +1126,7 @@ pub unsafe extern "C" fn nros_client_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
-        match session.create_service_client(&info, QosSettings::services_default()) {
+        match session.create_service_client(&info, nros_node::QosSettings::services_default()) {
             Ok(handle) => {
                 let raw = nros_node::RawServiceClient::<
                     { crate::config::MESSAGE_BUFFER_SIZE },

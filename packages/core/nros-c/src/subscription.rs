@@ -141,6 +141,7 @@ pub extern "C" fn nros_subscription_get_zero_initialized() -> nros_subscription_
 /// (all fields 0) selects the default behaviour, identical to
 /// `nros_subscription_init_with_qos`.
 #[repr(C)]
+#[derive(Default)]
 pub struct nros_subscription_options_t {
     /// Scheduling-context slot to bind the subscription's executor
     /// handle to. `0` = inherit the executor / Node default (no explicit
@@ -159,16 +160,6 @@ pub struct nros_subscription_options_t {
     /// Reserved for future use; must be zero. Pads the struct for ABI
     /// stability so later axes can be added without a layout break.
     pub _reserved: [u8; 2],
-}
-
-impl Default for nros_subscription_options_t {
-    fn default() -> Self {
-        Self {
-            sched_context: 0,
-            message_info: 0,
-            _reserved: [0u8; 2],
-        }
-    }
 }
 
 /// Get a zero-initialised [`nros_subscription_options_t`].
