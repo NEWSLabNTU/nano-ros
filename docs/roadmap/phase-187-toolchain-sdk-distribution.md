@@ -1,4 +1,4 @@
-# Phase 185 — Toolchain & SDK distribution (`nros setup`)
+# Phase 187 — Toolchain & SDK distribution (`nros setup`)
 
 **Goal.** Let a *user* deliver and run a first image board-scoped, prebuilt,
 and `just`-free — without today's workspace-wide, build-from-source SDK setup
@@ -24,7 +24,7 @@ micro-ROS's onboarding is **board-scoped** (`create_firmware_ws.sh <board>`
 fetches one board's deps ≈ 0.5 GB; the Arduino path is a 14–22 MB precompiled
 lib). nano-ros's `just setup` is a **workspace-developer** action pulling every
 platform SDK and *building* QEMU from source — ~7.4 GB, 20–60+ min, even for a
-one-board user, and it needs `just`. Phase 185 closes that gap.
+one-board user, and it needs `just`. Phase 187 closes that gap.
 
 The model (Android `sdkmanager` + PlatformIO):
 - **Prebuild only host toolchains/tools** (QEMU, cross-GCC, `zenohd`, OpenOCD) —
@@ -54,33 +54,33 @@ The model (Android `sdkmanager` + PlatformIO):
 
 ## Work items
 
-- [ ] **185.1 — Package index format + loader.** Define + parse
+- [ ] **187.1 — Package index format + loader.** Define + parse
       `nros-sdk-index.toml` (`[tool]`/`[source]`/`[gated]`, per-host `dist`,
       `[tool.*.source]` recipe, version + sha256). **Files:**
       `packages/codegen/.../orchestration/sdk_index.rs` (or a new `nros-sdk`
       crate), the committed `nros-sdk-index.toml`.
-- [ ] **185.2 — `nros setup` CLI + board resolution.** `nros setup <board>` /
+- [ ] **187.2 — `nros setup` CLI + board resolution.** `nros setup <board>` /
       `--target` / `--list` / `--licenses`; resolve board→package set via
       `profile()`/board crates. **Files:** `nros-cli-core/src/cmd/setup.rs`,
       `cmd/mod.rs`.
-- [ ] **185.3 — Fetch / verify / cache / source-fallback / lockfile.** Download
+- [ ] **187.3 — Fetch / verify / cache / source-fallback / lockfile.** Download
       host-matched `dist`, sha256-verify, unpack to `$NROS_HOME/sdk/<tool>/<ver>`;
       no `dist` ⇒ build from `[tool.*.source]` @ ref into the same prefix
       (identical layout, `.nros-provenance`); shared store; write/read
       `nros-sdk.lock`.
-- [ ] **185.4 — Versioning + CI bump→release gate.** Per-host build matrix →
+- [ ] **187.4 — Versioning + CI bump→release gate.** Per-host build matrix →
       draft Release (`tag=<tool>-<version>`, `asset=<tool>-<host>.tar.zst`) →
       sha256 back-commit → required check → publish on merge. The source recipe
       is CI-tested each run so prebuilt ≡ source-built. **Files:**
       `.github/workflows/sdk-release.yml`.
-- [ ] **185.5 — `nano-ros-sdk` hosting repo + prebuilt builders.** A repo
+- [ ] **187.5 — `nano-ros-sdk` hosting repo + prebuilt builders.** A repo
       holding the Release assets + per-tool build/repackage scripts for QEMU,
       cross-GCC (arm/riscv/xtensa), `zenohd`, OpenOCD across the host matrix.
-- [ ] **185.6 — Unify with `just setup` + auto-install-on-build.** `just
+- [ ] **187.6 — Unify with `just setup` + auto-install-on-build.** `just
       <module> setup` becomes a thin caller of the same index (one truth, no
       drift); `nros build`/`deploy` trigger a missing `nros setup <board>` (the
       PlatformIO lazy-install ergonomic).
-- [ ] **185.7 — License gates.** NVIDIA SPE / ARM FVP: never fetched or built —
+- [ ] **187.7 — License gates.** NVIDIA SPE / ARM FVP: never fetched or built —
       instruct + expected env var; `nros doctor` presence check (already exists
       from Phase 172).
 
