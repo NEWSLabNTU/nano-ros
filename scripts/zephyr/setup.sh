@@ -62,7 +62,9 @@ fi
 # the just recipe) would make the subsequent `cd "$WORKSPACE_DIR"` land inside
 # the SDK tree (scripts/zephyr/sdk/...). That only triggers on a fresh install
 # (the SDK build runs), which is why local cached-SDK runs pass but CI fails.
-mkdir -p "$WORKSPACE_DIR"
+# `[ -d ]` guard: WORKSPACE_DIR may already be a directory (re-run) or a dev
+# symlink to a sibling workspace — `mkdir -p` errors on a non-directory.
+[ -d "$WORKSPACE_DIR" ] || mkdir -p "$WORKSPACE_DIR"
 WORKSPACE_DIR="$(cd "$WORKSPACE_DIR" && pwd)"
 
 # Phase 180.A — west manifest selector. west.yml = 3.7 LTS (default),
