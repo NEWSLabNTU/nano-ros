@@ -44,11 +44,13 @@
 
 set -e
 
-BRIDGE_NAME="qemu-br"
-TAP_PREFIX="tap-qemu"
-HOST_IP="192.0.3.1"
-NETMASK="24"
-NUM_TAPS=2
+# Phase 192.4 — overridable via NROS_QEMU_* so concurrent runs / CI agents on
+# the same host don't collide on bridge name or subnet.
+BRIDGE_NAME="${NROS_QEMU_BRIDGE:-qemu-br}"
+TAP_PREFIX="${NROS_QEMU_TAP_PREFIX:-tap-qemu}"
+HOST_IP="${NROS_QEMU_HOST_IP:-192.0.3.1}"
+NETMASK="${NROS_QEMU_NETMASK:-24}"
+NUM_TAPS="${NROS_QEMU_NUM_TAPS:-2}"
 
 # Parse arguments
 TEARDOWN=false

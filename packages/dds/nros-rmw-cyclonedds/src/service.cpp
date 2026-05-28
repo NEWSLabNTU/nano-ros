@@ -77,6 +77,23 @@ namespace nros_rmw_cyclonedds {
 
 namespace {
 
+// Phase 192.4 — read a uint64 from the environment, falling back to a baked
+// default. getenv returns null on RTOS targets with no environment, so the
+// defaults apply there. No function-local statics (would need __cxa_guard on
+// embedded); callers read once into a local where it matters.
+uint64_t env_u64(const char* name, uint64_t fallback) {
+    const char* v = std::getenv(name);
+    if (v == nullptr || v[0] == '\0') return fallback;
+    char* end = nullptr;
+    unsigned long long parsed = std::strtoull(v, &end, 10);
+    return (end != v && parsed > 0) ? static_cast<uint64_t>(parsed) : fallback;
+}
+
+// Default Cyclone service request/reply match timing (ms). Tunable at runtime
+// via NROS_CYCLONE_MATCH_{TIMEOUT,POLL}_MS without recompiling.
+constexpr uint64_t kDefaultMatchTimeoutMs = 5000;
+constexpr uint64_t kDefaultMatchPollMs = 5;
+
 #if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX)
 struct ServiceAtomicI64 {
     int64_t value;
@@ -651,9 +668,10 @@ bool request_writer_matched(dds_entity_t writer) {
 }
 
 nros_rmw_ret_t wait_for_request_match(dds_entity_t writer, uint64_t deadline_ms) {
+    const uint64_t poll_ms = env_u64("NROS_CYCLONE_MATCH_POLL_MS", kDefaultMatchPollMs);
     while (platform_now_ms() < deadline_ms) {
         if (request_writer_matched(writer)) return NROS_RMW_RET_OK;
-        platform_sleep_ms(5);
+        platform_sleep_ms(static_cast<uint32_t>(poll_ms));
     }
     return NROS_RMW_RET_TIMEOUT;
 }
@@ -833,7 +851,8 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* server, int64_t seq
     // the discovered reader is present and the VOLATILE write reaches it.
     // Without this the server hangs the full timeout and the stock
     // `ros2 service call` gives up (117.12.B.1).
-    const uint64_t deadline = platform_now_ms() + 5000;
+    const uint64_t deadline =
+        platform_now_ms() + env_u64("NROS_CYCLONE_MATCH_TIMEOUT_MS", kDefaultMatchTimeoutMs);
     const uint64_t grace_until = platform_now_ms() + 750;
     bool ready = false;
     while (platform_now_ms() < deadline) {
@@ -988,7 +1007,8 @@ int32_t service_call_raw(nros_rmw_service_client_t* client, const uint8_t* reque
     // 5 s total timeout covers request-reader match plus reply. Service
     // QoS is VOLATILE, so the first write must wait until discovery has
     // matched the client writer with the server request reader.
-    const uint64_t deadline = platform_now_ms() + 5000;
+    const uint64_t deadline =
+        platform_now_ms() + env_u64("NROS_CYCLONE_MATCH_TIMEOUT_MS", kDefaultMatchTimeoutMs);
     nros_rmw_ret_t match = wait_for_request_match(state->writer, deadline);
     if (match != NROS_RMW_RET_OK) return match;
 

@@ -144,6 +144,10 @@ fn generate_config(
 
     // --- C API knobs (nros-c only, not shared with nros-node) ---
     let let_buffer_size = env_usize("NROS_LET_BUFFER_SIZE", 512);
+    // Phase 192.4 — default service-client RPC timeout. Read the same env var
+    // and use the same default (30000) as the zenoh backend
+    // (`nros-rmw-zenoh/build.rs`) so the two paths agree.
+    let service_timeout_ms = env_usize("NROS_SERVICE_TIMEOUT_MS", 30_000);
 
     // --- Opaque storage from probe (Phase 118.B closure of Phase 87.6) ---
     // `EXECUTOR_SIZE` comes from `nros::sizes::EXECUTOR_SIZE` exported via
@@ -191,6 +195,11 @@ fn generate_config(
          /// Buffer size for LET semantics per handle \
          (set via NROS_LET_BUFFER_SIZE, default 512).\n\
          pub const LET_BUFFER_SIZE: usize = {let_buffer_size};\n\
+         \n\
+         /// Default service-client RPC timeout in ms \
+         (set via NROS_SERVICE_TIMEOUT_MS, default 30000 — matches the \
+         zenoh backend).\n\
+         pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = {service_timeout_ms};\n\
          \n\
          /// Maximum buffer size for subscription/service data \
          (derived from NROS_SUBSCRIPTION_BUFFER_SIZE via nros-node).\n\
