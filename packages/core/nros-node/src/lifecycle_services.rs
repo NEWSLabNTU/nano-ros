@@ -84,7 +84,13 @@ pub fn to_msg_state(state: InternalState) -> MsgState {
     };
     let mut msg = MsgState::default();
     msg.id = id;
-    let _ = msg.label.push_str(label);
+    // Phase 192.1/B — labels are a fixed, short, closed set (all fit today);
+    // debug_assert so a future capacity regression surfaces loudly in tests
+    // instead of silently truncating the label.
+    debug_assert!(
+        msg.label.push_str(label).is_ok(),
+        "lifecycle label exceeds the bounded msg.label capacity"
+    );
     msg
 }
 
@@ -106,7 +112,13 @@ pub fn to_msg_transition(t: InternalTransition) -> MsgTransition {
     };
     let mut msg = MsgTransition::default();
     msg.id = id;
-    let _ = msg.label.push_str(label);
+    // Phase 192.1/B — labels are a fixed, short, closed set (all fit today);
+    // debug_assert so a future capacity regression surfaces loudly in tests
+    // instead of silently truncating the label.
+    debug_assert!(
+        msg.label.push_str(label).is_ok(),
+        "lifecycle label exceeds the bounded msg.label capacity"
+    );
     msg
 }
 
@@ -257,7 +269,12 @@ pub fn handle_get_available_states(
 ) -> Box<GetAvailableStatesResponse> {
     let mut response = Box::new(GetAvailableStatesResponse::default());
     for state in ALL_STATES.iter().copied() {
-        let _ = response.available_states.push(to_msg_state(state));
+        // Phase 192.1/B — ALL_STATES is a fixed small set; debug_assert so a
+        // capacity regression is loud rather than silently dropping a state.
+        debug_assert!(
+            response.available_states.push(to_msg_state(state)).is_ok(),
+            "available_states exceeds bounded capacity"
+        );
     }
     response
 }
