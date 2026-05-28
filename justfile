@@ -1082,7 +1082,7 @@ format-workspace:
 [private]
 check-workspace:
     cargo +{{NIGHTLY}} fmt --check
-    cargo clippy --workspace --no-default-features \
+    cargo clippy --quiet --workspace --no-default-features \
         --exclude nros-c --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi \
@@ -1096,7 +1096,7 @@ check-workspace:
 [private]
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
-    cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
+    cargo clippy --quiet --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
         --exclude nros-tests \
         --exclude nros-c \
@@ -1122,17 +1122,17 @@ check-workspace-features:
     # umbrella now only carries `rmw-cffi`. Backend selection is
     # done by adding the matching `nros-rmw-<name>` dep.
     @echo "  - nros: cffi + posix + humble"
-    cargo clippy -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
+    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
     @echo "  - nros: cffi + posix + iron"
-    cargo clippy -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-iron"
+    cargo clippy --quiet -p nros --no-default-features --features "std,rmw-cffi,platform-posix,ros-iron"
     @echo "  - nros-c: zenoh-cffi + posix + humble"
-    cargo clippy -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
+    cargo clippy --quiet -p nros-c --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
     @echo "  - nros: cffi (no_std)"
-    cargo clippy -p nros --no-default-features --features "rmw-cffi"
+    cargo clippy --quiet -p nros --no-default-features --features "rmw-cffi"
     @echo "  - transport: sync-critical-section"
-    cargo clippy -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf
+    cargo clippy --quiet -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf
     @echo "  - nros-rmw (std)"
-    cargo clippy -p nros-rmw --features "std"
+    cargo clippy --quiet -p nros-rmw --features "std"
     @echo "All feature checks passed!"
 
 # Format C code (nros-c headers, zpico C, C examples) with clang-format
@@ -1217,7 +1217,7 @@ check-cpp:
             -include "$hdr" -x c++ /dev/null
     done
     echo "  - nros-cpp clippy (zenoh-cffi + posix + humble)"
-    cargo clippy -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
+    cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-zenoh-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 
 # Check Python code: formatting + linting with ruff
@@ -1461,7 +1461,7 @@ build-zenoh:
 # Check zenoh transport
 [private]
 check-zenoh:
-    cargo clippy -p nros-rmw --features std
+    cargo clippy --quiet -p nros-rmw --features std
 
 # Build zenohd from submodule (alias for `just zenohd build`).
 [group("maintenance")]
