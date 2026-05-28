@@ -87,15 +87,24 @@ coupled facts:
       (codegen `00a1b2d`, pushed); bumped the superproject pointer. nros builds
       again.
 
-### 196.2 — [P2] `nros codegen` consumer-coverage check
+### 196.2 — [DONE] `nros codegen` consumer-coverage check
 195.D switched consumers to `nros codegen` but missed the Zephyr cmake (196.1).
-Add a guard so this can't silently recur: a check (lint or test) that every
-in-tree codegen invocation uses the canonical `nros codegen` form — grep CMake
-modules / build.rs / just recipes for the old `nros --args-file` / `nros
-generate` / `nros-codegen` shapes, fail if any remain.
+A guard now makes that exact regression un-mergeable.
 
-**Files**: `zephyr/cmake/nros_generate_interfaces.cmake`,
-`packages/**/CMakeLists.txt`, `just/*.just`, `scripts/**`.
+- [x] **DONE.** `scripts/ci/codegen-invocation-check.sh` — a static lint
+      (`git ls-files` + `grep`, no toolchain/ROS) over superproject build glue
+      (`*.cmake`/`CMakeLists.txt`/`*.just`/`justfile`/`*.sh`/`*.rs`, excluding
+      `third-party/` + the `packages/codegen/` submodule). The signature is
+      precise: any line driving the codegen tool with `--args-file` MUST carry
+      the `codegen` subcommand token first; the legacy top-level `--args-file`
+      (the 196.1 bug) fails. User-facing verbs (`nros generate-rust`,
+      `nros generate cpp`) don't use `--args-file`, so they're untouched.
+      Wired as `.github/workflows/codegen-convention.yml` (push/PR on
+      cmake/just/scripts paths). Verified: clean tree OK, canonical form OK,
+      injected legacy form exits 1 with the offending line.
+
+**Files**: `scripts/ci/codegen-invocation-check.sh`,
+`.github/workflows/codegen-convention.yml`.
 
 ### 196.3 — [P2] Audit the other workflows for the same gap class
 The dual-line bugs (host assumes: submodules, ROS, SDK, Python, runner OS) are
