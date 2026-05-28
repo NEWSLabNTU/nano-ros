@@ -173,6 +173,25 @@ application code.
         `0` = inherit default). Reserved `message_info`; `nros_publisher_options_t`
         thin. (Divergence from M3.1: C subs are callback-registered → live sched
         bind; C++ subs are poll-style → inert. Reconciling needs the M3.4 FFI.)
+  - [x] **M3.2.g — Callback-style C++ subscriptions DONE.** Resolves the M3.1/M3.2
+        divergence above (C++ subs were poll-only → inert sched-bind) — the data-plane
+        analogue of the M3.3.e/.f service+client callback work.
+        `nros::Node::create_subscription<M>(out, topic, callback, qos, options)` now
+        registers a callback in the executor arena (rclcpp dispatch model). New FFI
+        `nros_cpp_subscription_register` → `Executor::add_arena_subscription_c_callback`
+        (the same hook the C subs use), returning a real `HandleId` so
+        `options.sched_context` is **functional** for C++ subs too. `Subscription<M>`
+        gains a callback mode: `TypedSubscriptionFn` + a static `message_trampoline`
+        (`ffi_deserialize` → typed handler) + dtor/move guards (arena owns the entity;
+        no destroy/relocate of `storage_`, no move-after-register). Faithful copy of
+        the M3.3.e pattern: FFI excluded from cbindgen (external `RawSubscriptionCallback`
+        alias) + local fn-ptr typedef in `subscription.hpp`; SFINAE-guarded overload
+        keeps the poll-style create unambiguous. Verified: nros-cpp build + clippy
+        clean; the callback overload + both poll overloads compile via
+        `g++ -fsyntax-only` in C++14 `-fno-exceptions -fno-rtti` **and** C++17
+        `-fexceptions -frtti` (Autoware build mode). Eliminates the poll-trampoline
+        every ported rclcpp node (e.g. autoware-safety-island's `SubscriptionHandler`)
+        writes by hand.
   - [x] **M3.3 — Services / actions QoS + options parity. DONE** (2026-05-29) —
         all sub-items a–f complete: QoS via Phase 193, then sched-context binding
         + named-options structs across C (services/clients/actions) and C++

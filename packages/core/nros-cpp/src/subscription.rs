@@ -107,6 +107,103 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     }
 }
 
+/// Phase 189.M3.x — register a **callback-style** subscription in the executor
+/// arena (rclcpp dispatch model), as opposed to the poll-style
+/// `nros_cpp_subscription_create` above. The arena owns the subscriber; spin
+/// dispatches `callback(cdr_bytes)` on each new sample. Returns the executor
+/// `HandleId` via `out_handle_id` (for cancel / introspection) and, when
+/// `sched_context != 0`, binds that handle to the scheduling context (poll-style
+/// subscriptions have no dispatched callback to schedule). `callback` is the C++
+/// template's raw trampoline; `context` is the `nros::Subscription<M>` object
+/// (`this`). Mirrors `nros_cpp_service_server_register` one entity over.
+///
+/// # Safety
+/// All non-NULL pointers must be valid; `callback` must be a valid trampoline;
+/// `context` outlives the executor (no move after register).
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_subscription_register(
+    node: *const nros_cpp_node_t,
+    topic: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawSubscriptionCallback,
+    context: *mut c_void,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    if node.is_null()
+        || topic.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || out_handle_id.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let topic_str = match unsafe { cstr_to_str(topic) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    // The arena registration derives namespace + node name from the node record
+    // (`add_arena_subscription_c_callback`), so only the bare topic is passed
+    // here — unlike the poll-style create which builds TopicInfo itself.
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
+    let node_id = if node_ref.node_id != 0 {
+        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+    } else {
+        None
+    };
+    let result = ctx.executor.add_arena_subscription_c_callback::<BUF>(
+        node_id,
+        topic_str,
+        type_str,
+        hash_str,
+        qos.to_qos_settings(),
+        callback,
+        context,
+    );
+
+    match result {
+        Ok(handle_id) => {
+            // Bind the (now-real) arena handle to the requested sched context.
+            // `0` = inherit (no-op); unknown slot fails.
+            if sched_context != 0 {
+                let sc_id = nros_node::executor::sched_context::SchedContextId(sched_context);
+                if ctx
+                    .executor
+                    .bind_handle_to_sched_context(handle_id, sc_id)
+                    .is_err()
+                {
+                    return NROS_CPP_RET_INVALID_ARGUMENT;
+                }
+            }
+            unsafe {
+                *out_handle_id = handle_id.0;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
 /// Try to receive raw CDR data from a subscription (non-blocking).
 ///
 /// Writes the received CDR bytes directly into the caller's output buffer

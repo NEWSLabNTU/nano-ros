@@ -20,6 +20,23 @@
 
 #include "nros_cpp_ffi.h"
 
+// Phase 189.M3.x — `nros_cpp_subscription_register` is excluded from cbindgen
+// (its Rust signature uses `RawSubscriptionCallback`, an external-crate type
+// alias cbindgen names without defining). Declare it locally with a plain
+// function-pointer typedef matching the ABI (`void(data, len, ctx)`), mirroring
+// the service.hpp callback-register treatment.
+extern "C" {
+typedef void (*nros_cpp_subscription_message_callback_t)(const uint8_t* data, size_t len,
+                                                         void* ctx);
+
+nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
+                                              const char* type_name, const char* type_hash,
+                                              nros_cpp_qos_t qos,
+                                              nros_cpp_subscription_message_callback_t callback,
+                                              void* context, uint8_t sched_context,
+                                              size_t* out_handle_id);
+} // extern "C"
+
 namespace nros {
 
 /// Maximum topic name length stored inside `nros::Subscription<M>`.
@@ -47,6 +64,12 @@ static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
 /// ```
 template <typename M> class Subscription {
   public:
+    /// Phase 189.M3.x — typed message-handler signatures for the
+    /// *callback-style* subscription (rclcpp dispatch model). The executor
+    /// invokes the handler during `spin_once()` on each new sample.
+    using TypedSubscriptionFn = void (*)(const M& msg);
+    using TypedSubscriptionFnWithCtx = void (*)(const M& msg, void* ctx);
+
     /// Try to receive a typed message (non-blocking).
     ///
     /// Receives raw CDR data into a stack buffer, then deserializes into `msg`
@@ -230,40 +253,58 @@ template <typename M> class Subscription {
     bool is_valid() const { return initialized_; }
 
     /// Destructor — releases subscription resources.
+    ///
+    /// Poll-style subscriptions own an `RmwSubscriber` in `storage_` and free it
+    /// here. Callback-style subscriptions (Phase 189.M3.x) are owned by the
+    /// executor arena (freed when the executor drops), so the dtor must NOT
+    /// touch `storage_` for them.
     ~Subscription() {
-        if (initialized_) {
+        if (initialized_ && !callback_mode_) {
             nros_cpp_subscription_destroy(storage_);
-            initialized_ = false;
         }
+        initialized_ = false;
     }
 
     // Move semantics (non-copyable). Relocation goes through the
     // `nros_cpp_subscription_relocate` runtime call (Phase 84.C1);
     // the `stream_` is rebound to the new storage afterwards.
+    // A callback-style subscription must NOT be moved after register — the
+    // executor arena holds `this` as the trampoline context (Phase 189.M3.x);
+    // the move only transfers bookkeeping and leaves that pointer stale. The
+    // poll-style relocation path is unchanged.
     Subscription(Subscription&& other) : initialized_(other.initialized_) {
-        if (other.initialized_) {
+        user_fn_ = other.user_fn_;
+        user_fn_ctx_ = other.user_fn_ctx_;
+        user_ctx_ = other.user_ctx_;
+        callback_mode_ = other.callback_mode_;
+        sched_handle_id_ = other.sched_handle_id_;
+        if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_subscription_relocate(other.storage_, storage_);
             ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
             stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
-            other.initialized_ = false;
         }
+        other.initialized_ = false;
         other.stream_ = Stream<M>();
     }
 
     Subscription& operator=(Subscription&& other) {
         if (this != &other) {
-            if (initialized_) {
+            if (initialized_ && !callback_mode_) {
                 nros_cpp_subscription_destroy(storage_);
-                initialized_ = false;
                 stream_ = Stream<M>();
             }
-            if (other.initialized_) {
+            initialized_ = other.initialized_;
+            user_fn_ = other.user_fn_;
+            user_fn_ctx_ = other.user_fn_ctx_;
+            user_ctx_ = other.user_ctx_;
+            callback_mode_ = other.callback_mode_;
+            sched_handle_id_ = other.sched_handle_id_;
+            if (other.initialized_ && !other.callback_mode_) {
                 nros_cpp_subscription_relocate(other.storage_, storage_);
                 ::memcpy(topic_name_, other.topic_name_, sizeof(topic_name_));
                 stream_.bind(storage_, &nros_cpp_subscription_try_recv_raw);
-                initialized_ = true;
-                other.initialized_ = false;
             }
+            other.initialized_ = false;
             other.stream_ = Stream<M>();
         }
         return *this;
@@ -320,14 +361,36 @@ template <typename M> class Subscription {
 
     friend class Node;
 
+    /// Phase 189.M3.x — raw message trampoline matching `RawSubscriptionCallback`
+    /// (`void(data, len, ctx)`). Deserializes the CDR sample into `M` and runs
+    /// the user's typed handler. `ctx` is the `Subscription` object (`this`).
+    static void message_trampoline(const uint8_t* data, size_t len, void* ctx) {
+        auto* self = static_cast<Subscription*>(ctx);
+        if (self == nullptr) return;
+        M msg;
+        if (M::ffi_deserialize(data, len, &msg) != 0) return;
+        if (self->user_fn_ != nullptr) {
+            self->user_fn_(msg);
+        } else if (self->user_fn_ctx_ != nullptr) {
+            self->user_fn_ctx_(msg, self->user_ctx_);
+        }
+    }
+
     alignas(8) uint8_t storage_[NROS_SUBSCRIBER_SIZE];
     char topic_name_[SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
     Stream<M> stream_;
     // Phase 189.M3.1 — executor HandleId for sched-context binding, or
-    // SIZE_MAX (the default) when no bindable handle exists. The
-    // thin-wrapper create path leaves this unset (see has_sched_handle()).
+    // SIZE_MAX (the default) when no bindable handle exists. The poll-style
+    // thin-wrapper create path leaves this unset (see has_sched_handle());
+    // the callback-style create (Phase 189.M3.x) stores the real arena handle.
     size_t sched_handle_id_ = static_cast<size_t>(-1);
+    // Callback-style state (Phase 189.M3.x); unused in poll mode. The executor
+    // arena owns the subscriber + dispatches `message_trampoline` during spin.
+    TypedSubscriptionFn user_fn_ = nullptr;
+    TypedSubscriptionFnWithCtx user_fn_ctx_ = nullptr;
+    void* user_ctx_ = nullptr;
+    bool callback_mode_ = false;
 };
 
 } // namespace nros
@@ -398,6 +461,46 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
         }
     }
     return Result::success();
+}
+
+// Phase 189.M3.x — callback-style (arena-registered) subscription. The arena
+// owns the subscriber + dispatches `out`'s message handler during spin_once, so
+// the handle is real and `options.sched_context` is functional. Mirrors the
+// callback-style `create_service` one entity over.
+template <typename M, typename F, typename>
+Result Node::create_subscription(Subscription<M>& out, const char* topic, F callback,
+                                 const QoS& qos, const SubscriptionOptions& options) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
+    ffi_qos.depth = qos.depth();
+    ffi_qos.deadline_ms = qos.deadline_ms();
+    ffi_qos.lifespan_ms = qos.lifespan_ms();
+    ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
+    ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+
+    // Store the user handler (compile error if F isn't convertible to the
+    // plain-fn-ptr handler type).
+    out.user_fn_ = typename Subscription<M>::TypedSubscriptionFn(callback);
+    out.user_fn_ctx_ = nullptr;
+    out.user_ctx_ = nullptr;
+
+    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+                        ? 0u
+                        : static_cast<uint8_t>(options.sched_context);
+    size_t handle = static_cast<size_t>(-1);
+    nros_cpp_ret_t ret = nros_cpp_subscription_register(
+        &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
+        &Subscription<M>::message_trampoline, &out, sched, &handle);
+    if (ret == 0) {
+        out.sched_handle_id_ = handle;
+        out.callback_mode_ = true;
+        out.initialized_ = true;
+    }
+    return Result(ret);
 }
 
 /// Phase 123.B.4 — value-returning subscription factory. Pairs

@@ -48,6 +48,10 @@ exclude = [
     # locally in client.hpp. (`nros_cpp_service_client_send_on_handle` takes no
     # callback, so it stays in the cbindgen output.)
     "nros_cpp_service_client_register",
+    # Phase 189.M3.x — same treatment for the callback-style subscription
+    # register — takes `RawSubscriptionCallback` (external nros-node alias).
+    # Declared locally in subscription.hpp with a matching plain fn-ptr typedef.
+    "nros_cpp_subscription_register",
 ]
 
 [fn]

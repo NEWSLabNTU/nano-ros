@@ -219,6 +219,31 @@ class Node {
     Result create_subscription(Subscription<M>& out, const char* topic, const QoS& qos,
                                const SubscriptionOptions& options);
 
+    /// Create a **callback-style** subscription (rclcpp dispatch model; Phase
+    /// 189.M3.x). The executor arena owns the subscriber and invokes `callback`
+    /// during `spin_once()` on each new sample, so `options.sched_context` is
+    /// functional (poll-style subscriptions have no dispatched callback to
+    /// schedule). `callback` must be convertible to `void(const M&)` (a plain
+    /// function pointer or empty-capture lambda); the SFINAE guard keeps the
+    /// poll-style overloads unambiguous (a `QoS` is not convertible to the
+    /// handler type).
+    ///
+    /// CONSTRAINT: do not move `out` after this returns — the executor arena
+    /// holds `&out` as the dispatch context.
+    ///
+    /// @tparam M  Message type (must define TYPE_NAME, TYPE_HASH, ffi_deserialize).
+    /// @param out       Receives the initialized subscription (callback mode).
+    /// @param topic     Topic name (null-terminated).
+    /// @param callback  Handler invoked as `callback(const M&)` per sample.
+    /// @param qos       QoS profile.
+    /// @param options   Named subscription options (e.g. sched_context).
+    template <typename M, typename F,
+              typename = typename std::enable_if<
+                  std::is_convertible<F, void (*)(const M&)>::value>::type>
+    Result create_subscription(Subscription<M>& out, const char* topic, F callback,
+                               const QoS& qos = QoS::default_profile(),
+                               const SubscriptionOptions& options = {});
+
     /// Create a service server.
     ///
     /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
