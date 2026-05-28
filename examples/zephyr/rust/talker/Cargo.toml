@@ -10,7 +10,7 @@ name = "nros_zephyr_talker"
 version = "0.1.0"
 edition = "2021"
 description = "nros talker for Zephyr RTOS (multi-RMW)"
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 
 [lib]
 name = "rustapp"

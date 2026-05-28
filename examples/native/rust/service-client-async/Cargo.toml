@@ -2,6 +2,7 @@
 name = "native-rs-async-service-client"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 description = "Example async service client using nros with tokio background spin"
 
 [dependencies]

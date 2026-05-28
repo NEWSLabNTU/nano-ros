@@ -6,7 +6,7 @@ name = "nros_zephyr_service_client_async"
 version = "0.1.0"
 edition = "2021"
 description = "nros service-client-async for Zephyr RTOS (multi-RMW)"
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 
 [lib]
 name = "rustapp"

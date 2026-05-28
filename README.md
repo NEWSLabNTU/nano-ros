@@ -197,4 +197,15 @@ nano-ros uses `nros generate rust` to create Rust bindings from ROS 2 `.msg`/`.s
 
 ## License
 
-Apache-2.0 OR MIT
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option (SPDX `MIT OR Apache-2.0`).
+
+A few crates derived from Apache-2.0 ROS 2 sources are **Apache-2.0 only** —
+`rcl-interfaces` and `lifecycle-msgs` (generated from ROS 2 message
+definitions) and `nros-c` (rclc-compatible C API). Each crate's `Cargo.toml`
+declares its own SPDX `license`.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.

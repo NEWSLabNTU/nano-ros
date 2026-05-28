@@ -8,7 +8,7 @@
 name = "pkg_rust_publisher"
 version = "0.1.0"
 edition = "2024"
-license = "Apache-2.0"
+license = "MIT OR Apache-2.0"
 publish = false
 
 # Phase 123.A.10 — multi-package workspace demo (Rust publisher).

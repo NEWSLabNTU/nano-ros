@@ -2,6 +2,7 @@
 name = "native-rs-async-action-client"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 description = "Example async action client using nros with tokio background spin and StreamExt"
 
 [dependencies]

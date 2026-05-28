@@ -87,12 +87,38 @@ against a real example.
 **Files**
 - `book/src/concepts/architecture.md`, `README.md`
 
-> **Flag (not fixed — needs a maintainer call):** license metadata is
-> inconsistent and unbadged. Root `Cargo.toml` declares
-> `license = "MIT OR Apache-2.0"`, but `packages/core/nros/Cargo.toml`
-> declares `license = "Apache-2.0"`, there is **no root `LICENSE` file**,
-> and GitHub reports `licenseInfo: null`. Resolve the SPDX choice + add the
-> license file(s) before adding a license badge.
+> **License inconsistency — RESOLVED in 188.E below.**
+
+### 188.E — License resolution (dual default + ROS carve-outs)
+
+- [x] **188.E.1 — Policy.** Confirmed house default `MIT OR Apache-2.0`
+  (already the root `[workspace.package]` value, and 153 of 181 tracked
+  crates). Audited all 181: 15 declared `Apache-2.0`, 13 declared nothing.
+- [x] **188.E.2 — Carve-outs kept Apache-2.0** (genuinely derived from
+  Apache-2.0 ROS 2 sources): `rcl-interfaces`, `lifecycle-msgs` (generated
+  from ROS msgs), `nros-c` (rclc-compatible C API).
+- [x] **188.E.3 — Fixed 12 drifters → `MIT OR Apache-2.0`:** `nros`,
+  `nros-cpp`, `nros-sizes-build`, `zpico-alloc`, the 7 `examples/zephyr/rust/*`,
+  and `multi-package-workspace/.../pkg_rust_publisher` (original code with no
+  Apache-only reason; the zephyr examples had drifted from the template while
+  every other example tree was already dual).
+- [x] **188.E.4 — Filled 6 license-less hand-written crates** with the dual
+  SPDX (`book/rustdoc-driver`, the two `native/rust/*-async` examples,
+  `nros-tests`, `nros-nuttx-ffi`, the `nros-serdes` cmake template).
+  **Skipped generated crates** (`rcl-interfaces/generated/*`,
+  `wake-latency-cortex-m3/generated/*`) per the don't-modify-generated rule,
+  and the internal `tests/simple-workspace/*` fixtures.
+- [x] **188.E.5 — Added root `LICENSE-MIT` + `LICENSE-APACHE`** (was none →
+  GitHub `licenseInfo: null`) and expanded the README License section
+  (file links + carve-out note + contribution clause).
+- [x] **188.E.6 — README license badge** can now be added safely; deferred to
+  the same follow-up as the rest of the badge row unless requested.
+
+All 18 touched manifests pass `cargo verify-project` (the cmake template is
+valid TOML; cargo only rejects its non-`Cargo.toml` filename). The 128
+already-correct hardcoded-dual crates were left untouched (consistent with
+the examples that must hardcode — standalone example crates can't inherit
+`license.workspace`).
 
 ### 188.B — Visual identity (deferred follow-up)
 
