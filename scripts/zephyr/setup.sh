@@ -56,6 +56,15 @@ else
     WORKSPACE_DIR="$IN_TREE_DEFAULT"
 fi
 
+# Normalize WORKSPACE_DIR to an absolute path while cwd is still the repo root.
+# `install_sdk` later `cd`s into the SDK dir and does not return, so a *relative*
+# WORKSPACE_DIR (e.g. "zephyr-workspace" / "../nano-ros-workspace-4.4" passed by
+# the just recipe) would make the subsequent `cd "$WORKSPACE_DIR"` land inside
+# the SDK tree (scripts/zephyr/sdk/...). That only triggers on a fresh install
+# (the SDK build runs), which is why local cached-SDK runs pass but CI fails.
+mkdir -p "$WORKSPACE_DIR"
+WORKSPACE_DIR="$(cd "$WORKSPACE_DIR" && pwd)"
+
 # Phase 180.A — west manifest selector. west.yml = 3.7 LTS (default),
 # west-4.4.yml = 4.4 rolling. Set via NROS_ZEPHYR_MANIFEST.
 MANIFEST="${NROS_ZEPHYR_MANIFEST:-west.yml}"
@@ -400,8 +409,16 @@ west update
 
 # Apply Cortex-A9 Rust patches (Phase 92.1 / 92.4 — required for
 # qemu_cortex_a9 DDS interop builds; idempotent, no-op on re-runs).
-log_info "Applying Cortex-A9 Rust patches..."
-bash "$NANO_ROS_ROOT/scripts/zephyr/cortex-a9-rust-patch.sh" "$WORKSPACE_DIR"
+# 3.7 LTS only: the Zynq-7000 SoC layout this patch targets moved in Zephyr
+# 4.4 (soc/xlnx/zynq7000/xc7zxxxs/), and the 4.4 line applies its own
+# line-specific patches via the `just zephyr setup` recipe. Gating here keeps
+# setup.sh standalone-correct on both lines.
+if [ "$MANIFEST" = "west.yml" ]; then
+    log_info "Applying Cortex-A9 Rust patches..."
+    bash "$NANO_ROS_ROOT/scripts/zephyr/cortex-a9-rust-patch.sh" "$WORKSPACE_DIR"
+else
+    log_info "Skipping Cortex-A9 Rust patch (manifest $MANIFEST is not the 3.7 line)"
+fi
 
 # Install Zephyr Python dependencies
 log_info "Installing Zephyr Python dependencies..."
