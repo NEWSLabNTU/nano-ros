@@ -156,8 +156,8 @@ pub use executor::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    LoanError, Node, Promise, PublishLoan, RawActiveGoal, RawServiceClient, RawServiceServer,
-    RawSubscription, RecvView, Subscription,
+    LoanError, Node, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec, RawActiveGoal,
+    RawServiceClient, RawServiceServer, RawSubscription, RecvView, Subscription,
 };
 
 // Phase 173.5 — bridge multi-session spec (consumed by the generated

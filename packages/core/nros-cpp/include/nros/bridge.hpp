@@ -179,10 +179,11 @@ inline Expected<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string&
                                          const std::string& dst_topic, const std::string& type_name,
                                          const std::string& type_hash, const std::string& origin) {
     nros_pubsub_bridge_t handle = nullptr;
-    int32_t rc = nros_pubsub_bridge_create(exec.handle(), src_node.c_str(), src_rmw.c_str(),
-                                           src_topic.c_str(), dst_node.c_str(), dst_rmw.c_str(),
-                                           dst_topic.c_str(), type_name.c_str(), type_hash.c_str(),
-                                           origin.empty() ? nullptr : origin.c_str(), &handle);
+    nros_bridge_endpoint_t src{src_node.c_str(), src_rmw.c_str(), src_topic.c_str()};
+    nros_bridge_endpoint_t dst{dst_node.c_str(), dst_rmw.c_str(), dst_topic.c_str()};
+    int32_t rc =
+        nros_pubsub_bridge_create(exec.handle(), &src, &dst, type_name.c_str(), type_hash.c_str(),
+                                  origin.empty() ? nullptr : origin.c_str(), &handle);
     if (rc != 0) {
         return Expected<PubSubBridge>::error(static_cast<ErrorCode>(rc));
     }

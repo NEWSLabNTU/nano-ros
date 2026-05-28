@@ -7,8 +7,8 @@ use crate::{
     TimerDuration,
     component_metadata::{
         CallbackEffectKind, CallbackEffectMetadata, ComponentMetadataError, EntityKind,
-        EntityMetadata, MetadataRecorder, MetadataString, NodeId, ParameterDefault,
-        SourceLocationMetadata, copy_str, entity_metadata,
+        EntityMetadata, EntityMetadataSpec, MetadataRecorder, MetadataString, NodeId,
+        ParameterDefault, SourceLocationMetadata, copy_str, entity_metadata,
     },
     heapless::Vec,
 };
@@ -403,15 +403,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         topic: &str,
         qos: QosSettings,
     ) -> ComponentResult<ComponentPublisher<'entity, M>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::Publisher,
-            topic,
-            M::TYPE_NAME,
-            M::TYPE_HASH,
+            node_id: self.id,
+            kind: EntityKind::Publisher,
+            source_name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: M::TYPE_HASH,
             qos,
-        )?;
+        })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(ComponentPublisher::new(id))
@@ -437,15 +437,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         topic: &str,
         qos: QosSettings,
     ) -> ComponentResult<ComponentSubscription<'entity, M>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::Subscription,
-            topic,
-            M::TYPE_NAME,
-            M::TYPE_HASH,
+            node_id: self.id,
+            kind: EntityKind::Subscription,
+            source_name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: M::TYPE_HASH,
             qos,
-        )?;
+        })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
@@ -461,15 +461,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         callback_id: CallbackId<'callback>,
         period: TimerDuration,
     ) -> ComponentResult<ComponentTimer<'entity>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::Timer,
-            "",
-            "",
-            "",
-            QosSettings::default(),
-        )?;
+            node_id: self.id,
+            kind: EntityKind::Timer,
+            source_name: "",
+            type_name: "",
+            type_hash: "",
+            qos: QosSettings::default(),
+        })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
@@ -486,15 +486,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         callback_id: CallbackId<'callback>,
         service_name: &str,
     ) -> ComponentResult<ComponentServiceServer<'entity, S>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::ServiceServer,
-            service_name,
-            S::SERVICE_NAME,
-            S::SERVICE_HASH,
-            QosSettings::default(),
-        )?;
+            node_id: self.id,
+            kind: EntityKind::ServiceServer,
+            source_name: service_name,
+            type_name: S::SERVICE_NAME,
+            type_hash: S::SERVICE_HASH,
+            qos: QosSettings::default(),
+        })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.source = metadata.callback_source.clone();
@@ -509,15 +509,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         service_name: &str,
     ) -> ComponentResult<ComponentServiceClient<'entity, S>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::ServiceClient,
-            service_name,
-            S::SERVICE_NAME,
-            S::SERVICE_HASH,
-            QosSettings::default(),
-        )?;
+            node_id: self.id,
+            kind: EntityKind::ServiceClient,
+            source_name: service_name,
+            type_name: S::SERVICE_NAME,
+            type_hash: S::SERVICE_HASH,
+            qos: QosSettings::default(),
+        })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(ComponentServiceClient::new(id))
@@ -550,15 +550,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         accepted_callback_id: CallbackId<'accepted>,
         action_name: &str,
     ) -> ComponentResult<ComponentActionServer<'entity, A>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::ActionServer,
-            action_name,
-            A::ACTION_NAME,
-            A::ACTION_HASH,
-            QosSettings::default(),
-        )?;
+            node_id: self.id,
+            kind: EntityKind::ActionServer,
+            source_name: action_name,
+            type_name: A::ACTION_NAME,
+            type_hash: A::ACTION_HASH,
+            qos: QosSettings::default(),
+        })?;
         metadata.callback_id = Some(copy_str(goal_callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
         metadata.action_cancel_callback_id = Some(copy_str(cancel_callback_id.as_str())?);
@@ -577,15 +577,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         action_name: &str,
     ) -> ComponentResult<ComponentActionClient<'entity, A>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::ActionClient,
-            action_name,
-            A::ACTION_NAME,
-            A::ACTION_HASH,
-            QosSettings::default(),
-        )?;
+            node_id: self.id,
+            kind: EntityKind::ActionClient,
+            source_name: action_name,
+            type_name: A::ACTION_NAME,
+            type_hash: A::ACTION_HASH,
+            qos: QosSettings::default(),
+        })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.runtime.create_entity(metadata)?;
         Ok(ComponentActionClient::new(id))
@@ -610,15 +610,15 @@ impl<'ctx, 'id, R: ComponentRuntime + ?Sized> ComponentNode<'ctx, 'id, R> {
         name: &str,
         default: ParameterDefault,
     ) -> ComponentResult<ComponentParameter<'entity>> {
-        let mut metadata = entity_metadata(
+        let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
-            self.id,
-            EntityKind::Parameter,
-            name,
-            "",
-            "",
-            QosSettings::default(),
-        )?;
+            node_id: self.id,
+            kind: EntityKind::Parameter,
+            source_name: name,
+            type_name: "",
+            type_hash: "",
+            qos: QosSettings::default(),
+        })?;
         metadata.parameter_type = Some(default.parameter_type());
         metadata.parameter_default = Some(default);
         metadata.source = SourceLocationMetadata::caller()?;

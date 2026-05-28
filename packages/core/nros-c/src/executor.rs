@@ -1305,32 +1305,25 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
         // nros_action_server_init). Applies to the three underlying service
         // servers.
         let server_qos = server_ref.get_qos_settings();
-        let result = if node_raw_id != 0 {
-            rust_exec
-                .register_action_server_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
-                    nros_node::executor::NodeId::from_raw(node_raw_id),
-                    action_name,
-                    type_str,
-                    type_hash_str,
-                    server_qos,
-                    goal_callback_trampoline,
-                    cancel_callback_trampoline,
-                    Some(crate::action::accepted_callback_trampoline),
-                    context,
-                )
+        let node_id = if node_raw_id != 0 {
+            Some(nros_node::executor::NodeId::from_raw(node_raw_id))
         } else {
-            rust_exec
-                .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
-                    action_name,
-                    type_str,
-                    type_hash_str,
-                    server_qos,
-                    goal_callback_trampoline,
-                    cancel_callback_trampoline,
-                    Some(crate::action::accepted_callback_trampoline),
-                    context,
-                )
+            None
         };
+        let result = rust_exec
+            .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
+                nros_node::RawActionServerSpec {
+                    node_id,
+                    action_name,
+                    type_name: type_str,
+                    type_hash: type_hash_str,
+                    qos: server_qos,
+                    goal_callback: goal_callback_trampoline,
+                    cancel_callback: cancel_callback_trampoline,
+                    accepted_callback: Some(crate::action::accepted_callback_trampoline),
+                    context,
+                },
+            );
 
         match result {
             Ok(handle) => {
@@ -1416,47 +1409,34 @@ pub unsafe extern "C" fn nros_executor_register_action_client(
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
 
-        // Phase 104.C.8.b — action-client multi-Node dispatch. The
-        // `_sized_on` variant accepts a NodeId; the legacy
-        // `register_action_client_raw` (size-defaulted) has no `_on`
-        // form, so we re-spell the size constants here when routing
-        // through a Node.
+        // Phase 104.C.8.b — action-client multi-Node dispatch.
+        // `spec.node_id` selects the target Node's session (or the
+        // executor's own node when `None`).
         let node_raw_id = if client_ref.node.is_null() {
             0
         } else {
             (*client_ref.node).node_id
+        };
+        let node_id = if node_raw_id != 0 {
+            Some(nros_node::executor::NodeId::from_raw(node_raw_id))
+        } else {
+            None
         };
 
         // Create a NEW ActionClientCore in the arena via register_action_client_raw.
         // The async send functions will use this core (not the client's original).
         // Both share the same global zenoh session, so the arena core's service
         // clients can communicate with the server independently.
-        let result = if node_raw_id != 0 {
-            rust_exec.register_action_client_raw_sized_on::<
-                MESSAGE_BUFFER_SIZE,
-                MESSAGE_BUFFER_SIZE,
-                MESSAGE_BUFFER_SIZE,
-            >(
-                nros_node::executor::NodeId::from_raw(node_raw_id),
-                action_name,
-                type_str,
-                type_hash_str,
-                goal_response_cb,
-                feedback_cb,
-                result_cb,
-                client_ctx,
-            )
-        } else {
-            rust_exec.register_action_client_raw(
-                action_name,
-                type_str,
-                type_hash_str,
-                goal_response_cb,
-                feedback_cb,
-                result_cb,
-                client_ctx,
-            )
-        };
+        let result = rust_exec.register_action_client_raw(nros_node::RawActionClientSpec {
+            node_id,
+            action_name,
+            type_name: type_str,
+            type_hash: type_hash_str,
+            goal_response_callback: goal_response_cb,
+            feedback_callback: feedback_cb,
+            result_callback: result_cb,
+            context: client_ctx,
+        });
 
         match result {
             Ok(handle) => {

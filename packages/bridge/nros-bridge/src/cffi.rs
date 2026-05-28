@@ -171,35 +171,42 @@ pub struct NrosPumpStats {
     pub dropped_echo: usize,
 }
 
+/// One side (source or destination) of a pubsub bridge: the Node to
+/// open, the RMW backend to route through, and the topic. See
+/// `<nros/bridge.h>` for the documented contract.
+#[repr(C)]
+pub struct NrosBridgeEndpoint {
+    pub node: *const c_char,
+    pub rmw: *const c_char,
+    pub topic: *const c_char,
+}
+
 /// Create a raw pubsub bridge. See `<nros/bridge.h>` for the
 /// documented contract.
 #[unsafe(no_mangle)]
-#[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn nros_pubsub_bridge_create(
     exec: *mut core::ffi::c_void,
-    src_node: *const c_char,
-    src_rmw: *const c_char,
-    src_topic: *const c_char,
-    dst_node: *const c_char,
-    dst_rmw: *const c_char,
-    dst_topic: *const c_char,
+    src: *const NrosBridgeEndpoint,
+    dst: *const NrosBridgeEndpoint,
     type_name: *const c_char,
     type_hash: *const c_char,
     origin: *const c_char,
     out: *mut *mut core::ffi::c_void,
 ) -> NrosRmwRet {
-    if exec.is_null() || out.is_null() {
+    if exec.is_null() || src.is_null() || dst.is_null() || out.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     unsafe { *out = core::ptr::null_mut() };
 
     let eb = unsafe { &mut *(exec as *mut ExecutorBox) };
-    let src_node = unsafe { cstr_or_empty(src_node) };
-    let src_rmw = unsafe { cstr_or_empty(src_rmw) };
-    let src_topic = unsafe { cstr_or_empty(src_topic) };
-    let dst_node = unsafe { cstr_or_empty(dst_node) };
-    let dst_rmw = unsafe { cstr_or_empty(dst_rmw) };
-    let dst_topic = unsafe { cstr_or_empty(dst_topic) };
+    let src = unsafe { &*src };
+    let dst = unsafe { &*dst };
+    let src_node = unsafe { cstr_or_empty(src.node) };
+    let src_rmw = unsafe { cstr_or_empty(src.rmw) };
+    let src_topic = unsafe { cstr_or_empty(src.topic) };
+    let dst_node = unsafe { cstr_or_empty(dst.node) };
+    let dst_rmw = unsafe { cstr_or_empty(dst.rmw) };
+    let dst_topic = unsafe { cstr_or_empty(dst.topic) };
     let type_name = unsafe { cstr_or_empty(type_name) };
     let type_hash = unsafe { cstr_or_empty(type_hash) };
     let origin = unsafe { cstr_or_empty(origin) };

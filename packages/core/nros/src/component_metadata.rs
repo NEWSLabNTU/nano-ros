@@ -696,15 +696,32 @@ struct SourceCallbackRef {
     group: Option<StdString>,
 }
 
+/// Inputs for [`entity_metadata`]. Collapses the seven positional
+/// arguments — three of them adjacent `&str` (`source_name` /
+/// `type_name` / `type_hash`) that are trivially transposable at a
+/// call site — into one named-field struct.
+pub(crate) struct EntityMetadataSpec<'a> {
+    pub id: EntityId<'a>,
+    pub node_id: NodeId<'a>,
+    pub kind: EntityKind,
+    pub source_name: &'a str,
+    pub type_name: &'static str,
+    pub type_hash: &'static str,
+    pub qos: QosSettings,
+}
+
 pub(crate) fn entity_metadata(
-    id: EntityId<'_>,
-    node_id: NodeId<'_>,
-    kind: EntityKind,
-    source_name: &str,
-    type_name: &'static str,
-    type_hash: &'static str,
-    qos: QosSettings,
+    spec: EntityMetadataSpec<'_>,
 ) -> Result<EntityMetadata, ComponentMetadataError> {
+    let EntityMetadataSpec {
+        id,
+        node_id,
+        kind,
+        source_name,
+        type_name,
+        type_hash,
+        qos,
+    } = spec;
     Ok(EntityMetadata {
         id: copy_str(id.as_str())?,
         node_id: copy_str(node_id.as_str())?,
@@ -1110,15 +1127,15 @@ mod tests {
             .push_node(NodeId::new("node"), "talker", "/", 0)
             .unwrap();
 
-        let first = entity_metadata(
-            EntityId::new("pub"),
-            NodeId::new("node"),
-            EntityKind::Publisher,
-            "chatter",
-            "std_msgs::msg::dds_::String_",
-            "hash",
-            qos::DEFAULT,
-        )
+        let first = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("pub"),
+            node_id: NodeId::new("node"),
+            kind: EntityKind::Publisher,
+            source_name: "chatter",
+            type_name: "std_msgs::msg::dds_::String_",
+            type_hash: "hash",
+            qos: qos::DEFAULT,
+        })
         .unwrap();
         recorder.push_entity(first.clone()).unwrap();
 
@@ -1140,15 +1157,15 @@ mod tests {
             Err(ComponentMetadataError::DuplicateId)
         );
 
-        let entity = entity_metadata(
-            EntityId::new("pub"),
-            NodeId::new("missing_node"),
-            EntityKind::Publisher,
-            "chatter",
-            "std_msgs::msg::dds_::String_",
-            "hash",
-            qos::DEFAULT,
-        )
+        let entity = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("pub"),
+            node_id: NodeId::new("missing_node"),
+            kind: EntityKind::Publisher,
+            source_name: "chatter",
+            type_name: "std_msgs::msg::dds_::String_",
+            type_hash: "hash",
+            qos: qos::DEFAULT,
+        })
         .unwrap();
 
         assert_eq!(
@@ -1166,27 +1183,27 @@ mod tests {
             .unwrap();
         recorder
             .push_entity(
-                entity_metadata(
-                    EntityId::new("pub_chatter"),
-                    NodeId::new("node_talker"),
-                    EntityKind::Publisher,
-                    "chatter",
-                    "std_msgs::msg::dds_::String_",
-                    "hash",
-                    crate::qos::DEFAULT,
-                )
+                entity_metadata(EntityMetadataSpec {
+                    id: EntityId::new("pub_chatter"),
+                    node_id: NodeId::new("node_talker"),
+                    kind: EntityKind::Publisher,
+                    source_name: "chatter",
+                    type_name: "std_msgs::msg::dds_::String_",
+                    type_hash: "hash",
+                    qos: crate::qos::DEFAULT,
+                })
                 .unwrap(),
             )
             .unwrap();
-        let mut timer = entity_metadata(
-            EntityId::new("timer_publish"),
-            NodeId::new("node_talker"),
-            EntityKind::Timer,
-            "",
-            "",
-            "",
-            crate::qos::DEFAULT,
-        )
+        let mut timer = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("timer_publish"),
+            node_id: NodeId::new("node_talker"),
+            kind: EntityKind::Timer,
+            source_name: "",
+            type_name: "",
+            type_hash: "",
+            qos: crate::qos::DEFAULT,
+        })
         .unwrap();
         timer.callback_id = Some(copy_str("cb_timer").unwrap());
         timer.callback_source = SourceLocationMetadata {
@@ -1196,15 +1213,15 @@ mod tests {
         };
         timer.period_ms = Some(100);
         recorder.push_entity(timer).unwrap();
-        let mut param = entity_metadata(
-            EntityId::new("param_rate"),
-            NodeId::new("node_talker"),
-            EntityKind::Parameter,
-            "rate_hz",
-            "",
-            "",
-            crate::qos::DEFAULT,
-        )
+        let mut param = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("param_rate"),
+            node_id: NodeId::new("node_talker"),
+            kind: EntityKind::Parameter,
+            source_name: "rate_hz",
+            type_name: "",
+            type_hash: "",
+            qos: crate::qos::DEFAULT,
+        })
         .unwrap();
         param.parameter_type = Some(ParameterType::Integer);
         param.parameter_default = Some(ParameterDefault::Integer(10));
@@ -1214,15 +1231,15 @@ mod tests {
             column: Some(9),
         };
         recorder.push_entity(param).unwrap();
-        let mut action = entity_metadata(
-            EntityId::new("act_count"),
-            NodeId::new("node_talker"),
-            EntityKind::ActionServer,
-            "~/count",
-            "example_interfaces::action::dds_::Fibonacci_",
-            "hash",
-            crate::qos::DEFAULT,
-        )
+        let mut action = entity_metadata(EntityMetadataSpec {
+            id: EntityId::new("act_count"),
+            node_id: NodeId::new("node_talker"),
+            kind: EntityKind::ActionServer,
+            source_name: "~/count",
+            type_name: "example_interfaces::action::dds_::Fibonacci_",
+            type_hash: "hash",
+            qos: crate::qos::DEFAULT,
+        })
         .unwrap();
         action.callback_id = Some(copy_str("cb_count_goal").unwrap());
         action.callback_source = SourceLocationMetadata {
