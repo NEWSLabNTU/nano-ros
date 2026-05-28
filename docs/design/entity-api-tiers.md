@@ -108,7 +108,7 @@ the builder is the Rust ergonomic front, all three lowering to the same core.
 
 ## Phasing
 
-Tracked as **[Phase 188](../roadmap/phase-188-entity-api-tiers.md)** (split from
+Tracked as **[Phase 189](../roadmap/phase-189-entity-api-tiers.md)** (split from
 Phase 172 — this is a runtime client-API refactor, not orchestration). M1 (the
 Rust builder + convenient surface, incl. `.message_info()` + `.session()`)
 unblocks the Phase 172 `[[bridge]]` topic-forwarding runtime half; M2 retires the
