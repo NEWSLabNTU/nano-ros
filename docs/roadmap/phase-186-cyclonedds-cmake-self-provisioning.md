@@ -177,8 +177,19 @@ idlc build / `-DIDLC_EXECUTABLE`.
       **PASS**. `threadx-cross-probe.sh` + the now-orphaned shared
       `cross-build-ddsc.sh` + the `just cyclonedds threadx-cross-probe` recipe
       deleted. **The embedded-Cyclone shell path is fully removed.**
-- [ ] **native**: still resolves via find_package (host `build/install` / system).
-      Migration entangled with the host `build.sh` decision below — **remaining**.
+- [~] **native**: groundwork landed — `nano-ros-posix.cmake` stages the host
+      Cyclone flags (`ENABLE_SECURITY/SSL/SHM=OFF`, matching `build.sh`) for the
+      self-provision path. Verified: forced-source (`-DCMAKE_DISABLE_FIND_PACKAGE_
+      CycloneDDS=ON`) **builds** native Cyclone + `libddsc.so` from source, and the
+      self-provisioned `ddsc` is iceoryx-clean (matches reference build/install).
+      **Remaining iteration:** the native *example* link still pulls iceoryx
+      transitively from `/opt/ros` (source not yet traced — corrosion rust cell?),
+      the lone-talker run produced no output (needs a talker+listener pair check),
+      and the configure left `NANO_ROS_RMW=zenoh` in the cache (RMW-selection
+      ordering to verify). `native.just` is NOT yet rewired — native still uses the
+      working find_package(`build/install`) path, so nothing is broken. Native is
+      entangled with the host `build.sh` decision below and needs a full native
+      cyclone-suite revalidation (incl. ros-interop).
 - [ ] **host `build.sh` / `just cyclonedds setup`**: the host Cyclone install
       (`build/install`, idlc + native find_package) — decide whether native also
       self-provisions before removing; needs a full cyclone-suite revalidation —

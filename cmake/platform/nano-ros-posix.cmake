@@ -53,6 +53,25 @@ if(NOT TARGET NanoRos::Platform)
     add_library(NanoRos::Platform ALIAS nros_platform_posix_iface)
 endif()
 
+# ---------------------------------------------------------------------------
+# Phase 186 — CycloneDDS self-provision flags (native / POSIX).
+#
+# When the Cyclone backend self-provisions from source (nros_provide_cyclonedds()
+# — a bare cmake build, or `-DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON`), match
+# the host flags the retired scripts/cyclonedds/build.sh used: disable the DDS
+# Security plugin (needs OpenSSL) and the Iceoryx shared-memory transport (else
+# the binary pulls libiceoryx_posh.so at runtime — not in scope). Keep
+# BUILD_SHARED_LIBS + BUILD_IDLC at their native defaults (native wants a usable
+# idlc + libddsc.so). Gated on the cyclonedds RMW; inert for the find_package
+# path and other RMWs.
+# ---------------------------------------------------------------------------
+if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NOT DEFINED NROS_CYCLONE_POSIX_FLAGS_STAGED)
+    set(NROS_CYCLONE_POSIX_FLAGS_STAGED TRUE)
+    set(ENABLE_SECURITY OFF CACHE BOOL "Cyclone: no DDS Security (Phase 186)" FORCE)
+    set(ENABLE_SSL OFF CACHE BOOL "Cyclone: no TLS (Phase 186)" FORCE)
+    set(ENABLE_SHM OFF CACHE BOOL "Cyclone: no Iceoryx SHM (Phase 186)" FORCE)
+endif()
+
 # Per-app fixup. POSIX has no linker script / startup files, but native
 # app targets still need the generated strong RMW registration stub from
 # NanoRosLink.cmake. Static archive constructor extraction is not reliable
