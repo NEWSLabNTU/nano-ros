@@ -72,6 +72,37 @@ Do not duplicate those defaults in package code, tests, examples, CMake, or scri
 
 Shells that need the same defaults should source `scripts/sdk-env.sh`, which evaluates `just/sdk-env.just` and exports only missing variables. `.envrc`, `setup.bash`, and `setup.fish` all use that adapter. When a direct `cargo test` or `cargo nextest` run needs these defaults, either source `scripts/sdk-env.sh` first or run it through a `just` recipe so `just/sdk-env.just` is imported and exported to the child process. Prefer adding a focused `just` test helper over adding repo-path fallbacks inside `packages/`.
 
+## Toolchain & SDK Provisioning (Phase 187 — landed)
+
+Host toolchains/tools (`qemu`, cross-GCC, `zenohd`, `openocd`) are provisioned by
+`nros setup`, not built ad-hoc. `nros-sdk-index.toml` (repo root) is the SSOT:
+each `[tool.*]` has per-host prebuilt `dist` (sha256-pinned) **and** a
+`[tool.*.source]` recipe; `[source.*]` build with the app; `[gated.*]` (NVIDIA
+SPE, ARM FVP) are never fetched, only instructed. Prebuilt assets live on the
+**separate** `NEWSLabNTU/nano-ros-sdk` repo's Releases (not a submodule —
+referenced by URL); `ci/nano-ros-sdk/` is the drop-in seed for that repo.
+
+- `nros setup <board>` / `nros setup --tool <name> [--prefix <dir>]` installs to
+  `$NROS_HOME/sdk/<tool>/<version>/` (identical layout whether prebuilt-fetched
+  or source-built; `.nros-provenance` + `nros-sdk.lock` record it).
+- **Method A:** `nros build`/`deploy` lazy-install the board's tools, then
+  prepend the locked store `bin/` dirs to the child PATH — `nros` is the single
+  SDK resolver. **Non-`nros` scripts, the test harness, CMake do NOT resolve SDK
+  paths — assume the SDK is given and only check + warn** (`nros doctor` /
+  `just <plat> doctor`). Do not re-add store-path probing to test code.
+- `just qemu setup-qemu` and `just zenohd setup` are **thin `nros setup --tool`
+  callers** (install into `build/<tool>` where the harness already looks; zenohd
+  symlinks the flat path). Do not reintroduce the in-tree configure/make or the
+  2.7 GB `third-party/qemu` submodule build. Tool versions live only in the
+  index. `just <tool> build` still source-builds for devs who want it.
+- CI: `.github/workflows/sdk-index-gate.yml` (read-only sha256 verify of any
+  index dist change); `nano-ros-sdk`'s `build-tool.yml` seeds assets via
+  `workflow_dispatch` (Ubuntu 22.04 baseline). Bump a tool's `-nros<N>` suffix
+  when rebuilding the same upstream version with different config.
+- **Open follow-ups:** maintainer must add branch-protection requiring
+  `sdk-index-gate`; no esp/xtensa builder yet; cross-gcc/openocd `just` recipes
+  can adopt the same `--tool` pattern. See `docs/roadmap/archived/phase-187-*`.
+
 ## C/C++ Integration Shape
 
 C and C++ consumers use source-tree CMake integration, not an installed package. The expected pattern is:
