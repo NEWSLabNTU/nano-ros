@@ -70,6 +70,14 @@ pub struct nros_subscription_t {
     pub qos: crate::qos::nros_qos_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
+    /// Phase 189.M3 — scheduling-context slot requested via
+    /// [`nros_subscription_init_with_options`]. `0` = inherit the
+    /// executor / Node default (no explicit bind), matching the
+    /// `nros_node_options_t::sched_context_id` convention. When non-zero,
+    /// `nros_executor_register_subscription` binds the freshly-created
+    /// handle to this SC after registration. Has no effect on the L1
+    /// polling path (no executor handle to bind).
+    pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Phase 122.3.b — inline opaque storage for the L1 polling-mode
     /// `RawSubscription<MESSAGE_BUFFER_SIZE>`. Zeroed in callback (L2)
     /// mode; populated by `nros_subscription_init_polling`.
@@ -91,6 +99,7 @@ impl Default for nros_subscription_t {
             node: ptr::null(),
             qos: crate::qos::nros_qos_t::default(),
             handle_id: usize::MAX,
+            sched_context_id: 0,
             _opaque: [0u64; SUBSCRIPTION_OPAQUE_U64S],
         }
     }
@@ -100,6 +109,56 @@ impl Default for nros_subscription_t {
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_subscription_get_zero_initialized() -> nros_subscription_t {
     nros_subscription_t::default()
+}
+
+/// Phase 189.M3 — rclc-style named subscription options.
+///
+/// Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
+/// separately, this struct carries the non-QoS subscription-creation
+/// axes. The struct holds only plain scalar fields — no pointers — so it
+/// is safe to stack-allocate, memcpy, and pass across the FFI. Zero-init
+/// (all fields 0) selects the default behaviour, identical to
+/// `nros_subscription_init_with_qos`.
+#[repr(C)]
+pub struct nros_subscription_options_t {
+    /// Scheduling-context slot to bind the subscription's executor
+    /// handle to. `0` = inherit the executor / Node default (no explicit
+    /// bind), matching the `nros_node_options_t::sched_context_id`
+    /// convention. A non-zero value must be an id previously returned
+    /// from `nros_executor_create_sched_context`; the bind is applied by
+    /// `nros_executor_register_subscription` once the handle exists. Has
+    /// no effect on the L1 polling path.
+    pub sched_context: crate::executor::nros_sched_context_id_t,
+    /// Reserved — needs a with-info arena path (Phase 189.M3.4), not yet
+    /// wired. When a future M3.4 lands this will request the
+    /// message-info delivery variant (sample identity + reception
+    /// timestamp alongside the payload). Setting it to a non-zero value
+    /// today is accepted but ignored. Treat as bool (0 = off).
+    pub message_info: u8,
+    /// Reserved for future use; must be zero. Pads the struct for ABI
+    /// stability so later axes can be added without a layout break.
+    pub _reserved: [u8; 2],
+}
+
+impl Default for nros_subscription_options_t {
+    fn default() -> Self {
+        Self {
+            sched_context: 0,
+            message_info: 0,
+            _reserved: [0u8; 2],
+        }
+    }
+}
+
+/// Get a zero-initialised [`nros_subscription_options_t`].
+///
+/// All fields default to "inherit"/"off": `sched_context = 0` (executor
+/// default), `message_info = 0` (reserved, off). Callers populate only
+/// the fields they want before passing the struct to
+/// [`nros_subscription_init_with_options`].
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_subscription_get_default_options() -> nros_subscription_options_t {
+    nros_subscription_options_t::default()
 }
 
 /// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
@@ -206,6 +265,78 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     // which calls nros_node::Executor::add_arena_subscription_c_callback().
     subscription.handle_id = usize::MAX;
     subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
+
+    NROS_RET_OK
+}
+
+/// Phase 189.M3 — initialize a subscription with custom QoS + named options.
+///
+/// rclc-style entry point: QoS is passed separately (`qos`, NULL =
+/// default) and the non-QoS axes ride in `options` (NULL = defaults).
+/// Behaves exactly like [`nros_subscription_init_with_qos`] except that
+/// a non-zero `options->sched_context` is stashed on the subscription so
+/// that [`nros_executor_register_subscription`] binds the resulting
+/// executor handle to that scheduling context once the handle is known
+/// (entity creation is deferred to registration, so the handle does not
+/// exist at init time). `options->message_info` is RESERVED and ignored
+/// (Phase 189.M3.4).
+///
+/// # Parameters
+/// * `subscription` - Pointer to a zero-initialized subscription
+/// * `node` - Pointer to an initialized node
+/// * `type_info` - Pointer to message type information
+/// * `topic_name` - Topic name (null-terminated string)
+/// * `callback` - Callback function to invoke when messages arrive
+/// * `context` - User context pointer passed to callback (can be NULL)
+/// * `qos` - Pointer to QoS settings (NULL for default)
+/// * `options` - Pointer to subscription options (NULL for defaults)
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
+///
+/// # Safety
+/// * All required pointers must be valid
+/// * `topic_name` must be a valid null-terminated string
+/// * `qos` / `options` may be NULL or point to valid structs
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_subscription_init_with_options(
+    subscription: *mut nros_subscription_t,
+    node: *const nros_node_t,
+    type_info: *const nros_message_type_t,
+    topic_name: *const c_char,
+    callback: nros_subscription_callback_t,
+    context: *mut c_void,
+    qos: *const nros_qos_t,
+    options: *const nros_subscription_options_t,
+) -> nros_ret_t {
+    let ret = nros_subscription_init_with_qos(
+        subscription,
+        node,
+        type_info,
+        topic_name,
+        callback,
+        context,
+        qos,
+    );
+    if ret != NROS_RET_OK {
+        return ret;
+    }
+
+    // Stash the requested scheduling-context slot. The handle does not
+    // exist yet (entity creation + handle assignment happen in
+    // `nros_executor_register_subscription`), so the actual
+    // `bind_handle_to_sched_context` call is deferred to there. `0`
+    // means "inherit the default" and is a no-op. `message_info` is
+    // reserved (Phase 189.M3.4) and intentionally ignored.
+    if !options.is_null() {
+        let opts = &*options;
+        // SAFETY: `subscription` was validated non-NULL by the
+        // `_with_qos` call above (it returned OK).
+        (*subscription).sched_context_id = opts.sched_context;
+    }
 
     NROS_RET_OK
 }

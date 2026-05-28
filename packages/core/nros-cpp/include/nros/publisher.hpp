@@ -297,6 +297,18 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& q
     return Result(ret);
 }
 
+/// Phase 189.M3.1 — named-options overload. `PublisherOptions` is a
+/// reserved/empty struct (a publisher has no callback ⇒ no sched-context
+/// or message-info axis), so this simply forwards to the qos-only create.
+/// It exists for rclcpp symmetry and as the seam for future intra-process
+/// / loaned-message knobs.
+template <typename M>
+Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& qos,
+                              const PublisherOptions& options) {
+    (void)options; // reserved — no live fields today
+    return create_publisher<M>(out, topic, qos);
+}
+
 /// Phase 123.B.4 — value-returning publisher factory. Wraps the
 /// out-param `Node::create_publisher` in `Expected<Publisher<M>>`
 /// so users can write

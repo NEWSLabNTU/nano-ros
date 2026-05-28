@@ -151,25 +151,39 @@ application code.
       compile-time const in C/C++, not a runtime field (reserved).
 
       **Slices:**
-  - [ ] **M3.1 — C++ Pub/Sub options.** Hand-written `nros::SubscriptionOptions`
-        / `nros::PublisherOptions` value structs (defaults) + overloads
-        `create_subscription<M>(out, topic, qos, options = {})` /
-        `create_publisher<M>(out, topic, qos, options = {})`; existing 2/3-arg
-        calls preserved via default options. v1 field: `sched_context` (lower =
-        create → `nros_cpp_bind_handle_to_sched_context(handle, sc)`). Reserved:
-        `message_info`. No new FFI (bind already exists; the create returns a
-        bindable handle).
-  - [ ] **M3.2 — C Pub/Sub options.** `nros_subscription_options_t` /
-        `nros_publisher_options_t` (cbindgen structs from the cffi crate, like
-        `nros_node_options_t`) + `nros_{subscription,publisher}_init_with_options`;
-        same `sched_context` field, bound via
-        `nros_executor_bind_handle_to_sched_context` using the struct's
-        `handle_id`.
-  - [ ] **M3.3 — Services / actions QoS + options parity.** Add `_with_qos` /
-        `_with_options` C variants for `nros_service_init` /
-        `nros_client_init` / `nros_action_{server,client}_init` (no QoS today);
-        C++ `ServiceOptions` / `ActionServerOptions` mirrors (C++ already has
-        QoS). Options carry `sched_context`.
+  - [x] **M3.1 — C++ Pub/Sub options DONE.** `nros::SubscriptionOptions` /
+        `nros::PublisherOptions` (new `include/nros/options.hpp`) + overloads
+        `create_subscription<M>(out, topic, qos, options)` /
+        `create_publisher<M>(out, topic, qos, options)`; existing 2/3-arg calls
+        preserved. Fields: `sched_context` (+ reserved `message_info`).
+        **Finding:** the C++ subscription is a *poll-style thin wrapper* over a
+        bare `RmwSubscriber` (`try_recv_raw`), registering **no** executor
+        callback entry — so it has no bindable `HandleId`, and `sched_context`
+        is a documented inert no-op on this path until a handle-returning create
+        FFI lands (M3.4-scale). The option + overload are wired so the
+        rclcpp-shaped call site is stable and binding activates transparently
+        once the FFI grows a handle. `PublisherOptions` is empty (symmetry).
+  - [x] **M3.2 — C Pub/Sub options DONE.** `nros_subscription_options_t` /
+        `nros_publisher_options_t` (cbindgen, mirroring `nros_node_options_t`) +
+        `nros_{subscription,publisher}_init_with_options` + `*_get_default_options`.
+        `sched_context` field is **functional** here: the C subscription
+        registers a C-fn-ptr callback (`add_arena_subscription_c_callback`) and
+        gets a `handle_id`, so `nros_executor_register_subscription` binds it via
+        `bind_handle_to_sched_context` after registration (errors on bad SC id;
+        `0` = inherit default). Reserved `message_info`; `nros_publisher_options_t`
+        thin. (Divergence from M3.1: C subs are callback-registered → live sched
+        bind; C++ subs are poll-style → inert. Reconciling needs the M3.4 FFI.)
+  - [ ] **M3.3 — Services / actions QoS + options parity.** *Blocked on core
+        plumbing* (found during M3.1/M3.2): the Rust core service create
+        (`Executor::register_service_raw_sized` → `Session::create_service_server(&ServiceInfo)`)
+        takes **no `QosSettings`** — service QoS is fixed at the RMW layer (e.g.
+        Cyclone hard-codes RELIABLE+VOLATILE), and the C++ `create_service(qos)`
+        arg is currently **discarded** on this path. True parity needs a
+        dedicated slice threading `QosSettings` through `ServiceInfo` +
+        every backend's `create_service_server` / action create before exposing
+        `_with_qos` / `_with_options` in C (and making C++'s qos actually apply).
+        The `sched_context` option would also be inert for C++ services (same
+        poll-style/no-handle issue as M3.1). Deferred until that core work lands.
   - [ ] **M3.4 — `message_info` option (new arena path).** A
         `SubBufferedRawInfoCEntry` C-fn-ptr-with-info arena entry + dispatch in
         `nros-node` (the C analog of `SubBufferedRawInfoEntry`), a C/C++ FFI

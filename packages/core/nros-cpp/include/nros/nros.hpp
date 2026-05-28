@@ -20,6 +20,7 @@
 #include "nros/log.hpp"
 #include "nros/result.hpp"
 #include "nros/qos.hpp"
+#include "nros/options.hpp"
 #include "nros/future.hpp"
 #include "nros/stream.hpp"
 // Phase 84.G8: node.hpp no longer pulls in the heavy entity headers —

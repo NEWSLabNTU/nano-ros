@@ -781,6 +781,24 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
                     rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
                 }
 
+                // Phase 189.M3 — apply a scheduling-context binding
+                // requested via `nros_subscription_init_with_options`.
+                // `0` = inherit the default (no-op). A non-zero slot
+                // must be a valid id from
+                // `nros_executor_create_sched_context`; an unknown id
+                // fails the registration so the caller learns the
+                // binding was rejected rather than silently dropped.
+                let requested_sc = sub_mut.sched_context_id;
+                if requested_sc != 0 {
+                    let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
+                    if rust_exec
+                        .bind_handle_to_sched_context(handle_id, sc_id)
+                        .is_err()
+                    {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                }
+
                 executor.handle_count += 1;
                 executor.subscription_count += 1;
                 NROS_RET_OK

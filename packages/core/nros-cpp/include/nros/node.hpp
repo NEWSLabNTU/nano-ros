@@ -24,6 +24,10 @@
 #include "nros/result.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/qos.hpp"
+// Phase 189.M3.1 — rclcpp-style named-options structs
+// (`SubscriptionOptions` / `PublisherOptions`) used by the 4-arg
+// `create_subscription` / `create_publisher` overloads below.
+#include "nros/options.hpp"
 // Phase 84.G8: heavy entity headers (publisher / subscription / service /
 // client / action_server / action_client) are no longer pulled in here.
 // Each entity header provides the out-of-line definition of its
@@ -172,6 +176,22 @@ class Node {
     Result create_publisher(Publisher<M>& out, const char* topic,
                             const QoS& qos = QoS::default_profile());
 
+    /// Create a publisher with rclcpp-style named options (Phase 189.M3.1).
+    ///
+    /// `options` sits alongside `qos` (rclcpp convention). `PublisherOptions`
+    /// is currently a reserved/empty struct, so this overload is observably
+    /// identical to the `qos`-only form — it exists for API symmetry and as
+    /// the seam for future intra-process / loaned-message knobs.
+    ///
+    /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).
+    /// @param out      Receives the initialized publisher.
+    /// @param topic    Topic name (null-terminated).
+    /// @param qos      QoS profile.
+    /// @param options  Named publisher options.
+    template <typename M>
+    Result create_publisher(Publisher<M>& out, const char* topic, const QoS& qos,
+                            const PublisherOptions& options);
+
     /// Create a subscription for a topic.
     ///
     /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).
@@ -181,6 +201,22 @@ class Node {
     template <typename M>
     Result create_subscription(Subscription<M>& out, const char* topic,
                                const QoS& qos = QoS::default_profile());
+
+    /// Create a subscription with rclcpp-style named options (Phase 189.M3.1).
+    ///
+    /// `options` sits alongside `qos` (rclcpp convention) and carries the
+    /// non-QoS creation axes. `options.sched_context` (when set) lowers to a
+    /// create-then-bind via `nros_cpp_bind_handle_to_sched_context`;
+    /// `options.message_info` is reserved (M3.4). See `SubscriptionOptions`.
+    ///
+    /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).
+    /// @param out      Receives the initialized subscription.
+    /// @param topic    Topic name (null-terminated).
+    /// @param qos      QoS profile.
+    /// @param options  Named subscription options.
+    template <typename M>
+    Result create_subscription(Subscription<M>& out, const char* topic, const QoS& qos,
+                               const SubscriptionOptions& options);
 
     /// Create a service server.
     ///
