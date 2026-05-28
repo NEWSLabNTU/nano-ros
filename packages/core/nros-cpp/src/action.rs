@@ -223,6 +223,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     action_name: *const c_char,
     type_name: *const c_char,
     type_hash: *const c_char,
+    sched_context: u8,
 ) -> nros_cpp_ret_t {
     if storage.is_null()
         || executor_handle.is_null()
@@ -276,6 +277,21 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
         });
     match result {
         Ok(handle) => {
+            // Phase 189.M3.3.c — bind the action's goal-service handle to the
+            // requested sched context. The C++ action server is arena-registered
+            // (unlike poll-style C++ services), so its handle is real + its
+            // goal/cancel callbacks are executor-dispatched — the bind is
+            // functional. `0` = inherit (no-op); an unknown slot fails.
+            if sched_context != 0 {
+                let sc_id = nros_node::executor::sched_context::SchedContextId(sched_context);
+                if ctx
+                    .executor
+                    .bind_handle_to_sched_context(handle.handle_id(), sc_id)
+                    .is_err()
+                {
+                    return NROS_CPP_RET_INVALID_ARGUMENT;
+                }
+            }
             server.handle = Some(handle);
             NROS_CPP_RET_OK
         }

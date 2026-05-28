@@ -347,7 +347,8 @@ template <typename A> class ActionServer {
 namespace nros {
 
 template <typename A>
-Result Node::create_action_server(ActionServer<A>& out, const char* action_name, const QoS& qos) {
+Result Node::create_action_server(ActionServer<A>& out, const char* action_name, const QoS& qos,
+                                  const ActionServerOptions& options) {
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos;
     ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
@@ -366,8 +367,13 @@ Result Node::create_action_server(ActionServer<A>& out, const char* action_name,
     // Deferred from create to avoid FreeRTOS QEMU deadlocks. Phase 87.6:
     // names are passed at register-time (buffers live on the C++
     // `nros::ActionServer<A>` class, not in the runtime struct).
+    // Phase 189.M3.3.c — `sched_context` binds the action's (arena-registered)
+    // goal-service handle to a scheduling context. UNSET ⇒ 0 (inherit, no-op).
+    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+                        ? 0u
+                        : static_cast<uint8_t>(options.sched_context);
     ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name, A::TYPE_NAME,
-                                          A::Goal::TYPE_HASH);
+                                          A::Goal::TYPE_HASH, sched);
     if (ret == 0) {
         // Phase 87.6: copy action_name into the C++-owned buffer for
         // `get_action_name()` accessor.

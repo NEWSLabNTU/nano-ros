@@ -228,24 +228,45 @@ application code.
           `service_init_with_options_stashes_sched_context` +
           `client_init_with_options_stashes_sched_context` (run via `just
           verify-kani`). The runtime bind/reject integration test lands with M3.3.d.
-    - [ ] **M3.3.b — C actions (server + client).** Same pattern; the server
-          binds `_internal.handle.handle_id()`, the client its captured
-          `arena_entry_index`. Add `nros_action_server_options_t` /
-          `nros_action_client_options_t` + `_init_with_options`.
-    - [ ] **M3.3.c — C++ services / clients / action servers.** Store
-          `size_t sched_handle_id_` + `has_sched_handle()` / `sched_handle_id()`
-          on `Service` / `Client` / `ActionServer` (mirror `Subscription`); add
-          `ServiceOptions` / `ActionServerOptions` (`int sched_context`); the
-          `create_service(name, qos, options)` overload binds post-create via
-          `nros_cpp_bind_handle_to_sched_context`. **Design point:** the FFI
-          `nros_cpp_service_*_create` must hand the executor `HandleId` back to the
-          C++ object (the C path keeps it internal) — cheapest is a
-          `nros_cpp_service_sched_handle(...)` getter or a create out-param.
-    - [ ] **M3.3.d — Tests + docs.** Per-language test that a non-default
-          `sched_context` reaches the binding (bad SC → error; good SC → the
-          entity's slot routes onto the SC's priority/policy in `spin_once`);
-          document the options structs alongside `SubscriptionOptions`. Closes
-          Phase 189 M3.3.
+    - [x] **M3.3.b — C actions (server + client). DONE** (2026-05-29). Same
+          pattern; the server binds `_internal.handle.handle_id()`, the client
+          `HandleId(handle.entry_index())`. `sched_context_id` field +
+          `nros_action_server_options_t` / `nros_action_client_options_t` +
+          `get_default_options` + `init_with_options` (action clients carry no QoS
+          → options-only). nros-c builds + clippy clean.
+    - [x] **M3.3.c — C++. DONE** (2026-05-29), but the scope is **narrower + more
+          honest than first planned**, per the investigation: C++ entities split
+          two ways. (1) **Action server = arena-registered** — `nros_cpp_action_server_register`
+          → `Executor::register_action_server_raw` gives a real `ActionServerRawHandle`
+          whose goal/cancel callbacks are executor-dispatched. So `sched_context` is
+          **functional** there: added `ActionServerOptions { sched_context }`
+          (`options.hpp`), a 4-arg `create_action_server(out, name, qos, options)`
+          overload, and a `sched_context: u8` param on the
+          `nros_cpp_action_server_register` FFI that binds `handle.handle_id()`
+          internally after register (no handle-surfacing to C++ needed). Verified:
+          `examples/native/cpp/action-server` builds + links (zenoh).
+          (2) **Services / clients / subscriptions = poll-style** (a bare
+          `RmwServiceServer`/`RmwSubscriber` the user drives via `try_recv`) — they
+          have **no executor-dispatched callback**, so a `sched_context` is **N/A by
+          design**, not inert-unwired. The pre-existing C++ `Subscription` sched
+          scaffolding (`sched_handle_id_` hardwired `SIZE_MAX`) confirmed this — it
+          never binds. So **no `ServiceOptions`/`ClientOptions` were added**;
+          `ActionServerOptions` documents the rationale. Making poll-style C++
+          entities bindable = converting them to callback-style (arena-registered)
+          C++ services — a separate feature, **not** part of M3.3. (Also fixed the
+          M3.3.a/.b service+client register arms: bind must run before the
+          `executor as *mut _` store, else `rust_exec`'s `executor._opaque` borrow
+          overlaps the whole-executor reborrow — E0499 under the cffi-zenoh feature
+          set, missed by the default-feature build.)
+    - [~] **M3.3.d — Tests + docs.** Compile/link + Kani layer DONE: nros-c builds
+          under the cffi-zenoh feature set + clippy clean; `examples/native/cpp/action-server`
+          links with the new overload; Kani harnesses
+          `{service,client}_init_with_options_stashes_sched_context`. The options
+          structs are documented inline (`options.hpp` `ActionServerOptions`, the C
+          `nros_*_options_t`). **Remaining:** a runtime integration test that a bound
+          SC actually routes the entity's dispatch onto the SC's priority/policy in
+          `spin_once` — needs a running executor + an OS-priority probe, overlapping
+          the Phase 162 RT-scheduling harness; deferred there.
   - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
         `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
         dispatch + `Executor::add_arena_subscription_c_info_callback` in

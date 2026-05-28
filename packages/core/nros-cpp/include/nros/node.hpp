@@ -246,9 +246,12 @@ class Node {
     /// @param out          Receives the initialized action server.
     /// @param action_name  Action name (null-terminated).
     /// @param qos          QoS profile (default: services preset).
+    /// @param options      Named options; `options.sched_context` (M3.3.c) binds
+    ///                     the goal-service dispatch onto a scheduling context.
     template <typename A>
     Result create_action_server(ActionServer<A>& out, const char* action_name,
-                                const QoS& qos = QoS::services());
+                                const QoS& qos = QoS::services(),
+                                const ActionServerOptions& options = {});
 
     /// Create an action client.
     ///

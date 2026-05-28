@@ -98,6 +98,31 @@ struct PublisherOptions {
     // No live fields today.
 };
 
+/// rclcpp-style named options for `Node::create_action_server<A>()`.
+///
+/// Phase 189.M3.3.c — `sched_context` is **functional** here (unlike the
+/// poll-style `SubscriptionOptions` no-op): the C++ action server is
+/// arena-registered (`nros_cpp_action_server_register` →
+/// `Executor::register_action_server_raw`), so it owns a real executor
+/// `HandleId` and its goal/cancel callbacks are executor-dispatched during
+/// `spin_once`. A value in `0..=255` lowers to a bind of that goal-service
+/// handle to the scheduling context, governing the priority/policy its
+/// callback dispatch runs on. `SCHED_CONTEXT_UNSET` (default) leaves it on
+/// the executor / Node default `Fifo` context. A failing bind surfaces as
+/// the create call's `Result`.
+///
+/// NOTE: there is intentionally no `ServiceOptions` / `ClientOptions` with a
+/// `sched_context`. C++ services and clients are *poll-style* (a bare
+/// `RmwServiceServer` / `RmwServiceClient` the user drives via `try_recv`),
+/// so they have no executor-dispatched callback to schedule — a sched
+/// context is N/A by design, not merely unwired. Converting them to a
+/// callback-style (arena-registered) form is a separate feature.
+struct ActionServerOptions {
+    /// Scheduling-context id to bind this action server's goal-service
+    /// dispatch onto. `SCHED_CONTEXT_UNSET` = executor / Node default.
+    int sched_context = SCHED_CONTEXT_UNSET;
+};
+
 } // namespace nros
 
 #endif // NROS_CPP_OPTIONS_HPP

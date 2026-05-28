@@ -1220,7 +1220,8 @@ nros_cpp_ret_t nros_cpp_action_server_register(void *storage,
                                                void *executor_handle,
                                                const char *action_name,
                                                const char *type_name,
-                                               const char *type_hash);
+                                               const char *type_hash,
+                                               uint8_t sched_context);
 
 /**
  * Publish feedback for an active goal.

@@ -1049,16 +1049,13 @@ pub unsafe extern "C" fn nros_executor_register_service(
 
         match result {
             Ok(handle_id) => {
-                let service_mut = &mut *service;
-                service_mut._internal.arena_entry_index = handle_id.0 as i32;
-                service_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-
                 // Phase 189.M3.3.a — apply a scheduling-context binding requested
-                // via `nros_service_init_with_options`. `0` = inherit the default
-                // (no-op). A non-zero slot must be a valid id from
-                // `nros_executor_create_sched_context`; an unknown id fails the
-                // registration so the caller learns the binding was rejected
-                // rather than silently dropped (mirrors subscriptions).
+                // via `nros_service_init_with_options`. Done *before* the
+                // `executor as *mut _` store below so `rust_exec`'s borrow of
+                // `executor._opaque` ends here (no overlap with the whole-executor
+                // reborrow). `0` = inherit the default (no-op). An unknown slot
+                // fails the registration so the caller learns the binding was
+                // rejected rather than silently dropped (mirrors subscriptions).
                 if requested_sc != 0 {
                     let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
                     if rust_exec
@@ -1068,6 +1065,10 @@ pub unsafe extern "C" fn nros_executor_register_service(
                         return NROS_RET_INVALID_ARGUMENT;
                     }
                 }
+
+                let service_mut = &mut *service;
+                service_mut._internal.arena_entry_index = handle_id.0 as i32;
+                service_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
 
                 executor.handle_count += 1;
                 executor.service_count += 1;
@@ -1171,14 +1172,11 @@ pub unsafe extern "C" fn nros_executor_add_client(
 
         match result {
             Ok(handle_id) => {
-                let client_mut = &mut *client;
-                client_mut._internal.arena_entry_index = handle_id.0 as i32;
-                client_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-                client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
-
                 // Phase 189.M3.3.a — apply a sched-context binding requested via
-                // `nros_client_init_with_options`. `0` = inherit (no-op); an
-                // unknown slot fails registration (mirrors subscriptions/services).
+                // `nros_client_init_with_options`, *before* the `executor as
+                // *mut _` store below so `rust_exec`'s `executor._opaque` borrow
+                // ends here (no overlap with the whole-executor reborrow). `0` =
+                // inherit (no-op); an unknown slot fails registration.
                 if requested_sc != 0 {
                     let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
                     if rust_exec
@@ -1188,6 +1186,11 @@ pub unsafe extern "C" fn nros_executor_add_client(
                         return NROS_RET_INVALID_ARGUMENT;
                     }
                 }
+
+                let client_mut = &mut *client;
+                client_mut._internal.arena_entry_index = handle_id.0 as i32;
+                client_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
+                client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
 
                 executor.handle_count += 1;
                 NROS_RET_OK
