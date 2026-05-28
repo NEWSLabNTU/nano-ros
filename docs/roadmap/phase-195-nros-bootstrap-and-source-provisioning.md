@@ -106,22 +106,42 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
   - [ ] `scripts/bootstrap.sh`: offer the prebuilt path alongside the existing
         rustup+just source path; default to prebuilt when a `dist` for the host
         exists.
-- [ ] **195.B — Data-driven `[source.*]` provisioning (Gap B).**
-  - [ ] Extend `SourcePackage` (`orchestration/sdk_index.rs`): add `git`,
-        `ref`, `dest` (workspace-relative destination), optional `submodule`
-        (the `.gitmodules` path when the canonical source is a submodule).
-        Keep `deny_unknown_fields`; bump `SdkIndex::validate` to check
-        `[board.*]` source refs resolve.
-  - [ ] `nros setup` / `ensure_tools`: provision a board's `[source.*]` set from
-        the index data — clone `git`@`ref` (or `git submodule update` the named
-        path) into `dest`, idempotent (skip if present at the right ref). Never
-        a hardcoded path; `dest` comes from the index.
-  - [ ] Make the index the **single source of truth** for source refs:
-        `just <module> setup` becomes a thin caller reading `[source.*]` (mirrors
-        what 187.6 did for `qemu`/`zenohd`), so submodule `.gitmodules` and the
-        index can't drift.
-  - [ ] Fill the real `git`/`ref`/`dest` for the four current `[source.*]`
-        entries from the existing submodule pins.
+- [~] **195.B — Data-driven `[source.*]` provisioning (Gap B).** *Mechanism +
+      data DONE (2026-05-29); the `just`-recipe consumer rewiring is deferred
+      behind 195.A — see below.*
+  - [x] Extend `SourcePackage` (`orchestration/sdk_index.rs`): added `git`,
+        `ref`, `dest` (workspace-relative), optional `submodule` (the
+        `.gitmodules` path; `git`/`ref` still record the pin = SSOT, so the two
+        can't drift). `git`+`ref`+`dest` describe the source; `submodule` is a
+        *mode hint* (submodule-update vs fresh clone), **not** mutually
+        exclusive. `deny_unknown_fields` kept; `provision()` picks the mode;
+        `validate` checks coherence (clone needs `ref`+`dest`; submodule needs
+        `dest`). Unit-tested.
+  - [x] `nros setup` / `ensure_tools`: `sdk_store::provision_source` does
+        clone-`git`@`ref`-into-`dest` (full clone — `ref` may be a sha) or
+        `git submodule update --init <submodule>`, **idempotent** (a populated
+        `dest` is left untouched). Wired into `nros setup <board>` (per-source
+        disposition line) + the lazy `ensure_tools` (build/deploy auto-setup).
+        `dest` is always index data, never a baked path. Unit-tested + verified
+        via `nros setup qemu-arm-freertos --dry-run` (plans freertos-kernel +
+        lwip provisioning).
+  - [~] Make the index the **single source of truth** — *partial.* Added the
+        enabling primitive **`nros setup --source <name>`** (repeatable;
+        index-driven; mirrors 187.6's `--tool`). **Consumer rewiring deferred:**
+        `just <module> setup` → `tools/setup.sh` (reads
+        `config/submodule-deps.toml`) is the **shared bootstrap path**; making
+        it hard-depend on the `nros` binary requires **195.A** (prebuilt `nros`
+        reliably on PATH — the layer-1→layer-2 ordering). Rewiring before 195.A
+        would break a fresh-checkout `just setup` (no `nros` yet) or need a
+        fragile `nros … || git submodule …` fallback. There is also a manifest
+        overlap to consolidate (`submodule-deps.toml` source paths ⇄ index
+        `[source.*]`). **TODO (post-195.A):** point the source-fetch in
+        `tools/setup.sh`/the `just <module> setup` recipes at
+        `nros setup --source …`, then drop the source entries from
+        `submodule-deps.toml` (index becomes the sole source SSOT).
+  - [x] Fill the real `git`/`ref`/`dest`(+`submodule`) for the four current
+        `[source.*]` entries (`nros-sdk-index.toml`) from the submodule pins +
+        recorded gitlink SHAs.
 - [ ] **195.C — Decouple the CLI's runtime nano-ros layout knowledge.**
       *Cargo-dep-free ≠ nano-ros-knowledge-free.* `nros-cli-core` builds standalone,
       but at **runtime** it bakes the nano-ros workspace *layout*: `generate.rs`

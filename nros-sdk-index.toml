@@ -96,18 +96,40 @@ configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_T
 install = "cmake --build build --parallel $(nproc) --target install"
 
 # --- source packages (built with the app for the user's target) ---
+#
+# Phase 195.B — data-driven provisioning. Each source is a committed submodule,
+# so `nros setup` runs `git submodule update --init <submodule>` into `dest`;
+# `git`/`ref` record the canonical pin (SSOT — kept in lockstep with
+# `.gitmodules` + the recorded gitlink, so the two can't drift). `dest` is
+# workspace-relative — never a path baked into the `nros` binary.
 
 [source.freertos-kernel]
 version = "10.6.2"
+git = "https://github.com/FreeRTOS/FreeRTOS-Kernel.git"
+ref = "0adc196d4bd52a2d91102b525b0aafc1e14a2386"
+dest = "third-party/freertos/kernel"
+submodule = "third-party/freertos/kernel"
 
 [source.lwip]
 version = "2.2.0"
+git = "https://github.com/jerry73204/lwip.git"
+ref = "6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd"
+dest = "third-party/freertos/lwip"
+submodule = "third-party/freertos/lwip"
 
 [source.threadx]
 version = "6.4.1"
+git = "https://github.com/eclipse-threadx/threadx.git"
+ref = "4b6e8100d932a3a67b34c6eb17f84f3bffb9e2ae"
+dest = "third-party/threadx/kernel"
+submodule = "third-party/threadx/kernel"
 
 [source.zenoh-pico]
 version = "1.7.2"
+git = "https://github.com/jerry73204/zenoh-pico.git"
+ref = "f68feb77fbe48c2443957fd18639705808a31848"
+dest = "packages/zpico/zpico-sys/zenoh-pico"
+submodule = "packages/zpico/zpico-sys/zenoh-pico"
 
 # --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
 
