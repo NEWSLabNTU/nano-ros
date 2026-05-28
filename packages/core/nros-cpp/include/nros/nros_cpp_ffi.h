@@ -842,7 +842,7 @@ nros_cpp_ret_t nros_cpp_service_server_create(const struct nros_cpp_node_t *node
                                               const char *service_name,
                                               const char *type_name,
                                               const char *type_hash,
-                                              struct nros_cpp_qos_t _qos,
+                                              struct nros_cpp_qos_t qos,
                                               void *storage);
 
 /**
@@ -900,7 +900,7 @@ nros_cpp_ret_t nros_cpp_service_client_create(const struct nros_cpp_node_t *node
                                               const char *service_name,
                                               const char *type_name,
                                               const char *type_hash,
-                                              struct nros_cpp_qos_t _qos,
+                                              struct nros_cpp_qos_t qos,
                                               void *storage);
 
 /**

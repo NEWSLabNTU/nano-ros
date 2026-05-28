@@ -74,8 +74,14 @@ profiles.
       `register_service_client_raw_*` qos param + action-server qos → the three
       service creates — both ripple into the C / generator / C++ paths, so they
       land with 193.3 (C++) / 193.4 (C) where those surfaces gain qos.
-- [ ] **193.3 — C++.** Make `create_service(qos)` / `create_action_server(qos)`
-      apply (stop discarding `_qos`) + `ServiceOptions` (Phase 189.M3.3-cpp).
+- [~] **193.3 — C++.** *Service server + client DONE:* the FFI
+      `nros_cpp_service_{server,client}_create` now apply the caller's QoS
+      (`qos.to_qos_settings()` → `session.create_service_{server,client}`,
+      stopping the discard) — so C++ `create_service(name, qos)` reaches the
+      backend. *Remaining (193.3b):* `create_action_server(qos)` (the C++ action
+      create's three service planes go through a shared helper that still
+      defaults — thread qos through it) + the `ServiceOptions` named-options
+      struct (Phase 189.M3.3-cpp).
 - [ ] **193.4 — C.** `nros_service_init_with_qos` / `_with_options` (+ optional
       `_best_effort`) + client mirror + `nros_action_server_init_with_qos`
       (Phase 189.M3.3-c).

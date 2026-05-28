@@ -33,7 +33,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
     service_name: *const c_char,
     type_name: *const c_char,
     type_hash: *const c_char,
-    _qos: nros_cpp_qos_t,
+    qos: nros_cpp_qos_t,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
     if node.is_null()
@@ -96,8 +96,8 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
         ctx.executor.session_mut()
     };
 
-    // TODO(193.3): apply the discarded `_qos` arg instead of defaulting.
-    match session.create_service_server(&svc_info, QosSettings::services_default()) {
+    // Phase 193.3 — apply the caller's QoS (rclcpp `create_service(name, qos)`).
+    match session.create_service_server(&svc_info, qos.to_qos_settings()) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceServer, handle);
@@ -223,7 +223,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
     service_name: *const c_char,
     type_name: *const c_char,
     type_hash: *const c_char,
-    _qos: nros_cpp_qos_t,
+    qos: nros_cpp_qos_t,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
     if node.is_null()
@@ -285,8 +285,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
         ctx.executor.session_mut()
     };
 
-    // TODO(193.3): apply the discarded `_qos` arg instead of defaulting.
-    match session.create_service_client(&svc_info, QosSettings::services_default()) {
+    // Phase 193.3 — apply the caller's QoS.
+    match session.create_service_client(&svc_info, qos.to_qos_settings()) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceClient, handle);
