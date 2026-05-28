@@ -89,10 +89,22 @@ Cyclone. Code comments document a real off-by-N bug this caused.
       (`GOAL_ID_SEQ_PREFIX_LEN = GoalId::SEQ_PREFIX_LEN`, de-duped) all route to
       it. Behavior-preserving (every site = 24). `cargo check -p nros-core nros-cpp
       nros-c` clean.
-- [ ] **Cyclone `service.cpp`** raw `4`/`8` offsets + `(pos+3)&~3` →
-      `sizeof(kCdrLeHeader)` / `kGuidBytes` / a `cdr_align4()` helper — **deferred**:
-      delicate C++ CDR/result bridge (validated in 184.8/186) in the action path
-      other agents are actively editing; do as a coordinated follow-up.
+- [x] **Cyclone `service.cpp`** raw offsets named (other agent moved to Phase 193,
+      so the action path was free to edit). Added a wire-framing const block —
+      `kEncapLen` (= `sizeof(kCdrLeHeader)`), `kGuidBytes`/`kSeqBytes`
+      (`kHeaderBytes = kGuidBytes + kSeqBytes`), `kCdrLenPrefix`, `kStatusFieldLen`,
+      `kGoalUuidLen` — kept **deliberately distinct even where they equal 4**, since
+      conflating the CDR encap header / a CDR length prefix / the GetResult status
+      field is the exact off-by-N class this section targets. `(pos+3)&~size_t{3u}`
+      → `cdr_align4()` helper. All `wire_cdr+4/+12`, `out_buf+4/12/20/24/28`,
+      `+ 4 + kHeaderBytes …` strip-offsets, `8`-byte guid/seq copies, and the `16`
+      goal-id length byte routed to the consts across `strip_goal_id_len_at`,
+      `insert_goal_id_len_at`, `build_wire_with_header`, `split_wire_header`,
+      `write_typed`, `take_typed_wire`, and both Fibonacci GetResult encode/decode
+      helpers. Behavior-preserving (every offset numerically unchanged — status 20,
+      count 24, data 28, min wire 28). Verified: `just cyclonedds build-rmw` clean +
+      all 12 ctests pass (incl. `service_roundtrip` and the stock-ROS-2
+      `ros2_srv_e2e`). Closes 192.2.
 
 ### 192.3 — [P2] build.rs source-tree walk-ups → `DEP_*`/env injection
 Board/`zpico-sys` `build.rs` reach sibling first-party crates + `third-party/` by
@@ -287,8 +299,12 @@ landed or the annotations are stale.
 
 ## Acceptance
 
-- [ ] 192.1 + 192.2 (correctness) landed + covered by tests (overflow → error;
-      framing constants exercised by the action e2e suite).
+- [x] 192.1 + 192.2 (correctness) landed + covered by tests. 192.1: heapless
+      `Node::new`/`fully_qualified_name` + topic/lifecycle name pushes return
+      `Result` on overflow (no silent truncation). 192.2: shared
+      `GoalId::SEQ_PREFIX_LEN` (nros-core/cpp/c) + Cyclone `service.cpp` wire-framing
+      const block; framing constants exercised by the Cyclone `service_roundtrip` /
+      `ros2_srv_e2e` ctests (all 12 pass).
 - [ ] `git grep` for the flagged walk-up / `/tmp` / drifted-default patterns is clean.
 - [ ] No new antipatterns introduced; `just ci` green.
 

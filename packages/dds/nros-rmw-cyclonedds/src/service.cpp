@@ -114,8 +114,22 @@ using ServiceAtomicI64 = std::atomic<int64_t>;
 
 constexpr std::size_t kRequestSlots = 32;
 constexpr std::size_t kMaxTopicName = 256;
-constexpr std::size_t kHeaderBytes = 16; // 8-byte guid + 8-byte seq
 constexpr uint8_t kCdrLeHeader[4] = {0x00, 0x01, 0x00, 0x00};
+
+// Wire-framing field widths. These are intentionally *separate* consts
+// even where they share the value 4 — conflating the CDR encapsulation
+// header with a CDR length prefix or the GetResult status field is the
+// exact off-by-N class this section (192.2) exists to kill.
+constexpr std::size_t kEncapLen = sizeof(kCdrLeHeader); // 4-byte CDR encapsulation header
+constexpr std::size_t kGuidBytes = 8;                   // request_header GUID (LE u64)
+constexpr std::size_t kSeqBytes = 8;                    // request_header sequence (LE u64)
+constexpr std::size_t kHeaderBytes = kGuidBytes + kSeqBytes; // 16-byte inlined request_header
+constexpr std::size_t kCdrLenPrefix = sizeof(uint32_t); // 4-byte CDR sequence/array length field
+constexpr std::size_t kStatusFieldLen = 4;              // GetResult status int8 + 3 pad
+constexpr std::size_t kGoalUuidLen = 16;                // action goal_id UUID (uuid[16])
+
+// Round @p pos up to the 4-byte CDR member alignment.
+inline std::size_t cdr_align4(std::size_t pos) { return (pos + 3u) & ~std::size_t{3u}; }
 // Per-call scratch ceiling. Tunable via env if a future user needs
 // it; 64 KiB covers ROS 2's default service payload size budget.
 constexpr std::size_t kWireScratch = 65536;
@@ -275,16 +289,17 @@ bool strip_nested_cdr_at(const uint8_t* in, size_t in_len, size_t nested_off, ui
 
 bool strip_goal_id_len_at(const uint8_t* in, size_t in_len, size_t len_off, uint8_t* out,
                           size_t out_cap, size_t* out_len) {
-    if (in == nullptr || out == nullptr || out_len == nullptr || len_off + 4 > in_len ||
-        in_len - 4 > out_cap) {
+    if (in == nullptr || out == nullptr || out_len == nullptr || len_off + kCdrLenPrefix > in_len ||
+        in_len - kCdrLenPrefix > out_cap) {
         return false;
     }
-    if (in[len_off] != 16 || in[len_off + 1] != 0 || in[len_off + 2] != 0 || in[len_off + 3] != 0) {
+    if (in[len_off] != kGoalUuidLen || in[len_off + 1] != 0 || in[len_off + 2] != 0 ||
+        in[len_off + 3] != 0) {
         return false;
     }
     std::memcpy(out, in, len_off);
-    std::memcpy(out + len_off, in + len_off + 4, in_len - len_off - 4);
-    *out_len = in_len - 4;
+    std::memcpy(out + len_off, in + len_off + kCdrLenPrefix, in_len - len_off - kCdrLenPrefix);
+    *out_len = in_len - kCdrLenPrefix;
     return true;
 }
 
@@ -297,7 +312,7 @@ nros_rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
                                                    const dds_topic_descriptor_t* desc,
                                                    const uint8_t* wire_cdr, size_t wire_len) {
     if (desc == nullptr || desc->m_ops == nullptr || wire_cdr == nullptr ||
-        wire_len < 4 + kHeaderBytes + 8) {
+        wire_len < kEncapLen + kHeaderBytes + kStatusFieldLen + kCdrLenPrefix) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
@@ -307,27 +322,27 @@ nros_rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
     const uint32_t status_off = ops[5];
     const uint32_t result_off = ops[7];
 
-    size_t pos = 4 + kHeaderBytes;
+    size_t pos = kEncapLen + kHeaderBytes;
     int8_t status = static_cast<int8_t>(wire_cdr[pos]);
     pos += 1;
-    pos = (pos + 3u) & ~size_t{3u};
+    pos = cdr_align4(pos);
     if (pos + sizeof(kCdrLeHeader) <= wire_len &&
         std::memcmp(wire_cdr + pos, kCdrLeHeader, sizeof(kCdrLeHeader)) == 0) {
         pos += sizeof(kCdrLeHeader);
     }
-    if (pos + 4 > wire_len) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (pos + kCdrLenPrefix > wire_len) return NROS_RMW_RET_INVALID_ARGUMENT;
 
     uint32_t count = 0;
     std::memcpy(&count, wire_cdr + pos, sizeof(count));
-    pos += 4;
+    pos += kCdrLenPrefix;
     if (count > (wire_len - pos) / sizeof(int32_t)) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 
     auto* sample = static_cast<uint8_t*>(std::calloc(1, desc->m_size));
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
-    std::memcpy(sample + guid_off, wire_cdr + 4, 8);
-    std::memcpy(sample + seq_off, wire_cdr + 12, 8);
+    std::memcpy(sample + guid_off, wire_cdr + kEncapLen, kGuidBytes);
+    std::memcpy(sample + seq_off, wire_cdr + kEncapLen + kGuidBytes, kSeqBytes);
     std::memcpy(sample + status_off, &status, sizeof(status));
 
     auto* sequence = reinterpret_cast<DdsSequenceInt32*>(sample + result_off);
@@ -361,34 +376,38 @@ int32_t take_fibonacci_get_result_response_wire(const void* sample,
     const uint32_t result_off = ops[7];
     const auto* sequence = reinterpret_cast<const DdsSequenceInt32*>(bytes + result_off);
     const uint32_t count = sequence->_length;
-    const size_t total = 4 + kHeaderBytes + 4 + 4 + count * sizeof(int32_t);
+    // Wire layout: [encap][guid][seq][status+pad][count][int32 data...]
+    constexpr size_t status_off_wire = kEncapLen + kHeaderBytes;
+    constexpr size_t count_off_wire = status_off_wire + kStatusFieldLen;
+    constexpr size_t data_off_wire = count_off_wire + kCdrLenPrefix;
+    const size_t total = data_off_wire + count * sizeof(int32_t);
     if (out_cap < total) return NROS_RMW_RET_BUFFER_TOO_SMALL;
 
     std::memcpy(out_buf, kCdrLeHeader, sizeof(kCdrLeHeader));
-    std::memcpy(out_buf + 4, bytes + guid_off, 8);
-    std::memcpy(out_buf + 12, bytes + seq_off, 8);
-    out_buf[20] = bytes[status_off];
-    out_buf[21] = 0;
-    out_buf[22] = 0;
-    out_buf[23] = 0;
-    std::memcpy(out_buf + 24, &count, sizeof(count));
+    std::memcpy(out_buf + kEncapLen, bytes + guid_off, kGuidBytes);
+    std::memcpy(out_buf + kEncapLen + kGuidBytes, bytes + seq_off, kSeqBytes);
+    out_buf[status_off_wire] = bytes[status_off];
+    out_buf[status_off_wire + 1] = 0;
+    out_buf[status_off_wire + 2] = 0;
+    out_buf[status_off_wire + 3] = 0;
+    std::memcpy(out_buf + count_off_wire, &count, sizeof(count));
     if (count > 0) {
         if (sequence->_buffer == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
-        std::memcpy(out_buf + 28, sequence->_buffer, count * sizeof(int32_t));
+        std::memcpy(out_buf + data_off_wire, sequence->_buffer, count * sizeof(int32_t));
     }
     return static_cast<int32_t>(total);
 }
 
 bool insert_goal_id_len_at(uint8_t* buf, size_t len, size_t cap, size_t len_off, size_t* out_len) {
-    if (buf == nullptr || out_len == nullptr || len_off > len || len + 4 > cap) {
+    if (buf == nullptr || out_len == nullptr || len_off > len || len + kCdrLenPrefix > cap) {
         return false;
     }
-    std::memmove(buf + len_off + 4, buf + len_off, len - len_off);
-    buf[len_off] = 16;
+    std::memmove(buf + len_off + kCdrLenPrefix, buf + len_off, len - len_off);
+    buf[len_off] = kGoalUuidLen;
     buf[len_off + 1] = 0;
     buf[len_off + 2] = 0;
     buf[len_off + 3] = 0;
-    *out_len = len + 4;
+    *out_len = len + kCdrLenPrefix;
     return true;
 }
 
@@ -402,17 +421,17 @@ bool insert_goal_id_len_at(uint8_t* buf, size_t len, size_t cap, size_t len_off,
 // Returns total wire byte count, or negative on error.
 int32_t build_wire_with_header(const uint8_t* user_bytes, size_t user_len, const RequestId& id,
                                uint8_t* wire_cdr, size_t wire_cap) {
-    if (user_len < 4) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (user_len < kEncapLen) return NROS_RMW_RET_INVALID_ARGUMENT;
     size_t total = user_len + kHeaderBytes;
     if (total > wire_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
-    // 4-byte encap copied verbatim.
-    std::memcpy(wire_cdr, user_bytes, 4);
-    // 8-byte little-endian guid.
-    put_le64(wire_cdr + 4, static_cast<int64_t>(id.guid));
-    // 8-byte little-endian seq.
-    put_le64(wire_cdr + 4 + 8, id.seq);
+    // Encap copied verbatim.
+    std::memcpy(wire_cdr, user_bytes, kEncapLen);
+    // Little-endian guid.
+    put_le64(wire_cdr + kEncapLen, static_cast<int64_t>(id.guid));
+    // Little-endian seq.
+    put_le64(wire_cdr + kEncapLen + kGuidBytes, id.seq);
     // User payload after encap.
-    std::memcpy(wire_cdr + 4 + kHeaderBytes, user_bytes + 4, user_len - 4);
+    std::memcpy(wire_cdr + kEncapLen + kHeaderBytes, user_bytes + kEncapLen, user_len - kEncapLen);
     return static_cast<int32_t>(total);
 }
 
@@ -426,21 +445,21 @@ int32_t build_wire_with_header(const uint8_t* user_bytes, size_t user_len, const
 int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
                           const dds_topic_descriptor_t* payload_desc, RequestId* out_id,
                           uint8_t* user_out, size_t user_cap) {
-    if (wire_len < 4 + kHeaderBytes) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (wire_len < kEncapLen + kHeaderBytes) return NROS_RMW_RET_INVALID_ARGUMENT;
     if (out_id != nullptr) {
-        out_id->guid = static_cast<uint64_t>(get_le64(wire_cdr + 4));
-        out_id->seq = get_le64(wire_cdr + 4 + 8);
+        out_id->guid = static_cast<uint64_t>(get_le64(wire_cdr + kEncapLen));
+        out_id->seq = get_le64(wire_cdr + kEncapLen + kGuidBytes);
     }
     size_t user_len = wire_len - kHeaderBytes; // (encap stays + user fields)
     if (user_len > user_cap) return NROS_RMW_RET_BUFFER_TOO_SMALL;
     // Encap.
-    std::memcpy(user_out, wire_cdr, 4);
+    std::memcpy(user_out, wire_cdr, kEncapLen);
     // User fields.
-    std::memcpy(user_out + 4, wire_cdr + 4 + kHeaderBytes, user_len - 4);
+    std::memcpy(user_out + kEncapLen, wire_cdr + kEncapLen + kHeaderBytes, user_len - kEncapLen);
     if (type_ends_with(payload_desc, "_SendGoal_Request_") ||
         type_ends_with(payload_desc, "_GetResult_Request_")) {
         size_t adjusted = 0;
-        if (!insert_goal_id_len_at(user_out, user_len, user_cap, 4, &adjusted)) {
+        if (!insert_goal_id_len_at(user_out, user_len, user_cap, kEncapLen, &adjusted)) {
             return NROS_RMW_RET_BUFFER_TOO_SMALL;
         }
         user_len = adjusted;
@@ -452,7 +471,8 @@ int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
 // owns @p wire_cdr.
 nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
                            const SertypeMin* st, const uint8_t* wire_cdr, size_t wire_len) {
-    if (writer <= 0 || desc == nullptr || st == nullptr || wire_cdr == nullptr || wire_len < 4) {
+    if (writer <= 0 || desc == nullptr || st == nullptr || wire_cdr == nullptr ||
+        wire_len < kEncapLen) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     uint8_t adjusted[kWireScratch];
@@ -460,20 +480,20 @@ nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* de
     size_t read_len = wire_len;
     size_t adjusted_len = 0;
     if (type_ends_with(desc, "_SendGoal_Request_") || type_ends_with(desc, "_GetResult_Request_")) {
-        if (strip_goal_id_len_at(wire_cdr, wire_len, 4 + kHeaderBytes, adjusted, sizeof(adjusted),
-                                 &adjusted_len)) {
+        if (strip_goal_id_len_at(wire_cdr, wire_len, kEncapLen + kHeaderBytes, adjusted,
+                                 sizeof(adjusted), &adjusted_len)) {
             read_cdr = adjusted;
             read_len = adjusted_len;
         }
     } else if (type_ends_with(desc, "_GetResult_Response_")) {
-        if (strip_nested_cdr_at(wire_cdr, wire_len, 4 + kHeaderBytes + 4, adjusted,
-                                sizeof(adjusted), &adjusted_len)) {
+        if (strip_nested_cdr_at(wire_cdr, wire_len, kEncapLen + kHeaderBytes + kStatusFieldLen,
+                                adjusted, sizeof(adjusted), &adjusted_len)) {
             read_cdr = adjusted;
             read_len = adjusted_len;
         }
     }
     if (type_ends_with(desc, "_SendGoal_Request_")) {
-        if (strip_nested_cdr_at(read_cdr, read_len, 4 + kHeaderBytes + 16, adjusted,
+        if (strip_nested_cdr_at(read_cdr, read_len, kEncapLen + kHeaderBytes + kGoalUuidLen, adjusted,
                                 sizeof(adjusted), &adjusted_len)) {
             read_cdr = adjusted;
             read_len = adjusted_len;
@@ -484,9 +504,9 @@ nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* de
         type_ends_with(desc, "_GetResult_Request_")) {
         void* sample = std::calloc(1, desc->m_size);
         if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
-        size_t payload_len = read_len - 4;
+        size_t payload_len = read_len - kEncapLen;
         if (payload_len > desc->m_size) payload_len = desc->m_size;
-        std::memcpy(sample, read_cdr + 4, payload_len);
+        std::memcpy(sample, read_cdr + kEncapLen, payload_len);
         dds_return_t r = dds_write(writer, sample);
         std::free(sample);
         return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
@@ -500,7 +520,7 @@ nros_rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* de
     if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
 
     dds_istream_t is;
-    dds_istream_init(&is, static_cast<uint32_t>(read_len - 4), read_cdr + 4, xcdrv);
+    dds_istream_init(&is, static_cast<uint32_t>(read_len - kEncapLen), read_cdr + kEncapLen, xcdrv);
     dds_stream_read_sample(&is, sample, st->as_sertype());
     dds_istream_fini(&is);
 
@@ -539,7 +559,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
     if (!ok && (type_ends_with(st->descriptor(), "_SendGoal_Request_") ||
                 type_ends_with(st->descriptor(), "_SendGoal_Response_") ||
                 type_ends_with(st->descriptor(), "_GetResult_Request_"))) {
-        uint32_t total = 4 + st->descriptor()->m_size;
+        uint32_t total = kEncapLen + st->descriptor()->m_size;
         if (out_cap < total) {
             (void)dds_return_loan(reader, samples, taken);
             dds_ostream_fini(&os);
@@ -554,7 +574,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
 #endif
         out_buf[2] = 0;
         out_buf[3] = 0;
-        std::memcpy(out_buf + 4, samples[0], st->descriptor()->m_size);
+        std::memcpy(out_buf + kEncapLen, samples[0], st->descriptor()->m_size);
         (void)dds_return_loan(reader, samples, taken);
         dds_ostream_fini(&os);
         return static_cast<int32_t>(total);
@@ -572,7 +592,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
 #endif
 
     uint32_t paylen = os.m_index;
-    uint32_t total = paylen + 4;
+    uint32_t total = paylen + kEncapLen;
     if (out_cap < total) {
         dds_ostream_fini(&os);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
@@ -581,7 +601,7 @@ int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_
     out_buf[1] = kEncId[1];
     out_buf[2] = 0;
     out_buf[3] = 0;
-    std::memcpy(out_buf + 4, os.m_buffer, paylen);
+    std::memcpy(out_buf + kEncapLen, os.m_buffer, paylen);
     dds_ostream_fini(&os);
     return static_cast<int32_t>(total);
 }
