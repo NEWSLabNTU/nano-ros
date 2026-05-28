@@ -897,10 +897,13 @@ build-s32z:
     # is the actual Phase 117.13 acceptance bar (toolchain plumbing
     # works for the new board target).
     set +e
+    # Unified log dir (test-logs/) instead of a repo-root scatter.
+    mkdir -p "$nros_root/test-logs"
+    s32z_log="$nros_root/test-logs/s32z-build.log"
     west build -b "s32z2xxdc2@D/s32z270/rtu0" \
         -d build-s32z-talker -p auto \
         -- -DEXTRA_CONF_FILE="$extra" -DMAKE="$make_bin" \
-        > "$nros_root/build-s32z-output.log" 2>&1
+        > "$s32z_log" 2>&1
     rc=$?
     set -e
     rust_release="$workspace/build-s32z-talker/rust/target/armv7r-none-eabihf/release/librustapp.a"
@@ -913,7 +916,7 @@ build-s32z:
         echo "  zpico-sys cbindgen typedef issue, see Phase 117 docs)."
     else
         echo "S32Z R52 build smoke FAILED — Rust + nros compile path broken"
-        echo "  Build log: $nros_root/build-s32z-output.log"
+        echo "  Build log: $s32z_log"
         exit 1
     fi
 
