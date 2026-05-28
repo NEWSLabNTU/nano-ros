@@ -1299,6 +1299,33 @@ impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize>
         }
     }
 
+    /// Surface per-message [`MessageInfo`](nros_core::MessageInfo) (seq,
+    /// publisher GID, timestamps) to the callback — `FnMut(&M, Option<&MessageInfo>)`,
+    /// the rclrs shape. Distinct from the generic builder's `.message_info()`
+    /// (which yields a `RawMessageInfo` with the wire attachment).
+    pub fn message_info(self) -> TypedSubInfoBuilder<'c, 'e, 't, M, RX> {
+        TypedSubInfoBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            sched: self.sched,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Surface E2E-safety validation (CRC + sequence gap/duplicate) to the
+    /// callback — `FnMut(&M, &IntegrityStatus)`.
+    #[cfg(feature = "safety-e2e")]
+    pub fn safety(self) -> TypedSubSafetyBuilder<'c, 'e, 't, M, RX> {
+        TypedSubSafetyBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            sched: self.sched,
+            _phantom: PhantomData,
+        }
+    }
+
     pub fn build<F: FnMut(&M) + 'static>(
         self,
         callback: F,
@@ -1308,6 +1335,124 @@ impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize>
             .executor
             .register_subscription_buffered_on::<M, F, RX>(
                 self.ctx.node_id,
+                self.topic,
+                self.qos,
+                callback,
+            )?;
+        if let Some(sc) = self.sched {
+            self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;
+        }
+        Ok(handle)
+    }
+}
+
+/// Typed subscription builder with `MessageInfo` (`.typed::<M>().message_info()`).
+/// Callback is `FnMut(&M, Option<&MessageInfo>)`.
+pub struct TypedSubInfoBuilder<
+    'c,
+    'e,
+    't,
+    M,
+    const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    qos: QosSettings,
+    sched: Option<super::sched_context::SchedContextId>,
+    _phantom: PhantomData<M>,
+}
+
+impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize> TypedSubInfoBuilder<'c, 'e, 't, M, RX> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn sched_context(mut self, sc: super::sched_context::SchedContextId) -> Self {
+        self.sched = Some(sc);
+        self
+    }
+
+    pub fn rx_buffer<const N: usize>(self) -> TypedSubInfoBuilder<'c, 'e, 't, M, N> {
+        TypedSubInfoBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            sched: self.sched,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn build<F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static>(
+        self,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError> {
+        let handle = self
+            .ctx
+            .executor
+            .register_subscription_with_info_sized_inner::<M, F, RX>(
+                Some(self.ctx.node_id),
+                self.topic,
+                self.qos,
+                callback,
+            )?;
+        if let Some(sc) = self.sched {
+            self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;
+        }
+        Ok(handle)
+    }
+}
+
+/// Typed subscription builder with E2E-safety validation
+/// (`.typed::<M>().safety()`). Callback is `FnMut(&M, &IntegrityStatus)`.
+#[cfg(feature = "safety-e2e")]
+pub struct TypedSubSafetyBuilder<
+    'c,
+    'e,
+    't,
+    M,
+    const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    qos: QosSettings,
+    sched: Option<super::sched_context::SchedContextId>,
+    _phantom: PhantomData<M>,
+}
+
+#[cfg(feature = "safety-e2e")]
+impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize>
+    TypedSubSafetyBuilder<'c, 'e, 't, M, RX>
+{
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn sched_context(mut self, sc: super::sched_context::SchedContextId) -> Self {
+        self.sched = Some(sc);
+        self
+    }
+
+    pub fn rx_buffer<const N: usize>(self) -> TypedSubSafetyBuilder<'c, 'e, 't, M, N> {
+        TypedSubSafetyBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            sched: self.sched,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn build<F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static>(
+        self,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError> {
+        let handle = self
+            .ctx
+            .executor
+            .register_subscription_with_safety_sized_inner::<M, F, RX>(
+                Some(self.ctx.node_id),
                 self.topic,
                 self.qos,
                 callback,
@@ -1557,6 +1702,37 @@ mod builder_tests {
                 let _ = info.attachment();
             })
             .expect("generic + message_info subscription builds");
+    }
+
+    #[test]
+    fn typed_message_info_builder() {
+        // M2.a — typed .message_info() (rclrs shape FnMut(&M, Option<&MessageInfo>)),
+        // replacing register_subscription_with_info.
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        let id = exec.node_builder("n").build().expect("node");
+        let _h = exec
+            .node_mut(id)
+            .subscription("/chatter")
+            .typed::<TestMsg>()
+            .qos(QosSettings::default().keep_last(5))
+            .message_info()
+            .build(|_m: &TestMsg, _info: Option<&nros_core::MessageInfo>| {})
+            .expect("typed + message_info subscription builds");
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn typed_safety_builder() {
+        // M2.a — typed .safety(), replacing register_subscription_with_safety.
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        let id = exec.node_builder("n").build().expect("node");
+        let _h = exec
+            .node_mut(id)
+            .subscription("/chatter")
+            .typed::<TestMsg>()
+            .safety()
+            .build(|_m: &TestMsg, _status: &nros_rmw::IntegrityStatus| {})
+            .expect("typed + safety subscription builds");
     }
 
     #[test]
