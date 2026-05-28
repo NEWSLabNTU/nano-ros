@@ -24,6 +24,55 @@ use super::{
 };
 
 // ============================================================================
+// Raw action registration specs
+// ============================================================================
+
+/// Inputs for raw (untyped) action-server registration.
+///
+/// Collapses the runtime arguments shared by the
+/// `register_action_server_raw*` family. Buffer sizes / max-goals stay
+/// as const-generic turbofish parameters on the registration methods.
+pub struct RawActionServerSpec<'a> {
+    /// `None` registers on the executor's own node; `Some(id)` routes
+    /// the server's 5 underlying handles (send_goal / cancel_goal /
+    /// get_result servers + feedback / status publishers) through the
+    /// named Node's session.
+    pub node_id: Option<super::node_record::NodeId>,
+    pub action_name: &'a str,
+    pub type_name: &'a str,
+    pub type_hash: &'a str,
+    /// QoS for the action's three underlying service servers (send_goal
+    /// / cancel_goal / get_result; Phase 193.4b). The feedback + status
+    /// publishers keep their own profiles. Use
+    /// [`QosSettings::services_default`] for the rclc-compatible default.
+    pub qos: QosSettings,
+    pub goal_callback: RawGoalCallback,
+    pub cancel_callback: RawCancelCallback,
+    pub accepted_callback: Option<RawAcceptedCallback>,
+    pub context: *mut core::ffi::c_void,
+}
+
+/// Inputs for raw (untyped) action-client registration.
+///
+/// Collapses the runtime arguments shared by the
+/// `register_action_client_raw*` family. Buffer sizes stay as
+/// const-generic turbofish parameters on the registration methods.
+pub struct RawActionClientSpec<'a> {
+    /// `None` registers on the executor's own node; `Some(id)` routes
+    /// the client's 4 underlying handles (send_goal / cancel_goal /
+    /// get_result service clients + feedback subscriber) through the
+    /// named Node's session.
+    pub node_id: Option<super::node_record::NodeId>,
+    pub action_name: &'a str,
+    pub type_name: &'a str,
+    pub type_hash: &'a str,
+    pub goal_response_callback: Option<RawGoalResponseCallback>,
+    pub feedback_callback: Option<RawFeedbackCallback>,
+    pub result_callback: Option<RawResultCallback>,
+    pub context: *mut core::ffi::c_void,
+}
+
+// ============================================================================
 // Action server registration
 // ============================================================================
 
@@ -403,33 +452,21 @@ impl Executor {
     #[allow(clippy::too_many_arguments)]
     pub fn register_action_server_raw(
         &mut self,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        goal_callback: RawGoalCallback,
-        cancel_callback: RawCancelCallback,
-        accepted_callback: Option<RawAcceptedCallback>,
-        context: *mut core::ffi::c_void,
+        spec: RawActionServerSpec<'_>,
     ) -> Result<ActionServerRawHandle, NodeError> {
         self.register_action_server_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
-            action_name,
-            type_name,
-            type_hash,
-            QosSettings::services_default(),
-            goal_callback,
-            cancel_callback,
-            accepted_callback,
-            context,
+            spec,
         )
     }
 
-    /// Register a raw action server with custom buffer sizes + QoS.
+    /// Register a raw action server with custom buffer sizes.
     ///
-    /// `qos` applies to the action's three underlying service servers
-    /// (send_goal / cancel_goal / get_result; Phase 193.4b). The feedback +
-    /// status publishers keep their own profiles. Defaults to
-    /// [`QosSettings::services_default`] via the convenience wrapper.
-    #[allow(clippy::too_many_arguments)]
+    /// `spec.node_id` selects the target: `None` registers on the
+    /// executor's own node, `Some(id)` routes the server's 5 underlying
+    /// handles through the named Node's session (Phase 104.C.3.3.a).
+    /// `spec.qos` applies to the action's three underlying service
+    /// servers (send_goal / cancel_goal / get_result; Phase 193.4b); the
+    /// feedback + status publishers keep their own profiles.
     pub fn register_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
@@ -437,22 +474,10 @@ impl Executor {
         const MAX_GOALS: usize,
     >(
         &mut self,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        qos: QosSettings,
-        goal_callback: RawGoalCallback,
-        cancel_callback: RawCancelCallback,
-        accepted_callback: Option<RawAcceptedCallback>,
-        context: *mut core::ffi::c_void,
+        spec: RawActionServerSpec<'_>,
     ) -> Result<ActionServerRawHandle, NodeError> {
-        self.register_action_server_raw_sized_inner::<
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-            MAX_GOALS,
-        >(
-            None,
+        let RawActionServerSpec {
+            node_id,
             action_name,
             type_name,
             type_hash,
@@ -461,68 +486,8 @@ impl Executor {
             cancel_callback,
             accepted_callback,
             context,
-        )
-    }
+        } = spec;
 
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_action_server_raw_sized`]. Routes the action
-    /// server's 5 underlying handles (send_goal /
-    /// cancel_goal / get_result servers + feedback / status
-    /// publishers) through the named Node's session.
-    #[allow(clippy::too_many_arguments)]
-    pub fn register_action_server_raw_sized_on<
-        const GOAL_BUF: usize,
-        const RESULT_BUF: usize,
-        const FEEDBACK_BUF: usize,
-        const MAX_GOALS: usize,
-    >(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        qos: QosSettings,
-        goal_callback: RawGoalCallback,
-        cancel_callback: RawCancelCallback,
-        accepted_callback: Option<RawAcceptedCallback>,
-        context: *mut core::ffi::c_void,
-    ) -> Result<ActionServerRawHandle, NodeError> {
-        self.register_action_server_raw_sized_inner::<
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-            MAX_GOALS,
-        >(
-            Some(node_id),
-            action_name,
-            type_name,
-            type_hash,
-            qos,
-            goal_callback,
-            cancel_callback,
-            accepted_callback,
-            context,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn register_action_server_raw_sized_inner<
-        const GOAL_BUF: usize,
-        const RESULT_BUF: usize,
-        const FEEDBACK_BUF: usize,
-        const MAX_GOALS: usize,
-    >(
-        &mut self,
-        node_id: Option<super::node_record::NodeId>,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        qos: QosSettings,
-        goal_callback: RawGoalCallback,
-        cancel_callback: RawCancelCallback,
-        accepted_callback: Option<RawAcceptedCallback>,
-        context: *mut core::ffi::c_void,
-    ) -> Result<ActionServerRawHandle, NodeError> {
         type Entry<const GB: usize, const RB: usize, const FB: usize, const MG: usize> =
             ActionServerRawArenaEntry<GB, RB, FB, MG>;
 
@@ -952,47 +917,30 @@ impl Executor {
     #[allow(clippy::too_many_arguments)]
     pub fn register_action_client_raw(
         &mut self,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        goal_response_callback: Option<RawGoalResponseCallback>,
-        feedback_callback: Option<RawFeedbackCallback>,
-        result_callback: Option<RawResultCallback>,
-        context: *mut core::ffi::c_void,
+        spec: RawActionClientSpec<'_>,
     ) -> Result<ActionClientRawHandle, NodeError> {
         self.register_action_client_raw_sized::<
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
-        >(
-            action_name,
-            type_name,
-            type_hash,
-            goal_response_callback,
-            feedback_callback,
-            result_callback,
-            context,
-        )
+        >(spec)
     }
 
     /// Register a raw action client with explicit buffer sizes.
-    #[allow(clippy::too_many_arguments)]
+    ///
+    /// `spec.node_id` selects the target: `None` registers on the
+    /// executor's own node, `Some(id)` routes the client's 4 underlying
+    /// handles through the named Node's session (Phase 104.C.3.3.a).
     pub fn register_action_client_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
     >(
         &mut self,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        goal_response_callback: Option<RawGoalResponseCallback>,
-        feedback_callback: Option<RawFeedbackCallback>,
-        result_callback: Option<RawResultCallback>,
-        context: *mut core::ffi::c_void,
+        spec: RawActionClientSpec<'_>,
     ) -> Result<ActionClientRawHandle, NodeError> {
-        self.register_action_client_raw_sized_inner::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>(
-            None,
+        let RawActionClientSpec {
+            node_id,
             action_name,
             type_name,
             type_hash,
@@ -1000,58 +948,8 @@ impl Executor {
             feedback_callback,
             result_callback,
             context,
-        )
-    }
+        } = spec;
 
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_action_client_raw_sized`]. Routes the action
-    /// client's 4 underlying handles (send_goal / cancel_goal /
-    /// get_result service clients + feedback subscriber) through
-    /// the named Node's session.
-    #[allow(clippy::too_many_arguments)]
-    pub fn register_action_client_raw_sized_on<
-        const GOAL_BUF: usize,
-        const RESULT_BUF: usize,
-        const FEEDBACK_BUF: usize,
-    >(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        goal_response_callback: Option<RawGoalResponseCallback>,
-        feedback_callback: Option<RawFeedbackCallback>,
-        result_callback: Option<RawResultCallback>,
-        context: *mut core::ffi::c_void,
-    ) -> Result<ActionClientRawHandle, NodeError> {
-        self.register_action_client_raw_sized_inner::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>(
-            Some(node_id),
-            action_name,
-            type_name,
-            type_hash,
-            goal_response_callback,
-            feedback_callback,
-            result_callback,
-            context,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn register_action_client_raw_sized_inner<
-        const GOAL_BUF: usize,
-        const RESULT_BUF: usize,
-        const FEEDBACK_BUF: usize,
-    >(
-        &mut self,
-        node_id: Option<super::node_record::NodeId>,
-        action_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        goal_response_callback: Option<RawGoalResponseCallback>,
-        feedback_callback: Option<RawFeedbackCallback>,
-        result_callback: Option<RawResultCallback>,
-        context: *mut core::ffi::c_void,
-    ) -> Result<ActionClientRawHandle, NodeError> {
         type Entry<const GB: usize, const RB: usize, const FB: usize> =
             ActionClientRawArenaEntry<GB, RB, FB>;
 

@@ -87,12 +87,22 @@ void nros_fini_multi(nros_executor_handle_t exec);
 typedef void* nros_pubsub_bridge_t;
 
 /**
+ * @brief One side (source or destination) of a pubsub bridge: the
+ * Node to open, the RMW backend to route through, and the topic.
+ */
+typedef struct {
+    const char* node;
+    const char* rmw;
+    const char* topic;
+} nros_bridge_endpoint_t;
+
+/**
  * @brief Create a raw pubsub bridge between two backends.
  *
- * Internally calls `Executor::create_node_on(src_node, src_rmw)`,
- * creates a raw subscription on `src_topic`, calls
- * `create_node_on(dst_node, dst_rmw)`, creates a raw publisher on
- * `dst_topic`, and hands them to `nros_bridge::PubSubBridge::new`.
+ * Internally calls `Executor::create_node_on(src->node, src->rmw)`,
+ * creates a raw subscription on `src->topic`, calls
+ * `create_node_on(dst->node, dst->rmw)`, creates a raw publisher on
+ * `dst->topic`, and hands them to `nros_bridge::PubSubBridge::new`.
  *
  * `origin` is the source backend's RMW name; pass `NULL` or `""` to
  * skip dedup (single-direction bridges).
@@ -100,9 +110,8 @@ typedef void* nros_pubsub_bridge_t;
  * Returns `NROS_RMW_RET_OK` on success and writes the bridge handle
  * to `*out`.
  */
-int32_t nros_pubsub_bridge_create(nros_executor_handle_t exec, const char* src_node,
-                                  const char* src_rmw, const char* src_topic, const char* dst_node,
-                                  const char* dst_rmw, const char* dst_topic, const char* type_name,
+int32_t nros_pubsub_bridge_create(nros_executor_handle_t exec, const nros_bridge_endpoint_t* src,
+                                  const nros_bridge_endpoint_t* dst, const char* type_name,
                                   const char* type_hash, const char* origin,
                                   nros_pubsub_bridge_t* out);
 

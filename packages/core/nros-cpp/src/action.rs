@@ -242,50 +242,31 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    // Phase 104.C.9.b — when the action server was created on a
-    // multi-RMW Node, route registration through the `_on(NodeId, ...)`
-    // variant so the underlying queryables/publishers land on the
-    // Node's bound session. Default-Node servers stay on the legacy
-    // path.
-    // Phase 193.4b — apply the create-time QoS to the three underlying
-    // service servers (rclcpp `create_action_server(name, qos)`).
+    // Phase 104.C.9.b — `spec.node_id` routes registration through the
+    // named multi-RMW Node's session (so the underlying
+    // queryables/publishers land there); `None` uses the default Node.
+    // Phase 193.4b — `spec.qos` applies the create-time QoS to the three
+    // underlying service servers (rclcpp `create_action_server(name, qos)`).
     let qos = server.qos.to_qos_settings();
-    let result = if server.node_id != 0 {
-        ctx.executor
-            .register_action_server_raw_sized_on::<
-                { nros_node::config::DEFAULT_RX_BUF_SIZE },
-                { nros_node::config::DEFAULT_RX_BUF_SIZE },
-                { nros_node::config::DEFAULT_RX_BUF_SIZE },
-                4,
-            >(
-                nros_node::executor::NodeId::from_raw(server.node_id),
-                act_str,
-                type_str,
-                hash_str,
-                qos,
-                goal_callback_trampoline,
-                cancel_callback_trampoline,
-                None,
-                storage,
-            )
+    let node_id = if server.node_id != 0 {
+        Some(nros_node::executor::NodeId::from_raw(server.node_id))
     } else {
-        ctx.executor
-            .register_action_server_raw_sized::<
-                { nros_node::config::DEFAULT_RX_BUF_SIZE },
-                { nros_node::config::DEFAULT_RX_BUF_SIZE },
-                { nros_node::config::DEFAULT_RX_BUF_SIZE },
-                4,
-            >(
-                act_str,
-                type_str,
-                hash_str,
-                qos,
-                goal_callback_trampoline,
-                cancel_callback_trampoline,
-                None, // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
-                storage,
-            )
+        None
     };
+    let result = ctx
+        .executor
+        .register_action_server_raw(nros_node::RawActionServerSpec {
+            node_id,
+            action_name: act_str,
+            type_name: type_str,
+            type_hash: hash_str,
+            qos,
+            goal_callback: goal_callback_trampoline,
+            cancel_callback: cancel_callback_trampoline,
+            // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
+            accepted_callback: None,
+            context: storage,
+        });
     match result {
         Ok(handle) => {
             server.handle = Some(handle);
@@ -764,39 +745,27 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 
     // Register with executor — creates the ONLY ActionClientCore in the arena.
     // Trampolines read from CppActionClient.callbacks (set later via set_callbacks).
-    // Phase 104.C.9.b — route multi-Node action clients through the
-    // `_sized_on(NodeId, ...)` variant.
-    let handle = if node_ref.node_id != 0 {
-        match ctx.executor.register_action_client_raw_sized_on::<
-            { nros_node::config::DEFAULT_RX_BUF_SIZE },
-            { nros_node::config::DEFAULT_RX_BUF_SIZE },
-            { nros_node::config::DEFAULT_RX_BUF_SIZE },
-        >(
-            nros_node::executor::NodeId::from_raw(node_ref.node_id),
-            act_str,
-            type_str,
-            hash_str,
-            Some(cpp_goal_response_trampoline),
-            Some(cpp_feedback_trampoline),
-            Some(cpp_result_trampoline),
-            storage,
-        ) {
-            Ok(h) => h,
-            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-        }
+    // Phase 104.C.9.b — `spec.node_id` routes multi-Node action clients
+    // through the named Node's session; `None` uses the default Node.
+    let node_id = if node_ref.node_id != 0 {
+        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
     } else {
-        match ctx.executor.register_action_client_raw(
-            act_str,
-            type_str,
-            hash_str,
-            Some(cpp_goal_response_trampoline),
-            Some(cpp_feedback_trampoline),
-            Some(cpp_result_trampoline),
-            storage, // context = CppActionClient pointer
-        ) {
-            Ok(h) => h,
-            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-        }
+        None
+    };
+    let handle = match ctx
+        .executor
+        .register_action_client_raw(nros_node::RawActionClientSpec {
+            node_id,
+            action_name: act_str,
+            type_name: type_str,
+            type_hash: hash_str,
+            goal_response_callback: Some(cpp_goal_response_trampoline),
+            feedback_callback: Some(cpp_feedback_trampoline),
+            result_callback: Some(cpp_result_trampoline),
+            context: storage, // context = CppActionClient pointer
+        }) {
+        Ok(h) => h,
+        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
     };
 
     let client = CppActionClient {
