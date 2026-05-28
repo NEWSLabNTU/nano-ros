@@ -6,8 +6,9 @@ defconfig + cross-toolchain — **without editing ARM-specific code**. Keep Nutt
 **source-built** (`make export`, the canonical out-of-tree-app SDK); only the
 arch-specific knobs become per-board parameters.
 
-**Status.** Not started (design 2026-05-28, split from the NuttX provisioning
-discussion).
+**Status.** 194.1 + 194.2 done (`914c620dd`) — the toolchain + arch-flag
+hardcodes are now env-driven (arm defaults, verified). 194.3 (a real 2nd-arch
+board + the `arch/arm/src` FFI paths) + 194.4 (CMake self-provision) remain.
 
 **Priority.** P2 — extensibility/correctness of the NuttX path; today only
 `nuttx-qemu-arm` (cortex-a7) is reachable because the provisioning hardcodes ARM.
@@ -50,21 +51,24 @@ in the index); the kernel source-builds against it.
 
 ## Work items
 
-- [ ] **194.1 — `build-nuttx.sh` toolchain-agnostic.** Take the cross-compiler
-      (e.g. `NUTTX_CROSS=arm-none-eabi-gcc`) + any arch knobs from env / the
-      board overlay instead of the hardcoded `arm-none-eabi-gcc` check; defconfig
-      stays the per-board path. Error hint names the resolved toolchain.
-      **Files:** `nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh` (relocate/
-      generalize so it serves any nuttx board, or factor a shared script).
-- [ ] **194.2 — `nros-nuttx-ffi` arch flags from the board.** The `-mcpu`/
-      `-mfloat-abi`/`-mfpu` (+ the `-print-libgcc-file-name` probe) come from the
-      board overlay / cache-vars (e.g. `NUTTX_ARCH_CFLAGS`), not baked cortex-a7.
-      **Files:** `nros-board-nuttx-qemu-arm/nros-nuttx-ffi/build.rs`,
-      `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake`.
+- [x] **194.1 — `build-nuttx.sh` toolchain-agnostic.** DONE. Reads `NUTTX_CROSS`
+      (default `arm-none-eabi-gcc`) for the presence check; hint names the
+      resolved toolchain. (NuttX's `make` still picks the actual compiler from the
+      defconfig's `CONFIG_ARCH_TOOLCHAIN` + PATH — this was only a guard.)
+      Verified `just nuttx build-kernel`.
+- [x] **194.2 — `nros-nuttx-ffi` arch flags from env.** DONE. App cc flags →
+      `NUTTX_ARCH_CFLAGS` (default `-mcpu=cortex-a7 -mfloat-abi=hard
+      -mfpu=vfpv3-d16`); cross-compiler → `NUTTX_CROSS`; libgcc probe →
+      `NUTTX_CROSS` + `NUTTX_LIBGCC_FLAGS` (default neon-vfpv4 — kept distinct,
+      it selects `v7ve+simd/hard` vs the compile flags' `v7-a+fp/hard`). Defaults
+      = qemu-arm; `just nuttx build-examples` green.
 - [ ] **194.3 — Board crate = the unit of new-arch support.** Document + shape so
       a new NuttX board is `nros-board-nuttx-<board>` supplying {defconfig,
-      toolchain, arch flags} via its overlay, reusing the arch-agnostic platform
-      port. A second board (e.g. a riscv `nuttx-qemu-riscv`) proves it.
+      toolchain (NUTTX_CROSS), arch flags (NUTTX_ARCH_CFLAGS/NUTTX_LIBGCC_FLAGS)}
+      via its overlay, reusing the arch-agnostic platform port. **Remaining
+      arch-locks:** `nros-nuttx-ffi` still joins `arch/arm/src/board` +
+      `arm_vectortab.o` (NuttX flat-build link internals) — parameterize from the
+      export/arch. A second board (e.g. a riscv `nuttx-qemu-riscv`) proves it.
 - [ ] **194.4 (optional) — Self-provision the export via CMake.** Wire `make
       export` (`build-nuttx.sh`) as a **marker-guarded** (`.nros-nuttx-build-head`),
       **shared** (build-once-link-many) CMake `ExternalProject`/custom-target that
