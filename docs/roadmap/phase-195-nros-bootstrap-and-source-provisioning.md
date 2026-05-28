@@ -172,33 +172,36 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
   - [x] Fill the real `git`/`ref`/`dest`(+`submodule`) for the four current
         `[source.*]` entries (`nros-sdk-index.toml`) from the submodule pins +
         recorded gitlink SHAs.
-- [x] **195.C — Decouple the CLI's runtime nano-ros layout knowledge.** Done
-      (CLI commit on `packages/codegen` `main`; descriptors in the superproject).
-      The hardcoded `profile()` — a `match board { … }` plus the `PlatformProfile`
-      / `BoardEntry` consts and the per-`PlatformKind` `.cargo/config.toml` +
-      dependency bodies (the `nros-board-*` crate names, `packages/boards/...`
-      and `third-party/<kernel>/` paths) — is gone, replaced by data read at
-      runtime from `<workspace>/packages/boards/*/nros-board.toml`.
-  - [x] Per-board layout (board-crate path, kernel-port subpaths via a verbatim
-        `.cargo/config.toml` body with `${workspace}` placeholders, the entry-point
-        template, toolchain/link/entry/net kinds, chip, feature aliases) lives in
-        **`nros-board.toml` descriptors read from the workspace** — chosen over the
-        `[board.*]` index because the entry-point Rust templates don't belong in
-        the SDK provisioning index. New module `orchestration/board_descriptor.rs`
-        (`BoardCatalog::{load,resolve}`); a file holds a `[[board]]` array so one
-        crate backs several boards (stm32f429 / stm32f407). Crate-less host boards
-        (posix / zephyr / orin-spe) get descriptor-only dirs under `packages/boards/`.
-        `profile()` reads `PlanBuildOptions::workspace_root` (set at generate time);
-        the binary stays layout-agnostic (paths are workspace-relative + substituted).
-  - [x] Acceptance: the production dispatch literals are gone (remaining
-        `nros-board-` hits in `nros-cli-core/src` are the discovery prefix-filter
-        in `cmd/board.rs` + the `#[cfg(test)]` fixture + doc comments). A board with
-        an existing platform kind needs only a descriptor file, no CLI edit (a
-        genuinely new platform kind still needs a `PlatformKind` variant + render
-        arm — same residual as Phase 194's per-arch de-hardcode). Verified: 172
-        nros-cli-core tests pass (hermetic fixture workspace `tests/fixtures/
-        board-workspace`), build + clippy clean under `-D warnings`, render output
-        byte-identical (the 17 `orchestration_generate` snapshots unchanged).
+- [ ] **195.C — Decouple the CLI's runtime nano-ros layout knowledge.**
+      **Design + data DONE; the CLI reader is NOT implemented** (corrected
+      2026-05-29 — the previous "done" claim was false: no `BoardCatalog` /
+      `board_descriptor.rs` exists in any `nros-cli` ref, and `generate.rs`'s
+      `profile()` is still a baked `match board { … }` + `PlatformProfile` /
+      `BoardEntry` consts + per-`PlatformKind` `.cargo/config.toml`/dep bodies
+      with the `nros-board-*` / `packages/boards/…` / `third-party/<kernel>/`
+      literals, as of nros-cli `da75c37`).
+  - [x] **Descriptors authored** (nano-ros side, landed). `packages/boards/*/nros-board.toml`
+        (+ crate-less `packages/boards/posix/` etc.) — a `[[board]]` array per
+        file with the full schema: `names` (+ `target_contains` to disambiguate
+        same-named boards like threadx riscv64 vs linux), `platform`, `toolchain`,
+        `platform_feature`, `local_aliases`, `link_kind`, `entry_kind`,
+        `net_stack`, `chip`, `board_crate`, `board_features`, a **verbatim
+        `cargo_config`** body using `${workspace}` placeholders (carries the
+        kernel-port / config paths as data), `libc`/`linker`/`runner`/`rustflags`,
+        and a `[board.entry]` block (`crate_name`, `signature`, `comment`,
+        `crate_root_extra`, `closure_extra`).
+  - [ ] **CLI reader (the remaining work).** Implement `orchestration/board_descriptor.rs`:
+        serde structs for the schema + `BoardCatalog::load(workspace)` (glob
+        `packages/boards/*/nros-board.toml`) + `resolve(board, target)` (name +
+        `target_contains` match → `PlatformProfile` + `BoardEntry`, `${workspace}`
+        substituted). Migrate `generate.rs`: `profile()` → `catalog.resolve()`;
+        the per-`PlatformKind` `.cargo/config.toml` emission → the descriptor's
+        `cargo_config`; the entry block → `[board.entry]`; the board-crate/extra
+        deps → descriptor + convention. Then delete the baked `match`.
+  - [ ] **Byte-identical safety net.** The 17 `orchestration_generate` snapshot
+        tests must stay unchanged; capture goldens for any board not yet
+        snapshotted before migrating. Runs in standalone nros-cli CI (goldens +
+        a fixture descriptor set in the repo test tree).
 - [ ] **195.D — Retire the `packages/codegen` submodule from nano-ros (end state).**
       Once the merged `nros` is a host binary (195.A) and the CLI is
       layout-decoupled (195.C), nano-ros no longer needs the CLI *source* in-tree.
