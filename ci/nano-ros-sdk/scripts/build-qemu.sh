@@ -14,21 +14,27 @@ prefix="$root/out/qemu"
 rm -rf "$root/qemu-src" "$prefix"
 mkdir -p "$prefix" "$root/dist"
 
-# Host build deps (linux runners). macOS runners use brew (pre-provisioned).
+# Host build deps. libslirp is REQUIRED — nano-ros QEMU tests use `-netdev user`
+# (slirp NAT, no TAP/sudo); without --enable-slirp the binary can't network.
 if [ "${host#linux-}" != "$host" ]; then
     sudo apt-get update -qq
     sudo apt-get install -y -qq ninja-build python3-venv libglib2.0-dev \
-        libpixman-1-dev zstd flex bison
+        libpixman-1-dev libslirp-dev zstd flex bison
+else
+    brew install libslirp pkg-config ninja pixman glib zstd 2>/dev/null || true
 fi
 
 # Patched fork branch (no tags upstream); keep in sync with [tool.qemu.source]
-# ref in nano-ros's nros-sdk-index.toml.
+# ref in nano-ros's nros-sdk-index.toml. Configure flags mirror
+# just/qemu-baremetal.just's setup-qemu so the prebuilt == the source build.
 git clone --depth 1 --branch nano-ros-v11.0.0-patches \
     https://github.com/NEWSLabNTU/qemu qemu-src
 cd qemu-src
 ./configure --prefix="$prefix" \
     --target-list=arm-softmmu,riscv64-softmmu \
-    --disable-docs
+    --enable-slirp \
+    --disable-docs --disable-tools --disable-gtk --disable-vnc \
+    --disable-sdl --disable-spice
 make -j"$(getconf _NPROCESSORS_ONLN)"
 make install
 cd "$root"
