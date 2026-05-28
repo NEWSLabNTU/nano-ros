@@ -19,11 +19,12 @@ use super::{
     arena::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientRawArenaEntry,
         SrvEntry, SrvRawEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
-        SubInfoEntry, TimerEntry, TimerHeader, always_ready, buffered_region_size, drop_entry,
-        guard_has_data, guard_try_process, no_pre_sample, service_client_raw_try_process,
-        srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
-        sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
-        sub_buffered_raw_has_data, sub_buffered_raw_try_process, sub_buffered_try_process,
+        SubBufferedRawInfoEntry, SubInfoEntry, TimerEntry, TimerHeader, always_ready,
+        buffered_region_size, drop_entry, guard_has_data, guard_try_process, no_pre_sample,
+        service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
+        srv_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
+        sub_buffered_raw_c_try_process, sub_buffered_raw_has_data, sub_buffered_raw_info_has_data,
+        sub_buffered_raw_info_try_process, sub_buffered_raw_try_process, sub_buffered_try_process,
         sub_info_has_data, sub_info_pre_sample, sub_info_try_process, timer_try_process,
     },
     node::Node,
@@ -2321,6 +2322,78 @@ impl Executor {
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(handle_id.0, Some(node_id));
         Ok(handle_id)
+    }
+
+    /// Register a raw (type-erased) buffered subscription whose callback
+    /// also receives a [`RawMessageInfo`](nros_core::RawMessageInfo)
+    /// carrying the sample's wire **attachment** (Phase 189.M1).
+    ///
+    /// Backs the `node.subscription(t).generic(..).message_info().build(cb)`
+    /// builder — the cross-RMW bridge reads the `bridge_origin` tag from
+    /// `info.attachment()` for echo suppression. One sample per
+    /// `spin_once`; the attachment is staged in a flat per-entry buffer
+    /// (cap [`RAW_INFO_ATT_CAP`](super::arena::RAW_INFO_ATT_CAP)).
+    pub fn register_subscription_buffered_raw_info_on<F, const RX_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8], &nros_core::RawMessageInfo) + 'static,
+    {
+        type Entry<F, const N: usize> = SubBufferedRawInfoEntry<F, N>;
+
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(node_id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscriber(&topic, qos)
+                .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?
+        };
+
+        let offset = self.arena_alloc::<Entry<F, RX_BUF>>()?;
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<F, RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    att: [0u8; super::arena::RAW_INFO_ATT_CAP],
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_raw_info_try_process::<F, RX_BUF>,
+            has_data: sub_buffered_raw_info_has_data::<F, RX_BUF>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<F, RX_BUF>>,
+        });
+        self.apply_node_default_sched(slot, Some(node_id));
+        Ok(HandleId(slot))
     }
 
     /// Register a raw byte-shaped callback against a pre-built

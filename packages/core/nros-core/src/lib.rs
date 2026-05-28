@@ -36,7 +36,7 @@ pub use error::{
 };
 pub use lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use logger::{Logger, OnceFlag};
-pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE};
+pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE, RawMessageInfo};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};
 pub use time::{Duration, Time};
 pub use types::{RosMessage, RosService};

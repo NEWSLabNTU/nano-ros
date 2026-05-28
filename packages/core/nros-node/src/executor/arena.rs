@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use nros_core::{CdrReader, MessageInfo, RosAction, RosMessage, RosService};
+use nros_core::{CdrReader, MessageInfo, RawMessageInfo, RosAction, RosMessage, RosService};
 use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 
 use super::{
@@ -453,6 +453,69 @@ where
 pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const SubBufferedRawEntry<F>) };
     entry.handle.has_data() || entry.buffer.has_data()
+}
+
+// ============================================================================
+// Raw buffered subscription with attachment / MessageInfo (Phase 189.M1)
+// ============================================================================
+
+/// Staging cap for a raw subscription's wire attachment (`bridge_origin`
+/// tags and similar are small). Attachment bytes longer than this are
+/// truncated by the backend's `try_recv_raw_with_attachment`.
+pub(crate) const RAW_INFO_ATT_CAP: usize = 256;
+
+/// Raw buffered subscription entry that surfaces the sample's wire
+/// attachment as a [`RawMessageInfo`] to the callback
+/// (`FnMut(&[u8], &RawMessageInfo)`).
+///
+/// Unlike [`SubBufferedRawEntry`] (Triple/Ring `BufferStrategy`), this
+/// uses a flat inline payload buffer + a flat attachment buffer so the
+/// attachment travels with its message — the decoupled producer/consumer
+/// slots of a triple/ring buffer cannot carry per-message side data.
+/// One sample per dispatch (mirrors [`SubInfoEntry`]).
+#[repr(C)]
+pub(crate) struct SubBufferedRawInfoEntry<F, const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: [u8; RX_BUF],
+    pub(crate) att: [u8; RAW_INFO_ATT_CAP],
+    pub(crate) callback: F,
+}
+
+/// Dispatch for raw buffered subscriptions with attachment.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedRawInfoEntry<F, RX_BUF>`.
+pub(crate) unsafe fn sub_buffered_raw_info_try_process<F, const RX_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    F: FnMut(&[u8], &RawMessageInfo),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoEntry<F, RX_BUF>) };
+    match entry
+        .handle
+        .try_recv_raw_with_attachment(&mut entry.buffer, &mut entry.att)
+    {
+        Ok(Some((len, att_len))) => {
+            let info = RawMessageInfo::new(&entry.att[..att_len]);
+            (entry.callback)(&entry.buffer[..len], &info);
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+/// Readiness check for raw buffered subscriptions with attachment.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedRawInfoEntry<F, RX_BUF>`.
+pub(crate) unsafe fn sub_buffered_raw_info_has_data<F, const RX_BUF: usize>(
+    ptr: *const u8,
+) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawInfoEntry<F, RX_BUF>) };
+    entry.handle.has_data()
 }
 
 /// Buffered subscription entry for C-style raw callbacks (function pointer + context).
