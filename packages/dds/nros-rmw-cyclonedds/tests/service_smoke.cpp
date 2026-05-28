@@ -40,7 +40,7 @@ int main() {
     srv.service_name = "add_two_ints";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
-                                    99, &srv) != NROS_RMW_RET_OK) {
+                                    99, nullptr, &srv) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service_server failed\n");
         (void) g_vt->close(&s);
         return 3;
@@ -54,7 +54,7 @@ int main() {
     cli.service_name = "add_two_ints";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_client(&s, cli.service_name, cli.type_name, "",
-                                    99, &cli) != NROS_RMW_RET_OK) {
+                                    99, nullptr, &cli) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service_client failed\n");
         g_vt->destroy_service_server(&srv);
         (void) g_vt->close(&s);
@@ -80,7 +80,7 @@ int main() {
     // codegen helper.
     nros_rmw_service_server_t any{};
     if (g_vt->create_service_server(&s, "missing", "no::such::Svc", "",
-                                    99, &any) != NROS_RMW_RET_UNSUPPORTED) {
+                                    99, nullptr, &any) != NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr,
             "missing type_name should report UNSUPPORTED\n");
         return 8;

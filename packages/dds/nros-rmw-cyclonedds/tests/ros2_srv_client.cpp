@@ -60,7 +60,7 @@ int main() {
     cli.service_name = "add_two_ints";
     cli.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
     if (g_vt->create_service_client(&s, cli.service_name, cli.type_name, "",
-                                    domain, &cli) != NROS_RMW_RET_OK) {
+                                    domain, nullptr, &cli) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service_client failed\n");
         return 3;
     }

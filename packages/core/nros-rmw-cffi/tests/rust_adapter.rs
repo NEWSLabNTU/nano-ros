@@ -596,6 +596,7 @@ fn rust_backend_adapter_preserves_session_identity() {
                 b"example/AddTwoInts\0".as_ptr(),
                 b"def456\0".as_ptr(),
                 7,
+                &NrosRmwQos::from(QosSettings::services_default()),
                 &mut srv,
             )
         },
@@ -616,6 +617,7 @@ fn rust_backend_adapter_preserves_session_identity() {
                 b"example/AddTwoInts\0".as_ptr(),
                 b"def456\0".as_ptr(),
                 7,
+                &NrosRmwQos::from(QosSettings::services_default()),
                 &mut cli,
             )
         },
@@ -717,6 +719,7 @@ fn rust_backend_adapter_routes_events_and_services() {
                 b"T\0".as_ptr(),
                 b"H\0".as_ptr(),
                 0,
+                &NrosRmwQos::from(QosSettings::services_default()),
                 &mut srv,
             )
         },
@@ -755,6 +758,7 @@ fn rust_backend_adapter_routes_events_and_services() {
                 b"T\0".as_ptr(),
                 b"H\0".as_ptr(),
                 0,
+                &NrosRmwQos::from(QosSettings::services_default()),
                 &mut cli,
             )
         },

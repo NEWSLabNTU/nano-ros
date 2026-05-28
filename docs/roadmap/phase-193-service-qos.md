@@ -8,8 +8,10 @@ one `QosSettings` per service through the trait + every backend, defaulting to
 `services_default()` so stock-`rmw_cyclonedds_cpp` interop is preserved.
 
 **Status.** 193.1 DONE (2026-05-28) — trait + Rust backends + all callers
-threaded, behaviour-preserving (default `services_default()`); 7 crates build,
-nros-node 146 + cffi tests green. 193.1b (vtable ABI + Cyclone) next. Design:
+threaded, behaviour-preserving (default `services_default()`). 193.1b DONE — the C↔C++
+vtable ABI bump + Cyclone honours the profile (service_roundtrip green). The
+core is now end-to-end caller→Cyclone-wire. 193.2–193.5 (bindings + validation)
+remain. Design:
 [`docs/design/service-qos.md`](../design/service-qos.md); gap:
 [`docs/design/service-qos-gap.md`](../design/service-qos-gap.md).
 
@@ -48,13 +50,16 @@ profiles.
       profile). **Files:** `nros-rmw/src/traits.rs`,
       `nros-rmw-zenoh/src/shim/session.rs`, `nros-node/src/mock.rs`,
       `nros-rmw-cffi/src/rust_adapter.rs`, `nros-node/src/executor/{node,action}.rs`.
-- [ ] **193.1b — C↔C++ vtable ABI bump + Cyclone honours qos.** Add
-      `qos: nros_rmw_qos_t` to the cffi vtable `create_service_{server,client}`
-      slots + trampolines; Cyclone `service.cpp` uses it instead of the
-      hard-coded `NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT` (keep the matched-reader
-      gating). Until this lands, the cffi boundary uses `services_default()`
-      (behaviour-preserving). **Files:** `nros-rmw-cffi/**`,
-      `nros-rmw-cyclonedds/src/{service,qos}.cpp`.
+- [x] **193.1b — C↔C++ vtable ABI bump + Cyclone honours qos. DONE.**
+      `qos: *const NrosRmwQos` added to the cffi vtable
+      `create_service_{server,client}` slots (`rmw_vtable.h` + `lib.rs`),
+      `CffiSession` (builds `NrosRmwQos::from(qos)`), the rust_adapter
+      trampolines (`qos_from_cffi`), and all Rust + C++ stubs/callers. Cyclone
+      `service.cpp` now uses `qos != nullptr ? *qos : SERVICES_DEFAULT` for both
+      the request reader + reply writer (matched-reader gating kept). Verified:
+      cffi builds + 13 test binaries pass; Cyclone RMW + tests build [100%];
+      `service_roundtrip` runs green (`OK 7+11=18`). Non-default service QoS now
+      reaches the DDS wire.
 - [ ] **193.2 — nros-node + Rust builder.** `create_service`/`create_client`
       default + `node.service(name).qos(q).build(cb)` / `node.client(name).qos(q)`
       builder (Phase 189 pattern); action-server qos → the three service creates.

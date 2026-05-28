@@ -139,6 +139,7 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t *session,
                                      const char *type_name,
                                      const char *type_hash,
                                      uint32_t domain_id,
+                                     const nros_rmw_qos_t *qos,
                                      nros_rmw_service_server_t *out);
 void           service_server_destroy(nros_rmw_service_server_t *server);
 int32_t        service_try_recv_request(nros_rmw_service_server_t *server,
@@ -153,6 +154,7 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t *session,
                                      const char *type_name,
                                      const char *type_hash,
                                      uint32_t domain_id,
+                                     const nros_rmw_qos_t *qos,
                                      nros_rmw_service_client_t *out);
 void           service_client_destroy(nros_rmw_service_client_t *client);
 int32_t        service_call_raw(nros_rmw_service_client_t *client,

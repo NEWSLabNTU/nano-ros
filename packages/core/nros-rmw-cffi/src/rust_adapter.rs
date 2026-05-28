@@ -604,9 +604,10 @@ unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
     type_name: *const u8,
     type_hash: *const u8,
     domain_id: u32,
+    qos: *const NrosRmwQos,
     out: *mut NrosRmwServiceServer,
 ) -> NrosRmwRet {
-    if out.is_null() {
+    if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
@@ -622,9 +623,8 @@ unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
         node_name,
         namespace,
     };
-    // TODO(193.1b): the vtable fn-ptr has no qos arg yet — default to
-    // services_default() until the C vtable carries qos.
-    match Session::create_service_server(s, &info, QosSettings::services_default()) {
+    let qos_settings = qos_from_cffi(unsafe { &*qos });
+    match Session::create_service_server(s, &info, qos_settings) {
         Ok(server) => {
             let boxed = Box::into_raw(Box::new(server));
             unsafe {
@@ -725,9 +725,10 @@ unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
     type_name: *const u8,
     type_hash: *const u8,
     domain_id: u32,
+    qos: *const NrosRmwQos,
     out: *mut NrosRmwServiceClient,
 ) -> NrosRmwRet {
-    if out.is_null() {
+    if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let Some(s) = (unsafe { session_mut::<R::Session>(session) }) else {
@@ -743,9 +744,8 @@ unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
         node_name,
         namespace,
     };
-    // TODO(193.1b): the vtable fn-ptr has no qos arg yet — default to
-    // services_default() until the C vtable carries qos.
-    match Session::create_service_client(s, &info, QosSettings::services_default()) {
+    let qos_settings = qos_from_cffi(unsafe { &*qos });
+    match Session::create_service_client(s, &info, qos_settings) {
         Ok(client) => {
             let boxed = Box::into_raw(Box::new(client));
             unsafe {

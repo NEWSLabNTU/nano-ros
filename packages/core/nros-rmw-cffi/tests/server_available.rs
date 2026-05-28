@@ -98,6 +98,7 @@ unsafe extern "C" fn stub_create_service_server(
     _: *const u8,
     _: *const u8,
     _: u32,
+    _: *const NrosRmwQos,
     _: *mut NrosRmwServiceServer,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
@@ -128,6 +129,7 @@ unsafe extern "C" fn stub_create_service_client(
     _: *const u8,
     _: *const u8,
     _: u32,
+    _: *const NrosRmwQos,
     out: *mut NrosRmwServiceClient,
 ) -> NrosRmwRet {
     unsafe {
