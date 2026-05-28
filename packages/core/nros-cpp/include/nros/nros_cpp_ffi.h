@@ -992,6 +992,27 @@ nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void *storage,
                                                   size_t *out_len);
 
 /**
+ * Phase 189.M3.4b — try to receive raw CDR data **plus the sample's wire
+ * attachment** (non-blocking). The C++ poll-side analog of the Rust
+ * `node.subscription(t).generic(..).message_info()` builder: writes the
+ * payload into `out_data` and the attachment into `out_att`. `*out_att_len`
+ * is `0` when the sample carried no attachment. Cross-RMW bridges read the
+ * `bridge_origin` tag from the attachment.
+ *
+ * # Safety
+ * `storage` must be a valid subscription storage. `out_data` /`out_att` must
+ * point to `out_capacity` / `out_att_capacity` writable bytes. `out_len` /
+ * `out_att_len` must be valid pointers.
+ */
+nros_cpp_ret_t nros_cpp_subscription_try_recv_raw_with_attachment(void *storage,
+                                                                  uint8_t *out_data,
+                                                                  size_t out_capacity,
+                                                                  size_t *out_len,
+                                                                  uint8_t *out_att,
+                                                                  size_t out_att_capacity,
+                                                                  size_t *out_att_len);
+
+/**
  * Phase 124.A.7 — borrow the next message in place.
  *
  * On success, `*out_buf` points at `*out_len` bytes (read-only) until

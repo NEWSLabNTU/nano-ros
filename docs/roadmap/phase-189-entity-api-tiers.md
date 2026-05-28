@@ -196,10 +196,14 @@ application code.
         callback signature differs from `nros_subscription_callback_t`, so it's
         its own entry, not an option flag — the M3.2 `message_info` reserved flag
         is superseded by this dedicated init). Test:
-        `tests::test_raw_subscription_info_callback`. **C++ deferred:** C++
-        subscriptions are poll-style (no callback) — surfacing the attachment
-        there wants a `Subscription<M>::take_with_info(...)` poll accessor (fits
-        the poll model better than a callback), tracked as M3.4b.
+        `tests::test_raw_subscription_info_callback`.
+  - [x] **M3.4b — C++ poll-with-attachment DONE.** C++ subscriptions are
+        poll-style, so the attachment is surfaced on the poll path (not a
+        callback): `Subscription<M>::try_recv_raw_with_attachment(buf, cap,
+        out_len, att, att_cap, out_att_len)` over a new FFI
+        `nros_cpp_subscription_try_recv_raw_with_attachment` (mirrors
+        `try_recv_raw`, using the handle's `try_recv_raw_with_attachment`).
+        Verified: native C++ listener builds + links with the header.
   - [ ] **M3.5 — generator emits real service/action callbacks.** Close the M2
         "services/actions still emit C-fn-ptr noops" note by emitting real
         wiring once component callback bodies land — **depends on Phase 172 W.5**

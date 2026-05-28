@@ -157,6 +157,66 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
     }
 }
 
+/// Phase 189.M3.4b — try to receive raw CDR data **plus the sample's wire
+/// attachment** (non-blocking). The C++ poll-side analog of the Rust
+/// `node.subscription(t).generic(..).message_info()` builder: writes the
+/// payload into `out_data` and the attachment into `out_att`. `*out_att_len`
+/// is `0` when the sample carried no attachment. Cross-RMW bridges read the
+/// `bridge_origin` tag from the attachment.
+///
+/// # Safety
+/// `storage` must be a valid subscription storage. `out_data` /`out_att` must
+/// point to `out_capacity` / `out_att_capacity` writable bytes. `out_len` /
+/// `out_att_len` must be valid pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw_with_attachment(
+    storage: *mut c_void,
+    out_data: *mut u8,
+    out_capacity: usize,
+    out_len: *mut usize,
+    out_att: *mut u8,
+    out_att_capacity: usize,
+    out_att_len: *mut usize,
+) -> nros_cpp_ret_t {
+    if storage.is_null()
+        || out_data.is_null()
+        || out_len.is_null()
+        || out_att.is_null()
+        || out_att_len.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
+    let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
+    let att_slice = unsafe { core::slice::from_raw_parts_mut(out_att, out_att_capacity) };
+
+    match sub.try_recv_raw_with_attachment(out_slice, att_slice) {
+        Ok(Some((len, att_len))) => {
+            unsafe {
+                *out_len = len;
+                *out_att_len = att_len;
+            }
+            NROS_CPP_RET_OK
+        }
+        Ok(None) => {
+            unsafe {
+                *out_len = 0;
+                *out_att_len = 0;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(TransportError::BufferTooSmall | TransportError::MessageTooLarge) => {
+            unsafe {
+                *out_len = 0;
+                *out_att_len = 0;
+            }
+            NROS_CPP_RET_FULL
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 // ============================================================================
 // Phase 124.A.7 — zero-copy subscription borrow / release
 // ============================================================================
