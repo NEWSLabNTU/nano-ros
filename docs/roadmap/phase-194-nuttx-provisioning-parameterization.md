@@ -11,7 +11,11 @@ NuttX provisioning carries **no arm literal** (all arch-specifics env-driven,
 arm defaults); a full **riscv NuttX export builds** via `nros setup`'s toolchain
 + the existing flow; the marker is board-aware; and the export **self-provisions
 under cmake** (`nros build`/`deploy`/raw cmake auto-run `make export`, no manual
-`just nuttx build-kernel`). Remaining: **194.3c** (the
+`just nuttx build-kernel`). Following 194.4, **`just nuttx setup` + `just nuttx
+build` no longer pre-build the kernel** — the export self-provisions at the first
+example/fixture build (`nros_nuttx_build_example`); `build-kernel` stays as an
+idempotent manual escape hatch (and `just nuttx doctor` reports an unconfigured
+kernel as informational `[--]`, not a failure). Remaining: **194.3c** (the
 `nros-board-nuttx-qemu-riscv` crate — deferred).
 
 **Priority.** P2 — extensibility/correctness of the NuttX path; today only

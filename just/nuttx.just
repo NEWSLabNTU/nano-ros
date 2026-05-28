@@ -33,9 +33,14 @@ build-kernel:
         packages/boards/nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh
 
 # Build NuttX core artifacts.
+#
+# Phase 194.4 — nothing to pre-build: the NuttX export (`make export`) is
+# self-provisioned by each example/fixture build via `nros_nuttx_build_example`
+# (idempotent, build-once-link-many). Run `just nuttx build-kernel` manually to
+# force a provision out-of-band.
 [group("main")]
-build: build-kernel
-    @echo "NuttX core artifacts built."
+build:
+    @echo "NuttX core: self-provisioned at example build (Phase 194.4) — nothing to pre-build."
 
 # Build NuttX QEMU ARM virt examples
 [group("main")]
@@ -328,7 +333,10 @@ setup:
     #!/usr/bin/env bash
     set -e
     "{{justfile_directory()}}/tools/setup.sh" --platform=nuttx --skip-apt-check
-    just nuttx build-kernel
+    # Phase 194.4 — the NuttX export is self-provisioned by the example build
+    # (`nros_nuttx_build_example` runs `make export` before the cargo link), so
+    # `setup` no longer pre-builds the kernel. `just nuttx build-kernel` stays
+    # as a manual/idempotent escape hatch.
     # Phase 166.E — stage integration shell + example apps under
     # $NUTTX_APPS_DIR/external/ so users following the book's NuttX
     # starter find the example apps under
@@ -364,11 +372,13 @@ doctor:
         echo "  [MISSING] NuttX apps at $NUTTX_APPS_DIR (run: just nuttx setup)"
         fail=1
     fi
+    # Phase 194.4 — the kernel config + export are self-provisioned lazily by
+    # the first example build, so a freshly-set-up tree legitimately has no
+    # config.h yet. Informational only (not a failure).
     if [ -f "$NUTTX_DIR/include/nuttx/config.h" ]; then
         echo "  [OK] NuttX kernel configured"
     else
-        echo "  [MISSING] NuttX kernel config ($NUTTX_DIR/include/nuttx/config.h) (run: just nuttx setup)"
-        fail=1
+        echo "  [--] NuttX kernel not yet configured — self-provisioned at first example build (or run: just nuttx build-kernel)"
     fi
     if command -v arm-none-eabi-gcc &>/dev/null; then
         echo "  [OK] arm-none-eabi-gcc"
