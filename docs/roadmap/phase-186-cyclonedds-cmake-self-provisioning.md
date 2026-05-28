@@ -7,14 +7,14 @@ prerequisite**. Honor a user-supplied Cyclone (their install *or* their repo).
 Drop the `just`/shell provisioning path entirely. Absorb the resulting
 per-example Cyclone (re)build cost with **sccache**.
 
-**Status.** Largely complete (2026-05-28). Keystone (`nros_provide_cyclonedds()`
-+ root default), 186.2 sccache, 186.3 host-idlc, and the per-platform
-self-provision for **freertos + threadx-rv64 + native** are done and validated
-(bare cmake builds; e2e tests PASS); the embedded cross-probe shell path is
-deleted; 186.5 docs updated. **Remaining:** full removal of the host `build.sh` /
-`just cyclonedds setup` (still load-bearing for backend-CI, Zephyr idlc,
-threadx-linux, and a test gate — see 186.4) — a scoped follow-up needing each
-consumer migrated + a cyclone-suite revalidation.
+**Status.** COMPLETE (2026-05-28). Keystone (`nros_provide_cyclonedds()` + root
+default), 186.2 sccache, 186.3 host-idlc, per-platform self-provision for
+**freertos + threadx-rv64 + native + threadx-linux**, 186.4 docs, and 186.6.1–.5
+(migrate the 4 host `build/install` consumers + delete `build.sh` / retire the
+host-build `setup`) are all done and validated — Cyclone is fully self-provisioned
+in CMake; the entire provisioning shell path (`build.sh` + the cross-probes) is
+deleted. Validated with `build/install` absent: `just cyclonedds test` 12/12 PASS
+(incl. ros2-interop) + freertos/native/threadx-linux/threadx-rv64 Cyclone e2e PASS.
 
 **Priority.** P2 — the product works today via the Phase 185 `just`/shell path;
 this is an architecture move so the build is self-contained and composes with
@@ -196,26 +196,13 @@ idlc build / `-DIDLC_EXECUTABLE`.
       cyclone cells static + self-contained (ldd has no libddsc/iceoryx), manual
       rust pair exchanges (`Received: 0,1`), and
       `test_native_cyclonedds_rust_talker_to_listener` (C + C++) **PASS**.
-- [~] **host `build.sh` / `just cyclonedds setup`**: the **example-provisioning**
-      shell path is gone (cross-probes deleted; freertos/threadx-rv64/native
-      examples self-provision). `build.sh` (host `build/install`) is a *separate*
-      concern and remains — it is still load-bearing for, and cannot be deleted
-      until each is migrated + revalidated:
-      1. **backend standalone CI** — `just cyclonedds build-rmw/test/ci` configure
-         the backend with `-DCMAKE_PREFIX_PATH=build/install` + install there +
-         ctest. Migrate to self-provision (`nros_provide_cyclonedds()` source) and
-         re-run the ctest harness.
-      2. **Zephyr-Cyclone host idlc** — `just/zephyr.just:450` hardcodes
-         `build/install/bin/idlc`. Switch to `find_program`/PATH (186.3) and
-         re-run the Zephyr Cyclone suite.
-      3. **threadx-linux** Cyclone (host-linked, NOT migrated — only rv64 was) —
-         `just/threadx-linux.just:112` gates on `build/install`. Give it a posix-
-         like self-provision fragment + rewire.
-      4. **test gate** — `native_api.rs:767` checks `build/install/lib/libddsc.so`;
-         drop once native self-provides unconditionally.
-      Each needs its own build + cyclone-suite (incl. `cyclonedds_ros2_interop`)
-      revalidation; deleting `build.sh` before them breaks those paths. Tracked as
-      the Phase 186 host follow-up.
+- [x] **host `build.sh` / `just cyclonedds setup`** — DONE via 186.6.1–.5. All
+      four `build/install` consumers migrated (backend-CI self-provisions [.1],
+      Zephyr + threadx-rv64 idlc from PATH [.2], threadx-linux self-provisions
+      [.3], native_api gate dropped [.4]), then `build.sh` deleted + the host-build
+      `setup` retired to a submodule-fetch + idlc-PATH check [.5]. Validated with
+      `build/install` moved aside: `just cyclonedds test` 12/12 PASS (incl.
+      `cyclonedds_ros2_interop`) + freertos/native/threadx-linux Cyclone e2e PASS.
 
 ### 186.5 — Docs
 **Files**
@@ -295,8 +282,13 @@ Once 186.6.1–.4 land: delete `scripts/cyclonedds/build.sh`, retire the `setup`
 - `scripts/cyclonedds/build.sh` (delete)
 - `just/cyclonedds.just` (`setup`/`build`/`clean` recipes); `justfile` (`clean-setup`)
 
-- [ ] `git grep -nE 'build/install.*cyclone|cyclonedds/build\.sh'` is clean.
-- [ ] Full `just test-all` (all tier) green — incl. `cyclonedds_ros2_interop`.
+- [x] `scripts/cyclonedds/build.sh` deleted; `setup` slimmed to submodule-fetch +
+      idlc-PATH check; `build`→`build-rmw`, `clean`→`rm` build dirs; doctor checks
+      the source submodule + host idlc (no `build/install`). threadx-rv64 stopped
+      hardcoding `build/install/bin/idlc`.
+- [x] **Validated with `build/install` moved aside:** `just cyclonedds test`
+      12/12 PASS (incl. `cyclonedds_ros2_interop`), + freertos / native(C+C++) /
+      threadx-linux Cyclone tests PASS. Nothing needs the host install.
 
 ## Acceptance
 

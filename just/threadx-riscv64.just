@@ -197,7 +197,6 @@ build-fixture-extras:
             -DNETX_CONFIG_DIR="$config_dir" \
             -DCMAKE_BUILD_TYPE=Release \
             -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
-            -DIDLC_EXECUTABLE="$root/build/install/bin/idlc" \
             -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$root/scripts/cyclonedds/msg_to_cyclone_idl.py" > /dev/null
     }
 
@@ -209,7 +208,7 @@ build-fixture-extras:
     # IDLC / msg_to_idl defs are harmless for the zenoh pass.
     export THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
            THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir"
-    base_defs="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DIDLC_EXECUTABLE=$root/build/install/bin/idlc -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    base_defs="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
     export NROS_CMAKE_EXTRA_DEFS="$base_defs"
     bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
     bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh

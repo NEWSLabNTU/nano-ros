@@ -7,22 +7,24 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
-# Build Cyclone DDS from the pinned submodule (skipped if already
-# built). Installs into the shared `build/install/` prefix so
-# `find_package(CycloneDDS)` finds it via `CMAKE_PREFIX_PATH`.
+# Fetch the pinned Cyclone DDS submodule (the self-provision source).
 #
-# Initialises the submodule on first run; idempotent on re-runs.
+# Phase 186.6.5 — there is no host Cyclone *build* any more: the backend and the
+# examples self-provision Cyclone from this submodule via nros_provide_cyclonedds().
+# `setup` just initialises the submodule and reports whether a host `idlc` (the
+# Cyclone IDL compiler, used for descriptor codegen) is resolvable. Idempotent.
 [group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
     # Phase 123.A.8 — submodule fetch via tools/setup.sh.
     "{{justfile_directory()}}/tools/setup.sh" --rmw=cyclonedds --skip-rustup --skip-apt-check
-    if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
-        echo "Cyclone DDS already built: build/install/lib/libddsc.so"
-        echo "To rebuild: just cyclonedds clean && just cyclonedds setup"
+    if command -v idlc >/dev/null 2>&1; then
+        echo "Cyclone DDS submodule ready; idlc on PATH ($(command -v idlc))."
     else
-        ./scripts/cyclonedds/build.sh
+        echo "Cyclone DDS submodule ready."
+        echo "NOTE: no 'idlc' on PATH — Cyclone descriptor codegen needs a host"
+        echo "      idlc (a ROS 2 / CycloneDDS install, or pass -DIDLC_EXECUTABLE=<path>)."
     fi
 
 # Diagnose Cyclone DDS install status (read-only).
@@ -31,22 +33,18 @@ doctor:
     #!/usr/bin/env bash
     set +e
     missing=0
-    if [ -f build/install/lib/libddsc.so ]; then
-        echo "  [OK]      libddsc.so:                build/install/lib/libddsc.so"
+    # Phase 186.6.5 — Cyclone self-provisions from source; there is no host
+    # `build/install`. Check the source submodule + a host idlc on PATH.
+    if [ -f third-party/dds/cyclonedds/CMakeLists.txt ]; then
+        echo "  [OK]      Cyclone source submodule:  third-party/dds/cyclonedds/"
     else
-        echo "  [MISSING] libddsc.so (run: just cyclonedds setup)"
+        echo "  [MISSING] Cyclone source submodule (run: just cyclonedds setup)"
         missing=1
     fi
-    if [ -x build/install/bin/idlc ]; then
-        echo "  [OK]      idlc:                      build/install/bin/idlc"
+    if command -v idlc >/dev/null 2>&1; then
+        echo "  [OK]      idlc (host IDL compiler):  $(command -v idlc)"
     else
-        echo "  [MISSING] idlc (run: just cyclonedds setup)"
-        missing=1
-    fi
-    if [ -f build/install/lib/cmake/CycloneDDS/CycloneDDSConfig.cmake ]; then
-        echo "  [OK]      CycloneDDS cmake config:   build/install/lib/cmake/CycloneDDS/"
-    else
-        echo "  [MISSING] CycloneDDS cmake config (run: just cyclonedds setup)"
+        echo "  [MISSING] idlc on PATH (install a ROS 2 / CycloneDDS, or set IDLC_EXECUTABLE)"
         missing=1
     fi
     # Phase 185.5 — embedded-RTOS cross-built `ddsc` installs. Provisioned on
@@ -82,15 +80,16 @@ doctor:
 ddsrt-port-inventory:
     bash ./scripts/cyclonedds/ddsrt-port-inventory.sh
 
-# Build Cyclone DDS (alias for `just cyclonedds setup`).
+# Build the nros-rmw-cyclonedds backend (self-provisions Cyclone from source).
+# Phase 186.6.5 — alias for `build-rmw`; there is no separate host-Cyclone build.
 [group("main")]
-build:
-    ./scripts/cyclonedds/build.sh
+build: build-rmw
 
-# Clean Cyclone DDS build artifacts (does not touch the submodule).
+# Clean Cyclone build artifacts (does not touch the submodule). Phase 186.6.5 —
+# removes the backend build tree + any legacy host install / build dirs.
 [group("main")]
 clean:
-    ./scripts/cyclonedds/build.sh --clean
+    rm -rf packages/dds/nros-rmw-cyclonedds/build build/install build/cyclonedds
 
 # Build the `nros-rmw-cyclonedds` C++ backend on top of Cyclone DDS.
 # Standalone CMake project at packages/dds/nros-rmw-cyclonedds/.
