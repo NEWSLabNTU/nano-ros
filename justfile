@@ -324,7 +324,7 @@ format: format-workspace native::format format-c format-cpp format-python
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
 [group("main")]
 check: \
-    check-workspace check-workspace-embedded check-workspace-features \
+    check-workspace-all check-workspace-features \
     check-nros-log-riscv32 \
     check-platform-abi-mirror check-board-abi-mirror check-profile-board-mirror check-decoupling check-example-matrix \
     native::check check-c check-cpp check-python
@@ -1093,10 +1093,14 @@ check-workspace:
 # Excludes nros-tests: requires std (test framework dependencies)
 # Excludes nros-c/nros-cpp/standalone RMW staticlib wrappers:
 # staticlib/cdylib requires a platform-specific panic/runtime setup.
+#
+# Builds into a dedicated `target-embedded/` (CARGO_TARGET_DIR) so the
+# thumbv7 artifacts never share cargo's per-target-dir build lock with the
+# host clippy — letting `check-workspace-all` run the two concurrently.
 [private]
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
-    cargo clippy --quiet --workspace --no-default-features --target thumbv7em-none-eabihf \
+    CARGO_TARGET_DIR=target-embedded cargo clippy --quiet --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
         --exclude nros-tests \
         --exclude nros-c \
@@ -1105,6 +1109,27 @@ check-workspace-embedded:
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
         --exclude nros-rmw-xrce-cffi-staticlib
+
+# Run the host + embedded workspace clippy CONCURRENTLY. They share no
+# target-dir (host = `target/`, embedded = `target-embedded/`), so cargo's
+# build lock doesn't serialize them; sccache (global RUSTC_WRAPPER) shares the
+# dep cache across both. The `NROS_BUILD_JOBS` budget is split in half to each
+# via `CARGO_BUILD_JOBS` so total parallelism stays bounded (same knob the
+# build recipes thread — no hardcoded `-j`). Both still run standalone.
+[private]
+check-workspace-all:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    jobs="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
+    half=$(( jobs / 2 )); [ "$half" -lt 1 ] && half=1
+    CARGO_BUILD_JOBS="$half" just check-workspace &
+    host=$!
+    CARGO_BUILD_JOBS="$half" just check-workspace-embedded &
+    emb=$!
+    rc=0
+    wait "$host" || rc=1
+    wait "$emb" || rc=1
+    exit "$rc"
 
 # Phase 166.R.5 — guard `nros-log` on CAS-less ESP32-C3 /
 # riscv32imc so portable-atomic fallback regressions surface in

@@ -70,3 +70,6 @@ tools/*
 
 # Per-developer local Claude Code settings
 .claude/settings.local.json
+
+# Phase 193 — separate target-dir for concurrent embedded clippy (just check-workspace-all)
+/target-embedded/
