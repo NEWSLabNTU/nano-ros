@@ -25,7 +25,7 @@ if [ "${host#linux-}" != "$host" ]; then
     sudo apt-get install -y -qq ninja-build python3-venv libglib2.0-dev \
         libpixman-1-dev libslirp-dev zstd flex bison
 else
-    brew install libslirp pkg-config ninja pixman glib zstd 2>/dev/null || true
+    brew install libslirp pkg-config ninja pixman glib zstd
 fi
 
 # Configure flags mirror just/qemu-baremetal.just's setup-qemu so the prebuilt
