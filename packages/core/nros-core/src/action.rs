@@ -155,6 +155,13 @@ impl GoalId {
     /// Length of the goal UUID in bytes (ROS 2 `unique_identifier_msgs/UUID`).
     pub const UUID_LEN: usize = 16;
 
+    /// Length of the CDR sequence-length prefix (4-byte LE count) that precedes
+    /// the goal UUID bytes in the action wire framing. Phase 192.2 — single
+    /// source of truth for this `4` (was re-inlined inconsistently across the
+    /// C/C++/Cyclone action paths). The goal-request framing is
+    /// `CDR_HEADER_LEN + SEQ_PREFIX_LEN + UUID_LEN`.
+    pub const SEQ_PREFIX_LEN: usize = 4;
+
     /// Create a new GoalId from UUID bytes
     pub const fn new(uuid: [u8; 16]) -> Self {
         Self { uuid }

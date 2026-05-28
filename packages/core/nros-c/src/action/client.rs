@@ -16,7 +16,7 @@ use crate::{
 
 /// CDR sequence<uint8, 16> length prefix (4 bytes) in front of the UUID bytes.
 /// Mirrors the constant of the same name in `server.rs`.
-const GOAL_ID_SEQ_PREFIX_LEN: usize = 4;
+const GOAL_ID_SEQ_PREFIX_LEN: usize = GoalId::SEQ_PREFIX_LEN;
 
 /// Bytes of CDR framing that precede feedback fields in a feedback message:
 /// CDR encapsulation header + GoalId sequence length prefix + UUID.
