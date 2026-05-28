@@ -239,6 +239,64 @@ nros doctor                   # already reports SDK/pin presence
 missing: *"run `nros setup <board>`"* (mirrors today's *"run `nros metadata
 --build`"* hints).
 
+## Release workflow — a bumped version is always available
+
+The hard guarantee: **an index version is merged only after its prebuilt assets
+exist + verify on GitHub.** A version can never point at a missing asset. The
+mechanism mirrors conda-forge / Homebrew bottles — *CI builds the artifacts and
+writes their hashes back into the PR; merge is gated on the build matrix going
+green.*
+
+### Versioning method
+
+- **Version string** `= <upstream>-nros<rev>` (e.g. `qemu 11.0-nros1`,
+  `arm-none-eabi-gcc 13.2-nros1`). The `-nros<rev>` suffix lets *repackaging*
+  (a patch, a `configure` change) bump independently of the upstream version.
+- **GitHub mapping is deterministic:** release **tag** `= <tool>-<version>`,
+  assets `= <tool>-<host>.tar.zst` (+ `.sha256`). So the index `version` alone
+  determines the fetch URL for any host.
+- **Three files, one truth:** `nros-sdk-index.toml` (desired version + per-host
+  sha256) → CI builds → `nros-sdk.lock` (installed). The per-host **sha256 in
+  the index is itself the availability proof** — CI computed it from the real
+  uploaded asset.
+
+### Bump → release flow (the gate)
+
+```
+contributor edits nros-sdk-index.toml:  [tool.qemu].version "11.0-nros1" → "11.1-nros1"
+        │   (sha256 fields blanked / marked TODO)
+        ▼  PR opened
+┌─ CI: build-matrix (one job per host: linux-x86_64, linux-arm64, macos-arm64, …) ─┐
+│  1. build from [tool.qemu.source] @ ref  — the SAME recipe nros setup's source   │
+│     fallback uses, so prebuilt ≡ source-built                                    │
+│  2. upload <tool>-<host>.tar.zst to a DRAFT release  tag=qemu-11.1-nros1          │
+│  3. compute sha256; commit it back into the PR's index (bot auto-commit)         │
+└──────────────────────────────────────────────────────────────────────────────────┘
+        ▼
+   required check `sdk/<tool>`:  for every host the index declares a dist for,
+   the asset downloads + sha256 matches.   RED ⇒ cannot merge.
+        ▼  merge
+   CI promotes the draft release → published.  Assets are now the stable URLs
+   the (now-merged) index points at, with matching hashes.
+```
+
+Outcome:
+- A bumped version is in `main` **iff** its assets are live + hash-verified — so
+  every user `nros setup` finds them. No dangling versions.
+- **Hosts CI didn't build** simply have no `dist.<host>` entry → `nros setup`
+  uses the `[tool.X.source]` fallback (same `ref`, identical `{prefix}` layout).
+  Availability is still guaranteed: prebuilt where built, source-built where not,
+  never a 404.
+- **Source recipe is CI-tested** (at least one host builds from source each run)
+  so the fallback is known-good, not aspirational.
+- **Rollback** is trivial: revert the index edit → the old tag/assets still
+  exist; the lock already pinned the old hash.
+
+A contributor's checklist becomes: bump `version` in the index, open the PR, let
+the build matrix fill in the hashes + publish — they never hand-upload or
+hand-hash. The same `[tool.X.source]` recipe powers both the CI prebuild and the
+user source fallback, so the two paths can't diverge.
+
 ## Does PlatformIO host a binary registry? (yes — and how)
 
 Yes. `registry.platformio.org` is a typed package registry — **`tool`**
