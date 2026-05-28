@@ -237,10 +237,19 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
     # Phase 144.fix — Cyclone DDS is a standalone C++ CMake project
     # (NOT a Rust crate via corrosion). It builds a libnros_rmw_cyclonedds.a
     # that registers the C++ vtable via nros_rmw_cffi_register at .init_array
-    # time. add_subdirectory invokes the project's own CMakeLists.txt;
-    # CMAKE_PREFIX_PATH must already point at the Cyclone DDS install —
-    # users run `just cyclonedds setup` first to populate Cyclone DDS
-    # itself (third-party C++ library, not part of nano-ros).
+    # time. add_subdirectory invokes the project's own CMakeLists.txt.
+    #
+    # Phase 186 — the backend's nros_provide_cyclonedds() resolves Cyclone:
+    # a prebuilt install on CMAKE_PREFIX_PATH wins; otherwise it self-provisions
+    # from CYCLONEDDS_SOURCE_DIR. As the project root we own third-party/, so
+    # default that to the pinned submodule — a bare cmake build then needs no
+    # `just cyclonedds` pre-step. A user overrides with -DCMAKE_PREFIX_PATH
+    # (their install) or -DCYCLONEDDS_SOURCE_DIR (their checkout).
+    if(NOT DEFINED CYCLONEDDS_SOURCE_DIR
+       AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third-party/dds/cyclonedds/CMakeLists.txt")
+        set(CYCLONEDDS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third-party/dds/cyclonedds"
+            CACHE PATH "CycloneDDS source tree for self-provisioning (Phase 186)")
+    endif()
     add_subdirectory(packages/dds/nros-rmw-cyclonedds)
     if(TARGET nros_rmw_cyclonedds)
         # The Linux/BSD link path below whole-archives the backend via a raw

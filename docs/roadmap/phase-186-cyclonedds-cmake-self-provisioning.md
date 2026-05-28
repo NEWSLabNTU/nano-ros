@@ -105,10 +105,17 @@ cross C-flags out of the shell scripts into CMake).
 - `cmake/platform/nano-ros-<plat>.cmake` (per-platform `WITH_*` + cross C-flags +
   board-config include dirs, sourced from the deleted shell scripts)
 
-- [ ] `CycloneDDS::ddsc` resolves via the 3-step order; user install + user
-      source + pinned submodule all reach a working `ddsc` target.
-- [ ] Per-platform Cyclone flags live in CMake (no shell), one fragment per target.
-- [ ] `nros-rmw-cyclonedds` links `CycloneDDS::ddsc` unchanged regardless of source.
+- [x] `CycloneDDS::ddsc` resolves via the 3-step order — validated at configure:
+      find_package(prefix)→`build/install`, find_package(system)→`/opt/ros/humble`,
+      self-provision(`CYCLONEDDS_SOURCE_DIR`+disable-find-package)→sccache +
+      add_subdirectory. `ProvideCycloneDDS.cmake` (macro) + backend wiring.
+- [x] Root CMakeLists defaults `CYCLONEDDS_SOURCE_DIR` to the pinned submodule
+      (root owns third-party/) → bare cmake build self-provisions, no `-D` needed.
+- [ ] Per-platform Cyclone flags live in CMake (no shell), one fragment per target
+      — **remaining** (WITH_FREERTOS/WITH_LWIP + cross includes still in the shell
+      scripts; needed for a real embedded cross self-provision).
+- [x] `nros-rmw-cyclonedds` links `CycloneDDS::ddsc` unchanged regardless of source
+      (find_package path regression-clean).
 
 ### 186.2 — sccache for the self-provisioned Cyclone sub-build
 **Files**
