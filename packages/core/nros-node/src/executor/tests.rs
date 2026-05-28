@@ -2420,6 +2420,21 @@ fn test_service_builder_qos() {
         .expect("service builder with qos builds");
 }
 
+#[test]
+fn test_node_service_client_with_qos() {
+    // Phase 193.2b — Node session-path create_service_with_qos /
+    // create_client_with_qos (rclcpp-style qos overload).
+    let mut executor: Executor = Executor::from_session(MockSession::new());
+    let mut node = executor.create_node("n").unwrap();
+    let q = QosSettings::default().reliable().keep_last(7);
+    let _srv = node
+        .create_service_with_qos::<TestService>("/svc", q)
+        .expect("service with qos");
+    let _cli = node
+        .create_client_with_qos::<TestService>("/svc", q)
+        .expect("client with qos");
+}
+
 // ====================================================================
 // Promise tests
 // ====================================================================

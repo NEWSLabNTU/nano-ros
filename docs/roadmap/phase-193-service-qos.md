@@ -60,15 +60,20 @@ profiles.
       cffi builds + 13 test binaries pass; Cyclone RMW + tests build [100%];
       `service_roundtrip` runs green (`OK 7+11=18`). Non-default service QoS now
       reaches the DDS wire.
-- [~] **193.2 — nros-node + Rust builder.** *Service server DONE:* threaded
-      `qos` through `register_service_sized_on` (typed arena core) + a NodeCtx
+- [x] **193.2 — nros-node + Rust builder.** Threaded `qos` through
+      `register_service_sized_on` (typed arena core) + a NodeCtx
       `node.service(name).qos(q).build::<Svc,_>(cb)` builder (Phase 189 pattern)
       + convenient `node_mut(id).create_service::<Svc,_>(name, cb)` (default
-      `services_default()`). Test `tests::test_service_builder_qos`. *Remaining
-      (193.2b):* `node.client(name).qos(q)` + the raw-service `register_service_raw_*`
-      qos param + action-server qos → the three service creates
-      (`executor/action.rs`). The session-borrowing `Node::create_service_with_qos`
-      can also follow.
+      `services_default()`). Test `tests::test_service_builder_qos`.
+- [x] **193.2b — Rust client + Node session-path QoS. DONE.** Node
+      `create_service_with_qos` / `create_client_with_qos` (rclcpp-style qos
+      overload; `create_service_sized`/`create_client_sized` now take `qos`,
+      convenience defaults to `services_default()`). Test
+      `tests::test_node_service_client_with_qos`; 148 nros-node tests pass.
+      *Deferred (193.2c):* the raw-fn-ptr `register_service_raw_*` /
+      `register_service_client_raw_*` qos param + action-server qos → the three
+      service creates — both ripple into the C / generator / C++ paths, so they
+      land with 193.3 (C++) / 193.4 (C) where those surfaces gain qos.
 - [ ] **193.3 — C++.** Make `create_service(qos)` / `create_action_server(qos)`
       apply (stop discarding `_qos`) + `ServiceOptions` (Phase 189.M3.3-cpp).
 - [ ] **193.4 — C.** `nros_service_init_with_qos` / `_with_options` (+ optional
