@@ -45,8 +45,12 @@ jobs:
       # backend/platform crates are in-tree; `cargo tree` resolution reads their
       # Cargo.toml only (the C-source submodules like zenoh-pico are compile-time
       # and unneeded for resolution).
-      - name: Init codegen submodule
-        run: git submodule update --init --recursive packages/codegen
+      # packages/codegen (recursive) builds the `nros` CLI. third-party/nuttx/libc
+      # is path-dep'd by the nuttx example's .cargo/config (cargo tree needs its
+      # Cargo.toml to resolve). Other backend crates are in-tree; the C-source
+      # submodules (zenoh-pico, cyclonedds, …) are compile-time, unneeded here.
+      - name: Init required submodules
+        run: git submodule update --init --recursive packages/codegen third-party/nuttx/libc
 
       - name: Set up Rust toolchain
         run: rustup show
