@@ -53,9 +53,15 @@ if [ ! -d "$NUTTX_APPS_DIR" ]; then
     exit 1
 fi
 
-if ! command -v arm-none-eabi-gcc &>/dev/null; then
-    echo "ERROR: arm-none-eabi-gcc not found."
-    echo "Install: sudo apt install gcc-arm-none-eabi"
+# 194.1: the cross-compiler is per-board (the board overlay / env sets
+# NUTTX_CROSS; arm-none-eabi-gcc is the default for the qemu-arm board). NuttX's
+# `make` selects the actual toolchain from the defconfig's CONFIG_ARCH_TOOLCHAIN
+# + PATH; this is just a presence check with a board-correct hint.
+NUTTX_CROSS="${NUTTX_CROSS:-arm-none-eabi-gcc}"
+if ! command -v "$NUTTX_CROSS" &>/dev/null; then
+    echo "ERROR: NuttX cross-compiler '$NUTTX_CROSS' not found on PATH."
+    echo "Install it (e.g. \`nros setup <board>\` / \`sudo apt install gcc-arm-none-eabi\`)"
+    echo "or set NUTTX_CROSS to your board's toolchain."
     exit 1
 fi
 
