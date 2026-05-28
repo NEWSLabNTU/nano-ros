@@ -206,7 +206,11 @@ landed or the annotations are stale.
 - `nros-node/src/executor/spin.rs:3331` `wake_mu.lock().expect("poisoned")` (hot
   loop), `:4902` worker-spawn `expect`; `executor/handles.rs:992,1004,1725,1742`
   invariant `expect`s — recover/typed-error or document `// SAFETY-invariant`.
-- TODO debt: `nros-rmw-cffi/src/rust_adapter.rs:829` (events/liveliness vtable),
+- TODO debt: `nros-rmw-cffi/src/rust_adapter.rs:829` (events/liveliness vtable) —
+  **DONE (192.9)**: was a *stale* "TODO: wire through" header; the trampolines are
+  actually wired (`register_subscriber_event`/`register_publisher_event`/
+  `assert_publisher_liveliness`/`next_deadline_ms` + the 115.L event bridge) — stale
+  comment removed,
   `nros-cpp/include/nros/{options,subscription}.hpp` (`message_info` not wired),
   `nros-platform-posix/src/platform.c:356` (signalfd wake), `nros-c/src/support.rs:48`
   (fault string lost), `rosidl-codegen/src/idl_generator.rs:308` (multi-dim arrays),
