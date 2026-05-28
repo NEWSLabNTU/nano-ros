@@ -283,8 +283,32 @@ landed or the annotations are stale.
   (fault string lost), `rosidl-codegen/src/idl_generator.rs:308` (multi-dim arrays),
   `cargo-nano-ros/src/scaffold.rs:71-92` (template diversification no-op).
 
-- [ ] Hot-path `expect`s recovered or documented; TODO debt triaged (file follow-up
-      phases for the real gaps).
+- [x] **Hot-path `expect`s recovered or documented.**
+      - `spin.rs` `wake_mu.lock().expect("poisoned")` (the hot spin-loop wait) →
+        `unwrap_or_else(|e| e.into_inner())`: the mutex guards `()` (companion to
+        `wake_cv`, no shared state), so a poison cannot have corrupted anything —
+        recover instead of aborting the loop.
+      - `spin.rs` `OsPriorityWorker::spawn` `.expect("os-priority worker spawn")` →
+        kept (the fn returns `Self`, infallible) but documented `// SAFETY-invariant`:
+        spawn failure = OS thread exhaustion, runs once per priority at lazy setup
+        (not a hot path), and a runtime that can't create its worker has no correct
+        continuation → fail fast.
+      - `handles.rs` ×4 (`PublishLoan::{as_mut,commit}`, `RecvView` `Deref`/`AsRef`)
+        → `// SAFETY-invariant` comments: each `Option` is `Some` for the whole
+        handle lifetime (only by-value `commit`/`discard` or `Drop` take it), so the
+        `expect` is correct-by-construction, not a runtime fault.
+      - Verified `cargo check -p nros-node --features rmw-cffi,rmw-lending` clean
+        under `-D warnings`.
+- [x] **TODO debt triaged.** All five flagged TODOs are real *feature gaps* (not
+      antipatterns remediable inside 192); three already have phase/milestone homes,
+      two (codegen, in the `packages/codegen` submodule) need tracking:
+      | TODO | Status / home |
+      |------|---------------|
+      | `nros-cpp` `options.hpp:84` / `subscription.hpp:386` — `message_info` not wired | Reserved under **milestone M3.4** (the `with-info` arena path); flag exists, ignored today. Tracked. |
+      | `nros-platform-posix/src/platform.c:356` — ISR-safe wake not forwarded | Already named **Phase 124.B.7.c** (signalfd/eventfd self-pipe). Tracked. |
+      | `nros-c/src/support.rs:48` — backend fault string lost on catch | Real gap, no home → **needs a follow-up** (surface the panic message through the C error path). |
+      | `rosidl-codegen/idl_generator.rs:308` — only first array dimension handled | Real **codegen correctness** gap (multi-dim IDL arrays) → follow-up in colcon-nano-ros. |
+      | `cargo-nano-ros/scaffold.rs` — template diversification is a no-op | UX gap (every flavor emits publisher+timer); waits on the `templates/` tree → follow-up in colcon-nano-ros. |
 
 ### 192.10 — [P3] Misc infra
 - `just/native.just:650` zenohd `tcp/127.0.0.1:7447` → `${ZENOH_LOCATOR}`.

@@ -3406,7 +3406,12 @@ impl Executor {
         ))]
         if !was_woken && self.has_async_wake {
             let dur = core::time::Duration::from_millis(timeout_ms as u64);
-            let g = self.wake_mu.lock().expect("wake_mu poisoned");
+            // SAFETY-invariant: `wake_mu` guards `()` — it is purely the
+            // companion mutex for `wake_cv`, protecting no shared state. A
+            // poison (another thread panicked while holding it) cannot have
+            // corrupted anything, so recover the guard rather than aborting
+            // this hot spin loop.
+            let g = self.wake_mu.lock().unwrap_or_else(|e| e.into_inner());
             let _ = self.wake_cv.wait_timeout_while(g, dur, |_| {
                 !self
                     .wake_flag
@@ -4977,6 +4982,11 @@ impl OsPriorityWorker {
                     }
                 }
             })
+            // SAFETY-invariant: spawn failure means the OS refused a new
+            // thread (resource exhaustion). This runs once per priority
+            // level at lazy worker setup — not on any hot/spin path — and
+            // a runtime that cannot create its priority worker has no
+            // correct way to continue, so fail fast at the setup point.
             .expect("os-priority worker spawn");
         Self {
             sender: tx,
