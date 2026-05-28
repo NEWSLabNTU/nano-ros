@@ -653,6 +653,24 @@ impl core::fmt::Debug for Trigger {
 pub type RawSubscriptionCallback =
     unsafe extern "C" fn(data: *const u8, len: usize, context: *mut core::ffi::c_void);
 
+/// Raw subscription callback that also receives the incoming sample's
+/// wire-level attachment (Phase 189.M3.4 — the C analog of the Rust
+/// `FnMut(&[u8], &RawMessageInfo)` builder path). `attachment` is valid
+/// for `attachment_len` bytes during the call; `attachment_len == 0`
+/// means the sample carried no attachment. Cross-RMW bridges read the
+/// `bridge_origin` tag from it.
+///
+/// # Safety
+/// `data` is valid for `len` bytes and `attachment` for `attachment_len`
+/// bytes, during the call only.
+pub type RawSubscriptionInfoCallback = unsafe extern "C" fn(
+    data: *const u8,
+    len: usize,
+    attachment: *const u8,
+    attachment_len: usize,
+    context: *mut core::ffi::c_void,
+);
+
 /// Raw service callback that receives and produces CDR bytes.
 ///
 /// # Safety

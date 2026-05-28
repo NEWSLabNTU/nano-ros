@@ -808,6 +808,87 @@ pub unsafe extern "C" fn nros_executor_register_subscription(
     }
 }
 
+/// Phase 189.M3.4 — register a raw subscription whose callback also receives
+/// the sample's wire **attachment** (the C analog of the Rust
+/// `node.subscription(t).generic(..).message_info()` builder; rclc's
+/// generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
+/// struct): the callback signature differs from the plain
+/// [`nros_subscription_callback_t`], so this is its own entry point rather than
+/// a flag on `nros_executor_register_subscription`.
+///
+/// `node` may be NULL (legacy single-Node path) or a Node created via
+/// `nros_executor_node_init` (routes to that Node's session). `qos` may be NULL
+/// (defaults). Cross-RMW bridges read the `bridge_origin` tag from the
+/// attachment for echo suppression.
+///
+/// # Safety
+/// All non-NULL pointers must be valid; the C strings must be NUL-terminated
+/// UTF-8 valid for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_register_subscription_raw_with_info(
+    executor: *mut nros_executor_t,
+    node: *const nros_node_t,
+    topic_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: *const crate::qos::nros_qos_t,
+    callback: crate::subscription::nros_subscription_info_callback_t,
+    context: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    validate_not_null!(executor, topic_name, type_name, type_hash);
+    let Some(cb) = callback else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+
+    let executor = &mut *executor;
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    if executor.handle_count >= executor.max_handles {
+        return NROS_RET_FULL;
+    }
+
+    let (Ok(topic_str), Ok(type_str), Ok(type_hash_str)) = (
+        core::ffi::CStr::from_ptr(topic_name).to_str(),
+        core::ffi::CStr::from_ptr(type_name).to_str(),
+        core::ffi::CStr::from_ptr(type_hash).to_str(),
+    ) else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+
+    let qos_settings = if qos.is_null() {
+        nros_node::QosSettings::default()
+    } else {
+        (*qos).to_qos_settings()
+    };
+
+    {
+        let rust_exec = get_executor(&mut executor._opaque);
+        set_executor_node_identity(rust_exec, node);
+        let node_raw_id = if node.is_null() { 0 } else { (*node).node_id };
+        let node_id =
+            (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
+        let result = rust_exec.add_arena_subscription_c_info_callback::<MESSAGE_BUFFER_SIZE>(
+            node_id,
+            topic_str,
+            type_str,
+            type_hash_str,
+            qos_settings,
+            cb,
+            context,
+        );
+        match result {
+            Ok(_handle_id) => {
+                executor.handle_count += 1;
+                executor.subscription_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+}
+
 /// Add a timer to the executor.
 ///
 /// Wraps the C timer callback in a closure and registers it with the

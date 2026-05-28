@@ -25,6 +25,27 @@ use crate::{
 pub type nros_subscription_callback_t =
     Option<unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void)>;
 
+/// Subscription callback that also receives the sample's wire **attachment**
+/// (Phase 189.M3.4 — the C analog of the Rust
+/// `node.subscription(t).generic(..).message_info()` builder path). Used by
+/// [`nros_executor_register_subscription_raw_with_info`].
+///
+/// # Parameters
+/// * `data` / `len` — received CDR bytes.
+/// * `attachment` / `attachment_len` — the sample's wire attachment
+///   (`attachment_len == 0` ⇒ none). Cross-RMW bridges read the
+///   `bridge_origin` tag from it. Valid only during the call.
+/// * `context` — user-provided context pointer.
+pub type nros_subscription_info_callback_t = Option<
+    unsafe extern "C" fn(
+        data: *const u8,
+        len: usize,
+        attachment: *const u8,
+        attachment_len: usize,
+        context: *mut c_void,
+    ),
+>;
+
 /// Subscription state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
