@@ -5,12 +5,16 @@ use std::process::Command;
 fn main() {
     // APP_MAIN_CPP: path to the C or C++ source file to compile (set by CMake)
     // APP_INCLUDE_DIRS: semicolon-separated include directories (set by CMake)
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    // Phase 144.6 — crate relocated to
-    // packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi/ ;
-    // 4 levels up to the repo root (matches the prior path depth under
-    // examples/qemu-arm-nuttx/cmake/).
-    let nros_root = manifest_dir.join("../../../..");
+    // 192.3: the nros-c / nros-cpp API include dirs via env (defaults in
+    // just/sdk-env.just / .envrc), not a build.rs repo-root walk-up.
+    let nros_c_include = PathBuf::from(env::var("NROS_C_INCLUDE").expect(
+        "NROS_C_INCLUDE not set (direnv allow, or build via just)",
+    ));
+    let nros_cpp_include = PathBuf::from(env::var("NROS_CPP_INCLUDE").expect(
+        "NROS_CPP_INCLUDE not set (direnv allow, or build via just)",
+    ));
+    println!("cargo:rerun-if-env-changed=NROS_C_INCLUDE");
+    println!("cargo:rerun-if-env-changed=NROS_CPP_INCLUDE");
 
     let main_src = env::var("APP_MAIN_CPP").unwrap_or_else(|_| {
         panic!(
@@ -89,8 +93,8 @@ fn main() {
     // the first pass and re-add them at the end as a last-resort
     // fallback. Other entries (codegen + per-build mirrors) keep
     // their original order.
-    let nros_c_src = nros_root.join("packages/core/nros-c/include");
-    let nros_cpp_src = nros_root.join("packages/core/nros-cpp/include");
+    let nros_c_src = nros_c_include.clone();
+    let nros_cpp_src = nros_cpp_include.clone();
     let is_src_tree_stub = |dir: &str| -> bool {
         let p = PathBuf::from(dir);
         let canon = p.canonicalize().unwrap_or(p);
@@ -126,11 +130,9 @@ fn main() {
     }
 
     if is_cpp {
-        let nros_cpp_include = nros_root.join("packages/core/nros-cpp/include");
         build.include(&nros_cpp_include);
         build.flag("-std=c++14");
     } else {
-        let nros_c_include = nros_root.join("packages/core/nros-c/include");
         build.include(&nros_c_include);
     }
 
@@ -156,11 +158,9 @@ fn main() {
     // Source-tree fallbacks (lowest priority — stub headers may
     // live here, must come AFTER any caller mirror dirs).
     if is_cpp {
-        let nros_cpp_include = nros_root.join("packages/core/nros-cpp/include");
         build.include(&nros_cpp_include);
         build.flag("-std=c++14");
     } else {
-        let nros_c_include = nros_root.join("packages/core/nros-c/include");
         build.include(&nros_c_include);
     }
 
