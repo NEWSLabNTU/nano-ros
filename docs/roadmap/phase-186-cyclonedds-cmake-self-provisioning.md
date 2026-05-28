@@ -232,6 +232,72 @@ idlc build / `-DIDLC_EXECUTABLE`.
       is gone from the docs; the host `build.sh` is documented as the remaining
       follow-up above.
 
+### 186.6 — Remove the host `build.sh` / `just cyclonedds setup` (follow-up)
+Migrate the four remaining `build/install` consumers, then delete the host
+provisioning. Each step is independently landable + must be revalidated against
+the relevant cyclone suite (the order below is least→most blast radius).
+
+#### 186.6.1 — Backend standalone CI self-provisions
+`just cyclonedds build-rmw/test/ci` configure the backend with
+`-DCMAKE_PREFIX_PATH=build/install` + `cmake --install build/install` + ctest.
+Switch to `nros_provide_cyclonedds()` (source) — drop the prefix + install step.
+
+**Files**
+- `just/cyclonedds.just` (`build-rmw` recipe ~100–111; `setup` dep; `test`/`ci`)
+- `packages/dds/nros-rmw-cyclonedds/tests/` (ctest harness — confirm it links the
+  self-provisioned `ddsc`)
+
+- [ ] `just cyclonedds test` passes with no `build/install` (self-provisioned).
+- [ ] `just cyclonedds ci` green.
+
+#### 186.6.2 — Zephyr-Cyclone idlc from PATH, not `build/install`
+`just/zephyr.just:~450` hardcodes `build/install/bin/idlc`. Resolve idlc
+host-side (186.3 `find_program` / PATH / `-DIDLC_EXECUTABLE`) so the Zephyr
+descriptor codegen doesn't need the host install.
+
+**Files**
+- `just/zephyr.just` (the `build/install/bin/idlc` reference)
+
+- [ ] Zephyr Cyclone fixtures build with no `build/install` (idlc from PATH).
+- [ ] `test(test_zephyr_dds_*_cyclonedds*)` + the Zephyr action suite PASS.
+
+#### 186.6.3 — threadx-linux Cyclone self-provisions
+threadx-linux is host-linked (not the rv64 cross). `just/threadx-linux.just:~112`
+gates on `build/install`. Give the threadx-linux board/platform a self-provision
+fragment (posix-like host build; ENABLE_SHM/SECURITY off, static) and rewire.
+
+**Files**
+- `just/threadx-linux.just`
+- `cmake/platform/nano-ros-threadx.cmake` (a threadx-linux branch, or the board
+  overlay) — host self-provision flags
+
+- [ ] `just threadx_linux build-fixtures` Cyclone cells self-provision, no
+      `build/install`.
+- [ ] `test(test_threadx_linux_cyclonedds*)` PASS.
+
+#### 186.6.4 — Drop the `native_api.rs` build/install gate
+`packages/testing/nros-tests/tests/native_api.rs:~767` skips a Cyclone test on
+`build/install/lib/libddsc.so` absence — obsolete once native self-provides
+unconditionally.
+
+**Files**
+- `packages/testing/nros-tests/tests/native_api.rs`
+
+- [ ] The native Cyclone test runs without the `build/install` gate.
+
+#### 186.6.5 — Delete `build.sh` + retire `just cyclonedds setup`
+Once 186.6.1–.4 land: delete `scripts/cyclonedds/build.sh`, retire the `setup` /
+`build` / `clean` provisioning recipes (keep `doctor`, retarget), and drop
+`build/install` from `just clean-setup`. Full cyclone-suite revalidation incl.
+`cyclonedds_ros2_interop` (needs ROS 2).
+
+**Files**
+- `scripts/cyclonedds/build.sh` (delete)
+- `just/cyclonedds.just` (`setup`/`build`/`clean` recipes); `justfile` (`clean-setup`)
+
+- [ ] `git grep -nE 'build/install.*cyclone|cyclonedds/build\.sh'` is clean.
+- [ ] Full `just test-all` (all tier) green — incl. `cyclonedds_ros2_interop`.
+
 ## Acceptance
 
 - [x] **Bare build, no `just`:** `cmake -S examples/qemu-arm-freertos/rust/talker
