@@ -139,14 +139,14 @@ register_all(...) { ...; register_bridges(executor)?; }
 
 ## Work breakdown
 
-1. **nros-node** — expose the `MessageInfo` (`&[u8]` payload + `attachment()`)
-   and `session` axes as builder knobs, NOT a new `register_*_with_info_on`
-   function. Prefer landing the **Tier-2 entity builder**
-   ([`entity-api-tiers.md`](entity-api-tiers.md)) and adding `.message_info()` +
-   `.session()` knobs to it; the bridge (and the `register_*` zoo) then ride the
-   builder. Minimal core change — the buffered-raw plumbing already reads the
-   attachment via `try_recv_raw_with_attachment`; this surfaces it on the
-   callback path.
+1. **nros-node — depends on [Phase 188](../roadmap/phase-188-entity-api-tiers.md)
+   M1.** The `MessageInfo` (`&[u8]` payload + `attachment()`) and `session` axes
+   are builder knobs on the Tier-2 entity builder
+   ([`entity-api-tiers.md`](entity-api-tiers.md)), NOT a new
+   `register_*_with_info_on`. So this half lands on top of 188.M1 (which adds
+   the builder + `.message_info()` + `.session()`). Minimal core delta — the
+   buffered-raw plumbing already reads the attachment via
+   `try_recv_raw_with_attachment`; 188.M1 surfaces it on the callback path.
 2. **generator** — `SESSION_SPECS` from `connect`; `register_bridges` emitting
    the generic-sub-callback relay per (topic, session pair) via the K.5
    selector + `nros-bridge` origin codec; call it in `register_all`. Resolve
