@@ -127,6 +127,17 @@ build-fixture-extras:
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+    # Phase 185.1 — RMW availability follows config: provision the cross-built
+    # Cyclone `ddsc` install on demand instead of silently skipping when absent.
+    # The ARM cross toolchain is already guaranteed here (the recipe exited above
+    # if `arm-none-eabi-gcc` was missing), so reaching this point means we can
+    # build it. Gated on the install being absent → idempotent, a fast no-op on
+    # re-runs. If a lighter tier ever reaches here without the install, the
+    # cyclonedds cells stay unbuilt and their tests skip! (Phase 185.2).
+    if [ ! -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
+        echo "  → provisioning cross Cyclone install (build/cyclonedds-freertos-install) — Phase 185.1"
+        just cyclonedds freertos-cross-probe
+    fi
     if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
         # Phase 177.38 — bake this platform's Cyclone role-set onto a distinct
         # ROS domain so its fixtures never collide with other host/QEMU Cyclone
@@ -155,7 +166,7 @@ build-fixture-extras:
             cmake --build examples/qemu-arm-freertos/rust/${case}/build-cyclonedds > /dev/null
         done
     else
-        echo "  → freertos/rust/{talker,listener} cyclonedds skipped (run: just cyclonedds freertos-cross-probe)"
+        echo "  → freertos/rust/{talker,listener} cyclonedds skipped (no cross Cyclone install + no arm-none-eabi-gcc to build one; use a tier that ships the ARM toolchain — Phase 185)"
     fi
     # Phase 181.5.b — collapsed-shape FreeRTOS C / C++ examples from the SSOT
     # manifest (examples/fixtures.toml). Zenoh-only (no DDS C/C++ siblings
