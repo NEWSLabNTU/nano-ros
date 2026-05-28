@@ -282,9 +282,11 @@ fn scenario_1_asymmetric_subscriptions() {
     // when no symbol from the rlib is otherwise referenced.
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open session");
+    let nid = executor.node_builder("sub1").build().expect("Node");
 
     executor
-        .register_subscription::<Int32, _>("/bench1/fast", move |_msg: &Int32| {
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/bench1/fast", move |_msg: &Int32| {
             let n = fast_cb.fetch_add(1, Ordering::Relaxed) + 1;
             let now = Instant::now();
             let mut last = fl_cb.lock().unwrap();
@@ -296,7 +298,8 @@ fn scenario_1_asymmetric_subscriptions() {
         .expect("Fast subscription");
 
     executor
-        .register_subscription::<Int32, _>("/bench1/slow", move |_msg: &Int32| {
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/bench1/slow", move |_msg: &Int32| {
             let n = slow_cb.fetch_add(1, Ordering::Relaxed) + 1;
             let now = Instant::now();
             let mut last = sl_cb.lock().unwrap();
@@ -435,15 +438,18 @@ fn scenario_3_mixed_load() {
     // when no symbol from the rlib is otherwise referenced.
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor = Executor::open(&config).expect("Failed to open session");
+    let nid = executor.node_builder("bench3").build().expect("Node");
 
     executor
-        .register_subscription::<Int32, _>("/bench3/topic_a", move |_msg: &Int32| {
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/bench3/topic_a", move |_msg: &Int32| {
             a_cb.fetch_add(1, Ordering::Relaxed);
         })
         .expect("Sub A");
 
     executor
-        .register_subscription::<Int32, _>("/bench3/topic_b", move |_msg: &Int32| {
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/bench3/topic_b", move |_msg: &Int32| {
             b_cb.fetch_add(1, Ordering::Relaxed);
         })
         .expect("Sub B");

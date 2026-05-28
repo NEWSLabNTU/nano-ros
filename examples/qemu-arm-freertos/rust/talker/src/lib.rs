@@ -54,18 +54,22 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
     println!("Opening executor");
     let mut executor = Executor::open(&exec_config)?;
     println!("Executor open");
+    let nid = executor.node_builder("talker").build()?;
     #[cfg(feature = "rmw-cyclonedds")]
     {
-        executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-            println!("Loopback received: {}", msg.data);
-        })?;
+        executor
+            .node_mut(nid)
+            .create_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+                println!("Loopback received: {}", msg.data);
+            })?;
         println!("Loopback subscriber declared");
     }
 
     let publisher = {
-        let mut node = executor.create_node("talker")?;
         println!("Declaring publisher on /chatter (std_msgs/Int32)");
-        node.create_publisher::<Int32>("/chatter")?
+        executor
+            .node_mut(nid)
+            .create_publisher::<Int32>("/chatter")?
     };
     println!("Publisher declared");
     println!("Publishing messages...");

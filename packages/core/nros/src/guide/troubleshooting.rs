@@ -13,11 +13,12 @@
 //! | User receive buffer | — (const generic) | 1024 |
 //!
 //! For large messages, increase the transport limits (set before `cargo
-//! build`) and use `_sized` method variants for larger per-entity buffers:
+//! build`) and size the per-entity buffer via the builder's `.rx_buffer::<N>()`:
 //!
 //! ```ignore
 //! // 4 KB receive buffer
-//! executor.register_subscription_sized::<MyMsg, _, 4096>("/topic", |msg| { ... })?;
+//! executor.node_mut(node).subscription("/topic").typed::<MyMsg>()
+//!     .rx_buffer::<4096>().build(|msg| { ... })?;
 //! ```
 //!
 //! ## zenoh version mismatch

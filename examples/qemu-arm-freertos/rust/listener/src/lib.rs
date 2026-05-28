@@ -54,12 +54,14 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
     println!("Opening executor");
     let mut executor = Executor::open(&exec_config)?;
     println!("Executor open");
-    let _node = executor.create_node("listener")?;
+    let nid = executor.node_builder("listener").build()?;
 
     println!("Subscribing to /chatter (std_msgs/Int32)");
-    executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-        println!("Received: {}", msg.data);
-    })?;
+    executor
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+            println!("Received: {}", msg.data);
+        })?;
 
     println!("Subscriber declared");
     println!("Waiting for messages...");

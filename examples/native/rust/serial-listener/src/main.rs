@@ -74,8 +74,13 @@ fn main() {
     // Register subscription callback
     let received = Arc::new(AtomicUsize::new(0));
     let received_cb = received.clone();
+    let nid = executor
+        .node_builder("xrce_serial_listener")
+        .build()
+        .expect("Failed to build node");
     executor
-        .register_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
             let n = received_cb.fetch_add(1, Ordering::SeqCst) + 1;
             nros_info!(&LOGGER, "[{}] Received: {}", n, msg.data);
         })

@@ -58,8 +58,16 @@ pub fn run() {
     let config = ExecutorConfig::from_env().node_name("listener");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
+    let nid = executor
+        .node_builder("listener")
+        .build()
+        .expect("Failed to build node");
     executor
-        .register_subscription_with_info::<Int32, _>("/chatter", move |msg, info| {
+        .node_mut(nid)
+        .subscription("/chatter")
+        .typed::<Int32>()
+        .message_info()
+        .build(move |msg, info| {
             info!("Received: {}", msg.data);
             if let Some(info) = info {
                 let gid = info.publisher_gid();

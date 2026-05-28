@@ -119,8 +119,13 @@ fn main() {
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
+    let nid = executor
+        .node_builder("listener")
+        .build()
+        .expect("Failed to build node");
     executor
-        .register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/chatter", |msg: &Int32| {
             nros_info!(&LOGGER, "Received: {}", msg.data);
         })
         .expect("Failed to add subscription");

@@ -146,17 +146,15 @@ fn main() {
     // Ingress subscription on zenoh: copy into the staging buffer.
     let staging_in = Rc::clone(&staging);
     let ingress_sub = exec
-        .register_subscription_buffered_raw_on::<_, 1024>(
-            node_in,
-            "/chatter",
-            TYPE_NAME,
-            TYPE_HASH,
-            Default::default(),
-            move |bytes: &[u8]| {
-                staging_in.borrow_mut().replace(bytes.to_vec());
-                info!("[ingress] captured {} bytes", bytes.len());
-            },
-        )
+        .node_mut(node_in)
+        .subscription("/chatter")
+        .generic(TYPE_NAME, TYPE_HASH)
+        .qos(Default::default())
+        .rx_buffer::<1024>()
+        .build(move |bytes: &[u8]| {
+            staging_in.borrow_mut().replace(bytes.to_vec());
+            info!("[ingress] captured {} bytes", bytes.len());
+        })
         .expect("register ingress sub on zenoh");
     exec.bind_handle_to_sched_context(ingress_sub, ingress_sc)
         .expect("bind ingress sub to ingress SC");
