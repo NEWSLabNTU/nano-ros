@@ -60,10 +60,13 @@ application code.
       `Executor::node_mut(id) -> NodeCtx` + the subscription builder
       (`.typed::<M>()`/`.generic()`/`.qos()`/`.build(cb)`) + convenient
       `create_subscription` / `create_generic_subscription`, delegating to
-      `register_subscription_buffered_on`/`_raw_on`. *Remaining (slice 3):*
-      const-generic `.rx_buffer::<N>()`, `.message_info()` (the raw+info arena
-      path — the 172 bridge dep), `.sched_context()`, `NodeCtx.publisher`
-      symmetry, and re-pointing/retiring the executor `register_*` zoo (M2).
+      `register_subscription_buffered_on`/`_raw_on`. *Slice 3 (bounded knobs)
+      DONE:* const-generic `.rx_buffer::<N>()` (typestate `const RX` on both
+      typed + generic builders) + `.sched_context()` (binds via
+      `bind_handle_to_sched_context`). *Remaining (slice 3b):* `.message_info()`
+      (the raw+info arena path + attachment surfacing — the 172 bridge dep; note
+      `MessageInfo` has no attachment field today, design fork open),
+      `NodeCtx.publisher` symmetry, then the M2 zoo retirement.
 - [ ] **M2 — Retire the `register_*_*_*` zoo.** One release as `#[deprecated]`
       shims over the builder, then deleted. **The generator emits builder calls**
       (replacing the `register_subscription_raw_with_qos_sized_on` etc. it emits
