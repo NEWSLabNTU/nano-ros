@@ -75,21 +75,30 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
 ## Work items
 
 - [ ] **195.A — Prebuilt `nros` + bootstrap installer (Gap A).**
-  - [ ] `nano-ros-sdk` `build-tool.yml`: add `nros` to the host matrix —
-        build `cargo install --path packages/codegen/packages/nros-cli` per host
-        (linux-x86_64, linux-arm64, macos-arm64), package `nros-<host>.tar.zst`
-        (+ `.sha256`), publish under tag `nros-<version>`.
-  - [ ] `nros-sdk-index.toml`: a `[tool.nros]` (or `[bootstrap.nros]`) entry —
-        `version` + per-host `dist` + a `source` recipe (`cargo install --path`)
-        for the fallback. Subject to the existing `sdk-index-gate`.
-  - [ ] `install.sh` (hosted on `nano-ros-sdk`, `curl … | sh`): detect host,
-        read the pinned version, download + verify + install `nros` to
+      **Build the releases in the CLI's own repo** — `nros-cli` already lives in
+      the `colcon-nano-ros` submodule (`github.com/NEWSLabNTU/colcon-nano-ros`),
+      a self-contained Rust workspace with **zero path deps into the nano-ros
+      superproject** (verified: all `path =` deps stay within the submodule). The
+      plan: **rename `colcon-nano-ros` → `nros-cli`** and have *that* repo build
+      + publish the host binaries on its own Releases (cleaner separation than
+      adding `nros` to `nano-ros-sdk`'s tool matrix; the CLI versions track the
+      CLI repo, not the toolchain repo).
+  - [ ] In the (renamed) `nros-cli` repo: a release workflow building `nros`
+        **and `nros-codegen`** (two separate binaries — `nros-cli` and
+        `nros-codegen-c`) per host (linux-x86_64, linux-arm64, macos-arm64),
+        `cargo build --release` (the `packages/` build-infra workspace needs no
+        ROS), packaged `nros{,-codegen}-<host>.tar.zst` (+ `.sha256`).
+  - [ ] `nros-sdk-index.toml`: `[tool.nros]` + `[tool.nros-codegen]` entries —
+        `version` + per-host `dist` (pointing at the `nros-cli` repo's Releases)
+        + a `source` recipe (`cargo install --path`) fallback. Subject to the
+        existing `sdk-index-gate`.
+  - [ ] `install.sh` (`curl … | sh`, rustup model): detect host, read the pinned
+        version, download + verify + install `nros`(+`nros-codegen`) to
         `$NROS_HOME/bin` (or `~/.local/bin`), print PATH guidance. No cargo / no
         `just` / no checkout.
-  - [ ] `scripts/bootstrap.sh`: offer the prebuilt path
-        (`bootstrap.sh nros` → fetch prebuilt `nros`) alongside the existing
-        rustup+just source path; keep both, default to prebuilt when network +
-        a `dist` for the host exist.
+  - [ ] `scripts/bootstrap.sh`: offer the prebuilt path alongside the existing
+        rustup+just source path; default to prebuilt when a `dist` for the host
+        exists.
 - [ ] **195.B — Data-driven `[source.*]` provisioning (Gap B).**
   - [ ] Extend `SourcePackage` (`orchestration/sdk_index.rs`): add `git`,
         `ref`, `dest` (workspace-relative destination), optional `submodule`
@@ -106,6 +115,42 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         index can't drift.
   - [ ] Fill the real `git`/`ref`/`dest` for the four current `[source.*]`
         entries from the existing submodule pins.
+- [ ] **195.C — Decouple the CLI's runtime nano-ros layout knowledge.**
+      *Cargo-dep-free ≠ nano-ros-knowledge-free.* `nros-cli-core` builds standalone,
+      but at **runtime** it bakes the nano-ros workspace *layout*: `generate.rs`
+      alone has ~20 `workspace.join("packages/...")` / `third-party/...` literals
+      and **8 hardcoded board-crate names** (`nros-board-stm32f4`,
+      `nros-board-threadx-qemu-riscv64`, …) plus board-specific kernel-port paths
+      (`third-party/threadx/kernel/ports/risc-v64/...`, `third-party/nuttx/libc`).
+      For a binary shipped from a *separate* repo, this layout is the workspace's
+      data, not the tool's code.
+  - [ ] Move per-board layout (board-crate path, kernel-port subpaths, the
+        source set) into **board descriptors read from the workspace** (extend
+        the `[board.*]` index table / the board crates' `profile()`), so the CLI
+        resolves paths from data, not `match board { … }` literals.
+  - [ ] Acceptance: grep `nros-cli-core/src` for `nros-board-` /
+        `third-party/<kernel>/` literals → none remain; a new board needs only a
+        descriptor + crate, no CLI edit (mirrors Phase 194's de-hardcode for
+        NuttX, one level up).
+- [ ] **195.D — Retire the `packages/codegen` submodule from nano-ros (end state).**
+      Once `nros` + `nros-codegen` are host binaries (195.A) and the CLI is
+      layout-decoupled (195.C), nano-ros no longer needs the CLI *source* in-tree.
+      Blockers to clear first:
+  - [ ] **92 in-tree consumers** in `justfile`/`just/*.just`/cmake reference the
+        *built* path `packages/codegen/packages/target/.../nros-codegen` /
+        `_NANO_ROS_CODEGEN_TOOL` / `cargo install --path packages/codegen/...` —
+        switch every one to the host binary on PATH (Method A already injects it).
+  - [ ] **Non-CLI tenants** of the submodule (`colcon-cargo-ros2`,
+        `cargo-nano-ros`, `rosidl-{parser,codegen,bindgen}`, the `user-libs`
+        rclrs/rosidl-runtime-rs) — confirm nano-ros doesn't build them in-tree, or
+        relocate. (These stay in the renamed `nros-cli` repo; nano-ros just stops
+        gitlinking it.)
+  - [ ] **Codegen runtime data** — orchestration templates are `include_str!`'d
+        (already embedded); confirm bundled interfaces (`packages/codegen/interfaces/`)
+        are embedded or relocated into nano-ros proper.
+  - Then: drop the gitlink. **Installing the host binary alone is NOT sufficient**
+        — the submodule is today a *build* dependency of nano-ros (the 92 hooks),
+        not just the CLI's home.
 
 ## Acceptance criteria
 
@@ -136,6 +181,13 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
   trees.
 - **License boundary unchanged** — only redistributable artifacts hosted; `nros`
   itself (the repo's own binary) is trivially redistributable.
+- **`nros-cli` is already Cargo-standalone** — verified zero `path =` deps from
+  `nros-cli`/`nros-cli-core` into the nano-ros superproject; all stay within the
+  `colcon-nano-ros` submodule. So building releases in that (renamed) repo is
+  viable today. The remaining coupling is runtime *layout* knowledge (195.C), not
+  build deps.
+- **Submodule removal is the end state, gated on 195.A+C** and the 92-consumer
+  switch (195.D) — not a free consequence of shipping the host binary.
 - **NuttX caveat:** the NuttX export stays source-built + self-provisioned per
   Phase 194 (it is target-specific, not a host tool) — 195.B's `[source.*]`
   data-drive is the generic mechanism that a NuttX board's kernel source slots
