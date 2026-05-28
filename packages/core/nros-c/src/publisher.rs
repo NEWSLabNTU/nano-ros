@@ -109,19 +109,12 @@ impl Default for nros_publisher_t {
 /// (all fields 0) selects the default behaviour, identical to
 /// `nros_publisher_init_with_qos`.
 #[repr(C)]
+#[derive(Default)]
 pub struct nros_publisher_options_t {
     /// Reserved for future use; must be zero. Pads the struct to a
     /// non-empty layout and reserves room for later publisher-only axes
     /// (e.g. a future loan-pool hint) without an ABI break.
     pub _reserved: [u8; 4],
-}
-
-impl Default for nros_publisher_options_t {
-    fn default() -> Self {
-        Self {
-            _reserved: [0u8; 4],
-        }
-    }
 }
 
 /// Get a zero-initialised [`nros_publisher_options_t`].
