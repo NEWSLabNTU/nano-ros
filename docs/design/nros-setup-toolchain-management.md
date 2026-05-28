@@ -40,6 +40,62 @@ package index* of *prebuilt* artifacts, resolved *per board/target*, with
 *license gates* and a *lockfile*. west/`just setup` (source) is what we're
 moving away from for the user path.
 
+### How Android's SDK Manager works (the package-index model)
+
+- **A hosted, versioned package repository.** Google publishes XML manifests
+  (`repository2-1.xml`, sys-image/addon lists) describing every package: a
+  path-like **id** + a **revision** (version) + **per-host archives**
+  (`linux`/`macosx`/`windows`) each with a URL, **checksum**, and size. The
+  client reads the manifest, never a directory listing.
+- **Path-like, versioned package ids.** `platform-tools`,
+  `platforms;android-34`, `build-tools;34.0.0`, `ndk;26.1.10909125`,
+  `cmake;3.22.1`, `system-images;android-34;google_apis;x86_64`, `emulator`.
+  The `;` segments namespace + pin a version.
+- **CLI verbs.** `sdkmanager --list` (installed + available), `sdkmanager
+  --install "platforms;android-34" "build-tools;34.0.0"`, `--update`,
+  `--uninstall`, **`--licenses`** (accept the gated SDK licenses, cached under
+  `licenses/`). Everything is **prebuilt** — it downloads compiled binaries,
+  never builds.
+- **A shared, fixed-layout store.** `$ANDROID_HOME` holds `platform-tools/`,
+  `platforms/android-34/`, `build-tools/34.0.0/`, `ndk/26.x/` — shared across
+  all projects, so a package is fetched once.
+- **Build declares, manager provides.** Gradle's Android plugin names what it
+  needs (`compileSdk = 34`, `ndkVersion = …`); a missing package is an error
+  pointing at `sdkmanager` (and AGP can auto-trigger the install after license
+  accept). The build never carries the toolchain.
+
+→ nano-ros borrows: the **`nros-sdk-index.toml`** ≈ `repository2.xml`; `nros
+setup --list/--install/--licenses` ≈ the sdkmanager verbs; `$NROS_HOME/sdk/`
+≈ `$ANDROID_HOME`; license gates for NVIDIA SPE / ARM FVP ≈ `--licenses`.
+
+### How PlatformIO works (the board-scoped resolution model)
+
+- **Board-centric config.** `platformio.ini` declares
+  `board = nucleo_f767zi`, `platform = ststm32`, `framework = arduino|zephyr`.
+- **board → platform → packages.** A **board manifest** (JSON) names the MCU +
+  the **packages** that board needs; installing the platform pulls them, all
+  **prebuilt + versioned**: the **toolchain** (`toolchain-gccarmnoneeabi`), the
+  **framework** (`framework-arduinoststm32`, `framework-zephyr`), and
+  upload/debug tools (`tool-openocd`, `tool-stlink`). Board→deps is *data*, not
+  a script.
+- **A registry + semver pins.** `registry.platformio.org` hosts packages;
+  `platformio.ini` pins (`platform = ststm32@~17.0.0`). `pio pkg list`,
+  `pio pkg install`.
+- **Shared cache + lazy install.** Packages land in `~/.platformio/packages/`
+  + `platforms/`, shared across projects. There is usually **no explicit setup
+  step** — the first `pio run` for a new board **auto-installs** the platform +
+  toolchain + framework from the board declaration, then builds.
+
+→ nano-ros borrows: the **board→package-set resolution** (reuse `profile()` /
+the board crates as the "board manifest"), the **shared cache**, and the
+**auto-install-on-build** ergonomic — `nros build`/`nros deploy` triggering a
+missing `nros setup <board>` the way `pio run` triggers the platform install.
+
+**Split of roles:** Android gives the *index + CLI + license + shared-store*
+shape; PlatformIO gives the *board-scoped resolution + auto-install-on-build*
+ergonomic. `nros setup` = Android's package management **+** PlatformIO's
+board-centric, lazy resolution.
+
 ## Proposed model
 
 ### 1. A package index (manifest)
