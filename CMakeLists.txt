@@ -314,8 +314,8 @@ endif()
 # when cross-compiling for an embedded target.
 # ---------------------------------------------------------------------------
 if(NANO_ROS_PLATFORM STREQUAL "posix")
-    if(NANO_ROS_BUILD_CODEGEN AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packages/codegen/packages/nros-codegen-c")
-        add_subdirectory(packages/codegen/packages/nros-codegen-c)
+    if(NANO_ROS_BUILD_CODEGEN AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packages/codegen/packages/nros-cli")
+        add_subdirectory(packages/codegen/packages/nros-cli)
     endif()
 endif()
 
@@ -340,9 +340,9 @@ set(_nros_codegen_module
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_codegen_module}"
    AND NANO_ROS_PLATFORM STREQUAL "posix")
-    if(NANO_ROS_BUILD_CODEGEN AND TARGET nros-codegen)
-        set(_NANO_ROS_CODEGEN_TOOL "$<TARGET_FILE:nros-codegen>"
-            CACHE INTERNAL "Path to nros C codegen tool (in-tree Corrosion target)")
+    if(NANO_ROS_BUILD_CODEGEN AND TARGET nros)
+        set(_NANO_ROS_CODEGEN_TOOL "$<TARGET_FILE:nros>"
+            CACHE INTERNAL "Path to nros codegen tool (in-tree Corrosion target)")
     endif()
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}")
     include("${_nros_codegen_module}")

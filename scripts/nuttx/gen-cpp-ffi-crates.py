@@ -40,7 +40,7 @@ TEMPLATE_FFI_RS = REPO_ROOT / "cmake" / "ffi_lib_rs.in"
 SERDES_DIR = REPO_ROOT / "packages" / "core" / "nros-serdes"
 LIBC_DIR = REPO_ROOT / "third-party" / "nuttx" / "libc"
 DEFAULT_CODEGEN = (
-    REPO_ROOT / "packages" / "codegen" / "packages" / "target" / "release" / "nros-codegen"
+    REPO_ROOT / "packages" / "codegen" / "packages" / "target" / "release" / "nros"
 )
 CODEGEN = DEFAULT_CODEGEN
 
@@ -101,6 +101,7 @@ def resolved_pkg_order(example_dir: Path) -> list[str] | None:
         rc = subprocess.run(
             [
                 str(CODEGEN),
+                "codegen",
                 "resolve-deps",
                 "--package-xml",
                 str(package_xml),

@@ -83,8 +83,9 @@ function(nros_bootstrap_codegen)
         set(_nros_codegen_target_profile_dir "${NROS_CODEGEN_CARGO_PROFILE}")
         set(_cargo_profile_hint "--profile ${NROS_CODEGEN_CARGO_PROFILE}")
     endif()
+    # Phase 195.D: the codegen tool is the canonical `nros` binary.
     set(_codegen_bin
-        "${_codegen_workspace}/target/${_nros_codegen_target_profile_dir}/nros-codegen")
+        "${_codegen_workspace}/target/${_nros_codegen_target_profile_dir}/nros")
 
     # Probe canonical host-build output first.
     if(EXISTS "${_codegen_bin}")
@@ -94,7 +95,7 @@ function(nros_bootstrap_codegen)
     endif()
 
     # Then PATH (system-installed via `cargo install`).
-    find_program(_path_codegen nros-codegen)
+    find_program(_path_codegen nros)
     if(_path_codegen)
         set(_NANO_ROS_CODEGEN_TOOL "${_path_codegen}"
             CACHE INTERNAL "Path to nros C codegen tool (PATH lookup)")
@@ -107,7 +108,7 @@ function(nros_bootstrap_codegen)
             "NROS_AUTO_BOOTSTRAP_CODEGEN=OFF. Cross-compile builds "
             "that call nros_generate_interfaces() will fail. Set "
             "-D_NANO_ROS_CODEGEN_TOOL=<path> or pre-build via "
-            "`cargo build ${_cargo_profile_hint} -p nros-codegen-c` inside "
+            "`cargo build ${_cargo_profile_hint} -p nros-cli` inside "
             "${_codegen_workspace}.")
         return()
     endif()
@@ -129,7 +130,7 @@ function(nros_bootstrap_codegen)
         set(_cargo_profile_args "--profile" "${NROS_CODEGEN_CARGO_PROFILE}")
     endif()
     execute_process(
-        COMMAND "${_cargo_bin}" build ${_cargo_profile_args} -p nros-codegen-c
+        COMMAND "${_cargo_bin}" build ${_cargo_profile_args} -p nros-cli --bin nros
         WORKING_DIRECTORY "${_codegen_workspace}"
         RESULT_VARIABLE _rc
         OUTPUT_VARIABLE _out
