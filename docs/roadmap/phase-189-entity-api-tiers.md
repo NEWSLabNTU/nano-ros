@@ -137,11 +137,48 @@ application code.
       esp32-qemu-baremetal). Zephyr Rust example: source migrated (identical
       builder pattern) but its `just zephyr build-rust-examples` recipe has a
       pre-existing shell-syntax bug — verify once that's fixed.
-- [ ] **M3 — C / C++ named-options parity (rclc / rclcpp mirrors).** A
-      `SubscriptionOptions` / `PublisherOptions` struct on the C/C++ surfaces
-      (named fields + defaults, the idiomatic shape there) lowering to the same
-      core entity primitive; cbindgen alignment. (Also gives services/actions
-      their builders — they still emit C-fn-ptr noops today.)
+- [ ] **M3 — C / C++ named-options parity (rclc / rclcpp mirrors).** Rust gets
+      the builder; C/C++ keep idiomatic **named-options structs** alongside the
+      existing `QoS` arg (rclcpp `create_subscription<M>(topic, qos, cb,
+      options)` — qos stays separate, `options` carries the non-QoS axes).
+      Survey (2026-05-28): both bindings already pass `QoS`
+      (`nros::QoS` / `nros_qos_t`); the `NodeBuilder` / `nros_node_options_t`
+      pair is the existing options precedent; **C services/actions take no QoS at
+      all** (parity gap). Axis map — `.qos()` = existing arg; `.sched_context()`
+      = cheap option field (`nros_{,cpp_}executor_bind_handle_to_sched_context`
+      already exists → create-then-bind); `.message_info()` = needs a *new*
+      C-fn-ptr-with-info arena path (none today); `.rx_buffer::<N>()` =
+      compile-time const in C/C++, not a runtime field (reserved).
+
+      **Slices:**
+  - [ ] **M3.1 — C++ Pub/Sub options.** Hand-written `nros::SubscriptionOptions`
+        / `nros::PublisherOptions` value structs (defaults) + overloads
+        `create_subscription<M>(out, topic, qos, options = {})` /
+        `create_publisher<M>(out, topic, qos, options = {})`; existing 2/3-arg
+        calls preserved via default options. v1 field: `sched_context` (lower =
+        create → `nros_cpp_bind_handle_to_sched_context(handle, sc)`). Reserved:
+        `message_info`. No new FFI (bind already exists; the create returns a
+        bindable handle).
+  - [ ] **M3.2 — C Pub/Sub options.** `nros_subscription_options_t` /
+        `nros_publisher_options_t` (cbindgen structs from the cffi crate, like
+        `nros_node_options_t`) + `nros_{subscription,publisher}_init_with_options`;
+        same `sched_context` field, bound via
+        `nros_executor_bind_handle_to_sched_context` using the struct's
+        `handle_id`.
+  - [ ] **M3.3 — Services / actions QoS + options parity.** Add `_with_qos` /
+        `_with_options` C variants for `nros_service_init` /
+        `nros_client_init` / `nros_action_{server,client}_init` (no QoS today);
+        C++ `ServiceOptions` / `ActionServerOptions` mirrors (C++ already has
+        QoS). Options carry `sched_context`.
+  - [ ] **M3.4 — `message_info` option (new arena path).** A
+        `SubBufferedRawInfoCEntry` C-fn-ptr-with-info arena entry + dispatch in
+        `nros-node` (the C analog of `SubBufferedRawInfoEntry`), a C/C++ FFI
+        with-info subscription create, and the `message_info` option flag
+        selecting it. Larger; gated behind a concrete C/C++ consumer need.
+  - [ ] **M3.5 — generator emits real service/action callbacks.** Close the M2
+        "services/actions still emit C-fn-ptr noops" note by emitting real
+        wiring once component callback bodies land — **depends on Phase 172 W.5**
+        (component callback bodies, deferred). Track there, not here.
 
 ## Acceptance
 

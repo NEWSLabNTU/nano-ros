@@ -141,6 +141,27 @@ callback-type through `build`. `into`-style fluent topic QoS
 The C / C++ surfaces (rclc / rclcpp mirrors) keep their named-options structs;
 the builder is the Rust ergonomic front, all three lowering to the same core.
 
+### C / C++ options shape (Phase 189.M3)
+
+Both bindings already pass `QoS` (`nros::QoS` / `nros_qos_t`) as a separate
+argument — rclcpp's convention — so the `Options` struct sits *alongside* qos
+and carries the **non-QoS** axes, not qos itself. Axis realities (M3 survey):
+
+- **`sched_context`** — a plain runtime field; lowers to create-then-bind via
+  the existing `nros_{,cpp_}executor_bind_handle_to_sched_context`. Cheap.
+- **`message_info`** — a bool selecting a with-`MessageInfo` subscription. No
+  C/C++ with-info path exists yet; it needs a `SubBufferedRawInfoCEntry`
+  C-fn-ptr arena path (the C analog of the Rust `SubBufferedRawInfoEntry`).
+- **`rx_buffer`** — compile-time const in C/C++ (`MESSAGE_BUFFER_SIZE` / opaque
+  storage), so it is *not* a runtime options field (the one knob that stays
+  Rust-builder-only, since C can't size inline storage at runtime).
+- **`PublisherOptions`** is thin (no callback ⇒ no sched/info); kept for
+  rclcpp symmetry + future intra-process / loaned-message knobs.
+
+C services/actions take no QoS today — M3 adds `_with_qos` / `_with_options`
+parity there. See [Phase 189 M3](../roadmap/phase-189-entity-api-tiers.md) for
+the slice breakdown.
+
 ## Phasing
 
 Tracked as **[Phase 189](../roadmap/phase-189-entity-api-tiers.md)** (split from
