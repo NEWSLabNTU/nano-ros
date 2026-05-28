@@ -24,6 +24,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MANIFEST="${REPO_ROOT}/config/submodule-deps.toml"
+# Phase 195.B — the SDK index is the SSOT for source refs. A submodule path
+# that matches a `[source.*]` entry's `submodule`/`dest` is provisioned via
+# `nros setup --source <name>` (index-driven) when the `nros` binary is
+# available; otherwise it falls back to the operationally-identical
+# `git submodule update` (submodule-mode sources resolve to the same command).
+INDEX="${REPO_ROOT}/nros-sdk-index.toml"
 
 # ---------------------------------------------------------------- args
 
@@ -113,6 +119,41 @@ read_paths_array() {
 list_known_sections() {
     grep -oE '^\[(rmw|platform|reference)\.[a-z0-9_-]+\]' "$MANIFEST" \
         | tr -d '[]' | sort -u
+}
+
+# Phase 195.B — emit `<path>\t<source-name>` for every `[source.*]` entry's
+# `submodule` / `dest` field, so the fetch loop can recognise an index-owned
+# source by path and route it through `nros setup --source`. Empty if the index
+# is absent (legacy checkout) — fetch then falls back to plain submodule update.
+read_index_source_paths() {
+    [[ -f "$INDEX" ]] || return 0
+    awk '
+        /^\[source\./ { name=$0; sub(/^\[source\./,"",name); sub(/\].*/,"",name); next }
+        /^\[/         { name="" }
+        name != "" && $0 ~ /^(submodule|dest)[[:space:]]*=/ {
+            v=$0; sub(/^[^=]*=[[:space:]]*/, "", v); gsub(/["[:space:]]/, "", v)
+            if (v != "") print v "\t" name
+        }
+    ' "$INDEX"
+}
+
+# Resolve an `nros` binary for index-driven source provisioning: one on PATH,
+# else the cargo-built one in the codegen submodule's target dir (the
+# contributor path already builds it for codegen). Empty ⇒ none available yet
+# (e.g. pre-rustup on a fresh machine); the caller falls back to git.
+resolve_nros_bin() {
+    if command -v nros >/dev/null 2>&1; then
+        command -v nros
+        return 0
+    fi
+    local t
+    for t in release debug; do
+        local cand="${REPO_ROOT}/packages/codegen/packages/target/${t}/nros"
+        if [[ -x "$cand" ]]; then
+            echo "$cand"
+            return 0
+        fi
+    done
 }
 
 # ---------------------------------------------------------- list-targets
@@ -259,12 +300,32 @@ done
 
 cd "$REPO_ROOT"
 
+# Phase 195.B — map index-owned source paths → source name; resolve an `nros`
+# binary to drive their provisioning (the index is the SSOT for source refs).
+declare -A IDX_SRC_NAME=()
+while IFS=$'\t' read -r ipath iname; do
+    [[ -n "$ipath" ]] && IDX_SRC_NAME["$ipath"]="$iname"
+done < <(read_index_source_paths)
+NROS_BIN="$(resolve_nros_bin)"
+
 for p in "${PATHS_TO_FETCH[@]}"; do
+    src_name="${IDX_SRC_NAME[$p]:-}"
     if [[ ! -e "$p/.git" ]] && [[ -z "$(ls -A "$p" 2>/dev/null)" ]]; then
-        if (( DRY_RUN )); then
-            info "[dry-run] git submodule update --init --depth=1 $p"
+        if [[ -n "$src_name" && -n "$NROS_BIN" ]]; then
+            # Index-owned source + an nros binary → index-driven provisioning.
+            if (( DRY_RUN )); then
+                info "[dry-run] $NROS_BIN setup --source $src_name (index [source.$src_name])"
+            else
+                info "fetching $p via nros setup --source $src_name ..."
+                "$NROS_BIN" setup --source "$src_name" --index "$INDEX"
+            fi
+        elif (( DRY_RUN )); then
+            info "[dry-run] git submodule update --init --depth=1 $p${src_name:+ (index source $src_name; nros unavailable)}"
         else
-            info "fetching $p ..."
+            # Plain submodule update — for a submodule-mode `[source.*]` this is
+            # exactly what `nros setup --source` runs, so the fallback is an
+            # equivalence (used pre-rustup on a fresh machine), not a guess.
+            info "fetching $p ...${src_name:+ (index source $src_name; nros unavailable → equivalent git submodule update)}"
             git submodule update --init --depth=1 --recursive "$p"
         fi
     else

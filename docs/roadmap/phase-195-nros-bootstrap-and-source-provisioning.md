@@ -106,9 +106,9 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
   - [ ] `scripts/bootstrap.sh`: offer the prebuilt path alongside the existing
         rustup+just source path; default to prebuilt when a `dist` for the host
         exists.
-- [~] **195.B — Data-driven `[source.*]` provisioning (Gap B).** *Mechanism +
-      data DONE (2026-05-29); the `just`-recipe consumer rewiring is deferred
-      behind 195.A — see below.*
+- [x] **195.B — Data-driven `[source.*]` provisioning (Gap B). DONE
+      (2026-05-29).** Mechanism + data + the `tools/setup.sh` consumer rewiring
+      all landed; the index is the SSOT for source refs.
   - [x] Extend `SourcePackage` (`orchestration/sdk_index.rs`): added `git`,
         `ref`, `dest` (workspace-relative), optional `submodule` (the
         `.gitmodules` path; `git`/`ref` still record the pin = SSOT, so the two
@@ -125,20 +125,23 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         `dest` is always index data, never a baked path. Unit-tested + verified
         via `nros setup qemu-arm-freertos --dry-run` (plans freertos-kernel +
         lwip provisioning).
-  - [~] Make the index the **single source of truth** — *partial.* Added the
-        enabling primitive **`nros setup --source <name>`** (repeatable;
-        index-driven; mirrors 187.6's `--tool`). **Consumer rewiring deferred:**
-        `just <module> setup` → `tools/setup.sh` (reads
-        `config/submodule-deps.toml`) is the **shared bootstrap path**; making
-        it hard-depend on the `nros` binary requires **195.A** (prebuilt `nros`
-        reliably on PATH — the layer-1→layer-2 ordering). Rewiring before 195.A
-        would break a fresh-checkout `just setup` (no `nros` yet) or need a
-        fragile `nros … || git submodule …` fallback. There is also a manifest
-        overlap to consolidate (`submodule-deps.toml` source paths ⇄ index
-        `[source.*]`). **TODO (post-195.A):** point the source-fetch in
-        `tools/setup.sh`/the `just <module> setup` recipes at
-        `nros setup --source …`, then drop the source entries from
-        `submodule-deps.toml` (index becomes the sole source SSOT).
+  - [x] Make the index the **single source of truth** — DONE. Added the
+        primitive **`nros setup --source <name>`** (repeatable; index-driven;
+        mirrors 187.6's `--tool`) and rewired the consumer: `tools/setup.sh`'s
+        fetch loop reads the index `[source.*]` (`read_index_source_paths`),
+        and for a submodule path that matches a source's `submodule`/`dest` it
+        delegates to `nros setup --source <name>` (`resolve_nros_bin` finds an
+        `nros` on PATH or the cargo-built one in the codegen target dir).
+        **No 195.A dependency** — the unblock was realising `just setup` is the
+        *contributor* path (always has cargo + checkout), and for a
+        **submodule-mode** source `nros setup --source` runs *exactly*
+        `git submodule update <path>`, so the pre-rustup fallback to plain
+        `git submodule update` is an **equivalence, not a fragile guess**. The
+        index ref/url is the SSOT; `submodule-deps.toml` stays as the
+        platform→path map (matched by path → no drift on refs). 195.A's
+        prebuilt `nros` only matters for the *no-checkout end-user*, who calls
+        `nros setup <board>` directly (sources via B.2) and never touches
+        `tools/setup.sh`.
   - [x] Fill the real `git`/`ref`/`dest`(+`submodule`) for the four current
         `[source.*]` entries (`nros-sdk-index.toml`) from the submodule pins +
         recorded gitlink SHAs.
