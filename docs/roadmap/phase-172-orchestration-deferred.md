@@ -78,14 +78,13 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   can actually publish and the zephyr-mod deploy proves the data-plane end to
   end. Deferred (own design + impl; orthogonal to the W.4 deploy/transport
   path, which is done).
-- **172.K.5** — per-node multi-domain session routing (the `nros check` warning
-  guards it meanwhile). *Re-assessed 2026-05-28 — **TRACTABLE**:* the executor
-  multi-session machinery already exists (`open_multi` opens per-spec, no
-  rmw-dedup; `session_at_mut` indexes; `_on` entity variants route by node
-  session). The only executor gap is a small node→session **selector**
-  (`NodeBuilder::session_idx`); the bulk is codegen + planner (SESSION_SPECS
-  from `[[domain]]` + node→session index in the plan/NODES + `[[domain]]`→plan
-  plumbing). Full breakdown under *Work items* → 172.K.5.
+- **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
+  Executor `NodeBuilder::session_idx` selector (nros-node `ae2b19a19`); generator
+  emits a session per distinct `[[domain]]` domain + routes each node via the
+  selector (codegen `98392ef`); `nros deploy` stamps node domains from the root
+  `[system].[[domain]]` groups (`apply_domain_groups`, codegen `d9d3f89`). The
+  `nros check` warning now fires for `[[bridge]]` only (bridge per-node routing
+  — topic-forwarding — is the remaining unfinished half, tracked separately).
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
 
 **Priority.** P2 — none block the MVP workflow; each is an
@@ -125,8 +124,11 @@ configuration lives here* below.
 - [ ] **M8 — vendor-lib proven:** blocked on the license-gated NVIDIA SPE FSP
       (template + dry-run landed, 172.V); unblocks on SDK install or a
       non-NVIDIA vendor static lib.
-- [ ] **M9 — in-binary bridge routing** (172.K.5): per-node `create_node_on`
-      session/domain binding (the `nros check` warning guards it meanwhile).
+- [~] **M9 — in-binary multi-session routing** (172.K.5): per-node session
+      binding. **Multi-domain DONE** (2026-05-28 — `NodeBuilder::session_idx` +
+      generator per-domain `SESSION_SPECS` + `[[domain]]`→plan). Bridge per-node
+      routing (topic-forwarding) still pending; the `nros check` warning guards
+      that half.
 
 **Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
 independents (172.E sandbox, 172.K.7 multi-homing) can trail. The first-image
@@ -521,9 +523,19 @@ example migration (K), then the audit/docs (N).
         serde-default (existing plans round-trip). 47 lib + all integration tests
         green. The full `SESSION_SPECS`-by-id wiring is the K.5 runtime step;
         K.4 lands the schema + generator + the binding field.
-  - [ ] **172.K.5 — runtime `create_node_on`-by-id.** Bind a node to a session
-        by transport `id` (not just `rmw`); only required for **case D**
-        (segregated same-rmw sessions) in the transport taxonomy.
+  - [x] **172.K.5 — per-node multi-domain session routing. DONE 2026-05-28.**
+        Landed across three commits: the executor selector
+        `NodeBuilder::session_idx` (nros-node `ae2b19a19`); the generator emitting
+        a `SESSION_SPECS` entry per distinct `[[domain]]` domain + routing each
+        node to its slot via the selector + `open_multi` (codegen `98392ef`); and
+        `nros deploy`'s `apply_domain_groups` stamping node domains from the root
+        `[system].[[domain]]` groups (codegen `d9d3f89`). The `nros check`
+        `pending_routing_warning` now covers `[[bridge]]` only. **Bridge per-node
+        routing (topic-forwarding gateway) remains** the unfinished half — node
+        *placement* (multi-domain) is done; bridge *forwarding* is separate.
+        Original scoping notes (now historical):
+        Bind a node to a session by transport `id` (not just `rmw`); only
+        required for **case D** (segregated same-rmw sessions) in the taxonomy.
         **SUBSUMED by WP-B / bridges** (2026-05-28): per-node session
         assignment for in-binary multi-domain/bridge builds is exactly this
         binding — implement it there against the `[[domain]]`/`[[bridge]]`
@@ -1127,10 +1139,10 @@ the cheap fix landed, the rest are tracked here:
   optional `config.rs` `ComponentConfig` rename (cosmetic — skipped); the
   `component_nros.toml` deprecation *removal* waits out the window.
 - **W.2 — bridge schema-ahead-of-impl.** DONE — `nros check` on a root
-  `nros.toml` now warns when `[[bridge]]`/`[[domain]]` are declared but
-  per-node session routing isn't emitted (`cmd/check.rs`
-  `pending_routing_warning`). Removed when 172.K.5 (per-node
-  `create_node_on` binding) lands.
+  `nros.toml` warns when `[[bridge]]` is declared but per-node bridge routing
+  isn't emitted (`cmd/check.rs` `pending_routing_warning`). Narrowed to
+  `[[bridge]]` only once 172.K.5 landed `[[domain]]` multi-domain routing
+  (2026-05-28); fully removed when bridge topic-forwarding lands.
 - **W.3 — `[component]` UX. DONE** (codegen `d5d6382`+`f1fc4f4`+`51cb0d0`).
   *Landed:* `#[serde(default)]` on `ComponentOverrides` + its
   `parameters`/`remaps` *and* the whole `[linkage]` table + `ComponentConfig.
