@@ -7,17 +7,17 @@
 use core::sync::atomic::{AtomicPtr, Ordering};
 use nros_platform_api::TimerError;
 
-pub type RegisterPeriodicFn =
-    extern "C" fn(period_us: u32, callback: extern "C" fn(*mut core::ffi::c_void), user_data: *mut core::ffi::c_void) -> i32;
+pub type RegisterPeriodicFn = extern "C" fn(
+    period_us: u32,
+    callback: extern "C" fn(*mut core::ffi::c_void),
+    user_data: *mut core::ffi::c_void,
+) -> i32;
 pub type DestroyPeriodicFn = extern "C" fn();
 
 static REGISTER_FN: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
 static DESTROY_FN: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
 
-pub fn install_periodic_timer_hook(
-    register: RegisterPeriodicFn,
-    destroy: DestroyPeriodicFn,
-) {
+pub fn install_periodic_timer_hook(register: RegisterPeriodicFn, destroy: DestroyPeriodicFn) {
     REGISTER_FN.store(register as *mut (), Ordering::Release);
     DESTROY_FN.store(destroy as *mut (), Ordering::Release);
 }

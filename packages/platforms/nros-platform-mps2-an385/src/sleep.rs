@@ -6,8 +6,8 @@
 //! module which polls the registered clock in a busy-wait loop.
 
 pub use nros_baremetal_common::sleep::{
-    IdleFn, PollFn, clear_idle_callback, clear_poll_callback, set_idle_callback,
-    set_poll_callback, sleep_ms,
+    IdleFn, PollFn, clear_idle_callback, clear_poll_callback, set_idle_callback, set_poll_callback,
+    sleep_ms,
 };
 
 /// Register the platform's clock function with the shared sleep

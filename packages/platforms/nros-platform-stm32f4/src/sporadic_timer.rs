@@ -44,8 +44,11 @@ use nros_platform_api::TimerError;
 /// `period_us` µs". Returns `Ok(())` on success, [`TimerError`] on
 /// failure (e.g. out-of-range period for the hardware timer's
 /// counter width).
-pub type RegisterPeriodicFn =
-    extern "C" fn(period_us: u32, callback: extern "C" fn(*mut core::ffi::c_void), user_data: *mut core::ffi::c_void) -> i32;
+pub type RegisterPeriodicFn = extern "C" fn(
+    period_us: u32,
+    callback: extern "C" fn(*mut core::ffi::c_void),
+    user_data: *mut core::ffi::c_void,
+) -> i32;
 
 /// Hook signature for "stop the periodic callback". Idempotent.
 pub type DestroyPeriodicFn = extern "C" fn();
@@ -56,10 +59,7 @@ static DESTROY_FN: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
 /// Install the per-board periodic-timer hooks. Call once during
 /// boot from the board crate's `init_hardware` (or equivalent).
 /// Calling again replaces the previous hooks.
-pub fn install_periodic_timer_hook(
-    register: RegisterPeriodicFn,
-    destroy: DestroyPeriodicFn,
-) {
+pub fn install_periodic_timer_hook(register: RegisterPeriodicFn, destroy: DestroyPeriodicFn) {
     REGISTER_FN.store(register as *mut (), Ordering::Release);
     DESTROY_FN.store(destroy as *mut (), Ordering::Release);
 }
