@@ -56,30 +56,43 @@ bits. ARM FVP, NVIDIA SDK Manager, Cadence Tensilica toolchain,
 proprietary vendor BSPs all fall here. Contributors needing them
 run `just <module> setup` explicitly out-of-band.
 
-### Embedded CycloneDDS — cross-built `ddsc` (Phase 185)
+### CycloneDDS — self-provisioned in CMake (Phase 186)
 
-The host CycloneDDS install (`build/install`, POSIX `ddsc` + `idlc`) is part of
-the `cyclonedds` module in the `all` tier. The **embedded-RTOS** Cyclone backend
-(FreeRTOS, ThreadX) additionally needs a *cross-built* `ddsc`
-(`build/cyclonedds-<rtos>-install`) — `nros-rmw-cyclonedds` consumes Cyclone via
-`find_package(CycloneDDS)` and never compiles it itself, and the host x86 `ddsc`
-cannot link into an embedded image.
+`nros-rmw-cyclonedds` consumes Cyclone via `find_package(CycloneDDS)` and never
+compiled it itself. **Phase 186** moved provisioning into the build system: the
+backend's `nros_provide_cyclonedds()` resolves Cyclone in order —
 
-This cross `ddsc` is **not a separate setup module**. It is provisioned on demand
-by the platform's `build-fixtures` when the `cyclonedds` RMW is selected **and**
-the cross toolchain is present (Phase 185.1) — idempotent, skipped if already
-installed. So availability follows the tier that ships the cross toolchains:
+1. an already-defined `CycloneDDS::ddsc` target,
+2. `find_package(CycloneDDS CONFIG)` — a prebuilt install on `CMAKE_PREFIX_PATH`
+   / `CycloneDDS_DIR` (a user install),
+3. **self-provision from source** — `add_subdirectory(${CYCLONEDDS_SOURCE_DIR})`
+   (defaults to the pinned `third-party/dds/cyclonedds` submodule; a user points
+   it at their own checkout), with the per-platform flags staged in
+   `cmake/platform/nano-ros-<plat>.cmake` and **sccache** as the compiler launcher.
+
+So a bare `cmake`/`cargo` build self-provisions Cyclone with **no `just
+cyclonedds` pre-step** — freertos / threadx-rv64 / native all build it on demand
+(`just <plat> build-fixtures`), gated on the relevant cross toolchain. There is no
+longer a `build/cyclonedds-<rtos>-install` artifact (the old cross-probe scripts
+are deleted); the targets link a **static** `ddsc` (no runtime `libddsc.so`, so no
+rpath and no risk of ld.so substituting a mismatched system `/opt/ros` Cyclone).
+
+Availability still follows the tier that ships the cross toolchains:
 
 - **`all` tier** (ships `arm-none-eabi-gcc` via `freertos`, RV64 GCC via
-  `threadx_riscv64`): `build-fixtures` builds the embedded Cyclone install
-  automatically and the embedded-Cyclone `test-all` cases run + pass. No manual
-  `just cyclonedds <rtos>-cross-probe`.
-- **`base` tier** (no embedded cross toolchains): the install isn't built; the
-  embedded-Cyclone tests must be **filtered out** of `test-all` (Phase 185.2) so
-  they report `skipped`, not `failed`. ThreadX-RV64 Cyclone fixtures stay behind
-  the additional experimental opt-in `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`.
+  `threadx_riscv64`): the embedded-Cyclone `test-all` cases build + pass.
+- **`base` tier** (no cross toolchains): the embedded-Cyclone tests are
+  **filtered out** of `test-all` (gated on `command -v <cross-cc>`, Phase 185.2/
+  186.4) so they report `skipped`, not `failed`. ThreadX-RV64 Cyclone fixtures
+  stay behind the experimental `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`.
 
-Run `test-all` in the `all` tier for full embedded-Cyclone coverage.
+**Host `build/install` (the `cyclonedds` setup module) is still built** — for the
+backend standalone CI (`just cyclonedds build-rmw/test/ci`), the Zephyr-Cyclone
+host `idlc`, and the not-yet-migrated `threadx-linux` host-Cyclone path. Example
+builds no longer depend on it (Phase 186 "host build.sh" follow-up tracks full
+removal).
+
+Run `test-all` in the `all` tier for full Cyclone coverage.
 
 ## Adding a new module
 

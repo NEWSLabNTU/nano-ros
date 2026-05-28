@@ -7,7 +7,14 @@ prerequisite**. Honor a user-supplied Cyclone (their install *or* their repo).
 Drop the `just`/shell provisioning path entirely. Absorb the resulting
 per-example Cyclone (re)build cost with **sccache**.
 
-**Status.** Not Started.
+**Status.** Largely complete (2026-05-28). Keystone (`nros_provide_cyclonedds()`
++ root default), 186.2 sccache, 186.3 host-idlc, and the per-platform
+self-provision for **freertos + threadx-rv64 + native** are done and validated
+(bare cmake builds; e2e tests PASS); the embedded cross-probe shell path is
+deleted; 186.5 docs updated. **Remaining:** full removal of the host `build.sh` /
+`just cyclonedds setup` (still load-bearing for backend-CI, Zephyr idlc,
+threadx-linux, and a test gate — see 186.4) — a scoped follow-up needing each
+consumer migrated + a cyclone-suite revalidation.
 
 **Priority.** P2 — the product works today via the Phase 185 `just`/shell path;
 this is an architecture move so the build is self-contained and composes with
@@ -189,10 +196,26 @@ idlc build / `-DIDLC_EXECUTABLE`.
       cyclone cells static + self-contained (ldd has no libddsc/iceoryx), manual
       rust pair exchanges (`Received: 0,1`), and
       `test_native_cyclonedds_rust_talker_to_listener` (C + C++) **PASS**.
-- [ ] **host `build.sh` / `just cyclonedds setup`**: the host Cyclone install
-      (`build/install`, idlc + native find_package) — decide whether native also
-      self-provisions before removing; needs a full cyclone-suite revalidation —
-      **remaining**.
+- [~] **host `build.sh` / `just cyclonedds setup`**: the **example-provisioning**
+      shell path is gone (cross-probes deleted; freertos/threadx-rv64/native
+      examples self-provision). `build.sh` (host `build/install`) is a *separate*
+      concern and remains — it is still load-bearing for, and cannot be deleted
+      until each is migrated + revalidated:
+      1. **backend standalone CI** — `just cyclonedds build-rmw/test/ci` configure
+         the backend with `-DCMAKE_PREFIX_PATH=build/install` + install there +
+         ctest. Migrate to self-provision (`nros_provide_cyclonedds()` source) and
+         re-run the ctest harness.
+      2. **Zephyr-Cyclone host idlc** — `just/zephyr.just:450` hardcodes
+         `build/install/bin/idlc`. Switch to `find_program`/PATH (186.3) and
+         re-run the Zephyr Cyclone suite.
+      3. **threadx-linux** Cyclone (host-linked, NOT migrated — only rv64 was) —
+         `just/threadx-linux.just:112` gates on `build/install`. Give it a posix-
+         like self-provision fragment + rewire.
+      4. **test gate** — `native_api.rs:767` checks `build/install/lib/libddsc.so`;
+         drop once native self-provides unconditionally.
+      Each needs its own build + cyclone-suite (incl. `cyclonedds_ros2_interop`)
+      revalidation; deleting `build.sh` before them breaks those paths. Tracked as
+      the Phase 186 host follow-up.
 
 ### 186.5 — Docs
 **Files**
@@ -201,22 +224,32 @@ idlc build / `-DIDLC_EXECUTABLE`.
   self-provisions; `-DCYCLONEDDS_SOURCE_DIR` / `-DCMAKE_PREFIX_PATH` knobs)
 - Mark Phase 185's provisioning items superseded.
 
-- [ ] Docs describe the CMake resolution order + user knobs; the shell path is
-      gone from all docs.
+- [x] Docs describe the CMake resolution order + user knobs:
+      `docs/development/sdk-tiers.md` § "CycloneDDS — self-provisioned in CMake"
+      rewritten; `book/src/user-guide/rmw-backends.md` note updated
+      (`-DCYCLONEDDS_SOURCE_DIR` / `-DCMAKE_PREFIX_PATH` / `-DIDLC_EXECUTABLE`
+      knobs, no `just cyclonedds` pre-step). The embedded-provisioning shell path
+      is gone from the docs; the host `build.sh` is documented as the remaining
+      follow-up above.
 
 ## Acceptance
 
-- [ ] **Bare build, no `just`:** on a clean tree, `cmake -S
-      examples/qemu-arm-freertos/rust/talker -B /tmp/b … && cmake --build /tmp/b`
-      self-provisions Cyclone and links — no `just cyclonedds *` first.
-- [ ] **User repo:** `-DCYCLONEDDS_SOURCE_DIR=<other cyclone checkout>` builds
-      against it; `-DCMAKE_PREFIX_PATH=<install>` uses a prebuilt install.
-- [ ] **sccache:** second same-platform example build is a near-total Cyclone
-      cache hit (hit-rate reported).
-- [ ] **Parity:** the freertos + threadx-rv64 Cyclone fixtures + their `test-all`
-      cases still PASS (now via CMake provisioning).
-- [ ] The shell/`just` Cyclone provisioning path is deleted; `git grep
-      cross-probe` is clean.
+- [x] **Bare build, no `just`:** `cmake -S examples/qemu-arm-freertos/rust/talker
+      -B /tmp/b` (cross toolchain only, no `-DCMAKE_PREFIX_PATH`, no `just
+      cyclonedds`) self-provisions Cyclone, compiles for Cortex-M3, links a 32-bit
+      ARM ELF. Native equivalent links a static self-contained x86 ELF.
+- [x] **User knobs:** `-DCYCLONEDDS_SOURCE_DIR=<checkout>` + disable-find-package
+      builds from that source (validated); `-DCMAKE_PREFIX_PATH=<install>` /
+      system resolves via find_package (validated, regression-clean).
+- [x] **sccache:** threadx-rv64 build-fixtures showed **100% Cyclone cache hits**
+      (1572/1574) — flags byte-match across cells/builds, cost fully absorbed.
+- [x] **Parity:** freertos (`*_talker_cyclonedds_boot` + `_local_pubsub_e2e`),
+      threadx-rv64 (`_two_qemu_pubsub`), native (`_rust_talker_to_listener` C+C++)
+      Cyclone tests **PASS** via CMake provisioning.
+- [~] The embedded **cross-probe** shell scripts + recipes are deleted (`git grep
+      cross-probe` finds only comment/doc references now). The host `build.sh` /
+      `just cyclonedds setup` remains by design until the 4 consumers above migrate
+      (backend-CI, Zephyr idlc, threadx-linux, test gate).
 
 ## Notes
 

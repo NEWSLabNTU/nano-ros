@@ -87,15 +87,19 @@ configure time; the root `CMakeLists.txt` add_subdirectory's
 into `NanoRos::NanoRos`. No `build/install/` prefix, no
 `find_package(NrosRmwCyclonedds)` deleted both.
 
-**Embedded RTOS availability follows the SDK tier — no per-user import step.**
-Selecting `cyclonedds` is your whole responsibility; the build provisions the
-Cyclone library for you. On the **`all`** tier (which ships the ARM / RV64 cross
-toolchains), `just <rtos> build-fixtures` cross-builds the embedded
-`ddsc` automatically (Phase 185), so FreeRTOS / ThreadX Cyclone examples and
-tests just work. On a lighter tier without the cross toolchain, those tests are
-filtered out of `test-all` (reported *skipped*, not *failed*). Run `just
-cyclonedds doctor` to see which embedded installs are present. See
-`docs/development/sdk-tiers.md` § "Embedded CycloneDDS".
+**Availability follows from config — the build provisions Cyclone (Phase 186).**
+Selecting `cyclonedds` (`-DNANO_ROS_RMW=cyclonedds` / `--features rmw-cyclonedds`)
+is your whole responsibility; `nros_provide_cyclonedds()` resolves the library:
+a prebuilt install you point at (`-DCMAKE_PREFIX_PATH=<install>` /
+`-DCycloneDDS_DIR=`), else **self-provision from source** — by default the pinned
+`third-party/dds/cyclonedds` submodule, or your own checkout via
+`-DCYCLONEDDS_SOURCE_DIR=<path>`. So a bare `cmake`/`cargo` build needs **no
+`just cyclonedds` pre-step**; freertos / threadx-rv64 / native examples build
+Cyclone on demand (sccache-accelerated), gated on the relevant cross toolchain.
+On a tier without the toolchain, the embedded-Cyclone tests are filtered out of
+`test-all` (*skipped*, not *failed*). `idlc` is a host tool, found on `PATH`
+(e.g. a ROS 2 install) or via `-DIDLC_EXECUTABLE=`. See
+`docs/development/sdk-tiers.md` § "CycloneDDS — self-provisioned in CMake".
 
 **Known limitations.** Cyclone DDS currently has a 2× CDR roundtrip per message, deferred status-event wiring, pending service request-id correlation, and incomplete Cortex-A/R Zephyr board support. See `docs/reference/cyclonedds-known-limitations.md` for the full list. ARMv8-R toolchain prep (Cortex-A 64-bit FVP, Cortex-R52 hardware) is in `docs/reference/zephyr-armv8r-setup.md`.
 
