@@ -1416,6 +1416,7 @@ impl Executor {
             locator: None,
             domain_id: None,
             sched: None,
+            session_idx: None,
         }
     }
 
