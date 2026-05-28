@@ -323,6 +323,9 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap_or_default();
+    // 192.3: first-party include located via env (default in sdk-env.just),
+    // not a build.rs walk-up — used in the platform-gated C-build paths below.
+    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
 
     // Phase 136.1 — parse the canonical platform manifest. Resolve
     // every declared platform so a typo or broken `inherits` chain
@@ -670,7 +673,7 @@ fn main() {
     // the single source of truth there.
     if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-        let nros_platform_cffi_include = manifest_dir.join("../../core/nros-platform-cffi/include");
+        let nros_platform_cffi_include = PathBuf::from(env::var("NROS_PLATFORM_CFFI_INCLUDE").expect("NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)"));
         let mut alias_build = cc::Build::new();
         alias_build
             .file(manifest_dir.join("c/zpico/platform_aliases.c"))
@@ -1433,8 +1436,9 @@ fn build_c_shim(
     // `build_c_shim` path (POSIX + bare-metal) still needs it added
     // explicitly so `cargo check --workspace` on the host doesn't
     // fail with `nros/platform_net.h: No such file or directory`.
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    build.include(manifest_dir.join("../../core/nros-platform-cffi/include"));
+    build.include(PathBuf::from(env::var("NROS_PLATFORM_CFFI_INCLUDE").expect(
+        "NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)",
+    )));
 
     // Core shim source
     build.file(c_dir.join("zpico/zpico.c"));
@@ -1607,8 +1611,9 @@ fn build_zenoh_pico_unified(
         .include(&zenoh_config_dir)
         .include(zenoh_pico_src.join("include"))
         .include(&version_include_dir);
-    let nros_manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    build.include(nros_manifest_dir.join("../../core/nros-platform-cffi/include"));
+    build.include(PathBuf::from(env::var("NROS_PLATFORM_CFFI_INCLUDE").expect(
+        "NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)",
+    )));
     let is_embedded = is_embedded_target(target);
     for raw in &plat.include_paths {
         let path = manifest::interpolate(raw, interp).unwrap_or_else(|e| {
