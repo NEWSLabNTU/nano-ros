@@ -1,8 +1,12 @@
 # Configuration model: `nros.toml`, transports, and node binding
 
-**Status:** Approved design (Phase 172.K, 2026-05-27). Supersedes the per-example
-`config.toml` (`[network]`/`[zenoh]`/`[scheduling]`) and the never-shipped
-`nano-ros.toml` idea (archived Phase 116).
+**Status:** Approved design (Phase 172.K, 2026-05-27; manifest model approved
+2026-05-28). Supersedes the per-example `config.toml`
+(`[network]`/`[zenoh]`/`[scheduling]`) and the never-shipped `nano-ros.toml`
+idea (archived Phase 116). The Cargo-style manifest model below
+(one `nros.toml` schema, section-discriminated, `component_nros.toml` folded
+into a `[component]` table) is the canonical config shape; implementation is
+tracked as Phase 172 W.1.
 
 ## One file, two read modes
 
@@ -22,15 +26,15 @@ two ways from the **same** schema:
 `.cargo/config.toml` is dep-injection only; `Cargo.toml`/`CMakeLists.txt` own the
 build. `nros.toml` owns all nano-ros runtime/deployment config.
 
-## Manifest kinds & resolution (Cargo-style) — revision 2026-05-28
+## Manifest kinds & resolution (Cargo-style)
 
-**Problem the revision fixes.** Three config roles exist, and two are *both*
+**Problem this fixes.** Three config roles exist, and two were *both*
 named `nros.toml` — the workspace-root deployment SSOT and the direct-mode
 single-node config — discriminated only by whether a `[workspace]` table is
 present. A direct-mode `nros.toml` handed to `nros deploy --config nros.toml`
 (which assumes a root) fails confusingly. The third role,
-`component_nros.toml`, at least has a distinct name, but that asymmetry is its
-own surprise.
+`component_nros.toml`, had a distinct name, but that asymmetry is its own
+surprise — and a fourth file per package is friction.
 
 **The fix: borrow Cargo.** Cargo solved exactly this — one `Cargo.toml` schema,
 with `[package]` and/or `[workspace]` sections; the *sections present* decide
