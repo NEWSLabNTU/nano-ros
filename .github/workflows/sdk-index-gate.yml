@@ -1,0 +1,24 @@
+name: sdk-index-gate
+
+# Phase 187.4 — a version bump in nros-sdk-index.toml can only merge once its
+# prebuilt assets are live + hash-correct on NEWSLabNTU/nano-ros-sdk Releases.
+# Read-only verify (no token); source-only tools are skipped (their recipe is
+# CI-tested in the nano-ros-sdk repo).
+
+on:
+  pull_request:
+    paths:
+      - "nros-sdk-index.toml"
+      - "scripts/sdk/verify-index.py"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify prebuilt assets resolve + hash
+        run: python3 scripts/sdk/verify-index.py nros-sdk-index.toml
