@@ -16,6 +16,28 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_C_INCLUDE");
     println!("cargo:rerun-if-env-changed=NROS_CPP_INCLUDE");
 
+    // 194.2: cross-compiler + arch cflags are per-board (the board overlay / env
+    // sets them); defaults = the qemu-arm cortex-a7 hardfloat values so the
+    // existing board is unchanged. A new-arch NuttX board overrides these.
+    let nuttx_cross = env::var("NUTTX_CROSS").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
+    let arch_cflags: Vec<String> = env::var("NUTTX_ARCH_CFLAGS")
+        .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=vfpv3-d16".to_string())
+        .split_whitespace()
+        .map(String::from)
+        .collect();
+    // The libgcc multilib probe keeps its own flag set: on qemu-arm it
+    // deliberately differs from the compile flags (neon-vfpv4 selects
+    // `v7ve+simd/hard`, vfpv3-d16 selects `v7-a+fp/hard` — different libgcc.a),
+    // and that is the variant the linked closure expects. Per-board override.
+    let libgcc_flags: Vec<String> = env::var("NUTTX_LIBGCC_FLAGS")
+        .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4".to_string())
+        .split_whitespace()
+        .map(String::from)
+        .collect();
+    println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
+    println!("cargo:rerun-if-env-changed=NUTTX_ARCH_CFLAGS");
+    println!("cargo:rerun-if-env-changed=NUTTX_LIBGCC_FLAGS");
+
     let main_src = env::var("APP_MAIN_CPP").unwrap_or_else(|_| {
         panic!(
             "APP_MAIN_CPP not set. Set it to the path of the C/C++ source file.\n\
@@ -31,18 +53,15 @@ fn main() {
         .file(&main_src)
         .flag("-ffunction-sections")
         .flag("-fdata-sections")
-        // armv7a-nuttx-eabihf is hardfloat — the rest of the link-time
-        // closure (Rust-emitted code, NuttX kernel libs) all use the
-        // VFP register-passing ABI, so cc-rs's default softfloat for
-        // `-march=armv7-a` would trip ld with `uses VFP register
-        // arguments, … does not`. Force hardfloat to match the triple.
-        // Also pin the CPU/FPU to the same flags the existing C examples
-        // use under their cmake-driven path.
-        .flag("-mcpu=cortex-a7")
-        .flag("-mfloat-abi=hard")
-        .flag("-mfpu=vfpv3-d16")
         .define("NROS_PLATFORM_NUTTX", None)
         .warnings(false);
+    // The arch ABI flags must match the NuttX export + Rust closure (e.g. the
+    // qemu-arm default `-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=vfpv3-d16` is
+    // hardfloat — cc-rs's softfloat default for `-march=armv7-a` would trip ld
+    // with `uses VFP register arguments`). Per-board via NUTTX_ARCH_CFLAGS.
+    for f in &arch_cflags {
+        build.flag(f);
+    }
 
     if is_cpp {
         // The NuttX flat-build kernel ELF is statically linked and has no
@@ -221,10 +240,13 @@ fn main() {
     let board_src = nuttx_dir.join("arch/arm/src/board");
     let vectortab = nuttx_dir.join("arch/arm/src/arm_vectortab.o");
 
-    // Find libgcc.a
-    let gcc_out = Command::new("arm-none-eabi-gcc")
-        .args(["-mcpu=cortex-a7", "-mfloat-abi=hard", "-mfpu=neon-vfpv4", "-print-libgcc-file-name"])
-        .output().expect("failed to find libgcc");
+    // Find libgcc.a — 194.2: per-board cross-compiler + libgcc-probe flags
+    // (defaults = qemu-arm's neon-vfpv4 → v7ve+simd/hard, unchanged).
+    let gcc_out = Command::new(&nuttx_cross)
+        .args(&libgcc_flags)
+        .arg("-print-libgcc-file-name")
+        .output()
+        .expect("failed to find libgcc");
     let libgcc = String::from_utf8(gcc_out.stdout).unwrap().trim().to_string();
 
     // NuttX flat-build: the binary IS the kernel
