@@ -138,11 +138,16 @@ provisioning tier is absent — a runtime `skip!` cannot become a nextest skip.
 
 - [x] Audited: embedded-Cyclone tests already use `skip!` (loud), not a bare
       `eprintln!`+return — correct per CLAUDE.md. No softening needed.
-- [ ] When the provisioning tier/toolchain is absent, the embedded-Cyclone tests
+- [x] When the provisioning tier/toolchain is absent, the embedded-Cyclone tests
       are **filtered out** of the `test-all` nextest run (report `skipped`, not
-      `failed`) — via a tier-gated `-E` exclusion.
-- [ ] In-tier (toolchain present) the tests are included, provisioned by 185.1,
-      and PASS.
+      `failed`) — `test-all` appends a `-E 'not (binary(freertos_qemu) and
+      test(~cyclonedds)) and not (binary(threadx_riscv64_qemu) and
+      test(~cyclonedds))'` exclusion, gated on each
+      `build/cyclonedds-<rtos>-install/lib/libddsc.a` being absent (`justfile`
+      `test-all`). Validated via `nextest list`: gated ⇒ 0 cyclone tests,
+      freertos zenoh tests retained.
+- [x] In-tier (toolchain present) the tests are included, provisioned by 185.1,
+      and PASS (freertos verified).
 
 ### 185.3 — Tiering decision for cross-Cyclone provisioning
 Decide and document which SDK tier carries automatic cross-Cyclone provisioning,
