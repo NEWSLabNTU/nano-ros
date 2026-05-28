@@ -33,7 +33,9 @@ comparison.
 | **Formal verification** | 160 Kani harnesses + 102 Verus proofs (CDR, scheduling, RMW glue) | None published |
 | **E2E safety protocol** | CRC-32/ISO-HDLC + sequence tracking, EN 50159-mapped (`safety-e2e` feature) | None |
 | **ROS 2 distro coverage** | Humble (Iron deferred — type-hash work pending) | Humble, Iron, Jazzy |
-| **Build system** | Cargo + CMake + `just` orchestrator; `add_subdirectory(<repo>)` consumption | colcon + CMake; package-per-distro builds |
+| **Build system** | Cargo + CMake + `just`; **`nros deploy <name>`** from one root `nros.toml` (launch + metadata → plan → generated entry lib → vendor build); C/C++ consume via `add_subdirectory(<repo>)` | colcon + CMake; per-RTOS meta-build (`create`/`configure`/`build`/`flash_firmware.sh`) |
+| **Deploy/config model** | one root `nros.toml` SSOT; three build-ownership models (self / vendor-lib / vendor-module); RMW + transport + RT + params all declarative; sizing derived from the plan | `colcon.meta` (hand-tuned static sizing) + `configure_firmware.sh -t <transport>` flags + hand-coded `rclc` app |
+| **Host-side broker** | none (Zenoh P2P / Cyclone DDS brokerless); Agent only for XRCE | Micro-XRCE-DDS **Agent always required** |
 | **Release model** | Source-only (no crates.io, no precompiled binaries) | Source-only + per-distro Debian packages |
 | **Code-size (Cortex-M XRCE talker)** | ~75 KB flash (XRCE), ~100 KB+ (Zenoh) | ~30–50 KB (XRCE + rclc) |
 | **License** | MIT OR Apache-2.0 (dual) | Apache-2.0 |
@@ -85,6 +87,9 @@ If you're porting from micro-ROS to nano-ros:
 
 ## See also
 
+- [Build / config / deploy workflow comparison](https://github.com/jerry73204/nano-ros/blob/main/docs/research/build-config-deploy-comparison.md)
+  — the three workflow axes vs micro-ROS, Zenoh-pico, embedded DDS, Arduino-ROS
+  (evaluated against the Phase 172 `nros deploy` model).
 - [Choosing an RMW Backend](../user-guide/rmw-backends.md) — the
   backend capability matrix.
 - [Production Readiness Checklist](../internals/production-readiness.md)

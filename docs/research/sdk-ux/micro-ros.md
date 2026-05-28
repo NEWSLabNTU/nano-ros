@@ -1,5 +1,14 @@
 # micro-ROS UX gap analysis
 
+> **Update (2026-05-28):** this note predates Phase 172. Several gaps below are
+> now closed — there *is* a `nros new` scaffolder + a one-command
+> `nros deploy <name>` reading a single root `nros.toml`, `find_package(NanoRos)`
+> was deleted (Phase 140; consumption is `add_subdirectory(<repo>)`), and
+> `config.toml` was retired into `nros.toml` (Phase 172.K). The
+> precompiled-artifact distribution + real-hardware flashing gaps remain open
+> (Phase 172 W.4). See `docs/research/build-config-deploy-comparison.md` for the
+> current workflow comparison.
+
 Status: research notes  ·  Date: 2026-05-04
 Sources: shallow clones in `external/` (`micro_ros_setup`, `rclc`, `micro_ros_zephyr_module`, `micro_ros_arduino`, `freertos_apps`, `micro-ROS-demos`)
 
