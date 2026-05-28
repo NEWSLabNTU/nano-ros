@@ -59,9 +59,15 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     `tcp/127.0.0.1:7456`).
     *A full Published/Received demo is blocked, not on the deploy/transport
     path, but on an unimplemented architectural feature — see **W.5** below.*
-  - **vendor-lib: still blocked** on the license-gated NVIDIA SPE FSP
-    (`NV_SPE_FSP_DIR`); template + dry-run landed (172.V). Unblocks when the
-    maintainer installs SDK Manager, or via a non-NVIDIA vendor static lib.
+  - **vendor-lib: pipeline now proven on host** (172.V). The full
+    `dry_run:false` emit→link→package path is exercised by
+    `deploy_vendor_lib_real_build_with_stub_lib` — a `[deploy.orin-stub]`
+    target (x86_64, `emit=compiled`) emits the compiled entry lib
+    (`libnros_orin_stub.a`) and links it + a vendor `startup.c` against a stub
+    `libfakevendor.a` the test builds, producing an ELF — no license-gated SDK.
+    Only the *actual NVIDIA SPE FSP* link (`NV_SPE_FSP_DIR`,
+    `libtegra_aon_fsp.a`) stays gated (template + dry-run also landed); unblocks
+    when the maintainer installs SDK Manager.
 - **W.5 — component callback-body execution** (NEW, found 2026-05-28). The
   orchestration component model is **declarative-only**: `Component::register`
   declares the graph (nodes / publishers / timers / `CallbackId`s + effect
@@ -129,9 +135,11 @@ configuration lives here* below.
 - [x] **M7 — vendor-module proven** (2026-05-28): `nros deploy zephyr-mod` drives
       a real `west` cross-build → boots native_sim (data-plane TAP networking is
       a runtime-env follow-up, not codegen).
-- [ ] **M8 — vendor-lib proven:** blocked on the license-gated NVIDIA SPE FSP
-      (template + dry-run landed, 172.V); unblocks on SDK install or a
-      non-NVIDIA vendor static lib.
+- [~] **M8 — vendor-lib proven:** the *pipeline* is proven on host (172.V) —
+      `deploy_vendor_lib_real_build_with_stub_lib` drives the real
+      emit→link→package against a stub vendor static lib (x86_64, no SDK). Only
+      the *actual NVIDIA SPE FSP* link (`NV_SPE_FSP_DIR`) stays blocked on the
+      license-gated SDK; unblocks on SDK install or another real vendor lib.
 - [x] **M9 — in-binary multi-session routing** (172.K.5): per-node session
       binding. **Multi-domain DONE** (2026-05-28 — `NodeBuilder::session_idx` +
       generator per-domain `SESSION_SPECS` + `[[domain]]`→plan). **Bridge
