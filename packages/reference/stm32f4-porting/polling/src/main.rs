@@ -78,7 +78,8 @@ const IP_ADDRESS: [u8; 4] = [192, 168, 1, 10];
 /// Network gateway
 const GATEWAY: Ipv4Address = Ipv4Address::new(192, 168, 1, 1);
 
-/// Zenoh router address
+/// Zenoh router address. CONFIGURE ME: set to your zenoh router's address on
+/// the board's network (this `192.168.1.1` is a placeholder for the porting ref).
 #[allow(dead_code)] // Used when zenoh-pico is available
 const ZENOH_ROUTER: &[u8] = b"tcp/192.168.1.1:7447\0";
 

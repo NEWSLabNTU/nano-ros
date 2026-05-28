@@ -13,7 +13,7 @@ echo ""
 # Ensure zenohd is running
 if ! pgrep -x zenohd > /dev/null; then
     echo "Starting zenohd..."
-    zenohd --listen tcp/127.0.0.1:7447 &
+    zenohd --listen ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} &
     sleep 2
 fi
 
@@ -27,4 +27,4 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Subscribe to all liveliness tokens
-"$Z_SUB" -m client -e tcp/127.0.0.1:7447 -k "@ros2_lv/**" 2>&1
+"$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k "@ros2_lv/**" 2>&1

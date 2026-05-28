@@ -194,7 +194,10 @@ landed or the annotations are stale.
 - `codegen` scaffolds emit `tcp/10.0.2.2:7447` — surface as a scaffold parameter.
 - `reference/stm32f4-porting/*/src/main.rs` `ZENOH_ROUTER` literal — add "configure me" note.
 
-- [ ] Infra/debug/scaffold endpoints read the existing `ZENOH_LOCATOR` or a param.
+- [x] Infra/debug/scaffold endpoints read the existing `ZENOH_LOCATOR` or a param.
+      DONE (codegen `f3ffd13` + super): `just native zenohd` + `scripts/debug/*`
+      read `${ZENOH_LOCATOR:-…}`; the scaffold nros.toml + stm32f4 porting refs
+      carry a CONFIGURE-ME note. (Test fixtures in plan/planner/deploy left as-is.)
 
 ## Acceptance
 

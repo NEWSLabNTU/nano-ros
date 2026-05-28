@@ -6,7 +6,7 @@ set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 Z_SUB="$PROJECT_ROOT/packages/zpico/zpico-sys/zenoh-pico/build/examples/z_sub"
-LOCATOR="tcp/127.0.0.1:7447"
+LOCATOR="${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
 
 echo "=== Capture ROS 2 Topic Key Expression ==="
 echo ""
@@ -18,7 +18,7 @@ echo ""
 # Check zenohd is running
 if ! pgrep -x zenohd > /dev/null; then
     echo "ERROR: zenohd not running"
-    echo "Start it with: zenohd --listen tcp/127.0.0.1:7447"
+    echo "Start it with: zenohd --listen ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"
     exit 1
 fi
 

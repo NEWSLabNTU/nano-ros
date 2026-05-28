@@ -31,7 +31,7 @@ sleep 1
 
 # Start zenohd
 log_info "Starting zenohd..."
-zenohd --listen tcp/127.0.0.1:7447 > "$LOG_DIR/zenohd.log" 2>&1 &
+zenohd --listen ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} > "$LOG_DIR/zenohd.log" 2>&1 &
 sleep 2
 
 echo ""
@@ -44,7 +44,7 @@ sleep 2
 
 # Subscribe to all data keys (not liveliness) to see what keyexpr is used
 log_info "Subscribing to 0/** to capture nros messages..."
-timeout 3 "$Z_SUB" -m client -e tcp/127.0.0.1:7447 -k '0/**' 2>&1 | head -10 || true
+timeout 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
 
 # Kill nros talker
 pkill -f "target/release/talker" 2>/dev/null || true
@@ -67,7 +67,7 @@ sleep 2
 
 # Subscribe to all keys to see what keyexpr ROS 2 uses
 log_info "Subscribing to 0/** to capture ROS 2 messages..."
-timeout 3 "$Z_SUB" -m client -e tcp/127.0.0.1:7447 -k '0/**' 2>&1 | head -10 || true
+timeout 3 "$Z_SUB" -m client -e ${ZENOH_LOCATOR:-tcp/127.0.0.1:7447} -k '0/**' 2>&1 | head -10 || true
 
 kill $ROS2_PID 2>/dev/null || true
 
