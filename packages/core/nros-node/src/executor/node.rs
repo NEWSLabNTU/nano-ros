@@ -1560,6 +1560,22 @@ mod builder_tests {
     }
 
     #[test]
+    fn generator_emitted_chain_compiles() {
+        // Locks the exact builder chain the orchestration generator emits
+        // for a subscriber (replaces register_subscription_raw_with_qos_sized_on).
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        let id = exec.node_builder("n").build().expect("node");
+        let _h = exec
+            .node_mut(id)
+            .subscription("/topic")
+            .generic("std_msgs/msg/Int32", "hash")
+            .qos(QosSettings::default().keep_last(1))
+            .rx_buffer::<1024>()
+            .build(|_data: &[u8]| {})
+            .expect("generator-shape subscription builds");
+    }
+
+    #[test]
     fn nodectx_publisher_and_bridge_shape() {
         // NodeCtx publisher symmetry + the bridge two-ctx borrow pattern:
         // build the dest publisher on one NodeCtx (dropped), then register
