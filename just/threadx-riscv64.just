@@ -150,7 +150,7 @@ build-fixture-extras:
     # still required for `nros_generate_interfaces()`.
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
-    codegen="$root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+    codegen="$root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
     # Phase 118.C — collapsed-shape ThreadX-RV64 C / C++. The Rust
     # zenoh role binaries are produced by `build-examples`.
     # Phase 175.B adds CMake/Corrosion Cyclone cells for talker/listener

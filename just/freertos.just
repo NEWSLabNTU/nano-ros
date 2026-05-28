@@ -126,7 +126,7 @@ build-fixture-extras:
     # cargo and pass the absolute path via `-D_NANO_ROS_CODEGEN_TOOL`.
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
-    codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+    codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
     # Phase 186 — RMW availability follows config, fully in CMake. The example's
     # nros_provide_cyclonedds() self-provisions Cyclone from the pinned submodule
     # (sccache-accelerated) — no prebuilt install, no `just cyclonedds

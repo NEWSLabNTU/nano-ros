@@ -100,7 +100,9 @@ if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
   # try PATH + the canonical host-build location one more time before
   # erroring out — keeps custom platform integrations that don't go
   # through the standard modules working.
-  find_program(_NANO_ROS_CODEGEN_TOOL nros-codegen
+  # Phase 195.D: the codegen tool is the canonical `nros` binary
+  # (`nros codegen …`); the standalone `nros-codegen` was merged in.
+  find_program(_NANO_ROS_CODEGEN_TOOL nros
     PATHS
       "${_NANO_ROS_PREFIX}/packages/codegen/packages/target/${_NROS_CODEGEN_TARGET_PROFILE_DIR}"
       "${_NANO_ROS_PREFIX}/packages/codegen/packages/target/release"
@@ -108,14 +110,14 @@ if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
 
   if(NOT _NANO_ROS_CODEGEN_TOOL)
     message(FATAL_ERROR
-      "nros-codegen not found. Phase 140 deleted the install layout; "
+      "nros (codegen tool) not found. Phase 140 deleted the install layout; "
       "nano-ros is consumed via add_subdirectory(<repo-root>) and the "
       "codegen tool is built either by the POSIX root branch "
       "(Corrosion target) or auto-bootstrapped by the cross-compile "
       "platform modules. Pre-build with:\n"
-      "  cargo build --release -p nros-codegen-c\n"
+      "  cargo build --release -p nros-cli\n"
       "(run inside packages/codegen/packages/) or pass\n"
-      "  -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros-codegen>\n"
+      "  -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros>\n"
       "to the consumer's cmake invocation."
     )
   endif()
@@ -440,7 +442,7 @@ function(nros_generate_interfaces target)
   # ---- Custom command ----
   add_custom_command(
     OUTPUT ${_generated_headers} ${_generated_sources} ${_generated_rs_files}
-    COMMAND "${_NANO_ROS_CODEGEN_TOOL}" --language "${_lang_flag}" --args-file "${_args_file}"
+    COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
     DEPENDS ${_interface_files} "${_args_file}" "${_NANO_ROS_CODEGEN_TOOL}"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     COMMENT "Generating nros ${_ARG_LANGUAGE} interfaces for ${target}"
@@ -902,7 +904,7 @@ function(nros_find_interfaces)
   # 1. Call resolve-deps at configure time
   set(_resolve_output "${CMAKE_CURRENT_BINARY_DIR}/_nros_resolved_deps.cmake")
   execute_process(
-    COMMAND "${_NANO_ROS_CODEGEN_TOOL}" resolve-deps
+    COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen resolve-deps
             --package-xml "${_ARG_PACKAGE_XML}"
             --output-cmake "${_resolve_output}"
     RESULT_VARIABLE _result

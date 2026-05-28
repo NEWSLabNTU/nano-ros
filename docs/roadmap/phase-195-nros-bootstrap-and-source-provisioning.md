@@ -143,11 +143,29 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
       Once the merged `nros` is a host binary (195.A) and the CLI is
       layout-decoupled (195.C), nano-ros no longer needs the CLI *source* in-tree.
       Blockers to clear first:
-  - [ ] **92 in-tree consumers** in `justfile`/`just/*.just`/cmake reference the
-        *built* path `packages/codegen/packages/target/.../nros-codegen` /
-        `_NANO_ROS_CODEGEN_TOOL` / `cargo install --path packages/codegen/...` —
-        switch every one to the host binary on PATH (`nros-codegen …` →
-        `nros codegen …`; Method A already injects PATH).
+  - [x] **In-tree consumers switched to `nros codegen`** (DONE, verified). Both
+        codegen-tool callers now build + invoke the `nros` binary:
+        - `scripts/build/cargo.sh` (`nros_cargo_*codegen_c*` → `-p nros-cli --bin
+          nros`, path `…/nros`), and the per-recipe path literals in
+          `just/{nuttx,freertos,threadx-linux,threadx-riscv64,zephyr}.just` +
+          `scripts/zephyr/check-copy-out.sh`.
+        - **Both** `NanoRosGenerateInterfaces.cmake` copies (root `cmake/` for
+          POSIX; the submodule `nros-codegen-c/cmake/` copy for cross-compile) —
+          `COMMAND … codegen …` + `find_program(nros)`; `NanoRosBootstrapCodegen.cmake`
+          + root `CMakeLists.txt` POSIX Corrosion target → `nros`
+          (`nros-cli/CMakeLists.txt`).
+        - The direct-invoker scripts `scripts/nuttx/gen-interfaces.py` +
+          `gen-cpp-ffi-crates.py` (insert `codegen`; default path `…/nros`).
+        Verified: `just nuttx build-fixtures` green (6 C + 6 C++ FFI, `nros`
+        built, `nros-codegen` absent) **and** native-posix C talker codegen green
+        (Corrosion `nros` target → `nros codegen`).
+        **Caveat surfaced:** there are **two drifting copies** of
+        `NanoRosGenerateInterfaces.cmake` (+ its `*.in` templates) — root `cmake/`
+        and submodule `nros-codegen-c/cmake/` — included by the POSIX root vs the
+        `freertos`/`threadx`/`nuttx` platform modules respectively. **Deleting the
+        `nros-codegen-c` crate is blocked on deduping these** (relocate the
+        submodule copy → `nros-cli/cmake/`, repoint the 3 platform includes); the
+        crate is kept (unused as a tool) until then.
   - [ ] **Non-CLI tenants** of the submodule (`colcon-cargo-ros2`,
         `cargo-nano-ros`, `rosidl-{parser,codegen,bindgen}`, the `user-libs`
         rclrs/rosidl-runtime-rs) — confirm nano-ros doesn't build them in-tree, or

@@ -74,7 +74,7 @@ src="$NROS_ROOT/examples/zephyr/$EXAMPLE"
 
 # Host codegen tool — the example's nros_generate_interfaces() needs it.
 nros_cargo_ensure_codegen_c
-codegen_tool="$NROS_ROOT/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+codegen_tool="$NROS_ROOT/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
 [ -x "$codegen_tool" ] || { echo "FAIL: codegen tool not built at $codegen_tool"; exit 1; }
 
 # Version-aware NSOS line overlay (4.4 symbol names).

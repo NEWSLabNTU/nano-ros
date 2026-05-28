@@ -132,15 +132,18 @@ nros_cli_bin() {
     return 2
 }
 
+# Phase 195.D: the codegen host tool is now the canonical `nros` binary
+# (`nros codegen …`); the standalone `nros-codegen` (nros-codegen-c) was merged
+# in. Function names keep `codegen_c` for callsite stability.
 nros_cargo_codegen_c_bin() {
-    printf '%s\n' "packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
+    printf '%s\n' "packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
 }
 
 nros_cargo_build_codegen_c() {
     local cargo_profile_args
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-codegen-c --bin nros-codegen --quiet
+        -p nros-cli --bin nros --quiet
 }
 
 nros_cargo_ensure_codegen_c() {

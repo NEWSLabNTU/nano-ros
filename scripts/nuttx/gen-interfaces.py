@@ -87,7 +87,7 @@ def run_codegen(
     args_file = out_dir / "codegen-args.json"
     args_file.write_text(json.dumps(args, indent=2))
     rc = subprocess.run(
-        [str(codegen), "--args-file", str(args_file), "--language", language],
+        [str(codegen), "codegen", "--args-file", str(args_file), "--language", language],
         check=False,
     ).returncode
     return rc
@@ -105,6 +105,7 @@ def parse_resolve_deps(
         rc = subprocess.run(
             [
                 str(codegen),
+                "codegen",
                 "resolve-deps",
                 "--package-xml",
                 str(package_xml),
@@ -228,7 +229,7 @@ def main(argv: list[str]) -> int:
     codegen = (
         Path(argv[2])
         if len(argv) >= 3
-        else (REPO_ROOT / "packages/codegen/packages/target/release/nros-codegen")
+        else (REPO_ROOT / "packages/codegen/packages/target/release/nros")
     )
     if not codegen.exists():
         print(
