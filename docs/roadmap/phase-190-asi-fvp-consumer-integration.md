@@ -326,6 +326,14 @@ board-crate churn.
       Zephyr versions (3.5.x FVP + 4.x), proving the version decoupling
 - [ ] Note: this is phase-172 (board-BSP) territory; tracked here because the
       FVP bump surfaced the coupling. Coordinate if 172 lands first.
+- [ ] **Reinforced by phase-172 (`7b6ab0a1b`, largely landed).** 172 retired the
+      per-package `system nros.toml` triple/board reader and moved board/triple
+      into the root `nros.toml [system].target` (board is config-driven via
+      `Config::from_toml`, *not* a `profile()` fn). And `nros deploy zephyr-mod`
+      already drives a real `west` cross-build (the Layer-3 path) that consumes
+      Zephyr via the module, no board Cargo crate. So `nros-board-fvp-aemv8r-smp`
+      is even more clearly vestigial — the collapse aligns with 172's deploy
+      model, not just the board-BSP doc.
 
 ### 190.J — FVP run/debug: standalone `fvp/` scripts + doc
 
@@ -343,7 +351,18 @@ Phase-172 `nros run`/deploy model lands). FVP simulator stays BYO/licence-gated
       console `:2000` reachable, default route intact
 - [x] Documented the run recipe (VPN + `gdb-multiarch`/`lldb` + `nc` console +
       image-load) in `zephyr-armv8r-setup.md` §6
-- [ ] (later) fold into Phase-172 `nros run --board fvp-aemv8r` when that lands
+- [ ] (later) fold into Phase-172 `nros deploy fvp-aemv8r` when that lands.
+      **Phase-172 update (`7b6ab0a1b`):** `nros deploy zephyr-mod` already does a
+      real `west` cross-build + boot — but **native_sim only**; it builds+boots,
+      it does NOT load onto real hardware / an FVP. The gdb-`:4000`-load +
+      console-`:2000` flow here is exactly that missing half. A future
+      `nros deploy fvp-aemv8r` = 172's deploy build + this load/monitor glue.
+- [ ] **W.5 caveat for FVP data-plane validation.** Phase-172's orchestration
+      component model is declarative-only until W.5 (callbacks wired as noop,
+      `ComponentPublisher` zero-sized → a deployed *orchestration* binary emits
+      no data). So a Published/Received demo on the FVP must use **direct-mode**
+      (hand-written `main()` via the entry lib, which carries real logic) or
+      wait for W.5 — the deploy/transport path itself is not the blocker.
 
 ## Acceptance
 
