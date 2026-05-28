@@ -222,13 +222,15 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         Verified: `just nuttx build-fixtures` green (6 C + 6 C++ FFI, `nros`
         built, `nros-codegen` absent) **and** native-posix C talker codegen green
         (Corrosion `nros` target → `nros codegen`).
-        **Caveat surfaced:** there are **two drifting copies** of
-        `NanoRosGenerateInterfaces.cmake` (+ its `*.in` templates) — root `cmake/`
-        and submodule `nros-codegen-c/cmake/` — included by the POSIX root vs the
-        `freertos`/`threadx`/`nuttx` platform modules respectively. **Deleting the
-        `nros-codegen-c` crate is blocked on deduping these** (relocate the
-        submodule copy → `nros-cli/cmake/`, repoint the 3 platform includes); the
-        crate is kept (unused as a tool) until then.
+  - [x] **`nros-codegen-c` crate deleted** (DONE, nros-cli `1e7e879`). The
+        feared two-copy dedup was a non-issue: the `freertos`/`threadx`/`nuttx`
+        platform modules already `include()` the **root** `cmake/NanoRosGenerate‐
+        Interfaces.cmake` (`${CMAKE_CURRENT_LIST_DIR}/../…`), not the submodule
+        copy — so `nros-codegen-c/cmake/` was dead, as was its Rust bin (consumers
+        use `nros codegen`) and its Corrosion `CMakeLists` (root uses
+        `nros-cli`). Removed the crate + its workspace-member entry; codegen
+        workspace builds clean. Root cmake doc + `NanoRosBootstrapCodegen.cmake`
+        comments de-stale'd (single canonical module).
   - [ ] **Non-CLI tenants** of the submodule (`colcon-cargo-ros2`,
         `cargo-nano-ros`, `rosidl-{parser,codegen,bindgen}`, the `user-libs`
         rclrs/rosidl-runtime-rs) — confirm nano-ros doesn't build them in-tree, or

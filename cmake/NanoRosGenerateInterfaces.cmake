@@ -2,16 +2,12 @@
 NanoRosGenerateInterfaces
 -------------------------
 
-**Source-of-truth location.** Phase 137.2 (2026-05-18) made
-``<repo-root>/cmake/NanoRosGenerateInterfaces.cmake`` the canonical
-copy that the root entry CMake includes. A second copy lives in
-the ``packages/codegen`` submodule at
-``packages/codegen/packages/nros-codegen-c/cmake/``; Phase 140
-deleted that copy's install rule (the legacy ``find_package`` path
-is gone), but the file itself stays for the codegen project's own
-in-tree build. When editing this module, mirror the change into
-both copies until the ``packages/codegen`` submodule pointer is
-next bumped.
+**Single source of truth.** ``<repo-root>/cmake/NanoRosGenerateInterfaces.cmake``
+is the one canonical copy — the root entry CMake (POSIX) and every cross-compile
+platform module (``cmake/platform/nano-ros-{freertos,threadx,nuttx}.cmake``)
+``include()`` it. The former second copy in the ``packages/codegen`` submodule
+(``nros-codegen-c/cmake/``) was deleted with the ``nros-codegen-c`` crate in
+Phase 195.D — there is no copy to mirror into any more.
 
 Generate C or C++ bindings for ROS 2 interface files (.msg, .srv, .action).
 

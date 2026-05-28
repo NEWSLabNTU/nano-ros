@@ -19,14 +19,14 @@
 # Resolution order:
 #   1. `_NANO_ROS_CODEGEN_TOOL` already in cache (caller pre-set
 #      via `-D_NANO_ROS_CODEGEN_TOOL=<path>`) — honored as-is.
-#   2. `<repo>/packages/codegen/packages/target/<profile>/nros-codegen`
+#   2. `<repo>/packages/codegen/packages/target/<profile>/nros`
 #      — canonical host build output of `cargo build --profile <profile>
-#      -p nros-codegen-c` inside the codegen workspace.
+#      -p nros-cli` inside the codegen workspace (`nros codegen` is the tool).
 #   3. System `PATH` — last resort for users who `cargo install`d
 #      the tool globally.
 #   4. None of the above + `NROS_AUTO_BOOTSTRAP_CODEGEN=ON` (default
 #      ON for cross-compile platforms) — runs `cargo build
-#      --profile <profile> -p nros-codegen-c` once at configure time + caches
+#      --profile <profile> -p nros-cli` once at configure time + caches
 #      the resulting binary path. Adds ~3 s to the first configure;
 #      subsequent configures hit cache.
 #
