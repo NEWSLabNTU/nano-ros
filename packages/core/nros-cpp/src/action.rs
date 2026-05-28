@@ -58,6 +58,13 @@ pub type CppCancelCallback =
 /// buffers moved to the C++ `nros::ActionServer<A>` class (passed to
 /// `nros_cpp_action_server_register` at registration time). No C++-side
 /// goal queue — the arena in `nros-node` owns all lifecycle state.
+///
+/// `#[repr(C)]` is load-bearing: the layout-mirror assert below compares this
+/// against the `#[repr(C)]` `nros::sizes::CppActionServerLayout`. Without it
+/// the compiler may reorder/repack fields — the sizes coincide on 64-bit hosts
+/// but diverge on 32-bit targets (e.g. armv7a-nuttx-eabihf), tripping the
+/// assert. repr(C) pins both to identical declaration-order layout everywhere.
+#[repr(C)]
 pub(crate) struct CppActionServer {
     handle: Option<nros_node::ActionServerRawHandle>,
     goal_cb: Option<CppGoalCallback>,
@@ -529,6 +536,11 @@ impl Default for CppActionClientCallbacks {
 /// This struct stores the arena entry index, executor pointer, and callbacks.
 /// Phase 87.6: the action_name buffer moved to the C++
 /// `nros::ActionClient<A>` class.
+///
+/// `#[repr(C)]` is load-bearing (see `CppActionServer`): pins the layout to
+/// match `#[repr(C)]` `nros::sizes::CppActionClientLayout` on 32-bit targets
+/// too, where repr(Rust) packing would otherwise diverge.
+#[repr(C)]
 pub(crate) struct CppActionClient {
     callbacks: CppActionClientCallbacks,
     arena_entry_index: i32,

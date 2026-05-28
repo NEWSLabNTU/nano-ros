@@ -146,17 +146,33 @@ mod rmw_sizes {
         unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void) -> i32;
     type CppCancelCallbackLayout = unsafe extern "C" fn(*const [u8; 16], *mut c_void) -> i32;
 
+    // Byte-shape mirror of one of `nros-cpp`'s `nros_cpp_qos_t` policy enums
+    // (`nros_cpp_qos_reliability_t` et al). These are `#[repr(C)]` fieldless
+    // enums, so their width follows the *target C ABI*: `c_int` (4 bytes) on
+    // x86_64, but **1 byte on ARM EABI** (`armv7a-nuttx-eabihf` defaults to
+    // `-fshort-enums`). Mirroring them as `c_int` (the pre-fix shape) over-sized
+    // the qos block by 12 bytes on ARM and tripped the `CppActionServer`
+    // layout assert. A `#[repr(C)]` enum here tracks the same short-enum width
+    // on every target. Variant count is irrelevant to width while ≤ 255 (all
+    // four real enums have ≤ 4 variants), so one placeholder mirrors all four.
+    #[repr(C)]
+    #[doc(hidden)]
+    pub enum CppQosEnumLayout {
+        A = 0,
+        B = 1,
+    }
+
     // Phase 193.4b: byte-shape mirror of `nros-cpp`'s `nros_cpp_qos_t`
-    // (4 C-ABI enums @ `c_int` width + `c_int` depth + 3×u32 + u8). The
-    // action server now stores the create-time QoS until registration; the
-    // real `CppActionServer` field-shape assert keeps this in sync.
+    // (4 C-ABI enums + `c_int` depth + 3×u32 + u8). The action server now
+    // stores the create-time QoS until registration; the real
+    // `CppActionServer` field-shape assert keeps this in sync.
     #[repr(C)]
     #[doc(hidden)]
     pub struct CppQosLayout {
-        pub reliability: core::ffi::c_int,
-        pub durability: core::ffi::c_int,
-        pub history: core::ffi::c_int,
-        pub liveliness_kind: core::ffi::c_int,
+        pub reliability: CppQosEnumLayout,
+        pub durability: CppQosEnumLayout,
+        pub history: CppQosEnumLayout,
+        pub liveliness_kind: CppQosEnumLayout,
         pub depth: core::ffi::c_int,
         pub deadline_ms: u32,
         pub lifespan_ms: u32,
