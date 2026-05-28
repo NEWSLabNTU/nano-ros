@@ -11,12 +11,16 @@ NuttX provisioning carries **no arm literal** (all arch-specifics env-driven,
 arm defaults); a full **riscv NuttX export builds** via `nros setup`'s toolchain
 + the existing flow; the marker is board-aware; and the export **self-provisions
 under cmake** (`nros build`/`deploy`/raw cmake auto-run `make export`, no manual
-`just nuttx build-kernel`). Following 194.4, **`just nuttx setup` + `just nuttx
-build` no longer pre-build the kernel** — the export self-provisions at the first
-example/fixture build (`nros_nuttx_build_example`); `build-kernel` stays as an
-idempotent manual escape hatch (and `just nuttx doctor` reports an unconfigured
-kernel as informational `[--]`, not a failure). Remaining: **194.3c** (the
-`nros-board-nuttx-qemu-riscv` crate — deferred).
+kernel build). Following 194.4, **`just nuttx setup` + `just nuttx build` no
+longer pre-build the kernel** — the export self-provisions at the first
+example/fixture build (`nros_nuttx_build_example`); the now-orphaned
+`build-kernel` recipe was deleted and the provisioning script moved to the shared
+build-script dir (`scripts/nuttx/build-nuttx.sh`, board defconfig supplied via
+`NUTTX_DEFCONFIG` / the board overlay's `NROS_NUTTX_DEFCONFIG`) so the builders
+are self-contained — force an out-of-band provision by running that script
+directly (and `just nuttx doctor` reports an unconfigured kernel as informational
+`[--]`, not a failure). Remaining: **194.3c** (the `nros-board-nuttx-qemu-riscv`
+crate — deferred).
 
 **Priority.** P2 — extensibility/correctness of the NuttX path; today only
 `nuttx-qemu-arm` (cortex-a7) is reachable because the provisioning hardcodes ARM.
@@ -34,8 +38,8 @@ arch possible (no per-arch prebuilt — the export is built locally). **But the
 provisioning hardcodes ARM in two spots**, so a new arch needs code edits, not
 just a board crate:
 
-- `packages/boards/nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh` requires
-  `arm-none-eabi-gcc` (line ~56) + ARM cmd in help.
+- `scripts/nuttx/build-nuttx.sh` requires `arm-none-eabi-gcc` (line ~60) + ARM
+  cmd in help.
 - `packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi/build.rs` bakes
   `-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=vfpv3-d16` (lines ~41-43, ~226).
 
@@ -119,19 +123,19 @@ in the index); the kernel source-builds against it.
       what makes the shared-tree contention real).
 - [x] **194.4 (optional) — Self-provision the export via CMake.** DONE. The
       board overlay (`cmake/board/nano-ros-board-nuttx-qemu-arm.cmake`) exposes
-      `NROS_NUTTX_PROVISION_SCRIPT` (→ the board's `build-nuttx.sh`); the generic
+      `NROS_NUTTX_PROVISION_SCRIPT` (→ the shared `scripts/nuttx/build-nuttx.sh`); the generic
       `nros_nuttx_build_example` (`nros-c/cmake/nros-nuttx.cmake`) prepends a
       provision `COMMAND` (run the script in `NUTTX_DIR` with `NUTTX_DIR` +
       derived `NUTTX_APPS_DIR`) to each example's FFI `add_custom_command`, before
       `cargo build`. So `nros build`/`deploy` + raw `cmake --build` auto-`make
-      export` with no manual `just nuttx build-kernel`. **Concurrency- + idempotency-
+      export` with no manual kernel pre-build. **Concurrency- + idempotency-
       hardened** (the shared in-tree tree is hit by many parallel example builds):
       `build-nuttx.sh` now (a) `flock`s the provision (serialize concurrent
       `make export` — was racing `mkdir nuttx-export-<ver>`/`.version.tmp`),
       (b) `rm`s any stale `nuttx-export-*` before `make export` (it isn't
       idempotent — fails if the dir exists), and (c) short-circuits to a true
       no-op when the marker is fresh AND a completed export is present
-      (build-once-link-many; `just nuttx build-kernel` is now idempotent too).
+      (build-once-link-many; a direct `scripts/nuttx/build-nuttx.sh` run is idempotent too).
       Verified end-to-end: removing the export + building a nuttx C example via
       cmake **rebuilt the export from nothing** before the cargo link; a fresh
       tree no-ops with `NuttX export up-to-date — skipping`. **`just nuttx

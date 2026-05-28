@@ -50,7 +50,7 @@ fn require_nuttx() -> bool {
         eprintln!(
             "Skipping test: NuttX not configured ($NUTTX_DIR/include/nuttx/config.h missing)"
         );
-        eprintln!("Run: cd packages/boards/nros-board-nuttx-qemu-arm && ./scripts/build-nuttx.sh");
+        eprintln!("Run: scripts/nuttx/build-nuttx.sh");
         return false;
     }
     if !is_arm_gcc_available() {
@@ -165,9 +165,7 @@ fn test_nuttx_kernel_boots() {
         eprintln!("[PARTIAL] NuttX started but NSH prompt not found");
     } else {
         eprintln!("[INFO] No NuttX output detected — kernel may need configuration");
-        eprintln!(
-            "Build: cd packages/boards/nros-board-nuttx-qemu-arm && ./scripts/build-nuttx.sh"
-        );
+        eprintln!("Build: scripts/nuttx/build-nuttx.sh");
     }
 }
 

@@ -15,6 +15,8 @@
 # Environment (auto-resolved from project root if not set):
 #   - NUTTX_DIR — NuttX source (default: third-party/nuttx/nuttx)
 #   - NUTTX_APPS_DIR — NuttX apps source (default: third-party/nuttx/nuttx-apps)
+#   - NUTTX_DEFCONFIG — board defconfig (the board overlay supplies this; default
+#     is the qemu-arm board, the only NuttX board today)
 #
 # Usage:
 #   ./build-nuttx.sh                    # Build with default defconfig
@@ -23,10 +25,13 @@
 #
 set -euo pipefail
 
+# This script lives in the shared build-script dir (scripts/nuttx/) so the NuttX
+# builders are self-contained — the board-specific input (the defconfig) is
+# supplied by the board overlay via NUTTX_DEFCONFIG, not derived from the script's
+# location. PROJECT_ROOT resolves two levels up (scripts/nuttx → repo root).
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BOARD_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(cd "$BOARD_DIR/../../../.." && pwd)"
-DEFCONFIG="$BOARD_DIR/nuttx-config/defconfig"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DEFCONFIG="${NUTTX_DEFCONFIG:-$PROJECT_ROOT/packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig}"
 
 # --- Auto-resolve paths from project root if not set ---
 

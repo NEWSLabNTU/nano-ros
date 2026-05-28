@@ -67,10 +67,14 @@ set(_NROS_NUTTX_FFI_CRATE_DIR_DEFAULT
 
 # 194.4: self-provision the NuttX export. nros_nuttx_build_example runs this
 # (idempotent — the marker self-guards) before the example cargo build, so
-# `nros build`/`deploy` + raw cmake auto-build the NuttX export with no manual
-# `just nuttx build-kernel`. A new-arch board points this at its own script.
-set(NROS_NUTTX_PROVISION_SCRIPT "${_NROS_NUTTX_BOARD_DIR}/scripts/build-nuttx.sh"
+# `nros build`/`deploy` + raw cmake auto-build the NuttX export. The provisioning
+# script lives in the shared build-script dir (`scripts/nuttx/`) so the builders
+# are self-contained; the board supplies its own defconfig via NROS_NUTTX_DEFCONFIG
+# (a new-arch board overrides the defconfig, reusing the shared script).
+set(NROS_NUTTX_PROVISION_SCRIPT "${_NROS_BOARD_ROOT}/scripts/nuttx/build-nuttx.sh"
     CACHE FILEPATH "NuttX export provisioning script (make export), run before the example build")
+set(NROS_NUTTX_DEFCONFIG "${_NROS_NUTTX_BOARD_DIR}/nuttx-config/defconfig"
+    CACHE FILEPATH "Board NuttX defconfig consumed by the provisioning script")
 
 if(NOT DEFINED NUTTX_FFI_CRATE_DIR AND DEFINED ENV{NUTTX_FFI_CRATE_DIR})
     set(NUTTX_FFI_CRATE_DIR "$ENV{NUTTX_FFI_CRATE_DIR}")

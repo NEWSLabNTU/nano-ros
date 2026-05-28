@@ -12,32 +12,12 @@ default:
 # layout. NuttX examples consume nano-ros via `add_subdirectory(<repo>)`
 # (Phase 144.6) or the `integrations/nuttx/` shell (Phase 139).
 
-# Build NuttX kernel (requires arm-none-eabi-gcc + kconfig tools)
-[group("examples")]
-build-kernel:
-    #!/usr/bin/env bash
-    set -e
-    if [ ! -d "$NUTTX_DIR/include" ]; then
-        echo "Skipping NuttX kernel build (NuttX not found). Run: just nuttx setup"
-        exit 0
-    fi
-    if ! command -v arm-none-eabi-gcc &>/dev/null; then
-        echo "Skipping NuttX kernel build (arm-none-eabi-gcc not found)"
-        exit 0
-    fi
-    if ! command -v kconfig-conf &>/dev/null && ! command -v olddefconfig &>/dev/null; then
-        echo "Skipping NuttX kernel build (kconfig tools not found)"
-        exit 0
-    fi
-    NUTTX_DIR=$NUTTX_DIR NUTTX_APPS_DIR=$NUTTX_APPS_DIR \
-        packages/boards/nros-board-nuttx-qemu-arm/scripts/build-nuttx.sh
-
-# Build NuttX core artifacts.
-#
 # Phase 194.4 — nothing to pre-build: the NuttX export (`make export`) is
 # self-provisioned by each example/fixture build via `nros_nuttx_build_example`
-# (idempotent, build-once-link-many). Run `just nuttx build-kernel` manually to
-# force a provision out-of-band.
+# (idempotent, build-once-link-many). To force a provision out-of-band, run the
+# shared script directly:
+#   NUTTX_DIR=$NUTTX_DIR NUTTX_APPS_DIR=$NUTTX_APPS_DIR scripts/nuttx/build-nuttx.sh
+# Build NuttX core artifacts (self-provisioned — nothing to pre-build).
 [group("main")]
 build:
     @echo "NuttX core: self-provisioned at example build (Phase 194.4) — nothing to pre-build."
@@ -335,8 +315,8 @@ setup:
     "{{justfile_directory()}}/tools/setup.sh" --platform=nuttx --skip-apt-check
     # Phase 194.4 — the NuttX export is self-provisioned by the example build
     # (`nros_nuttx_build_example` runs `make export` before the cargo link), so
-    # `setup` no longer pre-builds the kernel. `just nuttx build-kernel` stays
-    # as a manual/idempotent escape hatch.
+    # `setup` no longer pre-builds the kernel. To force a provision out-of-band,
+    # run scripts/nuttx/build-nuttx.sh directly (idempotent).
     # Phase 166.E — stage integration shell + example apps under
     # $NUTTX_APPS_DIR/external/ so users following the book's NuttX
     # starter find the example apps under
@@ -378,7 +358,7 @@ doctor:
     if [ -f "$NUTTX_DIR/include/nuttx/config.h" ]; then
         echo "  [OK] NuttX kernel configured"
     else
-        echo "  [--] NuttX kernel not yet configured — self-provisioned at first example build (or run: just nuttx build-kernel)"
+        echo "  [--] NuttX kernel not yet configured — self-provisioned at first example build (or run: scripts/nuttx/build-nuttx.sh)"
     fi
     if command -v arm-none-eabi-gcc &>/dev/null; then
         echo "  [OK] arm-none-eabi-gcc"
