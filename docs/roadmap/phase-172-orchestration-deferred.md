@@ -57,15 +57,27 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     (`TRANSPORT_LOCATOR`) so the embedded app connects (verified: boots →
     NSOS → reaches the transport-connect stage on the baked
     `tcp/127.0.0.1:7456`).
-    *Remaining for a full message-flow demo:* a **functional (publishing)
-    component** — the orchestration_e2e `demo_pkg` is a metadata-only graph
-    fixture (its timer callback has no publish body), so the deployed binary
-    registers the graph but emits no data; proving Published/Received needs a
-    component with real callback logic in a system. (The transport/deploy path
-    is done — this is fixture content.)
+    *A full Published/Received demo is blocked, not on the deploy/transport
+    path, but on an unimplemented architectural feature — see **W.5** below.*
   - **vendor-lib: still blocked** on the license-gated NVIDIA SPE FSP
     (`NV_SPE_FSP_DIR`); template + dry-run landed (172.V). Unblocks when the
     maintainer installs SDK Manager, or via a non-NVIDIA vendor static lib.
+- **W.5 — component callback-body execution** (NEW, found 2026-05-28). The
+  orchestration component model is **declarative-only**: `Component::register`
+  declares the graph (nodes / publishers / timers / `CallbackId`s + effect
+  metadata for planning + scheduling), and `create_timer`/`create_subscription`
+  take only a `CallbackId`, **no closure**. The generated runtime wires each
+  callback as a noop `|| {}`; the `ComponentPublisher` returned by `register`
+  is zero-sized (no handle to publish through). So a deployed orchestration
+  binary registers the graph + connects to the agent, but **emits no data** —
+  no planned component can carry executable callback logic. Closing this needs
+  a real feature: bind callback bodies to declared `CallbackId`s (e.g. a
+  `Component::on_callback(CallbackId, &mut CallbackCtx)` that resolves the
+  runtime publisher by `EntityId` — needs an executor publisher-registry +
+  component API + codegen change), after which `demo_pkg` (or any component)
+  can actually publish and the zephyr-mod deploy proves the data-plane end to
+  end. Deferred (own design + impl; orthogonal to the W.4 deploy/transport
+  path, which is done).
 - **172.K.5** — per-node `create_node_on` bridge/multi-domain routing (the
   `nros check` warning guards it meanwhile).
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
