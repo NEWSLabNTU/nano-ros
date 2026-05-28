@@ -447,10 +447,15 @@ build-fixtures:
         echo "  → 4.4 line: zenoh fixtures only (xrce/cyclonedds pending)"
     else
     fixture_rmws=(zenoh xrce)
-    if [ -x "$nros_root/build/install/bin/idlc" ]; then
+    # Phase 186.6.2 — gate on idlc being *available* (host PATH or the legacy
+    # build/install), not specifically build/install. The Zephyr Cyclone build
+    # self-provisions Cyclone in-tree and resolves idlc host-side via find_program
+    # (186.3 — NO_CMAKE_FIND_ROOT_PATH, e.g. a ROS 2 install on PATH), so no
+    # `just cyclonedds setup` is needed.
+    if command -v idlc >/dev/null 2>&1 || [ -x "$nros_root/build/install/bin/idlc" ]; then
         fixture_rmws+=(cyclonedds)
     else
-        echo "  → zephyr cyclonedds fixtures skipped (run: just cyclonedds setup)"
+        echo "  → zephyr cyclonedds fixtures skipped (idlc not found on PATH — install a CycloneDDS/ROS 2 idlc, or set IDLC_EXECUTABLE)"
     fi
     fi
     for lang in $(nros_fixture_langs); do
