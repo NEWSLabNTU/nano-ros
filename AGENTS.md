@@ -99,9 +99,11 @@ referenced by URL); `ci/nano-ros-sdk/` is the drop-in seed for that repo.
   index dist change); `nano-ros-sdk`'s `build-tool.yml` seeds assets via
   `workflow_dispatch` (Ubuntu 22.04 baseline). Bump a tool's `-nros<N>` suffix
   when rebuilding the same upstream version with different config.
-- Validated: `just qemu test-lan9118` passes (5/5) with the prebuilt `nros2`
-  qemu — the LAN9118 RX-flush patch is present + working, so the qemu-recipe
-  flip is safe.
+- Validated with the prebuilt `nros2` qemu (the flipped `just qemu setup-qemu`
+  fetches it): `just qemu test-lan9118` 5/5, and the full networked pub/sub e2e
+  `nros-tests::emulator::test_qemu_rtic_pubsub_e2e` (two ARM baremetal instances
+  over LAN9118 + slirp + zenohd, published=1/received=1). The qemu-recipe flip
+  is safe end-to-end.
 - ESP32 in nano-ros is **ESP32-C3 (RISC-V)**: `riscv32imc-unknown-none-elf` via
   the rustup target + build-std (rust-lld, no external gcc), espflash runner,
   Espressif `qemu-system-riscv32` fork. It needs **no index host-tool** —
