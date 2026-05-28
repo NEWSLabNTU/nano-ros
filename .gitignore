@@ -67,3 +67,6 @@ tools/*
 /nros-0.1.0-linux-x86_64.tar.gz
 /target-zpico-build-matrix/
 /target-zpico-drift-gate/
+
+# Per-developer local Claude Code settings
+.claude/settings.local.json
