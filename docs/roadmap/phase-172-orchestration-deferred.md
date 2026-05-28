@@ -24,11 +24,24 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
 (`nros deploy native` builds + boots from one root file).
 
 **Remaining (the gap between "designed/structural" and "proven"):**
-- **W.1** — implement the Cargo-style manifest fold (design canonical; loader +
-  walk-up resolver + `component_nros.toml`→`[component]`). *Highest leverage —
-  removes the last config footgun.*
-- **W.3** — `[component]` UX (`#[serde(default)]` overrides; `nros new` emits it;
-  `metadata --build` derives linkage). Pairs with W.1.
+- **W.1 — DONE** (2026-05-28, codegen `1ff8a51`+`685354e`). Cargo-style manifest
+  fold landed: a package's `[component]` table folds into its `nros.toml`
+  (`workspace::load_component_config` reads either the folded table or the
+  legacy standalone `component_nros.toml`, which now warns once); `ManifestKind`
+  + `probe_manifest_kind` discriminate by sections present (`[workspace]`
+  dominates); `resolve_workspace_root` walks up to the nearest enclosing
+  `[workspace]`, so `nros deploy`/`build <name>` work from any member dir, and a
+  non-workspace manifest with no enclosing workspace gives a kind-specific
+  direct-mode/component error.
+- **W.3 — mostly DONE** (codegen `d5d6382`+`f1fc4f4`). `[overrides]` + its
+  `parameters`/`remaps` and the whole `[linkage]` table are `#[serde(default)]`
+  (a minimal `[component]` = package + component + language + metadata parses);
+  `metadata --build` derives executable / exported-symbol / crate_name from the
+  component name + crate convention (`ComponentLinkage::resolved_*`). *Still
+  open:* `nros new` emitting a `[component]` table — deferred, because `nros new`
+  scaffolds direct-mode hello-world binaries (correctly a `[node]` manifest);
+  emitting `[component]` first needs a **planned-mode component scaffold** (an
+  `nros::component!` export), a separate scaffold-template feature.
 - **W.4** — one real **vendor-lib** (Orin link) + one real **vendor-module**
   (Zephyr `west` / PX4-SITL) build. Today vendor models are template + dry-run
   only; nothing past `self`/QEMU has a real build.
@@ -992,29 +1005,38 @@ A workflow/UX review (self-model proven on QEMU/native; vendor models
 designed + scaffolded but not yet real-built) raised four items; design +
 the cheap fix landed, the rest are tracked here:
 
-- **W.1 — Cargo-style manifest resolution** (config footgun: root vs
-  direct-mode `nros.toml` share a name). **Design approved + canonical**
+- **W.1 — Cargo-style manifest resolution. DONE** (2026-05-28, codegen
+  `1ff8a51` fold + `685354e` probe/walk-up). **Design canonical**
   (`docs/design/configuration-and-transports.md`, "Manifest kinds &
   resolution"): one `nros.toml` schema, kind decided by sections present
   (`[workspace]` / `[component]` / `[node]`, combinations allowed like
   Cargo's root package), walk-up resolution, `component_nros.toml` folds
-  into a `[component]` table (deprecation window). *To implement:* the
-  section-discriminating loader + walk-up resolver + the
-  `component_nros.toml`→`[component]` fold (+ `workspace.rs`
-  discovery/`config.rs` `ComponentConfig` rename) + the "this is a
-  direct-mode node, not a workspace root" error. Pairs with W.3 (same
-  `ComponentConfig` edit).
+  into a `[component]` table (deprecation window). *Landed:* the
+  section-discriminating probe (`ManifestKind` + `probe_manifest_kind`,
+  `[workspace]` dominates), the walk-up resolver (`resolve_workspace_root`),
+  the `component_nros.toml`→`[component]` fold (`workspace::load_component_config`
+  reads either form; legacy warns once; discovery prefers folded, dedups by
+  `(package, component)`), and the kind-specific "direct-mode node / detached
+  component, not a workspace" error on `nros deploy`/`build`. *Not done:* the
+  optional `config.rs` `ComponentConfig` rename (cosmetic — skipped); the
+  `component_nros.toml` deprecation *removal* waits out the window.
 - **W.2 — bridge schema-ahead-of-impl.** DONE — `nros check` on a root
   `nros.toml` now warns when `[[bridge]]`/`[[domain]]` are declared but
   per-node session routing isn't emitted (`cmd/check.rs`
   `pending_routing_warning`). Removed when 172.K.5 (per-node
   `create_node_on` binding) lands.
-- **W.3 — `[component]` UX.** *To implement:* `#[serde(default)]` on
-  `ComponentOverrides` + its `parameters`/`remaps` (today a minimal
-  manifest fails *"missing field `parameters`"*); `nros new` emits the
-  `[component]` table so the first `nros deploy` works unedited;
-  `metadata --build` derives `linkage` from `package.xml`/crate where it
-  can. Rationale + when-used documented in the design doc.
+- **W.3 — `[component]` UX. MOSTLY DONE** (codegen `d5d6382`+`f1fc4f4`).
+  *Landed:* `#[serde(default)]` on `ComponentOverrides` + its
+  `parameters`/`remaps` *and* the whole `[linkage]` table + `ComponentConfig.
+  overrides`/`linkage` (a minimal `[component]` = package + component +
+  language + metadata parses, no more *"missing field `parameters`"*);
+  `metadata --build` derives `linkage` via `ComponentLinkage::resolved_*`
+  (executable ← component short name, exported_symbol ← `nros_component_<name>`,
+  crate_name ← package with `-`→`_`). *Still open:* `nros new` emitting the
+  `[component]` table — deferred, since `nros new` scaffolds direct-mode
+  hello-world binaries (a `[node]` manifest by design); emitting `[component]`
+  needs a **planned-mode component scaffold** (an `nros::component!` export +
+  the `[component]` table), tracked as a separate scaffold-template feature.
 - **W.4 — validation reach.** *Entry-lib generalization DONE* (the flip,
   above): every non-bridge platform now routes through the entry lib, so
   `render_main` is gone and the `self` model is structurally uniform across
