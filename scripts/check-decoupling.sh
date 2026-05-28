@@ -78,4 +78,4 @@ if [[ "$fail" -ne 0 ]]; then
 fi
 
 echo
-echo "Phase 104.A decoupling guard PASSED."
+echo "decoupling guard PASSED."
