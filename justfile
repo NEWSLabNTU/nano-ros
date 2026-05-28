@@ -201,6 +201,11 @@ build-all:
     just build
     just build-example-extras
     just build-test-fixtures-leaves
+    # Stamp like the public `build-test-fixtures` so `_require-fixtures` lets
+    # `test-all` run after `build-all` (the `-leaves` recipe doesn't stamp).
+    mkdir -p target/nextest
+    date -u +%Y-%m-%dT%H:%M:%SZ > target/nextest/.fixtures-built
+    echo "build-all: stamped target/nextest/.fixtures-built"
     echo "All builds completed (workspace + examples + test fixtures)."
 
 # Phase 176 — `build-all` under one GNU-make fifo jobserver shared across
