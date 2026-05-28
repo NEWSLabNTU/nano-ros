@@ -161,8 +161,8 @@ honouring the ≤5 min / ≤500 MB / idempotent default-tier policy. Likely: sta
 
 - [x] `docs/development/sdk-tiers.md` states the tier + toolchain gate for each
       embedded Cyclone install (new "Embedded CycloneDDS" subsection).
-- [ ] Default-tier `setup → build-all → test-all` stays within budget (embedded
-      Cyclone tests SKIP, not fail) — blocked on 185.2's tier-gated `-E` filter.
+- [x] Default-tier `setup → build-all → test-all` stays within budget (embedded
+      Cyclone tests SKIP, not fail) — 185.2's tier-gated `-E` filter delivers this.
 - [x] `all`/extended tier (cross toolchains present) builds the installs and the
       tests PASS (freertos verified).
 
@@ -179,11 +179,16 @@ third copied script.
 - `cmake/toolchain/arm-freertos-armcm3.cmake` + ThreadX toolchain(s) (referenced,
   unchanged)
 
-- [ ] Shared cross-build helper drives all embedded Cyclone installs.
-- [ ] Each target is a small per-target config (toolchain + RTOS/netstack flags +
-      board-config include dir), no copied script body.
-- [ ] `freertos` and both `threadx` installs still build identically (byte-for-
-      byte CMake args preserved or intentionally changed + noted).
+- [x] Shared `scripts/cyclonedds/cross-build-ddsc.sh` (sourced) owns the common
+      boilerplate: `csb_check_file`/`csb_check_dir`/`csb_require_compiler`,
+      `csb_parse_mode`, `csb_finalize_checks`, `csb_wipe_stale_lto` (LTO targets
+      only), `csb_configure_build_install`.
+- [x] Each probe is now a small per-target config (toolchain + RTOS/netstack
+      include checks + `c_flags` + `cmake_args`), no copied control flow.
+- [x] `freertos` + `threadx-rv64` cross-builds preserve their exact CMake args;
+      both re-run `rc=0` and reproduce their installs (`libddsc.a` present).
+      *(Only freertos + threadx-rv64 have cross-probes today; threadx-linux
+      Cyclone is host-linked, no cross build.)*
 
 ### 185.5 — Doctor + discoverability
 Surface provisioning state so a user who *is* out-of-tier understands why an
