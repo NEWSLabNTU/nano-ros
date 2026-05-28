@@ -599,6 +599,24 @@ example migration (K), then the audit/docs (N).
         from K.5 (merge vs segregate). Design:
         [`docs/design/configuration-and-transports.md`](../design/configuration-and-transports.md)
         ("Two axes" taxonomy).
+        - [x] **Schema + plumbing landed** (2026-05-29). `PlanTransport.interfaces:
+              Vec<String>` (serde default, skip-when-empty) + `validate_transports`
+              rejects it on serial/can (ethernet/wifi only); the generator emits a
+              `c.set_interfaces(&[…])` board-Config call (mirrors `set_ssid`/`set_mac`),
+              backed by a default-no-op `BoardTransportConfig::set_interfaces` seam;
+              both CMake parsers (`NanoRosConfig.cmake`, nros-c `NanoRosReadConfig.cmake`)
+              accept the TOML array `interfaces = ["eth0","eth1"]` (legacy scalar
+              `interface` mirrored in) → new `NROS_CONFIG_INTERFACES` list var. Tests:
+              `transport_tests::{multi_homed_interfaces_parse_and_validate,
+              interfaces_absent_round_trips_empty_and_skips_serialization,
+              interfaces_are_ethernet_wifi_only}` +
+              `multi_homed_interfaces_emit_set_interfaces_call`.
+        - [ ] **Per-backend *wire* emission (the merge) — deferred.** Turning the NIC
+              list into actual middleware config (zenoh multiple listen/connect
+              endpoints + `scouting.multicast.interface`; Cyclone `<General><Interfaces>`
+              XML) needs a multi-endpoint `SessionSpec` (today carries one locator) and
+              a multi-NIC target to verify against. The schema + `set_interfaces` seam
+              are in place; this is the remaining substance.
   - [x] **172.K.6 — drop the legacy arms + delete `config.toml`.** DONE
         2026-05-27. All 88 examples + 2 nros-bench fixtures on `nros.toml`
         (0 source `config.toml` repo-wide); legacy `[network]`/`[zenoh]`/
