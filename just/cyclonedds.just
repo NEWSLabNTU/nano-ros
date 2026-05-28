@@ -94,11 +94,13 @@ clean:
 
 # Build the `nros-rmw-cyclonedds` C++ backend on top of Cyclone DDS.
 # Standalone CMake project at packages/dds/nros-rmw-cyclonedds/.
-# Configures + builds + installs into the shared `build/install/`
-# prefix so downstream nros-cpp examples can find it via
-# `find_package(NrosRmwCyclonedds)`.
+# Phase 186.6.1 — self-provisions Cyclone from the pinned source
+# (nros_provide_cyclonedds()), so no `just cyclonedds setup` / `build/install`
+# prereq. Host flags mirror scripts/cyclonedds/build.sh (ENABLE_*/SHM off) +
+# a static ddsc; idlc resolves from the source build / PATH (186.3). No install
+# step — the ctest harness runs from the build tree.
 [group("main")]
-build-rmw: setup
+build-rmw:
     #!/usr/bin/env bash
     set -e
     PROJ="packages/dds/nros-rmw-cyclonedds"
@@ -108,8 +110,10 @@ build-rmw: setup
     # (CLAUDE.md "CMake Path Convention").
     cmake -S "$PROJ" -B "$PROJ/build" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH="$PWD/build/install" \
-        -DCMAKE_INSTALL_PREFIX="$PWD/build/install" \
+        -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON \
+        -DCYCLONEDDS_SOURCE_DIR="$PWD/third-party/dds/cyclonedds" \
+        -DENABLE_SECURITY=OFF -DENABLE_SSL=OFF -DENABLE_SHM=OFF \
+        -DBUILD_SHARED_LIBS=OFF \
         -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$SCRIPT" \
         -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL_SOURCE="$SCRIPT"
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then
@@ -117,7 +121,6 @@ build-rmw: setup
     else
         cmake --build "$PROJ/build" --parallel
     fi
-    cmake --install "$PROJ/build"
 
 # Run Cyclone DDS RMW tests via CTest.
 # Phase 117.3 ships only the register-vtable smoke test; 117.12 adds
@@ -126,8 +129,8 @@ build-rmw: setup
 test: build-rmw
     ctest --test-dir packages/dds/nros-rmw-cyclonedds/build --output-on-failure
 
-# Composite: setup Cyclone + build RMW backend + run tests. Wired
-# into top-level `just ci` via the `cyclonedds-ci` wrapper as of
-# Phase 117.16.
+# Composite: build RMW backend (self-provisions Cyclone) + run tests. Wired
+# into top-level `just ci` via the `cyclonedds-ci` wrapper as of Phase 117.16.
+# Phase 186.6.1 — no `setup` prereq; build-rmw self-provisions from source.
 [group("full-matrix")]
-ci: setup build-rmw test
+ci: build-rmw test
