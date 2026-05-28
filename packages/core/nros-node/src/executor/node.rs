@@ -1049,6 +1049,45 @@ impl<'e> NodeCtx<'e> {
         }
     }
 
+    /// Publisher builder (the `clone` tier), symmetric with
+    /// [`subscription`](Self::subscription). Pick `.typed::<M>()` or
+    /// `.generic(type, hash)`, set `.qos()`, then `.build()`. The returned
+    /// publisher handle is owned and outlives this `NodeCtx` — the bridge
+    /// builds the dest publisher on one ctx, drops it, then registers the
+    /// source subscription on another (see `entity-api-tiers.md`).
+    pub fn publisher<'t>(&mut self, topic: &'t str) -> CtxPublisherBuilder<'_, 'e, 't> {
+        CtxPublisherBuilder {
+            ctx: self,
+            topic,
+            qos: QosSettings::default(),
+        }
+    }
+
+    /// Convenient typed publisher (the `fork` tier — rclcpp/rclrs shape).
+    pub fn create_publisher<M: RosMessage>(
+        &mut self,
+        topic: &str,
+    ) -> Result<EmbeddedPublisher<M>, NodeError> {
+        self.executor
+            .create_publisher_on::<M>(self.node_id, topic, QosSettings::default())
+    }
+
+    /// Convenient generic (type-erased) publisher — rclcpp `create_generic_*`.
+    pub fn create_generic_publisher(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        self.executor.create_publisher_raw_on(
+            self.node_id,
+            topic,
+            type_name,
+            type_hash,
+            QosSettings::default(),
+        )
+    }
+
     /// Convenient typed subscription (the `fork` tier — rclcpp/rclrs shape).
     /// Sugar over the builder with default QoS + buffer.
     pub fn create_subscription<M, F>(
@@ -1089,6 +1128,92 @@ impl<'e> NodeCtx<'e> {
                 QosSettings::default(),
                 callback,
             )
+    }
+}
+
+/// Publisher builder on a [`NodeCtx`] — `node.publisher(topic)`.
+pub struct CtxPublisherBuilder<'c, 'e, 't> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    qos: QosSettings,
+}
+
+impl<'c, 'e, 't> CtxPublisherBuilder<'c, 'e, 't> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    /// Typed publisher for a ROS message `M`.
+    pub fn typed<M: RosMessage>(self) -> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
+        CtxTypedPublisherBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Generic (type-erased) publisher.
+    pub fn generic(
+        self,
+        type_name: &'t str,
+        type_hash: &'t str,
+    ) -> CtxGenericPublisherBuilder<'c, 'e, 't> {
+        CtxGenericPublisherBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            type_name,
+            type_hash,
+            qos: self.qos,
+        }
+    }
+}
+
+/// Typed publisher builder on a `NodeCtx` (`.typed::<M>()`).
+pub struct CtxTypedPublisherBuilder<'c, 'e, 't, M> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    qos: QosSettings,
+    _phantom: PhantomData<M>,
+}
+
+impl<'c, 'e, 't, M: RosMessage> CtxTypedPublisherBuilder<'c, 'e, 't, M> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build(self) -> Result<EmbeddedPublisher<M>, NodeError> {
+        self.ctx
+            .executor
+            .create_publisher_on::<M>(self.ctx.node_id, self.topic, self.qos)
+    }
+}
+
+/// Generic publisher builder on a `NodeCtx` (`.generic(type, hash)`).
+pub struct CtxGenericPublisherBuilder<'c, 'e, 't> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    type_name: &'t str,
+    type_hash: &'t str,
+    qos: QosSettings,
+}
+
+impl<'c, 'e, 't> CtxGenericPublisherBuilder<'c, 'e, 't> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build(self) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        self.ctx.executor.create_publisher_raw_on(
+            self.ctx.node_id,
+            self.topic,
+            self.type_name,
+            self.type_hash,
+            self.qos,
+        )
     }
 }
 
@@ -1432,5 +1557,37 @@ mod builder_tests {
                 let _ = info.attachment();
             })
             .expect("generic + message_info subscription builds");
+    }
+
+    #[test]
+    fn nodectx_publisher_and_bridge_shape() {
+        // NodeCtx publisher symmetry + the bridge two-ctx borrow pattern:
+        // build the dest publisher on one NodeCtx (dropped), then register
+        // the source subscription on another — the owned publisher outlives.
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        let id = exec.node_builder("n").build().expect("node");
+
+        // convenient + builder publisher on NodeCtx
+        let _p = exec
+            .node_mut(id)
+            .create_publisher::<TestMsg>("/p")
+            .expect("ctx convenient publisher");
+        let dest_pub = exec
+            .node_mut(id)
+            .publisher("/fwd")
+            .generic("std_msgs/msg/Int32", "hash")
+            .build()
+            .expect("ctx generic publisher builds"); // NodeCtx dropped here
+
+        // re-borrow exec for the source sub; closure owns dest_pub
+        let _s = exec
+            .node_mut(id)
+            .subscription("/src")
+            .generic("std_msgs/msg/Int32", "hash")
+            .message_info()
+            .build(move |payload: &[u8], _info: &nros_core::RawMessageInfo| {
+                let _ = dest_pub.publish_raw(payload);
+            })
+            .expect("bridge-shape source subscription builds");
     }
 }

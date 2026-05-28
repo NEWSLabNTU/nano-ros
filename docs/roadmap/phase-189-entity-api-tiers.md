@@ -41,7 +41,7 @@ application code.
 
 ## Milestones
 
-- [~] **M1 — Rust entity builder + convenient surface (unblocks 172 bridge).**
+- [x] **M1 — Rust entity builder + convenient surface (unblocks 172 bridge).**
       **Node-centric** (chosen 2026-05-28): `node.publisher(topic)` /
       `node.subscription(topic)` builders with knobs `.typed::<M>()` /
       `.generic(ty, hash)`, `.qos()`, `.rx_buffer::<N>()`, `.message_info()`,
@@ -60,13 +60,17 @@ application code.
       `Executor::node_mut(id) -> NodeCtx` + the subscription builder
       (`.typed::<M>()`/`.generic()`/`.qos()`/`.build(cb)`) + convenient
       `create_subscription` / `create_generic_subscription`, delegating to
-      `register_subscription_buffered_on`/`_raw_on`. *Slice 3 (bounded knobs)
-      DONE:* const-generic `.rx_buffer::<N>()` (typestate `const RX` on both
-      typed + generic builders) + `.sched_context()` (binds via
-      `bind_handle_to_sched_context`). *Remaining (slice 3b):* `.message_info()`
-      (the raw+info arena path + attachment surfacing — the 172 bridge dep; note
-      `MessageInfo` has no attachment field today, design fork open),
-      `NodeCtx.publisher` symmetry, then the M2 zoo retirement.
+      `register_subscription_buffered_on`/`_raw_on`. *Slice 3 DONE* — bounded
+      knobs `.rx_buffer::<N>()` (typestate `const RX`) + `.sched_context()`
+      (`fb7a4d24c`); `.message_info()` (`4d3e794a9`) yielding a
+      `GenericSubInfoBuilder` whose `FnMut(&[u8], &RawMessageInfo)` callback
+      surfaces the wire attachment (new `nros_core::RawMessageInfo` + flat-buffer
+      `SubBufferedRawInfoEntry` + `register_subscription_buffered_raw_info_on`);
+      `NodeCtx::publisher` symmetry + convenient `create_publisher`/
+      `create_generic_publisher` (`create_publisher_{,raw_}on`). The bridge
+      relay (`exec.node_mut(dst).publisher(t).generic(..).build()` then
+      `exec.node_mut(src).subscription(t).generic(..).message_info().build(cb)`)
+      is verified expressible in `builder_tests::nodectx_publisher_and_bridge_shape`.
 - [ ] **M2 — Retire the `register_*_*_*` zoo.** One release as `#[deprecated]`
       shims over the builder, then deleted. **The generator emits builder calls**
       (replacing the `register_subscription_raw_with_qos_sized_on` etc. it emits
