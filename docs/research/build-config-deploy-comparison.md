@@ -1,0 +1,134 @@
+# Build / configuration / deployment workflows — nano-ros vs related work
+
+Status: research notes · Date: 2026-05-28 · Author review of Phase 172 model
+
+Scope: the three *workflow* axes — **how you get a binary** (build), **how you
+set RMW / transport / QoS / params / RT** (configuration), **how the binary
+ships and runs** (deployment) — across the embedded-ROS / embedded-pub-sub
+landscape. Feature-level parity is covered separately in
+`book/src/concepts/comparison-vs-microros.md`; UX (project creation,
+distribution) in `docs/research/sdk-ux/{micro-ros,platformio-arduino-mbed}.md`.
+This doc evaluates against the **Phase 172** nano-ros model (root `nros.toml`,
+`nros deploy`, the two-form entry lib, build-ownership axis), which supersedes
+the older `find_package(NanoRos)` / `config.toml` workflow those docs describe.
+
+## Peers compared
+
+| System | What it is | Embedded reach |
+|---|---|---|
+| **nano-ros** | full ROS 2 client (Rust + C/C++), multi-RMW | bare-metal, FreeRTOS, NuttX, ThreadX, Zephyr, ESP-IDF, PX4 |
+| **micro-ROS** | full ROS 2 client (`rclc`, C) over Micro-XRCE-DDS | FreeRTOS, NuttX, Zephyr, ESP-IDF; PX4 canonical |
+| **Zenoh-pico** | pub/sub lib (no ROS API); the transport nano-ros wraps | any C target; RTOS + bare-metal |
+| **embedded DDS** (Cyclone-/Fast-DDS reduced profiles) | full DDS stack on MCU-class | Linux-class / high-end MCU; rarely truly bare-metal |
+| **Arduino/PlatformIO ROS libs** (`micro_ros_arduino`, rosserial legacy) | packaged micro-ROS / serial bridge | Arduino-class boards |
+| **ros2-rust `rclrs`** | host ROS 2 Rust client | Linux only (no MCU) — baseline, not embedded |
+
+## Axis 1 — Build workflow
+
+| | nano-ros (Phase 172) | micro-ROS | Zenoh-pico | embedded DDS | Arduino-ROS |
+|---|---|---|---|---|---|
+| Driver | `nros deploy <name>` (one root `nros.toml`) → metadata → plan → entry lib → vendor `build[]` | `create_firmware_ws.sh` → `configure_firmware.sh` → `build_firmware.sh` (per-RTOS meta-build over colcon) | plain CMake `add_subdirectory` / `find_package` | CMake + the DDS vendor's gen + per-RTOS port | drop a library zip into the IDE, hit Build |
+| Who owns the toolchain | **explicit axis**: self / vendor-lib / vendor-module | the meta-build owns it per RTOS (opaque) | the consumer | the consumer | the IDE |
+| Cross-RTOS uniformity | one command, one config; the generated *entry lib* is the neutral unit, platform startup is deploy-side | one CLI, but each RTOS has its own `config/<rtos>/<board>/{create,configure,build,flash}.sh` recipe | none — the consumer wires each RTOS | none | hidden by the IDE |
+| Code generation | launch + component metadata → generated wiring (one binary, all nodes) | none — you hand-write the `rclc` app | none | IDL → type support only | none |
+| Distribution form | source (`add_subdirectory`+corrosion) **or** compiled `lib<sys>.a`+header | precompiled `.a`+`.h` per ecosystem (Arduino/IDF/PIO/Zephyr/CubeMX) | source or `.a` | source | precompiled lib zip |
+
+**Read:** micro-ROS's headline strength is the *one-CLI, four-verb* flow with
+precompiled per-ecosystem artifacts — lowest friction to first-flash. nano-ros's
+distinguishing move is the **orchestration pipeline** (launch graph + component
+metadata → a generated entry lib wiring every node into one binary) and the
+**explicit build-ownership axis** — micro-ROS has neither (you hand-write the
+`rclc` app; the meta-build hides ownership). nano-ros's two-form entry lib
+(compiled `.a` for nano-ros-owned toolchains, source+CMake for vendor-owned)
+generalizes what micro-ROS does ad-hoc per ecosystem. Where nano-ros still
+trails: micro-ROS ships **precompiled artifacts for 5 ecosystems**; nano-ros's
+compiled form is proven only host/QEMU, vendor builds are template-stage.
+
+## Axis 2 — Configuration workflow
+
+| | nano-ros (Phase 172) | micro-ROS | Zenoh-pico | embedded DDS |
+|---|---|---|---|---|
+| Config home | one **root `nros.toml`** (SSOT) + optional per-component `[component]` | `colcon.meta` / `app-colcon.meta` (static sizing) + `configure_firmware.sh` flags | C `#define`s + `z_config_t` at runtime | XML profile (`CYCLONEDDS_URI`, Fast-DDS `*.xml`) + IDL |
+| RMW selection | `[system].rmw` (zenoh/xrce/cyclonedds), per-`[deploy]` override; build-time | fixed (XRCE only) | n/a (is the transport) | fixed (that DDS) |
+| Transport | `[[transport]]` (ethernet/wifi/serial/can; ip/mac/gw/ssid/locator) | `configure_firmware.sh -t udp/serial -i <ip> -p <port>` | `z_config` keys | DDS XML transport descriptors |
+| Static sizing | derived from the plan (callback/node/param counts) + env knobs | hand-tuned `colcon.meta` (`MAX_NODES`, `MAX_PUBLISHERS`, …) | compile `#define`s | profile-driven |
+| Params / remaps | `[overlays.<inst>]` (params/remaps/namespace), launch overlays | none at config level (hand-coded) | n/a | n/a |
+| RT scheduling | `[[scheduling.contexts]]` → `SchedContext` (FIFO/EDF/Sporadic/TT) | rclc executor priority callbacks (no EDF/TT) | n/a | n/a |
+| Multi-domain / bridge | `[[domain]]` / `[[bridge]]` (design; routing pending K.5) | n/a (single XRCE session) | manual | DDS domains (native) |
+
+**Read:** nano-ros centralizes *everything* in one declarative file with a true
+single-source-of-truth for RMW + domain, and uniquely carries RT-scheduling +
+params/remaps + multi-domain *as config* (the orchestration plan consumes them).
+micro-ROS splits config across `colcon.meta` (static memory) + shell flags
+(transport) + hand-coded app (params/QoS) — simpler per piece, no unifying file,
+and **hand-tuned static sizing is a known micro-ROS footgun** (wrong
+`MAX_*` → silent runtime failure). nano-ros deriving sizing from the plan is a
+genuine ergonomic edge. The Cargo-style manifest revision (one `nros.toml`,
+section-discriminated, `[component]` folds in `component_nros.toml`) closes
+nano-ros's last config-shape wart; micro-ROS has no equivalent unification.
+
+## Axis 3 — Deployment workflow
+
+| | nano-ros (Phase 172) | micro-ROS | Zenoh-pico | embedded DDS |
+|---|---|---|---|---|
+| Ship step | `nros deploy <name>` runs vendor `build[]`/`package[]` (var-substituted) | `flash_firmware.sh` (OpenOCD/board probe auto-detect) | consumer's flash | consumer's flash |
+| Ownership models | **3 explicit**: self (nano-ros owns), vendor-lib (link a vendor `.a`, e.g. Orin SPE), vendor-module (vendor build owns, e.g. PX4/Zephyr) | one implicit (the meta-build owns flash per board) | none | none |
+| **Broker / agent on the wire** | **none for Zenoh P2P / Cyclone DDS**; agent only for XRCE | **always** — the Micro-XRCE-DDS **Agent** must run on the host, bridging XRCE↔DDS | none (Zenoh router optional, P2P-capable) | none (DDS is brokerless) | always (the agent, like micro-ROS) |
+| Host-side prereq | a `zenohd` router (Zenoh) **or** nothing (Cyclone P2P) **or** the XRCE Agent (XRCE) | the Agent process, always | optional `zenohd` | nothing | the agent |
+| Multi-binary / gateway | `[[bridge]]` (in-binary) + `nros-bridge.toml` (separate deployable) | n/a | manual | DDS routing service |
+| Reflash to change transport | no — re-`deploy` from config | no — re-`configure_firmware.sh` + reflash | edit + reflash | edit XML (some runtime) |
+
+**Read:** the sharpest deployment difference is the **mandatory broker**.
+micro-ROS *always* needs the Micro-XRCE-DDS Agent running host-side — a process
+to provision, monitor, and (in the field) keep alive; it's the single biggest
+operational tax of the XRCE model. nano-ros inherits that tax **only** on its
+XRCE backend; with Zenoh it's peer-to-peer through an optional router, and with
+Cyclone DDS it's fully brokerless RTPS — the device is a first-class DDS
+participant with no bridge. That multi-RMW choice is nano-ros's strongest
+deployment differentiator. The **ownership axis** (self/vendor-lib/vendor-module)
+is also novel: micro-ROS's meta-build implicitly owns the flow per board, which
+is frictionless when your board is in its catalog and a cliff when it isn't;
+nano-ros makes ownership explicit so an out-of-catalog vendor target (Orin SPE,
+a custom PX4 module) is a `[deploy]` table, not a fork of the build system.
+Where nano-ros trails hard: micro-ROS's `flash_firmware.sh` **actually flashes
+real boards today** across its catalog; nano-ros's vendor deploys are
+template + dry-run, and no real hardware boot exists in CI for any vendor model.
+
+## Summary — where each wins
+
+**nano-ros wins:** multi-RMW (no mandatory agent; brokerless option); the
+orchestration pipeline (launch→plan→generated one-binary wiring; nothing else
+here generates the app); one-file declarative config with SSOT RMW/domain + RT +
+params; the explicit build-ownership axis for out-of-catalog targets; Rust-first
+safety + Kani/Verus + E2E CRC.
+
+**micro-ROS wins:** lowest first-flash friction (one CLI, precompiled artifacts
+for 5 ecosystems); proven real-hardware flashing across a board catalog;
+mature community + commercial support + Jazzy/Iron; smaller flash floor (~30 KB
+rclc+XRCE vs nano-ros's ~75 KB XRCE / ~100 KB+ Zenoh).
+
+**The others:** Zenoh-pico is the transport, not a peer framework (no ROS API,
+no config/deploy story of its own — nano-ros is the framework over it).
+Embedded DDS gives brokerless RTPS but rarely fits truly bare-metal and has no
+codegen/orchestration. Arduino-ROS = packaged micro-ROS, so it inherits the
+agent tax with the lowest possible build friction. `rclrs` is host-only.
+
+## Honest gaps nano-ros should close (vs micro-ROS specifically)
+
+1. **A `nros deploy` that flashes real boards.** micro-ROS's killer feature is
+   `flash_firmware.sh` working across a catalog. nano-ros's `package[]` can
+   shell out to a flasher, but no in-catalog board is proven end-to-end on HW.
+   (Phase 172 W.4.)
+2. **Precompiled-artifact distribution.** micro-ROS ships Arduino/IDF/PIO/Zephyr
+   zips; nano-ros is source-or-build-it. The compiled entry-lib form is the
+   foundation, but per-ecosystem packaging isn't shipped.
+3. **Flash-floor.** The XRCE-rclc ~30 KB floor undercuts nano-ros; for the
+   tightest targets micro-ROS still wins on size.
+
+## See also
+
+- `book/src/concepts/comparison-vs-microros.md` — feature parity (some Build-row
+  entries predate Phase 172; corrected alongside this doc).
+- `docs/research/sdk-ux/micro-ros.md` — the one-CLI / precompiled-artifact UX gap.
+- `docs/roadmap/phase-172-orchestration-deferred.md` — the deployment model this
+  doc evaluates (W.4 = the real-hardware-deploy gap above).
