@@ -54,8 +54,13 @@ truncates** → wrong key expressions on the wire (silent mis-routing), not an e
       heapless/lifecycle/executor `Node` types; converting to `Result` is an
       invasive API migration → deferred (coordinate on the shared branch; not done
       surgically to avoid conflicts).
-- [ ] `lifecycle_services.rs` transition-label `push_str` (`:87,109`) — lower
-      priority (labels, not wire keys); convert where the fn already returns `Result`.
+- [x] `lifecycle_services.rs` labels (`:87,109`) + the runtime `available_states`
+      push (`:260`) — these take a fixed, closed set of short literals (always fit)
+      and the builders are infallible (`-> MsgState`/`MsgTransition`, no `Result`),
+      so a `debug_assert!(...push...().is_ok(), …)` replaces `let _ =`: loud on a
+      future capacity regression, no-op in release, no API ripple. Test-only
+      `let _ = …push_str` (`:544,559,612`) left as-is. `cargo check -p nros-node`
+      clean under `-D warnings`.
 
 ### 192.2 — [P1, correctness] Shared CDR / action wire-framing constants
 The CDR header (`CDR_HEADER_LEN=4`, `nros-serdes/src/lib.rs:49`) + GoalId
