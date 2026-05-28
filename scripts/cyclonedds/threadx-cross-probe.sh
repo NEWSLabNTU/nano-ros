@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
-# Configure/build probe for Cyclone DDS on nano-ros ThreadX RISC-V64.
+# Configure/build probe for Cyclone DDS on nano-ros ThreadX RISC-V64 + NetX Duo.
+#
+# Cross-builds the Cyclone `ddsc` static lib with WITH_THREADX and installs it so
+# `find_package(CycloneDDS)` resolves for the ThreadX-RV64 examples. Shared
+# boilerplate (prereq checks, mode parsing, stale-LTO self-heal, configure/build/
+# install) lives in cross-build-ddsc.sh (Phase 185.4); this file carries the
+# ThreadX/NetX-specific toolchain, include checks, and CMake flags.
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/cyclonedds/cross-build-ddsc.sh
+source "$repo_root/scripts/cyclonedds/cross-build-ddsc.sh"
+
 cyclone_dir="${CYCLONEDDS_DIR:-$repo_root/third-party/dds/cyclonedds}"
 build_dir="${CYCLONEDDS_THREADX_PROBE_BUILD_DIR:-$repo_root/build/cyclonedds-threadx-rv64-probe}"
 install_dir="${CYCLONEDDS_THREADX_PROBE_INSTALL_DIR:-$repo_root/build/cyclonedds-threadx-rv64-install}"
@@ -13,61 +22,25 @@ netx_dir="${NETX_DIR:-$repo_root/third-party/threadx/netxduo}"
 config_dir="${CYCLONEDDS_THREADX_CONFIG_DIR:-$repo_root/packages/boards/nros-board-threadx-qemu-riscv64/config}"
 threadx_port_dir="${THREADX_PORT_DIR:-$threadx_dir/ports/risc-v64/gnu/inc}"
 
-mode="build"
-if [ "${1:-}" = "--configure-only" ]; then
-    mode="configure"
-elif [ "${1:-}" != "" ]; then
-    echo "usage: $0 [--configure-only]" >&2
-    exit 2
-fi
-
-missing=0
-check_file() {
-    local path="$1"
-    local label="$2"
-    if [ -f "$path" ]; then
-        printf '  [OK]      %s\n' "$label"
-    else
-        printf '  [MISSING] %s (%s)\n' "$label" "$path"
-        missing=1
-    fi
-}
-
-check_dir() {
-    local path="$1"
-    local label="$2"
-    if [ -d "$path" ]; then
-        printf '  [OK]      %s\n' "$label"
-    else
-        printf '  [MISSING] %s (%s)\n' "$label" "$path"
-        missing=1
-    fi
-}
+csb_parse_mode "$@"
 
 echo "Cyclone DDS ThreadX+NetX Duo cross-build probe"
 echo "  Source: $cyclone_dir"
 echo "  Build:  $build_dir"
 echo "  Prefix: $install_dir"
 
-check_file "$toolchain" "ThreadX RISC-V64 CMake toolchain"
-check_file "$cyclone_dir/CMakeLists.txt" "Cyclone DDS source tree"
-check_dir "$threadx_dir/common/inc" "ThreadX kernel headers"
-check_dir "$threadx_port_dir" "ThreadX RISC-V64 port headers"
-check_dir "$netx_dir/common/inc" "NetX Duo headers"
-check_file "$netx_dir/addons/BSD/nxd_bsd.h" "NetX Duo BSD header"
-check_file "$config_dir/tx_user.h" "ThreadX tx_user.h"
-check_file "$config_dir/nx_user.h" "NetX nx_user.h"
-check_file "$config_dir/tx_port.h" "nano-ros ThreadX port shim"
-check_file "$config_dir/nx_port.h" "nano-ros NetX port shim"
-if ! command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
-    echo "  [MISSING] riscv64-unknown-elf-gcc"
-    missing=1
-else
-    echo "  [OK]      riscv64-unknown-elf-gcc"
-fi
-if [ "$missing" -ne 0 ]; then
-    exit "$missing"
-fi
+csb_check_file "$toolchain" "ThreadX RISC-V64 CMake toolchain"
+csb_check_file "$cyclone_dir/CMakeLists.txt" "Cyclone DDS source tree"
+csb_check_dir "$threadx_dir/common/inc" "ThreadX kernel headers"
+csb_check_dir "$threadx_port_dir" "ThreadX RISC-V64 port headers"
+csb_check_dir "$netx_dir/common/inc" "NetX Duo headers"
+csb_check_file "$netx_dir/addons/BSD/nxd_bsd.h" "NetX Duo BSD header"
+csb_check_file "$config_dir/tx_user.h" "ThreadX tx_user.h"
+csb_check_file "$config_dir/nx_user.h" "NetX nx_user.h"
+csb_check_file "$config_dir/tx_port.h" "nano-ros ThreadX port shim"
+csb_check_file "$config_dir/nx_port.h" "nano-ros NetX port shim"
+csb_require_compiler riscv64-unknown-elf-gcc
+csb_finalize_checks
 
 picolibc_sysroot="$(riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d --specs=picolibc.specs -print-sysroot 2>/dev/null || true)"
 if [ -z "$picolibc_sysroot" ] || [ ! -d "$picolibc_sysroot/include" ]; then
@@ -119,30 +92,8 @@ cmake_args=(
     "-DCMAKE_C_FLAGS=${c_flags[*]}"
 )
 
-echo
-# Phase 179.G — self-heal a stale CMake cache. A build dir configured
-# before LTO was disabled keeps `ENABLE_LTO:BOOL=ON`, and an incremental
-# reconfigure leaves the GCC slim-LTO objects in place. Those objects
-# carry GIMPLE bytecode, not machine code, so rust-lld (the linker for
-# the ThreadX examples) cannot resolve any `dds_*` symbol from them. Wipe
-# the build dir whenever the cached LTO setting does not match the
-# LTO-off config so the rebuild produces real, linkable objects.
-cache="$build_dir/CMakeCache.txt"
-if [ -f "$cache" ] && ! grep -q '^ENABLE_LTO:BOOL=OFF' "$cache"; then
-    echo "Stale CMake cache (LTO not disabled) — wiping $build_dir for a clean reconfigure"
-    rm -rf "$build_dir"
-fi
+# ThreadX disables LTO — heal a build dir cached with LTO on (stale GIMPLE
+# objects break rust-lld; Phase 179.G).
+csb_wipe_stale_lto "$build_dir"
 
-echo "Configuring Cyclone DDS for ThreadX+NetX Duo..."
-cmake "${cmake_args[@]}"
-
-if [ "$mode" = "configure" ]; then
-    echo
-    echo "Configure-only probe passed."
-    exit 0
-fi
-
-echo
-echo "Building Cyclone DDS ddsc target..."
-cmake --build "$build_dir" --target ddsc --parallel "${NROS_BUILD_JOBS:-4}"
-cmake --install "$build_dir" --prefix "$install_dir"
+csb_configure_build_install

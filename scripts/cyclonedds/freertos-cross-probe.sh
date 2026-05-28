@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # Configure/build probe for Cyclone DDS on the nano-ros FreeRTOS MPS2 target.
 #
-# This intentionally stops short of wiring any example fixture cells. It proves
-# how far the pinned Cyclone tree gets with WITH_FREERTOS + WITH_LWIP and records
-# the first real port/config blocker.
+# Cross-builds the Cyclone `ddsc` static lib with WITH_FREERTOS + WITH_LWIP and
+# installs it so `find_package(CycloneDDS)` resolves for the FreeRTOS examples.
+# Shared boilerplate (prereq checks, mode parsing, configure/build/install) lives
+# in cross-build-ddsc.sh (Phase 185.4); this file carries the FreeRTOS-specific
+# toolchain, include checks, and CMake flags.
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/cyclonedds/cross-build-ddsc.sh
+source "$repo_root/scripts/cyclonedds/cross-build-ddsc.sh"
+
 cyclone_dir="${CYCLONEDDS_DIR:-$repo_root/third-party/dds/cyclonedds}"
 build_dir="${CYCLONEDDS_FREERTOS_PROBE_BUILD_DIR:-$repo_root/build/cyclonedds-freertos-probe}"
 install_dir="${CYCLONEDDS_FREERTOS_PROBE_INSTALL_DIR:-$repo_root/build/cyclonedds-freertos-install}"
@@ -16,60 +21,24 @@ freertos_dir="${FREERTOS_DIR:-$repo_root/third-party/freertos/kernel}"
 lwip_dir="${LWIP_DIR:-$repo_root/third-party/freertos/lwip}"
 config_dir="${FREERTOS_CONFIG_DIR:-$repo_root/packages/boards/nros-board-mps2-an385-freertos/config}"
 
-mode="build"
-if [ "${1:-}" = "--configure-only" ]; then
-    mode="configure"
-elif [ "${1:-}" != "" ]; then
-    echo "usage: $0 [--configure-only]" >&2
-    exit 2
-fi
-
-missing=0
-check_file() {
-    local path="$1"
-    local label="$2"
-    if [ -f "$path" ]; then
-        printf '  [OK]      %s\n' "$label"
-    else
-        printf '  [MISSING] %s (%s)\n' "$label" "$path"
-        missing=1
-    fi
-}
-
-check_dir() {
-    local path="$1"
-    local label="$2"
-    if [ -d "$path" ]; then
-        printf '  [OK]      %s\n' "$label"
-    else
-        printf '  [MISSING] %s (%s)\n' "$label" "$path"
-        missing=1
-    fi
-}
+csb_parse_mode "$@"
 
 echo "Cyclone DDS FreeRTOS+lwIP cross-build probe"
 echo "  Source: $cyclone_dir"
 echo "  Build:  $build_dir"
 echo "  Prefix: $install_dir"
 
-check_file "$toolchain" "MPS2 FreeRTOS CMake toolchain"
-check_file "$cyclone_dir/CMakeLists.txt" "Cyclone DDS source tree"
-check_dir "$freertos_dir/include" "FreeRTOS kernel headers"
-check_dir "$freertos_dir/portable/GCC/ARM_CM3" "FreeRTOS ARM_CM3 port"
-check_dir "$lwip_dir/src/include/lwip" "lwIP headers"
-check_dir "$lwip_dir/contrib/ports/freertos/include" "lwIP FreeRTOS port headers"
-check_file "$config_dir/FreeRTOSConfig.h" "MPS2 FreeRTOSConfig.h"
-check_file "$config_dir/lwipopts.h" "MPS2 lwipopts.h"
-check_file "$config_dir/arch/cc.h" "MPS2 lwIP arch/cc.h"
-if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-    echo "  [MISSING] arm-none-eabi-gcc"
-    missing=1
-else
-    echo "  [OK]      arm-none-eabi-gcc"
-fi
-if [ "$missing" -ne 0 ]; then
-    exit "$missing"
-fi
+csb_check_file "$toolchain" "MPS2 FreeRTOS CMake toolchain"
+csb_check_file "$cyclone_dir/CMakeLists.txt" "Cyclone DDS source tree"
+csb_check_dir "$freertos_dir/include" "FreeRTOS kernel headers"
+csb_check_dir "$freertos_dir/portable/GCC/ARM_CM3" "FreeRTOS ARM_CM3 port"
+csb_check_dir "$lwip_dir/src/include/lwip" "lwIP headers"
+csb_check_dir "$lwip_dir/contrib/ports/freertos/include" "lwIP FreeRTOS port headers"
+csb_check_file "$config_dir/FreeRTOSConfig.h" "MPS2 FreeRTOSConfig.h"
+csb_check_file "$config_dir/lwipopts.h" "MPS2 lwipopts.h"
+csb_check_file "$config_dir/arch/cc.h" "MPS2 lwIP arch/cc.h"
+csb_require_compiler arm-none-eabi-gcc
+csb_finalize_checks
 
 c_flags=(
     "-mcpu=cortex-m3"
@@ -109,18 +78,7 @@ cmake_args=(
     "-DCMAKE_C_FLAGS=${c_flags[*]}"
 )
 
+# FreeRTOS does not disable LTO, so the stale-LTO-cache self-heal does not apply.
 echo
-echo "Configuring Cyclone DDS for FreeRTOS+lwIP..."
-cmake "${cmake_args[@]}"
-
-if [ "$mode" = "configure" ]; then
-    echo
-    echo "Configure-only probe passed."
-    exit 0
-fi
-
-echo
-echo "Building Cyclone DDS ddsc target..."
 echo "Building ddsc should now get past lwIP ifaddrs/netif_list."
-cmake --build "$build_dir" --target ddsc --parallel "${NROS_BUILD_JOBS:-4}"
-cmake --install "$build_dir" --prefix "$install_dir"
+csb_configure_build_install
