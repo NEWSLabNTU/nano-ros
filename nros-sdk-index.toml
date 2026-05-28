@@ -83,6 +83,9 @@ install = '''cmake --build build --parallel $(nproc) && mkdir -p {prefix}/bin {p
 [tool.cyclonedds]
 version = "0.10.5-nros1"
 upstream = "12b4af2c5ac98657d42df84a5a45006ceede503b" # fork sha = submodule pointer
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-x86_64.tar.zst", sha256 = "ed8a51eac91a884f39bfff4fe824923e5edf1f9dadb4a941c99a9f080c7217d3" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-arm64.tar.zst", sha256 = "4c224398115bd45e14b37d6c8de7e94f4aed6f46da762f517654221327c51d5e" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-macos-arm64.tar.zst", sha256 = "f13c0dab71aa953c72aa5e5b4d7d8022a48de1670ccf28b103920ec06f1c3715" }
 [tool.cyclonedds.source]
 git = "https://github.com/NEWSLabNTU/cyclonedds"
 ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
