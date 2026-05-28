@@ -108,6 +108,67 @@ impl MessageInfo {
     }
 }
 
+/// Raw-subscription message info: [`MessageInfo`] metadata plus the
+/// sample's wire-level **attachment** bytes, borrowed for the callback
+/// scope.
+///
+/// Surfaced on the generic (type-erased) subscription path
+/// (`node.subscription(t).generic(..).message_info().build(cb)` — the
+/// `FnMut(&[u8], &RawMessageInfo)` callback). The attachment carries
+/// out-of-band tags such as the cross-RMW bridge's `bridge_origin`
+/// (read via [`attachment`](Self::attachment) for echo suppression).
+///
+/// The `'a` lifetime ties the borrowed attachment to the dispatch call;
+/// copy out what you need before the callback returns. Metadata
+/// accessors delegate to the inner [`MessageInfo`]; on backends without
+/// a combined raw+info+attachment take they read their defaults (the
+/// attachment is always populated).
+#[derive(Debug, Clone, Copy)]
+pub struct RawMessageInfo<'a> {
+    info: MessageInfo,
+    attachment: &'a [u8],
+}
+
+impl<'a> RawMessageInfo<'a> {
+    /// Build from an attachment slice (metadata defaulted).
+    pub const fn new(attachment: &'a [u8]) -> Self {
+        Self {
+            info: MessageInfo::new(),
+            attachment,
+        }
+    }
+
+    /// Build from explicit metadata + attachment.
+    pub const fn with_info(info: MessageInfo, attachment: &'a [u8]) -> Self {
+        Self { info, attachment }
+    }
+
+    /// The sample's wire-level attachment bytes (empty if none).
+    pub const fn attachment(&self) -> &'a [u8] {
+        self.attachment
+    }
+
+    /// The underlying metadata.
+    pub const fn info(&self) -> &MessageInfo {
+        &self.info
+    }
+
+    /// Timestamp when the message was published.
+    pub const fn source_timestamp(&self) -> Time {
+        self.info.source_timestamp()
+    }
+
+    /// Timestamp when the message was received.
+    pub const fn received_timestamp(&self) -> Time {
+        self.info.received_timestamp()
+    }
+
+    /// Publisher's Global Identifier (GID).
+    pub const fn publisher_gid(&self) -> &[u8; PUBLISHER_GID_SIZE] {
+        self.info.publisher_gid()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

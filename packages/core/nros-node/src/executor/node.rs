@@ -1231,6 +1231,20 @@ impl<'c, 'e, 't, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, RX> {
         }
     }
 
+    /// Surface the sample's wire attachment + metadata to the callback
+    /// (`FnMut(&[u8], &RawMessageInfo)`). The cross-RMW bridge reads the
+    /// `bridge_origin` tag from `info.attachment()` for echo suppression.
+    pub fn message_info(self) -> GenericSubInfoBuilder<'c, 'e, 't, RX> {
+        GenericSubInfoBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            type_name: self.type_name,
+            type_hash: self.type_hash,
+            qos: self.qos,
+            sched: self.sched,
+        }
+    }
+
     pub fn build<F: FnMut(&[u8]) + 'static>(
         self,
         callback: F,
@@ -1239,6 +1253,66 @@ impl<'c, 'e, 't, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, RX> {
             .ctx
             .executor
             .register_subscription_buffered_raw_on::<F, RX>(
+                self.ctx.node_id,
+                self.topic,
+                self.type_name,
+                self.type_hash,
+                self.qos,
+                callback,
+            )?;
+        if let Some(sc) = self.sched {
+            self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;
+        }
+        Ok(handle)
+    }
+}
+
+/// Generic subscription builder with `MessageInfo` surfaced
+/// (`.message_info()`). Callback is `FnMut(&[u8], &RawMessageInfo)`.
+pub struct GenericSubInfoBuilder<
+    'c,
+    'e,
+    't,
+    const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    ctx: &'c mut NodeCtx<'e>,
+    topic: &'t str,
+    type_name: &'t str,
+    type_hash: &'t str,
+    qos: QosSettings,
+    sched: Option<super::sched_context::SchedContextId>,
+}
+
+impl<'c, 'e, 't, const RX: usize> GenericSubInfoBuilder<'c, 'e, 't, RX> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn sched_context(mut self, sc: super::sched_context::SchedContextId) -> Self {
+        self.sched = Some(sc);
+        self
+    }
+
+    pub fn rx_buffer<const N: usize>(self) -> GenericSubInfoBuilder<'c, 'e, 't, N> {
+        GenericSubInfoBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            type_name: self.type_name,
+            type_hash: self.type_hash,
+            qos: self.qos,
+            sched: self.sched,
+        }
+    }
+
+    pub fn build<F: FnMut(&[u8], &nros_core::RawMessageInfo) + 'static>(
+        self,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError> {
+        let handle = self
+            .ctx
+            .executor
+            .register_subscription_buffered_raw_info_on::<F, RX>(
                 self.ctx.node_id,
                 self.topic,
                 self.type_name,
@@ -1329,7 +1403,7 @@ mod builder_tests {
             .node_mut(id)
             .subscription("/sized")
             .typed::<TestMsg>()
-            .rx_buffer::<512>()
+            .rx_buffer::<64>()
             .sched_context(sc)
             .build(|_m: &TestMsg| {})
             .expect("sized + sched subscription builds");
@@ -1339,5 +1413,24 @@ mod builder_tests {
             .node_mut(id)
             .create_subscription::<TestMsg, _>("/conv", |_m: &TestMsg| {})
             .expect("convenient typed subscription builds");
+    }
+
+    #[test]
+    fn generic_message_info_builder() {
+        // slice 3b — the bridge echo path: generic sub whose callback
+        // receives the wire attachment via RawMessageInfo.
+        let mut exec: Executor = Executor::from_session(MockSession::new());
+        let id = exec.node_builder("n").build().expect("node");
+
+        let _i = exec
+            .node_mut(id)
+            .subscription("/info")
+            .generic("std_msgs/msg/Int32", "hash")
+            .message_info()
+            .rx_buffer::<256>()
+            .build(|_payload: &[u8], info: &nros_core::RawMessageInfo| {
+                let _ = info.attachment();
+            })
+            .expect("generic + message_info subscription builds");
     }
 }
