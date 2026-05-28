@@ -7,11 +7,11 @@
 #       -> dist/arm-none-eabi-gcc-<host-key>.tar.zst
 set -euo pipefail
 
-version="${1:?usage: build-arm-none-eabi-gcc.sh <version> <host-key>}"
-host="${2:?usage: build-arm-none-eabi-gcc.sh <version> <host-key>}"
-
-# nros version label <upstream>-nros<n>; ARM's release id is <upstream>.rel1.
-upstream="${version%-nros*}.rel1" # 13.2 -> 13.2.rel1
+version="${1:?usage: build-arm-none-eabi-gcc.sh <version> <host-key> <upstream>}"
+host="${2:?usage: build-arm-none-eabi-gcc.sh <version> <host-key> <upstream>}"
+# Exact ARM release id (e.g. 13.2.rel1) — SSOT is the index [tool.*].upstream,
+# passed by build-tool.yml. No longer hand-derived from the version label.
+upstream="${3:?usage: build-arm-none-eabi-gcc.sh <version> <host-key> <upstream>}"
 
 case "$host" in
 linux-x86_64) arch="x86_64" ;;

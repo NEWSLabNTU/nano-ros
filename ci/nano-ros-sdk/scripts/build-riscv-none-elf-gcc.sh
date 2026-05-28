@@ -6,17 +6,11 @@
 #       -> dist/riscv-none-elf-gcc-<host-key>.tar.zst
 set -euo pipefail
 
-version="${1:?usage: build-riscv-none-elf-gcc.sh <version> <host-key>}"
-host="${2:?usage: build-riscv-none-elf-gcc.sh <version> <host-key>}"
-
-# nros label <maj.min>-nros<n> -> pinned xPack build (carries the patch+rev).
-case "${version%-nros*}" in
-14.2) upstream="14.2.0-3" ;;
-*)
-    echo "build-riscv-none-elf-gcc: no xPack pin for ${version}" >&2
-    exit 1
-    ;;
-esac
+version="${1:?usage: build-riscv-none-elf-gcc.sh <version> <host-key> <upstream>}"
+host="${2:?usage: build-riscv-none-elf-gcc.sh <version> <host-key> <upstream>}"
+# Exact xPack build (e.g. 14.2.0-3) — SSOT is the index [tool.*].upstream, passed
+# by build-tool.yml. Was hardcoded in a case here (the index didn't record it).
+upstream="${3:?usage: build-riscv-none-elf-gcc.sh <version> <host-key> <upstream>}"
 
 case "$host" in
 linux-x86_64) plat="linux-x64" ;;

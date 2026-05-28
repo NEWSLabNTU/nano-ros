@@ -6,8 +6,12 @@
 #   build-qemu.sh <version> <host-key>   ->   dist/qemu-<host-key>.tar.zst
 set -euo pipefail
 
-version="${1:?usage: build-qemu.sh <version> <host-key>}"
-host="${2:?usage: build-qemu.sh <version> <host-key>}"
+version="${1:?usage: build-qemu.sh <version> <host-key> <upstream>}"
+host="${2:?usage: build-qemu.sh <version> <host-key> <upstream>}"
+# Fork branch/ref (e.g. nano-ros-v11.0.0-patches) — SSOT is the index
+# [tool.qemu].upstream / source.ref, passed by build-tool.yml. No longer
+# hardcoded here.
+upstream="${3:?usage: build-qemu.sh <version> <host-key> <upstream>}"
 
 root="$(pwd)"
 prefix="$root/out/qemu"
@@ -24,10 +28,9 @@ else
     brew install libslirp pkg-config ninja pixman glib zstd 2>/dev/null || true
 fi
 
-# Patched fork branch (no tags upstream); keep in sync with [tool.qemu.source]
-# ref in nano-ros's nros-sdk-index.toml. Configure flags mirror
-# just/qemu-baremetal.just's setup-qemu so the prebuilt == the source build.
-git clone --depth 1 --branch nano-ros-v11.0.0-patches \
+# Configure flags mirror just/qemu-baremetal.just's setup-qemu so the prebuilt
+# == the source build.
+git clone --depth 1 --branch "$upstream" \
     https://github.com/NEWSLabNTU/qemu qemu-src
 cd qemu-src
 ./configure --prefix="$prefix" \
