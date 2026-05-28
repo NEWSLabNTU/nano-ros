@@ -63,7 +63,7 @@ Result: setup passes on **both lines**; builds reach the interface codegen.
 
 ## Work Items
 
-### 196.1 — [open, coordinate with Phase 195] Finish the dual-line build: codegen CLI skew
+### 196.1 — [DONE] Finish the dual-line build: codegen CLI skew
 The build now fails at the codegen call:
 `nros-codegen failed for std_msgs (exit 2): error: unexpected argument '--args-file'`.
 The codegen CLI moved to a `nros codegen` subcommand (Phase 195 `27e9be2`/
@@ -75,12 +75,17 @@ coupled facts:
 - the `packages/codegen` submodule pointer is **drifting** (superproject records
   `624e5bc6`, a local working tree sat at `860f301`).
 
-- [ ] Update the Zephyr cmake to the canonical CLI (`nros codegen --args-file …`
-      / `nros codegen --language cpp --args-file …`) once Phase 195's CLI is
-      final. One-liner, but do it against the settled CLI + a consistent
-      submodule pointer — not while both are moving.
-- [ ] Reconcile the `packages/codegen` submodule pointer (record the commit whose
-      `nros` matches the cmake invocation; ensure it's pushed first).
+- [x] **DONE.** `zephyr/cmake/nros_generate_interfaces.cmake` now invokes
+      `nros codegen --args-file …` / `nros codegen --language cpp --args-file …`
+      (the canonical `nros codegen` subcommand). Verified `nros codegen
+      --args-file` parses. It was the only superproject `--args-file` consumer
+      (the canonical cmake module lives in `packages/codegen`).
+- [x] **Submodule pointer reconciled + the 195.D codegen-workspace bug fixed:**
+      195.D deleted the `nros-codegen-c` crate dir but left it in
+      `packages/Cargo.toml` `[workspace].members` → the whole codegen workspace
+      failed to load (broke every `nros` CLI build). Dropped the stale member
+      (codegen `00a1b2d`, pushed); bumped the superproject pointer. nros builds
+      again.
 
 ### 196.2 — [P2] `nros codegen` consumer-coverage check
 195.D switched consumers to `nros codegen` but missed the Zephyr cmake (196.1).
@@ -138,7 +143,7 @@ triggers (core changes do affect Zephyr), but ensure `concurrency:
 cancel-in-progress` (already set) and consider path-narrowing where a workflow
 genuinely doesn't depend on a subtree.
 
-### 196.6 — [P1] Per-platform **dependency-chain** validation (light, not full builds)
+### 196.6 — [DONE] Per-platform **dependency-chain** validation (light, not full builds)
 
 **Distribution model (confirmed):** nano-ros ships as a **source release +
 prebuilt host toolchains** (`nros setup` fetches the toolchains; the crates are
