@@ -90,9 +90,13 @@ is also novel: micro-ROS's meta-build implicitly owns the flow per board, which
 is frictionless when your board is in its catalog and a cliff when it isn't;
 nano-ros makes ownership explicit so an out-of-catalog vendor target (Orin SPE,
 a custom PX4 module) is a `[deploy]` table, not a fork of the build system.
-Where nano-ros trails hard: micro-ROS's `flash_firmware.sh` **actually flashes
-real boards today** across its catalog; nano-ros's vendor deploys are
-template + dry-run, and no real hardware boot exists in CI for any vendor model.
+On flashing, the model differs by ownership: where nano-ros owns the deployment
+(`self`/`vendor-lib`) the flash is a `package[]` step `nros deploy` can drive;
+where it's vendored (`vendor-module`) flashing follows the vendor's own
+`flash`/`upload` target — not re-implemented. Where nano-ros trails is in
+*proof*, not model: micro-ROS's `flash_firmware.sh` **flashes a board catalog
+today**, while nano-ros's vendor deploys are still template + dry-run with no
+real hardware boot in CI (Phase 172 W.4).
 
 ## Summary — where each wins
 
@@ -102,10 +106,16 @@ here generates the app); one-file declarative config with SSOT RMW/domain + RT +
 params; the explicit build-ownership axis for out-of-catalog targets; Rust-first
 safety + Kani/Verus + E2E CRC.
 
-**micro-ROS wins:** lowest first-flash friction (one CLI, precompiled artifacts
-for 5 ecosystems); proven real-hardware flashing across a board catalog;
+**micro-ROS wins (today):** lowest first-flash friction (one CLI + per-ecosystem
+precompiled artifacts) and proven real-hardware flashing across a board catalog;
 mature community + commercial support + Jazzy/Iron; smaller flash floor (~30 KB
-rclc+XRCE vs nano-ros's ~75 KB XRCE / ~100 KB+ Zenoh).
+rclc+XRCE vs nano-ros's ~75 KB XRCE / ~100 KB+ Zenoh). Two of these are
+**deliberate-tradeoff** differences, not capability gaps for nano-ros: the
+precompiled matrix (`target × arch × RTOS × RMW`) is a maintenance sink nano-ros
+declines (source-only by choice, accepting the UX cost), and flashing is
+vendor-specific — owned deploys flash via `package[]`, vendored ones follow the
+vendor's flash target. The real catch-up items are *proving* one owned-target HW
+flash and (later) lowering the flash floor.
 
 **The others:** Zenoh-pico is the transport, not a peer framework (no ROS API,
 no config/deploy story of its own — nano-ros is the framework over it).
@@ -113,17 +123,37 @@ Embedded DDS gives brokerless RTPS but rarely fits truly bare-metal and has no
 codegen/orchestration. Arduino-ROS = packaged micro-ROS, so it inherits the
 agent tax with the lowest possible build friction. `rclrs` is host-only.
 
-## Honest gaps nano-ros should close (vs micro-ROS specifically)
+## Gaps vs micro-ROS — and which are deliberate
 
-1. **A `nros deploy` that flashes real boards.** micro-ROS's killer feature is
-   `flash_firmware.sh` working across a catalog. nano-ros's `package[]` can
-   shell out to a flasher, but no in-catalog board is proven end-to-end on HW.
-   (Phase 172 W.4.)
-2. **Precompiled-artifact distribution.** micro-ROS ships Arduino/IDF/PIO/Zephyr
-   zips; nano-ros is source-or-build-it. The compiled entry-lib form is the
-   foundation, but per-ecosystem packaging isn't shipped.
-3. **Flash-floor.** The XRCE-rclc ~30 KB floor undercuts nano-ros; for the
-   tightest targets micro-ROS still wins on size.
+Flashing and packaging are **vendor-specific**, so the nano-ros position
+follows the Phase 172 build-ownership axis rather than chasing micro-ROS's
+one-size meta-build:
+
+1. **Flashing follows ownership (a gap in *proof*, not in *model*).** Flashing
+   is a `package[]` step, and where nano-ros **owns the whole deployment**
+   (`self` / `vendor-lib`) it can and should drive the flash for the best UX —
+   a `package[]` line shelling out to the board's flasher, surfaced through
+   `nros deploy`. Where the build is **vendored** (`vendor-module` — PX4 `make`,
+   Zephyr `west`, ESP-IDF `idf.py`), flashing **follows the vendor's
+   convention** (their `flash`/`upload` target), exactly as the 172 ownership
+   model dictates — nano-ros does not re-implement it. So this is not a missing
+   capability; the real gap is that **no owned-target HW flash is proven
+   end-to-end yet** (Phase 172 W.4). micro-ROS's `flash_firmware.sh` covers a
+   board catalog today; nano-ros must demonstrate the owned-flash path on at
+   least one real board.
+2. **Source-only distribution is a deliberate tradeoff, not a gap.** A
+   precompiled matrix is `target × arch × RTOS × RMW` — combinatorially large
+   and a maintenance sink. nano-ros sticks to **source distribution**
+   (`add_subdirectory` + corrosion, or the generated source entry lib): it
+   works for *most* platforms with one artifact and zero per-ecosystem
+   packaging. The cost is UX — no drop-in Arduino/IDF zip — and we accept it for
+   now. (micro-ROS pays the opposite tax: it maintains per-ecosystem packaged
+   artifacts.) Revisit only if a specific high-volume target justifies a
+   prebuilt.
+3. **Flash floor — acknowledged future work.** rclc+XRCE's ~30 KB floor
+   undercuts nano-ros (~75 KB XRCE / ~100 KB+ Zenoh); shrinking it is planned,
+   not yet scheduled. For the tightest targets micro-ROS still wins on size
+   today.
 
 ## See also
 
