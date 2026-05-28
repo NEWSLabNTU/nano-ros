@@ -2552,6 +2552,7 @@ impl Executor {
         &mut self,
         node_id: super::node_record::NodeId,
         service_name: &str,
+        qos: QosSettings,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -2578,7 +2579,7 @@ impl Executor {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_service_server(&info, QosSettings::services_default())
+                .create_service_server(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
         };
 
@@ -2628,7 +2629,7 @@ impl Executor {
             F,
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
-        >(node_id, service_name, callback)
+        >(node_id, service_name, QosSettings::services_default(), callback)
     }
 
     // ========================================================================

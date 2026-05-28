@@ -239,7 +239,8 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
         if !self.namespace.ends_with('/') {
             fqn.push('/').map_err(|_| NodeError::NamespaceTooLong)?;
         }
-        fqn.push_str(&self.name).map_err(|_| NodeError::NameTooLong)?;
+        fqn.push_str(&self.name)
+            .map_err(|_| NodeError::NameTooLong)?;
         Ok(fqn)
     }
 
@@ -372,7 +373,8 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Default for Node<MAX_PUBS, MA
     fn default() -> Self {
         // The default config name ("nros_node") + namespace ("/") are short
         // literals that always fit the bounded buffers, so `new` can't fail here.
-        Self::new(NodeConfig::default()).expect("default NodeConfig fits the bounded name/namespace")
+        Self::new(NodeConfig::default())
+            .expect("default NodeConfig fits the bounded name/namespace")
     }
 }
 
