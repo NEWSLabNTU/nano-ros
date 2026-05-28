@@ -41,14 +41,25 @@ application code.
 
 ## Milestones
 
-- [ ] **M1 — Rust entity builder + convenient surface (unblocks 172 bridge).**
-      `node.publisher(topic)` / `node.subscription(topic)` builders with knobs
-      `.typed::<M>()` / `.generic(ty, hash)`, `.qos()`, `.rx_buffer::<N>()`,
-      `.session(slot)`, `.message_info()`, `.sched_context()`, `.build()`.
-      Convenient `create_publisher` / `create_subscription` (+ `create_generic_*`)
-      re-pointed at the builder (thin wrappers, defaults). rclrs-style fluent
-      QoS-on-topic kept. The `.message_info()` + `.session()` knobs are what the
-      Phase 172 bridge relay needs.
+- [~] **M1 — Rust entity builder + convenient surface (unblocks 172 bridge).**
+      **Node-centric** (chosen 2026-05-28): `node.publisher(topic)` /
+      `node.subscription(topic)` builders with knobs `.typed::<M>()` /
+      `.generic(ty, hash)`, `.qos()`, `.rx_buffer::<N>()`, `.message_info()`,
+      `.sched_context()`, `.build()`; convenient `create_publisher` /
+      `create_subscription` (+ `create_generic_*`) re-pointed at them (thin
+      wrappers), rclrs fluent QoS-on-topic kept. **Borrow model:** since
+      subscriptions register into the executor's dispatch arena, the
+      callback-capable node handle is a `NodeCtx<'_>` borrowing `&mut Executor`,
+      used **one at a time** (entity handles are owned + outlive it — no `Arc`,
+      matches the embedded `&mut` model; see
+      [`entity-api-tiers.md` §Borrow model](../design/entity-api-tiers.md)). The
+      bridge builds the dest publisher on one `NodeCtx` (dropped), then registers
+      the source subscription on another.
+      *Slice 1 DONE* (`5940a0c4f`): the publisher builder on the session-borrowing
+      `Node` (`node.publisher(t).typed/.generic.qos.build`) + permissive
+      `MockSession` QoS. *Remaining:* the `NodeCtx` + the subscription builder
+      (typed/generic, `rx_buffer`, `.message_info()` raw+info path, `sched_context`)
+      + re-point the convenient ctors.
 - [ ] **M2 — Retire the `register_*_*_*` zoo.** One release as `#[deprecated]`
       shims over the builder, then deleted. **The generator emits builder calls**
       (replacing the `register_subscription_raw_with_qos_sized_on` etc. it emits

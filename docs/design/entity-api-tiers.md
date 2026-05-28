@@ -80,8 +80,43 @@ let publisher = node.publisher("/chatter")
     .build()?;
 ```
 
-Mapping the existing zoo onto the builder (so nothing is lost, everything
-collapses):
+## Borrow model — node-centric without `Arc`
+
+rclrs's `node.create_subscription(…)` works because its `Node` is `Arc`-shared.
+nano-ros is **`&mut Executor` + no_std (no `Arc`)** — yet the node-centric shape
+still works, under one rule: **a node handle is a *short-lived* `&mut Executor`
+borrow — create entities on it, then drop it before acquiring the next.** Entity
+handles (`Publisher`, the registered subscription/`HandleId`) are **owned** and
+outlive the node handle, so two node handles are never needed at once.
+
+`exec.node(id)` (or `create_node`'s return) yields a `NodeCtx<'_>` borrowing
+`&mut Executor`; the `publisher` / `subscription` builders register through it.
+Holding two `NodeCtx` simultaneously is a borrow error *by construction* — which
+is exactly right, and the bridge fits it: build the dest publisher on one
+node-ctx (dropped; the handle is owned), then register the source subscription
+on another:
+
+```rust
+let dpub = exec.node(nb).publisher(topic)          // NodeCtx dropped after build
+              .generic(ty, hash).build()?;         // dpub: owned handle, lives on
+exec.node(na).subscription(topic)                  // re-borrow exec
+    .generic(ty, hash).qos(q).message_info()
+    .build(move |bytes, info| {                    // closure owns dpub
+        if parse_bridge_origin(info.attachment()) == Some(ORIGIN) { return; }
+        let _ = dpub.publish_raw_with_attachment(bytes, &ORIGIN_ATT);
+    })?;                                            // NodeCtx(na) registers, then drops
+```
+
+This is the deliberate embedded trade vs rclrs's `Arc`: zero allocation / no
+shared-ownership runtime cost, at the price of "one node-ctx live at a time" —
+re-acquire with `exec.node(id)` whenever you need the node again. (The existing
+session-borrowing `Node<'a>` from `create_node_on` is the lower-level form;
+`NodeCtx` adds the `&mut Executor` reach the callback-registering subscription
+builder needs.)
+
+## Mapping the existing zoo onto the builder
+
+Nothing is lost — everything collapses:
 
 | today's flat fn | builder form |
 |---|---|
