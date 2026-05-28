@@ -102,8 +102,17 @@ once before being trusted:
       `just ci` surface?) and broaden it.
 - [ ] `deploy-book.yml` — already deliberately non-recursive on submodules
       (documented); confirm it still builds.
-- [ ] `sdk-index-gate.yml` — validates `nros-sdk-index.toml`; confirm it covers
-      the new `[tool.*]`/`[rmw.*]` (Phase 191.6) entries.
+- [x] `sdk-index-gate.yml` — DONE (2026-05-29). `verify-index.py` gained an
+      **offline structure pass** (always runs, alongside the network `dist`
+      hash check; `--structure-only` for local/CI-without-network): (1) every
+      `[board.*]`/`[rmw.*]` (Phase 191.6) package ref resolves to a defined
+      `[tool]`/`[source]`/`[gated]` entry (static mirror of `SdkIndex::validate`,
+      no `nros` build); (2) `[source.*]` (195.B) coherence — submodule mode needs
+      `dest`, clone mode needs `ref`+`dest`; (3) **index↔`.gitmodules` drift
+      guard** — each `[source.*].submodule` path must be a real submodule and a
+      declared `git` URL must match `.gitmodules`. Gate now also triggers on
+      `.gitmodules` changes. Verified: passes on the real index; catches
+      undefined-ref, clone-missing-ref, missing-submodule-path, and URL-drift.
 - [ ] `zephyr-dual-line.yml` — finish 196.1, then add SDK/workspace caching
       (each job currently re-installs the ~1 GB Zephyr SDK + west-updates from
       scratch; cache `scripts/zephyr/sdk` + the workspace).

@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - "nros-sdk-index.toml"
+      - ".gitmodules"
       - "scripts/sdk/verify-index.py"
       - "scripts/sdk/check-qemu-configure.sh"
       - "ci/nano-ros-sdk/scripts/build-qemu.sh"
