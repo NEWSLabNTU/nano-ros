@@ -1057,7 +1057,15 @@ the cheap fix landed, the rest are tracked here:
   for a Nucleo) + a prebuilt/vendored QEMU instead of the source build. This is
   the **largest first-image UX delta vs micro-ROS** — bigger than flash floor or
   precompiled libs (both deliberate tradeoffs). The Phase 172 ownership model
-  scopes the *build*; setup/fetch is the missing scoping.
+  scopes the *build*; setup/fetch is the missing scoping. **Designed** in
+  `docs/design/nros-setup-toolchain-management.md`: a first-class `nros setup
+  <board>` (no `just` needed) that fetches **prebuilt** toolchains/deps from a
+  versioned package index (Android `sdkmanager` / PlatformIO model — prebuilt
+  per host, board→package resolution, sha256-verified, shared store + lockfile,
+  license gates for NVIDIA/ARM-FVP), build-from-source only as fallback;
+  notably a **prebuilt QEMU** instead of the 2.7 GB source build. `just
+  <module> setup` stays the contributor/source path (today's per-platform
+  recipes already exist but clone+build from source + require `just`).
 
 Each work item is independently shippable. A work item is done when:
 
