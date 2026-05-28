@@ -3,9 +3,11 @@
 Design for in-binary **topic-forwarding bridges**: a `[[bridge]]` in the root
 `nros.toml` connects ≥2 RMW sessions (different rmw / domain / locator) and
 relays declared topics between them — one process, multiple sessions, raw CDR
-forwarding. Status: the config→plan layer landed (`PlanBridge` + `nros deploy`
-`apply_bridges`, codegen `64effd0`); this doc designs the remaining
-generator + executor (runtime) half.
+forwarding. The public API stays in the **rclcpp / rclrs / rclc shape** (the
+`domain_bridge` pattern expressed in our mirrored client API), with nano-ros
+add-ons layered on. Status: the config→plan layer landed (`PlanBridge` +
+`nros deploy` `apply_bridges`, codegen `64effd0`); this doc designs the
+remaining generator + executor (runtime) half.
 
 ## Related work (what it teaches)
 
@@ -29,9 +31,40 @@ have `create_subscription_raw` / `create_publisher_raw` / `publish_raw`;
 (2) the relay is **event-driven**, riding the executor's spin (not a separate
 thread); (3) for **bidirectional** relay we need echo suppression — and unlike
 the topology-based approaches above, nano-ros runs both sessions *in one
-binary* (no topology separation), so we need **per-message** echo suppression,
-which `nros-bridge::PubSubBridge` already implements (`bridge_origin`
-attachment + FNV-1a dedup ring).
+binary* (no topology separation), so we need **per-message** echo suppression.
+
+## API shape: mirror rclcpp / rclrs / rclc, with add-ons
+
+nano-ros mirrors the upstream client libraries (rclrs 0.7.0 / rclcpp / rclc);
+the bridge **must stay in that shape**, not invent a bespoke gateway API. The
+upstream vocabulary maps cleanly — `domain_bridge` is literally built from it:
+
+| upstream (rclcpp) | nano-ros today | notes |
+|---|---|---|
+| `Node::create_generic_publisher(topic, type)` → `GenericPublisher::publish(SerializedMessage)` | `node.create_publisher_raw(topic, type, hash)` → `publish_raw(&[u8])` | already the type-erased / serialized form |
+| `Node::create_generic_subscription(topic, type, cb)` | `node.create_subscription_raw(...)` + the executor-registered callback variant | the relay's source |
+| subscription callback `void(SerializedMessage, const MessageInfo&)` ([rclcpp](https://github.com/ros2/rclcpp/blob/rolling/rclcpp/src/rclcpp/generic_subscription.cpp)) | **add-on:** raw-sub callback carrying `MessageInfo` | needed for echo metadata |
+| one `Node` per domain (domain_bridge) | one node per bridged session via `create_node_on` / `NodeBuilder::session_idx` | **add-on:** multi-session in one binary |
+
+So a nano-ros bridge is the **`domain_bridge` pattern expressed in our
+rcl*-mirrored API**: a generic subscription on session A whose callback
+re-publishes on a generic publisher bound to session B (and the reverse). The
+relay is a *plain subscription callback that publishes* — the same node-centric
+shape an application writes — not a special runtime object. Two **add-ons**
+sit on top, both idiomatic extensions (each has an upstream analogue):
+
+1. **`MessageInfo` on the raw-sub callback** — mirrors rclcpp's
+   `(SerializedMessage, const MessageInfo&)`. nano-ros's `MessageInfo` carries
+   the message **attachment**; the bridge stamps a `bridge_origin` on egress and
+   the callback drops samples whose origin is its own (echo). The
+   attachment + `bridge_origin` codec + FNV dedup already exist in
+   `nros-bridge` (`encode_bridge_origin` / `parse_bridge_origin` / `payload_hash`)
+   and `nros-node` (`publish_raw_with_attachment` / `try_recv_raw_with_attachment`)
+   — the add-on is only to surface them on the *callback* path.
+2. **One node per bridged session** — `domain_bridge` makes one node per domain;
+   nano-ros runs the sessions in one binary, so each bridge node binds to its
+   session via `create_node_on(name, rmw)` / `NodeBuilder::session_idx` (the
+   K.5 selector).
 
 ## nano-ros model
 
@@ -46,37 +79,39 @@ attachment + FNV-1a dedup ring).
   "resolve from plan interfaces" model; wildcard `"*"` is deferred, it needs
   runtime discovery). `interface_type_name` / `interface_type_hash` already
   exist in the generator; QoS rides the declared interface's profile.
-- **Forwarding primitive:** `nros-bridge::PubSubBridge { sub, pubr, origin,
-  dedup }` — `pump()` drains the sub, drops echoes (payload hash seen, or
-  `bridge_origin` == own origin), and republishes with the origin attachment.
-  One `PubSubBridge` per (topic, ordered session pair); bidirectional = two.
+- **The relay is a generic subscription whose callback publishes** — the
+  `domain_bridge` shape in our rcl*-mirrored API. Per (topic, ordered session
+  pair): a raw subscription on session A's bridge node whose callback
+  re-publishes on a raw publisher bound to session B's bridge node;
+  bidirectional = the same the other way. It rides the executor's existing
+  callback dispatch in `spin_once` — no separate runtime object, no pump loop.
 
-## The crux: driving the relay inside the spin
+## The relay + echo (the rcl* shape)
 
-`PubSubBridge::pump()` must run each spin cycle. The buffered-raw **callback**
-(`register_subscription_buffered_raw_on`, `FnMut(&[u8])`) can't carry the
-`bridge_origin` attachment, so a pure callback relay can't do echo-safe
-bidirectional forwarding. Two options:
+The relay is the standard "subscription callback that publishes" pattern an
+application already writes — kept node-centric so it reads like rclcpp/rclrs.
+The **only** new executor surface is the echo metadata on the callback:
 
-- **Option A (recommended) — executor bridge registry + pump in `spin_once`.**
-  `nros-node` gains a small registry (`Vec` of type-erased pumpables, or a
-  fixed `heapless::Vec<PubSubBridge>` sized by `MAX_BRIDGES`) and `spin_once`
-  calls `pump()` on each after the callback/timer pass. Reuses the **tested**
-  `PubSubBridge` dedup wholesale; the only new executor surface is
-  `register_bridge(PubSubBridge) + pump-in-spin`. Generated `register_bridges`
-  builds each `PubSubBridge` (raw sub on session A node + raw pub on session B
-  node) and registers it.
-- **Option B — attachment-carrying raw-sub callback.** Add a
-  `register_subscription_buffered_raw_on` variant whose callback gets
-  `(&[u8] payload, &[u8] attachment)`; generated code re-implements the
-  origin-tag skip + `publish_raw_with_attachment` per direction. More generated
-  logic, re-derives dedup that `PubSubBridge` already has. Not recommended.
+- **`MessageInfo` on the raw-sub callback** (the add-on, mirrors rclcpp's
+  `(SerializedMessage, const MessageInfo&)`). Today
+  `register_subscription_buffered_raw_on` hands the callback `FnMut(&[u8])`;
+  add a sibling whose callback is `FnMut(&[u8], &nros::MessageInfo)` where
+  `MessageInfo` exposes the message **attachment**. The generated relay
+  callback then:
+  1. `parse_bridge_origin(info.attachment())` — drop the sample if the origin is
+     this bridge's own (echo), reusing `nros-bridge`'s codec;
+  2. else `dest_pub.publish_raw_with_attachment(payload, encode_bridge_origin(own))`.
 
-Option A keeps the dedup in one tested place and matches the RTI "serial pump in
-the session thread" model (here: pumped in `spin_once`). It needs an executor
-change in `nros-node` (the registry + spin hook), but a small, contained one —
-analogous to how K.5's `NodeBuilder::session_idx` was the one small executor
-primitive.
+  This puts echo handling in the *idiomatic callback*, not a bespoke gateway
+  object — `MessageInfo` is exactly how rclcpp surfaces per-message metadata.
+  (`nros-bridge::PubSubBridge`'s poll+`pump()` form stays the **standalone /
+  C-FFI** path — `nros_pubsub_bridge_*`; the orchestration-generated path uses
+  this node-centric callback relay so generated code matches application code.)
+
+*Rejected:* a bespoke executor "bridge registry pumped by `spin_once`" — it
+reuses `PubSubBridge`'s dedup but introduces a non-rcl* runtime object and a
+second dispatch path. Keeping the relay as a generic-subscription callback (with
+`MessageInfo`) stays in the upstream shape, which is the constraint here.
 
 ## Generator emission (sketch)
 
@@ -88,27 +123,37 @@ register_bridges(executor):
   for bridge in PLAN.bridges:
     for topic in bridge.topics:
       (type_name, type_hash, qos) = resolve from plan.interfaces   // err if undeclared
-      for (a, b) in ordered session pairs of bridge.connect:
-        node_a = executor.node_builder("<bridge>_<a>").session_idx(a).build()
-        node_b = executor.node_builder("<bridge>_<b>").session_idx(b).build()
-        sub  = node_a.create_subscription_raw(topic, type_name, type_hash)   // on session a
-        pubr = node_b.create_publisher_raw(topic, type_name, type_hash)      // on session b
-        executor.register_bridge(PubSubBridge::new(sub, pubr, origin="<bridge>:<a>"))
+      for (src, dst) in ordered session pairs of bridge.connect:
+        node_dst = executor.node_builder("<bridge>_<dst>").session_idx(dst).build()
+        dst_pub  = node_dst.create_publisher_raw(topic, type_name, type_hash)
+        node_src = executor.node_builder("<bridge>_<src>").session_idx(src).build()
+        // generic subscription on src whose callback republishes on dst:
+        executor.register_subscription_raw_with_info_on(node_src, topic, type_name,
+            type_hash, qos, move |payload, info| {
+              if parse_bridge_origin(info.attachment()) == Some(ORIGIN) { return; } // echo
+              let _ = dst_pub.publish_raw_with_attachment(payload, &ORIGIN_ATT);
+            })
 register_all(...) { ...; register_bridges(executor)?; }
 ```
 
 ## Work breakdown
 
-1. **nros-node** — bridge registry + `spin_once` pump (Option A). Small, contained.
-2. **generator** — `SESSION_SPECS` from `connect`; `register_bridges` (raw sub/pub
-   per (topic, session pair) via the K.5 selector + `PubSubBridge`); call it in
-   `register_all`. Resolve type/QoS from `interfaces`; error on undeclared topic.
+1. **nros-node** — a `MessageInfo`-carrying raw-sub callback variant
+   (`register_subscription_raw_with_info_on`, `FnMut(&[u8], &MessageInfo)`),
+   `MessageInfo::attachment()`. Mirrors rclcpp; small. (The buffered-raw
+   plumbing already reads the attachment via `try_recv_raw_with_attachment` —
+   this surfaces it to the callback.)
+2. **generator** — `SESSION_SPECS` from `connect`; `register_bridges` emitting
+   the generic-sub-callback relay per (topic, session pair) via the K.5
+   selector + `nros-bridge` origin codec; call it in `register_all`. Resolve
+   type/QoS from `interfaces`; error on undeclared topic.
 3. **plan** — DONE (`PlanBridge`).
 4. **deploy** — DONE (`apply_bridges`).
 5. **check** — drop the `[[bridge]]` half of `pending_routing_warning` once (1)+(2) land.
 6. **tests** — generate-shape (bridge plan → `SESSION_SPECS` from endpoints +
-   `register_bridges` + per-topic raw sub/pub); a nros-node pump unit test;
-   runtime e2e is agent/HW-bound (2 RMW agents) — gate it.
+   `register_bridges` + the generic-sub-callback relay); a nros-node
+   `MessageInfo`-callback unit test; runtime e2e is agent/HW-bound (2 RMW
+   agents) — gate it.
 
 ## Deferred
 

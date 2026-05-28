@@ -130,10 +130,13 @@ configuration lives here* below.
       topic-forwarding:** config→plan foundation DONE (`PlanBridge` +
       `apply_bridges`, codegen `64effd0`); generator + executor (runtime) half
       designed in
-      [`docs/design/bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md)
-      (reuse `nros-bridge::PubSubBridge`, recommended Option A = an executor
-      bridge-registry pumped by `spin_once`; sessions from `connect`; type/QoS
-      from `interfaces`). The `nros check` `[[bridge]]` warning guards it.
+      [`docs/design/bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md):
+      kept in the **rclcpp/rclrs/rclc shape** — the `domain_bridge` pattern (a
+      generic subscription whose callback re-publishes) in our `create_*_raw`
+      API; add-ons = a `MessageInfo`-carrying raw-sub callback (mirrors rclcpp's
+      `(msg, MessageInfo)`) for echo metadata + one bridge node per session via
+      the K.5 `session_idx` selector. Sessions from `connect`, type/QoS from
+      `interfaces`. The `nros check` `[[bridge]]` warning guards it.
 
 **Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
 independents (172.E sandbox, 172.K.7 multi-homing) can trail. The first-image
