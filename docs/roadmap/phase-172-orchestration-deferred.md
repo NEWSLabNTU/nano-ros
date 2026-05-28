@@ -86,13 +86,13 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   `nros check` warning now fires for `[[bridge]]` only (bridge per-node routing
   — topic-forwarding — is the remaining unfinished half, tracked separately).
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
-- **Entity-API tiers → split to [Phase 188](phase-188-entity-api-tiers.md)**
+- **Entity-API tiers → split to [Phase 189](phase-189-entity-api-tiers.md)**
   (cross-cutting client-API refactor, not orchestration — same precedent as
   Phase 187). Collapse the `register_subscription_*_*_*` / `create_*_raw` zoo
   into convenient `create_*` (matching rclcpp/rclrs) over one customizable
   entity **builder** (`fork`/`clone`); design in
   [`docs/design/entity-api-tiers.md`](../design/entity-api-tiers.md). **The
-  bridge topic-forwarding runtime half (below) depends on Phase 188 M1** (the
+  bridge topic-forwarding runtime half (below) depends on Phase 189 M1** (the
   `.message_info()` + `.session()` knobs).
 
 **Priority.** P2 — none block the MVP workflow; each is an
