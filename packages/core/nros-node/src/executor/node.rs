@@ -335,13 +335,24 @@ impl<'a> Node<'a> {
         &mut self,
         service_name: &str,
     ) -> Result<EmbeddedServiceServer<Svc>, NodeError> {
-        self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name)
+        self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QosSettings::services_default())
     }
 
-    /// Create a service server with custom buffer sizes.
+    /// Phase 193.2b — service server with an explicit QoS profile (applied to
+    /// both the request + reply endpoints; rclcpp's `create_service(name, qos)`).
+    pub fn create_service_with_qos<Svc: RosService>(
+        &mut self,
+        service_name: &str,
+        qos: QosSettings,
+    ) -> Result<EmbeddedServiceServer<Svc>, NodeError> {
+        self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, qos)
+    }
+
+    /// Create a service server with custom buffer sizes + QoS.
     pub fn create_service_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
+        qos: QosSettings,
     ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
         let info = Self::service_info(
             self.domain_id,
@@ -353,7 +364,7 @@ impl<'a> Node<'a> {
         );
         let handle = self
             .session
-            .create_service_server(&info, QosSettings::services_default())
+            .create_service_server(&info, qos)
             .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
         Ok(EmbeddedServiceServer {
             handle,
@@ -368,13 +379,23 @@ impl<'a> Node<'a> {
         &mut self,
         service_name: &str,
     ) -> Result<EmbeddedServiceClient<Svc>, NodeError> {
-        self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name)
+        self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QosSettings::services_default())
     }
 
-    /// Create a service client with custom buffer sizes.
+    /// Phase 193.2b — service client with an explicit QoS profile.
+    pub fn create_client_with_qos<Svc: RosService>(
+        &mut self,
+        service_name: &str,
+        qos: QosSettings,
+    ) -> Result<EmbeddedServiceClient<Svc>, NodeError> {
+        self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, qos)
+    }
+
+    /// Create a service client with custom buffer sizes + QoS.
     pub fn create_client_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
+        qos: QosSettings,
     ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
         let info = Self::service_info(
             self.domain_id,
@@ -386,7 +407,7 @@ impl<'a> Node<'a> {
         );
         let handle = self
             .session
-            .create_service_client(&info, QosSettings::services_default())
+            .create_service_client(&info, qos)
             .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
         Ok(EmbeddedServiceClient {
             handle,
