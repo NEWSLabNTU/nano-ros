@@ -269,23 +269,35 @@ landed or the annotations are stale.
 - `nros-node/src/executor/sched_context.rs` (14×), `executor/ready_set/mod.rs` (11×)
 - `boards/nros-board-common/src/manifest.rs` (13× on `ArchEntry` & siblings)
 
-- [~] Determine reachability — **WON'T-DO (the allows are load-bearing).**
-      Attempted to drop all 38 (`d2a0f9a61`); **reverted** (`<this commit>`) after
-      they broke the threadx example build. Root cause: the scheduler items are
-      **feature-conditional dead code** — each `scheduler-*` combo leaves a
-      *different* subset unused (e.g. `BucketedEdfSet::{pop_next,is_empty}`,
-      `EdfReadySet::{set_bits,bits}`, a set's `{clear,is_empty,contains}` are dead
-      under the minimal fifo config the threadx examples select), and the example
-      crates build with `-D warnings`, so each dead item is a hard error there.
-      The `#[allow(dead_code)]` suppress exactly that across the combos; the
-      audit's "stale" premise was wrong. A `-D dead_code` check on nros-node's
-      *default + all-scheduler* features is clean (both ends used everything) but
-      **misses the partial combos** the per-platform example builds use. Properly
-      removing these needs per-method `#[cfg(feature = "scheduler-…")]` gating
-      (far more invasive than the annotations) and a per-platform `-D warnings`
-      build matrix to verify — not worth it. Lesson: validate executor-feature
-      changes with `just <plat> build` (the examples deny warnings), not just
-      nros-node default/all-features.
+- [x] **DONE — all 38 `#[allow(dead_code)]` removed.** The earlier WON'T-DO
+      framing ("feature-conditional dead code; per-method `#[cfg(feature =
+      "scheduler-…")]` gating") was **wrong on the mechanism**: the `scheduler-*`
+      features are empty markers that gate *nothing* in dispatch — `spin.rs`
+      builds `BucketedEdfSet` unconditionally and selects class at **runtime**, so
+      `cfg(feature=scheduler-*)` would have *broken* builds, not fixed them. The
+      dead-code is actually **target/`std`-conditional + test-only API surface**.
+      Resolved per item:
+      - **`ready_set/mod.rs`** — `ReadySet::{clear,is_empty,contains}` + the
+        `FifoReadySet`/`EdfReadySet` impls are exercised only by unit tests (and
+        the `os_priority` *stub*, which is itself dead), so they are now
+        `#[cfg(test)]`. `FifoReadySet::set_bits` → `#[cfg(test)]`. Deleted the
+        genuinely call-free API: `FifoReadySet::bits`, `BucketedFifoSet::{pop_next,
+        is_empty}`, `BucketedEdfSet::{pop_next,is_empty}` (the bucketed dispatch
+        uses only `insert_into` + `pop_from`). The stale allows on the
+        live `Overflow`/`EdfReadySet`/`Bucketed*` types were just dropped.
+      - **`ready_set/os_priority.rs`** — matched `clear/is_empty/contains` +
+        the `DescIdx` import to `#[cfg(test)]`.
+      - **`sched_context.rs`** (14) + **`nros-board-common/src/manifest.rs`** (13)
+        — the allows were **stale**: sched_context items are live across all
+        platform combos; manifest items are `pub` API consumed by
+        `zpico-sys/build.rs` (dead-code-exempt). Both removed with zero warnings.
+      Verified: `cargo check -p nros-node` across `{threadx,bare-metal,nuttx}` ×
+      `{,alloc}` + `scheduler-os-priority` + all-schedulers (dead=0 each), `std`
+      default, `--all-features`, `cargo test` (ready_set 9/9), **plus the two
+      cross builds that deny warnings** — `just threadx_linux build` (6 examples)
+      and `just qemu build` (baremetal mps2-an385) — both green.
+      Lesson retained: validate executor-feature changes with `just <plat> build`,
+      not just nros-node default/all-features.
 
 ### 192.9 — [P3] Harden runtime `unwrap`/`expect`; catalog TODO debt
 - `nros-node/src/executor/spin.rs:3331` `wake_mu.lock().expect("poisoned")` (hot

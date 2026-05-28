@@ -29,21 +29,24 @@ use super::types::{ActiveJob, DescIdx};
 
 /// Capacity-overflow error returned from [`ReadySet::insert`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 pub(crate) struct Overflow;
 
-// `clear` / `is_empty` / `insert` / `contains` are wired by the
-// EDF + bucketed dispatchers (110.B / 110.C); 110.A only exercises
-// `pop_next` from `spin_once`. Marked `dead_code` until then.
-#[allow(dead_code)]
+// Phase 192.8 — the bucketed dispatch (`spin_once`) drives the sets through
+// `insert` + `pop_next` only; `clear` / `is_empty` / `contains` are exercised
+// solely by this module's unit tests (the `scheduler-os-priority` stub that
+// also delegates them is itself dead), so they are `#[cfg(test)]` rather than
+// kept alive with a blanket `#[allow(dead_code)]`.
 pub(crate) trait ReadySet {
-    fn clear(&mut self);
-    fn is_empty(&self) -> bool;
     /// Insert a job. Idempotent: a second insert for the same
     /// `desc_idx` returns `Ok(())` without changing internal state.
     fn insert(&mut self, job: ActiveJob) -> Result<(), Overflow>;
     /// Pop the lowest-key job. Returns `None` when the set is empty.
     fn pop_next(&mut self) -> Option<ActiveJob>;
+    #[cfg(test)]
+    fn clear(&mut self);
+    #[cfg(test)]
+    fn is_empty(&self) -> bool;
+    #[cfg(test)]
     fn contains(&self, desc_idx: DescIdx) -> bool;
 }
 
@@ -73,27 +76,22 @@ impl<const N: usize> FifoReadySet<N> {
         Self { bits: 0 }
     }
 
-    /// Bulk-set the presence bitmap. Used by the default
-    /// [`Activator`](super::activator::Activator) impl which produces
-    /// a full `u64` mask in one pass and writes it through.
-    #[allow(dead_code)] // 110.A.b uses per-bit insert; kept for 110.C bucketed.
+    /// Bulk-set the presence bitmap. Test-only helper (Phase 192.8): the
+    /// runtime path inserts per-bit; only the unit tests set the bitmap in
+    /// one shot.
+    #[cfg(test)]
     pub fn set_bits(&mut self, bits: u64) {
         self.bits = bits;
-    }
-
-    /// Read the raw bitmap. Internal use only — the dispatcher walks
-    /// the set via `pop_next`.
-    #[allow(dead_code)]
-    pub fn bits(&self) -> u64 {
-        self.bits
     }
 }
 
 impl<const N: usize> ReadySet for FifoReadySet<N> {
+    #[cfg(test)]
     fn clear(&mut self) {
         self.bits = 0;
     }
 
+    #[cfg(test)]
     fn is_empty(&self) -> bool {
         self.bits == 0
     }
@@ -119,6 +117,7 @@ impl<const N: usize> ReadySet for FifoReadySet<N> {
         })
     }
 
+    #[cfg(test)]
     fn contains(&self, desc_idx: DescIdx) -> bool {
         let idx = desc_idx as usize;
         if idx >= 64 {
@@ -156,7 +155,6 @@ pub(crate) mod os_priority;
 /// Phase 110.B.a (this commit) exposes the type + tests; 110.B.b
 /// wires it through `spin_once` once `SchedContext::Edf` callbacks
 /// can be bound on Executor.
-#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b spin_once dispatch.
 #[derive(Debug)]
 pub(crate) struct EdfReadySet<const N: usize> {
     /// Min-heap on `(deadline_us, desc_idx)`. We keep the heap as a
@@ -167,7 +165,6 @@ pub(crate) struct EdfReadySet<const N: usize> {
     present: u64,
 }
 
-#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b spin_once dispatch.
 impl<const N: usize> EdfReadySet<N> {
     pub const fn new() -> Self {
         const {
@@ -212,7 +209,6 @@ impl<const N: usize> EdfReadySet<N> {
     }
 }
 
-#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b spin_once dispatch.
 impl<const N: usize> Default for EdfReadySet<N> {
     fn default() -> Self {
         Self::new()
@@ -220,11 +216,13 @@ impl<const N: usize> Default for EdfReadySet<N> {
 }
 
 impl<const N: usize> ReadySet for EdfReadySet<N> {
+    #[cfg(test)]
     fn clear(&mut self) {
         self.len = 0;
         self.present = 0;
     }
 
+    #[cfg(test)]
     fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -262,6 +260,7 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
         })
     }
 
+    #[cfg(test)]
     fn contains(&self, desc_idx: super::types::DescIdx) -> bool {
         let idx = desc_idx as usize;
         if idx >= 64 {
@@ -288,13 +287,11 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 // priority bucket blocks higher-priority work that becomes ready
 // during dispatch. For hard-RT preemption see Phase 110.D.
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 #[derive(Debug)]
 pub(crate) struct BucketedFifoSet<const NB: usize, const N: usize> {
     buckets: [FifoReadySet<N>; NB],
 }
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 impl<const NB: usize, const N: usize> BucketedFifoSet<NB, N> {
     pub const fn new() -> Self {
         const {
@@ -316,24 +313,11 @@ impl<const NB: usize, const N: usize> BucketedFifoSet<NB, N> {
         self.buckets[bucket].insert(job)
     }
 
-    /// Pop the highest-priority ready job. Returns `(bucket_index,
-    /// job)`; `bucket_index` is useful for telemetry / accounting.
-    pub fn pop_next(&mut self) -> Option<(usize, super::types::ActiveJob)> {
-        for (i, b) in self.buckets.iter_mut().enumerate() {
-            if let Some(j) = b.pop_next() {
-                return Some((i, j));
-            }
-        }
-        None
-    }
-
-    /// Pop a job from a specific bucket, ignoring other buckets.
+    /// Pop a job from a specific bucket, ignoring other buckets. The
+    /// dispatcher walks buckets in priority order itself (see `spin_once`),
+    /// so the bucketed set only exposes per-bucket draining.
     pub fn pop_from(&mut self, bucket: usize) -> Option<super::types::ActiveJob> {
         self.buckets.get_mut(bucket)?.pop_next()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.buckets.iter().all(|b| b.is_empty())
     }
 }
 
@@ -343,13 +327,11 @@ impl<const NB: usize, const N: usize> Default for BucketedFifoSet<NB, N> {
     }
 }
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 #[derive(Debug)]
 pub(crate) struct BucketedEdfSet<const NB: usize, const N: usize> {
     buckets: [EdfReadySet<N>; NB],
 }
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 impl<const NB: usize, const N: usize> BucketedEdfSet<NB, N> {
     pub const fn new() -> Self {
         const {
@@ -371,22 +353,11 @@ impl<const NB: usize, const N: usize> BucketedEdfSet<NB, N> {
         self.buckets[bucket].insert(job)
     }
 
-    pub fn pop_next(&mut self) -> Option<(usize, super::types::ActiveJob)> {
-        for (i, b) in self.buckets.iter_mut().enumerate() {
-            if let Some(j) = b.pop_next() {
-                return Some((i, j));
-            }
-        }
-        None
-    }
-
-    /// Pop a job from a specific bucket, ignoring other buckets.
+    /// Pop a job from a specific bucket, ignoring other buckets. The
+    /// dispatcher walks buckets in priority order itself (see `spin_once`),
+    /// so the bucketed set only exposes per-bucket draining.
     pub fn pop_from(&mut self, bucket: usize) -> Option<super::types::ActiveJob> {
         self.buckets.get_mut(bucket)?.pop_next()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.buckets.iter().all(|b| b.is_empty())
     }
 }
 
