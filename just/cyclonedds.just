@@ -64,11 +64,13 @@ doctor:
     else
         echo "  [ABSENT]  freertos: arm-none-eabi-gcc not found → embedded Cyclone tests skip (install the ARM toolchain)"
     fi
-    # threadx-rv64 still uses the cross-probe install (Phase 186 migration pending).
-    if [ -f build/cyclonedds-threadx-rv64-install/lib/libddsc.a ]; then
-        echo "  [OK]      threadx-rv64 cross ddsc:   build/cyclonedds-threadx-rv64-install/lib/libddsc.a"
+    # Phase 186 — threadx-rv64 Cyclone is also self-provisioned per-example by
+    # CMake (no shared install). Needs only the RV64 toolchain; the embedded
+    # fixtures stay behind the experimental NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1.
+    if command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
+        echo "  [OK]      threadx-rv64: riscv64-unknown-elf-gcc present → Cyclone self-provisions in CMake (Phase 186; experimental, set NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1)"
     else
-        echo "  [ABSENT]  threadx-rv64 cross ddsc (NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures; or 'just cyclonedds threadx-cross-probe')"
+        echo "  [ABSENT]  threadx-rv64: riscv64-unknown-elf-gcc not found → embedded Cyclone tests skip (install the RV64 toolchain)"
     fi
     exit $missing
 
@@ -79,14 +81,6 @@ doctor:
 [group("debug")]
 ddsrt-port-inventory:
     bash ./scripts/cyclonedds/ddsrt-port-inventory.sh
-
-
-# Phase 175.B — configure/build probe for Cyclone DDS on the nano-ros
-# ThreadX RISC-V64 + NetX Duo target. This validates the experimental
-# nano-ros ThreadX ddsrt port before fixture cells are enabled.
-[group("debug")]
-threadx-cross-probe:
-    bash ./scripts/cyclonedds/threadx-cross-probe.sh
 
 # Build Cyclone DDS (alias for `just cyclonedds setup`).
 [group("main")]

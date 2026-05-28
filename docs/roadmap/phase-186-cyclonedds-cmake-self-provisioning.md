@@ -169,9 +169,16 @@ idlc build / `-DIDLC_EXECUTABLE`.
       deleted; doctor updated. **Validated:** build-fixtures rc=0, both cells
       self-provision, `test_freertos_rust_talker_cyclonedds_boot` +
       `_local_pubsub_e2e` **PASS** on the self-provisioned binaries.
-- [ ] **threadx + native**: migrate to self-provision (platform fragments), then
-      delete `cross-build-ddsc.sh` + `threadx-cross-probe.sh` + its recipe + the
-      threadx build-fixtures hook — **remaining**.
+- [x] **threadx**: `nano-ros-threadx.cmake` stages the WITH_THREADX + NetX/picolibc
+      flags (LTO off, board-gated to riscv64-qemu); `just threadx_riscv64
+      build-fixtures` self-provisions (no cross-probe, no `-DCMAKE_PREFIX_PATH`).
+      **Validated:** build rc=0 with **100% sccache hits** (flags byte-match the old
+      cross-probe → cached), `test_threadx_riscv64_cyclonedds_two_qemu_pubsub`
+      **PASS**. `threadx-cross-probe.sh` + the now-orphaned shared
+      `cross-build-ddsc.sh` + the `just cyclonedds threadx-cross-probe` recipe
+      deleted. **The embedded-Cyclone shell path is fully removed.**
+- [ ] **native**: still resolves via find_package (host `build/install` / system).
+      Migration entangled with the host `build.sh` decision below — **remaining**.
 - [ ] **host `build.sh` / `just cyclonedds setup`**: the host Cyclone install
       (`build/install`, idlc + native find_package) — decide whether native also
       self-provisions before removing; needs a full cyclone-suite revalidation —

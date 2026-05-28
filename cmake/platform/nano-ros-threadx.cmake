@@ -117,6 +117,59 @@ endif()
 include("${_nros_threadx_board_module}")
 
 # ---------------------------------------------------------------------------
+# Phase 186 — CycloneDDS self-provision flags (ThreadX RISC-V64 + NetX Duo).
+#
+# Mirrors the retired scripts/cyclonedds/threadx-cross-probe.sh: when the Cyclone
+# backend self-provisions from source (no prebuilt install — nros_provide_cyclonedds()),
+# the Cyclone add_subdirectory needs WITH_THREADX + LTO off (the ddsrt ThreadX
+# port's ops-walker trips under LTO / the xcdr opt_size fast-path — Phase 177.22/.23,
+# gated inside Cyclone on DDSRT_WITH_THREADX) + the NetX/picolibc include paths.
+# Board-gated to riscv64-qemu (cross rv64); the threadx-linux board is host-linked
+# and resolves Cyclone differently, so it's excluded here.
+# ---------------------------------------------------------------------------
+if(NANO_ROS_RMW STREQUAL "cyclonedds"
+   AND NANO_ROS_BOARD STREQUAL "riscv64-qemu"
+   AND NOT DEFINED NROS_CYCLONE_THREADX_FLAGS_STAGED)
+    set(NROS_CYCLONE_THREADX_FLAGS_STAGED TRUE)
+    foreach(_off BUILD_SHARED_LIBS BUILD_IDLC BUILD_TESTING BUILD_IDLC_TESTING
+                 BUILD_EXAMPLES BUILD_DDSPERF BUILD_DOCS ENABLE_SECURITY ENABLE_SSL
+                 ENABLE_SHM ENABLE_IPV6 ENABLE_LTO CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+        set(${_off} OFF CACHE BOOL "Cyclone ThreadX cross trim (Phase 186)" FORCE)
+    endforeach()
+    set(WITH_THREADX ON CACHE BOOL "Cyclone ddsrt ThreadX port (Phase 186)" FORCE)
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+    # cmake/platform/ glue legitimately knows the repo layout (CLAUDE.md).
+    if(NOT THREADX_DIR)
+        set(THREADX_DIR "${CMAKE_CURRENT_LIST_DIR}/../../third-party/threadx/kernel")
+    endif()
+    if(NOT NETX_DIR)
+        set(NETX_DIR "${CMAKE_CURRENT_LIST_DIR}/../../third-party/threadx/netxduo")
+    endif()
+    if(NOT THREADX_CONFIG_DIR)
+        set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}")
+    endif()
+    set(_tx_port_inc "${THREADX_DIR}/ports/risc-v64/gnu/inc")
+    # picolibc sysroot (host tool query) — match the cross-probe's resolution.
+    execute_process(
+        COMMAND riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d --specs=picolibc.specs -print-sysroot
+        OUTPUT_VARIABLE _tx_picolibc OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT _tx_picolibc OR NOT EXISTS "${_tx_picolibc}/include")
+        set(_tx_picolibc "/usr/lib/picolibc/riscv64-unknown-elf")
+    endif()
+    set(_cyc_threadx_inc
+        "-isystem ${_tx_picolibc}/include"
+        "-I${THREADX_CONFIG_DIR}"
+        "-I${THREADX_DIR}/common/inc"
+        "-I${_tx_port_inc}"
+        "-I${NETX_DIR}/common/inc"
+        "-I${NETX_DIR}/addons/BSD")
+    string(JOIN " " _cyc_threadx_inc_str ${_cyc_threadx_inc})
+    set(CMAKE_C_FLAGS
+        "${CMAKE_C_FLAGS} ${_cyc_threadx_inc_str} -ffunction-sections -fdata-sections -fno-builtin -fno-lto -DTX_INCLUDE_USER_DEFINE_FILE -DNX_INCLUDE_USER_DEFINE_FILE"
+        CACHE STRING "" FORCE)
+endif()
+
+# ---------------------------------------------------------------------------
 # Native-C platform shim (`packages/core/nros-platform-threadx`). The
 # board overlay declared `threadx_kernel` (+ `netxduo` or `nsos_netx`)
 # and wired them in. The shim CMakeLists picks them up via the
