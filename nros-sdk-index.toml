@@ -1,0 +1,81 @@
+# nano-ros SDK package index (Phase 187).
+#
+# `nros setup <board>` reads this to fetch prebuilt host toolchains/tools, or
+# build them from the `[tool.*.source]` recipe into the same prefix. Prebuilt
+# `dist` assets are hosted on NEWSLabNTU/nano-ros-sdk Releases:
+#   tag = <tool>-<version>,  asset = <tool>-<host>.tar.zst  (+ .sha256)
+#
+# Version is the SSOT. `dist.<host>.{url,sha256}` are filled by seeding the
+# nano-ros-sdk build workflow (workflow_dispatch) + verified by the
+# `sdk-index-gate` CI on any change here. Until an asset is seeded, leave its
+# `dist.<host>` out — `nros setup` falls back to the `[tool.*.source]` recipe.
+#
+# host keys: linux-x86_64 · linux-arm64 · macos-arm64  (matches sdk_index::host_key)
+
+# --- prebuilt host tools (target-agnostic) ---
+
+[tool.qemu]
+version = "11.0.0-nros1"
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros1/qemu-linux-x86_64.tar.zst", sha256 = "0c1dcf0a6929b0a27f8ccf961ae72d3b8bea112310bd67ffb95be7fc468a9ad5" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros1/qemu-linux-arm64.tar.zst", sha256 = "c380c2b4fcaf2c4c188ecc2c86e12581536aef7fcae327127964c4f861a4a2f5" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros1/qemu-macos-arm64.tar.zst", sha256 = "580c9b13e0887764200e6e7d75a568b1a2cfa11359f80ca43f2ddd7d87ccc696" }
+[tool.qemu.source]
+git = "https://github.com/NEWSLabNTU/qemu"
+ref = "nano-ros-v11.0.0-patches" # patched fork branch (no tags upstream)
+configure = "./configure --prefix={prefix} --target-list=arm-softmmu,riscv64-softmmu --disable-docs"
+install = "make -j$(nproc) && make install"
+
+[tool.arm-none-eabi-gcc]
+version = "13.2-nros1"
+# Repackaged from ARM's release; no in-repo source build (binary toolchain).
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros1/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "2d913ea50094cefc29a85bf18dddcbf8854b7a2ec9ca892e89f2f25ba06b32da" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros1/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "93da429c4a93d0c99a8a16b8cdbb979ef8717c1f8b39fcf3cae4a601d426db6e" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros1/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748" }
+
+[tool.riscv-none-elf-gcc]
+version = "14.2-nros1"
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-x86_64.tar.zst", sha256 = "0f7a938cf5724c6c4ac48af140ede038015d63df1a6460f671d1215fff5ba622" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-arm64.tar.zst", sha256 = "8eba3c6e8e9dd51ae0583146209100a5e09a670649f1ed0840c26608caa32095" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-macos-arm64.tar.zst", sha256 = "eb9cd46e48e2196fb13d09112a655b3b926ff18a2350eb7ae79336205165b954" }
+
+[tool.zenohd]
+version = "1.7.2-nros1"
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/zenohd-1.7.2-nros1/zenohd-linux-x86_64.tar.zst", sha256 = "9f90cb3b83d11c9213e25f0fc1fc9826600a215abf0526cfa361f2a1f5fa9698" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/zenohd-1.7.2-nros1/zenohd-linux-arm64.tar.zst", sha256 = "c92508860fa1efd0262ff797da478e1c5db1547a63c05f536a32ca136000d9ce" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/zenohd-1.7.2-nros1/zenohd-macos-arm64.tar.zst", sha256 = "5f0491a24ceb7364e7ae1d3475a421eaa78369b14acee488337ffe17ebab1af5" }
+[tool.zenohd.source]
+git = "https://github.com/eclipse-zenoh/zenoh"
+ref = "1.7.2"
+install = "cargo install --path zenohd --root {prefix} --locked"
+
+[tool.openocd]
+version = "0.12.0-nros1"
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros1/openocd-linux-x86_64.tar.zst", sha256 = "f21e7be90a71c354251956ce43b30520e116de9ceab57ac70d521eccd99809ca" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros1/openocd-linux-arm64.tar.zst", sha256 = "39ed5882df9f20ca2dda18a850418441dcbb17a2f39071dae587d40f0a590987" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros1/openocd-macos-arm64.tar.zst", sha256 = "1777ad02eeb1b7702d61a53b72496a00bea4aad18d3415f1e4cf82172f974909" }
+
+# --- source packages (built with the app for the user's target) ---
+
+[source.freertos-kernel]
+version = "10.6.2"
+
+[source.lwip]
+version = "2.2.0"
+
+[source.threadx]
+version = "6.4.1"
+
+[source.zenoh-pico]
+version = "1.7.2"
+
+# --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
+
+[gated.nv-spe-fsp]
+version = "36.3"
+env = "NV_SPE_FSP_DIR"
+installer = "nvidia-sdk-manager"
+
+[gated.arm-fvp]
+version = "11.24"
+env = "ARM_FVP_DIR"
+installer = "arm-fvp-installer"
