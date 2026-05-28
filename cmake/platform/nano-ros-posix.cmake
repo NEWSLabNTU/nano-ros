@@ -59,17 +59,21 @@ endif()
 # When the Cyclone backend self-provisions from source (nros_provide_cyclonedds()
 # — a bare cmake build, or `-DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON`), match
 # the host flags the retired scripts/cyclonedds/build.sh used: disable the DDS
-# Security plugin (needs OpenSSL) and the Iceoryx shared-memory transport (else
-# the binary pulls libiceoryx_posh.so at runtime — not in scope). Keep
-# BUILD_SHARED_LIBS + BUILD_IDLC at their native defaults (native wants a usable
-# idlc + libddsc.so). Gated on the cyclonedds RMW; inert for the find_package
-# path and other RMWs.
+# Security plugin (needs OpenSSL) and the Iceoryx shared-memory transport. Build
+# a STATIC ddsc so it links into the app — then there is no runtime libddsc.so,
+# hence no rpath needed and, crucially, no risk of ld.so resolving the app's
+# `libddsc.so.0` against a *different* system `/opt/ros` Cyclone (build-flag /
+# ABI mismatched, and it pulls iceoryx). The backend whole-archives
+# $<TARGET_FILE:CycloneDDS::ddsc>, so a static archive links cleanly — the same
+# shape the embedded targets use. Gated on the cyclonedds RMW; inert for the
+# find_package path and other RMWs. Phase 186.
 # ---------------------------------------------------------------------------
 if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NOT DEFINED NROS_CYCLONE_POSIX_FLAGS_STAGED)
     set(NROS_CYCLONE_POSIX_FLAGS_STAGED TRUE)
     set(ENABLE_SECURITY OFF CACHE BOOL "Cyclone: no DDS Security (Phase 186)" FORCE)
     set(ENABLE_SSL OFF CACHE BOOL "Cyclone: no TLS (Phase 186)" FORCE)
     set(ENABLE_SHM OFF CACHE BOOL "Cyclone: no Iceoryx SHM (Phase 186)" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Cyclone: static ddsc for self-provision (Phase 186)" FORCE)
 endif()
 
 # Per-app fixup. POSIX has no linker script / startup files, but native

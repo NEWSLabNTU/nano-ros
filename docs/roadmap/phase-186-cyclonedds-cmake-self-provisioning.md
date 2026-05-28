@@ -177,19 +177,18 @@ idlc build / `-DIDLC_EXECUTABLE`.
       **PASS**. `threadx-cross-probe.sh` + the now-orphaned shared
       `cross-build-ddsc.sh` + the `just cyclonedds threadx-cross-probe` recipe
       deleted. **The embedded-Cyclone shell path is fully removed.**
-- [~] **native**: groundwork landed — `nano-ros-posix.cmake` stages the host
-      Cyclone flags (`ENABLE_SECURITY/SSL/SHM=OFF`, matching `build.sh`) for the
-      self-provision path. Verified: forced-source (`-DCMAKE_DISABLE_FIND_PACKAGE_
-      CycloneDDS=ON`) **builds** native Cyclone + `libddsc.so` from source, and the
-      self-provisioned `ddsc` is iceoryx-clean (matches reference build/install).
-      **Remaining iteration:** the native *example* link still pulls iceoryx
-      transitively from `/opt/ros` (source not yet traced — corrosion rust cell?),
-      the lone-talker run produced no output (needs a talker+listener pair check),
-      and the configure left `NANO_ROS_RMW=zenoh` in the cache (RMW-selection
-      ordering to verify). `native.just` is NOT yet rewired — native still uses the
-      working find_package(`build/install`) path, so nothing is broken. Native is
-      entangled with the host `build.sh` decision below and needs a full native
-      cyclone-suite revalidation (incl. ros-interop).
+- [x] **native**: `nano-ros-posix.cmake` stages the host Cyclone flags
+      (`ENABLE_SECURITY/SSL/SHM=OFF` + **`BUILD_SHARED_LIBS=OFF`** — a STATIC ddsc
+      linked into the app: no runtime `libddsc.so`, hence no rpath and no risk of
+      ld.so resolving the app's `libddsc.so.0` against a build-flag-mismatched
+      system `/opt/ros` Cyclone — which also pulls iceoryx; that was the
+      transitive-iceoryx red herring). `just native build-fixtures` self-provisions
+      via `-DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON` (forces the pinned source) +
+      `rm -rf build-cyclonedds` (clean reconfigure — `configure_if_needed` was
+      reusing a stale shared-config dir). **Validated:** recipe builds rust/c/cpp
+      cyclone cells static + self-contained (ldd has no libddsc/iceoryx), manual
+      rust pair exchanges (`Received: 0,1`), and
+      `test_native_cyclonedds_rust_talker_to_listener` (C + C++) **PASS**.
 - [ ] **host `build.sh` / `just cyclonedds setup`**: the host Cyclone install
       (`build/install`, idlc + native find_package) — decide whether native also
       self-provisions before removing; needs a full cyclone-suite revalidation —
