@@ -1,0 +1,67 @@
+# Phase 196.6 — per-platform dependency-chain validation.
+#
+# Light, fast: proves the dep chain *resolves* for every (board, rmw) cell —
+# the prebuilt-toolchain side (`nros setup --dry-run`) + the crate/feature/target
+# side (codegen + `cargo tree`, resolution only, NO compile). It does NOT build
+# every platform; full builds live in `zephyr-dual-line.yml` + `just build-all`.
+#
+# Mirrors the real distribution model: source tree + prebuilt host toolchains,
+# the `nros` CLI driving setup/codegen. The whole matrix runs in one cheap job.
+name: dep-chain
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/**"
+      - "packages/**"
+      - "nros-sdk-index.toml"
+      - "scripts/ci/dep-chain-check.sh"
+      - ".github/workflows/dep-chain.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "examples/**"
+      - "packages/**"
+      - "nros-sdk-index.toml"
+      - "scripts/ci/dep-chain-check.sh"
+      - ".github/workflows/dep-chain.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: dep-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dep-chain:
+    name: per-platform dep chain
+    # jammy = the ROS 2 Humble baseline (codegen resolves std_msgs via AMENT).
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Only packages/codegen (recursive) — needed to build the `nros` CLI. The
+      # backend/platform crates are in-tree; `cargo tree` resolution reads their
+      # Cargo.toml only (the C-source submodules like zenoh-pico are compile-time
+      # and unneeded for resolution).
+      - name: Init codegen submodule
+        run: git submodule update --init --recursive packages/codegen
+
+      - name: Set up Rust toolchain
+        run: rustup show
+
+      # The interface codegen (nros generate-rust) resolves std_msgs's msg/*.msg
+      # via AMENT_PREFIX_PATH from a sourced ROS 2.
+      - name: Install ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Build the nros CLI (the published bin is stale — lacks `setup`)
+        run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+
+      - name: Per-platform dep-chain check
+        run: |
+          source /opt/ros/humble/setup.bash
+          NROS=packages/codegen/packages/target/debug/nros scripts/ci/dep-chain-check.sh
