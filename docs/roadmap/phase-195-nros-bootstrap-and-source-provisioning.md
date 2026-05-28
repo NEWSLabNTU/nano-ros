@@ -257,11 +257,43 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
     3. **Co-development** (accepted trade-off): no in-tree `nros` source ⇒
        changing `nros` = edit the `nros-cli` repo → release / `cargo install --git`.
        Re-cut a release tracking main + pin it in `[tool.nros]` before the drop.
-  - Path to drop: (1) embed/ship the bundled interfaces with the prebuilt; (2)
-        rewire the 28 sites + Corrosion to the resolved `nros`; (3) wire
-        setup/CI to install `nros`; (4) re-cut a main-tracking release + pin it;
-        (5) remove the gitlink. None are hard — the feared codegen mismatch was
-        a false alarm.
+  - **Expanded work items (195.D.1–.5):**
+  - [x] **195.D.1 — Interface-resolution: confirmed a non-blocker.** Verified
+        nano-ros codegen **requires a sourced ROS** (`AMENT_PREFIX_PATH`) for the
+        standard defs (`builtin_interfaces`/`std_msgs`/`action_msgs` from
+        `/opt/ros/…`): without AMENT *neither* the prebuilt nor the submodule-built
+        `nros` resolves them. The `packages/codegen/interfaces` bundled fallback
+        dir does not exist (vestigial). So prebuilt+AMENT ≡ submodule+AMENT — no
+        regression, no fix needed for the drop. *(Optional later hardening: embed
+        a minimal interface set in the binary for no-ROS hosts — an enhancement,
+        not a drop blocker.)*
+  - [ ] **195.D.2 — Rewire the codegen-tool source to an installed `nros`.**
+        `scripts/build/cargo.sh`: resolver = `$NROS` → PATH → `$NROS_HOME/bin`
+        (no submodule build); drop `nros_cargo_build_codegen_c`. The 9 recipe
+        `codegen=`/`codegen_tool=`/`CODEGEN=` literals → the resolver. Root
+        `CMakeLists.txt` POSIX branch: drop `add_subdirectory(packages/codegen/
+        packages/nros-cli)` + the `$<TARGET_FILE:nros>` Corrosion block; rely on
+        `NanoRosGenerateInterfaces.cmake`'s `find_program(nros)`. `NanoRosBootstrap‐
+        Codegen.cmake`: find the installed `nros`, don't cargo-build from the
+        submodule. `install-nros-cli` recipe → `install.sh` / `cargo install
+        --git`. `scripts/ci/dep-chain-check.sh`. **Verify byte-identical codegen**
+        on nuttx + native-posix with the installed prebuilt (clean env — the
+        earlier failure was a stale-PATH `nros`).
+  - [ ] **195.D.3 — Install `nros` in setup + CI.** `just setup`/`bootstrap.sh`
+        install the pinned `nros` (`install.sh`) so the build resolves it; the
+        nano-ros CI workflow installs it before `just ci`. The build assumes
+        `nros` is provided (the 187.6 "tools are given" principle).
+  - [ ] **195.D.4 — Re-cut a main-tracking `nros` release + pin it.** Cut
+        `nros-v<next>` from current `nros-cli` main (so the codegen + orchestration
+        match the workspace), fill `[tool.nros].dist` + sha (all 4 hosts), pin the
+        version. (The build's cmake C/C++ codegen is version-insensitive —
+        `cargo-nano-ros` unchanged — but `nros build`/orchestration uses 195.C
+        descriptors, so the pinned release should track main.)
+  - [ ] **195.D.5 — Remove the gitlink.** Confirm no in-tree consumer of the
+        non-CLI tenants (`cargo-nano-ros`, `rosidl-*`, `colcon-cargo-ros2`) remains
+        (they ship in the `nros-cli` repo). `git rm packages/codegen` + drop the
+        `.gitmodules` entry + the root Cargo workspace `exclude`/member refs. Fresh
+        clone builds with only the installed `nros`.
 - [x] **195.E — Refresh the `nros-cli` repo's README + CLI help text.** DONE
       (`da75c37`). `README.md` rewritten around the `nros` CLI (was the
       colcon-cargo-ros2 / PyPI doc): prebuilt install (`curl|sh install.sh`), the
