@@ -678,6 +678,29 @@ impl SmoltcpBridge {
         drain_multicast_joins(iface, device, timestamp);
 
         // 1. Stage-to-socket TX drain + connect kickoff.
+        Self::drain_socket_tx(iface, sockets);
+
+        // 2. Push newly-queued socket TX out to the wire AND pull device RX.
+        let activity = iface.poll(timestamp, device, sockets);
+
+        // 3. Drain socket RX → staging + reconcile post-poll TCP state.
+        Self::drain_socket_rx(sockets);
+
+        // 4. Flush ACKs / window updates triggered by the RX drain so
+        //    peers see the new advertised window in the same poll. Without
+        //    this, a saturated peer can be left holding bytes for an extra
+        //    poll cycle.
+        let _ = iface.poll(timestamp, device, sockets);
+
+        matches!(activity, PollResult::SocketStateChanged)
+    }
+
+    /// Phase 1 of [`poll`]: drain each allocated socket's staged TX into the
+    /// smoltcp socket and kick off pending TCP connects. Reads `iface` only
+    /// for `connect`'s routing context — the wire push happens later in
+    /// `iface.poll`.
+    fn drain_socket_tx(iface: &mut Interface, sockets: &mut SocketSet) {
+        use portable_atomic::Ordering;
         unsafe {
             let table = &raw mut SOCKET_TABLE;
             for idx in 0..MAX_SOCKETS {
@@ -760,11 +783,13 @@ impl SmoltcpBridge {
                 }
             }
         }
+    }
 
-        // 2. Push newly-queued socket TX out to the wire AND pull device RX.
-        let activity = iface.poll(timestamp, device, sockets);
-
-        // 3. Drain socket RX → staging + reconcile post-poll TCP state.
+    /// Phase 3 of [`poll`]: pull each socket's freshly-arrived RX into staging
+    /// and reconcile post-poll TCP connection state. Touches sockets + the
+    /// static tables only — no `iface`/`device` access.
+    fn drain_socket_rx(sockets: &mut SocketSet) {
+        use portable_atomic::Ordering;
         unsafe {
             let table = &raw mut SOCKET_TABLE;
             for idx in 0..MAX_SOCKETS {
@@ -823,14 +848,6 @@ impl SmoltcpBridge {
                 }
             }
         }
-
-        // 4. Flush ACKs / window updates triggered by the RX drain so
-        //    peers see the new advertised window in the same poll. Without
-        //    this, a saturated peer can be left holding bytes for an extra
-        //    poll cycle.
-        let _ = iface.poll(timestamp, device, sockets);
-
-        matches!(activity, PollResult::SocketStateChanged)
     }
 
     // ========================================================================

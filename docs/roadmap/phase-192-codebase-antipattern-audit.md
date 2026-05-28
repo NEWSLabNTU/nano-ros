@@ -195,7 +195,40 @@ Backends bake values the zenoh path makes tunable; defaults even disagree.
   shared `nros-build-support` helper crate.
 - `drivers/nros-smoltcp/src/bridge.rs:667` `poll` (168) — separate drain/poll/dispatch.
 
-- [ ] `spin_once` decomposed; `generate_config` dedup'd into a shared crate.
+- [x] **`SmoltcpBridge::poll` decomposed** — phase 1 (stage→socket TX drain +
+      connect kickoff) and phase 3 (socket RX → staging + post-poll TCP state
+      reconcile) extracted into private `drain_socket_tx(&mut Interface, &mut
+      SocketSet)` / `drain_socket_rx(&mut SocketSet)` assoc fns (verbatim moves).
+      `poll` now reads as the 5-step pipeline: `drain_multicast_joins` →
+      `drain_socket_tx` → `iface.poll` → `drain_socket_rx` → ACK-flush `iface.poll`
+      (168 → ~30 lines). Verified `cargo check` clean on `thumbv7m-none-eabi`
+      (default + `embedded-nal`) and `riscv32imc-unknown-none-elf`.
+- [~] **`spin_once` decomposition — WON'T-DO (feature-conditional hazard).** The
+      736-line body is dense `#[cfg]`-gated across ≥3 wake-path variants (std +
+      rmw-cffi × {zephyr/freertos/nuttx/threadx} vs not, poll-only vs async-wake),
+      with locals (`was_woken`, `primary_drive_timeout_ms`, `spin_start`) threaded
+      across the whole body. Extract-method here would have to replicate every cfg
+      gate per helper and is exactly the per-combo-breaks-silently class that bit
+      192.8 (the default/all-features build passes while a partial platform combo
+      fails under the examples' `-D warnings`). It is also the hottest concurrency
+      path on a shared live branch (max conflict + behavior-risk surface). Not
+      worth it for a P2 readability refactor.
+- [~] **build.rs `generate_config` dedup — WON'T-DO (premise overstated).** The two
+      bodies are *not* structurally duplicated beyond the high-level skeleton
+      (probe → compute opaque sizes → write header). `diff` shows they diverge
+      substantially: nros-cpp carries `CPP_CONTEXT_OVERHEAD`, action server/client
+      storage, and the fat-LTO hand-math fallback (`target_pointer_bytes()`-based);
+      nros-c carries the C-API knobs (`NROS_LET_BUFFER_SIZE`, service-timeout).
+      A shared `nros-build-support` crate would extract a thin skeleton behind many
+      params for marginal DRY while adding `[build-dependencies]` churn to two core
+      crates on the shared branch. Net-negative; the duplication audit-flag was a
+      false positive.
+- [ ] **Board init splits** (`nros-board-esp32` `init_hardware`, `nros-board-stm32f4`
+      `setup_hardware`) — deferred. Genuine extract-method targets (linear
+      sequential bringup, no concurrency subtlety) but embedded-only with moved
+      per-peripheral `dp.*` fields threaded through `#[cfg(feature = "ethernet")]`;
+      can't be cheaply host-verified, and a mis-split breaks an embedded build the
+      audit can't quickly catch. Left for a focused board-crate pass.
 
 ### 192.8 — [P3] Resolve the Phase-110 scheduler dead-code cluster
 ~25 `#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b …` whose referenced
