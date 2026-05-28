@@ -106,6 +106,15 @@ callback-type through `build`. `into`-style fluent topic QoS
 The C / C++ surfaces (rclc / rclcpp mirrors) keep their named-options structs;
 the builder is the Rust ergonomic front, all three lowering to the same core.
 
+## Phasing
+
+Tracked as **[Phase 188](../roadmap/phase-188-entity-api-tiers.md)** (split from
+Phase 172 — this is a runtime client-API refactor, not orchestration). M1 (the
+Rust builder + convenient surface, incl. `.message_info()` + `.session()`)
+unblocks the Phase 172 `[[bridge]]` topic-forwarding runtime half; M2 retires the
+`register_*` zoo + points the generator at the builder; M3 adds the C/C++
+named-options parity; M4 sweeps call sites + deletes the shims.
+
 ## Migration (additive, no break)
 
 1. Land the builder (`node.subscription(t)` / `node.publisher(t)`) over the
