@@ -121,14 +121,29 @@ export APPDIR="$NUTTX_APPS_DIR"
 BOARD_MAKEDEFS="$(pwd)/boards/arm/qemu/qemu-armv7a/scripts/Make.defs"
 MARKER=".nros-nuttx-build-head"
 CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
-STORED_HEAD=$(cat "$MARKER" 2>/dev/null || echo "none")
+# 194.5: key the marker on the NuttX HEAD *and* this board's defconfig (content
+# hash) so a board/config switch — not just a submodule-HEAD change — forces a
+# reconfigure. The old HEAD-only marker silently built a stale or *other-board*
+# config when the shared NuttX tree was already configured for a different board
+# (the single in-tree .config can only hold one board at a time).
+DEFCONFIG_HASH=$(sha256sum "$DEFCONFIG" 2>/dev/null | cut -d' ' -f1)
+CURRENT_KEY="${CURRENT_HEAD}:${DEFCONFIG_HASH}"
+STORED_KEY=$(cat "$MARKER" 2>/dev/null || echo "none")
+# Self-validate the in-tree config against this board (catches an external
+# reconfigure that didn't touch the marker).
+EXPECTED_BOARD=$(grep -E '^CONFIG_ARCH_BOARD=' "$DEFCONFIG" 2>/dev/null || true)
+ACTUAL_BOARD=$(grep -E '^CONFIG_ARCH_BOARD=' .config 2>/dev/null || true)
 NEEDS_RECONFIG=0
 
-if [ ! -f .config ] || [ ! -f Make.defs ] || [ "$DEFCONFIG" -nt .config ]; then
+if [ ! -f .config ] || [ ! -f Make.defs ]; then
     NEEDS_RECONFIG=1
 fi
-if [ "$CURRENT_HEAD" != "$STORED_HEAD" ]; then
-    echo "NuttX submodule HEAD changed ($STORED_HEAD → $CURRENT_HEAD) — cleaning stale build artifacts."
+if [ "$CURRENT_KEY" != "$STORED_KEY" ]; then
+    echo "NuttX HEAD/defconfig changed ($STORED_KEY → $CURRENT_KEY) — reconfiguring."
+    NEEDS_RECONFIG=1
+fi
+if [ -n "$EXPECTED_BOARD" ] && [ "$EXPECTED_BOARD" != "$ACTUAL_BOARD" ]; then
+    echo "NuttX tree is configured for '${ACTUAL_BOARD:-<none>}', need '$EXPECTED_BOARD' — reconfiguring."
     NEEDS_RECONFIG=1
 fi
 
@@ -139,7 +154,7 @@ if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     ln -sf "$BOARD_MAKEDEFS" Make.defs
     cp "$DEFCONFIG" .config
     make olddefconfig
-    echo "$CURRENT_HEAD" > "$MARKER"
+    echo "$CURRENT_KEY" > "$MARKER"
 fi
 
 # --- Build NuttX ---
