@@ -197,10 +197,49 @@ application code.
         C `nros_service_options_t`/`nros_action_server_options_t` +
         `nros_*_init_with_options(...)`, mirroring `SubscriptionOptions`.
         Phase 193.3/193.4 explicitly **deferred these here** — their sole
-        non-QoS axis is `sched_context`, which is still **inert** for
-        services/action-servers (no bindable executor `HandleId`, no sched
-        field on the C structs), so the structs must land together with that
-        sched-binding substrate, not as empty-reserved scaffolding.
+        non-QoS axis is `sched_context`, inert for the C/C++ service/action
+        surface today, so the structs must land together with that sched-binding
+        substrate, not as empty-reserved scaffolding.
+
+        **Scoped (2026-05-29) — the substrate is wrapper-only, not core.** The
+        Rust core already sched-binds every entity uniformly:
+        `register_*` returns a `HandleId`, `Executor::bind_handle_to_sched_context(handle, sc_id)`
+        attaches it (`spin.rs`), and the C register fns *already capture* that
+        HandleId — services/clients store it as `_internal.arena_entry_index = handle_id.0`,
+        action servers as `ActionServerRawHandle` (which exposes `.handle_id()`,
+        `action.rs:773`). So nothing changes in the core or the RMW layer; the gap
+        is purely surfacing the captured handle + a `sched_context_id` input
+        through the C/C++ wrappers, mirroring the subscription (Phase 189.M3)
+        pattern verbatim (auto-bind block `executor.rs:791–800`,
+        `SubscriptionOptions` + `Subscription::sched_handle_id_` /
+        `has_sched_handle()` `subscription.hpp:286,330`, the post-create bind in
+        `node.hpp:381–399`). Work items:
+    - [ ] **M3.3.a — C services + clients (cleanest; HandleId already in hand).**
+          Add `sched_context_id: u8` (input, default 0) to `nros_service_t` /
+          `nros_client_t`; in each register's `Ok(handle_id)` arm, auto-bind when
+          non-zero (`bind_handle_to_sched_context(handle_id, SchedContextId(id))`
+          → `INVALID_ARGUMENT` on a bad SC), copying the subscription block. Add
+          `nros_service_options_t` / `nros_client_options_t` +
+          `nros_service_init_with_options` / `nros_client_init_with_options`
+          (these are the M3.3-C structs, now carrying a real `sched_context`).
+    - [ ] **M3.3.b — C actions (server + client).** Same pattern; the server
+          binds `_internal.handle.handle_id()`, the client its captured
+          `arena_entry_index`. Add `nros_action_server_options_t` /
+          `nros_action_client_options_t` + `_init_with_options`.
+    - [ ] **M3.3.c — C++ services / clients / action servers.** Store
+          `size_t sched_handle_id_` + `has_sched_handle()` / `sched_handle_id()`
+          on `Service` / `Client` / `ActionServer` (mirror `Subscription`); add
+          `ServiceOptions` / `ActionServerOptions` (`int sched_context`); the
+          `create_service(name, qos, options)` overload binds post-create via
+          `nros_cpp_bind_handle_to_sched_context`. **Design point:** the FFI
+          `nros_cpp_service_*_create` must hand the executor `HandleId` back to the
+          C++ object (the C path keeps it internal) — cheapest is a
+          `nros_cpp_service_sched_handle(...)` getter or a create out-param.
+    - [ ] **M3.3.d — Tests + docs.** Per-language test that a non-default
+          `sched_context` reaches the binding (bad SC → error; good SC → the
+          entity's slot routes onto the SC's priority/policy in `spin_once`);
+          document the options structs alongside `SubscriptionOptions`. Closes
+          Phase 189 M3.3.
   - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
         `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
         dispatch + `Executor::add_arena_subscription_c_info_callback` in
