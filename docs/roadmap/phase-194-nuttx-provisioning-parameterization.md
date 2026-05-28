@@ -6,12 +6,12 @@ defconfig + cross-toolchain — **without editing ARM-specific code**. Keep Nutt
 **source-built** (`make export`, the canonical out-of-tree-app SDK); only the
 arch-specific knobs become per-board parameters.
 
-**Status.** 194.1 + 194.2 + 194.3a done — the shared NuttX provisioning
-(`build-nuttx.sh` + `nros-nuttx-ffi`) carries **no arm literal**; every
-arch-specific is env-driven with qemu-arm defaults (verified: `just nuttx
-build-kernel` + `build-examples` green). Remaining: 194.3b (a real 2nd-arch
-board to prove it — needs that arch's toolchain/defconfig) + 194.4 (CMake
-self-provision).
+**Status.** 194.1 + 194.2 + 194.3a + 194.3b + 194.5 done — the shared NuttX
+provisioning carries **no arm literal** (all arch-specifics env-driven, arm
+defaults); a full **riscv NuttX export builds** via `nros setup`'s toolchain +
+the existing flow; the marker is board-aware. Remaining: **194.3c** (the
+`nros-board-nuttx-qemu-riscv` crate — deferred) + **194.4** (CMake
+self-provision, which retires the marker).
 
 **Priority.** P2 — extensibility/correctness of the NuttX path; today only
 `nuttx-qemu-arm` (cortex-a7) is reachable because the provisioning hardcodes ARM.
@@ -78,28 +78,36 @@ in the index); the kernel source-builds against it.
   its `nuttx-config/defconfig`, and the cargo target triple — reusing the
   arch-agnostic platform port + the shared `build-nuttx.sh`/FFI. `nros setup`
   ships that arch's cross-gcc.
-- [~] **194.3b — Prove with a real 2nd-arch board.** PARTIAL (2026-05-29):
+- [x] **194.3b — riscv NuttX export proven end-to-end** (2026-05-29):
       - ✅ `nros setup --tool riscv-none-elf-gcc` installs the xPack riscv
-        toolchain (proves the cross-toolchain provisioning scales by arch).
-      - ✅ NuttX **compiles for riscv** with that toolchain — `rv-virt:flats`
-        configure + `make` reached riscv object compilation + linker-script gen
-        (so `NUTTX_CROSS` / the arch-agnostic flow work on a 2nd arch).
-      - ⛔ The rv-virt **export** is blocked by `genromfs` (the *stock* rv-virt
-        board ships `etc/init.d/rcS` → `make` needs genromfs unconditionally;
-        not installable here — no sudo, and building it from an external repo is
-        untrusted-code). A **nano-ros riscv defconfig would avoid it** — confirmed:
-        the arm nano-ros defconfig has no board etc-ROMFS, so `just nuttx
-        build-kernel` (arm) needs no genromfs.
-      - ⏳ Remaining for a full proof: a nano-ros `nros-board-nuttx-qemu-riscv`
-        crate (custom defconfig avoiding genromfs + the riscv FFI link: entry,
-        `NUTTX_VECTORTAB_OBJ=""`, lib group, target triple) + a riscv example.
-- [ ] **194.5 — `build-nuttx.sh` marker is board-blind (bug found in 194.3b).**
-      The `.nros-nuttx-build-head` marker keys only on the NuttX submodule HEAD,
-      not the board/defconfig. Switching the configured board (or any config
-      divergence) without a HEAD change makes `build-nuttx.sh` **skip the
-      reconfigure** and build the stale/wrong config. For multi-board NuttX the
-      marker must also key on the board id / defconfig hash (or always
-      `olddefconfig` against the board's defconfig).
+        toolchain — the cross-toolchain provisioning scales by arch.
+      - ✅ **A full riscv NuttX export builds with it**: `rv-virt:flats`
+        configure → `make` → `make export` → `nuttx-export-12.13.0.tar.gz`
+        (8.1 MB, riscv), exit 0. (Needed `genromfs`, a host tool the stock
+        rv-virt board's `etc/` requires — user-installed; a nano-ros riscv
+        defconfig would drop it, as the arm one does.) Confirms the existing
+        provisioning *flow* (configure + `make export`) is arch-agnostic given a
+        defconfig + `NUTTX_CROSS`.
+      - **Examined the scripts without a board crate:** the generic NuttX flow is
+        arch-agnostic; the only board-bound inputs `build-nuttx.sh` needs are the
+        `DEFCONFIG` + `BOARD_MAKEDEFS` (still hardcoded to the arm board's paths)
+        — those are exactly what a board crate supplies.
+- [ ] **194.3c — `nros-board-nuttx-qemu-riscv` board crate (DEFERRED).** The full
+      nano-ros riscv board: a custom defconfig (rv-virt + nano-ros features, no
+      board etc-ROMFS), its `BOARD_MAKEDEFS` (`boards/risc-v/qemu-rv/rv-virt`),
+      the per-board env (`NUTTX_CROSS=riscv-none-elf-gcc`, `NUTTX_ARCH=risc-v`,
+      `NUTTX_ARCH_CFLAGS`, `NUTTX_LIBGCC_FLAGS`, `NUTTX_VECTORTAB_OBJ=""`), the
+      riscv FFI link (entry symbol, lib group, cargo target triple), and a riscv
+      qemu example. Validates the platform port + FFI on a 2nd arch end-to-end.
+- [x] **194.5 — board-aware marker.** DONE (`ff3eef3b7`). `build-nuttx.sh` keys
+      `.nros-nuttx-build-head` on HEAD + `sha256(defconfig)` and self-validates
+      the in-tree `.config`'s `CONFIG_ARCH_BOARD` vs this board's — reconfigures
+      on either mismatch. Verified: an rv-virt-configured tree → `just nuttx
+      build-kernel` detected `'rv-virt' != 'qemu-armv7a'` → reconfigured to arm.
+      **Necessity:** the marker is a workaround for the *single shared in-tree*
+      NuttX config; once 194.4's self-provisioning uses per-board (out-of-tree)
+      build dirs + CMake `ExternalProject` stamps, the marker is redundant —
+      retire it with 194.4.
 - [ ] **194.4 (optional) — Self-provision the export via CMake.** Wire `make
       export` (`build-nuttx.sh`) as a **marker-guarded** (`.nros-nuttx-build-head`),
       **shared** (build-once-link-many) CMake `ExternalProject`/custom-target that
