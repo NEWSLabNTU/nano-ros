@@ -36,20 +36,28 @@ impl XrceAgent {
         let binary = xrce_agent_binary_path();
 
         let mut cmd = std::process::Command::new(&binary);
-        let log_path = crate::project_root().join(format!("xrce-agent-{}.log", port));
-        let log_file = std::fs::File::create(&log_path).expect("failed to create log file");
         // Phase 160.H.1.2 — `-v6` enables Agent verbose logging
-        // (`UXR_VERBOSE_LEVEL_TRACE`) when `NROS_XRCE_AGENT_VERBOSE` is
-        // set in the env. Captures every inbound/outbound message at the
-        // Agent so we can correlate publisher publishes with subscriber
-        // deliveries for the throughput-drop investigation.
+        // (`UXR_VERBOSE_LEVEL_TRACE`) when `NROS_XRCE_AGENT_VERBOSE` is set,
+        // capturing every inbound/outbound message at the Agent.
         let mut agent_args: Vec<String> = vec!["udp4".into(), "-p".into(), port.to_string()];
-        if std::env::var_os("NROS_XRCE_AGENT_VERBOSE").is_some() {
+        let verbose = std::env::var_os("NROS_XRCE_AGENT_VERBOSE").is_some();
+        if verbose {
             agent_args.push("-v6".into());
         }
-        cmd.args(&agent_args)
-            .stdout(log_file.try_clone().expect("failed to clone log file"))
-            .stderr(log_file);
+        cmd.args(&agent_args);
+        // Opt-in log capture into the unified dir (test-logs/fixtures/) — enabled
+        // by NROS_XRCE_AGENT_VERBOSE or NROS_TEST_LOGS. Default: null sink, so a
+        // normal run leaves no xrce-agent-*.log behind (was: always written to
+        // the repo root).
+        if verbose || crate::fixtures::fixture_logs_enabled() {
+            let log_path = crate::fixtures::fixture_log_path(&format!("xrce-agent-{port}"));
+            let log_file = std::fs::File::create(&log_path).expect("failed to create log file");
+            cmd.stdout(log_file.try_clone().expect("failed to clone log file"))
+                .stderr(log_file);
+        } else {
+            cmd.stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null());
+        }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn().map_err(|e| {

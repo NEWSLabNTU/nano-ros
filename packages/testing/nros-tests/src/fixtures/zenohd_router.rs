@@ -154,13 +154,16 @@ impl ZenohRouter {
 
         let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
         cmd.args(["--listen", &locator, "--no-multicast-scouting"]);
-        // Diagnostic log capture per port. Set ZENOHD_LOG=trace|debug in env
-        // to capture; defaults to null sinks otherwise.
-        if let Ok(level) = std::env::var("ZENOHD_LOG") {
-            let log_path = format!("/tmp/zenohd-{port}.log");
+        // Diagnostic log capture per port — opt-in, unified dir. Enabled by
+        // ZENOHD_LOG=trace|debug (also sets RUST_LOG level) or NROS_TEST_LOGS;
+        // the file lands in test-logs/fixtures/ (see fixtures::fixture_log_path).
+        // Defaults to null sinks so a normal run leaves nothing behind.
+        let zenohd_log = std::env::var("ZENOHD_LOG").ok();
+        if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
+            let log_path = crate::fixtures::fixture_log_path(&format!("zenohd-{port}"));
             let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
             let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
-            cmd.env("RUST_LOG", level)
+            cmd.env("RUST_LOG", zenohd_log.as_deref().unwrap_or("info"))
                 .stdout(Stdio::from(log_stdout))
                 .stderr(Stdio::from(log));
         } else {
@@ -197,11 +200,12 @@ impl ZenohRouter {
             cmd.args(["--listen", &locator]);
         }
 
-        if let Ok(level) = std::env::var("ZENOHD_LOG") {
-            let log_path = "/tmp/zenohd-serial.log";
-            let log = std::fs::File::create(log_path).map_err(TestError::ProcessStart)?;
+        let zenohd_log = std::env::var("ZENOHD_LOG").ok();
+        if zenohd_log.is_some() || crate::fixtures::fixture_logs_enabled() {
+            let log_path = crate::fixtures::fixture_log_path("zenohd-serial");
+            let log = std::fs::File::create(&log_path).map_err(TestError::ProcessStart)?;
             let log_stdout = log.try_clone().map_err(TestError::ProcessStart)?;
-            cmd.env("RUST_LOG", level)
+            cmd.env("RUST_LOG", zenohd_log.as_deref().unwrap_or("info"))
                 .stdout(Stdio::from(log_stdout))
                 .stderr(Stdio::from(log));
         } else {

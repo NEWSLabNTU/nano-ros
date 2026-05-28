@@ -8,6 +8,12 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TALKER="$PROJECT_ROOT/target/release/talker"
 Z_SUB="$PROJECT_ROOT/packages/zpico/zpico-sys/zenoh-pico/build/examples/z_sub"
 
+# Unified log dir (matches the test fixtures' convention) instead of scattering
+# files across /tmp. Override with NROS_TEST_LOG_DIR.
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+LOG_DIR="${NROS_TEST_LOG_DIR:-$REPO_ROOT/test-logs/debug}"
+mkdir -p "$LOG_DIR"
+
 # Colors
 GREEN='\033[0;32m'
 NC='\033[0m'
@@ -25,7 +31,7 @@ sleep 1
 
 # Start zenohd
 log_info "Starting zenohd..."
-zenohd --listen tcp/127.0.0.1:7447 > /tmp/zenohd.log 2>&1 &
+zenohd --listen tcp/127.0.0.1:7447 > "$LOG_DIR/zenohd.log" 2>&1 &
 sleep 2
 
 echo ""
@@ -33,7 +39,7 @@ echo "=== Part 1: nros publisher keyexpr ==="
 echo ""
 
 # Start nros talker briefly
-timeout 3 "$TALKER" --tcp 127.0.0.1:7447 > /tmp/talker.log 2>&1 &
+timeout 3 "$TALKER" --tcp 127.0.0.1:7447 > "$LOG_DIR/talker.log" 2>&1 &
 sleep 2
 
 # Subscribe to all data keys (not liveliness) to see what keyexpr is used
@@ -67,4 +73,4 @@ kill $ROS2_PID 2>/dev/null || true
 
 echo ""
 echo "=== Talker log ==="
-cat /tmp/talker.log
+cat "$LOG_DIR/talker.log"
