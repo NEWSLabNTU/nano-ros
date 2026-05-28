@@ -6,12 +6,13 @@ defconfig + cross-toolchain — **without editing ARM-specific code**. Keep Nutt
 **source-built** (`make export`, the canonical out-of-tree-app SDK); only the
 arch-specific knobs become per-board parameters.
 
-**Status.** 194.1 + 194.2 + 194.3a + 194.3b + 194.5 done — the shared NuttX
-provisioning carries **no arm literal** (all arch-specifics env-driven, arm
-defaults); a full **riscv NuttX export builds** via `nros setup`'s toolchain +
-the existing flow; the marker is board-aware. Remaining: **194.3c** (the
-`nros-board-nuttx-qemu-riscv` crate — deferred) + **194.4** (CMake
-self-provision, which retires the marker).
+**Status.** 194.1 + 194.2 + 194.3a + 194.3b + 194.4 + 194.5 done — the shared
+NuttX provisioning carries **no arm literal** (all arch-specifics env-driven,
+arm defaults); a full **riscv NuttX export builds** via `nros setup`'s toolchain
++ the existing flow; the marker is board-aware; and the export **self-provisions
+under cmake** (`nros build`/`deploy`/raw cmake auto-run `make export`, no manual
+`just nuttx build-kernel`). Remaining: **194.3c** (the
+`nros-board-nuttx-qemu-riscv` crate — deferred).
 
 **Priority.** P2 — extensibility/correctness of the NuttX path; today only
 `nuttx-qemu-arm` (cortex-a7) is reachable because the provisioning hardcodes ARM.
@@ -105,16 +106,35 @@ in the index); the kernel source-builds against it.
       on either mismatch. Verified: an rv-virt-configured tree → `just nuttx
       build-kernel` detected `'rv-virt' != 'qemu-armv7a'` → reconfigured to arm.
       **Necessity:** the marker is a workaround for the *single shared in-tree*
-      NuttX config; once 194.4's self-provisioning uses per-board (out-of-tree)
-      build dirs + CMake `ExternalProject` stamps, the marker is redundant —
-      retire it with 194.4.
-- [ ] **194.4 (optional) — Self-provision the export via CMake.** Wire `make
-      export` (`build-nuttx.sh`) as a **marker-guarded** (`.nros-nuttx-build-head`),
-      **shared** (build-once-link-many) CMake `ExternalProject`/custom-target that
-      is a dependency of the nuttx example target — so `nros build`/`deploy` (and
-      raw `cmake --build`) auto-provision NuttX with no manual `just nuttx
-      build-kernel`, parameterized by the board overlay's defconfig/toolchain/flags.
-      (Supersedes wiring `build-examples: build-kernel` in the justfile.)
+      NuttX config. 194.4 **kept and leaned on** it — the marker is both the
+      cache-invalidation key and the up-to-date guard for the build-once-link-many
+      no-op, plus a `flock` to serialize concurrent provisions of the shared tree.
+      Full marker *retirement* (the cleaner end state) needs per-board
+      (out-of-tree) build dirs + CMake `ExternalProject` stamps so no two boards
+      share one `.config` — that is **deferred** with 194.3c (a 2nd-arch board is
+      what makes the shared-tree contention real).
+- [x] **194.4 (optional) — Self-provision the export via CMake.** DONE. The
+      board overlay (`cmake/board/nano-ros-board-nuttx-qemu-arm.cmake`) exposes
+      `NROS_NUTTX_PROVISION_SCRIPT` (→ the board's `build-nuttx.sh`); the generic
+      `nros_nuttx_build_example` (`nros-c/cmake/nros-nuttx.cmake`) prepends a
+      provision `COMMAND` (run the script in `NUTTX_DIR` with `NUTTX_DIR` +
+      derived `NUTTX_APPS_DIR`) to each example's FFI `add_custom_command`, before
+      `cargo build`. So `nros build`/`deploy` + raw `cmake --build` auto-`make
+      export` with no manual `just nuttx build-kernel`. **Concurrency- + idempotency-
+      hardened** (the shared in-tree tree is hit by many parallel example builds):
+      `build-nuttx.sh` now (a) `flock`s the provision (serialize concurrent
+      `make export` — was racing `mkdir nuttx-export-<ver>`/`.version.tmp`),
+      (b) `rm`s any stale `nuttx-export-*` before `make export` (it isn't
+      idempotent — fails if the dir exists), and (c) short-circuits to a true
+      no-op when the marker is fresh AND a completed export is present
+      (build-once-link-many; `just nuttx build-kernel` is now idempotent too).
+      Verified end-to-end: removing the export + building a nuttx C example via
+      cmake **rebuilt the export from nothing** before the cargo link; a fresh
+      tree no-ops with `NuttX export up-to-date — skipping`. (A full *green* nuttx
+      C/C++ example is currently blocked by a **pre-existing, orthogonal** nros-cpp
+      compile break on this branch — `QosSettings` E0433 + `CppActionServer` layout
+      E0080 — which fails the FFI build regardless of provisioning; tracked
+      separately, no `.rs`/`.hpp` touched by 194.4.)
 
 ## Acceptance criteria
 
