@@ -212,8 +212,12 @@ Backends bake values the zenoh path makes tunable; defaults even disagree.
   `{_raw,_sized,_raw_sized,_raw_sized_on,_raw_sized_inner}` suffix explosion (8-arg
   each) → spec struct + private impl; public surface `register_action_server[_raw]`.
 
-- [ ] Functions with ≥8 params take a spec struct; the action `_on`/`_inner` split
-      moves behind a private impl.
+- [x] Functions with ≥8 params take a spec struct; the action `_on`/`_inner` split
+      moves behind a private impl. `build_node_instance`→`NodeInstanceSpec`+`PlanCtx`;
+      `nros_pubsub_bridge_create`→`nros_bridge_endpoint_t`; `render_ffi_rs`→`FfiRenderSpec`;
+      `entity_metadata`→`EntityMetadataSpec`; the `register_action_{server,client}_raw*`
+      family takes `Raw{Server,Client}Spec` (with `node_id: Option<NodeId>`), collapsing
+      the `_on`/non-`_on` split — public surface is now `register_action_*_raw[_sized]`.
 
 ### 192.7 — [P2] Split god functions / dedup build scripts
 - `nros-node/src/executor/spin.rs:3210` `spin_once` — **~736 lines** → extract
@@ -253,12 +257,16 @@ Backends bake values the zenoh path makes tunable; defaults even disagree.
       params for marginal DRY while adding `[build-dependencies]` churn to two core
       crates on the shared branch. Net-negative; the duplication audit-flag was a
       false positive.
-- [ ] **Board init splits** (`nros-board-esp32` `init_hardware`, `nros-board-stm32f4`
-      `setup_hardware`) — deferred. Genuine extract-method targets (linear
-      sequential bringup, no concurrency subtlety) but embedded-only with moved
-      per-peripheral `dp.*` fields threaded through `#[cfg(feature = "ethernet")]`;
-      can't be cheaply host-verified, and a mis-split breaks an embedded build the
-      audit can't quickly catch. Left for a focused board-crate pass.
+- [x] **Board init splits** — done by extracting the post-HW *network-wiring*
+      tail (the chunk that needs only the produced device handle, not raw `dp.*`
+      peripherals — sidesteps the partial-move trap). `nros-board-stm32f4`
+      `setup_hardware` → `setup_network(config, dma)` (smoltcp iface + IP + sockets
+      + bridge + poll-callback, ~85 lines); `nros-board-esp32` `init_hardware` →
+      `configure_ip(config, iface, sockets)` (DHCP/static IP, ~85 lines). Both
+      helpers `#[cfg]`-gated to their transport feature and carry the same
+      `#[allow(static_mut_refs)]` as the parent. Cross-compiled: stm32f4
+      `thumbv7em` ethernet + serial-only; esp32 `riscv32imc` wifi example
+      (`examples/esp32/rust/talker`) exercises `configure_ip`.
 
 ### 192.8 — [P3] Resolve the Phase-110 scheduler dead-code cluster
 ~25 `#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b …` whose referenced
