@@ -54,12 +54,17 @@ doctor:
     # toolchain is present (the `all` tier), NOT by `just cyclonedds setup`.
     # Report-only — absence is not a `missing` (the embedded-Cyclone tests are
     # filtered out of a tier that can't build them, Phase 185.2).
-    echo "  --- embedded cross ddsc (provisioned by <plat> build-fixtures, 'all' tier) ---"
-    if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
-        echo "  [OK]      freertos cross ddsc:       build/cyclonedds-freertos-install/lib/libddsc.a"
+    echo "  --- embedded Cyclone ---"
+    # Phase 186 — freertos Cyclone is self-provisioned per-example by CMake
+    # (nros_provide_cyclonedds(), built inside each build-cyclonedds/ tree from
+    # the pinned submodule); there is no shared install artifact to check. Needs
+    # only arm-none-eabi-gcc on PATH.
+    if command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+        echo "  [OK]      freertos: arm-none-eabi-gcc present → Cyclone self-provisions in CMake (Phase 186)"
     else
-        echo "  [ABSENT]  freertos cross ddsc (auto-built by 'just freertos build-fixtures' w/ arm-none-eabi-gcc; or 'just cyclonedds freertos-cross-probe')"
+        echo "  [ABSENT]  freertos: arm-none-eabi-gcc not found → embedded Cyclone tests skip (install the ARM toolchain)"
     fi
+    # threadx-rv64 still uses the cross-probe install (Phase 186 migration pending).
     if [ -f build/cyclonedds-threadx-rv64-install/lib/libddsc.a ]; then
         echo "  [OK]      threadx-rv64 cross ddsc:   build/cyclonedds-threadx-rv64-install/lib/libddsc.a"
     else
@@ -75,12 +80,6 @@ doctor:
 ddsrt-port-inventory:
     bash ./scripts/cyclonedds/ddsrt-port-inventory.sh
 
-# Phase 175.B — configure/build probe for Cyclone DDS on the nano-ros
-# FreeRTOS MPS2 + lwIP target. This is diagnostic only; it does not enable
-# Cyclone fixture cells until the recorded port/config blockers are fixed.
-[group("debug")]
-freertos-cross-probe:
-    bash ./scripts/cyclonedds/freertos-cross-probe.sh
 
 # Phase 175.B — configure/build probe for Cyclone DDS on the nano-ros
 # ThreadX RISC-V64 + NetX Duo target. This validates the experimental

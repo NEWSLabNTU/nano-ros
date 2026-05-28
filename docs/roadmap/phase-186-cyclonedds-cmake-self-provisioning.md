@@ -160,11 +160,22 @@ idlc build / `-DIDLC_EXECUTABLE`.
   the install present" but "can the toolchain build Cyclone" — likely
   `command -v <cross-cc>`)
 
-- [ ] No shell script builds Cyclone; `just` no longer provisions it.
-- [ ] `just <rtos> build-fixtures` builds the Cyclone examples via CMake
-      self-provision (sccache-accelerated), no cross-probe.
-- [ ] 185.2 filter re-gated on toolchain presence (out-of-toolchain ⇒ tests
-      filtered/skipped, not failed).
+- [x] 185.2 filter re-gated on **toolchain presence** (`arm-none-eabi-gcc` /
+      `riscv64-unknown-elf-gcc`) instead of the install artifact — required now
+      that self-provision leaves no `build/cyclonedds-<rtos>-install`.
+- [x] **freertos**: `just freertos build-fixtures` builds the Cyclone cells via
+      CMake self-provision (no `-DCMAKE_PREFIX_PATH`, no cross-probe);
+      `freertos-cross-probe.sh` + its `just cyclonedds freertos-cross-probe` recipe
+      deleted; doctor updated. **Validated:** build-fixtures rc=0, both cells
+      self-provision, `test_freertos_rust_talker_cyclonedds_boot` +
+      `_local_pubsub_e2e` **PASS** on the self-provisioned binaries.
+- [ ] **threadx + native**: migrate to self-provision (platform fragments), then
+      delete `cross-build-ddsc.sh` + `threadx-cross-probe.sh` + its recipe + the
+      threadx build-fixtures hook — **remaining**.
+- [ ] **host `build.sh` / `just cyclonedds setup`**: the host Cyclone install
+      (`build/install`, idlc + native find_package) — decide whether native also
+      self-provisions before removing; needs a full cyclone-suite revalidation —
+      **remaining**.
 
 ### 186.5 — Docs
 **Files**

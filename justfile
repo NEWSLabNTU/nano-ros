@@ -861,24 +861,22 @@ test-all verbose="": _require-fixtures _check-fixtures-stale build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    # Phase 185.2 — artifact-gated exclusion of embedded-RTOS Cyclone tests.
-    # Their cross-built `ddsc` install is provisioned on demand only when the
-    # cross toolchain is present (Phase 185.1, the `all` tier). When the install
-    # is absent (lighter tier / no toolchain), filter those tests OUT of the run
-    # so they report `skipped`, not `failed` (`skip!` is a panic ⇒ a nextest
-    # failure; only *filtering* yields a skip). The gate is the same artifact
-    # 185.1 provisions, so the tests run iff they can actually build + boot;
-    # in-tier provisioning fails loud, so an absent install means out-of-tier,
-    # not a masked build break.
+    # Phase 185.2 / 186.4 — toolchain-gated exclusion of embedded-RTOS Cyclone
+    # tests. Since Phase 186 the embedded Cyclone backend self-provisions from
+    # source via CMake (no `build/cyclonedds-<rtos>-install` artifact any more),
+    # so the gate is the CROSS TOOLCHAIN: if it's present the example build can
+    # self-provision + boot, so run the tests; if it's absent (lighter tier),
+    # filter them OUT so they report `skipped`, not `failed` (`skip!` is a panic
+    # ⇒ a nextest failure; only *filtering* yields a skip).
     cyc_exclude=()
-    [ -f build/cyclonedds-freertos-install/lib/libddsc.a ] \
+    command -v arm-none-eabi-gcc >/dev/null 2>&1 \
         || cyc_exclude+=("not (binary(freertos_qemu) and test(~cyclonedds))")
-    [ -f build/cyclonedds-threadx-rv64-install/lib/libddsc.a ] \
+    command -v riscv64-unknown-elf-gcc >/dev/null 2>&1 \
         || cyc_exclude+=("not (binary(threadx_riscv64_qemu) and test(~cyclonedds))")
     if [ "${#cyc_exclude[@]}" -gt 0 ]; then
         cyc_filter="${cyc_exclude[0]}"
         for _e in "${cyc_exclude[@]:1}"; do cyc_filter="$cyc_filter and $_e"; done
-        echo "test-all: embedded Cyclone install(s) absent — filtering those tests out (skipped, not failed); provision via the 'all' tier (Phase 185.2): $cyc_filter"
+        echo "test-all: cross toolchain absent — filtering embedded Cyclone tests out (skipped, not failed); install the toolchain to run them (Phase 185.2/186.4): $cyc_filter"
         args+=(-E "$cyc_filter")
     fi
     nros_nextest_record_begin test-all

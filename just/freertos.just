@@ -127,47 +127,34 @@ build-fixture-extras:
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
     codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros-codegen"
-    # Phase 185.1 — RMW availability follows config: provision the cross-built
-    # Cyclone `ddsc` install on demand instead of silently skipping when absent.
-    # The ARM cross toolchain is already guaranteed here (the recipe exited above
-    # if `arm-none-eabi-gcc` was missing), so reaching this point means we can
-    # build it. Gated on the install being absent → idempotent, a fast no-op on
-    # re-runs. If a lighter tier ever reaches here without the install, the
-    # cyclonedds cells stay unbuilt and their tests skip! (Phase 185.2).
-    if [ ! -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
-        echo "  → provisioning cross Cyclone install (build/cyclonedds-freertos-install) — Phase 185.1"
-        just cyclonedds freertos-cross-probe
-    fi
-    if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
-        # Phase 177.38 — bake this platform's Cyclone role-set onto a distinct
-        # ROS domain so its fixtures never collide with other host/QEMU Cyclone
-        # fixtures on the derived RTPS ports (7400 + 250*domain). The Rust
-        # examples read it via option_env! at build time, so it must be in the
-        # ENV for the corrosion cargo build (not a -D cmake var). talker+listener
-        # share (they communicate). Per-platform map in docs/roadmap (177.38):
-        # freertos=60, threadx-linux=61, threadx-rv64=62.
-        export NROS_DOMAIN_ID=60
-        for case in talker listener; do
-            if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
-                continue
-            fi
-            echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, build-cyclonedds/)"
-            ( cd examples/qemu-arm-freertos/rust/${case} && "$nros_cli" generate-rust --force >/dev/null )
-            rm -rf examples/qemu-arm-freertos/rust/${case}/build-cyclonedds
-            cmake -S examples/qemu-arm-freertos/rust/${case} \
-                  -B examples/qemu-arm-freertos/rust/${case}/build-cyclonedds \
-                  -DNROS_RMW=cyclonedds \
-                  -DCMAKE_PREFIX_PATH="$(pwd)/build/cyclonedds-freertos-install" \
-                  -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-                  -DCMAKE_BUILD_TYPE=Release \
-                  -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
-                  -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$(pwd)/scripts/cyclonedds/msg_to_cyclone_idl.py" \
-                  > /dev/null
-            cmake --build examples/qemu-arm-freertos/rust/${case}/build-cyclonedds > /dev/null
-        done
-    else
-        echo "  → freertos/rust/{talker,listener} cyclonedds skipped (no cross Cyclone install + no arm-none-eabi-gcc to build one; use a tier that ships the ARM toolchain — Phase 185)"
-    fi
+    # Phase 186 — RMW availability follows config, fully in CMake. The example's
+    # nros_provide_cyclonedds() self-provisions Cyclone from the pinned submodule
+    # (sccache-accelerated) — no prebuilt install, no `just cyclonedds
+    # *-cross-probe` pre-step. The ARM cross toolchain is already guaranteed here
+    # (the recipe exited above if `arm-none-eabi-gcc` was missing). idlc resolves
+    # host-side via find_program (Phase 186.3).
+    #
+    # Phase 177.38 — bake this platform's Cyclone role-set onto a distinct ROS
+    # domain so its fixtures never collide with other Cyclone fixtures on the
+    # derived RTPS ports. talker+listener share (they communicate). freertos=60.
+    export NROS_DOMAIN_ID=60
+    for case in talker listener; do
+        if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
+            continue
+        fi
+        echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
+        ( cd examples/qemu-arm-freertos/rust/${case} && "$nros_cli" generate-rust --force >/dev/null )
+        rm -rf examples/qemu-arm-freertos/rust/${case}/build-cyclonedds
+        cmake -S examples/qemu-arm-freertos/rust/${case} \
+              -B examples/qemu-arm-freertos/rust/${case}/build-cyclonedds \
+              -DNROS_RMW=cyclonedds \
+              -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
+              -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$(pwd)/scripts/cyclonedds/msg_to_cyclone_idl.py" \
+              > /dev/null
+        cmake --build examples/qemu-arm-freertos/rust/${case}/build-cyclonedds > /dev/null
+    done
     # Phase 181.5.b — collapsed-shape FreeRTOS C / C++ examples from the SSOT
     # manifest (examples/fixtures.toml). Zenoh-only (no DDS C/C++ siblings
     # existed pre-collapse on FreeRTOS). Per-cell RMW + build-subdir come from
