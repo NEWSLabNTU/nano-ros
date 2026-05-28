@@ -24,10 +24,12 @@ use core::num::NonZeroU32;
 /// Sentinel `0` is physically meaningful for every time field on
 /// [`SchedContext`]: 0-period would mean infinite frequency, 0-budget
 /// means unbounded, 0-deadline means no deadline.
+#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct OptUs(u32);
 
+#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 impl OptUs {
     pub const NONE: Self = Self(0);
 
@@ -59,6 +61,7 @@ impl OptUs {
 /// Phase 110.A only exercises `Fifo`; `Edf` lands with the
 /// `EdfReadySet` plumb-up in 110.B.b; `Sporadic` is post-v1 (110.E);
 /// `TimeTriggered` is post-v1 (110.G).
+#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SchedClass {
     #[default]
@@ -92,6 +95,7 @@ pub enum SchedClass {
 /// Single-thread non-preemption note: a `BestEffort` callback already
 /// running blocks `Critical` work that becomes ready mid-cycle. Hard-
 /// RT scenarios need 110.D's multi-executor preemption.
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Ord, PartialOrd)]
 pub enum Priority {
     /// Highest-priority bucket. Drained first within a single
@@ -107,6 +111,7 @@ pub enum Priority {
     BestEffort = 2,
 }
 
+#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 impl Priority {
     pub const COUNT: usize = 3;
 
@@ -123,6 +128,7 @@ impl Priority {
 ///   Default for event-triggered subscriptions.
 /// - `Inherited`: deadline travels in the message header — latency-
 ///   aware pipelines extract it per-message at dispatch time.
+#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DeadlinePolicy {
     Released,
@@ -134,6 +140,7 @@ pub enum DeadlinePolicy {
 /// Identifier for a [`SchedContext`] registered with an Executor.
 /// 110.B.b adds storage `[Option<SchedContext>; MAX_SC]`; this index
 /// addresses into that array.
+#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SchedContextId(pub u8);
 
@@ -143,6 +150,7 @@ pub struct SchedContextId(pub u8);
 ///
 /// Phase 110.B.a defines the shape; 110.B.b's builder methods on
 /// Executor consume it.
+#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SchedContext {
     pub class: SchedClass,
@@ -190,6 +198,7 @@ pub struct SchedContext {
 /// a `PlatformTimer` impl. The Executor still keeps the legacy
 /// `SporadicState` path active on `feature = "std"` so the
 /// transition is non-breaking.
+#[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
 pub struct AtomicSporadicState {
     pub budget_remaining_us: portable_atomic::AtomicU32,
     /// Wraps every ~50 days at ms resolution; saturates per
@@ -219,6 +228,7 @@ pub struct AtomicSporadicState {
     pub last_overrun_us: portable_atomic::AtomicU32,
 }
 
+#[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
 impl AtomicSporadicState {
     pub const fn new(budget_us: u32, period_us: u32) -> Self {
         Self {
@@ -289,6 +299,7 @@ impl AtomicSporadicState {
 /// # Safety
 /// `user_data` must point at a live `AtomicSporadicState`; the caller
 /// of `PlatformTimer::create_periodic` owns the lifetime contract.
+#[allow(dead_code)] // Phase 110.E.b — wired in PlatformTimer integration.
 pub extern "C" fn atomic_sporadic_refill_thunk(user_data: *mut core::ffi::c_void) {
     if user_data.is_null() {
         return;
@@ -312,6 +323,7 @@ pub extern "C" fn atomic_sporadic_refill_thunk(user_data: *mut core::ffi::c_void
 /// the budget back up. Less precise than an ISR-driven refill (Phase
 /// 110.E's per-platform timer hook is what gets that) but correct as
 /// an upper-bound bandwidth limiter.
+#[allow(dead_code)] // Phase 110.E — wired in spin_once Sporadic dispatch.
 #[derive(Debug, Clone, Copy)]
 pub struct SporadicState {
     pub budget_remaining_us: u32,
@@ -320,6 +332,7 @@ pub struct SporadicState {
     pub last_refill_ms: u64,
 }
 
+#[allow(dead_code)] // Phase 110.E — wired in spin_once Sporadic dispatch.
 impl SporadicState {
     pub const fn new(budget_us: u32, period_us: u32) -> Self {
         Self {
@@ -343,6 +356,7 @@ impl SporadicState {
     }
 }
 
+#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b builder/dispatch.
 impl SchedContext {
     pub const fn new_fifo() -> Self {
         Self {
