@@ -9,14 +9,19 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 usage() {
     cat <<'EOF'
 Usage:
+  scripts/bootstrap.sh nros            # install the PREBUILT nros CLI (no just/cargo)
   scripts/bootstrap.sh                 # install/check just, then show setup choices
   scripts/bootstrap.sh base            # base quick-start setup
   scripts/bootstrap.sh all             # full contributor / test-all setup
   scripts/bootstrap.sh platform <name> # focused platform setup
   scripts/bootstrap.sh doctor [tier]   # read-only diagnosis
 
+The `nros` path is the just-free user route: it fetches the prebuilt `nros`
+binary (Phase 195.A) and you then run `nros setup <board>` / `nros deploy`.
+The others are the contributor/source route (rustup + just + `just setup`).
+
 Examples:
-  scripts/bootstrap.sh
+  scripts/bootstrap.sh nros
   scripts/bootstrap.sh platform zephyr
   scripts/bootstrap.sh all
 EOF
@@ -62,10 +67,35 @@ ensure_just() {
     fi
 }
 
+# Phase 195.A — the just-free prebuilt path: install the `nros` binary from the
+# nros-cli Releases (no rustup/just/source build). Prefers the in-tree installer
+# (when the codegen submodule is checked out), else fetches it over the network.
+install_nros_prebuilt() {
+    ensure_path
+    if command -v nros >/dev/null 2>&1; then
+        echo "bootstrap: nros already on PATH ($(command -v nros))."
+    elif [[ -x "${REPO_ROOT}/packages/codegen/install.sh" ]]; then
+        echo "bootstrap: installing prebuilt nros (in-tree installer)..."
+        "${REPO_ROOT}/packages/codegen/install.sh"
+    else
+        if ! command -v curl >/dev/null 2>&1; then
+            echo "bootstrap: curl required to fetch the nros installer." >&2
+            exit 1
+        fi
+        echo "bootstrap: fetching the nros installer..."
+        curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh | sh
+    fi
+    echo "bootstrap: next →  nros setup <board>   then   nros deploy <name>"
+}
+
 main() {
     case "${1:-}" in
         -h|--help|help)
             usage
+            exit 0
+            ;;
+        nros)
+            install_nros_prebuilt
             exit 0
             ;;
     esac
