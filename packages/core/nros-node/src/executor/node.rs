@@ -1111,6 +1111,7 @@ impl<'c, 'e, 't> SubscriptionBuilder<'c, 'e, 't> {
             ctx: self.ctx,
             topic: self.topic,
             qos: self.qos,
+            sched: None,
             _phantom: PhantomData,
         }
     }
@@ -1127,68 +1128,128 @@ impl<'c, 'e, 't> SubscriptionBuilder<'c, 'e, 't> {
             type_name,
             type_hash,
             qos: self.qos,
+            sched: None,
         }
     }
 }
 
-/// Typed subscription builder (`.typed::<M>()`).
-pub struct TypedSubscriptionBuilder<'c, 'e, 't, M> {
+/// Typed subscription builder (`.typed::<M>()`). `RX` is the staging-buffer
+/// size, set via `.rx_buffer::<N>()` (defaults to `DEFAULT_RX_BUF_SIZE`).
+pub struct TypedSubscriptionBuilder<
+    'c,
+    'e,
+    't,
+    M,
+    const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
     ctx: &'c mut NodeCtx<'e>,
     topic: &'t str,
     qos: QosSettings,
+    sched: Option<super::sched_context::SchedContextId>,
     _phantom: PhantomData<M>,
 }
 
-impl<'c, 'e, 't, M: RosMessage + 'static> TypedSubscriptionBuilder<'c, 'e, 't, M> {
+impl<'c, 'e, 't, M: RosMessage + 'static, const RX: usize>
+    TypedSubscriptionBuilder<'c, 'e, 't, M, RX>
+{
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
+    }
+
+    /// Bind the subscription's callback to a scheduling context.
+    pub fn sched_context(mut self, sc: super::sched_context::SchedContextId) -> Self {
+        self.sched = Some(sc);
+        self
+    }
+
+    /// Set the staging-buffer size (const-generic).
+    pub fn rx_buffer<const N: usize>(self) -> TypedSubscriptionBuilder<'c, 'e, 't, M, N> {
+        TypedSubscriptionBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            sched: self.sched,
+            _phantom: PhantomData,
+        }
     }
 
     pub fn build<F: FnMut(&M) + 'static>(
         self,
         callback: F,
     ) -> Result<super::types::HandleId, NodeError> {
-        self.ctx
+        let handle = self
+            .ctx
             .executor
-            .register_subscription_buffered_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+            .register_subscription_buffered_on::<M, F, RX>(
                 self.ctx.node_id,
                 self.topic,
                 self.qos,
                 callback,
-            )
+            )?;
+        if let Some(sc) = self.sched {
+            self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;
+        }
+        Ok(handle)
     }
 }
 
 /// Generic (type-erased) subscription builder (`.generic(type, hash)`).
-pub struct GenericSubscriptionBuilder<'c, 'e, 't> {
+pub struct GenericSubscriptionBuilder<
+    'c,
+    'e,
+    't,
+    const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
     ctx: &'c mut NodeCtx<'e>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
     qos: QosSettings,
+    sched: Option<super::sched_context::SchedContextId>,
 }
 
-impl<'c, 'e, 't> GenericSubscriptionBuilder<'c, 'e, 't> {
+impl<'c, 'e, 't, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, RX> {
     pub fn qos(mut self, qos: QosSettings) -> Self {
         self.qos = qos;
         self
+    }
+
+    pub fn sched_context(mut self, sc: super::sched_context::SchedContextId) -> Self {
+        self.sched = Some(sc);
+        self
+    }
+
+    pub fn rx_buffer<const N: usize>(self) -> GenericSubscriptionBuilder<'c, 'e, 't, N> {
+        GenericSubscriptionBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            type_name: self.type_name,
+            type_hash: self.type_hash,
+            qos: self.qos,
+            sched: self.sched,
+        }
     }
 
     pub fn build<F: FnMut(&[u8]) + 'static>(
         self,
         callback: F,
     ) -> Result<super::types::HandleId, NodeError> {
-        self.ctx
+        let handle = self
+            .ctx
             .executor
-            .register_subscription_buffered_raw_on::<F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+            .register_subscription_buffered_raw_on::<F, RX>(
                 self.ctx.node_id,
                 self.topic,
                 self.type_name,
                 self.type_hash,
                 self.qos,
                 callback,
-            )
+            )?;
+        if let Some(sc) = self.sched {
+            self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;
+        }
+        Ok(handle)
     }
 }
 
@@ -1261,6 +1322,17 @@ mod builder_tests {
             .generic("std_msgs/msg/Int32", "hash")
             .build(|_b: &[u8]| {})
             .expect("generic subscription builds");
+
+        // builder: sized + sched-context (slice 3 knobs)
+        let sc = exec.default_sched_context_id();
+        let _s = exec
+            .node_mut(id)
+            .subscription("/sized")
+            .typed::<TestMsg>()
+            .rx_buffer::<512>()
+            .sched_context(sc)
+            .build(|_m: &TestMsg| {})
+            .expect("sized + sched subscription builds");
 
         // convenient (fork tier) — one node-ctx at a time, re-acquired
         let _c = exec
