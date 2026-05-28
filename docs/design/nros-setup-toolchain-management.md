@@ -136,10 +136,18 @@ Source packages carry no `dist` (they build from a vendored tarball / submodule)
 
 ```toml
 # --- prebuilt HOST TOOLS (GitHub Releases) — target-agnostic ---
+# Each tool declares BOTH a prebuilt `dist` (per host) AND a `source` recipe.
+# Either path installs into the SAME prefix → identical layout downstream.
 [tool.qemu]                       # NOT a 2.7 GB source build
 version = "11.0-nros1"
 dist.linux-x86_64 = { url = "https://github.com/<org>/nano-ros-sdk/releases/download/qemu-11.0-nros1/qemu-linux-x86_64.tar.zst", sha256 = "…" }
 dist.macos-arm64  = { url = "…", sha256 = "…" }
+# Fallback when no `dist` matches the host: build from source into the same prefix.
+[tool.qemu.source]
+git = "https://github.com/<org>/qemu"; ref = "v11.0-nros1"
+# build/install must land in $NROS_HOME/sdk/qemu/11.0-nros1/  (the layout contract)
+configure = "./configure --prefix={prefix} --target-list=arm-softmmu,riscv64-softmmu"
+install   = "make -j && make install"
 
 [tool.arm-none-eabi-gcc]          # cross-compiler: runs on host, targets any Cortex-M/R
 version = "13.2"
@@ -170,20 +178,54 @@ native        → { host cc, zenohd(optional) }
 
 `nros setup nucleo_f767zi` fetches **only** that set — not esp32+px4+….
 
-### 3. Fetch → verify → cache → pin
+### 3. The install-layout contract (prebuilt and source produce the *same* layout)
 
-- Download prebuilt artifacts (host-matched), verify sha256, unpack into a
-  **shared store** (`$NROS_HOME` / `~/.nros/sdk/<pkg>/<version>/`, symlinked
-  into `third-party/` for the build, or referenced by env). Shared across
-  workspaces → fetch once.
-- Write `nros-sdk.lock` (resolved versions + hashes) for reproducibility.
-- **License-gated** packages (NVIDIA SPE, ARM FVP): never auto-download —
-  print the install instruction + the expected env var (`NV_SPE_FSP_DIR`), and
-  `nros doctor` already checks presence (Phase 172 deploy pin-check).
-- **Source-only fallback:** when no prebuilt exists for a `(pkg, host)`, fall
-  back to the existing `just <module> setup` source build, with a clear notice.
+A tool always lands at one **versioned prefix**, regardless of how it got there:
 
-### 4. CLI surface
+```
+$NROS_HOME/sdk/<tool>/<version>/    # = {prefix}
+    bin/  lib/  share/ …            # standard install tree
+    .nros-provenance               # "prebuilt" | "source", + sha256
+```
+
+- **Prebuilt path:** download the host-matched `dist` tarball, verify sha256,
+  unpack into `{prefix}`.
+- **Source fallback** (no `dist` for this host): clone `[tool.<x>.source].git`
+  @ `ref`, run `configure`/`install` with `--prefix={prefix}` (or copy the
+  built tree in) — it **installs into the identical `{prefix}`**. Borrowed from
+  Homebrew (bottle-or-build-from-source → same Cellar path) and Nix (versioned
+  store prefix).
+- **Layout-stable downstream:** `build.rs` / the deploy runner / `nros doctor`
+  resolve `$NROS_HOME/sdk/qemu/11.0-nros1/bin/qemu-system-arm` — they never know
+  or care whether it was fetched or built. `.nros-provenance` records which, for
+  diagnostics only.
+- The store is **shared** across workspaces/clones (one copy per
+  `(tool, version)`), symlinked/`-L`'d into the build or referenced by env.
+- **License-gated** tools (NVIDIA SPE, ARM FVP): never fetched **or** built —
+  print the installer instruction + expected env var (`NV_SPE_FSP_DIR`);
+  `nros doctor` checks presence (Phase 172 deploy pin-check).
+
+### 4. Version management — files map to GitHub assets
+
+- **The index is the version SSOT.** `nros-sdk-index.toml` (committed) pins each
+  tool's `version`. That version maps **deterministically** to the GitHub
+  artifact: release **tag** `= <tool>-<version>`, asset `= <tool>-<host>.tar.zst`
+  — so `nros setup` computes the asset from `(tool, version, detected host)` and
+  fetches the corresponding file; the explicit `url` + `sha256` in the index pin
+  integrity (and let a tool point elsewhere when needed).
+- **The lockfile records what's installed.** `nros-sdk.lock` (committed per
+  workspace) captures the resolved `(tool, version, sha256, provenance)` actually
+  in the store — index = *desired*, lock = *installed*, like Cargo.lock. A clone
+  with the lock reproduces the exact toolchain set.
+- **Bumping a tool:** edit `version` in the index → CI builds the new per-host
+  assets under the new tag → users get it on the next `nros setup` (or stay on
+  the locked version until they update). The source `ref` bumps in lockstep, so
+  the fallback build matches the prebuilt version.
+- The same version files drive **both** `nros setup` (user, prebuilt-first) and
+  `just <module> setup` (contributor, source) — one source of truth for "which
+  QEMU / which arm-gcc", no drift between the two paths.
+
+### 5. CLI surface
 
 ```
 nros setup <board>            # board-scoped prebuilt fetch (the user path)
