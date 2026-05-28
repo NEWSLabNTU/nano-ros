@@ -51,9 +51,18 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     (`CONFIG_POSIX_API` ⇒ fixes the zenoh-pico-zephyr C header clashes); the
     Zephyr `rust_main` references the `zephyr` crate (allocator/panic).
     `deploy_zephyr_vendor_module_real_west_build` e2e (gated on `ZEPHYR_BASE`).
-    *Remaining for full comms:* host TAP networking (native_sim `zeth` / a
-    `net-setup.sh`) for the publish→zenohd→receive data-plane — runtime-env, not
-    codegen.
+    Networking uses **NSOS** (host BSD sockets via the deploy `self` glue's
+    `native-sim-nsos.conf` + `EXTRA_CONF_FILE`) — no TAP/root; boot reports
+    `Network ready (NSOS)`. `[deploy].locator` bakes the agent address
+    (`TRANSPORT_LOCATOR`) so the embedded app connects (verified: boots →
+    NSOS → reaches the transport-connect stage on the baked
+    `tcp/127.0.0.1:7456`).
+    *Remaining for a full message-flow demo:* a **functional (publishing)
+    component** — the orchestration_e2e `demo_pkg` is a metadata-only graph
+    fixture (its timer callback has no publish body), so the deployed binary
+    registers the graph but emits no data; proving Published/Received needs a
+    component with real callback logic in a system. (The transport/deploy path
+    is done — this is fixture content.)
   - **vendor-lib: still blocked** on the license-gated NVIDIA SPE FSP
     (`NV_SPE_FSP_DIR`); template + dry-run landed (172.V). Unblocks when the
     maintainer installs SDK Manager, or via a non-NVIDIA vendor static lib.
