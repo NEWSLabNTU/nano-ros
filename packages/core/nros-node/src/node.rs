@@ -70,6 +70,13 @@ pub enum NodeError {
     NamespaceTooLong,
 }
 
+/// Default serialization (tx) / reception (rx) buffer length for a `Node`.
+/// Phase 192.5 — names the inline `1024` (was duplicated at the field decl + the
+/// `Node::new` initializer).
+pub const NODE_TX_BUF_LEN: usize = 1024;
+/// Default reception buffer length for a `Node`.
+pub const NODE_RX_BUF_LEN: usize = 1024;
+
 /// Publisher registration info
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Fields used when transport is connected
@@ -124,10 +131,10 @@ pub struct Node<const MAX_PUBS: usize = 8, const MAX_SUBS: usize = 8> {
     /// Registered subscribers
     subscribers: Vec<SubscriberInfo, MAX_SUBS>,
     /// Serialization buffer for publishing
-    tx_buffer: [u8; 1024],
+    tx_buffer: [u8; NODE_TX_BUF_LEN],
     /// Reception buffer for subscribing
     #[allow(dead_code)] // Used when transport is connected
-    rx_buffer: [u8; 1024],
+    rx_buffer: [u8; NODE_RX_BUF_LEN],
 }
 
 /// Options for creating a publisher
@@ -195,8 +202,8 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
             domain_id: config.domain_id,
             publishers: Vec::new(),
             subscribers: Vec::new(),
-            tx_buffer: [0u8; 1024],
-            rx_buffer: [0u8; 1024],
+            tx_buffer: [0u8; NODE_TX_BUF_LEN],
+            rx_buffer: [0u8; NODE_RX_BUF_LEN],
         }
     }
 

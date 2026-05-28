@@ -593,9 +593,9 @@ pub struct nros_cpp_node_t {
     /// Pointer to the parent executor handle (not owned).
     pub executor: *mut c_void,
     /// Node name (null-terminated, max 64 bytes including null).
-    pub name: [u8; 64],
+    pub name: [u8; NROS_CPP_NAME_LEN],
     /// Node namespace (null-terminated, max 64 bytes including null).
-    pub namespace: [u8; 64],
+    pub namespace: [u8; NROS_CPP_NAMESPACE_LEN],
     /// Phase 104.C.9.b — opaque NodeId returned by
     /// `Executor::node_builder(...).build()`. `0` = primary Node
     /// (legacy single-Session creation path); non-zero values route
@@ -604,7 +604,7 @@ pub struct nros_cpp_node_t {
     /// `Executor::node_session_mut(NodeId)`.
     pub node_id: u8,
     /// Reserved for future use; pad to next u64 boundary.
-    pub _reserved: [u8; 7],
+    pub _reserved: [u8; NROS_CPP_NODE_RESERVED],
 }
 
 /// Maximum RMW backend name length for `nros_cpp_node_options_t`.
@@ -617,6 +617,17 @@ pub const NROS_CPP_LOCATOR_LEN: usize = 128;
 /// Maximum namespace length for `nros_cpp_node_options_t`. Matches the
 /// inline buffer in `nros_cpp_node_t`.
 pub const NROS_CPP_NAMESPACE_LEN: usize = 64;
+
+/// Maximum node name length for the inline buffer in `nros_cpp_node_t`. Phase
+/// 192.5 — single source for what was an inlined `64` at every name-buffer site.
+/// NOTE: `nros_node::limits` uses a larger namespace/name bound; this C++ ABI is
+/// the deliberately-fixed 64-byte embedded inline — reconcile in a follow-up if
+/// they are required to match (changing it is a `#[repr(C)]` ABI change).
+pub const NROS_CPP_NAME_LEN: usize = 64;
+
+/// Reserved padding bytes in `nros_cpp_node_t` (pad `node_id` to the next u64
+/// boundary). Phase 192.5 — names the struct-layout `7`.
+pub const NROS_CPP_NODE_RESERVED: usize = 7;
 
 /// Sentinel value for `domain_id_override`. When set, the executor's
 /// existing domain_id is used.
@@ -725,14 +736,14 @@ pub unsafe extern "C" fn nros_cpp_node_create(
 
     let out = unsafe { &mut *out_node };
     out.executor = executor_handle;
-    out.name = [0u8; 64];
+    out.name = [0u8; NROS_CPP_NAME_LEN];
     out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
-    out.namespace = [0u8; 64];
+    out.namespace = [0u8; NROS_CPP_NAMESPACE_LEN];
     if !ns_str.is_empty() {
         out.namespace[..ns_str.len()].copy_from_slice(ns_str.as_bytes());
     }
     out.node_id = 0;
-    out._reserved = [0u8; 7];
+    out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     NROS_CPP_RET_OK
 }
@@ -826,17 +837,17 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
 
     let out = unsafe { &mut *out_node };
     out.executor = executor_handle;
-    out.name = [0u8; 64];
+    out.name = [0u8; NROS_CPP_NAME_LEN];
     out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
 
-    out.namespace = [0u8; 64];
+    out.namespace = [0u8; NROS_CPP_NAMESPACE_LEN];
     if opts.namespace_len > 0 {
         out.namespace[..opts.namespace_len].copy_from_slice(&opts.namespace[..opts.namespace_len]);
     } else {
         out.namespace[..1].copy_from_slice(b"/");
     }
     out.node_id = node_id.raw();
-    out._reserved = [0u8; 7];
+    out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
 
     NROS_CPP_RET_OK
 }
