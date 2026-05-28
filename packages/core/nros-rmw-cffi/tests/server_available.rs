@@ -20,7 +20,9 @@ use core::{
     sync::atomic::{AtomicI32, Ordering},
 };
 
-use nros_rmw::{RmwConfig, ServiceClientTrait, ServiceInfo, Session, SessionMode, TransportError};
+use nros_rmw::{
+    QosSettings, RmwConfig, ServiceClientTrait, ServiceInfo, Session, SessionMode, TransportError,
+};
 use nros_rmw_cffi::{
     CffiRmw, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwEventCallback,
     NrosRmwEventKind, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwServiceClient,
@@ -258,7 +260,7 @@ fn open_client(svc_name: &str) -> nros_rmw_cffi::CffiServiceClient {
         .expect("open");
     let info = ServiceInfo::new(svc_name, "example/Stub", "RIHS01_stub");
     let client = session
-        .create_service_client(&info)
+        .create_service_client(&info, QosSettings::services_default())
         .expect("create_service_client");
     // Leak the session intentionally — its `close` would try to drop
     // through the stub vtable, and the stub's `backend_data` is a

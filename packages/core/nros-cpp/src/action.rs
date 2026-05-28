@@ -1493,7 +1493,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
         // used `CDR_HEADER_LEN + GoalId::UUID_LEN` (= 20) and missed
         // the `write_u32(16)` length-prefix that `write_goal_id`
         // emits before the UUID bytes.
-        const FEEDBACK_PAYLOAD_OFFSET: usize = CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
+        const FEEDBACK_PAYLOAD_OFFSET: usize =
+            CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
         if total_len > FEEDBACK_PAYLOAD_OFFSET {
             let buf = core.feedback_buffer_ref();
             unsafe {
@@ -1814,10 +1815,11 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
             .with_namespace(ns_str),
         node_name_str,
     );
-    let send_goal_server = match session.create_service_server(&send_goal_info) {
-        Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-    };
+    let send_goal_server =
+        match session.create_service_server(&send_goal_info, QosSettings::services_default()) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
 
     let cancel_goal_keyexpr: nros::heapless::String<256> = action_info.cancel_goal_key();
     let cancel_goal_info = with_node(
@@ -1830,10 +1832,11 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         .with_namespace(ns_str),
         node_name_str,
     );
-    let cancel_goal_server = match session.create_service_server(&cancel_goal_info) {
-        Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-    };
+    let cancel_goal_server =
+        match session.create_service_server(&cancel_goal_info, QosSettings::services_default()) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
 
     let get_result_keyexpr: nros::heapless::String<256> = action_info.get_result_key();
     let get_result_info = with_node(
@@ -1842,10 +1845,11 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
             .with_namespace(ns_str),
         node_name_str,
     );
-    let get_result_server = match session.create_service_server(&get_result_info) {
-        Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-    };
+    let get_result_server =
+        match session.create_service_server(&get_result_info, QosSettings::services_default()) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
 
     let feedback_keyexpr: nros::heapless::String<256> = action_info.feedback_key();
     let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, hash_str)
@@ -2201,10 +2205,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
             .with_namespace(ns_str),
         node_name_str,
     );
-    let send_goal_client = match session.create_service_client(&send_goal_info) {
-        Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-    };
+    let send_goal_client =
+        match session.create_service_client(&send_goal_info, QosSettings::services_default()) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
 
     let cancel_goal_keyexpr: nros::heapless::String<256> = action_info.cancel_goal_key();
     let cancel_goal_info = with_node(
@@ -2217,10 +2222,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         .with_namespace(ns_str),
         node_name_str,
     );
-    let cancel_goal_client = match session.create_service_client(&cancel_goal_info) {
-        Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-    };
+    let cancel_goal_client =
+        match session.create_service_client(&cancel_goal_info, QosSettings::services_default()) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
 
     let get_result_keyexpr: nros::heapless::String<256> = action_info.get_result_key();
     let get_result_info = with_node(
@@ -2229,10 +2235,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
             .with_namespace(ns_str),
         node_name_str,
     );
-    let get_result_client = match session.create_service_client(&get_result_info) {
-        Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
-    };
+    let get_result_client =
+        match session.create_service_client(&get_result_info, QosSettings::services_default()) {
+            Ok(h) => h,
+            Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        };
 
     let feedback_keyexpr: nros::heapless::String<256> = action_info.feedback_key();
     let mut feedback_topic = TopicInfo::new(&feedback_keyexpr, type_str, hash_str)

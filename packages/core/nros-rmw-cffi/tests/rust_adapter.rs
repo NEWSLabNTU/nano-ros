@@ -159,6 +159,7 @@ impl Session for IdentitySession {
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
+        _qos: QosSettings,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
         IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
             kind: "service_server",
@@ -171,6 +172,7 @@ impl Session for IdentitySession {
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
+        _qos: QosSettings,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
         IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
             kind: "service_client",
@@ -215,6 +217,7 @@ impl Session for NoopSession {
     fn create_service_server(
         &mut self,
         _service: &ServiceInfo,
+        _qos: QosSettings,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
         CREATE_SRV_SERVER_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(NoopServer)
@@ -222,6 +225,7 @@ impl Session for NoopSession {
     fn create_service_client(
         &mut self,
         _service: &ServiceInfo,
+        _qos: QosSettings,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
         CREATE_SRV_CLIENT_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(NoopClient)

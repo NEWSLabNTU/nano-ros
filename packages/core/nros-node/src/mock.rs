@@ -179,6 +179,7 @@ impl Session for MockSession {
     fn create_service_server(
         &mut self,
         _service: &ServiceInfo,
+        _qos: QosSettings,
     ) -> Result<MockServiceServer, TransportError> {
         Ok(MockServiceServer)
     }
@@ -186,6 +187,7 @@ impl Session for MockSession {
     fn create_service_client(
         &mut self,
         _service: &ServiceInfo,
+        _qos: QosSettings,
     ) -> Result<MockServiceClient, TransportError> {
         Ok(MockServiceClient::new())
     }

@@ -1725,7 +1725,11 @@ impl Session for CffiSession {
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
+        qos: QosSettings,
     ) -> Result<CffiServiceServer, TransportError> {
+        // TODO(193.1b): thread qos across the C vtable to the C++ backend.
+        // The vtable fn-ptr signature is unchanged this slice.
+        let _ = qos;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 
@@ -1768,7 +1772,11 @@ impl Session for CffiSession {
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
+        qos: QosSettings,
     ) -> Result<CffiServiceClient, TransportError> {
+        // TODO(193.1b): thread qos across the C vtable to the C++ backend.
+        // The vtable fn-ptr signature is unchanged this slice.
+        let _ = qos;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 

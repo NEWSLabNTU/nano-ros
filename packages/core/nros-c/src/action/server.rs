@@ -769,10 +769,11 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
             .with_domain(domain_id)
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
-        let send_goal_server = match session.create_service_server(&send_goal_info) {
-            Ok(h) => h,
-            Err(_) => return NROS_RET_ERROR,
-        };
+        let send_goal_server =
+            match session.create_service_server(&send_goal_info, QosSettings::services_default()) {
+                Ok(h) => h,
+                Err(_) => return NROS_RET_ERROR,
+            };
 
         let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
         let cancel_goal_info = ServiceInfo::new(
@@ -783,7 +784,9 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
         .with_domain(domain_id)
         .with_node_name(node_name_str)
         .with_namespace(namespace_str);
-        let cancel_goal_server = match session.create_service_server(&cancel_goal_info) {
+        let cancel_goal_server = match session
+            .create_service_server(&cancel_goal_info, QosSettings::services_default())
+        {
             Ok(h) => h,
             Err(_) => return NROS_RET_ERROR,
         };
@@ -793,7 +796,9 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
             .with_domain(domain_id)
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
-        let get_result_server = match session.create_service_server(&get_result_info) {
+        let get_result_server = match session
+            .create_service_server(&get_result_info, QosSettings::services_default())
+        {
             Ok(h) => h,
             Err(_) => return NROS_RET_ERROR,
         };
