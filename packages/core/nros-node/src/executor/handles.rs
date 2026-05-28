@@ -986,7 +986,10 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     /// Mutable view into the backend-lent bytes.
     #[allow(clippy::should_implement_trait)]
     pub fn as_mut(&mut self) -> &mut [u8] {
-        // Always Some until commit/discard.
+        // SAFETY-invariant: `backend_slot` is `Some` for the whole life of
+        // a `PublishLoan` — only `commit`/`discard` take it, and both
+        // consume `self` by value, so no `&mut self` method can observe
+        // `None`.
         self.backend_slot
             .as_mut()
             .expect("PublishLoan slot already consumed")
@@ -998,6 +1001,8 @@ impl<'a, const TX_BUF: usize> PublishLoan<'a, TX_BUF> {
     /// extra user-side memcpy.
     pub fn commit(mut self) -> Result<(), LoanError> {
         use nros_rmw::SlotLending;
+        // SAFETY-invariant: first and only `take` — `commit` consumes
+        // `self`, so the slot is still `Some` here.
         let slot = self
             .backend_slot
             .take()
@@ -1719,7 +1724,9 @@ impl<'a> core::ops::Deref for RecvView<'a> {
 impl<'a> core::ops::Deref for RecvView<'a> {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
-        // Always Some until Drop.
+        // SAFETY-invariant: `view` is `Some` for the whole life of a
+        // `RecvView` — only `Drop` takes it, after which no method (incl.
+        // this `deref`) is reachable.
         self.view
             .as_ref()
             .expect("RecvView accessed after drop")
@@ -1737,6 +1744,8 @@ impl<'a> AsRef<[u8]> for RecvView<'a> {
 #[cfg(feature = "rmw-lending")]
 impl<'a> AsRef<[u8]> for RecvView<'a> {
     fn as_ref(&self) -> &[u8] {
+        // SAFETY-invariant: `view` is `Some` until `Drop`; see the `Deref`
+        // impl above.
         self.view
             .as_ref()
             .expect("RecvView accessed after drop")
