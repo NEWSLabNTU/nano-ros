@@ -1,4 +1,4 @@
-# Phase 188 — Entity API tiers (convenient + customizable builder)
+# Phase 189 — Entity API tiers (convenient + customizable builder)
 
 **Goal.** Collapse the executor's entity-constructor sprawl
 (`register_subscription`, `register_subscription_raw`,
