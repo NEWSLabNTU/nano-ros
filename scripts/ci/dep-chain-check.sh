@@ -72,9 +72,14 @@ for cell in "${CELLS[@]}"; do
         echo "  [FAIL] no example at $ex"
         cell_ok=0
     else
-        # 1. toolchain dep chain
-        if "$NROS" setup "$board" --rmw "$rmw" --index "$INDEX" --dry-run; then
-            echo "  [ok] toolchain resolves"
+        # 1. the actual user step: `nros setup <board>` — provisions the board's
+        #    prebuilt toolchains AND its source submodules (e.g. nuttx-libc the
+        #    example path-deps). NOT --dry-run: the user does not hand-checkout
+        #    submodules, so neither does CI — if a build needs a source, the index
+        #    + `nros setup` must provide it (that's part of what this validates).
+        #    The store dedups across cells, so toolchains download once.
+        if "$NROS" setup "$board" --rmw "$rmw" --index "$INDEX"; then
+            echo "  [ok] nros setup (toolchains + sources provisioned)"
         else
             echo "  [FAIL] nros setup $board --rmw $rmw"
             cell_ok=0

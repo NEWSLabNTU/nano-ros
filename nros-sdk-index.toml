@@ -153,6 +153,16 @@ ref = "f68feb77fbe48c2443957fd18639705808a31848"
 dest = "packages/zpico/zpico-sys/zenoh-pico"
 submodule = "packages/zpico/zpico-sys/zenoh-pico"
 
+# NuttX Rust libc fork — the qemu-arm-nuttx examples path-dep it via their
+# .cargo/config (`libc = { path = third-party/nuttx/libc }`), so it must be
+# provisioned by `nros setup qemu-arm-nuttx`, not hand-checked-out by the user.
+[source.nuttx-libc]
+version = "0.2-nuttx"
+git = "https://github.com/jerry73204/libc.git"
+ref = "10d142a8007b6b3534f893d8aa89f74f8d6e7b71"
+dest = "third-party/nuttx/libc"
+submodule = "third-party/nuttx/libc"
+
 # --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
 
 [gated.nv-spe-fsp]
@@ -218,8 +228,10 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 
 [board.qemu-arm-nuttx]
 arch = "cortex-m3"
-platform = "nuttx" # NuttX itself is a submodule SDK, not an index package
-packages = ["arm-none-eabi-gcc", "qemu"]
+platform = "nuttx" # NuttX kernel/apps are submodule SDKs (built with the app)
+# nuttx-libc is the one source the Rust example path-deps, so `nros setup` must
+# provision it. (Kernel/apps are pulled by the full west/make build, not here.)
+packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc"]
 
 [board.qemu-riscv64-threadx]
 arch = "riscv64"
