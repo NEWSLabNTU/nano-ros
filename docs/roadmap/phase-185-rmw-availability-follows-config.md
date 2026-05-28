@@ -102,28 +102,47 @@ present — exactly as host Cyclone is a dependency of `just cyclonedds setup`.
   (already idempotent build+install; confirm re-run is a fast no-op when the
   install exists, matching `just cyclonedds setup`'s `[ -f … ] && echo already-built`)
 
-- [ ] When `cyclonedds` is selected for an embedded target and the cross toolchain
+- [x] When `cyclonedds` is selected for an embedded target and the cross toolchain
       is present, the install is built automatically (no separate user command).
-- [ ] Re-running with the install present is a fast no-op (idempotent; ≤ a few s).
-- [ ] The host `build/install` (idlc + POSIX ddsc) is still used for `idlc`
+      *(freertos: `just/freertos.just`; threadx-rv64: `just/threadx-riscv64.just`,
+      under its experimental env opt-in.)*
+- [x] Re-running with the install present is a fast no-op (idempotent — the
+      provisioning is gated on `[ ! -f …/libddsc.a ]`).
+- [x] The host `build/install` (idlc + POSIX ddsc) is still used for `idlc`
       typesupport generation; only `ddsc` is cross-built (`-DBUILD_IDLC=OFF`).
+- [x] **Verified (freertos):** clean `build-fixtures` provisions
+      `build/cyclonedds-freertos-install` + builds the cyclone cells;
+      `test_freertos_rust_talker_cyclonedds_boot` + `_local_pubsub_e2e` **PASS**.
 
-### 185.2 — Embedded-Cyclone tests `skip!` when the SDK is out-of-tier, not hard-fail
-A missing cross-Cyclone install (lighter tier / no cross toolchain) is a skipped
-precondition, not a test failure. Convert the hard panics to `nros_tests::skip!`
-so `test-all` is honest: PASS when provisioned, SKIP when out-of-tier.
+### 185.2 — Out-of-tier embedded-Cyclone tests should be *filtered* (skipped), not failed
+**Premise correction (2026-05-28):** the embedded-Cyclone tests *already* call
+`nros_tests::skip!` on a missing fixture (`freertos_qemu.rs:91`). But `skip!`
+expands to `panic!("[SKIPPED] …")` (`nros-tests/src/lib.rs:53`), and nextest has
+**no special handling for a `[SKIPPED]` panic — it counts as a failure.** That is
+*intentional* per CLAUDE.md ("Tests must fail on unmet preconditions … `skip!`
+panics with `[SKIPPED]` (OK)") — a missing fixture should be loud, the same way
+the XRCE-Agent / patched-qemu tests fail when their SDK isn't installed
+(Phase 184). So 185.1 is the real fix: provision the fixture in the tier that
+runs `test-all`, and the test PASSES (no longer skips).
+
+The only honest way to make an out-of-tier run *not* show a failure is to
+**exclude those tests from the nextest run** (nextest "filtered" ⇒ counts as
+`skipped`, the mechanism behind the existing 7 skips) when the cross toolchain /
+provisioning tier is absent — a runtime `skip!` cannot become a nextest skip.
 
 **Files**
-- `packages/testing/nros-tests/tests/freertos_qemu.rs:~91`
-  (`test_freertos_rust_talker_cyclonedds_boot`,
-  `test_freertos_rust_cyclonedds_local_pubsub_e2e` — currently a hard panic whose
-  message even says "[SKIPPED]")
-- ThreadX Cyclone equivalents (`native_api.rs` /
-  `test_threadx_*_cyclonedds_*` — audit for the same hard-fail-on-missing pattern)
+- `.config/nextest.toml` and/or the `test-all` `-E` filter expressions in the
+  justfile (add a tier/toolchain-gated exclusion for the embedded-Cyclone tests)
+- `packages/testing/nros-tests/tests/freertos_qemu.rs` (already `skip!` — no
+  change needed; keep as the loud signal when *in*-tier but unbuilt)
 
-- [ ] Missing cross-Cyclone install ⇒ `skip!` (reported `[SKIPPED]`, not failed).
-- [ ] Present install ⇒ the test runs and asserts as before.
-- [ ] No bare `eprintln!`+`return` (would report PASS — forbidden per CLAUDE.md).
+- [x] Audited: embedded-Cyclone tests already use `skip!` (loud), not a bare
+      `eprintln!`+return — correct per CLAUDE.md. No softening needed.
+- [ ] When the provisioning tier/toolchain is absent, the embedded-Cyclone tests
+      are **filtered out** of the `test-all` nextest run (report `skipped`, not
+      `failed`) — via a tier-gated `-E` exclusion.
+- [ ] In-tier (toolchain present) the tests are included, provisioned by 185.1,
+      and PASS.
 
 ### 185.3 — Tiering decision for cross-Cyclone provisioning
 Decide and document which SDK tier carries automatic cross-Cyclone provisioning,
@@ -135,12 +154,12 @@ honouring the ≤5 min / ≤500 MB / idempotent default-tier policy. Likely: sta
   install belongs to + the toolchain gate)
 - `justfile` `_orchestrate` switch (if provisioning is folded into a `setup` tier)
 
-- [ ] `docs/development/sdk-tiers.md` states the tier + toolchain gate for each
-      embedded Cyclone install.
+- [x] `docs/development/sdk-tiers.md` states the tier + toolchain gate for each
+      embedded Cyclone install (new "Embedded CycloneDDS" subsection).
 - [ ] Default-tier `setup → build-all → test-all` stays within budget (embedded
-      Cyclone tests SKIP, not fail) — no regression to the 5-min/500-MB policy.
-- [ ] `all`/extended tier (cross toolchains present) builds the installs and the
-      tests PASS.
+      Cyclone tests SKIP, not fail) — blocked on 185.2's tier-gated `-E` filter.
+- [x] `all`/extended tier (cross toolchains present) builds the installs and the
+      tests PASS (freertos verified).
 
 ### 185.4 — Generalize + dedupe across embedded targets
 The freertos and threadx cross-probe scripts duplicate the same configure/build/

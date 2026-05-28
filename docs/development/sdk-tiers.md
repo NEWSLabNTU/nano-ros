@@ -56,6 +56,31 @@ bits. ARM FVP, NVIDIA SDK Manager, Cadence Tensilica toolchain,
 proprietary vendor BSPs all fall here. Contributors needing them
 run `just <module> setup` explicitly out-of-band.
 
+### Embedded CycloneDDS — cross-built `ddsc` (Phase 185)
+
+The host CycloneDDS install (`build/install`, POSIX `ddsc` + `idlc`) is part of
+the `cyclonedds` module in the `all` tier. The **embedded-RTOS** Cyclone backend
+(FreeRTOS, ThreadX) additionally needs a *cross-built* `ddsc`
+(`build/cyclonedds-<rtos>-install`) — `nros-rmw-cyclonedds` consumes Cyclone via
+`find_package(CycloneDDS)` and never compiles it itself, and the host x86 `ddsc`
+cannot link into an embedded image.
+
+This cross `ddsc` is **not a separate setup module**. It is provisioned on demand
+by the platform's `build-fixtures` when the `cyclonedds` RMW is selected **and**
+the cross toolchain is present (Phase 185.1) — idempotent, skipped if already
+installed. So availability follows the tier that ships the cross toolchains:
+
+- **`all` tier** (ships `arm-none-eabi-gcc` via `freertos`, RV64 GCC via
+  `threadx_riscv64`): `build-fixtures` builds the embedded Cyclone install
+  automatically and the embedded-Cyclone `test-all` cases run + pass. No manual
+  `just cyclonedds <rtos>-cross-probe`.
+- **`base` tier** (no embedded cross toolchains): the install isn't built; the
+  embedded-Cyclone tests must be **filtered out** of `test-all` (Phase 185.2) so
+  they report `skipped`, not `failed`. ThreadX-RV64 Cyclone fixtures stay behind
+  the additional experimental opt-in `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`.
+
+Run `test-all` in the `all` tier for full embedded-Cyclone coverage.
+
 ## Adding a new module
 
 When introducing a new RTOS / SDK module:
