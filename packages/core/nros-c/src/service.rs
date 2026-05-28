@@ -858,6 +858,10 @@ pub struct nros_client_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
+    /// Phase 193.4b — service-client QoS (applied to both request + reply
+    /// endpoints). Defaults to the services profile
+    /// (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `nros_client_init_with_qos`.
+    pub qos: crate::qos::nros_qos_t,
     /// Internal state (arena entry index + executor pointer + timeout).
     /// Typed C-ABI handle field.
     pub _internal: ServiceClientInternal,
@@ -881,9 +885,17 @@ impl Default for nros_client_t {
             response_callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
+            qos: crate::qos::nros_qos_t::default(),
             _internal: ServiceClientInternal::new(),
             _opaque: [0u64; SERVICE_CLIENT_OPAQUE_U64S],
         }
+    }
+}
+
+impl nros_client_t {
+    /// Phase 193.4b — the client's QoS as `nros_node` settings.
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+        self.qos.to_qos_settings()
     }
 }
 
@@ -945,11 +957,37 @@ pub unsafe extern "C" fn nros_client_init(
     client.response_callback = None;
     client.context = ptr::null_mut();
 
+    // Phase 193.4b — default to the services profile; nros_client_init_with_qos
+    // overrides. (`nros_executor_register_client` reads this at registration.)
+    client.qos = crate::qos::nros_qos_t::default();
+
     // Initialise the internal state (executor_ptr null until registration).
     client._internal = ServiceClientInternal::new();
 
     client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
     NROS_RET_OK
+}
+
+/// Phase 193.4b — initialize a service client with an explicit QoS profile
+/// (rclc's `_with_options`; the profile applies to both the request + reply
+/// endpoints). `qos` NULL ⇒ the services default. Same as
+/// [`nros_client_init`] otherwise.
+///
+/// # Safety
+/// All non-NULL pointers must be valid + the node initialized.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_init_with_qos(
+    client: *mut nros_client_t,
+    node: *const nros_node_t,
+    type_info: *const nros_service_type_t,
+    service_name: *const c_char,
+    qos: *const crate::qos::nros_qos_t,
+) -> nros_ret_t {
+    let ret = nros_client_init(client, node, type_info, service_name);
+    if ret == NROS_RET_OK && !qos.is_null() {
+        (*client).qos = *qos;
+    }
+    ret
 }
 
 /// Finalize a service client.

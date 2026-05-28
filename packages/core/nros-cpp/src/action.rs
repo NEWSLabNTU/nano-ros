@@ -68,6 +68,10 @@ pub(crate) struct CppActionServer {
     /// multi-Node dispatch variant. `0` = legacy primary-Node path.
     node_id: u8,
     _reserved: [u8; 7],
+    /// Phase 193.4b — create-time QoS, applied to the three underlying
+    /// service servers (send_goal / cancel_goal / get_result) at register
+    /// time. Defaults to the services profile via `nros_cpp_qos_t`.
+    qos: nros_cpp_qos_t,
 }
 
 // Layout-mirror equivalence (Phase 87.11): the real `CppActionServer`
@@ -164,7 +168,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
     _action_name: *const c_char,
     _type_name: *const c_char,
     _type_hash: *const c_char,
-    _qos: nros_cpp_qos_t,
+    qos: nros_cpp_qos_t,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
     if node.is_null() || storage.is_null() {
@@ -185,6 +189,9 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
         // pick the multi-Node `_on(NodeId, ...)` dispatch variant.
         node_id: node_ref.node_id,
         _reserved: [0u8; 7],
+        // Phase 193.4b — stash the create-time QoS for the three underlying
+        // service servers (applied at register time).
+        qos,
     };
     unsafe {
         core::ptr::write(storage as *mut CppActionServer, server);
@@ -240,6 +247,9 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     // variant so the underlying queryables/publishers land on the
     // Node's bound session. Default-Node servers stay on the legacy
     // path.
+    // Phase 193.4b — apply the create-time QoS to the three underlying
+    // service servers (rclcpp `create_action_server(name, qos)`).
+    let qos = server.qos.to_qos_settings();
     let result = if server.node_id != 0 {
         ctx.executor
             .register_action_server_raw_sized_on::<
@@ -252,21 +262,29 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
                 act_str,
                 type_str,
                 hash_str,
+                qos,
                 goal_callback_trampoline,
                 cancel_callback_trampoline,
                 None,
                 storage,
             )
     } else {
-        ctx.executor.register_action_server_raw(
-            act_str,
-            type_str,
-            hash_str,
-            goal_callback_trampoline,
-            cancel_callback_trampoline,
-            None, // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
-            storage,
-        )
+        ctx.executor
+            .register_action_server_raw_sized::<
+                { nros_node::config::DEFAULT_RX_BUF_SIZE },
+                { nros_node::config::DEFAULT_RX_BUF_SIZE },
+                { nros_node::config::DEFAULT_RX_BUF_SIZE },
+                4,
+            >(
+                act_str,
+                type_str,
+                hash_str,
+                qos,
+                goal_callback_trampoline,
+                cancel_callback_trampoline,
+                None, // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
+                storage,
+            )
     };
     match result {
         Ok(handle) => {

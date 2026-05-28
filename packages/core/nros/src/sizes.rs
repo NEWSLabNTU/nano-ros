@@ -146,10 +146,30 @@ mod rmw_sizes {
         unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void) -> i32;
     type CppCancelCallbackLayout = unsafe extern "C" fn(*const [u8; 16], *mut c_void) -> i32;
 
+    // Phase 193.4b: byte-shape mirror of `nros-cpp`'s `nros_cpp_qos_t`
+    // (4 C-ABI enums @ `c_int` width + `c_int` depth + 3×u32 + u8). The
+    // action server now stores the create-time QoS until registration; the
+    // real `CppActionServer` field-shape assert keeps this in sync.
+    #[repr(C)]
+    #[doc(hidden)]
+    pub struct CppQosLayout {
+        pub reliability: core::ffi::c_int,
+        pub durability: core::ffi::c_int,
+        pub history: core::ffi::c_int,
+        pub liveliness_kind: core::ffi::c_int,
+        pub depth: core::ffi::c_int,
+        pub deadline_ms: u32,
+        pub lifespan_ms: u32,
+        pub liveliness_lease_ms: u32,
+        pub avoid_ros_namespace_conventions: u8,
+    }
+
     // Phase 87.6 thin-wrapper: `action_name` / `type_name` / `type_hash`
     // buffers moved to the C++ `nros::ActionServer<A>` class.
     // Phase 104.C.9.b: `node_id` field added so action create→register
     // can route through the per-Node session.
+    // Phase 193.4b: `qos` field added so create-time QoS reaches the three
+    // underlying service servers at register time.
     #[repr(C)]
     #[doc(hidden)]
     pub struct CppActionServerLayout {
@@ -159,6 +179,7 @@ mod rmw_sizes {
         pub cb_ctx: *mut c_void,
         pub node_id: u8,
         pub _reserved: [u8; 7],
+        pub qos: CppQosLayout,
     }
     export_size!(pub CPP_ACTION_SERVER_SIZE = CppActionServerLayout);
 
