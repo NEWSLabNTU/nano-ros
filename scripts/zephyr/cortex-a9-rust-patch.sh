@@ -56,12 +56,21 @@ CMAKE_FILE="$WORKSPACE/modules/lang/rust/CMakeLists.txt"
 KCONFIG_FILE="$WORKSPACE/modules/lang/rust/Kconfig"
 SOC_FILE="$WORKSPACE/zephyr/soc/xlnx/zynq7000/xc7zxxxs/soc.c"
 
-for f in "$CMAKE_FILE" "$KCONFIG_FILE" "$SOC_FILE"; do
+for f in "$CMAKE_FILE" "$KCONFIG_FILE"; do
     if [ ! -f "$f" ]; then
         echo "ERROR: expected file not found: $f" >&2
         exit 1
     fi
 done
+
+# The Zynq-7000 SoC source moved across Zephyr lines (3.7 vs 4.4). This patch
+# targets the qemu_cortex_a9 / Zynq board only — if the SoC file isn't where we
+# expect (e.g. a newer Zephyr that relocated it), skip gracefully instead of
+# failing the whole workspace setup. native_sim CI never needs the SLCR entry.
+if [ ! -f "$SOC_FILE" ]; then
+    echo "[skip] Zynq-7000 SoC source not at $SOC_FILE — skipping Cortex-A9 SLCR patch (not needed for native_sim)" >&2
+    exit 0
+fi
 
 # ---- Patch 1a: modules/lang/rust/CMakeLists.txt ----
 if grep -q 'CONFIG_CPU_CORTEX_A9\|CONFIG_CPU_AARCH32_CORTEX_A' "$CMAKE_FILE"; then
