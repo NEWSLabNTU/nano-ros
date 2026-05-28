@@ -934,13 +934,17 @@ steps are inherently ordered (templates → migrate → delete). Files:
   the generated `Cargo.toml` gained an empty `[workspace]` (standalone when
   emitted in-tree under a deploy build dir), and `schema_components` dedups by
   component id (its metadata reaches the planner from both the build dir and
-  the in-package `metadata/` file). *Still pending:* the **deletion** half
-  (`render_main`/`EntryKind`, old `cmd/build.rs` system flags, per-package
-  triple/board reader) — needs the entry lib generalized beyond std-hosted
-  `self` first (board/Zephyr/no_std, SDK-bound), since `render_main` still
-  drives those; and the vendor-lib / vendor-module sample deploys (the
-  vendor-lib template + dry-run runner landed in 172.V; a real cross-compile
-  build is SDK-bound).
+  the in-package `metadata/` file). *Deletion half DONE (the flip, 2026-05-28,
+  `2dab9e4`→`9bc3e64`):* the entry lib was generalized to **every** non-bridge
+  platform (hosted `fn main` + no_std board shim + nuttx/orin route + the
+  Zephyr staticlib fold), `render_main` was deleted, the bridge path folded
+  onto `build_executor_bridge`, and the dead `SystemConfig`/`TargetConfig`
+  triple/board reader was retired. `EntryKind` survives only to pick the shim
+  *shape* (hosted vs no_std board vs Zephyr staticlib), not to emit a
+  per-platform `main`. (The flip regressed three `orchestration_generate`
+  assertions to the pre-flip shim shape; fixed in `307a87c`.) *Still pending:*
+  the vendor-lib / vendor-module **sample deploys** — the vendor-lib template +
+  dry-run runner landed (172.V); a real cross-compile build is SDK-bound (W.4).
 
 **Re-evaluated under the model:** **172.K.7** (multi-homing
 `[[transport]].interfaces`) is transport-schema work orthogonal to
@@ -956,14 +960,17 @@ designed + scaffolded but not yet real-built) raised four items; design +
 the cheap fix landed, the rest are tracked here:
 
 - **W.1 — Cargo-style manifest resolution** (config footgun: root vs
-  direct-mode `nros.toml` share a name). *Designed* in
-  `docs/design/configuration-and-transports.md` ("Manifest kinds &
+  direct-mode `nros.toml` share a name). **Design approved + canonical**
+  (`docs/design/configuration-and-transports.md`, "Manifest kinds &
   resolution"): one `nros.toml` schema, kind decided by sections present
   (`[workspace]` / `[component]` / `[node]`, combinations allowed like
   Cargo's root package), walk-up resolution, `component_nros.toml` folds
   into a `[component]` table (deprecation window). *To implement:* the
-  section-discriminating loader + walk-up resolver + the fold + the
-  "this is a direct-mode node, not a workspace root" error.
+  section-discriminating loader + walk-up resolver + the
+  `component_nros.toml`→`[component]` fold (+ `workspace.rs`
+  discovery/`config.rs` `ComponentConfig` rename) + the "this is a
+  direct-mode node, not a workspace root" error. Pairs with W.3 (same
+  `ComponentConfig` edit).
 - **W.2 — bridge schema-ahead-of-impl.** DONE — `nros check` on a root
   `nros.toml` now warns when `[[bridge]]`/`[[domain]]` are declared but
   per-node session routing isn't emitted (`cmd/check.rs`
@@ -975,11 +982,14 @@ the cheap fix landed, the rest are tracked here:
   `[component]` table so the first `nros deploy` works unedited;
   `metadata --build` derives `linkage` from `package.xml`/crate where it
   can. Rationale + when-used documented in the design doc.
-- **W.4 — validation reach.** The model is only proven end-to-end for
-  `self` on QEMU/native; vendor-lib (Orin) is mock-IVC, vendor-module
+- **W.4 — validation reach.** *Entry-lib generalization DONE* (the flip,
+  above): every non-bridge platform now routes through the entry lib, so
+  `render_main` is gone and the `self` model is structurally uniform across
+  hosted + board + Zephyr. *Still:* end-to-end **real builds** are proven only
+  for `self` on QEMU/native; vendor-lib (Orin) is mock-IVC, vendor-module
   (Zephyr/PX4/…) is shape-only. Prioritize one real vendor-module
   (Zephyr `west` or PX4-SITL) + one real vendor-lib link before claiming
-  the three-ownership-model workflow is proven.
+  the three-ownership-model workflow is proven on hardware.
 
 ## Acceptance criteria
 
