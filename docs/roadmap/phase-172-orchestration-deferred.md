@@ -86,6 +86,14 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   `nros check` warning now fires for `[[bridge]]` only (bridge per-node routing
   — topic-forwarding — is the remaining unfinished half, tracked separately).
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
+- **Entity-API tiers** (cross-cutting ergonomics, design:
+  [`docs/design/entity-api-tiers.md`](../design/entity-api-tiers.md)) — collapse
+  the `register_subscription_*_*_*` / `create_*_raw` zoo into two tiers:
+  convenient `create_publisher`/`create_subscription` (+ generic) matching
+  rclcpp/rclrs, over one customizable entity **builder** (`fork`/`clone`) that
+  carries every knob (raw/typed, QoS, `rx_buf` size, `MessageInfo`, session).
+  Additive; the generator + the bridge relay emit builder calls. Prerequisite-ish
+  for clean bridge forwarding.
 
 **Priority.** P2 — none block the MVP workflow; each is an
 ergonomic or capability upgrade on top of a working pipeline.
