@@ -622,7 +622,9 @@ unsafe extern "C" fn create_service_server_trampoline<R: RustBackend>(
         node_name,
         namespace,
     };
-    match Session::create_service_server(s, &info) {
+    // TODO(193.1b): the vtable fn-ptr has no qos arg yet — default to
+    // services_default() until the C vtable carries qos.
+    match Session::create_service_server(s, &info, QosSettings::services_default()) {
         Ok(server) => {
             let boxed = Box::into_raw(Box::new(server));
             unsafe {
@@ -741,7 +743,9 @@ unsafe extern "C" fn create_service_client_trampoline<R: RustBackend>(
         node_name,
         namespace,
     };
-    match Session::create_service_client(s, &info) {
+    // TODO(193.1b): the vtable fn-ptr has no qos arg yet — default to
+    // services_default() until the C vtable carries qos.
+    match Session::create_service_client(s, &info, QosSettings::services_default()) {
         Ok(client) => {
             let boxed = Box::into_raw(Box::new(client));
             unsafe {

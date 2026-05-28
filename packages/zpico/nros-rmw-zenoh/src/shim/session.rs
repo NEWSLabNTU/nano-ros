@@ -394,7 +394,13 @@ impl Session for ZenohSession {
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
+        qos: QosSettings,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
+        // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
+        // slot (the `None` below is the liveliness token, not QoS) — the
+        // requested service QoS cannot be applied to the queryable yet.
+        // Thread it through once zenoh-pico exposes per-endpoint QoS.
+        let _ = qos;
         let mut server = ZenohServiceServer::new(&self.context, service, None)?;
         let liveliness_token = self
             .should_declare_liveliness()
@@ -420,7 +426,12 @@ impl Session for ZenohSession {
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
+        qos: QosSettings,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
+        // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
+        // slot — the requested service QoS cannot be applied to the
+        // querier yet. Thread it once zenoh-pico exposes per-endpoint QoS.
+        let _ = qos;
         let liveliness_token = self
             .should_declare_liveliness()
             .then_some(())

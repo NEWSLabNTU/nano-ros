@@ -849,15 +849,27 @@ pub trait Session {
     /// Create a service server bound to this session. Replies are
     /// matched to requests by the sequence number returned from
     /// [`ServiceServerTrait::try_recv_request`].
+    ///
+    /// `qos` is applied to both the request and reply endpoints (a
+    /// service is two DDS topics; rmw uses one profile for both). The
+    /// default is [`QosSettings::services_default`]
+    /// (RELIABLE+VOLATILE+KEEP_LAST(10)).
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
+        qos: QosSettings,
     ) -> Result<Self::ServiceServerHandle, Self::Error>;
 
     /// Create a service client bound to this session.
+    ///
+    /// `qos` is applied to both the request and reply endpoints (a
+    /// service is two DDS topics; rmw uses one profile for both). The
+    /// default is [`QosSettings::services_default`]
+    /// (RELIABLE+VOLATILE+KEEP_LAST(10)).
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
+        qos: QosSettings,
     ) -> Result<Self::ServiceClientHandle, Self::Error>;
 
     /// Close the session, releasing transport resources. All entity

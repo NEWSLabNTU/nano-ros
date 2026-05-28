@@ -96,7 +96,8 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
         ctx.executor.session_mut()
     };
 
-    match session.create_service_server(&svc_info) {
+    // TODO(193.3): apply the discarded `_qos` arg instead of defaulting.
+    match session.create_service_server(&svc_info, QosSettings::services_default()) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceServer, handle);
@@ -284,7 +285,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
         ctx.executor.session_mut()
     };
 
-    match session.create_service_client(&svc_info) {
+    // TODO(193.3): apply the discarded `_qos` arg instead of defaulting.
+    match session.create_service_client(&svc_info, QosSettings::services_default()) {
         Ok(handle) => {
             unsafe {
                 core::ptr::write(storage as *mut nros::internals::RmwServiceClient, handle);
