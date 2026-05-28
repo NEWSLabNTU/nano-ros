@@ -18,6 +18,24 @@ another `_with_x_y_z` function.
   constructor delegates to, exposing every axis as an optional knob with a
   default. Adding an axis = a builder method, never a new top-level function.
 
+## Naming policy
+
+**No lengthy `verb_noun_axis_axis_axis` names** (`register_subscription_raw_with_qos_sized_on`
+and friends). Names stay short; *axes are builder methods, not name suffixes*:
+
+- **Convenient ctors:** `create_publisher` / `create_subscription`
+  (+ `create_generic_publisher` / `create_generic_subscription`). One word per
+  concept, matching upstream. That's the whole convenient vocabulary.
+- **Builder entry:** `node.publisher(topic)` / `node.subscription(topic)`.
+- **Knobs:** short single-word methods — `.generic()`, `.typed()`, `.qos()`,
+  `.rx_buffer::<N>()`, `.session()`, `.message_info()`, `.sched_context()`,
+  `.build()`. A new axis adds *one short method*, never a new function nor a
+  longer name.
+
+The long `register_*_*_*` names are **removed** (a brief deprecation shim, then
+gone — §Migration), not carried forever. Generated code and applications use
+only the short convenient ctors + the builder.
+
 This is also how upstream is shaped: rclcpp has `create_subscription<M>(topic,
 qos, cb, options)` + `create_generic_subscription(topic, type, qos, cb,
 options)` over one `SubscriptionOptions`; rclrs has `create_subscription` +
@@ -94,8 +112,11 @@ the builder is the Rust ergonomic front, all three lowering to the same core.
    existing core — each `register_*` becomes a one-line delegate.
 2. Keep the convenient `create_publisher`/`create_subscription` (+ generic)
    stable — they're the upstream-matching surface; re-point them at the builder.
-3. Deprecate the `register_subscription_*_*_*` zoo (keep as thin shims one
-   release, then remove) — nothing outside the generator should call them.
+3. **Remove the `register_subscription_*_*_*` zoo** — one release as thin
+   `#[deprecated]` shims over the builder, then deleted. They are an internal
+   surface (only the generator + a few tests call them), so the window is short;
+   the long names do not survive. Per the naming policy, no `_raw_with_qos_
+   sized_on`-style identifier remains.
 4. **The generator emits builder calls**, so generated code reads like
    hand-written application code (the orchestration ⇄ application symmetry the
    bridge design relies on).
