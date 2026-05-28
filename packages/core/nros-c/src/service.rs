@@ -1631,9 +1631,10 @@ pub unsafe extern "C" fn nros_client_call(
     // One-shot blocking response capture. Static is fine because
     // nros_client_call is non-reentrant by design (callable only from
     // outside spin_some; the reentrancy guard in 82.8 will enforce it).
+    const BLK_BUF_LEN: usize = 4096; // max captured service-response CDR
     static mut BLK_DONE: i32 = -1;
     static mut BLK_LEN: usize = 0;
-    static mut BLK_BUF: [u8; 4096] = [0u8; 4096];
+    static mut BLK_BUF: [u8; BLK_BUF_LEN] = [0u8; BLK_BUF_LEN];
     BLK_DONE = -1;
     BLK_LEN = 0;
 

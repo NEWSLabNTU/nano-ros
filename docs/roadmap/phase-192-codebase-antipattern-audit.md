@@ -187,10 +187,19 @@ Backends bake values the zenoh path makes tunable; defaults even disagree.
       links the `#[repr(align(16))]` to the const.
 - [x] **`nros-node/node.rs`** `NODE_TX_BUF_LEN`/`NODE_RX_BUF_LEN` name the `1024`
       tx/rx buffers (field decl + initializer). `cargo check` clean under `-D warnings`.
-- [ ] **Deferred (hot files, agents' active area):** `spin.rs:2044` `(x+7)&!7` →
-      `next_multiple_of`; scratch buffers in `action.rs`/`action/*`/`service.rs`/
-      `lifecycle_services.rs` (`512`/`1024`/`4096`/`256`). The `5000` ms
-      service-timeout dedup folds into **192.4**.
+- [x] **Tail done.** `spin.rs` arena bump-alloc hand-alignment `(x+7)&!7` *and* the
+      `&!(align-1)` entry align → `usize::next_multiple_of` (the trailing align spelled
+      `align_of::<u64>()`). Scratch buffers named: `action_core.rs` `cancel_buffer`
+      256 → `CANCEL_BUF` (decl+init de-duped) + status-array 512 → `STATUS_ARRAY_BUF`;
+      `nros-cpp/action.rs` 512 → `GOAL_USER_BUF`; `nros-c` `service.rs` 4096 →
+      `BLK_BUF_LEN`, `action/client.rs` 1024 → `BLK_RESULT_BUF_LEN` + feedback 512 →
+      `FB_USER_BUF`, `action/server.rs` 512 → `GOAL_CB_BUF`; `lifecycle_services.rs`
+      test 4096 → `ROUND_TRIP_BUF`. Each const carries a one-line rationale. Verified
+      `cargo check` clean under `-D warnings` for nros-node (lib + default tests),
+      nros-cpp, nros-c. The `5000` ms service-timeout dedup already folded into
+      **192.4**. (Note: a pre-existing `crate::mock` unresolved-import in the
+      `rmw-cffi + lifecycle-services + --tests` combo reproduces with these changes
+      stashed — unrelated to 192.5, left for its owner.)
 
 ### 192.6 — [P2] Tame long arg-lists / combinatorial API names
 - `codegen/.../orchestration/planner.rs:1500` `build_node_instance` — **14 params**

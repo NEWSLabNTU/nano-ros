@@ -2042,9 +2042,9 @@ impl Executor {
     ) -> Result<(usize, usize), NodeError> {
         let align = core::mem::align_of::<T>();
         let entry_size = core::mem::size_of::<T>();
-        let entry_offset = (self.arena_used + align - 1) & !(align - 1);
-        // Trailing region is 8-byte aligned after the entry struct
-        let trailing_offset = (entry_offset + entry_size + 7) & !7;
+        let entry_offset = self.arena_used.next_multiple_of(align);
+        // Trailing region starts on an 8-byte (u64) boundary after the entry.
+        let trailing_offset = (entry_offset + entry_size).next_multiple_of(core::mem::align_of::<u64>());
         let new_used = trailing_offset + trailing_bytes;
         if new_used > crate::config::ARENA_SIZE {
             return Err(NodeError::BufferTooSmall);
