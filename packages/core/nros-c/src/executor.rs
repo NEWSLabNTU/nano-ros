@@ -1123,12 +1123,16 @@ pub unsafe extern "C" fn nros_executor_add_client(
         } else {
             (*client_ref.node).node_id
         };
+        // Phase 193.4b — the client's QoS (set via nros_client_init_with_qos;
+        // defaults to services_default via nros_client_init).
+        let client_qos = client_ref.get_qos_settings();
         let result = if node_raw_id != 0 {
             rust_exec.register_service_client_raw_sized_on::<MESSAGE_BUFFER_SIZE>(
                 nros_node::executor::NodeId::from_raw(node_raw_id),
                 service_name,
                 type_str,
                 type_hash_str,
+                client_qos,
                 cb,
                 client_ctx,
             )
@@ -1137,6 +1141,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
                 service_name,
                 type_str,
                 type_hash_str,
+                client_qos,
                 cb,
                 client_ctx,
             )
@@ -1295,6 +1300,11 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
         // accepted_callback_trampoline is invoked by the arena *after* the
         // accept reply is sent, so the user's long-running execution does
         // not delay the reply the client is blocking on.
+        // Phase 193.4b — the action server's QoS (set via
+        // nros_action_server_init_with_qos; defaults to services_default via
+        // nros_action_server_init). Applies to the three underlying service
+        // servers.
+        let server_qos = server_ref.get_qos_settings();
         let result = if node_raw_id != 0 {
             rust_exec
                 .register_action_server_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
@@ -1302,6 +1312,7 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
                     action_name,
                     type_str,
                     type_hash_str,
+                    server_qos,
                     goal_callback_trampoline,
                     cancel_callback_trampoline,
                     Some(crate::action::accepted_callback_trampoline),
@@ -1313,6 +1324,7 @@ pub unsafe extern "C" fn nros_executor_register_action_server(
                     action_name,
                     type_str,
                     type_hash_str,
+                    server_qos,
                     goal_callback_trampoline,
                     cancel_callback_trampoline,
                     Some(crate::action::accepted_callback_trampoline),

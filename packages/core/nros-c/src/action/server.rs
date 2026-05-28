@@ -71,6 +71,12 @@ pub struct nros_action_server_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
+    /// Phase 193.4b — action-server QoS, applied to the three underlying
+    /// service servers (send_goal / cancel_goal / get_result). The feedback +
+    /// status publishers keep their own profiles. Defaults to the services
+    /// profile (RELIABLE+VOLATILE+KEEP_LAST(10)); set via
+    /// `nros_action_server_init_with_qos`.
+    pub qos: crate::qos::nros_qos_t,
     /// Internal state — set by `nros_executor_register_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
@@ -95,9 +101,17 @@ impl Default for nros_action_server_t {
             accepted_callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
+            qos: crate::qos::nros_qos_t::default(),
             _internal: ActionServerInternal::invalid_default(),
             _opaque: [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S],
         }
+    }
+}
+
+impl nros_action_server_t {
+    /// Phase 193.4b — the server's QoS as `nros_node` settings.
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+        self.qos.to_qos_settings()
     }
 }
 
@@ -359,11 +373,53 @@ pub unsafe extern "C" fn nros_action_server_init(
     server.context = context;
     server.node = node;
 
+    // Phase 193.4b — default to the services profile;
+    // nros_action_server_init_with_qos overrides. Read at registration time by
+    // nros_executor_register_action_server.
+    server.qos = crate::qos::nros_qos_t::default();
+
     // RMW entity creation is deferred to nros_executor_register_action_server()
     server._internal = ActionServerInternal::invalid_default();
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
 
     NROS_RET_OK
+}
+
+/// Phase 193.4b — initialize an action server with an explicit QoS profile
+/// (rclc's `_with_options`). The profile applies to the three underlying
+/// service servers (send_goal / cancel_goal / get_result); the feedback +
+/// status publishers keep their own profiles. `qos` NULL ⇒ the services
+/// default. Same as [`nros_action_server_init`] otherwise.
+///
+/// # Safety
+/// All non-NULL pointers must be valid + the node initialized.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_action_server_init_with_qos(
+    server: *mut nros_action_server_t,
+    node: *const nros_node_t,
+    action_name: *const core::ffi::c_char,
+    type_info: *const nros_action_type_t,
+    goal_callback: nros_goal_callback_t,
+    cancel_callback: nros_cancel_callback_t,
+    accepted_callback: nros_accepted_callback_t,
+    context: *mut c_void,
+    qos: *const crate::qos::nros_qos_t,
+) -> nros_ret_t {
+    let ret = nros_action_server_init(
+        server,
+        node,
+        action_name,
+        type_info,
+        goal_callback,
+        cancel_callback,
+        accepted_callback,
+        context,
+    );
+    if ret == NROS_RET_OK && !qos.is_null() {
+        (*server).qos = *qos;
+    }
+    ret
 }
 
 /// Publish feedback for an active goal.

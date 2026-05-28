@@ -2044,7 +2044,8 @@ impl Executor {
         let entry_size = core::mem::size_of::<T>();
         let entry_offset = self.arena_used.next_multiple_of(align);
         // Trailing region starts on an 8-byte (u64) boundary after the entry.
-        let trailing_offset = (entry_offset + entry_size).next_multiple_of(core::mem::align_of::<u64>());
+        let trailing_offset =
+            (entry_offset + entry_size).next_multiple_of(core::mem::align_of::<u64>());
         let new_used = trailing_offset + trailing_bytes;
         if new_used > crate::config::ARENA_SIZE {
             return Err(NodeError::BufferTooSmall);
@@ -3044,17 +3045,24 @@ impl Executor {
             service_name,
             service_type,
             service_hash,
+            QosSettings::services_default(),
             callback,
             context,
         )
     }
 
-    /// Register a raw service client with a custom reply buffer size.
+    /// Register a raw service client with a custom reply buffer size + QoS.
+    ///
+    /// `qos` applies to the client's request + reply endpoints (Phase 193.3b);
+    /// defaults to [`QosSettings::services_default`] via the convenience
+    /// wrapper.
+    #[allow(clippy::too_many_arguments)]
     pub fn register_service_client_raw_sized<const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
         service_type: &str,
         service_hash: &str,
+        qos: QosSettings,
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -3063,6 +3071,7 @@ impl Executor {
             service_name,
             service_type,
             service_hash,
+            qos,
             callback,
             context,
         )
@@ -3071,12 +3080,14 @@ impl Executor {
     /// Phase 104.C.3.3.a — Node-aware variant of
     /// [`register_service_client_raw_sized`]. Routes the client
     /// creation through the named Node's session.
+    #[allow(clippy::too_many_arguments)]
     pub fn register_service_client_raw_sized_on<const REPLY_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
         service_name: &str,
         service_type: &str,
         service_hash: &str,
+        qos: QosSettings,
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -3085,17 +3096,20 @@ impl Executor {
             service_name,
             service_type,
             service_hash,
+            qos,
             callback,
             context,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn register_service_client_raw_sized_inner<const REPLY_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         service_name: &str,
         service_type: &str,
         service_hash: &str,
+        qos: QosSettings,
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -3120,7 +3134,7 @@ impl Executor {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_service_client(&info, QosSettings::services_default())
+                .create_service_client(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
         };
 

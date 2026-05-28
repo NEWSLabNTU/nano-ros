@@ -415,6 +415,7 @@ impl Executor {
             action_name,
             type_name,
             type_hash,
+            QosSettings::services_default(),
             goal_callback,
             cancel_callback,
             accepted_callback,
@@ -422,7 +423,12 @@ impl Executor {
         )
     }
 
-    /// Register a raw action server with custom buffer sizes.
+    /// Register a raw action server with custom buffer sizes + QoS.
+    ///
+    /// `qos` applies to the action's three underlying service servers
+    /// (send_goal / cancel_goal / get_result; Phase 193.4b). The feedback +
+    /// status publishers keep their own profiles. Defaults to
+    /// [`QosSettings::services_default`] via the convenience wrapper.
     #[allow(clippy::too_many_arguments)]
     pub fn register_action_server_raw_sized<
         const GOAL_BUF: usize,
@@ -434,6 +440,7 @@ impl Executor {
         action_name: &str,
         type_name: &str,
         type_hash: &str,
+        qos: QosSettings,
         goal_callback: RawGoalCallback,
         cancel_callback: RawCancelCallback,
         accepted_callback: Option<RawAcceptedCallback>,
@@ -449,6 +456,7 @@ impl Executor {
             action_name,
             type_name,
             type_hash,
+            qos,
             goal_callback,
             cancel_callback,
             accepted_callback,
@@ -473,6 +481,7 @@ impl Executor {
         action_name: &str,
         type_name: &str,
         type_hash: &str,
+        qos: QosSettings,
         goal_callback: RawGoalCallback,
         cancel_callback: RawCancelCallback,
         accepted_callback: Option<RawAcceptedCallback>,
@@ -488,6 +497,7 @@ impl Executor {
             action_name,
             type_name,
             type_hash,
+            qos,
             goal_callback,
             cancel_callback,
             accepted_callback,
@@ -507,6 +517,7 @@ impl Executor {
         action_name: &str,
         type_name: &str,
         type_hash: &str,
+        qos: QosSettings,
         goal_callback: RawGoalCallback,
         cancel_callback: RawCancelCallback,
         accepted_callback: Option<RawAcceptedCallback>,
@@ -592,13 +603,13 @@ impl Executor {
                 .ok_or(NodeError::BackendMismatch)?;
             (
                 session
-                    .create_service_server(&send_goal_info, QosSettings::services_default())
+                    .create_service_server(&send_goal_info, qos)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_service_server(&cancel_goal_info, QosSettings::services_default())
+                    .create_service_server(&cancel_goal_info, qos)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_service_server(&get_result_info, QosSettings::services_default())
+                    .create_service_server(&get_result_info, qos)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
                     .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)

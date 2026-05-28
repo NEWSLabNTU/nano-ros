@@ -78,18 +78,28 @@ profiles.
       `nros_cpp_service_{server,client}_create` now apply the caller's QoS
       (`qos.to_qos_settings()` → `session.create_service_{server,client}`,
       stopping the discard) — so C++ `create_service(name, qos)` reaches the
-      backend. *Remaining (193.3b):* `create_action_server(qos)` (the C++ action
-      create's three service planes go through a shared helper that still
-      defaults — thread qos through it) + the `ServiceOptions` named-options
-      struct (Phase 189.M3.3-cpp).
+      backend. *193.3b DONE:* `create_action_server(qos)` now applies —
+      `nros_cpp_action_server_create` stores the qos on `CppActionServer`, and
+      `_register` passes `qos.to_qos_settings()` to
+      `register_action_server_raw_sized_on` → the three goal/cancel/result
+      service servers (the paired `CppActionServerLayout` mirror in
+      `nros/src/sizes.rs` updated for the layout assert). *Remaining:* the
+      `ServiceOptions` / `ActionServerOptions` named-options struct (Phase
+      189.M3.3-cpp — ergonomic; the `qos` arg already works).
 - [~] **193.4 — C.** *Service server DONE:* `register_service_raw_sized{,_on}`
       gained a `qos` param (193.2c, behaviour-preserving default
       `services_default()`); `nros_service_t` carries a `qos` field
       (defaults to the services profile) read by `nros_executor_register_service`;
       new `nros_service_init_with_qos(..., const nros_qos_t* qos)` sets it. The
       generator emits the qos arg (codegen `ab2c4eb`). nros-c builds, header has
-      `nros_service_init_with_qos`. *Remaining (193.4b):* the client mirror
-      (`nros_client_init_with_qos`) + `nros_action_server_init_with_qos`.
+      `nros_service_init_with_qos`. *193.4b DONE:* the client mirror
+      (`nros_client_init_with_qos`: `nros_client_t.qos` field +
+      `nros_executor_register_client` reads it → `register_service_client_raw_*`)
+      + `nros_action_server_init_with_qos` (`nros_action_server_t.qos` →
+      `register_action_server_raw_sized_*` → the three service servers; raw
+      client/action register cores threaded with qos in nros-node, generator
+      emits the action qos arg, codegen `4212eb0`). nros-c header exposes both
+      new symbols.
 - [ ] **193.5 — Validation + tests.** `validate_against` on the service path;
       a per-backend roundtrip test that a non-default profile reaches the wire;
       document the RELIABLE-for-request/reply caveat.

@@ -1201,7 +1201,7 @@ nros_cpp_ret_t nros_cpp_action_server_create(const struct nros_cpp_node_t *node,
                                              const char *_action_name,
                                              const char *_type_name,
                                              const char *_type_hash,
-                                             struct nros_cpp_qos_t _qos,
+                                             struct nros_cpp_qos_t qos,
                                              void *storage);
 
 /**
