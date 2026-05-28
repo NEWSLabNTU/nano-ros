@@ -73,6 +73,11 @@ jobs:
       - name: Set up Rust toolchain
         run: rustup show && rustup target add armv7a-none-eabi
 
+      # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
+      # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       # Provisions the Zephyr workspace for the selected line, including
       # the 4.4 Python 3.12 venv + NSOS patches (see just/zephyr.just
       # setup recipe). Heavy step — caching the workspace/SDK across runs
@@ -100,6 +105,11 @@ jobs:
       - name: Set up Rust toolchain
         run: rustup show && rustup target add armv7a-none-eabi
 
+      # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
+      # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Set up Zephyr 3.7 workspace
         run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup
 
@@ -124,6 +134,11 @@ jobs:
 
       - name: Set up Rust toolchain
         run: rustup show && rustup target add armv7a-none-eabi
+
+      # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
+      # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
 
       - name: Set up Zephyr 4.4 workspace
         run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup
