@@ -156,11 +156,15 @@ named-options parity; M4 sweeps call sites + deletes the shims.
    existing core — each `register_*` becomes a one-line delegate.
 2. Keep the convenient `create_publisher`/`create_subscription` (+ generic)
    stable — they're the upstream-matching surface; re-point them at the builder.
-3. **Remove the `register_subscription_*_*_*` zoo** — one release as thin
-   `#[deprecated]` shims over the builder, then deleted. They are an internal
-   surface (only the generator + a few tests call them), so the window is short;
-   the long names do not survive. Per the naming policy, no `_raw_with_qos_
-   sized_on`-style identifier remains.
+3. **Remove the `register_subscription_*_*_*` zoo** — deleted outright, callers
+   migrated in the same change (**no deprecation window** — decided 2026-05-28).
+   It is an internal, unpublished surface (only the generator + tests/examples +
+   the C FFI call it), so a deprecation release buys nothing. Three closure
+   cores (`register_subscription_buffered_on`/`_raw_on`/`_raw_info_on`) survive
+   as `pub(crate)` builder-lowering targets, plus one clean-named C-FFI fn-ptr
+   core for `nros-c`; everything else goes. Per the naming policy, no
+   `_raw_with_qos_sized_on`-style public identifier remains. See
+   [Phase 189 M2](../roadmap/phase-189-entity-api-tiers.md).
 4. **The generator emits builder calls**, so generated code reads like
    hand-written application code (the orchestration ⇄ application symmetry the
    bridge design relies on).
