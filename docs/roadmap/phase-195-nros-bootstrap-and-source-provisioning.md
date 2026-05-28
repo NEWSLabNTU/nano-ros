@@ -269,25 +269,25 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         not a drop blocker.)*
   - [ ] **195.D.2 — Rewire the codegen-tool source to an installed `nros`.**
         Prototyped (cargo.sh resolver `$NROS`/PATH/`$NROS_HOME/bin`, no submodule
-        build; the 9 recipe literals) — but **verification BLOCKED on a real,
-        reproducible, undiagnosed location-dependence**, then reverted to keep the
-        build working. **The finding (sharp clue for the next dive):** the *same*
-        `nros` binary content resolves the transitive `action_msgs →
-        builtin_interfaces` dep when run from its **in-tree** path
-        (`packages/codegen/packages/target/<profile>/nros` → nuttx build green,
-        `builtin_interfaces` generated) but **NOT** when the identical binary is
-        installed at `~/.nros/bin/nros` (nuttx build fails: `action_msgs_msg_goal_info.h`
-        can't find `builtin_interfaces_msg_time.h`; only action_msgs /
-        unique_identifier_msgs / example_interfaces get generated). Ruled out:
-        **version** (main-built nros installed → same failure), **bundled-dir**
-        (`packages/codegen/interfaces` absent → `bundled_interfaces_dir()` returns
-        `None` for both), **AMENT** (env-based loader, present in both). So
-        `cargo-nano-ros`'s resolve-deps has an undiagnosed path/CWD dependence in
-        its **transitive** recursion that only fires from the in-tree location.
-        **Next step:** run `nros codegen resolve-deps --verbose` on the
-        action-server example from both binary locations + diff — find where the
-        2nd-level `builtin_interfaces` dep is dropped. This is THE gate for the
-        drop; the rest (Corrosion, install-flow, re-release, gitlink) is mechanical.
+        build; the 9 recipe literals); reverted to keep the build working pending
+        a clean verify. **Investigation result — `resolve-deps` is NOT the
+        problem.** Proven: the installed `~/.nros/bin/nros` and the in-tree
+        `packages/codegen/packages/target/<profile>/nros` produce **byte-identical**
+        `resolve-deps` output for `example_interfaces`'s package.xml — both list
+        `unique_identifier_msgs;builtin_interfaces;action_msgs`, from any CWD.
+        Ruled out: version, bundled-dir (absent → `None` for both), AMENT
+        (env-based), binary location, CWD. **The remaining mystery:** with the
+        installed nros the rewired nuttx build's per-package *generate* loop emits
+        args JSONs for action_msgs / unique_identifier_msgs / example_interfaces
+        but **not** `builtin_interfaces` (→ `action_msgs_msg_goal_info.h` can't
+        find its header), even though resolve-deps listed it; the submodule-built
+        nros generates it. After 5+ build cycles this tree is **heavily polluted**
+        (an early broken pre-`codegen`-merge `~/.cargo/bin/nros` left stale cmake
+        state that survives build-dir nukes), so the failure is most likely an
+        env/cache artifact, **not** a real rewire defect. **Next step:** verify in
+        a **pristine clone / CI** (clean cmake state) with the installed nros — the
+        rewire is very likely correct. The rest (Corrosion, install-flow,
+        re-release, gitlink) is mechanical.
   - [ ] **195.D.3 — Install `nros` in setup + CI.** `just setup`/`bootstrap.sh`
         install the pinned `nros` (`install.sh`) so the build resolves it; the
         nano-ros CI workflow installs it before `just ci`. The build assumes
