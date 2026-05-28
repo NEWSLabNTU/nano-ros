@@ -61,6 +61,30 @@ dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros1/openocd-linux-arm64.tar.zst", sha256 = "39ed5882df9f20ca2dda18a850418441dcbb17a2f39071dae587d40f0a590987" }
 dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros1/openocd-macos-arm64.tar.zst", sha256 = "1777ad02eeb1b7702d61a53b72496a00bea4aad18d3415f1e4cf82172f974909" }
 
+# Micro-XRCE-DDS Agent — the host daemon the XRCE-DDS RMW connects to (the
+# counterpart to zenohd for the rmw-xrce path). Source build is a CMake
+# superbuild (pulls Fast-DDS/Fast-CDR), so prefer the prebuilt once seeded.
+[tool.xrce-agent]
+version = "2.4.3-nros1"
+upstream = "v2.4.3" # = source.ref (eProsima release tag)
+[tool.xrce-agent.source]
+git = "https://github.com/eProsima/Micro-XRCE-DDS-Agent"
+ref = "v2.4.3"
+configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_EXECUTABLE=ON -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF"
+install = "cmake --build build --parallel $(nproc) --target install"
+
+# Cyclone DDS host tools — `idlc` (descriptor codegen) + `libddsc` for the
+# rmw-cyclonedds path (native + the embedded cross-ddsc base). Built from the
+# NEWSLabNTU fork's `nano-ros` integration branch, pinned to the submodule sha.
+[tool.cyclonedds]
+version = "0.10.5-nros1"
+upstream = "12b4af2c5ac98657d42df84a5a45006ceede503b" # fork sha = submodule pointer
+[tool.cyclonedds.source]
+git = "https://github.com/NEWSLabNTU/cyclonedds"
+ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
+configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DBUILD_IDLC=ON -DBUILD_TESTING=OFF -DBUILD_DDSPERF=OFF"
+install = "cmake --build build --parallel $(nproc) --target install"
+
 # --- source packages (built with the app for the user's target) ---
 
 [source.freertos-kernel]
