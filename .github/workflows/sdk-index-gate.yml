@@ -10,6 +10,8 @@ on:
     paths:
       - "nros-sdk-index.toml"
       - "scripts/sdk/verify-index.py"
+      - "scripts/sdk/check-qemu-configure.sh"
+      - "ci/nano-ros-sdk/scripts/build-qemu.sh"
   workflow_dispatch:
 
 jobs:
@@ -22,3 +24,7 @@ jobs:
           python-version: "3.12"
       - name: Verify prebuilt assets resolve + hash
         run: python3 scripts/sdk/verify-index.py nros-sdk-index.toml
+      # Phase 191.3 — the index source-build flags and the prebuilt build script
+      # must not drift (else prebuilt != source-built).
+      - name: Check qemu configure flags match (index vs build script)
+        run: ./scripts/sdk/check-qemu-configure.sh
