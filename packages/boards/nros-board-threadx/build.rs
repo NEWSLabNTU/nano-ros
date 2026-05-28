@@ -60,12 +60,6 @@ fn main() {
         })
         .unwrap_or_default();
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .expect("Could not resolve workspace root");
 
     let threadx_port_dir = threadx_dir.join("ports").join(&port_subpath);
     assert!(
@@ -132,10 +126,7 @@ fn main() {
     for p in &extra_netx_includes {
         platform.include(p);
     }
-    nros_board_common::threadx_sources::add_nros_platform_threadx_build(
-        &mut platform,
-        workspace_root,
-    );
+    nros_board_common::threadx_sources::add_nros_platform_threadx_build(&mut platform);
     platform.compile("nros_platform_threadx");
 
     // Link order (reverse dependency): platform → kernel.
