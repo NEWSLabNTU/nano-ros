@@ -70,7 +70,9 @@ The same program in C and C++ is in the First Node guides:
   Verus deductive proofs cover CDR serialization, scheduling, and protocol
   correctness.
 - **ROS 2 compatible** — interoperates with standard ROS 2 nodes via
-  `rmw_zenoh_cpp`. Topics, services, and actions work across the boundary.
+  `rmw_zenoh_cpp`, or directly over RTPS with `rmw_cyclonedds_cpp` (same
+  wire protocol, no key rewriting). Topics, services, and actions work
+  across the boundary.
 
 ## Quick board check — does it work on the board I have today?
 

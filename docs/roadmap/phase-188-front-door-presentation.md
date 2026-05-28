@@ -120,6 +120,40 @@ already-correct hardcoded-dual crates were left untouched (consistent with
 the examples that must hardcode — standalone example crates can't inherit
 `license.workspace`).
 
+### 188.F — Book accuracy sweep
+
+Swept `book/src/` for pre-Cyclone / pre-Phase-169 framing.
+
+- [x] **188.F.1 — Stale "two backends" counts → three.**
+  `porting/custom-rmw.md` ("ships with two RMW backends") and
+  `getting-started/zephyr.md` ("two RMW backends on Zephyr") both predated
+  Cyclone. Fixed to three; added a **Cyclone DDS** subsection to zephyr.md
+  with the real `prj-cyclonedds.conf` Kconfig (CONFIG_CPP, heap/arena
+  sizing, IGMP, native_sim NSOS offload). Verified the `prj-cyclonedds.conf`
+  overlay actually exists.
+- [x] **188.F.2 — Interop framing.** `introduction.md` "ROS 2 compatible"
+  bullet said interop is via `rmw_zenoh_cpp` only; added the direct RTPS
+  path via `rmw_cyclonedds_cpp`.
+- [x] **188.F.3 — README license badge** added (resolved by 188.E).
+- [x] No remaining `dust-dds` / standalone-"DDS" backend drift outside
+  `internals/rmw-backends.md` (which correctly documents the Phase 169
+  retirement). `concepts/no-std.md`'s "four backend crates" verified correct
+  (4 zenoh/xrce crates, not dust-dds).
+
+> **Follow-up flagged — 188.G (retired shim crates in porting docs).** Phase
+> 129 deleted `zpico-platform-shim` + `xrce-platform-shim`; their symbols now
+> come from C alias TUs (`zpico-sys/c/zpico/platform_aliases.c`,
+> `nros-rmw-xrce/src/platform_aliases.c` → canonical `nros_platform_*`).
+> Confirmed both crates are gone from git and the alias TUs exist. The book
+> still references the deleted shim crates in **6 places** —
+> `internals/porting-platform/zenoh-pico.md`, `…/xrce-dds.md` (×4),
+> `concepts/platform-model.md`, `porting/custom-board.md` (diagram **and a
+> copy-paste `path = "…/zpico-platform-shim"` dependency that no longer
+> exists**), and `porting/overview.md`. This is a porting-mechanism rewrite
+> (must describe the alias-TU model correctly against the current board
+> crates), not a sweep touch-up — deferred so it is done from code, not
+> memory. `custom-board.md`'s broken dependency line is the priority within it.
+
 ### 188.B — Visual identity (deferred follow-up)
 
 - [ ] **188.B.1** Favicon + logo (`book/theme/`), wired via

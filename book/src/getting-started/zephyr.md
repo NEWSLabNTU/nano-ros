@@ -119,7 +119,7 @@ west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
 
 ## RMW Backend Selection
 
-nros supports two RMW backends on Zephyr, selected via `prj.conf`:
+nros supports three RMW backends on Zephyr, selected via `prj.conf`:
 
 ### Zenoh (default)
 
@@ -145,6 +145,34 @@ CONFIG_NROS_XRCE_AGENT_ADDR="127.0.0.1"
 CONFIG_NROS_XRCE_AGENT_PORT=2018
 CONFIG_NET_SOCKETS=y
 ```
+
+### Cyclone DDS
+
+Brokerless RTPS, wire-compatible with stock ROS 2 (`rmw_cyclonedds_cpp`).
+Cyclone's source is C++, so `CONFIG_CPP=y` is required even for Rust
+callers. Cyclone is resource-heavy — it needs a large heap, libc malloc
+arena, and pthread pools. The bool prerequisites (thread-local storage,
+dynamic threads, `NET_TCP`, …) are `select`ed automatically by
+`CONFIG_NROS_RMW_CYCLONEDDS` in `zephyr/Kconfig`; the size knobs stay in
+`prj.conf`:
+
+```ini
+CONFIG_NROS=y
+CONFIG_NROS_RMW_CYCLONEDDS=y
+CONFIG_CPP=y
+CONFIG_NROS_CYCLONE_DOMAIN_ID=0
+CONFIG_POSIX_API=y
+CONFIG_NET_IPV4_IGMP=y                  # RTPS SPDP uses UDP multicast
+CONFIG_MAIN_STACK_SIZE=524288
+CONFIG_HEAP_MEM_POOL_SIZE=4194304
+CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=16777216
+CONFIG_DYNAMIC_THREAD_STACK_SIZE=32768
+```
+
+On `native_sim`, add the NSOS host-socket offload
+(`CONFIG_NET_SOCKETS_OFFLOAD=y` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y`)
+so discovery uses host BSD sockets instead of zeth/TAP. See
+`examples/zephyr/rust/talker/prj-cyclonedds.conf` for the full overlay.
 
 ## API Selection
 
