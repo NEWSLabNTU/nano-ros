@@ -139,6 +139,17 @@ struct ServiceOptions {
     int sched_context = SCHED_CONTEXT_UNSET;
 };
 
+/// rclcpp-style named options for the **callback-style**
+/// `Node::create_client<S>(out, name, callback, qos, options)` overload
+/// (Phase 189.M3.3.f). `sched_context` is functional for callback-style clients
+/// (arena-registered → real executor handle whose response dispatch runs during
+/// `spin_once`); N/A for the future-style `create_client(out, name, qos)`.
+struct ClientOptions {
+    /// Scheduling-context id to bind this client's response dispatch onto.
+    /// `SCHED_CONTEXT_UNSET` = executor / Node default.
+    int sched_context = SCHED_CONTEXT_UNSET;
+};
+
 } // namespace nros
 
 #endif // NROS_CPP_OPTIONS_HPP

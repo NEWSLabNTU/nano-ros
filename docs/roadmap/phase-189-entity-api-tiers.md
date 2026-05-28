@@ -285,6 +285,24 @@ application code.
           excluded from cbindgen (external-crate `RawServiceCallback` alias) + declared
           locally in `service.hpp`; the callback `create_service` instantiation builds +
           links in `examples/native/cpp/service-server` (temp harness, reverted).
+    - [x] **M3.3.f — Callback-style C++ clients (arena-registered, sched-bindable). DONE**
+          (2026-05-29). The client analogue of M3.3.e: C++ clients were future/poll-style
+          (`send_request` → `Future`); the callback path arena-registers a *response*
+          handler so the client owns a real executor handle (response dispatch runs in
+          `spin_once`) — making `sched_context` functional. Two FFIs:
+          `nros_cpp_service_client_register` (→ `register_service_client_raw_sized{,_on}`
+          with a `RawResponseCallback` + `out_handle_id` + `sched_context`; cbindgen-excluded
+          + declared locally in `client.hpp`) and `nros_cpp_service_client_send_on_handle`
+          (sends on the arena client by handle — clients must *send* as well as receive,
+          unlike services; cbindgen-rendered since it takes no callback). `Client<S>` gains
+          a callback mode (typed `void(const Response&)` handler, static response
+          trampoline, `async_send_request`, `handle_id_`/`callback_mode_` + dtor/move
+          guards), a `create_client(out, name, callback, qos, options)` SFINAE overload, and
+          `ClientOptions`. Future-style create kept; no-move-after-register constraint.
+          Verified: nros-cpp builds + clippy clean; `examples/native/cpp/service-client`
+          builds + links (future path intact) and a temp callback-style instantiation
+          built + linked (reverted). **With this, every C/C++ service-plane entity
+          (services, clients, action servers/clients) is arena-registered + sched-bindable.**
   - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
         `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
         dispatch + `Executor::add_arena_subscription_c_info_callback` in

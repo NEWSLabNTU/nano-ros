@@ -917,6 +917,21 @@ nros_cpp_ret_t nros_cpp_service_client_call_raw(void *storage,
                                                 size_t *resp_len);
 
 /**
+ * Phase 189.M3.3.f — send a request on a callback-style (arena-registered)
+ * service client identified by `handle_id` (from
+ * `nros_cpp_service_client_register`). The reply is delivered to the client's
+ * registered response callback during spin. Mirrors the C arena send path.
+ *
+ * # Safety
+ * `executor_handle` must point to a valid `CppContext`; `req_data` to `req_len`
+ * readable bytes.
+ */
+nros_cpp_ret_t nros_cpp_service_client_send_on_handle(void *executor_handle,
+                                                      size_t handle_id,
+                                                      const uint8_t *req_data,
+                                                      size_t req_len);
+
+/**
  * Send a service request asynchronously (non-blocking).
  *
  * # Safety

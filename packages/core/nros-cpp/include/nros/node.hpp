@@ -257,6 +257,22 @@ class Node {
     Result create_client(Client<S>& out, const char* service_name,
                          const QoS& qos = QoS::services());
 
+    /// Create a **callback-style** service client (rclcpp async dispatch;
+    /// Phase 189.M3.3.f). Arena-registered, so it owns a real executor handle and
+    /// its response handler runs during `spin_once` — making
+    /// `options.sched_context` functional. `callback` must be convertible to
+    /// `void(const S::Response&)`; send requests with
+    /// `Client<S>::async_send_request`. The SFINAE guard keeps the future-style
+    /// 3-arg overload unambiguous.
+    ///
+    /// CONSTRAINT: do not move `out` after this returns — the executor arena
+    /// holds `&out` as the response dispatch context.
+    template <typename S, typename F,
+              typename = typename std::enable_if<std::is_convertible<
+                  F, void (*)(const typename S::Response&)>::value>::type>
+    Result create_client(Client<S>& out, const char* service_name, F callback,
+                         const QoS& qos = QoS::services(), const ClientOptions& options = {});
+
     /// Create an action server.
     ///
     /// Goals are auto-accepted during spin_once(). Use try_recv_goal() to poll.

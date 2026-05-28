@@ -435,6 +435,133 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     }
 }
 
+/// Phase 189.M3.3.f — register a **callback-style** service client in the
+/// executor arena (rclcpp async dispatch), as opposed to the poll/future-style
+/// `nros_cpp_service_client_create`. The arena owns the client; spin dispatches
+/// `callback(response_cdr)` when a reply arrives. Requests are sent via
+/// `nros_cpp_service_client_send_on_handle` using the returned `out_handle_id`.
+/// Binds the handle to `sched_context` when non-zero (the payoff). `callback` is
+/// the C++ template's raw response trampoline; `context` is the `Client<S>`
+/// object (`this`).
+///
+/// # Safety
+/// All non-NULL pointers valid; `callback` a valid trampoline; `context`
+/// outlives the executor (no move after register).
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_service_client_register(
+    node: *const nros_cpp_node_t,
+    service_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawResponseCallback,
+    context: *mut c_void,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    if node.is_null()
+        || service_name.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || out_handle_id.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let svc_str = match unsafe { cstr_to_str(service_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
+    let result = if node_ref.node_id != 0 {
+        ctx.executor.register_service_client_raw_sized_on::<BUF>(
+            nros_node::executor::NodeId::from_raw(node_ref.node_id),
+            svc_str,
+            type_str,
+            hash_str,
+            qos.to_qos_settings(),
+            Some(callback),
+            context,
+        )
+    } else {
+        ctx.executor.register_service_client_raw_sized::<BUF>(
+            svc_str,
+            type_str,
+            hash_str,
+            qos.to_qos_settings(),
+            Some(callback),
+            context,
+        )
+    };
+
+    match result {
+        Ok(handle_id) => {
+            if sched_context != 0 {
+                let sc_id = nros_node::executor::sched_context::SchedContextId(sched_context);
+                if ctx
+                    .executor
+                    .bind_handle_to_sched_context(handle_id, sc_id)
+                    .is_err()
+                {
+                    return NROS_CPP_RET_INVALID_ARGUMENT;
+                }
+            }
+            unsafe {
+                *out_handle_id = handle_id.0;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
+/// Phase 189.M3.3.f — send a request on a callback-style (arena-registered)
+/// service client identified by `handle_id` (from
+/// `nros_cpp_service_client_register`). The reply is delivered to the client's
+/// registered response callback during spin. Mirrors the C arena send path.
+///
+/// # Safety
+/// `executor_handle` must point to a valid `CppContext`; `req_data` to `req_len`
+/// readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
+    executor_handle: *mut c_void,
+    handle_id: usize,
+    req_data: *const u8,
+    req_len: usize,
+) -> nros_cpp_ret_t {
+    if executor_handle.is_null() || req_data.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let entry = match unsafe { ctx.executor.service_client_entry_mut(handle_id) } {
+        Some(e) => e,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let request = unsafe { core::slice::from_raw_parts(req_data, req_len) };
+    match entry.handle.send_request_raw(request) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
 /// Send a service request asynchronously (non-blocking).
 ///
 /// # Safety
