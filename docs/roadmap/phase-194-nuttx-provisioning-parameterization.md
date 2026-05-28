@@ -134,11 +134,14 @@ in the index); the kernel source-builds against it.
       (build-once-link-many; `just nuttx build-kernel` is now idempotent too).
       Verified end-to-end: removing the export + building a nuttx C example via
       cmake **rebuilt the export from nothing** before the cargo link; a fresh
-      tree no-ops with `NuttX export up-to-date — skipping`. (A full *green* nuttx
-      C/C++ example is currently blocked by a **pre-existing, orthogonal** nros-cpp
-      compile break on this branch — `QosSettings` E0433 + `CppActionServer` layout
-      E0080 — which fails the FFI build regardless of provisioning; tracked
-      separately, no `.rs`/`.hpp` touched by 194.4.)
+      tree no-ops with `NuttX export up-to-date — skipping`. **`just nuttx
+      build-fixtures` is fully green** (all C + C++ examples) after fixing the
+      orthogonal nros-cpp layout-mirror break (`6d71ce17d`): `CppQosLayout`
+      mirrored the qos `#[repr(C)]` enums as `c_int`, but ARM EABI `-fshort-enums`
+      makes them 1 byte (not 4) — over-sizing `CppActionServer` by 12 bytes on ARM
+      and tripping the size assert (E0080). Mirror now uses a `#[repr(C)]` enum
+      (tracks short-enum width per target); real `CppActionServer`/`CppActionClient`
+      also pinned to `#[repr(C)]`.
 
 ## Acceptance criteria
 
