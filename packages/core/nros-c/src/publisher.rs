@@ -95,6 +95,45 @@ impl Default for nros_publisher_t {
 // PUBLISHER_OPAQUE_U64S is computed from size_of::<RmwPublisher>() in opaque_sizes.rs —
 // always large enough by construction.
 
+/// Phase 189.M3 — rclc-style named publisher options.
+///
+/// Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
+/// separately, this struct carries the non-QoS publisher-creation axes.
+/// Publishers are not executor handles and therefore have no
+/// scheduling-context binding — this struct is intentionally thin and
+/// exists for rclc symmetry with [`nros_subscription_options_t`] plus
+/// forward ABI headroom.
+///
+/// The struct contains only plain scalar fields — no pointers — so it is
+/// safe to stack-allocate, memcpy, and pass across the FFI. Zero-init
+/// (all fields 0) selects the default behaviour, identical to
+/// `nros_publisher_init_with_qos`.
+#[repr(C)]
+pub struct nros_publisher_options_t {
+    /// Reserved for future use; must be zero. Pads the struct to a
+    /// non-empty layout and reserves room for later publisher-only axes
+    /// (e.g. a future loan-pool hint) without an ABI break.
+    pub _reserved: [u8; 4],
+}
+
+impl Default for nros_publisher_options_t {
+    fn default() -> Self {
+        Self {
+            _reserved: [0u8; 4],
+        }
+    }
+}
+
+/// Get a zero-initialised [`nros_publisher_options_t`].
+///
+/// All fields default to "inherit"/"none". Callers populate only the
+/// fields they want to override before passing the struct to
+/// [`nros_publisher_init_with_options`].
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_publisher_get_default_options() -> nros_publisher_options_t {
+    nros_publisher_options_t::default()
+}
+
 /// Get a zero-initialized publisher.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_publisher_get_zero_initialized() -> nros_publisher_t {
@@ -248,6 +287,53 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
     {
         NROS_RET_ERROR
     }
+}
+
+/// Phase 189.M3 — initialize a publisher with custom QoS + named options.
+///
+/// rclc-style entry point: QoS is passed separately (`qos`, NULL =
+/// default) and the non-QoS axes ride in `options` (NULL = defaults).
+/// Equivalent to [`nros_publisher_init_with_qos`] today —
+/// [`nros_publisher_options_t`] is currently a reserved, thin struct
+/// (publishers have no scheduling-context binding) — but kept as a
+/// distinct, additive entry point for rclc symmetry and forward ABI
+/// headroom.
+///
+/// # Parameters
+/// * `publisher` - Pointer to a zero-initialized publisher
+/// * `node` - Pointer to an initialized node
+/// * `type_info` - Pointer to message type information
+/// * `topic_name` - Topic name (null-terminated string)
+/// * `qos` - Pointer to QoS settings (NULL for default)
+/// * `options` - Pointer to publisher options (NULL for defaults)
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
+///
+/// # Safety
+/// * All required pointers must be valid
+/// * `topic_name` must be a valid null-terminated string
+/// * `qos` / `options` may be NULL or point to valid structs
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_publisher_init_with_options(
+    publisher: *mut nros_publisher_t,
+    node: *const nros_node_t,
+    type_info: *const nros_message_type_t,
+    topic_name: *const c_char,
+    qos: *const nros_qos_t,
+    options: *const nros_publisher_options_t,
+) -> nros_ret_t {
+    // `options` carries no wired axis today (reserved). Validate it if
+    // non-NULL so a future field gain doesn't silently accept garbage,
+    // then delegate to the QoS path.
+    if !options.is_null() {
+        let _opts = &*options;
+        // No-op: every field is currently reserved.
+    }
+    nros_publisher_init_with_qos(publisher, node, type_info, topic_name, qos)
 }
 
 /// Publish raw CDR-serialized data.

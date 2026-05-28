@@ -244,6 +244,19 @@ template <typename M> class Subscription {
     /// Use `Node::create_subscription()` to initialize.
     Subscription() : storage_(), topic_name_{}, initialized_(false), stream_() {}
 
+    /// Phase 189.M3.1 — internal: executor `HandleId` usable with
+    /// `nros_cpp_bind_handle_to_sched_context`, or `SIZE_MAX` when the
+    /// subscription has no bindable handle.
+    ///
+    /// The current thin-wrapper create path (`nros_cpp_subscription_create`)
+    /// stores a bare `RmwSubscriber` and registers **no** executor callback
+    /// entry, so no `HandleId` exists and this stays `SIZE_MAX`. The accessor
+    /// + setter are wired so `SubscriptionOptions::sched_context` lowering
+    /// activates transparently once a handle-returning create FFI lands.
+    /// `Node` is a friend and sets this on create when a handle is available.
+    bool has_sched_handle() const { return sched_handle_id_ != static_cast<size_t>(-1); }
+    size_t sched_handle_id() const { return sched_handle_id_; }
+
     // ====================================================================
     // Phase 108 — status events
     // ====================================================================
@@ -282,6 +295,10 @@ template <typename M> class Subscription {
     char topic_name_[SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
     Stream<M> stream_;
+    // Phase 189.M3.1 — executor HandleId for sched-context binding, or
+    // SIZE_MAX (the default) when no bindable handle exists. The
+    // thin-wrapper create path leaves this unset (see has_sched_handle()).
+    size_t sched_handle_id_ = static_cast<size_t>(-1);
 };
 
 } // namespace nros
@@ -317,6 +334,41 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
         out.initialized_ = true;
     }
     return Result(ret);
+}
+
+/// Phase 189.M3.1 — named-options overload. Delegates to the qos-only
+/// create, then lowers the non-QoS axes:
+///
+///  * `sched_context` — when set (`!= SCHED_CONTEXT_UNSET`) **and** the
+///    created subscription exposes a bindable executor `HandleId`,
+///    create-then-bind via `nros_cpp_bind_handle_to_sched_context`; a
+///    failing bind tears the subscription back down and surfaces the FFI
+///    error. The current thin-wrapper subscription has no bindable handle
+///    (see `Subscription<M>::has_sched_handle()`), so the bind is skipped
+///    until a handle-returning create FFI lands (tracked with M3.4); the
+///    field is honoured transparently once that exists.
+///  * `message_info` — reserved (M3.4); ignored today.
+template <typename M>
+Result Node::create_subscription(Subscription<M>& out, const char* topic, const QoS& qos,
+                                 const SubscriptionOptions& options) {
+    Result r = create_subscription<M>(out, topic, qos);
+    if (!r.ok()) return r;
+
+    // TODO(M3.4): honour options.message_info via the with-info arena path.
+
+    if (options.sched_context != SCHED_CONTEXT_UNSET && out.has_sched_handle()) {
+        nros_cpp_ret_t bind = nros_cpp_bind_handle_to_sched_context(
+            executor_handle_, out.sched_handle_id(), static_cast<uint8_t>(options.sched_context));
+        if (bind != 0) {
+            // Roll back so the caller doesn't observe a half-configured
+            // entity. Destructor-on-out would also fire, but explicit
+            // teardown keeps the returned error authoritative.
+            nros_cpp_subscription_destroy(out.storage_);
+            out.initialized_ = false;
+            return Result(bind);
+        }
+    }
+    return Result::success();
 }
 
 /// Phase 123.B.4 — value-returning subscription factory. Pairs
