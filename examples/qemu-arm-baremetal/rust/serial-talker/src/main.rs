@@ -27,46 +27,43 @@ use std_msgs::msg::Int32;
 
 #[nros_board_mps2_an385::entry]
 fn main() -> ! {
-    run(
-        Config::from_toml(include_str!("../nros.toml")),
-        |config| {
-            nros_log::register_logger(&LOGGER);
-            nros_log::init(nros_log::sinks::default());
+    run(Config::from_toml(include_str!("../nros.toml")), |config| {
+        nros_log::register_logger(&LOGGER);
+        nros_log::init(nros_log::sinks::default());
 
-            nros_info!(&LOGGER, "Zenoh locator: {}", config.zenoh_locator);
+        nros_info!(&LOGGER, "Zenoh locator: {}", config.zenoh_locator);
 
-            let exec_config = ExecutorConfig::new(config.zenoh_locator)
-                .domain_id(config.domain_id)
-                .node_name("serial_talker");
-            // Phase 104.A — bare-metal callers explicitly register the RMW
-            // backend before `Executor::open`. POSIX hosts auto-register via
-            // `.init_array`; this target doesn't walk that section.
-            nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-            let mut executor = Executor::open(&exec_config)?;
-            let mut node = executor.create_node("serial_talker")?;
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("serial_talker");
+        // Phase 104.A — bare-metal callers explicitly register the RMW
+        // backend before `Executor::open`. POSIX hosts auto-register via
+        // `.init_array`; this target doesn't walk that section.
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+        let mut executor = Executor::open(&exec_config)?;
+        let mut node = executor.create_node("serial_talker")?;
 
-            nros_info!(&LOGGER, "Declaring publisher on /chatter (std_msgs/Int32)");
-            let publisher = node.create_publisher::<Int32>("/chatter")?;
-            nros_info!(&LOGGER, "Publisher declared");
+        nros_info!(&LOGGER, "Declaring publisher on /chatter (std_msgs/Int32)");
+        let publisher = node.create_publisher::<Int32>("/chatter")?;
+        nros_info!(&LOGGER, "Publisher declared");
 
-            nros_info!(&LOGGER, "Publishing messages over serial...");
+        nros_info!(&LOGGER, "Publishing messages over serial...");
 
-            let mut count: i32 = 0;
-            loop {
-                match publisher.publish(&Int32 { data: count }) {
-                    Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
-                    Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
-                }
-                count = count.wrapping_add(1);
-
-                // Poll to process serial transport events (~1s between publishes)
-                for _ in 0..100u32 {
-                    executor.spin_once(core::time::Duration::from_millis(10));
-                }
+        let mut count: i32 = 0;
+        loop {
+            match publisher.publish(&Int32 { data: count }) {
+                Ok(()) => nros_info!(&LOGGER, "Published: {}", count),
+                Err(e) => nros_error!(&LOGGER, "Publish failed: {:?}", e),
             }
+            count = count.wrapping_add(1);
 
-            #[allow(unreachable_code)]
-            Ok::<(), NodeError>(())
-        },
-    )
+            // Poll to process serial transport events (~1s between publishes)
+            for _ in 0..100u32 {
+                executor.spin_once(core::time::Duration::from_millis(10));
+            }
+        }
+
+        #[allow(unreachable_code)]
+        Ok::<(), NodeError>(())
+    })
 }

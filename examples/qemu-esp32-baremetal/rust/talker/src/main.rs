@@ -28,66 +28,63 @@ nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
-    run(
-        Config::from_toml(include_str!("../nros.toml")),
-        |config| {
-            let exec_config = ExecutorConfig::new(config.zenoh_locator)
-                .domain_id(config.domain_id)
-                .node_name("talker")
-                .clock_us(nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_us);
-            // Phase 104.A — bare-metal callers explicitly register the RMW
-            // backend before `Executor::open`. POSIX hosts auto-register via
-            // `.init_array`; this target doesn't walk that section.
-            nros_rmw_zenoh::register().expect("Failed to register RMW backend");
-            let mut executor = Executor::open(&exec_config)?;
-            let publisher = {
-                let mut node = executor.create_node("talker")?;
-                esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
-                node.create_publisher::<Int32>("/chatter")?
-            };
-            esp_println::println!("Publisher declared");
+    run(Config::from_toml(include_str!("../nros.toml")), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("talker")
+            .clock_us(nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_us);
+        // Phase 104.A — bare-metal callers explicitly register the RMW
+        // backend before `Executor::open`. POSIX hosts auto-register via
+        // `.init_array`; this target doesn't walk that section.
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+        let mut executor = Executor::open(&exec_config)?;
+        let publisher = {
+            let mut node = executor.create_node("talker")?;
+            esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
+            node.create_publisher::<Int32>("/chatter")?
+        };
+        esp_println::println!("Publisher declared");
 
-            esp_println::println!("Publishing messages...");
+        esp_println::println!("Publishing messages...");
 
-            let mut count: i32 = 0;
-            executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
-                match publisher.publish(&Int32 { data: count }) {
-                    Ok(()) => esp_println::println!("Published: {}", count),
-                    Err(e) => esp_println::println!("Publish failed: {:?}", e),
-                }
-                count = count.wrapping_add(1);
-            })?;
-
-            // Phase 127.A diagnostic — see listener `main.rs` for the
-            // rationale. Lets the test log prove whether the staged TX
-            // bytes the talker writes are actually pushed into smoltcp
-            // socket TX queues.
-            let mut next_dump_ms =
-                nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms() + 1000;
-            loop {
-                executor.spin_once(core::time::Duration::from_millis(10));
-                let now_ms = nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms();
-                if now_ms >= next_dump_ms {
-                    let (do_poll_calls, cb_hits, bridge_polls, tx_drained) =
-                        nros_board_esp32_qemu::nros_smoltcp::poll_diagnostics();
-                    let (cb_registered, cb_sets, cb_lost) =
-                        nros_board_esp32_qemu::nros_smoltcp::poll_callback_diagnostics();
-                    esp_println::println!(
-                        "[poll] do_poll={} cb_hits={} bridge_polls={} tx_drained={} cb_registered={} cb_sets={} cb_lost={}",
-                        do_poll_calls,
-                        cb_hits,
-                        bridge_polls,
-                        tx_drained,
-                        cb_registered,
-                        cb_sets,
-                        cb_lost,
-                    );
-                    next_dump_ms = now_ms + 5000;
-                }
+        let mut count: i32 = 0;
+        executor.register_timer(nros::TimerDuration::from_millis(1000), move || {
+            match publisher.publish(&Int32 { data: count }) {
+                Ok(()) => esp_println::println!("Published: {}", count),
+                Err(e) => esp_println::println!("Publish failed: {:?}", e),
             }
+            count = count.wrapping_add(1);
+        })?;
 
-            #[allow(unreachable_code)]
-            Ok::<(), NodeError>(())
-        },
-    )
+        // Phase 127.A diagnostic — see listener `main.rs` for the
+        // rationale. Lets the test log prove whether the staged TX
+        // bytes the talker writes are actually pushed into smoltcp
+        // socket TX queues.
+        let mut next_dump_ms =
+            nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms() + 1000;
+        loop {
+            executor.spin_once(core::time::Duration::from_millis(10));
+            let now_ms = nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_ms();
+            if now_ms >= next_dump_ms {
+                let (do_poll_calls, cb_hits, bridge_polls, tx_drained) =
+                    nros_board_esp32_qemu::nros_smoltcp::poll_diagnostics();
+                let (cb_registered, cb_sets, cb_lost) =
+                    nros_board_esp32_qemu::nros_smoltcp::poll_callback_diagnostics();
+                esp_println::println!(
+                    "[poll] do_poll={} cb_hits={} bridge_polls={} tx_drained={} cb_registered={} cb_sets={} cb_lost={}",
+                    do_poll_calls,
+                    cb_hits,
+                    bridge_polls,
+                    tx_drained,
+                    cb_registered,
+                    cb_sets,
+                    cb_lost,
+                );
+                next_dump_ms = now_ms + 5000;
+            }
+        }
+
+        #[allow(unreachable_code)]
+        Ok::<(), NodeError>(())
+    })
 }
