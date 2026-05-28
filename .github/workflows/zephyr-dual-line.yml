@@ -42,6 +42,12 @@ concurrency:
   group: zephyr-dual-line-${{ github.ref }}
   cancel-in-progress: true
 
+# This workflow builds only the zenoh examples, so skip the heavy Micro-XRCE-DDS
+# Agent (Fast-DDS superbuild) that `just zephyr setup` builds for XRCE runtime
+# tests — it is unused here and would run on every matrix job.
+env:
+  NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
+
 jobs:
   # --- Per-line example matrix -------------------------------------------
   # Builds the c/cpp/rust talker+listener (zenoh) on each line via
@@ -66,6 +72,12 @@ jobs:
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
+
+      # actions/checkout doesn't init submodules. The Zephyr setup patches the
+      # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
+      # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
+      - name: Init Zephyr-relevant submodules
+        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
 
       - name: Install just
         uses: extractions/setup-just@v2
@@ -99,6 +111,12 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
+      # actions/checkout doesn't init submodules. The Zephyr setup patches the
+      # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
+      # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
+      - name: Init Zephyr-relevant submodules
+        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
+
       - name: Install just
         uses: extractions/setup-just@v2
 
@@ -128,6 +146,12 @@ jobs:
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
+
+      # actions/checkout doesn't init submodules. The Zephyr setup patches the
+      # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
+      # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
+      - name: Init Zephyr-relevant submodules
+        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
 
       - name: Install just
         uses: extractions/setup-just@v2
