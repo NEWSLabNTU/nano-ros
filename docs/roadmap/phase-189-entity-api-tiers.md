@@ -186,11 +186,20 @@ application code.
         poll-style/no-handle issue as M3.1). Deferred until that core work lands.
         Documented in
         [`docs/design/service-qos-gap.md`](../design/service-qos-gap.md).
-  - [ ] **M3.4 — `message_info` option (new arena path).** A
-        `SubBufferedRawInfoCEntry` C-fn-ptr-with-info arena entry + dispatch in
-        `nros-node` (the C analog of `SubBufferedRawInfoEntry`), a C/C++ FFI
-        with-info subscription create, and the `message_info` option flag
-        selecting it. Larger; gated behind a concrete C/C++ consumer need.
+  - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
+        `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
+        dispatch + `Executor::add_arena_subscription_c_info_callback` in
+        `nros-node` (flat payload + `RAW_INFO_ATT_CAP` attachment buffers, via
+        `try_recv_raw_with_attachment`), the `RawSubscriptionInfoCallback` type,
+        and the C FFI `nros_executor_register_subscription_raw_with_info` +
+        `nros_subscription_info_callback_t` (cbindgen). Direct-arg form (the
+        callback signature differs from `nros_subscription_callback_t`, so it's
+        its own entry, not an option flag — the M3.2 `message_info` reserved flag
+        is superseded by this dedicated init). Test:
+        `tests::test_raw_subscription_info_callback`. **C++ deferred:** C++
+        subscriptions are poll-style (no callback) — surfacing the attachment
+        there wants a `Subscription<M>::take_with_info(...)` poll accessor (fits
+        the poll model better than a callback), tracked as M3.4b.
   - [ ] **M3.5 — generator emits real service/action callbacks.** Close the M2
         "services/actions still emit C-fn-ptr noops" note by emitting real
         wiring once component callback bodies land — **depends on Phase 172 W.5**

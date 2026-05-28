@@ -1906,6 +1906,56 @@ fn test_raw_subscription_callback() {
     assert_eq!(RAW_LEN.load(std::sync::atomic::Ordering::SeqCst), len);
 }
 
+#[test]
+fn test_raw_subscription_info_callback() {
+    // Phase 189.M3.4 — the C-fn-ptr-with-attachment subscription path.
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    static INFO_CALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static INFO_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static INFO_ATT_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    unsafe extern "C" fn info_cb(
+        _data: *const u8,
+        len: usize,
+        _att: *const u8,
+        att_len: usize,
+        _ctx: *mut core::ffi::c_void,
+    ) {
+        INFO_CALLED.store(true, std::sync::atomic::Ordering::SeqCst);
+        INFO_LEN.store(len, std::sync::atomic::Ordering::SeqCst);
+        INFO_ATT_LEN.store(att_len, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    let _id = executor
+        .add_arena_subscription_c_info_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            None,
+            "/test",
+            "test/msg/TestMsg",
+            "test_hash",
+            QosSettings::default().keep_last(1),
+            info_cb,
+            core::ptr::null_mut(),
+        )
+        .unwrap();
+
+    let (data, len) = encode_test_msg(7);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe {
+        let sub_ptr = arena_ptr.add(meta.offset) as *const MockSubscriber;
+        (*sub_ptr).load(data, len);
+    }
+
+    let result = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(result.subscriptions_processed, 1);
+    assert!(INFO_CALLED.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(INFO_LEN.load(std::sync::atomic::Ordering::SeqCst), len);
+    // MockSubscriber has no native attachment ⇒ default 0-length attachment.
+    assert_eq!(INFO_ATT_LEN.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
 // ====================================================================
 // Phase 49: Session borrowing tests
 // ====================================================================

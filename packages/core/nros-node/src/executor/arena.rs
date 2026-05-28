@@ -13,7 +13,7 @@ use super::{
     types::{
         InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback,
         RawGoalCallback, RawGoalResponseCallback, RawResponseCallback, RawResultCallback,
-        RawServiceCallback, RawSubscriptionCallback,
+        RawServiceCallback, RawSubscriptionCallback, RawSubscriptionInfoCallback,
     },
 };
 use crate::session;
@@ -515,6 +515,57 @@ pub(crate) unsafe fn sub_buffered_raw_info_has_data<F, const RX_BUF: usize>(
     ptr: *const u8,
 ) -> bool {
     let entry = unsafe { &*(ptr as *const SubBufferedRawInfoEntry<F, RX_BUF>) };
+    entry.handle.has_data()
+}
+
+/// C-style (fn-ptr + context) raw buffered subscription with attachment
+/// (Phase 189.M3.4 — the C analog of [`SubBufferedRawInfoEntry`]). Flat
+/// payload + attachment buffers, one sample per dispatch.
+#[repr(C)]
+pub(crate) struct SubBufferedRawInfoCEntry<const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: [u8; RX_BUF],
+    pub(crate) att: [u8; RAW_INFO_ATT_CAP],
+    pub(crate) callback: RawSubscriptionInfoCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Dispatch for the C-style raw buffered subscription with attachment.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedRawInfoCEntry<RX_BUF>`.
+pub(crate) unsafe fn sub_buffered_raw_info_c_try_process<const RX_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError> {
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoCEntry<RX_BUF>) };
+    match entry
+        .handle
+        .try_recv_raw_with_attachment(&mut entry.buffer, &mut entry.att)
+    {
+        Ok(Some((len, att_len))) => {
+            unsafe {
+                (entry.callback)(
+                    entry.buffer.as_ptr(),
+                    len,
+                    entry.att.as_ptr(),
+                    att_len,
+                    entry.context,
+                )
+            };
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+/// Readiness check for the C-style raw buffered subscription with attachment.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedRawInfoCEntry<RX_BUF>`.
+pub(crate) unsafe fn sub_buffered_raw_info_c_has_data<const RX_BUF: usize>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawInfoCEntry<RX_BUF>) };
     entry.handle.has_data()
 }
 
