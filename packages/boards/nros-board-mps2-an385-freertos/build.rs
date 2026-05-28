@@ -39,7 +39,7 @@ fn main() {
         .unwrap_or_else(|_| config_dir.clone());
 
     let port_dir = freertos_dir.join("portable").join(&freertos_port);
-    let lan9118_dir = manifest_dir.join("../../drivers/lan9118-lwip");
+    let lan9118_dir = PathBuf::from(env::var("NROS_LAN9118_LWIP_DIR").expect("NROS_LAN9118_LWIP_DIR not set (direnv allow, or build via just)"));
 
     // --- Trace opt-in (NROS_TRACE=1) ---
     let nros_trace = env::var("NROS_TRACE").unwrap_or_default() == "1";
@@ -62,7 +62,7 @@ fn main() {
 
     // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
     if nros_trace {
-        let tband_dir = manifest_dir.join("../../../third-party/tracing/Tonbandgeraet/tband");
+        let tband_dir = PathBuf::from(env::var("TBAND_DIR").expect("TBAND_DIR not set (direnv allow, or build via just)"));
         let trace_config_dir = manifest_dir.join("trace");
 
         let mut tband = cc::Build::new();
@@ -86,7 +86,7 @@ fn main() {
     add_lwip_includes(&mut glue, &lwip_dir);
     glue.include(lan9118_dir.join("include"));
     if nros_trace {
-        let tband_dir = manifest_dir.join("../../../third-party/tracing/Tonbandgeraet/tband");
+        let tband_dir = PathBuf::from(env::var("TBAND_DIR").expect("TBAND_DIR not set (direnv allow, or build via just)"));
         let trace_config_dir = manifest_dir.join("trace");
         glue.include(tband_dir.join("inc"));
         glue.include(&trace_config_dir);
@@ -138,6 +138,8 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
+    println!("cargo:rerun-if-env-changed=NROS_LAN9118_LWIP_DIR");
+    println!("cargo:rerun-if-env-changed=TBAND_DIR");
     println!("cargo:rerun-if-env-changed=LWIP_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
