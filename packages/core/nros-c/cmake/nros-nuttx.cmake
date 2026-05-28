@@ -194,8 +194,34 @@ function(nros_nuttx_build_example)
     set(_cargo_target_dir "${CMAKE_CURRENT_BINARY_DIR}/cargo-target")
     set(_output_binary "${_cargo_target_dir}/${_NNBE_TARGET_TRIPLE}/release/nros-nuttx-ffi")
 
+    # 194.4: self-provision the NuttX export before the example links it. The
+    # script (board-supplied via NROS_NUTTX_PROVISION_SCRIPT) is idempotent — its
+    # `.nros-nuttx-build-head` marker self-guards, so this is a fast no-op once
+    # built. Runs in NUTTX_DIR with the board's NUTTX_* env. No manual
+    # `just nuttx build-kernel` needed under cmake / `nros build`.
+    set(_provision_cmd "")
+    if(NROS_NUTTX_PROVISION_SCRIPT AND EXISTS "${NROS_NUTTX_PROVISION_SCRIPT}")
+        # Pass NUTTX_DIR + NUTTX_APPS_DIR explicitly so build-nuttx.sh never
+        # falls to its PROJECT_ROOT default (which is wrong when the script is
+        # invoked by absolute path from cmake). NUTTX_APPS_DIR may not have
+        # reached this function's scope (set via nros_nuttx_validate PARENT_SCOPE
+        # in the caller) — derive the repo-convention sibling from NUTTX_DIR (a
+        # -D cache var, always visible) as a fallback.
+        set(_nnbe_apps_dir "${NUTTX_APPS_DIR}")
+        if(NOT _nnbe_apps_dir)
+            get_filename_component(_nnbe_nuttx_parent "${NUTTX_DIR}" DIRECTORY)
+            set(_nnbe_apps_dir "${_nnbe_nuttx_parent}/nuttx-apps")
+        endif()
+        set(_provision_cmd
+            COMMAND ${CMAKE_COMMAND} -E env
+                "NUTTX_DIR=${NUTTX_DIR}" "NUTTX_APPS_DIR=${_nnbe_apps_dir}"
+                ${CMAKE_COMMAND} -E chdir "${NUTTX_DIR}"
+                bash "${NROS_NUTTX_PROVISION_SCRIPT}")
+    endif()
+
     add_custom_command(
         OUTPUT "${_output_binary}"
+        ${_provision_cmd}
         COMMAND ${CMAKE_COMMAND} -E env
             "APP_MAIN_CPP=${_NNBE_MAIN_SOURCE}"
             "APP_INCLUDE_DIRS_FILE=${_includes_file}"

@@ -65,6 +65,13 @@ set(_NROS_NUTTX_BOARD_DIR
 set(_NROS_NUTTX_FFI_CRATE_DIR_DEFAULT
     "${_NROS_NUTTX_BOARD_DIR}/nros-nuttx-ffi")
 
+# 194.4: self-provision the NuttX export. nros_nuttx_build_example runs this
+# (idempotent — the marker self-guards) before the example cargo build, so
+# `nros build`/`deploy` + raw cmake auto-build the NuttX export with no manual
+# `just nuttx build-kernel`. A new-arch board points this at its own script.
+set(NROS_NUTTX_PROVISION_SCRIPT "${_NROS_NUTTX_BOARD_DIR}/scripts/build-nuttx.sh"
+    CACHE FILEPATH "NuttX export provisioning script (make export), run before the example build")
+
 if(NOT DEFINED NUTTX_FFI_CRATE_DIR AND DEFINED ENV{NUTTX_FFI_CRATE_DIR})
     set(NUTTX_FFI_CRATE_DIR "$ENV{NUTTX_FFI_CRATE_DIR}")
 endif()

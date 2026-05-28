@@ -106,6 +106,14 @@ echo ""
 
 cd "$NUTTX_DIR"
 
+# 194.4: serialize concurrent provisioning. Under the CMake self-provision path
+# (`nros_nuttx_build_example`), many parallel example builds invoke this script
+# against the *single shared* in-tree NuttX; without a lock their `make` /
+# `make export` race (duplicate export dir, `.version.tmp` clobber). The lock +
+# the up-to-date short-circuit below make all-but-the-first invocation a no-op.
+exec 9>".nros-nuttx-build.lock"
+flock 9
+
 # Set apps directory for NuttX build system
 export APPDIR="$NUTTX_APPS_DIR"
 
@@ -157,6 +165,23 @@ if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     echo "$CURRENT_KEY" > "$MARKER"
 fi
 
+# 194.4: true up-to-date short-circuit. When no reconfigure was needed (HEAD +
+# defconfig + board all match the marker) AND a completed export is present,
+# the export is already current — skip `make`/`make export` entirely so the
+# provision is a real no-op (build-once-link-many). The export-presence check
+# also recovers from a prior run that reconfigured but failed mid-build (fresh
+# marker, missing export ⇒ NEEDS_RECONFIG=0 but no tarball ⇒ rebuild).
+if [ "$NEEDS_RECONFIG" -eq 0 ]; then
+    # `|| true`: under `set -o pipefail`, `ls <glob>` returns nonzero when no
+    # tarball matches, which would abort the script (set -e) before we can
+    # decide to rebuild. Tolerate the empty match.
+    _EXPORT_TAR=$(ls nuttx-export-*.tar.gz 2>/dev/null | head -1 || true)
+    if [ -n "$_EXPORT_TAR" ] && [ -d "${_EXPORT_TAR%.tar.gz}" ]; then
+        echo "NuttX export up-to-date ($_EXPORT_TAR) — skipping build/export."
+        exit 0
+    fi
+fi
+
 # --- Build NuttX ---
 
 echo "Building NuttX..."
@@ -165,7 +190,12 @@ make -j"$NCPUS"
 
 # --- Export NuttX for external C/C++ apps ---
 
+# `make export` is not idempotent: it mkdir's `nuttx-export-<ver>/` and fails
+# ("File exists") if a prior run left that dir (or a stale tarball) behind.
+# Clear both so export always starts clean (194.4 — repeated cmake-driven
+# provisioning would otherwise wedge on the leftover from an interrupted run).
 echo "Exporting NuttX..."
+rm -rf nuttx-export-*.tar.gz nuttx-export-*/
 make export
 EXPORT_TAR=$(ls nuttx-export-*.tar.gz 2>/dev/null | head -1)
 if [ -n "$EXPORT_TAR" ]; then
