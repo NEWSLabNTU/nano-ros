@@ -268,17 +268,26 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         a minimal interface set in the binary for no-ROS hosts — an enhancement,
         not a drop blocker.)*
   - [ ] **195.D.2 — Rewire the codegen-tool source to an installed `nros`.**
-        `scripts/build/cargo.sh`: resolver = `$NROS` → PATH → `$NROS_HOME/bin`
-        (no submodule build); drop `nros_cargo_build_codegen_c`. The 9 recipe
-        `codegen=`/`codegen_tool=`/`CODEGEN=` literals → the resolver. Root
-        `CMakeLists.txt` POSIX branch: drop `add_subdirectory(packages/codegen/
-        packages/nros-cli)` + the `$<TARGET_FILE:nros>` Corrosion block; rely on
-        `NanoRosGenerateInterfaces.cmake`'s `find_program(nros)`. `NanoRosBootstrap‐
-        Codegen.cmake`: find the installed `nros`, don't cargo-build from the
-        submodule. `install-nros-cli` recipe → `install.sh` / `cargo install
-        --git`. `scripts/ci/dep-chain-check.sh`. **Verify byte-identical codegen**
-        on nuttx + native-posix with the installed prebuilt (clean env — the
-        earlier failure was a stale-PATH `nros`).
+        Prototyped (cargo.sh resolver `$NROS`/PATH/`$NROS_HOME/bin`, no submodule
+        build; the 9 recipe literals) — but **verification BLOCKED on a real,
+        reproducible, undiagnosed location-dependence**, then reverted to keep the
+        build working. **The finding (sharp clue for the next dive):** the *same*
+        `nros` binary content resolves the transitive `action_msgs →
+        builtin_interfaces` dep when run from its **in-tree** path
+        (`packages/codegen/packages/target/<profile>/nros` → nuttx build green,
+        `builtin_interfaces` generated) but **NOT** when the identical binary is
+        installed at `~/.nros/bin/nros` (nuttx build fails: `action_msgs_msg_goal_info.h`
+        can't find `builtin_interfaces_msg_time.h`; only action_msgs /
+        unique_identifier_msgs / example_interfaces get generated). Ruled out:
+        **version** (main-built nros installed → same failure), **bundled-dir**
+        (`packages/codegen/interfaces` absent → `bundled_interfaces_dir()` returns
+        `None` for both), **AMENT** (env-based loader, present in both). So
+        `cargo-nano-ros`'s resolve-deps has an undiagnosed path/CWD dependence in
+        its **transitive** recursion that only fires from the in-tree location.
+        **Next step:** run `nros codegen resolve-deps --verbose` on the
+        action-server example from both binary locations + diff — find where the
+        2nd-level `builtin_interfaces` dep is dropped. This is THE gate for the
+        drop; the rest (Corrosion, install-flow, re-release, gitlink) is mechanical.
   - [ ] **195.D.3 — Install `nros` in setup + CI.** `just setup`/`bootstrap.sh`
         install the pinned `nros` (`install.sh`) so the build resolves it; the
         nano-ros CI workflow installs it before `just ci`. The build assumes
