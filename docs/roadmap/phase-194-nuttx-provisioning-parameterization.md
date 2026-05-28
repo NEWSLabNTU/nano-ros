@@ -6,9 +6,12 @@ defconfig + cross-toolchain — **without editing ARM-specific code**. Keep Nutt
 **source-built** (`make export`, the canonical out-of-tree-app SDK); only the
 arch-specific knobs become per-board parameters.
 
-**Status.** 194.1 + 194.2 done (`914c620dd`) — the toolchain + arch-flag
-hardcodes are now env-driven (arm defaults, verified). 194.3 (a real 2nd-arch
-board + the `arch/arm/src` FFI paths) + 194.4 (CMake self-provision) remain.
+**Status.** 194.1 + 194.2 + 194.3a done — the shared NuttX provisioning
+(`build-nuttx.sh` + `nros-nuttx-ffi`) carries **no arm literal**; every
+arch-specific is env-driven with qemu-arm defaults (verified: `just nuttx
+build-kernel` + `build-examples` green). Remaining: 194.3b (a real 2nd-arch
+board to prove it — needs that arch's toolchain/defconfig) + 194.4 (CMake
+self-provision).
 
 **Priority.** P2 — extensibility/correctness of the NuttX path; today only
 `nuttx-qemu-arm` (cortex-a7) is reachable because the provisioning hardcodes ARM.
@@ -62,13 +65,23 @@ in the index); the kernel source-builds against it.
       `NUTTX_CROSS` + `NUTTX_LIBGCC_FLAGS` (default neon-vfpv4 — kept distinct,
       it selects `v7ve+simd/hard` vs the compile flags' `v7-a+fp/hard`). Defaults
       = qemu-arm; `just nuttx build-examples` green.
-- [ ] **194.3 — Board crate = the unit of new-arch support.** Document + shape so
-      a new NuttX board is `nros-board-nuttx-<board>` supplying {defconfig,
-      toolchain (NUTTX_CROSS), arch flags (NUTTX_ARCH_CFLAGS/NUTTX_LIBGCC_FLAGS)}
-      via its overlay, reusing the arch-agnostic platform port. **Remaining
-      arch-locks:** `nros-nuttx-ffi` still joins `arch/arm/src/board` +
-      `arm_vectortab.o` (NuttX flat-build link internals) — parameterize from the
-      export/arch. A second board (e.g. a riscv `nuttx-qemu-riscv`) proves it.
+- [x] **194.3a — Shared FFI fully arch-agnostic.** DONE (`6cbed2dce`). The last
+      arm-locks (`arch/arm/src/board` link path + `arm_vectortab.o`) →
+      `NUTTX_ARCH` (default `arm` → `arch/<arch>/src`) + `NUTTX_VECTORTAB_OBJ`
+      (default `arm_vectortab.o`; empty skips it). `nros-nuttx-ffi` + `build-nuttx.sh`
+      now carry **no arm literal** in the provisioning path.
+
+  **New-arch NuttX board recipe** (the unit of support): a board crate
+  `nros-board-nuttx-<board>` whose overlay sets the per-arch env —
+  `NUTTX_CROSS` (e.g. `riscv-none-elf-gcc`), `NUTTX_ARCH` (e.g. `risc-v`),
+  `NUTTX_ARCH_CFLAGS`, `NUTTX_LIBGCC_FLAGS`, `NUTTX_VECTORTAB_OBJ` (often empty),
+  its `nuttx-config/defconfig`, and the cargo target triple — reusing the
+  arch-agnostic platform port + the shared `build-nuttx.sh`/FFI. `nros setup`
+  ships that arch's cross-gcc.
+- [ ] **194.3b — Prove with a real 2nd-arch board.** A riscv (or other) NuttX
+      board end-to-end. Needs that arch's NuttX defconfig + cross-toolchain
+      (`riscv-none-elf-gcc` not yet provisioned here) — a NuttX-on-new-arch
+      bring-up, tracked separately.
 - [ ] **194.4 (optional) — Self-provision the export via CMake.** Wire `make
       export` (`build-nuttx.sh`) as a **marker-guarded** (`.nros-nuttx-build-head`),
       **shared** (build-once-link-many) CMake `ExternalProject`/custom-target that
