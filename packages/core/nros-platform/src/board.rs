@@ -78,4 +78,11 @@ pub trait BoardTransportConfig {
     /// WiFi password (paired with [`set_ssid`]). (Phase 172.K.4 —
     /// `[[transport]]` `password`, replacing `config.toml`'s `[wifi].password`.)
     fn set_password(&mut self, _password: &str) {}
+
+    /// NIC name(s) this transport multi-homes over (`["eth0", "eth1"]`).
+    /// Boards with a single fixed NIC (every embedded target today) ignore it;
+    /// the seam exists for a multi-homed hosted board to fold several
+    /// interfaces into one session. (Phase 172.K.7 — from `nros.toml`
+    /// `[[transport]]` `interfaces`.)
+    fn set_interfaces(&mut self, _interfaces: &[&str]) {}
 }

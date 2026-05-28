@@ -19,7 +19,8 @@
 #   NROS_CONFIG_PREFIX        - e.g. "24"
 #   NROS_CONFIG_ZENOH_LOCATOR - e.g. "tcp/192.0.3.1:7447"
 #   NROS_CONFIG_DOMAIN_ID     - e.g. "0"
-#   NROS_CONFIG_INTERFACE     - e.g. "veth-tx0" (optional, from [platform] section)
+#   NROS_CONFIG_INTERFACE     - e.g. "veth-tx0" (optional; first NIC, [[transport]])
+#   NROS_CONFIG_INTERFACES    - CMake list, e.g. "eth0;eth1" (multi-homing, K.7)
 #
 # Scheduling (normalized 0–31, higher = more important; from [scheduling] section):
 #   NROS_CONFIG_APP_PRIORITY          - default 12
@@ -47,6 +48,7 @@ function(nano_ros_read_config CONFIG_FILE)
     set(_locator "tcp/127.0.0.1:7447")
     set(_domain_id "0")
     set(_interface "")
+    set(_interfaces "")
 
     # Defaults — scheduling (normalized 0–31 scale)
     set(_app_priority "12")
@@ -111,7 +113,25 @@ function(nano_ros_read_config CONFIG_FILE)
                 elseif("${_key}" STREQUAL "gateway")
                     _nros_ip_to_c("${_val}" _gateway)
                 elseif("${_key}" STREQUAL "interface")
+                    # Legacy single NIC. Mirror into the list. Phase 172.K.7.
                     set(_interface "${_val}")
+                    set(_interfaces "${_val}")
+                elseif("${_key}" STREQUAL "interfaces")
+                    # TOML array `interfaces = ["eth0", "eth1"]` (multi-homing).
+                    # Strip brackets, split on commas, unquote each. Phase 172.K.7.
+                    string(REGEX REPLACE "^\\[(.*)\\]$" "\\1" _ifs "${_val}")
+                    string(REPLACE "," ";" _ifs "${_ifs}")
+                    set(_interfaces "")
+                    foreach(_if IN LISTS _ifs)
+                        string(STRIP "${_if}" _if)
+                        string(REGEX REPLACE "^\"(.*)\"$" "\\1" _if "${_if}")
+                        if(NOT "${_if}" STREQUAL "")
+                            list(APPEND _interfaces "${_if}")
+                        endif()
+                    endforeach()
+                    if(_interfaces)
+                        list(GET _interfaces 0 _interface)
+                    endif()
                 elseif("${_key}" STREQUAL "locator")
                     set(_locator "${_val}")
                 endif()
@@ -147,6 +167,7 @@ function(nano_ros_read_config CONFIG_FILE)
     set(NROS_CONFIG_ZENOH_LOCATOR "${_locator}" PARENT_SCOPE)
     set(NROS_CONFIG_DOMAIN_ID "${_domain_id}" PARENT_SCOPE)
     set(NROS_CONFIG_INTERFACE "${_interface}" PARENT_SCOPE)
+    set(NROS_CONFIG_INTERFACES "${_interfaces}" PARENT_SCOPE)
     set(NROS_CONFIG_APP_PRIORITY "${_app_priority}" PARENT_SCOPE)
     set(NROS_CONFIG_APP_STACK_BYTES "${_app_stack_bytes}" PARENT_SCOPE)
     set(NROS_CONFIG_ZENOH_READ_PRIORITY "${_zenoh_read_priority}" PARENT_SCOPE)
