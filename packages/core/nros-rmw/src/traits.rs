@@ -2140,6 +2140,24 @@ mod tests {
     }
 
     #[test]
+    fn services_default_validates_and_rejects_missing_policy() {
+        // Phase 193.5 — the service-create path (node `create_service*_sized` +
+        // the typed-arena `register_service*_on`) runs `validate_against` on the
+        // caller's profile, exactly like pub/sub. A backend advertising the
+        // profile's required policies admits it; dropping any required bit (here
+        // RELIABILITY) rejects it with `IncompatibleQos` — no silent downgrade.
+        let qos = QosSettings::services_default();
+        let required = qos.required_policies();
+        assert!(qos.validate_against(required).is_ok());
+        assert!(qos.validate_against(QosPolicyMask(u32::MAX)).is_ok());
+        let missing = QosPolicyMask(required.0 & !QosPolicyMask::RELIABILITY.0);
+        assert_eq!(
+            qos.validate_against(missing),
+            Err(TransportError::IncompatibleQos)
+        );
+    }
+
+    #[test]
     fn test_qos_profile_parameters() {
         let qos = QosSettings::QOS_PROFILE_PARAMETERS;
         assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);

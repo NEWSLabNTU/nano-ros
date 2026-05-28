@@ -14,7 +14,11 @@ core is now end-to-end caller→Cyclone-wire. 193.2/193.2b/193.3/193.4 DONE
 (2026-05-29) — Rust builder + C and C++ service/client/action-server QoS all
 reach the backend. The `ServiceOptions`/`ActionServerOptions` named-options
 structs are **deferred to Phase 189.M3.3** (sched_context substrate must land
-first — see 193.3/193.4). **Only 193.5 (validation + tests) remains.** Design:
+first — see 193.3/193.4). 193.5 DONE (2026-05-29) — `validate_against` on the
+service-create path (no silent downgrade) + the Cyclone `service_roundtrip`
+exercising a non-default profile + the RELIABLE-vs-policy-presence caveat
+documented. **Phase 193 complete** except the M3.3-deferred named-options structs.
+Design:
 [`docs/design/service-qos.md`](../design/service-qos.md); gap:
 [`docs/design/service-qos-gap.md`](../design/service-qos-gap.md).
 
@@ -116,9 +120,21 @@ profiles.
       `nros_subscription_options_t`). Same reason as 193.3 — the only non-QoS
       axis is `sched_context`, unwired for services/actions today. The
       `*_init_with_qos` entry points already cover the QoS need.
-- [ ] **193.5 — Validation + tests.** `validate_against` on the service path;
-      a per-backend roundtrip test that a non-default profile reaches the wire;
-      document the RELIABLE-for-request/reply caveat.
+- [x] **193.5 — Validation + tests. DONE** (2026-05-29). `validate_against`
+      wired at the service-create chokepoints — `Node::create_service_sized` /
+      `create_client_sized` (`node.rs`) + the typed-arena
+      `register_service_sized_on` / `register_service_client_raw_sized_on`
+      (`spin.rs`) — mirroring pub/sub: an incompatible profile returns
+      `TransportError::IncompatibleQos` synchronously, no silent downgrade (the
+      `services_default()`-only + param/lifecycle-internal creates are no-op-skips).
+      Cyclone `service_roundtrip` now drives the **non-default** path
+      (RELIABLE+VOLATILE+KEEP_LAST(5) on both endpoints, exercising the
+      `qos != nullptr` branch) — passes end-to-end. Caveat documented in
+      `docs/design/service-qos.md` §3: `validate_against` checks policy *presence*,
+      not the reliability *value*, so RELIABLE-for-request/reply is a documented
+      contract (BEST_EFFORT is an opt-in trade), not a hard-enforced rule. Tests:
+      `traits::tests::services_default_validates_and_rejects_missing_policy` +
+      the extended Cyclone `service_roundtrip`.
 
 ## Acceptance
 

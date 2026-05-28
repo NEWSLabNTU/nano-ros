@@ -59,13 +59,26 @@ preserved when callers don't override.
   the `services_default()` liveliness-discovery keyexpr.
 - **mock** (`nros-node/src/mock.rs:179,186`): accept + ignore.
 
-### 3. Validation
+### 3. Validation — LANDED (193.5)
 
-Mirror pub/sub: `qos.validate_against(session.supported_qos_policies(...))` in
-the node layer. A backend that can only honour RELIABLE (or its fixed profile)
-surfaces `RET_UNSUPPORTED` / a validation error on an incompatible request
-rather than silently ignoring it — the M3 lesson (C++ silently discarding qos is
-the bug we are removing).
+Mirrors pub/sub: `qos.validate_against(session.supported_qos_policies())` runs at
+the service-create chokepoints — `Node::create_service_sized` /
+`create_client_sized` (`node.rs`) and the typed-arena
+`register_service_sized_on` / `register_service_client_raw_sized_on`
+(`spin.rs`). A backend missing a required policy returns
+`TransportError::IncompatibleQos` synchronously at create time rather than
+silently ignoring the request — the M3 lesson (C++ silently discarding qos is the
+bug we removed). The `services_default()`-only convenience + the param/lifecycle
+internal services skip the check (their profile is always supported, so it is a
+no-op). Tested: `traits::tests::services_default_validates_and_rejects_missing_policy`.
+
+**Caveat (document, don't enforce).** `validate_against` checks policy
+*presence*, not the reliability *value*: it cannot reject a BEST_EFFORT service.
+RELIABLE is effectively required for request/reply correctness — a BEST_EFFORT
+service is an opt-in trade (rclc-style) the caller takes knowingly, and the
+default stays `services_default()` (RELIABLE+VOLATILE) so stock interop is
+preserved. The non-default path is covered by the Cyclone `service_roundtrip`
+test passing a RELIABLE+KEEP_LAST(5) profile end-to-end.
 
 ### 4. Client surfaces (mirror each binding's idiom)
 

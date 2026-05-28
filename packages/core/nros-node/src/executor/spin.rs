@@ -2579,6 +2579,10 @@ impl Executor {
             let session = self
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
+            // Phase 193.5 — validate against the backend's supported policies
+            // (no silent downgrade); request/reply effectively requires RELIABLE.
+            qos.validate_against(session.supported_qos_policies())
+                .map_err(NodeError::Transport)?;
             session
                 .create_service_server(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
@@ -2987,6 +2991,10 @@ impl Executor {
             let session = self
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
+            // Phase 193.5 — validate against the backend's supported policies
+            // (no silent downgrade); request/reply effectively requires RELIABLE.
+            qos.validate_against(session.supported_qos_policies())
+                .map_err(NodeError::Transport)?;
             session
                 .create_service_server(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
@@ -3133,6 +3141,10 @@ impl Executor {
             let session = self
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
+            // Phase 193.5 — validate against the backend's supported policies
+            // (no silent downgrade); request/reply effectively requires RELIABLE.
+            qos.validate_against(session.supported_qos_policies())
+                .map_err(NodeError::Transport)?;
             session
                 .create_service_client(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
