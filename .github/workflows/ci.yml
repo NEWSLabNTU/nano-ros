@@ -17,6 +17,10 @@ on:
       - ".github/workflows/ci.yml"
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust-cross-check:
     name: ${{ matrix.package }} / ${{ matrix.target }}

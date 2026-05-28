@@ -23,6 +23,12 @@ on:
 
   workflow_dispatch:
 
+# Pages deploys must not be interrupted mid-flight — don't cancel an in-progress
+# deploy (unlike the check lanes); just serialize.
+concurrency:
+  group: deploy-book
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

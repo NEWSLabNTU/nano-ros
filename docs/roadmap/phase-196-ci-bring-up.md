@@ -144,12 +144,19 @@ once before being trusted:
       fail-loud precondition rule, and a worked-examples table mapping each
       convention to a live workflow.
 
-### 196.5 — [P3] Workflow trigger hygiene
+### 196.5 — [DONE] Workflow trigger hygiene
 `zephyr-dual-line` (and others) trigger on `packages/**` — nearly every push.
-Combined with a broken workflow, that's constant red. Once green, keep broad
-triggers (core changes do affect Zephyr), but ensure `concurrency:
-cancel-in-progress` (already set) and consider path-narrowing where a workflow
-genuinely doesn't depend on a subtree.
+Combined with a broken workflow, that's constant red. Keep broad triggers (core
+changes do affect Zephyr), but every workflow now dedups in-flight runs.
+
+- [x] **DONE.** Audited all six workflows for `concurrency: cancel-in-progress`.
+      Three were missing it: `ci.yml` + `sdk-index-gate.yml` now cancel in-flight
+      per `${{ github.ref }}`; `deploy-book.yml` uses `group: deploy-book` with
+      `cancel-in-progress: false` (a Pages deploy must not be interrupted
+      mid-flight — serialize, don't cancel). `dep-chain`, `codegen-convention`,
+      `zephyr-dual-line` already had it. All keep `workflow_dispatch` + scoped
+      `paths:`; broad `packages/**` on the platform lanes is intentional and the
+      concurrency dedup keeps it cheap.
 
 ### 196.6 — [DONE] Per-platform **dependency-chain** validation (light, not full builds)
 
