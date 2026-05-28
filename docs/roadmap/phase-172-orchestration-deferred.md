@@ -103,7 +103,7 @@ configuration lives here* below.
 
 **Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
 independents (172.E sandbox, 172.K.7 multi-homing) can trail. The first-image
-toolchain/SDK-distribution work (former W.5) is **split out to Phase 185**
+toolchain/SDK-distribution work (former W.5) is **split out to Phase 187**
 (*Toolchain & SDK distribution*) — see below.
 
 ## Background
@@ -1095,13 +1095,13 @@ the cheap fix landed, the rest are tracked here:
   (Zephyr/PX4/…) is shape-only. Prioritize one real vendor-module
   (Zephyr `west` or PX4-SITL) + one real vendor-lib link before claiming
   the three-ownership-model workflow is proven on hardware.
-- **W.5 — board-scoped first-image setup → split out to Phase 185.** The
+- **W.5 — board-scoped first-image setup → split out to Phase 187.** The
   toolchain/SDK-distribution work (the first-image UX delta: `just setup` pulls
   all platform SDKs ≈ 7.4 GB incl. a 2.7 GB QEMU source build, vs a board-scoped
   prebuilt fetch) is a distinct concern — *dependency/toolchain management +
   distribution infra* (`nros setup`, a versioned package index + lockfile,
   GitHub-Releases hosting, a CI bump→release gate), orthogonal to orchestration.
-  Tracked in **`docs/roadmap/phase-185-toolchain-sdk-distribution.md`**; designed
+  Tracked in **`docs/roadmap/phase-187-toolchain-sdk-distribution.md`**; designed
   in `docs/design/nros-setup-toolchain-management.md`.
 
 Each work item is independently shippable. A work item is done when:
