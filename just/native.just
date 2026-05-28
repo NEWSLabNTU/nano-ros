@@ -269,8 +269,14 @@ check JOBS="75%":
         if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
         fi
-        echo "  check $dir"
-        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy $flags )
+        # Quiet by default: no per-example label, and cargo --quiet suppresses
+        # the "Checking …" progress + the "Blocking waiting for file lock on
+        # package cache" spam (every parallel job contends the shared ~/.cargo
+        # package-cache lock). A failing clippy still prints its diagnostic with
+        # the example's file path, so failures stay identifiable. Set
+        # NROS_CHECK_VERBOSE=1 to restore the per-example progress label.
+        if [ -n "${NROS_CHECK_VERBOSE:-}" ]; then echo "  check $dir"; fi
+        ( cd "$dir" && cargo +{{NIGHTLY}} fmt --check && eval $env_prefix cargo clippy --quiet $flags )
     }
     export -f check_one
     export NIGHTLY="{{NIGHTLY}}"
