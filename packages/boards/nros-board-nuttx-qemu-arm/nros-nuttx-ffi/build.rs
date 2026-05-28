@@ -34,9 +34,17 @@ fn main() {
         .split_whitespace()
         .map(String::from)
         .collect();
+    // 194.3: NuttX flat-build link internals live under `arch/<arch>/src`; the
+    // vector-table object is arch-specific (ARM's `arm_vectortab.o`; arches
+    // without one set NUTTX_VECTORTAB_OBJ=""). Defaults = qemu-arm.
+    let nuttx_arch = env::var("NUTTX_ARCH").unwrap_or_else(|_| "arm".to_string());
+    let vectortab_obj =
+        env::var("NUTTX_VECTORTAB_OBJ").unwrap_or_else(|_| "arm_vectortab.o".to_string());
     println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_LIBGCC_FLAGS");
+    println!("cargo:rerun-if-env-changed=NUTTX_ARCH");
+    println!("cargo:rerun-if-env-changed=NUTTX_VECTORTAB_OBJ");
 
     let main_src = env::var("APP_MAIN_CPP").unwrap_or_else(|_| {
         panic!(
@@ -237,8 +245,8 @@ fn main() {
         .status().expect("failed to preprocess linker script");
     assert!(status.success(), "linker script preprocessing failed");
 
-    let board_src = nuttx_dir.join("arch/arm/src/board");
-    let vectortab = nuttx_dir.join("arch/arm/src/arm_vectortab.o");
+    let arch_src = nuttx_dir.join("arch").join(&nuttx_arch).join("src");
+    let board_src = arch_src.join("board");
 
     // Find libgcc.a — 194.2: per-board cross-compiler + libgcc-probe flags
     // (defaults = qemu-arm's neon-vfpv4 → v7ve+simd/hard, unchanged).
@@ -254,7 +262,12 @@ fn main() {
     println!("cargo:rustc-link-arg=--entry=__start");
     println!("cargo:rustc-link-arg=-nostartfiles");
     println!("cargo:rustc-link-arg=-nodefaultlibs");
-    println!("cargo:rustc-link-arg={}", vectortab.display());
+    if !vectortab_obj.is_empty() {
+        println!(
+            "cargo:rustc-link-arg={}",
+            arch_src.join(&vectortab_obj).display()
+        );
+    }
     println!("cargo:rustc-link-arg=-L{}", staging.display());
     println!("cargo:rustc-link-arg=-L{}", board_src.display());
     println!("cargo:rustc-link-arg=-Wl,--start-group");
