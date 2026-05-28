@@ -214,14 +214,20 @@ application code.
         `SubscriptionOptions` + `Subscription::sched_handle_id_` /
         `has_sched_handle()` `subscription.hpp:286,330`, the post-create bind in
         `node.hpp:381–399`). Work items:
-    - [ ] **M3.3.a — C services + clients (cleanest; HandleId already in hand).**
-          Add `sched_context_id: u8` (input, default 0) to `nros_service_t` /
-          `nros_client_t`; in each register's `Ok(handle_id)` arm, auto-bind when
-          non-zero (`bind_handle_to_sched_context(handle_id, SchedContextId(id))`
-          → `INVALID_ARGUMENT` on a bad SC), copying the subscription block. Add
+    - [x] **M3.3.a — C services + clients. DONE** (2026-05-29). `sched_context_id: u8`
+          field on `nros_service_t` / `nros_client_t` (default 0); each register's
+          `Ok(handle_id)` arm auto-binds when non-zero
+          (`bind_handle_to_sched_context(handle_id, SchedContextId(id))` →
+          `INVALID_ARGUMENT` on a bad SC), copying the subscription block (the
+          slot is captured before the `&mut *self` reborrow to avoid aliasing).
           `nros_service_options_t` / `nros_client_options_t` +
-          `nros_service_init_with_options` / `nros_client_init_with_options`
-          (these are the M3.3-C structs, now carrying a real `sched_context`).
+          `nros_{service,client}_get_default_options` +
+          `nros_{service,client}_init_with_options` carry a real `sched_context`
+          (the M3.3-C structs the QoS work deferred). cbindgen header regenerates
+          the symbols; nros-c builds + clippy clean. Kani harnesses
+          `service_init_with_options_stashes_sched_context` +
+          `client_init_with_options_stashes_sched_context` (run via `just
+          verify-kani`). The runtime bind/reject integration test lands with M3.3.d.
     - [ ] **M3.3.b — C actions (server + client).** Same pattern; the server
           binds `_internal.handle.handle_id()`, the client its captured
           `arena_entry_index`. Add `nros_action_server_options_t` /

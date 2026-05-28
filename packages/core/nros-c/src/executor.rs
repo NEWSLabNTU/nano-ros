@@ -1023,6 +1023,9 @@ pub unsafe extern "C" fn nros_executor_register_service(
         // Phase 193.4 — the service's QoS (set via nros_service_init_with_qos;
         // defaults to services_default via nros_service_init).
         let svc_qos = service_ref.get_qos_settings();
+        // Phase 189.M3.3.a — capture the requested sched-context slot before the
+        // `&mut *service` reborrow in the Ok arm (avoids an aliasing borrow).
+        let requested_sc = service_ref.sched_context_id;
         let result = if node_raw_id != 0 {
             rust_exec.register_service_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
                 nros_node::executor::NodeId::from_raw(node_raw_id),
@@ -1049,6 +1052,22 @@ pub unsafe extern "C" fn nros_executor_register_service(
                 let service_mut = &mut *service;
                 service_mut._internal.arena_entry_index = handle_id.0 as i32;
                 service_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
+
+                // Phase 189.M3.3.a — apply a scheduling-context binding requested
+                // via `nros_service_init_with_options`. `0` = inherit the default
+                // (no-op). A non-zero slot must be a valid id from
+                // `nros_executor_create_sched_context`; an unknown id fails the
+                // registration so the caller learns the binding was rejected
+                // rather than silently dropped (mirrors subscriptions).
+                if requested_sc != 0 {
+                    let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
+                    if rust_exec
+                        .bind_handle_to_sched_context(handle_id, sc_id)
+                        .is_err()
+                    {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                }
 
                 executor.handle_count += 1;
                 executor.service_count += 1;
@@ -1126,6 +1145,9 @@ pub unsafe extern "C" fn nros_executor_add_client(
         // Phase 193.4b — the client's QoS (set via nros_client_init_with_qos;
         // defaults to services_default via nros_client_init).
         let client_qos = client_ref.get_qos_settings();
+        // Phase 189.M3.3.a — capture the requested sched-context slot before the
+        // `&mut *client` reborrow in the Ok arm (avoids an aliasing borrow).
+        let requested_sc = client_ref.sched_context_id;
         let result = if node_raw_id != 0 {
             rust_exec.register_service_client_raw_sized_on::<MESSAGE_BUFFER_SIZE>(
                 nros_node::executor::NodeId::from_raw(node_raw_id),
@@ -1153,6 +1175,19 @@ pub unsafe extern "C" fn nros_executor_add_client(
                 client_mut._internal.arena_entry_index = handle_id.0 as i32;
                 client_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
                 client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
+
+                // Phase 189.M3.3.a — apply a sched-context binding requested via
+                // `nros_client_init_with_options`. `0` = inherit (no-op); an
+                // unknown slot fails registration (mirrors subscriptions/services).
+                if requested_sc != 0 {
+                    let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
+                    if rust_exec
+                        .bind_handle_to_sched_context(handle_id, sc_id)
+                        .is_err()
+                    {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                }
 
                 executor.handle_count += 1;
                 NROS_RET_OK

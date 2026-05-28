@@ -122,6 +122,12 @@ pub struct nros_service_t {
     /// Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
     /// set via `nros_service_init_with_qos`.
     pub qos: crate::qos::nros_qos_t,
+    /// Phase 189.M3.3.a — scheduling-context slot to bind the service's
+    /// executor handle to. `0` = inherit the executor / Node default (no
+    /// explicit bind); set via `nros_service_init_with_options`. When non-zero,
+    /// `nros_executor_register_service` binds the freshly-created handle to this
+    /// SC after registration. No effect on the L1 polling path.
+    pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
@@ -146,6 +152,7 @@ impl Default for nros_service_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             qos: crate::qos::nros_qos_t::default(),
+            sched_context_id: 0,
             _internal: ServiceServerInternal::new(),
             _opaque: [0u64; SERVICE_SERVER_OPAQUE_U64S],
         }
@@ -267,6 +274,72 @@ pub unsafe extern "C" fn nros_service_init_with_qos(
         (*service).qos = *qos;
     }
     ret
+}
+
+/// Phase 189.M3.3.a — rclc-style named service options.
+///
+/// Sits ALONGSIDE the QoS profile (same convention as
+/// `nros_subscription_options_t`): QoS is passed separately, this struct
+/// carries the non-QoS service-creation axes. Plain scalar fields only — safe
+/// to stack-allocate, memcpy, and pass across the FFI. Zero-init selects the
+/// default behaviour, identical to `nros_service_init_with_qos`.
+#[repr(C)]
+#[derive(Default)]
+pub struct nros_service_options_t {
+    /// Scheduling-context slot to bind the service's executor handle to.
+    /// `0` = inherit the executor / Node default (no explicit bind). A non-zero
+    /// value must be an id previously returned from
+    /// `nros_executor_create_sched_context`; the bind is applied by
+    /// `nros_executor_register_service` once the handle exists. No effect on the
+    /// L1 polling path.
+    pub sched_context: crate::executor::nros_sched_context_id_t,
+    /// Reserved for future use; must be zero. Pads the struct for ABI stability.
+    pub _reserved: [u8; 3],
+}
+
+/// Get a zero-initialised [`nros_service_options_t`] (`sched_context = 0`).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_service_get_default_options() -> nros_service_options_t {
+    nros_service_options_t::default()
+}
+
+/// Phase 189.M3.3.a — initialize a service server with custom QoS + named
+/// options. Behaves like [`nros_service_init_with_qos`] except a non-zero
+/// `options->sched_context` is stashed on the service so that
+/// [`nros_executor_register_service`] binds the resulting executor handle to
+/// that scheduling context once the handle is known (server creation is
+/// deferred to registration, so the handle does not exist at init time).
+///
+/// # Safety
+/// All non-NULL pointers must be valid + the node initialized; `qos` / `options`
+/// may be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_init_with_options(
+    service: *mut nros_service_t,
+    node: *const nros_node_t,
+    type_info: *const nros_service_type_t,
+    service_name: *const c_char,
+    callback: nros_service_callback_t,
+    context: *mut c_void,
+    qos: *const crate::qos::nros_qos_t,
+    options: *const nros_service_options_t,
+) -> nros_ret_t {
+    let ret = nros_service_init_with_qos(
+        service,
+        node,
+        type_info,
+        service_name,
+        callback,
+        context,
+        qos,
+    );
+    if ret != NROS_RET_OK {
+        return ret;
+    }
+    if !options.is_null() {
+        (*service).sched_context_id = (*options).sched_context;
+    }
+    NROS_RET_OK
 }
 
 /// Finalize a service server.
@@ -862,6 +935,12 @@ pub struct nros_client_t {
     /// endpoints). Defaults to the services profile
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `nros_client_init_with_qos`.
     pub qos: crate::qos::nros_qos_t,
+    /// Phase 189.M3.3.a — scheduling-context slot to bind the client's executor
+    /// handle to. `0` = inherit the executor / Node default; set via
+    /// `nros_client_init_with_options`. When non-zero,
+    /// `nros_executor_register_client` binds the freshly-created handle to this
+    /// SC after registration. No effect on the L1 polling path.
+    pub sched_context_id: crate::executor::nros_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer + timeout).
     /// Typed C-ABI handle field.
     pub _internal: ServiceClientInternal,
@@ -886,6 +965,7 @@ impl Default for nros_client_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             qos: crate::qos::nros_qos_t::default(),
+            sched_context_id: 0,
             _internal: ServiceClientInternal::new(),
             _opaque: [0u64; SERVICE_CLIENT_OPAQUE_U64S],
         }
@@ -988,6 +1068,54 @@ pub unsafe extern "C" fn nros_client_init_with_qos(
         (*client).qos = *qos;
     }
     ret
+}
+
+/// Phase 189.M3.3.a — rclc-style named service-client options (mirrors
+/// `nros_service_options_t`). QoS is passed separately; this carries the
+/// non-QoS axes. Zero-init selects the default behaviour.
+#[repr(C)]
+#[derive(Default)]
+pub struct nros_client_options_t {
+    /// Scheduling-context slot to bind the client's executor handle to.
+    /// `0` = inherit the executor / Node default. A non-zero value must be an id
+    /// from `nros_executor_create_sched_context`; the bind is applied by
+    /// `nros_executor_register_client` once the handle exists. No effect on L1.
+    pub sched_context: crate::executor::nros_sched_context_id_t,
+    /// Reserved for future use; must be zero. Pads for ABI stability.
+    pub _reserved: [u8; 3],
+}
+
+/// Get a zero-initialised [`nros_client_options_t`] (`sched_context = 0`).
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_client_get_default_options() -> nros_client_options_t {
+    nros_client_options_t::default()
+}
+
+/// Phase 189.M3.3.a — initialize a service client with custom QoS + named
+/// options. Like [`nros_client_init_with_qos`] except a non-zero
+/// `options->sched_context` is stashed so [`nros_executor_register_client`]
+/// binds the resulting executor handle to that scheduling context once known.
+///
+/// # Safety
+/// All non-NULL pointers must be valid + the node initialized; `qos` / `options`
+/// may be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_client_init_with_options(
+    client: *mut nros_client_t,
+    node: *const nros_node_t,
+    type_info: *const nros_service_type_t,
+    service_name: *const c_char,
+    qos: *const crate::qos::nros_qos_t,
+    options: *const nros_client_options_t,
+) -> nros_ret_t {
+    let ret = nros_client_init_with_qos(client, node, type_info, service_name, qos);
+    if ret != NROS_RET_OK {
+        return ret;
+    }
+    if !options.is_null() {
+        (*client).sched_context_id = (*options).sched_context;
+    }
+    NROS_RET_OK
 }
 
 /// Finalize a service client.
@@ -1944,6 +2072,56 @@ mod verification {
         );
     }
 
+    // Phase 189.M3.3.a — `init_with_options` stashes the requested sched-context
+    // slot on the service (the executor applies the bind at register time). A
+    // NULL options pointer leaves the default (0 = inherit).
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_init_with_options_stashes_sched_context() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_service_type();
+        let mut node = crate::node::nros_node_get_zero_initialized();
+        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+
+        let requested: crate::executor::nros_sched_context_id_t = 7;
+        let options = nros_service_options_t {
+            sched_context: requested,
+            _reserved: [0; 3],
+        };
+        let mut svc = nros_service_get_zero_initialized();
+        let ret = unsafe {
+            nros_service_init_with_options(
+                &mut svc,
+                &node,
+                &type_info,
+                svc_name.as_ptr() as *const core::ffi::c_char,
+                Some(dummy_callback),
+                ptr::null_mut(),
+                ptr::null(),
+                &options,
+            )
+        };
+        assert_eq!(ret, NROS_RET_OK);
+        assert_eq!(svc.sched_context_id, requested);
+
+        // NULL options ⇒ default (inherit).
+        let mut svc2 = nros_service_get_zero_initialized();
+        let ret2 = unsafe {
+            nros_service_init_with_options(
+                &mut svc2,
+                &node,
+                &type_info,
+                svc_name.as_ptr() as *const core::ffi::c_char,
+                Some(dummy_callback),
+                ptr::null_mut(),
+                ptr::null(),
+                ptr::null(),
+            )
+        };
+        assert_eq!(ret2, NROS_RET_OK);
+        assert_eq!(svc2.sched_context_id, 0);
+    }
+
     #[kani::proof]
     #[kani::unwind(5)]
     fn service_init_none_callback() {
@@ -2056,6 +2234,35 @@ mod verification {
     }
 
     // -- Service Client Harnesses --
+
+    // Phase 189.M3.3.a — client `init_with_options` mirrors the service: stash
+    // the requested sched-context slot (bind applied at register time).
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_init_with_options_stashes_sched_context() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_service_type();
+        let mut node = crate::node::nros_node_get_zero_initialized();
+        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+
+        let options = nros_client_options_t {
+            sched_context: 5,
+            _reserved: [0; 3],
+        };
+        let mut client = nros_client_get_zero_initialized();
+        let ret = unsafe {
+            nros_client_init_with_options(
+                &mut client,
+                &node,
+                &type_info,
+                svc_name.as_ptr() as *const core::ffi::c_char,
+                ptr::null(),
+                &options,
+            )
+        };
+        assert_eq!(ret, NROS_RET_OK);
+        assert_eq!(client.sched_context_id, 5);
+    }
 
     #[kani::proof]
     #[kani::unwind(5)]
