@@ -67,15 +67,18 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 [tool.xrce-agent]
 version = "2.4.3-nros1"
 upstream = "v2.4.3" # = source.ref (eProsima release tag)
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-x86_64.tar.zst", sha256 = "61c2e7786ffdbc3ea7f19882f12fb9dd3c28756c6dafd6ec459c9fa86de9438f" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-arm64.tar.zst", sha256 = "29c6d7db3147bd9b0fac7d76ece23d90fa22907a7a556b88c3c2f9d6b8ba0344" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-macos-arm64.tar.zst", sha256 = "08133ec56db8fb5c0d80cfb5c99b5dea52e8b1af5932a5057fd153c1cb896e96" }
 [tool.xrce-agent.source]
 git = "https://github.com/eProsima/Micro-XRCE-DDS-Agent"
 ref = "v2.4.3"
-configure = "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_EXECUTABLE=ON -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF"
+configure = "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_EXECUTABLE=ON -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF -DUAGENT_SOCKETCAN_PROFILE=OFF"
 # Superbuild: no top-level `install` target + the binary's RUNPATH is absolute,
 # so build then assemble a relocatable prefix (real binary + bundled libs + a
 # wrapper that points LD/DYLD_LIBRARY_PATH at ../lib). Mirrors
 # nano-ros-sdk/scripts/build-xrce-agent.sh.
-install = '''cmake --build build --parallel $(nproc) && mkdir -p {prefix}/bin {prefix}/lib && cp -a build/MicroXRCEAgent {prefix}/lib/MicroXRCEAgent.real && cp -a build/libmicroxrcedds_agent.so* {prefix}/lib/ && cp -a build/temp_install/fastrtps-*/lib/libfastrtps.so* {prefix}/lib/ && cp -a build/temp_install/fastcdr-*/lib/libfastcdr.so* {prefix}/lib/ && printf '#!/bin/sh\nh="$(cd "$(dirname "$0")" && pwd)"\nLD_LIBRARY_PATH="$h/../lib:$LD_LIBRARY_PATH" DYLD_LIBRARY_PATH="$h/../lib:$DYLD_LIBRARY_PATH" exec "$h/../lib/MicroXRCEAgent.real" "$@"\n' > {prefix}/bin/MicroXRCEAgent && chmod +x {prefix}/bin/MicroXRCEAgent'''
+install = '''cmake --build build --parallel $(nproc) && mkdir -p {prefix}/bin {prefix}/lib && cp -a build/MicroXRCEAgent {prefix}/lib/MicroXRCEAgent.real && find build -maxdepth 1 \( -name 'libmicroxrcedds_agent.so*' -o -name 'libmicroxrcedds_agent*.dylib' \) -exec cp -a {} {prefix}/lib/ \; && find build/temp_install \( -name 'libfastrtps*.so*' -o -name 'libfastrtps*.dylib' -o -name 'libfastcdr*.so*' -o -name 'libfastcdr*.dylib' \) -exec cp -a {} {prefix}/lib/ \; && printf '#!/bin/sh\nh="$(cd "$(dirname "$0")" && pwd)"\nLD_LIBRARY_PATH="$h/../lib:$LD_LIBRARY_PATH" DYLD_LIBRARY_PATH="$h/../lib:$DYLD_LIBRARY_PATH" exec "$h/../lib/MicroXRCEAgent.real" "$@"\n' > {prefix}/bin/MicroXRCEAgent && chmod +x {prefix}/bin/MicroXRCEAgent'''
 
 # Cyclone DDS host tools — `idlc` (descriptor codegen) + `libddsc` for the
 # rmw-cyclonedds path (native + the embedded cross-ddsc base). Built from the

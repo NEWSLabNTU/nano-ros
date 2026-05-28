@@ -29,7 +29,8 @@ cmake -S "$src" -B "$build" \
     -DCMAKE_BUILD_TYPE=Release \
     -DUAGENT_BUILD_EXECUTABLE=ON \
     -DUAGENT_P2P_PROFILE=OFF \
-    -DUAGENT_LOGGER_PROFILE=OFF
+    -DUAGENT_LOGGER_PROFILE=OFF \
+    -DUAGENT_SOCKETCAN_PROFILE=OFF  # Linux-CAN transport: unused by nano-ros + breaks the macOS build (v2.4.3 compiles CanAgentLinux unconditionally)
 # The Agent CMake is a superbuild: `cmake --build` builds Fast-CDR/Fast-DDS (into
 # `build/temp_install`) then the Agent (into the build tree). There is no
 # top-level `install` target, and the built binary's RUNPATH is absolute — so we
@@ -41,9 +42,15 @@ cmake --build "$build" --parallel "$(nproc 2>/dev/null || echo 4)"
 # without patchelf, and cross-platform (Linux + macOS).
 mkdir -p "$prefix/bin" "$prefix/lib"
 cp -a "$build/MicroXRCEAgent" "$prefix/lib/MicroXRCEAgent.real"
-cp -a "$build"/libmicroxrcedds_agent.so* "$prefix/lib/"
-cp -a "$build"/temp_install/fastrtps-*/lib/libfastrtps.so* "$prefix/lib/"
-cp -a "$build"/temp_install/fastcdr-*/lib/libfastcdr.so* "$prefix/lib/"
+# Bundle the agent's own lib + Fast-DDS/Fast-CDR — `.so*` on Linux, `.dylib` on
+# macOS (find handles both + the symlink chain).
+find "$build" -maxdepth 1 \
+    \( -name 'libmicroxrcedds_agent.so*' -o -name 'libmicroxrcedds_agent*.dylib' \) \
+    -exec cp -a {} "$prefix/lib/" \;
+find "$build/temp_install" \
+    \( -name 'libfastrtps*.so*' -o -name 'libfastrtps*.dylib' \
+       -o -name 'libfastcdr*.so*' -o -name 'libfastcdr*.dylib' \) \
+    -exec cp -a {} "$prefix/lib/" \;
 cat > "$prefix/bin/MicroXRCEAgent" <<'WRAP'
 #!/bin/sh
 # nano-ros-sdk relocatable launcher — resolves bundled libs next to itself.
