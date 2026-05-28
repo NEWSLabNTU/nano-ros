@@ -78,8 +78,11 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   can actually publish and the zephyr-mod deploy proves the data-plane end to
   end. Deferred (own design + impl; orthogonal to the W.4 deploy/transport
   path, which is done).
-- **172.K.5** — per-node `create_node_on` bridge/multi-domain routing (the
-  `nros check` warning guards it meanwhile).
+- **172.K.5** — per-node multi-domain session routing (the `nros check` warning
+  guards it meanwhile). *Scope assessed 2026-05-28 (deferred):* needs core
+  **executor-API** work — `create_node_on` dispatches by RMW, but same-rmw
+  multi-domain needs a session-per-domain + a node→specific-session selector;
+  not a codegen-only change. Full breakdown under *Work items* → 172.K.5.
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
 
 **Priority.** P2 — none block the MVP workflow; each is an
@@ -522,6 +525,27 @@ example migration (K), then the audit/docs (N).
         assignment for in-binary multi-domain/bridge builds is exactly this
         binding — implement it there against the `[[domain]]`/`[[bridge]]`
         root config.
+        **Scope assessed 2026-05-28 (deferred — needs core executor-API work,
+        not just codegen):** the infra that exists is the *bridge* path —
+        `SESSION_SPECS` + `open_multi` + `create_node_on(name, rmw)` — which
+        dispatches by **RMW**. K.5's real need is same-rmw **multi-domain**
+        segregation (`[[domain]]` groups), where the sessions share an RMW and
+        differ only by domain, so `create_node_on`-by-rmw can't pick among them;
+        and same-rmw multi-domain doesn't even open multiple sessions today
+        (`SESSION_SPECS` fires only for multi-*transport* builds). `[[bridge]]`
+        is a topic-forwarding gateway, not node placement, so it's the wrong
+        lever. Full K.5 therefore spans: **(1)** `nros-node` — open a session
+        per distinct domain + a way to create a node on a *specific* session
+        (by index/domain, not rmw); **(2)** generator — emit `SESSION_SPECS`
+        from `[[domain]]` groups + a node→session index in `NODES` +
+        `build_component_node` routing through it; **(3)** plan — `PlanNode`
+        carries its session/domain; **(4)** planner/deploy — `[[domain]]` →
+        plan; **(5)** drop the domain half of the `nros check`
+        `pending_routing_warning`. The warning stays as the guard until this
+        lands. (`render_nodes` currently hardcodes `domain_id: None`; the
+        `NodeBuilder.domain_id` + `SessionSpec.domain_id` hooks already exist —
+        the gaps are session-per-domain opening, the node→session selector, and
+        the `[[domain]]`→plan plumbing.)
   - [ ] **172.K.7 — multi-homing `[[transport]].interfaces` (list).** A single
         session spanning several NICs as one merged graph (taxonomy cases B/C —
         the common "node reachable on multiple interfaces" need, what stock
