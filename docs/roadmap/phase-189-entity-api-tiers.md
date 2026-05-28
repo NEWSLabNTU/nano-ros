@@ -258,15 +258,19 @@ application code.
           `executor as *mut _` store, else `rust_exec`'s `executor._opaque` borrow
           overlaps the whole-executor reborrow — E0499 under the cffi-zenoh feature
           set, missed by the default-feature build.)
-    - [~] **M3.3.d — Tests + docs.** Compile/link + Kani layer DONE: nros-c builds
-          under the cffi-zenoh feature set + clippy clean; `examples/native/cpp/action-server`
-          links with the new overload; Kani harnesses
-          `{service,client}_init_with_options_stashes_sched_context`. The options
-          structs are documented inline (`options.hpp` `ActionServerOptions`, the C
-          `nros_*_options_t`). **Remaining:** a runtime integration test that a bound
-          SC actually routes the entity's dispatch onto the SC's priority/policy in
-          `spin_once` — needs a running executor + an OS-priority probe, overlapping
-          the Phase 162 RT-scheduling harness; deferred there.
+    - [x] **M3.3.d — Tests + docs. DONE** (2026-05-29). Compile/link + Kani layer:
+          nros-c builds under the cffi-zenoh feature set + clippy clean;
+          `examples/native/cpp/action-server` links with the new overload; Kani harnesses
+          `{service,client}_init_with_options_stashes_sched_context`. Options structs
+          documented inline (`options.hpp`, the C `nros_*_options_t`). **Runtime
+          dispatch proof:** `nros-node` test `test_service_dispatch_respects_sched_context`
+          — two services bound to EDF sched contexts dispatch in *deadline* order, not
+          registration order, in `spin_once` (mirrors `test_edf_dispatch_order` for subs;
+          needed a loadable `MockServiceServer`). This shows the service plane rides the
+          same SC-ordered dispatch the C/C++ `sched_context` bind drives. (OS-priority
+          *thread* routing for services — the `os_pri` worker path — stays with the
+          Phase 162 RT harness; the deterministic EDF-ordering proof here doesn't need
+          real threads.)
     - [x] **M3.3.e — Callback-style C++ services (arena-registered, sched-bindable). DONE**
           (2026-05-29). The M3.3.c follow-up: gave C++ services the *callback* dispatch the C API
           already has (rclcpp-style), so they live in the executor arena with a real

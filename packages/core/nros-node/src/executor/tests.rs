@@ -5,7 +5,7 @@ use nros_core::{
 use nros_rmw::{QosSettings, TransportError};
 
 use crate::{
-    mock::{MockSession, MockSubscriber},
+    mock::{MockServiceServer, MockSession, MockSubscriber},
     timer::TimerDuration,
 };
 
@@ -2433,6 +2433,82 @@ fn test_node_service_client_with_qos() {
     let _cli = node
         .create_client_with_qos::<TestService>("/svc", q)
         .expect("client with qos");
+}
+
+/// Phase 189.M3.3.d — runtime proof that a **service** bound to a sched context
+/// honours it in `spin_once`: two services bound to EDF contexts dispatch in
+/// deadline order, not registration order. This is the runtime payoff of M3.3 —
+/// services (now arena-registered + sched-bindable across C/C++) ride the same
+/// SC-ordered dispatch as subscriptions (mirrors `test_edf_dispatch_order`).
+#[test]
+fn test_service_dispatch_respects_sched_context() {
+    use crate::executor::sched_context::{DeadlinePolicy, OptUs, SchedClass, SchedContext};
+    let session = MockSession::new();
+    let mut executor: Executor = Executor::from_session(session);
+
+    let firing_order = std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::<i32>::new()));
+    let order_late = firing_order.clone();
+    let order_early = firing_order.clone();
+
+    let nid = executor
+        .node_builder("test_service_dispatch_respects_sched_context")
+        .build()
+        .unwrap();
+
+    // Registered first (lower DescIdx → FIFO-first) → bind to the LATER deadline.
+    let h_late = executor
+        .node_mut(nid)
+        .create_service::<TestService, _>("/late", move |req: &TestServiceRequest| {
+            order_late.lock().unwrap().push(req.a);
+            TestServiceReply { sum: req.a }
+        })
+        .unwrap();
+    // Registered second → bind to the EARLIER deadline so EDF promotes it.
+    let h_early = executor
+        .node_mut(nid)
+        .create_service::<TestService, _>("/early", move |req: &TestServiceRequest| {
+            order_early.lock().unwrap().push(req.a);
+            TestServiceReply { sum: req.a }
+        })
+        .unwrap();
+
+    let sc_late = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Edf,
+            deadline_us: OptUs::from_us(1000),
+            deadline_policy: DeadlinePolicy::Activated,
+            ..Default::default()
+        })
+        .unwrap();
+    let sc_early = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Edf,
+            deadline_us: OptUs::from_us(100),
+            deadline_policy: DeadlinePolicy::Activated,
+            ..Default::default()
+        })
+        .unwrap();
+    executor
+        .bind_handle_to_sched_context(h_late, sc_late)
+        .unwrap();
+    executor
+        .bind_handle_to_sched_context(h_early, sc_early)
+        .unwrap();
+
+    // Load a request into each mock server (req.a identifies which fired).
+    let (d_late, n_late) = encode_test_msg(10);
+    let (d_early, n_early) = encode_test_msg(20);
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off_late = executor.entries[0].as_ref().unwrap().offset;
+    let off_early = executor.entries[1].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off_late) as *const MockServiceServer) }.load(d_late, n_late);
+    unsafe { &*(arena_ptr.add(off_early) as *const MockServiceServer) }.load(d_early, n_early);
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    let order = firing_order.lock().unwrap();
+    // Earlier-deadline (req.a=20) must precede later-deadline (req.a=10).
+    assert_eq!(*order, std::vec![20, 10]);
 }
 
 // ====================================================================

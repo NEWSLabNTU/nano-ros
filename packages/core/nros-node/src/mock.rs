@@ -55,16 +55,47 @@ impl Subscriber for MockSubscriber {
 }
 
 /// Mock service server (needed for Session).
-pub struct MockServiceServer;
+/// Mock service server that can be loaded with a canned CDR request, so unit
+/// tests can drive a service callback through `spin_once` (Phase 189.M3.3.d).
+pub struct MockServiceServer {
+    /// Pre-encoded request returned on the next `try_recv_request` call.
+    pub pending: Cell<Option<([u8; 256], usize)>>,
+}
+
+impl MockServiceServer {
+    pub fn new() -> Self {
+        Self {
+            pending: Cell::new(None),
+        }
+    }
+
+    pub fn load(&self, data: [u8; 256], len: usize) {
+        self.pending.set(Some((data, len)));
+    }
+}
 
 impl ServiceServerTrait for MockServiceServer {
     type Error = TransportError;
 
+    fn has_request(&self) -> bool {
+        self.pending.get().is_some()
+    }
+
     fn try_recv_request<'a>(
         &mut self,
-        _buf: &'a mut [u8],
+        buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
-        Ok(None)
+        match self.pending.get() {
+            Some((data, len)) => {
+                buf[..len].copy_from_slice(&data[..len]);
+                self.pending.set(None);
+                Ok(Some(ServiceRequest {
+                    data: &buf[..len],
+                    sequence_number: 1,
+                }))
+            }
+            None => Ok(None),
+        }
     }
 
     fn send_reply(&mut self, _seq: i64, _data: &[u8]) -> Result<(), TransportError> {
@@ -181,7 +212,7 @@ impl Session for MockSession {
         _service: &ServiceInfo,
         _qos: QosSettings,
     ) -> Result<MockServiceServer, TransportError> {
-        Ok(MockServiceServer)
+        Ok(MockServiceServer::new())
     }
 
     fn create_service_client(
