@@ -82,9 +82,14 @@ profiles.
       create's three service planes go through a shared helper that still
       defaults — thread qos through it) + the `ServiceOptions` named-options
       struct (Phase 189.M3.3-cpp).
-- [ ] **193.4 — C.** `nros_service_init_with_qos` / `_with_options` (+ optional
-      `_best_effort`) + client mirror + `nros_action_server_init_with_qos`
-      (Phase 189.M3.3-c).
+- [~] **193.4 — C.** *Service server DONE:* `register_service_raw_sized{,_on}`
+      gained a `qos` param (193.2c, behaviour-preserving default
+      `services_default()`); `nros_service_t` carries a `qos` field
+      (defaults to the services profile) read by `nros_executor_register_service`;
+      new `nros_service_init_with_qos(..., const nros_qos_t* qos)` sets it. The
+      generator emits the qos arg (codegen `ab2c4eb`). nros-c builds, header has
+      `nros_service_init_with_qos`. *Remaining (193.4b):* the client mirror
+      (`nros_client_init_with_qos`) + `nros_action_server_init_with_qos`.
 - [ ] **193.5 — Validation + tests.** `validate_against` on the service path;
       a per-backend roundtrip test that a non-default profile reaches the wire;
       document the RELIABLE-for-request/reply caveat.

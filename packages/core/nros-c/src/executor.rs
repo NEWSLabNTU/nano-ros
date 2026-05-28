@@ -1020,12 +1020,16 @@ pub unsafe extern "C" fn nros_executor_register_service(
         } else {
             (*service_ref.node).node_id
         };
+        // Phase 193.4 — the service's QoS (set via nros_service_init_with_qos;
+        // defaults to services_default via nros_service_init).
+        let svc_qos = service_ref.get_qos_settings();
         let result = if node_raw_id != 0 {
             rust_exec.register_service_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
                 nros_node::executor::NodeId::from_raw(node_raw_id),
                 service_name,
                 type_str,
                 type_hash_str,
+                svc_qos,
                 callback,
                 context,
             )
@@ -1034,6 +1038,7 @@ pub unsafe extern "C" fn nros_executor_register_service(
                 service_name,
                 type_str,
                 type_hash_str,
+                svc_qos,
                 callback,
                 context,
             )
