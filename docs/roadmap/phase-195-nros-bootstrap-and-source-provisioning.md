@@ -92,10 +92,23 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         Additive — `nros-codegen-c` retained until the consumers switch + it is
         deleted (195.D). Verified `nros codegen --help` mirrors the old surface;
         `nros-cli-core` tests green.
-  - [ ] In the (renamed) `nros-cli` repo: a release workflow building `nros`
-        (one binary, post-merge) per host (linux-x86_64, linux-arm64,
-        macos-arm64), `cargo build --release` (the `packages/` build-infra
-        workspace needs no ROS), packaged `nros-<host>.tar.zst` (+ `.sha256`).
+  - [x] **Portable libc-only `nros`** (DONE). The CLI linked `play_launch_parser`,
+        which embeds CPython via pyo3 `auto-initialize` → the binary required an
+        exact `libpython3.X` at runtime. **abi3 can't fix an *embedding* binary**
+        (pyo3 docs + verified: abi3 is extension-modules only; static embedding
+        still needs the python stdlib at runtime + disables `auto-initialize`).
+        Fix: `planner.rs` **shells out** to the external `play_launch_parser`
+        binary (subprocess → record JSON), dropping the crate + the
+        `play-launch-parser` feature. Result `ldd`: `libgcc_s` + `libc` +
+        `ld-linux` only. Launch parsing delegated to the python-bearing
+        `play_launch_parser` tool (`pip install play-launch-parser` / its binary;
+        `NROS_PLAY_LAUNCH_PARSER` override) — the build system runs it internally
+        to make the record; `--record` is not a user surface.
+  - [x] **`release-binary.yml`** (DONE, in the `nros-cli` repo). Builds `nros`
+        per host (linux-x86_64, linux-arm64, macos-x86_64, macos-arm64) on
+        `nros-v*` tags → `nros-<host>.tar.zst` (+ `.sha256`) → Release assets;
+        host names match `SdkIndex::host_key()`. The PyPI wheel workflow
+        (`release.yml`) is guarded off for `nros-v*` tags.
   - [ ] `nros-sdk-index.toml`: a `[tool.nros]` entry (single binary post-merge) —
         `version` + per-host `dist` (pointing at the `nros-cli` repo's Releases)
         + a `source` recipe (`cargo install --path`) fallback. Subject to the
