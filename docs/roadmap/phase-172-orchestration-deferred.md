@@ -33,15 +33,15 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   `[workspace]`, so `nros deploy`/`build <name>` work from any member dir, and a
   non-workspace manifest with no enclosing workspace gives a kind-specific
   direct-mode/component error.
-- **W.3 — mostly DONE** (codegen `d5d6382`+`f1fc4f4`). `[overrides]` + its
+- **W.3 — DONE** (codegen `d5d6382`+`f1fc4f4`+`51cb0d0`). `[overrides]` + its
   `parameters`/`remaps` and the whole `[linkage]` table are `#[serde(default)]`
   (a minimal `[component]` = package + component + language + metadata parses);
   `metadata --build` derives executable / exported-symbol / crate_name from the
-  component name + crate convention (`ComponentLinkage::resolved_*`). *Still
-  open:* `nros new` emitting a `[component]` table — deferred, because `nros new`
-  scaffolds direct-mode hello-world binaries (correctly a `[node]` manifest);
-  emitting `[component]` first needs a **planned-mode component scaffold** (an
-  `nros::component!` export), a separate scaffold-template feature.
+  component name + crate convention (`ComponentLinkage::resolved_*`); and `nros
+  new --component <name>` scaffolds a planned-mode component (an `nros::Component`
+  lib + a folded minimal `[component]` `nros.toml`), so `nros metadata --build`
+  records it with zero hand-edited linkage. (The direct-mode binary scaffold
+  stays a `[node]` manifest — `--component` is the orchestration counterpart.)
 - **W.4** — one real **vendor-lib** (Orin link) + one real **vendor-module**
   (Zephyr `west` / PX4-SITL) build. Today vendor models are template + dry-run
   only; nothing past `self`/QEMU has a real build.
@@ -1025,18 +1025,20 @@ the cheap fix landed, the rest are tracked here:
   per-node session routing isn't emitted (`cmd/check.rs`
   `pending_routing_warning`). Removed when 172.K.5 (per-node
   `create_node_on` binding) lands.
-- **W.3 — `[component]` UX. MOSTLY DONE** (codegen `d5d6382`+`f1fc4f4`).
+- **W.3 — `[component]` UX. DONE** (codegen `d5d6382`+`f1fc4f4`+`51cb0d0`).
   *Landed:* `#[serde(default)]` on `ComponentOverrides` + its
   `parameters`/`remaps` *and* the whole `[linkage]` table + `ComponentConfig.
   overrides`/`linkage` (a minimal `[component]` = package + component +
   language + metadata parses, no more *"missing field `parameters`"*);
   `metadata --build` derives `linkage` via `ComponentLinkage::resolved_*`
   (executable ← component short name, exported_symbol ← `nros_component_<name>`,
-  crate_name ← package with `-`→`_`). *Still open:* `nros new` emitting the
-  `[component]` table — deferred, since `nros new` scaffolds direct-mode
-  hello-world binaries (a `[node]` manifest by design); emitting `[component]`
-  needs a **planned-mode component scaffold** (an `nros::component!` export +
-  the `[component]` table), tracked as a separate scaffold-template feature.
+  crate_name ← package with `-`→`_`); and `nros new --component <name>
+  [--use-case <c>]` scaffolds a planned-mode component — an `nros::Component`
+  lib (`pub mod <use_case> { struct Component }`, registered via the Rust type
+  path) + a folded minimal `[component]` `nros.toml` (no `[linkage]`/
+  `[overrides]`, `crate::module` id). `nros new` keeps emitting the direct-mode
+  `[node]` manifest for plain binaries — `--component` is the orchestration
+  counterpart, so the two manifest kinds match the design's section model.
 - **W.4 — validation reach.** *Entry-lib generalization DONE* (the flip,
   above): every non-bridge platform now routes through the entry lib, so
   `render_main` is gone and the `self` model is structurally uniform across
