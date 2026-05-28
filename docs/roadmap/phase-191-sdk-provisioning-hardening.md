@@ -81,6 +81,44 @@ records the rest.
       The `nros-sdk-index.toml` filename stays a clap `default_value` literal (the
       derive attribute can't take a const).
 
+### 191.6 — RMW host daemons/tools missing from the index (XRCE agent, Cyclone idlc)
+
+Audit (2026-05-29) of `nros setup` coverage vs what each platform actually needs.
+`nros setup` correctly prefers prebuilt `dist` (source fallback) and resolves
+board→packages from the index. But the index modeled only the **zenoh** RMW's
+host daemon; the other two RMWs' host pieces were absent:
+
+- [x] **`[tool.xrce-agent]` added** — the Micro-XRCE-DDS Agent (`MicroXRCEAgent`,
+      eProsima `v2.4.3`), the daemon the `rmw-xrce` path connects to (counterpart
+      to `zenohd`). Was provisioned only by `just xrce setup` →
+      `build/xrce-agent/MicroXRCEAgent`. Source recipe (CMake superbuild) in the
+      index; `dist` to be seeded on `nano-ros-sdk` later. `nros setup --tool
+      xrce-agent --dry-run` resolves.
+- [x] **`[tool.cyclonedds]` added** — host `idlc` + `libddsc` for the
+      `rmw-cyclonedds` path (native + the embedded cross-ddsc base), from the
+      NEWSLabNTU fork pinned to the submodule sha. Was provisioned only by
+      `just cyclonedds`. Source recipe in the index; `dist` to seed later.
+      `nros setup --tool cyclonedds --dry-run` resolves.
+
+- [ ] **191.6.a — model RMW as an orthogonal axis (no board×rmw pairs).** RMW
+      (zenoh/xrce/cyclonedds) is a compile-time axis orthogonal to platform/board
+      (CLAUDE.md "three orthogonal axes"), so `[board.*].packages` lists only the
+      board's platform/toolchain pieces (gcc, qemu, kernels) — the RMW daemon is
+      *not* a board property. Today every board hardcodes `zenohd`; `nros setup
+      native` can't provision an XRCE-agent or Cyclone build.
+      **Decision: individual `[tool.*]` items + an `[rmw.*]` → packages group,
+      composed at resolve time** — NOT enumerated `board×rmw` pairs (14 boards × 3
+      RMW = 42 redundant entries, the combinatorial blow-up). Plan:
+      - Add `[rmw.zenoh] packages=["zenohd"]`, `[rmw.xrce]
+        packages=["xrce-agent"]`, `[rmw.cyclonedds] packages=["cyclonedds"]` to
+        the index; drop the per-board `zenohd`.
+      - `nros setup <board> [--rmw <name>]` resolves `board.packages ∪
+        rmw.packages` (default `--rmw zenoh`). `resolve_packages` gains the union;
+        `validate()` checks `[rmw.*]` names like `[board.*]`.
+      - Lives in the `packages/codegen` submodule (`setup.rs`/`sdk_index.rs`) →
+        agent prepares, maintainer pushes the fork. The two `[tool.*]` entries
+        (this commit, superproject) are usable now via `nros setup --tool <name>`.
+
 ## Acceptance criteria
 
 - [x] `resolve_packages` contains no board-name substring matching; adding a board
