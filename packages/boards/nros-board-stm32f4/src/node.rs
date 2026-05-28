@@ -366,7 +366,7 @@ unsafe fn setup_hardware(
             ptp: dp.ETHERNET_PTP,
         };
 
-        let Parts { mut dma, mac, .. } = unsafe {
+        let Parts { dma, mac, .. } = unsafe {
             stm32_eth::new_with_mii(
                 eth_parts_in,
                 &mut RX_RING,
@@ -396,96 +396,123 @@ unsafe fn setup_hardware(
             }
         }
 
-        // Create smoltcp interface
-        defmt::info!("Creating smoltcp interface...");
-
-        let mac_addr = EthernetAddress::from_bytes(&config.mac);
-        let iface_config = smoltcp::iface::Config::new(mac_addr.into());
-
-        let mut dma_ref = &mut dma;
-        let mut iface = Interface::new(
-            iface_config,
-            &mut dma_ref,
-            smoltcp::time::Instant::from_millis(0),
-        );
-
-        // Set IP address
-        iface.update_ip_addrs(|addrs| {
-            addrs
-                .push(IpCidr::new(
-                    IpAddress::v4(config.ip[0], config.ip[1], config.ip[2], config.ip[3]),
-                    config.prefix,
-                ))
-                .ok();
-        });
-
-        // Set default gateway
-        let gateway = Ipv4Address::new(
-            config.gateway[0],
-            config.gateway[1],
-            config.gateway[2],
-            config.gateway[3],
-        );
-        iface
-            .routes_mut()
-            .add_default_ipv4_route(gateway)
-            .map_err(|_| SetupError::Route)?;
-
-        defmt::info!(
-            "IP address: {}.{}.{}.{}",
-            config.ip[0],
-            config.ip[1],
-            config.ip[2],
-            config.ip[3]
-        );
-
-        // Create socket set from transport crate's pre-allocated storage
-        let storage = unsafe { nros_smoltcp::get_socket_storage() };
-        let sockets = SocketSet::new(&mut storage[..]);
-
-        // Move into static storage so pointers remain valid
-        unsafe {
-            ETH_DMA.write(dma);
-            NET_IFACE.write(iface);
-            NET_SOCKETS.write(sockets);
-        }
-
-        // Initialize the transport crate's bridge
-        SmoltcpBridge::init();
-
-        // Seed RNG with IP to avoid zenoh ID collisions
-        let ip_seed = u32::from_be_bytes(config.ip);
-        random::seed(ip_seed);
-
-        // Create and register TCP + UDP sockets via transport crate
-        let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
-        unsafe {
-            nros_smoltcp::create_and_register_sockets(sockets);
-            nros_smoltcp::create_and_register_udp_sockets(sockets);
-        }
-
-        // Store global state for poll callback (in zpico-platform-stm32f4)
-        let iface = unsafe { NET_IFACE.assume_init_mut() };
-        let dma = unsafe { ETH_DMA.assume_init_mut() };
-        unsafe {
-            crate::network::set_network_state(
-                iface as *mut Interface,
-                sockets as *mut SocketSet<'static>,
-                dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
-            );
-
-            nros_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
-
-            // Register the network poll as the sleep callback so busy-wait
-            // sleep polls the network stack to avoid missing packets during
-            // zenoh-pico's connect handshake.
-            nros_platform_stm32f4::sleep::set_poll_callback(crate::network::smoltcp_network_poll);
-        }
-
-        defmt::info!("Network ready.");
+        // smoltcp interface, IP config, sockets, bridge + poll-callback
+        // wiring — everything past raw Ethernet-MAC bringup.
+        unsafe { setup_network(config, dma)? };
     }
 
     Ok(syst)
+}
+
+/// Wire the freshly-initialised Ethernet DMA into smoltcp: build the
+/// interface, apply the static IP / gateway, register TCP+UDP sockets,
+/// start the transport bridge, and install the network poll callback.
+///
+/// Split out of [`setup_hardware`] (Phase 192.7) so the god-function
+/// reads as `clocks → DWT → Ethernet-MAC → setup_network`. Takes
+/// ownership of `dma` (moved into `ETH_DMA`).
+///
+/// # Safety
+///
+/// Must be called only once at startup. Writes the `ETH_DMA` /
+/// `NET_IFACE` / `NET_SOCKETS` statics and publishes raw pointers to
+/// them for the poll callback.
+#[cfg(feature = "ethernet")]
+#[allow(static_mut_refs)]
+unsafe fn setup_network(
+    config: &Config,
+    dma: stm32_eth::dma::EthernetDMA<'static, 'static>,
+) -> core::result::Result<(), SetupError> {
+    let mut dma = dma;
+
+    // Create smoltcp interface
+    defmt::info!("Creating smoltcp interface...");
+
+    let mac_addr = EthernetAddress::from_bytes(&config.mac);
+    let iface_config = smoltcp::iface::Config::new(mac_addr.into());
+
+    let mut dma_ref = &mut dma;
+    let mut iface = Interface::new(
+        iface_config,
+        &mut dma_ref,
+        smoltcp::time::Instant::from_millis(0),
+    );
+
+    // Set IP address
+    iface.update_ip_addrs(|addrs| {
+        addrs
+            .push(IpCidr::new(
+                IpAddress::v4(config.ip[0], config.ip[1], config.ip[2], config.ip[3]),
+                config.prefix,
+            ))
+            .ok();
+    });
+
+    // Set default gateway
+    let gateway = Ipv4Address::new(
+        config.gateway[0],
+        config.gateway[1],
+        config.gateway[2],
+        config.gateway[3],
+    );
+    iface
+        .routes_mut()
+        .add_default_ipv4_route(gateway)
+        .map_err(|_| SetupError::Route)?;
+
+    defmt::info!(
+        "IP address: {}.{}.{}.{}",
+        config.ip[0],
+        config.ip[1],
+        config.ip[2],
+        config.ip[3]
+    );
+
+    // Create socket set from transport crate's pre-allocated storage
+    let storage = unsafe { nros_smoltcp::get_socket_storage() };
+    let sockets = SocketSet::new(&mut storage[..]);
+
+    // Move into static storage so pointers remain valid
+    unsafe {
+        ETH_DMA.write(dma);
+        NET_IFACE.write(iface);
+        NET_SOCKETS.write(sockets);
+    }
+
+    // Initialize the transport crate's bridge
+    SmoltcpBridge::init();
+
+    // Seed RNG with IP to avoid zenoh ID collisions
+    let ip_seed = u32::from_be_bytes(config.ip);
+    random::seed(ip_seed);
+
+    // Create and register TCP + UDP sockets via transport crate
+    let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
+    unsafe {
+        nros_smoltcp::create_and_register_sockets(sockets);
+        nros_smoltcp::create_and_register_udp_sockets(sockets);
+    }
+
+    // Store global state for poll callback (in zpico-platform-stm32f4)
+    let iface = unsafe { NET_IFACE.assume_init_mut() };
+    let dma = unsafe { ETH_DMA.assume_init_mut() };
+    unsafe {
+        crate::network::set_network_state(
+            iface as *mut Interface,
+            sockets as *mut SocketSet<'static>,
+            dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
+        );
+
+        nros_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
+
+        // Register the network poll as the sleep callback so busy-wait
+        // sleep polls the network stack to avoid missing packets during
+        // zenoh-pico's connect handshake.
+        nros_platform_stm32f4::sleep::set_poll_callback(crate::network::smoltcp_network_poll);
+    }
+
+    defmt::info!("Network ready.");
+    Ok(())
 }
 
 /// Internal error type for setup_hardware

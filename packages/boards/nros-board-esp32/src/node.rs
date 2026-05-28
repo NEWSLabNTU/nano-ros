@@ -204,93 +204,7 @@ pub fn init_hardware(config: &NodeConfig) {
         // Step 9: Configure IP (DHCP or static)
         let iface = unsafe { NET_IFACE.assume_init_mut() };
         let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
-
-        match &config.ip_mode {
-            IpMode::Dhcp => {
-                esp_println::println!("  IP mode: DHCP");
-
-                // Add DHCP socket
-                let dhcp_socket = dhcpv4::Socket::new();
-                let dhcp_handle = sockets.add(dhcp_socket);
-
-                // Poll until IP acquired
-                esp_println::println!("  Waiting for DHCP...");
-                let timeout_ms = 30_000u64; // 30 second timeout
-                let start = Instant::now();
-                let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
-
-                loop {
-                    iface.poll(smoltcp::time::Instant::from_millis(nros_platform_esp32::clock::clock_ms() as i64), wifi_dev, sockets);
-
-                    // Check if we got an IP
-                    if iface
-                        .ipv4_addr()
-                        .is_some_and(|ip| !ip.is_unspecified())
-                    {
-                        break;
-                    }
-
-                    // Check for DHCP events and apply config
-                    let event = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle).poll();
-                    if let Some(dhcpv4::Event::Configured(dhcp_config)) = event {
-                        iface.update_ip_addrs(|addrs| {
-                            addrs
-                                .push(IpCidr::new(
-                                    IpAddress::Ipv4(dhcp_config.address.address()),
-                                    dhcp_config.address.prefix_len(),
-                                ))
-                                .ok();
-                        });
-                        if let Some(router) = dhcp_config.router {
-                            let _ = iface.routes_mut().add_default_ipv4_route(router);
-                        }
-                        break;
-                    }
-
-                    // Check timeout
-                    let elapsed_ms = Instant::now()
-                        .duration_since_epoch()
-                        .as_millis()
-                        - start.duration_since_epoch().as_millis();
-                    if elapsed_ms > timeout_ms {
-                        esp_println::println!("ERROR: DHCP timeout");
-                        loop {
-                            core::hint::spin_loop();
-                        }
-                    }
-                }
-
-                if let Some(ip) = iface.ipv4_addr() {
-                    esp_println::println!("  IP: {}", ip);
-                }
-            }
-            IpMode::Static {
-                ip,
-                prefix,
-                gateway,
-            } => {
-                esp_println::println!(
-                    "  IP: {}.{}.{}.{}/{}",
-                    ip[0], ip[1], ip[2], ip[3], prefix
-                );
-
-                let ip_addr = Ipv4Address::new(ip[0], ip[1], ip[2], ip[3]);
-                iface.update_ip_addrs(|addrs| {
-                    addrs
-                        .push(IpCidr::new(IpAddress::Ipv4(ip_addr), *prefix))
-                        .ok();
-                });
-
-                if *gateway != [0, 0, 0, 0] {
-                    let gw = Ipv4Address::new(gateway[0], gateway[1], gateway[2], gateway[3]);
-                    let _ = iface.routes_mut().add_default_ipv4_route(gw);
-                    esp_println::println!(
-                        "  Gateway: {}.{}.{}.{}",
-                        gateway[0], gateway[1], gateway[2], gateway[3]
-                    );
-                }
-            }
-        }
+        configure_ip(config, iface, sockets);
 
         // Step 10: Initialize transport bridge
         SmoltcpBridge::init();
@@ -342,6 +256,103 @@ pub fn init_hardware(config: &NodeConfig) {
     esp_println::println!("");
     esp_println::println!("Hardware initialization complete.");
     esp_println::println!("");
+}
+
+/// Apply the configured IP addressing to the smoltcp interface.
+///
+/// Split out of [`init_hardware`] (Phase 192.7) so the WiFi bringup
+/// reads as a sequence of named steps. DHCP polls the interface
+/// (driving the WiFi device) until a lease lands or the 30 s timeout
+/// trips; static config installs the address + default route directly.
+#[cfg(feature = "wifi")]
+#[allow(static_mut_refs)]
+fn configure_ip(config: &NodeConfig, iface: &mut Interface, sockets: &mut SocketSet<'static>) {
+    match &config.ip_mode {
+        IpMode::Dhcp => {
+            esp_println::println!("  IP mode: DHCP");
+
+            // Add DHCP socket
+            let dhcp_socket = dhcpv4::Socket::new();
+            let dhcp_handle = sockets.add(dhcp_socket);
+
+            // Poll until IP acquired
+            esp_println::println!("  Waiting for DHCP...");
+            let timeout_ms = 30_000u64; // 30 second timeout
+            let start = Instant::now();
+            let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
+
+            loop {
+                iface.poll(smoltcp::time::Instant::from_millis(nros_platform_esp32::clock::clock_ms() as i64), wifi_dev, sockets);
+
+                // Check if we got an IP
+                if iface
+                    .ipv4_addr()
+                    .is_some_and(|ip| !ip.is_unspecified())
+                {
+                    break;
+                }
+
+                // Check for DHCP events and apply config
+                let event = sockets.get_mut::<dhcpv4::Socket>(dhcp_handle).poll();
+                if let Some(dhcpv4::Event::Configured(dhcp_config)) = event {
+                    iface.update_ip_addrs(|addrs| {
+                        addrs
+                            .push(IpCidr::new(
+                                IpAddress::Ipv4(dhcp_config.address.address()),
+                                dhcp_config.address.prefix_len(),
+                            ))
+                            .ok();
+                    });
+                    if let Some(router) = dhcp_config.router {
+                        let _ = iface.routes_mut().add_default_ipv4_route(router);
+                    }
+                    break;
+                }
+
+                // Check timeout
+                let elapsed_ms = Instant::now()
+                    .duration_since_epoch()
+                    .as_millis()
+                    - start.duration_since_epoch().as_millis();
+                if elapsed_ms > timeout_ms {
+                    esp_println::println!("ERROR: DHCP timeout");
+                    loop {
+                        core::hint::spin_loop();
+                    }
+                }
+            }
+
+            if let Some(ip) = iface.ipv4_addr() {
+                esp_println::println!("  IP: {}", ip);
+            }
+        }
+        IpMode::Static {
+            ip,
+            prefix,
+            gateway,
+        } => {
+            esp_println::println!(
+                "  IP: {}.{}.{}.{}/{}",
+                ip[0], ip[1], ip[2], ip[3], prefix
+            );
+
+            let ip_addr = Ipv4Address::new(ip[0], ip[1], ip[2], ip[3]);
+            iface.update_ip_addrs(|addrs| {
+                addrs
+                    .push(IpCidr::new(IpAddress::Ipv4(ip_addr), *prefix))
+                    .ok();
+            });
+
+            if *gateway != [0, 0, 0, 0] {
+                let gw = Ipv4Address::new(gateway[0], gateway[1], gateway[2], gateway[3]);
+                let _ = iface.routes_mut().add_default_ipv4_route(gw);
+                esp_println::println!(
+                    "  Gateway: {}.{}.{}.{}",
+                    gateway[0], gateway[1], gateway[2], gateway[3]
+                );
+            }
+        }
+    }
 }
 
 /// Run an ESP32 application
