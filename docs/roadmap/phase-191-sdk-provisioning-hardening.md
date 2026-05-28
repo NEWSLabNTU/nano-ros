@@ -1,10 +1,10 @@
-# Phase 190 — SDK provisioning hardening (`nros setup` SSOT cleanup)
+# Phase 191 — SDK provisioning hardening (`nros setup` SSOT cleanup)
 
 **Goal.** Remove the SSOT violations + antipatterns a code audit found in the
 Phase 187 toolchain/SDK surface — chiefly the board→package keyword heuristic and
 the toolchain version pins duplicated between the index and the build scripts.
 
-**Status.** In progress — 190.1 + 190.2 landing now; 190.3+ are tracked
+**Status.** In progress — 191.1 + 191.2 landing now; 191.3+ are tracked
 follow-ups.
 
 **Priority.** P2 — correctness/maintainability of a landed feature; the heuristic
@@ -33,7 +33,7 @@ records the rest.
 
 ## Work items
 
-- [ ] **190.1 — Board→package resolution is data, not a keyword heuristic
+- [ ] **191.1 — Board→package resolution is data, not a keyword heuristic
       (audit #1, HIGH).** `resolve_packages` matches board-name/target substrings
       (`b.contains("esp32")`, `"stm32"`, `"mps2"`, `"freertos"`, …) with tool
       names as bare `&'static str` — re-encoding board facts that belong to the
@@ -43,7 +43,7 @@ records the rest.
       derives tools from the declared arch/platform via a small stable mapping
       (arch families don't churn). Unknown board → clear error, not a silent
       wrong guess. **Files:** `sdk_index.rs`, `cmd/setup.rs`, `nros-sdk-index.toml`.
-- [ ] **190.2 — Toolchain upstream pin is recorded in the index (audit #2,
+- [ ] **191.2 — Toolchain upstream pin is recorded in the index (audit #2,
       HIGH).** The exact upstream rev of a repackaged tool lives only in the
       build script (`build-riscv-none-elf-gcc.sh` hardcodes xPack `14.2.0-3`;
       `build-arm` hand-derives `13.2.rel1` from the version string). The index —
@@ -52,14 +52,14 @@ records the rest.
       (via the `build-tool.yml` `upstream` input) instead of hardcoding/deriving.
       **Files:** `sdk_index.rs`, `nros-sdk-index.toml`,
       `ci/nano-ros-sdk/scripts/build-*.sh`, `ci/nano-ros-sdk/.github/workflows/build-tool.yml`.
-- [ ] **190.3 — qemu `configure` flags duplicated (audit #3, MED).** The flag
+- [ ] **191.3 — qemu `configure` flags duplicated (audit #3, MED).** The flag
       list is in both `build-qemu.sh` and the index `[tool.qemu.source].configure`
       and was fixed twice by hand (slirp). Single-source them.
-- [ ] **190.4 — Cross-check resolver names against the index (audit #4, MED).** A
+- [ ] **191.4 — Cross-check resolver names against the index (audit #4, MED).** A
       resolver tool name that isn't an index key is silently skipped. Validate (a
       test asserting every name `resolve_packages` can emit exists in the
       committed index; or an error at runtime).
-- [ ] **190.5 — Lower-severity cleanups (audit #5–#9, LOW).** `activate_store_path`
+- [ ] **191.5 — Lower-severity cleanups (audit #5–#9, LOW).** `activate_store_path`
       `unsafe set_var("PATH")` → per-`Command` env where practical; `const`s for
       `nros-sdk-index.toml` / `nros-sdk.lock` / the `bin/` store-layout suffix
       (repeated 3–4× each); drop `brew install … || true` error-swallowing;
@@ -81,4 +81,4 @@ records the rest.
   paths in Rust, and correct just-recipe-local `build/` paths.
 - A later step can **codegen the index `[board.*]` table from the board crates'
   `profile()`/metadata** so the board crate stays the ultimate SSOT and the index
-  is a generated artifact — out of scope here (190.1 hand-authors the table).
+  is a generated artifact — out of scope here (191.1 hand-authors the table).
