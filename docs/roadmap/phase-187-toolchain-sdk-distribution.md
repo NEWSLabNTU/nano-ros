@@ -95,10 +95,11 @@ The model (Android `sdkmanager` + PlatformIO):
       `riscv-none-elf-gcc-14.2-nros1` (xPack 14.2.0-3) (repackages). xtensa/ESP
       toolchain still pending (no builder yet). `ci/nano-ros-sdk/` is the
       review copy of the repo's seed; deletable now the repo is live.
-- [ ] **187.6 — Unify with `just setup` + auto-install-on-build.** `just
-      <module> setup` becomes a thin caller of the same index (one truth, no
-      drift); `nros build`/`deploy` trigger a missing `nros setup <board>` (the
-      PlatformIO lazy-install ergonomic).
+- [x] **187.6 — Unify with `just setup` + auto-install-on-build.** `just qemu/
+      zenohd setup` are thin callers of `nros setup --tool` (one install path,
+      version only in the index); `nros build`/`deploy` lazy-install + inject the
+      store bins into child PATH (Method A). Cross-gcc/openocd `just` recipes can
+      follow the same `--tool` pattern when wanted.
   - [x] **Lazy auto-install** (`92d15f9`): `setup::ensure_tools(board, target,
         workspace)` — `nros build` (native) + `nros deploy` install the board's
         `[tool.*]` from the index into the store before building (prebuilt or
@@ -132,11 +133,13 @@ The model (Android `sdkmanager` + PlatformIO):
         QEMU test) failed — rebuilt as nros2 with slirp matching the old recipe's
         flags. Validated: fetch → `build/qemu`, slirp accepted, mps2-an385
         present, same patches branch.
-  - [ ] **`just zenohd setup` → `nros setup`** (small follow-up): blocked only by
-        a layout nit — the harness reads `build/zenohd/zenohd` (flat) but the
-        store/prebuilt is `<prefix>/bin/zenohd`. Needs either a `build/zenohd/bin`
-        entry in the harness chain or a flat zenohd layout. Low value (zenohd is
-        also the Method-A host-router path via `nros deploy`).
+  - [x] **`just zenohd setup` → `nros setup --tool zenohd`** (`0c94d9ef3`): thin
+        caller fetching the prebuilt into `build/zenohd/bin/`; a `ln -sf
+        bin/zenohd build/zenohd/zenohd` bridges the flat path the harness + ~18
+        consumers read (the store keeps the `bin/` layout Method A's PATH
+        injection needs — no consumer/harness change, no script-side path
+        search). `just zenohd build` still source-builds. Validated:
+        prebuilt 1.7.2 fetched, flat path resolves, `just zenohd doctor` OK.
 - [x] **187.7 — License gates.** `nros doctor` reads the index's `[gated.*]`
       (NVIDIA SPE, ARM FVP) and reports each: `[OK]` env→dir resolves, `[--]`
       unset (informational — not targeting that board), `[!!]` set-but-missing
