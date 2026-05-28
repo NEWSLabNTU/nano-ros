@@ -23,7 +23,7 @@
  * <zephyr/net/socket.h>. Pull it in so our compat shim doesn't redefine it
  * (Phase 117 + 168.X.fvp). `struct ip_mreq` (no trailing n) is still missing
  * from Zephyr's own headers — it ships only the newer form — so we keep that
- * one below. NOTE (Phase 184.B): on CONFIG_NEWLIB_LIBC targets newlib's
+ * one below. NOTE (Phase 189.B): on CONFIG_NEWLIB_LIBC targets newlib's
  * <netinet/in.h> ships the reverse — `struct ip_mreq` but not `ip_mreqn`; the
  * net.c multicast path picks the right struct by libc. This Cyclone-TU header
  * is independent (Cyclone's ddsi_udp.c uses `ip_mreq`, defined below). */

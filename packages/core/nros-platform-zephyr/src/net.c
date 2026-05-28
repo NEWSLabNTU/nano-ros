@@ -299,7 +299,7 @@ void nros_platform_udp_set_recv_timeout(const void *sock_raw, uint32_t timeout_m
 #endif
 
 #ifndef NROS_NET_USE_IGMP_HELPER
-/* Phase 184.B — the IP_ADD_MEMBERSHIP membership-request struct differs by
+/* Phase 189.B — the IP_ADD_MEMBERSHIP membership-request struct differs by
  * the active libc. newlib's <netinet/in.h> ships the BSD `struct ip_mreq`
  * (imr_multiaddr + imr_interface) and NOT the Linux `ip_mreqn` extension —
  * so on CONFIG_NEWLIB_LIBC targets (e.g. fvp_baser_aemv8r) `struct ip_mreqn`

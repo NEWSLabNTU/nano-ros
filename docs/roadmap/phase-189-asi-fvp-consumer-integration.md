@@ -1,23 +1,23 @@
-# Phase 184 - nano-ros consumable by a full-C++ app on the FVP / newlib profile
+# Phase 189 - nano-ros consumable by a full-C++ app on the FVP / newlib profile
 
 **Goal.** A downstream Zephyr application that links a full C++ stack
 (Autoware control + Eigen) against nano-ros's `nros-cpp` API + CycloneDDS
 RMW builds clean — and eventually boots — on the **Autoware safety-island**
 profile: board `fvp_baser_aemv8r_smp`, Zephyr 3.7 LTS, `CONFIG_NEWLIB_LIBC=y`
 + `CONFIG_GLIBCXX_LIBCPP=y`. Phase 180 made nano-ros a consumable Zephyr
-module and proved it on `native_sim`; Phase 184 closes the gaps that only
+module and proved it on `native_sim`; Phase 189 closes the gaps that only
 surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 
 **Status.** In progress (2026-05-27). Surfaced by the autoware-safety-island
-(ASI) west-pin bump `70ab6227d → be4c51364` (610 commits). 184.A landed
-(cxx-compat passthrough guard) + 184.B landed (libc-gated multicast struct,
-`net.c.obj` verified) + 184.C landed (re-export shims `cstdlib`/`cstdio`/
+(ASI) west-pin bump `70ab6227d → be4c51364` (610 commits). 189.A landed
+(cxx-compat passthrough guard) + 189.B landed (libc-gated multicast struct,
+`net.c.obj` verified) + 189.C landed (re-export shims `cstdlib`/`cstdio`/
 `cstring`/`utility`/`cstdarg`/`cstddef`/`cstdint` defer to real libstdc++).
 **Deep-validated end-to-end: the full ASI actuation_module COMPILES + LINKS to
-`zephyr.elf` against bumped nano-ros** (184.A–G; 52 MB, 0 undefined refs).
-Runtime (boot + DDS) needs the ARM FVP simulator, deferred. 184.D landed the
+`zephyr.elf` against bumped nano-ros** (189.A–G; 52 MB, 0 undefined refs).
+Runtime (boot + DDS) needs the ARM FVP simulator, deferred. 189.D landed the
 full-libstdc++ FVP build guard (overlay + recipe; CI-job wiring is a follow-up
-since no FVP CI lane exists). 184.E (RMW migration docs) open; 184.F optional
+since no FVP CI lane exists). 189.E (RMW migration docs) open; 189.F optional
 RMW-gate-out open.
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
@@ -68,11 +68,11 @@ verification lane:
 
 4. **No CI lane for this profile.** Phase 180 CI builds the example matrix
    on `native_sim` (3.7 + 4.4). Nothing builds a full-C++ downstream app on
-   `fvp_baser_aemv8r_smp` + newlib + libstdc++, so 184.A/184.B-class
+   `fvp_baser_aemv8r_smp` + newlib + libstdc++, so 189.A/189.B-class
    regressions land silently.
 
 Out of scope: the Autoware control stack's own picolibc/newlib portability
-(it is ASI-vendored). 184.C delivers the nano-ros-side enablement + docs;
+(it is ASI-vendored). 189.C delivers the nano-ros-side enablement + docs;
 fixing every Autoware TU is ASI's work, tracked in the ASI repo.
 
 ## Architecture
@@ -94,14 +94,14 @@ The fixes stay on the nano-ros side of the module boundary:
 
 - **A public, opt-in std-C-library compat surface** for downstream C++ apps
   on newlib, or — if that is rejected — a documented consumer recipe
-  (force-include / Kconfig). Decided in 184.C.
+  (force-include / Kconfig). Decided in 189.C.
 
 - **An FVP-profile consumer smoke** added to the Zephyr CI cluster, mirroring
   ASI's shape (nros-cpp + CycloneDDS, full libstdc++) at minimal size.
 
 ## Work Items
 
-### 184.A — cxx-compat shims defer to a real libstdc++
+### 189.A — cxx-compat shims defer to a real libstdc++
 
 **Files.** `zephyr/cxx-compat/{atomic,chrono,thread,random}`.
 
@@ -116,7 +116,7 @@ The fixes stay on the nano-ros side of the module boundary:
 - [ ] Decide whether the benign re-export shims should use the same guard for
       consistency (they do not collide today)
 
-### 184.B — portable multicast join on newlib (`ip_mreq` vs `ip_mreqn`)
+### 189.B — portable multicast join on newlib (`ip_mreq` vs `ip_mreqn`)
 
 **Files.** `packages/core/nros-platform-zephyr/src/net.c`,
 `zephyr/cyclonedds-config/zephyr_ipv4_compat.h`.
@@ -138,12 +138,12 @@ The fixes stay on the nano-ros side of the module boundary:
       `CONFIG_NEWLIB_LIBC` branch changed; minimal/picolibc targets keep the
       existing `ip_mreqn` + `imr_address` path the Phase 180 native_sim runs proved
 
-### 184.C — downstream C++ app std C-library names on newlib
+### 189.C — downstream C++ app std C-library names on newlib
 
 **Files.** `zephyr/cxx-compat/{cstdlib,cstdio,cstring}`.
 
 Root cause (resolved): NOT a missing consumer header — the same shim-vs-real-
-libstdc++ issue as 184.A. The cxx-compat dir is on every consumer TU's include
+libstdc++ issue as 189.A. The cxx-compat dir is on every consumer TU's include
 path; a TU's `#include <stdlib.h>` resolves through libstdc++'s `<stdlib.h>`
 wrapper → `<cstdlib>` → the cxx-compat `cstdlib` shim. The shim's
 `#include <stdlib.h>` then hits the wrapper's already-set include guard, so the
@@ -154,7 +154,7 @@ the shim is transparent.
 
 - [x] Decision: option (c)+fix — nano-ros makes the cxx-compat dir fully
       transparent on full-libstdc++ profiles; no public opt-in header, no
-      consumer force-include. Consistent with 184.A
+      consumer force-include. Consistent with 189.A
 - [x] Guard the re-export shims (`cstdlib`, `cstdio`, `cstring`) with
       `#if __has_include(<bits/c++config.h>)` → `#include_next` the real header;
       keep the minimal shim for picolibc / minimal-libcpp (probe absent)
@@ -169,9 +169,9 @@ the shim is transparent.
       cxx-compat dir is now transparent on full-libstdc++ profiles
 - [x] Deep-validate: full ASI actuation build now compiles the entire
       autoware/Eigen/Cyclone C++ stack ([116/123], past all CXX TUs). Remaining
-      blocker is unrelated (zpico-zephyr net_if API, 184.F)
+      blocker is unrelated (zpico-zephyr net_if API, 189.F)
 
-### 184.D — FVP / full-C++ consumer smoke in CI
+### 189.D — FVP / full-C++ consumer smoke in CI
 
 **Files.** `examples/zephyr/cpp/cyclonedds/talker-aemv8r/full-libcpp.conf`
 (new overlay), `just/zephyr.just` (`build-fvp-aemv8r-cyclonedds-full-libcpp`),
@@ -179,19 +179,19 @@ the shim is transparent.
 
 Insight: the existing `talker-aemv8r` example + its `build-fvp-aemv8r-cyclonedds`
 recipe build on the FVP board with Zephyr's **minimal libcpp**, which never
-touches the cxx-compat-vs-real-libstdc++ passthrough (184.A/C) — so it could
+touches the cxx-compat-vs-real-libstdc++ passthrough (189.A/C) — so it could
 never catch the FVP-consumer regressions. Building the SAME example with the
 full-libstdc++ profile (`CONFIG_NEWLIB_LIBC` + `CONFIG_GLIBCXX_LIBCPP`, what a
 real downstream C++ app uses) does: nros-cpp + Cyclone TUs pull
-`<memory>`/`<atomic>`/`<utility>`/… (184.A/C), net.c multicast (184.B),
-zpico net_if (184.F), Cyclone ddsrt POSIX (184.G).
+`<memory>`/`<atomic>`/`<utility>`/… (189.A/C), net.c multicast (189.B),
+zpico net_if (189.F), Cyclone ddsrt POSIX (189.G).
 
 - [x] Add the `full-libcpp.conf` overlay (`CONFIG_NEWLIB_LIBC` +
       `CONFIG_GLIBCXX_LIBCPP`) + the `build-fvp-aemv8r-cyclonedds-full-libcpp`
       recipe (build-only; self-skips without workspace/SDK like its sibling)
 - [x] Validated by analogy: the ASI `actuation_module` — the identical profile
       (fvp_baser_aemv8r + newlib + GLIBCXX_LIBCPP + Cyclone + nros-cpp), a strict
-      superset of this guard — COMPILES + LINKS with 184.A–G. The guard is the
+      superset of this guard — COMPILES + LINKS with 189.A–G. The guard is the
       lightweight in-tree equivalent
 - [ ] CI-job wiring: neither this nor the pre-existing minimal
       `build-fvp-aemv8r-cyclonedds` is in any aggregate (`build-fixtures` /
@@ -200,9 +200,9 @@ zpico net_if (184.F), Cyclone ddsrt POSIX (184.G).
       valid) is the remaining step. NB: the example `prj.conf` targets
       nano-ros's Zephyr; it does NOT build against ASI's older 3.5.99 pin
       (`POSIX_THREAD_THREADS_MAX` undefined, `NET_TCP_ISN_RFC6528`→mbedtls) —
-      an orthogonal example-vs-ASI-Zephyr-version mismatch, not a 184 fix gap
+      an orthogonal example-vs-ASI-Zephyr-version mismatch, not a 189 fix gap
 
-### 184.E — RMW migration guidance for downstream consumers
+### 189.E — RMW migration guidance for downstream consumers
 
 **Files.** `book/src/getting-started/integration-zephyr.md`,
 `docs/reference/` (RMW backends).
@@ -212,7 +212,7 @@ zpico net_if (184.F), Cyclone ddsrt POSIX (184.G).
 - [ ] Note the Cyclone-vs-zenoh transport implication (Cyclone RTPS/UDP pulls
       no mbedtls; a TCP-`NET_TCP_ISN_RFC6528` consumer must disable it)
 
-### 184.F — zpico-zephyr net_if IPv4 API version-spanning (3.7 vs 4.x)
+### 189.F — zpico-zephyr net_if IPv4 API version-spanning (3.7 vs 4.x)
 
 **Files.** `packages/zpico/zpico-zephyr/src/zpico_zephyr.c`.
 
@@ -221,7 +221,7 @@ zpico net_if (184.F), Cyclone ddsrt POSIX (184.G).
 Zephyr 3.7.0 LTS pin `unicast[]` is `struct net_if_addr` directly (no `.ipv4`
 sub-struct, `struct net_if_addr_ipv4` does not exist), so the TU fails to
 compile (`'struct net_if_addr' has no member named 'ipv4'`). Surfaced only
-after 184.A–C let the build reach the nros library TUs. Note this is the
+after 189.A–C let the build reach the nros library TUs. Note this is the
 zenoh-pico glue, compiled even for a Cyclone-only build.
 
 - [x] Reproduce: `unicast[i].ipv4` on `fvp_baser_aemv8r_smp` + the ASI pin
@@ -236,15 +236,15 @@ zenoh-pico glue, compiled even for a Cyclone-only build.
 - [ ] (Optional) gate zpico-zephyr out of the build when the selected RMW is
       not zenoh, so a Cyclone-only consumer never compiles the zenoh glue
 - [~] FVP build now compiles every TU; final link blocked on Cyclone ddsrt
-      POSIX symbols → 184.G
+      POSIX symbols → 189.G
 
-### 184.G — Cyclone ddsrt POSIX link gaps on the FVP profile
+### 189.G — Cyclone ddsrt POSIX link gaps on the FVP profile
 
 **Files.** ASI `prj_actuation.conf` (POSIX Kconfig), possibly
 `packages/dds/nros-rmw-cyclonedds` / `zephyr/cyclonedds-zephyr/` (ddsrt
 stubs), Cyclone `src/ddsrt/src/{sockets,threads}/posix/`.
 
-After 184.A–F the FVP actuation build compiles every TU and reaches the final
+After 189.A–F the FVP actuation build compiles every TU and reaches the final
 link, which then fails on undefined references from Cyclone's POSIX ddsrt
 backend: `recvmsg` (`ddsrt/src/sockets/posix/socket.c`),
 `pthread_attr_setscope` / `pthread_attr_setinheritsched` / `pthread_sigmask`
@@ -278,8 +278,8 @@ embedded-Cyclone for FreeRTOS/ThreadX, Phase 180 native_sim).
 - The ASI `actuation_module` (or an equivalent in-tree FVP full-C++ smoke)
   compiles every nano-ros + CycloneDDS TU clean on `fvp_baser_aemv8r_smp` +
   newlib + libstdc++ — no cxx-compat redefinition, no `ip_mreqn` incomplete.
-- 184.D CI lane builds that profile and stays green.
-- A documented consumer story (184.C/184.E) for std-C-lib names + RMW choice.
+- 189.D CI lane builds that profile and stays green.
+- A documented consumer story (189.C/189.E) for std-C-lib names + RMW choice.
 - native_sim (Phase 180) profiles remain green — the guards are no-ops there.
 
 ## Notes
@@ -288,12 +288,12 @@ embedded-Cyclone for FreeRTOS/ThreadX, Phase 180 native_sim).
   branch `nano-ros`. Consumes nano-ros via a west `import: false` leaf at
   `modules/nros` + `nros_generate_interfaces()` + the `nros-codegen-c` host
   build. FVP target `fvp_baser_aemv8r_smp`.
-- This phase is maintained on a worktree branch (`phase-184-asi-fvp-integration`)
+- This phase is maintained on a worktree branch (`phase-189-asi-fvp-integration`)
   kept rebased on `main`; ASI re-pins to the merged commits once they land on
   `main` and are pushed.
-- The Autoware/Eigen `std::exit`/`std::rand` failures (184.C trigger) and the
-  `net.c` `ip_mreqn` issue (184.B) are pre-existing relative to the bump —
+- The Autoware/Eigen `std::exit`/`std::rand` failures (189.C trigger) and the
+  `net.c` `ip_mreqn` issue (189.B) are pre-existing relative to the bump —
   `net.c` was unchanged across the 610-commit range; they surfaced only
-  because the 184.A fix let the build reach them.
-- 184.A first landed as `fix/cxx-compat-libstdcpp-passthrough` and is
+  because the 189.A fix let the build reach them.
+- 189.A first landed as `fix/cxx-compat-libstdcpp-passthrough` and is
   cherry-picked onto this branch.
