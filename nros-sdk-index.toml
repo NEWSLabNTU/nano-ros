@@ -15,10 +15,12 @@
 # --- prebuilt host tools (target-agnostic) ---
 
 # nros2: rebuilt with --enable-slirp (nano-ros QEMU tests use -netdev user;
-# nros1 lacked slirp and couldn't network). dist hashes refilled after re-seed.
+# nros1 lacked slirp and couldn't network).
 [tool.qemu]
 version = "11.0.0-nros2"
-# dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-linux-x86_64.tar.zst", sha256 = "" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-linux-x86_64.tar.zst", sha256 = "a1cb9df6f41070d43042c2455e23823431226e9274c67435eafcbc9cddb1166e" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-linux-arm64.tar.zst", sha256 = "33d243e541d2415ceccae65a5e7d7c0aa22c85eeff00c516462f90e4edb4b181" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-macos-arm64.tar.zst", sha256 = "daedfbe7af61a91bb746cb911dcc5b88a486fd255b23a3e1e00e58523994fb2d" }
 [tool.qemu.source]
 git = "https://github.com/NEWSLabNTU/qemu"
 ref = "nano-ros-v11.0.0-patches" # patched fork branch (no tags upstream)
