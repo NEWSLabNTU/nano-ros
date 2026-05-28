@@ -88,17 +88,20 @@ Audit (2026-05-29) of `nros setup` coverage vs what each platform actually needs
 board→packages from the index. But the index modeled only the **zenoh** RMW's
 host daemon; the other two RMWs' host pieces were absent:
 
-- [x] **`[tool.xrce-agent]` added** — the Micro-XRCE-DDS Agent (`MicroXRCEAgent`,
-      eProsima `v2.4.3`), the daemon the `rmw-xrce` path connects to (counterpart
-      to `zenohd`). Was provisioned only by `just xrce setup` →
-      `build/xrce-agent/MicroXRCEAgent`. Source recipe (CMake superbuild) in the
-      index; `dist` to be seeded on `nano-ros-sdk` later. `nros setup --tool
-      xrce-agent --dry-run` resolves.
-- [x] **`[tool.cyclonedds]` added** — host `idlc` + `libddsc` for the
-      `rmw-cyclonedds` path (native + the embedded cross-ddsc base), from the
-      NEWSLabNTU fork pinned to the submodule sha. Was provisioned only by
-      `just cyclonedds`. Source recipe in the index; `dist` to seed later.
-      `nros setup --tool cyclonedds --dry-run` resolves.
+- [x] **`[tool.xrce-agent]` added + prebuilt** — the Micro-XRCE-DDS Agent
+      (eProsima `v2.4.3`), the `rmw-xrce` daemon (counterpart to `zenohd`). Was
+      provisioned only by `just xrce setup`. `nano-ros-sdk` build script
+      (`build-xrce-agent.sh`) + CI published `xrce-agent-2.4.3-nros1` for
+      **linux-x86_64, linux-arm64, macos-arm64**; `dist.*` seeded → `nros setup
+      --rmw xrce` fetches the prebuilt. The Agent is a Fast-DDS CMake superbuild
+      (no top-level install, absolute RUNPATH) so the recipe builds then
+      assembles a relocatable prefix (bundled libs + LD/DYLD wrapper);
+      `-DUAGENT_SOCKETCAN_PROFILE=OFF` (unused + breaks macOS).
+- [x] **`[tool.cyclonedds]` added + prebuilt** — host `idlc` + `libddsc` for the
+      `rmw-cyclonedds` path, from the NEWSLabNTU fork pinned to the submodule sha.
+      Was provisioned only by `just cyclonedds`. `build-cyclonedds.sh` + CI
+      published `cyclonedds-0.10.5-nros1` for all three hosts; `dist.*` seeded →
+      `nros setup --rmw cyclonedds` fetches the prebuilt.
 
 - [x] **191.6.a — model RMW as an orthogonal axis (no board×rmw pairs). DONE.** RMW
       (zenoh/xrce/cyclonedds) is a compile-time axis orthogonal to platform/board
