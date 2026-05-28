@@ -29,13 +29,11 @@ use super::types::{ActiveJob, DescIdx};
 
 /// Capacity-overflow error returned from [`ReadySet::insert`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Phase 110.A — wired in 110.A.b spin_once rewire.
 pub(crate) struct Overflow;
 
 // `clear` / `is_empty` / `insert` / `contains` are wired by the
 // EDF + bucketed dispatchers (110.B / 110.C); 110.A only exercises
 // `pop_next` from `spin_once`. Marked `dead_code` until then.
-#[allow(dead_code)]
 pub(crate) trait ReadySet {
     fn clear(&mut self);
     fn is_empty(&self) -> bool;
@@ -76,14 +74,12 @@ impl<const N: usize> FifoReadySet<N> {
     /// Bulk-set the presence bitmap. Used by the default
     /// [`Activator`](super::activator::Activator) impl which produces
     /// a full `u64` mask in one pass and writes it through.
-    #[allow(dead_code)] // 110.A.b uses per-bit insert; kept for 110.C bucketed.
     pub fn set_bits(&mut self, bits: u64) {
         self.bits = bits;
     }
 
     /// Read the raw bitmap. Internal use only — the dispatcher walks
     /// the set via `pop_next`.
-    #[allow(dead_code)]
     pub fn bits(&self) -> u64 {
         self.bits
     }
@@ -156,7 +152,6 @@ pub(crate) mod os_priority;
 /// Phase 110.B.a (this commit) exposes the type + tests; 110.B.b
 /// wires it through `spin_once` once `SchedContext::Edf` callbacks
 /// can be bound on Executor.
-#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b spin_once dispatch.
 #[derive(Debug)]
 pub(crate) struct EdfReadySet<const N: usize> {
     /// Min-heap on `(deadline_us, desc_idx)`. We keep the heap as a
@@ -167,7 +162,6 @@ pub(crate) struct EdfReadySet<const N: usize> {
     present: u64,
 }
 
-#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b spin_once dispatch.
 impl<const N: usize> EdfReadySet<N> {
     pub const fn new() -> Self {
         const {
@@ -212,7 +206,6 @@ impl<const N: usize> EdfReadySet<N> {
     }
 }
 
-#[allow(dead_code)] // Phase 110.B.a — wired in 110.B.b spin_once dispatch.
 impl<const N: usize> Default for EdfReadySet<N> {
     fn default() -> Self {
         Self::new()
@@ -288,13 +281,11 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 // priority bucket blocks higher-priority work that becomes ready
 // during dispatch. For hard-RT preemption see Phase 110.D.
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 #[derive(Debug)]
 pub(crate) struct BucketedFifoSet<const NB: usize, const N: usize> {
     buckets: [FifoReadySet<N>; NB],
 }
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 impl<const NB: usize, const N: usize> BucketedFifoSet<NB, N> {
     pub const fn new() -> Self {
         const {
@@ -343,13 +334,11 @@ impl<const NB: usize, const N: usize> Default for BucketedFifoSet<NB, N> {
     }
 }
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 #[derive(Debug)]
 pub(crate) struct BucketedEdfSet<const NB: usize, const N: usize> {
     buckets: [EdfReadySet<N>; NB],
 }
 
-#[allow(dead_code)] // Phase 110.C — wired in spin_once bucketed dispatch.
 impl<const NB: usize, const N: usize> BucketedEdfSet<NB, N> {
     pub const fn new() -> Self {
         const {

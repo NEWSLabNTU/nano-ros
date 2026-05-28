@@ -194,7 +194,13 @@ landed or the annotations are stale.
 - `nros-node/src/executor/sched_context.rs` (14×), `executor/ready_set/mod.rs` (11×)
 - `boards/nros-board-common/src/manifest.rs` (13× on `ArchEntry` & siblings)
 
-- [ ] Determine reachability; wire it in or delete + drop the allows.
+- [x] Determine reachability; wire it in or delete + drop the allows. DONE: all
+      38 `#[allow(dead_code)]` in `sched_context.rs` (14), `ready_set/mod.rs` (11),
+      and `nros-board-common/src/manifest.rs` (13) were **stale** — the 110.B/C/E
+      wiring did land. Verified by stripping them all and compiling clean under
+      `RUSTFLAGS="-D dead_code"` (nros-node: default + all-scheduler features;
+      nros-board-common: `--all-features`, fresh build). No code wired/deleted —
+      the items are reachable; only the obsolete annotations were removed.
 
 ### 192.9 — [P3] Harden runtime `unwrap`/`expect`; catalog TODO debt
 - `nros-node/src/executor/spin.rs:3331` `wake_mu.lock().expect("poisoned")` (hot
