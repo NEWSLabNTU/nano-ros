@@ -764,16 +764,15 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
     if !require_cmake() {
         nros_tests::skip!("cmake not found");
     }
-    let cyclone_lib = nros_tests::project_root().join("build/install/lib/libddsc.so");
-    if !cyclone_lib.exists() {
-        nros_tests::skip!("CycloneDDS not installed (run: just cyclonedds setup)");
-    }
+    // Phase 186.6.4 — the build/install gate is obsolete: threadx-linux Cyclone
+    // self-provisions from source (no host install), so the fixture binary's
+    // presence is the real precondition.
     let talker_bin = nros_tests::project_root()
         .join("examples/threadx-linux/c/talker/build-cyclonedds/threadx_c_talker");
     if !talker_bin.exists() {
         nros_tests::skip!(
             "threadx-linux CycloneDDS talker missing; build with: \
-             just cyclonedds setup && just threadx_linux build-fixture-extras"
+             just threadx_linux build-fixtures"
         );
     }
     // Native C Cyclone listener built via the standard fixture path.
