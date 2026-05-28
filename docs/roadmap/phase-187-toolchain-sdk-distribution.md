@@ -105,24 +105,25 @@ The model (Android `sdkmanager` + PlatformIO):
         source), warn-not-fail on unavailable, no-op away from a workspace /
         under `NROS_NO_AUTO_SETUP`. e2e deploy tests set that env to stay
         hermetic.
-  - [ ] **Method A — `nros` resolves + injects env for children** (direction set
-        2026-05-28). The build tool is the single resolver (PlatformIO/Gradle
-        model — best UX): `nros build`/`deploy` runs `ensure_tools` then
-        **prepends the locked store bins (`$NROS_HOME/sdk/<tool>/<ver>/bin`, from
-        `nros-sdk.lock`) to the env of every child it spawns** (cmake / cargo /
-        west / `build[]` / `package[]` steps). cmake `find_program`, west, and
-        cross-gcc all honour `PATH`, so the child build just finds the tools. The
-        user never manages `PATH`; no `nros env`/subshell required.
-        **Non-`nros` scripts & code do NOT resolve the SDK path** — the harness,
-        justfile recipes, and cmake assume the SDK is *given* and only **check +
-        warn** on absence (the probe was reverted on this principle; `just
-        <plat> doctor` / `nros doctor` are where check+warn lives).
-        **Host prebuilt unavailable:** `dist` missing for the host → build from
-        the `[tool.*.source]` recipe (187.3, same prefix). No recipe either
-        (dist-only tools like cross-gcc on an unsupported host) → `ensure_tools`
-        **warns**; the tool becomes a user-provided prerequisite (consistent with
-        "the SDK is given"). Remaining work: the child-env injection in
-        `deploy`/`build`, and pointing `just <module> setup` at `nros setup`.
+  - [x] **Method A — `nros` resolves + injects env for children** (`99a7c79`).
+        The build tool is the single resolver (PlatformIO/Gradle model — best
+        UX): `ensure_tools` returns the resolved tools' store `bin/` dirs;
+        `activate_store_path` prepends them to the process `PATH` in `nros
+        build`/`deploy`, so every child it spawns (cmake / cargo / west /
+        `build[]` / `package[]`) finds the toolchain — cmake `find_program`,
+        west, cross-gcc all honour `PATH`. The user never manages `PATH`; no
+        subshell. **Non-`nros` scripts & code do NOT resolve the SDK path** — the
+        harness, justfile recipes, cmake assume the SDK is *given* and only
+        **check + warn** (the store-probe was reverted on this principle;
+        check+warn lives in `just <plat> doctor` / `nros doctor`).
+        **Host prebuilt unavailable:** `dist` missing → build from
+        `[tool.*.source]` (187.3, same prefix); no recipe either (dist-only
+        tools like cross-gcc on an unsupported host) → `ensure_tools` **warns**,
+        tool becomes a user-provided prerequisite.
+  - [ ] **`just <module> setup` → `nros setup`** (remaining): point the per-module
+        setup recipes at `nros setup` so there's one install path + no duplicated
+        version pins. Lower-stakes now that Method A handles the build/deploy
+        flow; the justfile recipes still source-build into `build/` until flipped.
 - [x] **187.7 — License gates.** `nros doctor` reads the index's `[gated.*]`
       (NVIDIA SPE, ARM FVP) and reports each: `[OK]` env→dir resolves, `[--]`
       unset (informational — not targeting that board), `[!!]` set-but-missing
