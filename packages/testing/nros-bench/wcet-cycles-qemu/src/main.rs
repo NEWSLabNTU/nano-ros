@@ -221,14 +221,14 @@ fn bench_node_creation() -> Stats {
     // Warmup
     for _ in 0..10 {
         let config = NodeConfig::new("bench_node", "/bench");
-        let _node = Node::<4, 4>::new(config);
+        let _node = Node::<4, 4>::new(config).unwrap();
     }
 
     // Measure
     for _ in 0..ITERATIONS {
         let config = NodeConfig::new("bench_node", "/bench");
         let start = cycles();
-        let _node = Node::<4, 4>::new(config);
+        let _node = Node::<4, 4>::new(config).unwrap();
         let elapsed = cycles().wrapping_sub(start);
         stats.record(elapsed);
     }
