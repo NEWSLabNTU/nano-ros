@@ -23,7 +23,7 @@
 //! NOT a direct dep of this crate — these helpers take a `&mut
 //! cc::Build` so the caller owns the cc dependency edge.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Add every `.c` file under `<threadx_dir>/common/src/` to a
 /// `cc::Build`. Mirrors the loop both ThreadX overlays use today.
@@ -70,10 +70,7 @@ pub fn add_threadx_port_sources(
 /// configure_arch(&mut platform);
 /// add_threadx_includes(&mut platform, &threadx_dir, &port_dir, &config_dir);
 /// add_netx_includes(&mut platform, &netx_dir);
-/// nros_board_common::threadx_sources::add_nros_platform_threadx_build(
-///     &mut platform,
-///     &workspace_root,
-/// );
+/// nros_board_common::threadx_sources::add_nros_platform_threadx_build(&mut platform);
 /// platform.compile("nros_platform_threadx");
 /// ```
 /// Phase 152.2.B.1 — generic `tx_application_define` stub +
@@ -153,9 +150,17 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build) {
     );
 }
 
-pub fn add_nros_platform_threadx_build(build: &mut cc::Build, workspace_root: &Path) {
-    let src_dir = workspace_root.join("packages/core/nros-platform-threadx/src");
-    let cffi_include = workspace_root.join("packages/core/nros-platform-cffi/include");
+pub fn add_nros_platform_threadx_build(build: &mut cc::Build) {
+    // 192.3: first-party src/include via env (defaults in just/sdk-env.just /
+    // .envrc), not a build.rs repo-root walk-up.
+    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_THREADX_SRC");
+    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
+    let src_dir = PathBuf::from(std::env::var("NROS_PLATFORM_THREADX_SRC").expect(
+        "NROS_PLATFORM_THREADX_SRC not set (direnv allow, or build via just)",
+    ));
+    let cffi_include = PathBuf::from(std::env::var("NROS_PLATFORM_CFFI_INCLUDE").expect(
+        "NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)",
+    ));
 
     build.include(&cffi_include);
     for f in ["platform.c", "net.c", "timer.c"] {

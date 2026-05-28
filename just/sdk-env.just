@@ -9,6 +9,7 @@ export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / 
 export NROS_PLATFORM_CFFI_INCLUDE := env("NROS_PLATFORM_CFFI_INCLUDE", justfile_directory() / "packages/core/nros-platform-cffi/include")
 export NROS_PLATFORM_FREERTOS_SRC := env("NROS_PLATFORM_FREERTOS_SRC", justfile_directory() / "packages/core/nros-platform-freertos/src")
 export NROS_PLATFORM_POSIX_SRC := env("NROS_PLATFORM_POSIX_SRC", justfile_directory() / "packages/core/nros-platform-posix/src")
+export NROS_PLATFORM_THREADX_SRC := env("NROS_PLATFORM_THREADX_SRC", justfile_directory() / "packages/core/nros-platform-threadx/src")
 export NROS_LAN9118_LWIP_DIR := env("NROS_LAN9118_LWIP_DIR", justfile_directory() / "packages/drivers/lan9118-lwip")
 export NROS_VIRTIO_NET_NETX_DIR := env("NROS_VIRTIO_NET_NETX_DIR", justfile_directory() / "packages/drivers/virtio-net-netx")
 export NROS_C_INCLUDE := env("NROS_C_INCLUDE", justfile_directory() / "packages/core/nros-c/include")
