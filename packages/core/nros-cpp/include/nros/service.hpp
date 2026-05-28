@@ -18,6 +18,24 @@
 
 #include "nros_cpp_ffi.h"
 
+// Phase 189.M3.3.e — `nros_cpp_service_server_register` is excluded from
+// cbindgen (its Rust signature uses `RawServiceCallback`, an external-crate
+// type alias cbindgen names without defining). Declare it locally with a plain
+// function-pointer typedef matching the ABI (`bool(req, req_len, resp,
+// resp_cap, resp_len, ctx)`).
+extern "C" {
+typedef bool (*nros_cpp_service_request_callback_t)(const uint8_t* req, size_t req_len,
+                                                    uint8_t* resp, size_t resp_cap,
+                                                    size_t* resp_len, void* ctx);
+
+nros_cpp_ret_t nros_cpp_service_server_register(const nros_cpp_node_t* node,
+                                                const char* service_name, const char* type_name,
+                                                const char* type_hash, nros_cpp_qos_t qos,
+                                                nros_cpp_service_request_callback_t callback,
+                                                void* context, uint8_t sched_context,
+                                                size_t* out_handle_id);
+} // extern "C"
+
 namespace nros {
 
 /// Typed service server for a ROS 2 service.
@@ -42,6 +60,13 @@ template <typename S> class Service {
   public:
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
+
+    /// Phase 189.M3.3.e — typed request-handler signatures for the
+    /// *callback-style* service (rclcpp dispatch model). The handler fills
+    /// `response` from `request`; the executor sends the reply during spin.
+    using TypedServiceFn = void (*)(const RequestType& request, ResponseType& response);
+    using TypedServiceFnWithCtx = void (*)(const RequestType& request, ResponseType& response,
+                                           void* ctx);
 
     /// Try to receive a typed request (non-blocking).
     ///
@@ -84,33 +109,48 @@ template <typename S> class Service {
     bool is_valid() const { return initialized_; }
 
     /// Destructor — releases service server resources.
+    ///
+    /// Poll-style services own an `RmwServiceServer` in `storage_` and free it
+    /// here. Callback-style services (Phase 189.M3.3.e) are owned by the executor
+    /// arena (freed when the executor drops), so the dtor must NOT touch
+    /// `storage_` for them.
     ~Service() {
-        if (initialized_) {
+        if (initialized_ && !callback_mode_) {
             nros_cpp_service_server_destroy(storage_);
-            initialized_ = false;
         }
+        initialized_ = false;
     }
 
-    // Move semantics (non-copyable). Relocation goes through the
-    // `nros_cpp_service_server_relocate` runtime call (Phase 84.C1).
-    Service(Service&& other) : initialized_(other.initialized_) {
-        if (other.initialized_) {
+    // Move semantics (non-copyable). Poll-style relocation goes through the
+    // `nros_cpp_service_server_relocate` runtime call (Phase 84.C1). A
+    // callback-style service must NOT be moved after register — the arena holds
+    // `this` as the trampoline context (Phase 189.M3.3.e); the move only
+    // transfers bookkeeping and leaves that pointer stale, so don't.
+    Service(Service&& other)
+        : initialized_(other.initialized_), user_fn_(other.user_fn_),
+          user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
+          handle_id_(other.handle_id_), callback_mode_(other.callback_mode_) {
+        if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_service_server_relocate(other.storage_, storage_);
-            other.initialized_ = false;
         }
+        other.initialized_ = false;
     }
 
     Service& operator=(Service&& other) {
         if (this != &other) {
-            if (initialized_) {
+            if (initialized_ && !callback_mode_) {
                 nros_cpp_service_server_destroy(storage_);
-                initialized_ = false;
             }
-            if (other.initialized_) {
+            initialized_ = other.initialized_;
+            user_fn_ = other.user_fn_;
+            user_fn_ctx_ = other.user_fn_ctx_;
+            user_ctx_ = other.user_ctx_;
+            handle_id_ = other.handle_id_;
+            callback_mode_ = other.callback_mode_;
+            if (other.initialized_ && !other.callback_mode_) {
                 nros_cpp_service_server_relocate(other.storage_, storage_);
-                initialized_ = true;
-                other.initialized_ = false;
             }
+            other.initialized_ = false;
         }
         return *this;
     }
@@ -119,14 +159,48 @@ template <typename S> class Service {
     /// Use `Node::create_service()` to initialize.
     Service() : storage_(), initialized_(false) {}
 
+    /// Executor handle for the callback-style service (Phase 189.M3.3.e);
+    /// `SIZE_MAX` for poll-style / uninitialized.
+    size_t handle_id() const { return handle_id_; }
+
   private:
     Service(const Service&) = delete;
     Service& operator=(const Service&) = delete;
 
     friend class Node;
 
+    /// Phase 189.M3.3.e — raw request trampoline matching `RawServiceCallback`
+    /// (`bool(req, req_len, resp, resp_cap, resp_len, ctx)`). Deserializes the
+    /// request, runs the user's typed handler, serializes the response. `ctx` is
+    /// the `Service` object (`this`).
+    static bool request_trampoline(const uint8_t* req, size_t req_len, uint8_t* resp,
+                                   size_t resp_cap, size_t* resp_len, void* ctx) {
+        auto* self = static_cast<Service*>(ctx);
+        if (self == nullptr) return false;
+        RequestType request;
+        if (RequestType::ffi_deserialize(req, req_len, &request) != 0) return false;
+        ResponseType response;
+        if (self->user_fn_ != nullptr) {
+            self->user_fn_(request, response);
+        } else if (self->user_fn_ctx_ != nullptr) {
+            self->user_fn_ctx_(request, response, self->user_ctx_);
+        } else {
+            return false;
+        }
+        size_t len = 0;
+        if (ResponseType::ffi_serialize(&response, resp, resp_cap, &len) != 0) return false;
+        *resp_len = len;
+        return true;
+    }
+
     alignas(8) uint8_t storage_[NROS_SERVICE_SERVER_SIZE];
     bool initialized_;
+    // Callback-style state (Phase 189.M3.3.e); unused in poll mode.
+    TypedServiceFn user_fn_ = nullptr;
+    TypedServiceFnWithCtx user_fn_ctx_ = nullptr;
+    void* user_ctx_ = nullptr;
+    size_t handle_id_ = static_cast<size_t>(-1);
+    bool callback_mode_ = false;
 };
 
 } // namespace nros
@@ -152,6 +226,45 @@ Result Node::create_service(Service<S>& out, const char* service_name, const QoS
     nros_cpp_ret_t ret = nros_cpp_service_server_create(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+
+// Phase 189.M3.3.e — callback-style (arena-registered) service. The arena owns
+// the server + dispatches `out`'s request handler during spin_once, so the
+// handle is real and `options.sched_context` is functional.
+template <typename S, typename F, typename>
+Result Node::create_service(Service<S>& out, const char* service_name, F callback, const QoS& qos,
+                            const ServiceOptions& options) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
+    ffi_qos.depth = qos.depth();
+    ffi_qos.deadline_ms = qos.deadline_ms();
+    ffi_qos.lifespan_ms = qos.lifespan_ms();
+    ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
+    ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+
+    // Store the user handler (compile error if F isn't convertible).
+    out.user_fn_ = typename Service<S>::TypedServiceFn(callback);
+    out.user_fn_ctx_ = nullptr;
+    out.user_ctx_ = nullptr;
+
+    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+                        ? 0u
+                        : static_cast<uint8_t>(options.sched_context);
+    size_t handle = static_cast<size_t>(-1);
+    nros_cpp_ret_t ret = nros_cpp_service_server_register(
+        &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos,
+        reinterpret_cast<nros_cpp_service_request_callback_t>(&Service<S>::request_trampoline),
+        &out, sched, &handle);
+    if (ret == 0) {
+        out.handle_id_ = handle;
+        out.callback_mode_ = true;
         out.initialized_ = true;
     }
     return Result(ret);

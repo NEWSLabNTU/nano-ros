@@ -267,6 +267,24 @@ application code.
           SC actually routes the entity's dispatch onto the SC's priority/policy in
           `spin_once` — needs a running executor + an OS-priority probe, overlapping
           the Phase 162 RT-scheduling harness; deferred there.
+    - [x] **M3.3.e — Callback-style C++ services (arena-registered, sched-bindable). DONE**
+          (2026-05-29). The M3.3.c follow-up: gave C++ services the *callback* dispatch the C API
+          already has (rclcpp-style), so they live in the executor arena with a real
+          `HandleId` — making `sched_context` functional for them too. Mirrors the
+          C++ action server's typed-callback→raw-trampoline pattern (freestanding
+          C++14 fn-ptrs, ctx = `this`). FFI `nros_cpp_service_server_register`
+          (→ `Executor::register_service_raw_sized{,_on}` with a `RawServiceCallback`
+          + `out_handle_id` + `sched_context`); `Service<S>` gains a callback mode
+          (typed `void(const Request&, Response&)` handler, a static request
+          trampoline that de/serializes, `handle_id_` + `callback_mode_` + dtor/move
+          guards since the arena owns the entity); `create_service(out, name,
+          callback, qos, options)` overload + `ServiceOptions`. The poll-style create
+          stays for back-compat. **Constraint:** no-move-after-register (the arena
+          holds `this` as the trampoline ctx) — same as the action server.
+          **Verified:** nros-cpp builds + clippy clean; `nros_cpp_service_server_register`
+          excluded from cbindgen (external-crate `RawServiceCallback` alias) + declared
+          locally in `service.hpp`; the callback `create_service` instantiation builds +
+          links in `examples/native/cpp/service-server` (temp harness, reverted).
   - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
         `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
         dispatch + `Executor::add_arena_subscription_c_info_callback` in

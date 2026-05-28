@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <type_traits> // Phase 189.M3.3.e — SFINAE on the callback-style create_service
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 123.B.3 env-aware init
 #endif
@@ -227,6 +228,24 @@ class Node {
     template <typename S>
     Result create_service(Service<S>& out, const char* service_name,
                           const QoS& qos = QoS::services());
+
+    /// Create a **callback-style** service server (rclcpp dispatch model;
+    /// Phase 189.M3.3.e). Unlike the poll-style overload above, this
+    /// arena-registers the service so it owns a real executor handle and its
+    /// request handler runs during `spin_once` — making `options.sched_context`
+    /// functional. `callback` must be convertible to
+    /// `void(const S::Request&, S::Response&)` (a plain function pointer or
+    /// empty-capture lambda); it fills `response` from `request`. The SFINAE
+    /// guard keeps the poll-style 3-arg overload unambiguous (a `QoS` is not
+    /// convertible to the handler type).
+    ///
+    /// CONSTRAINT: do not move `out` after this returns — the executor arena
+    /// holds `&out` as the dispatch context.
+    template <typename S, typename F,
+              typename = typename std::enable_if<std::is_convertible<
+                  F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
+    Result create_service(Service<S>& out, const char* service_name, F callback,
+                          const QoS& qos = QoS::services(), const ServiceOptions& options = {});
 
     /// Create a service client.
     ///

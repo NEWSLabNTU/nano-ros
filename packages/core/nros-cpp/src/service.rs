@@ -108,6 +108,109 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
     }
 }
 
+/// Phase 189.M3.3.e — register a **callback-style** service server in the
+/// executor arena (rclcpp dispatch model), as opposed to the poll-style
+/// `nros_cpp_service_server_create` above. The arena owns the server; spin
+/// dispatches `callback(request_cdr) → reply_cdr`. Returns the executor
+/// `HandleId` via `out_handle_id` (for cancel / introspection) and, when
+/// `sched_context != 0`, binds that handle to the scheduling context — the
+/// payoff this path unlocks (poll-style services have no dispatched callback to
+/// schedule). `callback` is the C++ template's raw trampoline; `context` is the
+/// `nros::Service<S>` object (`this`).
+///
+/// # Safety
+/// All non-NULL pointers must be valid; `callback` must be a valid trampoline;
+/// `context` outlives the executor (no move after register).
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_service_server_register(
+    node: *const nros_cpp_node_t,
+    service_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawServiceCallback,
+    context: *mut c_void,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    if node.is_null()
+        || service_name.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || out_handle_id.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let svc_str = match unsafe { cstr_to_str(service_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    // The arena registration derives namespace + node name from the node
+    // record (register_service_raw_sized_on), so only the bare service name is
+    // passed here — unlike the poll-style create which builds ServiceInfo itself.
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
+    let result = if node_ref.node_id != 0 {
+        ctx.executor.register_service_raw_sized_on::<BUF, BUF>(
+            nros_node::executor::NodeId::from_raw(node_ref.node_id),
+            svc_str,
+            type_str,
+            hash_str,
+            qos.to_qos_settings(),
+            callback,
+            context,
+        )
+    } else {
+        ctx.executor.register_service_raw_sized::<BUF, BUF>(
+            svc_str,
+            type_str,
+            hash_str,
+            qos.to_qos_settings(),
+            callback,
+            context,
+        )
+    };
+
+    match result {
+        Ok(handle_id) => {
+            // Phase 189.M3.3.e — bind the (now-real) arena handle to the
+            // requested sched context. `0` = inherit (no-op); unknown slot fails.
+            if sched_context != 0 {
+                let sc_id = nros_node::executor::sched_context::SchedContextId(sched_context);
+                if ctx
+                    .executor
+                    .bind_handle_to_sched_context(handle_id, sc_id)
+                    .is_err()
+                {
+                    return NROS_CPP_RET_INVALID_ARGUMENT;
+                }
+            }
+            unsafe {
+                *out_handle_id = handle_id.0;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
 /// Try to receive a raw service request (non-blocking).
 ///
 /// Writes the received CDR bytes directly into the caller's output buffer —

@@ -39,6 +39,11 @@ usize_is_size_t = true
 exclude = [
     "nros_cpp_action_server_set_callbacks",
     "nros_cpp_action_client_set_callbacks",
+    # Phase 189.M3.3.e — takes `RawServiceCallback` (a type alias from the
+    # external nros-node crate); cbindgen names it without emitting a typedef,
+    # leaving the symbol undefined in the header. Declared locally in
+    # service.hpp with a matching plain fn-ptr typedef instead.
+    "nros_cpp_service_server_register",
 ]
 
 [fn]

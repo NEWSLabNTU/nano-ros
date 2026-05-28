@@ -123,6 +123,22 @@ struct ActionServerOptions {
     int sched_context = SCHED_CONTEXT_UNSET;
 };
 
+/// rclcpp-style named options for the **callback-style**
+/// `Node::create_service<S>(out, name, callback, qos, options)` overload
+/// (Phase 189.M3.3.e).
+///
+/// `sched_context` is **functional** for callback-style services: that path
+/// arena-registers the service (`nros_cpp_service_server_register`), so it owns
+/// a real executor `HandleId` whose request dispatch runs during `spin_once` and
+/// can be bound to a scheduling context. (It is N/A for the *poll-style*
+/// `create_service(out, name, qos)` overload — that has no dispatched callback;
+/// see `ActionServerOptions` for the poll-vs-callback rationale.)
+struct ServiceOptions {
+    /// Scheduling-context id to bind this service's request dispatch onto.
+    /// `SCHED_CONTEXT_UNSET` = executor / Node default.
+    int sched_context = SCHED_CONTEXT_UNSET;
+};
+
 } // namespace nros
 
 #endif // NROS_CPP_OPTIONS_HPP
