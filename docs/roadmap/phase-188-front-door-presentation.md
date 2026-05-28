@@ -7,9 +7,9 @@ land a strong first impression in the first 30 seconds — *show*, not just
 phase reworks the landing page (`introduction.md`) and the architecture
 entry point.
 
-**Status.** 188.A DONE (2026-05-28); `mdbook build book` clean (mermaid
-renders, no broken links). Workstreams B (visual identity) + C (funnel/deploy
-hygiene) scoped but deferred to a follow-up.
+**Status.** 188.A + 188.C DONE (2026-05-28); `mdbook build book` clean
+(mermaid renders, no broken links). Workstream B (visual identity) scoped
+but deferred (needs a logo decision).
 
 **Priority.** P2 — presentation / adoption. No product capability depends
 on it, but the book is the public front door and the GitHub-Pages site is
@@ -77,12 +77,17 @@ against a real example.
   `[output.html]` so the site stops looking like a stock mdBook.
 - [ ] **188.B.2** Accent CSS (`book/theme/custom.css` via `additional-css`).
 
-### 188.C — Funnel + deploy hygiene (deferred follow-up)
+### 188.C — Funnel + deploy hygiene
 
-- [ ] **188.C.1** Dead-link sweep of `choose-your-entry.md` + `SUMMARY.md`
-  after the Phase 168/180 renames.
-- [ ] **188.C.2** Set the GitHub repo `homepageUrl` to the book site so the
-  repo → website funnel exists (currently empty).
+- [x] **188.C.1** Dead-link sweep of `choose-your-entry.md` + `SUMMARY.md`
+  after the Phase 168/180 renames. **Clean** — 0 broken across 29 + 81
+  `.md` link targets (verified `tmp/linkcheck.sh`); no fixes needed.
+- [x] **188.C.2** Set the GitHub repo `homepageUrl` to the book site so the
+  repo → website funnel exists (was empty). Also filled the empty
+  **description** and added **20 topics** (`ros2`, `embedded`, `rust`,
+  `no-std`, `rtos`, `zephyr`, `freertos`, `nuttx`, `threadx`, `dds`,
+  `zenoh`, `cyclonedds`, `micro-ros`, `cortex-m`, `esp32`, `riscv`, …).
+  Homepage → `https://newslabntu.github.io/nano-ros-book/`.
 
 ---
 
