@@ -4,6 +4,10 @@ export FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "third-party/f
 export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
 export LWIP_DIR := env("LWIP_DIR", justfile_directory() / "third-party/freertos/lwip")
 export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-board-mps2-an385-freertos/config")
+# First-party C the board build.rs compiles (Phase 191/192.3 — was a build.rs
+# `../../../packages` walk-up; centralized here so build.rs reads an env var).
+export NROS_PLATFORM_CFFI_INCLUDE := env("NROS_PLATFORM_CFFI_INCLUDE", justfile_directory() / "packages/core/nros-platform-cffi/include")
+export NROS_PLATFORM_FREERTOS_SRC := env("NROS_PLATFORM_FREERTOS_SRC", justfile_directory() / "packages/core/nros-platform-freertos/src")
 export NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "third-party/nuttx/nuttx")
 export NUTTX_APPS_DIR := env("NUTTX_APPS_DIR", justfile_directory() / "third-party/nuttx/nuttx-apps")
 export THREADX_DIR := env("THREADX_DIR", justfile_directory() / "third-party/threadx/kernel")

@@ -126,10 +126,10 @@ fn main() {
     lwip.compile("lwip");
 
     // --- Build nros-platform-freertos C port ---
-    let nros_platform_freertos_dir =
-        manifest_dir.join("../../../packages/core/nros-platform-freertos/src");
-    let nros_platform_cffi_include =
-        manifest_dir.join("../../../packages/core/nros-platform-cffi/include");
+    // First-party sibling C source/headers, located via env vars (defaults in
+    // just/sdk-env.just / .envrc) — not a build.rs repo-layout walk-up (192.3).
+    let nros_platform_freertos_dir = env_path("NROS_PLATFORM_FREERTOS_SRC");
+    let nros_platform_cffi_include = env_path("NROS_PLATFORM_CFFI_INCLUDE");
     let mut platform = cc::Build::new();
     configure_cflags(&mut platform);
     add_freertos_includes(&mut platform, &freertos_dir, &port_dir, &freertos_config_dir);
@@ -186,6 +186,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LWIP_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
+    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_FREERTOS_SRC");
+    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
 }
 
 fn env_path(name: &str) -> PathBuf {
