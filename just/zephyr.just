@@ -95,8 +95,15 @@ setup *ARGS:
     echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
     bash ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
     fi
-    echo "[zephyr setup] ensuring Micro XRCE-DDS Agent for Zephyr XRCE tests..."
-    just xrce setup
+    # The Micro-XRCE-DDS Agent is only needed for XRCE *runtime* tests. Builds
+    # that use a different RMW (e.g. the zenoh dual-line CI) can skip the heavy
+    # Fast-DDS superbuild via NROS_ZEPHYR_SKIP_XRCE_AGENT.
+    if [ -n "${NROS_ZEPHYR_SKIP_XRCE_AGENT:-}" ]; then
+        echo "[zephyr setup] skipping Micro XRCE-DDS Agent (NROS_ZEPHYR_SKIP_XRCE_AGENT set)"
+    else
+        echo "[zephyr setup] ensuring Micro XRCE-DDS Agent for Zephyr XRCE tests..."
+        just xrce setup
+    fi
 
 # Diagnose Zephyr install status (read-only).
 [group("setup")]
