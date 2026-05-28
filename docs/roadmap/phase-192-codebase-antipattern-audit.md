@@ -367,7 +367,11 @@ landed or the annotations are stale.
       `GoalId::SEQ_PREFIX_LEN` (nros-core/cpp/c) + Cyclone `service.cpp` wire-framing
       const block; framing constants exercised by the Cyclone `service_roundtrip` /
       `ros2_srv_e2e` ctests (all 12 pass).
-- [ ] `git grep` for the flagged walk-up / `/tmp` / drifted-default patterns is clean.
+- [x] `git grep` for the flagged walk-up / `/tmp` / drifted-default patterns is clean
+      (2026-05-29): no `../../../packages` / `../../drivers` in any `build.rs`;
+      `setup-verus.sh` → `${TMPDIR:-/tmp}`; QEMU bridge → `NROS_QEMU_*`; C service
+      timeout baked from `NROS_SERVICE_TIMEOUT_MS`. Residual `/tmp` is only debug
+      scratch logs in `scripts/debug/compare-keyexprs.sh` (out of scope).
 - [ ] No new antipatterns introduced; `just ci` green.
 
 ## Notes
