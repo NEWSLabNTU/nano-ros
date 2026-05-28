@@ -42,9 +42,21 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   lib + a folded minimal `[component]` `nros.toml`), so `nros metadata --build`
   records it with zero hand-edited linkage. (The direct-mode binary scaffold
   stays a `[node]` manifest — `--component` is the orchestration counterpart.)
-- **W.4** — one real **vendor-lib** (Orin link) + one real **vendor-module**
-  (Zephyr `west` / PX4-SITL) build. Today vendor models are template + dry-run
-  only; nothing past `self`/QEMU has a real build.
+- **W.4** — one real vendor-lib + one real vendor-module build.
+  - **vendor-module: DONE** (2026-05-28, codegen `b606dae`). `nros deploy
+    zephyr-mod` drives a real `west` cross-build (generate → west → cmake/ninja
+    → native_sim `zephyr.exe`, [1245/1245]); boots + runs the nros entry. Fixes:
+    deploy absolutizes the workspace root; Zephyr is no_std (the native_sim host
+    triple no longer forces `std`); prj.conf bakes per-RMW Kconfig
+    (`CONFIG_POSIX_API` ⇒ fixes the zenoh-pico-zephyr C header clashes); the
+    Zephyr `rust_main` references the `zephyr` crate (allocator/panic).
+    `deploy_zephyr_vendor_module_real_west_build` e2e (gated on `ZEPHYR_BASE`).
+    *Remaining for full comms:* host TAP networking (native_sim `zeth` / a
+    `net-setup.sh`) for the publish→zenohd→receive data-plane — runtime-env, not
+    codegen.
+  - **vendor-lib: still blocked** on the license-gated NVIDIA SPE FSP
+    (`NV_SPE_FSP_DIR`); template + dry-run landed (172.V). Unblocks when the
+    maintainer installs SDK Manager, or via a non-NVIDIA vendor static lib.
 - **172.K.5** — per-node `create_node_on` bridge/multi-domain routing (the
   `nros check` warning guards it meanwhile).
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
