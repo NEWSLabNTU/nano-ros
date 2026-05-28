@@ -44,15 +44,22 @@ fragment: `add_subdirectory({entry_src} <sys>_entry)` +
 ```toml
 [deploy.zephyr-mod]
 kind   = "vendor-module"
-board  = "native_sim/native/64"        # any Zephyr board
-target = "x86_64-unknown-linux-gnu"     # the triple the board compiles to
+board  = "zephyr"                       # nano-ros *platform* (drives codegen)
+target = "x86_64-unknown-linux-gnu"     # the triple the Zephyr board compiles to
 self   = "deploy/zephyr-mod"            # required: the module glue dir (west.yml import, overlays)
 # emit defaults to "source" for vendor-module.
 build = [
-  "west build -b {board} -d build/zephyr-mod {entry_src}",
+  "west build -b native_sim/native/64 -d build/zephyr-mod {entry_src}",
 ]
 package = ["echo zephyr-mod image: build/zephyr-mod/zephyr/zephyr.exe"]
 ```
+
+> `board` here is the nano-ros **platform** (`"zephyr"`) — it drives codegen
+> (profile → the Zephyr `rust_cargo_application` app). The actual Zephyr
+> **board** (`native_sim/native/64`) is a `west -b` argument, written literally
+> in `build[]`. The single `board` field can't carry both; a platform/vendor-board
+> split is a schema follow-up. The generated `prj.conf` bakes the RMW config
+> (incl. `CONFIG_POSIX_API`), so `west build {entry_src}` is self-contained.
 
 `kind = "vendor-module"` requires both a `build = [...]` step and `self =
 "deploy/<name>"` (the module glue dir — at minimum a `west.yml` that imports the
