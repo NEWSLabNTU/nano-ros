@@ -8,7 +8,7 @@ profile: board `fvp_baser_aemv8r_smp`, Zephyr 3.7 LTS, `CONFIG_NEWLIB_LIBC=y`
 module and proved it on `native_sim`; Phase 189 closes the gaps that only
 surface on the FVP + newlib + full-libstdc++ + real-downstream-app profile.
 
-**Status.** In progress (2026-05-27). Surfaced by the autoware-safety-island
+**Status.** In progress (2026-05-28). Surfaced by the autoware-safety-island
 (ASI) west-pin bump `70ab6227d → be4c51364` (610 commits). 189.A landed
 (cxx-compat passthrough guard) + 189.B landed (libc-gated multicast struct,
 `net.c.obj` verified) + 189.C landed (re-export shims `cstdlib`/`cstdio`/
@@ -272,6 +272,32 @@ embedded-Cyclone for FreeRTOS/ThreadX, Phase 180 native_sim).
       bumped nano-ros
 - [ ] Runtime validation (boot + DDS data plane) needs the ARM FVP simulator
       (licence/SDK-gated) — deferred, not exercisable in this environment
+
+### 189.H — host `idlc` provisioning for the Zephyr consumer (post-Phase-186)
+
+**Files.** ASI `build.sh` / `scripts/bootstrap-nano-ros-shim.sh` (consumer
+side), `zephyr/CMakeLists.txt` (the `IDLC_EXECUTABLE` default).
+
+Surfaced re-bumping ASI past Phase 186 (CycloneDDS self-provisioning in CMake).
+The embedded Zephyr Cyclone build now runs `idlc` to generate the graph types
+(`nros_rmw_cyclonedds_idlc_compile` over `rmw_dds_common_graph.idl`). There is
+no `CycloneDDS::ddsc` target on embedded, so `zephyr/CMakeLists.txt` pre-sets
+`IDLC_EXECUTABLE` to `${NROS_REPO_DIR}/build/install/bin/idlc` (a host idlc
+built by `just cyclonedds setup`), overridable via `-DIDLC_EXECUTABLE`. A leaf
+consumer (ASI) runs neither, so the build fails:
+`/.../build/install/bin/idlc: not found` (exit 127). (Also a softer warning:
+`msg_to_cyclone_idl.py not found` — only bites if `generate_from_msg()` is used.)
+
+- [x] Diagnose: post-186 graph-types idlc step needs a host idlc; ASI supplies
+      none → falls back to the empty `build/install/bin/idlc`
+- [ ] ASI: build a host idlc from `modules/nros/third-party/dds/cyclonedds`
+      (mirror the `nros-codegen` host build in `bootstrap-nano-ros-shim.sh`) and
+      pass `-DIDLC_EXECUTABLE=<path>` (+ `-DNROS_RMW_CYCLONEDDS_MSG_TO_IDL` /
+      `NROS_RMW_CYCLONEDDS_SCRIPTS_DIR` if msg→IDL codegen is added) from
+      `build.sh`, alongside the existing `-D_NANO_ROS_CODEGEN_TOOL`
+- [ ] Re-verify the ASI actuation build compiles + links on the bumped pin
+- [ ] (nano-ros) consider documenting the `-DIDLC_EXECUTABLE` contract for
+      downstream Zephyr consumers in the integration guide (189.E neighbour)
 
 ## Acceptance
 
