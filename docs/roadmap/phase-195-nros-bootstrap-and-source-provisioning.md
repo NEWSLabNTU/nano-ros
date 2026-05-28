@@ -172,14 +172,14 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
   - [x] Fill the real `git`/`ref`/`dest`(+`submodule`) for the four current
         `[source.*]` entries (`nros-sdk-index.toml`) from the submodule pins +
         recorded gitlink SHAs.
-- [ ] **195.C — Decouple the CLI's runtime nano-ros layout knowledge.**
-      **Design + data DONE; the CLI reader is NOT implemented** (corrected
-      2026-05-29 — the previous "done" claim was false: no `BoardCatalog` /
-      `board_descriptor.rs` exists in any `nros-cli` ref, and `generate.rs`'s
-      `profile()` is still a baked `match board { … }` + `PlatformProfile` /
-      `BoardEntry` consts + per-`PlatformKind` `.cargo/config.toml`/dep bodies
-      with the `nros-board-*` / `packages/boards/…` / `third-party/<kernel>/`
-      literals, as of nros-cli `da75c37`).
+- [x] **195.C — Decouple the CLI's runtime nano-ros layout knowledge.** DONE
+      (2026-05-29). The reader lived on an unmerged nros-cli `195.c` branch — it
+      was cherry-picked onto main (`458154c`) and verified. `generate.rs`'s
+      `profile()` is now `BoardCatalog::load(workspace) + resolve(board, target)`
+      — **zero** `match board { … }`, **zero** `workspace.join("packages/boards"|
+      "third-party")` literals; the binary is layout-agnostic. Verified: 132
+      nros-cli-core lib tests + 18 `orchestration_generate` snapshots pass
+      (codegen **byte-identical**), clippy `-D warnings` + nightly-fmt clean.
   - [x] **Descriptors authored** (nano-ros side, landed). `packages/boards/*/nros-board.toml`
         (+ crate-less `packages/boards/posix/` etc.) — a `[[board]]` array per
         file with the full schema: `names` (+ `target_contains` to disambiguate
