@@ -102,14 +102,17 @@ referenced by URL); `ci/nano-ros-sdk/` is the drop-in seed for that repo.
 - Validated: `just qemu test-lan9118` passes (5/5) with the prebuilt `nros2`
   qemu — the LAN9118 RX-flush patch is present + working, so the qemu-recipe
   flip is safe.
-- **Open follow-ups:** (1) maintainer adds branch-protection requiring the
+- ESP32 in nano-ros is **ESP32-C3 (RISC-V)**: `riscv32imc-unknown-none-elf` via
+  the rustup target + build-std (rust-lld, no external gcc), espflash runner,
+  Espressif `qemu-system-riscv32` fork. It needs **no index host-tool** —
+  `resolve_packages` no longer maps esp32 to a (nonexistent) xtensa toolchain.
+  An `esp-qemu` index tool (the Espressif qemu fork) is the only future SDK
+  candidate here.
+- **Open follow-up:** maintainer adds branch-protection requiring the
   `sdk-index-gate` check (Settings → Branches, or `gh api -X PUT
-  repos/NEWSLabNTU/nano-ros/branches/<branch>/protection/...`). (2) No esp/xtensa
-  builder yet — needs a decision first: standalone Espressif `xtensa-esp-elf`
-  tarball vs the esp-idf-managed toolchain (the esp32 path already goes through
-  esp-idf), so `esp-toolchain` stays out of the index until settled. cross-gcc
-  (apt system prereq) and openocd (reachable via `nros setup --tool openocd`)
-  have no per-module `just setup` recipe to flip — no action needed. See
+  repos/NEWSLabNTU/nano-ros/branches/<branch>/protection/...`). cross-gcc (apt
+  system prereq) and openocd (`nros setup --tool openocd`) have no per-module
+  `just setup` recipe to flip — no action needed. See
   `docs/roadmap/archived/phase-187-*`.
 
 ## C/C++ Integration Shape
