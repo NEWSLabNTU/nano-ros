@@ -131,7 +131,6 @@ pub struct PlatformEntry {
 /// `[arch.<name>]` block — reusable target-arch compiler-flag
 /// profile shared across platforms.
 #[derive(Debug, Default, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct ArchEntry {
     /// Substring that must be in the target triple for the arch
     /// block to apply.
@@ -174,7 +173,6 @@ pub enum LinkOverride {
 /// Env-var-backed define: value comes from `env`, falls back to
 /// `default` literal.
 #[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct EnvDefault {
     pub env: String,
     pub default: String,
@@ -182,7 +180,6 @@ pub struct EnvDefault {
 
 /// Extra C source compiled into the zenoh-pico archive.
 #[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct ExtraSource {
     /// Interpolated path (`{nros}` / `{src}` / `{out}` /
     /// `{env:VAR}`).
@@ -198,7 +195,6 @@ pub struct ExtraSource {
 
 /// One required env var.
 #[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct RequiredEnv {
     pub name: String,
     pub help: String,
@@ -210,7 +206,6 @@ pub struct RequiredEnv {
 
 /// One conditional include path.
 #[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct ConditionalPath {
     /// Interpolated path.
     pub path: String,
@@ -222,7 +217,6 @@ pub struct ConditionalPath {
 /// Forms (`target_match` / `target_not` / `if_env`) compose: each
 /// non-`None` field must match for the matcher to return `true`.
 #[derive(Debug, Default, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct WhenMatcher {
     /// Substring that must appear in the target triple.
     #[serde(default)]
@@ -239,7 +233,6 @@ pub struct WhenMatcher {
 
 /// `cc::Build` compile settings.
 #[derive(Debug, Default, Deserialize, Clone)]
-#[allow(dead_code)]
 pub struct CompileSettings {
     pub opt_level: Option<u32>,
     #[serde(default)]
@@ -250,7 +243,6 @@ pub struct CompileSettings {
 
 /// Resolved view of one platform after `inherits` chain merge.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ResolvedPlatform {
     pub name: String,
     pub defines: Vec<String>,
@@ -316,7 +308,6 @@ impl PlatformManifest {
     }
 
     /// Look up an `[arch.*]` block by name.
-    #[allow(dead_code)]
     pub fn arch_for(&self, name: &str) -> Option<&ArchEntry> {
         self.arch.get(name)
     }
@@ -444,7 +435,6 @@ impl std::error::Error for ManifestError {}
 /// Tokens available for interpolation in any `path` / `defines_env`
 /// field. Build-script populates this context once + threads it
 /// through.
-#[allow(dead_code)]
 pub struct InterpContext<'a> {
     /// `CARGO_MANIFEST_DIR` (`zpico-sys/`).
     pub nros: &'a Path,
@@ -457,7 +447,6 @@ pub struct InterpContext<'a> {
 /// Replace every `{nros}` / `{out}` / `{src}` / `{env:VAR}` token
 /// in `input`. Missing env vars produce `None` so the caller can
 /// emit a helpful panic.
-#[allow(dead_code)]
 pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, InterpError> {
     let mut out = String::with_capacity(input.len());
     let mut rest = input;
@@ -489,7 +478,6 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum InterpError {
     UnknownToken(String),
     UnterminatedToken(String),
@@ -513,7 +501,6 @@ impl std::error::Error for InterpError {}
 /// `target_not == "embedded"` is the special-case "target_os is
 /// one of the known RTOSes" gate; build-script supplies the
 /// `is_embedded` flag pre-computed.
-#[allow(dead_code)]
 pub fn matches(m: &WhenMatcher, target: &str, is_embedded: bool) -> bool {
     if let Some(needle) = m.target_match.as_deref()
         && !match_target(target, needle)

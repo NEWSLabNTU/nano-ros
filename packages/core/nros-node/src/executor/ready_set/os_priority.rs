@@ -41,10 +41,11 @@
 
 #![cfg(feature = "scheduler-os-priority")]
 
-use super::{
-    super::types::{ActiveJob, DescIdx},
-    Overflow, ReadySet,
-};
+use super::super::types::ActiveJob;
+// `DescIdx` is only needed by the `#[cfg(test)]` `contains` delegation.
+#[cfg(test)]
+use super::super::types::DescIdx;
+use super::{Overflow, ReadySet};
 
 /// Stub — see module docs. Cross-thread per-priority dispatch lives
 /// outside the `ReadySet` abstraction (worker pool + mailboxes), so
@@ -67,14 +68,6 @@ impl<const N: usize> OsPrioritySet<N> {
 }
 
 impl<const N: usize> ReadySet for OsPrioritySet<N> {
-    fn clear(&mut self) {
-        self.inner.clear()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
     fn insert(&mut self, job: ActiveJob) -> Result<(), Overflow> {
         self.inner.insert(job)
     }
@@ -83,6 +76,19 @@ impl<const N: usize> ReadySet for OsPrioritySet<N> {
         self.inner.pop_next()
     }
 
+    // Phase 192.8 — `clear`/`is_empty`/`contains` are `#[cfg(test)]` on the
+    // `ReadySet` trait (test-only surface), so the stub's delegations match.
+    #[cfg(test)]
+    fn clear(&mut self) {
+        self.inner.clear()
+    }
+
+    #[cfg(test)]
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    #[cfg(test)]
     fn contains(&self, desc_idx: DescIdx) -> bool {
         self.inner.contains(desc_idx)
     }
