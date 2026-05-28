@@ -124,25 +124,29 @@ register_bridges(executor):
     for topic in bridge.topics:
       (type_name, type_hash, qos) = resolve from plan.interfaces   // err if undeclared
       for (src, dst) in ordered session pairs of bridge.connect:
-        node_dst = executor.node_builder("<bridge>_<dst>").session_idx(dst).build()
-        dst_pub  = node_dst.create_publisher_raw(topic, type_name, type_hash)
-        node_src = executor.node_builder("<bridge>_<src>").session_idx(src).build()
-        // generic subscription on src whose callback republishes on dst:
-        executor.register_subscription_raw_with_info_on(node_src, topic, type_name,
-            type_hash, qos, move |payload, info| {
-              if parse_bridge_origin(info.attachment()) == Some(ORIGIN) { return; } // echo
-              let _ = dst_pub.publish_raw_with_attachment(payload, &ORIGIN_ATT);
-            })
+        // Tier-2 entity builder (see entity-api-tiers.md) — no bespoke fn:
+        dst_pub = node_dst.publisher(topic).generic(type_name, type_hash)
+                          .qos(qos).session(dst).build()
+        node_src.subscription(topic).generic(type_name, type_hash).qos(qos)
+                .message_info()          // for the bridge_origin echo check
+                .session(src)            // 172.K.5 selector
+                .build(move |payload, info| {
+                    if parse_bridge_origin(info.attachment()) == Some(ORIGIN) { return; }
+                    let _ = dst_pub.publish_raw_with_attachment(payload, &ORIGIN_ATT);
+                })
 register_all(...) { ...; register_bridges(executor)?; }
 ```
 
 ## Work breakdown
 
-1. **nros-node** — a `MessageInfo`-carrying raw-sub callback variant
-   (`register_subscription_raw_with_info_on`, `FnMut(&[u8], &MessageInfo)`),
-   `MessageInfo::attachment()`. Mirrors rclcpp; small. (The buffered-raw
-   plumbing already reads the attachment via `try_recv_raw_with_attachment` —
-   this surfaces it to the callback.)
+1. **nros-node** — expose the `MessageInfo` (`&[u8]` payload + `attachment()`)
+   and `session` axes as builder knobs, NOT a new `register_*_with_info_on`
+   function. Prefer landing the **Tier-2 entity builder**
+   ([`entity-api-tiers.md`](entity-api-tiers.md)) and adding `.message_info()` +
+   `.session()` knobs to it; the bridge (and the `register_*` zoo) then ride the
+   builder. Minimal core change — the buffered-raw plumbing already reads the
+   attachment via `try_recv_raw_with_attachment`; this surfaces it on the
+   callback path.
 2. **generator** — `SESSION_SPECS` from `connect`; `register_bridges` emitting
    the generic-sub-callback relay per (topic, session pair) via the K.5
    selector + `nros-bridge` origin codec; call it in `register_all`. Resolve
