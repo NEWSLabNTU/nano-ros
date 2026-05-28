@@ -99,9 +99,18 @@ referenced by URL); `ci/nano-ros-sdk/` is the drop-in seed for that repo.
   index dist change); `nano-ros-sdk`'s `build-tool.yml` seeds assets via
   `workflow_dispatch` (Ubuntu 22.04 baseline). Bump a tool's `-nros<N>` suffix
   when rebuilding the same upstream version with different config.
-- **Open follow-ups:** maintainer must add branch-protection requiring
-  `sdk-index-gate`; no esp/xtensa builder yet; cross-gcc/openocd `just` recipes
-  can adopt the same `--tool` pattern. See `docs/roadmap/archived/phase-187-*`.
+- Validated: `just qemu test-lan9118` passes (5/5) with the prebuilt `nros2`
+  qemu — the LAN9118 RX-flush patch is present + working, so the qemu-recipe
+  flip is safe.
+- **Open follow-ups:** (1) maintainer adds branch-protection requiring the
+  `sdk-index-gate` check (Settings → Branches, or `gh api -X PUT
+  repos/NEWSLabNTU/nano-ros/branches/<branch>/protection/...`). (2) No esp/xtensa
+  builder yet — needs a decision first: standalone Espressif `xtensa-esp-elf`
+  tarball vs the esp-idf-managed toolchain (the esp32 path already goes through
+  esp-idf), so `esp-toolchain` stays out of the index until settled. cross-gcc
+  (apt system prereq) and openocd (reachable via `nros setup --tool openocd`)
+  have no per-module `just setup` recipe to flip — no action needed. See
+  `docs/roadmap/archived/phase-187-*`.
 
 ## C/C++ Integration Shape
 
