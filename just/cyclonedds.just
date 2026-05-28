@@ -49,6 +49,22 @@ doctor:
         echo "  [MISSING] CycloneDDS cmake config (run: just cyclonedds setup)"
         missing=1
     fi
+    # Phase 185.5 — embedded-RTOS cross-built `ddsc` installs. Provisioned on
+    # demand by the platform `build-fixtures` (Phase 185.1) when the cross
+    # toolchain is present (the `all` tier), NOT by `just cyclonedds setup`.
+    # Report-only — absence is not a `missing` (the embedded-Cyclone tests are
+    # filtered out of a tier that can't build them, Phase 185.2).
+    echo "  --- embedded cross ddsc (provisioned by <plat> build-fixtures, 'all' tier) ---"
+    if [ -f build/cyclonedds-freertos-install/lib/libddsc.a ]; then
+        echo "  [OK]      freertos cross ddsc:       build/cyclonedds-freertos-install/lib/libddsc.a"
+    else
+        echo "  [ABSENT]  freertos cross ddsc (auto-built by 'just freertos build-fixtures' w/ arm-none-eabi-gcc; or 'just cyclonedds freertos-cross-probe')"
+    fi
+    if [ -f build/cyclonedds-threadx-rv64-install/lib/libddsc.a ]; then
+        echo "  [OK]      threadx-rv64 cross ddsc:   build/cyclonedds-threadx-rv64-install/lib/libddsc.a"
+    else
+        echo "  [ABSENT]  threadx-rv64 cross ddsc (NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures; or 'just cyclonedds threadx-cross-probe')"
+    fi
     exit $missing
 
 # Phase 175.B — read-only inventory of the Cyclone DDS ddsrt RTOS port
