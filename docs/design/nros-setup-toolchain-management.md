@@ -96,30 +96,65 @@ shape; PlatformIO gives the *board-scoped resolution + auto-install-on-build*
 ergonomic. `nros setup` = Android's package management **+** PlatformIO's
 board-centric, lazy resolution.
 
+## Distribution: GitHub Releases, **host toolchains only** (no registry server)
+
+Two scoping decisions make this affordable with **no infrastructure**:
+
+**(a) Prebuild only host *toolchains / tools*, never libraries or apps.**
+- **Prebuilt** = the host-side, **target-agnostic** tools that are expensive to
+  build: QEMU, the cross-compilers (`arm-none-eabi-gcc`, riscv, xtensa),
+  `zenohd`, `openocd`. A cross-gcc *runs on the host* and *targets* any MCU — so
+  the matrix is just **host-OS × host-arch** (≈ linux-x86_64, linux-arm64,
+  macos-arm64, … — a handful), **not** per-target. Small, finite, buildable in
+  CI once per release.
+- **Source** = nano-ros libs (`nros-*`), the **user's app**, and the
+  target-compiled kernels/libs (FreeRTOS, zenoh-*pico*, the C glue). The
+  toolchain compiles these for **whatever platform × arch the user picks** —
+  that combination is the user's choice and is *combinatorial*, so it stays
+  source. This sidesteps the precompiled-matrix problem entirely: we never ship
+  a `target × arch × RTOS × RMW` binary.
+
+**(b) Host the prebuilts on GitHub Releases.** No registry server to run or pay
+for. A release tag (e.g. on a `nano-ros-sdk` repo, keeping the main repo's
+releases clean) carries one asset per `(tool, host)`; GitHub serves them free
+(public repos, fair-use bandwidth; 2 GB/asset limit — a slim QEMU/toolchain is
+well under). URLs are stable: `…/releases/download/<tag>/<asset>`. A CI matrix
+builds/repackages the tools per host and uploads them.
+
+**License boundary:** only *redistributable* tools are hosted — QEMU (GPL),
+cross-GCC (GPL), `zenohd` (Apache/EPL), OpenOCD (GPL). Vendor SDKs that forbid
+redistribution (NVIDIA SPE, ARM FVP) are **never** hosted — they stay
+license-gated (`--licenses` / instruct + `nros doctor` presence check).
+
 ## Proposed model
 
-### 1. A package index (manifest)
+### 1. A package index (manifest committed in-repo → GitHub Release assets)
 
-A checked-in (or fetched) `nros-sdk-index.toml` declares packages: versioned,
-per-`(host_os, host_arch)` prebuilt URL + sha256, optional license gate.
+`nros-sdk-index.toml` is **checked into the repo** (no fetch of a remote index);
+it pins each prebuilt tool to a GitHub Release asset URL + sha256, per host.
+Source packages carry no `dist` (they build from a vendored tarball / submodule).
 
 ```toml
-[package.qemu]            # prebuilt QEMU — NOT a 2.7 GB source build
+# --- prebuilt HOST TOOLS (GitHub Releases) — target-agnostic ---
+[tool.qemu]                       # NOT a 2.7 GB source build
 version = "11.0-nros1"
-[package.qemu.dist.linux-x86_64]
-url = "https://…/qemu-11.0-nros1-linux-x86_64.tar.zst"
-sha256 = "…"
-[package.qemu.dist.macos-arm64] # …
+dist.linux-x86_64 = { url = "https://github.com/<org>/nano-ros-sdk/releases/download/qemu-11.0-nros1/qemu-linux-x86_64.tar.zst", sha256 = "…" }
+dist.macos-arm64  = { url = "…", sha256 = "…" }
 
-[package.arm-none-eabi-gcc]
+[tool.arm-none-eabi-gcc]          # cross-compiler: runs on host, targets any Cortex-M/R
 version = "13.2"
-# host-matched prebuilt from ARM's release page (redistributable)
+dist.linux-x86_64 = { url = "…/releases/download/arm-gcc-13.2/arm-gcc-linux-x86_64.tar.zst", sha256 = "…" }
 
-[package.freertos-kernel]      # source-redistributable kernel: vendored tarball
-version = "10.6.2"; kind = "source"   # unpacked, not built until cargo links it
+[tool.zenohd]                     # host router binary
+version = "1.0.0"
+dist.linux-x86_64 = { url = "…", sha256 = "…" }
 
-[package.nv-spe-fsp]
-version = "36.3"; license = "nvidia-sdk-manager"  # license-gated → instruct, don't fetch
+# --- SOURCE packages — compiled by the toolchain for the user's chosen target ---
+[source.freertos-kernel]  version = "10.6.2"   # vendored tarball, built with the app
+[source.zenoh-pico]       version = "1.0.0"    # small C lib, built with the app
+
+# --- license-gated: never hosted, instruct only ---
+[gated.nv-spe-fsp]  version = "36.3"  env = "NV_SPE_FSP_DIR"  installer = "nvidia-sdk-manager"
 ```
 
 ### 2. Board → package resolution
@@ -217,10 +252,15 @@ keeps it amortized.
 - **`just <module> setup` stays** the contributor / source-of-truth / CI path
   (it can become a thin caller of the same index). `nros setup` is the *user*
   path and is `just`-free.
-- **Not** a general package manager — only nano-ros's toolchain/SDK/QEMU deps.
-- **Prebuilt hosting** is an open logistics item (who hosts the QEMU/toolchain
-  binaries; GitHub Releases is the likely default). Redistribution licensing of
-  each artifact must be checked per package (QEMU GPL ok; vendor SDKs gated).
+- **Not** a general package manager — only nano-ros's host toolchains/tools.
+- **Only host toolchains/tools are prebuilt.** Libraries + the user's app +
+  target-compiled kernels stay **source** — the final platform × arch is the
+  user's choice, so we never ship that combinatorial binary matrix.
+- **Hosting = GitHub Releases** (decided — no registry server). A CI matrix
+  builds/repackages the redistributable tools per host and uploads; the index is
+  committed in-repo pointing at the Release assets. Vendor SDKs that forbid
+  redistribution are never hosted (gated). Open item: which org/repo holds the
+  Release assets (`nano-ros-sdk` repo suggested) + the CI build matrix.
 
 ## Payoff
 
