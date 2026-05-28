@@ -942,7 +942,19 @@ steps are inherently ordered (templates → migrate → delete). Files:
   triple/board reader was retired. `EntryKind` survives only to pick the shim
   *shape* (hosted vs no_std board vs Zephyr staticlib), not to emit a
   per-platform `main`. (The flip regressed three `orchestration_generate`
-  assertions to the pre-flip shim shape; fixed in `307a87c`.) *Still pending:*
+  assertions to the pre-flip shim shape; fixed in `307a87c`.) *Build-flag
+  retirement DONE (2026-05-28, codegen `01c8512`):* the legacy
+  `cmd/build.rs --launch` one-shot and `--system-plan` pre-planned-build flags
+  (+ their orphaned `--system-pkg`/`--metadata`/`--manifest`/`--launch-arg`/
+  `--out-dir`/`--system-output`/`--system-package`/`--release`/`--force`/
+  `--target` siblings + the `infer_package_name` helper) are gone — `nros
+  build` is now deploy-dispatch ∪ project-flavor only. System-from-plan is
+  strictly an orchestration-library call: the 12 `orchestration_e2e`
+  cross-build tests invoke `build_generated_package(&BuildOptions{..})`
+  directly, and the `--launch` one-shot e2e (fully covered by
+  `fixture_workspace_plans_checks_and_builds_generated_package`) was dropped.
+  `grep` shows zero `--system-plan`/`--launch` references outside archival
+  roadmap docs + the CLI ref's retirement note. *Still pending:*
   the vendor-lib / vendor-module **sample deploys** — the vendor-lib template +
   dry-run runner landed (172.V); a real cross-compile build is SDK-bound (W.4).
 
