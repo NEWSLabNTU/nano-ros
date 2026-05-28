@@ -2898,21 +2898,25 @@ impl Executor {
             service_name,
             service_type,
             service_hash,
+            QosSettings::services_default(),
             callback,
             context,
         )
     }
 
-    /// Register a raw (untyped) service callback with custom buffer sizes.
+    /// Register a raw (untyped) service callback with custom buffer sizes + QoS.
     ///
     /// `REQ_BUF` and `REPLY_BUF` set the stack-allocated CDR buffers
     /// for the request and reply respectively. Increase for services
-    /// with large payloads (e.g., parameter services).
+    /// with large payloads (e.g., parameter services). `qos` applies to both
+    /// the request + reply endpoints (Phase 193.2c).
+    #[allow(clippy::too_many_arguments)]
     pub fn register_service_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
         service_type: &str,
         service_hash: &str,
+        qos: QosSettings,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -2921,6 +2925,7 @@ impl Executor {
             service_name,
             service_type,
             service_hash,
+            qos,
             callback,
             context,
         )
@@ -2928,12 +2933,14 @@ impl Executor {
 
     /// Phase 104.C.3.3.a — Node-aware variant of
     /// [`register_service_raw_sized`]. C-FFI path.
+    #[allow(clippy::too_many_arguments)]
     pub fn register_service_raw_sized_on<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
         service_name: &str,
         service_type: &str,
         service_hash: &str,
+        qos: QosSettings,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -2942,17 +2949,20 @@ impl Executor {
             service_name,
             service_type,
             service_hash,
+            qos,
             callback,
             context,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn register_service_raw_sized_inner<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         service_name: &str,
         service_type: &str,
         service_hash: &str,
+        qos: QosSettings,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -2977,7 +2987,7 @@ impl Executor {
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
             session
-                .create_service_server(&info, QosSettings::services_default())
+                .create_service_server(&info, qos)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?
         };
 

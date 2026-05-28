@@ -118,6 +118,10 @@ pub struct nros_service_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
+    /// Phase 193.4 — service QoS (applied to both request + reply endpoints).
+    /// Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
+    /// set via `nros_service_init_with_qos`.
+    pub qos: crate::qos::nros_qos_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
@@ -141,6 +145,7 @@ impl Default for nros_service_t {
             callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
+            qos: crate::qos::nros_qos_t::default(),
             _internal: ServiceServerInternal::new(),
             _opaque: [0u64; SERVICE_SERVER_OPAQUE_U64S],
         }
@@ -156,6 +161,11 @@ impl nros_service_t {
     /// Get the context pointer
     pub(crate) fn get_context(&self) -> *mut c_void {
         self.context
+    }
+
+    /// Phase 193.4 — the service's QoS as `nros_node` settings.
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+        self.qos.to_qos_settings()
     }
 }
 
@@ -222,6 +232,9 @@ pub unsafe extern "C" fn nros_service_init(
     service.callback = callback;
     service.context = context;
     service.node = node;
+    // Phase 193.4 — default to the services profile; nros_service_init_with_qos
+    // overrides. (`register_service` reads this at registration time.)
+    service.qos = crate::qos::nros_qos_t::default();
 
     // Service server creation is deferred to nros_executor_register_service(),
     // which calls nros_node::Executor::register_service_raw_sized().
@@ -230,6 +243,30 @@ pub unsafe extern "C" fn nros_service_init(
     service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
 
     NROS_RET_OK
+}
+
+/// Phase 193.4 — initialize a service server with an explicit QoS profile
+/// (rclc's `_with_options`; the profile applies to both the request + reply
+/// endpoints). `qos` NULL ⇒ the services default. Same as
+/// [`nros_service_init`] otherwise.
+///
+/// # Safety
+/// All non-NULL pointers must be valid + the node initialized.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_service_init_with_qos(
+    service: *mut nros_service_t,
+    node: *const nros_node_t,
+    type_info: *const nros_service_type_t,
+    service_name: *const c_char,
+    callback: nros_service_callback_t,
+    context: *mut c_void,
+    qos: *const crate::qos::nros_qos_t,
+) -> nros_ret_t {
+    let ret = nros_service_init(service, node, type_info, service_name, callback, context);
+    if ret == NROS_RET_OK && !qos.is_null() {
+        (*service).qos = *qos;
+    }
+    ret
 }
 
 /// Finalize a service server.
