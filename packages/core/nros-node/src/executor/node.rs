@@ -231,6 +231,19 @@ impl<'a> Node<'a> {
         })
     }
 
+    /// Phase 189.M1 — the customizable publisher **builder** (the `clone` tier;
+    /// see `docs/design/entity-api-tiers.md`). Pick a mode with `.typed::<M>()`
+    /// or `.generic(type, hash)`, set knobs (`.qos`), then `.build()`. The
+    /// convenient `create_publisher` / `create_publisher_raw` are the `fork`
+    /// tier — sugar over this with defaults.
+    pub fn publisher<'t>(&mut self, topic: &'t str) -> PublisherBuilder<'_, 'a, 't> {
+        PublisherBuilder {
+            node: self,
+            topic,
+            qos: QosSettings::default(),
+        }
+    }
+
     // -- Subscriptions --
 
     /// Create a subscription for the given topic.
@@ -913,5 +926,145 @@ impl<'a> Node<'a> {
             },
             _phantom: PhantomData,
         })
+    }
+}
+
+// ===================================================================
+// Phase 189.M1 — entity builders (the `clone` tier)
+// ===================================================================
+
+/// Publisher builder — `node.publisher(topic)`. Choose `.typed::<M>()` or
+/// `.generic(type, hash)`, optionally `.qos(..)`, then `.build()`.
+pub struct PublisherBuilder<'n, 'a, 't> {
+    node: &'n mut Node<'a>,
+    topic: &'t str,
+    qos: QosSettings,
+}
+
+impl<'n, 'a, 't> PublisherBuilder<'n, 'a, 't> {
+    /// Set the QoS (also settable on the typed/generic builder).
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    /// Typed publisher for a ROS message `M` (mirrors rclcpp/rclrs).
+    pub fn typed<M: RosMessage>(self) -> TypedPublisherBuilder<'n, 'a, 't, M> {
+        TypedPublisherBuilder {
+            node: self.node,
+            topic: self.topic,
+            qos: self.qos,
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Generic (type-erased) publisher — the rclcpp `create_generic_publisher`
+    /// form; raw CDR bytes via `publish_raw`.
+    pub fn generic(
+        self,
+        type_name: &'t str,
+        type_hash: &'t str,
+    ) -> GenericPublisherBuilder<'n, 'a, 't> {
+        GenericPublisherBuilder {
+            node: self.node,
+            topic: self.topic,
+            type_name,
+            type_hash,
+            qos: self.qos,
+        }
+    }
+}
+
+/// Typed publisher builder (`.typed::<M>()`).
+pub struct TypedPublisherBuilder<'n, 'a, 't, M> {
+    node: &'n mut Node<'a>,
+    topic: &'t str,
+    qos: QosSettings,
+    _phantom: PhantomData<M>,
+}
+
+impl<'n, 'a, 't, M: RosMessage> TypedPublisherBuilder<'n, 'a, 't, M> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build(self) -> Result<EmbeddedPublisher<M>, NodeError> {
+        self.node
+            .create_publisher_with_qos::<M>(self.topic, self.qos)
+    }
+}
+
+/// Generic (type-erased) publisher builder (`.generic(type, hash)`).
+pub struct GenericPublisherBuilder<'n, 'a, 't> {
+    node: &'n mut Node<'a>,
+    topic: &'t str,
+    type_name: &'t str,
+    type_hash: &'t str,
+    qos: QosSettings,
+}
+
+impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build(self) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        self.node.create_publisher_raw_with_qos(
+            self.topic,
+            self.type_name,
+            self.type_hash,
+            self.qos,
+        )
+    }
+}
+
+#[cfg(test)]
+mod builder_tests {
+    use super::*;
+    use crate::mock::MockSession;
+    use nros_core::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Serialize};
+
+    struct TestMsg;
+    impl RosMessage for TestMsg {
+        const TYPE_NAME: &'static str = "test/msg/TestMsg";
+        const TYPE_HASH: &'static str = "test_hash";
+    }
+    impl Serialize for TestMsg {
+        fn serialize(&self, _w: &mut CdrWriter) -> Result<(), SerError> {
+            Ok(())
+        }
+    }
+    impl Deserialize for TestMsg {
+        fn deserialize(_r: &mut CdrReader) -> Result<Self, DeserError> {
+            Ok(Self)
+        }
+    }
+
+    fn s(v: &str) -> heapless::String<64> {
+        heapless::String::try_from(v).unwrap()
+    }
+
+    #[test]
+    fn publisher_builder_typed_and_generic() {
+        let mut session = MockSession::new();
+        let mut node = Node::new(s("n"), s("/"), &mut session, 0);
+
+        // typed: node.publisher(t).typed::<M>().qos(..).build()
+        let _typed = node
+            .publisher("/chatter")
+            .typed::<TestMsg>()
+            .qos(QosSettings::default().keep_last(5))
+            .build()
+            .expect("typed publisher builds");
+
+        // generic: node.publisher(t).qos(..).generic(type, hash).build()
+        let _generic = node
+            .publisher("/chatter")
+            .qos(QosSettings::default())
+            .generic("std_msgs/msg/Int32", "hash")
+            .build()
+            .expect("generic publisher builds");
     }
 }
