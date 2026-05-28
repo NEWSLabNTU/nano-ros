@@ -34,7 +34,11 @@ fn main() {
         "NETX_DIR",
         workspace_root.join("third-party/threadx/netxduo"),
     );
-    let virtio_driver_dir = workspace_root.join("packages/drivers/virtio-net-netx");
+    // 192.3: env-overridable like THREADX_DIR/NETX_DIR above (default in sdk-env.just).
+    let virtio_driver_dir = env_path_or(
+        "NROS_VIRTIO_NET_NETX_DIR",
+        workspace_root.join("packages/drivers/virtio-net-netx"),
+    );
 
     // Validate directories
     assert!(

@@ -59,6 +59,9 @@ FetchContent_MakeAvailable(Corrosion)
 # carries its own `.cargo/config.toml` with `build-std`. The cmake
 # Corrosion target is redundant + impossible there.
 # ---------------------------------------------------------------------------
+# 192.3: the nano-ros root dir (this file's dir), so subdirs needn't walk up
+# `../../..` to reach it (e.g. nros-cpp's deferred NanoRos::NanoRos link).
+set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
     add_subdirectory(packages/core/nros-rmw-cffi)
     add_subdirectory(packages/core/nros-c)

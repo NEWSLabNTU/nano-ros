@@ -122,7 +122,13 @@ target_link_libraries(nros-cpp-headers INTERFACE nros_cpp-static)
 # (it's the umbrella that wires in nros-c + the platform shim +
 # the RMW staticlib), so we register the link via a deferred call
 # rooted in the nano-ros root directory.
-cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/../../.." CALL
+# 192.3: target the nano-ros root via NANO_ROS_ROOT_DIR (set by the root
+# CMakeLists) instead of a `../../..` walk-up. Fall back to the relative path
+# only when nros-cpp is configured standalone (no umbrella root sets the var).
+if(NOT DEFINED NANO_ROS_ROOT_DIR)
+    set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../../..")
+endif()
+cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
     target_link_libraries nros-cpp-headers INTERFACE NanoRos::NanoRos)
 
 # Phase 117.8: when the consumer asks for the Cyclone DDS RMW backend,

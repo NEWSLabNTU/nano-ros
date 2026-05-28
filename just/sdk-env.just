@@ -10,6 +10,7 @@ export NROS_PLATFORM_CFFI_INCLUDE := env("NROS_PLATFORM_CFFI_INCLUDE", justfile_
 export NROS_PLATFORM_FREERTOS_SRC := env("NROS_PLATFORM_FREERTOS_SRC", justfile_directory() / "packages/core/nros-platform-freertos/src")
 export NROS_PLATFORM_POSIX_SRC := env("NROS_PLATFORM_POSIX_SRC", justfile_directory() / "packages/core/nros-platform-posix/src")
 export NROS_LAN9118_LWIP_DIR := env("NROS_LAN9118_LWIP_DIR", justfile_directory() / "packages/drivers/lan9118-lwip")
+export NROS_VIRTIO_NET_NETX_DIR := env("NROS_VIRTIO_NET_NETX_DIR", justfile_directory() / "packages/drivers/virtio-net-netx")
 export NROS_C_INCLUDE := env("NROS_C_INCLUDE", justfile_directory() / "packages/core/nros-c/include")
 export NROS_CPP_INCLUDE := env("NROS_CPP_INCLUDE", justfile_directory() / "packages/core/nros-cpp/include")
 # Tonbandgeraet trace lib (third-party SDK; only used under NROS_TRACE=1).
