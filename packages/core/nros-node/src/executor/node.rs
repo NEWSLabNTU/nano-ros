@@ -1129,6 +1129,65 @@ impl<'e> NodeCtx<'e> {
                 callback,
             )
     }
+
+    /// Service-server builder (the `clone` tier) — `node.service(name)`.
+    /// Set `.qos()` (defaults to the services profile = RELIABLE+VOLATILE+
+    /// KEEP_LAST(10)), then `.build::<Svc, _>(callback)` (Phase 193.2).
+    pub fn service<'t>(&mut self, name: &'t str) -> CtxServiceBuilder<'_, 'e, 't> {
+        CtxServiceBuilder {
+            ctx: self,
+            name,
+            qos: QosSettings::services_default(),
+        }
+    }
+
+    /// Convenient service server (the `fork` tier — rclrs/rclcpp shape), default
+    /// services QoS. Mirror of `create_subscription`.
+    pub fn create_service<Svc, F>(
+        &mut self,
+        name: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+    {
+        self.executor.register_service_sized_on::<
+            Svc,
+            F,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(self.node_id, name, QosSettings::services_default(), callback)
+    }
+}
+
+/// Service-server builder on a [`NodeCtx`] — `node.service(name)`.
+pub struct CtxServiceBuilder<'c, 'e, 't> {
+    ctx: &'c mut NodeCtx<'e>,
+    name: &'t str,
+    qos: QosSettings,
+}
+
+impl<'c, 'e, 't> CtxServiceBuilder<'c, 'e, 't> {
+    /// Service QoS (applies to both the request + reply endpoints). Defaults to
+    /// `QosSettings::services_default()`.
+    pub fn qos(mut self, qos: QosSettings) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build<Svc, F>(self, callback: F) -> Result<super::types::HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+    {
+        self.ctx.executor.register_service_sized_on::<
+            Svc,
+            F,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(self.ctx.node_id, self.name, self.qos, callback)
+    }
 }
 
 /// Publisher builder on a [`NodeCtx`] — `node.publisher(topic)`.

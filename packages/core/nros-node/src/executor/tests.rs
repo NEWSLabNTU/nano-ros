@@ -2397,6 +2397,29 @@ impl nros_core::RosService for TestService {
     const SERVICE_HASH: &'static str = "test_hash";
 }
 
+#[test]
+fn test_service_builder_qos() {
+    // Phase 193.2 — NodeCtx service builder + convenient create_service.
+    let mut exec: Executor = Executor::from_session(MockSession::new());
+    let id = exec.node_builder("n").build().unwrap();
+
+    // convenient (fork tier) — default services QoS
+    let _h = exec
+        .node_mut(id)
+        .create_service::<TestService, _>("/svc", |req: &TestServiceRequest| TestServiceReply {
+            sum: req.a,
+        })
+        .expect("convenient service builds");
+
+    // builder (clone tier) — explicit QoS
+    let _h2 = exec
+        .node_mut(id)
+        .service("/svc2")
+        .qos(QosSettings::default().reliable().keep_last(5))
+        .build::<TestService, _>(|req: &TestServiceRequest| TestServiceReply { sum: req.a })
+        .expect("service builder with qos builds");
+}
+
 // ====================================================================
 // Promise tests
 // ====================================================================
