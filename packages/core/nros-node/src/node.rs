@@ -61,6 +61,13 @@ pub enum NodeError {
     TransportError,
     /// Not connected
     NotConnected,
+    /// A topic/endpoint name exceeded the bounded string capacity (Phase 192.1 —
+    /// surfaced instead of silently truncating, which would corrupt the wire key).
+    TopicNameTooLong,
+    /// A node name exceeded the bounded string capacity.
+    NameTooLong,
+    /// A node namespace exceeded the bounded string capacity.
+    NamespaceTooLong,
 }
 
 /// Publisher registration info
@@ -229,7 +236,11 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
         }
 
         let mut topic_name = heapless::String::new();
-        let _ = topic_name.push_str(options.topic);
+        // Phase 192.1 — error on overflow instead of silently truncating the
+        // topic name (a truncated key expression mis-routes on the wire).
+        topic_name
+            .push_str(options.topic)
+            .map_err(|_| NodeError::TopicNameTooLong)?;
 
         let info = PublisherInfo {
             topic_name,
@@ -257,7 +268,10 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
         }
 
         let mut topic_name = heapless::String::new();
-        let _ = topic_name.push_str(options.topic);
+        // Phase 192.1 — error on overflow instead of silently truncating.
+        topic_name
+            .push_str(options.topic)
+            .map_err(|_| NodeError::TopicNameTooLong)?;
 
         let info = SubscriberInfo {
             topic_name,

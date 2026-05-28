@@ -45,10 +45,17 @@ truncates** → wrong key expressions on the wire (silent mis-routing), not an e
 - `packages/core/nros-node/src/lifecycle_services.rs:87,109,260,544,559,612`
 - `packages/core/nros-c/src/transport.rs:95,120` (teardown errors discarded, no log)
 
-- [ ] Capacity overflow on identity strings (name/namespace/topic) returns
-      `RclrsError`/typed error, never truncates.
-- [ ] Audit every runtime `let _ = …push_str/push` (vs intentional best-effort);
-      convert the identity-affecting ones.
+- [x] **Topic/endpoint names** (`node.rs` `create_publisher`/`create_subscriber`)
+      return `NodeError::TopicNameTooLong` on overflow instead of truncating —
+      these are already `Result`-returning (zero ripple). Added `NodeError::{
+      TopicNameTooLong,NameTooLong,NamespaceTooLong}`.
+- [ ] **Node name/namespace** (`Node::new` `:180,183`) + `fully_qualified_name`
+      (`:214-218`) — `Node::new` is infallible with ~28 call sites across
+      heapless/lifecycle/executor `Node` types; converting to `Result` is an
+      invasive API migration → deferred (coordinate on the shared branch; not done
+      surgically to avoid conflicts).
+- [ ] `lifecycle_services.rs` transition-label `push_str` (`:87,109`) — lower
+      priority (labels, not wire keys); convert where the fn already returns `Result`.
 
 ### 192.2 — [P1, correctness] Shared CDR / action wire-framing constants
 The CDR header (`CDR_HEADER_LEN=4`, `nros-serdes/src/lib.rs:49`) + GoalId
