@@ -1466,6 +1466,84 @@ impl Executor {
         self.session_at_mut(session_idx)
     }
 
+    /// Phase 189.M1 — create a typed publisher bound to a node's session.
+    /// Backs `node.publisher(t).typed::<M>().build()` on the
+    /// executor-borrowing [`NodeCtx`](super::node::NodeCtx); the returned
+    /// handle is owned and outlives the `NodeCtx`.
+    pub fn create_publisher_on<M: RosMessage>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        qos: QosSettings,
+    ) -> Result<crate::executor::handles::EmbeddedPublisher<M>, NodeError> {
+        let handle = self.create_raw_publisher_handle_on(
+            node_id,
+            topic_name,
+            M::TYPE_NAME,
+            M::TYPE_HASH,
+            qos,
+        )?;
+        Ok(crate::executor::handles::EmbeddedPublisher {
+            handle,
+            event_regs: crate::executor::handles::empty_event_regs(),
+            _phantom: PhantomData,
+        })
+    }
+
+    /// Phase 189.M1 — create a generic (type-erased) publisher bound to a
+    /// node's session. Backs `node.publisher(t).generic(ty, hash).build()`;
+    /// the bridge re-publishes through this handle on the dest session.
+    pub fn create_publisher_raw_on(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+    ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        let handle =
+            self.create_raw_publisher_handle_on(node_id, topic_name, type_name, type_hash, qos)?;
+        Ok(crate::executor::handles::EmbeddedRawPublisher {
+            handle,
+            arena: crate::executor::handles::TxArena::new(),
+            event_regs: crate::executor::handles::empty_event_regs(),
+        })
+    }
+
+    /// Shared prelude for the publisher-on-node paths: resolve the node's
+    /// identity + session slot, build the [`TopicInfo`], validate QoS, and
+    /// create the backend publisher handle. Mirrors
+    /// `register_subscription_buffered_raw_on`'s session resolution so a
+    /// bridge's source sub + dest pub agree on topic construction.
+    fn create_raw_publisher_handle_on(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+    ) -> Result<session::RmwPublisher, NodeError> {
+        let (node_name, ns, session_idx) = {
+            let r = self
+                .nodes
+                .get(node_id.index())
+                .ok_or(NodeError::InvalidSchedContextBinding)?;
+            (r.name.clone(), r.namespace.clone(), r.session_idx)
+        };
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let session = self
+            .session_at_mut(session_idx)
+            .ok_or(NodeError::BackendMismatch)?;
+        qos.validate_against(Session::supported_qos_policies(session))
+            .map_err(NodeError::Transport)?;
+        session
+            .create_publisher(&topic, qos)
+            .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
+    }
+
     /// Phase 124.B.1 — install the executor's wake callback onto the
     /// primary session. Best-effort: backends that don't override
     /// `Session::set_wake_callback` (poll-only XRCE, bare-metal)
