@@ -120,10 +120,23 @@ The model (Android `sdkmanager` + PlatformIO):
         `[tool.*.source]` (187.3, same prefix); no recipe either (dist-only
         tools like cross-gcc on an unsupported host) → `ensure_tools` **warns**,
         tool becomes a user-provided prerequisite.
-  - [ ] **`just <module> setup` → `nros setup`** (remaining): point the per-module
-        setup recipes at `nros setup` so there's one install path + no duplicated
-        version pins. Lower-stakes now that Method A handles the build/deploy
-        flow; the justfile recipes still source-build into `build/` until flipped.
+  - [x] **`just qemu setup-qemu` → `nros setup --tool qemu`** (`0b4ba22d6`):
+        added the `nros setup --tool <name> [--prefix <dir>]` single-tool
+        primitive; the qemu recipe is now a thin caller fetching the prebuilt
+        into `build/qemu` (where the harness already looks — no harness change,
+        no script-side resolution) or source-building from the index recipe on
+        an unsupported host. Removed the in-tree configure/make + the 2.7 GB
+        `third-party/qemu` submodule build from the dev flow; qemu version lives
+        only in the index now. **Caught + fixed a real defect:** the nros1
+        prebuilt lacked `--enable-slirp`, so `-netdev user` (every networked
+        QEMU test) failed — rebuilt as nros2 with slirp matching the old recipe's
+        flags. Validated: fetch → `build/qemu`, slirp accepted, mps2-an385
+        present, same patches branch.
+  - [ ] **`just zenohd setup` → `nros setup`** (small follow-up): blocked only by
+        a layout nit — the harness reads `build/zenohd/zenohd` (flat) but the
+        store/prebuilt is `<prefix>/bin/zenohd`. Needs either a `build/zenohd/bin`
+        entry in the harness chain or a flat zenohd layout. Low value (zenohd is
+        also the Method-A host-router path via `nros deploy`).
 - [x] **187.7 — License gates.** `nros doctor` reads the index's `[gated.*]`
       (NVIDIA SPE, ARM FVP) and reports each: `[OK]` env→dir resolves, `[--]`
       unset (informational — not targeting that board), `[!!]` set-but-missing
