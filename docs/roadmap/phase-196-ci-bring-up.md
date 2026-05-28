@@ -1,0 +1,157 @@
+# Phase 196 — CI bring-up + hardening for nano-ros
+
+**Goal.** Give nano-ros a reliable, **live-validated** CI surface. Today CI is
+thin and partly broken: the root `ci.yml` only fans out one crate on one target,
+`zephyr-dual-line.yml` had never run live (7 stacked bring-up bugs), and several
+workflows assume host state (submodules, ROS, SDKs) the GitHub runners don't
+have. This phase finishes the Zephyr dual-line bring-up, audits the other
+workflows for the same class of gaps, and codifies the provisioning conventions
+so a new workflow works on its first push.
+
+**Status.** In progress (2026-05-28). `zephyr-dual-line` setup + most build
+stages fixed and validated by repeated `workflow_dispatch` runs; one product
+skew (codegen CLI) remains, owned by Phase 195. The broader audit/codification
+items are proposed.
+
+**Priority.** P2 — no product capability depends on it, but green CI is the gate
+for trusting every other phase's "verified" claim, and broken-by-default
+workflows train contributors to ignore CI.
+
+**Depends on.** Phase 180 (the dual-line workflow + recipes), Phase 195 (the
+in-flight `nros codegen` CLI migration — the one open item rides on it).
+
+---
+
+## Background — the dual-line bring-up (what this phase already did)
+
+`zephyr-dual-line.yml` (Phase 180.A Task 10) shipped CI-only, explicitly **never
+run live**. The first live runs failed 100%, in stacked layers (each CI pass
+≈8–16 min revealed the next). All landed on `feature/phase-172`:
+
+1. **Workspace created inside the SDK dir.** `WORKSPACE_DIR` was relative;
+   `install_sdk` `cd`s into the SDK and never returns, so the later relative
+   `cd "$WORKSPACE_DIR"` landed in `scripts/zephyr/sdk/…`. Only triggers on a
+   fresh install (SDK build runs) — why local cached-SDK runs passed.
+   Fix: normalize `WORKSPACE_DIR` to absolute while cwd is the repo root
+   (`scripts/zephyr/setup.sh`).
+2. **`cortex-a9-rust-patch.sh` hard-fails on 4.4.** Zephyr 4.4 relocated the
+   Zynq-7000 SoC (`soc/xlnx/zynq7000/xc7zxxxs/soc.c`). Fix: gate the patch to the
+   3.7 manifest in `setup.sh`; make the patch version-tolerant (missing SoC →
+   warn+skip, not `exit 1`).
+3. **Stray committed `zephyr-workspace` symlink** (→ `../nano-ros-workspace`,
+   broken on CI) — `mkdir -p` errors on a non-dir. Untracked it (it was already
+   gitignored); guarded the mkdir with `[ -d ] ||`.
+4. **Zephyr 4.4 needs Python ≥3.12.** `provision-py312-venv.sh` requires `uv`
+   (no fallback); runner lacked it. Fix: `astral-sh/setup-uv@v5` step.
+5. **Submodules not initialized + a needless XRCE-agent build.**
+   `actions/checkout` inits no submodules; the 3.7 cyclone patches need
+   `third-party/dds/cyclonedds`, the zenoh build needs
+   `packages/zpico/zpico-sys/zenoh-pico`, and the setup recipe's common tail ran
+   `just xrce setup` (a Fast-DDS superbuild) on every job though the workflow
+   only builds zenoh. Fix: init just the needed submodules; gate the agent build
+   behind `NROS_ZEPHYR_SKIP_XRCE_AGENT` (set workflow-wide).
+6. **`packages/codegen` submodule not initialized** — `build-one` builds the
+   host codegen tool from it. Added to the init step.
+7. **No ROS 2 on the runner.** The interface codegen resolves `std_msgs`'s
+   `msg/*.msg` via `AMENT_PREFIX_PATH` from a sourced ROS 2. Fix: jammy runner
+   (Humble baseline) + `ros-tooling/setup-ros@v0.7` + `source
+   /opt/ros/humble/setup.bash` before each build.
+
+Result: setup passes on **both lines**; builds reach the interface codegen.
+
+---
+
+## Work Items
+
+### 196.1 — [open, coordinate with Phase 195] Finish the dual-line build: codegen CLI skew
+The build now fails at the codegen call:
+`nros-codegen failed for std_msgs (exit 2): error: unexpected argument '--args-file'`.
+The codegen CLI moved to a `nros codegen` subcommand (Phase 195 `27e9be2`/
+`07e3339`, "make `nros codegen` canonical") and 195.D switched in-tree
+consumers — but **`zephyr/cmake/nros_generate_interfaces.cmake` still invokes
+`nros --args-file …` without the `codegen` subcommand** (lines 305/308). Two
+coupled facts:
+- the cmake consumer was missed by the 195.D consumer-switch;
+- the `packages/codegen` submodule pointer is **drifting** (superproject records
+  `624e5bc6`, a local working tree sat at `860f301`).
+
+- [ ] Update the Zephyr cmake to the canonical CLI (`nros codegen --args-file …`
+      / `nros codegen --language cpp --args-file …`) once Phase 195's CLI is
+      final. One-liner, but do it against the settled CLI + a consistent
+      submodule pointer — not while both are moving.
+- [ ] Reconcile the `packages/codegen` submodule pointer (record the commit whose
+      `nros` matches the cmake invocation; ensure it's pushed first).
+
+### 196.2 — [P2] `nros codegen` consumer-coverage check
+195.D switched consumers to `nros codegen` but missed the Zephyr cmake (196.1).
+Add a guard so this can't silently recur: a check (lint or test) that every
+in-tree codegen invocation uses the canonical `nros codegen` form — grep CMake
+modules / build.rs / just recipes for the old `nros --args-file` / `nros
+generate` / `nros-codegen` shapes, fail if any remain.
+
+**Files**: `zephyr/cmake/nros_generate_interfaces.cmake`,
+`packages/**/CMakeLists.txt`, `just/*.just`, `scripts/**`.
+
+### 196.3 — [P2] Audit the other workflows for the same gap class
+The dual-line bugs (host assumes: submodules, ROS, SDK, Python, runner OS) are
+generic. Audit each workflow with a fresh-runner lens; each must be live-run
+once before being trusted:
+- [ ] `ci.yml` — currently fans out **one** crate (`nros-log`) on **one** target
+      and only triggers on `nros-log`/`Cargo.*` paths. It is not a meaningful
+      "CI". Decide its real scope (workspace check/clippy/test matrix? the
+      `just ci` surface?) and broaden it.
+- [ ] `deploy-book.yml` — already deliberately non-recursive on submodules
+      (documented); confirm it still builds.
+- [ ] `sdk-index-gate.yml` — validates `nros-sdk-index.toml`; confirm it covers
+      the new `[tool.*]`/`[rmw.*]` (Phase 191.6) entries.
+- [ ] `zephyr-dual-line.yml` — finish 196.1, then add SDK/workspace caching
+      (each job currently re-installs the ~1 GB Zephyr SDK + west-updates from
+      scratch; cache `scripts/zephyr/sdk` + the workspace).
+
+### 196.4 — [P2] Codify the CI provisioning conventions
+Write the bring-up patterns down so new workflows work first-try (a short
+`docs/development/ci-conventions.md` + reusable composite action / step
+snippets):
+- minimal submodule init (`git submodule update --init --recursive <paths>`),
+  never recursive-all (platform/RTOS submodules are large + fork-pinned);
+- ROS provisioning (jammy + `setup-ros` + `source` for AMENT-resolved codegen);
+- Python 3.12 via `uv` for the Zephyr 4.4 line;
+- runner OS choice (Humble ⇒ jammy `ubuntu-22.04`);
+- the `NROS_ZEPHYR_SKIP_XRCE_AGENT` knob + when RMW-specific host tools are
+  actually needed;
+- **the rule: a new workflow MUST be `workflow_dispatch`-validated on a branch
+  before its `paths:` make it fire on every push.**
+
+### 196.5 — [P3] Workflow trigger hygiene
+`zephyr-dual-line` (and others) trigger on `packages/**` — nearly every push.
+Combined with a broken workflow, that's constant red. Once green, keep broad
+triggers (core changes do affect Zephyr), but ensure `concurrency:
+cancel-in-progress` (already set) and consider path-narrowing where a workflow
+genuinely doesn't depend on a subtree.
+
+---
+
+## Acceptance criteria
+- [ ] `zephyr-dual-line` is green end-to-end on both lines (196.1).
+- [ ] A codegen-consumer check fails on a stray `nros --args-file` / legacy form
+      (196.2).
+- [ ] Every `.github/workflows/*.yml` has had ≥1 successful live run on the
+      current `main` (or a tracking branch), recorded here.
+- [ ] `ci.yml` runs a meaningful workspace check, not a single-crate stub.
+- [ ] `docs/development/ci-conventions.md` exists and the dual-line + ci
+      workflows follow it.
+
+## Notes
+- **Lesson (the expensive one):** a workflow that "has NOT been validated by a
+  live GitHub Actions run" (its own header) is effectively broken. Validate via
+  `gh workflow run --ref <branch>` before merging — the 7 dual-line layers were
+  all first-run-only failures invisible to local runs (cached SDK, pre-init'd
+  submodules, sourced ROS, dev symlinks).
+- **Push/dispatch race seen during bring-up:** a `git push` that was rejected
+  (branch behind) followed by `gh workflow run` dispatched the *stale* tip, so a
+  "fixed" run silently re-ran the old code. Always confirm the push landed
+  (`git fetch` + check the ref/headSha) before dispatching.
+- The dual-line fixes live in `scripts/zephyr/setup.sh`,
+  `scripts/zephyr/cortex-a9-rust-patch.sh`, `just/zephyr.just`,
+  `.github/workflows/zephyr-dual-line.yml`, and the untracked `zephyr-workspace`
+  symlink — all on `feature/phase-172`.
