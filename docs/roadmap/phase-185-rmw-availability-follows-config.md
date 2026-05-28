@@ -190,9 +190,12 @@ embedded Cyclone test skipped and how to enable it.
 - `book/src/` Cyclone/RMW page (one line: embedded Cyclone availability follows
   the tier; no per-user import step)
 
-- [ ] `just cyclonedds doctor` lists each embedded Cyclone install's status.
-- [ ] A skipped embedded-Cyclone test's `skip!` message names the provisioning
-      command/tier.
+- [x] `just cyclonedds doctor` lists each embedded Cyclone install's status
+      (report-only; absence ≠ `missing`) with the provisioning command.
+- [x] The freertos test's `skip!` message already names `just freertos
+      build-fixtures` — accurate now that build-fixtures auto-provisions (185.1).
+- [ ] `book/src/` RMW page one-liner: embedded Cyclone availability follows the
+      tier; no per-user import step.
 
 ## Acceptance
 
