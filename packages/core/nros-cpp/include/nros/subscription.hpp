@@ -89,6 +89,35 @@ template <typename M> class Subscription {
         return Result::success();
     }
 
+    /// Try to receive raw CDR data **plus the sample's wire attachment**
+    /// (non-blocking) — the C++ poll-side analog of the Rust
+    /// `node.subscription(t).generic(..).message_info()` builder
+    /// (Phase 189.M3.4b). The attachment carries out-of-band tags such as a
+    /// cross-RMW bridge's `bridge_origin`; `out_att_len` is 0 when the sample
+    /// carried none.
+    ///
+    /// @param buf          Buffer to receive CDR payload.
+    /// @param capacity     Size of `buf`.
+    /// @param out_len      Receives payload length (0 if no data).
+    /// @param att          Buffer to receive the attachment.
+    /// @param att_capacity Size of `att`.
+    /// @param out_att_len  Receives attachment length (0 if none).
+    /// @return Result::success() if a sample was received; ErrorCode::TryAgain
+    ///         if none is available; NotInitialized / FFI error otherwise.
+    Result try_recv_raw_with_attachment(uint8_t* buf, size_t capacity, size_t& out_len,
+                                        uint8_t* att, size_t att_capacity, size_t& out_att_len) {
+        if (!initialized_) {
+            out_len = 0;
+            out_att_len = 0;
+            return Result(ErrorCode::NotInitialized);
+        }
+        nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw_with_attachment(
+            storage_, buf, capacity, &out_len, att, att_capacity, &out_att_len);
+        if (ret != 0) return Result(ret);
+        if (out_len == 0) return Result(ErrorCode::TryAgain);
+        return Result::success();
+    }
+
     // ====================================================================
     // Phase 124.A.7 — zero-copy receive (borrow / release)
     // ====================================================================
