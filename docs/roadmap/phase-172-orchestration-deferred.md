@@ -8,12 +8,33 @@ checked `nros-plan.json` → generated per-board binary, verified across
 9 boards. This phase organizes the remaining work into **four parallel
 work groups** (see below).
 
-**Status.** Groups 1–4 = **completed planning foundation** (L, M, J,
-K.1–K.6, N, B, C, G, A, H, I, D, F). **Group 5 (revised deployment model)
-is now the single active direction** (2026-05-28) — other tracks paused
-while it lands. **No backward compatibility:** Group 5 *replaces* the
-generated-`main` path, the flag-driven `nros build`, and the per-package
-`system nros.toml`; superseded code is deleted, not kept alongside.
+**Status (2026-05-28).** Groups 1–4 = **completed planning foundation** (L, M,
+J, K.1–K.6, N, B, C, G, A, H, I, D, F). **Group 5 (revised deployment model)
+is largely landed** and remains the single active direction. Done: the
+two-form entry lib (WP-B — compiled `.a`+header / source crate+CMake, C ABI,
+config override, RMW-set check, multi-domain session opening); the root
+`nros.toml` SSOT + `nros deploy` command-runner + scaffolder + doctor pin-check
+(WP-A); **the flip** — entry lib generalized to *every* non-bridge platform,
+`render_main`/`EntryKind`-main emitter deleted, dead `SystemConfig` retired; and
+**all three "no-compat" replacements have executed** — the generated-`main` path
+(→ entry lib), the flag-driven `nros build --launch/--system-plan` (→ `nros
+build|deploy <name>`, retired `01c8512`), and the per-package
+`system nros.toml` triple/board reader (retired) are *deleted*, not kept
+alongside. The **`self` model is proven end-to-end on QEMU/native**
+(`nros deploy native` builds + boots from one root file).
+
+**Remaining (the gap between "designed/structural" and "proven"):**
+- **W.1** — implement the Cargo-style manifest fold (design canonical; loader +
+  walk-up resolver + `component_nros.toml`→`[component]`). *Highest leverage —
+  removes the last config footgun.*
+- **W.3** — `[component]` UX (`#[serde(default)]` overrides; `nros new` emits it;
+  `metadata --build` derives linkage). Pairs with W.1.
+- **W.4** — one real **vendor-lib** (Orin link) + one real **vendor-module**
+  (Zephyr `west` / PX4-SITL) build. Today vendor models are template + dry-run
+  only; nothing past `self`/QEMU has a real build.
+- **172.K.5** — per-node `create_node_on` bridge/multi-domain routing (the
+  `nros check` warning guards it meanwhile).
+- **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
 
 **Priority.** P2 — none block the MVP workflow; each is an
 ergonomic or capability upgrade on top of a working pipeline.
