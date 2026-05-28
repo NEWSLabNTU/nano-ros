@@ -2,7 +2,7 @@
  * Copyright (c) 2026, NEWSLab NTU.
  * SPDX-License-Identifier: EPL-2.0 OR BSD-3-Clause
  *
- * Phase 189.G — POSIX symbols Cyclone DDS' `posix` ddsrt backend
+ * Phase 190.G — POSIX symbols Cyclone DDS' `posix` ddsrt backend
  * (src/ddsrt/src/sockets/posix/socket.c + threads/posix/threads.c, both kept
  * in the Zephyr build) references but that the Zephyr POSIX layer does not
  * provide on every line — notably the 3.5/3.7-LTS profile used by the

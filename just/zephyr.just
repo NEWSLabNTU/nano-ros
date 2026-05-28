@@ -845,11 +845,11 @@ build-fvp-aemv8r-cyclonedds:
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin"
     echo "Phase 117.14 FVP AEMv8-R nros-cpp + codegen build smoke OK"
 
-# Phase 189.D — FVP AEMv8-R Cyclone C++ build with the FULL libstdc++ profile
+# Phase 190.D — FVP AEMv8-R Cyclone C++ build with the FULL libstdc++ profile
 # (CONFIG_NEWLIB_LIBC + CONFIG_GLIBCXX_LIBCPP), mirroring the Autoware
 # safety-island actuation consumer. The default build-fvp-aemv8r-cyclonedds
 # above uses Zephyr's minimal libcpp, which never touches the cxx-compat-vs-
-# real-libstdc++ passthrough (189.A/C), so it cannot catch the FVP-consumer
+# real-libstdc++ passthrough (190.A/C), so it cannot catch the FVP-consumer
 # regressions. This guard does. Build-only; skips cleanly without the
 # workspace/SDK like its sibling.
 build-fvp-aemv8r-cyclonedds-full-libcpp:
@@ -888,7 +888,7 @@ build-fvp-aemv8r-cyclonedds-full-libcpp:
         nano-ros/examples/zephyr/cpp/cyclonedds/talker-aemv8r \
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
            -DEXTRA_CONF_FILE="$overlay"
-    echo "Phase 189.D FVP AEMv8-R full-libstdc++ Cyclone build guard OK"
+    echo "Phase 190.D FVP AEMv8-R full-libstdc++ Cyclone build guard OK"
 
 # Phase 117.13 — Zephyr build smoke for the NXP X-S32Z270-DC (DC2)
 # RTU0 Cortex-R52 target (Phase 117.11's reference platform). Reuses
