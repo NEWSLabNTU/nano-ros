@@ -30,11 +30,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # — callers point CMAKE_PREFIX_PATH at its install prefix.
 
 # ---- Dependencies ----------------------------------------------------------
-# Cyclone DDS itself: built from the pinned submodule by
-# `just cyclonedds setup`, installed into `build/install/`. Downstream
-# consumers call cmake with `-DCMAKE_PREFIX_PATH=<repo>/build/install`
-# which puts the Cyclone config on the search path.
-find_package(CycloneDDS REQUIRED CONFIG)
+# Cyclone DDS itself. Phase 186 — resolved via nros_provide_cyclonedds():
+#   prebuilt install (find_package, on CMAKE_PREFIX_PATH / CycloneDDS_DIR) →
+#   else self-provision from source (CYCLONEDDS_SOURCE_DIR; the project root
+#   defaults it to the pinned third-party submodule, sccache-accelerated).
+# So a bare cmake build needs no `just cyclonedds` pre-step. Sets
+# NROS_CYCLONEDDS_PROVENANCE (target|find_package|source).
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ProvideCycloneDDS.cmake")
+nros_provide_cyclonedds()
 
 # nros-rmw-cffi C ABI vtable + return codes + entity structs. Headers
 # only — the backend implements the vtable and registers it via
@@ -123,10 +126,15 @@ endif()
 # Propagate Cyclone's install lib dir as a build-tree rpath so test
 # binaries find `libddsc.so` from `build/install/lib` instead of any
 # system-installed `ros-humble-cyclonedds` that ld.so happens to see
-# first.
-get_target_property(_ddsc_loc CycloneDDS::ddsc IMPORTED_LOCATION_RELEASE)
-if(NOT _ddsc_loc)
-    get_target_property(_ddsc_loc CycloneDDS::ddsc IMPORTED_LOCATION)
+# first. Only meaningful for the find_package path (an imported shared
+# `libddsc.so`); a self-provisioned source build links a static `ddsc`
+# in-tree, so there is no external `.so` to rpath. Phase 186.
+set(_ddsc_loc "")
+if(NROS_CYCLONEDDS_PROVENANCE STREQUAL "find_package")
+    get_target_property(_ddsc_loc CycloneDDS::ddsc IMPORTED_LOCATION_RELEASE)
+    if(NOT _ddsc_loc)
+        get_target_property(_ddsc_loc CycloneDDS::ddsc IMPORTED_LOCATION)
+    endif()
 endif()
 if(_ddsc_loc)
     get_filename_component(_ddsc_libdir "${_ddsc_loc}" DIRECTORY)
