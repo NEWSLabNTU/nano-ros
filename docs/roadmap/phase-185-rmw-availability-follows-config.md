@@ -6,7 +6,11 @@ FreeRTOS / ThreadX build must not require the user (or CI) to run an out-of-band
 `just cyclonedds <rtos>-cross-probe` first. The build system provisions the
 backend's dependency; the user only states intent in `nros.toml` / `-DNROS_RMW`.
 
-**Status.** Not Started.
+**Status.** Complete (2026-05-28). 185.1–.5 done: freertos + threadx-rv64
+`build-fixtures` auto-provision the cross Cyclone install; `test-all` filters
+embedded-Cyclone tests out when out-of-tier (skipped, not failed); tiering
+documented; cross-probe scripts deduped behind `cross-build-ddsc.sh`; doctor +
+book note added. Verified: freertos Cyclone e2e tests PASS.
 
 **Priority.** P2 — not an MVP blocker (zenoh + XRCE already satisfy the contract
 on every target; native + Zephyr Cyclone already do too), but it is a real
@@ -204,8 +208,8 @@ embedded Cyclone test skipped and how to enable it.
       (report-only; absence ≠ `missing`) with the provisioning command.
 - [x] The freertos test's `skip!` message already names `just freertos
       build-fixtures` — accurate now that build-fixtures auto-provisions (185.1).
-- [ ] `book/src/` RMW page one-liner: embedded Cyclone availability follows the
-      tier; no per-user import step.
+- [x] `book/src/user-guide/rmw-backends.md`: embedded Cyclone availability
+      follows the SDK tier; no per-user import step (links sdk-tiers.md + doctor).
 
 ## Acceptance
 
