@@ -115,13 +115,18 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         `nros-v*` tags → `nros-<host>.tar.zst` (+ `.sha256`) → Release assets;
         host names match `SdkIndex::host_key()`. The PyPI wheel workflow
         (`release.yml`) is guarded off for `nros-v*` tags.
-  - [ ] `nros-sdk-index.toml`: a `[tool.nros]` entry (single binary post-merge) —
-        `version` + per-host `dist` (pointing at the `nros-cli` repo's Releases)
-        + a `source` recipe (`cargo install --path`) fallback. Subject to the
-        existing `sdk-index-gate`.
-  - [ ] `install.sh` (`curl … | sh`, rustup model): detect host, read the pinned
-        version, download + verify + install `nros` to `$NROS_HOME/bin` (or
-        `~/.local/bin`), print PATH guidance. No cargo / no `just` / no checkout.
+  - [x] **`[tool.nros]` index entry** (DONE). `version = "0.2.0"` + a `source`
+        recipe (`git submodule update --init --recursive` + `cargo install --path
+        packages/nros-cli --root {prefix}` from the nros-cli repo). Per-host
+        `dist` (pointing at the **nros-cli** repo Releases, not nano-ros-sdk) is
+        added after the first `nros-v*` release is cut + gate-verified — until
+        then it falls back to the source recipe (the sanctioned "leave dist out
+        until seeded" pattern). Verified `nros setup --list` shows `nros 0.2.0`.
+  - [x] **`install.sh`** (DONE, in the nros-cli repo). `curl … | sh`: detects
+        host (matches `SdkIndex::host_key`), downloads `nros-<host>.tar.zst` +
+        `.sha256` from the nros-cli Releases (`nros-v<version>`), verifies, installs
+        to `$NROS_HOME/bin`, prints PATH guidance. No cargo/just/checkout.
+        (Activates once the first `nros-v*` release exists.)
   - [ ] `scripts/bootstrap.sh`: offer the prebuilt path alongside the existing
         rustup+just source path; default to prebuilt when a `dist` for the host
         exists.
