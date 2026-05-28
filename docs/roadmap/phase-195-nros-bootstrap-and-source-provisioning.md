@@ -8,9 +8,13 @@ data-driven** (the index carries `git`/`ref`/`dest`) so `nros setup` fetches
 board-scoped source from index data — never from a workspace path baked into the
 binary. Keep `nros` a **generic index executor** that knows no workspace layout.
 
-**Status.** Not started — design approved 2026-05-29 (review of the Phase 187
-setup workflow surfaced these as the unimplemented half of "replace `just
-setup`").
+**Status.** In progress (2026-05-29). Done: the `colcon-nano-ros` → `nros-cli`
+repo rename; `nros codegen` merge (195.A); **portable libc-only `nros`** (dropped
+the pyo3/libpython embedding — shells out to `play_launch_parser`);
+`release-binary.yml` (prebuilt per-host `nros` on `nros-v*` tags); **195.B**
+data-driven `[source.*]`; **195.D** consumer switch to `nros codegen`. Remaining:
+the `[tool.nros]` index entry + `install.sh` + `bootstrap.sh` (195.A); 195.C
+layout decouple; 195.D crate deletion + cmake-copy dedup.
 
 **Priority.** P2 — first-image onboarding UX; completes the Phase 187 user-path
 promise. No MVP capability depends on it.
@@ -58,12 +62,14 @@ is what keeps `nros` workspace-agnostic and the layout fixable.
 Three layers, each strictly downstream of the previous (the cycle-break):
 
 1. **Bootstrap installer** (tiny, dep-free, rustup model): detect host×arch →
-   download the **prebuilt `nros`** from `nano-ros-sdk` Releases → drop on PATH.
-   `nros` is just another host artifact in `build-tool.yml`'s matrix
-   (`nros-<host>.tar.zst`), pinned in the index like any tool → the same
-   bump→release→sha gate guarantees its availability (no dangling version). The
-   contributor `cargo install --path` path stays and yields the identical
-   binary.
+   download the **prebuilt `nros`** from the **`nros-cli` repo's own Releases**
+   (`release-binary.yml`, `nros-<host>.tar.zst`) → drop on PATH. The binary is
+   **libc-only** (no libpython — launch parsing shells out to `play_launch_parser`),
+   so it runs anywhere. Pinned in the index `[tool.nros]` like any tool → the
+   bump→release→sha gate guarantees availability. The contributor
+   `cargo install --path` path stays and yields the identical binary. (Building
+   in the CLI's own repo, not `nano-ros-sdk`, keeps the tool decoupled from the
+   toolchain-asset repo it consumes.)
 2. **`nros setup <board>`** reads the committed index and installs board-scoped:
    `[tool.*]` → prebuilt host tools (done, 187); `[source.*]` → fetch from the
    new `git`/`ref`/`dest` fields into a store/vendor dir. The destination is
