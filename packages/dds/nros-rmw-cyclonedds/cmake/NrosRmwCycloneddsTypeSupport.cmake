@@ -52,15 +52,24 @@ endif()
 # Locate idlc — Cyclone exports it as `CycloneDDS::idlc` when it's
 # installed alongside ddsc.
 if(NOT TARGET CycloneDDS::idlc)
+    # idlc is a HOST build tool (it runs on the build machine to emit C
+    # descriptors), so search the host even in a cross build —
+    # NO_CMAKE_FIND_ROOT_PATH ignores the toolchain's find-root mode
+    # (some set MODE_PROGRAM=ONLY, which would otherwise hide host idlc).
+    # Phase 186.3: a self-provisioned build with no `just` step resolves idlc
+    # from PATH (e.g. a ROS 2 install) or a pre-set IDLC_EXECUTABLE.
     find_program(IDLC_EXECUTABLE idlc
         HINTS
             "${CycloneDDS_DIR}/../../../bin"
             "${CMAKE_INSTALL_PREFIX}/bin"
             "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
-        DOC "Cyclone DDS IDL compiler")
+        NO_CMAKE_FIND_ROOT_PATH
+        DOC "Cyclone DDS IDL compiler (host tool)")
     if(NOT IDLC_EXECUTABLE)
         message(FATAL_ERROR
-            "idlc not found. Set IDLC_EXECUTABLE or run `just cyclonedds setup`.")
+            "idlc (Cyclone DDS IDL compiler, a host tool) not found.\n"
+            "  Put it on PATH (e.g. a ROS 2 / CycloneDDS install), or pass "
+            "-DIDLC_EXECUTABLE=<path-to-idlc>.")
     endif()
 endif()
 
@@ -108,7 +117,8 @@ if(NOT NROS_RMW_CYCLONEDDS_IDLC OR NOT EXISTS "${NROS_RMW_CYCLONEDDS_IDLC}")
                 HINTS
                     "${CycloneDDS_DIR}/../../../bin"
                     "${CMAKE_INSTALL_PREFIX}/bin"
-                    "$ENV{CYCLONEDDS_INSTALL_DIR}/bin")
+                    "$ENV{CYCLONEDDS_INSTALL_DIR}/bin"
+                NO_CMAKE_FIND_ROOT_PATH)
             if(_idlc_found)
                 set(_idlc_loc "${_idlc_found}")
             endif()
