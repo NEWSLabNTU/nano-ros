@@ -153,6 +153,13 @@ impl Session for MockSession {
     type ServiceServerHandle = MockServiceServer;
     type ServiceClientHandle = MockServiceClient;
 
+    /// The mock (test) backend supports every QoS policy, so QoS validation
+    /// never rejects a test entity (the default `CORE` mask can't even admit
+    /// the default profile's liveliness bit).
+    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
+        nros_rmw::QosPolicyMask(u32::MAX)
+    }
+
     fn create_publisher(
         &mut self,
         _topic: &TopicInfo,
