@@ -20,6 +20,8 @@ Only **target-agnostic host tools** — the binary distribution matrix is just
 | `riscv-none-elf-gcc` | repackage upstream | GPL ✓ |
 | `zenohd` | `cargo install` from zenoh 1.7.2 | Apache/EPL ✓ |
 | `openocd` | build from upstream | GPL ✓ |
+| `xrce-agent` | build Micro-XRCE-DDS-Agent (eProsima, superbuild) — the rmw-xrce daemon | Apache ✓ |
+| `cyclonedds` | build `idlc` + `libddsc` from the NEWSLabNTU fork — the rmw-cyclonedds host tools | EPL/EDL ✓ |
 
 Libraries + apps (FreeRTOS, lwIP, ThreadX, zenoh-pico, the user's nodes) are
 **not** hosted — they build with the app for the user's chosen target. Vendor

@@ -70,8 +70,12 @@ upstream = "v2.4.3" # = source.ref (eProsima release tag)
 [tool.xrce-agent.source]
 git = "https://github.com/eProsima/Micro-XRCE-DDS-Agent"
 ref = "v2.4.3"
-configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_EXECUTABLE=ON -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF"
-install = "cmake --build build --parallel $(nproc) --target install"
+configure = "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_EXECUTABLE=ON -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF"
+# Superbuild: no top-level `install` target + the binary's RUNPATH is absolute,
+# so build then assemble a relocatable prefix (real binary + bundled libs + a
+# wrapper that points LD/DYLD_LIBRARY_PATH at ../lib). Mirrors
+# nano-ros-sdk/scripts/build-xrce-agent.sh.
+install = '''cmake --build build --parallel $(nproc) && mkdir -p {prefix}/bin {prefix}/lib && cp -a build/MicroXRCEAgent {prefix}/lib/MicroXRCEAgent.real && cp -a build/libmicroxrcedds_agent.so* {prefix}/lib/ && cp -a build/temp_install/fastrtps-*/lib/libfastrtps.so* {prefix}/lib/ && cp -a build/temp_install/fastcdr-*/lib/libfastcdr.so* {prefix}/lib/ && printf '#!/bin/sh\nh="$(cd "$(dirname "$0")" && pwd)"\nLD_LIBRARY_PATH="$h/../lib:$LD_LIBRARY_PATH" DYLD_LIBRARY_PATH="$h/../lib:$DYLD_LIBRARY_PATH" exec "$h/../lib/MicroXRCEAgent.real" "$@"\n' > {prefix}/bin/MicroXRCEAgent && chmod +x {prefix}/bin/MicroXRCEAgent'''
 
 # Cyclone DDS host tools — `idlc` (descriptor codegen) + `libddsc` for the
 # rmw-cyclonedds path (native + the embedded cross-ddsc base). Built from the
