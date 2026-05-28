@@ -77,7 +77,7 @@ jobs:
       # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
       # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
       - name: Init Zephyr-relevant submodules
-        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
+        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico packages/codegen
 
       - name: Install just
         uses: extractions/setup-just@v2
@@ -115,7 +115,7 @@ jobs:
       # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
       # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
       - name: Init Zephyr-relevant submodules
-        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
+        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico packages/codegen
 
       - name: Install just
         uses: extractions/setup-just@v2
@@ -151,7 +151,7 @@ jobs:
       # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
       # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
       - name: Init Zephyr-relevant submodules
-        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
+        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico packages/codegen
 
       - name: Install just
         uses: extractions/setup-just@v2
