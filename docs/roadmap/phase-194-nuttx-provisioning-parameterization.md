@@ -78,10 +78,28 @@ in the index); the kernel source-builds against it.
   its `nuttx-config/defconfig`, and the cargo target triple — reusing the
   arch-agnostic platform port + the shared `build-nuttx.sh`/FFI. `nros setup`
   ships that arch's cross-gcc.
-- [ ] **194.3b — Prove with a real 2nd-arch board.** A riscv (or other) NuttX
-      board end-to-end. Needs that arch's NuttX defconfig + cross-toolchain
-      (`riscv-none-elf-gcc` not yet provisioned here) — a NuttX-on-new-arch
-      bring-up, tracked separately.
+- [~] **194.3b — Prove with a real 2nd-arch board.** PARTIAL (2026-05-29):
+      - ✅ `nros setup --tool riscv-none-elf-gcc` installs the xPack riscv
+        toolchain (proves the cross-toolchain provisioning scales by arch).
+      - ✅ NuttX **compiles for riscv** with that toolchain — `rv-virt:flats`
+        configure + `make` reached riscv object compilation + linker-script gen
+        (so `NUTTX_CROSS` / the arch-agnostic flow work on a 2nd arch).
+      - ⛔ The rv-virt **export** is blocked by `genromfs` (the *stock* rv-virt
+        board ships `etc/init.d/rcS` → `make` needs genromfs unconditionally;
+        not installable here — no sudo, and building it from an external repo is
+        untrusted-code). A **nano-ros riscv defconfig would avoid it** — confirmed:
+        the arm nano-ros defconfig has no board etc-ROMFS, so `just nuttx
+        build-kernel` (arm) needs no genromfs.
+      - ⏳ Remaining for a full proof: a nano-ros `nros-board-nuttx-qemu-riscv`
+        crate (custom defconfig avoiding genromfs + the riscv FFI link: entry,
+        `NUTTX_VECTORTAB_OBJ=""`, lib group, target triple) + a riscv example.
+- [ ] **194.5 — `build-nuttx.sh` marker is board-blind (bug found in 194.3b).**
+      The `.nros-nuttx-build-head` marker keys only on the NuttX submodule HEAD,
+      not the board/defconfig. Switching the configured board (or any config
+      divergence) without a HEAD change makes `build-nuttx.sh` **skip the
+      reconfigure** and build the stale/wrong config. For multi-board NuttX the
+      marker must also key on the board id / defconfig hash (or always
+      `olddefconfig` against the board's defconfig).
 - [ ] **194.4 (optional) — Self-provision the export via CMake.** Wire `make
       export` (`build-nuttx.sh`) as a **marker-guarded** (`.nros-nuttx-build-head`),
       **shared** (build-once-link-many) CMake `ExternalProject`/custom-target that
