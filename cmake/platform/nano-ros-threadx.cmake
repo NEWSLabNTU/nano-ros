@@ -169,6 +169,21 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds"
         CACHE STRING "" FORCE)
 endif()
 
+# Phase 186.6.3 — threadx-linux is host-linked (x86): ThreadX runs as a Linux
+# process and Cyclone uses the *host posix* ddsrt (not the rv64 WITH_THREADX
+# port). So self-provision with the same host trims as native (nano-ros-posix.cmake):
+# ENABLE_*/SHM off + a static ddsc linked into the app — no build/install, no
+# runtime libddsc.so / system-substitution. No WITH_THREADX, no cross includes.
+if(NANO_ROS_RMW STREQUAL "cyclonedds"
+   AND NANO_ROS_BOARD STREQUAL "threadx-linux"
+   AND NOT DEFINED NROS_CYCLONE_THREADX_FLAGS_STAGED)
+    set(NROS_CYCLONE_THREADX_FLAGS_STAGED TRUE)
+    set(ENABLE_SECURITY OFF CACHE BOOL "Cyclone: no DDS Security (Phase 186)" FORCE)
+    set(ENABLE_SSL OFF CACHE BOOL "Cyclone: no TLS (Phase 186)" FORCE)
+    set(ENABLE_SHM OFF CACHE BOOL "Cyclone: no Iceoryx SHM (Phase 186)" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Cyclone: static ddsc for self-provision (Phase 186)" FORCE)
+endif()
+
 # ---------------------------------------------------------------------------
 # Native-C platform shim (`packages/core/nros-platform-threadx`). The
 # board overlay declared `threadx_kernel` (+ `netxduo` or `nsos_netx`)

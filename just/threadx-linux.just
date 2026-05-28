@@ -106,10 +106,14 @@ build-fixture-extras:
     # zenoh pass per the note above) is injected via NROS_CMAKE_EXTRA_DEFS and
     # reused for the gated cyclone pass; per-cell RMW + build-<rmw>/ subdir come
     # from the manifest.
-    export NROS_CMAKE_EXTRA_DEFS="-DNANO_ROS_PLATFORM=threadx_linux -DTHREADX_DIR=$threadx_dir -DNSOS_NETX_DIR=$nsos_netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DTHREADX_APP_DEFINE=$app_define -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$cyclone_prefix -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$msg_to_idl -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    # Phase 186.6.3 — self-provision Cyclone from source (static host ddsc via
+    # nano-ros-threadx.cmake's threadx-linux branch); DISABLE_FIND_PACKAGE forces
+    # the pinned source over any system /opt/ros Cyclone. No build/install /
+    # `just cyclonedds setup` needed; idlc resolves host-side (186.3).
+    export NROS_CMAKE_EXTRA_DEFS="-DNANO_ROS_PLATFORM=threadx_linux -DTHREADX_DIR=$threadx_dir -DNSOS_NETX_DIR=$nsos_netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DTHREADX_APP_DEFINE=$app_define -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$msg_to_idl -D_NANO_ROS_CODEGEN_TOOL=$codegen"
     bash scripts/build/fixtures-build.sh threadx-linux c zenoh
     bash scripts/build/fixtures-build.sh threadx-linux cpp zenoh
-    if [ -f build/install/lib/libddsc.so ] && [ -x build/install/bin/idlc ]; then
+    if command -v idlc >/dev/null 2>&1 || [ -x build/install/bin/idlc ]; then
         # Phase 177.38 — bake this platform's Cyclone role-set onto domain 61
         # (C/C++ → cmake -DNROS_DOMAIN_ID via NanoRosConfig.cmake) so its host
         # RTPS ports stay disjoint from other host Cyclone fixtures. Only the
@@ -121,7 +125,7 @@ build-fixture-extras:
         NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=61" \
             bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
     else
-        echo "  → threadx-linux c/cpp cyclonedds skipped (run: just cyclonedds setup)"
+        echo "  → threadx-linux c/cpp cyclonedds skipped (idlc not found on PATH — install a CycloneDDS/ROS 2 idlc, or set IDLC_EXECUTABLE)"
     fi
     unset NROS_CMAKE_EXTRA_DEFS
 
