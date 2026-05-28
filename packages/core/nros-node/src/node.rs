@@ -189,14 +189,19 @@ impl<'a> SubscriberOptions<'a> {
 
 impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
     /// Create a new node with the given configuration
-    pub fn new(config: NodeConfig) -> Self {
+    pub fn new(config: NodeConfig) -> Result<Self, NodeError> {
+        // Phase 192.1 — validate the name/namespace fit the bounded buffers
+        // instead of silently truncating (a truncated node identity mis-routes).
         let mut name = heapless::String::new();
-        let _ = name.push_str(config.name);
+        name.push_str(config.name)
+            .map_err(|_| NodeError::NameTooLong)?;
 
         let mut namespace = heapless::String::new();
-        let _ = namespace.push_str(config.namespace);
+        namespace
+            .push_str(config.namespace)
+            .map_err(|_| NodeError::NamespaceTooLong)?;
 
-        Self {
+        Ok(Self {
             name,
             namespace,
             domain_id: config.domain_id,
@@ -204,7 +209,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
             subscribers: Vec::new(),
             tx_buffer: [0u8; NODE_TX_BUF_LEN],
             rx_buffer: [0u8; NODE_RX_BUF_LEN],
-        }
+        })
     }
 
     /// Get the node name
@@ -222,15 +227,20 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
         self.domain_id
     }
 
-    /// Get the fully qualified node name
-    pub fn fully_qualified_name(&self) -> heapless::String<128> {
+    /// Get the fully qualified node name.
+    ///
+    /// Phase 192.1 — fallible: namespace (≤64) + `/` + name (≤64) can reach 129
+    /// bytes, one over the `String<128>` capacity, so a maxed name+namespace
+    /// would otherwise silently truncate the FQN.
+    pub fn fully_qualified_name(&self) -> Result<heapless::String<128>, NodeError> {
         let mut fqn = heapless::String::new();
-        let _ = fqn.push_str(&self.namespace);
+        fqn.push_str(&self.namespace)
+            .map_err(|_| NodeError::NamespaceTooLong)?;
         if !self.namespace.ends_with('/') {
-            let _ = fqn.push('/');
+            fqn.push('/').map_err(|_| NodeError::NamespaceTooLong)?;
         }
-        let _ = fqn.push_str(&self.name);
-        fqn
+        fqn.push_str(&self.name).map_err(|_| NodeError::NameTooLong)?;
+        Ok(fqn)
     }
 
     /// Create a publisher with the given options
@@ -360,7 +370,9 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
 
 impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Default for Node<MAX_PUBS, MAX_SUBS> {
     fn default() -> Self {
-        Self::new(NodeConfig::default())
+        // The default config name ("nros_node") + namespace ("/") are short
+        // literals that always fit the bounded buffers, so `new` can't fail here.
+        Self::new(NodeConfig::default()).expect("default NodeConfig fits the bounded name/namespace")
     }
 }
 
@@ -396,7 +408,7 @@ mod tests {
     #[test]
     fn test_node_creation() {
         let config = NodeConfig::new("test_node", "/test");
-        let node = Node::<4, 4>::new(config);
+        let node = Node::<4, 4>::new(config).unwrap();
 
         assert_eq!(node.name(), "test_node");
         assert_eq!(node.namespace(), "/test");
@@ -406,9 +418,12 @@ mod tests {
     #[test]
     fn test_fully_qualified_name() {
         let config = NodeConfig::new("my_node", "/my_ns");
-        let node = Node::<4, 4>::new(config);
+        let node = Node::<4, 4>::new(config).unwrap();
 
-        assert_eq!(node.fully_qualified_name().as_str(), "/my_ns/my_node");
+        assert_eq!(
+            node.fully_qualified_name().unwrap().as_str(),
+            "/my_ns/my_node"
+        );
     }
 
     #[test]

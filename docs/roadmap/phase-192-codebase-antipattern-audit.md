@@ -49,11 +49,18 @@ truncates** → wrong key expressions on the wire (silent mis-routing), not an e
       return `NodeError::TopicNameTooLong` on overflow instead of truncating —
       these are already `Result`-returning (zero ripple). Added `NodeError::{
       TopicNameTooLong,NameTooLong,NamespaceTooLong}`.
-- [ ] **Node name/namespace** (`Node::new` `:180,183`) + `fully_qualified_name`
-      (`:214-218`) — `Node::new` is infallible with ~28 call sites across
-      heapless/lifecycle/executor `Node` types; converting to `Result` is an
-      invasive API migration → deferred (coordinate on the shared branch; not done
-      surgically to avoid conflicts).
+- [x] **Node name/namespace + `fully_qualified_name` → `Result`** — done. The
+      earlier "~28 callers / invasive" was an over-count (the grep conflated the
+      heapless `Node`/`StandaloneNode` with `LifecyclePollingNode`, the executor
+      `Node`, and rclrs-example `Node`). The real heapless-`Node::new(config)`
+      callers are ~5, all test/bench (`node.rs` tests, `cdr-roundtrip-qemu`,
+      `wcet-cycles-qemu`); `fully_qualified_name` has 1 (a test). So:
+      `Node::new -> Result` (validates name/namespace → `NameTooLong`/
+      `NamespaceTooLong`), `fully_qualified_name -> Result` (namespace 64 + `/` +
+      name 64 = 129 > the `String<128>`), `Default` stays infallible
+      (`.expect("default … fits")`, the `"nros_node"`/`"/"` literals always fit),
+      callers updated with `.unwrap()`. `cargo check -p nros-node --tests` clean
+      under `-D warnings`.
 - [x] `lifecycle_services.rs` labels (`:87,109`) + the runtime `available_states`
       push (`:260`) — these take a fixed, closed set of short literals (always fit)
       and the builders are infallible (`-> MsgState`/`MsgTransition`, no `Result`),

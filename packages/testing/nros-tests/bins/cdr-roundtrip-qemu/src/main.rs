@@ -94,7 +94,7 @@ fn test_cdr_header() -> bool {
 /// Test Node API
 fn test_node_creation() -> bool {
     let config = NodeConfig::new("qemu_node", "/test");
-    let node = Node::<4, 4>::new(config);
+    let node = Node::<4, 4>::new(config).unwrap();
 
     node.name() == "qemu_node" && node.namespace() == "/test"
 }
