@@ -611,12 +611,30 @@ example migration (K), then the audit/docs (N).
               interfaces_absent_round_trips_empty_and_skips_serialization,
               interfaces_are_ethernet_wifi_only}` +
               `multi_homed_interfaces_emit_set_interfaces_call`.
-        - [ ] **Per-backend *wire* emission (the merge) — deferred.** Turning the NIC
-              list into actual middleware config (zenoh multiple listen/connect
-              endpoints + `scouting.multicast.interface`; Cyclone `<General><Interfaces>`
-              XML) needs a multi-endpoint `SessionSpec` (today carries one locator) and
-              a multi-NIC target to verify against. The schema + `set_interfaces` seam
-              are in place; this is the remaining substance.
+        - [ ] **Per-backend *wire* emission (the merge) — deferred.** The `interfaces`
+              list plumbs cleanly to a no-op `set_interfaces` seam but still changes no
+              backend's actual NIC binding. Three blockers, in order:
+              1. **Multi-endpoint `SessionSpec` (runtime, `nros`).** `SessionSpec::new(rmw,
+                 locator)` carries **one** locator; the generator emits one spec per
+                 `[[transport]]`. Multi-homing = one session listening/connecting on N
+                 NICs as one graph → `SessionSpec` must hold a list of endpoints and
+                 `open_multi` wire them. This is an `nros` runtime change, not codegen —
+                 the prerequisite for any real merge.
+              2. **Backend mapping (generator + RMW layer).**
+                 - *zenoh* — one `listen`/`connect` endpoint per NIC +
+                   `scouting.multicast.interface`. But nano-ros nodes are zenoh-**pico
+                   clients** with a single locator to the router, so node-level
+                   multi-listen is largely the router's concern → needs a decision on
+                   what (if anything) `interfaces` means for a pico client before any
+                   emission.
+                 - *Cyclone* — emit `<General><Interfaces>`. The real, meaningful case,
+                   but the generator emits **no** Cyclone config today (it lives in
+                   `session.cpp`'s `kEmbeddedCycloneConfig` / `CYCLONEDDS_URI` env) → needs
+                   a generator → Cyclone-config emission path.
+              3. **No multi-NIC target to verify.** Every board today has **one** NIC, so
+                 the merge can't be exercised end-to-end. A hosted multi-NIC Cyclone build
+                 is the first place this is both meaningful *and* testable — making Cyclone
+                 the only backend where finishing K.7 is worthwhile right now.
   - [x] **172.K.6 — drop the legacy arms + delete `config.toml`.** DONE
         2026-05-27. All 88 examples + 2 nros-bench fixtures on `nros.toml`
         (0 source `config.toml` repo-wide); legacy `[network]`/`[zenoh]`/
