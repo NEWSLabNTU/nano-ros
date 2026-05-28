@@ -120,9 +120,18 @@ exists in-repo (`nros-node` `links=`/`OUT_DIR` export).
 - `packages/boards/nros-board-threadx-qemu-riscv64/build.rs:37`, `nros-board-threadx/build.rs:64`
 - `packages/core/nros-cpp/CMakeLists.txt:125` (per-crate `DEFER` walk-up to root — comment/relocate to root)
 
-- [ ] Sibling-crate includes injected via `links=`+`cargo:include=` → `DEP_*`, or
-      `NROS_*_DIR` env from the recipe; `third-party` via `<SDK>_DIR`.
-- [ ] `git grep` for `../../../packages` / `../../drivers` in `build.rs` is clean.
+- [x] DONE. First-party sibling include/src dirs centralized in **just/sdk-env.just**
+      (the sanctioned home for repo-relative defaults) + read from env in build.rs
+      (env_path/`env::var`): NROS_PLATFORM_{CFFI_INCLUDE,FREERTOS_SRC,POSIX_SRC,
+      THREADX_SRC}, NROS_{C,CPP}_INCLUDE, NROS_LAN9118_LWIP_DIR, NROS_VIRTIO_NET_NETX_DIR;
+      third-party tband via **TBAND_DIR** (`<SDK>_DIR` convention). Covered
+      nros-board-{freertos,mps2-an385-freertos,nuttx-qemu-arm/nros-nuttx-ffi,
+      threadx-qemu-riscv64,threadx}, zpico-sys, logging-smoke-nuttx, the shared
+      `threadx_sources` helper, and nros-cpp's CMake DEFER (`${NANO_ROS_ROOT_DIR}`
+      set by the root CMakeLists instead of `../../..`). Verified end-to-end:
+      `just freertos build`, `just threadx_riscv64 build`, `just threadx_linux build`,
+      host `cargo check -p zpico-sys` + `-p nros-board-common`.
+- [x] `git grep` for `../../../packages` / `../../drivers` in `build.rs` is clean.
 
 ### 192.4 — [P2] Expose baked internals as env / `-D` / config
 Backends bake values the zenoh path makes tunable; defaults even disagree.
