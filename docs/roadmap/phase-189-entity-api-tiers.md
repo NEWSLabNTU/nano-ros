@@ -185,7 +185,10 @@ application code.
         The `sched_context` option would also be inert for C++ services (same
         poll-style/no-handle issue as M3.1). Deferred until that core work lands.
         Documented in
-        [`docs/design/service-qos-gap.md`](../design/service-qos-gap.md).
+        [`docs/design/service-qos-gap.md`](../design/service-qos-gap.md); the
+        fix is designed in
+        [`docs/design/service-qos.md`](../design/service-qos.md) (upstream
+        rclcpp/rclc/rclrs reference + 5-slice breakdown).
   - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
         `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
         dispatch + `Executor::add_arena_subscription_c_info_callback` in

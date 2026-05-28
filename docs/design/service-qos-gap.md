@@ -1,7 +1,8 @@
 # Service / action QoS gap (the `create_service_*` no-QoS path)
 
 **Status:** known gap, documented 2026-05-28 (surfaced by Phase 189.M3). Blocks
-Phase 189.M3.3 (C/C++ service/action QoS + options parity). Not yet scheduled.
+Phase 189.M3.3 (C/C++ service/action QoS + options parity). The fix is designed
+in [`service-qos.md`](service-qos.md) (upstream-referenced, slice breakdown).
 
 ## The gap
 
