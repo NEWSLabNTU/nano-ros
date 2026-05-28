@@ -1,0 +1,58 @@
+# Phase 195.C — board profile descriptor (read by the `nros` CLI at generate
+# time). One crate, two boards: STM32F429 and STM32F407 differ only by `chip`.
+
+[[board]]
+names = ["stm32f4", "stm32f429"]
+platform = "stm32"
+toolchain = "stable"
+platform_feature = "platform-bare-metal"
+local_aliases = ["platform-stm32"]
+link_kind = "none"
+entry_kind = "board-run"
+net_stack = "nanoros-owned"
+chip = "stm32f429"
+board_crate = "nros-board-stm32f4"
+board_features = ["stm32f429"]
+cargo_config = '''
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+rustflags = [
+    "-C", "link-arg=-Tlink.x",
+]
+'''
+
+[board.entry]
+crate_name = "nros_board_stm32f4"
+comment = "// Phase 126.M5.stm32f4 — STM32F4 (Cortex-M4F). Entry via cortex-m-rt's\n// `#[entry]` (re-exported by the board crate). `run()` does clock +\n// Ethernet + smoltcp init then invokes the closure; referencing it\n// pins the board rlib + its linker-script / vector-table\n// contributions into the image. Diagnostics flow over defmt-rtt."
+signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
+crate_root_extra = "use defmt_rtt as _;\nuse panic_probe as _;\ndefmt::timestamp!(\"{=u64:us}\", { 0 });"
+
+[[board]]
+names = ["stm32f407"]
+platform = "stm32"
+toolchain = "stable"
+platform_feature = "platform-bare-metal"
+local_aliases = ["platform-stm32"]
+link_kind = "none"
+entry_kind = "board-run"
+net_stack = "nanoros-owned"
+chip = "stm32f407"
+board_crate = "nros-board-stm32f4"
+board_features = ["stm32f407"]
+cargo_config = '''
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+rustflags = [
+    "-C", "link-arg=-Tlink.x",
+]
+'''
+
+[board.entry]
+crate_name = "nros_board_stm32f4"
+comment = "// Phase 126.M5.stm32f4 — STM32F4 (Cortex-M4F). Entry via cortex-m-rt's\n// `#[entry]` (re-exported by the board crate). `run()` does clock +\n// Ethernet + smoltcp init then invokes the closure; referencing it\n// pins the board rlib + its linker-script / vector-table\n// contributions into the image. Diagnostics flow over defmt-rtt."
+signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
+crate_root_extra = "use defmt_rtt as _;\nuse panic_probe as _;\ndefmt::timestamp!(\"{=u64:us}\", { 0 });"

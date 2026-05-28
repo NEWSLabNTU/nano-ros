@@ -1,0 +1,37 @@
+# Phase 195.C — board profile descriptor. NuttX QEMU ARM (Cortex-A7).
+
+[[board]]
+names = ["nuttx", "NuttX"]
+platform = "nuttx"
+toolchain = "nightly"
+platform_feature = "platform-nuttx"
+local_aliases = ["platform-nuttx"]
+link_kind = "nuttx-staging"
+entry_kind = "board-run"
+net_stack = "rtos-owned"
+board_crate = "nros-board-nuttx-qemu-arm"
+cargo_config = '''
+[build]
+target = "armv7a-nuttx-eabihf"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+build-std-features = ["compiler-builtins-mem"]
+
+[target.armv7a-nuttx-eabihf]
+linker = "arm-none-eabi-gcc"
+rustflags = [
+    "-C", "link-arg=-mcpu=cortex-a7",
+    "-C", "link-arg=-mfloat-abi=hard",
+    "-C", "link-arg=-mfpu=neon-vfpv4",
+]
+
+[env]
+CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
+CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
+
+[patch.crates-io]
+libc = { path = "${workspace}/third-party/nuttx/libc" }
+'''
+# NuttX is BoardRun but ships no entry block — the hosted `fn main` shim drives
+# it (preserves the pre-195.C behaviour byte-for-byte).

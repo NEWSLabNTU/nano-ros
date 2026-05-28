@@ -1,0 +1,14 @@
+# Phase 195.C — board profile descriptor for Zephyr (zephyr-lang-rust staticlib).
+# Crate-less: the generated package depends on the `zephyr` crate (emitted by the
+# CLI's per-platform extra-deps path); kernel / RMW / nros C runtime link at the
+# CMake layer via `rust_cargo_application()`.
+
+[[board]]
+names = ["zephyr"]
+platform = "zephyr"
+toolchain = "stable"
+platform_feature = "platform-zephyr"
+local_aliases = ["platform-zephyr"]
+link_kind = "none"
+entry_kind = "zephyr-staticlib"
+net_stack = "rtos-owned"

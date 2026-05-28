@@ -1,0 +1,13 @@
+# Phase 195.C — board profile descriptor. NVIDIA Orin SPE (Cortex-R5). Like
+# NuttX it is BoardRun with no entry block (hosted `fn main` shim drives it), and
+# emits no board-crate dependency from the generator (preserves pre-195.C
+# behaviour).
+
+[[board]]
+names = ["orin-spe"]
+platform = "orin-spe"
+toolchain = "stable"
+platform_feature = "platform-orin-spe"
+link_kind = "none"
+entry_kind = "board-run"
+net_stack = "nanoros-owned"

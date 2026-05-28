@@ -1,0 +1,36 @@
+# Phase 195.C — board profile descriptor. ESP32-S3 (Xtensa) real hardware.
+
+[[board]]
+names = ["esp32s3", "esp32-s3"]
+platform = "esp32"
+toolchain = "esp"
+platform_feature = "platform-bare-metal"
+local_aliases = ["platform-esp32-qemu"]
+link_kind = "none"
+entry_kind = "board-run"
+net_stack = "nanoros-owned"
+chip = "esp32s3"
+board_crate = "nros-board-esp32s3"
+cargo_config = '''
+[build]
+target = "xtensa-esp32s3-none-elf"
+
+[target.xtensa-esp32s3-none-elf]
+rustflags = [
+    "-C", "link-arg=-Tlinkall.x",
+    "-C", "force-frame-pointers",
+]
+
+[env]
+ESP_LOG = "info"
+
+[unstable]
+build-std = ["core", "alloc"]
+'''
+
+[board.entry]
+crate_name = "nros_board_esp32s3"
+comment = "// Phase 173.6 — ESP32-S3 esp-hal `#[main]` entry. The board's `run()`\n// initialises the chip + serial transport + log writer, then drives the\n// user closure and loops forever (ESP32 has no process exit)."
+signature = "#[esp_hal::main]\nfn main() -> !"
+crate_root_extra = "use esp_backtrace as _;\nnros_board_esp32s3::esp_bootloader_esp_idf::esp_app_desc!();"
+closure_extra = "\n                .clock_us(nros_board_esp32s3::nros_platform_esp32s3::clock::clock_us)"

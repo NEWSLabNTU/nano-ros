@@ -1,0 +1,20 @@
+# Phase 195.C — board profile descriptor. ThreadX-Linux host (hosted `fn main`,
+# board `run()` boots ThreadX + NetX Duo over the NSOS BSD shim). Shares the
+# `threadx` name with threadx-riscv64; this unconstrained entry wins on any
+# non-riscv64 target.
+
+[[board]]
+names = ["threadx", "threadx-linux"]
+platform = "threadx-linux"
+toolchain = "stable"
+platform_feature = "platform-threadx"
+local_aliases = ["platform-threadx"]
+link_kind = "none"
+entry_kind = "hosted-main"
+net_stack = "nanoros-owned"
+board_crate = "nros-board-threadx-linux"
+
+[board.entry]
+crate_name = "nros_board_threadx_linux"
+comment = "// Phase 126.M5.threadx — ThreadX-Linux is host-hosted: the board\n// crate's `run()` boots the ThreadX kernel + NetX Duo stack, then\n// invokes the closure on the application thread. Referencing\n// `nros_board_threadx_linux::run` is REQUIRED — it pins the board\n// rlib (and its build-script-linked ThreadX kernel + NetX archives)\n// into the link graph so `--gc-sections` doesn't drop the platform\n// `nros_platform_*` / `_tx_*` symbols."
+signature = "fn main() -> !"
