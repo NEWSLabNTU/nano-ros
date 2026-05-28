@@ -1047,8 +1047,17 @@ the cheap fix landed, the rest are tracked here:
   (Zephyr/PX4/…) is shape-only. Prioritize one real vendor-module
   (Zephyr `west` or PX4-SITL) + one real vendor-lib link before claiming
   the three-ownership-model workflow is proven on hardware.
-
-## Acceptance criteria
+- **W.5 — board-scoped first-image setup** (from the build/config/deploy study,
+  `docs/research/build-config-deploy-comparison.md`). `just setup` pulls **all**
+  platform SDKs (`third-party/` ≈ 7.4 GB, incl. a 2.7 GB QEMU *source* build) —
+  a workspace-developer action. A first-image *user* who wants one board pays
+  that whole cost, vs micro-ROS's board-scoped `create_firmware_ws.sh <board>`
+  (~0.5 GB) / a 14–22 MB Arduino lib. *To implement:* `nros setup <board>` /
+  `just setup board=<x>` that fetches only that target's SDK (e.g. FreeRTOS+lwIP
+  for a Nucleo) + a prebuilt/vendored QEMU instead of the source build. This is
+  the **largest first-image UX delta vs micro-ROS** — bigger than flash floor or
+  precompiled libs (both deliberate tradeoffs). The Phase 172 ownership model
+  scopes the *build*; setup/fetch is the missing scoping.
 
 Each work item is independently shippable. A work item is done when:
 

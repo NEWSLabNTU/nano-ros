@@ -98,6 +98,40 @@ where it's vendored (`vendor-module`) flashing follows the vendor's own
 today**, while nano-ros's vendor deploys are still template + dry-run with no
 real hardware boot in CI (Phase 172 W.4).
 
+## First-image effort — time + space
+
+How much does a *user* spend to deliver and run the first image? micro-ROS
+supports FreeRTOS (esp32, 4× Nucleo, crazyflie21, olimex-e407), Zephyr, host,
+plus Arduino / ESP-IDF / PlatformIO / STM32CubeMX via ecosystem packages.
+Measured against the repo's clones (`external/`):
+
+| | micro-ROS — `micro_ros_setup` (FreeRTOS Nucleo) | micro-ROS — Arduino (precompiled) | nano-ros (Phase 172) |
+|---|---|---|---|
+| Steps to first image | ~8: ROS 2 install · colcon ws + clone `micro_ros_setup` · `colcon build` · `create_firmware_ws.sh` · `configure_firmware.sh` · `build_firmware.sh` · `flash_firmware.sh` · build + run Agent | ~5: install Arduino IDE/CLI · add `micro_ros_arduino` lib · compile sketch · upload · build + run Agent | clone repo · `direnv allow` · `just setup` · `nros new` · `nros deploy` (~5, but `just setup` dominates) |
+| Fetch scope | **board-scoped** — only that board's `freertos_apps` + CubeMX extension | **one precompiled `.a`** (`libmicroros.a`: 14 MB cortex-m3, 22 MB esp32) | **workspace-wide** — every platform's SDK |
+| Host disk (deps) | ROS 2 ~1–3 GB + the board's `freertos_apps` (~0.5 GB of the 477 MB tree) + arm-none-eabi toolchain ~0.5–1 GB | Arduino IDE + the 14–22 MB lib + ROS 2 (for the Agent) | repo + `third-party/` = **7.4 GB** (qemu 2.7 GB, esp32 1.4 GB, px4 1.2 GB, zenoh 813 MB, nuttx 655 MB, threadx 389 MB, …) |
+| Time to first image (ROS 2 already installed) | ~15–40 min (downloads + firmware build + Agent build) | ~10–20 min (precompiled `.a` links fast) | `just setup` **20–60+ min** (it *builds* QEMU from source) + cargo build |
+| Target flash (int32 talker) | ~30–50 KB | ~30–50 KB | ~75 KB (XRCE) / ~100 KB+ (Zenoh) |
+| Host runtime prereq | XRCE **Agent** | XRCE **Agent** | none (Zenoh P2P / Cyclone) · or `zenohd` · or Agent (XRCE) |
+
+**The finding — scope, not steps.** Step *count* is similar (~5–8 either way),
+but micro-ROS's onboarding is **board-scoped**: `create_firmware_ws.sh freertos
+nucleo_f767zi` fetches only that board's deps (~0.5 GB), and the Arduino path is
+a single 14–22 MB precompiled archive. nano-ros's `just setup` is a
+**workspace-developer** action that pulls **all** platform SDKs — **7.4 GB**,
+and *builds QEMU from source* — even for a user who only wants one board. So
+nano-ros's *time and space to first image are roughly an order of magnitude
+heavier* than micro-ROS's per-board path, despite comparable step counts. The
+target flash side is the known floor gap (~30–50 KB vs ~75–100 KB).
+
+**Actionable gap (candidate W.5): a board-scoped first-image path.** nano-ros
+needs the equivalent of `create_firmware_ws.sh <board>` — a `nros setup <board>`
+/ `just setup board=<x>` that fetches only that target's SDK (FreeRTOS+lwIP for
+a Nucleo, not qemu+esp32+px4+…), and ideally a prebuilt or vendored QEMU instead
+of a 2.7 GB source build. The Phase 172 ownership model already scopes the
+*build*; setup/fetch is the missing scoping. This is the single biggest
+first-image UX delta vs micro-ROS — larger than flash floor or precompiled libs.
+
 ## Summary — where each wins
 
 **nano-ros wins:** multi-RMW (no mandatory agent; brokerless option); the
