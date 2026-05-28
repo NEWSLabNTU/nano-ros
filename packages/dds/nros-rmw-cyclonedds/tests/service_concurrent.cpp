@@ -55,7 +55,7 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
     cli.service_name = "concurrent_test";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_client(&my_s, cli.service_name, cli.type_name,
-                                    "", 99, &cli) != NROS_RMW_RET_OK) {
+                                    "", 99, nullptr, &cli) != NROS_RMW_RET_OK) {
         (void) g_vt->close(&my_s);
         failures->fetch_add(1);
         return 1;
@@ -128,7 +128,7 @@ int main() {
     srv.service_name = "concurrent_test";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
-                                    99, &srv) != NROS_RMW_RET_OK) {
+                                    99, nullptr, &srv) != NROS_RMW_RET_OK) {
         return 3;
     }
 

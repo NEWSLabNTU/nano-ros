@@ -76,9 +76,11 @@ typedef struct nros_rmw_vtable_t {
     int32_t (*has_data)(nros_rmw_subscriber_t *subscriber);
 
     /* ---- Service Server ---- */
+    /* Phase 193.1b — `qos` applies to both the request + reply endpoints
+       (one profile per service, mirrors create_publisher/subscriber). */
     nros_rmw_ret_t (*create_service_server)(nros_rmw_session_t *session,
         const char *service_name, const char *type_name, const char *type_hash,
-        uint32_t domain_id,
+        uint32_t domain_id, const nros_rmw_qos_t *qos,
         nros_rmw_service_server_t *out);
     void (*destroy_service_server)(nros_rmw_service_server_t *server);
     int32_t (*try_recv_request)(nros_rmw_service_server_t *server,
@@ -90,7 +92,7 @@ typedef struct nros_rmw_vtable_t {
     /* ---- Service Client ---- */
     nros_rmw_ret_t (*create_service_client)(nros_rmw_session_t *session,
         const char *service_name, const char *type_name, const char *type_hash,
-        uint32_t domain_id,
+        uint32_t domain_id, const nros_rmw_qos_t *qos,
         nros_rmw_service_client_t *out);
     void (*destroy_service_client)(nros_rmw_service_client_t *client);
     int32_t (*call_raw)(nros_rmw_service_client_t *client,

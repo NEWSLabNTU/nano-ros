@@ -486,12 +486,14 @@ pub struct NrosRmwVtable {
     pub has_data: unsafe extern "C" fn(subscriber: *mut NrosRmwSubscriber) -> i32,
 
     // ---- Service Server ----
+    // Phase 193.1b — `qos` applies to both request + reply endpoints.
     pub create_service_server: unsafe extern "C" fn(
         session: *mut NrosRmwSession,
         service_name: *const u8,
         type_name: *const u8,
         type_hash: *const u8,
         domain_id: u32,
+        qos: *const NrosRmwQos,
         out: *mut NrosRmwServiceServer,
     ) -> NrosRmwRet,
     pub destroy_service_server: unsafe extern "C" fn(server: *mut NrosRmwServiceServer),
@@ -516,6 +518,7 @@ pub struct NrosRmwVtable {
         type_name: *const u8,
         type_hash: *const u8,
         domain_id: u32,
+        qos: *const NrosRmwQos,
         out: *mut NrosRmwServiceClient,
     ) -> NrosRmwRet,
     pub destroy_service_client: unsafe extern "C" fn(client: *mut NrosRmwServiceClient),
@@ -1727,9 +1730,7 @@ impl Session for CffiSession {
         service: &ServiceInfo,
         qos: QosSettings,
     ) -> Result<CffiServiceServer, TransportError> {
-        // TODO(193.1b): thread qos across the C vtable to the C++ backend.
-        // The vtable fn-ptr signature is unchanged this slice.
-        let _ = qos;
+        let qos_struct = NrosRmwQos::from(qos);
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 
@@ -1756,6 +1757,7 @@ impl Session for CffiSession {
                 type_ptr,
                 hash_ptr,
                 service.domain_id,
+                &qos_struct,
                 &mut view,
             )
         };
@@ -1774,9 +1776,7 @@ impl Session for CffiSession {
         service: &ServiceInfo,
         qos: QosSettings,
     ) -> Result<CffiServiceClient, TransportError> {
-        // TODO(193.1b): thread qos across the C vtable to the C++ backend.
-        // The vtable fn-ptr signature is unchanged this slice.
-        let _ = qos;
+        let qos_struct = NrosRmwQos::from(qos);
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(service.type_hash, &mut hash_buf);
 
@@ -1804,6 +1804,7 @@ impl Session for CffiSession {
                 type_ptr,
                 hash_ptr,
                 service.domain_id,
+                &qos_struct,
                 &mut view,
             )
         };
@@ -3051,6 +3052,7 @@ mod tests {
         _: *const u8,
         _: *const u8,
         _: u32,
+        _: *const NrosRmwQos,
         out: *mut NrosRmwServiceServer,
     ) -> NrosRmwRet {
         unsafe {
@@ -3085,6 +3087,7 @@ mod tests {
         _: *const u8,
         _: *const u8,
         _: u32,
+        _: *const NrosRmwQos,
         out: *mut NrosRmwServiceClient,
     ) -> NrosRmwRet {
         unsafe {

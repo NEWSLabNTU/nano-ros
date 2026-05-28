@@ -704,7 +704,8 @@ nros_rmw_ret_t maybe_flush_request(ClientState* state) {
 
 nros_rmw_ret_t service_server_create(nros_rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* /*type_hash*/,
-                                     uint32_t /*domain_id*/, nros_rmw_service_server_t* out) {
+                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
+                                     nros_rmw_service_server_t* out) {
     if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -740,10 +741,12 @@ nros_rmw_ret_t service_server_create(nros_rmw_session_t* session, const char* se
         return NROS_RMW_RET_ERROR;
     }
 
-    // Phase 117.X.5: align with `rmw_qos_profile_services_default`
-    // (RELIABLE + VOLATILE + KEEP_LAST(10)). Without this Cyclone
-    // defaults to KEEP_LAST(1) which surprises stock RMW clients.
-    nros_rmw_qos_t svc_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    // Phase 193.1b: honour the caller's profile, defaulting to
+    // `rmw_qos_profile_services_default` (RELIABLE + VOLATILE +
+    // KEEP_LAST(10)) — the stock-RMW-interop default (without it Cyclone
+    // defaults to KEEP_LAST(1), surprising stock clients). One profile
+    // applied to both request reader + reply writer.
+    nros_rmw_qos_t svc_qos = qos != nullptr ? *qos : NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
     dds_qos_t* dq_reader = make_dds_qos(&svc_qos);
     dds_qos_t* dq_writer = make_dds_qos(&svc_qos);
     state->reader = dds_create_reader(pp, state->request_topic, dq_reader, nullptr);
@@ -890,7 +893,8 @@ nros_rmw_ret_t service_send_reply(nros_rmw_service_server_t* server, int64_t seq
 
 nros_rmw_ret_t service_client_create(nros_rmw_session_t* session, const char* service_name,
                                      const char* type_name, const char* /*type_hash*/,
-                                     uint32_t /*domain_id*/, nros_rmw_service_client_t* out) {
+                                     uint32_t /*domain_id*/, const nros_rmw_qos_t* qos,
+                                     nros_rmw_service_client_t* out) {
     if (out == nullptr || session == nullptr || service_name == nullptr || type_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -927,8 +931,9 @@ nros_rmw_ret_t service_client_create(nros_rmw_session_t* session, const char* se
         return NROS_RMW_RET_ERROR;
     }
 
-    // Phase 117.X.5: services QoS profile alignment.
-    nros_rmw_qos_t svc_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    // Phase 193.1b: honour the caller's profile, defaulting to
+    // `rmw_qos_profile_services_default` (stock-RMW-interop default).
+    nros_rmw_qos_t svc_qos = qos != nullptr ? *qos : NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
     dds_qos_t* dq_writer = make_dds_qos(&svc_qos);
     dds_qos_t* dq_reader = make_dds_qos(&svc_qos);
     state->writer = dds_create_writer(pp, state->request_topic, dq_writer, nullptr);

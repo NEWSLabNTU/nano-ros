@@ -59,7 +59,7 @@ int main() {
     srv.service_name = "add_two_ints";
     srv.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
     if (g_vt->create_service_server(&s, srv.service_name, srv.type_name, "",
-                                    domain, &srv) != NROS_RMW_RET_OK) {
+                                    domain, nullptr, &srv) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service_server failed\n");
         return 3;
     }
