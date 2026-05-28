@@ -184,6 +184,8 @@ application code.
         `_with_qos` / `_with_options` in C (and making C++'s qos actually apply).
         The `sched_context` option would also be inert for C++ services (same
         poll-style/no-handle issue as M3.1). Deferred until that core work lands.
+        Documented in
+        [`docs/design/service-qos-gap.md`](../design/service-qos-gap.md).
   - [ ] **M3.4 — `message_info` option (new arena path).** A
         `SubBufferedRawInfoCEntry` C-fn-ptr-with-info arena entry + dispatch in
         `nros-node` (the C analog of `SubBufferedRawInfoEntry`), a C/C++ FFI
