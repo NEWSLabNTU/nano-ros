@@ -24,7 +24,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 mapfile -t files < <(
     git ls-files \
         '*.cmake' '*CMakeLists.txt' '*.just' 'justfile' '*.sh' '*.rs' \
-    | grep -vE '^(third-party/|packages/codegen/)'
+    | grep -vE '^(third-party/|packages/codegen/)' \
+    | grep -vxF 'scripts/ci/codegen-invocation-check.sh' # self (docs mention --args-file)
 )
 
 bad=()
