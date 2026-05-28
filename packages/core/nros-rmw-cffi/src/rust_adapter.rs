@@ -68,6 +68,10 @@ mod static_subscriber_storage {
         bytes: UnsafeCell<[u8; SLOT_SIZE]>,
     }
 
+    // Phase 192.5 — `#[repr(align(16))]` can't take the `SLOT_ALIGN` const, so
+    // assert they stay in lockstep (the insert() guard compares against SLOT_ALIGN).
+    const _: () = assert!(mem::align_of::<Slot>() == SLOT_ALIGN);
+
     unsafe impl Sync for Slot {}
 
     impl Slot {

@@ -135,8 +135,19 @@ Backends bake values the zenoh path makes tunable; defaults even disagree.
   `NROS_DEFAULT_SERVICE_TIMEOUT_MS` (nros-c) and `SERVICE_DEFAULT_TIMEOUT_MS`
   (nros-rmw-zenoh) — single source.
 
-- [ ] `NROS_CPP_NAME_LEN` added + used; reconciled with `nros_node::limits`.
-- [ ] Scratch buffers named or derived from message limits; `+7&!7` removed.
+- [x] **`NROS_CPP_NAME_LEN`** + `NROS_CPP_NODE_RESERVED` added (nros-cpp/lib.rs);
+      all raw `[u8;64]`/`[0u8;64]` (name) + `[u8;7]` sites named; namespace sites
+      use `NROS_CPP_NAMESPACE_LEN`. The `nros_node::limits` size mismatch is
+      *documented* (not changed — it's a `#[repr(C)]` ABI value; reconcile in a
+      follow-up if they must match).
+- [x] **`nros-rmw-cffi`** `const _: () = assert!(align_of::<Slot>() == SLOT_ALIGN)`
+      links the `#[repr(align(16))]` to the const.
+- [x] **`nros-node/node.rs`** `NODE_TX_BUF_LEN`/`NODE_RX_BUF_LEN` name the `1024`
+      tx/rx buffers (field decl + initializer). `cargo check` clean under `-D warnings`.
+- [ ] **Deferred (hot files, agents' active area):** `spin.rs:2044` `(x+7)&!7` →
+      `next_multiple_of`; scratch buffers in `action.rs`/`action/*`/`service.rs`/
+      `lifecycle_services.rs` (`512`/`1024`/`4096`/`256`). The `5000` ms
+      service-timeout dedup folds into **192.4**.
 
 ### 192.6 — [P2] Tame long arg-lists / combinatorial API names
 - `codegen/.../orchestration/planner.rs:1500` `build_node_instance` — **14 params**

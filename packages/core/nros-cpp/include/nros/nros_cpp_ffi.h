@@ -40,6 +40,21 @@
 #define NROS_CPP_NAMESPACE_LEN 64
 
 /**
+ * Maximum node name length for the inline buffer in `nros_cpp_node_t`. Phase
+ * 192.5 — single source for what was an inlined `64` at every name-buffer site.
+ * NOTE: `nros_node::limits` uses a larger namespace/name bound; this C++ ABI is
+ * the deliberately-fixed 64-byte embedded inline — reconcile in a follow-up if
+ * they are required to match (changing it is a `#[repr(C)]` ABI change).
+ */
+#define NROS_CPP_NAME_LEN 64
+
+/**
+ * Reserved padding bytes in `nros_cpp_node_t` (pad `node_id` to the next u64
+ * boundary). Phase 192.5 — names the struct-layout `7`.
+ */
+#define NROS_CPP_NODE_RESERVED 7
+
+/**
  * Sentinel value for `domain_id_override`. When set, the executor's
  * existing domain_id is used.
  */
@@ -197,11 +212,11 @@ typedef struct nros_cpp_node_t {
   /**
    * Node name (null-terminated, max 64 bytes including null).
    */
-  uint8_t name[64];
+  uint8_t name[NROS_CPP_NAME_LEN];
   /**
    * Node namespace (null-terminated, max 64 bytes including null).
    */
-  uint8_t namespace_[64];
+  uint8_t namespace_[NROS_CPP_NAMESPACE_LEN];
   /**
    * Phase 104.C.9.b — opaque NodeId returned by
    * `Executor::node_builder(...).build()`. `0` = primary Node
@@ -214,7 +229,7 @@ typedef struct nros_cpp_node_t {
   /**
    * Reserved for future use; pad to next u64 boundary.
    */
-  uint8_t _reserved[7];
+  uint8_t _reserved[NROS_CPP_NODE_RESERVED];
 } nros_cpp_node_t;
 
 /**
