@@ -162,6 +162,56 @@ nros doctor                   # already reports SDK/pin presence
 missing: *"run `nros setup <board>`"* (mirrors today's *"run `nros metadata
 --build`"* hints).
 
+## Does PlatformIO host a binary registry? (yes — and how)
+
+Yes. `registry.platformio.org` is a typed package registry — **`tool`**
+(toolchains, `tool-openocd`, uploaders/debuggers, even `tool-qemu-*`),
+**`library`**, and **`platform`** (board-support meta-packages). Each package
+version carries **per-host archives** (a `system` field: `linux_x86_64`,
+`darwin_arm64`, `windows_amd64`, …) — prebuilt tarballs with a `package.json`
+manifest (name, version, system, deps). Anyone publishes via `pio pkg publish`;
+the toolchains are mostly *repackaged upstream* binaries (ARM GCC, Espressif
+xtensa, …). Binaries are served from PlatformIO's dl/CDN, fetched on demand,
+and cached **once** in a shared global store (`~/.platformio/packages/`), deduped
+by name+version+system. So: a hosted, versioned, per-host **binary** registry +
+a shared on-demand cache — exactly the shape `nros setup` wants.
+
+## Reducing space bloat
+
+Measured composition of today's 7.4 GB `third-party/` (the thing W.5 attacks):
+
+| dir | size | what it is | fix |
+|---|---|---|---|
+| **qemu** | **2.7 GB** | source clone **+ a 1.4 GB compiled `build/` tree** | **prebuilt QEMU binary** (~30–80 MB) → −~2.6 GB |
+| **zenoh** | 813 MB | full Zenoh (router) source/build | **prebuilt `zenohd`** release binary → −~0.8 GB (zenoh-*pico* is small + builds with the app) |
+| esp32 | 1.4 GB | ESP-IDF source tree | **board-scoped** — only when targeting esp32 |
+| px4 | 1.2 GB | PX4 source repo | board-scoped — vendor-module only |
+| nuttx / threadx | 655 / 389 MB | RTOS kernel source | board-scoped + redistributable tarball (no build) |
+
+`.git` is already tiny across all of them (they shallow-clone) — **git history
+is not the bloat; building host tools from source is.** The levers, biggest
+first:
+
+1. **Prebuilt host tools — the dominant win.** QEMU (−2.6 GB) and `zenohd`
+   (−0.8 GB) are *host* tools currently built from source. Fetch prebuilt
+   binaries (QEMU 11.0 release / system package; `zenohd` from Zenoh's release
+   page). ~3.4 GB → ~0.1 GB without touching board scoping. This is what
+   PlatformIO does (`tool-qemu-*`, prebuilt uploaders).
+2. **Board scoping.** A Nucleo user pulls FreeRTOS (30 MB) + a prebuilt
+   arm-none-eabi-gcc (~0.3 GB) + prebuilt QEMU (~50 MB) ≈ **0.4 GB**, not
+   esp32+px4+nuttx+threadx. The single biggest *multiplier*.
+3. **Shared, deduped store.** `~/.nros/sdk/<pkg>/<ver>/` shared across
+   workspaces + clones (symlinked into the build), one copy per
+   (pkg, version, host) — a dev with 3 checkouts pays once, not 3×.
+4. **No build trees.** Prebuilt artifacts carry no intermediate objects (the
+   1.4 GB QEMU `build/` vanishes); the source fallback must `clean` after.
+5. **Slim the toolchains.** Prebuilt cross-toolchains can drop docs/examples/
+   unused multilibs (Zephyr-SDK / PlatformIO ship slimmed variants).
+
+**Net:** prebuilt host tools (#1) + board scoping (#2) take the *one-board*
+first-image footprint from **7.4 GB → ~0.4 GB**, and the shared store (#3)
+keeps it amortized.
+
 ## Boundaries / non-goals
 
 - **`just <module> setup` stays** the contributor / source-of-truth / CI path
