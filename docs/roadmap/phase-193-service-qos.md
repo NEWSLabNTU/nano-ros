@@ -10,8 +10,11 @@ one `QosSettings` per service through the trait + every backend, defaulting to
 **Status.** 193.1 DONE (2026-05-28) — trait + Rust backends + all callers
 threaded, behaviour-preserving (default `services_default()`). 193.1b DONE — the C↔C++
 vtable ABI bump + Cyclone honours the profile (service_roundtrip green). The
-core is now end-to-end caller→Cyclone-wire. 193.2–193.5 (bindings + validation)
-remain. Design:
+core is now end-to-end caller→Cyclone-wire. 193.2/193.2b/193.3/193.4 DONE
+(2026-05-29) — Rust builder + C and C++ service/client/action-server QoS all
+reach the backend. The `ServiceOptions`/`ActionServerOptions` named-options
+structs are **deferred to Phase 189.M3.3** (sched_context substrate must land
+first — see 193.3/193.4). **Only 193.5 (validation + tests) remains.** Design:
 [`docs/design/service-qos.md`](../design/service-qos.md); gap:
 [`docs/design/service-qos-gap.md`](../design/service-qos-gap.md).
 
@@ -74,19 +77,26 @@ profiles.
       `register_service_client_raw_*` qos param + action-server qos → the three
       service creates — both ripple into the C / generator / C++ paths, so they
       land with 193.3 (C++) / 193.4 (C) where those surfaces gain qos.
-- [~] **193.3 — C++.** *Service server + client DONE:* the FFI
+- [x] **193.3 — C++. DONE (QoS scope).** *Service server + client:* the FFI
       `nros_cpp_service_{server,client}_create` now apply the caller's QoS
       (`qos.to_qos_settings()` → `session.create_service_{server,client}`,
       stopping the discard) — so C++ `create_service(name, qos)` reaches the
-      backend. *193.3b DONE:* `create_action_server(qos)` now applies —
+      backend. *193.3b:* `create_action_server(qos)` now applies —
       `nros_cpp_action_server_create` stores the qos on `CppActionServer`, and
       `_register` passes `qos.to_qos_settings()` to
       `register_action_server_raw_sized_on` → the three goal/cancel/result
       service servers (the paired `CppActionServerLayout` mirror in
-      `nros/src/sizes.rs` updated for the layout assert). *Remaining:* the
-      `ServiceOptions` / `ActionServerOptions` named-options struct (Phase
-      189.M3.3-cpp — ergonomic; the `qos` arg already works).
-- [~] **193.4 — C.** *Service server DONE:* `register_service_raw_sized{,_on}`
+      `nros/src/sizes.rs` updated for the layout assert).
+      **DEFERRED to Phase 189.M3.3 (not 193):** the `ServiceOptions` /
+      `ActionServerOptions` named-options structs (rclcpp symmetry with
+      `SubscriptionOptions`/`PublisherOptions`). The only non-QoS axis they
+      would carry is `sched_context`, and **services/action-servers have no
+      sched-context plumbing today** (no bindable executor `HandleId` on the
+      C++ wrappers, no sched field on the C structs) — so the struct has
+      nothing to lower to until M3.3 builds that substrate. The `qos` arg
+      already works without it; adding empty-reserved structs now would be
+      dead API surface. See [189.M3.3].
+- [x] **193.4 — C. DONE (QoS scope).** *Service server:* `register_service_raw_sized{,_on}`
       gained a `qos` param (193.2c, behaviour-preserving default
       `services_default()`); `nros_service_t` carries a `qos` field
       (defaults to the services profile) read by `nros_executor_register_service`;
@@ -100,6 +110,12 @@ profiles.
       client/action register cores threaded with qos in nros-node, generator
       emits the action qos arg, codegen `4212eb0`). nros-c header exposes both
       new symbols.
+      **DEFERRED to Phase 189.M3.3 (not 193):** the C parallel
+      `nros_service_options_t` / `nros_action_server_options_t` named-options
+      structs + `nros_*_init_with_options(...)` accessors (mirroring
+      `nros_subscription_options_t`). Same reason as 193.3 — the only non-QoS
+      axis is `sched_context`, unwired for services/actions today. The
+      `*_init_with_qos` entry points already cover the QoS need.
 - [ ] **193.5 — Validation + tests.** `validate_against` on the service path;
       a per-backend roundtrip test that a non-default profile reaches the wire;
       document the RELIABLE-for-request/reply caveat.
