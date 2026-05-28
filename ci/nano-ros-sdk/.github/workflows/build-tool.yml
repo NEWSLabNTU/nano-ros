@@ -1,0 +1,61 @@
+name: build-tool
+
+# Phase 187.5 — build/repackage one host tool across the host matrix and publish
+# it to a Release. Drop-in for NEWSLabNTU/nano-ros-sdk.
+#
+#   gh workflow run build-tool.yml -f tool=qemu -f version=11.0-nros1
+#
+# Each runner calls scripts/build-<tool>.sh <version> <host-key>, which must
+# produce dist/<tool>-<host>.tar.zst. We add the .sha256 and publish:
+#   tag = <tool>-<version>,  assets = <tool>-<host>.tar.zst (+ .sha256)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: "tool name (qemu, arm-none-eabi-gcc, riscv-none-elf-gcc, zenohd, openocd)"
+        required: true
+      version:
+        description: "version, e.g. 11.0-nros1"
+        required: true
+
+permissions:
+  contents: write # publish Releases
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        host:
+          # Ubuntu 22.04 = ROS 2 Humble baseline. Jazzy (24.04) runner added
+          # later when jazzy support lands.
+          - { key: linux-x86_64, runner: ubuntu-22.04 }
+          - { key: linux-arm64, runner: ubuntu-22.04-arm }
+          - { key: macos-arm64, runner: macos-14 }
+    runs-on: ${{ matrix.host.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build + package ${{ inputs.tool }} for ${{ matrix.host.key }}
+        run: |
+          chmod +x "scripts/build-${{ inputs.tool }}.sh"
+          "./scripts/build-${{ inputs.tool }}.sh" "${{ inputs.version }}" "${{ matrix.host.key }}"
+          test -f "dist/${{ inputs.tool }}-${{ matrix.host.key }}.tar.zst"
+
+      - name: sha256
+        working-directory: dist
+        run: |
+          f="${{ inputs.tool }}-${{ matrix.host.key }}.tar.zst"
+          if command -v sha256sum >/dev/null; then sha256sum "$f" > "$f.sha256";
+          else shasum -a 256 "$f" > "$f.sha256"; fi
+          cat "$f.sha256"
+
+      - name: Publish to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tool }}-${{ inputs.version }}
+          name: ${{ inputs.tool }} ${{ inputs.version }}
+          files: |
+            dist/${{ inputs.tool }}-${{ matrix.host.key }}.tar.zst
+            dist/${{ inputs.tool }}-${{ matrix.host.key }}.tar.zst.sha256

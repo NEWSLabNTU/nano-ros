@@ -8,57 +8,30 @@ LOG_DIR := "test-logs"
 QEMU_PREFIX := absolute_path("build/qemu")
 QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
 
-# Build a project-local patched qemu-system-arm under build/qemu.
+# Provision the project-local patched qemu-system-arm under build/qemu.
 #
-# Pulls third-party/qemu/qemu (stable-11.0), applies every patch in
-# third-party/qemu/patches/, configures for the arm-softmmu target
-# (no other targets, no docs, no tools), and installs into
-# build/qemu/. Subsequent runs are no-ops unless the patches change
-# (touch a patch to force a rebuild) — wire the test runner with
-# QEMU_SYSTEM_ARM=$(just qemu qemu-bin) to pick this up.
+# Phase 187.6: a thin caller of `nros setup` — fetches the prebuilt patched
+# qemu (built from the NEWSLabNTU/qemu `nano-ros-v11.0.0-patches` fork) from the
+# nano-ros-sdk Releases into build/qemu, where the test harness already looks
+# (`nros_tests::qemu::qemu_system_arm_path`). The version comes from
+# nros-sdk-index.toml — no duplicated pin here. On a host with no prebuilt,
+# `nros setup` builds from the index's `[tool.qemu.source]` recipe into the same
+# prefix (no 2.7 GB submodule build for everyone else). Requires the nros CLI
+# (`just setup base` builds it).
 [group("setup")]
 setup-qemu:
     #!/usr/bin/env bash
     set -euo pipefail
-    submodule_path=third-party/qemu/qemu
     prefix={{QEMU_PREFIX}}
     bin={{QEMU_BIN}}
-    if [ ! -d "$submodule_path/.git" ] && [ ! -f "$submodule_path/.git" ]; then
-        git submodule update --init --depth=1 -- "$submodule_path"
-    fi
-    # Re-stamp = submodule HEAD commit. Skip rebuild if binary newer
-    # than the recorded submodule commit's mtime (a proxy for "no
-    # source change since last build").
     if [ -x "$bin" ]; then
-        head_stamp="$submodule_path/.git/HEAD"
-        if [ ! -f "$head_stamp" ] || [ "$bin" -nt "$head_stamp" ]; then
-            echo "qemu: $bin up to date"
-            "$bin" --version | head -1
-            exit 0
-        fi
+        echo "qemu: $bin present"
+        "$bin" --version | head -1
+        exit 0
     fi
-    echo "qemu: building (this can take ~10 min)"
-    # Patches live in NEWSLabNTU/qemu fork's git history (branch
-    # `nano-ros-v11.0.0-patches`). The submodule checkout already
-    # has them applied — no separate `git apply` step.
-    pushd "$submodule_path" >/dev/null
-    mkdir -p build
-    cd build
-    ../configure \
-        --target-list=arm-softmmu \
-        --disable-docs \
-        --disable-tools \
-        --disable-gtk \
-        --disable-vnc \
-        --disable-sdl \
-        --disable-spice \
-        --enable-slirp \
-        --prefix="$prefix" \
-        >/dev/null
-    make -j$(nproc) >/dev/null
-    make install >/dev/null
-    popd >/dev/null
-    echo "qemu: installed to $bin"
+    source scripts/build/cargo.sh
+    nros="$(nros_cli_bin)"
+    "$nros" setup --tool qemu --prefix "$prefix" --index "$(pwd)/nros-sdk-index.toml"
     "$bin" --version | head -1
 
 # Print the path to the patched qemu-system-arm binary. Empty if
