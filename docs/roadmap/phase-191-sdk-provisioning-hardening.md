@@ -100,7 +100,7 @@ host daemon; the other two RMWs' host pieces were absent:
       `just cyclonedds`. Source recipe in the index; `dist` to seed later.
       `nros setup --tool cyclonedds --dry-run` resolves.
 
-- [ ] **191.6.a — model RMW as an orthogonal axis (no board×rmw pairs).** RMW
+- [x] **191.6.a — model RMW as an orthogonal axis (no board×rmw pairs). DONE.** RMW
       (zenoh/xrce/cyclonedds) is a compile-time axis orthogonal to platform/board
       (CLAUDE.md "three orthogonal axes"), so `[board.*].packages` lists only the
       board's platform/toolchain pieces (gcc, qemu, kernels) — the RMW daemon is
@@ -115,9 +115,14 @@ host daemon; the other two RMWs' host pieces were absent:
       - `nros setup <board> [--rmw <name>]` resolves `board.packages ∪
         rmw.packages` (default `--rmw zenoh`). `resolve_packages` gains the union;
         `validate()` checks `[rmw.*]` names like `[board.*]`.
-      - Lives in the `packages/codegen` submodule (`setup.rs`/`sdk_index.rs`) →
-        agent prepares, maintainer pushes the fork. The two `[tool.*]` entries
-        (this commit, superproject) are usable now via `nros setup --tool <name>`.
+      - Landed in `packages/codegen` (`sdk_index.rs` `[rmw.*]` table + validate;
+        `setup.rs` `--rmw` + `resolve_packages_with_rmw` union). Index gained
+        `[rmw.{zenoh,xrce,cyclonedds}]`; `[board.{native,posix,threadx-linux}]`
+        dropped their hardcoded `zenohd`. Default `--rmw zenoh` preserves prior
+        behaviour; auto-setup (`nros build`/`deploy`) defaults to zenoh until it
+        threads the app's configured RMW. Verified: `cargo test -p nros-cli-core`
+        (125+4), `nros setup native --rmw {zenoh,xrce,cyclonedds} --dry-run` +
+        `nros setup qemu-arm-freertos --rmw xrce` (board ∪ rmw) resolve correctly.
 
 ## Acceptance criteria
 

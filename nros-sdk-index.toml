@@ -111,6 +111,20 @@ version = "11.24"
 env = "ARM_FVP_DIR"
 installer = "arm-fvp-installer"
 
+# --- RMW host packages (Phase 191.6.a): the RMW axis, orthogonal to the board.
+# `nros setup <board> --rmw <name>` resolves `board.packages ∪ rmw.packages`
+# (default `--rmw zenoh`). Boards list only platform/toolchain packages; the RMW
+# daemon/tool lives here — no board×rmw pair enumeration. ---
+
+[rmw.zenoh]
+packages = ["zenohd"]
+
+[rmw.xrce]
+packages = ["xrce-agent"]
+
+[rmw.cyclonedds]
+packages = ["cyclonedds"]
+
 # --- boards (Phase 191.1): board → required package set, the board→toolchain
 # SSOT. `nros setup <board>` looks the board up here (no name guessing); an
 # unknown board errors. `packages` lists [tool]/[source]/[gated] names; empty is
@@ -121,12 +135,12 @@ installer = "arm-fvp-installer"
 [board.native]
 arch = "x86_64"
 platform = "posix"
-packages = ["zenohd"]
+packages = [] # host daemon comes from the RMW axis (default rmw.zenoh)
 
 [board.posix]
 arch = "x86_64"
 platform = "posix"
-packages = ["zenohd"]
+packages = [] # host daemon comes from the RMW axis (default rmw.zenoh)
 
 [board.qemu-arm-baremetal]
 arch = "cortex-m3"
@@ -161,7 +175,7 @@ packages = ["riscv-none-elf-gcc", "qemu", "threadx"]
 [board.threadx-linux]
 arch = "x86_64"
 platform = "threadx"
-packages = ["threadx", "zenohd"] # runs on the host; zenohd for the P2P path
+packages = ["threadx"] # runs on the host; the zenoh daemon comes from rmw.zenoh
 
 [board.esp32]
 arch = "riscv32" # ESP32-C3; riscv32imc rustup target + build-std (no external gcc)
