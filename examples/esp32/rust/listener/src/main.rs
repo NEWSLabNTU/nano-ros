@@ -36,12 +36,14 @@ fn main() -> ! {
                 .node_name("listener");
             nros_rmw_zenoh::register().expect("Failed to register RMW backend");
             let mut executor = Executor::open(&exec_config)?;
-            let _node = executor.create_node("listener")?;
+            let nid = executor.node_builder("listener").build()?;
 
             nros_info!(&LOGGER, "Subscribing to /chatter (std_msgs/Int32)");
-            executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-                nros_info!(&LOGGER, "Received: {}", msg.data);
-            })?;
+            executor
+                .node_mut(nid)
+                .create_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+                    nros_info!(&LOGGER, "Received: {}", msg.data);
+                })?;
 
             nros_info!(&LOGGER, "Subscriber declared");
             nros_info!(&LOGGER, "Waiting for messages...");

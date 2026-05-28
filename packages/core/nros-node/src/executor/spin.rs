@@ -399,8 +399,8 @@ impl core::ops::DerefMut for SessionStore {
 ///
 /// # Callback Mode
 ///
-/// The executor supports arena-based callback registration via
-/// [`register_subscription()`](Self::register_subscription) and
+/// The executor supports arena-based callback registration via the
+/// `node_mut(id).subscription(t)` builder and
 /// [`register_service()`](Self::register_service), with dispatch via
 /// [`spin_once()`](Self::spin_once). No heap allocation is needed.
 ///
@@ -2058,135 +2058,10 @@ impl Executor {
             .ok_or(NodeError::BufferTooSmall)
     }
 
-    /// Register a subscription callback with the default receive buffer size.
-    ///
-    /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let mut executor = Executor::open(&config)?;
-    /// executor.register_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-    ///     // handle message
-    /// })?;
-    /// loop {
-    ///     executor.spin_once(core::time::Duration::from_millis(10));
-    /// }
-    /// ```
-    pub fn register_subscription<M, F>(
-        &mut self,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M) + 'static,
-    {
-        self.register_subscription_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
-            topic_name, callback,
-        )
-    }
-
-    /// Register a subscription callback with a custom receive buffer size.
-    ///
-    /// Internally uses a triple buffer (3 slots) with `KEEP_LAST(1)` QoS.
-    /// For deeper message queuing, use [`register_subscription_buffered`] with
-    /// an explicit QoS depth.
-    pub fn register_subscription_sized<M, F, const RX_BUF: usize>(
-        &mut self,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M) + 'static,
-    {
-        // Use depth=1 (triple buffer) to match the old single-buffer behavior.
-        // The default QoS depth (10) would create an 11-slot SPSC ring, using
-        // 11× the buffer memory — too expensive as an invisible default.
-        self.register_subscription_buffered::<M, F, RX_BUF>(
-            topic_name,
-            QosSettings::default().keep_last(1),
-            callback,
-        )
-    }
-
-    /// Register a subscription with QoS-driven buffering (Phase 73).
-    ///
-    /// The buffer strategy is selected by the QoS depth:
-    /// - `KEEP_LAST(1)` → triple buffer (3 slots, latest-value, no message loss)
-    /// - `KEEP_LAST(N)` where N > 1 → SPSC ring (N+1 slots, FIFO, bounded drops)
-    ///
-    /// Buffer slots are allocated as a trailing region in the arena (no
-    /// separate static buffer array). `RX_BUF` sets the per-slot byte size.
-    pub fn register_subscription_buffered<M, F, const RX_BUF: usize>(
-        &mut self,
-        topic_name: &str,
-        qos: QosSettings,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M) + 'static,
-    {
-        type Entry<M, F> = SubBufferedEntry<M, F>;
-
-        let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
-        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        let handle = self
-            .session
-            .create_subscriber(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
-
-        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
-
-        let (entry_offset, trailing_offset) =
-            self.arena_alloc_with_trailing::<Entry<M, F>>(trailing_bytes)?;
-
-        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
-
-        let buffer = if qos.depth <= 1 {
-            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
-        } else {
-            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
-        };
-
-        unsafe {
-            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(entry_offset) as *mut Entry<M, F>;
-            core::ptr::write(
-                entry_ptr,
-                Entry {
-                    handle,
-                    buffer,
-                    callback,
-                    _phantom: PhantomData,
-                },
-            );
-        }
-
-        self.entries[slot] = Some(CallbackMeta {
-            offset: entry_offset,
-            kind: EntryKind::Subscription,
-            try_process: sub_buffered_try_process::<M, F>,
-            has_data: sub_buffered_has_data::<M, F>,
-            pre_sample: no_pre_sample, // LET pre-sample not yet supported for buffered
-            invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<M, F>>,
-        });
-        Ok(HandleId(slot))
-    }
-
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_subscription_buffered`](Self::register_subscription_buffered).
-    /// Routes the typed subscription through the [`NodeId`]'s
-    /// session + identity (rclcpp `add_node` pattern).
-    pub fn register_subscription_buffered_on<M, F, const RX_BUF: usize>(
+    /// Typed buffered subscription core (the `node_mut(id).subscription(t)
+    /// .typed::<M>()` builder lowers here). Routes the typed subscription
+    /// through the [`NodeId`]'s session + identity (rclcpp `add_node` pattern).
+    pub(crate) fn register_subscription_buffered_on<M, F, const RX_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
         topic_name: &str,
@@ -2261,91 +2136,8 @@ impl Executor {
         Ok(HandleId(slot))
     }
 
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_subscription_sized`](Self::register_subscription_sized).
-    /// Convenience over [`register_subscription_buffered_on`] with
-    /// `KEEP_LAST(1)` QoS.
-    pub fn register_subscription_sized_on<M, F, const RX_BUF: usize>(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M) + 'static,
-    {
-        self.register_subscription_buffered_on::<M, F, RX_BUF>(
-            node_id,
-            topic_name,
-            QosSettings::default().keep_last(1),
-            callback,
-        )
-    }
-
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_subscription`](Self::register_subscription).
-    /// Default RX buffer size + `KEEP_LAST(1)` QoS.
-    pub fn register_subscription_on<M, F>(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M) + 'static,
-    {
-        self.register_subscription_sized_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
-            node_id, topic_name, callback,
-        )
-    }
-
-    /// Register a zero-copy raw subscription with QoS-driven buffering.
-    ///
-    /// The callback receives `&[u8]` — the raw CDR data borrowing directly
-    /// from the triple buffer's read slot or SPSC ring's pop slot. For
-    /// borrowed message types (e.g., `Image<'a>`), call
-    /// `Image::deserialize_borrowed(data)` inside the callback:
-    ///
-    /// ```ignore
-    /// executor.register_subscription_buffered_raw::<1024>(
-    ///     "/camera/image",
-    ///     "sensor_msgs::msg::dds_::Image_",
-    ///     "TypeHashNotSupported",
-    ///     QosSettings::SENSOR_DATA,
-    ///     |data: &[u8]| {
-    ///         let img = Image::deserialize_borrowed(data).unwrap();
-    ///         process_pixels(img.data); // img.data: &[u8] borrowing from `data`
-    ///     },
-    /// );
-    /// ```
-    pub fn register_subscription_buffered_raw<F, const RX_BUF: usize>(
-        &mut self,
-        topic_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        qos: QosSettings,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        F: FnMut(&[u8]) + 'static,
-    {
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        let handle = self
-            .session
-            .create_subscriber(&topic, qos)
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
-        self.add_arena_subscription_callback::<F, RX_BUF>(handle, qos, callback)
-    }
-
-    /// Phase 104.C.3.2 — Node-aware variant of
-    /// [`register_subscription_buffered_raw`](Self::register_subscription_buffered_raw).
+    /// Generic (type-erased) buffered subscription core (the
+    /// `node_mut(id).subscription(t).generic(ty, hash)` builder lowers here).
     /// Routes the subscriber creation through the [`NodeId`]'s
     /// session + identity (rclcpp `add_node` pattern).
     ///
@@ -2362,7 +2154,7 @@ impl Executor {
     ///     move |bytes: &[u8]| { let _ = pub_out.publish_raw(bytes); },
     /// )?;
     /// ```
-    pub fn register_subscription_buffered_raw_on<F, const RX_BUF: usize>(
+    pub(crate) fn register_subscription_buffered_raw_on<F, const RX_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
         topic_name: &str,
@@ -2482,9 +2274,9 @@ impl Executor {
     /// supports:
     ///
     /// - **Generic ROS-typed flow**: call `Session::create_subscriber`
-    ///   on `self.session_mut()` with a [`TopicInfo`].
-    ///   [`register_subscription_buffered_raw`](Self::register_subscription_buffered_raw)
-    ///   is the convenience wrapper for this path.
+    ///   on `self.session_mut()` with a [`TopicInfo`]. The
+    ///   `node_mut(id).subscription(t).generic(ty, hash)` builder is the
+    ///   convenience wrapper for this path.
     /// - **Backend-specific flow** (e.g. uORB needs `&'static orb_metadata`):
     ///   reach into the concrete session via [`Self::session_mut`] and
     ///   call its backend-specific create method, then hand the handle
@@ -2544,89 +2336,6 @@ impl Executor {
             drop_fn: drop_entry::<Entry<F>>,
         });
         Ok(HandleId(slot))
-    }
-
-    /// Register a subscription callback that receives both the message and
-    /// [`MessageInfo`](nros_core::MessageInfo) (sequence number, publisher GID, timestamps).
-    ///
-    /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// executor.register_subscription_with_info::<Int32, _>("/chatter", |msg, info| {
-    ///     if let Some(info) = info {
-    ///         log::trace!("seq={} gid={:02x?}", info.publication_sequence_number(), &info.publisher_gid()[..4]);
-    ///     }
-    /// })?;
-    /// ```
-    pub fn register_subscription_with_info<M, F>(
-        &mut self,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
-    {
-        self.register_subscription_with_info_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
-            topic_name, callback,
-        )
-    }
-
-    /// Register a subscription callback with MessageInfo and a custom receive buffer size.
-    pub fn register_subscription_with_info_sized<M, F, const RX_BUF: usize>(
-        &mut self,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
-    {
-        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(
-            None,
-            topic_name,
-            QosSettings::default(),
-            callback,
-        )
-    }
-
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_subscription_with_info_sized`].
-    pub fn register_subscription_with_info_sized_on<M, F, const RX_BUF: usize>(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
-    {
-        self.register_subscription_with_info_sized_inner::<M, F, RX_BUF>(
-            Some(node_id),
-            topic_name,
-            QosSettings::default(),
-            callback,
-        )
-    }
-
-    /// Phase 104.C.3.3.a — Node-aware convenience over
-    /// `register_subscription_with_info_sized_on`.
-    pub fn register_subscription_with_info_on<M, F>(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
-    {
-        self.register_subscription_with_info_sized_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
-            node_id, topic_name, callback,
-        )
     }
 
     pub(crate) fn register_subscription_with_info_sized_inner<M, F, const RX_BUF: usize>(
@@ -2694,96 +2403,6 @@ impl Executor {
         });
         self.apply_node_default_sched(slot, node_id);
         Ok(HandleId(slot))
-    }
-
-    /// Register a subscription callback with E2E safety validation (CRC + sequence tracking).
-    ///
-    /// The callback receives the deserialized message and an [`IntegrityStatus`](nros_rmw::IntegrityStatus)
-    /// with CRC validation results and sequence gap/duplicate detection.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// executor.register_subscription_with_safety::<Int32, _>("/chatter", |msg, status| {
-    ///     let crc_str = match status.crc_valid {
-    ///         Some(true) => "ok",
-    ///         Some(false) => "FAIL",
-    ///         None => "n/a",
-    ///     };
-    ///     println!("[SAFETY] seq_gap={} dup={} crc={}", status.gap, status.duplicate, crc_str);
-    /// })?;
-    /// ```
-    #[cfg(feature = "safety-e2e")]
-    pub fn register_subscription_with_safety<M, F>(
-        &mut self,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
-    {
-        self.register_subscription_with_safety_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
-            topic_name, callback,
-        )
-    }
-
-    /// Register a safety-validated subscription callback with a custom receive buffer size.
-    #[cfg(feature = "safety-e2e")]
-    pub fn register_subscription_with_safety_sized<M, F, const RX_BUF: usize>(
-        &mut self,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
-    {
-        self.register_subscription_with_safety_sized_inner::<M, F, RX_BUF>(
-            None,
-            topic_name,
-            QosSettings::default(),
-            callback,
-        )
-    }
-
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_subscription_with_safety_sized`].
-    #[cfg(feature = "safety-e2e")]
-    pub fn register_subscription_with_safety_sized_on<M, F, const RX_BUF: usize>(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
-    {
-        self.register_subscription_with_safety_sized_inner::<M, F, RX_BUF>(
-            Some(node_id),
-            topic_name,
-            QosSettings::default(),
-            callback,
-        )
-    }
-
-    /// Phase 104.C.3.3.a — Node-aware default-buffer-size
-    /// convenience.
-    #[cfg(feature = "safety-e2e")]
-    pub fn register_subscription_with_safety_on<M, F>(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        topic_name: &str,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        M: RosMessage + 'static,
-        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
-    {
-        self.register_subscription_with_safety_sized_on::<M, F, {
-            crate::config::DEFAULT_RX_BUF_SIZE
-        }>(node_id, topic_name, callback)
     }
 
     #[cfg(feature = "safety-e2e")]
@@ -3102,107 +2721,6 @@ impl Executor {
     // Raw callback registration (for C API)
     // ========================================================================
 
-    /// Register a raw (untyped) subscription callback with default QoS.
-    ///
-    /// The callback receives CDR bytes without deserialization.
-    /// Used by the C API where generic type parameters are not available.
-    pub fn register_subscription_raw(
-        &mut self,
-        topic_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        callback: RawSubscriptionCallback,
-        context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError> {
-        self.register_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
-            topic_name,
-            type_name,
-            type_hash,
-            QosSettings::default().keep_last(1),
-            callback,
-            context,
-        )
-    }
-
-    /// Register a raw subscription callback with a custom receive buffer size.
-    pub fn register_subscription_raw_sized<const RX_BUF: usize>(
-        &mut self,
-        topic_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        callback: RawSubscriptionCallback,
-        context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError> {
-        self.register_subscription_raw_with_qos_sized::<RX_BUF>(
-            topic_name,
-            type_name,
-            type_hash,
-            QosSettings::default().keep_last(1),
-            callback,
-            context,
-        )
-    }
-
-    /// Register a raw (untyped) subscription callback with custom QoS.
-    ///
-    /// Used by the C API where QoS is specified at init time.
-    pub fn register_subscription_raw_with_qos(
-        &mut self,
-        topic_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        qos: QosSettings,
-        callback: RawSubscriptionCallback,
-        context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError> {
-        self.register_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
-            topic_name, type_name, type_hash, qos, callback, context,
-        )
-    }
-
-    /// Register a raw subscription callback with custom QoS and buffer size.
-    ///
-    /// Internally uses triple buffer (depth ≤ 1) or SPSC ring (depth > 1).
-    pub fn register_subscription_raw_with_qos_sized<const RX_BUF: usize>(
-        &mut self,
-        topic_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        qos: QosSettings,
-        callback: RawSubscriptionCallback,
-        context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError> {
-        self.add_arena_subscription_c_callback::<RX_BUF>(
-            None, topic_name, type_name, type_hash, qos, callback, context,
-        )
-    }
-
-    /// Phase 104.C.3.3.a — Node-aware variant of
-    /// [`register_subscription_raw_with_qos_sized`]. Used by the
-    /// C API thin-wrapper path so consumers can route raw-byte
-    /// subscriptions through a specific `NodeId`'s session.
-    #[allow(clippy::too_many_arguments)]
-    pub fn register_subscription_raw_with_qos_sized_on<const RX_BUF: usize>(
-        &mut self,
-        node_id: super::node_record::NodeId,
-        topic_name: &str,
-        type_name: &str,
-        type_hash: &str,
-        qos: QosSettings,
-        callback: RawSubscriptionCallback,
-        context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError> {
-        self.add_arena_subscription_c_callback::<RX_BUF>(
-            Some(node_id),
-            topic_name,
-            type_name,
-            type_hash,
-            qos,
-            callback,
-            context,
-        )
-    }
-
     /// The kept C-FFI subscription core (Phase 189.M2.b): registers a
     /// raw `RawSubscriptionCallback` fn-ptr + `context` against an
     /// optional node's session. The Rust ergonomic surface is the
@@ -3210,7 +2728,7 @@ impl Executor {
     /// primitive the `nros-c` thin wrapper lowers to. `node_id == None`
     /// is the legacy single-node path.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn add_arena_subscription_c_callback<const RX_BUF: usize>(
+    pub fn add_arena_subscription_c_callback<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,

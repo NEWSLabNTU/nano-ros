@@ -27,9 +27,17 @@ fn main() {
     let config = ExecutorConfig::from_env().node_name("listener");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
+    let nid = executor
+        .node_builder("listener")
+        .build()
+        .expect("Failed to build node");
     let mut count: u64 = 0;
     executor
-        .register_subscription_with_safety::<Int32, _>("/chatter", move |msg, status| {
+        .node_mut(nid)
+        .subscription("/chatter")
+        .typed::<Int32>()
+        .safety()
+        .build(move |msg, status| {
             count += 1;
             let crc_str = match status.crc_valid {
                 Some(true) => "ok",

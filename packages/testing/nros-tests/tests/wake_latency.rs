@@ -210,16 +210,19 @@ fn timer_fires_n_times_per_n_seconds_under_idle_subs(zenohd_unique: ZenohRouter)
     // doesn't depend on the exact sub count — 3 is enough to
     // exercise the multi-entry has_data scan path on every
     // spin_once tick.
+    let nid = executor
+        .node_builder("timer_idle_node")
+        .build()
+        .expect("node build");
     for i in 0..3u8 {
         let topic = format!("/wake_latency/idle_sub_{}", i);
         executor
-            .register_subscription_buffered_raw::<_, 256>(
-                &topic,
-                "std_msgs/msg/Empty",
-                "",
-                QosSettings::default(),
-                |_data: &[u8]| {},
-            )
+            .node_mut(nid)
+            .subscription(&topic)
+            .generic("std_msgs/msg/Empty", "")
+            .qos(QosSettings::default())
+            .rx_buffer::<256>()
+            .build(|_data: &[u8]| {})
             .expect("register idle sub");
     }
 

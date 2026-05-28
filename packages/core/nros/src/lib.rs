@@ -21,11 +21,11 @@
 //! let config = ExecutorConfig::from_env().node_name("my_node");
 //! let mut executor = Executor::open(&config)?;
 //!
-//! let mut node = executor.create_node("my_node")?;
-//! let publisher = node.create_publisher::<Int32>("/my_topic")?;
+//! let node = executor.node_builder("my_node").build()?;
+//! let publisher = executor.node_mut(node).create_publisher::<Int32>("/my_topic")?;
 //! publisher.publish(&Int32 { data: 42 })?;
 //!
-//! executor.register_subscription::<Int32, _>("/topic", |msg: &Int32| {
+//! executor.node_mut(node).create_subscription::<Int32, _>("/topic", |msg: &Int32| {
 //!     println!("Received: {}", msg.data);
 //! })?;
 //!
@@ -42,9 +42,9 @@
 //! - **`NROS_EXECUTOR_ARENA_SIZE`** (default 4096) — byte budget for storing
 //!   callback closures inline.
 //!
-//! For messages larger than the default 1024-byte receive buffer, use the
-//! `_sized` method variants (e.g., `register_subscription_sized`) to specify a
-//! custom buffer size.
+//! For messages larger than the default 1024-byte receive buffer, size the
+//! subscription via the builder's `.rx_buffer::<N>()` knob (e.g.
+//! `node_mut(id).subscription(t).typed::<M>().rx_buffer::<4096>().build(cb)`).
 //!
 //! ## Transport Backends
 //!

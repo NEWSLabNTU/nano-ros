@@ -203,7 +203,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     };
 
     // Subscriber creation is deferred to nros_executor_register_subscription(),
-    // which calls nros_node::Executor::register_subscription_raw_with_qos_sized().
+    // which calls nros_node::Executor::add_arena_subscription_c_callback().
     subscription.handle_id = usize::MAX;
     subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
 

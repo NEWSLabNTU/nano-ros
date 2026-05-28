@@ -2,7 +2,7 @@ use super::*;
 use nros_core::{
     CdrReader, CdrWriter, DeserError, Deserialize, RosAction, RosMessage, SerError, Serialize,
 };
-use nros_rmw::TransportError;
+use nros_rmw::{QosSettings, TransportError};
 
 use crate::{
     mock::{MockSession, MockSubscriber},
@@ -77,12 +77,17 @@ fn encode_test_msg(value: i32) -> ([u8; 256], usize) {
 fn test_add_subscription_and_spin_once_no_data() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
+    let nid = executor
+        .node_builder("test_add_subscription_and_spin_once_no_data")
+        .build()
+        .unwrap();
 
     // Register a subscription — callback should never fire
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let called2 = called.clone();
     executor
-        .register_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
             called2.store(true, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -98,10 +103,15 @@ fn test_add_subscription_and_spin_once_with_data() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_add_subscription_and_spin_once_with_data")
+        .build()
+        .unwrap();
     let received = std::sync::Arc::new(std::sync::Mutex::new(None));
     let received2 = received.clone();
     executor
-        .register_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
             *received2.lock().unwrap() = Some(msg.data);
         })
         .unwrap();
@@ -128,18 +138,24 @@ fn test_multiple_subscriptions() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_multiple_subscriptions")
+        .build()
+        .unwrap();
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count1 = count.clone();
     let count2 = count.clone();
 
     executor
-        .register_subscription::<TestMsg, _>("/topic1", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/topic1", move |_msg: &TestMsg| {
             count1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
 
     executor
-        .register_subscription::<TestMsg, _>("/topic2", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/topic2", move |_msg: &TestMsg| {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -173,10 +189,15 @@ fn test_edf_dispatch_order() {
     let order_late = firing_order.clone();
     let order_early = firing_order.clone();
 
+    let nid = executor
+        .node_builder("test_edf_dispatch_order")
+        .build()
+        .unwrap();
     // Registered first → has lower DescIdx → would normally dispatch
     // first under the FIFO path. Bind to a *later* deadline.
     let h_late = executor
-        .register_subscription::<TestMsg, _>("/late", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/late", move |msg: &TestMsg| {
             order_late.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -184,7 +205,8 @@ fn test_edf_dispatch_order() {
     // Registered second → higher DescIdx → would dispatch second under
     // FIFO. Bind to an *earlier* deadline so EDF promotes it.
     let h_early = executor
-        .register_subscription::<TestMsg, _>("/early", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/early", move |msg: &TestMsg| {
             order_early.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -248,11 +270,16 @@ fn test_os_priority_worker_dispatches_callback() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
     executor.register_os_priority_dispatcher(apply_noop);
+    let nid = executor
+        .node_builder("test_os_priority_worker_dispatches_callback")
+        .build()
+        .unwrap();
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count_cb = count.clone();
     let h = executor
-        .register_subscription::<TestMsg, _>("/picas", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/picas", move |_msg: &TestMsg| {
             count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -298,11 +325,16 @@ fn test_tt_window_gate_suppresses_outside_window() {
     // executor's epoch — phase < 50 ms → outside window → dispatch
     // suppressed.
     executor.register_time_triggered_dispatcher(60_000_000);
+    let nid = executor
+        .node_builder("test_tt_window_gate_suppresses_outside_window")
+        .build()
+        .unwrap();
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count_cb = count.clone();
     let h = executor
-        .register_subscription::<TestMsg, _>("/tt", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/tt", move |_msg: &TestMsg| {
             count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -350,13 +382,19 @@ fn test_apply_time_triggered_schedule_dispatches_only_active_window() {
     let count_w1 = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let cb0 = count_w0.clone();
     let cb1 = count_w1.clone();
+    let nid = executor
+        .node_builder("test_apply_time_triggered_schedule")
+        .build()
+        .unwrap();
     let h0 = executor
-        .register_subscription::<TestMsg, _>("/tt0", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/tt0", move |_msg: &TestMsg| {
             cb0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
     let h1 = executor
-        .register_subscription::<TestMsg, _>("/tt1", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/tt1", move |_msg: &TestMsg| {
             cb1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -442,10 +480,15 @@ fn test_sporadic_budget_exhaustion_suppresses_dispatch() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_sporadic_budget_exhaustion")
+        .build()
+        .unwrap();
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count_cb = count.clone();
     let h = executor
-        .register_subscription::<TestMsg, _>("/sporadic", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/sporadic", move |_msg: &TestMsg| {
             count_cb.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -509,10 +552,15 @@ fn test_atomic_sporadic_per_callback_runtime_consumed() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_atomic_sporadic_per_callback_runtime_consumed")
+        .build()
+        .unwrap();
     // Subscription that sleeps a known interval so the per-callback
     // dispatch timing is deterministic enough to assert on.
     let h = executor
-        .register_subscription::<TestMsg, _>("/timed", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/timed", move |_msg: &TestMsg| {
             std::thread::sleep(std::time::Duration::from_millis(10));
         })
         .unwrap();
@@ -584,9 +632,14 @@ fn test_atomic_sporadic_overrun_recorded_when_callback_exceeds_budget() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_atomic_sporadic_overrun_recorded")
+        .build()
+        .unwrap();
     // Subscription sleeps 25 ms; budget is 5 ms → must overrun.
     let h = executor
-        .register_subscription::<TestMsg, _>("/overrun", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/overrun", move |_msg: &TestMsg| {
             std::thread::sleep(std::time::Duration::from_millis(25));
         })
         .unwrap();
@@ -733,16 +786,22 @@ fn test_bucketed_priority_dispatch_order() {
     let o_be = firing_order.clone();
     let o_crit = firing_order.clone();
 
+    let nid = executor
+        .node_builder("test_bucketed_priority_dispatch_order")
+        .build()
+        .unwrap();
     // Registered first (lower DescIdx) — bound to BestEffort.
     let h_be = executor
-        .register_subscription::<TestMsg, _>("/be", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/be", move |msg: &TestMsg| {
             o_be.lock().unwrap().push(msg.data);
         })
         .unwrap();
     // Registered second — bound to Critical so the bucket promotion
     // beats registration order.
     let h_crit = executor
-        .register_subscription::<TestMsg, _>("/crit", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/crit", move |msg: &TestMsg| {
             o_crit.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -794,13 +853,19 @@ fn test_fifo_default_binding_preserved_alongside_edf() {
     let o1 = firing_order.clone();
     let o2 = firing_order.clone();
 
+    let nid = executor
+        .node_builder("test_fifo_default_binding_preserved_alongside_edf")
+        .build()
+        .unwrap();
     let _h1 = executor
-        .register_subscription::<TestMsg, _>("/fifo1", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/fifo1", move |msg: &TestMsg| {
             o1.lock().unwrap().push(msg.data);
         })
         .unwrap();
     let h2 = executor
-        .register_subscription::<TestMsg, _>("/edf", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/edf", move |msg: &TestMsg| {
             o2.lock().unwrap().push(msg.data);
         })
         .unwrap();
@@ -841,12 +906,21 @@ fn test_arena_overflow() {
     // overflow well before `MAX_CBS` registrations.
     const OVERFLOW_RX_BUF: usize = crate::config::ARENA_SIZE / 4;
     let mut executor = Executor::from_session(session);
+    let nid = executor
+        .node_builder("test_arena_overflow")
+        .build()
+        .unwrap();
 
     let topics = ["/a", "/b", "/c", "/d"];
     let mut filled = 0;
     for topic in &topics {
         let result = executor
-            .register_subscription_sized::<TestMsg, _, OVERFLOW_RX_BUF>(topic, |_msg: &TestMsg| {});
+            .node_mut(nid)
+            .subscription(topic)
+            .qos(QosSettings::default().keep_last(1))
+            .typed::<TestMsg>()
+            .rx_buffer::<OVERFLOW_RX_BUF>()
+            .build(|_msg: &TestMsg| {});
         if result.is_err() {
             break;
         }
@@ -861,10 +935,13 @@ fn test_arena_overflow() {
     );
 
     // Verify the next add fails with BufferTooSmall.
-    let result = executor.register_subscription_sized::<TestMsg, _, OVERFLOW_RX_BUF>(
-        "/overflow",
-        |_msg: &TestMsg| {},
-    );
+    let result = executor
+        .node_mut(nid)
+        .subscription("/overflow")
+        .qos(QosSettings::default().keep_last(1))
+        .typed::<TestMsg>()
+        .rx_buffer::<OVERFLOW_RX_BUF>()
+        .build(|_msg: &TestMsg| {});
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 
@@ -874,15 +951,30 @@ fn test_entry_slots_exhausted() {
     // MAX_CBS=4 slots. Use small buffers to avoid arena overflow before
     // exhausting slots.
     let mut executor = Executor::from_session(session);
+    let nid = executor
+        .node_builder("test_entry_slots_exhausted")
+        .build()
+        .unwrap();
 
     for topic in &["/a", "/b", "/c", "/d"] {
         executor
-            .register_subscription_sized::<TestMsg, _, 64>(topic, |_msg: &TestMsg| {})
+            .node_mut(nid)
+            .subscription(topic)
+            .qos(QosSettings::default().keep_last(1))
+            .typed::<TestMsg>()
+            .rx_buffer::<64>()
+            .build(|_msg: &TestMsg| {})
             .unwrap();
     }
 
     // 5th registration should fail — all 4 slots are taken.
-    let result = executor.register_subscription_sized::<TestMsg, _, 64>("/e", |_msg: &TestMsg| {});
+    let result = executor
+        .node_mut(nid)
+        .subscription("/e")
+        .qos(QosSettings::default().keep_last(1))
+        .typed::<TestMsg>()
+        .rx_buffer::<64>()
+        .build(|_msg: &TestMsg| {});
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 
@@ -911,8 +1003,13 @@ fn test_drop_runs_without_panic() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_drop_runs_without_panic")
+        .build()
+        .unwrap();
     executor
-        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     // executor drops here — Drop impl must not panic
@@ -933,9 +1030,14 @@ fn test_arena_alignment() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_arena_alignment")
+        .build()
+        .unwrap();
     // Add a subscription, then check the offset is properly aligned
     executor
-        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     let meta = executor.entries[0].as_ref().unwrap();
@@ -1046,10 +1148,15 @@ fn test_timer_with_subscriptions() {
         })
         .unwrap();
 
+    let nid = executor
+        .node_builder("test_timer_with_subscriptions")
+        .build()
+        .unwrap();
     let sub_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let sub_count2 = sub_count.clone();
     executor
-        .register_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
             sub_count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -1220,9 +1327,18 @@ fn test_drop_with_mixed_entries() {
     let session = MockSession::new();
     let mut executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_drop_with_mixed_entries")
+        .build()
+        .unwrap();
     // Register one of each kind — use small buffers to fit in 4096-byte arena.
     executor
-        .register_subscription_sized::<TestMsg, _, 64>("/sub", |_msg: &TestMsg| {})
+        .node_mut(nid)
+        .subscription("/sub")
+        .qos(QosSettings::default().keep_last(1))
+        .typed::<TestMsg>()
+        .rx_buffer::<64>()
+        .build(|_msg: &TestMsg| {})
         .unwrap();
     executor
         .register_timer(TimerDuration::from_millis(100), || {})
@@ -1474,13 +1590,19 @@ fn test_handle_id_from_add_subscription() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_handle_id_from_add_subscription")
+        .build()
+        .unwrap();
     let id = executor
-        .register_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
         .unwrap();
     assert_eq!(id, HandleId(0));
 
     let id2 = executor
-        .register_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {})
         .unwrap();
     assert_eq!(id2, HandleId(1));
 }
@@ -1547,9 +1669,14 @@ fn test_trigger_any_fires_on_data() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
     executor.set_trigger(Trigger::Any);
+    let nid = executor
+        .node_builder("test_trigger_any_fires_on_data")
+        .build()
+        .unwrap();
 
     executor
-        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     // Load data
@@ -1567,9 +1694,14 @@ fn test_trigger_any_no_data_no_dispatch() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
     executor.set_trigger(Trigger::Any);
+    let nid = executor
+        .node_builder("test_trigger_any_no_data_no_dispatch")
+        .build()
+        .unwrap();
 
     executor
-        .register_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
         .unwrap();
 
     // No data loaded → trigger should not pass (for subscriptions)
@@ -1582,11 +1714,16 @@ fn test_trigger_always_fires_without_data() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
     executor.set_trigger(Trigger::Always);
+    let nid = executor
+        .node_builder("test_trigger_always_fires_without_data")
+        .build()
+        .unwrap();
 
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let called2 = called.clone();
     let id = executor
-        .register_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
             called2.store(true, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
@@ -1607,11 +1744,17 @@ fn test_trigger_one_fires_on_specific_handle() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_trigger_one_fires_on_specific_handle")
+        .build()
+        .unwrap();
     let _id0 = executor
-        .register_subscription::<TestMsg, _>("/topic0", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/topic0", |_: &TestMsg| {})
         .unwrap();
     let id1 = executor
-        .register_subscription::<TestMsg, _>("/topic1", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/topic1", |_: &TestMsg| {})
         .unwrap();
 
     executor.set_trigger(Trigger::One(id1));
@@ -1640,8 +1783,13 @@ fn test_trigger_predicate() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_trigger_predicate")
+        .build()
+        .unwrap();
     executor
-        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // Custom predicate that requires at least 1 ready handle
@@ -1732,10 +1880,12 @@ fn test_raw_subscription_callback() {
     RAW_CALLED.store(false, std::sync::atomic::Ordering::SeqCst);
 
     let _id = executor
-        .register_subscription_raw(
+        .add_arena_subscription_c_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            None,
             "/test",
             "test/msg/TestMsg",
             "test_hash",
+            QosSettings::default().keep_last(1),
             raw_cb,
             core::ptr::null_mut(),
         )
@@ -1787,8 +1937,13 @@ fn test_set_invocation_mode() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_set_invocation_mode")
+        .build()
+        .unwrap();
     let id = executor
-        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // Default is OnNewData
@@ -1834,11 +1989,16 @@ fn test_let_semantics_pre_samples_data() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
     executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
+    let nid = executor
+        .node_builder("test_let_semantics_pre_samples_data")
+        .build()
+        .unwrap();
 
     let received = std::sync::Arc::new(std::sync::Mutex::new(None));
     let received2 = received.clone();
     executor
-        .register_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
             *received2.lock().unwrap() = Some(msg.data);
         })
         .unwrap();
@@ -1870,10 +2030,12 @@ fn test_let_semantics_raw_subscription() {
     RAW_LET_LEN.store(0, std::sync::atomic::Ordering::SeqCst);
 
     executor
-        .register_subscription_raw(
+        .add_arena_subscription_c_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            None,
             "/test",
             "test/msg/TestMsg",
             "test_hash",
+            QosSettings::default().keep_last(1),
             raw_let_cb,
             core::ptr::null_mut(),
         )
@@ -1905,8 +2067,13 @@ fn test_trigger_all_with_mixed_handles() {
     executor
         .register_timer(TimerDuration::from_millis(100), || {})
         .unwrap();
+    let nid = executor
+        .node_builder("test_trigger_all_with_mixed_handles")
+        .build()
+        .unwrap();
     let _sub_id = executor
-        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     executor.set_trigger(Trigger::All);
@@ -1936,11 +2103,17 @@ fn test_trigger_allof_fires_when_both_ready() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_trigger_allof_fires_when_both_ready")
+        .build()
+        .unwrap();
     let id_a = executor
-        .register_subscription::<TestMsg, _>("/sensor_a", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/sensor_a", |_: &TestMsg| {})
         .unwrap();
     let id_b = executor
-        .register_subscription::<TestMsg, _>("/sensor_b", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/sensor_b", |_: &TestMsg| {})
         .unwrap();
 
     // AllOf — dispatch only when BOTH subscriptions have data
@@ -1978,8 +2151,13 @@ fn test_trigger_allof_empty_set_always_fires() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_trigger_allof_empty_set_always_fires")
+        .build()
+        .unwrap();
     executor
-        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // AllOf with empty set → vacuously true, always dispatches
@@ -2000,11 +2178,17 @@ fn test_trigger_anyof_fires_when_one_ready() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_trigger_anyof_fires_when_one_ready")
+        .build()
+        .unwrap();
     let id_a = executor
-        .register_subscription::<TestMsg, _>("/topic_a", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/topic_a", |_: &TestMsg| {})
         .unwrap();
     let id_b = executor
-        .register_subscription::<TestMsg, _>("/topic_b", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/topic_b", |_: &TestMsg| {})
         .unwrap();
 
     // AnyOf — dispatch when ANY handle in set has data
@@ -2035,8 +2219,13 @@ fn test_trigger_anyof_empty_set_never_fires() {
     let session = MockSession::new();
     let mut executor: Executor = Executor::from_session(session);
 
+    let nid = executor
+        .node_builder("test_trigger_anyof_empty_set_never_fires")
+        .build()
+        .unwrap();
     executor
-        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // AnyOf with empty set → always false, never dispatches
@@ -2072,8 +2261,13 @@ fn test_timer_delta_accumulates_when_trigger_fails() {
             count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         })
         .unwrap();
+    let nid = executor
+        .node_builder("test_timer_delta_accumulates_when_trigger_fails")
+        .build()
+        .unwrap();
     let sub_id = executor
-        .register_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
         .unwrap();
 
     // Trigger requires specific handle that won't have data

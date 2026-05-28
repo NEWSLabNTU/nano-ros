@@ -5,8 +5,14 @@
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cyclonedds")))]
-compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce | rmw-cyclonedds).");
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-cyclonedds"
+)))]
+compile_error!(
+    "Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce | rmw-cyclonedds)."
+);
 
 #[cfg(any(
     all(feature = "rmw-zenoh", feature = "rmw-xrce"),
@@ -21,11 +27,17 @@ use std_msgs::msg::Int32;
 
 fn register_rmw() -> Result<(), &'static str> {
     #[cfg(feature = "rmw-zenoh")]
-    { nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?; }
+    {
+        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
+    }
     #[cfg(feature = "rmw-xrce")]
-    { nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?; }
+    {
+        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
+    }
     #[cfg(feature = "rmw-cyclonedds")]
-    { nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?; }
+    {
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
+    }
     Ok(())
 }
 
@@ -63,7 +75,9 @@ fn make_config() -> ExecutorConfig<'static> {
 
 #[no_mangle]
 extern "C" fn rust_main() {
-    unsafe { zephyr::set_logger().ok(); }
+    unsafe {
+        zephyr::set_logger().ok();
+    }
     info!("nros Zephyr Listener");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
     if let Err(e) = run() {
@@ -77,12 +91,15 @@ fn run() -> Result<(), NodeError> {
 
     let config = make_config();
     let mut executor: Executor = Executor::open(&config)?;
+    let nid = executor.node_builder("listener").build()?;
 
     let mut count: u32 = 0;
-    executor.register_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
-        count += 1;
-        info!("Received[{}]: {}", count, msg.data);
-    })?;
+    executor
+        .node_mut(nid)
+        .create_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
+            count += 1;
+            info!("Received[{}]: {}", count, msg.data);
+        })?;
 
     info!("Waiting for messages on /chatter...");
     executor.spin(core::time::Duration::from_millis(1000));

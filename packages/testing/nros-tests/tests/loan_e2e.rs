@@ -105,19 +105,22 @@ fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
             .node_name("loan_e2e_sub")
             .domain_id(199);
         let mut sub_exec = Executor::open(&cfg).expect("sub executor open");
+        let nid = sub_exec
+            .node_builder("loan_e2e_sub_node")
+            .build()
+            .expect("node build");
         sub_exec
-            .register_subscription_buffered_raw::<_, 1024>(
-                "/loan_e2e",
-                TYPE_NAME,
-                TYPE_HASH,
-                Default::default(),
-                move |bytes: &[u8]| {
-                    RX_COUNT.fetch_add(1, Ordering::SeqCst);
-                    if let Ok(mut g) = last_rx_thread.lock() {
-                        *g = bytes.to_vec();
-                    }
-                },
-            )
+            .node_mut(nid)
+            .subscription("/loan_e2e")
+            .generic(TYPE_NAME, TYPE_HASH)
+            .qos(Default::default())
+            .rx_buffer::<1024>()
+            .build(move |bytes: &[u8]| {
+                RX_COUNT.fetch_add(1, Ordering::SeqCst);
+                if let Ok(mut g) = last_rx_thread.lock() {
+                    *g = bytes.to_vec();
+                }
+            })
             .expect("register subscription");
 
         while !stop_thread.load(Ordering::SeqCst) {

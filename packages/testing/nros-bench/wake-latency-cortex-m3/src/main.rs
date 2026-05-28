@@ -102,6 +102,7 @@ extern "C" fn _start() -> ! {
                 .node_name("wake-latency");
             nros_rmw_zenoh::register().expect("Failed to register RMW backend");
             let mut executor = Executor::open(&exec_config)?;
+            let nid = executor.node_builder("wake-latency").build()?;
             let publisher = {
                 let mut node = executor.create_node("wake-latency")?;
                 node.create_publisher::<Int32>("/wake-latency")?
@@ -124,13 +125,13 @@ extern "C" fn _start() -> ! {
                     );
                     s
                 };
-                let _ = executor.register_subscription::<Int32, _>(
+                let _ = executor.node_mut(nid).create_subscription::<Int32, _>(
                     topic.as_str(),
                     |_: &Int32| {},
                 );
             }
 
-            executor.register_subscription::<Int32, _>(
+            executor.node_mut(nid).create_subscription::<Int32, _>(
                 "/wake-latency",
                 |_msg: &Int32| {
                     // No-op cb body. The probe's `on_dispatch`

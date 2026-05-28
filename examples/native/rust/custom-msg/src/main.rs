@@ -227,25 +227,25 @@ fn main() {
         nros_info!(&LOGGER, "Session created");
 
         // Create publisher
-        let mut node = executor
-            .create_node("custom_msg_node")
-            .expect("Failed to create node");
-        let publisher = node
+        let nid = executor
+            .node_builder("custom_msg_node")
+            .build()
+            .expect("Failed to build node");
+        let publisher = executor
+            .node_mut(nid)
             .create_publisher::<SensorReading>("/sensor_data")
             .expect("Failed to create publisher");
         nros_info!(&LOGGER, "Publisher created for: /sensor_data");
 
         // Register subscription callback
         executor
-            .register_subscription::<SensorReading, _>(
-                "/sensor_data",
-                move |msg: &SensorReading| {
-                    println!(
-                        "  Received: sensor_id={}, temp={:.1}, humidity={:.1}",
-                        msg.sensor_id, msg.temperature, msg.humidity
-                    );
-                },
-            )
+            .node_mut(nid)
+            .create_subscription::<SensorReading, _>("/sensor_data", move |msg: &SensorReading| {
+                println!(
+                    "  Received: sensor_id={}, temp={:.1}, humidity={:.1}",
+                    msg.sensor_id, msg.temperature, msg.humidity
+                );
+            })
             .expect("Failed to add subscription");
         nros_info!(&LOGGER, "Subscriber created for: /sensor_data");
 
