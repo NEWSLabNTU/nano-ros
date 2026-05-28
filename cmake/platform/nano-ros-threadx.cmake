@@ -74,19 +74,15 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 # threadx-linux runs on the host so a system-built tool resolves
 # automatically via PATH.
 # ---------------------------------------------------------------------------
-set(_nros_threadx_codegen_module
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
-if(EXISTS "${_nros_threadx_codegen_module}")
-    set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
-    # Phase 157.A — shared host-side bootstrap. See
-    # `cmake/NanoRosBootstrapCodegen.cmake` for the resolution
-    # ladder + auto-build behaviour. Replaces the Phase 154 probe
-    # stanza that pointed at the stale `build/install/bin` layout
-    # (Phase 140 deleted that prefix).
-    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBootstrapCodegen.cmake")
-    nros_bootstrap_codegen()
-    include("${_nros_threadx_codegen_module}")
-endif()
+# Phase 195 audit (a) — switched off the retired
+# `packages/codegen/.../nros-codegen-c` submodule copy (source-tree walk-up
+# into the submodule Phase 195.D deletes) to the canonical in-tree module
+# (Phase 137.2; identical `nros_generate_interfaces()` / `nros_find_interfaces()`
+# surface). `nros_bootstrap_codegen()` still resolves the host codegen binary.
+set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBootstrapCodegen.cmake")
+nros_bootstrap_codegen()
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 
 # ---------------------------------------------------------------------------
 # Per-board overlay — REQUIRED for ThreadX. Unlike POSIX, ThreadX apps

@@ -209,8 +209,28 @@ fn configure_cflags(build: &mut cc::Build) {
         .flag("-ffunction-sections")
         .flag("-fdata-sections")
         .warnings(false);
-    let cflags =
-        env::var("FREERTOS_CFLAGS").unwrap_or_else(|_| "-mcpu=cortex-m3 -mthumb".to_string());
+    // Phase 195 audit (b) — the cortex-m3 default only fits a thumbv7m
+    // (Cortex-M3) target. For any other ARM-M target (thumbv7em = M4/M7,
+    // thumbv6m = M0, …) silently applying cortex-m3 flags yields a
+    // wrong-CPU / wrong-FPU-ABI binary. Fail loud: the consumer board MUST
+    // set FREERTOS_CFLAGS (its `.cargo/config.toml [env]`) to match the arch.
+    // Non-`thumb*` targets (host `cargo check`) skip the guard — the default
+    // is irrelevant there (no embedded cc compile of substance).
+    let cflags = match env::var("FREERTOS_CFLAGS") {
+        Ok(v) => v,
+        Err(_) => {
+            let target = env::var("TARGET").unwrap_or_default();
+            if target.starts_with("thumb") && !target.starts_with("thumbv7m") {
+                panic!(
+                    "nros-board-freertos: FREERTOS_CFLAGS unset but TARGET=`{target}` is not \
+                     thumbv7m (Cortex-M3); the cortex-m3 default would mis-compile for this arch. \
+                     Set FREERTOS_CFLAGS in the board's .cargo/config.toml [env] to match — e.g. \
+                     `-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard` for a Cortex-M4F."
+                );
+            }
+            "-mcpu=cortex-m3 -mthumb".to_string()
+        }
+    };
     for flag in cflags.split_whitespace() {
         build.flag(flag);
     }

@@ -98,21 +98,15 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 # pattern). The module's own `find_program(nros-codegen)` walks PATH
 # when nothing is pre-set.
 # ---------------------------------------------------------------------------
-set(_nros_nuttx_codegen_module
-    "${CMAKE_CURRENT_LIST_DIR}/../../packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake")
-if(EXISTS "${_nros_nuttx_codegen_module}")
-    set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
-    # Phase 157.A — shared host-side bootstrap. Probes
-    # `packages/codegen/packages/target/release/nros-codegen` +
-    # PATH; auto-runs `cargo build --release -p nros-codegen-c`
-    # if neither resolves + `NROS_AUTO_BOOTSTRAP_CODEGEN=ON`
-    # (default). Replaces the Phase 155.B.4 probe stanza that
-    # pointed at the stale `build/install/bin` layout (Phase 140
-    # deleted that prefix).
-    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBootstrapCodegen.cmake")
-    nros_bootstrap_codegen()
-    include("${_nros_nuttx_codegen_module}")
-endif()
+# Phase 195 audit (a) — switched off the retired
+# `packages/codegen/.../nros-codegen-c` submodule copy (source-tree walk-up
+# into the submodule Phase 195.D deletes) to the canonical in-tree module
+# (Phase 137.2; identical `nros_generate_interfaces()` / `nros_find_interfaces()`
+# surface). `nros_bootstrap_codegen()` still resolves the host codegen binary.
+set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBootstrapCodegen.cmake")
+nros_bootstrap_codegen()
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 
 # ---------------------------------------------------------------------------
 # Per-board overlay — REQUIRED for NuttX. Overlays own the FFI crate
