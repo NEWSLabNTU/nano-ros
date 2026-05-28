@@ -231,17 +231,29 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         `nros-cli`). Removed the crate + its workspace-member entry; codegen
         workspace builds clean. Root cmake doc + `NanoRosBootstrapCodegen.cmake`
         comments de-stale'd (single canonical module).
-  - [ ] **Non-CLI tenants** of the submodule (`colcon-cargo-ros2`,
-        `cargo-nano-ros`, `rosidl-{parser,codegen,bindgen}`, the `user-libs`
-        rclrs/rosidl-runtime-rs) — confirm nano-ros doesn't build them in-tree, or
-        relocate. (These stay in the renamed `nros-cli` repo; nano-ros just stops
-        gitlinking it.)
-  - [ ] **Codegen runtime data** — orchestration templates are `include_str!`'d
-        (already embedded); confirm bundled interfaces (`packages/codegen/interfaces/`)
-        are embedded or relocated into nano-ros proper.
-  - Then: drop the gitlink. **Installing the host binary alone is NOT sufficient**
-        — the submodule is today a *build* dependency of nano-ros (the 92 hooks),
-        not just the CLI's home.
+  - [ ] **Drop the gitlink — ATTEMPTED, BLOCKED (2026-05-29).** Rewired the
+        build to resolve a **prebuilt/installed `nros`** (cargo.sh resolver →
+        `$NROS`/PATH/`$NROS_HOME/bin`; the recipe `codegen=` literals) instead of
+        building from the submodule, and installed the `nros-v0.2.0` prebuilt.
+        **Verification failed:** the prebuilt `nros codegen resolve-deps` did not
+        wire `builtin_interfaces` as an `action_msgs` dependency → the generated
+        `action_msgs_msg_goal_info.h` couldn't find
+        `builtin_interfaces_msg_time.h` (nuttx C build). The submodule-built `nros`
+        resolves it fine — yet `cargo-nano-ros` (the resolve-deps engine) is
+        byte-identical between the prebuilt's commit and main, so the discrepancy
+        is unexplained (build-profile? a stale-config artifact?). **Reverted the
+        rewire** to keep the build working. **Conclusion:** full-drop needs the
+        prebuilt to *exactly* reproduce the workspace's codegen, which (a) is not
+        currently true and (b) would force a re-release of `nros` before any
+        codegen-affecting workspace change — impractical for active dev + kills
+        in-tree co-development. **Recommend the optional-submodule end-state**
+        instead: build prefers the prebuilt/installed `nros`, falls back to the
+        submodule when present — a fresh clone doesn't *need* it (the 195.D goal)
+        without losing co-dev. The submodule stays gitlinked for now.
+  - Residual (for the optional-submodule path): confirm the non-CLI tenants
+        (`cargo-nano-ros`, `rosidl-*`, `colcon-cargo-ros2`) aren't separately
+        needed in-tree, and the resolve-deps discrepancy above is understood
+        before trusting the prebuilt codegen path.
 - [x] **195.E — Refresh the `nros-cli` repo's README + CLI help text.** DONE
       (`da75c37`). `README.md` rewritten around the `nros` CLI (was the
       colcon-cargo-ros2 / PyPI doc): prebuilt install (`curl|sh install.sh`), the
