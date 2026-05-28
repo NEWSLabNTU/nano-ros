@@ -544,15 +544,18 @@ example migration (K), then the audit/docs (N).
         / `Executor::create_node_on_session(name, idx)`, that sets
         `NodeRecord.session_idx` directly and bypasses `resolve_session_slot`
         (the generator supplies the index, so domain-aware *resolution* isn't
-        needed). Remaining work, mostly codegen/planner: **(1)** `nros-node` —
-        the small `session_idx` selector; **(2)** generator — emit
-        `SESSION_SPECS` from the distinct `[[domain]]` domains (not just
-        multi-transport), a node→session index in `NODES` (today `render_nodes`
-        hardcodes `domain_id: None`), `build_component_node` routing through the
-        selector, and `build_executor` → `open_multi` when multi-domain;
-        **(3)** plan — `PlanNode` carries `session_idx`/domain; **(4)**
-        planner/deploy — `[[domain]]` (root `[system].domain`) → plan;
-        **(5)** drop the domain half of the `nros check`
+        needed). Work: **(1)** `nros-node` — the small `session_idx` selector
+        — **DONE 2026-05-28 (`ae2b19a19`):** `NodeBuilder::session_idx(u8)` binds
+        a Node to a pre-opened slot (validated), bypassing `resolve_session_slot`;
+        unit-tested (slot 0/1 bind + out-of-range reject). **Remaining
+        (codegen/planner bulk):** **(2)** generator — emit `SESSION_SPECS` from
+        the distinct `[[domain]]` domains (not just multi-transport), a
+        node→session index in `NODES` (today `render_nodes` hardcodes
+        `domain_id: None`), `build_component_node` routing through the selector,
+        and `build_executor` → `open_multi` when multi-domain; **(3)** plan —
+        `PlanNode` carries `session_idx`/domain; **(4)** planner/deploy —
+        `[[domain]]` (root `[system].domain`) → plan; **(5)** drop the domain
+        half of the `nros check`
         `pending_routing_warning`. The warning stays as the guard until this
         lands. *(`[[bridge]]` is a topic-forwarding gateway, not node placement
         — out of scope for K.5; that's the W.5/bridge-data-plane line.)*
