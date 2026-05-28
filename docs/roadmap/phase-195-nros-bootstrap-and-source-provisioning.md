@@ -83,19 +83,28 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
       + publish the host binaries on its own Releases (cleaner separation than
       adding `nros` to `nano-ros-sdk`'s tool matrix; the CLI versions track the
       CLI repo, not the toolchain repo).
+  - [ ] **Merge `nros-codegen` into `nros` first** (recommended, zero dep cost):
+        `nros` already deps `cargo-nano-ros` (the codegen engine `nros-codegen-c`
+        wraps) and already has `generate`/`generate-rust`/`generate-c`
+        subcommands — its dep tree is a **superset** of `nros-codegen`'s, so
+        folding the build-tool-shaped surface (`--args-file <json>`,
+        `resolve-deps`, `generate-c/cpp`) in as `nros codegen …` adds nothing.
+        Keep the JSON `--args-file` call shape stable so the 92 in-tree consumers
+        (195.D) change only the binary name (`nros-codegen …` → `nros codegen …`).
+        Payoff: **one** host artifact to build/ship/install, one fewer thing to
+        switch. The only reason to keep it separate (a leaner build-time tool)
+        evaporates once it's prebuilt.
   - [ ] In the (renamed) `nros-cli` repo: a release workflow building `nros`
-        **and `nros-codegen`** (two separate binaries — `nros-cli` and
-        `nros-codegen-c`) per host (linux-x86_64, linux-arm64, macos-arm64),
-        `cargo build --release` (the `packages/` build-infra workspace needs no
-        ROS), packaged `nros{,-codegen}-<host>.tar.zst` (+ `.sha256`).
-  - [ ] `nros-sdk-index.toml`: `[tool.nros]` + `[tool.nros-codegen]` entries —
+        (one binary, post-merge) per host (linux-x86_64, linux-arm64,
+        macos-arm64), `cargo build --release` (the `packages/` build-infra
+        workspace needs no ROS), packaged `nros-<host>.tar.zst` (+ `.sha256`).
+  - [ ] `nros-sdk-index.toml`: a `[tool.nros]` entry (single binary post-merge) —
         `version` + per-host `dist` (pointing at the `nros-cli` repo's Releases)
         + a `source` recipe (`cargo install --path`) fallback. Subject to the
         existing `sdk-index-gate`.
   - [ ] `install.sh` (`curl … | sh`, rustup model): detect host, read the pinned
-        version, download + verify + install `nros`(+`nros-codegen`) to
-        `$NROS_HOME/bin` (or `~/.local/bin`), print PATH guidance. No cargo / no
-        `just` / no checkout.
+        version, download + verify + install `nros` to `$NROS_HOME/bin` (or
+        `~/.local/bin`), print PATH guidance. No cargo / no `just` / no checkout.
   - [ ] `scripts/bootstrap.sh`: offer the prebuilt path alongside the existing
         rustup+just source path; default to prebuilt when a `dist` for the host
         exists.
@@ -133,13 +142,14 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         descriptor + crate, no CLI edit (mirrors Phase 194's de-hardcode for
         NuttX, one level up).
 - [ ] **195.D — Retire the `packages/codegen` submodule from nano-ros (end state).**
-      Once `nros` + `nros-codegen` are host binaries (195.A) and the CLI is
+      Once the merged `nros` is a host binary (195.A) and the CLI is
       layout-decoupled (195.C), nano-ros no longer needs the CLI *source* in-tree.
       Blockers to clear first:
   - [ ] **92 in-tree consumers** in `justfile`/`just/*.just`/cmake reference the
         *built* path `packages/codegen/packages/target/.../nros-codegen` /
         `_NANO_ROS_CODEGEN_TOOL` / `cargo install --path packages/codegen/...` —
-        switch every one to the host binary on PATH (Method A already injects it).
+        switch every one to the host binary on PATH (`nros-codegen …` →
+        `nros codegen …`; Method A already injects PATH).
   - [ ] **Non-CLI tenants** of the submodule (`colcon-cargo-ros2`,
         `cargo-nano-ros`, `rosidl-{parser,codegen,bindgen}`, the `user-libs`
         rclrs/rosidl-runtime-rs) — confirm nano-ros doesn't build them in-tree, or
