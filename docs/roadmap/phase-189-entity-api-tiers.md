@@ -71,10 +71,17 @@ application code.
       relay (`exec.node_mut(dst).publisher(t).generic(..).build()` then
       `exec.node_mut(src).subscription(t).generic(..).message_info().build(cb)`)
       is verified expressible in `builder_tests::nodectx_publisher_and_bridge_shape`.
-- [ ] **M2 — Retire the `register_*_*_*` zoo.** One release as `#[deprecated]`
-      shims over the builder, then deleted. **The generator emits builder calls**
-      (replacing the `register_subscription_raw_with_qos_sized_on` etc. it emits
-      today). No long identifier survives.
+- [~] **M2 — Retire the `register_*_*_*` zoo.** *Generator switched* (codegen
+      `d300164`): the subscriber emission now uses
+      `executor.node_mut(n).subscription(t).generic(..).qos(..).rx_buffer::<1024>().build(|_d| {})`,
+      removing the longest identifier (`register_subscription_raw_with_qos_sized_on`)
+      + the dead `noop_raw_subscription` from generated code. Verified end-to-end
+      by `nros-cli-core` e2e (generated bare-metal/stm32f4/nuttx/freertos/
+      threadx-riscv64/esp32/native fixtures compile+link) + nros-node
+      `builder_tests::generator_emitted_chain_compiles`. *Remaining:* `#[deprecated]`
+      shims over the builder for the 24-variant executor `register_subscription_*`
+      zoo (then delete), and migrate the ~30 example/test callsites (M4 sweep).
+      Services/actions still emit C-fn-ptr noops — their builders are M3.
 - [ ] **M3 — C / C++ named-options parity (rclc / rclcpp mirrors).** A
       `SubscriptionOptions` / `PublisherOptions` struct on the C/C++ surfaces
       (named fields + defaults, the idiomatic shape there) lowering to the same
