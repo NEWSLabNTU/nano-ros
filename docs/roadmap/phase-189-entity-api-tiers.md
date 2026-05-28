@@ -189,6 +189,18 @@ application code.
         fix is designed in
         [`docs/design/service-qos.md`](../design/service-qos.md) (upstream
         rclcpp/rclc/rclrs reference + 5-slice breakdown).
+        **UPDATE (2026-05-29): the QoS half is now DONE via Phase 193**
+        (`QosSettings` threads through `ServiceInfo` + every backend; C/C++
+        `create_service(qos)` and the `_with_qos` entry points apply the
+        profile to the wire). **What remains in M3.3 = the named-options
+        structs only:** C++ `ServiceOptions`/`ActionServerOptions` +
+        C `nros_service_options_t`/`nros_action_server_options_t` +
+        `nros_*_init_with_options(...)`, mirroring `SubscriptionOptions`.
+        Phase 193.3/193.4 explicitly **deferred these here** — their sole
+        non-QoS axis is `sched_context`, which is still **inert** for
+        services/action-servers (no bindable executor `HandleId`, no sched
+        field on the C structs), so the structs must land together with that
+        sched-binding substrate, not as empty-reserved scaffolding.
   - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
         `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
         dispatch + `Executor::add_arena_subscription_c_info_callback` in
