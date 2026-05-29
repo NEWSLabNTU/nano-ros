@@ -67,10 +67,22 @@ BYO workspace without vendoring Zephyr. **In-tree source authored at
 mirror/source for the skeleton.
 
 ### 205.B — [P3] Upstream the generic patches (shrink the surface)
+
+**Prep dossier landed (2026-05-29): `docs/development/zephyr-upstreaming.md`.**
+Stages every `upstreamable` patch for a copy-paste-and-rebase PR — per-patch
+upstream target, an nano-ros-free commit message, the in-tree source diff +
+script, repro/test, and the post-merge "drop from `patches.yml` + scripts +
+narrow the version matrix" procedure. Covers the three `patches.yml` NSOS
+patches, the additional 3.7-line NSOS candidates (`getsockname`, `getifaddrs`,
+`mcjoin-mreq`), the zephyr-lang-rust patches, and the cyclonedds fork commits.
+`patches.yml` header now points at it. **Opening the PRs stays human follow-up**
+(Zephyr CLA + a `zephyrproject-rtos/zephyr` fork) — the boxes below track that.
+
 - [ ] **NSOS patches** (`recvmsg`, IPv4-multicast `setsockopt`/`getsockopt`
       forwarding) — generic Zephyr native-sim fixes, already flagged
-      `upstreamable: true` in `zephyr/patches.yml`. Open Zephyr PRs; once merged +
-      released, drop them from `patches.yml` for that Zephyr line.
+      `upstreamable: true` in `zephyr/patches.yml`. Open Zephyr PRs (commit
+      messages + diffs staged in the dossier); once merged + released, drop them
+      from `patches.yml` for that Zephyr line.
 - [ ] **`zephyr-lang-rust` patches** (`cargo-features` / `EXTRA_CARGO_ARGS`
       forwarding, the per-arch rust target registration) — pursue upstream so the
       rust examples need no in-tree patch (also removes the lang-rust-shape-drift

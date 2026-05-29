@@ -14,6 +14,11 @@
 #   west patch apply     # apply all patches (verifies each sha256)
 #   west patch clean      # roll back to manifest checkout
 #
+# UPSTREAMING: patches flagged `upstreamable: true` are generic Zephyr fixes
+# staged for upstream PRs — see docs/development/zephyr-upstreaming.md (Phase
+# 205.B) for the per-patch commit message, target, repro, and the post-merge
+# "drop from here" procedure. PRs are human follow-up (Zephyr CLA + fork).
+#
 # SCOPE: only the Zephyr-module (drivers/net/nsos_*) patches live here.
 # The five cyclonedds-on-Zephyr patches (threads, log-flush, sockwaitset,
 # udp-rcvbuf, mcjoin) are NOT listed: Cyclone DDS is consumed via the
