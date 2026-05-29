@@ -521,7 +521,6 @@ fn dep_usize(name: &str) -> usize {
 /// Generate `include/nros/nros_cpp_ffi.h` using cbindgen.
 fn generate_header(manifest_dir: &std::path::Path) {
     let config_path = manifest_dir.join("cbindgen.toml");
-    let output_path = manifest_dir.join("include/nros/nros_cpp_ffi.h");
 
     let config = match cbindgen::Config::from_file(&config_path) {
         Ok(c) => c,
@@ -538,11 +537,34 @@ fn generate_header(manifest_dir: &std::path::Path) {
 
     match result {
         Ok(bindings) => {
-            // Ensure include directory exists
-            if let Some(parent) = output_path.parent() {
-                std::fs::create_dir_all(parent).ok();
+            // Write to PER-BUILD locations only — never the shared source tree.
+            // Parallel example cmake projects each run this build.rs via corrosion;
+            // a single shared `include/nros/nros_cpp_ffi.h` target races on first
+            // creation. Each build's CORROSION_BUILD_DIR / CARGO_TARGET_DIR is
+            // unique → race-free; cmake POST_BUILD mirrors it onto this build's
+            // include path. Mirrors nros_cpp_config_generated.h. write_to_file is
+            // content-idempotent.
+            // The nros-cpp headers `#include "nros_cpp_ffi.h"` (no `nros/`
+            // prefix), so the mirror must sit at the include ROOT, not a `nros/`
+            // subdir. cmake copies CORROSION_BUILD_DIR/nros_cpp_ffi.h to
+            // <binary>/include/nros_cpp_ffi.h accordingly.
+            let mut dests: Vec<PathBuf> = Vec::new();
+            if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+                dests.push(
+                    PathBuf::from(target_dir)
+                        .join("nros-cpp-generated")
+                        .join("nros_cpp_ffi.h"),
+                );
             }
-            bindings.write_to_file(&output_path);
+            if let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") {
+                dests.push(PathBuf::from(corrosion_dir).join("nros_cpp_ffi.h"));
+            }
+            for dest in dests {
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                bindings.write_to_file(&dest);
+            }
         }
         Err(e) => {
             println!("cargo:warning=cbindgen header generation skipped: {e}");

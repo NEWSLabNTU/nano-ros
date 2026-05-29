@@ -121,8 +121,17 @@ add_custom_command(TARGET cargo-build_nros_c POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
         "${_nros_c_intree_include_dir}/nros/nros_config_generated.h"
-    BYPRODUCTS "${_nros_c_intree_include_dir}/nros/nros_config_generated.h"
-    COMMENT "nros-c: mirroring nros_config_generated.h for in-tree consumers"
+    # nros_generated.h (cbindgen) is likewise written per-build by build.rs to
+    # CORROSION_BUILD_DIR (== CMAKE_CURRENT_BINARY_DIR), NOT the shared source
+    # tree — so parallel example builds don't race on it. Mirror it into this
+    # build's include/nros/ alongside the config header.
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_BINARY_DIR}/nros_generated.h"
+        "${_nros_c_intree_include_dir}/nros/nros_generated.h"
+    BYPRODUCTS
+        "${_nros_c_intree_include_dir}/nros/nros_config_generated.h"
+        "${_nros_c_intree_include_dir}/nros/nros_generated.h"
+    COMMENT "nros-c: mirroring generated headers for in-tree consumers"
     VERBATIM
 )
 if(TARGET nros_c-static)

@@ -162,17 +162,13 @@ build-fixtures:
     # manifest; the platform-wide toolchain / NuttX SDK / codegen-tool -D
     # defs are injected via the shared builder's NROS_CMAKE_EXTRA_DEFS.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
-    # Build the c/cpp fixtures serially (NROS_CARGO_FRONTENDS=1): each example is a
-    # separate cmake project whose nros-c / nros-cpp corrosion build writes the
-    # shared in-tree cbindgen header (nros_generated.h / nros_cpp_ffi.h). Building
-    # in parallel races on first creation of that shared file (`fatal error:
-    # nros/nros_generated.h: No such file`); serial = the first example writes it,
-    # the rest find it (cbindgen's write is content-idempotent). Other platforms
-    # dodge this by building nros-c earlier (e.g. freertos' cyclone step); nuttx
-    # builds c/cpp first. The intra-project compile order is handled by the
-    # cargo-build_nros_c dependency in NanoRosGenerateInterfaces.cmake.
-    NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx c zenoh
-    NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx cpp zenoh
+    # Parallel-safe: the cbindgen headers (nros_generated.h / nros_cpp_ffi.h) are
+    # written per-build (CORROSION_BUILD_DIR) and mirrored onto each build's own
+    # include dir by the nros-c / nros-cpp CMakeLists — no shared source-tree
+    # write to race on (the prior `fatal error: nros/nros_generated.h: No such
+    # file` was that race; fixed at the root in those build.rs + CMakeLists).
+    bash scripts/build/fixtures-build.sh nuttx c zenoh
+    bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
 
 # Phase 157.C — stage the integration shell + every C/C++ example

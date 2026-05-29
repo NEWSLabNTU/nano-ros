@@ -482,7 +482,6 @@ fn write_header_preserve_nonzero(
 /// truth for C/Rust type layout compatibility.
 fn generate_header(manifest_dir: &Path) {
     let config_path = manifest_dir.join("cbindgen.toml");
-    let output_path = manifest_dir.join("include/nros/nros_generated.h");
 
     let config = match cbindgen::Config::from_file(&config_path) {
         Ok(c) => c,
@@ -499,7 +498,36 @@ fn generate_header(manifest_dir: &Path) {
 
     match result {
         Ok(bindings) => {
-            bindings.write_to_file(&output_path);
+            // Write to PER-BUILD locations only — never the shared source tree.
+            // When N example cmake projects build in parallel (each runs this
+            // build.rs via corrosion), a single shared `include/nros/...` target
+            // races on first creation (`fatal error: nros/nros_generated.h: No
+            // such file`). Each build's CORROSION_BUILD_DIR / CARGO_TARGET_DIR is
+            // unique, so per-build output is race-free; the cmake POST_BUILD
+            // mirrors CORROSION_BUILD_DIR/nros_generated.h into that build's
+            // include/nros/ (on nros_c-static's INTERFACE include path). Mirrors
+            // the nros_config_generated.h handling. write_to_file is content-
+            // idempotent (no rebuild churn).
+            let mut dests: Vec<PathBuf> = Vec::new();
+            if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+                dests.push(
+                    PathBuf::from(target_dir)
+                        .join("nros-c-generated")
+                        .join("nros")
+                        .join("nros_generated.h"),
+                );
+            } else if let Ok(td) = nros_sizes_build::cargo_target_dir() {
+                dests.push(td.join("nros-c-generated").join("nros").join("nros_generated.h"));
+            }
+            if let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") {
+                dests.push(PathBuf::from(corrosion_dir).join("nros_generated.h"));
+            }
+            for dest in dests {
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                bindings.write_to_file(&dest);
+            }
         }
         Err(e) => {
             // cbindgen may fail if dependencies aren't available (e.g.,
