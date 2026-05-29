@@ -230,7 +230,38 @@ regressions.
       picolibc's `<cstdlib>` on the rv64/threadx cross does **not** alias every C
       function into `std::` (`getenv` is in, `strtoull` is not); switched to
       `::strtoull`, which resolves through `<stdlib.h>` on every target.
-- [ ] Group-B runtime e2e stabilized (cross-ref archived Phase 200 / 177.2)
+- [x] Group-B runtime e2e stabilized — all 8 items PASS deterministically (2026-05-30).
+      Two bug fixes covered the set:
+      (1) **Zenoh service-client orphaned-reply race** (commit `d07e7a064`):
+      `nros_client_call` resends every 500 ms during the discovery race,
+      each resend allocates a new `zpico_get_start` slot. The Rust
+      `ZenohServiceClient` stored only the latest `pending_handle`
+      (`Option<i32>`), so when the server's reply landed on an older slot
+      its dropper eventually fired on zenoh-pico's 5 s socket timeout
+      without ever delivering to `try_recv_reply_raw`. Replaced with
+      `pending_handles: heapless::Vec<i32, ZPICO_MAX_PENDING_GETS>`,
+      poll-all-on-each-tick. Verified: zephyr c/rust/cpp service zenoh,
+      NuttX C service rtos_e2e (was flaky 2/3 → deterministic 30.4 s).
+      (2) **`debug_assert!` skipping side-effecting expression in release**
+      (`packages/core/nros-node/src/lifecycle_services.rs`): every call
+      to `to_msg_state`, `to_msg_transition`, and
+      `handle_get_available_states` wrote a `push_str` / `push` *inside*
+      `debug_assert!(…)`. In release builds the macro evaluates nothing
+      (it expands to `if cfg!(debug_assertions) { assert!(…) }`), so
+      `push_str` ran only in debug builds — every release-build
+      lifecycle response shipped with `label_len=0`. `ros2 lifecycle get`
+      printed ` [1]` (empty label) and the test asserted
+      `unconfigured`. Fix captures the result into a local first, then
+      `debug_assert!`s on the captured `Result`. Verified on
+      `ros2_lifecycle_full_cycle` — 5.85 s PASS. Final set:
+      `test_zephyr_{c_service,rust_service}_e2e` 19.3 s / 39.8 s,
+      `test_zephyr_xrce_c_action_e2e` 6.8 s,
+      `test_zephyr_cpp_service_server_to_client_e2e` 42.8 s (also
+      improved by fix #1), `test_rtos_service_e2e Nuttx C` 30.4 s,
+      `test_rtos_action_e2e ThreadxLinux Cpp` 8.2 s,
+      `test_rtos_service_e2e ThreadxLinux Cpp` 1.2 s,
+      `test_xrce_service_request_response` 5.7 s,
+      `ros2_lifecycle_full_cycle` 5.85 s.
 
 ## Notes
 

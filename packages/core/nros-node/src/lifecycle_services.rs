@@ -87,8 +87,13 @@ pub fn to_msg_state(state: InternalState) -> MsgState {
     // Phase 192.1/B — labels are a fixed, short, closed set (all fit today);
     // debug_assert so a future capacity regression surfaces loudly in tests
     // instead of silently truncating the label.
+    //
+    // **Do not wrap `push_str` itself in `debug_assert!`** — that macro
+    // skips its entire expression in release builds, so the label would
+    // never be written. Capture the result first, then assert.
+    let r = msg.label.push_str(label);
     debug_assert!(
-        msg.label.push_str(label).is_ok(),
+        r.is_ok(),
         "lifecycle label exceeds the bounded msg.label capacity"
     );
     msg
@@ -112,11 +117,11 @@ pub fn to_msg_transition(t: InternalTransition) -> MsgTransition {
     };
     let mut msg = MsgTransition::default();
     msg.id = id;
-    // Phase 192.1/B — labels are a fixed, short, closed set (all fit today);
-    // debug_assert so a future capacity regression surfaces loudly in tests
-    // instead of silently truncating the label.
+    // Phase 192.1/B — see comment in `to_msg_state` for the
+    // `debug_assert!` / `push_str` ordering bug we avoid here.
+    let r = msg.label.push_str(label);
     debug_assert!(
-        msg.label.push_str(label).is_ok(),
+        r.is_ok(),
         "lifecycle label exceeds the bounded msg.label capacity"
     );
     msg
@@ -271,10 +276,11 @@ pub fn handle_get_available_states(
     for state in ALL_STATES.iter().copied() {
         // Phase 192.1/B — ALL_STATES is a fixed small set; debug_assert so a
         // capacity regression is loud rather than silently dropping a state.
-        debug_assert!(
-            response.available_states.push(to_msg_state(state)).is_ok(),
-            "available_states exceeds bounded capacity"
-        );
+        //
+        // Same release-build pitfall as `to_msg_state`: `debug_assert!` skips
+        // its expression in release, so the push would never happen.
+        let r = response.available_states.push(to_msg_state(state));
+        debug_assert!(r.is_ok(), "available_states exceeds bounded capacity");
     }
     response
 }
