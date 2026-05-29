@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake ninja-build device-tree-compiler gperf \
         git curl ca-certificates zstd xz-utils file wget \
         python3 python3-pip python3-venv python3-tomli build-essential \
-        gcc-arm-none-eabi kconfig-frontends socat parallel \
+        gcc-arm-none-eabi gcc-riscv64-unknown-elf kconfig-frontends socat parallel \
         libslirp0 libpixman-1-0 \
         ros-humble-example-interfaces \
     && rm -rf /var/lib/apt/lists/*
@@ -46,6 +46,18 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
         riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf \
     && cargo install cargo-nextest --locked
+
+# Pinned nightly (tools/rust-toolchain.toml `nightly-2026-04-11`) baked WITH
+# rust-src + the cross targets. The fixture builds need it (esp32 `-Z build-std`
+# for riscv32imc, `-Z emit-stack-sizes`, nightly-only target adds); baking it
+# means the parallel cargo invocations in build-fixtures don't each trigger a
+# concurrent rustup install that races on /usr/local/rustup/downloads (the
+# `could not rename '...partial'` failure). Bump in lockstep with the pin.
+RUN rustup toolchain install nightly-2026-04-11 --profile minimal -c rust-src \
+    && rustup +nightly-2026-04-11 target add \
+        x86_64-unknown-none armv7a-none-eabi \
+        thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
+        riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf
 
 # git-as-root in CI containers: avoid "dubious ownership" on the checkout + the
 # source submodules `nros setup` provisions.
