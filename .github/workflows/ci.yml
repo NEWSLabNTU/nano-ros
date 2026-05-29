@@ -64,7 +64,7 @@ jobs:
       - name: Install the nros CLI (released binary)
         run: |
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
-            | NROS_VERSION=0.3.1 sh
+            | NROS_VERSION=0.3.6 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
       # cargo must read *every* root-workspace member's Cargo.toml to load the
