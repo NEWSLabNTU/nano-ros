@@ -45,6 +45,9 @@ fn make_config() -> ExecutorConfig<'static> {
 fn make_config() -> ExecutorConfig<'static> {
     use core::fmt::Write;
     static mut LOCATOR: heapless::String<48> = heapless::String::new();
+    // SAFETY: single-threaded startup; this is the sole accessor of the
+    // `LOCATOR` static, and `from_utf8_unchecked` is fed bytes written here
+    // from formatted Kconfig string values (valid UTF-8).
     unsafe {
         LOCATOR.clear();
         let _ = write!(
@@ -60,6 +63,7 @@ fn make_config() -> ExecutorConfig<'static> {
 
 #[no_mangle]
 extern "C" fn rust_main() {
+    // SAFETY: installs the logger once during single-threaded startup, before any logging call.
     unsafe { zephyr::set_logger().ok(); }
     info!("nros Zephyr Action Client");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);

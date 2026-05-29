@@ -29,6 +29,7 @@ fn make_config() -> nros::ExecutorConfig<'static> {
 
 #[no_mangle]
 extern "C" fn rust_main() {
+    // SAFETY: installs the logger once during single-threaded startup, before any logging call.
     unsafe { zephyr::set_logger().ok(); }
     info!("nros Zephyr Async Service Client (Embassy)");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
