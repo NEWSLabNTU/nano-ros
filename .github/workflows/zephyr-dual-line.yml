@@ -98,10 +98,18 @@ jobs:
         with:
           required-ros-distributions: humble
 
+      # Cache the ~1 GB Zephyr SDK (line-independent; setup.sh skips the
+      # download/extract when scripts/zephyr/sdk is already populated). Key on
+      # setup.sh so a SDK-version bump busts the cache.
+      - name: Cache Zephyr SDK
+        uses: actions/cache@v4
+        with:
+          path: scripts/zephyr/sdk
+          key: zephyr-sdk-${{ runner.os }}-${{ hashFiles('scripts/zephyr/setup.sh') }}
+
       # Provisions the Zephyr workspace for the selected line, including
       # the 4.4 Python 3.12 venv + NSOS patches (see just/zephyr.just
-      # setup recipe). Heavy step — caching the workspace/SDK across runs
-      # is recommended once the workflow is stabilized.
+      # setup recipe). Heavy step; the SDK download is cached above.
       - name: Set up Zephyr ${{ matrix.line }} workspace
         run: just zephyr setup
 
@@ -143,6 +151,13 @@ jobs:
         uses: ros-tooling/setup-ros@v0.7
         with:
           required-ros-distributions: humble
+
+      # Cache the ~1 GB Zephyr SDK (line-independent; see example-matrix).
+      - name: Cache Zephyr SDK
+        uses: actions/cache@v4
+        with:
+          path: scripts/zephyr/sdk
+          key: zephyr-sdk-${{ runner.os }}-${{ hashFiles('scripts/zephyr/setup.sh') }}
 
       - name: Set up Zephyr 3.7 workspace
         run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup

@@ -129,11 +129,30 @@ unmet must **exit non-zero**, never warn-and-pass. `scripts/ci/*` check
 `AMENT_PREFIX_PATH`, the `nros` binary, etc. up front and `exit 1` with a fix
 hint. A green check must mean the thing was actually validated.
 
+## Split CI into a core lane + per-platform lanes
+
+CI is split so each workflow provisions only what it validates — keeping
+per-workflow minutes low and failures isolated to one platform:
+
+- **Core-libraries lane** (`ci.yml`, job `core-libs`) — the portable `no_std`
+  core crates cross-checked on bare embedded targets. No SDKs, no submodules; the
+  only setup is a `rustup target add`. Split by target (one job per target,
+  parallel), each a single `cargo check` over the crates compatible with it
+  (e.g. `nros-rmw-cffi` needs atomic CAS, so it's checked on `thumbv7m` but not
+  `riscv32imc`).
+- **Cross-platform resolution lane** (`dep-chain.yml`) — proves every
+  `(board, rmw)` dep chain *resolves* via one cheap job (`nros setup` per board
+  pulls only that board's tools; ROS installed once). No compiles.
+- **Per-platform build lanes** — one workflow per platform, each pulling only
+  that platform's SDK + submodules (`zephyr-dual-line.yml` is the template). The
+  heavy lanes; add a new one per platform rather than fattening a shared job.
+
 ## The worked examples
 
 | Workflow | What it shows |
 |----------|---------------|
+| `ci.yml` (core-libs) | the core no_std lane: per-target matrix, rustup-only setup, no submodules |
 | `dep-chain.yml` | submodule-minimal init, ROS source, build-CLI-from-source, the dep-chain matrix |
-| `zephyr-dual-line.yml` | the full fresh-runner stack: submodules + uv + ROS + jammy + skip-flags |
+| `zephyr-dual-line.yml` | the full fresh-runner stack: submodules + uv + ROS + jammy + skip-flags + SDK cache |
 | `codegen-convention.yml` | a pure static lint (no toolchain) on `ubuntu-latest` |
 | `sdk-index-gate.yml` | offline structural validation of `nros-sdk-index.toml` |

@@ -106,14 +106,33 @@ A guard now makes that exact regression un-mergeable.
 **Files**: `scripts/ci/codegen-invocation-check.sh`,
 `.github/workflows/codegen-convention.yml`.
 
-### 196.3 — [P2] Audit the other workflows for the same gap class
+### 196.3 — [mostly DONE] Audit/split the workflows (core-libs + per-platform)
 The dual-line bugs (host assumes: submodules, ROS, SDK, Python, runner OS) are
 generic. Audit each workflow with a fresh-runner lens; each must be live-run
 once before being trusted:
-- [ ] `ci.yml` — currently fans out **one** crate (`nros-log`) on **one** target
-      and only triggers on `nros-log`/`Cargo.*` paths. It is not a meaningful
-      "CI". Decide its real scope (workspace check/clippy/test matrix? the
-      `just ci` surface?) and broaden it.
+- [x] `ci.yml` → **core-libraries lane** (DONE). **Scope decision** (maintainer,
+      2026-05-29): *split CI into several parts — a core-libraries lane + one lane
+      per platform, each pulling only its own tools/submodules so per-workflow
+      minutes stay low.* `ci.yml` is now the **core-libs** lane: the portable
+      `no_std` core crates cross-checked on bare embedded targets, fresh-runner-
+      safe (no SDK/submodule deps, so no provisioning beyond a rustup target).
+      Split by target (one job per target, parallel + isolated), each running a
+      single `cargo check` over the compatible crates. Two targets:
+      `thumbv7m-none-eabi` (atomic CAS — full set incl. `nros-rmw-cffi`) and
+      `riscv32imc-unknown-none-elf` (no CAS — drops `nros-rmw-cffi`; that exact
+      capability split is what the lane guards). Crates: nros-core, nros-log,
+      nros-serdes, nros-params, nros-platform-api, nros-platform-cffi,
+      nros-platform-critical-section, nros-rmw (+ nros-rmw-cffi on CAS targets).
+      Verified both combined checks pass locally. Triggers broadened to
+      `packages/core/**`.
+- [x] **Per-platform lanes** (architecture recorded; buildout = follow-up). The
+      split is realized structurally today by `zephyr-dual-line.yml` (the first
+      per-platform build lane: pulls only Zephyr's SDK + cyclonedds/zenoh-pico
+      submodules) and `dep-chain.yml` (the cheap cross-platform *resolution*
+      cut — `nros setup` per board pulls only that board's tools, one ROS install
+      shared). Adding a dedicated **build** lane per remaining platform
+      (freertos, nuttx, threadx, esp32, bare-metal, stm32f4) on the dual-line
+      pattern is follow-up work — each its own workflow scoped to its tools.
 - [ ] `deploy-book.yml` — already deliberately non-recursive on submodules
       (documented); confirm it still builds.
 - [x] `sdk-index-gate.yml` — DONE (2026-05-29). `verify-index.py` gained an
@@ -127,9 +146,13 @@ once before being trusted:
       declared `git` URL must match `.gitmodules`. Gate now also triggers on
       `.gitmodules` changes. Verified: passes on the real index; catches
       undefined-ref, clone-missing-ref, missing-submodule-path, and URL-drift.
-- [ ] `zephyr-dual-line.yml` — finish 196.1, then add SDK/workspace caching
-      (each job currently re-installs the ~1 GB Zephyr SDK + west-updates from
-      scratch; cache `scripts/zephyr/sdk` + the workspace).
+- [x] `zephyr-dual-line.yml` — 196.1 fixed; SDK caching added (DONE,
+      2026-05-29). Both jobs (`example-matrix` + `dual-line-summary`) now restore
+      `scripts/zephyr/sdk` via `actions/cache@v4`, keyed on
+      `hashFiles('scripts/zephyr/setup.sh')` (SDK is line-independent;
+      `setup.sh` skips the ~1 GB download/extract when the tree is present, and a
+      version bump in the script busts the key). West-workspace caching deferred
+      (per-line + west-update state is staleness-prone — lower ROI, higher risk).
 
 ### 196.4 — [DONE] Codify the CI provisioning conventions
 - [x] **DONE.** `docs/development/ci-conventions.md` written: the "runner is a

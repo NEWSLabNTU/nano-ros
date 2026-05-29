@@ -1,17 +1,28 @@
-name: CI
+# Core-libraries lane (Phase 196.3).
+#
+# One of the split CI parts: the portable `no_std` core crates, cross-checked on
+# bare embedded targets. Fresh-runner-safe by design — these crates have NO SDK
+# or submodule deps, so the job needs no toolchain provisioning beyond a rustup
+# target. The per-platform build lanes (zephyr-dual-line.yml, …) and the
+# cross-platform resolution lane (dep-chain.yml) cover everything that does.
+#
+# Split by target (not one job per crate): each target is one job running a
+# single `cargo check` over all crates compatible with it — isolates target
+# regressions, parallel, minimal per-job overhead.
+name: core-libs
 
 on:
   push:
     branches: [main]
     paths:
-      - "packages/core/nros-log/**"
+      - "packages/core/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
     paths:
-      - "packages/core/nros-log/**"
+      - "packages/core/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/ci.yml"
@@ -22,27 +33,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  rust-cross-check:
-    name: ${{ matrix.package }} / ${{ matrix.target }}
+  core-libs:
+    name: core no_std / ${{ matrix.target }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - package: nros-log
-            target: riscv32imc-unknown-none-elf
+        # thumbv7m has atomic CAS; riscv32imc does not (drops nros-rmw-cffi).
+        target:
+          - thumbv7m-none-eabi
+          - riscv32imc-unknown-none-elf
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
-        # This job checks a self-contained core crate. Avoid recursive
-        # submodules so unrelated platform/runtime pointers cannot block CI.
+        # Core crates are in-repo (packages/core/**), not submodules — the root
+        # workspace resolves without any submodule init. Keep it that way.
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Cross-check ${{ matrix.package }}
+      - name: Cross-check core no_std crates
         run: |
-          cargo check \
-            -p "${{ matrix.package }}" \
-            --target "${{ matrix.target }}" \
-            --no-default-features
+          # Portable core: no SDK/submodule deps, builds with --no-default-features
+          # on bare targets. nros-rmw-cffi needs atomic CAS (CAS-capable targets
+          # only). Keep this list in sync as core crates gain/lose no_std support.
+          PKGS=(
+            nros-core
+            nros-log
+            nros-serdes
+            nros-params
+            nros-platform-api
+            nros-platform-cffi
+            nros-platform-critical-section
+            nros-rmw
+          )
+          if [ "${{ matrix.target }}" = "thumbv7m-none-eabi" ]; then
+            PKGS+=(nros-rmw-cffi) # needs atomic CAS
+          fi
+          args=()
+          for p in "${PKGS[@]}"; do args+=(-p "$p"); done
+          set -x
+          cargo check "${args[@]}" --no-default-features --target "${{ matrix.target }}"
