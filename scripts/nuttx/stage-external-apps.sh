@@ -62,12 +62,15 @@ for lang in c cpp; do
         if [ -d "$src" ]; then
             ln -sfn "$src" "$dst"
             staged_dirs+=("nano-ros-$example-$lang")
-            # Generate per-example app_config.h.
-            if [ -f "$src/config.toml" ]; then
-                python3 "$ROOT/scripts/nuttx/gen-app-config.py" \
-                    "$src/config.toml" \
-                    "$src/generated/include/nros/app_config.h"
-            fi
+            # Generate per-example app_config.h unconditionally — the cpp
+            # examples `#include <nros/app_config.h>` regardless of whether a
+            # config.toml exists, and gen-app-config.py emits the cmake-path
+            # defaults when config.toml is absent. (Was gated on config.toml,
+            # so config-less cpp examples failed: "nros/app_config.h: No such
+            # file" under the make/Application.mk path.)
+            python3 "$ROOT/scripts/nuttx/gen-app-config.py" \
+                "$src/config.toml" \
+                "$src/generated/include/nros/app_config.h"
             # Run nros-codegen for message dependencies (parses
             # nros_generate_interfaces() calls from the example's
             # CMakeLists.txt). Skips gracefully if AMENT_PREFIX_PATH
