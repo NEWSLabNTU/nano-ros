@@ -42,31 +42,7 @@ alloc = [
 
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
-#
-# Phase 204.1.L — split the cffi *runtime machinery* (the Executor /
-# session glue, gated in-crate on `rmw-cffi-rt`) from *which entity
-# slots* the registered vtable carries:
-#   - `rmw-cffi`      = machinery + ALL entity slots (back-compat — every
-#                       existing example on `rmw-cffi` is unchanged).
-#   - `rmw-cffi-lean` = machinery only (publisher stays; it is ungated +
-#                       cheap). A size-critical node adds back just the
-#                       `rmw-entity-*` it uses, so `--gc-sections` strips
-#                       the unused subscriber/service trampolines + their
-#                       backend static buffers (~55 KB bss on a pub-only
-#                       node). The explicit `nros_rmw_<x>::register()` call
-#                       stays the bare-metal linkage anchor; this only
-#                       narrows which slots the registered vtable carries.
-rmw-cffi-rt = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
-rmw-cffi = [
-    "rmw-cffi-rt",
-    "rmw-entity-subscriber",
-    "rmw-entity-service-server",
-    "rmw-entity-service-client",
-]
-rmw-cffi-lean = ["rmw-cffi-rt"]
-rmw-entity-subscriber = ["nros-node/rmw-entity-subscriber"]
-rmw-entity-service-server = ["nros-node/rmw-entity-service-server"]
-rmw-entity-service-client = ["nros-node/rmw-entity-service-client"]
+rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 # Phase 128.C.3 — `rmw-{zenoh,xrce,dds,cyclonedds}-cffi` features
 # deleted. Selection lives entirely in the manifest: depend on
 # `nros-rmw-<name>` directly and the `RMW_INIT_ENTRIES` walker

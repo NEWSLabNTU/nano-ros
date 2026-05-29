@@ -32,18 +32,8 @@ scheduler-os-priority = []
 scheduler-time-triggered = []
 
 # RMW vtable runtime registry. Every backend ships as a cffi shim
-# that installs a C vtable here. This pulls only the cffi *machinery*
-# (session/executor glue); which entity slots the vtable installs is
-# chosen by the `rmw-entity-*` passthroughs below (Phase 204.1.L).
+# that installs a C vtable here.
 rmw-cffi = ["dep:nros-rmw-cffi"]
-# Phase 204.1.L — per-entity vtable-slot passthroughs to nros-rmw-cffi.
-# A consumer enables only the entity kinds its node uses so
-# `--gc-sections` can drop the others' trampolines + backend buffers.
-# The umbrella `nros/rmw-cffi` forwards all three (back-compat); a
-# size-critical node uses `nros/rmw-cffi-lean` + just the ones it needs.
-rmw-entity-subscriber = ["nros-rmw-cffi/entity-subscriber"]
-rmw-entity-service-server = ["nros-rmw-cffi/entity-service-server"]
-rmw-entity-service-client = ["nros-rmw-cffi/entity-service-client"]
 # Phase 124.B.7.c — POSIX signal-handler-safe wake via eventfd + a
 # runtime-owned worker thread that forwards eventfd writes to the
 # Executor's wake condvar. Linux-only (eventfd). Off by default;

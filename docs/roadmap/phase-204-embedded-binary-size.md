@@ -184,30 +184,16 @@ present) → expect ≈ −55 KB bss / −20–40 KB text vs the full build, whi
 sub-or-service example on plain `rmw-cffi` is unchanged. Re-measure serial +
 ethernet talkers after.
 
-- [x] **204.1.L.1** — `nros-rmw-cffi` `entity-{subscriber,service-server,service-client}`
-      features (default-on) + `unsupported_*` slot stubs + `gated_slot!`/`gated_opt!`
-      `cfg`-selected `VTABLE`. Lean builds compile (crate-level conditional
-      `allow(dead_code)` covers the now-unreferenced real trampolines, stripped at
-      link by `--gc-sections`); `cargo test -p nros-rmw-cffi` green (full).
-- [x] **204.1.L.2** — feature plumbing. `nros-node`: `rmw-entity-*` passthroughs
-      (its `rmw-cffi` was already machinery-only). `nros`: split into `rmw-cffi-rt`
-      (machinery; the 20 in-crate `feature = "rmw-cffi"` cfgs were renamed to it),
-      `rmw-cffi` = `rt + all entities` (back-compat — every existing example
-      unchanged, verified `qemu-arm-baremetal/rust/listener` still links the
-      subscriber path + `nros-c` checks), `rmw-cffi-lean` = `rt only`, `rmw-entity-*`.
-- [x] **204.1.L.3** — pub-only nodes (`qemu-arm-baremetal/rust/{talker,serial-talker}`)
-      → `rmw-cffi-lean`; sub-only `serial-listener` → `rmw-cffi-lean` +
-      `rmw-entity-subscriber`. **E2E-verified** `test_qemu_serial_pubsub_e2e`
-      (rebuilt under `nros-fast-release`) `published=1, received=1`: backend linked
-      (zenoh=48), `create_subscriber_trampoline` absent on the lean talker. Lean
-      `qemu-bsp-talker` (release): text 185.6→170.0 KB, **bss 91.7→57.1 KB**
-      (sheds `SERVICE_BUFFERS`, `g_pending_gets`, sub trampolines + storage).
-- [ ] **204.1.L.3b — backend-side `SUBSCRIBER_BUFFERS` gating (follow-on).** The
-      34.5 KB `nros-rmw-zenoh` `SUBSCRIBER_BUFFERS` pool survives the lean pub-only
-      build — it is referenced by the always-linked zenoh session receive/dispatch
-      path, not only by `create_subscriber`. Gate the zenoh subscriber pool on the
-      same `entity-subscriber` axis (or make the receive path not touch the pool
-      when no subscriber is registered) to drop it on pub-only nodes.
+- [ ] **204.1.L.1** — `nros-rmw-cffi` `entity-*` features + `unsupported_*` slot
+      stubs + `cfg`-selected `VTABLE`. Standalone `cargo test -p nros-rmw-cffi`
+      green (full features).
+- [ ] **204.1.L.2** — `nros-node` + `nros` feature plumbing (`rmw-cffi` = full
+      forward, `rmw-cffi-lean`, `rmw-entity-*`). Workspace `cargo check` green;
+      existing examples unchanged.
+- [ ] **204.1.L.3** — switch `qemu-arm-baremetal/rust/talker` (pub-only) to
+      `rmw-cffi-lean`; verify backend linked + buffers dropped (`nm`) + e2e green
+      (rebuild under the `nros-fast-release` fixture profile — see the stale-binary
+      lesson above). Measure.
 - [ ] **204.1.L.4** — roll to the other pub-only / sub-only bare-metal examples;
       book write-up with the before/after table.
 

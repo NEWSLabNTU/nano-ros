@@ -173,7 +173,7 @@ pub use nros_core::{
 pub use nros_core::heapless;
 
 // Re-export component-mode API
-#[cfg(feature = "rmw-cffi-rt")]
+#[cfg(feature = "rmw-cffi")]
 pub use component::ComponentExecutorRuntime;
 pub use component::{
     ActionExecutor, COMPONENT_EXPORT_SYMBOL, CallbackCtx, CallbackEffects, Component,
@@ -317,26 +317,26 @@ pub mod internals {
     // These resolve to the concrete types of the active RMW backend.
     // Today the only exposed backend at this layer is the cffi shim.
 
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub type RmwSession = nros_rmw_cffi::CffiSession;
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub type RmwPublisher = nros_rmw_cffi::CffiPublisher;
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub type RmwSubscriber = nros_rmw_cffi::CffiSubscriber;
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub type RmwServiceServer = nros_rmw_cffi::CffiServiceServer;
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub type RmwServiceClient = nros_rmw_cffi::CffiServiceClient;
 
     /// Phase 124.A — zero-copy publisher slot type. Lives in the
     /// `internals` module so `nros-c` can construct + transmute the
     /// lifetime when boxing the slot for the C-side `_loan` /
     /// `_commit` / `_discard` token plumbing.
-    #[cfg(all(feature = "rmw-cffi-rt", feature = "lending"))]
+    #[cfg(all(feature = "rmw-cffi", feature = "lending"))]
     pub type RmwSlot<'a> = nros_rmw_cffi::CffiSlot<'a>;
 
     /// Phase 124.A — zero-copy subscriber view type.
-    #[cfg(all(feature = "rmw-cffi-rt", feature = "lending"))]
+    #[cfg(all(feature = "rmw-cffi", feature = "lending"))]
     pub type RmwView<'a> = nros_rmw_cffi::CffiView<'a>;
 
     /// Open a new middleware session.
@@ -350,7 +350,7 @@ pub mod internals {
     /// linked backends (e.g. xrce + dds) get whichever ctor fires
     /// first via linkme — non-deterministic across link orderings +
     /// often the wrong backend for the bridge's intended primary.
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub fn open_session(
         locator: &str,
         mode: nros_rmw::SessionMode,
@@ -397,7 +397,7 @@ pub mod internals {
     /// poll for pull-based).
     ///
     /// Used by the C API executor before polling handles.
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub fn drive_session_io(session: &mut RmwSession, timeout_ms: i32) {
         use nros_rmw::Session;
         let _ = session.drive_io(timeout_ms);
@@ -412,7 +412,7 @@ pub use nros_node::{
 };
 
 // Re-export RMW-dependent types (require an active transport backend)
-#[cfg(feature = "rmw-cffi-rt")]
+#[cfg(feature = "rmw-cffi")]
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
@@ -435,13 +435,13 @@ pub use nros_platform::{BoardConfig, BoardTransportConfig};
 // path noise. Gated on `rmw-cffi`: the source module is
 // `#[cfg(any(has_rmw, test))]` in nros-node, so it only exists once
 // an RMW backend is linked (matches the re-export block above).
-#[cfg(feature = "rmw-cffi-rt")]
+#[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::sched_context::{
     DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext, SchedContextId,
     TimeTriggeredSchedule, TimeTriggeredScheduleError, TimeTriggeredWindow,
 };
 
-#[cfg(all(feature = "std", feature = "rmw-cffi-rt"))]
+#[cfg(all(feature = "std", feature = "rmw-cffi"))]
 pub use nros_node::SpinPeriodResult;
 
 // Re-export service types
@@ -498,7 +498,7 @@ pub mod prelude {
     };
 
     // Re-export component-mode API.
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub use crate::ComponentExecutorRuntime;
     #[cfg(feature = "std")]
     pub use crate::SourceMetadataExport;
@@ -525,7 +525,7 @@ pub mod prelude {
     };
 
     // Re-export RMW-dependent executor + handle types
-    #[cfg(feature = "rmw-cffi-rt")]
+    #[cfg(feature = "rmw-cffi")]
     pub use crate::{
         EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, Node, Promise,
         Subscription,
@@ -534,7 +534,7 @@ pub mod prelude {
     // Publisher/Subscriber options (topic + QoS).
     pub use crate::{PublisherOptions, SubscriberOptions};
 
-    #[cfg(all(feature = "std", feature = "rmw-cffi-rt"))]
+    #[cfg(all(feature = "std", feature = "rmw-cffi"))]
     pub use crate::SpinPeriodResult;
 
     // Re-export parameter types

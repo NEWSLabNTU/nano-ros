@@ -30,13 +30,8 @@ nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an
 # only the dispatcher needs initializing in the example closure.
 nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
 
-# nros Executor API.
-# Phase 204.1.L — pub-only node: `rmw-cffi-lean` installs the cffi
-# machinery + publisher slots only; the subscriber/service trampolines
-# (and their backend static buffers) are stubbed, so `--gc-sections`
-# strips them. Add `rmw-entity-subscriber` (etc.) to the feature list
-# here if this node ever grows a subscription/service/client.
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi-lean", "platform-bare-metal", "ros-humble"] }
+# nros Executor API
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-bare-metal", "ros-humble"] }
 
 # Generated message types (from package.xml via nros generate-rust)

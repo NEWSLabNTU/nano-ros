@@ -270,145 +270,6 @@ unsafe fn session_namespace<'a>(session: *const NrosRmwSession) -> &'a str {
 /// [`NrosRmwVtable`] C ABI. See module docs.
 pub struct RustBackendAdapter<R>(PhantomData<R>);
 
-// ============================================================================
-// Phase 204.1.L — entity-gated vtable slots
-// ============================================================================
-//
-// `gated_slot!` / `gated_opt!` select a vtable slot's value at COMPILE time via
-// `#[cfg]` (not the runtime `cfg!`, which would keep both arms referenced and
-// defeat the point). With the entity feature OFF, the slot points at a cheap
-// `unsupported_*` stub that references nothing, so the real trampoline becomes
-// unreachable and `--gc-sections` collects it together with the backend's
-// per-entity static buffers (e.g. zenoh-pico `SUBSCRIBER_BUFFERS`). The cfg
-// strip happens before name resolution, so the unselected arm naming a
-// feature-gated symbol is fine.
-macro_rules! gated_slot {
-    ($feat:literal, $real:expr, $stub:expr) => {{
-        #[cfg(feature = $feat)]
-        {
-            $real
-        }
-        #[cfg(not(feature = $feat))]
-        {
-            $stub
-        }
-    }};
-}
-macro_rules! gated_opt {
-    ($feat:literal, $real:expr) => {{
-        #[cfg(feature = $feat)]
-        {
-            Some($real)
-        }
-        #[cfg(not(feature = $feat))]
-        {
-            None
-        }
-    }};
-}
-
-// ---- Subscriber stubs (compiled only when `entity-subscriber` is off) ----
-#[cfg(not(feature = "entity-subscriber"))]
-unsafe extern "C" fn unsupported_create_subscriber(
-    _session: *mut NrosRmwSession,
-    _topic_name: *const u8,
-    _type_name: *const u8,
-    _type_hash: *const u8,
-    _domain_id: u32,
-    _qos: *const NrosRmwQos,
-    _out: *mut NrosRmwSubscriber,
-) -> NrosRmwRet {
-    NROS_RMW_RET_UNSUPPORTED
-}
-#[cfg(not(feature = "entity-subscriber"))]
-unsafe extern "C" fn unsupported_destroy_subscriber(_subscriber: *mut NrosRmwSubscriber) {}
-#[cfg(not(feature = "entity-subscriber"))]
-unsafe extern "C" fn unsupported_try_recv_subscriber(
-    _subscriber: *mut NrosRmwSubscriber,
-    _buf: *mut u8,
-    _buf_len: usize,
-) -> i32 {
-    NROS_RMW_RET_UNSUPPORTED as i32
-}
-#[cfg(not(feature = "entity-subscriber"))]
-unsafe extern "C" fn unsupported_has_data(_subscriber: *mut NrosRmwSubscriber) -> i32 {
-    0
-}
-#[cfg(not(feature = "entity-subscriber"))]
-unsafe extern "C" fn unsupported_register_subscriber_event(
-    _subscriber: *mut NrosRmwSubscriber,
-    _kind: NrosRmwEventKind,
-    _deadline_ms: u32,
-    _cb: NrosRmwEventCallback,
-    _user_context: *mut core::ffi::c_void,
-) -> NrosRmwRet {
-    NROS_RMW_RET_UNSUPPORTED
-}
-
-// ---- Service-server stubs (only when `entity-service-server` is off) ----
-#[cfg(not(feature = "entity-service-server"))]
-unsafe extern "C" fn unsupported_create_service_server(
-    _session: *mut NrosRmwSession,
-    _service_name: *const u8,
-    _type_name: *const u8,
-    _type_hash: *const u8,
-    _domain_id: u32,
-    _qos: *const NrosRmwQos,
-    _out: *mut NrosRmwServiceServer,
-) -> NrosRmwRet {
-    NROS_RMW_RET_UNSUPPORTED
-}
-#[cfg(not(feature = "entity-service-server"))]
-unsafe extern "C" fn unsupported_destroy_service_server(_server: *mut NrosRmwServiceServer) {}
-#[cfg(not(feature = "entity-service-server"))]
-unsafe extern "C" fn unsupported_try_recv_request(
-    _server: *mut NrosRmwServiceServer,
-    _buf: *mut u8,
-    _buf_len: usize,
-    _seq_out: *mut i64,
-) -> i32 {
-    NROS_RMW_RET_UNSUPPORTED as i32
-}
-#[cfg(not(feature = "entity-service-server"))]
-unsafe extern "C" fn unsupported_has_request(_server: *mut NrosRmwServiceServer) -> i32 {
-    0
-}
-#[cfg(not(feature = "entity-service-server"))]
-unsafe extern "C" fn unsupported_send_reply(
-    _server: *mut NrosRmwServiceServer,
-    _seq: i64,
-    _data: *const u8,
-    _len: usize,
-) -> NrosRmwRet {
-    NROS_RMW_RET_UNSUPPORTED
-}
-
-// ---- Service-client stubs (only when `entity-service-client` is off) ----
-#[cfg(not(feature = "entity-service-client"))]
-unsafe extern "C" fn unsupported_create_service_client(
-    _session: *mut NrosRmwSession,
-    _service_name: *const u8,
-    _type_name: *const u8,
-    _type_hash: *const u8,
-    _domain_id: u32,
-    _qos: *const NrosRmwQos,
-    _out: *mut NrosRmwServiceClient,
-) -> NrosRmwRet {
-    NROS_RMW_RET_UNSUPPORTED
-}
-#[cfg(not(feature = "entity-service-client"))]
-unsafe extern "C" fn unsupported_destroy_service_client(_client: *mut NrosRmwServiceClient) {}
-#[cfg(not(feature = "entity-service-client"))]
-unsafe extern "C" fn unsupported_call_raw(
-    _client: *mut NrosRmwServiceClient,
-    _request: *const u8,
-    _req_len: usize,
-    _reply_buf: *mut u8,
-    _reply_buf_len: usize,
-) -> i32 {
-    NROS_RMW_RET_UNSUPPORTED as i32
-}
-
 impl<R: RustBackend> RustBackendAdapter<R> {
     /// Monomorphised vtable for backend `R`. The `const` is promoted
     /// to per-type static storage, so `&Self::VTABLE` has `'static`
@@ -420,79 +281,27 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         create_publisher: create_publisher_trampoline::<R>,
         destroy_publisher: destroy_publisher_trampoline::<R>,
         publish_raw: publish_raw_trampoline::<R>,
-        create_subscriber: gated_slot!(
-            "entity-subscriber",
-            create_subscriber_trampoline::<R>,
-            unsupported_create_subscriber
-        ),
-        destroy_subscriber: gated_slot!(
-            "entity-subscriber",
-            destroy_subscriber_trampoline::<R>,
-            unsupported_destroy_subscriber
-        ),
-        try_recv_raw: gated_slot!(
-            "entity-subscriber",
-            try_recv_raw_trampoline::<R>,
-            unsupported_try_recv_subscriber
-        ),
-        has_data: gated_slot!(
-            "entity-subscriber",
-            has_data_trampoline::<R>,
-            unsupported_has_data
-        ),
-        create_service_server: gated_slot!(
-            "entity-service-server",
-            create_service_server_trampoline::<R>,
-            unsupported_create_service_server
-        ),
-        destroy_service_server: gated_slot!(
-            "entity-service-server",
-            destroy_service_server_trampoline::<R>,
-            unsupported_destroy_service_server
-        ),
-        try_recv_request: gated_slot!(
-            "entity-service-server",
-            try_recv_request_trampoline::<R>,
-            unsupported_try_recv_request
-        ),
-        has_request: gated_slot!(
-            "entity-service-server",
-            has_request_trampoline::<R>,
-            unsupported_has_request
-        ),
-        send_reply: gated_slot!(
-            "entity-service-server",
-            send_reply_trampoline::<R>,
-            unsupported_send_reply
-        ),
-        create_service_client: gated_slot!(
-            "entity-service-client",
-            create_service_client_trampoline::<R>,
-            unsupported_create_service_client
-        ),
-        destroy_service_client: gated_slot!(
-            "entity-service-client",
-            destroy_service_client_trampoline::<R>,
-            unsupported_destroy_service_client
-        ),
-        call_raw: gated_slot!(
-            "entity-service-client",
-            call_raw_trampoline::<R>,
-            unsupported_call_raw
-        ),
+        create_subscriber: create_subscriber_trampoline::<R>,
+        destroy_subscriber: destroy_subscriber_trampoline::<R>,
+        try_recv_raw: try_recv_raw_trampoline::<R>,
+        has_data: has_data_trampoline::<R>,
+        create_service_server: create_service_server_trampoline::<R>,
+        destroy_service_server: destroy_service_server_trampoline::<R>,
+        try_recv_request: try_recv_request_trampoline::<R>,
+        has_request: has_request_trampoline::<R>,
+        send_reply: send_reply_trampoline::<R>,
+        create_service_client: create_service_client_trampoline::<R>,
+        destroy_service_client: destroy_service_client_trampoline::<R>,
+        call_raw: call_raw_trampoline::<R>,
         // Phase 130.8 — wire non-blocking trampolines so Rust-backed
         // CFFI consumers (dust-DDS, future Rust Cyclone wrapper)
         // skip the legacy blocking call_raw fallback inside
         // CffiServiceClient. Backends that don't override the trait
         // defaults inherit the "store pending + map NoData to
         // Ok(None)" base behaviour.
-        send_request_raw: gated_opt!("entity-service-client", send_request_raw_trampoline::<R>),
-        try_recv_reply_raw: gated_opt!("entity-service-client", try_recv_reply_raw_trampoline::<R>),
-        register_subscriber_event: gated_slot!(
-            "entity-subscriber",
-            register_subscriber_event_trampoline::<R>,
-            unsupported_register_subscriber_event
-        ),
+        send_request_raw: Some(send_request_raw_trampoline::<R>),
+        try_recv_reply_raw: Some(try_recv_reply_raw_trampoline::<R>),
+        register_subscriber_event: register_subscriber_event_trampoline::<R>,
         register_publisher_event: register_publisher_event_trampoline::<R>,
         assert_publisher_liveliness: assert_publisher_liveliness_trampoline::<R>,
         next_deadline_ms: Some(next_deadline_ms_trampoline::<R>),
