@@ -518,13 +518,54 @@ logging-fmt, not panic-fmt. A real strip needs **204.4** (drop `defmt`/logging +
       cyclone fixture builds to MinSizeRel.
 - **Files:** `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt`.
 
-### 204.14 — LTO strategy (perf + size), unblock the rust-lld issue
-- [ ] Workspace `lto="off"` (cross-crate inlining left on the table) because cross
-      `libddsc.a` slim-LTO objects are unlinkable by `rust-lld` (the archived ThreadX
-      Cyclone link issue). Study per-target `lto="thin"` where the linker supports
-      it (native/host first), gated on the cross-language link constraint.
-- [ ] **Acceptance:** a per-target LTO recommendation + a measured perf/size delta
-      on at least the native + one embedded target.
+### 204.14 — LTO strategy (perf + size), unblock the rust-lld issue — [x] DONE (2026-05-30) — studied + measured
+- [x] **Measured `lto = off | thin | fat`** on a native + an embedded target
+      (clean rebuilds, separate `--target-dir`; `.text` bytes):
+
+      | target | profile | off | thin | fat |
+      |---|---|---|---|---|
+      | `native/rust/talker` (zenoh, host x86_64) | opt=`s` | 1 860 350 | 1 774 108 (**−4.6 %**) | 1 617 856 (**−13.0 %**) |
+      | `stm32f4/rust/talker` (zenoh, thumbv7em) | opt=3 | 80 446 | 79 542 (**−1.1 %**) | 75 638 (**−6.0 %**) |
+
+      `fat` wins decisively on both; `thin` is a modest middle. Both linked
+      cleanly — `cc-rs` emits **native** `.o` (not LLVM bitcode) for the zenoh-pico
+      / Micro-XRCE C, so a Rust-side `fat`/`thin` LTO never tries to merge a C
+      object and the `rust-lld` slim-object failure does not arise on these paths.
+- [x] **Per-target recommendation:**
+      - **Embedded Rust example final crates** → `lto = "fat"` (the −6 % is real
+        flash). Already set on every stm32f4 / qemu-arm-baremetal-rtic / esp32 /
+        qemu-arm-nuttx / zephyr rust example; keep it. No change needed.
+      - **Native/host example final crates + tools** → `fat` for size-critical
+        release artifacts (−13 %), `thin` when build/iteration time matters (−4.6 %
+        at a fraction of the compile cost). Native examples currently inherit the
+        workspace `off`; opting a host release artifact into `thin`/`fat` is a
+        per-crate `[profile.release] lto=` and links fine on the zenoh/xrce paths.
+      - **riscv embedded** → same as ARM (fat); no linker constraint on the
+        zenoh/xrce paths.
+- [x] **Two hard constraints documented (why the *workspace* profile stays `off`):**
+      1. **Sizes-probe (workspace-wide blocker, not the linker).** Workspace
+         `[profile.release] lto="off"` is required by `nros-sizes-build`: `lto`
+         makes rustc emit each rlib's CGUs as LLVM **bitcode** `.rcgu.o` members,
+         which the probe's `object`-crate ELF parser can't read → every
+         `__NROS_SIZE_*` comes back 0 → `nros-cpp` mis-sizes its `alignas` storage
+         (Phase 89.3). So the workspace profile cannot go `thin`/`fat` until the
+         probe learns to read bitcode (or the sizes are sourced another way). This
+         is independent of any linker issue and is the real reason the *workspace*
+         number is `off`; the embedded examples sidestep it by carrying their own
+         `[profile.release] lto="fat"` (they don't run the C++ storage probe).
+      2. **Cyclone `libddsc` LTO + `rust-lld` (the cross-language case).** The
+         archived ThreadX-Cyclone link failure is specifically when **`libddsc.a`
+         itself is built slim-LTO** (bitcode-in-archive) and `rust-lld` is the
+         final linker — it can't consume the slim objects. The stock find_package
+         / source ddsc is a **Release (non-LTO) native** archive, so the native
+         Cyclone path links under Rust LTO; the rule is **do not enable LTO on the
+         ddsc build** for any target whose final link runs through `rust-lld`
+         (the embedded Cyclone targets). Rust-side LTO of the nano-ros crates is
+         orthogonal and fine.
+- [x] **Acceptance:** per-target recommendation (above) + measured perf/size delta
+      on native (−13 % fat) and embedded (−6 % fat). No code churn: the high-value
+      lever (embedded `fat`) is already pulled; the workspace profile must stay
+      `off` until the sizes-probe reads bitcode.
 
 ## End-user compiler-option UX (204.15)
 
