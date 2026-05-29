@@ -1,0 +1,38 @@
+# nano-ros Zephyr starter — west manifest (Phase 205.A).
+#
+# This is a *manifest + app* starter, NOT a vendored/pre-patched Zephyr. It pins
+# a nano-ros-tested Zephyr line and imports nano-ros as a west module, so
+# `west init -m <this-repo>` + `west update` yields a known-good
+# (Zephyr × nano-ros) pair. Patches are applied to YOUR workspace by
+# `nros setup zephyr` / `west patch` (see README) — never shipped pre-applied.
+#
+# 4.4 line: switch `zephyr` revision to `v4.4.0` (needs Python ≥ 3.12; select the
+# RMW with `-S nros-zenoh` instead of the prj-zenoh.conf overlay).
+manifest:
+  version: "1.0"
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+    - name: NEWSLabNTU
+      url-base: https://github.com/NEWSLabNTU
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v3.7.0          # nano-ros-tested LTS pin
+      import:
+        # Minimal module set for native_sim; add HALs for your real board.
+        name-allowlist:
+          - cmsis
+          - picolibc
+          - net-tools
+    - name: nano-ros
+      remote: NEWSLabNTU
+      revision: main
+      path: modules/nano-ros
+      import:
+        file: integrations/zephyr/west.yml
+
+  self:
+    path: nano-ros-app

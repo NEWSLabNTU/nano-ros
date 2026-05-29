@@ -42,23 +42,25 @@ Two questions drove this:
 
 ## Work Items
 
-### 205.A — [P3] Zephyr starter-template repo (`example-application` pattern)
+### 205.A — [in-tree content DONE; repo-split + CI pending] Zephyr starter-template
 A small public repo (e.g. `NEWSLabNTU/nano-ros-zephyr-example`) that bootstraps a
-BYO workspace without vendoring Zephyr:
-- [ ] `west.yml` pinning a **tested Zephyr** (3.7.0 LTS and/or 4.4.0) **+** the
-      nano-ros import (`integrations/zephyr/west.yml`), so `west init -m
-      <template>` + `west update` yields a known-good (Zephyr × nano-ros) pair.
-- [ ] An `apps/<app>/` skeleton — `CMakeLists.txt`, `prj.conf` (`CONFIG_NROS=y` +
-      RMW), `src/main.c` (or a rust variant with the `rustapp` `[lib]` +
-      `generate-config` note from Phase 202.4).
-- [ ] A README mirroring the Phase 202 BYO flow: `nros setup zephyr --rmw …`
-      (incl. `--source px4-rs`), `west patch apply`, `west build`, run.
-- [ ] CI on the template repo that runs the quickstart on a fresh runner (proves
-      it stays green as nano-ros / Zephyr move — the template is where
-      Zephyr-version drift surfaces first).
-- [ ] Link it from the book BYO page + `examples/README.md` as the recommended
-      starting point (the 2026-05-04 UX study flagged the missing `west init`-style
-      template).
+BYO workspace without vendoring Zephyr. **In-tree source authored at
+`examples/templates/zephyr-byo/`** (split out to the standalone repo later):
+- [x] `west.yml` pinning a **tested Zephyr** (`v3.7.0` LTS) **+** the nano-ros
+      import (`integrations/zephyr/west.yml`), with a `self:` path — `west init -m
+      <repo>` + `west update` yields a known-good (Zephyr × nano-ros) pair. (4.4
+      line: bump the `zephyr` revision; noted inline.)
+- [x] An `app/` skeleton — `CMakeLists.txt` (`find_package(Zephyr)` +
+      `nros_generate_interfaces(std_msgs Int32)`), `prj.conf` (`CONFIG_NROS=y` +
+      zenoh), `src/main.c` (the verified `std_msgs/Int32` talker). Mirrors the
+      e2e-verified `examples/zephyr/c/talker`, zenoh-only.
+- [x] A README mirroring the Phase 202 BYO flow: `west init`/`update`, install
+      nros, `nros setup zephyr --rmw zenoh` **+ `--source px4-rs`**, the NSOS
+      patches (`west patch apply` on 4.x), `west build`, `zenohd`, run → `Published`.
+- [ ] **Split to the standalone `nano-ros-zephyr-example` repo** + add CI that
+      runs the quickstart on a fresh runner (the template is where Zephyr-version
+      drift surfaces first). *Needs repo creation — maintainer/out-of-band.*
+- [x] Linked from `examples/templates/README.md`; [ ] link from the book BYO page.
 
 **Files:** a new repo; `book/src/getting-started/integration-zephyr.md`,
 `examples/README.md` (links). The in-repo `examples/templates/` may host a
