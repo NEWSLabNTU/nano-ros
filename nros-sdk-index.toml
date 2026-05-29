@@ -274,6 +274,16 @@ git = "https://github.com/PX4/PX4-Autopilot.git"
 ref = "ecfe44a74cda5b1815776e56d7f0253b41b0ebe2"
 dest = "third-party/px4/PX4-Autopilot"
 submodule = "third-party/px4/PX4-Autopilot"
+# Phase 203 — the pin (`ecfe44a`, 1.15.x) lags PX4's `main` tip and is NOT an
+# advertised ref, so a shallow `git submodule update --depth 1` (which fetches
+# the branch tip, NOT the pinned SHA — unlike clone-mode's `fetch --depth 1
+# origin <sha>`) can't reach it → empty checkout, no `Makefile`. Full-fetch the
+# top tree so the pin is reachable (the `Makefile` + `Tools/` the template smoke
+# test needs live here). `recursive = false`: PX4's ~50 OWN sub-submodules are
+# PX4's concern, pulled shallow by `just px4 setup` (`--depth 1
+# --recommend-shallow --recursive`), not nano-ros source provisioning.
+shallow = false
+recursive = false
 
 # NOTE (197.4): opt-in dev/interop source repos (zenoh / rmw_zenoh / XRCE-agent
 # upstreams, Tonbandgeraet tracing) are intentionally NOT modeled here yet — the

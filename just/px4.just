@@ -3,12 +3,14 @@ set working-directory := '..'
 default:
     @just --list --justfile {{ source_file() }}
 
-# Initialise PX4 submodules (shallow). Includes:
-#   third-party/px4/px4-rs           — Rust framework for PX4 modules
-#   third-party/px4/PX4-Autopilot    — PX4 firmware tree (recursive)
-# PX4-Autopilot has ~50 own sub-submodules (cmake, mavlink, ecl, …).
-# All cloned shallow; total ~500 MB. Required for `just px4 build-sitl`
-# and `just px4 test-sitl`.
+# Initialise PX4 submodules. Includes:
+#   third-party/px4/px4-rs           — Rust framework for PX4 modules (shallow)
+#   third-party/px4/PX4-Autopilot    — PX4 firmware tree
+# Phase 203 — the PX4-Autopilot TOP tree is fetched FULL (`[source.px4-autopilot]`
+# `shallow = false`): its pin lags `main` and isn't advertised, so a `--depth 1`
+# submodule update can't reach it (empty checkout, no `Makefile`). PX4's ~50 OWN
+# sub-submodules (cmake, mavlink, ecl, …) are still pulled shallow below.
+# Total ~500 MB+. Required for `just px4 build-sitl` and `just px4 test-sitl`.
 [group("setup")]
 setup:
     # Phase 197.3 — px4-rs + PX4-Autopilot are index sources ([source.px4-rs],

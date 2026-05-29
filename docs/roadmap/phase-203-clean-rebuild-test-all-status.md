@@ -62,7 +62,7 @@ they are not logic failures. Exact remediation (from each skip message):
 |---|---|
 | ~~`emulator::test_qemu_bsp_{talker,listener}_starts` (2)~~ | **Resolved (2026-05-30):** replaced by `test_qemu_bsp_pubsub_e2e` — real ethernet pub/sub over QEMU **slirp** (no Docker/TAP; both instances reach host zenohd:7450 via 10.0.2.2). Gates cleanly (skips with reason when ARM toolchain / qemu / zenoh-pico-arm / fixtures absent); runs + passes when staged (`just qemu build-fixtures` + `just qemu build-zenoh-pico`). |
 | `integration_zephyr::zephyr_integration_shell_smoke` | `ZEPHYR_BASE` env or an **in-tree** `zephyr-workspace` symlink (the workspace is the `../nano-ros-workspace` sibling; this test only checks the in-tree path) |
-| `integration_px4::px4_integration_template_smoke` | a complete PX4 checkout (`PX4_AUTOPILOT_DIR` has no `Makefile` — the shallow/partial submodule clone is incomplete); `just px4 setup` |
+| `integration_px4::px4_integration_template_smoke` | a complete PX4 checkout — `just px4 setup` (fixed: `[source.px4-autopilot]` is now `shallow = false`, so the lagging pin resolves + the `Makefile` is present; see the px4 checkbox below) |
 | `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary` | the make-fixture kernel restaged with nano-ros app symbols — `just nuttx build-fixtures-make` |
 | `threadx_riscv64_qemu::test_threadx_riscv64_cyclonedds_two_qemu_pubsub` | the CycloneDDS ThreadX fixtures — `just cyclonedds threadx-cross-probe` |
 
@@ -164,7 +164,12 @@ regressions.
 - [x] stale `_test-orchestration-e2e` call removed
 - [x] zephyr-shell passes (sibling-workspace resolver)
 - [x] nuttx-make staged by `build-all` (build-all-full removed)
-- [ ] px4 template — provision a non-shallow PX4 clone (no `Makefile` today)
+- [x] px4 template — **fixed.** Root cause: the `[source.px4-autopilot]` pin
+      `ecfe44a` (1.15.x) lags PX4's `main` and isn't an advertised ref, so
+      `git submodule update --depth 1` (fetches the branch tip, not the SHA)
+      couldn't reach it → empty checkout, no `Makefile`. Set `shallow = false`
+      (full-fetch the top tree so the pin resolves) + `recursive = false` (PX4's
+      ~50 own sub-submodules stay shallow via `just px4 setup`) on the index source.
 - [x] qemu-baremetal BSP — `test_qemu_bsp_pubsub_e2e` runs real ethernet pub/sub
       over QEMU slirp (no Docker), gates cleanly on the ARM toolchain / qemu /
       zenoh-pico-arm / fixtures; in the `qemu-baremetal-shared` group (port 7450).
