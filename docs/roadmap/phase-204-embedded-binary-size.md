@@ -410,13 +410,34 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
       size profile vs an explicit speed profile, chosen per example.
 - [ ] **Acceptance:** consistent embedded profiles; ELF artifact size + flash text.
 
-### 204.12 — `build-std` + `panic_immediate_abort`
-- [ ] esp32 / orin-spe / nuttx already `build-std = ["core","alloc"]` but **without**
-      `build-std-features = ["panic_immediate_abort"]`, so core/alloc are rebuilt
-      but the panic-fmt machinery (~5 KB, 204.4) is not stripped. Add the feature
-      where `build-std` is already on; evaluate enabling `build-std` + the feature
-      for the other bare-metal triples.
-- [ ] **Acceptance:** fmt/panic `.text` contribution before/after.
+### 204.12 — `build-std` + `panic_immediate_abort` — [x] INVESTIGATED: ineffective as specced
+**Finding (2026-05-30): `panic_immediate_abort` buys ~0 for nano-ros, for two
+independent reasons. Don't add it broadly.** Tested on
+`qemu-esp32-baremetal/rust/talker` (riscv32imc):
+
+1. **`build-std` is silently ignored on the default *stable* toolchain.** It's a
+   nightly `-Z` feature; `rust-toolchain.toml` is `channel = "stable"`, and
+   riscv32imc-unknown-none-elf ships **prebuilt** core/alloc, so cargo links those
+   — a full `cargo clean` + rebuild shows **no "Compiling core/alloc"** and adding
+   `build-std-features = ["panic_immediate_abort"]` produces a **byte-identical**
+   binary (text 367650, `panic_fmt` + `rust_begin_unwind` still present). The
+   `[unstable] build-std` lines in these configs are effectively a no-op except
+   under a nightly build (e.g. the esp32 *xtensa* espup toolchain).
+2. **Even where build-std *is* active, the fmt machinery is live via logging, not
+   panic.** `nm` shows the fmt `.text` is `core::fmt::Formatter::pad` /
+   `pad_integral` / `write_str` + `Debug` impls (`NodeError`, `&T`,
+   `riscv_pac::Error`) — pulled by the examples' `info!`/`error!` + `Debug`
+   derives, which run at runtime. `panic_immediate_abort` only drops the *panic*
+   formatting path; the underlying fmt stays live for logging, so the net text
+   delta is negligible.
+
+**Conclusion:** the doc's "~5 KB strippable panic-fmt" doesn't hold — that fmt is
+logging-fmt, not panic-fmt. A real strip needs **204.4** (drop `defmt`/logging +
+`Debug` from the size build, e.g. a `log`-less `optimize="size"` variant), not
+`panic_immediate_abort`. Folded into 204.4; no config change shipped.
+- [x] **Acceptance:** measured — `panic_immediate_abort` ≈ 0 text on a
+      logging+Debug example (and inert on stable build-std). Recommendation: pursue
+      via 204.4, not here.
 
 ### 204.13 — CMake C/C++ (CycloneDDS + examples): size build type + IPO
 - [ ] CMake libs build `-DCMAKE_BUILD_TYPE=Release` (`-O3`), never `MinSizeRel`
