@@ -728,23 +728,79 @@ pub trait PublisherResolver {
     fn publish_raw(&self, entity_id: &str, data: &[u8]) -> ComponentResult<()>;
 }
 
+/// Where a service / action-result callback body writes its reply (W.5.3): the
+/// generated trampoline lends a `buf`; the body fills it via
+/// [`CallbackCtx::reply`] and the trampoline reads `*written` back out.
+struct ReplySink<'a> {
+    buf: &'a mut [u8],
+    written: &'a mut usize,
+}
+
 /// Context handed to an executable component callback body (W.5.1).
 ///
 /// Carries the triggering payload (raw CDR — empty for timers) plus the
 /// publisher resolver, so a body can read its message and publish immediately.
+/// Service / action-result callbacks additionally carry a [`ReplySink`] the body
+/// fills via [`reply`](Self::reply) (W.5.3).
 pub struct CallbackCtx<'a> {
     payload: &'a [u8],
     publishers: &'a dyn PublisherResolver,
+    reply: Option<ReplySink<'a>>,
 }
 
 impl<'a> CallbackCtx<'a> {
-    /// Build a callback context. Called by the generated runtime per fired
-    /// callback; `payload` is the entity's raw CDR (empty slice for timers).
+    /// Build a callback context with no reply sink (timer / subscription).
+    /// `payload` is the entity's raw CDR (empty slice for timers).
     pub fn new(payload: &'a [u8], publishers: &'a dyn PublisherResolver) -> Self {
         Self {
             payload,
             publishers,
+            reply: None,
         }
+    }
+
+    /// Build a callback context with a reply sink (service / action-result;
+    /// W.5.3). The body fills `reply_buf` via [`reply`](Self::reply); the
+    /// generated trampoline reads `*reply_written` back as the response length.
+    pub fn with_reply(
+        payload: &'a [u8],
+        publishers: &'a dyn PublisherResolver,
+        reply_buf: &'a mut [u8],
+        reply_written: &'a mut usize,
+    ) -> Self {
+        *reply_written = 0;
+        Self {
+            payload,
+            publishers,
+            reply: Some(ReplySink {
+                buf: reply_buf,
+                written: reply_written,
+            }),
+        }
+    }
+
+    /// Write the service / action reply as raw CDR bytes (W.5.3). `Err` when the
+    /// callback has no reply sink (timer / subscription) or the reply exceeds the
+    /// lent buffer.
+    pub fn reply_raw(&mut self, data: &[u8]) -> ComponentResult<()> {
+        let sink = self.reply.as_mut().ok_or(ComponentError::Runtime)?;
+        if data.len() > sink.buf.len() {
+            return Err(ComponentError::Runtime);
+        }
+        sink.buf[..data.len()].copy_from_slice(data);
+        *sink.written = data.len();
+        Ok(())
+    }
+
+    /// Serialize `msg` and write it as the service / action reply (W.5.3).
+    pub fn reply<M: RosMessage, const N: usize>(&mut self, msg: &M) -> ComponentResult<()> {
+        let mut buf = [0u8; N];
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        msg.serialize(&mut writer)
+            .map_err(|_| ComponentError::Runtime)?;
+        let len = writer.position();
+        self.reply_raw(&buf[..len])
     }
 
     /// Raw CDR payload of the triggering message / request. Empty for timers.
@@ -1234,5 +1290,31 @@ mod tests {
         assert_eq!(entity.as_str(), "pub_chatter");
         // Empty TestMsg ⇒ just the 4-byte CDR header.
         assert_eq!(*len, 4);
+    }
+
+    // W.5.3 — a service-style body writes its reply through the CallbackCtx
+    // reply sink; the trampoline reads `*written` back. A timer/sub ctx (no
+    // sink) rejects a reply.
+    #[test]
+    fn callback_ctx_reply_sink_roundtrips() {
+        struct NoopResolver;
+        impl PublisherResolver for NoopResolver {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> ComponentResult<()> {
+                Ok(())
+            }
+        }
+        let resolver = NoopResolver;
+        let mut reply_buf = [0u8; 64];
+        let mut written = 0usize;
+        {
+            let mut ctx = CallbackCtx::with_reply(&[], &resolver, &mut reply_buf, &mut written);
+            ctx.reply::<TestMsg, 64>(&TestMsg).unwrap();
+        }
+        // Empty TestMsg ⇒ just the 4-byte CDR header.
+        assert_eq!(written, 4);
+
+        // A reply-less ctx (timer / subscription) rejects a reply.
+        let mut ctx2 = CallbackCtx::new(&[], &resolver);
+        assert!(ctx2.reply_raw(&[1, 2, 3]).is_err());
     }
 }
