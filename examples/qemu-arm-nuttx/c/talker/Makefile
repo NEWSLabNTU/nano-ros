@@ -75,4 +75,11 @@ NROS_GEN_CXXSRCS := $(wildcard $(CURDIR)/generated/cpp/*/msg/*.cpp \
 CSRCS   = $(wildcard generated/*.c) $(NROS_GEN_CSRCS)
 MAINSRC = src/main.c
 
+# Pick up `EXTRA_LIBS +=` lines that stage-external-apps.sh writes from
+# the cmake/Corrosion build — libnros_c.a + nros-platform-nuttx +
+# weak_stubs + log_fmt — so the make/Application.mk link resolves the
+# nros C API. `-include` (lowercase) silently no-ops if the fragment
+# isn't there (cmake fixtures haven't been built yet).
+-include $(CURDIR)/generated/ffi/extra_libs.mk
+
 include $(APPDIR)/Application.mk

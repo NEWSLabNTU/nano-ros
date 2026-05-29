@@ -76,17 +76,46 @@ for lang in c cpp; do
             # CMakeLists.txt). Skips gracefully if AMENT_PREFIX_PATH
             # is unset / interfaces can't be resolved.
             python3 "$ROOT/scripts/nuttx/gen-interfaces.py" "$src" "$CODEGEN" || true
-            # Phase 157.C.16 — for CPP examples, also build the
-            # per-package `nano_ros_cpp_ffi_<pkg>` staticlib crate
-            # (cmake's nros_generate_interfaces equivalent for the
-            # cpp ABI bridge). Output: one staticlib path per
-            # package. We persist the list as a Make fragment under
-            # generated/ffi/extra_libs.mk so the example Makefile
-            # can `-include` it and append to EXTRA_LIBS.
+            # Persist the staticlibs the cmake/Corrosion build produced into
+            # generated/ffi/extra_libs.mk so the example's Makefile (which
+            # `-include`s this fragment) can append them to EXTRA_LIBS and the
+            # make/Application.mk link resolves the nros C/C++ API.
+            #
+            # Required for BOTH c and cpp: libnros_c.a (the nros C API) plus
+            # its auxiliary side-staticlibs (`nros_c_weak_stubs`,
+            # `nros_c_log_fmt`) and the per-board `nros_platform_nuttx.a`.
+            # Additionally for cpp: libnros_cpp.a (the C++ wrapper) plus the
+            # per-package `nano_ros_cpp_ffi_<pkg>` staticlib crates (Phase
+            # 157.C.16 — cmake's nros_generate_interfaces equivalent for the
+            # cpp ABI bridge).
+            extras_mk="$src/generated/ffi/extra_libs.mk"
+            mkdir -p "$(dirname "$extras_mk")"
+            : > "$extras_mk"
+            nros_target_dir="$src/build-zenoh/cargo-target/armv7a-nuttx-eabihf/release"
+            if [ -d "$nros_target_dir" ]; then
+                # libnros_c.a — the C API.
+                if [ -f "$nros_target_dir/deps/libnros_c.a" ]; then
+                    printf 'EXTRA_LIBS += %s\n' "$nros_target_dir/deps/libnros_c.a" >> "$extras_mk"
+                fi
+                # cpp wrapper.
+                if [ "$lang" = "cpp" ]; then
+                    for libcpp in "$nros_target_dir"/deps/libnros_cpp-*.a; do
+                        [ -f "$libcpp" ] && \
+                            printf 'EXTRA_LIBS += %s\n' "$libcpp" >> "$extras_mk"
+                    done
+                fi
+                # Auxiliary side-staticlibs (paths carry a build-script hash).
+                for pat in "$nros_target_dir"/build/nros-c-*/out/libnros_c_weak_stubs.a \
+                           "$nros_target_dir"/build/nros-c-*/out/libnros_c_log_fmt.a \
+                           "$nros_target_dir"/build/nros-board-nuttx-qemu-arm-*/out/libnros_platform_nuttx.a; do
+                    for resolved in $pat; do
+                        [ -f "$resolved" ] && \
+                            printf 'EXTRA_LIBS += %s\n' "$resolved" >> "$extras_mk"
+                    done
+                done
+            fi
+            # Per-package cpp FFI staticlibs (existing mechanism).
             if [ "$lang" = "cpp" ]; then
-                extras_mk="$src/generated/ffi/extra_libs.mk"
-                mkdir -p "$(dirname "$extras_mk")"
-                : > "$extras_mk"
                 python3 "$ROOT/scripts/nuttx/gen-cpp-ffi-crates.py" "$src" "$CODEGEN" \
                     | while read -r lib_path; do
                         printf 'EXTRA_LIBS += %s\n' "$lib_path" >> "$extras_mk"

@@ -170,9 +170,17 @@ regressions.
 - [x] `test-all` miri step green (clock_gettime gated)
 - [x] stale `_test-orchestration-e2e` call removed
 - [x] zephyr-shell passes (sibling-workspace resolver)
-- [x] `build-all-full` removed (make path is opt-in `just nuttx build-fixtures-make`)
-- [x] make-fixture cpp `app_config.h` always generated (one of its gaps)
-- [ ] nuttx-make linkable in `build-all` — needs the tier-3 nros-c-on-NuttX cross-build (cmake skips nros-c for NuttX); make path stays opt-in until then
+- [x] `build-all-full` removed; make path folded into `build-fixtures` so
+      `build-all` produces the `nuttx_make_e2e` kernel ELF.
+- [x] make-fixture cpp `app_config.h` always generated.
+- [x] **tier-3 nros-c-on-NuttX link resolved.** Reuse path: cmake/Corrosion
+      already builds per-example `libnros_c.a` (+ `libnros_cpp`,
+      `nros-platform-nuttx`, `nros_c_weak_stubs`, `nros_c_log_fmt`) under
+      `<ex>/build-zenoh/cargo-target/armv7a-nuttx-eabihf/release/`.
+      `stage-external-apps.sh` now persists those paths into each app's
+      `generated/ffi/extra_libs.mk` (for both C and C++), and the C example
+      Makefiles `-include` that fragment. The make/Application.mk link
+      resolves nros API symbols. Verified: `nuttx_make_e2e` PASSES.
 - [x] px4 template — **fixed (shallow).** Root cause: the `[source.px4-autopilot]`
       pin `ecfe44a` (1.15.x) lags PX4's `main` and isn't an advertised ref, so
       `git submodule update --depth 1` (fetches the branch tip, not the SHA)

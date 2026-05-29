@@ -186,12 +186,13 @@ build-fixtures:
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx c zenoh
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
-    # NOTE: the native external-app make path (`build-fixtures-make`, the
-    # `nuttx_make_e2e` kernel ELF) is intentionally NOT folded in here: it links
-    # the C/C++ examples against `libnros_c.a` built for armv7a-nuttx-eabihf,
-    # which is the unsolved tier-3 nros-c-on-NuttX cross-build (cmake skips
-    # `nros-c` for NuttX — Phase 160.D). Until that lands, the make fixture
-    # can't link, so it stays an explicit opt-in: `just nuttx build-fixtures-make`.
+    # Also stage the native NuttX external-app make path (the `nuttx_make_e2e`
+    # kernel ELF). Must run after the cmake/Corrosion c+cpp builds above —
+    # stage-external-apps.sh persists their per-example libnros_c.a (+ libnros_cpp,
+    # nros-platform-nuttx, weak_stubs, log_fmt) into each app's
+    # generated/ffi/extra_libs.mk, so the make/Application.mk link resolves the
+    # nros C/C++ API (the tier-3 nros-c-on-NuttX gap is closed via that reuse).
+    just nuttx build-fixtures-make
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
@@ -323,11 +324,12 @@ build-fixtures-make:
     ( cd "$nuttx_dir" && make )
     echo "NuttX external-app build complete. Binary: $nuttx_dir/nuttx"
 
-# Build the standard NuttX example + fixture tiers. The native external-app
-# make path (`build-fixtures-make`, the `nuttx_make_e2e` kernel ELF) is a
-# separate opt-in — it can't link until the tier-3 nros-c-on-NuttX cross-build
-# is solved (see the note in `build-fixtures`). `build-all-full` was removed;
-# run `just nuttx build-fixtures-make` explicitly when that path is wanted.
+# Build every NuttX tier — `build-fixtures` folds in the native external-app
+# make path (`build-fixtures-make`, the `nuttx_make_e2e` kernel ELF), so a
+# single `build-all` produces every fixture `test-all` needs. The tier-3
+# nros-c-on-NuttX link is resolved by reusing the per-example libnros_c.a
+# (+ aux staticlibs) from the cmake/Corrosion c+cpp builds — see the comment
+# in `build-fixtures`. `build-all-full` removed.
 [group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
