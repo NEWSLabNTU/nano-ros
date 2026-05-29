@@ -64,11 +64,19 @@ else
     # rust cells — cargo build with the manifest's exact features/target-dir/env.
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
+    # Codegen here (centralized) rather than per-recipe: examples that path-dep
+    # generated message crates (std_msgs/builtin_interfaces/example_interfaces via
+    # [patch.crates-io] -> generated/ in .cargo/config.toml) need `nros generate-
+    # rust` before cargo can resolve the patch path, and the gitignored generated/
+    # dirs don't exist on a fresh checkout. Only examples have a package.xml (bins
+    # skip). --force is idempotent so recipes that also codegen (freertos) are fine.
+    NROS_CLI="$(nros_cli_bin)"; export NROS_CLI
     nros_fixture_build_one() {
         local dir envstr args
         IFS=$'\x1f' read -r dir envstr args <<< "$1"
         [ -n "$dir" ] || return 0
         echo "  → $dir ${args}"
+        [ -f "$dir/package.xml" ] && ( cd "$dir" && "$NROS_CLI" generate-rust --force >/dev/null )
         # shellcheck disable=SC2086
         ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
     }
