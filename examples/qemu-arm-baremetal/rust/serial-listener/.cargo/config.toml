@@ -9,6 +9,9 @@ ZPICO_NO_SMOLTCP = "1"
 # Phase 204.7 — serial-only: shed the IP link layer (Z_FEATURE_LINK_TCP/UDP=0);
 # --gc-sections strips the residual smoltcp impl. Serial link stays on.
 NROS_LINK_IP = "0"
+# Phase 204.5 — zenoh-pico tcp/serial client working set is small; shrink the
+# 64 KB default static heap.
+NROS_HEAP_SIZE = "24576"
 
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"

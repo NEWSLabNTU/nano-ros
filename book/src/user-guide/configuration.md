@@ -138,11 +138,22 @@ brokered client doesn't need:
 |----------|---------|--------|
 | `NROS_LINK_IP` | on | `NROS_LINK_IP=0` on a **serial-only** node drops the IP link layer — zenoh-pico's TCP/UDP link C (`Z_FEATURE_LINK_TCP/UDP=0`) and (with `--gc-sections`) the smoltcp platform impl. Serial link stays. |
 | `NROS_SMOLTCP_MAX_SOCKETS` / `NROS_SMOLTCP_MAX_UDP_SOCKETS` | 4 / 2 | Sized for DDS RTPS (3 UDP/participant). A zenoh/XRCE client multiplexes everything over **one** session → set both to `1` to drop the spare socket buffers (≈8 KB each). |
+| `NROS_HEAP_SIZE` | per-board (64 KB mps2-an385, 32 KB stm32f4) | Decimal **bytes** for the bare-metal static heap. The defaults are generous; size to the RMW's working set (table below). E.g. `NROS_HEAP_SIZE = "24576"` on a zenoh-pico node cut the mps2-an385 `.data` 66 → 25 KB (−41 KB). |
+
+**Static-heap sizing by backend** (bare-metal `FreeListHeap`, set via
+`NROS_HEAP_SIZE`):
+
+| Backend | Peak working set | Recommended heap | Notes |
+|---------|------------------|------------------|-------|
+| zenoh-pico (TCP) | ~16 KB | **24–32 KB** (≈2× for fragmentation) | peer middleware; `alloc`-based session/buffers |
+| zenoh-pico (serial) | lighter than TCP | **16–24 KB** | no TCP link buffers; verified running at 16 KB |
+| XRCE (Micro-XRCE-DDS) | ~3 KB (micro-ROS figure) | **~8 KB** | static pools, discovery offloaded to the agent — the RAM-minimal backend; a measured bare-metal XRCE figure is pending an example (no bare-metal XRCE example ships yet — XRCE bare-metal needs a custom-transport injection) |
 
 The recommended size-minimal recipe is **serial transport + `--gc-sections`** (in
-the example's `rustflags`) — see [Serial transport](serial-transport.md). nano-ros
-reuses the RTOS's network stack (lwIP/Zephyr-net/NetX) on hosted RTOS and links
-`smoltcp` only on bare-metal ethernet; serial links no IP stack at all.
+the example's `rustflags`) **+ a heap right-sized to the backend** — see
+[Serial transport](serial-transport.md). nano-ros reuses the RTOS's network stack
+(lwIP/Zephyr-net/NetX) on hosted RTOS and links `smoltcp` only on bare-metal
+ethernet; serial links no IP stack at all.
 
 ## Cargo features (which RMW/platform is *linked*)
 

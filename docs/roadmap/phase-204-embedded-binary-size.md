@@ -225,12 +225,27 @@ typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
 - [ ] **Acceptance:** the fmt/panic text contribution measured before/after.
 
 ### 204.5 — Static-heap sizing + XRCE-for-RAM
-- [ ] `nros_platform_stm32f4::memory::HEAP` is 33 KB static. Document/tune the heap
-      to the RMW's real need (zenoh-pico ~12 KB working set; XRCE ~3 KB). Offer
-      XRCE as the RAM-minimal backend (static pools, discovery offloaded to agent —
-      the micro-ROS model), measured against zenoh-pico.
-- [ ] **Acceptance:** a documented heap-size guide per backend; an XRCE bare-metal
-      RAM figure vs zenoh-pico.
+- [x] **Made the bare-metal static heap env-tunable (2026-05-30).**
+      `nros-platform-{mps2-an385,stm32f4}::memory::HEAP` now reads `NROS_HEAP_SIZE`
+      (compile-time `option_env!`, decimal bytes) and falls back to the per-board
+      default (64 KB / 32 KB) when unset — no regression for examples that don't set
+      it. Bad value fails the build (`const fn parse_usize`).
+- [x] **Measured (mps2-an385 serial talker, `nros-fast-release`).** `NROS_HEAP_SIZE`
+      66 KB default → **24 KB**: `.data` **66.2 → 25.3 KB (−41 KB)**;
+      `test_qemu_serial_pubsub_e2e` still `published=1, received=1` (verified down to
+      16 KB on the serial light load; 24 KB shipped for fragmentation margin). The
+      `serial-{talker,listener}` examples set `NROS_HEAP_SIZE = "24576"`.
+- [x] **Per-backend heap guide** in `book/src/user-guide/configuration.md`
+      (zenoh-pico TCP ~16 KB peak → 24–32 KB; serial lighter → 16–24 KB; XRCE ~3 KB
+      → ~8 KB).
+- [ ] **XRCE bare-metal RAM figure — BLOCKED on an example.** No bare-metal XRCE
+      example ships (XRCE on `target_os = "none"` needs a custom-transport injection
+      none of the examples provide). The ~3 KB figure is micro-ROS's; a measured
+      nano-ros bare-metal XRCE heap/RAM number needs a `qemu-arm-baremetal` XRCE
+      example built first (own work item — XRCE custom-transport bring-up).
+- [x] **Acceptance (partial):** documented per-backend heap guide ✔ + the tunable
+      knob + zenoh-pico measured drop ✔. XRCE-vs-zenoh on-device figure pending the
+      example above.
 
 ### 204.6 — FreeRTOS/lwIP footprint audit — [x] DONE (2026-05-30)
 - [x] **bss explained:** the 3.3 MB is almost entirely the FreeRTOS heap —
