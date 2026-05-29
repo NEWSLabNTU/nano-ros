@@ -57,55 +57,19 @@ setup *ARGS:
     # Both are idempotent — safe to run on every `just zephyr setup`.
     echo "[zephyr setup] ensuring armv7a-none-eabi Rust target..."
     rustup target add armv7a-none-eabi
-    if [ "{{NROS_ZEPHYR_VERSION}}" = "4.4" ]; then
-        echo "[zephyr setup] 4.4 line: provisioning Python 3.12 venv (Zephyr 4.4 requires >=3.12)..."
-        bash ./scripts/zephyr/provision-py312-venv.sh "$WORKSPACE"
-        echo "[zephyr setup] 4.4 line: applying 4.4 NSOS patches (Phase 180.A)..."
-        # Task 5 — NSOS recvmsg (cyclonedds UDP receive). Task 6 — NSOS
-        # IPv4-multicast forwarding (SPDP discovery): guest half first
-        # (constants + struct + nsos_sockets.c marshalling), then the host
-        # adapt forwarder. Both re-anchored to the 4.4 nsos shape.
-        bash ./scripts/zephyr/nsos-recvmsg-patch-4.4.sh "$WORKSPACE"
-        bash ./scripts/zephyr/native-sim-ipproto-ip-patch-4.4.sh "$WORKSPACE"
-        bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch-4.4.sh "$WORKSPACE"
-        # Cyclone DDS runtime: relax pthread_mutex_unlock to Linux/glibc
-        # NORMAL semantics (Zephyr 4.x k_mutex owner-only-unlock aborts
-        # ddsrt's xevent thread right after the first publish).
-        bash ./scripts/zephyr/pthread-mutex-unlock-patch-4.4.sh "$WORKSPACE"
-        echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"
-    else
-    echo "[zephyr setup] applying Cortex-A9 / SLCR patches (idempotent)..."
-    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
-    echo "[zephyr setup] applying AArch64 / Cortex-R Rust patches (idempotent)..."
-    bash ./scripts/zephyr/aarch64-rust-patch.sh "$WORKSPACE"
-    bash ./scripts/zephyr/cortex-r-rust-patch.sh "$WORKSPACE"
-    echo "[zephyr setup] applying Phase 168.1 cargo-features patch (idempotent)..."
-    bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
-    echo "[zephyr setup] applying Phase 97.4 native_sim IPPROTO_IP patch (idempotent)..."
-    bash ./scripts/zephyr/native-sim-ipproto-ip-patch.sh "$WORKSPACE"
-    echo "[zephyr setup] applying Phase 168.X.fvp llext-edk conditional patch (idempotent)..."
-    bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$WORKSPACE"
-    echo "[zephyr setup] applying Phase 11W.6 cyclonedds threads patch (idempotent)..."
-    bash ./scripts/zephyr/cyclonedds-zephyr-threads-patch.sh
-    echo "[zephyr setup] applying Phase 11W.7 cyclonedds log eager-flush patch (idempotent)..."
-    bash ./scripts/zephyr/cyclonedds-zephyr-log-flush-patch.sh
-    echo "[zephyr setup] applying Phase 11W.7/.8 cyclonedds udp sockopt patch (idempotent)..."
-    bash ./scripts/zephyr/cyclonedds-zephyr-udp-rcvbuf-patch.sh
-    echo "[zephyr setup] applying Phase 11W.8 NSOS getsockname patch (idempotent)..."
-    bash ./scripts/zephyr/nsos-getsockname-patch.sh
-    echo "[zephyr setup] applying Phase 11W.10 NSOS recvmsg patch (idempotent)..."
-    bash ./scripts/zephyr/nsos-recvmsg-patch.sh
-    echo "[zephyr setup] applying Phase 11W.11 NSOS mcast-join dual-mreq patch (idempotent)..."
-    bash ./scripts/zephyr/nsos-mcjoin-mreq-patch.sh
-    echo "[zephyr setup] applying Phase 11W.12 NSOS getifaddrs patch (idempotent)..."
-    bash ./scripts/zephyr/nsos-getifaddrs-patch.sh
-    echo "[zephyr setup] applying Phase 11W.12 NSOS adapt IPPROTO_IP setsockopt patch (idempotent)..."
-    bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh
-    echo "[zephyr setup] applying Phase 11W.8 cyclonedds multicast-join best-effort patch (idempotent)..."
-    bash ./scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh
-    echo "[zephyr setup] applying Phase 11W.8 cyclonedds sockwaitset self-pipe patch (idempotent)..."
-    bash ./scripts/zephyr/cyclonedds-zephyr-sockwaitset-patch.sh
+    # Phase 199.3 — version-dispatched patch set. The per-line patch sequences
+    # (formerly an inline `if NROS_ZEPHYR_VERSION = 4.4 … else …` here) live in
+    # scripts/zephyr/patches/<version>.sh. Adding a Zephyr line = drop a new
+    # sibling there; no edit to this recipe.
+    PATCHSET="./scripts/zephyr/patches/{{NROS_ZEPHYR_VERSION}}.sh"
+    if [ ! -f "$PATCHSET" ]; then
+        echo "[zephyr setup] ERROR: no patch set for Zephyr {{NROS_ZEPHYR_VERSION}} ($PATCHSET)." >&2
+        echo "  Supported lines: $(ls ./scripts/zephyr/patches/*.sh | xargs -n1 basename | sed 's/\.sh$//' | tr '\n' ' ')" >&2
+        echo "  Add scripts/zephyr/patches/{{NROS_ZEPHYR_VERSION}}.sh (see patches/README.md)." >&2
+        exit 1
     fi
+    echo "[zephyr setup] applying {{NROS_ZEPHYR_VERSION}} patch set ($PATCHSET)..."
+    bash "$PATCHSET" "$WORKSPACE"
     # The Micro-XRCE-DDS Agent is only needed for XRCE *runtime* tests. Builds
     # that use a different RMW (e.g. the zenoh dual-line CI) can skip the heavy
     # Fast-DDS superbuild via NROS_ZEPHYR_SKIP_XRCE_AGENT.

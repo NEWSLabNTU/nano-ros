@@ -77,11 +77,22 @@ makes the *pair* the unit of support.
       manifests pin zephyr + `zephyr-lang-rust: main`. Pin a *specific*
       lang-rust revision per line (reproducible; `main` drifts). Each
       `west-<ver>.yml` = `(zephyr@<rev>, zephyr-lang-rust@<rev>)` known-good pair.
-- [ ] **199.3 — Restructure the churn into per-version patch dirs.** Move
-      `scripts/zephyr/*-4.4.sh` etc. into `scripts/zephyr/patches/<version>/`
-      with a single version-dispatched applier (replaces the inline
-      `if MANIFEST = …` branches in `setup.sh` / `just/zephyr.just`). Adding a
-      version = drop in a patch dir; no edits to the applier.
+- [x] **199.3 — Version-dispatched patch sets. DONE** (2026-05-29). The inline
+      `if NROS_ZEPHYR_VERSION = 4.4 … else …` patch branch in `just/zephyr.just`
+      is replaced by a single dispatcher: `bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh
+      "$WORKSPACE"` (with an explicit "no patch set for <version>" error listing
+      supported lines). The two per-line sequences were lifted verbatim into
+      `scripts/zephyr/patches/3.7.sh` + `4.4.sh` (each `cd`s to repo root, takes
+      the workspace arg, keeps every patch idempotent). Adding a Zephyr line =
+      drop a sibling `patches/<version>.sh` — **no edit to the recipe**; contract
+      in `scripts/zephyr/patches/README.md`. The individual `scripts/zephyr/*.sh`
+      patch scripts stay in place (the per-line sets call them — moving them risks
+      their cwd/relative-path assumptions, and the dispatch goal is met without
+      it). Verified `bash -n` clean on both sets, `just --show zephyr::setup`
+      parses, the missing-version + usage guards fire. *Remaining (minor):*
+      `scripts/zephyr/setup.sh` still has one `if MANIFEST = west.yml` gate for the
+      Cortex-A9 patch — fold into the 3.7 set in a follow-up (it's idempotently
+      re-applied by `patches/3.7.sh` anyway).
 - [ ] **199.4 — Upstream the native_sim / NSOS fixes to Zephyr.** They are
       genuine native_sim bug fixes (UDP recvmsg, IPv4-multicast SPDP, getsockname/
       getifaddrs, mcjoin mreq). File upstream PRs; track which land per release so
