@@ -73,5 +73,8 @@ tools/*
 # Per-developer local Claude Code settings
 .claude/settings.local.json
 
+# Per-machine SDK resolution lock written by `nros setup`
+/nros-sdk.lock
+
 # Phase 193 — separate target-dir for concurrent embedded clippy (just check-workspace-all)
 /target-embedded/
