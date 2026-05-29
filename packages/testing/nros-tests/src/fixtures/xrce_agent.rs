@@ -114,14 +114,17 @@ fn allocate_ephemeral_udp_port() -> std::io::Result<u16> {
 /// Get the path to the XRCE Agent binary.
 ///
 /// Checks for a locally-built agent at `build/xrce-agent/MicroXRCEAgent`
-/// first, then falls back to `MicroXRCEAgent` on the system PATH.
+/// first, then the `nros setup` store (`xrce-agent` tool), then falls back to
+/// `MicroXRCEAgent` on the system PATH.
 pub fn xrce_agent_binary_path() -> std::path::PathBuf {
     let local = crate::project_root().join("build/xrce-agent/MicroXRCEAgent");
     if local.exists() {
-        local
-    } else {
-        std::path::PathBuf::from("MicroXRCEAgent")
+        return local;
     }
+    if let Some(store) = crate::nros_store_bin("xrce-agent", "MicroXRCEAgent") {
+        return store;
+    }
+    std::path::PathBuf::from("MicroXRCEAgent")
 }
 
 /// Check if the XRCE Agent binary is available (local build or system PATH).

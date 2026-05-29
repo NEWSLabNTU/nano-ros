@@ -359,6 +359,25 @@ pub fn project_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// Resolve a tool binary from the `nros setup` shared store
+/// (`$NROS_HOME/sdk/<tool>/<version>/bin/<exe>`, else `~/.nros/sdk/...`),
+/// mirroring `nros-cli-core`'s `store_root` + `tool_prefix` layout. Returns the
+/// first version dir carrying `exe`. Lets the test harness discover tools that
+/// `nros setup <board>` installed — without it the resolvers only see the
+/// `build/<tool>/` (`just`-built) path or the system PATH.
+pub fn nros_store_bin(tool: &str, exe: &str) -> Option<std::path::PathBuf> {
+    let root = std::env::var_os("NROS_HOME")
+        .map(|h| std::path::PathBuf::from(h).join("sdk"))
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".nros/sdk")))?;
+    for entry in std::fs::read_dir(root.join(tool)).ok()?.flatten() {
+        let cand = entry.path().join("bin").join(exe);
+        if cand.is_file() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
 /// Read the pinned nightly channel from `tools/rust-toolchain.toml`.
 ///
 /// This is the single source of truth for the nightly used by workspace

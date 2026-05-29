@@ -37,6 +37,10 @@ pub fn qemu_system_arm_path() -> std::ffi::OsString {
             return patched.into_os_string();
         }
     }
+    // `nros setup` store qemu (the patched `11.0.0-nros*` dist).
+    if let Some(store) = crate::nros_store_bin("qemu", "qemu-system-arm") {
+        return store.into_os_string();
+    }
     std::ffi::OsString::from("qemu-system-arm")
 }
 

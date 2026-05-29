@@ -639,7 +639,10 @@ pub fn zenohd_binary_path() -> std::path::PathBuf {
     if local.exists() {
         return local;
     }
-    // Fall back to system-installed zenohd (e.g., inside Docker container)
+    // `nros setup` store, then system PATH (e.g. inside Docker container).
+    if let Some(store) = crate::nros_store_bin("zenohd", "zenohd") {
+        return store;
+    }
     std::path::PathBuf::from("zenohd")
 }
 
