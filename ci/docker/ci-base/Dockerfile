@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl ca-certificates zstd xz-utils file wget \
         python3 python3-pip python3-venv build-essential \
         gcc-arm-none-eabi kconfig-frontends socat \
+        libslirp0 libpixman-1-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # uv (Python 3.12 venvs) + just (recipe runner) via their canonical installers.
