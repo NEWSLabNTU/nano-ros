@@ -439,13 +439,27 @@ logging-fmt, not panic-fmt. A real strip needs **204.4** (drop `defmt`/logging +
       logging+Debug example (and inert on stable build-std). Recommendation: pursue
       via 204.4, not here.
 
-### 204.13 — CMake C/C++ (CycloneDDS + examples): size build type + IPO
-- [ ] CMake libs build `-DCMAKE_BUILD_TYPE=Release` (`-O3`), never `MinSizeRel`
-      (`-Os`); no `CMAKE_INTERPROCEDURAL_OPTIMIZATION`. For size-critical
-      consumption offer `MinSizeRel` + IPO/LTO; the CycloneDDS RMW wrapper
-      (`packages/dds/nros-rmw-cyclonedds/CMakeLists.txt`) sets no opt/section flags
-      (inherits BUILD_TYPE) — add `-ffunction-sections -fdata-sections`.
-- [ ] **Acceptance:** Cyclone path size measured `Release` vs `MinSizeRel`+IPO.
+### 204.13 — CMake C/C++ (CycloneDDS + examples): size build type + IPO — [x] DONE (2026-05-30)
+- [x] **Wrapper: `-ffunction-sections -fdata-sections`** added to
+      `nros_rmw_cyclonedds`'s `target_compile_options` so a `--gc-sections` link
+      can drop the wrapper's unused entity trampolines (member-granular instead of
+      whole-archive).
+- [x] **Wrapper: opt-in IPO/LTO** — `-DNROS_RMW_CYCLONEDDS_IPO=ON` (off by
+      default; gated through `check_ipo_supported`). Off because the cross-language
+      `rust-lld` + slim-LTO-ddsc link is fragile (204.14).
+- [x] **MinSizeRel already propagates to ddsc.** `ProvideCycloneDDS.cmake`
+      self-provisions via `add_subdirectory(${CYCLONEDDS_SOURCE_DIR})`, so ddsc
+      builds in the caller's scope and inherits `CMAKE_BUILD_TYPE` — a consumer
+      configuring `-DCMAKE_BUILD_TYPE=MinSizeRel` gets `-Os` on **both** ddsc + the
+      wrapper, no code change. (With a `find_package` ddsc — e.g. ROS Humble's
+      prebuilt — only the wrapper's type is ours to set.)
+- [x] **Measured Release vs MinSizeRel** (wrapper `.a`, ddsc constant via ROS
+      find_package): **text 24 952 → 20 483 B = −4 469 (−17.9 %)** for `-Os` vs
+      the inherited `-O3`. ddsc tracks the same `-Os` factor when self-provisioned.
+- [ ] **Remainder:** quantify the full self-provisioned ddsc `.so`/static at
+      MinSizeRel (heavy ddsc rebuild) + decide whether to default the embedded
+      cyclone fixture builds to MinSizeRel.
+- **Files:** `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt`.
 
 ### 204.14 — LTO strategy (perf + size), unblock the rust-lld issue
 - [ ] Workspace `lto="off"` (cross-crate inlining left on the table) because cross

@@ -173,12 +173,33 @@ target_compile_options(nros_rmw_cyclonedds PRIVATE
     # itself may allocate internally, but this wrapper must not rely on
     # exceptions, RTTI, or guard variables for local statics.
     -fno-exceptions -fno-rtti -fno-threadsafe-statics
+    # Phase 204.13 — per-function/data sections so a `--gc-sections` link
+    # (embedded + the gc-enabled native links) can drop the wrapper's unused
+    # entity trampolines instead of pulling the whole archive member.
+    -ffunction-sections -fdata-sections
 )
 
 set_target_properties(nros_rmw_cyclonedds PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME NrosRmwCyclonedds
 )
+
+# Phase 204.13 — opt-in interprocedural optimization (LTO) for size/perf-critical
+# consumption. Off by default (cross-language link with `rust-lld` + slim-LTO
+# ddsc objects is fragile — see 204.14); enable with
+# `-DNROS_RMW_CYCLONEDDS_IPO=ON` where the toolchain supports it. Pair with
+# `-DCMAKE_BUILD_TYPE=MinSizeRel` (`-Os`) for the smallest wrapper.
+option(NROS_RMW_CYCLONEDDS_IPO "Enable IPO/LTO on the Cyclone RMW wrapper" OFF)
+if(NROS_RMW_CYCLONEDDS_IPO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT _nros_ipo_ok OUTPUT _nros_ipo_msg)
+    if(_nros_ipo_ok)
+        set_target_properties(nros_rmw_cyclonedds PROPERTIES
+            INTERPROCEDURAL_OPTIMIZATION ON)
+    else()
+        message(WARNING "NROS_RMW_CYCLONEDDS_IPO requested but unsupported: ${_nros_ipo_msg}")
+    endif()
+endif()
 
 # ---- Tests -----------------------------------------------------------------
 # Default the CTest harness ON only when this is the top-level project
