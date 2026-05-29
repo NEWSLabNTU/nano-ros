@@ -152,4 +152,9 @@ jobs:
         run: |
           source ./setup.bash
           source /opt/ros/humble/setup.bash
+          # `_nextest-platform` runs `cargo metadata` on the whole nros-tests
+          # workspace, which parses the (optional) px4-sitl-tests path dep — its
+          # Cargo.toml must exist or metadata fails. Provision the px4-rs source
+          # (same as host-unit-tests); it's gitignored/extended-tier otherwise.
+          nros setup --source px4-rs
           just ${{ matrix.plat }} test
