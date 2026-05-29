@@ -560,7 +560,12 @@ function(nros_generate_interfaces target)
           "[target.${Rust_CARGO_TARGET}]\nlinker = \"arm-none-eabi-gcc\"\n\n"
           "[env]\nCC_armv7a_nuttx_eabi = \"arm-none-eabi-gcc\"\n"
         )
-        set(_ffi_cargo_prefix "+nightly")
+        # Pin to the EXACT nightly the rest of the build uses — the dated
+        # nightly is what's installed (matches examples/qemu-arm-nuttx/rust-
+        # toolchain.toml + cmake/toolchain/armv7a-nuttx-eabi.cmake's
+        # Rust_TOOLCHAIN). Generic `+nightly` resolves to an UNinstalled
+        # `nightly-x86_64-unknown-linux-gnu` → rustlib src/Cargo.lock missing.
+        set(_ffi_cargo_prefix "+${Rust_TOOLCHAIN}")
         # With .cargo/config.toml, --target is set there; don't pass it again
         set(_ffi_cargo_target_flag "")
       endif()
