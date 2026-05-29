@@ -35,36 +35,25 @@ concurrency:
 jobs:
   dep-chain:
     name: per-platform dep chain
-    runs-on: ubuntu-latest
-    # Run inside the prebuilt ROS 2 Humble image — `/opt/ros/humble` is already
-    # there (std_msgs etc. for AMENT-resolved codegen), so we skip the ~4.5-min
-    # `setup-ros` apt install every run. ros-base carries the common interface
-    # packages dep-chain needs; the image is jammy (Humble baseline).
-    container: ros:humble-ros-base
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    # Run inside the nano-ros-ci base image — ROS 2 Humble (AMENT for codegen) +
+    # all host tools (curl/zstd/git/build-essential, rustup + cross targets, gcc)
+    # baked. No per-run apt / rustup install; `git safe.directory '*'` is set in
+    # the image. The board sources stay nros-provisioned (no hand submodule
+    # checkout). See ci/docker/ci-base/Dockerfile.
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     # Container `run:` defaults to dash — force bash (the check `source`s ROS).
     defaults:
       run:
         shell: bash
-    # Pin cargo/rustup to a fixed root (the container's $HOME=/github/home vs
-    # euid /root mismatch makes rustup's default home ambiguous).
-    env:
-      CARGO_HOME: /usr/local/cargo
-      RUSTUP_HOME: /usr/local/rustup
     steps:
-      # The ROS image is minimal — install the host tools a GH runner ships but
-      # this container lacks (curl/zstd/tar for install.sh, git for nros setup's
-      # submodule provisioning, gcc for cargo). Still far cheaper than setup-ros.
-      - name: Install host tools
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
-            curl ca-certificates zstd git build-essential
-          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path
-          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
-          # git runs as root in the container — avoid "dubious ownership" on the
-          # checkout + the submodules `nros setup` provisions.
-          git config --global --add safe.directory '*'
-
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 

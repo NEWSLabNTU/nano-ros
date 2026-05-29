@@ -36,7 +36,21 @@ concurrency:
 jobs:
   test-unit:
     name: workspace unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    # nano-ros-ci bakes ROS 2 Humble + the pinned rustup toolchain + just +
+    # cargo-nextest + host build deps, so no per-run rustup/taiki-e installs.
+    # Sources stay nros-provisioned. See ci/docker/ci-base/Dockerfile.
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
@@ -62,14 +76,6 @@ jobs:
         run: |
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client
-
-      - name: Set up Rust toolchain
-        run: rustup show
-
-      - name: Install just + cargo-nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest
 
       - name: just test-unit
         run: just test-unit
