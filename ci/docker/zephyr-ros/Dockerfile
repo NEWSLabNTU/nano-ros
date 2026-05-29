@@ -44,8 +44,14 @@ RUN curl -fsSL -o /tmp/sdk.tar.xz \
     && sdk_args="" && for t in ${SDK_TARGETS}; do sdk_args="$sdk_args -t $t"; done \
     && /opt/zephyr-sdk/setup.sh $sdk_args -h -c \
     && rm /tmp/sdk.tar.xz
-ENV ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
-    ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+# NB: deliberately NOT setting ZEPHYR_SDK_INSTALL_DIR. That env makes Zephyr's
+# FindZephyr-sdk use /opt *exclusively* — fine for 3.7 (accepts 0.16/0.17), but
+# the 4.4 line requests `find_package(Zephyr-sdk 1.0)` and rejects the baked
+# release Config (version 0.17.4), so it must fall through to its own
+# west-managed SDK. The baked SDK is instead exposed as a CMake-package-registry
+# *candidate* (registered per-job via `setup.sh -c`): 3.7 accepts it, 4.4
+# considers-and-rejects it then uses its west SDK.
+ENV ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
 # uv (Python 3.12 for the Zephyr 4.4 line) + just (recipe runner). Both via
 # their canonical installers (arch/version handled upstream).
