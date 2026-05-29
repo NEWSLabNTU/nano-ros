@@ -13,6 +13,27 @@ stages fixed and validated by repeated `workflow_dispatch` runs; one product
 skew (codegen CLI) remains, owned by Phase 195. The broader audit/codification
 items are proposed.
 
+**Handoff note (2026-05-29).** Findings from another line, relevant to the open
+items — not worked here (196 is owned elsewhere):
+- **`nros codegen` CLI skew (the "one product skew" above) — resolved at the
+  tool level.** It is *not* a missing feature: `nros 0.3.1` (tag `nros-v0.3.1`,
+  nros-cli) ships the `nros codegen` subcommand (`cmd::codegen`). The breakage
+  seen locally was a **stale install** — `~/.cargo/bin/nros 0.2.0` (pre-`codegen`)
+  shadowing PATH, which also made `scripts/install-nros.sh` skip. Fix that bit:
+  remove the stale cargo binary, `scripts/install-nros.sh` (installs 0.3.1 →
+  `~/.nros/bin`); `.envrc` now puts `~/.nros/bin` on PATH (committed this
+  session). **CI implication:** lanes that run `nros codegen` must install
+  0.3.1+ via `install-nros.sh`, not rely on a cargo-installed `nros`. Verified:
+  fresh-configured `examples/native/cpp/listener` builds end-to-end + the C/C++
+  `native_api` talker/listener e2e passes once 0.3.1 is on PATH.
+- **`packages/codegen` (the nros-cli clone) is gone from the worktree.** 196.7's
+  `nros new` scaffold edit lives in **nros-cli** (separate `NEWSLabNTU/nros-cli`
+  repo), not this tree — re-clone / edit there.
+- **196.7 README install line:** the suggested `cargo install --git
+  …/nano-ros nros-cli` is wrong — `nros` ships from the standalone nros-cli repo
+  as a **prebuilt** binary; the source-release install is `scripts/install-nros.sh`
+  (or `cargo install --git …/nros-cli`). Document that, not a nano-ros cargo-install.
+
 **Priority.** P2 — no product capability depends on it, but green CI is the gate
 for trusting every other phase's "verified" claim, and broken-by-default
 workflows train contributors to ignore CI.
