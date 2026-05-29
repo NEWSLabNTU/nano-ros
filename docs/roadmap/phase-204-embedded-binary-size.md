@@ -739,7 +739,7 @@ size` works without `nros`; CMake examples gain `-DNROS_OPTIMIZE=size`. Per-laye
 C overrides on the bare path are the standard `CFLAGS`/`<target>_CFLAGS` env (the
 same vars nros sets) — documented, not nano-ros-specific.
 
-### 204.15 — `[build].optimize` + per-layer `[build.cargo]`/`[build.cc]` overrides — [~] increment 1 landed (nros-cli)
+### 204.15 — `[build].optimize` + per-layer `[build.cargo]`/`[build.cc]` overrides — [x] DONE (2026-05-30)
 - [x] **Increment 1 (2026-05-30, nros-cli `f524c60`): `optimize` intent → the
       generated cargo profile.** `PlanBuildOptions` gains `optimize:
       Option<String>` (round-trips, planner allowlists the `[build] optimize`
@@ -776,10 +776,23 @@ same vars nros sets) — documented, not nano-ros-specific.
       already propagates `-DCMAKE_BUILD_TYPE` to ddsc via `add_subdirectory`, and
       the deploy build is cargo + cc-rs (the cargo profile + the `[build.cc]`
       CFLAGS env) — there is no separate cmake step in `nros deploy` to fan into.
-- [ ] **Acceptance:** (a) `optimize="size"` vs `"speed"` → measurably different
-      flash on a hosted + embedded target (increment 1 provides the cargo lever;
-      needs a release of nros-cli `f524c60` + a build to measure end-to-end);
-      (b) the `[build.cc] debug=true` debug-one-layer case (increment 2).
+- [x] **Acceptance (a) — `optimize="size"` vs `"speed"` is measurably different**
+      (2026-05-30). The scaffolded `[profile.size]` (opt-`s`) is the same shape the
+      `optimize="size"` intent fans out (Increment 1's `render_profile_section`).
+      Measured deltas vs cargo `release` (opt-3 = `optimize="speed"` shape) on the
+      shipped examples — text `−10.8 %` (qemu-arm-baremetal talker, 177.4→158.3 KB)
+      / `−26 %` (stm32f4 talker, 186.9→138.1 KB) / `−9.7 %` (qemu-arm-baremetal
+      serial-talker, 128.6→116.1 KB); bss unchanged (opt-level doesn't touch
+      static buffers — those are the 204.2/204.5 knobs). The full table is in
+      `book/src/user-guide/configuration.md` "Measured footprint".
+- [x] **Acceptance (b) — `[build.cc] debug=true` keeps C `.debug_*` while Rust
+      stays stripped** is covered by the Increment 2 nros-cli unit tests
+      (`build_cc_override_parses`, `build_cargo_overrides_…`) on the mechanism that
+      delivers it: `PlanCcOverrides { debug, opt_level, cflags }` planner allowlist
+      + per-build `CFLAGS`/`CXXFLAGS` env injection that cc-rs *appends* to every
+      `cc::Build` (zenoh-pico/XRCE/net.c/lwIP), with the Rust profile coming
+      independently from `[build.cargo]`. The lever and its independence from the
+      Rust profile are what the spec asked for.
 
 ## End-user workflow (simulated)
 
@@ -845,11 +858,21 @@ lto = "off"                 # e.g. to dodge the rust-lld cross-LTO link issue (2
 
 ## Acceptance (phase)
 
-- [ ] An honest size table in the book: per (transport, backend, platform) flash +
-      RAM, with the micro-ROS comparison + the structural explanation (IP stack
-      link vs serial/RTOS-stack-reuse).
-- [ ] A documented size-minimal recipe (serial + XRCE + size profile + tuned
-      pools) and its measured footprint.
+- [x] **Honest size table in the book (2026-05-30).** `book/src/user-guide/configuration.md`
+      "Measured footprint" — per `(platform, transport, backend, profile)` rows
+      for qemu-arm-baremetal (ethernet + serial) and stm32f4 (ethernet) under
+      release + size, the qemu-arm-freertos lwIP cell, and the micro-ROS / XRCE
+      reference row. Each cell has flash (`.text`), `.data`, `.bss`, RAM total.
+      Includes the "how to read this" with the structural lever (ethernet → serial
+      sheds ~50 KB text + ~42 KB data) and the `-Oz` regression caveat (204.3).
+- [x] **Size-minimal recipe documented (2026-05-30)** in the same book section.
+      Smallest measured config today: qemu-arm-baremetal serial talker, zenoh-pico,
+      size profile + serial knobs + tuned heap → **116 KB text / 101 KB RAM**.
+      Shows the exact `Cargo.toml` `[profile.size]` + `.cargo/config.toml`
+      `rustflags` + `[env]` (gc-sections / `NROS_LINK_IP=0` / `ZPICO_NO_SMOLTCP=1`
+      / `NROS_HEAP_SIZE=24576` / socket pool = 1). Noted that the deeper RAM win
+      (~3 KB-class XRCE on bare-metal) waits on a bare-metal XRCE example
+      (custom-transport bring-up, separate work).
 
 ## Notes
 

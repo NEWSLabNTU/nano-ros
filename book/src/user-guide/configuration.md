@@ -149,11 +149,81 @@ brokered client doesn't need:
 | zenoh-pico (serial) | lighter than TCP | **16–24 KB** | no TCP link buffers; verified running at 16 KB |
 | XRCE (Micro-XRCE-DDS) | ~3 KB (micro-ROS figure) | **~8 KB** | static pools, discovery offloaded to the agent — the RAM-minimal backend; a measured bare-metal XRCE figure is pending an example (no bare-metal XRCE example ships yet — XRCE bare-metal needs a custom-transport injection) |
 
-The recommended size-minimal recipe is **serial transport + `--gc-sections`** (in
-the example's `rustflags`) **+ a heap right-sized to the backend** — see
-[Serial transport](serial-transport.md). nano-ros reuses the RTOS's network stack
-(lwIP/Zephyr-net/NetX) on hosted RTOS and links `smoltcp` only on bare-metal
-ethernet; serial links no IP stack at all.
+### Measured footprint
+
+Honest, reproducible numbers per `(platform, transport, backend, profile)` —
+built with the in-tree examples, the **release** profile is cargo's default
+(opt-3), the **size** profile is the scaffolded `[profile.size]` (opt-`s` + `lto`
++ `strip`, see [Phase 204.3](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-204-embedded-binary-size.md#2043--size-tuned-embedded-release-profile)).
+RAM = `data + bss`. All cells are after `--gc-sections` + the size knobs above
+are applied where noted; the serial cell ships with the recipe below.
+
+| platform | transport | backend | profile | text (flash code) | data | bss | RAM total |
+|---|---|---|---|---|---|---|---|
+| qemu-arm-baremetal (mps2-an385, cortex-m3) | ethernet (smoltcp) | zenoh-pico | release | 177.4 KB | 67.0 KB | 91.7 KB | **158.7 KB** |
+| qemu-arm-baremetal | ethernet | zenoh-pico | size | **158.3 KB** | 67.0 KB | 91.7 KB | 158.7 KB |
+| qemu-arm-baremetal | **serial** (no IP stack) | zenoh-pico | release | 128.6 KB | 25.2 KB | 75.8 KB | **101.0 KB** |
+| qemu-arm-baremetal | **serial** | zenoh-pico | **size** + recipe | **116.1 KB** | 25.2 KB | 75.8 KB | **101.0 KB** |
+| stm32f4 (thumbv7em-eabihf, cortex-m4) | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
+| stm32f4 | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
+| qemu-arm-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
+| **micro-ROS reference** (XRCE) | serial | XRCE-DDS Client | -Os | < 75 KB | — | ~3 KB | ~3 KB peak |
+
+**How to read this:**
+
+- **The size profile (opt-`s`) shrinks `.text` by ~10–26 %** with `.bss`/`.data`
+  unchanged (opt-level doesn't touch static buffers — those are the env knobs
+  above). `-Oz` is **not** used — on smoltcp examples it grows `.bss` +24 KB by
+  defeating opt-3's per-socket dead-buffer DCE (see Phase 204.3).
+- **Switching ethernet → serial sheds ~50 KB text + ~42 KB `.data`** (no smoltcp
+  stack, no IP link C, tuned heap) — the structural lever.
+- **FreeRTOS + lwIP cells `.bss` is dominated by lwIP's heap + FreeRTOS task
+  stacks** (3 MB is the configured headroom, not nano-ros overhead).
+- **The micro-ROS / XRCE row is a reference**, not a nano-ros measurement — no
+  bare-metal XRCE example ships yet (needs a custom-transport injection); the
+  path to parity is **XRCE + serial + static pools**.
+
+### Size-minimal recipe
+
+Smallest measured nano-ros configuration today (qemu-arm-baremetal serial
+talker, **116 KB text / 101 KB RAM**):
+
+```toml
+# Cargo.toml
+[profile.size]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+debug = false
+strip = true
+```
+
+```toml
+# .cargo/config.toml — gc + serial knobs
+[target.thumbv7m-none-eabi]
+rustflags = [
+    "-C", "link-arg=--gc-sections",   # 204.8 — strip unreferenced fns/data
+    "-C", "link-arg=-Tlink.x",
+]
+
+[env]
+NROS_LINK_IP        = "0"      # 204.7 — drop zenoh-pico TCP/UDP link C
+ZPICO_NO_SMOLTCP    = "1"      # skip smoltcp glue on bare-metal
+NROS_HEAP_SIZE      = "24576"  # 204.5 — right-size for zenoh-pico working set
+NROS_SMOLTCP_MAX_SOCKETS     = "1"   # 204.2 — brokered client multiplexes
+NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
+```
+
+Build with `cargo build --profile size`, or fleet-wide via
+`NROS_CARGO_PROFILE=size just <plat> build`. `nros new --platform baremetal`
+already scaffolds the `[profile.size]` + the `.cargo/config.toml` shape (Phase
+204.7/204.8); uncomment the serial block when you swap to a serial transport.
+
+**The deeper RAM win waits on XRCE on bare-metal** (the ~3 KB-class client +
+static pools, with discovery offloaded to the agent) — tracked separately;
+zenoh-pico's `SUBSCRIBER_BUFFERS` + alloc-based session are what keep this row's
+`.bss` ~76 KB.
 
 ## Cargo features (which RMW/platform is *linked*)
 
