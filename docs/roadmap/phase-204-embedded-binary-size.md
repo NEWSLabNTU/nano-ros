@@ -658,13 +658,25 @@ same vars nros sets) — documented, not nano-ros-specific.
       204.1 gotcha) → broken ELF. Writing the generated `[profile.release]` is the
       safe universal mechanism (cargo merges nothing, but a profile and the
       `[target] rustflags` are orthogonal sources, so both apply).
-- [ ] **Increment 2 — per-layer overrides + the C layer.** `[build.cargo]` (refine
-      the profile fields) + `[build.cc]` → `TARGET_*_CFLAGS` env (debug/cflags
-      without build.rs edits) + `NROS_CC_OPT` for cc opt-level; merge over the
-      `optimize` baseline (precedence). Covers acceptance (b) — the
-      `optimize="size"` + `[build.cc] debug=true` "debug one layer" case.
-- [ ] **Increment 3 — CMake fan-out** (`-DCMAKE_BUILD_TYPE` from `optimize` +
-      `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION`; ties into 204.13) **+ `nros new`
+- [~] **Increment 2 — per-layer overrides.** Rust-side `[build.cargo]` **landed**
+      (nros-cli `8394d89`, pending fork push + release): `PlanCargoOverrides
+      { opt_level, lto, debug, strip, codegen_units, panic }` (values kept as raw
+      JSON so `opt_level` takes `3` or `"z"`, `lto`/`strip` take bool or string;
+      `deny_unknown_fields`, skip-none round-trip); `PlanBuildOptions.cargo`;
+      planner allowlists `[build] cargo`. `render_profile_section()` now builds an
+      ordered baseline from `optimize` then merges `[build.cargo]` over it —
+      replacing a field in place (no dup) or appending — rendering a profile when
+      *either* is set. Closes the **Rust side of acceptance (b)**: `optimize="size"`
+      + `[build.cargo] debug=true, strip=false` keeps Rust debuginfo while the rest
+      stays size-tuned. Unit-tested
+      (`build_cargo_overrides_merge_over_optimize_baseline`; all 134 lib tests
+      pass). **Remaining:** the C layer — `[build.cc]` → `TARGET_*_CFLAGS` env
+      (debug/cflags without build.rs edits) + `NROS_CC_OPT` for cc opt-level
+      (the C-side of the debug-one-layer case); folded into increment 3.
+- [ ] **Increment 3 — the C layer + CMake fan-out + scaffolding.** `[build.cc]` →
+      `TARGET_*_CFLAGS` env (debug/cflags, no build.rs edits) + `NROS_CC_OPT` for cc
+      opt-level (C-side debug-one-layer); CMake `-DCMAKE_BUILD_TYPE` from `optimize`
+      + `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION` (ties into 204.13); **`nros new`
       scaffolding** of named `size`/`speed` cargo profiles + a target
       `.cargo/config.toml` for the plain-cargo (no-`nros`) path.
 - [ ] **Acceptance:** (a) `optimize="size"` vs `"speed"` → measurably different
