@@ -284,10 +284,17 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         nros generates it. After 5+ build cycles this tree is **heavily polluted**
         (an early broken pre-`codegen`-merge `~/.cargo/bin/nros` left stale cmake
         state that survives build-dir nukes), so the failure is most likely an
-        env/cache artifact, **not** a real rewire defect. **Next step:** verify in
-        a **pristine clone / CI** (clean cmake state) with the installed nros — the
-        rewire is very likely correct. The rest (Corrosion, install-flow,
-        re-release, gitlink) is mechanical.
+        env/cache artifact, **not** a real rewire defect. Further dug: `builtin_interfaces`
+        is a *cross-package transitive* (action → `nros_generate_interfaces(action_msgs
+        DEPENDENCIES builtin_interfaces …)`, generated via the shared gen-cache, not by
+        the example in isolation), so **single-example tests mislead** — only a full
+        `build-fixtures` run exercises the real generation. **Verification remains
+        inconclusive** in this tree (polluted by 5+ cycles + the early broken nros).
+        **Next step (the gate):** a **pristine clone**, install the prebuilt nros,
+        run the full `just nuttx build-fixtures` (+ a posix codegen) with the rewire
+        applied — confirm `builtin_interfaces` generates + the build is green. Do NOT
+        commit the rewire / drop the gitlink until that clean run is green. The rest
+        (Corrosion, install-flow, re-release, gitlink) is mechanical once .2 verifies.
   - [ ] **195.D.3 — Install `nros` in setup + CI.** `just setup`/`bootstrap.sh`
         install the pinned `nros` (`install.sh`) so the build resolves it; the
         nano-ros CI workflow installs it before `just ci`. The build assumes
