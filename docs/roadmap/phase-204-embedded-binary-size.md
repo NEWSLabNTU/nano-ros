@@ -169,13 +169,23 @@ flow from `CARGO_FEATURE_*` into the link-feature flags) — only the `tcp/udp`
 (`UCLIENT_PROFILE_{UDP,TCP,SERIAL}`) needs the same gate.
 
 ### 204.7 — IP stack truly optional (serial-only drops the IP link layer)
-- [ ] Drive `LinkFeatures.{tcp,udp_unicast,udp_multicast}` from a cargo feature
-      (default on; serial-only board → off) instead of the hardcoded `from_env()`
-      `true`, so `Z_FEATURE_LINK_TCP/UDP=0` and zenoh-pico's IP link C is not
-      compiled in a serial-only build. Same gate for XRCE's `UCLIENT_PROFILE_*`.
-- [ ] Document the existing serial / RTOS-stack-reuse story (above) in the book.
-- [ ] **Acceptance:** a serial-only bare-metal build's `.text` shows no zenoh-pico
-      TCP/UDP link symbols (vs today's compiled-but-dead); pairs with 204.8.
+- [x] **Mechanism landed + verified (2026-05-30).** `LinkFeatures::from_env`
+      (`nros-board-common`) now gates `tcp/udp_unicast/udp_multicast` on a
+      **default-ON** `zpico-sys` `link-ip` feature **plus** a per-build env override
+      **`NROS_LINK_IP=0`** — chosen over `default-features=false` cargo plumbing
+      because that would also drop the staticlib `linkme-register` opt-out and
+      regress every IP consumer. Default-on preserves 128.E.1 (verified: ethernet
+      `stm32f4`/`qemu-arm-baremetal` talker still `Z_FEATURE_LINK_TCP 1`). The
+      bare-metal serial examples set `NROS_LINK_IP=0`
+      (`examples/qemu-arm-baremetal/rust/serial-{talker,listener}`): verified
+      `Z_FEATURE_LINK_TCP/UDP 0`, `SERIAL 1`, smoltcp symbols **45 → 5** (gc'd by
+      204.8), bss **108 → 75 KB (−33 KB)** — the IP stack is shed. (The serial
+      example's *absolute* size stays high due to the `rmw-cffi` multi-backend
+      register-path confound — a separate 204.1 item, not the transport.)
+- [ ] **Remainder:** same gate for the XRCE backend (`UCLIENT_PROFILE_{UDP,TCP}`);
+      make `nros new` scaffold `NROS_LINK_IP=0` for serial boards; book write-up of
+      the serial / RTOS-stack-reuse story; resolve the cffi register-path confound
+      so the serial absolute number reflects the shed IP stack.
 
 ## Compiler + linker options — cross-layer inventory
 

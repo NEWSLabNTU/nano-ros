@@ -26,7 +26,7 @@ name = "zpico_sys"
 # entire shim module off so there are no duplicate-symbol
 # collisions between the two emitters. Consumers that still
 # want the Rust shim can pass `default-features = false`.
-default = ["platform-aliases"]
+default = ["platform-aliases", "link-ip"]
 # Platform backends (mutually exclusive)
 #
 # Phase 129.D — the C alias TU (`platform-aliases`, default-on)
@@ -61,6 +61,16 @@ orin-spe = ["dep:zpico-link-ivc"]
 # explicit because they pull in real build-host requirements
 # (raw-socket cap, mbedTLS/OpenSSL, NVIDIA IVC headers, the custom
 # transport crate).
+#
+# Phase 204.7 — `link-ip` (default-ON, so every existing build is
+# unchanged — 128.E.1's one-binary-any-locator default is preserved)
+# gates `Z_FEATURE_LINK_{TCP,UDP_UNICAST,UDP_MULTICAST}` (see
+# `LinkFeatures::from_env`). A serial-only board drops it (via
+# `nros-rmw-zenoh default-features = false`) → the vendor IP-link C is
+# not compiled, and `--gc-sections` (204.8) strips the now-unreferenced
+# smoltcp platform impl. Lets the smallest serial nodes shed the whole
+# IP stack without losing the always-on default for everyone else.
+link-ip = []
 link-raweth = []
 link-tls = []
 # Phase 128.D.3 — opt-in C aliasing TU that maps z_*/_z_get_time_*

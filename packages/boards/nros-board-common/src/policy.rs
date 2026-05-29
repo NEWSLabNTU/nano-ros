@@ -37,24 +37,37 @@ pub struct LinkFeatures {
 impl LinkFeatures {
     /// Read link features from Cargo environment variables.
     ///
-    /// Phase 128.E.1 — `tcp`, `udp_unicast`, `udp_multicast`, and
-    /// `serial` are always on. Their vendor C sources have no
-    /// external build-host dependency and the wire format isn't
-    /// selected until session-open consults the locator string
-    /// (`tcp/...`, `udp4/...`, `serial/...`). Keeping them gated on
-    /// `link-*` Cargo features only forced every consumer to
-    /// duplicate the same selection that already lives in the
-    /// locator string.
+    /// Phase 128.E.1 made `tcp`, `udp_unicast`, `udp_multicast`, `serial`
+    /// always-on (one binary serves any locator, picked at session-open). Phase
+    /// 204.7 re-gates the **IP** trio (`tcp`/`udp_unicast`/`udp_multicast`) on
+    /// `zpico-sys`'s `link-ip` feature — **default-ON**, so the 128.E.1 behaviour
+    /// is unchanged for every existing build; a serial-only board drops `link-ip`
+    /// to shed the IP-link C entirely (size). `serial` stays unconditionally on
+    /// (no build-host dep, trivial framing).
     ///
     /// `raweth`, `tls`, `ivc`, `custom` stay explicit because each
     /// carries a real build-host requirement (raw-socket capability,
     /// mbedTLS / OpenSSL provider, NVIDIA IVC headers, the
     /// `zpico-platform-custom` crate).
     pub fn from_env() -> Self {
+        // Phase 204.7 — IP link (TCP/UDP) gated on `zpico-sys`'s `link-ip`
+        // feature (**default-ON** → unchanged for every existing build; 128.E.1's
+        // always-on default preserved), with a per-build env override
+        // `NROS_LINK_IP=0` for a serial-only node to shed it. When off, the vendor
+        // IP-link C isn't compiled (`Z_FEATURE_LINK_{TCP,UDP_*}=0`) and
+        // `--gc-sections` (204.8) strips the now-unreferenced smoltcp platform
+        // impl — no cargo `default-features=false` dance (which would also drop the
+        // staticlib `linkme-register` opt-out). Matches the `NROS_SMOLTCP_*`
+        // per-example env pattern.
+        let ip = env::var("CARGO_FEATURE_LINK_IP").is_ok()
+            && !matches!(
+                env::var("NROS_LINK_IP").ok().as_deref(),
+                Some("0") | Some("false") | Some("off")
+            );
         Self {
-            tcp: true,
-            udp_unicast: true,
-            udp_multicast: true,
+            tcp: ip,
+            udp_unicast: ip,
+            udp_multicast: ip,
             serial: true,
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),

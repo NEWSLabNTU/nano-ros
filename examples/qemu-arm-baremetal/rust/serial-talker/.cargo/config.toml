@@ -10,6 +10,12 @@ target = "thumbv7m-none-eabi"
 # tcp/udp on.
 [env]
 ZPICO_NO_SMOLTCP = "1"
+# Phase 204.7 — serial-only: shed the IP link layer entirely.
+# `ZPICO_NO_SMOLTCP` skips the smoltcp *glue*, but the vendor IP-link C
+# (`Z_FEATURE_LINK_TCP/UDP`) was still compiled (hardcoded on). `NROS_LINK_IP=0`
+# turns those off → no IP-link C; `--gc-sections` (above) strips the residual
+# smoltcp platform impl. Serial link (`Z_FEATURE_LINK_SERIAL`) stays on.
+NROS_LINK_IP = "0"
 
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"

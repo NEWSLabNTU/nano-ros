@@ -117,6 +117,9 @@ struct ZenohBufferConfig {
 impl ZenohBufferConfig {
     /// Read buffer config from environment variables with platform-appropriate defaults.
     fn from_env(posix: bool) -> Self {
+        // Phase 204.7 — `NROS_LINK_IP=0` (a serial-only node) gates the IP link
+        // C off; rerun the build script when it changes.
+        println!("cargo:rerun-if-env-changed=NROS_LINK_IP");
         let link = LinkFeatures::from_env();
         let (default_frag, default_batch_uni, default_batch_multi) = if posix {
             // Posix: large defaults for desktop/server workloads
