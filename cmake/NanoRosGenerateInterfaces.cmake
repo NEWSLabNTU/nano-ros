@@ -272,7 +272,18 @@ function(nros_generate_interfaces target)
   endforeach()
   if(_nros_has_action
      AND NOT target STREQUAL "action_msgs"
-     AND NOT target STREQUAL "unique_identifier_msgs")
+     AND NOT target STREQUAL "unique_identifier_msgs"
+     AND NOT target STREQUAL "builtin_interfaces")
+    # action_msgs/GoalInfo pulls BOTH unique_identifier_msgs/UUID AND
+    # builtin_interfaces/Time, so the closure must generate both (it declares
+    # `DEPENDENCIES builtin_interfaces` below, but a declared dep only wires the
+    # FFI-glue include — the dep package's own headers still need generating, or
+    # `action_msgs_msg_goal_info.h`'s `#include "builtin_interfaces/...time.h"`
+    # resolves nowhere). Pre-177.32-fix this was missed (only UUID generated).
+    if(NOT TARGET builtin_interfaces__nano_ros_${_lang_flag})
+      nros_generate_interfaces(builtin_interfaces
+        LANGUAGE ${_ARG_LANGUAGE} SKIP_INSTALL)
+    endif()
     if(NOT TARGET unique_identifier_msgs__nano_ros_${_lang_flag})
       nros_generate_interfaces(unique_identifier_msgs
         LANGUAGE ${_ARG_LANGUAGE} SKIP_INSTALL)
