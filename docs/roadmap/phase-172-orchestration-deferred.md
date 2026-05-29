@@ -84,6 +84,42 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   can actually publish and the zephyr-mod deploy proves the data-plane end to
   end. Deferred (own design + impl; orthogonal to the W.4 deploy/transport
   path, which is done).
+
+  **Design + slices (scoped 2026-05-29; unblocks [189.M3.5]).** The executable
+  layer sits *over* the declarative `Component::register` (which stays the
+  planning/metadata SSOT). The **core design decision is the callback→publish
+  ownership model**: publishers are owned `EmbeddedRawPublisher` objects, and a
+  callback fires *inside* `spin_once` with the executor already `&mut`-borrowed,
+  so a body cannot resolve a publisher from the executor at call time
+  (re-entrant borrow). Two viable shapes:
+  - **(A) Capture-into-closure.** The generated runtime moves each publisher the
+    callback's `publishes` effect names into that callback's closure; the body
+    publishes through the captured handle. No executor re-entrancy. Shared
+    state across a component's callbacks needs interior mutability — hard in
+    `no_std` without `alloc` (no `Rc<RefCell>`); workable when each callback
+    owns disjoint publishers + the component is split per-callback.
+  - **(B) Deferred-publish queue.** The body writes outbound messages into a
+    per-callback staging buffer the executor flushes after the callback returns
+    (no re-entrancy; bounded). Adds a copy + a flush pass to `spin_once`.
+  *(A) is the rclcpp-shaped default; (B) sidesteps the shared-state problem. Pick
+  before W.5.2.* Slices:
+  - **W.5.1 — `CallbackCtx` + dispatch surface.** `CallbackCtx<'a>` carrying the
+    triggering payload (raw + a typed accessor) + a `publish::<M>(EntityId, &M)`
+    / `publish_raw(EntityId, &[u8])` that resolves via the chosen ownership
+    model. A dispatch entry — `trait ExecutableComponent { type State; fn
+    init(ctx) -> State; fn on_callback(&mut State, CallbackId, &mut
+    CallbackCtx); }` (trait-dispatch keeps it object-free / `no_std`).
+  - **W.5.2 — publisher wiring.** Per the (A)/(B) decision: either capture
+    publishers into the generated closures (A) or add the staging-buffer flush
+    to the executor (B). Resolve `EntityId → publisher` from the plan's
+    publisher entities + the callback `publishes` effects.
+  - **W.5.3 — codegen.** Instantiate the component `State`; emit, per
+    callback-bearing entity (sub/timer/**service/action**), a closure that
+    builds the `CallbackCtx` (decoded payload + publish access) and calls
+    `on_callback` — replacing the noop `||{}` / `noop_raw_*`. **This is also
+    where [189.M3.5] closes** (services/actions stop emitting C-fn-ptr noops).
+  - **W.5.4 — E2E proof.** `demo_pkg` publishes from a timer body; a native /
+    zephyr-mod deploy run shows real data on the wire.
 - **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
   Executor `NodeBuilder::session_idx` selector (nros-node `ae2b19a19`); generator
   emits a session per distinct `[[domain]]` domain + routes each node via the
