@@ -102,6 +102,21 @@ jobs:
     if: ${{ needs.changes.outputs.platforms != '[]' }}
     name: ${{ matrix.plat }}
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read       # pull the GHCR base image (org-private by default)
+    # Phase 196.9 — run in the nano-ros-ci base image: ROS 2 Humble (AMENT for
+    # `nros generate-rust`) + host tools (cmake/ninja/dtc/gperf, uv, just, rustup
+    # + cross targets, arm-none-eabi-gcc, cargo-nextest) baked. No per-cell
+    # setup-ros / apt / tool installs; the AMENT + setup-time-gcc gaps are gone.
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -109,34 +124,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The `nros` CLI is NOT baked (released binary, version-pinned per-run).
       - name: Install the nros CLI (released binary)
         run: |
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
             | NROS_VERSION=0.3.1 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
-
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just,cargo-nextest
-
-      - name: Set up Rust toolchain
-        run: rustup show
-
-      # `nros generate-rust` (run by the platform build recipes) resolves the
-      # std_msgs / builtin_interfaces .msg defs via AMENT_PREFIX_PATH from a
-      # sourced ROS 2 — without it the generated interface crates are incomplete
-      # and the example build fails to load `generated/builtin_interfaces`.
-      - name: Install ROS 2 Humble
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: humble
-
-      # Cross-compiler for the setup-time zenoh-pico build + the cross builds.
-      # (nros also ships arm-none-eabi-gcc from the index; the system one is the
-      # bootstrap that's already on PATH when `just <plat> setup` runs its own
-      # cross-compile steps, before setup.bash is sourced.)
-      - name: Install arm cross toolchain
-        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
 
       # The user procedure: `just <plat> setup` provisions the platform's
       # toolchain + sources via nros (Phase 197.4 — nros setup <board> is the
@@ -153,7 +146,7 @@ jobs:
       # Heavier QEMU test/e2e: on-demand only (`workflow_dispatch` with run_e2e).
       # push/PR get fast build-coverage; e2e is run deliberately (and a nightly
       # `schedule:` is the natural place to wire it on once the cells are trusted)
-      # — keeps QEMU-runtime flakiness off every push × 7 platforms.
+      # — keeps QEMU-runtime flakiness off every push × N platforms.
       - name: Test / e2e (${{ matrix.plat }})
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_e2e }}
         run: |
