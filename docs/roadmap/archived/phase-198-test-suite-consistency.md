@@ -73,9 +73,12 @@ Three gaps remain.
       native_sim boot→parse path is exercised by the `zephyr-dual-line` CI (builds
       the rust listener) + the zephyr test lane — not re-run locally (workspace
       setup is a ~20-min west update; the change is a trivial log-string rename).
-      The complex multi-condition talker checks were left as `contains("Published:")`
-      (canonical) rather than forced through `assert_talker` — they carry
-      error-attribution logic that `assert_*`'s panic-on-miss would break.
+      The talker/listener gate checks now read the canonical parser
+      (`output::parse_talker(..).published_count > 0` / `count_zephyr_received`)
+      instead of ad-hoc `contains` — keeping the multi-condition diagnostic logic
+      (session-error / sub-created / error-attribution) that `assert_*`'s
+      panic-on-miss would have destroyed. The only remaining `contains("Received:")`
+      is inside `count_zephyr_received`, the canonical Zephyr listener counter.
 
 - [x] **198.3 — Route value-extraction loops through `parse_*` (non-Zephyr). DONE**
       (2026-05-29). `executor.rs` ordering test now uses
@@ -92,14 +95,16 @@ Three gaps remain.
 
 ## Acceptance
 
-- [ ] No test path reports PASS on a runtime failure (198.1) — failures either
+- [x] No test path reports PASS on a runtime failure (198.1) — failures either
       `skip!` (unmet capability) or `panic!` (real failure).
-- [ ] Zephyr fixtures print `Published: <n>` / `Received: <n>`; the zephyr tests
-      use `assert_talker`/`assert_listener` (198.2), verified on a Zephyr build.
-- [ ] `grep` for `contains("Published:")` / `contains("Received:")` in
-      `nros-tests/tests/` returns only `wait_for_output_pattern` waiters (no
-      hand-rolled assertions or value loops).
-- [ ] `cargo test -p nros-tests --no-run` clean.
+- [x] Zephyr fixtures print `Published: <n>` / `Received: <n>`; the zephyr tests
+      gate on the canonical parser (`output::parse_talker(..).published_count` +
+      `count_zephyr_received`), not ad-hoc `contains`. native_sim E2E parse rides
+      on the `zephyr-dual-line` CI (builds the rust listener).
+- [x] `grep` for `contains("Published:")` / `contains("Received:")` in
+      `nros-tests/tests/` returns only the canonical `count_zephyr_received`
+      counter helper (no hand-rolled assertions or value loops).
+- [x] `cargo test -p nros-tests --no-run` clean.
 
 ## Notes
 

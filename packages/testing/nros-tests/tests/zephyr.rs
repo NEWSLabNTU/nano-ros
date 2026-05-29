@@ -25,7 +25,7 @@ use nros_tests::{
         XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
         build_native_service_server, build_native_talker, require_xrce_agent,
     },
-    platform,
+    output, platform,
     zephyr::{
         ZephyrPlatform, ZephyrProcess, get_prebuilt_zephyr_example, is_zephyr_available,
         require_zephyr, zephyr_workspace_path,
@@ -152,7 +152,7 @@ fn test_zephyr_talker_to_listener_e2e() {
     eprintln!("\n=== Listener output ===\n{}", listener_output);
 
     // Check talker status
-    let talker_published = talker_output.contains("Published:");
+    let talker_published = output::parse_talker(&talker_output).published_count > 0;
     let talker_connected = !talker_output.contains("session error");
     let talker_created_pub = talker_output.contains("Declared publisher")
         || talker_output.contains("Publisher created")
@@ -1217,11 +1217,11 @@ fn test_zephyr_xrce_rust_talker_listener() {
     eprintln!("\n=== XRCE Listener output ===\n{}", listener_output);
 
     // Check talker status
-    let talker_published = talker_output.contains("Published:");
+    let talker_published = output::parse_talker(&talker_output).published_count > 0;
     let talker_error = talker_output.contains("Error:");
 
     // Check listener status
-    let listener_received = listener_output.contains("Received:");
+    let listener_received = count_zephyr_received(&listener_output) > 0;
     let listener_waiting = listener_output.contains("Waiting for messages");
     let listener_error = listener_output.contains("Error:");
 
@@ -1312,7 +1312,7 @@ fn test_zephyr_xrce_c_talker_listener() {
     eprintln!("\n=== XRCE C Listener output ===\n{}", listener_output);
 
     // Check talker status (C API uses LOG_INF format)
-    let talker_published = talker_output.contains("Published:");
+    let talker_published = output::parse_talker(&talker_output).published_count > 0;
     let talker_init = talker_output.contains("Publishing messages");
     let talker_error =
         talker_output.contains("failed") || talker_output.contains("Network not ready");
@@ -1931,7 +1931,7 @@ fn test_zephyr_xrce_cpp_talker_listener() {
     eprintln!("=== cpp/xrce talker output ===\n{}", talker_output);
     eprintln!("=== cpp/xrce listener output ===\n{}", listener_output);
 
-    let listener_received = listener_output.contains("Received:");
+    let listener_received = count_zephyr_received(&listener_output) > 0;
     if !listener_received {
         panic!(
             "cpp/xrce listener didn't receive any messages.\nTalker:\n{}\nListener:\n{}",
@@ -2236,7 +2236,7 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
     eprintln!("\n=== Zephyr C++ listener output ===\n{}", listener_output);
 
     // Check talker connected and published
-    let talker_published = talker_output.contains("Published:");
+    let talker_published = output::parse_talker(&talker_output).published_count > 0;
     // Check listener received messages
     let listener_received = count_pattern(&listener_output, "Received");
 
@@ -2328,7 +2328,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
             "\nSUCCESS: Native listener received {} messages from Zephyr C++ talker",
             received_count
         );
-    } else if talker_output.contains("Published:") {
+    } else if output::parse_talker(&talker_output).published_count > 0 {
         panic!(
             "Talker published but listener got only {} messages (expected >= 2)",
             received_count
