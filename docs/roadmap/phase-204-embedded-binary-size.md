@@ -46,12 +46,46 @@ Built release ELFs, `size`/`nm` on the artifacts:
 ## Work Items (ranked by impact)
 
 ### 204.1 — Serial-transport size baseline (biggest lever)
-- [ ] Build + measure a `stm32f4` (or qemu-bare-metal) talker over **serial**
-      (`zpico-serial` / zenoh-pico serial / XRCE serial) — no smoltcp. Expect
-      ~24 KB text + ~50 KB bss dropped (the IP stack + socket buffers). This is the
-      configuration that matches micro-ROS's default and is the honest size story.
-- [ ] Document the serial number alongside the ethernet one in the book; make
-      serial the recommended size-critical transport.
+
+**Measured (2026-05-30, qemu-arm-baremetal / mps2-an385 / thumbv7m, release,
+no extra flags) — the naive premise does NOT hold yet:**
+
+| talker | text | data | bss |
+|---|---|---|---|
+| `serial-talker` (board `serial,rmw-zenoh`, no smoltcp dep) | **143.8 KB** | 66.4 KB | **108.7 KB** |
+| `talker` (ethernet/smoltcp) | 85.8 KB | 69.6 KB | 69.7 KB |
+
+Serial is **larger**, not smaller. Three confounds, all already-known phase items:
+- **smoltcp is still linked in the serial build** — `nm` shows **45 smoltcp
+  symbols** (vs 136 ethernet), i.e. the IP link/stack is pulled in even on a
+  `default-features=false, features=["serial"]` board build. This is the
+  **204.7** gap (IP link compiled unconditionally) reaching the smoltcp Rust side
+  too, and with **no `--gc-sections`** on the qemu examples (**204.8** only landed
+  on stm32f4) the dead code is not stripped.
+- The serial example builds the heavier **`rmw-cffi` multi-backend register path**
+  (`nros_rmw_cffi_register_named` alone is **5.2 KB** `.text`), where the ethernet
+  `talker` uses a leaner direct-zenoh register — so the two are not an
+  apples-to-apples transport swap.
+- ⚠️ **gc-sections measurement gotcha:** setting `RUSTFLAGS=-Clink-arg=--gc-sections`
+  in the env **replaces** the example's `.cargo/config.toml` `[target] rustflags`
+  (cargo does not merge), dropping `-Tlink.x` → the linker gc's the vector table +
+  entry → a **0-size broken ELF**. Append via `cargo rustc -- -Clink-arg=…` or edit
+  the config; never via env on these examples.
+
+**Conclusion / re-sequencing.** A clean serial baseline is **blocked on 204.7 +
+204.8** (confirms this phase's own Note). The honest "serial sheds the IP stack"
+number can only be measured once (a) the serial board build stops linking smoltcp
+/ the zenoh IP-link C (204.7) and (b) `--gc-sections` strips the residue (204.8),
+and ideally (c) the serial example uses the same register path as the ethernet
+one. Until then "serial = smaller" is not true on the shipped examples.
+
+- [x] **Measured the current (pre-204.7/.8) serial vs ethernet baseline** — serial
+      is larger; root-caused to 204.7 (smoltcp/IP-link still linked) + 204.8 (no
+      gc) + the cffi register-path confound (above).
+- [ ] Re-measure the serial floor **after** 204.7 + 204.8 land on the serial
+      example; expect the predicted ~24 KB text + IP-buffer bss drop then.
+- [ ] Document the (post-204.7/.8) serial number alongside ethernet in the book;
+      make serial the recommended size-critical transport.
 - [ ] **Acceptance:** a measured serial talker, flash + RAM, in the book.
 
 ### 204.2 — Right-size the smoltcp socket pool — [~] landed on stm32f4 talker
