@@ -260,9 +260,17 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
         state — shared no_std needs a `'static` (W.5.8). Verified:
         `orchestration_generate` (19) + both e2e (timer+sub share state;
         service+action share state) compile/link/boot warning-clean.
-  - [ ] **W.5.8 — no_std service/action codegen.** The `Box::leak` `'static`
-        context is std-only (`uses_std`-gated); a no_std target with a
-        service/action needs a `static mut` / `spin::Once` context instead.
+  - [x] **W.5.8 — no_std service/action codegen** (`nros-cli` `ab33477`).
+        `emit_static_service`/`emit_static_action` dispatch real bodies on no_std
+        by parking the `(state, resolver)` context in a function-local
+        `static mut Option<Ctx>` (no `Box::leak`/`Rc`/alloc); the extern "C"
+        trampolines read it via `core::ptr::addr_of_mut!` (sound — single-threaded
+        spin). Decision bodies only; no_std action *execution* (feedback/result, the
+        tick hook is std-only) is a follow-up. The service/action `!shared` arms emit
+        the static path for any rust executable component, keeping the noop only for
+        native C/C++. Verified: `generated_no_std_service_action_uses_static_context`
+        (emission) + `fixture_workspace_builds_generated_bare_metal_service_action_package`
+        compiles the static-ctx service+action to a `thumbv7m-none-eabi` ELF.
 - **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
   Executor `NodeBuilder::session_idx` selector (nros-node `ae2b19a19`); generator
   emits a session per distinct `[[domain]]` domain + routes each node via the
