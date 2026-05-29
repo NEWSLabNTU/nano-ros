@@ -40,8 +40,12 @@ build-examples:
     # example build" doesn't cover the board *dependency* crate's build.rs, which
     # compiles before the example's — so config.h must exist before cargo runs.
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    if [ ! -f "$nuttx_dir/include/nuttx/config.h" ]; then
-        echo "Provisioning NuttX kernel export (config.h)..."
+    # Gate on staging/libc.a, the actual link input each example build.rs needs
+    # (it early-returns without emitting the NuttX linker script + libc link when
+    # libc.a is absent → `undefined reference to malloc/pthread_*`). config.h alone
+    # isn't enough — a partial configure can leave config.h without a built libc.a.
+    if [ ! -f "$nuttx_dir/staging/libc.a" ]; then
+        echo "Provisioning NuttX kernel build (staging/libc.a + config.h)..."
         scripts/nuttx/build-nuttx.sh
     fi
     echo "Building NuttX QEMU ARM virt examples..."
