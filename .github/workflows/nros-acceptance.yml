@@ -1,0 +1,63 @@
+# Phase 195 — fresh-machine acceptance gate (195 Acceptance #1).
+#
+# Proves the user procedure on a BARE runner: no nano-ros checkout, no `just`,
+# no source build of `nros`. A prebuilt `nros` (the published release) drives the
+# whole chain — install → scaffold → build → run a first image.
+#
+#   curl install.sh | sh   →   nros new   →   nros build   →   run the binary
+#
+# Deliberately NO `actions/checkout`: the only thing that touches the machine is
+# the released `nros` binary + whatever it provisions from the SDK index. If a
+# step here needs the nano-ros source tree, that is a real gate-1 regression.
+name: nros acceptance (fresh machine)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/install-nros.sh"
+      - "nros-sdk-index.toml"
+      - ".github/workflows/nros-acceptance.yml"
+
+jobs:
+  fresh-machine:
+    name: install → new → build → run (no checkout)
+    runs-on: ubuntu-22.04
+    steps:
+      # 1. Bootstrap: install the prebuilt `nros` — no Rust, no just, no checkout,
+      #    no source build of nros. This is the whole point of Gap A.
+      - name: Install nros (prebuilt release)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
+            | NROS_VERSION=0.3.0 sh
+          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+
+      - name: Show nros version
+        run: nros --version
+
+      # The scaffolded project is a normal Rust crate, so the *project* toolchain
+      # (rust) is needed to build it — distinct from the nros bootstrap above.
+      - name: Install Rust (project toolchain)
+        uses: dtolnay/rust-toolchain@stable
+
+      # 2. Scaffold a project with the prebuilt nros.
+      - name: nros new (scaffold native talker)
+        run: nros new accept_app --platform native --lang rust --use-case talker
+
+      # 3. Build it (auto-detects Cargo; auto-provisions index tools like zenohd).
+      - name: nros build
+        working-directory: accept_app
+        run: nros build
+
+      # 4. Run the first image and assert it boots.
+      - name: Run the first image
+        working-directory: accept_app
+        run: |
+          bin="target/debug/accept_app"
+          test -x "$bin" || { echo "::error::nros build produced no binary at $bin"; exit 1; }
+          out="$(timeout 10 "$bin" 2>&1 || true)"
+          echo "$out"
+          echo "$out" | grep -q "accept_app" \
+            || { echo "::error::first image did not run as expected"; exit 1; }
+          echo "acceptance: prebuilt nros → new → build → run OK (no checkout, no nros source build)"
