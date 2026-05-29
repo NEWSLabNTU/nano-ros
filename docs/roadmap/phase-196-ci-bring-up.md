@@ -317,26 +317,28 @@ matrix** over platforms:
 works: `changes` resolved the dynamic matrix, all cells ran (fail-fast off),
 **nuttx built green**. The 6 others failed on wiring, now diagnosed:
 
-- [ ] **Matrix `plat` ↔ `just` module-name mismatch.** The matrix used hyphenated
+- [x] **Matrix `plat` ↔ `just` module-name mismatch.** The matrix used hyphenated
       ids but the root `justfile` `mod` names differ: `qemu-baremetal` → **`qemu`**,
       `threadx-linux` → **`threadx_linux`**, `threadx-riscv64` → **`threadx_riscv64`**
       (underscores). `freertos`/`nuttx`/`esp32` already match (nuttx is the proof).
       Fix: matrix + path-filter keys use the exact `mod` names.
-- [ ] **`native` has no `setup` recipe** (`just native --list` → none) — it's the
+- [x] **`native` has no `setup` recipe** (`just native --list` → none) — it's the
       host platform (no SDK to provision). Decide: add a `native setup` (workspace
       sources only) or drop native from the matrix (host coverage = host-unit-tests
       + a native-examples build). Dropped from the matrix for now.
-- [ ] **Per-cell setup/build greening (fresh runner).** With names fixed: `esp32`
-      `setup` builds the source-only `[tool.esp32-qemu]` (heavy — confirm it builds
-      or gate it); `freertos` failed at *build* (real per-platform build issue, not
-      naming); the threadx cells need their netxduo/threadx sources to compile.
-      Expect the same per-source provisioning iteration host-unit-tests needed
-      (`nros setup <board>` should now cover it via 197.4-A — verify per cell).
+- [x] **Per-cell setup/build greening (fresh runner).** All 6 cells now build green
+      (run 26633900068, build-only, 2026-05-29). `nros setup <board>` covers the
+      build sources per 197.4-A; esp32's `setup` provisions sources + best-effort
+      `[tool.esp32-qemu]` (the e2e emulator, not the build). qemu needed three more
+      recipe/image fixes (below).
 - [ ] **Wire e2e on a nightly `schedule:`** once cells build green, so QEMU runtime
-      is exercised without blocking pushes.
+      is exercised without blocking pushes. (A `workflow_dispatch -f run_e2e=true`
+      already runs the `just <plat> test` step; the full-dispatch run 26632848732
+      showed all e2e cells red — the heavier QEMU runtime / C/C++ coverage is the
+      next item.)
 
 **Review findings + maintainer directives (2026-05-29).**
-- [ ] **ROS-for-codegen gap (likely part of the 6 failing cells, beyond naming).**
+- [x] **ROS-for-codegen gap (likely part of the 6 failing cells, beyond naming).**
       platform-ci installs **no ROS**, but the build step runs `nros generate-rust`
       for the rust examples (`just/freertos.just:75,148`, etc.), which resolves a
       package's `msg/*.msg` via `AMENT_PREFIX_PATH` from a **sourced ROS**.
@@ -345,18 +347,17 @@ works: `changes` resolved the dynamic matrix, all cells ran (fail-fast off),
       rust example fails at codegen. (nuttx green is consistent — its cell either
       doesn't gen rust interfaces or its C path uses `NROS_*_DIR`, not AMENT.) The
       dep-chain + zephyr-dual-line lanes install ROS for exactly this reason.
-- [ ] **Directive: provision ROS via a prebuilt image, not per-cell `setup-ros`.**
-      Run platform-ci cells in a container with ROS Humble baked (the dep-chain
-      lane already uses `ros:humble-ros-base`; the zephyr lane uses the Phase 196.3
-      `ghcr.io/newslabntu/nano-ros-zephyr-ci` image). **Synergy:** that zephyr
-      image is ROS+host-tools baked with only the *Zephyr SDK* layer
-      zephyr-specific — factor a sibling **`nano-ros-ci` base image** (ROS Humble +
-      cmake/ninja/dtc/gperf/uv/just/rustup+targets, **no** Zephyr SDK) and back
-      platform-ci's cells with it; the zephyr image then = that base + SDK. Fixes
-      the AMENT gap *and* gives platform-ci the same per-cell speedup the container
-      lanes get. (In-container caveats: `shell: bash`, pinned `CARGO_HOME`/
-      `RUSTUP_HOME`, `safe.directory '*'`, `packages: read` + pull credentials —
-      see `dep-chain.yml` / the zephyr image.)
+- [x] **Directive: provision ROS via a prebuilt image, not per-cell `setup-ros`.**
+      Done — `ci/docker/ci-base/Dockerfile` builds `ghcr.io/newslabntu/nano-ros-ci:humble`
+      (`FROM ros:humble-ros-base` + cmake/ninja/dtc/gperf, uv, just, rustup + cross
+      targets, gcc-arm-none-eabi, cargo-nextest, `safe.directory '*'`; published by
+      `.github/workflows/build-ci-base-image.yml`). platform-ci's `platform` job runs
+      `container:` against it (`shell: bash`, `packages: read` + GITHUB_TOKEN creds);
+      all per-cell setup-ros/apt/rustup installs deleted. Image extras the cells
+      surfaced: `libslirp0`+`libpixman` (prebuilt patched qemu links libslirp.so.0)
+      and `ros-humble-example-interfaces` (qemu service/action codegen — ros-base
+      ships only common_interfaces/std_msgs). The zephyr image `FROM nano-ros-ci`
+      refactor is a follow-up (own item).
 - [ ] **Directive: cover C/C++ tests too, not just rust/build.** The per-cell
       `test` step (`just <plat> test`) must exercise the C and C++ example/e2e
       paths, not only rust — each platform's c/cpp talker/listener (+ service where
@@ -364,9 +365,26 @@ works: `changes` resolved the dynamic matrix, all cells ran (fail-fast off),
       `just <plat> test` includes the c/cpp fixtures (extend the recipe if it's
       rust-only).
 
+**Container refactor + 6/6 build-green (2026-05-29, run 26633900068).** All six
+platform cells (qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32) build
+green in the `nano-ros-ci:humble` container. freertos + threadx cells went green on
+the baked ROS/AMENT alone; the two outliers needed recipe completion of the 197.4
+`nros setup` rewrite + image deps:
+- **esp32 `setup`** (`just/esp32.just`) provisions `nros setup esp32` (zenoh-pico/
+  mbedtls); the Espressif QEMU fork is best-effort (`|| warn`) — build doesn't need
+  the emulator, the e2e step gates on it.
+- **qemu** (`just/qemu-baremetal.just`) took four fixes: (1) `setup` sources
+  `setup.bash` so `build-zenoh-pico` uses the nros-provisioned arm-gcc 13.2 (newlib)
+  not apt's headerless gcc-arm-none-eabi; (2) `libslirp0`+`libpixman` in the image
+  for the prebuilt patched qemu; (3) `build` runs `nros generate-rust` for examples
+  with a package.xml; (4) same codegen for bins with a package.xml (cdr-roundtrip-qemu).
+- A non-fatal `cargo metadata`/cbindgen warning recurs (`px4-sitl-tests` workspace
+  member unprovisioned — px4 is extended-tier); harmless to the bare-metal builds.
+
 **Files.** `.github/workflows/platform-ci.yml`; the per-platform `just/<plat>.just`
 setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage);
-`ci/docker/` (the proposed `nano-ros-ci` base image).
+`ci/docker/ci-base/Dockerfile` + `.github/workflows/build-ci-base-image.yml`
+(the `nano-ros-ci` base image).
 
 ---
 
