@@ -17,8 +17,9 @@ default:
 setup:
     #!/usr/bin/env bash
     set -e
-    # Phase 123.A.8 — submodule fetch via tools/setup.sh.
-    "{{justfile_directory()}}/tools/setup.sh" --rmw=cyclonedds --skip-rustup --skip-apt-check
+    # Phase 197.4 — provision the Cyclone DDS fork source via the SDK index
+    # (cyclonedds is an RMW, not a board; its one source is [source.cyclonedds-src]).
+    nros setup --source cyclonedds-src
     if command -v idlc >/dev/null 2>&1; then
         echo "Cyclone DDS submodule ready; idlc on PATH ($(command -v idlc))."
     else

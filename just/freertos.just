@@ -6,12 +6,14 @@ QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
 default:
     @just --list --justfile {{source_file()}}
 
-# Install FreeRTOS prerequisites: initialize the FreeRTOS + lwIP submodules.
-# Phase 123.A.8 — delegates to `tools/setup.sh --platform=freertos`,
-# single source of truth.
+# Install FreeRTOS prerequisites. Phase 197.4 — `nros setup <board>` provisions
+# the toolchain + sources (arm-none-eabi-gcc, qemu, FreeRTOS-Kernel, lwIP,
+# zenoh-pico, …) from the SDK index; the host-env helper adds the cross Rust
+# target. `source setup.bash` afterwards to put the provisioned tools on PATH.
 [group("setup")]
 setup:
-    @"{{justfile_directory()}}/tools/setup.sh" --platform=freertos --skip-apt-check
+    nros setup qemu-arm-freertos
+    @"{{justfile_directory()}}/tools/host-env.sh" freertos
 
 # Diagnose FreeRTOS install status (read-only).
 [group("setup")]

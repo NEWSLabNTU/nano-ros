@@ -143,12 +143,23 @@ staging, zephyr west-update). Retire `tools/setup.sh`'s platform branching.
       197.2 `dev_sources` field + `[reference.*]` section (which broke
       `nros setup <board>`) were removed; opt-in dev/interop sources stay plain
       submodules until an nros-cli schema change (see workflow review below).
-- [ ] **Recipe rewrite (pending the workflow review).** `tools/setup.sh` split
-      into provisioning (→ `nros setup <board>`) + a host-env helper
-      (apt/rustup/post-steps); each `just <module> setup` becomes
-      `nros setup <board>` + the helper. Held: the platform→board mapping (a
-      platform can have >1 board; the rmw-only `just cyclonedds`/`rmw_zenoh`
-      shims) and custom-board provisioning are exactly what the review settles.
+- [x] **Builds consume nros-store tools (the prerequisite).** `setup.{bash,fish}`
+      glob `~/.nros/sdk/<tool>/<ver>/bin` onto PATH, so cargo cross-builds use the
+      pinned index toolchains (arm-none-eabi-gcc, qemu, …) rather than apt's.
+      Verified: `nros setup --tool arm-none-eabi-gcc` → store 13.2 resolves ahead
+      of apt 10.3; `just nuttx build-fixtures` builds C/C++/Rust green on 13.2.
+- [x] **Recipe rewrite.** Added `tools/host-env.sh <platform>` (rustup install +
+      cross target + apt hint — the host-local bits outside nros scope). Rewired
+      `just <module> setup`: freertos → `nros setup qemu-arm-freertos`, nuttx →
+      `qemu-arm-nuttx` (+ external-app staging), threadx-linux → `threadx-linux`,
+      threadx-riscv64 → `qemu-riscv64-threadx`, cyclonedds →
+      `nros setup --source cyclonedds-src` — each `+ tools/host-env.sh`. The
+      platform→board map is now explicit per recipe (threadx's two boards become
+      two recipes; cyclonedds is rmw-only via `--source`). `rmw_zenoh` keeps its
+      bespoke ROS 2 overlay build (an interop dev fixture, not board provisioning).
+      `tools/setup.sh` is retired from the recipes (still used by
+      `cmake/bootstrap.cmake`'s auto-bootstrap). Custom-board provisioning (board
+      crate self-describes its source deps) remains the nros-cli follow-up below.
 
 **Files**: `nros-sdk-index.toml`, `tools/setup.sh`, `scripts/sdk/verify-index.py`
 (done); `just/<module>.just` recipes (pending).

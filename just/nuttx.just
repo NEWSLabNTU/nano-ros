@@ -305,14 +305,19 @@ test-all verbose="":
 [group("full-matrix")]
 ci: doctor test
 
-# Install NuttX prerequisites: initialize submodules + build kernel.
-# Phase 123.A.8 — submodule fetch delegated to tools/setup.sh; kernel
-# build stays here (NuttX-specific make invocation).
+# Install NuttX prerequisites. Phase 197.4 — provisioning delegated to
+# `nros setup qemu-arm-nuttx` (toolchain + sources); the NuttX-specific
+# external-app staging stays here.
 [group("setup")]
 setup:
     #!/usr/bin/env bash
     set -e
-    "{{justfile_directory()}}/tools/setup.sh" --platform=nuttx --skip-apt-check
+    # Phase 197.4 — `nros setup <board>` provisions the toolchain + sources
+    # (arm-none-eabi-gcc, qemu, nuttx-libc/kernel/apps, zenoh-pico, …) from the
+    # SDK index; the host-env helper handles rustup. Kernel build + external-app
+    # staging stay below (NuttX-specific). `source setup.bash` to PATH the tools.
+    nros setup qemu-arm-nuttx
+    "{{justfile_directory()}}/tools/host-env.sh" nuttx
     # Phase 194.4 — the NuttX export is self-provisioned by the example build
     # (`nros_nuttx_build_example` runs `make export` before the cargo link), so
     # `setup` no longer pre-builds the kernel. To force a provision out-of-band,

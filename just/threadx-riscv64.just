@@ -3,12 +3,14 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
-# Install ThreadX RISC-V 64 prerequisites: initialize submodules.
-# Does NOT build example binaries — use `just threadx_riscv64 build-examples` for that.
-# Phase 123.A.8 — submodule fetch delegates to tools/setup.sh.
+# Install ThreadX RISC-V 64 prerequisites. Phase 197.4 — `nros setup <board>`
+# provisions the threadx + netxduo sources + riscv-none-elf-gcc + qemu from the
+# SDK index; the host-env helper handles rustup (riscv64 build-std, no cross
+# target). Does NOT build example binaries — use `build-examples`.
 [group("setup")]
 setup:
-    @"{{justfile_directory()}}/tools/setup.sh" --platform=threadx --skip-apt-check
+    nros setup qemu-riscv64-threadx
+    @"{{justfile_directory()}}/tools/host-env.sh" threadx
 
 # Diagnose ThreadX RISC-V 64 install status (read-only).
 [group("setup")]

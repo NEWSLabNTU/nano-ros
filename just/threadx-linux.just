@@ -3,12 +3,14 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
-# Install ThreadX Linux prerequisites: initialize submodules.
+# Install ThreadX Linux prerequisites. Phase 197.4 — `nros setup <board>`
+# provisions the threadx + netxduo sources (+ tools) from the SDK index; the
+# host-env helper handles rustup. Host build, so no cross target.
 # Does NOT build example binaries — use `just threadx_linux build-examples` for that.
-# Phase 123.A.8 — submodule fetch delegates to tools/setup.sh.
 [group("setup")]
 setup:
-    @"{{justfile_directory()}}/tools/setup.sh" --platform=threadx --skip-apt-check
+    nros setup threadx-linux
+    @"{{justfile_directory()}}/tools/host-env.sh" threadx
 
 # Diagnose ThreadX Linux install status (read-only).
 [group("setup")]
