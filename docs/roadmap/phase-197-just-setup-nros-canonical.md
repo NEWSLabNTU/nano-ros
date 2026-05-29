@@ -98,7 +98,7 @@ surface. Now the index is the single home.
       `git -C … submodule update --recursive` (PX4's concern, not nano-ros source
       provisioning), as does the `pip install` host-env step (197.4 scope).
 
-### 197.5 — [P0 BLOCKER] 197.2 index schema needs nros-v0.3.1
+### 197.5 — [DONE] 197.2 index schema needs nros-v0.3.1 (was P0 BLOCKER)
 197.2 added `build_sources` / `dev_sources` to `[board.*]`/`[rmw.*]`. Those are
 consumed only by `tools/setup.sh` (awk) + `verify-index.py` (python) — **not by
 the nros CLI** — but the released **nros 0.3.0** loads the whole index with
