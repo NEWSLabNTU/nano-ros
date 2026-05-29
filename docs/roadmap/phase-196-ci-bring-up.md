@@ -291,6 +291,53 @@ The three conventions (191.6 review) must collapse to the source-release reality
 - [ ] The user-journey CI lane (196 background) builds a scaffolded project end to
       end, so this convention is exercised, not assumed.
 
+### 196.9 — [in progress] Per-platform setup/build/test CI matrix
+**Goal.** Consolidate CI around the user procedure *per platform* — the gap where
+only Zephyr had a build lane (core-libs only `cargo check`s, dep-chain only
+resolves, host-unit only runs workspace units). Each platform gets one lane:
+`install prebuilt nros → just <plat> setup (nros-provisioned) → build → test`.
+
+**Design (`.github/workflows/platform-ci.yml`).** One template, a **dynamic
+matrix** over platforms:
+- A `changes` pre-job (dorny/paths-filter) emits a JSON platform list → the
+  `platform` job's `matrix.plat` (`fromJSON`). On a PR only the platforms whose
+  code or the shared core (`packages/core`, `zpico`, `just`, `cmake`, the index)
+  changed run; on `main`/dispatch, all. (Job-level `if` can't read `matrix`, so
+  selection happens in the pre-job — the standard GHA pattern.)
+- **Build** runs on push/PR (filtered); the heavier **QEMU test/e2e** is
+  `workflow_dispatch`-only (`run_e2e`) — keeps runtime flakiness off every push ×
+  N platforms (a nightly `schedule:` is the natural place to turn e2e on later).
+- **Additive**, not a replacement: the cheap distinct gates stay — host-unit-tests
+  (workspace units), core-libs (no_std cross-target), dep-chain (all-board
+  *resolution*, incl. stm32f4/orin/fvp which get no full lane), and the bespoke
+  zephyr-dual-line. Once these per-platform lanes are trusted, **dep-chain slims**
+  (its resolution is subsumed for covered platforms) — the one real "replace".
+
+**First live run (2026-05-29, run 26630807819, build-only).** The matrix structure
+works: `changes` resolved the dynamic matrix, all cells ran (fail-fast off),
+**nuttx built green**. The 6 others failed on wiring, now diagnosed:
+
+- [ ] **Matrix `plat` ↔ `just` module-name mismatch.** The matrix used hyphenated
+      ids but the root `justfile` `mod` names differ: `qemu-baremetal` → **`qemu`**,
+      `threadx-linux` → **`threadx_linux`**, `threadx-riscv64` → **`threadx_riscv64`**
+      (underscores). `freertos`/`nuttx`/`esp32` already match (nuttx is the proof).
+      Fix: matrix + path-filter keys use the exact `mod` names.
+- [ ] **`native` has no `setup` recipe** (`just native --list` → none) — it's the
+      host platform (no SDK to provision). Decide: add a `native setup` (workspace
+      sources only) or drop native from the matrix (host coverage = host-unit-tests
+      + a native-examples build). Dropped from the matrix for now.
+- [ ] **Per-cell setup/build greening (fresh runner).** With names fixed: `esp32`
+      `setup` builds the source-only `[tool.esp32-qemu]` (heavy — confirm it builds
+      or gate it); `freertos` failed at *build* (real per-platform build issue, not
+      naming); the threadx cells need their netxduo/threadx sources to compile.
+      Expect the same per-source provisioning iteration host-unit-tests needed
+      (`nros setup <board>` should now cover it via 197.4-A — verify per cell).
+- [ ] **Wire e2e on a nightly `schedule:`** once cells build green, so QEMU runtime
+      is exercised without blocking pushes.
+
+**Files.** `.github/workflows/platform-ci.yml`; the per-platform `just/<plat>.just`
+setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage).
+
 ---
 
 ## Acceptance criteria
