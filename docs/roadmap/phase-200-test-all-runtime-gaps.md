@@ -5,10 +5,14 @@ clean `nros setup` + `build-all` on a fully-provisioned host. These are
 *runtime / feature* gaps, not setup or fixture-staging gaps — the latter were
 all resolved during the 2026-05-29 sweep (see "Already fixed" below).
 
-**Status.** Proposed (2026-05-29). Captured from a full local sweep on `main`
-(`663 tests run: 643 passed, 20 failed, 110 skipped`). No new runtime fixes
-yet — this doc inventories the 20 remaining failures so they route to the right
-owning phase instead of being re-rediscovered each sweep.
+**Status.** **COMPLETE (2026-05-29) — all six work items resolved; ready to
+archive.** Captured from a full local sweep on `main`
+(`663 tests run: 643 passed, 20 failed, 110 skipped`); the 20 failures routed
+into six groups (200.1–200.6), each now FIXED/DONE — see the per-item headers.
+Headline: the zephyr CycloneDDS cluster (200.1) was build + fixture-staging
+gaps misread as a broken data plane — with the network-wait relocate and
+canonical `build-fixtures` staging, all nine `*_cyclonedds_*_e2e`
+(pubsub + service + action × c/cpp/rust) pass concurrently on native_sim.
 
 **Priority.** P2 — none block setup/build; each is a real but bounded runtime
 feature gap or an opt-in SDK shell. The zephyr CycloneDDS cluster (200.1) is the
@@ -22,10 +26,11 @@ largest and most product-relevant.
 
 ## Overview
 
-After the sweep, every remaining failure runs against a *built, booting*
+After the sweep, every remaining failure ran against a *built, booting*
 fixture (or a deliberately opt-in SDK shell) — i.e. the binary exists and the
-test executes; it fails on runtime behaviour or a known build-wiring gap, not
-on a missing tool/fixture. The 20 cluster into five groups.
+test executes; it failed on runtime behaviour or a known build-wiring gap, not
+on a missing tool/fixture. The 20 clustered into six groups (200.1–200.6), **all
+now resolved** (see per-item headers for the fix + verification).
 
 ## Already fixed (this sweep — do **not** re-file)
 
