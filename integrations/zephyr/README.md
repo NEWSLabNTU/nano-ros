@@ -50,6 +50,11 @@ nano-ros but **not** its transport submodules, so this step is required). In a
 BYO workspace run it from the nano-ros checkout: `cd modules/nano-ros && nros
 setup zephyr --rmw zenoh`.
 
+One more source: the nano-ros cargo build loads the whole workspace, which
+path-deps `px4-sitl-tests`, so also provision **px4-rs** (a small source, not a
+PX4 build): `cd modules/nano-ros && nros setup --source px4-rs`. Without it the
+`nros-c` cargo build fails `failed to get px4-sitl-tests`.
+
 (For a single transport, `nros setup --source <name>` also works; the west-native
 alternative is `submodules: true` on the `nano-ros` project, but it pulls *all*
 submodules incl. unrelated platform SDKs.)

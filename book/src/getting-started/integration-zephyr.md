@@ -139,8 +139,12 @@ west update                              # clones nano-ros + Zephyr into the wor
 
 The RMW transport sources nano-ros links against (zenoh-pico, the cyclonedds
 fork, …) are provided by `nros setup zephyr --rmw <rmw>` from the
-[prerequisites](#prerequisites) — they live in the shared `~/.nros/sdk` store, so
-the module build picks them up without any extra checkout step.
+[prerequisites](#prerequisites). One extra source — the nano-ros cargo build
+loads the whole workspace, which path-deps `px4-sitl-tests` — so also run
+`nros setup --source px4-rs` once from the nano-ros checkout (a small source, not
+a PX4 build); without it the `nros-c` cargo build fails `failed to get
+px4-sitl-tests`. (Verified end-to-end on a fresh BYO west workspace: this builds
+`c/talker` to `zephyr.exe` and runs to `Published: 1` against `zenohd`.)
 
 ```bash
 west build -b qemu_cortex_a9 apps/my_app

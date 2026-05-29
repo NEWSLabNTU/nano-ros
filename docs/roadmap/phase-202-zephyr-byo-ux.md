@@ -9,10 +9,10 @@ the *real* user surface, and it currently breaks out of the box.
 **Status.** Largely landed (2026-05-29). **202.1–202.6 all addressed** (mix of
 doc fixes + the version-tolerant rust patch); the BYO docs now cover prerequisites,
 transport sources, the complete patch story (NSOS/rust/cyclonedds), the rust-app
-`generate-config` workflow, and a single canonical guide. **Open:** only a dedicated BYO
-`west build` → run (the provisioning leg is e2e-verified; the build leg is covered
-by the dual-line CI). The README↔book reconciliation is **done** — both now point
-at the canonical `nros setup zephyr` flow. From a BYO-adoption walkthrough of the
+`generate-config` workflow, and a single canonical guide. **Complete:** the full BYO path is **e2e-verified** — a fresh `west` workspace
+builds `c/talker` to `zephyr.exe` and runs to `Published: 1` against `zenohd`. The
+e2e surfaced + fixed two more gaps (202.7: px4-rs provisioning + the cmake
+`NROS_PLATFORM_CFFI_INCLUDE` export). All 202 items + acceptance done. From a BYO-adoption walkthrough of the
 manifest/module/docs (`integrations/zephyr/`, `book/src/getting-started/
 integration-zephyr.md`). Complements the broader CLI-verb UX study
 `docs/research/sdk-ux/zephyr-and-esp-idf.md` (2026-05-04) — this phase is the
@@ -152,14 +152,30 @@ codegen tooling — none of which a BYO west user invokes.
       diverge. **Files:** `book/src/getting-started/{zephyr,integration-zephyr}.md`,
       `integrations/zephyr/README.md`.
 
+- [x] **202.7 — [P1, DONE] BYO module build was not self-contained (found by the
+      e2e).** A full BYO `west build` of `c/talker` surfaced two gaps the doc fixes
+      hadn't:
+      - **px4-rs not provisioned** — the `nros-c` cargo build loads the whole
+        workspace (path-deps `px4-sitl-tests`), so a BYO build needs
+        `nros setup --source px4-rs` beyond the transports. Documented in the BYO
+        guide + README.
+      - **`NROS_PLATFORM_CFFI_INCLUDE` only from `.env`/direnv** — `zpico-sys`'s
+        build.rs requires it; the zephyr cmake passed `ZPICO_*`/`XRCE_*` to the
+        cargo subprocess but not this, so a BYO build (no `.env`) panicked. Fixed:
+        `nros_set_cargo_env_from_kconfig` sets it from the module path +
+        `nros_cargo_build`'s explicit `cmake -E env` forwards it (also removes the
+        in-tree `.env` reliance for this var).
+      **Files:** `zephyr/cmake/nros_cargo_build.cmake`,
+      `book/src/getting-started/integration-zephyr.md`, `integrations/zephyr/README.md`.
+
 ## Acceptance
-- [~] A fresh BYO west workspace (`west init` + the nano-ros import) reaches a
+- [x] A fresh BYO west workspace (`west init` + the nano-ros import) reaches a
       running `native_sim` zenoh app following only the BYO doc — no in-tree
       `just` recipes, no undocumented submodule/`nros`/ROS steps (202.1/202.2).
-      *Provisioning leg e2e-verified* (west-leaves-transports-empty → `nros setup`
-      fixes it, on a real BYO workspace); the full `west build` → run leg is
-      covered transitively by the dual-line CI (same module CMake) — a dedicated
-      BYO `west build` (~2 GB Zephyr clone) is the only unrun step.
+      **E2E VERIFIED (2026-05-29):** built `c/talker` to `zephyr.exe` on a fresh
+      BYO west workspace and ran it to **`Published: 1`** against `zenohd` (after
+      the 202.7 fixes). Boot → NSOS network → nros init → zenoh connect → publish
+      all confirmed.
 - [x] `west patch apply` (or a documented equivalent) applies everything a given
       board/RMW needs (202.3) — `west patch` for NSOS + the documented
       rust/cyclonedds script fallbacks; `nros setup zephyr` applies them during
