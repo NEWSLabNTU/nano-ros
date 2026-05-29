@@ -651,27 +651,27 @@ same vars nros sets) — documented, not nano-ros-specific.
       204.1 gotcha) → broken ELF. Writing the generated `[profile.release]` is the
       safe universal mechanism (cargo merges nothing, but a profile and the
       `[target] rustflags` are orthogonal sources, so both apply).
-- [~] **Increment 2 — per-layer overrides.** Rust-side `[build.cargo]` **landed**
-      (nros-cli `8394d89`, pending fork push + release): `PlanCargoOverrides
-      { opt_level, lto, debug, strip, codegen_units, panic }` (values kept as raw
-      JSON so `opt_level` takes `3` or `"z"`, `lto`/`strip` take bool or string;
-      `deny_unknown_fields`, skip-none round-trip); `PlanBuildOptions.cargo`;
-      planner allowlists `[build] cargo`. `render_profile_section()` now builds an
-      ordered baseline from `optimize` then merges `[build.cargo]` over it —
-      replacing a field in place (no dup) or appending — rendering a profile when
-      *either* is set. Closes the **Rust side of acceptance (b)**: `optimize="size"`
-      + `[build.cargo] debug=true, strip=false` keeps Rust debuginfo while the rest
-      stays size-tuned. Unit-tested
-      (`build_cargo_overrides_merge_over_optimize_baseline`; all 134 lib tests
-      pass). **Remaining:** the C layer — `[build.cc]` → `TARGET_*_CFLAGS` env
-      (debug/cflags without build.rs edits) + `NROS_CC_OPT` for cc opt-level
-      (the C-side of the debug-one-layer case); folded into increment 3.
-- [ ] **Increment 3 — the C layer + CMake fan-out + scaffolding.** `[build.cc]` →
-      `TARGET_*_CFLAGS` env (debug/cflags, no build.rs edits) + `NROS_CC_OPT` for cc
-      opt-level (C-side debug-one-layer); CMake `-DCMAKE_BUILD_TYPE` from `optimize`
-      + `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION` (ties into 204.13); **`nros new`
-      scaffolding** of named `size`/`speed` cargo profiles + a target
-      `.cargo/config.toml` for the plain-cargo (no-`nros`) path.
+- [x] **Increment 2 — per-layer overrides — DONE.** Rust-side `[build.cargo]`
+      (nros-cli `8394d89`, **released 0.3.4**): `PlanCargoOverrides
+      { opt_level, lto, debug, strip, codegen_units, panic }` (raw-JSON values so
+      `opt_level` takes `3` or `"z"`, `lto`/`strip` bool or string);
+      `render_profile_section()` builds the `optimize` baseline then merges
+      `[build.cargo]` over it (replace-in-place). C-side `[build.cc]`
+      (nros-cli `5cc7d66`, **pending push + release 0.3.5**): `PlanCcOverrides
+      { debug, opt_level, cflags }`; planner allowlists `[build] cc`; fanned out in
+      the generated cargo build as `CFLAGS`/`CXXFLAGS` env (cc-rs *appends* → every
+      zenoh-pico/XRCE/net.c/lwIP `cc::Build`, no build.rs edit) + `NROS_CC_OPT`.
+      Closes **acceptance (b)** both sides: `optimize="size"` + `[build.cargo]
+      debug=true` keeps Rust debuginfo; `+ [build.cc] debug=true` keeps the C
+      `.debug_*` — each layer independent. Unit-tested (`build_cargo_overrides_…`,
+      `build_cc_override_parses`).
+- [x] **Increment 3 — scaffolding + CMake — DONE.** `nros new` app scaffold
+      (nros-cli `5cc7d66`) emits named `[profile.size]`/`[profile.speed]` so the
+      plain-cargo path honours intent (`cargo build --profile size|speed`) without
+      `nros`. **CMake fan-out (3a) is covered, not separately wired:** 204.13
+      already propagates `-DCMAKE_BUILD_TYPE` to ddsc via `add_subdirectory`, and
+      the deploy build is cargo + cc-rs (the cargo profile + the `[build.cc]`
+      CFLAGS env) — there is no separate cmake step in `nros deploy` to fan into.
 - [ ] **Acceptance:** (a) `optimize="size"` vs `"speed"` → measurably different
       flash on a hosted + embedded target (increment 1 provides the cargo lever;
       needs a release of nros-cli `f524c60` + a build to measure end-to-end);
