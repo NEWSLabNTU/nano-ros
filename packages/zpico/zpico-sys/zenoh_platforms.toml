@@ -97,6 +97,11 @@ extra_sources = [
 ]
 system_libs = ["pthread", "rt"]
 mbedtls = "pkg-config"
+# Phase 204.9 — POSIX zenoh-pico had no `compile` line, so it built
+# with no per-fn/data sections (every embedded platform sets them).
+# Add `-ffunction-sections`/`-fdata-sections` so a `--gc-sections`
+# link (204.8) can strip the unused zenoh-pico surface.
+compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 # Phase 154 — `nros-platform-cffi/include` carries
 # `<nros/platform_net.h>` which the zpico.c TU pulls in for
 # the multicast / UDP shim glue. Bare-metal already carries

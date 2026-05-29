@@ -107,6 +107,11 @@ fn main() {
     build
         .std("c99")
         .warnings(false)
+        // Phase 204.9 — size: `-Os` + per-fn/data sections so the embedded
+        // link path's `--gc-sections` (204.8) can strip unused XRCE surface.
+        .opt_level_str("s")
+        .flag_if_supported("-ffunction-sections")
+        .flag_if_supported("-fdata-sections")
         .define("_DEFAULT_SOURCE", None)
         .include(out_dir.join("include"))
         .include(microcdr.join("include"))

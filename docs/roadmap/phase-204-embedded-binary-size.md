@@ -402,13 +402,23 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
 - [ ] **Remainder:** `nros new` scaffold default; larger drop expected once 204.7
       (serial-only no IP link C) lands; boot smoke on a target.
 
-### 204.9 — Size-optimize the cc-rs vendor C
-- [ ] `Micro-XRCE / micro-CDR` (`nros-rmw-xrce-cffi`, `xrce-sys`) get **no** `-Os`,
-      no `-ffunction-sections/-fdata-sections` on any target — add them (micro-ROS
-      builds XRCE `-Os`). POSIX zenoh-pico (`zenoh_platforms.toml [platform.posix]`)
-      has **no `compile` line** → no opt/sections; add `opt_level + sections`.
-- [ ] **Acceptance:** XRCE backend `.text` measured before/after; sections present
-      so 204.8 can strip.
+### 204.9 — Size-optimize the cc-rs vendor C — [x] DONE (2026-05-30)
+- [x] `Micro-XRCE / micro-CDR` (`nros-rmw-xrce-cffi`, `xrce-sys`) got **no** `-Os`,
+      no `-ffunction-sections/-fdata-sections` on any target — added them (micro-ROS
+      builds XRCE `-Os`). Both `cc::Build` instances (`xrce-sys` `xrce_client`,
+      `nros-rmw-xrce-cffi` `nros_rmw_xrce_c_inline`) now set
+      `.opt_level_str("s")` + `.flag_if_supported("-ffunction-sections")` +
+      `.flag_if_supported("-fdata-sections")`. POSIX zenoh-pico
+      (`zenoh_platforms.toml [platform.posix]`) had **no `compile` line** → got
+      `compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections",
+      "-fdata-sections"] }`, matching every embedded platform block. (Host-only
+      `nros-platform-posix` glue in the cffi build.rs left as-is — not XRCE/CDR
+      surface, and `is_posix`-gated so it never reaches an embedded gc link.)
+- [x] **Acceptance:** XRCE backend `.text` measured before/after (libxrce_client.a,
+      host debug): **89881 → 73971 B (−15910, −17.7 %)** from `-Os` alone, *before*
+      any link-time stripping. Per-function sections now present
+      (`.text.uxr_init_session`, `.text.process_status`, …) so 204.8's
+      `--gc-sections` can drop the unused XRCE/micro-CDR surface.
 
 ### 204.10 — `target-cpu` for embedded Rust
 - [ ] Set `-C target-cpu=<core>` (cortex-m3 / cortex-m4 / cortex-r5 / the rv32/rv64

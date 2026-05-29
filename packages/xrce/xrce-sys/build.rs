@@ -62,6 +62,12 @@ fn main() {
     let mut build = cc::Build::new();
     build
         .warnings(false)
+        // Phase 204.9 — size: `-Os` (micro-ROS builds XRCE `-Os`) + per-fn/data
+        // sections so the embedded link path's `--gc-sections` (204.8) can strip
+        // the unused XRCE/micro-CDR surface.
+        .opt_level_str("s")
+        .flag_if_supported("-ffunction-sections")
+        .flag_if_supported("-fdata-sections")
         .include(out_dir.join("include"))
         .include(manifest_dir.join("micro-cdr/include"))
         .include(manifest_dir.join("micro-xrce-dds-client/include"))
