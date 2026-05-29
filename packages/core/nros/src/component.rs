@@ -998,9 +998,10 @@ impl<'a> TickCtx<'a> {
         status: GoalStatus,
         result: &R,
     ) -> ComponentResult<()> {
+        // Header-less inner CDR: the executor's `complete_goal_raw` frames the
+        // outer envelope (matches the typed `ActionServerHandle::complete_goal`).
         let mut buf = [0u8; N];
-        let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        let mut writer = crate::CdrWriter::new(&mut buf);
         result
             .serialize(&mut writer)
             .map_err(|_| ComponentError::Runtime)?;
@@ -1029,9 +1030,10 @@ impl<'a> TickCtx<'a> {
         goal_id: &GoalId,
         feedback: &F,
     ) -> ComponentResult<()> {
+        // Header-less inner CDR: the executor's `publish_feedback_raw` frames the
+        // outer envelope (matches the typed `ActionServerHandle::publish_feedback`).
         let mut buf = [0u8; N];
-        let mut writer =
-            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        let mut writer = crate::CdrWriter::new(&mut buf);
         feedback
             .serialize(&mut writer)
             .map_err(|_| ComponentError::Runtime)?;
