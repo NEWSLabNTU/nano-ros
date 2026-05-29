@@ -230,18 +230,25 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
         retargeted demo_pkg now declares an `EchoAction` + `cb_act` decision body;
         compiles + links + boots against real nros). Substrate (decision sinks)
         landed earlier in `nros` (`949ca7528`).
-  - [~] **W.5.6 — component execution-tick hook. SUBSTRATE DONE** (`nros`,
-        `97f306e3c`). Added `ExecutableComponent::tick(&mut State, &mut TickCtx)`
-        (default no-op) — the per-spin hook run *between* dispatch where the executor
-        is free. `TickCtx` exposes the immediate publish path + executor-backed action
-        ops (`complete_goal` / `publish_feedback`) via a new `ActionExecutor` trait
-        the generated runtime impls (over executor + action handles by entity) —
-        `TickCtx` stays `no_std`, free of the `rmw-cffi`-gated `Executor`. Test
-        `tick_ctx_publish_and_action_ops`. **Remaining (nros-cli codegen):** the
-        generated main loop calls `C::tick(&mut state, &mut TickCtx)` each spin with
-        an `ActionExecutor` impl over the executor + the action servers' handles
-        (handles come from W.5.5); convert `spin_blocking` to a manual
-        spin-once+tick loop.
+  - [x] **W.5.6 — component execution-tick hook** (substrate `nros` `97f306e3c`,
+        codegen `nros-cli` `224ca3a`). `ExecutableComponent::tick(&mut State,
+        &mut TickCtx)` (default no-op) runs *between* dispatch where the executor is
+        free. `TickCtx` exposes the immediate publish path + executor-backed action
+        ops (`complete_goal` / `publish_feedback`) via the `ActionExecutor` trait the
+        generated runtime impls — `TickCtx` stays `no_std`, free of the
+        `rmw-cffi`-gated `Executor`. Test `tick_ctx_publish_and_action_ops`.
+        **Codegen:** each std shared instance pushes a tick closure into a
+        `thread_local! TICK_ENTRIES`, capturing `Rc::clone`s of the W.5.7 shared
+        `Rc<RefCell<State>>` + resolver plus a `[(source entity id, action handle)]`
+        array; `GenActionExec` impls `ActionExecutor` over the live executor + that
+        array (resolves the action by source entity id); `run_tick_loop` does
+        `spin_once(10ms)` then drains every tick entry until halt; the self shim
+        (single + multi session) + C-ABI `nros_<sys>_spin` route through it. Gated on
+        `has_shared_instance` (std + ≥1 rust executable instance); no_std / native-C
+        keep `spin_blocking`/`spin_default`. Verified: `orchestration_generate` (19)
+        + e2e pub_sub + service_action compile/link warning-clean + deploy_native_self
+        boots/publishes/receives/halts through `run_tick_loop`. A tick-driven action
+        *runtime* exchange (client → goal → tick completes) is a follow-up runtime test.
   - [x] **W.5.7 — multi-callback shared state** (`nros-cli` `80342bd`). On a std
         target a component's callbacks share one `State` via a per-instance shared
         prelude: publishers built once into `Resolveri{inst}`, resolver wrapped in
