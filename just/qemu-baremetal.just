@@ -261,6 +261,12 @@ setup:
     # zenoh-pico build needs them. Then the patched-qemu + zenoh-pico-arm builds.
     source scripts/build/cargo.sh
     "$(nros_cli_bin)" setup qemu-arm-baremetal
+    # build-zenoh-pico.sh picks `arm-none-eabi-gcc` off PATH; the nros-provisioned
+    # arm-gcc 13.2 (newlib headers — apt's gcc-arm-none-eabi has none, so its
+    # bare-metal compile fails `stdlib.h: No such file`) lands in ~/.nros/sdk/*/bin,
+    # which setup.bash globs onto PATH. Source it before the arm build (same as the
+    # build step + how nuttx already picks up the newlib toolchain).
+    source setup.bash
     just qemu build-zenoh-pico
     just qemu setup-qemu
 
