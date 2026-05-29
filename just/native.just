@@ -410,7 +410,7 @@ test verbose="":
     # (test-native-api, test-c-xrce). Unlike root `just test`, this lane
     # keeps the QEMU RTOS e2e groups in.
     args=(-p nros-tests --no-fail-fast \
-          -E 'not (group(=ros2-interop) or group(=xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(native_api) or binary(cpp_parameters) or binary(c_xrce_api))')
+          -E 'not (group(=ros2-interop) or binary(xrce_ros2_interop) or binary(zephyr) or binary(esp32_emulator) or binary(large_msg) or binary(native_api) or binary(cpp_parameters) or binary(c_xrce_api))')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
