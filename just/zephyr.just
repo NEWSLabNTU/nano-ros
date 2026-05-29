@@ -308,6 +308,12 @@ build-fixtures:
     # minimal toolchain `compiler` property set without tripping the
     # llext-edk gen-expr evaluator.
     bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$workspace"
+    # Phase 200.1 — make zephyr-lang-rust's rust_cargo_application() honor the
+    # example's per-RMW `EXTRA_CARGO_ARGS` (the pinned SHA hard-codes
+    # `cargo build` and ignores it, so every rust build compiled the default
+    # `rmw-zenoh` feature regardless of the Kconfig RMW → undefined zpico_* in
+    # xrce/cyclonedds builds). Idempotent.
+    bash ./scripts/zephyr/rust-cargo-extra-args-patch.sh "$workspace"
     fi
     echo "Building Zephyr test fixtures..."
     # Phase 140 — Zephyr examples consume nano-ros via the Phase 139
