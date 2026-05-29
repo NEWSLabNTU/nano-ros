@@ -1,4 +1,11 @@
-# Autoware → nano-ros porting effort survey
+# Autoware → nano-ros porting effort survey (C++-retain path)
+
+> Companion to [autoware-nano-ros-porting-candidates.md](autoware-nano-ros-porting-candidates.md)
+> (2026-02-07) — that doc evaluates Portability × Value for a **Rust-rewrite**
+> port (the path NEWSLabNTU/autoware_sentinel actually took). This one asks a
+> different question: which nodes could land **keeping their C++ source**, by
+> compiling against `nros-cpp` + `nros generate cpp` + small build-script
+> changes. They are complementary, not duplicates.
 
 **Question.** How much work does it take to port a normal ROS 2 C++ node into
 nano-ros? Ideally — "just change the build scripts + a few `#include`s." Are
