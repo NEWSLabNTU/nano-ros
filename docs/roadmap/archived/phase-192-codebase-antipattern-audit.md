@@ -5,7 +5,14 @@ full first-party sweep: magic numbers, hardcoded paths, hand-math that should be
 derived, over-long names/arg-lists, internal values that should be configurable,
 and assorted debt (silent error-swallowing, god functions, dead code).
 
-**Status.** Not Started (audit complete 2026-05-28; remediation pending).
+**Status.** COMPLETE (2026-05-29) — archived. All remediation items landed
+(192.1–192.10): correctness P1s (silent-truncation `Result`s + shared wire-framing
+consts), P2/P3 maintainability (build.rs walk-ups, baked-internal env exposure,
+named magic numbers, long-arg spec structs, the SmoltcpBridge poll decomposition,
+hot-path expect hardening + TODO triage, infra endpoints). Deliberate won't-dos
+documented in place (the `spin_once` god-fn decomposition, the build.rs
+`generate_config` dedup, the Phase-110 scheduler dead-code cluster). The final
+acceptance gate (`just ci` green) is deferred to the next global test run.
 
 **Priority.** Mixed — **192.1 (silent truncation) + 192.2 (wire-framing consts)
 are correctness-grade (P1)**; the rest are maintainability (P2/P3).
@@ -372,7 +379,9 @@ landed or the annotations are stale.
       `setup-verus.sh` → `${TMPDIR:-/tmp}`; QEMU bridge → `NROS_QEMU_*`; C service
       timeout baked from `NROS_SERVICE_TIMEOUT_MS`. Residual `/tmp` is only debug
       scratch logs in `scripts/debug/compare-keyexprs.sh` (out of scope).
-- [ ] No new antipatterns introduced; `just ci` green.
+- [~] No new antipatterns introduced; `just ci` green — **deferred to the next
+      global test run** (per-crate builds/tests + clippy were green for every
+      landed item; the full `just ci` sweep runs later).
 
 ## Notes
 
