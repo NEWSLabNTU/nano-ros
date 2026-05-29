@@ -420,11 +420,43 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
       (`.text.uxr_init_session`, `.text.process_status`, …) so 204.8's
       `--gc-sections` can drop the unused XRCE/micro-CDR surface.
 
-### 204.10 — `target-cpu` for embedded Rust
-- [ ] Set `-C target-cpu=<core>` (cortex-m3 / cortex-m4 / cortex-r5 / the rv32/rv64
-      cores) per embedded triple — Rust currently codegens for the baseline triple
-      while the C side is already `-mcpu`-tuned. Perf + some size.
-- [ ] **Acceptance:** documented per-triple `target-cpu`; a perf/size delta sample.
+### 204.10 — `target-cpu` for embedded Rust — [x] DONE (2026-05-30) — measured, kept OFF for size
+- [x] **Investigated + measured `-C target-cpu=<core>` per embedded triple.**
+      Per-triple mapping mirroring the C-side `-mcpu` arch profiles
+      (`zenoh_platforms.toml`):
+
+      | Rust triple | core | LLVM `target-cpu` | vs C `-mcpu` (arch profile) |
+      |---|---|---|---|
+      | `thumbv7m-none-eabi` | Cortex-M3 | `cortex-m3` | `arch.cortex-m3` |
+      | `thumbv7em-none-eabihf` | Cortex-M4F | `cortex-m4` | `arch.cortex-m4f` |
+      | `armv7a-nuttx-eabihf` | Cortex-A7 | `cortex-a7` | `arch.cortex-a7` |
+      | `armv7r-none-eabihf` | Cortex-R5F | `cortex-r5` | `arch.cortex-r5-softfp` |
+      | `riscv32imc-unknown-none-elf` | RV32IMC | *(skip)* | `arch.riscv32imc` |
+      | `riscv64gc-unknown-none-elf` | RV64GC | *(skip)* | `arch.riscv64gc` |
+
+      The riscv triples already encode the ISA in the target name
+      (`imc`/`gc`); LLVM has no beneficial generic-riscv `-mcpu` to add, so they
+      are skipped.
+- [x] **Perf/size delta sample (clean full rebuild, release, separate
+      `--target-dir`s):**
+
+      | example | triple | baseline `.text` | `+target-cpu` `.text` | Δ |
+      |---|---|---|---|---|
+      | `qemu-arm-baremetal/rust/talker` | thumbv7m | 83168 | 85496 (cortex-m3) | **+2328 (+2.8 %)** |
+      | `stm32f4/rust/talker` | thumbv7em | 75638 | 77194 (cortex-m4) | **+1556 (+2.1 %)** |
+
+- [x] **Decision — keep `target-cpu` OFF by default; do NOT bake it into the
+      example configs.** `-C target-cpu` is a *performance* lever (it switches in
+      LLVM's per-core scheduling model + lets the backend select wider / saturating
+      instructions), and on both samples it **grew** `.text` for no ISA gain — the
+      baseline triples already encode the right instruction set. For thumbv7m the
+      baseline cpu *is* Cortex-M3, so it is pure cost. In a **binary-size** phase
+      baking it into the size-critical examples would regress the goal. Documented
+      here as an **opt-in perf knob**: a perf-bound build appends
+      `-C target-cpu=<core>` (table above) via `RUSTFLAGS` or the example's
+      `.cargo/config.toml` `[target.<triple>] rustflags`, trading ~2–3 % flash for
+      the tuned schedule. (Perf benchmarking of the trade is left to the 204.14 LTO
+      / perf work; this item closes the size side: target-cpu is not a size lever.)
 
 ### 204.11 — Embedded example release profiles: strip + reconcile
 - [ ] Embedded example profiles keep `debug=2` (full debuginfo) + no `strip`; one
