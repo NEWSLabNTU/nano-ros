@@ -162,22 +162,11 @@ build-fixtures:
     # manifest; the platform-wide toolchain / NuttX SDK / codegen-tool -D
     # defs are injected via the shared builder's NROS_CMAKE_EXTRA_DEFS.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
-    # Pre-generate the cbindgen headers (nros_generated.h / nros_cpp_ffi.h) on the
-    # HOST once, before the parallel c/cpp cmake builds. Those headers live in the
-    # source include tree (consumers find them on `-I .../nros-c/include`), written
-    # by the crates' build.rs. The cmake build graph does NOT reliably order the
-    # per-example nros-c/nros-cpp corrosion build before the message-lib compile
-    # (which runs at ninja step [1/4]), so the cross builds can compile a message
-    # .c before any build.rs has written the header → `fatal error:
-    # nros/nros_generated.h: No such file`. The headers are host cbindgen output
-    # (the extern "C" ABI surface — platform-agnostic), so a host build writes the
-    # correct content; the cross build.rs then no-ops (atomic + content-idempotent
-    # write). Other platforms get this incidentally from an earlier nros-c build
-    # (e.g. freertos' cyclone step); nuttx builds c/cpp first.
-    echo "  → pre-generating cbindgen headers (host nros-c / nros-cpp)"
-    cargo build -p nros-c -p nros-cpp \
-        --no-default-features --features std,rmw-cffi,platform-posix,ros-humble >/dev/null 2>&1 \
-        || echo "    warn: host pre-gen failed; relying on per-build header write"
+    # Parallel-safe: the cbindgen headers (nros_generated.h / nros_cpp_ffi.h) are
+    # committed to the source tree (always present on a fresh checkout), so the
+    # parallel c/cpp message-lib compiles find them on `-I .../nros-c/include`
+    # regardless of when each example's nros-c corrosion build runs. build.rs
+    # regenerates them with an atomic write (truncation-safe under parallelism).
     bash scripts/build/fixtures-build.sh nuttx c zenoh
     bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
