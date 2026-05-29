@@ -186,6 +186,19 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     codegen_tool="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
     src="$(pwd)/examples/zephyr/{{example}}"
     [ -d "$src" ] || { echo "no example at $src"; exit 1; }
+    # Rust examples consume the generated interface crates (std_msgs +
+    # transitively builtin_interfaces, …) as cargo path-deps via
+    # .cargo/config.toml's [patch.crates-io] — those crates must exist before the
+    # cargo-driven west build. The C/C++ paths codegen in cmake via
+    # nros_generate_interfaces(); the Rust path has no cmake equivalent, so run
+    # `nros generate-rust` here. Needs ROS sourced (AMENT_PREFIX_PATH resolves
+    # the .msg defs — CI sources it; locally `source /opt/ros/<distro>/setup.bash`).
+    case "{{example}}" in
+    rust/*)
+        echo "Zephyr: generating Rust interface crates for {{example}}"
+        ( cd "$src" && "$codegen_tool" generate-rust --force )
+        ;;
+    esac
     # CONF_FILE = base + RMW overlay + (native_sim) the version-aware NSOS
     # line overlay. The line overlay (cmake/zephyr/native-sim-line-<v>.conf)
     # supplies the native-eth-driver disable under the right symbol for the
