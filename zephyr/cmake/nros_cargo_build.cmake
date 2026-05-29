@@ -90,6 +90,14 @@ function(nros_set_cargo_env_from_kconfig)
         # Buffer sizing (nros-rmw-zenoh build.rs)
         set(ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE} "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
         set(ENV{ZPICO_SERVICE_BUFFER_SIZE} "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
+
+        # zpico-sys build.rs needs the nros-platform-cffi header dir. In-tree dev
+        # gets it from .env/direnv; set it from the known module path so a
+        # module-consumer / BYO `west build` (no .env) is self-contained
+        # (Phase 202.7). CMAKE_CURRENT_FUNCTION_LIST_DIR = this cmake's dir
+        # (<repo>/zephyr/cmake) → ../.. = the nano-ros module root.
+        set(ENV{NROS_PLATFORM_CFFI_INCLUDE}
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../packages/core/nros-platform-cffi/include")
     endif()
 
     # XRCE-specific transport tuning (xrce-sys build.rs, nros-rmw-xrce build.rs)
@@ -276,6 +284,7 @@ function(nros_cargo_build)
             ZPICO_BATCH_UNICAST_SIZE=$ENV{ZPICO_BATCH_UNICAST_SIZE}
             ZPICO_SUBSCRIBER_BUFFER_SIZE=$ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE}
             ZPICO_SERVICE_BUFFER_SIZE=$ENV{ZPICO_SERVICE_BUFFER_SIZE}
+            NROS_PLATFORM_CFFI_INCLUDE=$ENV{NROS_PLATFORM_CFFI_INCLUDE}
             XRCE_TRANSPORT_MTU=$ENV{XRCE_TRANSPORT_MTU}
             XRCE_MAX_SUBSCRIBERS=$ENV{XRCE_MAX_SUBSCRIBERS}
             XRCE_MAX_SERVICE_SERVERS=$ENV{XRCE_MAX_SERVICE_SERVERS}
