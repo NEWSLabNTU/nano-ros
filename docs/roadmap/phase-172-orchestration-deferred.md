@@ -152,15 +152,21 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     `ExecutableComponent` impl + the generated Cargo dep land together); verify via
     `orchestration_generate` source-asserts, then generate→`cargo check`→run (W.5.4).
     *(Status 2026-05-29: W.5.1 substrate + `declarative_component!` macro + `nros::`
-    re-exports landed. **W.5.2/.3 DONE for the timer path** (codegen `599d9c9`): the
-    generator emits a `PublisherResolver` (keyed on the source entity id) + publisher
-    creation + `<C>::init()` State + a move-closure timer calling
-    `<C as ExecutableComponent>::on_callback` with the source callback id; `demo_pkg`
-    has a real publishing body. Emission-verified (19 `orchestration_generate` tests
-    incl. `executable_timer_emits_on_callback_dispatch`; inspecting the emitted Rust
-    caught + fixed two source-vs-plan-prefixed id bugs). **Remaining in W.5.3:**
-    sub/service/action callback dispatch (timer-only so far) + multi-callback shared
-    state (single-callback-owns-state model today).)*
+    re-exports landed. **W.5.2/.3 DONE for timer + subscription** (codegen `f2b3363`):
+    the generator emits a `PublisherResolver` (keyed on the source entity id) +
+    publisher creation + `<C>::init()` State + a move-closure (`||` timer / `|data|`
+    subscription) calling `<C as ExecutableComponent>::on_callback` with the source
+    callback id; the subscription closure feeds the message CDR into the
+    `CallbackCtx` payload. `demo_pkg` has a real publishing timer + a
+    message-reading subscription. **Compile + deploy VERIFIED** via the native e2e
+    (`fixture_workspace_plans_checks_and_builds` + `deploy_native_self`) with the
+    in-repo `play_launch_parser` built + the in-tree SDK env — the generated package
+    builds + boots. Inspecting/compiling the emitted Rust caught + fixed two
+    source-vs-plan-prefixed id bugs + a generated brace bug. **Remaining in W.5.3:**
+    **service/action** dispatch — they take raw C-fn-ptr callbacks (no closure
+    capture), so the trampoline needs a `'static` context for state+resolver (harder
+    than the closure path; the `static`-init mechanism from the original W.5.2 note);
+    plus multi-callback shared state (single-callback-owns-state model today).)*
   - **W.5.4 — E2E proof (compile→run).** `demo_pkg` publishes from its timer body;
     a native deploy run shows real data on the wire. **Blocked in this sandbox** on
     `play_launch_parser` (the plan→build e2e tool — a pip/repo binary not installed;
