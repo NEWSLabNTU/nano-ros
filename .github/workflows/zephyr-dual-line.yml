@@ -73,17 +73,28 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # actions/checkout doesn't init submodules. The Zephyr setup patches the
-      # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
-      # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
-      - name: Init Zephyr-relevant submodules
-        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico packages/codegen
+      # actions/checkout doesn't init submodules. Only the codegen submodule is
+      # hand-initialized — it's the bootstrap needed to build the nros CLI
+      # (chicken/egg; can't be nros-provisioned). recursive: codegen has nested
+      # submodules. Everything else is provisioned by `nros setup` below, the way
+      # a user does — never a hand `git submodule update`.
+      - name: Init codegen submodule (bootstrap for the nros CLI)
+        run: git submodule update --init --recursive packages/codegen
 
       - name: Install just
         uses: extractions/setup-just@v2
 
       - name: Set up Rust toolchain
         run: rustup show && rustup target add armv7a-none-eabi
+
+      # Provision the in-tree sources the Zephyr build needs via nros (index-
+      # driven): zenoh-pico (zenoh examples) + the cyclonedds fork the setup
+      # patches in place. Build the CLI first (the published bin is stale).
+      - name: Build the nros CLI
+        run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+
+      - name: Provision Zephyr sources via nros
+        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src
 
       # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
       # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
@@ -127,17 +138,28 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # actions/checkout doesn't init submodules. The Zephyr setup patches the
-      # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
-      # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
-      - name: Init Zephyr-relevant submodules
-        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico packages/codegen
+      # actions/checkout doesn't init submodules. Only the codegen submodule is
+      # hand-initialized — it's the bootstrap needed to build the nros CLI
+      # (chicken/egg; can't be nros-provisioned). recursive: codegen has nested
+      # submodules. Everything else is provisioned by `nros setup` below, the way
+      # a user does — never a hand `git submodule update`.
+      - name: Init codegen submodule (bootstrap for the nros CLI)
+        run: git submodule update --init --recursive packages/codegen
 
       - name: Install just
         uses: extractions/setup-just@v2
 
       - name: Set up Rust toolchain
         run: rustup show && rustup target add armv7a-none-eabi
+
+      # Provision the in-tree sources the Zephyr build needs via nros (index-
+      # driven): zenoh-pico (zenoh examples) + the cyclonedds fork the setup
+      # patches in place. Build the CLI first (the published bin is stale).
+      - name: Build the nros CLI
+        run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+
+      - name: Provision Zephyr sources via nros
+        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src
 
       # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
       # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
@@ -178,17 +200,28 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # actions/checkout doesn't init submodules. The Zephyr setup patches the
-      # cyclonedds fork and the zenoh examples build zenoh-pico; init just those
-      # (not recursive-all — the platform/RTOS submodules are large + irrelevant).
-      - name: Init Zephyr-relevant submodules
-        run: git submodule update --init --recursive third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico packages/codegen
+      # actions/checkout doesn't init submodules. Only the codegen submodule is
+      # hand-initialized — it's the bootstrap needed to build the nros CLI
+      # (chicken/egg; can't be nros-provisioned). recursive: codegen has nested
+      # submodules. Everything else is provisioned by `nros setup` below, the way
+      # a user does — never a hand `git submodule update`.
+      - name: Init codegen submodule (bootstrap for the nros CLI)
+        run: git submodule update --init --recursive packages/codegen
 
       - name: Install just
         uses: extractions/setup-just@v2
 
       - name: Set up Rust toolchain
         run: rustup show && rustup target add armv7a-none-eabi
+
+      # Provision the in-tree sources the Zephyr build needs via nros (index-
+      # driven): zenoh-pico (zenoh examples) + the cyclonedds fork the setup
+      # patches in place. Build the CLI first (the published bin is stale).
+      - name: Build the nros CLI
+        run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+
+      - name: Provision Zephyr sources via nros
+        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src
 
       # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
       # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.

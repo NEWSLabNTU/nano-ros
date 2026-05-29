@@ -31,14 +31,27 @@ trees the job will never read).
   #   third-party/dds/cyclonedds packages/zpico/zpico-sys/zenoh-pico
 ```
 
-**Exception — don't hand-init what `nros setup` provisions.** If the workflow
-exercises the user install path, a *user* does not `git submodule update` their
-libc; they run `nros setup <board>`, which provisions the board's source
-submodules (e.g. `third-party/nuttx/libc`) from `nros-sdk-index.toml`. CI must
-simulate that — init only `packages/codegen` (to build the CLI), then let
-`nros setup` pull the rest. See `scripts/ci/dep-chain-check.sh`. If a board build
-needs a source the index doesn't provision, that's an **index bug to fix**, not a
-submodule to hand-checkout in the workflow.
+**The rule — provision via `nros`, not hand `git submodule update`.** A *user*
+does not `git submodule update` their libc / zenoh-pico / cyclonedds fork; they
+run `nros setup`, which provisions sources from `nros-sdk-index.toml`. CI must
+simulate that. The **only** hand-init allowed is the bootstrap that `nros` itself
+can't provision: `packages/codegen` (the CLI's own source — chicken/egg). Then:
+
+```yaml
+- name: Init codegen submodule (bootstrap for the nros CLI)
+  run: git submodule update --init --recursive packages/codegen
+- name: Build the nros CLI
+  run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
+# board's whole toolchain + source set:
+- run: packages/codegen/packages/target/debug/nros setup <board> --rmw <rmw>
+# or a specific source (submodule) by name:
+- run: packages/codegen/packages/target/debug/nros setup --source <name> [--source <name>…]
+```
+
+If a build needs a source the index doesn't provision, **that is an index/`nros`
+bug to fix** (add the `[source.*]` entry / teach `nros`), never a `git submodule`
+line in the workflow. Examples: `dep-chain.yml` (per-board), `ci.yml` (px4-rs via
+`--source`), `zephyr-dual-line.yml` (zenoh-pico + cyclonedds-src via `--source`).
 
 ### 2. ROS 2 for the interface codegen
 

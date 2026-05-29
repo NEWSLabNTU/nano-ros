@@ -175,6 +175,18 @@ ref = "b17ce297a456c891445a575ce7250573cff96938"
 dest = "third-party/px4/px4-rs"
 submodule = "third-party/px4/px4-rs"
 
+# CycloneDDS fork as an in-tree *source* (the submodule the Zephyr build patches
+# in place) — distinct from `[tool.cyclonedds]` (the prebuilt/host-built ddsc the
+# native+host RMW links). Same fork pin. Named `cyclonedds-src` so board/rmw
+# package refs to `cyclonedds` keep resolving unambiguously to the tool.
+# Provisioned by `nros setup --source cyclonedds-src`.
+[source.cyclonedds-src]
+version = "0.10.5-nros1"
+git = "https://github.com/NEWSLabNTU/cyclonedds.git"
+ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
+dest = "third-party/dds/cyclonedds"
+submodule = "third-party/dds/cyclonedds"
+
 # --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
 
 [gated.nv-spe-fsp]
