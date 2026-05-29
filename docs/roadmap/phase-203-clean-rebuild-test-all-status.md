@@ -87,13 +87,47 @@ these are runtime-completeness work, not clean-tree build gaps.
 - `zephyr::test_zephyr_{c_service_server_to_client,rust_service}_e2e`,
   `zephyr::test_zephyr_xrce_c_action_e2e`
 
+## Correction (2026-05-30) — what actually fails `test-all`, and fixes landed
+
+The "9 failed" above is nextest's **raw** count. `just _count-real-failures`
+(which reclassifies `[SKIPPED]`-message failures as pass) reported **0** — so
+**none of the nextest integration failures actually fail `test-all`**; they are
+all precondition-skips counted as pass. The real `test-all` exit=1 came from two
+blockers **outside the nextest run**:
+
+1. **`test-miri`** — `nros-params` `persist::tests` do real filesystem I/O +
+   read the realtime clock (`SystemTime::now`), which miri isolation forbids
+   (`clock_gettime REALTIME not available`). **Fixed**: the four FS-touching
+   persist tests are now `#[cfg_attr(miri, ignore)]` (`9fb894155`).
+2. **Stale recipe** — `test-all` called `just native _test-orchestration-e2e`,
+   removed with the codegen-submodule retirement. **Fixed**: dropped the call
+   (`9fb894155`).
+
+Also landed this round:
+- **zephyr-shell** now resolves the sibling `../nano-ros-workspace` (the
+  canonical workspace path), so it **passes** instead of skipping (`86e15bbab`).
+- **nuttx-make** folded into `just nuttx build-fixtures`; the separate
+  `build-all-full` removed, so a single `build-all` stages the
+  `nuttx_make_e2e` kernel ELF.
+
+**Staleness caveat (important for valid runs):** the zephyr fixture resolver
+treats a fixture older than its sources as a **hard failure** ("Zephyr fixture
+binary is stale"), not a skip. Editing any source between `build-all` and
+`test-all` therefore turns the whole zephyr suite red (~30 false fails). Run
+`test-all` immediately after `build-all` with no edits in between.
+
 ## Acceptance
 
 - [x] `just setup all` succeeds from a deinit'd tree
 - [x] `just check` green from clean
 - [x] `just build-all` green from clean (0 failures)
-- [ ] stage the Group-A heavy fixtures in `build-all` so `test-all` needs no
-      manual pre-step (zephyr-shell / nuttx-make / threadx-cyclone)
+- [x] `test-all` miri step green (clock_gettime gated)
+- [x] stale `_test-orchestration-e2e` call removed
+- [x] zephyr-shell passes (sibling-workspace resolver)
+- [x] nuttx-make staged by `build-all` (build-all-full removed)
+- [ ] px4 template — provision a non-shallow PX4 clone (no `Makefile` today)
+- [ ] qemu-baremetal BSP — gate cleanly on Docker/QEMU networking (or stage)
+- [ ] threadx-cyclonedds — experimental/opt-in (env `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`); decide whether to enable by default
 - [ ] Group-B runtime e2e stabilized (cross-ref archived Phase 200 / 177.2)
 
 ## Notes
