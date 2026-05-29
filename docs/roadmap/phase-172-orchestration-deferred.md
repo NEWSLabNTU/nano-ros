@@ -223,12 +223,18 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
         rebuild `CallbackCtx::with_goal_decision`/`with_cancel_decision`, return
         `*out`; accepted = noop until W.5.6. Substrate (decision sinks) already in
         `nros` (`949ca7528`).
-  - [ ] **W.5.6 — component execution-tick hook** (substrate `nros` + codegen
-        `nros-cli`). The action *execution* half: `publish_feedback_raw`/
-        `complete_goal_raw` need `&mut Executor` (unavailable in a mid-spin
-        callback), so add a `Component::tick(&mut TickCtx)` run between dispatch
-        with executor access (or a deferred action-op queue flushed post-dispatch)
-        to drive feedback/result. Unblocks real actions.
+  - [~] **W.5.6 — component execution-tick hook. SUBSTRATE DONE** (`nros`,
+        `97f306e3c`). Added `ExecutableComponent::tick(&mut State, &mut TickCtx)`
+        (default no-op) — the per-spin hook run *between* dispatch where the executor
+        is free. `TickCtx` exposes the immediate publish path + executor-backed action
+        ops (`complete_goal` / `publish_feedback`) via a new `ActionExecutor` trait
+        the generated runtime impls (over executor + action handles by entity) —
+        `TickCtx` stays `no_std`, free of the `rmw-cffi`-gated `Executor`. Test
+        `tick_ctx_publish_and_action_ops`. **Remaining (nros-cli codegen):** the
+        generated main loop calls `C::tick(&mut state, &mut TickCtx)` each spin with
+        an `ActionExecutor` impl over the executor + the action servers' handles
+        (handles come from W.5.5); convert `spin_blocking` to a manual
+        spin-once+tick loop.
   - [ ] **W.5.7 — multi-callback shared state.** Today each callback owns its
         `State`; share across a component's callbacks via `Rc<RefCell>` (std) /
         `'static` (no_std). Restructure the per-callback prelude to per-instance.
