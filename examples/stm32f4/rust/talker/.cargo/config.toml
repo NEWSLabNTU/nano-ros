@@ -5,6 +5,15 @@ target = "thumbv7em-none-eabihf"
 rustflags = [
     "-C",
     "link-arg=-Tlink.x",
+    # Phase 204.8 — dead-strip unreferenced code. The cc-rs vendor C (zenoh-pico)
+    # is `-ffunction-sections -fdata-sections` (manifest) + rustc emits
+    # per-function sections, so `--gc-sections` drops everything the final image
+    # never calls (e.g. zenoh-pico link types the locator never selects).
+    # cortex-m-rt's `link.x` KEEPs the vector table / essential sections.
+    # rust-lld is invoked directly (no gcc driver), so pass `--gc-sections`
+    # straight to the linker — NOT the `-Wl,` driver-prefixed form.
+    "-C",
+    "link-arg=--gc-sections",
 ]
 
 # STM32F429ZI has 192K SRAM. Default arena (~74 KB) is sized for
@@ -15,6 +24,13 @@ rustflags = [
 NROS_EXECUTOR_MAX_CBS = "1"
 NROS_EXECUTOR_ARENA_SIZE = "4096"
 NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
+# Phase 204.2 — right-size the smoltcp socket pool to the backend. This is a
+# zenoh-pico client on a `tcp/` locator: it needs ONE TCP socket (to the router)
+# and at most one UDP socket (scouting); the defaults (4 TCP / 2 UDP) are sized
+# for DDS RTPS (3 UDP/participant). Drops the per-socket buffers
+# (SOCKET_BUFFER_SIZE=2048 × {RX,TX} × count) on both the bridge + smoltcp sides.
+NROS_SMOLTCP_MAX_SOCKETS = "1"
+NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
 
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"

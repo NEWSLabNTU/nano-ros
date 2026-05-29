@@ -54,13 +54,21 @@ Built release ELFs, `size`/`nm` on the artifacts:
       serial the recommended size-critical transport.
 - [ ] **Acceptance:** a measured serial talker, flash + RAM, in the book.
 
-### 204.2 — Right-size the smoltcp socket pool
-- [ ] `MAX_UDP_SOCKETS` defaults to **4**, but a zenoh/XRCE client needs **0..=1**
-      (RTPS/Cyclone needs 3). The 4× 8 KB UDP socket buffers (32 KB) + the TCP
-      buffer count are oversized for brokered clients — drop to what the active RMW
-      needs (a backend-derived default, not a fixed 4).
-- [ ] **Acceptance:** zenoh/XRCE bare-metal `.bss` drops by ~24–36 KB; the smoltcp
-      multicast/socket tests still pass.
+### 204.2 — Right-size the smoltcp socket pool — [~] landed on stm32f4 talker
+- [x] **Proven (2026-05-29).** The socket counts are env-tunable
+      (`NROS_SMOLTCP_MAX_SOCKETS` default 4, `NROS_SMOLTCP_MAX_UDP_SOCKETS` default
+      2; buffers = `SOCKET_BUFFER_SIZE` 2048 × {RX,TX} × count on both the bridge +
+      smoltcp sides). A zenoh-pico `tcp/`-locator client needs **1 TCP + ≤1 UDP**
+      (defaults are sized for DDS RTPS, 3 UDP/participant). Set
+      `NROS_SMOLTCP_MAX_SOCKETS=1` + `NROS_SMOLTCP_MAX_UDP_SOCKETS=1` in
+      `examples/stm32f4/rust/talker/.cargo/config.toml` → **bss 100.9 → 51.8 KB
+      (−49 KB, −49 %)** + data −2.7 KB.
+- [ ] **Remainder:** roll the right-size into other zenoh/XRCE single-pub/sub
+      examples; make it a **backend-derived default** (the generator/board sets it
+      from the active RMW) rather than a hand-set env, so RTPS keeps 3 and brokered
+      clients get 1 automatically.
+- [ ] **Acceptance:** smoltcp multicast/socket tests still pass; the default is
+      RMW-derived.
 
 ### 204.3 — Size-tuned embedded release profile
 - [ ] The embedded examples override the workspace `opt-level="s"` to
@@ -150,14 +158,19 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
 | Final link — Rust embedded | rustc | — | — | — | **no `--gc-sections`** |
 | Final link — C/C++ board (CMake) | CMake | — | — | — | `--gc-sections` ✓ |
 
-### 204.8 — `--gc-sections` on the Rust embedded link path (biggest cross-cut)
-- [ ] Add `-C link-arg=-Wl,--gc-sections` to embedded Rust targets' link args
-      (`.cargo/config.toml` per embedded triple, or a shared rustflags). C deps are
-      already `-ffunction-sections -fdata-sections` (manifest/board build.rs) but
-      the cargo/rustc final link never `--gc-sections` — only the CMake-board path
-      does. This dead-strips the always-compiled-unreferenced C (204.7's IP link,
-      vendor TUs).
-- [ ] **Acceptance:** measured `.text` drop on a serial-only + on an ethernet build.
+### 204.8 — `--gc-sections` on the Rust embedded link path — [~] landed on stm32f4 talker
+- [x] **Proven (2026-05-29).** Added `-C link-arg=--gc-sections` to
+      `examples/stm32f4/rust/talker/.cargo/config.toml` → **text 79.7 → 75.6 KB
+      (−4.0 KB)**. **Note:** the link uses **`rust-lld` directly** (no gcc driver),
+      so the arg is **`--gc-sections`, NOT the `-Wl,`-prefixed driver form**
+      (`-Wl,--gc-sections` → `rust-lld: error: unknown argument`). C deps are already
+      `-ffunction-sections -fdata-sections` (manifest) + rustc emits per-fn
+      sections; `cortex-m-rt`'s `link.x` `KEEP`s the vector table so gc is safe.
+- [ ] **Remainder:** roll `--gc-sections` into the other embedded Rust example
+      `.cargo/config.toml` (rust-lld targets) + make it a `nros new` scaffold
+      default; larger drop expected once 204.7 (serial-only no IP link C) lands.
+- [ ] **Acceptance:** measured `.text` drop on a serial-only build (with 204.7) +
+      a boot smoke on at least one target.
 
 ### 204.9 — Size-optimize the cc-rs vendor C
 - [ ] `Micro-XRCE / micro-CDR` (`nros-rmw-xrce-cffi`, `xrce-sys`) get **no** `-Os`,
