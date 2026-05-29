@@ -273,14 +273,14 @@ typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
 - [x] **Per-backend heap guide** in `book/src/user-guide/configuration.md`
       (zenoh-pico TCP ~16 KB peak → 24–32 KB; serial lighter → 16–24 KB; XRCE ~3 KB
       → ~8 KB).
-- [ ] **XRCE bare-metal RAM figure — BLOCKED on an example.** No bare-metal XRCE
-      example ships (XRCE on `target_os = "none"` needs a custom-transport injection
-      none of the examples provide). The ~3 KB figure is micro-ROS's; a measured
-      nano-ros bare-metal XRCE heap/RAM number needs a `qemu-arm-baremetal` XRCE
-      example built first (own work item — XRCE custom-transport bring-up).
-- [x] **Acceptance (partial):** documented per-backend heap guide ✔ + the tunable
-      knob + zenoh-pico measured drop ✔. XRCE-vs-zenoh on-device figure pending the
-      example above.
+- [→] **XRCE bare-metal RAM figure — moved to Phase 207.** Owning the bare-metal
+      XRCE example + the custom-transport surface is its own work item (Rust
+      `install_custom_transport` hook in `nros-rmw-xrce-cffi`, per-board UART
+      shim, `examples/qemu-arm-baremetal/rust/talker-xrce/`, agent e2e). See
+      [Phase 207 — XRCE on bare-metal](phase-207-xrce-bare-metal-example.md); the
+      measured figure lands in the book "Measured footprint" table when 207 closes.
+- [x] **Acceptance:** per-backend heap guide ✔ + tunable knob ✔ + zenoh-pico
+      measured drop ✔. The XRCE-vs-zenoh on-device delta is owned by Phase 207.
 
 ### 204.6 — FreeRTOS/lwIP footprint audit — [x] DONE (2026-05-30)
 - [x] **bss explained:** the 3.3 MB is almost entirely the FreeRTOS heap —
