@@ -3,8 +3,8 @@
 use core::marker::PhantomData;
 
 use crate::{
-    CallbackId, EntityId, ParameterType, QosSettings, RosAction, RosMessage, RosService,
-    TimerDuration,
+    CallbackId, CancelResponse, EntityId, GoalResponse, ParameterType, QosSettings, RosAction,
+    RosMessage, RosService, TimerDuration,
     component_metadata::{
         CallbackEffectKind, CallbackEffectMetadata, ComponentMetadataError, EntityKind,
         EntityMetadata, EntityMetadataSpec, MetadataRecorder, MetadataString, NodeId,
@@ -736,16 +736,30 @@ struct ReplySink<'a> {
     written: &'a mut usize,
 }
 
+/// Where an action goal / cancel-decision callback writes its accept/reject
+/// (W.5.3): the generated trampoline lends the out-slot, the body fills it via
+/// [`CallbackCtx::set_goal_response`] / [`set_cancel_response`](CallbackCtx::set_cancel_response),
+/// and the trampoline returns it. Decisions need no executor — unlike feedback /
+/// result, which do (see the action-execution note in Phase 172 W.5.3).
+enum DecisionSink<'a> {
+    Goal(&'a mut GoalResponse),
+    Cancel(&'a mut CancelResponse),
+}
+
 /// Context handed to an executable component callback body (W.5.1).
 ///
 /// Carries the triggering payload (raw CDR — empty for timers) plus the
 /// publisher resolver, so a body can read its message and publish immediately.
 /// Service / action-result callbacks additionally carry a [`ReplySink`] the body
-/// fills via [`reply`](Self::reply) (W.5.3).
+/// fills via [`reply`](Self::reply); action goal / cancel callbacks carry a
+/// [`DecisionSink`] the body fills via
+/// [`set_goal_response`](Self::set_goal_response) /
+/// [`set_cancel_response`](Self::set_cancel_response) (W.5.3).
 pub struct CallbackCtx<'a> {
     payload: &'a [u8],
     publishers: &'a dyn PublisherResolver,
     reply: Option<ReplySink<'a>>,
+    decision: Option<DecisionSink<'a>>,
 }
 
 impl<'a> CallbackCtx<'a> {
@@ -756,6 +770,7 @@ impl<'a> CallbackCtx<'a> {
             payload,
             publishers,
             reply: None,
+            decision: None,
         }
     }
 
@@ -776,6 +791,62 @@ impl<'a> CallbackCtx<'a> {
                 buf: reply_buf,
                 written: reply_written,
             }),
+            decision: None,
+        }
+    }
+
+    /// Build a context for an action **goal** callback (W.5.3): the body decides
+    /// accept/reject via [`set_goal_response`](Self::set_goal_response); the
+    /// generated trampoline returns `*out`. `payload` is the goal CDR.
+    pub fn with_goal_decision(
+        payload: &'a [u8],
+        publishers: &'a dyn PublisherResolver,
+        out: &'a mut GoalResponse,
+    ) -> Self {
+        Self {
+            payload,
+            publishers,
+            reply: None,
+            decision: Some(DecisionSink::Goal(out)),
+        }
+    }
+
+    /// Build a context for an action **cancel** callback (W.5.3): the body decides
+    /// accept/reject via [`set_cancel_response`](Self::set_cancel_response).
+    pub fn with_cancel_decision(
+        payload: &'a [u8],
+        publishers: &'a dyn PublisherResolver,
+        out: &'a mut CancelResponse,
+    ) -> Self {
+        Self {
+            payload,
+            publishers,
+            reply: None,
+            decision: Some(DecisionSink::Cancel(out)),
+        }
+    }
+
+    /// Set the action goal-callback's accept/reject decision (W.5.3). `Err` when
+    /// the callback is not a goal decision.
+    pub fn set_goal_response(&mut self, response: GoalResponse) -> ComponentResult<()> {
+        match &mut self.decision {
+            Some(DecisionSink::Goal(slot)) => {
+                **slot = response;
+                Ok(())
+            }
+            _ => Err(ComponentError::Runtime),
+        }
+    }
+
+    /// Set the action cancel-callback's accept/reject decision (W.5.3). `Err` when
+    /// the callback is not a cancel decision.
+    pub fn set_cancel_response(&mut self, response: CancelResponse) -> ComponentResult<()> {
+        match &mut self.decision {
+            Some(DecisionSink::Cancel(slot)) => {
+                **slot = response;
+                Ok(())
+            }
+            _ => Err(ComponentError::Runtime),
         }
     }
 
@@ -1316,5 +1387,41 @@ mod tests {
         // A reply-less ctx (timer / subscription) rejects a reply.
         let mut ctx2 = CallbackCtx::new(&[], &resolver);
         assert!(ctx2.reply_raw(&[1, 2, 3]).is_err());
+    }
+
+    // W.5.3 — an action goal / cancel body sets its accept/reject decision
+    // through the CallbackCtx decision sink; the trampoline returns `*out`. A
+    // wrong-kind setter (or a sink-less ctx) errors.
+    #[test]
+    fn callback_ctx_decision_sink() {
+        struct NoopResolver;
+        impl PublisherResolver for NoopResolver {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> ComponentResult<()> {
+                Ok(())
+            }
+        }
+        let resolver = NoopResolver;
+
+        let mut gr = GoalResponse::Reject;
+        {
+            let mut ctx = CallbackCtx::with_goal_decision(&[], &resolver, &mut gr);
+            ctx.set_goal_response(GoalResponse::AcceptAndExecute)
+                .unwrap();
+            // Wrong-kind setter on a goal ctx errors.
+            assert!(ctx.set_cancel_response(CancelResponse::Ok).is_err());
+        }
+        assert!(matches!(gr, GoalResponse::AcceptAndExecute));
+
+        let mut cr = CancelResponse::Rejected;
+        {
+            let mut ctx = CallbackCtx::with_cancel_decision(&[], &resolver, &mut cr);
+            ctx.set_cancel_response(CancelResponse::Ok).unwrap();
+        }
+        assert!(matches!(cr, CancelResponse::Ok));
+
+        // A timer/sub ctx (no decision sink) rejects both.
+        let mut ctx3 = CallbackCtx::new(&[], &resolver);
+        assert!(ctx3.set_goal_response(GoalResponse::Reject).is_err());
+        assert!(ctx3.set_cancel_response(CancelResponse::Ok).is_err());
     }
 }
