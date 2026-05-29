@@ -46,7 +46,7 @@ SDK index** (`config/submodule-deps.toml` retired): platform/rmw →
 
 ## Work Items
 
-### 197.1 — [P1] Close the zephyr local-vs-CI gap
+### 197.1 — [DONE] Close the zephyr local-vs-CI gap
 `scripts/zephyr/setup.sh` patches `third-party/dds/cyclonedds` and the zenoh
 examples build `packages/zpico/zpico-sys/zenoh-pico`, but the recipe **assumes
 both submodules are already checked out** (`config/submodule-deps.toml` lists
@@ -54,11 +54,17 @@ zephyr `paths=[]`, "uses west"). On a fresh clone, local `just zephyr setup`
 can't patch cyclonedds. Phase 196 taught the *CI workflow* to
 `nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs`; the
 local recipe must do the same so **local == CI**.
-- [ ] `scripts/zephyr/setup.sh` (or the `just zephyr setup` recipe) provisions
-      `zenoh-pico` + `cyclonedds-src` (+ `px4-rs` for the root-workspace cargo
-      load) via `nros setup --source` before patching, mirroring the CI workflow.
+- [x] **DONE.** The `just zephyr setup` recipe now provisions `zenoh-pico` +
+      `cyclonedds-src` + `px4-rs` via `nros setup --source` at the top (before the
+      cyclonedds patches + the west setup), resolving nros from
+      `$NROS_CLI`/PATH/`~/.nros` via `nros_cli_bin`. A fresh-clone local
+      `just zephyr setup` now provisions exactly what the CI workflow does →
+      **local == CI**. Verified the provision command resolves + provisions all
+      three sources. (The CI workflow keeps its explicit pre-step too — idempotent
+      belt-and-suspenders; the dep-chain/core-libs lanes don't run `just zephyr
+      setup`.)
 
-**Files**: `scripts/zephyr/setup.sh`, `just/zephyr.just`.
+**Files**: `just/zephyr.just`.
 
 ### 197.2 — [P2] Retire `config/submodule-deps.toml` (single manifest) — DONE
 A source used to appear in `submodule-deps.toml` (to be fetched by

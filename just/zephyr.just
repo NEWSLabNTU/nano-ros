@@ -32,6 +32,17 @@ setup *ARGS:
     set -e
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     ARGS="{{ARGS}}"
+    # Phase 197.1 — provision the in-tree sources the Zephyr build needs the way a
+    # user/CI does (`nros setup --source`, index-driven), NOT a hand
+    # `git submodule update`: zenoh-pico (zenoh examples), the cyclonedds fork (the
+    # patches below operate on the in-tree submodule), and px4-rs (the root
+    # workspace's cargo load path-deps px4-sitl-tests). Mirrors the CI workflow so
+    # local == CI. nros resolved from $NROS_CLI / PATH / ~/.nros (install.sh).
+    source scripts/build/cargo.sh
+    nros_bin="$(nros_cli_bin)"
+    echo "[zephyr setup] provisioning sources via nros ($nros_bin)..."
+    "$nros_bin" setup --source zenoh-pico --source cyclonedds-src --source px4-rs \
+        --index "$(pwd)/nros-sdk-index.toml"
     if [ -d "$WORKSPACE/zephyr" ] && [[ "$ARGS" != *--force* ]]; then
         echo "Zephyr workspace already present at $WORKSPACE"
         echo "To reinstall, run: just zephyr setup --force"
