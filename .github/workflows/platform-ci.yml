@@ -1,0 +1,142 @@
+# Per-platform CI (Phase 196 follow-up — consolidate setup/build/test by platform).
+#
+# One template, matrixed over platforms: each cell does the user procedure —
+#   install prebuilt nros → `just <plat> setup` (nros-provisioned) → build → test.
+# This is the per-platform setup/build/test coverage that was missing (only zephyr
+# had a build lane). It ADDS to — does not replace — the cheap distinct gates:
+#   - host-unit-tests: `just test-unit` (workspace *unit* tests; not per-platform)
+#   - core-libs:       no_std core crates cross-`check`ed on bare targets
+#   - dep-chain:       cheap all-board *resolution* (incl. boards without a full
+#                      lane: stm32f4, orin-spe, fvp); the fast PR pre-gate
+#   - zephyr-dual-line: bespoke (3.7+4.4 lines + Docker image + copy-out)
+# As these per-platform lanes prove out, dep-chain can be slimmed (its resolution
+# is subsumed for covered platforms) — deferred until they're trusted.
+#
+# Cost management (the 196.3 "keep minutes low" concern):
+#   - a `changes` pre-job path-filters per platform: on a PR, only the platforms
+#     whose code (or the shared core) changed run; on `main`/dispatch, all run.
+#   - build runs whenever a cell runs (filtered); the heavier QEMU **test/e2e**
+#     runs only on `main` + manual dispatch (run_e2e), so a PR gets fast
+#     build-coverage and main confirms runtime.
+name: platform-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["packages/**", "examples/**", "just/**", "justfile", "cmake/**", "nros-sdk-index.toml", ".github/workflows/platform-ci.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["packages/**", "examples/**", "just/**", "justfile", "cmake/**", "nros-sdk-index.toml", ".github/workflows/platform-ci.yml"]
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: "Run the QEMU test/e2e step (not just build)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: platform-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Per-platform path filter → a JSON list of platforms to run. On a PR, only the
+  # platforms whose code (or the shared core) changed; on main/dispatch, all.
+  # (Dynamic matrix: GitHub job-level `if` can't read `matrix`, so we select the
+  # matrix entries here instead.)
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.set.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            core: &core
+              - 'packages/core/**'
+              - 'packages/zpico/**'
+              - 'just/**'
+              - 'justfile'
+              - 'cmake/**'
+              - 'nros-sdk-index.toml'
+            native: [ *core, 'examples/native/**', 'packages/boards/posix/**' ]
+            qemu-baremetal: [ *core, 'examples/qemu-arm-baremetal/**', 'packages/boards/nros-board-mps2-an385*/**' ]
+            freertos: [ *core, 'examples/qemu-arm-freertos/**', 'packages/boards/nros-board-freertos/**', 'packages/boards/nros-board-mps2-an385-freertos/**' ]
+            nuttx: [ *core, 'examples/qemu-arm-nuttx/**', 'packages/boards/nros-board-nuttx*/**' ]
+            threadx-linux: [ *core, 'examples/threadx-linux/**', 'packages/boards/nros-board-threadx-linux/**' ]
+            threadx-riscv64: [ *core, 'examples/qemu-riscv64-threadx/**', 'packages/boards/nros-board-threadx-qemu-riscv64/**' ]
+            esp32: [ *core, 'examples/esp32/**', 'examples/qemu-esp32-baremetal/**', 'packages/boards/nros-board-esp32*/**' ]
+      - id: set
+        env:
+          NATIVE: ${{ steps.f.outputs.native }}
+          QEMU_BAREMETAL: ${{ steps.f.outputs.qemu-baremetal }}
+          FREERTOS: ${{ steps.f.outputs.freertos }}
+          NUTTX: ${{ steps.f.outputs.nuttx }}
+          THREADX_LINUX: ${{ steps.f.outputs.threadx-linux }}
+          THREADX_RISCV64: ${{ steps.f.outputs.threadx-riscv64 }}
+          ESP32: ${{ steps.f.outputs.esp32 }}
+        run: |
+          set -euo pipefail
+          all="native qemu-baremetal freertos nuttx threadx-linux threadx-riscv64 esp32"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            sel="$all"
+          else
+            sel=""
+            [ "$NATIVE" = "true" ]          && sel="$sel native";          true
+            [ "$QEMU_BAREMETAL" = "true" ]  && sel="$sel qemu-baremetal";  true
+            [ "$FREERTOS" = "true" ]        && sel="$sel freertos";        true
+            [ "$NUTTX" = "true" ]           && sel="$sel nuttx";           true
+            [ "$THREADX_LINUX" = "true" ]   && sel="$sel threadx-linux";   true
+            [ "$THREADX_RISCV64" = "true" ] && sel="$sel threadx-riscv64"; true
+            [ "$ESP32" = "true" ]           && sel="$sel esp32";           true
+          fi
+          json=$(printf '%s\n' $sel | jq -R . | jq -cs .)
+          echo "platforms=$json" >> "$GITHUB_OUTPUT"
+          echo "selected: $json"
+
+  platform:
+    needs: changes
+    if: ${{ needs.changes.outputs.platforms != '[]' }}
+    name: ${{ matrix.plat }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        plat: ${{ fromJSON(needs.changes.outputs.platforms) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the nros CLI (released binary)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
+            | NROS_VERSION=0.3.1 sh
+          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest
+
+      - name: Set up Rust toolchain
+        run: rustup show
+
+      # The user procedure: `just <plat> setup` provisions the platform's
+      # toolchain + sources via nros (Phase 197.4 — nros setup <board> is the
+      # complete provisioner). source setup.bash to PATH the provisioned tools.
+      - name: just ${{ matrix.plat }} setup
+        run: just ${{ matrix.plat }} setup
+
+      - name: Build (${{ matrix.plat }})
+        run: |
+          source ./setup.bash
+          just ${{ matrix.plat }} build-all || just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
+
+      # Heavier QEMU test/e2e: on-demand only (`workflow_dispatch` with run_e2e).
+      # push/PR get fast build-coverage; e2e is run deliberately (and a nightly
+      # `schedule:` is the natural place to wire it on once the cells are trusted)
+      # — keeps QEMU-runtime flakiness off every push × 7 platforms.
+      - name: Test / e2e (${{ matrix.plat }})
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_e2e }}
+        run: |
+          source ./setup.bash
+          just ${{ matrix.plat }} test
