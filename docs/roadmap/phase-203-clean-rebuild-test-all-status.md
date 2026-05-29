@@ -88,6 +88,14 @@ these are runtime-completeness work, not clean-tree build gaps.
 - `zephyr::test_zephyr_{c_service_server_to_client,rust_service}_e2e`,
   `zephyr::test_zephyr_xrce_c_action_e2e`
 
+#### Triage 2026-05-30 (Group-B zephyr subset)
+
+| Test | Status | Finding |
+|---|---|---|
+| `zephyr::test_zephyr_xrce_c_action_e2e` | **PASS** | Not actually broken — passes deterministically on a fresh run. Remove from Group-B list. |
+| `zephyr::test_zephyr_rust_service_e2e` | **PASS** | Re-verified after `nros setup zephyr` + fresh `just zephyr build-fixtures`. Earlier "fail" was the stale-fixture confound (CLAUDE.md hard-fail rule), not a runtime gap. Remove from Group-B list. |
+| `zephyr::test_zephyr_c_service_server_to_client_e2e` (zenoh) | **FIXED** | Root cause: orphaned-reply race between the C-API `nros_client_call` resend loop and the zenoh service-client's single-handle tracking. **Diagnosis path:** (1) Router trace (`RUST_LOG=zenoh=debug,zenoh_transport=trace`) confirmed each cycle reaches the client's TCP socket — `Response{Reply{payload=[00 01 00 00 08 …]}}` scheduled for transmission to the client + `Propagate final reply`. (2) `fprintf` in `pending_get_reply_handler` (zpico.c:2120) confirmed the handler fires on the client side. (3) Tracing `zpico_get_check` / `zpico_get_start` / `pending_get_reply_handler` showed `get_start` called many times with `phgrh` firing on slots 0,1,1,2,2 — but `was_received=0` every time and `get_check(handle=0)` polled only the first slot. (4) Tracing back: `nros_client_call` (`service.rs:1885`) re-issues the request every **500 ms** during the discovery race (Phase 89.12 cold-boot fix for XRCE + NuttX); each resend calls `send_request_raw` → `zpico_get_start` → new slot. The Rust `ZenohServiceClient` stored only the **latest** `pending_handle` (single `Option<i32>`), so when the server's reply finally arrived on an older slot, `phgrh` set `received=true` on that slot but nothing polled it. Its dropper eventually fired on zenoh-pico's `Z_CONFIG_SOCKET_TIMEOUT` (5 s on Zephyr) — too late for the user's `timeout_ms`. **Fix:** replaced `pending_handle: Option<i32>` with `pending_handles: heapless::Vec<i32, ZPICO_MAX_PENDING_GETS>` (capacity = C-side slot pool, 4). `send_request_raw` pushes each new handle; `try_recv_reply_raw` polls ALL outstanding handles (newest first); `register_waker` arms every outstanding slot's waker. First reply that lands wins, regardless of which resend produced it. Verified on Zephyr native_sim: `test_zephyr_c_service_server_to_client_e2e` 19.2 s, `_rust_service_e2e` 39.8 s, `_cpp_service_server_to_client_e2e` 42.8 s — all PASS deterministically. Same code path on NuttX C service rtos_e2e (also Group-B): flaky (2/3) — same baseline, likely improved. |
+
 ## Correction (2026-05-30) — what actually fails `test-all`, and fixes landed
 
 The "9 failed" above is nextest's **raw** count. `just _count-real-failures`

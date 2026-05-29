@@ -441,8 +441,24 @@ pub struct ZenohServiceClient {
     context: *const Context,
     /// Timeout in milliseconds
     timeout_ms: u32,
-    /// Handle to a pending non-blocking get operation (None if idle)
-    pending_handle: Option<i32>,
+    /// Handles for outstanding non-blocking get operations.
+    ///
+    /// Was `Option<i32>` (single handle). The C-API blocking
+    /// `nros_client_call` resends the request every ~500 ms during a
+    /// discovery race (Phase 89.12 cold-boot fix), each resend calling
+    /// `send_request_raw` → `zpico_get_start` → fresh slot. Storing only
+    /// the latest handle dropped the older slots: when the server's
+    /// reply finally arrived on slot N (older than the current handle),
+    /// `pending_get_reply_handler` set `received=true` on slot N but
+    /// nothing polled it. The slot eventually had its dropper fire on
+    /// zenoh-pico's query timeout (`Z_CONFIG_SOCKET_TIMEOUT`, 5 s on
+    /// Zephyr), so `zpico_get_check` never returned the data to the
+    /// caller. Tracking ALL outstanding handles + polling each in
+    /// `try_recv_reply_raw` returns the first reply that lands,
+    /// regardless of which generation of resend produced it.
+    /// Capacity matches the C-side slot pool so we can never lose a
+    /// handle the C allocator successfully returned.
+    pending_handles: heapless::Vec<i32, ZPICO_MAX_PENDING_GETS>,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
@@ -491,7 +507,7 @@ impl ZenohServiceClient {
             _liveliness: liveliness,
             context: context as *const Context,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
-            pending_handle: None,
+            pending_handles: heapless::Vec::new(),
             _phantom: PhantomData,
         })
     }
@@ -499,6 +515,24 @@ impl ZenohServiceClient {
     /// Set the timeout for service calls
     pub fn set_timeout(&mut self, timeout_ms: u32) {
         self.timeout_ms = timeout_ms;
+    }
+
+    /// Append a newly-allocated slot handle to the outstanding list.
+    ///
+    /// When the list is full we drop the OLDEST handle, not the new
+    /// one — the C side has handed us a real slot and refusing to
+    /// remember it would lose its reply. The dropped handle's reply
+    /// (if any) is forfeited; that slot is recycled by the C
+    /// allocator once its dropper fires (zenoh-pico query timeout).
+    /// In practice this only triggers when `nros_client_call`'s
+    /// resend loop produces more than `ZPICO_MAX_PENDING_GETS`
+    /// generations in a single user-visible call — unusual.
+    fn track_outstanding(&mut self, handle: i32) {
+        if self.pending_handles.is_full() {
+            self.pending_handles.remove(0);
+        }
+        // Cannot fail — we just made room above.
+        let _ = self.pending_handles.push(handle);
     }
 }
 
@@ -518,7 +552,7 @@ impl ServiceClientTrait for ZenohServiceClient {
                     return Ok(len);
                 }
                 if std::time::Instant::now() >= deadline {
-                    self.pending_handle = None;
+                    self.pending_handles.clear();
                     return Err(TransportError::Timeout);
                 }
                 std::thread::sleep(std::time::Duration::from_millis(5));
@@ -545,16 +579,19 @@ impl ServiceClientTrait for ZenohServiceClient {
                     z_sleep_ms(5)
                 };
             }
-            self.pending_handle = None;
+            self.pending_handles.clear();
             Err(TransportError::Timeout)
         }
     }
 
     fn register_waker(&self, waker: &core::task::Waker) {
-        if let Some(handle) = self.pending_handle
-            && (handle as usize) < ZPICO_MAX_PENDING_GETS
-        {
-            REPLY_WAKERS[handle as usize].register(waker);
+        // Wake on any outstanding handle — `nros_client_call`'s resend
+        // can leave several gens in flight; any of them could complete
+        // first (see `pending_handles` docs).
+        for &handle in &self.pending_handles {
+            if (handle as usize) < ZPICO_MAX_PENDING_GETS {
+                REPLY_WAKERS[handle as usize].register(waker);
+            }
         }
     }
 
@@ -614,7 +651,7 @@ impl ServiceClientTrait for ZenohServiceClient {
                     self.timeout_ms,
                 ) {
                     Ok(handle) => {
-                        self.pending_handle = Some(handle);
+                        self.track_outstanding(handle);
                         return Ok(());
                     }
                     Err(e) => last_err = Some(e),
@@ -647,7 +684,7 @@ impl ServiceClientTrait for ZenohServiceClient {
                     self.timeout_ms,
                 ) {
                     Ok(handle) => {
-                        self.pending_handle = Some(handle);
+                        self.track_outstanding(handle);
                         return Ok(());
                     }
                     Err(e) => last_err = Some(e),
@@ -668,10 +705,9 @@ impl ServiceClientTrait for ZenohServiceClient {
     }
 
     fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
-        let handle = match self.pending_handle {
-            Some(h) => h,
-            None => return Ok(None),
-        };
+        if self.pending_handles.is_empty() {
+            return Ok(None);
+        }
 
         let context = unsafe { &*self.context };
 
@@ -680,17 +716,53 @@ impl ServiceClientTrait for ZenohServiceClient {
             let _ = context.spin_once(0);
         }
 
-        match context.get_check(handle, reply_buf) {
-            Ok(Some(len)) => {
-                self.pending_handle = None;
-                Ok(Some(len))
-            }
-            Ok(None) => Ok(None),
-            Err(e) => {
-                self.pending_handle = None;
-                Err(TransportError::from(e))
+        // Poll every outstanding handle. First reply wins — the
+        // resend loop in the C-API blocking caller leaves multiple
+        // generations of the same logical request in flight, and any
+        // one of them is a valid response (queryable is idempotent at
+        // the application layer; the server logs request count but
+        // computes the same answer). See `pending_handles` docs.
+        //
+        // Newest first matches the common case where the latest send
+        // is what completed — most calls allocate only one slot, so
+        // we get out in one iteration.
+        let mut hit_idx: Option<usize> = None;
+        let mut hit_len: usize = 0;
+        let mut hard_err: Option<Self::Error> = None;
+        for (idx, &handle) in self.pending_handles.iter().enumerate().rev() {
+            match context.get_check(handle, reply_buf) {
+                Ok(Some(len)) => {
+                    hit_idx = Some(idx);
+                    hit_len = len;
+                    break;
+                }
+                Ok(None) => continue,
+                Err(e) => {
+                    // Note the error but keep checking the others —
+                    // one slot's dropper-only timeout shouldn't lose
+                    // a sibling's still-pending reply. If everyone
+                    // errored we'll surface the last one.
+                    hard_err = Some(TransportError::from(e));
+                }
             }
         }
+
+        if hit_idx.is_some() {
+            // A reply landed — release every other outstanding slot.
+            // They'll drain via zenoh-pico's dropper on the query
+            // timeout; we just stop polling them.
+            self.pending_handles.clear();
+            return Ok(Some(hit_len));
+        }
+
+        if let Some(e) = hard_err {
+            // Every outstanding handle errored (e.g. each got a
+            // dropper-only timeout without data). Surface the failure.
+            self.pending_handles.clear();
+            return Err(e);
+        }
+
+        Ok(None)
     }
 
     fn start_server_discovery(&mut self, timeout_ms: u32) -> Result<(), Self::Error> {
