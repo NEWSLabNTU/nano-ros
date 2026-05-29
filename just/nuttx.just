@@ -111,6 +111,16 @@ build-fixtures:
     # clean tree `just clean` removed config.h. Idempotent — `just nuttx
     # build` skips when staging/libc.a is already present.
     just nuttx build
+    # Materialize the pinned nightly's components SERIALLY before the parallel
+    # `-Z build-std` fixture builds below (rust + c/cpp). Multiple parallel
+    # `cargo +nightly` build-std cold-starts otherwise race rustup's shared
+    # downloads dir on first component fetch (`error: component download failed
+    # … could not rename '…partial'`). One serial `rustup component add` makes it
+    # a no-op for the parallel builds. Idempotent (skips if already present).
+    nuttx_nightly="$(awk '/^channel/{gsub(/"/,"",$3);print $3;exit}' examples/qemu-arm-nuttx/rust-toolchain.toml)"
+    if [ -n "$nuttx_nightly" ]; then
+        rustup component add rust-src cargo rust-std --toolchain "$nuttx_nightly" >/dev/null 2>&1 || true
+    fi
     echo "Building NuttX test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
