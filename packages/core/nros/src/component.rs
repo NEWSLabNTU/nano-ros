@@ -3,8 +3,8 @@
 use core::marker::PhantomData;
 
 use crate::{
-    CallbackId, CancelResponse, EntityId, GoalResponse, ParameterType, QosSettings, RosAction,
-    RosMessage, RosService, TimerDuration,
+    CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus, ParameterType,
+    QosSettings, RosAction, RosMessage, RosService, TimerDuration,
     component_metadata::{
         CallbackEffectKind, CallbackEffectMetadata, ComponentMetadataError, EntityKind,
         EntityMetadata, EntityMetadataSpec, MetadataRecorder, MetadataString, NodeId,
@@ -917,6 +917,111 @@ impl<'a> CallbackCtx<'a> {
 /// [`init`](Self::init), then routes every fired callback to
 /// [`on_callback`](Self::on_callback). Trait-dispatch (no boxed `dyn`, no
 /// `alloc`) keeps it `no_std`.
+/// Executor-backed action operations a [`TickCtx`] drives (W.5.6).
+///
+/// Action result/feedback need `&mut Executor` (`complete_goal_raw` /
+/// `publish_feedback_raw`), which a mid-spin *callback* can't hold (the executor
+/// is borrowed) — so they run from [`ExecutableComponent::tick`], between spins.
+/// The generated runtime implements this over the real executor + the action
+/// servers' handles (resolved by stable action entity id); the component never
+/// sees the executor directly. Kept as a trait so [`TickCtx`] stays `no_std` +
+/// free of the `rmw-cffi`-gated `Executor` type.
+pub trait ActionExecutor {
+    /// Complete the goal `goal_id` on action `action_entity` with raw CDR result.
+    fn complete_goal_raw(
+        &mut self,
+        action_entity: &str,
+        goal_id: &GoalId,
+        status: GoalStatus,
+        result: &[u8],
+    ) -> ComponentResult<()>;
+
+    /// Publish raw CDR feedback for `goal_id` on action `action_entity`.
+    fn publish_feedback_raw(
+        &mut self,
+        action_entity: &str,
+        goal_id: &GoalId,
+        feedback: &[u8],
+    ) -> ComponentResult<()>;
+}
+
+/// Context handed to [`ExecutableComponent::tick`] (W.5.6): the per-spin hook
+/// that runs *between* callback dispatch, where the executor is free. Exposes the
+/// immediate publish path (like `CallbackCtx`) plus the executor-backed action
+/// ops (complete goal / publish feedback) that a callback can't perform.
+pub struct TickCtx<'a> {
+    publishers: &'a dyn PublisherResolver,
+    actions: &'a mut dyn ActionExecutor,
+}
+
+impl<'a> TickCtx<'a> {
+    /// Build a tick context (called by the generated runtime each spin).
+    pub fn new(publishers: &'a dyn PublisherResolver, actions: &'a mut dyn ActionExecutor) -> Self {
+        Self {
+            publishers,
+            actions,
+        }
+    }
+
+    /// Publish raw CDR bytes through the named publisher entity (immediate).
+    pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> ComponentResult<()> {
+        self.publishers.publish_raw(publisher.as_str(), data)
+    }
+
+    /// Serialize `msg` into an `N`-byte stack buffer and publish it (immediate).
+    pub fn publish<M: RosMessage, const N: usize>(
+        &self,
+        publisher: EntityId<'_>,
+        msg: &M,
+    ) -> ComponentResult<()> {
+        let mut buf = [0u8; N];
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        msg.serialize(&mut writer)
+            .map_err(|_| ComponentError::Runtime)?;
+        let len = writer.position();
+        self.publish_raw(publisher, &buf[..len])
+    }
+
+    /// Complete an action goal with a typed result (W.5.6 — needs the executor,
+    /// hence tick-only).
+    pub fn complete_goal<R: RosMessage, const N: usize>(
+        &mut self,
+        action: EntityId<'_>,
+        goal_id: &GoalId,
+        status: GoalStatus,
+        result: &R,
+    ) -> ComponentResult<()> {
+        let mut buf = [0u8; N];
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        result
+            .serialize(&mut writer)
+            .map_err(|_| ComponentError::Runtime)?;
+        let len = writer.position();
+        self.actions
+            .complete_goal_raw(action.as_str(), goal_id, status, &buf[..len])
+    }
+
+    /// Publish typed feedback for an active action goal (W.5.6 — tick-only).
+    pub fn publish_feedback<F: RosMessage, const N: usize>(
+        &mut self,
+        action: EntityId<'_>,
+        goal_id: &GoalId,
+        feedback: &F,
+    ) -> ComponentResult<()> {
+        let mut buf = [0u8; N];
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        feedback
+            .serialize(&mut writer)
+            .map_err(|_| ComponentError::Runtime)?;
+        let len = writer.position();
+        self.actions
+            .publish_feedback_raw(action.as_str(), goal_id, &buf[..len])
+    }
+}
+
 pub trait ExecutableComponent: Component {
     /// Per-instance mutable state shared across the component's callbacks.
     type State;
@@ -928,6 +1033,12 @@ pub trait ExecutableComponent: Component {
     /// immediate publish path. Bodies match on `callback` (the stable id from
     /// the declarative `create_*` calls).
     fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>);
+
+    /// Per-spin execution hook (W.5.6), run *between* callback dispatch by the
+    /// generated runtime — where the executor is free, so this is the only place
+    /// a component can complete action goals / publish feedback (via `ctx`) or do
+    /// periodic work. Default: no-op (timer/sub/service-only components).
+    fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
 }
 
 /// Emit a no-op [`ExecutableComponent`] impl for a declarative-only component
@@ -1423,5 +1534,72 @@ mod tests {
         let mut ctx3 = CallbackCtx::new(&[], &resolver);
         assert!(ctx3.set_goal_response(GoalResponse::Reject).is_err());
         assert!(ctx3.set_cancel_response(CancelResponse::Ok).is_err());
+    }
+
+    // W.5.6 — the tick hook publishes (immediate) + drives executor-backed action
+    // ops (complete goal / publish feedback) through the ActionExecutor seam.
+    #[test]
+    fn tick_ctx_publish_and_action_ops() {
+        use core::cell::Cell;
+        struct RecPub {
+            published: Cell<bool>,
+        }
+        impl PublisherResolver for RecPub {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> ComponentResult<()> {
+                self.published.set(true);
+                Ok(())
+            }
+        }
+        struct RecAct {
+            completed: bool,
+            fed: bool,
+        }
+        impl ActionExecutor for RecAct {
+            fn complete_goal_raw(
+                &mut self,
+                _action_entity: &str,
+                _goal_id: &GoalId,
+                _status: GoalStatus,
+                _result: &[u8],
+            ) -> ComponentResult<()> {
+                self.completed = true;
+                Ok(())
+            }
+            fn publish_feedback_raw(
+                &mut self,
+                _action_entity: &str,
+                _goal_id: &GoalId,
+                _feedback: &[u8],
+            ) -> ComponentResult<()> {
+                self.fed = true;
+                Ok(())
+            }
+        }
+
+        let pubs = RecPub {
+            published: Cell::new(false),
+        };
+        let mut acts = RecAct {
+            completed: false,
+            fed: false,
+        };
+        let goal = GoalId::zero();
+        {
+            let mut ctx = TickCtx::new(&pubs, &mut acts);
+            ctx.publish::<TestMsg, 64>(EntityId::new("pub_x"), &TestMsg)
+                .unwrap();
+            ctx.publish_feedback::<TestMsg, 64>(EntityId::new("act"), &goal, &TestMsg)
+                .unwrap();
+            ctx.complete_goal::<TestMsg, 64>(
+                EntityId::new("act"),
+                &goal,
+                GoalStatus::Succeeded,
+                &TestMsg,
+            )
+            .unwrap();
+        }
+        assert!(pubs.published.get());
+        assert!(acts.completed);
+        assert!(acts.fed);
     }
 }
