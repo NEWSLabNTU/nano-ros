@@ -24,13 +24,12 @@ use rstest::rstest;
 use std::{process::Command, time::Duration};
 
 fn received_values(output: &str) -> Vec<i32> {
-    output
-        .lines()
-        .filter_map(|line| {
-            line.split("Received:")
-                .nth(1)
-                .and_then(|data| data.trim().parse().ok())
-        })
+    // Delegate to the canonical listener parser (one `Received: <n>` extractor);
+    // adapt its i64 values to the i32 these multi-node tests compare against.
+    nros_tests::output::parse_listener(output)
+        .values
+        .into_iter()
+        .map(|v| v as i32)
         .collect()
 }
 

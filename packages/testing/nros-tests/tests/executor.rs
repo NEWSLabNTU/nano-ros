@@ -150,37 +150,11 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     println!("=== Listener output ===");
     println!("{}", listener_output);
 
-    // Extract received values and verify order
-    // The listener logs "Received: N" where N is the value
-    let mut received_values: Vec<i32> = Vec::new();
-    for line in listener_output.lines() {
-        if line.contains("Received:") {
-            // Parse "Received: N" pattern
-            if let Some(data_part) = line.split("Received:").nth(1)
-                && let Ok(num) = data_part.trim().parse()
-            {
-                received_values.push(num);
-            }
-        }
-    }
-
-    println!("Received values: {:?}", received_values);
-
-    // Verify values are in ascending order (messages received in order)
-    if received_values.len() >= 2 {
-        let is_ordered = received_values.windows(2).all(|w| w[0] <= w[1]);
-        assert!(
-            is_ordered,
-            "Messages should be received in order: {:?}",
-            received_values
-        );
-        println!("SUCCESS: Callback execution maintains message order");
-    } else {
-        println!(
-            "INFO: Not enough messages received to verify order ({})",
-            received_values.len()
-        );
-    }
+    // Extract received values via the canonical listener parser, then verify
+    // they arrived in order (callback execution preserves message order).
+    let received = nros_tests::output::parse_listener(&listener_output);
+    println!("Received values: {:?}", received.values);
+    nros_tests::output::assert_monotonic(&received.values);
 }
 
 // =============================================================================

@@ -66,14 +66,18 @@ Three gaps remain.
       `nros codegen` toolchain). Locate the fixtures under
       `examples/zephyr/**` / the Zephyr fixture sources the tests boot.
 
-- [ ] **198.3 — Route value-extraction loops through `parse_*`.** A few tests
-      hand-roll a line loop to pull message values instead of using
-      `output::parse_talker(out).values` / `parse_listener(out).values` (which
-      already return `Vec<i64>` and pair with `assert_monotonic`):
-      `nros-tests/tests/executor.rs:157` (`if line.contains("Received:")` value
-      loop) and the `zephyr.rs:39` filter. Convert where the fixture prints the
-      canonical format (after 198.2 for the Zephyr ones). Low risk, host-verifiable
-      for the non-Zephyr sites.
+- [x] **198.3 — Route value-extraction loops through `parse_*` (non-Zephyr). DONE**
+      (2026-05-29). `executor.rs` ordering test now uses
+      `output::parse_listener(&out).values` + `output::assert_monotonic(..)`
+      (dropping the hand-rolled `split("Received:")` loop + manual windows check).
+      The duplicated local `received_values()` helpers in `qos.rs` + `multi_node.rs`
+      now delegate to `parse_listener` (a thin `i64`→`i32` adapter, callers
+      unchanged) — one `Received: <n>` extractor for the suite. `cargo test -p
+      nros-tests --no-run` clean; no `split("Received:"/"Published:")` outside
+      `zephyr.rs`.
+      *Remaining (folds into 198.2):* the `zephyr.rs:39` filter tolerates the
+      Zephyr alt format (`Received[`), so it converts only after the Zephyr
+      fixtures emit the canonical format.
 
 ## Acceptance
 
