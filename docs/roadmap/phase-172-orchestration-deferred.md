@@ -169,14 +169,35 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     (gated on `uses_std` — `Box`; no_std keeps the noop). `demo_pkg` gains an
     `EchoSrv` whose body reads the request + writes a reply; compile + deploy
     verified by the same native e2e. Inspecting/compiling the emitted Rust caught +
-    fixed source-vs-plan-prefixed id bugs + two doubled-brace bugs. **Remaining in
-    W.5.3:** (1) **action** dispatch — needs a *model* extension, not just more
-    trampolines: goal/cancel callbacks return `GoalResponse`/`CancelResponse`
-    enums (not a CDR reply via the sink), and an action has a deferred
-    result/feedback lifecycle the void `on_callback` can't express — a focused
-    design (how a no_std component expresses the action lifecycle); (2) multi-callback
-    shared state (single-callback-owns-state model today); (3) no_std service
-    (`static mut` instead of `Box::leak`).)*
+    fixed source-vs-plan-prefixed id bugs + two doubled-brace bugs.
+
+    **Action lifecycle model — characterized + decision half DONE** (`949ca7528`).
+    Actions split into two halves with very different constraints:
+    - **Decision half (DONE):** goal/cancel callbacks return
+      `GoalResponse`/`CancelResponse` enums (not a CDR reply). `CallbackCtx` gains a
+      decision sink — `with_goal_decision` / `with_cancel_decision` +
+      `set_goal_response` / `set_cancel_response`; the body decides accept/reject,
+      the (pending) generated goal/cancel trampoline returns `*out`. Decisions need
+      **no executor**, so they wire like the service trampoline (an `ActionCtx`
+      `(state, resolver)` + goal/cancel trampolines). Unit-tested
+      (`callback_ctx_decision_sink`).
+    - **Execution half — the architectural wall:** `ActionServerRawHandle::publish_feedback_raw`
+      / `complete_goal_raw` both take **`&mut Executor`**, but callbacks fire
+      *inside* `spin_once` with the executor already borrowed → a body **cannot**
+      publish feedback or complete a goal from a callback (re-entrancy — unlike
+      publishers, which are self-contained). Result/feedback are also *deferred*
+      (an action runs over many spins). So the execution half needs a **new
+      component execution-tick hook** — a per-spin `Component::tick(&mut TickCtx)`
+      that runs *between* callback dispatch with executor access (or a deferred
+      action-op queue the executor flushes post-dispatch, like the publish-queue
+      idea but for feedback/complete which genuinely need the executor). This is a
+      distinct model addition, not a `CallbackCtx` method; **deferred**.
+    - **Remaining action codegen:** emit the goal/cancel decision trampolines
+      (mirrors the service `SvcCtx`/trampoline, gated on `uses_std`) + accepted =
+      noop until the tick hook lands.
+
+    Other W.5.3 remainders: multi-callback shared state (single-callback-owns-state
+    model today); no_std service (`static mut` instead of `Box::leak`).)*
   - **W.5.4 — E2E proof (compile→run).** `demo_pkg` publishes from its timer body;
     a native deploy run shows real data on the wire. **Blocked in this sandbox** on
     `play_launch_parser` (the plan→build e2e tool — a pip/repo binary not installed;
