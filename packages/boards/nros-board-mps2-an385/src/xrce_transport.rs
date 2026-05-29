@@ -57,27 +57,41 @@ unsafe extern "C" fn xrce_write(_user_data: *mut c_void, buf: *const u8, len: us
     if written == len { 0 } else { -1 }
 }
 
-/// XRCE `read`. Pull up to `len` bytes into `buf`. The CMSDK UART is
-/// polled (no timer-driven timeout); XRCE's `timeout_ms` is honoured by
-/// the existing serial poll budget (`set_recv_timeout_ms` on hosted
-/// targets; bare-metal CMSDK is busy-poll non-blocking, so a 0/0 return
-/// is the natural "no data yet" signal XRCE retries on). Returns the
-/// non-negative byte count on success.
+/// XRCE `read`. Poll the CMSDK UART for up to `timeout_ms` waiting for
+/// the first byte; once any data arrives, return what's available.
+/// Returns the non-negative byte count on success, `0` on timeout (the
+/// XRCE custom-transport contract treats `0` as a clean "no data" signal
+/// the session loop retries on).
+///
+/// The wait is a busy poll against `clock_ms` — bare-metal mps2-an385 has
+/// no scheduler to yield to; the session loop is single-threaded and the
+/// CPU is dedicated. Without this active wait the handshake fails:
+/// `CmsdkUart::read` is non-blocking, so a naive `return n as i32` returns
+/// `0` immediately on every call, and XRCE's per-call timeout budget never
+/// actually waits for `InitAck` to flow back through socat.
 #[allow(static_mut_refs)]
 unsafe extern "C" fn xrce_read(
     _user_data: *mut c_void,
     buf: *mut u8,
     len: usize,
-    _timeout_ms: u32,
+    timeout_ms: u32,
 ) -> i32 {
     if buf.is_null() || len == 0 {
         return 0;
     }
     // SAFETY: same reasoning as `xrce_write` for the buffer + UART access.
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, len) };
-    let n = unsafe { UART_DEVICE.assume_init_mut().read(slice) };
-    // CmsdkUart::read never returns a value > buf.len(), so the cast is safe.
-    n as i32
+    let deadline = nros_platform_mps2_an385::clock::clock_ms().saturating_add(timeout_ms as u64);
+    loop {
+        let n = unsafe { UART_DEVICE.assume_init_mut().read(slice) };
+        if n > 0 {
+            return n as i32;
+        }
+        if nros_platform_mps2_an385::clock::clock_ms() >= deadline {
+            return 0;
+        }
+        core::hint::spin_loop();
+    }
 }
 
 /// Phase 207.2 — return an `NrosRmwXrceTransportOps` bound to the board's

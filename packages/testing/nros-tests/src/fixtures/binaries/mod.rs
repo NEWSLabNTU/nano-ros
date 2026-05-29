@@ -84,6 +84,9 @@ static QEMU_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-serial-listener binary
 static QEMU_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 207 — cached path to the bare-metal XRCE talker binary.
+static QEMU_TALKER_XRCE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the esp32-qemu-talker binary (ELF)
 static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1256,6 +1259,32 @@ pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
 pub fn qemu_serial_listener_binary() -> PathBuf {
     build_qemu_serial_listener()
         .expect("Failed to build qemu-serial-listener")
+        .to_path_buf()
+}
+
+/// Phase 207 — build the bare-metal XRCE talker (cached). Wraps the same
+/// `build_example` path the serial-talker uses; the prebuilt at
+/// `target/.../<profile>/qemu-talker-xrce` is checked, not rebuilt
+/// (`just qemu build-fixtures` / `cargo build --profile <p>` is the build
+/// step, this is the resolve step).
+pub fn build_qemu_talker_xrce() -> TestResult<&'static Path> {
+    QEMU_TALKER_XRCE_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/talker-xrce",
+                "qemu-talker-xrce",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the qemu-talker-xrce binary path.
+#[rstest::fixture]
+pub fn qemu_talker_xrce_binary() -> PathBuf {
+    build_qemu_talker_xrce()
+        .expect("Failed to build qemu-talker-xrce")
         .to_path_buf()
 }
 

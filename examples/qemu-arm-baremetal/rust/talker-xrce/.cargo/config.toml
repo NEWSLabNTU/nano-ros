@@ -18,7 +18,7 @@ ZPICO_NO_SMOLTCP = "1"
 NROS_LINK_IP = "0"
 # Phase 204.5 — zenoh-pico tcp/serial client working set is small; shrink the
 # 64 KB default static heap.
-NROS_HEAP_SIZE = "8192"
+NROS_HEAP_SIZE = "32768"
 
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"

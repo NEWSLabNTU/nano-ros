@@ -14,13 +14,14 @@
 use nros_tests::{
     assert_output_contains, assert_output_excludes, count_pattern,
     fixtures::{
-        QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker,
-        build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
-        build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
-        build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
-        build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_wcet_bench,
+        QemuProcess, SocatPtyPair, XrceSerialAgent, ZenohRouter, build_qemu_bsp_listener,
+        build_qemu_bsp_talker, build_qemu_lan9118, build_qemu_rtic_action_client,
+        build_qemu_rtic_action_server, build_qemu_rtic_listener, build_qemu_rtic_mixed_listener,
+        build_qemu_rtic_mixed_talker, build_qemu_rtic_service_client,
+        build_qemu_rtic_service_server, build_qemu_rtic_talker, build_qemu_serial_listener,
+        build_qemu_serial_talker, build_qemu_talker_xrce, build_qemu_wcet_bench,
         is_arm_toolchain_available, is_qemu_available, is_socat_available, parse_test_results,
-        qemu_binary, require_zenoh_pico_arm,
+        qemu_binary, require_xrce_agent, require_zenoh_pico_arm,
     },
     platform, wait_for_port,
 };
@@ -427,6 +428,65 @@ fn test_qemu_serial_pubsub_e2e() {
 
     assert!(received > 0, "Serial listener received 0 messages");
     assert!(published > 0, "Serial talker published 0 messages");
+}
+
+// =============================================================================
+// Phase 207 — Bare-metal XRCE E2E (MPS2-AN385 + CMSDK UART + MicroXRCEAgent)
+// =============================================================================
+
+/// Phase 207.4 — boot the bare-metal `talker-xrce` firmware in QEMU, run
+/// `MicroXRCEAgent serial` on the socat-paired PTY, assert the talker
+/// reaches `Published:` (proves the XRCE session opened against the agent
+/// + the publisher write succeeded — there's no `listener-xrce` shipped
+/// today, so the agent-side accept is the closing edge).
+///
+/// Architecture:
+///   socat pty pair: client0.pty  ↔  agent0.pty
+///   QEMU UART0  ── client0.pty ──╫── agent0.pty ── MicroXRCEAgent serial
+#[test]
+fn test_qemu_xrce_pubsub_e2e() {
+    require_arm_toolchain();
+    require_qemu();
+    if !is_socat_available() {
+        nros_tests::skip!("socat not found");
+    }
+    if !require_xrce_agent() {
+        nros_tests::skip!("MicroXRCEAgent not available (run `nros setup --rmw xrce`)");
+    }
+
+    let talker_bin = build_qemu_talker_xrce().expect("Failed to build talker-xrce");
+
+    // Start the XRCE serial agent first (socat PTY pair + MicroXRCEAgent on
+    // one end). The talker connects to the other end.
+    eprintln!("Starting MicroXRCEAgent on socat PTY pair...");
+    let agent = XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent");
+    let client_pty = agent.client_pty_path(0).to_string();
+    eprintln!("XRCE client PTY: {}", client_pty);
+
+    // Brief delay for the agent to open its PTY end + initialize.
+    std::thread::sleep(Duration::from_secs(1));
+
+    // Boot the talker on the client PTY.
+    eprintln!("Starting talker-xrce QEMU...");
+    let mut talker = QemuProcess::start_mps2_an385_with_serial(talker_bin, &client_pty)
+        .expect("Failed to start talker-xrce QEMU");
+
+    let talker_output = talker
+        .wait_for_output_pattern("Published:", Duration::from_secs(60))
+        .unwrap_or_default();
+
+    talker.kill();
+    drop(agent);
+
+    eprintln!("Talker output:\n{}", talker_output);
+
+    let published = count_pattern(&talker_output, "Published:");
+    eprintln!("Bare-metal XRCE QEMU: published={}", published);
+
+    assert!(
+        published > 0,
+        "talker-xrce never published — the XRCE session likely did not open against the agent"
+    );
 }
 
 // =============================================================================

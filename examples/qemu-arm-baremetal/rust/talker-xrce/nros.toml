@@ -5,6 +5,5 @@
 domain_id = 0
 
 [[transport]]
-kind    = "serial"
-baudrate = 115200
-locator = "serial/UART_0#baudrate=115200"
+kind    = "custom"
+locator = "custom://uart"

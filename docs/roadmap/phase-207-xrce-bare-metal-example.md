@@ -185,21 +185,68 @@ allocs). So (c) "vendor static-alloc config" turned out to be moot — only (b)
 - **Files:** `packages/drivers/nros-baremetal-common/src/libc_stubs.rs`,
   `packages/platforms/nros-platform-mps2-an385/src/libc_stubs.rs`.
 
-### 207.4 — E2E test against `MicroXRCEAgent` over a socat PTY bridge
+### 207.4 — E2E test against `MicroXRCEAgent` — [~] harness landed; handshake debug open
 
-A new `nros-tests` integration analogous to `test_qemu_serial_pubsub_e2e`
-(zenoh), but exercising the XRCE agent end of the bridge.
+**Landed (2026-05-30):**
 
-- [ ] `test_qemu_xrce_pubsub_e2e` in `packages/testing/nros-tests/tests/emulator.rs`
-      — start `MicroXRCEAgent` on a socat PTY pair, launch the talker-xrce
-      firmware on the matching QEMU PTY, assert at least one
-      `Published`/`Received` line (or a ROS-side subscriber count).
-- [ ] Fixture: prebuilt talker-xrce + (later) listener-xrce, mirroring the
-      serial fixture pattern.
-- [ ] Skip cleanly when ARM toolchain / qemu / `socat` / `MicroXRCEAgent`
-      absent; pass under `nros-fast-release` like the serial pair.
+- [x] **Fixture builder** `build_qemu_talker_xrce` + rstest `qemu_talker_xrce_binary`
+      in `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`. Pattern
+      mirrors `build_qemu_serial_talker`.
+- [x] **`test_qemu_xrce_pubsub_e2e`** in
+      `packages/testing/nros-tests/tests/emulator.rs`: start `XrceSerialAgent::start(1)`
+      (socat PTY pair + `MicroXRCEAgent serial -D <pty> -b 115200`), boot
+      talker-xrce on the matching client PTY via
+      `QemuProcess::start_mps2_an385_with_serial`, wait for `Published:`,
+      assert > 0. Skips cleanly on missing arm toolchain / qemu / socat /
+      agent.
+- [x] **`xrce_read` blocking-poll fix.** First test surfaced that the
+      naive non-blocking `CmsdkUart::read` returned `0` immediately, so XRCE's
+      per-call timeout budget never actually waited for `InitAck`. Now polls
+      against `nros_platform_mps2_an385::clock::clock_ms` up to `timeout_ms`.
+- [x] **Locator fix.** `nros.toml` switched `serial/UART_0#...` → `custom://uart`.
+      `xrce_session_open`'s `locator_is_custom(...)` matches only the
+      `custom://` prefix; the previous `serial/...` locator on `target_os =
+      "none"` (no `UCLIENT_PLATFORM_POSIX`) fell into the UDP-init `else`
+      branch and failed before reaching the custom-transport install — that
+      was the first `ConnectionFailed`.
+
+**Residual — XRCE session handshake fails fast.** Even with the
+locator + blocking-read fixes, `uxr_create_session_retries` exhausts its
+retries in ~2 s and returns false → `Executor::open` → `Transport(ConnectionFailed)`.
+`xrce_custom_transport_install` is armed (`set_custom_transport_ops` returned
+OK; all 4 callbacks non-null; HDLC framing = true on both sides), so the
+write path SHOULD push `InitSyn` through `socat` and the read path SHOULD
+block waiting for `InitAck`. Symptoms:
+
+- Test runs to ~2 s wall-clock then fails (matches a handful of retries with
+  short per-attempt timeouts).
+- No `Published:` line in the QEMU semihosting output — talker exits before
+  the publish loop.
+- Hosted `test_xrce_serial_pubsub` (`tests/xrce.rs`) — same agent, same
+  socat pattern — passes, so the agent + PTY bridge are not the issue.
+
+Next debug edges (not landed):
+
+- [ ] Capture byte-level traffic on the PTYs (e.g. socat tee, or `MicroXRCEAgent
+      -v 6` for verbose handshake logging) to determine whether the agent
+      sees `InitSyn` (→ talker-side write/HDLC bug) or sends `InitAck`
+      that never reaches the talker (→ talker-side read/timing bug).
+- [ ] Compare against the hosted `test_xrce_serial_pubsub`'s write/read
+      timing: hosted XRCE uses `transport_posix_serial.c` which blocks via
+      `poll()`; the bare-metal `xrce_read` busy-polls `clock_ms` (could
+      under-yield to the QEMU virtual time advance under `-icount shift=auto`).
+- [ ] Consider raising `XRCE_SESSION_CREATION_RETRIES` and the per-retry
+      timeout for the bare-metal path while debugging.
+
+The 207.5 footprint measurements are **independent of this open item** —
+session-open or not, the binary still links + loads, and the measured
+flash + RAM are real.
+
 - **Files:** `packages/testing/nros-tests/tests/emulator.rs`,
-  `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`.
+  `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`,
+  `packages/boards/nros-board-mps2-an385/src/xrce_transport.rs` (blocking-poll
+  `xrce_read`), `examples/qemu-arm-baremetal/rust/talker-xrce/nros.toml`
+  (`custom://` locator).
 
 ### 207.5 — Measure flash + RAM; close Phase 204.5's XRCE figure — [x] DONE (2026-05-30)
 
