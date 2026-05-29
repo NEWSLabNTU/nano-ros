@@ -106,9 +106,15 @@ blockers **outside the nextest run**:
 Also landed this round:
 - **zephyr-shell** now resolves the sibling `../nano-ros-workspace` (the
   canonical workspace path), so it **passes** instead of skipping (`86e15bbab`).
-- **nuttx-make** folded into `just nuttx build-fixtures`; the separate
-  `build-all-full` removed, so a single `build-all` stages the
-  `nuttx_make_e2e` kernel ELF.
+- **nuttx-make**: `build-all-full` removed (the make path is now an explicit
+  opt-in `just nuttx build-fixtures-make`). Attempting to fold it into
+  `build-all` surfaced that the make fixture is **not buildable on a clean
+  tree**: (a) it never generated `app_config.h` for config-less cpp examples —
+  **fixed** (always generate, gen-app-config emits defaults); (b) it then fails
+  to link — the C/C++ examples need `libnros_c.a` for `armv7a-nuttx-eabihf`,
+  the **unsolved tier-3 nros-c-on-NuttX cross-build** (cmake skips `nros-c` for
+  NuttX, Phase 160.D). So it stays opt-in; `nuttx_make_e2e` skips until that
+  cross-build lands.
 
 **Staleness caveat (important for valid runs):** the zephyr fixture resolver
 treats a fixture older than its sources as a **hard failure** ("Zephyr fixture
@@ -163,7 +169,9 @@ regressions.
 - [x] `test-all` miri step green (clock_gettime gated)
 - [x] stale `_test-orchestration-e2e` call removed
 - [x] zephyr-shell passes (sibling-workspace resolver)
-- [x] nuttx-make staged by `build-all` (build-all-full removed)
+- [x] `build-all-full` removed (make path is opt-in `just nuttx build-fixtures-make`)
+- [x] make-fixture cpp `app_config.h` always generated (one of its gaps)
+- [ ] nuttx-make linkable in `build-all` — needs the tier-3 nros-c-on-NuttX cross-build (cmake skips nros-c for NuttX); make path stays opt-in until then
 - [x] px4 template — **fixed.** Root cause: the `[source.px4-autopilot]` pin
       `ecfe44a` (1.15.x) lags PX4's `main` and isn't an advertised ref, so
       `git submodule update --depth 1` (fetches the branch tip, not the SHA)

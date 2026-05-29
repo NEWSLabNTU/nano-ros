@@ -186,11 +186,12 @@ build-fixtures:
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx c zenoh
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
-    # Also stage the native NuttX external-app make path (the kernel ELF with
-    # all examples linked in) so a single `build-all` produces every fixture
-    # `test-all` needs — including `nuttx_make_e2e`. (Formerly the separate
-    # `build-all-full`.)
-    just nuttx build-fixtures-make
+    # NOTE: the native external-app make path (`build-fixtures-make`, the
+    # `nuttx_make_e2e` kernel ELF) is intentionally NOT folded in here: it links
+    # the C/C++ examples against `libnros_c.a` built for armv7a-nuttx-eabihf,
+    # which is the unsolved tier-3 nros-c-on-NuttX cross-build (cmake skips
+    # `nros-c` for NuttX — Phase 160.D). Until that lands, the make fixture
+    # can't link, so it stays an explicit opt-in: `just nuttx build-fixtures-make`.
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
@@ -322,10 +323,11 @@ build-fixtures-make:
     ( cd "$nuttx_dir" && make )
     echo "NuttX external-app build complete. Binary: $nuttx_dir/nuttx"
 
-# Build every NuttX tier, including the native external-app make path (the
-# `nuttx_make_e2e` kernel ELF). `build-fixtures` now folds in
-# `build-fixtures-make`, so this single target stages everything `test-all`
-# needs — no separate `build-all-full`.
+# Build the standard NuttX example + fixture tiers. The native external-app
+# make path (`build-fixtures-make`, the `nuttx_make_e2e` kernel ELF) is a
+# separate opt-in — it can't link until the tier-3 nros-c-on-NuttX cross-build
+# is solved (see the note in `build-fixtures`). `build-all-full` was removed;
+# run `just nuttx build-fixtures-make` explicitly when that path is wanted.
 [group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
