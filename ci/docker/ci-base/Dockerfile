@@ -49,7 +49,7 @@ ENV PATH=/usr/local/cargo/bin:$PATH
 # `rustfmt-preview ... conflict bin/cargo-fmt`). Baking the full set = no runtime
 # install. Keep in lockstep with rust-toolchain.toml.
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path \
-        -c rustfmt clippy rust-src llvm-tools \
+        -c rustfmt,clippy,rust-src,llvm-tools \
     && rustup target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
@@ -62,7 +62,7 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
 # sizes`, nightly-only target adds). Same anti-race rationale as stable. Bump in
 # lockstep with the pin.
 RUN rustup toolchain install nightly-2026-04-11 --profile minimal \
-        -c rustfmt miri rust-src llvm-tools \
+        -c rustfmt -c miri -c rust-src -c llvm-tools \
     && rustup +nightly-2026-04-11 target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
