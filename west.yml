@@ -44,10 +44,14 @@ manifest:
           # Tools
           - net-tools
 
-    # Rust language support for Zephyr
+    # Rust language support for Zephyr. Phase 199.2 — pin a specific SHA (not
+    # `main`, which drifts): the support unit is the (zephyr × zephyr-lang-rust)
+    # pair, so the 3.7 LTS line freezes the zephyr-lang-rust rev `main` resolved
+    # to (zephyr-lang-rust is untagged — no Zephyr-version release to pin). Bump
+    # deliberately; see docs/development/zephyr-version-support.md.
     - name: zephyr-lang-rust
       remote: zephyrproject-rtos
-      revision: main
+      revision: 404fcefdbab0f2711cd342a1fab9d2eda52a1ba9
       path: modules/lang/rust
 
   self:

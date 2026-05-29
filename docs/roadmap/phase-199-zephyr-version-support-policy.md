@@ -74,10 +74,13 @@ makes the *pair* the unit of support.
       zephyr-lang-rust's range; stable-surfaces-vs-churn; the per-line dispatch;
       and the add-a-line checklist (199.5, folded in). Cross-linked from `CLAUDE.md`
       (Build) + the `just/zephyr.just` version-selector header.
-- [ ] **199.2 — Make `west-<ver>.yml` pin the pair explicitly.** Today the
-      manifests pin zephyr + `zephyr-lang-rust: main`. Pin a *specific*
-      lang-rust revision per line (reproducible; `main` drifts). Each
-      `west-<ver>.yml` = `(zephyr@<rev>, zephyr-lang-rust@<rev>)` known-good pair.
+- [x] **199.2 — Pin the pair explicitly. DONE** (2026-05-29). `west.yml` (3.7
+      LTS) now pins `zephyr-lang-rust` to the SHA `main` resolved to
+      (`404fcefd…`) instead of the drifting `revision: main`;
+      `west-4.4.yml` was already pinned (`a763400f…`). zephyr-lang-rust is
+      untagged (no Zephyr-version release to pin), so a SHA is the only handle —
+      each `west-<line>.yml` is now a reproducible `(zephyr@<rev>,
+      zephyr-lang-rust@<rev>)` pair; bump deliberately.
 - [x] **199.3 — Version-dispatched patch sets. DONE** (2026-05-29). The inline
       `if NROS_ZEPHYR_VERSION = 4.4 … else …` patch branch in `just/zephyr.just`
       is replaced by a single dispatcher: `bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh
@@ -119,8 +122,8 @@ makes the *pair* the unit of support.
 - [ ] `docs/development/zephyr-version-support.md` defines the
       `(zephyr × zephyr-lang-rust)` contract, the 3.7 floor, the LTS+rolling
       window, and the add-a-version checklist; CLAUDE.md + `just/zephyr.just` link it.
-- [ ] Every `west-<ver>.yml` pins a specific (not `main`) zephyr-lang-rust
-      revision — reproducible pairs.
+- [x] Every `west-<ver>.yml` pins a specific (not `main`) zephyr-lang-rust
+      revision — reproducible pairs (199.2).
 - [ ] Version-specific patches live under `scripts/zephyr/patches/<version>/`
       behind one applier; `just zephyr setup` works for each supported line off a
       fresh clone (with 197.1).
