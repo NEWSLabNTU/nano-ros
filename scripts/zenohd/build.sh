@@ -37,10 +37,30 @@ if ! command -v cargo &>/dev/null; then
     exit 1
 fi
 
-# Check zenoh submodule
+# Prefer the prebuilt zenohd from the nros SDK store (provisioned by
+# `nros setup … --rmw zenoh`) — avoids rebuilding the large zenoh tree from
+# source and the source submodule entirely. Publish it at build/zenohd/zenohd
+# where tests + recipes look.
+NROS_STORE="${NROS_HOME:-$HOME/.nros}/sdk"
+store_zenohd="$(ls -d "$NROS_STORE"/zenohd/*/bin/zenohd 2>/dev/null | tail -1 || true)"
+if [ -n "$store_zenohd" ] && [ -x "$store_zenohd" ]; then
+    echo "Using prebuilt zenohd from the nros store: $store_zenohd"
+    mkdir -p "$BUILD_DIR"
+    tmp="$BUILD_DIR/zenohd.$$"
+    install -m 0755 "$store_zenohd" "$tmp"
+    mv -f "$tmp" "$BUILD_DIR/zenohd"
+    "$BUILD_DIR/zenohd" --version
+    exit 0
+fi
+
+# No store zenohd — build from source. Ensure the submodule is checked out
+# (auto-init on a fresh/deinit'd tree).
 if [ ! -f "$ZENOH_DIR/Cargo.toml" ]; then
-    echo "Error: zenoh submodule not found at $ZENOH_DIR"
-    echo "Run: git submodule update --init third-party/zenoh/zenoh"
+    echo "zenoh submodule not checked out — initializing third-party/zenoh/zenoh..."
+    git -C "$REPO_ROOT" submodule update --init third-party/zenoh/zenoh
+fi
+if [ ! -f "$ZENOH_DIR/Cargo.toml" ]; then
+    echo "Error: zenoh submodule still missing at $ZENOH_DIR" >&2
     exit 1
 fi
 

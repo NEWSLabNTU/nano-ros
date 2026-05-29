@@ -246,7 +246,6 @@ build-all-jobserver:
     echo "  log-dir=$log_dir"
     echo "build-all: prefetching Cargo registries before broad fanout"
     nros_cargo_fetch_root
-    nros_cargo_fetch_codegen
     # Rust example/fixture codegen MUST precede the standalone-manifest
     # prefetch: those manifests carry `[patch.crates-io]` paths into their
     # gitignored `generated/<pkg>/` crates, and a clean tree has no
@@ -259,8 +258,8 @@ build-all-jobserver:
     just generate-bindings
     echo "build-all: prefetching standalone Cargo manifests"
     nros_cargo_fetch_standalone_manifests
-    echo "build-all: prebuilding host nros-codegen"
-    nros_cargo_build_codegen_c
+    echo "build-all: resolving host nros codegen tool"
+    nros_cargo_ensure_codegen_c
     # NROS_JOBSERVER=1 tells the recipes to drop their explicit -j /
     # --parallel so cargo / ninja / cmake inherit the fifo pool. Clear any
     # stale inherited jobserver env first; the top-level make below is the

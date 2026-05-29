@@ -297,6 +297,11 @@ build-fixtures:
     # Phase 117.11/13 — add Cortex-R AArch32 (ARMv7-R / ARMv8-R)
     # support to zephyr-lang-rust for the NXP S32Z R52 target.
     bash ./scripts/zephyr/cortex-r-rust-patch.sh "$workspace"
+    # Forward each example's per-RMW `EXTRA_CARGO_ARGS` (set by its
+    # CMakeLists from the Kconfig RMW overlay) into the cargo build, so a
+    # non-default RMW (xrce / cyclonedds) compiles only its own backend
+    # instead of the crate's default `rmw-zenoh`. Idempotent.
+    bash ./scripts/zephyr/cargo-features-patch.sh "$workspace"
     # Phase 97.4.zephyr-native_sim — patch upstream Zephyr's NSOS
     # to forward `IPPROTO_IP` setsockopt (incl. `IP_ADD_MEMBERSHIP`).
     # Without this the listener can't join `239.255.0.1` host-side
@@ -308,12 +313,6 @@ build-fixtures:
     # minimal toolchain `compiler` property set without tripping the
     # llext-edk gen-expr evaluator.
     bash ./scripts/zephyr/llext-edk-conditional-patch.sh "$workspace"
-    # Phase 200.1 — make zephyr-lang-rust's rust_cargo_application() honor the
-    # example's per-RMW `EXTRA_CARGO_ARGS` (the pinned SHA hard-codes
-    # `cargo build` and ignores it, so every rust build compiled the default
-    # `rmw-zenoh` feature regardless of the Kconfig RMW → undefined zpico_* in
-    # xrce/cyclonedds builds). Idempotent.
-    bash ./scripts/zephyr/rust-cargo-extra-args-patch.sh "$workspace"
     fi
     echo "Building Zephyr test fixtures..."
     # Phase 140 — Zephyr examples consume nano-ros via the Phase 139

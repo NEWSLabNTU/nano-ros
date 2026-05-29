@@ -105,6 +105,12 @@ build-fixtures:
     if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
         echo "NuttX skip: NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
     fi
+    # Provision the NuttX kernel first: each example's build.rs compiles
+    # platform.c (`#include <nuttx/config.h>`) and links staging/libc.a, so
+    # the configured kernel must exist before the cargo fixtures run. On a
+    # clean tree `just clean` removed config.h. Idempotent — `just nuttx
+    # build` skips when staging/libc.a is already present.
+    just nuttx build
     echo "Building NuttX test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi

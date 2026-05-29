@@ -422,11 +422,11 @@ else
     log_info "Skipping Cortex-A9 Rust patch (manifest $MANIFEST is not the 3.7 line)"
 fi
 
-# Phase 200.1 — arch-blind: teach zephyr-lang-rust's rust_cargo_application()
-# to forward the example's per-RMW EXTRA_CARGO_ARGS to cargo build + clippy
-# (the pinned SHA ignores it, defaulting every rust build to rmw-zenoh).
-log_info "Applying rust EXTRA_CARGO_ARGS patch..."
-bash "$NANO_ROS_ROOT/scripts/zephyr/rust-cargo-extra-args-patch.sh" "$WORKSPACE_DIR"
+# Forward per-example EXTRA_CARGO_ARGS (per-RMW Cargo feature selection) into
+# zephyr-lang-rust's cargo build — so non-default RMW examples compile only
+# their backend. Arch/version-blind; idempotent.
+log_info "Applying Rust cargo-features pass-through patch..."
+bash "$NANO_ROS_ROOT/scripts/zephyr/cargo-features-patch.sh" "$WORKSPACE_DIR"
 
 # Install Zephyr Python dependencies
 log_info "Installing Zephyr Python dependencies..."
