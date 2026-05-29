@@ -53,7 +53,7 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
     && rustup target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
-        riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf \
+        riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf riscv64gc-unknown-none-elf \
     && cargo install cargo-nextest --locked
 
 # Pinned nightly (tools/rust-toolchain.toml `nightly-2026-04-11`) baked WITH its
