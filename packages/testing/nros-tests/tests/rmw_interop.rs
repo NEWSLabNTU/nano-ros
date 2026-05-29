@@ -96,8 +96,7 @@ fn test_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 listener: {}", e);
-            return;
+            nros_tests::skip!("ROS 2 listener could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 
@@ -167,9 +166,8 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 publisher: {}", e);
             listener.kill();
-            return;
+            nros_tests::skip!("ROS 2 publisher could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 
@@ -407,8 +405,7 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 listener: {}", e);
-            return;
+            nros_tests::skip!("ROS 2 listener could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 
@@ -459,8 +456,7 @@ fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server
     let _ = server.wait_for_output_pattern("Waiting for action", Duration::from_secs(10));
 
     if !server.is_running() {
-        eprintln!("[FAIL] Action server exited early");
-        return;
+        panic!("native-rs-action-server (the nros side under test) exited early before the action-ready pattern");
     }
 
     // Start ROS 2 action client
@@ -474,9 +470,8 @@ fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 action client: {}", e);
             server.kill();
-            return;
+            nros_tests::skip!("ROS 2 action client could not start (requires ros-humble-example-interfaces): {}", e);
         }
     };
 
@@ -530,9 +525,7 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
     let mut ros2_server = match Ros2Process::action_server_fibonacci(&locator, DEFAULT_ROS_DISTRO) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 action server: {}", e);
-            eprintln!("[INFO] This test requires ros-humble-example-interfaces");
-            return;
+            nros_tests::skip!("ROS 2 action server could not start (requires ros-humble-example-interfaces): {}", e);
         }
     };
 
@@ -810,8 +803,7 @@ fn test_service_nano_server_ros2_client(
     let _ = server.wait_for_output_pattern("Waiting for service", Duration::from_secs(5));
 
     if !server.is_running() {
-        eprintln!("[FAIL] Service server exited early");
-        return;
+        panic!("native-rs-service-server (the nros side under test) exited early before the service-ready pattern");
     }
 
     // Call service using ROS 2 CLI
@@ -825,9 +817,8 @@ fn test_service_nano_server_ros2_client(
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 service call: {}", e);
             server.kill();
-            return;
+            nros_tests::skip!("ROS 2 service call could not start (missing ROS 2 tooling?): {}", e);
         }
     };
 
@@ -872,8 +863,7 @@ fn test_service_ros2_server_nano_client(
     let mut ros2_server = match Ros2Process::add_two_ints_server(&locator, DEFAULT_ROS_DISTRO) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 service server: {}", e);
-            return;
+            nros_tests::skip!("ROS 2 service server could not start (requires ros-humble-example-interfaces): {}", e);
         }
     };
 
@@ -975,8 +965,7 @@ fn test_qos_matrix(
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 subscriber: {}", e);
-            return;
+            nros_tests::skip!("ROS 2 subscriber could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 
@@ -1049,8 +1038,7 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 subscriber: {}", e);
-            return;
+            nros_tests::skip!("ROS 2 subscriber could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 
@@ -1116,8 +1104,7 @@ fn test_throughput_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathB
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 subscriber: {}", e);
-            return;
+            nros_tests::skip!("ROS 2 subscriber could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 

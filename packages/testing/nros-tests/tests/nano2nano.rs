@@ -169,8 +169,7 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
         .is_err()
         && !listener.is_running()
     {
-        eprintln!("[INFO] Listener exited early - peer mode may not be supported");
-        return;
+        nros_tests::skip!("peer mode may not be supported — listener exited early");
     }
 
     // Start talker in peer mode
@@ -185,8 +184,7 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
         .is_err()
         && !talker.is_running()
     {
-        eprintln!("[INFO] Talker exited early - peer mode may not be supported");
-        return;
+        nros_tests::skip!("peer mode may not be supported — talker exited early");
     }
 
     // Wait for listener to receive messages (event-driven)

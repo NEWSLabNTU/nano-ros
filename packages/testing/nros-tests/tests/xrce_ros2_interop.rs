@@ -82,8 +82,7 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 DDS listener: {}", e);
-            return;
+            nros_tests::skip!("ROS 2 DDS listener could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 
@@ -179,9 +178,8 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 DDS publisher: {}", e);
             listener.kill();
-            return;
+            nros_tests::skip!("ROS 2 DDS publisher could not start (missing ROS 2 demo nodes / tooling?): {}", e);
         }
     };
 
@@ -263,9 +261,8 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 DDS service call: {}", e);
             server.kill();
-            return;
+            nros_tests::skip!("ROS 2 DDS service call could not start (missing ROS 2 tooling?): {}", e);
         }
     };
 
@@ -342,9 +339,8 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to start ROS 2 DDS action client: {e}");
             server.kill();
-            return;
+            nros_tests::skip!("ROS 2 DDS action client could not start (requires ros-humble-example-interfaces): {e}");
         }
     };
     let ros2_output = ros2_client
@@ -383,8 +379,7 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
         match Ros2DdsProcess::action_server_fibonacci_with_domain(DEFAULT_ROS_DISTRO, domain_id) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Failed to start ROS 2 DDS fibonacci action server: {e}");
-                return;
+                nros_tests::skip!("ROS 2 DDS fibonacci action server could not start (action_tutorials_py not installed?): {e}");
             }
         };
     // Demo server may be absent (action_tutorials_py not installed) — give it a
@@ -435,8 +430,7 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
         match Ros2DdsProcess::add_two_ints_server_with_domain(DEFAULT_ROS_DISTRO, domain_id) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Failed to start ROS 2 DDS add_two_ints server: {e}");
-                return;
+                nros_tests::skip!("ROS 2 DDS add_two_ints server could not start (requires ros-humble-example-interfaces): {e}");
             }
         };
     let _ = ros2_server.wait_for_output(Duration::from_secs(5)); // let it reach "Service server ready"

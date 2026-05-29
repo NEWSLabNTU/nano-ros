@@ -34,18 +34,24 @@ Three gaps remain.
 
 ## Work items
 
-- [ ] **198.1 — Runtime-failure swallow (greenwash on mid-test failure).** A
-      distinct class from the AXIS-1 preconditions: after prerequisites pass, a
-      *runtime* failure is caught and turned into an early `return` that reports
-      PASS. Found in `nros-tests/tests/rmw_interop.rs` (e.g. `:100`/`:172`/`:411`
-      `"Failed to start ROS 2 listener: {e}"` → `return`; `:463`/`:814` `[FAIL]
-      ... exited early` → `return`) and `nano2nano.rs` `:173`/`:189` (`[INFO]
-      ... exited early — peer mode may not be supported` → `return`). Decide
-      per-site: a genuine unmet-capability (e.g. peer mode unsupported) → `skip!`;
-      a real failure (ROS 2 available but the process crashed) → `panic!`/`assert!`
-      (fail loudly). Do **not** blanket-convert — some tolerate known-flaky ROS 2
-      startup; each needs a judgment call. Acceptance: no `[FAIL]`/`Failed to
-      start` path silently returns PASS.
+- [x] **198.1 — Runtime-failure swallow (greenwash on mid-test failure). DONE**
+      (2026-05-29). Classified per-site by *who* failed:
+      - **ROS 2 helper process fails to spawn** → `skip!` (optional ROS 2
+        demo-nodes / `example_interfaces` / tooling not installed; the test gated
+        on `require_ros2()` upfront, so core ROS 2 is present — a missing helper is
+        an unmet capability, not a product failure). Converted in
+        `rmw_interop.rs` (listener ×2, publisher, service-call, service-server,
+        action-client, action-server, subscriber ×3) and `xrce_ros2_interop.rs`
+        (DDS listener/publisher/service-call/action-client/fibonacci-server/
+        add_two_ints-server, 6 sites).
+      - **The nros side under test exits early** → `panic!` (fail loudly):
+        `rmw_interop.rs` `native-rs-action-server` + `native-rs-service-server`
+        "exited early" `[FAIL]` checks.
+      - **Unmet-capability runtime exit** → `skip!`: `nano2nano.rs` peer-mode
+        listener/talker "exited early — peer mode may not be supported".
+      Existing `.kill()` cleanup preserved before each `skip!`. Verified
+      `cargo test -p nros-tests --no-run` clean; a grep for `Failed to start ROS 2`
+      / `[FAIL]` / `exited early` followed by a bare `return;` is now empty.
 
 - [ ] **198.2 — Normalize Zephyr fixture output to the canonical format.** The
       Zephyr talker/listener fixtures emit alt formats — `data=...` (instead of
