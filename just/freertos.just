@@ -140,7 +140,13 @@ build-fixture-extras:
     # domain so its fixtures never collide with other Cyclone fixtures on the
     # derived RTPS ports. talker+listener share (they communicate). freertos=60.
     export NROS_DOMAIN_ID=60
-    for case in talker listener; do
+    # Cyclone descriptor codegen needs a host `idlc` (find_program, Phase 186.3);
+    # skip the cyclonedds fixtures gracefully when it's absent rather than failing
+    # the whole fixture build — mirrors threadx-linux. The zenoh c/cpp/rust
+    # fixtures (the primary coverage) are unaffected. Install a ROS 2 / CycloneDDS
+    # idlc (or set IDLC_EXECUTABLE) to exercise the Cyclone variants.
+    if command -v idlc >/dev/null 2>&1 || [ -x build/cyclonedds/bin/idlc ]; then
+      for case in talker listener; do
         if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
             continue
         fi
@@ -156,7 +162,10 @@ build-fixture-extras:
               -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$(pwd)/scripts/cyclonedds/msg_to_cyclone_idl.py" \
               > /dev/null
         cmake --build examples/qemu-arm-freertos/rust/${case}/build-cyclonedds > /dev/null
-    done
+      done
+    else
+      echo "  → freertos cyclonedds fixtures skipped (no idlc on PATH — install a ROS 2 / CycloneDDS idlc, or set IDLC_EXECUTABLE)"
+    fi
     # Phase 181.5.b — collapsed-shape FreeRTOS C / C++ examples from the SSOT
     # manifest (examples/fixtures.toml). Zenoh-only (no DDS C/C++ siblings
     # existed pre-collapse on FreeRTOS). Per-cell RMW + build-subdir come from

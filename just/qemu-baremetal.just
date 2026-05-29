@@ -8,6 +8,12 @@ LOG_DIR := "test-logs"
 QEMU_PREFIX := absolute_path("build/qemu")
 QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
 
+# Cargo target profile subdir (e.g. `nros-fast-release`, `release`, `debug`) — the
+# fixture ELFs land under target/<triple>/<PROFILE_DIR>/. Must track the profile
+# `build`/`build-fixtures` use (NROS_CARGO_PROFILE, default nros-fast-release), not
+# a hardcoded `release` (the test-basic/wcet/lan9118 paths drifted from it).
+PROFILE_DIR := `bash -c 'source scripts/build/cargo.sh && nros_cargo_target_profile_dir' 2>/dev/null || echo nros-fast-release`
+
 # Provision the project-local patched qemu-system-arm under build/qemu.
 #
 # Phase 187.6: a thin caller of `nros setup` — fetches the prebuilt patched
@@ -170,7 +176,7 @@ test-basic verbose="": build
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel packages/testing/nros-tests/bins/cdr-roundtrip-qemu/target/thumbv7m-none-eabi/release/qemu-rs-test
+            -kernel packages/testing/nros-tests/bins/cdr-roundtrip-qemu/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
 [group("debug")]
@@ -179,7 +185,7 @@ test-wcet verbose="": build
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel packages/testing/nros-bench/wcet-cycles-qemu/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
+            -kernel packages/testing/nros-bench/wcet-cycles-qemu/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
 [group("debug")]
@@ -188,7 +194,7 @@ test-lan9118 verbose="": build
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel packages/testing/nros-tests/bins/lan9118-qemu/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+            -kernel packages/testing/nros-tests/bins/lan9118-qemu/target/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rs-lan9118
 
 # Run all QEMU tests including networked E2E and RTIC
 [group("full-matrix")]
