@@ -172,13 +172,19 @@ build-fixtures:
     # manifest; the platform-wide toolchain / NuttX SDK / codegen-tool -D
     # defs are injected via the shared builder's NROS_CMAKE_EXTRA_DEFS.
     export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
-    # Parallel-safe: the cbindgen headers (nros_generated.h / nros_cpp_ffi.h) are
-    # committed to the source tree (always present on a fresh checkout), so the
-    # parallel c/cpp message-lib compiles find them on `-I .../nros-c/include`
-    # regardless of when each example's nros-c corrosion build runs. build.rs
-    # regenerates them with an atomic write (truncation-safe under parallelism).
-    bash scripts/build/fixtures-build.sh nuttx c zenoh
-    bash scripts/build/fixtures-build.sh nuttx cpp zenoh
+    # The cbindgen headers (nros_generated.h / nros_cpp_ffi.h) are committed to
+    # the source tree, so the c/cpp message-lib compiles always find them on
+    # `-I .../nros-c/include` (build.rs regenerates them with an atomic write).
+    #
+    # Serialize the c/cpp fixtures (NROS_CARGO_FRONTENDS=1): each cmake project's
+    # nros-c/nros-cpp corrosion build runs `cargo +nightly -Z build-std`, and N of
+    # those cold-starting in parallel race rustup's shared downloads dir installing
+    # the SAME toolchain component (`component download failed … could not rename
+    # '…partial'` — rustup's concurrent-install bug; a pre-warm `rustup component
+    # add` doesn't cover it). The rust fixtures above stay parallel (their
+    # build-std is already materialized by the time these run). nuttx-only.
+    NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx c zenoh
+    NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
     # Also stage the native NuttX external-app make path (the kernel ELF with
     # all examples linked in) so a single `build-all` produces every fixture
