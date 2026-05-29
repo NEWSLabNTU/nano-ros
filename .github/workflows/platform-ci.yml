@@ -38,7 +38,10 @@ on:
         default: true
 
 concurrency:
-  group: platform-ci-${{ github.ref }}
+  # Separate push/PR from workflow_dispatch so a build-only push run doesn't cancel
+  # an in-flight on-demand e2e dispatch (they serve different purposes and the e2e
+  # run is long). Within each (ref, event) a newer run still supersedes the older.
+  group: platform-ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
