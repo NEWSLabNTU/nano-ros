@@ -1,5 +1,15 @@
 # nano-ros — Zephyr integration
 
+> **Canonical BYO guide:** the step-by-step user quickstart lives in the book at
+> `book/src/getting-started/integration-zephyr.md` (rendered: *Getting Started →
+> Zephyr (west module)*). It is the single source of truth for the BYO workflow —
+> prerequisites (`nros setup zephyr`), `prj.conf`, build/run, RMW selection, and
+> patches. **This file is the dir-level reference** for the integration shell
+> itself: the `west.yml` import fragment and the patch-delivery mechanics
+> (`west patch` index, the rust/cyclonedds script fallbacks). Where the two
+> overlap, the book is authoritative; keep this file's procedural steps in sync
+> with it (Phase 202.6).
+
 This directory is the Zephyr **integration shell** for nano-ros. A
 downstream "bring-your-own" (BYO) Zephyr workspace imports it so that
 `west update` pulls nano-ros and Zephyr discovers it as a module

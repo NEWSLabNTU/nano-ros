@@ -117,12 +117,27 @@ codegen tooling — none of which a BYO west user invokes.
       by the rust-zephyr work). **Files:** `scripts/zephyr/rust-cargo-extra-args-patch.sh`,
       `west.yml`, `west-4.4.yml`.
 
-- [ ] **202.6 — [P3] Two workspace models + two patch mechanisms = cognitive
-      load.** The story is split across `book/src/getting-started/zephyr.md`
-      (in-tree), `integration-zephyr.md` (BYO), and `integrations/zephyr/README.md`,
-      with `west patch` vs the sed scripts as parallel patch paths. **Fix:** a
-      single BYO quickstart that links the in-tree page as "contributors only", and
-      one patch entry point. **Files:** the three docs above.
+- [x] **202.6 — [P3, mostly DONE] Two workspace models + two patch mechanisms =
+      cognitive load.** Three things were split: in-tree vs BYO pages, and
+      `west patch` vs sed-script patch paths.
+      - **In-tree vs BYO framing — done** (concurrent rewrite): `zephyr.md` now
+        opens "contributor / in-tree workflow" with a callout to the BYO page, and
+        `integration-zephyr.md` opens with a "Contributor path?" callout naming
+        itself "the canonical user entry". The two cross-link cleanly.
+      - **Single BYO source of truth — done:** `integrations/zephyr/README.md`
+        gained a top banner declaring the book's `integration-zephyr.md` the
+        canonical BYO guide and itself the *dir-level reference* (manifest fragment
+        + patch mechanics), so the procedural steps don't fork.
+      - **Single patch entry point — largely subsumed by the model:**
+        `nros setup zephyr --rmw <rmw>` provisions + applies the patches during
+        setup (per the book's version matrix), so the typical user has one command;
+        `west patch` + the rust/cyclonedds scripts are the under-the-hood / advanced
+        BYO fallbacks (documented in the README, 202.3).
+      *Remaining:* reconcile the README's older manual prereq/transport steps (my
+      202.1/202.2 additions) with the book's newer `nros setup zephyr` model — once
+      that model settles (it's the concurrent rust-zephyr/provisioning work's active
+      area). **Files:** `book/src/getting-started/{zephyr,integration-zephyr}.md`,
+      `integrations/zephyr/README.md`.
 
 ## Acceptance
 - [ ] A fresh BYO west workspace (`west init` + the nano-ros import) reaches a
