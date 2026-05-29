@@ -205,6 +205,112 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
 - [ ] **Acceptance:** a per-target LTO recommendation + a measured perf/size delta
       on at least the native + one embedded target.
 
+## End-user compiler-option UX (204.15)
+
+**Problem.** The size/speed levers (204.3/.8/.9/.10/.12/.13/.14) live in five places —
+`Cargo.toml [profile.*]`, `.cargo/config.toml` rustflags, the cc-rs manifest, the
+CMake build type, `[unstable] build-std`. An end user today hand-edits all five.
+Per-example `nros.toml` carries only *runtime* config ([node]/[[transport]]); the
+root deploy `[build]` carries `profile`/`features`/`cfg`. There is **no single
+intent knob**, and no fan-out across the Rust/RMW-C/platform-C layers.
+
+**Design — one intent, fanned out.** Add a single knob to the build config:
+
+```toml
+# root nros.toml (deploy mode) — or [build] in a direct-mode project
+[build]
+optimize = "size"        # "size" | "speed" | "balanced" (default) | "debug"
+# optional fine-grained overrides (escape hatch; rarely needed):
+[build.opt]
+lto        = "thin"      # off | thin | fat
+target_cpu = "cortex-m4" # default: derived from the board/triple
+strip      = true
+```
+
+`nros build` / `nros deploy` is the **single fan-out point** — it already selects
+the cargo profile + features and invokes cargo/cmake/west, so it maps `optimize`
+→ a coherent flag set on every layer:
+
+| `optimize` | cargo profile | RUSTFLAGS | cc-rs (RMW/platform C) | CMake (Cyclone/C++) | build-std |
+|---|---|---|---|---|---|
+| `size` | opt-level=`z`, lto=fat, cu=1, panic=abort, strip | `-Ctarget-cpu=<core>` + `-Clink-arg=-Wl,--gc-sections` | `-Os -ffunction-sections -fdata-sections` | `MinSizeRel` + IPO | `core,alloc` + `panic_immediate_abort` |
+| `speed` | opt-level=3, lto=thin/fat, cu=1 | `-Ctarget-cpu=<core>` | `-O3` | `Release` | (target-dependent) |
+| `balanced` | opt-level=`s`/2 | `-Ctarget-cpu=<core>` | `-O2` | `RelWithDebInfo` | — |
+| `debug` | opt-level=0/1, debug | — | `-Og` | `Debug` | — |
+
+The `<core>` is derived from the board/triple (the C side already arch-tunes;
+this closes the Rust gap, 204.10). The intent also flips the IP-stack feature
+(204.7) + socket-pool defaults (204.2) where the board allows.
+
+**Plain `cargo build` / `cmake` (copy-out example, no `nros`).** Not every user
+goes through `nros build`. So `nros new` scaffolds **named cargo profiles**
+(`[profile.size]`/`[profile.speed]` inheriting `release`) + a per-target
+`.cargo/config.toml` carrying `target-cpu` + `--gc-sections`, so the bare
+toolchain works too: `cargo build --profile size`. The CMake examples gain a
+`-DNROS_OPTIMIZE=size` cache var mapping to the same `MinSizeRel`/IPO/sections.
+
+### 204.15 — `[build].optimize` intent knob + fan-out
+- [ ] Add `optimize` (+ optional `[build.opt]` overrides) to the build config
+      schema; `nros build`/`deploy` maps it to the per-layer flag set above
+      (cargo profile + RUSTFLAGS + cc-rs env + CMake build type + build-std).
+- [ ] `nros new` scaffolds named `size`/`speed` cargo profiles + a target
+      `.cargo/config.toml` so the plain-cargo path honours intent without `nros`.
+- [ ] **Acceptance:** `nros build` of one project at `optimize="size"` vs
+      `"speed"` produces measurably different flash/text on a hosted + an embedded
+      target, with no hand-edits across layers; the plain `cargo build --profile
+      size` matches.
+
+## End-user workflow (simulated)
+
+**Persona A — size-critical STM32F4 over serial.** Wants the smallest flash.
+```toml
+# my_robot/nros.toml
+[build]
+optimize  = "size"
+[node]
+domain_id = 0
+[[transport]]
+kind    = "serial"          # no IP stack (204.7 drops smoltcp + TCP/UDP link C)
+locator = "serial/dev/ttyACM0"
+```
+```
+$ nros build              # one command; fans out:
+  · cargo --profile size  → opt-z, lto=fat, panic=abort, strip
+  · RUSTFLAGS             → -Ctarget-cpu=cortex-m4 -Clink-arg=-Wl,--gc-sections
+  · serial-only           → smoltcp + zenoh IP link C not compiled (204.7) +
+                            dead code gc'd (204.8)
+  · XRCE/zenoh C          → -Os + sections (204.9)
+$ nros build --size-report   # prints text/data/bss + the per-section breakdown
+  text 28 KB  data 4 KB  bss 18 KB   (vs 80 KB / 16 KB / 100 KB ethernet+speed)
+```
+
+**Persona B — perf-critical native bridge.** Wants throughput, size irrelevant.
+```toml
+[build]
+optimize = "speed"          # opt-3, lto=thin, target-cpu=native
+```
+`$ nros build` → release-fast profile; no gc-sections size cost paid; C at `-O3`.
+
+**Persona C — default.** No `[build].optimize` → `balanced` (opt-`s`/`2`,
+target-cpu, no aggressive strip) — sensible middle, today's behaviour but
+target-cpu-tuned.
+
+**Persona D — bare toolchain, no `nros`.** Copies out the example, builds with
+plain cargo:
+```
+$ cargo build --profile size --no-default-features --features serial,rmw-xrce
+```
+The scaffolded `[profile.size]` + `.cargo/config.toml` (target-cpu + gc-sections)
+give the same result without `nros`.
+
+**Escape hatch — power user overrides one lever:**
+```toml
+[build]
+optimize = "size"
+[build.opt]
+lto = "off"                 # e.g. to dodge the rust-lld cross-LTO link issue (204.14)
+```
+
 ## Acceptance (phase)
 
 - [ ] An honest size table in the book: per (transport, backend, platform) flash +
