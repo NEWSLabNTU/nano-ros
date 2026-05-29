@@ -161,12 +161,22 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     message-reading subscription. **Compile + deploy VERIFIED** via the native e2e
     (`fixture_workspace_plans_checks_and_builds` + `deploy_native_self`) with the
     in-repo `play_launch_parser` built + the in-tree SDK env — the generated package
-    builds + boots. Inspecting/compiling the emitted Rust caught + fixed two
-    source-vs-plan-prefixed id bugs + a generated brace bug. **Remaining in W.5.3:**
-    **service/action** dispatch — they take raw C-fn-ptr callbacks (no closure
-    capture), so the trampoline needs a `'static` context for state+resolver (harder
-    than the closure path; the `static`-init mechanism from the original W.5.2 note);
-    plus multi-callback shared state (single-callback-owns-state model today).)*
+    builds + boots. **Service dispatch also DONE** (codegen `32f56ee`): raw service
+    callbacks are non-capturing `extern "C"` fn-ptrs, so the generator emits a
+    `SvcCtx{idx}` holding `(State, Resolver)` `Box::leak`'d into a `'static` context
+    + a `svc_tramp_{idx}` trampoline that rebuilds a `CallbackCtx::with_reply` over
+    the request/response slices, calls `on_callback`, and writes `*resp_len`
+    (gated on `uses_std` — `Box`; no_std keeps the noop). `demo_pkg` gains an
+    `EchoSrv` whose body reads the request + writes a reply; compile + deploy
+    verified by the same native e2e. Inspecting/compiling the emitted Rust caught +
+    fixed source-vs-plan-prefixed id bugs + two doubled-brace bugs. **Remaining in
+    W.5.3:** (1) **action** dispatch — needs a *model* extension, not just more
+    trampolines: goal/cancel callbacks return `GoalResponse`/`CancelResponse`
+    enums (not a CDR reply via the sink), and an action has a deferred
+    result/feedback lifecycle the void `on_callback` can't express — a focused
+    design (how a no_std component expresses the action lifecycle); (2) multi-callback
+    shared state (single-callback-owns-state model today); (3) no_std service
+    (`static mut` instead of `Box::leak`).)*
   - **W.5.4 — E2E proof (compile→run).** `demo_pkg` publishes from its timer body;
     a native deploy run shows real data on the wire. **Blocked in this sandbox** on
     `play_launch_parser` (the plan→build e2e tool — a pip/repo binary not installed;
