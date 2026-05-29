@@ -42,10 +42,13 @@ if ! command -v g++ &>/dev/null && ! command -v clang++ &>/dev/null; then
     exit 1
 fi
 
-# Verify submodule is initialized
+# Ensure the submodule is initialized (auto-init on a fresh/deinit'd tree).
 if [ ! -f "$AGENT_SRC/CMakeLists.txt" ]; then
-    echo "Error: XRCE Agent submodule not initialized at $AGENT_SRC"
-    echo "Run: git submodule update --init third-party/xrce/agent"
+    echo "XRCE Agent submodule not checked out — initializing third-party/xrce/agent..."
+    git -C "$REPO_ROOT" submodule update --init --recursive third-party/xrce/agent
+fi
+if [ ! -f "$AGENT_SRC/CMakeLists.txt" ]; then
+    echo "Error: XRCE Agent submodule still missing at $AGENT_SRC after init" >&2
     exit 1
 fi
 

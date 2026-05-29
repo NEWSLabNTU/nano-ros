@@ -36,7 +36,10 @@ use std::{path::PathBuf, time::Duration};
 fn count_zephyr_received(output: &str) -> usize {
     // All Zephyr listener fixtures (c/cpp/rust) print the canonical
     // `Received: <n>` (Phase 198.2 normalized the rust fixture off `Received[`).
-    output.lines().filter(|line| line.contains("Received:")).count()
+    output
+        .lines()
+        .filter(|line| line.contains("Received:"))
+        .count()
 }
 
 /// Get prebuilt Zephyr talker for native_sim (uses existing binary if available)

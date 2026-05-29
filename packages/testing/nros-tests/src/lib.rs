@@ -368,7 +368,9 @@ pub fn project_root() -> std::path::PathBuf {
 pub fn nros_store_bin(tool: &str, exe: &str) -> Option<std::path::PathBuf> {
     let root = std::env::var_os("NROS_HOME")
         .map(|h| std::path::PathBuf::from(h).join("sdk"))
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".nros/sdk")))?;
+        .or_else(|| {
+            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".nros/sdk"))
+        })?;
     for entry in std::fs::read_dir(root.join(tool)).ok()?.flatten() {
         let cand = entry.path().join("bin").join(exe);
         if cand.is_file() {

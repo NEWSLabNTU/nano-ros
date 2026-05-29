@@ -164,8 +164,8 @@ template <typename S> class Client {
     // callback-style client must NOT be moved after register — the arena holds
     // `this` as the response trampoline context (M3.3.f).
     Client(Client&& other)
-        : executor_(other.executor_), initialized_(other.initialized_),
-          user_fn_(other.user_fn_), user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
+        : executor_(other.executor_), initialized_(other.initialized_), user_fn_(other.user_fn_),
+          user_fn_ctx_(other.user_fn_ctx_), user_ctx_(other.user_ctx_),
           handle_id_(other.handle_id_), callback_mode_(other.callback_mode_) {
         if (other.initialized_ && !other.callback_mode_) {
             nros_cpp_service_client_relocate(other.storage_, storage_);

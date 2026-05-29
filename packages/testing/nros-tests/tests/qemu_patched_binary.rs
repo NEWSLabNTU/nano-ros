@@ -34,8 +34,8 @@ fn test_qemu_system_arm_resolves_to_patched_build() {
     }
     // Accept the project-local build, an explicit override, or the
     // `nros setup` store qemu (the same patched `11.0.0-nros*` dist).
-    let from_store = nros_tests::nros_store_bin("qemu", "qemu-system-arm")
-        .is_some_and(|s| s == path);
+    let from_store =
+        nros_tests::nros_store_bin("qemu", "qemu-system-arm").is_some_and(|s| s == path);
     assert!(
         path.ends_with("build/qemu/bin/qemu-system-arm")
             || std::env::var_os("QEMU_SYSTEM_ARM").is_some()
