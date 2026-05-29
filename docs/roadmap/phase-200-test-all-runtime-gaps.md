@@ -100,12 +100,29 @@ complete. Two sub-causes:
   - **Build-verify gated on the zephyr env** (3-RMW-branch CMake): confirm zenoh
     still links + cyclonedds now links before landing.
 
+**Update (2026-05-29, after 200.6 unblocked the rust build):** the zpico-link
+gap is **broader than rust+cyclonedds and broader than `wait_network` alone.**
+Once 200.6 let rust zephyr compile, `just zephyr build-one rust/service-server
+xrce` link-fails on the *full* `nros_rmw_zenoh` zpico shim —
+`zpico_open`, `zpico_spin_once`, `zpico_declare_publisher`,
+`zpico_publish_streamed`, `zpico_send_keep_alive`, `zpico_query_reply`,
+`zpico_liveliness_get_{check,count}`, `zpico_init_with_config`, … (refs from
+`nros-rmw-zenoh/src/{zpico.rs,shim/*.rs}`) — i.e. the entire `nros_rmw_zenoh`
+rlib's object code is pulled into a **non-zenoh (xrce)** build, not just the one
+`zpico_zephyr_wait_network` symbol. So removing the wait helper from the zenoh TU
+is necessary but **not sufficient**: something still references
+`nros_rmw_zenoh::zpico::Context` methods unconditionally. Re-confirm what keeps
+the zenoh rlib live under xrce/cyclonedds (an un-`cfg`'d `use`/registration in
+`nros` core or `nros-cpp`, or a non-feature-gated dep edge) before landing the
+TU split. Rust zephyr **zenoh** builds clean — only the non-zenoh RMWs leak.
+
 **Files.** `packages/testing/nros-tests/tests/phase_118_collapse.rs`,
 `packages/testing/nros-tests/tests/zephyr.rs`,
 `packages/dds/nros-rmw-cyclonedds/`, `zephyr/CMakeLists.txt` (rust+cyclone
 link), `examples/zephyr/rust/*`, `packages/zpico/zpico-zephyr/src/zpico_zephyr.c`
 (the misplaced wait helper), `packages/core/nros/src/lib.rs:289` (the
-`platform-zephyr` extern).
+`platform-zephyr` extern), `packages/zpico/nros-rmw-zenoh/` (the rlib leaking
+into non-zenoh builds).
 
 ### 200.2 — XRCE action/service runtime e2e — FIXED ✅
 
@@ -243,32 +260,39 @@ policy.
 **Files.** `packages/testing/nros-tests/tests/integration_{esp_idf,platformio,zephyr}.rs`
 (unchanged); `scripts/test/failed-filterset.py` (the `[SKIPPED]` reclassifier).
 
-### 200.6 — Rust Zephyr fixtures fail to build (`export_kconfig_bool_options`)
+### 200.6 — Rust Zephyr build break (`export_kconfig_bool_options` + clippy gate) — FIXED ✅
 
 Surfaced 2026-05-29 while rebuilding zephyr fixtures: every **Rust** zephyr
-example (zenoh, xrce, *and* cyclonedds) fails its build script with
+example failed its build script with
+`error[E0425]: cannot find function export_kconfig_bool_options in crate zephyr_build`.
 
-```
-error[E0425]: cannot find function `export_kconfig_bool_options` in crate `zephyr_build`
-error: could not compile `nros_zephyr_<example>` (build script)
-```
+**Root cause — stale local workspace, not a code bug.** Phase 199.2 pinned
+zephyr-lang-rust to a specific SHA (`404fcefd…`, west.yml) whose `zephyr-build`
+both (a) renamed `export_bool_kconfig` → `export_kconfig_bool_options` (the
+example `build.rs` was already updated to match in `b2492024d`) and (b) added a
+**mandatory clippy build step** (`cargo clippy -- -D warnings
+-D clippy::undocumented_unsafe_blocks`). The local zephyr workspace module was
+stale at `248e23e` (pre-rename), so the new call name didn't resolve. C/C++
+zephyr fixtures were unaffected (no rust build script).
 
-The example `build.rs` calls `zephyr_build::export_kconfig_bool_options`, which
-the resolved `zephyr_build` crate no longer exports — a zephyr-rust-build API
-drift (the zephyr module / west manifest version moved under the example, likely
-via the Phase 199 zephyr-version-support-policy changes pulled the same day). C
-and C++ zephyr fixtures build fine; only the Rust ones are affected. This blocks
-the rust zephyr fixture set entirely and makes `test_zephyr_rust_*` /
-`test_zephyr_talker_to_listener_e2e` (rust) etc. fail with stale/missing
-binaries — distinct from the 200.1 rust+cyclonedds *link* gap (this one fails
-earlier, at the build-script stage, for every RMW).
+**Resolution.**
+1. **Workspace sync (setup, not repo):** `git -C modules/lang/rust checkout
+   404fcefd…` (or `just zephyr setup` / `west update`) — the pin *does* export
+   `export_kconfig_bool_options`.
+2. **Clippy component (setup):** `rustup component add clippy --toolchain
+   nightly-…` — the pin's build step shells out to `cargo-clippy`.
+3. **Repo fix (`fab706056`):** the pin's clippy gate then failed on the
+   examples' undocumented `unsafe` blocks (the `set_logger()` install + the
+   `LOCATOR` static formatting). Added `// SAFETY:` comments to all unsafe
+   blocks across the 7 rust examples.
 
-Triage: pin/upgrade the example `build.rs` against the `zephyr_build` version the
-current zephyr module ships (find the replacement for
-`export_kconfig_bool_options`, or gate the call on a feature/version).
+Rust zephyr **zenoh** now builds clean (talker + listener verified, EXIT=0).
+Rust zephyr **xrce/cyclonedds** still fail — but at *link*, on the full
+`nros_rmw_zenoh` zpico shim (`zpico_open`/`spin_once`/`declare_publisher`/…),
+which is the **200.1 zpico-link gap** (see note added there), not 200.6.
 
-**Files.** `examples/zephyr/rust/*/build.rs` (or the shared zephyr-rust build
-helper), the `zephyr_build` dependency pin, `zephyr/` module manifest.
+**Files.** `examples/zephyr/rust/*/src/lib.rs` (SAFETY comments, fixed);
+setup-only: zephyr-lang-rust workspace pin sync + `clippy` rustup component.
 
 ---
 
@@ -284,7 +308,7 @@ helper), the `zephyr_build` dependency pin, `zephyr/` module manifest.
       hardened to a pattern-wait — early-return + slow-boot tolerant)
 - [x] 200.5 opt-in SDK shells gated as precondition-skip when SDK absent
       (`skip!` + `[SKIPPED]` reclassification — verified zero real failures)
-- [ ] 200.6 rust zephyr fixtures build (`export_kconfig_bool_options` resolved)
+- [x] 200.6 rust zephyr build (export_kconfig sync + clippy SAFETY comments) — zenoh green; xrce/cyclonedds remain on 200.1
 
 ## Notes
 
