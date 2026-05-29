@@ -165,7 +165,8 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 2. **Generate the interface crates + the `[patch.crates-io]` wiring for YOUR
    layout** — do **not** copy an in-repo example's `.cargo/config.toml`: its
    `../../../../packages/core/...` paths are repo-relative and break in a
-   copied-out app. From your app dir, run (ROS sourced — see Prerequisites):
+   copied-out app. From your app dir, run (after the [Prerequisites](#prerequisites)
+   `nros setup`, which provides the codegen toolchain + message sources):
 
    ```bash
    nros generate-rust --generate-config \
