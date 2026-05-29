@@ -242,9 +242,17 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
         an `ActionExecutor` impl over the executor + the action servers' handles
         (handles come from W.5.5); convert `spin_blocking` to a manual
         spin-once+tick loop.
-  - [ ] **W.5.7 — multi-callback shared state.** Today each callback owns its
-        `State`; share across a component's callbacks via `Rc<RefCell>` (std) /
-        `'static` (no_std). Restructure the per-callback prelude to per-instance.
+  - [x] **W.5.7 — multi-callback shared state** (`nros-cli` `80342bd`). On a std
+        target a component's callbacks share one `State` via a per-instance shared
+        prelude: publishers built once into `Resolveri{inst}`, resolver wrapped in
+        `Rc`, state in `Rc<RefCell>`; each callback clones the `Rc`s (timer/sub into
+        the move-closure, service/action into the leaked ctx) and borrows the shared
+        state mutably on dispatch (single-threaded spin ⇒ borrows never overlap).
+        Resolver-struct + publisher-builder emission factored into helpers reused by
+        the per-callback (no_std) + shared (std) preludes. no_std keeps per-callback
+        state — shared no_std needs a `'static` (W.5.8). Verified:
+        `orchestration_generate` (19) + both e2e (timer+sub share state;
+        service+action share state) compile/link/boot warning-clean.
   - [ ] **W.5.8 — no_std service/action codegen.** The `Box::leak` `'static`
         context is std-only (`uses_std`-gated); a no_std target with a
         service/action needs a `static mut` / `spin::Once` context instead.
