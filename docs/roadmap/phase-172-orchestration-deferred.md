@@ -198,11 +198,43 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
 
     Other W.5.3 remainders: multi-callback shared state (single-callback-owns-state
     model today); no_std service (`static mut` instead of `Box::leak`).)*
-  - **W.5.4 — E2E proof (compile→run).** `demo_pkg` publishes from its timer body;
-    a native deploy run shows real data on the wire. **Blocked in this sandbox** on
-    `play_launch_parser` (the plan→build e2e tool — a pip/repo binary not installed;
-    install guard refused the guessed PyPI package). The SDK build env itself is fine
-    (all paths in-tree per `sdk-env.just`); only the launch-parser tool is missing.
+  - **W.5.4 — E2E proof (compile→run). DONE** (2026-05-29). `play_launch_parser`
+    turned out to be an in-repo Rust crate (`third-party/play_launch_parser`) — built
+    it, set `NROS_PLAY_LAUNCH_PARSER`, and with the in-tree SDK env the native e2e
+    (`fixture_workspace_plans_checks_and_builds` + `deploy_native_self`) generates →
+    compiles → boots the package with real timer + subscription + service executable
+    dispatch. `demo_pkg` body publishes / reads / replies.
+
+    **⚠ Codegen relocated (Phase 195.D.5).** The `packages/codegen` submodule was
+    retired; `nros` (CLI + codegen) is now the standalone `NEWSLabNTU/nros-cli` repo,
+    installed as a prebuilt binary (`scripts/install-nros.sh` / `just setup`). So the
+    W.5 split is now: **substrate in this superproject** (`packages/core/nros`:
+    `ExecutableComponent` / `CallbackCtx` (+reply +decision sinks) / `PublisherResolver`
+    / `declarative_component!`); **codegen in `nros-cli`** (`generate.rs` timer/sub/
+    service emission, on its `main` ≈ `32f56ee`). The superproject build uses the
+    *installed release* — W.5 codegen is active only once an `nros-cli` release is
+    re-cut from a `main` that includes it (the timer/sub/service emission predates
+    `nros-v0.3.0`; verify/re-cut before relying on it in a superproject build).
+
+    **Remaining W.5 work items** (substrate → this repo; codegen → `nros-cli`):
+  - [ ] **W.5.5 — action decision codegen** (`nros-cli`). Emit goal/cancel
+        trampolines over an `ActionCtx (state, resolver)` `Box::leak`'d context
+        (mirrors the service `SvcCtx`/`svc_tramp`, `uses_std`-gated); goal/cancel
+        rebuild `CallbackCtx::with_goal_decision`/`with_cancel_decision`, return
+        `*out`; accepted = noop until W.5.6. Substrate (decision sinks) already in
+        `nros` (`949ca7528`).
+  - [ ] **W.5.6 — component execution-tick hook** (substrate `nros` + codegen
+        `nros-cli`). The action *execution* half: `publish_feedback_raw`/
+        `complete_goal_raw` need `&mut Executor` (unavailable in a mid-spin
+        callback), so add a `Component::tick(&mut TickCtx)` run between dispatch
+        with executor access (or a deferred action-op queue flushed post-dispatch)
+        to drive feedback/result. Unblocks real actions.
+  - [ ] **W.5.7 — multi-callback shared state.** Today each callback owns its
+        `State`; share across a component's callbacks via `Rc<RefCell>` (std) /
+        `'static` (no_std). Restructure the per-callback prelude to per-instance.
+  - [ ] **W.5.8 — no_std service/action codegen.** The `Box::leak` `'static`
+        context is std-only (`uses_std`-gated); a no_std target with a
+        service/action needs a `static mut` / `spin::Once` context instead.
 - **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
   Executor `NodeBuilder::session_idx` selector (nros-node `ae2b19a19`); generator
   emits a session per distinct `[[domain]]` domain + routes each node via the
