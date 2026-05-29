@@ -126,33 +126,31 @@ nros_cli_bin() {
         command -v nros
         return 0
     fi
-    echo "nros CLI not found on PATH." >&2
-    echo "Run: just setup base" >&2
-    echo "Or set NROS_CLI=/path/to/nros." >&2
+    local home_nros="${NROS_HOME:-$HOME/.nros}/bin/nros"
+    if [ -x "$home_nros" ]; then
+        printf '%s\n' "$home_nros"
+        return 0
+    fi
+    echo "nros CLI not found on PATH or in \${NROS_HOME:-~/.nros}/bin." >&2
+    echo "Run: just setup base   (installs nros), or" >&2
+    echo "Set NROS_CLI=/path/to/nros." >&2
     return 2
 }
 
-# Phase 195.D: the codegen host tool is now the canonical `nros` binary
-# (`nros codegen …`); the standalone `nros-codegen` (nros-codegen-c) was merged
-# in. Function names keep `codegen_c` for callsite stability.
+# Phase 195.D: the codegen host tool is the canonical, *installed* `nros`
+# binary (`nros codegen …`) — resolved from $NROS_CLI / PATH / ~/.nros, NOT
+# built from the packages/codegen submodule target dir. The standalone
+# `nros-codegen` (nros-codegen-c) was merged into `nros codegen` in 195.A.
+# Function names keep `codegen_c` for callsite stability; the returned path is
+# absolute, so recipes use it directly (no `$(pwd)/`/`$root/` prefix).
 nros_cargo_codegen_c_bin() {
-    printf '%s\n' "packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
-}
-
-nros_cargo_build_codegen_c() {
-    local cargo_profile_args
-    cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    cargo build $cargo_profile_args --manifest-path packages/codegen/packages/Cargo.toml \
-        -p nros-cli --bin nros --quiet
+    nros_cli_bin
 }
 
 nros_cargo_ensure_codegen_c() {
-    local codegen_bin
-    codegen_bin="$(nros_cargo_codegen_c_bin)"
-    if [ "${NROS_CODEGEN_C_PREBUILT:-0}" = "1" ] && [ -x "$codegen_bin" ]; then
-        return 0
-    fi
-    nros_cargo_build_codegen_c
+    # Installed binary — nothing to build. Resolve it so callers fail loudly
+    # (with install guidance) instead of passing an empty -D_NANO_ROS_CODEGEN_TOOL.
+    nros_cargo_codegen_c_bin >/dev/null
 }
 
 nros_cargo_fetch_standalone_manifests() {

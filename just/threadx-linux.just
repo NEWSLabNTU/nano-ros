@@ -97,7 +97,7 @@ build-fixture-extras:
     cyclone_prefix="$root/build/install"
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
-    codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
+    codegen="$(nros_cargo_codegen_c_bin)"
     echo "  → logging-smoke-threadx-linux"
     cargo build $cargo_profile_args --manifest-path packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml --quiet
     # Phase 181.5.d — collapsed-shape threadx-linux C / C++ from the SSOT

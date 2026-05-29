@@ -140,7 +140,7 @@ build-fixture-extras:
     if [ "${NROS_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nros_cli="$(nros_cli_bin)"
     nros_cargo_ensure_codegen_c
-    codegen_tool="${repo_root}/$(nros_cargo_codegen_c_bin)"
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
     # Phase 181.6 — every native *Rust* fixture (the param-services talker; the
     # link-tls / safety-e2e / unstable-zenoh-api variants; the per-RMW
     # target-<rmw>/ collapsed roles; the custom-transport pair; the nros-bench
@@ -319,7 +319,7 @@ _build-c-example dir *CMAKE_ARGS:
     source scripts/build/cmake-incremental.sh
     echo "Building {{dir}}..."
     nros_cargo_ensure_codegen_c
-    codegen_tool="$(pwd)/$(nros_cargo_codegen_c_bin)"
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
     nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
         -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh \
         -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" {{CMAKE_ARGS}}
@@ -360,7 +360,7 @@ _build-cpp-example dir *CMAKE_ARGS:
     source scripts/build/cmake-incremental.sh
     echo "Building {{dir}}..."
     nros_cargo_ensure_codegen_c
-    codegen_tool="$(pwd)/$(nros_cargo_codegen_c_bin)"
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
     nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
         -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh \
         -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" {{CMAKE_ARGS}}

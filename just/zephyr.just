@@ -183,7 +183,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     fi
     # Host codegen tool — nros_generate_interfaces() needs it (version-independent).
     nros_cargo_ensure_codegen_c
-    codegen_tool="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
     src="$(pwd)/examples/zephyr/{{example}}"
     [ -d "$src" ] || { echo "no example at $src"; exit 1; }
     # Rust examples consume the generated interface crates (std_msgs +
@@ -378,7 +378,7 @@ build-fixtures:
     echo "  → host nros-codegen (cargo)"
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cargo_ensure_codegen_c
-    codegen_tool="$nros_root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
     # Phase 165.perf — split the NROS_BUILD_JOBS budget into parallel
     # example builds (BUILD_JOBS) × ninja-per-build. Each example uses
     # an isolated `-d <build_dir>`, so concurrent west builds are safe
@@ -849,7 +849,7 @@ build-fvp-aemv8r-cyclonedds:
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     nros_cargo_ensure_codegen_c
-    codegen_tool="$nros_root/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
+    codegen_tool="$(nros_cargo_codegen_c_bin)"
     make_bin="$nros_root/third-party/make/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
@@ -974,7 +974,7 @@ build-logging-smoke:
         exit 1
     fi
     source scripts/build/cargo.sh
-    CODEGEN="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
+    CODEGEN="$(nros_cargo_codegen_c_bin)"
     MAKE_BIN="$(pwd)/third-party/make/make"
     if [ ! -x "$MAKE_BIN" ]; then
         MAKE_BIN="$(command -v make)"

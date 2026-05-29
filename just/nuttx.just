@@ -115,7 +115,7 @@ build-fixtures:
     # Host nros-codegen is still required for `nros_generate_interfaces()`.
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
-    codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
+    codegen="$(nros_cargo_codegen_c_bin)"
     toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
     nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu-arm/nros-nuttx-ffi"
     # Phase 181.5.c — collapsed-shape NuttX C / C++ examples from the SSOT
@@ -185,7 +185,7 @@ build-fixtures-make:
     source scripts/build/cargo.sh
     echo "Building host nros-codegen for staging..."
     nros_cargo_ensure_codegen_c
-    export NROS_CODEGEN="$(pwd)/$(nros_cargo_codegen_c_bin)"
+    export NROS_CODEGEN="$(nros_cargo_codegen_c_bin)"
     echo "  → nros-codegen: $NROS_CODEGEN"
     echo "Staging nano-ros external apps into $nuttx_apps_dir/external/..."
     scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir"
@@ -326,7 +326,7 @@ setup:
         source scripts/build/cargo.sh
         echo "  → host nros-codegen (cargo)"
         nros_cargo_ensure_codegen_c
-        codegen="$(pwd)/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
+        codegen="$(nros_cargo_codegen_c_bin)"
         echo "Staging nano-ros external apps into $nuttx_apps_dir/external/..."
         scripts/nuttx/stage-external-apps.sh "$nuttx_apps_dir" "$codegen"
     else
