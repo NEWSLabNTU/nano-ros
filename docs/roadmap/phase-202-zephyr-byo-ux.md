@@ -6,12 +6,13 @@ the in-tree contributor flow hides. Zephyr mandates a dedicated west workspace;
 nano-ros is a module (`zephyr/module.yml`) imported into it — so the BYO path is
 the *real* user surface, and it currently breaks out of the box.
 
-**Status.** In progress (2026-05-29). **202.1 + 202.2 (the P1 build-blockers)
-done as doc fixes** — the BYO docs now cover transport-source provisioning
-(`nros setup --source`) + the nros-CLI/ROS prerequisites. 202.3–202.6 (patch
-completeness, rust-app internals leak, `zephyr-lang-rust` pin, doc consolidation)
-remain; 202.1's end-to-end verify on a real BYO workspace is still open. From a
-BYO-adoption walkthrough of the
+**Status.** Largely landed (2026-05-29). **202.1–202.6 all addressed** (mix of
+doc fixes + the version-tolerant rust patch); the BYO docs now cover prerequisites,
+transport sources, the complete patch story (NSOS/rust/cyclonedds), the rust-app
+`generate-config` workflow, and a single canonical guide. **Open:** the 202.1
+end-to-end verify on a real throwaway BYO west workspace, and reconciling the
+`integrations/zephyr/README.md` manual steps with the concurrent `nros setup
+zephyr` provisioning model once it settles. From a BYO-adoption walkthrough of the
 manifest/module/docs (`integrations/zephyr/`, `book/src/getting-started/
 integration-zephyr.md`). Complements the broader CLI-verb UX study
 `docs/research/sdk-ux/zephyr-and-esp-idf.md` (2026-05-04) — this phase is the
