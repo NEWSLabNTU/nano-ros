@@ -17,7 +17,7 @@
 //! aliases resolve. Workspace-level `cargo check` without any RMW feature
 //! sees this module as empty.
 
-#[cfg(feature = "rmw-cffi")]
+#[cfg(feature = "rmw-cffi-rt")]
 mod rmw_sizes {
     use crate::internals::{
         RmwPublisher, RmwServiceClient, RmwServiceServer, RmwSession, RmwSubscriber,
@@ -226,5 +226,5 @@ mod rmw_sizes {
     export_size!(pub CPP_ACTION_CLIENT_SIZE = CppActionClientLayout);
 }
 
-#[cfg(feature = "rmw-cffi")]
+#[cfg(feature = "rmw-cffi-rt")]
 pub use rmw_sizes::*;

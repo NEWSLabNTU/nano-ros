@@ -35,8 +35,21 @@ linkme = { version = "0.3", default-features = false }
 cc = "1"
 
 [features]
-default = ["linkme-register"]
+default = ["linkme-register", "entity-subscriber", "entity-service-server", "entity-service-client"]
 std = ["nros-rmw/std"]
+# Phase 204.1.L — entity-gated vtable slots. Each feature installs the
+# real per-entity trampolines into `RustBackendAdapter::VTABLE`; with a
+# feature OFF the slot points at a cheap `unsupported_*` stub that
+# references nothing, so `--gc-sections` collects the real trampoline AND
+# the backend's per-entity static buffers behind it (e.g. zenoh-pico's
+# `SUBSCRIBER_BUFFERS` 34.5 KB). All default-ON so standalone cffi +
+# every consumer routing through `nros[-node]/rmw-cffi` keep full
+# behaviour; a size-critical pub-only node opts out via the
+# `rmw-cffi-lean` path in `nros`. Publisher is intentionally ungated
+# (cheap, no large buffer).
+entity-subscriber = []
+entity-service-server = []
+entity-service-client = []
 alloc = ["nros-rmw/alloc"]
 safety-e2e = ["nros-rmw/safety-e2e"]
 # Phase 134.fix — gates the `RMW_INIT_ENTRIES` distributed_slice

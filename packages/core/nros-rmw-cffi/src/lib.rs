@@ -16,6 +16,21 @@
 //! Enable the `rmw-cffi` feature on `nros` and use `Executor<CffiSession>`.
 
 #![no_std]
+// Phase 204.1.L — when a node opts out of an entity kind (`entity-subscriber`
+// / `entity-service-server` / `entity-service-client` off), the matching
+// vtable slot becomes a stub and the real trampolines + their message-info
+// helpers go unreferenced. They are still compiled (stripped at link time by
+// `--gc-sections`), so silence the now-expected `dead_code` here for lean
+// builds only. The full default build keeps `dead_code` live, so CI still
+// catches genuinely-unused code.
+#![cfg_attr(
+    not(all(
+        feature = "entity-subscriber",
+        feature = "entity-service-server",
+        feature = "entity-service-client"
+    )),
+    allow(dead_code)
+)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

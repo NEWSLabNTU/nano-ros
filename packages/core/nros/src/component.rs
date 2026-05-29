@@ -305,7 +305,7 @@ impl<
     }
 }
 
-#[cfg(feature = "rmw-cffi")]
+#[cfg(feature = "rmw-cffi-rt")]
 impl ComponentNodeRuntime for crate::Executor {
     type NodeHandle = nros_node::executor::NodeId;
 
@@ -323,7 +323,7 @@ impl ComponentNodeRuntime for crate::Executor {
 }
 
 /// Runtime adapter backed by [`Executor`](crate::Executor).
-#[cfg(feature = "rmw-cffi")]
+#[cfg(feature = "rmw-cffi-rt")]
 pub type ComponentExecutorRuntime<
     'a,
     const MAX_NODES: usize = { crate::component_metadata::DEFAULT_MAX_METADATA_NODES },
