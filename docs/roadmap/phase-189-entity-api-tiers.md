@@ -12,10 +12,11 @@ customizable entity builder** that carries every knob (raw/typed, QoS,
 `verb_noun_axis_axis_axis` identifiers — a new axis is one short builder method,
 never a longer name.
 
-**Status (2026-05-28).** **M1 + M2 DONE** — the Rust entity builder +
+**Status (2026-05-29). COMPLETE.** **M1 + M2 DONE** — the Rust entity builder +
 convenient surface landed (M1), and the `register_subscription_*` zoo was
-removed with all ~63 callers migrated (M2). **M3 + M4 remain** (C/C++
-named-options parity; the M4 sweep folded into M2). Design approved in
+removed with all ~63 callers migrated (M2). **M3 DONE** (2026-05-29) — C/C++
+named-options parity across pub/sub/service/action + with-attachment subscription
+path; **M4** folded into M2. Phase 189 is complete. Design approved in
 ([`docs/design/entity-api-tiers.md`](../design/entity-api-tiers.md)); split out
 of Phase 172 (2026-05-28). Same precedent as Phase 187 (split from 172 W.5): a
 cross-cutting refactor that doesn't belong inside the orchestration follow-ups.
@@ -137,7 +138,12 @@ application code.
       esp32-qemu-baremetal). Zephyr Rust example: source migrated (identical
       builder pattern) but its `just zephyr build-rust-examples` recipe has a
       pre-existing shell-syntax bug — verify once that's fixed.
-- [ ] **M3 — C / C++ named-options parity (rclc / rclcpp mirrors).** Rust gets
+- [x] **M3 — C / C++ named-options parity (rclc / rclcpp mirrors). DONE**
+      (2026-05-29). All slices landed: M3.1/3.2 pub/sub options, M3.2.g
+      callback-style C++ subs, M3.3 (+a–f) services/actions QoS + sched-context,
+      M3.4 (+4b) with-attachment subscription path (C + C++ poll + C++ callback),
+      M3.5 generator real service/action callbacks (via Phase 172 W.5). With M4
+      folded into M2, Phase 189 is complete. Design recap below. Rust gets
       the builder; C/C++ keep idiomatic **named-options structs** alongside the
       existing `QoS` arg (rclcpp `create_subscription<M>(topic, qos, cb,
       options)` — qos stays separate, `options` carries the non-QoS axes).
@@ -330,7 +336,7 @@ application code.
           builds + links (future path intact) and a temp callback-style instantiation
           built + linked (reverted). **With this, every C/C++ service-plane entity
           (services, clients, action servers/clients) is arena-registered + sched-bindable.**
-  - [~] **M3.4 — with-attachment subscription path.** **C DONE.** Added
+  - [x] **M3.4 — with-attachment subscription path. DONE** (2026-05-29). **C** —
         `SubBufferedRawInfoCEntry` (C-fn-ptr-with-attachment arena entry) +
         dispatch + `Executor::add_arena_subscription_c_info_callback` in
         `nros-node` (flat payload + `RAW_INFO_ATT_CAP` attachment buffers, via
@@ -340,7 +346,15 @@ application code.
         callback signature differs from `nros_subscription_callback_t`, so it's
         its own entry, not an option flag — the M3.2 `message_info` reserved flag
         is superseded by this dedicated init). Test:
-        `tests::test_raw_subscription_info_callback`.
+        `tests::test_raw_subscription_info_callback`. **C++ poll** — M3.4b. **C++
+        callback** — `nros_cpp_subscription_register_with_info` FFI (cbindgen-excluded,
+        local 5-arg typedef) + `Subscription<M>::message_info_trampoline` +
+        `Node::create_subscription_with_info<M>` delivering `(const M&, attachment,
+        attachment_len)`, arena-registered so `sched_context` is functional. Now
+        that M3.2.g gave C++ callback subs, a callback reading the attachment (e.g.
+        a bridge's `bridge_origin`) is expressible. Verified: staticlib carries the
+        symbol + the header template compiles clean against a real message + native
+        cpp listener compile-coverage block.
   - [x] **M3.4b — C++ poll-with-attachment DONE.** C++ subscriptions are
         poll-style, so the attachment is surfaced on the poll path (not a
         callback): `Subscription<M>::try_recv_raw_with_attachment(buf, cap,
