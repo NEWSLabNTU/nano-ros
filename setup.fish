@@ -22,12 +22,22 @@ if test -f "$NROS_ROOT/scripts/sdk-env.sh"; and type -q bash; and type -q just
 end
 
 # Binary directories shipped by nano-ros builds.
+set -l _nros_home (set -q NROS_HOME; and echo "$NROS_HOME"; or echo "$HOME/.nros")
 set -l _nros_bin_dirs \
     "$HOME/.local/bin" \
     "$NROS_ROOT/build/zenohd" \
     "$NROS_ROOT/build/qemu/bin" \
     "$NROS_ROOT/build/xrce-agent" \
-    (set -q NROS_HOME; and echo "$NROS_HOME/bin"; or echo "$HOME/.nros/bin")
+    "$_nros_home/bin"
+
+# Phase 197.4 — nros-store tool bins ($_nros_home/sdk/<tool>/<ver>/bin): the
+# toolchains/tools `nros setup <board>` provisions, so a build uses the pinned
+# index versions. Appended after build/* so a locally-built patched tool wins.
+for d in $_nros_home/sdk/*/*/bin
+    if test -d "$d"
+        set -a _nros_bin_dirs $d
+    end
+end
 
 # Strip any previous nano-ros entries from PATH before re-adding.
 set -l _nros_clean
@@ -35,6 +45,8 @@ for p in $PATH
     if test "$p" != "$HOME/.local/bin"
         and not string match -q "$NROS_ROOT/build/*" -- $p
         and not string match -q "$NROS_ROOT/packages/codegen/*" -- $p
+        and test "$p" != "$_nros_home/bin"
+        and not string match -q "$_nros_home/sdk/*" -- $p
         set -a _nros_clean $p
     end
 end

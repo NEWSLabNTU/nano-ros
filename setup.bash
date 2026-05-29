@@ -46,6 +46,18 @@ _nros_bin_dirs=(
     "${NROS_HOME:-${HOME}/.nros}/bin"                                    # nros (prebuilt release; Phase 195.D)
 )
 
+# Phase 197.4 — nros-store tool bins (`~/.nros/sdk/<tool>/<ver>/bin`): the
+# toolchains/tools `nros setup <board>` provisions (arm-none-eabi-gcc, qemu,
+# riscv-none-elf-gcc, …), so a build uses the pinned index versions rather than
+# whatever apt happens to ship. Glob-expanded — 0+ entries depending on what has
+# been provisioned. Appended AFTER the build/* dirs so a locally-built patched
+# tool (e.g. build/qemu) still wins when present.
+_nros_sdk_store="${NROS_HOME:-${HOME}/.nros}/sdk"
+for _nros_d in "${_nros_sdk_store}"/*/*/bin; do
+    [ -d "${_nros_d}" ] && _nros_bin_dirs+=("${_nros_d}")
+done
+unset _nros_d
+
 # Strip any previous nano-ros entries from PATH before re-adding, so
 # repeated sourcing doesn't grow PATH unboundedly.
 _nros_strip_path() {
@@ -53,6 +65,7 @@ _nros_strip_path() {
     for p in $PATH; do
         case "$p" in
             "${HOME}/.local/bin"|"${NROS_ROOT}/build/"*|"${NROS_ROOT}/packages/codegen/"*) ;;
+            "${NROS_HOME:-${HOME}/.nros}/bin"|"${_nros_sdk_store}/"*) ;;
             *) clean+=("$p") ;;
         esac
     done
