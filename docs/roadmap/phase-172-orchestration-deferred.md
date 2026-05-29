@@ -300,14 +300,25 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
         builds-on-demand/spawns client vs `start_zenohd`); helpers
         `ensure_action_client_binary` + `wait_capture`; plan
         `plan_fibonacci_action.json`.
-  - [ ] **W.5.11 — no_std action execution (tick hook on no_std).** W.5.6's tick loop
-        + `TICK_ENTRIES` is std-only (`thread_local!` + `Box<dyn FnMut>`). A no_std
-        target that needs action feedback/result (not just decision bodies, W.5.8)
-        needs the per-instance tick entries + `GenActionExec` parked in a `static`
-        (no `thread_local`/alloc) and `run_tick_loop` emitted for no_std, gated on a
-        no_std-shared-state model (the W.5.7 `'static` variant). Depends on a no_std
-        shared-state design (statics per instance) so `tick` and the decision
-        trampolines share one state. **Files:** `nros-cli-core/src/orchestration/generate.rs`.
+  - [x] **W.5.11 — no_std action execution (tick hook on no_std)** (`nros-cli`
+        `82bc71b`). A no_std action component drives feedback/result in `tick`, not
+        just decisions (W.5.8). std-only `thread_local! TICK_ENTRIES` /
+        `Box<dyn FnMut>` / `is_halted` replaced by a static, alloc-free model: the
+        action's `(state, resolver)` ctx + registered `ActionServerRawHandle` live in
+        *module-level* `static mut`s (fn-local can't be seen from the spin loop);
+        decision trampolines + a per-action `tick_{idx}` read them via
+        `addr_of_mut!`/`addr_of!`. `run_tick_loop_nostd` is an infinite
+        `spin_once(50ms)` + per-action `tick_{idx}` loop (`-> !`, mirrors
+        `spin_default`); `GenActionExec` (shared with std) bridges to the live
+        executor. The no_std self + board shims spin via it (re-exported) when the
+        plan has a no_std action. `render_callback_registrations` now also yields
+        module-level items + no_std action idxs; `emit_static_action` split into
+        module decls + inline registration. Verified:
+        `generated_no_std_service_action_uses_static_context` (emission) +
+        `fixture_workspace_builds_generated_bare_metal_fibonacci_action_package`
+        (single-entity fib_server, real tick) compile the static tick path to a
+        `thumbv7m-none-eabi` ELF; std W.5.10 + W.5.8 unaffected. Runtime exchange is
+        compile-only here (no embedded action client harness).
 - **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
   Executor `NodeBuilder::session_idx` selector (nros-node `ae2b19a19`); generator
   emits a session per distinct `[[domain]]` domain + routes each node via the
