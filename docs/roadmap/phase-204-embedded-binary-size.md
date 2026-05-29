@@ -214,51 +214,86 @@ Per-example `nros.toml` carries only *runtime* config ([node]/[[transport]]); th
 root deploy `[build]` carries `profile`/`features`/`cfg`. There is **no single
 intent knob**, and no fan-out across the Rust/RMW-C/platform-C layers.
 
-**Design — one intent, fanned out.** Add a single knob to the build config:
+**Design — a global intent + per-toolchain-layer overrides, all in `nros.toml`.**
+Two tiers: `optimize` sets a coherent baseline across every layer; per-layer
+tables (`[build.cargo]` Rust, `[build.cc]` the gcc/clang C+C++ compiler) refine
+*one* layer without disturbing the others.
 
 ```toml
 # root nros.toml (deploy mode) — or [build] in a direct-mode project
 [build]
-optimize = "size"        # "size" | "speed" | "balanced" (default) | "debug"
-# optional fine-grained overrides (escape hatch; rarely needed):
-[build.opt]
-lto        = "thin"      # off | thin | fat
-target_cpu = "cortex-m4" # default: derived from the board/triple
-strip      = true
+optimize = "size"          # size | speed | balanced (default) | debug — the baseline
+
+# Per-layer overrides (refine one toolchain; merge over the `optimize` baseline):
+[build.cargo]              # Rust / rustc / cargo profile
+opt_level = "z"            # 0|1|2|3|s|z   lto = off|thin|fat   debug = bool
+strip = true               #               codegen_units = N
+rustflags = ["-Ctarget-cpu=cortex-m4"]   # appended verbatim
+
+[build.cc]                # the gcc/clang C+C++ compiler — RMW C (zenoh-pico/XRCE),
+debug = true               # platform C (net.c/lwIP/NetX), AND cmake-built C/C++
+opt_level = "s"            # cflags = ["-fno-plt"]  (appended)
 ```
 
-`nros build` / `nros deploy` is the **single fan-out point** — it already selects
-the cargo profile + features and invokes cargo/cmake/west, so it maps `optimize`
-→ a coherent flag set on every layer:
+`nros build` / `nros deploy` is the **single fan-out point**. `optimize` maps to:
 
-| `optimize` | cargo profile | RUSTFLAGS | cc-rs (RMW/platform C) | CMake (Cyclone/C++) | build-std |
+| `optimize` | cargo profile | RUSTFLAGS | cc (RMW/platform C) | CMake (Cyclone/C++) | build-std |
 |---|---|---|---|---|---|
-| `size` | opt-level=`z`, lto=fat, cu=1, panic=abort, strip | `-Ctarget-cpu=<core>` + `-Clink-arg=-Wl,--gc-sections` | `-Os -ffunction-sections -fdata-sections` | `MinSizeRel` + IPO | `core,alloc` + `panic_immediate_abort` |
-| `speed` | opt-level=3, lto=thin/fat, cu=1 | `-Ctarget-cpu=<core>` | `-O3` | `Release` | (target-dependent) |
-| `balanced` | opt-level=`s`/2 | `-Ctarget-cpu=<core>` | `-O2` | `RelWithDebInfo` | — |
-| `debug` | opt-level=0/1, debug | — | `-Og` | `Debug` | — |
+| `size` | opt=`z`, lto=fat, cu=1, panic=abort, strip | `-Ctarget-cpu=<core>` + `-Clink-arg=-Wl,--gc-sections` | `-Os -ffunction-sections -fdata-sections` | `MinSizeRel` + IPO | `panic_immediate_abort` |
+| `speed` | opt=3, lto=thin/fat, cu=1 | `-Ctarget-cpu=<core>` | `-O3` | `Release` | (target-dep) |
+| `balanced` | opt=`s`/2 | `-Ctarget-cpu=<core>` | `-O2` | `RelWithDebInfo` | — |
+| `debug` | opt=0/1, debug | — | `-Og -g` | `Debug` | — |
 
-The `<core>` is derived from the board/triple (the C side already arch-tunes;
-this closes the Rust gap, 204.10). The intent also flips the IP-stack feature
-(204.7) + socket-pool defaults (204.2) where the board allows.
+`<core>` derives from the board/triple (closes the Rust target-cpu gap, 204.10).
 
-**Plain `cargo build` / `cmake` (copy-out example, no `nros`).** Not every user
-goes through `nros build`. So `nros new` scaffolds **named cargo profiles**
-(`[profile.size]`/`[profile.speed]` inheriting `release`) + a per-target
-`.cargo/config.toml` carrying `target-cpu` + `--gc-sections`, so the bare
-toolchain works too: `cargo build --profile size`. The CMake examples gain a
-`-DNROS_OPTIMIZE=size` cache var mapping to the same `MinSizeRel`/IPO/sections.
+**Per-layer mechanism (how each override reaches its toolchain):**
+- **`[build.cargo]`** → the generated cargo profile fields (`opt-level`/`lto`/`debug`/
+  `strip`/`codegen-units`) + appended `RUSTFLAGS`. nros owns the profile it builds
+  with, so this is a direct write.
+- **`[build.cc]`** → `cc-rs` auto-appends `TARGET_<triple>_CFLAGS` / `CFLAGS`, so
+  nros exports those from `[build.cc]` (e.g. `debug=true` → `-g`, `cflags` verbatim)
+  — applied to **every** `cc::Build` (zenoh-pico, Micro-XRCE, net.c, lwIP) **without
+  touching any build.rs**. The `opt_level` override needs the build scripts to honour
+  an `NROS_CC_OPT` env (today the zenoh manifest hardcodes `.opt_level(2)`); a small
+  build-script change reads it (204.9 territory). Debug/extra-cflags work **today**
+  via the env append.
+- **cmake C/C++** (Cyclone, C++ examples) → `[build.cc]` lowers to `-DCMAKE_C_FLAGS`/
+  `-DCMAKE_CXX_FLAGS` (+ `-DCMAKE_BUILD_TYPE` from `optimize`, `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION`).
 
-### 204.15 — `[build].optimize` intent knob + fan-out
-- [ ] Add `optimize` (+ optional `[build.opt]` overrides) to the build config
-      schema; `nros build`/`deploy` maps it to the per-layer flag set above
-      (cargo profile + RUSTFLAGS + cc-rs env + CMake build type + build-std).
+**Precedence (lowest→highest):** `optimize` baseline → `[build.<layer>]` field →
+an explicit per-deploy `[deploy.<name>.build…]` override.
+
+**The motivating case — debug symbols on *one* layer.** Debugging a C driver
+(e.g. the smoltcp MAC or lwIP glue) while keeping Rust release-stripped:
+```toml
+[build]
+optimize = "size"          # everything opt-z + stripped
+[build.cc]
+debug = true               # but the C layer keeps -g → gdb the driver; Rust untouched
+```
+→ C compiled `-Os -g` (symbols), Rust stays `opt-z`/stripped. Symmetric: `[build.cargo]
+debug = true` keeps Rust debuginfo while C stays stripped.
+
+**Plain `cargo build` / `cmake` (copy-out example, no `nros`).** `nros new`
+scaffolds named cargo profiles (`[profile.size]`/`[profile.speed]`) + a per-target
+`.cargo/config.toml` (`target-cpu` + `--gc-sections`), so `cargo build --profile
+size` works without `nros`; CMake examples gain `-DNROS_OPTIMIZE=size`. Per-layer
+C overrides on the bare path are the standard `CFLAGS`/`<target>_CFLAGS` env (the
+same vars nros sets) — documented, not nano-ros-specific.
+
+### 204.15 — `[build].optimize` + per-layer `[build.cargo]`/`[build.cc]` overrides
+- [ ] Add `optimize` + the per-layer override tables to the build config schema;
+      `nros build`/`deploy` fans `optimize` out (cargo profile + RUSTFLAGS + cc env
+      + CMake type + build-std) and merges the per-layer tables over it
+      (precedence above). Wire `[build.cc]` debug/cflags via `TARGET_*_CFLAGS` env
+      (works without build.rs edits) + `NROS_CC_OPT` for opt-level override.
 - [ ] `nros new` scaffolds named `size`/`speed` cargo profiles + a target
       `.cargo/config.toml` so the plain-cargo path honours intent without `nros`.
-- [ ] **Acceptance:** `nros build` of one project at `optimize="size"` vs
-      `"speed"` produces measurably different flash/text on a hosted + an embedded
-      target, with no hand-edits across layers; the plain `cargo build --profile
-      size` matches.
+- [ ] **Acceptance:** (a) `optimize="size"` vs `"speed"` → measurably different
+      flash on a hosted + embedded target, no cross-layer hand-edits; (b) the
+      motivating case — `optimize="size"` + `[build.cc] debug=true` → C objects
+      carry `.debug_*` sections while the Rust crate stays stripped (verified by
+      `readelf`/`nm`).
 
 ## End-user workflow (simulated)
 
@@ -303,11 +338,22 @@ $ cargo build --profile size --no-default-features --features serial,rmw-xrce
 The scaffolded `[profile.size]` + `.cargo/config.toml` (target-cpu + gc-sections)
 give the same result without `nros`.
 
-**Escape hatch — power user overrides one lever:**
+**Persona E — debug one layer, ship the rest small.** Hunting a bug in the C lwIP
+glue on an otherwise size-optimized build:
+```toml
+[build]
+optimize = "size"           # opt-z + stripped everywhere
+[build.cc]
+debug = true                # C layer keeps -g → gdb the glue; Rust stays stripped
+```
+`$ nros build` → C objects carry `.debug_*`; the Rust crate is opt-z/stripped.
+Symmetric `[build.cargo] debug=true` debugs the Rust side instead.
+
+**Escape hatch — power user overrides one layer's lever:**
 ```toml
 [build]
 optimize = "size"
-[build.opt]
+[build.cargo]
 lto = "off"                 # e.g. to dodge the rust-lld cross-LTO link issue (204.14)
 ```
 
