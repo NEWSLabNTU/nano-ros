@@ -160,13 +160,16 @@ once before being trusted:
       declared `git` URL must match `.gitmodules`. Gate now also triggers on
       `.gitmodules` changes. Verified: passes on the real index; catches
       undefined-ref, clone-missing-ref, missing-submodule-path, and URL-drift.
-- [x] `zephyr-dual-line.yml` — 196.1 fixed; SDK caching added (DONE,
-      2026-05-29). Both jobs (`example-matrix` + `dual-line-summary`) now restore
-      `scripts/zephyr/sdk` via `actions/cache@v4`, keyed on
-      `hashFiles('scripts/zephyr/setup.sh')` (SDK is line-independent;
-      `setup.sh` skips the ~1 GB download/extract when the tree is present, and a
-      version bump in the script busts the key). West-workspace caching deferred
-      (per-line + west-update state is staleness-prone — lower ROI, higher risk).
+- [x] `zephyr-dual-line.yml` — 196.1 fixed. **SDK caching reverted** (added then
+      backed out, 2026-05-29): caching `scripts/zephyr/sdk` restores the SDK
+      *files* but not its CMake-package registration (`~/.cmake/packages/Zephyr-sdk`,
+      written by the SDK's `setup.sh -c`), and `setup.sh` *skips* re-registration
+      when the SDK dir is already present — so a cache **hit** left the SDK
+      unregistered and `find_package(Zephyr-sdk)` failed at configure (broke
+      every example, C included). A correct cache must also restore/redo the
+      registration (cache `~/.cmake/packages/Zephyr-sdk`, or export
+      `ZEPHYR_SDK_INSTALL_DIR`, or unconditionally re-run `setup.sh -c`) — deferred
+      to a proper 196.3 follow-up. West-workspace caching likewise deferred.
 
 ### 196.8 — [fixed, CI-confirming] Zephyr dual-line: rust/cpp example build gaps
 
