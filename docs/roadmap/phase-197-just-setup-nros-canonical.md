@@ -98,6 +98,25 @@ surface. Now the index is the single home.
       `git -C … submodule update --recursive` (PX4's concern, not nano-ros source
       provisioning), as does the `pip install` host-env step (197.4 scope).
 
+### 197.5 — [P0 BLOCKER] 197.2 index schema needs nros-v0.3.1
+197.2 added `build_sources` / `dev_sources` to `[board.*]`/`[rmw.*]`. Those are
+consumed only by `tools/setup.sh` (awk) + `verify-index.py` (python) — **not by
+the nros CLI** — but the released **nros 0.3.0** loads the whole index with
+`#[serde(deny_unknown_fields)]` and **rejects** them:
+`invalid SDK index … TOML parse error at line N: build_sources`. This breaks
+**every** CI lane that calls `nros setup` on the released binary (dep-chain,
+core-libs `--source px4-rs`, all zephyr jobs). Decision (2026-05-29): cut a new
+release.
+- [ ] **nros-cli** (`NEWSLabNTU/nros-cli`): add `build_sources`/`dev_sources` to
+      the `BoardEntry`/`RmwEntry` schema (or relax `deny_unknown_fields` on those
+      structs so orchestration-only fields are ignored). Cut **nros-v0.3.1**;
+      `release-binary.yml` fills the `nros-<host>.tar.zst` assets.
+- [ ] **superproject bump** (mechanical, once 0.3.1 is live): `[tool.nros]`
+      `version`/`upstream` → `0.3.1` + new `dist.*` url+sha256; and
+      `NROS_VERSION=0.3.0` → `0.3.1` at the **6 pin sites**: `ci.yml:54`,
+      `dep-chain.yml:79`, `zephyr-dual-line.yml:{83,141,198}`,
+      `nros-acceptance.yml:33`. Then re-run the lanes.
+
 **Files**: `nros-sdk-index.toml`, `just/esp32.just`, `just/px4.just`,
 `scripts/esp32/install-espressif-qemu.sh`.
 
