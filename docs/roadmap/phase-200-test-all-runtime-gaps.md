@@ -141,7 +141,7 @@ the registration fix to confirm scope.
 `packages/testing/nros-tests/tests/xrce.rs`,
 `examples/native/c/{action-server,action-client,service-server,service-client}/`.
 
-### 200.3 — NuttX runtime e2e — 2
+### 200.3 — NuttX runtime e2e — DONE (verified passing)
 
 `rtos_e2e::…Nuttx…Lang__C` service e2e and
 `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary`. Cross-ref Phase
@@ -166,11 +166,29 @@ therefore means the env was provisioned and it broke downstream:
   (env `panic!`) or **partial** `<prog>_main` linkage (the `assert!` — a genuine
   `Application.mk` `-Dmain=<prog>_main` rename gap where only some apps link).
 
-**Action.** No precondition fix needed (tests are correctly gated). These are
-genuine NuttX build/runtime/linkage bugs to reproduce + fix on a NuttX-provisioned
-host (cross-ref Phase 194) — capture the actual `test-all` failure mode
-(skip vs partial-linkage assert vs service-timeout) there to confirm which.
-Track as a NuttX runtime/build follow-up, not a test-harness change.
+**Action.** No precondition fix needed (tests are correctly gated). Reproduced
+on a NuttX-provisioned host (cross-ref Phase 194) to confirm the actual mode.
+
+**Resolution (2026-05-29 — verified on a provisioned host: `NUTTX_DIR` set,
+`arm-none-eabi-gcc` + nightly `rust-src` present, kernel elf built, make
+fixtures staged). Both tests PASS:**
+- [x] `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary` →
+      `[PASS] all 12 nano-ros example PROGNAMEs linked into …/nuttx` (0.08s). No
+      partial-`<prog>_main`-linkage; the `Application.mk` rename is correct on a
+      freshly-staged kernel.
+- [x] `test_rtos_service_e2e::…Nuttx::…C` → builds the C service fixture, boots
+      NuttX-QEMU, runs AddTwoInts: `[PASS] 4 responses (completed=true)` (30.7s).
+      build_pair did not panic; the goal→reply exchange completes. The service
+      path already uses `wait_for_output_pattern` + a 45s `(Nuttx, C)` window
+      (`rtos_e2e.rs:634`), so it's not the fixed-window fragility 200.4 had — no
+      hardening needed.
+
+So these are **not** runtime/build/linkage bugs — they pass when the env is fully
+provisioned + the kernel/make-fixtures are freshly built. Both are correctly
+precondition-gated (the linkage test `skip!`s on an unstaged kernel; the service
+test gates on `require_e2e`). A red in `test-all` therefore means provisioning
+was incomplete (kernel not built / `just nuttx build-fixtures-make` not run
+before the tests) — a Phase 194 / CI-ordering concern, not a code fix here.
 
 **Files.** `packages/testing/nros-tests/tests/rtos_e2e.rs`,
 `packages/testing/nros-tests/tests/nuttx_make_e2e.rs`.
@@ -228,7 +246,8 @@ policy.
 - [ ] 200.1 rust+cyclonedds zephyr links (zpico provider wired or backend-gated)
 - [ ] 200.1 zephyr CycloneDDS actions implemented (or explicitly skip! pending 177.2)
 - [ ] 200.2 XRCE action/service e2e complete goal→result over the agent
-- [ ] 200.3 nuttx C service e2e + external-apps link pass
+- [x] 200.3 nuttx C service e2e + external-apps link pass (both verified green
+      on a provisioned host; no code fix — tests correct + already robust)
 - [x] 200.4 esp32 logging smoke emits every severity (fixture correct; test
       hardened to a pattern-wait — early-return + slow-boot tolerant)
 - [x] 200.5 opt-in SDK shells gated as precondition-skip when SDK absent
