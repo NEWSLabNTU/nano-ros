@@ -437,8 +437,20 @@ Recommended path to a running FVP demo:
       host idlc/Cyclone deps in `build.sh`; `west update`
 - [ ] Build a **direct-mode** `nros-cpp` talker for `fvp_baser_aemv8r` on 3.7
       (hand-written `main()` via the entry lib — dodges the W.5 data-plane gap)
-- [ ] Load via the Corellium gdb flow (`fvp/start-fvp-vpn.sh` + gdb-multiarch
-      `load`), watch `:2000` for boot + publish
+- [~] Load via the Corellium gdb flow (`fvp/start-fvp-vpn.sh` + gdb-multiarch
+      `load`): **partial.** gdb connects, `load` uploads all sections (1.7 MB;
+      tune `set remote memory-write-packet-size 16384` — default packets stall
+      over the ~194 ms VPN), PC sets to `__start`. BUT a plain `load`+`continue`
+      does NOT cleanly boot our image: it resumes only core 0 at our entry while
+      the SMP secondaries (cores 1-3) keep running the device's stock 3.5.0
+      sample in the same RAM → corruption, sample still on the console. The gdb
+      stub's `monitor` exposes **only `help`** (no `reset`), so all-core reset to
+      our reset-vector image isn't available via gdb.
+- [ ] **Clean boot needs AVH firmware replacement, not gdb-RAM-load.** Upload
+      our `zephyr.elf`/`.bin` as the device's firmware via Corellium AVH (web
+      console / API, or the `debug_accelerator`) + reboot — gdb `:4000` is for
+      debugging the running firmware, not replacing it. (Accelerator usage TBD —
+      it is a blocking daemon, no `--help`.)
 - [ ] Re-validate 190.A–G hold on real 3.7 (expected — they key off
       libstdc++/newlib presence, not the Zephyr version)
 - [ ] (later) fold the load step into Phase-172 `nros deploy fvp-aemv8r`
