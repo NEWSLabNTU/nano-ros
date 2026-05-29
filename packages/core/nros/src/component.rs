@@ -943,6 +943,12 @@ pub trait ActionExecutor {
         goal_id: &GoalId,
         feedback: &[u8],
     ) -> ComponentResult<()>;
+
+    /// Visit every goal on `action_entity` that has been accepted but not yet
+    /// completed, with its id + current status. The execution seam: a `tick` body
+    /// has no other way to learn an accepted goal's id (the goal-decision callback
+    /// doesn't surface it), so it iterates here to drive feedback / completion.
+    fn for_each_active_goal(&self, action_entity: &str, visit: &mut dyn FnMut(&GoalId, GoalStatus));
 }
 
 /// Context handed to [`ExecutableComponent::tick`] (W.5.6): the per-spin hook
@@ -1001,6 +1007,19 @@ impl<'a> TickCtx<'a> {
         let len = writer.position();
         self.actions
             .complete_goal_raw(action.as_str(), goal_id, status, &buf[..len])
+    }
+
+    /// Visit each active (accepted, not yet completed) goal on `action` with its
+    /// id + status — how a `tick` body discovers goals to feed / complete. Collect
+    /// the ids you want to act on, then call [`Self::publish_feedback`] /
+    /// [`Self::complete_goal`] after the visit returns (those borrow `self`
+    /// mutably, so they can't run inside `visit`).
+    pub fn for_each_active_goal(
+        &self,
+        action: EntityId<'_>,
+        visit: &mut dyn FnMut(&GoalId, GoalStatus),
+    ) {
+        self.actions.for_each_active_goal(action.as_str(), visit);
     }
 
     /// Publish typed feedback for an active action goal (W.5.6 — tick-only).
@@ -1553,6 +1572,7 @@ mod tests {
         struct RecAct {
             completed: bool,
             fed: bool,
+            visited: usize,
         }
         impl ActionExecutor for RecAct {
             fn complete_goal_raw(
@@ -1574,6 +1594,14 @@ mod tests {
                 self.fed = true;
                 Ok(())
             }
+            fn for_each_active_goal(
+                &self,
+                _action_entity: &str,
+                visit: &mut dyn FnMut(&GoalId, GoalStatus),
+            ) {
+                // One pretend-active goal, so the tick body has something to drive.
+                visit(&GoalId::zero(), GoalStatus::Executing);
+            }
         }
 
         let pubs = RecPub {
@@ -1582,12 +1610,16 @@ mod tests {
         let mut acts = RecAct {
             completed: false,
             fed: false,
+            visited: 0,
         };
         let goal = GoalId::zero();
+        let mut seen = 0usize;
         {
             let mut ctx = TickCtx::new(&pubs, &mut acts);
             ctx.publish::<TestMsg, 64>(EntityId::new("pub_x"), &TestMsg)
                 .unwrap();
+            // Discover the active goal the way a real tick body does, then act on it.
+            ctx.for_each_active_goal(EntityId::new("act"), &mut |_id, _status| seen += 1);
             ctx.publish_feedback::<TestMsg, 64>(EntityId::new("act"), &goal, &TestMsg)
                 .unwrap();
             ctx.complete_goal::<TestMsg, 64>(
@@ -1598,8 +1630,10 @@ mod tests {
             )
             .unwrap();
         }
+        acts.visited = seen;
         assert!(pubs.published.get());
         assert!(acts.completed);
         assert!(acts.fed);
+        assert_eq!(acts.visited, 1);
     }
 }
