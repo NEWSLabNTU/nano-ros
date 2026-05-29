@@ -15,17 +15,24 @@ default:
 setup:
     #!/usr/bin/env bash
     set -e
-    # Probe for the `esp32c3` machine model, not the binary's mere
-    # existence. Stock Debian/Ubuntu ships a `qemu-system-riscv32` that
-    # only knows the `virt` machine — the ESP32 tests need Espressif's
-    # fork. Mirrors `nros_tests::esp32::is_qemu_riscv32_available()`.
+    # Phase 197.4/196.9 — provision the build sources (zenoh-pico/mbedtls via the
+    # default zenoh RMW; the riscv32 target is rustup-managed) so the cross build
+    # resolves. The esp32 board has no toolchain package (build-std), so this is
+    # the source set.
+    source scripts/build/cargo.sh
+    "$(nros_cli_bin)" setup esp32
+    # Probe for the `esp32c3` machine model, not the binary's mere existence —
+    # the ESP32 e2e TESTS need Espressif's QEMU fork (stock qemu-system-riscv32
+    # only knows `virt`). Build does NOT need it, so provision best-effort: the
+    # fork's source-build wants qemu deps that aren't always present, and that
+    # must not block the build phase (the e2e step gates on its presence).
     if command -v qemu-system-riscv32 &>/dev/null \
             && qemu-system-riscv32 -machine help 2>/dev/null | grep -q '\besp32c3\b'; then
         echo "Espressif qemu-system-riscv32 already installed: $(qemu-system-riscv32 --version | head -1)"
     else
         # Phase 197.3 — the Espressif QEMU fork is the source-built
         # [tool.esp32-qemu] in nros-sdk-index.toml; provision it via nros.
-        nros setup --tool esp32-qemu
+        nros setup --tool esp32-qemu || echo "esp32-qemu unavailable (e2e will skip); build unaffected"
     fi
 
 # Diagnose ESP32 install status (read-only).

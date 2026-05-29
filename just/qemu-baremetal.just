@@ -253,7 +253,16 @@ run-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
 # idempotent and short-circuits when build/qemu/bin/qemu-system-arm
 # is newer than every patch file.
 [group("setup")]
-setup: build-zenoh-pico setup-qemu
+setup:
+    #!/usr/bin/env bash
+    set -e
+    # Phase 197.4/196.9 — provision the board's sources (arm-gcc, qemu dist, +
+    # zenoh-pico/mbedtls via the default zenoh RMW) via nros before the arm
+    # zenoh-pico build needs them. Then the patched-qemu + zenoh-pico-arm builds.
+    source scripts/build/cargo.sh
+    "$(nros_cli_bin)" setup qemu-arm-baremetal
+    just qemu build-zenoh-pico
+    just qemu setup-qemu
 
 # Diagnose QEMU bare-metal install status (read-only).
 [group("setup")]
