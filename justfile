@@ -444,7 +444,23 @@ _nextest-platform test_name verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
+    # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
+    # (missing fixture/binary/emulator) — nextest has no native skip, so those
+    # count as failures and exit non-zero. Treat a run as passing iff there are
+    # no *real* (non-[SKIPPED]) failures, per `_count-real-failures`. Real
+    # failures still fail the recipe.
+    set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    rc=$?
+    set -e
+    [ $rc -eq 0 ] && exit 0
+    real="$(just _count-real-failures)"
+    just _test-summary || true
+    if [ "$real" -ne 0 ]; then
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s)."
+        exit 1
+    fi
+    echo "All failures were [SKIPPED] preconditions — treating as pass."
 
 # Run rustdoc doctests for the `nros` umbrella crate.
 # Nextest does not execute doctests, so we run them separately.

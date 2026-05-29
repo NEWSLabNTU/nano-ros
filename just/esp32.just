@@ -176,15 +176,11 @@ test-basic: build-qemu
 # Run ESP32-C3 QEMU integration tests (build, boot, E2E via nextest)
 [group("main")]
 test verbose="":
-    #!/usr/bin/env bash
-    set -e
-    source scripts/build/cargo.sh
-    cargo_nextest_args=($(nros_cargo_nextest_args))
-    args=(-p nros-tests --test esp32_emulator --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    # Delegate to the shared skip-tolerant runner: the esp32_emulator tests
+    # `skip!` when the Espressif QEMU fork / espflash / riscv32 target are absent
+    # (best-effort emulator), and _nextest-platform treats an all-[SKIPPED] run
+    # as pass while still failing on real errors.
+    @just _nextest-platform esp32_emulator {{verbose}}
 
 # Run all ESP32 tests (same as test)
 [group("full-matrix")]
