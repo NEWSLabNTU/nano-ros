@@ -146,6 +146,14 @@ build-fixture-extras:
     # fixtures (the primary coverage) are unaffected. Install a ROS 2 / CycloneDDS
     # idlc (or set IDLC_EXECUTABLE) to exercise the Cyclone variants.
     if command -v idlc >/dev/null 2>&1 || [ -x build/cyclonedds/bin/idlc ]; then
+      # Phase 204.6 follow-up — cyclone FreeRTOS heap right-size. Measured
+      # (qemu MPS2-AN385): the cyclone rust talker + listener boot + exchange at
+      # 1 MiB heap (vs the 3 MiB FreeRTOSConfig.h default sized for the heavy
+      # boot path). No heavier cyclone FreeRTOS example exists (no rust
+      # service/action, no C++ cyclone). The cmake/corrosion build honors this
+      # env (the cargo `just` path does not); scoped here so the C++ *zenoh*
+      # examples keep the safe 3 MiB default. bss 3.3 MB → ~1.1 MB.
+      export NROS_FREERTOS_HEAP_KB=1024
       for case in talker listener; do
         if [ ! -d examples/qemu-arm-freertos/rust/${case} ]; then
             continue

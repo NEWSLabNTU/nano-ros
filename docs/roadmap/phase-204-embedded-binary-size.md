@@ -154,10 +154,22 @@ one. Until then "serial = smaller" is not true on the shipped examples.
       default until separately measured.
 - **Files:** `packages/boards/nros-board-mps2-an385-freertos/config/FreeRTOSConfig.h`,
   `packages/boards/nros-board-freertos/build.rs`.
-- [ ] **Follow-up:** measure the cyclone + xrce FreeRTOS high-water and give each
-      its own gated default (cyclone almost certainly < 3 MiB too); wire an
-      `rmw-cyclonedds`/`rmw-xrce` feature forward to the base crate like
-      `rmw-zenoh`.
+- [x] **Follow-up done (2026-05-30) — cyclone measured + defaulted.** The cyclone
+      rust **talker + listener** boot + exchange cleanly at **1 MiB** heap on qemu
+      MPS2-AN385 (`ucHeap` 1 MiB, **bss 3.3 MB → 1.1 MB, −67 %**); the rust zenoh
+      **action-server** (heaviest rust zenoh example) also confirmed fine at 512
+      KiB (boots → "Action server ready" → "Waiting for goals"), so the shipped
+      512 default is safe across all rust zenoh examples, not just the talker.
+      Cyclone freertos has **no** heavier example (no rust service/action, no C++
+      cyclone), so 1 MiB is the measured-safe default. Baked via
+      `NROS_FREERTOS_HEAP_KB=1024` in the cyclone block of `just freertos
+      build-fixture-extras` — the cmake/corrosion build honors the env (the cargo
+      `just` rust path does not, which is why zenoh uses the `rmw-zenoh` feature
+      gate instead); scoped so the C++ *zenoh* examples keep the safe 3 MiB
+      default (lowering the shared `FreeRTOSConfig.h` default would hit the
+      unverified C++ zenoh action/service builds). No `rmw-xrce` freertos example
+      exists, so no xrce tuning needed.
+- **Files (follow-up):** `just/freertos.just`.
 
 ## Transport / IP-stack optionality (architecture)
 
