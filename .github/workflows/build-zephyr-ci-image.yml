@@ -21,7 +21,8 @@ concurrency:
 env:
   # The tag encodes the inputs (ROS distro + SDK version) — bump when either
   # changes, in lockstep with the Dockerfile ARG + the dual-line `container:`.
-  IMAGE: ghcr.io/${{ github.repository_owner }}/nano-ros-zephyr-ci
+  # GHCR repo names must be lowercase; the owner (NEWSLabNTU) is mixed-case.
+  IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
   TAG: humble-sdk0.16.8
 
 jobs:
