@@ -154,16 +154,31 @@ flushed (and stale-fixture sweeps saw old output).
 
 **Files.** `packages/testing/nros-tests/tests/logging_smoke.rs`.
 
-### 200.5 — External opt-in SDK shells — 3 (expected-skip candidates)
+### 200.5 — External opt-in SDK shells — 3 (expected-skip candidates) — DONE
 
-`integration_{esp_idf,platformio,zephyr}_integration_shell_smoke` need the
-`extended`-tier SDKs (ESP-IDF, PlatformIO) that `just setup` (default tier) does
-not install. **Decision needed:** these should `skip!` with a precondition
-message when the SDK is absent (they currently hard-fail), per the
-"check existence + warn, don't build" testing principle — vs. keeping them as
-fail-loud and excluded from the default `just test` filterset.
+`integration_{esp_idf,platformio,zephyr}_integration_shell_smoke` are static
+shell smokes (assert the `integrations/<rtos>/` component files exist + carry the
+expected markers — they do **not** build), gated by `nros_tests::skip!` when the
+SDK env is absent (`IDF_PATH`/`idf.py`, `pio`, `ZEPHYR_BASE`/`west`).
 
-**Files.** `packages/testing/nros-tests/tests/integration_{esp_idf,platformio,zephyr}.rs`.
+**Decision (2026-05-29): `skip!` — keep as-is (NOT fail-loud + excluded).**
+`skip!` panics with the `[SKIPPED]` marker, and the project's
+`scripts/test/failed-filterset.py` / `just _count-real-failures` already treat a
+`[SKIPPED]` failure as **not a real failure**. So a default-tier `just test`
+shows these as precondition-skips, not failures — the "hard-fail" was a *raw*
+`cargo nextest` artifact (a skip!-panic looks like a failure until the
+`[SKIPPED]` reclassification). Excluding them from the filterset would instead
+lose coverage when the SDK *is* present, so `skip!` is preferred per the
+"check existence + skip, don't build" principle.
+
+**Verified (2026-05-29):** ran the three on a default-tier host — `zephyr` →
+`[SKIPPED]` (no `ZEPHYR_BASE`), `esp_idf`/`platformio` → pass (env/tool present,
+file-asserts hold); `failed-filterset.py` on the JUnit returns **empty** (zero
+real failures). No code change needed — the tests already implement the chosen
+policy.
+
+**Files.** `packages/testing/nros-tests/tests/integration_{esp_idf,platformio,zephyr}.rs`
+(unchanged); `scripts/test/failed-filterset.py` (the `[SKIPPED]` reclassifier).
 
 ---
 
@@ -176,7 +191,8 @@ fail-loud and excluded from the default `just test` filterset.
 - [ ] 200.3 nuttx C service e2e + external-apps link pass
 - [x] 200.4 esp32 logging smoke emits every severity (fixture correct; test
       hardened to a pattern-wait — early-return + slow-boot tolerant)
-- [ ] 200.5 opt-in SDK shells gated as precondition-skip when SDK absent
+- [x] 200.5 opt-in SDK shells gated as precondition-skip when SDK absent
+      (`skip!` + `[SKIPPED]` reclassification — verified zero real failures)
 
 ## Notes
 
