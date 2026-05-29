@@ -80,14 +80,25 @@ codegen tooling — none of which a BYO west user invokes.
       need none. The NSOS (`west patch`) + cyclonedds sections already existed.
       **Files:** `integrations/zephyr/README.md`.
 
-- [ ] **202.4 — [P2] nano-ros internals leak into the user's rust project.** Every
-      rust example forces `[patch.crates-io]` into its `.cargo/config.toml` + a
-      "package name must be `rustapp`" rule (carried over from the 2026-05-04 UX
-      study). A copied-out user app inherits both. **Fix:** remove/relax the
-      `rustapp` name constraint and provide the interface/`[patch]` wiring through
-      the module rather than per-app `.cargo/config.toml`. **Files:**
-      `examples/zephyr/rust/*/Cargo.toml`, `examples/zephyr/rust/*/.cargo/config.toml`,
-      `zephyr/cmake/`.
+- [x] **202.4 — [P2, DONE as docs — the constraints are intrinsic, not
+      removable].** Investigated both "leaks":
+      - The `rustapp` name is the **`[lib]`** name (not the package — the package
+        is `nros_zephyr_talker`), and it's an **upstream `zephyr-lang-rust`
+        contract**: `rust_cargo_application()` links `librustapp.a`
+        (`zephyr/CMakeLists.txt:69`). Not a nano-ros leak; can't be renamed away.
+      - The `[patch.crates-io]` must live in the **consuming crate's**
+        `.cargo/config.toml` (a Cargo rule) — a CMake module *cannot* inject it. So
+        it can't be "provided through the module"; what can change is *how the user
+        gets correct paths*.
+      **Fix (docs):** added a "Rust applications" section to
+      `integration-zephyr.md` — (1) note the `rustapp` `[lib]` requirement; (2)
+      tell rust BYO apps to **generate** their config rather than copy the
+      example's repo-relative one: `nros generate-rust --generate-config
+      --nano-ros-path <workspace>/modules/nano-ros/packages/core` writes both the
+      `generated/<pkg>` interface crates and a `.cargo/config.toml` whose
+      `[patch.crates-io]` points at the user's own layout. Verified the command
+      emits absolute per-layout patch paths. **Files:**
+      `book/src/getting-started/integration-zephyr.md`.
 
 - [x] **202.5 — [P2, mostly DONE] `zephyr-lang-rust` reproducibility + patch
       tolerance.** Both lines are in fact already **pinned** (not floating `main`):

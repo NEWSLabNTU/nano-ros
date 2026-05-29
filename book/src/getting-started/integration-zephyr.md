@@ -154,6 +154,31 @@ For a quick sanity check that the module is wired correctly:
 west build -t menuconfig                 # confirm CONFIG_NROS=y is visible
 ```
 
+## Rust applications
+
+Two things differ for a **Rust** app (C/C++ apps skip this section):
+
+1. **The Rust crate's `[lib]` must be named `rustapp`** (`crate-type =
+   ["staticlib"]`) — a `zephyr-lang-rust` contract: its `rust_cargo_application()`
+   links `librustapp.a`. The Cargo *package* name is free.
+
+2. **Generate the interface crates + the `[patch.crates-io]` wiring for YOUR
+   layout** — do **not** copy an in-repo example's `.cargo/config.toml`: its
+   `../../../../packages/core/...` paths are repo-relative and break in a
+   copied-out app. From your app dir, run (ROS sourced — see Prerequisites):
+
+   ```bash
+   nros generate-rust --generate-config \
+       --nano-ros-path "$PWD/../../modules/nano-ros/packages/core"
+   ```
+
+   This writes `generated/<pkg>/` (the message crates) and a `.cargo/config.toml`
+   whose `[patch.crates-io]` points the `nros-*` crates at your
+   `modules/nano-ros/packages/core/*` and the generated interfaces at
+   `generated/*`. Adjust `--nano-ros-path` to your workspace's
+   `modules/nano-ros/packages/core` (the dir holding `nros-core`, `nros-node`, …).
+   The example apps' committed `.cargo/config.toml` is for the in-tree build only.
+
 ## Run
 
 ```bash
