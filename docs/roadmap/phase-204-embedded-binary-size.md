@@ -377,11 +377,26 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
       "-fdata-sections"] }`, matching every embedded platform block. (Host-only
       `nros-platform-posix` glue in the cffi build.rs left as-is — not XRCE/CDR
       surface, and `is_posix`-gated so it never reaches an embedded gc link.)
-- [x] **Acceptance:** XRCE backend `.text` measured before/after (libxrce_client.a,
-      host debug): **89881 → 73971 B (−15910, −17.7 %)** from `-Os` alone, *before*
-      any link-time stripping. Per-function sections now present
-      (`.text.uxr_init_session`, `.text.process_status`, …) so 204.8's
+- [x] **XRCE acceptance:** XRCE backend `.text` measured before/after
+      (libxrce_client.a, host debug): **89881 → 73971 B (−15910, −17.7 %)** from
+      `-Os` alone, *before* any link-time stripping. Per-function sections now
+      present (`.text.uxr_init_session`, `.text.process_status`, …) so 204.8's
       `--gc-sections` can drop the unused XRCE/micro-CDR surface.
+- [x] **zenoh-pico `-Os` (2026-05-30) — the default RMW + biggest vendor C blob.**
+      Originally only XRCE got `-Os`; zenoh-pico stayed `opt_level = 2`. The
+      `zenoh_platforms.toml` schema's `opt_level` was `u32`-only, so it could not
+      express `-Os`. Extended `nros-board-common::manifest::CompileSettings::opt_level`
+      to a serde-`untagged` `OptLevel { Num(u32), Str(String) }` (so `opt_level = 2`
+      and `opt_level = "s"` both parse), and the `zpico-sys` build.rs applies
+      `Num → cc::Build::opt_level`, `Str → opt_level_str`. Set every **embedded**
+      block (`bare-metal`, `freertos-lwip`, `nuttx`, `threadx`, `orin-spe`) to
+      `opt_level = "s"`; POSIX stays `2` (host, size irrelevant). **Measured** on
+      `qemu-arm-baremetal/rust/talker` (release): `.text` **185.6 → 177.4 KB
+      (−8.2 KB, −4.4 %)**, backend intact (`zenoh = 36`). **Functional:**
+      `test_qemu_serial_pubsub_e2e` (rebuilt under `nros-fast-release`, which now
+      compiles zenoh-pico `-Os`) `published=1, received=1` — `-Os` is correctness-
+      neutral. Bare-metal build + e2e verified; the other embedded platforms use the
+      identical `opt_level_str("s")` path (`-Os` is a universally-supported flag).
 
 ### 204.10 — `target-cpu` for embedded Rust — [x] DONE (2026-05-30) — measured, kept OFF for size
 - [x] **Investigated + measured `-C target-cpu=<core>` per embedded triple.**

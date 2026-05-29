@@ -153,7 +153,7 @@ extra_sources = [
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 arch = "cortex-m3"
-compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 required_env = [
   { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just setup-freertos; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },
   { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Example: export FREERTOS_PORT=GCC/ARM_CM3" },
@@ -193,7 +193,7 @@ extra_sources = [
   { path = "{src}/system/unix/network.c" },
 ]
 arch = "cortex-a7"
-compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 pic = false
 required_env = [
   { name = "NUTTX_DIR", help = "NuttX OS source. just setup-nuttx; export NUTTX_DIR=$PWD/third-party/nuttx/nuttx", validate_subdir = "include" },
@@ -232,7 +232,7 @@ extra_sources = [
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 arch = "riscv64gc"
-compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 required_env = [
   { name = "THREADX_DIR", help = "ThreadX kernel source. just setup-threadx; export THREADX_DIR=$PWD/third-party/threadx/kernel", validate_subdir = "common/inc" },
   { name = "THREADX_CONFIG_DIR", help = "Directory containing tx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
@@ -301,7 +301,9 @@ extra_sources = [
 # stm32f4) AND riscv32imc (ESP32-C3). First arch whose `target_match`
 # hits is applied — see build.rs::build_zenoh_pico_unified Step 3.
 arch = ["cortex-m3", "riscv32imc"]
-compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+# Phase 204.9 — size build (`-Os`): zenoh-pico is the biggest vendor C blob
+# on embedded; `-Os` saved ~8 KB .text on the bare-metal talker vs `-O2`.
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 include_paths = [
   "{nros}/c/platform",
   "{nros}/c/include",
@@ -327,7 +329,7 @@ extra_sources = [
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 arch = "cortex-r5-softfp"
-compile = { opt_level = 2, warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 link = { tcp = false, udp_unicast = false, udp_multicast = false, serial = false, tls = false, ws = false, bluetooth = false, raweth = false, ivc = "feature", custom = "feature" }
 required_env = [
   { name = "NV_SPE_FSP_DIR", help = "Staged SPE FSP install. sentinel `just orin_spe-bsp-stage` produces this under external/spe-fsp/install/. Required for FreeRTOS.h, portmacro.h, FreeRTOSConfig.h", validate_subdir = "include/freertos" },

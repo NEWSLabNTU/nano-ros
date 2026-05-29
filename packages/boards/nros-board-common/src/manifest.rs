@@ -231,10 +231,22 @@ pub struct WhenMatcher {
     pub if_env: Option<String>,
 }
 
+/// Optimization level for the cc-rs build. Accepts either a numeric
+/// level (`opt_level = 2`) or a string level (`opt_level = "s"` / `"z"`
+/// for size), matching `cc::Build::opt_level` / `opt_level_str`.
+/// Phase 204.9 — size builds need `-Os`, which the integer form can't
+/// express.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum OptLevel {
+    Num(u32),
+    Str(String),
+}
+
 /// `cc::Build` compile settings.
 #[derive(Debug, Default, Deserialize, Clone)]
 pub struct CompileSettings {
-    pub opt_level: Option<u32>,
+    pub opt_level: Option<OptLevel>,
     #[serde(default)]
     pub warnings: Option<bool>,
     #[serde(default)]

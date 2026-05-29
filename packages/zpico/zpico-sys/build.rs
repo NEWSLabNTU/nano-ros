@@ -1717,8 +1717,16 @@ fn build_zenoh_pico_unified(
     shim.apply_to_cc(&mut build);
 
     // Step 9 — compile settings (opt_level / warnings / cflags).
-    if let Some(level) = plat.compile.opt_level {
-        build.opt_level(level);
+    // Phase 204.9 — `opt_level` is numeric (`2`) or a string (`"s"`/`"z"`
+    // for size); the size forms map to cc-rs `opt_level_str`.
+    match &plat.compile.opt_level {
+        Some(manifest::OptLevel::Num(level)) => {
+            build.opt_level(*level);
+        }
+        Some(manifest::OptLevel::Str(level)) => {
+            build.opt_level_str(level);
+        }
+        None => {}
     }
     if let Some(w) = plat.compile.warnings {
         build.warnings(w);
