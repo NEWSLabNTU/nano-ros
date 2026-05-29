@@ -33,6 +33,17 @@ build-examples:
         echo "Skipping NuttX QEMU examples (NuttX not found). Run: just nuttx setup"
         exit 0
     fi
+    # Provision the NuttX kernel export (idempotent — locked, up-to-date short-
+    # circuits). Generates the in-tree `nuttx/config.h` that the board build.rs
+    # cc (platform.c) and each example's build.rs (linker-script preprocess of
+    # `#include <nuttx/config.h>`) require. The Phase 194.4 "self-provision at
+    # example build" doesn't cover the board *dependency* crate's build.rs, which
+    # compiles before the example's — so config.h must exist before cargo runs.
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    if [ ! -f "$nuttx_dir/include/nuttx/config.h" ]; then
+        echo "Provisioning NuttX kernel export (config.h)..."
+        scripts/nuttx/build-nuttx.sh
+    fi
     echo "Building NuttX QEMU ARM virt examples..."
     # Build options come from the SSOT manifest (examples/fixtures.toml) via
     # the shared builder. No +nightly override — each example pins its nightly
