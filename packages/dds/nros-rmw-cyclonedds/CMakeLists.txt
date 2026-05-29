@@ -179,25 +179,6 @@ target_compile_options(nros_rmw_cyclonedds PRIVATE
     -ffunction-sections -fdata-sections
 )
 
-# Phase 204.13 — opt-in interprocedural optimization (LTO) for size-critical
-# consumption. OFF by default (Release builds keep `-O3` without IPO);
-# `-DNROS_RMW_CYCLONEDDS_IPO=ON` (pair with `-DCMAKE_BUILD_TYPE=MinSizeRel`)
-# enables it where the toolchain supports it. Gated on a real IPO check so a
-# linker that can't do it (e.g. the cross rust-lld path, 204.14) fails the
-# configure cleanly rather than at link time.
-option(NROS_RMW_CYCLONEDDS_IPO "Enable IPO/LTO on the Cyclone RMW wrapper (size)" OFF)
-if(NROS_RMW_CYCLONEDDS_IPO)
-    include(CheckIPOSupported)
-    check_ipo_supported(RESULT _nros_ipo_ok OUTPUT _nros_ipo_msg)
-    if(_nros_ipo_ok)
-        set_property(TARGET nros_rmw_cyclonedds
-            PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-    else()
-        message(FATAL_ERROR
-            "NROS_RMW_CYCLONEDDS_IPO=ON but IPO unsupported: ${_nros_ipo_msg}")
-    endif()
-endif()
-
 set_target_properties(nros_rmw_cyclonedds PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME NrosRmwCyclonedds
