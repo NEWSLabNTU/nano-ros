@@ -335,8 +335,38 @@ works: `changes` resolved the dynamic matrix, all cells ran (fail-fast off),
 - [ ] **Wire e2e on a nightly `schedule:`** once cells build green, so QEMU runtime
       is exercised without blocking pushes.
 
+**Review findings + maintainer directives (2026-05-29).**
+- [ ] **ROS-for-codegen gap (likely part of the 6 failing cells, beyond naming).**
+      platform-ci installs **no ROS**, but the build step runs `nros generate-rust`
+      for the rust examples (`just/freertos.just:75,148`, etc.), which resolves a
+      package's `msg/*.msg` via `AMENT_PREFIX_PATH` from a **sourced ROS**.
+      `./setup.bash` only PATHs the nano-ros tools (nros/qemu/zenohd/xrce-agent +
+      SDK store) — it does **not** source ROS / set AMENT. So any cell building a
+      rust example fails at codegen. (nuttx green is consistent — its cell either
+      doesn't gen rust interfaces or its C path uses `NROS_*_DIR`, not AMENT.) The
+      dep-chain + zephyr-dual-line lanes install ROS for exactly this reason.
+- [ ] **Directive: provision ROS via a prebuilt image, not per-cell `setup-ros`.**
+      Run platform-ci cells in a container with ROS Humble baked (the dep-chain
+      lane already uses `ros:humble-ros-base`; the zephyr lane uses the Phase 196.3
+      `ghcr.io/newslabntu/nano-ros-zephyr-ci` image). **Synergy:** that zephyr
+      image is ROS+host-tools baked with only the *Zephyr SDK* layer
+      zephyr-specific — factor a sibling **`nano-ros-ci` base image** (ROS Humble +
+      cmake/ninja/dtc/gperf/uv/just/rustup+targets, **no** Zephyr SDK) and back
+      platform-ci's cells with it; the zephyr image then = that base + SDK. Fixes
+      the AMENT gap *and* gives platform-ci the same per-cell speedup the container
+      lanes get. (In-container caveats: `shell: bash`, pinned `CARGO_HOME`/
+      `RUSTUP_HOME`, `safe.directory '*'`, `packages: read` + pull credentials —
+      see `dep-chain.yml` / the zephyr image.)
+- [ ] **Directive: cover C/C++ tests too, not just rust/build.** The per-cell
+      `test` step (`just <plat> test`) must exercise the C and C++ example/e2e
+      paths, not only rust — each platform's c/cpp talker/listener (+ service where
+      it exists) should run under QEMU like the zephyr c/cpp lanes do. Confirm
+      `just <plat> test` includes the c/cpp fixtures (extend the recipe if it's
+      rust-only).
+
 **Files.** `.github/workflows/platform-ci.yml`; the per-platform `just/<plat>.just`
-setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage).
+setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage);
+`ci/docker/` (the proposed `nano-ros-ci` base image).
 
 ---
 
