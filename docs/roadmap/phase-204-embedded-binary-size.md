@@ -377,18 +377,23 @@ flow from `CARGO_FEATURE_*` into the link-feature flags) — only the `tcp/udp`
       documents `NROS_LINK_IP` + `NROS_SMOLTCP_MAX_*` + the serial / RTOS-stack-reuse
       story.
 - [x] **Generator auto-sets `NROS_LINK_IP=0` for serial-only builds (nros-cli
-      `fb9f241`, pending release).** `PlanBuildOptions::drops_ip_link()` is true
-      when every declared transport is Serial/CAN (no Ethernet/Wifi); empty
-      transports ⇒ false (zero-config keeps the board default). `render_cargo_config`
-      then injects `NROS_LINK_IP = "0"` into the generated `.cargo/config.toml`
-      `[env]` (merge-or-append, idempotent). Generator-side, not the board
-      descriptor — the same board builds either ethernet *or* serial, so only the
-      per-build transport choice can decide. So a `nros build`/`nros new` serial
-      project sheds the IP link with no hand-set env. (137 nros-cli-core lib tests
-      pass incl. `drops_ip_link` + `inject_env_var`.)
-- [ ] **Remainder:** ship the nros-cli change in a release + bump the index pin;
-      resolve the cffi register-path confound (the separate **204.1** item, owned
-      elsewhere) so the serial *absolute* number reflects the shed IP stack.
+      `fb9f241`).** `PlanBuildOptions::drops_ip_link()` is true when every declared
+      transport is Serial/CAN (no Ethernet/Wifi); empty transports ⇒ false
+      (zero-config keeps the board default). `render_cargo_config` then injects
+      `NROS_LINK_IP = "0"` into the generated `.cargo/config.toml` `[env]`
+      (merge-or-append, idempotent). Generator-side, not the board descriptor — the
+      same board builds either ethernet *or* serial, so only the per-build transport
+      choice can decide. So a `nros build` serial project sheds the IP link with no
+      hand-set env. (137 nros-cli-core lib tests pass incl. `drops_ip_link` +
+      `inject_env_var`.)
+- [x] **`nros new` scaffolds the knobs (nros-cli 0.3.6).** Embedded `nros new`
+      (baremetal/freertos) now emits a `.cargo/config.toml` (none before) with
+      `--gc-sections` + a documented commented serial `NROS_LINK_IP=0` block +
+      heap/socket env. Shipped in **nros-cli 0.3.6**, pinned via `install-nros.sh`.
+- [x] **Shipped + pinned.** nros-cli **0.3.6** released (`nros-v0.3.6`, host
+      binaries built by `release-binary.yml`); `scripts/install-nros.sh`
+      `NROS_VERSION` bumped 0.3.5 → 0.3.6. The cffi register-path confound is the
+      separate **204.1** item (explored + reverted there), not this transport item.
 
 ## Compiler + linker options — cross-layer inventory
 
@@ -408,7 +413,7 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
 | Final link — Rust embedded | rustc | — | — | — | **no `--gc-sections`** |
 | Final link — C/C++ board (CMake) | CMake | — | — | — | `--gc-sections` ✓ |
 
-### 204.8 — `--gc-sections` on the Rust embedded link path — [x] DONE in-tree (2026-05-30); `nros new` scaffold external
+### 204.8 — `--gc-sections` on the Rust embedded link path — [x] DONE (2026-05-30; `nros new` scaffold shipped in nros-cli 0.3.6)
 - [x] **Proven (2026-05-29).** Added `-C link-arg=--gc-sections` to
       `examples/stm32f4/rust/talker/.cargo/config.toml` → **text 79.7 → 75.6 KB
       (−4.0 KB)**. **Note:** the link uses **`rust-lld` directly** (no gcc driver),
@@ -436,8 +441,10 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
 - [x] **Boot smoke.** `test_qemu_serial_pubsub_e2e` boots the gc'd mps2-an385
       firmware in QEMU and exchanges data (`published=1, received=1`) — the
       `--gc-sections` link does not strip anything live.
-- [ ] **Remainder (external):** `nros new` should scaffold `--gc-sections` by
-      default — lives in the `nros-cli` repo (template generation), not this tree.
+- [x] **`nros new` scaffolds `--gc-sections` by default (nros-cli 0.3.6).**
+      Embedded `nros new` (baremetal/freertos) emits a `.cargo/config.toml` with the
+      `--gc-sections` rust-lld link-arg (+ documented serial/heap/socket env).
+      Shipped in nros-cli 0.3.6, pinned via `install-nros.sh`.
 
 ### 204.9 — Size-optimize the cc-rs vendor C — [x] DONE (2026-05-30)
 - [x] `Micro-XRCE / micro-CDR` (`nros-rmw-xrce-cffi`, `xrce-sys`) got **no** `-Os`,
