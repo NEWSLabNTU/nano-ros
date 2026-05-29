@@ -40,6 +40,8 @@ tools/*
 !tools/rust-toolchain.toml
 # Phase 123.A.3 — setup orchestrator (target → submodule fetch).
 !tools/setup.sh
+# Phase 197.4 — host-env helper (rustup/apt for `just <module> setup`).
+!tools/host-env.sh
 
 # Local environment overrides (created from .env.example)
 /.env
