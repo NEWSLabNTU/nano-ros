@@ -22,16 +22,16 @@
 # dist.<host> is added after the first `nros-v*` release is cut + gate-verified;
 # until then `nros setup` / install.sh fall back to the source recipe below.
 [tool.nros]
-version = "0.2.0"
-upstream = "0.2.0" # nros-cli crate version = source.ref tag (nros-v0.2.0)
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.2.0/nros-linux-x86_64.tar.zst", sha256 = "d0f49e8a43f631cbf95b6d6797671d13e6b35323756a3e06033ffe0c3aa4fc04" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.2.0/nros-linux-arm64.tar.zst", sha256 = "6114a53858df2f1d8d30bab1ff46cb0b6fc3f3dcd5c1b8e21f04f47d4cfe2f1e" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.2.0/nros-macos-arm64.tar.zst", sha256 = "e1a412373167233a572164d3c276fbe5df647c84bdf58424378fa21fc8da9071" }
-# dist.macos-x86_64 added once the macos-13 build seeds it (queued at cut time);
-# intel-mac falls back to the source recipe until then.
+version = "0.3.0"
+upstream = "0.3.0" # nros-cli crate version = source.ref tag (nros-v0.3.0)
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.0/nros-linux-x86_64.tar.zst", sha256 = "89ebdc8bde2d790f288f337dcc05d449482a1f2b23abfbde74624bef9c0cff3e" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.0/nros-linux-arm64.tar.zst", sha256 = "f67b3bdc929db986384fdd60733b5e26365c9ea324b53f845fb85ce07881a82a" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.0/nros-macos-arm64.tar.zst", sha256 = "921615f6be5d88e2560bb5d5ed6b09b18f8ccbf0fdc04000a39f34d28db579f6" }
+# dist.macos-x86_64 added once a macos-13 build seeds it (its job is currently
+# flaky in the runner queue); intel-mac falls back to the source recipe until then.
 [tool.nros.source]
 git = "https://github.com/NEWSLabNTU/nros-cli"
-ref = "nros-v0.2.0"
+ref = "nros-v0.3.0"
 # ros-launch-manifest-types is a path dep behind a nested submodule.
 configure = "git submodule update --init --recursive"
 install = "cargo install --path packages/nros-cli --root {prefix} --locked"
