@@ -20,7 +20,7 @@
 #   NROS_HOME     install root (default ~/.nros); binary lands in $NROS_HOME/bin
 set -eu
 
-NROS_VERSION="${NROS_VERSION:-0.3.5}"
+NROS_VERSION="${NROS_VERSION:-0.3.6}"
 NROS_HOME="${NROS_HOME:-$HOME/.nros}"
 REPO="NEWSLabNTU/nros-cli"
 TAG="nros-v${NROS_VERSION}"

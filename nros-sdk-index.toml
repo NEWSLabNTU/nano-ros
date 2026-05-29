@@ -22,23 +22,26 @@
 # dist.<host> is added after the first `nros-v*` release is cut + gate-verified;
 # until then `nros setup` / install.sh fall back to the source recipe below.
 [tool.nros]
-version = "0.3.5"
-upstream = "0.3.5" # nros-cli crate version = source.ref tag (nros-v0.3.5)
-# 0.3.5 adds the `[build.cc]` per-layer C/C++ override (CFLAGS/CXXFLAGS env +
+version = "0.3.6"
+upstream = "0.3.6" # nros-cli crate version = source.ref tag (nros-v0.3.6)
+# 0.3.6 makes serial/CAN-only builds drop the IP link — the generator bakes
+# `NROS_LINK_IP=0` into the generated `.cargo/config.toml` `[env]` (Phase 204.7)
+# + `nros new` scaffolds the size knobs into the config (204.7/204.8). 0.3.5
+# added the `[build.cc]` per-layer C/C++ override (CFLAGS/CXXFLAGS env +
 # NROS_CC_OPT) + `nros new` named size/speed profiles (Phase 204.15 inc 2 C-side
 # + 3). 0.3.4 added `[build.cargo]` (204.15 inc 2). 0.3.3 added `[build].optimize`
 # → the generated [profile.release] (inc 1). 0.3.2 added shallow+recursive
 # submodule/clone provisioning + `nros setup --full`. 0.3.1 added the Phase
 # 197.2 index schema (build_sources/dev_sources/[reference.*]); 0.3.0 rejected
 # them via deny_unknown_fields. See Phase 197.5.
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.5/nros-linux-x86_64.tar.zst", sha256 = "05e5b64acaa21890073e103b8e8532b81feef9d0ece37d158fc9f5aeb3aa341a" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.5/nros-linux-arm64.tar.zst", sha256 = "64672364559f3bfa9ed52f7d11d964850cc0a9975854b5f3694b7658d798db15" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.5/nros-macos-arm64.tar.zst", sha256 = "27058c5264ed9af65cb6afb2244941e3f92b89677d88b8724c87ad27f712c2af" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.6/nros-linux-x86_64.tar.zst", sha256 = "8f81ac89589426537f3efce2002b70019925ae6d9a96d3369fad1480cc2986b3" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.6/nros-linux-arm64.tar.zst", sha256 = "b16f66abd8846b35d3436479e5c66aa596d30514fb94a9d268e5c92321a0b9e3" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.6/nros-macos-arm64.tar.zst", sha256 = "4b6a5457bfc77b6a2dba928eca0a2c7074785ce29d2108cad40ac77e2bccf4a6" }
 # dist.macos-x86_64 added once a macos-13 build seeds it (its job is currently
 # flaky in the runner queue); intel-mac falls back to the source recipe until then.
 [tool.nros.source]
 git = "https://github.com/NEWSLabNTU/nros-cli"
-ref = "nros-v0.3.5"
+ref = "nros-v0.3.6"
 # ros-launch-manifest-types is a path dep behind a nested submodule.
 configure = "git submodule update --init --recursive"
 install = "cargo install --path packages/nros-cli --root {prefix} --locked"
