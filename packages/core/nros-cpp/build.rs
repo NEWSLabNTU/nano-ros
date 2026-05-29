@@ -521,6 +521,7 @@ fn dep_usize(name: &str) -> usize {
 /// Generate `include/nros/nros_cpp_ffi.h` using cbindgen.
 fn generate_header(manifest_dir: &std::path::Path) {
     let config_path = manifest_dir.join("cbindgen.toml");
+    let output_path = manifest_dir.join("include/nros/nros_cpp_ffi.h");
 
     let config = match cbindgen::Config::from_file(&config_path) {
         Ok(c) => c,
@@ -537,33 +538,24 @@ fn generate_header(manifest_dir: &std::path::Path) {
 
     match result {
         Ok(bindings) => {
-            // Write to PER-BUILD locations only — never the shared source tree.
-            // Parallel example cmake projects each run this build.rs via corrosion;
-            // a single shared `include/nros/nros_cpp_ffi.h` target races on first
-            // creation. Each build's CORROSION_BUILD_DIR / CARGO_TARGET_DIR is
-            // unique → race-free; cmake POST_BUILD mirrors it onto this build's
-            // include path. Mirrors nros_cpp_config_generated.h. write_to_file is
-            // content-idempotent.
-            // The nros-cpp headers `#include "nros_cpp_ffi.h"` (no `nros/`
-            // prefix), so the mirror must sit at the include ROOT, not a `nros/`
-            // subdir. cmake copies CORROSION_BUILD_DIR/nros_cpp_ffi.h to
-            // <binary>/include/nros_cpp_ffi.h accordingly.
-            let mut dests: Vec<PathBuf> = Vec::new();
-            if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
-                dests.push(
-                    PathBuf::from(target_dir)
-                        .join("nros-cpp-generated")
-                        .join("nros_cpp_ffi.h"),
-                );
+            // Atomic write to the shared in-tree header (consumers find it on the
+            // source `-I`). Parallel example builds each run this build.rs via
+            // corrosion; a plain write truncates it mid-read for another build's
+            // compile. Write a per-process temp in the same dir, then rename into
+            // place only if content changed (atomic; content-idempotent). Ordering
+            // is enforced by the cargo-build_nros_cpp dependency in
+            // NanoRosGenerateInterfaces.cmake. (Mirrors nros-c/build.rs.)
+            if let Some(parent) = output_path.parent() {
+                std::fs::create_dir_all(parent).ok();
             }
-            if let Ok(corrosion_dir) = env::var("CORROSION_BUILD_DIR") {
-                dests.push(PathBuf::from(corrosion_dir).join("nros_cpp_ffi.h"));
-            }
-            for dest in dests {
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent).ok();
-                }
-                bindings.write_to_file(&dest);
+            let tmp = output_path
+                .with_file_name(format!(".nros_cpp_ffi.h.tmp.{}", std::process::id()));
+            bindings.write_to_file(&tmp);
+            let differs = std::fs::read(&tmp).ok() != std::fs::read(&output_path).ok();
+            if differs {
+                std::fs::rename(&tmp, &output_path).ok();
+            } else {
+                std::fs::remove_file(&tmp).ok();
             }
         }
         Err(e) => {

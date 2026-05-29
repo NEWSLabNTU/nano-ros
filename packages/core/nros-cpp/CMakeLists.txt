@@ -103,17 +103,8 @@ if(TARGET cargo-build_nros_cpp)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
             "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
-        # nros_cpp_ffi.h (cbindgen) is likewise written per-build by build.rs to
-        # CORROSION_BUILD_DIR, NOT the shared source tree — so parallel example
-        # builds don't race on it. The nros-cpp headers `#include "nros_cpp_ffi.h"`
-        # (no `nros/` prefix), so mirror it at the include ROOT (not `nros/`).
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_ffi.h"
-            "${_nros_cpp_intree_include_dir}/nros_cpp_ffi.h"
-        BYPRODUCTS
-            "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
-            "${_nros_cpp_intree_include_dir}/nros_cpp_ffi.h"
-        COMMENT "nros-cpp: mirroring generated headers for in-tree consumers"
+        BYPRODUCTS "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h"
+        COMMENT "nros-cpp: mirroring nros_cpp_config_generated.h for in-tree consumers"
         VERBATIM
     )
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
