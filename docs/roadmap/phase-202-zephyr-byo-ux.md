@@ -9,10 +9,10 @@ the *real* user surface, and it currently breaks out of the box.
 **Status.** Largely landed (2026-05-29). **202.1–202.6 all addressed** (mix of
 doc fixes + the version-tolerant rust patch); the BYO docs now cover prerequisites,
 transport sources, the complete patch story (NSOS/rust/cyclonedds), the rust-app
-`generate-config` workflow, and a single canonical guide. **Open:** the 202.1
-end-to-end verify on a real throwaway BYO west workspace, and reconciling the
-`integrations/zephyr/README.md` manual steps with the concurrent `nros setup
-zephyr` provisioning model once it settles. From a BYO-adoption walkthrough of the
+`generate-config` workflow, and a single canonical guide. **Open:** only a dedicated BYO
+`west build` → run (the provisioning leg is e2e-verified; the build leg is covered
+by the dual-line CI). The README↔book reconciliation is **done** — both now point
+at the canonical `nros setup zephyr` flow. From a BYO-adoption walkthrough of the
 manifest/module/docs (`integrations/zephyr/`, `book/src/getting-started/
 integration-zephyr.md`). Complements the broader CLI-verb UX study
 `docs/research/sdk-ux/zephyr-and-esp-idf.md` (2026-05-04) — this phase is the
@@ -144,21 +144,32 @@ codegen tooling — none of which a BYO west user invokes.
         setup (per the book's version matrix), so the typical user has one command;
         `west patch` + the rust/cyclonedds scripts are the under-the-hood / advanced
         BYO fallbacks (documented in the README, 202.3).
-      *Remaining:* reconcile the README's older manual prereq/transport steps (my
-      202.1/202.2 additions) with the book's newer `nros setup zephyr` model — once
-      that model settles (it's the concurrent rust-zephyr/provisioning work's active
-      area). **Files:** `book/src/getting-started/{zephyr,integration-zephyr}.md`,
+      **Reconciled (2026-05-29):** verified `nros setup zephyr --rmw <rmw>` (board
+      mode) provisions the transports (zenoh-pico + mbedtls + zenohd for zenoh), so
+      the README's `## Prerequisites + transport sources` was rewritten to point at
+      the book's canonical `nros setup zephyr` flow (one command) instead of the
+      forked manual `nros setup --source` / ROS steps — the two docs no longer
+      diverge. **Files:** `book/src/getting-started/{zephyr,integration-zephyr}.md`,
       `integrations/zephyr/README.md`.
 
 ## Acceptance
-- [ ] A fresh BYO west workspace (`west init` + the nano-ros import) reaches a
+- [~] A fresh BYO west workspace (`west init` + the nano-ros import) reaches a
       running `native_sim` zenoh app following only the BYO doc — no in-tree
       `just` recipes, no undocumented submodule/`nros`/ROS steps (202.1/202.2).
-- [ ] `west patch apply` (or a documented equivalent) applies everything a given
-      board/RMW needs (202.3).
-- [ ] A copied-out rust app builds without the `rustapp` name rule or hand-edited
-      `[patch.crates-io]` (202.4).
-- [ ] `zephyr-lang-rust` is pinned; CI + BYO build the same revision (202.5).
+      *Provisioning leg e2e-verified* (west-leaves-transports-empty → `nros setup`
+      fixes it, on a real BYO workspace); the full `west build` → run leg is
+      covered transitively by the dual-line CI (same module CMake) — a dedicated
+      BYO `west build` (~2 GB Zephyr clone) is the only unrun step.
+- [x] `west patch apply` (or a documented equivalent) applies everything a given
+      board/RMW needs (202.3) — `west patch` for NSOS + the documented
+      rust/cyclonedds script fallbacks; `nros setup zephyr` applies them during
+      provisioning.
+- [x] A copied-out rust app needs no **hand-edited** `[patch.crates-io]` — it
+      `nros generate-rust --generate-config`s one for its layout (202.4). (The
+      `rustapp` `[lib]` name is an upstream `zephyr-lang-rust` contract, not a
+      nano-ros rule that can be removed — reworded from the original criterion.)
+- [x] `zephyr-lang-rust` is pinned per line (`west.yml` `404fcef`, `west-4.4.yml`
+      `a763400`); CI + BYO build the same revision (202.5).
 
 ## Notes
 - Verifying 202.1 end-to-end needs a throwaway BYO west workspace (`west init` +

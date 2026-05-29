@@ -38,22 +38,21 @@ app against `NanoRos::NanoRos` (done automatically by this shell).
 
 ## Prerequisites + transport sources
 
-The module's interface codegen needs the **`nros` CLI** (install the released
-binary: `curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh | sh`,
-then add `~/.nros/bin` to PATH) and a **sourced ROS 2** (`source
-/opt/ros/<distro>/setup.bash` — codegen resolves `msg/*.msg` via
-`AMENT_PREFIX_PATH`).
+> **Canonical procedure: the book** (`integration-zephyr.md` → *Prerequisites*).
+> This is a short pointer so the steps don't fork — see the book for the
+> authoritative version.
 
-nano-ros's RMW transports are **git submodules** that `west update` does **not**
-pull. Provision the ones your RMW needs from the nano-ros checkout:
+Install the `nros` CLI, then run **`nros setup zephyr --rmw <rmw>`** once. That
+one command provisions the cross-toolchain/SDK bits, the RMW host daemon
+(`zenohd` / the XRCE agent), **and the RMW transport submodules** — zenoh-pico +
+mbedtls for `zenoh`, the cyclonedds fork for `cyclonedds` (`west update` clones
+nano-ros but **not** its transport submodules, so this step is required). In a
+BYO workspace run it from the nano-ros checkout: `cd modules/nano-ros && nros
+setup zephyr --rmw zenoh`.
 
-```sh
-( cd modules/nano-ros && nros setup --source zenoh-pico )       # zenoh
-# ( cd modules/nano-ros && nros setup --source cyclonedds-src ) # cyclonedds
-```
-
-(west-native alternative: `submodules: true` on the `nano-ros` project — pulls
-*all* submodules incl. unrelated platform SDKs.)
+(For a single transport, `nros setup --source <name>` also works; the west-native
+alternative is `submodules: true` on the `nano-ros` project, but it pulls *all*
+submodules incl. unrelated platform SDKs.)
 
 ## Applying nano-ros patches in your workspace
 
