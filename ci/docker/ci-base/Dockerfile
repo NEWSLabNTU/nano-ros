@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl ca-certificates zstd xz-utils file wget \
         python3 python3-pip python3-venv python3-tomli build-essential \
         gcc-arm-none-eabi gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf \
-        kconfig-frontends socat parallel \
+        kconfig-frontends socat parallel unzip flex bison \
         libslirp0 libpixman-1-0 \
         ros-humble-example-interfaces \
     && rm -rf /var/lib/apt/lists/*
