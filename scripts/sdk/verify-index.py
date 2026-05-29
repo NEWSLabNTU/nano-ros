@@ -77,6 +77,24 @@ def verify_structure(index, index_path):
                         f"{kind} '{name}' references undefined package '{pkg}' "
                         f"(not a [tool]/[source]/[gated] entry)"
                     )
+            # Phase 197.2 — build/dev source refs (fetched by tools/setup.sh, not
+            # in `packages`) must resolve to a [source.*] specifically.
+            for key in ("build_sources", "dev_sources"):
+                for s in entry.get(key, []):
+                    if s not in sources:
+                        failures.append(
+                            f"{kind} '{name}' {key} references '{s}' "
+                            f"(not a defined [source.*] entry)"
+                        )
+
+    # (1b) [reference.*].sources resolve to [source.*].
+    for name, entry in index.get("reference", {}).items():
+        for s in entry.get("sources", []):
+            if s not in sources:
+                failures.append(
+                    f"reference '{name}' references '{s}' "
+                    f"(not a defined [source.*] entry)"
+                )
 
     # (2) + (3) source coherence + .gitmodules drift guard.
     gitmodules = parse_gitmodules(

@@ -38,8 +38,9 @@ The `just` recipes are at three levels of adoption (review 2026-05-29):
 | `px4` | inline `git submodule update … PX4-Autopilot` | ❌ inline |
 | `zephyr` | `scripts/zephyr/setup.sh` — own flow, **does not provision sources** | ❌ gap |
 
-`tools/setup.sh` reads **two** manifests: `config/submodule-deps.toml` (per-platform
-submodule path list) + the SDK index (`[source.*]`, the SSOT for refs).
+~~`tools/setup.sh` reads **two** manifests~~ — **as of 197.2 it reads only the
+SDK index** (`config/submodule-deps.toml` retired): platform/rmw →
+`packages`+`build_sources` → `[source.*]`.
 
 ---
 
@@ -59,16 +60,30 @@ local recipe must do the same so **local == CI**.
 
 **Files**: `scripts/zephyr/setup.sh`, `just/zephyr.just`.
 
-### 197.2 — [P2] Retire `config/submodule-deps.toml` (single manifest)
-A source must appear in `submodule-deps.toml` (to be fetched by `tools/setup.sh`)
-*and* in `[source.*]` (to be nros-provisioned) — a drift surface. The index's
-`[board.*].packages` (191.6) already encodes which sources a board needs.
-- [ ] Derive `tools/setup.sh`'s per-platform fetch list from the index
-      (`[board.*]`/`[rmw.*]` → `[source.*]`) instead of `submodule-deps.toml`.
-- [ ] Delete `config/submodule-deps.toml`; update `sdk-index-gate` if it asserts
-      against it.
+### 197.2 — [P2] Retire `config/submodule-deps.toml` (single manifest) — DONE
+A source used to appear in `submodule-deps.toml` (to be fetched by
+`tools/setup.sh`) *and* in `[source.*]` (to be nros-provisioned) — a drift
+surface. Now the index is the single home.
+- [x] Modeled the ~12 build-time/dev/reference submodules the index didn't cover
+      as `[source.*]` (mbedtls, micro-cdr, micro-xrce-dds-client, threadx-netxduo,
+      nuttx-kernel, nuttx-apps, px4-autopilot, tracing, + dev source-repos). They
+      stay **out of `packages`** (so `nros setup <board>` is unchanged); the
+      build sources a local `just <plat> setup` needs are listed in new
+      `build_sources` / `dev_sources` fields on `[board.*]`/`[rmw.*]` and a
+      `[reference.*]` grouping.
+- [x] `tools/setup.sh` derives its source set from the index: platform → boards
+      (matched by `[board.*].platform` or board-id) → `packages`+`build_sources`;
+      rmw → `packages`+`build_sources`; `--with-dev` adds `dev_sources`;
+      `--with-reference` adds `[reference.*].sources`. Non-source names (host
+      tools) are filtered; each source name → submodule path via `[source.*]`.
+      Verified `--dry-run` reproduces the old per-platform/rmw source sets.
+- [x] Deleted `config/submodule-deps.toml`; repointed `cmake/bootstrap.cmake`'s
+      source-tree existence check to `nros-sdk-index.toml`; extended
+      `scripts/sdk/verify-index.py` to validate `build_sources`/`dev_sources`/
+      `[reference.*].sources` resolve to `[source.*]` (gate green).
 
-**Files**: `tools/setup.sh`, `config/submodule-deps.toml`, `scripts/sdk/verify-index.py`.
+**Files**: `tools/setup.sh`, `nros-sdk-index.toml`, `cmake/bootstrap.cmake`,
+`scripts/sdk/verify-index.py`, `config/submodule-deps.toml` (deleted).
 
 ### 197.3 — [P3] Fold `esp32` + `px4` provisioning into the index
 - [ ] Espressif qemu fork → `[tool.esp32-qemu]` (dist or source-built);

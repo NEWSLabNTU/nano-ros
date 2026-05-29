@@ -32,7 +32,9 @@ endif()
 set(_repo_root "${CMAKE_CURRENT_LIST_DIR}/..")
 get_filename_component(_repo_root "${_repo_root}" ABSOLUTE)
 set(_setup_sh "${_repo_root}/tools/setup.sh")
-set(_manifest "${_repo_root}/config/submodule-deps.toml")
+# Phase 197.2 — the SDK index replaced config/submodule-deps.toml as the source
+# manifest; use it as the "are we in a nano-ros source tree?" signal.
+set(_manifest "${_repo_root}/nros-sdk-index.toml")
 
 if(NOT EXISTS "${_setup_sh}" OR NOT EXISTS "${_manifest}")
     # Not in a nano-ros source tree (likely consumed via find_package

@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Phase 123.A.3 — nano-ros setup orchestrator.
+# Phase 123.A.3 / 197.2 — nano-ros setup orchestrator.
 #
-# Reads config/submodule-deps.toml + fetches the union of paths
-# required by (required, platform.<plat>, rmw.<rmw>) for the
-# requested target, installs rustup if absent, and ensures the
-# Rust target triple is installed.
+# Derives the source submodules a target needs from the SDK index
+# (nros-sdk-index.toml: platform → boards → packages+build_sources, rmw →
+# packages+build_sources, --with-dev → dev_sources, --with-reference →
+# [reference.*]) and provisions each via `nros setup --source`, installs rustup
+# if absent, and ensures the Rust target triple is installed. The retired
+# config/submodule-deps.toml is no longer read (the index is the single home).
 #
 # Single source of truth — `just setup` + per-platform
 # `just <plat> setup` shims all `exec` this script.
 #
 # Usage:
 #   tools/setup.sh --target=<plat>-<rmw>
-#                  [--with-dev]            include dev_paths
-#                  [--with-reference=<n>]  include reference.<n>
+#                  [--with-dev]            include dev_sources
+#                  [--with-reference=<n>]  include [reference.<n>]
 #                  [--rust-workspace]      write workspace Cargo.toml
 #                  [--doctor]              diagnose missing deps
 #                  [--list-targets]        print known plat/rmw combos
@@ -23,12 +25,12 @@ set -euo pipefail
 # Resolve script + repo root regardless of caller's cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MANIFEST="${REPO_ROOT}/config/submodule-deps.toml"
-# Phase 195.B — the SDK index is the SSOT for source refs. A submodule path
-# that matches a `[source.*]` entry's `submodule`/`dest` is provisioned via
-# `nros setup --source <name>` (index-driven) when the `nros` binary is
-# available; otherwise it falls back to the operationally-identical
-# `git submodule update` (submodule-mode sources resolve to the same command).
+# Phase 197.2 — the SDK index is the single home for every source ref
+# (config/submodule-deps.toml retired). `tools/setup.sh` derives a target's
+# sources from the index ([board.*]/[rmw.*] `packages`+`build_sources`, plus
+# `dev_sources` / [reference.*] for opt-ins) and provisions each via
+# `nros setup --source <name>` (index-driven; git-submodule fallback when no
+# `nros` is installed yet — operationally identical for submodule-mode sources).
 INDEX="${REPO_ROOT}/nros-sdk-index.toml"
 
 # ---------------------------------------------------------------- args
@@ -63,7 +65,7 @@ while [[ $# -gt 0 ]]; do
         --doctor)           DOCTOR=1 ;;
         --list-targets)     LIST_TARGETS=1 ;;
         -h|--help)
-            sed -n '6,21p' "${BASH_SOURCE[0]}" | sed 's/^# //; s/^#//'
+            sed -n '14,21p' "${BASH_SOURCE[0]}" | sed 's/^# //; s/^#//'
             exit 0
             ;;
         *)
@@ -80,62 +82,67 @@ done
 err()  { echo "tools/setup.sh: $*" >&2; }
 info() { echo "[setup] $*"; }
 
-# Minimal TOML reader. Extracts the `paths = [...]` or
-# `dev_paths = [...]` array from a given `[<section>]`.
-# Args: <section-header> <key>
-read_paths_array() {
+# Phase 197.2 — the SDK index is the single home for every source ref;
+# config/submodule-deps.toml was retired. The helpers below read the index.
+
+# Extract a single-line array `<key> = ["a", "b"]` from `[<section>]`.
+# Args: <section-header> <key>   (one item per line on stdout)
+index_array_for_section() {
     local section="$1" key="$2"
     awk -v section="[${section}]" -v key="${key}" '
         $0 == section            { in_sec = 1; next }
         /^\[/                    { in_sec = 0 }
-        in_sec && $0 ~ "^"key" *= *\\[" {
-            # Inline single-line array.
+        in_sec && $0 ~ "^"key"[[:space:]]*=[[:space:]]*\\[" {
             if (match($0, /\[[^]]*\]/)) {
                 arr = substr($0, RSTART+1, RLENGTH-2)
                 n = split(arr, parts, ",")
                 for (i=1; i<=n; i++) {
                     gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", parts[i])
+                    sub(/[[:space:]]*#.*/, "", parts[i])
                     if (parts[i] != "") print parts[i]
                 }
-                exit
             }
-            # Multi-line array.
-            in_arr = 1; next
-        }
-        in_arr {
-            if ($0 ~ /\]/) { in_arr = 0; sub(/].*/,"") }
-            line = $0
-            gsub(/[,]/, " ", line)
-            n = split(line, parts, " ")
-            for (i=1; i<=n; i++) {
-                p = parts[i]
-                gsub(/^[[:space:]"]+|[[:space:]"]+$/, "", p)
-                if (p != "" && p != "#") print p
-            }
-        }
-    ' "$MANIFEST"
-}
-
-list_known_sections() {
-    grep -oE '^\[(rmw|platform|reference)\.[a-z0-9_-]+\]' "$MANIFEST" \
-        | tr -d '[]' | sort -u
-}
-
-# Phase 195.B — emit `<path>\t<source-name>` for every `[source.*]` entry's
-# `submodule` / `dest` field, so the fetch loop can recognise an index-owned
-# source by path and route it through `nros setup --source`. Empty if the index
-# is absent (legacy checkout) — fetch then falls back to plain submodule update.
-read_index_source_paths() {
-    [[ -f "$INDEX" ]] || return 0
-    awk '
-        /^\[source\./ { name=$0; sub(/^\[source\./,"",name); sub(/\].*/,"",name); next }
-        /^\[/         { name="" }
-        name != "" && $0 ~ /^(submodule|dest)[[:space:]]*=/ {
-            v=$0; sub(/^[^=]*=[[:space:]]*/, "", v); gsub(/["[:space:]]/, "", v)
-            if (v != "") print v "\t" name
+            exit
         }
     ' "$INDEX"
 }
+
+# Board section names whose `platform = "<plat>"` matches, PLUS a board whose id
+# equals <plat> (covers esp32, which the index models as a board not a platform).
+index_boards_for_platform() {
+    local plat="$1"
+    awk -v plat="$plat" '
+        /^\[board\./ { b=$0; sub(/^\[board\./,"",b); sub(/\].*/,"",b); next }
+        /^\[/        { b="" }
+        b != "" && $0 ~ /^platform[[:space:]]*=/ {
+            v=$0; sub(/^[^=]*=[[:space:]]*/,"",v); gsub(/["[:space:]]/,"",v); sub(/#.*/,"",v)
+            if (v == plat) print b
+        }
+        END {}
+    ' "$INDEX"
+    # board whose id == plat (e.g. esp32)
+    grep -qE "^\[board\.${plat}\]" "$INDEX" 2>/dev/null && echo "$plat"
+}
+
+# The submodule path for a `[source.<name>]` (empty if not an index source —
+# lets the caller filter out tool names like arm-none-eabi-gcc / qemu / zenohd).
+index_source_submodule() {
+    awk -v section="[source.$1]" '
+        $0 == section { in_sec=1; next } /^\[/ { in_sec=0 }
+        in_sec && $0 ~ /^submodule[[:space:]]*=/ {
+            v=$0; sub(/^[^=]*=[[:space:]]*/,"",v); gsub(/["[:space:]]/,"",v); print v; exit
+        }
+    ' "$INDEX"
+}
+
+is_index_source() { grep -qE "^\[source\.$1\]" "$INDEX"; }
+
+# Known platforms (board.platform values + board ids) / rmws / references.
+list_known_platforms() {
+    awk '/^platform[[:space:]]*=/ { v=$0; sub(/^[^=]*=[[:space:]]*/,"",v); gsub(/["[:space:]]/,"",v); sub(/#.*/,"",v); if(v!="") print v }' "$INDEX" | sort -u
+}
+list_known_rmws()       { grep -oE '^\[rmw\.[a-z0-9_-]+\]'       "$INDEX" | sed 's/^\[rmw\.//; s/\]//' | sort -u; }
+list_known_references() { grep -oE '^\[reference\.[a-z0-9_-]+\]' "$INDEX" | sed 's/^\[reference\.//; s/\]//' | sort -u; }
 
 # Resolve an `nros` binary for index-driven source provisioning: one on PATH,
 # else the cargo-built one in the codegen submodule's target dir (the
@@ -159,11 +166,11 @@ resolve_nros_bin() {
 
 if (( LIST_TARGETS )); then
     echo "Known platforms:"
-    list_known_sections | grep '^platform\.' | sed 's/^platform\./  /'
+    list_known_platforms | sed 's/^/  /'
     echo "Known RMW backends:"
-    list_known_sections | grep '^rmw\.' | sed 's/^rmw\./  /'
+    list_known_rmws | sed 's/^/  /'
     echo "Optional references (--with-reference=<name>):"
-    list_known_sections | grep '^reference\.' | sed 's/^reference\./  /'
+    list_known_references | sed 's/^/  /'
     echo ""
     echo "Compose --target as <platform>-<rmw>, e.g. posix-zenoh."
     exit 0
@@ -181,8 +188,8 @@ if (( DOCTOR )); then
             fail=1
         fi
     done
-    [[ -f "$MANIFEST" ]] && echo "  [ ok ] manifest at $MANIFEST" \
-                          || { echo "  [MISS] manifest"; fail=1; }
+    [[ -f "$INDEX" ]] && echo "  [ ok ] SDK index at $INDEX" \
+                       || { echo "  [MISS] SDK index"; fail=1; }
     exit $fail
 fi
 
@@ -219,11 +226,11 @@ else
     exit 2
 fi
 
-if [[ -n "$PLATFORM" ]] && ! grep -qE "^\\[platform\\.${PLATFORM}\\]" "$MANIFEST"; then
+if [[ -n "$PLATFORM" ]] && ! list_known_platforms | grep -qx "$PLATFORM"; then
     err "unknown platform '${PLATFORM}'. --list-targets for known set."
     exit 2
 fi
-if [[ -n "$RMW" ]] && ! grep -qE "^\\[rmw\\.${RMW}\\]" "$MANIFEST"; then
+if [[ -n "$RMW" ]] && ! grep -qE "^\\[rmw\\.${RMW}\\]" "$INDEX"; then
     err "unknown rmw '${RMW}'. --list-targets for known set."
     exit 2
 fi
@@ -236,99 +243,98 @@ else
     info "rmw-only mode: ${RMW}"
 fi
 
-# ------------------------------------------------------ resolve path set
+# --------------------------------------------------- resolve source names
 
-declare -a PATHS_TO_FETCH=()
-
-while IFS= read -r p; do
-    [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-done < <(read_paths_array "required" "paths")
+# Phase 197.2 — collect the `[source.*]` NAMES this target needs from the index
+# (platform → boards → packages + build_sources; rmw → packages + build_sources;
+# `--with-dev` adds dev_sources; `--with-reference` adds [reference.*].sources).
+# Non-source names (host tools: arm-none-eabi-gcc / qemu / zenohd / …) are
+# filtered out below — only names with a `[source.*]` entry resolve to a path.
+declare -a SRC_NAMES=()
 
 if [[ -n "$PLATFORM" ]]; then
-    while IFS= read -r p; do
-        [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-    done < <(read_paths_array "platform.${PLATFORM}" "paths")
+    while IFS= read -r b; do
+        [[ -n "$b" ]] || continue
+        while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
+            < <(index_array_for_section "board.${b}" "packages")
+        while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
+            < <(index_array_for_section "board.${b}" "build_sources")
+        if (( WITH_DEV )); then
+            while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
+                < <(index_array_for_section "board.${b}" "dev_sources")
+        fi
+    done < <(index_boards_for_platform "$PLATFORM")
 fi
 
 if [[ -n "$RMW" ]]; then
-    while IFS= read -r p; do
-        [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-    done < <(read_paths_array "rmw.${RMW}" "paths")
-fi
-
-if (( WITH_DEV )); then
-    if [[ -n "$PLATFORM" ]]; then
-        while IFS= read -r p; do
-            [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-        done < <(read_paths_array "platform.${PLATFORM}" "dev_paths")
-    fi
-    if [[ -n "$RMW" ]]; then
-        while IFS= read -r p; do
-            [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-        done < <(read_paths_array "rmw.${RMW}" "dev_paths")
+    while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
+        < <(index_array_for_section "rmw.${RMW}" "packages")
+    while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
+        < <(index_array_for_section "rmw.${RMW}" "build_sources")
+    if (( WITH_DEV )); then
+        while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
+            < <(index_array_for_section "rmw.${RMW}" "dev_sources")
     fi
 fi
 
 for ref in "${WITH_REFERENCE[@]}"; do
-    if ! grep -qE "^\\[reference\\.${ref}\\]" "$MANIFEST"; then
+    if ! grep -qE "^\\[reference\\.${ref}\\]" "$INDEX"; then
         err "unknown reference '${ref}'. --list-targets for known set."
         exit 2
     fi
-    while IFS= read -r p; do
-        [[ -n "$p" ]] && PATHS_TO_FETCH+=("$p")
-    done < <(read_paths_array "reference.${ref}" "paths")
+    while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
+        < <(index_array_for_section "reference.${ref}" "sources")
 done
 
-# Dedupe while preserving order.
+# Keep only names that are `[source.*]` (drop host tools), map to submodule path,
+# dedupe by path while preserving order. Remember name↔path for provisioning.
 declare -A SEEN=()
-declare -a UNIQ=()
-for p in "${PATHS_TO_FETCH[@]}"; do
+declare -a PATHS_TO_FETCH=()
+declare -A PATH_SRC_NAME=()
+for n in "${SRC_NAMES[@]}"; do
+    is_index_source "$n" || continue
+    p="$(index_source_submodule "$n")"
+    [[ -n "$p" ]] || continue
     if [[ -z "${SEEN[$p]:-}" ]]; then
         SEEN[$p]=1
-        UNIQ+=("$p")
+        PATHS_TO_FETCH+=("$p")
+        PATH_SRC_NAME["$p"]="$n"
     fi
 done
-PATHS_TO_FETCH=("${UNIQ[@]}")
 
-info "submodules to fetch: ${#PATHS_TO_FETCH[@]}"
+info "sources to fetch: ${#PATHS_TO_FETCH[@]}"
 for p in "${PATHS_TO_FETCH[@]}"; do
-    info "  - $p"
+    info "  - ${PATH_SRC_NAME[$p]} → $p"
 done
 
-# ------------------------------------------------------- fetch submodules
+# ------------------------------------------------------- fetch sources
 
 cd "$REPO_ROOT"
 
-# Phase 195.B — map index-owned source paths → source name; resolve an `nros`
-# binary to drive their provisioning (the index is the SSOT for source refs).
-declare -A IDX_SRC_NAME=()
-while IFS=$'\t' read -r ipath iname; do
-    [[ -n "$ipath" ]] && IDX_SRC_NAME["$ipath"]="$iname"
-done < <(read_index_source_paths)
+# `nros` is the canonical provisioner (Phase 195.D: always installed). Fall back
+# to a plain submodule update only if no `nros` is available yet (pre-install) —
+# for a submodule-mode `[source.*]` that is exactly what `nros setup --source`
+# runs, so the fallback is an equivalence, not a guess.
 NROS_BIN="$(resolve_nros_bin)"
 
 for p in "${PATHS_TO_FETCH[@]}"; do
-    src_name="${IDX_SRC_NAME[$p]:-}"
-    if [[ ! -e "$p/.git" ]] && [[ -z "$(ls -A "$p" 2>/dev/null)" ]]; then
-        if [[ -n "$src_name" && -n "$NROS_BIN" ]]; then
-            # Index-owned source + an nros binary → index-driven provisioning.
-            if (( DRY_RUN )); then
-                info "[dry-run] $NROS_BIN setup --source $src_name (index [source.$src_name])"
-            else
-                info "fetching $p via nros setup --source $src_name ..."
-                "$NROS_BIN" setup --source "$src_name" --index "$INDEX"
-            fi
-        elif (( DRY_RUN )); then
-            info "[dry-run] git submodule update --init --depth=1 $p${src_name:+ (index source $src_name; nros unavailable)}"
-        else
-            # Plain submodule update — for a submodule-mode `[source.*]` this is
-            # exactly what `nros setup --source` runs, so the fallback is an
-            # equivalence (used pre-rustup on a fresh machine), not a guess.
-            info "fetching $p ...${src_name:+ (index source $src_name; nros unavailable → equivalent git submodule update)}"
-            git submodule update --init --depth=1 --recursive "$p"
-        fi
-    else
+    src_name="${PATH_SRC_NAME[$p]}"
+    if [[ -e "$p/.git" ]] || [[ -n "$(ls -A "$p" 2>/dev/null)" ]]; then
         info "  (already populated) $p"
+        continue
+    fi
+    if [[ -n "$NROS_BIN" ]]; then
+        if (( DRY_RUN )); then
+            info "[dry-run] $NROS_BIN setup --source $src_name (index [source.$src_name])"
+        else
+            info "fetching $p via nros setup --source $src_name ..."
+            "$NROS_BIN" setup --source "$src_name" --index "$INDEX"
+        fi
+    elif (( DRY_RUN )); then
+        info "[dry-run] git submodule update --init --depth=1 $p (index source $src_name; nros unavailable)"
+    else
+        info "fetching $p ... (index source $src_name; nros unavailable → equivalent git submodule update)"
+        git submodule update --init --depth=1 --recursive "$p"
     fi
 done
 
