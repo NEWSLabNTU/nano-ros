@@ -4,8 +4,8 @@
 `just <module> setup` recipes into thin callers of it, removing the duplicate
 provisioning logic + manifests that drift from the SDK index.
 
-**Status.** Proposed (2026-05-29). Findings captured from a review during Phase
-196 CI bring-up; no code changes yet (maintainer chose "document, decide later").
+**Status.** In progress (2026-05-29). **197.1/197.2/197.3/197.5 DONE**; only
+197.4 (the `tools/setup.sh` split into provisioning + host-env) remains (P3).
 
 **Priority.** P2 — no product capability depends on it, but the duplication is a
 live drift surface (a source must be registered in *two* places to be both
