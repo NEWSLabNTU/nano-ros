@@ -117,15 +117,39 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     `executable_component_callback_publishes_and_mutates_state` proves a body
     mutates state + publishes through the resolver. (Pure API substrate; no
     executor/codegen wiring yet — W.5.2/.3.)
-  - **W.5.2 — publisher wiring (`'static` singleton storage).** Generated runtime
-    owns `static RefCell<State>` + the publishers; each callback closure captures
-    the `&'static RefCell<State>` + the publisher(s) its `publishes` effect names
-    (resolved from the plan's publisher entities + callback effects).
-  - **W.5.3 — codegen.** Instantiate the component `State`; emit, per
-    callback-bearing entity (sub/timer/**service/action**), a closure that
-    builds the `CallbackCtx` (decoded payload + publish access) and calls
-    `on_callback` — replacing the noop `||{}` / `noop_raw_*`. **This is also
-    where [189.M3.5] closes** (services/actions stop emitting C-fn-ptr noops).
+  - **W.5.2 — publisher wiring + generated `PublisherResolver`.** Concrete design
+    (mapped 2026-05-29 against `generate.rs`):
+    - **Publishers are not created today.** `Component::register` records publisher
+      *metadata* only; the generated runtime never builds a real publisher for them
+      (`ComponentPublisher` is zero-sized; the callback loop only registers
+      sub/timer/service/action). So W.5.2 must *emit publisher creation*: for each
+      `PlanEntity::Publisher`, generate a `node.publisher(topic).generic(type,hash)
+      .build()` → owned `EmbeddedRawPublisher`, kept in `'static` storage.
+    - **Bespoke resolver, not a generic registry.** The generator emits a per-binary
+      struct holding the publishers as fields + an `impl PublisherResolver` whose
+      `publish_raw(entity_id, data)` matches `entity_id` → the right field's
+      `publish_raw`. (Simpler for codegen than a runtime registry type; no nros-side
+      addition.)
+    - **`'static` State init (the open mechanism decision).** `State` comes from
+      non-const `<C as ExecutableComponent>::init()` but closures need `'static`.
+      no_std/no-alloc options: `static mut STATE: Option<RefCell<State>>` + unsafe
+      init in `register_all` (single-threaded executor ⇒ sound), or a `spin::Once`.
+      **Decide before coding.** Publishers stored the same way.
+  - **W.5.3 — codegen (closes [189.M3.5]).** Emit, per callback-bearing entity
+    (sub/timer/**service/action**), a closure/trampoline that builds `CallbackCtx`
+    (payload + the `&PublisherResolver`) and calls `<C as ExecutableComponent>::
+    on_callback(&mut state, CallbackId::new(id), &mut ctx)` — replacing the noop
+    `||{}` / `noop_raw_*`. **Two open decisions:** (a) **how the generator knows a
+    component is executable** — it can't see the trait impl from the plan; needs a
+    metadata signal (component declares `executable`) or a blanket default, so
+    declarative-only components still build; (b) services/actions take raw C-fn-ptr
+    callbacks (not closures), so their trampoline reads the `static` state +
+    resolver via globals rather than a captured closure. **All-or-nothing for
+    compilation** (state + publishers + resolver + closures + the component's
+    `ExecutableComponent` impl + the generated Cargo dep must land together);
+    verify via `orchestration_generate` source-asserts first, then generate→`cargo
+    check`→run. *(Status 2026-05-29: W.5.1 substrate landed; W.5.2/.3 is this large
+    coupled codegen change — implement focused, not partial.)*
   - **W.5.4 — E2E proof.** `demo_pkg` publishes from a timer body; a native /
     zephyr-mod deploy run shows real data on the wire.
 - **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
