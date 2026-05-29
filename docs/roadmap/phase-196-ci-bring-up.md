@@ -146,8 +146,9 @@ once before being trusted:
       `zephyr-dual-line.yml` (all 3 jobs) provisions zenoh-pico + cyclonedds-src;
       `dep-chain.yml` was already board-driven. Verified each `--source` resolves
       + the structure gate passes. Rule codified in `ci-conventions.md`.
-- [ ] `deploy-book.yml` — already deliberately non-recursive on submodules
-      (documented); confirm it still builds.
+- [x] `deploy-book.yml` — confirmed building (GREEN on `88488d296`, 2026-05-29);
+      `cancel-in-progress: false` concurrency added (196.5) so a Pages deploy
+      isn't interrupted mid-flight.
 - [x] `sdk-index-gate.yml` — DONE (2026-05-29). `verify-index.py` gained an
       **offline structure pass** (always runs, alongside the network `dist`
       hash check; `--structure-only` for local/CI-without-network): (1) every
