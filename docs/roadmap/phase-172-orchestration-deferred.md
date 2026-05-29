@@ -217,12 +217,19 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     `nros-v0.3.0`; verify/re-cut before relying on it in a superproject build).
 
     **Remaining W.5 work items** (substrate → this repo; codegen → `nros-cli`):
-  - [ ] **W.5.5 — action decision codegen** (`nros-cli`). Emit goal/cancel
-        trampolines over an `ActionCtx (state, resolver)` `Box::leak`'d context
-        (mirrors the service `SvcCtx`/`svc_tramp`, `uses_std`-gated); goal/cancel
-        rebuild `CallbackCtx::with_goal_decision`/`with_cancel_decision`, return
-        `*out`; accepted = noop until W.5.6. Substrate (decision sinks) already in
-        `nros` (`949ca7528`).
+  - [x] **W.5.5 — action decision codegen** (`nros-cli` `49f3b7d`). Emits
+        `goal_tramp_{idx}`/`cancel_tramp_{idx}` over an `ActionCtx{idx} (state,
+        resolver)` `Box::leak`'d context (mirrors the service `SvcCtx`/`svc_tramp`,
+        `uses_std && rust_executable_component_path`-gated); goal/cancel rebuild
+        `CallbackCtx::with_goal_decision`/`with_cancel_decision` and call
+        `on_callback`; accepted = `noop_raw_accepted` until W.5.6. Generated code
+        warning-clean (publisher resolver prefixes params when no publishers;
+        `state{idx}` is `mut` only for the timer/sub move-closures). Verified:
+        `orchestration_generate` (19) +
+        `fixture_workspace_builds_generated_service_action_package` e2e (the
+        retargeted demo_pkg now declares an `EchoAction` + `cb_act` decision body;
+        compiles + links + boots against real nros). Substrate (decision sinks)
+        landed earlier in `nros` (`949ca7528`).
   - [~] **W.5.6 — component execution-tick hook. SUBSTRATE DONE** (`nros`,
         `97f306e3c`). Added `ExecutableComponent::tick(&mut State, &mut TickCtx)`
         (default no-op) — the per-spin hook run *between* dispatch where the executor
