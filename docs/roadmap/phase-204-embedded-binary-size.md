@@ -127,75 +127,52 @@ calls commented out — no backend needed, left as-is.)
       a stale-prebuilt false-pass e2e.
 - [x] **Fixed the missing-`register()` latent bug** in `qemu-arm-baremetal/rust/talker`
       + `stm32f4/rust/talker`.
-- [ ] Re-measure + document serial vs ethernet in the book once the lean
-      registration (204.1.L below) lands.
+- [~] Re-measure + document serial vs ethernet in the book. Lean registration
+      (204.1.L below) was the intended path but is **reverted/deferred**; the serial
+      vs ethernet size story now rests on the other levers (204.5 HEAP, backend
+      buffers, 204.9). Working serial-talker today: 136.7 KB text / 75.8 KB bss.
 
-#### 204.1.L — Lean (entity-gated) vtable registration
+#### 204.1.L — Lean vtable registration — **explored, REVERTED (2026-05-30)**
 
-**The real footprint lever.** `RustBackendAdapter::<R>::VTABLE` is a `const`
-wiring *every* entity trampoline (`create_subscriber`, `create_service_server`,
-`create_service_client`, …). The explicit `register()` call references that const,
-so `--gc-sections` keeps all of it — and each trampoline transitively pins the
-backend's per-entity static buffers (`nros-rmw-zenoh` `SUBSCRIBER_BUFFERS` 34.5 KB,
-`g_pending_gets` 16.4 KB, `SERVICE_BUFFERS` 10.4 KB). A publish-only node pays for
-subscriber + service + client machinery it never calls. We cannot drop `register()`
-(it is the bare-metal linkage anchor, see above) — so instead **make the vtable
-install only the slots the node opts into**, leaving the rest as cheap
-`RET_UNSUPPORTED` stubs that reference nothing, so gc collects the real trampolines
-and the backend buffers behind them.
+**The lever.** `RustBackendAdapter::<R>::VTABLE` is a `const` wiring *every* entity
+trampoline. `register()` references that const, so `--gc-sections` keeps all of it,
+and each trampoline transitively pins the backend's per-entity static buffers
+(`nros-rmw-zenoh` `SUBSCRIBER_BUFFERS` 34.5 KB, `g_pending_gets` 16.4 KB,
+`SERVICE_BUFFERS` 10.4 KB). A publish-only node pays for subscriber + service +
+client machinery it never calls. `register()` can't be dropped (bare-metal linkage
+anchor), so the slots must be narrowed instead.
 
-**Mechanism — `cfg`-selected vtable slots in `nros-rmw-cffi`.**
+**Attempt (feature-gated slots) — implemented + e2e-verified, then reverted.**
+Added `nros-rmw-cffi` `entity-{subscriber,service-server,service-client}` features
+(default-on); `VTABLE` selected each slot via `#[cfg]` macros — real trampoline when
+on, else an `unsupported_*` stub returning `RET_UNSUPPORTED`, so gc collects the
+real trampoline + backend buffers behind it. Plumbed `rmw-cffi` (full, back-compat)
++ `rmw-cffi-lean` + `rmw-entity-*` through `nros-node`/`nros`. Measured win on the
+lean `qemu-bsp-talker`: text 185.6→170.0 KB, **bss 91.7→57.1 KB**; serial pair e2e
+`published=1, received=1`, backend linked. (`SUBSCRIBER_BUFFERS` survived — it has a
+second edge through the always-linked receive path.) ABI was unaffected — the
+`NrosRmwVtable` struct layout is constant; only which fn each slot points at changed.
 
-- New `nros-rmw-cffi` features (all in its own `default`, so standalone cffi users
-  keep full behaviour): `entity-subscriber`, `entity-service-server`,
-  `entity-service-client`. `publisher` stays ungated (cheap, no big buffer; a node
-  with neither pub nor sub is pointless).
-- `RustBackendAdapter::<R>::VTABLE` selects each gated required slot via a
-  `const`-fn / `cfg!`: real trampoline when the feature is on, else an
-  `unsupported_*` stub of the matching signature returning `NROS_RMW_RET_UNSUPPORTED`
-  (and `0` / NULL for the `has_data`/`has_request` probes). The `Option` slots that
-  already default to `None` need no change. Gated subscriber slots:
-  `create_subscriber`, `destroy_subscriber`, `try_recv_raw`, `has_data`,
-  `register_subscriber_event`. Service-server: `create_service_server`,
-  `destroy_service_server`, `try_recv_request`, `has_request`, `send_reply`.
-  Service-client: `create_service_client`, `destroy_service_client`, `call_raw`,
-  `send_request_raw`, `try_recv_reply_raw`.
-- Because the real trampoline is the *only* edge into the backend's
-  `Session::create_subscriber` (and thus its buffers), stubbing the slot makes the
-  whole chain dead → gc strips it. No change needed in the backend crate.
+**Why reverted.** The feature-flag approach pushes a maintenance burden onto users:
+the example author must track which entity kinds the node actually uses and keep the
+Cargo feature set in sync. Worse, it **drifts silently** — add a subscription later,
+forget to add `rmw-entity-subscriber`, and you get a *runtime* `RET_UNSUPPORTED`
+instead of a compile error. Not an acceptable ergonomics/safety trade for a
+size-only win. Reverted in full (commit + its revert in history); examples are back
+on `rmw-cffi`.
 
-**Feature plumbing — non-breaking (zero churn on the ~70 existing examples).**
-
-- `nros-node`: `rmw-cffi` keeps forwarding **all** entity features
-  (`nros-rmw-cffi/entity-subscriber` + `…service-server` + `…service-client`) →
-  every example currently listing `rmw-cffi` is byte-for-byte unchanged. Add a
-  sibling `rmw-cffi-lean = ["dep:nros-rmw-cffi"]` that forwards **none**, plus
-  granular `rmw-entity-{subscriber,service-server,service-client}` passthroughs.
-- `nros`: mirror — `rmw-cffi` (full, default path) + `rmw-cffi-lean` +
-  `rmw-entity-*`.
-- A size-critical example swaps `features=["rmw-cffi", …]` →
-  `features=["rmw-cffi-lean", …]` (+ any `rmw-entity-*` it does need). Cargo
-  feature unification is per-build, so one example going lean does not affect others.
-
-**Acceptance.** A pub-only `qemu-arm-baremetal/rust/talker` built with
-`rmw-cffi-lean` links the backend (zenoh > 0) **and** drops `SUBSCRIBER_BUFFERS` +
-`SERVICE_BUFFERS` + `g_pending_gets` (verify `nm`: those symbols absent, `_z_/zp_`
-present) → expect ≈ −55 KB bss / −20–40 KB text vs the full build, while a
-sub-or-service example on plain `rmw-cffi` is unchanged. Re-measure serial +
-ethernet talkers after.
-
-- [ ] **204.1.L.1** — `nros-rmw-cffi` `entity-*` features + `unsupported_*` slot
-      stubs + `cfg`-selected `VTABLE`. Standalone `cargo test -p nros-rmw-cffi`
-      green (full features).
-- [ ] **204.1.L.2** — `nros-node` + `nros` feature plumbing (`rmw-cffi` = full
-      forward, `rmw-cffi-lean`, `rmw-entity-*`). Workspace `cargo check` green;
-      existing examples unchanged.
-- [ ] **204.1.L.3** — switch `qemu-arm-baremetal/rust/talker` (pub-only) to
-      `rmw-cffi-lean`; verify backend linked + buffers dropped (`nm`) + e2e green
-      (rebuild under the `nros-fast-release` fixture profile — see the stale-binary
-      lesson above). Measure.
-- [ ] **204.1.L.4** — roll to the other pub-only / sub-only bare-metal examples;
-      book write-up with the before/after table.
+**The proper pattern if revisited — call-graph-driven (deferred).** The root cause
+is the *eager* `VTABLE` const naming every trampoline. The right design references
+each entity's trampolines only from the **typed API** (`Node::create_subscription`
+"arms" the subscriber slots via a cffi `arm_*` fn that is the sole edge to those
+trampolines). Then `--gc-sections` derives the used slots from the user's actual
+call graph automatically: never call `create_subscription` → arm-fn unreferenced →
+trampoline + buffers stripped; call it → pulled back in on recompile. Zero user
+feature-tracking, no drift, no silent `RET_UNSUPPORTED`, and it subsumes the
+`SUBSCRIBER_BUFFERS` second-edge problem (the backend receive path arms via the same
+edge). Cost: invasive — lazy/incremental vtable population wired from nros-node's
+typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
+(204.5 static `HEAP`, backend buffer right-sizing, 204.9 vendor-C `-Os`).
 
 ### 204.2 — Right-size the smoltcp socket pool — [~] landed on stm32f4 talker
 - [x] **Proven (2026-05-29).** The socket counts are env-tunable
