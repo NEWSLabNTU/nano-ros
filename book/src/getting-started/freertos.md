@@ -4,19 +4,33 @@ Single-node starter on FreeRTOS + lwIP, cross-compiled for Cortex-M3
 and booted in QEMU MPS2-AN385. Slirp networking; no host TAP /
 bridge / sudo. Rust, C, and C++ talkers all live in-tree.
 
-> **Prereqs.** From the repo root, run `just setup base` and
-> `just setup freertos`, then `source ./setup.bash`. The FreeRTOS
-> setup fetches the FreeRTOS kernel + lwIP sources under
-> `third-party/freertos/` and checks `arm-none-eabi-gcc` +
-> `qemu-system-arm`.
+> **Prereqs.** `nros setup qemu-arm-freertos` is the single command
+> that prepares your machine for this board. It fetches a prebuilt
+> toolchain set into the shared store at `~/.nros/sdk` — the
+> `arm-none-eabi-gcc` cross-compiler, the patched
+> `qemu-system-arm` emulator, the FreeRTOS kernel + lwIP sources,
+> and the RMW host daemon. You do **not** hand-install a
+> cross-toolchain and you do **not** need a ROS 2 install.
 
 ## Setup
 
+Install the `nros` CLI once per machine:
+
 ```bash
-just setup base
-just setup freertos        # equivalent to: just freertos setup
-source ./setup.bash
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
 ```
+
+Then provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
+or `cyclonedds` to match the example you intend to run):
+
+```bash
+nros setup qemu-arm-freertos --rmw zenoh
+```
+
+This fetches the cross-compiler, the patched `qemu-system-arm`, the
+FreeRTOS + lwIP sources, and the RMW host daemon (`zenohd` for
+zenoh, the Micro-XRCE-DDS agent for xrce) into `~/.nros/sdk`.
 
 ## Project layout
 
@@ -111,8 +125,9 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 ## Run
 
 ```bash
-# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451):
-just zenohd run
+# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451).
+#    zenohd was installed into the nros store by `nros setup … --rmw zenoh`.
+zenohd -l tcp/0.0.0.0:7451
 
 # 2. Boot the talker in QEMU:
 cd examples/qemu-arm-freertos/rust/talker

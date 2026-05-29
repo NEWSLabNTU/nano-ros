@@ -4,19 +4,21 @@ Single-node starter on ESP32-family chips via the **ESP-IDF
 component path** — Espressif's native C / C++ build system. For the
 bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 
-> **Building nano-ros's own ESP32 examples from this repository?**
-> The ESP-IDF C-port runs via `just setup esp_idf`, separate from
-> the user-facing component documented here.
-
-> **Prereqs.** ESP-IDF ≥ 5.1 installed and `idf.py` on `PATH`
-> (`source $IDF_PATH/export.sh`).
-
-For in-repo smoke builds:
-
-```bash
-just setup esp_idf          # equivalent to: just esp_idf setup
-source ./setup.bash
-```
+> **Prereqs.** Two independent toolchains.
+>
+> 1. **ESP-IDF itself** — ≥ 5.1, installed through Espressif's own
+>    installer so `idf.py` is on `PATH` (`source $IDF_PATH/export.sh`).
+>    `nros setup` does **not** replace this; the IDF toolchain comes
+>    from `idf.py install` / Espressif's tooling.
+> 2. **The nano-ros side** — the RMW host daemon (and any nano-ros
+>    host tools you use for testing) come from the `nros` CLI:
+>
+>    ```bash
+>    curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+>    export PATH="$HOME/.nros/bin:$PATH"
+>    nros setup esp32 --rmw zenoh     # installs the RMW daemon (zenohd for zenoh,
+>                                     # the Micro-XRCE-DDS agent for xrce)
+>    ```
 
 ## Project layout
 

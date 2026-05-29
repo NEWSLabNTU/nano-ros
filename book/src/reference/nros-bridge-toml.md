@@ -5,9 +5,9 @@ Consumed by `nros::run_from_config` (Rust) and the future C/C++ mirror
 
 > **Not the orchestration `nros.toml`.** This is the **bridge** runtime
 > config (multi-RMW byte forwarding). It is named `nros-bridge.toml` to
-> avoid colliding with the Phase 126 orchestration `nros.toml`
+> avoid colliding with the orchestration `nros.toml`
 > (component/system build config) — different lifecycle, different
-> schema (Phase 172.L).
+> schema.
 
 The file lives next to the binary (or anywhere the program can read
 it) and selects:

@@ -32,58 +32,45 @@ loading.
 
 ## nano-ros Flow
 
-nano-ros is **shipped as source** (archive — no crates.io,
-no precompiled SDK, no binary tarball). Clone, choose a setup path,
-then build the example tree (or your own package) directly:
+Where standard ROS 2 installs a distro and resolves system packages with
+`rosdep`, nano-ros provisions a **per-board toolchain** with one command.
+`nros setup` replaces the distro install + `rosdep`: it ships **prebuilt
+toolchains per platform per RMW** — the cross-compiler, emulator, RMW host
+daemon, and SDK sources for a board are fetched from a pinned index into a
+shared store (`~/.nros/sdk`). You do not install cross-toolchains by hand,
+and you do not need a ROS distro on the machine.
 
 ```bash
-git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
+# 1. Install the nros CLI once (analogous to installing a ROS distro):
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
 
-# Choose setup path, then run the one you need.
-just setup                       # prints choices; no fetch/install
-just setup base                  # workspace tools + zenohd for native examples
-source ./setup.bash               # zenohd / nros / qemu-system-arm on PATH
+# 2. Provision a board + RMW (analogous to `rosdep install`):
+nros setup native --rmw zenoh
 
-# Build + run an example (POSIX):
+# 3. Build + run an example (the nano-ros source is vendored in your project):
 cd examples/native/rust/talker
 cargo run
 ```
 
-For embedded targets, the per-platform `just <plat> build` /
-`just <plat> run` recipes drive the right cross-toolchain
-(see [Build Commands](../reference/build-commands.md)):
+For embedded targets, name the board instead of `native`; `nros setup`
+fetches the matching prebuilt cross-toolchain + emulator + SDK:
 
 ```bash
-just setup freertos            # QEMU FreeRTOS dependencies
-just setup zephyr              # west + Zephyr workspace
-just setup nuttx               # NuttX kernel/apps
-
-just freertos build-fixtures   # QEMU FreeRTOS Cortex-M3 examples
-just zephyr  build-fixtures    # west + Zephyr-SDK
-just nuttx   build-fixtures    # NuttX kernel + ARM Cortex-M3
+nros setup qemu-arm-freertos --rmw zenoh     # arm-none-eabi-gcc, qemu, FreeRTOS+lwIP
+nros setup zephyr            --rmw zenoh     # Zephyr west workspace + SDK bits
+nros setup qemu-arm-nuttx    --rmw zenoh     # arm-none-eabi-gcc, qemu, NuttX
 ```
 
-Setup choices:
+Useful flags: `nros setup --list` (every package + version),
+`nros setup <board> --dry-run` (resolve + print the plan, fetch nothing),
+`nros setup --licenses` (license-gated packages). See
+[Supported Boards](../reference/supported-boards.md) for the board list and
+[`nros` CLI](../reference/cli.md) for every subcommand.
 
-- **`just setup`** — print choices only.
-- **`just setup base`** — workspace tools + zenohd for first-time
-  Linux/native use.
-- **`just setup <platform>`** — focused platform dependencies, e.g.
-  `freertos`, `zephyr`, `nuttx`, `esp_idf`, or `px4`.
-- **`just setup all`** — every supported SDK/service module for
-  contributors preparing `just test-all`.
-
-For platform-specific work prefer the narrower `just <plat> setup`
-recipes — they fetch only one RTOS's deps without pulling the rest.
-
-Command discovery is grouped:
-
-```bash
-just --group main --list
-just --group full-matrix --list
-just --group full-matrix --list freertos
-```
+> Contributors working on nano-ros itself drive the same index through
+> `just` — `just <module> setup` calls `nros setup <board>` under the hood,
+> so the provisioned toolchains are identical.
 
 ## Choosing platform + RMW
 
@@ -127,10 +114,11 @@ Multi-RMW bridges (one binary, two or more backends) use
   no Arduino zip / ESP-IDF binary component / PlatformIO library /
   GitHub Releases artifact. The locked policy is `git clone --branch=v<X.Y.Z>` +
   in-tree build.
-- **Target-aware setup.** `just setup` prints choices only.
-  `just setup <platform>` fetches only the submodules + toolchains
-  needed for one RTOS. `just setup all` fetches every supported
-  SDK/service module for full-matrix contributors.
+- **Per-board provisioning, no `rosdep`.** `nros setup <board> --rmw <rmw>`
+  is the single setup command. It fetches prebuilt toolchains (cross-gcc,
+  emulator), the RMW host daemon, and SDK sources for exactly that board+RMW
+  into `~/.nros/sdk` — no system-wide package install, no ROS distro. (The
+  `just <module> setup` recipes call the same command for contributors.)
 - **Compile-time RMW + platform.** Embedded targets can't `dlopen`,
   so the RMW and platform combination is locked in by CMake cache
   vars (`NANO_ROS_PLATFORM`, `NANO_ROS_RMW`) and Cargo features at

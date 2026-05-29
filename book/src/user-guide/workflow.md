@@ -6,15 +6,18 @@ a technical question.
 
 ## 1. Prepare Workspace and Package
 
-nano-ros is shipped source-only. Clone it next to (or inside) your
-workspace and choose the setup path you need:
+nano-ros is shipped source-only — vendor it next to (or inside) your
+workspace, then provision the board's toolchain with `nros setup`:
 
 ```bash
-git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
-just setup       # print choices
-just setup base  # native/ROS/zenoh quick start
+# Install the nros CLI once, then provision your board (+ RMW):
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+nros setup native --rmw zenoh        # or qemu-arm-freertos, zephyr, …
 ```
+
+`nros setup` ships prebuilt toolchains per platform per RMW — see
+[Installation](../getting-started/installation.md).
 
 For multi-package workspaces (Pattern A — recommended for POSIX +
 mixed C / C++ / Rust deployments), put nano-ros and your packages

@@ -13,15 +13,24 @@ for the policy.
 > or any RTOS, use the [FreeRTOS starter](./freertos.md) instead —
 > it's more ergonomic and produces smaller code overall.
 
-> **Prereqs.** From the repo root, run `just setup base` and
-> `just setup qemu`, then `source ./setup.bash`. Need
-> `qemu-system-arm` + the Rust `thumbv7m-none-eabi` target.
+> **Prereqs.** Install the `nros` CLI once per machine, then provision
+> this board. `nros setup` fetches a prebuilt bare-metal toolchain
+> (`arm-none-eabi-gcc`, `qemu-system-arm`, the zenoh router) plus the
+> Rust `thumbv7m-none-eabi` target into a shared store — no manual
+> cross-compiler install, no ROS 2 needed.
 
 ```bash
-just setup base
-just setup qemu
-source ./setup.bash
+# Install the nros CLI once per machine:
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+
+# Provision the bare-metal Cortex-M3 board (zenoh RMW is the default):
+nros setup qemu-arm-baremetal --rmw zenoh
 ```
+
+> Real-board variants exist too: `nros setup mps2-an385` and
+> `nros setup stm32f4` provision the same bare-metal toolchain for
+> physical hardware.
 
 ## Project layout
 
@@ -63,7 +72,7 @@ domain_id = 0
 
 QEMU Slirp networking — no host TAP / bridge / sudo. The
 `zenohd` default port is 7447; this example expects **7450** so
-start the router with `zenohd run --listen tcp/127.0.0.1:7450`
+start the router with `zenohd --listen tcp/127.0.0.1:7450`
 (or edit `config.toml` to match `zenohd`'s 7447 default).
 
 ## Build
@@ -80,7 +89,8 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 
 ```bash
 # 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7447):
-just zenohd run
+#    zenohd was installed by `nros setup ... --rmw zenoh`.
+zenohd --listen tcp/127.0.0.1:7450
 
 # 2. Boot the talker in QEMU. The .cargo/config.toml runner does:
 cd examples/qemu-arm-baremetal/rust/talker

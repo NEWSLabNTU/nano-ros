@@ -52,40 +52,38 @@ to consolidate run:
 
 ## Prerequisites
 
-Install system packages (Ubuntu/Debian):
+Install the `nros` CLI once per machine, then let it provision the toolchain:
+
 ```bash
-sudo apt install python3 python3-pip python3-venv cmake ninja-build aria2 git
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
 ```
 
-Install Rust (if not already):
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+`nros setup` ships prebuilt toolchains per platform per RMW — the
+cross-compiler, emulator, RMW host daemon, and SDK sources (including the Zephyr
+west workspace + Zephyr SDK bits) are fetched from a pinned index into a shared
+store at `~/.nros/sdk`. You do not hand-install a cross-toolchain, and you do not
+need ROS 2 installed.
 
 ## Step 1: Initialize Workspace (One-Time)
 
 ```bash
-just setup base
-just setup zephyr          # equivalent to: just zephyr setup
+nros setup zephyr --rmw zenoh      # --rmw defaults to zenoh; xrce | cyclonedds also valid
 source ./setup.bash
 ```
 
-This recipe automatically:
-- Installs `west` and Python tools
-- Downloads Zephyr SDK (~1.5 GB) to `scripts/zephyr/downloads/` using aria2c (parallel, resumable)
-- Verifies download with sha256sum
-- Installs SDK to `scripts/zephyr/sdk/`
-- Creates in-tree workspace at `zephyr-workspace/` (gitignored; auto-detects legacy `../nano-ros-workspace/`)
-- Symlinks nros into the workspace
-- Fetches Zephyr RTOS and all modules
-- Installs Rust embedded targets
-- Creates `env.sh` for environment setup
+This provisions:
+- The Zephyr west workspace + Zephyr SDK bits
+- The emulator
+- The RMW host daemon (`zenohd` for zenoh, the Micro-XRCE-DDS agent for xrce)
+- The in-tree workspace at `zephyr-workspace/` (gitignored; auto-detects legacy `../nano-ros-workspace/`), with nros symlinked in
+- Rust embedded targets
 
-**Options:**
-```bash
-just zephyr setup --skip-sdk    # Skip SDK download/install
-just zephyr setup --force       # Recreate existing workspace
-```
+> **Contributors:** the in-tree `just zephyr setup` recipe still works and now
+> delegates to `nros setup zephyr` under the hood.
+
+The RMW host daemon must be **running** before any example: `zenohd` for zenoh,
+the Micro-XRCE-DDS agent for xrce. `nros setup zephyr --rmw <rmw>` installs it.
 
 ## Step 2: Networking
 
@@ -288,7 +286,7 @@ just zephyr ci              # Doctor + test (CI shortcut)
 | `west: command not found` | Run `pip3 install --user west` and add `~/.local/bin` to PATH |
 | `Connection refused` | Start `zenohd` / `MicroXRCEAgent` on the host loopback (e.g. `tcp/127.0.0.1:7456`) |
 | `Build fails` | Source environment: `source zephyr-workspace/env.sh` |
-| `XRCE Agent not found` | Install: `just setup xrce` or `just setup all` |
+| `XRCE Agent not found` | Provision the xrce daemon: `nros setup zephyr --rmw xrce` |
 | Zenoh mutex exhaustion | Increase `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (default 5 is too low) |
 
 ## Network Architecture

@@ -6,10 +6,20 @@ to be pre-installed (the repo ships `zenohd`).
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
 >
-> **Prereqs.** A clone with `just setup base` already run, followed by
-> `source ./setup.bash`.
-> See [Install + first build (Linux)](./installation.md) if you
-> haven't.
+> **Prereqs.** Install the `nros` CLI and provision the native host.
+> `nros setup native` installs the zenoh router (`zenohd`) into a
+> shared store — no ROS 2 needed.
+>
+> ```bash
+> # Install the nros CLI once per machine:
+> curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+> export PATH="$HOME/.nros/bin:$PATH"
+>
+> # Provision the native host for the zenoh RMW:
+> nros setup native --rmw zenoh
+> ```
+>
+> See [Install + first build (Linux)](./installation.md) for more.
 
 ## Project layout
 
@@ -87,10 +97,8 @@ seconds.
 Three terminals (each command below blocks; keep them open):
 
 ```bash
-# Each terminal:  source ./setup.bash    (first command after cd-ing in)
-
-# Terminal 1 — in-tree zenoh router. Blocks the shell until Ctrl-C.
-zenohd                               # provided by setup.bash
+# Terminal 1 — zenoh router. Blocks the shell until Ctrl-C.
+zenohd                               # installed by `nros setup native`
 
 # Terminal 2 — the talker.
 cd examples/native/rust/talker

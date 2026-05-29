@@ -9,18 +9,48 @@ directly.
 
 ## Install
 
-nano-ros is shipped **source-only** — no crates.io publication, no
-precompiled binaries. Install the CLI from a clone:
+The `nros` CLI ships as a prebuilt host binary. Install it once per
+machine:
 
 ```sh
-git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros/packages/codegen/packages
-cargo install --path nros-cli
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"      # add to your shell profile
 ```
 
+The installer downloads the binary for your OS/arch into `~/.nros/bin`.
 Once installed, `nros --help` lists every verb.
 
 ## Verbs
+
+### `nros setup [<board>] [--rmw <rmw>] [--tool <name>] [--source <name>] [--prefix <dir>] [--list] [--licenses] [--dry-run]`
+
+Provision the toolchain/SDK for a board. `nros setup` is the single
+canonical provisioning command — it ships **prebuilt toolchains per
+platform per RMW** (cross-compiler, emulator, RMW host daemon, SDK
+sources) from a pinned index into a shared store (`~/.nros/sdk`). No
+hand-installed cross-toolchains; no ROS distro required.
+
+```sh
+nros setup native --rmw zenoh            # host build + zenoh router
+nros setup qemu-arm-freertos --rmw xrce  # arm-none-eabi-gcc, qemu, FreeRTOS, XRCE agent
+nros setup zephyr                        # Zephyr west workspace + SDK bits
+```
+
+| Flag | Effect |
+|---|---|
+| `<board>` | resolve + fetch this board's package set (see [Supported Boards](supported-boards.md)) |
+| `--rmw <zenoh\|xrce\|cyclonedds>` | also provision the RMW's host daemon/tool (default `zenoh`); resolves `board ∪ rmw` packages |
+| `--tool <name>` | install a single tool by name (e.g. `--tool qemu`) |
+| `--source <name>` | provision a single source package by name (repeatable) |
+| `--prefix <dir>` | install a `--tool` here instead of the shared store |
+| `--list` | list every package in the index + its version |
+| `--licenses` | show license-gated packages + how to install them |
+| `--dry-run` | resolve + print the plan without fetching anything |
+
+Board names: `native`, `posix`, `qemu-arm-baremetal`, `mps2-an385`,
+`stm32f4`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-riscv64-threadx`,
+`threadx-linux`, `esp32`, `qemu-esp32-baremetal`, `zephyr`, and more —
+run `nros setup --list` or `nros setup <board> --dry-run`.
 
 ### `nros new <name> --platform <plat> [--rmw <rmw>] [--lang <lang>] [--use-case <case>] [--force]`
 
@@ -36,7 +66,7 @@ chosen platform.
 | `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
 | `--force` | overwrite an existing directory | off |
 
-**Deploy mode (Phase 172):** `nros new --deploy <name> --kind <self|vendor-lib|vendor-module> [--target <triple>] [--board <b>] [--from-launch <path>] [--from-profile <name>]` scaffolds a `[deploy.<name>]` target into the root `nros.toml` (and, for vendor kinds, a `deploy/<name>/` glue dir), instead of a project. `--from-launch` also seeds `[system].launch`; `--from-profile` forks an existing deploy target.
+**Deploy mode:** `nros new --deploy <name> --kind <self|vendor-lib|vendor-module> [--target <triple>] [--board <b>] [--from-launch <path>] [--from-profile <name>]` scaffolds a `[deploy.<name>]` target into the root `nros.toml` (and, for vendor kinds, a `deploy/<name>/` glue dir), instead of a project. `--from-launch` also seeds `[system].launch`; `--from-profile` forks an existing deploy target.
 
 ### `nros generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
 
@@ -58,7 +88,7 @@ collecting component source metadata into
 `nros plan`. With `--build`, any declared component (`component_nros.toml`)
 missing its source-metadata is produced by the **metadata-mode build**:
 nano-ros compiles + runs the component against an in-memory recorder to
-emit the JSON (Phase 172.E driver). `--build` needs the nano-ros workspace
+emit the JSON. `--build` needs the nano-ros workspace
 (`--nano-ros-workspace` or `NROS_WORKSPACE`).
 
 ### `nros plan <system_pkg> <launch_file> [LAUNCH_ARGS...] [options]` — resolve a ROS 2 launch file (or a precomputed
@@ -87,7 +117,7 @@ default-deploy + system references, bridge endpoints, etc.
 
 ### `nros deploy [name] [--config <root.toml>] [--nano-ros-workspace <path>] [--dry-run]`
 
-Run a `[deploy.<name>]` target from the root `nros.toml` (Phase 172). Omit
+Run a `[deploy.<name>]` target from the root `nros.toml`. Omit
 `name` to use `[workspace].default`. The runner asserts the vendor pin →
 generates + builds the **entry lib** (the system wiring as a library) →
 runs the target's `build[]` then `package[]` shell steps, substituting

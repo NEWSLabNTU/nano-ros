@@ -5,13 +5,20 @@ Single-node starter via the **PlatformIO library** path —
 orchestrator. Useful for Arduino-shaped or vendor-IDE-shaped
 projects.
 
-> **Prereqs.** PlatformIO Core ≥ 6.1 installed. From a nano-ros
-> checkout, `just setup platformio` installs/checks the CLI through
-> the same path used by the test harness.
+> **Prereqs.** Two independent toolchains.
+>
+> 1. **PlatformIO itself** — Core ≥ 6.1, installed through
+>    PlatformIO's own package manager. `nros setup` does **not**
+>    replace this; PlatformIO and its board toolchains come from
+>    PlatformIO's installer.
+> 2. **The nano-ros side** — the RMW host daemon (and any nano-ros
+>    host tools you use for testing) come from the `nros` CLI:
 
 ```bash
-just setup platformio       # equivalent to: just platformio setup
-just platformio doctor
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+nros setup esp32 --rmw zenoh     # installs the RMW daemon (zenohd for zenoh,
+                                 # the Micro-XRCE-DDS agent for xrce)
 ```
 
 ## Project layout

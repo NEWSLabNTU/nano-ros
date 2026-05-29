@@ -21,7 +21,7 @@ Already have hardware? Two-step path:
 
 1. **Linux first** — [First Node — Rust](../getting-started/first-node-rust.md)
    on your host to verify the stack in ~10 minutes
-   (`just setup base` then `cargo run`).
+   (`nros setup native --rmw zenoh` then `cargo run`).
 2. **Then ESP32** — once Linux works, follow
    [ESP32 (esp-hal)](../getting-started/esp32.md) for the Rust
    cross-compile path. You need a second machine (or the host
@@ -36,8 +36,7 @@ You've decided to use nano-ros and want a working talker on Linux
 first, then maybe move to an MCU.
 
 1. **[Install + first build](../getting-started/installation.md)**
-   — `just setup` to choose a path, then `just setup base` and
-   `source ./setup.bash`.
+   — install the `nros` CLI, then `nros setup native --rmw zenoh`.
 2. **First Node** in your language:
    [Rust](../getting-started/first-node-rust.md) ·
    [C](../getting-started/first-node-c.md) ·

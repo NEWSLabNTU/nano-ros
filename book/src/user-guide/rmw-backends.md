@@ -87,7 +87,7 @@ configure time; the root `CMakeLists.txt` add_subdirectory's
 into `NanoRos::NanoRos`. No `build/install/` prefix, no
 `find_package(NrosRmwCyclonedds)` deleted both.
 
-**Availability follows from config — the build provisions Cyclone (Phase 186).**
+**Availability follows from config — the build provisions Cyclone.**
 Selecting `cyclonedds` (`-DNANO_ROS_RMW=cyclonedds` / `--features rmw-cyclonedds`)
 is your whole responsibility; `nros_provide_cyclonedds()` resolves the library:
 a prebuilt install you point at (`-DCMAKE_PREFIX_PATH=<install>` /

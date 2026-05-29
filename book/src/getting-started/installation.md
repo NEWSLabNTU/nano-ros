@@ -64,138 +64,84 @@ That is the entire consumption shape. See
 [build-as-subdirectory.md](build-as-subdirectory.md) for the full
 walkthrough.
 
-## Setup chooser
+## Provision your toolchain with `nros setup`
+
+`nros setup` is the single command that prepares a machine to build
+nano-ros for a given board. It ships **prebuilt toolchains per platform
+per RMW** — the cross-compiler, emulator, RMW host daemon, and any SDK
+sources a board needs are fetched from a pinned index and placed in a
+shared store (`~/.nros/sdk`). You do **not** install cross-toolchains by
+hand, and you do not need ROS 2 on the machine.
+
+### 1. Install the `nros` CLI (once per machine)
 
 ```bash
-git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
-
-scripts/bootstrap.sh              # install/check just, then print setup choices
-just setup                        # print the same setup choices once just exists
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"      # add to your shell profile
 ```
 
-Use recipe groups to discover the command surface without scrolling
-through every platform/backend recipe:
+This downloads the prebuilt `nros` host binary for your OS/arch into
+`~/.nros/bin`. Verify with `nros --version`.
+
+### 2. Provision a board (+ RMW)
 
 ```bash
-just --groups
-just --group main --list
-just --group setup --list
-just --group full-matrix --list
-just --group full-matrix --list zephyr
+nros setup <board> --rmw <zenoh|xrce|cyclonedds>
 ```
 
-For local documentation preview:
+`nros setup` resolves the board's package set **union** the RMW's host
+packages and fetches them all — prebuilt cross-toolchain + emulator +
+RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`.
+
+| Command | Provisions |
+|---|---|
+| `nros setup native` | host build; the zenoh router (`zenohd`) |
+| `nros setup native --rmw xrce` | host build; the Micro-XRCE-DDS agent |
+| `nros setup native --rmw cyclonedds` | host build; Cyclone DDS runtime + `idlc` |
+| `nros setup qemu-arm-freertos` | `arm-none-eabi-gcc`, patched `qemu-system-arm`, FreeRTOS + lwIP sources, `zenohd` |
+| `nros setup qemu-arm-nuttx` | `arm-none-eabi-gcc`, qemu, NuttX sources |
+| `nros setup qemu-riscv64-threadx` | `riscv64-*-gcc`, qemu, ThreadX/NetX sources |
+| `nros setup threadx-linux` | ThreadX POSIX-sim sources |
+| `nros setup esp32` | the Espressif toolchain bits the esp-hal path needs |
+| `nros setup zephyr` | the Zephyr west workspace + Zephyr SDK bits |
+| `nros setup mps2-an385` / `stm32f4` / `qemu-arm-baremetal` | bare-metal `arm-none-eabi-gcc` + qemu |
+
+Useful flags:
 
 ```bash
-just setup-docs
-just book-serve
+nros setup --list            # every package in the index + its version
+nros setup <board> --dry-run # resolve + print the plan, fetch nothing
+nros setup --licenses        # license-gated packages + how to install them
+nros setup --tool qemu       # one tool by name
+nros setup --source freertos-kernel   # one source package by name
 ```
 
-`just setup` is intentionally informational. It does not fetch
-submodules or install SDKs until you choose a tier or platform:
-
-```bash
-just setup base                   # first-time native/ROS/zenoh quick start
-just setup zephyr                 # focused platform setup
-just setup all                    # full contributor/test-all setup
-source ./setup.bash               # zenohd, nros, nros-codegen, qemu-system-arm on PATH
-                                  # (use ./setup.fish for fish)
-```
-
-The selected setup command:
-
-1. Picks the submodules required for the modules in scope.
-2. Runs `git submodule update --init --depth=1` selectively (no
-   unrelated deps).
-3. Installs the Rust target triples via `rustup target add`.
-4. Surfaces missing apt cross-toolchain packages on Linux. **Never**
-   runs sudo automatically; reports what to install.
-
-The base tier is for first-time users who want Linux/native examples
-and standard ROS/zenoh workflows:
-
-```bash
-just setup base                  # workspace tools + in-tree zenohd
-```
-
-For platform-specific work, run the platform setup directly:
-
-```bash
-just setup freertos              # equivalent to: just freertos setup
-just setup nuttx
-just setup zephyr
-just setup threadx_linux
-just setup esp_idf
-just setup px4
-```
-
-For contributors preparing the broad matrix:
-
-```bash
-just setup all                   # all supported platform SDKs and services
-```
-
-After a setup command, `source ./setup.bash` puts every shipped
-binary on PATH for the current shell session — same idiom as
-`source /opt/ros/humble/setup.bash`. Re-source after subsequent
-builds (e.g. `just xrce setup`) to pick up newly-built tools.
+Each board's exact package set lives in the index; run
+`nros setup <board> --dry-run` to see precisely what a board pulls.
+See [Supported Boards](../reference/supported-boards.md) for the full
+board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 
 > **Heads-up before your first example.** Every nano-ros example
-> (Linux talker, FreeRTOS talker, …) connects to a **Zenoh router**
-> (`zenohd`) at startup. Without one running, the talker blocks
-> forever on `Executor::open` with no output. Open a dedicated
-> terminal and start the router before launching any example:
+> (Linux talker, FreeRTOS talker, …) connects to its **RMW host
+> daemon** at startup — `zenohd` for zenoh, the Micro-XRCE-DDS agent
+> for xrce. `nros setup … --rmw <rmw>` installs it into the nros store
+> (`~/.nros/sdk/<tool>/<version>/bin/`); you must then run it in a
+> dedicated terminal before launching any example. For zenoh, put the
+> store binary on PATH once and run it:
 >
 > ```bash
-> just zenohd run
+> export PATH="$(dirname "$(ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1)")":$PATH
+> zenohd        # leave running for the whole session
 > ```
 >
-> Leave that terminal open for the entire session. Default ports:
-> `tcp/127.0.0.1:7447` on POSIX, `tcp/10.0.2.2:7451` on QEMU
-> FreeRTOS (Slirp forwards to host). Mismatch = silent hang;
-> see [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+> Without it the talker blocks forever on `Executor::open` with no
+> output. Default ports: `tcp/127.0.0.1:7447` on POSIX,
+> `tcp/10.0.2.2:7451` on QEMU FreeRTOS (Slirp forwards to host).
+> Mismatch = silent hang; see
+> [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
-For a narrower fetch, invoke the per-platform recipe directly:
-
-| Form | Effect |
-|---|---|
-| `just setup` | print setup choices; no fetch/install |
-| `just setup base` | workspace tools + in-tree zenohd for first-time native use |
-| `just setup all` | full contributor/test-all tier |
-| `just <platform> setup` | platform-only fetch + build (`just freertos setup`, `just zephyr setup`, etc.) |
-| `just setup <platform>` | shorthand for `just <platform> setup` |
-| `just <platform> doctor` | read-only check of that platform's prereqs |
-| `just doctor` | base readiness check |
-| `just doctor tier=all` | full contributor readiness check |
-
-Root commands are workflows (`build`, `test`, `check`, `clean`,
-`build-all`, `test-all`). Platform-specific setup, networking, and help
-stay under the platform namespace, for example `just qemu setup-network`
-and `just zephyr help`.
-
-> **Power-user escape hatch.** The underlying script `tools/setup.sh`
-> takes `--target=<plat>-<rmw>` for exact-pair fetch + `--list-targets`,
-> `--doctor`, `--with-dev`, `--with-reference=<name>`, `--dry-run`.
-> Use it when you need finer control than the just recipes provide.
-
-## Per-target setup
-
-| Target | Notes |
-|---|---|
-| `posix-zenoh` | host build, no cross-toolchain needed |
-| `posix-xrce` | host build, Micro-XRCE-DDS C backend |
-| `posix-cyclonedds` | host build, Cyclone DDS via the C++ vtable; requires `apt install` for Cyclone runtime |
-| `freertos-zenoh` | needs `gcc-arm-none-eabi` |
-| `freertos-xrce` | same + `xrce::setup` to build the agent fixture |
-| `nuttx-zenoh` | NuttX kernel + apps via `make` (handled by `just nuttx::setup`) |
-| `threadx-zenoh` | ThreadX-Linux POSIX sim or RISC-V via `just threadx_linux::setup` / `threadx_riscv64::setup` |
-| `zephyr-zenoh` | Zephyr module via west — see `just zephyr::setup` |
-| `esp32-zenoh` | ESP-IDF component model |
-
-The per-platform `just <plat>::setup` recipes delegate
-to `tools/setup.sh --platform=<plat>` for submodule fetch, then run any
-platform-specific build steps (NuttX kernel, Cyclone DDS SDK, etc.).
+After provisioning, follow the per-platform starter page (FreeRTOS,
+Zephyr, NuttX, …) for the board's build + run steps.
 
 ## Rust-only consumers
 
@@ -223,12 +169,15 @@ for the pattern.
 
 ## Contributor setup (working on nano-ros itself)
 
-Use the explicit full tier when you need broad `test-all` coverage:
+Contributors clone the repo and drive everything through `just`. The
+`just` setup recipes are thin wrappers over the same `nros setup` index —
+`just <module> setup` calls `nros setup <board>` under the hood, so the
+toolchains a contributor gets are identical to a user's.
 
 ```bash
 git clone https://github.com/NEWSLabNTU/nano-ros.git
 cd nano-ros
-just setup all                # every supported SDK/service module
+just setup all                # provision every supported board's SDK/toolchain
 ```
 
 Diagnose missing tools (read-only):
@@ -237,17 +186,13 @@ Diagnose missing tools (read-only):
 just doctor tier=all
 ```
 
-Set up just one module:
+Provision one module:
 
 ```bash
-just freertos setup
-just nuttx setup
-just threadx_linux setup
+just freertos setup           # → nros setup qemu-arm-freertos
+just nuttx setup              # → nros setup qemu-arm-nuttx
+just threadx_linux setup      # → nros setup threadx-linux
 ```
-
-Each `<module> setup` delegates to `tools/setup.sh` for submodule
-fetch + runs any platform-specific build steps (NuttX kernel build,
-Cyclone DDS SDK build, etc.).
 
 ## Docker environment
 

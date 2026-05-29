@@ -5,18 +5,30 @@ Single-node starter on ESP32-C3 / ESP32-S3 using the bare-metal
 (C / C++ apps), see [ESP32 (ESP-IDF
 component)](./integration-esp-idf.md).
 
-> **Prereqs.** From the repo root, run `just setup base` and
-> `just setup esp32`, then `source ./setup.bash`. The ESP32 setup
-> checks `espflash` and installs the Rust targets used by the
-> examples.
+> **Prereqs.** `nros setup esp32` is the single command that
+> prepares your machine. It fetches a prebuilt esp-hal toolchain and
+> the chosen RMW host daemon from a pinned index into the shared
+> store at `~/.nros/sdk` — you do not hand-install cross-compilers,
+> and you do not need ROS 2 installed.
 
 ## Setup
 
+Install the `nros` CLI once per machine:
+
 ```bash
-just setup base
-just setup esp32            # equivalent to: just esp32 setup
-source ./setup.bash
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
 ```
+
+Provision the board (and RMW):
+
+```bash
+nros setup esp32 --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds also valid
+```
+
+This pulls the prebuilt esp-hal toolchain, the SDK sources, and the
+RMW host daemon (`zenohd` for zenoh, the Micro-XRCE-DDS agent for
+xrce) into `~/.nros/sdk`.
 
 ## Project layout
 

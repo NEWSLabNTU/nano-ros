@@ -230,7 +230,7 @@ block the fast one.
 
 Pure-Rust bridge. Zenoh ingress → XRCE-DDS egress under an
 ARINC-653-style time-triggered cyclic schedule. Read this
-first — it shows the Phase 104 multi-RMW
+first — it shows the multi-RMW
 `Executor::open_with_rmw("zenoh", ...)` plus
 `node_builder.rmw("xrce")` per-session pin, with raw byte
 forwarding and no codegen.

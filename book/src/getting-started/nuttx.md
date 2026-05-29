@@ -41,17 +41,27 @@ points and `println!` -- no semihosting or custom panic handlers needed.
 
 ## Setup
 
-Set up base tools, zenohd, the NuttX source tree, and staged external
-apps:
+`nros setup qemu-arm-nuttx` provisions everything this board needs —
+the NuttX cross-compiler, `qemu-system-arm`, the NuttX source tree,
+and the RMW host daemon — into the shared store at `~/.nros/sdk`. No
+hand-installed cross-toolchain and no ROS 2 install required.
+
+Install the `nros` CLI once per machine, then provision the board
+(`--rmw` defaults to `zenoh`):
 
 ```bash
-just setup base
-just setup nuttx            # equivalent to: just nuttx setup
-source ./setup.bash
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+nros setup qemu-arm-nuttx --rmw zenoh
 ```
 
-This places the sources in `third-party/nuttx/nuttx/` and `third-party/nuttx/nuttx-apps/`.
-Override the paths with environment variables if your sources are elsewhere:
+As a contributor, `just nuttx setup` remains available and now
+delegates to `nros setup qemu-arm-nuttx` for the toolchain/SDK
+provisioning while also staging the external apps.
+
+The NuttX sources land in `third-party/nuttx/nuttx/` and
+`third-party/nuttx/nuttx-apps/`. Override the paths with environment
+variables if your sources are elsewhere:
 
 | Variable         | Default              | Description          |
 |------------------|----------------------|----------------------|
@@ -60,9 +70,12 @@ Override the paths with environment variables if your sources are elsewhere:
 
 ### Prerequisites
 
-- `qemu-system-arm` (for running tests)
+The `nros setup qemu-arm-nuttx` step above provisions the
+`qemu-system-arm` emulator and the `arm-none-eabi-gcc` cross-compiler
+used for NuttX kernel compilation. The one host-side tool you still
+supply yourself:
+
 - Rust nightly toolchain (NuttX targets are Tier 3, require `-Z build-std`)
-- `arm-none-eabi-gcc` (for NuttX kernel compilation)
 
 ## Building
 

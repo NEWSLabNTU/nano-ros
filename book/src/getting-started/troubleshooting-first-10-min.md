@@ -1,8 +1,8 @@
 # Troubleshooting — First 10 Minutes
 
-The Linux starter walkthroughs assume `just setup base` has run, `zenohd`
-is reachable, and the right Rust target is installed. When something
-goes wrong in the first ten minutes, the error you see usually
+The Linux starter walkthroughs assume `nros setup native --rmw zenoh` has
+run, `zenohd` is reachable, and the right Rust target is installed. When
+something goes wrong in the first ten minutes, the error you see usually
 points at one of the predictable misses below.
 
 ## Decision tree
@@ -31,20 +31,21 @@ Did `cargo build` / `cmake --build` fail?
 │     (or whichever target the example's `.cargo/config.toml` names)
 │
 ├─ error: linker `arm-none-eabi-gcc` not found
-│   → Install the cross toolchain:
-│       sudo apt install gcc-arm-none-eabi      # Debian / Ubuntu
-│       brew install arm-none-eabi-gcc          # macOS
+│   → The cross toolchain wasn't provisioned. Run nros setup for
+│     your board (it ships a prebuilt arm-none-eabi-gcc):
+│       nros setup qemu-arm-freertos   # or qemu-arm-nuttx / mps2-an385 / …
 │
 ├─ ld: cannot find -lddsc / -lcyclonedds-ddsc
-│   → Cyclone DDS backend needs its native lib installed first:
-│       just cyclonedds setup     # for `rmw-cyclonedds`
+│   → The Cyclone DDS runtime wasn't provisioned:
+│       nros setup native --rmw cyclonedds
 
 Did the binary build but not produce output?
 ├─ Hangs after "Opening session" / no `Published:` lines
 ├─ `nros::init -> -3` / `-100` (Transport error)
-│   → zenohd isn't running. Open another terminal:
-│       just zenohd run             # in the repo root
-│     Or any system `zenohd --listen tcp/127.0.0.1:7447`.
+│   → zenohd isn't running. Open another terminal and run the
+│     zenohd installed by `nros setup … --rmw zenoh` (in the
+│     nros store, ~/.nros/sdk/zenohd/*/bin/):
+│       zenohd --listen tcp/127.0.0.1:7447
 │     Check the locator the example points at matches the
 │     port zenohd is listening on (default 7447 for POSIX,
 │     7451+ for QEMU per-platform tests).

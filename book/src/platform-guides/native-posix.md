@@ -15,18 +15,22 @@ embedded targets.
 
 ## Setup
 
-From the nano-ros clone:
+Install the `nros` CLI once per machine, then provision the native
+host. For a host build there is no cross-toolchain to fetch — `nros
+setup native` installs only the RMW host daemon (`zenohd` for zenoh,
+the Micro-XRCE-DDS agent for xrce) into a shared store. ROS 2 is not
+required.
 
 ```bash
-just setup base          # workspace tools + in-tree zenoh router
-source ./setup.bash
+# Install the nros CLI once per machine:
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+
+# Provision the native host (zenoh RMW is the default):
+nros setup native --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds
 ```
 
-For a narrower fetch (POSIX + zenoh only):
-
-```bash
-tools/setup.sh --target=posix-zenoh
-```
+`native` and `posix` are accepted as the same board name.
 
 For a colcon consumer workspace that already has nano-ros under
 `src/`:
@@ -79,10 +83,11 @@ walkthrough for generated messages and runnable commands.
 
 ## Build and Run
 
-Start router:
+Start the RMW host daemon (installed by `nros setup native`). For
+zenoh:
 
 ```bash
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+zenohd --listen tcp/127.0.0.1:7447
 ```
 
 Run the node directly via `cargo run` (Rust) or

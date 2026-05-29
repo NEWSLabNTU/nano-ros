@@ -12,19 +12,37 @@ Rust and C are supported on both flavours; nros-cpp does not target
 ThreadX (not in the
 [coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)).
 
-> **Prereqs.** From the repo root, run `just setup base` and the
-> ThreadX flavour you need, then `source ./setup.bash`. For
-> threadx-riscv64 also need a `riscv64-unknown-elf-gcc` bare-metal
-> cross toolchain on `PATH` plus `qemu-system-riscv64`.
+> **Prereqs.** Install the `nros` CLI once, then run
+> `nros setup <board> --rmw <rmw>` for the flavour you need (see
+> [Setup](#setup)). It provisions the cross-compiler, emulator, RMW host
+> daemon, and ThreadX/NetX sources — no hand-installed `riscv64` cross
+> toolchain, `qemu-system-riscv64`, or ROS 2 required.
 
 ## Setup
 
+`nros setup` is the single canonical command to prepare a machine to build
+nano-ros for a board. It ships prebuilt toolchains per platform per RMW — the
+cross-compiler, emulator, RMW host daemon, and SDK sources (the ThreadX/NetX
+sources, and for threadx-linux the POSIX-sim sources) are fetched from a pinned
+index into a shared store at `~/.nros/sdk`. You do not need ROS 2 installed.
+
+Install the `nros` CLI once per machine:
+
 ```bash
-just setup base
-just setup threadx_linux      # equivalent to: just threadx_linux setup
-just setup threadx_riscv64    # only if you need the RISC-V64 QEMU flow
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+```
+
+Provision the ThreadX flavour you need (+ the RMW):
+
+```bash
+nros setup threadx-linux --rmw zenoh          # POSIX-sim flavour; --rmw defaults to zenoh
+nros setup qemu-riscv64-threadx --rmw zenoh   # only if you need the RISC-V64 QEMU flow
 source ./setup.bash
 ```
+
+The RMW host daemon must be **running** before any example: `zenohd` for zenoh,
+the Micro-XRCE-DDS agent for xrce. `nros setup … --rmw <rmw>` installs it.
 
 ## Project layout
 
@@ -66,7 +84,7 @@ gateway = "192.0.3.1"
 netmask = "255.255.255.0"
 
 [platform]
-interface = "tap-tx0"               # veth pair created by just threadx_linux setup
+interface = "tap-tx0"               # veth pair created by nros setup threadx-linux
 
 [zenoh]
 locator   = "tcp/127.0.0.1:7455"   # ThreadX-Linux test-fixture port
@@ -87,7 +105,7 @@ domain_id = 0
 ```
 
 ThreadX-Linux uses a veth pair (`tap-tx0`) rather than QEMU Slirp;
-`just threadx_linux setup` creates the interface. The QEMU-RISC-V64
+`nros setup threadx-linux` creates the interface. The QEMU-RISC-V64
 fixture uses Slirp's default `10.0.2.2` gateway just like the
 FreeRTOS QEMU flow.
 
@@ -112,7 +130,7 @@ builds finish in seconds.
 
 ```bash
 # threadx-linux (no QEMU):
-just zenohd setup && just zenohd run        # bring up router
+zenohd                                      # bring up the router (provisioned by nros setup --rmw zenoh)
 cd examples/threadx-linux/rust/talker
 cargo run --release
 # Expected:
@@ -144,7 +162,7 @@ seconds of QEMU boot. If no `Published:` line:
 1. Confirm `zenohd` reachable on the locator from `config.toml`
    (threadx-linux uses `127.0.0.1`; riscv64 QEMU uses `10.0.2.2`).
 2. threadx-linux: confirm the veth bridge came up via
-   `just threadx_linux setup`.
+   `nros setup threadx-linux`.
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source

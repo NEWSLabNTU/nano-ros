@@ -5,10 +5,20 @@ C. Uses CMake, the Zenoh backend, and `add_subdirectory` consumption.
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
 >
-> **Prereqs.** A clone with `just setup base` already run, followed by
-> `source ./setup.bash`.
-> See [Install + first build (Linux)](./installation.md) if you
-> haven't.
+> **Prereqs.** Install the `nros` CLI and provision the native host.
+> `nros setup native` installs the zenoh router (`zenohd`) into a
+> shared store — no ROS 2 needed.
+>
+> ```bash
+> # Install the nros CLI once per machine:
+> curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+> export PATH="$HOME/.nros/bin:$PATH"
+>
+> # Provision the native host for the zenoh RMW:
+> nros setup native --rmw zenoh
+> ```
+>
+> See [Install + first build (Linux)](./installation.md) for more.
 
 ## Project layout
 
@@ -109,8 +119,8 @@ The first configure pulls and builds nano-ros's Rust staticlibs
 Three terminals.
 
 ```bash
-# 1. Start the in-tree zenoh router:
-zenohd                               # provided by `source ./setup.bash`
+# 1. Start the zenoh router:
+zenohd                               # installed by `nros setup native`
 
 # 2. Run the talker:
 cd examples/native/c/talker
