@@ -48,6 +48,16 @@ codegen tooling — none of which a BYO west user invokes.
       submodules incl. unrelated platform SDKs). **Still open:** end-to-end verify
       on a throwaway BYO west workspace, and confirm the module CMake builds the
       now-present zenoh-pico without further wiring.
+      **E2E VERIFIED (2026-05-29)** on a throwaway BYO west workspace (`west init`
+      + a manifest importing nano-ros from a local clone, `west update`):
+      `packages/zpico/zpico-sys/zenoh-pico` came up **empty** (0 files — confirms
+      `west update` does not pull the transport submodules), and
+      `nros setup --source zenoh-pico` run from `modules/nano-ros` **provisioned**
+      it (33 files, `include/` present, pinned `f68feb77`). The documented BYO fix
+      works. The module *build* against the present transports is the same module
+      CMake the in-tree dual-line CI already builds green (3.7+4.4 C/C++ compile
+      zenoh-pico from that submodule), so a full BYO `west build` (≈2 GB Zephyr
+      clone) was not re-run.
       *Original issue:* the transports (zenoh-pico, the cyclonedds fork, mbedtls)
       are git submodules; `integrations/zephyr/west.yml` has `projects: []` and the
       import snippet didn't set `submodules: true`, so `west update` fetched
