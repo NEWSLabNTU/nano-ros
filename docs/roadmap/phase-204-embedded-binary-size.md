@@ -74,51 +74,67 @@ Serial was **larger**, not smaller. Three suspected confounds, all known phase i
   entry → a **0-size broken ELF**. Append via `cargo rustc -- -Clink-arg=…` or edit
   the config; never via env on these examples.
 
-**Resolved (2026-05-30) — the dominant confound was the register path, not
-smoltcp.** With 204.7 (`NROS_LINK_IP=0`) + 204.8 (`--gc-sections`) already on the
-serial examples, smoltcp dropped from **45 → 5** residual symbols — yet serial was
-*still* 136.7 KB text / 75.8 KB bss, bigger than ethernet. Root cause: the serial
-`main.rs` carried an explicit `nros_rmw_zenoh::register()` call (the stale
-Phase 104.A "bare-metal must register" pattern). That call makes the multi-backend
-`nros_rmw_cffi_register_named` vtable **reachable from `main`**, which pins *every*
-entity trampoline (`create_subscriber/service_server/service_client/queryable…`)
-and their static buffers (`SUBSCRIBER_BUFFERS` 34.5 KB, `g_pending_gets` 16.4 KB,
-`SERVICE_BUFFERS` 10.4 KB — none of which a publish-only node uses) against
-`--gc-sections`. The ethernet `talker`/`listener` never had the call: the backend
-**self-registers via the cortex_m_rt startup path** and `Executor::open` resolves
-it, leaving the fat vtable collectible. Dropping the redundant call from
-`serial-talker`/`serial-listener` matched the ethernet pattern.
+**Investigation (2026-05-30) — the `register_named` buffer-pinning is real, but
+the obvious "drop the call" fix is INVALID on bare-metal.** With 204.7
+(`NROS_LINK_IP=0`) + 204.8 (`--gc-sections`) already on the serial examples,
+smoltcp dropped from **45 → 5** residual symbols — yet serial was *still* 136.7 KB
+text / 75.8 KB bss. The `.text`/`.bss` is dominated by the explicit
+`nros_rmw_zenoh::register()` call pulling in the multi-backend
+`nros_rmw_cffi_register_named` vtable, which references *every* entity trampoline
+(`create_subscriber/service_server/service_client/queryable…`) and pins their
+static buffers (`SUBSCRIBER_BUFFERS` 34.5 KB, `g_pending_gets` 16.4 KB,
+`SERVICE_BUFFERS` 10.4 KB — none used by a publish-only node) against
+`--gc-sections`.
 
-**Measured after the fix (qemu-arm-baremetal / mps2-an385 / thumbv7m, release):**
+**Why "just remove `register()`" does NOT work** (a tempting trap — it *appears*
+to shrink serial-talker to 38 KB text / 4.6 KB bss and an e2e even "passed"):
 
-| binary | text | data | bss | vs pre-fix |
-|---|---|---|---|---|
-| `serial-talker` | **38.1 KB** | 66.1 KB | **4.6 KB** | −98.7 KB text / −71 KB bss |
-| `serial-listener` | **43.7 KB** | 66.1 KB | **8.2 KB** | (sub path keeps its own buffers) |
-| `talker` (ethernet/smoltcp) | 83.2 KB | 66.9 KB | 20.5 KB | — |
+- On `target_os = "none"` the `linkme` `RMW_INIT_ENTRIES` slice is an **empty
+  stub** (Phase 142 dropped bare-metal from linkme because cortex_m_rt's link
+  script lacks the `__start_/__stop_` anchors). So the explicit `register()` call
+  is the **only** reference keeping the backend linked. Remove it and
+  `--gc-sections` strips the **entire** zenoh backend — the "38 KB" binary has
+  `zenoh = 0`, `_z_/zp_ = 0` symbols (no middleware at all). `Executor::open` then
+  resolves `NoBackend` → `Transport(ConnectionFailed)` (`spin.rs:96` maps every
+  non-`Single` resolution to the same error, so the failure is silent).
+- The "passing" e2e was a **false positive**: `build_example` only
+  `require_prebuilt_binary` (it does **not** rebuild), and the default fixture
+  profile is `nros-fast-release` (`NROS_CARGO_PROFILE`). A local `cargo build
+  --release` writes `target/.../release/`, a *different* path; the e2e ran the
+  **stale `nros-fast-release` binary** (built days earlier, still had `register()`).
+  Lesson: to test an embedded example edit, rebuild the fixture under the
+  `nros-fast-release` profile, not a plain `cargo build --release`.
 
-Serial is now decisively smaller than ethernet (−45 KB text, −16 KB bss) — the IP
-stack is genuinely shed. `data` is dominated by the 66 KB static `HEAP` (shared by
-both transports; see 204.5). **E2E-verified:** `test_qemu_serial_pubsub_e2e`
-(talker→listener over a zenohd serial bridge) passes `published=1, received=1`
-with both examples' explicit `register()` removed — the auto-registration path is
-real on bare-metal, the Phase 104.A comment was outdated.
+**Correct sizes (working binaries with the backend linked):** serial-talker
+136.7 KB text / 75.8 KB bss; ethernet talker (after the bug-fix below) similar. The
+real shrink requires a **publish-only / lean vtable registration** that installs
+only the slots a node uses, not the full `register_named` adapter — tracked as the
+new item below, not a one-line delete.
 
-- [x] **Measured the pre-fix serial baseline** — serial larger; root-caused to the
-      explicit-`register()` vtable-pinning confound (not smoltcp, which 204.7
-      already shed to 5 symbols).
-- [x] **Fixed + re-measured** — dropped the redundant `register()` from
-      `serial-{talker,listener}`; serial-talker 136.7→38.1 KB text, 75.8→4.6 KB bss;
-      e2e green.
-- [ ] Document the serial number alongside ethernet in the book; make serial the
-      recommended size-critical transport. (Book "Binary-size knobs" section has the
-      knobs; add the measured table.)
-- [ ] **Follow-up — broader gc-friendly rollout.** ~72 examples still carry the
-      explicit `register()`. It is **load-bearing on NuttX/Zephyr/ThreadX/ESP-IDF**
-      (linkme unsupported there → the only registration path) — do NOT remove it
-      blindly. Only the **bare-metal** examples (qemu-arm-baremetal, stm32f4,
-      qemu-esp32-baremetal) can drop it; each needs an e2e/boot check before removal.
-- [x] **Acceptance:** measured serial talker+listener, flash + RAM, table above.
+**Latent bug found + fixed.** Two bare-metal publisher examples were **missing the
+`register()` call entirely** → `zenoh = 0`, no backend, broken at runtime (they
+worked pre-Phase-142 when linkme still covered `target_os = "none"`; 142 silently
+broke them, and their e2e is Docker-gated/skipped so it went unnoticed):
+`examples/qemu-arm-baremetal/rust/talker` and `examples/stm32f4/rust/talker`. Added
+the call (sibling `listener`s already had it); rebuilt → `zenoh = 36` / `15`,
+backend present. (`stm32f4/rust/talker-embassy` is a TODO skeleton with all nros
+calls commented out — no backend needed, left as-is.)
+
+- [x] **Measured + root-caused** the serial footprint: `register_named`
+      vtable-pinning dominates, not smoltcp (204.7 already shed it to 5 symbols).
+- [x] **Disproved the "drop `register()`" shortcut** — strips the whole backend on
+      bare-metal (linkme stub); the apparent win was a backend-less broken binary +
+      a stale-prebuilt false-pass e2e.
+- [x] **Fixed the missing-`register()` latent bug** in `qemu-arm-baremetal/rust/talker`
+      + `stm32f4/rust/talker`.
+- [ ] **Lean publish-only registration (new lever).** Add a registration variant
+      that installs only the vtable slots a node actually uses (pub-only / sub-only)
+      so `--gc-sections` can drop the unused subscriber/service/queryable
+      trampolines + their static buffers (~50 KB text / ~55 KB bss on a pub-only
+      node) *without* unlinking the backend. This is the real serial/ethernet size
+      win; the explicit `register()` must stay the linkage anchor on bare-metal.
+- [ ] Re-measure + document serial vs ethernet in the book once the lean
+      registration lands.
 
 ### 204.2 — Right-size the smoltcp socket pool — [~] landed on stm32f4 talker
 - [x] **Proven (2026-05-29).** The socket counts are env-tunable

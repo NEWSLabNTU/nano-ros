@@ -58,6 +58,13 @@ fn main() -> ! {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("talker");
+        // Phase 104.A / 204.1 — bare-metal callers must explicitly register
+        // the RMW backend: on `target_os = "none"` the `linkme`
+        // `RMW_INIT_ENTRIES` slice is an empty stub (Phase 142), so this is
+        // the only reference keeping the backend linked. Without it
+        // `--gc-sections` strips the zenoh backend and `Executor::open`
+        // resolves `NoBackend`. (Latent bug found in Phase 204.1.)
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config)?;
         let publisher = {
             let mut node = executor.create_node("talker")?;

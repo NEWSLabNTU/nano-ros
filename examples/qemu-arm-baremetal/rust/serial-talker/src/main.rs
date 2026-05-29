@@ -36,15 +36,13 @@ fn main() -> ! {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("serial_talker");
-        // Phase 204.1 — the RMW backend self-registers via linkme's
-        // `RMW_INIT_ENTRIES` distributed slice, which `Executor::open`
-        // walks (an explicit section read, not `.init_array`, so it works
-        // on bare-metal). An explicit `nros_rmw_zenoh::register()` here
-        // would make the whole `register_named` vtable reachable from
-        // `main`, defeating `--gc-sections`' stripping of the unused
-        // subscriber/service/queryable trampolines + their static buffers
-        // (~50 KB .text / ~55 KB .bss on a publish-only node). The linkme
-        // path keeps them collectible — same as the ethernet `talker`.
+        // Phase 104.A — bare-metal callers explicitly register the RMW
+        // backend before `Executor::open`. On `target_os = "none"` the
+        // `linkme` `RMW_INIT_ENTRIES` slice is an empty stub (Phase 142),
+        // so this call is the ONLY reference that keeps the backend linked;
+        // without it `--gc-sections` strips the whole zenoh backend and
+        // `Executor::open` resolves `NoBackend`. (Verified Phase 204.1.)
+        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
         let mut executor = Executor::open(&exec_config)?;
         let mut node = executor.create_node("serial_talker")?;
 
