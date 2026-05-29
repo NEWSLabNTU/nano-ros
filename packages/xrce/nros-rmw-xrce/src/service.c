@@ -96,6 +96,7 @@ nros_rmw_ret_t xrce_service_server_create(nros_rmw_session_t *session,
                                           const char *type_name,
                                           const char *type_hash,
                                           uint32_t domain_id,
+                                          const nros_rmw_qos_t *qos,
                                           nros_rmw_service_server_t *out) {
     (void)type_hash;
     (void)domain_id;
@@ -149,10 +150,12 @@ nros_rmw_ret_t xrce_service_server_create(nros_rmw_session_t *session,
     xrce_dds_request_topic(service_name, req_topic_buf, sizeof(req_topic_buf));
     xrce_dds_reply_topic  (service_name, reply_topic_buf, sizeof(reply_topic_buf));
 
-    /* Services use the default reliable / volatile / keep-last(10)
-     * QoS — matches the Rust impl's `QosSettings::services_default`. */
+    /* Honor the caller's QoS; fall back to the default reliable /
+     * volatile / keep-last(10) profile (matches the Rust impl's
+     * `QosSettings::services_default`) when none is supplied. */
     nros_rmw_qos_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
-    uxrQoS_t xrce_qos = xrce_map_qos(&default_qos);
+    const nros_rmw_qos_t *eff_qos = (qos != NULL) ? qos : &default_qos;
+    uxrQoS_t xrce_qos = xrce_map_qos(eff_qos);
 
     uint16_t req = uxr_buffer_create_replier_bin(
         &st->session, st->output_reliable, replier_oid, st->participant_oid,
@@ -360,6 +363,7 @@ nros_rmw_ret_t xrce_service_client_create(nros_rmw_session_t *session,
                                           const char *type_name,
                                           const char *type_hash,
                                           uint32_t domain_id,
+                                          const nros_rmw_qos_t *qos,
                                           nros_rmw_service_client_t *out) {
     (void)type_hash;
     (void)domain_id;
@@ -410,7 +414,8 @@ nros_rmw_ret_t xrce_service_client_create(nros_rmw_session_t *session,
     xrce_dds_reply_topic  (service_name, reply_topic_buf, sizeof(reply_topic_buf));
 
     nros_rmw_qos_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
-    uxrQoS_t xrce_qos = xrce_map_qos(&default_qos);
+    const nros_rmw_qos_t *eff_qos = (qos != NULL) ? qos : &default_qos;
+    uxrQoS_t xrce_qos = xrce_map_qos(eff_qos);
 
     uint16_t req = uxr_buffer_create_requester_bin(
         &st->session, st->output_reliable, requester_oid, st->participant_oid,

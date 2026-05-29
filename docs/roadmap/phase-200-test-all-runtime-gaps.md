@@ -1,4 +1,4 @@
-# Phase 199 — `test-all` runtime-gap triage
+# Phase 200 — `test-all` runtime-gap triage
 
 **Goal.** Track and close the residual `just test` failures that remain after a
 clean `nros setup` + `build-all` on a fully-provisioned host. These are
@@ -11,7 +11,7 @@ yet — this doc inventories the 20 remaining failures so they route to the righ
 owning phase instead of being re-rediscovered each sweep.
 
 **Priority.** P2 — none block setup/build; each is a real but bounded runtime
-feature gap or an opt-in SDK shell. The zephyr CycloneDDS cluster (199.1) is the
+feature gap or an opt-in SDK shell. The zephyr CycloneDDS cluster (200.1) is the
 largest and most product-relevant.
 
 **Depends on.** Phase 177.2 (zephyr CycloneDDS actions + cross-impl), Phase
@@ -45,7 +45,7 @@ on a missing tool/fixture. The 20 cluster into five groups.
 
 ## Work Items
 
-### 199.1 — Zephyr CycloneDDS runtime e2e (→ Phase 177.2 / 196.1) — 11
+### 200.1 — Zephyr CycloneDDS runtime e2e (→ Phase 177.2 / 196.1) — 11
 
 Fixtures build + boot on `native_sim`, but the CycloneDDS data plane does not
 complete. Two sub-causes:
@@ -67,18 +67,41 @@ complete. Two sub-causes:
 `packages/dds/nros-rmw-cyclonedds/`, `zephyr/CMakeLists.txt` (rust+cyclone
 link), `examples/zephyr/rust/*`.
 
-### 199.2 — XRCE action/service runtime e2e — 4
+### 200.2 — XRCE action/service runtime e2e — mostly FIXED
 
-`{c_,}xrce` `action_fibonacci` + `service_request_response`: the agent is found
-and both binaries spawn, but the goal is never accepted / the reply never lands
-(`Goal accepted` / `[OK]` absent). Runtime over the MicroXRCEAgent, not setup.
-Triage: agent transport vs. nros XRCE action/service completion.
+**Root cause (fixed).** `xrce_service_{client,server}_create` (service.c) were
+missing the `const nros_rmw_qos_t *qos` parameter that the
+`nros_rmw_vtable_t` `create_service_{client,server}` typedef grew in the Phase
+193.5 QoS work. The cffi caller passed 7 args (`…, domain_id, &qos, &out`); the
+C impls declared 6, so the impl read `&qos` as its `out` and wrote
+`backend_data` into the QoS struct — the real `out->backend_data` stayed null,
+and the cffi wrapper returned `ServiceClientCreationFailed` *after* the
+requester/replier had actually been created successfully on the agent. Adding
+the `qos` param (and honoring it, falling back to services-default when null)
+restored registration. **Recovered:** `c_xrce_action_fibonacci` (+ the XRCE
+service/action *registration* path for C / C++ / Rust, all of which share
+`service.c`).
+
+**Remaining (1) — service request/reply data plane.**
+`test_c_xrce_service_request_response`: with registration fixed, the client now
+reaches "Calling service…" and the server reaches "Waiting for service
+requests", but the client's requests never reach the replier (`Total requests
+handled: 0`). The *action* roundtrip (which uses requesters internally) passes,
+so the requester↔replier matching can work — triage why the plain AddTwoInts
+requester→replier routing does not (suspect type/topic naming:
+`AddTwoInts_Reply_` vs the DDS `AddTwoInts_Response_`, or replier-match timing).
+Re-run the Rust/C++ `xrce` service tests after their fixtures rebuild against
+the registration fix to confirm scope.
+
+**Files.** `packages/xrce/nros-rmw-xrce/src/service.c` (fixed),
+`packages/xrce/nros-rmw-xrce/src/internal.h` (fixed),
+`packages/testing/nros-tests/tests/{c_xrce_api,xrce}.rs`.
 
 **Files.** `packages/testing/nros-tests/tests/c_xrce_api.rs`,
 `packages/testing/nros-tests/tests/xrce.rs`,
 `examples/native/c/{action-server,action-client,service-server,service-client}/`.
 
-### 199.3 — NuttX runtime e2e — 2
+### 200.3 — NuttX runtime e2e — 2
 
 `rtos_e2e::…Nuttx…Lang__C` service e2e and
 `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary`. Cross-ref Phase
@@ -88,14 +111,14 @@ genuine runtime.
 **Files.** `packages/testing/nros-tests/tests/rtos_e2e.rs`,
 `packages/testing/nros-tests/tests/nuttx_make_e2e.rs`.
 
-### 199.4 — ESP32 logging smoke — 1
+### 200.4 — ESP32 logging smoke — 1
 
 `logging_smoke_esp32_qemu_emits_every_severity` — fixture boots under QEMU but
 does not emit every severity line. Triage logging backend vs. esp32-qemu boot.
 
 **Files.** `packages/testing/nros-tests/tests/logging_smoke.rs`.
 
-### 199.5 — External opt-in SDK shells — 3 (expected-skip candidates)
+### 200.5 — External opt-in SDK shells — 3 (expected-skip candidates)
 
 `integration_{esp_idf,platformio,zephyr}_integration_shell_smoke` need the
 `extended`-tier SDKs (ESP-IDF, PlatformIO) that `just setup` (default tier) does
@@ -110,21 +133,21 @@ fail-loud and excluded from the default `just test` filterset.
 
 ## Acceptance
 
-- [ ] 199.1 zephyr CycloneDDS c/cpp pubsub+service exchange data on native_sim
-- [ ] 199.1 rust+cyclonedds zephyr links (zpico provider wired or backend-gated)
-- [ ] 199.1 zephyr CycloneDDS actions implemented (or explicitly skip! pending 177.2)
-- [ ] 199.2 XRCE action/service e2e complete goal→result over the agent
-- [ ] 199.3 nuttx C service e2e + external-apps link pass
-- [ ] 199.4 esp32 logging smoke emits every severity
-- [ ] 199.5 opt-in SDK shells gated as precondition-skip when SDK absent
+- [ ] 200.1 zephyr CycloneDDS c/cpp pubsub+service exchange data on native_sim
+- [ ] 200.1 rust+cyclonedds zephyr links (zpico provider wired or backend-gated)
+- [ ] 200.1 zephyr CycloneDDS actions implemented (or explicitly skip! pending 177.2)
+- [ ] 200.2 XRCE action/service e2e complete goal→result over the agent
+- [ ] 200.3 nuttx C service e2e + external-apps link pass
+- [ ] 200.4 esp32 logging smoke emits every severity
+- [ ] 200.5 opt-in SDK shells gated as precondition-skip when SDK absent
 
 ## Notes
 
 - Baseline sweep (2026-05-29, `main` @ post-codegen-retirement, nros 0.3.0):
   `663 run, 643 passed, 20 failed, 110 skipped`. Failure list is the union of
-  199.1–199.5.
+  200.1–200.5.
 - The progression across the sweep was 53 → 39 → 24 → 20 failures as the
   setup/fixture-staging fixes landed; the floor of 20 is the runtime/external
   set tracked here.
-- 199.5 is the only item with a *testing-policy* decision (skip vs. fail-loud);
+- 200.5 is the only item with a *testing-policy* decision (skip vs. fail-loud);
   the rest are feature/runtime work owned by 177.2 / 196.1 / 194.
