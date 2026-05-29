@@ -29,6 +29,26 @@ if [ "$1" = "--clean" ]; then
     exit 0
 fi
 
+# Prefer the prebuilt MicroXRCEAgent from the nros SDK store (provisioned by
+# `nros setup … --rmw xrce`) — no source build, no submodule, no cmake/g++
+# needed. Publish it at build/xrce-agent/MicroXRCEAgent where tests + recipes
+# look. Source build below is the fallback for trees without nros provisioning.
+NROS_STORE="${NROS_HOME:-$HOME/.nros}/sdk"
+store_agent="$(ls -d "$NROS_STORE"/xrce-agent/*/bin/MicroXRCEAgent 2>/dev/null | tail -1 || true)"
+if [ -n "$store_agent" ] && [ -x "$store_agent" ]; then
+    echo "Using prebuilt Micro-XRCE-DDS Agent from the nros store: $store_agent"
+    # The store binary is a relocatable launcher that resolves its bundled
+    # `../lib/MicroXRCEAgent.real` relative to itself — so it must run from its
+    # own dir. Publish a forwarding wrapper (not a copy) at the expected path.
+    mkdir -p "$BUILD_DIR"
+    tmp="$BUILD_DIR/MicroXRCEAgent.$$"
+    printf '#!/bin/sh\nexec "%s" "$@"\n' "$store_agent" > "$tmp"
+    chmod 0755 "$tmp"
+    mv -f "$tmp" "$BUILD_DIR/MicroXRCEAgent"
+    "$BUILD_DIR/MicroXRCEAgent" --version 2>/dev/null || true
+    exit 0
+fi
+
 # Check prerequisites
 if ! command -v cmake &>/dev/null; then
     echo "Error: cmake not found"
