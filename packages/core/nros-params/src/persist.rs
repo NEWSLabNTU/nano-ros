@@ -191,6 +191,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "real filesystem I/O + clock; not meaningful under miri isolation")]
     fn file_store_round_trips_scalars() {
         let path = temp_path("roundtrip");
         let mut store = FileParamStore::new(&path);
@@ -218,6 +219,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "real filesystem I/O + clock; not meaningful under miri isolation")]
     fn file_store_load_absent_is_empty() {
         let reader = FileParamStore::new(temp_path("absent"));
         let mut applied = 0;
@@ -226,6 +228,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "real filesystem I/O + clock; not meaningful under miri isolation")]
     fn boot_overlay_then_flush_restores_runtime_override() {
         // The full 172.H loop the executor orchestrates, exercised on real
         // types: boot 1 declares defaults, a runtime set + flush persists the
@@ -263,6 +266,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "real filesystem I/O + clock; not meaningful under miri isolation")]
     fn file_store_skips_non_scalar_and_delimiter_corruption() {
         let path = temp_path("skip");
         let mut store = FileParamStore::new(&path);
