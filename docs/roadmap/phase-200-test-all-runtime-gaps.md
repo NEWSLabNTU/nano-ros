@@ -108,6 +108,30 @@ the registration fix to confirm scope.
 194 (nuttx provisioning) — confirm whether these are provisioning-residual or
 genuine runtime.
 
+**Triage (2026-05-29, structural — NuttX-QEMU not runnable in this env).
+Verdict: genuine, NOT provisioning-residual.** Both tests are correctly
+precondition-gated — they `skip!` when `NUTTX_DIR` / `arm-none-eabi-gcc` / the
+nightly `rust-src` / the built kernel are absent (`rtos_e2e::Platform::Nuttx::
+require_e2e`, `nuttx_make_e2e` top-of-test guards). NuttX is in the **default
+`just setup` tier**, so `test-all` provisions it and the tests *run* — a failure
+therefore means the env was provisioned and it broke downstream:
+- **`rtos_e2e` NuttX C service:** past `require_e2e`, `build_pair`
+  (`rtos_e2e.rs:495/501`) **panics** on a fixture build failure, then the body
+  asserts the service goal→reply completes over NuttX-QEMU. Either path = a
+  genuine **build or runtime** gap (the C service fixture fails to build with the
+  provisioned toolchain, or boots but the service exchange doesn't complete).
+- **`nuttx_make_e2e` link:** skips on missing toolchain/kernel **and** skips when
+  the kernel has *zero* nano-ros app symbols (make fixture unstaged → run
+  `just nuttx build-fixtures-make`). Its only hard-fail paths are `nm` missing
+  (env `panic!`) or **partial** `<prog>_main` linkage (the `assert!` — a genuine
+  `Application.mk` `-Dmain=<prog>_main` rename gap where only some apps link).
+
+**Action.** No precondition fix needed (tests are correctly gated). These are
+genuine NuttX build/runtime/linkage bugs to reproduce + fix on a NuttX-provisioned
+host (cross-ref Phase 194) — capture the actual `test-all` failure mode
+(skip vs partial-linkage assert vs service-timeout) there to confirm which.
+Track as a NuttX runtime/build follow-up, not a test-harness change.
+
 **Files.** `packages/testing/nros-tests/tests/rtos_e2e.rs`,
 `packages/testing/nros-tests/tests/nuttx_make_e2e.rs`.
 
