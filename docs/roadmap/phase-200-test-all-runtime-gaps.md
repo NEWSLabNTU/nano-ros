@@ -154,6 +154,19 @@ build references `nros_rmw_zenoh::zpico::Context` anymore. Confirmed on
 all link clean — zero `zpico_*` undefined.** No un-`cfg`'d edge remains; the TU
 split contemplated by 200.6 is unnecessary.
 
+**Complementary fix — per-RMW cargo features (`7148ed5dd`).** Independently of
+the relocate, the Phase 199.2 zephyr-lang-rust pin ships a
+`rust_cargo_application()` that hard-codes `cargo build` and ignores the
+example's `EXTRA_CARGO_ARGS`, so cargo compiled the crate's **default** features
+(`rmw-zenoh`) for *every* RMW (the relocate then let the linker GC the unused
+zenoh objects, which is why it linked). `scripts/zephyr/rust-cargo-extra-args-patch.sh`
+(idempotent build-time patch, wired into `just zephyr build-fixtures` +
+`setup.sh`) forwards `${EXTRA_CARGO_ARGS}` to `cargo build` + `cargo clippy` so
+cargo compiles **only** the selected RMW (no wasted zenoh compile, and `clippy
+-D warnings` lints the path that's actually built). Belt-and-suspenders with the
+relocate. **Verified:** `just zephyr build-fixtures` → **0 failures**, all
+c/cpp/rust × zenoh/xrce/cyclonedds incl. rust+cyclonedds.
+
 **Remaining rust-example fix.** The only thing blocking the non-zenoh rust
 builds after the relocate was a per-example Rust-2024 hard error — `&`/`&mut`
 references to the `#[cfg(rmw-xrce)] make_config`'s `static mut LOCATOR`. Routed
@@ -167,10 +180,22 @@ service-server, service-client, listener, action-server, action-client).
 (stripped), `packages/xrce/xrce-zephyr/src/xrce_zephyr.c` +
 `include/xrce_zephyr.h` (stripped), `packages/core/nros/src/lib.rs` (extern
 rename), `examples/zephyr/{c,cpp}/*/src/main.{c,cpp}` (12 callers),
-`examples/zephyr/rust/*/src/lib.rs` (static-mut + safety comments, all 6).
-**Still open:** zephyr CycloneDDS *runtime* data-plane (the 200.1 e2e, separate
-from the build gap) in `packages/testing/nros-tests/tests/zephyr.rs`,
-`packages/dds/nros-rmw-cyclonedds/`.
+`examples/zephyr/rust/*/src/lib.rs` (static-mut + safety comments, all 6),
+`scripts/zephyr/rust-cargo-extra-args-patch.sh` (new) + `just/zephyr.just` +
+`scripts/zephyr/setup.sh` (cargo-args patch wiring).
+
+**Remaining — cyclonedds runtime data-plane (native_sim).** With the builds
+fixed, the cyclonedds e2e + boot tests now *run* and fail at runtime: the
+embedded Cyclone boots and `session_open` runs, but its UDP transport can't
+establish — `ddsi_udp_get_socket_port: getsockname returned -1` (repeated) on
+native_sim. So the NSOS BSD-socket shim doesn't satisfy Cyclone's
+`getsockname()` expectation (unbound socket / unsupported call), and discovery
+never completes. This is the genuine 200.1 runtime item (c/cpp/rust
+`*_cyclonedds_pubsub_e2e` / `*_service_e2e` / `*_boot`), plus the deferred
+zephyr cyclonedds actions (177.2). Triage the NSOS `getsockname`/bind path next.
+**Files (runtime, open):** `packages/testing/nros-tests/tests/{zephyr,phase_118_collapse}.rs`,
+`packages/dds/nros-rmw-cyclonedds/`, the NSOS BSD-socket shim
+(`packages/drivers/nsos-netx` / `getsockname` path).
 
 ### 200.2 — XRCE action/service runtime e2e — FIXED ✅
 
