@@ -176,12 +176,12 @@ pub use nros_core::heapless;
 #[cfg(feature = "rmw-cffi")]
 pub use component::ComponentExecutorRuntime;
 pub use component::{
-    COMPONENT_EXPORT_SYMBOL, CallbackEffects, Component, ComponentActionClient,
+    COMPONENT_EXPORT_SYMBOL, CallbackCtx, CallbackEffects, Component, ComponentActionClient,
     ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentNodeRuntime,
     ComponentParameter, ComponentPublisher, ComponentResult, ComponentRuntime,
     ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient, ComponentServiceServer,
-    ComponentSubscription, ComponentTimer, MISSING_COMPONENT_EXPORT_ERROR, NodeOptions,
-    record_component_metadata, register_component,
+    ComponentSubscription, ComponentTimer, ExecutableComponent, MISSING_COMPONENT_EXPORT_ERROR,
+    NodeOptions, PublisherResolver, record_component_metadata, register_component,
 };
 #[cfg(feature = "std")]
 pub use component_metadata::SourceMetadataExport;

@@ -139,17 +139,21 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     (sub/timer/**service/action**), a closure/trampoline that builds `CallbackCtx`
     (payload + the `&PublisherResolver`) and calls `<C as ExecutableComponent>::
     on_callback(&mut state, CallbackId::new(id), &mut ctx)` — replacing the noop
-    `||{}` / `noop_raw_*`. **Two open decisions:** (a) **how the generator knows a
-    component is executable** — it can't see the trait impl from the plan; needs a
-    metadata signal (component declares `executable`) or a blanket default, so
-    declarative-only components still build; (b) services/actions take raw C-fn-ptr
-    callbacks (not closures), so their trampoline reads the `static` state +
-    resolver via globals rather than a captured closure. **All-or-nothing for
+    `||{}` / `noop_raw_*`. **Executable-detection — RESOLVED 2026-05-29:** there is
+    *no* `component!`-body macro to extend (`nros::component!` is the export-symbol
+    proc-macro; components impl the trait directly). So: **instantiated components
+    must impl `ExecutableComponent`** and the generator emits `on_callback`
+    unconditionally; a `nros::declarative_component!(Ty)` helper emits a noop
+    `ExecutableComponent` (`State = ()`) for body-less components so declarative-only
+    ones still compile. (b) services/actions take raw C-fn-ptr callbacks (not
+    closures), so their trampoline reads the `static` state + resolver via the
+    generated globals rather than a captured closure. **All-or-nothing for
     compilation** (state + publishers + resolver + closures + the component's
-    `ExecutableComponent` impl + the generated Cargo dep must land together);
-    verify via `orchestration_generate` source-asserts first, then generate→`cargo
-    check`→run. *(Status 2026-05-29: W.5.1 substrate landed; W.5.2/.3 is this large
-    coupled codegen change — implement focused, not partial.)*
+    `ExecutableComponent` impl + the generated Cargo dep land together); verify via
+    `orchestration_generate` source-asserts, then generate→`cargo check`→run (W.5.4;
+    needs the platform build env). *(Status 2026-05-29: W.5.1 substrate landed +
+    re-exported from `nros`; `ExecutableComponent`/`CallbackCtx`/`PublisherResolver`
+    are `nros::`-visible. W.5.2/.3 = the generator emission + a real demo body.)*
   - **W.5.4 — E2E proof.** `demo_pkg` publishes from a timer body; a native /
     zephyr-mod deploy run shows real data on the wire.
 - **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
