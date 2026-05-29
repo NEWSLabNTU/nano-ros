@@ -13,8 +13,6 @@ rustflags = [
 # slot, so cap callback capacity at 1 and use the same single-action
 # arena budget as the STM32 action-server fixture.
 [env]
-NROS_SMOLTCP_MAX_SOCKETS = "1"
-NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
 NROS_EXECUTOR_MAX_CBS = "1"
 NROS_EXECUTOR_ARENA_SIZE = "18432"
 NROS_SUBSCRIPTION_BUFFER_SIZE = "512"

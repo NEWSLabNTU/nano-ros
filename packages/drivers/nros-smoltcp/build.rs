@@ -8,16 +8,25 @@ use std::{env, path::Path};
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
-    let max_sockets = env_usize_compat("NROS_SMOLTCP_MAX_SOCKETS", "ZPICO_SMOLTCP_MAX_SOCKETS", 4);
-    // Phase 97.3.mps2-an385 — RTPS needs 3 UDP sockets per participant
-    // (default-unicast + metatraffic-unicast + metatraffic-multicast),
-    // so default to 4 to leave headroom for an additional pub/sub.
-    // zenoh / xrce builds use only 0..=1 of these and the unused
-    // slot's static buffers stay zero-initialised (cost: ~16 KB BSS).
+    // Phase 204.2 — backend-derived socket-pool defaults. smoltcp is the
+    // bare-metal transport, and every bare-metal board ships a *brokered* RMW
+    // (zenoh-pico `tcp/` locator, or XRCE to an agent) — bare-metal DDS/RTPS
+    // over smoltcp is not built today (Phase 175.B, deferred). A brokered
+    // client needs **1 TCP + ≤1 UDP** (scouting), so the default is 1/1 — no
+    // hand-set env per example, and the unused-slot static buffers
+    // (`SOCKET_BUFFER_SIZE` × 2 per extra slot ≈ 16 KB BSS for the old 4/4)
+    // never materialise. An explicit `NROS_SMOLTCP_MAX_*` env still overrides.
+    //
+    // The RTPS escape hatch is the `rtps` cargo feature: a board that grows a
+    // bare-metal DDS path enables `nros-smoltcp/rtps` and the UDP default jumps
+    // to 4 (3 RTPS sockets/participant — default-unicast + metatraffic-unicast
+    // + metatraffic-multicast — plus one spare) without anyone setting an env.
+    let rtps = env::var_os("CARGO_FEATURE_RTPS").is_some();
+    let max_sockets = env_usize_compat("NROS_SMOLTCP_MAX_SOCKETS", "ZPICO_SMOLTCP_MAX_SOCKETS", 1);
     let max_udp_sockets = env_usize_compat(
         "NROS_SMOLTCP_MAX_UDP_SOCKETS",
         "ZPICO_SMOLTCP_MAX_UDP_SOCKETS",
-        4,
+        if rtps { 4 } else { 1 },
     );
     let buffer_size = env_usize_compat(
         "NROS_SMOLTCP_BUFFER_SIZE",
@@ -53,11 +62,11 @@ fn main() {
 
     let contents = format!(
         "/// Maximum number of concurrent TCP sockets \
-         (set via NROS_SMOLTCP_MAX_SOCKETS, default 4).\n\
+         (NROS_SMOLTCP_MAX_SOCKETS; backend-derived default 1 — brokered).\n\
          pub const MAX_SOCKETS: usize = {max_sockets};\n\
          \n\
          /// Maximum number of concurrent UDP sockets \
-         (set via NROS_SMOLTCP_MAX_UDP_SOCKETS, default 2).\n\
+         (NROS_SMOLTCP_MAX_UDP_SOCKETS; default 1 brokered / 4 with the `rtps` feature).\n\
          pub const MAX_UDP_SOCKETS: usize = {max_udp_sockets};\n\
          \n\
          /// Per-socket staging buffer size in bytes \

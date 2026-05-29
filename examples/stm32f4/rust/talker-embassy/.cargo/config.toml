@@ -10,6 +10,4 @@ rustflags = [
 target = "thumbv7em-none-eabihf"
 
 [env]
-NROS_SMOLTCP_MAX_SOCKETS = "1"
-NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
 DEFMT_LOG = "debug"

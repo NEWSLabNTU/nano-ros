@@ -24,13 +24,6 @@ rustflags = [
 NROS_EXECUTOR_MAX_CBS = "1"
 NROS_EXECUTOR_ARENA_SIZE = "4096"
 NROS_SUBSCRIPTION_BUFFER_SIZE = "512"
-# Phase 204.2 — right-size the smoltcp socket pool to the backend. This is a
-# zenoh-pico client on a `tcp/` locator: it needs ONE TCP socket (to the router)
-# and at most one UDP socket (scouting); the defaults (4 TCP / 2 UDP) are sized
-# for DDS RTPS (3 UDP/participant). Drops the per-socket buffers
-# (SOCKET_BUFFER_SIZE=2048 × {RX,TX} × count) on both the bridge + smoltcp sides.
-NROS_SMOLTCP_MAX_SOCKETS = "1"
-NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
 
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"

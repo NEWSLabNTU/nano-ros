@@ -13,8 +13,6 @@ rustflags = [
 # slot — cap `NROS_EXECUTOR_MAX_CBS` at 1 and size the arena to a
 # single action entry (`3 × 4480 + 3 × 512 + 1536 + 2048` ≈ 18 KB).
 [env]
-NROS_SMOLTCP_MAX_SOCKETS = "1"
-NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
 NROS_EXECUTOR_MAX_CBS = "1"
 NROS_EXECUTOR_ARENA_SIZE = "18432"
 NROS_SUBSCRIPTION_BUFFER_SIZE = "512"

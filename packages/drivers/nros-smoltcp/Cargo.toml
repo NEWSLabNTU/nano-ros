@@ -10,6 +10,13 @@ name = "nros_smoltcp"
 
 [features]
 default = []
+# Phase 204.2 — bump the smoltcp UDP socket-pool default to 4 (3 RTPS
+# sockets/participant + 1 spare) for a bare-metal DDS/RTPS backend. Off by
+# default: every shipped bare-metal board is brokered (zenoh/XRCE → 1 UDP),
+# and bare-metal DDS over smoltcp is not built yet (Phase 175.B). A board that
+# grows that path enables `nros-smoltcp/rtps` and the pool sizes itself — no
+# per-example `NROS_SMOLTCP_MAX_UDP_SOCKETS` env.
+rtps = []
 # Phase 173.6 — expose the smoltcp socket layer through the
 # `embedded-nal` `TcpClientStack` / `UdpClientStack` ecosystem traits
 # (additive adapter over the existing C-ABI bridge ops).

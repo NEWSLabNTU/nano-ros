@@ -12,8 +12,6 @@ rustflags = [
 # the worst-case `ActionClient` entry; the service server owns one
 # service callback, so pin it to the small service footprint.
 [env]
-NROS_SMOLTCP_MAX_SOCKETS = "1"
-NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
 NROS_EXECUTOR_MAX_CBS = "1"
 NROS_EXECUTOR_ARENA_SIZE = "8192"
 NROS_SUBSCRIPTION_BUFFER_SIZE = "512"

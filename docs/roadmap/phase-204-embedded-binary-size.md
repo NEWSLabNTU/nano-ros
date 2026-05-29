@@ -174,7 +174,7 @@ edge). Cost: invasive — lazy/incremental vtable population wired from nros-nod
 typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
 (204.5 static `HEAP`, backend buffer right-sizing, 204.9 vendor-C `-Os`).
 
-### 204.2 — Right-size the smoltcp socket pool — [~] landed on stm32f4 talker
+### 204.2 — Right-size the smoltcp socket pool — [x] DONE (2026-05-30)
 - [x] **Proven (2026-05-29).** The socket counts are env-tunable
       (`NROS_SMOLTCP_MAX_SOCKETS` default 4, `NROS_SMOLTCP_MAX_UDP_SOCKETS` default
       2; buffers = `SOCKET_BUFFER_SIZE` 2048 × {RX,TX} × count on both the bridge +
@@ -189,9 +189,23 @@ typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
       session, so 1 TCP suffices for any entity count). FreeRTOS/ThreadX/esp32 use
       RTOS stacks (no smoltcp) → env is a no-op, left unset. Verified building
       (qemu-arm-baremetal talker bss 20 KB).
-- [ ] **Remainder:** make it a **backend-derived default** (the generator/board
-      sets it from the active RMW) so RTPS keeps 3 + brokered clients get 1
-      automatically, instead of a hand-set env. Smoltcp multicast/socket tests pass.
+- [x] **Backend-derived default (2026-05-30) — the env is no longer needed.**
+      `nros-smoltcp/build.rs` now defaults the pool to the **brokered minimum
+      (1 TCP / 1 UDP)** instead of the old RTPS-worst-case 4/4. This is correct by
+      construction: smoltcp is the *bare-metal* transport and every shipped
+      bare-metal board is brokered (`rmw-zenoh` marker only — no
+      `rmw-cyclonedds`/`rmw-xrce` board feature; bare-metal DDS/RTPS over smoltcp
+      is Phase 175.B, deferred). An explicit `NROS_SMOLTCP_MAX_*` env still
+      overrides. The RTPS escape hatch is the new **`nros-smoltcp/rtps` cargo
+      feature** (off by default): a board that grows a bare-metal DDS path enables
+      it and the UDP default jumps to 4 (3/participant + spare) — no env. Verified
+      generated constants: default → `MAX_SOCKETS=1, MAX_UDP_SOCKETS=1`; `rtps` →
+      `1, 4`.
+- [x] **Dropped the now-redundant hand-set env from all 18 example configs**
+      (8 stm32f4 + 10 qemu-arm-baremetal); they build env-free and the default
+      yields 1/1 (verified `qemu-arm-baremetal/rust/talker` +
+      `stm32f4/rust/talker` build clean → `MAX_SOCKETS=1, MAX_UDP_SOCKETS=1`). The
+      −49 KB BSS win from the original rollout is now the *default*, not opt-in.
 
 ### 204.3 — Size-tuned embedded release profile — [~] profile landed + quantified
 - [x] **`[profile.size]` added (2026-05-30)** to `examples/stm32f4/rust/talker`:

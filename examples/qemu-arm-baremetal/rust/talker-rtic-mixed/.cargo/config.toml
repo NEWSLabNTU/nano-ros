@@ -20,7 +20,3 @@ rustflags = [
     "-C",
     "link-arg=-Tlink.x",
 ]
-
-[env]
-NROS_SMOLTCP_MAX_SOCKETS = "1"
-NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
