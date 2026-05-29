@@ -72,21 +72,51 @@ Serial is **larger**, not smaller. Three confounds, all already-known phase item
   entry → a **0-size broken ELF**. Append via `cargo rustc -- -Clink-arg=…` or edit
   the config; never via env on these examples.
 
-**Conclusion / re-sequencing.** A clean serial baseline is **blocked on 204.7 +
-204.8** (confirms this phase's own Note). The honest "serial sheds the IP stack"
-number can only be measured once (a) the serial board build stops linking smoltcp
-/ the zenoh IP-link C (204.7) and (b) `--gc-sections` strips the residue (204.8),
-and ideally (c) the serial example uses the same register path as the ethernet
-one. Until then "serial = smaller" is not true on the shipped examples.
+**Resolved (2026-05-30) — the dominant confound was the register path, not
+smoltcp.** With 204.7 (`NROS_LINK_IP=0`) + 204.8 (`--gc-sections`) already on the
+serial examples, smoltcp dropped from **45 → 5** residual symbols — yet serial was
+*still* 136.7 KB text / 75.8 KB bss, bigger than ethernet. Root cause: the serial
+`main.rs` carried an explicit `nros_rmw_zenoh::register()` call (the stale
+Phase 104.A "bare-metal must register" pattern). That call makes the multi-backend
+`nros_rmw_cffi_register_named` vtable **reachable from `main`**, which pins *every*
+entity trampoline (`create_subscriber/service_server/service_client/queryable…`)
+and their static buffers (`SUBSCRIBER_BUFFERS` 34.5 KB, `g_pending_gets` 16.4 KB,
+`SERVICE_BUFFERS` 10.4 KB — none of which a publish-only node uses) against
+`--gc-sections`. The ethernet `talker`/`listener` never had the call: the backend
+**self-registers via the cortex_m_rt startup path** and `Executor::open` resolves
+it, leaving the fat vtable collectible. Dropping the redundant call from
+`serial-talker`/`serial-listener` matched the ethernet pattern.
 
-- [x] **Measured the current (pre-204.7/.8) serial vs ethernet baseline** — serial
-      is larger; root-caused to 204.7 (smoltcp/IP-link still linked) + 204.8 (no
-      gc) + the cffi register-path confound (above).
-- [ ] Re-measure the serial floor **after** 204.7 + 204.8 land on the serial
-      example; expect the predicted ~24 KB text + IP-buffer bss drop then.
-- [ ] Document the (post-204.7/.8) serial number alongside ethernet in the book;
-      make serial the recommended size-critical transport.
-- [ ] **Acceptance:** a measured serial talker, flash + RAM, in the book.
+**Measured after the fix (qemu-arm-baremetal / mps2-an385 / thumbv7m, release):**
+
+| binary | text | data | bss | vs pre-fix |
+|---|---|---|---|---|
+| `serial-talker` | **38.1 KB** | 66.1 KB | **4.6 KB** | −98.7 KB text / −71 KB bss |
+| `serial-listener` | **43.7 KB** | 66.1 KB | **8.2 KB** | (sub path keeps its own buffers) |
+| `talker` (ethernet/smoltcp) | 83.2 KB | 66.9 KB | 20.5 KB | — |
+
+Serial is now decisively smaller than ethernet (−45 KB text, −16 KB bss) — the IP
+stack is genuinely shed. `data` is dominated by the 66 KB static `HEAP` (shared by
+both transports; see 204.5). **E2E-verified:** `test_qemu_serial_pubsub_e2e`
+(talker→listener over a zenohd serial bridge) passes `published=1, received=1`
+with both examples' explicit `register()` removed — the auto-registration path is
+real on bare-metal, the Phase 104.A comment was outdated.
+
+- [x] **Measured the pre-fix serial baseline** — serial larger; root-caused to the
+      explicit-`register()` vtable-pinning confound (not smoltcp, which 204.7
+      already shed to 5 symbols).
+- [x] **Fixed + re-measured** — dropped the redundant `register()` from
+      `serial-{talker,listener}`; serial-talker 136.7→38.1 KB text, 75.8→4.6 KB bss;
+      e2e green.
+- [ ] Document the serial number alongside ethernet in the book; make serial the
+      recommended size-critical transport. (Book "Binary-size knobs" section has the
+      knobs; add the measured table.)
+- [ ] **Follow-up — broader gc-friendly rollout.** ~72 examples still carry the
+      explicit `register()`. It is **load-bearing on NuttX/Zephyr/ThreadX/ESP-IDF**
+      (linkme unsupported there → the only registration path) — do NOT remove it
+      blindly. Only the **bare-metal** examples (qemu-arm-baremetal, stm32f4,
+      qemu-esp32-baremetal) can drop it; each needs an e2e/boot check before removal.
+- [x] **Acceptance:** measured serial talker+listener, flash + RAM, table above.
 
 ### 204.2 — Right-size the smoltcp socket pool — [~] landed on stm32f4 talker
 - [x] **Proven (2026-05-29).** The socket counts are env-tunable

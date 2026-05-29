@@ -36,10 +36,14 @@ fn main() -> ! {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("serial_listener");
-        // Phase 104.A — bare-metal callers explicitly register the RMW
-        // backend before `Executor::open`. POSIX hosts auto-register via
-        // `.init_array`; this target doesn't walk that section.
-        nros_rmw_zenoh::register().expect("Failed to register RMW backend");
+        // Phase 204.1 — the RMW backend self-registers (cortex_m_rt
+        // startup walks the registration entry); `Executor::open` then
+        // resolves it. An explicit `nros_rmw_zenoh::register()` here would
+        // pin the whole `register_named` vtable to `main`, defeating
+        // `--gc-sections`' stripping of the unused subscriber/service/
+        // queryable trampolines + their static buffers. The ethernet
+        // `listener` omits it for the same reason. (E2E-verified by
+        // `test_qemu_serial_pubsub_e2e`.)
         let mut executor = Executor::open(&exec_config)?;
         let nid = executor.node_builder("serial_listener").build()?;
 
