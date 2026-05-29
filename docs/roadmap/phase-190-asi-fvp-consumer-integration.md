@@ -384,6 +384,44 @@ Phase-172 `nros run`/deploy model lands). FVP simulator stays BYO/licence-gated
       (hand-written `main()` via the entry lib, which carries real logic) or
       wait for W.5 — the deploy/transport path itself is not the blocker.
 
+### 190.K — ARM virtual platform bring-up (fvp_baser_aemv8r on Zephyr 3.7)
+
+**Files.** ASI `west.yml` (+ `zephyr-lang-rust`), ASI `build.sh` (`nros setup`),
+`fvp/*.sh`, `docs/reference/zephyr-armv8r-setup.md`, `nros-platform-zephyr`.
+
+"ARM virtual platform support" = run `fvp_baser_aemv8r` (AArch64 ARMv8-R) on a
+**virtual** ARM at the Zephyr 3.7 floor. Two BYO/licence-gated backends (Phase
+187 never bundles either): **local ARM FVP** (`FVP_BaseR_AEMv8R` on PATH; `west
+flash`) and **Corellium AVH** (hosted FVP behind OpenVPN; gdb `load` over
+`:4000` + console `:2000` — validated 190.J). The hardware is image-version-
+agnostic: our 3.7 image replaces whatever default sample the AVH device boots
+(observed 3.5.0).
+
+Layer mapping: board = Zephyr DTS `fvp_baser_aemv8r` (L4, no nano-ros board
+crate → 190.I); platform contract = `nros-platform-zephyr` (L1, version-gated);
+Rust = the **official `zephyr-lang-rust` module** (≥3.7 only — the floor's
+teeth), not the legacy `aarch64-rust-patch.sh`; build deps via `nros setup`
+(toolchain + host idlc, Phase 187); run/debug = 190.J scripts now, Phase-172
+`nros deploy fvp-aemv8r` later (172 deploy is native_sim-only today; the
+gdb-load is the missing real-HW half).
+
+Recommended path to a running FVP demo:
+- [ ] ASI: add `zephyr-lang-rust` to `west.yml` (pair v3.7.0 with
+      `404fcefdbab0f2711cd342a1fab9d2eda52a1ba9`) + adopt `nros setup` for the
+      host idlc/Cyclone deps in `build.sh`; `west update`
+- [ ] Build a **direct-mode** `nros-cpp` talker for `fvp_baser_aemv8r` on 3.7
+      (hand-written `main()` via the entry lib — dodges the W.5 data-plane gap)
+- [ ] Load via the Corellium gdb flow (`fvp/start-fvp-vpn.sh` + gdb-multiarch
+      `load`), watch `:2000` for boot + publish
+- [ ] Re-validate 190.A–G hold on real 3.7 (expected — they key off
+      libstdc++/newlib presence, not the Zephyr version)
+- [ ] (later) fold the load step into Phase-172 `nros deploy fvp-aemv8r`
+
+Sharp edges: (1) the 3.7 floor is hard — the AVH 3.5.0 sample can't run
+nano-ros; we must load a 3.7-built image. (2) data plane needs direct-mode
+until W.5. (3) the `zephyr-lang-rust` integration on ASI (currently patched-in)
+is the riskiest unknown — its build glue vs ASI's manifest.
+
 ## Acceptance
 
 - The ASI `actuation_module` (or an equivalent in-tree FVP full-C++ smoke)
