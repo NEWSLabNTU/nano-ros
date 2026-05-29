@@ -17,10 +17,27 @@ default:
 # (idempotent, build-once-link-many). To force a provision out-of-band, run the
 # shared script directly:
 #   NUTTX_DIR=$NUTTX_DIR NUTTX_APPS_DIR=$NUTTX_APPS_DIR scripts/nuttx/build-nuttx.sh
-# Build NuttX core artifacts (self-provisioned — nothing to pre-build).
+# Build the NuttX kernel (staging/*.a + include/nuttx/config.h). These are
+# prerequisites the example/board build.rs *consume* — neither build.rs nor the
+# C/C++ cmake (`nros_nuttx_build_example`) triggers the kernel build; they
+# silently no-op when the prebuilt NuttX is absent (→ undefined malloc/pthread_*
+# at link). `build-examples` provisions it (gated on staging/libc.a); this recipe
+# exposes the same idempotent build standalone. (Supersedes the Phase 194.4
+# "self-provisioned at example build" claim — there is no such mechanism.)
 [group("main")]
 build:
-    @echo "NuttX core: self-provisioned at example build (Phase 194.4) — nothing to pre-build."
+    #!/usr/bin/env bash
+    set -e
+    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
+    if [ ! -d "$nuttx_dir/arch" ]; then
+        echo "NuttX core: $nuttx_dir not provisioned — run 'just nuttx setup' first."
+        exit 0
+    fi
+    if [ -f "$nuttx_dir/staging/libc.a" ]; then
+        echo "NuttX core: staging/libc.a present — nothing to build."
+    else
+        scripts/nuttx/build-nuttx.sh
+    fi
 
 # Build NuttX QEMU ARM virt examples
 [group("main")]
