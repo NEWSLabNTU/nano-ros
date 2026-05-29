@@ -803,6 +803,32 @@ pub trait ExecutableComponent: Component {
     fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>);
 }
 
+/// Emit a no-op [`ExecutableComponent`] impl for a declarative-only component
+/// (W.5.1). The generated runtime calls `on_callback` unconditionally, so a
+/// component instantiated into a generated binary must impl `ExecutableComponent`;
+/// components without callback bodies use this to satisfy that contract:
+///
+/// ```ignore
+/// pub struct Component;
+/// impl nros::Component for Component { /* register(...) */ }
+/// nros::declarative_component!(Component);
+/// ```
+#[macro_export]
+macro_rules! declarative_component {
+    ($ty:ty) => {
+        impl $crate::ExecutableComponent for $ty {
+            type State = ();
+            fn init() -> Self::State {}
+            fn on_callback(
+                _state: &mut Self::State,
+                _callback: $crate::CallbackId<'_>,
+                _ctx: &mut $crate::CallbackCtx<'_>,
+            ) {
+            }
+        }
+    };
+}
+
 /// Run component registration against any component runtime.
 pub fn register_component<C: Component>(runtime: &mut dyn ComponentRuntime) -> ComponentResult<()> {
     let mut context = ComponentContext::new(C::NAME, runtime);
