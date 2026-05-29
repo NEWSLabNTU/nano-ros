@@ -100,6 +100,13 @@ jobs:
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
+      # The image registered the SDK's CMake package as root (~/.cmake under
+      # /root); the container runs with HOME=/github/home, so re-register for this
+      # HOME. Zephyr 3.7's FindZephyr-sdk falls back to ZEPHYR_SDK_INSTALL_DIR (set
+      # in the image), but 4.4's needs the user CMake-package registry.
+      - name: Register the baked Zephyr SDK for this HOME
+        run: /opt/zephyr-sdk/setup.sh -c
+
       # `west update` (manifest-pinned) + the line's NSOS/cyclone patches. The
       # Zephyr SDK is baked into the image (registered), so --skip-sdk: setup.sh
       # does not re-download the ~1 GB SDK. rustup targets + uv are baked too.
@@ -134,6 +141,13 @@ jobs:
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
+      # The image registered the SDK's CMake package as root (~/.cmake under
+      # /root); the container runs with HOME=/github/home, so re-register for this
+      # HOME. Zephyr 3.7's FindZephyr-sdk falls back to ZEPHYR_SDK_INSTALL_DIR (set
+      # in the image), but 4.4's needs the user CMake-package registry.
+      - name: Register the baked Zephyr SDK for this HOME
+        run: /opt/zephyr-sdk/setup.sh -c
+
       - name: Set up Zephyr 3.7 workspace
         run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup --skip-sdk
 
@@ -167,6 +181,13 @@ jobs:
 
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
+
+      # The image registered the SDK's CMake package as root (~/.cmake under
+      # /root); the container runs with HOME=/github/home, so re-register for this
+      # HOME. Zephyr 3.7's FindZephyr-sdk falls back to ZEPHYR_SDK_INSTALL_DIR (set
+      # in the image), but 4.4's needs the user CMake-package registry.
+      - name: Register the baked Zephyr SDK for this HOME
+        run: /opt/zephyr-sdk/setup.sh -c
 
       - name: Set up Zephyr 4.4 workspace
         run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
