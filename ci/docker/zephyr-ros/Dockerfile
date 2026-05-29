@@ -24,7 +24,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Zephyr + nano-ros host build deps (the apt set scripts/zephyr/setup.sh expects
 # + curl/zstd/git for the per-run install.sh + nros source provisioning).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        cmake ninja-build dtc gperf aria2 \
+        cmake ninja-build device-tree-compiler gperf aria2 \
         git curl ca-certificates zstd xz-utils file wget \
         python3 python3-pip python3-venv build-essential \
     && rm -rf /var/lib/apt/lists/*
