@@ -138,7 +138,7 @@ jobs:
       - name: Install the nros CLI (released binary)
         run: |
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
-            | NROS_VERSION=0.3.6 sh
+            | NROS_VERSION=0.3.7 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
       # The user procedure: `just <plat> setup` provisions the platform's

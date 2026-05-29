@@ -157,9 +157,18 @@ nightly (below). Fixes landed:
   a host idlc); `nros setup --source px4-rs` before the e2e nextest metadata pass.
 
 **e2e** runs nightly (`schedule: 0 7 * * *`) + on `workflow_dispatch`; push/PR are
-build-only. The residual per-platform e2e failures are the **same triaged set as
-the `test-all` Group-B items above** (timing-sensitive runtime — e.g. `rtos_e2e`
-NuttX C service — cross-ref archived Phase 200 / 177.2), not container-specific
+build-only. **Verified 6/6 build + e2e green** on a workflow_dispatch run
+(2026-05-30, run 26658300402) once the remaining container findings landed:
+- the FFI staticlib cargo invocation switched from generic `+nightly` (uninstalled
+  `nightly-x86_64-…`) to `+${Rust_TOOLCHAIN}` (the dated nightly that is baked) —
+  resolved the `rustlib/src/rust/library/Cargo.lock does not exist` failure;
+- the workflow `NROS_VERSION` pins were tracking-bumped 0.3.1 → 0.3.7 to follow
+  `scripts/install-nros.sh`'s pin (the index gained fields the older binary
+  rejected, blocking every cell's `nros setup`).
+
+Residual per-platform e2e failures going forward are the same triaged set as the
+`test-all` Group-B items above (timing-sensitive runtime — e.g. `rtos_e2e` NuttX
+C service — cross-ref archived Phase 200 / 177.2), not container-specific
 regressions.
 
 ## Acceptance

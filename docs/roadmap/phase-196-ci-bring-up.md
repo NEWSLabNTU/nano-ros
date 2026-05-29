@@ -329,7 +329,7 @@ The three conventions (191.6 review) must collapse to the source-release reality
 - [ ] The user-journey CI lane (196 background) builds a scaffolded project end to
       end, so this convention is exercised, not assumed.
 
-### 196.9 — [in progress] Per-platform setup/build/test CI matrix
+### 196.9 — [DONE] Per-platform setup/build/test CI matrix
 **Goal.** Consolidate CI around the user procedure *per platform* — the gap where
 only Zephyr had a build lane (core-libs only `cargo check`s, dep-chain only
 resolves, host-unit only runs workspace units). Each platform gets one lane:
@@ -369,11 +369,13 @@ works: `changes` resolved the dynamic matrix, all cells ran (fail-fast off),
       build sources per 197.4-A; esp32's `setup` provisions sources + best-effort
       `[tool.esp32-qemu]` (the e2e emulator, not the build). qemu needed three more
       recipe/image fixes (below).
-- [ ] **Wire e2e on a nightly `schedule:`** once cells build green, so QEMU runtime
-      is exercised without blocking pushes. (A `workflow_dispatch -f run_e2e=true`
-      already runs the `just <plat> test` step; the full-dispatch run 26632848732
-      showed all e2e cells red — the heavier QEMU runtime / C/C++ coverage is the
-      next item.)
+- [x] **Wire e2e on a nightly `schedule:`** — `platform-ci.yml` has
+      `schedule: '0 7 * * *'`; the per-platform e2e step fires on `schedule` +
+      `workflow_dispatch -f run_e2e=true`. Push/PR stay build-only. The
+      concurrency group is keyed on `(ref, event_name)` so a build-only push run
+      doesn't cancel an in-flight dispatch/nightly. Per-cell skip-tolerance is
+      enforced via `_count-real-failures` (`[SKIPPED]` panics don't fail the
+      recipe).
 
 **Review findings + maintainer directives (2026-05-29).**
 - [x] **ROS-for-codegen gap (likely part of the 6 failing cells, beyond naming).**
@@ -428,6 +430,20 @@ the baked ROS/AMENT alone; the two outliers needed recipe completion of the 197.
   with a package.xml; (4) same codegen for bins with a package.xml (cdr-roundtrip-qemu).
 - A non-fatal `cargo metadata`/cbindgen warning recurs (`px4-sitl-tests` workspace
   member unprovisioned — px4 is extended-tier); harmless to the bare-metal builds.
+
+**6/6 build + e2e green (2026-05-30, run 26658300402).** Every platform cell
+(qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32) passes **both**
+build and QEMU e2e on the dispatch path; the nightly `schedule: '0 7 * * *'`
+exercises the same matrix daily. Reaching this required finishing the container
+findings recorded in **Phase 203** (`platform-ci` section): the parallel cbindgen-
+header race (committed `nros_generated.h` + atomic build.rs write), the rustup
+`-Z build-std` concurrent-install race (serial nuttx c/cpp builds), the FFI
+staticlib `+nightly` toolchain pin (use `Rust_TOOLCHAIN`, the dated nightly is
+what's installed), the workflow `NROS_VERSION` bump tracking the index schema
+(0.3.1 → 0.3.7), plus the per-platform fixes already listed (eh_frame, profile
+dirs, picolibc, etc.). Residual runtime items are the Group-B set (timing-
+sensitive, cross-ref archived Phase 200 / 177.2), surfaced by the nightly
+without blocking pushes.
 
 **Files.** `.github/workflows/platform-ci.yml`; the per-platform `just/<plat>.just`
 setup/ci recipes; `nros-sdk-index.toml` (per-board package coverage);
