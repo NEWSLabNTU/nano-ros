@@ -163,6 +163,18 @@ ref = "10d142a8007b6b3534f893d8aa89f74f8d6e7b71"
 dest = "third-party/nuttx/libc"
 submodule = "third-party/nuttx/libc"
 
+# px4-rs Rust bindings fork. The px4 examples path-dep its crates, AND the root
+# workspace lists `packages/testing/nros-tests` which path-deps px4-sitl-tests
+# here — so cargo can't even *load* the workspace without it. Provisioned by
+# `nros setup --source px4-rs`, never hand-checked-out. Non-recursive: this is
+# the bindings tree only, not the giant PX4-Autopilot submodule.
+[source.px4-rs]
+version = "0.1.0"
+git = "https://github.com/jerry73204/px4-rs.git"
+ref = "b17ce297a456c891445a575ce7250573cff96938"
+dest = "third-party/px4/px4-rs"
+submodule = "third-party/px4/px4-rs"
+
 # --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
 
 [gated.nv-spe-fsp]
