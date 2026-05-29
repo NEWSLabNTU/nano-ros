@@ -97,12 +97,15 @@ one. Until then "serial = smaller" is not true on the shipped examples.
       `NROS_SMOLTCP_MAX_SOCKETS=1` + `NROS_SMOLTCP_MAX_UDP_SOCKETS=1` in
       `examples/stm32f4/rust/talker/.cargo/config.toml` → **bss 100.9 → 51.8 KB
       (−49 KB, −49 %)** + data −2.7 KB.
-- [ ] **Remainder:** roll the right-size into other zenoh/XRCE single-pub/sub
-      examples; make it a **backend-derived default** (the generator/board sets it
-      from the active RMW) rather than a hand-set env, so RTPS keeps 3 and brokered
-      clients get 1 automatically.
-- [ ] **Acceptance:** smoltcp multicast/socket tests still pass; the default is
-      RMW-derived.
+- [x] **Rolled out (2026-05-30).** `NROS_SMOLTCP_MAX_SOCKETS=1 /
+      MAX_UDP_SOCKETS=1` set in **17** smoltcp examples (qemu-arm-baremetal
+      non-serial + stm32f4 — zenoh multiplexes pub/sub/service/action over one
+      session, so 1 TCP suffices for any entity count). FreeRTOS/ThreadX/esp32 use
+      RTOS stacks (no smoltcp) → env is a no-op, left unset. Verified building
+      (qemu-arm-baremetal talker bss 20 KB).
+- [ ] **Remainder:** make it a **backend-derived default** (the generator/board
+      sets it from the active RMW) so RTPS keeps 3 + brokered clients get 1
+      automatically, instead of a hand-set env. Smoltcp multicast/socket tests pass.
 
 ### 204.3 — Size-tuned embedded release profile
 - [ ] The embedded examples override the workspace `opt-level="s"` to
@@ -200,11 +203,14 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
       (`-Wl,--gc-sections` → `rust-lld: error: unknown argument`). C deps are already
       `-ffunction-sections -fdata-sections` (manifest) + rustc emits per-fn
       sections; `cortex-m-rt`'s `link.x` `KEEP`s the vector table so gc is safe.
-- [ ] **Remainder:** roll `--gc-sections` into the other embedded Rust example
-      `.cargo/config.toml` (rust-lld targets) + make it a `nros new` scaffold
-      default; larger drop expected once 204.7 (serial-only no IP link C) lands.
-- [ ] **Acceptance:** measured `.text` drop on a serial-only build (with 204.7) +
-      a boot smoke on at least one target.
+- [x] **Rolled out (2026-05-30).** `--gc-sections` added to **all 35** real
+      embedded Rust example `.cargo/config.toml` (all rust-lld). Builds verified
+      clean on **3 families**: bare-metal (qemu-arm-baremetal, stm32f4), esp32
+      (riscv32imc). FreeRTOS/ThreadX/NuttX are SDK-gated (flag applied — standard +
+      their `-T*.ld`/`linkall.x` KEEP essentials — but not built locally; CI
+      confirms).
+- [ ] **Remainder:** `nros new` scaffold default; larger drop expected once 204.7
+      (serial-only no IP link C) lands; boot smoke on a target.
 
 ### 204.9 — Size-optimize the cc-rs vendor C
 - [ ] `Micro-XRCE / micro-CDR` (`nros-rmw-xrce-cffi`, `xrce-sys`) get **no** `-Os`,

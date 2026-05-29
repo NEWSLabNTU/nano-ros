@@ -15,6 +15,7 @@ path = "generated/std_msgs"
 
 [target.riscv32imc-unknown-none-elf]
 rustflags = [
+    "-C", "link-arg=--gc-sections",
   "-C", "link-arg=-Tlinkall.x",
   "-C", "force-frame-pointers",
 ]

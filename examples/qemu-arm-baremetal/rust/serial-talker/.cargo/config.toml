@@ -28,6 +28,7 @@ path = "generated/std_msgs"
 # No -netdev / -net: serial transport doesn't need Ethernet
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -serial pty -kernel"
 rustflags = [
+    "-C", "link-arg=--gc-sections",
     "-C",
     "link-arg=-Tlink.x",
 ]

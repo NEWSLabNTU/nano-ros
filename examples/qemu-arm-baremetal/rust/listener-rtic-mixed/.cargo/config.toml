@@ -16,6 +16,11 @@ path = "generated/std_msgs"
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
+    "-C", "link-arg=--gc-sections",
     "-C",
     "link-arg=-Tlink.x",
 ]
+
+[env]
+NROS_SMOLTCP_MAX_SOCKETS = "1"
+NROS_SMOLTCP_MAX_UDP_SOCKETS = "1"
