@@ -48,11 +48,15 @@ jobs:
             | NROS_VERSION=0.3.1 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
-      # The root workspace path-deps px4-sitl-tests under third-party/px4/px4-rs,
-      # so cargo can't even load the workspace without it. Provision via nros
-      # (index-driven), the way a user does — not a hand `git submodule update`.
+      # Sources the workspace *build* needs, provisioned via nros (index-driven),
+      # the way a user does — not a hand `git submodule update`:
+      #   - px4-rs: the root workspace path-deps px4-sitl-tests (cargo can't load
+      #     the workspace without it).
+      #   - zenoh-pico + mbedtls: zpico-sys/build.rs gates on the zenoh-pico (+ TLS
+      #     mbedtls) submodule; zpico-sys is compiled by `test-unit` (not excluded).
+      # (xrce-cffi — the other submodule-gated crate — is excluded from test-unit.)
       - name: Provision workspace sources via nros
-        run: nros setup --source px4-rs
+        run: nros setup --source px4-rs --source zenoh-pico --source mbedtls
 
       - name: Set up Rust toolchain
         run: rustup show
