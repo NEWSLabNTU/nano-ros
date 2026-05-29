@@ -7,12 +7,12 @@
 #   - dual-line one-shot       : `just zephyr ci-both`
 #   - copy-out promise         : `just zephyr check-copy-out`
 #
-# Validated by live workflow_dispatch runs (2026-05-28). Bring-up needed:
-# absolute Zephyr workspace path (was created inside the SDK dir), gating the
-# Cortex-A9/Zynq patch to the 3.7 line, untracking a stray zephyr-workspace
-# symlink, `uv` for the 4.4 Python 3.12 venv, initing the cyclonedds/zenoh-pico/
-# codegen submodules, skipping the unused XRCE-agent build, and a jammy runner +
-# ROS 2 Humble (the interface codegen resolves std_msgs via AMENT_PREFIX_PATH).
+# Runs in the prebuilt Zephyr CI image (Phase 196.3,
+# ci/docker/zephyr-ros/Dockerfile → ghcr.io): ROS 2 Humble + the Zephyr SDK
+# (registered) + host tools (cmake/ninja/dtc/gperf, uv, just, rustup + cross
+# targets) are baked, so each job skips the ~6-8 min of setup-ros/SDK/uv/just/
+# rustup it used to run. Dynamic per-run: the `nros` CLI (released binary), the
+# index-driven source submodules, and the manifest-pinned `west update`.
 name: Zephyr dual-line
 
 on:
@@ -25,6 +25,7 @@ on:
       - "zephyr/**"
       - "scripts/zephyr/**"
       - "just/zephyr.just"
+      - "ci/docker/zephyr-ros/**"
       - ".github/workflows/zephyr-dual-line.yml"
   pull_request:
     branches: [main]
@@ -35,6 +36,7 @@ on:
       - "zephyr/**"
       - "scripts/zephyr/**"
       - "just/zephyr.just"
+      - "ci/docker/zephyr-ros/**"
       - ".github/workflows/zephyr-dual-line.yml"
   workflow_dispatch:
 
@@ -42,20 +44,29 @@ concurrency:
   group: zephyr-dual-line-${{ github.ref }}
   cancel-in-progress: true
 
-# This workflow builds only the zenoh examples, so skip the heavy Micro-XRCE-DDS
-# Agent (Fast-DDS superbuild) that `just zephyr setup` builds for XRCE runtime
-# tests — it is unused here and would run on every matrix job.
+# packages: read — pull the GHCR CI image (private to the org by default).
+permissions:
+  contents: read
+  packages: read
+
 env:
+  # This workflow builds only the zenoh examples, so skip the heavy Micro-XRCE-DDS
+  # Agent (Fast-DDS superbuild) `just zephyr setup` builds for XRCE runtime tests.
   NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
 
 jobs:
   # --- Per-line example matrix -------------------------------------------
-  # Builds the c/cpp/rust talker+listener (zenoh) on each line via
-  # `just zephyr build-one`. The 4.4 line provisions a Python 3.12 venv
-  # (Zephyr 4.4 requires >=3.12) during `just zephyr setup`.
   example-matrix:
     name: ${{ matrix.line }} / ${{ matrix.example }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.8
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -75,159 +86,90 @@ jobs:
 
       # Get the `nros` CLI the way a user does — the released prebuilt binary.
       # The build's interface codegen resolves this same installed `nros` (via
-      # PATH / ~/.nros) as its codegen tool (Phase 195.D), so no codegen
-      # submodule + cargo build is needed.
+      # PATH / ~/.nros, Phase 195.D) as its codegen tool.
       - name: Install the nros CLI (released binary)
         run: |
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
             | NROS_VERSION=0.3.1 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
-      - name: Install just
-        uses: extractions/setup-just@v2
-
-      - name: Set up Rust toolchain
-        run: rustup show && rustup target add armv7a-none-eabi
-
-      # Provision the in-tree sources the Zephyr build needs via nros (index-
-      # driven), the way a user does — never a hand `git submodule update`:
-      # zenoh-pico (zenoh examples) + the cyclonedds fork the setup patches in
-      # place + px4-rs (the libnros_c.a cargo build loads the whole root
-      # workspace, which path-deps px4-sitl-tests — same workspace-load dep as
-      # the core-libs lane).
+      # Index-driven source submodules (never a hand `git submodule update`):
+      # zenoh-pico + the cyclonedds fork the setup patches + px4-rs (root-workspace
+      # cargo-load dep). `just zephyr setup` also provisions these (197.1); kept
+      # explicit as idempotent belt-and-suspenders.
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
-      # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
-      # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      # The interface codegen (nros_generate_interfaces) resolves std_msgs's
-      # msg/*.msg via AMENT_PREFIX_PATH from a sourced ROS 2; the build steps
-      # `source /opt/ros/humble/setup.bash`. (Humble ⇒ the jammy runner.)
-      - name: Install ROS 2 Humble
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: humble
-
-      # Provisions the Zephyr workspace for the selected line, including
-      # the 4.4 Python 3.12 venv + NSOS patches (see just/zephyr.just
-      # setup recipe). Heavy step; the SDK download is cached above.
+      # `west update` (manifest-pinned) + the line's NSOS/cyclone patches. The
+      # Zephyr SDK is baked into the image (registered), so --skip-sdk: setup.sh
+      # does not re-download the ~1 GB SDK. rustup targets + uv are baked too.
       - name: Set up Zephyr ${{ matrix.line }} workspace
-        run: just zephyr setup
+        run: just zephyr setup --skip-sdk
 
       - name: Build zephyr/${{ matrix.example }} (zenoh) on ${{ matrix.line }}
         run: source /opt/ros/humble/setup.bash && just zephyr build-one "${{ matrix.example }}" zenoh
 
   # --- Dual-line one-shot ------------------------------------------------
-  # Runs the `ci-both` recipe directly so the per-line summary table
-  # (PASS / FAIL / SKIP) lands in one job's log. Requires both
-  # workspaces; if a line is absent it SKIPS (never silently passes).
   dual-line-summary:
     name: ci-both (3.7 + 4.4)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.8
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # Get the `nros` CLI the way a user does — the released prebuilt binary.
-      # The build's interface codegen resolves this same installed `nros` (via
-      # PATH / ~/.nros) as its codegen tool (Phase 195.D), so no codegen
-      # submodule + cargo build is needed.
       - name: Install the nros CLI (released binary)
         run: |
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
             | NROS_VERSION=0.3.1 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
-      - name: Install just
-        uses: extractions/setup-just@v2
-
-      - name: Set up Rust toolchain
-        run: rustup show && rustup target add armv7a-none-eabi
-
-      # Provision the in-tree sources the Zephyr build needs via nros (index-
-      # driven), the way a user does — never a hand `git submodule update`:
-      # zenoh-pico (zenoh examples) + the cyclonedds fork the setup patches in
-      # place + px4-rs (the libnros_c.a cargo build loads the whole root
-      # workspace, which path-deps px4-sitl-tests — same workspace-load dep as
-      # the core-libs lane).
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
-      # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
-      # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      # The interface codegen (nros_generate_interfaces) resolves std_msgs's
-      # msg/*.msg via AMENT_PREFIX_PATH from a sourced ROS 2; the build steps
-      # `source /opt/ros/humble/setup.bash`. (Humble ⇒ the jammy runner.)
-      - name: Install ROS 2 Humble
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: humble
-
       - name: Set up Zephyr 3.7 workspace
-        run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup
+        run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup --skip-sdk
 
       - name: Set up Zephyr 4.4 workspace
-        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup
+        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
 
       - name: Dual-line build (c/talker zenoh)
         run: source /opt/ros/humble/setup.bash && just zephyr ci-both c/talker zenoh
 
   # --- Copy-out promise --------------------------------------------------
-  # Proves a copied-out example builds from OUTSIDE the repo tree against
-  # the nano-ros Zephyr module (Phase 180.B item 5). Runs on the 4.4 line.
   copy-out:
     name: copy-out check (4.4)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.8
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # Get the `nros` CLI the way a user does — the released prebuilt binary.
-      # The build's interface codegen resolves this same installed `nros` (via
-      # PATH / ~/.nros) as its codegen tool (Phase 195.D), so no codegen
-      # submodule + cargo build is needed.
       - name: Install the nros CLI (released binary)
         run: |
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
             | NROS_VERSION=0.3.1 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
-      - name: Install just
-        uses: extractions/setup-just@v2
-
-      - name: Set up Rust toolchain
-        run: rustup show && rustup target add armv7a-none-eabi
-
-      # Provision the in-tree sources the Zephyr build needs via nros (index-
-      # driven), the way a user does — never a hand `git submodule update`:
-      # zenoh-pico (zenoh examples) + the cyclonedds fork the setup patches in
-      # place + px4-rs (the libnros_c.a cargo build loads the whole root
-      # workspace, which path-deps px4-sitl-tests — same workspace-load dep as
-      # the core-libs lane).
       - name: Provision Zephyr sources via nros
         run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
-      # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
-      # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      # The interface codegen (nros_generate_interfaces) resolves std_msgs's
-      # msg/*.msg via AMENT_PREFIX_PATH from a sourced ROS 2; the build steps
-      # `source /opt/ros/humble/setup.bash`. (Humble ⇒ the jammy runner.)
-      - name: Install ROS 2 Humble
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: humble
-
       - name: Set up Zephyr 4.4 workspace
-        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup
+        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
 
       - name: Copy-out build check
         run: source /opt/ros/humble/setup.bash && just zephyr check-copy-out c/talker zenoh
