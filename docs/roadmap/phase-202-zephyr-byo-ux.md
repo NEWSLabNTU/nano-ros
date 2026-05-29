@@ -85,14 +85,22 @@ codegen tooling — none of which a BYO west user invokes.
       `examples/zephyr/rust/*/Cargo.toml`, `examples/zephyr/rust/*/.cargo/config.toml`,
       `zephyr/cmake/`.
 
-- [ ] **202.5 — [P2] `zephyr-lang-rust` pinned to a floating `main` → recurring
-      build breaks.** `west.yml` / `west-4.4.yml` pin `zephyr-lang-rust` at
-      `revision: main`. Upstream API churn (e.g. `export_bool_kconfig` →
-      `export_kconfig_bool_options`, Phase 200 build.rs fix) silently breaks the
-      rust examples — and a BYO user on a different `main` snapshot gets *different*
-      breakage. **Fix:** pin `zephyr-lang-rust` to a tested commit (per Zephyr
-      line) so BYO + CI are reproducible; bump deliberately. **Files:** `west.yml`,
-      `west-4.4.yml`, `examples/zephyr/rust/*/build.rs`.
+- [x] **202.5 — [P2, mostly DONE] `zephyr-lang-rust` reproducibility + patch
+      tolerance.** Both lines are in fact already **pinned** (not floating `main`):
+      `west.yml` → `404fcefdbab0…`, `west-4.4.yml` → `a763400f31e9…` — the pin goal
+      is met. The live failure was the *consequence* of the two lines pinning
+      **different** lang-rust shapes: `scripts/zephyr/rust-cargo-extra-args-patch.sh`
+      (the Phase 200.1 rust feature-forwarding patch) hard-`exit 1`'d
+      ("librustapp CARGO_ARGS block not found") on the 4.4 commit, and because it
+      runs in the **shared** `just zephyr setup`, it took down the 4.4 **C/C++**
+      cells too. **Fixed:** made that patch version-tolerant — WARN + skip the
+      build block when the anchor's shape differs (matching the repo's cortex-a9
+      patch pattern), so a divergent lang-rust shape no longer blocks setup /
+      C/C++. Verified both paths (anchor-present → patched; absent → warn+skip,
+      exit 0). *Remaining:* the 4.4 rust cells still need the EXTRA_CARGO_ARGS
+      forwarding to actually reach cargo on the `a763400` shape (rust-200.1, owned
+      by the rust-zephyr work). **Files:** `scripts/zephyr/rust-cargo-extra-args-patch.sh`,
+      `west.yml`, `west-4.4.yml`.
 
 - [ ] **202.6 — [P3] Two workspace models + two patch mechanisms = cognitive
       load.** The story is split across `book/src/getting-started/zephyr.md`

@@ -92,10 +92,21 @@ clippy_new = (
     "      --\n"
 )
 
-if build_old not in src:
-    print(f"ERROR: librustapp CARGO_ARGS block not found in {path}", file=sys.stderr)
-    sys.exit(1)
-src = src.replace(build_old, build_new, 1)
+if build_old in src:
+    src = src.replace(build_old, build_new, 1)
+else:
+    # Version-tolerant (Phase 202.5): the build anchor's exact shape varies by
+    # zephyr-lang-rust commit (the 3.7 + 4.4 lines pin different revisions). When
+    # it's absent, WARN + skip rather than failing — this is a rust-only patch, so
+    # hard-erroring here would block the shared `just zephyr setup` and take down
+    # the C/C++ cells too. Rust examples on a line whose lang-rust shape differs
+    # may not get the per-RMW EXTRA_CARGO_ARGS forwarding (a rust-200.1 concern);
+    # C/C++ are unaffected.
+    print(
+        f"WARNING: librustapp CARGO_ARGS build block not found in {path} "
+        "(zephyr-lang-rust shape differs on this line) — skipping the build patch.",
+        file=sys.stderr,
+    )
 
 if clippy_old in src:
     src = src.replace(clippy_old, clippy_new, 1)
