@@ -142,11 +142,23 @@ xrce, cyclonedds}. `net_wait.c.obj` exports
 `T nros_platform_zephyr_wait_network`; the cyclonedds ELF has zero `zpico_open`
 references — **the original rust+cyclonedds `wait_network` link failure is
 fixed**, and cyclonedds c/cpp (previously no wait branch at all) now build.
-**Caveat — consistent with the 200.6 finding above:** `talker` does not exercise
-the wider `nros_rmw_zenoh` shim leak, so `rust/service-server xrce` still
-link-fails on the full zpico shim. Closing 200.1 needs that broader leak (the
-un-`cfg`'d edge keeping the zenoh rlib live under non-zenoh RMW) resolved too —
-tracked with 200.6.
+**Leak claim RETRACTED (2026-05-29) — the relocate was *sufficient*, not just
+necessary.** The "broader `nros_rmw_zenoh` shim leak" note above was the
+*pre-relocate* symptom: `wait_network` lived in `zpico_zephyr.c`, the same TU as
+`zpico_zephyr_init_session` → `zpico_open` → the whole zenoh session/shim path,
+so referencing the wait helper dragged the entire chain into every RMW. Once the
+wait helper moved to `net_wait.c` (RMW-blind, no zenoh), nothing in a non-zenoh
+build references `nros_rmw_zenoh::zpico::Context` anymore. Confirmed on
+`native_sim`: after fixing each example's `static mut LOCATOR` lint (below),
+**`rust/{service-server,service-client,listener,action-server,action-client} xrce`
+all link clean — zero `zpico_*` undefined.** No un-`cfg`'d edge remains; the TU
+split contemplated by 200.6 is unnecessary.
+
+**Remaining rust-example fix.** The only thing blocking the non-zenoh rust
+builds after the relocate was a per-example Rust-2024 hard error — `&`/`&mut`
+references to the `#[cfg(rmw-xrce)] make_config`'s `static mut LOCATOR`. Routed
+through `core::ptr::addr_of_mut!` in all six rust examples (talker,
+service-server, service-client, listener, action-server, action-client).
 
 **Files (landed).** `packages/core/nros-platform-zephyr/src/net_wait.c` (new),
 `packages/core/nros-platform-cffi/include/nros/platform_zephyr.h` (new),
@@ -155,9 +167,9 @@ tracked with 200.6.
 (stripped), `packages/xrce/xrce-zephyr/src/xrce_zephyr.c` +
 `include/xrce_zephyr.h` (stripped), `packages/core/nros/src/lib.rs` (extern
 rename), `examples/zephyr/{c,cpp}/*/src/main.{c,cpp}` (12 callers),
-`examples/zephyr/rust/talker/src/lib.rs` (safety comments). **Still open
-(200.6):** `packages/zpico/nros-rmw-zenoh/` rlib leaking into non-zenoh builds;
-runtime data-plane validation in `packages/testing/nros-tests/tests/zephyr.rs`,
+`examples/zephyr/rust/*/src/lib.rs` (static-mut + safety comments, all 6).
+**Still open:** zephyr CycloneDDS *runtime* data-plane (the 200.1 e2e, separate
+from the build gap) in `packages/testing/nros-tests/tests/zephyr.rs`,
 `packages/dds/nros-rmw-cyclonedds/`.
 
 ### 200.2 — XRCE action/service runtime e2e — FIXED ✅
