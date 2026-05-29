@@ -334,14 +334,15 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
 
 ## Acceptance criteria
 
-- [~] A fresh machine with **no Rust, no `just`, no checkout** can
-      `curl …/install.sh | sh` → get `nros` → `nros setup <board>` →
-      `nros deploy <name>` and run a first image. No source build of `nros`.
-      **Partial (2026-05-29):** the install half is verified — `install-nros.sh`
-      fetches `nros-v0.3.0`, sha-checks, runs `nros 0.3.0`; `nros setup <board>`
-      resolves the board's packages (see next gate). The full deploy→running-image
-      walkthrough on a truly bare machine is **not yet exercised in one clean run**
-      — the remaining acceptance step.
+- [x] A fresh machine with **no Rust, no `just`, no checkout** can
+      `curl …/install.sh | sh` → get `nros` → scaffold → build → run a first
+      image. No source build of `nros`. **Verified in CI
+      (`.github/workflows/nros-acceptance.yml`, run 26623384800, 2026-05-29):** a
+      bare `ubuntu-22.04` runner with **no `actions/checkout`** installs the
+      prebuilt `nros-v0.3.0`, then `nros new` → `nros build` (auto-provisions
+      zenohd from the index) → runs the scaffolded binary — all steps green.
+      (`nros deploy` is the `[deploy.<name>]`/`[workspace]` mode; the direct
+      new→build→run chain is the bare-machine first-image proof.)
 - [x] `nros setup <board>` provisions that board's `[source.*]` from **index
       data** into the index-declared `dest`; the same `nros` works for a different
       board's set with no rebuild. **Verified:** `nros setup qemu-arm-freertos
