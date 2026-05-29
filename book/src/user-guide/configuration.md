@@ -128,6 +128,22 @@ Auto-resolved by `just setup <platform>`; override if SDKs live elsewhere.
 Buffer-tuning vars (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional — see the
 [Environment Variables Reference](../reference/environment-variables.md).
 
+### Binary-size knobs (embedded)
+
+On a constrained MCU, two build-time env vars (set in the example's
+`.cargo/config.toml` `[env]`, like the other `NROS_*` tuning) shed the parts a
+brokered client doesn't need:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `NROS_LINK_IP` | on | `NROS_LINK_IP=0` on a **serial-only** node drops the IP link layer — zenoh-pico's TCP/UDP link C (`Z_FEATURE_LINK_TCP/UDP=0`) and (with `--gc-sections`) the smoltcp platform impl. Serial link stays. |
+| `NROS_SMOLTCP_MAX_SOCKETS` / `NROS_SMOLTCP_MAX_UDP_SOCKETS` | 4 / 2 | Sized for DDS RTPS (3 UDP/participant). A zenoh/XRCE client multiplexes everything over **one** session → set both to `1` to drop the spare socket buffers (≈8 KB each). |
+
+The recommended size-minimal recipe is **serial transport + `--gc-sections`** (in
+the example's `rustflags`) — see [Serial transport](serial-transport.md). nano-ros
+reuses the RTOS's network stack (lwIP/Zephyr-net/NetX) on hosted RTOS and links
+`smoltcp` only on bare-metal ethernet; serial links no IP stack at all.
+
 ## Cargo features (which RMW/platform is *linked*)
 
 Features select the **linked** RMW backend, platform, and ROS edition. The

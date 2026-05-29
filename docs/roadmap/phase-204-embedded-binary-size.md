@@ -204,10 +204,18 @@ flow from `CARGO_FEATURE_*` into the link-feature flags) — only the `tcp/udp`
       204.8), bss **108 → 75 KB (−33 KB)** — the IP stack is shed. (The serial
       example's *absolute* size stays high due to the `rmw-cffi` multi-backend
       register-path confound — a separate 204.1 item, not the transport.)
-- [ ] **Remainder:** same gate for the XRCE backend (`UCLIENT_PROFILE_{UDP,TCP}`);
-      make `nros new` scaffold `NROS_LINK_IP=0` for serial boards; book write-up of
-      the serial / RTOS-stack-reuse story; resolve the cffi register-path confound
-      so the serial absolute number reflects the shed IP stack.
+- [x] **XRCE gate done (2026-05-30).** Embedded XRCE already excludes IP
+      (`else` branch — custom transport only). POSIX XRCE now honours `NROS_LINK_IP=0`:
+      gates both the `udp_transport{,_posix}.c` source files **and** the
+      `UCLIENT_PROFILE_UDP/TCP` defines (gating the define alone left
+      `udp_transport.c` compiling → error). Verified `nros-rmw-xrce-cffi` builds
+      both default (IP on) + `NROS_LINK_IP=0` (IP off, serial kept).
+- [x] **Book write-up done.** `user-guide/configuration.md` "Binary-size knobs"
+      documents `NROS_LINK_IP` + `NROS_SMOLTCP_MAX_*` + the serial / RTOS-stack-reuse
+      story.
+- [ ] **Remainder:** `nros new` scaffolds `NROS_LINK_IP=0` for serial boards
+      (lives in nros-cli); resolve the cffi register-path confound (204.1) so the
+      serial *absolute* number reflects the shed IP stack.
 
 ## Compiler + linker options — cross-layer inventory
 

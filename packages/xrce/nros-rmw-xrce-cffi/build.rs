@@ -88,6 +88,16 @@ fn main() {
     let feat_zephyr = false; // 129.C.1 — `transport_zephyr_udp` superseded by `transport_nros_udp`.
     let is_posix = host_is_posix;
     let is_embedded = !host_is_posix;
+    // Phase 204.7 — `NROS_LINK_IP=0` drops the IP (UDP/TCP) transport on a
+    // serial-only hosted node (mirrors the zenoh `Z_FEATURE_LINK_*` gate). It gates
+    // both the upstream `udp_transport*.c` sources and the `UCLIENT_PROFILE_UDP/TCP`
+    // defines below. Embedded XRCE already excludes IP (custom transport), so this
+    // only matters on POSIX. Default (unset) → IP on, unchanged.
+    println!("cargo:rerun-if-env-changed=NROS_LINK_IP");
+    let ip = !matches!(
+        env::var("NROS_LINK_IP").ok().as_deref(),
+        Some("0") | Some("false") | Some("off")
+    );
 
     // Generate config headers.
     generate_ucdr_config(&out_dir, &microcdr);
@@ -198,8 +208,10 @@ fn main() {
     // their own time + transport via the registry.
     if is_posix {
         build.file(uxr_src.join("util/time.c"));
-        build.file(uxr_src.join("profile/transport/ip/udp/udp_transport.c"));
-        build.file(uxr_src.join("profile/transport/ip/udp/udp_transport_posix.c"));
+        if ip {
+            build.file(uxr_src.join("profile/transport/ip/udp/udp_transport.c"));
+            build.file(uxr_src.join("profile/transport/ip/udp/udp_transport_posix.c"));
+        }
     }
 
     if is_embedded {
@@ -326,9 +338,20 @@ fn generate_uxr_config(
     // Pure bare-metal / FreeRTOS / NuttX / ThreadX gets the
     // freestanding core only — consumers wire their own transport
     // via `nros_rmw_cffi_set_custom_transport(...)`.
+    // Phase 204.7 — recomputed here (separate fn from the source-file build);
+    // gates the UDP/TCP profile defines to match the gated source files.
+    let ip = !matches!(
+        env::var("NROS_LINK_IP").ok().as_deref(),
+        Some("0") | Some("false") | Some("off")
+    );
     if is_posix {
-        enabled.push("UCLIENT_PROFILE_UDP");
-        enabled.push("UCLIENT_PROFILE_TCP");
+        if ip {
+            enabled.push("UCLIENT_PROFILE_UDP");
+            enabled.push("UCLIENT_PROFILE_TCP");
+        } else {
+            disabled.push("UCLIENT_PROFILE_UDP");
+            disabled.push("UCLIENT_PROFILE_TCP");
+        }
         enabled.push("UCLIENT_PROFILE_SERIAL");
         enabled.push("UCLIENT_PLATFORM_POSIX");
         disabled.push("UCLIENT_PLATFORM_POSIX_NOPOLL");
