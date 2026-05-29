@@ -86,9 +86,9 @@ fn test_threadx_riscv64_detection() {
 /// `AllowMulticast` from `false` to `spdp`), unicast RTPS data delivery,
 /// and CDR decode on the subscriber.
 ///
-/// Requires the CycloneDDS fixtures to be prebuilt:
-///   just cyclonedds threadx-cross-probe
-///   NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures
+/// The CycloneDDS fixtures are built by default (Phase 203 decision):
+///   just threadx_riscv64 build-fixtures   # or `just build-all`
+/// (opt out with NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0).
 ///
 /// Phase 177.26 — ThreadX↔ThreadX Cyclone RTPS works end-to-end. Two fixes
 /// landed it: the cyclonedds ThreadX ddsrt port joins SPDP multicast with an
@@ -120,8 +120,8 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     if !talker_bin.exists() || !listener_bin.exists() {
         nros_tests::skip!(
             "CycloneDDS ThreadX fixtures missing; build with: \
-             just cyclonedds threadx-cross-probe && \
-             NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 just threadx_riscv64 build-fixtures"
+             just threadx_riscv64 build-fixtures (or just build-all). They build \
+             by default — was NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 set?"
         );
     }
 

@@ -85,7 +85,12 @@ uint64_t env_u64(const char* name, uint64_t fallback) {
     const char* v = std::getenv(name);
     if (v == nullptr || v[0] == '\0') return fallback;
     char* end = nullptr;
-    unsigned long long parsed = std::strtoull(v, &end, 10);
+    // Phase 203 — use the global-namespace C name. picolibc's `<cstdlib>` on
+    // the riscv64/threadx cross does **not** alias every C function into
+    // `std::` (only a subset — `getenv` is in, `strtoull` is not), so a
+    // `std::strtoull` reference fails to compile on the embedded build. The
+    // unqualified name resolves to the C declaration via `<stdlib.h>`.
+    unsigned long long parsed = ::strtoull(v, &end, 10);
     return (end != v && parsed > 0) ? static_cast<uint64_t>(parsed) : fallback;
 }
 

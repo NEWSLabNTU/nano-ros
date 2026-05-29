@@ -152,17 +152,23 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds"
     if(NOT _tx_picolibc OR NOT EXISTS "${_tx_picolibc}/include")
         set(_tx_picolibc "/usr/lib/picolibc/riscv64-unknown-elf")
     endif()
-    set(_cyc_threadx_inc
-        "-isystem ${_tx_picolibc}/include"
-        "-I${THREADX_CONFIG_DIR}"
-        "-I${THREADX_DIR}/common/inc"
-        "-I${_tx_port_inc}"
-        "-I${NETX_DIR}/common/inc"
-        "-I${NETX_DIR}/addons/BSD")
-    string(JOIN " " _cyc_threadx_inc_str ${_cyc_threadx_inc})
-    set(CMAKE_C_FLAGS
-        "${CMAKE_C_FLAGS} ${_cyc_threadx_inc_str} -ffunction-sections -fdata-sections -fno-builtin -fno-lto -DTX_INCLUDE_USER_DEFINE_FILE -DNX_INCLUDE_USER_DEFINE_FILE"
-        CACHE STRING "" FORCE)
+    # Phase 203 — use directory-level include_directories/add_compile_options
+    # instead of mutating CMAKE_C_FLAGS. cyclonedds (via add_subdirectory) calls
+    # `project(CycloneDDS ...)`, which **re-runs CMake's compiler init and resets
+    # CMAKE_C_FLAGS to the toolchain's initial value** — any threadx flags
+    # appended to CMAKE_C_FLAGS before project() get dropped from ddsc target's
+    # per-target compile commands. Directory properties (include dirs, compile
+    # options, compile definitions) survive the nested project() reset and
+    # propagate to every subdirectory target (ddsc, ddsrt, …).
+    include_directories(SYSTEM "${_tx_picolibc}/include")
+    include_directories(
+        "${THREADX_CONFIG_DIR}"
+        "${THREADX_DIR}/common/inc"
+        "${_tx_port_inc}"
+        "${NETX_DIR}/common/inc"
+        "${NETX_DIR}/addons/BSD")
+    add_compile_options(-ffunction-sections -fdata-sections -fno-builtin -fno-lto)
+    add_compile_definitions(TX_INCLUDE_USER_DEFINE_FILE NX_INCLUDE_USER_DEFINE_FILE)
 endif()
 
 # Phase 186.6.3 — threadx-linux is host-linked (x86): ThreadX runs as a Linux

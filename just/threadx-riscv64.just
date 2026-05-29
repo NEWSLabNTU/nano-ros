@@ -216,14 +216,17 @@ build-fixture-extras:
     bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh
 
     cyclonedds_prefix="$root/build/cyclonedds-threadx-rv64-install"
-    if [ "${NROS_THREADX_RV64_CYCLONEDDS_FIXTURES:-0}" != "1" ]; then
-        echo "  → skipping experimental ThreadX-RV64 Cyclone fixtures (set NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1 to opt in)"
+    # Phase 203 decision — build the ThreadX-RV64 Cyclone fixtures BY DEFAULT so a
+    # clean `build-all` compiles every fixture (the runtime works e2e since Phase
+    # 177.26; Phase 186 self-provisions Cyclone from source, no separate probe).
+    # Opt out with NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 (e.g. a fast local loop).
+    if [ "${NROS_THREADX_RV64_CYCLONEDDS_FIXTURES:-1}" = "0" ]; then
+        echo "  → skipping ThreadX-RV64 Cyclone fixtures (NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 opt-out)"
     elif command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
         # Phase 186 — self-provision Cyclone from source via CMake
         # (nros_provide_cyclonedds() + the ThreadX flags staged in
         # cmake/platform/nano-ros-threadx.cmake); no prebuilt install, no
         # `just cyclonedds threadx-cross-probe`. idlc resolves host-side (186.3).
-        # Still experimental (the ddsrt ThreadX port is research-grade).
         # Phase 177.38 — ThreadX-RV64 Cyclone role-set on domain 62 (talker+listener
         # share). C/C++ get it via cmake -DNROS_DOMAIN_ID; the rust/talker cell via
         # the helper's env + -D.

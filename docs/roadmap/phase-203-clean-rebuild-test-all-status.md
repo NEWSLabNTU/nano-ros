@@ -203,7 +203,25 @@ regressions.
       over QEMU slirp (no Docker), gates cleanly on the ARM toolchain / qemu /
       zenoh-pico-arm / fixtures; in the `qemu-baremetal-shared` group (port 7450).
       Replaced the two `_starts` blanket-skips. Verified: published>0, received>0.
-- [ ] threadx-cyclonedds — experimental/opt-in (env `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=1`); decide whether to enable by default
+- [x] threadx-cyclonedds — **decided: build by default** (2026-05-30). `build-all`
+      should compile *every* fixture; the runtime works e2e (Phase 177.26) and
+      Phase 186 self-provisions Cyclone from source (no separate `threadx-cross-probe`).
+      `just threadx_riscv64 build-fixture-extras` now builds the ThreadX-RV64 Cyclone
+      C/C++/Rust cells whenever `riscv64-unknown-elf-gcc` is present; opt out with
+      `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0`. The `*_cyclonedds_two_qemu_pubsub`
+      test now runs (skipped only when the fixture is genuinely absent). Two
+      blockers surfaced + fixed when the default-on path actually built: (1) the
+      threadx platform module mutated `CMAKE_C_FLAGS` with the picolibc/THREADX/NETX
+      `-I` paths, but Cyclone's nested `project(CycloneDDS ...)` re-runs CMake's
+      compiler init and **resets `CMAKE_C_FLAGS`** to the toolchain baseline —
+      ddsc's per-target FLAGS dropped the threadx includes and the ddsrt port
+      couldn't find `tx_api.h` / `nxd_bsd.h`. Switched to directory-level
+      `include_directories` / `add_compile_options` / `add_compile_definitions`,
+      which propagate via directory properties and survive nested `project()`
+      resets. (2) `nros-rmw-cyclonedds/src/service.cpp` called `std::strtoull` —
+      picolibc's `<cstdlib>` on the rv64/threadx cross does **not** alias every C
+      function into `std::` (`getenv` is in, `strtoull` is not); switched to
+      `::strtoull`, which resolves through `<stdlib.h>` on every target.
 - [ ] Group-B runtime e2e stabilized (cross-ref archived Phase 200 / 177.2)
 
 ## Notes
