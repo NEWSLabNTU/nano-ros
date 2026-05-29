@@ -204,6 +204,97 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     }
 }
 
+/// Phase 189.M3.4 — register a **callback-style** subscription that also delivers
+/// the sample's wire **attachment**. The callback analogue of the poll-side
+/// `nros_cpp_subscription_try_recv_raw_with_attachment` (M3.4b), and the C++
+/// mirror of the C `nros_executor_register_subscription_raw_with_info`: same
+/// arena dispatch + sched binding as `nros_cpp_subscription_register`, but routed
+/// through `add_arena_subscription_c_info_callback` so the trampoline receives
+/// `(data, len, attachment, attachment_len, ctx)`. Cross-RMW bridges read the
+/// `bridge_origin` tag from the attachment.
+///
+/// # Safety
+/// All non-NULL pointers must be valid; `callback` must be a valid trampoline;
+/// `context` outlives the executor (no move after register).
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
+    node: *const nros_cpp_node_t,
+    topic: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::executor::RawSubscriptionInfoCallback,
+    context: *mut c_void,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    if node.is_null()
+        || topic.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || out_handle_id.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let topic_str = match unsafe { cstr_to_str(topic) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let type_str = match unsafe { cstr_to_str(type_name) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let hash_str = match unsafe { cstr_to_str(type_hash) } {
+        Some(s) => s,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+
+    use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
+    let node_id = if node_ref.node_id != 0 {
+        Some(nros_node::executor::NodeId::from_raw(node_ref.node_id))
+    } else {
+        None
+    };
+    let result = ctx.executor.add_arena_subscription_c_info_callback::<BUF>(
+        node_id,
+        topic_str,
+        type_str,
+        hash_str,
+        qos.to_qos_settings(),
+        callback,
+        context,
+    );
+
+    match result {
+        Ok(handle_id) => {
+            if sched_context != 0 {
+                let sc_id = nros_node::executor::sched_context::SchedContextId(sched_context);
+                if ctx
+                    .executor
+                    .bind_handle_to_sched_context(handle_id, sc_id)
+                    .is_err()
+                {
+                    return NROS_CPP_RET_INVALID_ARGUMENT;
+                }
+            }
+            unsafe {
+                *out_handle_id = handle_id.0;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+    }
+}
+
 /// Try to receive raw CDR data from a subscription (non-blocking).
 ///
 /// Writes the received CDR bytes directly into the caller's output buffer

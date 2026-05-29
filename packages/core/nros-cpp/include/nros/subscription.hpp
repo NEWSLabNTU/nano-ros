@@ -35,6 +35,17 @@ nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const
                                               nros_cpp_subscription_message_callback_t callback,
                                               void* context, uint8_t sched_context,
                                               size_t* out_handle_id);
+
+// Phase 189.M3.4 — callback-style register that also delivers the sample's wire
+// attachment (5-arg trampoline). Same cbindgen-exclusion reason as above.
+typedef void (*nros_cpp_subscription_message_info_callback_t)(const uint8_t* data, size_t len,
+                                                              const uint8_t* attachment,
+                                                              size_t attachment_len, void* ctx);
+
+nros_cpp_ret_t nros_cpp_subscription_register_with_info(
+    const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
+    nros_cpp_qos_t qos, nros_cpp_subscription_message_info_callback_t callback, void* context,
+    uint8_t sched_context, size_t* out_handle_id);
 } // extern "C"
 
 namespace nros {
@@ -69,6 +80,9 @@ template <typename M> class Subscription {
     /// invokes the handler during `spin_once()` on each new sample.
     using TypedSubscriptionFn = void (*)(const M& msg);
     using TypedSubscriptionFnWithCtx = void (*)(const M& msg, void* ctx);
+    // Phase 189.M3.4 — callback-with-attachment handler (`bridge_origin` etc.).
+    using TypedSubscriptionInfoFn = void (*)(const M& msg, const uint8_t* attachment,
+                                             size_t attachment_len);
 
     /// Try to receive a typed message (non-blocking).
     ///
@@ -376,6 +390,20 @@ template <typename M> class Subscription {
         }
     }
 
+    /// Phase 189.M3.4 — trampoline matching `RawSubscriptionInfoCallback`
+    /// (`void(data, len, attachment, att_len, ctx)`). Deserializes the CDR sample
+    /// into `M` and runs the user's `(const M&, attachment, att_len)` handler.
+    static void message_info_trampoline(const uint8_t* data, size_t len, const uint8_t* attachment,
+                                        size_t attachment_len, void* ctx) {
+        auto* self = static_cast<Subscription*>(ctx);
+        if (self == nullptr) return;
+        M msg;
+        if (M::ffi_deserialize(data, len, &msg) != 0) return;
+        if (self->user_fn_info_ != nullptr) {
+            self->user_fn_info_(msg, attachment, attachment_len);
+        }
+    }
+
     alignas(8) uint8_t storage_[NROS_SUBSCRIBER_SIZE];
     char topic_name_[SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
@@ -389,6 +417,7 @@ template <typename M> class Subscription {
     // arena owns the subscriber + dispatches `message_trampoline` during spin.
     TypedSubscriptionFn user_fn_ = nullptr;
     TypedSubscriptionFnWithCtx user_fn_ctx_ = nullptr;
+    TypedSubscriptionInfoFn user_fn_info_ = nullptr;
     void* user_ctx_ = nullptr;
     bool callback_mode_ = false;
 };
@@ -492,9 +521,48 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    nros_cpp_ret_t ret = nros_cpp_subscription_register(
+    nros_cpp_ret_t ret =
+        nros_cpp_subscription_register(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
+                                       &Subscription<M>::message_trampoline, &out, sched, &handle);
+    if (ret == 0) {
+        out.sched_handle_id_ = handle;
+        out.callback_mode_ = true;
+        out.initialized_ = true;
+    }
+    return Result(ret);
+}
+
+// Phase 189.M3.4 — callback-style subscription that delivers the wire attachment.
+// Mirrors the callback `create_subscription` one step over, but stores the
+// `(const M&, attachment, att_len)` handler + registers via the with-info arena
+// path so the trampoline receives the attachment.
+template <typename M, typename F, typename>
+Result Node::create_subscription_with_info(Subscription<M>& out, const char* topic, F callback,
+                                           const QoS& qos, const SubscriptionOptions& options) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos;
+    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+    ffi_qos.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
+    ffi_qos.depth = qos.depth();
+    ffi_qos.deadline_ms = qos.deadline_ms();
+    ffi_qos.lifespan_ms = qos.lifespan_ms();
+    ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
+    ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+
+    out.user_fn_info_ = typename Subscription<M>::TypedSubscriptionInfoFn(callback);
+    out.user_fn_ = nullptr;
+    out.user_fn_ctx_ = nullptr;
+    out.user_ctx_ = nullptr;
+
+    uint8_t sched = (options.sched_context == SCHED_CONTEXT_UNSET)
+                        ? 0u
+                        : static_cast<uint8_t>(options.sched_context);
+    size_t handle = static_cast<size_t>(-1);
+    nros_cpp_ret_t ret = nros_cpp_subscription_register_with_info(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
-        &Subscription<M>::message_trampoline, &out, sched, &handle);
+        &Subscription<M>::message_info_trampoline, &out, sched, &handle);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;

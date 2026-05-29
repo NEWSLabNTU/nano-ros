@@ -237,12 +237,26 @@ class Node {
     /// @param callback  Handler invoked as `callback(const M&)` per sample.
     /// @param qos       QoS profile.
     /// @param options   Named subscription options (e.g. sched_context).
-    template <typename M, typename F,
-              typename = typename std::enable_if<
-                  std::is_convertible<F, void (*)(const M&)>::value>::type>
+    template <
+        typename M, typename F,
+        typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
     Result create_subscription(Subscription<M>& out, const char* topic, F callback,
                                const QoS& qos = QoS::default_profile(),
                                const SubscriptionOptions& options = {});
+
+    /// Create a **callback-style** subscription that also delivers each sample's
+    /// wire **attachment** (Phase 189.M3.4 — the callback analogue of
+    /// `Subscription::try_recv_raw_with_attachment`). Arena-registered like the
+    /// callback overload above (so `options.sched_context` is functional), but the
+    /// handler is invoked as `callback(const M&, const uint8_t* attachment, size_t
+    /// attachment_len)`; `attachment_len == 0` means the sample carried none.
+    /// Cross-RMW bridges read the `bridge_origin` tag from the attachment.
+    template <typename M, typename F,
+              typename = typename std::enable_if<
+                  std::is_convertible<F, void (*)(const M&, const uint8_t*, size_t)>::value>::type>
+    Result create_subscription_with_info(Subscription<M>& out, const char* topic, F callback,
+                                         const QoS& qos = QoS::default_profile(),
+                                         const SubscriptionOptions& options = {});
 
     /// Create a service server.
     ///
@@ -293,8 +307,8 @@ class Node {
     /// CONSTRAINT: do not move `out` after this returns — the executor arena
     /// holds `&out` as the response dispatch context.
     template <typename S, typename F,
-              typename = typename std::enable_if<std::is_convertible<
-                  F, void (*)(const typename S::Response&)>::value>::type>
+              typename = typename std::enable_if<
+                  std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
     Result create_client(Client<S>& out, const char* service_name, F callback,
                          const QoS& qos = QoS::services(), const ClientOptions& options = {});
 
