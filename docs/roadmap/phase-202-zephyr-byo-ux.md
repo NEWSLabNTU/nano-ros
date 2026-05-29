@@ -6,7 +6,12 @@ the in-tree contributor flow hides. Zephyr mandates a dedicated west workspace;
 nano-ros is a module (`zephyr/module.yml`) imported into it — so the BYO path is
 the *real* user surface, and it currently breaks out of the box.
 
-**Status.** Proposed (2026-05-29). From a BYO-adoption walkthrough of the
+**Status.** In progress (2026-05-29). **202.1 + 202.2 (the P1 build-blockers)
+done as doc fixes** — the BYO docs now cover transport-source provisioning
+(`nros setup --source`) + the nros-CLI/ROS prerequisites. 202.3–202.6 (patch
+completeness, rust-app internals leak, `zephyr-lang-rust` pin, doc consolidation)
+remain; 202.1's end-to-end verify on a real BYO workspace is still open. From a
+BYO-adoption walkthrough of the
 manifest/module/docs (`integrations/zephyr/`, `book/src/getting-started/
 integration-zephyr.md`). Complements the broader CLI-verb UX study
 `docs/research/sdk-ux/zephyr-and-esp-idf.md` (2026-05-04) — this phase is the
@@ -33,29 +38,32 @@ codegen tooling — none of which a BYO west user invokes.
 
 ## Work items
 
-- [ ] **202.1 — [P1] `west update` doesn't pull nano-ros's transports (BYO build
-      link-fails out of the box).** The transports — zenoh-pico
-      (`packages/zpico/zpico-sys/zenoh-pico`), the cyclonedds fork, mbedtls — are
-      **git submodules**; `integrations/zephyr/west.yml` has `projects: []`, and
-      the documented import snippet does **not** set `submodules: true` on the
-      nano-ros project. So `west update` fetches nano-ros but none of its
-      submodules → zenoh-pico absent → link error. The docs claim "west update
-      pulls nano-ros + transitives" — it doesn't. **Fix:** document `submodules:
-      true` on the nano-ros project entry (and verify the module CMake builds the
-      now-present zenoh-pico), or have the module provision its sources. This is
-      the one that makes BYO actually build.
+- [x] **202.1 — [P1, doc DONE] `west update` doesn't pull nano-ros's transports.**
+      Documented the fix in both BYO docs (`integration-zephyr.md` Build section +
+      `integrations/zephyr/README.md`): after `west update`, provision the RMW's
+      transport from the nano-ros checkout via `nros setup --source zenoh-pico`
+      (zenoh) / `--source cyclonedds-src` (cyclone) — the canonical lean provisioner
+      — with the `submodules: true` west-native alternative noted (pulls all
+      submodules incl. unrelated platform SDKs). **Still open:** end-to-end verify
+      on a throwaway BYO west workspace, and confirm the module CMake builds the
+      now-present zenoh-pico without further wiring.
+      *Original issue:* the transports (zenoh-pico, the cyclonedds fork, mbedtls)
+      are git submodules; `integrations/zephyr/west.yml` has `projects: []` and the
+      import snippet didn't set `submodules: true`, so `west update` fetched
+      nano-ros but no submodules → zenoh-pico absent → link error, despite the docs
+      claiming "west update pulls … transitives".
       **Files:** `book/src/getting-started/integration-zephyr.md`,
       `integrations/zephyr/README.md`, `integrations/zephyr/west.yml`,
       `zephyr/CMakeLists.txt`.
 
-- [ ] **202.2 — [P1] No "install the nros CLI + source ROS" prerequisite in the
-      BYO doc.** The module build invokes the interface codegen
-      (`_NANO_ROS_CODEGEN_TOOL`), which needs the released `nros` (install.sh) AND
-      a sourced ROS 2 (`AMENT_PREFIX_PATH`) to resolve a message package's
-      `msg/*.msg`. The BYO doc only hints at "ROS Python"; it never tells the user
-      to install `nros` first. **Fix:** add an explicit prerequisite block
-      (install.sh + `source /opt/ros/<distro>/setup.bash`) to the BYO doc.
-      **Files:** `book/src/getting-started/integration-zephyr.md`.
+- [x] **202.2 — [P1, DONE] No "install the nros CLI + source ROS" prerequisite.**
+      Added a **Prerequisites** section to `integration-zephyr.md` (install.sh for
+      the `nros` CLI + `source /opt/ros/<distro>/setup.bash`) and a matching block
+      in `integrations/zephyr/README.md`. The module build's interface codegen
+      (`_NANO_ROS_CODEGEN_TOOL`) needs both; the doc previously only hinted at "ROS
+      Python".
+      **Files:** `book/src/getting-started/integration-zephyr.md`,
+      `integrations/zephyr/README.md`.
 
 - [ ] **202.3 — [P2] Split, incomplete patch story for BYO.** `west patch` ships
       only the 4 NSOS/native-sim/pthread patches (`zephyr/patches.yml`). Rust

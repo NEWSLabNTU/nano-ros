@@ -26,6 +26,25 @@ Then `west update`. Enable the module in your `prj.conf` with
 `CONFIG_NROS=y` (and pick an RMW via `CONFIG_NROS_RMW`), and link your
 app against `NanoRos::NanoRos` (done automatically by this shell).
 
+## Prerequisites + transport sources
+
+The module's interface codegen needs the **`nros` CLI** (install the released
+binary: `curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh | sh`,
+then add `~/.nros/bin` to PATH) and a **sourced ROS 2** (`source
+/opt/ros/<distro>/setup.bash` — codegen resolves `msg/*.msg` via
+`AMENT_PREFIX_PATH`).
+
+nano-ros's RMW transports are **git submodules** that `west update` does **not**
+pull. Provision the ones your RMW needs from the nano-ros checkout:
+
+```sh
+( cd modules/nano-ros && nros setup --source zenoh-pico )       # zenoh
+# ( cd modules/nano-ros && nros setup --source cyclonedds-src ) # cyclonedds
+```
+
+(west-native alternative: `submodules: true` on the `nano-ros` project — pulls
+*all* submodules incl. unrelated platform SDKs.)
+
 ## Applying nano-ros patches in your workspace
 
 nano-ros needs a few small patches to Zephyr's Native Simulator

@@ -68,6 +68,25 @@ The application `CMakeLists.txt` is a stock Zephyr app — `find_package(Zephyr)
 + `target_sources`. **No `add_subdirectory(<nano-ros>)`** is needed;
 the module shell handles it once `CONFIG_NROS=y` flips on.
 
+## Prerequisites
+
+Beyond a Zephyr workspace + SDK, nano-ros's build generates the ROS message
+bindings at configure time, which needs two host-side things:
+
+1. **The `nros` CLI** — the module's interface codegen shells out to it. Install
+   the released binary (no checkout, no cargo):
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh | sh
+   export PATH="$HOME/.nros/bin:$PATH"
+   ```
+2. **A sourced ROS 2** — codegen resolves a message package's `msg/*.msg` via
+   `AMENT_PREFIX_PATH`:
+   ```bash
+   source /opt/ros/humble/setup.bash       # or your distro
+   ```
+
+`nros` is also the provisioner for nano-ros's transport submodules (see Build).
+
 ## Configure
 
 Add nano-ros to your workspace `west.yml`:
@@ -106,7 +125,26 @@ library transparently.
 ## Build
 
 ```bash
-west update                              # pull nano-ros + transitives
+west update                              # clones nano-ros + Zephyr into the workspace
+```
+
+nano-ros's RMW transports are **git submodules** (zenoh-pico, the cyclonedds
+fork, …) — `west update` clones nano-ros but **not** its submodules, so the
+module build would link-fail with them absent. Provision the ones your RMW needs
+the canonical way, with `nros setup --source` from the nano-ros checkout (this is
+the same provisioner the prerequisites installed):
+
+```bash
+( cd modules/nano-ros && nros setup --source zenoh-pico )       # for CONFIG_NROS_RMW="zenoh"
+# ( cd modules/nano-ros && nros setup --source cyclonedds-src ) # for "cyclonedds"
+```
+
+> **west-native alternative:** set `submodules: true` on the `nano-ros` project in
+> your `west.yml`. Simpler, but it pulls **every** nano-ros submodule — including
+> unrelated platform SDKs (FreeRTOS, NuttX, ThreadX, PX4, QEMU) — so the
+> `nros setup --source` form above is leaner.
+
+```bash
 west build -b qemu_cortex_a9 apps/my_app
 # native_sim alternative (POSIX, no QEMU):
 west build -b native_sim/native/64 apps/my_app
