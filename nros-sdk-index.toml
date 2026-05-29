@@ -117,6 +117,18 @@ ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
 configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DBUILD_IDLC=ON -DBUILD_TESTING=OFF -DBUILD_DDSPERF=OFF"
 install = "cmake --build build --parallel $(nproc) --target install"
 
+# Phase 197.3 — Espressif's QEMU fork (provides the `esp32c3` machine the ESP32
+# emulator tests need; stock qemu-system-riscv32 only knows `virt`). Source-built
+# only (not hosted) — `just esp32 setup` → `nros setup --tool esp32-qemu`.
+[tool.esp32-qemu]
+version = "esp-develop-nros1"
+upstream = "esp-develop"
+[tool.esp32-qemu.source]
+git = "https://github.com/espressif/qemu"
+ref = "33cc9a8740071031e30704141d2803b308ce0d32"
+configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-strip --disable-user --disable-capstone --disable-vnc --disable-gtk --disable-sdl --disable-docs"
+install = "ninja -C build -j$(nproc) && ninja -C build install"
+
 # --- source packages (built with the app for the user's target) ---
 #
 # Phase 195.B — data-driven provisioning. Each source is a committed submodule,
@@ -285,13 +297,6 @@ ref = "73622810d984349b80bbac0ef55fc0b694d62222"
 dest = "third-party/xrce/agent"
 submodule = "third-party/xrce/agent"
 
-[source.esp32-qemu-src]
-version = "esp-develop"
-git = "https://github.com/espressif/qemu.git"
-ref = "33cc9a8740071031e30704141d2803b308ce0d32"
-dest = "third-party/esp32/qemu"
-submodule = "third-party/esp32/qemu"
-
 # --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
 
 [gated.nv-spe-fsp]
@@ -388,8 +393,9 @@ build_sources = ["threadx-netxduo"] # NetX Duo net stack (Phase 197.2)
 [board.esp32]
 arch = "riscv32" # ESP32-C3; riscv32imc rustup target + build-std (no external gcc)
 platform = "bare-metal"
-packages = [] # esp qemu fork not indexed; Rust target via `just workspace rust-targets`
-dev_sources = ["esp32-qemu-src"] # Espressif's QEMU fork for the ESP32 emulator (Phase 197.2, opt-in)
+# Rust target via `just workspace rust-targets`; the ESP32 emulator is the
+# source-built [tool.esp32-qemu] (`just esp32 setup` → nros setup --tool, Phase 197.3).
+packages = []
 
 [board.qemu-esp32-baremetal]
 arch = "riscv32"

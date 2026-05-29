@@ -226,7 +226,10 @@ else
     exit 2
 fi
 
-if [[ -n "$PLATFORM" ]] && ! list_known_platforms | grep -qx "$PLATFORM"; then
+if [[ -n "$PLATFORM" ]] \
+   && ! list_known_platforms | grep -qx "$PLATFORM" \
+   && ! grep -qE "^\\[board\\.${PLATFORM}\\]" "$INDEX"; then
+    # Accept a `[board.*].platform` value or a board id (e.g. esp32).
     err "unknown platform '${PLATFORM}'. --list-targets for known set."
     exit 2
 fi

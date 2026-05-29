@@ -39,7 +39,7 @@ pub fn is_qemu_riscv32_available() -> bool {
 pub fn require_qemu_riscv32() -> bool {
     if !is_qemu_riscv32_available() {
         eprintln!("Skipping test: qemu-system-riscv32 not found");
-        eprintln!("Install Espressif's QEMU fork: ./scripts/esp32/install-espressif-qemu.sh");
+        eprintln!("Install Espressif's QEMU fork: nros setup --tool esp32-qemu (or: just esp32 setup)");
         return false;
     }
     true

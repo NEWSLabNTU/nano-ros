@@ -11,9 +11,12 @@ default:
 # and `just px4 test-sitl`.
 [group("setup")]
 setup:
-    git submodule update --init --depth 1 --recommend-shallow \
-        third-party/px4/px4-rs \
-        third-party/px4/PX4-Autopilot
+    # Phase 197.3 — px4-rs + PX4-Autopilot are index sources ([source.px4-rs],
+    # [source.px4-autopilot]); provision the nano-ros submodules via nros (the
+    # SSOT for refs) instead of an inline `git submodule update`.
+    nros setup --source px4-rs --source px4-autopilot
+    # PX4-Autopilot has ~50 of its OWN sub-submodules (cmake, mavlink, ecl, …) —
+    # that recursion is PX4's concern, not nano-ros source provisioning.
     git -C third-party/px4/PX4-Autopilot submodule update --init \
         --depth 1 --recommend-shallow --recursive
     # Install PX4's Python build deps user-local so `just px4 build-sitl`

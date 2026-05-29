@@ -85,12 +85,18 @@ surface. Now the index is the single home.
 **Files**: `tools/setup.sh`, `nros-sdk-index.toml`, `cmake/bootstrap.cmake`,
 `scripts/sdk/verify-index.py`, `config/submodule-deps.toml` (deleted).
 
-### 197.3 — [P3] Fold `esp32` + `px4` provisioning into the index
-- [ ] Espressif qemu fork → `[tool.esp32-qemu]` (dist or source-built);
-      `just esp32 setup` → `nros setup --tool esp32-qemu`.
-- [ ] PX4-Autopilot → `[source.px4-autopilot]` (extended/opt-in tier, heavy);
-      `just px4 setup` → `nros setup --source px4-autopilot` (drop the inline
-      `git submodule update`). px4-rs is already `[source.px4-rs]` (Phase 196).
+### 197.3 — [P3] Fold `esp32` + `px4` provisioning into the index — DONE
+- [x] Espressif qemu fork → `[tool.esp32-qemu]` (source-built; `[tool.*.source]`
+      configure/install mirroring `[tool.qemu]`, no dist). `just esp32 setup` →
+      `nros setup --tool esp32-qemu` (behind the existing esp32c3-machine probe).
+      Deleted the bespoke `scripts/esp32/install-espressif-qemu.sh` (its logic is
+      the index recipe now); the redundant `[source.esp32-qemu-src]` 197.2
+      dev-source was dropped (the tool clones the fork itself).
+- [x] PX4-Autopilot → `[source.px4-autopilot]` + `just px4 setup` →
+      `nros setup --source px4-rs --source px4-autopilot` (dropped the inline
+      `git submodule update`). PX4's own ~50 nested sub-submodules stay a
+      `git -C … submodule update --recursive` (PX4's concern, not nano-ros source
+      provisioning), as does the `pip install` host-env step (197.4 scope).
 
 **Files**: `nros-sdk-index.toml`, `just/esp32.just`, `just/px4.just`,
 `scripts/esp32/install-espressif-qemu.sh`.

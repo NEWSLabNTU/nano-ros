@@ -23,7 +23,9 @@ setup:
             && qemu-system-riscv32 -machine help 2>/dev/null | grep -q '\besp32c3\b'; then
         echo "Espressif qemu-system-riscv32 already installed: $(qemu-system-riscv32 --version | head -1)"
     else
-        ./scripts/esp32/install-espressif-qemu.sh
+        # Phase 197.3 — the Espressif QEMU fork is the source-built
+        # [tool.esp32-qemu] in nros-sdk-index.toml; provision it via nros.
+        nros setup --tool esp32-qemu
     fi
 
 # Diagnose ESP32 install status (read-only).
