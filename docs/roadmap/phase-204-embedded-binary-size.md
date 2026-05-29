@@ -587,9 +587,24 @@ logging-fmt, not panic-fmt. A real strip needs **204.4** (drop `defmt`/logging +
 - [x] **Measured Release vs MinSizeRel** (wrapper `.a`, ddsc constant via ROS
       find_package): **text 24 952 → 20 483 B = −4 469 (−17.9 %)** for `-Os` vs
       the inherited `-O3`. ddsc tracks the same `-Os` factor when self-provisioned.
-- [ ] **Remainder:** quantify the full self-provisioned ddsc `.so`/static at
-      MinSizeRel (heavy ddsc rebuild) + decide whether to default the embedded
-      cyclone fixture builds to MinSizeRel.
+- [x] **Remainder resolved (2026-05-30) — ddsc per-lib size is LTO-obscured; the
+      fixture default stays Release.** Built self-provisioned ddsc
+      (`third-party/dds/cyclonedds`) static, Release vs MinSizeRel: `libddsc.a` is
+      **8.2–8.3 MB on disk both ways** yet `size -t` reports **~4.7 KB text both**
+      — ddsc compiles `-flto=fat` (its own CFLAGS, *not* gated by
+      `CMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF`), so the archive holds fat-LTO
+      bitcode and the `-O3` vs `-Os` choice only lands at the **final firmware
+      link**; a per-`.a` `size` is meaningless. The wrapper already gives the
+      `-Os` read: **−17.9 %** (above), and ddsc tracks the same codegen at link.
+    - **Decision: do NOT flip the embedded cyclone fixture default to MinSizeRel.**
+      The `just {freertos,threadx-riscv64,threadx-linux,native} build-…` cyclone
+      recipes stay `-DCMAKE_BUILD_TYPE=Release` (the tested/CI config; flipping
+      needs a full cyclone-e2e re-verify per platform + risks the RTOS ddsrt
+      timing the embedded ports are sensitive to). **MinSizeRel is the documented
+      opt-in size path** and already works end-to-end: configuring
+      `-DCMAKE_BUILD_TYPE=MinSizeRel` gets `-Os` on ddsc **and** the wrapper
+      because `ProvideCycloneDDS.cmake` self-provisions ddsc via
+      `add_subdirectory` (inherits the caller's build type) — no recipe change.
 - **Files:** `packages/dds/nros-rmw-cyclonedds/CMakeLists.txt`.
 
 ### 204.14 — LTO strategy (perf + size), unblock the rust-lld issue — [x] DONE (2026-05-30) — studied + measured
