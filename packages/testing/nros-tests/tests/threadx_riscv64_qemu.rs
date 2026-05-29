@@ -185,10 +185,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
 
     match result {
         Ok(output) => {
-            assert!(
-                output.contains("Received:"),
-                "listener did not decode a sample.\n--- listener output ---\n{output}"
-            );
+            nros_tests::output::assert_listener(&output, 1);
         }
         Err(e) => {
             panic!("listener never received a CycloneDDS sample from the peer ThreadX node: {e:?}")

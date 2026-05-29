@@ -398,10 +398,7 @@ fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
     println!("{}", output);
 
     // Verify the publishing loop is working (driven by timer/spin_once)
-    assert!(
-        output.contains("Published:"),
-        "Timer-driven publishing should work"
-    );
+    nros_tests::output::assert_talker(&output, 1);
 
     println!("SUCCESS: Executor spin_once processes timer callbacks");
 }

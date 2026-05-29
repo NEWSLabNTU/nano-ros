@@ -49,10 +49,7 @@ fn test_zephyr_rust_talker_cyclonedds_boot() {
         output.contains("Booting Zephyr") || output.contains("nros"),
         "cyclonedds talker failed to print init banner"
     );
-    assert!(
-        output.contains("Published:"),
-        "cyclonedds talker did not publish (expected a `Published:` line)"
-    );
+    nros_tests::output::assert_talker(&output, 1);
 }
 
 /// Phase 11W.9/.10 — runtime smoke for the cyclonedds native_sim Rust

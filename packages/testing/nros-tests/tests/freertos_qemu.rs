@@ -109,11 +109,7 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
         "CycloneDDS talker did not reach publisher startup.\nOutput:\n{}",
         output
     );
-    assert!(
-        output.contains("Published:"),
-        "CycloneDDS talker did not publish.\nOutput:\n{}",
-        output
-    );
+    nros_tests::output::assert_talker(&output, 1);
 }
 
 #[test]
@@ -146,14 +142,6 @@ fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
     qemu.kill();
 
     eprintln!("FreeRTOS Rust CycloneDDS local pubsub output:\n{}", output);
-    assert!(
-        output.contains("Published:"),
-        "CycloneDDS talker did not publish.\nOutput:\n{}",
-        output
-    );
-    assert!(
-        output.contains("Received:"),
-        "CycloneDDS local subscriber did not receive a sample.\nOutput:\n{}",
-        output
-    );
+    nros_tests::output::assert_talker(&output, 1);
+    nros_tests::output::assert_listener(&output, 1);
 }
