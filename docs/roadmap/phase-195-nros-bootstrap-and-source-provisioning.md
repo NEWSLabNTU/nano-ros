@@ -295,6 +295,12 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         applied — confirm `builtin_interfaces` generates + the build is green. Do NOT
         commit the rewire / drop the gitlink until that clean run is green. The rest
         (Corrosion, install-flow, re-release, gitlink) is mechanical once .2 verifies.
+        **Confirmed mandatory:** the **baseline** (submodule nros, no rewire) now
+        also fails to build nuttx in the dev working tree (cmake-config / build-env
+        degradation after 6+ cycles — NuttX-export churn, `~/.nros/bin`+`~/.cargo/bin`
+        nros swaps), so no verification here is trustworthy and the gitlink drop
+        was **not** performed. A **fresh clone** is required for the .2 verify and
+        the drop.
   - [ ] **195.D.3 — Install `nros` in setup + CI.** `just setup`/`bootstrap.sh`
         install the pinned `nros` (`install.sh`) so the build resolves it; the
         nano-ros CI workflow installs it before `just ci`. The build assumes
