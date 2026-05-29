@@ -376,9 +376,19 @@ flow from `CARGO_FEATURE_*` into the link-feature flags) — only the `tcp/udp`
 - [x] **Book write-up done.** `user-guide/configuration.md` "Binary-size knobs"
       documents `NROS_LINK_IP` + `NROS_SMOLTCP_MAX_*` + the serial / RTOS-stack-reuse
       story.
-- [ ] **Remainder:** `nros new` scaffolds `NROS_LINK_IP=0` for serial boards
-      (lives in nros-cli); resolve the cffi register-path confound (204.1) so the
-      serial *absolute* number reflects the shed IP stack.
+- [x] **Generator auto-sets `NROS_LINK_IP=0` for serial-only builds (nros-cli
+      `fb9f241`, pending release).** `PlanBuildOptions::drops_ip_link()` is true
+      when every declared transport is Serial/CAN (no Ethernet/Wifi); empty
+      transports ⇒ false (zero-config keeps the board default). `render_cargo_config`
+      then injects `NROS_LINK_IP = "0"` into the generated `.cargo/config.toml`
+      `[env]` (merge-or-append, idempotent). Generator-side, not the board
+      descriptor — the same board builds either ethernet *or* serial, so only the
+      per-build transport choice can decide. So a `nros build`/`nros new` serial
+      project sheds the IP link with no hand-set env. (137 nros-cli-core lib tests
+      pass incl. `drops_ip_link` + `inject_env_var`.)
+- [ ] **Remainder:** ship the nros-cli change in a release + bump the index pin;
+      resolve the cffi register-path confound (the separate **204.1** item, owned
+      elsewhere) so the serial *absolute* number reflects the shed IP stack.
 
 ## Compiler + linker options — cross-layer inventory
 
