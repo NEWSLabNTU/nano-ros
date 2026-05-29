@@ -168,7 +168,29 @@ once before being trusted:
       version bump in the script busts the key). West-workspace caching deferred
       (per-line + west-update state is staleness-prone — lower ROI, higher risk).
 
-### 196.8 — [open] Zephyr dual-line: rust/cpp examples fail at interface codegen
+### 196.8 — [fixed, CI-confirming] Zephyr dual-line: rust/cpp example build gaps
+
+**Two distinct root causes, both fixed (`fdcd1bb56`, `c791e4dac`):**
+- **rust/\*** — `failed to load source for builtin_interfaces`: `just zephyr
+  build-one` never ran `nros generate-rust` for rust examples, so the generated
+  interface path-crates (std_msgs + transitive builtin_interfaces) the
+  `.cargo/config.toml` patch points at didn't exist before the cargo-driven west
+  build (the C/C++ paths codegen via `nros_generate_interfaces()` in cmake; rust
+  had no equivalent). Fix: `build-one` runs `"$codegen_tool" generate-rust
+  --force` in the example dir for `rust/*` (needs ROS sourced — AMENT). Reproduced
+  the wipe→regen locally.
+- **cpp/\*** — `node.hpp: fatal error: type_traits: No such file`: Phase
+  189.M3.3.e added `#include <type_traits>` to nros-cpp `node.hpp`; Zephyr builds
+  C++ `-ffreestanding`/picolibc (no C++ stdlib). Same class as the
+  threadx-qemu-riscv64 shim (`c8a4bec2f`). Fix: add `zephyr/cxx-compat/type_traits`
+  (enable_if + SFINAE is_convertible + integral_constant), which is already on the
+  `CONFIG_NROS_CPP_API` include path next to the existing `<cstdint>`/`<utility>`
+  shims.
+
+Both surfaced only now because the build first had to clear provisioning + the
+px4-rs workspace-load. CI run on `c791e4dac` confirming.
+
+Original triage notes:
 First full dual-line build that gets *past provisioning* (after the px4-rs
 workspace-load fix, `64ca9f69a`): **C examples build green on both lines**
 (`c/talker`, `c/listener` — 3.7 + 4.4), but **every `rust/*` and `cpp/*` example
