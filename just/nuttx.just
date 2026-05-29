@@ -170,6 +170,11 @@ build-fixtures:
     bash scripts/build/fixtures-build.sh nuttx c zenoh
     bash scripts/build/fixtures-build.sh nuttx cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
+    # Also stage the native NuttX external-app make path (the kernel ELF with
+    # all examples linked in) so a single `build-all` produces every fixture
+    # `test-all` needs — including `nuttx_make_e2e`. (Formerly the separate
+    # `build-all-full`.)
+    just nuttx build-fixtures-make
 
 # Phase 157.C — stage the integration shell + every C/C++ example
 # under $NUTTX_APPS_DIR/external/ as canonical NuttX external apps,
@@ -301,19 +306,13 @@ build-fixtures-make:
     ( cd "$nuttx_dir" && make )
     echo "NuttX external-app build complete. Binary: $nuttx_dir/nuttx"
 
-# Build NuttX artifacts needed by the standard example + test fixture tiers.
+# Build every NuttX tier, including the native external-app make path (the
+# `nuttx_make_e2e` kernel ELF). `build-fixtures` now folds in
+# `build-fixtures-make`, so this single target stages everything `test-all`
+# needs — no separate `build-all-full`.
 [group("full-matrix")]
 build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
-
-# Build every NuttX tier, including the native NuttX external-app make path.
-# Phase 178.K — keep this slower Kconfig/Application.mk coverage explicit:
-# root `build-all` and standard `nuttx build-all` only pre-stage artifacts
-# consumed by the normal `test-all` flow; `nuttx_make_e2e` skips unless this
-# target (or `build-fixtures-make`) has intentionally staged the NuttX ELF.
-[group("full-matrix")]
-build-all-full: build-all build-fixtures-make
-    @echo "NuttX full build-all completed."
 
 # Run NuttX QEMU integration tests
 [group("main")]
