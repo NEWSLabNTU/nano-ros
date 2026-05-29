@@ -439,6 +439,7 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
 independent reasons. Don't add it broadly.** Tested on
 `qemu-esp32-baremetal/rust/talker` (riscv32imc):
 
+<<<<<<< HEAD
 1. **`build-std` is silently ignored on the default *stable* toolchain.** It's a
    nightly `-Z` feature; `rust-toolchain.toml` is `channel = "stable"`, and
    riscv32imc-unknown-none-elf ships **prebuilt** core/alloc, so cargo links those
