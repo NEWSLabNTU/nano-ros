@@ -116,6 +116,45 @@ binary is stale"), not a skip. Editing any source between `build-all` and
 `test-all` therefore turns the whole zephyr suite red (~30 false fails). Run
 `test-all` immediately after `build-all` with no edits in between.
 
+## Per-platform CI (`platform-ci.yml`) — container findings (2026-05-30)
+
+The same clean-tree validation, run **per platform in the `nano-ros-ci` container**
+(Phase 196.9), surfaced a second class of from-scratch failures the local tree
+masked — a *containerised* fresh checkout has no cargo cache, no host SDK state,
+and builds the per-platform fixtures **in parallel**. All builds are now green
+6/6 (qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32); e2e is
+nightly (below). Fixes landed:
+
+- **Parallel cbindgen-header race (nuttx, the headline).** `nros-c`'s
+  `nros_generated.h` was gitignored, so on a fresh checkout the N parallel example
+  cmake projects each ran nros-c's build.rs and raced creating/truncating the
+  shared in-tree header → `fatal error: nros/nros_generated.h: No such file`.
+  Fixed by **committing `nros_generated.h`** (symmetric with the already-committed
+  `nros-cpp/include/nros/nros_cpp_ffi.h` — it's always present on a fresh
+  checkout) **+ an atomic build.rs write** (temp-then-rename, content-idempotent)
+  so parallel regen never truncates it. The local serial `build-all` never hit
+  this (an earlier nros-c build always wrote the header first).
+- **rustup `-Z build-std` cold-start race (nuttx).** Parallel `cargo +nightly`
+  build-std invocations raced rustup's shared `downloads/` dir on first component
+  fetch (`could not rename '…partial'`). `build-fixtures` now does one **serial
+  `rustup component add rust-src cargo rust-std`** for the pinned nightly before
+  the parallel builds (keeps them parallel).
+- **CI base image deps** the container lacked: newlib arm-gcc 13.2 (apt's is
+  headerless), `libslirp0`/`libpixman` (prebuilt qemu), `picolibc-riscv64-unknown-elf`
+  (threadx rv64), `ros-humble-example-interfaces` (qemu service/action codegen),
+  `unzip`/`flex`/`bison` (NuttX apps fetch), GNU `parallel`, `python3-tomli`,
+  the pinned `nightly-2026-04-11` + cross targets (`riscv64gc`, …).
+- **Misc per-platform build fixes:** freertos `.eh_frame`/`.eh_frame_hdr` FLASH
+  slot in `mps2_an385.ld` (newer rust-lld emits them); qemu test profile-dir +
+  `build-fixtures` dependency; freertos cyclone fixtures idlc-gated (skip without
+  a host idlc); `nros setup --source px4-rs` before the e2e nextest metadata pass.
+
+**e2e** runs nightly (`schedule: 0 7 * * *`) + on `workflow_dispatch`; push/PR are
+build-only. The residual per-platform e2e failures are the **same triaged set as
+the `test-all` Group-B items above** (timing-sensitive runtime — e.g. `rtos_e2e`
+NuttX C service — cross-ref archived Phase 200 / 177.2), not container-specific
+regressions.
+
 ## Acceptance
 
 - [x] `just setup all` succeeds from a deinit'd tree
