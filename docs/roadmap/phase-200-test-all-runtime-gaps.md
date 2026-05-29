@@ -45,19 +45,25 @@ on a missing tool/fixture. The 20 cluster into five groups.
 
 ## Work Items
 
-### 200.1 — Zephyr CycloneDDS runtime e2e (→ Phase 177.2 / 196.1) — pubsub + service RESOLVED ✅; actions → 177.2
+### 200.1 — Zephyr CycloneDDS runtime e2e (→ Phase 177.2 / 196.1) — RESOLVED ✅ (pubsub + service + actions)
 
-**RESOLVED 2026-05-29 (pubsub + service).** The cluster was *two build/staging
-gaps misread as a data-plane gap*, not a broken CycloneDDS data plane. With the
-network-wait relocate (above) fixing the rust build, and canonical
-`just zephyr build-fixtures` staging (distinct baked domains + `rs`-tag dirs),
-**all six zephyr cyclonedds e2e pass concurrently** on native_sim:
+**RESOLVED 2026-05-29 (pubsub + service + actions).** The cluster was *two
+build/staging gaps misread as a data-plane gap*, not a broken CycloneDDS data
+plane. With the network-wait relocate (above) fixing the rust build, and
+canonical `just zephyr build-fixtures` staging (distinct baked domains +
+`rs`-tag dirs), **all nine zephyr cyclonedds e2e pass concurrently** on
+native_sim:
 
 ```
 test_zephyr_{c,cpp,rust}_cyclonedds_pubsub_e2e   PASS
 test_zephyr_{c,cpp,rust}_cyclonedds_service_e2e  PASS
-6 tests run: 6 passed (zephyr-native-cyclonedds group, max-threads=4)
+test_zephyr_dds_{c,cpp,rs}_action_e2e            PASS
+9 tests run: 9 passed (zephyr-native-cyclonedds group, max-threads=4)
 ```
+
+Actions were already fixed under **184.8** (Zephyr POSIX mutex-pool bumped to
+2048 in the six action `prj-cyclonedds.conf` — the server no longer `abort()`s
+at SEDP); re-verified green here once the rust build + fixture staging landed.
 
 What was actually wrong (both now closed):
 
@@ -74,9 +80,11 @@ What was actually wrong (both now closed):
   link-fail on `zpico_open` / `zpico_spin_once`; the network-wait relocate
   removed that leak, so rust cyclonedds now builds and the e2e pass.
 
-**Still open → Phase 177.2:** `zephyr_dds_{c,cpp,rs}_action_e2e` — actions on
-zephyr CycloneDDS are not implemented (177.2 explicitly defers; not a 200.1
-regression).
+**Actions — RESOLVED (verified 2026-05-29).** `test_zephyr_dds_{c,cpp,rs}_action_e2e`
+all PASS. The earlier "not implemented / 177.2-deferred" reading was stale: the
+real blocker (server `abort()` at SEDP from POSIX mutex-pool exhaustion) was
+fixed under 184.8, and with the rust build + fixture staging now in place the
+goal→feedback→result path runs e2e for all three languages.
 
   **Root cause (2026-05-29, static — build-verify gated on the zephyr env).** Not
   the example sources (their `register_rmw()` is correctly `#[cfg(feature="rmw-*")]`
@@ -202,18 +210,16 @@ rename), `examples/zephyr/{c,cpp}/*/src/main.{c,cpp}` (12 callers),
 `scripts/zephyr/rust-cargo-extra-args-patch.sh` (new) + `just/zephyr.just` +
 `scripts/zephyr/setup.sh` (cargo-args patch wiring).
 
-**Remaining — cyclonedds runtime data-plane (native_sim).** With the builds
-fixed, the cyclonedds e2e + boot tests now *run* and fail at runtime: the
-embedded Cyclone boots and `session_open` runs, but its UDP transport can't
-establish — `ddsi_udp_get_socket_port: getsockname returned -1` (repeated) on
-native_sim. So the NSOS BSD-socket shim doesn't satisfy Cyclone's
-`getsockname()` expectation (unbound socket / unsupported call), and discovery
-never completes. This is the genuine 200.1 runtime item (c/cpp/rust
-`*_cyclonedds_pubsub_e2e` / `*_service_e2e` / `*_boot`), plus the deferred
-zephyr cyclonedds actions (177.2). Triage the NSOS `getsockname`/bind path next.
-**Files (runtime, open):** `packages/testing/nros-tests/tests/{zephyr,phase_118_collapse}.rs`,
-`packages/dds/nros-rmw-cyclonedds/`, the NSOS BSD-socket shim
-(`packages/drivers/nsos-netx` / `getsockname` path).
+**Runtime data-plane (native_sim) — RESOLVED, was a missing-patch condition.**
+The `ddsi_udp_get_socket_port: getsockname returned -1` symptom (Cyclone's UDP
+transport can't read its bound port → discovery never completes) is exactly what
+the **NSOS `getsockname` patch** addresses — `scripts/zephyr/patches/3.7.sh`
+applies `nsos-getsockname-patch` (Phase 11W.8/.12) to teach the NSOS BSD-socket
+shim to return the bound address. The earlier "open runtime item" reading was on
+a workspace missing that patch (a partial `setup.sh` / stale workspace). On a
+workspace built through the full `just zephyr setup` 3.7 patch set, **all nine
+`*_cyclonedds_*_e2e` pass** (above). If the symptom recurs, re-run
+`bash scripts/zephyr/patches/3.7.sh <workspace>` — don't re-triage the shim.
 
 ### 200.2 — XRCE action/service runtime e2e — FIXED ✅
 
@@ -391,7 +397,7 @@ setup-only: zephyr-lang-rust workspace pin sync + `clippy` rustup component.
 
 - [x] 200.1 zephyr CycloneDDS c/cpp pubsub+service exchange data on native_sim (+ rust; 6/6 e2e pass concurrently, 2026-05-29)
 - [x] 200.1 rust+cyclonedds zephyr links (network-wait relocate; verified rust/c/cpp × all RMW)
-- [ ] 200.1 zephyr CycloneDDS actions implemented (or explicitly skip! pending 177.2)
+- [x] 200.1 zephyr CycloneDDS actions implemented (184.8 mutex-pool fix; 3/3 dds action e2e pass, 2026-05-29)
 - [x] 200.2 XRCE action/service e2e complete goal→result over the agent
 - [x] 200.3 nuttx C service e2e + external-apps link pass (both verified green
       on a provisioned host; no code fix — tests correct + already robust)
