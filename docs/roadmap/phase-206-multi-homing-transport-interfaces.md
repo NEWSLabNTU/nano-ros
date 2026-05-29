@@ -1,4 +1,4 @@
-# Phase 203 — Multi-homing: `[[transport]].interfaces` wire emission
+# Phase 206 — Multi-homing: `[[transport]].interfaces` wire emission
 
 **Goal.** Make a node's transport span several NICs as **one merged graph** — the
 common "node reachable on multiple interfaces" need that stock DDS/zenoh do
@@ -13,7 +13,7 @@ multi-NIC target exists. Cyclone is the one backend where it's both meaningful
 *and* testable today.
 
 **Depends on.** Phase 172.K.7 schema/plumbing (landed); Phase 175.A (native
-Cyclone build path) for the Cyclone config seam (203.3).
+Cyclone build path) for the Cyclone config seam (206.3).
 
 ## Overview
 
@@ -23,9 +23,9 @@ Vec<String>`, validates (ethernet/wifi only), and the generator emits a no-op
 accept the TOML array. **But nothing binds an actual NIC yet** — the seam is inert.
 
 Three blockers gate real binding, in dependency order: a multi-endpoint runtime
-`SessionSpec` (203.1), the per-backend mapping (203.2 zenoh decision, 203.3
+`SessionSpec` (206.1), the per-backend mapping (206.2 zenoh decision, 206.3
 Cyclone `<Interfaces>` emission), and a multi-NIC target to verify against
-(203.4). Distinct from Phase 172.K.5 (multi-domain = *segregate* sessions); this
+(206.4). Distinct from Phase 172.K.5 (multi-domain = *segregate* sessions); this
 is *merge* — one session, many NICs.
 
 Design: [`docs/design/configuration-and-transports.md`](../design/configuration-and-transports.md)
@@ -56,7 +56,7 @@ largely the router's concern and needs a semantics decision before emission.
 
 ## Work Items
 
-### 203.1 — Multi-endpoint `SessionSpec` (runtime, `nros`)
+### 206.1 — Multi-endpoint `SessionSpec` (runtime, `nros`)
 - [ ] `SessionSpec` carries a **list** of endpoints (locator + per-endpoint
       interface), not one `locator`; `RmwConfig` threads the list to the backend;
       `Executor::open_multi` wires N endpoints onto one session as a single graph
@@ -69,7 +69,7 @@ largely the router's concern and needs a semantics decision before emission.
       endpoints and asserts each is wired (mock backend records the endpoint list).
       The prerequisite for any real merge.
 
-### 203.2 — zenoh-pico multi-homing semantics (decision + emission)
+### 206.2 — zenoh-pico multi-homing semantics (decision + emission)
 - [ ] Decide what `interfaces` means for a zenoh-**pico client** (single locator
       to the router): (a) no-op at node level with a documented rationale (the
       router multi-homes), or (b) map to multiple `connect` endpoints / a scouting
@@ -81,7 +81,7 @@ largely the router's concern and needs a semantics decision before emission.
 - [ ] **Acceptance:** the decision is documented and the generator's zenoh output
       matches it (a generate-test asserting the emitted call/no-op).
 
-### 203.3 — Cyclone `<Interfaces>` config emission (generator → CycloneDDS)
+### 206.3 — Cyclone `<Interfaces>` config emission (generator → CycloneDDS)
 - [ ] Build the generator → Cyclone-config seam: emit
       `<General><Interfaces><NetworkInterface name="…"/></Interfaces>` from
       `interfaces`, fed to Cyclone via a generated `CYCLONEDDS_URI` fragment (or a
@@ -93,9 +93,9 @@ largely the router's concern and needs a semantics decision before emission.
 - [ ] **Files:** generator Cyclone-config emission, `packages/dds/nros-rmw-cyclonedds/`
       (`session.cpp`), the native Cyclone build path (Phase 175.A).
 - [ ] **Acceptance:** the generated Cyclone config (URI/file) contains the declared
-      NICs; a generate-test asserts the `<Interfaces>` emission. **Depends on 203.1.**
+      NICs; a generate-test asserts the `<Interfaces>` emission. **Depends on 206.1.**
 
-### 203.4 — Multi-NIC verification target (hosted Cyclone)
+### 206.4 — Multi-NIC verification target (hosted Cyclone)
 - [ ] A hosted Cyclone build/test that binds **specific** NICs and verifies the
       binding takes effect — every board has one NIC, but a host has `lo` + a real
       NIC, so `interfaces = ["lo"]` (or `["lo","<eth>"]`) is the first
@@ -106,9 +106,9 @@ largely the router's concern and needs a semantics decision before emission.
 - [ ] **Files:** `packages/testing/nros-tests/` (or the codegen `orchestration_e2e`),
       a hosted Cyclone fixture.
 - [ ] **Acceptance:** an e2e proving the declared `interfaces` actually bind.
-      **Depends on 203.3.** This is the gate that makes 203 worth finishing.
+      **Depends on 206.3.** This is the gate that makes 206 worth finishing.
 
-### 203.5 — Fast DDS whitelist (future, out of scope)
+### 206.5 — Fast DDS whitelist (future, out of scope)
 - [ ] When/if a Fast DDS backend lands, map `interfaces` → its interface
       whitelist. Tracked here for completeness; not actionable until that backend
       exists.
@@ -127,8 +127,8 @@ largely the router's concern and needs a semantics decision before emission.
 
 - **Merge vs segregate.** Phase 172.K.5 (multi-domain) opens one session *per*
   domain (segregate); this phase merges N NICs into *one* session. Both use
-  `open_multi`, but 203.1's endpoint-list spec is the new primitive.
+  `open_multi`, but 206.1's endpoint-list spec is the new primitive.
 - **Why Cyclone first.** It's the only backend where multi-homing is both
   meaningful (real `<Interfaces>` directive) and testable today (a host has ≥2
   NICs). zenoh-pico's single-locator client model makes node-level multi-listen
-  the router's concern (203.2 decides this); Fast DDS doesn't exist yet (203.5).
+  the router's concern (206.2 decides this); Fast DDS doesn't exist yet (206.5).

@@ -848,7 +848,7 @@ example migration (K), then the audit/docs (N).
         lands. *(`[[bridge]]` is a topic-forwarding gateway, not node placement
         — out of scope for K.5; that's the W.5/bridge-data-plane line.)*
   - [~] **172.K.7 — multi-homing `[[transport]].interfaces` (list). Schema +
-        plumbing landed; wire-emission EXTRACTED to [Phase 203](../phase-203-multi-homing-transport-interfaces.md)**
+        plumbing landed; wire-emission EXTRACTED to [Phase 206](../phase-206-multi-homing-transport-interfaces.md)**
         (2026-05-29). A single
         session spanning several NICs as one merged graph (taxonomy cases B/C —
         the common "node reachable on multiple interfaces" need, what stock
@@ -870,7 +870,7 @@ example migration (K), then the audit/docs (N).
               interfaces_absent_round_trips_empty_and_skips_serialization,
               interfaces_are_ethernet_wifi_only}` +
               `multi_homed_interfaces_emit_set_interfaces_call`.
-        - [~] **Per-backend *wire* emission (the merge) — moved to [Phase 203](../phase-203-multi-homing-transport-interfaces.md)** (203.1 multi-endpoint SessionSpec → 203.2 zenoh decision → 203.3 Cyclone `<Interfaces>` → 203.4 multi-NIC verify). The `interfaces`
+        - [~] **Per-backend *wire* emission (the merge) — moved to [Phase 206](../phase-206-multi-homing-transport-interfaces.md)** (206.1 multi-endpoint SessionSpec → 206.2 zenoh decision → 206.3 Cyclone `<Interfaces>` → 206.4 multi-NIC verify). The `interfaces`
               list plumbs cleanly to a no-op `set_interfaces` seam but still changes no
               backend's actual NIC binding. Three blockers, in order:
               1. **Multi-endpoint `SessionSpec` (runtime, `nros`).** `SessionSpec::new(rmw,
