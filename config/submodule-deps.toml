@@ -27,9 +27,10 @@
 # -- Always required --------------------------------------------------
 
 [required]
-# colcon-nano-ros codegen tooling. Even pure-Rust users depend on
-# `nros generate-rust`, which lives here.
-paths = ["packages/codegen"]
+# Phase 195.D retired the `packages/codegen` submodule — `nros` (incl.
+# `nros generate-rust`) now ships as a prebuilt release from NEWSLabNTU/nros-cli,
+# installed by `scripts/install-nros.sh` / `just setup`, not built in-tree.
+paths = []
 recursive = false
 
 # -- RMW backends -----------------------------------------------------

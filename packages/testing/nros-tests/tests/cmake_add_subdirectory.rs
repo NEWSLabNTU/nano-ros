@@ -28,9 +28,10 @@
 //! presumes a working host toolchain, matching the project-wide "no
 //! silent skip" rule from CLAUDE.md.
 //!
-//! Skip-via-panic (`nros_tests::skip!`) only when the codegen submodule
-//! at `packages/codegen/` isn't initialised — in that case the in-tree
-//! build cannot complete and the failure has nothing to do with Phase 137.
+//! Skip-via-panic (`nros_tests::skip!`) only when the host `nros` build tool
+//! isn't installed (Phase 195.D — it ships as a prebuilt release; the cmake
+//! build resolves it from PATH / ~/.nros/bin). The failure then has nothing to
+//! do with Phase 137.
 
 use std::{
     fs,
@@ -46,6 +47,28 @@ fn workspace_root() -> PathBuf {
         .nth(3)
         .expect("workspace root above CARGO_MANIFEST_DIR")
         .to_path_buf()
+}
+
+/// Phase 195.D — the host `nros` build tool ships as a prebuilt release
+/// (`scripts/install-nros.sh` → `~/.nros/bin`), resolved by cmake from
+/// `$NROS_CLI` / PATH / `~/.nros/bin`. True iff one of those resolves.
+fn nros_tool_available() -> bool {
+    if let Some(p) = std::env::var_os("NROS_CLI") {
+        if Path::new(&p).is_file() {
+            return true;
+        }
+    }
+    if Command::new("nros")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+    {
+        return true;
+    }
+    let home = std::env::var_os("NROS_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".nros")));
+    home.map(|h| h.join("bin/nros").is_file()).unwrap_or(false)
 }
 
 const USER_CMAKE: &str = r#"cmake_minimum_required(VERSION 3.22)
@@ -74,16 +97,13 @@ int main(void) {
 #[test]
 fn cmake_add_subdirectory_smoke() {
     let root = workspace_root();
-    // Phase 137.2 depends on the codegen submodule being checked out;
-    // without it the in-tree include() can't reach
-    // `NanoRosGenerateInterfaces.cmake` and the root CMakeLists never
-    // hits a steady state. Skip cleanly so a fresh worktree without
-    // submodules surfaces the right signal.
-    let codegen_marker =
-        root.join("packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake");
-    if !codegen_marker.exists() {
+    // Phase 195.D — the cmake build resolves the host `nros` tool (the codegen
+    // submodule was retired; `nros` ships as a prebuilt release). Skip cleanly
+    // if it isn't installed so a fresh checkout without `nros` surfaces the
+    // right signal rather than a confusing cmake `find_program` failure.
+    if !nros_tool_available() {
         nros_tests::skip!(
-            "codegen submodule not initialised — run `git submodule update --init packages/codegen` first"
+            "nros build tool not installed — run scripts/install-nros.sh (or `just setup`) first"
         );
     }
 

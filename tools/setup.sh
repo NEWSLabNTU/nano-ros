@@ -146,14 +146,13 @@ resolve_nros_bin() {
         command -v nros
         return 0
     fi
-    local t
-    for t in release debug; do
-        local cand="${REPO_ROOT}/packages/codegen/packages/target/${t}/nros"
-        if [[ -x "$cand" ]]; then
-            echo "$cand"
-            return 0
-        fi
-    done
+    # Phase 195.D — the codegen submodule was retired; `nros` ships as a
+    # prebuilt release installed by scripts/install-nros.sh into ~/.nros/bin.
+    local cand="${NROS_CLI:-${NROS_HOME:-$HOME/.nros}/bin/nros}"
+    if [[ -x "$cand" ]]; then
+        echo "$cand"
+        return 0
+    fi
 }
 
 # ---------------------------------------------------------- list-targets

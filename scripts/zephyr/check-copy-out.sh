@@ -72,10 +72,11 @@ fi
 src="$NROS_ROOT/examples/zephyr/$EXAMPLE"
 [ -d "$src" ] || { echo "FAIL: no example at $src"; exit 1; }
 
-# Host codegen tool — the example's nros_generate_interfaces() needs it.
+# Host codegen tool — the example's nros_generate_interfaces() needs the
+# installed `nros` (Phase 195.D: resolved from $NROS_CLI / PATH / ~/.nros).
 nros_cargo_ensure_codegen_c
-codegen_tool="$NROS_ROOT/packages/codegen/packages/target/$(nros_cargo_target_profile_dir)/nros"
-[ -x "$codegen_tool" ] || { echo "FAIL: codegen tool not built at $codegen_tool"; exit 1; }
+codegen_tool="$(nros_cargo_codegen_c_bin)"
+[ -x "$codegen_tool" ] || { echo "FAIL: nros codegen tool not found ($codegen_tool); run scripts/install-nros.sh"; exit 1; }
 
 # Version-aware NSOS line overlay (4.4 symbol names).
 line_overlay="$NROS_ROOT/cmake/zephyr/native-sim-line-4.4.conf"

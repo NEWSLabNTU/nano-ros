@@ -42,19 +42,18 @@ setup:
     @just workspace cargo-tools
     @just workspace build-codegen
 
-# Build the host `nros-codegen` CLI (the message/IDL codegen tool used by
+# Verify the host `nros` build tool resolves (the message/IDL codegen used by
 # `nros generate-*`, the cmake `nano_ros_generate_interfaces()` path, and the
-# NuttX external-app FFI staging). It is a host TOOL (like idlc/zenohd), so it
-# belongs in setup, not in every build recipe — built once here and preserved
-# by `just clean` (the codegen cargo workspace is excluded from clean). Build
-# recipes keep `nros_cargo_ensure_codegen_c` as an idempotent safety net.
+# NuttX external-app FFI staging). Phase 195.D — `nros` is an installed prebuilt
+# (cargo-tools ran scripts/install-nros.sh just above); this is the setup-stage
+# presence check. Build recipes keep `nros_cargo_ensure_codegen_c` as a net.
 [group("setup")]
 build-codegen:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
-    echo "[codegen] built: $(nros_cargo_codegen_c_bin)"
+    echo "[codegen] nros tool: $(nros_cargo_codegen_c_bin)"
 
 # Build the pinned GNU make (>=4.4) from source under third-party/make/.
 # Ubuntu's make 4.3 jobserver is pipe-fd-based; ninja 1.13's jobserver
@@ -389,10 +388,9 @@ cargo-tools:
     cargo install espflash --locked      || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked      || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
-    # Phase 195.D.3 — when the main-tracking `nros` release is cut (195.D.4),
-    # switch this to `scripts/install-nros.sh` (install the prebuilt release) and
-    # the `packages/codegen` submodule can be dropped (195.D.5). Until then the
-    # published release (0.2.0) lacks the 195.C descriptor orchestration that
-    # `nros setup` / the dep-chain CI need, so keep building the CLI from the
-    # in-tree submodule (dd18511) to stay current.
-    cargo install --path packages/codegen/packages/nros-cli --locked
+    # Phase 195.D — `nros` is the prebuilt build tool the build assumes is
+    # provided; it ships from the standalone NEWSLabNTU/nros-cli repo (the
+    # in-tree codegen submodule was retired in 195.D.5). Install the pinned
+    # release. Contributors hacking on nros itself put their own build on PATH /
+    # set $NROS_CLI; install-nros.sh skips when `nros` is already resolvable.
+    "{{justfile_directory()}}/scripts/install-nros.sh"

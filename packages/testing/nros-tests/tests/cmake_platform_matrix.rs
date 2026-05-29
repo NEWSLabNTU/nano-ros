@@ -41,18 +41,31 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Skip the entire matrix when the codegen submodule isn't initialised
-/// — same precondition as Phase 137's smoke test (the root CMakeLists
-/// includes the codegen cmake module unconditionally on POSIX).
+/// Phase 195.D — skip the matrix when the host `nros` build tool isn't
+/// installed (it ships as a prebuilt release via `scripts/install-nros.sh`;
+/// the root CMakeLists resolves it from `$NROS_CLI` / PATH / `~/.nros/bin`).
 fn require_codegen_or_skip() {
-    let root = workspace_root();
-    let codegen_marker =
-        root.join("packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake");
-    if !codegen_marker.exists() {
-        nros_tests::skip!(
-            "codegen submodule not initialised — run `git submodule update --init packages/codegen` first"
-        );
+    if let Some(p) = std::env::var_os("NROS_CLI") {
+        if Path::new(&p).is_file() {
+            return;
+        }
     }
+    if Command::new("nros")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+    {
+        return;
+    }
+    let home = std::env::var_os("NROS_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| Path::new(&h).join(".nros")));
+    if home.map(|h| h.join("bin/nros").is_file()).unwrap_or(false) {
+        return;
+    }
+    nros_tests::skip!(
+        "nros build tool not installed — run scripts/install-nros.sh (or `just setup`) first"
+    );
 }
 
 const USER_CMAKE_TEMPLATE: &str = r#"cmake_minimum_required(VERSION 3.22)

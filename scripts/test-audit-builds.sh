@@ -8,7 +8,6 @@ cd "$root"
 scopes=(
   packages/testing/nros-tests/src
   packages/testing/nros-tests/tests
-  packages/codegen/packages/nros-cli-core/tests
 )
 
 echo "== direct build-tool process spawns =="

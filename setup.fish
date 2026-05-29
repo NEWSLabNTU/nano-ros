@@ -27,7 +27,7 @@ set -l _nros_bin_dirs \
     "$NROS_ROOT/build/zenohd" \
     "$NROS_ROOT/build/qemu/bin" \
     "$NROS_ROOT/build/xrce-agent" \
-    "$NROS_ROOT/packages/codegen/packages/target/release"
+    (set -q NROS_HOME; and echo "$NROS_HOME/bin"; or echo "$HOME/.nros/bin")
 
 # Strip any previous nano-ros entries from PATH before re-adding.
 set -l _nros_clean
@@ -68,8 +68,9 @@ end
 _nros_set_if_exists NROS_ZENOHD          "$NROS_ROOT/build/zenohd/zenohd"
 _nros_set_if_exists NROS_QEMU_SYSTEM_ARM "$NROS_ROOT/build/qemu/bin/qemu-system-arm"
 _nros_set_if_exists NROS_XRCE_AGENT      "$NROS_ROOT/build/xrce-agent/MicroXRCEAgent"
-_nros_set_if_exists NROS_CODEGEN         "$NROS_ROOT/packages/codegen/packages/target/release/nros-codegen"
-_nros_set_if_exists NROS_CLI             "$NROS_ROOT/packages/codegen/packages/target/release/nros"
+set -l _nros_home (set -q NROS_HOME; and echo "$NROS_HOME"; or echo "$HOME/.nros")
+_nros_set_if_exists NROS_CLI             "$_nros_home/bin/nros"
+_nros_set_if_exists NROS_CODEGEN         "$_nros_home/bin/nros"
 
 functions -e _nros_set_if_exists
 

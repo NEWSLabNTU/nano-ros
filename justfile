@@ -1178,13 +1178,12 @@ format-cpp:
     clang-format -i packages/core/nros-cpp/include/nros/*.hpp
     @echo "C++ headers formatted."
 
-# Format Python code (colcon-cargo-ros2) with ruff
+# Format Python code with ruff. Phase 195.D — the colcon extension moved to the
+# nros-cli repo with the retired packages/codegen submodule; no in-tree Python
+# package remains to format (nros-cli's own CI owns it).
 [private]
 format-python:
-    @echo "Formatting Python code..."
-    ruff format packages/codegen/packages/colcon-cargo-ros2/
-    ruff check --fix packages/codegen/packages/colcon-cargo-ros2/
-    @echo "Python code formatted."
+    @echo "No in-tree Python package to format (nros-cli owns the colcon extension)."
 
 # Check C code: formatting + nros-c umbrella header syntax
 [private]
@@ -1248,10 +1247,7 @@ check-cpp:
 # Check Python code: formatting + linting with ruff
 [private]
 check-python:
-    @echo "Checking Python code..."
-    ruff format --check packages/codegen/packages/colcon-cargo-ros2/
-    ruff check packages/codegen/packages/colcon-cargo-ros2/
-    @echo "All Python checks passed!"
+    @echo "No in-tree Python package to check (nros-cli owns the colcon extension)."
 
 # Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
 [group("debug")]
@@ -1510,11 +1506,12 @@ build-zenoh-pico:
 # Message Bindings
 # =============================================================================
 
-# Install the canonical nros CLI.
+# Install the canonical nros CLI (prebuilt release; Phase 195.D — the in-tree
+# codegen submodule was retired, so install from NEWSLabNTU/nros-cli Releases).
 [group("maintenance")]
 install-nros-cli:
-    @echo "Installing nros CLI..."
-    cargo install --path packages/codegen/packages/nros-cli --locked
+    @echo "Installing nros CLI (prebuilt release)..."
+    "{{justfile_directory()}}/scripts/install-nros.sh"
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
@@ -2052,9 +2049,9 @@ clean: clean-examples clean-fixtures
 [group("maintenance")]
 clean-setup: clean-zenohd
     rm -rf build/install build/cyclonedds build/qemu build/xrce-agent build/zephyr-cache
-    # host nros-codegen CLI (setup-stage tool — preserved by `clean`, removed here)
-    cargo clean --manifest-path packages/codegen/packages/Cargo.toml
-    @echo "SDK/tool installs + host nros-codegen removed. Re-run 'just setup tier=all'."
+    # Phase 195.D — `nros` is an installed prebuilt (no in-tree codegen build to
+    # clean); remove it with: rm -rf "${NROS_HOME:-$HOME/.nros}".
+    @echo "SDK/tool installs removed. Re-run 'just setup tier=all' (and scripts/install-nros.sh for nros)."
 
 # =============================================================================
 # Docker: use `just docker build`, `just docker shell`, `just docker test`, etc.

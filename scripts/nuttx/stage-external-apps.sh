@@ -23,7 +23,7 @@ fi
 NUTTX_APPS_DIR="$1"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 INTEGRATION="$ROOT/integrations/nuttx"
-CODEGEN="${2:-${NROS_CODEGEN:-$ROOT/packages/codegen/packages/target/release/nros}}"
+CODEGEN="${2:-${NROS_CODEGEN:-${NROS_CLI:-$(command -v nros 2>/dev/null || echo "${NROS_HOME:-$HOME/.nros}/bin/nros")}}}"
 
 if [ ! -f "$NUTTX_APPS_DIR/Make.defs" ]; then
     echo "error: $NUTTX_APPS_DIR doesn't look like a NuttX apps tree (no Make.defs)" >&2

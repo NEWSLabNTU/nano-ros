@@ -46,11 +46,11 @@
 //!
 //! ## 3. Generate message bindings
 //!
-//! Install the codegen tool (one-time):
+//! Install the `nros` tool (one-time) — prebuilt release, no build:
 //!
 //! ```bash
-//! cargo install --git https://github.com/jerry73204/nano-ros \
-//!     --path packages/codegen/packages/nros-cli
+//! curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+//! # or, from a checkout:  scripts/install-nros.sh   (or: just setup)
 //! ```
 //!
 //! Generate bindings (for packages beyond `std_msgs`/`builtin_interfaces`,

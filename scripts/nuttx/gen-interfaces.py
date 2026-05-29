@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -226,10 +227,15 @@ def main(argv: list[str]) -> int:
         )
         return 2
     example_dir = Path(argv[1]).resolve()
+    # Phase 195.D — `nros` is the installed prebuilt tool (PATH / ~/.nros/bin);
+    # the in-tree codegen submodule was retired.
     codegen = (
         Path(argv[2])
         if len(argv) >= 3
-        else (REPO_ROOT / "packages/codegen/packages/target/release/nros")
+        else Path(
+            shutil.which("nros")
+            or (Path(os.environ.get("NROS_HOME", str(Path.home() / ".nros"))) / "bin" / "nros")
+        )
     )
     if not codegen.exists():
         print(

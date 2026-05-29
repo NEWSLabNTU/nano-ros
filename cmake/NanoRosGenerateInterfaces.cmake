@@ -88,33 +88,25 @@ if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
 endif()
 
 if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
-  # Phase 157.A — last-ditch fallback. The POSIX branch of the root
-  # `CMakeLists.txt` pre-caches this via `$<TARGET_FILE:nros-codegen>`
-  # (Corrosion target) + every cross-compile platform module calls
-  # `nros_bootstrap_codegen()` from
-  # `cmake/NanoRosBootstrapCodegen.cmake`. If neither path fired we
-  # try PATH + the canonical host-build location one more time before
-  # erroring out — keeps custom platform integrations that don't go
-  # through the standard modules working.
-  # Phase 195.D: the codegen tool is the canonical `nros` binary
-  # (`nros codegen …`); the standalone `nros-codegen` was merged in.
+  # Phase 195.D — `nros` is the prebuilt build tool the build assumes is
+  # provided; the `packages/codegen` submodule (its former in-tree source) was
+  # retired. Resolve it from PATH or ~/.nros/bin (where `scripts/install-nros.sh`
+  # lands it); cross-compile platform modules pre-set `_NANO_ROS_CODEGEN_TOOL`
+  # via `nros_bootstrap_codegen()`. A consumer may override with
+  # `-D_NANO_ROS_CODEGEN_TOOL=<path>`.
   find_program(_NANO_ROS_CODEGEN_TOOL nros
     PATHS
-      "${_NANO_ROS_PREFIX}/packages/codegen/packages/target/${_NROS_CODEGEN_TARGET_PROFILE_DIR}"
-      "${_NANO_ROS_PREFIX}/packages/codegen/packages/target/release"
+      "$ENV{NROS_HOME}/bin"
+      "$ENV{HOME}/.nros/bin"
   )
 
   if(NOT _NANO_ROS_CODEGEN_TOOL)
     message(FATAL_ERROR
-      "nros (codegen tool) not found. Phase 140 deleted the install layout; "
-      "nano-ros is consumed via add_subdirectory(<repo-root>) and the "
-      "codegen tool is built either by the POSIX root branch "
-      "(Corrosion target) or auto-bootstrapped by the cross-compile "
-      "platform modules. Pre-build with:\n"
-      "  cargo build --release -p nros-cli\n"
-      "(run inside packages/codegen/packages/) or pass\n"
-      "  -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros>\n"
-      "to the consumer's cmake invocation."
+      "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros assumes "
+      "`nros` is provided (Phase 195.D retired the in-tree codegen submodule). "
+      "Install it with:\n"
+      "  scripts/install-nros.sh        # or: just setup\n"
+      "or pass -D_NANO_ROS_CODEGEN_TOOL=<path-to-nros> to the consumer's cmake."
     )
   endif()
 

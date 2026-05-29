@@ -109,10 +109,6 @@ nros_cargo_fetch_root() {
     cargo fetch --locked
 }
 
-nros_cargo_fetch_codegen() {
-    cargo fetch --locked --manifest-path packages/codegen/packages/Cargo.toml
-}
-
 nros_cli_bin() {
     if [ -n "${NROS_CLI:-}" ]; then
         if [ -x "$NROS_CLI" ]; then

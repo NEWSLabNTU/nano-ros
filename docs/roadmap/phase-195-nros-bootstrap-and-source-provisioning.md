@@ -293,45 +293,33 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         `rm -rf` in a worktree script that ran in the main repo; restored via
         recursive submodule re-fetch + `just setup default` + `scripts/nuttx/build-nuttx.sh`.
         The accident, not the rewire, was the source of the prior "tree degradation".)*
-  - [~] **195.D.3 — Install `nros` in setup + CI.** Infra prepared, switch
-        **deferred to post-.4**. Added `scripts/install-nros.sh` — a nano-ros-owned
-        installer that fetches the pinned prebuilt `nros` from the nros-cli
-        Releases and survives the submodule drop (the old `packages/codegen/install.sh`
-        vanishes with .5); `bootstrap.sh` now uses it. `just setup`'s `cargo-tools`
-        recipe still `cargo install`s the CLI **from the in-tree submodule**
-        (dd18511) on purpose: the published release (0.2.0 / `da75c37`) **predates
-        195.C** (`458154c feat(195.C): resolve board profiles from workspace
-        descriptors` — +410/-845 in `generate.rs`, the new `nros-board.toml`
-        descriptors), so installing 0.2.0 would regress `nros setup` orchestration.
-        Flip `cargo-tools` to `scripts/install-nros.sh` once .4 lands.
-  - [ ] **195.D.4 — Re-cut a main-tracking `nros` release + pin it. *(MAINTAINER —
-        agent-blocked.)*** Cut `nros-v<next>` from current `nros-cli` main (dd18511,
-        so codegen **and** the 195.C descriptor orchestration match the workspace),
-        build the libc-only host binaries (all 4 hosts), publish the GitHub Release
-        on `NEWSLabNTU/nros-cli`, fill `[tool.nros].dist` + sha256 (4 hosts) in the
-        SDK index, then bump `NROS_VERSION` in `scripts/install-nros.sh`. **The agent
-        cannot do this** — it needs a multi-host binary build + a push/publish to the
-        external `nros-cli` repo (data-exfiltration guard; no scoped allow-rule for a
-        GH release). The build's cmake C/C++ codegen is version-insensitive (gate
-        proved 0.2.0 builds `just nuttx build-fixtures` green incl. `builtin_interfaces`),
-        but `nros setup` / `scripts/ci/dep-chain-check.sh` need 195.C ⇒ this release
-        is the hard gate for .5.
-  - [ ] **195.D.5 — Remove the gitlink. *(Blocked on .4.)*** Once the .4 release is
-        cut + `install-nros.sh` repinned: flip `cargo-tools` to `install-nros.sh`,
-        rewire the CI workflows that build the CLI from the submodule
-        (`dep-chain.yml` builds + runs with `target/debug/nros`; `zephyr-dual-line.yml`
-        inits `packages/codegen` ×3) to install the release instead, drop the
-        in-submodule test hooks (`native.just:558` nros-cli-core test;
-        `scripts/{check-profile-board-mirror,test-audit-builds,ci/*}.sh`,
-        `tests/cmake_{add_subdirectory,platform_matrix}.rs`), strip the submodule
-        codegen-tool probes (`cmake/NanoRosBootstrapCodegen.cmake`,
-        `NanoRosGenerateInterfaces.cmake:103-104`, `tools/setup.sh:151`,
-        `cargo.sh` `nros_cargo_fetch_codegen`), simplify the guarded
-        `CMakeLists.txt:317 add_subdirectory(...nros-cli)` branch, remove
-        `packages/codegen` from `config/submodule-deps.toml`, then
-        `git rm packages/codegen` + drop the `.gitmodules` entry. Fresh clone builds
-        with only the installed `nros`. (Inventory: ~20 in-tree ref sites + 4 CI
-        workflows — gathered 2026-05-29.)
+  - [x] **195.D.3 — Install `nros` in setup + CI. DONE.** `scripts/install-nros.sh`
+        (nano-ros-owned, pins the release, survives the submodule drop) is used by
+        `bootstrap.sh`, `just setup`'s `cargo-tools`, the root `install-nros-cli`
+        recipe, and the CI workflows (`ci.yml`, `dep-chain.yml`, `zephyr-dual-line.yml`
+        all install the prebuilt + add `~/.nros/bin` to PATH instead of building the
+        CLI from the submodule). The build assumes `nros` is provided (187.6).
+  - [x] **195.D.4 — Re-cut a main-tracking `nros` release + pin it. DONE
+        (`nros-v0.3.0`).** Cut from `nros-cli` main (97ff3fc — dd18511 + 195.C +
+        the ci/fmt fixes); `release-binary.yml` published linux-x86_64 + linux-arm64
+        + macos-arm64 (macos-x86_64 left source-fallback, flaky runner queue). SDK
+        index `[tool.nros]` → 0.3.0 + sha256 (3 hosts); `install-nros.sh`
+        `NROS_VERSION` → 0.3.0; submodule pointer → f2b3363. Verified install +
+        `nros setup --list`.
+  - [x] **195.D.5 — Remove the gitlink. DONE.** `git rm packages/codegen` + dropped
+        the `.gitmodules` entry. Rewired every consumer to the installed `nros`:
+        CI workflows (×3) install the release; `cargo.sh`/recipes resolve
+        `$NROS_CLI`/PATH/`~/.nros/bin`; `cmake/NanoRosBootstrapCodegen.cmake` +
+        `NanoRosGenerateInterfaces.cmake` + `tools/setup.sh` probe PATH/`~/.nros`;
+        `CMakeLists.txt` dropped the submodule `add_subdirectory`/Corrosion-target
+        branches; `config/submodule-deps.toml` no longer requires it; in-submodule
+        test hooks removed (native.just codegen recipes, `test-audit-builds.sh`, the
+        `cmake_*` test skip-conditions now gate on installed `nros`); root `justfile`
+        Python format/check + install + clean-setup de-submoduled;
+        `setup.{bash,fish}` export `~/.nros/bin`. `check-profile-board-mirror.sh`
+        self-skips (its generator drift-check is nros-cli's concern now).
+        **Verified:** `just nuttx build-fixtures` builds all Rust + C + C++ fixtures
+        green with the submodule physically removed + the installed `nros`.
 - [x] **195.E — Refresh the `nros-cli` repo's README + CLI help text.** DONE
       (`da75c37`). `README.md` rewritten around the `nros` CLI (was the
       colcon-cargo-ros2 / PyPI doc): prebuilt install (`curl|sh install.sh`), the

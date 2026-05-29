@@ -310,40 +310,23 @@ if(TARGET NanoRos AND TARGET NanoRos::Platform)
 endif()
 
 # ---------------------------------------------------------------------------
-# Codegen tool and bundled interfaces are host-only artifacts; skip them
-# when cross-compiling for an embedded target.
-# ---------------------------------------------------------------------------
-if(NANO_ROS_PLATFORM STREQUAL "posix")
-    if(NANO_ROS_BUILD_CODEGEN AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/packages/codegen/packages/nros-cli")
-        add_subdirectory(packages/codegen/packages/nros-cli)
-    endif()
-endif()
-
-# ---------------------------------------------------------------------------
-# Phase 137.2 / 140 — codegen module reachable from in-tree consumers.
+# Phase 137.2 / 140 / 195.D — codegen module reachable from in-tree consumers.
 #
-# The function lives in the codegen submodule. We `include()` it
-# directly so consumers reaching this root via `add_subdirectory` get
-# `nros_generate_interfaces()` + `nros_find_interfaces()` without an
+# `nros_generate_interfaces()` + `nros_find_interfaces()` are provided by the
+# in-tree `cmake/NanoRosGenerateInterfaces.cmake`; we `include()` it directly so
+# consumers reaching this root via `add_subdirectory` get them without an
 # install step (Phase 140 — no install layout exists any more).
 #
-# The codegen module runs `find_program(nros-codegen ...)` at include
-# time. In-tree consumers don't have an installed `<prefix>/bin/nros-codegen`,
-# so we point `_NANO_ROS_CODEGEN_TOOL` at the Corrosion-emitted binary
-# location BEFORE include — the module's eager find_program block
-# short-circuits when the cache var is already set. The binary itself
-# is produced once the user runs `cmake --build`; that is fine because
-# the codegen module only invokes the tool at build time (custom
-# commands), not at configure time.
+# Phase 195.D retired the `packages/codegen` submodule: `nros` is the prebuilt
+# build tool the build assumes is provided (installed by `just setup` /
+# `scripts/install-nros.sh`). The module's `find_program(nros)` resolves it from
+# PATH; a consumer may override with `-D_NANO_ROS_CODEGEN_TOOL=<path>`. The tool
+# is only invoked at build time (custom commands), not at configure time.
 # ---------------------------------------------------------------------------
 set(_nros_codegen_module
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_codegen_module}"
    AND NANO_ROS_PLATFORM STREQUAL "posix")
-    if(NANO_ROS_BUILD_CODEGEN AND TARGET nros)
-        set(_NANO_ROS_CODEGEN_TOOL "$<TARGET_FILE:nros>"
-            CACHE INTERNAL "Path to nros codegen tool (in-tree Corrosion target)")
-    endif()
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}")
     include("${_nros_codegen_module}")
 endif()
