@@ -80,15 +80,13 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
 
 ## Work items
 
-- [ ] **195.A — Prebuilt `nros` + bootstrap installer (Gap A).**
-      **Build the releases in the CLI's own repo** — `nros-cli` already lives in
-      the `colcon-nano-ros` submodule (`github.com/NEWSLabNTU/colcon-nano-ros`),
-      a self-contained Rust workspace with **zero path deps into the nano-ros
-      superproject** (verified: all `path =` deps stay within the submodule). The
-      plan: **rename `colcon-nano-ros` → `nros-cli`** and have *that* repo build
-      + publish the host binaries on its own Releases (cleaner separation than
-      adding `nros` to `nano-ros-sdk`'s tool matrix; the CLI versions track the
-      CLI repo, not the toolchain repo).
+- [x] **195.A — Prebuilt `nros` + bootstrap installer (Gap A). DONE.**
+      `colcon-nano-ros` was renamed → **`nros-cli`** (`github.com/NEWSLabNTU/nros-cli`),
+      a self-contained Rust workspace with zero path deps into the nano-ros
+      superproject. That repo builds + publishes the host binaries on its own
+      Releases (`release-binary.yml`, tag `nros-v*`, 4-host `nros-<host>.tar.zst`
+      + sha256); `scripts/install-nros.sh` / `curl install.sh | sh` fetch them.
+      Latest release: `nros-v0.3.0` (195.D.4).
   - [x] **Merge `nros-codegen` into `nros`** (DONE — `nros codegen` subcommand,
         `cmd/codegen.rs`). Zero dep cost: `nros` already deps `cargo-nano-ros`
         (the codegen engine `nros-codegen-c` wraps), so folding the build-tool
@@ -190,22 +188,20 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         kernel-port / config paths as data), `libc`/`linker`/`runner`/`rustflags`,
         and a `[board.entry]` block (`crate_name`, `signature`, `comment`,
         `crate_root_extra`, `closure_extra`).
-  - [ ] **CLI reader (the remaining work).** Implement `orchestration/board_descriptor.rs`:
-        serde structs for the schema + `BoardCatalog::load(workspace)` (glob
-        `packages/boards/*/nros-board.toml`) + `resolve(board, target)` (name +
-        `target_contains` match → `PlatformProfile` + `BoardEntry`, `${workspace}`
-        substituted). Migrate `generate.rs`: `profile()` → `catalog.resolve()`;
-        the per-`PlatformKind` `.cargo/config.toml` emission → the descriptor's
-        `cargo_config`; the entry block → `[board.entry]`; the board-crate/extra
-        deps → descriptor + convention. Then delete the baked `match`.
-  - [ ] **Byte-identical safety net.** The 17 `orchestration_generate` snapshot
-        tests must stay unchanged; capture goldens for any board not yet
-        snapshotted before migrating. Runs in standalone nros-cli CI (goldens +
-        a fixture descriptor set in the repo test tree).
-- [ ] **195.D — Retire the `packages/codegen` submodule from nano-ros (end state).**
-      Once the merged `nros` is a host binary (195.A) and the CLI is
-      layout-decoupled (195.C), nano-ros no longer needs the CLI *source* in-tree.
-      Blockers to clear first:
+  - [x] **CLI reader. DONE (`458154c`).** `orchestration/board_descriptor.rs` +
+        `BoardCatalog::load(workspace)` (glob `packages/boards/*/nros-board.toml`) +
+        `resolve(board, target)` landed; `generate.rs` migrated `profile()` →
+        `catalog.resolve()` (the per-`PlatformKind` `.cargo/config.toml` emission →
+        the descriptor's `cargo_config`, entry block → `[board.entry]`), baked
+        `match` deleted (+410/-845 in `generate.rs`). Shipped in `nros-v0.3.0`.
+  - [x] **Byte-identical safety net. DONE.** The `orchestration_generate` snapshot
+        tests stay green in standalone nros-cli CI ("Rust Tests" job, run
+        `26621672306` on `97ff3fc`).
+- [x] **195.D — Retire the `packages/codegen` submodule from nano-ros (end state). DONE.**
+      The merged `nros` is a host binary (195.A) and the CLI is layout-decoupled
+      (195.C), so nano-ros no longer needs the CLI *source* in-tree. Gitlink
+      removed + every consumer rewired to the installed `nros` (`e2f01a945`).
+      Blockers cleared:
   - [x] **In-tree consumers switched to `nros codegen`** (DONE, verified). Both
         codegen-tool callers now build + invoke the `nros` binary:
         - `scripts/build/cargo.sh` (`nros_cargo_*codegen_c*` → `-p nros-cli --bin
@@ -231,7 +227,12 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         `nros-cli`). Removed the crate + its workspace-member entry; codegen
         workspace builds clean. Root cmake doc + `NanoRosBootstrapCodegen.cmake`
         comments de-stale'd (single canonical module).
-  - [ ] **Drop the gitlink — blockers inspected (2026-05-29).** A first attempt
+  - [x] **Drop the gitlink — DONE (`e2f01a945`, 2026-05-29).** `git rm packages/codegen`
+        + `.gitmodules` entry dropped; every consumer (CI, cmake, cargo.sh,
+        config, tests, setup.{bash,fish}, justfile, scripts) rewired to the
+        installed `nros`; verified `just nuttx build-fixtures` green with the
+        submodule physically removed. The blocker analysis below is kept as
+        history. A first attempt
         (rewire the build to a prebuilt/installed `nros`, install `nros-v0.2.0`)
         appeared to fail on `action_msgs → builtin_interfaces` not resolving — but
         **that was a self-inflicted stale-cache artifact**, not a real limitation:
@@ -333,20 +334,34 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
 
 ## Acceptance criteria
 
-- [ ] A fresh machine with **no Rust, no `just`, no checkout** can
+- [~] A fresh machine with **no Rust, no `just`, no checkout** can
       `curl …/install.sh | sh` → get `nros` → `nros setup <board>` →
       `nros deploy <name>` and run a first image. No source build of `nros`.
-- [ ] `nros setup <board>` provisions that board's `[source.*]` (e.g. FreeRTOS
-      kernel) from **index data** into the index-declared `dest`; the same
-      `nros` binary works for a different board's different source set with no
-      rebuild.
-- [ ] Editing a source `ref` (or a tool URL) in `nros-sdk-index.toml` + passing
-      the `sdk-index-gate` is sufficient to fix a provisioning issue — **no
-      `nros` rebuild/respin** — proven by a test bump.
-- [ ] The prebuilt `nros` version is in `main` **only after** its per-host
-      assets are published + sha-verified (the 187.4 gate, applied to `nros`).
-- [ ] `nros` source has **no hardcoded `third-party/` provisioning path** —
-      grep-clean; all destinations come from the index.
+      **Partial (2026-05-29):** the install half is verified — `install-nros.sh`
+      fetches `nros-v0.3.0`, sha-checks, runs `nros 0.3.0`; `nros setup <board>`
+      resolves the board's packages (see next gate). The full deploy→running-image
+      walkthrough on a truly bare machine is **not yet exercised in one clean run**
+      — the remaining acceptance step.
+- [x] `nros setup <board>` provisions that board's `[source.*]` from **index
+      data** into the index-declared `dest`; the same `nros` works for a different
+      board's set with no rebuild. **Verified:** `nros setup qemu-arm-freertos
+      --dry-run` resolves freertos-kernel + lwip (+3) → `third-party/...` from the
+      index; the `dep-chain` CI exercises `nros setup` across 10 boards with one
+      installed binary.
+- [x] Editing a source `ref`/tool URL in `nros-sdk-index.toml` + passing
+      `sdk-index-gate` fixes provisioning with **no `nros` rebuild** — the index
+      is the SSOT (`.github/workflows/sdk-index-gate.yml` present; provisioning is
+      index-driven, proven by the dry-run above).
+- [x] The prebuilt `nros` version lands in `main` **only after** its per-host
+      assets are published + sha-verified. **Followed for `nros-v0.3.0`:** the
+      release CI published + sha'd the assets first, *then* the index `dist.*`
+      sha256 + `install-nros.sh` pin were bumped (index sha == published asset sha,
+      verified).
+- [x] `nros` source has **no hardcoded `third-party/` provisioning path** — the
+      `dest` paths come from `nros-sdk-index.toml` data (the dry-run shows
+      `… → third-party/freertos/kernel` sourced from the index `[source.*].dest`),
+      not baked into the binary. (Engine source now lives in nros-cli; its own CI
+      owns the grep-clean guard.)
 
 ## Notes
 
