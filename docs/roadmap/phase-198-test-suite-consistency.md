@@ -9,9 +9,11 @@ freertos `Loopback received:` → `Received:` rename, the 6 simplest hand-rolled
 `contains("Published:"/"Received:")` assertions, and AXIS 3 (debug logs, already
 clean) are **done**. This phase tracks the deferred remainder.
 
-**Status.** Proposed (2026-05-29). Captured while normalizing the test suite;
-the items below were left out of the first pass because each is either
-build-gated (can't verify here) or a judgment-call semantic change.
+**Status.** In progress (2026-05-29). **198.1 + 198.3 DONE** (commits
+`4a404a6e3`, `d75f5b689`): runtime-failure greenwash removed + value-extraction
+loops routed through the canonical parser. **198.2 (Zephyr fixture output)
+handed off to another agent** — it is the last open item and is build-gated
+(needs a Zephyr build to verify); see its handoff detail below.
 
 **Priority.** P3 — test hygiene / drift prevention; no product capability
 depends on it. The remaining greenwash surface (198.1) is the highest-value bit
@@ -53,18 +55,28 @@ Three gaps remain.
       `cargo test -p nros-tests --no-run` clean; a grep for `Failed to start ROS 2`
       / `[FAIL]` / `exited early` followed by a bare `return;` is now empty.
 
-- [ ] **198.2 — Normalize Zephyr fixture output to the canonical format.** The
-      Zephyr talker/listener fixtures emit alt formats — `data=...` (instead of
-      `Published: <n>`) and `Received[<i>]: ...` (instead of `Received: <n>`),
-      forcing the format-tolerant checks left in `nros-tests/tests/zephyr.rs`
-      (`:39`, `:156`, `:1223`, `:1228`, `:1320`, `:2245`, `:2337`). Rename the
-      fixture prints to the canonical `Published: <n>` / `Received: <n>`, then
-      replace those tolerant `contains(...||...)` checks with
-      `output::assert_talker`/`assert_listener`. **Build-gated:** verify on the
-      Zephyr path (native_sim / FVP) before landing — couldn't be built in the
-      normalization session (the example build needs the Zephyr SDK + the
-      `nros codegen` toolchain). Locate the fixtures under
-      `examples/zephyr/**` / the Zephyr fixture sources the tests boot.
+- [ ] **198.2 — Normalize Zephyr fixture output to the canonical format.**
+      *(Owned by another agent — handoff 2026-05-29.)* The Zephyr talker/listener
+      fixtures emit alt formats — `data=…` (instead of `Published: <n>`) and
+      `Received[<i>]: <v>` (instead of `Received: <n>`), forcing the
+      format-tolerant checks scattered through `nros-tests/tests/zephyr.rs`. This
+      is the **last open 198 item** (198.1 + 198.3 landed). Handoff detail:
+  - **Fixtures to normalize** (`examples/zephyr/`): the `Received[{}]: {}` print
+    is `rust/listener/src/lib.rs:101`; mirror prints live in `rust/talker`,
+    `cpp/talker`, `cpp/listener`, `cpp/cyclonedds/talker-aemv8r` (grep
+    `examples/zephyr` for `data=` / `Received[`). Change them to the canonical
+    `Published: <n>` / `Received: <n>` (drop the `[index]` + `data=` forms).
+  - **Test sites to simplify afterward** (`nros-tests/tests/zephyr.rs`): the
+    `||`-tolerant checks at `:39`, `:156`, `:164`, `:1223`, `:1228`, `:1320`,
+    `:1940`, `:2245`, `:2337` + the `count_pattern(.., "Received[")` /
+    `count_zephyr_received` helpers (`:1241` and the comments at `:392`/`:546`).
+    Once the fixtures emit the canonical format, replace these with
+    `output::assert_talker`/`assert_listener` / `parse_listener(..).values` and
+    retire `count_zephyr_received`.
+  - **Build-gated:** verify on the Zephyr path (native_sim / FVP) before landing
+    — the example build needs the Zephyr SDK + the `nros codegen` toolchain
+    (couldn't be built in the normalization session). This is why it was deferred,
+    not skipped.
 
 - [x] **198.3 — Route value-extraction loops through `parse_*` (non-Zephyr). DONE**
       (2026-05-29). `executor.rs` ordering test now uses
