@@ -47,15 +47,17 @@ Built release ELFs, `size`/`nm` on the artifacts:
 
 ### 204.1 — Serial-transport size baseline (biggest lever)
 
-**Measured (2026-05-30, qemu-arm-baremetal / mps2-an385 / thumbv7m, release,
-no extra flags) — the naive premise does NOT hold yet:**
+**Pre-fix snapshot (2026-05-30, qemu-arm-baremetal / mps2-an385 / thumbv7m,
+release) — the naive "serial is smaller" premise did NOT hold at first** (the
+"Resolved" subsection below supersedes this once the register-path confound was
+fixed):
 
 | talker | text | data | bss |
 |---|---|---|---|
 | `serial-talker` (board `serial,rmw-zenoh`, no smoltcp dep) | **143.8 KB** | 66.4 KB | **108.7 KB** |
 | `talker` (ethernet/smoltcp) | 85.8 KB | 69.6 KB | 69.7 KB |
 
-Serial is **larger**, not smaller. Three confounds, all already-known phase items:
+Serial was **larger**, not smaller. Three suspected confounds, all known phase items:
 - **smoltcp is still linked in the serial build** — `nm` shows **45 smoltcp
   symbols** (vs 136 ethernet), i.e. the IP link/stack is pulled in even on a
   `default-features=false, features=["serial"]` board build. This is the
