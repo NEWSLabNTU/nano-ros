@@ -133,6 +133,19 @@ once before being trusted:
       shared). Adding a dedicated **build** lane per remaining platform
       (freertos, nuttx, threadx, esp32, bare-metal, stm32f4) on the dual-line
       pattern is follow-up work — each its own workflow scoped to its tools.
+- [x] **Submodule provisioning is nros-driven, not hand `git submodule`**
+      (DONE, 2026-05-29 — maintainer directive: "use nros tools to pull
+      toolchains and submodules to simulate user workflow; if missing, fix nros
+      and config"). Every lane now pulls sources the way a user does — build the
+      `nros` CLI, then `nros setup <board>` / `nros setup --source <name>` —
+      with the *only* hand-init being `packages/codegen` (the CLI bootstrap;
+      chicken/egg). Index gaps fixed as "missing config": added
+      `[source.px4-rs]` (core-libs workspace-load dep) and
+      `[source.cyclonedds-src]` (the in-tree cyclonedds fork the Zephyr setup
+      patches; distinct from `[tool.cyclonedds]`). `ci.yml` provisions px4-rs;
+      `zephyr-dual-line.yml` (all 3 jobs) provisions zenoh-pico + cyclonedds-src;
+      `dep-chain.yml` was already board-driven. Verified each `--source` resolves
+      + the structure gate passes. Rule codified in `ci-conventions.md`.
 - [ ] `deploy-book.yml` — already deliberately non-recursive on submodules
       (documented); confirm it still builds.
 - [x] `sdk-index-gate.yml` — DONE (2026-05-29). `verify-index.py` gained an
