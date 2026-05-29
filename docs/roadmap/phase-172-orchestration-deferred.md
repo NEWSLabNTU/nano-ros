@@ -108,12 +108,15 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
     their callback's closure, or shared by-ref when several callbacks publish the
     same entity).
   Slices:
-  - **W.5.1 — `CallbackCtx` + dispatch surface.** `CallbackCtx<'a>` carrying the
-    triggering payload (raw + a typed accessor) + a `publish::<M>(EntityId, &M)`
-    / `publish_raw(EntityId, &[u8])` over the captured/`'static` publisher(s). A
-    dispatch entry — `trait ExecutableComponent { type State; fn init() -> State;
-    fn on_callback(&mut State, CallbackId, &mut CallbackCtx); }` (trait-dispatch
-    keeps it object-free / `no_std`).
+  - **W.5.1 — `CallbackCtx` + dispatch surface. DONE** (2026-05-29,
+    `nros/src/component.rs`). `PublisherResolver` (generated runtime impls it),
+    `CallbackCtx<'a>` { `payload()`, `message::<M>()` (deserialize), `publish_raw`,
+    `publish::<M, N>` }, and `trait ExecutableComponent: Component { type State;
+    fn init() -> State; fn on_callback(&mut State, CallbackId, &mut CallbackCtx) }`
+    — trait-dispatch, no `alloc`. Test
+    `executable_component_callback_publishes_and_mutates_state` proves a body
+    mutates state + publishes through the resolver. (Pure API substrate; no
+    executor/codegen wiring yet — W.5.2/.3.)
   - **W.5.2 — publisher wiring (`'static` singleton storage).** Generated runtime
     owns `static RefCell<State>` + the publishers; each callback closure captures
     the `&'static RefCell<State>` + the publisher(s) its `publishes` effect names

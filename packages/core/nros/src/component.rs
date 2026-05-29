@@ -701,6 +701,108 @@ component_handle!(ComponentActionClient, A);
 component_handle!(ComponentTimer);
 component_handle!(ComponentParameter);
 
+// ============================================================================
+// Phase 172 W.5.1 — executable component layer (callback bodies)
+// ============================================================================
+//
+// The declarative `Component::register` above stays the planning/metadata SSOT.
+// This layer binds *runnable* bodies: the generated runtime builds the
+// component `State` once, then routes each fired callback to `on_callback` with
+// a `CallbackCtx` that exposes the triggering payload + an immediate publish
+// path. Publishers are self-contained transport handles
+// (`EmbeddedRawPublisher::publish_raw(&self)`), so a body publishes immediately
+// mid-spin with no executor re-entrancy and no deferred queue (causality
+// preserved). Shared state across a component's callbacks is `&mut State`
+// behind the generated runtime's `'static` storage — `no_std`, no `alloc`.
+
+/// Resolves a component publisher by its stable [`EntityId`] for the
+/// callback-body publish path (W.5.1).
+///
+/// The generated runtime implements this over its owned `'static` publishers;
+/// metadata/discovery mode never constructs a [`CallbackCtx`], so it need not
+/// implement this.
+pub trait PublisherResolver {
+    /// Publish raw CDR bytes through the publisher with this stable entity id.
+    /// `Err(ComponentError::Runtime)` if no such publisher is registered or the
+    /// transport rejects the write.
+    fn publish_raw(&self, entity_id: &str, data: &[u8]) -> ComponentResult<()>;
+}
+
+/// Context handed to an executable component callback body (W.5.1).
+///
+/// Carries the triggering payload (raw CDR — empty for timers) plus the
+/// publisher resolver, so a body can read its message and publish immediately.
+pub struct CallbackCtx<'a> {
+    payload: &'a [u8],
+    publishers: &'a dyn PublisherResolver,
+}
+
+impl<'a> CallbackCtx<'a> {
+    /// Build a callback context. Called by the generated runtime per fired
+    /// callback; `payload` is the entity's raw CDR (empty slice for timers).
+    pub fn new(payload: &'a [u8], publishers: &'a dyn PublisherResolver) -> Self {
+        Self {
+            payload,
+            publishers,
+        }
+    }
+
+    /// Raw CDR payload of the triggering message / request. Empty for timers.
+    pub fn payload(&self) -> &[u8] {
+        self.payload
+    }
+
+    /// Deserialize the triggering payload as `M` (subscription / service-request
+    /// bodies). `Err` if the payload is malformed for `M`.
+    pub fn message<M: RosMessage>(&self) -> ComponentResult<M> {
+        let mut reader =
+            crate::CdrReader::new_with_header(self.payload).map_err(|_| ComponentError::Runtime)?;
+        M::deserialize(&mut reader).map_err(|_| ComponentError::Runtime)
+    }
+
+    /// Publish raw CDR bytes through the named publisher entity (immediate).
+    pub fn publish_raw(&self, publisher: EntityId<'_>, data: &[u8]) -> ComponentResult<()> {
+        self.publishers.publish_raw(publisher.as_str(), data)
+    }
+
+    /// Serialize `msg` into an `N`-byte stack buffer and publish it (immediate).
+    /// `N` must be ≥ the CDR-encoded size of `msg`; the generated runtime picks
+    /// it from the message type.
+    pub fn publish<M: RosMessage, const N: usize>(
+        &self,
+        publisher: EntityId<'_>,
+        msg: &M,
+    ) -> ComponentResult<()> {
+        let mut buf = [0u8; N];
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        msg.serialize(&mut writer)
+            .map_err(|_| ComponentError::Runtime)?;
+        let len = writer.position();
+        self.publish_raw(publisher, &buf[..len])
+    }
+}
+
+/// The executable counterpart of [`Component`] (W.5.1).
+///
+/// `register` (declarative) stays the planning SSOT; this binds runnable
+/// bodies. The generated runtime builds [`State`](Self::State) once via
+/// [`init`](Self::init), then routes every fired callback to
+/// [`on_callback`](Self::on_callback). Trait-dispatch (no boxed `dyn`, no
+/// `alloc`) keeps it `no_std`.
+pub trait ExecutableComponent: Component {
+    /// Per-instance mutable state shared across the component's callbacks.
+    type State;
+
+    /// Build the initial state (called once by the generated runtime).
+    fn init() -> Self::State;
+
+    /// Run the body for `callback`. `ctx` exposes the triggering payload + the
+    /// immediate publish path. Bodies match on `callback` (the stable id from
+    /// the declarative `create_*` calls).
+    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>);
+}
+
 /// Run component registration against any component runtime.
 pub fn register_component<C: Component>(runtime: &mut dyn ComponentRuntime) -> ComponentResult<()> {
     let mut context = ComponentContext::new(C::NAME, runtime);
@@ -1051,5 +1153,60 @@ mod tests {
         assert!(json.contains("\"goal_callback\":\"cb_nav_goal\""));
         assert!(json.contains("\"cancel_callback\":\"cb_nav_cancel\""));
         assert!(json.contains("\"accepted_callback\":\"cb_nav_accepted\""));
+    }
+
+    // W.5.1 — an executable component callback runs its body: mutates state +
+    // publishes immediately through the resolver (the substrate the generator
+    // will wire). `TalkerComponent` already impls `Component` (declarative);
+    // here it also impls `ExecutableComponent`.
+    impl ExecutableComponent for TalkerComponent {
+        type State = u32;
+
+        fn init() -> u32 {
+            0
+        }
+
+        fn on_callback(state: &mut u32, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+            if callback.as_str() == "on_tick" {
+                *state += 1;
+                // Publish through the declared publisher entity.
+                let _ = ctx.publish::<TestMsg, 64>(EntityId::new("pub_chatter"), &TestMsg);
+            }
+        }
+    }
+
+    #[test]
+    fn executable_component_callback_publishes_and_mutates_state() {
+        use core::cell::RefCell;
+
+        struct RecordingResolver {
+            last: RefCell<Option<(MetadataString, usize)>>,
+        }
+        impl PublisherResolver for RecordingResolver {
+            fn publish_raw(&self, entity_id: &str, data: &[u8]) -> ComponentResult<()> {
+                *self.last.borrow_mut() = Some((copy_str(entity_id)?, data.len()));
+                Ok(())
+            }
+        }
+
+        let resolver = RecordingResolver {
+            last: RefCell::new(None),
+        };
+        let mut state = TalkerComponent::init();
+        let mut ctx = CallbackCtx::new(&[], &resolver);
+
+        // An unrelated callback id does nothing.
+        TalkerComponent::on_callback(&mut state, CallbackId::new("other"), &mut ctx);
+        assert_eq!(state, 0);
+        assert!(resolver.last.borrow().is_none());
+
+        // The bound callback bumps state + publishes through "pub_chatter".
+        TalkerComponent::on_callback(&mut state, CallbackId::new("on_tick"), &mut ctx);
+        assert_eq!(state, 1);
+        let last = resolver.last.borrow();
+        let (entity, len) = last.as_ref().expect("a publish was recorded");
+        assert_eq!(entity.as_str(), "pub_chatter");
+        // Empty TestMsg ⇒ just the 4-byte CDR header.
+        assert_eq!(*len, 4);
     }
 }
