@@ -4,7 +4,9 @@ default:
     @just --list --justfile {{source_file()}}
 # Zephyr line selector (Phase 180.A). "3.7" = LTS (default, west.yml);
 # "4.4" = latest rolling (west-4.4.yml, sibling workspace). Set
-# $NROS_ZEPHYR_VERSION to pick.
+# $NROS_ZEPHYR_VERSION to pick. Support policy + add-a-line checklist:
+# docs/development/zephyr-version-support.md (floor is 3.7 — the
+# zephyr-lang-rust × zephyr pair; nothing below ships the Rust module).
 NROS_ZEPHYR_VERSION := env("NROS_ZEPHYR_VERSION", "3.7")
 
 # West manifest for the selected line.

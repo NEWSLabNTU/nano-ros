@@ -67,12 +67,13 @@ makes the *pair* the unit of support.
 
 ## Work items
 
-- [ ] **199.1 — Document the support policy.** New `docs/development/
-      zephyr-version-support.md`: the `(zephyr × zephyr-lang-rust)` contract; the
-      floor (3.7 LTS — where the Rust module was born); the support window =
-      **current LTS (default/CI) + at most one rolling** within zephyr-lang-rust's
-      range; never below the Rust-module floor. Cross-link from `CLAUDE.md`
-      (Build/Zephyr) + the header of `just/zephyr.just`.
+- [x] **199.1 — Document the support policy. DONE** (2026-05-29). Wrote
+      `docs/development/zephyr-version-support.md`: the `(zephyr × zephyr-lang-rust)`
+      contract; the floor (3.7 LTS — where the Rust module was born, 2024-09-11);
+      the window = **current LTS (default/CI) + ≤1 rolling** within
+      zephyr-lang-rust's range; stable-surfaces-vs-churn; the per-line dispatch;
+      and the add-a-line checklist (199.5, folded in). Cross-linked from `CLAUDE.md`
+      (Build) + the `just/zephyr.just` version-selector header.
 - [ ] **199.2 — Make `west-<ver>.yml` pin the pair explicitly.** Today the
       manifests pin zephyr + `zephyr-lang-rust: main`. Pin a *specific*
       lang-rust revision per line (reproducible; `main` drifts). Each
@@ -98,11 +99,13 @@ makes the *pair* the unit of support.
       getifaddrs, mcjoin mreq). File upstream PRs; track which land per release so
       the carried set *shrinks* each version instead of forking. Mark each patch in
       `patches/<version>/` with its upstream PR / merged-in-version.
-- [ ] **199.5 — "Add a Zephyr version" checklist** (in 199.1's doc): (1) confirm a
-      `zephyr-lang-rust` revision builds against the target zephyr; (2) add
-      `west-<ver>.yml` pinning the pair; (3) add the `NROS_ZEPHYR_VERSION` branch;
-      (4) re-anchor only the native_sim/CycloneDDS patches still un-upstreamed into
-      `patches/<ver>/`; (5) add a CI line. Bounded, not open-ended.
+- [x] **199.5 — "Add a Zephyr version" checklist. DONE** (2026-05-29). The
+      bounded checklist lives in `docs/development/zephyr-version-support.md`
+      (§"Adding a new Zephyr line") + `scripts/zephyr/patches/README.md`: confirm
+      the `(zephyr × zephyr-lang-rust)` pair builds (stop if < 3.7); pin the pair
+      in `west-<line>.yml`; wire the `NROS_ZEPHYR_VERSION` selector arms; drop
+      `scripts/zephyr/patches/<line>.sh` (no recipe edit); add a CI line; sources
+      via `nros setup --source`.
 - [ ] **199.6 — ASI alignment (downstream, coordinate).** ASI's
       `actuation_module/west.yml` must drop the `import: false` override (or bump
       its zephyr pin to **v3.7.0**) so its C++ nano-ros build links the nros Rust
