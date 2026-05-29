@@ -36,7 +36,9 @@ RUN curl -fsSL -o /tmp/sdk.tar.xz \
         "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64.tar.xz" \
     && mkdir -p /opt/zephyr-sdk \
     && tar xf /tmp/sdk.tar.xz -C /opt/zephyr-sdk --strip-components=1 \
-    && /opt/zephyr-sdk/setup.sh -t ${SDK_TARGETS} -h -c \
+    # setup.sh wants one `-t` per toolchain (mirrors scripts/zephyr/setup.sh).
+    && sdk_args="" && for t in ${SDK_TARGETS}; do sdk_args="$sdk_args -t $t"; done \
+    && /opt/zephyr-sdk/setup.sh $sdk_args -h -c \
     && rm /tmp/sdk.tar.xz
 ENV ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr-sdk \
     ZEPHYR_TOOLCHAIN_VARIANT=zephyr
