@@ -247,7 +247,15 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # / `<new>`. Project ships compat shims at `zephyr/cxx-compat/`
     # — same shims `nros-cpp` uses. Prepend so cyclonedds C++ TUs
     # find them.
-    zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cxx-compat)
+    # Phase 190.L — ONLY when the C++ stdlib is minimal. With a full libstdc++
+    # (CONFIG_GLIBCXX_LIBCPP, e.g. the Autoware safety-island FVP profile) the
+    # real <atomic>/<chrono>/<utility>/<cstdlib>/… exist; putting cxx-compat on
+    # the global -I then breaks libstdc++'s own internals (its <bits/move.h>
+    # stops seeing std::remove_reference once the dir is searched), even with
+    # the per-shim #include_next passthrough guards. Skip the dir entirely.
+    if(NOT CONFIG_GLIBCXX_LIBCPP)
+        zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/cxx-compat)
+    endif()
 
     # ---- Cyclone DDS sources -----------------------------------------------
     # ddsrt: platform-abstraction layer. Top-level .c files plus per-feature
@@ -679,7 +687,12 @@ if(CONFIG_NROS_CPP_API)
     # would prefer their `<cstdio>` over the shim, but the shim's
     # `using ::fprintf;` re-export pattern is benign on top of a real
     # `<cstdio>`.
-    zephyr_include_directories(${NROS_REPO_DIR}/zephyr/cxx-compat)
+    # Phase 190.L — but NOT with a full libstdc++ (CONFIG_GLIBCXX_LIBCPP): the
+    # dir on the global -I breaks libstdc++'s own headers there. Skip it; the
+    # real C++ stdlib already provides everything. (See the cyclonedds branch.)
+    if(NOT CONFIG_GLIBCXX_LIBCPP)
+        zephyr_include_directories(${NROS_REPO_DIR}/zephyr/cxx-compat)
+    endif()
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the

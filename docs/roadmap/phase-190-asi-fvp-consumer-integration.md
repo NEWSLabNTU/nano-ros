@@ -35,10 +35,36 @@ Corellium AVH *default sample*, not a supported target. Consequences:
   (`-DBUILD_IDLC=ON`). ASI runs `nros setup` instead of hand-building idlc.
 - **190.A/B/C/G still valid** on 3.7 — they key off libc/libstdc++ presence
   (full-libstdc++, newlib `ip_mreq`, weak POSIX stubs), not the Zephyr version.
-- **Re-validation owed:** the COMPILE+LINK milestone was on 3.5.0; redo on a
-  real Zephyr 3.7 (`NROS_ZEPHYR_VERSION=3.7`). ARM-virtual-platform runtime =
-  build `fvp_baser_aemv8r` on 3.7, load onto the Corellium FVP (the 3.5.0
-  sample is just replaced).
+- **Re-validation DONE (2026-05-29):** the full ASI actuation_module COMPILES +
+  LINKS to `zephyr.elf` on **real Zephyr v3.7.0** + `zephyr-lang-rust` + full
+  libstdc++ (`fvp_baser_aemv8r`, 52.98 MB, RAM 3.56 MB / 128 MB, 0 errors).
+  Blockers cleared on the consumer side: west pin → v3.7.0 + add zephyr-lang-rust;
+  hwv1→hwv2 board name + `<board>_<soc>` conf rename; `nros` 0.3.1 CLI installed
+  via `install-nros.sh` (Phase 195.D — `nros codegen`, replaces the retired
+  packages/codegen + the build-from-source bootstrap); cmake genexp via the
+  **llext-edk-conditional** patch (nano-ros's 3.7 patch set, `scripts/zephyr/
+  patches/3.7.sh` — the Phase-180.D delivery a leaf consumer must apply);
+  **190.L** (below); + autoware-source 3.7 fixes (fabsl gate matches hwv2,
+  `net_if_addr_ipv4` wrapper in `network_config.cpp`). ARM-virtual-platform
+  runtime next = load this `zephyr.elf` onto the Corellium FVP (190.K).
+
+### 190.L — cxx-compat dir must not hit a full-libstdc++ consumer's `-I`
+
+**Files.** `zephyr/CMakeLists.txt` (the two `zephyr_include_directories(cxx-compat)`).
+
+The deeper root of the 190.A/C class: nano-ros's zephyr module puts `cxx-compat/`
+on the **global** app include path. With a full libstdc++
+(`CONFIG_GLIBCXX_LIBCPP`, the FVP/ASI profile) the real
+`<atomic>/<chrono>/<utility>/<cstdlib>/…` exist, and the mere presence of the
+dir on `-I` breaks libstdc++'s own internals — its `<bits/move.h>` stops seeing
+`std::remove_reference` once the dir is searched — **even with the per-shim
+`#include_next` passthrough guards** (190.A/C). Gate both injections on
+`if(NOT CONFIG_GLIBCXX_LIBCPP)`: full-libstdc++ targets skip cxx-compat entirely
+(real headers suffice); minimal/picolibc keep it. This subsumes the 190.A/C
+guards on the full-libstdc++ profile.
+
+- [x] Gate both `zephyr_include_directories(cxx-compat)` on `NOT CONFIG_GLIBCXX_LIBCPP`
+- [x] Verified: the ASI actuation build links on Zephyr 3.7 + full libstdc++
 
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
