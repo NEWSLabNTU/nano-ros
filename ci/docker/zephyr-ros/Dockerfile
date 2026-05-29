@@ -13,7 +13,11 @@
 # Tag encodes the inputs (ROS distro + SDK version); a bump = a new tag.
 FROM ros:humble-ros-base
 
-ARG ZEPHYR_SDK_VERSION=0.16.8
+# 0.17.4: the version the Zephyr 4.4 line requires (its west pulls zephyr-sdk-0.17);
+# Zephyr 3.7.0's FindZephyr-sdk enforces only a *minimum* SDK version (no upper
+# bound), so 0.17.4 serves BOTH lines from one baked SDK. (Baking 0.16.8 forced
+# 4.4 to reject it — FindZephyr-sdk wanted >= 0.17.)
+ARG ZEPHYR_SDK_VERSION=0.17.4
 # Zephyr SDK toolchains the dual-line + aemv8r reference need (setup.sh
 # DEFAULT_TARGETS + the phase-117 aarch64 target). Keep in sync with
 # scripts/zephyr/setup.sh.

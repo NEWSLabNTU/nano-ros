@@ -23,7 +23,7 @@ env:
   # changes, in lockstep with the Dockerfile ARG + the dual-line `container:`.
   # GHCR repo names must be lowercase; the owner (NEWSLabNTU) is mixed-case.
   IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-  TAG: humble-sdk0.16.8
+  TAG: humble-sdk0.17.4
 
 jobs:
   build-push:
