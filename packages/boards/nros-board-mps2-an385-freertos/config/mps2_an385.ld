@@ -56,6 +56,24 @@ SECTIONS
         *(.ARM.exidx*)
         __exidx_end = .;
         . = ALIGN(4);
+    } > FLASH
+
+    /* DWARF CFI (.eh_frame / .eh_frame_hdr) — newer rustc/rust-lld emit these
+     * (and lld synthesizes .eh_frame_hdr under --eh-frame-hdr) for the same DDS
+     * panic-unwind paths as .ARM.extab. ARM bare-metal unwinds via exidx/extab,
+     * so eh_frame is unused at runtime, but it MUST get a FLASH load address —
+     * left unplaced it falls to the default output and overlaps .data/RAM
+     * (`rust-lld: section .eh_frame_hdr load address range overlaps with .data`).
+     */
+    .eh_frame_hdr :
+    {
+        *(.eh_frame_hdr)
+        . = ALIGN(4);
+    } > FLASH
+    .eh_frame :
+    {
+        *(.eh_frame)
+        . = ALIGN(4);
         _etext = .;
     } > FLASH
 
