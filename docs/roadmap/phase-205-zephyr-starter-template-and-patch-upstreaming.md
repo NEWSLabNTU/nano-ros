@@ -61,7 +61,17 @@ BYO workspace without vendoring Zephyr. **In-tree source authored at
       populated (west.yml + app/ + README + .gitignore) and pushed (`main`,
       `51faf2f`). [ ] CI on that repo running the quickstart on a fresh runner
       (the template is where Zephyr-version drift surfaces first) — follow-up.
-- [x] Linked from `examples/templates/README.md`; [ ] link from the book BYO page.
+- [x] Linked from `examples/templates/README.md` **and** the book BYO page
+      (`integration-zephyr.md` — a "just want a working starter?" callout).
+- [x] **Template e2e + book accuracy pass (2026-05-30).** Ran the template's own
+      `west init`→build→run on a fresh workspace; it caught real defects in both
+      the template and the book's BYO doc, all fixed: `CONFIG_NROS_ROS_EDITION`
+      and `CONFIG_NROS_RMW="<str>"` are **undefined Kconfig symbols** (the right
+      ones are the bool `CONFIG_NROS_RMW_ZENOH=y` etc.; Zephyr aborts otherwise);
+      `nros setup zephyr` provisions the daemon + transports but **not** the Zephyr
+      SDK; codegen needs `NROS_STD_MSGS_DIR`; the native_sim 3.7 build needs the
+      line overlay. Book Prerequisites/Configure/Build sections corrected; template
+      + the standalone repo (`5f6045e`) fixed. Re-verified: build → `Published: 1`.
 
 **Files:** a new repo; `book/src/getting-started/integration-zephyr.md`,
 `examples/README.md` (links). The in-repo `examples/templates/` may host a

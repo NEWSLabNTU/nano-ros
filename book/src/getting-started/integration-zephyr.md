@@ -11,6 +11,12 @@ care of the rest.
 > covered at [Zephyr (contributor)](./zephyr.md). The page below is
 > the canonical user entry.
 
+> **Just want a working starter?** Clone the
+> [`nano-ros-zephyr-example`](https://github.com/NEWSLabNTU/nano-ros-zephyr-example)
+> repo (`west init -m …`) — a manifest + zenoh talker app pinned to a tested
+> Zephyr, with the same quickstart as below baked in. The steps here explain what
+> it does so you can adapt it to your own workspace.
+
 > **Prereqs.** Run `nros setup zephyr --rmw <rmw>` once (see
 > [Prerequisites](#prerequisites) below) — it provisions the Zephyr
 > west workspace + Zephyr SDK bits, the emulator, and your RMW's host
@@ -72,29 +78,32 @@ the module shell handles it once `CONFIG_NROS=y` flips on.
 
 ## Prerequisites
 
-`nros setup` is the single canonical command to prepare a machine to build
-nano-ros for a board. It ships prebuilt toolchains per platform per RMW — the
-cross-compiler, emulator, RMW host daemon, and SDK sources (including the Zephyr
-west workspace + Zephyr SDK bits) are fetched from a pinned index into a shared
-store at `~/.nros/sdk`. You do **not** hand-install a cross-toolchain, and you do
-**not** need ROS 2 installed.
+`nros setup` provisions the parts nano-ros owns — the **RMW host daemon**
+(`zenohd` / Micro-XRCE-DDS agent) and the **RMW transport submodules**
+(zenoh-pico + mbedtls for zenoh, the cyclonedds fork) — from a pinned index into
+`~/.nros/sdk` / the nano-ros checkout. It does **not** replace Zephyr's own SDK,
+and interface codegen still needs the ROS message definitions.
 
 1. **Install the `nros` CLI** (once per machine):
    ```bash
    curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
    export PATH="$HOME/.nros/bin:$PATH"
    ```
-2. **Provision the Zephyr board** (+ the RMW you'll use):
+2. **Provision the RMW (daemon + transports)** from the nano-ros checkout:
    ```bash
-   nros setup zephyr --rmw zenoh         # --rmw defaults to zenoh; xrce | cyclonedds also valid
+   ( cd modules/nano-ros && nros setup zephyr --rmw zenoh )  # zenohd + zenoh-pico + mbedtls
+   ( cd modules/nano-ros && nros setup --source px4-rs )     # workspace cargo-load dep
    ```
-   This provisions the Zephyr west workspace + Zephyr SDK bits, the emulator,
-   and the RMW host daemon (`zenohd` for zenoh, the Micro-XRCE-DDS agent for
-   xrce). The module's interface codegen also shells out to `nros` at configure
-   time.
+3. **Install the Zephyr SDK** the standard Zephyr way (`nros setup` does *not*
+   provide it) and expose it — `export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-<ver>`
+   (or register it via the SDK's `setup.sh -c`).
+4. **Message definitions for codegen.** The interface codegen resolves a
+   package's `msg/*.msg` from `NROS_<PKG>_DIR` (e.g.
+   `export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs`) — point it at a ROS
+   install or any dir holding the `.msg` files.
 
-The RMW host daemon installed by the step above must be **running** before any
-example: `zenohd` for zenoh, the Micro-XRCE-DDS agent for xrce.
+The RMW host daemon must be **running** before an example connects (`zenohd -l
+tcp/127.0.0.1:7456` for zenoh; the Micro-XRCE-DDS agent for xrce).
 
 ## Configure
 
@@ -117,8 +126,10 @@ Then per-application `prj.conf`:
 
 ```
 CONFIG_NROS=y
-CONFIG_NROS_RMW="zenoh"                 # zenoh | xrce | cyclonedds
-CONFIG_NROS_ROS_EDITION="humble"        # humble | iron
+CONFIG_NROS_C_API=y
+CONFIG_NROS_RMW_ZENOH=y                 # bool per RMW: NROS_RMW_{ZENOH,XRCE,CYCLONEDDS}
+# (ROS edition is a build-time Cargo feature, NOT a Kconfig symbol — do not set
+#  CONFIG_NROS_ROS_EDITION; Zephyr aborts on the undefined symbol.)
 
 # Required for any networked RMW on QEMU / native_sim:
 CONFIG_NETWORKING=y
@@ -137,20 +148,25 @@ library transparently.
 west update                              # clones nano-ros + Zephyr into the workspace
 ```
 
-The RMW transport sources nano-ros links against (zenoh-pico, the cyclonedds
-fork, …) are provided by `nros setup zephyr --rmw <rmw>` from the
-[prerequisites](#prerequisites). One extra source — the nano-ros cargo build
-loads the whole workspace, which path-deps `px4-sitl-tests` — so also run
-`nros setup --source px4-rs` once from the nano-ros checkout (a small source, not
-a PX4 build); without it the `nros-c` cargo build fails `failed to get
-px4-sitl-tests`. (Verified end-to-end on a fresh BYO west workspace: this builds
-`c/talker` to `zephyr.exe` and runs to `Published: 1` against `zenohd`.)
+The transports + `px4-rs` come from the [prerequisites](#prerequisites) step
+(`west update` clones nano-ros but **not** its submodules). With the Zephyr SDK +
+`NROS_STD_MSGS_DIR` exported (also prerequisites), build your app — `nros` on
+PATH is auto-resolved as the codegen tool:
 
 ```bash
+# native_sim (POSIX, no QEMU). The 3.7 line needs the NSOS line overlay; apply
+# the NSOS patches first (see "apply nano-ros's patches" below).
+overlay="$PWD/modules/nano-ros/cmake/zephyr/native-sim-line-3.7.conf"
+west build -b native_sim/native/64 apps/my_app -- -DCONF_FILE="prj.conf;$overlay"
+
+# A real board, e.g. Cortex-A9 (no native_sim overlay):
 west build -b qemu_cortex_a9 apps/my_app
-# native_sim alternative (POSIX, no QEMU):
-west build -b native_sim/native/64 apps/my_app
 ```
+
+(Verified end-to-end on a fresh BYO west workspace: this builds to `zephyr.exe`
+and runs to `Published: 1` against `zenohd -l tcp/127.0.0.1:7456`. On the 4.4
+line, `find_package(Python3)` requires ≥ 3.12 and you select the RMW with
+`-S nros-zenoh` instead of the overlay.)
 
 For a quick sanity check that the module is wired correctly:
 
