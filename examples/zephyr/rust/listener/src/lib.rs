@@ -93,12 +93,12 @@ fn run() -> Result<(), NodeError> {
     let mut executor: Executor = Executor::open(&config)?;
     let nid = executor.node_builder("listener").build()?;
 
-    let mut count: u32 = 0;
     executor
         .node_mut(nid)
         .create_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
-            count += 1;
-            info!("Received[{}]: {}", count, msg.data);
+            // Canonical listener format (Phase 198.2): `Received: <value>` — one
+            // line per message, parsed by nros_tests::output::parse_listener.
+            info!("Received: {}", msg.data);
         })?;
 
     info!("Waiting for messages on /chatter...");

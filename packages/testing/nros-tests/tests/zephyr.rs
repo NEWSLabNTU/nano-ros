@@ -34,10 +34,9 @@ use nros_tests::{
 use std::{path::PathBuf, time::Duration};
 
 fn count_zephyr_received(output: &str) -> usize {
-    output
-        .lines()
-        .filter(|line| line.contains("Received:") || line.contains("Received["))
-        .count()
+    // All Zephyr listener fixtures (c/cpp/rust) print the canonical
+    // `Received: <n>` (Phase 198.2 normalized the rust fixture off `Received[`).
+    output.lines().filter(|line| line.contains("Received:")).count()
 }
 
 /// Get prebuilt Zephyr talker for native_sim (uses existing binary if available)
@@ -153,15 +152,14 @@ fn test_zephyr_talker_to_listener_e2e() {
     eprintln!("\n=== Listener output ===\n{}", listener_output);
 
     // Check talker status
-    let talker_published = talker_output.contains("Published:") || talker_output.contains("data=");
+    let talker_published = talker_output.contains("Published:");
     let talker_connected = !talker_output.contains("session error");
     let talker_created_pub = talker_output.contains("Declared publisher")
         || talker_output.contains("Publisher created")
         || talker_output.contains("Publishing messages");
 
     // Check listener status
-    let listener_received =
-        count_zephyr_received(&listener_output) > 0 || listener_output.contains("data=");
+    let listener_received = count_zephyr_received(&listener_output) > 0;
     let listener_connected = !listener_output.contains("session error");
     let listener_created_sub = listener_output.contains("Declared subscriber")
         || listener_output.contains("Subscriber created")
@@ -389,8 +387,7 @@ fn test_native_to_zephyr_e2e() {
     eprintln!("\n=== Zephyr listener output ===\n{}", zephyr_output);
 
     // Strict delivery check: the Zephyr listener must log at least one
-    // real Received sample line. Rust Zephyr logs `Received[N]: V`
-    // while native/C++ fixtures historically log `Received: N`.
+    // canonical `Received: <n>` sample line (all c/cpp/rust fixtures, 198.2).
     let received_count = count_zephyr_received(&zephyr_output);
     let zephyr_transport_err = zephyr_output.contains("Transport(ConnectionFailed)")
         || zephyr_output.contains("z_declare_subscriber failed")
@@ -542,8 +539,8 @@ fn test_bidirectional_native_zephyr_e2e() {
     );
 
     // Strict delivery counts: match only real sample lines, not setup
-    // text like "Waiting for Int32 messages ...". Native logs
-    // `Received: N`; Zephyr Rust logs `Received[N]: V`.
+    // text like "Waiting for Int32 messages ...". All fixtures log the
+    // canonical `Received: <n>` (198.2).
     let native_received_count = count_pattern(&native_listener_output, "Received:");
     let zephyr_received_count = count_zephyr_received(&zephyr_listener_output);
 
@@ -1220,12 +1217,11 @@ fn test_zephyr_xrce_rust_talker_listener() {
     eprintln!("\n=== XRCE Listener output ===\n{}", listener_output);
 
     // Check talker status
-    let talker_published = talker_output.contains("Published:") || talker_output.contains("data=");
+    let talker_published = talker_output.contains("Published:");
     let talker_error = talker_output.contains("Error:");
 
     // Check listener status
-    let listener_received =
-        listener_output.contains("Received:") || listener_output.contains("Received[");
+    let listener_received = listener_output.contains("Received:");
     let listener_waiting = listener_output.contains("Waiting for messages");
     let listener_error = listener_output.contains("Error:");
 
@@ -1237,8 +1233,7 @@ fn test_zephyr_xrce_rust_talker_listener() {
     }
 
     if listener_received {
-        let count = count_pattern(&listener_output, "Received:")
-            + count_pattern(&listener_output, "Received[");
+        let count = count_pattern(&listener_output, "Received:");
         eprintln!(
             "\nSUCCESS: Zephyr XRCE listener received {} messages from talker",
             count
@@ -1936,8 +1931,7 @@ fn test_zephyr_xrce_cpp_talker_listener() {
     eprintln!("=== cpp/xrce talker output ===\n{}", talker_output);
     eprintln!("=== cpp/xrce listener output ===\n{}", listener_output);
 
-    let listener_received =
-        listener_output.contains("Received") || listener_output.contains("data=");
+    let listener_received = listener_output.contains("Received:");
     if !listener_received {
         panic!(
             "cpp/xrce listener didn't receive any messages.\nTalker:\n{}\nListener:\n{}",

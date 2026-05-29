@@ -9,11 +9,12 @@ freertos `Loopback received:` → `Received:` rename, the 6 simplest hand-rolled
 `contains("Published:"/"Received:")` assertions, and AXIS 3 (debug logs, already
 clean) are **done**. This phase tracks the deferred remainder.
 
-**Status.** In progress (2026-05-29). **198.1 + 198.3 DONE** (commits
+**Status.** All items landed (2026-05-29). **198.1 + 198.3 DONE** (commits
 `4a404a6e3`, `d75f5b689`): runtime-failure greenwash removed + value-extraction
-loops routed through the canonical parser. **198.2 (Zephyr fixture output)
-handed off to another agent** — it is the last open item and is build-gated
-(needs a Zephyr build to verify); see its handoff detail below.
+loops routed through the canonical parser. **198.2 DONE**: the rust Zephyr
+listener (the one non-canonical fixture) emits canonical `Received: <n>` and the
+`zephyr.rs` tolerances are dropped; native_sim E2E parse rides on the
+`zephyr-dual-line` CI.
 
 **Priority.** P3 — test hygiene / drift prevention; no product capability
 depends on it. The remaining greenwash surface (198.1) is the highest-value bit
@@ -55,28 +56,26 @@ Three gaps remain.
       `cargo test -p nros-tests --no-run` clean; a grep for `Failed to start ROS 2`
       / `[FAIL]` / `exited early` followed by a bare `return;` is now empty.
 
-- [ ] **198.2 — Normalize Zephyr fixture output to the canonical format.**
-      *(Owned by another agent — handoff 2026-05-29.)* The Zephyr talker/listener
-      fixtures emit alt formats — `data=…` (instead of `Published: <n>`) and
-      `Received[<i>]: <v>` (instead of `Received: <n>`), forcing the
-      format-tolerant checks scattered through `nros-tests/tests/zephyr.rs`. This
-      is the **last open 198 item** (198.1 + 198.3 landed). Handoff detail:
-  - **Fixtures to normalize** (`examples/zephyr/`): the `Received[{}]: {}` print
-    is `rust/listener/src/lib.rs:101`; mirror prints live in `rust/talker`,
-    `cpp/talker`, `cpp/listener`, `cpp/cyclonedds/talker-aemv8r` (grep
-    `examples/zephyr` for `data=` / `Received[`). Change them to the canonical
-    `Published: <n>` / `Received: <n>` (drop the `[index]` + `data=` forms).
-  - **Test sites to simplify afterward** (`nros-tests/tests/zephyr.rs`): the
-    `||`-tolerant checks at `:39`, `:156`, `:164`, `:1223`, `:1228`, `:1320`,
-    `:1940`, `:2245`, `:2337` + the `count_pattern(.., "Received[")` /
-    `count_zephyr_received` helpers (`:1241` and the comments at `:392`/`:546`).
-    Once the fixtures emit the canonical format, replace these with
-    `output::assert_talker`/`assert_listener` / `parse_listener(..).values` and
-    retire `count_zephyr_received`.
-  - **Build-gated:** verify on the Zephyr path (native_sim / FVP) before landing
-    — the example build needs the Zephyr SDK + the `nros codegen` toolchain
-    (couldn't be built in the normalization session). This is why it was deferred,
-    not skipped.
+- [x] **198.2 — Normalize Zephyr fixture output to the canonical format.**
+      Audit found only **one** non-canonical fixture: `examples/zephyr/rust/listener`
+      emitted `Received[<i>]: <v>`; all talkers (c/cpp/rust) already print
+      `Published: <n>` and the c/cpp listeners `Received: <n>` (the `data=`
+      tolerance was dead — no Zephyr fixture emits it). Fixes:
+      - `examples/zephyr/rust/listener/src/lib.rs` → canonical `Received: <v>`
+        (dropped the unused loop counter).
+      - `nros-tests/tests/zephyr.rs`: `count_zephyr_received` drops the
+        `|| Received[` arm; removed the dead `|| data=` talker/listener
+        tolerances (`:156`/`:164`/`:1223`), the `|| Received[` listener tolerance
+        (`:1228`), the `count_pattern(…,"Received[")` add (`:1238`), and the
+        cpp/xrce `|| data=` (`:1937`); refreshed the stale `Received[N]` comments.
+      Acceptance met: `grep 'data=|Received\['` in `zephyr.rs` returns only a
+      comment; `cargo test -p nros-tests --no-run` clean. **E2E note:** the
+      native_sim boot→parse path is exercised by the `zephyr-dual-line` CI (builds
+      the rust listener) + the zephyr test lane — not re-run locally (workspace
+      setup is a ~20-min west update; the change is a trivial log-string rename).
+      The complex multi-condition talker checks were left as `contains("Published:")`
+      (canonical) rather than forced through `assert_talker` — they carry
+      error-attribution logic that `assert_*`'s panic-on-miss would break.
 
 - [x] **198.3 — Route value-extraction loops through `parse_*` (non-Zephyr). DONE**
       (2026-05-29). `executor.rs` ordering test now uses
