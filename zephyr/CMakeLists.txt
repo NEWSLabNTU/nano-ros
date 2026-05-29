@@ -423,8 +423,34 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # `#include "rmw_dds_common_graph.h"`. The helper has no imported
     # CycloneDDS::ddsc target on embedded, so pre-set IDLC_EXECUTABLE (the host
     # idlc built by `just cyclonedds setup`).
-    set(IDLC_EXECUTABLE "${NROS_REPO_DIR}/build/install/bin/idlc"
-        CACHE FILEPATH "host Cyclone idlc (graph-types codegen)")
+    # Resolve a host idlc (priority): explicit IDLC_EXECUTABLE env override,
+    # the `nros setup` SDK store ($NROS_HOME/sdk or ~/.nros/sdk →
+    # cyclonedds/<ver>/bin), host PATH (e.g. a ROS 2 install), then the
+    # legacy in-tree build dirs. The retired Phase 140 `build/install`
+    # prefix is only a last-resort hint.
+    if(DEFINED ENV{IDLC_EXECUTABLE} AND EXISTS "$ENV{IDLC_EXECUTABLE}")
+        set(NROS_HOST_IDLC "$ENV{IDLC_EXECUTABLE}" CACHE FILEPATH "host Cyclone idlc")
+    else()
+        if(DEFINED ENV{NROS_HOME})
+            file(GLOB _nros_idlc_store_hints "$ENV{NROS_HOME}/sdk/cyclonedds/*/bin")
+        else()
+            file(GLOB _nros_idlc_store_hints "$ENV{HOME}/.nros/sdk/cyclonedds/*/bin")
+        endif()
+        find_program(NROS_HOST_IDLC
+            NAMES idlc
+            HINTS
+                ${_nros_idlc_store_hints}
+                "${NROS_REPO_DIR}/build/cyclonedds/bin"
+                "${NROS_REPO_DIR}/build/install/bin"
+            DOC "host Cyclone idlc (graph-types codegen)")
+    endif()
+    if(NOT NROS_HOST_IDLC)
+        message(FATAL_ERROR
+            "host Cyclone idlc not found — install ROS 2 (idlc on PATH), run "
+            "`nros setup <board> --rmw cyclonedds`, or set IDLC_EXECUTABLE.")
+    endif()
+    set(IDLC_EXECUTABLE "${NROS_HOST_IDLC}"
+        CACHE FILEPATH "host Cyclone idlc (graph-types codegen)" FORCE)
     list(APPEND CMAKE_MODULE_PATH "${NROS_RMW_CDDS_DIR}/cmake")
     include(NrosRmwCycloneddsTypeSupport)
     set(_nros_graph_types_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-graph-types")
@@ -467,8 +493,8 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     # find_package sets a *normal* CMAKE_MODULE_PATH in the app scope that
     # shadows the INTERNAL cache value, so the append must happen in the
     # app scope.) NROS_REPO_DIR is the repo root here (set above).
-    set(NROS_CYCLONE_IDLC "${NROS_REPO_DIR}/build/install/bin/idlc"
-        CACHE FILEPATH "host Cyclone idlc")
+    set(NROS_CYCLONE_IDLC "${NROS_HOST_IDLC}"
+        CACHE FILEPATH "host Cyclone idlc" FORCE)
     set(NROS_CYCLONE_SCRIPTS_DIR "${NROS_REPO_DIR}/scripts/cyclonedds"
         CACHE PATH "cyclone descriptor-gen scripts")
     set(NROS_CYCLONE_CMAKE_DIR "${NROS_RMW_CDDS_DIR}/cmake"

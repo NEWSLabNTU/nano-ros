@@ -474,10 +474,14 @@ build-fixtures:
     # self-provisions Cyclone in-tree and resolves idlc host-side via find_program
     # (186.3 — NO_CMAKE_FIND_ROOT_PATH, e.g. a ROS 2 install on PATH), so no
     # `just cyclonedds setup` is needed.
-    if command -v idlc >/dev/null 2>&1 || [ -x "$nros_root/build/install/bin/idlc" ]; then
+    nros_store_root="${NROS_HOME:-$HOME/.nros}/sdk"
+    if command -v idlc >/dev/null 2>&1 \
+        || [ -n "$(ls "$nros_store_root"/cyclonedds/*/bin/idlc 2>/dev/null)" ] \
+        || [ -x "$nros_root/build/cyclonedds/bin/idlc" ] \
+        || [ -x "$nros_root/build/install/bin/idlc" ]; then
         fixture_rmws+=(cyclonedds)
     else
-        echo "  → zephyr cyclonedds fixtures skipped (idlc not found on PATH — install a CycloneDDS/ROS 2 idlc, or set IDLC_EXECUTABLE)"
+        echo "  → zephyr cyclonedds fixtures skipped (idlc not found on PATH or nros store — run \`nros setup <board> --rmw cyclonedds\`, install a ROS 2 idlc, or set IDLC_EXECUTABLE)"
     fi
     fi
     for lang in $(nros_fixture_langs); do
