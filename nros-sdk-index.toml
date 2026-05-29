@@ -22,21 +22,23 @@
 # dist.<host> is added after the first `nros-v*` release is cut + gate-verified;
 # until then `nros setup` / install.sh fall back to the source recipe below.
 [tool.nros]
-version = "0.3.3"
-upstream = "0.3.3" # nros-cli crate version = source.ref tag (nros-v0.3.3)
-# 0.3.3 adds `[build].optimize` (size|speed|balanced|debug) → the generated
-# package's [profile.release] (Phase 204.15 increment 1). 0.3.2 added
-# shallow+recursive submodule/clone provisioning + `nros setup --full`. 0.3.1
-# added the Phase 197.2 index schema (build_sources/dev_sources/[reference.*]);
-# 0.3.0 rejected them via deny_unknown_fields. See Phase 197.5.
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.3/nros-linux-x86_64.tar.zst", sha256 = "3349343f5902254fc87f5252023b4fd9051ff8142921be6ea6e6050cf1a0c669" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.3/nros-linux-arm64.tar.zst", sha256 = "28eee757d550c6029db7ea75248dbf4f50c1e20d880e0b47c6f89814764dc2f6" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.3/nros-macos-arm64.tar.zst", sha256 = "65e78c84334aa4b60e7d984a4377ac2f059659e9908bca3372ddff485d7bd339" }
+version = "0.3.4"
+upstream = "0.3.4" # nros-cli crate version = source.ref tag (nros-v0.3.4)
+# 0.3.4 adds the `[build.cargo]` per-layer override (Phase 204.15 increment 2):
+# refines the optimize-derived [profile.release] in place. 0.3.3 added
+# `[build].optimize` (size|speed|balanced|debug) → the generated package's
+# [profile.release] (204.15 increment 1). 0.3.2 added shallow+recursive
+# submodule/clone provisioning + `nros setup --full`. 0.3.1 added the Phase
+# 197.2 index schema (build_sources/dev_sources/[reference.*]); 0.3.0 rejected
+# them via deny_unknown_fields. See Phase 197.5.
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.4/nros-linux-x86_64.tar.zst", sha256 = "98b8452d280a7869327f4b15477dfceb083a3478707af1d85a41ed321d277a93" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.4/nros-linux-arm64.tar.zst", sha256 = "6b9b4929569db9a326ee14f25d1db16b569922cdca5444fed88ab5bc519aa4e6" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nros-cli/releases/download/nros-v0.3.4/nros-macos-arm64.tar.zst", sha256 = "132e19edf646c85e41ce3b5409f15d0fc521c496fdbcc803766b523853b06687" }
 # dist.macos-x86_64 added once a macos-13 build seeds it (its job is currently
 # flaky in the runner queue); intel-mac falls back to the source recipe until then.
 [tool.nros.source]
 git = "https://github.com/NEWSLabNTU/nros-cli"
-ref = "nros-v0.3.3"
+ref = "nros-v0.3.4"
 # ros-launch-manifest-types is a path dep behind a nested submodule.
 configure = "git submodule update --init --recursive"
 install = "cargo install --path packages/nros-cli --root {prefix} --locked"
