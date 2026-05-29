@@ -29,3 +29,12 @@ std_msgs = { version = "*", default-features = false }
 
 # Panic handler (required for no_std)
 panic-semihosting = { version = "0.6", features = ["exit"] }
+
+# Phase 204.3 — size-optimized profile: opt-level "z" + strip, inheriting
+# release's lto/codegen-units. Build with `cargo build --profile size`
+# (or fleet-wide via `NROS_CARGO_PROFILE=size just <plat> build`).
+[profile.size]
+inherits = "release"
+opt-level = "s"
+debug = false
+strip = true

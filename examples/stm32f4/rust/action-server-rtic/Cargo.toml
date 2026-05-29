@@ -50,3 +50,12 @@ codegen-units = 1
 debug = 2
 incremental = false
 opt-level = 1
+
+# Phase 204.3 — size-optimized profile: opt-level "z" + strip, inheriting
+# release's lto/codegen-units. Build with `cargo build --profile size`
+# (or fleet-wide via `NROS_CARGO_PROFILE=size just <plat> build`).
+[profile.size]
+inherits = "release"
+opt-level = "s"
+debug = false
+strip = true

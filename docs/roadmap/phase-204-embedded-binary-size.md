@@ -207,29 +207,36 @@ typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
       `stm32f4/rust/talker` build clean → `MAX_SOCKETS=1, MAX_UDP_SOCKETS=1`). The
       −49 KB BSS win from the original rollout is now the *default*, not opt-in.
 
-### 204.3 — Size-tuned embedded release profile — [~] profile landed + quantified
-- [x] **`[profile.size]` added (2026-05-30)** to `examples/stm32f4/rust/talker`:
-      `inherits="release"` (keeps `lto="fat"` + `codegen-units=1`) but
-      `opt-level="z"` (size) instead of `3` (speed) + `strip=true` + `debug=false`.
-      `panic` is already `abort` on the thumbv7em target. Build with
-      `cargo build --profile size`.
-- [x] **Quantified `z` vs `3`** (stm32f4 talker, thumbv7em-none-eabihf, same
-      lto/cu, with 204.2 + 204.8 already applied):
+### 204.3 — Size-tuned embedded release profile — [x] DONE (2026-05-30)
+- [x] **`[profile.size]`** (`inherits="release"` + `strip=true` + `debug=false`;
+      `panic` is already `abort` on the embedded targets). Build with
+      `cargo build --profile size`, or fleet-wide via
+      `NROS_CARGO_PROFILE=size just <plat> build` (the existing profile env already
+      threads `--profile size` through every build recipe — no new just flag
+      needed). Rolled into all **20** cortex-m bare-metal examples
+      (`examples/qemu-arm-baremetal/rust/*` + `examples/stm32f4/rust/*`).
+- [x] **opt-level `"s"`, NOT `"z"` — `z` regresses RAM on smoltcp examples.**
+      Measured on `qemu-arm-baremetal/rust/talker` (ethernet/smoltcp): `opt-level="z"`
+      shrank `.text` 177.4→163.7 KB but **grew `.bss` 91.7→116.3 KB (+24 KB)** — its
+      weaker DCE keeps a non-inlined `nros_smoltcp::get_tcp_buffers` accessor that
+      references *all* socket buffers, defeating opt-3's per-socket dead-buffer
+      elimination (the unused `TCP_{RX,TX}_BUFFER_1..3` survive gc). `opt-level="s"`
+      both shrinks `.text` *more* and preserves the socket DCE (bss unchanged):
 
-      | profile | opt | text | data | bss |
-      |---|---|---|---|---|
-      | `release` | `3` (speed) | 75.6 KB | 13.7 KB | 51.8 KB |
-      | `size`    | `z` (size)  | **59.9 KB** | 13.7 KB | 51.8 KB |
+      | example (target) | profile | text | bss |
+      |---|---|---|---|
+      | qemu-arm-baremetal talker (smoltcp) | `release` (3) | 177.4 KB | 91.7 KB |
+      | qemu-arm-baremetal talker | `size` (`z`) | 163.7 KB | **116.3 KB** ⚠ |
+      | qemu-arm-baremetal talker | `size` (`s`) | **158.3 KB** | 91.7 KB |
+      | stm32f4 talker | `release` (3) | 186.9 KB | 123.0 KB |
+      | stm32f4 talker | `size` (`s`) | **138.1 KB** | 123.0 KB |
 
-      **text −14.3 KB (−18.9 %)**; data/bss unchanged (opt-level doesn't touch
-      static buffers — those are 204.2/204.5/204.6 territory). `z` trades some
-      speed for ~19 % less flash on the hot networking + zenoh-pico code.
-- [ ] **Remainder:** roll `[profile.size]` into the other size-critical examples
-      + add a `just <plat> build --size` knob that passes `--profile size` (each
-      example needs the profile defined; `nros new` should scaffold it — ties into
-      204.15's `optimize="size"`).
-- [x] **Acceptance:** measured text delta documented (−18.9 %); a size profile
-      exists (`cargo build --profile size`).
+      `s` = **−10.8 %** text (qemu) / **−26 %** text (stm32f4), bss unchanged. Lesson:
+      `-Oz` is not strictly smaller — it can disable optimizations the static-buffer
+      DCE depends on. The shipped profile uses `s`.
+- [x] **Acceptance:** `cargo build --profile size` exists in all 20 examples,
+      `NROS_CARGO_PROFILE=size just <plat> build` is the fleet knob, measured text
+      delta documented. (`nros new` scaffolding the profile ties into 204.15.)
 
 ### 204.4 — Strip fmt / panic machinery
 - [ ] ~5 KB is `core::fmt`/`Debug`/`escape_debug`/`slice_error_fail_rt`, pulled in

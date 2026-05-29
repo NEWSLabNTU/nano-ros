@@ -53,7 +53,7 @@ overflow-checks = false
 # docs/roadmap/phase-204-embedded-binary-size.md (204.3).
 [profile.size]
 inherits = "release"
-opt-level = "z"
+opt-level = "s"
 debug = false
 strip = true
 
