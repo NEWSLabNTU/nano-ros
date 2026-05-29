@@ -43,6 +43,10 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
 zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
 # CMSDK UART driver (serial only)
 cmsdk-uart = { path = "../../drivers/cmsdk-uart", optional = true }
+# Phase 207.2 — XRCE custom-transport callbacks (UART). Gated via the
+# `xrce-transport` feature so the type only enters the build when an XRCE
+# example asks for it.
+nros-rmw-xrce-cffi = { path = "../../xrce/nros-rmw-xrce-cffi", default-features = false, optional = true }
 # Phase 132 — `mps2-an385-pac` exposes the `Interrupt` enum so
 # `init_serial` can `NVIC::unmask(Interrupt::UARTTX0)` to enable
 # the TX-empty IRQ that backs the cmsdk-uart driver's `wfi`-loop.
@@ -72,6 +76,13 @@ ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # peer.c references at link time come from `zpico-sys`'s
 # default-on `platform-aliases` C TU; no shim needed.
 serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:mps2-an385-pac"]
+# Phase 207.2 — XRCE custom-transport callbacks bound to the CMSDK UART0.
+# Exposes `xrce_transport_ops()` returning the four `open`/`close`/`write`/
+# `read` fn pointers an XRCE bare-metal example installs via
+# `nros_rmw_xrce_cffi::set_custom_transport_ops`. Requires `serial` (shares
+# `UART_DEVICE` with the zenoh-pico serial path) + a depender on
+# `nros-rmw-xrce-cffi` (the XRCE example).
+xrce-transport = ["serial", "dep:nros-rmw-xrce-cffi"]
 # Docker networking mode (container with NAT, ethernet only)
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)

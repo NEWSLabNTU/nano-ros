@@ -1,0 +1,46 @@
+[workspace]
+
+[package]
+name = "qemu-talker-xrce"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Bare-metal XRCE talker (CMSDK UART custom transport) — Phase 207"
+
+[[bin]]
+name = "qemu-talker-xrce"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+# Board crate: serial UART + the XRCE custom-transport shim (Phase 207.2).
+# `xrce-transport` forwards through to `serial` (shares `UART_DEVICE` with
+# the zenoh-pico serial path). No `rmw-zenoh` marker — this build is XRCE-only.
+nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["serial", "xrce-transport"] }
+nros-log = { path = "../../../../packages/core/nros-log", default-features = false }
+
+# nros Executor API (rmw-cffi-lean — pub-only, sub trampolines stay stubbed
+# at the cffi VTABLE level, see Phase 204.1.L). No link-tcp/link-udp — serial.
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-bare-metal", "ros-humble"] }
+
+# XRCE backend (Rust cffi shim around `nros-rmw-xrce`'s C library). Carries
+# `nros_rmw_xrce_register()` + the Phase 207.1 `set_custom_transport_ops`
+# wrapper this example installs before `Executor::open`.
+nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", default-features = false }
+
+# Generated message types (from package.xml via nros generate-rust).
+std_msgs = { version = "*", default-features = false }
+
+# Panic handler (required for no_std).
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+# Phase 204.3 — size-optimized profile (`cargo build --profile size`).
+[profile.size]
+inherits = "release"
+opt-level = "s"
+debug = false
+strip = true

@@ -99,61 +99,104 @@ number.
 
 ## Work Items
 
-### 207.1 — `install_custom_transport` Rust surface in `nros-rmw-xrce-cffi`
+### 207.1 — `install_custom_transport` Rust surface — [x] DONE (2026-05-30)
 
-A safe Rust API on top of the existing C `uxr_init_custom_transport` /
-`uxrCustomTransport` struct. Takes the four callbacks (matching the XRCE
-signatures) + a `*mut c_void` user context; stores them in a static (so the
-addresses outlive the call) + invokes the C init. Must be called BEFORE the
-backend's `register()` opens its first session.
+The C plumbing already existed in `nros-rmw-xrce/src/transport_custom.c`
+(`nros_rmw_xrce_set_custom_transport_ops` + the four `uxrCustomTransport`
+trampolines, Phase 115.K.2.4); the `nros-rmw-xrce-cffi` build.rs already
+links it (line 141: `transport_custom`). So 207.1 collapsed to adding the
+Rust binding + safe wrapper.
 
-- [ ] Add `pub fn install_custom_transport(...)` to `nros-rmw-xrce-cffi`
-      (cfg-gated on `target_os = "none"` + any RTOS that needs custom).
-- [ ] Build verified on `thumbv7m-none-eabi` + the existing hosted targets
-      (the API compiles, gated to bare-metal callers; hosted continues to use
-      the profile transports).
-- [ ] Document the call ordering (install BEFORE `register()`).
-- **Files:** `packages/xrce/nros-rmw-xrce-cffi/src/lib.rs`,
-  `packages/xrce/nros-rmw-xrce-cffi/build.rs` (no new vendor sources — the
-  `custom_transport.c` already compiles per 204.7).
+- [x] **`NrosRmwXrceTransportOps` `#[repr(C)]` struct + `extern "C"` decl for
+      `nros_rmw_xrce_set_custom_transport_ops`** in `nros-rmw-xrce-cffi`.
+      Layout-identical to the C `nros_rmw_xrce_transport_ops_t`; `open`/`close`/
+      `write`/`read` are `Option<unsafe extern "C" fn(...)>` so callers can
+      pass `None` for unused callbacks (C side null-checks).
+- [x] **`pub unsafe fn set_custom_transport_ops(&ops, framing)`** — safe Rust
+      wrapper returning `Result<(), RegisterError>`. Documented call ordering
+      (install BEFORE `register()` / `Executor::open`).
+- [x] Verified `cargo build -p nros-rmw-xrce-cffi` + `cargo test -p
+      nros-rmw-xrce-cffi` green (linkme stub no-op test passes; the existing
+      `register_smoke` continues to pass — surface is additive).
+- **Files:** `packages/xrce/nros-rmw-xrce-cffi/src/lib.rs`.
 
-### 207.2 — UART custom-transport shim on `nros-platform-mps2-an385`
+### 207.2 — UART custom-transport shim on `nros-board-mps2-an385` — [x] DONE (2026-05-30)
 
-A Rust module exposing four `extern "C" fn` callbacks that drive the CMSDK
-`UART0` that `zpico-serial` already wraps. The shim is feature-gated so it
-only compiles when the example asks for XRCE.
+(Landed on the **board** crate, not `nros-platform-*` — `UART_DEVICE` lives in
+the board where the hardware init runs; the platform crate is one abstraction
+layer up.)
 
-- [ ] `pub mod xrce_uart_transport` in `nros-platform-mps2-an385`, behind a
-      `xrce-transport` Cargo feature.
-- [ ] Reuse the `UART_DEVICE` static + the existing register-init from
-      `node::install_uart()`; expose `open/close/write/read` callbacks with the
-      XRCE signature (byte buffers + timeout); read is non-blocking with a
-      poll budget.
-- [ ] Smoke: shim compiles cleanly + the `MPS2_UART_XRCE` constant
-      (`uxrCustomTransport` parameter set) is reachable from an example.
-- **Files:** `packages/platforms/nros-platform-mps2-an385/src/xrce_uart_transport.rs`,
-  `packages/platforms/nros-platform-mps2-an385/src/lib.rs` (re-export),
-  `packages/platforms/nros-platform-mps2-an385/Cargo.toml` (feature).
+- [x] **`xrce-transport` Cargo feature** on `nros-board-mps2-an385`, forwards
+      through to `serial` + pulls `nros-rmw-xrce-cffi` (the type source).
+- [x] **`pub mod xrce_transport`** with four `extern "C" fn`s
+      (`xrce_open/close/write/read`) bound to the same `UART_DEVICE`
+      (`cmsdk_uart::CmsdkUart`) the zenoh-pico serial path uses; `UART_DEVICE`
+      made `pub(crate)` so the new module shares it without a re-init.
+- [x] **`pub fn xrce_transport_ops()`** factory returning
+      `NrosRmwXrceTransportOps` (avoids the `*mut c_void` → `!Sync` static
+      issue; the small struct is constructed at call time).
+- [x] Smoke: the board crate still builds clean with default features
+      (verified via `serial-talker` rebuild), and the new module compiles when
+      a downstream example enables `xrce-transport`.
+- **Files:** `packages/boards/nros-board-mps2-an385/src/xrce_transport.rs`
+  (new), `…/src/lib.rs` (re-export gated on feature),
+  `…/src/node.rs` (`UART_DEVICE` → `pub(crate)`),
+  `…/Cargo.toml` (feature + dep).
 
-### 207.3 — `examples/qemu-arm-baremetal/rust/talker-xrce/`
+### 207.3 — `examples/qemu-arm-baremetal/rust/talker-xrce/` — [~] skeleton landed; **blocked on 207.3.bm-libc**
 
-The shipped end-to-end example, parallel to `serial-talker` (zenoh) — same
-`mps2-an385` board, same `[profile.size]` + size knobs from 204, but with the
-XRCE backend + UART custom transport.
+Files laid down + the surface wired through; the link step surfaces the next
+real bring-up gap (see 207.3.bm-libc below).
 
-- [ ] `Cargo.toml` — board with `serial` + `rmw-xrce` + `xrce-transport`; `nros`
-      with `rmw-cffi, platform-bare-metal, ros-humble`; `nros-rmw-xrce-cffi`
-      backend; `panic-semihosting`.
-- [ ] `.cargo/config.toml` — target triple, runner (qemu PTY), `rustflags`
-      with `--gc-sections`, `[env]` with `NROS_LINK_IP=0` /
-      `ZPICO_NO_SMOLTCP=1` / `NROS_HEAP_SIZE="8192"` (XRCE's claimed working
-      set is ~3 KB; size with margin).
-- [ ] `src/main.rs` — install the shim, register the XRCE backend, open the
-      executor, declare publisher, publish in a timer.
-- [ ] `[profile.size]` (Phase 204.3) + `nros.toml` (serial transport,
-      `xrce/UART_0` locator).
+- [x] **`Cargo.toml`** — board with `serial` + `xrce-transport`, no
+      `rmw-zenoh`; `nros` with `rmw-cffi, platform-bare-metal, ros-humble`;
+      `nros-rmw-xrce-cffi`; `panic-semihosting`. `[profile.size]` per 204.3.
+- [x] **`.cargo/config.toml`** — copied from `serial-talker` (same target /
+      runner / rustflags / `[env]` with `NROS_LINK_IP=0` / `ZPICO_NO_SMOLTCP=1`
+      / `NROS_HEAP_SIZE="24576"`). XRCE's smaller working set means the heap
+      can likely come down further (target ~8 KB once a passing build exists).
+- [x] **`src/main.rs`** — installs the shim, registers the XRCE backend,
+      opens the executor, declares publisher, publish loop. Uses the
+      `nros_rmw_xrce_cffi::set_custom_transport_ops` API from 207.1 + the
+      `xrce_transport::xrce_transport_ops()` factory from 207.2.
+- [x] `nros.toml` (serial locator) + `package.xml` (renamed).
+- [→] **Build link FAILS — `nros-rmw-xrce`'s C session/publisher/service
+      reference libc** (`malloc`/`free`/`strrchr`/`strtol`) which don't exist
+      on `target_os = "none"`. zenoh-pico runs bare-metal because `zpico-sys`
+      provides picolibc / errno-override plumbing; the `nros-rmw-xrce-cffi`
+      build.rs does not yet do the equivalent. Tracked as 207.3.bm-libc.
 - **Files:** `examples/qemu-arm-baremetal/rust/talker-xrce/{Cargo.toml,
   .cargo/config.toml, src/main.rs, nros.toml, package.xml}`.
+
+### 207.3.bm-libc — provide libc symbols to the XRCE bare-metal link
+
+Discovered while attempting 207.3. The vendor Micro-XRCE-DDS-Client + the
+nros-rmw-xrce wrapper call `malloc`/`free`/`strrchr`/`strtol` from
+`session.c`/`publisher.c`/`service.c`. Bare-metal targets (`target_os =
+"none"`) ship no libc. Three plausible paths:
+
+1. **picolibc on the XRCE side**, mirroring `zpico-sys`'s
+   `needs_picolibc`/`needs_errno_override` plumbing (`nros-rmw-xrce-cffi`
+   build.rs gains the same arch-table → `-isystem $picolibc/include` +
+   newlib stubs). Cleanest, matches the existing pattern.
+2. **Route XRCE's allocations through `zpico-alloc`** (the bare-metal
+   free-list heap already linked) by providing `malloc`/`free` wrappers in
+   `nros-platform-mps2-an385` (or a new shared `nros-platform-libc-stubs`
+   crate); `strrchr`/`strtol` stubs are tiny.
+3. **Patch / config-flag the vendor** to a static-only allocation mode
+   (`RMW_UXRCE_ALLOW_DYNAMIC_ALLOCATIONS=OFF`-style, micro-ROS does this) so
+   it never calls `malloc`/`free` in the first place. The string helpers
+   stay; same handful of stubs.
+
+- [ ] Pick the path (the right answer is likely (2)+(3) — small libc-stub
+      crate + static-allocation vendor config — both keep the build
+      reproducible and avoid pulling picolibc into a flow that doesn't need
+      its math lib).
+- [ ] Land it so `cargo build --release` on `talker-xrce` links clean.
+- **Files (likely):** `packages/xrce/nros-rmw-xrce-cffi/build.rs` (config
+  defines), a new `nros-platform-*` shim or shared crate (libc stubs),
+  potentially `packages/xrce/nros-rmw-xrce-cffi/src/include/nros_xrce_config.h`
+  (vendor static-alloc defines).
 
 ### 207.4 — E2E test against `MicroXRCEAgent` over a socat PTY bridge
 

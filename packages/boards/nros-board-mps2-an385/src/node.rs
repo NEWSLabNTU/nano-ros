@@ -49,7 +49,7 @@ static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 // ---- Serial static storage ----
 
 #[cfg(feature = "serial")]
-static mut UART_DEVICE: MaybeUninit<cmsdk_uart::CmsdkUart> = MaybeUninit::uninit();
+pub(crate) static mut UART_DEVICE: MaybeUninit<cmsdk_uart::CmsdkUart> = MaybeUninit::uninit();
 
 // ---- PlatformSerial vtable shims (Phase 80.14.4b) ----
 //

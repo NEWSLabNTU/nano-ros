@@ -33,6 +33,11 @@ mod error;
 #[cfg(feature = "ethernet")]
 pub mod network;
 mod node;
+// Phase 207.2 — XRCE custom-transport callbacks bound to the CMSDK UART0.
+// Off by default; opt in via `features = ["xrce-transport"]` from an XRCE
+// example (forwards through to `serial`).
+#[cfg(feature = "xrce-transport")]
+pub mod xrce_transport;
 
 // Re-export entry macro
 pub use cortex_m_rt::entry;
