@@ -54,11 +54,19 @@ build:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    nros_cli="$(nros_cli_bin)"
     echo "Building QEMU ARM examples..."
     for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
                        -not -path '*/target/*' -not -path '*/generated/*' | sort); do
         dir="$(dirname "$toml")"
         echo "  build $dir"
+        # Examples that path-dep generated message crates (example_interfaces /
+        # std_msgs, wired via [patch.crates-io] -> generated/ in .cargo/config.toml)
+        # need codegen before cargo can resolve the patch path. Mirrors
+        # build-fixtures; the gitignored generated/ dirs come from package.xml.
+        if [ -f "$dir/package.xml" ]; then
+            (cd "$dir" && "$nros_cli" generate-rust --force >/dev/null)
+        fi
         (cd "$dir" && cargo build $cargo_profile_args)
     done
     # Phase 131.B — bench/test-fixture binaries that used to live under
