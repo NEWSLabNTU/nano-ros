@@ -131,11 +131,33 @@ one. Until then "serial = smaller" is not true on the shipped examples.
 - [ ] **Acceptance:** a documented heap-size guide per backend; an XRCE bare-metal
       RAM figure vs zenoh-pico.
 
-### 204.6 — FreeRTOS/lwIP footprint audit
-- [ ] The FreeRTOS talker is **240 KB text + 3.3 MB bss** — the bss (lwIP pools +
-      FreeRTOS heaps) is suspiciously large. Audit the lwIP/FreeRTOS heap + pool
-      config (`lwipopts.h`, `configTOTAL_HEAP_SIZE`) for default-oversize.
-- [ ] **Acceptance:** the bss explained + reduced to a documented budget.
+### 204.6 — FreeRTOS/lwIP footprint audit — [x] DONE (2026-05-30)
+- [x] **bss explained:** the 3.3 MB is almost entirely the FreeRTOS heap —
+      `configTOTAL_HEAP_SIZE = 3072*1024` → `heap_4.c`'s static `ucHeap[3 MiB]`
+      (confirmed via `nm`: `ucHeap` = 3 MiB). lwIP pools are modest
+      (`MEM_SIZE` 32 KB, `PBUF_POOL` 24, MEMP). The 3 MiB was set for the heavy
+      **CycloneDDS** discovery boot path, not zenoh.
+- [x] **Right-sized, RMW-gated (zero cyclone risk).** `FreeRTOSConfig.h` now takes
+      `configTOTAL_HEAP_SIZE` from `NROS_FREERTOS_HEAP_KB` (default **3072**, the
+      cyclone-safe value, unchanged). `nros-board-freertos/build.rs` forwards it
+      as `-D` to the only TU that sizes `ucHeap`, and — when the `rmw-zenoh`
+      feature is active (forwarded from the board, NOT set on cyclone/xrce
+      builds) — defaults it to **512 KiB**. An explicit `NROS_FREERTOS_HEAP_KB`
+      build-env wins over both, so any example/RMW can tune to its measured
+      high-water (`xPortGetMinimumEverFreeHeapSize()`).
+- [x] **Measured + verified (qemu MPS2-AN385, zenoh talker):** **bss 3.3 MB →
+      662 KB (−80 %)** (`ucHeap` 3 MiB → 512 KiB). 256 KiB `MALLOC FAILED` during
+      lwIP init (zenoh-pico working set is small, but lwIP netconns/pbufs/socket
+      semaphores + FreeRTOS task stacks also draw on this heap); **512 KiB boots
+      + connects + publishes 0..17 cleanly** against zenohd. All six zenoh
+      FreeRTOS examples inherit it (same board). cyclone/xrce keep the 3 MiB
+      default until separately measured.
+- **Files:** `packages/boards/nros-board-mps2-an385-freertos/config/FreeRTOSConfig.h`,
+  `packages/boards/nros-board-freertos/build.rs`.
+- [ ] **Follow-up:** measure the cyclone + xrce FreeRTOS high-water and give each
+      its own gated default (cyclone almost certainly < 3 MiB too); wire an
+      `rmw-cyclonedds`/`rmw-xrce` feature forward to the base crate like
+      `rmw-zenoh`.
 
 ## Transport / IP-stack optionality (architecture)
 

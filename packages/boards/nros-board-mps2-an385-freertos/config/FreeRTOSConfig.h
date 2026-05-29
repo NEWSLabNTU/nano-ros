@@ -28,11 +28,19 @@
 /* ---- Memory ---- */
 #define configSUPPORT_STATIC_ALLOCATION         0
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-/* Phase 175.B — CycloneDDS participant startup on FreeRTOS creates the
- * builtin discovery endpoints plus lwIP socket semaphores before the Rust
- * talker can publish. Keep enough heap for that boot path while staying within
- * the 4 MiB MPS2-AN385 SRAM budget. */
-#define configTOTAL_HEAP_SIZE                   ((size_t)(3072 * 1024))
+/* Phase 175.B / 204.6 — FreeRTOS heap (heap_4 `ucHeap[]`, the dominant bss).
+ * CycloneDDS participant startup creates the builtin discovery endpoints plus
+ * lwIP socket semaphores before the Rust talker can publish, so the default is
+ * sized for that heavy boot path (within the 4 MiB MPS2-AN385 SRAM budget).
+ * Lighter RMWs (zenoh-pico ~12 KB working set, XRCE static pools) override it
+ * per-example via the build env `NROS_FREERTOS_HEAP_KB` (the kernel build.rs
+ * forwards it as `-DNROS_FREERTOS_HEAP_KB`), e.g. `[env] NROS_FREERTOS_HEAP_KB
+ * = "256"` in the example's `.cargo/config.toml`. Tune to the RMW's measured
+ * high-water (`xPortGetMinimumEverFreeHeapSize()`); default stays cyclone-safe. */
+#ifndef NROS_FREERTOS_HEAP_KB
+#define NROS_FREERTOS_HEAP_KB                   3072
+#endif
+#define configTOTAL_HEAP_SIZE                   ((size_t)((NROS_FREERTOS_HEAP_KB) * 1024))
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* ---- Synchronisation ---- */

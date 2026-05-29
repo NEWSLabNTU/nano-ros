@@ -62,6 +62,24 @@ fn main() {
     let mut freertos = cc::Build::new();
     configure_cflags(&mut freertos);
     add_freertos_includes(&mut freertos, &freertos_dir, &port_dir, &freertos_config_dir);
+    // Phase 204.6 — right-size the FreeRTOS heap (heap_4 `ucHeap`, the dominant
+    // bss; this is the only TU that sizes it). FreeRTOSConfig.h defaults to a
+    // cyclone-safe 3 MiB. Two overrides, env wins:
+    //   1. explicit `NROS_FREERTOS_HEAP_KB` build env (any value), else
+    //   2. the `rmw-zenoh` feature (forwarded from the board) → 512 KiB. zenoh-
+    //      pico's own working set is small, but lwIP (netconns/pbufs/socket
+    //      semaphores) + the FreeRTOS task stacks also draw from this heap: 256
+    //      KiB MALLOC-FAILs during lwIP init, 512 KiB boots + publishes cleanly
+    //      (verified on the qemu MPS2-AN385 talker). Still far below the cyclone
+    //      DDS-discovery default. cyclone/xrce don't enable this feature on the
+    //      base crate, so they keep the safe 3 MiB default; tune via the env.
+    let heap_kb = env::var("NROS_FREERTOS_HEAP_KB").ok().or_else(|| {
+        (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| "512".to_string())
+    });
+    if let Some(kb) = heap_kb {
+        freertos.define("NROS_FREERTOS_HEAP_KB", kb.as_str());
+    }
+    println!("cargo:rerun-if-env-changed=NROS_FREERTOS_HEAP_KB");
     for src in &[
         "tasks.c",
         "queue.c",
