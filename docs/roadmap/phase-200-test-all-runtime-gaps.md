@@ -56,16 +56,56 @@ complete. Two sub-causes:
   (`<AllowMulticast>` + loopback). `zephyr_dds_{c,cpp,rs}_action_e2e` —
   actions on zephyr CycloneDDS not implemented (Phase 177.2 explicitly defers).
 - **rust+cyclonedds link gap (build).** `zephyr_rust_cyclonedds_{pubsub,service}_e2e`
-  and `zephyr_rust_{talker,listener}_cyclonedds_boot` fail to *build*: the Rust
-  app pulls `nros_rmw_zenoh::zpico::*` and link-errors on `zpico_open` /
-  `zpico_spin_once` / … with no zpico staticlib in a CycloneDDS build. Zephyr
-  rust **zenoh** builds clean — only the cyclonedds combo is unwired (Phase
-  196.1 / 175 follow-up).
+  and `zephyr_rust_{talker,listener}_cyclonedds_boot` fail to *build*, link-erroring
+  on `zpico_open` / `zpico_spin_once` with no zenoh-pico in a CycloneDDS build.
+  Zephyr rust **zenoh** builds clean — only the cyclonedds combo is unwired.
+
+  **Root cause (2026-05-29, static — build-verify gated on the zephyr env).** Not
+  the example sources (their `register_rmw()` is correctly `#[cfg(feature="rmw-*")]`
+  per backend; Cargo deps are `optional`+feature-gated) and not the CMake's RMW
+  fan-out (`zephyr/CMakeLists.txt` is `if NROS_RMW_ZENOH … elseif XRCE … elseif
+  CYCLONEDDS …`; zenoh-pico sources only under ZENOH). The leak is a **misplaced
+  network-wait helper**:
+  - `nros` core's `mod zephyr` (`nros/src/lib.rs:289`, gated only on
+    `platform-zephyr` — **not** on RMW) exposes `wait_for_network()` →
+    `extern zpico_zephyr_wait_network`. Every zephyr rust example calls it (correct
+    — the NIC must be up before any RMW init), so it's referenced in *every* RMW
+    build.
+  - That symbol is defined in `zpico-zephyr/src/zpico_zephyr.c` — **the same TU as
+    `zpico_zephyr_init_session`, which calls `zpico_open()`** (zenoh-pico session
+    API). The CMake compiles that TU only in the `CONFIG_NROS_RMW_ZENOH` branch.
+  - So a cyclonedds build references `zpico_zephyr_wait_network` → drags in the
+    zenoh-pico session API → undefined (zenoh-pico not compiled). Exactly the
+    reported errors.
+
+  **Why is a network-wait coupled to an RMW at all? It isn't — historical
+  artifact.** `zpico_zephyr_wait_network` is pure Zephyr `net_if` / conn_mgr /
+  `k_sem` polling (`zpico_zephyr.c:52-115`) — zero zenoh. It lives in the
+  *zenoh-pico* support crate (`zpico-zephyr`, `zpico_` prefix) only because zenoh
+  was the **first/only** Zephyr backend, so that crate's one TU bundled both the
+  platform network-wait and the zenoh session-init. When cyclonedds/xrce landed,
+  the platform-level wait stayed mis-filed under the zenoh crate. It is a platform
+  primitive wearing a zenoh name.
+
+  **Fix.** Move the RMW-blind network-wait out of the zenoh TU:
+  - *Minimal:* split `zpico_zephyr_wait_network` (+ its `net_if` helpers,
+    `zpico_zephyr.c:1-115`) into a standalone TU
+    (`zpico-zephyr/src/net_wait_zephyr.c`); leave `zpico_zephyr_init_session`
+    behind. Compile the net-wait TU in **all** RMW branches; keep the session TU
+    zenoh-only. Symbol name unchanged → no Rust/C++ caller churn.
+  - *Clean (follow-up):* relocate it to the platform layer
+    (`nros-platform-zephyr`) + rename `zpico_zephyr_wait_network` →
+    `nros_platform_zephyr_wait_network` (ripples to the `nros` core extern +
+    `nros-cpp` callers) so the `zpico_`/zenoh name no longer implies RMW coupling.
+  - **Build-verify gated on the zephyr env** (3-RMW-branch CMake): confirm zenoh
+    still links + cyclonedds now links before landing.
 
 **Files.** `packages/testing/nros-tests/tests/phase_118_collapse.rs`,
 `packages/testing/nros-tests/tests/zephyr.rs`,
 `packages/dds/nros-rmw-cyclonedds/`, `zephyr/CMakeLists.txt` (rust+cyclone
-link), `examples/zephyr/rust/*`.
+link), `examples/zephyr/rust/*`, `packages/zpico/zpico-zephyr/src/zpico_zephyr.c`
+(the misplaced wait helper), `packages/core/nros/src/lib.rs:289` (the
+`platform-zephyr` extern).
 
 ### 200.2 — XRCE action/service runtime e2e — mostly FIXED
 
