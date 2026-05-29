@@ -271,6 +271,46 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
         native C/C++. Verified: `generated_no_std_service_action_uses_static_context`
         (emission) + `fixture_workspace_builds_generated_bare_metal_service_action_package`
         compiles the static-ctx service+action to a `thumbv7m-none-eabi` ELF.
+  - [x] **W.5.9 — active-goal iteration seam** (substrate `nros` `624364e`, codegen
+        `nros-cli` `af55959`). A `tick` body could never complete a goal: the
+        goal-decision callback doesn't surface the goal id and `ActionExecutor` had
+        no way to enumerate accepted goals. Added `ActionExecutor::for_each_active_goal`
+        + `TickCtx::for_each_active_goal(action, &mut FnMut(&GoalId, GoalStatus))`
+        (the tick collects ids, then drives `publish_feedback`/`complete_goal`), and
+        the generated `GenActionExec` impls it over
+        `ActionServerRawHandle::for_each_active_goal`. Verified: extended
+        `tick_ctx_publish_and_action_ops` (substrate) + service_action e2e compile.
+        Enables W.5.10.
+  - [ ] **W.5.10 — tick-driven action runtime exchange test.** End-to-end proof
+        that a generated server's `tick` actually drives a goal to completion over a
+        live transport: client sends goal → server `on_callback` accepts → `tick`
+        iterates `for_each_active_goal`, publishes feedback, `complete_goal`s with a
+        result → client observes feedback + result. Today verified only in parts
+        (`run_tick_loop` boots via `deploy_native_self`; the tick body logic via the
+        substrate `tick_ctx_publish_and_action_ops` mock) — the unproven piece is
+        `GenActionExec` over a *real* `ActionServerRawHandle` with a goal flowing from
+        a live client. **Approach (2-process over zenohd, mirrors
+        `nros-tests/tests/actions.rs`):** author a Fibonacci action-server *component*
+        in `testing_workspaces/orchestration_e2e` (goal accept + `tick` feedback/
+        complete), a plan whose action resolves to `/fibonacci` w/
+        `example_interfaces/action/Fibonacci`, build the generated server, spawn it +
+        the prebuilt `examples/native/rust/action-client(-async)` against a
+        `start_zenohd` router, scrape stdout for "Goal accepted" + feedback count +
+        result. **Blockers to resolve:** (a) action-name alignment (plan currently
+        `/tools/talker/count`); (b) hand-rolled Fibonacci `int32[]` CDR in the demo
+        component must match `example_interfaces`; (c) the codegen crate has no
+        `nros_tests`/example-binary fixtures — either add a dev-dep or locate the
+        prebuilt client path directly. **Files:** `testing_workspaces/orchestration_e2e/`,
+        `tests/fixtures/orchestration/plan_fibonacci_action.json`,
+        `tests/orchestration_e2e.rs`.
+  - [ ] **W.5.11 — no_std action execution (tick hook on no_std).** W.5.6's tick loop
+        + `TICK_ENTRIES` is std-only (`thread_local!` + `Box<dyn FnMut>`). A no_std
+        target that needs action feedback/result (not just decision bodies, W.5.8)
+        needs the per-instance tick entries + `GenActionExec` parked in a `static`
+        (no `thread_local`/alloc) and `run_tick_loop` emitted for no_std, gated on a
+        no_std-shared-state model (the W.5.7 `'static` variant). Depends on a no_std
+        shared-state design (statics per instance) so `tick` and the decision
+        trampolines share one state. **Files:** `nros-cli-core/src/orchestration/generate.rs`.
 - **172.K.5 — per-node multi-domain session routing. DONE** (2026-05-28).
   Executor `NodeBuilder::session_idx` selector (nros-node `ae2b19a19`); generator
   emits a session per distinct `[[domain]]` domain + routes each node via the
