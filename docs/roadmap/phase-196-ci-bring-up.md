@@ -168,6 +168,22 @@ once before being trusted:
       version bump in the script busts the key). West-workspace caching deferred
       (per-line + west-update state is staleness-prone — lower ROI, higher risk).
 
+### 196.8 — [open] Zephyr dual-line: rust/cpp examples fail at interface codegen
+First full dual-line build that gets *past provisioning* (after the px4-rs
+workspace-load fix, `64ca9f69a`): **C examples build green on both lines**
+(`c/talker`, `c/listener` — 3.7 + 4.4), but **every `rust/*` and `cpp/*` example
+fails** at the cargo build with `failed to load source for dependency
+builtin_interfaces` (`run 26616922003`). Pre-existing / newly-surfaced, **not** a
+provisioning regression — before the px4-rs fix every job died earlier at the
+`px4-sitl-tests` workspace-load, so the rust/cpp lines had never reached their own
+codegen step. The generated `builtin_interfaces` path-crate the rust/cpp examples
+depend on isn't produced before cargo runs in the `just zephyr build-one`
+rust/cpp flow (the C path codegens fine via `nros codegen` / cmake — 196.1). Needs
+its own debugging pass on the dual-line rust/cpp interface-codegen wiring (likely
+a missing `nros generate-rust` / `NROS_BUILTIN_INTERFACES_DIR` step for the
+cargo-driven examples). The C line + all other lanes (core-libs, dep-chain,
+codegen-convention, deploy-book, sdk-index-gate) are green.
+
 ### 196.4 — [DONE] Codify the CI provisioning conventions
 - [x] **DONE.** `docs/development/ci-conventions.md` written: the "runner is a
       fresh clone" model + eight conventions with copy-paste step snippets —
