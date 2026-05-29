@@ -133,6 +133,15 @@ once before being trusted:
       shared). Adding a dedicated **build** lane per remaining platform
       (freertos, nuttx, threadx, esp32, bare-metal, stm32f4) on the dual-line
       pattern is follow-up work — each its own workflow scoped to its tools.
+- [x] **Host unit-test lane** (DONE, 2026-05-29). Added `host-unit-tests.yml`:
+      `just test-unit` (workspace unit tests — `cargo nextest --workspace
+      --exclude nros-tests`) on a fresh runner. Closes the gap where **no** lane
+      executed the host test suite (core-libs only `cargo check`s the no_std
+      crates, dep-chain only resolves, the platform lanes build/boot fixtures) —
+      a unit-level regression could land green. Fresh-runner-safe: prebuilt nros +
+      `nros setup --source` for the workspace build sources the `*-sys` crates
+      compile (px4-rs, zenoh-pico, mbedtls, micro-cdr, micro-xrce-dds-client) — no
+      QEMU/zenohd/ROS/agent. Verified green on the runner (422/422 unit tests).
 - [x] **Submodule provisioning is nros-driven, not hand `git submodule`**
       (DONE, 2026-05-29 — maintainer directive: "use nros tools to pull
       toolchains and submodules to simulate user workflow; if missing, fix nros
