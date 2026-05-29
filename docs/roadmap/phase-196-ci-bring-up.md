@@ -358,12 +358,22 @@ works: `changes` resolved the dynamic matrix, all cells ran (fail-fast off),
       and `ros-humble-example-interfaces` (qemu service/action codegen — ros-base
       ships only common_interfaces/std_msgs). The zephyr image `FROM nano-ros-ci`
       refactor is a follow-up (own item).
-- [ ] **Directive: cover C/C++ tests too, not just rust/build.** The per-cell
-      `test` step (`just <plat> test`) must exercise the C and C++ example/e2e
-      paths, not only rust — each platform's c/cpp talker/listener (+ service where
-      it exists) should run under QEMU like the zephyr c/cpp lanes do. Confirm
-      `just <plat> test` includes the c/cpp fixtures (extend the recipe if it's
-      rust-only).
+- [x] **Directive: cover C/C++ tests too, not just rust/build.** Verified — the
+      recipes are *not* rust-only. For all four hosted-RTOS platforms (freertos,
+      nuttx, threadx_linux, threadx_riscv64) `build-fixtures` builds the c **and**
+      cpp examples (`scripts/build/fixtures-build.sh <plat> {c,cpp} zenoh`; e.g.
+      `just/freertos.just:166-167`, `just/nuttx.just:127-128`,
+      `just/threadx-linux.just:116-117`, `just/threadx-riscv64.just:215-216`), and
+      `packages/testing/nros-tests/tests/rtos_e2e.rs` runs the pubsub/service/action
+      e2e matrix parametrized over rust **+ c + cpp** per platform. C e2e runs on all
+      four; C++ e2e runs on freertos (full), threadx_riscv64 (full), threadx_linux
+      (pubsub+service). Remaining C++ gaps are intentional/pre-tracked, not a recipe
+      gap: NuttX C++ fixtures build but e2e is skipped (upstream libc limitation,
+      `rtos_e2e.rs:369`); threadx_linux C++ **action** is skipped → Phase 177.2;
+      threadx_riscv64 Cyclone c/cpp fixtures are experimental-gated. The bare-metal
+      cells (qemu, esp32) have no c/cpp by design (examples/README.md matrix). So the
+      per-cell `test` step already exercises c/cpp wherever it exists — no recipe
+      change needed; closing the skips is owned by their respective phases.
 
 **Container refactor + 6/6 build-green (2026-05-29, run 26633900068).** All six
 platform cells (qemu, freertos, nuttx, threadx_linux, threadx_riscv64, esp32) build
