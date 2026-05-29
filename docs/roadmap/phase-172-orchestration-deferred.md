@@ -1099,11 +1099,20 @@ The three items are independent of each other.
       the stamp is written; a real rebuild prints the skip line + cargo
       no-ops, and `--force` regenerates.
 
-- [ ] **172.E — Hardened metadata-mode sandboxing.** The
-      `nros metadata` mode compiles + runs component code to
-      extract source metadata. Harden that execution (resource
-      limits, filesystem/network restrictions) so untrusted
-      component crates can't escape during metadata extraction.
+- [~] **172.E — Hardened metadata-mode sandboxing. DROPPED** (2026-05-29 —
+      won't-do as scoped). Threat-model review: metadata-mode components come from
+      `Workspace::discover(root)` — the user's **own local workspace** crates
+      (declared in `nros.toml`/`package.xml`); there is no network/git/registry
+      fetch. So the only "untrusted" case is a third-party crate the user pulls in
+      that ships a `Component` — and that crate's `build.rs` + proc-macros already
+      run as arbitrary host code under the plain `cargo build` that *precedes*
+      metadata extraction. Sandboxing only the metadata harness while the dominant
+      threat (cargo's own build-script/proc-macro execution on the same crates)
+      stays unsandboxed is security theater. It would only matter for a hosted
+      build-service running untrusted *user-submitted* projects, which would have
+      to sandbox the whole compile pipeline, not just `build_metadata`'s
+      `cargo run`. Re-open only under that concrete use case. Original analysis +
+      the landed driver below.
       **DRIVER LANDED 2026-05-28; sandbox still deferred.** The
       metadata-mode *driver* (the thing this item must sandbox) is now
       implemented — `orchestration/metadata_build.rs`
