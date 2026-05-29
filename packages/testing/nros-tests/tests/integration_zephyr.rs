@@ -38,8 +38,12 @@ fn zephyr_integration_shell_smoke() {
     // the SDK that `just zephyr setup` installed without needing
     // a wrapper that sources `env.sh`.
     if std::env::var("ZEPHYR_BASE").is_err() {
-        let candidate = root.join("zephyr-workspace/zephyr");
-        if candidate.join("zephyr-env.sh").exists() {
+        // Resolve the west workspace the way the rest of the harness does —
+        // `ZEPHYR_NANO_ROS` env, then the in-tree `zephyr-workspace` symlink,
+        // then the `../nano-ros-workspace` sibling — not just the in-tree path.
+        if let Some(candidate) = nros_tests::zephyr::zephyr_workspace_path().map(|ws| ws.join("zephyr"))
+            && candidate.join("zephyr-env.sh").exists()
+        {
             // SAFETY: build-script-style env mutation before
             // anything reads ZEPHYR_BASE; nextest runs each test
             // in its own process so cross-test races are
