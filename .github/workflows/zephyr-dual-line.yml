@@ -89,12 +89,14 @@ jobs:
 
       # Provision the in-tree sources the Zephyr build needs via nros (index-
       # driven): zenoh-pico (zenoh examples) + the cyclonedds fork the setup
-      # patches in place. Build the CLI first (the published bin is stale).
+      # patches in place + px4-rs (the libnros_c.a cargo build loads the whole
+      # root workspace, which path-deps px4-sitl-tests — same workspace-load dep
+      # as the core-libs lane). Build the CLI first (the published bin is stale).
       - name: Build the nros CLI
         run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
 
       - name: Provision Zephyr sources via nros
-        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src
+        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
       # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
@@ -154,12 +156,14 @@ jobs:
 
       # Provision the in-tree sources the Zephyr build needs via nros (index-
       # driven): zenoh-pico (zenoh examples) + the cyclonedds fork the setup
-      # patches in place. Build the CLI first (the published bin is stale).
+      # patches in place + px4-rs (the libnros_c.a cargo build loads the whole
+      # root workspace, which path-deps px4-sitl-tests — same workspace-load dep
+      # as the core-libs lane). Build the CLI first (the published bin is stale).
       - name: Build the nros CLI
         run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
 
       - name: Provision Zephyr sources via nros
-        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src
+        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
       # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
@@ -216,12 +220,14 @@ jobs:
 
       # Provision the in-tree sources the Zephyr build needs via nros (index-
       # driven): zenoh-pico (zenoh examples) + the cyclonedds fork the setup
-      # patches in place. Build the CLI first (the published bin is stale).
+      # patches in place + px4-rs (the libnros_c.a cargo build loads the whole
+      # root workspace, which path-deps px4-sitl-tests — same workspace-load dep
+      # as the core-libs lane). Build the CLI first (the published bin is stale).
       - name: Build the nros CLI
         run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
 
       - name: Provision Zephyr sources via nros
-        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src
+        run: packages/codegen/packages/target/debug/nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       # The Zephyr 4.4 line needs Python >=3.12; provision-py312-venv.sh uses
       # `uv` to fetch a standalone 3.12 without sudo. Harmless on the 3.7 line.
