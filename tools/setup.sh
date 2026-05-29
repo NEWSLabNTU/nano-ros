@@ -2,8 +2,8 @@
 # Phase 123.A.3 / 197.2 — nano-ros setup orchestrator.
 #
 # Derives the source submodules a target needs from the SDK index
-# (nros-sdk-index.toml: platform → boards → packages+build_sources, rmw →
-# packages+build_sources, --with-dev → dev_sources, --with-reference →
+# (nros-sdk-index.toml: platform → boards → packages, rmw → packages,
+# --with-dev → dev_sources, --with-reference →
 # [reference.*]) and provisions each via `nros setup --source`, installs rustup
 # if absent, and ensures the Rust target triple is installed. The retired
 # config/submodule-deps.toml is no longer read (the index is the single home).
@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Phase 197.2 — the SDK index is the single home for every source ref
 # (config/submodule-deps.toml retired). `tools/setup.sh` derives a target's
-# sources from the index ([board.*]/[rmw.*] `packages`+`build_sources`, plus
+# sources from the index ([board.*]/[rmw.*] `packages`, plus
 # `dev_sources` / [reference.*] for opt-ins) and provisions each via
 # `nros setup --source <name>` (index-driven; git-submodule fallback when no
 # `nros` is installed yet — operationally identical for submodule-mode sources).
@@ -248,11 +248,12 @@ fi
 
 # --------------------------------------------------- resolve source names
 
-# Phase 197.2 — collect the `[source.*]` NAMES this target needs from the index
-# (platform → boards → packages + build_sources; rmw → packages + build_sources;
-# `--with-dev` adds dev_sources; `--with-reference` adds [reference.*].sources).
-# Non-source names (host tools: arm-none-eabi-gcc / qemu / zenohd / …) are
-# filtered out below — only names with a `[source.*]` entry resolve to a path.
+# Phase 197.4 (A) — collect the `[source.*]` NAMES this target needs from the
+# index: platform → boards → `packages` (build sources were folded into packages
+# so `nros setup <board>` provisions them too); rmw → `packages`; `--with-dev`
+# adds `dev_sources`; `--with-reference` adds [reference.*].sources. Non-source
+# names (host tools: arm-none-eabi-gcc / qemu / zenohd / …) are filtered out
+# below — only names with a `[source.*]` entry resolve to a submodule path.
 declare -a SRC_NAMES=()
 
 if [[ -n "$PLATFORM" ]]; then
@@ -260,8 +261,6 @@ if [[ -n "$PLATFORM" ]]; then
         [[ -n "$b" ]] || continue
         while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
             < <(index_array_for_section "board.${b}" "packages")
-        while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
-            < <(index_array_for_section "board.${b}" "build_sources")
         if (( WITH_DEV )); then
             while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
                 < <(index_array_for_section "board.${b}" "dev_sources")
@@ -272,8 +271,6 @@ fi
 if [[ -n "$RMW" ]]; then
     while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
         < <(index_array_for_section "rmw.${RMW}" "packages")
-    while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
-        < <(index_array_for_section "rmw.${RMW}" "build_sources")
     if (( WITH_DEV )); then
         while IFS= read -r n; do [[ -n "$n" ]] && SRC_NAMES+=("$n"); done \
             < <(index_array_for_section "rmw.${RMW}" "dev_sources")

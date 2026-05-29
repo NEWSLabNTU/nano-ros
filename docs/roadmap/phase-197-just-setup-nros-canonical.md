@@ -126,11 +126,40 @@ The endgame: a module recipe is `nros setup <board>` (tools + sources from the
 index) **plus** a separate host-env step for what's outside nros scope (apt
 packages, rustup toolchains/targets, platform post-steps like NuttX external-app
 staging, zephyr west-update). Retire `tools/setup.sh`'s platform branching.
-- [ ] Split `tools/setup.sh` into: (a) provisioning → delegate entirely to
-      `nros setup <board>`; (b) a host-env helper (`apt`/`rustup`/post-steps).
-- [ ] Each `just <module> setup` = `nros setup <board>` + the host-env helper.
 
-**Files**: `tools/setup.sh`, every `just/<module>.just` setup recipe.
+- [x] **Approach A — `nros setup <board>` is now the complete provisioner.**
+      Folded the 197.2 `build_sources` into the relevant `[board.*]`/`[rmw.*]`
+      `packages` (e.g. qemu-arm-nuttx now lists nuttx-kernel/apps; rmw.zenoh lists
+      zenoh-pico+mbedtls). A bare-machine `nros setup <board> → build` now works
+      for every board (`build.rs` gates on these). **Constraint found:** the
+      released `nros` parses `[rmw.*]`/`[board.*]` with a strict schema (only
+      `packages` + board descriptors) and rejects unknown fields/sections — so the
+      197.2 `dev_sources` field + `[reference.*]` section (which broke
+      `nros setup <board>`) were removed; opt-in dev/interop sources stay plain
+      submodules until an nros-cli schema change (see workflow review below).
+- [ ] **Recipe rewrite (pending the workflow review).** `tools/setup.sh` split
+      into provisioning (→ `nros setup <board>`) + a host-env helper
+      (apt/rustup/post-steps); each `just <module> setup` becomes
+      `nros setup <board>` + the helper. Held: the platform→board mapping (a
+      platform can have >1 board; the rmw-only `just cyclonedds`/`rmw_zenoh`
+      shims) and custom-board provisioning are exactly what the review settles.
+
+**Files**: `nros-sdk-index.toml`, `tools/setup.sh`, `scripts/sdk/verify-index.py`
+(done); `just/<module>.just` recipes (pending).
+
+#### Workflow review — custom boards + "nros prepares the config a board crate needs"
+*(Captured 2026-05-29 — informs the recipe rewrite + a likely nros-cli follow-up.)*
+
+Today the SDK index `[board.*]` is the maintainer-owned SSOT: `nros setup <board>`
+looks the board up there. A **user creating their own board crate** has no entry
+there, so `nros setup <their-board>` can't know its source deps. The idea: a board
+crate **declares its own source deps** (in a board manifest / `[package.metadata]`
+/ a `nros-board.toml`), and `nros` reads that + provisions them + prepares the
+build config (the `.cargo/config.toml` path-deps / cmake cache the crate needs).
+This shifts the board→sources SSOT from the central index to the board crate,
+which is what lets out-of-tree boards work. Needs nros-cli schema work (the strict
+index parser is the blocker above); the central index becomes the registry for
+*nano-ros's own* boards, user boards self-describe. To be scoped as a follow-up.
 
 ---
 

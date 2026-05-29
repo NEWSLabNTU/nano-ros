@@ -201,12 +201,10 @@ ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
 dest = "third-party/dds/cyclonedds"
 submodule = "third-party/dds/cyclonedds"
 
-# Phase 197.2 — build-time + dev source submodules. These are NOT in any
-# board/rmw `packages` (so `nros setup <board>` is unchanged); they are listed in
-# the `build_sources` / `dev_sources` of the board/rmw axes below and fetched by
-# the local `tools/setup.sh` (which the `just <plat> setup` shims call). Modeling
-# them here makes the SDK index the single home for every source ref (retiring
-# config/submodule-deps.toml).
+# Phase 197.2/197.4 — build-time source submodules, folded into the relevant
+# board/rmw `packages` (approach A) so `nros setup <board>` provisions them and a
+# bare-machine `nros setup <board> → build` works. The SDK index is the single
+# home for every source ref (retired config/submodule-deps.toml).
 
 # zenoh-pico TLS dep (zpico-sys C build gates on its presence).
 [source.mbedtls]
@@ -267,37 +265,11 @@ ref = "ecfe44a74cda5b1815776e56d7f0253b41b0ebe2"
 dest = "third-party/px4/PX4-Autopilot"
 submodule = "third-party/px4/PX4-Autopilot"
 
-# Tonbandgeraet RTOS tracing tooling (opt-in dev/reference).
-[source.tracing-tonbandgeraet]
-version = "0.x"
-git = "https://github.com/schilkp/Tonbandgeraet.git"
-ref = "0844b63c99736a98e7573ab9052575a52cc7416e"
-dest = "third-party/tracing/Tonbandgeraet"
-submodule = "third-party/tracing/Tonbandgeraet"
-
-# Dev-only source repos (opt-in via `tools/setup.sh --with-dev`): the zenohd/
-# rmw_zenoh/XRCE-agent/ESP32-qemu upstreams used by interop tests + emulator
-# builds. The prebuilt host tools come from `[tool.*]`; these are their sources.
-[source.zenoh-src]
-version = "1.7.2"
-git = "https://github.com/jerry73204/zenoh.git"
-ref = "790faadb43c8f3da356bc5e3abc3ddc4d2eb41e6"
-dest = "third-party/zenoh/zenoh"
-submodule = "third-party/zenoh/zenoh"
-
-[source.rmw-zenoh-src]
-version = "humble"
-git = "https://github.com/ros2/rmw_zenoh.git"
-ref = "9732f5358a66b9e0dd3eaed50fef02ffe8d491f5"
-dest = "third-party/zenoh/rmw_zenoh"
-submodule = "third-party/zenoh/rmw_zenoh"
-
-[source.xrce-agent-src]
-version = "2.4.3"
-git = "https://github.com/eProsima/Micro-XRCE-DDS-Agent.git"
-ref = "73622810d984349b80bbac0ef55fc0b694d62222"
-dest = "third-party/xrce/agent"
-submodule = "third-party/xrce/agent"
+# NOTE (197.4): opt-in dev/interop source repos (zenoh / rmw_zenoh / XRCE-agent
+# upstreams, Tonbandgeraet tracing) are intentionally NOT modeled here yet — the
+# released `nros` rejects unknown index fields/sections, so wiring opt-in
+# `dev_sources` / `[reference.*]` needs an nros-cli schema change first (tracked
+# in the Phase 197 workflow review). They remain plain `.gitmodules` submodules.
 
 # --- license-gated (never hosted; instruct + nros doctor checks the env var) ---
 
@@ -317,21 +289,18 @@ installer = "arm-fvp-installer"
 # daemon/tool lives here — no board×rmw pair enumeration. ---
 
 [rmw.zenoh]
-packages = ["zenohd"]
-# Phase 197.2 — source submodules the local build needs checked out (fetched by
-# `tools/setup.sh`, NOT by `nros setup <board>`). `dev_sources`: opt-in
-# (`--with-dev`) interop/test upstreams.
-build_sources = ["zenoh-pico", "mbedtls"]
-dev_sources = ["zenoh-src", "rmw-zenoh-src"]
+# Phase 197.4 (approach A) — the build-time source submodules are folded into
+# `packages` so `nros setup <board>` is the complete provisioner (a bare-machine
+# `nros setup <board> → build` works; build.rs gates on these). The released
+# `nros` parses [rmw.*]/[board.*] with a strict schema (only `packages` +
+# board descriptors), so no extra fields here.
+packages = ["zenohd", "zenoh-pico", "mbedtls"]
 
 [rmw.xrce]
-packages = ["xrce-agent"]
-build_sources = ["micro-xrce-dds-client", "micro-cdr"]
-dev_sources = ["xrce-agent-src"]
+packages = ["xrce-agent", "micro-xrce-dds-client", "micro-cdr"]
 
 [rmw.cyclonedds]
-packages = ["cyclonedds"]
-build_sources = ["cyclonedds-src"]
+packages = ["cyclonedds", "cyclonedds-src"]
 
 # --- boards (Phase 191.1): board → required package set, the board→toolchain
 # SSOT. `nros setup <board>` looks the board up here (no name guessing); an
@@ -375,22 +344,18 @@ arch = "cortex-m3"
 platform = "nuttx" # NuttX kernel/apps are submodule SDKs (built with the app)
 # nuttx-libc is the one source the Rust example path-deps, so `nros setup` must
 # provision it. (Kernel/apps are pulled by the full west/make build, not here.)
-packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc"]
-# Phase 197.2 — kernel + apps the local build expects checked out (build-nuttx.sh
-# / board build.rs), fetched by `tools/setup.sh`, not `nros setup <board>`.
-build_sources = ["nuttx-kernel", "nuttx-apps"]
+packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
 
 [board.qemu-riscv64-threadx]
 arch = "riscv64"
 platform = "threadx"
-packages = ["riscv-none-elf-gcc", "qemu", "threadx"]
-build_sources = ["threadx-netxduo"] # NetX Duo net stack (Phase 197.2)
+packages = ["riscv-none-elf-gcc", "qemu", "threadx", "threadx-netxduo"]
 
 [board.threadx-linux]
 arch = "x86_64"
 platform = "threadx"
-packages = ["threadx"] # runs on the host; the zenoh daemon comes from rmw.zenoh
-build_sources = ["threadx-netxduo"] # NetX Duo net stack (Phase 197.2)
+# runs on the host; the zenoh daemon comes from rmw.zenoh
+packages = ["threadx", "threadx-netxduo"]
 
 [board.esp32]
 arch = "riscv32" # ESP32-C3; riscv32imc rustup target + build-std (no external gcc)
@@ -418,11 +383,8 @@ packages = ["arm-fvp"]
 platform = "zephyr" # west + zephyr-sdk toolchain, provisioned outside the index
 packages = []
 
-# --- references (Phase 197.2): heavy / opt-in source sets, fetched by
-# `tools/setup.sh --with-reference <name>`. Not in any board's packages, never
-# pulled by a default setup. Each lists `[source.*]` names. ---
-[reference.px4]
-sources = ["px4-rs", "px4-autopilot"]
-
-[reference.tracing]
-sources = ["tracing-tonbandgeraet"]
+# NOTE (197.4): a `[reference.*]` grouping for heavy opt-in source sets (px4,
+# tracing) was removed — the released `nros` rejects unknown index sections.
+# `just px4 setup` provisions px4-rs + px4-autopilot directly via
+# `nros setup --source …`. Re-introducing index-level references needs an
+# nros-cli schema change (Phase 197 workflow review).
