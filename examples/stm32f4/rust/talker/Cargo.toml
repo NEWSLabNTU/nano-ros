@@ -46,6 +46,17 @@ lto = "fat"
 opt-level = 3
 overflow-checks = false
 
+# Phase 204.3 — size-critical build: `cargo build --profile size`. Same
+# aggressive cross-crate inlining (lto=fat, codegen-units=1) as release but
+# opt-level "z" (size) instead of 3 (speed) + stripped (no on-target debuginfo).
+# panic is already abort on the thumbv7em target. Quantified z-vs-3 in
+# docs/roadmap/phase-204-embedded-binary-size.md (204.3).
+[profile.size]
+inherits = "release"
+opt-level = "z"
+debug = false
+strip = true
+
 [profile.dev]
 codegen-units = 1
 debug = 2

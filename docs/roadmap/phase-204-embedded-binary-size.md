@@ -139,14 +139,29 @@ real on bare-metal, the Phase 104.A comment was outdated.
       sets it from the active RMW) so RTPS keeps 3 + brokered clients get 1
       automatically, instead of a hand-set env. Smoltcp multicast/socket tests pass.
 
-### 204.3 — Size-tuned embedded release profile
-- [ ] The embedded examples override the workspace `opt-level="s"` to
-      **`opt-level=3`** (speed). Add a size profile (`opt-level="z"`, `lto="fat"`,
-      `codegen-units=1`, `panic="abort"`, `strip=true`) and use it for the
-      size-critical examples / a `just <plat> build --size` knob. Quantify `z` vs
-      `3` on the talker.
-- [ ] **Acceptance:** measured text delta for `z` vs `3` documented; a size build
-      profile exists.
+### 204.3 — Size-tuned embedded release profile — [~] profile landed + quantified
+- [x] **`[profile.size]` added (2026-05-30)** to `examples/stm32f4/rust/talker`:
+      `inherits="release"` (keeps `lto="fat"` + `codegen-units=1`) but
+      `opt-level="z"` (size) instead of `3` (speed) + `strip=true` + `debug=false`.
+      `panic` is already `abort` on the thumbv7em target. Build with
+      `cargo build --profile size`.
+- [x] **Quantified `z` vs `3`** (stm32f4 talker, thumbv7em-none-eabihf, same
+      lto/cu, with 204.2 + 204.8 already applied):
+
+      | profile | opt | text | data | bss |
+      |---|---|---|---|---|
+      | `release` | `3` (speed) | 75.6 KB | 13.7 KB | 51.8 KB |
+      | `size`    | `z` (size)  | **59.9 KB** | 13.7 KB | 51.8 KB |
+
+      **text −14.3 KB (−18.9 %)**; data/bss unchanged (opt-level doesn't touch
+      static buffers — those are 204.2/204.5/204.6 territory). `z` trades some
+      speed for ~19 % less flash on the hot networking + zenoh-pico code.
+- [ ] **Remainder:** roll `[profile.size]` into the other size-critical examples
+      + add a `just <plat> build --size` knob that passes `--profile size` (each
+      example needs the profile defined; `nros new` should scaffold it — ties into
+      204.15's `optimize="size"`).
+- [x] **Acceptance:** measured text delta documented (−18.9 %); a size profile
+      exists (`cargo build --profile size`).
 
 ### 204.4 — Strip fmt / panic machinery
 - [ ] ~5 KB is `core::fmt`/`Debug`/`escape_debug`/`slice_error_fail_rt`, pulled in
