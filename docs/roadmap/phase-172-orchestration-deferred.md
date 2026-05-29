@@ -281,28 +281,25 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
         `ActionServerRawHandle::for_each_active_goal`. Verified: extended
         `tick_ctx_publish_and_action_ops` (substrate) + service_action e2e compile.
         Enables W.5.10.
-  - [ ] **W.5.10 — tick-driven action runtime exchange test.** End-to-end proof
-        that a generated server's `tick` actually drives a goal to completion over a
-        live transport: client sends goal → server `on_callback` accepts → `tick`
-        iterates `for_each_active_goal`, publishes feedback, `complete_goal`s with a
-        result → client observes feedback + result. Today verified only in parts
-        (`run_tick_loop` boots via `deploy_native_self`; the tick body logic via the
-        substrate `tick_ctx_publish_and_action_ops` mock) — the unproven piece is
-        `GenActionExec` over a *real* `ActionServerRawHandle` with a goal flowing from
-        a live client. **Approach (2-process over zenohd, mirrors
-        `nros-tests/tests/actions.rs`):** author a Fibonacci action-server *component*
-        in `testing_workspaces/orchestration_e2e` (goal accept + `tick` feedback/
-        complete), a plan whose action resolves to `/fibonacci` w/
-        `example_interfaces/action/Fibonacci`, build the generated server, spawn it +
-        the prebuilt `examples/native/rust/action-client(-async)` against a
-        `start_zenohd` router, scrape stdout for "Goal accepted" + feedback count +
-        result. **Blockers to resolve:** (a) action-name alignment (plan currently
-        `/tools/talker/count`); (b) hand-rolled Fibonacci `int32[]` CDR in the demo
-        component must match `example_interfaces`; (c) the codegen crate has no
-        `nros_tests`/example-binary fixtures — either add a dev-dep or locate the
-        prebuilt client path directly. **Files:** `testing_workspaces/orchestration_e2e/`,
-        `tests/fixtures/orchestration/plan_fibonacci_action.json`,
-        `tests/orchestration_e2e.rs`.
+  - [x] **W.5.10 — tick-driven action runtime exchange test** (codegen `nros-cli`
+        `d558100`, substrate fix `nros` `554b0e1`). End-to-end proof over zenohd that
+        a generated server's `tick` drives a real goal to completion: client sends
+        goal → server `on_callback` accepts → `tick` iterates `for_each_active_goal`,
+        publishes growing-sequence feedback each spin, `complete_goal`s at order 11 →
+        client observes acceptance + feedback + clean finish. Dedicated
+        `demo_pkg::fib_server` component (one node + one action ⇒ `MAX_ENTITIES`
+        matches the single-entity plan); Fibonacci types vendored to mirror
+        `example_interfaces` CDR byte-for-byte (wire key = same type name + literal
+        `TypeHashNotSupported`), so the prebuilt `examples/native/rust/action-client`
+        interoperates unmodified. **Surfaced + fixed a real substrate bug:**
+        `TickCtx::{publish_feedback,complete_goal}` were double-CDR-headering the
+        inner payload (the executor frames the envelope) → client
+        `DeserializationError`; switched to header-less `CdrWriter::new` to match the
+        typed `ActionServerHandle` path. Test
+        `fibonacci_action_tick_drives_example_client_exchange` (builds server +
+        builds-on-demand/spawns client vs `start_zenohd`); helpers
+        `ensure_action_client_binary` + `wait_capture`; plan
+        `plan_fibonacci_action.json`.
   - [ ] **W.5.11 — no_std action execution (tick hook on no_std).** W.5.6's tick loop
         + `TICK_ENTRIES` is std-only (`thread_local!` + `Box<dyn FnMut>`). A no_std
         target that needs action feedback/result (not just decision bodies, W.5.8)
