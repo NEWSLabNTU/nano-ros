@@ -17,15 +17,18 @@
 # Preconditions (fail loud — never silently pass, per CLAUDE.md):
 #   - ROS 2 sourced: `nros generate-rust` resolves std_msgs's .msg via
 #     AMENT_PREFIX_PATH. `source /opt/ros/<distro>/setup.bash` first.
-#   - $NROS points at a current `nros` (the published 0.2.0 lacks `setup`); the
-#     workflow builds it from packages/codegen. Defaults to that build path.
+#   - $NROS points at the `nros` CLI. Defaults to the released binary the user
+#     installs via install.sh (~/.nros/bin/nros), then a `nros` on PATH.
 #
 # Usage: source /opt/ros/humble/setup.bash && scripts/ci/dep-chain-check.sh
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 
-NROS="${NROS:-packages/codegen/packages/target/debug/nros}"
+NROS="${NROS:-${NROS_HOME:-$HOME/.nros}/bin/nros}"
+if [ ! -x "$NROS" ] && command -v nros >/dev/null 2>&1; then
+    NROS="$(command -v nros)"
+fi
 INDEX="${NROS_SDK_INDEX:-nros-sdk-index.toml}"
 
 # --- preconditions ---

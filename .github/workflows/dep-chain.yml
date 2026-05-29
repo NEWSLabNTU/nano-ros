@@ -41,16 +41,16 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # Only packages/codegen (recursive) — needed to build the `nros` CLI. The
-      # backend/platform crates are in-tree; `cargo tree` resolution reads their
-      # Cargo.toml only (the C-source submodules like zenoh-pico are compile-time
-      # and unneeded for resolution).
-      # Only packages/codegen (recursive) — to build the `nros` CLI. Everything
-      # else a board needs (incl. source submodules like nuttx-libc) is
-      # provisioned by `nros setup <board>` in the check, exactly as a user would
-      # — CI must NOT hand-checkout submodules a user wouldn't.
-      - name: Init codegen submodule
-        run: git submodule update --init --recursive packages/codegen
+      # Get the `nros` CLI the way a user does — the released prebuilt binary
+      # (no checkout, no cargo). Everything a board needs (incl. source
+      # submodules like nuttx-libc) is then provisioned by `nros setup <board>`
+      # in the check, exactly as a user would — CI must NOT hand-checkout
+      # submodules a user wouldn't.
+      - name: Install the nros CLI (released binary)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
+            | NROS_VERSION=0.3.0 sh
+          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
       - name: Set up Rust toolchain
         run: rustup show
@@ -62,10 +62,7 @@ jobs:
         with:
           required-ros-distributions: humble
 
-      - name: Build the nros CLI (the published bin is stale — lacks `setup`)
-        run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
-
       - name: Per-platform dep-chain check
         run: |
           source /opt/ros/humble/setup.bash
-          NROS=packages/codegen/packages/target/debug/nros scripts/ci/dep-chain-check.sh
+          NROS="$HOME/.nros/bin/nros" scripts/ci/dep-chain-check.sh

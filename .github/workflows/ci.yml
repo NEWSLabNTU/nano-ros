@@ -47,21 +47,20 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
+      # Get the `nros` CLI the way a user does — the released prebuilt binary.
+      - name: Install the nros CLI (released binary)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
+            | NROS_VERSION=0.3.0 sh
+          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+
       # cargo must read *every* root-workspace member's Cargo.toml to load the
       # workspace — including packages/testing/nros-tests, which path-deps
-      # px4-sitl-tests under third-party/px4/px4-rs. So that source must be
-      # present before `cargo check`, and we provision it the way a user does:
-      # `nros setup --source px4-rs` (driven by nros-sdk-index.toml), not a
-      # hand `git submodule update`. Building the CLI needs only the codegen
-      # submodule (the bootstrap — chicken/egg, can't be nros-provisioned).
-      - name: Init codegen submodule (to build the nros CLI)
-        run: git submodule update --init --recursive packages/codegen
-
-      - name: Build the nros CLI
-        run: cargo build --manifest-path packages/codegen/packages/Cargo.toml -p nros-cli --bin nros
-
+      # px4-sitl-tests under third-party/px4/px4-rs. Provision it the way a user
+      # does — `nros setup --source px4-rs` (index-driven), not a hand
+      # `git submodule update`.
       - name: Provision workspace sources via nros
-        run: packages/codegen/packages/target/debug/nros setup --source px4-rs
+        run: nros setup --source px4-rs
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
