@@ -323,9 +323,10 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   Executor `NodeBuilder::session_idx` selector (nros-node `ae2b19a19`); generator
   emits a session per distinct `[[domain]]` domain + routes each node via the
   selector (codegen `98392ef`); `nros deploy` stamps node domains from the root
-  `[system].[[domain]]` groups (`apply_domain_groups`, codegen `d9d3f89`). The
-  `nros check` warning now fires for `[[bridge]]` only (bridge per-node routing
-  — topic-forwarding — is the remaining unfinished half, tracked separately).
+  `[system].[[domain]]` groups (`apply_domain_groups`, codegen `d9d3f89`).
+  Bridge topic-forwarding is also DONE (generator `register_bridges` + runtime
+  e2e — see the K.5/bridge item below); the `nros check` `[[bridge]]` warning is
+  gone.
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
 - **Entity-API tiers → split to [Phase 189](phase-189-entity-api-tiers.md)**
   (cross-cutting client-API refactor, not orchestration — same precedent as
@@ -387,9 +388,13 @@ configuration lives here* below.
       189.M1 builder) with `nros-bridge` `bridge_origin` echo suppression.
       `validate_bridges` resolves each topic's type from `interfaces` (errors on
       undeclared / unopened-session / wildcard); the build enables `nros/bridge`.
-      The `[[bridge]]` `nros check` warning is dropped (routing now emitted). The
-      emitted relay was compile-verified against `nros`; runtime e2e (2 live RMW
-      agents) stays gated. See
+      The `[[bridge]]` `nros check` warning is dropped (routing now emitted).
+      **Runtime e2e landed** (codegen `5d818ae`):
+      `bridge_forwards_chatter_across_two_zenoh_routers` builds a bridge package
+      whose `chatter_talker` component publishes `std_msgs/Int32` on `/chatter`
+      over endpoint 0 (router A); the relay forwards it to endpoint 1 (router B),
+      where the prebuilt `listener` example receives it — proving cross-session
+      forwarding over the wire (the two routers are otherwise isolated). See
       [`docs/design/bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md).
 
 **Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
