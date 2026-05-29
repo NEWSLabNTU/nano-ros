@@ -398,7 +398,7 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
 | Final link — Rust embedded | rustc | — | — | — | **no `--gc-sections`** |
 | Final link — C/C++ board (CMake) | CMake | — | — | — | `--gc-sections` ✓ |
 
-### 204.8 — `--gc-sections` on the Rust embedded link path — [~] landed on stm32f4 talker
+### 204.8 — `--gc-sections` on the Rust embedded link path — [x] DONE in-tree (2026-05-30); `nros new` scaffold external
 - [x] **Proven (2026-05-29).** Added `-C link-arg=--gc-sections` to
       `examples/stm32f4/rust/talker/.cargo/config.toml` → **text 79.7 → 75.6 KB
       (−4.0 KB)**. **Note:** the link uses **`rust-lld` directly** (no gcc driver),
@@ -412,8 +412,22 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
       (riscv32imc). FreeRTOS/ThreadX/NuttX are SDK-gated (flag applied — standard +
       their `-T*.ld`/`linkall.x` KEEP essentials — but not built locally; CI
       confirms).
-- [ ] **Remainder:** `nros new` scaffold default; larger drop expected once 204.7
-      (serial-only no IP link C) lands; boot smoke on a target.
+- [x] **Quantified the gc contribution (2026-05-30) — target-dependent, often
+      ~0.** Toggling `--gc-sections` on `qemu-arm-baremetal/rust/talker`
+      (ethernet) AND `serial-talker` (post-204.7) showed a **0-byte** delta on
+      both — the built-in `release` (opt-3) DCE already leaves nothing dead for the
+      linker to strip on these examples. The doc's stm32f4 **−4 KB** win is real but
+      comes from the heavier `stm32f4xx_hal` pulling dead code that gc reclaims;
+      gc is a cheap safety net whose payoff scales with how much dead code the
+      compiler leaves, not a guaranteed win. **The "larger drop once 204.7" guess was
+      wrong:** `NROS_LINK_IP=0` compiles the IP-link C *out* (nothing for gc to
+      strip afterwards) — the serial size win is 204.7's compile-out + 204.5 (heap)
+      + 204.3 (opt-s), not gc.
+- [x] **Boot smoke.** `test_qemu_serial_pubsub_e2e` boots the gc'd mps2-an385
+      firmware in QEMU and exchanges data (`published=1, received=1`) — the
+      `--gc-sections` link does not strip anything live.
+- [ ] **Remainder (external):** `nros new` should scaffold `--gc-sections` by
+      default — lives in the `nros-cli` repo (template generation), not this tree.
 
 ### 204.9 — Size-optimize the cc-rs vendor C — [x] DONE (2026-05-30)
 - [x] `Micro-XRCE / micro-CDR` (`nros-rmw-xrce-cffi`, `xrce-sys`) got **no** `-Os`,
