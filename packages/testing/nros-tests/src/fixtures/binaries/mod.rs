@@ -596,7 +596,20 @@ fn zephyr_build_root() -> PathBuf {
         return PathBuf::from(path);
     }
     let root = project_root();
-    let workspace = root.join("zephyr-workspace");
+    // Mirror just/zephyr.just's ZEPHYR_WORKSPACE selection: the in-tree
+    // `zephyr-workspace` (canonical), else the legacy `../nano-ros-workspace`
+    // sibling. The build stages fixtures into whichever it picks (when
+    // writable), falling back to `build/zephyr-workspace-builds` only when no
+    // writable workspace exists — so the resolver must look in the same order.
+    let in_tree = root.join("zephyr-workspace");
+    let workspace = if in_tree.is_dir() || in_tree.is_symlink() {
+        in_tree
+    } else {
+        match root.parent().map(|p| p.join("nano-ros-workspace")) {
+            Some(sibling) if sibling.is_dir() => sibling,
+            _ => in_tree,
+        }
+    };
     if workspace
         .metadata()
         .map(|m| !m.permissions().readonly())
