@@ -12,18 +12,22 @@ Did `cargo build` / `cmake --build` fail?
 ├─ error[E0432]: unresolved import `nros`
 ├─ error: failed to load source for dependency `nros`
 ├─ error: could not find `nros-rmw-zenoh`
-│   → Run `just setup base` from the repo root. The
+│   → Run `nros setup native --rmw zenoh` (or the matching
+│     `nros setup <board> --rmw <rmw>` for your target). The
 │     path-dep in the example's Cargo.toml points at the
-│     in-tree `packages/core/nros`; if the SDK fetch didn't
-│     run, transitive deps are missing.
+│     in-tree `packages/core/nros`; if the source-package
+│     fetch (zenoh-pico, mbedtls) didn't run, transitive
+│     deps are missing.
 │
 ├─ error: failed to find tool. Is `nros` installed?
 ├─ error: `nros-codegen` not found
-│   → Build the host codegen tool first:
-│       cargo build --release \
-│         --manifest-path packages/codegen/packages/Cargo.toml \
-│         -p nros-codegen-c --bin nros-codegen
-│     CMake examples pass it via `-D_NANO_ROS_CODEGEN_TOOL=…`.
+│   → The `nros` CLI is missing on PATH. Reinstall:
+│       curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
+│       export PATH="$HOME/.nros/bin:$PATH"
+│     The `nros` binary ships the codegen — there is no
+│     separate `nros-codegen` build step. CMake examples
+│     auto-resolve `nros` on PATH; `-D_NANO_ROS_CODEGEN_TOOL=`
+│     is an override, not a requirement.
 │
 ├─ error: could not compile … due to previous error
 │  followed by:  the target `thumbv7m-none-eabi` is not installed

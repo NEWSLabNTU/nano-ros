@@ -88,7 +88,9 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 ## Run
 
 ```bash
-# 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7447):
+# 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7450 → host
+#    127.0.0.1:7450). The bare-metal test-fixture port is 7450, NOT
+#    zenohd's default 7447 — edit `config.toml` if you want 7447 instead.
 #    zenohd was installed by `nros setup ... --rmw zenoh`.
 zenohd --listen tcp/127.0.0.1:7450
 

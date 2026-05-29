@@ -59,7 +59,7 @@ After `idf.py menuconfig`:
 
 ```
 Component config → nano-ros
-    RMW backend          (zenoh)        zenoh | xrce | dds | cyclonedds
+    RMW backend          (zenoh)        zenoh | xrce | cyclonedds
     ROS 2 edition        (humble)       humble | iron
 ```
 

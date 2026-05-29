@@ -109,13 +109,12 @@ cargo build --release
 # C / C++ — use the cross-toolchain CMake invocation:
 just freertos build-fixtures        # builds every in-tree zenoh +
                                     # DDS example across Rust / C / C++
-# Or single-example:
+# Or single-example (the `nros` CLI on PATH auto-resolves the codegen
+# tool — no `-D_NANO_ROS_CODEGEN_TOOL=` needed):
 toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
-codegen="$(pwd)/packages/codegen/packages/target/release/nros-codegen"
 cd examples/qemu-arm-freertos/c/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-              -DCMAKE_BUILD_TYPE=Release \
-              -D_NANO_ROS_CODEGEN_TOOL="$codegen"
+              -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 

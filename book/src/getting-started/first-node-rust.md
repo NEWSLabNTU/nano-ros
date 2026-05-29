@@ -70,9 +70,9 @@ Three runtime knobs, each overridable at three layers (defaults →
 
 | Knob | Default | Env override |
 |---|---|---|
-| Zenoh locator | `tcp/127.0.0.1:7447` | `ZENOH_LOCATOR` |
+| Zenoh locator | `tcp/127.0.0.1:7447` | `NROS_LOCATOR` (legacy alias: `ZENOH_LOCATOR`) |
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
-| Zenoh mode | client | `ZENOH_MODE` |
+| Zenoh mode | client | `NROS_SESSION_MODE` (legacy alias: `ZENOH_MODE`) |
 
 `config.toml` (optional, alongside `Cargo.toml`):
 
@@ -100,15 +100,16 @@ Three terminals (each command below blocks; keep them open):
 # Terminal 1 — zenoh router. Blocks the shell until Ctrl-C.
 zenohd                               # installed by `nros setup native`
 
-# Terminal 2 — the talker.
+# Terminal 2 — the talker. The talker logs via `log::info!`, so set
+# RUST_LOG=info — without it `env_logger` only shows errors and the
+# `Published: N` lines stay hidden.
 cd examples/native/rust/talker
-cargo run
-# Expected output:
-#   nros Native Talker (Zenoh Transport)
-#   Node created: talker
-#   Publisher created for topic: /chatter
-#   Published: 1
-#   Published: 2
+RUST_LOG=info cargo run
+# Expected output (on stderr):
+#   [INFO  native_rs_talker] nros Native Talker (Zenoh Transport)
+#   [INFO  native_rs_talker] =========================================
+#   [INFO  native_rs_talker] Published: 1
+#   [INFO  native_rs_talker] Published: 2
 #   …
 ```
 
@@ -132,14 +133,18 @@ If `ros2 topic echo` shows no output despite the talker printing
 `Published:`, the routers aren't peering — confirm both processes
 point at the same port (default `tcp/127.0.0.1:7447`).
 
-**Readiness signal.** Within 5 seconds of `cargo run`, the talker
-should print `Published: 1`. If no `Published:` line in 30 seconds:
+**Readiness signal.** Within 5 seconds of `RUST_LOG=info cargo run`,
+the talker should print `Published: 1`. If no `Published:` line in
+30 seconds:
 
-1. Confirm `zenohd` is running (terminal 1). Without it, the talker
+1. Confirm `RUST_LOG` is set. Without `RUST_LOG=info` (or `debug`),
+   `env_logger` filters out the `Published:` lines and the run looks
+   silent even when it's working.
+2. Confirm `zenohd` is running (terminal 1). Without it, the talker
    blocks on `Executor::open` indefinitely.
-2. Re-run with `RUST_LOG=debug cargo run` and look for "Failed to
+3. Re-run with `RUST_LOG=debug cargo run` and look for "Failed to
    open session" — usually a wrong locator or wrong port.
-3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source
 
