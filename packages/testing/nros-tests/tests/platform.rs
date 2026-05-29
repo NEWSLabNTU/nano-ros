@@ -97,8 +97,7 @@ fn test_zephyr_workspace_detection() {
 #[test]
 fn test_qemu_cortex_m3_available() {
     if !is_qemu_available() {
-        eprintln!("Skipping test: QEMU not available");
-        return;
+        nros_tests::skip!("QEMU not available");
     }
 
     // Verify QEMU can list the machine type we need
@@ -118,8 +117,7 @@ fn test_qemu_cortex_m3_available() {
 #[test]
 fn test_qemu_semihosting_support() {
     if !is_qemu_available() {
-        eprintln!("Skipping test: QEMU not available");
-        return;
+        nros_tests::skip!("QEMU not available");
     }
 
     // Verify QEMU supports semihosting (check help output)
@@ -143,8 +141,7 @@ fn test_qemu_semihosting_support() {
 #[test]
 fn test_embedded_target_available() {
     if !is_arm_toolchain_available() {
-        eprintln!("Skipping test: ARM toolchain not available");
-        return;
+        nros_tests::skip!("ARM toolchain not available");
     }
 
     // Verify we can compile a simple no_std crate

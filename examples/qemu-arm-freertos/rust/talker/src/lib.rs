@@ -60,7 +60,10 @@ fn run_app(config: &Config) -> Result<(), NodeError> {
         executor
             .node_mut(nid)
             .create_subscription::<Int32, _>("/chatter", |msg: &Int32| {
-                println!("Loopback received: {}", msg.data);
+                // Canonical listener format (`Received: <n>`) — consistent with
+                // every other talker/listener fixture so the shared E2E
+                // `assert_listener` / `Received:` pattern checks apply uniformly.
+                println!("Received: {}", msg.data);
             })?;
         println!("Loopback subscriber declared");
     }

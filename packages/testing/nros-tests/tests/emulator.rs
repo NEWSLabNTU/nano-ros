@@ -30,14 +30,14 @@ use std::{path::PathBuf, time::Duration};
 /// Skip test if QEMU is not available
 fn require_qemu() {
     if !is_qemu_available() {
-        eprintln!("Skipping test: qemu-system-arm not found");
+        nros_tests::skip!("qemu-system-arm not found");
     }
 }
 
 /// Skip test if ARM toolchain is not available
 fn require_arm_toolchain() {
     if !is_arm_toolchain_available() {
-        eprintln!("Skipping test: thumbv7m-none-eabi target not installed");
+        nros_tests::skip!("thumbv7m-none-eabi target not installed");
     }
 }
 
@@ -166,8 +166,7 @@ fn test_qemu_output_format(qemu_binary: PathBuf) {
 #[test]
 fn test_qemu_wcet_benchmark() {
     if !is_qemu_available() || !is_arm_toolchain_available() {
-        eprintln!("Skipping test: qemu-system-arm or ARM toolchain not available");
-        return;
+        nros_tests::skip!("qemu-system-arm or ARM toolchain not available");
     }
 
     let binary = build_qemu_wcet_bench().expect("Failed to build qemu-wcet-bench");
@@ -191,8 +190,7 @@ fn test_qemu_wcet_benchmark() {
 #[test]
 fn test_qemu_lan9118_driver() {
     if !is_qemu_available() || !is_arm_toolchain_available() {
-        eprintln!("Skipping test: qemu-system-arm or ARM toolchain not available");
-        return;
+        nros_tests::skip!("qemu-system-arm or ARM toolchain not available");
     }
 
     let binary = build_qemu_lan9118().expect("Failed to build qemu-lan9118");
@@ -275,9 +273,9 @@ fn test_arm_toolchain_detection() {
 fn test_qemu_bsp_talker_starts() {
     // BSP examples require MPS2-AN385 with networking, which isn't available
     // in the standard test environment. The Docker-based test handles this.
-    eprintln!("Skipping test: BSP start tests require Docker or QEMU networking");
-    eprintln!("Run with: just test-rust-qemu-baremetal-bsp");
-    println!("INFO: BSP network tests skipped (use Docker for full test)");
+    nros_tests::skip!(
+        "BSP start tests require Docker or QEMU networking — run: just test-rust-qemu-baremetal-bsp"
+    );
 }
 
 /// Test that qemu-bsp-listener starts (requires Docker or QEMU with slirp networking)
@@ -288,9 +286,9 @@ fn test_qemu_bsp_talker_starts() {
 fn test_qemu_bsp_listener_starts() {
     // BSP examples require MPS2-AN385 with networking, which isn't available
     // in the standard test environment. The Docker-based test handles this.
-    eprintln!("Skipping test: BSP start tests require Docker or QEMU networking");
-    eprintln!("Run with: just test-rust-qemu-baremetal-bsp");
-    println!("INFO: BSP network tests skipped (use Docker for full test)");
+    nros_tests::skip!(
+        "BSP start tests require Docker or QEMU networking — run: just test-rust-qemu-baremetal-bsp"
+    );
 }
 
 // (Phase 182.3) `test_qemu_bsp_both_build` + `test_qemu_serial_{talker,listener}_builds`
@@ -319,8 +317,7 @@ fn test_qemu_serial_pubsub_e2e() {
         nros_tests::skip!("zenoh-pico arm build not available");
     }
     if !is_socat_available() {
-        eprintln!("Skipping test: socat not found");
-        return;
+        nros_tests::skip!("socat not found");
     }
 
     // Build both binaries

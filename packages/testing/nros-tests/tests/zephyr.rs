@@ -2283,8 +2283,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     let native_listener = match build_native_listener() {
         Ok(p) => p.to_path_buf(),
         Err(e) => {
-            eprintln!("Skipping: could not build native listener: {}", e);
-            return;
+            nros_tests::skip!("could not build native listener: {}", e);
         }
     };
 
@@ -2363,8 +2362,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     let native_talker = match build_native_talker() {
         Ok(p) => p.to_path_buf(),
         Err(e) => {
-            eprintln!("Skipping: could not build native talker: {}", e);
-            return;
+            nros_tests::skip!("could not build native talker: {}", e);
         }
     };
 

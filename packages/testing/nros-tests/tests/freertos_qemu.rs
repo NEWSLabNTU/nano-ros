@@ -141,7 +141,7 @@ fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
     let mut qemu = QemuProcess::start_mps2_an385_networked(&talker_path)
         .expect("spawn FreeRTOS Rust CycloneDDS local pubsub fixture");
     let output = qemu
-        .wait_for_output_pattern("Loopback received:", Duration::from_secs(90))
+        .wait_for_output_pattern("Received:", Duration::from_secs(90))
         .unwrap_or_default();
     qemu.kill();
 
@@ -152,7 +152,7 @@ fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
         output
     );
     assert!(
-        output.contains("Loopback received:"),
+        output.contains("Received:"),
         "CycloneDDS local subscriber did not receive a sample.\nOutput:\n{}",
         output
     );

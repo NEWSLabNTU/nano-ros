@@ -643,8 +643,7 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
         .output()
         .is_ok();
     if !qemu_available {
-        eprintln!("Skipping test: qemu-system-arm not found");
-        return;
+        nros_tests::skip!("qemu-system-arm not found");
     }
 
     let _zenohd =

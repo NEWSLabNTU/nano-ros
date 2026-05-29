@@ -532,8 +532,7 @@ fn native_rust_pubsub_interop(lang: Language, locator: &str) {
     let rust_listener = match nros_tests::fixtures::build_native_listener() {
         Ok(p) => p.to_path_buf(),
         Err(e) => {
-            eprintln!("Skipping: could not build Rust listener: {}", e);
-            return;
+            nros_tests::skip!("could not build Rust listener: {}", e);
         }
     };
 
@@ -811,8 +810,7 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
     let rust_client = match nros_tests::fixtures::build_native_service_client() {
         Ok(p) => p.to_path_buf(),
         Err(e) => {
-            eprintln!("Skipping: could not build Rust service client: {}", e);
-            return;
+            nros_tests::skip!("could not build Rust service client: {}", e);
         }
     };
 

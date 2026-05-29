@@ -126,19 +126,16 @@ fn test_nuttx_detection() {
 #[test]
 fn test_nuttx_kernel_boots() {
     if !is_nuttx_available() {
-        eprintln!("Skipping: NUTTX_DIR not set");
-        return;
+        nros_tests::skip!("NUTTX_DIR not set");
     }
     let kernel = match nuttx_kernel_path() {
         Some(k) => k,
         None => {
-            eprintln!("Skipping: NuttX kernel not built ($NUTTX_DIR/nuttx)");
-            return;
+            nros_tests::skip!("NuttX kernel not built ($NUTTX_DIR/nuttx)");
         }
     };
     if !is_qemu_available() {
-        eprintln!("Skipping: qemu-system-arm not found");
-        return;
+        nros_tests::skip!("qemu-system-arm not found");
     }
 
     eprintln!("Booting NuttX kernel: {}", kernel.display());
