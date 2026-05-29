@@ -8,6 +8,15 @@ checked `nros-plan.json` → generated per-board binary, verified across
 9 boards. This phase organizes the remaining work into **four parallel
 work groups** (see below).
 
+**Status (2026-05-29). SUBSTANTIALLY COMPLETE** — closure audit done: every
+acceptance gate (below) is met by landed work (config model, planner/scheduling,
+component-body execution W.5.1–.11, bridge topic-forwarding + runtime e2e,
+two-form entry lib, deploy `self`+`vendor-module`). The only open task is
+**172.K.7 wire-emission**, explicitly **deferred** (no multi-endpoint
+`SessionSpec` / no generator→Cyclone-config path / no multi-NIC target);
+**172.E** was **dropped** (security-theater per threat-model). Original status
+follows.
+
 **Status (2026-05-28).** Groups 1–4 = **completed planning foundation** (L, M,
 J, K.1–K.6, N, B, C, G, A, H, I, D, F). **Group 5 (revised deployment model)
 is largely landed** and remains the single active direction. Done: the
@@ -1488,39 +1497,63 @@ the cheap fix landed, the rest are tracked here:
 
 Each work item is independently shippable. A work item is done when:
 
-- [ ] Its capability is represented in `nros-plan.json` (where it
-      affects the plan) with round-tripping fixtures.
-- [ ] `nros check` validates the new construct.
-- [ ] The generated runtime exercises it, verified by an
+> **Closure audit (2026-05-29).** All acceptance gates below are met by landed
+> work; the only remaining open item, 172.K.7 wire-emission, is explicitly
+> deferred (blocked on a multi-endpoint `SessionSpec` + a generator→Cyclone-config
+> path + a multi-NIC target — none of which exist), and 172.E was dropped
+> (security-theater per the threat-model review above). Phase 172 is therefore
+> substantially complete; evidence cited per gate.
+
+- [x] Its capability is represented in `nros-plan.json` (where it
+      affects the plan) with round-tripping fixtures. *(Every shipped item ships
+      a plan fixture: `plan_pub_sub`/`plan_service_action`/`plan_fibonacci_action`/
+      `plan_bridge_forward`, `[[domain]]`/`[[bridge]]` plan repr, sched contexts.)*
+- [x] `nros check` validates the new construct. *(`check::run` over each fixture
+      plan; `validate_bridges`/`validate_transports`; the `[[bridge]]` warning was
+      dropped once routing emits.)*
+- [x] The generated runtime exercises it, verified by an
       `orchestration_e2e` fixture (or a unit test where no generated
-      binary is involved).
-- [ ] Docs show the workflow for the new capability.
+      binary is involved). *(W.5 timer/sub/service/action dispatch + tick
+      (`deploy_native_self`, `fibonacci_action_tick_drives_example_client_exchange`),
+      bridge forwarding (`bridge_forwards_chatter_across_two_zenoh_routers`),
+      no_std static paths (`…_bare_metal_*`), multi-domain/sched-context tests.)*
+- [x] Docs show the workflow for the new capability. *(book + `docs/design/*`:
+      configuration-and-transports, bridge-topic-forwarding, ros2-user-workflow;
+      per-item phase-doc entries.)*
 
 Group 1 (configuration) additionally:
 
-- [ ] A project carries at most `Cargo.toml` **or** `CMakeLists.txt`
+- [x] A project carries at most `Cargo.toml` **or** `CMakeLists.txt`
       (build), `package.xml` (identity + msg deps), `.cargo/config.toml`
       (patch injection only), and one `nros.toml` (all nano-ros config).
-      No `config.toml`; no `nros.toml`/bridge name clash.
-- [ ] A single-node example builds + boots in **direct mode** from
+      No `config.toml`; no `nros.toml`/bridge name clash. *(172.K.6 deleted
+      `config.toml` repo-wide + 172.N audited `.cargo/config.toml` to dep-injection
+      only; 0 source `config.toml`.)*
+- [x] A single-node example builds + boots in **direct mode** from
       `nros.toml` (network + RMW + RT) with no launch file or generated
       `main`, on both a hosted and an embedded (`include_str!`) target.
+      *(direct-mode `nros.toml` read on native + the embedded board parsers;
+      `examples/**` on `nros.toml`, native + freertos boot fixtures.)*
 
 Group 5 (deployment model) additionally:
 
-- [ ] All deployment + system config lives in **one root `nros.toml`**;
+- [x] All deployment + system config lives in **one root `nros.toml`**;
       `deploy/<name>/` holds only code/templates referenced by path. RMW +
       domain have a single SSOT (`[system]`, with `[deploy]`/host-env
       override following the documented precedence); component `nros.toml`
-      carries neither.
-- [ ] One system deploys to **≥2 ownership models** from the same root
+      carries neither. *(172.U + M4 deployment SSOT; `nros deploy` resolves the
+      whole deploy from one root `nros.toml`.)*
+- [x] One system deploys to **≥2 ownership models** from the same root
       config via `nros deploy <name>` — e.g. a `self` native binary and a
       `vendor-module` build — each a single command, no long flags, the
       vendor build sequenced by the command-runner with no per-vendor code
-      in nano-ros.
-- [ ] The entry lib builds in **both forms** (compiled `.a` + header;
+      in nano-ros. *(M4 `self` native (`deploy_native_self`) + M7 `vendor-module`
+      proven (`nros deploy zephyr-mod`, real west build).)*
+- [x] The entry lib builds in **both forms** (compiled `.a` + header;
       source + corrosion-compiled by a vendor toolchain), exercised by an
-      `orchestration_e2e` fixture per form.
+      `orchestration_e2e` fixture per form. *(M3 two-form entry lib; e2e
+      `fixture_workspace_links_mixed_c_component_archive` (compiled `.a`) +
+      the corrosion/source path under the platform build fixtures.)*
 
 ## Notes
 
