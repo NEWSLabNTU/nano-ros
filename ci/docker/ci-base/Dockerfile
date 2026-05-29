@@ -40,22 +40,31 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
 # root on PATH for all users (so in-container jobs need no per-cell rustup).
 ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo
 ENV PATH=/usr/local/cargo/bin:$PATH
+# Stable toolchain baked WITH the exact components + targets the workspace
+# `rust-toolchain.toml` declares (rustfmt/clippy/rust-src/llvm-tools;
+# thumbv7em-none-eabihf/armv7r-none-eabihf/aarch64-unknown-none) PLUS the other
+# cross targets the platforms build for. rustup auto-installs any declared
+# component/target on first use; under `parallel` (build-fixtures) that races on
+# /usr/local/rustup/downloads (`could not rename '...partial'` /
+# `rustfmt-preview ... conflict bin/cargo-fmt`). Baking the full set = no runtime
+# install. Keep in lockstep with rust-toolchain.toml.
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path \
+        -c rustfmt clippy rust-src llvm-tools \
     && rustup target add \
-        x86_64-unknown-none armv7a-none-eabi \
+        x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
         riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf \
     && cargo install cargo-nextest --locked
 
-# Pinned nightly (tools/rust-toolchain.toml `nightly-2026-04-11`) baked WITH
-# rust-src + the cross targets. The fixture builds need it (esp32 `-Z build-std`
-# for riscv32imc, `-Z emit-stack-sizes`, nightly-only target adds); baking it
-# means the parallel cargo invocations in build-fixtures don't each trigger a
-# concurrent rustup install that races on /usr/local/rustup/downloads (the
-# `could not rename '...partial'` failure). Bump in lockstep with the pin.
-RUN rustup toolchain install nightly-2026-04-11 --profile minimal -c rust-src \
+# Pinned nightly (tools/rust-toolchain.toml `nightly-2026-04-11`) baked WITH its
+# declared components (rustfmt/miri/rust-src/llvm-tools) + the cross targets. The
+# fixture builds need it (esp32 `-Z build-std` for riscv32imc, `-Z emit-stack-
+# sizes`, nightly-only target adds). Same anti-race rationale as stable. Bump in
+# lockstep with the pin.
+RUN rustup toolchain install nightly-2026-04-11 --profile minimal \
+        -c rustfmt miri rust-src llvm-tools \
     && rustup +nightly-2026-04-11 target add \
-        x86_64-unknown-none armv7a-none-eabi \
+        x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
         riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf
 
