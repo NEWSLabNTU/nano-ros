@@ -1873,6 +1873,15 @@ pub unsafe extern "C" fn nros_client_call(
     let executor = executor_ptr as *mut nros_executor_t;
     let start_ns = crate::platform::get_time_ns();
     let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
+    // Resend the request periodically until the reply arrives. The first
+    // request can be published before the backend's request writer is
+    // matched to the server's reader — the RTPS discovery race on XRCE
+    // (agent bridges each session to its own DDS participant; reliable +
+    // volatile drops a request published pre-match) and the cold-boot
+    // server case on NuttX both lose the first request. Resending lets a
+    // later attempt land once discovery completes, within the timeout.
+    let resend_interval_ns: u64 = 500_000_000;
+    let mut last_send_ns = start_ns;
     loop {
         crate::executor::nros_executor_spin_some(executor, 10_000_000);
         if BLK_DONE >= 0 {
@@ -1885,9 +1894,27 @@ pub unsafe extern "C" fn nros_client_call(
             *response_len = BLK_LEN;
             return NROS_RET_OK;
         }
-        let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
-        if elapsed_ns >= timeout_ns {
+        let now_ns = crate::platform::get_time_ns();
+        if now_ns.saturating_sub(start_ns) >= timeout_ns {
             break;
+        }
+        if now_ns.saturating_sub(last_send_ns) >= resend_interval_ns {
+            // Clear `pending` so the resend isn't rejected with
+            // BAD_SEQUENCE, then re-issue the same request.
+            {
+                let internal = &mut client_ref._internal;
+                if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
+                    let exec_t2 = &mut *(internal.executor_ptr as *mut nros_executor_t);
+                    let exec2 = crate::executor::get_executor(&mut exec_t2._opaque);
+                    if let Some(entry) =
+                        exec2.service_client_entry_mut(internal.arena_entry_index as usize)
+                    {
+                        entry.pending = false;
+                    }
+                }
+            }
+            let _ = nros_client_send_request_async(client, request_data, request_len);
+            last_send_ns = now_ns;
         }
     }
     client_ref.response_callback = orig_cb;

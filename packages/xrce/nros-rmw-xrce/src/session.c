@@ -160,7 +160,9 @@ void xrce_dds_request_type(const char *type_name, char *out, size_t out_cap) {
 }
 
 void xrce_dds_reply_type(const char *type_name, char *out, size_t out_cap) {
-    insert_before_trailing_underscore(type_name, "Reply", out, out_cap);
+    /* ROS 2 service reply type is `<Service>_Response_` (the topic keeps the
+     * `Reply` suffix, but the type uses `Response`). */
+    insert_before_trailing_underscore(type_name, "Response", out, out_cap);
 }
 
 uxrQoS_t xrce_map_qos(const nros_rmw_qos_t *qos) {
