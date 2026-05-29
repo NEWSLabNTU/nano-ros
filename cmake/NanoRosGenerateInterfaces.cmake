@@ -676,6 +676,18 @@ function(nros_generate_interfaces target)
         target_link_libraries(${_lib_target} ${_link_type} ${_dep}__nano_ros_c)
       endif()
     endforeach()
+
+    # Build-order: the generated message .c files #include <nros/types.h> which
+    # pulls <nros/nros_generated.h>, the cbindgen header nros-c's build.rs writes
+    # during its cargo build. Linking NanoRos::NanoRos orders the LINK, not the
+    # COMPILE, so without an explicit dependency these objects can compile before
+    # the header exists — a race only masked when some other target happened to
+    # build nros-c first (e.g. freertos' cyclone fixture step; nuttx, building
+    # c/cpp first, hit `fatal error: nros/nros_generated.h: No such file`). Make
+    # the message lib wait for the nros-c cargo build (corrosion's build target).
+    if(_generated_sources AND TARGET cargo-build_nros_c)
+      add_dependencies(${_lib_target} cargo-build_nros_c)
+    endif()
   endif()
 
   # Phase 171.C.runtime — Cyclone DDS topic-descriptor typesupport.
