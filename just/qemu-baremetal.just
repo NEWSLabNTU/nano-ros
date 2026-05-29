@@ -79,6 +79,12 @@ build:
         packages/testing/nros-bench/wcet-cycles-qemu \
         packages/testing/nros-bench/large-msg-baremetal; do
         echo "  build $dir"
+        # Same as the example loop: bins with a package.xml (e.g. cdr-roundtrip-qemu
+        # path-deps builtin_interfaces/std_msgs) need codegen before cargo resolves
+        # the generated/ [patch.crates-io] path.
+        if [ -f "$dir/package.xml" ]; then
+            (cd "$dir" && "$nros_cli" generate-rust --force >/dev/null)
+        fi
         (cd "$dir" && cargo build $cargo_profile_args)
     done
     # Also build qemu-smoltcp-bridge (library in packages/reference/)
