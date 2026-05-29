@@ -173,8 +173,12 @@ application code.
         `0` = inherit default). Reserved `message_info`; `nros_publisher_options_t`
         thin. (Divergence from M3.1: C subs are callback-registered → live sched
         bind; C++ subs are poll-style → inert. Reconciling needs the M3.4 FFI.)
-  - [ ] **M3.3 — Services / actions QoS + options parity.** *Blocked on core
-        plumbing* (found during M3.1/M3.2): the Rust core service create
+  - [x] **M3.3 — Services / actions QoS + options parity. DONE** (2026-05-29) —
+        all sub-items a–f complete: QoS via Phase 193, then sched-context binding
+        + named-options structs across C (services/clients/actions) and C++
+        (action server + callback-style services/clients), with a runtime
+        EDF-dispatch proof (M3.3.d). Every C/C++ service-plane entity is
+        arena-registered + sched-bindable. *Original blocker (now resolved):* the Rust core service create
         (`Executor::register_service_raw_sized` → `Session::create_service_server(&ServiceInfo)`)
         takes **no `QosSettings`** — service QoS is fixed at the RMW layer (e.g.
         Cyclone hard-codes RELIABLE+VOLATILE), and the C++ `create_service(qos)`
