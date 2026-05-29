@@ -337,12 +337,12 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
   e2e — see the K.5/bridge item below); the `nros check` `[[bridge]]` warning is
   gone.
 - **172.E** sandbox hardening; **172.K.7** transport multi-homing — independent.
-- **Entity-API tiers → split to [Phase 189](phase-189-entity-api-tiers.md)**
+- **Entity-API tiers → split to [Phase 189](../phase-189-entity-api-tiers.md)**
   (cross-cutting client-API refactor, not orchestration — same precedent as
   Phase 187). Collapse the `register_subscription_*_*_*` / `create_*_raw` zoo
   into convenient `create_*` (matching rclcpp/rclrs) over one customizable
   entity **builder** (`fork`/`clone`); design in
-  [`docs/design/entity-api-tiers.md`](../design/entity-api-tiers.md). **The
+  [`docs/design/entity-api-tiers.md`](../../design/entity-api-tiers.md). **The
   bridge topic-forwarding runtime half (below) depends on Phase 189 M1** (the
   `.message_info()` + `.session()` knobs).
 
@@ -404,7 +404,7 @@ configuration lives here* below.
       over endpoint 0 (router A); the relay forwards it to endpoint 1 (router B),
       where the prebuilt `listener` example receives it — proving cross-session
       forwarding over the wire (the two routers are otherwise isolated). See
-      [`docs/design/bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md).
+      [`docs/design/bridge-topic-forwarding.md`](../../design/bridge-topic-forwarding.md).
 
 **Phase closes** when M8 lands (or is consciously deferred) + M9; the remaining
 independents (172.E sandbox, 172.K.7 multi-homing) can trail. The first-image
@@ -753,7 +753,7 @@ example migration (K), then the audit/docs (N).
       `[[transport]]` (id-addressable session: kind/ip-CIDR/mac/gateway/rmw/
       locator/device/baudrate/ssid/password/interface) + `[node.rt]`
       (scheduling). Nodes bind to transports by `id` (0/1 implicit, N explicit).
-      **Approved design: [`docs/design/configuration-and-transports.md`](../design/configuration-and-transports.md).**
+      **Approved design: [`docs/design/configuration-and-transports.md`](../../design/configuration-and-transports.md).**
       Migrate the 88 example `config.toml`, 86 `include_str!("config.toml")`
       sites, the 8 board `Config::from_toml` parsers, and the 5 board
       `build.rs`; then delete `config.toml`. Staged sub-items:
@@ -847,14 +847,16 @@ example migration (K), then the audit/docs (N).
         `pending_routing_warning`. The warning stays as the guard until this
         lands. *(`[[bridge]]` is a topic-forwarding gateway, not node placement
         — out of scope for K.5; that's the W.5/bridge-data-plane line.)*
-  - [ ] **172.K.7 — multi-homing `[[transport]].interfaces` (list).** A single
+  - [~] **172.K.7 — multi-homing `[[transport]].interfaces` (list). Schema +
+        plumbing landed; wire-emission EXTRACTED to [Phase 203](../phase-203-multi-homing-transport-interfaces.md)**
+        (2026-05-29). A single
         session spanning several NICs as one merged graph (taxonomy cases B/C —
         the common "node reachable on multiple interfaces" need, what stock
         DDS/zenoh do natively). Generalize the current single `interface` field
         to a list; generator maps it per backend (zenoh listen/connect per NIC +
         scouting iface; Cyclone `<Interfaces>`; Fast DDS whitelist). Distinct
         from K.5 (merge vs segregate). Design:
-        [`docs/design/configuration-and-transports.md`](../design/configuration-and-transports.md)
+        [`docs/design/configuration-and-transports.md`](../../design/configuration-and-transports.md)
         ("Two axes" taxonomy).
         - [x] **Schema + plumbing landed** (2026-05-29). `PlanTransport.interfaces:
               Vec<String>` (serde default, skip-when-empty) + `validate_transports`
@@ -868,7 +870,7 @@ example migration (K), then the audit/docs (N).
               interfaces_absent_round_trips_empty_and_skips_serialization,
               interfaces_are_ethernet_wifi_only}` +
               `multi_homed_interfaces_emit_set_interfaces_call`.
-        - [ ] **Per-backend *wire* emission (the merge) — deferred.** The `interfaces`
+        - [~] **Per-backend *wire* emission (the merge) — moved to [Phase 203](../phase-203-multi-homing-transport-interfaces.md)** (203.1 multi-endpoint SessionSpec → 203.2 zenoh decision → 203.3 Cyclone `<Interfaces>` → 203.4 multi-NIC verify). The `interfaces`
               list plumbs cleanly to a no-op `set_interfaces` seam but still changes no
               backend's actual NIC binding. Three blockers, in order:
               1. **Multi-endpoint `SessionSpec` (runtime, `nros`).** `SessionSpec::new(rmw,
