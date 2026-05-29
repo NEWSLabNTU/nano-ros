@@ -57,9 +57,10 @@ BYO workspace without vendoring Zephyr. **In-tree source authored at
 - [x] A README mirroring the Phase 202 BYO flow: `west init`/`update`, install
       nros, `nros setup zephyr --rmw zenoh` **+ `--source px4-rs`**, the NSOS
       patches (`west patch apply` on 4.x), `west build`, `zenohd`, run → `Published`.
-- [ ] **Split to the standalone `nano-ros-zephyr-example` repo** + add CI that
-      runs the quickstart on a fresh runner (the template is where Zephyr-version
-      drift surfaces first). *Needs repo creation — maintainer/out-of-band.*
+- [x] **Split to the standalone repo** — `NEWSLabNTU/nano-ros-zephyr-example`
+      populated (west.yml + app/ + README + .gitignore) and pushed (`main`,
+      `51faf2f`). [ ] CI on that repo running the quickstart on a fresh runner
+      (the template is where Zephyr-version drift surfaces first) — follow-up.
 - [x] Linked from `examples/templates/README.md`; [ ] link from the book BYO page.
 
 **Files:** a new repo; `book/src/getting-started/integration-zephyr.md`,
