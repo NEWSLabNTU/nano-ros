@@ -35,9 +35,24 @@ concurrency:
 jobs:
   dep-chain:
     name: per-platform dep chain
-    # jammy = the ROS 2 Humble baseline (codegen resolves std_msgs via AMENT).
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    # Run inside the prebuilt ROS 2 Humble image — `/opt/ros/humble` is already
+    # there (std_msgs etc. for AMENT-resolved codegen), so we skip the ~4.5-min
+    # `setup-ros` apt install every run. ros-base carries the common interface
+    # packages dep-chain needs; the image is jammy (Humble baseline).
+    container: ros:humble-ros-base
     steps:
+      # The ROS image is minimal — install the host tools a GH runner ships but
+      # this container lacks (curl/zstd/tar for install.sh, git for nros setup's
+      # submodule provisioning, gcc for cargo). Still far cheaper than setup-ros.
+      - name: Install host tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            curl ca-certificates zstd git build-essential
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
@@ -51,16 +66,6 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
             | NROS_VERSION=0.3.0 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
-
-      - name: Set up Rust toolchain
-        run: rustup show
-
-      # The interface codegen (nros generate-rust) resolves std_msgs's msg/*.msg
-      # via AMENT_PREFIX_PATH from a sourced ROS 2.
-      - name: Install ROS 2 Humble
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: humble
 
       - name: Per-platform dep-chain check
         run: |
