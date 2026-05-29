@@ -127,7 +127,9 @@ version = "esp-develop-nros1"
 upstream = "esp-develop"
 [tool.esp32-qemu.source]
 git = "https://github.com/espressif/qemu"
-ref = "33cc9a8740071031e30704141d2803b308ce0d32"
+# A tag, not a bare SHA: nros's source-build clones by ref (git clone --branch),
+# which needs a branch/tag. esp-develop line provides the `esp32c3` machine.
+ref = "esp-develop-9.2.2-20260417"
 configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-strip --disable-user --disable-capstone --disable-vnc --disable-gtk --disable-sdl --disable-docs"
 install = "ninja -C build -j$(nproc) && ninja -C build install"
 
