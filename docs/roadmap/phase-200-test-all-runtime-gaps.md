@@ -45,20 +45,38 @@ on a missing tool/fixture. The 20 cluster into five groups.
 
 ## Work Items
 
-### 200.1 — Zephyr CycloneDDS runtime e2e (→ Phase 177.2 / 196.1) — 11
+### 200.1 — Zephyr CycloneDDS runtime e2e (→ Phase 177.2 / 196.1) — pubsub + service RESOLVED ✅; actions → 177.2
 
-Fixtures build + boot on `native_sim`, but the CycloneDDS data plane does not
-complete. Two sub-causes:
+**RESOLVED 2026-05-29 (pubsub + service).** The cluster was *two build/staging
+gaps misread as a data-plane gap*, not a broken CycloneDDS data plane. With the
+network-wait relocate (above) fixing the rust build, and canonical
+`just zephyr build-fixtures` staging (distinct baked domains + `rs`-tag dirs),
+**all six zephyr cyclonedds e2e pass concurrently** on native_sim:
 
-- **Data plane / discovery (runtime).** `zephyr_{c,cpp}_cyclonedds_pubsub_e2e`
-  exchange no samples; `zephyr_{c,cpp}_cyclonedds_service_e2e` get no `[OK]`
-  reply. Suspect embedded Cyclone discovery / multicast under native_sim
-  (`<AllowMulticast>` + loopback). `zephyr_dds_{c,cpp,rs}_action_e2e` —
-  actions on zephyr CycloneDDS not implemented (Phase 177.2 explicitly defers).
-- **rust+cyclonedds link gap (build).** `zephyr_rust_cyclonedds_{pubsub,service}_e2e`
-  and `zephyr_rust_{talker,listener}_cyclonedds_boot` fail to *build*, link-erroring
-  on `zpico_open` / `zpico_spin_once` with no zenoh-pico in a CycloneDDS build.
-  Zephyr rust **zenoh** builds clean — only the cyclonedds combo is unwired.
+```
+test_zephyr_{c,cpp,rust}_cyclonedds_pubsub_e2e   PASS
+test_zephyr_{c,cpp,rust}_cyclonedds_service_e2e  PASS
+6 tests run: 6 passed (zephyr-native-cyclonedds group, max-threads=4)
+```
+
+What was actually wrong (both now closed):
+
+- **~~Data plane / discovery (runtime)~~ — was NOT broken.** The "exchange no
+  samples / no `[OK]` reply" symptom was an artifact of running ad-hoc
+  domain-0 fixtures concurrently: every native_sim Cyclone participant bound the
+  same RTPS ports (`7400 + 250*domain`) and NSOS (no `SO_REUSEADDR`) aborted /
+  cross-talked. Run in isolation, or with `build-fixtures`' distinct per-(lang,
+  variant) domains (50–58), pubsub exchanges samples and services return the
+  reply for all three languages. Manual 2-proc runs confirm: c/cpp/rust talkers
+  deliver to their listeners; rust/c/cpp servers compute and reply (`sum=`).
+- **rust+cyclonedds link gap (build) — FIXED by the relocate.**
+  `zephyr_rust_cyclonedds_{pubsub,service}_e2e` and the boot fixtures used to
+  link-fail on `zpico_open` / `zpico_spin_once`; the network-wait relocate
+  removed that leak, so rust cyclonedds now builds and the e2e pass.
+
+**Still open → Phase 177.2:** `zephyr_dds_{c,cpp,rs}_action_e2e` — actions on
+zephyr CycloneDDS are not implemented (177.2 explicitly defers; not a 200.1
+regression).
 
   **Root cause (2026-05-29, static — build-verify gated on the zephyr env).** Not
   the example sources (their `register_rmw()` is correctly `#[cfg(feature="rmw-*")]`
@@ -371,8 +389,8 @@ setup-only: zephyr-lang-rust workspace pin sync + `clippy` rustup component.
 
 ## Acceptance
 
-- [ ] 200.1 zephyr CycloneDDS c/cpp pubsub+service exchange data on native_sim
-- [ ] 200.1 rust+cyclonedds zephyr links (zpico provider wired or backend-gated)
+- [x] 200.1 zephyr CycloneDDS c/cpp pubsub+service exchange data on native_sim (+ rust; 6/6 e2e pass concurrently, 2026-05-29)
+- [x] 200.1 rust+cyclonedds zephyr links (network-wait relocate; verified rust/c/cpp × all RMW)
 - [ ] 200.1 zephyr CycloneDDS actions implemented (or explicitly skip! pending 177.2)
 - [x] 200.2 XRCE action/service e2e complete goal→result over the agent
 - [x] 200.3 nuttx C service e2e + external-apps link pass (both verified green
