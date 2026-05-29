@@ -25,8 +25,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake ninja-build device-tree-compiler gperf \
         git curl ca-certificates zstd xz-utils file wget \
-        python3 python3-pip python3-venv build-essential \
-        gcc-arm-none-eabi kconfig-frontends socat \
+        python3 python3-pip python3-venv python3-tomli build-essential \
+        gcc-arm-none-eabi kconfig-frontends socat parallel \
         libslirp0 libpixman-1-0 \
         ros-humble-example-interfaces \
     && rm -rf /var/lib/apt/lists/*
