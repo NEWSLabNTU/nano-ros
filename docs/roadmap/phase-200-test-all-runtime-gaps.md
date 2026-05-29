@@ -146,10 +146,6 @@ the resend should harden Phase 200.3's `rtos_e2e` service path too (verify).
 `packages/xrce/nros-rmw-xrce/src/session.c` (reply type),
 `packages/testing/nros-tests/tests/{c_xrce_api,xrce}.rs`.
 
-**Files.** `packages/testing/nros-tests/tests/c_xrce_api.rs`,
-`packages/testing/nros-tests/tests/xrce.rs`,
-`examples/native/c/{action-server,action-client,service-server,service-client}/`.
-
 ### 200.3 — NuttX runtime e2e — DONE (verified passing)
 
 `rtos_e2e::…Nuttx…Lang__C` service e2e and
@@ -247,6 +243,33 @@ policy.
 **Files.** `packages/testing/nros-tests/tests/integration_{esp_idf,platformio,zephyr}.rs`
 (unchanged); `scripts/test/failed-filterset.py` (the `[SKIPPED]` reclassifier).
 
+### 200.6 — Rust Zephyr fixtures fail to build (`export_kconfig_bool_options`)
+
+Surfaced 2026-05-29 while rebuilding zephyr fixtures: every **Rust** zephyr
+example (zenoh, xrce, *and* cyclonedds) fails its build script with
+
+```
+error[E0425]: cannot find function `export_kconfig_bool_options` in crate `zephyr_build`
+error: could not compile `nros_zephyr_<example>` (build script)
+```
+
+The example `build.rs` calls `zephyr_build::export_kconfig_bool_options`, which
+the resolved `zephyr_build` crate no longer exports — a zephyr-rust-build API
+drift (the zephyr module / west manifest version moved under the example, likely
+via the Phase 199 zephyr-version-support-policy changes pulled the same day). C
+and C++ zephyr fixtures build fine; only the Rust ones are affected. This blocks
+the rust zephyr fixture set entirely and makes `test_zephyr_rust_*` /
+`test_zephyr_talker_to_listener_e2e` (rust) etc. fail with stale/missing
+binaries — distinct from the 200.1 rust+cyclonedds *link* gap (this one fails
+earlier, at the build-script stage, for every RMW).
+
+Triage: pin/upgrade the example `build.rs` against the `zephyr_build` version the
+current zephyr module ships (find the replacement for
+`export_kconfig_bool_options`, or gate the call on a feature/version).
+
+**Files.** `examples/zephyr/rust/*/build.rs` (or the shared zephyr-rust build
+helper), the `zephyr_build` dependency pin, `zephyr/` module manifest.
+
 ---
 
 ## Acceptance
@@ -261,6 +284,7 @@ policy.
       hardened to a pattern-wait — early-return + slow-boot tolerant)
 - [x] 200.5 opt-in SDK shells gated as precondition-skip when SDK absent
       (`skip!` + `[SKIPPED]` reclassification — verified zero real failures)
+- [ ] 200.6 rust zephyr fixtures build (`export_kconfig_bool_options` resolved)
 
 ## Notes
 
