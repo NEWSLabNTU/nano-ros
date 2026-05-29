@@ -25,17 +25,29 @@ nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features 
 # Generated message types (from package.xml via nros generate-rust)
 std_msgs = { version = "*", default-features = false }
 
-# Panic handler
-panic-probe = { version = "0.3", features = ["print-defmt"] }
+# Panic handler (default: defmt-printing). The `minimal` feature swaps in
+# panic-halt (no message formatting) — see [features].
+panic-probe = { version = "0.3", features = ["print-defmt"], optional = true }
+panic-halt = { version = "0.2", optional = true }
 
-# Logging
+# Logging. defmt + its global logger (defmt-rtt) are unconditional: the board
+# crate (`nros_board_common::board_init`) logs via defmt and needs the
+# `#[defmt::global_logger]`, so they stay linked even in the minimal build.
 defmt = "0.3"
 defmt-rtt = "0.4"
 
 [features]
-default = ["stm32f429"]
+default = ["stm32f429", "diagnostics"]
 stm32f429 = ["nros-board-stm32f4/stm32f429"]
 stm32f407 = ["nros-board-stm32f4/stm32f407"]
+# Default diagnostics: defmt-printing panic + nros-log app diagnostics on.
+diagnostics = ["dep:panic-probe"]
+# Phase 204.4 — minimal-panic / no-fmt size build: panic-halt (no panic message
+# formatting) + nros-log compiled off (`max-level-off`), so the panic-message +
+# nros-log `core::fmt`/`Debug` machinery is dead-stripped. (defmt stays — the
+# board crate needs it.) Build with
+# `--no-default-features --features stm32f429,minimal`.
+minimal = ["dep:panic-halt", "nros-log/max-level-off"]
 
 [profile.release]
 codegen-units = 1

@@ -238,12 +238,26 @@ typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
       `NROS_CARGO_PROFILE=size just <plat> build` is the fleet knob, measured text
       delta documented. (`nros new` scaffolding the profile ties into 204.15.)
 
-### 204.4 — Strip fmt / panic machinery
-- [ ] ~5 KB is `core::fmt`/`Debug`/`escape_debug`/`slice_error_fail_rt`, pulled in
-      by `defmt`/`panic-probe` formatting + `Debug` derives. Offer a
-      minimal-panic build: `panic-halt` (no formatting) + `build-std` with
-      `panic_immediate_abort` + audit `Debug` in the embedded hot path.
-- [ ] **Acceptance:** the fmt/panic text contribution measured before/after.
+### 204.4 — Strip fmt / panic machinery — [x] DONE (2026-05-30)
+- [x] **`minimal` feature offered** on `examples/stm32f4/rust/talker`: `panic-halt`
+      (no panic-message formatting, vs the default `panic-probe` print-defmt) +
+      `nros-log` compiled off (`nros-log/max-level-off` → `nros_info!`/`nros_error!`
+      become no-ops, so their `core::fmt` + the `{:?}` `Debug` on `PublishError`
+      dead-strip). The default `diagnostics` feature keeps the old behaviour.
+      Build: `cargo build --release --no-default-features --features stm32f429,minimal`.
+- [x] **`panic_immediate_abort` is NOT the lever** (see 204.12): `build-std` is
+      inert on the stable toolchain and the fmt is logging-fmt, not panic-fmt.
+      Dropping the *logging* + the printing-panic handler is what removes it.
+- [x] **defmt stays** — `nros_board_common::board_init` logs via defmt + needs the
+      `#[defmt::global_logger]` (defmt-rtt); the example can't shed defmt, so
+      `minimal` keeps it. The strip is the panic-message + nros-log path.
+- [x] **Measured (stm32f4 talker, release, same config):** **text 186.9 → 159.5 KB
+      = −27.4 KB (−14.7 %)**; data/bss ~unchanged. Far larger than the earlier
+      ~5 KB guess — panic-probe's print path + the nros-log `core::fmt`/`Debug`
+      machinery. Links clean (backend stays via the explicit `register()`);
+      runtime is silent-but-functional (no diag output) — verify on hardware
+      before defaulting it.
+- [x] **Acceptance:** fmt/panic text contribution measured before/after (−27.4 KB).
 
 ### 204.5 — Static-heap sizing + XRCE-for-RAM
 - [x] **Made the bare-metal static heap env-tunable (2026-05-30).**

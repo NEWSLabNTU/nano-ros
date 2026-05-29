@@ -33,10 +33,15 @@
 #![no_std]
 #![no_main]
 
+// defmt + its global logger are unconditional (the board crate logs via defmt).
 use defmt_rtt as _;
+// Phase 204.4 — panic handler: defmt-printing (diagnostics) vs halt (minimal).
+#[cfg(feature = "diagnostics")]
 use panic_probe as _;
+#[cfg(feature = "minimal")]
+use panic_halt as _;
 
-// defmt 0.3 requires a timestamp function in each binary crate
+// defmt 0.3 requires a timestamp function in each binary crate.
 defmt::timestamp!("{=u64:us}", { 0 });
 
 use nros::prelude::*;
@@ -52,8 +57,13 @@ static LOGGER: Logger = Logger::new("talker");
 #[entry]
 fn main() -> ! {
     run(Config::nucleo_f429zi(), |config| -> Result<(), NodeError> {
-        nros_log::register_logger(&LOGGER);
-        nros_log::init(nros_log::sinks::default());
+        // Diagnostics only: under `minimal`, nros-log is compiled off
+        // (`max-level-off`) so the macros below are no-ops; skip the defmt sink.
+        #[cfg(feature = "diagnostics")]
+        {
+            nros_log::register_logger(&LOGGER);
+            nros_log::init(nros_log::sinks::default());
+        }
 
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
