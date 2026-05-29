@@ -8,15 +8,11 @@
 #include <zephyr/autoconf.h>
 #include <string.h>
 
-#if defined(CONFIG_NROS_RMW_ZENOH)
-#include <zpico_zephyr.h>
-#elif defined(CONFIG_NROS_RMW_XRCE)
-#include <xrce_zephyr.h>
-#endif
+#include <nros/platform_zephyr.h>
 
 LOG_MODULE_REGISTER(nros_action_server, LOG_LEVEL_INF);
 
-#define NROS_CHECK_LOG(file, line, expr, ret) \
+#define NROS_CHECK_LOG(file, line, expr, ret)                                                      \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/action.h>
@@ -32,13 +28,15 @@ LOG_MODULE_REGISTER(nros_action_server, LOG_LEVEL_INF);
 static nros_logger_t g_logger = NULL;
 static int g_goal_count = 0;
 
-static nros_goal_response_t goal_callback(
-    nros_action_server_t* server, const nros_goal_handle_t* goal,
-    const uint8_t* goal_request, size_t goal_len, void* context)
-{
-    (void)server; (void)context;
+static nros_goal_response_t goal_callback(nros_action_server_t* server,
+                                          const nros_goal_handle_t* goal,
+                                          const uint8_t* goal_request, size_t goal_len,
+                                          void* context) {
+    (void)server;
+    (void)context;
     example_interfaces_action_fibonacci_goal goal_msg;
-    if (example_interfaces_action_fibonacci_goal_deserialize(&goal_msg, goal_request, goal_len) != 0) {
+    if (example_interfaces_action_fibonacci_goal_deserialize(&goal_msg, goal_request, goal_len) !=
+        0) {
         return NROS_GOAL_REJECT;
     }
     NROS_LOG_INFO(g_logger, "Goal request: order=%d", goal_msg.order);
@@ -46,15 +44,16 @@ static nros_goal_response_t goal_callback(
     return NROS_GOAL_ACCEPT_AND_EXECUTE;
 }
 
-static nros_cancel_response_t cancel_callback(
-    nros_action_server_t* server, const nros_goal_handle_t* goal, void* context)
-{
-    (void)server; (void)goal; (void)context;
+static nros_cancel_response_t cancel_callback(nros_action_server_t* server,
+                                              const nros_goal_handle_t* goal, void* context) {
+    (void)server;
+    (void)goal;
+    (void)context;
     return NROS_CANCEL_ACCEPT;
 }
 
-static void accepted_callback(nros_action_server_t* server, const nros_goal_handle_t* goal, void* context)
-{
+static void accepted_callback(nros_action_server_t* server, const nros_goal_handle_t* goal,
+                              void* context) {
     (void)context;
     g_goal_count++;
     int32_t order = 10;
@@ -66,14 +65,18 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
 
     for (int32_t i = 0; i <= order; i++) {
         int32_t val;
-        if (i == 0) val = 0;
-        else if (i == 1) val = 1;
-        else val = fb.sequence.data[i - 1] + fb.sequence.data[i - 2];
+        if (i == 0)
+            val = 0;
+        else if (i == 1)
+            val = 1;
+        else
+            val = fb.sequence.data[i - 1] + fb.sequence.data[i - 2];
         fb.sequence.data[i] = val;
         fb.sequence.size = (uint32_t)(i + 1);
 
         uint8_t fb_buf[512];
-        int32_t fb_len = example_interfaces_action_fibonacci_feedback_serialize(&fb, fb_buf, sizeof(fb_buf));
+        int32_t fb_len =
+            example_interfaces_action_fibonacci_feedback_serialize(&fb, fb_buf, sizeof(fb_buf));
         if (fb_len > 0) nros_action_publish_feedback(server, goal, fb_buf, (size_t)fb_len);
     }
 
@@ -83,30 +86,34 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     memcpy(result.sequence.data, fb.sequence.data, fb.sequence.size * sizeof(int32_t));
 
     uint8_t result_buf[512];
-    int32_t result_len = example_interfaces_action_fibonacci_result_serialize(&result, result_buf, sizeof(result_buf));
-    if (result_len > 0 && nros_action_succeed(server, goal, result_buf, (size_t)result_len) == NROS_RET_OK) {
+    int32_t result_len = example_interfaces_action_fibonacci_result_serialize(&result, result_buf,
+                                                                              sizeof(result_buf));
+    if (result_len > 0 &&
+        nros_action_succeed(server, goal, result_buf, (size_t)result_len) == NROS_RET_OK) {
         NROS_LOG_INFO(g_logger, "Goal completed (len=%u)", result.sequence.size);
     }
 }
 
-int nros_app_main(int argc, char **argv)
-{
-    (void)argc; (void)argv;
+int nros_app_main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
     LOG_INF("nros Zephyr Action Server");
 
-#if defined(CONFIG_NROS_RMW_ZENOH)
-    if (zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) { LOG_ERR("Network not ready"); return 1; }
-#elif defined(CONFIG_NROS_RMW_XRCE)
-    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) { return 1; }
-#endif
+    if (nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
+        LOG_ERR("Network not ready");
+        return 1;
+    }
 
     nros_support_t support = nros_support_get_zero_initialized();
 #if defined(CONFIG_NROS_RMW_ZENOH)
-    NROS_CHECK_RET(nros_support_init(&support, CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&support, CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID),
+                   1);
 #elif defined(CONFIG_NROS_RMW_XRCE)
     NROS_CHECK_RET(nros_support_init_named(&support,
-        CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
-        CONFIG_NROS_DOMAIN_ID, "xrce_action_server"), 1);
+                                           CONFIG_NROS_XRCE_AGENT_ADDR
+                                           ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
+                                           CONFIG_NROS_DOMAIN_ID, "xrce_action_server"),
+                   1);
 #elif defined(CONFIG_NROS_RMW_CYCLONEDDS)
     NROS_CHECK_RET(nros_support_init(&support, "", CONFIG_NROS_DOMAIN_ID), 1);
 #else
@@ -126,8 +133,9 @@ int nros_app_main(int argc, char **argv)
     };
 
     nros_action_server_t server = nros_action_server_get_zero_initialized();
-    NROS_CHECK_RET(nros_action_server_init(&server, &node, "/fibonacci", &fib_type,
-        goal_callback, cancel_callback, accepted_callback, NULL), 1);
+    NROS_CHECK_RET(nros_action_server_init(&server, &node, "/fibonacci", &fib_type, goal_callback,
+                                           cancel_callback, accepted_callback, NULL),
+                   1);
 
     nros_executor_t executor = nros_executor_get_zero_initialized();
     NROS_CHECK_RET(nros_executor_init(&executor, &support, 8), 1);

@@ -21,16 +21,8 @@
 extern "C" {
 #endif
 
-/**
- * @brief Wait for the Zephyr network interface to come up.
- *
- * Blocks until the default network interface reports "up" or the
- * timeout expires.
- *
- * @param timeout_ms Maximum time to wait in milliseconds
- * @return 0 on success, -1 if the interface did not come up
- */
-int32_t zpico_zephyr_wait_network(int timeout_ms);
+/* Network-wait relocated to <nros/platform_zephyr.h>
+ * (`nros_platform_zephyr_wait_network`) in Phase 200.1 — RMW-independent. */
 
 /**
  * @brief Initialize and open a zenoh-pico session.

@@ -33,6 +33,9 @@ zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/platform.c
     ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/net.c
     ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/timer.c
+    # Phase 200.1 — RMW-independent network-wait (compiled for every RMW; was
+    # mis-filed as zpico_zephyr_wait_network in the zenoh-only zpico_zephyr.c).
+    ${NROS_REPO_DIR}/packages/core/nros-platform-zephyr/src/net_wait.c
 )
 
 # =============================================================================

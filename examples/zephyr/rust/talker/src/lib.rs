@@ -62,15 +62,16 @@ fn make_config() -> ExecutorConfig<'static> {
     // `LOCATOR` static, and `from_utf8_unchecked` is fed bytes written here
     // from formatted Kconfig string values (valid UTF-8).
     unsafe {
-        LOCATOR.clear();
+        let loc = core::ptr::addr_of_mut!(LOCATOR);
+        (*loc).clear();
         let _ = write!(
-            LOCATOR,
+            *loc,
             "{}:{}",
             zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_ADDR,
             zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_PORT
         );
         // LOCATOR is the only writer — borrow it as &'static str.
-        let s: &'static str = core::str::from_utf8_unchecked(LOCATOR.as_bytes());
+        let s: &'static str = core::str::from_utf8_unchecked((*loc).as_bytes());
         ExecutorConfig::new(s).node_name("xrce_talker")
     }
 }

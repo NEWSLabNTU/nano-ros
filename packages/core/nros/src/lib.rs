@@ -284,12 +284,17 @@ pub mod platform {
     /// before that returns `TransportError::ConnectionFailed`.
     ///
     /// Call [`wait_for_network`] as the first line of `rust_main()`. It
-    /// mirrors the `zpico_zephyr_wait_network()` call the C++ examples
-    /// make before `nros::init()`.
+    /// mirrors the `nros_platform_zephyr_wait_network()` call the C/C++
+    /// examples make before `nros::init()`.
+    ///
+    /// The symbol is RMW-independent (defined in `nros-platform-zephyr`,
+    /// compiled in every RMW build — Phase 200.1). Before the relocate it
+    /// was `zpico_zephyr_wait_network`, defined only in the zenoh CMake
+    /// branch, so a `rmw-cyclonedds` Zephyr build link-failed here.
     #[cfg(feature = "platform-zephyr")]
     pub mod zephyr {
         unsafe extern "C" {
-            fn zpico_zephyr_wait_network(timeout_ms: i32) -> i32;
+            fn nros_platform_zephyr_wait_network(timeout_ms: i32) -> i32;
         }
 
         /// Block until the default Zephyr network interface is operational,
@@ -298,10 +303,10 @@ pub mod platform {
         /// Returns `Ok(())` if the interface came up, or `Err(())` on
         /// timeout. Matches the C helper's semantics.
         pub fn wait_for_network(timeout_ms: i32) -> Result<(), ()> {
-            // SAFETY: zpico_zephyr_wait_network has no preconditions beyond
-            // being called from a Zephyr thread context — which is always
-            // true in a Zephyr app where `platform-zephyr` is active.
-            let ret = unsafe { zpico_zephyr_wait_network(timeout_ms) };
+            // SAFETY: nros_platform_zephyr_wait_network has no preconditions
+            // beyond being called from a Zephyr thread context — which is
+            // always true in a Zephyr app where `platform-zephyr` is active.
+            let ret = unsafe { nros_platform_zephyr_wait_network(timeout_ms) };
             if ret == 0 { Ok(()) } else { Err(()) }
         }
     }

@@ -8,16 +8,12 @@
 #include <zephyr/autoconf.h>
 
 extern "C" {
-#if defined(CONFIG_NROS_RMW_ZENOH)
-#include <zpico_zephyr.h>
-#elif defined(CONFIG_NROS_RMW_XRCE)
-#include <xrce_zephyr.h>
-#endif
+#include <nros/platform_zephyr.h>
 }
 
 LOG_MODULE_REGISTER(nros_cpp_service_server, LOG_LEVEL_INF);
 
-#define NROS_TRY_LOG(file, line, expr, ret) \
+#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -28,16 +24,15 @@ LOG_MODULE_REGISTER(nros_cpp_service_server, LOG_LEVEL_INF);
 
 static nros_logger_t g_logger = nullptr;
 
-int nros_app_main(int argc, char **argv)
-{
-    (void)argc; (void)argv;
+int nros_app_main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
     LOG_INF("nros Zephyr C++ Service Server");
 
-#if defined(CONFIG_NROS_RMW_ZENOH)
-    if (zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) { LOG_ERR("Network not ready"); return 1; }
-#elif defined(CONFIG_NROS_RMW_XRCE)
-    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) { return 1; }
-#endif
+    if (nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
+        LOG_ERR("Network not ready");
+        return 1;
+    }
 
 #if defined(CONFIG_NROS_RMW_ZENOH)
     NROS_TRY_RET(nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
@@ -47,7 +42,8 @@ int nros_app_main(int argc, char **argv)
      * the same Agent (the Agent resets the shared client); use this
      * process's node name. */
     NROS_TRY_RET(nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
-                            CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_service_server"), 1);
+                            CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_service_server"),
+                 1);
 #elif defined(CONFIG_NROS_RMW_CYCLONEDDS)
     NROS_TRY_RET(nros::init("", CONFIG_NROS_DOMAIN_ID), 1);
 #else
@@ -72,7 +68,7 @@ int nros_app_main(int argc, char **argv)
             example_interfaces::srv::AddTwoInts::Response resp;
             resp.sum = req.a + req.b;
             NROS_LOG_INFO(g_logger, "Request [%d]: %lld + %lld = %lld", request_count,
-                (long long)req.a, (long long)req.b, (long long)resp.sum);
+                          (long long)req.a, (long long)req.b, (long long)resp.sum);
             nros::Result ret = srv.send_reply(seq_id, resp);
             if (!ret.ok()) LOG_ERR("Failed to send reply: %d", ret.raw());
         }

@@ -87,18 +87,38 @@ complete. Two sub-causes:
   the platform-level wait stayed mis-filed under the zenoh crate. It is a platform
   primitive wearing a zenoh name.
 
-  **Fix.** Move the RMW-blind network-wait out of the zenoh TU:
-  - *Minimal:* split `zpico_zephyr_wait_network` (+ its `net_if` helpers,
-    `zpico_zephyr.c:1-115`) into a standalone TU
-    (`zpico-zephyr/src/net_wait_zephyr.c`); leave `zpico_zephyr_init_session`
-    behind. Compile the net-wait TU in **all** RMW branches; keep the session TU
-    zenoh-only. Symbol name unchanged → no Rust/C++ caller churn.
-  - *Clean (follow-up):* relocate it to the platform layer
-    (`nros-platform-zephyr`) + rename `zpico_zephyr_wait_network` →
-    `nros_platform_zephyr_wait_network` (ripples to the `nros` core extern +
-    `nros-cpp` callers) so the `zpico_`/zenoh name no longer implies RMW coupling.
-  - **Build-verify gated on the zephyr env** (3-RMW-branch CMake): confirm zenoh
-    still links + cyclonedds now links before landing.
+  **Fix — relocate (chosen, IMPLEMENTED 2026-05-29).** The clean option:
+  relocate the RMW-blind network-wait to the platform layer and rename it, so
+  the `zpico_`/zenoh name no longer implies RMW coupling. (The minimal split —
+  same-named standalone TU still inside `zpico-zephyr` — was rejected: it cures
+  the link error but leaves a platform primitive mis-filed under the zenoh
+  crate, and keeps the XRCE duplicate.)
+  - **New canonical symbol** `nros_platform_zephyr_wait_network(int) -> int32_t`
+    in `nros-platform-zephyr/src/net_wait.c`, declared in
+    `nros-platform-cffi/include/nros/platform_zephyr.h`. Compiled in the
+    **RMW-blind** common block of `zephyr/CMakeLists.txt` (alongside
+    `platform.c`/`net.c`/`timer.c`), so zenoh / XRCE / CycloneDDS all link one
+    copy.
+  - **Folded in the XRCE-only `native_sim` stabilization grace** (2 s TAP/host
+    socket settle) — it's a board property, not RMW, so every backend now gets
+    it. The shared impl is the union: poll `net_if` up + carrier + preferred
+    IPv4, *or* the `NET_EVENT_L4_CONNECTED` sem, then the grace.
+  - **Stripped the originals:** `zpico_zephyr_wait_network` + its L4 helpers out
+    of `zpico_zephyr.c` (leaves `init_session`/`shutdown`, zenoh-only); the
+    duplicate `xrce_zephyr_wait_network` + `zpico_zephyr_wait_network` alias out
+    of `xrce_zephyr.c` (leaves the `uxr_millis`/`uxr_nanos` clock symbols).
+    Both old headers reduced to relocate stubs.
+  - **Callers retargeted:** `nros` core extern (`nros/src/lib.rs`) renamed; all
+    12 zephyr C/C++ examples drop the RMW-gated `<zpico_zephyr.h>`/`<xrce_zephyr.h>`
+    include + `#if/#elif` wait block for one unconditional
+    `nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS)` call —
+    **this also gives the cyclonedds C/C++ examples a network-wait for free**
+    (they previously had no wait branch at all).
+  - `cargo check -p nros --features platform-zephyr` passes; no live references
+    to the old symbols remain (grep-clean, doc comments aside).
+  - **Build-verify still gated on the zephyr env** (3-RMW-branch CMake): confirm
+    zenoh still links, cyclonedds + XRCE now link, and the data plane (200.1
+    runtime, below) before closing 200.1.
 
 **Update (2026-05-29, after 200.6 unblocked the rust build):** the zpico-link
 gap is **broader than rust+cyclonedds and broader than `wait_network` alone.**
@@ -116,13 +136,29 @@ the zenoh rlib live under xrce/cyclonedds (an un-`cfg`'d `use`/registration in
 `nros` core or `nros-cpp`, or a non-feature-gated dep edge) before landing the
 TU split. Rust zephyr **zenoh** builds clean — only the non-zenoh RMWs leak.
 
-**Files.** `packages/testing/nros-tests/tests/phase_118_collapse.rs`,
-`packages/testing/nros-tests/tests/zephyr.rs`,
-`packages/dds/nros-rmw-cyclonedds/`, `zephyr/CMakeLists.txt` (rust+cyclone
-link), `examples/zephyr/rust/*`, `packages/zpico/zpico-zephyr/src/zpico_zephyr.c`
-(the misplaced wait helper), `packages/core/nros/src/lib.rs:289` (the
-`platform-zephyr` extern), `packages/zpico/nros-rmw-zenoh/` (the rlib leaking
-into non-zenoh builds).
+**Build-verified (2026-05-29, native_sim / zephyr 3.7) — relocate landed.** All
+nine `talker` combos link: rust × {zenoh, xrce, cyclonedds} and c/cpp × {zenoh,
+xrce, cyclonedds}. `net_wait.c.obj` exports
+`T nros_platform_zephyr_wait_network`; the cyclonedds ELF has zero `zpico_open`
+references — **the original rust+cyclonedds `wait_network` link failure is
+fixed**, and cyclonedds c/cpp (previously no wait branch at all) now build.
+**Caveat — consistent with the 200.6 finding above:** `talker` does not exercise
+the wider `nros_rmw_zenoh` shim leak, so `rust/service-server xrce` still
+link-fails on the full zpico shim. Closing 200.1 needs that broader leak (the
+un-`cfg`'d edge keeping the zenoh rlib live under non-zenoh RMW) resolved too —
+tracked with 200.6.
+
+**Files (landed).** `packages/core/nros-platform-zephyr/src/net_wait.c` (new),
+`packages/core/nros-platform-cffi/include/nros/platform_zephyr.h` (new),
+`zephyr/CMakeLists.txt` (RMW-blind source list),
+`packages/zpico/zpico-zephyr/src/zpico_zephyr.c` + `include/zpico_zephyr.h`
+(stripped), `packages/xrce/xrce-zephyr/src/xrce_zephyr.c` +
+`include/xrce_zephyr.h` (stripped), `packages/core/nros/src/lib.rs` (extern
+rename), `examples/zephyr/{c,cpp}/*/src/main.{c,cpp}` (12 callers),
+`examples/zephyr/rust/talker/src/lib.rs` (safety comments). **Still open
+(200.6):** `packages/zpico/nros-rmw-zenoh/` rlib leaking into non-zenoh builds;
+runtime data-plane validation in `packages/testing/nros-tests/tests/zephyr.rs`,
+`packages/dds/nros-rmw-cyclonedds/`.
 
 ### 200.2 — XRCE action/service runtime e2e — FIXED ✅
 

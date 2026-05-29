@@ -8,16 +8,12 @@
 #include <zephyr/autoconf.h>
 
 extern "C" {
-#if defined(CONFIG_NROS_RMW_ZENOH)
-#include <zpico_zephyr.h>
-#elif defined(CONFIG_NROS_RMW_XRCE)
-#include <xrce_zephyr.h>
-#endif
+#include <nros/platform_zephyr.h>
 }
 
 LOG_MODULE_REGISTER(nros_cpp_action_server, LOG_LEVEL_INF);
 
-#define NROS_TRY_LOG(file, line, expr, ret) \
+#define NROS_TRY_LOG(file, line, expr, ret)                                                        \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -32,8 +28,7 @@ static nros_logger_t g_logger = nullptr;
 static nros::ActionServer<Fibonacci>* g_srv = nullptr;
 static int g_goal_count = 0;
 
-static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal)
-{
+static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal) {
     if (goal.order < 0 || goal.order >= 64) return nros::GoalResponse::Reject;
 
     g_goal_count++;
@@ -49,7 +44,9 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
                 fb.sequence.push_back(result.sequence[k]);
             g_srv->publish_feedback(uuid, fb);
         }
-        int32_t next = a + b; a = b; b = next;
+        int32_t next = a + b;
+        a = b;
+        b = next;
     }
 
     if (g_srv->complete_goal(uuid, result).ok()) {
@@ -58,16 +55,15 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     return nros::GoalResponse::AcceptAndExecute;
 }
 
-int nros_app_main(int argc, char **argv)
-{
-    (void)argc; (void)argv;
+int nros_app_main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
     LOG_INF("nros Zephyr C++ Action Server");
 
-#if defined(CONFIG_NROS_RMW_ZENOH)
-    if (zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) { LOG_ERR("Network not ready"); return 1; }
-#elif defined(CONFIG_NROS_RMW_XRCE)
-    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) { return 1; }
-#endif
+    if (nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
+        LOG_ERR("Network not ready");
+        return 1;
+    }
 
 #if defined(CONFIG_NROS_RMW_ZENOH)
     NROS_TRY_RET(nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
@@ -77,7 +73,8 @@ int nros_app_main(int argc, char **argv)
      * the same Agent (the Agent resets the shared client); use this
      * process's node name. */
     NROS_TRY_RET(nros::init(CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
-                            CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_action_server"), 1);
+                            CONFIG_NROS_DOMAIN_ID, "zephyr_cpp_action_server"),
+                 1);
 #elif defined(CONFIG_NROS_RMW_CYCLONEDDS)
     NROS_TRY_RET(nros::init("", CONFIG_NROS_DOMAIN_ID), 1);
 #else
@@ -94,7 +91,8 @@ int nros_app_main(int argc, char **argv)
     srv.set_goal_callback(on_goal);
 
     LOG_INF("Waiting for goal requests...");
-    while (true) nros::spin_once(100);
+    while (true)
+        nros::spin_once(100);
 
     nros::shutdown();
     return 0;

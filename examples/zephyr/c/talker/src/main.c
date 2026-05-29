@@ -11,15 +11,11 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/autoconf.h>
 
-#if defined(CONFIG_NROS_RMW_ZENOH)
-#include <zpico_zephyr.h>
-#elif defined(CONFIG_NROS_RMW_XRCE)
-#include <xrce_zephyr.h>
-#endif
+#include <nros/platform_zephyr.h>
 
 LOG_MODULE_REGISTER(nros_talker, LOG_LEVEL_INF);
 
-#define NROS_CHECK_LOG(file, line, expr, ret) \
+#define NROS_CHECK_LOG(file, line, expr, ret)                                                      \
     LOG_ERR("%s:%d %s -> %d", (file), (line), (expr), (int)(ret))
 
 #include <nros/app_main.h>
@@ -33,34 +29,27 @@ LOG_MODULE_REGISTER(nros_talker, LOG_LEVEL_INF);
 
 static nros_logger_t g_logger = NULL;
 
-int nros_app_main(int argc, char **argv)
-{
+int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
     LOG_INF("nros Zephyr C Talker");
 
-#if defined(CONFIG_NROS_RMW_ZENOH)
-    if (zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
+    if (nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
         LOG_ERR("Network not ready");
         return 1;
     }
-#elif defined(CONFIG_NROS_RMW_XRCE)
-    if (xrce_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
-        return 1;
-    }
-#endif
 
     nros_support_t support = nros_support_get_zero_initialized();
 #if defined(CONFIG_NROS_RMW_ZENOH)
-    NROS_CHECK_RET(nros_support_init(
-        &support, CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID), 1);
+    NROS_CHECK_RET(nros_support_init(&support, CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID),
+                   1);
 #elif defined(CONFIG_NROS_RMW_XRCE)
-    NROS_CHECK_RET(nros_support_init_named(
-        &support,
-        CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
-        CONFIG_NROS_DOMAIN_ID,
-        "xrce_talker"), 1);
+    NROS_CHECK_RET(nros_support_init_named(&support,
+                                           CONFIG_NROS_XRCE_AGENT_ADDR
+                                           ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
+                                           CONFIG_NROS_DOMAIN_ID, "xrce_talker"),
+                   1);
 #elif defined(CONFIG_NROS_RMW_CYCLONEDDS)
     NROS_CHECK_RET(nros_support_init(&support, "", CONFIG_NROS_DOMAIN_ID), 1);
 #else
@@ -72,8 +61,8 @@ int nros_app_main(int argc, char **argv)
     g_logger = nros_node_get_logger(&node);
 
     nros_publisher_t pub = nros_publisher_get_zero_initialized();
-    NROS_CHECK_RET(nros_publisher_init(
-        &pub, &node, std_msgs_msg_int32_get_type_support(), "/chatter"), 1);
+    NROS_CHECK_RET(
+        nros_publisher_init(&pub, &node, std_msgs_msg_int32_get_type_support(), "/chatter"), 1);
 
     int32_t count = 0;
     std_msgs_msg_int32 msg;
