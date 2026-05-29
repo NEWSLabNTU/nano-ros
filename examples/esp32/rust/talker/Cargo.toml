@@ -32,8 +32,14 @@ esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
 # Panic handler (required for no_std)
 esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
 
+# Phase 204.11 — release profile reconcile. `debug-assertions = true` in
+# *release* was a bug: it compiles the assertion checks + their panic strings
+# into the flashed image (bigger `.text`, slower). Release drops them (debug
+# assertions belong in `[profile.dev]`); `debug = false` keeps no debuginfo in
+# the artifact. lto=fat + codegen-units=1 stay (size; matches the other
+# embedded examples).
 [profile.release]
-debug = true
-debug-assertions = true
+debug = false
+debug-assertions = false
 lto = "fat"
 codegen-units = 1

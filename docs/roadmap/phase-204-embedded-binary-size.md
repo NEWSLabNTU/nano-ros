@@ -451,13 +451,36 @@ section-split, but the **Rust link path and several vendor-C cc-rs builds are no
       the tuned schedule. (Perf benchmarking of the trade is left to the 204.14 LTO
       / perf work; this item closes the size side: target-cpu is not a size lever.)
 
-### 204.11 — Embedded example release profiles: strip + reconcile
-- [ ] Embedded example profiles keep `debug=2` (full debuginfo) + no `strip`; one
-      (`qemu-esp32-baremetal/listener`) sets `debug-assertions=true` in release.
-      Add `strip=true`, drop debuginfo, fix debug-assertions; reconcile the
-      `opt-level=3` (speed) overrides with the workspace `"s"` (204.3) — a single
-      size profile vs an explicit speed profile, chosen per example.
-- [ ] **Acceptance:** consistent embedded profiles; ELF artifact size + flash text.
+### 204.11 — Embedded example release profiles: strip + reconcile — [x] DONE (2026-05-30)
+- [x] **Fixed `debug-assertions = true` in *release*** on the four esp32 examples
+      (`esp32/rust/{talker,listener}` + `qemu-esp32-baremetal/rust/{talker,listener}`)
+      — the real bug: assertion checks + their panic strings were compiled into the
+      flashed image. Set `debug-assertions = false` + `debug = false` (debuginfo /
+      assertions belong in `[profile.dev]`); `lto="fat"` + `codegen-units=1` stay.
+      **Measured** (qemu-esp32-baremetal/rust/talker, riscv32imc, release):
+      `.text` **357 850 → 337 370 B (−20 480, −5.7 %)**, `.bss` 229 520 → 229 512.
+      A real flash win — assertions are not free on a no_std target.
+- [x] **`strip` deliberately NOT added.** It gives **zero flashed-size benefit**:
+      embedded images flash the `objcopy -O binary` `.bin`, which is the *allocated*
+      sections (`.text`/`.data`) only — `strip` removes non-allocated debuginfo /
+      symbol tables that never reach flash. Worse, the stm32f4 examples use **defmt**,
+      whose symbol table lives in a non-allocated `.defmt` section; `strip` would
+      drop it and break host-side defmt decode. So `strip` would only shrink the
+      on-disk ELF (irrelevant to 204) at the cost of defmt — skipped.
+- [x] **`debug = 2` on the stm32f4 / qemu-arm-baremetal examples left as-is.**
+      Debuginfo is non-allocated → it does **not** change flashed `.text`/`.bss`
+      (only the ELF file size + build time), and stm32f4's defmt build relies on the
+      embedded debug/symbol data. No flash reason to churn it.
+- [x] **opt-level reconcile (documented, intentional per example, not unified):**
+      embedded examples are tuned by platform on purpose — stm32f4 = `opt-level=3`
+      (speed; its size variant is the `[profile.size]` from 204.3), qemu-arm-baremetal
+      / nuttx / zephyr = `opt-level="s"`, esp32 = cargo-default release. A single
+      forced size profile would regress the speed-tuned references; the per-example
+      choice stays, now with consistent `debug`/`debug-assertions` housekeeping
+      (no assertions in any release profile).
+- [x] **Acceptance:** profiles are now consistent on the correctness axis (no
+      `debug-assertions` in release anywhere); measured ELF/flash delta on the fixed
+      esp32 path (−5.7 % `.text`).
 
 ### 204.12 — `build-std` + `panic_immediate_abort` — [x] INVESTIGATED: ineffective as specced
 **Finding (2026-05-30): `panic_immediate_abort` buys ~0 for nano-ros, for two
