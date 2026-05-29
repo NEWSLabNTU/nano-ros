@@ -14,7 +14,8 @@
 use nros_tests::{
     assert_output_contains, assert_output_excludes, count_pattern,
     fixtures::{
-        QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_lan9118, build_qemu_rtic_action_client,
+        QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker,
+        build_qemu_lan9118, build_qemu_rtic_action_client,
         build_qemu_rtic_action_server, build_qemu_rtic_listener, build_qemu_rtic_mixed_listener,
         build_qemu_rtic_mixed_talker, build_qemu_rtic_service_client,
         build_qemu_rtic_service_server, build_qemu_rtic_talker, build_qemu_serial_listener,
@@ -265,30 +266,61 @@ fn test_arm_toolchain_detection() {
 //   zenohd --listen tcp/0.0.0.0:7447
 //   ./scripts/qemu/launch-mps2-an385.sh --binary <path>
 
-/// Test that qemu-bsp-talker starts (requires Docker or QEMU with slirp networking)
+/// BSP ethernet pub/sub e2e over QEMU slirp — no Docker, no TAP (Phase 203).
 ///
-/// NOTE: This test is skipped by default as it requires network setup.
-/// Use `just test-rust-qemu-baremetal-bsp` for the full Docker-based test.
+/// Both MPS2-AN385 instances run with `-nic user,model=lan9118` (slirp): each
+/// gets an isolated `10.0.2.0/24`, but both reach the host zenohd via the slirp
+/// gateway `10.0.2.2:7450` → `127.0.0.1:7450`, so zenohd is the rendezvous (the
+/// BSP example locator is baked to `tcp/10.0.2.2:7450`). Replaces the former
+/// `test_qemu_bsp_{talker,listener}_starts` blanket-skips with a real run; gates
+/// cleanly (skip with reason) when the ARM toolchain / qemu / zenoh-pico-arm /
+/// fixtures are absent. Port 7450 is shared, so this lives in the
+/// `qemu-baremetal-shared` (max-threads=1) nextest group.
 #[test]
-fn test_qemu_bsp_talker_starts() {
-    // BSP examples require MPS2-AN385 with networking, which isn't available
-    // in the standard test environment. The Docker-based test handles this.
-    nros_tests::skip!(
-        "BSP start tests require Docker or QEMU networking — run: just test-rust-qemu-baremetal-bsp"
-    );
-}
+fn test_qemu_bsp_pubsub_e2e() {
+    require_arm_toolchain();
+    require_qemu();
+    if !require_zenoh_pico_arm() {
+        nros_tests::skip!("zenoh-pico arm build not available");
+    }
 
-/// Test that qemu-bsp-listener starts (requires Docker or QEMU with slirp networking)
-///
-/// NOTE: This test is skipped by default as it requires network setup.
-/// Use `just test-rust-qemu-baremetal-bsp` for the full Docker-based test.
-#[test]
-fn test_qemu_bsp_listener_starts() {
-    // BSP examples require MPS2-AN385 with networking, which isn't available
-    // in the standard test environment. The Docker-based test handles this.
-    nros_tests::skip!(
-        "BSP start tests require Docker or QEMU networking — run: just test-rust-qemu-baremetal-bsp"
-    );
+    let port = platform::BAREMETAL.zenohd_port; // 7450 — the baked BSP locator port
+    let talker_bin = build_qemu_bsp_talker().expect("Failed to build qemu-bsp-talker");
+    let listener_bin = build_qemu_bsp_listener().expect("Failed to build qemu-bsp-listener");
+
+    // zenohd (host) is the broker both slirp-isolated instances connect out to.
+    eprintln!("Starting zenohd (slirp) on {port}...");
+    let _zenohd = ZenohRouter::start_slirp(port).expect("Failed to start zenohd");
+
+    // Subscriber before publisher; brief settle so the listener is subscribed.
+    eprintln!("Starting BSP listener QEMU...");
+    let mut listener =
+        QemuProcess::start_mps2_an385_networked(listener_bin).expect("Failed to start listener");
+    std::thread::sleep(Duration::from_secs(5));
+
+    eprintln!("Starting BSP talker QEMU...");
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker");
+
+    let listener_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(60))
+        .unwrap_or_default();
+    let talker_output = talker
+        .wait_for_output_pattern("Published:", Duration::from_secs(30))
+        .unwrap_or_default();
+
+    talker.kill();
+    listener.kill();
+
+    eprintln!("BSP listener output:\n{listener_output}");
+    eprintln!("BSP talker output:\n{talker_output}");
+
+    let received = count_pattern(&listener_output, "Received:");
+    let published = count_pattern(&talker_output, "Published:");
+    eprintln!("BSP QEMU pubsub: published={published}, received={received}");
+
+    assert!(published > 0, "BSP talker published 0 messages");
+    assert!(received > 0, "BSP listener received 0 messages");
 }
 
 // (Phase 182.3) `test_qemu_bsp_both_build` + `test_qemu_serial_{talker,listener}_builds`

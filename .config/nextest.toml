@@ -252,7 +252,7 @@ max-threads = 1
 # `qemu-baremetal-shared` group. Service/action use offset ports
 # (7460/7470) and stay in the parallel `qemu-baremetal` group.
 [[profile.default.overrides]]
-filter = "(binary(emulator) and (test(rtic_pubsub_e2e) or test(mixed_priority_pubsub_e2e))) or binary(large_msg)"
+filter = "(binary(emulator) and (test(rtic_pubsub_e2e) or test(mixed_priority_pubsub_e2e) or test(qemu_bsp_pubsub_e2e))) or binary(large_msg)"
 test-group = "qemu-baremetal-shared"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
