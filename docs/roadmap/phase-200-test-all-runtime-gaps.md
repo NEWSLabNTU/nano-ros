@@ -107,9 +107,13 @@ link), `examples/zephyr/rust/*`, `packages/zpico/zpico-zephyr/src/zpico_zephyr.c
 (the misplaced wait helper), `packages/core/nros/src/lib.rs:289` (the
 `platform-zephyr` extern).
 
-### 200.2 — XRCE action/service runtime e2e — mostly FIXED
+### 200.2 — XRCE action/service runtime e2e — FIXED ✅
 
-**Root cause (fixed).** `xrce_service_{client,server}_create` (service.c) were
+All 15 `xrce` + `c_xrce_api` tests pass (C and Rust, pub/sub + service +
+action). Two distinct bugs:
+
+**Bug 1 — registration ABI (fixed).** `xrce_service_{client,server}_create`
+(service.c) were
 missing the `const nros_rmw_qos_t *qos` parameter that the
 `nros_rmw_vtable_t` `create_service_{client,server}` typedef grew in the Phase
 193.5 QoS work. The cffi caller passed 7 args (`…, domain_id, &qos, &out`); the
@@ -122,19 +126,24 @@ restored registration. **Recovered:** `c_xrce_action_fibonacci` (+ the XRCE
 service/action *registration* path for C / C++ / Rust, all of which share
 `service.c`).
 
-**Remaining (1) — service request/reply data plane.**
-`test_c_xrce_service_request_response`: with registration fixed, the client now
-reaches "Calling service…" and the server reaches "Waiting for service
-requests", but the client's requests never reach the replier (`Total requests
-handled: 0`). The *action* roundtrip (which uses requesters internally) passes,
-so the requester↔replier matching can work — triage why the plain AddTwoInts
-requester→replier routing does not (suspect type/topic naming:
-`AddTwoInts_Reply_` vs the DDS `AddTwoInts_Response_`, or replier-match timing).
-Re-run the Rust/C++ `xrce` service tests after their fixtures rebuild against
-the registration fix to confirm scope.
+**Bug 2 — discovery race (fixed).** With registration fixed, the client sent
+the request ~100ms after creating its requester — before RTPS discovery
+matched the agent's request DataWriter to the server's reader. A reliable +
+**volatile** request published pre-match is dropped, the reply never comes, and
+`nros_client_call` (which sent once, then only spun for the reply) hung until
+timeout. Confirmed via tshark: the request reached the agent and was ACK'd but
+never forwarded to the server (`Total requests handled: 0`). The action
+roundtrip survived because its longer lifecycle outlasts discovery.
+**Fix:** resend the request every 500ms within the blocking call's spin loop
+until the reply arrives or it times out. (Also corrected `xrce_dds_reply_type`
+to `_Response_` for ROS interop — not required for nano↔nano routing.)
 
-**Files.** `packages/xrce/nros-rmw-xrce/src/service.c` (fixed),
-`packages/xrce/nros-rmw-xrce/src/internal.h` (fixed),
+This same race is the documented NuttX cold-boot "call [1] times out" flake —
+the resend should harden Phase 200.3's `rtos_e2e` service path too (verify).
+
+**Files.** `packages/xrce/nros-rmw-xrce/src/{service.c,internal.h}` (ABI),
+`packages/core/nros-c/src/service.rs` (resend),
+`packages/xrce/nros-rmw-xrce/src/session.c` (reply type),
 `packages/testing/nros-tests/tests/{c_xrce_api,xrce}.rs`.
 
 **Files.** `packages/testing/nros-tests/tests/c_xrce_api.rs`,
@@ -245,7 +254,7 @@ policy.
 - [ ] 200.1 zephyr CycloneDDS c/cpp pubsub+service exchange data on native_sim
 - [ ] 200.1 rust+cyclonedds zephyr links (zpico provider wired or backend-gated)
 - [ ] 200.1 zephyr CycloneDDS actions implemented (or explicitly skip! pending 177.2)
-- [ ] 200.2 XRCE action/service e2e complete goal→result over the agent
+- [x] 200.2 XRCE action/service e2e complete goal→result over the agent
 - [x] 200.3 nuttx C service e2e + external-apps link pass (both verified green
       on a provisioned host; no code fix — tests correct + already robust)
 - [x] 200.4 esp32 logging smoke emits every severity (fixture correct; test
