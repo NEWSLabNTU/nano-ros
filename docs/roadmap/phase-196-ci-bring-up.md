@@ -179,6 +179,23 @@ once before being trusted:
       registration (cache `~/.cmake/packages/Zephyr-sdk`, or export
       `ZEPHYR_SDK_INSTALL_DIR`, or unconditionally re-run `setup.sh -c`) — deferred
       to a proper 196.3 follow-up. West-workspace caching likewise deferred.
+- [x] **Prebuilt CI image — both lines' C/C++ green in-container (DONE,
+      2026-05-29).** Superseded the file-only SDK cache: `ci/docker/zephyr-ros/`
+      bakes ROS Humble + the Zephyr SDK 0.17.4 + host tools (cmake/ninja/dtc/
+      gperf, uv, just, rustup+targets); `build-zephyr-ci-image.yml` publishes
+      `ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4`. All 3 dual-line
+      jobs run `container:` against it. Result (run `26637668875`): **3.7 + 4.4
+      c/cpp talker+listener all 8 green**, ~2× faster (91s image-pull replaces
+      ~6–8 min of setup-ros/SDK/uv/just/rustup). Key fixes: bake **0.17.4** (4.4
+      requires ≥ that; 3.7's FindZephyr-sdk is min-only so it accepts it) and do
+      **not** force `ZEPHYR_SDK_INSTALL_DIR` (env forces exclusive /opt → 4.4's
+      `find_package(Zephyr-sdk 1.0)` rejects the 0.17.4 release Config; left as a
+      registry *candidate*, 3.7 accepts it, 4.4 falls through to its west SDK).
+      Rust cells still fail on the Phase 200 rust-zephyr link/feature gap (not the
+      image). The `rust-cargo-extra-args-patch` was made version-tolerant
+      (Phase 202.5) so a divergent lang-rust shape no longer blocks the shared
+      setup. **Files:** `ci/docker/zephyr-ros/Dockerfile`,
+      `.github/workflows/{build-zephyr-ci-image,zephyr-dual-line}.yml`.
 
 ### 196.8 — [fixed, CI-confirming] Zephyr dual-line: rust/cpp example build gaps
 
