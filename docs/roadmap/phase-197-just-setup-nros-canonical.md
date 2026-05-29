@@ -106,16 +106,17 @@ the nros CLI** — but the released **nros 0.3.0** loads the whole index with
 `invalid SDK index … TOML parse error at line N: build_sources`. This breaks
 **every** CI lane that calls `nros setup` on the released binary (dep-chain,
 core-libs `--source px4-rs`, all zephyr jobs). Decision (2026-05-29): cut a new
-release.
-- [ ] **nros-cli** (`NEWSLabNTU/nros-cli`): add `build_sources`/`dev_sources` to
-      the `BoardEntry`/`RmwEntry` schema (or relax `deny_unknown_fields` on those
-      structs so orchestration-only fields are ignored). Cut **nros-v0.3.1**;
-      `release-binary.yml` fills the `nros-<host>.tar.zst` assets.
-- [ ] **superproject bump** (mechanical, once 0.3.1 is live): `[tool.nros]`
-      `version`/`upstream` → `0.3.1` + new `dist.*` url+sha256; and
-      `NROS_VERSION=0.3.0` → `0.3.1` at the **6 pin sites**: `ci.yml:54`,
-      `dep-chain.yml:79`, `zephyr-dual-line.yml:{83,141,198}`,
-      `nros-acceptance.yml:33`. Then re-run the lanes.
+release. **RESOLVED 2026-05-29.**
+- [x] **nros-cli** (`NEWSLabNTU/nros-cli`): added `build_sources`/`dev_sources` to
+      `BoardEntry`/`RmwEntry` + a `[reference.*]` (`ReferenceEntry`) map to
+      `SdkIndex` (parsed + ignored by the CLI). Cut **nros-v0.3.1** (commit
+      `1071b54`, tag pushed → `release-binary.yml` published the 3 host assets).
+      132 lib tests pass; verified the binary parses the 197.2 index + board
+      resolution unchanged.
+- [x] **superproject bump**: `[tool.nros]` → `0.3.1` (version/upstream + dist
+      urls + the 3 new sha256s); `NROS_VERSION=0.3.0` → `0.3.1` at all 6 pin
+      sites (ci, dep-chain, zephyr-dual-line ×3, nros-acceptance). install.sh
+      0.3.1 verified e2e (installs + parses the 197.2 index).
 
 **Files**: `nros-sdk-index.toml`, `just/esp32.just`, `just/px4.just`,
 `scripts/esp32/install-espressif-qemu.sh`.
