@@ -89,6 +89,29 @@ script path stays the canonical mechanism for nano-ros's own in-tree
 build, which builds against both Zephyr lines. The `west patch` index is
 purely an **additive** delivery path for downstream 4.x workspaces.)
 
+### Rust examples need additional patches (not in `west patch`)
+
+If you build the **Rust** examples (not C/C++), nano-ros patches
+`zephyr-lang-rust` (and, per board, Zephyr's Rust Kconfig) — these are **not**
+in `patches.yml` (they edit the `modules/lang/rust` project + are board/arch-
+conditional, so a static `west patch` index is the wrong tool). Run the scripts
+from the nano-ros checkout against your workspace, after `west update`:
+
+```sh
+# All Rust examples (multi-RMW feature forwarding into cargo):
+modules/nano-ros/scripts/zephyr/cargo-features-patch.sh        <workspace-dir>
+modules/nano-ros/scripts/zephyr/rust-cargo-extra-args-patch.sh <workspace-dir>
+# Per target arch (only if you build Rust for these):
+modules/nano-ros/scripts/zephyr/cortex-a9-rust-patch.sh        <workspace-dir>  # qemu_cortex_a9 (Zynq)
+modules/nano-ros/scripts/zephyr/aarch64-rust-patch.sh          <workspace-dir>  # ARMv8-R AArch64 (fvp_aemv8r)
+modules/nano-ros/scripts/zephyr/cortex-r-rust-patch.sh         <workspace-dir>  # Cortex-R52 (S32Z)
+```
+
+All are idempotent + version-tolerant (warn-and-skip if the upstream shape moved,
+so a `zephyr-lang-rust` bump doesn't hard-fail). The **C and C++** examples need
+none of these. (nano-ros's own in-tree `just zephyr setup` runs the applicable
+set automatically; BYO workspaces invoke them directly.)
+
 ### Cyclone DDS patches are NOT delivered via `west patch`
 
 nano-ros also carries five Cyclone-DDS-on-Zephyr patches (thread TLS,

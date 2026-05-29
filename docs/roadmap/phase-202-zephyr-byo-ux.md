@@ -65,16 +65,20 @@ codegen tooling — none of which a BYO west user invokes.
       **Files:** `book/src/getting-started/integration-zephyr.md`,
       `integrations/zephyr/README.md`.
 
-- [ ] **202.3 — [P2] Split, incomplete patch story for BYO.** `west patch` ships
-      only the 4 NSOS/native-sim/pthread patches (`zephyr/patches.yml`). Rust
-      examples additionally need the cortex-a9 / aarch64 / cortex-r / cargo-features
-      sed scripts (`scripts/zephyr/*.sh`); the cyclonedds patches are baked only if
-      the user vendors *our* `third-party/dds/cyclonedds` submodule. A BYO
-      rust/non-native_sim user hits un-applied patches with no single command.
-      **Fix:** either fold the rust/cargo-features patches into `west patch`
-      (`patches.yml`) so `west patch apply` is complete, or document the script
-      fallback per board/RMW. **Files:** `zephyr/patches.yml`, `zephyr/patches/`,
-      `scripts/zephyr/*-patch.sh`, the BYO doc.
+- [x] **202.3 — [P2, DONE] Split, incomplete patch story for BYO.** `west patch`
+      ships only the 4 NSOS/native-sim/pthread patches (`zephyr/patches.yml`); the
+      rust examples also need the cortex-a9 / aarch64 / cortex-r / cargo-features /
+      rust-cargo-extra-args scripts, and cyclonedds patches are baked into our
+      submodule pin. **Chose to document the script fallback** rather than fold the
+      scripts into `west patch`: they edit the `modules/lang/rust` project, are
+      board/arch-conditional, and are anchor-based + version-tolerant (warn-and-skip
+      on upstream drift) — qualities a static `.patch` index would lose.
+      `integrations/zephyr/README.md` gained a "Rust examples need additional
+      patches" subsection: the exact `modules/nano-ros/scripts/zephyr/*.sh
+      <workspace>` invocations (cargo-features + rust-cargo-extra-args for all rust;
+      the per-arch rust patch only for cortex-a9 / aarch64 / cortex-r), noting C/C++
+      need none. The NSOS (`west patch`) + cyclonedds sections already existed.
+      **Files:** `integrations/zephyr/README.md`.
 
 - [ ] **202.4 — [P2] nano-ros internals leak into the user's rust project.** Every
       rust example forces `[patch.crates-io]` into its `.cargo/config.toml` + a
