@@ -46,8 +46,15 @@ jobs:
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
-        # Core crates are in-repo (packages/core/**), not submodules — the root
-        # workspace resolves without any submodule init. Keep it that way.
+
+      # The core crates are in-repo, but cargo must read *every* root-workspace
+      # member's Cargo.toml to load the workspace — including
+      # packages/testing/nros-tests, which path-deps px4-sitl-tests under
+      # third-party/px4/px4-rs. That one small submodule (source only) is the
+      # workspace's sole third-party member dep; without it `cargo check` fails to
+      # load before checking anything. Non-recursive — no PX4-Autopilot.
+      - name: Init px4-rs (workspace-load only)
+        run: git submodule update --init third-party/px4/px4-rs
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
