@@ -87,32 +87,37 @@ alongside. The **`self` model is proven end-to-end on QEMU/native**
 
   **Design + slices (scoped 2026-05-29; unblocks [189.M3.5]).** The executable
   layer sits *over* the declarative `Component::register` (which stays the
-  planning/metadata SSOT). The **core design decision is the callback→publish
-  ownership model**: publishers are owned `EmbeddedRawPublisher` objects, and a
-  callback fires *inside* `spin_once` with the executor already `&mut`-borrowed,
-  so a body cannot resolve a publisher from the executor at call time
-  (re-entrant borrow). Two viable shapes:
-  - **(A) Capture-into-closure.** The generated runtime moves each publisher the
-    callback's `publishes` effect names into that callback's closure; the body
-    publishes through the captured handle. No executor re-entrancy. Shared
-    state across a component's callbacks needs interior mutability — hard in
-    `no_std` without `alloc` (no `Rc<RefCell>`); workable when each callback
-    owns disjoint publishers + the component is split per-callback.
-  - **(B) Deferred-publish queue.** The body writes outbound messages into a
-    per-callback staging buffer the executor flushes after the callback returns
-    (no re-entrancy; bounded). Adds a copy + a flush pass to `spin_once`.
-  *(A) is the rclcpp-shaped default; (B) sidesteps the shared-state problem. Pick
-  before W.5.2.* Slices:
+  planning/metadata SSOT). **Decision (LOCKED 2026-05-29): immediate publish —
+  no deferred queue.** The re-entrancy worry was unfounded: `EmbeddedRawPublisher`
+  is a **self-contained transport handle** (`publish_raw(&self)` holds its own
+  `RmwPublisher` and writes straight to the transport — it never touches the
+  `Executor`, `handles.rs:683`). So a callback can publish *immediately* through
+  a captured/owned publisher while the executor is mid-`spin_once`. A deferred
+  queue was rejected because it breaks causality — a later callback could not
+  observe that an earlier one's publish had happened.
+  - **Publish path:** each callback closure holds its `EmbeddedRawPublisher`(s)
+    (the `publishes` effect names them); `publish_raw(&self)` is immediate +
+    causal (wire ordering preserved; local loopback stays next-I/O-cycle, as in
+    stock ROS).
+  - **Shared component state, `no_std`:** `core::cell::RefCell<State>` —
+    **`RefCell` is in `core`, no `alloc`/`Rc`.** The generated runtime owns the
+    `State` as a single `'static` instance (one generated binary = one deployed
+    component graph), captured `&'static RefCell<State>` into each callback
+    closure (closures stay `'static`, which the arena requires); shared mutation
+    via `borrow_mut()`. Publishers likewise live in `'static` storage (moved into
+    their callback's closure, or shared by-ref when several callbacks publish the
+    same entity).
+  Slices:
   - **W.5.1 — `CallbackCtx` + dispatch surface.** `CallbackCtx<'a>` carrying the
     triggering payload (raw + a typed accessor) + a `publish::<M>(EntityId, &M)`
-    / `publish_raw(EntityId, &[u8])` that resolves via the chosen ownership
-    model. A dispatch entry — `trait ExecutableComponent { type State; fn
-    init(ctx) -> State; fn on_callback(&mut State, CallbackId, &mut
-    CallbackCtx); }` (trait-dispatch keeps it object-free / `no_std`).
-  - **W.5.2 — publisher wiring.** Per the (A)/(B) decision: either capture
-    publishers into the generated closures (A) or add the staging-buffer flush
-    to the executor (B). Resolve `EntityId → publisher` from the plan's
-    publisher entities + the callback `publishes` effects.
+    / `publish_raw(EntityId, &[u8])` over the captured/`'static` publisher(s). A
+    dispatch entry — `trait ExecutableComponent { type State; fn init() -> State;
+    fn on_callback(&mut State, CallbackId, &mut CallbackCtx); }` (trait-dispatch
+    keeps it object-free / `no_std`).
+  - **W.5.2 — publisher wiring (`'static` singleton storage).** Generated runtime
+    owns `static RefCell<State>` + the publishers; each callback closure captures
+    the `&'static RefCell<State>` + the publisher(s) its `publishes` effect names
+    (resolved from the plan's publisher entities + callback effects).
   - **W.5.3 — codegen.** Instantiate the component `State`; emit, per
     callback-bearing entity (sub/timer/**service/action**), a closure that
     builds the `CallbackCtx` (decoded payload + publish access) and calls
