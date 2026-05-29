@@ -275,14 +275,15 @@ ref = "ecfe44a74cda5b1815776e56d7f0253b41b0ebe2"
 dest = "third-party/px4/PX4-Autopilot"
 submodule = "third-party/px4/PX4-Autopilot"
 # Phase 203 — the pin (`ecfe44a`, 1.15.x) lags PX4's `main` tip and is NOT an
-# advertised ref, so a shallow `git submodule update --depth 1` (which fetches
-# the branch tip, NOT the pinned SHA — unlike clone-mode's `fetch --depth 1
-# origin <sha>`) can't reach it → empty checkout, no `Makefile`. Full-fetch the
-# top tree so the pin is reachable (the `Makefile` + `Tools/` the template smoke
-# test needs live here). `recursive = false`: PX4's ~50 OWN sub-submodules are
-# PX4's concern, pulled shallow by `just px4 setup` (`--depth 1
+# advertised ref, so a plain `git submodule update --depth 1` (which fetches the
+# branch tip, NOT the pinned SHA) can't reach it → empty checkout, no `Makefile`.
+# nros ≥ 0.3.7 handles this: on a failed shallow submodule update it falls back
+# to an explicit depth-1 fetch-by-SHA (GitHub serves reachable SHAs), so the top
+# tree (with the `Makefile` + `Tools/` the template smoke test needs) is a real
+# depth-1 snapshot — no full-history clone. `recursive = false`: PX4's ~50 OWN
+# sub-submodules are PX4's concern, pulled shallow by `just px4 setup` (`--depth 1
 # --recommend-shallow --recursive`), not nano-ros source provisioning.
-shallow = false
+shallow = true
 recursive = false
 
 # NOTE (197.4): opt-in dev/interop source repos (zenoh / rmw_zenoh / XRCE-agent

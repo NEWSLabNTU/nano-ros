@@ -62,14 +62,15 @@ they are not logic failures. Exact remediation (from each skip message):
 |---|---|
 | ~~`emulator::test_qemu_bsp_{talker,listener}_starts` (2)~~ | **Resolved (2026-05-30):** replaced by `test_qemu_bsp_pubsub_e2e` — real ethernet pub/sub over QEMU **slirp** (no Docker/TAP; both instances reach host zenohd:7450 via 10.0.2.2). Gates cleanly (skips with reason when ARM toolchain / qemu / zenoh-pico-arm / fixtures absent); runs + passes when staged (`just qemu build-fixtures` + `just qemu build-zenoh-pico`). |
 | `integration_zephyr::zephyr_integration_shell_smoke` | `ZEPHYR_BASE` env or an **in-tree** `zephyr-workspace` symlink (the workspace is the `../nano-ros-workspace` sibling; this test only checks the in-tree path) |
-| `integration_px4::px4_integration_template_smoke` | a complete PX4 checkout — `just px4 setup` (fixed: `[source.px4-autopilot]` is now `shallow = false`, so the lagging pin resolves + the `Makefile` is present; see the px4 checkbox below) |
+| `integration_px4::px4_integration_template_smoke` | a complete PX4 checkout — `just px4 setup` (fixed: nros ≥ 0.3.7 depth-1 fetch-by-SHA fallback resolves the lagging pin shallow + the `Makefile` is present; see the px4 checkbox below) |
 | `nuttx_make_e2e::nuttx_external_apps_link_into_kernel_binary` | the make-fixture kernel restaged with nano-ros app symbols — `just nuttx build-fixtures-make` |
 | `threadx_riscv64_qemu::test_threadx_riscv64_cyclonedds_two_qemu_pubsub` | the CycloneDDS ThreadX fixtures — `just cyclonedds threadx-cross-probe` |
 
 Follow-up worth doing: the zephyr-shell + nuttx-make + threadx-cyclone fixtures
 should be staged by `just build-all` (or their tests should resolve the sibling
 workspace / build-fixtures-make output), so a clean `build-all` + `test-all`
-needs no extra manual step. The px4 template needs a non-shallow PX4 clone.
+needs no extra manual step. (The px4 template is fixed — nros ≥ 0.3.7 depth-1
+fetch-by-SHA fallback; see the px4 checkbox below.)
 
 ### B. Timing-sensitive runtime e2e (flaky / known-incomplete) (3)
 
@@ -172,12 +173,15 @@ regressions.
 - [x] `build-all-full` removed (make path is opt-in `just nuttx build-fixtures-make`)
 - [x] make-fixture cpp `app_config.h` always generated (one of its gaps)
 - [ ] nuttx-make linkable in `build-all` — needs the tier-3 nros-c-on-NuttX cross-build (cmake skips nros-c for NuttX); make path stays opt-in until then
-- [x] px4 template — **fixed.** Root cause: the `[source.px4-autopilot]` pin
-      `ecfe44a` (1.15.x) lags PX4's `main` and isn't an advertised ref, so
+- [x] px4 template — **fixed (shallow).** Root cause: the `[source.px4-autopilot]`
+      pin `ecfe44a` (1.15.x) lags PX4's `main` and isn't an advertised ref, so
       `git submodule update --depth 1` (fetches the branch tip, not the SHA)
-      couldn't reach it → empty checkout, no `Makefile`. Set `shallow = false`
-      (full-fetch the top tree so the pin resolves) + `recursive = false` (PX4's
-      ~50 own sub-submodules stay shallow via `just px4 setup`) on the index source.
+      couldn't reach it → empty checkout, no `Makefile`. Fix in two parts:
+      (1) **nros ≥ 0.3.7** — on a failed shallow submodule update, fall back to an
+      explicit depth-1 fetch-by-SHA of the gitlink commit (GitHub serves reachable
+      SHAs; verified the PX4 top snapshot carries the `Makefile`). (2) index keeps
+      `shallow = true` + `recursive = false` (PX4's ~50 own sub-submodules stay
+      shallow via `just px4 setup`). Top is a depth-1 snapshot, not a full clone.
 - [x] qemu-baremetal BSP — `test_qemu_bsp_pubsub_e2e` runs real ethernet pub/sub
       over QEMU slirp (no Docker), gates cleanly on the ARM toolchain / qemu /
       zenoh-pico-arm / fixtures; in the `qemu-baremetal-shared` group (port 7450).
