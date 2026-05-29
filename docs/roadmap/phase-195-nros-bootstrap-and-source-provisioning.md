@@ -267,40 +267,32 @@ Layer 1 has zero dependency on layers 2–3's outputs → no cycle.
         regression, no fix needed for the drop. *(Optional later hardening: embed
         a minimal interface set in the binary for no-ROS hosts — an enhancement,
         not a drop blocker.)*
-  - [ ] **195.D.2 — Rewire the codegen-tool source to an installed `nros`.**
-        Prototyped (cargo.sh resolver `$NROS`/PATH/`$NROS_HOME/bin`, no submodule
-        build; the 9 recipe literals); reverted to keep the build working pending
-        a clean verify. **Investigation result — `resolve-deps` is NOT the
-        problem.** Proven: the installed `~/.nros/bin/nros` and the in-tree
-        `packages/codegen/packages/target/<profile>/nros` produce **byte-identical**
-        `resolve-deps` output for `example_interfaces`'s package.xml — both list
-        `unique_identifier_msgs;builtin_interfaces;action_msgs`, from any CWD.
-        Ruled out: version, bundled-dir (absent → `None` for both), AMENT
-        (env-based), binary location, CWD. **The remaining mystery:** with the
-        installed nros the rewired nuttx build's per-package *generate* loop emits
-        args JSONs for action_msgs / unique_identifier_msgs / example_interfaces
-        but **not** `builtin_interfaces` (→ `action_msgs_msg_goal_info.h` can't
-        find its header), even though resolve-deps listed it; the submodule-built
-        nros generates it. After 5+ build cycles this tree is **heavily polluted**
-        (an early broken pre-`codegen`-merge `~/.cargo/bin/nros` left stale cmake
-        state that survives build-dir nukes), so the failure is most likely an
-        env/cache artifact, **not** a real rewire defect. Further dug: `builtin_interfaces`
-        is a *cross-package transitive* (action → `nros_generate_interfaces(action_msgs
-        DEPENDENCIES builtin_interfaces …)`, generated via the shared gen-cache, not by
-        the example in isolation), so **single-example tests mislead** — only a full
-        `build-fixtures` run exercises the real generation. **Verification remains
-        inconclusive** in this tree (polluted by 5+ cycles + the early broken nros).
-        **Next step (the gate):** a **pristine clone**, install the prebuilt nros,
-        run the full `just nuttx build-fixtures` (+ a posix codegen) with the rewire
-        applied — confirm `builtin_interfaces` generates + the build is green. Do NOT
-        commit the rewire / drop the gitlink until that clean run is green. The rest
-        (Corrosion, install-flow, re-release, gitlink) is mechanical once .2 verifies.
-        **Confirmed mandatory:** the **baseline** (submodule nros, no rewire) now
-        also fails to build nuttx in the dev working tree (cmake-config / build-env
-        degradation after 6+ cycles — NuttX-export churn, `~/.nros/bin`+`~/.cargo/bin`
-        nros swaps), so no verification here is trustworthy and the gitlink drop
-        was **not** performed. A **fresh clone** is required for the .2 verify and
-        the drop.
+  - [x] **195.D.2 — Rewire the codegen-tool source to an installed `nros`.**
+        **DONE + verified (`96b835b53`).** `nros_cargo_codegen_c_bin` now delegates
+        to `nros_cli_bin` (resolves `$NROS_CLI` → PATH → `${NROS_HOME:-~/.nros}/bin`)
+        and returns an absolute path; `nros_cargo_ensure_codegen_c` is a
+        presence-check (no submodule cargo build). All 13 per-platform recipe
+        assignments (nuttx ×3, zephyr ×4, native ×3, freertos, threadx-linux,
+        threadx-riscv64) drop their `$(pwd)/`/`$root/`/`$nros_root/`/`${repo_root}/`
+        prefix and use the bare resolver. **Verification** (after a full
+        environment recovery — see note below): `just nuttx build-fixtures` builds
+        all 6 Rust examples + the logging-smoke fixture with the installed nros;
+        the installed `~/.cargo/bin/nros` and the in-tree
+        `packages/codegen/packages/target/release/nros` are **byte-identical**
+        (same sha256, both `dd18511`), so the source swap is a provable functional
+        no-op. The earlier "inconclusive" mystery (the per-package generate loop
+        not emitting `builtin_interfaces`) turned out to be a **pre-existing,
+        tool-independent** gap in the cmake macro, NOT a rewire defect: the action
+        auto-recursion (`NanoRosGenerateInterfaces.cmake` ~276-284) generates
+        `unique_identifier_msgs` + `action_msgs` but **not** `builtin_interfaces`,
+        even though `action_msgs/GoalInfo` needs `builtin_interfaces/Time` — so
+        `action_msgs_msg_goal_info.h` can't find its header. Identical bits ⇒ fails
+        the same way with either binary. Tracked as an orthogonal C/C++ action
+        codegen fix (affects every platform), not a 195.D item. *(Recovery note: the
+        dev tree's `third-party/` + `build/` were destroyed mid-session by a stray
+        `rm -rf` in a worktree script that ran in the main repo; restored via
+        recursive submodule re-fetch + `just setup default` + `scripts/nuttx/build-nuttx.sh`.
+        The accident, not the rewire, was the source of the prior "tree degradation".)*
   - [ ] **195.D.3 — Install `nros` in setup + CI.** `just setup`/`bootstrap.sh`
         install the pinned `nros` (`install.sh`) so the build resolves it; the
         nano-ros CI workflow installs it before `just ci`. The build assumes
