@@ -53,14 +53,14 @@ if [ -n "$store_zenohd" ] && [ -x "$store_zenohd" ]; then
     exit 0
 fi
 
-# No store zenohd — build from source. Ensure the submodule is checked out
-# (auto-init on a fresh/deinit'd tree).
+# No store zenohd — fall back to a source build, but only if the submodule is
+# already checked out. Provisioning is `nros setup`'s job; don't silently init
+# submodules here.
 if [ ! -f "$ZENOH_DIR/Cargo.toml" ]; then
-    echo "zenoh submodule not checked out — initializing third-party/zenoh/zenoh..."
-    git -C "$REPO_ROOT" submodule update --init third-party/zenoh/zenoh
-fi
-if [ ! -f "$ZENOH_DIR/Cargo.toml" ]; then
-    echo "Error: zenoh submodule still missing at $ZENOH_DIR" >&2
+    echo "Error: zenohd not provisioned." >&2
+    echo "  Run:  nros setup native --rmw zenoh   (installs the prebuilt zenohd)" >&2
+    echo "  Or, to build from source, first check out the submodule:" >&2
+    echo "        git submodule update --init third-party/zenoh/zenoh" >&2
     exit 1
 fi
 

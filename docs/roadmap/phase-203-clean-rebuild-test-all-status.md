@@ -22,17 +22,22 @@ A nuked tree (`git submodule deinit -f --all` + `just clean`) exposed several
 from-scratch failures that a persistent working tree had masked. All fixed so
 `just setup all` + `just build-all` succeed end-to-end:
 
-1. **xrce agent submodule** — `scripts/xrce-agent/build.sh` errored "submodule
-   not initialized" instead of initializing it. Now auto-inits
-   `third-party/xrce/agent`.
+1. **xrce agent (prebuilt, not source)** — `scripts/xrce-agent/build.sh` now
+   uses the prebuilt MicroXRCEAgent that `nros setup … --rmw xrce` provisions
+   into the store (store-first; publishes a forwarding wrapper since the store
+   binary is a relocatable launcher). No source build / submodule on a
+   provisioned tree; if unprovisioned it fail-louds pointing to `nros setup`
+   (source build only if the submodule is already checked out — no silent
+   init). Mirrors the zenohd path (#3).
 2. **Retired codegen functions** — `build-all-jobserver` called
    `nros_cargo_fetch_codegen` (deleted) and `nros_cargo_build_codegen_c`
    (renamed). The codegen tool is the installed `nros` binary now; dropped the
    fetch call, switched to `nros_cargo_ensure_codegen_c`.
 3. **zenohd from clean** — `scripts/zenohd/build.sh` hard-errored on the
    missing zenoh source submodule. Now prefers the prebuilt zenohd from the
-   nros store (`nros setup … --rmw zenoh`); auto-inits the submodule only on
-   the source-build fallback.
+   nros store (`nros setup … --rmw zenoh`); on a miss it fail-louds pointing
+   to `nros setup` (source build only if the submodule is already checked out
+   — no silent init).
 4. **zephyr rust per-RMW features** — the canonical `cargo-features-patch.sh`
    (EXTRA_CARGO_ARGS pass-through, so xrce/cyclonedds rust examples compile
    their own backend instead of the default `rmw-zenoh`) was never wired into

@@ -62,13 +62,14 @@ if ! command -v g++ &>/dev/null && ! command -v clang++ &>/dev/null; then
     exit 1
 fi
 
-# Ensure the submodule is initialized (auto-init on a fresh/deinit'd tree).
+# No store agent — fall back to a source build, but only if the submodule is
+# already checked out. Provisioning is `nros setup`'s job; don't silently
+# init submodules here.
 if [ ! -f "$AGENT_SRC/CMakeLists.txt" ]; then
-    echo "XRCE Agent submodule not checked out — initializing third-party/xrce/agent..."
-    git -C "$REPO_ROOT" submodule update --init --recursive third-party/xrce/agent
-fi
-if [ ! -f "$AGENT_SRC/CMakeLists.txt" ]; then
-    echo "Error: XRCE Agent submodule still missing at $AGENT_SRC after init" >&2
+    echo "Error: Micro-XRCE-DDS Agent not provisioned." >&2
+    echo "  Run:  nros setup native --rmw xrce   (installs the prebuilt agent)" >&2
+    echo "  Or, to build from source, first check out the submodule:" >&2
+    echo "        git submodule update --init --recursive third-party/xrce/agent" >&2
     exit 1
 fi
 
