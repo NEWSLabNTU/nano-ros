@@ -114,6 +114,44 @@ pub unsafe extern "C" fn strchr(s: *const c_char, c: c_int) -> *mut c_char {
     }
 }
 
+/// Phase 207.3.bm-libc — XRCE's nano-ros wrapper (`nros-rmw-xrce/src/session.c`)
+/// calls `strrchr` to split locator strings. Tiny scan from start (the only
+/// way without backwards iteration on a null-terminated string).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn strrchr(s: *const c_char, c: c_int) -> *mut c_char {
+    unsafe {
+        let target = c as u8;
+        let mut last: *mut c_char = core::ptr::null_mut();
+        let mut p = s;
+        loop {
+            let b = *p as u8;
+            if b == target {
+                last = p as *mut c_char;
+            }
+            if b == 0 {
+                return last;
+            }
+            p = p.add(1);
+        }
+    }
+}
+
+/// Phase 207.3.bm-libc — `strtol` for XRCE's locator-parse path. The
+/// UDP-locator path that uses `strtol(agent_port)` is never hit in
+/// custom-transport bare-metal mode, so a no-op `0` return is correct —
+/// the symbol just has to exist for the link to resolve.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn strtol(
+    s: *const c_char,
+    endptr: *mut *mut c_char,
+    _base: c_int,
+) -> i64 {
+    if !endptr.is_null() {
+        unsafe { *endptr = s as *mut c_char }
+    }
+    0
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
     unsafe {

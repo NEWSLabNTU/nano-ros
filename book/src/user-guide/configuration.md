@@ -167,6 +167,7 @@ are applied where noted; the serial cell ships with the recipe below.
 | stm32f4 (thumbv7em-eabihf, cortex-m4) | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
 | stm32f4 | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
 | qemu-arm-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
+| **qemu-arm-baremetal (Phase 207)** | **serial** (custom XRCE transport) | **XRCE** | **size** + heap 8 KB | **60.6 KB** | **8.8 KB** | **8.6 KB** | **~17.4 KB** |
 | **micro-ROS reference** (XRCE) | serial | XRCE-DDS Client | -Os | < 75 KB | — | ~3 KB | ~3 KB peak |
 
 **How to read this:**

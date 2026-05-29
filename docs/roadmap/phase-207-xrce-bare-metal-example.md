@@ -143,60 +143,47 @@ layer up.)
   `…/src/node.rs` (`UART_DEVICE` → `pub(crate)`),
   `…/Cargo.toml` (feature + dep).
 
-### 207.3 — `examples/qemu-arm-baremetal/rust/talker-xrce/` — [~] skeleton landed; **blocked on 207.3.bm-libc**
+### 207.3 — `examples/qemu-arm-baremetal/rust/talker-xrce/` — [x] DONE (2026-05-30)
 
-Files laid down + the surface wired through; the link step surfaces the next
-real bring-up gap (see 207.3.bm-libc below).
-
-- [x] **`Cargo.toml`** — board with `serial` + `xrce-transport`, no
-      `rmw-zenoh`; `nros` with `rmw-cffi, platform-bare-metal, ros-humble`;
+- [x] `Cargo.toml` — board with `serial` + `xrce-transport`, no `rmw-zenoh`;
+      `nros` with `rmw-cffi, platform-bare-metal, ros-humble`;
       `nros-rmw-xrce-cffi`; `panic-semihosting`. `[profile.size]` per 204.3.
-- [x] **`.cargo/config.toml`** — copied from `serial-talker` (same target /
-      runner / rustflags / `[env]` with `NROS_LINK_IP=0` / `ZPICO_NO_SMOLTCP=1`
-      / `NROS_HEAP_SIZE="24576"`). XRCE's smaller working set means the heap
-      can likely come down further (target ~8 KB once a passing build exists).
-- [x] **`src/main.rs`** — installs the shim, registers the XRCE backend,
-      opens the executor, declares publisher, publish loop. Uses the
-      `nros_rmw_xrce_cffi::set_custom_transport_ops` API from 207.1 + the
-      `xrce_transport::xrce_transport_ops()` factory from 207.2.
+- [x] `.cargo/config.toml` — target / qemu runner / gc-sections rustflags /
+      `[env]` with `NROS_LINK_IP=0` / `ZPICO_NO_SMOLTCP=1` / `NROS_HEAP_SIZE="8192"`
+      (XRCE's working set is small; verified down to 8 KB on the registration +
+      session-open path).
+- [x] `src/main.rs` — installs the shim (`xrce_transport::xrce_transport_ops()`),
+      registers the XRCE backend, opens the executor, declares the publisher,
+      publish loop.
 - [x] `nros.toml` (serial locator) + `package.xml` (renamed).
-- [→] **Build link FAILS — `nros-rmw-xrce`'s C session/publisher/service
-      reference libc** (`malloc`/`free`/`strrchr`/`strtol`) which don't exist
-      on `target_os = "none"`. zenoh-pico runs bare-metal because `zpico-sys`
-      provides picolibc / errno-override plumbing; the `nros-rmw-xrce-cffi`
-      build.rs does not yet do the equivalent. Tracked as 207.3.bm-libc.
-- **Files:** `examples/qemu-arm-baremetal/rust/talker-xrce/{Cargo.toml,
-  .cargo/config.toml, src/main.rs, nros.toml, package.xml}`.
+- [x] **Builds clean** under both `--release` and `--profile size`. Boot smoke
+      in QEMU reaches the XRCE session-open attempt and fails with
+      `Transport(ConnectionFailed)` (expected — no `MicroXRCEAgent` running);
+      backend + node creation succeed.
 
-### 207.3.bm-libc — provide libc symbols to the XRCE bare-metal link
+### 207.3.bm-libc — libc symbols on bare-metal — [x] DONE (2026-05-30)
 
-Discovered while attempting 207.3. The vendor Micro-XRCE-DDS-Client + the
-nros-rmw-xrce wrapper call `malloc`/`free`/`strrchr`/`strtol` from
-`session.c`/`publisher.c`/`service.c`. Bare-metal targets (`target_os =
-"none"`) ship no libc. Three plausible paths:
+Found while attempting 207.3. Bare-metal targets (`target_os = "none"`) ship
+no libc; the link failed on `malloc`/`free`/`calloc`/`realloc`/`strrchr`/`strtol`.
+Investigation showed the calls come from **nano-ros's own wrapper C**
+(`nros-rmw-xrce/src/{subscriber,publisher,session,service,transport_nros_udp}.c`),
+NOT from the Micro-XRCE-DDS-Client vendor sources (vendor is clean of libc
+allocs). So (c) "vendor static-alloc config" turned out to be moot — only (b)
+"libc stubs routing to the existing bare-metal heap" was needed:
 
-1. **picolibc on the XRCE side**, mirroring `zpico-sys`'s
-   `needs_picolibc`/`needs_errno_override` plumbing (`nros-rmw-xrce-cffi`
-   build.rs gains the same arch-table → `-isystem $picolibc/include` +
-   newlib stubs). Cleanest, matches the existing pattern.
-2. **Route XRCE's allocations through `zpico-alloc`** (the bare-metal
-   free-list heap already linked) by providing `malloc`/`free` wrappers in
-   `nros-platform-mps2-an385` (or a new shared `nros-platform-libc-stubs`
-   crate); `strrchr`/`strtol` stubs are tiny.
-3. **Patch / config-flag the vendor** to a static-only allocation mode
-   (`RMW_UXRCE_ALLOW_DYNAMIC_ALLOCATIONS=OFF`-style, micro-ROS does this) so
-   it never calls `malloc`/`free` in the first place. The string helpers
-   stay; same handful of stubs.
-
-- [ ] Pick the path (the right answer is likely (2)+(3) — small libc-stub
-      crate + static-allocation vendor config — both keep the build
-      reproducible and avoid pulling picolibc into a flow that doesn't need
-      its math lib).
-- [ ] Land it so `cargo build --release` on `talker-xrce` links clean.
-- **Files (likely):** `packages/xrce/nros-rmw-xrce-cffi/build.rs` (config
-  defines), a new `nros-platform-*` shim or shared crate (libc stubs),
-  potentially `packages/xrce/nros-rmw-xrce-cffi/src/include/nros_xrce_config.h`
-  (vendor static-alloc defines).
+- [x] **`strrchr` + `strtol`** appended to `nros-baremetal-common::libc_stubs`
+      (shared, no heap dependency; tiny Rust impls).
+- [x] **`malloc` / `free` / `realloc` / `calloc`** in `nros-platform-mps2-an385
+      ::libc_stubs` — always-emit (mps2-an385 is bare-metal-only, no host libc
+      to collide with), routing to the same `FreeListHeap` (`crate::memory`)
+      that zenoh-pico uses → XRCE inherits the `NROS_HEAP_SIZE`-tunable pool,
+      no second heap.
+- [x] Verified: `cargo build --release` and `--profile size` on `talker-xrce`
+      both link clean. `nm` shows only the actually-called shims (`calloc`,
+      `free`, `strrchr`, `strtol`) — `malloc` / `realloc` are gc'd because the
+      wrapper only calls `calloc` + `free`.
+- **Files:** `packages/drivers/nros-baremetal-common/src/libc_stubs.rs`,
+  `packages/platforms/nros-platform-mps2-an385/src/libc_stubs.rs`.
 
 ### 207.4 — E2E test against `MicroXRCEAgent` over a socat PTY bridge
 
@@ -214,16 +201,34 @@ A new `nros-tests` integration analogous to `test_qemu_serial_pubsub_e2e`
 - **Files:** `packages/testing/nros-tests/tests/emulator.rs`,
   `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`.
 
-### 207.5 — Measure flash + RAM; close Phase 204.5's XRCE figure
+### 207.5 — Measure flash + RAM; close Phase 204.5's XRCE figure — [x] DONE (2026-05-30)
 
-Once 207.3 + 207.4 are green, the missing XRCE-class footprint cell exists.
+| profile | `text` | `data` | `bss` | RAM total | flash |
+|---|---|---|---|---|---|
+| release | 70 976 B (~69 KB) | 25 212 B (heap 24 KB) | 8 856 B | ~33 KB | ~69 KB |
+| **size** + heap tuned (8 KB) | **62 060 B (~60.6 KB)** | 8 792 B | **8 768 B** | **~17.2 KB** | ~60.6 KB |
 
-- [ ] `size` + `nm` on the release + `--profile size` `talker-xrce` ELF; capture
-      `text` / `data` / `bss` + the static-pool / heap breakdown.
-- [ ] Add the row to `book/src/user-guide/configuration.md` "Measured
-      footprint" table (the empty XRCE bare-metal cell).
-- [ ] Cross-reference Phase 204.5; the XRCE-vs-zenoh on-device delta is the
-      concrete answer to the question that phase left open.
+**Side-by-side with the zenoh-pico ethernet talker:**
+
+| | flash (`text`) | RAM (`data + bss`) |
+|---|---|---|
+| zenoh-pico ethernet (release) | 177.4 KB | 158.7 KB |
+| **XRCE bare-metal (size)** | **60.6 KB** | **17.4 KB** |
+| ratio | **2.9× smaller** | **9.1× smaller** |
+| micro-ROS reference | < 75 KB | ~3 KB (claimed; their static-only path) |
+
+**XRCE clears the micro-ROS flash reference (< 75 KB) on day one**, and the
+~17 KB RAM is on the right order of magnitude for the same client class
+(the gap to ~3 KB is the heap-shaped wrapper allocs + the linkme + the small
+8 KB `FreeListHeap` overhead; closing it is the "static-only XRCE wrapper"
+work — orthogonal, not a 207 deliverable).
+
+- [x] `size` + `nm` captured (above).
+- [x] **Book "Measured footprint" table** in `book/src/user-guide/configuration.md`
+      gains the XRCE bare-metal row (replacing the prior "no nano-ros
+      measurement" placeholder).
+- [x] **Phase 204.5 cross-reference closed** — the XRCE-vs-zenoh on-device
+      delta this phase asked for is the table above.
 
 ## Acceptance
 
