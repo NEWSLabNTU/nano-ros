@@ -148,7 +148,7 @@ build-fixtures:
 
 # Run all QEMU tests (non-networked)
 [group("main")]
-test verbose="":
+test verbose="": build-fixtures
     #!/usr/bin/env bash
     set +e
     failed=0
