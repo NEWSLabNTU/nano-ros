@@ -642,19 +642,35 @@ size` works without `nros`; CMake examples gain `-DNROS_OPTIMIZE=size`. Per-laye
 C overrides on the bare path are the standard `CFLAGS`/`<target>_CFLAGS` env (the
 same vars nros sets) — documented, not nano-ros-specific.
 
-### 204.15 — `[build].optimize` + per-layer `[build.cargo]`/`[build.cc]` overrides
-- [ ] Add `optimize` + the per-layer override tables to the build config schema;
-      `nros build`/`deploy` fans `optimize` out (cargo profile + RUSTFLAGS + cc env
-      + CMake type + build-std) and merges the per-layer tables over it
-      (precedence above). Wire `[build.cc]` debug/cflags via `TARGET_*_CFLAGS` env
-      (works without build.rs edits) + `NROS_CC_OPT` for opt-level override.
-- [ ] `nros new` scaffolds named `size`/`speed` cargo profiles + a target
-      `.cargo/config.toml` so the plain-cargo path honours intent without `nros`.
+### 204.15 — `[build].optimize` + per-layer `[build.cargo]`/`[build.cc]` overrides — [~] increment 1 landed (nros-cli)
+- [x] **Increment 1 (2026-05-30, nros-cli `f524c60`): `optimize` intent → the
+      generated cargo profile.** `PlanBuildOptions` gains `optimize:
+      Option<String>` (round-trips, planner allowlists the `[build] optimize`
+      key); `render_profile_section()` writes the generated package's
+      `[profile.release]` from the intent — `size` → `opt-level="z"` + `lto="fat"`
+      + `codegen-units=1` + `strip` + `panic="abort"`; `speed` → `opt-level=3` +
+      `lto="fat"` + `cu=1`; `balanced` → `opt-level="s"`; `debug` → `opt-level=1`
+      + `debug`. `None`/unknown ⇒ no profile (cargo default; today's behaviour).
+      Unit-tested (`profile_section_fans_out_optimize_intent`).
+- **Design note — profile fields, NOT RUSTFLAGS.** Fanning `optimize` to a
+      RUSTFLAGS env was rejected: RUSTFLAGS *replaces* an embedded example's
+      `.cargo/config` `[target] rustflags` (the `-Tlink.x` linker script — the
+      204.1 gotcha) → broken ELF. Writing the generated `[profile.release]` is the
+      safe universal mechanism (cargo merges nothing, but a profile and the
+      `[target] rustflags` are orthogonal sources, so both apply).
+- [ ] **Increment 2 — per-layer overrides + the C layer.** `[build.cargo]` (refine
+      the profile fields) + `[build.cc]` → `TARGET_*_CFLAGS` env (debug/cflags
+      without build.rs edits) + `NROS_CC_OPT` for cc opt-level; merge over the
+      `optimize` baseline (precedence). Covers acceptance (b) — the
+      `optimize="size"` + `[build.cc] debug=true` "debug one layer" case.
+- [ ] **Increment 3 — CMake fan-out** (`-DCMAKE_BUILD_TYPE` from `optimize` +
+      `-DCMAKE_INTERPROCEDURAL_OPTIMIZATION`; ties into 204.13) **+ `nros new`
+      scaffolding** of named `size`/`speed` cargo profiles + a target
+      `.cargo/config.toml` for the plain-cargo (no-`nros`) path.
 - [ ] **Acceptance:** (a) `optimize="size"` vs `"speed"` → measurably different
-      flash on a hosted + embedded target, no cross-layer hand-edits; (b) the
-      motivating case — `optimize="size"` + `[build.cc] debug=true` → C objects
-      carry `.debug_*` sections while the Rust crate stays stripped (verified by
-      `readelf`/`nm`).
+      flash on a hosted + embedded target (increment 1 provides the cargo lever;
+      needs a release of nros-cli `f524c60` + a build to measure end-to-end);
+      (b) the `[build.cc] debug=true` debug-one-layer case (increment 2).
 
 ## End-user workflow (simulated)
 
