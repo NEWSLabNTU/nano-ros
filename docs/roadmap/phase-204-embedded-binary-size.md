@@ -45,7 +45,7 @@ Built release ELFs, `size`/`nm` on the artifacts:
 
 ## Work Items (ranked by impact)
 
-### 204.1 — Serial-transport size baseline (biggest lever)
+### 204.1 — Serial-transport size baseline (biggest lever) — [x] DONE (2026-05-30)
 
 **Pre-fix snapshot (2026-05-30, qemu-arm-baremetal / mps2-an385 / thumbv7m,
 release) — the naive "serial is smaller" premise did NOT hold at first** (the
@@ -127,52 +127,43 @@ calls commented out — no backend needed, left as-is.)
       a stale-prebuilt false-pass e2e.
 - [x] **Fixed the missing-`register()` latent bug** in `qemu-arm-baremetal/rust/talker`
       + `stm32f4/rust/talker`.
-- [~] Re-measure + document serial vs ethernet in the book. Lean registration
-      (204.1.L below) was the intended path but is **reverted/deferred**; the serial
-      vs ethernet size story now rests on the other levers (204.5 HEAP, backend
-      buffers, 204.9). Working serial-talker today: 136.7 KB text / 75.8 KB bss.
+- [x] **Re-measured + documented (2026-05-30).** Fresh `nros-fast-release` build
+      of `qemu-arm-baremetal/rust/{talker,serial-talker}` on thumbv7m:
 
-#### 204.1.L — Lean vtable registration — **explored, REVERTED (2026-05-30)**
+      | binary | text | data | bss |
+      |---|---|---|---|
+      | `talker` (ethernet/smoltcp) | 182 916 | 66 984 | 91 744 |
+      | `serial-talker` (no IP stack) | **131 504** | **25 172** | **75 824** |
+      | Δ serial vs ethernet | **−51 412 (−28 %)** | **−41 812 (−62 %)** | **−15 920 (−17 %)** |
 
-**The lever.** `RustBackendAdapter::<R>::VTABLE` is a `const` wiring *every* entity
-trampoline. `register()` references that const, so `--gc-sections` keeps all of it,
-and each trampoline transitively pins the backend's per-entity static buffers
-(`nros-rmw-zenoh` `SUBSCRIBER_BUFFERS` 34.5 KB, `g_pending_gets` 16.4 KB,
-`SERVICE_BUFFERS` 10.4 KB). A publish-only node pays for subscriber + service +
-client machinery it never calls. `register()` can't be dropped (bare-metal linkage
-anchor), so the slots must be narrowed instead.
+      The `−42 KB .data` win is the smaller serial `HEAP` (204.5; 24 KB vs 66 KB).
+      The `−51 KB .text` is the shed IP link C (204.7) + 204.8 `--gc-sections` +
+      204.9 vendor-C `-Os`. The `−16 KB .bss` is the lighter platform impl + the
+      backend's smaller working set. Serial is **decisively smaller than ethernet
+      on every section** — the structural lever the early "serial is bigger"
+      snapshot got wrong (confounds: no `--gc-sections` on qemu yet, the
+      `register_named` vtable-pinning above, and a stale-prebuilt false-pass e2e).
+      The book's `user-guide/configuration.md` "Measured footprint" table carries
+      the full per-platform numbers (qemu-arm-baremetal + stm32f4, `release` + the
+      204.3 `size` profile) + a "Size-minimal recipe" (qemu-baremetal serial: the
+      smallest measured nano-ros today, **116 KB text / 101 KB RAM**).
 
-**Attempt (feature-gated slots) — implemented + e2e-verified, then reverted.**
-Added `nros-rmw-cffi` `entity-{subscriber,service-server,service-client}` features
-(default-on); `VTABLE` selected each slot via `#[cfg]` macros — real trampoline when
-on, else an `unsupported_*` stub returning `RET_UNSUPPORTED`, so gc collects the
-real trampoline + backend buffers behind it. Plumbed `rmw-cffi` (full, back-compat)
-+ `rmw-cffi-lean` + `rmw-entity-*` through `nros-node`/`nros`. Measured win on the
-lean `qemu-bsp-talker`: text 185.6→170.0 KB, **bss 91.7→57.1 KB**; serial pair e2e
-`published=1, received=1`, backend linked. (`SUBSCRIBER_BUFFERS` survived — it has a
-second edge through the always-linked receive path.) ABI was unaffected — the
-`NrosRmwVtable` struct layout is constant; only which fn each slot points at changed.
-
-**Why reverted.** The feature-flag approach pushes a maintenance burden onto users:
-the example author must track which entity kinds the node actually uses and keep the
-Cargo feature set in sync. Worse, it **drifts silently** — add a subscription later,
-forget to add `rmw-entity-subscriber`, and you get a *runtime* `RET_UNSUPPORTED`
-instead of a compile error. Not an acceptable ergonomics/safety trade for a
-size-only win. Reverted in full (commit + its revert in history); examples are back
-on `rmw-cffi`.
-
-**The proper pattern if revisited — call-graph-driven (deferred).** The root cause
-is the *eager* `VTABLE` const naming every trampoline. The right design references
-each entity's trampolines only from the **typed API** (`Node::create_subscription`
-"arms" the subscriber slots via a cffi `arm_*` fn that is the sole edge to those
-trampolines). Then `--gc-sections` derives the used slots from the user's actual
-call graph automatically: never call `create_subscription` → arm-fn unreferenced →
-trampoline + buffers stripped; call it → pulled back in on recompile. Zero user
-feature-tracking, no drift, no silent `RET_UNSUPPORTED`, and it subsumes the
-`SUBSCRIBER_BUFFERS` second-edge problem (the backend receive path arms via the same
-edge). Cost: invasive — lazy/incremental vtable population wired from nros-node's
-typed `create_*`. Deferred; not scheduled. Pursue the lower-burden levers first
-(204.5 static `HEAP`, backend buffer right-sizing, 204.9 vendor-C `-Os`).
+The **204.1.L lean-vtable lever was explored and reverted** in this round;
+mentioned for the record so the path isn't re-tried without revisiting why. The
+attempt feature-gated `nros-rmw-cffi` entity slots (`entity-{subscriber,service-
+server,service-client}`, default-on); `VTABLE` selected per-slot via `#[cfg]` so
+unused entities collapsed to `RET_UNSUPPORTED` stubs that `--gc-sections` then
+swept along with their backend buffers. It worked (lean qemu-bsp-talker: text
+185.6→170.0 KB, **bss 91.7→57.1 KB**; serial pair e2e green). But it pushed a
+silent-drift burden onto users — add a subscription later, forget the matching
+Cargo feature, get a *runtime* `RET_UNSUPPORTED` instead of a compile error. Not
+an acceptable safety trade for a size-only win. **The only acceptable revisit is
+call-graph-driven, not feature-flag-driven** — lazy `VTABLE` population where
+typed `Node::create_*` is the sole edge to each slot's trampolines, so
+`--gc-sections` derives the used slots from the user's actual call graph (no
+features, no drift). That redesign is **invasive (deferred, not scheduled)** —
+the lower-burden levers (204.5 HEAP, buffer right-sizing, 204.9) carry the
+shipped size story today.
 
 ### 204.2 — Right-size the smoltcp socket pool — [x] DONE (2026-05-30)
 - [x] **Proven (2026-05-29).** The socket counts are env-tunable
