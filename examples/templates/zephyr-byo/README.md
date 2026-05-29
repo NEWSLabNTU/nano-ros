@@ -29,24 +29,34 @@ siblings — Zephyr's standard layout.
 west init -m https://github.com/NEWSLabNTU/nano-ros-zephyr-example my-ws
 cd my-ws && west update              # clones Zephyr + nano-ros (NOT submodules)
 
-# 2. nano-ros CLI + per-board provisioning (toolchain/SDK/daemon + transports)
+# 2. nano-ros CLI + provisioning (RMW host daemon + transport submodules)
 curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
 export PATH="$HOME/.nros/bin:$PATH"
-( cd modules/nano-ros && nros setup zephyr --rmw zenoh )   # zenoh-pico + mbedtls + zenohd
+( cd modules/nano-ros && nros setup zephyr --rmw zenoh )   # zenohd + zenoh-pico + mbedtls
 ( cd modules/nano-ros && nros setup --source px4-rs )      # workspace cargo-load dep
 
-# 3. Patches into YOUR workspace (Zephyr 4.x: `west patch apply` instead)
+# 3. Zephyr SDK — nros setup does NOT provide it; install the SDK the standard
+#    Zephyr way and point ZEPHYR_SDK_INSTALL_DIR at it (or register it):
+export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-0.16.8
+
+# 4. Patches into YOUR workspace (Zephyr 4.x: `west patch apply` instead)
 for p in nsos-recvmsg-patch native-sim-ipproto-ip-patch nsos-adapt-ipproto-ip-patch; do
     bash modules/nano-ros/scripts/zephyr/$p.sh "$PWD"
 done
 
-# 4. Build + run
-west build -b native_sim/native/64 app
-zenohd -l tcp/127.0.0.1:7456 &       # the router (from ~/.nros store, or build/zenohd)
+# 5. Build + run. The C codegen resolves std_msgs's .msg via NROS_STD_MSGS_DIR
+#    (a ROS install, or any dir with std_msgs/msg/*.msg). The app lives at
+#    nano-ros-app/app (the manifest repo's self.path), NOT ./app.
+export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs
+overlay="$PWD/modules/nano-ros/cmake/zephyr/native-sim-line-3.7.conf"   # NSOS, 3.7 line
+west build -b native_sim/native/64 nano-ros-app/app -- -DCONF_FILE="prj.conf;$overlay"
+zenohd -l tcp/127.0.0.1:7456 &       # the router (~/.nros/sdk/zenohd or build/zenohd)
 ./build/zephyr/zephyr.exe            # → "Published: 1", "Published: 2", …
 ```
 
-A real board (e.g. `qemu_cortex_a9`) swaps `-b` and the SDK targets; see the book.
+`nros` on PATH is auto-resolved as the codegen tool. A real board (e.g.
+`qemu_cortex_a9`) swaps `-b`, the SDK target, and drops the native_sim overlay;
+see the book. **This exact flow is e2e-verified** (build → `Published: 1`).
 
 ## Notes
 
