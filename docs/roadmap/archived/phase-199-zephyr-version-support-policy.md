@@ -6,10 +6,15 @@ Zephyr versions nano-ros supports, build only on stable surfaces, and isolate
 (then upstream) the unavoidable churn so adding a new Zephyr version is a bounded
 checklist — not an open-ended patch-archaeology project.
 
-**Status.** Proposed (2026-05-29). Triggered by an autoware-safety-island (ASI)
-integration attempt on its pinned Zephyr 3.6.0, which can't build the nano-ros
-Rust integration. Findings below are verified against the actual repos
-(`external/zephyr-lang-rust`, `external/asi`) + Zephyr's release docs.
+**Status.** Archived (2026-05-29) — all host-doable work landed. **199.1, 199.2,
+199.3, 199.5 DONE** (the policy doc, the pinned `(zephyr × zephyr-lang-rust)`
+pairs, the version-dispatched patch sets, the add-a-line checklist). The two
+remaining items are **off-box and deferred** (not doable from this repo now):
+**199.4** needs upstream Zephyr PRs, **199.6** needs a change in the ASI repo.
+Re-open / file follow-ups when those become actionable. Triggered by an
+autoware-safety-island (ASI) integration attempt on its pinned Zephyr 3.6.0,
+which can't build the nano-ros Rust integration. Findings verified against the
+actual repos (`external/zephyr-lang-rust`, `external/asi`) + Zephyr's release docs.
 
 **Priority.** P2 — unblocks downstream integrators (ASI) and stops the
 per-version patch churn from compounding each Zephyr release. No MVP capability
@@ -97,7 +102,7 @@ makes the *pair* the unit of support.
       `scripts/zephyr/setup.sh` still has one `if MANIFEST = west.yml` gate for the
       Cortex-A9 patch — fold into the 3.7 set in a follow-up (it's idempotently
       re-applied by `patches/3.7.sh` anyway).
-- [ ] **199.4 — Upstream the native_sim / NSOS fixes to Zephyr.** They are
+- [~] **199.4 (deferred — off-box: upstream Zephyr PRs) — Upstream the native_sim / NSOS fixes to Zephyr.** They are
       genuine native_sim bug fixes (UDP recvmsg, IPv4-multicast SPDP, getsockname/
       getifaddrs, mcjoin mreq). File upstream PRs; track which land per release so
       the carried set *shrinks* each version instead of forking. Mark each patch in
@@ -109,7 +114,7 @@ makes the *pair* the unit of support.
       in `west-<line>.yml`; wire the `NROS_ZEPHYR_VERSION` selector arms; drop
       `scripts/zephyr/patches/<line>.sh` (no recipe edit); add a CI line; sources
       via `nros setup --source`.
-- [ ] **199.6 — ASI alignment (downstream, coordinate).** ASI's
+- [~] **199.6 (deferred — off-box: ASI repo change) — ASI alignment (downstream, coordinate).** ASI's
       `actuation_module/west.yml` must drop the `import: false` override (or bump
       its zephyr pin to **v3.7.0**) so its C++ nano-ros build links the nros Rust
       staticlib. Lands in the ASI repo (`NEWSLabNTU/autoware-safety-island`
