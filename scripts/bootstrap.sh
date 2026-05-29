@@ -74,16 +74,16 @@ install_nros_prebuilt() {
     ensure_path
     if command -v nros >/dev/null 2>&1; then
         echo "bootstrap: nros already on PATH ($(command -v nros))."
-    elif [[ -x "${REPO_ROOT}/packages/codegen/install.sh" ]]; then
-        echo "bootstrap: installing prebuilt nros (in-tree installer)..."
-        "${REPO_ROOT}/packages/codegen/install.sh"
+    elif [[ -x "${REPO_ROOT}/scripts/install-nros.sh" ]]; then
+        echo "bootstrap: installing prebuilt nros (vendored installer)..."
+        "${REPO_ROOT}/scripts/install-nros.sh"
     else
         if ! command -v curl >/dev/null 2>&1; then
             echo "bootstrap: curl required to fetch the nros installer." >&2
             exit 1
         fi
         echo "bootstrap: fetching the nros installer..."
-        curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh | sh
+        curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
     fi
     echo "bootstrap: next →  nros setup <board>   then   nros deploy <name>"
 }

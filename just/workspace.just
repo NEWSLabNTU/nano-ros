@@ -389,4 +389,10 @@ cargo-tools:
     cargo install espflash --locked      || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked      || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
+    # Phase 195.D.3 — when the main-tracking `nros` release is cut (195.D.4),
+    # switch this to `scripts/install-nros.sh` (install the prebuilt release) and
+    # the `packages/codegen` submodule can be dropped (195.D.5). Until then the
+    # published release (0.2.0) lacks the 195.C descriptor orchestration that
+    # `nros setup` / the dep-chain CI need, so keep building the CLI from the
+    # in-tree submodule (dd18511) to stay current.
     cargo install --path packages/codegen/packages/nros-cli --locked
