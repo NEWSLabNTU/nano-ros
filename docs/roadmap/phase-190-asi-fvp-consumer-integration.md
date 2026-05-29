@@ -20,6 +20,26 @@ full-libstdc++ FVP build guard (overlay + recipe; CI-job wiring is a follow-up
 since no FVP CI lane exists). 190.E (RMW migration docs) open; 190.F optional
 RMW-gate-out open.
 
+**Realignment — Zephyr 3.7 floor (2026-05-29, rebased onto `6777a0551`).**
+Phase 199 (archived) set a hard **Zephyr 3.7 floor**: support is bounded by
+`zephyr-lang-rust` (born after 3.7.0), so the Rust staticlib cannot link below
+3.7 — the doc names ASI explicitly ("must be ≥ 3.7"). **This moots the 3.5.99
+premise** under which 190.A–H were first validated: that number was the
+Corellium AVH *default sample*, not a supported target. Consequences:
+- **190.F obsolete** — its `KERNEL_VERSION < 0x030600` flat-`net_if_addr`
+  branch only mattered ≤ 3.5; at the 3.7 floor `unicast[i].ipv4` is always
+  present, and main's net-wait (relocated to the platform layer in 200.1)
+  already uses it unconditionally. Dropped in the rebase.
+- **190.H solved by `nros setup`** — Phase 187 landed `nros setup`; the
+  `nros-sdk-index.toml` Cyclone host-tools entry builds `idlc`
+  (`-DBUILD_IDLC=ON`). ASI runs `nros setup` instead of hand-building idlc.
+- **190.A/B/C/G still valid** on 3.7 — they key off libc/libstdc++ presence
+  (full-libstdc++, newlib `ip_mreq`, weak POSIX stubs), not the Zephyr version.
+- **Re-validation owed:** the COMPILE+LINK milestone was on 3.5.0; redo on a
+  real Zephyr 3.7 (`NROS_ZEPHYR_VERSION=3.7`). ARM-virtual-platform runtime =
+  build `fvp_baser_aemv8r` on 3.7, load onto the Corellium FVP (the 3.5.0
+  sample is just replaced).
+
 **Priority.** P2 — unblocks the Autoware safety-island actuation bring-up
 (Phase 117). No new external consumers blocked beyond ASI today.
 
