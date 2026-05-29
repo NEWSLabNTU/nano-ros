@@ -348,10 +348,15 @@ application code.
         `nros_cpp_subscription_try_recv_raw_with_attachment` (mirrors
         `try_recv_raw`, using the handle's `try_recv_raw_with_attachment`).
         Verified: native C++ listener builds + links with the header.
-  - [ ] **M3.5 — generator emits real service/action callbacks.** Close the M2
-        "services/actions still emit C-fn-ptr noops" note by emitting real
-        wiring once component callback bodies land — **depends on Phase 172 W.5**
-        (component callback bodies, deferred). Track there, not here.
+  - [x] **M3.5 — generator emits real service/action callbacks** (delivered by
+        Phase 172 W.5, complete). The generator now emits real dispatch for a rust
+        executable component's service + action callbacks instead of the C-fn-ptr
+        noops: service trampolines (W.5.3 std / W.5.8 no_std), action goal/cancel
+        decision trampolines (W.5.5 std / W.5.8 no_std), and action execution —
+        feedback/result via the per-spin tick hook (W.5.6 + `run_tick_loop` std,
+        W.5.11 + `run_tick_loop_nostd` no_std; runtime-verified end-to-end in W.5.10
+        against the `action-client` example). The C-fn-ptr noops survive only for
+        native C/C++ components (no Rust body). See Phase 172 W.5.
 
 ## Acceptance
 
