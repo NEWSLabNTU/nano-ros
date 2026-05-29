@@ -207,9 +207,15 @@ fn logging_smoke_esp32_qemu_emits_every_severity() {
     );
 
     let mut qemu = start_esp32_qemu(flash, false).expect("failed to start ESP32-C3 QEMU");
+    // The fixture drives the severities in order (trace→fatal), so wait for the
+    // LAST line: this returns as soon as all six are present (early-return), with
+    // a generous ceiling for a slow esp32-qemu boot under CI load. The old fixed
+    // 30s window always ran the full 30s and, under load, could expire mid-boot
+    // before every severity flushed — the Phase 200.4 "doesn't emit every
+    // severity" gap. A real backend regression now fails loudly (no [FATAL]).
     let output = qemu
-        .wait_for_output(Duration::from_secs(30))
-        .expect("ESP32-C3 QEMU timed out waiting for log output");
+        .wait_for_output_pattern("[FATAL] smoke: fatal payload", Duration::from_secs(90))
+        .expect("ESP32-C3 QEMU: did not emit all severities (no [FATAL] line within 90s)");
     qemu.kill();
 
     assert_output_contains(&output, EXPECTED_LINES);

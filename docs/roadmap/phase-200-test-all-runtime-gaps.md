@@ -111,10 +111,22 @@ genuine runtime.
 **Files.** `packages/testing/nros-tests/tests/rtos_e2e.rs`,
 `packages/testing/nros-tests/tests/nuttx_make_e2e.rs`.
 
-### 200.4 — ESP32 logging smoke — 1
+### 200.4 — ESP32 logging smoke — DONE
 
-`logging_smoke_esp32_qemu_emits_every_severity` — fixture boots under QEMU but
-does not emit every severity line. Triage logging backend vs. esp32-qemu boot.
+`logging_smoke_esp32_qemu_emits_every_severity`. **Triage result: the fixture is
+correct** — a fresh `just esp32 build-logging-smoke` + a direct `qemu-system-riscv32
+-machine esp32c3` run emits all six severities in order (trace→fatal); nros-log's
+compile-time ceiling defaults to `Trace` even with `default-features = false`, and
+the fixture sets the runtime level to `Trace` + flushes, so nothing is dropped.
+The failure was the **test's fixed 30s window**: `wait_for_output(30s)` always ran
+the full 30s and, under CI load, could expire mid-boot before every severity
+flushed (and stale-fixture sweeps saw old output).
+- [x] Switched the test to `wait_for_output_pattern("[FATAL] smoke: fatal
+      payload", 90s)` — the last severity, so it returns as soon as all six are
+      present (early-return), with a generous ceiling for slow esp32-qemu boots.
+      A real backend regression now fails loudly (no `[FATAL]`). Verified: 3/3
+      green on a fresh build, test time 30.01s → 0.08s; direct qemu run shows all
+      six lines.
 
 **Files.** `packages/testing/nros-tests/tests/logging_smoke.rs`.
 
@@ -138,7 +150,8 @@ fail-loud and excluded from the default `just test` filterset.
 - [ ] 200.1 zephyr CycloneDDS actions implemented (or explicitly skip! pending 177.2)
 - [ ] 200.2 XRCE action/service e2e complete goal→result over the agent
 - [ ] 200.3 nuttx C service e2e + external-apps link pass
-- [ ] 200.4 esp32 logging smoke emits every severity
+- [x] 200.4 esp32 logging smoke emits every severity (fixture correct; test
+      hardened to a pattern-wait — early-return + slow-boot tolerant)
 - [ ] 200.5 opt-in SDK shells gated as precondition-skip when SDK absent
 
 ## Notes
