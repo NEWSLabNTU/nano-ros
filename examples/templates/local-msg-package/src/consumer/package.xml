@@ -3,13 +3,17 @@
 <package format="3">
   <name>consumer</name>
   <version>0.1.0</version>
-  <description>Phase 210.A.4 fixture consumer — uses local_msgs via verbatim ROS find_package shape.</description>
+  <description>Phase 210 mixed-workspace consumer — pulls msgs from BOTH workspace pkgs (local_msgs, extra_msgs) AND AMENT-installed pkgs (std_msgs, geometry_msgs, sensor_msgs) via the same find_package shape.</description>
   <maintainer email="dev@example.org">dev</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>rclcpp</depend>
   <depend>local_msgs</depend>
+  <depend>extra_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

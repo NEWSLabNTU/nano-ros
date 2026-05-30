@@ -219,6 +219,26 @@ function(_nros_find_ros_msg_package pkg)
         if(NOT TARGET ${pkg}::${pkg})
             add_library(${pkg}::${pkg} ALIAS ${pkg}__nano_ros_cpp)
         endif()
+        # Re-export the cached codegen output vars to the caller's scope so
+        # multi-level dep chains (consumer → sensor_msgs → std_msgs) still
+        # see std_msgs's GENERATED_RS_FILES even when std_msgs hit the
+        # idempotent fast-return path (an earlier find_package(local_msgs)
+        # already wired std_msgs; cmake fn-PARENT_SCOPE only propagates ONE
+        # level so std_msgs's vars aren't in sensor_msgs's caller scope
+        # without re-export here). Source the cache var stashed below.
+        if(DEFINED _NROS_PKG_${pkg}_GENERATED_RS_FILES)
+            set(${pkg}_GENERATED_RS_FILES "${_NROS_PKG_${pkg}_GENERATED_RS_FILES}" PARENT_SCOPE)
+        endif()
+        if(DEFINED _NROS_PKG_${pkg}_GENERATED_HEADERS)
+            set(${pkg}_GENERATED_HEADERS "${_NROS_PKG_${pkg}_GENERATED_HEADERS}" PARENT_SCOPE)
+        endif()
+        if(DEFINED _NROS_PKG_${pkg}_GENERATED_SOURCES)
+            set(${pkg}_GENERATED_SOURCES "${_NROS_PKG_${pkg}_GENERATED_SOURCES}" PARENT_SCOPE)
+        endif()
+        if(DEFINED _NROS_PKG_${pkg}_INCLUDE_DIRS)
+            set(${pkg}_INCLUDE_DIRS "${_NROS_PKG_${pkg}_INCLUDE_DIRS}" PARENT_SCOPE)
+        endif()
+        set(${pkg}_LIBRARIES "${pkg}__nano_ros_cpp" PARENT_SCOPE)
         set(${pkg}_FOUND TRUE PARENT_SCOPE)
         return()
     endif()
@@ -286,5 +306,21 @@ function(_nros_find_ros_msg_package pkg)
     set(${pkg}_GENERATED_HEADERS  "${${pkg}_GENERATED_HEADERS}"  PARENT_SCOPE)
     set(${pkg}_GENERATED_SOURCES  "${${pkg}_GENERATED_SOURCES}"  PARENT_SCOPE)
     set(${pkg}_GENERATED_RS_FILES "${${pkg}_GENERATED_RS_FILES}" PARENT_SCOPE)
+
+    # Stash in cache vars so a SECOND find_package(<pkg>) firing from a
+    # different consumer (e.g. consumer-A finds std_msgs through local_msgs;
+    # consumer-B finds std_msgs directly + later finds sensor_msgs which
+    # also pulls std_msgs) re-exports the same closure on the fast-return
+    # path. CACHE INTERNAL — invisible to ccmake, persists across the whole
+    # configure pass.
+    set(_NROS_PKG_${pkg}_GENERATED_RS_FILES "${${pkg}_GENERATED_RS_FILES}"
+        CACHE INTERNAL "nros cached GENERATED_RS_FILES closure for ${pkg}" FORCE)
+    set(_NROS_PKG_${pkg}_GENERATED_HEADERS "${${pkg}_GENERATED_HEADERS}"
+        CACHE INTERNAL "nros cached GENERATED_HEADERS for ${pkg}" FORCE)
+    set(_NROS_PKG_${pkg}_GENERATED_SOURCES "${${pkg}_GENERATED_SOURCES}"
+        CACHE INTERNAL "nros cached GENERATED_SOURCES for ${pkg}" FORCE)
+    set(_NROS_PKG_${pkg}_INCLUDE_DIRS "${${pkg}_INCLUDE_DIRS}"
+        CACHE INTERNAL "nros cached INCLUDE_DIRS for ${pkg}" FORCE)
+
     set(${pkg}_FOUND TRUE PARENT_SCOPE)
 endfunction()

@@ -10,11 +10,19 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
 * `src/extra_msgs/` — second workspace msg pkg with `<depend>local_msgs
   </depend>`; proves topo-sort + cross-workspace deps.
 
-* `src/consumer/` — a **verbatim** ROS 2 C++ consumer node. Its
-  `CMakeLists.txt` calls `find_package(local_msgs REQUIRED)` +
-  `target_link_libraries(consumer local_msgs::local_msgs)` (the stock-ROS
-  shape). Its `consumer.cpp` `#include "local_msgs/msg/greeting.hpp"`
-  (the stock-rosidl C++ header path).
+* `src/consumer/` — a **verbatim** ROS 2 C++ consumer node, **pulling msgs
+  from BOTH the workspace AND the AMENT_PREFIX_PATH** (the stock ROS
+  install). Includes:
+    * `local_msgs::msg::Greeting`  — workspace
+    * `extra_msgs::msg::Echo`      — workspace (depends on local_msgs)
+    * `geometry_msgs::msg::Point`  — AMENT (`/opt/ros/.../share/geometry_msgs`)
+    * `sensor_msgs::msg::Imu`      — AMENT (transitively pulls geometry_msgs
+                                      + std_msgs)
+
+  All four pkgs resolve through the same `find_package(<pkg>)` call shape —
+  the smart Find-stub walks the layered search path
+  (`NROS_INTERFACE_SEARCH_PATH > AMENT_PREFIX_PATH > bundled`) and routes
+  each pkg's codegen identically regardless of which layer it lived in.
 
 * `CMakeLists.txt` (this dir) — the **only** nano-ros-specific file. Pulls
   nano-ros, points `NROS_INTERFACE_SEARCH_PATH` at `./src/`, includes
@@ -39,6 +47,8 @@ cmake --build build -j
 | Per-pkg Find delegators (210.A.3) | `find_package(std_msgs)` |
 | Workspace Find-stub auto-emit (210.A.4) | `NROS_INTERFACE_SEARCH_PATH=./src` → auto-emits `Findlocal_msgs.cmake` so the consumer resolves it |
 | `nros_workspace_interfaces()` bulk + topo-sort (210.B.2) | `local_msgs` built before `extra_msgs` automatically |
+| Mixed workspace + AMENT msg sources | `find_package(local_msgs)` + `find_package(geometry_msgs)` resolve identically; codegen wires both |
+| Multi-level dep closure cache (`_NROS_PKG_<pkg>_GENERATED_RS_FILES`) | `sensor_msgs` FFI sees `std_msgs` types even though `std_msgs` was generated indirectly via `local_msgs` earlier in the configure pass |
 | `${pkg}::${pkg}` upstream-shape link target | `target_link_libraries(consumer local_msgs::local_msgs)` |
 
 ## Cross-build parity

@@ -885,6 +885,23 @@ function(nros_generate_interfaces target)
     list(REMOVE_DUPLICATES _rs_closure)
   endif()
   set(${target}_GENERATED_RS_FILES "${_rs_closure}" PARENT_SCOPE)
+
+  # Phase 210 — stash the closure vars as INTERNAL CACHE so a downstream
+  # find_package(<target>) fast-return path (the smart Find-stub) re-exports
+  # them to its caller's scope. CMake function PARENT_SCOPE only propagates
+  # ONE level; without the cache, a multi-level chain like
+  #   workspace umbrella → add_subdirectory(extra_msgs) → find_package(local_msgs)
+  # loses local_msgs's `_GENERATED_RS_FILES` because local_msgs was generated
+  # directly by rosidl_generate_interfaces() (no smart-stub hop) so the
+  # smart stub's own re-export branch never ran.
+  set(_NROS_PKG_${target}_GENERATED_RS_FILES "${_rs_closure}"
+      CACHE INTERNAL "nros cached GENERATED_RS_FILES closure for ${target}" FORCE)
+  set(_NROS_PKG_${target}_GENERATED_HEADERS "${_generated_headers}"
+      CACHE INTERNAL "nros cached GENERATED_HEADERS for ${target}" FORCE)
+  set(_NROS_PKG_${target}_GENERATED_SOURCES "${_generated_sources}"
+      CACHE INTERNAL "nros cached GENERATED_SOURCES for ${target}" FORCE)
+  set(_NROS_PKG_${target}_INCLUDE_DIRS "${_output_dir}"
+      CACHE INTERNAL "nros cached INCLUDE_DIRS for ${target}" FORCE)
 endfunction()
 
 
