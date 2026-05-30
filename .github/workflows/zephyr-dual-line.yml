@@ -124,15 +124,15 @@ jobs:
         run: just zephyr setup --skip-sdk
 
       # The Rust Zephyr examples pull `zephyr-sys`, whose build.rs runs
-      # `bindgen` over Zephyr's headers — bindgen panics if `libclang.so` isn't
-      # discoverable. nano-ros-zephyr-ci doesn't bake libclang; install it for
-      # the Rust matrix cells. Cheap (~20 MB). C/C++ cells don't need it but
-      # the step is idempotent + identical across cells.
-      - name: Install libclang for bindgen
+      # `bindgen` over Zephyr's headers — bindgen needs both libclang.so AND
+      # clang's resource-dir headers (`stddef.h` etc.). `libclang-dev` ships
+      # only the shared library; `clang` brings the resource-dir headers
+      # too. Install both for the Rust matrix cells (C/C++ cells skip).
+      - name: Install clang + libclang for bindgen
         if: startsWith(matrix.example, 'rust/')
         run: |
           apt-get update -q
-          apt-get install -y --no-install-recommends libclang-dev
+          apt-get install -y --no-install-recommends clang libclang-dev
 
       - name: Build zephyr/${{ matrix.example }} (zenoh) on ${{ matrix.line }}
         run: source /opt/ros/humble/setup.bash && just zephyr build-one "${{ matrix.example }}" zenoh
