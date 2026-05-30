@@ -42,7 +42,7 @@ examples/esp32/rust/talker/
 ├── Cargo.toml
 ├── .cargo/config.toml         # target = riscv32imc-unknown-none-elf
 │                              # runner = espflash flash --monitor
-├── nros.toml                  # [node] + [[transport kind="wifi"]]
+├── nros.toml                  # wifi credentials + zenoh locator
 ├── package.xml
 ├── generated/
 └── src/main.rs                # esp-hal init → nros_app_main
@@ -53,35 +53,46 @@ The `Cargo.toml` pulls `nros-board-esp32` (real hardware) or
 
 ## Configure
 
-`nros.toml` carries wifi creds + locator inside a single
-`[[transport]] kind = "wifi"` block. Direct-mode schema; the
-locator rides the transport.
+`nros.toml` carries the transport stack. Verbatim from the in-tree
+[`examples/esp32/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/esp32/rust/talker/nros.toml):
 
 ```toml
+# nano-ros config (direct mode). See
+# docs/design/configuration-and-transports.md.
+
 [node]
 domain_id = 0
 
 [[transport]]
-kind     = "wifi"
-ssid     = "your-wifi-ssid"
-password = "your-wifi-password"
-locator  = "tcp/192.168.1.100:7447"      # host running zenohd
-
-# Optional static IP (omit for DHCP). Same schema as the ethernet
-# transport — CIDR `ip`, gateway:
-# ip      = "192.168.1.50/24"
-# gateway = "192.168.1.1"
+kind    = "wifi"
+ssid     = "MyNetwork"
+password = "secret"
+locator = "tcp/192.168.1.1:7447"
 ```
 
-Wi-Fi credentials can also be baked at build time via `SSID=…
-PASSWORD=…` environment variables read by
-`scripts/build/fixtures-build.sh` — preferred for real networks
-since `nros.toml` ships in git history. The env vars are
-build-time only; they don't override the file at runtime.
+Wi-Fi credentials can also be supplied via `SSID=… PASSWORD=…`
+environment variables on the build command — preferred for real
+networks since the file ships in git history.
 
 For QEMU ESP32 (no real wifi) the example tree at
-`examples/qemu-esp32-baremetal/` uses the loopback path via
-`nros-board-esp32-qemu`.
+`examples/qemu-esp32-baremetal/` uses an ethernet transport via
+`nros-board-esp32-qemu`. Verbatim from
+[`examples/qemu-esp32-baremetal/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-esp32-baremetal/rust/talker/nros.toml):
+
+```toml
+# nano-ros config (direct mode). See
+# docs/design/configuration-and-transports.md.
+
+[node]
+domain_id = 0
+
+[[transport]]
+kind    = "ethernet"
+ip      = "10.0.2.50/24"
+mac     = "02:00:00:00:00:01"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7454"
+```
 
 ## Build
 
@@ -90,26 +101,24 @@ For QEMU ESP32 (no real wifi) the example tree at
 cd examples/esp32/rust/talker
 cargo build --release
 
-# QEMU ESP32-C3 (RISC-V) — use the canonical builder, NOT a bare
-# `cargo build` from the workspace root:
-just esp32 build-examples
+# QEMU ESP32 (qemu-system-xtensa or qemu-system-riscv32):
+just esp32 build           # builds for the QEMU board crate
 ```
 
 ## Run
 
 ```bash
-# Real hardware (ESP32-C3):
+# Real hardware:
 cd examples/esp32/rust/talker
 cargo run --release        # invokes `espflash flash --monitor`
 # Expected serial output:
 #   ESP32-C3 booting...
 #   Wifi connected: 192.168.1.42
-#   Published: 0
 #   Published: 1
+#   Published: 2
 
-# QEMU ESP32-C3 — start zenohd FIRST (port 7454), THEN the talker:
-just esp32 zenohd          # router on 127.0.0.1:7454
-just esp32 talker          # boots the talker in qemu-system-riscv32
+# QEMU ESP32:
+just esp32 talker          # boots the talker binary in qemu-system-xtensa
 
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
@@ -118,7 +127,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 **Readiness signal.** Real hardware: after `espflash flash --monitor`,
-expect the Wi-Fi connect line + `Published: 0` within 10 seconds.
+expect the Wi-Fi connect line + `Published: 1` within 10 seconds.
 QEMU ESP32: ~15 seconds. If no `Published:` line:
 
 1. Wi-Fi credentials wrong → `Wifi connect failed` in serial log.
@@ -145,9 +154,8 @@ QEMU ESP32: ~15 seconds. If no `Published:` line:
   `examples/esp32/rust/`.
 - ESP-IDF component path for C / C++ apps:
   [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
-- ESP32-S3 (Xtensa) is **not** currently supported. Xtensa targets
-  aren't shipped via rustup (there is no `rustup target add
-  xtensa-esp32s3-none-elf` — Xtensa requires Espressif's `espup`
-  toolchain on top of a custom `+esp` channel, plus a different
-  board crate). Only the ESP32-C3 (RISC-V) path is wired today;
-  the workspace `just/esp32.just` comment even calls this out.
+- PlatformIO library path:
+  [PlatformIO library](./integration-platformio.md).
+- ESP32-S3 (Xtensa) — same code shape; the toolchain swap is
+  `rustup target add xtensa-esp32s3-none-elf` and a different board
+  crate.

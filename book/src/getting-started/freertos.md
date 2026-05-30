@@ -43,7 +43,7 @@ examples/qemu-arm-freertos/
 ├── rust/talker/             # Cargo package, cross-compile target = thumbv7m-none-eabi
 │   ├── Cargo.toml
 │   ├── .cargo/config.toml          # target + QEMU runner
-│   ├── nros.toml                   # node + transport (network + locator) + node.rt scheduling
+│   ├── nros.toml                   # network + zenoh locator + scheduling
 │   ├── package.xml
 │   ├── generated/                  # codegen output (gitignored)
 │   └── src/main.rs
@@ -68,38 +68,42 @@ nano_ros_link_rmw(<target> RMW zenoh)` pattern with
 
 ## Configure
 
-Network + locator + scheduling live in `nros.toml` (parsed by the
-board crate at boot). Schema: `[node]` + one or more
-`[[transport]]` tables + `[node.rt]`:
+Network + Zenoh + scheduling live in `nros.toml` (parsed by the
+board crate at boot). Verbatim from the in-tree
+[`examples/qemu-arm-freertos/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-freertos/rust/talker/nros.toml):
 
 ```toml
+# nano-ros config (direct mode). See
+# docs/design/configuration-and-transports.md.
+
 [node]
 domain_id = 0
 
 [[transport]]
 kind    = "ethernet"
-ip      = "10.0.2.20/24"        # CIDR — `prefix` is encoded in the value
+ip      = "10.0.2.20/24"
 mac     = "02:00:00:00:00:00"
-gateway = "10.0.2.2"            # QEMU Slirp gateway = host loopback
-locator = "tcp/10.0.2.2:7451"   # host's zenohd reached via Slirp
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7451"
 
 [node.rt]
-app_priority             = 12
-app_stack_bytes          = 262144
-zenoh_read_priority      = 16
-zenoh_read_stack_bytes   = 5120
-zenoh_lease_priority     = 16
-zenoh_lease_stack_bytes  = 5120
-poll_priority            = 16
-poll_interval_ms         = 5
+app_priority = 12
+app_stack_bytes = 262144
+zenoh_read_priority = 16
+zenoh_read_stack_bytes = 5120
+zenoh_lease_priority = 16
+zenoh_lease_stack_bytes = 5120
+poll_priority = 16
+poll_interval_ms = 5
 ```
 
 The `10.0.2.0/24` subnet is QEMU Slirp's default; `10.0.2.2` is the
 Slirp gateway that forwards to host loopback. No TAP, no sudo.
+
 Per-language test-fixture ports: Rust → 7451, C → 7551, C++ → 7651.
-The in-tree `examples/qemu-arm-freertos/<lang>/talker/nros.toml`
-files carry the correct port + IP per language; copy that file
-verbatim if you're starting fresh.
+The talker / listener under each `<lang>/` uses the matching port;
+start `zenohd` on the one you intend to test against. The C / C++
+example trees ship their own `nros.toml` with the matching port.
 
 ## Build
 
@@ -125,39 +129,35 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 
 ## Run
 
-The canonical run path is `just freertos talker`, which launches
-zenohd on `tcp/127.0.0.1:7451` and the QEMU MPS2-AN385 with the
-freertos talker kernel attached:
-
 ```bash
-# Terminal 1 — zenohd on the FreeRTOS test-fixture port (7451).
-#  Slirp forwards 10.0.2.2:7451 → host 127.0.0.1:7451.
-just freertos zenohd
+# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451).
+#    zenohd was installed into the nros store by `nros setup … --rmw zenoh`.
+zenohd -l tcp/0.0.0.0:7451
 
-# Terminal 2 — boot the talker in QEMU. Uses the patched
-#  qemu-system-arm from `~/.nros/sdk/qemu/<v>/bin/`.
-just freertos talker
+# 2. Boot the talker in QEMU:
+cd examples/qemu-arm-freertos/rust/talker
+cargo run --release
+# Or for C / C++ (binary names carry the `freertos_` prefix from
+# the CMake project() declaration in each example):
+qemu-system-arm -cpu cortex-m3 -machine mps2-an385 \
+                -nographic -semihosting-config enable=on,target=native \
+                -nic socket,model=lan9118,listen=:6666 \
+                -kernel ./build/freertos_c_talker      # or freertos_cpp_talker
 
-# Terminal 3 — verify from stock ROS 2 (optional):
+# 3. Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
-QEMU exits via `Ctrl-A x`. For batch testing without manual QEMU
-launches, `just freertos test` runs every E2E (pub/sub, service,
-action) against a temporary in-test zenohd.
+QEMU exits via Ctrl-A x.
 
-If you do need a raw `qemu-system-arm` invocation (e.g. to wire a
-hand-rolled binary into a different harness), grep the exact flag
-set from `just/freertos.just::_run-qemu` — that recipe is the
-single source of truth for the Slirp `-nic user,model=lan9118`
-flags + the `-semihosting-config` lines. (Don't copy a `-nic
-socket,…` form: it puts QEMU in bridge mode and the talker can't
-reach the host zenohd via Slirp.)
+For batch testing without manual QEMU launches: `just freertos
+test` runs every E2E (pub/sub, service, action) against a temporary
+in-test zenohd.
 
 **Readiness signal.** Within ~20 seconds of QEMU boot, the talker
-should print `Published: 0` on its semihosting stdout. QEMU
+should print `Published: 1` on its semihosting stdout. QEMU
 cold-boot through FreeRTOS init + lwIP DHCP + zenoh session open
 typically takes 10–15 s. If no `Published:` line in 30 seconds:
 

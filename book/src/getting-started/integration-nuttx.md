@@ -92,53 +92,50 @@ Networking Kconfig requirements live under
 `CONFIG_NET_IPv4`. For QEMU `nsh_smp` configurations the defaults
 already include these.
 
-Runtime config (locator / domain id) is read from either the
-companion `config.toml` or from `nros_init()` arguments — see the
-example source.
+Runtime config (locator / domain id) is read from the companion
+`nros.toml` next to the example source. Verbatim from the in-tree
+[`examples/qemu-arm-nuttx/c/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-nuttx/c/talker/nros.toml):
+
+```toml
+# nano-ros config (direct mode). See
+# docs/design/configuration-and-transports.md.
+
+[node]
+domain_id = 0
+
+[[transport]]
+kind    = "ethernet"
+ip      = "10.0.2.30/24"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7552"
+```
 
 ## Build
 
-A bare `cd $NUTTX_DIR && make` will not produce a working nano-ros
-kernel — NuttX needs the nano-ros board defconfig and a fistful of
-`kconfig-tweak --enable / --set-val` toggles before its build
-graph wires nano-ros in. The canonical builder does all of that:
-
 ```bash
-just nuttx build-fixtures      # builds the kernel + every staged example
+cd $NUTTX_DIR
+make                                # full kernel + apps build
 ```
 
-Internally it copies
-`packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig`
-into `$NUTTX_DIR/.config`, runs two `make olddefconfig` passes,
-flips `CONFIG_NROS` / `CONFIG_NROS_C_API` / `CONFIG_NROS_CPP_API`
-/ `CONFIG_NROS_EXAMPLE_*_{C,CPP}` on, sets `CONFIG_TLS_NELEM=8`
-(Rust std TLS), switches to `LIBCXXTOOLCHAIN` (nros-cpp needs
-`<utility>`), disables `ALLSYMS` (first-link chicken-egg), and
-runs the NuttX `make`. The Cargo build of nano-ros's Rust
-staticlibs runs as a sub-step; `libnros_c.a` (and the per-example
-auxiliary staticlibs) link in at the final app link stage.
+The Cargo build of nano-ros's Rust staticlibs runs as a sub-step of
+the NuttX app build; `libnros_c.a` is linked at the final app
+link stage.
 
-For a custom workspace where you maintain your own kernel
-configuration, re-create that toggle set against your own
-`.config` (cite `just/nuttx.just::_nuttx-configure-fixtures` as
-the source of truth). The Phase 208.A.1 sweep retired the
-`cmake -B build -DBOARD=… -DCONFIG=…` block that previously
-appeared here — those flags aren't supported by upstream NuttX
-(it uses the combined `-DBOARD_CONFIG=<board>:<config>` form, and
-even that requires NuttX's CMake-build feature which isn't part
-of nano-ros's pinned line).
+For CMake-driven NuttX builds:
+
+```bash
+cmake -B build -DBOARD=qemu-armv7a \
+              -DCONFIG=nsh_smp
+cmake --build build
+```
 
 ## Run
 
 ```bash
-# Terminal 1 — zenohd on the NuttX test-fixture port (7452):
-just nuttx zenohd
-
-# Terminal 2 — QEMU NuttX (ARM cortex-a7 virt board, virtio-net
-# for Slirp). `just nuttx talker` wires every flag from
-# `packages/testing/nros-tests/src/qemu.rs::NUTTX`:
-just nuttx talker
-nsh> nuttx_c_talker         # or nuttx_cpp_talker / nuttx_c_listener / …
+# QEMU NuttX (ARM):
+qemu-system-arm -cpu cortex-a8 -machine virt -nographic \
+                -kernel $NUTTX_DIR/nuttx
+nsh> nros_talker        # or whatever your app's NSH command is
 
 # Real hardware: standard NuttX flash flow (openocd / J-Link / etc.)
 
@@ -148,29 +145,15 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
-The NSH command is the staged example's PROGNAME (see each
-`examples/qemu-arm-nuttx/<lang>/<example>/Makefile`): `nuttx_c_talker`,
-`nuttx_cpp_talker`, `nuttx_c_listener`, `nuttx_cpp_service-server`,
-etc. `nros_talker` is **not** a registered name.
-
-A direct `qemu-system-arm` invocation, if you need one, MUST
-include `-cpu cortex-a7` (not `cortex-a8`) and the virtio-net pair
-`-netdev user,id=net0 -device virtio-net-device,netdev=net0` — the
-nano-ros board defconfig enables `CONFIG_DRIVERS_VIRTIO_MMIO`, so
-the default `-nic user` (PCI virtio-net) gets ignored by NuttX's
-NIC driver. Grep the exact flag set from
-`packages/testing/nros-tests/src/qemu.rs::qemu_args_nuttx_arm`.
-
-**Readiness signal.** After typing the app's NSH command, expect
-`Published: 0` on the NSH console within 5 seconds. If no
-`Published:` line:
+**Readiness signal.** After typing the app's NSH command (e.g.
+`nros_talker`), expect `Published: 1` on the NSH console within
+5 seconds. If no `Published:` line:
 
 1. Confirm the app actually ran — `ps` should show your task.
-2. Confirm networking — `ifconfig` shows `eth0` at `10.0.2.30`
-   (the nano-ros board defconfig sets `CONFIG_NETINIT_IPADDR=
-   0x0a00021e`, NOT the stock Slirp default 10.0.2.15).
-3. Confirm `zenohd` reachable on the locator from `nros.toml`
-   (default 7452 for the NuttX QEMU fixture).
+2. Confirm networking — `ifconfig` shows a configured interface.
+   For QEMU `nsh_smp`, Slirp defaults apply: `eth0` at `10.0.2.15`.
+3. Confirm `zenohd` reachable; the locator in `nros.toml` /
+   `nros_init` arguments must match.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source
