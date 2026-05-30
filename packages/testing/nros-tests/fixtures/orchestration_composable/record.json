@@ -1,0 +1,83 @@
+{
+  "container": [
+    {
+      "args": null,
+      "cmd": [
+        "/opt/ros/humble/lib/demo_container/container",
+        "--ros-args",
+        "-r",
+        "__node:=composable_container"
+      ],
+      "env": null,
+      "exec_name": "composable_container",
+      "executable": "container",
+      "global_params": null,
+      "name": "composable_container",
+      "namespace": "/",
+      "package": "demo_container",
+      "params": [],
+      "params_files": [],
+      "remaps": [],
+      "respawn": null,
+      "respawn_delay": null,
+      "ros_args": null,
+      "scope": 0
+    }
+  ],
+  "file_data": {},
+  "lifecycle_node": [],
+  "load_node": [
+    {
+      "env": null,
+      "extra_args": {},
+      "log_level": null,
+      "namespace": "/",
+      "node_name": "talker",
+      "package": "demo_container",
+      "params": [
+        [
+          "rate_hz",
+          "20"
+        ]
+      ],
+      "plugin": "demo_container::Talker",
+      "remaps": [
+        [
+          "chatter",
+          "/chatter_a"
+        ]
+      ],
+      "scope": 0,
+      "target_container_name": "/composable_container"
+    },
+    {
+      "env": null,
+      "extra_args": {},
+      "log_level": null,
+      "namespace": "/",
+      "node_name": "listener",
+      "package": "demo_container",
+      "params": [],
+      "plugin": "demo_container::Listener",
+      "remaps": [
+        [
+          "chatter",
+          "/chatter_a"
+        ]
+      ],
+      "scope": 0,
+      "target_container_name": "/composable_container"
+    }
+  ],
+  "node": [],
+  "scopes": [
+    {
+      "id": 0,
+      "ns": "/",
+      "origin": {
+        "file": "system.launch.xml"
+      },
+      "parent": null
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+<launch>
+  <node_container pkg="demo_container" exec="container" name="composable_container" namespace="">
+    <composable_node pkg="demo_container" plugin="demo_container::Talker" name="talker">
+      <param name="rate_hz" value="20"/>
+      <remap from="chatter" to="/chatter_a"/>
+    </composable_node>
+    <composable_node pkg="demo_container" plugin="demo_container::Listener" name="listener">
+      <remap from="chatter" to="/chatter_a"/>
+    </composable_node>
+  </node_container>
+</launch>

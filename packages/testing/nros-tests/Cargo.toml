@@ -262,5 +262,12 @@ path = "tests/board_link_archives.rs"
 name = "orchestration_e2e"
 path = "tests/orchestration_e2e.rs"
 
+# Phase 211.B — composable-container plan shape: gates the planner gap
+# (no container_id grouping today) + per-child fidelity (param + remap
+# propagation) against `fixtures/orchestration_composable/`.
+[[test]]
+name = "orchestration_composable"
+path = "tests/orchestration_composable.rs"
+
 [lints]
 workspace = true

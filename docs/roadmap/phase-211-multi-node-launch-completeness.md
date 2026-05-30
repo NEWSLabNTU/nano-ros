@@ -138,22 +138,40 @@ regression until the next nros-cli release picks it up.
 separate plan entity. Production ROS (Nav2, Autoware, MoveIt) **relies**
 on a single container hosting many nodes for intra-process zero-copy.
 
-- [ ] **Planner change (nros-cli):** group composable-children under the
+- [→] **Planner change (nros-cli):** group composable-children under the
       parent container in `nros-plan.json` — new `entities[*].container_id`
       field + `entities[*].kind = "container"|"composable_node"|"node"`.
-      Preserve per-child parameters/remappings.
-- [ ] **Runtime: one-process-many-nodes** — confirm `Executor::open` +
+      Preserve per-child parameters/remappings. **Lives in `nros-cli`
+      repo** (`packages/codegen` submodule retired); this nano-ros tree
+      holds only the regression fixture + plan-shape gate. The in-tree
+      test is structured so the post-fix shape is a single
+      `assert_eq!(child["container_id"], container["id"])` flip.
+- [ ] **Runtime: one-process-many-nodes** — `Executor::open` +
       `executor.create_node(name)` already supports N nodes per process
-      (it does — Phase 172 W.5). Add a fixture exercising 2 composable
-      nodes in 1 process and assert both publish from the same PID.
-- [ ] **Fixture:** `nros-cli/testing_workspaces/composable_container_e2e/`
-      with `<node_container>` + 2 `<composable_node>` children.
-- [ ] **In-tree e2e** — `test_orchestration_composable_e2e` runs it, asserts
-      `ps` shows ONE process publishing TWO distinct topic names from TWO
-      `node->fqn`s.
-- **Files:** `nros-cli/packages/nros-cli-core/src/orchestration/planner.rs`
-  (composable handling), `nros-cli/packages/nros-cli-core/src/orchestration/generate.rs`
-  (multi-node entry-lib), `packages/testing/nros-tests/tests/orchestration_composable.rs`.
+      (Phase 172 W.5). Add an executor unit + per-RMW build fixture
+      that exercises 2 composable libraries linked into one container
+      binary and asserts both publish from the same PID. Deferred until
+      the planner-side `kind`/`container_id` lands (so the build script
+      knows which entities to whole-archive).
+- [x] **Fixture:** `packages/testing/nros-tests/fixtures/orchestration_composable/`
+      mirrors the multi-component layout (`nros/components/{talker,listener}.toml`)
+      with a `<node_container>` + 2 `<composable_node>` children sharing a
+      remapped `/chatter_a` topic. Pre-baked `record.json` so the test runs
+      without `play_launch_parser` on PATH.
+- [x] **`composable_container_plan_shape`** (in
+      `packages/testing/nros-tests/tests/orchestration_composable.rs`):
+      runs `nros plan` against the fixture and asserts (a) two flat
+      composable instances surface today, (b) neither carries a
+      `container_id` field (gates current planner gap), (c) per-composable
+      `<param>` override propagates (`rate_hz = 20`), (d) `<remap>` resolves
+      both endpoints to `/chatter_a`, (e) `components` lists both
+      `Talker` + `Listener`. Carries a TODO block for the post-fix
+      assertions when 211.B's planner change lands upstream.
+- **Files:** *(planner, lives in nros-cli)*
+  `packages/nros-cli-core/src/orchestration/planner.rs` (composable handling),
+  `packages/nros-cli-core/src/orchestration/generate.rs` (multi-node entry-lib);
+  *(this tree)* `packages/testing/nros-tests/fixtures/orchestration_composable/*`,
+  `packages/testing/nros-tests/tests/orchestration_composable.rs`.
 
 ### 211.C — `ros2` CLI host-interop fixtures
 

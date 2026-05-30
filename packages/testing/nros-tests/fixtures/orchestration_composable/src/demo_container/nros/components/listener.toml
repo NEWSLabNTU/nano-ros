@@ -1,0 +1,11 @@
+version = 1
+package = "demo_container"
+component = "Listener"
+language = "rust"
+[linkage]
+crate_name = "demo_container"
+executable = "container"
+exported_symbol = "nros_component_demo_container_Listener"
+[metadata]
+source_metadata = "metadata/listener.json"
+generated_by = "phase-211.B mirror"

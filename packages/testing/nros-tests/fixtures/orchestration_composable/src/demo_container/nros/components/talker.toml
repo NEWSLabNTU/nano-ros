@@ -1,0 +1,11 @@
+version = 1
+package = "demo_container"
+component = "Talker"
+language = "rust"
+[linkage]
+crate_name = "demo_container"
+executable = "container"
+exported_symbol = "nros_component_demo_container_Talker"
+[metadata]
+source_metadata = "metadata/talker.json"
+generated_by = "phase-211.B mirror"

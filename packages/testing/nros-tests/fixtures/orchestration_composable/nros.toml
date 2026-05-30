@@ -1,0 +1,25 @@
+# Phase 211.B — composable-container fixture.
+#
+# Exercises `<node_container>` + `<composable_node>` orchestration.
+# Pairs with `tests/orchestration_composable.rs`, which:
+#   1. ASSERTS current planner shape (composables as flat instances, no
+#      container_id grouping) — regression gate against accidental changes.
+#   2. Documents the EXPECTED post-fix shape (single container instance
+#      with composable children referencing `container_id`) as a TODO that
+#      flips when the nros-cli planner is updated.
+#
+# The fixture ships a pre-collected `record.json` (play_launch_parser
+# output) so the test runs without that binary on PATH.
+
+[workspace]
+default = "native"
+
+[system]
+launch     = "src/demo_container/launch/system.launch.xml"
+components = ["demo_container"]
+rmw        = "zenoh"
+domain_id  = 0
+
+[deploy.native]
+kind   = "self"
+target = "x86_64-unknown-linux-gnu"
