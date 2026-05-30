@@ -12,12 +12,16 @@ Did `cargo build` / `cmake --build` fail?
 ├─ error[E0432]: unresolved import `nros`
 ├─ error: failed to load source for dependency `nros`
 ├─ error: could not find `nros-rmw-zenoh`
-│   → Run `nros setup native --rmw zenoh` (or the matching
-│     `nros setup <board> --rmw <rmw>` for your target). The
-│     path-dep in the example's Cargo.toml points at the
-│     in-tree `packages/core/nros`; if the source-package
-│     fetch (zenoh-pico, mbedtls) didn't run, transitive
-│     deps are missing.
+│   → The path-dep at the top of the example's Cargo.toml
+│     (`path = "../../../../packages/core/nros"`) doesn't
+│     resolve. Either you're outside the nano-ros checkout, or
+│     you copied the example to a new dir without updating the
+│     relative path. Fix: adjust the `path = "…"` value (or add
+│     an empty `[workspace]` table to the copied example and
+│     change the path to point at the real nano-ros checkout).
+│     If you're INSIDE the nano-ros checkout but the dependency
+│     itself (zenoh-pico, mbedtls) is missing from the
+│     submodule, run `nros setup native --rmw zenoh`.
 │
 ├─ error: failed to find tool. Is `nros` installed?
 ├─ error: `nros-codegen` not found
@@ -44,15 +48,17 @@ Did `cargo build` / `cmake --build` fail?
 │       nros setup native --rmw cyclonedds
 
 Did the binary build but not produce output?
-├─ Hangs after "Opening session" / no `Published:` lines
-├─ `nros::init -> -3` / `-100` (Transport error)
-│   → zenohd isn't running. Open another terminal and run the
-│     zenohd installed by `nros setup … --rmw zenoh` (in the
-│     nros store, ~/.nros/sdk/zenohd/*/bin/):
+├─ Talker panics `panicked … Failed to open session:
+│  Transport(ConnectionFailed)` (Rust) or
+│  `nros::init -> -3` / `-100` (C / C++)
+│   → zenohd isn't reachable. Open another terminal and start
+│     it (the `install-nros.sh` script provisions a
+│     `~/.nros/bin/zenohd` forwarder that resolves the SDK-
+│     store install):
 │       zenohd --listen tcp/127.0.0.1:7447
 │     Check the locator the example points at matches the
 │     port zenohd is listening on (default 7447 for POSIX,
-│     7451+ for QEMU per-platform tests).
+│     per-platform 7450..7456 for the embedded fixtures).
 │
 ├─ binary exits immediately, no error printed
 │   → Buffering: `setvbuf(stdout, NULL, _IOLBF, 0)` if you piped
@@ -66,9 +72,13 @@ Did the binary build but not produce output?
 │     publishers on the Zenoh backend.
 
 Stuck on something else?
-├─ `just doctor` prints a fixit hint for every missing tool.
-├─ `just <platform> doctor` scopes to one RTOS (e.g.
-│   `just freertos doctor` for FreeRTOS / QEMU / arm-none-eabi).
+├─ `just <platform> doctor` is the fast scoped variant — prefer
+│   it over `just doctor`. E.g. `just freertos doctor` for
+│   FreeRTOS / QEMU / arm-none-eabi prints one fixit hint per
+│   missing tool and exits in seconds.
+├─ `just doctor tier=default` is slower (network calls to
+│   verify rustup toolchain pins); use it for a workspace-wide
+│   sweep, not for a quick "what's missing".
 └─ When all else fails, file an issue with:
     - the exact command you ran,
     - the full stderr,
@@ -83,11 +93,9 @@ prints something like this on stderr (with `RUST_LOG=info`):
 ```text
 [INFO  native_rs_talker] nros Native Talker (Zenoh Transport)
 [INFO  native_rs_talker] =========================================
-[INFO  native_rs_talker] Node created: talker
-[INFO  native_rs_talker] Publisher created for topic: /chatter
+[INFO  native_rs_talker] Published: 0
 [INFO  native_rs_talker] Published: 1
 [INFO  native_rs_talker] Published: 2
-[INFO  native_rs_talker] Published: 3
 ```
 
 A correctly-running C talker (`examples/native/c/talker`)
@@ -96,9 +104,10 @@ prints on stdout:
 ```text
 nros C Talker
 =================
+Locator: tcp/127.0.0.1:7447
+Published: 0
 Published: 1
 Published: 2
-Published: 3
 ```
 
 A correctly-running C++ talker prints the same `Published: N` line
@@ -108,11 +117,11 @@ The ROS 2 side (`ros2 topic echo /chatter std_msgs/msg/Int32` with
 `RMW_IMPLEMENTATION=rmw_zenoh_cpp`) should see:
 
 ```text
+data: 0
+---
 data: 1
 ---
 data: 2
----
-data: 3
 ---
 ```
 

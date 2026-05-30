@@ -108,16 +108,21 @@ ros2 topic echo /vehicle_local_position px4_msgs/msg/VehicleLocalPosition
 ```
 
 **Readiness signal.** After `nano_ros_app start` in the PX4
-console, expect `INFO  [nano-ros] bridge started` plus messages
-flowing within 5 seconds. If no bridge log:
+console, the shipped template logs `nano-ros uORB backend
+registered` and returns immediately — it doesn't start a
+publisher loop or print a "bridge started" line on its own.
+You're expected to edit `nano_ros_app.cpp` to wire your
+uORB → nano-ros forwards. If `nano_ros_app` reports `register
+failed`, check:
 
-1. uORB topic not advertised yet — start the upstream PX4 module
+1. Module didn't register — check the PX4 boot log for
+   `nano-ros: register failed`. Usually a NuttX kernel-config /
+   feature-gate mismatch.
+2. Once you've added forwarders, `zenohd` must be reachable from
+   the autopilot's network (Pixhawk: configured via QGroundControl
+   or `param set`).
+3. uORB topic not advertised yet — start the upstream PX4 module
    that publishes it (`commander start` etc.) first.
-2. `zenohd` unreachable — Pixhawk's network config (set via
-   QGroundControl or `param set`) needs to route to the host
-   running zenohd.
-3. Module didn't register — check the PX4 boot log for
-   `nano-ros: register failed`.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source

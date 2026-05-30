@@ -39,7 +39,7 @@ examples/qemu-arm-baremetal/rust/talker/
 ├── Cargo.toml
 ├── .cargo/config.toml         # target = thumbv7m-none-eabi
 │                              # runner = qemu-system-arm ... -kernel
-├── config.toml                # network + zenoh
+├── nros.toml                  # [node] + [[transport]] (locator inside)
 ├── package.xml
 ├── generated/                 # codegen output (gitignored)
 └── src/main.rs                # #[entry] fn main() -> !
@@ -55,25 +55,27 @@ suffix — this is the bare-metal variant) which provides:
 ## Configure
 
 Mirror of the in-tree
-[`config.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/talker/config.toml):
+[`nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/talker/nros.toml):
 
 ```toml
-[network]
-ip       = "10.0.2.10"
-mac      = "02:00:00:00:00:00"
-gateway  = "10.0.2.2"
-prefix   = 24                       # NOT `netmask` — Config::from_toml
-                                    # parses `prefix` (CIDR) only.
-
-[zenoh]
-locator   = "tcp/10.0.2.2:7450"     # bare-metal test-fixture port
+[node]
 domain_id = 0
+
+# Single ethernet transport running a zenoh session. `ip` is CIDR
+# (address/prefix); the locator rides the transport.
+[[transport]]
+kind    = "ethernet"
+ip      = "10.0.2.10/24"            # CIDR — address + prefix in one
+mac     = "02:00:00:00:00:00"
+gateway = "10.0.2.2"
+rmw     = "zenoh"
+locator = "tcp/10.0.2.2:7450"       # bare-metal test-fixture port
 ```
 
-QEMU Slirp networking — no host TAP / bridge / sudo. The
-`zenohd` default port is 7447; this example expects **7450** so
-start the router with `zenohd --listen tcp/127.0.0.1:7450`
-(or edit `config.toml` to match `zenohd`'s 7447 default).
+QEMU Slirp networking — no host TAP / bridge / sudo. The bare-metal
+fixture port is **7450** (NOT zenohd's default 7447); start the
+router with `zenohd --listen tcp/127.0.0.1:7450` or edit
+`nros.toml` to match the port your zenohd actually listens on.
 
 ## Build
 
@@ -90,17 +92,17 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 ```bash
 # 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7450 → host
 #    127.0.0.1:7450). The bare-metal test-fixture port is 7450, NOT
-#    zenohd's default 7447 — edit `config.toml` if you want 7447 instead.
-#    zenohd was installed by `nros setup ... --rmw zenoh`.
-zenohd --listen tcp/127.0.0.1:7450
+#    zenohd's default 7447 — edit `nros.toml` if you want 7447 instead.
+just qemu zenohd                  # or: zenohd --listen tcp/127.0.0.1:7450
 
-# 2. Boot the talker in QEMU. The .cargo/config.toml runner does:
-cd examples/qemu-arm-baremetal/rust/talker
-cargo run --release
+# 2. Boot the talker in QEMU. `just qemu talker` runs the example
+#    via cargo's `.cargo/config.toml` runner (= qemu-system-arm with
+#    the right -machine / -cpu / -kernel flags).
+just qemu talker
 # Expected serial-over-semihosting output:
-#   nros Bare-Metal Cortex-M3 Talker
+#   nros QEMU Platform
+#   Published: 0
 #   Published: 1
-#   Published: 2
 #   ...
 
 # 3. Verify from stock ROS 2:
@@ -113,14 +115,17 @@ QEMU exits via Ctrl-A x.
 
 **Readiness signal.** Within ~15 seconds of QEMU boot (no RTOS
 init delay, but smoltcp + zenoh handshake still takes a few
-seconds), expect `Published: 1` on semihosting stdout. If no
+seconds), expect `Published: 0` on semihosting stdout. If no
 `Published:` line:
 
 1. `zenohd` not running — talker spins on smoltcp poll until
    killed.
-2. Wrong LAN9118 emulation flag — `qemu-system-arm` needs
-   `-nic socket,model=lan9118,…` or equivalent; the runner in
-   `.cargo/config.toml` already supplies it.
+2. QEMU NIC mismatch — the `.cargo/config.toml` runner relies on
+   QEMU's default NIC for the MPS2-AN385 machine (the runner does
+   NOT add a `-nic` flag). If you invoke `qemu-system-arm`
+   directly with a `-nic socket,…` form, the talker can't reach
+   Slirp on `10.0.2.2`. Use `-nic user,model=lan9118` (Slirp) for
+   a direct invocation.
 3. Cooperative spin starvation — if you added a long-running
    callback, the entire executor stalls; bare-metal has no
    preemption.
@@ -157,5 +162,5 @@ For Cortex-M3 with an RTOS, switch to the
   how to feed a backend's transport-notify into the cooperative
   spin loop on bare-metal.
 - Real hardware: same code runs on STM32F4-Discovery with a
-  different board crate (`nros-board-stm32f4-nucleo`) and a
-  different linker script.
+  different board crate (`nros-board-stm32f4`) and a different
+  linker script.

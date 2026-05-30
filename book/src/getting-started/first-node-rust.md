@@ -36,12 +36,17 @@ examples/native/rust/talker/
 ```
 
 POSIX talkers read the locator / domain from environment variables
-(`ZENOH_LOCATOR`, `ROS_DOMAIN_ID`) — no `config.toml` is needed.
-The `config.toml` shape used by embedded targets shows up under
-the Embedded Starters section.
+(`NROS_LOCATOR`, `ROS_DOMAIN_ID`) — no `nros.toml` is needed.
+Embedded targets carry a sidecar `nros.toml` (`[node]` +
+`[[transport]]`) that the board crate parses at boot; see the
+Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your
-package:
+package. The in-tree
+[`examples/native/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/rust/talker/Cargo.toml)
+is the canonical version (workspace member of the nano-ros root,
+multi-RMW feature flags, `nros-platform-cffi` for the POSIX C-port).
+The minimal **standalone** shape (no nano-ros workspace, one RMW) is:
 
 ```toml
 [package]
@@ -56,31 +61,32 @@ path = "src/main.rs"
 nros = { path = "<...>/packages/core/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix"] }
+nros-platform-cffi = { path = "<...>/packages/core/nros-platform-cffi",
+                       features = ["posix-c-port"] }
 nros-rmw-zenoh = { path = "<...>/packages/zpico/nros-rmw-zenoh",
                    features = ["std", "platform-posix", "ros-humble"] }
+std_msgs = { version = "*", default-features = false }
+log         = "0.4"
+env_logger  = "0.11"
 
-[workspace]      # empty table — this package is intentionally
-                 # standalone, no walking-up workspace.
+[workspace]      # empty table — keep this package out of any
+                 # parent workspace cargo finds when walking up.
 ```
+
+Copying the in-tree example wholesale into a new tree without that
+empty `[workspace]` table makes cargo walk up and pull the example
+into the nano-ros workspace — which is fine inside the nano-ros
+checkout but breaks once you copy it out.
 
 ## Configure
 
-Three runtime knobs, each overridable at three layers (defaults →
-`config.toml` → env vars):
+Three runtime knobs, overridable via env vars:
 
 | Knob | Default | Env override |
 |---|---|---|
 | Zenoh locator | `tcp/127.0.0.1:7447` | `NROS_LOCATOR` (legacy alias: `ZENOH_LOCATOR`) |
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
 | Zenoh mode | client | `NROS_SESSION_MODE` (legacy alias: `ZENOH_MODE`) |
-
-`config.toml` (optional, alongside `Cargo.toml`):
-
-```toml
-[zenoh]
-locator   = "tcp/127.0.0.1:7447"
-domain_id = 0
-```
 
 ## Build
 
@@ -108,8 +114,8 @@ RUST_LOG=info cargo run
 # Expected output (on stderr):
 #   [INFO  native_rs_talker] nros Native Talker (Zenoh Transport)
 #   [INFO  native_rs_talker] =========================================
+#   [INFO  native_rs_talker] Published: 0
 #   [INFO  native_rs_talker] Published: 1
-#   [INFO  native_rs_talker] Published: 2
 #   …
 ```
 
@@ -134,7 +140,7 @@ If `ros2 topic echo` shows no output despite the talker printing
 point at the same port (default `tcp/127.0.0.1:7447`).
 
 **Readiness signal.** Within 5 seconds of `RUST_LOG=info cargo run`,
-the talker should print `Published: 1`. If no `Published:` line in
+the talker should print `Published: 0`. If no `Published:` line in
 30 seconds:
 
 1. Confirm `RUST_LOG` is set. Without `RUST_LOG=info` (or `debug`),

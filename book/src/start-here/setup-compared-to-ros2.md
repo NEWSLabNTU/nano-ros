@@ -134,7 +134,8 @@ Multi-RMW bridges (one binary, two or more backends) use
 - **Configuration is build-time on embedded.** Runtime env vars
   (`ROS_DOMAIN_ID`, `NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR`,
   …) work on POSIX; embedded targets resolve config via CMake cache,
-  Kconfig (Zephyr), Cargo features, or `config.toml`.
+  Kconfig (Zephyr), Cargo features, or a sidecar `nros.toml`
+  (`[node]` + `[[transport]]`).
 
 ## Next Step
 

@@ -34,7 +34,7 @@ my_idf_app/
 │   ├── CMakeLists.txt             # `idf_component_register(REQUIRES nano-ros …)`
 │   ├── idf_component.yml          # declares nano-ros as a managed dependency
 │   ├── app_main.c | app_main.cpp
-│   └── config.toml
+│   └── nros.toml                  # [node] + [[transport kind="wifi"]]
 └── components/                    # (optional) local components override
 ```
 
@@ -65,9 +65,10 @@ Component config → nano-ros
 
 The nano-ros component itself exposes only those two knobs.
 **Wi-Fi credentials + zenoh locator are NOT in this Kconfig** —
-provide them via your app's own `Kconfig.projbuild` (Espressif's
-standard pattern) or via environment variables, then pass them to
-`nros::init(locator, domain_id)` at startup.
+put them in `main/nros.toml` (`[[transport]] kind = "wifi"` with
+`ssid`/`password`/`locator`), or supply them via your app's own
+`Kconfig.projbuild` (Espressif's standard pattern) and pass them
+to `nros::init(locator, domain_id)` at startup.
 
 ## Build
 
@@ -88,7 +89,7 @@ idf.py -p /dev/ttyUSB0 flash monitor
 # Expected serial output:
 #   I (1234) nano-ros: Wi-Fi connected
 #   I (1456) nano-ros: zenoh session opened
-#   I (1567) nano-ros: Published: 1
+#   I (1567) nano-ros: Published: 0
 
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
@@ -102,11 +103,12 @@ patched QEMU.
 
 **Readiness signal.** After `idf.py flash monitor`, expect
 `I (XXXX) nano-ros: Wi-Fi connected` followed by
-`I (XXXX) nano-ros: Published: 1` within 10 seconds. If no
+`I (XXXX) nano-ros: Published: 0` within 10 seconds. If no
 `Published:` line:
 
-1. Wi-Fi creds — IDF Kconfig under `Component config → nano-ros`
-   must carry SSID + password OR your `config.toml` must.
+1. Wi-Fi creds — your `main/nros.toml` `[[transport]]` block must
+   carry `ssid` + `password` (the nano-ros component itself only
+   exposes RMW + ROS-edition Kconfig knobs).
 2. Wrong locator — confirm host running `zenohd` is on the same
    Wi-Fi subnet (or routable to it). NAT will block discovery.
 3. `idf.py menuconfig` confirms `CONFIG_NROS_ENABLED=y`.

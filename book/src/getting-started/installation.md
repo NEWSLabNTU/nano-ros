@@ -49,10 +49,14 @@ The top-level `CMakeLists.txt`:
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
-project(my_app C)
+# `C CXX` — the per-target `nros_app_register_backends.c` stub the
+# platform link emits needs the C compiler enabled in this scope.
+project(my_app LANGUAGES C CXX)
 
 set(NANO_ROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NROS_RMW "zenoh" CACHE STRING
+    "Active RMW (zenoh|xrce|cyclonedds).")
+set(NANO_ROS_RMW "${NROS_RMW}")
 add_subdirectory(third_party/nano-ros nano_ros)
 
 add_executable(my_app src/main.c)
