@@ -1,0 +1,198 @@
+# Lint lane — Phase 208 (post-audit CI gap).
+#
+# Runs the formatters + linters the `just check` recipe already implements,
+# but as individual concurrent jobs so a single fmt failure isn't masked by
+# an unrelated clippy regression. Reuses the in-tree `just` recipes (single
+# source of truth — local `just check` and CI `lint.yml` run identical
+# commands).
+#
+# Jobs:
+#   - workspace-rust  : nightly `cargo fmt --check` + host clippy + embedded
+#                       clippy + feature-matrix clippy + ABI-mirror /
+#                       decoupling / example-matrix structural guards. Maps
+#                       to `just check-workspace-all check-workspace-features
+#                       check-decoupling check-platform-abi-mirror
+#                       check-board-abi-mirror check-profile-board-mirror
+#                       check-example-matrix check-nros-log-riscv32`.
+#   - examples-fmt    : per-example `cargo +nightly fmt --check`. fmt only
+#                       parses the AST so it works without `nros generate-rust`
+#                       having run — unlike per-example clippy, which the
+#                       audit (Phase 208) showed needs the example's
+#                       `generated/<pkg>/` codegen output.
+#   - c-cpp-format    : clang-format dry-run for the nros-c headers + zpico
+#                       C + native C/C++ examples (`just check-c check-cpp`).
+#
+# Fresh-runner-safe: same nano-ros-ci container the other lanes use; only
+# `nros` (prebuilt) + the `px4-rs` source the root workspace path-deps
+# (load gate). No QEMU / zenohd / ROS-runtime needed.
+
+name: lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "justfile"
+      - "just/**"
+      - "scripts/check-*"
+      - ".clang-format"
+      - "rustfmt.toml"
+      - ".github/workflows/lint.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "justfile"
+      - "just/**"
+      - "scripts/check-*"
+      - ".clang-format"
+      - "rustfmt.toml"
+      - ".github/workflows/lint.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace-rust:
+    name: workspace fmt + clippy + structural guards
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Install the nros CLI (released binary)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
+            | NROS_VERSION=0.3.7 sh
+          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+
+      # Same px4-rs gate as host-unit-tests: the root workspace path-deps
+      # `px4-sitl-tests` (now via the out-of-workspace `nros-px4-sitl-test`
+      # crate — see Phase 208.D.3). Cargo still needs px4-rs's own Cargo.toml
+      # readable to resolve `[patch.crates-io]` entries that reference it.
+      - name: Provision workspace sources via nros
+        run: nros setup --source px4-rs --source zenoh-pico --source mbedtls
+
+      - name: just check-workspace-all (host + embedded clippy + nightly fmt)
+        run: just check-workspace-all
+
+      - name: just check-workspace-features
+        run: just check-workspace-features
+
+      - name: just check-nros-log-riscv32
+        run: just check-nros-log-riscv32
+
+      - name: just check-decoupling
+        run: just check-decoupling
+
+      - name: just check-platform-abi-mirror
+        run: just check-platform-abi-mirror
+
+      - name: just check-board-abi-mirror
+        run: just check-board-abi-mirror
+
+      - name: just check-profile-board-mirror
+        run: just check-profile-board-mirror
+
+      - name: just check-example-matrix
+        run: just check-example-matrix
+
+  examples-fmt:
+    name: per-example cargo fmt --check
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Install the nros CLI (released binary)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nros-cli/main/install.sh \
+            | NROS_VERSION=0.3.7 sh
+          echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
+
+      # Per-example `cargo fmt --check` traverses every standalone example dir.
+      # fmt only parses each crate's source files (AST-level); it does NOT
+      # require deps to resolve or `nros generate-rust` to have run. Walk the
+      # examples tree the same way `just native check` does, but invoke fmt
+      # instead of clippy.
+      - name: per-example cargo +nightly fmt --check
+        run: |
+          set -e
+          NIGHTLY="$(cat tools/rust-toolchain.toml 2>/dev/null | awk -F'"' '/^channel/ {print $2}')"
+          NIGHTLY="${NIGHTLY:-nightly}"
+          # Same skip set the `just native check` recipe uses: target / generated
+          # / build dirs + per-platform / template / px4 carve-outs covered by
+          # other workflows.
+          find examples -mindepth 4 -name Cargo.toml \
+              -not -path '*/target/*' -not -path '*/generated/*' \
+              -not -path '*/build/*' -not -path '*/build-*/*' \
+              -not -path '*/zephyr/*' \
+              -not -path '*/multi-package-workspace/*' \
+              -not -path '*/qemu-esp32-baremetal/rust/dds/*' \
+              -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
+              -not -path '*/threadx-linux/*' \
+              -not -path '*/qemu-riscv64-threadx/*' \
+              -not -path '*/px4/*' | sort | while read -r toml; do
+              dir="$(dirname "$toml")"
+              echo "  fmt $dir"
+              ( cd "$dir" && cargo "+$NIGHTLY" fmt --check )
+          done
+
+  c-cpp-format:
+    name: clang-format (nros-c / nros-cpp / native examples)
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # `just check-c` / `check-cpp` invoke `clang-format --dry-run --Werror`
+      # against the nros-c / nros-cpp headers + the native C / C++ example
+      # sources. The nano-ros-ci container bakes clang-format already — no
+      # apt step needed here.
+      - name: just check-c
+        run: just check-c
+
+      - name: just check-cpp
+        run: just check-cpp

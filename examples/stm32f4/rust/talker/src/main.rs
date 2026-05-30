@@ -36,10 +36,10 @@
 // defmt + its global logger are unconditional (the board crate logs via defmt).
 use defmt_rtt as _;
 // Phase 204.4 — panic handler: defmt-printing (diagnostics) vs halt (minimal).
-#[cfg(feature = "diagnostics")]
-use panic_probe as _;
 #[cfg(feature = "minimal")]
 use panic_halt as _;
+#[cfg(feature = "diagnostics")]
+use panic_probe as _;
 
 // defmt 0.3 requires a timestamp function in each binary crate.
 defmt::timestamp!("{=u64:us}", { 0 });

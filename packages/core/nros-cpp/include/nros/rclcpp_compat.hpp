@@ -68,26 +68,21 @@ namespace rclcpp {
 using ::nros::QoS;
 using ::nros::Result;
 
-template <typename M>
-using Publisher = ::nros::Publisher<M>;
+template <typename M> using Publisher = ::nros::Publisher<M>;
 
-template <typename M>
-using Subscription = ::nros::Subscription<M>;
+template <typename M> using Subscription = ::nros::Subscription<M>;
 
-template <typename S>
-using Service = ::nros::Service<S>;
+template <typename S> using Service = ::nros::Service<S>;
 
-template <typename S>
-using Client = ::nros::Client<S>;
+template <typename S> using Client = ::nros::Client<S>;
 
 // `rclcpp::Publisher<M>::SharedPtr` — rclcpp users index types this way.
 namespace detail {
-template <typename T>
-struct SharedPtrTrait {
+template <typename T> struct SharedPtrTrait {
     using SharedPtr = std::shared_ptr<T>;
     using ConstSharedPtr = std::shared_ptr<const T>;
 };
-}  // namespace detail
+} // namespace detail
 
 // --- QoS conveniences --------------------------------------------------------
 //
@@ -95,11 +90,19 @@ struct SharedPtrTrait {
 // too, so the constructor is already compatible. These named profiles save the
 // most-cited spellings from `rclcpp::QoS` factories.
 
-inline ::nros::QoS SystemDefaultsQoS() { return ::nros::QoS(10); }
-inline ::nros::QoS ServicesQoS() { return ::nros::QoS(10); }
-inline ::nros::QoS ParametersQoS() { return ::nros::QoS(10); }
+inline ::nros::QoS SystemDefaultsQoS() {
+    return ::nros::QoS(10);
+}
+inline ::nros::QoS ServicesQoS() {
+    return ::nros::QoS(10);
+}
+inline ::nros::QoS ParametersQoS() {
+    return ::nros::QoS(10);
+}
 
-inline ::nros::QoS KeepLast(::size_t depth) { return ::nros::QoS(depth); }
+inline ::nros::QoS KeepLast(::size_t depth) {
+    return ::nros::QoS(depth);
+}
 
 // --- Logger surface ----------------------------------------------------------
 //
@@ -109,16 +112,20 @@ inline ::nros::QoS KeepLast(::size_t depth) { return ::nros::QoS(depth); }
 // dispatch yet). Documented; a follow-up can teach nros::log a tag.
 
 class Logger {
-public:
+  public:
     explicit Logger(const char* name = "") : name_(name) {}
     const char* get_name() const { return name_; }
 
-private:
+  private:
     const char* name_;
 };
 
-inline Logger get_logger(const char* name) { return Logger(name); }
-inline Logger get_logger(const std::string& name) { return Logger(name.c_str()); }
+inline Logger get_logger(const char* name) {
+    return Logger(name);
+}
+inline Logger get_logger(const std::string& name) {
+    return Logger(name.c_str());
+}
 
 // --- Process-level lifecycle -------------------------------------------------
 //
@@ -127,13 +134,19 @@ inline Logger get_logger(const std::string& name) { return Logger(name.c_str());
 // → `nros::shutdown()`. `rclcpp::ok()` → `nros::ok()` (nros tracks the
 // shutdown flag).
 
-inline void init(int /*argc*/, char const* const* /*argv*/) { (void)::nros::init(); }
-inline void init() { (void)::nros::init(); }
+inline void init(int /*argc*/, char const* const* /*argv*/) {
+    (void)::nros::init();
+}
+inline void init() {
+    (void)::nros::init();
+}
 inline bool shutdown() {
     ::nros::shutdown();
     return true;
 }
-inline bool ok() { return ::nros::ok(); }
+inline bool ok() {
+    return ::nros::ok();
+}
 
 // --- Node shim ---------------------------------------------------------------
 //
@@ -150,7 +163,7 @@ inline bool ok() { return ::nros::ok(); }
 // services `spin*`, mirroring the rclcpp default.
 
 class Node : public std::enable_shared_from_this<Node> {
-public:
+  public:
     using SharedPtr = std::shared_ptr<Node>;
 
     explicit Node(const std::string& name) {
@@ -166,7 +179,7 @@ public:
             return;
         }
         r = executor_.create_node(node_, name.c_str());
-        initialized_ = r.is_ok();
+        initialized_ = r.ok();
     }
 
     ~Node() {
@@ -191,16 +204,16 @@ public:
     // QoS arg is `const QoS&` OR an integer depth (`10`) — both bind via
     // `nros::QoS(uint32_t)`'s implicit conversion.
     template <typename M>
-    std::shared_ptr<::nros::Publisher<M>>
-    create_publisher(const std::string& topic, const ::nros::QoS& qos) {
+    std::shared_ptr<::nros::Publisher<M>> create_publisher(const std::string& topic,
+                                                           const ::nros::QoS& qos) {
         auto p = std::make_shared<::nros::Publisher<M>>();
         (void)node_.create_publisher(*p, topic.c_str(), qos);
         return p;
     }
 
     template <typename M>
-    std::shared_ptr<::nros::Publisher<M>>
-    create_publisher(const std::string& topic, ::size_t depth) {
+    std::shared_ptr<::nros::Publisher<M>> create_publisher(const std::string& topic,
+                                                           ::size_t depth) {
         return create_publisher<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)));
     }
 
@@ -210,21 +223,21 @@ public:
     // `void(typename M::ConstSharedPtr)`. The latter we accept by signature and
     // wrap into nros's by-ref callback (allocating a shared_ptr per message).
     template <typename M, typename Cb>
-    std::shared_ptr<::nros::Subscription<M>>
-    create_subscription(const std::string& topic, const ::nros::QoS& qos, Cb cb) {
+    std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
+                                                                 const ::nros::QoS& qos, Cb cb) {
         auto s = std::make_shared<::nros::Subscription<M>>();
         (void)node_.create_subscription<M>(*s, topic.c_str(), qos, std::move(cb));
         return s;
     }
 
     template <typename M, typename Cb>
-    std::shared_ptr<::nros::Subscription<M>>
-    create_subscription(const std::string& topic, ::size_t depth, Cb cb) {
+    std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
+                                                                 ::size_t depth, Cb cb) {
         return create_subscription<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)),
-                                       std::move(cb));
+                                      std::move(cb));
     }
 
-private:
+  private:
     ::nros::Executor executor_;
     ::nros::Node node_;
     bool initialized_ = false;
@@ -251,8 +264,11 @@ inline void spin_some(const Node::SharedPtr& node) {
     (void)node->nros_executor().spin_once(0);
 }
 
-inline void spin_until_future_complete(const Node::SharedPtr& node,
-                                       const auto& future,
+// Future type is templated rather than `const auto& future` so the header
+// stays parseable under `-std=c++14` (the C++20 abbreviated-function-template
+// syntax breaks `just check-cpp`'s freestanding probe).
+template <typename Future>
+inline void spin_until_future_complete(const Node::SharedPtr& node, const Future& future,
                                        int32_t timeout_ms = -1) {
     if (!node || !node->initialized()) {
         return;
@@ -266,7 +282,7 @@ inline void spin_until_future_complete(const Node::SharedPtr& node,
     }
 }
 
-}  // namespace rclcpp
+} // namespace rclcpp
 
 // --- rclcpp_action ------------------------------------------------------------
 //
@@ -275,13 +291,11 @@ inline void spin_until_future_complete(const Node::SharedPtr& node,
 
 namespace rclcpp_action {
 
-template <typename A>
-using Server = ::nros::ActionServer<A>;
+template <typename A> using Server = ::nros::ActionServer<A>;
 
-template <typename A>
-using Client = ::nros::ActionClient<A>;
+template <typename A> using Client = ::nros::ActionClient<A>;
 
-}  // namespace rclcpp_action
+} // namespace rclcpp_action
 
 // --- Log macros --------------------------------------------------------------
 //
@@ -290,8 +304,8 @@ using Client = ::nros::ActionClient<A>;
 // — they get the message out; a follow-up can add interval gating.
 
 #ifndef RCLCPP_INFO
-#define RCLCPP_INFO(logger, ...)  (void)(logger), NROS_INFO(__VA_ARGS__)
-#define RCLCPP_WARN(logger, ...)  (void)(logger), NROS_WARN(__VA_ARGS__)
+#define RCLCPP_INFO(logger, ...) (void)(logger), NROS_INFO(__VA_ARGS__)
+#define RCLCPP_WARN(logger, ...) (void)(logger), NROS_WARN(__VA_ARGS__)
 #define RCLCPP_ERROR(logger, ...) (void)(logger), NROS_ERROR(__VA_ARGS__)
 #define RCLCPP_DEBUG(logger, ...) (void)(logger), NROS_DEBUG(__VA_ARGS__)
 #define RCLCPP_FATAL(logger, ...) (void)(logger), NROS_ERROR(__VA_ARGS__)
@@ -300,9 +314,9 @@ using Client = ::nros::ActionClient<A>;
 #define RCLCPP_WARN_STREAM(logger, args) RCLCPP_WARN(logger, "%s", "")
 #define RCLCPP_ERROR_STREAM(logger, args) RCLCPP_ERROR(logger, "%s", "")
 
-#define RCLCPP_INFO_THROTTLE(logger, clock, period_ms, ...)  RCLCPP_INFO(logger, __VA_ARGS__)
-#define RCLCPP_WARN_THROTTLE(logger, clock, period_ms, ...)  RCLCPP_WARN(logger, __VA_ARGS__)
+#define RCLCPP_INFO_THROTTLE(logger, clock, period_ms, ...) RCLCPP_INFO(logger, __VA_ARGS__)
+#define RCLCPP_WARN_THROTTLE(logger, clock, period_ms, ...) RCLCPP_WARN(logger, __VA_ARGS__)
 #define RCLCPP_ERROR_THROTTLE(logger, clock, period_ms, ...) RCLCPP_ERROR(logger, __VA_ARGS__)
-#endif  // RCLCPP_INFO
+#endif // RCLCPP_INFO
 
-#endif  // NROS_RCLCPP_COMPAT_HPP
+#endif // NROS_RCLCPP_COMPAT_HPP
