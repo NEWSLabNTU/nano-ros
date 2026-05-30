@@ -300,9 +300,18 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       reports persisted at `tmp/book-audit/reports/<tutorial>.md`.
 - [x] **208.acc.3** `docs/roadmap/phase-208-audit-findings.md` (severity
       matrix + recurring patterns) committed.
-- [ ] **208.acc.4** Every 208.D item committed + pushed; fresh-shell clean
-      clone reaches `Published: 0` for the Linux Rust starter without any
-      hand-set env var, `direnv allow`, or `eval $(nros env)` workaround.
+- [x] **208.acc.4** Verified end-to-end (2026-05-30). Ran the Linux Rust
+      starter from a scrubbed shell — `env -i` keeping only `HOME` / `USER` /
+      `LANG` / `TERM` / `PATH` (`$HOME/.nros/bin:$HOME/.cargo/bin:/usr/...`)
+      + `RUST_LOG=info` for log-visibility. **No** `NROS_*` env, **no**
+      `NANO_ROS_*` env, **no** `direnv allow`. Sequence:
+      `nros setup native --rmw zenoh` → `zenohd -l tcp/127.0.0.1:7447`
+      (resolved through the D.2 forwarder shim at `~/.nros/bin/zenohd`) →
+      `cargo build --release` in `examples/native/rust/talker/` (D.1
+      build-script autoresolve handled `NROS_PLATFORM_CFFI_INCLUDE` etc.
+      without a hand-set value) → `./target/release/talker`. First message
+      line: `Published: 0`. Subsequent: 1, 2, 3, …
+      Logs at `tmp/talker-acc4.log` + `tmp/zenohd-acc4.log` (gitignored).
 - [ ] **208.acc.5** Every 208.E item landed; a strict-follow re-audit of
       any tutorial produces 0 BLOCKERS in the report.
 
