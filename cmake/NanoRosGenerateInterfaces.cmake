@@ -160,6 +160,13 @@ endfunction()
 # =========================================================================
 # nros_generate_interfaces(<target> <files>...
 #     [DEPENDENCIES <deps>...] [SKIP_INSTALL])
+#
+# **Phase 210.E.4 — DEPRECATED for new code.** Prefer the upstream-shape
+# entry points: `rosidl_generate_interfaces(<target> <files>...)` from a
+# msg pkg's CMakeLists.txt (Phase 210.A.1), or `find_package(<pkg>)`
+# from a consumer's CMakeLists.txt (Phase 210.A.2). Both route through
+# this function under the hood; calling it directly is supported for
+# back-compat but bypasses the ROS-convention surface.
 # =========================================================================
 function(nros_generate_interfaces target)
   cmake_parse_arguments(_ARG
@@ -974,6 +981,11 @@ endfunction()
 #
 # Usage:
 #   nros_find_interfaces([LANGUAGE CPP] [SKIP_INSTALL])
+#
+# **Phase 210.E.4 — DEPRECATED for new code.** Prefer
+# `nros_workspace_interfaces()` (Phase 210.B.2) for a workspace + the
+# upstream-shape `find_package(<pkg>)` (210.A.2) for individual pkgs.
+# Retained for back-compat; existing call sites continue to work.
 # =========================================================================
 function(nros_find_interfaces)
   cmake_parse_arguments(_ARG

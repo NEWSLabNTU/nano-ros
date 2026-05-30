@@ -9,7 +9,7 @@ CMake call shape are ROS's, so the same `src/` tree builds under both
 `colcon build` (rosidl's bindings) and a nano-ros build (ours). Subsumes the
 Phase 209.E bulk-codegen item.
 
-**Status.** Proposed (2026-05-30).
+**Status.** MVP DONE in-tree (2026-05-30, branch `phase-210-ros-convention-codegen`). A.1/.2/.3/.4 + B.1/.2 + E.1/.4 landed; C/D and the remaining E items are tracked but separate (C/D need nros-cli changes + a new Rust helper crate; E.2/.3 are in-tree migrations of existing call sites).
 
 **Priority.** P2 — adoption ergonomics, not a capability gap. Closing it
 turns "port a ROS msg pkg" from a per-CMakeLists rewrite into "drop the pkg
@@ -49,7 +49,7 @@ higher layer + warn loudly.
 ## Work Items
 
 ### 210.A — `rosidl_generate_interfaces(...)` + smart Find-stub
-- [ ] **210.A.1** `cmake/NanoRosGenerateInterfaces.cmake`: add
+- [x] **210.A.1** `cmake/NanoRosGenerateInterfaces.cmake`: add
       `rosidl_generate_interfaces(<target> <files>… [DEPENDENCIES <pkg>…]
       [SKIP_INSTALL] [LIBRARY_NAME] [ADD_LINTER_TESTS]
       [SKIP_GROUP_MEMBERSHIP_CHECK])`. Takes explicit file paths (upstream
@@ -57,16 +57,16 @@ higher layer + warn loudly.
       `nros_generate_interfaces(<pkg>)` already uses. Rosidl-only flags
       (`ADD_LINTER_TESTS`, `SKIP_GROUP_MEMBERSHIP_CHECK`) accepted +
       no-opped with a `message(STATUS …)`. **Size:** ~80 LOC cmake.
-- [ ] **210.A.2** Smart Find-stub helper at
+- [x] **210.A.2** Smart Find-stub helper at
       `cmake/compat/stubs/_NrosFindRosMsgPackage.cmake`. Walks the search
       path → finds the named pkg → reads its `package.xml` (deps) + globs
       `{msg,srv,action}/*` → runs nano-ros codegen → emits IMPORTED
       INTERFACE `${pkg}::${pkg}` aliasing `${pkg}__nano_ros_cpp` /
       `__nano_ros_rust`. **Size:** ~150 LOC cmake.
-- [ ] **210.A.3** Collapse the per-pkg `cmake/compat/stubs/Find<msg>.cmake`
+- [x] **210.A.3** Collapse the per-pkg `cmake/compat/stubs/Find<msg>.cmake`
       files to 2 lines each (include + delegate). One file per msg pkg the
       compat ships; adding a new one is two lines.
-- [ ] **210.A.4** Fixture: a tiny `examples/templates/local-msg-package/`
+- [x] **210.A.4** Fixture: a tiny `examples/templates/local-msg-package/`
       with a verbatim ROS msg pkg (`package.xml` + `msg/MyMsg.msg` +
       canonical CMakeLists.txt) + a consumer node that just writes
       `find_package(local_msgs REQUIRED) + target_link_libraries
@@ -78,9 +78,9 @@ higher layer + warn loudly.
       links against without any explicit codegen call.
 
 ### 210.B — `NROS_INTERFACE_SEARCH_PATH` + `nros_workspace_interfaces()`
-- [ ] **210.B.1** Plumb `NROS_INTERFACE_SEARCH_PATH` (env + cmake var)
+- [x] **210.B.1** Plumb `NROS_INTERFACE_SEARCH_PATH` (env + cmake var)
       through the smart Find-stub (210.A.2).
-- [ ] **210.B.2** `nros_workspace_interfaces([PATHS <dir>…] [LANGUAGE …])`
+- [x] **210.B.2** `nros_workspace_interfaces([PATHS <dir>…] [LANGUAGE …])`
       — bulk orchestrator. Scans the search path, identifies pkgs by
       `<member_of_group>rosidl_interface_packages</member_of_group>` in
       their `package.xml`, topo-sorts (via existing `nros codegen
@@ -125,7 +125,7 @@ higher layer + warn loudly.
       the current per-example codegen.
 
 ### 210.E — UX + docs + in-tree migration
-- [ ] **210.E.1** Book page `book/src/getting-started/your-own-msg-package.md`
+- [x] **210.E.1** Book page `book/src/getting-started/your-own-msg-package.md`
       walking the upstream workflow: drop a `src/my_msgs/` (verbatim ROS
       shape), source the env, build. Both colcon AND nano-ros work on the
       same source. Cross-ref 210.A's fixture.
@@ -140,7 +140,7 @@ higher layer + warn loudly.
       `examples/qemu-arm-*/{cpp,rust}/*/`) to the
       `find_package(<pkg>) + target_link_libraries` shape. Incremental —
       examples that explicitly want the bundled-pkg form keep it.
-- [ ] **210.E.4** Mark `nros_generate_interfaces(<pkg>)` +
+- [x] **210.E.4** Mark `nros_generate_interfaces(<pkg>)` +
       `nros_find_interfaces()` deprecated in their function-header
       comments; point to `rosidl_generate_interfaces` + `find_package`.
 

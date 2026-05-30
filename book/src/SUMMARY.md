@@ -11,6 +11,7 @@
 - [First Node — C](./getting-started/first-node-c.md)
 - [First Node — C++](./getting-started/first-node-cpp.md)
 - [Porting a ROS 2 C++ node](./getting-started/porting-a-cpp-node.md)
+- [Your own message package](./getting-started/your-own-msg-package.md)
 - [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
 
 # Embedded Starters
