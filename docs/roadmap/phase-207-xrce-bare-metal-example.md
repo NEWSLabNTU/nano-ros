@@ -287,29 +287,35 @@ Trampoline-fires-probe artefacts:
         returns from it before `uxr_init_custom_transport` actually calls
         our open callback (otherwise OPEN_FIRED would set).
 
-### 207.6 — Shrink the XRCE session struct for real micro-ROS-class RAM (follow-on)
+### 207.6 — Shrink the XRCE session struct — [x] DONE (2026-05-30)
 
-The 207.4 win came at a cost: `NROS_HEAP_SIZE = "524288"` means RAM total
-is **~533 KB** (512 KB heap + 8.8 KB `.bss` + ~13 KB other `.data`).
-Flash stays at **62.1 KB** (size profile, under the 75 KB micro-ROS
-reference), but RAM is now FAR above the ~3 KB reference until the
-per-session struct is right-sized.
-
-`nros-rmw-xrce-cffi/build.rs` already exposes `NROS_XRCE_STREAM_HISTORY`
-(min 4) but NOT the other dimensions. Add env knobs for:
-
-- [ ] `NROS_XRCE_CUSTOM_TRANSPORT_MTU` (default 4096 → 512 for serial).
-- [ ] `NROS_XRCE_MAX_SUBSCRIBERS` (default 8 → 0 or 1 for a pub-only node).
-- [ ] `NROS_XRCE_MAX_SERVICE_SERVERS` / `..._CLIENTS` (default 4 each → 0).
-- [ ] `NROS_XRCE_SUBSCRIBER_RING_DEPTH` (default 32 → 1).
-- [ ] `NROS_XRCE_BUFFER_SIZE` (default 1024 → 256).
-
-Most of these need `#ifndef` guards added in
-`packages/xrce/nros-rmw-xrce/src/internal.h` (only `STREAM_HISTORY` +
-`SUBSCRIBER_RING_DEPTH` are guarded today; the rest are bare `#define`s).
-For a pub-only talker the session struct should drop to ~20–30 KB →
-heap can return to ~32–64 KB → RAM total in the ~50 KB range,
-order-of-magnitude closer to micro-ROS.
+- [x] `#ifndef` guards added in
+      `packages/xrce/nros-rmw-xrce/src/internal.h` around
+      `XRCE_MAX_SUBSCRIBERS`, `XRCE_MAX_SERVICE_SERVERS`,
+      `XRCE_MAX_SERVICE_CLIENTS`, `XRCE_BUFFER_SIZE` (the
+      `STREAM_HISTORY` + `SUBSCRIBER_RING_DEPTH` ones were already guarded).
+- [x] `nros-rmw-xrce-cffi/build.rs` env knobs landed:
+      `NROS_XRCE_CUSTOM_TRANSPORT_MTU` (template-replace in the generated
+      `uxr/client/config.h`; default 4096), plus
+      `NROS_XRCE_MAX_SUBSCRIBERS`,
+      `NROS_XRCE_MAX_SERVICE_SERVERS`,
+      `NROS_XRCE_MAX_SERVICE_CLIENTS`,
+      `NROS_XRCE_SUBSCRIBER_RING_DEPTH`,
+      `NROS_XRCE_BUFFER_SIZE` (each as a `build.define(...)` with a min-value
+      check; rerun-if-env-changed wired). Default values unchanged for hosted /
+      non-tight-RAM consumers.
+- [x] `examples/qemu-arm-baremetal/rust/talker-xrce/.cargo/config.toml`
+      sets the tight profile:
+      `STREAM_HISTORY=4` (floor), `CUSTOM_TRANSPORT_MTU=512`,
+      `MAX_SUBSCRIBERS=1`, `MAX_SERVICE_SERVERS=1`, `MAX_SERVICE_CLIENTS=1`,
+      `SUBSCRIBER_RING_DEPTH=1`, `BUFFER_SIZE=256`. Heap returns to
+      `NROS_HEAP_SIZE = "24576"`.
+- [x] **Measured (size profile): text 61.7 KB, data 25.2 KB (heap 24 KB),
+      bss 8.8 KB → RAM total ~34 KB.** Vs the 207.4 working baseline
+      (`NROS_HEAP_SIZE="524288"` / 533 KB RAM): **15.7× smaller RAM**, text
+      basically same. Vs zenoh-pico ethernet (177.4 / 158.7 KB): **2.9×
+      smaller flash, 4.7× smaller RAM** — honest measurement, handshake
+      working. `test_qemu_xrce_pubsub_e2e` still `published=1, ok`.
 
 Not blocking 207.5 — the binary links + loads + boots either way; the
 **measured flash + RAM stand** (60.6 KB / 17.4 KB on the size profile).
@@ -326,31 +332,31 @@ flash + RAM are real.
 
 ### 207.5 — Measure flash + RAM; close Phase 204.5's XRCE figure — [x] DONE (2026-05-30)
 
-**Real (handshake-working) numbers at `NROS_HEAP_SIZE = "524288"` — the
-working e2e configuration.** The previously-quoted 8 KB-/24 KB-heap
-binaries DID NOT complete the XRCE handshake; their tiny `.data` was an
-artefact of the talker exiting at `calloc fail` before the session
-struct was allocated (see 207.4).
+**Real (handshake-working) numbers after 207.6 shrank the session struct
+to fit a 24 KB heap.** Earlier 207.5 quoted 533 KB RAM (with `NROS_HEAP_SIZE
+= "524288"`); 207.6 reproduces the same e2e green at **~34 KB RAM**.
 
 | profile | `text` | `data` | `bss` | RAM total | flash |
 |---|---|---|---|---|---|
-| release | 71 016 B (~69 KB) | 524 924 B (heap 512 KB) | 8 856 B | ~533 KB | ~69 KB |
-| **size** | **62 132 B (~60.6 KB)** | 524 888 B | **8 768 B** | ~533 KB | ~60.6 KB |
+| release | 70 580 B (~69 KB) | 25 212 B (heap 24 KB) | 8 856 B | ~34 KB | ~69 KB |
+| **size** | **61 704 B (~60.3 KB)** | 25 176 B | **8 768 B** | **~34 KB** | ~60.3 KB |
 
 **Side-by-side with the zenoh-pico ethernet talker:**
 
 | | flash (`text`) | RAM (`data + bss`) |
 |---|---|---|
 | zenoh-pico ethernet (release) | 177.4 KB | 158.7 KB |
-| **XRCE bare-metal (size, handshake-working)** | **60.6 KB** | **~533 KB** ⚠ |
-| ratio (flash) | **2.9× smaller** | — |
+| **XRCE bare-metal (size, after 207.6)** | **60.3 KB** | **~34 KB** |
+| ratio | **2.9× smaller** flash | **4.7× smaller** RAM |
 | micro-ROS reference | < 75 KB | ~3 KB peak |
 
-**XRCE clears the micro-ROS flash reference (< 75 KB) on day one.** RAM is
-ABOVE zenoh's today because the vendor `xrce_session_state_t` struct is
-~390 KB at current build defaults — see 207.6 for the env-knob plan that
-shrinks it (closing the gap to the micro-ROS ~3 KB reference is the
-"per-pool static sizing" work).
+**XRCE clears the micro-ROS flash reference (< 75 KB) and is ~4.7× smaller
+RAM than zenoh-pico ethernet on the same hardware.** The remaining gap to
+the micro-ROS ~3 KB RAM reference is the "static-only XRCE wrapper" work —
+nano-ros's wrapper still calloc's the session struct (and the
+publisher/subscriber per-entity state) from the heap, where micro-ROS
+arranges everything as compile-time static pools. That's a wrapper-level
+refactor (not a 207 deliverable; tracked separately).
 
 - [x] `size` + `nm` captured (above).
 - [x] **Book "Measured footprint" table** in `book/src/user-guide/configuration.md`

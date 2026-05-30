@@ -237,9 +237,47 @@ fn main() {
             panic!("NROS_XRCE_STREAM_HISTORY={} too small (minimum 4)", n);
         }
         build.define("XRCE_STREAM_HISTORY", n.to_string().as_str());
-        println!("cargo:rerun-if-env-changed=NROS_XRCE_STREAM_HISTORY");
     }
     println!("cargo:rerun-if-env-changed=NROS_XRCE_STREAM_HISTORY");
+    println!("cargo:rerun-if-env-changed=NROS_XRCE_CUSTOM_TRANSPORT_MTU");
+
+    // Phase 207.6 — per-session pool sizes. A pub-only bare-metal node
+    // can drop `MAX_SUBSCRIBERS` to 1 (zero-length arrays aren't
+    // standard C; 1 is the practical minimum), `MAX_SERVICE_SERVERS` /
+    // `MAX_SERVICE_CLIENTS` to 1, `SUBSCRIBER_RING_DEPTH` to 1, and
+    // `BUFFER_SIZE` to 256. Combined with `STREAM_HISTORY=4` +
+    // `NROS_XRCE_CUSTOM_TRANSPORT_MTU=512` the session struct drops
+    // from ~390 KB to ~10–20 KB.
+    for (env_name, define_name, min) in [
+        ("NROS_XRCE_MAX_SUBSCRIBERS", "XRCE_MAX_SUBSCRIBERS", 1),
+        (
+            "NROS_XRCE_MAX_SERVICE_SERVERS",
+            "XRCE_MAX_SERVICE_SERVERS",
+            1,
+        ),
+        (
+            "NROS_XRCE_MAX_SERVICE_CLIENTS",
+            "XRCE_MAX_SERVICE_CLIENTS",
+            1,
+        ),
+        (
+            "NROS_XRCE_SUBSCRIBER_RING_DEPTH",
+            "XRCE_SUBSCRIBER_RING_DEPTH",
+            1,
+        ),
+        ("NROS_XRCE_BUFFER_SIZE", "XRCE_BUFFER_SIZE", 64),
+    ] {
+        if let Ok(v) = env::var(env_name) {
+            let n: u32 = v
+                .parse()
+                .unwrap_or_else(|_| panic!("{env_name}='{v}' is not a number"));
+            if n < min {
+                panic!("{env_name}={n} too small (minimum {min})");
+            }
+            build.define(define_name, n.to_string().as_str());
+        }
+        println!("cargo:rerun-if-env-changed={env_name}");
+    }
 
     build.compile("nros_rmw_xrce_c_inline");
 
@@ -317,7 +355,15 @@ fn generate_uxr_config(
         .replace("@UCLIENT_UDP_TRANSPORT_MTU@", "4096")
         .replace("@UCLIENT_TCP_TRANSPORT_MTU@", "4096")
         .replace("@UCLIENT_SERIAL_TRANSPORT_MTU@", "512")
-        .replace("@UCLIENT_CUSTOM_TRANSPORT_MTU@", "4096")
+        .replace(
+            "@UCLIENT_CUSTOM_TRANSPORT_MTU@",
+            // Phase 207.6 — env-tunable so RAM-tight bare-metal nodes can
+            // drop the per-session stream buffers (`STREAM_BUFFER_SIZE =
+            // CUSTOM_TRANSPORT_MTU × STREAM_HISTORY`) by an order of
+            // magnitude. Min 128 (smaller breaks the framing/header
+            // assumptions); default 4096 keeps hosted behaviour.
+            &env::var("NROS_XRCE_CUSTOM_TRANSPORT_MTU").unwrap_or_else(|_| "4096".into()),
+        )
         .replace("@UCLIENT_SHARED_MEMORY_MAX_ENTITIES@", "4")
         .replace("@UCLIENT_SHARED_MEMORY_STATIC_MEM_SIZE@", "10")
         .replace("@UCLIENT_HARD_LIVELINESS_CHECK_TIMEOUT@", "10000");

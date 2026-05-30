@@ -32,10 +32,25 @@ extern "C" {
  *      defaults so the C backend behaves the same as the Rust one
  *      under nominal config). ---- */
 
+/* Phase 207.6 — guarded so the xrce-cffi build.rs env knobs
+ * (`NROS_XRCE_MAX_SUBSCRIBERS`, `..._MAX_SERVICE_SERVERS`,
+ * `..._MAX_SERVICE_CLIENTS`, `..._BUFFER_SIZE`) can shrink the
+ * per-session struct on RAM-tight embedded targets. The default
+ * `xrce_session_state_t` is ~390 KB; a pub-only bare-metal node can
+ * drop it well below 32 KB by setting subscribers/services to 0 and
+ * smaller per-entity buffers. */
+#ifndef XRCE_MAX_SUBSCRIBERS
 #define XRCE_MAX_SUBSCRIBERS       8
+#endif
+#ifndef XRCE_MAX_SERVICE_SERVERS
 #define XRCE_MAX_SERVICE_SERVERS   4
+#endif
+#ifndef XRCE_MAX_SERVICE_CLIENTS
 #define XRCE_MAX_SERVICE_CLIENTS   4
+#endif
+#ifndef XRCE_BUFFER_SIZE
 #define XRCE_BUFFER_SIZE           1024
+#endif
 /* Phase 130.4 — bumped default from 4 to 16. Action server callbacks
  * that publish feedback + result + status_array + service replies
  * in a single user-handler invocation could exhaust 4 unACK'd slots

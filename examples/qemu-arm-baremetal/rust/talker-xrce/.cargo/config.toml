@@ -16,9 +16,21 @@ ZPICO_NO_SMOLTCP = "1"
 # turns those off → no IP-link C; `--gc-sections` (above) strips the residual
 # smoltcp platform impl. Serial link (`Z_FEATURE_LINK_SERIAL`) stays on.
 NROS_LINK_IP = "0"
-# Phase 204.5 — zenoh-pico tcp/serial client working set is small; shrink the
-# 64 KB default static heap.
-NROS_HEAP_SIZE = "524288"
+# Phase 207.6 — shrink the vendor XRCE session-state pools so the
+# `xrce_session_state_t` calloc fits in a small heap (~390 KB at the
+# defaults; ~12 KB at these). A pub-only talker doesn't need subscribers
+# / services; `RING_DEPTH=1` collapses the per-subscriber ring; `MTU=512`
+# matches the SERIAL_TRANSPORT_MTU; `STREAM_HISTORY=4` is the floor.
+NROS_XRCE_STREAM_HISTORY        = "4"
+NROS_XRCE_CUSTOM_TRANSPORT_MTU  = "512"
+NROS_XRCE_MAX_SUBSCRIBERS       = "1"
+NROS_XRCE_MAX_SERVICE_SERVERS   = "1"
+NROS_XRCE_MAX_SERVICE_CLIENTS   = "1"
+NROS_XRCE_SUBSCRIBER_RING_DEPTH = "1"
+NROS_XRCE_BUFFER_SIZE           = "256"
+# Phase 204.5 — heap sized to the right side of the XRCE session
+# struct above + a fragmentation margin.
+NROS_HEAP_SIZE = "24576"
 
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"
