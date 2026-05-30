@@ -181,6 +181,11 @@ Two additional, smaller ROS-2-generic friction sources:
       proof is 209.G; this commit lands the surface 209.G will exercise.)
 
 ### 209.E — `nros generate cpp --workspace <ws>` ROS 2 msg bulk codegen
+**Superseded by Phase 210** (`docs/roadmap/phase-210-ros-convention-codegen.md`)
+— 210.C lands this work in the broader workspace-discovery + ROS-convention
+codegen frame (`rosidl_generate_interfaces` cmake shape + smart
+`find_package(<msg-pkg>)` stub + layered search path). Original sketch kept
+for reference:
 - [ ] Today `nros generate cpp <pkg>` runs per package. A real-world ROS 2 port
       transitively needs 5–20 message packages (the stock `geometry_msgs` /
       `nav_msgs` / `diagnostic_msgs` / `tf2_msgs` / `sensor_msgs` set + whatever
