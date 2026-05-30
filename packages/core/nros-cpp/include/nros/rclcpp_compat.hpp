@@ -230,7 +230,9 @@ class Node : public std::enable_shared_from_this<Node> {
     std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
                                                                  const ::nros::QoS& qos, Cb cb) {
         auto s = std::make_shared<::nros::Subscription<M>>();
-        (void)node_.create_subscription<M>(*s, topic.c_str(), qos, std::move(cb));
+        // nros's callback overload is `(out, topic, F, qos, opts)` — note the
+        // callback comes BEFORE the QoS arg (different from rclcpp).
+        (void)node_.create_subscription<M>(*s, topic.c_str(), std::move(cb), qos);
         return s;
     }
 

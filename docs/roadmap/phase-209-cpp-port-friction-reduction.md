@@ -71,6 +71,19 @@ Two additional, smaller ROS-2-generic friction sources:
 
 ## Work Items (ranked by impact / smallest-first)
 
+### 209.A.follow-up — capturing-lambda / `std::function` subscription callbacks
+- [ ] Surfaced by the 209.G synthetic `topic_state_monitor` port: `nros::Node::
+      create_subscription`'s callback overload is SFINAE-restricted to plain
+      `void(*)(const M&)` function pointers (`enable_if<is_convertible<F,
+      void(*)(const M&)>>`). rclcpp accepts capturing lambdas / `std::function`
+      freely — every upstream node that captures `this` in a subscription
+      callback (most of them) does not compile through `rclcpp::Node::create_
+      subscription` as-is.
+      **Fix:** the compat header allocates a heap-stored `std::function<void
+      (const M&)>` per subscription + a fn-pointer trampoline that calls it
+      through the nros FFI user-data slot. Restores the most-cited rclcpp
+      callback pattern unchanged.
+
 ### 209.A — `nros/rclcpp_compat.hpp` source-compat header
 - [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**
       `packages/core/nros-cpp/include/nros/rclcpp_compat.hpp` lands the surface
@@ -188,14 +201,26 @@ Two additional, smaller ROS-2-generic friction sources:
       embedded binary with the bake step in the build.
 
 ### 209.G — Walking the first port end-to-end (the proof, + a book page)
-- [ ] Pick a small real-world ROS 2 node (the survey nominates
-      `topic_state_monitor` from `~/repos/autoware_universe/system/` as the
-      smallest + most generic). Copy it under `examples/templates/cpp-port-<name>/`;
-      show it building with 209.A + 209.B + 209.C + 209.D shipped, the original
-      source files essentially untouched. Land the example + a book page
-      (`book/src/getting-started/porting-a-cpp-node.md`) that walks the diff.
-- [ ] **Acceptance:** the example compiles + boots on `native_sim` (Zephyr) and
-      publishes `DiagnosticArray`; the book page is a copy-paste-able guide.
+- [x] **First iteration (2026-05-30, branch `phase-209-cpp-port-friction-
+      reduction`).** Synthetic in-tree `topic_state_monitor` port at
+      `examples/templates/topic-state-monitor-port/` — same shape as the
+      upstream Autoware node (multi-topic liveness watchdog + per-topic
+      `DiagnosticArray` publish). Builds + links against nano-ros through
+      A+B+C+D with only the three compat lines in the CMakeLists. Surfaced
+      one real gap (capturing-lambda subscription callbacks — filed as
+      **209.A.follow-up** above). The synthetic node uses stateless
+      fn-pointer subscriptions + global state as the today-workaround,
+      documented inline. Native build verified (`build/topic_state_monitor`).
+- [ ] **Vendor + build the upstream source** (next iteration). Needs an
+      Autoware checkout — clone `autoware.system/topic_state_monitor` under
+      `vendor/`, codegen `tf2_msgs` + the `autoware_*` deps the upstream pulls,
+      land the 209.A capturing-lambda follow-up so the upstream callbacks
+      compile unmodified, run on `native_sim` (Zephyr).
+- [ ] **Book page** `book/src/getting-started/porting-a-cpp-node.md` — walks
+      the diff (essentially: prepend three lines to `CMakeLists.txt`).
+- [ ] **Acceptance:** the upstream example compiles + boots on `native_sim`
+      (Zephyr) and publishes `DiagnosticArray`; the book page is a
+      copy-paste-able guide.
 
 ### 209.H — `rclcpp_lifecycle::LifecycleNode` mirror (deferred, P3)
 - [ ] Stock ROS 2 nodes increasingly inherit
