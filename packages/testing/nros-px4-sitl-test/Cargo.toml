@@ -1,0 +1,27 @@
+[workspace]
+# Phase 208.D.3 — empty `[workspace]` table on purpose. Keeps this
+# package OUT of the nano-ros root workspace so cargo doesn't try to
+# resolve the `px4-sitl-tests` path-dep into the `px4-rs` submodule
+# at workspace-load time. The submodule may be absent on a clean clone
+# (`nros setup native --rmw zenoh` does not fetch it); when it's
+# missing, the root workspace still loads cleanly. Building / testing
+# THIS crate requires the submodule, and is invoked only by
+# `just px4 test-sitl`.
+
+[package]
+name        = "nros-px4-sitl-test"
+version     = "0.1.0"
+edition     = "2024"
+license     = "MIT OR Apache-2.0"
+publish     = false
+description = "PX4 SITL E2E test fixture for nano-ros uORB modules (out-of-workspace)"
+
+[[test]]
+name = "px4_e2e"
+path = "tests/px4_e2e.rs"
+
+[dependencies]
+# Path-dep into the px4-rs submodule. Out-of-workspace, so its
+# absence on a fresh clone is a build-time error here only, not a
+# root-workspace-load error everywhere else.
+px4-sitl-tests = { path = "../../../third-party/px4/px4-rs/tests/sitl" }

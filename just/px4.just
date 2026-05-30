@@ -199,10 +199,14 @@ test:
 [group("debug")]
 test-sitl: build-sitl
     #!/usr/bin/env bash
+    # Phase 208.D.3 — `px4_e2e` moved to the out-of-workspace
+    # `nros-px4-sitl-test` crate so the root workspace doesn't try to
+    # resolve `px4-rs` on a fresh clone. Run it from its own dir.
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
-    cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests --features px4-sitl --test px4_e2e
+    cd packages/testing/nros-px4-sitl-test
+    cargo nextest run "${cargo_nextest_args[@]}" --test px4_e2e
 
 # Combined CI: check + unit tests (SITL gated separately via test-sitl).
 [group("full-matrix")]

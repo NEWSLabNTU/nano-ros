@@ -30,8 +30,12 @@
 //!
 //! See `docs/roadmap/phase-98-px4-autopilot-integration.md` for the
 //! design rationale.
-
-#![cfg(feature = "px4-sitl")]
+//!
+//! Phase 208.D.3 — lives in its own crate (`nros-px4-sitl-test`) with
+//! an empty `[workspace]` table so the nano-ros root workspace doesn't
+//! try to resolve the `px4-sitl-tests` path dep when the `px4-rs`
+//! submodule is absent (the audit blocker P3). Run via
+//! `just px4 test-sitl`.
 
 use std::{env, path::PathBuf, process::Command, time::Duration};
 

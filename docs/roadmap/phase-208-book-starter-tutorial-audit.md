@@ -146,7 +146,7 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       `~/.nros/sdk/<tool>/<version>/bin/<binary>` at exec time. Shim block
       runs above the already-on-PATH early-exit so re-running the installer
       against an existing nros install refreshes shims.
-- [ ] **208.D.3** `px4-rs` workspace gate (P3). Workspace `nros-tests`
+- [x] **208.D.3** `px4-rs` workspace gate (P3). Workspace `nros-tests`
       transitively pulls `px4-sitl-tests`; `nros setup native --rmw zenoh`
       doesn't fetch the submodule. Gate behind a `px4-sitl` feature default-off,
       OR include `px4-rs` in the native plan. Verify `cargo build -p
@@ -163,7 +163,7 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       `build: build-examples` (alias) — `just esp32 build` returns the same
       artifact set as every other platform's `build` recipe. The no-separate-core
       reason stays as a comment above the recipe.
-- [ ] **208.D.6** `just doctor tier=default` hang (P13). `_pinned-toolchain-files`
+- [x] **208.D.6** `just doctor tier=default` hang (P13). `_pinned-toolchain-files`
       makes a rustup network call → SIGTERM after 3 min. Add `--offline` path
       or skip on `tier=default`.
 - [x] **208.D.7** Folded `integrations/zephyr/` → `zephyr/` (P9). The legacy

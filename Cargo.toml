@@ -315,6 +315,10 @@ exclude = [
     # absorb its crates into nano-ros's workspace.
     "third-party/px4/px4-rs",
     "third-party/px4/PX4-Autopilot",
+    # Phase 208.D.3 — out-of-workspace test crate that path-deps into
+    # the px4-rs submodule. Listed here so cargo doesn't error on a
+    # spurious workspace member when walking `packages/testing/`.
+    "packages/testing/nros-px4-sitl-test",
 ]
 
 [workspace.package]

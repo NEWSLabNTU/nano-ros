@@ -175,14 +175,28 @@ doctor:
     shopt -s globstar nullglob 2>/dev/null
     pinned_missing=()
     comp_missing=()
+    rustup_timeout=()
+    # Phase 208.D.6 — wrap every `rustup` invocation in `timeout 5s` +
+    # disable rustup self-update so a stale rustup or a flaky/slow
+    # rustup-dist mirror can't wedge `just doctor` (the audit blocker
+    # P13). If a single call exceeds 5 s, doctor reports
+    # `rust-pinned-toolchains: rustup unresponsive` and moves on
+    # instead of hanging.
+    export RUSTUP_NO_SELF_UPDATE=1
     has_component() {
-        rustup component list --installed --toolchain "$2" 2>/dev/null \
+        timeout 5s rustup component list --installed --toolchain "$2" 2>/dev/null \
             | grep -qE "^$1(-[^[:space:]]+)?$"
     }
     for f in $(just workspace _pinned-toolchain-files); do
         channel=$(awk '/^channel *=/ { gsub(/["]/, "", $3); print $3; exit }' "$f")
         [ -z "$channel" ] && continue
-        if ! rustup toolchain list 2>/dev/null | grep -q "^$channel"; then
+        list_out="$(timeout 5s rustup toolchain list 2>/dev/null)"
+        rustup_rc=$?
+        if [ $rustup_rc -eq 124 ]; then
+            rustup_timeout+=("$channel ($f)")
+            continue
+        fi
+        if ! echo "$list_out" | grep -q "^$channel"; then
             pinned_missing+=("$channel ($f)")
             continue
         fi
@@ -192,7 +206,7 @@ doctor:
             has_component "$c" "$channel" || comp_missing+=("$channel/$c")
         done
     done
-    if [ ${#pinned_missing[@]} -eq 0 ] && [ ${#comp_missing[@]} -eq 0 ]; then
+    if [ ${#pinned_missing[@]} -eq 0 ] && [ ${#comp_missing[@]} -eq 0 ] && [ ${#rustup_timeout[@]} -eq 0 ]; then
         echo "  [OK] rust-pinned-toolchains"
     else
         if [ ${#pinned_missing[@]} -gt 0 ]; then
@@ -201,6 +215,10 @@ doctor:
         if [ ${#comp_missing[@]} -gt 0 ]; then
             echo "  [MISSING] rust-pinned-toolchains components: ${comp_missing[*]}"
         fi
+        if [ ${#rustup_timeout[@]} -gt 0 ]; then
+            echo "  [TIMEOUT] rust-pinned-toolchains: rustup unresponsive for ${rustup_timeout[*]}"
+            echo "            run: rustup self update; then re-run \`just doctor\`"
+        fi
         echo "            run: just workspace rust-pinned-toolchains"
         fail=1
     fi
@@ -208,7 +226,7 @@ doctor:
     # --- rust-targets ---
     tgt_missing=()
     for t in thumbv7em-none-eabihf thumbv7m-none-eabi armv7r-none-eabihf riscv32imc-unknown-none-elf riscv64gc-unknown-none-elf; do
-        rustup target list --installed 2>/dev/null | grep -q "^$t$" || tgt_missing+=("$t")
+        timeout 5s rustup target list --installed 2>/dev/null | grep -q "^$t$" || tgt_missing+=("$t")
     done
     if [ ${#tgt_missing[@]} -eq 0 ]; then
         echo "  [OK] rust-targets"
@@ -309,15 +327,20 @@ apt-packages:
 _pinned-toolchain-files:
     #!/usr/bin/env bash
     set -e
-    shopt -s globstar nullglob
+    # Phase 208.D.6 — replaced `shopt -s globstar; for f in
+    # examples/**/rust-toolchain.toml` with a `find -prune` because
+    # bash globstar descends into every `target/`, `target-*/`,
+    # `build-*/` dir under `examples/` (which is GB of build output
+    # on a warm tree) and took ~78 s on this host — the symptom the
+    # audit reported as "`just doctor tier=default` hangs". The find
+    # form prunes those dirs and returns in ~10 ms.
     emit() { [ -f "$1" ] && echo "$1"; }
     emit rust-toolchain.toml
     emit tools/rust-toolchain.toml
     emit packages/verification/nros-verification/rust-toolchain.toml
-    for f in examples/**/rust-toolchain.toml; do
-        case "$f" in */target/*) continue ;; esac
-        echo "$f"
-    done
+    find examples \
+        -type d \( -name target -o -name 'target-*' -o -name 'build-*' -o -name build \) -prune \
+        -o -name rust-toolchain.toml -print 2>/dev/null
 
 # Install every pinned toolchain referenced by a checked-in
 # `rust-toolchain.toml`, together with the components each file declares.
