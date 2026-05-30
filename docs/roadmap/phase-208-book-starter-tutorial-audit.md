@@ -123,6 +123,33 @@ self-fixes, no edits to the book, ≤ 400-word report.
       D pushed + fresh-shell clean) and `208.acc.5` (re-audit of broken
       tutorials reaches `Published: N`) remain — re-audit due once D.3 +
       D.7 land. The cross-cutting blockers (env vars, schema, PATH, stale
+- [x] **208.C.6** Closure-table refresh (2026-05-30, post-`d604dbee4`).
+      Every previously partial/open pattern now closed; track A and track B
+      are both empty of `[ ]` items. Updated table:
+      | Pattern | Closed by | Status |
+      |---|---|---|
+      | P1 build-script panics | D.1 | ✅ closed |
+      | P2 `nros.toml` schema drift | E.1 | ✅ closed |
+      | P3 `px4-rs` not fetched | D.3 (`packages/testing/nros-px4-sitl-test/` carved out of the workspace `nros-tests`) | ✅ closed |
+      | P4 `zenohd` not on PATH | D.2 | ✅ closed |
+      | P5 CMake snippet drift | E.5 | ✅ closed |
+      | P6 host daemon not started | E.2 | ✅ closed |
+      | P7 `Published: 0` off-by-one | E.4 | ✅ closed |
+      | P8 QEMU invocation drift | E.3 | ✅ closed |
+      | P9 legacy module drift | D.10 esp-idf + D.7 zephyr fold | ✅ closed |
+      | P10 invented config knobs | D.8 PlatformIO retired | ✅ closed |
+      | P11 wrong board / org names | D.4 + E.12 | ✅ closed |
+      | P12 doc oversells template | E.8 px4 | ✅ closed |
+      | P13 `just <plat>` coverage gaps | D.5 + D.6 | ✅ closed |
+      | P14 misc per-page bugs | D.11 + E.6/E.7/E.10/E.11 | ✅ closed |
+      | P15 installer stale-PATH | A.8 | ✅ closed |
+      **Score: 15 / 15 closed.** Only `acc.4` (fresh-shell clean Linux
+      Rust starter reaches `Published: 0` with no hand-set env / direnv)
+      and `acc.5` (strict-follow re-audit produces 0 BLOCKERS on any
+      tutorial) remain — both are *validation runs* of the now-shipped
+      D + E pile, not new fixes.
+
+The cross-cutting blockers (env vars, schema, PATH, stale
       CLI, daemon-start, QEMU invocation, banner) — Stage-2's verdict
       ("recurring blockers are environmental + schema") — are **gone**.
 
