@@ -41,8 +41,9 @@ static void signal_handler(int signum) {
 
 static void timer_callback(void* context) {
     TalkerContext* ctx = static_cast<TalkerContext*>(context);
-    ctx->count++;
 
+    // Post-increment so the first publish is 0, matching ROS demo nodes
+    // (rclcpp_demos `talker.cpp`). Phase 208.D.9.
     std_msgs::msg::Int32 msg;
     msg.data = ctx->count;
 
@@ -52,6 +53,7 @@ static void timer_callback(void* context) {
     } else {
         std::fprintf(stderr, "Publish failed: %d\n", ret.raw());
     }
+    ctx->count++;
 }
 
 // ----------------------------------------------------------------------------

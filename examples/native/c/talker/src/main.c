@@ -66,10 +66,12 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     (void)timer;
     talker_context_t* ctx = (talker_context_t*)context;
 
-    ctx->count++;
+    // Post-increment so the first publish is 0, matching ROS demo nodes
+    // (rclpy_demos `talker.py`, rclcpp_demos `talker.cpp`). Phase 208.D.9.
     ctx->message.data = ctx->count;
     NROS_SOFTCHECK(std_msgs_msg_int32_publish(ctx->publisher, &ctx->message));
     printf("Published: %d\n", ctx->message.data);
+    ctx->count++;
 }
 
 // ----------------------------------------------------------------------------

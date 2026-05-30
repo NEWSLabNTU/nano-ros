@@ -181,7 +181,7 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       `release/migration-install-local-removal.md`, `start-here/setup-compared-
       to-ros2.md`, `reference/cli.md`). CI grep guard in 208.D.4's
       `string-conventions-check.sh` keeps it from creeping back.
-- [ ] **208.D.9** Counter convention → ROS demo nodes (`stock count++` post-
+- [x] **208.D.9** Counter convention → ROS demo nodes (`stock count++` post-
       increment; first publish = 0) (P7 + user feedback). Currently Rust
       already at 0; C + C++ talkers pre-increment to 1. Align C + C++
       across host + embedded (`examples/{native,qemu-arm-freertos,qemu-arm-

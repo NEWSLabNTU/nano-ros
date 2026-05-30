@@ -60,7 +60,8 @@ int nros_app_main(int argc, char** argv) {
     LOG_INF("Publishing messages...");
     int32_t count = 0;
     while (true) {
-        count++;
+        // Post-increment so the first publish is 0, matching ROS demo nodes
+        // (rclcpp_demos `talker.cpp`). Phase 208.D.9.
         std_msgs::msg::Int32 msg;
         msg.data = count;
         nros::Result ret = pub.publish(msg);
@@ -68,6 +69,7 @@ int nros_app_main(int argc, char** argv) {
             NROS_LOG_INFO(g_logger, "Published: %d", count);
         else
             NROS_LOG_ERROR(g_logger, "Publish failed: %d", ret.raw());
+        count++;
         k_sleep(K_SECONDS(1));
     }
     nros::shutdown();

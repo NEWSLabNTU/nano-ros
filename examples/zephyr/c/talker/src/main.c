@@ -71,10 +71,12 @@ int nros_app_main(int argc, char** argv) {
     LOG_INF("Publishing messages...");
 
     while (1) {
-        count++;
+        // Post-increment so the first publish is 0, matching ROS demo nodes
+        // (rclpy_demos `talker.py`, rclcpp_demos `talker.cpp`). Phase 208.D.9.
         msg.data = count;
         NROS_SOFTCHECK(std_msgs_msg_int32_publish(&pub, &msg));
         NROS_LOG_INFO(g_logger, "Published: %d", count);
+        count++;
         k_sleep(K_SECONDS(1));
     }
 
