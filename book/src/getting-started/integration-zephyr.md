@@ -107,19 +107,30 @@ tcp/127.0.0.1:7456` for zenoh; the Micro-XRCE-DDS agent for xrce).
 
 ## Configure
 
-Add nano-ros to your workspace `west.yml`:
+Add nano-ros (and a Zephyr pin — `zephyr/west.yml` is manifest-only;
+it does **not** pull Zephyr itself) to your workspace `west.yml`:
 
 ```yaml
 manifest:
   remotes:
     - name: nano-ros
       url-base: https://github.com/NEWSLabNTU
+    - name: zephyr
+      url-base: https://github.com/zephyrproject-rtos
   projects:
+    - name: zephyr
+      remote: zephyr
+      revision: v3.7.0          # or your chosen 3.7 LTS / 4.x SHA
+      path: zephyr
+      import: true               # pulls Zephyr's own modules
     - name: nano-ros
       remote: nano-ros
+      revision: main             # required — repo's default branch is
+                                 # `main`; west defaults to `master`
+                                 # otherwise and the fetch fails.
       path: modules/nano-ros
       import:
-        file: zephyr/west.yml      # pulls Zephyr + nano-ros deps
+        file: zephyr/west.yml    # pulls nano-ros's transport deps
 ```
 
 Then per-application `prj.conf`:
@@ -144,9 +155,18 @@ library transparently.
 
 ## Build
 
+If your workspace is a fresh manifest-only dir (no `.west/`), initialise
+it first so `west` knows which `west.yml` is the manifest:
+
 ```bash
+cd my_zephyr_ws
+west init -l .                           # one-time; points west at the
+                                         # local west.yml in cwd
 west update                              # clones nano-ros + Zephyr into the workspace
 ```
+
+(If you started from `west init -m <remote>`, both calls above are
+already done — go straight to `west build` below.)
 
 The transports + `px4-rs` come from the [prerequisites](#prerequisites) step
 (`west update` clones nano-ros but **not** its submodules). With the Zephyr SDK +

@@ -10,6 +10,9 @@
 #     projects:
 #       - name: nano-ros
 #         remote: nano-ros
+#         revision: main          # the repo's default branch is `main`,
+#                                 # NOT `master` — without this `west`
+#                                 # defaults to master and fetch fails.
 #         path: modules/nano-ros
 #         import:
 #           file: zephyr/west.yml
