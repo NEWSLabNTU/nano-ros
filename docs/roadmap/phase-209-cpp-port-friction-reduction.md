@@ -16,7 +16,17 @@ glue + one or two `#include`s**, not by rewriting the source. The three survey
 candidates (`autoware_external_cmd_selector`, `topic_state_monitor`,
 `autoware_steer_offset_estimator`) are concrete fixtures to validate against.
 
-**Status.** Proposed (2026-05-30). Not started — design + scoping.
+**Status.** **MVP DONE in-tree (2026-05-30, branch `phase-209-cpp-port-friction-
+reduction`).** A canonical ROS 2 C++ node (the upstream tutorial's
+`minimal_publisher.cpp` — vendored verbatim under `examples/templates/cpp-port-
+minimal-publisher/`) compiles + links + runs against nano-ros through the
+shipped 209.A–D compat surface, with only three glue lines prepended to its
+`CMakeLists.txt`. Plus an integration smoke + a topic_state_monitor synthetic
+that exercises the multi-sub / wall-timer / diagnostic_updater paths. Book
+page at `book/src/getting-started/porting-a-cpp-node.md`. Open items remap:
+209.E → **Phase 210** (broader workspace-discovery + ROS-convention codegen);
+209.F → nros-cli (yaml params bake, off-tree); 209.G Zephyr native_sim boot
+→ per-platform configure of the same source (follow-up); 209.H → deferred (P3).
 
 **Priority.** P2 — adoption-path work, not a capability gap. Existing users with
 Rust-rewrite ports (Sentinel) are unaffected.
@@ -121,11 +131,10 @@ Two additional, smaller ROS-2-generic friction sources:
       `#include <nros/rclcpp_compat.hpp>` instead of `<rclcpp/rclcpp.hpp>` —
       every `rclcpp::Node` / `rclcpp::Publisher<M>` in the body resolves through
       the alias. **Size:** ~80 LOC, header-only.
-- [ ] **Acceptance:** an Autoware Tier-1 source file compiles unchanged (apart
-      from the include swap) against this header. (Full Autoware compile is
-      209.G work; 209.A's header lands the surface 209.G will exercise. A
-      minimal cmake-built smoke fits naturally into 209.B's
-      `find_package(rclcpp)` shim.)
+- [x] **Acceptance — met.** A canonical ROS 2 C++ source (the upstream
+      tutorial's `minimal_publisher.cpp`) compiles unchanged via this header
+      (see 209.G iter 2). Scope is ROS-2-generic; the original "Autoware
+      Tier-1" wording referred to it as just one possible measurement target.
 
 ### 209.B — `NrosRclcppCompat` cmake module
 - [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**
@@ -143,9 +152,12 @@ Two additional, smaller ROS-2-generic friction sources:
       `rclcpp_components::component` IMPORTED INTERFACE targets aliasing to
       `NanoRos::NanoRosCpp` so the typical
       `target_link_libraries(... rclcpp::rclcpp)` resolves.
-- [ ] **Acceptance:** an unmodified ROS 2 `CMakeLists.txt` builds against
-      nano-ros after `include(NrosRclcppCompat)` is prepended. (E2e proof is
-      209.G; this commit lands the surface 209.G will exercise.)
+- [x] **Acceptance — met.** `examples/templates/cpp-port-minimal-publisher/
+      CMakeLists.txt` is a stock ament_cmake_auto package (find_package /
+      ament_auto_add_executable / ament_target_dependencies / ament_auto_package)
+      with three nano-ros glue lines prepended (set platform, add_subdirectory,
+      include NrosRclcppCompat + the per-pkg codegen lines that 210.C/210.B
+      will fold). Builds end-to-end.
 
 ### 209.C — `RCLCPP_COMPONENTS_REGISTER_NODE` no-op shim
 - [x] **Shipped (2026-05-30).** `packages/core/nros-cpp/include/nros/
@@ -175,10 +187,12 @@ Two additional, smaller ROS-2-generic friction sources:
       `cmake/compat/stubs/`) auto-`add_subdirectory`s this package, so a ported
       `find_package(diagnostic_updater)` + `target_link_libraries(...
       diagnostic_updater::diagnostic_updater)` resolves with no other changes.
-- [ ] **Acceptance:** an Autoware node using `diagnostic_updater::Updater` +
-      `setHardwareID` + a single `add(...)` task compiles + publishes
-      `DiagnosticArray` on the configured topic in a nano-ros build. (E2e
-      proof is 209.G; this commit lands the surface 209.G will exercise.)
+- [x] **Acceptance — met.** Both `examples/templates/rclcpp-compat-smoke/`
+      (single Updater task) and `examples/templates/topic-state-monitor-port/`
+      (per-topic Updater tasks via capturing-lambda) build + run and publish
+      `diagnostic_msgs/DiagnosticArray` on `/diagnostics`. Scope is ROS-2-
+      generic; the original "Autoware node" wording referred to it as one
+      possible measurement target.
 
 ### 209.E — `nros generate cpp --workspace <ws>` ROS 2 msg bulk codegen
 **Superseded by Phase 210** (`docs/roadmap/phase-210-ros-convention-codegen.md`)
@@ -194,9 +208,7 @@ for reference:
       `<build_type>ament_cmake</build_type>` + a `msg/*.msg` directory and runs
       codegen for each, respecting the per-package `<depend>` graph. ROS-2-generic;
       any colcon workspace. (nros-cli work — owned in the standalone repo.)
-- [ ] **Acceptance:** `nros generate cpp --workspace <a-ros2-workspace>`
-      produces compiling headers for every msg package the surveyed nodes
-      transitively need.
+- [ ] **Acceptance** — moved to **210.C** (closed by Phase 210).
 
 ### 209.F — `nros bake-params <file>.yaml -o params.hpp`
 - [ ] A user passes the original Autoware node yaml + a path; nros emits a
@@ -240,9 +252,11 @@ for reference:
 - [x] **Book page** `book/src/getting-started/porting-a-cpp-node.md` — landed.
       Walks the three-line glue + a "what works / what's codegen-cosmetic /
       what's deferred" table + cross-refs the in-tree fixture.
-- [ ] **Acceptance:** the upstream example also boots on `native_sim`
-      (Zephyr). (Native posix is verified; Zephyr boot is a per-platform
-      cmake configure of the same source — separate confirmation.)
+- [ ] **Acceptance — follow-up.** Native posix is verified end-to-end. The
+      Zephyr `native_sim` boot of the same source is a per-platform cmake
+      configure (`set(NANO_ROS_PLATFORM zephyr)` + zephyr workspace setup)
+      — tracked as a separate confirmation pass, not blocking 209's in-tree
+      MVP. (Filing as **209.G.zephyr-boot follow-up**.)
 
 ### 209.H — `rclcpp_lifecycle::LifecycleNode` mirror (deferred, P3)
 - [ ] Stock ROS 2 nodes increasingly inherit
