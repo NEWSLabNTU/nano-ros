@@ -279,8 +279,14 @@ setup:
     # Phase 197.4/196.9 — provision the board's sources (arm-gcc, qemu dist, +
     # zenoh-pico/mbedtls via the default zenoh RMW) via nros before the arm
     # zenoh-pico build needs them. Then the patched-qemu + zenoh-pico-arm builds.
+    # Phase 208 (post-CI dispatch) — `examples/qemu-arm-baremetal/rust/talker-xrce/`
+    # (Phase 207) needs micro-cdr + micro-xrce-dds-client sources too, otherwise
+    # `nros-rmw-xrce-cffi/build.rs` panics "submodule not initialised". Provision
+    # both RMW source sets in the same step so `just qemu build` covers every
+    # in-tree bare-metal example without a separate setup invocation.
     source scripts/build/cargo.sh
-    "$(nros_cli_bin)" setup qemu-arm-baremetal
+    "$(nros_cli_bin)" setup qemu-arm-baremetal --rmw zenoh
+    "$(nros_cli_bin)" setup --source micro-cdr --source micro-xrce-dds-client
     # build-zenoh-pico.sh picks `arm-none-eabi-gcc` off PATH; the nros-provisioned
     # arm-gcc 13.2 (newlib headers — apt's gcc-arm-none-eabi has none, so its
     # bare-metal compile fails `stdlib.h: No such file`) lands in ~/.nros/sdk/*/bin,
