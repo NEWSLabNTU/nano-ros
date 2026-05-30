@@ -21,7 +21,14 @@ flags() {
         | sort -u
 }
 
-index_flags="$(grep -E '^configure\s*=' "$index" | head -1 | flags)"
+# Phase 208 (post-audit) — scope to the [tool.qemu.source] section. The
+# index has multiple `configure = …` keys across different tools/sources;
+# the previous `grep -E '^configure\s*=' | head -1` picked the first one
+# in the file (`git submodule update --init --recursive`, a source-package
+# recipe), so the drift check fired against every commit even when the
+# qemu configure flags hadn't changed.
+index_flags="$(sed -n '/^\[tool\.qemu\.source\]/,/^\[/p' "$index" \
+    | grep -E '^configure\s*=' | head -1 | flags)"
 # The build script's ./configure invocation may span lines (trailing `\`); join.
 script_flags="$(sed -n '/\.\/configure/,/make /p' "$script" | tr '\n' ' ' | flags)"
 

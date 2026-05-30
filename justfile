@@ -408,6 +408,7 @@ test-unit verbose="":
     args=(--workspace --exclude nros-tests \
           --exclude nros-rmw-xrce-cffi \
           --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-paths \
           --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -1041,7 +1042,8 @@ build-workspace:
         --exclude nros-c \
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
-        --exclude nros-rmw-xrce-cffi-staticlib
+        --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-paths
     # Mirror the build excludes: under `--no-default-features` nros-c /
     # nros-cpp reference the per-platform `nros_platform_log_write` ABI
     # (Phase 88 log facade default sink) which no platform impl supplies
@@ -1052,7 +1054,8 @@ build-workspace:
         --exclude nros-c \
         --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
-        --exclude nros-rmw-xrce-cffi-staticlib
+        --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-paths
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -1073,7 +1076,8 @@ build-workspace-embedded:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib
+        --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-paths
 
 # Format workspace code
 [private]
@@ -1098,7 +1102,8 @@ check-workspace:
         --exclude nros-c --exclude nros-cpp \
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib
+        --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-paths
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
@@ -1120,7 +1125,8 @@ check-workspace-embedded:
         --exclude nros-rmw-zenoh-staticlib \
         --exclude nros-sizes-build \
         --exclude nros-rmw-xrce-cffi \
-        --exclude nros-rmw-xrce-cffi-staticlib
+        --exclude nros-rmw-xrce-cffi-staticlib \
+        --exclude nros-build-paths
 
 # Run the host + embedded workspace clippy CONCURRENTLY. They share no
 # target-dir (host = `target/`, embedded = `target-embedded/`), so cargo's
