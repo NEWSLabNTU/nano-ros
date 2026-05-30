@@ -108,23 +108,56 @@ Add the QoS flag to the published interop snippet in
 trip because the audit's Rust agent didn't reach the ROS 2 interop
 section).
 
-### F6 — Stale strings in `troubleshooting-first-10-min.md`
+### F6 — Stale strings in `troubleshooting-first-10-min.md` — closed
 
-acc.5 troubleshoot report:
-- C/C++ transport-failure branch (L58–62) cites `nros_init` (real:
-  `nros_support_init`), `ConnectionFailed = -3` (real: `NROS_RET_NOT_FOUND
-  = -4`), `process exit -100` (real: `1` via `NROS_CHECK_RET`).
-- CMake "missing codegen" branch (L30–38) keys on strings the build
-  never prints (`nros-codegen not found`); the real literal is
-  `nros (codegen tool) not found on PATH or in ~/.nros/bin`.
-- `NROS_LOCATOR` (canonical override) is never mentioned — only the
-  legacy `ZENOH_LOCATOR` is.
-- Missing branches: `direnv allow` hint (the `FREERTOS_PORT not set`
-  panic from `zpico-sys/build.rs`); the `cargo build --features
-  rmw-cyclonedds` cannot-link-without-CMakeLists path (Phase 175).
+acc.5 troubleshoot report flagged five real-error mismatches; rewrote
+the page against current code (2026-05-30). Now four labelled sections
+(A. Build failures / B. Binary runs but no output / C. ROS 2 side sees
+nothing / D. Doctor + last-resort) with each branch quoting the **real
+stderr** a grep can match against.
 
-Per-symptom rewrites against the current C/C++ source + post-D+E error
-strings.
+Closed items:
+
+- **A2** uses the actual cmake string
+  `nros (codegen tool) not found on PATH or in ~/.nros/bin` (from
+  `cmake/NanoRosGenerateInterfaces.cmake:105` +
+  `cmake/NanoRosBootstrapCodegen.cmake:53` + the Zephyr sibling). Drops
+  the fictional `nros-codegen not found` text the doc invented.
+- **B1** quotes the Rust panic literal
+  `thread 'main' panicked … Failed to open session: Transport(ConnectionFailed)`
+  (verified by the acc.4 run).
+- **B2** matches the C `NROS_CHECK_RET` macro:
+  `NROS_CHECK failed … nros_support_init(...) -> -4` with process exit
+  `1` (not the fictional `nros_init -> -3` the old page claimed).
+- **B3** acknowledges the C++ `NROS_CPP_RET_TRANSPORT_ERROR = -100` is
+  the *result code*, not the process exit — the POSIX exit is
+  `(unsigned char)-100 = 156`. New entry explaining the conversion.
+- **B4** new branch on `NROS_LOCATOR` (canonical) + `ZENOH_LOCATOR`
+  (legacy alias) overrides at run time.
+- **A6** new branch on the `cargo build --features rmw-cyclonedds`
+  cannot-link failure — Phase 175 requires the CMakeLists path. Cite
+  the linker symbol (`undefined reference to
+  nros_rmw_cyclonedds_register` / `dds_create_participant`) so the user
+  can grep it.
+- **A7** new branch on `current package believes it's in a workspace`
+  (cargo workspace-walk hits the outer `nano-ros/Cargo.toml`; F1 is the
+  root fix).
+- **A8** new branch on the `direnv allow` reminder (Phase 208.D.1 made
+  the common build sites autoresolve but the advice still helps for
+  non-D.1 build sites + `FREERTOS_PORT not set`).
+- **C2** new branch on the `ros2 topic echo` QoS-mismatch (nano-ros
+  publisher BEST_EFFORT vs stock echo RELIABLE). F5 closed it in
+  `first-node-{c,cpp}.md`; troubleshoot now carries the symptom→fix
+  branch as a more generic landing spot.
+- **D2** new branch on the `[PATH] nros at ~/.nros/bin/nros but not on
+  PATH` diagnostic the F3 fix added — directs users at
+  `scripts/install-nros.sh --yes` (the rustup-style rc-append).
+
+The page stays the standalone first-10-min landing under
+`book/src/getting-started/`. The broader
+`book/src/user-guide/troubleshooting.md` (404-line deep-dive reference)
+is unchanged; the cross-link at the bottom of the page still routes
+post-first-build issues there.
 
 ### F7 — `installation.md` heads-up paragraph misses cyclonedds + `~/.nros/sdk`
 
