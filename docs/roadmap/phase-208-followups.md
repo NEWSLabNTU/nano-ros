@@ -190,10 +190,32 @@ underlying invocation.
 - L170–173: "Published: 0 within 3 seconds" — assumes a warm cache; cold
   build compiles ~80 s first.
 
-### F11 — `threadx_riscv64 build-fixtures` C cyclonedds CMake regenerate fails
+### F11 — `threadx_riscv64 build-fixtures` C cyclonedds — closed
 
-Separately tracked; not a doc fix. The zenoh artifacts on the riscv64
-threadx target build clean; cyclonedds C is the failure.
+The Batch 2 audit agent reported the C cyclonedds regenerate failure.
+Re-reproduced 2026-05-30: it doesn't fail today. Two bugs the original
+agent hit were closed during the Phase 203 ThreadX-Cyclone default-on
+work (commits `b7334bfbb` + the follow-up cleanup):
+
+1. **`cmake/platform/nano-ros-threadx.cmake`** mutated `CMAKE_C_FLAGS`
+   with the picolibc / THREADX / NETX `-I` paths, but Cyclone's nested
+   `project(CycloneDDS ...)` re-runs CMake's compiler init and **resets
+   `CMAKE_C_FLAGS`** to the toolchain baseline. ddsc's per-target FLAGS
+   dropped the threadx includes and the ddsrt port couldn't find
+   `tx_api.h` / `nxd_bsd.h`. Switched to directory-level
+   `include_directories` / `add_compile_options` /
+   `add_compile_definitions`, which propagate via directory properties
+   and survive nested `project()` resets.
+2. **`packages/dds/nros-rmw-cyclonedds/src/service.cpp:88`** called
+   `std::strtoull` — picolibc's `<cstdlib>` on the rv64/threadx cross
+   does **not** alias every C function into `std::` (`getenv` is in,
+   `strtoull` is not). Switched to `::strtoull`, which resolves through
+   `<stdlib.h>` on every target.
+
+Verified 2026-05-30 by `rm -rf examples/qemu-riscv64-threadx/{c,cpp}/*/build-cyclonedds && just threadx_riscv64 build-fixture-extras`: exit 0, all five Cyclone binaries built
+(`riscv64_threadx_{c,cpp,rust}_{talker,listener}_cyclonedds`).
+The earlier "regenerate sub-step fails" symptom does not reproduce
+on the current main; F11 is closed.
 
 ## Next pass
 
