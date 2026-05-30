@@ -36,57 +36,76 @@ examples/native/rust/talker/
 ```
 
 POSIX talkers read the locator / domain from environment variables
-(`NROS_LOCATOR`, `ROS_DOMAIN_ID`) — no `nros.toml` is needed.
-Embedded targets carry a sidecar `nros.toml` (`[node]` +
-`[[transport]]`) that the board crate parses at boot; see the
-Embedded Starters section.
+(`ZENOH_LOCATOR`, `ROS_DOMAIN_ID`) — no `config.toml` is needed.
+The `config.toml` shape used by embedded targets shows up under
+the Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your
-package. The in-tree
+package. The in-tree talker is a **member of the nano-ros workspace**,
+so it does NOT carry a `[workspace]` table — `cargo` walks up and
+picks up the root `Cargo.toml`. Verbatim from
 [`examples/native/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/rust/talker/Cargo.toml)
-is the canonical version (workspace member of the nano-ros root,
-multi-RMW feature flags, `nros-platform-cffi` for the POSIX C-port).
-The minimal **standalone** shape (no nano-ros workspace, one RMW) is:
+(trimmed to the docs-relevant fields — the in-tree file also exposes
+`rmw-cyclonedds` / `rmw-xrce` features for the multi-RMW build path):
 
 ```toml
 [package]
-name    = "my-talker"
+name    = "native-rs-talker"
+version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
 
 [[bin]]
 name = "talker"
 path = "src/main.rs"
 
+[features]
+default   = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+
 [dependencies]
-nros = { path = "<...>/packages/core/nros",
+nros = { path = "../../../../packages/core/nros",
          default-features = false,
          features = ["std", "rmw-cffi", "platform-posix"] }
-nros-platform-cffi = { path = "<...>/packages/core/nros-platform-cffi",
+nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi",
                        features = ["posix-c-port"] }
-nros-rmw-zenoh = { path = "<...>/packages/zpico/nros-rmw-zenoh",
-                   features = ["std", "platform-posix", "ros-humble"] }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh",
+                   features = ["std", "platform-posix", "ros-humble"],
+                   optional = true }
 std_msgs = { version = "*", default-features = false }
-log         = "0.4"
-env_logger  = "0.11"
-
-[workspace]      # empty table — keep this package out of any
-                 # parent workspace cargo finds when walking up.
+log = "0.4"
+env_logger = "0.11"
 ```
 
-Copying the in-tree example wholesale into a new tree without that
-empty `[workspace]` table makes cargo walk up and pull the example
-into the nano-ros workspace — which is fine inside the nano-ros
-checkout but breaks once you copy it out.
+**Copying this out of the workspace?** Once you move the directory
+elsewhere on disk, the path deps no longer resolve and there is no
+parent workspace to inherit from. Two options:
+
+1. Replace each `path = "../../../../packages/..."` with an absolute
+   path to your nano-ros checkout, AND add an empty `[workspace]`
+   table to stop cargo walking further up the filesystem.
+2. Keep it inside `examples/` in your own fork of nano-ros — the
+   simpler path while you're learning the API.
 
 ## Configure
 
-Three runtime knobs, overridable via env vars:
+Three runtime knobs, each overridable at three layers (defaults →
+`config.toml` → env vars):
 
 | Knob | Default | Env override |
 |---|---|---|
 | Zenoh locator | `tcp/127.0.0.1:7447` | `NROS_LOCATOR` (legacy alias: `ZENOH_LOCATOR`) |
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
 | Zenoh mode | client | `NROS_SESSION_MODE` (legacy alias: `ZENOH_MODE`) |
+
+`config.toml` (optional, alongside `Cargo.toml`):
+
+```toml
+[zenoh]
+locator   = "tcp/127.0.0.1:7447"
+domain_id = 0
+```
 
 ## Build
 
@@ -140,8 +159,9 @@ If `ros2 topic echo` shows no output despite the talker printing
 point at the same port (default `tcp/127.0.0.1:7447`).
 
 **Readiness signal.** Within 5 seconds of `RUST_LOG=info cargo run`,
-the talker should print `Published: 0`. If no `Published:` line in
-30 seconds:
+the talker should print `Published: 0` (the Rust talker pre-publishes
+`0` before the counter advances). If no `Published:` line in 30
+seconds:
 
 1. Confirm `RUST_LOG` is set. Without `RUST_LOG=info` (or `debug`),
    `env_logger` filters out the `Published:` lines and the run looks

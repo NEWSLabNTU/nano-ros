@@ -79,8 +79,8 @@ The same program in C and C++ is in the First Node guides:
 | Vendor / form factor      | Chip          | RTOS / no-RTOS  | Languages | Example in repo                                   | ROS 2 interop |
 |---------------------------|---------------|-----------------|-----------|---------------------------------------------------|---------------|
 | ARM MPS2-AN385 (QEMU)     | Cortex-M3     | FreeRTOS / bare | Rust C C++ ¹ | `examples/qemu-arm-{freertos,baremetal}/`         | Verified      |
-| ST STM32F4-Discovery      | Cortex-M4F    | FreeRTOS / bare | Rust ²    | board crate `nros-board-stm32f4-nucleo`           | Verified      |
-| Espressif ESP32-C3        | RISC-V (RV32) | bare / ESP-IDF  | Rust C C++ | `examples/esp32/rust/`, `integrations/nano-ros/`   | Verified      |
+| ST STM32F4-Discovery      | Cortex-M4F    | FreeRTOS / bare | Rust ²    | board crate `nros-board-stm32f4`                  | Verified      |
+| Espressif ESP32-C3        | RISC-V (RV32) | bare / ESP-IDF  | Rust C C++ | `examples/esp32/rust/`, `integrations/esp-idf/`   | Verified      |
 | Espressif ESP32-S3        | Xtensa        | bare / ESP-IDF  | Rust ³    | board crate `nros-board-esp32` (Xtensa toolchain) | Ready         |
 | Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/esp32-qemu/`                            | Verified      |
 | QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C    | `examples/threadx-riscv64/`                       | Verified      |
@@ -97,7 +97,8 @@ Footnotes — ¹ MPS2-AN385 bare-metal is Rust-only (`nros-c` / `nros-cpp`
 need an RTOS for libc / heap). ² STM32F4 Rust path is the canonical
 target for the bare-metal board crate; FreeRTOS variant uses the
 shared `nros-board-freertos` glue. ³ ESP32-S3 needs the `xtensa-esp32s3-none-elf`
-Rust target (`rustup target add` via esp-rs). ⁴ PX4 path is via the
+Rust target via the [`espup`](https://github.com/esp-rs/espup) toolchain
+installer (not `rustup` — Xtensa targets aren't in upstream rust). ⁴ PX4 path is via the
 external-module template in `integrations/px4/` — C++ only because
 PX4's uORB binding is C++-only.
 

@@ -140,22 +140,23 @@ builds finish in seconds.
 ## Run
 
 ```bash
-# threadx-linux (no QEMU):
-zenohd                                      # bring up the router (provisioned by nros setup --rmw zenoh)
-cd examples/threadx-linux/rust/talker
-cargo run --release
-# Expected:
-#   nros ThreadX-Linux Talker
+# threadx-linux (no QEMU). Step 1 brings up the in-tree zenohd on
+# the threadx-linux port (7455). Step 2 runs the talker via the
+# matching just recipe — same binary the example dir builds.
+just threadx_linux zenohd &
+just threadx_linux talker
+# Expected (per src/main.rs structured logs):
+#   Declaring publisher on /chatter (std_msgs/Int32)
+#   Publisher declared
+#   Published: 0
 #   Published: 1
-#   Published: 2
 #   ...
 
-# threadx-riscv64 (QEMU virt):
-qemu-system-riscv64 -machine virt -cpu rv64 -smp 1 -m 256M \
-                    -nographic \
-                    -netdev user,id=net0 \
-                    -device virtio-net-device,netdev=net0 \
-                    -kernel ./build/talker.elf
+# threadx-riscv64 (QEMU virt). Same shape — zenohd on 7453 first,
+# then the talker recipe boots `qemu-system-riscv64` with the
+# virtio-net + Slirp wiring baked in:
+just threadx_riscv64 zenohd &
+just threadx_riscv64 talker
 
 # Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
@@ -166,8 +167,9 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 For batch testing: `just threadx_linux test` runs every pubsub /
 service / action against an in-test zenohd.
 
-**Readiness signal.** threadx-linux: `Published: 1` within 3
-seconds of `cargo run`. threadx-riscv64 (QEMU): within ~15
+**Readiness signal.** threadx-linux: `Published: 0` within 3
+seconds of `just threadx_linux talker` (the Rust talker pre-publishes
+`0` before the counter advances). threadx-riscv64 (QEMU): within ~15
 seconds of QEMU boot. If no `Published:` line:
 
 1. Confirm `zenohd` reachable on the locator from `nros.toml`
@@ -186,7 +188,7 @@ seconds of QEMU boot. If no `Published:` line:
   [`examples/qemu-riscv64-threadx/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-riscv64-threadx/rust/talker)
 - Board crates:
   [`packages/boards/nros-board-threadx-linux/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-threadx-linux),
-  [`packages/boards/nros-board-riscv64-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-riscv64-qemu)
+  [`packages/boards/nros-board-threadx-qemu-riscv64/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-threadx-qemu-riscv64)
 
 ## Next
 

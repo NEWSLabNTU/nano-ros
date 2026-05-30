@@ -33,9 +33,14 @@ xrce) into `~/.nros/sdk`.
 ## Project layout
 
 Each example is a standalone Cargo package targeting
-`riscv32imc-unknown-none-elf` (ESP32-C3) or `xtensa-esp32s3-none-elf`
-(ESP32-S3). The board crate (`nros-board-esp32` or
-`nros-board-esp32-qemu`) wraps the wifi / esp-hal init.
+`riscv32imc-unknown-none-elf` (ESP32-C3). The board crate
+(`nros-board-esp32` or `nros-board-esp32-qemu`) wraps the wifi /
+esp-hal init.
+
+> **ESP32-S3 (Xtensa) is NOT supported today.** The tutorial targets
+> the RISC-V ESP32-C3 only. Xtensa targets do not ship via `rustup`
+> (they require the `espup` toolchain installer) and the in-tree
+> board crate is RISC-V only; this gap is tracked separately.
 
 ```text
 examples/esp32/rust/talker/
@@ -108,17 +113,27 @@ just esp32 build           # builds for the QEMU board crate
 ## Run
 
 ```bash
-# Real hardware:
+# QEMU ESP32. First bring up zenohd on the esp32 fixture port (7454):
+just esp32 zenohd &
+# Then boot the talker binary in qemu-system-riscv32 (esp32c3):
+just esp32 talker
+# Expected serial output (per src/main.rs):
+#   Declaring publisher on /chatter (std_msgs/Int32)
+#   Publisher declared
+#   Published: 0
+#   Published: 1
+#   ...
+
+# Real hardware. Make sure a `zenohd` on the host is reachable from
+# the Wi-Fi locator in `nros.toml`, then:
 cd examples/esp32/rust/talker
 cargo run --release        # invokes `espflash flash --monitor`
 # Expected serial output:
 #   ESP32-C3 booting...
 #   Wifi connected: 192.168.1.42
+#   Published: 0
 #   Published: 1
-#   Published: 2
-
-# QEMU ESP32:
-just esp32 talker          # boots the talker binary in qemu-system-xtensa
+#   ...
 
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
@@ -127,15 +142,17 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 **Readiness signal.** Real hardware: after `espflash flash --monitor`,
-expect the Wi-Fi connect line + `Published: 1` within 10 seconds.
+expect the Wi-Fi connect line + `Published: 0` within 10 seconds
+(the Rust talker pre-publishes `0` before the counter advances).
 QEMU ESP32: ~15 seconds. If no `Published:` line:
 
 1. Wi-Fi credentials wrong → `Wifi connect failed` in serial log.
 2. Wrong locator → talker logs `zenoh open failed` and retries.
    Confirm `zenohd` is reachable on the host IP from the board's
    subnet.
-3. ESP32-C3 vs ESP32-S3: confirm `.cargo/config.toml` target matches
-   your chip (`riscv32imc-unknown-none-elf` vs `xtensa-esp32s3-none-elf`).
+3. Confirm `.cargo/config.toml` target is
+   `riscv32imc-unknown-none-elf` (ESP32-C3). The tutorial does not
+   support ESP32-S3 (Xtensa) yet.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source
@@ -154,8 +171,7 @@ QEMU ESP32: ~15 seconds. If no `Published:` line:
   `examples/esp32/rust/`.
 - ESP-IDF component path for C / C++ apps:
   [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
-- PlatformIO library path:
-  [PlatformIO library](./integration-platformio.md).
-- ESP32-S3 (Xtensa) — same code shape; the toolchain swap is
-  `rustup target add xtensa-esp32s3-none-elf` and a different board
-  crate.
+- ESP32-S3 (Xtensa) — not supported today. The Xtensa toolchain
+  does not ship via `rustup` (it requires
+  [`espup`](https://github.com/esp-rs/espup)), and there is no
+  in-tree Xtensa board crate. Stick with ESP32-C3 (RISC-V) for now.

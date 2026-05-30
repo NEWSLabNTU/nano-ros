@@ -164,7 +164,7 @@ west build -b qemu_cortex_a9 apps/my_app
 ```
 
 (Verified end-to-end on a fresh BYO west workspace: this builds to `zephyr.exe`
-and runs to `Published: 1` against `zenohd -l tcp/127.0.0.1:7456`. On the 4.4
+and runs to `Published: 0` against `zenohd -l tcp/127.0.0.1:7456`. On the 4.4
 line, `find_package(Python3)` requires ≥ 3.12 and you select the RMW with
 `-S nros-zenoh` instead of the overlay.)
 
@@ -203,25 +203,39 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 ## Run
 
 ```bash
+# 1. Start zenohd on the host. The in-tree just recipe runs the
+#    pinned in-tree zenohd on the zephyr fixture port (7456) — the
+#    same port the example apps' `nros.toml` / Kconfig defaults pick
+#    up:
+just zephyr zenohd &
+#    Or directly:
+#    build/zenohd/zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting
+
+# 2. Boot the app. nano-ros's own in-tree zephyr talker has a
+#    matching just recipe for the canonical `native_sim` build path:
+just zephyr talker
+#    For a BYO west workspace + your own app:
 # QEMU Cortex-A9:
 west build -t run
-
 # native_sim:
 ./build/zephyr/zephyr.exe
 
-# Verify from stock ROS 2 in another terminal:
+# 3. Verify from stock ROS 2 in another terminal:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 The Zephyr boot banner runs first, then nano-ros prints
-`Published: 1`, `Published: 2`, ... as the talker fires.
+`Published: 0`, `Published: 1`, ... as the talker fires (the Rust
+talker pre-publishes `0` before the counter advances; C/C++ talkers
+pre-increment so their first banner is `Published: 1`).
 
-**Readiness signal.** On `native_sim`, expect `Published: 1`
-within 5 seconds of `./build/zephyr/zephyr.exe`; on `qemu_cortex_a9`
-expect it within ~15 seconds (QEMU cold boot + Zephyr init). If
-no `Published:` line in 30 seconds:
+**Readiness signal.** On `native_sim`, expect `Published: 0`
+within 5 seconds of `just zephyr talker` (or
+`./build/zephyr/zephyr.exe`); on `qemu_cortex_a9` expect it within
+~15 seconds (QEMU cold boot + Zephyr init). If no `Published:` line
+in 30 seconds:
 
 1. Confirm `CONFIG_NROS=y` lit up via `west build -t menuconfig`;
    without it the module shell never `add_subdirectory`'s nano-ros.

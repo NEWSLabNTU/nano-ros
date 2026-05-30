@@ -34,7 +34,7 @@ my_idf_app/
 │   ├── CMakeLists.txt             # `idf_component_register(REQUIRES nano-ros …)`
 │   ├── idf_component.yml          # declares nano-ros as a managed dependency
 │   ├── app_main.c | app_main.cpp
-│   └── nros.toml                  # [node] + [[transport kind="wifi"]]
+│   └── config.toml
 └── components/                    # (optional) local components override
 ```
 
@@ -44,12 +44,12 @@ The `idf_component.yml` is the dependency manifest:
 dependencies:
   nano-ros:
     # During development — local path to your nano-ros clone:
-    path: ../../../nano-ros/integrations/nano-ros
+    path: ../../../nano-ros/integrations/esp-idf
     # Once published to the Espressif Component Registry:
     # version: "*"
 ```
 
-The shell at `integrations/nano-ros/` wraps the nano-ros root CMake
+The shell at `integrations/esp-idf/` wraps the nano-ros root CMake
 into a standard IDF component, mapping IDF Kconfig knobs to
 `NANO_ROS_*` cache vars.
 
@@ -65,10 +65,9 @@ Component config → nano-ros
 
 The nano-ros component itself exposes only those two knobs.
 **Wi-Fi credentials + zenoh locator are NOT in this Kconfig** —
-put them in `main/nros.toml` (`[[transport]] kind = "wifi"` with
-`ssid`/`password`/`locator`), or supply them via your app's own
-`Kconfig.projbuild` (Espressif's standard pattern) and pass them
-to `nros::init(locator, domain_id)` at startup.
+provide them via your app's own `Kconfig.projbuild` (Espressif's
+standard pattern) or via environment variables, then pass them to
+`nros::init(locator, domain_id)` at startup.
 
 ## Build
 
@@ -103,12 +102,13 @@ patched QEMU.
 
 **Readiness signal.** After `idf.py flash monitor`, expect
 `I (XXXX) nano-ros: Wi-Fi connected` followed by
-`I (XXXX) nano-ros: Published: 0` within 10 seconds. If no
-`Published:` line:
+`I (XXXX) nano-ros: Published: 0` within 10 seconds (Rust talker
+pre-publishes `0`; C/C++ talkers pre-increment so their first banner
+is `Published: 1` — docs follow the Rust path). If no `Published:`
+line:
 
-1. Wi-Fi creds — your `main/nros.toml` `[[transport]]` block must
-   carry `ssid` + `password` (the nano-ros component itself only
-   exposes RMW + ROS-edition Kconfig knobs).
+1. Wi-Fi creds — IDF Kconfig under `Component config → nano-ros`
+   must carry SSID + password OR your `config.toml` must.
 2. Wrong locator — confirm host running `zenohd` is on the same
    Wi-Fi subnet (or routable to it). NAT will block discovery.
 3. `idf.py menuconfig` confirms `CONFIG_NROS_ENABLED=y`.
@@ -117,11 +117,11 @@ patched QEMU.
 ## GitHub source
 
 - IDF component shell:
-  [`integrations/nano-ros/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/nano-ros)
+  [`integrations/esp-idf/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/esp-idf)
 - Component manifest:
-  [`integrations/nano-ros/idf_component.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nano-ros/idf_component.yml)
+  [`integrations/esp-idf/idf_component.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/esp-idf/idf_component.yml)
 - Kconfig surface:
-  [`integrations/nano-ros/Kconfig.projbuild`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nano-ros/Kconfig.projbuild)
+  [`integrations/esp-idf/Kconfig.projbuild`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/esp-idf/Kconfig.projbuild)
 
 A complete reference app showing Wi-Fi + zenoh wiring on top of the
 component is not in-tree yet; the bare-metal

@@ -49,13 +49,15 @@ The top-level `CMakeLists.txt`:
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
-# `C CXX` — the per-target `nros_app_register_backends.c` stub the
-# platform link emits needs the C compiler enabled in this scope.
-project(my_app LANGUAGES C CXX)
+project(my_app LANGUAGES C)
 
+# `NROS_RMW` is the user-facing cache var (overridable via
+# `-DNROS_RMW=<rmw>`); forward it to `NANO_ROS_RMW`, the var the
+# nano-ros add_subdirectory reads. Matches the canonical example
+# shape in examples/native/c/talker/CMakeLists.txt.
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|xrce|cyclonedds).")
+    "Active RMW (zenoh|xrce|cyclonedds) — selects the backend linked into my_app.")
 set(NANO_ROS_RMW "${NROS_RMW}")
 add_subdirectory(third_party/nano-ros nano_ros)
 
@@ -64,7 +66,9 @@ target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 nros_platform_link_app(my_app)
 ```
 
-That is the entire consumption shape. See
+`nros_platform_link_app` transitively wires the selected RMW backend
+on POSIX — no explicit `nano_ros_link_rmw()` call is needed. That is
+the entire consumption shape. See
 [build-as-subdirectory.md](build-as-subdirectory.md) for the full
 walkthrough.
 

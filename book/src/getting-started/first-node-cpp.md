@@ -34,24 +34,27 @@ examples/native/cpp/talker/
 ```
 
 POSIX talkers read the locator + domain from arguments passed to
-`nros::init(...)` (with `NROS_LOCATOR` / `ROS_DOMAIN_ID` env-var
-fallbacks). Embedded variants under
-`examples/<plat>/cpp/talker/` carry a sidecar `nros.toml`
-(`[node]` + `[[transport]]`) that their board crate reads at boot.
+`nros::init(...)`; no `config.toml` is needed. Embedded variants
+under `examples/<plat>/cpp/talker/` carry a `config.toml`
+that their board crate reads.
 
-CMake preamble matches the canonical
-[`examples/native/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/cpp/talker/CMakeLists.txt):
+CMake preamble matches the canonical example at
+[`examples/native/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/cpp/talker/CMakeLists.txt) —
+five `set(...)` lines + per-target link. **`LANGUAGES C CXX`** (not
+`CXX` alone): the per-target register stub the nano-ros add_subdirectory
+emits is a C translation unit, so C must be enabled in this directory
+scope or the link fails.
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
-# `LANGUAGES C CXX` is required, NOT `CXX` alone — the per-target
-# `nros_app_register_backends.c` stub the platform link emits needs
-# the C compiler.
 project(my_talker LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# `NROS_RMW` is the user-facing cache var (overridable via
+# `-DNROS_RMW=<rmw>`); the example forwards it to `NANO_ROS_RMW`,
+# the var the nano-ros add_subdirectory reads.
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
     "Active RMW (zenoh|xrce|cyclonedds) — selects the backend linked into my_talker.")
@@ -70,11 +73,9 @@ target_link_libraries(my_talker PRIVATE
 nros_platform_link_app(my_talker)
 ```
 
-On hosted POSIX the RMW backend is registered transitively when
-`nros_platform_link_app` brings in the backend rlib's CGU — no
-explicit `nano_ros_link_rmw(my_talker RMW zenoh)` call is needed.
-(That helper exists and works; it's the only registration path on
-bare-metal targets without `.init_array`.)
+`nros_platform_link_app(my_talker)` transitively registers the
+selected RMW backend — on POSIX you do **not** call
+`nano_ros_link_rmw()` explicitly.
 
 The C++ entry point is **`int nros_app_main(int argc, char** argv)`**
 (same as C); `<nros/app_main.h>` provides the OS-side `main` stub.
@@ -83,16 +84,12 @@ The body uses typed `nros::Publisher<M>` / `nros::Subscription<M>`
 wrappers over the C ABI:
 
 ```cpp
-#include <cstdio>
-
-// Define NROS_TRY_LOG BEFORE the nros headers — the macro is
-// referenced inside `NROS_TRY_RET` expansions in `<nros/nros.hpp>`.
-#define NROS_TRY_LOG(file, line, expr, ret) \
-    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
-
 #include <nros/app_main.h>
 #include <nros/nros.hpp>
 #include "std_msgs.hpp"
+
+#define NROS_TRY_LOG(file, line, expr, ret) \
+    std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", file, line, expr, (int)ret)
 
 int nros_app_main(int argc, char** argv) {
     NROS_TRY_RET(nros::init("tcp/127.0.0.1:7447", 0), 1);
@@ -147,9 +144,6 @@ zenohd
 cd examples/native/cpp/talker
 ./build/cpp_talker
 # Expected:
-#   nros C++ Talker
-#   ===================
-#   Locator: tcp/127.0.0.1:7447
 #   Published: 0
 #   Published: 1
 #   …
@@ -161,7 +155,10 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 **Readiness signal.** Within 5 seconds of `./build/cpp_talker`, the
-binary should print `Published: 0`. If no `Published:` line in 30
+binary should print `Published: 0` (docs use Rust's zero-first
+counter as the canonical first line; C/C++ talkers currently
+pre-increment so their first banner is `Published: 1` — nano-ros
+will align them in a follow-up). If no `Published:` line in 30
 seconds:
 
 1. Confirm `zenohd` is running (terminal 1). Without it,

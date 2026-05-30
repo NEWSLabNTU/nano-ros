@@ -132,29 +132,84 @@ cmake --build build
 ## Run
 
 ```bash
-# QEMU NuttX (ARM):
-qemu-system-arm -cpu cortex-a8 -machine virt -nographic \
-                -kernel $NUTTX_DIR/nuttx
-nsh> nros_talker        # or whatever your app's NSH command is
+# 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7452 → host).
+#    The in-tree just recipe runs the daemon on the nuttx fixture
+#    port (7452):
+just nuttx zenohd &
+
+# 2. QEMU NuttX (ARM). For nano-ros's own in-tree QEMU examples the
+#    just recipe wraps qemu-system-arm with the right wiring:
+just nuttx talker
+#    For a NuttX-managed workspace where you've staged the
+#    integration shell + your own app, mirror the recipe's actual
+#    flags (see `just/nuttx.just::_run-qemu` around line 503):
+qemu-system-arm -M virt -cpu cortex-a7 -nographic \
+                -icount shift=auto \
+                -kernel $NUTTX_DIR/nuttx \
+                -netdev user,id=net0 \
+                -device virtio-net-device,netdev=net0
+# At the NSH prompt, run the example's PROGNAME — the
+# `make`-driven build registers every nano-ros example as a
+# built-in command via Application.mk's `-Dmain=<PROGNAME>_main`
+# rename. Real PROGNAMEs (from
+# `packages/testing/nros-tests/tests/nuttx_make_e2e.rs::EXPECTED_PROGNAMES`):
+nsh> nuttx_c_talker            # C talker
+# nsh> nuttx_cpp_talker        # C++ talker
+# nsh> nuttx_c_listener        # ...and listener / service / action variants
 
 # Real hardware: standard NuttX flash flow (openocd / J-Link / etc.)
 
-# Verify from stock ROS 2 in another terminal:
+# 3. Verify from stock ROS 2 in another terminal:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 **Readiness signal.** After typing the app's NSH command (e.g.
-`nros_talker`), expect `Published: 1` on the NSH console within
-5 seconds. If no `Published:` line:
+`nuttx_c_talker`), expect `Published: 0` on the NSH console within
+5 seconds (the Rust talker pre-publishes `0` before the counter
+advances; C/C++ talkers pre-increment so their first banner is
+`Published: 1`). If no `Published:` line:
 
 1. Confirm the app actually ran — `ps` should show your task.
 2. Confirm networking — `ifconfig` shows a configured interface.
-   For QEMU `nsh_smp`, Slirp defaults apply: `eth0` at `10.0.2.15`.
+   With the virtio-net + Slirp wiring above, `eth0` comes up at
+   `10.0.2.30` (matches `examples/qemu-arm-nuttx/*/talker/nros.toml`).
 3. Confirm `zenohd` reachable; the locator in `nros.toml` /
    `nros_init` arguments must match.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
+### Auto-configure glue (NSH built-in registration)
+
+The `make`-driven build above relies on a host-side glue layer that
+the in-tree `just nuttx build-fixtures-make` recipe owns end-to-end
+(see [`just/nuttx.just::build-fixtures-make`](https://github.com/NEWSLabNTU/nano-ros/blob/main/just/nuttx.just)).
+If you wire a NuttX workspace by hand, reproduce the same three
+steps:
+
+1. **Swap in the nano-ros board defconfig.** Stock NuttX
+   `qemu-armv7a/nsh` ships without `CONFIG_NET=y`, virtio-net, or
+   `TLS_NELEM`. The board defconfig
+   `packages/boards/nros-board-nuttx-qemu-arm/nuttx-config/defconfig`
+   already carries the full networking + TLS stack zenoh-pico
+   needs; copy it to `$NUTTX_DIR/.config` and run
+   `make olddefconfig`.
+2. **Stage the integration shell + example apps.** Run
+   `scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS"` to symlink
+   `integrations/nuttx/` and every example app into
+   `$NUTTX_APPS/external/`. Remove `$NUTTX_APPS/Kconfig` so
+   NuttX's `mkkconfig.sh` rediscovers the new
+   `apps/external/Kconfig`.
+3. **Flip the nano-ros Kconfig knobs via `kconfig-tweak`.** The
+   recipe enables `NROS`, `NROS_C_API`, `NROS_CPP_API`, every
+   `NROS_EXAMPLE_<EX>_<LANG>`, sets `TLS_NELEM=8`, disables
+   `LIBCXXNONE` + enables `LIBCXXTOOLCHAIN`, and disables
+   `ALLSYMS` for the bootstrap link. Re-run `make olddefconfig`
+   so the newly-visible dependencies settle, then `make`.
+
+`kconfig-tweak` ships in the `kconfig-frontends` package on most
+distros. Without it the recipe skips (`"NuttX skip: kconfig-tweak
+not on PATH"`); install it before retrying.
 
 ## GitHub source
 

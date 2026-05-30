@@ -10,7 +10,7 @@ them.
 | Vendor       | Board                | MCU / SoC          | Arch       | Default RTOS  | Status   | Example / board crate                                            |
 |--------------|----------------------|--------------------|------------|---------------|----------|-------------------------------------------------------------------|
 | ARM          | MPS2-AN385 (QEMU)    | Cortex-M3          | Armv7-M    | FreeRTOS / bare | Tested  | `examples/qemu-arm-freertos/`, `examples/qemu-arm-baremetal/`     |
-| STMicro      | STM32F4-Discovery    | STM32F407          | Cortex-M4F | FreeRTOS / bare | Tested  | `packages/boards/nros-board-stm32f4-nucleo/`                       |
+| STMicro      | STM32F4-Discovery    | STM32F407          | Cortex-M4F | FreeRTOS / bare | Tested  | `packages/boards/nros-board-stm32f4/`                              |
 | STMicro      | STM32H7-Nucleo       | STM32H743          | Cortex-M7F | FreeRTOS / Zephyr | Ready  | Use FreeRTOS / Zephyr starter with `nros-board-freertos` overlay   |
 | STMicro      | Pixhawk 4 (FMUv5)    | STM32F765          | Cortex-M7F | NuttX (PX4)   | Ready    | `integrations/px4/module-template/`                                |
 | STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)   | Ready    | `integrations/px4/module-template/`                                |

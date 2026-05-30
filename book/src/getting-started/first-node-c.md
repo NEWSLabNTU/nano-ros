@@ -28,15 +28,15 @@ The talker is a **standalone CMake project** that pulls nano-ros via
 ```text
 examples/native/c/talker/
 ├── CMakeLists.txt      # add_subdirectory + targets
+├── package.xml         # ROS-style manifest (drives codegen tooling)
+├── config.toml         # runtime locator + domain id (optional)
 └── src/
-    └── main.c          # ~100-line talker (locator + domain via env vars)
+    └── main.c          # ~100-line talker
 ```
 
-The CMake preamble matches the canonical
-[`examples/native/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/c/talker/CMakeLists.txt)
-shape — RMW chosen via the `NROS_RMW` cache var (overridable on the
-configure line with `-DNROS_RMW=<rmw>`), registration wired
-transitively by `nros_platform_link_app`:
+The CMake preamble matches the canonical example shape in
+[`examples/native/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/native/c/talker/CMakeLists.txt) —
+five `set(...)` lines plus the per-target link:
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -46,6 +46,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Pull nano-ros in. Adjust the relative path to your repo root.
+# `NROS_RMW` is the user-facing cache var (overridable via
+# `-DNROS_RMW=<rmw>`); the example forwards it to `NANO_ROS_RMW`,
+# the var the nano-ros add_subdirectory reads.
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
     "Active RMW (zenoh|xrce|cyclonedds) — selects the backend linked into my_talker.")
@@ -65,12 +68,11 @@ target_link_libraries(my_talker PRIVATE
 nros_platform_link_app(my_talker)
 ```
 
-On hosted POSIX the RMW backend registers itself transitively when
-`nros_platform_link_app` brings in the backend rlib's CGU — no
-explicit `nano_ros_link_rmw(my_talker RMW zenoh)` call is needed.
-(That helper still exists and works; it's the only registration path
-on bare-metal targets without `.init_array`. POSIX builds inherit it
-for free.)
+`nros_platform_link_app(my_talker)` transitively wires the active
+RMW's strong `nros_app_register_backends()` stub (calling
+`nros_rmw_zenoh_register()` for the zenoh build above). On POSIX you
+do **not** call `nano_ros_link_rmw()` explicitly — the platform
+module handles it.
 
 The C entry point is **`int nros_app_main(int argc, char **argv)`**
 (not `main`); `<nros/app_main.h>` provides the OS-side `main`
@@ -104,11 +106,9 @@ Three runtime knobs:
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
 | Node name | `talker` | hard-coded in source |
 
-Embedded C examples (FreeRTOS / NuttX / ThreadX / bare-metal /
-ESP32) carry a sidecar `nros.toml` with `[node]` + `[[transport]]`
-sections — see the embedded starter pages. The native POSIX C
-talker has neither: it reads `NROS_LOCATOR` / `ROS_DOMAIN_ID` from
-env vars at startup (see `examples/native/c/talker/src/main.c`).
+`config.toml` (optional) accepts the same `[zenoh]` table as the
+Rust starter; the C runtime reads it only when wired explicitly via
+`nros_config_load()` (see the example source).
 
 ## Build
 
@@ -135,7 +135,6 @@ cd examples/native/c/talker
 # Expected output:
 #   nros C Talker
 #   =================
-#   Locator: tcp/127.0.0.1:7447
 #   Published: 0
 #   Published: 1
 #   …
@@ -147,8 +146,11 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 **Readiness signal.** Within 5 seconds of `./build/c_talker`, the
-binary should print `Published: 0` on stdout. If no `Published:`
-line in 30 seconds:
+binary should print `Published: 0` on stdout (docs use Rust's
+zero-first counter as the canonical first line; C/C++ talkers
+currently pre-increment so their first banner is `Published: 1` —
+nano-ros will align them in a follow-up). If no `Published:` line
+in 30 seconds:
 
 1. Confirm `zenohd` is running (terminal 1). Without it,
    `nros_support_init` returns immediately with `-4`

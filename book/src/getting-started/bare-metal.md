@@ -96,16 +96,24 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 # 1. Bring up zenohd on the host (Slirp forwards 10.0.2.2:7450 → host
 #    127.0.0.1:7450). The bare-metal test-fixture port is 7450, NOT
 #    zenohd's default 7447 — edit `nros.toml` if you want 7447 instead.
-#    zenohd was installed by `nros setup ... --rmw zenoh`.
-zenohd --listen tcp/127.0.0.1:7450
+#    The just recipe runs the in-tree zenohd installed by
+#    `nros setup ... --rmw zenoh` on that port:
+just qemu-baremetal zenohd &
+#    Or directly:
+#    build/zenohd/zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
 
-# 2. Boot the talker in QEMU. The .cargo/config.toml runner does:
+# 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
+#    with the LAN9118 wiring the example expects:
+just qemu-baremetal talker
+# Or, in the Rust example dir (the `.cargo/config.toml` runner shells
+# out to the same qemu-system-arm flags):
 cd examples/qemu-arm-baremetal/rust/talker
 cargo run --release
-# Expected serial-over-semihosting output:
-#   nros Bare-Metal Cortex-M3 Talker
+# Expected serial-over-semihosting output (per src/main.rs):
+#   Declaring publisher on /chatter (std_msgs/Int32)
+#   Publisher declared
+#   Published: 0
 #   Published: 1
-#   Published: 2
 #   ...
 
 # 3. Verify from stock ROS 2:
@@ -118,7 +126,8 @@ QEMU exits via Ctrl-A x.
 
 **Readiness signal.** Within ~15 seconds of QEMU boot (no RTOS
 init delay, but smoltcp + zenoh handshake still takes a few
-seconds), expect `Published: 1` on semihosting stdout. If no
+seconds), expect `Published: 0` on semihosting stdout (the Rust
+talker pre-publishes `0` before the counter advances). If no
 `Published:` line:
 
 1. `zenohd` not running — talker spins on smoltcp poll until
@@ -162,5 +171,5 @@ For Cortex-M3 with an RTOS, switch to the
   how to feed a backend's transport-notify into the cooperative
   spin loop on bare-metal.
 - Real hardware: same code runs on STM32F4-Discovery with a
-  different board crate (`nros-board-stm32f4-nucleo`) and a
-  different linker script.
+  different board crate (`nros-board-stm32f4`) and a different
+  linker script.

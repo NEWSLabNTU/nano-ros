@@ -131,18 +131,19 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 
 ```bash
 # 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451).
-#    zenohd was installed into the nros store by `nros setup … --rmw zenoh`.
-zenohd -l tcp/0.0.0.0:7451
+#    The just recipe runs the in-tree zenohd installed by
+#    `nros setup … --rmw zenoh` on the freertos port (7451).
+just freertos zenohd &
+#    Or directly:
+#    build/zenohd/zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting
 
-# 2. Boot the talker in QEMU:
+# 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
+#    with the LAN9118 + Slirp wiring the example expects; works for
+#    Rust as well (it builds + boots the in-tree binary):
+just freertos talker
+# Or, single-language, in the Rust example dir:
 cd examples/qemu-arm-freertos/rust/talker
 cargo run --release
-# Or for C / C++ (binary names carry the `freertos_` prefix from
-# the CMake project() declaration in each example):
-qemu-system-arm -cpu cortex-m3 -machine mps2-an385 \
-                -nographic -semihosting-config enable=on,target=native \
-                -nic socket,model=lan9118,listen=:6666 \
-                -kernel ./build/freertos_c_talker      # or freertos_cpp_talker
 
 # 3. Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
@@ -157,7 +158,8 @@ test` runs every E2E (pub/sub, service, action) against a temporary
 in-test zenohd.
 
 **Readiness signal.** Within ~20 seconds of QEMU boot, the talker
-should print `Published: 1` on its semihosting stdout. QEMU
+should print `Published: 0` on its semihosting stdout (the Rust
+talker pre-publishes `0` before the first counter bump). QEMU
 cold-boot through FreeRTOS init + lwIP DHCP + zenoh session open
 typically takes 10–15 s. If no `Published:` line in 30 seconds:
 

@@ -178,29 +178,29 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
 
 ### 208.E — Track B: doc rewrites (one pass after 208.D)
 
-- [ ] **208.E.1** `nros.toml` schema rewrite across every embedded tutorial
+- [x] **208.E.1** `nros.toml` schema rewrite across every embedded tutorial
       (P2). `freertos.md`, `threadx.md`, `bare-metal.md`, `esp32.md`,
       `integration-nuttx.md` Configure sections. Cite the in-tree
       `examples/<plat>/<lang>/talker/nros.toml` verbatim.
-- [ ] **208.E.2** Add "start `zenohd -l tcp/127.0.0.1:<port>`" step before
+- [x] **208.E.2** Add "start `zenohd -l tcp/127.0.0.1:<port>`" step before
       QEMU boot in every embedded tutorial (P6). Per-platform port table.
       Or replace with `just <plat> zenohd &`.
-- [ ] **208.E.3** Replace direct `qemu-system-*` invocations with
+- [x] **208.E.3** Replace direct `qemu-system-*` invocations with
       `just <plat> talker` for the happy path (P8). If a raw cmd is shown,
       copy verbatim from the recipe.
-- [ ] **208.E.4** `s/Published: 1/Published: 0/` first line across every
+- [x] **208.E.4** `s/Published: 1/Published: 0/` first line across every
       starter (P7). Plus banner text alignment from per-tutorial reports.
-- [ ] **208.E.5** CMake snippet alignment for `first-node-{c,cpp}.md` and
+- [x] **208.E.5** CMake snippet alignment for `first-node-{c,cpp}.md` and
       `installation.md` Pattern B (P5). Use canonical example shape:
       `NROS_RMW` cache var, no explicit `nano_ros_link_rmw()` on POSIX,
       always `LANGUAGES C CXX` (cpp doc currently misses `C`).
-- [ ] **208.E.6** `integration-nuttx.md` rewrites (P14). NSH command map
+- [x] **208.E.6** `integration-nuttx.md` rewrites (P14). NSH command map
       (`nuttx_c_talker` / `nuttx_cpp_talker`, not the fictional `nros_talker`).
       QEMU cmd: `-cpu cortex-a7`, `-netdev user,id=net0 -device
       virtio-net-device,netdev=net0`, eth0 IP `10.0.2.30`. Document
       `kconfig-tweak` + nano-ros board defconfig swap (cite
       `just/nuttx.just::build-fixtures-make`).
-- [ ] **208.E.7** `troubleshooting-first-10-min.md` rewrites (P14). Symptom 1
+- [x] **208.E.7** `troubleshooting-first-10-min.md` rewrites (P14). Symptom 1
       → path-dep breakage (not SDK fetch). Symptom 6 → "panics with
       `Transport(ConnectionFailed)`" (not "hangs"). Lead `just doctor` advice
       with the per-platform scoped variant.
@@ -210,13 +210,13 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
 - [ ] **208.E.9** Zephyr page rewrites post-208.D.7 fold. Drop the
       `west patch` block OR document the extension. Cite `zephyr/Kconfig`
       symbol names after the fold.
-- [ ] **208.E.10** `first-node-rust.md` Cargo.toml snippet (P14). Drop the
+- [x] **208.E.10** `first-node-rust.md` Cargo.toml snippet (P14). Drop the
       false `[workspace]` claim; either reflect the real workspace-member
       shape or ship a true-standalone variant under `examples/templates/`.
-- [ ] **208.E.11** `esp32.md` `rustup target add xtensa-...` lie (P14).
+- [x] **208.E.11** `esp32.md` `rustup target add xtensa-...` lie (P14).
       Drop it (no such rustup target). Replace with espup ref OR note
       "ESP32-S3 not supported today; RISC-V only".
-- [ ] **208.E.12** Wrong board-crate / path names (P11). `bare-metal.md`:
+- [x] **208.E.12** Wrong board-crate / path names (P11). `bare-metal.md`:
       `nros-board-stm32f4-nucleo` → `nros-board-stm32f4`. `threadx.md`:
       `nros-board-riscv64-qemu` → `nros-board-threadx-qemu-riscv64`.
 
