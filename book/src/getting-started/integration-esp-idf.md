@@ -34,7 +34,7 @@ my_idf_app/
 │   ├── CMakeLists.txt             # `idf_component_register(REQUIRES nano-ros …)`
 │   ├── idf_component.yml          # declares nano-ros as a managed dependency
 │   ├── app_main.c | app_main.cpp
-│   └── config.toml
+│   └── nros.toml                  # (optional) runtime locator + domain
 └── components/                    # (optional) local components override
 ```
 
@@ -102,16 +102,18 @@ patched QEMU.
 
 **Readiness signal.** After `idf.py flash monitor`, expect
 `I (XXXX) nano-ros: Wi-Fi connected` followed by
-`I (XXXX) nano-ros: Published: 0` within 10 seconds (Rust talker
-pre-publishes `0`; C/C++ talkers pre-increment so their first banner
-is `Published: 1` — docs follow the Rust path). If no `Published:`
-line:
+`I (XXXX) nano-ros: Published: 0` within 10 seconds — Rust + C + C++
+all start the counter at 0 (Phase 208.D.9). If no `Published:` line:
 
 1. Wi-Fi creds — IDF Kconfig under `Component config → nano-ros`
-   must carry SSID + password OR your `config.toml` must.
+   must carry SSID + password OR your `nros.toml` must.
 2. Wrong locator — confirm host running `zenohd` is on the same
    Wi-Fi subnet (or routable to it). NAT will block discovery.
-3. `idf.py menuconfig` confirms `CONFIG_NROS_ENABLED=y`.
+3. `idf.py menuconfig` shows the `Component config → nano-ros` submenu
+   (the component is wired) and `CONFIG_NROS_RMW` is set to a backend
+   name (`zenoh`/`xrce`/`cyclonedds`). There is no separate
+   `CONFIG_NROS_ENABLED` toggle on ESP-IDF; the component's presence
+   in `main/idf_component.yml` is the on-switch.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source
