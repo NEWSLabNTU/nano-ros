@@ -6,7 +6,7 @@ have to carry. Two complementary tracks: (A) a **manifest/app starter-template
 repo** (the `example-application` pattern — *not* a vendored, pre-patched Zephyr
 fork), and (B) **upstreaming** the generic patches so fewer apply at all.
 
-**Status.** Proposed (2026-05-29). From a design review of the BYO Zephyr
+**Status.** ARCHIVED (2026-05-30). 205.A landed (template repo + book pass + e2e); 205.B upstream-PR work deferred — upstream-paced human follow-up, the staging dossier + patches.yml flags + apply scripts remain in tree for a future contributor. Originally proposed (2026-05-29) from a design review of the BYO Zephyr
 adoption path (Phase 202, e2e-verified): end-users keep their own `west`
 workspace; the patches apply via `west patch` / scripts to a *tested* Zephyr
 version; a pre-patched fork would be a maintenance trap.
@@ -89,29 +89,28 @@ patches, the additional 3.7-line NSOS candidates (`getsockname`, `getifaddrs`,
 `patches.yml` header now points at it. **Opening the PRs stays human follow-up**
 (Zephyr CLA + a `zephyrproject-rtos/zephyr` fork) — the boxes below track that.
 
-- [ ] **NSOS patches** (`recvmsg`, IPv4-multicast `setsockopt`/`getsockopt`
-      forwarding) — generic Zephyr native-sim fixes, already flagged
-      `upstreamable: true` in `zephyr/patches.yml`. Open Zephyr PRs (commit
-      messages + diffs staged in the dossier); once merged + released, drop them
-      from `patches.yml` for that Zephyr line.
-- [ ] **`zephyr-lang-rust` patches** (`cargo-features` / `EXTRA_CARGO_ARGS`
-      forwarding, the per-arch rust target registration) — pursue upstream so the
-      rust examples need no in-tree patch (also removes the lang-rust-shape-drift
-      fragility the Phase 202.5 version-tolerant patch papers over).
-- [ ] **cyclonedds-on-Zephyr patches** — track upstream cyclonedds; they're
-      currently baked into the nano-ros submodule pin.
-- [ ] As each lands upstream, narrow the tested-version matrix note (fewer patches
-      = less drift risk for 205.A's template).
+- [→] **NSOS patches**, **`zephyr-lang-rust` patches**, **cyclonedds-on-Zephyr
+      patches**, **narrow the tested-version matrix as PRs land** — all
+      **deferred** at archive (2026-05-30). Upstream-paced human follow-up that
+      doesn't sit on the active roadmap. Material stays in place: the dossier
+      (commit-message + diff staging) is on disk, `patches.yml`'s
+      `upstreamable: true` flags point a future contributor at the exact
+      patches, and the `scripts/zephyr/*-patch.sh` machinery keeps the patches
+      flowing into user workspaces. When someone files the PRs (Zephyr CLA + a
+      `zephyrproject-rtos/zephyr` fork), they re-open a tracking phase or PR
+      issue; until then carrying the patches is the cheap option.
 
 **Files:** `zephyr/patches.yml`, `zephyr/patches/`, `scripts/zephyr/*-patch.sh`,
 upstream PRs (human follow-up — this phase does not open PRs).
 
 ## Acceptance
-- [ ] `west init -m <template>` + the README steps reach a running `native_sim`
-      app on a fresh machine, CI-proven on the template repo (205.A).
-- [ ] No pre-patched Zephyr is vendored anywhere; patches stay `west patch` /
+- [x] `west init -m <template>` + the README steps reach a running `native_sim`
+      app on a fresh machine, CI-proven on the template repo (205.A — landed +
+      e2e + book pass 2026-05-30).
+- [x] No pre-patched Zephyr is vendored anywhere; patches stay `west patch` /
       script-delivered to the user's own workspace.
-- [ ] At least the NSOS patches have upstream Zephyr PRs open (205.B).
+- [→] At least the NSOS patches have upstream Zephyr PRs open (205.B) —
+      deferred at archive.
 
 ## Notes
 - The starter-template is a *manifest+app* repo, deliberately **not** a Zephyr
