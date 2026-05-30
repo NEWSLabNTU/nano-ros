@@ -115,8 +115,20 @@ locator = "tcp/10.0.2.2:7452"
 The C + C++ variants ship analogous files with **distinct** ports
 (`7552` and `7652`) so parallel test runs don't collide on one
 router; `just nuttx zenohd` binds `7452` (Rust). When you boot a C
-or C++ talker directly, either retarget the locator in its `nros.toml`
-to `7452` or start a sibling zenohd on the matching port.
+or C++ talker directly, either edit the locator line of its
+`nros.toml` —
+
+```toml
+[[transport]]
+kind    = "ethernet"
+ip      = "10.0.2.30/24"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:7452"   # was 7552 / 7652 — match `just nuttx zenohd`
+```
+
+— or start a sibling zenohd on the matching port
+(`zenohd --listen tcp/127.0.0.1:7552 --no-multicast-scouting` for C,
+`…:7652` for C++).
 
 ## Build
 
@@ -158,6 +170,9 @@ qemu-system-arm -M virt -cpu cortex-a7 -nographic \
                 -kernel $NUTTX_DIR/nuttx \
                 -netdev user,id=net0 \
                 -device virtio-net-device,netdev=net0
+# `$NUTTX_DIR/nuttx` is the linked NuttX ELF produced by `make`
+# at the NuttX source root — adjust if your workspace puts it
+# elsewhere (e.g. an out-of-tree build dir).
 # At the NSH prompt, run the example's PROGNAME — the
 # `make`-driven build registers every nano-ros example as a
 # built-in command via Application.mk's `-Dmain=<PROGNAME>_main`

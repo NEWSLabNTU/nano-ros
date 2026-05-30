@@ -41,7 +41,9 @@ examples/qemu-arm-baremetal/rust/talker/
 │                              # runner = qemu-system-arm ... -kernel
 ├── nros.toml                  # network + zenoh
 ├── package.xml
-├── generated/                 # codegen output (gitignored)
+├── generated/                 # codegen output — build.rs runs
+│                              #   `nros generate-rust` on first
+│                              #   `cargo build`; gitignored.
 └── src/main.rs                # #[entry] fn main() -> !
 ```
 
@@ -133,8 +135,12 @@ talker pre-publishes `0` before the counter advances). If no
 1. `zenohd` not running — talker spins on smoltcp poll until
    killed.
 2. Wrong LAN9118 emulation flag — `qemu-system-arm` needs
-   `-nic socket,model=lan9118,…` or equivalent; the runner in
-   `.cargo/config.toml` already supplies it.
+   `-nic socket,model=lan9118,…` or equivalent. The example's
+   `.cargo/config.toml` runner is bare `-kernel` (so a plain `cargo
+   run` boots QEMU without networking); the LAN9118 wiring lives in
+   the `just qemu talker` recipe (`just/qemu-baremetal.just::talker`),
+   which is the working invocation for this tutorial. If you copy
+   the runner out, mirror those flags.
 3. Cooperative spin starvation — if you added a long-running
    callback, the entire executor stalls; bare-metal has no
    preemption.

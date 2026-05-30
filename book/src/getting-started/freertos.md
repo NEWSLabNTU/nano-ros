@@ -45,7 +45,9 @@ examples/qemu-arm-freertos/
 │   ├── .cargo/config.toml          # target + QEMU runner
 │   ├── nros.toml                   # network + zenoh locator + scheduling
 │   ├── package.xml
-│   ├── generated/                  # codegen output (gitignored)
+│   ├── generated/                  # codegen output — build.rs runs
+│   │                               #   `nros generate-rust` on first
+│   │                               #   `cargo build`; gitignored.
 │   └── src/main.rs
 ├── c/talker/                 # CMake project, add_subdirectory consumption
 │   ├── CMakeLists.txt
@@ -131,11 +133,13 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 
 ```bash
 # 1. Start zenohd on the host (Slirp forwards 10.0.2.2:7451 → host:7451).
-#    The just recipe runs the in-tree zenohd installed by
-#    `nros setup … --rmw zenoh` on the freertos port (7451).
+#    The just recipe wraps `zenohd --listen tcp/127.0.0.1:7451
+#    --no-multicast-scouting` (the D.2 PATH shim resolves zenohd from
+#    `~/.nros/sdk/zenohd/<v>/bin/zenohd`):
 just freertos zenohd &
-#    Or directly:
-#    zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting
+# Equivalent, if the recipe isn't available or you want the literal
+# invocation (works as long as `zenohd` is on PATH):
+zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting &
 
 # 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
 #    with the LAN9118 + Slirp wiring the example expects; works for

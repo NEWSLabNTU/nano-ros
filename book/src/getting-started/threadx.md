@@ -8,9 +8,11 @@ socket layer). Two flavours ship in-tree:
 - **threadx-riscv64** — QEMU `virt` machine with the RISC-V64 GCC
   toolchain. Full kernel + NetX Duo TCP/IP stack.
 
-Rust and C are supported on both flavours; nros-cpp does not target
-ThreadX (not in the
-[coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)).
+Rust, C, and C++ are supported on both flavours — `just <flavour>
+build-fixtures` produces `threadx_cpp_*` and `riscv64_threadx_cpp_*`
+binaries alongside the Rust + C ones. See the
+[coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)
+for the per-RMW cell status.
 
 > **Prereqs.** Install the `nros` CLI once, then run
 > `nros setup <board> --rmw <rmw>` for the flavour you need (see
@@ -54,7 +56,9 @@ examples/threadx-linux/
 ├── rust/talker/                 # Cargo, target = x86_64-unknown-linux-gnu
 │   ├── Cargo.toml
 │   ├── package.xml
-│   ├── generated/
+│   ├── generated/                # codegen output — build.rs runs
+│   │                             #   `nros generate-rust` on first
+│   │                             #   `cargo build`; gitignored.
 │   └── src/main.rs
 └── c/talker/                    # CMake, add_subdirectory
     ├── CMakeLists.txt
@@ -115,10 +119,13 @@ gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:7553"
 ```
 
-ThreadX-Linux uses a veth pair (`tap-tx0`) rather than QEMU Slirp;
-`nros setup threadx-linux` creates the interface. The QEMU-RISC-V64
-fixture uses Slirp's default `10.0.2.2` gateway just like the
-FreeRTOS QEMU flow.
+ThreadX-Linux normally uses a veth pair (`tap-tx0`) for an isolated
+host link, but `nros setup threadx-linux` does **not** create the
+interface — the test fixtures fall back to a loopback path when
+`tap-tx0` is absent, which is fine for the happy-path tutorial.
+Bring up `tap-tx0` by hand (`ip link add … type veth …`) only when
+you need real-network bridging. The QEMU-RISC-V64 fixture uses
+Slirp's default `10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 
 ## Build
 
@@ -168,9 +175,10 @@ For batch testing: `just threadx_linux test` runs every pubsub /
 service / action against an in-test zenohd.
 
 **Readiness signal.** threadx-linux: `Published: 0` within 3
-seconds of `just threadx_linux talker` (the Rust talker pre-publishes
-`0` before the counter advances). threadx-riscv64 (QEMU): within ~15
-seconds of QEMU boot. If no `Published:` line:
+seconds of `just threadx_linux talker` **on a warm cache**; a cold
+first run rebuilds the Rust example (~80 s on a fresh checkout)
+before the first publish lands. threadx-riscv64 (QEMU): within
+~15 seconds of QEMU boot. If no `Published:` line:
 
 1. Confirm `zenohd` reachable on the locator from `nros.toml`
    (threadx-linux uses `127.0.0.1`; riscv64 QEMU uses `10.0.2.2`).

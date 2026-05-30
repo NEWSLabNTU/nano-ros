@@ -33,8 +33,11 @@ xrce) under `~/.nros/sdk` (forwarded onto `PATH` via the
 `~/.nros/bin/` shims). `esp-hal` itself is a Cargo dependency the
 example pulls in at build time, not a separately-installed toolchain;
 the only cross-toolchain you may need to add by hand is the rustup
-target, e.g. `rustup target add riscv32imc-unknown-none-elf` for
-ESP32-C3.
+target — once per host:
+
+```bash
+rustup target add riscv32imc-unknown-none-elf      # ESP32-C3
+```
 
 ## Project layout
 

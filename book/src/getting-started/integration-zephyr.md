@@ -76,6 +76,45 @@ The application `CMakeLists.txt` is a stock Zephyr app — `find_package(Zephyr)
 + `target_sources`. **No `add_subdirectory(<nano-ros>)`** is needed;
 the module shell handles it once `CONFIG_NROS=y` flips on.
 
+A minimal `apps/my_app/` looks like this (mirrors
+[`examples/zephyr/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/talker)
+with the names stripped to the essentials):
+
+```cmake
+# apps/my_app/CMakeLists.txt
+cmake_minimum_required(VERSION 3.20.0)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(my_app)
+target_sources(app PRIVATE src/main.c)
+```
+
+```c
+// apps/my_app/src/main.c
+#include <nros/nros.h>
+#include <nros/publisher.h>
+#include <std_msgs/msg/int32.h>
+
+int main(void) {
+    nros_init_args_t args = nros_init_args_default();
+    nros_context_t ctx;
+    nros_init(&args, &ctx);
+    nros_node_t node;
+    nros_create_node(&ctx, "my_app", &node);
+    nros_publisher_t pub;
+    nros_create_publisher(&node, std_msgs__msg__Int32_type_support(),
+                          "/chatter", &pub);
+    std_msgs__msg__Int32 msg = { .data = 0 };
+    while (nros_ok(&ctx)) {
+        nros_publish(&pub, &msg);
+        msg.data++;
+        k_sleep(K_SECONDS(1));
+    }
+    return 0;
+}
+```
+
+`prj.conf` is the one shown in [Configure](#configure) below.
+
 ## Prerequisites
 
 `nros setup` provisions the parts nano-ros owns — the **RMW host daemon**

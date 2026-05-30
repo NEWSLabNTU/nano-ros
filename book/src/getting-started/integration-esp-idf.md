@@ -16,8 +16,15 @@ bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 >    ```bash
 >    curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install-nros.sh | sh
 >    export PATH="$HOME/.nros/bin:$PATH"
->    nros setup esp32 --rmw zenoh     # installs the RMW daemon (zenohd for zenoh,
->                                     # the Micro-XRCE-DDS agent for xrce)
+>    nros setup esp32 --rmw zenoh     # lands the RMW host daemon
+>                                     # (zenohd for zenoh, the
+>                                     # Micro-XRCE-DDS agent for xrce)
+>                                     # in ~/.nros/sdk, AND clones the
+>                                     # transport submodules
+>                                     # (zenoh-pico + mbedtls for zenoh)
+>                                     # into the nano-ros checkout
+>                                     # so the IDF build can compile
+>                                     # them in-tree.
 >    ```
 
 ## Project layout

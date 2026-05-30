@@ -151,15 +151,15 @@ cd examples/native/cpp/talker
 # 3. Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32
+# Talker publishes best-effort; stock `ros2 topic echo` defaults to
+# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
+# Force best-effort to receive:
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
 **Readiness signal.** Within 5 seconds of `./build/cpp_talker`, the
-binary should print `Published: 0` (docs use Rust's zero-first
-counter as the canonical first line; C/C++ talkers currently
-pre-increment so their first banner is `Published: 1` — nano-ros
-will align them in a follow-up). If no `Published:` line in 30
-seconds:
+binary should print `Published: 0` — Rust + C + C++ all start the
+counter at 0 (Phase 208.D.9). If no `Published:` line in 30 seconds:
 
 1. Confirm `zenohd` is running (terminal 1). Without it,
    `nros::init` returns `-100` (TransportError) — the

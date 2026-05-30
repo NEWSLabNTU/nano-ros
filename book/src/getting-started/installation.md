@@ -132,10 +132,14 @@ board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 > **Heads-up before your first example.** Every nano-ros example
 > (Linux talker, FreeRTOS talker, …) connects to its **RMW host
 > daemon** at startup — `zenohd` for zenoh, the Micro-XRCE-DDS agent
-> for xrce. `nros setup … --rmw <rmw>` installs it into the nros store
-> (`~/.nros/sdk/<tool>/<version>/bin/`); you must then run it in a
-> dedicated terminal before launching any example. For zenoh, put the
-> store binary on PATH once and run it:
+> for xrce. **Cyclone DDS is in-process** — no separate daemon — so
+> the heads-up below doesn't apply if you ran `nros setup … --rmw
+> cyclonedds`. `nros setup … --rmw <rmw>` installs the daemon into
+> the nros store (`~/.nros/sdk/<tool>/<version>/bin/`; the cache
+> root is `~/.nros/sdk/` — toolchains, transports, and daemons all
+> land under there); you must then run it in a dedicated terminal
+> before launching any example. For zenoh, put the store binary on
+> PATH once and run it:
 >
 > ```bash
 > export PATH="$(dirname "$(ls -d ~/.nros/sdk/zenohd/*/bin/zenohd | tail -1)")":$PATH
