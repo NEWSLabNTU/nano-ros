@@ -9,7 +9,7 @@ is purely the **custom-transport injection** that XRCE requires on
 multi-RMW registration, `rmw-xrce` cargo feature, agent provisioning) already
 works on hosted targets.
 
-**Status.** Proposed (2026-05-30).
+**Status.** DONE (2026-05-30) — all work items 207.1\u2013207.6 landed + e2e green; acceptance met.
 
 **Priority.** P2 — unblocks the honest XRCE-vs-zenoh RAM comparison Phase 204
 deliberately left open, and is the on-ramp to the micro-ROS-class footprint
@@ -365,15 +365,17 @@ refactor (not a 207 deliverable; tracked separately).
 - [x] **Phase 204.5 cross-reference closed** — the XRCE-vs-zenoh on-device
       delta this phase asked for is the table above.
 
-## Acceptance
+## Acceptance — all met (2026-05-30)
 
-- [ ] `qemu-arm-baremetal/rust/talker-xrce` builds, boots in QEMU, and
+- [x] `qemu-arm-baremetal/rust/talker-xrce` builds, boots in QEMU, and
       exchanges at least one message with `MicroXRCEAgent` over the host PTY
-      bridge (`test_qemu_xrce_pubsub_e2e` green under `nros-fast-release`).
-- [ ] Measured flash + RAM in the book size table.
-- [ ] `nros-rmw-xrce-cffi::install_custom_transport` is the documented entry
-      point any other bare-metal board can reuse (the shim is per-board, the
-      install hook is shared).
+      bridge (`test_qemu_xrce_pubsub_e2e` green: `published=1, ok`).
+- [x] Measured flash + RAM in the book "Measured footprint" table:
+      **60.3 KB text / ~34 KB RAM** at the 207.6 tight-pool profile.
+- [x] `nros_rmw_xrce_cffi::set_custom_transport_ops` (the realised name) is
+      the documented entry point any other bare-metal board reuses — see
+      207.1 + the `xrce_transport::xrce_transport_ops()` factory pattern in
+      207.2 for the per-board shim contract.
 
 ## Notes
 
