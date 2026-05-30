@@ -16,14 +16,32 @@
 # bump it (Phase 195.D.4) when nros-cli cuts a new main-tracking release.
 #
 # Env:
-#   NROS_VERSION  version to install (default: the nano-ros-pinned release)
-#   NROS_HOME     install root (default ~/.nros); binary lands in $NROS_HOME/bin
+#   NROS_VERSION         version to install (default: the nano-ros-pinned release)
+#   NROS_HOME            install root (default ~/.nros); binary lands in $NROS_HOME/bin
+#   NROS_INSTALL_FORCE=1 re-install over a present `nros` even if pinned matches
+#   NROS_NO_MODIFY_PATH=1 skip the rustup-style shell-rc PATH-append (default:
+#                        prompt on a tty when ${NROS_HOME}/bin is missing from PATH).
+#   NROS_YES=1           auto-confirm prompts (also `--yes` / `-y` arg).
+#
+# Args:
+#   --no-modify-path     skip the shell-rc PATH-append step.
+#   --yes / -y           auto-confirm prompts.
 set -eu
 
 NROS_VERSION="${NROS_VERSION:-0.3.7}"
 NROS_HOME="${NROS_HOME:-$HOME/.nros}"
 REPO="NEWSLabNTU/nros-cli"
 TAG="nros-v${NROS_VERSION}"
+NO_MODIFY_PATH="${NROS_NO_MODIFY_PATH:-0}"
+ASSUME_YES="${NROS_YES:-0}"
+
+for arg in "$@"; do
+  case "$arg" in
+    --no-modify-path) NO_MODIFY_PATH=1 ;;
+    --yes|-y) ASSUME_YES=1 ;;
+    *) echo "nros install: unknown argument '$arg' (ignored)" >&2 ;;
+  esac
+done
 
 err() { echo "nros install: $*" >&2; exit 1; }
 
@@ -139,7 +157,101 @@ chmod +x "${bindir}/nros"
 echo "nros install: installed $(${bindir}/nros --version 2>/dev/null || echo nros) → ${bindir}/nros"
 echo "nros install: forwarding shims → ${bindir}/{zenohd,MicroXRCEAgent}"
 
+# --- PATH integration (rustup-style: tty-prompt or print-hint) ------------
+#
+# Append `export PATH="$NROS_HOME/bin:$PATH"` to the user's shell rc, the
+# same way `rustup-init` handles `~/.cargo/bin`. Strategy:
+#   1. If $NROS_HOME/bin is already in PATH, do nothing.
+#   2. Else, if NROS_NO_MODIFY_PATH=1 / --no-modify-path: print the manual
+#      `export PATH=…` line and exit.
+#   3. Else detect the user's shell + its rc file; show what would be
+#      written; ask Y/n on /dev/tty. Y (default) appends; N skips with
+#      the manual hint.
+#   4. Non-interactive (no /dev/tty — e.g. `curl … | sh` without `< /dev/tty`):
+#      same behaviour as NROS_NO_MODIFY_PATH=1 — print the hint, never
+#      mutate the user's rc silently.
+#
+# Append is idempotent: a grep guards against re-adding the same export.
 case ":${PATH}:" in
-  *":${bindir}:"*) ;;
-  *) echo "nros install: add to PATH →  export PATH=\"${bindir}:\$PATH\"" ;;
+  *":${bindir}:"*) exit 0 ;;
+esac
+
+print_path_hint() {
+  echo "nros install: add to PATH →  export PATH=\"${bindir}:\$PATH\""
+  echo "nros install: re-run this installer with --yes (or NROS_YES=1) to write it to your shell rc automatically."
+}
+
+if [ "$NO_MODIFY_PATH" = "1" ]; then
+  print_path_hint
+  exit 0
+fi
+
+# Detect shell + rc file. Prefer the shell the user is invoking us with
+# ($SHELL is set even in non-interactive contexts). Match rustup's
+# coverage: bash, zsh, fish, POSIX fallback.
+shell_name="$(basename "${SHELL:-/bin/sh}")"
+case "$shell_name" in
+  bash)
+    # rustup writes to ~/.profile + ~/.bashrc (Linux). Match for predictability.
+    rc_files="$HOME/.bashrc"
+    [ -f "$HOME/.bash_profile" ] && rc_files="$rc_files $HOME/.bash_profile"
+    export_line='export PATH="$HOME/.nros/bin:$PATH"'
+    ;;
+  zsh)
+    # rustup uses ~/.zshenv (sourced for every zsh; right for PATH).
+    rc_files="$HOME/.zshenv"
+    export_line='export PATH="$HOME/.nros/bin:$PATH"'
+    ;;
+  fish)
+    mkdir -p "$HOME/.config/fish/conf.d"
+    rc_files="$HOME/.config/fish/conf.d/nros.fish"
+    export_line='set -gx PATH $HOME/.nros/bin $PATH'
+    ;;
+  *)
+    rc_files="$HOME/.profile"
+    export_line='export PATH="$HOME/.nros/bin:$PATH"'
+    ;;
+esac
+
+# Already present in any of the rc files? skip silently.
+for f in $rc_files; do
+  if [ -f "$f" ] && grep -Fq "$export_line" "$f" 2>/dev/null; then
+    echo "nros install: PATH export already present in $f — skipping."
+    echo "nros install: run \`exec \$SHELL\` (or open a new terminal) to pick it up."
+    exit 0
+  fi
+done
+
+# Decide: prompt? auto-yes? non-interactive?
+answer=""
+if [ "$ASSUME_YES" = "1" ]; then
+  answer="y"
+elif [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  echo ""
+  echo "nros install: ${bindir} is not on PATH."
+  echo "Append the following to ${rc_files}:"
+  echo "  ${export_line}"
+  printf "Proceed? (Y/n) "
+  read answer < /dev/tty || answer=""
+  answer="${answer:-y}"
+else
+  print_path_hint
+  exit 0
+fi
+
+case "$answer" in
+  [yY]|[yY][eE][sS]|"")
+    target_file=""
+    for f in $rc_files; do
+      target_file="$f"
+      break
+    done
+    printf '\n# Added by nros installer (%s)\n%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$export_line" \
+      >> "$target_file"
+    echo "nros install: appended PATH export to $target_file."
+    echo "nros install: run \`exec \$SHELL\` (or open a new terminal) to pick it up."
+    ;;
+  *)
+    print_path_hint
+    ;;
 esac

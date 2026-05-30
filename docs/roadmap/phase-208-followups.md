@@ -44,18 +44,45 @@ beyond the project-layout tree.
 populated by the example's build.rs on first `cargo build` (or by
 `nros generate-rust` directly) — not committed."* No source change.
 
-### F3 — `just doctor tier=default` still probes the in-tree codegen path
+### F3 — `just doctor` `[MISSING] cargo-tools: nros` reinstall loop — closed
 
-**Symptom.** `tier=default` runs `_pinned-toolchain-files` (rustup network
-call → SIGTERM after 3 min) and the in-tree `cargo install --path
-packages/codegen/...` probe — which now reports `[MISSING] cargo-tools:
-nros` even when `~/.nros/bin/nros 0.3.7` is installed and working. Sent
-users loop on reinstall (acc.5 troubleshoot-10min report).
+**Symptom (original).** `tier=default` reported `[MISSING] cargo-tools:
+nros` even when `~/.nros/bin/nros 0.3.7` was installed and working;
+remediation `just workspace cargo-tools` re-ran `install-nros.sh` which
+short-circuited on `command -v nros` → user looped on reinstall instead of
+fixing the actual problem (PATH didn't include `~/.nros/bin`).
 
-208.D.6 closed the rustup-hang half. The probe-target side still points at
-the retired in-tree submodule. Switch the probe to PATH / `~/.nros/bin/`
-(mirroring the canonical `find_program(nros …)` resolver from
-`cmake/NanoRosGenerateInterfaces.cmake`).
+**Root cause was not a stale in-tree probe target — it was PATH hygiene.**
+The probe used `command -v nros`; `nros` lives in `~/.nros/bin/`; the
+installer never added that to the user's shell rc; `just doctor` ran in a
+shell that didn't see the binary. install-nros.sh's own `command -v nros`
+early-out had the same blind spot.
+
+**Closed (2026-05-30):**
+
+1. **`scripts/install-nros.sh` writes the PATH export rustup-style.** Same
+   strategy as `rustup-init`: detect the user's shell from `$SHELL`, pick
+   the right rc file (`bash` → `~/.bashrc` / `~/.bash_profile`, `zsh` →
+   `~/.zshenv`, `fish` → `~/.config/fish/conf.d/nros.fish`, fallback →
+   `~/.profile`), show the line that would be appended, prompt Y/n on
+   `/dev/tty`. Non-interactive runs (e.g. `curl … | sh` without
+   `< /dev/tty`) and runs with `NROS_NO_MODIFY_PATH=1` /
+   `--no-modify-path` print the manual `export PATH=…` hint instead of
+   silently mutating the user's rc. `NROS_YES=1` / `-y` auto-confirms. An
+   idempotence guard greps the rc for the line first so re-runs don't
+   double-append.
+
+2. **`just/workspace.just` doctor probe is store-aware.** The cargo-tools
+   loop now treats `nros` separately from `cargo-nextest` /
+   `cargo-llvm-cov` / `espflash` (which `rustup` PATH-installs). The probe
+   resolves PATH → `${NROS_HOME:-$HOME/.nros}/bin/nros` and emits a
+   distinct `[PATH] nros at ~/.nros/bin/nros but not on PATH — add: export
+   PATH=…` status when the binary is found-not-PATHed. Mirrors
+   `cmake/NanoRosGenerateInterfaces.cmake`'s resolver. User sees the
+   actionable hint (PATH export, not reinstall) and the loop breaks.
+
+N4 from the batch-2 supplement is folded in — `~/.nros/bin` now opt-in
+auto-PATHs through the installer rather than only being a printed hint.
 
 ## Doc cleanup
 

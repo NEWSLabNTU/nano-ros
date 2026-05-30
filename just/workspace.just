@@ -236,15 +236,40 @@ doctor:
     fi
 
     # --- cargo-tools ---
+    # cargo-installed tools (nextest / llvm-cov / espflash) land in ~/.cargo/bin,
+    # which rustup adds to PATH on install. `nros` is different: install-nros.sh
+    # lands it under $NROS_HOME/bin (default ~/.nros/bin), and the user may not
+    # have added that to PATH yet. Phase 208 F3 — recognise the store-installed
+    # state separately so the user gets a PATH-export hint instead of looping
+    # on `just workspace cargo-tools` → install-nros.sh → already-installed
+    # short-circuit. Mirrors `cmake/NanoRosGenerateInterfaces.cmake`'s resolver.
     tool_missing=()
-    for t in cargo-nextest cargo-llvm-cov espflash nros; do
+    for t in cargo-nextest cargo-llvm-cov espflash; do
         check command -v "$t" || tool_missing+=("$t")
     done
-    if [ ${#tool_missing[@]} -eq 0 ]; then
+    nros_path_status="ok"
+    if command -v nros >/dev/null 2>&1; then
+        :
+    elif [ -x "${NROS_HOME:-$HOME/.nros}/bin/nros" ]; then
+        nros_path_status="needs-path"
+    else
+        nros_path_status="missing"
+    fi
+
+    if [ ${#tool_missing[@]} -eq 0 ] && [ "$nros_path_status" = "ok" ]; then
         echo "  [OK] cargo-tools"
     else
-        echo "  [MISSING] cargo-tools: ${tool_missing[*]} (run: just workspace cargo-tools)"
-        fail=1
+        if [ "$nros_path_status" = "needs-path" ]; then
+            echo "  [PATH] nros at ~/.nros/bin/nros but not on PATH —"
+            echo "         add: export PATH=\"\$HOME/.nros/bin:\$PATH\"  (or re-run scripts/install-nros.sh --yes)"
+            fail=1
+        elif [ "$nros_path_status" = "missing" ]; then
+            tool_missing+=("nros")
+        fi
+        if [ ${#tool_missing[@]} -gt 0 ]; then
+            echo "  [MISSING] cargo-tools: ${tool_missing[*]} (run: just workspace cargo-tools)"
+            fail=1
+        fi
     fi
 
     # --- toolchain env vars (exported by .envrc with sensible defaults) ---
