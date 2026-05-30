@@ -50,14 +50,19 @@ environment variable (`NANO_ROS_DIR=…`), then the in-tree default:
 ```bash
 cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
-      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules \
+      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros \
       -DNANO_ROS_DIR=$PWD/../nano-ros            # point at your nano-ros clone
 
 # Or via environment, if you prefer:
 NANO_ROS_DIR=$PWD/../nano-ros cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
-      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules
+      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros
 ```
+
+(`EXTERNAL_MODULES_LOCATION` must point at the dir containing
+the template's `src/` — that's `px4-modules/nano-ros`, not its parent.
+PX4's root `CMakeLists.txt` does `add_subdirectory("${EXTERNAL_MODULES_LOCATION}/src" …)`,
+so the path resolves to `px4-modules/nano-ros/src` per the layout above.)
 
 Inside the module, the canonical pattern bridges uORB → nano-ros.
 The module is a `PX4Module` subclass that runs in its own work
@@ -75,7 +80,7 @@ via CMake cache vars rather than menuconfig:
 ```bash
 cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
-      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules \
+      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros \
       -DNANO_ROS_DIR=$PWD/../nano-ros \
       -DNANO_ROS_RMW=zenoh
 ```
@@ -124,9 +129,10 @@ You're expected to edit `nano_ros_app.cpp` to wire your
 uORB → nano-ros forwards. If `nano_ros_app` reports `register
 failed`, check:
 
-1. Module didn't register — check the PX4 boot log for
-   `nano-ros: register failed`. Usually a NuttX kernel-config /
-   feature-gate mismatch.
+1. Module didn't register — the template logs
+   `nros_rmw_uorb_register() -> <rc>` on startup (search the PX4 boot
+   log for `nros_rmw_uorb_register`). A non-zero `<rc>` usually means
+   a NuttX kernel-config / feature-gate mismatch.
 2. Once you've added forwarders, `zenohd` must be reachable from
    the autopilot's network (Pixhawk: configured via QGroundControl
    or `param set`).
