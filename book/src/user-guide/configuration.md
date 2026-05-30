@@ -167,8 +167,16 @@ are applied where noted; the serial cell ships with the recipe below.
 | stm32f4 (thumbv7em-eabihf, cortex-m4) | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
 | stm32f4 | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
 | qemu-arm-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
-| **qemu-arm-baremetal (Phase 207)** | **serial** (custom XRCE transport) | **XRCE** | **size** + heap 8 KB | **60.6 KB** | **8.8 KB** | **8.6 KB** | **~17.4 KB** |
+| **qemu-arm-baremetal (Phase 207)** | **serial** (custom XRCE transport) | **XRCE** | **size**, heap 512 KB (handshake-working) | **60.6 KB** | 524.9 KB (heap) | 8.8 KB | ~533 KB ⚠ |
 | **micro-ROS reference** (XRCE) | serial | XRCE-DDS Client | -Os | < 75 KB | — | ~3 KB | ~3 KB peak |
+
+⚠ XRCE flash is at the micro-ROS reference today, but **the vendor
+`xrce_session_state_t` struct is ~390 KB at the cffi build's current
+defaults** (`UCLIENT_CUSTOM_TRANSPORT_MTU=4096 × XRCE_STREAM_HISTORY=16 = 64
+KB × 2 stream buffers + 8 subscriber slots × 32-ring × 1 KB`). Heap below
+~500 KB makes `xrce_session_open`'s session-state `calloc` fail — closing
+this gap to the micro-ROS ~3 KB RAM reference is the per-pool static-sizing
+work tracked as **Phase 207.6** in the roadmap.
 
 **How to read this:**
 

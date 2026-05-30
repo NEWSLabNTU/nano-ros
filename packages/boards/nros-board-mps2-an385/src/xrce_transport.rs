@@ -20,18 +20,9 @@
 //! // … now `Executor::open` routes XRCE I/O through UART0.
 //! ```
 
-use core::{
-    ffi::c_void,
-    sync::atomic::{AtomicBool, AtomicU32, Ordering},
-};
+use core::ffi::c_void;
 
-use cortex_m_semihosting::hprintln;
 use zpico_serial::SerialPort;
-
-// Phase 207.4 debug — one-shot hprintln flags per trampoline.
-static OPEN_FIRED: AtomicBool = AtomicBool::new(false);
-static WRITE_COUNT: AtomicU32 = AtomicU32::new(0);
-static READ_COUNT: AtomicU32 = AtomicU32::new(0);
 
 use crate::node::UART_DEVICE;
 
@@ -39,9 +30,6 @@ use crate::node::UART_DEVICE;
 /// `init_serial`, so this is a no-op that returns success (0). XRCE
 /// invokes this once per session start.
 unsafe extern "C" fn xrce_open(_user_data: *mut c_void, _params: *const c_void) -> i32 {
-    if !OPEN_FIRED.swap(true, Ordering::SeqCst) {
-        hprintln!("xrce_transport: open fired");
-    }
     0
 }
 
@@ -66,10 +54,6 @@ unsafe extern "C" fn xrce_write(_user_data: *mut c_void, buf: *const u8, len: us
     // custom-transport contract serializes read/write so the &mut is
     // exclusive for the duration of the call.
     let written = unsafe { UART_DEVICE.assume_init_mut().write(slice) };
-    let n = WRITE_COUNT.fetch_add(1, Ordering::SeqCst);
-    if n < 3 {
-        hprintln!("xrce_transport: write #{} len={} written={}", n, len, written);
-    }
     if written == len { 0 } else { -1 }
 }
 
@@ -98,22 +82,12 @@ unsafe extern "C" fn xrce_read(
     // SAFETY: same reasoning as `xrce_write` for the buffer + UART access.
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, len) };
     let deadline = nros_platform_mps2_an385::clock::clock_ms().saturating_add(timeout_ms as u64);
-    let call_n = READ_COUNT.fetch_add(1, Ordering::SeqCst);
-    if call_n < 3 {
-        hprintln!("xrce_transport: read #{} len={} timeout_ms={}", call_n, len, timeout_ms);
-    }
     loop {
         let n = unsafe { UART_DEVICE.assume_init_mut().read(slice) };
         if n > 0 {
-            if call_n < 3 {
-                hprintln!("xrce_transport: read #{} got {} bytes", call_n, n);
-            }
             return n as i32;
         }
         if nros_platform_mps2_an385::clock::clock_ms() >= deadline {
-            if call_n < 3 {
-                hprintln!("xrce_transport: read #{} timed out", call_n);
-            }
             return 0;
         }
         core::hint::spin_loop();
