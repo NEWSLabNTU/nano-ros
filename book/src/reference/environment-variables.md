@@ -85,11 +85,11 @@ guidance and platform guides for target-specific sizing.
 | `ZPICO_SERVICE_BUFFER_SIZE`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
 | `ZPICO_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
 | `ZPICO_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
-| `ZPICO_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp)                   | `4`              | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp)                   | `2`              | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp)                    | `2048`           | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp)                       | `30000`          | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp)                       | `10000`          | zpico-smoltcp  |
+| `NROS_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp); brokered default since Phase 204.2. Legacy alias: `ZPICO_SMOLTCP_MAX_SOCKETS`. | `1` (brokered) | nros-smoltcp |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp); 1 by default, 4 with the `nros-smoltcp/rtps` feature (Phase 204.2). Legacy alias: `ZPICO_SMOLTCP_MAX_UDP_SOCKETS`. | `1` (brokered) | nros-smoltcp |
+| `NROS_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp). Legacy alias: `ZPICO_SMOLTCP_BUFFER_SIZE`.                          | `2048`           | nros-smoltcp  |
+| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). Legacy alias: `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS`.                      | `30000`          | nros-smoltcp  |
+| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). Legacy alias: `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS`.                       | `10000`          | nros-smoltcp  |
 
 ### XRCE-DDS (`XRCE_*`)
 

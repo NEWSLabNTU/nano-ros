@@ -209,7 +209,7 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 #    up:
 just zephyr zenohd &
 #    Or directly:
-#    build/zenohd/zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting
+#    zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting
 
 # 2. Boot the app. nano-ros's own in-tree zephyr talker has a
 #    matching just recipe for the canonical `native_sim` build path:

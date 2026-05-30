@@ -28,7 +28,7 @@ For interop with stock ROS 2 over Zenoh, run the bundled router (built
 by `just zenohd setup`) and point ROS 2 at it:
 
 ```bash
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+zenohd --listen tcp/127.0.0.1:7447
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ```
 

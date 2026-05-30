@@ -44,12 +44,12 @@ The `idf_component.yml` is the dependency manifest:
 dependencies:
   nano-ros:
     # During development — local path to your nano-ros clone:
-    path: ../../../nano-ros/integrations/esp-idf
+    path: ../../../nano-ros/integrations/nano-ros
     # Once published to the Espressif Component Registry:
     # version: "*"
 ```
 
-The shell at `integrations/esp-idf/` wraps the nano-ros root CMake
+The shell at `integrations/nano-ros/` wraps the nano-ros root CMake
 into a standard IDF component, mapping IDF Kconfig knobs to
 `NANO_ROS_*` cache vars.
 
@@ -117,11 +117,11 @@ line:
 ## GitHub source
 
 - IDF component shell:
-  [`integrations/esp-idf/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/esp-idf)
+  [`integrations/nano-ros/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/nano-ros)
 - Component manifest:
-  [`integrations/esp-idf/idf_component.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/esp-idf/idf_component.yml)
+  [`integrations/nano-ros/idf_component.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nano-ros/idf_component.yml)
 - Kconfig surface:
-  [`integrations/esp-idf/Kconfig.projbuild`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/esp-idf/Kconfig.projbuild)
+  [`integrations/nano-ros/Kconfig.projbuild`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nano-ros/Kconfig.projbuild)
 
 A complete reference app showing Wi-Fi + zenoh wiring on top of the
 component is not in-tree yet; the bare-metal

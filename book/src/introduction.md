@@ -80,7 +80,7 @@ The same program in C and C++ is in the First Node guides:
 |---------------------------|---------------|-----------------|-----------|---------------------------------------------------|---------------|
 | ARM MPS2-AN385 (QEMU)     | Cortex-M3     | FreeRTOS / bare | Rust C C++ ¹ | `examples/qemu-arm-{freertos,baremetal}/`         | Verified      |
 | ST STM32F4-Discovery      | Cortex-M4F    | FreeRTOS / bare | Rust ²    | board crate `nros-board-stm32f4`                  | Verified      |
-| Espressif ESP32-C3        | RISC-V (RV32) | bare / ESP-IDF  | Rust C C++ | `examples/esp32/rust/`, `integrations/esp-idf/`   | Verified      |
+| Espressif ESP32-C3        | RISC-V (RV32) | bare / ESP-IDF  | Rust C C++ | `examples/esp32/rust/`, `integrations/nano-ros/`   | Verified      |
 | Espressif ESP32-S3        | Xtensa        | bare / ESP-IDF  | Rust ³    | board crate `nros-board-esp32` (Xtensa toolchain) | Ready         |
 | Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/esp32-qemu/`                            | Verified      |
 | QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C    | `examples/threadx-riscv64/`                       | Verified      |

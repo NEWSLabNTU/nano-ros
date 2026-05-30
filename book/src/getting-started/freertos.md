@@ -135,7 +135,7 @@ also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 #    `nros setup … --rmw zenoh` on the freertos port (7451).
 just freertos zenohd &
 #    Or directly:
-#    build/zenohd/zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting
+#    zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting
 
 # 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
 #    with the LAN9118 + Slirp wiring the example expects; works for

@@ -100,7 +100,7 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 #    `nros setup ... --rmw zenoh` on that port:
 just qemu-baremetal zenohd &
 #    Or directly:
-#    build/zenohd/zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
+#    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
 
 # 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
 #    with the LAN9118 wiring the example expects:

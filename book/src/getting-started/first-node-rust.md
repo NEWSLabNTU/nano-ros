@@ -36,9 +36,9 @@ examples/native/rust/talker/
 ```
 
 POSIX talkers read the locator / domain from environment variables
-(`ZENOH_LOCATOR`, `ROS_DOMAIN_ID`) — no `config.toml` is needed.
-The `config.toml` shape used by embedded targets shows up under
-the Embedded Starters section.
+(`NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR` — and `ROS_DOMAIN_ID`)
+— no `nros.toml` is needed. The `nros.toml` shape used by embedded
+targets shows up under the Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your
 package. The in-tree talker is a **member of the nano-ros workspace**,

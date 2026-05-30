@@ -243,9 +243,10 @@ and `.action` files. It uses a bundled codegen library — no external `nros` bi
 ### Prerequisites
 
 `nano_ros_generate_interfaces()` becomes available automatically once
-the consumer's `CMakeLists.txt` invokes `add_subdirectory(nano-ros)`
-. The `nros-codegen` tool is built in-tree via Corrosion;
-no install step required.
+the consumer's `CMakeLists.txt` invokes `add_subdirectory(nano-ros)`.
+The codegen tool ships inside the prebuilt `nros` CLI binary (Phase
+195.D — the `nros-codegen` submodule was retired); cmake auto-resolves
+it from `PATH` / `~/.nros/bin/`. No separate build step.
 
 ### Usage
 
