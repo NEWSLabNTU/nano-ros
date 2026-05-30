@@ -73,11 +73,13 @@ endif()
 # --- Compile flags applied to every compat-built target ----------------------
 # `-include` force-pulls the headers so the ported source's
 # `#include <rclcpp/rclcpp.hpp>` resolves without an edit.
+# `SHELL:` keeps each `-include FILE` pair together as a single shell-tokenized
+# arg — without it cmake dedupes the repeated `-include` flag and the second
+# header path becomes a stray input file (`cannot specify '-o' with '-c' with
+# multiple files`).
 set(_NROS_COMPAT_FORCE_INCLUDES
-    "$<$<COMPILE_LANGUAGE:CXX>:-include>"
-    "$<$<COMPILE_LANGUAGE:CXX>:nros/rclcpp_compat.hpp>"
-    "$<$<COMPILE_LANGUAGE:CXX>:-include>"
-    "$<$<COMPILE_LANGUAGE:CXX>:nros/rclcpp_components_compat.hpp>"
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include nros/rclcpp_compat.hpp>"
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include nros/rclcpp_components_compat.hpp>"
 )
 # CACHE so functions defined below see it without recapturing scope.
 set(_NROS_COMPAT_FORCE_INCLUDES "${_NROS_COMPAT_FORCE_INCLUDES}" CACHE INTERNAL "")
@@ -87,6 +89,10 @@ function(_nros_compat_apply_force_includes target)
         return()
     endif()
     target_compile_options(${target} PRIVATE ${_NROS_COMPAT_FORCE_INCLUDES})
+    # Make `#include <rclcpp/rclcpp.hpp>` (and the components register macro
+    # header) resolve to the nano-ros compat shims.
+    target_include_directories(${target} PRIVATE
+        "${_nros_compat_dir}/include")
 endfunction()
 
 # --- ament_cmake_auto shims ---------------------------------------------------

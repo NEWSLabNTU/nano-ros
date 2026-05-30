@@ -35,14 +35,14 @@ class DiagnosticStatusWrapper : public ::diagnostic_msgs::msg::DiagnosticStatus 
 public:
     DiagnosticStatusWrapper() {
         this->level   = OK;
-        this->name    = "";
-        this->message = "";
+        this->name    = (const char*) "";
+        this->message = (const char*) "";
     }
 
     // --- summary -------------------------------------------------------------
     void summary(uint8_t lvl, const std::string& msg) {
         this->level   = lvl;
-        this->message = msg;
+        this->message = msg.c_str();
     }
 
     void summary(const DiagnosticStatusWrapper& src) {
@@ -57,7 +57,7 @@ public:
         ::vsnprintf(buf, sizeof(buf), fmt, ap);
         va_end(ap);
         this->level   = lvl;
-        this->message = buf;
+        this->message = (const char*)buf;
     }
 
     void clearSummary() {
@@ -70,17 +70,19 @@ public:
         if (lvl > this->level) {
             this->level = lvl;
         }
-        if (!this->message.empty() && !msg.empty()) {
-            this->message += "; ";
+        std::string cur(this->message.c_str());
+        if (!cur.empty() && !msg.empty()) {
+            cur += "; ";
         }
-        this->message += msg;
+        cur += msg;
+        this->message = cur.c_str();
     }
 
     // --- add(key, value) ----------------------------------------------------
     void add(const std::string& key, const std::string& value) {
         ::diagnostic_msgs::msg::KeyValue kv;
-        kv.key   = key;
-        kv.value = value;
+        kv.key = key.c_str();
+        kv.value = value.c_str();
         this->values.push_back(std::move(kv));
     }
 
@@ -108,7 +110,8 @@ public:
     }
 
     void clear() {
-        this->values.clear();
+        // FixedSequence is fixed-capacity; re-initialize to empty.
+        this->values = ::diagnostic_msgs::msg::DiagnosticStatus().values;
         clearSummary();
     }
 };

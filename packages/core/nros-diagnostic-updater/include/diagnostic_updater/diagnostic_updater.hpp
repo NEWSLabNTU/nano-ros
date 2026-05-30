@@ -85,9 +85,13 @@ public:
     }
 
     void removeByName(const std::string& name) {
-        tasks_.erase(std::remove_if(tasks_.begin(), tasks_.end(),
-                                     [&](const Task& t) { return t.first == name; }),
-                     tasks_.end());
+        for (auto it = tasks_.begin(); it != tasks_.end();) {
+            if (it->first == name) {
+                it = tasks_.erase(it);
+            } else {
+                ++it;
+            }
+        }
     }
 
     // --- publish ------------------------------------------------------------
@@ -108,9 +112,9 @@ public:
         ::diagnostic_msgs::msg::DiagnosticArray array;
         ::diagnostic_msgs::msg::DiagnosticStatus status;
         status.level       = level;
-        status.name        = "";
-        status.message     = message;
-        status.hardware_id = hardware_id_;
+        status.name        = (const char*) "";
+        status.message     = message.c_str();
+        status.hardware_id = hardware_id_.c_str();
         array.status.push_back(std::move(status));
         publisher_->publish(array);
         last_publish_ = std::chrono::steady_clock::now();
@@ -128,12 +132,11 @@ private:
             return;
         }
         ::diagnostic_msgs::msg::DiagnosticArray array;
-        array.status.reserve(tasks_.size());
         for (const auto& task : tasks_) {
             DiagnosticStatusWrapper w;
             task.second(w);
-            w.name        = task.first;
-            w.hardware_id = hardware_id_;
+            w.name        = task.first.c_str();
+            w.hardware_id = hardware_id_.c_str();
             array.status.push_back(static_cast<::diagnostic_msgs::msg::DiagnosticStatus>(w));
         }
         publisher_->publish(array);

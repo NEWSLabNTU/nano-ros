@@ -65,10 +65,22 @@ namespace rclcpp {
 
 // --- Type aliases for shapes that map cleanly ---------------------------------
 
-using ::nros::QoS;
 using ::nros::Result;
 
-template <typename M> using Publisher = ::nros::Publisher<M>;
+// rclcpp::QoS subclasses nros::QoS to add the `QoS(depth)` integer ctor every
+// ported source uses; the chainable setters (`reliable()`, `best_effort()`,
+// `keep_last(n)`, …) are inherited. Implicit-converts to `nros::QoS` (used in
+// the create_publisher/subscription overloads below).
+class QoS : public ::nros::QoS {
+public:
+    constexpr QoS() = default;
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    QoS(::size_t depth) : ::nros::QoS() { keep_last(static_cast<int>(depth)); }
+    QoS(const ::nros::QoS& other) : ::nros::QoS(other) {}
+};
+
+template <typename M>
+using Publisher = ::nros::Publisher<M>;
 
 template <typename M> using Subscription = ::nros::Subscription<M>;
 
@@ -90,19 +102,11 @@ template <typename T> struct SharedPtrTrait {
 // too, so the constructor is already compatible. These named profiles save the
 // most-cited spellings from `rclcpp::QoS` factories.
 
-inline ::nros::QoS SystemDefaultsQoS() {
-    return ::nros::QoS(10);
-}
-inline ::nros::QoS ServicesQoS() {
-    return ::nros::QoS(10);
-}
-inline ::nros::QoS ParametersQoS() {
-    return ::nros::QoS(10);
-}
+inline QoS SystemDefaultsQoS() { return QoS(10); }
+inline QoS ServicesQoS() { return QoS(10); }
+inline QoS ParametersQoS() { return QoS(10); }
 
-inline ::nros::QoS KeepLast(::size_t depth) {
-    return ::nros::QoS(depth);
-}
+inline QoS KeepLast(::size_t depth) { return QoS(depth); }
 
 // --- Logger surface ----------------------------------------------------------
 //
@@ -172,7 +176,7 @@ class Node : public std::enable_shared_from_this<Node> {
         // that uses `std::make_shared<rclcpp::Node>("n")` mirrors rclcpp's
         // "constructor never returns an error code" contract.
         ::nros::Result r = ::nros::Executor::create(executor_);
-        if (r.is_err()) {
+        if (r.ok() == false) {
             // nros-cpp is freestanding by default — no `<stdexcept>`. Mark the
             // node as uninitialized; subsequent `create_*` will fail visibly.
             initialized_ = false;
@@ -212,9 +216,9 @@ class Node : public std::enable_shared_from_this<Node> {
     }
 
     template <typename M>
-    std::shared_ptr<::nros::Publisher<M>> create_publisher(const std::string& topic,
-                                                           ::size_t depth) {
-        return create_publisher<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)));
+    std::shared_ptr<::nros::Publisher<M>>
+    create_publisher(const std::string& topic, ::size_t depth) {
+        return create_publisher<M>(topic, QoS(static_cast<::size_t>(depth)));
     }
 
     // create_subscription<M>(topic, qos, callback)
@@ -231,10 +235,10 @@ class Node : public std::enable_shared_from_this<Node> {
     }
 
     template <typename M, typename Cb>
-    std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
-                                                                 ::size_t depth, Cb cb) {
-        return create_subscription<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)),
-                                      std::move(cb));
+    std::shared_ptr<::nros::Subscription<M>>
+    create_subscription(const std::string& topic, ::size_t depth, Cb cb) {
+        return create_subscription<M>(topic, QoS(static_cast<::size_t>(depth)),
+                                       std::move(cb));
     }
 
   private:
@@ -303,12 +307,14 @@ template <typename A> using Client = ::nros::ActionClient<A>;
 // line/format are what reach the sink). _THROTTLE variants degrade to plain log
 // — they get the message out; a follow-up can add interval gating.
 
+// NROS_INFO is a do-while(0) block; the comma-operator wrapper around it was
+// invalid C++. Use a do-while wrapper so RCLCPP_INFO is a single statement.
 #ifndef RCLCPP_INFO
-#define RCLCPP_INFO(logger, ...) (void)(logger), NROS_INFO(__VA_ARGS__)
-#define RCLCPP_WARN(logger, ...) (void)(logger), NROS_WARN(__VA_ARGS__)
-#define RCLCPP_ERROR(logger, ...) (void)(logger), NROS_ERROR(__VA_ARGS__)
-#define RCLCPP_DEBUG(logger, ...) (void)(logger), NROS_DEBUG(__VA_ARGS__)
-#define RCLCPP_FATAL(logger, ...) (void)(logger), NROS_ERROR(__VA_ARGS__)
+#define RCLCPP_INFO(logger, ...)  do { (void)(logger); NROS_INFO(__VA_ARGS__); } while (0)
+#define RCLCPP_WARN(logger, ...)  do { (void)(logger); NROS_WARN(__VA_ARGS__); } while (0)
+#define RCLCPP_ERROR(logger, ...) do { (void)(logger); NROS_ERROR(__VA_ARGS__); } while (0)
+#define RCLCPP_DEBUG(logger, ...) do { (void)(logger); NROS_DEBUG(__VA_ARGS__); } while (0)
+#define RCLCPP_FATAL(logger, ...) do { (void)(logger); NROS_ERROR(__VA_ARGS__); } while (0)
 
 #define RCLCPP_INFO_STREAM(logger, args) RCLCPP_INFO(logger, "%s", "")
 #define RCLCPP_WARN_STREAM(logger, args) RCLCPP_WARN(logger, "%s", "")
