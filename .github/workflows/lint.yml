@@ -192,8 +192,13 @@ jobs:
 
       # `just check-c` / `check-cpp` invoke `clang-format --dry-run --Werror`
       # against the nros-c / nros-cpp headers + the native C / C++ example
-      # sources. The nano-ros-ci container bakes clang-format already — no
-      # apt step needed here.
+      # sources. The nano-ros-ci container doesn't bake clang-format; install
+      # it once per run before invoking the recipes.
+      - name: Install clang-format
+        run: |
+          apt-get update -q
+          apt-get install -y --no-install-recommends clang-format
+
       - name: just check-c
         run: just check-c
 
