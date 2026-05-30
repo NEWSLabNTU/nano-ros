@@ -77,11 +77,8 @@ cmake --build build
 - **Zephyr.** Consume nano-ros via the `integrations/zephyr/`
   module — drop `nano-ros` into your `west.yml`, set
   `CONFIG_NROS=y` + `CONFIG_NROS_RMW="zenoh"` in `prj.conf`.
-- **ESP-IDF.** `integrations/esp-idf/` is a component manifest —
+- **ESP-IDF.** `integrations/nano-ros/` is a component manifest —
   add it to your `idf_component.yml`.
-- **PlatformIO.** `integrations/platformio/library.json` — add
-  `lib_deps = nano-ros@*` (or a path/git pointer) in
-  `platformio.ini`.
 - **NuttX.** `integrations/nuttx/` is a `apps/external/` shim —
   symlink (or copy) and enable via `make menuconfig`.
 - **PX4.** `integrations/px4/module-template/` is a
@@ -111,7 +108,7 @@ the C/C++ snippet above.
 
 `find_package(NanoRos)` was a Debian-style "library installed
 once, consumed by many projects" model. The RTOS workflows that
-nano-ros actually targets (Zephyr `west`, ESP-IDF, PlatformIO,
+nano-ros actually targets (Zephyr `west`, ESP-IDF,
 NuttX `apps/external`, PX4 `EXTERNAL_MODULES_LOCATION`) all
 consume dependencies as source trees inside the user's workspace —
 not from an installed prefix. The install path drifted out of sync

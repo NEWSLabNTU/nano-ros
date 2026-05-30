@@ -125,14 +125,18 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       doesn't fetch the submodule. Gate behind a `px4-sitl` feature default-off,
       OR include `px4-rs` in the native plan. Verify `cargo build -p
       native-rs-talker` clean from `nros setup native --rmw zenoh` alone.
-- [ ] **208.D.4** `aeon/nano-ros` → `NEWSLabNTU/nano-ros` sweep (P11).
-      Fix `integrations/platformio/library.{json,properties}`,
-      `integrations/esp-idf/idf_component.yml`. Add CI grep guard
-      (`grep -rn 'aeon/nano-ros' book/ integrations/ packages/ examples/ docs/`
-      exits 1).
-- [ ] **208.D.5** Delete `just esp32 build` no-op stub (P13). Recipe currently
-      prints "use `build-examples`" + exit 0; aliasing it to `build-examples`
-      or deleting it.
+- [x] **208.D.4** `aeon/nano-ros` → `NEWSLabNTU/nano-ros` sweep (P11). After
+      .D.8 + .D.10, the only remaining hit was
+      `integrations/nano-ros/idf_component.yml`'s `url:` — fixed. The
+      `integrations/platformio/library.{json,properties}` files D.4 originally
+      targeted were deleted by .D.8. CI grep guard added at
+      `scripts/ci/string-conventions-check.sh` +
+      `.github/workflows/string-conventions.yml`; also guards `platformio` /
+      `PlatformIO` (the .D.8 retirement).
+- [x] **208.D.5** `just esp32 build` no-op stub replaced (P13). Recipe is now
+      `build: build-examples` (alias) — `just esp32 build` returns the same
+      artifact set as every other platform's `build` recipe. The no-separate-core
+      reason stays as a comment above the recipe.
 - [ ] **208.D.6** `just doctor tier=default` hang (P13). `_pinned-toolchain-files`
       makes a rustup network call → SIGTERM after 3 min. Add `--offline` path
       or skip on `tier=default`.
@@ -143,11 +147,14 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       `zephyr/cmake/nros_generate_interfaces.cmake` with the canonical `nros`
       resolver. Delete `integrations/zephyr/`. Grep replace
       `integrations/zephyr` → `zephyr` in book + just + index.
-- [ ] **208.D.8** Drop PlatformIO integration (P10 + user feedback).
-      Delete `integrations/platformio/`,
-      `book/src/getting-started/integration-platformio.md`, SUMMARY.md
-      entry, choose-your-entry cross-refs. CI grep guard: `platformio` /
-      `PlatformIO` not in `book/` / `integrations/`.
+- [x] **208.D.8** PlatformIO integration dropped (P10 + user feedback).
+      Deleted `integrations/platformio/`, `book/src/getting-started/
+      integration-platformio.md`, the `SUMMARY.md` entry, and every
+      PlatformIO mention from the book's lists (`concepts/board-integration.md`,
+      `getting-started/{integration-esp-idf,esp32,build-as-subdirectory}.md`,
+      `release/migration-install-local-removal.md`, `start-here/setup-compared-
+      to-ros2.md`, `reference/cli.md`). CI grep guard in 208.D.4's
+      `string-conventions-check.sh` keeps it from creeping back.
 - [ ] **208.D.9** Counter convention → ROS demo nodes (`stock count++` post-
       increment; first publish = 0) (P7 + user feedback). Currently Rust
       already at 0; C + C++ talkers pre-increment to 1. Align C + C++
@@ -155,14 +162,19 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       nuttx,qemu-riscv64-threadx,threadx-linux,esp32,qemu-arm-baremetal,
       zephyr,qemu-esp32-baremetal}/{c,cpp}/talker/src/`). Tests already
       tolerant (`executor.rs:92` checks both 0 AND 1).
-- [ ] **208.D.10** Rename `integrations/esp-idf/` → `integrations/nano-ros/`
-      (P9). IDF resolves `REQUIRES nano-ros` to component-basename `esp-idf`
-      → mismatch. Mechanical move + grep-replace.
-- [ ] **208.D.11** PX4 `NANO_ROS_DIR` accepts cmake cache var (P14). Template
-      currently reads `$ENV{NANO_ROS_DIR}` only; `-DNANO_ROS_DIR=` silently
-      doesn't propagate. Patch
-      `integrations/px4/module-template/src/modules/nano_ros_app/CMakeLists.txt`
-      to read cache then fall back to env.
+- [x] **208.D.10** `integrations/esp-idf/` renamed to `integrations/nano-ros/`
+      (P9). IDF resolves `REQUIRES nano-ros` to component-basename — the dir
+      name has to match the component name. `git mv` of the dir + sed replace
+      of every `integrations/esp-idf` path string across `book/`, `docs/`, and
+      the moved component's own `idf_component.yml` comment. The doc *page*
+      (`book/src/getting-started/integration-esp-idf.md`) keeps its filename —
+      it's the ESP-IDF integration **tutorial**, distinct from the component
+      directory it teaches.
+- [x] **208.D.11** PX4 `NANO_ROS_DIR` accepts a cmake cache var (P14). Template
+      now reads `NANO_ROS_DIR` (cache, set by `-DNANO_ROS_DIR=…`) first, then
+      `$ENV{NANO_ROS_DIR}`, then the in-tree default — explicit configure-line
+      override wins, env is the fallback. One block in
+      `integrations/px4/module-template/src/modules/nano_ros_app/CMakeLists.txt`.
 
 ### 208.E — Track B: doc rewrites (one pass after 208.D)
 

@@ -111,8 +111,8 @@ Multi-RMW bridges (one binary, two or more backends) use
 ## What Changes
 
 - **Source-only.** No binary SDK tarball, no crates.io umbrella crate,
-  no Arduino zip / ESP-IDF binary component / PlatformIO library /
-  GitHub Releases artifact. The locked policy is `git clone --branch=v<X.Y.Z>` +
+  no Arduino zip / ESP-IDF binary component / GitHub Releases artifact.
+  The locked policy is `git clone --branch=v<X.Y.Z>` +
   in-tree build.
 - **Per-board provisioning, no `rosdep`.** `nros setup <board> --rmw <rmw>`
   is the single setup command. It fetches prebuilt toolchains (cross-gcc,

@@ -20,7 +20,6 @@
 - [ThreadX](./getting-started/threadx.md)
 - [ESP32 (esp-hal)](./getting-started/esp32.md)
 - [ESP32 (ESP-IDF component)](./getting-started/integration-esp-idf.md)
-- [PlatformIO library](./getting-started/integration-platformio.md)
 - [Bare-metal Cortex-M3](./getting-started/bare-metal.md)
 - [PX4 Autopilot](./getting-started/px4.md)
 - [Native POSIX (reference)](./platform-guides/native-posix.md)

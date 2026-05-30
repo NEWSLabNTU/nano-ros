@@ -76,7 +76,7 @@ different consumption surfaces.
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 3 — Integration shell (one per RTOS)                      │
 │   - integrations/zephyr/         (west module + module.yml)     │
-│   - integrations/esp-idf/        (idf_component.yml)            │
+│   - integrations/nano-ros/        (idf_component.yml)            │
 │   - integrations/platformio/     (library.json)                 │
 │   - integrations/nuttx/          (Make.defs + Kconfig + Rust.mk)│
 │   - integrations/px4/            (EXTERNAL_MODULES_LOCATION)    │
@@ -148,7 +148,7 @@ this section distils the integration contract.
   H2 / P4.
 - Rust integration today: `esp-idf-sys`'s `[package.metadata.esp-idf-sys]`
   + `extra_components` injection is the bridge.
-- Phase 139.2 + 139.3 land `integrations/esp-idf/` +
+- Phase 139.2 + 139.3 land `integrations/nano-ros/` +
   `integrations/platformio/` shells.
 
 ### NuttX — `apps/external/` + Make.defs + Kconfig + `Rust.mk`
@@ -251,7 +251,7 @@ Phase 139 ships these. Updates needed:
   add nano-ros to their existing `west.yml` and `west update`. Vendor
   HALs (`hal_stm32`, etc.) come from mainline Zephyr separately.
   No board crate consumed — Zephyr's DTS owns board config.
-- **ESP-IDF**: `integrations/esp-idf/{CMakeLists.txt, idf_component.yml}`
+- **ESP-IDF**: `integrations/nano-ros/{CMakeLists.txt, idf_component.yml}`
   with `idf_component_register(...)` + `add_subdirectory(<repo-root>)`
   to delegate to Phase 137 root CMake. Publish to ESP Component
   Registry once stable.
@@ -280,7 +280,7 @@ them against that RTOS's APIs.
 | Cargo-first Rust dev, has SDK sources | Generic board crate + env vars | `[dependencies] nros-board-<kernel>` + env vars |
 | Vendor-IDE user (STM32CubeIDE etc.) | Vendor's existing FreeRTOS / ThreadX integration + nano-ros as a CMake `add_subdirectory` library | Copy generated code + `add_subdirectory` line |
 | Zephyr user (any board) | `integrations/zephyr/` shell via `west` | `projects:` entry in `west.yml` + `CONFIG_NROS=y` |
-| ESP-IDF user (any chip) | `integrations/esp-idf/` shell | `idf.py add-dependency nano-ros` |
+| ESP-IDF user (any chip) | `integrations/nano-ros/` shell | `idf.py add-dependency nano-ros` |
 | NuttX user (any board) | `integrations/nuttx/` shell | `ln -s … apps/external/nano-ros` + `make menuconfig` |
 | PX4 user | `integrations/px4/` shell | Set `EXTERNAL_MODULES_LOCATION`, add to module list |
 | PlatformIO user | `integrations/platformio/` shell | `lib_deps = nano-ros` |

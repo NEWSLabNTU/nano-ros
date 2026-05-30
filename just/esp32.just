@@ -62,10 +62,13 @@ doctor:
     fi
     exit $fail
 
-# Build ESP32 core artifacts.
+# Build ESP32 core artifacts. ESP32 has no separate core build step
+# (the zenoh-pico cross-build runs inside each example's cargo build,
+# Phase 84.F4) — `build` is an alias for `build-examples` so the standard
+# `just <plat> build` UX returns the same artifact set as every other
+# platform. Phase 208.D.5.
 [group("main")]
-build:
-    @echo "ESP32 has no separate core build; use 'just esp32 build-examples' for examples."
+build: build-examples
 
 # Build ESP32 examples (requires the workspace nightly — ESP32-C3 / riscv32imc).
 [group("main")]

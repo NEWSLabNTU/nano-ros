@@ -13,8 +13,13 @@
 
 set(_nros_root "${CMAKE_CURRENT_LIST_DIR}/../../../../..")
 # Allow downstream copies to override the path (when the template
-# sits in a separate tree from nano-ros).
-if(DEFINED ENV{NANO_ROS_DIR})
+# sits in a separate tree from nano-ros). Phase 208.D.11 — accept
+# both a cache var (`-DNANO_ROS_DIR=<path>`) and an env var; the
+# cache form takes precedence so an explicit configure-line override
+# wins, then env, then the in-tree default.
+if(DEFINED NANO_ROS_DIR)
+    set(_nros_root "${NANO_ROS_DIR}")
+elseif(DEFINED ENV{NANO_ROS_DIR})
     set(_nros_root "$ENV{NANO_ROS_DIR}")
 endif()
 

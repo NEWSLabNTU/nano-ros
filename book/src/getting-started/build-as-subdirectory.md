@@ -67,8 +67,8 @@ your binary, not nano-ros itself.
 
 For RTOS users who want a more idiomatic surface than raw
 `add_subdirectory`, see the integration shells under
-`integrations/<rtos>/` — they translate west / esp-idf / PlatformIO /
-NuttX / PX4 manifests into the same root CMake. Each shell is a
+`integrations/<rtos>/` — they translate west / esp-idf / NuttX / PX4
+manifests into the same root CMake. Each shell is a
 ~20-line wrapper around `add_subdirectory(<repo>)`.
 
 ## Worked example

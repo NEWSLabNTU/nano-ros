@@ -215,11 +215,10 @@ recipes (build matrices, CI orchestration) keep their current shape.
 ## Release pipeline status
 
 There is no `nros release` verb and no crates.io / Arduino zip /
-ESP-IDF binary / PlatformIO library / GitHub Releases tarball
-channel. Per the archive decision (2026-05-19), nano-ros
-is consumed by `git clone --branch=v<X.Y.Z>` plus the in-tree build
-recipes documented at
-[Installation](../getting-started/installation.md). Downstream RTOS
-package managers (Zephyr `west`, ESP-IDF `idf_component_yml`,
-PlatformIO `library.json`, NuttX `Kconfig`) consume the same source
+ESP-IDF binary / GitHub Releases tarball channel. Per the archive
+decision (2026-05-19), nano-ros is consumed by
+`git clone --branch=v<X.Y.Z>` plus the in-tree build recipes
+documented at [Installation](../getting-started/installation.md).
+Downstream RTOS package managers (Zephyr `west`,
+ESP-IDF `idf_component_yml`, NuttX `Kconfig`) consume the same source
 tree via the integration shells under `integrations/<rtos>/`.

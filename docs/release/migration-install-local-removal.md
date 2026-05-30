@@ -77,7 +77,7 @@ cmake --build build
 - **Zephyr.** Consume nano-ros via the `integrations/zephyr/`
   module — drop `nano-ros` into your `west.yml`, set
   `CONFIG_NROS=y` + `CONFIG_NROS_RMW="zenoh"` in `prj.conf`.
-- **ESP-IDF.** `integrations/esp-idf/` is a component manifest —
+- **ESP-IDF.** `integrations/nano-ros/` is a component manifest —
   add it to your `idf_component.yml`.
 - **PlatformIO.** `integrations/platformio/library.json` — add
   `lib_deps = nano-ros@*` (or a path/git pointer) in

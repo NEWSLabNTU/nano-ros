@@ -19,7 +19,6 @@ The architecture behind the matrix lives in
 | **ESP-IDF user (any ESP32 chip)** | `idf.py build`. | [ESP-IDF integration shell](../getting-started/integration-esp-idf.md) — `idf.py add-dependency nano-ros`. |
 | **NuttX user (any board)** | NuttX `apps/external/` + Kconfig. | [NuttX integration shell](../getting-started/integration-nuttx.md) — symlink under `apps/external/`. |
 | **PX4 user** | PX4 build pipeline. | [PX4 integration shell](../getting-started/integration-px4.md) — `EXTERNAL_MODULES_LOCATION`. |
-| **PlatformIO user** | `pio run`. | [PlatformIO integration shell](../getting-started/integration-platformio.md) — `lib_deps`. |
 | **Niche RTOS / vendor fork** | Stock RTOS kernel + vendor driver SDK. Cargo-driven build. | Generic board crate + **vendor overlay crate** (~50 LOC). See the [Vendor Overlay cookbook](../porting/vendor-overlay.md). |
 
 ## Generic board crate
@@ -94,8 +93,8 @@ Per the
 [architecture doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/board-bsp-integration-architecture.md),
 each RTOS already has its own package manager (Zephyr's
 `west` + DTS, ESP-IDF's component registry, NuttX's
-`apps/external/`, PlatformIO's `library.json`, PX4's
-`EXTERNAL_MODULES_LOCATION`). nano-ros rides those rails instead
+`apps/external/`, PX4's `EXTERNAL_MODULES_LOCATION`). nano-ros
+rides those rails instead
 of trying to re-invent a single "embedded library" mechanism that
 fits no vendor ecosystem cleanly.
 

@@ -145,8 +145,6 @@ QEMU ESP32: ~15 seconds. If no `Published:` line:
   `examples/esp32/rust/`.
 - ESP-IDF component path for C / C++ apps:
   [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
-- PlatformIO library path:
-  [PlatformIO library](./integration-platformio.md).
 - ESP32-S3 (Xtensa) is **not** currently supported. Xtensa targets
   aren't shipped via rustup (there is no `rustup target add
   xtensa-esp32s3-none-elf` — Xtensa requires Espressif's `espup`

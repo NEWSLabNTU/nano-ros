@@ -51,7 +51,7 @@ Namespace `<owner>/<name>`. Suggested: publish as
 `nano-ros/nano-ros` (request the namespace from Espressif first
 release).
 
-**Files.** `integrations/esp-idf/idf_component.yml` (manifest;
+**Files.** `integrations/nano-ros/idf_component.yml` (manifest;
 includes `version`, `description`, `url`, `license`,
 `dependencies`).
 
@@ -64,7 +64,7 @@ per IDF Component Manager docs.
 
 ```bash
 # Maintainer machine, after `git tag v0.X.Y` and a clean tree.
-cd integrations/esp-idf
+cd integrations/nano-ros
 IDF_COMPONENT_API_TOKEN=$TOKEN \
     idf.py upload-component --name nano-ros --version 0.X.Y
 ```
@@ -150,7 +150,7 @@ the user-renamed module under `pxh> help`.
 Per release cycle, the maintainer doing the cut should:
 
 1. Bump `version` in:
-   - `integrations/esp-idf/idf_component.yml`
+   - `integrations/nano-ros/idf_component.yml`
    - `integrations/platformio/library.json`
    - `integrations/platformio/library.properties`
 2. Tag the repo: `git tag v0.X.Y && git push --tags`.
