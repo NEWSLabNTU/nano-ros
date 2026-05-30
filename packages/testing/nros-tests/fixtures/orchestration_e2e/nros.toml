@@ -1,0 +1,21 @@
+# Phase 211.A — in-tree orchestration foundation fixture.
+#
+# Minimal subset of nros-cli's `testing_workspaces/orchestration_e2e`,
+# mirrored here so nano-ros's test suite catches planner-side regressions
+# without depending on nros-cli's own test run.
+
+[workspace]
+default = "native"
+
+[system]
+launch     = "src/demo_pkg/launch/system.launch.xml"
+components = ["demo_pkg"]
+rmw        = "zenoh"
+domain_id  = 0
+
+# `nros plan` only needs the system + a deploy entry to know which target
+# to plan against; the deploy build itself is exercised by 211.A's second
+# stage (test_orchestration_deploy_native — separate, heavier item).
+[deploy.native]
+kind   = "self"
+target = "x86_64-unknown-linux-gnu"

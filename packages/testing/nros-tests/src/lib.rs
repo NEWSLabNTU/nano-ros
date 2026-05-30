@@ -380,6 +380,43 @@ pub fn nros_store_bin(tool: &str, exe: &str) -> Option<std::path::PathBuf> {
     None
 }
 
+/// Resolve the `nros` CLI binary the same way `scripts/build/cargo.sh::nros_cli_bin`
+/// does: `$NROS_CLI` (must be executable) → `nros` on `PATH` → `${NROS_HOME:-~/.nros}/bin/nros`.
+/// Returns `None` if none resolve. Used by orchestration tests that drive
+/// `nros plan` / `nros deploy` without re-implementing the lookup.
+pub fn nros_cli_bin_path() -> Option<std::path::PathBuf> {
+    if let Some(p) = std::env::var_os("NROS_CLI") {
+        let pb = std::path::PathBuf::from(p);
+        return pb.is_file().then_some(pb);
+    }
+    if let Ok(out) = std::process::Command::new("sh")
+        .args(["-c", "command -v nros"])
+        .output()
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !s.is_empty() {
+            return Some(std::path::PathBuf::from(s));
+        }
+    }
+    let home = std::env::var_os("NROS_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".nros")))?;
+    let cand = home.join("bin/nros");
+    cand.is_file().then_some(cand)
+}
+
+/// Skip-or-proceed guard for tests that need the `nros` CLI. Mirrors
+/// `require_xrce_agent` / `require_zenohd`: prints an install hint and returns
+/// `false` when missing (caller `nros_tests::skip!`), `true` otherwise.
+pub fn require_nros_cli() -> bool {
+    if nros_cli_bin_path().is_none() {
+        eprintln!("Skipping test: nros CLI not found (run `scripts/install-nros.sh`)");
+        return false;
+    }
+    true
+}
+
 /// Read the pinned nightly channel from `tools/rust-toolchain.toml`.
 ///
 /// This is the single source of truth for the nightly used by workspace

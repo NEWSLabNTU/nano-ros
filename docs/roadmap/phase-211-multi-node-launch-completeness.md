@@ -109,19 +109,27 @@ test suite has nothing under `nros-tests/tests/{orchestrat,launch,plan,deploy}*`
 A user editing nano-ros runtime code wouldn't catch an orchestration
 regression until the next nros-cli release picks it up.
 
-- [ ] **Vendor a stable fixture** — `packages/testing/nros-tests/fixtures/orchestration_e2e/`
+- [x] **Vendor a stable fixture** — `packages/testing/nros-tests/fixtures/orchestration_e2e/`
       mirroring the nros-cli `testing_workspaces/orchestration_e2e` shape
-      (root `nros.toml`, `src/demo_pkg/{launch,manifest,src,Cargo.toml,package.xml}`,
-      `deploy/{native}/`). One single-talker case to start.
-- [ ] **`test_orchestration_e2e_native`** in `packages/testing/nros-tests/tests/`:
-      `nros plan` (uses the installed nros CLI) → assert `nros-plan.json`
-      contains the talker entity; `nros deploy native` → start the binary
-      → assert "Published:" in semihosting / stdout.
-- [ ] **Skip cleanly** when the `nros` CLI isn't on PATH (mirrors the
-      `require_xrce_agent` / `require_socat` pattern).
+      (root `nros.toml`, `src/demo_pkg/{launch,component_nros.toml,package.xml,metadata/talker.json}`).
+      One single-talker case. `record.json` is committed (pre-collected
+      `play_launch_parser` output) so the test runs without the parser binary.
+- [x] **`orchestration_plan_emits_expected_entities`** in `packages/testing/nros-tests/tests/orchestration_e2e.rs`:
+      drives `nros plan demo_pkg src/demo_pkg/launch/system.launch.xml --record record.json`
+      and asserts `nros-plan.json` carries the `demo_pkg::talker` component,
+      a `demo_pkg.talker.*` instance, the `cb_timer` callback binding, and the
+      `build.rmw = zenoh` / `build.target = x86_64-unknown-linux-gnu` pin.
+- [x] **Skip cleanly** when the `nros` CLI isn't on PATH (`require_nros_cli`
+      helper added to `nros-tests::lib`, mirrors `require_xrce_agent`).
+- [ ] **`nros deploy native` second-stage** — start the resulting binary →
+      assert "Published:" in stdout. Deferred: requires the demo_pkg crate
+      to actually compile + an FFI exported `nros_component_talker` symbol;
+      the plan-only stage is enough to gate planner regressions, the build
+      stage rolls into 211.B's executor-driven container e2e.
 - **Files:** `packages/testing/nros-tests/fixtures/orchestration_e2e/*`,
   `packages/testing/nros-tests/tests/orchestration_e2e.rs`,
-  `packages/testing/nros-tests/src/fixtures/binaries/mod.rs` (resolver).
+  `packages/testing/nros-tests/src/lib.rs` (`nros_cli_bin_path`, `require_nros_cli`),
+  `packages/testing/nros-tests/Cargo.toml` (`serde_json` dep + test target).
 
 ### 211.B — Composable-node planner handling (biggest production gap)
 

@@ -1642,6 +1642,7 @@ dependencies = [
  "parking_lot",
  "predicates",
  "rstest",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]
