@@ -86,12 +86,15 @@ jobs:
             | NROS_VERSION=0.3.7 sh
           echo "$HOME/.nros/bin" >> "$GITHUB_PATH"
 
-      # Same px4-rs gate as host-unit-tests: the root workspace path-deps
-      # `px4-sitl-tests` (now via the out-of-workspace `nros-px4-sitl-test`
-      # crate — see Phase 208.D.3). Cargo still needs px4-rs's own Cargo.toml
-      # readable to resolve `[patch.crates-io]` entries that reference it.
+      # Same source set as host-unit-tests: the root workspace path-deps need
+      # `px4-rs` readable (cargo load gate); `zpico-sys/build.rs` compiles
+      # zenoh-pico + mbedtls C sources; `xrce-sys/build.rs` compiles micro-cdr
+      # + micro-xrce-dds-client C sources. The clippy clean workspace pass
+      # exercises every build.rs that participates, so it needs all four.
       - name: Provision workspace sources via nros
-        run: nros setup --source px4-rs --source zenoh-pico --source mbedtls
+        run: |
+          nros setup --source px4-rs --source zenoh-pico --source mbedtls \
+                     --source micro-cdr --source micro-xrce-dds-client
 
       - name: just check-workspace-all (host + embedded clippy + nightly fmt)
         run: just check-workspace-all
