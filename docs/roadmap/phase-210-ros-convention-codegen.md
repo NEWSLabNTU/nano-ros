@@ -9,7 +9,40 @@ CMake call shape are ROS's, so the same `src/` tree builds under both
 `colcon build` (rosidl's bindings) and a nano-ros build (ours). Subsumes the
 Phase 209.E bulk-codegen item.
 
-**Status.** MVP DONE (2026-05-30). In-tree A.1/.2/.3/.4 + B.1/.2 + E.1/.4 landed on main; nros-cli B.3 ready on `phase-210-workspace-codegen` (commit `41177dd`, awaits maintainer push); C.3 already covered by Phase 123.B.8 alias headers (verified in fixture). C.1/.2 deferred — re-file when 210.D needs them. D + E.2/.3 are in-tree follow-ups (Rust build.rs helper crate + in-tree call-site migrations).
+**Status.** MVP DONE (2026-05-30). Mixed-workspace cmake path proved
+(2026-05-31, `0ddcc60fc`). Open work tracked under D, E.2/.3, F.
+
+In-tree (landed on main):
+* 210.A.1/.2/.3/.4 — rosidl wrapper + smart Find-stub + per-pkg delegators
+  + local-msg-package fixture.
+* 210.B.1/.2 — `NROS_INTERFACE_SEARCH_PATH` + `nros_workspace_interfaces()`
+  bulk orchestrator with topo-sort.
+* 210.E.1 — book page `your-own-msg-package.md`.
+* 210.E.4 — deprecation comments on legacy `nros_generate_interfaces` +
+  `nros_find_interfaces`.
+* 210.F.1 — mixed-workspace fixture (workspace + AMENT msg deps in one
+  consumer, multi-level dep closure cache `_NROS_PKG_<pkg>_*`).
+
+nros-cli (`github.com/NEWSLabNTU/nros-cli` branch `phase-210-workspace-
+codegen`, commit `41177dd`, pushed 2026-05-31):
+* 210.B.3 — `nros workspace env [<dir>] [--shell posix|fish]`. Ships in
+  next nros release.
+
+Already-shipped:
+* 210.C.3 — `<pkg>/msg/<name>.hpp` alias header (Phase 123.B.8).
+
+Open (concrete acceptance below):
+* 210.C.1 / C.2 — `nros codegen resolve-deps --workspace` +
+  `nros generate cpp --workspace`. Blocked on 210.D needing them.
+* 210.D.1/.2/.3 — `nros-build-codegen` Rust build.rs helper crate +
+  Rust mixed-workspace fixture sibling.
+* 210.E.2 — book page `porting-a-cpp-node.md` migration to the new
+  shape.
+* 210.E.3.a/.b/.c/.d — in-tree migration of native / qemu / zephyr /
+  rust per-example codegen call sites.
+* 210.F.2 — colcon-parity CI gate.
+* 210.F.3 — `nros doctor` workspace check.
+* 210.F.4 — shadowing matrix smoke fixture + book doc.
 
 **Priority.** P2 — adoption ergonomics, not a capability gap. Closing it
 turns "port a ROS msg pkg" from a per-CMakeLists rewrite into "drop the pkg
@@ -126,15 +159,35 @@ higher layer + warn loudly.
 - [ ] **210.D.1** New crate `packages/core/nros-build-codegen/` (mirrors
       `nros-build-paths`). Public API:
       ```rust
+      // build.rs:
       fn main() { nros_build_codegen::workspace().run().unwrap(); }
       ```
-      Discovers + codegens via the same search path.
+      Discovers msg pkgs via `NROS_INTERFACE_SEARCH_PATH` (cmake-side
+      contract — same env var as 210.A.2's smart Find-stub) + falls back
+      to `AMENT_PREFIX_PATH` + the bundled layer. Internally shells out
+      to `nros generate-rust --search-path <root>...` for each discovered
+      pkg in topo order; emits Cargo `cargo:rerun-if-changed=...` lines
+      for each `package.xml` + msg/srv/action file so msg edits trigger
+      a rebuild without re-running cmake. Re-uses the topo-sort logic
+      from 210.B.2's cmake helper (mirror it in Rust).
 - [ ] **210.D.2** Convert one rust example (probably
       `examples/native/rust/talker`) to use it; deprecate the ad-hoc
       `fixtures-build.sh` rust codegen loop for pkgs that adopt the helper.
-- [ ] **Acceptance:** the converted example's `build.rs` is two lines;
-      `cargo build` from a clean checkout produces the same artefacts as
-      the current per-example codegen.
+- [ ] **210.D.3** Rust mixed-workspace fixture sibling. Add `src/rust_consumer/`
+      to `examples/templates/local-msg-package/` consuming `local_msgs` +
+      `extra_msgs` + `std_msgs` + `geometry_msgs` (same coverage as the
+      C++ consumer landed in `0ddcc60fc`). Builds via `cargo build` with
+      `build.rs` = two-line `nros-build-codegen` call. Proves workspace
+      + AMENT msg coverage works for Rust nodes too.
+- [ ] **Acceptance:**
+      * The converted example's `build.rs` is two lines.
+      * `cargo build` from a clean checkout produces the same artefacts
+        as the current per-example codegen loop.
+      * `src/rust_consumer/` in the local-msg-package fixture builds +
+        links against bindings for all four msg families (workspace +
+        AMENT), with `cargo build` only (no cmake).
+      * Editing any `*.msg` triggers a `cargo build` rerun (rerun-if-
+        changed proof).
 
 ### 210.E — UX + docs + in-tree migration
 - [x] **210.E.1** Book page `book/src/getting-started/your-own-msg-package.md`
@@ -147,31 +200,112 @@ higher layer + warn loudly.
       `find_package(<pkg>) / nros_workspace_interfaces()` shape so the
       porting story collapses to "drop standard `find_package` calls in;
       no `nros_*` macros".
+      **Acceptance:** the worked example in the book page has zero
+      `nros_*` cmake calls; only `find_package` + `target_link_libraries`
+      + (optionally) `nros_workspace_interfaces()` if the user has
+      workspace-local pkgs. Cross-ref the `local-msg-package` fixture.
 - [ ] **210.E.3** Migrate the in-tree per-pkg `nros_generate_interfaces
       (<pkg>)` call sites (sample: `examples/native/{cpp,rust}/*/`,
       `examples/qemu-arm-*/{cpp,rust}/*/`) to the
       `find_package(<pkg>) + target_link_libraries` shape. Incremental —
       examples that explicitly want the bundled-pkg form keep it.
+      **Sub-items**, each one PR-sized:
+      * **210.E.3.a** — Native fixtures: `examples/native/cpp/{talker,
+        listener,service-*,action-*}/`. Switch from
+        `nros_generate_interfaces(std_msgs LANGUAGE CPP SKIP_INSTALL)` to
+        `find_package(std_msgs REQUIRED)` + `target_link_libraries(...
+        std_msgs::std_msgs)`. Acceptance: `just native test` green.
+      * **210.E.3.b** — QEMU embedded fixtures: `examples/qemu-arm-{baremetal,
+        freertos,nuttx}/{cpp,rust}/...`. Same swap. Acceptance: per-platform
+        `just <plat> build-fixtures` green.
+      * **210.E.3.c** — Zephyr fixtures: `examples/zephyr/cpp/...`. Same
+        swap; the zephyr module exposes `NROS_REPO_DIR` so the smart
+        Find-stub include path resolves. Acceptance: `just zephyr
+        build-cpp` green.
+      * **210.E.3.d** — Rust examples: deprecate the per-example
+        `.cargo/config.toml` `[patch.crates-io]` chunk in favour of the
+        `nros-build-codegen` build.rs helper (210.D). Migrate
+        `examples/native/rust/*/` first; QEMU/Zephyr Rust last.
+        Acceptance: `cargo build` in each migrated example pulls
+        bindings via the build.rs only — no manual patch table.
 - [x] **210.E.4** Mark `nros_generate_interfaces(<pkg>)` +
       `nros_find_interfaces()` deprecated in their function-header
       comments; point to `rosidl_generate_interfaces` + `find_package`.
 
+### 210.F — Workspace cases (mixed sources, colcon parity, doctor) — POST-MVP
+
+The MVP (A + B + E.1 + E.4) proves the surface; the local-msg-package
+mixed-workspace fixture (`0ddcc60fc`) proves cmake-side workspace + AMENT
+coverage works end-to-end. Stage F closes the **workspace** story across
+the Rust frontend, the colcon-parity proof, and the doctor surface.
+
+- [x] **210.F.1** Mixed-workspace fixture (workspace + AMENT msg sources
+      in one consumer). Landed `0ddcc60fc` (2026-05-30). Local fixture
+      `examples/templates/local-msg-package/src/consumer/` pulls msgs
+      from `local_msgs` + `extra_msgs` (workspace) AND `geometry_msgs` +
+      `sensor_msgs` + `std_msgs` (AMENT) via one `find_package(<pkg>)`
+      shape. Surfaced + fixed the multi-level dep closure issue (cache
+      stash in `_NROS_PKG_<pkg>_*` INTERNAL vars from both rosidl wrapper
+      AND smart Find-stub).
+- [ ] **210.F.2** colcon-parity CI gate. The fixture's `src/` tree is
+      meant to build under BOTH a nano-ros umbrella AND `colcon build`.
+      Today the parity is asserted in `README.md`, not in CI.
+      **Work:** add a CI job (probably under `.github/workflows/`) that
+      sources `/opt/ros/humble/setup.bash` + runs `colcon build` against
+      `examples/templates/local-msg-package/src/`; verifies the binary
+      runs (publishes + exits cleanly). Skip the embedded targets — only
+      the native-cpp parity matters here.
+      **Acceptance:** CI fails if a future edit breaks the colcon build
+      of the same source; the fixture stays parity-true.
+- [ ] **210.F.3** `nros doctor` workspace check. Today's `nros doctor`
+      doesn't know about `NROS_INTERFACE_SEARCH_PATH`. Add a check:
+      iterate workspace pkgs under the search path, validate each has a
+      well-formed `package.xml` (parseable + non-empty `<name>`), warn
+      on pkgs that look like rosidl pkgs but lack `<member_of_group>
+      rosidl_interface_packages</member_of_group>`. Lives in nros-cli;
+      mirrors the smart Find-stub's "is it a msg pkg" heuristic.
+      **Acceptance:** `nros doctor` from inside the local-msg-package
+      fixture lists `local_msgs`, `extra_msgs`, `consumer` with the
+      correct kind tag (msg/app); a deliberately broken package.xml
+      makes it fail loudly.
+- [ ] **210.F.4** Shadowing matrix verification. When a workspace pkg
+      name collides with an AMENT-installed pkg (e.g. workspace
+      `std_msgs` over `/opt/ros/.../std_msgs`), the workspace one
+      should win + emit a `STATUS` line. The cmake-side smart Find-stub
+      handles this; the `nros_workspace_interfaces()` bulk orchestrator
+      handles intra-workspace shadowing. **Work:** add a smoke fixture
+      `examples/templates/workspace-shadowing/` where the workspace
+      defines a custom `std_msgs` that shadows the AMENT one; verify
+      the build picks the workspace copy. Document the shadowing
+      contract in `book/src/getting-started/your-own-msg-package.md`.
+      **Acceptance:** the workspace `std_msgs` is the one linked into
+      the consumer's binary (verified via `nm | grep std_msgs_...`).
+
 ## Acceptance criteria
 
-- [ ] A standard ROS msg package (verbatim `package.xml` +
+- [x] A standard ROS msg package (verbatim `package.xml` +
       `rosidl_generate_interfaces(...)` CMakeLists.txt) builds against
       nano-ros via `add_subdirectory(src/my_msgs)` with **zero** edits to
-      the msg pkg.
-- [ ] A consumer writes `find_package(my_msgs REQUIRED)` +
+      the msg pkg. (Met by 210.A.4 local-msg-package fixture.)
+- [x] A consumer writes `find_package(my_msgs REQUIRED)` +
       `target_link_libraries(my_node my_msgs::my_msgs)` (verbatim upstream
-      shape); the smart Find-stub does the codegen.
+      shape); the smart Find-stub does the codegen. (Met by 210.A.2 +
+      210.A.4.)
 - [ ] The same `src/` workspace builds with both `colcon build` and a
       nano-ros cmake build (different build systems, identical source).
-- [ ] An app's `CMakeLists.txt` drops the N per-pkg codegen lines to one
-      optional `nros_workspace_interfaces()` call.
+      *(Asserted in README; CI gate is 210.F.2.)*
+- [x] An app's `CMakeLists.txt` drops the N per-pkg codegen lines to one
+      optional `nros_workspace_interfaces()` call. (Met by 210.B.2.)
+- [x] A consumer pulling msgs from BOTH the workspace AND AMENT-installed
+      pkgs works via one `find_package(<pkg>)` shape. (Met by 210.F.1
+      mixed-workspace fixture.)
 - [ ] `nros generate cpp --workspace ./` produces a full closure for a
-      multi-pkg `src/`.
-- [ ] Book page `your-own-msg-package.md` walks the workflow end-to-end.
+      multi-pkg `src/`. *(Deferred → land with 210.D.)*
+- [x] Book page `your-own-msg-package.md` walks the workflow end-to-end.
+      (Met by 210.E.1.)
+- [ ] Rust nodes consume the same workspace via `build.rs` calling a
+      `nros-build-codegen::workspace()` helper. *(Stage 210.D.)*
+- [ ] CI gate proves colcon-parity stays unbroken. *(Stage 210.F.2.)*
 
 ## Notes / cross-refs
 
