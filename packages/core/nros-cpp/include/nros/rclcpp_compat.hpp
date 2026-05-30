@@ -74,15 +74,14 @@ using ::nros::Result;
 // `keep_last(n)`, …) are inherited. Implicit-converts to `nros::QoS` (used in
 // the create_publisher/subscription overloads below).
 class QoS : public ::nros::QoS {
-public:
+  public:
     constexpr QoS() = default;
     // NOLINTNEXTLINE(google-explicit-constructor)
     QoS(::size_t depth) : ::nros::QoS() { keep_last(static_cast<int>(depth)); }
     QoS(const ::nros::QoS& other) : ::nros::QoS(other) {}
 };
 
-template <typename M>
-using Publisher = ::nros::Publisher<M>;
+template <typename M> using Publisher = ::nros::Publisher<M>;
 
 template <typename M> using Subscription = ::nros::Subscription<M>;
 
@@ -104,11 +103,19 @@ template <typename T> struct SharedPtrTrait {
 // too, so the constructor is already compatible. These named profiles save the
 // most-cited spellings from `rclcpp::QoS` factories.
 
-inline QoS SystemDefaultsQoS() { return QoS(10); }
-inline QoS ServicesQoS() { return QoS(10); }
-inline QoS ParametersQoS() { return QoS(10); }
+inline QoS SystemDefaultsQoS() {
+    return QoS(10);
+}
+inline QoS ServicesQoS() {
+    return QoS(10);
+}
+inline QoS ParametersQoS() {
+    return QoS(10);
+}
 
-inline QoS KeepLast(::size_t depth) { return QoS(depth); }
+inline QoS KeepLast(::size_t depth) {
+    return QoS(depth);
+}
 
 // --- Logger surface ----------------------------------------------------------
 //
@@ -178,18 +185,18 @@ inline bool ok() {
 // periodic callbacks; the wall-clock granularity is whatever `rclcpp::spin*`'s
 // caller drives.
 class TimerBase {
-public:
+  public:
     virtual ~TimerBase() = default;
 };
 
 namespace detail {
 class WallTimer : public TimerBase {
-public:
+  public:
     std::chrono::steady_clock::duration period{};
     std::chrono::steady_clock::time_point next_fire{};
     std::function<void()> callback;
 };
-}  // namespace detail
+} // namespace detail
 
 class Node : public std::enable_shared_from_this<Node> {
   public:
@@ -241,8 +248,8 @@ class Node : public std::enable_shared_from_this<Node> {
     }
 
     template <typename M>
-    std::shared_ptr<::nros::Publisher<M>>
-    create_publisher(const std::string& topic, ::size_t depth) {
+    std::shared_ptr<::nros::Publisher<M>> create_publisher(const std::string& topic,
+                                                           ::size_t depth) {
         return create_publisher<M>(topic, QoS(static_cast<::size_t>(depth)));
     }
 
@@ -274,21 +281,19 @@ class Node : public std::enable_shared_from_this<Node> {
     }
 
     template <typename M, typename Cb>
-    std::shared_ptr<::nros::Subscription<M>>
-    create_subscription(const std::string& topic, ::size_t depth, Cb cb) {
-        return create_subscription<M>(topic, QoS(static_cast<::size_t>(depth)),
-                                       std::move(cb));
+    std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
+                                                                 ::size_t depth, Cb cb) {
+        return create_subscription<M>(topic, QoS(static_cast<::size_t>(depth)), std::move(cb));
     }
 
     // create_wall_timer(period, callback) — fires `callback()` every `period`,
     // driven by `Node::pump()` (i.e. each `rclcpp::spin_some` / `spin` sweep).
     template <typename Rep, typename Period, typename Cb>
-    std::shared_ptr<TimerBase>
-    create_wall_timer(std::chrono::duration<Rep, Period> period, Cb cb) {
+    std::shared_ptr<TimerBase> create_wall_timer(std::chrono::duration<Rep, Period> period, Cb cb) {
         auto t = std::make_shared<detail::WallTimer>();
-        t->period    = std::chrono::duration_cast<std::chrono::steady_clock::duration>(period);
+        t->period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(period);
         t->next_fire = std::chrono::steady_clock::now() + t->period;
-        t->callback  = std::move(cb);
+        t->callback = std::move(cb);
         timers_.push_back(t);
         return std::static_pointer_cast<TimerBase>(t);
     }
@@ -315,7 +320,7 @@ class Node : public std::enable_shared_from_this<Node> {
         }
     }
 
-private:
+  private:
     ::nros::Executor executor_;
     ::nros::Node node_;
     bool initialized_ = false;
@@ -337,7 +342,7 @@ inline void spin(const Node::SharedPtr& node) {
         return;
     }
     while (::nros::ok()) {
-        node->pump();  // polling subscription dispatch (capturing-lambda path)
+        node->pump(); // polling subscription dispatch (capturing-lambda path)
         (void)node->nros_executor().spin_once(10);
     }
 }
@@ -392,11 +397,31 @@ template <typename A> using Client = ::nros::ActionClient<A>;
 // NROS_INFO is a do-while(0) block; the comma-operator wrapper around it was
 // invalid C++. Use a do-while wrapper so RCLCPP_INFO is a single statement.
 #ifndef RCLCPP_INFO
-#define RCLCPP_INFO(logger, ...)  do { (void)(logger); NROS_INFO(__VA_ARGS__); } while (0)
-#define RCLCPP_WARN(logger, ...)  do { (void)(logger); NROS_WARN(__VA_ARGS__); } while (0)
-#define RCLCPP_ERROR(logger, ...) do { (void)(logger); NROS_ERROR(__VA_ARGS__); } while (0)
-#define RCLCPP_DEBUG(logger, ...) do { (void)(logger); NROS_DEBUG(__VA_ARGS__); } while (0)
-#define RCLCPP_FATAL(logger, ...) do { (void)(logger); NROS_ERROR(__VA_ARGS__); } while (0)
+#define RCLCPP_INFO(logger, ...)                                                                   \
+    do {                                                                                           \
+        (void)(logger);                                                                            \
+        NROS_INFO(__VA_ARGS__);                                                                    \
+    } while (0)
+#define RCLCPP_WARN(logger, ...)                                                                   \
+    do {                                                                                           \
+        (void)(logger);                                                                            \
+        NROS_WARN(__VA_ARGS__);                                                                    \
+    } while (0)
+#define RCLCPP_ERROR(logger, ...)                                                                  \
+    do {                                                                                           \
+        (void)(logger);                                                                            \
+        NROS_ERROR(__VA_ARGS__);                                                                   \
+    } while (0)
+#define RCLCPP_DEBUG(logger, ...)                                                                  \
+    do {                                                                                           \
+        (void)(logger);                                                                            \
+        NROS_DEBUG(__VA_ARGS__);                                                                   \
+    } while (0)
+#define RCLCPP_FATAL(logger, ...)                                                                  \
+    do {                                                                                           \
+        (void)(logger);                                                                            \
+        NROS_ERROR(__VA_ARGS__);                                                                   \
+    } while (0)
 
 #define RCLCPP_INFO_STREAM(logger, args) RCLCPP_INFO(logger, "%s", "")
 #define RCLCPP_WARN_STREAM(logger, args) RCLCPP_WARN(logger, "%s", "")

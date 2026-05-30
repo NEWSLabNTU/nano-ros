@@ -17,4 +17,4 @@
 #define RCLCPP_COMPONENTS_REGISTER_NODE(NodeClass) /* no-op (nano-ros single-binary) */
 #endif
 
-#endif  // NROS_RCLCPP_COMPONENTS_COMPAT_HPP
+#endif // NROS_RCLCPP_COMPONENTS_COMPAT_HPP
