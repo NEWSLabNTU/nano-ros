@@ -72,17 +72,21 @@ Two additional, smaller ROS-2-generic friction sources:
 ## Work Items (ranked by impact / smallest-first)
 
 ### 209.A.follow-up — capturing-lambda / `std::function` subscription callbacks
-- [ ] Surfaced by the 209.G synthetic `topic_state_monitor` port: `nros::Node::
-      create_subscription`'s callback overload is SFINAE-restricted to plain
-      `void(*)(const M&)` function pointers (`enable_if<is_convertible<F,
-      void(*)(const M&)>>`). rclcpp accepts capturing lambdas / `std::function`
-      freely — every upstream node that captures `this` in a subscription
-      callback (most of them) does not compile through `rclcpp::Node::create_
-      subscription` as-is.
-      **Fix:** the compat header allocates a heap-stored `std::function<void
-      (const M&)>` per subscription + a fn-pointer trampoline that calls it
-      through the nros FFI user-data slot. Restores the most-cited rclcpp
-      callback pattern unchanged.
+- [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**
+      `rclcpp::Node::create_subscription` now accepts any callable (capturing
+      lambda, `std::function`, member-fn bind, plain fn ptr). Implementation:
+      polling-pump model — the compat opens nros's *polling* subscription
+      (no SFINAE), heap-stores the user callable as `std::function`, and
+      registers a pump callback the node's spin path invokes per sweep.
+      `rclcpp::spin_some` / `spin` call `Node::pump()` before
+      `nros::Executor::spin_once`. Lifetime: the captured `std::function`
+      shares-ptr the subscription; cleanup is automatic when the subscription
+      drops out of scope. Verified by reverting the 209.G synthetic
+      `topic_state_monitor` to the natural `[state](const M&) { … }`
+      capturing-lambda shape — compiles + links unchanged. (Native callback-
+      arena path through the FFI user_data slot is a future optimization
+      when per-spin polling overhead matters; for source-compat MVP this is
+      the right trade.)
 
 ### 209.A — `nros/rclcpp_compat.hpp` source-compat header
 - [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**

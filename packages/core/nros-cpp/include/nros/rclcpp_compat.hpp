@@ -60,6 +60,7 @@
 #include <memory>
 #include <string>
 #include <functional>
+#include <vector>
 
 namespace rclcpp {
 
@@ -223,16 +224,28 @@ class Node : public std::enable_shared_from_this<Node> {
 
     // create_subscription<M>(topic, qos, callback)
     //
-    // rclcpp callbacks come in two shapes: `void(const M&)` and
-    // `void(typename M::ConstSharedPtr)`. The latter we accept by signature and
-    // wrap into nros's by-ref callback (allocating a shared_ptr per message).
+    // Accepts ANY callable (capturing lambda, std::function, member-fn bind,
+    // plain fn ptr) — nros's native callback-subscription overload is SFINAE-
+    // restricted to `void(*)(const M&)` plain fn ptrs (no capture). Wrap a
+    // polling Subscription + a pump callback the node's spin loop invokes per
+    // sweep (`Node::pump()`, called by `rclcpp::spin`/`spin_some`). The
+    // callable is heap-stored (shared_ptr) so its lifetime matches the
+    // subscription; cleanup is automatic when the subscription drops out of
+    // scope. (Native callback-arena path is a future optimization — direct
+    // FFI hook with std::function as user_data — when per-spin polling
+    // overhead matters; for the source-compat target this is fine.)
     template <typename M, typename Cb>
     std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
                                                                  const ::nros::QoS& qos, Cb cb) {
         auto s = std::make_shared<::nros::Subscription<M>>();
-        // nros's callback overload is `(out, topic, F, qos, opts)` — note the
-        // callback comes BEFORE the QoS arg (different from rclcpp).
-        (void)node_.create_subscription<M>(*s, topic.c_str(), std::move(cb), qos);
+        (void)node_.create_subscription(*s, topic.c_str(), qos);
+        auto cb_fn = std::make_shared<std::function<void(const M&)>>(std::move(cb));
+        pump_callbacks_.push_back([s, cb_fn]() {
+            M msg;
+            while (s->try_recv(msg).ok()) {
+                (*cb_fn)(msg);
+            }
+        });
         return s;
     }
 
@@ -243,10 +256,22 @@ class Node : public std::enable_shared_from_this<Node> {
                                        std::move(cb));
     }
 
-  private:
+    // Pump all polling subscriptions. Called by rclcpp::spin / spin_some
+    // before invoking the underlying nros executor's spin_once.
+    void pump() {
+        for (auto& f : pump_callbacks_) {
+            if (f) f();
+        }
+    }
+
+private:
     ::nros::Executor executor_;
     ::nros::Node node_;
     bool initialized_ = false;
+    // Heap-stored polling pumps for create_subscription callbacks (one per
+    // sub). Captured by std::function so any callable shape (capturing lambda,
+    // member-fn bind, std::function) works.
+    std::vector<std::function<void()>> pump_callbacks_;
 };
 
 // --- spin / spin_some --------------------------------------------------------
@@ -259,6 +284,7 @@ inline void spin(const Node::SharedPtr& node) {
         return;
     }
     while (::nros::ok()) {
+        node->pump();  // polling subscription dispatch (capturing-lambda path)
         (void)node->nros_executor().spin_once(10);
     }
 }
@@ -267,6 +293,7 @@ inline void spin_some(const Node::SharedPtr& node) {
     if (!node || !node->initialized()) {
         return;
     }
+    node->pump();
     (void)node->nros_executor().spin_once(0);
 }
 
