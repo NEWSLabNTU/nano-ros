@@ -238,7 +238,7 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       → path-dep breakage (not SDK fetch). Symptom 6 → "panics with
       `Transport(ConnectionFailed)`" (not "hangs"). Lead `just doctor` advice
       with the per-platform scoped variant.
-- [ ] **208.E.8** `px4.md` prose (P12 + P14). Downgrade "bridge started"
+- [x] **208.E.8** `px4.md` prose (P12 + P14). Downgrade "bridge started"
       claim to match what the template actually does (registers + returns).
       `-DNANO_ROS_DIR=` accepted after 208.D.11.
 - [ ] **208.E.9** Zephyr page rewrites post-208.D.7 fold. Drop the

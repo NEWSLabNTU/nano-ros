@@ -43,13 +43,20 @@ just px4 doctor
 
 Vendor the template into your firmware repo, then point PX4 at its
 parent directory + tell the template where nano-ros lives via
-`NANO_ROS_DIR`:
+`NANO_ROS_DIR`. The template accepts either form — a CMake cache
+variable (`-DNANO_ROS_DIR=<path>`) takes precedence over an
+environment variable (`NANO_ROS_DIR=…`), then the in-tree default:
 
 ```bash
 cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
       -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules \
       -DNANO_ROS_DIR=$PWD/../nano-ros            # point at your nano-ros clone
+
+# Or via environment, if you prefer:
+NANO_ROS_DIR=$PWD/../nano-ros cmake -B build -S PX4-Autopilot \
+      -DCONFIG=px4_fmu-v5_default \
+      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules
 ```
 
 Inside the module, the canonical pattern bridges uORB → nano-ros.
@@ -101,7 +108,9 @@ pxh> nano_ros_app start
 # Real hardware (Pixhawk): flash via QGroundControl or
 #     `make px4_fmu-v5_default upload` over the bootloader USB
 
-# Verify from stock ROS 2 on the same network:
+# Verify from stock ROS 2 on the same network (only after you have
+# added uORB → nano-ros forwarders to nano_ros_app.cpp — the shipped
+# template forwards nothing on its own):
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /vehicle_local_position px4_msgs/msg/VehicleLocalPosition
