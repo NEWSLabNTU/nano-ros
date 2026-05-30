@@ -26,9 +26,15 @@ Provision the board (and RMW):
 nros setup esp32 --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds also valid
 ```
 
-This pulls the prebuilt esp-hal toolchain, the SDK sources, and the
+This pulls the SDK sources nano-ros owns (zenoh-pico + mbedtls
+submodules for zenoh; analogous for xrce / cyclonedds) and lands the
 RMW host daemon (`zenohd` for zenoh, the Micro-XRCE-DDS agent for
-xrce) into `~/.nros/sdk`.
+xrce) under `~/.nros/sdk` (forwarded onto `PATH` via the
+`~/.nros/bin/` shims). `esp-hal` itself is a Cargo dependency the
+example pulls in at build time, not a separately-installed toolchain;
+the only cross-toolchain you may need to add by hand is the rustup
+target, e.g. `rustup target add riscv32imc-unknown-none-elf` for
+ESP32-C3.
 
 ## Project layout
 
@@ -102,12 +108,16 @@ locator = "tcp/10.0.2.2:7454"
 ## Build
 
 ```bash
-# Real hardware (ESP32-C3):
+# Real hardware (ESP32-C3) — the example's build.rs invokes
+# `nros generate-rust` automatically, so the `generated/` dir
+# populates on first build (gitignored, not pre-committed):
 cd examples/esp32/rust/talker
 cargo build --release
 
-# QEMU ESP32 (qemu-system-xtensa or qemu-system-riscv32):
-just esp32 build           # builds for the QEMU board crate
+# QEMU ESP32 (qemu-system-riscv32). `just esp32 build` builds the
+# real-hardware example fixtures; `just esp32 build-qemu` (which
+# `just esp32 talker` depends on) is the QEMU-board variant:
+just esp32 build-qemu
 ```
 
 ## Run
@@ -142,9 +152,10 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 **Readiness signal.** Real hardware: after `espflash flash --monitor`,
-expect the Wi-Fi connect line + `Published: 0` within 10 seconds
-(the Rust talker pre-publishes `0` before the counter advances).
-QEMU ESP32: ~15 seconds. If no `Published:` line:
+expect the Wi-Fi connect line + `Published: 0` within 10 seconds.
+QEMU ESP32: ~15 seconds **after** a warm cache — the `just esp32
+talker` recipe re-runs `build-qemu` every invocation, so a first /
+cold run adds ~25 s of build time on top. If no `Published:` line:
 
 1. Wi-Fi credentials wrong → `Wifi connect failed` in serial log.
 2. Wrong locator → talker logs `zenoh open failed` and retries.
