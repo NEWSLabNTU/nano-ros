@@ -139,20 +139,29 @@ Two additional, smaller ROS-2-generic friction sources:
       what actually wires the entry point.
 
 ### 209.D — `nros-diagnostic-updater` C++ shim crate
-- [ ] New crate `packages/core/nros-diagnostic-updater/` exposing the
-      `diagnostic_updater::Updater` surface used by Autoware nodes:
-      - `Updater(nros::Node*, double frequency_hz)`.
-      - `add(name, std::function<void(DiagnosticStatusWrapper &)>)`.
-      - `setHardwareID(id)`.
-      - `force_update()`.
-      Internally: a periodic timer publishes `diagnostic_msgs/DiagnosticArray`
-      with each registered task's `DiagnosticStatusWrapper` filled by its
-      callback. `DiagnosticStatusWrapper` is a header-only typed view over
-      `diagnostic_msgs/DiagnosticStatus`. The codegen for `diagnostic_msgs` lives
-      in the bundled base interfaces. **Size:** ~200 LOC C++ + tests.
+- [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**
+      `packages/core/nros-diagnostic-updater/` (header-only INTERFACE cmake
+      target) exposes the upstream `diagnostic_updater::Updater` +
+      `DiagnosticStatusWrapper` surface — constructors `(rclcpp::Node::SharedPtr,
+      double period)` and the legacy `(node, period, freq_hz)` form; `add(name,
+      cb)` + member-fn overload; `setHardwareID/getHardwareID` (+ snake-case
+      alias); `force_update()`; `update()` (rate-limited self-publish); `broadcast
+      (level, message)`; `setPeriod`. `DiagnosticStatusWrapper` mirrors `summary
+      / summaryf / mergeSummary / clearSummary / add(key, value)` (string/int/
+      double/bool overloads + `addf`). Out of scope deferred to a follow-up:
+      `DiagnosticTask` class, `CompositeDiagnosticTask`, `FrequencyStatus` /
+      `TimeStampStatus` from `update_functions.hpp`. The user runs `nano_ros_
+      generate_interfaces(diagnostic_msgs ... LANGUAGE CPP)` so the generated
+      message headers are available. cmake target alias
+      `diagnostic_updater::diagnostic_updater` plus the nano-ros umbrella
+      `NanoRos::DiagnosticUpdater`. `Finddiagnostic_updater.cmake` (under
+      `cmake/compat/stubs/`) auto-`add_subdirectory`s this package, so a ported
+      `find_package(diagnostic_updater)` + `target_link_libraries(...
+      diagnostic_updater::diagnostic_updater)` resolves with no other changes.
 - [ ] **Acceptance:** an Autoware node using `diagnostic_updater::Updater` +
       `setHardwareID` + a single `add(...)` task compiles + publishes
-      `DiagnosticArray` on the configured topic in a nano-ros build.
+      `DiagnosticArray` on the configured topic in a nano-ros build. (E2e
+      proof is 209.G; this commit lands the surface 209.G will exercise.)
 
 ### 209.E — `nros generate cpp --workspace <ws>` ROS 2 msg bulk codegen
 - [ ] Today `nros generate cpp <pkg>` runs per package. A real-world ROS 2 port
