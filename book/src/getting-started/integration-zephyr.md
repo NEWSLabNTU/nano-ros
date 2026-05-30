@@ -1,6 +1,6 @@
 # Zephyr (west module)
 
-Single-node starter on Zephyr via the in-tree `integrations/zephyr/`
+Single-node starter on Zephyr via the in-tree `zephyr/`
 west module. nano-ros ships as a Zephyr module — `west` discovers it
 from your workspace's `west.yml`, drops in a `prj.conf` Kconfig
 surface, and the standard `west build` / `west flash` flow takes
@@ -25,7 +25,7 @@ care of the rest.
 > **Python: 3.10+ on Zephyr 3.7 LTS, but ≥ 3.12 on Zephyr 4.x**
 > (4.x's `find_package(Python3)` requires 3.12 — see the version
 > matrix below). nano-ros's imported west fragment
-> `integrations/zephyr/west.yml` is a manifest-only file — it does NOT
+> `zephyr/west.yml` is a manifest-only file — it does NOT
 > pull Zephyr itself; that has to be in your parent manifest
 > (`zephyrproject-rtos/zephyr`).
 
@@ -119,7 +119,7 @@ manifest:
       remote: nano-ros
       path: modules/nano-ros
       import:
-        file: integrations/zephyr/west.yml      # pulls Zephyr + nano-ros deps
+        file: zephyr/west.yml      # pulls Zephyr + nano-ros deps
 ```
 
 Then per-application `prj.conf`:
@@ -286,7 +286,7 @@ west patch clean        # roll back if needed
 `west patch` is **4.x-only**; on 3.7 the same patches are applied during
 provisioning by `nros setup zephyr`. (Cyclone-DDS-on-Zephyr patches
 are baked into the pinned cyclonedds submodule, not delivered via
-`west patch` — see `integrations/zephyr/README.md`.)
+`west patch` — see `zephyr/README.md`.)
 
 ## Copy out an example as your starting point
 
@@ -307,19 +307,19 @@ exported cache vars (`NROS_CYCLONE_IDLC`, `NROS_CYCLONE_SCRIPTS_DIR`,
 env (defaulting to `/opt/ros/humble/share/<pkg>`). No `/opt/ros` or
 repo-relative paths are baked into the example.
 
-See [`integrations/zephyr/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/zephyr/README.md)
+See [`zephyr/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/README.md)
 for the in-repo quick reference.
 
 ## GitHub source
 
 - Zephyr module shell:
-  [`integrations/zephyr/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/zephyr)
+  [`zephyr/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/zephyr)
 - Worked examples:
   [`examples/zephyr/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/rust),
   [`examples/zephyr/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c),
   [`examples/zephyr/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp)
 - Module manifest:
-  [`integrations/zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/zephyr/module.yml)
+  [`zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/module.yml)
 
 ## Next
 

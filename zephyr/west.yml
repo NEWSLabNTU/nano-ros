@@ -12,10 +12,12 @@
 #         remote: nano-ros
 #         path: modules/nano-ros
 #         import:
-#           file: integrations/zephyr/west.yml
+#           file: zephyr/west.yml
 #
 # After `west update`, `west build -b <board>` finds this directory via
-# the module.yml sibling and links `NanoRos::NanoRos` into the app.
+# the `zephyr/module.yml` sibling and links `NanoRos::NanoRos` into the app.
+# (Phase 208.D.7 folded the legacy `integrations/zephyr/` shell into this
+# single `zephyr/` module — one Kconfig / module.yml / CMakeLists.txt set.)
 
 manifest:
   version: "1.0"

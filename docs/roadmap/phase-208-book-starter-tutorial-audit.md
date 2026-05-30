@@ -166,13 +166,21 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
 - [ ] **208.D.6** `just doctor tier=default` hang (P13). `_pinned-toolchain-files`
       makes a rustup network call → SIGTERM after 3 min. Add `--offline` path
       or skip on `tier=default`.
-- [ ] **208.D.7** Fold `integrations/zephyr/` → `zephyr/` (P9, user feedback).
-      Single dir holds `Kconfig` (with `NROS_C_API` + `NROS_RMW_<RMW>` bools),
-      `module.yml`, `CMakeLists.txt`, `cmake/`, `snippets/`, `west.yml`,
-      `patches.yml`. Replace `find_program(nros-codegen)` in
-      `zephyr/cmake/nros_generate_interfaces.cmake` with the canonical `nros`
-      resolver. Delete `integrations/zephyr/`. Grep replace
-      `integrations/zephyr` → `zephyr` in book + just + index.
+- [x] **208.D.7** Folded `integrations/zephyr/` → `zephyr/` (P9). The legacy
+      Phase 139 "integration shell" duplicated `Kconfig`, `module.yml`, and
+      `CMakeLists.txt` against the canonical Zephyr module at `zephyr/`; the
+      shell's versions superseded — only its `west.yml` (the consumer-facing
+      import fragment) carried forward, moved to `zephyr/west.yml` with the
+      self-reference updated (`file: zephyr/west.yml`). Deleted
+      `integrations/zephyr/{Kconfig,module.yml,CMakeLists.txt,README.md}` +
+      the directory. Replaced the stale
+      `find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen)` in
+      `zephyr/cmake/nros_generate_interfaces.cmake` with the canonical
+      `find_program(... nros PATHS $ENV{NROS_HOME}/bin $ENV{HOME}/.nros/bin)`
+      shape mirroring `cmake/NanoRosGenerateInterfaces.cmake` (Phase 195.D —
+      `nros-codegen` retired with the in-tree submodule; the build assumes the
+      prebuilt `nros` CLI). Grep-replaced `integrations/zephyr` → `zephyr` in
+      7 book/docs/just files.
 - [x] **208.D.8** PlatformIO integration dropped (P10 + user feedback).
       Deleted `integrations/platformio/`, `book/src/getting-started/
       integration-platformio.md`, the `SUMMARY.md` entry, and every

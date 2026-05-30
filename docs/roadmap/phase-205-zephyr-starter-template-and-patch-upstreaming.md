@@ -47,7 +47,7 @@ A small public repo (e.g. `NEWSLabNTU/nano-ros-zephyr-example`) that bootstraps 
 BYO workspace without vendoring Zephyr. **In-tree source authored at
 `examples/templates/zephyr-byo/`** (split out to the standalone repo later):
 - [x] `west.yml` pinning a **tested Zephyr** (`v3.7.0` LTS) **+** the nano-ros
-      import (`integrations/zephyr/west.yml`), with a `self:` path — `west init -m
+      import (`zephyr/west.yml`), with a `self:` path — `west init -m
       <repo>` + `west update` yields a known-good (Zephyr × nano-ros) pair. (4.4
       line: bump the `zephyr` revision; noted inline.)
 - [x] An `app/` skeleton — `CMakeLists.txt` (`find_package(Zephyr)` +

@@ -30,8 +30,8 @@ Each section below covers:
 are discovered via downstream workspaces that `import:` a
 `west.yml` fragment.
 
-**Files.** `integrations/zephyr/west.yml` (manifest fragment),
-`integrations/zephyr/module.yml` (discovery marker).
+**Files.** `zephyr/west.yml` (manifest fragment),
+`zephyr/module.yml` (discovery marker).
 
 **Auth model.** Downstream workspaces clone nano-ros directly from
 GitHub; auth is whatever the downstream's git transport uses (https
@@ -42,7 +42,7 @@ snippet in the project README for downstream consumers.
 
 **Verification.** A test workspace with `west update` against the
 published `west.yml` should produce a tree containing
-`modules/nano-ros/integrations/zephyr/module.yml`.
+`modules/nano-ros/zephyr/module.yml`.
 
 ## ESP-IDF — Espressif Component Registry
 

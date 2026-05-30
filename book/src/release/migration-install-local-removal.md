@@ -74,7 +74,7 @@ cmake --build build
 
 ## RTOS-specific notes
 
-- **Zephyr.** Consume nano-ros via the `integrations/zephyr/`
+- **Zephyr.** Consume nano-ros via the `zephyr/`
   module — drop `nano-ros` into your `west.yml`, set
   `CONFIG_NROS=y` + `CONFIG_NROS_RMW="zenoh"` in `prj.conf`.
 - **ESP-IDF.** `integrations/nano-ros/` is a component manifest —

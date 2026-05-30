@@ -75,7 +75,7 @@ different consumption surfaces.
                               │
 ┌─────────────────────────────────────────────────────────────────┐
 │ Layer 3 — Integration shell (one per RTOS)                      │
-│   - integrations/zephyr/         (west module + module.yml)     │
+│   - zephyr/         (west module + module.yml)     │
 │   - integrations/nano-ros/        (idf_component.yml)            │
 │   - integrations/platformio/     (library.json)                 │
 │   - integrations/nuttx/          (Make.defs + Kconfig + Rust.mk)│
@@ -132,7 +132,7 @@ this section distils the integration contract.
   Vendor HALs (`hal_stm32`, `hal_nordic`, `hal_espressif`) are
   themselves modules.
 - nano-ros's existing `zephyr/module.yml` + Phase 139's planned
-  `integrations/zephyr/west.yml` are the canonical shape.
+  `zephyr/west.yml` are the canonical shape.
 - **Generic board crate not needed** for Zephyr; Zephyr owns the
   board contract via DTS. Layer 2 collapses into Layer 3 for this
   RTOS.
@@ -247,7 +247,7 @@ audit.
 
 Phase 139 ships these. Updates needed:
 
-- **Zephyr**: `integrations/zephyr/{west.yml, module.yml}` so users
+- **Zephyr**: `zephyr/{west.yml, module.yml}` so users
   add nano-ros to their existing `west.yml` and `west update`. Vendor
   HALs (`hal_stm32`, etc.) come from mainline Zephyr separately.
   No board crate consumed — Zephyr's DTS owns board config.
@@ -279,7 +279,7 @@ them against that RTOS's APIs.
 |---|---|---|
 | Cargo-first Rust dev, has SDK sources | Generic board crate + env vars | `[dependencies] nros-board-<kernel>` + env vars |
 | Vendor-IDE user (STM32CubeIDE etc.) | Vendor's existing FreeRTOS / ThreadX integration + nano-ros as a CMake `add_subdirectory` library | Copy generated code + `add_subdirectory` line |
-| Zephyr user (any board) | `integrations/zephyr/` shell via `west` | `projects:` entry in `west.yml` + `CONFIG_NROS=y` |
+| Zephyr user (any board) | `zephyr/` shell via `west` | `projects:` entry in `west.yml` + `CONFIG_NROS=y` |
 | ESP-IDF user (any chip) | `integrations/nano-ros/` shell | `idf.py add-dependency nano-ros` |
 | NuttX user (any board) | `integrations/nuttx/` shell | `ln -s … apps/external/nano-ros` + `make menuconfig` |
 | PX4 user | `integrations/px4/` shell | Set `EXTERNAL_MODULES_LOCATION`, add to module list |

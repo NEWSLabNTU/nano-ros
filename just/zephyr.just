@@ -316,7 +316,7 @@ build-fixtures:
     fi
     echo "Building Zephyr test fixtures..."
     # Phase 140 — Zephyr examples consume nano-ros via the Phase 139
-    # integration shell (`integrations/zephyr/`) under `west build`.
+    # integration shell (`zephyr/`) under `west build`.
     # No CMAKE_PREFIX_PATH override / install-local pre-step needed;
     # `add_subdirectory(<repo-root>)` invokes Corrosion in-tree.
     nros_root="$(pwd)"
