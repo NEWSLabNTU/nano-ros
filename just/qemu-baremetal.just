@@ -462,4 +462,4 @@ rtic-action-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/action-cli
 
 # Start zenohd router for bare-metal QEMU examples (port 7450)
 zenohd:
-    build/zenohd/zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
+    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting

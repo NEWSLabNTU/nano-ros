@@ -222,4 +222,4 @@ listener: build-qemu
 
 # Start zenohd router for ESP32 QEMU examples (port 7454)
 zenohd:
-    build/zenohd/zenohd --listen tcp/127.0.0.1:7454 --no-multicast-scouting
+    zenohd --listen tcp/127.0.0.1:7454 --no-multicast-scouting

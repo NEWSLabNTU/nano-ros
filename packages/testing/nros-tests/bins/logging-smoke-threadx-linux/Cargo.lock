@@ -84,6 +84,7 @@ name = "nros-board-common"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "nros-build-paths",
  "serde",
  "toml",
 ]
@@ -106,6 +107,10 @@ dependencies = [
  "nros-platform",
  "nros-platform-cffi",
 ]
+
+[[package]]
+name = "nros-build-paths"
+version = "0.1.0"
 
 [[package]]
 name = "nros-log"

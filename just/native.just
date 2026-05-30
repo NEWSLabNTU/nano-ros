@@ -635,4 +635,4 @@ action-client:
 
 # Start zenohd router for native examples (override bind via $ZENOH_LOCATOR)
 zenohd:
-    build/zenohd/zenohd --listen {{ env_var_or_default("ZENOH_LOCATOR", "tcp/127.0.0.1:7447") }} --no-multicast-scouting
+    zenohd --listen {{ env_var_or_default("ZENOH_LOCATOR", "tcp/127.0.0.1:7447") }} --no-multicast-scouting

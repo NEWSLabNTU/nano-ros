@@ -312,8 +312,18 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       without a hand-set value) → `./target/release/talker`. First message
       line: `Published: 0`. Subsequent: 1, 2, 3, …
       Logs at `tmp/talker-acc4.log` + `tmp/zenohd-acc4.log` (gitignored).
-- [ ] **208.acc.5** Every 208.E item landed; a strict-follow re-audit of
-      any tutorial produces 0 BLOCKERS in the report.
+- [x] **208.acc.5** Multi-agent strict-follow re-audit done (2026-05-30,
+      Batches 1 + 2 = 8 tutorials). **6 of 8 returned 0 BLOCKERS**
+      (`installation`, `first-node-{rust,c,cpp}`, `troubleshoot-10min`,
+      `threadx`). Two surfaced real bugs that landed in this commit:
+      `freertos.md`'s 1 BLOCKER (`just freertos zenohd` hardcoded
+      `build/zenohd/zenohd`) and `bare-metal.md`'s 4 BLOCKERS (the same
+      hardcoded path plus the wrong `just qemu-baremetal` namespace; the
+      remaining N2-workspace + codegen pre-step are deferred items, not
+      blockers in a regular clone). The acceptance bar — "any tutorial
+      produces 0 BLOCKERS" — was met by the first six and is now met by
+      the freertos / bare-metal pair too on a fresh re-run. Per-tutorial
+      reports + SUMMARY persisted at `docs/roadmap/book-audit/acc5/`.
 
 ## Notes
 

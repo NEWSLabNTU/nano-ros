@@ -331,7 +331,7 @@ action-client: (_run-qemu "action-client" "qemu-riscv64-threadx-action-client" "
 
 # Start zenohd router for ThreadX RISC-V examples (port 7453)
 zenohd:
-    build/zenohd/zenohd --listen tcp/127.0.0.1:7453 --no-multicast-scouting
+    zenohd --listen tcp/127.0.0.1:7453 --no-multicast-scouting
 
 # Clean ThreadX RISC-V build artifacts
 [group("main")]

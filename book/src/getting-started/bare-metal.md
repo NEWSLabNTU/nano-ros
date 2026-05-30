@@ -98,13 +98,13 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 #    zenohd's default 7447 — edit `nros.toml` if you want 7447 instead.
 #    The just recipe runs the in-tree zenohd installed by
 #    `nros setup ... --rmw zenoh` on that port:
-just qemu-baremetal zenohd &
+just qemu zenohd &
 #    Or directly:
 #    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
 
 # 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
 #    with the LAN9118 wiring the example expects:
-just qemu-baremetal talker
+just qemu talker
 # Or, in the Rust example dir (the `.cargo/config.toml` runner shells
 # out to the same qemu-system-arm flags):
 cd examples/qemu-arm-baremetal/rust/talker
