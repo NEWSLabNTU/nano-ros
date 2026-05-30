@@ -108,14 +108,17 @@ jobs:
         run: /opt/zephyr-sdk/setup.sh -c
 
       # `rustup target add` (inside `just zephyr setup`) implicitly syncs the
-      # host toolchain channel and tries to install the default 7-component
-      # profile alongside the target. The image already has clippy-preview
-      # baked under a different channel, so rustup errors `detected conflict:
-      # bin/cargo-clippy`. Switching the profile to `minimal` makes the
-      # implicit channel sync skip extra components (clippy/rustfmt/docs);
-      # the target gets installed without touching the existing binaries.
-      - name: rustup set profile minimal (avoid clippy-preview conflict)
-        run: rustup set profile minimal
+      # host toolchain channel and tries to install clippy-preview alongside
+      # the target. The image already has a `bin/cargo-clippy` file in the
+      # toolchain dir from a previous install layer, and rustup errors
+      # `detected conflict: bin/cargo-clippy`. Remove the conflicting file(s)
+      # so rustup can reinstall cleanly; clippy gets repopulated by the
+      # implicit channel sync (and by the explicit nightly clippy add below).
+      - name: Unblock rustup clippy-preview conflict
+        run: |
+          rustup_home="$(rustup show home 2>/dev/null || echo "$HOME/.rustup")"
+          find "$rustup_home/toolchains" -maxdepth 3 -type f \
+              \( -name cargo-clippy -o -name clippy-driver \) -delete 2>/dev/null || true
 
       # `west update` (manifest-pinned) + the line's NSOS/cyclone patches. The
       # Zephyr SDK is baked into the image (registered), so --skip-sdk: setup.sh
