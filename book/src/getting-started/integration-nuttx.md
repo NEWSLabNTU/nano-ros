@@ -138,11 +138,13 @@ cmake --build build
 just nuttx zenohd &
 
 # 2. QEMU NuttX (ARM). For nano-ros's own in-tree QEMU examples the
-#    just recipe wraps qemu-system-arm with the right wiring:
+#    just recipe wraps qemu-system-arm with the right wiring. `talker`
+#    here is the Rust variant; the C / C++ variants boot through the
+#    `make`-driven path described under "Auto-configure glue" below:
 just nuttx talker
 #    For a NuttX-managed workspace where you've staged the
 #    integration shell + your own app, mirror the recipe's actual
-#    flags (see `just/nuttx.just::_run-qemu` around line 503):
+#    flags (see `just/nuttx.just::_run-qemu`):
 qemu-system-arm -M virt -cpu cortex-a7 -nographic \
                 -icount shift=auto \
                 -kernel $NUTTX_DIR/nuttx \
@@ -167,9 +169,8 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 
 **Readiness signal.** After typing the app's NSH command (e.g.
 `nuttx_c_talker`), expect `Published: 0` on the NSH console within
-5 seconds (the Rust talker pre-publishes `0` before the counter
-advances; C/C++ talkers pre-increment so their first banner is
-`Published: 1`). If no `Published:` line:
+5 seconds — Rust + C + C++ all start the counter at 0
+(Phase 208.D.9). If no `Published:` line:
 
 1. Confirm the app actually ran — `ps` should show your task.
 2. Confirm networking — `ifconfig` shows a configured interface.
@@ -217,7 +218,8 @@ not on PATH"`); install it before retrying.
   [`integrations/nuttx/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/nuttx)
 - Worked NuttX QEMU examples:
   [`examples/qemu-arm-nuttx/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/rust),
-  [`examples/qemu-arm-nuttx/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/c)
+  [`examples/qemu-arm-nuttx/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/c),
+  [`examples/qemu-arm-nuttx/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/cpp)
 - Kconfig schema:
   [`integrations/nuttx/Kconfig`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nuttx/Kconfig)
 
