@@ -61,6 +61,7 @@
 #include <string>
 #include <functional>
 #include <vector>
+#include <chrono>
 
 namespace rclcpp {
 
@@ -167,6 +168,29 @@ inline bool ok() {
 // thread (same as `nros::Executor::spin`). Callbacks fire on whatever thread
 // services `spin*`, mirroring the rclcpp default.
 
+// --- Timer surface ----------------------------------------------------------
+//
+// rclcpp users typically store a `rclcpp::TimerBase::SharedPtr` and only care
+// that it stays alive as long as the timer should fire. The actual dispatch
+// happens through `Node::create_wall_timer(period, callback)`. Implementation:
+// the compat tracks `WallTimer`s on the Node and fires them from `Node::pump()`
+// — same polling model as the subscription pump. Sufficient for typical ROS 2
+// periodic callbacks; the wall-clock granularity is whatever `rclcpp::spin*`'s
+// caller drives.
+class TimerBase {
+public:
+    virtual ~TimerBase() = default;
+};
+
+namespace detail {
+class WallTimer : public TimerBase {
+public:
+    std::chrono::steady_clock::duration period{};
+    std::chrono::steady_clock::time_point next_fire{};
+    std::function<void()> callback;
+};
+}  // namespace detail
+
 class Node : public std::enable_shared_from_this<Node> {
   public:
     using SharedPtr = std::shared_ptr<Node>;
@@ -256,9 +280,36 @@ class Node : public std::enable_shared_from_this<Node> {
                                        std::move(cb));
     }
 
-    // Pump all polling subscriptions. Called by rclcpp::spin / spin_some
-    // before invoking the underlying nros executor's spin_once.
+    // create_wall_timer(period, callback) — fires `callback()` every `period`,
+    // driven by `Node::pump()` (i.e. each `rclcpp::spin_some` / `spin` sweep).
+    template <typename Rep, typename Period, typename Cb>
+    std::shared_ptr<TimerBase>
+    create_wall_timer(std::chrono::duration<Rep, Period> period, Cb cb) {
+        auto t = std::make_shared<detail::WallTimer>();
+        t->period    = std::chrono::duration_cast<std::chrono::steady_clock::duration>(period);
+        t->next_fire = std::chrono::steady_clock::now() + t->period;
+        t->callback  = std::move(cb);
+        timers_.push_back(t);
+        return std::static_pointer_cast<TimerBase>(t);
+    }
+
+    // Pump all polling subscriptions + due wall-timers. Called by
+    // rclcpp::spin / spin_some before invoking the underlying nros
+    // executor's spin_once.
     void pump() {
+        const auto now = std::chrono::steady_clock::now();
+        for (auto& t : timers_) {
+            if (!t || !t->callback) continue;
+            if (now >= t->next_fire) {
+                t->next_fire += t->period;
+                // If we've fallen badly behind, snap to "now" to avoid burst
+                // firing — matches rclcpp's WallTimer behaviour.
+                if (now > t->next_fire) {
+                    t->next_fire = now + t->period;
+                }
+                t->callback();
+            }
+        }
         for (auto& f : pump_callbacks_) {
             if (f) f();
         }
@@ -272,6 +323,8 @@ private:
     // sub). Captured by std::function so any callable shape (capturing lambda,
     // member-fn bind, std::function) works.
     std::vector<std::function<void()>> pump_callbacks_;
+    // Wall-timers driven from `pump()` — see `create_wall_timer`.
+    std::vector<std::shared_ptr<detail::WallTimer>> timers_;
 };
 
 // --- spin / spin_some --------------------------------------------------------

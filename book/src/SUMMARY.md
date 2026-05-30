@@ -10,6 +10,7 @@
 - [First Node — Rust](./getting-started/first-node-rust.md)
 - [First Node — C](./getting-started/first-node-c.md)
 - [First Node — C++](./getting-started/first-node-cpp.md)
+- [Porting a ROS 2 C++ node](./getting-started/porting-a-cpp-node.md)
 - [Troubleshooting — First 10 Minutes](./getting-started/troubleshooting-first-10-min.md)
 
 # Embedded Starters

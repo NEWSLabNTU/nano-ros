@@ -215,16 +215,29 @@ Two additional, smaller ROS-2-generic friction sources:
       **209.A.follow-up** above). The synthetic node uses stateless
       fn-pointer subscriptions + global state as the today-workaround,
       documented inline. Native build verified (`build/topic_state_monitor`).
-- [ ] **Vendor + build the upstream source** (next iteration). Needs an
-      Autoware checkout — clone `autoware.system/topic_state_monitor` under
-      `vendor/`, codegen `tf2_msgs` + the `autoware_*` deps the upstream pulls,
-      land the 209.A capturing-lambda follow-up so the upstream callbacks
-      compile unmodified, run on `native_sim` (Zephyr).
-- [ ] **Book page** `book/src/getting-started/porting-a-cpp-node.md` — walks
-      the diff (essentially: prepend three lines to `CMakeLists.txt`).
-- [ ] **Acceptance:** the upstream example compiles + boots on `native_sim`
-      (Zephyr) and publishes `DiagnosticArray`; the book page is a
-      copy-paste-able guide.
+- [x] **Iter 2 — vendor the canonical upstream source + book page (2026-05-30,
+      branch `phase-209-cpp-port-friction-reduction`).** The 209 scope is
+      ROS-2-generic, not Autoware-specific; the right "real" target is the
+      canonical ROS 2 tutorial source (any small upstream node would do —
+      Autoware was just one of the survey's *measurement* fixtures, not the
+      acceptance target). Vendored `examples/templates/cpp-port-minimal-
+      publisher/` — the upstream ROS 2 tutorial's `minimal_publisher.cpp`
+      **verbatim**, builds against nano-ros through the 209.A–D compat
+      surface with the three-line CMakeLists glue (NANO_ROS_PLATFORM +
+      add_subdirectory, NrosRclcppCompat.cmake include, the per-pkg
+      nros_generate_interfaces). One compat-surface gap surfaced + closed
+      while porting: `rclcpp::TimerBase` + `Node::create_wall_timer(period,
+      callback)` weren't in 209.A — added (pump-dispatched wall-timer with
+      capturing-lambda callback support, mirrors the subscription pump).
+      Two remaining caveats are codegen-side (FixedString vs std::string;
+      umbrella header path vs `<pkg>/msg/<name>.hpp`) — tracked under
+      Phase 209.E.
+- [x] **Book page** `book/src/getting-started/porting-a-cpp-node.md` — landed.
+      Walks the three-line glue + a "what works / what's codegen-cosmetic /
+      what's deferred" table + cross-refs the in-tree fixture.
+- [ ] **Acceptance:** the upstream example also boots on `native_sim`
+      (Zephyr). (Native posix is verified; Zephyr boot is a per-platform
+      cmake configure of the same source — separate confirmation.)
 
 ### 209.H — `rclcpp_lifecycle::LifecycleNode` mirror (deferred, P3)
 - [ ] Stock ROS 2 nodes increasingly inherit
