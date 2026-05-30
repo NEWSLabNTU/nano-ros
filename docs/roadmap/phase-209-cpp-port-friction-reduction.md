@@ -246,14 +246,47 @@ just a single fixture.
       Book page `book/src/getting-started/porting-a-cpp-node.md` —
       landed; walks the three-line glue + "what works / codegen-cosmetic
       / deferred" table.
-- [ ] **209.G.2 — Zephyr `native_sim` · same source.** Same
-      `minimal_publisher` source, `set(NANO_ROS_PLATFORM zephyr)` +
-      zephyr workspace setup. No new compat code; per-platform cmake
-      configure pass. Acceptance: boots + publishes through the Zephyr
-      zenoh-pico path.
-- [ ] **209.G.3 — `qemu-arm-freertos` · same source.** First embedded-RTOS
-      validation of the source-compat surface. Acceptance: boots +
-      publishes under qemu networked.
+- [ ] **209.G.2 — Zephyr `native_sim` · same source. BLOCKED** on a
+      Zephyr `libstdc++`-subset shim project (was assumed "per-platform
+      configure pass"; investigation 2026-05-30 proved otherwise).
+      Zephyr's minimal C++ stdlib (`zephyr/lib/cpp/minimal/`) ships only
+      `<cstddef>`/`<cstdint>`/`<new>` + a few cstr/cmath; `rclcpp_compat.hpp`
+      pulls `<memory>`/`<string>`/`<functional>`/`<vector>`/`<chrono>`
+      (chrono is already shimmed under `zephyr/cxx-compat/`). The four
+      missing headers each need a non-trivial shim — `<memory>` ≈ 200
+      LoC for `shared_ptr`+`make_shared`+`enable_shared_from_this`+
+      `unique_ptr`+`*_pointer_cast` alone. Real prereq is a small
+      "libstdc++ subset for Zephyr nros" project, not part of 209.
+      Two alternatives both rejected:
+      `CONFIG_GLIBCXX_LIBCPP=y` on native_sim/x86_64 is unbuildable
+      (Zephyr SDK 0.16.8 ships no `picolibc.specs` for x86_64-zephyr-elf);
+      a `CONFIG_EXTERNAL_LIBCPP=y` route to host libstdc++ collides with
+      Zephyr's `-nostdinc` net-header isolation (host `<netinet/in.h>` vs
+      Zephyr's own struct sockaddr). **Follow-up: file as "Zephyr
+      libstdc++ subset for nros-cpp" — separate phase.**
+- [ ] **209.G.3 — `qemu-arm-freertos` · same source. BLOCKED** on two
+      prereqs (was assumed "first embedded-RTOS validation"; investigation
+      2026-05-30 found the gap):
+      1. **Entry-point dispatch.** freertos's startup chain calls
+         `void app_main(void)` via `NROS_APP_MAIN_REGISTER_VOID()`, which
+         calls `nros_app_main(0, NULL)`. The upstream tutorial source
+         declares `int main(int, char**)`. Need a compat-emitted shim
+         (a generated `.c` TU added to the app target by
+         `NrosRclcppCompat.cmake` on `NANO_ROS_PLATFORM=freertos`) that
+         defines `nros_app_main` as a forwarder to `main`.
+      2. **Runtime config bake.** `rclcpp::init(argc, argv)` calls
+         `nros::init()` no-args, which falls through to env vars on
+         hosted (`NROS_LOCATOR`/`ROS_DOMAIN_ID`). On `__STDC_HOSTED__=0`
+         embedded, env vars don't reach the binary — the freertos
+         examples bake locator/domain_id via `nros.toml` → `app_config.h`.
+         `rclcpp_compat.hpp::init` has no equivalent path; either auto-
+         emit a default `app_config.h` from `NrosRclcppCompat.cmake` or
+         teach `rclcpp::init` to read `NROS_APP_CONFIG` on embedded.
+      arm-none-eabi-newlib libstdc++ DOES ship `<memory>`+`<string>`+
+      `<functional>`+`<vector>`+`<chrono>` (verified locally) so the
+      header-set gap that blocks G.2 doesn't bite here. **Follow-up:
+      file "Embedded entry-point + config-bake shim for rclcpp_compat"
+      — single follow-up unblocks G.3 + every other embedded G.
 - [ ] **209.G.4 — Larger real-world fixture.** A ported ROS 2 node that
       exercises >2 message types + a service + a parameter. Surfaces the
       next round of compat gaps (composition, multi-node, intra-process).
@@ -264,9 +297,18 @@ just a single fixture.
       `find_package(<msg>)`, refresh `book/src/getting-started/porting-
       a-cpp-node.md` so the worked example matches the new glue.
 
-**Acceptance gating.** Today: G.1 closed (MVP proof). G.2 closes when
-Zephyr platform-ci slot validates the boot. G.3 closes when freertos
-platform-ci slot validates the boot. G.4 + G.5 land alongside 210.
+**Acceptance gating.** Today: G.1 closed (MVP proof). G.2 + G.3 both
+need real prereq work outside 209's scope (see above); each follow-up
+is a separate phase. G.4 + G.5 land alongside 210.
+
+**Investigation note (2026-05-30).** The first revision of 209.G framed
+G.2/G.3 as "per-platform cmake configure pass, no new compat code". A
+spike against both targets disproved that — every embedded target has
+either a libcpp-subset gap (Zephyr minimal stdlib) or an entry-point
++ runtime-config-bake gap (every RTOS that doesn't run user `main`
+directly). Both gaps are tractable but each is at least one focused
+follow-up phase, not part of 209. Updated above to reflect reality
+rather than the original intent.
 
 ### 209.H — `rclcpp_lifecycle::LifecycleNode` mirror (deferred, P3)
 - [ ] Stock ROS 2 nodes increasingly inherit
