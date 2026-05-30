@@ -72,8 +72,18 @@ Two additional, smaller ROS-2-generic friction sources:
 ## Work Items (ranked by impact / smallest-first)
 
 ### 209.A — `nros/rclcpp_compat.hpp` source-compat header
-- [ ] Ship `packages/core/nros-cpp/include/nros/rclcpp_compat.hpp` that aliases
-      the rclcpp surface `nros-cpp` already mirrors:
+- [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**
+      `packages/core/nros-cpp/include/nros/rclcpp_compat.hpp` lands the surface
+      below plus a `rclcpp::Node` shim wrapping `nros::Executor` + `nros::Node`
+      so the rclcpp idiom `std::make_shared<rclcpp::Node>("n")` →
+      `n->create_publisher<M>(topic, qos)` (shared_ptr-returning) → `rclcpp::spin(n)`
+      compiles unchanged. Also: `rclcpp_action::Server/Client` aliases, log
+      macros (`RCLCPP_INFO/WARN/ERROR/DEBUG/FATAL` + `_THROTTLE` degrading to
+      plain log), `rclcpp::init/shutdown/ok/spin_some`, `Logger`/`get_logger`,
+      `QoS` factories. Scope + out-of-scope (NodeOptions parameter declare,
+      tf2, lifecycle, callback groups) listed in the header comment. The
+      alias-only sketch below remains a useful summary:
+- [ ] Original sketch (kept for reference):
       ```cpp
       namespace rclcpp {
         using Node          = nros::Node;
@@ -95,7 +105,10 @@ Two additional, smaller ROS-2-generic friction sources:
       every `rclcpp::Node` / `rclcpp::Publisher<M>` in the body resolves through
       the alias. **Size:** ~80 LOC, header-only.
 - [ ] **Acceptance:** an Autoware Tier-1 source file compiles unchanged (apart
-      from the include swap) against this header.
+      from the include swap) against this header. (Full Autoware compile is
+      209.G work; 209.A's header lands the surface 209.G will exercise. A
+      minimal cmake-built smoke fits naturally into 209.B's
+      `find_package(rclcpp)` shim.)
 
 ### 209.B — `NrosRclcppCompat` cmake module
 - [ ] Add `cmake/compat/NrosRclcppCompat.cmake` that maps the stock
