@@ -25,8 +25,10 @@ shipped 209.A–D compat surface, with only three glue lines prepended to its
 that exercises the multi-sub / wall-timer / diagnostic_updater paths. Book
 page at `book/src/getting-started/porting-a-cpp-node.md`. Open items remap:
 209.E → **Phase 210** (broader workspace-discovery + ROS-convention codegen);
-209.F → nros-cli (yaml params bake, off-tree); 209.G Zephyr native_sim boot
-→ per-platform configure of the same source (follow-up); 209.H → deferred (P3).
+209.F → nros-cli (yaml params bake, off-tree); 209.G restructured as a
+**port-validation matrix** (G.1 ✅, G.2 Zephyr native_sim + G.3 freertos-qemu
++ G.4 richer fixture + G.5 post-210 doc refresh = follow-ups); 209.H →
+deferred (P3).
 
 **Priority.** P2 — adoption-path work, not a capability gap. Existing users with
 Rust-rewrite ports (Sentinel) are unaffected.
@@ -221,42 +223,50 @@ for reference:
 - [ ] **Acceptance:** a Tier-1 node's original yaml + source produce a working
       embedded binary with the bake step in the build.
 
-### 209.G — Walking the first port end-to-end (the proof, + a book page)
-- [x] **First iteration (2026-05-30, branch `phase-209-cpp-port-friction-
-      reduction`).** Synthetic in-tree `topic_state_monitor` port at
-      `examples/templates/topic-state-monitor-port/` — same shape as the
-      upstream Autoware node (multi-topic liveness watchdog + per-topic
-      `DiagnosticArray` publish). Builds + links against nano-ros through
-      A+B+C+D with only the three compat lines in the CMakeLists. Surfaced
-      one real gap (capturing-lambda subscription callbacks — filed as
-      **209.A.follow-up** above). The synthetic node uses stateless
-      fn-pointer subscriptions + global state as the today-workaround,
-      documented inline. Native build verified (`build/topic_state_monitor`).
-- [x] **Iter 2 — vendor the canonical upstream source + book page (2026-05-30,
-      branch `phase-209-cpp-port-friction-reduction`).** The 209 scope is
-      ROS-2-generic, not Autoware-specific; the right "real" target is the
-      canonical ROS 2 tutorial source (any small upstream node would do —
-      Autoware was just one of the survey's *measurement* fixtures, not the
-      acceptance target). Vendored `examples/templates/cpp-port-minimal-
-      publisher/` — the upstream ROS 2 tutorial's `minimal_publisher.cpp`
-      **verbatim**, builds against nano-ros through the 209.A–D compat
-      surface with the three-line CMakeLists glue (NANO_ROS_PLATFORM +
-      add_subdirectory, NrosRclcppCompat.cmake include, the per-pkg
-      nros_generate_interfaces). One compat-surface gap surfaced + closed
-      while porting: `rclcpp::TimerBase` + `Node::create_wall_timer(period,
-      callback)` weren't in 209.A — added (pump-dispatched wall-timer with
-      capturing-lambda callback support, mirrors the subscription pump).
-      Two remaining caveats are codegen-side (FixedString vs std::string;
-      umbrella header path vs `<pkg>/msg/<name>.hpp`) — tracked under
-      Phase 209.E.
-- [x] **Book page** `book/src/getting-started/porting-a-cpp-node.md` — landed.
-      Walks the three-line glue + a "what works / what's codegen-cosmetic /
-      what's deferred" table + cross-refs the in-tree fixture.
-- [ ] **Acceptance — follow-up.** Native posix is verified end-to-end. The
-      Zephyr `native_sim` boot of the same source is a per-platform cmake
-      configure (`set(NANO_ROS_PLATFORM zephyr)` + zephyr workspace setup)
-      — tracked as a separate confirmation pass, not blocking 209's in-tree
-      MVP. (Filing as **209.G.zephyr-boot follow-up**.)
+### 209.G — Port-validation matrix  (was: "Walking the first port end-to-end")
+
+The 209 source-compat surface is proven on one platform + one canonical
+upstream source. Extend the matrix with concrete per-platform + per-pattern
+follow-ups so "every ROS 2 node ports cleanly" has graduated evidence — not
+just a single fixture.
+
+- [x] **209.G.1 — Native posix · canonical ROS 2 source (2026-05-30, branch
+      `phase-209-cpp-port-friction-reduction`).** Vendored
+      `examples/templates/cpp-port-minimal-publisher/` — upstream ROS 2
+      tutorial `minimal_publisher.cpp` **verbatim**, builds against
+      nano-ros through 209.A–D with the three-line CMakeLists glue
+      (NANO_ROS_PLATFORM + add_subdirectory, NrosRclcppCompat.cmake
+      include, nros_generate_interfaces). Native build verified.
+      One compat-surface gap closed while porting: `rclcpp::TimerBase` +
+      `Node::create_wall_timer(period, callback)` weren't in 209.A —
+      added (pump-dispatched wall-timer with capturing-lambda support,
+      mirrors the subscription pump). Earlier iteration (synthetic
+      `topic_state_monitor` at `examples/templates/topic-state-monitor-
+      port/`) surfaced the capturing-lambda gap → **209.A.follow-up**.
+      Book page `book/src/getting-started/porting-a-cpp-node.md` —
+      landed; walks the three-line glue + "what works / codegen-cosmetic
+      / deferred" table.
+- [ ] **209.G.2 — Zephyr `native_sim` · same source.** Same
+      `minimal_publisher` source, `set(NANO_ROS_PLATFORM zephyr)` +
+      zephyr workspace setup. No new compat code; per-platform cmake
+      configure pass. Acceptance: boots + publishes through the Zephyr
+      zenoh-pico path.
+- [ ] **209.G.3 — `qemu-arm-freertos` · same source.** First embedded-RTOS
+      validation of the source-compat surface. Acceptance: boots +
+      publishes under qemu networked.
+- [ ] **209.G.4 — Larger real-world fixture.** A ported ROS 2 node that
+      exercises >2 message types + a service + a parameter. Surfaces the
+      next round of compat gaps (composition, multi-node, intra-process).
+      Picked after **Phase 210** (codegen workspace) lands so the
+      codegen glue is one line, not three.
+- [ ] **209.G.5 — Book-page refresh post-Phase 210.** Once 210 collapses
+      the three codegen glue lines to `nros_workspace_interfaces()` /
+      `find_package(<msg>)`, refresh `book/src/getting-started/porting-
+      a-cpp-node.md` so the worked example matches the new glue.
+
+**Acceptance gating.** Today: G.1 closed (MVP proof). G.2 closes when
+Zephyr platform-ci slot validates the boot. G.3 closes when freertos
+platform-ci slot validates the boot. G.4 + G.5 land alongside 210.
 
 ### 209.H — `rclcpp_lifecycle::LifecycleNode` mirror (deferred, P3)
 - [ ] Stock ROS 2 nodes increasingly inherit
@@ -281,12 +291,13 @@ A **minimum viable port** ships when 209.A + 209.B + 209.C + 209.D are landed
 (≈ a week of work). That's the "swap the build scripts + a `#include` + include
 the cmake compat" promise made good for a small ROS 2 C++ node with no yaml
 params. 209.E (workspace codegen) is concurrent and lives in nros-cli. 209.F
-(param bake) lifts the ceiling to small param-loaded nodes. 209.G is the proof.
+(param bake) lifts the ceiling to small param-loaded nodes. 209.G is the
+port-validation matrix (G.1 is the today-proof; G.2–G.5 graduate the evidence).
 209.H (LifecycleNode mirror) is a separate, larger piece.
 
 ## Notes
 
-- The proof — 209.G — is **the real measurement**. Until a real ROS 2 C++ source
+- The proof — 209.G.1 — is **the real measurement**. Until a real ROS 2 C++ source
   builds against nano-ros with the shims in place, the friction estimate is a
   projection, not a fact.
 - All items above are generic to ROS 2 C++ surfaces (rclcpp, ament_cmake,
