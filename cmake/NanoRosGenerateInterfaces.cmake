@@ -882,6 +882,89 @@ endfunction()
 
 
 # =========================================================================
+# rosidl_generate_interfaces(<target> <files>...
+#     [DEPENDENCIES <packages>...]
+#     [LIBRARY_NAME <library>]
+#     [SKIP_INSTALL]
+#     [ADD_LINTER_TESTS]
+#     [SKIP_GROUP_MEMBERSHIP_CHECK])
+#
+# Phase 210.A.1 — upstream-shape entry point. A standard ROS 2 msg pkg's
+# CMakeLists.txt calls this verbatim — same name, same signature as the
+# rosidl_default_generators function. nano-ros routes it to its own codegen
+# (`nros_generate_interfaces`, CPP) without the rosidl runtime needed; the
+# upstream-only arguments (LIBRARY_NAME / ADD_LINTER_TESTS /
+# SKIP_GROUP_MEMBERSHIP_CHECK) are accepted + no-op'd.
+#
+# Emits the canonical `${target}::${target}` IMPORTED INTERFACE alias on
+# top of `${target}__nano_ros_cpp` so a consumer's
+# `target_link_libraries(<app> <pkg>::<pkg>)` line — also stock-ROS shape —
+# resolves through the alias to the nano-ros codegen lib.
+#
+# A standard ROS msg package's CMakeLists.txt now contains zero nano-ros-
+# specific lines: just `find_package(ament_cmake REQUIRED) +
+# find_package(rosidl_default_generators REQUIRED) +
+# rosidl_generate_interfaces(${PROJECT_NAME} <files>) + ament_package()`.
+# Find-stubs satisfy the find_package() calls.
+# =========================================================================
+function(rosidl_generate_interfaces target)
+  cmake_parse_arguments(_ROS
+    "SKIP_INSTALL;ADD_LINTER_TESTS;SKIP_GROUP_MEMBERSHIP_CHECK"
+    "LIBRARY_NAME"
+    "DEPENDENCIES"
+    ${ARGN}
+  )
+
+  # Pass-through args + flags onto our codegen function. Default LANGUAGE
+  # is CPP — rosidl emits all languages, nano-ros routes through rclcpp_compat
+  # so C++ is the front. Callers wanting C invoke nros_generate_interfaces
+  # directly.
+  #
+  # SKIP_INSTALL defaults TRUE for the rosidl-wrapper path: nano-ros doesn't
+  # publish the upstream `share/<pkg>/` install layout — consumers come in via
+  # `find_package(<pkg>)` → smart Find-stub (Phase 210.A.2), not via an
+  # install prefix on `AMENT_PREFIX_PATH`. Explicit `SKIP_INSTALL` keyword
+  # is still honoured (it's already the default; harmless duplicate).
+  set(_passthru_flags SKIP_INSTALL)
+
+  if(_ROS_ADD_LINTER_TESTS)
+    message(STATUS "rosidl_generate_interfaces(${target}): ADD_LINTER_TESTS no-op'd (ament linter stack not bundled).")
+  endif()
+  if(_ROS_SKIP_GROUP_MEMBERSHIP_CHECK)
+    message(STATUS "rosidl_generate_interfaces(${target}): SKIP_GROUP_MEMBERSHIP_CHECK accepted (no-op).")
+  endif()
+  if(_ROS_LIBRARY_NAME)
+    message(STATUS "rosidl_generate_interfaces(${target}): LIBRARY_NAME='${_ROS_LIBRARY_NAME}' accepted (nano-ros uses fixed `${target}__nano_ros_cpp` naming; alias `${target}::${target}` resolves it).")
+  endif()
+
+  nros_generate_interfaces(${target}
+    ${_ROS_UNPARSED_ARGUMENTS}
+    DEPENDENCIES ${_ROS_DEPENDENCIES}
+    LANGUAGE CPP
+    ${_passthru_flags}
+  )
+
+  # Upstream-shape consumer link target: `<pkg>::<pkg>`. Alias the codegen
+  # interface lib so `target_link_libraries(<app> <pkg>::<pkg>)` works.
+  if(TARGET ${target}__nano_ros_cpp AND NOT TARGET ${target}::${target})
+    add_library(${target}::${target} ALIAS ${target}__nano_ros_cpp)
+  endif()
+  # Some upstream consumers write `<pkg>::<pkg>__rosidl_typesupport_cpp`.
+  # Alias to the same target so the link still resolves.
+  if(TARGET ${target}__nano_ros_cpp AND NOT TARGET ${target}::${target}__rosidl_typesupport_cpp)
+    add_library(${target}::${target}__rosidl_typesupport_cpp ALIAS ${target}__nano_ros_cpp)
+  endif()
+
+  # Re-export the variables nros_generate_interfaces set in caller scope.
+  set(${target}_INCLUDE_DIRS "${${target}_INCLUDE_DIRS}" PARENT_SCOPE)
+  set(${target}_LIBRARIES "${${target}_LIBRARIES}" PARENT_SCOPE)
+  set(${target}_GENERATED_HEADERS "${${target}_GENERATED_HEADERS}" PARENT_SCOPE)
+  set(${target}_GENERATED_SOURCES "${${target}_GENERATED_SOURCES}" PARENT_SCOPE)
+  set(${target}_GENERATED_RS_FILES "${${target}_GENERATED_RS_FILES}" PARENT_SCOPE)
+endfunction()
+
+
+# =========================================================================
 # nros_find_interfaces()
 #
 # High-level function that reads package.xml from the current source

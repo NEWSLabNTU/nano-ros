@@ -61,6 +61,13 @@ if(NOT "${_nros_compat_dir}/stubs" IN_LIST CMAKE_MODULE_PATH)
     list(PREPEND CMAKE_MODULE_PATH "${_nros_compat_dir}/stubs")
 endif()
 
+# Pull the smart Find-stub helper proactively so it auto-emits workspace
+# Find<pkg>.cmake stubs for every pkg under `NROS_INTERFACE_SEARCH_PATH`
+# at compat-include time (Phase 210.A.2 + .A.4). Without this the emit
+# only happens when a per-pkg delegator fires — which can be after a
+# consumer's `find_package(<workspace_pkg>)` runs, defeating it.
+include("${_nros_compat_dir}/stubs/_NrosFindRosMsgPackage.cmake")
+
 # --- Sanity: nros-cpp must be loaded -----------------------------------------
 if(NOT TARGET NanoRos::NanoRosCpp)
     message(FATAL_ERROR

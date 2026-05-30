@@ -1,5 +1,4 @@
-# No-op Find-stub for builtin_interfaces — Phase 209.B (NrosRclcppCompat).
-# nano-ros doesn't ship this ROS 2 package; the surface a ported source needs
-# (message types, rcl handles) is satisfied through NanoRos::NanoRosCpp + nros
-# codegen. The find_package call only needs to succeed.
-set(builtin_interfaces_FOUND TRUE)
+# Find-stub for builtin_interfaces — Phase 210.A.3 delegator (was 209.B no-op).
+# Layered search path: NROS_INTERFACE_SEARCH_PATH > AMENT_PREFIX_PATH > bundled.
+include("${CMAKE_CURRENT_LIST_DIR}/_NrosFindRosMsgPackage.cmake")
+_nros_find_ros_msg_package(builtin_interfaces)
