@@ -9,7 +9,7 @@ is purely the **custom-transport injection** that XRCE requires on
 multi-RMW registration, `rmw-xrce` cargo feature, agent provisioning) already
 works on hosted targets.
 
-**Status.** DONE (2026-05-30) — all work items 207.1\u2013207.6 landed + e2e green; acceptance met.
+**Status.** DONE (2026-05-30) — all work items 207.1–207.6 landed + e2e green; acceptance met.
 
 **Priority.** P2 — unblocks the honest XRCE-vs-zenoh RAM comparison Phase 204
 deliberately left open, and is the on-ramp to the micro-ROS-class footprint
