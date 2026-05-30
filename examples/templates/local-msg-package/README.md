@@ -7,6 +7,9 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
   nano-ros-specific lines in the package's files. The same directory builds
   unchanged under `colcon build`.
 
+* `src/extra_msgs/` — second workspace msg pkg with `<depend>local_msgs
+  </depend>`; proves topo-sort + cross-workspace deps.
+
 * `src/consumer/` — a **verbatim** ROS 2 C++ consumer node. Its
   `CMakeLists.txt` calls `find_package(local_msgs REQUIRED)` +
   `target_link_libraries(consumer local_msgs::local_msgs)` (the stock-ROS
@@ -15,7 +18,9 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
 
 * `CMakeLists.txt` (this dir) — the **only** nano-ros-specific file. Pulls
   nano-ros, points `NROS_INTERFACE_SEARCH_PATH` at `./src/`, includes
-  `NrosRclcppCompat.cmake`, drives the two packages via `add_subdirectory`.
+  `NrosRclcppCompat.cmake`, calls `nros_workspace_interfaces()` to bulk-
+  build the workspace msg pkgs (one line instead of N
+  `add_subdirectory(src/<pkg>)`), then `add_subdirectory(src/consumer)`.
 
 ## Build
 
@@ -33,6 +38,7 @@ cmake --build build -j
 | Smart Find-stub (`_NrosFindRosMsgPackage`, 210.A.2) | `find_package(local_msgs)` in `src/consumer/CMakeLists.txt` |
 | Per-pkg Find delegators (210.A.3) | `find_package(std_msgs)` |
 | Workspace Find-stub auto-emit (210.A.4) | `NROS_INTERFACE_SEARCH_PATH=./src` → auto-emits `Findlocal_msgs.cmake` so the consumer resolves it |
+| `nros_workspace_interfaces()` bulk + topo-sort (210.B.2) | `local_msgs` built before `extra_msgs` automatically |
 | `${pkg}::${pkg}` upstream-shape link target | `target_link_libraries(consumer local_msgs::local_msgs)` |
 
 ## Cross-build parity

@@ -33,7 +33,11 @@ set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src")
 #    `find_package(rclcpp)` etc. — resolved through the compat module's stubs).
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/compat/NrosRclcppCompat.cmake")
 
-# 4) Build the msg package first (so `local_msgs::local_msgs` exists when
-#    consumer's `find_package(local_msgs)` runs).
-add_subdirectory(src/local_msgs)
+# 4) Bulk-build every workspace msg package in topo order — one call
+#    instead of N `add_subdirectory(src/<pkg>)` lines. Picks up
+#    `src/local_msgs/` + `src/extra_msgs/` (extra_msgs depends on
+#    local_msgs, gets ordered after it).
+nros_workspace_interfaces()
+
+# 5) Consumer (app, not a msg pkg) — handled via add_subdirectory directly.
 add_subdirectory(src/consumer)

@@ -1059,3 +1059,185 @@ function(nros_find_interfaces)
     list(APPEND _all_preceding_pkgs "${_pkg}")
   endforeach()
 endfunction()
+
+
+# =========================================================================
+# nros_workspace_interfaces([PATHS <dir>…] [LANGUAGE C|CPP])
+#
+# Phase 210.B.2 — bulk orchestrator. Scans the layered interface-package
+# search path (PATHS arg overrides NROS_INTERFACE_SEARCH_PATH if given),
+# identifies every ROS msg package (member_of_group=rosidl_interface_packages
+# OR has msg/srv/action dirs), topo-sorts by package.xml deps, then
+# `add_subdirectory(<pkg-dir>)` each. Each pkg's own CMakeLists.txt runs
+# (which calls `rosidl_generate_interfaces(...)`), wiring its codegen +
+# emitting the `<pkg>::<pkg>` alias. Multi-pkg workspaces collapse to one
+# call instead of N per-pkg `add_subdirectory(...)` lines.
+#
+# Idempotent: pkgs already wired (`TARGET ${pkg}__nano_ros_cpp`) are
+# skipped.  Shadowing (workspace pkg vs AMENT) follows the search-path
+# order — earlier roots win, with a `message(STATUS …)` line noting the
+# shadow.
+#
+# Usage from an app's CMakeLists.txt:
+#   set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_SOURCE_DIR}/src")
+#   nros_workspace_interfaces()
+#   find_package(my_app_msgs REQUIRED)
+#   target_link_libraries(my_app PRIVATE my_app_msgs::my_app_msgs)
+# =========================================================================
+function(nros_workspace_interfaces)
+  cmake_parse_arguments(_WS
+    ""
+    "LANGUAGE"
+    "PATHS"
+    ${ARGN}
+  )
+
+  if(NOT DEFINED _WS_LANGUAGE OR _WS_LANGUAGE STREQUAL "")
+    set(_WS_LANGUAGE "CPP")
+  endif()
+  string(TOUPPER "${_WS_LANGUAGE}" _WS_LANGUAGE)
+
+  # Resolve search roots — PATHS wins; else NROS_INTERFACE_SEARCH_PATH
+  # cmake/env.
+  set(_roots "")
+  if(_WS_PATHS)
+    list(APPEND _roots ${_WS_PATHS})
+  endif()
+  if(DEFINED NROS_INTERFACE_SEARCH_PATH AND NOT NROS_INTERFACE_SEARCH_PATH STREQUAL "")
+    string(REPLACE ":" ";" _e "${NROS_INTERFACE_SEARCH_PATH}")
+    list(APPEND _roots ${_e})
+  endif()
+  if(DEFINED ENV{NROS_INTERFACE_SEARCH_PATH} AND NOT "$ENV{NROS_INTERFACE_SEARCH_PATH}" STREQUAL "")
+    string(REPLACE ":" ";" _e "$ENV{NROS_INTERFACE_SEARCH_PATH}")
+    list(APPEND _roots ${_e})
+  endif()
+
+  if(NOT _roots)
+    message(STATUS
+      "nros_workspace_interfaces: no PATHS / NROS_INTERFACE_SEARCH_PATH set — nothing to scan.")
+    return()
+  endif()
+
+  # 1) Scan: collect (pkg_name, pkg_dir, deps).
+  set(_pkg_names "")
+  set(_seen "")
+  foreach(_root ${_roots})
+    if(NOT IS_DIRECTORY "${_root}")
+      continue()
+    endif()
+    file(GLOB _pxs RELATIVE "${_root}" "${_root}/*/package.xml")
+    foreach(_pxrel ${_pxs})
+      get_filename_component(_pxdir "${_root}/${_pxrel}" DIRECTORY)
+      file(READ "${_root}/${_pxrel}" _pxbody)
+      if(NOT _pxbody MATCHES "<name>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</name>")
+        continue()
+      endif()
+      string(REGEX REPLACE ".*<name>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</name>.*" "\\1" _pname "${_pxbody}")
+      # Skip non-msg pkgs.
+      set(_is_msg FALSE)
+      if(_pxbody MATCHES "<member_of_group>[ \t\r\n]*rosidl_interface_packages[ \t\r\n]*</member_of_group>")
+        set(_is_msg TRUE)
+      elseif(IS_DIRECTORY "${_pxdir}/msg" OR IS_DIRECTORY "${_pxdir}/srv" OR IS_DIRECTORY "${_pxdir}/action")
+        set(_is_msg TRUE)
+      endif()
+      if(NOT _is_msg)
+        continue()
+      endif()
+      # Shadowing — first root with this pkg name wins.
+      if("${_pname}" IN_LIST _seen)
+        message(STATUS
+          "nros_workspace_interfaces: ${_pname} found in multiple roots — keeping earlier; shadowed copy at ${_pxdir}")
+        continue()
+      endif()
+      list(APPEND _seen "${_pname}")
+      list(APPEND _pkg_names "${_pname}")
+      set(_pkg_${_pname}_dir "${_pxdir}")
+      # Parse deps so we can topo-sort.
+      _nros_parse_pkg_deps_inline("${_root}/${_pxrel}" _d)
+      # Filter to deps that are ALSO in this workspace — cross-workspace
+      # deps (e.g. std_msgs from AMENT) go through find_package's smart
+      # stub when the per-pkg add_subdirectory runs, not here.
+      set(_wd "")
+      foreach(_dep ${_d})
+        if("${_dep}" IN_LIST _seen
+            OR EXISTS "${_root}/${_dep}/package.xml")
+          list(APPEND _wd "${_dep}")
+        endif()
+      endforeach()
+      set(_pkg_${_pname}_deps "${_wd}")
+    endforeach()
+  endforeach()
+
+  if(NOT _pkg_names)
+    message(STATUS "nros_workspace_interfaces: no msg packages found under ${_roots}.")
+    return()
+  endif()
+
+  # 2) Topo-sort. Kahn's algorithm — repeatedly pick a pkg whose deps are
+  # all already emitted. Detects cycles (would leave pkgs un-emitted).
+  set(_ordered "")
+  set(_remaining "${_pkg_names}")
+  set(_iter 0)
+  list(LENGTH _remaining _rcount)
+  while(_rcount GREATER 0)
+    math(EXPR _iter "${_iter} + 1")
+    set(_picked_this_round FALSE)
+    foreach(_p ${_remaining})
+      set(_unsat FALSE)
+      foreach(_d ${_pkg_${_p}_deps})
+        if(NOT "${_d}" IN_LIST _ordered)
+          set(_unsat TRUE)
+          break()
+        endif()
+      endforeach()
+      if(NOT _unsat)
+        list(APPEND _ordered "${_p}")
+        list(REMOVE_ITEM _remaining "${_p}")
+        set(_picked_this_round TRUE)
+      endif()
+    endforeach()
+    if(NOT _picked_this_round)
+      message(WARNING
+        "nros_workspace_interfaces: dep cycle (or missing dep) among ${_remaining}; emitting in scan order.")
+      list(APPEND _ordered ${_remaining})
+      set(_remaining "")
+    endif()
+    list(LENGTH _remaining _rcount)
+    if(_iter GREATER 100)
+      message(FATAL_ERROR "nros_workspace_interfaces: topo-sort iteration cap reached — bug.")
+    endif()
+  endwhile()
+
+  # 3) add_subdirectory each pkg in topo order. The pkg's CMakeLists.txt
+  # calls rosidl_generate_interfaces(...) which wires the codegen.
+  foreach(_p ${_ordered})
+    if(TARGET ${_p}__nano_ros_cpp)
+      # Already wired (e.g. by an earlier find_package call); skip.
+      continue()
+    endif()
+    set(_pkg_dir "${_pkg_${_p}_dir}")
+    set(_bin_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-ws-${_p}")
+    message(STATUS "nros_workspace_interfaces: building ${_p} from ${_pkg_dir}")
+    add_subdirectory("${_pkg_dir}" "${_bin_dir}")
+  endforeach()
+endfunction()
+
+
+# Inline helper — parses package.xml deps without recursion (mirror of the
+# helper inside _NrosFindRosMsgPackage.cmake; keep here so the workspace
+# function works even if the smart stub hasn't been loaded yet).
+function(_nros_parse_pkg_deps_inline pxml out_var)
+  set(_deps "")
+  if(EXISTS "${pxml}")
+    file(READ "${pxml}" _body)
+    string(REGEX MATCHALL "<(depend|build_depend|exec_depend|run_depend|build_export_depend)[^>]*>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</(depend|build_depend|exec_depend|run_depend|build_export_depend)>" _matches "${_body}")
+    foreach(_m ${_matches})
+      string(REGEX REPLACE "<[^>]+>[ \t\r\n]*([A-Za-z0-9_-]+)[ \t\r\n]*</[^>]+>" "\\1" _name "${_m}")
+      if(NOT _name MATCHES "^(rosidl|ament|rclcpp|rclpy|rcl|rmw|rosgraph|launch|catkin)")
+        list(APPEND _deps "${_name}")
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _deps)
+  endif()
+  set(${out_var} "${_deps}" PARENT_SCOPE)
+endfunction()
