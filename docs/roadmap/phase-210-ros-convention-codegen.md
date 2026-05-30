@@ -9,7 +9,7 @@ CMake call shape are ROS's, so the same `src/` tree builds under both
 `colcon build` (rosidl's bindings) and a nano-ros build (ours). Subsumes the
 Phase 209.E bulk-codegen item.
 
-**Status.** MVP DONE in-tree (2026-05-30, branch `phase-210-ros-convention-codegen`). A.1/.2/.3/.4 + B.1/.2 + E.1/.4 landed; C/D and the remaining E items are tracked but separate (C/D need nros-cli changes + a new Rust helper crate; E.2/.3 are in-tree migrations of existing call sites).
+**Status.** MVP DONE (2026-05-30). In-tree A.1/.2/.3/.4 + B.1/.2 + E.1/.4 landed on main; nros-cli B.3 ready on `phase-210-workspace-codegen` (commit `41177dd`, awaits maintainer push); C.3 already covered by Phase 123.B.8 alias headers (verified in fixture). C.1/.2 deferred — re-file when 210.D needs them. D + E.2/.3 are in-tree follow-ups (Rust build.rs helper crate + in-tree call-site migrations).
 
 **Priority.** P2 — adoption ergonomics, not a capability gap. Closing it
 turns "port a ROS msg pkg" from a per-CMakeLists rewrite into "drop the pkg
@@ -87,9 +87,13 @@ higher layer + warn loudly.
       resolve-deps`), `add_subdirectory(<pkg-dir>)` each so the pkg's own
       CMakeLists runs (which calls `rosidl_generate_interfaces`). **Size:**
       ~100 LOC cmake.
-- [ ] **210.B.3** Optional `nros workspace env [<dir>]` CLI subcommand
-      printing `export NROS_INTERFACE_SEARCH_PATH=<dir>:$NROS_INTERFACE_SEARCH_PATH`
-      (mirrors colcon's `setup.bash` ergonomics). Lives in nros-cli.
+- [x] **210.B.3** `nros workspace env [<dir>] [--shell posix|fish]` — landed
+      in `github.com/NEWSLabNTU/nros-cli` branch
+      `phase-210-workspace-codegen` (commit `41177dd`). Ships in next
+      `nros` release. Prepends the resolved absolute path to
+      `NROS_INTERFACE_SEARCH_PATH` (literal `${NROS_INTERFACE_SEARCH_PATH:-}`
+      expansion so stacked `eval "$(nros workspace env ...)"` calls
+      compose). POSIX + fish output. (2026-05-30.)
 - [ ] **Acceptance:** a user workspace at `$HOME/my_ros2_ws/src/{a,b}` (b
       depends on a; both rosidl-interface-pkgs) builds with a single
       `nros_workspace_interfaces()` call in the consuming app's
@@ -98,13 +102,21 @@ higher layer + warn loudly.
       a warning.
 
 ### 210.C — `nros codegen --workspace` + upstream header layout (nros-cli)
-- [ ] **210.C.1** Extend `nros codegen resolve-deps` with `--workspace <dir>`
-      / `--search-path <dir>` flags (consistent with the cmake side).
-- [ ] **210.C.2** `nros generate cpp --workspace <dir>` and
-      `nros generate-rust --workspace <dir>` subcommand wrappers.
-- [ ] **210.C.3** Codegen also emits the upstream-style
+- [ ] **210.C.1** (DEFERRED — re-file with 210.D) Extend
+      `nros codegen resolve-deps` with `--workspace <dir>` /
+      `--search-path <dir>` flags. Cmake-side `nros_workspace_interfaces()`
+      self-scans + topo-sorts; CLI workspace-resolve has no current consumer.
+      Re-file when 210.D Rust build.rs helper lands (it would shell out to
+      `nros workspace generate-rust --search-path`).
+- [ ] **210.C.2** (DEFERRED — re-file with 210.D) `nros generate cpp
+      --workspace <dir>` and `nros generate-rust --workspace <dir>`
+      subcommand wrappers. Same reason as C.1.
+- [x] **210.C.3** Codegen already emits the upstream-style
       `<pkg>/msg/<name>.hpp` per-message header alongside the existing
-      `<pkg>/<pkg>.hpp` umbrella. Closes the cosmetic in Phase 209.G iter 2.
+      `<pkg>/<pkg>.hpp` umbrella — **already shipped under Phase 123.B.8**
+      (`NROS_ALIAS_*_HPP_` forwarder headers). Verified in the
+      `local-msg-package` fixture build dir; closes the 209.G iter 2
+      cosmetic with no extra work.
 - [ ] **Acceptance:** `nros generate cpp --workspace ./` produces every
       pkg's bindings into `./build/codegen/` in topo order; ported source
       compiles with both `<pkg>/msg/<name>.hpp` and `<pkg>/<pkg>.hpp`
