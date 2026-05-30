@@ -1,0 +1,310 @@
+# Phase 211 — Multi-node + launch-file completeness against real ROS production
+
+**Goal.** Close the gap between nano-ros's orchestration surface (`nros plan` /
+`nros deploy` / `nros run-target` + Autoware-level launch parsing via the
+vendored `play_launch_parser`) and what a real ROS 2 production system
+exercises (composable containers, intra-process zero-copy, `ros2` CLI
+interop, lifecycle transitions, conditional groups, dynamic loads,
+multi-host, mixed-RMW). The parser layer is strong (260 tests, Autoware
+100 %); the **planner consumption** + the **in-tree fixture coverage** +
+the **runtime-interop story** are where the gaps sit.
+
+**Status.** Proposed (2026-05-31). Survey done — see the gap list below;
+priorities are concrete (each item maps to a missing fixture or a missing
+planner field).
+
+**Priority.** P2 — orchestration is the user-facing entry point to "this
+nano-ros workspace behaves like a ROS 2 workspace"; the gaps below are
+what would surface the first time a real Autoware-shape user `nros
+deploy`s their launch file.
+
+**Depends on.** Phase 172 (orchestration, archived), Phase 172.A
+(`[lifecycle]` block), Phase 126.B / 126.C (component metadata API +
+launch-manifest planner), Phase 195/197 (`nros setup` + `just`→`nros`
+migration), the `nros-cli` repo's `play_launch_parser` +
+`ros-launch-manifest` vendored submodules.
+
+## Overview
+
+Today's orchestration pipeline:
+
+```
+*.launch.{xml,py,yaml}
+       │
+       │  play_launch_parser (Autoware-level)
+       ▼
+   record.json   ─── pkg/exec/name/namespace/parameters/remappings/nodes/includes/launch_arguments
+       │
+       │  nros-cli-core::orchestration::planner
+       ▼
+   nros-plan.json   ─── + nros.toml overlay (rmw, domain_id, lifecycle{autostart}, params)
+       │
+       │  nros-cli-core::orchestration::generate
+       ▼
+   generated entry crate   ─── compile / west build / vendor-module emit
+       │
+       ▼
+   `nros deploy <name>` → runs the binary / sim / hardware target
+```
+
+The pipeline carries the **happy path** (one or more nodes per package,
+parameters + remappings, lifecycle autostart, deploy-target switch). Real
+ROS 2 production stresses it on five orthogonal axes the planner doesn't
+fully cover yet:
+
+1. **Composable / intra-process** — `<composable_node>` / `<node_container>`,
+   the same container hosting multiple nodes for zero-copy.
+2. **Conditionals + scoping** — `<group>`, `<if>` / `<unless>`,
+   `<set_remap>`, `<set_env>`, `<executable>` siblings.
+3. **`ros2` CLI host interop** — `ros2 param`, `ros2 lifecycle`,
+   `ros2 topic`, `ros2 service` reaching a deployed nano-ros node from a
+   plain ROS install.
+4. **Multi-host / mixed-RMW** — `machine="…"` attr; nano-ros (XRCE / zenoh)
+   ↔ stock (cyclonedds / fastdds) discovery.
+5. **Test infra** — `launch_testing` equivalent (assert "topic ≥ N Hz for
+   ≥ T s", "node enters Active in ≤ T s").
+
+Each work item below is a focused fixture + planner enhancement + e2e
+assertion.
+
+## Architecture
+
+```
+                                 ┌──────────────────────┐
+launch-file features ────────────┤  play_launch_parser  │  (Autoware-level coverage today)
+                                 └──────────┬───────────┘
+                                            │ record.json
+                                            ▼
+                                 ┌──────────────────────┐
+                                 │  nros-cli planner    │  ← 211.B/D/E/F/G/I land here
+                                 └──────────┬───────────┘
+                                            │ nros-plan.json
+                                            ▼
+                                 ┌──────────────────────┐
+                                 │  generated entry lib │
+                                 └──────────┬───────────┘
+                                            │ rmw vtable (zenoh / xrce / cyclonedds)
+                                            ▼
+                                ┌────────────────────────┐
+                                │  nano-ros executor +   │
+                                │  param/lifecycle svcs  │  ← 211.C/J/H land here
+                                └────────────────────────┘
+                                            │
+                                            ▼
+                                 ┌──────────────────────┐
+                                 │  `ros2` CLI (host)   │
+                                 └──────────────────────┘
+```
+
+Most items split into three layers: **fixture** (a workspace in
+`nros-cli/testing_workspaces/`), **planner change** (in nros-cli, requires
+a release + pin bump), **runtime side** (in nano-ros).
+
+## Work Items
+
+### 211.A — In-tree orchestration e2e test (foundation)
+
+The orchestration tests live in `nros-cli`'s `testing_workspaces/`; nano-ros's own
+test suite has nothing under `nros-tests/tests/{orchestrat,launch,plan,deploy}*`.
+A user editing nano-ros runtime code wouldn't catch an orchestration
+regression until the next nros-cli release picks it up.
+
+- [ ] **Vendor a stable fixture** — `packages/testing/nros-tests/fixtures/orchestration_e2e/`
+      mirroring the nros-cli `testing_workspaces/orchestration_e2e` shape
+      (root `nros.toml`, `src/demo_pkg/{launch,manifest,src,Cargo.toml,package.xml}`,
+      `deploy/{native}/`). One single-talker case to start.
+- [ ] **`test_orchestration_e2e_native`** in `packages/testing/nros-tests/tests/`:
+      `nros plan` (uses the installed nros CLI) → assert `nros-plan.json`
+      contains the talker entity; `nros deploy native` → start the binary
+      → assert "Published:" in semihosting / stdout.
+- [ ] **Skip cleanly** when the `nros` CLI isn't on PATH (mirrors the
+      `require_xrce_agent` / `require_socat` pattern).
+- **Files:** `packages/testing/nros-tests/fixtures/orchestration_e2e/*`,
+  `packages/testing/nros-tests/tests/orchestration_e2e.rs`,
+  `packages/testing/nros-tests/src/fixtures/binaries/mod.rs` (resolver).
+
+### 211.B — Composable-node planner handling (biggest production gap)
+
+`play_launch_parser` reads `<node_container>` / `<composable_node>` /
+`<load_composable_node>`; the nros-cli planner currently emits each as a
+separate plan entity. Production ROS (Nav2, Autoware, MoveIt) **relies**
+on a single container hosting many nodes for intra-process zero-copy.
+
+- [ ] **Planner change (nros-cli):** group composable-children under the
+      parent container in `nros-plan.json` — new `entities[*].container_id`
+      field + `entities[*].kind = "container"|"composable_node"|"node"`.
+      Preserve per-child parameters/remappings.
+- [ ] **Runtime: one-process-many-nodes** — confirm `Executor::open` +
+      `executor.create_node(name)` already supports N nodes per process
+      (it does — Phase 172 W.5). Add a fixture exercising 2 composable
+      nodes in 1 process and assert both publish from the same PID.
+- [ ] **Fixture:** `nros-cli/testing_workspaces/composable_container_e2e/`
+      with `<node_container>` + 2 `<composable_node>` children.
+- [ ] **In-tree e2e** — `test_orchestration_composable_e2e` runs it, asserts
+      `ps` shows ONE process publishing TWO distinct topic names from TWO
+      `node->fqn`s.
+- **Files:** `nros-cli/packages/nros-cli-core/src/orchestration/planner.rs`
+  (composable handling), `nros-cli/packages/nros-cli-core/src/orchestration/generate.rs`
+  (multi-node entry-lib), `packages/testing/nros-tests/tests/orchestration_composable.rs`.
+
+### 211.C — `ros2` CLI host-interop fixtures
+
+`nros-params` + `nros-node`/`lifecycle-services` exist but **no fixture
+proves host `ros2` CLI round-trips against a deployed nano-ros node**.
+This is what a ROS-2-fluent user expects to "just work".
+
+- [ ] **`test_ros2_param_interop`** — deploy a nano-ros node with a
+      declared parameter; from host, `ros2 param list` shows it,
+      `ros2 param get /<node> <name>` returns the value, `ros2 param set …`
+      updates it (echoed by a subsequent `get`).
+- [ ] **`test_ros2_lifecycle_interop`** — deploy a lifecycle node;
+      `ros2 lifecycle list` includes it, `ros2 lifecycle set <node> configure`
+      → `activate` → assert the node publishes only after `activate`.
+- [ ] **`test_ros2_topic_interop`** — deploy a publisher; from host,
+      `ros2 topic list` shows the topic, `ros2 topic echo <topic>` receives
+      messages, `ros2 topic hz <topic>` reports a sane rate.
+- **Skip cleanly** when stock `ros2` CLI isn't installed (most CI runners
+  won't have it; matches the `require_*` pattern).
+- **Files:** `packages/testing/nros-tests/fixtures/ros2_interop/*`,
+  `packages/testing/nros-tests/tests/ros2_interop.rs`.
+
+### 211.D — Conditionals + scoping deploy-time eval
+
+`<arg name="enable_logger" default="false"/>` + `<node if="$(var enable_logger)">…</node>`
+— the schema has `if_condition`/`unless_condition` fields but no fixture
+exercises **deploy-time** evaluation (the parser does the `$(var …)`
+substitution; the planner has to honour the boolean).
+
+- [ ] **Planner change:** emit only entities whose `if_condition` resolves
+      truthy + `unless_condition` resolves falsy after launch-arg
+      substitution.
+- [ ] **`<group>` scoping** — preserve nested `<group>` namespace prefixes
+      on child entities (today the planner flattens).
+- [ ] **Fixture + e2e** — a launch with `enable_logger` arg, deploy with
+      `--launch-arg enable_logger:=true` (logger node present) vs
+      `:=false` (logger absent). Same workspace, two plans, two
+      `nros deploy` runs.
+- **Files:** `nros-cli/packages/nros-cli-core/src/orchestration/planner.rs`,
+  `packages/testing/nros-tests/tests/orchestration_conditionals.rs`.
+
+### 211.E — `<set_remap>` / `<set_env>` / `<executable>`
+
+Parser reads them; planner ignores. Production launches use
+`<set_remap>` for global remaps inside a `<group>`, `<set_env>` to
+parameterise downstream `<executable>` calls.
+
+- [ ] **Planner:** thread `set_remap` scope down into child entities;
+      thread `set_env` into the plan's per-entity env block.
+- [ ] **`<executable>`** — emit as a non-rmw "spawn" plan entity that the
+      generated entry lib runs alongside (or refuses to deploy with a
+      clear error if the deploy kind doesn't support it).
+- [ ] **Fixture + e2e** — one launch that wraps two `<node>`s in a
+      `<group>` with a `<set_remap from="/in" to="/scoped/in"/>`; verify
+      both nodes resolve `/scoped/in`.
+- **Files:** `nros-cli` planner + new test under `packages/testing/nros-tests/tests/`.
+
+### 211.F — Multi-host launch + the `machine=` attr
+
+ROS 2 launches with `<node machine="robot">` route the node to a remote
+host. nano-ros today plans one host at a time. A real production launch
+(simulator on workstation + autopilot on Jetson) needs this.
+
+- [ ] **Schema** — extend `nros-plan.json` `entities[*]` with an optional
+      `host_id`; new `nros.toml` `[host.<id>]` blocks (ssh target,
+      deploy kind override).
+- [ ] **`nros deploy --all-hosts`** — run the per-host deploy in
+      parallel (or serial — see e2e); each host gets only its own
+      entities + the bridge config.
+- [ ] **Fixture + e2e** — single-machine *simulated* multi-host using
+      two domain-isolated processes (no real ssh needed for CI).
+- **Files:** `nros-cli` planner + cmd + generate; nano-ros side: nothing
+  new — already supports cross-process via rmw.
+
+### 211.G — `launch_testing` equivalent assertion harness
+
+ROS 2 `launch_testing` lets you assert "topic X publishes ≥ N Hz for ≥ T s",
+"node enters Active in ≤ T s". nano-ros has no equivalent — every e2e
+hand-rolls the assertion.
+
+- [ ] **`nros test <plan>`** subcommand — accepts a `.test.yaml` next to
+      the plan with assertion entries (topic_rate, lifecycle_state,
+      service_response, log_match). Starts the deploy, waits, asserts.
+- [ ] **Fixture:** `nros-cli/testing_workspaces/launch_testing_e2e/`
+      with a `system.test.yaml`.
+- [ ] **Reuse the existing `wait_for_output_pattern` + `count_pattern`
+      machinery** in nros-tests; expose them as a Rust crate the
+      `nros test` runner links.
+- **Files:** `nros-cli/packages/nros-cli-core/src/cmd/test.rs` + the
+  matching Rust assertion crate, mirror fixture.
+
+### 211.H — DDS `qos_overrides` from launch arg
+
+ros2 launch supports `<param name="qos_overrides./topic.publisher.reliability" value="reliable"/>`
+and an argument `qos_overrides_file`. The nano-ros planner doesn't
+surface these to the runtime — a user porting an existing launch can't
+override QoS per-topic.
+
+- [ ] **Planner:** parse `qos_overrides.<topic>.<role>.<setting>`
+      parameter prefixes into a `qos_overrides` per-entity block.
+- [ ] **Runtime:** `nros-node` honours the override when constructing the
+      publisher / subscriber (today QoS is the Rust-API default).
+- [ ] **Fixture + e2e** — deploy with default QoS (best-effort) +
+      qos_overrides file (reliable) → assert reliable counters increment
+      in the rmw layer.
+- **Files:** `nros-cli` planner + `packages/core/nros-node/src/qos.rs`
+  (or wherever the qos override slot already lives — Phase 193).
+
+### 211.I — Mixed-RMW discovery + bridge fixture
+
+Phase 128/129 landed `nros-bridge` for in-process cross-rmw forwarding.
+**No fixture exercises** "nano-ros XRCE node + stock cyclonedds Autoware
+node discover each other" via the bridge. This is the headline use case
+the bridge was built for.
+
+- [ ] **Fixture:** `nros-cli/testing_workspaces/mixed_rmw_bridge_e2e/`
+      with one nano-ros XRCE talker + one stock cyclonedds listener
+      (or vice versa) + a bridge node.
+- [ ] **In-tree e2e** — deploy both, assert the listener receives.
+- [ ] **Document the bridge config** in the book (a real "cross-RMW
+      gateway" recipe).
+- **Files:** mirror fixture + `nros-tests/tests/mixed_rmw_bridge.rs` +
+  book pages under `book/src/user-guide/`.
+
+### 211.J — `<include>` recursion safety + depth cap
+
+`<include>`-of-`<include>`-of-… works mechanically but has no cycle
+detection or depth cap. A real Autoware launch tree includes 20+ files.
+
+- [ ] **Planner:** depth-cap (default 16) + cycle detection (visited-set).
+- [ ] **Fixture + e2e** — three-level include chain + a cyclic include
+      that the planner rejects with a clean error.
+- **Files:** `nros-cli` planner.
+
+## Acceptance
+
+- [ ] In-tree `nros-tests` exercises the full plan→deploy→assert pipeline
+      without depending on `nros-cli`'s own test suite (211.A).
+- [ ] Composable-node container deploys as ONE process hosting N node
+      handles (211.B).
+- [ ] At least one `ros2 <subcommand>` host-CLI round-trip is e2e-proven
+      against a nano-ros deploy (211.C — param OR lifecycle OR topic).
+- [ ] Conditional-node deploy works both branches (211.D).
+- [ ] A real ROS 2 workspace fixture (rclcpp samples or a vendored
+      `demo_nodes_cpp` package) — NOT a synthetic `demo_pkg` —
+      `nros plan`s + `nros deploy`s + publishes. This is the "real ROS
+      production" claim, end-to-end. Lives behind the same skip-on-missing
+      pattern as the other interop tests.
+
+## Notes
+
+- Most items split across nano-ros + nros-cli. nros-cli changes need a
+  release + the `scripts/install-nros.sh` pin bump in nano-ros (Phase 207
+  exercised that flow twice).
+- The vendored `play_launch_parser` already supports far more than the
+  planner consumes — this phase is mostly "consume what's already
+  parsed" + "add the in-tree fixture coverage to prove it works".
+- The bigger items (211.B composable, 211.G `nros test`) deserve their
+  own sub-phases if scope balloons.
+- `launch_testing`-style assertions (211.G) overlap with Phase 196 (CI
+  bring-up) — if 211.G's harness lands, the CI workflows in 196 can
+  reuse it.
