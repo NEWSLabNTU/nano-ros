@@ -227,6 +227,95 @@ leads with the scoped variant.
   example Cargo.toml; the example is actually a workspace member of
   root `Cargo.toml`.
 
+## Batch 2 re-run — net-new findings (2026-05-30)
+
+Strict-follow audit of `freertos.md` / `threadx.md` / `bare-metal.md` re-run
+in fresh worktrees against current `main`. Per-tutorial reports +
+`SUMMARY.md` preserved at `docs/roadmap/book-audit/batch-2/`. The original
+P1–P14 reinforced (see SUMMARY's confirmation matrix); four new patterns
+surfaced:
+
+### N1 — Installed `nros` CLI ≤ index requirement is not enforced
+
+Every batch-2 tutorial dies at the first `nros setup …` with
+`unknown field 'shallow'`. Host's `~/.nros/bin/nros` is 0.3.1; the in-tree
+`nros-sdk-index.toml` uses `[source.*] shallow = true` (Phase 197.2 +
+Phase 207 follow-up) which the CLI rejects unless it's ≥ 0.3.2.
+`scripts/install-nros.sh` pins `NROS_VERSION=0.3.7` but its first guard
+`if command -v nros … exit 0` lets a stale install slip through.
+
+**Hit by:** every batch-2 tutorial + every other tutorial that begins with
+`nros setup`. Until N1 is fixed, no later prerequisite can be tested.
+
+**Fix candidates (priority order):**
+1. `install-nros.sh` compare `nros --version` against `NROS_VERSION` and
+   re-install on mismatch. One-line change with global reach.
+2. `nros setup` preflight that detects an older parser handed a newer
+   index + emits a real upgrade hint instead of `unknown field …`.
+3. Every tutorial leads with `sh scripts/install-nros.sh` (doc churn, the
+   weakest of the three).
+
+### N2 — `[workspace]` table missing from example `Cargo.toml`s
+
+`cargo build` from `examples/<plat>/<lang>/<example>` inside any nested
+checkout fails:
+
+```
+current package believes it's in a workspace when it's not;
+workspace: /home/aeon/repos/nano-ros/Cargo.toml
+```
+
+Example `Cargo.toml`s have **no empty `[workspace]` table**; cargo walks
+up + the outer nano-ros workspace adopts them. Hit on freertos/Rust,
+bare-metal/Rust, `just freertos build-fixtures`. The README claim of
+"each example is a standalone copy-out template" doesn't hold *as
+written* — a real user vendoring an example into their own workspace
+hits the same upward-walk.
+
+**Fix:** every `examples/<plat>/<lang>/<example>/Cargo.toml` ships an
+empty `[workspace]` table. ~80 example dirs; mechanical, one line per
+file. (P14 already noted this for `first-node-rust.md` specifically; N2
+generalises it to the example fleet.)
+
+### N3 — Banner text in tutorials is fictional
+
+`bare-metal.md`, `threadx.md`, `freertos.md` all show an expected
+`nros <Platform> <Role> Talker` banner that doesn't exist in any
+`src/main.rs`. The actual output is the runtime's structured `nros_info!`
+lines: `Declaring publisher on /chatter (std_msgs/Int32)`, `Publisher
+declared`, `Published: 0`, … (P7's "start at 0" is the off-by-one).
+
+**Fix:** delete the fake banners; quote the real first ≤ 5 log lines
+from each example's `src/main.rs`. Pairs with P7.
+
+### N4 — `~/.nros/bin` not auto-PATH
+
+Every agent had to manually `export PATH="$HOME/.nros/bin:$PATH"` after
+install. The install script prints a hint but the tutorials don't
+reproduce it. Options:
+- `install-nros.sh` writes a `~/.profile.d/nros.sh` (or appends to
+  `~/.bashrc`/`~/.zshrc` with consent); or
+- every tutorial leads with the `export PATH` line.
+
+Same forget-risk trade-off as N1.
+
+## Revised Phase 208.B priority order (Batch 2 input)
+
+The matrix below already lines up the mechanical edits. Batch 2's input
+on the **order of work**:
+
+1. **N1 first.** Until `nros setup` works on a stale host, nothing else
+   in batches 2–6 reaches a build step. One-line `install-nros.sh`
+   change; biggest reach for least churn.
+2. **P2** (`config.toml` → `nros.toml` + schema) — every batch-2
+   tutorial produces an un-parseable file as written; can run in
+   parallel with N1.
+3. **N2** (empty `[workspace]` in every example `Cargo.toml`) — unblocks
+   nested-checkout audits + the README's copy-out claim.
+4. **P7 + N3** (banners + off-by-one) — cosmetic but visible; quick win.
+
+Then the rest of the 208.B plan below as written.
+
 ## Recommended Phase 208.B doc-edit plan
 
 The matrix above implies two follow-up tracks:
