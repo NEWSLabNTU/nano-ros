@@ -107,6 +107,16 @@ jobs:
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
+      # `rustup target add` (inside `just zephyr setup`) implicitly syncs the
+      # host toolchain channel and tries to install the default 7-component
+      # profile alongside the target. The image already has clippy-preview
+      # baked under a different channel, so rustup errors `detected conflict:
+      # bin/cargo-clippy`. Switching the profile to `minimal` makes the
+      # implicit channel sync skip extra components (clippy/rustfmt/docs);
+      # the target gets installed without touching the existing binaries.
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
+
       # `west update` (manifest-pinned) + the line's NSOS/cyclone patches. The
       # Zephyr SDK is baked into the image (registered), so --skip-sdk: setup.sh
       # does not re-download the ~1 GB SDK. rustup targets + uv are baked too.
@@ -159,6 +169,12 @@ jobs:
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
+      # See the same comment in the example-matrix job — `rustup set profile
+      # minimal` avoids `clippy-preview ... bin/cargo-clippy` conflict when
+      # `rustup target add` triggers a channel sync.
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
+
       - name: Set up Zephyr 3.7 workspace
         run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup --skip-sdk
 
@@ -199,6 +215,10 @@ jobs:
       # in the image), but 4.4's needs the user CMake-package registry.
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
+
+      # Same clippy-preview workaround as the example-matrix job.
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
 
       - name: Set up Zephyr 4.4 workspace
         run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
