@@ -208,6 +208,32 @@ ship a richer template or downgrade the prose.
 **Fix:** delete the no-op stubs OR make them call the real recipe; doc
 leads with the scoped variant.
 
+### P15 — `install-nros.sh` silently no-ops on existing PATH (stale-CLI wedge)
+
+Every embedded tutorial opens with `curl … install-nros.sh | sh`. When an
+older `nros` is already on `~/.nros/bin` (returning user, prior session),
+the installer early-exits with "nros already on PATH; skipping" — it does
+NOT bump the binary. Subsequent `nros setup …` / `just <plat> setup` fail
+with `Error: invalid SDK index nros-sdk-index.toml … unknown field 'shallow'`
+because the stale CLI (e.g. 0.2.0/0.3.1) can't parse the current index
+schema (needs ≥0.3.7 per `scripts/install-nros.sh`). The user is wedged
+with no instruction telling them to remove `~/.nros/bin/nros` first, pass
+`NROS_VERSION=<pin>`, or use `--force`. Distinct from P4 (which fixed the
+`zenohd` shim path but did NOT bump the nros binary itself; the installer's
+own early-exit precedes the shim refresh block).
+
+**Hit by:** every tutorial whose prereqs run the installer (installation,
+first-node-{rust,c,cpp}, freertos, threadx, bare-metal, **integration-nuttx**
+(Batch 3 re-audit, 2026-05-30 confirmed), integration-zephyr, esp32, esp-idf,
+platformio, px4). Effectively cross-cutting.
+
+**Fix candidates:** (a) `install-nros.sh` compares the installed CLI's
+`--version` against `NROS_VERSION` and bumps when behind (default behaviour);
+(b) add a `--force` / `NROS_INSTALL_FORCE=1` knob and instruct returning
+users to re-run with it; (c) doc adds a "if you have an older `nros`, run
+`rm -f ~/.nros/bin/nros` first" line to every prereq block. (a) is the
+least-bad — silent stale-PATH wedge is a P1-class footgun.
+
 ### P14 — Misc per-page bugs
 
 - `nuttx.md` line 124: `nros_talker` NSH command is fictional; real
@@ -340,6 +366,13 @@ The matrix above implies two follow-up tracks:
    `integrations/`, with a CI grep guard.
 7. P13 fix: delete `just esp32 build` stub; have the recipe call
    `build-examples` directly.
+8. **P15 fix (P1-class, cross-cutting):** `scripts/install-nros.sh` compares
+   the installed `nros --version` against `NROS_VERSION` and bumps the
+   binary when behind (this should be default behaviour, not opt-in). The
+   current early-exit on existing PATH silently strands every returning
+   user on a stale CLI that rejects the current index schema. Either bump
+   default-on, or add `NROS_INSTALL_FORCE=1` and have every prereq cite
+   it; (a) is strictly better — silent wedge is the worst UX.
 
 **B. Doc-only fixes (lands after A so the prose matches working state).**
 1. Every embedded tutorial: rewrite Configure section against the real
@@ -361,6 +394,12 @@ The matrix above implies two follow-up tracks:
    per-platform scoped variant (P14).
 9. `px4.md`: `-D` → env-var (P14); downgrade the "bridge started"
    prose to match the template (P12).
+10. **P15 doc mitigation (defer-this if A.8 lands):** every prereq block
+    that runs `install-nros.sh` adds a one-liner — "if you already have
+    `nros` on PATH from a previous session, run `rm -f ~/.nros/bin/nros`
+    (or `NROS_INSTALL_FORCE=1 …`) so the installer bumps to the pinned
+    version; the older CLI rejects the current SDK-index schema."
+    Becomes a no-op (delete) once A.8 ships and the installer self-bumps.
 
 ## Worktrees preserved
 

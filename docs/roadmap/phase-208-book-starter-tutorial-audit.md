@@ -92,10 +92,17 @@ self-fixes, no edits to the book, ≤ 400-word report.
       `phase-208-audit-findings.md`).
 - [x] **208.C.3** Track-A / Track-B split published at
       `docs/roadmap/phase-208-audit-findings.md`.
+- [x] **208.C.4** Re-synthesis after the Batch 3 (NuttX) re-audit
+      (2026-05-30, `tmp/book-audit/integration-nuttx.md`) — added cross-
+      cutting **P15** to the findings doc (`install-nros.sh` silently
+      no-ops on existing PATH → returning users wedged on a stale CLI
+      that rejects the current SDK-index schema). Track-A entry A.8 +
+      Track-B mitigation B.10 added; the per-tutorial matrix verdict
+      for `integration-nuttx.md` stays **broken** (same 5/3/2 class).
 
 ### 208.D — Track A: root-cause tree fixes
 
-Each item maps to one of P1–P14 in the audit-findings doc. Land in batches
+Each item maps to one of P1–P15 in the audit-findings doc. Land in batches
 where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
 
 - [x] **208.D.1** Build-script autoresolve (P1). New
