@@ -241,9 +241,21 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
 - [x] **208.E.8** `px4.md` prose (P12 + P14). Downgrade "bridge started"
       claim to match what the template actually does (registers + returns).
       `-DNANO_ROS_DIR=` accepted after 208.D.11.
-- [ ] **208.E.9** Zephyr page rewrites post-208.D.7 fold. Drop the
-      `west patch` block OR document the extension. Cite `zephyr/Kconfig`
-      symbol names after the fold.
+- [x] **208.E.9** Zephyr page rewrites post-208.D.7 fold. Took the "drop
+      the block" path: the `west patch apply` flow needed a workspace-side
+      west extension that doesn't ship with stock Zephyr (the audit hit
+      "extension not registered" on a clean tree). Both supported lines
+      (3.7 LTS + 4.x) now use the same patch path — `nros setup zephyr`
+      reads `zephyr/patches.yml` and applies each patch sha256-checked. The
+      "Zephyr 4.x: apply nano-ros's patches with `west patch`" section is
+      replaced with a single "nano-ros patches into your workspace" section
+      pointing at the provisioner; the table row + the CI-flow paragraph
+      drop the `west patch` mention. The `Capability × line` table's
+      "nano-ros patches" row reads identically for 3.7 and 4.x.
+      **Kconfig citation:** the GitHub-source list now links the canonical
+      `zephyr/Kconfig` post-D.7 location explicitly (every `CONFIG_NROS*`
+      symbol the doc uses — `CONFIG_NROS`, `CONFIG_NROS_C_API`,
+      `CONFIG_NROS_RMW_ZENOH`, etc. — lives there).
 - [x] **208.E.10** `first-node-rust.md` Cargo.toml snippet (P14). Drop the
       false `[workspace]` claim; either reflect the real workspace-member
       shape or ship a true-standalone variant under `examples/templates/`.

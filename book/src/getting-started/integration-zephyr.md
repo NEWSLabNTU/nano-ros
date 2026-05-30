@@ -41,14 +41,14 @@ apply nano-ros's Zephyr patches:
 | --- | --- | --- |
 | Min Python | 3.10 | **3.12** (`find_package(Python3)`) |
 | RMW selection | `prj-<rmw>.conf` overlay (`-DCONF_FILE=...`) | **`-S nros-<rmw>` snippet** (or the overlay) |
-| nano-ros patches | applied during `nros setup zephyr` provisioning | **`west patch apply`** (`zephyr/patches.yml`) — *or* the provisioning step |
+| nano-ros patches | applied during `nros setup zephyr` provisioning | applied during `nros setup zephyr` provisioning |
 | Examples as samples / Twister | — | **`samples:` + Twister** (`sample.nano-ros.*`) |
 | zenoh (native_sim) | ✅ build + e2e | ✅ build + e2e |
 | cyclonedds (native_sim) | ✅ build + e2e | ✅ build · publish · receive · multicast-join *(stable 2-node run pending a tracked `k_mutex` fix)* |
 | xrce | ✅ | build path WIP |
 
 native_sim networking uses **NSOS** (host loopback) on both lines — no
-TAP/bridge/root. The copy-out, snippet, `west patch`, and dual-line build
+TAP/bridge/root. The copy-out, snippet, patch-apply, and dual-line build
 flows are exercised in CI (`just zephyr ci-both`, `just zephyr check-copy-out`).
 
 ## Project layout
@@ -270,23 +270,27 @@ RMW-common Kconfig — equivalent to merging `prj-<rmw>.conf`. The
 `prj-<rmw>.conf` / `-DCONF_FILE` path still works (and is the only option
 on 3.7).
 
-## Zephyr 4.x: apply nano-ros's patches with `west patch`
+## nano-ros patches into your workspace
 
 nano-ros needs a few patches to Zephyr's `native_sim` NSOS driver
-(`recvmsg`, IPv4-multicast). On 4.x these are delivered the standard
-way — `zephyr/patches.yml` consumed by `west patch`:
+(`recvmsg`, IPv4-multicast) so the host-loopback-based examples work.
+Both supported lines (3.7 LTS and 4.x) take the **same path** —
+`nros setup zephyr` reads `zephyr/patches.yml` and applies each patch
+against the workspace's Zephyr tree, sha256-checked. No extra step
+on your side beyond the provisioning command (already run during
+[Prerequisites](#prerequisites)).
+
+To re-apply (e.g. after a `west update` reset the tree):
 
 ```bash
-west update
-west patch apply        # applies nano-ros's zephyr/patches.yml (checksummed)
-# ... build as above ...
-west patch clean        # roll back if needed
+nros setup zephyr --rmw zenoh
 ```
 
-`west patch` is **4.x-only**; on 3.7 the same patches are applied during
-provisioning by `nros setup zephyr`. (Cyclone-DDS-on-Zephyr patches
-are baked into the pinned cyclonedds submodule, not delivered via
-`west patch` — see `zephyr/README.md`.)
+(Earlier nano-ros revisions documented a `west patch apply` flow on
+4.x — that required a workspace-side west extension that doesn't ship
+with stock Zephyr. Phase 208.D.7 / E.9 unified both lines on the
+provisioner. Cyclone-DDS-on-Zephyr patches stay baked into the pinned
+cyclonedds submodule, not delivered through `patches.yml`.)
 
 ## Copy out an example as your starting point
 
@@ -320,6 +324,12 @@ for the in-repo quick reference.
   [`examples/zephyr/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/cpp)
 - Module manifest:
   [`zephyr/module.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/module.yml)
+- Kconfig surface (canonical post-Phase-208.D.7 fold — every `CONFIG_NROS*`
+  symbol the doc cites lives here):
+  [`zephyr/Kconfig`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/Kconfig)
+- Patches applied by `nros setup zephyr` (the `west patch` flow on this page
+  was retired in Phase 208.E.9):
+  [`zephyr/patches.yml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/patches.yml)
 
 ## Next
 
