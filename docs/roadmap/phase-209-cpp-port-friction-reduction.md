@@ -111,30 +111,32 @@ Two additional, smaller ROS-2-generic friction sources:
       `find_package(rclcpp)` shim.)
 
 ### 209.B — `NrosRclcppCompat` cmake module
-- [ ] Add `cmake/compat/NrosRclcppCompat.cmake` that maps the stock
-      `ament_cmake_auto` / `rclcpp_components` pattern to the nano-ros
-      consumption shape:
-      - `find_package(ament_cmake_auto REQUIRED)` → no-op (already loaded).
-      - `ament_auto_find_build_dependencies()` → no-op (deps come from
-        `target_link_libraries(NanoRos::NanoRos)`).
-      - `ament_auto_add_library(<name> SHARED src/*.cpp)` → `add_library(<name>
-        STATIC ...) + nros_platform_link_app(<name>)`.
-      - `rclcpp_components_register_node(<name> PLUGIN <class> EXECUTABLE <bin>)`
-        → emit a thin `int main()` that constructs the registered class +
-        `nros::spin`s it. (Single-binary embedded; no runtime composition.)
-      - `ament_auto_package(INSTALL_TO_SHARE …)` → no-op.
-      The original `CMakeLists.txt` then needs only **one new `include()` at the
-      top** instead of a rewrite. **Size:** ~150 LOC cmake.
+- [x] **Shipped (2026-05-30, branch `phase-209-cpp-port-friction-reduction`).**
+      `cmake/compat/NrosRclcppCompat.cmake` defines the `ament_auto_*` /
+      `ament_target_dependencies` / `ament_export_*` / `ament_auto_package` /
+      `rclcpp_components_register_node` functions; the last synthesises a thin
+      `int main()` per registration (single-binary embedded — no runtime
+      composition). Force-includes `nros/rclcpp_compat.hpp` +
+      `nros/rclcpp_components_compat.hpp` on every compat-built target so
+      unmodified `#include <rclcpp/rclcpp.hpp>` source compiles without an
+      include edit. Find-stubs under `cmake/compat/stubs/` cover ~24 of the
+      most-cited ROS 2 packages (`ament_cmake_auto`, `ament_cmake`,
+      `rcl`/`rmw`/`rosidl`, common msg packages). `Findrclcpp.cmake` +
+      `Findrclcpp_components.cmake` create `rclcpp::rclcpp` /
+      `rclcpp_components::component` IMPORTED INTERFACE targets aliasing to
+      `NanoRos::NanoRosCpp` so the typical
+      `target_link_libraries(... rclcpp::rclcpp)` resolves.
 - [ ] **Acceptance:** an unmodified ROS 2 `CMakeLists.txt` builds against
-      nano-ros after `include(NrosRclcppCompat)` is prepended.
+      nano-ros after `include(NrosRclcppCompat)` is prepended. (E2e proof is
+      209.G; this commit lands the surface 209.G will exercise.)
 
 ### 209.C — `RCLCPP_COMPONENTS_REGISTER_NODE` no-op shim
-- [ ] Header `packages/core/nros-cpp/include/nros/rclcpp_components_compat.hpp`
-      defining `RCLCPP_COMPONENTS_REGISTER_NODE(class) /* no-op */` so source
-      lines using the macro compile. (The cmake `rclcpp_components_register_node`
-      from 209.B emits the `main` instead.) **Size:** ~10 LOC.
-- [ ] **Acceptance:** sources with the macro compile through nano-ros without
-      modification.
+- [x] **Shipped (2026-05-30).** `packages/core/nros-cpp/include/nros/
+      rclcpp_components_compat.hpp` defines the macro as a no-op. The
+      209.B force-include applies it to every compat-built target; source
+      lines using the macro just compile away. The cmake side
+      (`rclcpp_components_register_node()` in NrosRclcppCompat.cmake) is
+      what actually wires the entry point.
 
 ### 209.D — `nros-diagnostic-updater` C++ shim crate
 - [ ] New crate `packages/core/nros-diagnostic-updater/` exposing the
