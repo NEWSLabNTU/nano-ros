@@ -7,7 +7,7 @@ buried in per-tutorial reports under `docs/roadmap/book-audit/`.
 
 ## Mechanical / wide-scope
 
-### F1 — Empty `[workspace]` table missing on ~80 example `Cargo.toml`
+### F1 — Empty `[workspace]` table missing on ~80 example `Cargo.toml` — closed
 
 **Symptom.** `cargo build` from inside `examples/<plat>/<lang>/<example>/`
 fails with `current package believes it's in a workspace when it's not;
@@ -27,6 +27,19 @@ Stage-2 audit already named this as **N2** in `phase-208-audit-findings.md`
 
 Approximately 80 dirs under `examples/`. Mechanical; no behaviour change
 on a canonical clone.
+
+**Closed (2026-05-30):** appended an empty `[workspace]` table (with a
+`# Phase 208.F1` comment block explaining the why) to every example
+`Cargo.toml` under `examples/` that didn't already have one — 76 files;
+3 already had it. Each canonical-clone build still passes (verified on
+`examples/native/rust/talker` + `examples/qemu-arm-baremetal/rust/talker`:
+`cargo build --release` finishes green in 8–13 s); `cargo metadata`
+confirms each example is now its own `workspace_root` and is no longer
+adopted by the outer `nano-ros/Cargo.toml`. Honors the README's
+"standalone copy-out template" promise + closes the F6 A7 troubleshoot
+branch as a doc nit rather than a real failure mode. Outer `Cargo.toml`'s
+`exclude = [...]` list stays in place — belt-and-suspenders, and removing
+the list would churn the workspace's own resolve.
 
 ### F2 — `nros generate-rust` pre-step never named in embedded tutorials
 

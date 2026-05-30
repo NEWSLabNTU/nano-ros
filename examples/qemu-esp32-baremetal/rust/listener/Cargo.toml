@@ -39,3 +39,11 @@ debug = false
 debug-assertions = false
 lto = "fat"
 codegen-units = 1
+
+# Phase 208.F1 — empty `[workspace]` table makes this example a standalone
+# workspace root. Without it, cargo walks up + adopts the example into the
+# outer nano-ros workspace (in nested checkouts) or gets adopted by a user's
+# workspace `members` glob when they copy this example out, breaking the
+# README's "standalone copy-out template" promise. Canonical in-tree builds
+# also pass via the root `exclude = [...]` list (belt-and-braces).
+[workspace]
