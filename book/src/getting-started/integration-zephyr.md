@@ -227,9 +227,8 @@ ros2 topic echo /chatter std_msgs/msg/Int32
 ```
 
 The Zephyr boot banner runs first, then nano-ros prints
-`Published: 0`, `Published: 1`, ... as the talker fires (the Rust
-talker pre-publishes `0` before the counter advances; C/C++ talkers
-pre-increment so their first banner is `Published: 1`).
+`Published: 0`, `Published: 1`, ... as the talker fires — Rust + C +
+C++ all start at 0 (Phase 208.D.9).
 
 **Readiness signal.** On `native_sim`, expect `Published: 0`
 within 5 seconds of `just zephyr talker` (or
@@ -242,7 +241,7 @@ in 30 seconds:
 2. Check `CONFIG_NETWORKING=y`, `CONFIG_NET_IPV4=y`, `CONFIG_NET_TCP=y`
    in `prj.conf` — Zephyr networking is opt-in.
 3. Confirm `zenohd` reachable from the simulated network (Slirp
-   needs `10.0.2.2:7447` on QEMU; native_sim uses host loopback).
+   needs `10.0.2.2:7456` on QEMU; native_sim uses host loopback).
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 **Zephyr 4.x build gotchas.**
@@ -311,8 +310,9 @@ exported cache vars (`NROS_CYCLONE_IDLC`, `NROS_CYCLONE_SCRIPTS_DIR`,
 env (defaulting to `/opt/ros/humble/share/<pkg>`). No `/opt/ros` or
 repo-relative paths are baked into the example.
 
-See [`zephyr/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/README.md)
-for the in-repo quick reference.
+See the [`zephyr/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/zephyr)
+module dir + its [`Kconfig`](https://github.com/NEWSLabNTU/nano-ros/blob/main/zephyr/Kconfig)
+for the canonical in-repo surface.
 
 ## GitHub source
 
