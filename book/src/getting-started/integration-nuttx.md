@@ -30,11 +30,11 @@ own kernel build and you want to add ROS 2 communication.
 ## Project layout
 
 NuttX's "external apps" pattern places the app shim under
-`$NUTTX_APPS/external/<name>/`:
+`$NUTTX_APPS_DIR/external/<name>/`:
 
 ```text
 $NUTTX_DIR/                              # NuttX kernel checkout
-$NUTTX_APPS/                             # sibling: apps tree
+$NUTTX_APPS_DIR/                             # sibling: apps tree
 └── external/
     └── nano-ros/                        # symlink or submodule of
         ├── Make.defs                    #   integrations/nuttx/
@@ -66,10 +66,10 @@ If you'd rather wire it yourself (e.g. into a vendored apps tree):
 
 ```bash
 ln -s /path/to/nano-ros/integrations/nuttx \
-      $NUTTX_APPS/external/nano-ros
+      $NUTTX_APPS_DIR/external/nano-ros
 # then copy integrations/nuttx/external-Make.defs.in →
-# $NUTTX_APPS/external/Make.defs and add a matching
-# $NUTTX_APPS/external/Kconfig that `source`s the shell.
+# $NUTTX_APPS_DIR/external/Make.defs and add a matching
+# $NUTTX_APPS_DIR/external/Kconfig that `source`s the shell.
 ```
 
 ## Configure
@@ -94,7 +94,9 @@ already include these.
 
 Runtime config (locator / domain id) is read from the companion
 `nros.toml` next to the example source. Verbatim from the in-tree
-[`examples/qemu-arm-nuttx/c/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-nuttx/c/talker/nros.toml):
+[`examples/qemu-arm-nuttx/rust/talker/nros.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-nuttx/rust/talker/nros.toml)
+(this is the file `just nuttx talker` consumes — port `7452` matches
+`just nuttx zenohd`):
 
 ```toml
 # nano-ros config (direct mode). See
@@ -107,8 +109,14 @@ domain_id = 0
 kind    = "ethernet"
 ip      = "10.0.2.30/24"
 gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7552"
+locator = "tcp/10.0.2.2:7452"
 ```
+
+The C + C++ variants ship analogous files with **distinct** ports
+(`7552` and `7652`) so parallel test runs don't collide on one
+router; `just nuttx zenohd` binds `7452` (Rust). When you boot a C
+or C++ talker directly, either retarget the locator in its `nros.toml`
+to `7452` or start a sibling zenohd on the matching port.
 
 ## Build
 
@@ -196,9 +204,9 @@ steps:
    needs; copy it to `$NUTTX_DIR/.config` and run
    `make olddefconfig`.
 2. **Stage the integration shell + example apps.** Run
-   `scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS"` to symlink
+   `scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS_DIR"` to symlink
    `integrations/nuttx/` and every example app into
-   `$NUTTX_APPS/external/`. Remove `$NUTTX_APPS/Kconfig` so
+   `$NUTTX_APPS_DIR/external/`. Remove `$NUTTX_APPS_DIR/Kconfig` so
    NuttX's `mkkconfig.sh` rediscovers the new
    `apps/external/Kconfig`.
 3. **Flip the nano-ros Kconfig knobs via `kconfig-tweak`.** The
