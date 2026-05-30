@@ -240,21 +240,48 @@ Diagnostics so far:
       `wait_session_status` `remaining_time` corruption is NOT the cause.
       Instrumentation reverted.
 
-Open debug edges (the remaining work):
+**Trampoline-fires probe landed (2026-05-30).**
 
-- [ ] Instrument `xrce_open` / `xrce_write` / `xrce_read` (the trampolines
-      in `nros-board-mps2-an385::xrce_transport`) with a one-shot
-      `hprintln!` to determine which gets called before the
-      `Transport(ConnectionFailed)`. Agent's empty log + clock OK means
-      either `xrce_open` returns nonzero / `xrce_write` isn't reached / the
-      bytes don't make it through the CMSDK UART TX path on the install +
-      pre-publish writes.
-- [ ] Compare the actual CMSDK UART TX behavior under
-      `-chardev serial,path=<pty>` for XRCE vs. the working zenoh-pico
-      `serial-talker` (same `UART_DEVICE`, different write cadence) —
-      possibly an HDLC framing-layer side-effect on the bare-metal write
-      path that the zenoh path never exercises.
-- [ ] If the bytes ARE flowing but the agent rejects them: raise
+- [x] Rust one-shot `hprintln!` flags in `xrce_open` (OPEN_FIRED) +
+      `xrce_write` (first 3) + `xrce_read` (first 3) inside
+      `nros-board-mps2-an385::xrce_transport`.
+- [x] Talker main traces `dbg: about to install ops` → `install ok,
+      armed=1` (via the existing `xrce_custom_transport_is_armed` C accessor)
+      → `register ok` → `Transport(ConnectionFailed)`. The
+      `dbg: executor open ok` line never fires, AND none of the trampolines
+      print. So:
+      - `set_custom_transport_ops` succeeds — `g_xrce_custom_ops.armed = 1`,
+        all four `ops.{open,close,write,read}` non-null.
+      - `xrce::register` succeeds.
+      - `Executor::open` fails, returning `Transport(ConnectionFailed)`.
+      - But `xrce_session_open` (the vtable's `.open`) never reaches the
+        `if (locator_is_custom(locator)) { xrce_custom_transport_install(...); ...
+        uxr_init_custom_transport(...) → open trampoline }` branch — or
+        returns from it before `uxr_init_custom_transport` actually calls
+        our open callback (otherwise OPEN_FIRED would set).
+
+**That narrows the open edge to one of these two:**
+
+- [ ] `xrce_session_open` returns ERROR before the
+      `locator_is_custom`/UDP-fallback branch even runs (i.e. earlier in the
+      function — the `out->backend_data != NULL` check or the `calloc` of
+      `xrce_session_state_t`). Easy to confirm with a semihosting puts at
+      the very top of `xrce_session_open` (`packages/xrce/nros-rmw-xrce/src/session.c`).
+- [ ] OR the call reaches install, install returns `NROS_RMW_RET_OK` (open
+      trampoline takes the `g_xrce_custom_ops.armed` short-circuit but in
+      the OTHER direction — `return true` no-op without calling our open) —
+      i.e. armed-state lost between the install-time read in `transport_custom.c`
+      and the trampoline's read. That would be a memory-overlay or TLS-on-bare-metal
+      surprise. Confirm with a semihosting puts inside
+      `xrce_custom_open_trampoline` printing `g_xrce_custom_ops.armed`.
+
+Both confirmations need a C-side `bkpt #0xab` SYS_WRITE0 inline-asm helper
+(none of the C TUs in `nros-rmw-xrce` currently have semihosting). That's
+the next-session task.
+
+Lower-priority:
+
+- [ ] If the bytes ARE flowing eventually but the agent rejects them: raise
       `MicroXRCEAgent`'s middleware verbosity to TRACE and dump the HDLC
       decode state.
 
