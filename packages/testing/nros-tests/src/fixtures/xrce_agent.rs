@@ -255,6 +255,7 @@ impl XrceSerialAgent {
         // Start MicroXRCEAgent
         let binary = xrce_agent_binary_path();
         let mut agent_cmd = std::process::Command::new(&binary);
+        let verbose = std::env::var_os("NROS_XRCE_AGENT_VERBOSE").is_some();
         if num_ports == 1 {
             // Single port: serial mode
             agent_cmd.args([
@@ -273,7 +274,27 @@ impl XrceSerialAgent {
                 .join(" ");
             agent_cmd.args(["multiserial", "-D", &devs, "-b", "115200"]);
         }
-        agent_cmd.stdout(Stdio::null()).stderr(Stdio::null());
+        if verbose {
+            agent_cmd.arg("-v6");
+        }
+        if verbose || crate::fixtures::fixture_logs_enabled() {
+            let log_path = crate::fixtures::fixture_log_path("xrce-agent-serial");
+            let log_file = std::fs::File::create(&log_path).map_err(|e| {
+                TestError::ProcessFailed(format!(
+                    "Failed to open xrce-agent serial log {}: {e}",
+                    log_path.display()
+                ))
+            })?;
+            agent_cmd
+                .stdout(
+                    log_file
+                        .try_clone()
+                        .map_err(|e| TestError::ProcessFailed(format!("clone log fd: {e}")))?,
+                )
+                .stderr(log_file);
+        } else {
+            agent_cmd.stdout(Stdio::null()).stderr(Stdio::null());
+        }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut agent_cmd);
         let agent_handle = agent_cmd.spawn().map_err(|e| {
