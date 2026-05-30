@@ -675,6 +675,7 @@ dependencies = [
  "nros",
  "nros-board-mps2-an385",
  "nros-log",
+ "nros-platform-mps2-an385",
  "nros-rmw-xrce-cffi",
  "panic-semihosting",
  "std_msgs",

@@ -225,18 +225,41 @@ block waiting for `InitAck`. Symptoms:
 - Hosted `test_xrce_serial_pubsub` (`tests/xrce.rs`) — same agent, same
   socat pattern — passes, so the agent + PTY bridge are not the issue.
 
-Next debug edges (not landed):
+Diagnostics so far:
 
-- [ ] Capture byte-level traffic on the PTYs (e.g. socat tee, or `MicroXRCEAgent
-      -v 6` for verbose handshake logging) to determine whether the agent
-      sees `InitSyn` (→ talker-side write/HDLC bug) or sends `InitAck`
-      that never reaches the talker (→ talker-side read/timing bug).
-- [ ] Compare against the hosted `test_xrce_serial_pubsub`'s write/read
-      timing: hosted XRCE uses `transport_posix_serial.c` which blocks via
-      `poll()`; the bare-metal `xrce_read` busy-polls `clock_ms` (could
-      under-yield to the QEMU virtual time advance under `-icount shift=auto`).
-- [ ] Consider raising `XRCE_SESSION_CREATION_RETRIES` and the per-retry
-      timeout for the bare-metal path while debugging.
+- [x] **`MicroXRCEAgent -v6` log channel** in `XrceSerialAgent::start` (was
+      hard-coded to `Stdio::null`, now honours `NROS_XRCE_AGENT_VERBOSE` /
+      `NROS_TEST_LOGS` like the IP-mode agent). Running with verbose on
+      produces an empty log → the agent **never receives any bytes** from
+      the talker; the failure is upstream of the PTY bridge.
+- [x] **Clock source verified.** Instrumented the talker to print
+      `nros_platform_mps2_an385::clock::clock_ms()` before/after a 5 M-iter
+      `spin_loop` and got `t0=0, t1=59, dt=59` — `uxr_millis` (which routes
+      `nros_platform_time_now_ms → clock_ms`) advances correctly under
+      `-icount shift=auto`. So the originally-suspected
+      `wait_session_status` `remaining_time` corruption is NOT the cause.
+      Instrumentation reverted.
+
+Open debug edges (the remaining work):
+
+- [ ] Instrument `xrce_open` / `xrce_write` / `xrce_read` (the trampolines
+      in `nros-board-mps2-an385::xrce_transport`) with a one-shot
+      `hprintln!` to determine which gets called before the
+      `Transport(ConnectionFailed)`. Agent's empty log + clock OK means
+      either `xrce_open` returns nonzero / `xrce_write` isn't reached / the
+      bytes don't make it through the CMSDK UART TX path on the install +
+      pre-publish writes.
+- [ ] Compare the actual CMSDK UART TX behavior under
+      `-chardev serial,path=<pty>` for XRCE vs. the working zenoh-pico
+      `serial-talker` (same `UART_DEVICE`, different write cadence) —
+      possibly an HDLC framing-layer side-effect on the bare-metal write
+      path that the zenoh path never exercises.
+- [ ] If the bytes ARE flowing but the agent rejects them: raise
+      `MicroXRCEAgent`'s middleware verbosity to TRACE and dump the HDLC
+      decode state.
+
+Not blocking 207.5 — the binary links + loads + boots either way; the
+**measured flash + RAM stand** (60.6 KB / 17.4 KB on the size profile).
 
 The 207.5 footprint measurements are **independent of this open item** —
 session-open or not, the binary still links + loads, and the measured
