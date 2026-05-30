@@ -99,6 +99,32 @@ self-fixes, no edits to the book, ≤ 400-word report.
       that rejects the current SDK-index schema). Track-A entry A.8 +
       Track-B mitigation B.10 added; the per-tutorial matrix verdict
       for `integration-nuttx.md` stays **broken** (same 5/3/2 class).
+- [x] **208.C.5** Re-synthesis after the Track-A/B cycle (2026-05-30,
+      post `425d18fd9`). Pattern closure state:
+      | Pattern | Closed by | Status |
+      |---|---|---|
+      | P1 build-script panics | D.1 | ✅ closed |
+      | P2 `nros.toml` schema drift | E.1 | ✅ closed |
+      | P3 `px4-rs` not fetched | D.3 (open) | ⏳ open |
+      | P4 `zenohd` not on PATH | D.2 | ✅ closed |
+      | P5 CMake snippet drift | E.5 | ✅ closed |
+      | P6 host daemon not started | E.2 | ✅ closed |
+      | P7 `Published: 0` off-by-one | E.4 | ✅ closed |
+      | P8 QEMU invocation drift | E.3 | ✅ closed |
+      | P9 legacy module drift | D.10 esp-idf ✅ / D.7 zephyr fold ⏳ | 🟡 partial |
+      | P10 invented config knobs | D.8 (PlatformIO dropped) | ✅ closed |
+      | P11 wrong board / org names | D.4 + E.12 | ✅ closed |
+      | P12 doc oversells template | E.8 px4 (open) | ⏳ open |
+      | P13 `just <plat>` coverage gaps | D.5 ✅ / D.6 doctor hang ⏳ | 🟡 partial |
+      | P14 misc per-page bugs | D.11 + E.6/E.7/E.10/E.11 | ✅ closed |
+      | P15 installer stale-PATH | A.8 | ✅ closed |
+      **Score: 12 closed, 3 partial/open** (P3 px4-rs gate, P9 zephyr fold,
+      P12 px4 doc, P13 doctor hang). Acceptance items `208.acc.4` (every
+      D pushed + fresh-shell clean) and `208.acc.5` (re-audit of broken
+      tutorials reaches `Published: N`) remain — re-audit due once D.3 +
+      D.7 land. The cross-cutting blockers (env vars, schema, PATH, stale
+      CLI, daemon-start, QEMU invocation, banner) — Stage-2's verdict
+      ("recurring blockers are environmental + schema") — are **gone**.
 
 ### 208.D — Track A: root-cause tree fixes
 
