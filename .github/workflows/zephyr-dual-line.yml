@@ -126,7 +126,7 @@ jobs:
           rustup toolchain list 2>/dev/null | awk '{print $1}' | while read -r tc; do
               [ -z "$tc" ] && continue
               echo "  installing clippy on $tc"
-              rustup component add clippy --toolchain "$tc" --force \
+              rustup component add clippy --toolchain "$tc" \
                   || echo "  (clippy add failed for $tc — non-fatal)"
           done
 

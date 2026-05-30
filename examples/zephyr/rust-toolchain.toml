@@ -8,5 +8,8 @@
 # require it — run `just zephyr test` after any change to confirm.
 [toolchain]
 channel = "nightly-2026-04-11"
-components = ["rust-src", "rustfmt"]
+# Phase 208 — `clippy` added: the Zephyr build runs `cargo clippy` on the
+# user crate via the `run_rust_clippy` CMake target (zephyr-lang-rust). Without
+# it `west build` aborts: "cargo-clippy is not installed for the toolchain".
+components = ["rust-src", "rustfmt", "clippy"]
 targets = ["x86_64-unknown-none", "armv7a-none-eabi", "armv7a-none-eabihf"]
