@@ -29,6 +29,9 @@ toml = { version = "0.8", optional = true }
 # linked into bare-metal armv7r firmware) drop it cleanly via
 # `default-features = false`.
 cc = { version = "1.0", optional = true }
+# Phase 208.B Track A — repo-relative path resolver consumed by
+# `threadx_sources` (replaces the `direnv allow`-only env vars).
+nros-build-paths = { path = "../../core/nros-build-paths", optional = true }
 
 [features]
 # `BoardInit` trait is always available (no deps). Build-script
@@ -38,4 +41,4 @@ default = ["build-helpers"]
 # Pull the manifest parser + link-feature policy + ThreadX
 # source helpers. Pulls serde + toml + cc transitively. Required
 # for crates that use these from a `build.rs`.
-build-helpers = ["dep:serde", "dep:toml", "dep:cc"]
+build-helpers = ["dep:serde", "dep:toml", "dep:cc", "dep:nros-build-paths"]

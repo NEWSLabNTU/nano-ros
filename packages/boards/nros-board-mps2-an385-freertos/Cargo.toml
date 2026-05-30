@@ -36,6 +36,8 @@ panic-semihosting = "0.6"
 
 [build-dependencies]
 cc = "1"
+# Phase 208.B Track A — repo-relative path resolver.
+nros-build-paths = { path = "../../core/nros-build-paths" }
 
 [features]
 # Default keeps the historic zenoh-pico wiring active so existing

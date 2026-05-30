@@ -31,15 +31,17 @@ fn main() {
     println!("cargo:rustc-link-search={}", out_dir.display());
 
     // --- Environment variables ---
-    let freertos_dir = env_path("FREERTOS_DIR");
+    // Phase 208.B Track A — paths come from `nros-build-paths`
+    // (walks up to `nros-sdk-index.toml`); env vars stay as overrides.
+    let freertos_dir = nros_build_paths::freertos_dir();
     let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| "GCC/ARM_CM3".to_string());
-    let lwip_dir = env_path("LWIP_DIR");
+    let lwip_dir = nros_build_paths::lwip_dir();
     let freertos_config_dir = env::var("FREERTOS_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| config_dir.clone());
 
     let port_dir = freertos_dir.join("portable").join(&freertos_port);
-    let lan9118_dir = PathBuf::from(env::var("NROS_LAN9118_LWIP_DIR").expect("NROS_LAN9118_LWIP_DIR not set (direnv allow, or build via just)"));
+    let lan9118_dir = nros_build_paths::nros_lan9118_lwip_dir();
 
     // --- Trace opt-in (NROS_TRACE=1) ---
     let nros_trace = env::var("NROS_TRACE").unwrap_or_default() == "1";
@@ -62,7 +64,7 @@ fn main() {
 
     // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
     if nros_trace {
-        let tband_dir = PathBuf::from(env::var("TBAND_DIR").expect("TBAND_DIR not set (direnv allow, or build via just)"));
+        let tband_dir = nros_build_paths::tband_dir();
         let trace_config_dir = manifest_dir.join("trace");
 
         let mut tband = cc::Build::new();
@@ -86,7 +88,7 @@ fn main() {
     add_lwip_includes(&mut glue, &lwip_dir);
     glue.include(lan9118_dir.join("include"));
     if nros_trace {
-        let tband_dir = PathBuf::from(env::var("TBAND_DIR").expect("TBAND_DIR not set (direnv allow, or build via just)"));
+        let tband_dir = nros_build_paths::tband_dir();
         let trace_config_dir = manifest_dir.join("trace");
         glue.include(tband_dir.join("inc"));
         glue.include(&trace_config_dir);

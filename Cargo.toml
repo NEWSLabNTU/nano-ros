@@ -14,6 +14,10 @@ members = [
     # Build-script helper: extracts Rust type sizes from a compiled rlib so
     # nros-c/nros-cpp can size their opaque storage from Rust's size_of.
     "packages/core/nros-sizes-build",
+    # Phase 208.B Track A — build-script helper that resolves nano-ros
+    # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
+    # build` succeed in a fresh shell (the audit blocker P1).
+    "packages/core/nros-build-paths",
     # Phase 149.5 — shared build-script helpers (manifest parser +
     # link-feature policy) consumed by zpico-sys + the per-kernel
     # generic board crates as `[build-dependencies]`.

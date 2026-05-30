@@ -18,6 +18,8 @@ nros-log = { path = "../../../../core/nros-log" }
 
 [build-dependencies]
 cc = "1"
+# Phase 208.B Track A — repo-relative path resolver.
+nros-build-paths = { path = "../../../../core/nros-build-paths" }
 
 [profile.release]
 opt-level = "s"

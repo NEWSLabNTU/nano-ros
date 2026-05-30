@@ -548,8 +548,8 @@ fn generate_header(manifest_dir: &std::path::Path) {
             if let Some(parent) = output_path.parent() {
                 std::fs::create_dir_all(parent).ok();
             }
-            let tmp = output_path
-                .with_file_name(format!(".nros_cpp_ffi.h.tmp.{}", std::process::id()));
+            let tmp =
+                output_path.with_file_name(format!(".nros_cpp_ffi.h.tmp.{}", std::process::id()));
             bindings.write_to_file(&tmp);
             let differs = std::fs::read(&tmp).ok() != std::fs::read(&output_path).ok();
             if differs {

@@ -123,6 +123,9 @@ pkg-config = "0.3"
 # can share it. `nros-board-common` pulls in `serde` + `toml`
 # transitively; no need to declare them here separately.
 nros-board-common = { path = "../../boards/nros-board-common" }
+# Phase 208.B Track A — repo-relative path resolver. Removes the
+# `NROS_PLATFORM_CFFI_INCLUDE` panic in fresh-shell `cargo build`.
+nros-build-paths = { path = "../../core/nros-build-paths" }
 
 [lints]
 workspace = true

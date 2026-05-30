@@ -5,16 +5,12 @@ use std::process::Command;
 fn main() {
     // APP_MAIN_CPP: path to the C or C++ source file to compile (set by CMake)
     // APP_INCLUDE_DIRS: semicolon-separated include directories (set by CMake)
-    // 192.3: the nros-c / nros-cpp API include dirs via env (defaults in
-    // just/sdk-env.just / .envrc), not a build.rs repo-root walk-up.
-    let nros_c_include = PathBuf::from(env::var("NROS_C_INCLUDE").expect(
-        "NROS_C_INCLUDE not set (direnv allow, or build via just)",
-    ));
-    let nros_cpp_include = PathBuf::from(env::var("NROS_CPP_INCLUDE").expect(
-        "NROS_CPP_INCLUDE not set (direnv allow, or build via just)",
-    ));
-    println!("cargo:rerun-if-env-changed=NROS_C_INCLUDE");
-    println!("cargo:rerun-if-env-changed=NROS_CPP_INCLUDE");
+    // Phase 208.B Track A — paths come from `nros-build-paths`
+    // (walks up from CARGO_MANIFEST_DIR to `nros-sdk-index.toml`);
+    // env vars stay valid as out-of-tree overrides. The helper also
+    // emits the matching `cargo:rerun-if-env-changed` directives.
+    let nros_c_include = nros_build_paths::nros_c_include();
+    let nros_cpp_include = nros_build_paths::nros_cpp_include();
 
     // 194.2: cross-compiler + arch cflags are per-board (the board overlay / env
     // sets them); defaults = the qemu-arm cortex-a7 hardfloat values so the

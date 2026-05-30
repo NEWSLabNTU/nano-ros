@@ -23,7 +23,7 @@
 //! NOT a direct dep of this crate — these helpers take a `&mut
 //! cc::Build` so the caller owns the cc dependency edge.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Add every `.c` file under `<threadx_dir>/common/src/` to a
 /// `cc::Build`. Mirrors the loop both ThreadX overlays use today.
@@ -151,18 +151,14 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build) {
 }
 
 pub fn add_nros_platform_threadx_build(build: &mut cc::Build) {
-    // 192.3: first-party src/include via env (defaults in just/sdk-env.just /
-    // .envrc), not a build.rs repo-root walk-up.
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_THREADX_SRC");
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
-    let src_dir = PathBuf::from(
-        std::env::var("NROS_PLATFORM_THREADX_SRC")
-            .expect("NROS_PLATFORM_THREADX_SRC not set (direnv allow, or build via just)"),
-    );
-    let cffi_include = PathBuf::from(
-        std::env::var("NROS_PLATFORM_CFFI_INCLUDE")
-            .expect("NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)"),
-    );
+    // Phase 208.B Track A — paths come from `nros-build-paths` which
+    // walks up from `CARGO_MANIFEST_DIR` to the repo's
+    // `nros-sdk-index.toml` sentinel and defaults to the in-tree
+    // location, dropping the `direnv allow`/`just` precondition. Env
+    // vars stay valid as out-of-tree overrides (the helper emits the
+    // matching `cargo:rerun-if-env-changed` directive).
+    let src_dir = nros_build_paths::nros_platform_threadx_src();
+    let cffi_include = nros_build_paths::nros_platform_cffi_include();
 
     build.include(&cffi_include);
     for f in ["platform.c", "net.c", "timer.c"] {

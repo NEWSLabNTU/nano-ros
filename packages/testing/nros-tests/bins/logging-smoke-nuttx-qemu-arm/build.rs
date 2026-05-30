@@ -61,15 +61,10 @@ fn main() {
         .expect("failed to preprocess linker script");
     assert!(status.success(), "linker script preprocessing failed");
 
-    // 192.3: first-party include/src via env (defaults in sdk-env.just / .envrc).
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_CFFI_INCLUDE");
-    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_POSIX_SRC");
-    let cffi_include = PathBuf::from(std::env::var("NROS_PLATFORM_CFFI_INCLUDE").expect(
-        "NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)",
-    ));
-    let platform_src = PathBuf::from(std::env::var("NROS_PLATFORM_POSIX_SRC").expect(
-        "NROS_PLATFORM_POSIX_SRC not set (direnv allow, or build via just)",
-    ));
+    // Phase 208.B Track A — paths come from `nros-build-paths`
+    // (walks up to `nros-sdk-index.toml`); env vars stay as overrides.
+    let cffi_include = nros_build_paths::nros_platform_cffi_include();
+    let platform_src = nros_build_paths::nros_platform_posix_src();
     let mut platform = cc::Build::new();
     platform.compiler("arm-none-eabi-gcc");
     platform.flag("-mcpu=cortex-a7");

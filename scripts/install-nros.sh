@@ -27,9 +27,47 @@ TAG="nros-v${NROS_VERSION}"
 
 err() { echo "nros install: $*" >&2; exit 1; }
 
-# Already on PATH? nothing to do (the build resolves $NROS_CLI / PATH / ~/.nros).
+bindir="${NROS_HOME}/bin"
+
+# --- RMW host-daemon forwarder shims (Phase 208.B Track A) ---
+# Always (re)write these so re-running the installer is idempotent and
+# pre-existing-nros installs still get them. The shims resolve the
+# latest tool installed under ${NROS_HOME}/sdk/<tool>/<version>/bin/
+# at exec time, so a `nros setup --rmw <rmw>` after this script's run
+# "just works" without re-running the installer.
+mkdir -p "$bindir"
+write_shim() {
+  shim_name="$1"; tool_dir="$2"; rmw_arg="$3"
+  shim_path="${bindir}/${shim_name}"
+  # Quoted heredoc — text passes through unchanged; the shim itself
+  # holds the variable expansions (resolved at shim-run-time, not now).
+  cat > "${shim_path}" <<'SHIM'
+#!/bin/sh
+# Lazy forwarder shim written by scripts/install-nros.sh. Picks the
+# latest __TOOL__ version installed in the nros SDK store.
+store_root="${NROS_HOME:-$HOME/.nros}/sdk/__TOOL__"
+target="$(ls -d "${store_root}"/*/bin/__SHIM__ 2>/dev/null | tail -1)"
+if [ -z "$target" ] || [ ! -x "$target" ]; then
+  echo "__SHIM__: not installed in ${store_root}. Run: nros setup <board> --rmw __RMW__" >&2
+  exit 127
+fi
+exec "$target" "$@"
+SHIM
+  # Patch the install-time placeholders.
+  sed -i.bak \
+      -e "s|__TOOL__|${tool_dir}|g" \
+      -e "s|__SHIM__|${shim_name}|g" \
+      -e "s|__RMW__|${rmw_arg}|g" \
+      "${shim_path}"
+  rm -f "${shim_path}.bak"
+  chmod +x "${shim_path}"
+}
+write_shim zenohd zenohd zenoh
+write_shim MicroXRCEAgent xrce-agent xrce
+
+# Already on PATH? nothing more to do (the build resolves $NROS_CLI / PATH / ~/.nros).
 if command -v nros >/dev/null 2>&1; then
-  echo "nros install: nros already on PATH ($(command -v nros)); skipping."
+  echo "nros install: nros already on PATH ($(command -v nros)); shims refreshed; skipping download."
   exit 0
 fi
 
@@ -50,7 +88,6 @@ host="${os}-${arch}"
 
 asset="nros-${host}.tar.zst"
 base="https://github.com/${REPO}/releases/download/${TAG}"
-bindir="${NROS_HOME}/bin"
 
 command -v curl >/dev/null 2>&1 || err "curl is required"
 command -v zstd >/dev/null 2>&1 || command -v tar >/dev/null 2>&1 || err "tar+zstd are required"
@@ -75,12 +112,13 @@ fi
 [ "$expected" = "$actual" ] || err "sha256 mismatch (expected $expected, got $actual)"
 
 # --- install ---
-mkdir -p "$bindir"
 tar -C "$bindir" -xf "${tmp}/${asset}" \
   || err "extract failed (need zstd-capable tar)"
 chmod +x "${bindir}/nros"
 
 echo "nros install: installed $(${bindir}/nros --version 2>/dev/null || echo nros) → ${bindir}/nros"
+echo "nros install: forwarding shims → ${bindir}/{zenohd,MicroXRCEAgent}"
+
 case ":${PATH}:" in
   *":${bindir}:"*) ;;
   *) echo "nros install: add to PATH →  export PATH=\"${bindir}:\$PATH\"" ;;

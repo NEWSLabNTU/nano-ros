@@ -41,7 +41,8 @@ fn zephyr_integration_shell_smoke() {
         // Resolve the west workspace the way the rest of the harness does —
         // `ZEPHYR_NANO_ROS` env, then the in-tree `zephyr-workspace` symlink,
         // then the `../nano-ros-workspace` sibling — not just the in-tree path.
-        if let Some(candidate) = nros_tests::zephyr::zephyr_workspace_path().map(|ws| ws.join("zephyr"))
+        if let Some(candidate) =
+            nros_tests::zephyr::zephyr_workspace_path().map(|ws| ws.join("zephyr"))
             && candidate.join("zephyr-env.sh").exists()
         {
             // SAFETY: build-script-style env mutation before
