@@ -65,10 +65,30 @@ SHIM
 write_shim zenohd zenohd zenoh
 write_shim MicroXRCEAgent xrce-agent xrce
 
-# Already on PATH? nothing more to do (the build resolves $NROS_CLI / PATH / ~/.nros).
+# Already on PATH? Bump it if behind the pinned NROS_VERSION (Phase 208.D/A.8,
+# pattern P15). Returning users used to be silently stranded on a stale CLI that
+# rejected the current SDK-index schema. Now: skip when at-or-above the pin (no
+# downgrade surprise); bump when behind; force via NROS_INSTALL_FORCE=1.
 if command -v nros >/dev/null 2>&1; then
-  echo "nros install: nros already on PATH ($(command -v nros)); shims refreshed; skipping download."
-  exit 0
+  nros_path="$(command -v nros)"
+  if [ "${NROS_INSTALL_FORCE:-0}" = "1" ]; then
+    echo "nros install: NROS_INSTALL_FORCE=1 — re-installing over ${nros_path}"
+  else
+    installed="$(nros --version 2>/dev/null | awk '{print $NF}')"
+    if [ -z "$installed" ]; then
+      echo "nros install: ${nros_path} present but --version failed; re-installing."
+    elif [ "$installed" = "$NROS_VERSION" ]; then
+      echo "nros install: nros ${installed} already at pinned ${NROS_VERSION} (${nros_path}); shims refreshed; skipping download."
+      exit 0
+    else
+      newest="$(printf '%s\n%s\n' "$installed" "$NROS_VERSION" | sort -V | tail -1)"
+      if [ "$newest" = "$installed" ]; then
+        echo "nros install: nros ${installed} (${nros_path}) is newer than the pinned ${NROS_VERSION}; keeping. (NROS_INSTALL_FORCE=1 to downgrade.)"
+        exit 0
+      fi
+      echo "nros install: bumping nros ${installed} → ${NROS_VERSION} (${nros_path})"
+    fi
+  fi
 fi
 
 # --- detect host (matches the CLI's SdkIndex::host_key) ---

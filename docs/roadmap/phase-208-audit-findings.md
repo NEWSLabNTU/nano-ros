@@ -366,13 +366,15 @@ The matrix above implies two follow-up tracks:
    `integrations/`, with a CI grep guard.
 7. P13 fix: delete `just esp32 build` stub; have the recipe call
    `build-examples` directly.
-8. **P15 fix (P1-class, cross-cutting):** `scripts/install-nros.sh` compares
-   the installed `nros --version` against `NROS_VERSION` and bumps the
-   binary when behind (this should be default behaviour, not opt-in). The
-   current early-exit on existing PATH silently strands every returning
-   user on a stale CLI that rejects the current index schema. Either bump
-   default-on, or add `NROS_INSTALL_FORCE=1` and have every prereq cite
-   it; (a) is strictly better — silent wedge is the worst UX.
+8. ~~**P15 fix (P1-class, cross-cutting):**~~ **DONE.** `scripts/install-nros.sh`
+   now compares the installed `nros --version` against `NROS_VERSION`:
+   skip when equal (idempotent), keep when installed is *newer* (no
+   downgrade surprise), **auto-bump when behind**, and force-re-install
+   on `NROS_INSTALL_FORCE=1`. The silent stale-PATH wedge is gone — a
+   returning user re-running the installer gets the pinned CLI without
+   instructions, and the prereq blocks across every embedded tutorial
+   now "just work" instead of failing the next `nros setup`. B.10 below
+   becomes a no-op and can be deleted next pass.
 
 **B. Doc-only fixes (lands after A so the prose matches working state).**
 1. Every embedded tutorial: rewrite Configure section against the real
@@ -394,12 +396,8 @@ The matrix above implies two follow-up tracks:
    per-platform scoped variant (P14).
 9. `px4.md`: `-D` → env-var (P14); downgrade the "bridge started"
    prose to match the template (P12).
-10. **P15 doc mitigation (defer-this if A.8 lands):** every prereq block
-    that runs `install-nros.sh` adds a one-liner — "if you already have
-    `nros` on PATH from a previous session, run `rm -f ~/.nros/bin/nros`
-    (or `NROS_INSTALL_FORCE=1 …`) so the installer bumps to the pinned
-    version; the older CLI rejects the current SDK-index schema."
-    Becomes a no-op (delete) once A.8 ships and the installer self-bumps.
+10. ~~**P15 doc mitigation**~~ — **superseded by A.8** (installer self-bumps).
+    No doc change needed.
 
 ## Worktrees preserved
 
