@@ -107,18 +107,28 @@ jobs:
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
-      # `rustup target add` (inside `just zephyr setup`) implicitly syncs the
-      # host toolchain channel and tries to install clippy-preview alongside
-      # the target. The image already has a `bin/cargo-clippy` file in the
-      # toolchain dir from a previous install layer, and rustup errors
-      # `detected conflict: bin/cargo-clippy`. Remove the conflicting file(s)
-      # so rustup can reinstall cleanly; clippy gets repopulated by the
-      # implicit channel sync (and by the explicit nightly clippy add below).
+      # The image bakes `bin/cargo-clippy` from a layer that's not the rustup
+      # owner — `rustup target add` (inside `just zephyr setup`) trips on a
+      # `clippy-preview-x86_64-unknown-linux-gnu, detected conflict:
+      # bin/cargo-clippy`. Workaround:
+      #   1. Delete the orphan `cargo-clippy`/`clippy-driver` files so rustup
+      #      doesn't see the conflict.
+      #   2. Re-install clippy explicitly for *every* installed toolchain
+      #      (\`--force\` so the just-deleted slots get repopulated cleanly).
+      # The zephyr-sys build then finds `cargo-clippy` on the pinned nightly
+      # the example's rust-toolchain.toml selects.
       - name: Unblock rustup clippy-preview conflict
         run: |
           rustup_home="$(rustup show home 2>/dev/null || echo "$HOME/.rustup")"
           find "$rustup_home/toolchains" -maxdepth 3 -type f \
               \( -name cargo-clippy -o -name clippy-driver \) -delete 2>/dev/null || true
+          # Repopulate clippy on every toolchain rustup knows about.
+          rustup toolchain list 2>/dev/null | awk '{print $1}' | while read -r tc; do
+              [ -z "$tc" ] && continue
+              echo "  installing clippy on $tc"
+              rustup component add clippy --toolchain "$tc" --force \
+                  || echo "  (clippy add failed for $tc — non-fatal)"
+          done
 
       # `west update` (manifest-pinned) + the line's NSOS/cyclone patches. The
       # Zephyr SDK is baked into the image (registered), so --skip-sdk: setup.sh
