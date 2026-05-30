@@ -313,17 +313,24 @@ where coupling is natural; each batch ends with a `feat(208.D/...)` commit.
       line: `Published: 0`. Subsequent: 1, 2, 3, …
       Logs at `tmp/talker-acc4.log` + `tmp/zenohd-acc4.log` (gitignored).
 - [x] **208.acc.5** Multi-agent strict-follow re-audit done (2026-05-30,
-      Batches 1 + 2 = 8 tutorials). **6 of 8 returned 0 BLOCKERS**
-      (`installation`, `first-node-{rust,c,cpp}`, `troubleshoot-10min`,
-      `threadx`). Two surfaced real bugs that landed in this commit:
-      `freertos.md`'s 1 BLOCKER (`just freertos zenohd` hardcoded
-      `build/zenohd/zenohd`) and `bare-metal.md`'s 4 BLOCKERS (the same
-      hardcoded path plus the wrong `just qemu-baremetal` namespace; the
-      remaining N2-workspace + codegen pre-step are deferred items, not
-      blockers in a regular clone). The acceptance bar — "any tutorial
-      produces 0 BLOCKERS" — was met by the first six and is now met by
-      the freertos / bare-metal pair too on a fresh re-run. Per-tutorial
-      reports + SUMMARY persisted at `docs/roadmap/book-audit/acc5/`.
+      Batches 1 – 6 = **13 tutorials**, every page under
+      `book/src/getting-started/`). **All 13 now meet 0 BLOCKERS.** The
+      first run on each batch surfaced **8 real BLOCKERs** total
+      (freertos 1, bare-metal 4, integration-zephyr 2, px4 1); each
+      landed a fix commit and re-runs against the same step list pass:
+      | Batch | Tutorial | Fix |
+      |---|---|---|
+      | 2 | `freertos.md` + 7 sibling `just <plat> zenohd` recipes | `89f69d911` |
+      | 2 | `bare-metal.md` (namespace + path + ⏳ N2 workspace + codegen) | `89f69d911` + `phase-208-followups.md` |
+      | 3 | `integration-nuttx.md` (port mismatch + `$NUTTX_APPS_DIR`) | `2bb0dfdcc` |
+      | 4 | `integration-zephyr.md` (`west.yml` `revision: main` + Zephyr pin + `west init -l .`) | `5e24268d1` |
+      | 5 | `esp32.md` (Setup wording + `build-qemu` clarifier + codegen + timing) | `3b17fcc66` |
+      | 6 | `px4.md` (`EXTERNAL_MODULES_LOCATION` `/nano-ros` suffix + log-string fix) | `53ef20a53` |
+      The acceptance bar — "any tutorial produces 0 BLOCKERS" — is met
+      in the *strong* form: **every** audited tutorial now produces 0
+      BLOCKERS on a strict-follow re-run. Per-tutorial reports + SUMMARY
+      persisted at `docs/roadmap/book-audit/acc5/`. Deferred F-items
+      (F1–F11) tracked in `docs/roadmap/phase-208-followups.md`.
 
 ## Notes
 
