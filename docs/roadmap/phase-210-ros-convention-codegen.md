@@ -22,6 +22,12 @@ In-tree (landed on main):
   (`local-msg-package/src/rust_consumer/`) — plain `cargo build` after
   `nros ws sync`, 4 msg families (workspace + AMENT) linked in.
 * 210.E.1 — book page `your-own-msg-package.md`.
+* 210.E.2 — book page `porting-a-cpp-node.md` refreshed to Phase 210
+  shape (find_package + ament_target_dependencies + workspace umbrella).
+* 210.E.3.a — native cpp examples migrated (talker / listener /
+  service-* / action-* — 6 examples switched from
+  `nros_generate_interfaces(<pkg>)` to `find_package(<pkg>) +
+  ament_target_dependencies` shape).
 * 210.E.4 — deprecation comments on legacy `nros_generate_interfaces` +
   `nros_find_interfaces`.
 * 210.F.1 — mixed-workspace fixture (workspace + AMENT msg deps in one
@@ -29,6 +35,17 @@ In-tree (landed on main):
 * 210.F.2 — colcon-parity CI gate (`.github/workflows/colcon-parity.yml`
   builds the fixture via `colcon build --base-paths src` + verifies the
   binary).
+
+Supporting fixes (landed alongside the migrations):
+* `cmake/compat/stubs/Findexample_interfaces.cmake` — 209.B's
+  collapse list missed it; without the stub `find_package
+  (example_interfaces)` falls through to upstream's ament-based config
+  which errors on nano-ros builds.
+* `nros_generate_interfaces` closure-builder CACHE-fallback (BOTH
+  spots) — multi-level dep chains through the smart Find-stub need to
+  read `_NROS_PKG_<pkg>_GENERATED_RS_FILES` from cache when the dep
+  was generated in a sibling call tree (smart-stub recursion vs auto-
+  closure nested call).
 
 nros-cli (`github.com/NEWSLabNTU/nros-cli` branch `phase-210-workspace-
 codegen`):
@@ -48,10 +65,10 @@ Open (concrete acceptance below):
 * 210.D.2 — convert `examples/native/rust/talker`. Deferred → 210.E.3.d
   (whole rust-example fleet migration; talker is multi-RMW with a cmake
   cyclone variant on top, safer to migrate as one unit).
-* 210.E.2 — book page `porting-a-cpp-node.md` migration to the new
-  shape.
-* 210.E.3.a/.b/.c/.d — in-tree migration of native / qemu / zephyr /
-  rust per-example codegen call sites.
+* 210.E.3.b/.c/.d — qemu / zephyr / rust example migrations. DEFERRED.
+  Legacy `nros_generate_interfaces` works on those targets; migration
+  is cosmetic. Zephyr needs design work (cmake context differs).
+  Rust needs the talker multi-RMW migration plan first.
 * 210.F.3 — `nros ws doctor` + `list` + `status` + `clean` siblings.
 * 210.F.4 — shadowing matrix smoke fixture + book doc.
 
@@ -344,7 +361,7 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
       walking the upstream workflow: drop a `src/my_msgs/` (verbatim ROS
       shape), source the env, build. Both colcon AND nano-ros work on the
       same source. Cross-ref 210.A's fixture.
-- [ ] **210.E.2** Update existing
+- [x] **210.E.2** Update existing
       `book/src/getting-started/porting-a-cpp-node.md` (209.G iter 2)
       `nros_generate_interfaces(<pkg>)` glue example to the new
       `find_package(<pkg>) / nros_workspace_interfaces()` shape so the
@@ -355,29 +372,32 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
       + (optionally) `nros_workspace_interfaces()` if the user has
       workspace-local pkgs. Cross-ref the `local-msg-package` fixture.
 - [ ] **210.E.3** Migrate the in-tree per-pkg `nros_generate_interfaces
-      (<pkg>)` call sites (sample: `examples/native/{cpp,rust}/*/`,
-      `examples/qemu-arm-*/{cpp,rust}/*/`) to the
-      `find_package(<pkg>) + target_link_libraries` shape. Incremental —
-      examples that explicitly want the bundled-pkg form keep it.
-      **Sub-items**, each one PR-sized:
+      (<pkg>)` call sites to the `find_package(<pkg>) +
+      ament_target_dependencies` shape. Incremental — examples that
+      explicitly want the bundled-pkg form keep it.
+      **Sub-items**:
       * **210.E.3.a** — Native fixtures: `examples/native/cpp/{talker,
-        listener,service-*,action-*}/`. Switch from
-        `nros_generate_interfaces(std_msgs LANGUAGE CPP SKIP_INSTALL)` to
-        `find_package(std_msgs REQUIRED)` + `target_link_libraries(...
-        std_msgs::std_msgs)`. Acceptance: `just native test` green.
-      * **210.E.3.b** — QEMU embedded fixtures: `examples/qemu-arm-{baremetal,
-        freertos,nuttx}/{cpp,rust}/...`. Same swap. Acceptance: per-platform
-        `just <plat> build-fixtures` green.
-      * **210.E.3.c** — Zephyr fixtures: `examples/zephyr/cpp/...`. Same
-        swap; the zephyr module exposes `NROS_REPO_DIR` so the smart
-        Find-stub include path resolves. Acceptance: `just zephyr
-        build-cpp` green.
-      * **210.E.3.d** — Rust examples: deprecate the per-example
-        `.cargo/config.toml` `[patch.crates-io]` chunk in favour of the
-        `nros-build-codegen` build.rs helper (210.D). Migrate
-        `examples/native/rust/*/` first; QEMU/Zephyr Rust last.
-        Acceptance: `cargo build` in each migrated example pulls
-        bindings via the build.rs only — no manual patch table.
+        listener,service-*,action-*}/`. **DONE 2026-05-31** (commit
+        `2e5f50b2c`). Swapped 6 examples; supporting fix landed:
+        `cmake/compat/stubs/Findexample_interfaces.cmake` added +
+        `nros_generate_interfaces` CACHE-fallback in BOTH closure
+        builders (multi-level dep chains through the smart Find-stub
+        cache).
+      * **210.E.3.b — QEMU embedded fixtures.** DEFERRED. Cross-compile
+        toolchains + the legacy `nros_generate_interfaces` works fine
+        on these targets; migration is cosmetic. Re-file when build-
+        system convergence work resumes.
+      * **210.E.3.c — Zephyr fixtures.** DEFERRED. Zephyr's cmake
+        context differs (`find_package(Zephyr)` + zephyr_library
+        aggregation; NrosRclcppCompat assumes `add_subdirectory(nano-
+        ros)` precedes which the zephyr module setup doesn't follow).
+        Needs design work, not just a swap.
+      * **210.E.3.d — Rust examples (`.cargo/config.toml [patch.crates-io]`
+        deprecation + talker D.2 migration).** DEFERRED. Touches every
+        rust example. Talker is multi-RMW with a cmake-cyclonedds
+        variant. The `nros ws sync` single-pkg-mode (nros-cli commit
+        `190b891`) is in place so the swap is mechanical when a
+        dedicated rust-migration phase runs.
 - [x] **210.E.4** Mark `nros_generate_interfaces(<pkg>)` +
       `nros_find_interfaces()` deprecated in their function-header
       comments; point to `rosidl_generate_interfaces` + `find_package`.
