@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rust_consumer</name>
+  <version>0.1.0</version>
+  <description>Phase 210.D.3 fixture sibling — Rust consumer pulling msgs from BOTH workspace (local_msgs, extra_msgs) AND AMENT-installed pkgs (std_msgs, geometry_msgs, sensor_msgs) via the auto-managed [patch.crates-io] block written by `nros ws sync`.</description>
+  <maintainer email="dev@example.org">dev</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cargo</buildtool_depend>
+  <depend>local_msgs</depend>
+  <depend>extra_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

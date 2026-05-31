@@ -24,19 +24,42 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
   (`NROS_INTERFACE_SEARCH_PATH > AMENT_PREFIX_PATH > bundled`) and routes
   each pkg's codegen identically regardless of which layer it lived in.
 
+* `src/rust_consumer/` — **Phase 210.D.3** Rust sibling of the C++
+  consumer. Same four-msg-family coverage. Builds via `nros ws sync` +
+  plain `cargo build`. See the "Build — Rust" section below.
+
 * `CMakeLists.txt` (this dir) — the **only** nano-ros-specific file. Pulls
   nano-ros, points `NROS_INTERFACE_SEARCH_PATH` at `./src/`, includes
   `NrosRclcppCompat.cmake`, calls `nros_workspace_interfaces()` to bulk-
   build the workspace msg pkgs (one line instead of N
   `add_subdirectory(src/<pkg>)`), then `add_subdirectory(src/consumer)`.
 
-## Build
+## Build — C++ (cmake umbrella)
 
 ```sh
 cmake -B build -S .
 cmake --build build -j
 ./build/src/consumer/consumer        # publishes on /greetings via zenoh
 ```
+
+## Build — Rust (`nros ws sync` + plain cargo)
+
+```sh
+# 1) Pre-cargo step: codegen workspace msg pkgs + write
+#    [patch.crates-io] block into src/rust_consumer/Cargo.toml.
+NROS_REPO_DIR=/path/to/nano-ros nros ws sync
+
+# 2) Plain cargo build — no wrapper, no build.rs hack.
+cd src/rust_consumer
+cargo build
+./target/debug/rust_consumer          # publishes on /greetings via zenoh
+```
+
+`nros ws sync` writes a delimited `[patch.crates-io]` block into the
+patch authority Cargo.toml (this fixture has `[workspace]` empty marker
+in `src/rust_consumer/Cargo.toml`, making it its own authority). Re-run
+sync after editing any `.msg` file; `nros ws sync --check` exits
+non-zero if the generated crates are stale.
 
 ## What's exercised
 

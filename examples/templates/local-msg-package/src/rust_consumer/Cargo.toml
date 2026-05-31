@@ -1,0 +1,49 @@
+[package]
+name = "rust_consumer"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[[bin]]
+name = "rust_consumer"
+path = "src/main.rs"
+
+# Phase 210.D.3 fixture — standalone Cargo pkg. Empty [workspace] marker
+# (cargo-ros2 pattern) so cargo treats this Cargo.toml as the patch
+# authority for the auto-managed [patch.crates-io] block written by
+# `nros ws sync` (block lives at the bottom of this file).
+[workspace]
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
+nros-rmw-zenoh = { version = "*", features = ["std", "platform-posix", "ros-humble"], optional = true }
+log = "0.4"
+env_logger = "0.11"
+
+# Msg deps — workspace + AMENT, all resolved through the auto-managed
+# [patch.crates-io] block below.
+local_msgs = "*"
+extra_msgs = "*"
+std_msgs = "*"
+geometry_msgs = "*"
+sensor_msgs = "*"
+
+# === BEGIN nros-managed [patch.crates-io] ===
+# This block is auto-managed by `nros ws sync`. Run sync after a fresh
+# checkout (or after editing any *.msg file) to repopulate the patch
+# entries before `cargo build`:
+#
+#   $ cd <fixture-root>
+#   $ NROS_REPO_DIR=<nano-ros-source> nros ws sync
+#
+# Sync rewrites the entire block on each invocation; do not hand-edit.
+[patch.crates-io]
+# === END nros-managed [patch.crates-io] ===
+
+
