@@ -1,0 +1,82 @@
+# Phase 210.F.2 — colcon-parity gate for the local-msg-package fixture.
+#
+# The fixture under examples/templates/local-msg-package/src/ is meant to
+# build under BOTH a nano-ros cmake umbrella AND stock `colcon build`. The
+# "same source builds under both build systems" promise lives in README.md
+# but had no CI enforcement; this workflow catches a future edit that
+# accidentally adds nano-ros-specific syntax to any src/<pkg>/ file.
+#
+# Triggers narrowly on the fixture + this workflow file. Skips the embedded
+# targets (only the native-cpp parity matters here).
+
+name: colcon-parity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/templates/local-msg-package/**"
+      - ".github/workflows/colcon-parity.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "examples/templates/local-msg-package/**"
+      - ".github/workflows/colcon-parity.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: colcon-parity-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  colcon-build-fixture:
+    name: colcon build examples/templates/local-msg-package/src/
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false  # fixture is self-contained; no nano-ros submodules needed
+
+      - name: Add ROS 2 apt repo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg lsb-release
+          sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" \
+            | sudo tee /etc/apt/sources.list.d/ros2.list >/dev/null
+
+      - name: Install ROS 2 Humble msg deps + colcon
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-colcon-common-extensions \
+            ros-humble-ros-base \
+            ros-humble-rclcpp \
+            ros-humble-std-msgs \
+            ros-humble-geometry-msgs \
+            ros-humble-sensor-msgs \
+            ros-humble-rosidl-default-generators \
+            ros-humble-rosidl-default-runtime \
+            ros-humble-ament-cmake \
+            ros-humble-ament-cmake-auto
+
+      - name: colcon build the fixture
+        run: |
+          set -e
+          source /opt/ros/humble/setup.bash
+          cd examples/templates/local-msg-package
+          # colcon scans src/ for pkgs; topo-orders local_msgs → extra_msgs → consumer
+          colcon build --merge-install --event-handlers console_direct+
+          ls install/
+
+      - name: Verify the consumer binary was produced
+        run: |
+          set -e
+          cd examples/templates/local-msg-package
+          # colcon installs binaries under install/lib/<pkg>/ (merge-install layout
+          # puts it under install/lib/consumer/).
+          test -x install/lib/consumer/consumer \
+            || { echo "consumer binary not produced under install/lib/consumer/"; \
+                 find install -name consumer -type f; exit 1; }
+          file install/lib/consumer/consumer
+          echo "colcon-parity OK — same src/ builds under both nano-ros AND colcon."

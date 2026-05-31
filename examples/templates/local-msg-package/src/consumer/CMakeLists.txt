@@ -19,15 +19,24 @@ find_package(sensor_msgs REQUIRED)
 
 add_executable(consumer src/consumer.cpp)
 
-# Stock-ROS link shape — every pkg exposes `<pkg>::<pkg>` regardless of
-# whether the smart Find-stub resolved it from the workspace or AMENT.
-target_link_libraries(consumer
-    rclcpp::rclcpp
-    local_msgs::local_msgs
-    extra_msgs::extra_msgs
-    std_msgs::std_msgs
-    geometry_msgs::geometry_msgs
-    sensor_msgs::sensor_msgs
+# Canonical ROS 2 ament_cmake shape — `ament_target_dependencies` wires
+# include dirs + link libraries for each named pkg (under stock ROS the
+# real macro walks each pkg's `_LIBRARIES`/`_INCLUDE_DIRS`; under nano-ros
+# the compat shim in `NrosRclcppCompat.cmake` aliases to `${pkg}::${pkg}`).
+# Works verbatim under BOTH `colcon build` and the nano-ros umbrella.
+ament_target_dependencies(consumer
+    rclcpp
+    local_msgs
+    extra_msgs
+    std_msgs
+    geometry_msgs
+    sensor_msgs
 )
+
+# Stock-ROS install (so colcon merge-install layout puts the binary at
+# install/lib/consumer/consumer). The nano-ros build path doesn't need
+# this — the umbrella keeps the binary under build/. ament_cmake
+# substitutes a no-op under our compat module.
+install(TARGETS consumer DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
