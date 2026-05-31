@@ -153,17 +153,57 @@ fn set_env_propagates_to_group_children() {
     }
 }
 
-/// Phase 211.E follow-up — `<executable>` as a spawn entity.
+/// Phase 211.E — `<executable>` declarations land on
+/// `plan.executables[*]` as non-rmw spawn entries.
 ///
-/// `play_launch_parser` records `<executable cmd="...">` as a `node` entry
-/// with `package=None`. The planner then errors with
-/// `missing-package: launch node has no package` and refuses to emit the
-/// plan. The 211.E bullet calls for emitting `<executable>` as a non-rmw
-/// "spawn" plan entity. Flip this test on once the planner learns the
-/// new entity kind; the fixture currently OMITS `<executable>` because
-/// adding it blocks the rest of the plan stage.
+/// Resolved upstream in `nros-cli` planner commit `4ad1ae8` (Phase 211.E):
+/// the parser writes `<executable cmd="…">` as a `record.node` with
+/// `package=None`; the planner used to reject those as `missing-package`,
+/// but now emits a dedicated `PlanExecutable` for each. The fixture's
+/// launch carries a `<executable cmd="/bin/echo" name="greeter">` with
+/// two `<arg>` children, inheriting the group's `<set_env>` —
+/// covers cmd/args/env propagation in one go.
 #[test]
-#[ignore = "planner-side gap: <executable> rejected as missing-package; needs non-rmw spawn entity emit"]
 fn executable_emits_spawn_entity() {
-    nros_tests::skip!("placeholder — fixture + planner work tracked in phase-211.E");
+    if !nros_tests::require_nros_cli() {
+        nros_tests::skip!("nros CLI not found");
+    }
+    let plan = run_plan();
+    let execs = plan["executables"].as_array().unwrap_or_else(|| {
+        panic!(
+            "plan must surface an `executables` array (refreshed nros CLI not on PATH?): {plan:#?}"
+        )
+    });
+    assert_eq!(
+        execs.len(),
+        1,
+        "expected exactly one <executable> entry, got: {execs:#?}"
+    );
+    let exec = &execs[0];
+    assert_eq!(exec["id"], "executable.greeter.0");
+    assert_eq!(exec["name"], "greeter");
+    assert_eq!(exec["namespace"], "/");
+    assert_eq!(
+        exec["cmd"],
+        serde_json::json!(["/bin/echo", "hello", "from-launch"]),
+        "cmd must carry the fully-resolved argv (executable + args)"
+    );
+    assert_eq!(
+        exec["args"],
+        serde_json::json!(["hello", "from-launch"]),
+        "args must carry the `<arg>` children separately"
+    );
+    // The executable sits OUTSIDE the `<group>` carrying `<set_env>` but
+    // ROS launch's set_env semantics are "global once declared" — every
+    // sibling entity past the declaration inherits the env. The parser
+    // already enforces that; the planner forwards it.
+    assert_eq!(
+        exec["env"],
+        serde_json::json!([{"name": "DEMO_LEVEL", "value": "verbose"}]),
+        "env from the preceding <set_env> must propagate onto the executable"
+    );
+    assert_eq!(
+        exec["trace"]["launch_record_entity"],
+        "record://executable.greeter.0"
+    );
 }

@@ -283,30 +283,31 @@ constructs through `nros plan` and inspected the resulting
       `instances[*].env: [{name, value}, …]` (new `EnvDecl` struct +
       `schema_env` reshape parallel to `schema_remaps`). Gated by
       `set_env_propagates_to_group_children`.
-- [→] **`<executable>` planner-side gap** — parser records
-      `<executable cmd="…">` as a `record.json` `node` with
-      `package=None`; the planner then errors `missing-package: launch
-      node has no package` (`planner.rs:102`) and refuses to emit the
-      plan. The 211.E bullet calls for emitting `<executable>` as a
-      non-rmw "spawn" plan entity (or refusing to deploy with a clear
-      error when the deploy kind doesn't support it). Currently NOT
-      exercised by the committed fixture — adding `<executable>` blocks
-      the rest of the plan stage. Captured as
-      `executable_emits_spawn_entity` (`#[ignore]` placeholder).
+- [x] **`<executable>` as a non-rmw spawn entity** — resolved upstream
+      in `nros-cli` planner `4ad1ae8`. Parser still writes
+      `<executable cmd="…">` as a `record.node` with `package=None`;
+      planner now mints a dedicated `PlanExecutable {id, name,
+      namespace, cmd, args, env, trace}` for each (new top-level
+      `executables` collection on `NrosPlan`, additive +
+      `skip_serializing_if = "Vec::is_empty"` so pre-211.E plans
+      round-trip byte-identical). No more `missing-package`
+      diagnostic for launches that carry rviz / rosbag / similar
+      raw commands. Gated by `executable_emits_spawn_entity`.
 - [x] **Fixture + e2e** —
       `packages/testing/nros-tests/fixtures/orchestration_set_remap_env/`
       wraps two `<node>`s in a `<group>` carrying both `<set_remap>` and
-      `<set_env>`. Pre-baked `record.json` decouples the test from the
-      parser binary on PATH.
+      `<set_env>`, AND carries a sibling `<executable cmd="/bin/echo"
+      name="greeter">` with two `<arg>` children. Pre-baked
+      `record.json` decouples the test from the parser binary on PATH;
+      the same fixture exercises all three sub-bullets in one plan run.
 - **Files:**
   *(this tree)*
   `packages/testing/nros-tests/fixtures/orchestration_set_remap_env/*`,
   `packages/testing/nros-tests/tests/orchestration_set_remap_env.rs`;
   *(planner)*
-  `nros-cli` `0b78ab8` —
-  `packages/nros-cli-core/src/orchestration/{planner,plan,schema}.rs`
-  (set_env propagation + `EnvDecl`); executable handling still
-  pending in the same crate.
+  `nros-cli` `0b78ab8` (set_env propagation + `EnvDecl`) +
+  `4ad1ae8` (`PlanExecutable` + non-rmw spawn-entity emit) —
+  `packages/nros-cli-core/src/orchestration/{planner,plan,schema}.rs`.
 
 ### 211.F — Multi-host launch + the `machine=` attr
 

@@ -5,4 +5,8 @@
     <node pkg="demo_se" exec="worker_a" name="worker_a" />
     <node pkg="demo_se" exec="worker_b" name="worker_b" />
   </group>
+  <executable cmd="/bin/echo" name="greeter" output="screen">
+    <arg value="hello" />
+    <arg value="from-launch" />
+  </executable>
 </launch>

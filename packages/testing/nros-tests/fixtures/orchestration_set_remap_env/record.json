@@ -73,6 +73,36 @@
       "respawn_delay": null,
       "ros_args": null,
       "scope": 1
+    },
+    {
+      "args": [
+        "hello",
+        "from-launch"
+      ],
+      "cmd": [
+        "/bin/echo",
+        "hello",
+        "from-launch"
+      ],
+      "env": [
+        [
+          "DEMO_LEVEL",
+          "verbose"
+        ]
+      ],
+      "exec_name": "greeter",
+      "executable": "/bin/echo",
+      "global_params": null,
+      "name": "greeter",
+      "namespace": null,
+      "package": null,
+      "params": [],
+      "params_files": [],
+      "remaps": [],
+      "respawn": null,
+      "respawn_delay": null,
+      "ros_args": null,
+      "scope": 0
     }
   ],
   "scopes": [
