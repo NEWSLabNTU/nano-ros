@@ -179,20 +179,46 @@ on a single container hosting many nodes for intra-process zero-copy.
 proves host `ros2` CLI round-trips against a deployed nano-ros node**.
 This is what a ROS-2-fluent user expects to "just work".
 
-- [ ] **`test_ros2_param_interop`** — deploy a nano-ros node with a
-      declared parameter; from host, `ros2 param list` shows it,
-      `ros2 param get /<node> <name>` returns the value, `ros2 param set …`
-      updates it (echoed by a subsequent `get`).
-- [ ] **`test_ros2_lifecycle_interop`** — deploy a lifecycle node;
-      `ros2 lifecycle list` includes it, `ros2 lifecycle set <node> configure`
-      → `activate` → assert the node publishes only after `activate`.
-- [ ] **`test_ros2_topic_interop`** — deploy a publisher; from host,
-      `ros2 topic list` shows the topic, `ros2 topic echo <topic>` receives
-      messages, `ros2 topic hz <topic>` reports a sane rate.
-- **Skip cleanly** when stock `ros2` CLI isn't installed (most CI runners
-  won't have it; matches the `require_*` pattern).
-- **Files:** `packages/testing/nros-tests/fixtures/ros2_interop/*`,
-  `packages/testing/nros-tests/tests/ros2_interop.rs`.
+**Status (2026-05-31): largely satisfied by existing tests; the only
+real gap (host CLI observes the publisher's rate) closed by a new
+`test_ros2_topic_rate_via_echo_interop`.** The phase-doc audit found
+the suite already covered all three sub-bullets — the doc was written
+without surveying existing coverage.
+
+- [x] **`ros2 param` round-trip** — `packages/testing/nros-tests/tests/params.rs`
+      (`test_ros2_param_list` + `test_ros2_param_get` + `test_ros2_param_set`).
+      Deploys the param-services talker, drives `ros2 param list/get/set`,
+      asserts the round-trip. C++ variant in `cpp_parameters.rs`.
+- [x] **`ros2 lifecycle` full cycle** —
+      `packages/testing/nros-tests/tests/ros2_lifecycle_interop.rs::ros2_lifecycle_full_cycle`.
+      Drives `ros2 lifecycle list/set` through configure → activate against
+      `lifecycle_node_binary`, asserts the node only publishes after
+      `activate`.
+- [x] **`ros2 topic list / topic echo / topic rate` interop** — list +
+      echo were already in `tests/rmw_interop.rs`
+      (`test_discovery_topic_visible` + `test_nano_to_ros2`); the
+      missing **rate-observation** path closed by the new
+      `test_ros2_topic_rate_via_echo_interop` (counts `ros2 topic echo`
+      samples over an 8 s window, asserts the measured rate is within a
+      0.3..3.0 Hz band of the talker's 1 Hz publish loop).
+- [x] **`ros2_topic_hz` helper landed** in
+      `packages/testing/nros-tests/src/ros2.rs` for future use; the
+      hz-based assertion itself sits behind `#[ignore]`
+      (`test_ros2_topic_hz_interop`) because `ros2 topic hz` against
+      `rmw_zenoh_cpp` errors with
+      `failed to initialize wait set: the given context is not valid …`
+      before any "average rate" line emits (the rclpy wait-set is
+      polled after rmw_zenoh's shutdown handler runs). Re-enable once
+      the upstream interaction is fixed.
+- [x] **Skip-clean pattern** — every test above already gates on
+      `require_ros2()` / `require_rmw_zenoh()` / `require_lifecycle_node_binary`;
+      no new helper needed.
+- **Files:** `packages/testing/nros-tests/tests/rmw_interop.rs`
+  (`test_ros2_topic_rate_via_echo_interop` + ignored
+  `test_ros2_topic_hz_interop`),
+  `packages/testing/nros-tests/src/ros2.rs` (`ros2_topic_hz` helper +
+  doc-comments explaining the `--spin-time` / `stdbuf` rationale).
+  Existing coverage cited above is unmodified.
 
 ### 211.D — Conditionals + scoping deploy-time eval
 

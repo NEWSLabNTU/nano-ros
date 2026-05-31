@@ -17,8 +17,8 @@ use nros_tests::{
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, action_client_binary,
         action_server_binary, is_rmw_zenoh_available, is_ros2_available, listener_binary,
-        ros2_node_list, ros2_service_list, ros2_topic_info, ros2_topic_list, service_client_binary,
-        service_server_binary, talker_binary, zenohd_unique,
+        ros2_node_list, ros2_service_list, ros2_topic_hz, ros2_topic_info, ros2_topic_list,
+        service_client_binary, service_server_binary, talker_binary, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -663,6 +663,135 @@ fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathB
     assert!(
         topic_info.contains("Publisher count: 1"),
         "Expected 'Publisher count: 1' in topic info, got:\n{topic_info}"
+    );
+}
+
+/// Phase 211.C — host CLI observes the nano-ros talker's publish *rate*.
+///
+/// Closes the `<topic_list, topic_echo, topic_hz>` host-CLI interop trio.
+/// The first two were already gated by `test_discovery_topic_visible` +
+/// `test_nano_to_ros2`; this test closes the rate-observation gap.
+///
+/// **Why echo-based, not `ros2 topic hz`-based.** Under `rmw_zenoh_cpp`,
+/// `ros2 topic hz` fails with
+/// `failed to initialize wait set: the given context is not valid …` —
+/// the rclpy wait-set is polled after the rmw_zenoh context shutdown handler
+/// runs, before any "average rate" line is emitted. The brittle hz path
+/// lives behind `#[ignore]` below (`test_ros2_topic_hz_interop`) so it can
+/// be re-enabled once the upstream interaction is fixed; the rate-via-echo
+/// path is the robust regression gate today.
+///
+/// Methodology: drive `ros2 topic echo /chatter` for an 8 s window against
+/// the native talker (publishes at 1 Hz, see
+/// `examples/native/rust/talker/src/lib.rs`), count "data:" sample lines,
+/// divide by the window. Accepts a wide band (0.3..3.0 Hz) because rmw_zenoh
+/// discovery dominates the first 2-3 s.
+#[rstest]
+fn test_ros2_topic_rate_via_echo_interop(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
+    }
+
+    let locator = zenohd_unique.locator();
+
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+    talker
+        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .expect("talker did not publish first sample");
+
+    let mut echo = match Ros2Process::topic_echo(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            talker.kill();
+            nros_tests::skip!("ros2 topic echo could not start: {}", e);
+        }
+    };
+
+    let window_secs = 8u64;
+    let echo_out = echo
+        .wait_for_output(Duration::from_secs(window_secs))
+        .unwrap_or_default();
+    talker.kill();
+
+    let samples = count_pattern(&echo_out, "data:");
+    let rate = samples as f64 / window_secs as f64;
+    eprintln!(
+        "ros2 topic echo captured {samples} samples in {window_secs}s (rate ≈ {rate:.2} Hz)\n\
+         (talker publishes at 1 Hz; expecting 0.3..3.0 after discovery warmup)\n\
+         --- echo tail ---\n{tail}",
+        tail = echo_out
+            .lines()
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert!(
+        (0.3..3.0).contains(&rate),
+        "host ros2 topic echo observed {rate:.2} Hz from a 1 Hz nano-ros publisher (samples={samples}, window={window_secs}s)"
+    );
+}
+
+/// Phase 211.C follow-up — `ros2 topic hz` against rmw_zenoh emits
+/// `failed to initialize wait set: the given context is not valid …` and
+/// never prints an "average rate" line. The
+/// `nros_tests::fixtures::ros2_topic_hz` helper is committed for future use
+/// but the assertion is gated behind `#[ignore]` until either rmw_zenoh's
+/// shutdown order or ros2cli's `topic hz` spin path is fixed upstream.
+/// See `test_ros2_topic_rate_via_echo_interop` for the working rate-check
+/// path that gates the same spirit of the bullet today.
+#[rstest]
+#[ignore = "ros2 topic hz + rmw_zenoh: rcl context invalid before any rate line emits"]
+fn test_ros2_topic_hz_interop(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
+    }
+
+    let locator = zenohd_unique.locator();
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+    talker
+        .wait_for_output_pattern("Published", Duration::from_secs(8))
+        .expect("talker did not publish first sample");
+
+    let hz_out = ros2_topic_hz("/chatter", 8, &locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
+    talker.kill();
+    eprintln!("ros2 topic hz output:\n{hz_out}");
+
+    assert!(
+        hz_out.contains("average rate"),
+        "ros2 topic hz never emitted an averaged rate:\n{hz_out}"
+    );
+    let last_rate = hz_out
+        .lines()
+        .filter_map(|line| {
+            line.split_once("average rate: ")
+                .and_then(|(_, rest)| rest.split_whitespace().next())
+                .and_then(|tok| tok.parse::<f64>().ok())
+        })
+        .last()
+        .expect("no parseable 'average rate' value");
+    assert!(
+        (0.3..3.0).contains(&last_rate),
+        "expected ~1 Hz, got {last_rate}:\n{hz_out}"
     );
 }
 

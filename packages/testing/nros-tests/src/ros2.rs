@@ -523,6 +523,40 @@ pub fn ros2_topic_info(topic: &str, locator: &str, distro: &str) -> TestResult<S
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Run `ros2 topic hz <topic>` for a measurement window and return the captured
+/// output. `ros2 topic hz` streams "average rate: X.YYY" lines roughly every
+/// second; the helper times-out after `secs` seconds (caller picks 5–10 s for a
+/// stable reading) and returns whatever the command printed so far.
+///
+/// Used by Phase 211.C to close the `<topic_list, topic_echo, topic_hz>` host
+/// CLI interop trio — the first two were already covered, only `topic hz` was
+/// missing.
+pub fn ros2_topic_hz(topic: &str, secs: u64, locator: &str, distro: &str) -> TestResult<String> {
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
+    // `ros2 topic hz` (Humble) only takes `--window / --filter / --wall-time /
+    // --spin-time / -s`. `--no-daemon` + `--qos-reliability` are NOT valid here
+    // (they belong on `lifecycle` and `topic echo` respectively); passing them
+    // makes argparse hard-fail. `--spin-time` extends the discovery window so
+    // the subscriber matches the rmw_zenoh talker before the timeout fires.
+    let spin = (secs / 3).max(2);
+    // Python's stdout is block-buffered when piped; `ros2 topic hz` prints
+    // "average rate: …" lines that never reach our capture buffer before
+    // `timeout` SIGTERMs the process. `stdbuf -oL` line-buffers stdout so each
+    // averaged line is emitted as it's produced. `--wall-time` measures
+    // against wall-clock (no /clock subscription needed for rmw_zenoh).
+    let cmd = format!(
+        "{env_setup} && timeout {secs} stdbuf -oL \
+             ros2 topic hz --spin-time {spin} --wall-time {topic} 2>&1"
+    );
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 topic hz: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 // =============================================================================
 // Service Helpers
 // =============================================================================
