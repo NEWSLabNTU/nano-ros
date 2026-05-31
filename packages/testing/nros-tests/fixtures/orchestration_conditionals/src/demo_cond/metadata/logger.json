@@ -1,0 +1,13 @@
+{
+  "version": 1, "package": "demo_cond", "component": "logger", "language": "rust",
+  "exported_symbol": "nros_component_demo_cond_logger",
+  "nodes": [
+    { "id": "node_logger", "unresolved_name": { "value": "optional_logger", "kind": "relative" }, "namespace": null,
+      "publishers": [], "subscribers": [ { "id": "sub_hb", "unresolved_topic": { "value": "heartbeat", "kind": "relative" },
+        "interface": { "package": "std_msgs", "name": "msg/String", "kind": "message" }, "qos": null, "callback": "cb_log" } ],
+      "timers": [], "services": [], "actions": [] }
+  ],
+  "callbacks": [ { "id": "cb_log", "kind": "subscription", "group": null, "effects": [],
+    "source": { "artifact": "src/lib.rs", "line": 1, "column": 1 } } ],
+  "parameters": [], "trace": { "generator": "phase-211.D mirror", "package_manifest": "package.xml", "source_artifacts": ["src/lib.rs"] }
+}

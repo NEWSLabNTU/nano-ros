@@ -1,0 +1,11 @@
+version = 1
+package = "demo_cond"
+component = "logger"
+language = "rust"
+[linkage]
+crate_name = "demo_cond"
+executable = "container"
+exported_symbol = "nros_component_demo_cond_logger"
+[metadata]
+source_metadata = "metadata/logger.json"
+generated_by = "phase-211.D mirror"

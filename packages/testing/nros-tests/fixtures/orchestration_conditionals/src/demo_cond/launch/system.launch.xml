@@ -1,0 +1,9 @@
+<launch>
+  <arg name="enable_logger" default="false" />
+  <node pkg="demo_cond" exec="always" name="always_on" output="screen" />
+  <group>
+    <push_ros_namespace namespace="scoped" />
+    <node pkg="demo_cond" exec="logger" name="optional_logger" output="screen"
+          if="$(var enable_logger)" />
+  </group>
+</launch>

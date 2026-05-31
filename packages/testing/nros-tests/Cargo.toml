@@ -276,5 +276,13 @@ path = "tests/orchestration_composable.rs"
 name = "bridge_mixed_rmw"
 path = "tests/bridge_mixed_rmw.rs"
 
+# Phase 211.D — conditionals + <group> scoping plan-gate: asserts the
+# planner already honors `<node if="$(var ...)">` filtering AND the
+# nested `<push_ros_namespace>` propagation, against
+# `fixtures/orchestration_conditionals/`.
+[[test]]
+name = "orchestration_conditionals"
+path = "tests/orchestration_conditionals.rs"
+
 [lints]
 workspace = true

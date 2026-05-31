@@ -227,16 +227,39 @@ without surveying existing coverage.
 exercises **deploy-time** evaluation (the parser does the `$(var …)`
 substitution; the planner has to honour the boolean).
 
-- [ ] **Planner change:** emit only entities whose `if_condition` resolves
-      truthy + `unless_condition` resolves falsy after launch-arg
-      substitution.
-- [ ] **`<group>` scoping** — preserve nested `<group>` namespace prefixes
-      on child entities (today the planner flattens).
-- [ ] **Fixture + e2e** — a launch with `enable_logger` arg, deploy with
-      `--launch-arg enable_logger:=true` (logger node present) vs
-      `:=false` (logger absent). Same workspace, two plans, two
-      `nros deploy` runs.
-- **Files:** `nros-cli/packages/nros-cli-core/src/orchestration/planner.rs`,
+**Status (audited 2026-05-31): planner-side already implemented;
+in-tree regression gate added.** The audit ran `nros plan` against a
+fresh fixture with `<arg enable_logger=false/>` + `<node if=$(var
+enable_logger)>…</node>` and a `<group><push_ros_namespace
+namespace="scoped"/>…</group>` wrap; both `enable_logger:=false`
+(logger filtered out) and `:=true` (logger present at `/scoped/optional_logger`)
+produced the correct plan shapes. The 211.D doc was written without
+that audit — the gap was the missing in-tree gate, not a planner change.
+
+- [x] **`if_condition` / `unless_condition` deploy-time eval** — already
+      honored by the planner; entities whose condition resolves falsy
+      do not land in `instances[*]`. Gated by
+      `conditionals_disabled_omits_logger`.
+- [x] **`<group>` + `<push_ros_namespace>` scoping** — child entities
+      inherit the nested namespace prefix on both `namespace` and
+      `launch_name`. Gated by
+      `conditionals_enabled_keeps_logger_and_scopes_namespace`
+      (asserts logger lands at `namespace="/scoped"` +
+      `launch_name="/scoped/optional_logger"`).
+- [x] **Fixture + e2e** —
+      `packages/testing/nros-tests/fixtures/orchestration_conditionals/`
+      with one launch file exercising both arg variants. Two pre-baked
+      records (`record-false.json` + `record-true.json` — outputs of
+      `play_launch_parser` with the corresponding `enable_logger:=<bool>`)
+      decouple the test from the parser binary on PATH.
+- [→] **`nros deploy` second-stage** — the original bullet said "two
+      `nros deploy` runs". Deferred behind 211.A's deferred deploy
+      stage: needs the demo_cond crate to actually compile + exported
+      `nros_component_*` symbols. The plan-shape gate above already
+      catches every planner-side regression of 211.D's listed behavior.
+- **Files:**
+  *(this tree)*
+  `packages/testing/nros-tests/fixtures/orchestration_conditionals/*`,
   `packages/testing/nros-tests/tests/orchestration_conditionals.rs`.
 
 ### 211.E — `<set_remap>` / `<set_env>` / `<executable>`

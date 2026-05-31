@@ -1,0 +1,77 @@
+{
+  "container": [],
+  "file_data": {},
+  "lifecycle_node": [],
+  "load_node": [],
+  "node": [
+    {
+      "args": null,
+      "cmd": [
+        "/opt/ros/humble/lib/demo_cond/always",
+        "--ros-args",
+        "-r",
+        "__node:=always_on"
+      ],
+      "env": null,
+      "exec_name": "always",
+      "executable": "always",
+      "global_params": null,
+      "name": "always_on",
+      "namespace": null,
+      "package": "demo_cond",
+      "params": [],
+      "params_files": [],
+      "remaps": [],
+      "respawn": null,
+      "respawn_delay": null,
+      "ros_args": null,
+      "scope": 0
+    },
+    {
+      "args": null,
+      "cmd": [
+        "/opt/ros/humble/lib/demo_cond/logger",
+        "--ros-args",
+        "-r",
+        "__node:=optional_logger",
+        "-r",
+        "__ns:=/scoped"
+      ],
+      "env": null,
+      "exec_name": "logger",
+      "executable": "logger",
+      "global_params": null,
+      "name": "optional_logger",
+      "namespace": "/scoped",
+      "package": "demo_cond",
+      "params": [],
+      "params_files": [],
+      "remaps": [],
+      "respawn": null,
+      "respawn_delay": null,
+      "ros_args": null,
+      "scope": 1
+    }
+  ],
+  "scopes": [
+    {
+      "args": {
+        "enable_logger": "true"
+      },
+      "id": 0,
+      "ns": "/",
+      "origin": {
+        "file": "system.launch.xml"
+      },
+      "parent": null
+    },
+    {
+      "id": 1,
+      "ns": "/",
+      "parent": 0
+    }
+  ],
+  "variables": {
+    "enable_logger": "true"
+  }
+}
