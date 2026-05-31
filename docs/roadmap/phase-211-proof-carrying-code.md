@@ -560,6 +560,234 @@ Phase 211 closes when all of the following hold:
 | Frama-C/WP compat with pinned Why3 (deferred) | 211.8 | Low | High | Confirmed at scaffold time before 211.8 kickoff |
 | Bus factor — single-contributor expertise | All | Medium | High | Document everything; pair-write critical infra; lean on upstream tooling for external mindshare |
 
+## Critical issues + resolutions
+
+Five design questions whose resolutions are committed before 211.1 kickoff.
+Each is implementable in PoC scope and forward-compatible with the post-PoC
+cross-language + registry-alpha work.
+
+### C1 — Creusot upgrade fragility + spec-hash stability
+
+**Problem.** Creusot is beta. Output bytes change between versions even when
+proven semantics don't (0.4 → 0.5 reordered `use` clauses + renamed
+auto-generated symbols). Hashing raw extractor output causes registry-wide
+spec invalidation on every Creusot bump.
+
+**Resolution — tight pin + canonical pretty-printer + version-tagged hash.**
+
+- Pin Creusot precisely via `nros-sdk-index.toml [tool.wcr-stack]`; allow
+  only patch bumps inside a phase. Major Creusot bumps are scheduled
+  re-anchoring events with explicit migration window.
+- `wcr-core::spec_hash` (211.1 deliverable) implements a canonical
+  pretty-printer: parse Why3 AST → alphabetize theory order + `use` clauses
+  → strip comments + Creusot-version attributes → deterministic reprint →
+  SHA-256.
+- Spec hash includes Creusot version prefix
+  (`creusot-0.5.0/sha256:...`); `wcr verify` warns on Creusot mismatch
+  instead of silently re-extracting.
+- Document Creusot-bump procedure: bump version in index → CI
+  re-discharges every published bundle → consumer caches invalidate at
+  next `wcr verify` → new bundle version published.
+
+**Acceptance.** `wcr extract` produces byte-identical output across two
+runs with the same Creusot binary on the same source. Verified in 211.1
+acceptance.
+
+Semantic spec digest (hashing only `val`/`predicate`/`ensures`/`requires`,
+ignoring `let` bodies + internal symbols) is deferred as post-PoC research.
+
+### C2 — Cycle detection in spec dependency graph
+
+**Problem.** WhyML refuses cyclic theory imports — Why3 errors mid-discharge
+with a cryptic message. Workspace-level cycles can creep in across crates
+(`nros-core` ↔ `nros-platform-posix`) and across axiom / ghost dep graphs.
+
+**Resolution — Tarjan SCC as `wcr verify` Phase 0 step, before extraction.**
+
+- `wcr-core::registry::dep_graph` (211.1 deliverable) builds three
+  directed graphs from each crate's `[proof.composition.imports]` and
+  `axiom_deps`:
+  - Theory dep graph (spec ↔ spec)
+  - Axiom dep graph (spec ↔ axiom)
+  - Ghost dep graph (spec ↔ ghost)
+- Tarjan SCC pass over each. Non-trivial SCC → error with explicit cycle
+  path: `nros-core::Result_spec → nros-platform-posix::Posix_axioms →
+  nros-core::Result_spec`.
+- `wcr verify` bails before invoking Creusot when any cycle is detected.
+- DOT-format graph emission via `wcr deps -p <crate>` as a side benefit.
+
+**Intra-crate self-references** (e.g. a ghost theory referencing the
+live spec it tracks) are allowed when Why3 can resolve them via inlining.
+`wcr verify` warns on intra-crate cycles, errors on inter-crate cycles.
+
+**Acceptance.** Hand-craft a workspace with a 3-crate cycle. `wcr verify`
+prints the cycle path + exits non-zero in under 1 second. Verified in
+211.3 (cross-crate composition phase).
+
+### C3 — Cross-crate axiom registry
+
+**Problem.** HW + RTOS axioms (Cortex-M7 timing, FreeRTOS API contracts,
+POSIX semantics) are shared across many packages. Per-package
+`proofs/axioms/` duplicates content; drift produces a silent false sense
+of verified composition.
+
+**Resolution — dedicated `nros-axioms-*` Cargo crates for PoC; evolve to
+first-class `kind = "axiom"` artifacts in wcr at 211.8.**
+
+Concrete PoC layout:
+
+```
+packages/axioms/
+├── nros-axioms-cortex-m/             ← workspace member, Cargo crate
+│   ├── Cargo.toml
+│   ├── proofs/spec/cortex_m.mlw       ← the axiom theory
+│   ├── ATTESTOR.md                    ← who qualified the axioms
+│   └── (Cargo.toml [package.metadata.nros.proof] kind = "axiom")
+├── nros-axioms-freertos-api/
+├── nros-axioms-zephyr-posix/
+├── nros-axioms-threadx-netx/
+└── nros-axioms-rtps-network/
+```
+
+Other packages reference via the standard `axiom_deps`:
+
+```toml
+[package.metadata.nros.proof.composition]
+axiom_deps = [
+  { family = "nros-axioms-cortex-m",     version = "^0.1" },
+  { family = "nros-axioms-freertos-api", version = "^0.1" },
+]
+```
+
+`wcr` treats axiom crates like any other package — same fetch + replay +
+cache — but skips the `extracted/` step (axioms have no impl to extract).
+Bundle metadata sets `kind = "axiom"` and requires an attestor field
+(who claims the axioms hold). Attestor in PoC = NEWSLabNTU lab; in
+production = OEM safety team / Tier-1 vendor / qualification body.
+
+At 211.8 wcr gains `kind = "axiom"` as a first-class artifact type
+separate from code crates; existing crate-shaped axiom packages migrate.
+
+**Acceptance.** PoC ships `nros-axioms-posix` + `nros-axioms-cortex-m`
+(the two needed by the Sentinel demo). `nros-cmd-gate` references both
+via `axiom_deps`; `wcr verify` resolves transitively. Lands at 211.2 +
+211.5.
+
+### C4 — Manifest integration (Cargo.toml vs package.xml vs new file)
+
+**Problem.** ROS 2 packages already have `package.xml`. Rust crates have
+`Cargo.toml`. Adding a third manifest invites confusion.
+
+**Resolution — `[package.metadata.nros.proof]` in `Cargo.toml` for Rust
+crates; sibling `wcr.toml` for non-Cargo packages in 211.8.**
+
+For Rust crates (PoC scope):
+
+```toml
+# packages/<crate>/Cargo.toml
+[package]
+name = "nros-cmd-gate"
+version = "0.4.1"
+
+# ... normal Cargo fields ...
+
+[package.metadata.nros.proof]
+schema_version = "0.1"
+tier           = 1
+# ... full [proof] schema lives under this namespace ...
+```
+
+`[package.metadata.*]` is Cargo's idiomatic tool-namespaced metadata
+slot (precedent: `cargo-deny`, `cargo-bundle`, `cross`). Zero new
+files in PoC. `wcr-core::manifest` parses via `cargo metadata` +
+`serde` on the `metadata.nros.proof` value.
+
+For 211.8 cross-language (C / C++ packages without `Cargo.toml`):
+
+```toml
+# packages/<c-pkg>/wcr.toml
+[package]
+name = "nros-c-thing"
+version = "0.4.1"
+
+[proof]
+# ... same schema as the Cargo.toml metadata namespace ...
+```
+
+`wcr manifest` looks for `Cargo.toml` first, then `wcr.toml`, then
+errors. If both are present (rare), `Cargo.toml` wins; emits a warning.
+
+**Acceptance.** 211.1 toy package parses cleanly via
+`cargo metadata` + `wcr-core::manifest::parse`. No `cargo`-side
+warnings.
+
+### C5 — Source-in-bundle policy
+
+**Problem.** Does the `.wcr.tar.zst` carry source code? Including
+enables `wcr replay --re-extract` (re-run extractor against source,
+confirm extracted output matches); excluding protects proprietary code +
+reduces bundle size.
+
+**Resolution — source embedded by default in PoC; always reference +
+hash via a `source.lock` file; opt-out for proprietary tiers in
+211.8.**
+
+Bundle contents:
+
+```
+<crate>-<ver>.wcr.tar.zst
+├── manifest.toml
+├── source/                              ← Tier 0-1 default include
+│   ├── Cargo.toml
+│   └── src/...
+├── source.lock                          ← always present
+├── proofs/extracted/rust/<theory>.mlw
+├── proofs/session/rust/...
+├── proofs/axioms/...
+├── proofs/ghosts/...
+├── attestations/...
+└── sbom.cdx.json
+```
+
+`source.lock` format:
+
+```json
+{
+  "source_uri": "https://crates.io/api/v1/crates/nros-cmd-gate/0.4.1/download",
+  "source_hash": "sha256:8a3f...",
+  "embedded": true,
+  "files": [
+    { "path": "src/lib.rs", "sha256": "..." },
+    { "path": "Cargo.toml", "sha256": "..." }
+  ]
+}
+```
+
+`embedded = false` (211.8 tier-3 proprietary mode) means source is
+**not** in the bundle — fetch via `source_uri`. Bundle ships at every
+tier; embedding is policy.
+
+Replay modes:
+
+| Command | Source required? | Trust level |
+|---|---|---|
+| `wcr replay --session-only` | no | discharges existing session against pinned provers; trusts the prior extraction |
+| `wcr replay --re-extract` | yes (embedded or fetched) | re-runs Creusot from scratch, confirms byte-identical extracted output, then discharges; strongest trust |
+
+**Acceptance.** PoC bundle for `nros-core` carries source embedded;
+`wcr replay --re-extract` from a fresh clone reproduces byte-identical
+extracted `.mlw` + same session result. Verified in 211.4.
+
+### Summary table
+
+| # | Critical issue | Resolution | Lands at |
+|---|---|---|---|
+| C1 | Creusot upgrade fragility | Tight pin + canonical pretty-printer + version-tagged hash | 211.1 (`wcr-core::spec_hash`) |
+| C2 | Cycle detection in dep graph | `wcr verify` Phase 0 step: Tarjan SCC over import + axiom + ghost graphs | 211.1, exercised in 211.3 |
+| C3 | Cross-crate axiom registry | PoC: dedicated `nros-axioms-*` Cargo crates with `kind = "axiom"` metadata. Post-PoC: first-class axiom artifacts in wcr | 211.2 (first crate), 211.8 (artifact kind) |
+| C4 | Manifest integration | `[package.metadata.nros.proof]` in `Cargo.toml` for Rust; sibling `wcr.toml` for non-Rust at 211.8 | 211.1 schema, 211.2 first use |
+| C5 | Source-in-bundle | Embedded by default; `source.lock` with URI + hash always present; replay supports session-only + re-extract modes | 211.4 bundle format |
+
 ## Notes
 
 - The `wcr` repo is independent. Lives at `github.com/NEWSLabNTU/wcr` and
