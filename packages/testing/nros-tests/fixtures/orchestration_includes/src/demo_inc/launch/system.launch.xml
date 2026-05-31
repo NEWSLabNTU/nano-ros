@@ -1,0 +1,8 @@
+<!-- Phase 211.J — entry launch for the 3-level chain.
+     `$(dirname)` is a placeholder: `play_launch_parser` requires
+     absolute paths in `<include file=…>` (see `bake-records.sh`).
+     The committed `record-chain.json` is the parser output AFTER
+     rewriting these placeholders to absolute paths. -->
+<launch>
+  <include file="$(dirname)/level_a.launch.xml" />
+</launch>

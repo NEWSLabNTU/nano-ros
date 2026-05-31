@@ -1,0 +1,5 @@
+<!-- 17-level chain: entry → lvl_0 → … → lvl_15 → lvl_16 (carries the leaf
+     node). Exceeds 211.J's proposed depth cap of 16. -->
+<launch>
+  <include file="$(dirname)/lvl_0.launch.xml" />
+</launch>

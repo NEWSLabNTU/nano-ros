@@ -1,0 +1,33 @@
+{
+  "container": [],
+  "file_data": {},
+  "lifecycle_node": [],
+  "load_node": [],
+  "node": [],
+  "scopes": [
+    {
+      "id": 0,
+      "ns": "/",
+      "origin": {
+        "file": "system.launch.xml"
+      },
+      "parent": null
+    },
+    {
+      "id": 1,
+      "ns": "/",
+      "origin": {
+        "file": "cycle_a.launch.xml"
+      },
+      "parent": 0
+    },
+    {
+      "id": 2,
+      "ns": "/",
+      "origin": {
+        "file": "cycle_b.launch.xml"
+      },
+      "parent": 1
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "container": [],
+  "file_data": {},
+  "lifecycle_node": [],
+  "load_node": [],
+  "node": [
+    {
+      "args": null,
+      "cmd": [
+        "/opt/ros/humble/lib/demo_inc/leaf",
+        "--ros-args",
+        "-r",
+        "__node:=leaf_node"
+      ],
+      "env": null,
+      "exec_name": "leaf",
+      "executable": "leaf",
+      "global_params": null,
+      "name": "leaf_node",
+      "namespace": null,
+      "package": "demo_inc",
+      "params": [],
+      "params_files": [],
+      "remaps": [],
+      "respawn": null,
+      "respawn_delay": null,
+      "ros_args": null,
+      "scope": 17
+    }
+  ],
+  "scopes": [
+    {
+      "id": 0,
+      "ns": "/",
+      "origin": {
+        "file": "system.launch.xml"
+      },
+      "parent": null
+    },
+    {
+      "id": 1,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_0.launch.xml"
+      },
+      "parent": 0
+    },
+    {
+      "id": 2,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_1.launch.xml"
+      },
+      "parent": 1
+    },
+    {
+      "id": 3,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_2.launch.xml"
+      },
+      "parent": 2
+    },
+    {
+      "id": 4,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_3.launch.xml"
+      },
+      "parent": 3
+    },
+    {
+      "id": 5,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_4.launch.xml"
+      },
+      "parent": 4
+    },
+    {
+      "id": 6,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_5.launch.xml"
+      },
+      "parent": 5
+    },
+    {
+      "id": 7,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_6.launch.xml"
+      },
+      "parent": 6
+    },
+    {
+      "id": 8,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_7.launch.xml"
+      },
+      "parent": 7
+    },
+    {
+      "id": 9,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_8.launch.xml"
+      },
+      "parent": 8
+    },
+    {
+      "id": 10,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_9.launch.xml"
+      },
+      "parent": 9
+    },
+    {
+      "id": 11,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_10.launch.xml"
+      },
+      "parent": 10
+    },
+    {
+      "id": 12,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_11.launch.xml"
+      },
+      "parent": 11
+    },
+    {
+      "id": 13,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_12.launch.xml"
+      },
+      "parent": 12
+    },
+    {
+      "id": 14,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_13.launch.xml"
+      },
+      "parent": 13
+    },
+    {
+      "id": 15,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_14.launch.xml"
+      },
+      "parent": 14
+    },
+    {
+      "id": 16,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_15.launch.xml"
+      },
+      "parent": 15
+    },
+    {
+      "id": 17,
+      "ns": "/",
+      "origin": {
+        "file": "lvl_16.launch.xml"
+      },
+      "parent": 16
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+<!-- intentional cycle: cycle_b → cycle_a → cycle_b → … -->
+<launch>
+  <include file="$(dirname)/cycle_a.launch.xml" />
+</launch>

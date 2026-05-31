@@ -1,0 +1,7 @@
+<package format="3">
+  <name>demo_inc</name>
+  <version>0.1.0</version>
+  <description>211.J include recursion fixture</description>
+  <maintainer email="noreply@example.com">nano-ros</maintainer>
+  <license>MIT</license>
+</package>

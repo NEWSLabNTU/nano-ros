@@ -404,10 +404,47 @@ the bridge was built for.
 `<include>`-of-`<include>`-of-… works mechanically but has no cycle
 detection or depth cap. A real Autoware launch tree includes 20+ files.
 
-- [ ] **Planner:** depth-cap (default 16) + cycle detection (visited-set).
-- [ ] **Fixture + e2e** — three-level include chain + a cyclic include
-      that the planner rejects with a clean error.
-- **Files:** `nros-cli` planner.
+**Status (audited 2026-05-31): basic recursion works, both safety
+guards are gaps.** The audit ran a 3-level chain, a cyclic include
+(A → B → A), and a 17-level chain (one beyond the proposed cap) through
+`nros plan`:
+
+| Scenario | Today's behavior | 211.J expected |
+|----------|------------------|----------------|
+| `system → level_a → level_b → leaf` | leaf instance lands ✓ | unchanged |
+| `cycle_a → cycle_b → cycle_a → …` | `record.json` has zero nodes; planner emits empty plan, exit=0 | clean `cycle-detected` diagnostic, exit≠0 |
+| 17-level chain (`cap=16` proposed) | leaf lands, exit=0 | `depth-cap-exceeded` diagnostic, exit≠0 |
+
+- [x] **3-level chain plan-walk** — gated by
+      `chain_3_levels_resolves_to_leaf` (asserts the leaf instance
+      lands and carries `launch_name=/leaf_node`).
+- [→] **Cycle detection** — planner-side gap. `cycle_rejected_with_clear_diagnostic`
+      is `#[ignore]`-d with the gap as the ignore-reason; flips on once
+      either the parser or the planner raises a `cycle-detected`
+      diagnostic (today the parser silently de-dupes / hits an internal
+      bound and emits zero nodes).
+- [→] **Depth-cap enforcement (default 16)** — planner-side gap.
+      `depth_cap_rejects_over_16` is `#[ignore]`-d; flips on once the
+      planner enforces the cap.
+- [x] **Fixture + e2e** —
+      `packages/testing/nros-tests/fixtures/orchestration_includes/`
+      with three pre-baked records (`record-{chain,cycle,deep}.json` —
+      parser output for each scenario) + `bake-records.sh` that
+      regenerates them after editing the launch files (the launches use
+      `$(dirname)` placeholders since `play_launch_parser` doesn't
+      expand `$(dirname)` and can't resolve in-tree
+      `$(find-pkg-share)`; `bake-records.sh` rewrites the placeholders
+      to absolute paths before invoking the parser). The committed
+      records make the tests portable — `--record` makes
+      `nros plan` ignore the launch path entirely.
+- **Files:**
+  *(this tree)*
+  `packages/testing/nros-tests/fixtures/orchestration_includes/*`,
+  `packages/testing/nros-tests/tests/orchestration_includes.rs`;
+  *(planner, upstream)*
+  `nros-cli/packages/nros-cli-core/src/orchestration/planner.rs`
+  (cycle + depth-cap diagnostics) and `play_launch_parser` (cycle
+  diagnostic at parse time).
 
 ## Acceptance
 

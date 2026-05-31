@@ -290,5 +290,11 @@ path = "tests/orchestration_conditionals.rs"
 name = "orchestration_set_remap_env"
 path = "tests/orchestration_set_remap_env.rs"
 
+# Phase 211.J — <include> recursion safety: 3-level chain (works today)
+# + #[ignore] gates for cycle-detection + depth-cap planner gaps.
+[[test]]
+name = "orchestration_includes"
+path = "tests/orchestration_includes.rs"
+
 [lints]
 workspace = true

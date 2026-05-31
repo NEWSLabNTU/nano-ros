@@ -1,0 +1,10 @@
+{
+  "version": 1, "package": "demo_inc", "component": "leaf", "language": "rust",
+  "exported_symbol": "nros_component_demo_inc_leaf",
+  "nodes": [{ "id": "node_leaf", "unresolved_name": {"value":"leaf_node","kind":"relative"}, "namespace": null,
+    "publishers": [], "subscribers": [], "timers": [{"id":"tick","callback":"cb_tick","period_ms":1000}],
+    "services": [], "actions": [] }],
+  "callbacks": [{"id":"cb_tick","kind":"timer","group":null,"effects":[],
+    "source":{"artifact":"src/lib.rs","line":1,"column":1}}],
+  "parameters": [], "trace": {"generator":"phase-211.J mirror","package_manifest":"package.xml","source_artifacts":["src/lib.rs"]}
+}
