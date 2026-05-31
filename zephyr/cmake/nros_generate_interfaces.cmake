@@ -122,6 +122,17 @@ endif()
 function(_nros_zephyr_resolve_interface target relpath out_var)
   set(${out_var} "NOTFOUND" PARENT_SCOPE)
 
+  # 0. Absolute path — pass through directly (Phase 210.E.3.c — mirrors
+  # the canonical `cmake/NanoRosGenerateInterfaces.cmake` resolver so the
+  # smart Find-stub can feed already-resolved absolute paths from its
+  # workspace/AMENT scan without re-resolving relative).
+  if(IS_ABSOLUTE "${relpath}")
+    if(EXISTS "${relpath}")
+      set(${out_var} "${relpath}" PARENT_SCOPE)
+    endif()
+    return()
+  endif()
+
   # 1. Local file
   set(_local "${CMAKE_CURRENT_SOURCE_DIR}/${relpath}")
   if(EXISTS "${_local}")
@@ -148,11 +159,16 @@ endfunction()
 # =========================================================================
 function(nros_generate_interfaces target)
   cmake_parse_arguments(_ARG
-    ""
+    "SKIP_INSTALL"
     "ROS_EDITION;LANGUAGE"
     "DEPENDENCIES"
     ${ARGN}
   )
+  # Phase 210.E.3.c — SKIP_INSTALL accepted for parity with the canonical
+  # `cmake/NanoRosGenerateInterfaces.cmake` (which the smart Find-stub
+  # passes unconditionally via rosidl_generate_interfaces wrapper).
+  # Zephyr emits directly to the `app` target — there's no install layout
+  # — so the flag is recognised + silently ignored.
 
   if(NOT DEFINED _ARG_ROS_EDITION OR _ARG_ROS_EDITION STREQUAL "")
     set(_ARG_ROS_EDITION "humble")

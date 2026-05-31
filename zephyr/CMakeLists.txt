@@ -10,8 +10,14 @@ if(CONFIG_NROS)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 
-# The nros repo root (parent of this zephyr/ directory)
-set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
+# The nros repo root (parent of this zephyr/ directory).
+# Phase 210.E.3.c — promoted to CACHE so consumer application's
+# CMakeLists.txt can reference it (e.g.
+# `include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")`
+# for the Phase 210 find_package shape). Without CACHE the var only
+# lives in this directory's scope and the consumer sees an empty value.
+set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/.. CACHE PATH
+    "nano-ros repo root (parent of zephyr/ module dir)")
 
 # `zephyr_library()` would create a default library named after this
 # directory's path (e.g. `..__..__nano-ros__zephyr`). All sources below

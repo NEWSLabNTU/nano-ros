@@ -69,12 +69,27 @@ endif()
 include("${_nros_compat_dir}/stubs/_NrosFindRosMsgPackage.cmake")
 
 # --- Sanity: nros-cpp must be loaded -----------------------------------------
+# Two consumption shapes for `NanoRos::NanoRosCpp`:
+#  1. Native / `add_subdirectory(<nano-ros>)` — the root CMakeLists.txt
+#     publishes the IMPORTED INTERFACE target directly.
+#  2. Zephyr — `find_package(Zephyr)` auto-loads the nros zephyr module
+#     (`zephyr/CMakeLists.txt`) which calls `zephyr_library_named(nros)`
+#     under `CONFIG_NROS_CPP_API=y`. There's no `NanoRos::NanoRosCpp`
+#     target on Zephyr — the `nros` zephyr_library is its equivalent.
+#     Bridge via ALIAS so the rest of this module + the per-pkg stubs
+#     see one canonical name (Phase 210.E.3.c).
+if(CONFIG_NROS_CPP_API AND NOT TARGET NanoRos::NanoRosCpp AND TARGET nros)
+    add_library(NanoRos::NanoRosCpp ALIAS nros)
+    set(_NROS_COMPAT_ON_ZEPHYR TRUE)
+endif()
+
 if(NOT TARGET NanoRos::NanoRosCpp)
     message(FATAL_ERROR
         "NrosRclcppCompat: NanoRos::NanoRosCpp not found.\n"
         "Include this module AFTER bringing nano-ros in:\n"
         "  add_subdirectory(<path-to-nano-ros> nano_ros)\n"
-        "or `find_package(NanoRos CONFIG REQUIRED)`.")
+        "or `find_package(NanoRos CONFIG REQUIRED)`,\n"
+        "or build inside a Zephyr application with CONFIG_NROS_CPP_API=y.")
 endif()
 
 # --- Compile flags applied to every compat-built target ----------------------
@@ -101,6 +116,28 @@ function(_nros_compat_apply_force_includes target)
     target_include_directories(${target} PRIVATE
         "${_nros_compat_dir}/include")
 endfunction()
+
+# Phase 210.E.3.c — Zephyr context: do NOT auto-apply force-include of
+# `nros/rclcpp_compat.hpp` to the `app` target. The compat header pulls
+# `<memory>` / `<string>` / `<functional>` / `<vector>` / `<chrono>`
+# — Zephyr's minimal C++ stdlib doesn't ship most of those (only
+# `<chrono>` is shimmed under `zephyr/cxx-compat/`). Existing Zephyr
+# cpp examples use `nros::Node` directly (NOT rclcpp); polluting them
+# with rclcpp_compat.hpp would break their build for no benefit.
+#
+# A user who actually ports rclcpp source to Zephyr opts in by adding
+# `target_compile_options(app PRIVATE ${_NROS_COMPAT_FORCE_INCLUDES})`
+# + `target_include_directories(app PRIVATE ${_nros_compat_dir}/include)`
+# from their own CMakeLists — but they'd also hit the `<memory>` blocker
+# (Phase 209.G.2 — Zephyr libstdc++ subset shim project).
+#
+# Native builds still get the auto-include via the ament_auto_* shim
+# entry points.
+if(_NROS_COMPAT_ON_ZEPHYR)
+    # Just publish the include dir so an explicit `#include <nros/
+    # rclcpp_compat.hpp>` resolves if a user reaches for it.
+    zephyr_include_directories("${_nros_compat_dir}/include")
+endif()
 
 # --- ament_cmake_auto shims ---------------------------------------------------
 

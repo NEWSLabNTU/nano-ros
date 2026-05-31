@@ -6,10 +6,14 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_listener_cpp LANGUAGES CXX)
 
-# nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
-# platform support, and the nros-cpp library automatically.
-
-nros_generate_interfaces(std_msgs LANGUAGE CPP)
+# nros zephyr module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) auto-loaded
+# via `find_package(Zephyr)`; provides zenoh shim, platform support, and
+# the nros-cpp library (zephyr_library_named(nros)).
+#
+# Phase 210.E.3.c — find_package shape via the rclcpp source-compat
+# module's smart Find-stub.
+include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")
+find_package(std_msgs REQUIRED)
 
 # Phase 11W.12 — Cyclone DDS needs a C `dds_topic_descriptor_t` for
 # each message type (the backend's `find_descriptor` looks it up by
