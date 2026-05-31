@@ -276,15 +276,13 @@ constructs through `nros plan` and inspected the resulting
       `set_remap_propagates_to_group_children` (asserts both nodes carry
       `from=in → to=/scoped/in` AND their subscriber `resolved_name` is
       `/scoped/in`).
-- [→] **`<set_env>` planner-side gap** — `play_launch_parser` surfaces
-      the entry in `record.json` (`node.env = [["DEMO_LEVEL",
-      "verbose"]]`) but the planner doesn't thread it onto
-      `instances[*].env` — that field stays `None`. The fixture is
-      already shaped for the fix (`<set_env>` lives in the same
-      `<group>` as `<set_remap>`); the in-tree gate
-      (`set_env_propagates_to_group_children`) is `#[ignore]`-d with
-      the gap as the ignore-reason, flips on once the planner change
-      lands.
+- [x] **`<set_env>` propagation** — resolved upstream in `nros-cli`
+      planner `0b78ab8`. Parser already collected the entry
+      (`record.node.env = [["DEMO_LEVEL", "verbose"]]`); planner now
+      threads each pair onto the public schema as
+      `instances[*].env: [{name, value}, …]` (new `EnvDecl` struct +
+      `schema_env` reshape parallel to `schema_remaps`). Gated by
+      `set_env_propagates_to_group_children`.
 - [→] **`<executable>` planner-side gap** — parser records
       `<executable cmd="…">` as a `record.json` `node` with
       `package=None`; the planner then errors `missing-package: launch
@@ -304,9 +302,11 @@ constructs through `nros plan` and inspected the resulting
   *(this tree)*
   `packages/testing/nros-tests/fixtures/orchestration_set_remap_env/*`,
   `packages/testing/nros-tests/tests/orchestration_set_remap_env.rs`;
-  *(planner, upstream)*
-  `nros-cli/packages/nros-cli-core/src/orchestration/planner.rs`
-  (set_env + executable handling).
+  *(planner)*
+  `nros-cli` `0b78ab8` —
+  `packages/nros-cli-core/src/orchestration/{planner,plan,schema}.rs`
+  (set_env propagation + `EnvDecl`); executable handling still
+  pending in the same crate.
 
 ### 211.F — Multi-host launch + the `machine=` attr
 

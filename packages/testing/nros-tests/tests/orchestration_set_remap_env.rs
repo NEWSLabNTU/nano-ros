@@ -120,16 +120,14 @@ fn set_remap_propagates_to_group_children() {
     }
 }
 
-/// Phase 211.E follow-up — `<set_env>` planner-side gap.
+/// Phase 211.E — `<set_env>` declarations land on `instances[*].env`.
 ///
-/// `play_launch_parser` surfaces the entry in `record.json`
-/// (`node.env = [["DEMO_LEVEL", "verbose"]]`), but the planner doesn't
-/// thread it onto `instances[*].env` — that field stays `None`. Flip this
-/// test on once the planner change lands; the fixture is already shaped
-/// for it (`<set_env name=DEMO_LEVEL value=verbose>` lives in the same
-/// `<group>` that carries `<set_remap>`).
+/// Resolved upstream in `nros-cli` planner commit `0b78ab8` (Phase 211.E):
+/// the parser already records `node.env = [["DEMO_LEVEL", "verbose"]]`;
+/// the planner now threads each pair through to the public schema as
+/// `instances[*].env: [{name, value}, …]`. The deploy stage then has
+/// something to ship onto the spawned process.
 #[test]
-#[ignore = "planner-side gap: set_env in record.json is not threaded onto instances[*].env"]
 fn set_env_propagates_to_group_children() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found");
@@ -143,7 +141,9 @@ fn set_env_propagates_to_group_children() {
             .find(|i| i["component"] == format!("demo_se::{needle}"))
             .unwrap_or_else(|| panic!("no demo_se::{needle} instance"));
         let env = inst["env"].as_array().unwrap_or_else(|| {
-            panic!("{needle}: instances[*].env is not an array (planner-fix not yet landed?): {inst:#?}")
+            panic!(
+                "{needle}: instances[*].env is not an array (refreshed nros CLI not on PATH?): {inst:#?}"
+            )
         });
         assert!(
             env.iter()
