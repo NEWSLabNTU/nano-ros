@@ -12,14 +12,15 @@ set(NROS_RMW "zenoh" CACHE STRING
 set(NANO_ROS_RMW "${NROS_RMW}")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
+
+find_package(std_msgs REQUIRED)
 
 
 
 
 add_executable(cpp_listener src/main.cpp)
 target_link_libraries(cpp_listener PRIVATE
-    std_msgs__nano_ros_cpp
+    std_msgs::std_msgs
     NanoRos::NanoRosCpp)
 nros_platform_link_app(cpp_listener)

@@ -536,6 +536,13 @@ function(nros_generate_interfaces target)
       foreach(_dep ${_ARG_DEPENDENCIES})
         if(DEFINED ${_dep}_GENERATED_RS_FILES)
           list(APPEND _ffi_rs_all ${${_dep}_GENERATED_RS_FILES})
+        elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
+          # Phase 210.E.3.a — fall back to the CACHE stash. nros_generate_
+          # interfaces's PARENT_SCOPE re-export only reaches ONE level up;
+          # multi-level chains (smart Find-stub → action-auto-closure
+          # nested call) need to read the cache to see deps that were
+          # generated in a sibling call tree.
+          list(APPEND _ffi_rs_all $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
         endif()
       endforeach()
       list(APPEND _ffi_rs_all ${_generated_rs_files})
@@ -879,6 +886,16 @@ function(nros_generate_interfaces target)
   foreach(_dep ${_ARG_DEPENDENCIES})
     if(DEFINED ${_dep}_GENERATED_RS_FILES)
       list(APPEND _rs_closure ${${_dep}_GENERATED_RS_FILES})
+    elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
+      # Phase 210.E.3.a — same cache fallback as the FFI-include builder
+      # above. A dep generated in a sibling call tree (e.g. the smart
+      # Find-stub triggered builtin_interfaces from inside std_msgs's
+      # find_package recursion) lands its closure ONLY in the cache;
+      # without this elseif, our PARENT_SCOPE re-export would lose the
+      # transitive chain and a downstream consumer (example_interfaces
+      # → action_msgs → builtin_interfaces) would compile against an
+      # incomplete include!() list.
+      list(APPEND _rs_closure $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
     endif()
   endforeach()
   if(_rs_closure)
