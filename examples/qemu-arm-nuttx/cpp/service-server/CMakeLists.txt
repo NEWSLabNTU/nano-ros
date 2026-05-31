@@ -12,7 +12,8 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    nuttx-qemu-arm)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
+find_package(example_interfaces REQUIRED)
 nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
 nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
@@ -22,6 +23,6 @@ add_executable(nuttx_cpp_service_server src/main.cpp)
 target_include_directories(nuttx_cpp_service_server PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(nuttx_cpp_service_server PRIVATE
-    example_interfaces__nano_ros_cpp
+    example_interfaces::example_interfaces
     NanoRos::NanoRosCpp)
 nros_platform_link_app(nuttx_cpp_service_server)

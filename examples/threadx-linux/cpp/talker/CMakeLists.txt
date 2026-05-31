@@ -14,7 +14,8 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    threadx-linux)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
+find_package(std_msgs REQUIRED)
 nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
 nano_ros_generate_config_header(
     "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
@@ -24,7 +25,7 @@ add_executable(threadx_cpp_talker src/main.cpp)
 target_include_directories(threadx_cpp_talker PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(threadx_cpp_talker PRIVATE
-    std_msgs__nano_ros_cpp
+    std_msgs::std_msgs
     NanoRos::NanoRosCpp)
 nros_platform_link_app(threadx_cpp_talker)
 nano_ros_link_rmw(threadx_cpp_talker RMW "${NROS_RMW}")
