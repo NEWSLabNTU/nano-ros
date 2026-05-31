@@ -269,5 +269,12 @@ path = "tests/orchestration_e2e.rs"
 name = "orchestration_composable"
 path = "tests/orchestration_composable.rs"
 
+# Phase 211.I — mixed-RMW bridge e2e: zenoh talker → tt-zenoh-to-xrce
+# bridge → xrce listener round-trip through the Phase 110.G example
+# binary as the gateway fixture.
+[[test]]
+name = "bridge_mixed_rmw"
+path = "tests/bridge_mixed_rmw.rs"
+
 [lints]
 workspace = true

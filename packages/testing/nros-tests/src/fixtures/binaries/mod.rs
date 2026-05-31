@@ -36,6 +36,10 @@ static NATIVE_CT_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 115.F — cached path to the custom-transport-listener example.
 static NATIVE_CT_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Phase 211.I — cached path to the `tt-zenoh-to-xrce` bridge binary used by
+/// the mixed-RMW bridge e2e (Phase 110.G.bridge example reused as fixture).
+static NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-lifecycle-node binary
 static NATIVE_LIFECYCLE_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -748,6 +752,30 @@ pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
     NATIVE_CT_TALKER_BINARY
         .get_or_try_init(|| {
             build_example("native/rust/custom-transport-talker", "talker", None, None)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Phase 211.I — resolve the prebuilt mixed-RMW bridge fixture binary
+/// (`packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd`). Used by
+/// `tests/bridge_mixed_rmw.rs` to forward zenoh `/chatter` samples into an
+/// XRCE-DDS session. A minimal sibling to the Phase 110.G
+/// `tt-zenoh-to-xrce` example: same dual-session topology, but the type
+/// name matches `std_msgs::msg::Int32` (the type the talker/listener
+/// fixtures use) and no TT-window gating — the 211.I assertion is "a
+/// sample crosses the RMW boundary", which the TT example's String-type
+/// constants would block at keyexpr registration.
+///
+/// The fixture sits in its own Cargo workspace (`[workspace]` table); the
+/// test skips cleanly when the binary is missing.
+pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
+    NATIVE_BRIDGE_TT_ZENOH_XRCE_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let dir = root.join("packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd");
+            let profile = cargo_target_profile_dir();
+            let binary = dir.join(format!("target/{profile}/bridge-zenoh-to-xrce-fwd"));
+            require_prebuilt_binary(&binary)
         })
         .map(|p| p.as_path())
 }

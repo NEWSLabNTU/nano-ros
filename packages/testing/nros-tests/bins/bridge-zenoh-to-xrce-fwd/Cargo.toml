@@ -1,0 +1,20 @@
+[workspace]
+
+[package]
+name = "bridge-zenoh-to-xrce-fwd"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 211.I — minimal mixed-RMW bridge fixture. Forwards zenoh /chatter (std_msgs::msg::Int32) into an XRCE-DDS session opened on the egress node. No TT scheduling — pairs with `tests/bridge_mixed_rmw.rs`'s native_rs_talker + xrce_listener_binary roundtrip."
+
+[[bin]]
+name = "bridge-zenoh-to-xrce-fwd"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros-rmw-zenoh = { path = "../../../../zpico/nros-rmw-zenoh", features = ["std", "platform-posix", "ros-humble"] }
+nros-rmw-xrce-cffi = { path = "../../../../xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"] }
+log = "0.4"
+env_logger = "0.11"

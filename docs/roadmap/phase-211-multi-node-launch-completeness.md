@@ -313,14 +313,38 @@ Phase 128/129 landed `nros-bridge` for in-process cross-rmw forwarding.
 node discover each other" via the bridge. This is the headline use case
 the bridge was built for.
 
-- [ ] **Fixture:** `nros-cli/testing_workspaces/mixed_rmw_bridge_e2e/`
-      with one nano-ros XRCE talker + one stock cyclonedds listener
-      (or vice versa) + a bridge node.
-- [ ] **In-tree e2e** — deploy both, assert the listener receives.
-- [ ] **Document the bridge config** in the book (a real "cross-RMW
-      gateway" recipe).
-- **Files:** mirror fixture + `nros-tests/tests/mixed_rmw_bridge.rs` +
-  book pages under `book/src/user-guide/`.
+- [x] **In-tree bridge fixture binary:**
+      `packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd/` —
+      minimal sibling to the Phase 110.G `tt-zenoh-to-xrce` example
+      (same dual-session topology: `Executor::open_with_rmw("zenoh", ...)`
+      primary + `node_builder("egress").rmw("xrce").locator(...)` opens
+      a second XRCE session). Carries the `std_msgs::msg::Int32` type
+      name + hash so the keyexpr matches the standard `talker_binary` /
+      `xrce_listener_binary` fixtures; no TT scheduling (irrelevant for
+      the cross-RMW assertion).
+- [x] **`test_zenoh_to_xrce_bridge_e2e`** in
+      `packages/testing/nros-tests/tests/bridge_mixed_rmw.rs` —
+      spawns zenohd → XRCE Agent → bridge → xrce listener → zenoh
+      talker (in order; bridge before listener so the egress
+      publisher is declared before the listener subscribes) and
+      asserts ≥ 2 bridged samples reach the listener within a 10 s
+      window. Verified 2026-05-31: 2 samples received.
+- [→] **Stock cyclonedds variant** — the original "Autoware listener"
+      framing replaces XRCE with stock `rmw_cyclonedds_cpp`. Needs the
+      bridge to grow a cyclonedds egress (the in-tree fixture is
+      zenoh+XRCE today; cyclonedds backend is C++/CMake-side and
+      links differently). Deferred until a cyclonedds-enabled bridge
+      fixture lands; the zenoh-↔-XRCE round-trip above is the
+      foundation.
+- [→] **Book documentation** — "cross-RMW gateway" recipe under
+      `book/src/user-guide/`. Pairs naturally with the cyclonedds
+      variant; deferred with that.
+- **Files:**
+  *(this tree)*
+  `packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd/*`,
+  `packages/testing/nros-tests/tests/bridge_mixed_rmw.rs`,
+  `packages/testing/nros-tests/src/fixtures/binaries/mod.rs`
+  (`build_bridge_zenoh_to_xrce_fwd`).
 
 ### 211.J — `<include>` recursion safety + depth cap
 
