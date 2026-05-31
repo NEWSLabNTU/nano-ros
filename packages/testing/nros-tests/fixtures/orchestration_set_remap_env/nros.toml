@@ -1,0 +1,31 @@
+# Phase 211.E — <set_remap> / <set_env> / <executable> scoping fixture.
+#
+# Pre-baked record.json (output of `play_launch_parser`) decouples the
+# test from the parser binary on PATH. The launch wraps two `<node>`s in
+# a `<group>` with a `<set_remap from=in to=/scoped/in>` AND a
+# `<set_env name=DEMO_LEVEL value=verbose>`. The test gates:
+#
+#   1. set_remap propagation (planner-side: WORKS today — each child node's
+#      `remaps` carries the scoped entry; subscriber resolved_name picks
+#      up `/scoped/in`).
+#   2. set_env propagation (planner-side: GAP — `record.json` records
+#      `env=[[DEMO_LEVEL, verbose]]` per node but
+#      `instances[*].env` stays `None`; documented as #[ignore] gate
+#      below until the planner threads it through).
+#   3. `<executable>` as a non-rmw spawn entity (planner-side: GAP — record
+#      surfaces it as a `node` with `package=None` and the planner errors
+#      `missing-package`; not exercised in this fixture — adding it would
+#      block the rest of the plan stage).
+
+[workspace]
+default = "native"
+
+[system]
+launch     = "src/demo_se/launch/system.launch.xml"
+components = ["demo_se"]
+rmw        = "zenoh"
+domain_id  = 0
+
+[deploy.native]
+kind   = "self"
+target = "x86_64-unknown-linux-gnu"

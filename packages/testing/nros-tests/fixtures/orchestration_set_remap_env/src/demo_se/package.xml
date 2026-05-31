@@ -1,0 +1,7 @@
+<package format="3">
+  <name>demo_se</name>
+  <version>0.1.0</version>
+  <description>211.E set_remap/set_env/executable fixture</description>
+  <maintainer email="noreply@example.com">nano-ros</maintainer>
+  <license>MIT</license>
+</package>

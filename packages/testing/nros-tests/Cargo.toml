@@ -284,5 +284,11 @@ path = "tests/bridge_mixed_rmw.rs"
 name = "orchestration_conditionals"
 path = "tests/orchestration_conditionals.rs"
 
+# Phase 211.E — <set_remap> propagation gate (works today) + #[ignore]
+# placeholders for the <set_env> / <executable> planner-side gaps.
+[[test]]
+name = "orchestration_set_remap_env"
+path = "tests/orchestration_set_remap_env.rs"
+
 [lints]
 workspace = true

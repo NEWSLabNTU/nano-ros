@@ -1,0 +1,8 @@
+<launch>
+  <group>
+    <set_remap from="in" to="/scoped/in" />
+    <set_env name="DEMO_LEVEL" value="verbose" />
+    <node pkg="demo_se" exec="worker_a" name="worker_a" />
+    <node pkg="demo_se" exec="worker_b" name="worker_b" />
+  </group>
+</launch>

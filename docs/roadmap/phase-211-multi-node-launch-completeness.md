@@ -264,19 +264,49 @@ that audit — the gap was the missing in-tree gate, not a planner change.
 
 ### 211.E — `<set_remap>` / `<set_env>` / `<executable>`
 
-Parser reads them; planner ignores. Production launches use
-`<set_remap>` for global remaps inside a `<group>`, `<set_env>` to
-parameterise downstream `<executable>` calls.
+**Status (audited 2026-05-31): mixed — `<set_remap>` already works
+end-to-end, `<set_env>` parsed but not emitted by planner,
+`<executable>` rejected at plan time.** A fresh audit ran the three
+constructs through `nros plan` and inspected the resulting
+`nros-plan.json` + `record.json`:
 
-- [ ] **Planner:** thread `set_remap` scope down into child entities;
-      thread `set_env` into the plan's per-entity env block.
-- [ ] **`<executable>`** — emit as a non-rmw "spawn" plan entity that the
-      generated entry lib runs alongside (or refuses to deploy with a
-      clear error if the deploy kind doesn't support it).
-- [ ] **Fixture + e2e** — one launch that wraps two `<node>`s in a
-      `<group>` with a `<set_remap from="/in" to="/scoped/in"/>`; verify
-      both nodes resolve `/scoped/in`.
-- **Files:** `nros-cli` planner + new test under `packages/testing/nros-tests/tests/`.
+- [x] **`<set_remap>` propagation** — already implemented. Each child
+      node's `instances[*].remaps` carries the scoped pair, and the
+      subscriber's `resolved_name` reflects the remap target. Gated by
+      `set_remap_propagates_to_group_children` (asserts both nodes carry
+      `from=in → to=/scoped/in` AND their subscriber `resolved_name` is
+      `/scoped/in`).
+- [→] **`<set_env>` planner-side gap** — `play_launch_parser` surfaces
+      the entry in `record.json` (`node.env = [["DEMO_LEVEL",
+      "verbose"]]`) but the planner doesn't thread it onto
+      `instances[*].env` — that field stays `None`. The fixture is
+      already shaped for the fix (`<set_env>` lives in the same
+      `<group>` as `<set_remap>`); the in-tree gate
+      (`set_env_propagates_to_group_children`) is `#[ignore]`-d with
+      the gap as the ignore-reason, flips on once the planner change
+      lands.
+- [→] **`<executable>` planner-side gap** — parser records
+      `<executable cmd="…">` as a `record.json` `node` with
+      `package=None`; the planner then errors `missing-package: launch
+      node has no package` (`planner.rs:102`) and refuses to emit the
+      plan. The 211.E bullet calls for emitting `<executable>` as a
+      non-rmw "spawn" plan entity (or refusing to deploy with a clear
+      error when the deploy kind doesn't support it). Currently NOT
+      exercised by the committed fixture — adding `<executable>` blocks
+      the rest of the plan stage. Captured as
+      `executable_emits_spawn_entity` (`#[ignore]` placeholder).
+- [x] **Fixture + e2e** —
+      `packages/testing/nros-tests/fixtures/orchestration_set_remap_env/`
+      wraps two `<node>`s in a `<group>` carrying both `<set_remap>` and
+      `<set_env>`. Pre-baked `record.json` decouples the test from the
+      parser binary on PATH.
+- **Files:**
+  *(this tree)*
+  `packages/testing/nros-tests/fixtures/orchestration_set_remap_env/*`,
+  `packages/testing/nros-tests/tests/orchestration_set_remap_env.rs`;
+  *(planner, upstream)*
+  `nros-cli/packages/nros-cli-core/src/orchestration/planner.rs`
+  (set_env + executable handling).
 
 ### 211.F — Multi-host launch + the `machine=` attr
 

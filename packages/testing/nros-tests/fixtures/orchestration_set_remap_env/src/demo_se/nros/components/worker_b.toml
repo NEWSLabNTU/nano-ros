@@ -1,0 +1,11 @@
+version = 1
+package = "demo_se"
+component = "worker_b"
+language = "rust"
+[linkage]
+crate_name = "demo_se"
+executable = "container"
+exported_symbol = "nros_component_demo_se_worker_b"
+[metadata]
+source_metadata = "metadata/worker_b.json"
+generated_by = "phase-211.E mirror"
