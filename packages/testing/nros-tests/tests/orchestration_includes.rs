@@ -30,7 +30,10 @@
 //! paths) are the actual test inputs. `--record` makes `nros plan`
 //! ignore the launch path entirely, so the tests are portable.
 
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn fixture_dir() -> PathBuf {
     nros_tests::project_root().join("packages/testing/nros-tests/fixtures/orchestration_includes")
@@ -102,65 +105,216 @@ fn chain_3_levels_resolves_to_leaf() {
     assert_eq!(leaf["launch_name"], "/leaf_node", "wrong launch_name");
 }
 
-/// Phase 211.J follow-up — cyclic includes must error cleanly.
+/// Stage the demo_inc workspace shape (package.xml + nros/components +
+/// metadata) into `dest`, then write the launch files for the scenario by
+/// invoking `write_launches` with the absolute launch dir. Returns the
+/// staged workspace root. Used by the cycle + depth-cap tests, which can't
+/// use the committed launch files: `play_launch_parser` doesn't expand
+/// `$(dirname)`, so each `<include file=…>` needs an absolute path that
+/// only exists at test time.
+fn stage_demo_inc(write_launches: impl FnOnce(&Path)) -> tempfile::TempDir {
+    let src = fixture_dir().join("src/demo_inc");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let dest_pkg = tmp.path().join("src/demo_inc");
+    std::fs::create_dir_all(dest_pkg.join("launch")).unwrap();
+    std::fs::create_dir_all(dest_pkg.join("nros/components")).unwrap();
+    std::fs::create_dir_all(dest_pkg.join("metadata")).unwrap();
+    std::fs::copy(src.join("package.xml"), dest_pkg.join("package.xml")).unwrap();
+    for entry in std::fs::read_dir(src.join("nros/components"))
+        .unwrap()
+        .flatten()
+    {
+        let to = dest_pkg.join("nros/components").join(entry.file_name());
+        std::fs::copy(entry.path(), to).unwrap();
+    }
+    for entry in std::fs::read_dir(src.join("metadata")).unwrap().flatten() {
+        let to = dest_pkg.join("metadata").join(entry.file_name());
+        std::fs::copy(entry.path(), to).unwrap();
+    }
+    std::fs::copy(
+        fixture_dir().join("nros.toml"),
+        tmp.path().join("nros.toml"),
+    )
+    .unwrap();
+    write_launches(&dest_pkg.join("launch"));
+    tmp
+}
+
+fn run_plan_live(
+    workspace: &Path,
+    launch_subpath: &str,
+    env: &[(&str, &str)],
+) -> std::process::Output {
+    let nros = nros_tests::nros_cli_bin_path().expect("require_nros_cli passed");
+    let out = tempfile::tempdir().expect("tempdir");
+    let mut cmd = Command::new(&nros);
+    cmd.arg("plan")
+        .arg("demo_inc")
+        // Run with the workspace as cwd so `play_launch_parser` resolves the
+        // `src/demo_inc/launch/<file>` arg against the live tempdir (the
+        // parser interprets relative paths against its own cwd, not against
+        // `--workspace`).
+        .current_dir(workspace)
+        .arg(format!("src/demo_inc/launch/{launch_subpath}"))
+        .arg("--workspace")
+        .arg(workspace)
+        .arg("--nros-toml")
+        .arg(workspace.join("nros.toml"))
+        .arg("--out-dir")
+        .arg(out.path());
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    cmd.output().expect("spawn nros plan")
+}
+
+fn write(dir: &Path, name: &str, contents: &str) {
+    std::fs::write(dir.join(name), contents).unwrap();
+}
+
+/// Phase 211.J — cyclic includes raise a clean `CircularInclude` diagnostic.
 ///
-/// `play_launch_parser` swallows the cycle (`cycle_a → cycle_b → cycle_a
-/// → …`) — `record.json` has zero nodes and the planner happily emits
-/// zero instances. The 211.J bullet calls for a clean
-/// `cycle-detected` diagnostic. Flip this test on once either the
-/// parser or the planner raises the diagnostic; the fixture is already
-/// shaped for it (`record-cycle.json` is the parser's empty-output
-/// response to the cycle).
+/// Drives `nros plan` against a freshly-written cycle (`cycle_a → cycle_b
+/// → cycle_a → …`) with the live parser. Requires the parser binary on
+/// PATH; skipped cleanly when missing.
+///
+/// nros plan always passes `--strict-includes` to the parser (see
+/// `nros-cli` planner.rs), so a cycle exits non-zero with the include
+/// chain rendered in stderr. Previously this gate was `#[ignore]`-d
+/// (parser warn-and-skip default produced an empty plan); flipped on
+/// after parser commit 098ccb4 + nros-cli planner commit a2675aa landed.
 #[test]
-#[ignore = "planner-side gap: cyclic include silently produces an empty plan, no cycle diagnostic"]
 fn cycle_rejected_with_clear_diagnostic() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found");
     }
-    let (result, _plan) = plan("record-cycle.json", "cycle_entry.launch.xml");
+    if std::process::Command::new("play_launch_parser")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        nros_tests::skip!("play_launch_parser not on PATH");
+    }
 
-    // The expected post-fix behavior: `nros plan` exits non-zero with a
-    // stderr message mentioning "cycle" / "include" / the file path. The
-    // current behavior is exit=0 + empty instances — caught by the
-    // ignore-reason above.
+    let tmp = stage_demo_inc(|launch_dir| {
+        let a = launch_dir.join("cycle_a.launch.xml");
+        let b = launch_dir.join("cycle_b.launch.xml");
+        let entry = launch_dir.join("cycle_entry.launch.xml");
+        write(
+            launch_dir,
+            "cycle_entry.launch.xml",
+            &format!(
+                "<launch>\n  <include file=\"{}\" />\n</launch>\n",
+                a.display()
+            ),
+        );
+        write(
+            launch_dir,
+            "cycle_a.launch.xml",
+            &format!(
+                "<launch>\n  <include file=\"{}\" />\n</launch>\n",
+                b.display()
+            ),
+        );
+        write(
+            launch_dir,
+            "cycle_b.launch.xml",
+            &format!(
+                "<launch>\n  <include file=\"{}\" />\n</launch>\n",
+                a.display()
+            ),
+        );
+        let _ = entry; // entry only used to confirm path resolves; intentional
+    });
+    let result = run_plan_live(tmp.path(), "cycle_entry.launch.xml", &[]);
     assert!(
         !result.status.success(),
-        "nros plan should reject the cyclic include; exit={}",
-        result.status
+        "nros plan should reject the cyclic include; exit={}, stdout=\n{}",
+        result.status,
+        String::from_utf8_lossy(&result.stdout)
     );
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
-        stderr.contains("cycle") || stderr.contains("include"),
-        "expected `cycle` / `include` diagnostic in stderr, got:\n{stderr}"
+        stderr.contains("Cyclic") || stderr.contains("cycle"),
+        "expected a cycle diagnostic in stderr, got:\n{stderr}"
     );
 }
 
-/// Phase 211.J follow-up — depth cap enforcement.
+/// Phase 211.J — depth-cap enforcement on `<include>` nesting.
 ///
-/// The committed `record-deep.json` is the parser output for a 17-level
-/// chain (`system → lvl_0 → … → lvl_15 → lvl_16` carrying the leaf
-/// node) — one beyond the proposed default cap of 16. Today the planner
-/// happily emits the leaf instance; the 211.J bullet calls for a
-/// `depth-cap-exceeded` diagnostic. Flip this test on once the planner
-/// enforces the cap.
+/// Writes an 18-level chain (entry → lvl_0 → … → lvl_16) and runs
+/// `nros plan` with `NROS_PLAY_LAUNCH_MAX_INCLUDE_DEPTH=16` so the parser
+/// trips its `MaxIncludeDepthExceeded` guard. Skipped cleanly when the
+/// parser binary isn't on PATH.
+///
+/// Previously `#[ignore]`-d (parser's default cap of 100 wouldn't trip
+/// on a 17-level chain); flipped on after parser commit 098ccb4 + nros-cli
+/// planner commit a2675aa added the env-var-driven cap.
 #[test]
-#[ignore = "planner-side gap: no depth cap on `<include>` nesting; 17 levels resolve silently"]
 fn depth_cap_rejects_over_16() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found");
     }
-    let (result, _plan) = plan("record-deep.json", "deep_entry.launch.xml");
+    if std::process::Command::new("play_launch_parser")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        nros_tests::skip!("play_launch_parser not on PATH");
+    }
 
-    // Expected post-fix: `nros plan` exits non-zero with a depth-cap
-    // diagnostic. Current behavior is exit=0 + the leaf instance lands.
+    let tmp = stage_demo_inc(|launch_dir| {
+        // 17 intermediates lvl_0..lvl_16; lvl_16 carries the leaf node.
+        for i in 0..=16usize {
+            let name = format!("lvl_{i}.launch.xml");
+            if i < 16 {
+                let next = launch_dir.join(format!("lvl_{}.launch.xml", i + 1));
+                write(
+                    launch_dir,
+                    &name,
+                    &format!(
+                        "<launch>\n  <include file=\"{}\" />\n</launch>\n",
+                        next.display()
+                    ),
+                );
+            } else {
+                write(
+                    launch_dir,
+                    &name,
+                    "<launch>\n  <node pkg=\"demo_inc\" exec=\"leaf\" name=\"leaf_node\" />\n</launch>\n",
+                );
+            }
+        }
+        let lvl0 = launch_dir.join("lvl_0.launch.xml");
+        write(
+            launch_dir,
+            "deep_entry.launch.xml",
+            &format!(
+                "<launch>\n  <include file=\"{}\" />\n</launch>\n",
+                lvl0.display()
+            ),
+        );
+    });
+    let result = run_plan_live(
+        tmp.path(),
+        "deep_entry.launch.xml",
+        &[("NROS_PLAY_LAUNCH_MAX_INCLUDE_DEPTH", "16")],
+    );
     assert!(
         !result.status.success(),
-        "nros plan should reject the 17-level include chain (cap=16); exit={}",
-        result.status
+        "nros plan should reject the over-cap include chain; exit={}, stdout=\n{}",
+        result.status,
+        String::from_utf8_lossy(&result.stdout)
     );
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
-        stderr.contains("depth") || stderr.contains("cap") || stderr.contains("include"),
-        "expected `depth` / `cap` / `include` diagnostic in stderr, got:\n{stderr}"
+        stderr.contains("Maximum include depth")
+            || stderr.contains("depth")
+            || stderr.contains("16"),
+        "expected a depth-cap diagnostic in stderr, got:\n{stderr}"
     );
 }
