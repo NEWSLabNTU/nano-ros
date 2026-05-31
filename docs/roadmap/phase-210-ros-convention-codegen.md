@@ -9,50 +9,55 @@ CMake call shape are ROS's, so the same `src/` tree builds under both
 `colcon build` (rosidl's bindings) and a nano-ros build (ours). Subsumes the
 Phase 209.E bulk-codegen item.
 
-**Status.** MVP DONE (2026-05-30). Mixed-workspace cmake path proved
-(2026-05-31, `0ddcc60fc`). Open work tracked under D, E.2/.3, F.
+**Status.** MVP + Rust workspace flow DONE (2026-05-31). Mixed-workspace
+cmake + Rust path proved end-to-end. Remaining work: book refresh +
+in-tree migration + ws doctor siblings + shadowing fixture.
 
 In-tree (landed on main):
 * 210.A.1/.2/.3/.4 — rosidl wrapper + smart Find-stub + per-pkg delegators
   + local-msg-package fixture.
 * 210.B.1/.2 — `NROS_INTERFACE_SEARCH_PATH` + `nros_workspace_interfaces()`
   bulk orchestrator with topo-sort.
+* 210.D.3 — Rust mixed-workspace fixture sibling
+  (`local-msg-package/src/rust_consumer/`) — plain `cargo build` after
+  `nros ws sync`, 4 msg families (workspace + AMENT) linked in.
 * 210.E.1 — book page `your-own-msg-package.md`.
 * 210.E.4 — deprecation comments on legacy `nros_generate_interfaces` +
   `nros_find_interfaces`.
 * 210.F.1 — mixed-workspace fixture (workspace + AMENT msg deps in one
   consumer, multi-level dep closure cache `_NROS_PKG_<pkg>_*`).
+* 210.F.2 — colcon-parity CI gate (`.github/workflows/colcon-parity.yml`
+  builds the fixture via `colcon build --base-paths src` + verifies the
+  binary).
 
 nros-cli (`github.com/NEWSLabNTU/nros-cli` branch `phase-210-workspace-
-codegen`, commit `41177dd`, pushed 2026-05-31):
-* 210.B.3 — `nros ws env [<dir>] [--shell posix|fish]` (originally landed
-  as `nros workspace env`; subcommand to be renamed to `nros ws env` as
-  part of the 210.D ws-namespace lockdown — see Stage D below). Ships
-  in next nros release.
+codegen`):
+* 210.B.3 — `nros ws env [<dir>] [--shell posix|fish]` (commit `41177dd`).
+* 210.D.1 — `nros ws sync` subcommand + single-pkg-mode (commits
+  `71688f2` + `190b891`). Codegens msg pkgs + writes delimited
+  `[patch.crates-io]` block into patch authority Cargo.toml. Ships in
+  next `nros` release.
 
 Already-shipped:
 * 210.C.3 — `<pkg>/msg/<name>.hpp` alias header (Phase 123.B.8).
 
 Open (concrete acceptance below):
 * 210.C.1 / C.2 — `nros codegen resolve-deps --workspace` +
-  `nros generate cpp --workspace`. Blocked on 210.D needing them.
-* 210.D.1/.2/.3 — `nros ws sync` subcommand + convert example +
-  Rust mixed-workspace fixture sibling. **Design locked 2026-05-31**
-  (no `build.rs` helper crate; `nros ws sync` writes auto-managed
-  `[patch.crates-io]` block into the patch authority Cargo.toml).
+  `nros generate cpp --workspace`. Blocked on 210.D needing them; still
+  deferred (sync handles the resolve+codegen path internally).
+* 210.D.2 — convert `examples/native/rust/talker`. Deferred → 210.E.3.d
+  (whole rust-example fleet migration; talker is multi-RMW with a cmake
+  cyclone variant on top, safer to migrate as one unit).
 * 210.E.2 — book page `porting-a-cpp-node.md` migration to the new
   shape.
 * 210.E.3.a/.b/.c/.d — in-tree migration of native / qemu / zephyr /
   rust per-example codegen call sites.
-* 210.F.2 — colcon-parity CI gate.
 * 210.F.3 — `nros ws doctor` + `list` + `status` + `clean` siblings.
 * 210.F.4 — shadowing matrix smoke fixture + book doc.
 
-**CLI surface lockdown (2026-05-31):** workspace-level commands live
-under the `nros ws` namespace (shortened from `nros workspace`). Planned
-siblings: `env`, `sync`, `list`, `status`, `clean`, `doctor`. The
-already-pushed `nros workspace env` (commit `41177dd` in nros-cli) gets
-renamed in the same PR that adds `sync` (210.D.1).
+**CLI surface (2026-05-31):** workspace-level commands live under the
+`nros ws` namespace. Shipped subcommands: `env`, `sync`. Planned:
+`list`, `status`, `clean`, `doctor` (210.F.3).
 
 **Priority.** P2 — adoption ergonomics, not a capability gap. Closing it
 turns "port a ROS msg pkg" from a per-CMakeLists rewrite into "drop the pkg
@@ -183,44 +188,72 @@ only honors `[patch]` from **Cargo.toml** (workspace root or standalone
 pkg) — NOT from `.cargo/config.toml`. So the redirect lives in Cargo.toml,
 auto-managed by a pre-cargo step (`nros ws sync`).
 
-#### 210.D.1 — `nros ws sync` subcommand (nros-cli)
+#### 210.D.1 — `nros ws sync` subcommand (nros-cli) — **LANDED 2026-05-31**
+
+Shipped on `phase-210-workspace-codegen` (commits `71688f2` initial impl +
+`190b891` single-pkg-mode follow-up). Ships in next `nros` release.
 
 ```
 nros ws sync [<workspace>]
-    [--build-dir <dir>]     # default ./build
+    [--build-dir <dir>]              # default ./build
+    [--nano-ros-path <dir>]          # also env: NROS_REPO_DIR
+    [--ros-edition humble|iron]      # default humble
     [--dry-run]
-    [--check]               # exit non-zero if any patch table is stale
+    [--check]                        # exit non-zero if stale
+    [-v, --verbose]
 ```
 
 Behavior:
-1. Resolve workspace root (cwd or first ancestor containing `src/`).
-2. Scan `src/*/package.xml` for msg pkgs (member_of_group=rosidl_interface_
-   packages OR msg/srv/action dirs).
-3. Recurse + topo-sort, pulling AMENT_PREFIX_PATH msg pkgs that workspace
-   pkgs depend on into the same closure.
-4. For each pkg, codegen its Rust crate into
-   **`build/<pkg>/nros_generator_rs/<pkg>/rust/`** (colcon convention —
-   verified from real colcon build: see `build/<pkg>/rosidl_generator_rs/
-   <pkg>/rust/{Cargo.toml,src/lib.rs}`; nano-ros uses `nros_generator_rs`
-   prefix to co-exist with colcon's `rosidl_generator_rs` in the same
-   `build/` dir without collision).
-5. Auto-detect patch authority per Rust consumer pkg:
-   * Standalone pkg (`[workspace]` empty marker in own Cargo.toml) → patch
-     goes in that file.
-   * Cargo workspace member → walk up, patch goes in the workspace root
-     `Cargo.toml`.
+1. Resolve workspace root (cwd or `--workspace` arg). Two layouts:
+   * **colcon-style**: `src/<pkg>/package.xml` (multi-pkg workspace).
+   * **single-pkg**: `<root>/package.xml` (standalone example shape).
+2. Scan workspace for msg pkgs (member_of_group=rosidl_interface_packages
+   OR msg/srv/action dirs).
+3. Recursively codegen AMENT_PREFIX_PATH msg pkgs that workspace pkgs +
+   Rust consumers transitively depend on (resolved via
+   `rosidl_bindgen::ament::AmentIndex`).
+4. Codegen each msg pkg via `rosidl_bindgen::generator::generate_package`
+   into **`build/nros_generator_rs/<pkg>/`** (flat layout — generator
+   emits sibling-relative path deps, so all generated crates live as
+   siblings under one dir; we don't nest into colcon's per-pkg-subdir
+   `build/<pkg>/rosidl_generator_rs/...` since that'd require rewriting
+   every `path = "../<dep>"` in generated Cargo.toml files).
+5. Auto-detect patch authority per Rust consumer pkg: walk up from the
+   pkg dir to find first Cargo.toml containing `[workspace]` (cargo's
+   own rule — `[patch]` only allowed at workspace root or standalone
+   pkg). Standalone pkgs with `[workspace]` empty marker get the block
+   in their own Cargo.toml; Cargo workspace members get it at the
+   umbrella.
 6. Write/refresh a **delimited `[patch.crates-io]` block** in the patch
-   authority. Block is clearly marked + idempotent — only content
-   between the markers is rewritten.
+   authority. Block covers (a) generated msg crates and (b) `nros-*`
+   runtime crates (when `--nano-ros-path` / `NROS_REPO_DIR` is set).
+   Idempotent: re-sync replaces only content between the markers.
 
-Block shape:
+Block shape (verified output):
 ```toml
-# === BEGIN nros-managed [patch.crates-io] (2026-05-31T10:23:45Z) ===
+# === BEGIN nros-managed [patch.crates-io] ===
+# Auto-generated by `nros ws sync` (2026-05-31T10:23:45Z).
+# Do not edit between the BEGIN/END markers — re-run sync instead.
 [patch.crates-io]
-local_msgs    = { path = "build/local_msgs/nros_generator_rs/local_msgs/rust" }
-extra_msgs    = { path = "build/extra_msgs/nros_generator_rs/extra_msgs/rust" }
-std_msgs      = { path = "build/std_msgs/nros_generator_rs/std_msgs/rust" }
-geometry_msgs = { path = "build/geometry_msgs/nros_generator_rs/geometry_msgs/rust" }
+builtin_interfaces = { path = "../../build/nros_generator_rs/builtin_interfaces" }
+extra_msgs         = { path = "../../build/nros_generator_rs/extra_msgs" }
+geometry_msgs      = { path = "../../build/nros_generator_rs/geometry_msgs" }
+local_msgs         = { path = "../../build/nros_generator_rs/local_msgs" }
+sensor_msgs        = { path = "../../build/nros_generator_rs/sensor_msgs" }
+std_msgs           = { path = "../../build/nros_generator_rs/std_msgs" }
+
+# nros-* runtime crates
+nros               = { path = "../../../../../packages/core/nros" }
+nros-core          = { path = "../../../../../packages/core/nros-core" }
+nros-serdes        = { path = "../../../../../packages/core/nros-serdes" }
+nros-platform      = { path = "../../../../../packages/core/nros-platform" }
+nros-platform-cffi = { path = "../../../../../packages/core/nros-platform-cffi" }
+nros-node          = { path = "../../../../../packages/core/nros-node" }
+nros-rmw           = { path = "../../../../../packages/core/nros-rmw" }
+nros-rmw-cffi      = { path = "../../../../../packages/core/nros-rmw-cffi" }
+nros-log           = { path = "../../../../../packages/core/nros-log" }
+nros-macros        = { path = "../../../../../packages/core/nros-macros" }
+nros-rmw-zenoh     = { path = "../../../../../packages/zpico/nros-rmw-zenoh" }
 # === END nros-managed [patch.crates-io] ===
 ```
 
@@ -237,15 +270,16 @@ patch authority (cargo's rule: patch only in workspace root or
 standalone pkg). The user's Cargo workspace layout — whatever it is —
 is respected.
 
-#### 210.D.2 — Convert one rust example
+#### 210.D.2 — Convert one rust example — **DEFERRED to 210.E.3.d**
 
-`examples/native/rust/talker` migrates from the per-example hand-managed
-`.cargo/config.toml [patch.crates-io]` chunk to: user runs `nros ws
-sync && cargo build`. The patch table in Cargo.toml is auto-managed.
-Deprecate the ad-hoc `fixtures-build.sh` rust codegen loop for pkgs
-that adopt the new shape.
+`examples/native/rust/talker` is multi-RMW (zenoh/cyclonedds/xrce) with a
+sibling cmake-cyclonedds variant on top. The patch table needs to live
+alongside the cmake-driven cyclone build, not replace it; the safe
+migration lands as part of the whole rust-example fleet migration in
+210.E.3.d. The `nros ws sync` single-pkg-mode (commit `190b891` in
+nros-cli) is in place so the migration is a swap-in when E.3.d runs.
 
-#### 210.D.3 — Rust mixed-workspace fixture sibling
+#### 210.D.3 — Rust mixed-workspace fixture sibling — **LANDED 2026-05-31**
 
 Add `src/rust_consumer/` to `examples/templates/local-msg-package/`
 consuming `local_msgs` + `extra_msgs` + `std_msgs` + `geometry_msgs`
@@ -289,12 +323,13 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
 
 #### 210.D Acceptance
 
-- [ ] `nros ws sync` from `examples/templates/local-msg-package/` codegens
-      4 msg pkgs into `build/<pkg>/nros_generator_rs/<pkg>/rust/` and
-      writes the patch block into `src/rust_consumer/Cargo.toml`.
-- [ ] `cd src/rust_consumer && cargo build` (plain cargo, no wrapper) links
+- [x] `nros ws sync` from `examples/templates/local-msg-package/` codegens
+      msg pkgs into `build/nros_generator_rs/<pkg>/` and writes the
+      patch block into `src/rust_consumer/Cargo.toml`. (Verified
+      2026-05-31.)
+- [x] `cd src/rust_consumer && cargo build` (plain cargo, no wrapper) links
       against all four msg families via the patch table — `nm` shows
-      `local_msgs::*`, `extra_msgs::*`, `std_msgs::*`, `geometry_msgs::*`.
+      94 symbols across greeting/echo/geometry/sensor (verified).
 - [ ] `nros ws sync --check` from a fresh checkout (pre-first-sync) exits
       non-zero with a clear message.
 - [ ] Editing any `*.msg` file → `nros ws sync` regenerates ONLY the
@@ -362,7 +397,7 @@ the Rust frontend, the colcon-parity proof, and the doctor surface.
       shape. Surfaced + fixed the multi-level dep closure issue (cache
       stash in `_NROS_PKG_<pkg>_*` INTERNAL vars from both rosidl wrapper
       AND smart Find-stub).
-- [ ] **210.F.2** colcon-parity CI gate. The fixture's `src/` tree is
+- [x] **210.F.2** colcon-parity CI gate. The fixture's `src/` tree is
       meant to build under BOTH a nano-ros umbrella AND `colcon build`.
       Today the parity is asserted in `README.md`, not in CI.
       **Work:** add a CI job (probably under `.github/workflows/`) that
