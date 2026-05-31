@@ -9,10 +9,8 @@ project(nros_zephyr_service_server_cpp LANGUAGES CXX)
 # nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
 # platform support, and the nros-cpp library automatically.
 
-nros_generate_interfaces(example_interfaces
-    "srv/AddTwoInts.srv"
-    LANGUAGE CPP
-)
+include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")
+find_package(example_interfaces REQUIRED)
 
 
 # Phase 11W.12 — Cyclone DDS needs C `dds_topic_descriptor_t`s for each

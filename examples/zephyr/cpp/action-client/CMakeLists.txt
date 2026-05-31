@@ -9,10 +9,8 @@ project(nros_zephyr_action_client_cpp LANGUAGES CXX C)
 # nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
 # platform support, and the nros-cpp library automatically.
 
-nros_generate_interfaces(example_interfaces
-    "action/Fibonacci.action"
-    LANGUAGE CPP
-)
+include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")
+find_package(example_interfaces REQUIRED)
 
 if(CONFIG_NROS_RMW_CYCLONEDDS)
     list(APPEND CMAKE_MODULE_PATH "${NROS_CYCLONE_CMAKE_DIR}")

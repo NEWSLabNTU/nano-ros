@@ -387,7 +387,28 @@ function(nros_generate_interfaces target)
     # this set the cross-package FFI include!() chain was empty and
     # every consumer that referenced a type from a sibling package
     # failed to compile.
-    set(${target}_GENERATED_RS_FILES "${_generated_rs_files}" PARENT_SCOPE)
+    # Build the TRANSITIVE closure (own files + every dep's closure)
+    # so a downstream consumer pulling THIS target as a dep gets every
+    # nested type. Mirrors the canonical resolver in
+    # cmake/NanoRosGenerateInterfaces.cmake (Phase 210.E.3.c).
+    set(_rs_closure "${_generated_rs_files}")
+    foreach(_dep ${_ARG_DEPENDENCIES})
+      if(DEFINED ${_dep}_GENERATED_RS_FILES)
+        list(APPEND _rs_closure ${${_dep}_GENERATED_RS_FILES})
+      elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
+        list(APPEND _rs_closure $CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
+      endif()
+    endforeach()
+    if(_rs_closure)
+      list(REMOVE_DUPLICATES _rs_closure)
+    endif()
+    set(${target}_GENERATED_RS_FILES "${_rs_closure}" PARENT_SCOPE)
+
+    # Stash in INTERNAL CACHE so downstream consumers via the smart
+    # Find-stub fast-return path (or another nros_generate_interfaces
+    # call in a sibling scope) can read the closure.
+    set(_NROS_PKG_${target}_GENERATED_RS_FILES "${_rs_closure}"
+        CACHE INTERNAL "nros cached GENERATED_RS_FILES closure for ${target}" FORCE)
 
     if(NOT _generated_headers)
       message(FATAL_ERROR
@@ -506,16 +527,25 @@ panic = \"abort\"
       # so cross-package type references resolve correctly.
       set(NROS_CPP_FFI_INCLUDES "")
 
-      # include!() dependency FFI .rs files (so their types are in scope)
+      # include!() dependency FFI .rs files (so their types are in scope).
+      # Phase 210.E.3.c — same CACHE-fallback as the canonical
+      # cmake/NanoRosGenerateInterfaces.cmake: multi-level dep chains
+      # generated via the smart Find-stub recursion land their FFI .rs
+      # closure in `_NROS_PKG_<pkg>_GENERATED_RS_FILES` (INTERNAL CACHE).
+      # Read from cache when the regular var isn't in this scope.
       foreach(_dep ${_ARG_DEPENDENCIES})
+        set(_dep_rs "")
         if(DEFINED ${_dep}_GENERATED_RS_FILES)
-          foreach(_rs_file ${${_dep}_GENERATED_RS_FILES})
-            get_filename_component(_rs_name "${_rs_file}" NAME)
-            if(NOT _rs_name STREQUAL "mod.rs")
-              string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
-            endif()
-          endforeach()
+          set(_dep_rs "${${_dep}_GENERATED_RS_FILES}")
+        elseif(DEFINED CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES})
+          set(_dep_rs "$CACHE{_NROS_PKG_${_dep}_GENERATED_RS_FILES}")
         endif()
+        foreach(_rs_file ${_dep_rs})
+          get_filename_component(_rs_name "${_rs_file}" NAME)
+          if(NOT _rs_name STREQUAL "mod.rs")
+            string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
+          endif()
+        endforeach()
       endforeach()
 
       # include!() own FFI .rs files
