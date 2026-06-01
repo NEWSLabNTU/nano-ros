@@ -93,7 +93,7 @@ forward-compat invariant the future registry depends on.
 
 | # | Item | Decided by |
 |---|---|---|
-| F1 | `wcr` name availability on crates.io + GitHub + npm + pypi; fallback name list ready | 211.1 day 1 |
+| ~~F1~~ | ~~`wcr` name availability on crates.io + GitHub + npm + pypi; fallback name list ready~~ → **resolved 2026-06-01**: name available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; dormant 2016 npm package `wcr@0.9.7` (RDF wrapper, irrelevant to our publishing path). Adopt `wcr` without fallback | resolved |
 | U1 | `cfg(feature = "proofs")` gating spike — Creusot annotations + proc-macro hygiene + `cargo check --no-default-features` clean | 211.1 end |
 | U2 | Feature-gating decision-gate measurement procedure | 211.2 kickoff |
 | U6 | `creusot_contracts` Cargo dep wiring (workspace-level + per-crate opt-in under `proofs` feature) | 211.2 |
@@ -120,13 +120,13 @@ forward-compat invariant the future registry depends on.
 | In-toto JSONL **line-per-(crate, language)** semantics — PoC ships one line, future appends C-extraction lines | `wcr-attest::intoto` | 211.1 (documented even though only one line in PoC) |
 | Attestation `tcb` field lists all extractor + verifier + prover versions | `wcr-attest::intoto` | 211.1 |
 
-Two **provisional** items above must be re-confirmed when the post-PoC
-registry stand-up begins:
+One **provisional** item remains:
 
 - **In-toto URI** — use the GitHub path until the registry domain is
   decided. If the URI changes, every PoC-era bundle re-signed by 211.8.
-- **`wcr` name** — if F1 forces a fallback name, every crate published
-  from PoC is republished under the new name. Day-1 check prevents this.
+
+The `wcr` name is **confirmed available** as of 2026-06-01 (F1 check,
+see backlog). No fallback needed.
 
 ### PoC exit criterion
 
@@ -965,7 +965,7 @@ items below remain open as scoped backlog.
 
 | # | Issue | Target |
 |---|---|---|
-| F1 | `wcr` name availability check — crates.io + github.com + npm + pypi search. Confirm before scaffold | 211.1 day 1 |
+| ~~F1~~ | ~~`wcr` name availability check~~ → **resolved 2026-06-01**: name available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; npm has a dormant 2016 RDF wrapper at `wcr@0.9.7` (non-blocking — no JS publishing planned, use `@nrlntu/wcr` scope if ever needed). GitHub minor: `mehdi-farsi/wcr` (Ruby wc-wrapper, 6 stars) and small forks — no org-namespace pressure. Adopted | resolved |
 | F2 | `wcr.dev` domain registration. If unavailable: pick `wcr-format.io` or use `https://github.com/NEWSLabNTU/wcr/blob/main/schemas/` as the canonical URI base | 211.1 day 1 |
 | F3 | Repository governance for wcr. Default: NEWSLabNTU org. Eclipse contribution path considered post-211.8 | 211.8 |
 | F4 | Bus factor mitigation needs a named second pair (not just "document"). Pick before 211.1 kickoff | 211.1 |
@@ -982,7 +982,7 @@ items below remain open as scoped backlog.
 | N4 | Phase 211 does not state Miri's role. Add 1-line statement: Miri continues as orthogonal UB-detector under `test-miri` tier; not displaced | 211.6 |
 | N5 | Line 388 (Cyclone DDS RMW) — phrase as "nano-ros Rust shim around upstream Cyclone DDS C++; C portions of the shim deferred to cross-language post-PoC" | 211.7 prep |
 
-### Resolved by Pass A (2026-06-01)
+### Resolved by Pass A + F1 check (2026-06-01)
 
 | # | Issue | How |
 |---|---|---|
@@ -994,6 +994,7 @@ items below remain open as scoped backlog.
 | B7 | `kind` field missing from schema | Added `kind = "code"` (default) / `kind = "axiom"` to top-level schema |
 | (add) | `wcr deps` not in CLI surface | Added to tool-layering diagram |
 | (add) | Theory naming convention undocumented | Added explicit convention table in Architecture section |
+| F1 | `wcr` name availability check | Confirmed available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; npm overlap dormant + non-blocking. Adopted without fallback |
 
 ## Notes
 
