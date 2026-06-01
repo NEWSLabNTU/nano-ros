@@ -3,7 +3,7 @@
 [workspace]
 
 [package]
-name = "listener_component"
+name = "listener_pkg_component"
 version = "0.1.0"
 edition = "2024"
 

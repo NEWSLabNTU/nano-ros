@@ -82,36 +82,42 @@ function(nros_threadx_codegen_system)
             string(JSON _lang GET "${_plan}" components ${i} language)
             string(APPEND _extern_block
                 "extern void nros_component_${_comp}_entry(void);\n")
-            # Weak default: when Corrosion isn't on the host the Rust
-            # component staticlib isn't linked; the weak stub keeps the
-            # binary linkable + prints a deterministic marker so the
-            # integration test can still grep for component identity.
-            string(APPEND _weak_block
-                "__attribute__((weak)) void nros_component_${_comp}_entry(void) {\n"
-                "    puts(\"[${_comp}] stub component entry (no rust impl linked)\");\n"
-                "}\n")
             string(APPEND _call_block
                 "    nros_component_${_comp}_entry();\n")
+            set(_imported FALSE)
             if(_lang STREQUAL "rust")
                 set(_pkg_dir "${_NTX_WORKSPACE_ROOT}/src/${_pkg}")
                 if(EXISTS "${_pkg_dir}/Cargo.toml")
                     string(APPEND _cargo_members "  \"src/${_pkg}\",\n")
                     if(COMMAND corrosion_import_crate)
-                        # Corrosion names staticlib targets <crate>-static.
-                        # The fixture crates are `talker_component` /
-                        # `listener_component`; the cmake target ends up
-                        # as `${cratename}-static`. The import is
-                        # idempotent across multiple add_subdirectory()
-                        # consumers.
+                        # Corrosion's import is idempotent across multiple
+                        # consumers. Target name = `<crate>-static` (or
+                        # `<crate>` on older Corrosion versions).
                         corrosion_import_crate(
                             MANIFEST_PATH "${_pkg_dir}/Cargo.toml")
                         list(APPEND _rust_libs "${_pkg}")
+                        set(_imported TRUE)
                     else()
                         message(STATUS
                             "nros_threadx_codegen_system: Corrosion not available; "
-                            "skipping corrosion_import_crate for ${_pkg}.")
+                            "emitting weak stub for ${_pkg}.")
                     endif()
                 endif()
+            endif()
+            if(NOT _imported)
+                # Weak default: when no Rust staticlib is being linked
+                # (no Corrosion, or non-Rust component without its own
+                # backing object) keep the binary linkable + print a
+                # deterministic marker so the integration test can grep
+                # for component identity. When the component IS being
+                # linked from Rust via Corrosion, omitting the weak
+                # avoids the duplicate-definition vs. compiler-builtins
+                # behaviour when `--whole-archive` is used to force the
+                # strong override.
+                string(APPEND _weak_block
+                    "__attribute__((weak)) void nros_component_${_comp}_entry(void) {\n"
+                    "    puts(\"[${_comp}] stub component entry (no rust impl linked)\");\n"
+                    "}\n")
             endif()
         endforeach()
     endif()
@@ -150,9 +156,9 @@ function(nros_threadx_link_app target)
     foreach(_pkg ${_NROS_THREADX_COMPONENT_LIBS})
         # Corrosion's staticlib target naming: `<crate>-static`. The
         # fixture crates name the staticlib after the pkg's lib name
-        # (`talker_component` / `listener_component`); resolve to that.
-        # We accept either `<crate>` or `<crate>-static` to stay forward
-        # compatible with Corrosion's surface bumps.
+        # (`talker_pkg_component` / `listener_pkg_component`); resolve
+        # to that. We accept either `<crate>` or `<crate>-static` to
+        # stay forward compatible with Corrosion's surface bumps.
         set(_crate_static "${_pkg}_component-static")
         set(_crate_plain  "${_pkg}_component")
         if(TARGET ${_crate_static})

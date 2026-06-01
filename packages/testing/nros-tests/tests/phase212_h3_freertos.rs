@@ -24,7 +24,9 @@ use std::{
     process::Command,
 };
 
-use nros_tests::fixtures::freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available};
+use nros_tests::fixtures::freertos::{
+    is_arm_gcc_available, is_freertos_available, is_lwip_available,
+};
 
 fn workspace_root() -> PathBuf {
     nros_tests::project_root()
@@ -150,8 +152,14 @@ fn freertos_qemu_mps2_an385_2_component_bringup_builds() {
     // `cargo build` (no `just` wrapper) inherits zero of them.
     let root = workspace_root();
     let env_pairs: [(&str, PathBuf); 2] = [
-        ("NROS_PLATFORM_FREERTOS_SRC", root.join("packages/core/nros-platform-freertos/src")),
-        ("NROS_PLATFORM_CFFI_INCLUDE", root.join("packages/core/nros-platform-cffi/include")),
+        (
+            "NROS_PLATFORM_FREERTOS_SRC",
+            root.join("packages/core/nros-platform-freertos/src"),
+        ),
+        (
+            "NROS_PLATFORM_CFFI_INCLUDE",
+            root.join("packages/core/nros-platform-cffi/include"),
+        ),
     ];
 
     let mut cmd = Command::new("cargo");
@@ -177,7 +185,9 @@ fn freertos_qemu_mps2_an385_2_component_bringup_builds() {
     let mut found_header = false;
     if target_dir.is_dir() {
         for e in walk(&target_dir).unwrap_or_default() {
-            if e.file_name().is_some_and(|n| n == "nros_config_generated.h") {
+            if e.file_name()
+                .is_some_and(|n| n == "nros_config_generated.h")
+            {
                 found_header = true;
                 break;
             }

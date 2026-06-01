@@ -133,7 +133,9 @@ fn platformio_zephyr_framework_2_component_bringup_builds() {
         "PlatformIO Manager",
     ];
     if !out.status.success()
-        && offline_markers.iter().any(|m| stdout.contains(m) || stderr.contains(m))
+        && offline_markers
+            .iter()
+            .any(|m| stdout.contains(m) || stderr.contains(m))
     {
         nros_tests::skip!(
             "pio could not fetch the `native` platform package (offline / sandboxed); \

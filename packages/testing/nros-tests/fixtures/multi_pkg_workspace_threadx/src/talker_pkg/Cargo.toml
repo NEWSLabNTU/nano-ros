@@ -7,7 +7,7 @@
 [workspace]
 
 [package]
-name = "talker_component"
+name = "talker_pkg_component"
 version = "0.1.0"
 edition = "2024"
 

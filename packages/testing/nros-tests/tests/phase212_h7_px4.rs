@@ -15,8 +15,7 @@
 use std::{path::PathBuf, process::Command};
 
 fn fixture() -> PathBuf {
-    nros_tests::project_root()
-        .join("packages/testing/nros-tests/fixtures/multi_pkg_workspace_px4")
+    nros_tests::project_root().join("packages/testing/nros-tests/fixtures/multi_pkg_workspace_px4")
 }
 
 /// Components declared in the fixture's `demo_bringup/system.toml`.
@@ -116,9 +115,7 @@ fn px4_sitl_2_component_module_builds() {
                  stdout:\n{stdout}\nstderr:\n{stderr}"
             );
         }
-        panic!(
-            "nros codegen-system failed:\nstdout:\n{stdout}\nstderr:\n{stderr}"
-        );
+        panic!("nros codegen-system failed:\nstdout:\n{stdout}\nstderr:\n{stderr}");
     }
 
     // Post-codegen: assert one rendered module dir per component is

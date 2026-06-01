@@ -11,11 +11,11 @@ pub extern "C" fn nros_component_talker_entry() {
     // keep the staticlib usable from any cmake host (Linux x86_64
     // here, ThreadX-Linux native simulation).
     let msg = b"[talker] component entry reached\n\0";
+    unsafe extern "C" {
+        fn fputs(s: *const u8, stream: *mut core::ffi::c_void) -> i32;
+        static stdout: *mut core::ffi::c_void;
+    }
     unsafe {
-        extern "C" {
-            fn fputs(s: *const u8, stream: *mut core::ffi::c_void) -> i32;
-            static stdout: *mut core::ffi::c_void;
-        }
         let _ = fputs(msg.as_ptr(), stdout);
     }
 }

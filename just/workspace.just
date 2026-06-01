@@ -14,6 +14,15 @@ NINJA_VERSION := "1.13.2"
 # `.envrc` prepends it to PATH.
 MAKE_VERSION := "4.4.1"
 
+# Pinned Corrosion version. Corrosion is the cmake-side Rust bridge used
+# by mixed-language workspaces (Phase 212 — `corrosion_import_crate` in
+# `cmake/NanoRosThreadxSystemCodegen.cmake` etc.). Installed to
+# `~/.nros/sdk/corrosion/` so it can be discovered by `find_package(
+# Corrosion)` without polluting the host system; the H.4 and 212.D
+# Corrosion tests look it up via `cmake --find-package` with
+# `CMAKE_PREFIX_PATH=$HOME/.nros/sdk/corrosion`. Phase 212.H.4.
+CORROSION_VERSION := "v0.5.1"
+
 # Workspace module — host-agnostic dev environment setup.
 #
 # "workspace" here means the developer's dev workspace (host OS packages,
@@ -37,6 +46,7 @@ setup:
     @just workspace apt-packages
     @just workspace install-ninja
     @just workspace install-make
+    @just workspace install-corrosion
     @just workspace rust-pinned-toolchains
     @just workspace rust-targets
     @just workspace cargo-tools
@@ -121,6 +131,41 @@ install-ninja:
     echo "[ninja] installed: $("$bin" --version) ($bin)"
     echo "[ninja] ensure third-party/ninja is on PATH (direnv .envrc does this)."
 
+# Install Corrosion (cmake ↔ Rust bridge) into `~/.nros/sdk/corrosion/`.
+# Mixed-language workspaces (Phase 212) use `find_package(Corrosion)` +
+# `corrosion_import_crate()` to pull Rust component staticlibs into a
+# cmake build. Lives under `~/.nros/sdk/` (not third-party/) because it's
+# a per-developer install prefix consumed via `CMAKE_PREFIX_PATH`, not a
+# repo-relative tool. Idempotent: skips when the pinned tag is already
+# installed.
+[group("setup")]
+install-corrosion:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want="{{CORROSION_VERSION}}"
+    prefix="$HOME/.nros/sdk/corrosion"
+    stamp="$prefix/.installed-version"
+    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
+        echo "[corrosion] $want already installed ($prefix)"
+        exit 0
+    fi
+    mkdir -p "$prefix"
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    echo "[corrosion] cloning $want..."
+    git clone --depth=1 --branch "$want" https://github.com/corrosion-rs/corrosion.git "$tmp/src"
+    echo "[corrosion] configuring..."
+    cmake -S "$tmp/src" -B "$tmp/build" \
+        -DCMAKE_INSTALL_PREFIX="$prefix" \
+        -DCORROSION_BUILD_TESTS=OFF >/dev/null
+    echo "[corrosion] building..."
+    cmake --build "$tmp/build" >/dev/null
+    echo "[corrosion] installing to $prefix..."
+    cmake --install "$tmp/build" >/dev/null
+    echo "$want" > "$stamp"
+    echo "[corrosion] installed $want at $prefix"
+    echo "[corrosion] consumers should pass CMAKE_PREFIX_PATH=$prefix or set it globally."
+
 # Diagnose workspace install status (read-only).
 # Returns exit 1 if anything is missing.
 [group("setup")]
@@ -154,6 +199,15 @@ doctor:
         echo "  [OK] ninja {{NINJA_VERSION}} (third-party/ninja; jobserver-capable)"
     else
         echo "  [MISSING] ninja {{NINJA_VERSION}} (run: just workspace install-ninja)"
+        fail=1
+    fi
+
+    # --- Corrosion (cmake ↔ Rust bridge, Phase 212) ---
+    corrosion_stamp="$HOME/.nros/sdk/corrosion/.installed-version"
+    if [ -f "$corrosion_stamp" ] && [ "$(cat "$corrosion_stamp" 2>/dev/null)" = "{{CORROSION_VERSION}}" ]; then
+        echo "  [OK] corrosion {{CORROSION_VERSION}} (~/.nros/sdk/corrosion)"
+    else
+        echo "  [MISSING] corrosion {{CORROSION_VERSION}} (run: just workspace install-corrosion)"
         fail=1
     fi
 

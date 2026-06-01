@@ -121,12 +121,8 @@ pub fn is_esp_idf_available() -> bool {
 /// Skip test if ESP-IDF is not available.
 pub fn require_esp_idf() -> bool {
     if !is_esp_idf_available() {
-        eprintln!(
-            "Skipping test: ESP-IDF not reachable (need $IDF_PATH + `idf.py` on PATH)"
-        );
-        eprintln!(
-            "Install via `just esp_idf setup` then `source esp-idf-workspace/env.sh`."
-        );
+        eprintln!("Skipping test: ESP-IDF not reachable (need $IDF_PATH + `idf.py` on PATH)");
+        eprintln!("Install via `just esp_idf setup` then `source esp-idf-workspace/env.sh`.");
         return false;
     }
     true

@@ -109,7 +109,11 @@ fn nuttx_qemu_arm_2_component_bringup_builds() {
     fs::write(apps.join("Make.defs"), "# scratch apps tree\n").expect("write Make.defs");
 
     let bringup = fixture().join("src/demo_bringup");
-    assert!(bringup.is_dir(), "fixture bringup missing: {}", bringup.display());
+    assert!(
+        bringup.is_dir(),
+        "fixture bringup missing: {}",
+        bringup.display()
+    );
 
     let staging = workspace_root().join("scripts/nuttx/stage-external-apps.sh");
     let out = Command::new("bash")

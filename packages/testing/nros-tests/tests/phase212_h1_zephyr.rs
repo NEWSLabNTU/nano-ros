@@ -87,32 +87,41 @@ fn zephyr_native_sim_2_component_bringup_builds_and_publishes() {
     }
 
     let fixture = fixture_dir();
-    assert!(fixture.join("demo_bringup/system.toml").exists(),
-            "fixture incomplete: missing {}/demo_bringup/system.toml", fixture.display());
+    assert!(
+        fixture.join("demo_bringup/system.toml").exists(),
+        "fixture incomplete: missing {}/demo_bringup/system.toml",
+        fixture.display()
+    );
     let app = fixture.join("zephyr_app");
     let build_dir = workspace_root().join("build/phase212-h1-zephyr");
     let _ = std::fs::remove_dir_all(&build_dir);
 
     let status = Command::new("west")
-        .args([
-            "build",
-            "-b", "native_sim/native/64",
-            "-d",
-        ])
+        .args(["build", "-b", "native_sim/native/64", "-d"])
         .arg(&build_dir)
         .arg(&app)
         .args(["--", "-DCONF_FILE=prj.conf;prj-zenoh.conf"])
         .status()
         .expect("invoke west build");
 
-    assert!(status.success(), "west build failed (rc={:?})", status.code());
+    assert!(
+        status.success(),
+        "west build failed (rc={:?})",
+        status.code()
+    );
 
     // Phase 212.E artifacts.
     let baked = build_dir.join("nros-system");
-    assert!(baked.join("system_config.h").exists(),
-            "baked system_config.h missing under {}", baked.display());
-    assert!(baked.join("system_main.c").exists(),
-            "baked system_main.c missing under {}", baked.display());
+    assert!(
+        baked.join("system_config.h").exists(),
+        "baked system_config.h missing under {}",
+        baked.display()
+    );
+    assert!(
+        baked.join("system_main.c").exists(),
+        "baked system_main.c missing under {}",
+        baked.display()
+    );
 
     // Boot the ELF.
     let elf = build_dir.join("zephyr/zephyr.exe");
@@ -120,8 +129,10 @@ fn zephyr_native_sim_2_component_bringup_builds_and_publishes() {
     let mut proc = nros_tests::zephyr::ZephyrProcess::start(
         &elf,
         nros_tests::zephyr::ZephyrPlatform::NativeSim,
-    ).expect("spawn zephyr native_sim ELF");
-    let output = proc.wait_for_output(Duration::from_secs(2))
+    )
+    .expect("spawn zephyr native_sim ELF");
+    let output = proc
+        .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
     eprintln!("--- native_sim stdout ---\n{}\n--- end ---", output);
     // 212.H.1 scope is the adapter shim contract: codegen-system fires,

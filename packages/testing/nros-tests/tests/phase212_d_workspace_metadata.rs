@@ -26,7 +26,9 @@ fn workspace_root() -> PathBuf {
 }
 
 fn fixture(name: &str) -> PathBuf {
-    workspace_root().join("packages/testing/nros-tests/fixtures").join(name)
+    workspace_root()
+        .join("packages/testing/nros-tests/fixtures")
+        .join(name)
 }
 
 /// Stage a fixture into a tempdir with `@NANO_ROS_ROOT@` rewritten so
@@ -70,7 +72,18 @@ fn corrosion_available() -> bool {
         Ok(d) => d,
         Err(_) => return false,
     };
+    // Prepend ~/.nros/sdk/corrosion to CMAKE_PREFIX_PATH so the
+    // workspace-installed Corrosion (per `docs/development/sdk-tiers.md`)
+    // gets discovered without polluting the host system.
+    let nros_corrosion = std::env::var("HOME")
+        .map(|h| format!("{h}/.nros/sdk/corrosion"))
+        .unwrap_or_default();
+    let prefix_path = match std::env::var("CMAKE_PREFIX_PATH") {
+        Ok(existing) if !existing.is_empty() => format!("{nros_corrosion}:{existing}"),
+        _ => nros_corrosion,
+    };
     Command::new("cmake")
+        .env("CMAKE_PREFIX_PATH", &prefix_path)
         .args([
             "--find-package",
             "-DNAME=Corrosion",
@@ -176,12 +189,31 @@ fn cmake_pure_cpp_multi_component_builds() {
 
     let talker = build_dir.join("src/talker_pkg/talker");
     let listener = build_dir.join("src/listener_pkg/listener");
-    assert!(talker.is_file(), "missing talker binary at {}", talker.display());
-    assert!(listener.is_file(), "missing listener binary at {}", listener.display());
+    assert!(
+        talker.is_file(),
+        "missing talker binary at {}",
+        talker.display()
+    );
+    assert!(
+        listener.is_file(),
+        "missing listener binary at {}",
+        listener.display()
+    );
+}
+
+/// Same CMAKE_PREFIX_PATH layering as `corrosion_available()` — used by
+/// the configure/build steps that actually consume Corrosion's package.
+fn cmake_prefix_path_with_corrosion() -> String {
+    let nros_corrosion = std::env::var("HOME")
+        .map(|h| format!("{h}/.nros/sdk/corrosion"))
+        .unwrap_or_default();
+    match std::env::var("CMAKE_PREFIX_PATH") {
+        Ok(existing) if !existing.is_empty() => format!("{nros_corrosion}:{existing}"),
+        _ => nros_corrosion,
+    }
 }
 
 #[test]
-#[ignore = "requires Corrosion on the host; un-ignore once added to setup tier"]
 fn cmake_mixed_corrosion_bridge_builds() {
     if require_test_prereqs().is_none() {
         nros_tests::skip!("prereqs missing (nros CLI / cmake)");
@@ -192,8 +224,10 @@ fn cmake_mixed_corrosion_bridge_builds() {
 
     let (_guard, root) = stage_fixture("multi_pkg_workspace_mixed");
     let build_dir = root.join("build");
+    let prefix_path = cmake_prefix_path_with_corrosion();
 
     let configure = Command::new("cmake")
+        .env("CMAKE_PREFIX_PATH", &prefix_path)
         .args(["-S", "."])
         .arg("-B")
         .arg(&build_dir)
@@ -208,6 +242,7 @@ fn cmake_mixed_corrosion_bridge_builds() {
     );
 
     let build = Command::new("cmake")
+        .env("CMAKE_PREFIX_PATH", &prefix_path)
         .arg("--build")
         .arg(&build_dir)
         .output()

@@ -79,7 +79,18 @@ fn corrosion_available() -> bool {
         Ok(d) => d,
         Err(_) => return false,
     };
+    // Prepend ~/.nros/sdk/corrosion to CMAKE_PREFIX_PATH so the
+    // user-installed Corrosion (via `just workspace install-corrosion`
+    // or the manual `cmake --install` recipe) gets discovered.
+    let nros_corrosion = std::env::var("HOME")
+        .map(|h| format!("{h}/.nros/sdk/corrosion"))
+        .unwrap_or_default();
+    let prefix_path = match std::env::var("CMAKE_PREFIX_PATH") {
+        Ok(existing) if !existing.is_empty() => format!("{nros_corrosion}:{existing}"),
+        _ => nros_corrosion,
+    };
     Command::new("cmake")
+        .env("CMAKE_PREFIX_PATH", &prefix_path)
         .args([
             "--find-package",
             "-DNAME=Corrosion",
@@ -136,7 +147,11 @@ fn threadx_linux_2_component_bringup_builds_and_publishes() {
     let components_cmake = build_dir.join("nros_components.cmake");
     assert!(sys_main.is_file(), "missing {}", sys_main.display());
     assert!(sys_cargo.is_file(), "missing {}", sys_cargo.display());
-    assert!(components_cmake.is_file(), "missing {}", components_cmake.display());
+    assert!(
+        components_cmake.is_file(),
+        "missing {}",
+        components_cmake.display()
+    );
 
     let sys_main_body = fs::read_to_string(&sys_main).expect("read system_main.c");
     assert!(
@@ -164,7 +179,11 @@ fn threadx_linux_2_component_bringup_builds_and_publishes() {
     );
 
     let app = build_dir.join("threadx_app");
-    assert!(app.is_file(), "missing threadx_app binary at {}", app.display());
+    assert!(
+        app.is_file(),
+        "missing threadx_app binary at {}",
+        app.display()
+    );
 
     // Run and assert the per-component dispatch fires. With Corrosion
     // present the real Rust entries print `[talker] component entry
@@ -181,8 +200,11 @@ fn threadx_linux_2_component_bringup_builds_and_publishes() {
     );
     let out = String::from_utf8_lossy(&run.stdout);
     eprintln!("--- threadx_app stdout ---\n{out}--- end ---");
-    assert!(out.contains("[nros-system] spawning components"), "no system_main banner:\n{out}");
-    assert!(out.contains("[talker]"),  "no talker dispatch:\n{out}");
+    assert!(
+        out.contains("[nros-system] spawning components"),
+        "no system_main banner:\n{out}"
+    );
+    assert!(out.contains("[talker]"), "no talker dispatch:\n{out}");
     assert!(out.contains("[listener]"), "no listener dispatch:\n{out}");
 }
 
@@ -191,8 +213,17 @@ fn threadx_linux_2_component_bringup_builds_and_publishes() {
 /// binary. Ignored until Corrosion is added to the Phase 212 setup
 /// tier (mirrors `phase212_d_workspace_metadata.rs`'s mixed-Corrosion
 /// test).
+fn cmake_prefix_path_with_corrosion() -> String {
+    let nros_corrosion = std::env::var("HOME")
+        .map(|h| format!("{h}/.nros/sdk/corrosion"))
+        .unwrap_or_default();
+    match std::env::var("CMAKE_PREFIX_PATH") {
+        Ok(existing) if !existing.is_empty() => format!("{nros_corrosion}:{existing}"),
+        _ => nros_corrosion,
+    }
+}
+
 #[test]
-#[ignore = "requires Corrosion on the host; un-ignore once added to setup tier"]
 fn threadx_linux_2_component_bringup_corrosion_imports_rust() {
     if require_test_prereqs().is_none() {
         nros_tests::skip!("prereqs missing (nros CLI / cmake)");
@@ -204,8 +235,10 @@ fn threadx_linux_2_component_bringup_corrosion_imports_rust() {
     let (_guard, root) = stage_fixture("multi_pkg_workspace_threadx");
     let app_src = root.join("threadx_app");
     let build_dir = app_src.join("build");
+    let prefix_path = cmake_prefix_path_with_corrosion();
 
     let configure = Command::new("cmake")
+        .env("CMAKE_PREFIX_PATH", &prefix_path)
         .args(["-S"])
         .arg(&app_src)
         .args(["-B"])
@@ -220,6 +253,7 @@ fn threadx_linux_2_component_bringup_corrosion_imports_rust() {
     );
 
     let build = Command::new("cmake")
+        .env("CMAKE_PREFIX_PATH", &prefix_path)
         .arg("--build")
         .arg(&build_dir)
         .output()
