@@ -109,10 +109,7 @@ fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         if ty.is_dir() {
             walk(root, &path, out);
         } else if ty.is_file() {
-            let rel = path
-                .strip_prefix(root)
-                .expect("strip_prefix")
-                .to_path_buf();
+            let rel = path.strip_prefix(root).expect("strip_prefix").to_path_buf();
             let body = fs::read(&path).unwrap_or_default();
             out.insert(rel, body);
         }
@@ -195,11 +192,7 @@ fn migrate_workspace_e2e() {
     // `[system].name` field is NOT used as the prefix).
     let bringup = root.join("talker_pkg_bringup");
     let system_toml = bringup.join("system.toml");
-    assert!(
-        system_toml.is_file(),
-        "expected {}",
-        system_toml.display()
-    );
+    assert!(system_toml.is_file(), "expected {}", system_toml.display());
     let system_body = fs::read_to_string(&system_toml).expect("read system.toml");
     assert!(
         system_body.contains("[system]") && system_body.contains("[[component]]"),

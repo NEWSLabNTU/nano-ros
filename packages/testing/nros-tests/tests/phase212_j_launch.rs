@@ -268,13 +268,7 @@ fn nros_launch_spawns_components() {
         .args(["launch", "bringup"])
         .arg("--workspace-root")
         .arg(&root)
-        .args([
-            "--target",
-            "native",
-            "--profile",
-            "release",
-            "--foreground",
-        ])
+        .args(["--target", "native", "--profile", "release", "--foreground"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .current_dir(&root)
@@ -352,13 +346,7 @@ fn nros_launch_detach_returns_pid_file() {
         .args(["launch", "bringup"])
         .arg("--workspace-root")
         .arg(&root)
-        .args([
-            "--target",
-            "native",
-            "--profile",
-            "release",
-            "--detach",
-        ])
+        .args(["--target", "native", "--profile", "release", "--detach"])
         .current_dir(&root)
         .output()
         .expect("spawn nros launch --detach");

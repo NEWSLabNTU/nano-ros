@@ -112,7 +112,15 @@ fn cargo_nros_plan_matches_nros_plan() {
     // Reference: direct `nros plan`.
     let nros = nros_dir.join("nros");
     let ref_status = Command::new(&nros)
-        .args(["plan", "--workspace", ".", "--out-dir", out, BRINGUP, LAUNCH])
+        .args([
+            "plan",
+            "--workspace",
+            ".",
+            "--out-dir",
+            out,
+            BRINGUP,
+            LAUNCH,
+        ])
         .current_dir(&root_ref)
         .output()
         .expect("spawn nros plan");
@@ -127,7 +135,16 @@ fn cargo_nros_plan_matches_nros_plan() {
     let mut cand = Command::new("cargo");
     with_nros_path(&mut cand, &nros_dir);
     let cand_status = cand
-        .args(["nros", "plan", "--workspace", ".", "--out-dir", out, BRINGUP, LAUNCH])
+        .args([
+            "nros",
+            "plan",
+            "--workspace",
+            ".",
+            "--out-dir",
+            out,
+            BRINGUP,
+            LAUNCH,
+        ])
         .current_dir(&root_cand)
         .output()
         .expect("spawn cargo nros plan");
@@ -164,7 +181,15 @@ fn cargo_nros_plan_explain_dispatch_dry_run() {
     with_nros_path(&mut cmd, &nros_dir);
     let res = cmd
         .args([
-            "nros", "plan", "--explain", "--workspace", ".", "--out-dir", out, BRINGUP, LAUNCH,
+            "nros",
+            "plan",
+            "--explain",
+            "--workspace",
+            ".",
+            "--out-dir",
+            out,
+            BRINGUP,
+            LAUNCH,
         ])
         .current_dir(&root)
         .output()
