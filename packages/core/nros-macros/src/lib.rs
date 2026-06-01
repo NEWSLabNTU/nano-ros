@@ -3,8 +3,53 @@
 //! Provides `#[derive(RosMessage)]` and `#[derive(RosService)]` macros.
 
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{DeriveInput, Fields, LitStr, Path, parse_macro_input};
+
+/// Sanitise a cargo package name into a C-identifier-safe symbol component.
+///
+/// Cargo allows `-` in package names; C identifiers don't. Each non
+/// `[A-Za-z0-9_]` byte is replaced with `_` so the result is a valid
+/// suffix for the per-pkg register symbol emitted by [`component!`].
+///
+/// Crate-private (proc-macro crates can't export non-macro items); the
+/// `sanitize_tests` module exercises it directly.
+fn sanitize_pkg_name_for_symbol(pkg: &str) -> String {
+    let mut out = String::with_capacity(pkg.len());
+    for c in pkg.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else {
+            out.push('_');
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod sanitize_tests {
+    use super::sanitize_pkg_name_for_symbol;
+
+    #[test]
+    fn plain_pkg_name_is_passthrough() {
+        assert_eq!(sanitize_pkg_name_for_symbol("talker_pkg"), "talker_pkg");
+    }
+
+    #[test]
+    fn hyphens_become_underscores() {
+        assert_eq!(sanitize_pkg_name_for_symbol("my-cool-pkg"), "my_cool_pkg");
+    }
+
+    #[test]
+    fn mixed_specials_become_underscores() {
+        assert_eq!(sanitize_pkg_name_for_symbol("a.b+c-d"), "a_b_c_d");
+    }
+
+    #[test]
+    fn empty_is_empty() {
+        assert_eq!(sanitize_pkg_name_for_symbol(""), "");
+    }
+}
 
 /// Derive macro for ROS message types
 ///
@@ -156,9 +201,23 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 pub fn component(input: TokenStream) -> TokenStream {
     let component_ty = parse_macro_input!(input as Path);
 
+    // Phase 212.M.5.a.1 — mangle the exported register symbol by package
+    // so multiple Component pkg crates can link into one binary without
+    // duplicate-symbol errors.
+    //
+    // `proc_macro::tracked_env::var` is still unstable, so we use plain
+    // `std::env::var`. Cargo sets `CARGO_PKG_NAME` for every compilation
+    // (proc-macro crates inherit the parent crate's env at expansion).
+    // The fallback "unknown" only triggers in toolchains that don't set
+    // it (none today); it keeps the macro robust against future hosts.
+    let pkg_raw = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
+    let pkg_sym = sanitize_pkg_name_for_symbol(&pkg_raw);
+    let register_ident = format_ident!("__nros_component_{}_register", pkg_sym);
+    let present_ident = format_ident!("__NROS_COMPONENT_{}_EXPORT_PRESENT", pkg_sym.to_uppercase());
+
     let expanded = quote! {
         #[unsafe(no_mangle)]
-        pub extern "Rust" fn __nros_component_register(
+        pub extern "Rust" fn #register_ident(
             context: &mut nros::ComponentContext<'_>
         ) -> nros::ComponentResult<()> {
             <#component_ty as nros::Component>::register(context)
@@ -166,7 +225,7 @@ pub fn component(input: TokenStream) -> TokenStream {
 
         #[used]
         #[unsafe(no_mangle)]
-        pub static __NROS_COMPONENT_EXPORT_PRESENT: u8 = 1;
+        pub static #present_ident: u8 = 1;
     };
 
     TokenStream::from(expanded)

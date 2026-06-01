@@ -114,11 +114,7 @@ domain_id = 0
         ),
     )
     .unwrap();
-    fs::write(
-        pkg_dir.join("src/lib.rs"),
-        "#![no_std]\npub struct Node;\n",
-    )
-    .unwrap();
+    fs::write(pkg_dir.join("src/lib.rs"), "#![no_std]\npub struct Node;\n").unwrap();
     fs::write(pkg_dir.join("prj.conf"), "CONFIG_NROS=y\n").unwrap();
     fs::write(
         pkg_dir.join("CMakeLists.txt"),

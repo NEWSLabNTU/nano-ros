@@ -6,7 +6,7 @@ language  = "rust"
 
 [linkage]
 staticlib       = "talker_component"
-exported_symbol = "nros_component_talker_entry"
+exported_symbol = "__nros_component_talker_pkg_register"
 
 [metadata]
 source_metadata = "metadata/talker.json"

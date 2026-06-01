@@ -9,10 +9,11 @@
 #         marker target per component).
 #       - Emits `${CMAKE_BINARY_DIR}/nros-system/system_main.c` — a
 #         placeholder ThreadX entry that invokes one
-#         `nros_component_<comp>_entry()` per planned component. This is
-#         the in-tree stand-in for the future `nros codegen system`
-#         subcommand (DO NOT add to nros-cli — Phase 212.H.4 task scope
-#         freezes nros-cli).
+#         `__nros_component_<pkg>_register(NULL)` per planned component
+#         (Phase 212.M.5.a.1 — the canonical per-pkg mangled symbol
+#         emitted by `nros::component!()`). This is the in-tree stand-in
+#         for the future `nros codegen system` subcommand (DO NOT add to
+#         nros-cli — Phase 212.H.4 task scope freezes nros-cli).
 #       - Emits `${CMAKE_BINARY_DIR}/nros-system/Cargo.toml` — a
 #         workspace stub listing every Rust component crate, so a future
 #         `cargo build --manifest-path build/nros-system/Cargo.toml` can
@@ -80,10 +81,15 @@ function(nros_threadx_codegen_system)
             string(JSON _pkg  GET "${_plan}" components ${i} package)
             string(JSON _comp GET "${_plan}" components ${i} component)
             string(JSON _lang GET "${_plan}" components ${i} language)
+            # Phase 212.M.5.a.1 — sanitise pkg name into a C-identifier
+            # safe symbol suffix (matches the rust macro's mangling rule).
+            string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${_pkg}")
+            set(_reg_sym "__nros_component_${_pkg_sym}_register")
             string(APPEND _extern_block
-                "extern void nros_component_${_comp}_entry(void);\n")
+                "extern void ${_reg_sym}(void *);\n")
             string(APPEND _call_block
-                "    nros_component_${_comp}_entry();\n")
+                "    puts(\"[${_comp}] dispatching register\");\n"
+                "    ${_reg_sym}(0);\n")
             set(_imported FALSE)
             if(_lang STREQUAL "rust")
                 set(_pkg_dir "${_NTX_WORKSPACE_ROOT}/src/${_pkg}")
@@ -115,7 +121,8 @@ function(nros_threadx_codegen_system)
                 # behaviour when `--whole-archive` is used to force the
                 # strong override.
                 string(APPEND _weak_block
-                    "__attribute__((weak)) void nros_component_${_comp}_entry(void) {\n"
+                    "__attribute__((weak)) void ${_reg_sym}(void *ctx) {\n"
+                    "    (void)ctx;\n"
                     "    puts(\"[${_comp}] stub component entry (no rust impl linked)\");\n"
                     "}\n")
             endif()

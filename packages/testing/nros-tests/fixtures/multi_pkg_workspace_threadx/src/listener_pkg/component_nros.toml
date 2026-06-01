@@ -6,7 +6,7 @@ language  = "rust"
 
 [linkage]
 staticlib       = "listener_component"
-exported_symbol = "nros_component_listener_entry"
+exported_symbol = "__nros_component_listener_pkg_register"
 
 [metadata]
 source_metadata = "metadata/listener.json"

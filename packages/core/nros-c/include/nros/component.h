@@ -3,10 +3,12 @@
  * @ingroup grp_node
  * @brief Component-mode declarations for metadata and generated runtimes.
  *
- * Component packages do not define `main()`. They export
- * `__nros_component_register`, and the host metadata tool or generated runtime
- * supplies a context whose operations record declarations or instantiate
- * executor nodes.
+ * Component packages do not define `main()`. They export a per-pkg mangled
+ * `__nros_component_<pkg>_register` symbol (Phase 212.M.5.a.1) so multiple
+ * components can link into one binary; the host metadata tool or generated
+ * runtime supplies a context whose operations record declarations or
+ * instantiate executor nodes. Codegen resolves the symbol name from each
+ * package's metadata — there is no hardcoded bare-name constant.
  */
 
 #ifndef NROS_COMPONENT_H
@@ -30,7 +32,14 @@ typedef int nros_ret_t;
 extern "C" {
 #endif
 
-#define NROS_COMPONENT_EXPORT_SYMBOL "__nros_component_register"
+/* Phase 212.M.5.a.1 — the hardcoded `__nros_component_register` constant
+ * is retired. Each Component pkg now exports a per-pkg mangled symbol
+ * `__nros_component_<sanitised_pkg>_register`; codegen (and the metadata
+ * tool) derive the name from the pkg's identity in workspace metadata.
+ * Consumers that need the symbol name at runtime build it explicitly
+ * via the per-pkg mangling rule (`-` → `_`, prepend `__nros_component_`,
+ * append `_register`).
+ */
 #define NROS_MISSING_COMPONENT_EXPORT_ERROR "package has no exported nros component"
 
 typedef struct nros_component_context_t nros_component_context_t;
@@ -137,11 +146,30 @@ nros_component_record_callback_effect(nros_component_context_t* context, const c
     return context->ops->record_callback_effect(context->user_data, callback_id, kind, entity_id);
 }
 
-#define NROS_COMPONENT(register_fn)                                                                \
-    NROS_PUBLIC nros_ret_t __nros_component_register(nros_component_context_t* context) {          \
+/* Phase 212.M.5.a.1 — per-pkg mangled register symbol.
+ *
+ * Caller supplies the cargo-style pkg name as a bare token (pre-sanitised
+ * — `-` → `_`). Cmake glue (`nano_ros_component_register()` for C++ or
+ * the codegen-system C bake) is the canonical source of the pkg-name
+ * token; hand-written C pkgs may invoke this macro directly.
+ *
+ *   NROS_COMPONENT(my_pkg, my_pkg_register_fn);
+ *
+ * expands to:
+ *
+ *   nros_ret_t __nros_component_my_pkg_register(nros_component_context_t*);
+ *   const unsigned char __NROS_COMPONENT_MY_PKG_EXPORT_PRESENT = 1;
+ */
+#define _NROS_COMPONENT_CONCAT(a, b) a##b
+#define _NROS_COMPONENT_CONCAT_X(a, b) _NROS_COMPONENT_CONCAT(a, b)
+#define _NROS_COMPONENT_REG_SYM(pkg) _NROS_COMPONENT_CONCAT_X(__nros_component_, _NROS_COMPONENT_CONCAT_X(pkg, _register))
+#define _NROS_COMPONENT_PRESENT_SYM(pkg) _NROS_COMPONENT_CONCAT_X(__NROS_COMPONENT_, _NROS_COMPONENT_CONCAT_X(pkg, _EXPORT_PRESENT))
+
+#define NROS_COMPONENT(pkg, register_fn)                                                           \
+    NROS_PUBLIC nros_ret_t _NROS_COMPONENT_REG_SYM(pkg)(nros_component_context_t* context) {       \
         return (register_fn)(context);                                                             \
     }                                                                                              \
-    NROS_PUBLIC const unsigned char __NROS_COMPONENT_EXPORT_PRESENT = 1
+    NROS_PUBLIC const unsigned char _NROS_COMPONENT_PRESENT_SYM(pkg) = 1
 
 #ifdef __cplusplus
 }

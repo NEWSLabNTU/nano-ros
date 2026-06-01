@@ -24,9 +24,10 @@
 //!
 //! The Corrosion-import path is exercised lazily — when Corrosion isn't
 //! installed on the host, the helper logs a STATUS message and emits a
-//! weak stub for each `nros_component_<comp>_entry()` so the build
-//! still links + runs. A separate `#[ignore]` test asserts the
-//! Corrosion-present path imports the Rust component crates.
+//! weak stub for each `__nros_component_<pkg>_register()` (Phase
+//! 212.M.5.a.1 per-pkg mangled symbol) so the build still links + runs.
+//! A separate `#[ignore]` test asserts the Corrosion-present path
+//! imports the Rust component crates.
 
 use std::{
     fs,
@@ -155,9 +156,9 @@ fn threadx_linux_2_component_bringup_builds_and_publishes() {
 
     let sys_main_body = fs::read_to_string(&sys_main).expect("read system_main.c");
     assert!(
-        sys_main_body.contains("nros_component_talker_entry")
-            && sys_main_body.contains("nros_component_listener_entry"),
-        "system_main.c missing per-component entries:\n{sys_main_body}"
+        sys_main_body.contains("__nros_component_talker_pkg_register")
+            && sys_main_body.contains("__nros_component_listener_pkg_register"),
+        "system_main.c missing per-component register entries:\n{sys_main_body}"
     );
 
     let cargo_stub = fs::read_to_string(&sys_cargo).expect("read Cargo.toml");

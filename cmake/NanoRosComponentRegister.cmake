@@ -98,6 +98,12 @@ function(nano_ros_component_register)
         target_include_directories(${_lib} PUBLIC
             "${CMAKE_CURRENT_SOURCE_DIR}/include"
             "${CMAKE_CURRENT_SOURCE_DIR}/src")
+        # Phase 212.M.5.a.1 — inject the per-pkg mangle token so
+        # `NROS_COMPONENT_REGISTER(...)` expands to
+        # `__nros_component_<pkg>_register`. Sanitise `-` → `_` so
+        # cargo-style names with hyphens are still valid C identifiers.
+        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        target_compile_definitions(${_lib} PRIVATE NROS_PKG_NAME=${_pkg_sym})
     endif()
 
     _nros_json_strlist(_sources_json ${_NRC_SOURCES})

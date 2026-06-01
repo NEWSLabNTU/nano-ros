@@ -189,14 +189,15 @@ pub use nros_core::heapless;
 // Re-export component-mode API
 #[cfg(feature = "rmw-cffi")]
 pub use component::ComponentExecutorRuntime;
+#[cfg(feature = "alloc")]
+pub use component::component_register_symbol;
 pub use component::{
-    ActionExecutor, COMPONENT_EXPORT_SYMBOL, CallbackCtx, CallbackEffects, Component,
-    ComponentActionClient, ComponentActionServer, ComponentContext, ComponentError, ComponentNode,
-    ComponentNodeRuntime, ComponentParameter, ComponentPublisher, ComponentResult,
-    ComponentRuntime, ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient,
-    ComponentServiceServer, ComponentSubscription, ComponentTimer, ExecutableComponent,
-    MISSING_COMPONENT_EXPORT_ERROR, NodeOptions, PublisherResolver, TickCtx,
-    record_component_metadata, register_component,
+    ActionExecutor, CallbackCtx, CallbackEffects, Component, ComponentActionClient,
+    ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentNodeRuntime,
+    ComponentParameter, ComponentPublisher, ComponentResult, ComponentRuntime,
+    ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient, ComponentServiceServer,
+    ComponentSubscription, ComponentTimer, ExecutableComponent, MISSING_COMPONENT_EXPORT_ERROR,
+    NodeOptions, PublisherResolver, TickCtx, record_component_metadata, register_component,
 };
 #[cfg(feature = "std")]
 pub use component_metadata::SourceMetadataExport;

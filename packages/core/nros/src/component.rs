@@ -13,8 +13,33 @@ use crate::{
     heapless::Vec,
 };
 
-/// Stable symbol exported by [`nros::component!`](crate::component!).
-pub const COMPONENT_EXPORT_SYMBOL: &str = "__nros_component_register";
+/// Build the per-pkg mangled register symbol name exported by
+/// [`nros::component!`](crate::component!).
+///
+/// Phase 212.M.5.a.1 — the symbol scheme is `__nros_component_<pkg>_register`
+/// where `<pkg>` is the cargo package name with every non
+/// `[A-Za-z0-9_]` byte replaced by `_`. The bare-name
+/// `COMPONENT_EXPORT_SYMBOL` constant is retired: multiple Component pkg
+/// crates can link into one binary so there is no single canonical
+/// symbol — codegen + the metadata tool resolve per pkg.
+///
+/// `alloc` only — the host-side metadata tool is the consumer and is
+/// always `std`. Embedded targets never need to construct this name at
+/// runtime (the codegen-emitted main calls the symbol by literal).
+#[cfg(feature = "alloc")]
+pub fn component_register_symbol(pkg: &str) -> alloc::string::String {
+    let mut out = alloc::string::String::with_capacity(pkg.len() + 24);
+    out.push_str("__nros_component_");
+    for c in pkg.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else {
+            out.push('_');
+        }
+    }
+    out.push_str("_register");
+    out
+}
 
 /// Clear diagnostic for packages missing [`nros::component!`](crate::component!).
 pub const MISSING_COMPONENT_EXPORT_ERROR: &str = "package has no exported nros component";

@@ -14,7 +14,10 @@
 
 namespace nros {
 
-constexpr const char* COMPONENT_EXPORT_SYMBOL = "__nros_component_register";
+// Phase 212.M.5.a.1 — the hardcoded `__nros_component_register` constant
+// is retired. Each Component pkg now exports a per-pkg mangled
+// `__nros_component_<sanitised_pkg>_register` symbol; codegen derives
+// the name from workspace metadata's pkg identity.
 constexpr const char* MISSING_COMPONENT_EXPORT_ERROR = "package has no exported nros component";
 
 struct ComponentContextOps {
@@ -67,11 +70,28 @@ using ComponentRegisterFn = int32_t (*)(ComponentContext& context);
 
 } // namespace nros
 
+// Phase 212.M.5.a.1 — per-pkg mangled register symbol.
+//
+// `NROS_PKG_NAME` is a bare token (pre-sanitised — `-` → `_`) injected by
+// the cmake glue (`nano_ros_component_register()` adds it via
+// `target_compile_definitions`). Hand-written C++ pkgs that don't go
+// through the cmake fn must `#define NROS_PKG_NAME my_pkg` before
+// including this header.
+#ifndef NROS_PKG_NAME
+#define NROS_PKG_NAME unknown
+#endif
+
+#define _NROS_CPP_CONCAT(a, b) a##b
+#define _NROS_CPP_CONCAT_X(a, b) _NROS_CPP_CONCAT(a, b)
+#define _NROS_CPP_REG_SYM(pkg) _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _register))
+#define _NROS_CPP_PRESENT_SYM(pkg) _NROS_CPP_CONCAT_X(__NROS_COMPONENT_, _NROS_CPP_CONCAT_X(pkg, _EXPORT_PRESENT))
+#define _NROS_CPP_CLASS_SYM(pkg) _NROS_CPP_CONCAT_X(__nros_component_, _NROS_CPP_CONCAT_X(pkg, _class_name))
+
 #define NROS_COMPONENTS_REGISTER_NODE(ComponentType)                                               \
-    extern "C" int32_t __nros_component_register(::nros::ComponentContext& context) {              \
+    extern "C" int32_t _NROS_CPP_REG_SYM(NROS_PKG_NAME)(::nros::ComponentContext& context) {       \
         return (ComponentType::register_component(context)).raw();                                 \
     }                                                                                              \
-    extern "C" const unsigned char __NROS_COMPONENT_EXPORT_PRESENT = 1
+    extern "C" const unsigned char _NROS_CPP_PRESENT_SYM(NROS_PKG_NAME) = 1
 
 // Phase 212.L.9 — C++ counterpart of Rust's `nros::component!()` macro.
 //
@@ -81,15 +101,16 @@ using ComponentRegisterFn = int32_t (*)(ComponentContext& context);
 // literal of shape `"<pkg>::<UserClass>"` and the cmake fn
 // `nano_ros_component_register()` enforces the prefix match (L.4).
 //
-// Equivalent to:
-//   NROS_COMPONENTS_REGISTER_NODE(UserClass)
-// but adds a fixed-storage symbol carrying the qualified class string
-// so the codegen + lint side can sanity-check the binding.
+// Phase 212.M.5.a.1 — the register symbol is per-pkg mangled via
+// `NROS_PKG_NAME` (cmake glue injects it). Equivalent to
+// `NROS_COMPONENTS_REGISTER_NODE(UserClass)` but adds a fixed-storage
+// symbol carrying the qualified class string so the codegen + lint side
+// can sanity-check the binding.
 #define NROS_COMPONENT_REGISTER(UserClass, QualifiedClassName)                                     \
-    extern "C" int32_t __nros_component_register(::nros::ComponentContext& context) {              \
+    extern "C" int32_t _NROS_CPP_REG_SYM(NROS_PKG_NAME)(::nros::ComponentContext& context) {       \
         return (UserClass::register_component(context)).raw();                                     \
     }                                                                                              \
-    extern "C" const unsigned char __NROS_COMPONENT_EXPORT_PRESENT = 1;                            \
-    extern "C" const char __nros_component_class_name[] = QualifiedClassName
+    extern "C" const unsigned char _NROS_CPP_PRESENT_SYM(NROS_PKG_NAME) = 1;                       \
+    extern "C" const char _NROS_CPP_CLASS_SYM(NROS_PKG_NAME)[] = QualifiedClassName
 
 #endif // NROS_CPP_COMPONENT_HPP
