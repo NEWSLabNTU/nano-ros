@@ -96,11 +96,11 @@ forward-compat invariant the future registry depends on.
 | ~~F1~~ | ~~`wcr` name availability on crates.io + GitHub + npm + pypi; fallback name list ready~~ → **resolved 2026-06-01**: name available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; dormant 2016 npm package `wcr@0.9.7` (RDF wrapper, irrelevant to our publishing path). Adopt `wcr` without fallback | resolved |
 | U1 + U2 | `cfg(feature = "proofs")` gating spike — three hypotheses (H1 always-link / H2 cfg_attr-gated / H3 separate spec module), run matrix, decision criteria, style guide. **Spike plan landed 2026-06-01** at `docs/proofs/u1-spike-cfg-gating.md`; execution waits for Creusot install (211.1 day 3-5). Prior on H1 ~ 80 %. U2's measurement procedure is the spike's run matrix | execute 211.1 day 3-5 |
 | U6 | `creusot_contracts` Cargo dep wiring (workspace-level + per-crate opt-in under `proofs` feature) | 211.2 |
-| M2 | `source.lock` files list strategy — directory-tree Merkle hash over canonical-sorted relative paths (avoid per-file listing for large crates) | 211.4 |
+| ~~M2~~ | ~~`source.lock` files list strategy~~ → **resolved 2026-06-01**: format spec in Architecture section now ships a single `source_tree_hash` (Merkle root over canonical-sorted `(relpath, sha256(content))` entries) tagged with `tree_hash_algo: "merkle-v1"`. Optional per-file list via `wcr bundle --with-file-list` (audit-grade replay). Avoids array explosion for large crates | resolved |
 | ~~M3~~ | ~~External-dep-without-proofs policy~~ → **resolved 2026-06-01** at `docs/proofs/m3-external-dep-policy.md`: three-tier disposition (T1 shadow axiom crate `packages/axioms/<dep>-nros-axioms/` for ≥ 3 consumers; T2 local `proofs/axioms/<dep>-axioms.mlw` for 1-2 consumers; T3 `#[trusted]` at usage site for dev-deps / examples / non-safety host-side). PoC ships `heapless-nros-axioms` as T1 reference + reserves `cortex-m-nros-axioms` and `embedded-hal-nros-axioms` for 211.7+ | resolved |
 | M4 | Coq fallback workflow: `proofs/coq/<vc-id>.v` per stubborn VC; replayed via Why3's Coq driver | 211.4 if any VC needs it |
 | ~~M7~~ | ~~`creusot --no-prove` reference~~ → **resolved 2026-06-01**: Creusot 0.10 uses subcommand split, not a flag. `cargo creusot` = extract only; `cargo creusot prove` = full discharge; `cargo creusot prove --replay` = cached re-discharge. Documented in risk-register mitigation + U1 spike doc | resolved |
-| M8 | Extraction error vs VC failure: distinct exit codes (e.g. exit 2 = extraction error; exit 3 = VC failed) + distinct stderr messages | 211.4 |
+| ~~M8~~ | ~~Extraction error vs VC failure exit codes~~ → **resolved 2026-06-01**: 9-row exit-code table landed in Architecture section (0 success, 1 usage, 2 manifest, 3 extract, 4 discharge, 5 cycle, 6 cache, 7 axiom-version, 8 hash). Stderr prefixes per subsystem (`wcr-cli:`, `wcr-manifest:`, `wcr-extract:`, `wcr-prove:`, `wcr-deps:`, `wcr-cache:`, `wcr-hash:`). Codes never recycled across versions | resolved |
 
 ### Forward-compat invariants — frozen in PoC, immutable through 211.8
 
@@ -338,6 +338,27 @@ Adding C later = adding files under `extracted/c/`, no schema migration.
 | Coq | 8.19 (fallback for stubborn VCs) | 8.19 |
 
 Installed via `nros setup --tool wcr-stack`. Shim at `~/.nros/bin/wcr`.
+
+### `wcr` exit codes + stderr prefixes (M8, v0.1 frozen at 211.4)
+
+Distinct exit codes so CI + scripts can route per failure class.
+Stderr always prefixed with the wcr subsystem that emitted the message.
+
+| Exit | Class | Meaning | Stderr prefix | Action |
+|---|---|---|---|---|
+| 0 | success | all VCs discharged, attestation written | (silent on success) | — |
+| 1 | usage | CLI usage / argument / file-not-found | `wcr-cli:` | fix invocation |
+| 2 | manifest | `Cargo.toml [package.metadata.nros.proof]` malformed or schema-violation | `wcr-manifest:` | fix manifest |
+| 3 | extract | Creusot crashed, Rust source rejected, annotation syntax bad | `wcr-extract:` | fix source / annotation; check Creusot version |
+| 4 | discharge | one or more VCs failed to discharge under all available provers | `wcr-prove:` | strengthen spec, add hints, mark `#[trusted]`, or escalate to Coq fallback |
+| 5 | cycle | inter-crate cycle detected in spec / axiom / ghost dep graph (C2) | `wcr-deps:` | break cycle in `imports` or `axiom_deps` |
+| 6 | cache | cache key mismatch with no source available for re-extract | `wcr-cache:` | run `wcr verify` (full re-extract) instead of `wcr replay` |
+| 7 | axiom-version | axiom dep declares version-range nano-ros workspace can't satisfy | `wcr-deps:` | bump axiom crate or adjust consumer manifest |
+| 8 | hash | spec hash mismatch — manifest declares X, extracted produces Y | `wcr-hash:` | re-run `wcr extract`; investigate Creusot non-determinism |
+| 64-79 | reserved | per `sysexits.h` conventions | — | future use |
+
+Frozen at 211.4; codes never recycled across versions. New classes get
+new codes.
 
 ### Theory naming convention (v0.1, frozen at 211.1)
 
@@ -650,6 +671,21 @@ axiomatically. Concurrent separation logic via Iris / Pulse is deferred
 to post-211 work. This matches the Sentinel pattern where each safety
 node runs as a fixed-priority periodic task.
 
+### Release-notes convention (U8, decided 2026-06-01)
+
+Workspace-wide release notes live in **`CHANGELOG.md` at repo root**,
+formatted per [Keep a Changelog v1.1.0](https://keepachangelog.com/en/1.1.0/).
+Phase milestones (Verus retirement, wcr alpha, Sentinel demo) and
+workspace-breaking changes (schema bumps, RTOS API retirements,
+vendored-fork branch advances that affect in-tree builds) land entries
+here on their release date.
+
+Per-crate granular semver history lives in each crate's own
+`CHANGELOG.md` (populated as crates approach 1.0).
+
+`book/src/release-notes/` is reserved for future user-facing highlight
+write-ups; not populated in PoC.
+
 ### Documentation cadence
 
 - After 211.2: `docs/proofs/getting-started.md` published
@@ -886,22 +922,37 @@ Bundle contents:
 └── sbom.cdx.json
 ```
 
-`source.lock` format:
+`source.lock` format (M2 — directory-tree Merkle hash to avoid
+per-file array explosion):
 
 ```json
 {
-  "source_uri": "https://crates.io/api/v1/crates/nros-cmd-gate/0.4.1/download",
-  "source_hash": "sha256:8a3f...",
-  "embedded": true,
-  "files": [
-    { "path": "src/lib.rs", "sha256": "..." },
-    { "path": "Cargo.toml", "sha256": "..." }
-  ]
+  "source_uri":       "https://crates.io/api/v1/crates/nros-cmd-gate/0.4.1/download",
+  "source_tree_hash": "sha256:8a3f...",
+  "tree_hash_algo":   "merkle-v1",
+  "embedded":         true,
+  "file_count":       42,
+  "total_bytes":      183421
 }
 ```
 
+`source_tree_hash` = SHA-256 over canonically-sorted entries of the
+form `(relpath, sha256(content))` joined as
+`sha256(relpath) || sha256(content)`, concatenated in `relpath`-sorted
+order, then hashed. Algorithm tagged via `tree_hash_algo` so future
+algo bumps are explicit.
+
+Single 32-byte digest covers a crate of any size. No per-file array
+that could explode for big crates (`nros-rmw-zenoh` ships thousands of
+vendored C files; flat listing would balloon `source.lock` by
+megabytes).
+
+Per-file listing opt-in via `wcr bundle --with-file-list` for
+audit-grade replay; default omits it.
+
 `embedded = false` (211.8 tier-3 proprietary mode) means source is
-**not** in the bundle — fetch via `source_uri`. Bundle ships at every
+**not** in the bundle — fetch via `source_uri`; consumer recomputes the
+Merkle root after fetching to verify match. Bundle ships at every
 tier; embedding is policy.
 
 Replay modes:
@@ -945,20 +996,20 @@ items below remain open as scoped backlog.
 | U5 | New-crate onboarding lacks `wcr init` subcommand. Author of a new crate has no guided path to add the `[package.metadata.nros.proof]` section. Add to wcr-cli at 211.4 | 211.4 |
 | U6 | `creusot_contracts` Cargo dep wiring per crate not specified. Likely: workspace-level `[workspace.dependencies]` entry + per-crate `creusot_contracts = { workspace = true, optional = true }` under the `proofs` feature | 211.2 |
 | U7 | `book/src/internals/proofs.md` (added 211.4) and `verification.md` (rewritten 211.6) overlap. Pick scopes: `proofs.md` = wcr workflow + format; `verification.md` = verification posture (Creusot + Kani + Miri) | 211.4 |
-| U8 | Release-notes convention not stated. Pick `CHANGELOG.md` (Keep-a-Changelog format) or `book/src/release-notes/` and commit before 211.6 | 211.6 |
+| ~~U8~~ | ~~Release-notes convention~~ → **resolved 2026-06-01**: `CHANGELOG.md` at repo root, Keep-a-Changelog v1.1.0 format. Stub committed. Cross-cutting commitments section in this phase doc documents the policy + the per-crate `CHANGELOG.md` convention for crates approaching 1.0 | resolved |
 
 ### Missing design items (decide before respective phase)
 
 | # | Issue | Target |
 |---|---|---|
 | M1 | Refinement check direction. `new ⇒ old` catches weakening (drops promised postconditions). Strengthening preconditions also breaks consumers but is the other direction. Schema must say which is enforced and what's "major" semver. Propose: weakening = major bump; strengthening of `requires` = major bump; both verified by Why3 at registry submit time | 211.8 |
-| M2 | `source.lock` `files` array can explode for large crates. Use directory-tree hash (Merkle root over canonical-sorted relative paths) instead of per-file listing. Per-file listing only included when bundle ships embedded source | 211.4 |
+| ~~M2~~ | ~~`source.lock` `files` array explosion~~ → **resolved 2026-06-01**: spec moved to single `source_tree_hash` (Merkle root, algo tagged via `tree_hash_algo`); per-file list opt-in via `wcr bundle --with-file-list`. Format updated in Architecture section's source.lock spec | resolved |
 | ~~M3~~ | ~~External-dep-without-proofs policy~~ → **resolved 2026-06-01** at `docs/proofs/m3-external-dep-policy.md`. Refined from earlier "default to (a)" thinking into a **three-tier disposition based on usage breadth**: T1 shadow axiom crate `packages/axioms/<dep>-nros-axioms/` (≥ 3 consumers; NEWSLabNTU-attested; per-upstream-version audit doc); T2 local `proofs/axioms/<dep>-axioms.mlw` (1-2 consumers; via new `local_axioms` manifest field); T3 `#[trusted]` at usage site (dev-deps / examples / non-safety host-side). Edge cases (transitive deps, stdlib gaps, macro-generated code, build.rs codegen, generic constraint propagation) addressed inline. Long-term migration path = upstream contribution → retire shadow crate. PoC tier classifications: `heapless` T1 (ships at 211.2 reference), `num-traits` T2 if used, `serde`/`serde_json`/`linkme`/`defmt` T3 trusted | resolved |
 | M4 | Coq fallback workflow. Bundle layout has no `proofs/coq/` for tactic scripts. Add `proofs/coq/<vc-id>.v` per stubborn VC; replay invokes Why3's Coq driver against the script | 211.4 |
 | M5 | Schema-version coexistence. Workspace with mixed v0.1 + v0.2 packages — does `wcr verify` accept? Propose: `wcr` supports last-N schema versions (N=3); workspace-level schema-version pinning in `wcr.toml` workspace section (post-PoC) | 211.8 |
 | M6 | Mixed-language packages (Rust + C source in one crate, e.g. `nros-c` wrapper). C4 hybrid doesn't address. Propose: Cargo.toml carries Rust proof metadata; sibling `wcr.toml` carries C proof metadata; both compose; `wcr manifest` merges | 211.8 |
 | ~~M7~~ | ~~`creusot --no-prove` syntax-check command~~ → **resolved 2026-06-01**: prior assumption of a `--no-prove` flag was wrong. Creusot 0.10 (Feb 2026) uses a Cargo-subcommand split: `cargo creusot` runs the extract step only (Rust → Coma + Why3 obligation generation); `cargo creusot prove` invokes Why3find to discharge; `cargo creusot prove --replay` reuses the existing `proof.json` and skips proof search entirely. The dev iteration loop is `cargo creusot` (~ syntax-check), the cached re-run loop is `cargo creusot prove --replay`. No new wcr wrapper command needed; wcr-cli simply shells out to the right subcommand based on the user's intent (`wcr extract` → `cargo creusot`; `wcr verify` → `cargo creusot prove --replay` with extract-then-prove fallback) | resolved |
-| M8 | Extraction error vs VC failure distinction. `wcr verify` must differentiate "Creusot crashed" from "VC didn't discharge" with distinct exit codes + error messages | 211.4 |
+| ~~M8~~ | ~~Extraction error vs VC failure distinction~~ → **resolved 2026-06-01**: full exit-code table + stderr-prefix table landed in Architecture section. CI scripts can route on exit code to distinguish a Creusot crash (exit 3) from a discharge failure (exit 4) from a cycle (exit 5) from a manifest-schema error (exit 2) | resolved |
 | M9 | WCET axiom source for 211.7 — aiT is commercial + per-board licensed. Alternative: `cargo-call-stack` for stack-depth (FOSS), OTAWA for WCET (FOSS), measurement-based for QEMU targets. Drop aiT mention; commit to OTAWA + cargo-call-stack + measurement | 211.7 |
 
 ### Forward-compat + governance items
@@ -982,7 +1033,7 @@ items below remain open as scoped backlog.
 | N4 | Phase 211 does not state Miri's role. Add 1-line statement: Miri continues as orthogonal UB-detector under `test-miri` tier; not displaced | 211.6 |
 | N5 | Line 388 (Cyclone DDS RMW) — phrase as "nano-ros Rust shim around upstream Cyclone DDS C++; C portions of the shim deferred to cross-language post-PoC" | 211.7 prep |
 
-### Resolved by Pass A + F1 + M7 + M3 (2026-06-01)
+### Resolved by Pass A + F1 + M7 + M3 + M8 + M2 + U8 (2026-06-01)
 
 | # | Issue | How |
 |---|---|---|
@@ -997,6 +1048,9 @@ items below remain open as scoped backlog.
 | F1 | `wcr` name availability check | Confirmed available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; npm overlap dormant + non-blocking. Adopted without fallback |
 | M7 | Creusot fast-iteration command | Subcommand split, not a flag. `cargo creusot` (extract only) / `cargo creusot prove` (full discharge) / `cargo creusot prove --replay` (cached re-run). Risk-register mitigation + U1 spike doc updated to use the correct surface. Pin bumped 0.5.0 → 0.10.0 throughout |
 | M3 | External-dep-without-proofs policy | Three-tier disposition T1 (shadow axiom crate, ≥ 3 consumers) / T2 (local axiom file, 1-2 consumers) / T3 (`#[trusted]` at use, dev-deps + non-safety). Reference design landed at `docs/proofs/m3-external-dep-policy.md` with worked `heapless-nros-axioms` example covering layout, schema, axiom WhyML excerpt, audit doc shape, semver rules, attestation transparency, and upstream-contribution retirement path |
+| M8 | Extraction error vs VC failure exit codes | 9-row exit-code table + stderr-prefix table landed in Architecture section. Exit 0 success, 1 usage, 2 manifest, 3 extract, 4 discharge, 5 cycle, 6 cache, 7 axiom-version, 8 hash. Stderr always prefixed (`wcr-cli:`, `wcr-manifest:`, etc.) so CI can route per failure class |
+| M2 | `source.lock` files array explosion | Replaced per-file listing with single `source_tree_hash` (Merkle root over canonical-sorted `(relpath, sha256(content))` entries, algo tagged via `tree_hash_algo: "merkle-v1"`). Per-file list opt-in via `wcr bundle --with-file-list` for audit-grade replay. Bundle size constant regardless of crate file count |
+| U8 | Release-notes convention | `CHANGELOG.md` at repo root, Keep-a-Changelog v1.1.0 format. Stub committed. Per-crate `CHANGELOG.md` for crates approaching 1.0; `book/src/release-notes/` reserved for future user-facing highlights |
 
 ## Notes
 
