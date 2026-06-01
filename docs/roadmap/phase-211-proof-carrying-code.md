@@ -97,7 +97,7 @@ forward-compat invariant the future registry depends on.
 | U1 + U2 | `cfg(feature = "proofs")` gating spike — three hypotheses (H1 always-link / H2 cfg_attr-gated / H3 separate spec module), run matrix, decision criteria, style guide. **Spike plan landed 2026-06-01** at `docs/proofs/u1-spike-cfg-gating.md`; execution waits for Creusot install (211.1 day 3-5). Prior on H1 ~ 80 %. U2's measurement procedure is the spike's run matrix | execute 211.1 day 3-5 |
 | U6 | `creusot_contracts` Cargo dep wiring (workspace-level + per-crate opt-in under `proofs` feature) | 211.2 |
 | M2 | `source.lock` files list strategy — directory-tree Merkle hash over canonical-sorted relative paths (avoid per-file listing for large crates) | 211.4 |
-| M3 | External-dep-without-proofs policy: default to local axiomatization in `proofs/axioms/<dep>-axioms.mlw` with attestor field | 211.2 first instance |
+| ~~M3~~ | ~~External-dep-without-proofs policy~~ → **resolved 2026-06-01** at `docs/proofs/m3-external-dep-policy.md`: three-tier disposition (T1 shadow axiom crate `packages/axioms/<dep>-nros-axioms/` for ≥ 3 consumers; T2 local `proofs/axioms/<dep>-axioms.mlw` for 1-2 consumers; T3 `#[trusted]` at usage site for dev-deps / examples / non-safety host-side). PoC ships `heapless-nros-axioms` as T1 reference + reserves `cortex-m-nros-axioms` and `embedded-hal-nros-axioms` for 211.7+ | resolved |
 | M4 | Coq fallback workflow: `proofs/coq/<vc-id>.v` per stubborn VC; replayed via Why3's Coq driver | 211.4 if any VC needs it |
 | ~~M7~~ | ~~`creusot --no-prove` reference~~ → **resolved 2026-06-01**: Creusot 0.10 uses subcommand split, not a flag. `cargo creusot` = extract only; `cargo creusot prove` = full discharge; `cargo creusot prove --replay` = cached re-discharge. Documented in risk-register mitigation + U1 spike doc | resolved |
 | M8 | Extraction error vs VC failure: distinct exit codes (e.g. exit 2 = extraction error; exit 3 = VC failed) + distinct stderr messages | 211.4 |
@@ -285,7 +285,8 @@ emits   = ["Nros_core_result", "Nros_core_message"]    # auto-discovered theorie
 imports = [
   { theory = "Nros_core_result", from = "nros-core@^0.4" },
 ]
-axiom_deps = []                                         # author-maintained
+axiom_deps   = []                                       # T1 shadow axiom crates (M3)
+local_axioms = []                                       # T2 local .mlw files (M3)
 
 [package.metadata.nros.proof.spec_hashes]
 # Auto-populated by `wcr extract` from normalized extracted .mlw
@@ -952,7 +953,7 @@ items below remain open as scoped backlog.
 |---|---|---|
 | M1 | Refinement check direction. `new ⇒ old` catches weakening (drops promised postconditions). Strengthening preconditions also breaks consumers but is the other direction. Schema must say which is enforced and what's "major" semver. Propose: weakening = major bump; strengthening of `requires` = major bump; both verified by Why3 at registry submit time | 211.8 |
 | M2 | `source.lock` `files` array can explode for large crates. Use directory-tree hash (Merkle root over canonical-sorted relative paths) instead of per-file listing. Per-file listing only included when bundle ships embedded source | 211.4 |
-| M3 | External-dep-without-proofs policy. When `nros-core` depends on `heapless` (no Creusot specs upstream), three options: (a) axiomatize locally in `proofs/axioms/heapless-axioms.mlw` with explicit trust attribution; (b) shadow `heapless-spec` crate in wcr; (c) upstream patches to heapless. **Default policy: (a)** with attestor field naming the local trust-issuer | 211.2 |
+| ~~M3~~ | ~~External-dep-without-proofs policy~~ → **resolved 2026-06-01** at `docs/proofs/m3-external-dep-policy.md`. Refined from earlier "default to (a)" thinking into a **three-tier disposition based on usage breadth**: T1 shadow axiom crate `packages/axioms/<dep>-nros-axioms/` (≥ 3 consumers; NEWSLabNTU-attested; per-upstream-version audit doc); T2 local `proofs/axioms/<dep>-axioms.mlw` (1-2 consumers; via new `local_axioms` manifest field); T3 `#[trusted]` at usage site (dev-deps / examples / non-safety host-side). Edge cases (transitive deps, stdlib gaps, macro-generated code, build.rs codegen, generic constraint propagation) addressed inline. Long-term migration path = upstream contribution → retire shadow crate. PoC tier classifications: `heapless` T1 (ships at 211.2 reference), `num-traits` T2 if used, `serde`/`serde_json`/`linkme`/`defmt` T3 trusted | resolved |
 | M4 | Coq fallback workflow. Bundle layout has no `proofs/coq/` for tactic scripts. Add `proofs/coq/<vc-id>.v` per stubborn VC; replay invokes Why3's Coq driver against the script | 211.4 |
 | M5 | Schema-version coexistence. Workspace with mixed v0.1 + v0.2 packages — does `wcr verify` accept? Propose: `wcr` supports last-N schema versions (N=3); workspace-level schema-version pinning in `wcr.toml` workspace section (post-PoC) | 211.8 |
 | M6 | Mixed-language packages (Rust + C source in one crate, e.g. `nros-c` wrapper). C4 hybrid doesn't address. Propose: Cargo.toml carries Rust proof metadata; sibling `wcr.toml` carries C proof metadata; both compose; `wcr manifest` merges | 211.8 |
@@ -981,7 +982,7 @@ items below remain open as scoped backlog.
 | N4 | Phase 211 does not state Miri's role. Add 1-line statement: Miri continues as orthogonal UB-detector under `test-miri` tier; not displaced | 211.6 |
 | N5 | Line 388 (Cyclone DDS RMW) — phrase as "nano-ros Rust shim around upstream Cyclone DDS C++; C portions of the shim deferred to cross-language post-PoC" | 211.7 prep |
 
-### Resolved by Pass A + F1 + M7 (2026-06-01)
+### Resolved by Pass A + F1 + M7 + M3 (2026-06-01)
 
 | # | Issue | How |
 |---|---|---|
@@ -995,6 +996,7 @@ items below remain open as scoped backlog.
 | (add) | Theory naming convention undocumented | Added explicit convention table in Architecture section |
 | F1 | `wcr` name availability check | Confirmed available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; npm overlap dormant + non-blocking. Adopted without fallback |
 | M7 | Creusot fast-iteration command | Subcommand split, not a flag. `cargo creusot` (extract only) / `cargo creusot prove` (full discharge) / `cargo creusot prove --replay` (cached re-run). Risk-register mitigation + U1 spike doc updated to use the correct surface. Pin bumped 0.5.0 → 0.10.0 throughout |
+| M3 | External-dep-without-proofs policy | Three-tier disposition T1 (shadow axiom crate, ≥ 3 consumers) / T2 (local axiom file, 1-2 consumers) / T3 (`#[trusted]` at use, dev-deps + non-safety). Reference design landed at `docs/proofs/m3-external-dep-policy.md` with worked `heapless-nros-axioms` example covering layout, schema, axiom WhyML excerpt, audit doc shape, semver rules, attestation transparency, and upstream-contribution retirement path |
 
 ## Notes
 
