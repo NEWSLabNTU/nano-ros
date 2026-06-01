@@ -94,8 +94,7 @@ forward-compat invariant the future registry depends on.
 | # | Item | Decided by |
 |---|---|---|
 | ~~F1~~ | ~~`wcr` name availability on crates.io + GitHub + npm + pypi; fallback name list ready~~ → **resolved 2026-06-01**: name available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; dormant 2016 npm package `wcr@0.9.7` (RDF wrapper, irrelevant to our publishing path). Adopt `wcr` without fallback | resolved |
-| U1 | `cfg(feature = "proofs")` gating spike — Creusot annotations + proc-macro hygiene + `cargo check --no-default-features` clean | 211.1 end |
-| U2 | Feature-gating decision-gate measurement procedure | 211.2 kickoff |
+| U1 + U2 | `cfg(feature = "proofs")` gating spike — three hypotheses (H1 always-link / H2 cfg_attr-gated / H3 separate spec module), run matrix, decision criteria, style guide. **Spike plan landed 2026-06-01** at `docs/proofs/u1-spike-cfg-gating.md`; execution waits for Creusot install (211.1 day 3-5). Prior on H1 ~ 80 %. U2's measurement procedure is the spike's run matrix | execute 211.1 day 3-5 |
 | U6 | `creusot_contracts` Cargo dep wiring (workspace-level + per-crate opt-in under `proofs` feature) | 211.2 |
 | M2 | `source.lock` files list strategy — directory-tree Merkle hash over canonical-sorted relative paths (avoid per-file listing for large crates) | 211.4 |
 | M3 | External-dep-without-proofs policy: default to local axiomatization in `proofs/axioms/<dep>-axioms.mlw` with attestor field | 211.2 first instance |
@@ -938,8 +937,8 @@ items below remain open as scoped backlog.
 
 | # | Issue | Target |
 |---|---|---|
-| U1 | `cfg(feature = "proofs")` gating of Creusot annotations may interact poorly with proc-macro hygiene. Need a spike test in 211.1 to confirm clean conditional compilation; fallback: `creusot_contracts::*` always linked + lint-suppressed when feature off | 211.1 spike |
-| U2 | Decision gate "Cargo feature gating clean?" needs a concrete measurement: `cargo check --no-default-features` on the workspace produces zero proof-related warnings | 211.2 gate |
+| U1 | `cfg(feature = "proofs")` gating of Creusot annotations may interact poorly with proc-macro hygiene. **Spike plan landed 2026-06-01** at `docs/proofs/u1-spike-cfg-gating.md` — three hypotheses (H1 always-link / H2 cfg_attr-gated / H3 separate spec module), run matrix covering `cargo build / check / clippy / doc / bloat`, edge cases (`no_std` critical), style guide drafted for each. Execution awaits Creusot install (211.1 day 3-5). Prior on H1 ~ 80 % | spike plan landed, execution 211.1 |
+| U2 | Decision gate "Cargo feature gating clean?" measurement: `cargo check --no-default-features` zero proof-related warnings is the lower bound. **Folded into U1 spike** at `docs/proofs/u1-spike-cfg-gating.md` (the run matrix's `cargo check --no-default-features` row IS the U2 procedure) | folded into U1 |
 | U3 | Verus retirement acceptance (211.6) currently counts proofs ("≥ 80 of 102"). Replace with coverage-keyed metric: every Verus-proven function in a target crate is either ported or `#[trusted]` with a follow-up issue | 211.6 |
 | U4 | Annotation-cost risk has no measurement mechanism. Record per-crate `annotation_lines / source_lines` in attestation `metadata`, track in research log | 211.2+ |
 | U5 | New-crate onboarding lacks `wcr init` subcommand. Author of a new crate has no guided path to add the `[package.metadata.nros.proof]` section. Add to wcr-cli at 211.4 | 211.4 |
