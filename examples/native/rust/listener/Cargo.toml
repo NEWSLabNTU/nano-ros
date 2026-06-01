@@ -23,7 +23,7 @@ path = "src/lib.rs"
 # so `cargo run -p native-rs-listener` Just Works.
 default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys"]
+rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "nros-rmw-cyclonedds-sys/vendored"]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
 # Zenoh-specific feature carry-overs (silently no-op under

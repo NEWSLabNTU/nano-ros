@@ -1,0 +1,32 @@
+[package]
+name = "cyclonedds-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "Phase 212.K.1 — build-only sys crate that vendors Cyclone DDS from third-party/dds/cyclonedds via the `cmake` build-script crate. Exposes libddsc + idlc to downstream crates via DEP_DDSC_* metadata."
+publish = false
+links = "ddsc"
+build = "build.rs"
+
+# Build-only — no Rust API surface. Downstream crates pick up
+# `libddsc.a`, the include dir, and the host `idlc` binary via the
+# `cargo:include` / `cargo:idlc` metadata keys emitted by build.rs
+# (Cargo turns those into `DEP_DDSC_INCLUDE` / `DEP_DDSC_IDLC` env
+# vars in downstream `build.rs` runs).
+[lib]
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[features]
+default = []
+
+[build-dependencies]
+cmake = "0.1"
+nros-build-paths = { path = "../../core/nros-build-paths" }
+
+[lints]
+workspace = true

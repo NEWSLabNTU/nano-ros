@@ -47,6 +47,10 @@ members = [
     # `packages/dds/nros-rmw-cyclonedds/` CMake project or by the
     # Zephyr module's `CONFIG_NROS_RMW_CYCLONEDDS` branch.
     "packages/dds/nros-rmw-cyclonedds-sys",
+    # Phase 212.K.1 — build-only sys crate that vendors Cyclone DDS via
+    # the `cmake` build-script crate. Provides libddsc + idlc to
+    # downstream crates via the `DEP_DDSC_*` metadata exports.
+    "packages/dds/cyclonedds-sys",
     # Phase 212.K.3 — pure-Rust port of
     # `scripts/cyclonedds/msg_to_cyclone_idl.py`. Lands ahead of the
     # Cyclone wrapper sys crate (212.K.2) so that path stays

@@ -4,17 +4,20 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Rust shim for nros-rmw-cyclonedds — exposes the C-linkage register entry from the C++ Cyclone DDS backend (Phase 169.5)"
+description = "Rust shim for nros-rmw-cyclonedds — exposes the C-linkage register entry from the C++ Cyclone DDS backend (Phase 169.5). With `vendored`, also compiles the backend in-process so `cargo build --features rmw-cyclonedds` links end-to-end (Phase 212.K.2)."
 authors.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 publish = false
+build = "build.rs"
 
 # Mirror of `nros-rmw-xrce-cffi`. Rust users call `register()` once
 # before any session creation; the underlying C++ Cyclone DDS
 # library (compiled by `packages/dds/nros-rmw-cyclonedds/`'s
 # standalone CMake project, or by the Zephyr module's
-# `CONFIG_NROS_RMW_CYCLONEDDS` branch) provides the symbol.
+# `CONFIG_NROS_RMW_CYCLONEDDS` branch, or — with the `vendored`
+# feature added by Phase 212.K.2 — by this crate's own `build.rs`)
+# provides the symbol.
 [lib]
 path = "src/lib.rs"
 crate-type = ["rlib"]
@@ -27,10 +30,32 @@ linkme-register = ["nros-rmw-cffi/linkme-register"]
 # `staticlib` (hosted POSIX builds). Embedded consumers keep the
 # default no_std build.
 std = []
+# Phase 212.K.2 — compile the C++ backend
+# (`packages/dds/nros-rmw-cyclonedds/src/*.cpp`) + the bundled
+# `rmw_dds_common_graph` descriptor as part of this crate's build,
+# linking against `cyclonedds-sys`'s libddsc. Lets pure-cargo native
+# examples link Cyclone end-to-end without the CMake outer step.
+# Off by default so the existing CMake / Zephyr consumers (who supply
+# the same symbols externally) don't double-link.
+vendored = ["dep:cyclonedds-sys", "dep:cc"]
 
 [dependencies]
 nros-rmw-cffi = { version = "0.1.0", path = "../../core/nros-rmw-cffi", default-features = false }
 linkme = { version = "0.3", default-features = false }
+# Phase 212.K.2 — `cyclonedds-sys` is a build-only path provider; we
+# never `use` anything from its lib.rs. Declared as a regular dep so
+# that Cargo passes `DEP_DDSC_*` env vars into our `build.rs`.
+cyclonedds-sys = { version = "0.1.0", path = "../cyclonedds-sys", optional = true }
+
+[build-dependencies]
+cc = { version = "1.0", optional = true }
+nros-build-paths = { path = "../../core/nros-build-paths" }
+# Phase 212.K.2 — pure-Rust .msg → Cyclone-shaped IDL converter, used
+# (when `vendored` is on) to bake the `std_msgs/Int32` descriptor the
+# native Rust talker/listener exchange. Lands ahead of K.4's per-example
+# codegen verb so the canonical `cargo build --features rmw-cyclonedds`
+# of the talker/listener examples Just Works.
+nros-msg-to-idl = { path = "../../codegen/nros-msg-to-idl", default-features = false }
 
 [lints]
 workspace = true

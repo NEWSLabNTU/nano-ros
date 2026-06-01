@@ -252,6 +252,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -322,6 +331,14 @@ checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
 dependencies = [
  "generic-array",
  "typenum",
+]
+
+[[package]]
+name = "cyclonedds-sys"
+version = "0.1.0"
+dependencies = [
+ "cmake",
+ "nros-build-paths",
 ]
 
 [[package]]
@@ -1590,7 +1607,11 @@ dependencies = [
 name = "nros-rmw-cyclonedds-sys"
 version = "0.1.0"
 dependencies = [
+ "cc",
+ "cyclonedds-sys",
  "linkme",
+ "nros-build-paths",
+ "nros-msg-to-idl",
  "nros-rmw-cffi",
 ]
 

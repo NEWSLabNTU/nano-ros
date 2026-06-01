@@ -32,6 +32,14 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// Phase 212.K.2 — keep the `cyclonedds-sys` rlib in the link graph so
+// its build script's `cargo:rustc-link-lib=static=ddsc` (plus the
+// dylib-link-libs for pthread/dl/rt) reach the final binary's link
+// command. Cargo drops unreferenced rlibs from the link line; an
+// `extern crate _` is the cheapest way to pin it in.
+#[cfg(feature = "vendored")]
+extern crate cyclonedds_sys as _;
+
 use core::ffi::c_int;
 
 unsafe extern "C" {
