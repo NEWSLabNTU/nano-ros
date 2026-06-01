@@ -1,4 +1,4 @@
-use nros_build::stamp::{compute_digest, StampInput};
+use nros_build::stamp::{StampInput, compute_digest};
 use std::fs;
 
 #[test]

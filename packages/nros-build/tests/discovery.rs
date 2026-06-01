@@ -20,7 +20,10 @@ fn discovers_msg_files_under_package_xml_dir() {
     assert!(names.contains(&"Sensor.msg".to_string()), "msgs: {names:?}");
     assert!(names.contains(&"Status.msg".to_string()), "msgs: {names:?}");
     assert!(names.contains(&"Ping.srv".to_string()), "srvs: {names:?}");
-    assert!(names.contains(&"Run.action".to_string()), "actions: {names:?}");
+    assert!(
+        names.contains(&"Run.action".to_string()),
+        "actions: {names:?}"
+    );
 }
 
 #[test]

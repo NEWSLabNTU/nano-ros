@@ -1,6 +1,5 @@
 use nros_build::find_nros_binary;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::{fs, os::unix::fs::PermissionsExt};
 
 /// Helper: build an executable stub at `path`.
 fn make_stub(path: &std::path::Path) {

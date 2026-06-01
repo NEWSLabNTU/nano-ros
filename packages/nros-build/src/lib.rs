@@ -30,10 +30,11 @@ pub mod discovery;
 pub mod nros_bin;
 pub mod stamp;
 
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub use nros_bin::{MissingNrosBinary, find_nros_binary};
 pub use stamp::{StampInput, compute_digest, load_stamp, save_stamp};
@@ -116,8 +117,8 @@ impl Codegen {
     /// Run the build step. Idempotent: skips when the input digest matches
     /// the existing stamp.
     pub fn run(self) -> Result<RunOutcome, BuildError> {
-        let out_dir = env::var(&self.out_env)
-            .map_err(|_| BuildError::MissingEnv(self.out_env.clone()))?;
+        let out_dir =
+            env::var(&self.out_env).map_err(|_| BuildError::MissingEnv(self.out_env.clone()))?;
         let out_root = PathBuf::from(&out_dir).join("nros-gen");
         fs::create_dir_all(&out_root).map_err(BuildError::Io)?;
 

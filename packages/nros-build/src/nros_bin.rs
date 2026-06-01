@@ -8,8 +8,7 @@
 //!
 //! Missing → hard fail with an install pointer.
 
-use std::env;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 /// Error returned when the `nros` binary cannot be resolved.
 #[derive(Debug)]
@@ -23,7 +22,8 @@ impl std::fmt::Display for MissingNrosBinary {
             f,
             "nros CLI not found. Tried: {}.\n\
              Install it via `scripts/install-nros.sh` (or `just setup base`),\n\
-             or set `NROS_BIN=/path/to/nros`.",
+             or set `NROS_BIN=/path/to/nros`.\n\
+             Source: https://github.com/NEWSLabNTU/nros-cli",
             self.tried.join(", ")
         )
     }
@@ -48,10 +48,11 @@ pub fn find_nros_binary() -> Result<PathBuf, MissingNrosBinary> {
     }
     tried.push("PATH".into());
 
-    let home_root = env::var("NROS_HOME")
-        .ok()
-        .map(PathBuf::from)
-        .or_else(|| env::var("HOME").ok().map(|h| PathBuf::from(h).join(".nros")));
+    let home_root = env::var("NROS_HOME").ok().map(PathBuf::from).or_else(|| {
+        env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join(".nros"))
+    });
     if let Some(root) = home_root {
         let candidate = root.join("bin").join("nros");
         if is_executable(&candidate) {

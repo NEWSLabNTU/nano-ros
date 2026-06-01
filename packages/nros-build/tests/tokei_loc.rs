@@ -1,7 +1,6 @@
 //! Phase 212.C HARD constraint: `src/` MUST be ≤ 500 LoC (`tokei`).
 
-use std::path::PathBuf;
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 #[test]
 fn tokei_loc_under_500() {
@@ -19,8 +18,7 @@ fn tokei_loc_under_500() {
         "tokei failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let parsed: serde_json::Value =
-        serde_json::from_slice(&out.stdout).expect("tokei JSON output");
+    let parsed: serde_json::Value = serde_json::from_slice(&out.stdout).expect("tokei JSON output");
     let code = parsed
         .get("Rust")
         .and_then(|r| r.get("code"))

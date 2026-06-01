@@ -1,9 +1,10 @@
 //! Discover codegen inputs: `package.xml` + every `.msg` / `.srv` / `.action`
 //! file under the package root, plus interface-package build_depend names.
 
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]

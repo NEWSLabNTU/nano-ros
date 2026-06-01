@@ -9,9 +9,10 @@
 //! recomputed digest, and skips codegen on match.
 
 use sha2::{Digest, Sha256};
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 /// One input file contributing to the digest.
 #[derive(Debug, Clone)]
