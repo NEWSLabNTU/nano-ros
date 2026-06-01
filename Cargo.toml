@@ -18,10 +18,6 @@ members = [
     # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
     # build` succeed in a fresh shell (the audit blocker P1).
     "packages/core/nros-build-paths",
-    # Phase 212.C — build-script helper that runs `nros codegen` from
-    # `build.rs` (replaces manual `nros generate-rust` step). Writes to
-    # `$OUT_DIR/nros-gen/` only, SHA-256 stamp for incremental skip.
-    "packages/nros-build",
     # Phase 149.5 — shared build-script helpers (manifest parser +
     # link-feature policy) consumed by zpico-sys + the per-kernel
     # generic board crates as `[build-dependencies]`.

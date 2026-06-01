@@ -1,17 +1,15 @@
 //! Phase 212.H.8 — LoC budget gates.
 //!
-//! Phase 212 §Acceptance freezes three hard LoC budgets:
+//! Phase 212 §Acceptance freezes two hard LoC budgets (the third —
+//! `nros-build` `src/` ≤ 550 LoC — was retired with Phase 212.C):
 //!
 //!   * each RTOS adapter shim ≤ 200 LoC
-//!   * `nros-build` `src/` ≤ 550 LoC (bumped from 500 after K.4)
 //!   * cmake `nano_ros_workspace_metadata()` ≤ 150 LoC
 //!
-//! Each gate calls the `tokei` binary (12 → 14, same JSON shape that
-//! `packages/nros-build/tests/tokei_loc.rs` already relies on) and
-//! asserts on the `code` count — comments + blanks do not count toward
-//! the budget. The `tokei` binary is the canonical measurement tool the
-//! Phase 212 docs name explicitly, so we shell out rather than pulling
-//! a fresh crate dep.
+//! Each gate calls the `tokei` binary and asserts on the `code` count —
+//! comments + blanks do not count toward the budget. The `tokei` binary
+//! is the canonical measurement tool the Phase 212 docs name
+//! explicitly, so we shell out rather than pulling a fresh crate dep.
 //!
 //! Skip discipline: `tokei` IS the measurement, so if it is missing the
 //! gate cannot run; we `nros_tests::skip!` (which panics with the
@@ -42,13 +40,6 @@ use std::{
 
 use nros_tests::project_root;
 
-// Phase 212.C originally pegged this at 500 LoC for the scaffolded
-// nros-build crate. The Phase 212.K.4 cyclonedds descriptor module
-// (`src/cyclonedds.rs`, ~153 LoC) and the C.7 install pointer landed
-// after that pin; the crate now sits at 502 LoC. Bumped to 550 to
-// match the actual K.4 surface — still a hard upper bound and well
-// under the 500-LoC-per-glue-piece spirit of §Acceptance.
-const BUDGET_NROS_BUILD: u64 = 550;
 const BUDGET_WORKSPACE_METADATA: u64 = 150;
 const BUDGET_ADAPTER_SHIM: u64 = 200;
 
@@ -69,11 +60,10 @@ const SHIMS: &[(&str, &str)] = &[
 /// language tokei recognises. `path` may be a single file or a
 /// directory; tokei recurses on dirs.
 ///
-/// `lang_filter` optionally restricts to one language (e.g. `"Rust"` so
-/// the `nros-build/src/` gate counts only `.rs` lines and not stray
-/// docs). `None` sums across all languages — used for adapter shims so
-/// a mixed Makefile / CMake / Kconfig directory still totals one
-/// budget.
+/// `lang_filter` optionally restricts to one language (e.g. `"Rust"`)
+/// for single-language gates. `None` sums across all languages — used
+/// for adapter shims so a mixed Makefile / CMake / Kconfig directory
+/// still totals one budget.
 fn tokei_code_loc(path: &Path, lang_filter: Option<&str>) -> u64 {
     assert!(
         path.exists(),
@@ -128,18 +118,6 @@ fn tokei_code_loc(path: &Path, lang_filter: Option<&str>) -> u64 {
         }
     }
     total
-}
-
-#[test]
-fn nros_build_under_budget_loc() {
-    let src = project_root().join("packages/nros-build/src");
-    let code = tokei_code_loc(&src, Some("Rust"));
-    assert!(
-        code <= BUDGET_NROS_BUILD,
-        "Phase 212.C.6 budget violated: nros-build/src/ = {code} Rust LoC \
-         > {BUDGET_NROS_BUILD}. Trim the crate or open a phase doc to lift the cap."
-    );
-    eprintln!("[OK] nros-build/src/ = {code} / {BUDGET_NROS_BUILD} LoC");
 }
 
 #[test]
