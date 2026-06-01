@@ -115,13 +115,16 @@ build-fixture-rust:
     set -e
     source scripts/build/cargo.sh
     nros_cli="$(nros_cli_bin)"
-    # Codegen the fixtures that consume generated message crates (idempotent —
-    # --force is a no-op when the .msg inputs are unchanged). Codegen is a
-    # per-platform prep step, so it stays in the recipe; the build loop itself
-    # is the shared, manifest-driven scripts/build/fixtures-build.sh.
+    # Phase 210.E.3.d.native — pre-cargo codegen via `nros ws sync` writes
+    # the auto-managed [patch.crates-io] block into each example's Cargo.toml
+    # + materialises generated msg crates under `<ex>/build/nros_generator_rs/`.
+    # Replaces the legacy `nros generate-rust --force` + hand-managed
+    # `.cargo/config.toml [patch.crates-io]` chunks.
+    nros_repo_root="$PWD"
     for ex in talker listener service-server service-client action-server \
               action-client custom-transport-talker custom-transport-listener; do
-        ( cd "examples/native/rust/$ex" && "$nros_cli" generate-rust --force > /dev/null )
+        NROS_REPO_DIR="$nros_repo_root" "$nros_cli" ws sync \
+            "examples/native/rust/$ex" >/dev/null
     done
     bash scripts/build/fixtures-build.sh native rust
     echo "Native rust fixtures built (from examples/fixtures.toml)."
@@ -151,7 +154,9 @@ build-fixture-extras:
     ensure_native_rust_generated() {
         case "$1" in
             native/rust/talker|native/rust/listener)
-                ( cd "examples/$1" && "$nros_cli" generate-rust --force ) ;;
+                # Phase 210.E.3.d.native — same swap as build-fixture-role-
+                # examples: `ws sync` for the patch-table + codegen flow.
+                NROS_REPO_DIR="$repo_root" "$nros_cli" ws sync "examples/$1" >/dev/null ;;
         esac
     }
     # Phase 169/175/186 — native talker/listener Cyclone cells. Pure-cargo can't

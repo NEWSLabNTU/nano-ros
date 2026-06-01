@@ -71,12 +71,21 @@ else
     # dirs don't exist on a fresh checkout. Only examples have a package.xml (bins
     # skip). --force is idempotent so recipes that also codegen (freertos) are fine.
     NROS_CLI="$(nros_cli_bin)"; export NROS_CLI
+    NROS_REPO_ROOT="${NROS_REPO_ROOT:-$PWD}"; export NROS_REPO_ROOT
     nros_fixture_build_one() {
         local dir envstr args
         IFS=$'\x1f' read -r dir envstr args <<< "$1"
         [ -n "$dir" ] || return 0
         echo "  → $dir ${args}"
-        [ -f "$dir/package.xml" ] && ( cd "$dir" && "$NROS_CLI" generate-rust --force >/dev/null )
+        # Phase 210.E.3.d.native — pre-cargo `nros ws sync` writes the
+        # auto-managed [patch.crates-io] block + materialises generated
+        # msg crates under <dir>/build/. Replaces the legacy
+        # `nros generate-rust --force` + per-example .cargo/config.toml
+        # [patch.crates-io] chunks. Native rust adopters only — embedded
+        # rust fixtures still pre-codegen separately until E.3.d.embedded.
+        if [ -f "$dir/package.xml" ]; then
+            NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws sync "$dir" >/dev/null
+        fi
         # shellcheck disable=SC2086
         ( cd "$dir"; [ -n "$envstr" ] && export $envstr; cargo build $cargo_profile_args $args --quiet )
     }
