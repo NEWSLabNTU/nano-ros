@@ -1,0 +1,5 @@
+int32 goal_value
+---
+int32 result_value
+---
+int32 feedback_value
