@@ -27,10 +27,23 @@ name = "freertos_qemu_mps2_an385_bsp"
 # generic dep) already owns.
 nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", default-features = false }
 
+# Phase 212.M.5.a.3 — the BSP now drives `ExecutorComponentRuntime`
+# directly (`nros_system_run` in the build-script-generated
+# `system_main.rs`). Pull in the M.5.a.2 runtime surface, the
+# canonical `Executor`, and the bare-metal `nros-platform-freertos`
+# feature set; the active RMW backend is wired by the per-feature
+# stanza below.
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }
+nros-node = { path = "../../core/nros-node", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-freertos", "ros-humble"], optional = true }
+
 [build-dependencies]
-cc = "1"
 
 [features]
 # Match the underlying board crate's RMW selection surface.
 default = ["rmw-zenoh"]
-rmw-zenoh = ["nros-board-mps2-an385-freertos/rmw-zenoh"]
+rmw-zenoh = [
+    "dep:nros-rmw-zenoh",
+    "nros-board-mps2-an385-freertos/rmw-zenoh",
+]

@@ -160,7 +160,9 @@ impl<C: ExecutableComponent> ComponentSlot for TypedSlot<C> {
 /// timers but their callback bodies don't fire from
 /// [`nros_run_components`]. User code that needs callback dispatch
 /// calls [`ExecutorComponentRuntime::register_component`] directly.
+#[cfg(feature = "std")]
 struct DeclarativeSlot;
+#[cfg(feature = "std")]
 impl ComponentSlot for DeclarativeSlot {
     fn dispatch(&mut self, _cb_id: &str, _ctx: &mut CallbackCtx<'_>) {}
     fn tick(&mut self, _ctx: &mut TickCtx<'_>) {}

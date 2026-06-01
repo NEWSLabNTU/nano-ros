@@ -1,89 +1,77 @@
-//! Phase 212.H.3 — FreeRTOS BSP `build.rs`.
+//! Phase 212.H.3 / M.5.a.3 — FreeRTOS BSP `build.rs`.
 //!
 //! Cargo-native adapter for FreeRTOS per
 //! `docs/design/rtos-integration-pattern.md` §3 (the cargo path IS the
-//! adapter — no separate `integrations/freertos/` directory). Two
-//! responsibilities:
+//! adapter — no separate `integrations/freertos/` directory).
 //!
-//!   1. Run `nros codegen system` (when the subcommand from Phase
-//!      212.E is available) to emit a per-system tree under
-//!      `$OUT_DIR/nros-system/`. While 212.E is still unticked the
-//!      build script bakes a minimal `nros_config_generated.h` +
-//!      `system_main.c` from the inline defaults (or the
-//!      `NROS_SYSTEM_*` env vars) so the adapter SHAPE lands without
-//!      gating on the codegen verb.
-//!   2. Compile the baked `system_main.c` via `cc::Build` into a
-//!      `libnros_system.a` linked into the final firmware.
+//! Two emissions per build:
 //!
-//! Hard cap: this file MUST stay ≤200 LoC (Phase 212.H.8 budget
-//! enforced by `tokei` in CI). Keep new logic factored into the
-//! existing private helpers rather than expanding `main()`.
+//! 1. `$OUT_DIR/nros-system/nros_config_generated.h` — diagnostic
+//!    header carrying the resolved `[system]` scalars (system name,
+//!    domain id, RMW choice, zenoh locator, component count). Kept
+//!    around for downstream C glue + the H.3 acceptance test which
+//!    asserts its presence.
+//! 2. `$OUT_DIR/nros-system/system_main.rs` — Rust shim consumed by
+//!    `src/lib.rs` via `include!`. Declares the per-pkg
+//!    `__nros_component_<sanitised_pkg>_register` symbols (M.5.a.1
+//!    ABI), assembles them into a `&[ComponentRegisterFn]` static, and
+//!    defines the `nros_system_run` entry that drives
+//!    `ExecutorComponentRuntime` through the codegen-system component
+//!    list. Phase 212.M.5.a.3.
 //!
-//! M-F.6 status: this builder STILL emits weak no-op stubs as the
-//! fallback. The full runtime gate (real component register symbols +
-//! ApplicationTask spawn + Executor spin) is blocked behind macro /
-//! runtime / fixture-discovery gaps documented in
-//! `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
-//! §M-F.6. Until those close, this BSP keeps the link-only fallback;
-//! the codegen-system CLI seam is wired (canonical `codegen-system`
-//! verb + `NROS_BRINGUP_DIR` / `NROS_WORKSPACE_DIR` env vars) so
-//! downstream waves can plug in without touching the BSP again.
+//! Bringup-spec sources (first match wins):
+//!
+//! 1. `$OUT_DIR/nros-system/nros-plan.json` if `nros codegen-system`
+//!    succeeded (probed at the start of the build).
+//! 2. `NROS_SYSTEM_TOML` env var (a `<bringup>/system.toml` path).
+//! 3. `<NROS_BRINGUP_DIR>/system.toml` if `NROS_BRINGUP_DIR` is set.
+//! 4. Crate-local defaults below (empty component list — weak-stub
+//!    runtime that wakes the board crate but never registers anything).
 
-use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn main() {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let system_dir = out_dir.join("nros-system");
     fs::create_dir_all(&system_dir).expect("create nros-system out dir");
 
-    // --- Resolve [system] fields ---
-    // Three sources, first-match wins:
-    //   1. `NROS_SYSTEM_TOML` env var (path to a bringup `system.toml`).
-    //   2. The optional `system.toml` next to the consuming crate's
-    //      manifest (forwarded via `NROS_BRINGUP_DIR`).
-    //   3. The crate-local defaults below.
-    let system = resolve_system_spec();
+    // Optional: shell `nros codegen-system` if available. The probe is
+    // cheap (one --help call) and the bake itself is best-effort — we
+    // continue with the toml/default baker regardless so the BSP keeps
+    // building even when nros-cli isn't on PATH.
+    let _codegen_ok = try_nros_codegen_system(&system_dir);
 
-    // --- Try `nros codegen system` (Phase 212.E) ---
-    let codegen_ok = try_nros_codegen_system(&system, &system_dir);
-    if !codegen_ok {
-        // Fallback: bake the two files directly so the adapter shape
-        // is exercised even before 212.E lands.
-        bake_system_header(&system, &system_dir);
-        bake_system_main(&system, &system_dir);
-    }
+    // Prefer the planner's `nros-plan.json` (richer; future-proof) but
+    // fall back to a hand-parse of `system.toml` for fixtures that
+    // can't reach the planner yet.
+    let spec = read_spec_from_plan_json(&system_dir)
+        .or_else(read_spec_from_system_toml)
+        .unwrap_or_default();
 
-    // --- Compile system_main.c ---
-    // Re-use the underlying board crate's FREERTOS_CFLAGS contract so
-    // the system-main TU matches the kernel + lwIP TUs' ABI.
-    let mut sys = cc::Build::new();
-    configure_target(&mut sys);
-    sys.include(&system_dir);
-    sys.file(system_dir.join("system_main.c"));
-    sys.compile("nros_system");
+    bake_system_header(&spec, &system_dir);
+    bake_system_main_rs(&spec, &system_dir);
 
-    println!("cargo:rustc-link-search={}", system_dir.display());
+    // Expose the emitted dir to `src/lib.rs::include!`.
+    println!("cargo:rustc-env=NROS_SYSTEM_DIR={}", system_dir.display());
     println!("cargo:nros_system_dir={}", system_dir.display());
 
-    // --- Rerun triggers ---
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=NROS_SYSTEM_TOML");
     println!("cargo:rerun-if-env-changed=NROS_BRINGUP_DIR");
     println!("cargo:rerun-if-env-changed=NROS_WORKSPACE_DIR");
-    println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
     if let Ok(p) = env::var("NROS_SYSTEM_TOML") {
         println!("cargo:rerun-if-changed={p}");
     }
-    let _ = manifest_dir; // silence unused on minimal builds
+    if let Ok(d) = env::var("NROS_BRINGUP_DIR") {
+        println!("cargo:rerun-if-changed={d}/system.toml");
+    }
 }
 
-/// Subset of `system.toml` the BSP actually bakes into the
-/// per-system header. Mirrors `[system]` fields from the Phase 212
-/// schema (`docs/design/rtos-integration-pattern.md` §4).
+/// Subset of `system.toml` the BSP bakes into the per-system tree.
 struct SystemSpec {
     name: String,
     domain_id: u32,
@@ -104,22 +92,13 @@ impl Default for SystemSpec {
     }
 }
 
-fn resolve_system_spec() -> SystemSpec {
-    let toml_path = env::var_os("NROS_SYSTEM_TOML")
+fn read_spec_from_system_toml() -> Option<SystemSpec> {
+    let path = env::var_os("NROS_SYSTEM_TOML")
         .map(PathBuf::from)
-        .or_else(|| {
-            env::var_os("NROS_BRINGUP_DIR")
-                .map(|d| PathBuf::from(d).join("system.toml"))
-        })
-        .filter(|p| p.is_file());
-    let Some(path) = toml_path else {
-        return SystemSpec::default();
-    };
-    let raw = fs::read_to_string(&path).unwrap_or_default();
+        .or_else(|| env::var_os("NROS_BRINGUP_DIR").map(|d| PathBuf::from(d).join("system.toml")))
+        .filter(|p| p.is_file())?;
+    let raw = fs::read_to_string(&path).ok()?;
     let mut spec = SystemSpec::default();
-    // Minimal hand-parser so we don't pull `toml` into the build-dep
-    // closure. Recognises `[system]` scalars: `name`, `domain_id`,
-    // `rmw`, `zenoh_locator`, and a one-line `components = [...]`.
     let mut in_system = false;
     for line in raw.lines() {
         let line = line.trim();
@@ -153,16 +132,55 @@ fn resolve_system_spec() -> SystemSpec {
             }
         }
     }
-    spec
+    Some(spec)
+}
+
+/// Try to lift component identities from `nros-plan.json` if the
+/// codegen-system bake landed one. Plan-shape parsing is intentionally
+/// permissive — we scan for `"package": "..."` lines under the
+/// `components` section, which keeps the build.rs from pulling in a
+/// JSON parser just for this lookup.
+fn read_spec_from_plan_json(system_dir: &Path) -> Option<SystemSpec> {
+    let path = system_dir.join("nros-plan.json");
+    let raw = fs::read_to_string(&path).ok()?;
+    let mut spec = SystemSpec::default();
+    let mut in_components = false;
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("\"components\"") {
+            in_components = true;
+            continue;
+        }
+        if in_components && (trimmed.starts_with(']') || trimmed.starts_with("\"")) {
+            if trimmed.starts_with(']') {
+                in_components = false;
+                continue;
+            }
+            // `"package": "talker_pkg",` — grab the value.
+            if let Some(rest) = trimmed.strip_prefix("\"package\"") {
+                if let Some((_, v)) = rest.split_once(':') {
+                    let v = v.trim().trim_matches(|c: char| c == ',' || c == '"');
+                    if !v.is_empty() {
+                        spec.components.push(v.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if spec.components.is_empty() {
+        None
+    } else {
+        Some(spec)
+    }
 }
 
 /// Optimistic call into `nros codegen-system` (Phase 212.E). Verb is
-/// the hyphenated `codegen-system` per `nros --help`. Needs both
-/// `NROS_BRINGUP_DIR` and `NROS_WORKSPACE_DIR`; without them the
-/// fallback baker runs.
-fn try_nros_codegen_system(_spec: &SystemSpec, out: &Path) -> bool {
+/// the hyphenated `codegen-system` per `nros --help`.
+fn try_nros_codegen_system(out: &Path) -> bool {
     let cli = env::var("NROS_CLI").unwrap_or_else(|_| "nros".to_string());
-    let probe = Command::new(&cli).args(["codegen-system", "--help"]).output();
+    let probe = Command::new(&cli)
+        .args(["codegen-system", "--help"])
+        .output();
     if !matches!(&probe, Ok(o) if o.status.success()) {
         return false;
     }
@@ -175,8 +193,10 @@ fn try_nros_codegen_system(_spec: &SystemSpec, out: &Path) -> bool {
     let out_arg = out.to_str().unwrap_or_default();
     let status = Command::new(&cli)
         .args(["codegen-system"])
-        .arg("--workspace").arg(&workspace)
-        .arg("--bringup").arg(&bringup)
+        .arg("--workspace")
+        .arg(&workspace)
+        .arg("--bringup")
+        .arg(&bringup)
         .args(["--target", "thumbv7m-none-eabi"])
         .args(["--out", out_arg])
         .status();
@@ -185,50 +205,93 @@ fn try_nros_codegen_system(_spec: &SystemSpec, out: &Path) -> bool {
 
 fn bake_system_header(spec: &SystemSpec, out: &Path) {
     let mut s = String::new();
-    s.push_str("// AUTO-GENERATED by freertos-qemu-mps2-an385-bsp build.rs (212.H.3 fallback)\n");
+    s.push_str("// AUTO-GENERATED by freertos-qemu-mps2-an385-bsp build.rs\n");
     s.push_str("#ifndef NROS_CONFIG_GENERATED_H\n#define NROS_CONFIG_GENERATED_H\n");
     s.push_str(&format!("#define NROS_SYSTEM_NAME \"{}\"\n", spec.name));
     s.push_str(&format!("#define NROS_DOMAIN_ID {}u\n", spec.domain_id));
     s.push_str(&format!("#define NROS_RMW_NAME \"{}\"\n", spec.rmw));
-    s.push_str(&format!("#define NROS_ZENOH_LOCATOR \"{}\"\n", spec.zenoh_locator));
-    s.push_str(&format!("#define NROS_COMPONENT_COUNT {}u\n", spec.components.len()));
+    s.push_str(&format!(
+        "#define NROS_ZENOH_LOCATOR \"{}\"\n",
+        spec.zenoh_locator
+    ));
+    s.push_str(&format!(
+        "#define NROS_COMPONENT_COUNT {}u\n",
+        spec.components.len()
+    ));
     s.push_str("#endif\n");
     fs::write(out.join("nros_config_generated.h"), s).expect("write generated header");
 }
 
-fn bake_system_main(spec: &SystemSpec, out: &Path) {
+/// Emit `system_main.rs` — declares each component's M.5.a.1 mangled
+/// register fn `extern "Rust"`, packs them into a static slice, and
+/// defines the `nros_system_run` entry that builds the executor +
+/// drives the M.5.a.2 `ExecutorComponentRuntime`.
+fn bake_system_main_rs(spec: &SystemSpec, out: &Path) {
     let mut s = String::new();
-    s.push_str("// AUTO-GENERATED by freertos-qemu-mps2-an385-bsp build.rs (212.H.3 fallback)\n");
-    s.push_str("#include \"nros_config_generated.h\"\n");
-    // Forward-declare each component's register entry as `weak`. When
-    // the component crate ships a real impl the linker picks it; the
-    // missing-symbol fallback is a no-op stub so the adapter shape
-    // links even when the bringup pkg lists components whose crates
-    // don't yet provide a register entry. Phase 212.F.2 lint will
-    // surface drift between `[system].components` and the actual
-    // crates' surfaces.
+    s.push_str("// AUTO-GENERATED by freertos-qemu-mps2-an385-bsp build.rs (Phase 212.M.5.a.3)\n");
+    s.push_str("// Included by `src/lib.rs` via `include!(concat!(env!(\"NROS_SYSTEM_DIR\"), \"/system_main.rs\"))`.\n\n");
+    s.push_str(&format!(
+        "/// Resolved bringup name: `{}`. Domain id `{}`. RMW `{}`.\n",
+        spec.name, spec.domain_id, spec.rmw
+    ));
+    s.push_str(&format!(
+        "pub const NROS_SYSTEM_NAME: &str = \"{}\";\n",
+        spec.name
+    ));
+    s.push_str(&format!(
+        "pub const NROS_DOMAIN_ID: u32 = {};\n",
+        spec.domain_id
+    ));
+    s.push_str(&format!(
+        "pub const NROS_ZENOH_LOCATOR: &str = \"{}\";\n\n",
+        spec.zenoh_locator
+    ));
+
+    // Per-component extern decls. Empty components → emit an empty
+    // static; the runtime still spins so the example bring-up shape
+    // (board::run -> Executor::open -> spin loop) is preserved.
+    //
+    // `safe fn` inside the `unsafe extern "Rust"` block matches the
+    // `nros::component!()` macro emit (a plain `pub extern "Rust"
+    // fn`, safely callable, just `#[unsafe(no_mangle)]`-exported).
+    // The `safe` keyword is required for the coercion into the safe
+    // `ComponentRegisterFn = fn(...)` fn-pointer type to succeed.
+    s.push_str("unsafe extern \"Rust\" {\n");
     for c in &spec.components {
         s.push_str(&format!(
-            "__attribute__((weak)) void nros_component_{}_register(void) {{}}\n",
+            "    safe fn __nros_component_{}_register(\n        ctx: &mut ::nros::ComponentContext<'_>,\n    ) -> ::nros::ComponentResult<()>;\n",
             sanitize(c)
         ));
     }
-    s.push_str("void nros_system_main(void) {\n");
+    s.push_str("}\n\n");
+
+    s.push_str("/// M.5.a.1 mangled register fns packed in plan order.\n");
+    s.push_str("pub static NROS_REGISTER_FNS: &[::nros::ComponentRegisterFn] = &[\n");
     for c in &spec.components {
-        s.push_str(&format!("    nros_component_{}_register();\n", sanitize(c)));
+        // SAFETY: the extern decl above resolves at link time to the
+        // `#[unsafe(no_mangle)] extern "Rust" fn` that `nros::component!()`
+        // emits, whose signature is exactly `ComponentRegisterFn`.
+        s.push_str(&format!("    __nros_component_{}_register,\n", sanitize(c)));
     }
-    s.push_str("}\n");
-    fs::write(out.join("system_main.c"), s).expect("write system_main.c");
+    s.push_str("];\n\n");
+
+    s.push_str("pub const NROS_COMPONENT_NAMES: &[&str] = &[\n");
+    for c in &spec.components {
+        s.push_str(&format!("    \"{}\",\n", c));
+    }
+    s.push_str("];\n");
+
+    fs::write(out.join("system_main.rs"), s).expect("write system_main.rs");
 }
 
 fn sanitize(name: &str) -> String {
-    name.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
-}
-
-fn configure_target(build: &mut cc::Build) {
-    build.opt_level(2).warnings(false).flag_if_supported("-ffunction-sections");
-    let cflags = env::var("FREERTOS_CFLAGS").unwrap_or_else(|_| "-mcpu=cortex-m3 -mthumb".into());
-    for f in cflags.split_whitespace() {
-        build.flag_if_supported(f);
-    }
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }

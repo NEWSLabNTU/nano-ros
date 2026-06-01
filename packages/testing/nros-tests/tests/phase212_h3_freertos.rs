@@ -183,13 +183,13 @@ fn freertos_qemu_mps2_an385_2_component_bringup_builds() {
     // The artifact lives under firmware/target/.../build/<bsp>-<hash>/out/nros-system/.
     let target_dir = firmware.join("target/thumbv7m-none-eabi/debug/build");
     let mut found_header = false;
+    let mut found_main_rs: Option<PathBuf> = None;
     if target_dir.is_dir() {
         for e in walk(&target_dir).unwrap_or_default() {
-            if e.file_name()
-                .is_some_and(|n| n == "nros_config_generated.h")
-            {
-                found_header = true;
-                break;
+            match e.file_name().and_then(|n| n.to_str()) {
+                Some("nros_config_generated.h") => found_header = true,
+                Some("system_main.rs") => found_main_rs = Some(e),
+                _ => {}
             }
         }
     }
@@ -197,5 +197,26 @@ fn freertos_qemu_mps2_an385_2_component_bringup_builds() {
         found_header,
         "BSP build.rs did not emit nros_config_generated.h under {}",
         target_dir.display()
+    );
+
+    // Phase 212.M.5.a.3 — the baker MUST emit `system_main.rs` next to
+    // the legacy `nros_config_generated.h`. The included file is what
+    // `freertos-qemu-mps2-an385-bsp/src/lib.rs` consumes via
+    // `include!(concat!(env!("NROS_SYSTEM_DIR"), "/system_main.rs"))`
+    // to assemble `NROS_REGISTER_FNS` against each component's M.5.a.1
+    // mangled register symbol.
+    let main_rs_path =
+        found_main_rs.expect("BSP build.rs (Phase 212.M.5.a.3) did not emit system_main.rs");
+    let main_rs = fs::read_to_string(&main_rs_path).expect("read system_main.rs");
+    for component in ["talker_pkg", "listener_pkg"] {
+        let expected = format!("__nros_component_{component}_register");
+        assert!(
+            main_rs.contains(&expected),
+            "system_main.rs missing `{expected}`:\n{main_rs}"
+        );
+    }
+    assert!(
+        main_rs.contains("NROS_REGISTER_FNS"),
+        "system_main.rs missing NROS_REGISTER_FNS table:\n{main_rs}"
     );
 }

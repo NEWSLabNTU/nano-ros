@@ -22,5 +22,14 @@ name = "firmware"
 path = "src/main.rs"
 
 [dependencies]
-freertos-qemu-mps2-an385-bsp = { path = "@NANO_ROS_ROOT@/packages/boards/freertos-qemu-mps2-an385-bsp", default-features = false }
+freertos-qemu-mps2-an385-bsp = { path = "@NANO_ROS_ROOT@/packages/boards/freertos-qemu-mps2-an385-bsp", default-features = false, features = ["rmw-zenoh"] }
 panic-semihosting = { version = "0.6", features = ["exit"] }
+
+# Phase 212.M.5.a.3 — link the component pkgs so their
+# `__nros_component_<pkg>_register` symbols (emitted by
+# `nros::component!()`) reach the final firmware. The BSP-baked
+# `system_main.rs` declares them `extern "Rust"` and packs them into
+# `NROS_REGISTER_FNS`; without these path deps the link step would
+# fail with `undefined reference to __nros_component_talker_pkg_register`.
+talker_pkg = { path = "../src/talker_pkg" }
+listener_pkg = { path = "../src/listener_pkg" }

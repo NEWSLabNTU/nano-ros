@@ -1,3 +1,11 @@
+# Phase 212.M.5.a.3 fixture — talker Component pkg (Rust, no_std).
+#
+# Standalone `[workspace]` table keeps this crate from being folded
+# into the outer fixture / nano-ros workspace (mirrors the ThreadX
+# H.4 fixture's pkg shape). The crate is consumed as a path dep by
+# `firmware/` which targets `thumbv7m-none-eabi`.
+[workspace]
+
 [package]
 name = "talker_pkg"
 version = "0.1.0"
@@ -6,3 +14,6 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }

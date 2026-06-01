@@ -1,10 +1,27 @@
-//! Phase 212.H.3 fixture component — talker.
+//! Phase 212.M.5.a.3 fixture — talker component (Rust, no_std).
 //!
-//! Declarative-only marker: the embedded `firmware/` binary doesn't
-//! consume this crate (component registration is emitted by the BSP's
-//! `build.rs` into `system_main.c`). Lives in the workspace so
-//! `nros plan` can discover it.
+//! Declares a single node. The BSP baker links this pkg's mangled
+//! register symbol (`__nros_component_talker_pkg_register`, emitted by
+//! `nros::component!()`) into the firmware and dispatches it from
+//! `nros_system_run`. The M.5.a.2 BSP-side `DeclarativeSlot` does
+//! not fire timer / subscription callbacks today (M.5.a.4 follow-up)
+//! so a typed publisher / timer here would add link-time weight
+//! without execution coverage; the node-only declaration exercises
+//! the M.5.a.3 link + dispatch contract end-to-end.
 
-pub fn name() -> &'static str {
-    "talker"
+#![no_std]
+
+use nros::{Component, ComponentContext, ComponentResult, NodeId, NodeOptions};
+
+pub struct Talker;
+
+impl Component for Talker {
+    const NAME: &'static str = "talker";
+
+    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+        let _node = ctx.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
+        Ok(())
+    }
 }
+
+nros::component!(Talker);

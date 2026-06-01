@@ -5,12 +5,14 @@
 # + a `firmware/` bin crate that depends on
 # `freertos-qemu-mps2-an385-bsp` and ships the 5-line `main.rs`.
 #
-# `firmware/` is its own workspace root (empty `[workspace]` table) so
-# it can pin `target = "thumbv7m-none-eabi"` via `.cargo/config.toml`
-# without dragging the two component crates onto the embedded target.
-# The test invokes `cargo build` inside `firmware/` directly.
+# Phase 212.M.5.a.3 — talker_pkg / listener_pkg + firmware/ are each
+# their own workspace roots (mirrors the ThreadX H.4 fixture). The
+# embedded crates pull in `nros` with `platform-freertos` features
+# that would break the outer host workspace if folded in; the per-crate
+# `[workspace]` table keeps them standalone. The outer workspace has
+# nothing to enumerate today.
 
 [workspace]
 resolver = "2"
-members = ["src/talker_pkg", "src/listener_pkg"]
-exclude = ["src/demo_bringup", "firmware"]
+members = []
+exclude = ["src/talker_pkg", "src/listener_pkg", "src/demo_bringup", "firmware"]
