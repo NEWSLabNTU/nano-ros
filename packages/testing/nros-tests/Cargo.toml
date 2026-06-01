@@ -67,6 +67,11 @@ nros-platform-cffi = { path = "../../core/nros-platform-cffi", features = ["posi
 # Phase 88.14 — `nros-log` facade for the host-side logging tests.
 nros-log = { path = "../../core/nros-log" }
 
+# Phase 212.L.5 — top-level init API tests. The `nros` umbrella's
+# `init` module is platform/RMW-independent (no backend pulled), so we
+# depend on it with only `std`.
+nros = { path = "../../core/nros", default-features = false, features = ["std"] }
+
 [features]
 default = []
 types = ["nros-core", "nros-serdes"]
@@ -178,6 +183,10 @@ required-features = ["rmw"]
 name = "loan_e2e"
 path = "tests/loan_e2e.rs"
 required-features = ["loan-e2e"]
+
+[[test]]
+name = "phase212_l5_init_api"
+path = "tests/phase212_l5_init_api.rs"
 
 # Phase 134.6 E2E.1 — wraps scripts/check-zenoh-archive-symbols.sh as
 # a cargo-runnable regression gate over the install tree.

@@ -149,6 +149,20 @@ pub mod component;
 pub mod component_metadata;
 pub mod guide;
 
+/// Phase 212.L.5 — top-level init API.
+///
+/// Re-exported flat at the crate root: `nros::init()`,
+/// `nros::init_with_launch_auto()`, `nros::init_with_launch(path)`,
+/// `nros::init_with_args(args)`, `nros::Context`, `nros::InitError`.
+#[cfg(feature = "std")]
+pub mod init;
+
+#[cfg(feature = "std")]
+pub use init::{
+    Context, ContextSource, InitError, init, init_with_args, init_with_launch,
+    init_with_launch_auto,
+};
+
 /// Compile-time opaque storage sizes for FFI consumers.
 ///
 /// See [`sizes`] for the `export_size!` pattern used to expose these values

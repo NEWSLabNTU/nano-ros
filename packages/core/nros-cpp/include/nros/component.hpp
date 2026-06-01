@@ -73,4 +73,23 @@ using ComponentRegisterFn = int32_t (*)(ComponentContext& context);
     }                                                                                              \
     extern "C" const unsigned char __NROS_COMPONENT_EXPORT_PRESENT = 1
 
+// Phase 212.L.9 — C++ counterpart of Rust's `nros::component!()` macro.
+//
+// Emits the C-ABI register trampoline + a stable export marker so the
+// generated `system_main` (from `nros codegen-system`) can resolve and
+// invoke the user's component class. `QualifiedClassName` is a string
+// literal of shape `"<pkg>::<UserClass>"` and the cmake fn
+// `nano_ros_component_register()` enforces the prefix match (L.4).
+//
+// Equivalent to:
+//   NROS_COMPONENTS_REGISTER_NODE(UserClass)
+// but adds a fixed-storage symbol carrying the qualified class string
+// so the codegen + lint side can sanity-check the binding.
+#define NROS_COMPONENT_REGISTER(UserClass, QualifiedClassName)                                     \
+    extern "C" int32_t __nros_component_register(::nros::ComponentContext& context) {              \
+        return (UserClass::register_component(context)).raw();                                     \
+    }                                                                                              \
+    extern "C" const unsigned char __NROS_COMPONENT_EXPORT_PRESENT = 1;                            \
+    extern "C" const char __nros_component_class_name[] = QualifiedClassName
+
 #endif // NROS_CPP_COMPONENT_HPP

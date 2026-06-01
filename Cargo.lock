@@ -1670,6 +1670,7 @@ dependencies = [
  "assert_cmd",
  "duct",
  "libc",
+ "nros",
  "nros-core",
  "nros-log",
  "nros-node",

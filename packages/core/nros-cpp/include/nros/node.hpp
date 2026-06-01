@@ -15,6 +15,9 @@
 #include <type_traits> // Phase 189.M3.3.e — SFINAE on the callback-style create_service
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdlib> // getenv — Phase 123.B.3 env-aware init
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+#include <cstdio> // fopen — Phase 212.L.5 init_with_launch path-exists check
+#endif
 #endif
 
 // Phase 118.D: ffi.h MUST come before qos.hpp so qos.hpp's
@@ -100,6 +103,36 @@ inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
 /// @param session_name  Per-process session identifier. Must not be nullptr.
 /// @return Result indicating success or failure.
 inline Result init(const char* locator, uint8_t domain_id, const char* session_name);
+
+/// Phase 212.L.5 Pattern 2 — launch-aware init.
+///
+/// Resolves runtime knobs (domain id, locator, RMW choice) in this order:
+/// 1. `$NROS_RUNTIME_OVERLAY` (JSON sidecar emitted by
+///    `nros launch --emit-runtime-overlay`). NOT yet consumed —
+///    placeholder for the follow-up wave.
+/// 2. Launch XML at `<CARGO_MANIFEST_DIR>/launch/*.xml`. NOT yet parsed —
+///    the runtime trusts the launcher to project params/remaps into the
+///    child env before exec().
+/// 3. Env vars: `ROS_DOMAIN_ID`, `NROS_LOCATOR`, `RMW_IMPLEMENTATION` /
+///    `NROS_RMW`. This is the active overlay channel today.
+///
+/// `argc` / `argv` are reserved for the structured `--ros-args` parse
+/// that lands with the runtime-overlay wave. They are accepted and
+/// ignored for forward-compat.
+///
+/// `session_name` falls back to `"nros_cpp"` when null (matches the
+/// 2-arg `init` overload).
+inline Result init_with_launch_auto(int argc = 0, char** argv = nullptr,
+                                    const char* session_name = nullptr);
+
+/// Phase 212.L.5 Pattern 2 — explicit-path variant of
+/// [`init_with_launch_auto`].
+///
+/// Verifies `path` exists (so misspelled paths fail fast) but does NOT
+/// yet parse the XML — the env overlay is the active source today. See
+/// the auto variant's notes for the follow-up plan.
+inline Result init_with_launch(const char* path, int argc = 0, char** argv = nullptr,
+                               const char* session_name = nullptr);
 
 /// Shut down the nros session.
 ///
@@ -554,6 +587,51 @@ inline Result shutdown() {
     nros_cpp_ret_t ret = nros_cpp_fini(Node::global_storage());
     Node::global_initialized() = false;
     return Result(ret);
+}
+
+// -- Phase 212.L.5 launch-aware init --
+//
+// Both `init_with_launch_auto` and `init_with_launch(path)` delegate to
+// the existing 3-arg `init` after resolving the launch overlay (today:
+// env vars only — see header docs for the follow-up plan). The session
+// name falls back to `"nros_cpp"` so existing callsites keep working.
+
+inline Result init_with_launch_auto(int argc, char** argv, const char* session_name) {
+    (void)argc;
+    (void)argv;
+    // TODO (Phase 212.L.5 follow-up):
+    //   1. If $NROS_RUNTIME_OVERLAY is set, read the JSON sidecar and
+    //      fold its params/remaps/env into the init call.
+    //   2. Else walk <CARGO_MANIFEST_DIR>/launch/* and parse the XML
+    //      in-process.
+    // For now the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID consumed by
+    // the 2-arg `init`) is the only channel.
+    const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
+    return init(nullptr, 0, name);
+}
+
+inline Result init_with_launch(const char* path, int argc, char** argv,
+                               const char* session_name) {
+    (void)argc;
+    (void)argv;
+    // NROS_CPP_RET_INVALID_ARGUMENT = -3 (mirrors the 3-arg init guard).
+    if (path == nullptr) {
+        return Result(-3);
+    }
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    // Verify the file exists so misspelled paths fail fast at init time
+    // instead of surfacing as a silently-empty overlay later.
+    if (FILE* f = std::fopen(path, "rb")) {
+        std::fclose(f);
+    } else {
+        return Result(ErrorCode::NotInitialized);
+    }
+#endif
+    // TODO (Phase 212.L.5 follow-up): parse `path` as launch XML and
+    // fold params/remaps/env into the init call. Today the env overlay
+    // is the only channel.
+    const char* name = (session_name != nullptr) ? session_name : "nros_cpp";
+    return init(nullptr, 0, name);
 }
 
 /// Check if the nros session is initialized.
