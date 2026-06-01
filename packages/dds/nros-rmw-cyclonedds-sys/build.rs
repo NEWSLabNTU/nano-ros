@@ -57,13 +57,16 @@ fn vendored_build() {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
 
     // -------------------------------------------------------------
-    // Bake descriptors via host idlc:
-    //   - rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_  (from
-    //     the backend's hand-written IDL — required for ros_discovery_info).
-    //   - std_msgs::msg::dds_::Int32_  (used by the native Rust
-    //     talker/listener examples — phase 212.K.4 will replace this
-    //     with per-example codegen, but baking it here keeps the
-    //     wave-8 acceptance test pure-cargo).
+    // Bake the library-internal `rmw_dds_common` discovery descriptor.
+    //
+    // This is the ONLY message type the wrapper itself bakes — it's
+    // intrinsic to the RMW (required for `ros_discovery_info`
+    // participant matching), not a user-facing payload. Every user
+    // payload type (`std_msgs/Int32`, `geometry_msgs/Twist`, …) goes
+    // through the build-dep helper
+    // `nros_build::cyclonedds::Descriptors` from the consumer's
+    // `build.rs` (Phase 212.K.4). Never hard-code a user message type
+    // here.
     // -------------------------------------------------------------
     let gen_dir = out_dir.join("cyclonedds-types");
     std::fs::create_dir_all(&gen_dir).expect("mkdir gen");
@@ -72,7 +75,6 @@ fn vendored_build() {
         .include(&gen_dir)
         .flag_if_supported("-Wno-unused-parameter");
 
-    // ---- rmw_dds_common graph ----
     let graph_idl = backend_src.join("idl/rmw_dds_common_graph.idl");
     println!("cargo:rerun-if-changed={}", graph_idl.display());
     bake_descriptor(
@@ -83,23 +85,6 @@ fn vendored_build() {
         &[(
             "rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_",
             "rmw_dds_common_msg_dds__ParticipantEntitiesInfo__desc",
-        )],
-        &mut cc_c,
-    );
-
-    // ---- std_msgs/Int32 — synthesise the IDL via nros-msg-to-idl ----
-    let int32_idl_path = gen_dir.join("Int32.idl");
-    let int32_idl = nros_msg_to_idl::msg_to_idl("int32 data\n", "std_msgs", "Int32")
-        .expect("nros-msg-to-idl: std_msgs/Int32");
-    std::fs::write(&int32_idl_path, int32_idl).expect("write Int32.idl");
-    bake_descriptor(
-        &idlc,
-        &int32_idl_path,
-        &gen_dir,
-        "Int32",
-        &[(
-            "std_msgs::msg::dds_::Int32_",
-            "std_msgs_msg_dds__Int32__desc",
         )],
         &mut cc_c,
     );

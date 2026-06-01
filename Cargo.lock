@@ -1612,7 +1612,6 @@ dependencies = [
  "cyclonedds-sys",
  "linkme",
  "nros-build-paths",
- "nros-msg-to-idl",
  "nros-rmw-cffi",
 ]
 
