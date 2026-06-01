@@ -151,21 +151,52 @@ impl<C: ExecutableComponent> ComponentSlot for TypedSlot<C> {
     }
 }
 
-/// Erased slot for the BSP path — declarative-only components. The
-/// macro emit doesn't expose the `ExecutableComponent::on_callback`
-/// body through the `extern "Rust"` register fn (M.5.a.1 ABI is
-/// frozen). The Phase 212.M.5.a.3 baker will extend the macro with a
-/// parallel dispatch fn-ptr so the BSP path can route callbacks too;
-/// until then BSP-launched components register nodes / pubs / subs /
-/// timers but their callback bodies don't fire from
-/// [`nros_run_components`]. User code that needs callback dispatch
-/// calls [`ExecutorComponentRuntime::register_component`] directly.
-#[cfg(feature = "std")]
-struct DeclarativeSlot;
-#[cfg(feature = "std")]
-impl ComponentSlot for DeclarativeSlot {
-    fn dispatch(&mut self, _cb_id: &str, _ctx: &mut CallbackCtx<'_>) {}
-    fn tick(&mut self, _ctx: &mut TickCtx<'_>) {}
+/// Phase 212.M.5.a.4 — BSP-side dispatch slot.
+///
+/// The Phase 212.M.5.a.1 macro emit (`__nros_component_<pkg>_register`)
+/// drops the concrete component type at the FFI boundary, so the BSP
+/// can't reach `ExecutableComponent::on_callback` / `::tick` through
+/// the register fn alone. M.5.a.4 adds parallel emits — `_init`,
+/// `_dispatch`, `_tick` — that the macro generates per component;
+/// the BSP baker collects them into parallel fn-pointer tables which
+/// pair index-wise with `NROS_REGISTER_FNS`.
+///
+/// `BspDispatchSlot` holds the type-erased `*mut ()` returned by
+/// `_init` (a leaked `Box`) plus the matching dispatch / tick fn
+/// pointers; the embedded slot lives for the firmware lifetime so we
+/// never `Drop` the boxed state.
+pub(crate) struct BspDispatchSlot {
+    state: *mut (),
+    dispatch: ComponentDispatchFn,
+    tick: ComponentTickFn,
+}
+
+// SAFETY: `state` is a `Box`-leaked pointer to the component's `State`.
+// The runtime is single-threaded; the slot itself is never shared
+// across threads — we hold the `*mut ()` only to forward it to the
+// dispatch fn under `&mut self`. Implementing `Send` lets the slot
+// sit inside the heterogeneous `Vec<Arc<ComponentCell>>` without
+// fighting the auto-trait checker; `Sync` is unnecessary (we never
+// share `&BspDispatchSlot` across threads).
+unsafe impl Send for BspDispatchSlot {}
+
+impl ComponentSlot for BspDispatchSlot {
+    fn dispatch(&mut self, cb_id: &str, ctx: &mut CallbackCtx<'_>) {
+        // SAFETY: `self.dispatch` was emitted by `nros::component!()`
+        // alongside `self.state` (set at `init` time); the dispatch
+        // ABI takes `*mut ()` + `CallbackId<'_>` + `&mut CallbackCtx`,
+        // and the runtime holds the slot under a `&mut` borrow that
+        // serialises calls.
+        unsafe {
+            (self.dispatch)(self.state, CallbackId::new(cb_id), ctx);
+        }
+    }
+    fn tick(&mut self, ctx: &mut TickCtx<'_>) {
+        // SAFETY: same provenance as `dispatch`.
+        unsafe {
+            (self.tick)(self.state, ctx);
+        }
+    }
 }
 
 /// Shared per-component cell. Subscription / timer closures registered
@@ -331,6 +362,43 @@ impl ExecutorComponentRuntime {
             component_idx,
             _phantom: PhantomData,
         })
+    }
+
+    /// Phase 212.M.5.a.4 — BSP entry point: register a single component
+    /// against this runtime through the four `extern "Rust"` fn-pointers
+    /// the macro emits per pkg. Available on `no_std` (alloc-only) so
+    /// the FreeRTOS / NuttX / ThreadX / Zephyr BSP bakers can call it
+    /// from their `nros_system_run` loop without depending on the
+    /// std-side halt-flag spin in [`nros_run_components`].
+    pub fn register_dispatch_slot(
+        &mut self,
+        register_fn: ComponentRegisterFn,
+        init_fn: ComponentInitFn,
+        dispatch_fn: ComponentDispatchFn,
+        tick_fn: ComponentTickFn,
+    ) -> Result<(), ExecutorError> {
+        let state = (init_fn)();
+        let cell = Arc::new(ComponentCell {
+            slot: RefCell::new(Box::new(BspDispatchSlot {
+                state,
+                dispatch: dispatch_fn,
+                tick: tick_fn,
+            })),
+            publishers: RefCell::new(Vec::new()),
+        });
+        self.components.push(cell.clone());
+        let mut sink = ExecutorSink {
+            executor: &mut self.executor,
+            cell,
+            nodes: Vec::new(),
+        };
+        let sink_dyn: &mut dyn ComponentRuntime = &mut sink;
+        let mut context = ComponentContext::new("<bsp>", sink_dyn);
+        let result = (register_fn)(&mut context);
+        if result.is_err() {
+            self.components.pop();
+        }
+        result.map_err(ExecutorError::Component)
     }
 
     /// Drive one executor iteration + a `tick` per registered
@@ -524,43 +592,69 @@ fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
 /// [`nros_run_components`].
 pub type ComponentRegisterFn = fn(&mut ComponentContext<'_>) -> ComponentResult<()>;
 
-/// BSP shim — register every component in `register_fns` against
-/// `runtime`, then spin until halt. The Phase 212.M.5.a.3 baker's
-/// cmake-emitted `system_main.c` collects the per-pkg register fn
-/// pointers and calls into a single Rust shim, which holds the C ABI
-/// mismatch on the Rust side and never exposes [`ComponentContext`]
-/// across the FFI boundary.
+/// Phase 212.M.5.a.4 — type of the `extern "Rust"` `_init` fn emitted
+/// alongside `_register` by [`nros::component!`](crate::component).
+/// Returns a leaked `Box` pointer to the component's `State`; the
+/// BSP slot holds the pointer for the firmware lifetime.
+pub type ComponentInitFn = fn() -> *mut ();
+
+/// Phase 212.M.5.a.4 — type of the `extern "Rust"` `_dispatch` fn the
+/// macro emits per component. Wraps `ExecutableComponent::on_callback`
+/// with the type-erased `*mut ()` state argument.
 ///
-/// Each register fn is invoked under a fresh [`ComponentContext`]
-/// backed by a private one-shot [`ComponentRuntime`] sink — that
-/// gives every pkg its own declaration-time view of the runtime
-/// without the BSP needing to know the per-pkg `Component` type. The
-/// callback bodies are NOT routed from this path today (see
-/// [`DeclarativeSlot`] and the M.5.a.3 follow-up); call sites that
-/// need full callback dispatch use
-/// [`ExecutorComponentRuntime::register_component`] directly with the
-/// concrete component type.
+/// `unsafe`: the `*mut ()` MUST be a value previously returned by the
+/// matching [`ComponentInitFn`] and not freed; the BSP holds both in a
+/// paired index lookup.
+pub type ComponentDispatchFn =
+    unsafe fn(state: *mut (), callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>);
+
+/// Phase 212.M.5.a.4 — type of the `extern "Rust"` `_tick` fn the macro
+/// emits per component. Wraps `ExecutableComponent::tick`. Same
+/// `*mut ()` provenance contract as [`ComponentDispatchFn`].
+pub type ComponentTickFn = unsafe fn(state: *mut (), ctx: &mut TickCtx<'_>);
+
+/// BSP shim — register every component against `runtime`, then spin
+/// until halt. The Phase 212.M.5.a.3 baker's `system_main.rs` collects
+/// the per-pkg `_register` / `_init` / `_dispatch` / `_tick` fn
+/// pointers (M.5.a.4) and calls this with four parallel slices: index
+/// `i` of each refers to the same component.
+///
+/// On entry the BSP runs each `_init` to obtain a leaked `Box<State>`
+/// pointer, stores it inside a [`BspDispatchSlot`] paired with the
+/// matching dispatch / tick fns, and runs the corresponding `_register`
+/// under a private [`ComponentContext`]. That wires nodes / pubs /
+/// subs / timers onto the real executor AND lets the BSP-launched
+/// component's `on_callback` / `tick` bodies fire from the spin loop.
 #[cfg(feature = "std")]
 pub fn nros_run_components(
     runtime: &mut ExecutorComponentRuntime,
     register_fns: &[ComponentRegisterFn],
+    init_fns: &[ComponentInitFn],
+    dispatch_fns: &[ComponentDispatchFn],
+    tick_fns: &[ComponentTickFn],
 ) -> Result<(), ExecutorError> {
-    for f in register_fns {
-        let cell = Arc::new(ComponentCell {
-            slot: RefCell::new(Box::new(DeclarativeSlot)),
-            publishers: RefCell::new(Vec::new()),
-        });
-        runtime.components.push(cell.clone());
-        let mut sink = ExecutorSink {
-            executor: &mut runtime.executor,
-            cell,
-            nodes: Vec::new(),
-        };
-        let sink_dyn: &mut dyn ComponentRuntime = &mut sink;
-        // The component's canonical NAME is set by Component::register;
-        // the placeholder here is diagnostic-only.
-        let mut context = ComponentContext::new("<bsp>", sink_dyn);
-        (f)(&mut context).map_err(ExecutorError::Component)?;
+    assert_eq!(
+        register_fns.len(),
+        init_fns.len(),
+        "register/init slice mismatch"
+    );
+    assert_eq!(
+        register_fns.len(),
+        dispatch_fns.len(),
+        "register/dispatch slice mismatch"
+    );
+    assert_eq!(
+        register_fns.len(),
+        tick_fns.len(),
+        "register/tick slice mismatch"
+    );
+    for i in 0..register_fns.len() {
+        runtime.register_dispatch_slot(
+            register_fns[i],
+            init_fns[i],
+            dispatch_fns[i],
+            tick_fns[i],
+        )?;
     }
     runtime.spin()
 }

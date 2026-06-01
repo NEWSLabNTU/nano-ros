@@ -211,6 +211,12 @@ pub use component::{
     ComponentSubscription, ComponentTimer, ExecutableComponent, MISSING_COMPONENT_EXPORT_ERROR,
     NodeOptions, PublisherResolver, TickCtx, record_component_metadata, register_component,
 };
+// Phase 212.M.5.a.4 — internal helper consumed by `nros::component!()`
+// for the BSP dispatch path. Public-but-doc-hidden so the macro expand
+// resolves it as `::nros::__private_component_state_into_raw`.
+#[cfg(feature = "alloc")]
+#[doc(hidden)]
+pub use component::__private_component_state_into_raw;
 #[cfg(feature = "std")]
 pub use component_metadata::SourceMetadataExport;
 pub use component_metadata::{
@@ -222,7 +228,8 @@ pub use component_metadata::{
 pub use component_runtime::nros_run_components;
 #[cfg(feature = "rmw-cffi")]
 pub use component_runtime::{
-    ComponentHandle, ComponentRegisterFn, ExecutorComponentRuntime, ExecutorError,
+    ComponentDispatchFn, ComponentHandle, ComponentInitFn, ComponentRegisterFn, ComponentTickFn,
+    ExecutorComponentRuntime, ExecutorError,
 };
 pub use nros_macros::component;
 

@@ -1119,6 +1119,19 @@ pub fn register_component<C: Component>(runtime: &mut dyn ComponentRuntime) -> C
     C::register(&mut context)
 }
 
+/// Phase 212.M.5.a.4 internal — `Box`-erase a freshly built component
+/// `State` to the type-erased `*mut ()` ABI the BSP path uses. Called
+/// only from the `nros::component!()` macro emit; not public API.
+///
+/// The returned pointer is a leaked `Box`; the BSP runtime keeps it
+/// alive for the firmware lifetime (embedded slots never deallocate).
+#[cfg(feature = "alloc")]
+#[doc(hidden)]
+pub fn __private_component_state_into_raw<C: ExecutableComponent>(state: C::State) -> *mut () {
+    extern crate alloc;
+    alloc::boxed::Box::into_raw(alloc::boxed::Box::new(state)) as *mut ()
+}
+
 /// Run component registration against an in-memory metadata recorder.
 pub fn record_component_metadata<C: Component>(
     recorder: &mut dyn ComponentRuntime,

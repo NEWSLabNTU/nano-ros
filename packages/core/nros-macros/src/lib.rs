@@ -213,14 +213,60 @@ pub fn component(input: TokenStream) -> TokenStream {
     let pkg_raw = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
     let pkg_sym = sanitize_pkg_name_for_symbol(&pkg_raw);
     let register_ident = format_ident!("__nros_component_{}_register", pkg_sym);
+    let init_ident = format_ident!("__nros_component_{}_init", pkg_sym);
+    let dispatch_ident = format_ident!("__nros_component_{}_dispatch", pkg_sym);
+    let tick_ident = format_ident!("__nros_component_{}_tick", pkg_sym);
     let present_ident = format_ident!("__NROS_COMPONENT_{}_EXPORT_PRESENT", pkg_sym.to_uppercase());
 
+    // Phase 212.M.5.a.4 — parallel `init` / `dispatch` / `tick` symbols so
+    // the BSP path can fire `ExecutableComponent::on_callback` /
+    // `ExecutableComponent::tick` bodies without knowing the concrete
+    // component type. State is `Box`-erased to `*mut ()` at the FFI
+    // boundary; `init` returns a leaked Box pointer that the BSP keeps
+    // alive for the lifetime of the firmware (no `drop` symbol because
+    // embedded slots never deallocate). The dispatch / tick fns cast
+    // back to the typed `State` inside the macro emit, where the type
+    // information is still in scope.
     let expanded = quote! {
         #[unsafe(no_mangle)]
         pub extern "Rust" fn #register_ident(
             context: &mut nros::ComponentContext<'_>
         ) -> nros::ComponentResult<()> {
             <#component_ty as nros::Component>::register(context)
+        }
+
+        #[unsafe(no_mangle)]
+        pub extern "Rust" fn #init_ident() -> *mut () {
+            let state: <#component_ty as nros::ExecutableComponent>::State =
+                <#component_ty as nros::ExecutableComponent>::init();
+            ::nros::__private_component_state_into_raw::<#component_ty>(state)
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "Rust" fn #dispatch_ident(
+            state: *mut (),
+            callback: ::nros::CallbackId<'_>,
+            ctx: &mut ::nros::CallbackCtx<'_>,
+        ) {
+            // SAFETY: `state` came from `#init_ident` and is the only
+            // pointer to this `State`; the runtime never dispatches
+            // concurrently against the same slot.
+            let s = unsafe {
+                &mut *(state as *mut <#component_ty as nros::ExecutableComponent>::State)
+            };
+            <#component_ty as nros::ExecutableComponent>::on_callback(s, callback, ctx);
+        }
+
+        #[unsafe(no_mangle)]
+        pub unsafe extern "Rust" fn #tick_ident(
+            state: *mut (),
+            ctx: &mut ::nros::TickCtx<'_>,
+        ) {
+            // SAFETY: same provenance as `#dispatch_ident`.
+            let s = unsafe {
+                &mut *(state as *mut <#component_ty as nros::ExecutableComponent>::State)
+            };
+            <#component_ty as nros::ExecutableComponent>::tick(s, ctx);
         }
 
         #[used]

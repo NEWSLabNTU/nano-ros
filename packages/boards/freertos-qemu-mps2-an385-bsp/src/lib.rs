@@ -109,15 +109,28 @@ pub fn nros_system_run(cfg: &Config) -> Result<(), &'static str> {
 
     // Walk the per-pkg register fns. We can't call
     // `nros_run_components` (std-only spin), so we drive the same
-    // shape inline: a private one-shot sink per pkg, executor
-    // borrowed mutably, no callback dispatch (M.5.a.4 follow-up).
+    // shape inline through `register_dispatch_slot` — that's the
+    // Phase 212.M.5.a.4 BSP entry which pairs each `_register` with
+    // the matching `_init` / `_dispatch` / `_tick` symbols and
+    // installs them into an `ExecutorComponentRuntime` slot. Callback
+    // bodies now fire from the spin loop.
+    assert_eq!(NROS_REGISTER_FNS.len(), NROS_INIT_FNS.len());
+    assert_eq!(NROS_REGISTER_FNS.len(), NROS_DISPATCH_FNS.len());
+    assert_eq!(NROS_REGISTER_FNS.len(), NROS_TICK_FNS.len());
     for (idx, register_fn) in NROS_REGISTER_FNS.iter().enumerate() {
         let name = NROS_COMPONENT_NAMES
             .get(idx)
             .copied()
             .unwrap_or("<unknown>");
         println!("[nros-system] dispatching register: {}", name);
-        register_via_runtime(&mut runtime, *register_fn)?;
+        runtime
+            .register_dispatch_slot(
+                *register_fn,
+                NROS_INIT_FNS[idx],
+                NROS_DISPATCH_FNS[idx],
+                NROS_TICK_FNS[idx],
+            )
+            .map_err(|_| "register_dispatch_slot failed")?;
     }
 
     println!("[nros-system] entering spin loop");
@@ -128,77 +141,10 @@ pub fn nros_system_run(cfg: &Config) -> Result<(), &'static str> {
     }
 }
 
-/// `ExecutorComponentRuntime::nros_run_components` lives behind
-/// `#[cfg(feature = "std")]` (it owns the halt-flag-driven spin
-/// loop). For `no_std` BSPs we register each fn against a private
-/// `ComponentContext` directly and let the caller own the spin
-/// cadence.
-fn register_via_runtime(
-    runtime: &mut nros::ExecutorComponentRuntime,
-    register_fn: nros::ComponentRegisterFn,
-) -> Result<(), &'static str> {
-    use nros::ComponentContext;
-
-    let mut shim = BspRegisterShim::new(runtime);
-    let runtime_dyn: &mut dyn nros::ComponentRuntime = &mut shim;
-    let mut ctx = ComponentContext::new("<bsp>", runtime_dyn);
-    (register_fn)(&mut ctx).map_err(|_| "component register failed")
-}
-
-/// Trivial `ComponentRuntime` adapter that forwards `create_node`
-/// onto the live executor; `create_entity` validates the node
-/// reference without realising the entity. The richer typed sink in
-/// `ExecutorComponentRuntime::register_component` is the path that
-/// wires callbacks; M.5.a.4 generalises this for the BSP bake.
-struct BspRegisterShim<'a> {
-    runtime: &'a mut nros::ExecutorComponentRuntime,
-    nodes: alloc::vec::Vec<(alloc::string::String, nros_node::executor::NodeId)>,
-}
-
-impl<'a> BspRegisterShim<'a> {
-    fn new(runtime: &'a mut nros::ExecutorComponentRuntime) -> Self {
-        Self {
-            runtime,
-            nodes: alloc::vec::Vec::new(),
-        }
-    }
-
-    fn contains_node(&self, stable_id: &str) -> bool {
-        self.nodes.iter().any(|(s, _)| s == stable_id)
-    }
-}
-
-impl nros::ComponentRuntime for BspRegisterShim<'_> {
-    fn create_node(
-        &mut self,
-        id: nros::NodeId<'_>,
-        options: nros::NodeOptions<'_>,
-    ) -> nros::ComponentResult<()> {
-        let executor = self.runtime.executor_mut();
-        let node_id = executor
-            .node_builder(options.name)
-            .namespace(options.namespace)
-            .domain_id(options.domain_id)
-            .build()
-            .map_err(|_| nros::ComponentError::Runtime)?;
-        self.nodes
-            .push((alloc::string::String::from(id.as_str()), node_id));
-        Ok(())
-    }
-
-    fn create_entity(&mut self, metadata: nros::EntityMetadata) -> nros::ComponentResult<()> {
-        if !self.contains_node(metadata.node_id.as_str()) {
-            return Err(nros::ComponentError::Runtime);
-        }
-        Ok(())
-    }
-
-    fn record_callback_effect(
-        &mut self,
-        _callback_id: nros::CallbackId<'_>,
-        _kind: nros::CallbackEffectKind,
-        _entity_id: nros::EntityId<'_>,
-    ) -> nros::ComponentResult<()> {
-        Ok(())
-    }
-}
+// Phase 212.M.5.a.4 — the old `register_via_runtime` / `BspRegisterShim`
+// hand-rolled shim (which materialised only nodes, dropped entities,
+// and no-op'd callbacks) is gone. The BSP now drives
+// `ExecutorComponentRuntime::register_dispatch_slot` directly, which
+// reuses the same `ExecutorSink` that powers the typed
+// `register_component::<C>()` path — entities, pubs, subs, timers, AND
+// the per-pkg `on_callback` / `tick` bodies all wire end-to-end.

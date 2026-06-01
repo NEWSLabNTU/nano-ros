@@ -40,6 +40,12 @@ impl nros::Component for {ty} {{
     }}
 }}
 
+// Phase 212.M.5.a.4 — the macro now emits parallel `_init` / `_dispatch`
+// / `_tick` symbols alongside `_register`, all of which call into
+// `ExecutableComponent`. Declarative pkgs satisfy that with the no-op
+// blanket via `declarative_component!`.
+nros::declarative_component!({ty});
+
 nros::component!({ty});
 "#,
         ty = user_ty,
@@ -175,4 +181,61 @@ fn two_component_pkgs_link_into_one_binary() {
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );
+
+    // Phase 212.M.5.a.4 — confirm the new `_dispatch` / `_init` / `_tick`
+    // symbols also got per-pkg mangling so they don't collide on link.
+    // We probe each pkg's rlib (final bin may dead-strip unused exports)
+    // with `nm` (best-effort: skip silently if not on PATH).
+    if let Some(nm) = which_nm() {
+        for pkg in ["talker_pkg", "listener_pkg"] {
+            let rlibs = find_rlibs(&bin_dir.join("target/debug/deps"), pkg);
+            assert!(
+                !rlibs.is_empty(),
+                "couldn't locate rlib for `{pkg}` under {}",
+                bin_dir.join("target/debug/deps").display()
+            );
+            let out = match Command::new(&nm).arg(&rlibs[0]).output() {
+                Ok(o) if o.status.success() => o,
+                _ => continue,
+            };
+            let text = String::from_utf8_lossy(&out.stdout);
+            for suffix in ["register", "init", "dispatch", "tick"] {
+                let sym = format!("__nros_component_{pkg}_{suffix}");
+                assert!(
+                    text.contains(&sym),
+                    "expected symbol `{sym}` in rlib `{}`:\n{text}",
+                    rlibs[0].display()
+                );
+            }
+        }
+    }
+}
+
+fn find_rlibs(deps_dir: &std::path::Path, pkg: &str) -> Vec<PathBuf> {
+    let prefix = format!("lib{pkg}-");
+    fs::read_dir(deps_dir)
+        .into_iter()
+        .flat_map(|d| d.flatten())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension().and_then(|x| x.to_str()) == Some("rlib")
+                && p.file_name()
+                    .and_then(|x| x.to_str())
+                    .is_some_and(|n| n.starts_with(&prefix))
+        })
+        .collect()
+}
+
+fn which_nm() -> Option<String> {
+    for cand in ["llvm-nm", "nm"] {
+        if Command::new(cand)
+            .arg("--version")
+            .output()
+            .ok()
+            .is_some_and(|o| o.status.success())
+        {
+            return Some(cand.to_string());
+        }
+    }
+    None
 }

@@ -256,11 +256,26 @@ fn bake_system_main_rs(spec: &SystemSpec, out: &Path) {
     // fn`, safely callable, just `#[unsafe(no_mangle)]`-exported).
     // The `safe` keyword is required for the coercion into the safe
     // `ComponentRegisterFn = fn(...)` fn-pointer type to succeed.
+    // Phase 212.M.5.a.4 — emit `_init` / `_dispatch` / `_tick` decls
+    // alongside `_register` so the BSP can pair them into matching fn
+    // tables. `_dispatch` + `_tick` are emitted `unsafe` by the macro
+    // (their `*mut ()` arg has Box-leak provenance), so the extern
+    // decls keep the `unsafe` qualifier — only `_register` and `_init`
+    // qualify for the `safe` coercion into a non-unsafe fn pointer.
     s.push_str("unsafe extern \"Rust\" {\n");
     for c in &spec.components {
+        let p = sanitize(c);
         s.push_str(&format!(
-            "    safe fn __nros_component_{}_register(\n        ctx: &mut ::nros::ComponentContext<'_>,\n    ) -> ::nros::ComponentResult<()>;\n",
-            sanitize(c)
+            "    safe fn __nros_component_{p}_register(\n        ctx: &mut ::nros::ComponentContext<'_>,\n    ) -> ::nros::ComponentResult<()>;\n"
+        ));
+        s.push_str(&format!(
+            "    safe fn __nros_component_{p}_init() -> *mut ();\n"
+        ));
+        s.push_str(&format!(
+            "    fn __nros_component_{p}_dispatch(\n        state: *mut (),\n        callback: ::nros::CallbackId<'_>,\n        ctx: &mut ::nros::CallbackCtx<'_>,\n    );\n"
+        ));
+        s.push_str(&format!(
+            "    fn __nros_component_{p}_tick(\n        state: *mut (),\n        ctx: &mut ::nros::TickCtx<'_>,\n    );\n"
         ));
     }
     s.push_str("}\n\n");
@@ -272,6 +287,27 @@ fn bake_system_main_rs(spec: &SystemSpec, out: &Path) {
         // `#[unsafe(no_mangle)] extern "Rust" fn` that `nros::component!()`
         // emits, whose signature is exactly `ComponentRegisterFn`.
         s.push_str(&format!("    __nros_component_{}_register,\n", sanitize(c)));
+    }
+    s.push_str("];\n\n");
+
+    s.push_str("/// M.5.a.4 parallel init fns — index-paired with NROS_REGISTER_FNS.\n");
+    s.push_str("pub static NROS_INIT_FNS: &[::nros::ComponentInitFn] = &[\n");
+    for c in &spec.components {
+        s.push_str(&format!("    __nros_component_{}_init,\n", sanitize(c)));
+    }
+    s.push_str("];\n\n");
+
+    s.push_str("/// M.5.a.4 parallel dispatch fns — index-paired with NROS_REGISTER_FNS.\n");
+    s.push_str("pub static NROS_DISPATCH_FNS: &[::nros::ComponentDispatchFn] = &[\n");
+    for c in &spec.components {
+        s.push_str(&format!("    __nros_component_{}_dispatch,\n", sanitize(c)));
+    }
+    s.push_str("];\n\n");
+
+    s.push_str("/// M.5.a.4 parallel tick fns — index-paired with NROS_REGISTER_FNS.\n");
+    s.push_str("pub static NROS_TICK_FNS: &[::nros::ComponentTickFn] = &[\n");
+    for c in &spec.components {
+        s.push_str(&format!("    __nros_component_{}_tick,\n", sanitize(c)));
     }
     s.push_str("];\n\n");
 

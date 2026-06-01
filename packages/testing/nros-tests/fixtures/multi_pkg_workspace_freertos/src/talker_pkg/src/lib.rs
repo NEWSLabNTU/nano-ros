@@ -24,4 +24,8 @@ impl Component for Talker {
     }
 }
 
+// Phase 212.M.5.a.4 — the macro now emits `_init` / `_dispatch` /
+// `_tick` symbols that call into `ExecutableComponent`. Declarative
+// pkgs satisfy that contract with the no-op blanket impl.
+nros::declarative_component!(Talker);
 nros::component!(Talker);

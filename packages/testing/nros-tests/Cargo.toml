@@ -202,6 +202,13 @@ name = "phase212_m5a2_component_runtime"
 path = "tests/phase212_m5a2_component_runtime.rs"
 required-features = ["component-runtime-test"]
 
+# Phase 212.M.5.a.4 — BSP-path dispatch wiring (typed-erased state +
+# `_init` / `_dispatch` / `_tick` symbol-table coverage).
+[[test]]
+name = "phase212_m5a4_dispatch"
+path = "tests/phase212_m5a4_dispatch.rs"
+required-features = ["component-runtime-test"]
+
 # Phase 134.6 E2E.1 — wraps scripts/check-zenoh-archive-symbols.sh as
 # a cargo-runnable regression gate over the install tree.
 [[test]]

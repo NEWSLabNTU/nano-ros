@@ -17,4 +17,6 @@ impl Component for Listener {
     }
 }
 
+// Phase 212.M.5.a.4 — see the talker pkg for rationale.
+nros::declarative_component!(Listener);
 nros::component!(Listener);

@@ -219,4 +219,24 @@ fn freertos_qemu_mps2_an385_2_component_bringup_builds() {
         main_rs.contains("NROS_REGISTER_FNS"),
         "system_main.rs missing NROS_REGISTER_FNS table:\n{main_rs}"
     );
+
+    // Phase 212.M.5.a.4 — the baker now emits parallel `_init` /
+    // `_dispatch` / `_tick` symbols + tables so the BSP can route
+    // ExecutableComponent::on_callback / ::tick bodies through
+    // `register_dispatch_slot`.
+    for component in ["talker_pkg", "listener_pkg"] {
+        for suffix in ["init", "dispatch", "tick"] {
+            let expected = format!("__nros_component_{component}_{suffix}");
+            assert!(
+                main_rs.contains(&expected),
+                "system_main.rs missing M.5.a.4 symbol `{expected}`:\n{main_rs}"
+            );
+        }
+    }
+    for table in ["NROS_INIT_FNS", "NROS_DISPATCH_FNS", "NROS_TICK_FNS"] {
+        assert!(
+            main_rs.contains(table),
+            "system_main.rs missing M.5.a.4 `{table}` table:\n{main_rs}"
+        );
+    }
 }
