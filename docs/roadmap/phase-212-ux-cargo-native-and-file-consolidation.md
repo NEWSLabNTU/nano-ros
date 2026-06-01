@@ -10,12 +10,29 @@
 
 ## Goal
 
-Make nano-ros's developer surface idf.py-shaped: vendor build tool stays
-user-facing (cargo for Rust, cmake for C/C++, vendor SDK for embedded);
-`nros` is a provisioner + codegen + metadata + deploy back-end, never a
-build verb. Component packages declare themselves in their own native
-manifest (`Cargo.toml` or `CMakeLists.txt`); multi-node systems live in a
-dedicated `<system>_bringup` package following standard ROS layout.
+**`nros` CLI scope:** codegen + env setup + orchestration. Never a build
+verb (`nros build` / `test` / `flash` / `monitor` are in §Non-Goals).
+
+**Vendor build tools own build:** cargo for Rust, cmake for C/C++, vendor
+SDK for embedded (west / idf.py / make / pio / make).
+
+The split is asymmetric for Rust by design:
+- **Rust:** `nros generate-rust && cargo build` — two explicit steps.
+  No `build.rs` auto-codegen (the `nros-build` build-dep crate was
+  retracted — see §212.C). Cargo's `build.rs` was the only way to make
+  codegen implicit, and entangling cargo with nros's codegen state was
+  judged worse than the extra step.
+- **C++:** `cmake -B build && cmake --build build` — one step. The cmake
+  fn `nano_ros_generate_interfaces()` runs codegen at configure time.
+- **Embedded:** vendor tool drives. Adapter shim shells
+  `nros codegen-system` at configure time (Zephyr cmake fn, NuttX
+  Makefile rule, ESP-IDF component, PIO pre-script, …).
+
+Component packages declare themselves in their own native manifest
+(Cargo.toml `[package.metadata.nros.*]` tables for Rust; cmake fns
+`nano_ros_component_register` / `nano_ros_application` for C++).
+Multi-node systems live in a dedicated `<system>_bringup` package
+following standard ROS layout — Path A code-free shape.
 
 ## Architecture
 
@@ -30,32 +47,66 @@ See companion design documents (live, expected to iterate):
 
 1. **Build-system-native.** Cargo + CMake stay user-facing. `nros` never
    has a `build` / `test` / `flash` / `monitor` verb.
-2. **Single-node** = one package, one `Cargo.toml` (or one
-   `CMakeLists.txt`). No bringup pkg. `cargo build` / `cmake --build`
-   does codegen automatically via `nros-build` (Rust) /
-   `nano_ros_generate_interfaces()` (C/C++).
-3. **Multi-node** = cargo workspace (or cmake superbuild) +
-   `<system>_bringup` package. Bringup pkg is pure declarative — no
-   `Cargo.toml`, no `CMakeLists.txt`, no `src/`. Contains `package.xml`
-   + `system.toml` + `launch/system.launch.xml` + optional `config/`.
-4. **Mixed Rust + C/C++** = cmake top-level via Corrosion bridge. Pure
+2. **Three pkg shapes** (§212.L):
+   - **Component pkg** — lib only. `nros::component!()` (Rust) or
+     `NROS_COMPONENT_REGISTER()` (C++). Codegen owns spin. Embedded-
+     deployable. Composable.
+   - **Application pkg** — user `main()`. Explicit spin control. Native
+     only (RTOS rejects arbitrary main). Two init flavours: launch-aware
+     (`nros::init_with_launch_auto()`) or launch-ignoring (`nros::init()`).
+   - **Bringup pkg** — Path A code-free. Carries `package.xml` +
+     `system.toml` + `launch/system.launch.xml`. NO `Cargo.toml`, NO
+     `CMakeLists.txt`, NO `src/`. Required for multi-node composition.
+3. **Per-pkg metadata location** (Option α, locked):
+   - Rust component/application: `Cargo.toml`
+     `[package.metadata.nros.{component,application,deploy.<target>,embedded}]`.
+   - C++ component/application: cmake fns (`nano_ros_component_register`,
+     `nano_ros_application`, `nano_ros_deploy`) write JSON to build dir
+     at configure time; codegen consumes.
+   - Bringup pkg (both langs): `system.toml` carries
+     `[deploy.<target>]` + `[[domain]]` + `[[bridge]]` + `[[remap]]`.
+     `system.toml` lives ONLY in bringup pkgs.
+4. **Component class name** = `<pkg-dir-name>::<UserClass>` MANDATORY.
+   The pkg dir name is the cargo `[package].name` (Rust) or top
+   `project()` name (C++). Enforced by `nros check`.
+5. **Launch file policy**:
+   - REQUIRED in bringup pkg (`launch/system.launch.xml`).
+   - OPTIONAL elsewhere. When absent in a single-pkg, `nros plan` /
+     `nros codegen-system` / `nros launch` synthesise an implicit
+     launch (`<launch><node pkg=… exec=…/></launch>`) in-memory.
+   - Multiple files per pkg supported. Resolution: positional arg →
+     `<pkg-name>.launch.xml` → `system.launch.xml` → single file → synth.
+6. **Mixed Rust + C/C++** = cmake top-level via Corrosion bridge. Pure
    Rust = cargo top-level. Pure C/C++ = cmake top-level.
-5. **Embedded RTOS** = vendor SDK retains its native build tool (west /
-   make+Kconfig / cmake / idf.py / pio). nano-ros plugs into vendor's
-   external-module hook + bakes `system.toml` into compile-time C config.
-   Bringup pkg never reaches device.
-6. **Diagnostics passthrough.** Rustc errors stay rustc errors. cmake
+7. **Embedded RTOS** = vendor SDK retains its native build tool. nano-ros
+   plugs into vendor's external-module hook + bakes the system spec into
+   compile-time C config via `nros codegen-system`. Bringup pkg never
+   reaches device.
+8. **Diagnostics passthrough.** Rustc errors stay rustc errors. cmake
    errors stay cmake errors. `nros` errors only when `nros` owns the
    action. No colcon-style `Failed <<<` aggregation.
-7. **No colcon as primary orchestrator.** Colcon stays AVAILABLE for
+9. **No colcon as primary orchestrator.** Colcon stays AVAILABLE for
    Autoware-style outer integration via two-graph seam at `nros plan`.
 
-**Five irreducible per-component user-authored items:**
-- `Cargo.toml.[package].name` (cargo requires)
-- `Cargo.toml.[package.metadata.nros.component].{default_namespace, parameters, remaps}` (pure deployment intent)
+**Irreducible per-Component-pkg user-authored items (Rust):**
+- `Cargo.toml.[package].name` — pkg dir name
+- `Cargo.toml.[lib]` + `crate-type = ["rlib", "staticlib"]`
+- `Cargo.toml.[package.metadata.nros.component].class = "<pkg>::<UserClass>"`
 - `Cargo.toml.[package.metadata.ament].{build_depend, exec_depend}` (non-cargo ROS deps)
-- `src/lib.rs` w/ `#[nros::component]` attribute macros
-- Per-RTOS: nothing extra (adapter shim handles it)
+- `package.xml` (colcon parity)
+- `src/lib.rs` — `impl Component for UserClass` + `nros::component!(UserClass);`
+- `launch/*.launch.xml` — OPTIONAL (synth fallback)
+
+**Irreducible per-Application-pkg user-authored items (Rust):**
+- `Cargo.toml.[package].name`
+- `Cargo.toml.[[bin]] name = "<pkg>"`
+- `Cargo.toml.[package.metadata.nros.application].deploy = ["native", …]`
+  (must NOT include RTOS targets)
+- `package.xml`
+- `src/main.rs` w/ `nros::init()` OR `nros::init_with_launch_auto()`
+- `launch/*.launch.xml` — OPTIONAL
+
+C++ analogues use cmake fns + identical `package.xml` + `src/*.{cpp,hpp}`.
 
 Everything else derives from these or becomes a build artifact.
 
@@ -133,41 +184,33 @@ Per-system `system.toml` (in bringup pkg) carries everything else.
 - **Files:**
   `nros-cli/packages/nros-cli-core/src/orchestration/{config,schema,workspace}.rs`.
 
-### 212.C — `nros-build` build-dependency crate
+### 212.C — `nros-build` build-dependency crate (RETRACTED)
 
-Rust build-script helper that runs `nros codegen` from `build.rs`
-automatically. Replaces manual `nros generate-rust` step.
+**Retracted.** The original goal was to make `cargo build` invoke
+codegen automatically via a `build.rs` helper crate. C.1–C.7 landed
+(commits `fae0522ba`, `4d34303db` C.6+C.7 gates) and the Phase 212.K
+Option B Cyclone descriptor pipeline initially wired through it.
 
-- [ ] **C.1** — Crate at `packages/nros-build/` (this tree). ≤500 LoC
-      HARD cap. `Codegen` builder pattern.
-- [ ] **C.2** — Resolves `nros` binary via `$NROS_BIN` → PATH →
-      `~/.nros/bin/nros` (mirrors `scripts/build/cargo.sh::nros_cli_bin`).
-- [ ] **C.3** — Writes outputs to `$OUT_DIR/nros-gen/` ONLY (preserves
-      `--target-dir` isolation rule from CLAUDE.md). Never touches
-      `target/` directly.
-- [ ] **C.4** — Emits `cargo:rerun-if-changed=` for `package.xml`,
-      every `.msg` / `.srv` / `.action` file, and interface-package
-      roots discovered via `[package.metadata.ament].build_depend`.
-- [ ] **C.5** — SHA-256 input digest stamp at `$OUT_DIR/nros-gen/.stamp`
-      for incremental skip. Reuse the Phase 195 `cache` module from
-      `cargo_nano_ros`.
-- [ ] **C.6** — Degrades to no-op (warn-only) on `cargo check
-      --no-default-features` when no RMW feature selected. Same hazard
-      as Phase 118.B probe.
-- [ ] **C.7** — Missing `nros` binary → hard fail with install pointer.
-- **Tests:**
-  - [ ] `build_rs_invokes_nros_codegen` — golden trybuild fixture
-        `Cargo.toml` + `build.rs` + `src/lib.rs` produces expected
-        `$OUT_DIR/nros-gen/` tree.
-  - [ ] `stamp_skips_when_inputs_unchanged` — second `cargo build`
-        without input changes does not re-invoke `nros codegen`.
-  - [ ] `rerun_if_msg_changes` — touching a `.msg` triggers a rebuild.
-  - [ ] `nocodegen_no_default_features` — `cargo check --no-default-features`
-        on a crate w/ no RMW feature degrades to no-op + warning.
-  - [ ] `missing_nros_binary_hard_fails` — clean error message.
-  - [ ] `loc_budget_under_500` — script-level test asserts `tokei`
-        on `src/` reports ≤500 LoC.
-- **Files:** `packages/nros-build/{Cargo.toml,src/lib.rs,tests/}`.
+The retraction came from a design-direction shift: `nros` CLI scope =
+codegen + env setup; vendor tool scope = build. Entangling cargo's
+build.rs state with nros's codegen step (manifest discovery, idlc
+shelling, stamp invalidation, missing-CLI hard-fail) created cross-tool
+state that made `cargo check` failures hard to diagnose. The two-step
+`nros generate-rust && cargo build` is honest about who owns what.
+
+Dropped:
+- `packages/nros-build/` crate (deleted)
+- `phase212_h8_loc_budgets.rs::nros_build_under_budget_loc` gate
+- `nros-build` build-dep entry from every consumer
+
+Replaced by:
+- `nros generate-rust` as the canonical explicit codegen step (Rust)
+- `nano_ros_generate_interfaces()` cmake fn as the cmake configure-time
+  codegen step (C++)
+- Cyclone descriptor codegen migrated to inside `nros generate-rust`
+  emit pipeline (Option B, commit `5c6aeab`); generated crates carry a
+  thin self-contained `build.rs` that cc-compiles the emitted .c files
+  without any `nros-build` dependency.
 
 ### 212.D — cmake-side mirror: `nano_ros_workspace_metadata()`
 
@@ -461,39 +504,289 @@ CMake on hosted targets (native, qemu native_sim).
   `examples/native/rust/{talker,listener}/`,
   `nros-cli/packages/nros-cli-core/src/cmd/codegen_cyclonedds.rs`.
 
+### 212.L — Pkg shape + unified launch model
+
+Locks the canonical user-authored shapes (Component / Application /
+Bringup) × (Rust / C++) and the single resolution pipeline that
+underlies `nros codegen-system`, `nros plan`, `nros launch`, and every
+RTOS adapter shim.
+
+- [ ] **L.1 Component pkg shape** — Rust authors `Cargo.toml` (w/ `[lib]
+      crate-type=["rlib","staticlib"]` + `[package.metadata.nros.
+      component] class = "<pkg>::<UserClass>"`) + `package.xml` +
+      `src/lib.rs` (`impl Component for UserClass` + `nros::component!(
+      UserClass);`) + optional `launch/*.launch.xml`. C++ authors
+      `CMakeLists.txt` (`nano_ros_component_register(NAME … CLASS …
+      SOURCES … DEPLOY …)`) + `package.xml` + `src/<UserClass>.{cpp,
+      hpp}` (`NROS_COMPONENT_REGISTER(UserClass, "<pkg>::UserClass")`)
+      + optional launch. No user `main()` either language — codegen
+      synthesises native `main` into `target/nros-system/<pkg>/` (out-
+      of-tree) and `system_main.c` for embedded.
+- [ ] **L.2 Application pkg shape** — Rust authors `Cargo.toml` (`[[bin]
+      ] name = "<pkg>"` + `[package.metadata.nros.application].deploy
+      = ["native", …]`) + `package.xml` + `src/main.rs` w/ explicit
+      `nros::init()` OR `nros::init_with_launch_auto()` + optional
+      launch. C++ analogous (`nano_ros_application(NAME … SOURCES …
+      DEPLOY native)`). Application pkgs are NATIVE-ONLY; including any
+      RTOS in `deploy` is a `nros check` error.
+- [ ] **L.3 Bringup pkg shape (Path A)** — `package.xml` + `system.toml`
+      + `launch/system.launch.xml`. NO `Cargo.toml`, NO `CMakeLists.txt`,
+      NO `src/`. `system.toml` carries `[deploy.<target>]` +
+      `[[domain]]` + `[[bridge]]` + `[[remap]]`. Multi-node composition
+      via `<node pkg=…>` / `<include>` in launch.xml. Language-
+      independent.
+- [ ] **L.4 `<pkg>::<Class>` enforcement** — `nros check` MUST reject a
+      component pkg whose `class` field doesn't start with the pkg
+      directory name (which equals `Cargo.toml::[package].name` for
+      Rust and `project()` for C++). Cross-cuts user docs ("the dir
+      name IS the pkg name").
+- [ ] **L.5 Init API patterns**:
+      - Pattern 1 (Component pkg): `nros::component!(Ty);` — register
+        trampoline; codegen owns runtime.
+      - Pattern 2 (Application pkg + launch-aware): `nros::
+        init_with_launch_auto(argc, argv)` reads `<pkg>/launch/*.xml`
+        via the L.6 resolver + applies params / remaps / env. User
+        owns spin.
+      - Pattern 3 (Application pkg + custom spin): `nros::init(argc,
+        argv)` — raw init, launch file ignored. For custom executors,
+        gui main, async runtime integration, debug instrumentation.
+      C++ counterparts: `nros::init_with_launch_auto/path` /
+      `nros::init`.
+- [ ] **L.6 Launch file resolution + synthesis** —
+      - For Path A bringup pkg: launch file REQUIRED;
+        `launch/system.launch.xml` is the canonical name. Missing
+        launch → hard error.
+      - For Component / Application pkg: launch file OPTIONAL. When
+        absent, `nros plan` / `nros codegen-system` synthesise an
+        in-memory `<launch><node pkg="<pkg>" exec="<exec>"/></launch>`
+        (never written to disk).
+      - Multi-launch resolution order: `--file <path>` arg → `<dir>/
+        launch/<pkg>.launch.xml` → `<dir>/launch/system.launch.xml` →
+        single `<dir>/launch/*.launch.xml` → synth (only for non-Path-A).
+      - `--exec <name>` skips exec disambiguation when multiple
+        `[[bin]]` / `add_executable` candidates exist.
+- [ ] **L.7 `[workspace.metadata.nros]` schema** — single field
+      `default_system = "<pkg-name-or-bringup-name>"`. Resolves either
+      a Path A bringup pkg (has `system.toml`, no Cargo.toml) OR a
+      self-bringup component/application pkg (has Cargo.toml w/
+      `[package.metadata.nros.deploy.*]`). Loader handles both.
+- [ ] **L.8 `[package.metadata.nros.deploy.<target>]` table (Option
+      α)** — per-pkg deploy targets live in `Cargo.toml`
+      `[package.metadata.nros.deploy.<target>]` (Rust) OR via
+      `nano_ros_deploy(TARGET … RMW … DOMAIN_ID …)` cmake fn (C++).
+      `system.toml` deploy table exists ONLY in Path A bringup pkgs.
+      `nros check` rejects per-pkg `system.toml` outside bringup role.
+- [ ] **L.9 C++ cmake fn surface** — `nano_ros_component_register(NAME
+      <name> CLASS <UserClass> SOURCES … DEPLOY …)`,
+      `nano_ros_application(NAME <name> SOURCES … DEPLOY …)`,
+      `nano_ros_deploy(TARGET <name> RMW <rmw> DOMAIN_ID <n>
+      LOCATOR <uri>)`, `nano_ros_bridge(…)`, `nano_ros_domain(…)`.
+      All fns write metadata JSON to `${BUILD}/nros-metadata.json` so
+      `nros codegen-system` reads it at configure time. No sidecar
+      TOML for C++ pkgs.
+- [ ] **L.10 `nros::component!()` macro + Component / ExecutableComponent
+      traits** — already shipped per Phase 172 W.3 (see
+      `packages/core/nros-macros/src/lib.rs:156`). Macro emits the
+      register trampoline; `Component` trait declares nodes/pubs/
+      subs/timers/services/actions; `ExecutableComponent` adds
+      `init()` + `on_callback(state, cb_id, ctx)` + optional `tick(
+      state, ctx)` bodies. Generated runtime owns the spin loop.
+- [ ] **L.11 `.cargo/config.toml` lint** — `nros check` warns when a
+      per-pkg `.cargo/config.toml` carries `[patch.crates-io]`
+      entries; patches live exclusively in workspace-root
+      `Cargo.toml` (auto-managed by `nros ws sync`). Phase 212.K wave
+      11 hit a real shadow bug here.
+- [ ] **L.12 Vendor-native platform configs out of scope** — `prj.conf`
+      (Zephyr), `sdkconfig` (ESP-IDF), `platformio.ini` (PIO),
+      Kconfig fragments (NuttX), linker scripts (FreeRTOS / ThreadX)
+      stay vendor-native. nros does NOT replace them. Adapter shims
+      shell `nros codegen-system` at configure time; vendor tools own
+      the rest.
+- **Tests:**
+  - [ ] `nros_check_rejects_class_pkg_mismatch` — `class = "wrong::
+        Talker"` in a pkg named `talker_pkg` → diagnostic.
+  - [ ] `nros_check_rejects_system_toml_outside_bringup` — Path A
+        bringup is the only valid `system.toml` location.
+  - [ ] `application_pkg_with_rtos_deploy_is_rejected` — `deploy =
+        ["zephyr"]` on Application pkg → error.
+  - [ ] `launch_synth_emits_single_node_for_self_bringup` — Component
+        pkg w/o launch file → synth `<launch><node pkg=… exec=…/>`.
+  - [ ] `launch_synth_refuses_path_a_bringup_without_file` — missing
+        bringup launch.xml → hard error.
+  - [ ] `multi_launch_resolves_pkg_named_default` — `<pkg>/launch/
+        <pkg>.launch.xml` wins when no `--file` arg given.
+  - [ ] `cargo_config_patch_lint` — per-pkg `.cargo/config.toml` w/
+        `[patch.crates-io]` → diagnostic.
+- **Files:**
+  `cmake/NanoRosComponentRegister.cmake` (NEW — C++ cmake fns),
+  `nros-cli/packages/nros-cli-core/src/cmd/check.rs` (L.4 + L.8 + L.11
+  lints), `nros-cli/packages/nros-cli-core/src/orchestration/launch_synth.rs`
+  (NEW — L.6 synthesis), companion design docs.
+
+### 212.M — Example migration sweep + pre-212 cleanup
+
+Migrate every `examples/<plat>/<lang>/<example>/` to the §212.L
+canonical shape, and remove every pre-212 file format from the tree.
+A clean break — no transitional mixed-shape state allowed.
+
+- [ ] **M.1 native/rust sweep** — `examples/native/rust/{talker,
+      listener}/` → Component pkg (used by embedded fixtures too;
+      Option B Cyclone codegen path drives via `nros generate-rust`).
+      `examples/native/rust/{service-*,action-*,parameters,logging}/`
+      → Application pkg + `nros::init_with_launch_auto()` (demos
+      params/remaps from launch). Drop Phase 170.A `lib.rs::run()` +
+      `main.rs::main(){run()}` split — Component pkgs become lib-only.
+- [ ] **M.2 native/cpp sweep** — `examples/native/cpp/*` (~6 examples)
+      → Application pkg with `nano_ros_application()`. Replace
+      `find_package(std_msgs) via NrosRclcppCompat` with
+      `nano_ros_generate_interfaces(LANGUAGE CPP PACKAGES …)`. Lose
+      the explicit `NANO_ROS_PLATFORM=posix` / `nros_platform_link_app`
+      calls (cmake fns subsume them).
+- [ ] **M.3 Zephyr sweep** — `examples/zephyr/{c,cpp,rust}/*` →
+      Component pkgs. Drop per-example `<nros/app_config.h>` Kconfig-
+      synthesis (`packages/core/nros-c/include/nros/zephyr/
+      app_config.h` retired). Wire via `nros_system_generate(.)` (the
+      §212.L self-pkg case — `nros codegen-system --pkg <dir>` reads
+      Cargo metadata for single-pkg defaults). RMW selection via
+      `CONF_FILE=prj.conf;prj-<rmw>.conf` overlays stays vendor-native.
+- [ ] **M.4 NuttX sweep** — `examples/qemu-arm-nuttx/*` +
+      `examples/nuttx/{c,cpp,rust}/*` (~5 examples). Drop per-example
+      `nros.toml` + `gen-app-config.py` baker. Route through
+      `nros codegen-system --pkg <dir>` via the H.2 adapter shim.
+- [ ] **M.5 FreeRTOS sweep** — `examples/qemu-arm-freertos/{rust,
+      cpp}/*` + `examples/freertos/*`. Drop `nano_ros_read_config(
+      nros.toml)` cmake fn. Per-board BSP crate (H.3) handles codegen
+      via its own `build.rs` shelling `nros codegen-system`. Expand
+      BSP crates beyond `freertos-qemu-mps2-an385-bsp` for any board
+      that gets an example.
+- [ ] **M.6 ThreadX sweep** — `examples/threadx-linux/{rust,cpp}/*`
+      + `examples/threadx-riscv64/{rust,cpp}/*`. Mostly close already;
+      mechanical conversion to Component pkg shape + `nros_threadx_
+      codegen_system()` cmake fn (already H.4-shipped).
+- [ ] **M.7 ESP-IDF / ESP32 sweep (BLOCKED)** — `examples/esp32/{
+      rust,c,cpp}/*`. Currently sidesteps ESP-IDF (plain `cargo build`
+      under `platform-bare-metal`). Migration = move under ESP-IDF
+      `idf.py` workflow via `integrations/nano-ros` ESP-IDF component
+      (H.5 carve-out shipped). **BLOCKED** on H.5 deeper gap: nros-
+      node `executor/spin.rs` uses `alloc::sync::Arc` directly on
+      `target_has_atomic = "ptr"`-gated branches; esp32c3's `riscv32imc`
+      lacks ptr atomics. Fix path: swap to `portable_atomic_util::Arc`.
+      Unblocks M.7.
+- [ ] **M.8 PlatformIO sweep** — `examples/platformio/*` (when any
+      land). H.6 extra_script handles framework-agnostic codegen via
+      `nros codegen-system --ahead-of-vendor --framework <f>`.
+- [ ] **M.9 PX4 sweep** — `examples/px4/cpp/uorb/nros-register-check/`
+      stays as-is (the canonical PX4 surface per Phase 115.K.4).
+      Multi-node PX4 case (H.7-shipped emit) operates on bringup pkgs
+      writing into `$PX4_AUTOPILOT_DIR/src/modules/`.
+- [ ] **M.10 Pre-212 file cleanup** — enumerate + delete every
+      pre-212 file the migration sweep makes redundant:
+      - `nros.toml` (any location)
+      - `component_nros.toml` per-pkg
+      - `gen-app-config.py` per-example baker
+      - `app_config.h.in` / per-example `<nros/app_config.h>`
+        Kconfig-synthesis
+      - `nano_ros_read_config(nros.toml)` cmake fn (delete the fn
+        + every caller)
+      - Per-example committed `metadata/*.json`
+      - Phase 170.A `lib.rs::run()` + `main.rs::main(){run()}`
+        split files in `examples/native/rust/*` (Component pkg = lib
+        only; codegen synthesises main)
+      - Legacy `examples/native/rust/{talker,listener}/CMakeLists.
+        txt` (Phase 175.A Cyclone CMake fallback — superseded by
+        Option B pure-cargo path)
+      - Stale `examples/native/rust/{talker,listener}/generated/`
+        dirs from pre-Option-B codegen runs
+- [ ] **M.11 `nros check` lints (defensive)** — after the sweep, add
+      lints so no contributor reintroduces a pre-212 shape:
+      - L.4 (`<pkg>::<Class>` mismatch)
+      - L.8 (per-pkg `system.toml` outside bringup)
+      - L.11 (`.cargo/config.toml` `[patch.crates-io]`)
+      - `pre-212 files forbidden`: grep over the example dir for
+        `nros.toml`, `component_nros.toml`, `gen-app-config.py`,
+        `app_config.h.in`, committed `metadata/*.json` → hard error.
+- [ ] **M.12 Regression test** —
+      `packages/testing/nros-tests/tests/phase212_examples_canonical_
+      shape.rs`. Walks `examples/` + asserts:
+      - Every example dir has a `package.xml`.
+      - Component / Application pkg classification matches
+        `[package.metadata.nros.{component,application}]` table OR
+        cmake fn call.
+      - No pre-212 file shapes survive (M.10 list).
+      - Path A bringup dirs have no Cargo.toml / CMakeLists.txt / src/.
+      - All deploy targets in `[package.metadata.nros.deploy.*]`
+        match the platform path the example lives under.
+- **Tests** (per-wave, gated on SDK availability):
+  - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
+  - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
+  - [ ] `zephyr_<example>_builds` per migrated Zephyr example
+  - [ ] Same for nuttx / freertos / threadx / platformio / px4
+  - [ ] `pre_212_files_forbidden_in_examples` (M.12)
+  - [ ] `class_pkg_match_enforced_in_examples` (M.11 + M.12)
+- **Files:** `examples/` (tree-wide sweep), `packages/core/nros-c/
+  include/nros/zephyr/app_config.h` (DELETE), `cmake/NanoRosReadConfig.
+  cmake` (DELETE if exists), `nros-cli/packages/nros-cli-core/src/
+  cmd/check.rs` (M.11 lints), regression test under
+  `packages/testing/nros-tests/tests/`.
+
 ## Acceptance
 
-- [ ] **Single-node Rust = `cargo build && cargo run` for ALL three
-      RMWs** (zenoh, xrce, cyclonedds). No CMake step required. (212.C + 212.K)
+Two-step Rust (codegen + build) is the canonical user surface;
+one-step C++ (cmake configure runs codegen as a side effect of the
+cmake fn) is the canonical C++ user surface. See §Goal for the
+asymmetry rationale.
+
+- [ ] **Single-node Rust = `nros generate-rust && cargo build && cargo
+      run` for ALL three RMWs** (zenoh, xrce, cyclonedds). No CMake step
+      required. (212.K Option B)
 - [ ] **Single-node C++ = `cmake -B build && cmake --build build`.**
-      RMW selected via `-DNANO_ROS_RMW=…`. (existing path, 212.D adds
-      multi-node sibling)
-- [ ] **Multi-node Rust = `cargo build && nros plan && nros
-      launch <bringup>`** — no separate codegen step. (212.B + 212.C + 212.J)
+      RMW selected via `-DNANO_ROS_RMW=…`. `nano_ros_generate_interfaces()`
+      runs codegen at configure. (existing path; cmake-side codegen)
+- [ ] **Multi-node Rust = `nros generate-rust && cargo build && nros
+      plan && nros launch <bringup>`** — explicit codegen step + cargo
+      builds + nros owns plan + launch. (212.B + 212.J + 212.L Bringup)
 - [ ] **Multi-node C++ = `cmake -B build && cmake --build build && nros
       launch <bringup>`** — `nano_ros_workspace_metadata()` does the
       plan stage at configure time. (212.D + 212.J)
 - [ ] **Mixed Rust+C++ workspace = `cmake -B build && cmake --build
       build`** with `corrosion_import_crate` bridging Rust components
       into cmake's superbuild. (212.D + cross-language acceptance)
-- [ ] **One file per component for the user** — `Cargo.toml` (Rust) or
-      `CMakeLists.txt` (C/C++) carries the `[package.metadata.nros]` /
-      `nano_ros_component()` declaration; `metadata/*.json` is a build
-      artifact; `component_nros.toml` retired. (212.B + 212.C)
-- [ ] **Every existing fixture migrates to the new shape via one
-      `nros migrate workspace` invocation per fixture.** No mixed-shape
-      tree allowed. (212.I)
-- [ ] **All 7 RTOS adapters (Zephyr, NuttX, FreeRTOS, ThreadX, ESP-IDF,
-      PlatformIO, PX4) ship a working 2-component bringup fixture under
-      the new shape.** (212.E + 212.H)
-- [ ] **Each adapter shim ≤200 LoC; `nros-build` ≤500 LoC; cmake
-      `nano_ros_workspace_metadata()` ≤150 LoC.** CI gate via `tokei`.
+- [ ] **Three pkg shapes work for both langs** — Component pkg
+      (lib only), Application pkg (user main), Bringup pkg (Path A
+      code-free). (212.L)
+- [ ] **Per-pkg metadata in vendor manifest** — Rust uses Cargo.toml
+      `[package.metadata.nros.{component,application,deploy.<target>,
+      embedded}]`; C++ uses cmake fns (`nano_ros_component_register`,
+      `nano_ros_application`, `nano_ros_deploy`). No sidecar TOML for
+      C++. `system.toml` lives ONLY in Path A bringup pkgs. (212.L)
+- [ ] **Component class follows `<pkg>::<UserClass>`** — pkg dir name
+      MUST match the prefix. `nros check` enforces. (212.L.4)
+- [ ] **Launch file synthesis works for single-pkg** — Component pkg
+      w/o launch file gets an implicit one synthesised in-memory by
+      `nros plan` / `nros codegen-system` / `nros launch`. (212.L.6)
+- [ ] **Multi-launch resolution works** — `<pkg>/launch/<pkg>.launch.
+      xml` > `<pkg>/launch/system.launch.xml` > single file > synth.
+      `--file <path>` override. (212.L.6)
+- [ ] **Every existing fixture migrated to the new shape** via the
+      §212.I.3 sweep (fixtures) + §212.M sweep (examples). No mixed-
+      shape tree allowed. (212.I + 212.M)
+- [ ] **All 7 RTOS adapters ship a working bringup fixture under the
+      new shape** (Zephyr, NuttX, FreeRTOS, ThreadX, ESP-IDF, PlatformIO,
+      PX4). (212.H + 212.M)
+- [ ] **Each adapter shim ≤200 LoC; cmake `nano_ros_workspace_metadata
+      ()` ≤150 LoC.** CI gate via `tokei`. (`nros-build` budget bullet
+      retired with 212.C.)
 - [ ] **No `nros build` / `nros test` / `nros flash` / `nros monitor`
-      verbs.** Phase-doc grep checked in CI.
+      / `nros sign` / `nros emit` verbs.** Phase-doc grep checked in CI
+      via `phase212_non_goals_grep.rs`. (Non-Goals)
 - [ ] **A failing rustc / cmake / clang diagnostic in any test fixture
       reaches the user's terminal verbatim** — no aggregation, no
       truncation. CI test injects a synthetic compile error and greps for
       the original message.
+- [ ] **Pre-212 files forbidden in the tree** — `nros.toml`,
+      `component_nros.toml`, `gen-app-config.py`, `app_config.h.in`
+      per-example bakers, committed `metadata/*.json`. Regression test
+      grep-asserts. (212.M.10 + M.11)
 
 ## Test infrastructure
 
@@ -519,18 +812,19 @@ CMake on hosted targets (native, qemu native_sim).
 S = small (≤1d), M = medium (1–3d), L = large (≥1w).
 
 1. **212.A `cargo-nros` binary shell** — RETRACTED, see §212.A
-2. **212.B schema + loader** (M)
-3. **212.C `nros-build` crate** (M)
-4. **212.D `nano_ros_workspace_metadata()` cmake fn** (M)
-5. **212.F bringup pkg shape + `nros new system`** (S)
-6. **212.G `nros check` exec-depend drift detector** (S; emit verb retracted)
-7. **212.I migration tooling (INTERNAL, hidden CLI)** (M)
-8. **Apply 212.I sweep to every existing fixture** (S)
-9. **212.J `nros launch`** (M)
-10. **212.E `nros codegen system`** (M)
-11. **212.H RTOS adapter audit + 7 fixtures** (L, can parallelize)
-12. **212.K cyclonedds-sys + wrapper** (L, HIGH risk, deferrable)
-13. **Acceptance verification + CI gates** (M)
+2. **212.B schema + loader** (M) — partial; final shape locked in §212.L.8
+3. **212.C `nros-build` crate** — RETRACTED, see §212.C
+4. **212.D `nano_ros_workspace_metadata()` cmake fn** (M) — shipped
+5. **212.E `nros codegen-system`** (M) — shipped; launch synthesis per §212.L.6 still to land
+6. **212.F bringup pkg shape + `nros new system`** (S) — shipped
+7. **212.G `nros check` exec-depend drift detector** (S) — shipped; emit verb retracted
+8. **212.H RTOS adapter audit + 7 fixtures** (L) — H.1-H.7 shipped; M.7 ESP-IDF cross-compile blocked
+9. **212.I migration tooling (INTERNAL, hidden CLI)** (M) — shipped + I.3 fixture sweep done
+10. **212.J `nros launch`** (M) — shipped
+11. **212.K cyclonedds-sys + wrapper** (L) — shipped + K.4 Option B (codegen-driven descriptors) shipped
+12. **212.L Pkg shape + unified launch model** (L) — NEW; lock canonical shapes + lints + launch synth
+13. **212.M Example migration sweep + pre-212 cleanup** (L) — NEW; tree-wide sweep + lint enforcement
+14. **Acceptance verification + CI gates** (M)
 
 ## Non-Goals
 
@@ -547,12 +841,27 @@ build system to learn):
 - `nros emit package-xml` (retracted in 212.G — users hand-write
   `package.xml`; the bringup `<exec_depend>` drift is caught by
   `nros check --bringup`, not auto-regenerated)
-- A workspace-root `nros.toml` (system definition lives in
+- `cargo-nros` cargo subcommand shell (retracted in 212.A — every
+  `nros <verb>` works directly; cargo prefix added no functional value)
+- `nros-build` Rust build-dependency crate (retracted in 212.C —
+  `nros generate-rust` is the explicit codegen step; cargo owns build)
+- A workspace-root `nros.toml` (per-pkg metadata lives in
+  `Cargo.toml` `[package.metadata.nros.*]` / cmake fns; bringup uses
   `<bringup>/system.toml`)
 - Per-component `component_nros.toml` (`[package.metadata.nros.component]`
   in `Cargo.toml` is the replacement)
+- Per-pkg `system.toml` OUTSIDE bringup role (deploy data lives in
+  `Cargo.toml` `[package.metadata.nros.deploy.<target>]` / cmake fns;
+  see §212.L.8)
+- Sidecar `nros-pkg.toml` for C++ pkgs (cmake fns are the C++ metadata
+  surface; see §212.L.9)
 - Committed `metadata/*.json` (build artifact only, lives in
   `$OUT_DIR/nros-gen/` or `target/nros-metadata/`)
+- Per-example `gen-app-config.py` / `app_config.h.in` / per-target
+  `<nros/app_config.h>` Kconfig-synthesis (retired by §212.M sweep;
+  embedded codegen routes through `nros codegen-system`)
+- Per-pkg `.cargo/config.toml` `[patch.crates-io]` block (auto-managed
+  in workspace-root `Cargo.toml`; see §212.L.11)
 
 Phase-doc CI grep checks that none of these appears in user-facing
 surface area (CLI help text, fixture trees, book docs).
@@ -564,6 +873,18 @@ surface area (CLI help text, fixture trees, book docs).
   (212.I) is the only bridge — and only because the in-tree fixture
   sweep needs it. Hidden from the public CLI; retires entirely once
   212.I.3 ships and the regression test is demoted to historical.
+- The codegen-vs-build split is asymmetric for Rust by design. C++
+  cmake fns make codegen implicit at configure; cargo has no
+  equivalent integration point without a build-dep crate (the
+  retracted §212.C path). Two-step Rust is the honest answer; see
+  §Goal.
+- Three pkg shapes (Component / Application / Bringup) replace the
+  pre-212 "every pkg has a Cargo.toml + nros.toml" model. The mental
+  cost of picking shape pays off in: lib-only components compose into
+  multi-component bringups + ship to RTOS; explicit-spin applications
+  keep rclcpp/rclpy-style control on native; Path A bringups stay
+  code-free orchestration declarations. See §212.L for the full
+  taxonomy.
 - Live design documents in `docs/design/` continue to iterate after the
   phase lands. Treat the phase doc as the work breakdown; treat the
   design docs as the source of truth on shape decisions.
@@ -572,10 +893,13 @@ surface area (CLI help text, fixture trees, book docs).
   question. The other is to always require a colcon outer install
   before `ros2 launch`. Phase 212 commits to 212.J as the canonical
   path; colcon outer integration becomes an opt-in alternative.
-- 212.K (Cyclone-Rust pure cargo) is the highest-risk work item.
-  Fallback acceptance allows reverting to CMake for cyclonedds if
-  upstream Cyclone churn proves the sys-crate wrapper unsustainable.
-  Every other work item must land regardless.
+- 212.K (Cyclone-Rust pure cargo) shipped via Option B: descriptor
+  codegen lives inside `nros generate-rust`'s emit pipeline, not a
+  separate per-example build.rs. The retired §212.C `nros-build` path
+  is NOT the canonical user surface for any RMW.
+- §212.M is the only work item that mutates `examples/` tree-wide.
+  Once it lands, the §212.L canonical shape is the only shape in
+  the tree; §212.M.11 lints prevent re-introduction.
 - Companion design docs (kept up-to-date as work proceeds):
   - `docs/design/multi-node-workspace-layout.md` (LIVE)
   - `docs/design/workspace-layout-by-case.md` (LIVE)
