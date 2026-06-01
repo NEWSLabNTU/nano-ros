@@ -10,6 +10,7 @@ name       = "listener_pkg"
 crate-type = ["staticlib", "rlib"]
 
 [package.metadata.nros.component]
-name     = "listener"
-language = "rust"
-symbol   = "nros_component_listener"
+default_namespace = "/"
+parameters = {}
+remaps = []
+
