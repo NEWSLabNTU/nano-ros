@@ -48,6 +48,10 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     set(_platform_features std platform-threadx)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     set(_platform_features alloc panic-halt platform-threadx)
+elseif(NANO_ROS_PLATFORM STREQUAL "esp_idf")
+    # ESP-IDF: Espressif's FreeRTOS port. Same feature set as the
+    # canonical no_std FreeRTOS build (nros-c CMakeLists mirrors this).
+    set(_platform_features alloc panic-halt platform-freertos)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
     # Phase 138 canonical "threadx" — board axis disambiguates the
     # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
@@ -65,7 +69,7 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
             "(expected: posix, freertos_armcm3, freertos, nuttx_armv7a, "
-            "threadx_linux, threadx_riscv64, or threadx)")
+            "threadx_linux, threadx_riscv64, threadx, or esp_idf)")
 endif()
 
 set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})

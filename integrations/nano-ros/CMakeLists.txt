@@ -38,9 +38,24 @@ else()
     set(_nros_domain_id "${CONFIG_NROS_DOMAIN_ID}")
 endif()
 
-set(NANO_ROS_PLATFORM    "baremetal"            CACHE STRING "" FORCE)
+set(NANO_ROS_PLATFORM    "esp_idf"              CACHE STRING "" FORCE)
 set(NANO_ROS_RMW         "${_nros_rmw}"         CACHE STRING "" FORCE)
 set(NANO_ROS_ROS_EDITION "${_nros_ros_edition}" CACHE STRING "" FORCE)
+
+# Rust cargo target derived from IDF_TARGET. Corrosion infers x86_64 when
+# the toolchain is set but the target-triple isn't — bake it explicitly.
+# Xtensa SoCs (esp32, esp32s2, esp32s3) need an espup-built rust; RISC-V
+# SoCs (esp32c3 / c6 / h2 / p4) use the stock riscv32imc/imac target.
+if(NOT DEFINED Rust_CARGO_TARGET OR Rust_CARGO_TARGET STREQUAL "")
+    if(IDF_TARGET STREQUAL "esp32c3" OR IDF_TARGET STREQUAL "esp32c2")
+        set(Rust_CARGO_TARGET "riscv32imc-unknown-none-elf" CACHE STRING "")
+    elseif(IDF_TARGET STREQUAL "esp32c6" OR IDF_TARGET STREQUAL "esp32h2"
+           OR IDF_TARGET STREQUAL "esp32p4")
+        set(Rust_CARGO_TARGET "riscv32imac-unknown-none-elf" CACHE STRING "")
+    elseif(IDF_TARGET MATCHES "^esp32(|s2|s3)$")
+        set(Rust_CARGO_TARGET "xtensa-${IDF_TARGET}-none-elf" CACHE STRING "")
+    endif()
+endif()
 
 # --- Phase 212.H.5 codegen-system bake ----------------------------------
 # Where the user workspace + bringup pkg live. `NROS_WORKSPACE_DIR` is

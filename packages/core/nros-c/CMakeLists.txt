@@ -72,6 +72,11 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
     # ThreadX on RISC-V 64 (QEMU virt): no std, alloc for internal collections.
     set(_platform_features alloc panic-halt platform-threadx)
+elseif(NANO_ROS_PLATFORM STREQUAL "esp_idf")
+    # ESP-IDF: Espressif's FreeRTOS port (xtensa-esp* / riscv32-esp*).
+    # IDF supplies its own libc + alloc, but nros-c stays no_std + alloc
+    # to keep the Rust staticlib portable across xtensa / riscv32-esp.
+    set(_platform_features alloc panic-halt platform-freertos)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
     # Phase 138 canonical "threadx" — board axis disambiguates the
     # std-vs-no_std split (Linux sim has a host libc; RV64 QEMU is
@@ -89,7 +94,7 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
             "(expected: posix, freertos_armcm3, freertos, nuttx_armv7a, "
-            "threadx_linux, threadx_riscv64, or threadx)")
+            "threadx_linux, threadx_riscv64, threadx, or esp_idf)")
 endif()
 
 set(_features ros-humble ${_rmw_features} ${_platform_features})
