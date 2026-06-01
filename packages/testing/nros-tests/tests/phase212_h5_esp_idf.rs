@@ -56,6 +56,7 @@ fn stage_fixture() -> (tempfile::TempDir, PathBuf) {
 }
 
 #[test]
+#[ignore = "Phase 212.H.5 — needs ESP-IDF SDK locally (IDF_PATH + idf.py). Un-ignore in CI rows that have ESP-IDF installed."]
 fn esp_idf_esp32c3_2_component_bringup_builds() {
     // Phase 212.H.5 prereqs: nros CLI + a usable ESP-IDF installation.
     if !nros_tests::require_nros_cli() {

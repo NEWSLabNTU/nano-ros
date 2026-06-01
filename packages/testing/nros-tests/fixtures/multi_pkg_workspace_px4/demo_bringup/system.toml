@@ -13,13 +13,16 @@ domain_id = 0
 
 [[component]]
 pkg  = "talker_pkg"
+class = "talker_pkg::talker"
 name = "talker"
 
 [[component]]
 pkg  = "brake_arbiter_pkg"
+class = "brake_arbiter_pkg::brake_arbiter"
 name = "brake_arbiter"
 
 [deploy.px4_sitl]
 kind   = "px4"
+target = "x86_64-unknown-linux-gnu"
 board  = "px4_sitl_default"
 launch = "launch/system.launch.xml"

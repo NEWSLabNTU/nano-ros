@@ -6,14 +6,16 @@ domain_id = 0
 
 [[component]]
 pkg  = "talker_pkg"
+class = "talker_pkg::talker"
 name = "talker"
 
 [[component]]
 pkg  = "listener_pkg"
+class = "listener_pkg::listener"
 name = "listener"
 
 [deploy.esp_idf_esp32c3]
 kind   = "esp-idf"
+target = "x86_64-unknown-linux-gnu"
 board  = "esp32c3"
-target = "riscv32imc-unknown-none-elf"
 launch = "launch/system.launch.xml"

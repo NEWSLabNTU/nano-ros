@@ -5,11 +5,13 @@ rmw = "zenoh"
 domain_id = 0
 
 [[component]]
-pkg = "talker_pkg"
+pkg  = "talker_pkg"
+class = "talker_pkg::talker"
 name = "talker"
 
 [[component]]
-pkg = "listener_pkg"
+pkg  = "listener_pkg"
+class = "listener_pkg::listener"
 name = "listener"
 
 [deploy.qemu-arm-nuttx]

@@ -75,8 +75,13 @@ endfunction()
 function(nros_system_generate bringup_pkg)
     _nros_system_resolve_cli(_nros_cli)
     _nros_system_resolve_bringup("${bringup_pkg}" _bringup_dir)
-    set(_out_dir "${CMAKE_BINARY_DIR}/nros-system")
-    file(MAKE_DIRECTORY "${_out_dir}")
+    # codegen-system's --out is the PARENT of the bake tree (`nros-system/`
+    # subdir is created inside). The downstream cmake target reads
+    # ${CMAKE_BINARY_DIR}/nros-system/{system_main.c,system_config.h}, so
+    # pass CMAKE_BINARY_DIR (not CMAKE_BINARY_DIR/nros-system) to the CLI.
+    set(_out_parent "${CMAKE_BINARY_DIR}")
+    set(_out_dir    "${_out_parent}/nros-system")
+    file(MAKE_DIRECTORY "${_out_parent}")
 
     if(_bringup_dir STREQUAL "BRINGUP-NOTFOUND")
         message(FATAL_ERROR
@@ -107,12 +112,17 @@ function(nros_system_generate bringup_pkg)
 
     message(STATUS "nros_system_generate: baking ${_bringup_dir} → ${_out_dir} (rmw=${_rmw})")
 
+    # Workspace = parent of the bringup dir; codegen-system needs a
+    # cargo workspace root w/ Cargo.toml to read metadata. CMAKE_SOURCE_DIR
+    # is the zephyr_app dir which has no Cargo.toml.
+    get_filename_component(_workspace "${_bringup_dir}" DIRECTORY)
     execute_process(
         COMMAND "${_nros_cli}" codegen-system
-                --bringup "${_bringup_dir}"
-                --target  "zephyr-${_rmw}"
-                --out     "${_out_dir}"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                --workspace "${_workspace}"
+                --bringup   "${_bringup_dir}"
+                --target    "zephyr-${_rmw}"
+                --out       "${_out_parent}"
+        WORKING_DIRECTORY "${_workspace}"
         RESULT_VARIABLE   _rc
         OUTPUT_VARIABLE   _stdout
         ERROR_VARIABLE    _stderr)

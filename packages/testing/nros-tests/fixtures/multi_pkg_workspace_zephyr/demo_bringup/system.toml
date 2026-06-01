@@ -6,14 +6,16 @@ domain_id = 0
 
 [[component]]
 pkg  = "talker_pkg"
+class = "talker_pkg::talker"
 name = "talker"
 
 [[component]]
 pkg  = "listener_pkg"
+class = "listener_pkg::listener"
 name = "listener"
 
 [deploy.zephyr_native_sim]
 kind   = "zephyr"
-board  = "native_sim/native/64"
 target = "x86_64-unknown-linux-gnu"
+board  = "native_sim/native/64"
 launch = "launch/system.launch.xml"
