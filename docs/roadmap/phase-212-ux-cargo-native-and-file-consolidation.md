@@ -467,3 +467,432 @@ Everything else folds in or moves to `target/`. Net: **5 → 2** single-componen
 10. **212.A.4 — flip native rust cyclonedds matrix to pure cargo** (S) — retire `examples/native/rust/talker/CMakeLists.txt`; archive Phase 212.A doc.
 11. **Doc + CLAUDE.md sweep** (S) — rewrite "Examples = Standalone Projects" + Phase 175 paragraph + build-commands.md + rmw-backends.md.
 12. **Retire fallback loaders** (S) — one release after step 4; delete `component_nros.toml` / `nros.toml` parser paths.
+
+---
+
+## Architecture Decision: build-system-native (2026-05-31)
+
+**Decision:** nros = idf.py-shaped provisioner + codegen + metadata reader.
+**Cargo and CMake stay user-facing build verbs. nros NEVER is.**
+
+Studied four reference models (colcon/ament, Bazel/Buck2, cargo-make/just/mage,
+west/idf.py) via 4-agent fan-out workflow `wwv0lmnq2`. Closest fit in spirit:
+**idf.py**. Rationale:
+- ESP-IDF cleanly separates cmake (build) from idf.py (embedded affordances:
+  flash, monitor, set-target). cmake stays cmake; idf.py adds without owning.
+- Colcon's orchestrator-driven model swallows rustc/gcc errors via aggregated
+  `Failed <<<` reporters and forces every consumer to learn the orchestrator.
+  Embedded Rust contributors flee that pattern.
+- Bazel-shape only pays off at 1M LoC + remote cache + dedicated build team.
+  nano-ros has none.
+
+### Non-Goals
+
+The following verbs are **explicitly rejected**:
+- `nros build`
+- `nros test`
+- `nros flash`
+- `nros monitor`
+- `nros sign`
+
+Any future temptation to add one cites this section and the
+"orchestrator-owns-stdout" anti-pattern. Build verbs belong to cargo / cmake /
+west / colcon. nros provides the data they read + the codegen they call.
+
+### Where nros sits in the stack
+
+```
+USER SHELL
+  cargo build │ cmake --build │ colcon build │ west build      ← user-facing
+       │            │              │              │
+       ▼            ▼              ▼              ▼
+  build.rs       cmake          ament          zephyr
+  nros-build     nano_ros_*     hooks          module
+       │            │              │              │
+       └────────────┴──────┬───────┴──────────────┘
+                           ▼
+                    ┌────────────┐
+                    │   nros CLI │   ← provisioner + codegen + metadata + deploy
+                    │ (prebuilt) │     NEVER a build verb
+                    └────────────┘
+```
+
+### Glue surface budget (HARD caps)
+
+| Glue | LoC budget |
+|---|---|
+| `packages/nros-build/` build-dep crate | ≤500 |
+| `cmake/nano_ros_generate_interfaces.cmake` | ≤300 |
+| `cmake/nano_ros_workspace_metadata.cmake` (new 212.D) | ≤150 |
+| `cmake/platform/nano-ros-<plat>.cmake` (×6) | ≤200 each |
+| `cmake/board/nano-ros-board-<board>.cmake` (×N) | ≤100 each |
+| `cargo-nros` binary | ≤100 |
+| `scripts/install-nros.sh` | ≤150 |
+| Per-RTOS integration shells `integrations/<rtos>/` | ≤200 each |
+
+**If `nros-build` crosses 500, redesign. If a cmake function starts parsing
+Cargo.toml, redesign.**
+
+### 212.D — cmake-side mirror of 212.B (NEW)
+
+C/C++ users must not be second-class. Sibling of 212.B's
+`[workspace.metadata.nros]` + `nros-build` Rust path:
+
+- [ ] **`cmake/nano_ros_workspace_metadata.cmake`** — new function
+      `nano_ros_workspace_metadata(LAUNCH … COMPONENTS … RMW … DOMAIN_ID …)`
+      callable from top-level `CMakeLists.txt`. Shells `nros plan` with the
+      same args nros-build does for Rust.
+- [ ] **Acceptance:** multi-node C/C++ workspace builds with
+      `cmake -S . -B build && cmake --build build` + `nros deploy`. No
+      `cmake nros` subcommand (cmake has no plugin idiom — don't fake one).
+- **Files:** `cmake/nano_ros_workspace_metadata.cmake`,
+  `book/src/user-guide/multi-node-cpp.md`,
+  `examples/templates/multi-package-workspace-cpp/`.
+
+### Diffs vs the original Design Exploration Notes
+
+**Stand (keep as-is):**
+- 212.B `cargo nros` subcommand shape (~60 LoC clap shell)
+- 212.B `[workspace.metadata.nros]` schema
+- 212.B `nros-build` build-dep crate (now w/ explicit ≤500 LoC cap)
+- 212.C field-derivation matrix + 5→2 / 7→2 file collapse
+- 212.C `nros emit package-xml` regeneration
+- Execution order steps 1–5 (low-risk cargo-native + consolidation FIRST)
+
+**Reframe:**
+- 212.B "auto-codegen": `nros-build` writes to `$OUT_DIR/nros-gen/` ONLY
+  (preserves `--target-dir` isolation rule from CLAUDE.md). Promoted to
+  acceptance bullet.
+- 212.B `cargo nros` surface: add `cargo nros --explain <verb>` requirement
+  per verb. Reject any verb that hides a cargo/cmake invocation without
+  decomposition.
+- 212.B `[workspace.metadata.nros]` schema: strict subset of
+  `nros-sdk-index.toml` vocabulary. No second TOML dialect. Field names must
+  already exist in existing configs.
+
+**Strike (explicitly retire):**
+- Original "12. retire fallback loaders one release after step 4 — delete
+  `component_nros.toml` / `nros.toml` parser paths" — KEEP fallback loaders
+  permanently. The `[component]` block in `nros.toml` (Phase 172 W.1) is
+  the cross-language carve-out for non-cargo C/C++ siblings; can't be
+  retired.
+- Original "`just` recipes become `cargo nros` dispatchers" line in
+  cross-cutting concerns — STRIKE. `just` recipes stay shell-direct calls
+  to cargo / cmake. Contributor CI is not user-facing API; conflating the
+  two reproduces the colcon anti-pattern.
+
+**Sharpen:**
+- 212.A step 2 (HIGH risk wrapper sys move): add fallback acceptance — if
+  the `nros-rmw-cyclonedds-sys` build.rs proves too brittle across Cyclone
+  bumps, keep CMake path as canonical for cyclonedds. Don't force a
+  Rust-only path if upstream semi-internal headers churn.
+- 212.A.5 python port: promote to PREREQUISITE — must land before
+  step 2. Python build-dep is a regression for the "pure cargo" promise.
+
+### Updated execution order
+
+S → M → L by effort:
+
+1. **212.B cargo-nros binary shell** (S) — ≤100 LoC clap dispatcher
+2. **212.B `[workspace.metadata.nros]` loader** (M) — `NrosConfig::from_cargo_metadata` shim + nros.toml fallback
+3. **212.B `nros-build` crate** (M) — build-dep helper, ≤500 LoC, `$OUT_DIR/nros-gen/`, SHA-256 stamp
+4. **212.D `nano_ros_workspace_metadata()` cmake function** (M) — cmake sibling of 212.B
+5. **212.C migration tooling** (M) — `nros migrate component-to-cargo` + `nros emit package-xml`
+6. **212.C multi-component table-of-tables** (S) — `[package.metadata.nros.components.<Name>]`
+7. **212.A.5 port `msg_to_cyclone_idl.py` to Rust** (S) — prereq for 212.A
+8. **212.A.1 `cyclonedds-sys`** (L) — vendor Cyclone via cmake crate + host idlc split
+9. **212.A.2 `nros-rmw-cyclonedds-sys`** (L) — C++ wrapper into build.rs. HIGH risk; fallback to CMake on brittleness.
+10. **212.A.3 per-example descriptor codegen** (M)
+11. **212.A.4 flip native rust cyclonedds matrix** (S)
+12. **Doc + CLAUDE.md sweep** (S)
+
+
+---
+
+## Appendix A: Full Recommendation Document (2026-05-31)
+
+The recommendation document produced by the architecture-study workflow
+follows verbatim. Treat as the source of truth until any of its specifics
+are explicitly overridden above.
+
+## Decision: nros = idf.py-shaped provisioner + codegen + metadata reader; cargo and cmake stay the user-facing build verbs (build-system-native, NOT orchestrator-driven).
+
+## The user workflow (post-revision)
+
+### Single-node Rust user
+
+```
+1. cargo new my_talker                          # cargo
+2. # edit Cargo.toml: add nros-node, nros-build (build-dep), pick RMW feature
+3. cargo build                                  # cargo → build.rs → nros-build → shells nros codegen
+4. cargo run                                    # cargo
+```
+
+cargo own top-level. `nros` invoked transitively by `build.rs` via `nros-build` helper. No `nros` verb in user shell. Works zenoh / xrce / cyclonedds same way (post-212.A).
+
+### Single-node C/C++ user
+
+```
+1. mkdir my_talker && cd my_talker
+2. # write CMakeLists.txt: set NANO_ROS_PLATFORM/NANO_ROS_RMW; add_subdirectory(<nano-ros>)
+3. cmake -S . -B build                          # cmake → nano_ros_generate_interfaces() → shells nros codegen
+4. cmake --build build                          # cmake
+5. ./build/my_talker                            # raw exec
+```
+
+cmake own top-level. `nano_ros_*()` cmake funcs shell to same `nros` CLI binary. clangd reads `compile_commands.json` direct.
+
+### Multi-node Rust workspace
+
+Diff vs single-node: add workspace root `Cargo.toml` with `[workspace.metadata.nros]` + launch xml. No new build tool.
+
+```
+1. cargo new --lib demo_pkg                     # cargo
+2. # workspace Cargo.toml: [workspace.metadata.nros.system] launch=… components=[…]
+3. # add src/demo_pkg/launch/system.launch.xml
+4. cargo nros plan                              # cargo subcommand → wraps `nros plan`
+5. cargo build                                  # cargo (per-member, auto-codegen via nros-build)
+6. cargo nros deploy native                     # cargo subcommand → wraps `nros deploy`
+```
+
+Same `cargo build` works. `cargo nros` = thin cargo subcommand binary. `cargo nros --explain deploy` prints underlying `nros deploy …`. No `cargo nros build` verb — decompose to `cargo nros plan && cargo build`.
+
+### Multi-node C/C++ workspace
+
+Diff vs single-node: top-level `CMakeLists.txt` aggregates components + calls `nano_ros_workspace_metadata()` (new, sibling to Rust path).
+
+```
+1. mkdir ws && cd ws; create subdirs talker/ listener/ launch/
+2. # top CMakeLists: nano_ros_workspace_metadata(LAUNCH launch/system.launch.xml COMPONENTS talker listener RMW cyclonedds)
+3. cmake -S . -B build                          # cmake → nano_ros_workspace_metadata() shells `nros plan`
+4. cmake --build build                          # cmake
+5. nros deploy native                           # direct `nros` (no `cmake nros` subcommand — cmake has no plugin idiom)
+```
+
+C/C++ users invoke `nros deploy` directly. Asymmetry is honest: cargo has subcommand convention, cmake does not. Don't fake one.
+
+### Mixed Rust + C/C++ workspace (Autoware case)
+
+This stress-test. Autoware = colcon workspace consuming nano-ros as CMake library. Two layers:
+
+```
+1. # outer: ament/colcon owns workspace graph
+2. colcon build --packages-select my_nros_pkg   # colcon → cmake (per package)
+3. # inside my_nros_pkg: CMakeLists uses nano_ros_generate_interfaces(...)
+4. # inside my_rust_nros_pkg: ament_cargo / colcon-cargo plugin → cargo build → nros-build → nros codegen
+5. # multi-node orchestration:
+6. nros plan --workspace src/                   # direct nros (colcon/ament own outer DAG; nros owns inner system)
+7. nros deploy native                           # direct nros
+```
+
+Key: nros does NOT try to be colcon. colcon owns the cross-package DAG. nros owns the nano-ros system DAG (domains, bridges, launch). Two graphs, clean seam at `nros plan`. Same `nros` binary serves Rust build.rs, cmake `nano_ros_*()` funcs, and Autoware integrators.
+
+## Where nros lives in the stack
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ USER SHELL                                                  │
+│   cargo build │ cmake --build │ colcon build │ west build  │  ← user-facing build verbs
+└────────┬────────────┬──────────────┬──────────────┬─────────┘
+         │            │              │              │
+         ▼            ▼              ▼              ▼
+  ┌───────────┐ ┌───────────┐ ┌───────────┐  ┌────────────┐
+  │ build.rs  │ │  cmake    │ │  ament    │  │  zephyr    │
+  │ nros-build│ │ nano_ros_*│ │  hooks    │  │  module    │
+  │  crate    │ │  funcs    │ │           │  │            │
+  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  └──────┬─────┘
+        │             │             │               │
+        └─────────────┴──────┬──────┴───────────────┘
+                             ▼
+                    ┌────────────────┐
+                    │   nros CLI     │  ← provisioner + codegen + metadata + deploy
+                    │ (prebuilt bin) │     NEVER a build verb
+                    └────────┬───────┘
+                             │
+              ┌──────────────┼──────────────────────┐
+              ▼              ▼                      ▼
+      ┌──────────────┐ ┌──────────────┐    ┌──────────────────┐
+      │nros-sdk-index│ │ codegen      │    │ flash/monitor    │
+      │   .toml      │ │ (rust/c/cpp) │    │   delegate:      │
+      │ (SSoT pins)  │ │              │    │   west/idf/openocd│
+      └──────────────┘ └──────────────┘    └──────────────────┘
+```
+
+nros sit BELOW build tools. Build tools call nros. nros never call build tools (except `nros deploy` spawn processes). User never type `nros build`.
+
+## Glue surface that nano-ros maintains
+
+| Glue | Purpose | LoC budget | Maintenance trigger |
+|---|---|---|---|
+| `packages/nros-build/` (build-dep crate) | Rust build.rs helper: read `[package.metadata.nros]`, shell `nros codegen`, emit `cargo:rerun-if-changed` + stamp cache | ≤500 | nros codegen CLI flag change; new interface filetype |
+| `cmake/nano_ros_generate_interfaces.cmake` | C/C++ codegen entry; shells `nros codegen`; descriptors / whole-archive link | ≤300 | RMW backend addition; cmake idiom change |
+| `cmake/nano_ros_workspace_metadata.cmake` (new, 212) | Cmake sibling of `[workspace.metadata.nros]`; shells `nros plan` | ≤150 | nros plan schema change |
+| `cmake/platform/nano-ros-<plat>.cmake` (×6) | Per-platform link/toolchain glue | ≤200 each | New RTOS; per-RTOS upstream break |
+| `cmake/board/nano-ros-board-<board>.cmake` (×N) | Per-board overlays (linker scripts, defconfig hints) | ≤100 each | New board |
+| `cargo-nros` binary (in nros-cli repo) | Cargo subcommand shim; strips argv[1], dispatches to `nros_cli_core::cmd::*` | ≤100 | New `nros` verb worth surfacing to Rust users |
+| `scripts/install-nros.sh` | Pinned-version installer for `nros` + `cargo-nros` to `~/.nros/bin` | ≤150 | nros-cli release bump |
+| `scripts/build/cargo.sh::nros_cli_bin` | `$NROS_BIN` → PATH → `~/.nros/bin` resolution order | ≤50 | Install layout change |
+| `nros-sdk-index.toml` | SSoT for every SDK pin (data, not code) | data-only | New SDK or pin bump |
+| Per-RTOS integration shells `integrations/<rtos>/` | Re-export root CMake under west/idf/PlatformIO/colcon native pkg managers | ≤200 each | New RTOS pkg manager |
+
+Hard rules: each glue piece <1k LoC. If `nros-build` cross 500, redesign. If a cmake function start parsing Cargo.toml, redesign.
+
+## What changes from the Phase 212 design notes
+
+**Stand (212.B / 212.C as-is):**
+- 212.B `cargo nros` subcommand + `[workspace.metadata.nros]` loader + `nros-build` build-dep crate — exactly right shape. Section 7 schema + auto-codegen mechanism keep.
+- 212.C field-derivation matrix + 5→2 / 7→2 file collapse — keep verbatim.
+- Recommended execution order step 1–5 — keep.
+
+**Reframe:**
+- 212.B "auto-codegen mechanism": add explicit **size cap ≤500 LoC** to `nros-build`. Document as hard rule, not aspiration. Rationale: build-deps compile for every consumer; bloat = nano-ros tax on every Rust user.
+- 212.B `cargo nros` surface (lines 252–261): add `cargo nros --explain <verb>` requirement, mandatory for every verb. Reject any verb that hide a cargo / cmake invocation without `--explain` decomposition.
+- 212.B `[workspace.metadata.nros]` schema: add explicit rule "strict subset of `nros-sdk-index.toml` vocabulary." No second TOML dialect. Field names must already exist in `config.toml`/Kconfig/`nros.toml`.
+- 212.C `metadata/*.json`: clarify the build-artifact location MUST be `$OUT_DIR/nros-gen/` not `target/nros-metadata/` (preserves parallel-feature `--target-dir` isolation rule from CLAUDE.md). Section already say this — promote to acceptance bullet.
+
+**Add (cmake sibling, missing from current draft):**
+- New work item 212.D — **cmake-side mirror of 212.B**. `nano_ros_workspace_metadata(LAUNCH … COMPONENTS … RMW …)` function reads same fields from top-level `CMakeLists.txt`, shells `nros plan` same way `nros-build` does for Rust. Symmetry mandatory; C/C++ users not second-class.
+- Acceptance bullet: "Multi-node C/C++ workspace builds with `cmake -S . -B build && cmake --build build` + `nros deploy`, no separate verb."
+
+**Retire (or never adopt):**
+- Any future temptation to add `nros build`, `nros test`, `nros flash`, `nros monitor`, `nros sign`. Add explicit **Non-Goals** section to phase doc citing anti-patterns A1 (orchestrator owns stdout) + A4 (three-hats binary).
+- Note 197 stopping point: `just` → `nros` migration for **provisioning only**. Do NOT extend `just` → `nros` for CI orchestration. `just ci` / `just test-all` / Phase 176 jobserver stays. Phase 212 should explicitly say so.
+- 212.B line 449 ("`just` recipes become `cargo nros` dispatchers") — **strike**. `just` recipes stay shell-direct calls to cargo/cmake. Contributor CI is not user-facing API; conflating the two reproduces the colcon anti-pattern.
+
+**Sharpen:**
+- 212.A step 2 (HIGH risk wrapper move) — accept the risk but add fallback acceptance: if `nros-rmw-cyclonedds-sys` build.rs proves too brittle across Cyclone bumps, keep CMake path as canonical for cyclonedds and document the carve-out. Don't force a Rust-only path if the upstream semi-internal headers churn.
+- 212.A.5 python port — promote to prerequisite (must land before step 2). Python build-dep is a regression for the "pure cargo" promise.
+
+## Rejected alternatives
+
+**Orchestrator-driven (`nros build` owns the graph, top-right of matrix).** Worse for nano-ros: user base split three ways (Rust embedded, C/C++ embedded, Autoware/colcon integrators), all three already trust a build tool — cargo, cmake, colcon — and the team is too small to maintain a parallel orchestrator that simultaneously learn cargo + cmake + west + idf + colcon. Best counter-argument: "but then cross-language codegen DAG is hard." Answer: that DAG is already manageable — `nros codegen` is called by build.rs / cmake / ament hooks, three thin entry points, no global graph. Bazel-shape only pay off at 1M LoC + remote cache + dedicated build team. nano-ros has none of those. The orchestrator-owns-stdout failure mode (colcon `Failed <<<` swallowing rustc errors) is exactly what embedded Rust contributors flee from; adopting it lose the audience we built nros-build to attract.
+
+**Monolithic single-tool (Bazel / Buck2).** Worse: would force every consumer (Autoware, PX4 integrators, ESP-IDF folks) to add Bazel to their stack. They won't. `rules_foreign_cc` + `crate_universe` glue debt is real (every cargo build.rs heavy dep need a hand-written `crate.annotation` override). nano-ros has dozens of `*-sys` crates with vendored CMake builds — Bazel migration is multi-year. Best counter-argument: "remote cache wins big." Answer: we don't have shared cache infrastructure and won't build it; sccache via `RUSTC_WRAPPER` (CLAUDE.md auto-detect) cover 80% of the win at 0% of the cost.
+
+## First 3 commits
+
+1. **`docs(212): rewrite phase doc with build-system-native decision + non-goals`** — apply the "What changes" section above: pin build-system-native shape, add Non-Goals (no `nros build|test|flash`), strike `just`-becomes-`cargo nros`-dispatchers line, add 212.D cmake sibling work item, add `nros-build` ≤500 LoC cap + `--explain` rule + schema-subset rule + `$OUT_DIR` location.
+2. **`docs(212.D): add cmake sibling work item for nano_ros_workspace_metadata()`** — spec the cmake function signature, behavior (shell `nros plan`, read from top CMakeLists), acceptance criteria (multi-node C/C++ workspace builds with cmake + `nros deploy`, no `cmake nros` subcommand). Mirror 212.B section structure.
+3. **`feat(nros-build): scaffold build-dep crate with ≤500 LoC budget + stamp cache`** — first executable step from execution order (step 3): `packages/nros-build/` crate, `Codegen` builder, `$OUT_DIR/nros-gen/` writer, SHA-256 stamp cache, `cargo:rerun-if-changed` emission, no-op degrade on `cargo check --no-default-features`. Convert `examples/native/rust/talker/` zenoh variant as proof. Cyclonedds variant lands in later 212.A commits.
+
+---
+
+## Appendix B: Design Analysis (2026-05-31)
+
+The 2x2 matrix + UX/flexibility scoring tables + pattern extraction that
+produced the recommendation above. Cited when a design choice needs to be
+justified against an alternative.
+
+## 1. The two-axis space
+
+```
+                    monolithic single tool
+                              |
+   colcon ----------- west ---+--- Bazel
+                              |
+                              |
+  native ─────────────────────┼───────────────────── orchestrator owns graph
+                              |
+   just / cargo-make ---------+--- idf.py
+   nano-ros TODAY             |    nros build-system-native candidate
+                              |    nros orchestrator-driven candidate
+                              |
+                    per-language plugins
+```
+
+**Top-left (monolithic + native tools).** colcon sits here — one CLI, but delegates compile to cmake/cargo/setup.py. Fits projects that need uniform `<verb> --packages-select X` across many languages where each language already has a real build system. Pain: orchestrator owns stdout but speaks no language semantics, so errors get mangled.
+
+**Top-right (monolithic + owns graph).** Bazel, Buck2. Big monorepo, paid build team, shared remote cache. Pays off at 1M+ LOC with 100+ devs. Below that, glue debt (`crate_universe`, `rules_foreign_cc`) exceeds value.
+
+**Bottom-left (per-language plugins + native tools).** just, cargo-make, mage, today's nano-ros, west-for-build-only. Tiny core, recipes are aliases, language tools stay native. Fits small teams shipping polyglot stacks. Pain: orchestrator is timestamp-blind, codegen reruns, cross-package invalidation is workaround city.
+
+**Bottom-right (per-language plugins + owns provisioning DAG).** idf.py, west-the-manifest-tool, the nros build-system-native candidate (Phase 212). Declarative manifest + provisioner + thin verbs over upstream build systems. Native tools still callable. Sweet spot for embedded multi-RTOS shops.
+
+The two nros candidates:
+- **build-system-native** = bottom-right, near idf.py: cargo/cmake drive their own builds; `nros` provides metadata, codegen, provisioning; `cargo nros` is a subcommand not a replacement.
+- **orchestrator-driven** = top-right corner crossing into Bazel territory: `nros build` becomes THE entry point, owns the graph across cargo + cmake + west + idf.
+
+## 2. UX scoring
+
+| Project | Onboard (cmds) | Error attr | IDE | Cross-lang codegen | Maint burden | Embedded toolchain fit |
+|---|---|---|---|---|---|---|
+| colcon | 6 | 2 (Failed <<< pkg eats stderr) | 2 (N build trees, no top-level proj) | 4 (rosidl ext pts work) | 3 (PyPI plugin zoo) | 2 (no SDK provisioning) |
+| Bazel | 8+ (Bazelisk, JDK, cache warm) | 4 (action graph clear) | 3 (rust-project.json regen) | 5 (genrule first-class) | 1 (Starlark + crate_universe drift) | 2 (rules_foreign_cc brittle for vendored CMake) |
+| just | 2 (clone + just) | 5 (recipes ARE shell, errors raw) | 5 (cargo/cmake direct → rust-analyzer/clangd work) | 2 (re-runs unconditionally) | 5 (recipes are 1-liners) | 3 (no manifest concept) |
+| west | 3 (init, update, build) | 3 (CMake errors via py wrapper) | 4 (cmake -B build native) | 3 (Zephyr-only) | 2 (10k LOC py, breaks per release) | 5 (manifest + runners) |
+| idf.py | 3 (install.sh, export.sh, build) | 4 (`-v` prints cmake cmd) | 5 (raw cmake works) | 4 (component idf_component.yml) | 4 (3k LOC, rarely breaks) | 5 (idf_tools.py separated) |
+| nano-ros today | 2 (direnv allow, just setup base) | 5 (cargo/cmake direct) | 5 (cargo workspace + cmake standalone) | 2 (generate-bindings unconditional) | 4 (8k LOC justfiles, getting heavy) | 5 (`nros setup` + index) |
+| build-system-native candidate | 2 (same) | 5 (cargo/cmake stay top-level) | 5 (preserved) | 4 (`[workspace.metadata.nros]` declares deps → tracked) | 5 (cargo subcommand + cmake fn, tiny core) | 5 (keep `nros setup`) |
+| orchestrator-driven candidate | 3 (`nros build`) | 3 (nros owns stdout, language errors reflow) | 3 (nros must emit compile_commands + rust-project.json) | 5 (nros sees the DAG) | 2 (becomes Bazel-shaped) | 5 (keep `nros setup`) |
+
+## 3. Flexibility scoring
+
+| Project | Step out to native? | Cross-project reuse | Customization w/o fork | Polyglot future-proof |
+|---|---|---|---|---|
+| colcon | partial (leaf builds OK, lose ament_index) | yes (PyPI plugins) | 4 (extension points) | 3 (rosidl_generator_<lang>) |
+| Bazel | no (Cargo.toml drifts from BUILD) | yes (BCR, rules_*) | 5 (Starlark) | 5 (rules for anything) |
+| just | yes (recipes are shell) | no (justfiles are project-local) | 5 (edit the file) | 3 (no graph) |
+| west | yes (`west.yml` `import:`) | partial (Zephyr ecosystem) | 4 (entry-points in manifest projects) | 2 (Zephyr-centric) |
+| idf.py | yes (`-v` shows cmake, raw cmake works) | partial (idf-component-registry) | 3 (component manager) | 3 (CMake-centric) |
+| nano-ros today | yes (cargo, cmake, west all callable) | no (everything in-tree) | 4 (just files editable) | 4 (Rust+C+C+++Py already coexist) |
+| build-system-native candidate | yes (preserved by design) | **yes** (cargo subcommand publishable; cmake fn reusable via FetchContent) | 5 (`[workspace.metadata.nros]` per-crate) | 5 (cargo + cmake are the polyglot lingua franca) |
+| orchestrator-driven candidate | partial (need `nros run cargo …`) | partial (nros plugins, new ecosystem) | 3 (must extend nros core) | 4 (nros has to learn each new lang) |
+
+## 4. Pattern extraction
+
+**P1 — Manifest as single source of truth.** west.yml, idf's tools.json, nros-sdk-index.toml. Adopt: keep `nros-sdk-index.toml` authoritative; add `import:`/`extends:` semantics so downstream pins can override `[source.*]` without forking.
+
+**P2 — Provisioning orthogonal to building.** idf_tools.py vs idf.py; `nros setup --tool` / `--source` vs `cargo build`. Adopt: never fold SDK fetch into a build verb. `nros setup` stays the only thing that touches `~/.nros` / `third-party/`.
+
+**P3 — Wrap, don't replace.** idf.py `-v` prints the cmake command; west delegates to cmake+ninja+runners; `just` recipes are shell. Adopt: `cargo nros` subcommand and `nano_ros_*()` cmake functions wrap, never hide. `nros --explain <verb>` should print the underlying cargo/cmake invocation.
+
+**P4 — Extension points keyed by filesystem drop-in.** rosidl_generator_<lang> via `register_<lang>.cmake`; west-commands via `west.yml` entries; ament_index as flat resource dir. Adopt: codegen backends (`generator-c`, `generator-cpp`, `generator-rust`) registered by presence of a known file under `packages/codegen/<lang>/`, no core edits to add one.
+
+**P5 — Tiered, idempotent, re-runnable provisioning.** nros already has `minimal/default/extended`. Adopt: keep the tier discipline; every new SDK must declare its tier eligibility (size ≤500MB, install ≤5min, in `just test-all`, idempotent).
+
+## 5. Anti-pattern extraction
+
+**A1 — Orchestrator owns stdout, speaks no language.** colcon `Failed <<< pkg` swallowing rustc diagnostics; west reflowing cmake errors. Reject: never make `nros build` the only path; cargo and cmake errors must be visible to contributors raw.
+
+**A2 — Per-package recipe explosion.** Buildroot's `.mk` per dep, Bazel `crate.annotation` overrides per build.rs-heavy crate. Reject: `nros-sdk-index.toml` stays declarative (url/ref/dest/submodule); never grow per-source configure/build hooks. Heavy lifting stays in upstream's build system.
+
+**A3 — Hidden configure step.** NuttX `configure.sh` writes `.config` then disappears. Reject: `nros setup` and `nros deploy` must be idempotent and re-runnable; current state must be inspectable (`nros doctor`, `nros --list`).
+
+**A4 — Three-hats binary.** west doing manifest + build + flash + sign + spdx + sysbuild. Reject: `nros` stays a provisioner + codegen + metadata reader. Building stays cargo/cmake. Flashing stays west/idf.py/openocd. Don't grow `nros flash`, `nros monitor`, `nros sign`.
+
+**A5 — Replacing native graph with Starlark/proprietary DSL.** Bazel BUILD files duplicating Cargo.toml. Reject: `[workspace.metadata.nros]` lives INSIDE Cargo.toml; cmake glue lives INSIDE existing CMakeLists.txt via `nano_ros_*()` functions. No parallel manifest format for things cargo/cmake already describe.
+
+## 6. Recommendation for nano-ros
+
+**Position: bottom-right of the matrix, idf.py-shaped.** Build-system-native, per-language plugins, manifest-driven provisioning, native build tools stay the entry point.
+
+Concrete decisions:
+
+- **Rust users: cargo drives the top-level build.** `cargo build`, `cargo test`, `cargo check` work in any nros workspace without `nros` being installed for the build step. `cargo nros generate` / `cargo nros deploy` are subcommands that fire BEFORE `cargo build` for codegen + config baking. rust-analyzer sees a real cargo workspace; no `rust-project.json` regeneration.
+- **C/C++ users: cmake drives the top-level build.** `cmake -S . -B build && cmake --build build` works standalone. `nano_ros_generate_interfaces(...)`, `nros_platform_link_app(...)` are cmake functions that internally shell to the `nros` CLI for codegen (same binary, two front-ends). clangd sees a real `compile_commands.json`; no extraction layer.
+- **ONE entry point per language community, not one globally.** cargo for Rust, cmake for C/C++, west for Zephyr apps, idf.py for ESP-IDF apps. `nros` itself is the provisioner + codegen + metadata reader, not the build verb. Today's `just` becomes a contributor-side menu (`just ci`, `just test-all`), not a user-facing API.
+- **Verb discovery: `nros --list` for provisioning/codegen; `cargo --list` shows `nros` as a subcommand; cmake users discover via the per-RTOS integration READMEs (`integrations/<rtos>/`) which already exist.** No global "list every verb across every tool" UX — that's the orchestrator-owns-everything trap.
+
+Why this serves nano-ros specifically: the user base is split across Rust embedded folks (who expect `cargo build` to Just Work), C/C++ embedded folks (who expect `cmake -B build` to Just Work and `find_package`-or-`add_subdirectory` discipline), and Autoware/ROS 2 interop folks (who consume nros as a CMake library inside their colcon workspace). All three groups already have a build tool they trust. Replacing it with `nros build` loses every one of those groups and gains nothing — we don't have Bazel's remote cache, we don't have colcon's `package.xml` graph, and the small team can't maintain a parallel build orchestrator that learns cargo + cmake + west + idf simultaneously.
+
+The Phase 187→195→197 trajectory (just→nros for provisioning) is exactly right. Don't extend it into building. Stop at "provisioning, codegen, metadata, deployment config." Let cargo and cmake do their jobs.
+
+## 7. Implementation deltas vs Phase 212
+
+The Phase 212 proposal — `cargo nros` subcommand + `[workspace.metadata.nros]` in Cargo.toml + `nros-build` build-dep crate — scores **5/5 against the §6 recommendation**. It IS the build-system-native candidate. Keep it.
+
+Specific deltas / sharpenings:
+
+1. **Mirror the design on the cmake side, explicitly.** The proposal is Rust-shaped. Add a sibling: `nano_ros_workspace_metadata(...)` cmake function reading the same fields out of a `cmake/nros.cmake` or top-of-`CMakeLists.txt` block, with `nros-build`-equivalent codegen invocation from cmake. Symmetry matters — C/C++ users should not feel second-class.
+
+2. **`cargo nros` MUST be a wrapper, never a replacement.** Add a hard rule analogous to idf.py `-v`: `cargo nros --explain <verb>` prints the underlying cargo/cmake/cli invocation. Reject any `cargo nros build` verb that doesn't decompose to `cargo nros generate && cargo build`.
+
+3. **`nros-build` build-dep must stay tiny and stable.** It's a build.rs helper, not a framework. If it grows beyond ~500 LOC or pulls in heavy deps, it'll dominate compile time for every consumer crate. Pin scope to: read `[workspace.metadata.nros]`, shell to `nros` CLI, emit `cargo:rerun-if-changed` for the .msg/.srv/.action files it knows about. Nothing else.
+
+4. **`[workspace.metadata.nros]` schema must be a strict subset of `nros-sdk-index.toml` vocabulary.** Don't grow a second TOML dialect. Fields like `domain_id`, `rmw`, `interfaces = [...]`, `platform` already exist conceptually in current `config.toml`/Kconfig; reuse the names.
+
+5. **Reject the orchestrator-driven candidate explicitly in the Phase 212 doc.** Add a "non-goals" section: no `nros build`, no `nros test`, no `nros flash`. Pin the §6 anti-patterns (A1, A4) as the rationale so future phases don't drift.
+
+6. **`just` stays as contributor-side CI orchestration.** Phase 212 should NOT propose retiring `just` in favor of `nros`. The `just ci` / `just test-all` / parallel platform fan-out via Phase 176 jobserver is the right tool for that job and serves the small-team CI use case, not the user-facing API. The migration that ended at Phase 197 (`just` → `nros` for SDK provisioning) is the correct stopping point.
+
+Net: Phase 212 design is sound. Add the cmake sibling, the `--explain` rule, the size budget on `nros-build`, the schema subset rule, the explicit non-goals, and the `just`-stays-for-CI clarification.
