@@ -296,6 +296,12 @@ path = "tests/orchestration_set_remap_env.rs"
 name = "orchestration_includes"
 path = "tests/orchestration_includes.rs"
 
+# Phase 212.F — `nros new system` bringup scaffold + `nros check --bringup`
+# lint smoke. Skips cleanly when the `nros` CLI is not installed.
+[[test]]
+name = "phase212_f_bringup_scaffold"
+path = "tests/phase212_f_bringup_scaffold.rs"
+
 # Phase 212.H.3 — FreeRTOS cargo-native adapter (per-board BSP crate
 # audit). Skips cleanly when the thumbv7m-none-eabi target, arm-gcc,
 # or FREERTOS_DIR / LWIP_DIR aren't available.
