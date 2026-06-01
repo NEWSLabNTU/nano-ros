@@ -18,6 +18,16 @@
 //! Hard cap: this file MUST stay ≤200 LoC (Phase 212.H.8 budget
 //! enforced by `tokei` in CI). Keep new logic factored into the
 //! existing private helpers rather than expanding `main()`.
+//!
+//! M-F.6 status: this builder STILL emits weak no-op stubs as the
+//! fallback. The full runtime gate (real component register symbols +
+//! ApplicationTask spawn + Executor spin) is blocked behind macro /
+//! runtime / fixture-discovery gaps documented in
+//! `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
+//! §M-F.6. Until those close, this BSP keeps the link-only fallback;
+//! the codegen-system CLI seam is wired (canonical `codegen-system`
+//! verb + `NROS_BRINGUP_DIR` / `NROS_WORKSPACE_DIR` env vars) so
+//! downstream waves can plug in without touching the BSP again.
 
 use std::env;
 use std::fs;
@@ -63,6 +73,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=NROS_SYSTEM_TOML");
     println!("cargo:rerun-if-env-changed=NROS_BRINGUP_DIR");
+    println!("cargo:rerun-if-env-changed=NROS_WORKSPACE_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CFLAGS");
     if let Ok(p) = env::var("NROS_SYSTEM_TOML") {
         println!("cargo:rerun-if-changed={p}");
@@ -145,24 +156,31 @@ fn resolve_system_spec() -> SystemSpec {
     spec
 }
 
-/// Optimistic call into `nros codegen system` (Phase 212.E). Returns
-/// `true` iff the subcommand exists AND succeeds.
-fn try_nros_codegen_system(spec: &SystemSpec, out: &Path) -> bool {
+/// Optimistic call into `nros codegen-system` (Phase 212.E). Verb is
+/// the hyphenated `codegen-system` per `nros --help`. Needs both
+/// `NROS_BRINGUP_DIR` and `NROS_WORKSPACE_DIR`; without them the
+/// fallback baker runs.
+fn try_nros_codegen_system(_spec: &SystemSpec, out: &Path) -> bool {
     let cli = env::var("NROS_CLI").unwrap_or_else(|_| "nros".to_string());
-    let probe = Command::new(&cli).args(["codegen", "system", "--help"]).output();
-    match probe {
-        Ok(o) if o.status.success() => {
-            let out_arg = out.to_str().unwrap_or_default();
-            let status = Command::new(&cli)
-                .args(["codegen", "system"])
-                .args(["--target", "thumbv7m-none-eabi"])
-                .args(["--out", out_arg])
-                .args(["--rmw", &spec.rmw])
-                .status();
-            matches!(status, Ok(s) if s.success())
-        }
-        _ => false,
+    let probe = Command::new(&cli).args(["codegen-system", "--help"]).output();
+    if !matches!(&probe, Ok(o) if o.status.success()) {
+        return false;
     }
+    let Some(bringup) = env::var_os("NROS_BRINGUP_DIR").map(PathBuf::from) else {
+        return false;
+    };
+    let Some(workspace) = env::var_os("NROS_WORKSPACE_DIR").map(PathBuf::from) else {
+        return false;
+    };
+    let out_arg = out.to_str().unwrap_or_default();
+    let status = Command::new(&cli)
+        .args(["codegen-system"])
+        .arg("--workspace").arg(&workspace)
+        .arg("--bringup").arg(&bringup)
+        .args(["--target", "thumbv7m-none-eabi"])
+        .args(["--out", out_arg])
+        .status();
+    matches!(status, Ok(s) if s.success())
 }
 
 fn bake_system_header(spec: &SystemSpec, out: &Path) {

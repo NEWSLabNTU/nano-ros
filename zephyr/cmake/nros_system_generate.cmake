@@ -46,9 +46,37 @@ function(_nros_system_resolve_cli outvar)
     endif()
 endfunction()
 
+# Detect M-F.3 self-pkg bringup shape. Returns TRUE in outvar when
+# `<abs>/Cargo.toml` carries `[package.metadata.nros.deploy.zephyr*]`
+# OR `<abs>/CMakeLists.txt` calls `nano_ros_deploy(TARGET zephyr...)`
+# (the L.9 cmake-side equivalent). A self-pkg eats its own bringup
+# role — workspace AND bringup dir are the pkg itself.
+function(_nros_system_detect_self_pkg abs outvar)
+    set(${outvar} FALSE PARENT_SCOPE)
+    if(EXISTS "${abs}/Cargo.toml")
+        file(READ "${abs}/Cargo.toml" _toml)
+        # Match the bare table OR the per-RMW target-name variants. Each
+        # is a literal substring of the rendered Cargo.toml — no regex
+        # escape gymnastics needed.
+        if(_toml MATCHES "\\[package\\.metadata\\.nros\\.deploy\\.zephyr")
+            set(${outvar} TRUE PARENT_SCOPE)
+            return()
+        endif()
+    endif()
+    if(EXISTS "${abs}/CMakeLists.txt")
+        file(READ "${abs}/CMakeLists.txt" _cml)
+        if(_cml MATCHES "nano_ros_deploy[ \t]*\\([^)]*TARGET[ \t]+zephyr")
+            set(${outvar} TRUE PARENT_SCOPE)
+        endif()
+    endif()
+endfunction()
+
 # Resolve a bringup-pkg argument to an absolute directory. Accepts an
 # absolute path, a path relative to the app's source dir, or a sibling
-# dir name (walks one level up — workspace shape).
+# dir name (walks one level up — workspace shape). Returns a dir that
+# is EITHER a Path A bringup (`system.toml` present) OR an M-F.3
+# self-pkg (Cargo.toml + deploy.zephyr OR CMakeLists.txt +
+# nano_ros_deploy TARGET zephyr).
 function(_nros_system_resolve_bringup arg outvar)
     if(IS_ABSOLUTE "${arg}" AND IS_DIRECTORY "${arg}")
         set(${outvar} "${arg}" PARENT_SCOPE)
@@ -61,9 +89,16 @@ function(_nros_system_resolve_bringup arg outvar)
         "${APPLICATION_SOURCE_DIR}/../${arg}")
     foreach(_c ${_candidates})
         get_filename_component(_abs "${_c}" ABSOLUTE)
-        if(IS_DIRECTORY "${_abs}" AND EXISTS "${_abs}/system.toml")
-            set(${outvar} "${_abs}" PARENT_SCOPE)
-            return()
+        if(IS_DIRECTORY "${_abs}")
+            if(EXISTS "${_abs}/system.toml")
+                set(${outvar} "${_abs}" PARENT_SCOPE)
+                return()
+            endif()
+            _nros_system_detect_self_pkg("${_abs}" _is_self)
+            if(_is_self)
+                set(${outvar} "${_abs}" PARENT_SCOPE)
+                return()
+            endif()
         endif()
     endforeach()
     set(${outvar} "BRINGUP-NOTFOUND" PARENT_SCOPE)
@@ -88,7 +123,10 @@ function(nros_system_generate bringup_pkg)
             "nros_system_generate: bringup pkg '${bringup_pkg}' not "
             "found. Looked relative to ${CMAKE_CURRENT_SOURCE_DIR}, "
             "${CMAKE_SOURCE_DIR}, and their parents. The dir must "
-            "contain system.toml (Phase 212 Path A bringup).")
+            "contain system.toml (Path A bringup) OR a Cargo.toml "
+            "with [package.metadata.nros.deploy.zephyr*] / a "
+            "CMakeLists.txt with nano_ros_deploy(TARGET zephyr...) "
+            "(M-F.3 self-pkg bringup).")
     endif()
 
     if(_nros_cli STREQUAL "NROS_CLI-NOTFOUND")
@@ -112,10 +150,19 @@ function(nros_system_generate bringup_pkg)
 
     message(STATUS "nros_system_generate: baking ${_bringup_dir} → ${_out_dir} (rmw=${_rmw})")
 
-    # Workspace = parent of the bringup dir; codegen-system needs a
-    # cargo workspace root w/ Cargo.toml to read metadata. CMAKE_SOURCE_DIR
-    # is the zephyr_app dir which has no Cargo.toml.
-    get_filename_component(_workspace "${_bringup_dir}" DIRECTORY)
+    # Workspace choice:
+    #   * Path A (sibling `system.toml`): workspace = parent dir; the
+    #     bringup pkg is one member of the surrounding cargo workspace.
+    #   * M-F.3 self-pkg: workspace == bringup dir; the pkg is its own
+    #     workspace root (the upstream nros-cli planner treats it as a
+    #     1-member synth bringup). Detected by re-running the self-pkg
+    #     check on the resolved abs dir.
+    _nros_system_detect_self_pkg("${_bringup_dir}" _is_self)
+    if(_is_self)
+        set(_workspace "${_bringup_dir}")
+    else()
+        get_filename_component(_workspace "${_bringup_dir}" DIRECTORY)
+    endif()
     execute_process(
         COMMAND "${_nros_cli}" codegen-system
                 --workspace "${_workspace}"
