@@ -61,26 +61,41 @@ Everything else derives from these or becomes a build artifact.
 
 ## Work Items
 
-### 212.A — `cargo-nros` binary shell
+### 212.A — `cargo-nros` binary shell (RETRACTED)
 
-Cargo subcommand convention: cargo auto-discovers `cargo-<verb>` binaries
-on PATH. A `cargo-nros` binary makes every nros verb invokable as
-`cargo nros <verb>` for Rust workspaces.
+**Retracted 2026-06-02.** The original motivation was the cargo
+subcommand convention: `cargo nros <verb>` for users already in a
+Rust workspace. After A.1–A.3 landed and Wave 5's
+`phase212_a_cargo_nros.rs` test confirmed byte-identical output to
+the bare `nros <verb>`, a survey showed the cargo prefix added no
+functional value:
 
-- [ ] **A.1** — Binary crate `packages/cargo-nros/` in `nros-cli` repo
-      (NOT this tree). ≤100 LoC. Clap dispatcher strips cargo-injected
-      `nros` argv[1] and re-exports `nros_cli_core::cmd::Cmd::run`.
-- [ ] **A.2** — Every verb supports `--explain` decomposing to the
-      underlying `nros` invocation. Mandatory for every verb.
-- [ ] **A.3** — `scripts/install-nros.sh` installs both `nros` and
-      `cargo-nros` to `~/.nros/bin/` from the same release artifact.
-- **Tests:**
-  - [ ] `cargo_nros_plan_dispatches_to_nros_plan` — `cargo nros plan demo`
-        produces the same `nros-plan.json` as `nros plan demo`.
-  - [ ] `cargo_nros_explain_decomposes` — `cargo nros plan --explain`
-        prints the underlying `nros plan …` invocation.
-- **Files:** `nros-cli/packages/cargo-nros/{Cargo.toml,src/main.rs}`,
-  `nano-ros/scripts/install-nros.sh`.
+* Path A bringup dirwalk (212.F.3) landed in `nros plan` directly;
+  `cargo nros plan` was a thin re-dispatch with no extra discovery
+  affordance.
+* `[workspace.metadata.nros]` resolution (212.B) reads cargo metadata
+  inside `nros plan` already — the cargo-subcommand shell did not
+  add a workspace-root resolution step.
+* No canonical user flow (example justfiles, integration tests,
+  design-doc walkthroughs) reached for `cargo nros`; every flow used
+  bare `nros <verb>`.
+* C/C++ users (cmake / west / idf.py / make) never reach for a
+  cargo prefix anyway.
+
+Cost (≈8 MB binary, double help-text drift risk, double install
+surface) outweighed the residual idiom signal.
+
+Dropped:
+- `nros-cli/packages/cargo-nros/` crate (deleted from workspace).
+- `~/.nros/bin/cargo-nros` (must NOT be re-installed).
+- `phase212_a_cargo_nros.rs` test.
+
+Replaced by:
+- A `cargo_nros_binary_absent` regression guard in
+  `phase212_non_goals_grep.rs` so the binary stays out of
+  `~/.nros/bin/`.
+- Design docs + Phase 212.F.3 test surface rewritten to use bare
+  `nros plan`.
 
 ### 212.B — `[workspace.metadata.nros]` schema + loader
 
@@ -230,7 +245,7 @@ Bringup pkg is pure declarative — Path A from the live design doc (no
 - [ ] **F.2** — `nros check` lint rejects bringup pkgs that contain
       `Cargo.toml`, `CMakeLists.txt`, `[[bin]]`, `add_executable`, or
       `src/`. Code does not belong in the bringup pkg.
-- [ ] **F.3** — `cargo nros plan <dir>` discovers bringup pkgs by
+- [ ] **F.3** — `nros plan <dir>` discovers bringup pkgs by
       dir-walk (sibling to workspace members; excluded from
       `[workspace] members`). The discovery walk is documented + tested.
 - [ ] **F.4** — `system.toml` schema documented (see design doc §4).
@@ -353,7 +368,7 @@ lands and the migrate tests are demoted to historical.
       transitional state in the tree.
 - [x] **I.4** — `nros migrate` carries `#[command(hide = true)]` in
       clap; the verb is callable but never appears in `nros --help` or
-      `cargo nros --help`. Phase-doc CI grep checks help-text doesn't
+      `nros --help`. Phase-doc CI grep checks help-text doesn't
       advertise it.
 - **Tests:**
   - [x] `migrate_orchestration_e2e_fixture_round_trip` (nros-cli unit).
@@ -453,7 +468,7 @@ CMake on hosted targets (native, qemu native_sim).
 - [ ] **Single-node C++ = `cmake -B build && cmake --build build`.**
       RMW selected via `-DNANO_ROS_RMW=…`. (existing path, 212.D adds
       multi-node sibling)
-- [ ] **Multi-node Rust = `cargo build && cargo nros plan && nros
+- [ ] **Multi-node Rust = `cargo build && nros plan && nros
       launch <bringup>`** — no separate codegen step. (212.B + 212.C + 212.J)
 - [ ] **Multi-node C++ = `cmake -B build && cmake --build build && nros
       launch <bringup>`** — `nano_ros_workspace_metadata()` does the
@@ -503,7 +518,7 @@ CMake on hosted targets (native, qemu native_sim).
 
 S = small (≤1d), M = medium (1–3d), L = large (≥1w).
 
-1. **212.A `cargo-nros` binary shell** (S, in nros-cli repo)
+1. **212.A `cargo-nros` binary shell** — RETRACTED, see §212.A
 2. **212.B schema + loader** (M)
 3. **212.C `nros-build` crate** (M)
 4. **212.D `nano_ros_workspace_metadata()` cmake fn** (M)

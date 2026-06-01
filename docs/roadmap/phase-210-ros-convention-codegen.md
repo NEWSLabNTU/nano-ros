@@ -202,7 +202,7 @@ higher layer + warn loudly.
 
 **Design constraints driving the shape:**
 
-* User runs **plain `cargo build`** — no `cargo nros build` wrapper, no
+* User runs **plain `cargo build`** — no `nros build` wrapper, no
   `build.rs` helper that auto-codegens at cargo time.
 * User-pkg `Cargo.toml` is **verbatim upstream-ROS shape** (`local_msgs =
   "*"`) — same `Cargo.toml` builds under stock `colcon build`.

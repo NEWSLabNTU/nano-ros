@@ -8,7 +8,7 @@ Canonical layout reference for nano-ros user workspaces. Matches design decision
 |------------|----------------------------------|-----------------------------------------|------------------------|
 | single rust| cargo                            | `cargo build` / `cargo run`             | no                     |
 | single cpp | cmake                            | `cmake --build`                         | no                     |
-| multi rust | cargo (workspace)                | `cargo build` + `cargo nros plan/deploy`| yes (`demo_bringup`)   |
+| multi rust | cargo (workspace)                | `cargo build` + `nros plan/deploy`| yes (`demo_bringup`)   |
 | multi cpp  | cmake (superbuild)               | `cmake --build` + `nros plan/deploy`    | yes (`demo_bringup`)   |
 | mixed      | cmake (corrosion bridges cargo)  | `cmake --build` + `nros plan/deploy`    | yes (`demo_bringup`)   |
 
@@ -223,12 +223,12 @@ cargo build
 # Compiling listener_pkg v0.1.0
 # Finished `dev` profile
 
-# 3. cargo nros — sanity check the system wiring
-cargo nros check
+# 3. nros — sanity check the system wiring
+nros check
 # OK 2 components, 0 unresolved
 
-# 4. cargo nros — emit deploy plan from workspace.metadata.nros pointer
-cargo nros plan
+# 4. nros — emit deploy plan from workspace.metadata.nros pointer
+nros plan
 # wrote build/demo_bringup/plan.json
 
 # 5. nros — launch native
@@ -405,7 +405,7 @@ Cross-language pub/sub works because both components link `NanoRos::NanoRos` wit
 
 ## Decision rules
 
-- **Pure Rust → cargo top-level.** Workspace root `Cargo.toml`, components as `staticlib+rlib`. Build with `cargo build`; orchestrate with `cargo nros plan/deploy`.
+- **Pure Rust → cargo top-level.** Workspace root `Cargo.toml`, components as `staticlib+rlib`. Build with `cargo build`; orchestrate with `nros plan/deploy`.
 - **Pure C++ → cmake top-level.** Superbuild root `CMakeLists.txt` with `nano_ros_workspace_metadata(SYSTEM …)`; components are executables. Build with `cmake --build`; orchestrate with `nros plan/deploy` (no `cmake nros`).
 - **Mixed Rust + C++ → cmake top-level via Corrosion.** Root `Cargo.toml` ships **only** for rust-analyzer; loud-fail if someone runs `cargo build` at root.
 - **Multi-node → add `<system>_bringup` pkg.** Carries `package.xml` + `system.toml` + `launch/`. No source, no `Cargo.toml`, no `CMakeLists.txt`. Workspace pointer (`workspace.metadata.nros.default_system` in Rust, `nano_ros_workspace_metadata(SYSTEM …)` in CMake) names it.

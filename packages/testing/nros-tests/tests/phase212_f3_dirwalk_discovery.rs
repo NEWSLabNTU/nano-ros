@@ -7,11 +7,14 @@
 //! either way — `exclude` is just hygiene, not load-bearing.
 //!
 //! These two tests stage a minimal cargo workspace tempdir with a sibling
-//! bringup dir and assert `cargo nros plan` discovers it.
+//! bringup dir and assert `nros plan` discovers it.
 //!
-//! Skips cleanly via `nros_tests::skip!` when `cargo` or the `nros` CLI
-//! (installed at `~/.nros/bin/cargo-nros` by `scripts/install-nros.sh`)
-//! cannot be resolved.
+//! Phase 212.A `cargo-nros` cargo subcommand shell was retracted (the
+//! cargo prefix added no functional value over the bare `nros` verb —
+//! see phase doc §212.A); the dirwalk discovery surface IS `nros plan`.
+//!
+//! Skips cleanly via `nros_tests::skip!` when the `nros` CLI (installed
+//! at `~/.nros/bin/nros` by `scripts/install-nros.sh`) cannot be resolved.
 
 use std::{fs, path::Path, process::Command};
 
@@ -88,27 +91,14 @@ name = "talker"
     .expect("write demo_bringup/launch/system.launch.xml");
 }
 
-/// Invoke `cargo nros plan demo_bringup demo_bringup/launch/system.launch.xml
+/// Invoke `nros plan demo_bringup demo_bringup/launch/system.launch.xml
 /// --workspace <root> --out-dir <out>` and assert the resulting nros-plan.json
 /// references the dirwalk-discovered bringup pkg.
 fn run_plan_and_assert(root: &Path) {
     let nros = nros_tests::nros_cli_bin_path().expect("nros_cli_bin_path resolved");
-    // `cargo nros …` is the canonical surface; the cargo subcommand shim is
-    // installed at `~/.nros/bin/cargo-nros` and dispatches to `nros …`. Put
-    // `~/.nros/bin/` on PATH so cargo finds it.
-    let nros_bin_dir = nros.parent().expect("nros bin dir").to_path_buf();
-    let path_env = match std::env::var_os("PATH") {
-        Some(p) => {
-            let mut v = vec![nros_bin_dir];
-            v.extend(std::env::split_paths(&p));
-            std::env::join_paths(v).expect("join PATH")
-        }
-        None => nros_bin_dir.into_os_string(),
-    };
 
     let out_dir = root.join("out");
-    let result = Command::new("cargo")
-        .arg("nros")
+    let result = Command::new(&nros)
         .arg("plan")
         .arg("demo_bringup")
         .arg("demo_bringup/launch/system.launch.xml")
@@ -116,13 +106,12 @@ fn run_plan_and_assert(root: &Path) {
         .arg(root)
         .arg("--out-dir")
         .arg(&out_dir)
-        .env("PATH", path_env)
         .current_dir(root)
         .output()
-        .expect("spawn cargo nros plan");
+        .expect("spawn nros plan");
     assert!(
         result.status.success(),
-        "cargo nros plan failed (exit={:?})\nstdout:\n{}\nstderr:\n{}",
+        "nros plan failed (exit={:?})\nstdout:\n{}\nstderr:\n{}",
         result.status.code(),
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr),
@@ -150,12 +139,12 @@ fn run_plan_and_assert(root: &Path) {
     );
 }
 
-/// `cargo nros plan` finds the bringup pkg by dirwalk even when the top-level
+/// `nros plan` finds the bringup pkg by dirwalk even when the top-level
 /// workspace `Cargo.toml` omits `exclude` (only `members` is declared). The
 /// bringup dir has no Cargo.toml, so cargo metadata won't see it — dirwalk
 /// is the only loader path.
 #[test]
-fn cargo_nros_plan_discovers_sibling_bringup_via_dirwalk() {
+fn nros_plan_discovers_sibling_bringup_via_dirwalk() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
     }
@@ -177,7 +166,7 @@ default_system = "demo_bringup"
 /// `[workspace] exclude`. Documents the recommended layout — dirwalk still
 /// finds it, exclude just keeps `cargo build` quiet about the non-Cargo dir.
 #[test]
-fn cargo_nros_plan_finds_bringup_when_in_workspace_exclude() {
+fn nros_plan_finds_bringup_when_in_workspace_exclude() {
     if !nros_tests::require_nros_cli() {
         nros_tests::skip!("nros CLI not found (run scripts/install-nros.sh)");
     }

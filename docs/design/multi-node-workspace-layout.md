@@ -60,10 +60,10 @@ demo_bringup/
 **Lint:** `nros check` rejects orchestration pkg w/ `[[bin]]`/`[lib]`/`add_executable`. Code goes in sibling component pkg.
 
 **OPEN: should orchestration pkg ship a stub Cargo.toml?** Two paths:
-- **Path A** (recommended): no Cargo.toml. Pkg not a cargo workspace member. `cargo nros plan demo_bringup` finds it via dir walk + `package.xml`. Pro: cleaner, no fake `lib.rs`. Con: `cargo nros plan` must walk outside `[workspace] members`.
-- **Path B**: stub `Cargo.toml` w/ empty lib. Pkg IS workspace member. Pro: `cargo nros plan -p demo_bringup` works via cargo's `-p` flag. Con: fake target pollutes `cargo build` output, needs `[lib] path = "src/lib.rs"` w/ empty file.
+- **Path A** (recommended): no Cargo.toml. Pkg not a cargo workspace member. `nros plan demo_bringup` finds it via dir walk + `package.xml`. Pro: cleaner, no fake `lib.rs`. Con: `nros plan` must walk outside `[workspace] members`.
+- **Path B**: stub `Cargo.toml` w/ empty lib. Pkg IS workspace member. Pro: `nros plan -p demo_bringup` works via cargo's `-p` flag. Con: fake target pollutes `cargo build` output, needs `[lib] path = "src/lib.rs"` w/ empty file.
 
-Leaning A. Need to prototype `cargo nros plan <dir>` discovery first.
+Leaning A. Need to prototype `nros plan <dir>` discovery first.
 
 **OPEN: `buildtool_depend` in `package.xml`?** ament_cmake assumes empty CMakeLists installs `share/<pkg>/launch/`. Without colcon in inner loop, who installs? `nros deploy` reads `launch/` directly from the source tree — no install step. Maybe omit `<buildtool_depend>` entirely. Need to check if `ros2 launch` (when user *does* run colcon outside) still resolves.
 
@@ -92,7 +92,7 @@ my_ws/
 **No workspace-root `nros.toml`.** Retired. System definition lives in `<bringup>/system.toml`. Rationale: matches ROS muscle memory (every nav2/Autoware tutorial points users at `nav2_bringup/launch/`, not a root TOML). Decouples workspace's build graph from the system graph.
 
 **Workspace-root metadata reduced to:**
-- `default_system` — disambiguates `cargo nros plan` with no args.
+- `default_system` — disambiguates `nros plan` with no args.
 - Optional global RMW / deploy-target overrides (rare; for `nros plan --override` workflows).
 
 **Per-system definition** (`<bringup>/system.toml`):
@@ -117,7 +117,7 @@ Leaning (a) until a real workspace hits the pain. Don't pre-build inheritance.
 
 `cargo build` at workspace root → cargo's native scheduler builds all `[workspace] members`. Each component crate has `[package.metadata.nros.component]` table + `nros-build` build-dep (Phase 212.B). `build.rs` reads sibling `*.msg` via `cargo:rerun-if-changed=` for incremental correctness.
 
-Orchestration pkg excluded from `[workspace] members` (Path A) → never built by cargo. `cargo nros plan demo_bringup` invoked separately reads `system.toml` + workspace component manifests → emits `target/nros/demo_bringup/plan.json`. No build step.
+Orchestration pkg excluded from `[workspace] members` (Path A) → never built by cargo. `nros plan demo_bringup` invoked separately reads `system.toml` + workspace component manifests → emits `target/nros/demo_bringup/plan.json`. No build step.
 
 Diagnostics path unchanged: rustc → stderr → user terminal. No colcon wrapping.
 
@@ -207,8 +207,8 @@ Cargo workspace builds talker + listener. Build-scripts (`nros-build`) regenerat
 ### Step 4 — Plan + verify
 
 ```bash
-cargo nros check                                              # NROS (transitive via cargo subcmd)
-cargo nros plan                                               # NROS (default_system = robot_bringup)
+nros check                                              # NROS (transitive via cargo subcmd)
+nros plan                                               # NROS (default_system = robot_bringup)
 ```
 
 `check` cross-validates `<exec_depend>` ↔ `[system].components`. `plan` emits `target/nros/robot_bringup/plan.json`.
@@ -232,16 +232,16 @@ Multiple processes spawn per `plan.json`. Each reads its baked domain/RMW config
 cmake -S . -B build && cmake --build build                   # CMAKE
 ```
 
-Steps 4–5 unchanged. Step 4's `cargo nros plan` becomes either bare `nros plan robot_bringup` (no cargo subcmd) or `cmake --build build --target nros-plan`. **OPEN** — see §8.
+Steps 4–5 unchanged. Step 4's `nros plan` becomes either bare `nros plan robot_bringup` (no cargo subcmd) or `cmake --build build --target nros-plan`. **OPEN** — see §8.
 
 ---
 
 ## 8. Open questions
 
-1. **Orchestration pkg `Cargo.toml`?** (Path A no-toml vs Path B stub-toml.) Decision blocked on prototype: can `cargo nros plan <dir>` cleanly walk outside `[workspace] members`? §4.
+1. **Orchestration pkg `Cargo.toml`?** (Path A no-toml vs Path B stub-toml.) Decision blocked on prototype: can `nros plan <dir>` cleanly walk outside `[workspace] members`? §4.
 2. **Multi-system shared config.** Duplicate vs `include =` vs workspace-root `[defaults]`. Wait for real pain. §5.
 3. **`nros launch` vs `ros2 launch`.** Host-side launcher independent of ament, or always shell to `ros2 launch` after a one-off install? Affects whether orchestration pkg needs `<buildtool_depend>ament_cmake</buildtool_depend>`. §7.
-4. **C++ workspaces — `cmake nros` subcommand?** No cmake plugin idiom. C++ users invoke `nros plan` / `nros deploy` directly. Asymmetric vs cargo's `cargo nros plan`. Phase 212 line 670 already accepts this asymmetry as honest. Confirm. §6.
+4. **C++ workspaces — `cmake nros` subcommand?** No cmake plugin idiom. C++ users invoke `nros plan` / `nros deploy` directly. Asymmetric vs cargo's `nros plan`. Phase 212 line 670 already accepts this asymmetry as honest. Confirm. §6.
 5. **Does `system.toml` belong to the orchestration pkg or stay workspace-root?** This doc says move to bringup pkg. Argument for staying root: a workspace w/ exactly one bringup pkg has indirection-for-nothing. Argument for moving: multi-system workspaces, ROS muscle memory, decouples build graph from system graph. Leaning move. §5.
 6. **`[system].components` schema.** List of crate names, or list of `{name, role, qos_overrides}` tables? Today's `nros.toml` already has per-component override blocks. Where do they live in the split? Leaning: simple list in `[system].components`; per-component QoS lives in component crate's `[package.metadata.nros.component]`. Cross-cutting overrides go in `[[deploy.*]]`. §4.
 7. **Mixed-language workspace bootstrap.** First-time user runs `cargo build` against a workspace containing a C++ component pkg — what happens? Cargo ignores non-Cargo dirs. User must know to `cmake -S . -B build` instead. Onboarding friction. Options: (a) document, (b) generate a top-level `Makefile` shim, (c) `nros build` (rejected by constraint 4). Leaning (a) — honest. §6.3.
@@ -263,10 +263,10 @@ Steps 4–5 unchanged. Step 4's `cargo nros plan` becomes either bare `nros plan
 
 ## 10. Next concrete steps
 
-1. **Prototype 3-package fixture** at `packages/testing/nros-tests/fixtures/multi_pkg_workspace/`: `demo_bringup` + `talker_pkg` + `listener_pkg`. Path A (no Cargo.toml in bringup). Run `cargo build` + `cargo nros plan demo_bringup` + `nros deploy native`. Confirm cargo workspace happy w/ excluded pkg.
+1. **Prototype 3-package fixture** at `packages/testing/nros-tests/fixtures/multi_pkg_workspace/`: `demo_bringup` + `talker_pkg` + `listener_pkg`. Path A (no Cargo.toml in bringup). Run `cargo build` + `nros plan demo_bringup` + `nros deploy native`. Confirm cargo workspace happy w/ excluded pkg.
 2. **Spike `nros emit package-xml`** from `system.toml`. Validate against colcon-outer workflow (run `colcon build` on the fixture inside a host ROS 2 install). Confirms Autoware-style outer integration unbroken.
 3. **Spike mixed-language fixture**: `talker_pkg` (Rust) + `listener_pkg` (C++) + `demo_bringup`. Top-level `CMakeLists.txt` + `corrosion_import_crate`. Confirm rustc errors still reach terminal verbatim through cmake.
 4. **Resolve OPEN 3** (`nros launch`). Prototype host-side launcher reading `system.launch.xml` w/o ament index. If clean, retire `<buildtool_depend>` from bringup pkg.
-5. **Document `cargo nros plan <dir>` discovery semantics** once Path A vs B settled. Update Phase 212.B writeup.
+5. **Document `nros plan <dir>` discovery semantics** once Path A vs B settled. Update Phase 212.B writeup.
 6. **Validate OPEN 9 (embedded multi-component)** on Zephyr w/ a 2-component bringup → one west app linking both. Phase 172.K.5 generator output should already cover this; confirm.
 7. **Update `docs/design/ros2-user-workflow.md` §"nros new system"** scaffolding to match §4 LOCKED shape (Path A, no Cargo.toml in bringup). Today's writeup pre-dates this design doc.

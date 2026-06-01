@@ -127,6 +127,25 @@ fn nros_help_lacks_flash_verb() {
     assert_verb_absent("flash");
 }
 
+/// Phase 212.A was retracted: the `cargo-nros` cargo subcommand shell
+/// added no functional value over the bare `nros` verb (every
+/// `cargo nros <verb>` produced byte-identical output to
+/// `nros <verb>`), so it was dropped. Guard against accidental
+/// re-installation under `~/.nros/bin/cargo-nros`.
+#[test]
+fn cargo_nros_binary_absent() {
+    let Some(home) = std::env::var_os("HOME") else {
+        nros_tests::skip!("$HOME unset — cannot probe ~/.nros/bin/");
+    };
+    let bin = PathBuf::from(home).join(".nros/bin/cargo-nros");
+    assert!(
+        !bin.exists(),
+        "Phase 212.A retracted: cargo-nros must NOT be installed at \
+         {}. Drop it from any local install scripts or release packaging.",
+        bin.display()
+    );
+}
+
 #[test]
 fn phase_doc_non_goals_lists_emit() {
     let root = nros_tests::project_root();

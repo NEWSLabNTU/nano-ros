@@ -53,7 +53,7 @@ LIVE design doc captures option space + open question → discussion in PR/issue
 
 From [multi-node-workspace-layout.md §8](multi-node-workspace-layout.md#8-open-questions):
 
-1. [Orchestration pkg `Cargo.toml`?](multi-node-workspace-layout.md#8-open-questions) — Path A no-toml vs Path B stub-toml; blocked on `cargo nros plan <dir>` walk-outside-members spike.
+1. [Orchestration pkg `Cargo.toml`?](multi-node-workspace-layout.md#8-open-questions) — Path A no-toml vs Path B stub-toml; blocked on `nros plan <dir>` walk-outside-members spike.
 2. [Multi-system shared config](multi-node-workspace-layout.md#8-open-questions) — duplicate vs `include =` vs workspace-root `[defaults]`; wait for real pain.
 3. [`nros launch` vs `ros2 launch`](multi-node-workspace-layout.md#8-open-questions) — host-side launcher independent of ament, or shell to `ros2 launch`?
 4. [C++ workspaces — `cmake nros` subcommand?](multi-node-workspace-layout.md#8-open-questions) — no cmake plugin idiom; C++ invokes `nros plan`/`deploy` directly; confirm asymmetry.
