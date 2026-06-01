@@ -9,7 +9,9 @@ importing the dep's emitted theory. Retire Verus in favour of Creusot. Deliver
 a Sentinel-style safety-island demonstrator with an end-to-end GSN safety
 case.
 
-**Status:** Proposed (2026-05-31).
+**Status:** Proposed (2026-05-31). Revised 2026-06-01 (critical-issue
+resolutions C1–C5; doc audit Pass A — manifest/layout consistency fixes;
+known-issues backlog added).
 
 **Priority:** High (defines the verification posture nano-ros pitches to
 Eclipse SDV, Autoware safety-island integrators, and downstream OEMs).
@@ -64,8 +66,10 @@ The work culminates in:
    │   #[ensures], #[requires]            │    │   ├── extract (creusot) │
    │   #[predicate], pearlite!{...}       │    │   ├── verify            │
    │                                      │    │   ├── replay            │
-   │ packages/<crate>/nros-package.toml   │    │   ├── bundle            │
-   │   [proof] section                    │◄───┤   ├── fetch             │
+   │ packages/<crate>/Cargo.toml          │    │   ├── bundle            │
+   │   [package.metadata.nros.proof]      │◄───┤   ├── fetch             │
+   │                                      │    │   ├── deps              │
+   │                                      │    │   ├── report            │
    │                                      │    │   └── attest            │
    │ packages/<crate>/proofs/             │    │                         │
    │   axioms/<family>.mlw  (rare)        │    │ wcr-core, wcr-bundle,   │
@@ -110,25 +114,30 @@ Author-maintained (in git):
 
 ```
 packages/<crate>/
-├── Cargo.toml
+├── Cargo.toml                          ← carries [package.metadata.nros.proof]
 ├── src/
 │   └── lib.rs                          (annotated with Creusot)
-├── proofs/                             ← author-maintained, only when needed
-│   ├── axioms/<family>.mlw             (HW/RTOS axioms — rare for core crates)
-│   └── ghosts/<ghost>.mlw              (ghost theories — rare)
-└── nros-package.toml                   ([proof] section)
+└── proofs/                             ← author-maintained, only when needed
+    ├── axioms/<family>.mlw             (HW/RTOS axioms — rare for code crates)
+    └── ghosts/<ghost>.mlw              (ghost theories — rare)
 ```
 
-Notably absent: `proofs/spec/`. No hand-written canonical spec file. The
-spec lives in Creusot's emitted output (regenerated each verify run).
+**Two package classes** with different `proofs/` shapes:
+
+- **Code-class** (`kind = "code"`, default for normal Rust crates): no
+  `proofs/spec/`. Spec lives in Creusot's emitted output, regenerated each
+  verify run.
+- **Axiom-class** (`kind = "axiom"`, axiom-only packages — see C3): has
+  `proofs/spec/<theory>.mlw` carrying the axiom theory (hand-authored,
+  attestor-stamped). No source, no extraction, no impl.
 
 Generated (in `target/proofs/`, gitignored):
 
 ```
 target/proofs/<crate>/
-├── extracted/<theory>.mlw              ← Creusot output — this IS the spec
-├── session/why3session.xml             ← discharge record
-├── session/why3shapes.gz
+├── extracted/rust/<theory>.mlw         ← Creusot output — this IS the spec
+├── session/rust/why3session.xml        ← discharge record
+├── session/rust/why3shapes.gz
 ├── spec-hash.txt                       ← SHA-256 of normalized extracted .mlw
 └── attestation.intoto.jsonl
 ```
@@ -144,44 +153,62 @@ target/proofs/bundles/<crate>-<ver>.wcr.tar.zst
 
 ```
 target/proofs/
-├── registry/                           ← workspace theory path (Why3 -L)
-│   ├── theories/<crate>/<theory>.mlw   (symlinks aggregating per-crate)
-│   └── deps/<external-crate>/<ver>/... (fetched dep bundles)
-├── cache/                              ← content-addressed
+├── registry/                                  ← workspace theory path (Why3 -L)
+│   ├── theories/<crate>/<lang>/<theory>.mlw   (symlinks aggregating per-crate)
+│   └── deps/<external-crate>/<ver>/...        (fetched dep bundles)
+├── cache/                                     ← content-addressed
 │   └── <vc-hash>/<prover>-<ver>/result.json
 ├── attestations/<crate>.intoto.jsonl
 └── bundles/<crate>-<ver>.wcr.tar.zst
 ```
 
-### `nros-package.toml [proof]` schema (v0.1, frozen at PoC)
+### `[package.metadata.nros.proof]` schema (v0.1, frozen at PoC)
+
+Lives in the crate's `Cargo.toml` under Cargo's idiomatic
+`[package.metadata.<tool>]` tool-namespaced slot (precedent: `cargo-deny`,
+`cargo-bundle`, `cross`). No new manifest file.
 
 ```toml
-[proof]
+# packages/<crate>/Cargo.toml
+
+[package]
+name    = "nros-cmd-gate"
+version = "0.4.1"
+# ... normal Cargo fields ...
+
+[package.metadata.nros.proof]
 schema_version = "0.1"
+kind           = "code"                  # "code" | "axiom"
 tier           = 1                       # 0=provenance, 1=verified, 2=safety-island, 3=cert-kernel
 language       = "rust"
 
-[proof.tools]
+[package.metadata.nros.proof.tools]
 extractor = "creusot-0.5.0"
 verifier  = "why3-1.7.0"
 provers   = ["z3-4.13.0", "alt-ergo-2.5.4", "cvc5-1.1.2"]
 
-[proof.composition]
+[package.metadata.nros.proof.composition]
 emits   = ["Nros_core_result", "Nros_core_message"]    # auto-discovered theories
 imports = [
   { theory = "Nros_core_result", from = "nros-core@^0.4" },
 ]
 axiom_deps = []                                         # author-maintained
 
-[proof.spec_hashes]
+[package.metadata.nros.proof.spec_hashes]
 # Auto-populated by `wcr extract` from normalized extracted .mlw
-"Nros_core_result"  = "sha256:..."
-"Nros_core_message" = "sha256:..."
+"Nros_core_result"  = "creusot-0.5.0/sha256:..."
+"Nros_core_message" = "creusot-0.5.0/sha256:..."
 
-[proof.attestation]
+[package.metadata.nros.proof.attestation]
 provenance_file = "attestations/slsa.json"
-sigstore_bundle = "attestations/sigstore.bundle"        # post-PoC populated
+# sigstore_bundle optional — post-PoC populated; omit entirely in PoC
 ```
+
+For axiom-class packages add `kind = "axiom"` and `[…].attestor`. See C3.
+
+Non-Cargo packages (post-PoC, 211.8) use a sibling `wcr.toml` carrying the
+same schema under a top-level `[proof]` section. `wcr manifest` looks for
+`Cargo.toml` first, then `wcr.toml`. See C4.
 
 ### Bundle layout (`.wcr.tar.zst`, v0.1, frozen)
 
@@ -206,17 +233,30 @@ Adding C later = adding files under `extracted/c/`, no schema migration.
 
 ### Tool versions (pinned via `nros-sdk-index.toml [tool.wcr-stack]`)
 
-| Tool | Pinned version |
-|---|---|
-| `wcr` | 0.1.0 |
-| Creusot | 0.5.0 |
-| Why3 | 1.7.0 |
-| Z3 | 4.13.x |
-| Alt-Ergo | 2.5.x |
-| CVC5 | 1.1.x |
-| Coq | 8.19 (fallback for stubborn VCs) |
+| Tool | PoC scaffold (211.1) | First stable (by 211.2 close) |
+|---|---|---|
+| `wcr` | 0.0.x | 0.1.0 |
+| Creusot | 0.5.0 | 0.5.0 |
+| Why3 | 1.7.0 | 1.7.0 |
+| Z3 | 4.13.x | 4.13.x |
+| Alt-Ergo | 2.5.x | 2.5.x |
+| CVC5 | 1.1.x | 1.1.x |
+| Coq | 8.19 (fallback for stubborn VCs) | 8.19 |
 
 Installed via `nros setup --tool wcr-stack`. Shim at `~/.nros/bin/wcr`.
+
+### Theory naming convention (v0.1, frozen at 211.1)
+
+| Element | Rule | Example |
+|---|---|---|
+| Module name | `<Crate>_<module>` (PascalCase, `-` → `_`) | `Nros_core::Result_spec` |
+| Spec theory | `<Crate>_<module>` suffix `_spec` for explicit-export | `Nros_cmd_gate_clamp_spec` |
+| Ghost theory | `<Crate>_<module>` suffix `_ghost` | `Nros_cmd_gate_clamp_ghost` |
+| Axiom theory | `<Family>_axioms` for the axiom family root module | `Cortex_m_axioms` |
+| Extracted impl | `<Crate>_<module>_impl_<lang>` | `Nros_cmd_gate_clamp_impl_rust` |
+
+Prevents name collisions across crates; Why3 `use` resolves unambiguously.
+Convention is enforced by `wcr extract` (rename + validate).
 
 ## Work Items
 
@@ -232,7 +272,9 @@ Installed via `nros setup --tool wcr-stack`. Shim at `~/.nros/bin/wcr`.
 - `docs/architecture.md`, `docs/format-stability.md`
 - `examples/toy-clamp/` (minimal reference package)
 - `crates/wcr-core/src/spec_hash.rs` (canonical Why3 normalize + SHA-256)
-- `crates/wcr-core/src/manifest.rs` (parse `nros-package.toml [proof]`)
+- `crates/wcr-core/src/manifest.rs` (parse Cargo.toml's
+  `[package.metadata.nros.proof]` via `cargo_metadata` + serde; sibling
+  `wcr.toml` parser deferred to 211.8)
 - `crates/wcr-extract/src/creusot.rs` (Creusot wrapper)
 - `crates/wcr-cli/src/main.rs` with `extract`, `report` subcommands
 
@@ -261,7 +303,8 @@ Installed via `nros setup --tool wcr-stack`. Shim at `~/.nros/bin/wcr`.
 **Files (in nano-ros)**
 
 - `packages/core/nros-core/proofs/axioms/alloc_axioms.mlw` (gated on `std`)
-- `packages/core/nros-core/nros-package.toml` (new — `[proof]` section)
+- `packages/core/nros-core/Cargo.toml` (extend with
+  `[package.metadata.nros.proof]` section)
 - `packages/core/nros-core/src/lib.rs` (annotate public API with Creusot)
 - `just/proofs.just` (new — `verify-proofs CRATE=<name>` recipe wrapping
   `wcr verify`)
@@ -289,10 +332,10 @@ Installed via `nros setup --tool wcr-stack`. Shim at `~/.nros/bin/wcr`.
 
 **Files (in nano-ros)**
 
-- `packages/safety/nros-cmd-gate/Cargo.toml` (new crate)
-- `packages/safety/nros-cmd-gate/src/lib.rs` (envelope clamp + FSM)
-- `packages/safety/nros-cmd-gate/nros-package.toml` (with
+- `packages/safety/nros-cmd-gate/Cargo.toml` (new crate, with
+  `[package.metadata.nros.proof.composition]` carrying
   `imports = [{ theory = "Nros_core_result", from = "nros-core@^0.4" }]`)
+- `packages/safety/nros-cmd-gate/src/lib.rs` (envelope clamp + FSM)
 
 **Files (in `wcr`)**
 
@@ -481,7 +524,7 @@ is added.
 | Element | Status |
 |---|---|
 | `.wcr.tar.zst` bundle internal layout | frozen at 211.4 |
-| `nros-package.toml [proof]` schema (v0.1) | frozen at 211.1 |
+| `[package.metadata.nros.proof]` schema (v0.1) | frozen at 211.1 |
 | In-toto predicate `https://wcr.dev/proof/v0.1` | frozen at 211.1 |
 | Spec hash canonical form | frozen at 211.1 |
 | Theory naming convention | frozen at 211.1 |
@@ -787,6 +830,76 @@ extracted `.mlw` + same session result. Verified in 211.4.
 | C3 | Cross-crate axiom registry | PoC: dedicated `nros-axioms-*` Cargo crates with `kind = "axiom"` metadata. Post-PoC: first-class axiom artifacts in wcr | 211.2 (first crate), 211.8 (artifact kind) |
 | C4 | Manifest integration | `[package.metadata.nros.proof]` in `Cargo.toml` for Rust; sibling `wcr.toml` for non-Rust at 211.8 | 211.1 schema, 211.2 first use |
 | C5 | Source-in-bundle | Embedded by default; `source.lock` with URI + hash always present; replay supports session-only + re-extract modes | 211.4 bundle format |
+
+## Known issues + follow-ups
+
+Tracked from the 2026-06-01 doc audit. Critical inconsistencies (B1-B7)
+were resolved by Pass A revision (manifest moved to `Cargo.toml` metadata;
+language-keyed extracted/session paths; two-class `proofs/` layout; wcr
+scaffold versioning; sigstore-optional schema; `kind` field added; theory
+naming convention written down; `wcr deps` added to CLI surface). The
+items below remain open as scoped backlog.
+
+### UX items (process during 211.1–211.4)
+
+| # | Issue | Target |
+|---|---|---|
+| U1 | `cfg(feature = "proofs")` gating of Creusot annotations may interact poorly with proc-macro hygiene. Need a spike test in 211.1 to confirm clean conditional compilation; fallback: `creusot_contracts::*` always linked + lint-suppressed when feature off | 211.1 spike |
+| U2 | Decision gate "Cargo feature gating clean?" needs a concrete measurement: `cargo check --no-default-features` on the workspace produces zero proof-related warnings | 211.2 gate |
+| U3 | Verus retirement acceptance (211.6) currently counts proofs ("≥ 80 of 102"). Replace with coverage-keyed metric: every Verus-proven function in a target crate is either ported or `#[trusted]` with a follow-up issue | 211.6 |
+| U4 | Annotation-cost risk has no measurement mechanism. Record per-crate `annotation_lines / source_lines` in attestation `metadata`, track in research log | 211.2+ |
+| U5 | New-crate onboarding lacks `wcr init` subcommand. Author of a new crate has no guided path to add the `[package.metadata.nros.proof]` section. Add to wcr-cli at 211.4 | 211.4 |
+| U6 | `creusot_contracts` Cargo dep wiring per crate not specified. Likely: workspace-level `[workspace.dependencies]` entry + per-crate `creusot_contracts = { workspace = true, optional = true }` under the `proofs` feature | 211.2 |
+| U7 | `book/src/internals/proofs.md` (added 211.4) and `verification.md` (rewritten 211.6) overlap. Pick scopes: `proofs.md` = wcr workflow + format; `verification.md` = verification posture (Creusot + Kani + Miri) | 211.4 |
+| U8 | Release-notes convention not stated. Pick `CHANGELOG.md` (Keep-a-Changelog format) or `book/src/release-notes/` and commit before 211.6 | 211.6 |
+
+### Missing design items (decide before respective phase)
+
+| # | Issue | Target |
+|---|---|---|
+| M1 | Refinement check direction. `new ⇒ old` catches weakening (drops promised postconditions). Strengthening preconditions also breaks consumers but is the other direction. Schema must say which is enforced and what's "major" semver. Propose: weakening = major bump; strengthening of `requires` = major bump; both verified by Why3 at registry submit time | 211.8 |
+| M2 | `source.lock` `files` array can explode for large crates. Use directory-tree hash (Merkle root over canonical-sorted relative paths) instead of per-file listing. Per-file listing only included when bundle ships embedded source | 211.4 |
+| M3 | External-dep-without-proofs policy. When `nros-core` depends on `heapless` (no Creusot specs upstream), three options: (a) axiomatize locally in `proofs/axioms/heapless-axioms.mlw` with explicit trust attribution; (b) shadow `heapless-spec` crate in wcr; (c) upstream patches to heapless. **Default policy: (a)** with attestor field naming the local trust-issuer | 211.2 |
+| M4 | Coq fallback workflow. Bundle layout has no `proofs/coq/` for tactic scripts. Add `proofs/coq/<vc-id>.v` per stubborn VC; replay invokes Why3's Coq driver against the script | 211.4 |
+| M5 | Schema-version coexistence. Workspace with mixed v0.1 + v0.2 packages — does `wcr verify` accept? Propose: `wcr` supports last-N schema versions (N=3); workspace-level schema-version pinning in `wcr.toml` workspace section (post-PoC) | 211.8 |
+| M6 | Mixed-language packages (Rust + C source in one crate, e.g. `nros-c` wrapper). C4 hybrid doesn't address. Propose: Cargo.toml carries Rust proof metadata; sibling `wcr.toml` carries C proof metadata; both compose; `wcr manifest` merges | 211.8 |
+| M7 | `creusot --no-prove` syntax-check command — is it a Creusot upstream flag or wcr-wrapper? Upstream Creusot has `--no-prove` already. Reference explicitly in docs; not a new wcr command | 211.1 |
+| M8 | Extraction error vs VC failure distinction. `wcr verify` must differentiate "Creusot crashed" from "VC didn't discharge" with distinct exit codes + error messages | 211.4 |
+| M9 | WCET axiom source for 211.7 — aiT is commercial + per-board licensed. Alternative: `cargo-call-stack` for stack-depth (FOSS), OTAWA for WCET (FOSS), measurement-based for QEMU targets. Drop aiT mention; commit to OTAWA + cargo-call-stack + measurement | 211.7 |
+
+### Forward-compat + governance items
+
+| # | Issue | Target |
+|---|---|---|
+| F1 | `wcr` name availability check — crates.io + github.com + npm + pypi search. Confirm before scaffold | 211.1 day 1 |
+| F2 | `wcr.dev` domain registration. If unavailable: pick `wcr-format.io` or use `https://github.com/NEWSLabNTU/wcr/blob/main/schemas/` as the canonical URI base | 211.1 day 1 |
+| F3 | Repository governance for wcr. Default: NEWSLabNTU org. Eclipse contribution path considered post-211.8 | 211.8 |
+| F4 | Bus factor mitigation needs a named second pair (not just "document"). Pick before 211.1 kickoff | 211.1 |
+| F5 | Eclipse SDV venue + submission deadline. Target Eclipse SDV Day H1 2027 (April-ish window); CFP usually opens January. Add to milestone tracker | 211.9 prep |
+| F6 | Sentinel demo board: commit to **STM32F4** (already supported in nano-ros tree) unless nRF support lands separately. Decision before 211.9 design begins | 211.7 close |
+
+### Cosmetic / minor (low priority)
+
+| # | Issue | Target |
+|---|---|---|
+| N1 | Risk register: add row for "spec license vs source license mismatch" (each bundle ships LICENSES.spdx.json from 211.4) | 211.4 |
+| N2 | Decision gates table: add C1-C5 rows as "already decided (see Critical issues + resolutions)" for reader navigation | optional |
+| N3 | Acceptance #2 ("≥ 10 crates with proofs/"): clarify expected mix — 7 code + 3 axiom, or 10 code? Suggest: 8 code + ≥ 2 axiom | 211.7 close |
+| N4 | Phase 211 does not state Miri's role. Add 1-line statement: Miri continues as orthogonal UB-detector under `test-miri` tier; not displaced | 211.6 |
+| N5 | Line 388 (Cyclone DDS RMW) — phrase as "nano-ros Rust shim around upstream Cyclone DDS C++; C portions of the shim deferred to cross-language post-PoC" | 211.7 prep |
+
+### Resolved by Pass A (2026-06-01)
+
+| # | Issue | How |
+|---|---|---|
+| B1 | `nros-package.toml` references | Replaced with `Cargo.toml [package.metadata.nros.proof]` throughout (architecture diagram, per-package layout, schema section, 211.2 + 211.3 files) |
+| B2 | `extracted/<theory>.mlw` vs `extracted/rust/<theory>.mlw` path inconsistency | Standardized on `extracted/<lang>/<theory>.mlw` everywhere (generated layout + workspace registry) |
+| B3 | Code-class vs axiom-class `proofs/spec/` ambiguity | Made two-class distinction explicit in per-package layout section |
+| B5 | wcr 0.1.0 vs 0.0.x scaffold | Tool versions table now shows scaffold (0.0.x) + first stable (0.1.0) columns |
+| B6 | `sigstore_bundle` in PoC schema | Schema example comments field as post-PoC; omitted in PoC manifests |
+| B7 | `kind` field missing from schema | Added `kind = "code"` (default) / `kind = "axiom"` to top-level schema |
+| (add) | `wcr deps` not in CLI surface | Added to tool-layering diagram |
+| (add) | Theory naming convention undocumented | Added explicit convention table in Architecture section |
 
 ## Notes
 
