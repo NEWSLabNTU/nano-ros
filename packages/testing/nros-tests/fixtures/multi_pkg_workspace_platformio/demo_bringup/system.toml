@@ -1,0 +1,18 @@
+# Phase 212.H.6 fixture — system spec.
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "talker_pkg"
+name = "talker"
+
+[[component]]
+pkg = "listener_pkg"
+name = "listener"
+
+[deploy.platformio]
+launch = "launch/system.launch.xml"
+framework = "espidf"
+board = "esp32dev"

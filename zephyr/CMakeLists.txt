@@ -9,6 +9,12 @@
 if(CONFIG_NROS)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
+# Phase 212.H.1 — nros_system_generate(<bringup-pkg>) shells the
+# `nros codegen-system` host-time bake at zephyr cmake configure
+# time. Consumes <bringup>/system.toml + launch/*.xml; emits a baked
+# tree under ${CMAKE_BINARY_DIR}/nros-system/ wired into `app`. See
+# cmake/nros_system_generate.cmake (≤200 LoC adapter shim).
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_system_generate.cmake)
 
 # The nros repo root (parent of this zephyr/ directory).
 # Phase 210.E.3.c — promoted to CACHE so consumer application's

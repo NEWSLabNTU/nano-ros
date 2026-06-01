@@ -1,0 +1,16 @@
+# Phase 212.H.3 fixture — multi-pkg FreeRTOS workspace.
+#
+# Mirrors `multi_pkg_workspace_cpp` shape but Path-A (Rust): two
+# component crates + a bringup pkg (declarative-only — no `Cargo.toml`)
+# + a `firmware/` bin crate that depends on
+# `freertos-qemu-mps2-an385-bsp` and ships the 5-line `main.rs`.
+#
+# `firmware/` is its own workspace root (empty `[workspace]` table) so
+# it can pin `target = "thumbv7m-none-eabi"` via `.cargo/config.toml`
+# without dragging the two component crates onto the embedded target.
+# The test invokes `cargo build` inside `firmware/` directly.
+
+[workspace]
+resolver = "2"
+members = ["src/talker_pkg", "src/listener_pkg"]
+exclude = ["src/demo_bringup", "firmware"]

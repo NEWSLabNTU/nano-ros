@@ -1,0 +1,18 @@
+# Phase 212.H.4 fixture — talker component declaration.
+version   = 1
+package   = "talker_pkg"
+component = "talker"
+language  = "rust"
+
+[linkage]
+staticlib       = "talker_component"
+exported_symbol = "nros_component_talker_entry"
+
+[metadata]
+source_metadata = "metadata/talker.json"
+generated_by    = "phase-212.H.4 fixture"
+
+[overrides]
+default_namespace = "/"
+parameters = {}
+remaps = []

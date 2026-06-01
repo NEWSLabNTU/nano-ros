@@ -1,0 +1,14 @@
+# Phase 212.H.7 — per-component PX4 Kconfig skeleton.
+#
+# Rendered once per `[[component]]` by `nros codegen-system
+# --ahead-of-vendor --target px4`. The codegen replaces @COMPONENT_NAME@
+# with the component's lowercase name; PX4's Kconfig walker discovers it
+# under `src/modules/nros_<name>/Kconfig`.
+menuconfig USER_NROS_@COMPONENT_NAME_UPPER@
+	bool "nano-ros component: @COMPONENT_NAME@"
+	default y
+	help
+	  nano-ros component '@COMPONENT_NAME@' emitted by
+	  `nros codegen-system --ahead-of-vendor --target px4` from the
+	  bringup pkg's system.toml. The body is a uORB-backed publisher /
+	  subscriber generated against the component's nros metadata.

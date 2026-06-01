@@ -1,0 +1,16 @@
+# Phase 212.H.4 fixture — Rust component crate (talker), built as a
+# staticlib so Corrosion can import it from the ThreadX cmake adapter.
+#
+# Standalone [workspace] table keeps this crate from being folded into
+# the outer nano-ros workspace when `cargo build` is invoked from a
+# parent that scans the path (mirrors packages/testing/nros-bench/*).
+[workspace]
+
+[package]
+name = "talker_component"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/lib.rs"

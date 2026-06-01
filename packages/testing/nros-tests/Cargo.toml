@@ -296,5 +296,26 @@ path = "tests/orchestration_set_remap_env.rs"
 name = "orchestration_includes"
 path = "tests/orchestration_includes.rs"
 
+# Phase 212.H.3 — FreeRTOS cargo-native adapter (per-board BSP crate
+# audit). Skips cleanly when the thumbv7m-none-eabi target, arm-gcc,
+# or FREERTOS_DIR / LWIP_DIR aren't available.
+[[test]]
+name = "phase212_h3_freertos"
+path = "tests/phase212_h3_freertos.rs"
+
+# Phase 212.H.5 — ESP-IDF 2-component bringup build via `idf.py`. Skips
+# cleanly when `$IDF_PATH` / `idf.py` / nros CLI are missing.
+[[test]]
+name = "phase212_h5_esp_idf"
+path = "tests/phase212_h5_esp_idf.rs"
+
+# Phase 212.H.7 — PX4 hookless-vendor 2-component module-build gate.
+# Skips cleanly when `$PX4_AUTOPILOT_DIR` / nros CLI / `make` are missing
+# (or when `nros codegen-system --ahead-of-vendor --target px4` is not
+# yet implemented in the installed CLI).
+[[test]]
+name = "phase212_h7_px4"
+path = "tests/phase212_h7_px4.rs"
+
 [lints]
 workspace = true

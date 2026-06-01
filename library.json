@@ -1,0 +1,21 @@
+{
+  "_comment": "Phase 212.H.6 — PlatformIO library manifest. The pre-build extra_script invokes `nros codegen-system --ahead-of-vendor` to bake system.toml + launch/*.xml into vendor-native sources before PIO's library resolver sees the tree (PIO has no configure-time hook rich enough to read system.toml directly). User incantation: add `nano-ros` to platformio.ini `lib_deps` then `pio run -e <env>`.",
+  "name": "nano-ros",
+  "version": "0.1.0",
+  "description": "Lightweight ROS 2 client for embedded RTOS (Zephyr, FreeRTOS, NuttX, ThreadX, bare-metal). no_std Rust core with C and C++ bindings.",
+  "keywords": "ros2, ros, robotics, zenoh, dds, xrce-dds, embedded, no_std",
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://github.com/NEWSLabNTU/nano-ros",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NEWSLabNTU/nano-ros.git"
+  },
+  "frameworks": ["zephyr", "espidf", "arduino"],
+  "platforms": "*",
+  "headers": ["nros/init.h", "nros/node.h"],
+  "build": {
+    "extraScript": "integrations/platformio/nros_codegen.py",
+    "includeDir": "packages/core/nros-c/include",
+    "srcFilter": ["-<*>"]
+  }
+}

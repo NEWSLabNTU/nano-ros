@@ -1,0 +1,20 @@
+# Phase 212.H.3 bringup spec.
+#
+# Pure declarative — no `Cargo.toml` lives in this directory (Phase
+# 212.F.2 lint). The BSP's `build.rs` reads this file via the
+# `NROS_SYSTEM_TOML` env var and bakes it into `nros_config_generated.h`
+# + `system_main.c`.
+
+[system]
+name       = "demo"
+launch     = "launch/system.launch.xml"
+components = ["talker_pkg", "listener_pkg"]
+rmw        = "zenoh"
+domain_id  = 0
+zenoh_locator = "tcp/10.0.2.2:7447"
+
+[deploy.qemu-mps2-an385]
+kind   = "freertos"
+target = "thumbv7m-none-eabi"
+board  = "qemu-mps2-an385"
+rmw    = "zenoh"

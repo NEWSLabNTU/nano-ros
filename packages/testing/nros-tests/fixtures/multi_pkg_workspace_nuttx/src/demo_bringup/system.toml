@@ -1,0 +1,20 @@
+# Phase 212.H.2 fixture — declarative bringup for NuttX.
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "talker_pkg"
+name = "talker"
+
+[[component]]
+pkg = "listener_pkg"
+name = "listener"
+
+[deploy.qemu-arm-nuttx]
+kind = "nuttx"
+board = "qemu-armv7a-nsh"
+target = "armv7a-nuttx-eabihf"
+rmw = "zenoh"
+launch = "launch/system.launch.xml"

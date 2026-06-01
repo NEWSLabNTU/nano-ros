@@ -1,0 +1,15 @@
+# Phase 212.H.5 fixture — talker component crate (stub).
+[package]
+name    = "talker_pkg"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+name       = "talker_pkg"
+crate-type = ["staticlib", "rlib"]
+
+[package.metadata.nros.component]
+name     = "talker"
+language = "rust"
+symbol   = "nros_component_talker"

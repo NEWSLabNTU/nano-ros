@@ -1,0 +1,19 @@
+[package]
+name = "listener_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Phase 212.H.2 fixture — listener component (NuttX)."
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+
+[package.metadata.nros.component]
+default_namespace = "/"
+
+[package.metadata.ament]
+build_depend = ["std_msgs"]
+exec_depend = ["std_msgs"]

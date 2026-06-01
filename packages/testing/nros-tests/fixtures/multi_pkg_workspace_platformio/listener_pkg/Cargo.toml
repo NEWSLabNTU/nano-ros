@@ -1,0 +1,12 @@
+[package]
+name = "listener_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[package.metadata.nros.component]
+name = "listener"
+default_namespace = "/"

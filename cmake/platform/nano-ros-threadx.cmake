@@ -65,6 +65,15 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosConfig.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # ---------------------------------------------------------------------------
+# Phase 212.H.4 — ThreadX system-codegen + Corrosion bridge.
+# Provides `nros_threadx_codegen_system(SYSTEM <bringup>)` and
+# `nros_threadx_link_app(<target>)`. Standalone include keeps the helper
+# usable from out-of-tree adapter consumers without pulling the full
+# ThreadX kernel build below.
+# ---------------------------------------------------------------------------
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosThreadxSystemCodegen.cmake")
+
+# ---------------------------------------------------------------------------
 # Codegen — provide `nros_generate_interfaces()` / `nros_find_interfaces()`.
 # The root CMakeLists.txt only includes the codegen module on the POSIX
 # branch (it builds the codegen Rust tool via Corrosion in that branch).

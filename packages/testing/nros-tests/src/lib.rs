@@ -417,6 +417,37 @@ pub fn require_nros_cli() -> bool {
     true
 }
 
+/// Resolve the PX4-Autopilot tree from env. Checks `$PX4_AUTOPILOT_DIR`
+/// first (canonical, used by `just px4 test-sitl` / `.envrc`) then the
+/// shorter `$PX4_DIR` alias (Phase 212.H.7 user-spec alias). Returns
+/// `Some(path)` only when the path also looks like a PX4 checkout
+/// (carries a `Makefile`).
+pub fn px4_autopilot_dir() -> Option<std::path::PathBuf> {
+    for key in ["PX4_AUTOPILOT_DIR", "PX4_DIR"] {
+        if let Ok(d) = std::env::var(key) {
+            let p = std::path::PathBuf::from(d);
+            if p.join("Makefile").is_file() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Skip-or-proceed guard for tests that need a PX4-Autopilot checkout
+/// reachable via `$PX4_AUTOPILOT_DIR` (or the `$PX4_DIR` alias). Phase
+/// 212.H.7.
+pub fn require_px4() -> bool {
+    if px4_autopilot_dir().is_none() {
+        eprintln!(
+            "Skipping test: PX4_AUTOPILOT_DIR / PX4_DIR unset or not a PX4 checkout \
+             (run `just px4 setup`, load `.envrc`, or point at a PX4-Autopilot tree)"
+        );
+        return false;
+    }
+    true
+}
+
 /// Read the pinned nightly channel from `tools/rust-toolchain.toml`.
 ///
 /// This is the single source of truth for the nightly used by workspace

@@ -1,0 +1,12 @@
+[package]
+name = "talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[package.metadata.nros.component]
+name = "talker"
+default_namespace = "/"

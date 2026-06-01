@@ -1,0 +1,25 @@
+# Phase 212.H.7 fixture — bringup pkg (Path A, no Cargo.toml).
+#
+# Two C++ components — `talker` and `brake_arbiter` — wired into a PX4
+# SITL deploy. `nros codegen-system --ahead-of-vendor --target px4`
+# reads this file + launch/*.xml and emits one
+# `$PX4_AUTOPILOT_DIR/src/modules/nros_<name>/` module dir per
+# component, then PX4's own `make px4_sitl_default` consumes them.
+
+[system]
+name      = "demo"
+rmw       = "cyclonedds"
+domain_id = 0
+
+[[component]]
+pkg  = "talker_pkg"
+name = "talker"
+
+[[component]]
+pkg  = "brake_arbiter_pkg"
+name = "brake_arbiter"
+
+[deploy.px4_sitl]
+kind   = "px4"
+board  = "px4_sitl_default"
+launch = "launch/system.launch.xml"

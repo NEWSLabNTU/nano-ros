@@ -1,0 +1,19 @@
+# Phase 212.H.1 fixture — system spec (Path A bringup, no Cargo.toml).
+[system]
+name      = "demo"
+rmw       = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg  = "talker_pkg"
+name = "talker"
+
+[[component]]
+pkg  = "listener_pkg"
+name = "listener"
+
+[deploy.zephyr_native_sim]
+kind   = "zephyr"
+board  = "native_sim/native/64"
+target = "x86_64-unknown-linux-gnu"
+launch = "launch/system.launch.xml"

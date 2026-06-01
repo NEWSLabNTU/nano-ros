@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "package": "listener_pkg",
+  "component": "listener",
+  "language": "rust",
+  "executable": "listener",
+  "exported_symbol": "nros_component_listener_entry",
+  "nodes": [
+    {
+      "id": "node_listener",
+      "unresolved_name": { "value": "listener", "kind": "relative" },
+      "namespace": null,
+      "publishers": [],
+      "subscribers": [],
+      "timers": [],
+      "services": [],
+      "actions": []
+    }
+  ],
+  "callbacks": [],
+  "parameters": [],
+  "trace": {
+    "generator": "phase-212.H.4 fixture",
+    "package_manifest": "package.xml",
+    "source_artifacts": ["src/lib.rs"]
+  }
+}

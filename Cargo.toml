@@ -267,6 +267,11 @@ exclude = [
     "packages/boards/nros-board-stm32f4",
     "packages/boards/nros-board-nuttx-qemu-arm",
     "packages/boards/nros-board-mps2-an385-freertos",
+    # Phase 212.H.3 — cargo-native FreeRTOS adapter (re-exports
+    # `nros-board-mps2-an385-freertos`, layers `nros codegen system`
+    # on top via `build.rs`). The cargo path IS the adapter; there is
+    # no separate `integrations/freertos/` shim directory.
+    "packages/boards/freertos-qemu-mps2-an385-bsp",
     # Phase 149.1.A scaffolding — generic FreeRTOS+lwIP façade.
     # 149.1.B carves the kernel + lwIP build glue here.
     "packages/boards/nros-board-freertos",
@@ -328,6 +333,12 @@ exclude = [
     # the px4-rs submodule. Listed here so cargo doesn't error on a
     # spurious workspace member when walking `packages/testing/`.
     "packages/testing/nros-px4-sitl-test",
+    # Phase 212.H.1 fixture — its own [workspace] root with talker_pkg
+    # + listener_pkg as members and demo_bringup excluded. Listed here
+    # so the outer workspace walker doesn't try to absorb its members.
+    "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr",
+    "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr/talker_pkg",
+    "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr/listener_pkg",
 ]
 
 [workspace.package]

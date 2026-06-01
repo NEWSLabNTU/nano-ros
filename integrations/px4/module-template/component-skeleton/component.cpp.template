@@ -1,0 +1,54 @@
+// Phase 212.H.7 — per-component PX4 module body skeleton.
+//
+// Rendered once per `[[component]]` by `nros codegen-system
+// --ahead-of-vendor --target px4`. The codegen substitutes
+// @COMPONENT_NAME@ + @COMPONENT_CLASS@ with values from the component's
+// nros metadata (Cargo.toml `[package.metadata.nros.component]` or
+// `component_nros.toml`).
+//
+// Hookless contract: this file is written to
+// `$PX4_DIR/src/modules/nros_<name>/<name>.cpp` BEFORE
+// `make px4_sitl_default` runs. PX4 sees it as an ordinary external
+// module source; the uORB↔DDS bridge body comes from `nros-cpp` +
+// `nros-rmw-uorb` (Phase 115.K.4 collapsed the PX4 surface to C++-only).
+//
+// DO NOT hand-edit this file inside an emitted module dir — re-running
+// `nros codegen-system` overwrites it. Edit the component crate / pkg.
+
+#include <nros/init.h>
+#include <px4_platform_common/log.h>
+
+extern "C" {
+
+// nros-rmw-uorb registers the uORB-backed RMW vtable; the codegen
+// emits a forward decl so the module links against the staticlib that
+// the bringup pkg's deploy step builds (see Phase 115.K.4.5 weak-stub
+// pattern in examples/px4/cpp/uorb/).
+extern int nros_rmw_uorb_register(void);
+
+// Concrete component entry — `<name>_main` is the symbol PX4's nsh
+// expects (see px4_add_module's MAIN argument; matches MODULE_MAIN
+// in PX4 module discovery).
+__EXPORT int @COMPONENT_NAME@_main(int argc, char *argv[]);
+
+__EXPORT int @COMPONENT_NAME@_main(int /*argc*/, char * /*argv*/[])
+{
+    int rc = nros_rmw_uorb_register();
+    if (rc != 0) {
+        PX4_ERR("nros_rmw_uorb_register() -> %d", rc);
+        return 1;
+    }
+    PX4_INFO("nano-ros component '@COMPONENT_NAME@' starting");
+
+    // Codegen replaces this comment with the concrete
+    // `nros::component::@COMPONENT_CLASS@` instantiation +
+    // executor spin loop driven by the component's metadata.
+    //
+    // Until the codegen lands the per-component lowering (TODO(212.H.7)
+    // in `nros-cli/packages/nros-cli-core/src/cmd/codegen_system.rs`),
+    // the placeholder body just returns OK so the module entry-symbol
+    // resolves at link time.
+    return 0;
+}
+
+} // extern "C"

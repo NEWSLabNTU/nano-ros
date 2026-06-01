@@ -1,0 +1,17 @@
+# Phase 212.H.5 fixture — ESP-IDF multi-pkg workspace.
+#
+# Two component crates (`talker_pkg`, `listener_pkg`) plus a Path A
+# bringup pkg (`demo_bringup/`, no Cargo.toml) plus an ESP-IDF app
+# directory (`esp_idf_app/`, CMake + Kconfig only).
+#
+# The bringup dir and the IDF app dir are `exclude`d so cargo doesn't
+# try to read them; `default_system` under `[workspace.metadata.nros]`
+# tells `nros plan` / `nros codegen-system` which bringup to resolve.
+
+[workspace]
+resolver = "2"
+members  = ["talker_pkg", "listener_pkg"]
+exclude  = ["demo_bringup", "esp_idf_app"]
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"

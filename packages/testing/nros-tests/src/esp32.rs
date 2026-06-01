@@ -92,6 +92,46 @@ pub fn require_espflash() -> bool {
     true
 }
 
+/// Check if a usable ESP-IDF installation is reachable.
+///
+/// Phase 212.H.5 harness gate — requires both `$IDF_PATH` to be set
+/// (so the IDF's `tools/cmake/project.cmake` resolves) AND `idf.py` to
+/// be on PATH (sourced via `esp-idf-workspace/env.sh` in CI; user-side
+/// via `. $IDF_PATH/export.sh`).
+pub fn is_esp_idf_available() -> bool {
+    let idf_path = match std::env::var_os("IDF_PATH") {
+        Some(p) if !p.is_empty() => p,
+        _ => return false,
+    };
+    if !std::path::Path::new(&idf_path)
+        .join("tools/cmake/project.cmake")
+        .is_file()
+    {
+        return false;
+    }
+    Command::new("idf.py")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Skip test if ESP-IDF is not available.
+pub fn require_esp_idf() -> bool {
+    if !is_esp_idf_available() {
+        eprintln!(
+            "Skipping test: ESP-IDF not reachable (need $IDF_PATH + `idf.py` on PATH)"
+        );
+        eprintln!(
+            "Install via `just esp_idf setup` then `source esp-idf-workspace/env.sh`."
+        );
+        return false;
+    }
+    true
+}
+
 // =============================================================================
 // Networking Helpers
 // =============================================================================

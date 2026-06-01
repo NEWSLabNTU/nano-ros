@@ -1,0 +1,25 @@
+# Phase 212.H.2 — NuttX apps/external/<bringup>/Kconfig template.
+#
+# Surfaced under `Application Configuration → External Modules →
+# nano-ros bringup` once symlinked into apps/external/<bringup>/. The
+# sibling Make.defs gates `CONFIGURED_APPS` registration on this knob.
+#
+# The knob NAME is intentionally fixed (`NROS_BRINGUP_DEMO`) because
+# NuttX's `apps/external/Kconfig` aggregator can't pass per-dir
+# variables. A second bringup template gets staged at a sibling
+# directory with its own (sed-rewritten) Kconfig copy.
+
+config NROS_BRINGUP_DEMO
+    bool "nano-ros multi-component bringup (demo)"
+    default n
+    depends on NROS
+    help
+      Enables a nano-ros multi-component bringup package staged at
+      apps/external/<bringup>/. The Makefile's `context::` rule runs
+      `nros codegen-system` to bake system.toml + launch/*.xml into
+      compile-time C config, then cross-builds the bringup Rust
+      workspace for the configured NuttX target triple.
+
+      See docs/design/multi-node-workspace-layout.md for the
+      `<bringup>` package shape (system.toml, launch/system.launch.xml,
+      sibling component crates, optional nuttx_app_glue/).

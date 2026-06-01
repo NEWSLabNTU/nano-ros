@@ -1,0 +1,18 @@
+# Phase 212.H.4 fixture — listener component declaration.
+version   = 1
+package   = "listener_pkg"
+component = "listener"
+language  = "rust"
+
+[linkage]
+staticlib       = "listener_component"
+exported_symbol = "nros_component_listener_entry"
+
+[metadata]
+source_metadata = "metadata/listener.json"
+generated_by    = "phase-212.H.4 fixture"
+
+[overrides]
+default_namespace = "/"
+parameters = {}
+remaps = []

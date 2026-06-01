@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "package": "talker_pkg",
+  "component": "talker",
+  "language": "cpp",
+  "executable": "talker",
+  "exported_symbol": "nros_component_talker",
+  "nodes": [
+    {
+      "id": "node_talker",
+      "unresolved_name": { "value": "talker", "kind": "relative" },
+      "namespace": null,
+      "publishers": [],
+      "subscribers": [],
+      "timers": [],
+      "services": [],
+      "actions": []
+    }
+  ],
+  "callbacks": [],
+  "parameters": [],
+  "trace": {
+    "generator": "phase-212.H.7 fixture",
+    "package_manifest": "package.xml",
+    "source_artifacts": ["src/talker.cpp"]
+  }
+}

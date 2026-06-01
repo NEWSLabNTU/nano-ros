@@ -1,16 +1,47 @@
-# Phase 139.2 — ESP-IDF Kconfig.projbuild for nano-ros.
+# Phase 139.2 + Phase 212.H.5 — ESP-IDF Kconfig.projbuild for nano-ros.
 #
-# Surfaces NANO_ROS_* knobs under `menuconfig → Component config →
+# Surfaces NROS_* knobs under `menuconfig → Component config →
 # nano-ros`. The CMakeLists sibling reads these via CONFIG_NROS_*.
 
 menu "nano-ros"
 
-config NROS_RMW
-    string "RMW backend (zenoh | dds | xrce | cyclonedds)"
-    default "zenoh"
+config NROS_BRINGUP_NAME
+    string "Bringup package name"
+    default "demo_bringup"
     help
-      Maps to the NANO_ROS_RMW CMake cache variable consumed by the
-      Phase 137 root CMakeLists.txt.
+      Name of the Path-A bringup package sitting at
+      ${NROS_WORKSPACE_DIR}/<name>/system.toml. The configure-time
+      `nros codegen-system` step reads it to bake the per-system C
+      config + main glue into ${CMAKE_BINARY_DIR}/nros-system/.
+
+config NROS_DOMAIN_ID
+    int "ROS 2 domain id"
+    default 0
+    range 0 232
+    help
+      Baked at configure time (embedded targets cannot read
+      ROS_DOMAIN_ID at runtime — see CLAUDE.md "Domain ID:
+      compile-time on embedded").
+
+choice NROS_RMW
+    prompt "RMW backend"
+    default NROS_RMW_XRCE
+    help
+      Picks the wire format. CycloneDDS is intentionally absent on
+      ESP — Phase 175.B (embedded Cyclone Rust) is research-grade.
+
+config NROS_RMW_XRCE
+    bool "Micro XRCE-DDS"
+
+config NROS_RMW_ZENOH
+    bool "Zenoh-pico"
+
+endchoice
+
+config NROS_RMW
+    string
+    default "xrce"   if NROS_RMW_XRCE
+    default "zenoh"  if NROS_RMW_ZENOH
 
 config NROS_ROS_EDITION
     string "ROS 2 edition (humble | iron)"

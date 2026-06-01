@@ -1,0 +1,12 @@
+# Phase 212.H.4 fixture — Rust component crate (listener), built as a
+# staticlib so Corrosion can import it from the ThreadX cmake adapter.
+[workspace]
+
+[package]
+name = "listener_component"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/lib.rs"

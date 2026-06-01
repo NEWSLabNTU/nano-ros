@@ -1,0 +1,26 @@
+# Phase 212.H.3 firmware bin — depends on `freertos-qemu-mps2-an385-bsp`
+# and ships a 5-line `main.rs`. The empty `[workspace]` table makes
+# this its own workspace root so the embedded `thumbv7m-none-eabi`
+# target pinned in `.cargo/config.toml` doesn't leak onto the outer
+# fixture's host-target component crates.
+#
+# `@NANO_ROS_ROOT@` placeholders are rewritten by the integration
+# test's `stage_fixture` helper to the absolute path of the nano-ros
+# checkout. This lets the fixture live in the source tree without
+# committing absolute paths.
+
+[workspace]
+
+[package]
+name = "firmware"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "firmware"
+path = "src/main.rs"
+
+[dependencies]
+freertos-qemu-mps2-an385-bsp = { path = "@NANO_ROS_ROOT@/packages/boards/freertos-qemu-mps2-an385-bsp", default-features = false }
+panic-semihosting = { version = "0.6", features = ["exit"] }

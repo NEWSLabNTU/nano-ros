@@ -1,0 +1,18 @@
+# Phase 212.H.2 fixture — pure-Rust multi-component workspace targeting
+# NuttX. Mirrors the canonical Phase 212.B/F shape: workspace metadata
+# carries the `default_system` pointer; the bringup pkg (demo_bringup)
+# lives at src/demo_bringup/ but is excluded from cargo members (Path A
+# — no Cargo.toml inside the bringup pkg).
+[workspace]
+resolver = "2"
+members = [
+    "src/talker_pkg",
+    "src/listener_pkg",
+]
+exclude = [
+    "src/demo_bringup",
+    "src/nuttx_app_glue",
+]
+
+[workspace.metadata.nros]
+default_system = "demo_bringup"

@@ -1,0 +1,14 @@
+# Phase 212.H.2 — NuttX apps/external/<bringup>/ Make.defs template.
+#
+# Symlinked (or copied) into $NUTTX_APPS_DIR/external/<bringup>/Make.defs by
+# `scripts/nuttx/stage-external-apps.sh --bringup <workspace>`. NuttX's
+# `apps/external/*/Make.defs` discovery glob registers each `apps/external/*/`
+# dir as a NuttX application when this file exists + the Kconfig knob is on.
+#
+# This template appends ONE entry to `CONFIGURED_APPS` (the bringup itself);
+# the shared `integrations/nuttx/Make.defs` adds the nano-ros runtime
+# staticlibs to `EXTRA_LIBS`. Per-bringup shell stays ≤200 LoC.
+
+ifneq ($(CONFIG_NROS_BRINGUP_DEMO),)
+CONFIGURED_APPS += $(APPDIR)/external/$(notdir $(CURDIR))
+endif

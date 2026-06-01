@@ -1,0 +1,8 @@
+# Phase 212.H.6 fixture — Rust workspace with 2 component crates that
+# compile to staticlibs (one per component) + a Path-A bringup pkg.
+# `pio_app/` is the PlatformIO consumer that pulls nano-ros + this
+# bringup via the repo-root library.json's pre-build script.
+[workspace]
+resolver = "2"
+members = ["talker_pkg", "listener_pkg"]
+exclude = ["demo_bringup", "pio_app"]

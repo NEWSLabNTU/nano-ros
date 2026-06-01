@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Phase 208.D.4 / 208.D.8 — string-convention guards.
+# Phase 208.D.4 / 208.D.8 / 212.H.6 — string-convention guards.
 #
 # Catches strings that should not appear anywhere in user-facing surfaces
 # (book/, integrations/, packages/, examples/, scripts/, just/, integrations/):
 #
 #   1. `aeon/nano-ros` — the wrong GitHub org (real is NEWSLabNTU/nano-ros).
 #      Surfaced via the Phase 208 book audit (P11). 208.D.4.
-#   2. `platformio` / `PlatformIO` in book/ or integrations/ — the PlatformIO
-#      shell was dropped in 208.D.8.
+#
+# Phase 212.H.6 reintroduces a PlatformIO adapter (ahead-of-vendor codegen
+# path); the former 208.D.8 PlatformIO ban is therefore retired.
 #
 # Roadmap + archived phase docs may reference these strings historically; they
 # are excluded by directory.
@@ -39,10 +40,6 @@ scan "aeon/nano-ros (real org = NEWSLabNTU/nano-ros)" \
      'aeon/nano-ros' \
      'book/' 'integrations/' 'packages/' 'examples/' 'scripts/' \
      'just/' 'justfile' 'docs/'
-
-scan "platformio / PlatformIO (retired in 208.D.8)" \
-     '[Pp]latform[Ii][Oo]' \
-     'book/' 'integrations/'
 
 if [ "$fail" -eq 0 ]; then
     echo "string conventions: OK"

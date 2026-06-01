@@ -1,0 +1,19 @@
+# Phase 212.H.5 fixture — system spec (Path A bringup, no Cargo.toml).
+[system]
+name      = "demo"
+rmw       = "xrce"
+domain_id = 0
+
+[[component]]
+pkg  = "talker_pkg"
+name = "talker"
+
+[[component]]
+pkg  = "listener_pkg"
+name = "listener"
+
+[deploy.esp_idf_esp32c3]
+kind   = "esp-idf"
+board  = "esp32c3"
+target = "riscv32imc-unknown-none-elf"
+launch = "launch/system.launch.xml"

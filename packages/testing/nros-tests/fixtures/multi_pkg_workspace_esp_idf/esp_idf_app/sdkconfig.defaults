@@ -1,0 +1,6 @@
+# Phase 212.H.5 fixture — sdkconfig defaults wiring the Kconfig.projbuild
+# knobs introduced by integrations/nano-ros/.
+CONFIG_NROS_BRINGUP_NAME="demo_bringup"
+CONFIG_NROS_DOMAIN_ID=0
+CONFIG_NROS_RMW_XRCE=y
+CONFIG_NROS_ROS_EDITION="humble"

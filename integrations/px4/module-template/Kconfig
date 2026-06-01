@@ -1,0 +1,13 @@
+# Phase 212.H.7 — top-level Kconfig aggregator.
+#
+# PX4's external-modules walker reads `<EXTERNAL_MODULES_LOCATION>/src/Kconfig`
+# and sources every per-module Kconfig it finds. `nros codegen-system
+# --ahead-of-vendor --target px4` rewrites this file in-place with one
+# `source` line per `[[component]]` from the bringup pkg's system.toml.
+#
+# Default: empty — `make px4_sitl_default` with an unpopulated nros
+# template still configures cleanly. The first `nros codegen-system`
+# run replaces this comment block with the per-component sources.
+#
+# TODO(212.H.7): emit `source "src/modules/nros_<name>/Kconfig"` lines
+# from `codegen_system.rs`'s ahead-of-vendor PX4 emitter.

@@ -1,0 +1,5 @@
+/target/
+/build/
+/esp_idf_app/build/
+/esp_idf_app/sdkconfig
+/esp_idf_app/sdkconfig.old
