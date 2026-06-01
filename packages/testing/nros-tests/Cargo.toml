@@ -99,6 +99,15 @@ trigger-test = [
 # multi-rmw-bridge = [
 #     "trigger-test",
 # ]
+# Phase 212.M.5.a.2 — Executor-backed component runtime E2E. Pulls in
+# the runtime via the `nros` umbrella (`rmw-cffi` + `platform-posix`)
+# plus the trigger-test fixtures so a real zenohd backs `Executor::open`.
+component-runtime-test = [
+    "trigger-test",
+    "nros/rmw-cffi",
+    "nros/platform-posix",
+]
+
 # Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.
 # Pulls nros-node + nros-rmw-zenoh with the `lending` feature so the
 # customised ZENOH_VTABLE (124.A.4.b) is installed at backend
@@ -187,6 +196,11 @@ required-features = ["loan-e2e"]
 [[test]]
 name = "phase212_l5_init_api"
 path = "tests/phase212_l5_init_api.rs"
+
+[[test]]
+name = "phase212_m5a2_component_runtime"
+path = "tests/phase212_m5a2_component_runtime.rs"
+required-features = ["component-runtime-test"]
 
 # Phase 134.6 E2E.1 — wraps scripts/check-zenoh-archive-symbols.sh as
 # a cargo-runnable regression gate over the install tree.

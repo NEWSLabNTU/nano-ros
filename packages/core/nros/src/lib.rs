@@ -147,6 +147,17 @@ pub static __FORCE_LINK_PLATFORM_CFFI: extern "C" fn() = nros_platform::__FORCE_
 
 pub mod component;
 pub mod component_metadata;
+/// Phase 212.M.5.a.2 — executor-backed component runtime.
+///
+/// Binds [`Component`] / [`ExecutableComponent`] to a live
+/// [`Executor`] so a Component pkg can actually run (versus
+/// [`MetadataRecorder`](component_metadata::MetadataRecorder) which
+/// is the planner-side metadata sink).
+///
+/// Gated on `rmw-cffi`; the underlying [`Executor`] is only present
+/// when an RMW backend is linked.
+#[cfg(feature = "rmw-cffi")]
+pub mod component_runtime;
 pub mod guide;
 
 /// Phase 212.L.5 — top-level init API.
@@ -189,6 +200,7 @@ pub use nros_core::heapless;
 // Re-export component-mode API
 #[cfg(feature = "rmw-cffi")]
 pub use component::ComponentExecutorRuntime;
+// Phase 212.M.5.a.2 — executor-backed runtime entry points.
 #[cfg(feature = "alloc")]
 pub use component::component_register_symbol;
 pub use component::{
@@ -205,6 +217,12 @@ pub use component_metadata::{
     CallbackEffectKind, CallbackEffectMetadata, CallbackId, ComponentMetadataError, EntityId,
     EntityKind, EntityMetadata, MetadataRecorder, MetadataString, NodeId, NodeMetadata,
     ParameterDefault, SourceLocationMetadata, SourceNameKind,
+};
+#[cfg(all(feature = "rmw-cffi", feature = "std"))]
+pub use component_runtime::nros_run_components;
+#[cfg(feature = "rmw-cffi")]
+pub use component_runtime::{
+    ComponentHandle, ComponentRegisterFn, ExecutorComponentRuntime, ExecutorError,
 };
 pub use nros_macros::component;
 
