@@ -30,9 +30,7 @@ rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-cyclonedds   = [
     "dep:nros-rmw-cyclonedds-sys",
     "nros-rmw-cyclonedds-sys/vendored",
-    "dep:nros-build",
-    "dep:cc",
-    "dep:cyclonedds-sys",
+    "std_msgs/cyclonedds",
 ]
 rmw-xrce  = ["dep:nros-rmw-xrce-cffi"]
 
@@ -65,21 +63,6 @@ nros-rmw-zenoh    = { path = "../../../../packages/zpico/nros-rmw-zenoh", featur
 nros-rmw-cyclonedds-sys      = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
 nros-rmw-xrce-cffi = { path = "../../../../packages/xrce/nros-rmw-xrce-cffi", optional = true }
 
-# Phase 212.K.4 — `cyclonedds-sys` carries `links = "ddsc"`. Listed
-# as a regular `[dependencies]` (not `[build-dependencies]`) so cargo
-# propagates the `DEP_DDSC_*` metadata into THIS crate's `build.rs`.
-# A `[build-dependencies]` entry would NOT export the links metadata
-# to our build.rs (cargo only propagates DEP_<links>_<key> through
-# the `[dependencies]` graph).
-cyclonedds-sys = { path = "../../../../packages/dds/cyclonedds-sys", optional = true }
-
-# Phase 212.K.4 — user-side descriptor codegen pipeline. `nros-build`
-# is the build-script helper; `cc` compiles the generated C output.
-# Both gated on `rmw-cyclonedds`; build.rs is a no-op otherwise.
-[build-dependencies]
-nros-build = { path = "../../../../packages/nros-build", optional = true }
-cc = { version = "1.0", optional = true }
-
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the
 # outer nano-ros workspace (in nested checkouts) or gets adopted by a user's
@@ -107,6 +90,10 @@ nros-rmw-cffi = { path = "../../../../packages/core/nros-rmw-cffi" }
 nros-log = { path = "../../../../packages/core/nros-log" }
 nros-macros = { path = "../../../../packages/core/nros-macros" }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }
+
+# Phase 212.K — generated `std_msgs/cyclonedds` feature pulls
+# `cyclonedds-sys` by `version = "*"`; patch it to the in-tree wrapper.
+cyclonedds-sys = { path = "../../../../packages/dds/cyclonedds-sys" }
 # === END nros-managed [patch.crates-io] ===
 
 
