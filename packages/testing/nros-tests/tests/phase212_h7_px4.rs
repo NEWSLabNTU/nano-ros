@@ -22,7 +22,15 @@ fn fixture() -> PathBuf {
 const COMPONENTS: &[&str] = &["talker", "brake_arbiter"];
 
 #[test]
-#[ignore = "Phase 212.H.7 codegen ahead-of-vendor PX4 emit is a skeleton; require_px4 + px4_autopilot_dir helpers also pending. Un-ignore when codegen-system writes the nros_<name>/ dirs to $PX4_AUTOPILOT_DIR/src/modules/ in the documented shape."]
+#[ignore = "Phase 212.H.7 — PX4-Autopilot SDK is installed locally \
+            (verified via `just px4 doctor`), and the \
+            `nros_tests::{require_px4,px4_autopilot_dir}` helpers were \
+            added in wave 4. The remaining block is the codegen-system \
+            PX4 emit shape itself: the verb is documented as a skeleton \
+            and does not yet write `nros_<name>/` module dirs to \
+            `$PX4_AUTOPILOT_DIR/src/modules/` with the PX4-native \
+            `px4_add_module()` CMakeLists + Kconfig pair. Un-ignore when \
+            the codegen-system PX4 emit lands in nros-cli."]
 fn px4_sitl_2_component_module_builds() {
     // Phase 212.H.7 prereqs: nros CLI + a PX4-Autopilot checkout. The
     // codegen subcommand check below is a soft gate (the verb may not

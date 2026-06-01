@@ -56,7 +56,19 @@ fn stage_fixture() -> (tempfile::TempDir, PathBuf) {
 }
 
 #[test]
-#[ignore = "Phase 212.H.5 — needs ESP-IDF SDK locally (IDF_PATH + idf.py). Un-ignore in CI rows that have ESP-IDF installed."]
+#[ignore = "Phase 212.H.5 — ESP-IDF SDK is installed locally (verified via \
+            `just esp_idf doctor`), but the integration shell at \
+            integrations/nano-ros/CMakeLists.txt hardcodes \
+            `NANO_ROS_PLATFORM=baremetal`, which is not in the validator's \
+            accepted list (posix, freertos[_armcm3], nuttx[_armv7a], \
+            threadx[_linux|_riscv64]). Switching to `freertos` then \
+            triggers a board-glue requirement from \
+            cmake/platform/nano-ros-freertos.cmake — the shell expects a \
+            board crate to supply the linker script, startup file, \
+            FreeRTOSConfig.h, lwIP config, and netif driver, none of which \
+            apply when ESP-IDF brings its own FreeRTOS. Un-ignore once an \
+            `esp-idf` board (or platform carve-out) is added so the root \
+            CMake skips the board-glue lookup."]
 fn esp_idf_esp32c3_2_component_bringup_builds() {
     // Phase 212.H.5 prereqs: nros CLI + a usable ESP-IDF installation.
     if !nros_tests::require_nros_cli() {
