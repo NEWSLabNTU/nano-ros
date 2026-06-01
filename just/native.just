@@ -58,7 +58,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # for this broad find, or are built by their own platform recipes
     # (freertos/nuttx/threadx/zephyr/px4).
     find examples -mindepth 4 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' \
+                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
                        -not -path '*/_deps/*' -not -path '*/zephyr/*' \
                        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
@@ -254,7 +254,7 @@ check JOBS="75%":
     trap 'rm -f "$toml_list"' EXIT
 
     find examples -mindepth 4 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' \
+                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' \
                        -not -path '*/build/*' -not -path '*/build-*/*' \
                        -not -path '*/zephyr/*' \
                        -not -path '*/multi-package-workspace/*' \

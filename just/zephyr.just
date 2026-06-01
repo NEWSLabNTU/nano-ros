@@ -173,7 +173,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     case "{{example}}" in
     rust/*)
         echo "Zephyr: generating Rust interface crates for {{example}}"
-        ( cd "$src" && "$codegen_tool" generate-rust --force )
+        NROS_REPO_DIR="$(pwd)" "$codegen_tool" ws sync "$src"
         ;;
     esac
     # CONF_FILE = base + RMW overlay + (native_sim) the version-aware NSOS
@@ -346,10 +346,11 @@ build-fixtures:
     nros_cli="$(nros_cli_bin)"
     while IFS= read -r pkg; do
         dir="$(dirname "$pkg")"
-        stamp="$dir/generated/.nros-generate-rust.stamp"
+        stamp="$dir/build/.nros-ws-sync.stamp"
         if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || [ ! -f "$stamp" ] || [ "$pkg" -nt "$stamp" ]; then
-            echo "    generate-rust: $dir"
-            ( cd "$dir" && "$nros_cli" generate-rust --force )
+            echo "    ws sync: $dir"
+            mkdir -p "$dir/build"
+            NROS_REPO_DIR="$(pwd)" "$nros_cli" ws sync "$dir"
             touch "$stamp"
         fi
     done < <(find examples/zephyr/rust -mindepth 2 -maxdepth 2 -name package.xml | sort)

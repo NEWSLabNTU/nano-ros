@@ -6,3 +6,4 @@
 /.depend
 /Make.dep
 /src/*.o
+/build/

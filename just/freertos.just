@@ -72,7 +72,7 @@ build-examples:
     # Codegen prep (per-platform); build options come from the SSOT manifest
     # (examples/fixtures.toml) via the shared builder. Phase 181.4.d.
     for example in talker listener service-server service-client action-server action-client; do
-        ( cd examples/qemu-arm-freertos/rust/$example && "$nros_cli" generate-rust --force >/dev/null )
+        NROS_REPO_DIR="$PWD" "$nros_cli" ws sync examples/qemu-arm-freertos/rust/$example >/dev/null
     done
     bash scripts/build/fixtures-build.sh freertos rust
     echo "FreeRTOS QEMU examples built!"
@@ -159,7 +159,7 @@ build-fixture-extras:
             continue
         fi
         echo "  → freertos/rust/${case} (-DNROS_RMW=cyclonedds, self-provision, build-cyclonedds/)"
-        ( cd examples/qemu-arm-freertos/rust/${case} && "$nros_cli" generate-rust --force >/dev/null )
+        NROS_REPO_DIR="$PWD" "$nros_cli" ws sync examples/qemu-arm-freertos/rust/${case} >/dev/null
         rm -rf examples/qemu-arm-freertos/rust/${case}/build-cyclonedds
         cmake -S examples/qemu-arm-freertos/rust/${case} \
               -B examples/qemu-arm-freertos/rust/${case}/build-cyclonedds \

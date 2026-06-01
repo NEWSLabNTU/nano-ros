@@ -4,3 +4,4 @@
 /build-cyclonedds/
 /generated/
 /Cargo.lock
+/build/

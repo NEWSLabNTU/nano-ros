@@ -63,7 +63,7 @@ build:
     nros_cli="$(nros_cli_bin)"
     echo "Building QEMU ARM examples..."
     for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort); do
         dir="$(dirname "$toml")"
         echo "  build $dir"
         # Examples that path-dep generated message crates (example_interfaces /
@@ -71,7 +71,7 @@ build:
         # need codegen before cargo can resolve the patch path. Mirrors
         # build-fixtures; the gitignored generated/ dirs come from package.xml.
         if [ -f "$dir/package.xml" ]; then
-            (cd "$dir" && "$nros_cli" generate-rust --force >/dev/null)
+            NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
         fi
         (cd "$dir" && cargo build $cargo_profile_args)
     done
@@ -89,7 +89,7 @@ build:
         # path-deps builtin_interfaces/std_msgs) need codegen before cargo resolves
         # the generated/ [patch.crates-io] path.
         if [ -f "$dir/package.xml" ]; then
-            (cd "$dir" && "$nros_cli" generate-rust --force >/dev/null)
+            NROS_REPO_DIR="$PWD" "$nros_cli" ws sync "$dir" >/dev/null
         fi
         (cd "$dir" && cargo build $cargo_profile_args)
     done
@@ -119,7 +119,7 @@ build-fixtures:
     while IFS= read -r toml; do
         dirs+=("$(dirname "$toml")")
     done < <(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                  -not -path '*/target/*' -not -path '*/generated/*' | sort)
+                  -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort)
     # Phase 131.B — relocated bench/test-fixture crates.
     dirs+=(
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu
@@ -141,7 +141,7 @@ build-fixtures:
         # crates have no package.xml and skip this. Mirrors the native
         # build-fixture recipe's `ensure_native_rust_generated`.
         if [ -f "$dir/package.xml" ]; then
-            ( cd "$dir" && "$NROS_CLI" generate-rust --force >/dev/null )
+            NROS_REPO_DIR="$PWD" "$NROS_CLI" ws sync "$dir" >/dev/null
         fi
         ( cd "$dir" && cargo build $cargo_profile_args --quiet )
     }
@@ -416,7 +416,7 @@ help:
 clean: clean-zenoh-pico
     #!/usr/bin/env bash
     for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml \
-                       -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+                       -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' | sort); do
         rm -rf "$(dirname "$toml")/target"
     done
     # Phase 131.B — relocated bare-metal bench/fixture crates.
