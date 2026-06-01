@@ -55,6 +55,100 @@ The work culminates in:
 - A Sentinel-style safety MCU demonstrator running verified safety-gate
   nodes with a GSN safety case citing each Why3 session as evidence.
 
+## PoC scope freeze (2026-06-01)
+
+Phase 211 splits into two execution units. The **PoC** (211.1–211.5,
+10 weeks) ships proof-of-mechanism. The **post-PoC** phases (211.6–211.9)
+extend coverage, retire Verus, stand up the hosted registry, and deliver
+the Sentinel demonstrator. The two units are gated: post-PoC does not
+begin until the PoC closeout has validated the mechanism end-to-end.
+
+This split lets the PoC stay small + focused while preserving every
+forward-compat invariant the future registry depends on.
+
+### In PoC scope (211.1–211.5)
+
+- wcr 0.1.0 tool + library crates published from sibling repo
+- 3–4 nano-ros Rust crates annotated (Creusot) and bundled
+- Cross-crate composition demonstrated end-to-end
+- Cache + bundle round-trip + in-toto attestation v0.1
+- Sentinel **mini-demo** in QEMU only (real-HW + GSN safety case = post-PoC)
+- Baseline + closeout measurement reports
+
+### Out of PoC scope — explicit defer list
+
+| Out-of-scope | Why deferred | Lands at |
+|---|---|---|
+| Verus retirement | Verus stays in tree during PoC; port-debt assessment after Creusot proves viable | 211.6 |
+| RMW + platform expansion | Scope explosion. PoC validates the mechanism only | 211.7 |
+| Hosted registry index | No `index.wcr.dev` server, no `wcr publish` HTTPS, no PR-gated publish workflow | 211.8 |
+| Sigstore signing | Bundle schema reserves the field; signing code not implemented | 211.8 |
+| Refinement check on spec bumps | No registry → no enforcement mechanism | 211.8 |
+| Frama-C / WP / ACSL backend | Cross-language extension is post-PoC | 211.8 |
+| C consumer / dep demos | Same | 211.8 |
+| Sentinel full demo (real-HW + GSN safety case) | Mini-demo in 211.5 is QEMU-only with simplified composition | 211.9 |
+| Eclipse SDV venue + talk submission | Talk material drafted post-211.9; CFP 2027 H1 target | post-211.9 |
+
+### PoC-active backlog (decide during 211.1–211.5)
+
+| # | Item | Decided by |
+|---|---|---|
+| F1 | `wcr` name availability on crates.io + GitHub + npm + pypi; fallback name list ready | 211.1 day 1 |
+| U1 | `cfg(feature = "proofs")` gating spike — Creusot annotations + proc-macro hygiene + `cargo check --no-default-features` clean | 211.1 end |
+| U2 | Feature-gating decision-gate measurement procedure | 211.2 kickoff |
+| U6 | `creusot_contracts` Cargo dep wiring (workspace-level + per-crate opt-in under `proofs` feature) | 211.2 |
+| M2 | `source.lock` files list strategy — directory-tree Merkle hash over canonical-sorted relative paths (avoid per-file listing for large crates) | 211.4 |
+| M3 | External-dep-without-proofs policy: default to local axiomatization in `proofs/axioms/<dep>-axioms.mlw` with attestor field | 211.2 first instance |
+| M4 | Coq fallback workflow: `proofs/coq/<vc-id>.v` per stubborn VC; replayed via Why3's Coq driver | 211.4 if any VC needs it |
+| M7 | `creusot --no-prove` reference: upstream Creusot flag, not a new wcr command. Document only | 211.1 |
+| M8 | Extraction error vs VC failure: distinct exit codes (e.g. exit 2 = extraction error; exit 3 = VC failed) + distinct stderr messages | 211.4 |
+
+### Forward-compat invariants — frozen in PoC, immutable through 211.8
+
+| Invariant | Where it lives | Frozen at |
+|---|---|---|
+| Bundle interior layout (`.wcr.tar.zst`) | `wcr-bundle::pack` | 211.4 |
+| Manifest schema v0.1 (`[package.metadata.nros.proof]`) | `wcr-core::manifest` | 211.1 |
+| Spec hash canonical form (parse → alphabetize → strip → SHA-256) | `wcr-core::spec_hash` | 211.1 |
+| Theory naming convention (`<Crate>_<module>` PascalCase, `-` → `_`) | `wcr-extract::creusot` rename pass | 211.1 |
+| Cache key composition (extracted hash × prover × prover version × transformation chain) | `wcr-cache::content_addressed` | 211.4 |
+| Bundle path hierarchy `extracted/<lang>/` + `session/<lang>/` | `wcr-bundle::pack` | 211.4 |
+| `kind = "code" | "axiom"` field present (even if only "code" populated in PoC) | manifest schema | 211.1 |
+| In-toto predicate type URI | `wcr-attest::intoto` | 211.1 (provisional: `https://github.com/NEWSLabNTU/wcr/proof/v0.1`; swap to `wcr.dev` only when domain registered + governance settled) |
+| `source.lock` always present at every tier | `wcr-bundle::pack` | 211.4 |
+| Sigstore field optional in PoC schema; format reserved | manifest schema | 211.1 |
+| In-toto JSONL **line-per-(crate, language)** semantics — PoC ships one line, future appends C-extraction lines | `wcr-attest::intoto` | 211.1 (documented even though only one line in PoC) |
+| Attestation `tcb` field lists all extractor + verifier + prover versions | `wcr-attest::intoto` | 211.1 |
+
+Two **provisional** items above must be re-confirmed when the post-PoC
+registry stand-up begins:
+
+- **In-toto URI** — use the GitHub path until the registry domain is
+  decided. If the URI changes, every PoC-era bundle re-signed by 211.8.
+- **`wcr` name** — if F1 forces a fallback name, every crate published
+  from PoC is republished under the new name. Day-1 check prevents this.
+
+### PoC exit criterion
+
+PoC closes when:
+
+1. wcr 0.1.0 stable release tagged (crates.io published).
+2. `nros-core` + `nros-cmd-gate` + 1 axiom crate + 1 additional safety
+   crate bundle + replay round-trip clean.
+3. ≥ 100 discharged VCs aggregated across PoC crates.
+4. `wcr` toolchain provisioned via `nros setup --tool wcr-stack` on a
+   clean Ubuntu 22.04 + Ubuntu 24.04 + macOS 14 host.
+5. Baseline measurements + closeout report published under
+   `docs/research/phase-211-poc-results.md`.
+6. All 12 forward-compat invariants implemented + frozen-format
+   commitments table validated (no schema/bundle drift).
+7. PoC-active backlog (F1, U1, U2, U6, M2, M3, M4, M7, M8) resolved or
+   converted to issues for the relevant post-PoC phase.
+
+After exit, the post-PoC phases (211.6 Verus retirement → 211.7 RMW
++ platform → 211.8 registry alpha + cross-language → 211.9 Sentinel
+full demo) become re-openable. They are not started until PoC exits.
+
 ## Architecture
 
 ### Tool layering
