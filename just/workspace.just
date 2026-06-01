@@ -441,6 +441,23 @@ rust-pinned-toolchains:
     #!/usr/bin/env bash
     set -e
     declare -A seen
+    # Split installs into two steps:
+    #   1. `rustup toolchain install --profile minimal <channel>` — idempotent;
+    #      skips when the toolchain is already present.
+    #   2. `rustup component add <c>` per declared component — also idempotent;
+    #      `rustup component add` reports "already installed" and exits 0 when
+    #      the component is present.
+    #
+    # The two-step form replaces the prior `rustup toolchain install … -c <c>`
+    # one-liner, which forces a whole-toolchain re-validation. On a tree where
+    # someone has previously added a non-stock target via `rustup target add`
+    # (e.g. armv7r-none-eabihf via `just workspace rust-targets`) the
+    # re-validation tries to roll back changes that reference a manifest the
+    # local toolchain never had (`manifest-rust-std-thumbv7em-none-eabi`
+    # without the `hf` suffix, etc.) — the install then aborts mid-rollback
+    # and leaves rustup state partially uninstalled. `rustup component add`
+    # is per-component and self-healing, so a single missing component is
+    # the only thing it touches.
     while read -r f; do
         [ -z "$f" ] && continue
         channel=$(awk '/^channel *=/ { gsub(/["]/, "", $3); print $3; exit }' "$f")
@@ -450,12 +467,11 @@ rust-pinned-toolchains:
         if [ -n "${seen[$key]}" ]; then continue; fi
         seen[$key]=1
         echo "=== $channel ($f; components: ${components:-<none>}) ==="
-        comp_args=""
+        rustup toolchain install --profile minimal "$channel"
         for c in $components; do
-            [ -n "$c" ] && comp_args="$comp_args -c $c"
+            [ -z "$c" ] && continue
+            rustup component add --toolchain "$channel" "$c"
         done
-        # shellcheck disable=SC2086
-        rustup toolchain install --profile minimal "$channel" $comp_args
     done < <(just workspace _pinned-toolchain-files)
 
 # Install cross-compilation targets.
