@@ -535,12 +535,12 @@ RTOS adapter shim.
       `[[domain]]` + `[[bridge]]` + `[[remap]]`. Multi-node composition
       via `<node pkg=…>` / `<include>` in launch.xml. Language-
       independent.
-- [ ] **L.4 `<pkg>::<Class>` enforcement** — `nros check` MUST reject a
+- [x] **L.4 `<pkg>::<Class>` enforcement** — `nros check` MUST reject a
       component pkg whose `class` field doesn't start with the pkg
       directory name (which equals `Cargo.toml::[package].name` for
       Rust and `project()` for C++). Cross-cuts user docs ("the dir
       name IS the pkg name").
-- [ ] **L.5 Init API patterns**:
+- [x] **L.5 Init API patterns**:
       - Pattern 1 (Component pkg): `nros::component!(Ty);` — register
         trampoline; codegen owns runtime.
       - Pattern 2 (Application pkg + launch-aware): `nros::
@@ -552,7 +552,7 @@ RTOS adapter shim.
         gui main, async runtime integration, debug instrumentation.
       C++ counterparts: `nros::init_with_launch_auto/path` /
       `nros::init`.
-- [ ] **L.6 Launch file resolution + synthesis** —
+- [x] **L.6 Launch file resolution + synthesis** —
       - For Path A bringup pkg: launch file REQUIRED;
         `launch/system.launch.xml` is the canonical name. Missing
         launch → hard error.
@@ -565,18 +565,27 @@ RTOS adapter shim.
         single `<dir>/launch/*.launch.xml` → synth (only for non-Path-A).
       - `--exec <name>` skips exec disambiguation when multiple
         `[[bin]]` / `add_executable` candidates exist.
-- [ ] **L.7 `[workspace.metadata.nros]` schema** — single field
-      `default_system = "<pkg-name-or-bringup-name>"`. Resolves either
-      a Path A bringup pkg (has `system.toml`, no Cargo.toml) OR a
-      self-bringup component/application pkg (has Cargo.toml w/
-      `[package.metadata.nros.deploy.*]`). Loader handles both.
-- [ ] **L.8 `[package.metadata.nros.deploy.<target>]` table (Option
+- [ ] **L.7 `[workspace.metadata.nros]` schema + self-bringup
+      planner** — single field `default_system = "<pkg-name-or-
+      bringup-name>"`. Resolves either a Path A bringup pkg (has
+      `system.toml`, no Cargo.toml) OR a self-bringup component/
+      application pkg (has Cargo.toml w/ `[package.metadata.nros.
+      deploy.*]`). Loader handles both. **Self-bringup planner
+      support**: `nros plan <pkg-dir>` accepts a single-pkg dir
+      where the dir has `Cargo.toml` + `[package.metadata.nros.
+      {component,application}]` + `[package.metadata.nros.deploy.*]`
+      — pkg eats its own bringup role. Emit a one-component plan
+      from Cargo metadata; use the L.6 launch resolver (real or
+      synth) for the launch file. Same path for `nros codegen-
+      system`. Today's bringup-only resolution is the second case;
+      this adds the third. Tracked as M-F.2 below.
+- [x] **L.8 `[package.metadata.nros.deploy.<target>]` table (Option
       α)** — per-pkg deploy targets live in `Cargo.toml`
       `[package.metadata.nros.deploy.<target>]` (Rust) OR via
       `nano_ros_deploy(TARGET … RMW … DOMAIN_ID …)` cmake fn (C++).
       `system.toml` deploy table exists ONLY in Path A bringup pkgs.
       `nros check` rejects per-pkg `system.toml` outside bringup role.
-- [ ] **L.9 C++ cmake fn surface** — `nano_ros_component_register(NAME
+- [x] **L.9 C++ cmake fn surface** — `nano_ros_component_register(NAME
       <name> CLASS <UserClass> SOURCES … DEPLOY …)`,
       `nano_ros_application(NAME <name> SOURCES … DEPLOY …)`,
       `nano_ros_deploy(TARGET <name> RMW <rmw> DOMAIN_ID <n>
@@ -584,19 +593,19 @@ RTOS adapter shim.
       All fns write metadata JSON to `${BUILD}/nros-metadata.json` so
       `nros codegen-system` reads it at configure time. No sidecar
       TOML for C++ pkgs.
-- [ ] **L.10 `nros::component!()` macro + Component / ExecutableComponent
+- [x] **L.10 `nros::component!()` macro + Component / ExecutableComponent
       traits** — already shipped per Phase 172 W.3 (see
       `packages/core/nros-macros/src/lib.rs:156`). Macro emits the
       register trampoline; `Component` trait declares nodes/pubs/
       subs/timers/services/actions; `ExecutableComponent` adds
       `init()` + `on_callback(state, cb_id, ctx)` + optional `tick(
       state, ctx)` bodies. Generated runtime owns the spin loop.
-- [ ] **L.11 `.cargo/config.toml` lint** — `nros check` warns when a
+- [x] **L.11 `.cargo/config.toml` lint** — `nros check` warns when a
       per-pkg `.cargo/config.toml` carries `[patch.crates-io]`
       entries; patches live exclusively in workspace-root
       `Cargo.toml` (auto-managed by `nros ws sync`). Phase 212.K wave
       11 hit a real shadow bug here.
-- [ ] **L.12 Vendor-native platform configs out of scope** — `prj.conf`
+- [x] **L.12 Vendor-native platform configs out of scope** — `prj.conf`
       (Zephyr), `sdkconfig` (ESP-IDF), `platformio.ini` (PIO),
       Kconfig fragments (NuttX), linker scripts (FreeRTOS / ThreadX)
       stay vendor-native. nros does NOT replace them. Adapter shims
@@ -629,40 +638,83 @@ Migrate every `examples/<plat>/<lang>/<example>/` to the §212.L
 canonical shape, and remove every pre-212 file format from the tree.
 A clean break — no transitional mixed-shape state allowed.
 
-- [ ] **M.1 native/rust sweep** — `examples/native/rust/{talker,
-      listener}/` → Component pkg (used by embedded fixtures too;
-      Option B Cyclone codegen path drives via `nros generate-rust`).
-      `examples/native/rust/{service-*,action-*,parameters,logging}/`
-      → Application pkg + `nros::init_with_launch_auto()` (demos
-      params/remaps from launch). Drop Phase 170.A `lib.rs::run()` +
-      `main.rs::main(){run()}` split — Component pkgs become lib-only.
-- [ ] **M.2 native/cpp sweep** — `examples/native/cpp/*` (~6 examples)
-      → Application pkg with `nano_ros_application()`. Replace
-      `find_package(std_msgs) via NrosRclcppCompat` with
-      `nano_ros_generate_interfaces(LANGUAGE CPP PACKAGES …)`. Lose
-      the explicit `NANO_ROS_PLATFORM=posix` / `nros_platform_link_app`
-      calls (cmake fns subsume them).
-- [ ] **M.3 Zephyr sweep** — `examples/zephyr/{c,cpp,rust}/*` →
-      Component pkgs. Drop per-example `<nros/app_config.h>` Kconfig-
-      synthesis (`packages/core/nros-c/include/nros/zephyr/
-      app_config.h` retired). Wire via `nros_system_generate(.)` (the
-      §212.L self-pkg case — `nros codegen-system --pkg <dir>` reads
-      Cargo metadata for single-pkg defaults). RMW selection via
-      `CONF_FILE=prj.conf;prj-<rmw>.conf` overlays stays vendor-native.
-- [ ] **M.4 NuttX sweep** — `examples/qemu-arm-nuttx/*` +
-      `examples/nuttx/{c,cpp,rust}/*` (~5 examples). Drop per-example
-      `nros.toml` + `gen-app-config.py` baker. Route through
-      `nros codegen-system --pkg <dir>` via the H.2 adapter shim.
-- [ ] **M.5 FreeRTOS sweep** — `examples/qemu-arm-freertos/{rust,
-      cpp}/*` + `examples/freertos/*`. Drop `nano_ros_read_config(
-      nros.toml)` cmake fn. Per-board BSP crate (H.3) handles codegen
-      via its own `build.rs` shelling `nros codegen-system`. Expand
-      BSP crates beyond `freertos-qemu-mps2-an385-bsp` for any board
-      that gets an example.
-- [ ] **M.6 ThreadX sweep** — `examples/threadx-linux/{rust,cpp}/*`
-      + `examples/threadx-riscv64/{rust,cpp}/*`. Mostly close already;
-      mechanical conversion to Component pkg shape + `nros_threadx_
-      codegen_system()` cmake fn (already H.4-shipped).
+- [x] **M.1 native/rust sweep** — `examples/native/rust/{talker,
+      listener}/` → Application pkg (NOT Component as originally
+      drafted; Component pkgs are not `cargo run`-able per user
+      direction option ii — Component shape reserved for embedded
+      fixtures). `examples/native/rust/{service-*,action-*,parameters,
+      logging}/` → Application pkg. Init pattern: talker/listener/
+      service-*/action-* use `nros::init_with_launch_auto()`; logging
+      kept as pure `nros-log` demo (no executor — flagged as
+      Pattern 3 framing follow-up). Phase 170.A `lib.rs::run() +
+      main.rs::main(){run()}` split collapsed. Shipped wave 1
+      (commit `e90df2b66` + cleanup `3058ec6a8`).
+- [x] **M.2 native/cpp sweep** — `examples/native/cpp/*` (8 examples)
+      → Application pkg with `nano_ros_application()` + `nros_find_
+      interfaces(LANGUAGE CPP SKIP_INSTALL)`. Note: phase doc named
+      a fn `nano_ros_generate_interfaces(LANGUAGE CPP PACKAGES …)`
+      that doesn't exist in tree; the real cmake fn is
+      `nros_find_interfaces(LANGUAGE CPP)` which reads `package.xml`
+      `<depend>` rows — same SSoT intent. Shipped wave 1.
+- [x] **M.3 Zephyr sweep (Rust)** — `examples/zephyr/rust/{talker,
+      listener,service-{client,server},action-{client,server}}/` (6
+      examples) → Component pkg w/ `[package.metadata.nros.component]`
+      + `[package.metadata.nros.deploy.zephyr]`. `service-client-async`
+      DEFERRED (no async-Component trait yet; Embassy). 12 Zephyr
+      C+C++ examples DEFERRED — H.1 shim only resolves bringup pkgs
+      with `system.toml`; the L.7 self-bringup case (Cargo.toml /
+      CMakeLists.txt-driven, no separate `system.toml`) lives in
+      H.1 follow-up. `zephyr/cpp/cyclonedds/talker-aemv8r/` carve-out
+      preserved per CLAUDE.md. Shipped wave 2 (commit `2fcb07c6c`).
+- [x] **M.4 NuttX sweep** — `examples/qemu-arm-nuttx/{rust,c,cpp}/*`
+      (18 examples total — 6 per lang). `examples/nuttx/` doesn't
+      exist in tree. Pre-212 deletions per example: `nros.toml`,
+      `build-zenoh/`, `Kconfig`, `Make.defs`, `Makefile`,
+      `src/main.{rs,c,cpp}`. Rust pkg names use snake_case
+      (`nuttx_rs_<ex>`, `nuttx_c_<ex>`, `nuttx_cpp_<ex>`) so the L.4
+      `<pkg>::<UserClass>` lint reads `[package].name` cleanly.
+      Client-side examples (service-client + action-client × 3 langs
+      = 4 examples) land declarative-metadata-only with no-op bodies
+      — `TickCtx` doesn't yet expose `call()` / `send_goal()`
+      seams. Shipped wave 2.
+- [ ] **M.5 FreeRTOS sweep — SPLIT into M.5.a + M.5.b**:
+      - [ ] **M.5.a FreeRTOS BSP prerequisite** — extend the per-
+            board BSP crate's `build.rs` baker (currently emits weak
+            no-op stubs per `packages/boards/freertos-qemu-mps2-an385-
+            bsp/build.rs:181-204`) to: (i) resolve real component
+            register symbols (consume each component crate's
+            `__nros_component_register` export); (ii) spawn the
+            FreeRTOS `ApplicationTask` + bring up lwIP/zenoh-pico
+            from the system layer; (iii) drive `Executor::spin` on
+            behalf of the component. Validate via the existing
+            `phase212_h3_freertos` fixture exchanging real pub/sub
+            traffic (today only asserts the staticlib LINKS, not
+            that it runs). Also: drop `nano_ros_read_config(
+            nros.toml)` cmake fn calls from any FreeRTOS-side caller
+            (deferred to M.10 if non-FreeRTOS callers also exist).
+            Expand BSP crates beyond `freertos-qemu-mps2-an385-bsp`
+            for any non-mps2 board that gets a wave-M.5.b example.
+            HARD prerequisite for M.5.b.
+      - [ ] **M.5.b FreeRTOS mechanical sweep** — once M.5.a is
+            green, transcribe `examples/qemu-arm-freertos/{rust,cpp,
+            c}/*` (18 examples) + `examples/freertos/*` (if any
+            land) to canonical L.1 Component pkg shape. Drop the
+            working `src/main.rs::_start` + `src/lib.rs::run_app`
+            user plumbing in favour of `impl Component +
+            ExecutableComponent` + `nros::component!()`. Without
+            M.5.a, an M.5.b sweep would either break every working
+            FreeRTOS example end-to-end OR be cosmetic-only (Cargo
+            metadata table added but the imperative plumbing
+            retained — trips a future M.12 canonical-shape lint).
+- [x] **M.6 ThreadX sweep** — `examples/threadx-linux/{rust,cpp}/*`
+      (12 examples) → Component pkg shape + `nano_ros_component_
+      register()` cmake fn + `nros_threadx_codegen_system(SYSTEM .)`
+      (self-pkg case). C examples NOT in M.6 scope per phase doc.
+      `threadx-riscv64/` dir does NOT exist in tree. Single-pkg
+      self-bringup configure-clean acceptance on cpp examples
+      currently blocked at the `nros plan` "missing-source-metadata"
+      step — upstream CLI work, fixed by the schema gap + L.7
+      planner work below. Shipped wave 2.
 - [ ] **M.7 ESP-IDF / ESP32 sweep (BLOCKED)** — `examples/esp32/{
       rust,c,cpp}/*`. Currently sidesteps ESP-IDF (plain `cargo build`
       under `platform-bare-metal`). Migration = move under ESP-IDF
@@ -716,6 +768,89 @@ A clean break — no transitional mixed-shape state allowed.
       - Path A bringup dirs have no Cargo.toml / CMakeLists.txt / src/.
       - All deploy targets in `[package.metadata.nros.deploy.*]`
         match the platform path the example lives under.
+
+### §212.M follow-ups (gates / blockers surfaced by waves 1+2)
+
+The mechanical sweeps deliberately land ahead of some downstream
+infrastructure work. These follow-ups must close before the §212.M.12
+canonical-shape regression test can run green tree-wide:
+
+- [ ] **M-F.1 `ComponentMetadata` schema gap** (nros-cli). The
+      installed CLI's `[package.metadata.nros.component]` reader
+      rejects `class` / `name` fields and the `[package.metadata.
+      nros.deploy.<target>]` table (see §212.L.4 + L.8). Extend the
+      `ComponentMetadata` struct + add new `ApplicationMetadata` +
+      `DeployTargetMetadata` structs. Mutex `component` XOR
+      `application`. Strict `deny_unknown_fields`.
+- [ ] **M-F.2 L.7 self-bringup planner support** (nros-cli). Today
+      `nros plan` / `nros codegen-system` require either a Path A
+      bringup pkg (has `system.toml`, no `Cargo.toml`) or a
+      workspace pointer. Add a third resolution case: single-pkg
+      self-bringup — Component or Application pkg w/
+      `[package.metadata.nros.deploy.<target>]` AND no sibling
+      bringup pkg. Pkg eats its own bringup role. Plan emits a
+      one-component view from Cargo metadata directly. The L.6
+      launch resolver (`launch_synth::resolve_launch`) covers the
+      launch-file-absent case from §212.L.6 trigger condition 5.
+      Co-shipped with M-F.1.
+- [ ] **M-F.3 Zephyr H.1 shim self-pkg case** (nano-ros). The H.1
+      adapter `zephyr/cmake/nros_system_generate.cmake` only resolves
+      sibling Path A bringup pkgs (`IS_DIRECTORY … AND EXISTS
+      "${_abs}/system.toml"`). After M-F.1+M-F.2 land, extend the
+      shim's `_nros_system_resolve_bringup()` helper to also accept
+      a self-pkg dir (Cargo.toml / CMakeLists.txt-driven). Unblocks
+      M.3 C+C++ Zephyr sweep + any single-pkg Zephyr Rust example.
+- [ ] **M-F.4 `TickCtx` client API gap** (nros / nros-cpp). The
+      Phase 172 W.3 `ExecutableComponent::tick()` Context exposes
+      publish + action-server ops but no service-client `call()` /
+      action-client `send_goal()` seams. Wave-2 NuttX + ThreadX +
+      Zephyr Rust sweeps landed the 4 client-side examples per lang
+      as declarative-metadata-only with no-op bodies. Real
+      runtime-side client dispatch landed in W.5.6 (separate). Once
+      shipped, transcribe client examples to use the real ops.
+- [ ] **M-F.5 Async-Component trait** (nros). `examples/zephyr/
+      rust/service-client-async/` uses Embassy. No async-Component
+      shape exists today. Decide: extend `Component`/`Executable
+      Component` w/ an async variant, or formally drop the
+      async-client demo from the example matrix. Deferred until
+      L-Wave / runtime authors pick the path.
+- [ ] **M-F.6 FreeRTOS BSP runtime gate (M.5.a)** — see M.5
+      split above. The per-board BSP `build.rs` baker currently
+      emits weak no-op stubs; needs to spawn ApplicationTask + run
+      Executor::spin before M.5.b sweep is sound.
+- [ ] **M-F.7 H.5 ESP-IDF cross-compile gate** — see M.7. nros-node
+      `executor/spin.rs` `alloc::sync::Arc` ptr-atomics gap on
+      `riscv32imc`. Swap to `portable_atomic_util::Arc` (or
+      critical-section + portable-atomic single-core flags). Unblocks
+      M.7 ESP-IDF sweep.
+- [ ] **M-F.8 PX4 H.7 SITL board overlay** — see §212.H.7. Codegen
+      emits `nros_<name>/` module dirs but PX4's `make px4_sitl_
+      default --dry-run` doesn't pick them up without an enable
+      fragment in `boards/px4/sitl/*.px4board`. Either a
+      `--board-overlay <path>` codegen flag writing outside the
+      vendored PX4 tree, or operator-supplied overlay file.
+- [ ] **M-F.9 `nros generate-rust` default output path mismatch**
+      (nros-cli). Auto-managed `[patch.crates-io]` blocks in every
+      example's Cargo.toml point at `build/nros_generator_rs/<pkg>/`
+      but `nros generate-rust` defaults output to `generated/`.
+      Either rename the default OR teach `nros ws sync` to write
+      the patch-table at `generated/`. Cosmetic mismatch — both
+      paths work today as long as you pass `-o build/nros_generator
+      _rs` explicitly. Surfaced repeatedly across wave 1+2 sweeps.
+- [ ] **M-F.10 `cmake/NanoRosReadConfig.cmake` deletion** (nano-ros).
+      Lives at `packages/core/nros-c/cmake/NanoRosReadConfig.cmake`
+      (NOT `cmake/` as M.10 phase doc says — correct the path).
+      12+ live callers outside FreeRTOS (Zephyr / NuttX / native /
+      ThreadX-RV64 trees). Deferred to M.10 final-pass after every
+      wave retires its callers.
+- [ ] **M-F.11 nano_ros_generate_interfaces vs nros_find_interfaces
+      naming reconciliation** (phase doc + cmake). Phase doc §212.L.9
+      + acceptance bullets reference a fn named `nano_ros_generate_
+      interfaces(LANGUAGE CPP PACKAGES …)` that doesn't exist in
+      tree. The real shipping fn is `nros_find_interfaces(LANGUAGE
+      CPP)` reading `package.xml` `<depend>` rows. Either rename the
+      fn to match the spec OR update the phase doc to name the
+      actual surface. Both have identical intent (pkg.xml as SSoT).
 - **Tests** (per-wave, gated on SDK availability):
   - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
   - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
