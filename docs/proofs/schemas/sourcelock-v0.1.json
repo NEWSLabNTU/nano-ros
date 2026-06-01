@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NEWSLabNTU/wcr/blob/main/schemas/sourcelock-v0.1.json",
+  "title": "wcr source.lock v0.1",
+  "description": "Schema for the source.lock file inside a wcr bundle. Always present at every tier; embedding the source itself is policy. Format frozen at Phase 211.4 (M2 resolution): replaces per-file array with a single Merkle-root tree hash to keep bundle size constant regardless of crate file count.",
+  "type": "object",
+  "required": ["source_uri", "source_tree_hash", "tree_hash_algo", "embedded", "file_count", "total_bytes"],
+  "additionalProperties": false,
+  "properties": {
+    "source_uri": {
+      "description": "Canonical source-fetch URL. For crates.io packages: https://crates.io/api/v1/crates/<name>/<ver>/download. For git-pinned: the git URL + commit.",
+      "type": "string",
+      "format": "uri"
+    },
+    "source_tree_hash": {
+      "description": "Merkle root over canonically-sorted (relpath, sha256(content)) entries, joined as sha256(relpath) || sha256(content) and concatenated in relpath-sorted order, then SHA-256'd. Algorithm tagged via tree_hash_algo.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "tree_hash_algo": {
+      "description": "Tree-hash algorithm identifier. PoC frozen at 'merkle-v1'; future algos bump this tag.",
+      "type": "string",
+      "enum": ["merkle-v1"]
+    },
+    "embedded": {
+      "description": "Whether the source tree is shipped inside the bundle under source/. False for tier-3 proprietary mode (post-PoC); consumer fetches via source_uri + verifies Merkle root after fetching.",
+      "type": "boolean"
+    },
+    "file_count": {
+      "description": "Number of source files counted in the Merkle tree (excludes target/, doc images, etc. per the source-discovery rules).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_bytes": {
+      "description": "Sum of source file sizes in bytes.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "files": {
+      "description": "(Opt-in via `wcr bundle --with-file-list`) Per-file listing for audit-grade replay. Omitted by default to keep source.lock size constant.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path":   { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes":  { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "source_discovery": {
+      "description": "Rules used to decide which files participate in the Merkle tree. Documented for reproducibility.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "description": "Glob patterns rooted at package root.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exclude": {
+          "description": "Glob patterns excluded after include match (typically: target/, .git/, *.lock-free generated artifacts).",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

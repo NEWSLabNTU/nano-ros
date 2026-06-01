@@ -11,6 +11,11 @@ __pycache__/
 # Rust
 /target/
 **/target/
+# Phase 211 — wcr (proof-carrying code) writes generated artifacts to
+# `target/proofs/` (extracted .mlw, sessions, cache, attestations, bundles).
+# Already covered by `/target/` above; line below is for grep discoverability.
+# Per-package author-maintained `proofs/` dirs (axioms + ghosts) ARE committed.
+/target/proofs/
 # Phase 150.E rev3 — deterministic --target-dir for the shared
 # `nros-tests::zenoh_header_parity` + `zenoh_archive_symbols`
 # POSIX fixture (`just build-zenoh-posix-fixture`).

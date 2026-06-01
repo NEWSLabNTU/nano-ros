@@ -88,6 +88,7 @@
 - [Build System & Caching](./internals/build-system.md)
 - [zpico-sys Build Architecture](./internals/zpico-build.md)
 - [Formal Verification](./internals/verification.md)
+- [Proof-Carrying Packages](./internals/proofs.md)
 - [Safety Protocol](./internals/safety.md)
 - [Production Readiness Checklist](./internals/production-readiness.md)
 - [Zenoh-pico Symbol Reference](./internals/porting-platform/zenoh-pico.md)

@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NEWSLabNTU/wcr/blob/main/schemas/proof-section-v0.1.json",
+  "title": "wcr proof-section v0.1",
+  "description": "Schema for the [package.metadata.nros.proof] table in a Rust crate's Cargo.toml (or the [proof] section in a non-Cargo wcr.toml). Frozen at Phase 211.1 (2026-06-01); compatible additive extensions land via minor schema versions.",
+  "type": "object",
+  "required": ["schema_version", "tier", "language"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Schema version this manifest conforms to.",
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "kind": {
+      "description": "Package class. Default 'code' (normal crate with extracted spec). 'axiom' packages ship hand-authored axiom theories with no impl + an attestor field.",
+      "type": "string",
+      "enum": ["code", "axiom"],
+      "default": "code"
+    },
+    "tier": {
+      "description": "Quality tier: 0=provenance-only, 1=verified, 2=safety-island-grade, 3=cert-kernel.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "language": {
+      "description": "Implementation language of this package. Drives extractor selection.",
+      "type": "string",
+      "enum": ["rust", "c", "cpp", "ada"]
+    },
+    "covered_versions": {
+      "description": "(axiom-class only) version ranges of the upstream dep this axiom crate's theory covers.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tools": {
+      "description": "Pinned tool versions used to produce this package's proof artifacts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extractor", "verifier", "provers"],
+      "properties": {
+        "extractor": {
+          "description": "Name + version of the extractor (e.g. creusot-0.10.0, frama-c-wp-30).",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*-[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "verifier": {
+          "description": "Why3 version used to discharge VCs (e.g. why3-1.7.0).",
+          "type": "string",
+          "pattern": "^why3-[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "provers": {
+          "description": "List of provers tried during discharge, each name-version-pinned.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*-[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "composition": {
+      "description": "Theory exports + imports + axiom deps for cross-crate composition.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "emits": {
+          "description": "Why3 theory names auto-discovered by Creusot extraction, exported to consumers.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9_]*$"
+          }
+        },
+        "imports": {
+          "description": "Theories imported from dep packages.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["theory", "from"],
+            "properties": {
+              "theory": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Za-z0-9_]*$"
+              },
+              "from": {
+                "description": "Cargo-style dep reference, e.g. 'nros-core@^0.4'.",
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*@.+$"
+              }
+            }
+          }
+        },
+        "axiom_deps": {
+          "description": "T1 shadow axiom crates (per M3 policy) — used by ≥ 3 nano-ros crates.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["family", "version"],
+            "properties": {
+              "family": {
+                "description": "Shadow axiom crate name, e.g. 'heapless-nros-axioms'.",
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*-nros-axioms$"
+              },
+              "version": {
+                "description": "Semver range.",
+                "type": "string"
+              },
+              "attestor": {
+                "description": "Optional override of the default attestor identity.",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "local_axioms": {
+          "description": "T2 local axiom files (per M3 policy) — used by 1-2 nano-ros crates only.",
+          "type": "array",
+          "items": {
+            "description": "Relative path from package root.",
+            "type": "string",
+            "pattern": "^proofs/axioms/.+\\.mlw$"
+          }
+        }
+      }
+    },
+    "spec_hashes": {
+      "description": "SHA-256 of canonical-normalized extracted .mlw file per emitted theory. Auto-populated by `wcr extract`. Hash prefix includes extractor version to surface Creusot-bump invalidations.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*-[0-9]+\\.[0-9]+\\.[0-9]+/sha256:[0-9a-f]{64}$"
+      }
+    },
+    "attestation": {
+      "description": "Attestation evidence file paths (relative to package root).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provenance_file": {
+          "description": "Path to SLSA provenance attestation (in-toto v1 statement).",
+          "type": "string"
+        },
+        "sigstore_bundle": {
+          "description": "(Post-PoC, 211.8) — path to sigstore signing bundle. Omit in PoC; reserved.",
+          "type": "string"
+        }
+      }
+    },
+    "attestor": {
+      "description": "(axiom-class only) — identity claiming the axiom holds. DID URL or sigstore identity reference. Required for kind=\"axiom\".",
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "description": "axiom-class packages require attestor + covered_versions.",
+      "if": {
+        "properties": { "kind": { "const": "axiom" } },
+        "required": ["kind"]
+      },
+      "then": {
+        "required": ["attestor", "covered_versions"]
+      }
+    },
+    {
+      "description": "code-class packages require tools.",
+      "if": {
+        "anyOf": [
+          { "properties": { "kind": { "const": "code" } } },
+          { "not": { "required": ["kind"] } }
+        ]
+      },
+      "then": {
+        "required": ["tools"]
+      }
+    }
+  ]
+}

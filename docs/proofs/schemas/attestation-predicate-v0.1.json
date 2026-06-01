@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NEWSLabNTU/wcr/blob/main/schemas/attestation-predicate-v0.1.json",
+  "title": "wcr proof attestation predicate v0.1",
+  "description": "Schema for the `predicate` body of an in-toto v1 Statement with predicateType 'https://github.com/NEWSLabNTU/wcr/proof/v0.1'. One Statement per (crate, language) pair; bundle ships a JSONL file with one Statement per line. URI is provisional (GitHub path) in PoC; may swap to wcr.dev when domain registered.",
+  "type": "object",
+  "required": [
+    "tier",
+    "language",
+    "spec_hashes",
+    "extractor",
+    "verifier",
+    "provers",
+    "tcb",
+    "build_timestamp"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tier": {
+      "description": "Quality tier claimed.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    },
+    "language": {
+      "type": "string",
+      "enum": ["rust", "c", "cpp", "ada"]
+    },
+    "spec_hashes": {
+      "description": "Per-theory spec hash, mirror of [package.metadata.nros.proof.spec_hashes].",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*-[0-9]+\\.[0-9]+\\.[0-9]+/sha256:[0-9a-f]{64}$"
+      }
+    },
+    "extractor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name":    { "type": "string", "enum": ["creusot", "frama-c-wp", "gnatprove"] },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "verifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name":    { "type": "string", "const": "why3" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "provers": {
+      "description": "All provers configured during this discharge run.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version"],
+        "properties": {
+          "name":    { "type": "string" },
+          "version": { "type": "string" }
+        }
+      }
+    },
+    "discharged_vcs": {
+      "description": "Per-VC discharge records. May be summarised to a count for large packages via `discharged_vc_count` instead.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["vc", "prover", "time_ms"],
+        "properties": {
+          "vc":              { "type": "string" },
+          "prover":          { "type": "string" },
+          "time_ms":         { "type": "integer", "minimum": 0 },
+          "transformations": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "discharged_vc_count": {
+      "description": "Total discharged VCs. Always present (alongside or instead of the per-VC list).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "failed_vcs": {
+      "description": "VCs that did not discharge under any configured prover.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["vc", "reason"],
+        "properties": {
+          "vc":      { "type": "string" },
+          "reason":  {
+            "type": "string",
+            "enum": ["timeout", "unknown", "extractor_error", "manual_skip"]
+          },
+          "issue":   { "type": "string", "format": "uri" }
+        }
+      }
+    },
+    "trusted_stubs": {
+      "description": "Functions marked #[trusted] with their rationale (per M3 T3 policy).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["function", "rationale"],
+        "properties": {
+          "function":   { "type": "string" },
+          "rationale":  { "type": "string" },
+          "issue":      { "type": "string", "format": "uri" },
+          "tier":       { "type": "integer", "minimum": 0, "maximum": 3 }
+        }
+      }
+    },
+    "axioms_used": {
+      "description": "Axiom families this package's discharge depended on, with their hash + attestor.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["family", "version", "hash"],
+        "properties": {
+          "family":   {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*(-nros-axioms)?$"
+          },
+          "version":  { "type": "string" },
+          "hash":     { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "attestor": { "type": "string" },
+          "kind":     { "type": "string", "enum": ["shadow", "local"] }
+        }
+      }
+    },
+    "deps_replayed": {
+      "description": "Code-package deps whose sessions were replayed during this verification.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version", "spec_hash", "replay_status"],
+        "properties": {
+          "name":           { "type": "string" },
+          "version":        { "type": "string" },
+          "spec_hash":      { "type": "string", "pattern": "^[a-z][a-z0-9_-]*-[0-9]+\\.[0-9]+\\.[0-9]+/sha256:[0-9a-f]{64}$" },
+          "replay_status":  { "type": "string", "enum": ["ok", "mismatch", "missing"] },
+          "replay_time_ms": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "tcb": {
+      "description": "Trusted Computing Base components used in this verification (extractor + verifier + provers + rustc).",
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*-[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+      }
+    },
+    "ghost_theories": {
+      "description": "Ghost theory files this package ships (referenced by its proofs).",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^proofs/ghosts/.+\\.mlw$"
+      }
+    },
+    "build_provenance_ref": {
+      "description": "Relative path within the bundle to the SLSA provenance attestation file.",
+      "type": "string"
+    },
+    "build_timestamp": {
+      "description": "ISO 8601 UTC timestamp of the verification run.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "annotation_metrics": {
+      "description": "Optional per-package annotation cost telemetry (per U4 backlog item; collected by `wcr extract`).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "annotation_lines": { "type": "integer", "minimum": 0 },
+        "source_lines":     { "type": "integer", "minimum": 0 },
+        "ratio":            { "type": "number",  "minimum": 0 }
+      }
+    }
+  }
+}

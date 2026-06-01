@@ -83,6 +83,15 @@ SHIM
 write_shim zenohd zenohd zenoh
 write_shim MicroXRCEAgent xrce-agent xrce
 
+# Phase 211 — wcr (Why3 Component Registry) CLI. Same lazy-forwarder pattern;
+# resolves to the latest installed `~/.nros/sdk/wcr/<ver>/bin/wcr`. Until wcr
+# binaries ship from `github.com/NEWSLabNTU/wcr` releases, `nros setup --tool
+# wcr` builds from source via `cargo install --path crates/wcr-cli`. The RMW
+# arg is "wcr" (not a transport RMW, but the same shim template's --rmw flag
+# slot — the error hint will read `Run: nros setup <board> --rmw wcr` which is
+# the closest match the shim's templated message supports).
+write_shim wcr wcr wcr
+
 # Already on PATH? Bump it if behind the pinned NROS_VERSION (Phase 208.D/A.8,
 # pattern P15). Returning users used to be silently stranded on a stale CLI that
 # rejected the current SDK-index schema. Now: skip when at-or-above the pin (no

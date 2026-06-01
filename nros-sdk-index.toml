@@ -112,6 +112,58 @@ configure = "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DUAGENT_BUILD_EXECU
 # nano-ros-sdk/scripts/build-xrce-agent.sh.
 install = '''cmake --build build --parallel $(nproc) && mkdir -p {prefix}/bin {prefix}/lib && cp -a build/MicroXRCEAgent {prefix}/lib/MicroXRCEAgent.real && find build -maxdepth 1 \( -name 'libmicroxrcedds_agent.so*' -o -name 'libmicroxrcedds_agent*.dylib' \) -exec cp -a {} {prefix}/lib/ \; && find build/temp_install \( -name 'libfastrtps*.so*' -o -name 'libfastrtps*.dylib' -o -name 'libfastcdr*.so*' -o -name 'libfastcdr*.dylib' \) -exec cp -a {} {prefix}/lib/ \; && printf '#!/bin/sh\nh="$(cd "$(dirname "$0")" && pwd)"\nLD_LIBRARY_PATH="$h/../lib:$LD_LIBRARY_PATH" DYLD_LIBRARY_PATH="$h/../lib:$DYLD_LIBRARY_PATH" exec "$h/../lib/MicroXRCEAgent.real" "$@"\n' > {prefix}/bin/MicroXRCEAgent && chmod +x {prefix}/bin/MicroXRCEAgent'''
 
+# Phase 211 (PoC) — wcr (Why3 Component Registry) host CLI + Creusot + Why3 +
+# SMT provers. Ships the proof-carrying-code toolchain from the standalone
+# `github.com/NEWSLabNTU/wcr` repo (created at 211.1 day 1). The shim at
+# `~/.nros/bin/wcr` (written by scripts/install-nros.sh) forwards to the latest
+# installed version under `~/.nros/sdk/wcr/<version>/bin/`, mirroring the
+# zenohd shim pattern from Phase 208.B Track A.
+#
+# Pins below are PROVISIONAL — wcr-0.0.x is the scaffold release; bumps to
+# 0.1.0 by 211.2 close. Real `dist.*` URLs + sha256s land once the first
+# `nros-cli`-style release pipeline cuts a binary tarball. Until then,
+# `nros setup --tool wcr-stack` installs from source via `cargo install` (see
+# `source.install`).
+[tool.wcr]
+version = "0.0.1-nros1"
+upstream = "0.0.1" # = source.ref
+# dist.* entries land once wcr cuts its first binary release.
+[tool.wcr.source]
+git = "https://github.com/NEWSLabNTU/wcr"
+ref = "main"
+install = "cargo install --path crates/wcr-cli --root {prefix} --locked"
+
+# Creusot — the Rust → Why3 extractor + deductive verifier. PoC pin = the
+# Feb 2026 release (0.10.0). `cargo creusot` (extract) + `cargo creusot prove`
+# (discharge) are the user-facing commands; wcr-cli shells out to them.
+[tool.creusot]
+version = "0.10.0-nros1"
+upstream = "v0.10.0"
+[tool.creusot.source]
+git = "https://github.com/creusot-rs/creusot"
+ref = "v0.10.0"
+install = "cargo install --path creusot --root {prefix} --locked && cargo install --path cargo-creusot --root {prefix} --locked"
+
+# Why3 — proof-obligation IR + dispatch to provers. Pinned at 1.7.0 (Feb 2026
+# stable; bumps require workspace-wide cache invalidation per the
+# format-stability commitments).
+[tool.why3]
+version = "1.7.0-nros1"
+upstream = "1.7.0"
+# Real dist.* + opam-build install line land once the binary tarball is cut.
+
+# Z3 / Alt-Ergo / CVC5 — SMT discharge backends. Coq 8.19 reserved as
+# fallback for stubborn VCs (M4 — only populated when needed).
+# (Tool entries deferred until first wcr binary tarball; until then, the
+# wcr scaffold's CI provisions provers via apt + opam.)
+
+# A meta-tool grouping `wcr-stack` lets `nros setup --tool wcr-stack` install
+# the whole proof toolchain in one shot. Implemented as a virtual entry:
+# `nros` resolves it by recursively installing every member listed below.
+# (Schema extension TBD with nros-cli; until then, install members individually.)
+# [tool.wcr-stack]
+# members = ["wcr", "creusot", "why3", "z3", "alt-ergo", "cvc5"]
+
 # Cyclone DDS host tools — `idlc` (descriptor codegen) + `libddsc` for the
 # rmw-cyclonedds path (native + the embedded cross-ddsc base). Built from the
 # NEWSLabNTU fork's `nano-ros` integration branch, pinned to the submodule sha.
