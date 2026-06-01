@@ -1,0 +1,18 @@
+version   = 1
+package   = "talker_pkg"
+component = "talker"
+language  = "rust"
+
+[linkage]
+crate_name      = "talker_pkg"
+executable      = "talker"
+exported_symbol = "nros_component_talker"
+
+[metadata]
+source_metadata = "metadata/talker.json"
+generated_by    = "phase-212.D fixture"
+
+[overrides]
+default_namespace = "/"
+parameters = {}
+remaps = []

@@ -1,0 +1,20 @@
+# Phase 212.D fixture — component declaration (pre-212.B/C shape).
+# When 212.B lands this moves to a CMake-side metadata block; the cmake
+# function in 212.D only cares that `nros plan` succeeds.
+version   = 1
+package   = "talker_pkg"
+component = "talker"
+language  = "cpp"
+
+[linkage]
+executable      = "talker"
+exported_symbol = "nros_component_talker"
+
+[metadata]
+source_metadata = "metadata/talker.json"
+generated_by    = "phase-212.D fixture"
+
+[overrides]
+default_namespace = "/"
+parameters = {}
+remaps = []

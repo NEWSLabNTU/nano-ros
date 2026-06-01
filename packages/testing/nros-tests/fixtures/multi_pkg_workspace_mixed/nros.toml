@@ -1,0 +1,14 @@
+# Phase 212.D fixture — mixed Rust+C++ workspace. Transitional `nros.toml`
+# (see pure-cpp fixture's comment for the rationale).
+[workspace]
+default = "native"
+
+[system]
+launch     = "src/demo_bringup/launch/system.launch.xml"
+components = ["talker_pkg", "listener_pkg"]
+rmw        = "zenoh"
+domain_id  = 0
+
+[deploy.native]
+kind   = "self"
+target = "x86_64-unknown-linux-gnu"
