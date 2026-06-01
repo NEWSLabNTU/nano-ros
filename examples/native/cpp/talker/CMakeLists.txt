@@ -4,27 +4,42 @@ project(cpp_talker LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Phase 118.B.3 / 210.E.3.a — collapsed-shape C++ talker. RMW selected
-# at cmake configure time via `-DNROS_RMW=<rmw>` (default zenoh). The
-# msg bindings now come in via the canonical `find_package(<pkg>)` +
-# smart Find-stub flow (Phase 210.A.2) instead of legacy
-# `nros_generate_interfaces(<pkg>)` calls.
+# Phase 212.M.2 — Application pkg shape (§212.L.2 C++ variant).
+#   * `package.xml`            — pkg identity + msg dep declaration
+#   * `nros_find_interfaces`   — reads package.xml, generates the
+#                                msg/srv/action bindings closure
+#   * `nano_ros_application()` — declares the exec entity + appends
+#                                metadata for `nros codegen-system`
+#
+# RMW selected at cmake configure time via `-DNROS_RMW=<rmw>` (default
+# zenoh). Per the §212.L.9 cmake fn surface, `NANO_ROS_PLATFORM` /
+# `NANO_ROS_RMW` are STILL set here (the root CMake reads them at
+# `add_subdirectory()` time — the cmake fns own the application entity
+# wiring, not the per-target platform/RMW cache vars).
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
+    "Active RMW (zenoh|dds|xrce|cyclonedds).")
 set(NANO_ROS_RMW "${NROS_RMW}")
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-# Pull the rclcpp source-compat surface — defines the smart Find-stub
-# that resolves `find_package(<msg-pkg>)` through the layered search
-# path (workspace > AMENT_PREFIX_PATH > bundled), runs codegen, and
-# emits `<pkg>::<pkg>` IMPORTED targets.
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
+set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
+add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
 
-find_package(std_msgs REQUIRED)
+# `NanoRosComponentRegister.cmake` ships the §212.L.9 cmake fns
+# (`nano_ros_application`, `nano_ros_component_register`,
+# `nano_ros_deploy`). The root CMake does NOT auto-load it today, so
+# the per-example CMakeLists includes it directly — same pattern as
+# the §212.L.9 fixture tests (`phase212_l9_cmake_fns.rs`).
+include("${_NANO_ROS_ROOT}/cmake/NanoRosComponentRegister.cmake")
 
-add_executable(cpp_talker src/main.cpp)
-target_link_libraries(cpp_talker PRIVATE
-    std_msgs::std_msgs
-    NanoRos::NanoRosCpp)
+# Phase 210.E.4 — `nros_find_interfaces` reads `package.xml` and
+# generates bindings (+ FFI glue) for every transitive interface dep.
+# Replaces the per-`find_package(<pkg>)` chain the pre-212 shape used.
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+nano_ros_application(
+    NAME cpp_talker
+    SOURCES src/main.cpp
+    DEPLOY native)
+
+target_link_libraries(cpp_talker PRIVATE std_msgs__nano_ros_cpp)
 nros_platform_link_app(cpp_talker)

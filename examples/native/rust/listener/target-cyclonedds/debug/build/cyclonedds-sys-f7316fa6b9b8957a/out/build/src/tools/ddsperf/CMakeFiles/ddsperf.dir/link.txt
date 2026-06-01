@@ -1,0 +1,1 @@
+/usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w -O3 -DNDEBUG CMakeFiles/ddsperf.dir/ddsperf.c.o CMakeFiles/ddsperf.dir/cputime.c.o CMakeFiles/ddsperf.dir/netload.c.o CMakeFiles/ddsperf.dir/async_listener.c.o CMakeFiles/ddsperf.dir/ddsperf_types.c.o -o ../../../bin/ddsperf  -Wl,-rpath,:::::::::::::: ../../../lib/libddsc.a -ldl

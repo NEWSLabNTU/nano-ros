@@ -1,0 +1,11 @@
+running: cd "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build" && CMAKE_PREFIX_PATH="" LC_ALL="C" "cmake" "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds" "-B" "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build" "-DCMAKE_BUILD_TYPE=Release" "-DENABLE_LTO=OFF" "-DBUILD_SHARED_LIBS=OFF" "-DBUILD_IDLC=ON" "-DENABLE_SSL=OFF" "-DENABLE_SECURITY=OFF" "-DENABLE_SHM=OFF" "-DBUILD_TESTING=OFF" "-DBUILD_DOCS=OFF" "-DBUILD_EXAMPLES=OFF" "-DCMAKE_POSITION_INDEPENDENT_CODE=ON" "-DCMAKE_INSTALL_PREFIX=/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out" "-DCMAKE_C_FLAGS= -ffunction-sections -fdata-sections -fPIC -m64 -w" "-DCMAKE_C_COMPILER=/usr/bin/cc" "-DCMAKE_CXX_FLAGS= -ffunction-sections -fdata-sections -fPIC -m64 -w" "-DCMAKE_CXX_COMPILER=/usr/bin/c++" "-DCMAKE_ASM_FLAGS= -ffunction-sections -fdata-sections -fPIC -m64 -w" "-DCMAKE_ASM_COMPILER=/usr/bin/cc"
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    CMAKE_ASM_COMPILER
+    CMAKE_ASM_FLAGS
+    CMAKE_CXX_COMPILER
+    CMAKE_CXX_FLAGS
+
+
+running: cd "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build" && LC_ALL="C" MAKEFLAGS="-j --jobserver-fds=6,7 --jobserver-auth=6,7" "cmake" "--build" "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build" "--target" "install" "--config" "Debug"

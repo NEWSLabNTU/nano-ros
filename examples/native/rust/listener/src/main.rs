@@ -1,31 +1,77 @@
-//! Native Listener Example — pure-`cargo` entry point.
+//! Native Listener Example — Phase 212.L.2 Application pkg shape.
 //!
-//! Subscribes to `std_msgs/Int32` on `/chatter`. The standard listener
-//! body lives in `lib.rs::run()` (shared with the cyclonedds CMake
-//! build path's `rust_main`). This binary is the `cargo build` /
-//! `cargo run` entry for `rmw-zenoh` (default) and `rmw-xrce`; the
-//! cyclonedds variant builds via this dir's `CMakeLists.txt`.
+//! Subscribes to `std_msgs/Int32` on `/chatter` and logs each message.
+//! Single-file `[[bin]]`: explicit [`nros::init_with_launch_auto`]
+//! (Pattern 2 — picks up the launch overlay env vars exported by
+//! `nros launch`) then a user-owned spin loop.
+//!
+//! # Usage
 //!
 //! ```bash
-//! zenohd --listen tcp/127.0.0.1:7447
+//! # Zenoh path (default):
+//! zenohd --listen tcp/127.0.0.1:7447 &
 //! cargo run -p native-rs-listener
+//!
+//! # XRCE path:
+//! cargo run -p native-rs-listener --no-default-features --features rmw-xrce
+//!
+//! # Cyclone DDS path (Phase 212.K pure-cargo):
+//! cargo run -p native-rs-listener --no-default-features --features rmw-cyclonedds
 //! ```
+//!
 //! Override the locator with `NROS_LOCATOR` (or legacy `ZENOH_LOCATOR`);
 //! `RUST_LOG=debug` for debug logs.
+
+use log::{error, info};
+use nros::prelude::*;
+use std_msgs::msg::Int32;
+
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-cyclonedds",
+    feature = "rmw-xrce"
+)))]
+compile_error!(
+    "examples/native/rust/listener requires exactly one of \
+     `rmw-zenoh`, `rmw-cyclonedds`, or `rmw-xrce` to be enabled.",
+);
+
+fn register_rmw() -> Result<(), &'static str> {
+    #[cfg(feature = "rmw-zenoh")]
+    {
+        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
+    }
+    #[cfg(feature = "rmw-cyclonedds")]
+    {
+        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
+    }
+    #[cfg(feature = "rmw-xrce")]
+    {
+        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
+    }
+    Ok(())
+}
+
+const ACTIVE_RMW_NAME: &str = if cfg!(feature = "rmw-zenoh") {
+    "Zenoh"
+} else if cfg!(feature = "rmw-cyclonedds") {
+    "CycloneDDS"
+} else if cfg!(feature = "rmw-xrce") {
+    "XRCE-DDS"
+} else {
+    "(none)"
+};
 
 /// Safety-e2e listener (zenoh-specific): validates CRC + tracks seq gaps.
 #[cfg(feature = "safety-e2e")]
 fn main() {
-    use log::{error, info};
-    use nros::prelude::*;
-    use std_msgs::msg::Int32;
-
     env_logger::init();
     info!("nros Native Listener (Safety E2E)");
-    native_rs_listener::register_rmw().expect("Failed to register RMW backend");
+    register_rmw().expect("Failed to register RMW backend");
 
-    let config = ExecutorConfig::from_env().node_name("listener");
-    let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
+    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let cfg = ctx.config("listener");
+    let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 
     let nid = executor
         .node_builder("listener")
@@ -56,9 +102,53 @@ fn main() {
     }
 }
 
-/// Standard listener — shared `run()` from the lib.
+/// Standard listener — subscribe to `std_msgs/Int32` on `/chatter` and
+/// log each message.
 #[cfg(not(feature = "safety-e2e"))]
 fn main() {
     env_logger::init();
-    native_rs_listener::run();
+    info!("nros Native Listener ({} Transport)", ACTIVE_RMW_NAME);
+    info!("==========================================");
+
+    register_rmw().expect("Failed to register RMW backend");
+
+    // Phase 212.L.5 Pattern 2 — launch-aware init.
+    let ctx = nros::init_with_launch_auto().expect("nros init failed");
+    let cfg = ctx.config("listener");
+    let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
+
+    let nid = executor
+        .node_builder("listener")
+        .build()
+        .expect("Failed to build node");
+    executor
+        .node_mut(nid)
+        .subscription("/chatter")
+        .typed::<Int32>()
+        .message_info()
+        .build(move |msg, info| {
+            info!("Received: {}", msg.data);
+            if let Some(info) = info {
+                let gid = info.publisher_gid();
+                log::trace!(
+                    "seq={} gid={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
+                    info.publication_sequence_number(),
+                    gid[0],
+                    gid[1],
+                    gid[2],
+                    gid[3],
+                    gid[4],
+                    gid[5],
+                    gid[6],
+                    gid[7],
+                );
+            }
+        })
+        .expect("Failed to add subscription");
+    info!("Subscriber created for topic: /chatter");
+    info!("Waiting for Int32 messages on /chatter...");
+
+    if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
+        error!("Spin error: {:?}", e);
+    }
 }

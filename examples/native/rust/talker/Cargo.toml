@@ -9,15 +9,10 @@ publish = false
 name = "talker"
 path = "src/main.rs"
 
-# Phase 170.A — talker logic lives in `lib.rs::run()`. The `rlib` lets
-# `src/main.rs` (the pure-cargo zenoh/xrce bin) call it; the `staticlib`
-# lets this dir's `CMakeLists.txt` link the Cyclone DDS variant
-# (`rust_main`) into a C `main`, since `cargo build --features
-# rmw-cyclonedds` cannot link Cyclone DDS on its own.
-[lib]
-name = "native_rs_talker"
-crate-type = ["staticlib", "rlib"]
-path = "src/lib.rs"
+# Phase 212.L.2 — Application pkg shape. Native-only deploy target.
+# `nros check` rejects any RTOS in this list.
+[package.metadata.nros.application]
+deploy = ["native"]
 
 [features]
 # Phase 118 — single source-of-truth talker. RMW selected at build

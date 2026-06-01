@@ -1,0 +1,2409 @@
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineSystem.cmake:12 (find_program)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_UNAME"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "uname"
+    candidate_directories:
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/usr/bin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    searched_directories:
+      - "/home/aeon/.nros/bin/uname"
+      - "/home/aeon/repos/nano-ros/third-party/make/uname"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/uname"
+      - "/opt/ros/humble/bin/uname"
+      - "/home/aeon/.opencode/bin/uname"
+      - "/usr/local/cuda/bin/uname"
+      - "/opt/cuda/nsight_systems/bin/uname"
+      - "/opt/cuda/nsight_compute/uname"
+      - "/opt/cuda/bin/uname"
+      - "/home/aeon/.local/bin/uname"
+      - "/home/aeon/.cargo/bin/uname"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/uname"
+      - "/home/aeon/.deno/bin/uname"
+      - "/usr/local/sbin/uname"
+      - "/usr/local/bin/uname"
+      - "/usr/sbin/uname"
+    found: "/usr/bin/uname"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineSystem.cmake:212 (message)"
+      - "CMakeLists.txt:13 (project)"
+    message: |
+      The system is: Linux - 6.8.0-111-generic - x86_64
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeUnixFindMake.cmake:5 (find_program)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_MAKE_PROGRAM"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gmake"
+      - "make"
+      - "smake"
+    candidate_directories:
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/usr/bin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    searched_directories:
+      - "/home/aeon/.nros/bin/gmake"
+    found: "/home/aeon/repos/nano-ros/third-party/make/gmake"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:462 (find_file)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:500 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/"
+    found: "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:13 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /usr/bin/cc 
+      Build flags: -ffunction-sections;-fdata-sections;-fPIC;-m64;-w
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "a.out"
+      
+      The C compiler identification is GNU, found in:
+        /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/4.2.3/CompilerIdC/a.out
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_AR"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ar"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/ar"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_RANLIB"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ranlib"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/ranlib"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_STRIP"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "strip"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/strip"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_LINKER"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ld"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/ld"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_NM"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "nm"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/nm"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_OBJDUMP"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "objdump"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/objdump"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_OBJCOPY"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "objcopy"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/objcopy"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_READELF"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "readelf"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/readelf"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_DLLTOOL"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "dlltool"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    searched_directories:
+      - "/usr/bin/dlltool"
+      - "/home/aeon/.nros/bin/dlltool"
+      - "/home/aeon/repos/nano-ros/third-party/make/dlltool"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/dlltool"
+      - "/opt/ros/humble/bin/dlltool"
+      - "/home/aeon/.opencode/bin/dlltool"
+      - "/usr/local/cuda/bin/dlltool"
+      - "/opt/cuda/nsight_systems/bin/dlltool"
+      - "/opt/cuda/nsight_compute/dlltool"
+      - "/opt/cuda/bin/dlltool"
+      - "/home/aeon/.local/bin/dlltool"
+      - "/home/aeon/.cargo/bin/dlltool"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/dlltool"
+      - "/home/aeon/.deno/bin/dlltool"
+      - "/usr/local/sbin/dlltool"
+      - "/usr/local/bin/dlltool"
+      - "/usr/sbin/dlltool"
+      - "/sbin/dlltool"
+      - "/bin/dlltool"
+      - "/usr/games/dlltool"
+      - "/usr/local/games/dlltool"
+      - "/snap/bin/dlltool"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/dlltool"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/dlltool"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/dlltool"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/dlltool"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/dlltool"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_ADDR2LINE"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "addr2line"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    found: "/usr/bin/addr2line"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_TAPI"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "tapi"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    searched_directories:
+      - "/usr/bin/tapi"
+      - "/home/aeon/.nros/bin/tapi"
+      - "/home/aeon/repos/nano-ros/third-party/make/tapi"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/tapi"
+      - "/opt/ros/humble/bin/tapi"
+      - "/home/aeon/.opencode/bin/tapi"
+      - "/usr/local/cuda/bin/tapi"
+      - "/opt/cuda/nsight_systems/bin/tapi"
+      - "/opt/cuda/nsight_compute/tapi"
+      - "/opt/cuda/bin/tapi"
+      - "/home/aeon/.local/bin/tapi"
+      - "/home/aeon/.cargo/bin/tapi"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/tapi"
+      - "/home/aeon/.deno/bin/tapi"
+      - "/usr/local/sbin/tapi"
+      - "/usr/local/bin/tapi"
+      - "/usr/sbin/tapi"
+      - "/sbin/tapi"
+      - "/bin/tapi"
+      - "/usr/games/tapi"
+      - "/usr/local/games/tapi"
+      - "/snap/bin/tapi"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/tapi"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/tapi"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/tapi"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/tapi"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/tapi"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Compiler/GNU-FindBinUtils.cmake:18 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:201 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_C_COMPILER_AR"
+    description: "A wrapper around 'ar' adding the appropriate '--plugin' option for the GCC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gcc-ar-11.4"
+      - "gcc-ar-11"
+      - "gcc-ar11"
+      - "gcc-ar"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    searched_directories:
+      - "/usr/bin/gcc-ar-11.4"
+      - "/home/aeon/.nros/bin/gcc-ar-11.4"
+      - "/home/aeon/repos/nano-ros/third-party/make/gcc-ar-11.4"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/gcc-ar-11.4"
+      - "/opt/ros/humble/bin/gcc-ar-11.4"
+      - "/home/aeon/.opencode/bin/gcc-ar-11.4"
+      - "/usr/local/cuda/bin/gcc-ar-11.4"
+      - "/opt/cuda/nsight_systems/bin/gcc-ar-11.4"
+      - "/opt/cuda/nsight_compute/gcc-ar-11.4"
+      - "/opt/cuda/bin/gcc-ar-11.4"
+      - "/home/aeon/.local/bin/gcc-ar-11.4"
+      - "/home/aeon/.cargo/bin/gcc-ar-11.4"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/gcc-ar-11.4"
+      - "/home/aeon/.deno/bin/gcc-ar-11.4"
+      - "/usr/local/sbin/gcc-ar-11.4"
+      - "/usr/local/bin/gcc-ar-11.4"
+      - "/usr/sbin/gcc-ar-11.4"
+      - "/sbin/gcc-ar-11.4"
+      - "/bin/gcc-ar-11.4"
+      - "/usr/games/gcc-ar-11.4"
+      - "/usr/local/games/gcc-ar-11.4"
+      - "/snap/bin/gcc-ar-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/gcc-ar-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/gcc-ar-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/gcc-ar-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/gcc-ar-11.4"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/gcc-ar-11.4"
+    found: "/usr/bin/gcc-ar-11"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Compiler/GNU-FindBinUtils.cmake:30 (find_program)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:201 (include)"
+      - "CMakeLists.txt:13 (project)"
+    mode: "program"
+    variable: "CMAKE_C_COMPILER_RANLIB"
+    description: "A wrapper around 'ranlib' adding the appropriate '--plugin' option for the GCC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gcc-ranlib-11.4"
+      - "gcc-ranlib-11"
+      - "gcc-ranlib11"
+      - "gcc-ranlib"
+    candidate_directories:
+      - "/usr/bin/"
+      - "/home/aeon/.nros/bin/"
+      - "/home/aeon/repos/nano-ros/third-party/make/"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/"
+      - "/opt/ros/humble/bin/"
+      - "/home/aeon/.opencode/bin/"
+      - "/usr/local/cuda/bin/"
+      - "/opt/cuda/nsight_systems/bin/"
+      - "/opt/cuda/nsight_compute/"
+      - "/opt/cuda/bin/"
+      - "/home/aeon/.local/bin/"
+      - "/home/aeon/.cargo/bin/"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/"
+      - "/home/aeon/.deno/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/"
+    searched_directories:
+      - "/usr/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.nros/bin/gcc-ranlib-11.4"
+      - "/home/aeon/repos/nano-ros/third-party/make/gcc-ranlib-11.4"
+      - "/home/aeon/repos/nano-ros/third-party/ninja/gcc-ranlib-11.4"
+      - "/opt/ros/humble/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.opencode/bin/gcc-ranlib-11.4"
+      - "/usr/local/cuda/bin/gcc-ranlib-11.4"
+      - "/opt/cuda/nsight_systems/bin/gcc-ranlib-11.4"
+      - "/opt/cuda/nsight_compute/gcc-ranlib-11.4"
+      - "/opt/cuda/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.local/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.cargo/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.nvm/versions/node/v22.19.0/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.deno/bin/gcc-ranlib-11.4"
+      - "/usr/local/sbin/gcc-ranlib-11.4"
+      - "/usr/local/bin/gcc-ranlib-11.4"
+      - "/usr/sbin/gcc-ranlib-11.4"
+      - "/sbin/gcc-ranlib-11.4"
+      - "/bin/gcc-ranlib-11.4"
+      - "/usr/games/gcc-ranlib-11.4"
+      - "/usr/local/games/gcc-ranlib-11.4"
+      - "/snap/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin/gcc-ranlib-11.4"
+      - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin/gcc-ranlib-11.4"
+    found: "/usr/bin/gcc-ranlib-11"
+    search_context:
+      ENV{PATH}:
+        - "/home/aeon/.nros/bin"
+        - "/home/aeon/repos/nano-ros/third-party/make"
+        - "/home/aeon/repos/nano-ros/third-party/ninja"
+        - "/home/aeon/.nros/bin"
+        - "/opt/ros/humble/bin"
+        - "/home/aeon/.opencode/bin"
+        - "/usr/local/cuda/bin"
+        - "/opt/cuda/nsight_systems/bin"
+        - "/opt/cuda/nsight_compute"
+        - "/opt/cuda/bin"
+        - "/home/aeon/.local/bin"
+        - "/home/aeon/.cargo/bin"
+        - "/home/aeon/.nvm/versions/node/v22.19.0/bin"
+        - "/home/aeon/.deno/bin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/rust-analyzer-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/pyright-lsp/1.0.0/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/frontend-design/unknown/bin"
+        - "/home/aeon/.claude/plugins/cache/claude-plugins-official/superpowers/5.1.0/bin"
+        - "/home/aeon/.claude/plugins/cache/caveman/caveman/84cc3c14fa1e/bin"
+      CMAKE_INSTALL_PREFIX: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:13 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-Te92Um"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-Te92Um"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-Te92Um'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_44e5d/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_44e5d.dir/build.make CMakeFiles/cmTC_44e5d.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-Te92Um'
+        Building C object CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -fPIE   -v -o CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o -c /home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeCCompilerABI.c
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/cc
+        OFFLOAD_TARGET_NAMES=nvptx-none:amdgcn-amdhsa
+        OFFLOAD_TARGET_DEFAULT=1
+        Target: x86_64-linux-gnu
+        Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++,m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --disable-werror --enable-cet --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-nvptx/usr,amdgcn-amdhsa=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-gcn/usr --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=2
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) 
+        COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-m64' '-w' '-fPIE' '-v' '-o' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_44e5d.dir/'
+         /usr/lib/gcc/x86_64-linux-gnu/11/cc1 -quiet -v -imultiarch x86_64-linux-gnu /home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_44e5d.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -m64 -mtune=generic -march=x86-64 -w -version -ffunction-sections -fdata-sections -fPIE -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -fcf-protection -o /tmp/claude-1000005/ccQgmUvp.s
+        GNU C17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (x86_64-linux-gnu)
+        	compiled by GNU C version 11.4.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/11/include-fixed"
+        ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/11/../../../../x86_64-linux-gnu/include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /usr/lib/gcc/x86_64-linux-gnu/11/include
+         /usr/local/include
+         /usr/include/x86_64-linux-gnu
+         /usr/include
+        End of search list.
+        GNU C17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (x86_64-linux-gnu)
+        	compiled by GNU C version 11.4.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        Compiler executable checksum: 46ebede1f5b795a957a1e85cb61af9d8
+        COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-m64' '-w' '-fPIE' '-v' '-o' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_44e5d.dir/'
+         as -v -W --64 -o CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o /tmp/claude-1000005/ccQgmUvp.s
+        GNU assembler version 2.38 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.38
+        COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/
+        LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-m64' '-w' '-fPIE' '-v' '-o' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.'
+        Linking C executable cmTC_44e5d
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_44e5d.dir/link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=/usr/bin/cc
+        COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/11/lto-wrapper
+        OFFLOAD_TARGET_NAMES=nvptx-none:amdgcn-amdhsa
+        OFFLOAD_TARGET_DEFAULT=1
+        Target: x86_64-linux-gnu
+        Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c,ada,c++,go,brig,d,fortran,objc,obj-c++,m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --disable-werror --enable-cet --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32,m64,mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-nvptx/usr,amdgcn-amdhsa=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-gcn/usr --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=2
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) 
+        COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/
+        LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../:/lib/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-fPIC' '-m64' '-w' '-v' '-o' 'cmTC_44e5d' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_44e5d.'
+         /usr/lib/gcc/x86_64-linux-gnu/11/collect2 -plugin /usr/lib/gcc/x86_64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-1000005/ccPSn9cA.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_44e5d /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/11 -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o -lgcc --push-state --as-needed -lgcc_s --pop-state -lc -lgcc --push-state --as-needed -lgcc_s --pop-state /usr/lib/gcc/x86_64-linux-gnu/11/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crtn.o
+        collect2 version 11.4.0
+        /usr/bin/ld -plugin /usr/lib/gcc/x86_64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-1000005/ccPSn9cA.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_44e5d /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/11 -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o -lgcc --push-state --as-needed -lgcc_s --pop-state -lc -lgcc --push-state --as-needed -lgcc_s --pop-state /usr/lib/gcc/x86_64-linux-gnu/11/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crtn.o
+        GNU ld (GNU Binutils for Ubuntu) 2.38
+        COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-fPIC' '-m64' '-w' '-v' '-o' 'cmTC_44e5d' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_44e5d.'
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w   -v -Wl,-v CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o -o cmTC_44e5d
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-Te92Um'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:217 (message)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:13 (project)"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [/usr/lib/gcc/x86_64-linux-gnu/11/include]
+          add: [/usr/local/include]
+          add: [/usr/include/x86_64-linux-gnu]
+          add: [/usr/include]
+        end of search list found
+        collapse include dir [/usr/lib/gcc/x86_64-linux-gnu/11/include] ==> [/usr/lib/gcc/x86_64-linux-gnu/11/include]
+        collapse include dir [/usr/local/include] ==> [/usr/local/include]
+        collapse include dir [/usr/include/x86_64-linux-gnu] ==> [/usr/include/x86_64-linux-gnu]
+        collapse include dir [/usr/include] ==> [/usr/include]
+        implicit include dirs: [/usr/lib/gcc/x86_64-linux-gnu/11/include;/usr/local/include;/usr/include/x86_64-linux-gnu;/usr/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:13 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)))("|,| |$)]
+        ignore line: [Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-Te92Um']
+        ignore line: []
+        ignore line: [Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_44e5d/fast]
+        ignore line: [/home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_44e5d.dir/build.make CMakeFiles/cmTC_44e5d.dir/build]
+        ignore line: [gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-Te92Um']
+        ignore line: [Building C object CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o]
+        ignore line: [/usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -fPIE   -v -o CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o -c /home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeCCompilerABI.c]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/cc]
+        ignore line: [OFFLOAD_TARGET_NAMES=nvptx-none:amdgcn-amdhsa]
+        ignore line: [OFFLOAD_TARGET_DEFAULT=1]
+        ignore line: [Target: x86_64-linux-gnu]
+        ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c ada c++ go brig d fortran objc obj-c++ m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --disable-werror --enable-cet --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32 m64 mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-nvptx/usr amdgcn-amdhsa=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-gcn/usr --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=2]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-m64' '-w' '-fPIE' '-v' '-o' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_44e5d.dir/']
+        ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/11/cc1 -quiet -v -imultiarch x86_64-linux-gnu /home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles/cmTC_44e5d.dir/ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -m64 -mtune=generic -march=x86-64 -w -version -ffunction-sections -fdata-sections -fPIE -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -fcf-protection -o /tmp/claude-1000005/ccQgmUvp.s]
+        ignore line: [GNU C17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (x86_64-linux-gnu)]
+        ignore line: [	compiled by GNU C version 11.4.0  GMP version 6.2.1  MPFR version 4.1.0  MPC version 1.2.1  isl version isl-0.24-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/11/include-fixed"]
+        ignore line: [ignoring nonexistent directory "/usr/lib/gcc/x86_64-linux-gnu/11/../../../../x86_64-linux-gnu/include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ /usr/lib/gcc/x86_64-linux-gnu/11/include]
+        ignore line: [ /usr/local/include]
+        ignore line: [ /usr/include/x86_64-linux-gnu]
+        ignore line: [ /usr/include]
+        ignore line: [End of search list.]
+        ignore line: [GNU C17 (Ubuntu 11.4.0-1ubuntu1~22.04.3) version 11.4.0 (x86_64-linux-gnu)]
+        ignore line: [	compiled by GNU C version 11.4.0  GMP version 6.2.1  MPFR version 4.1.0  MPC version 1.2.1  isl version isl-0.24-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [Compiler executable checksum: 46ebede1f5b795a957a1e85cb61af9d8]
+        ignore line: [COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-m64' '-w' '-fPIE' '-v' '-o' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_44e5d.dir/']
+        ignore line: [ as -v -W --64 -o CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o /tmp/claude-1000005/ccQgmUvp.s]
+        ignore line: [GNU assembler version 2.38 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.38]
+        ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-m64' '-w' '-fPIE' '-v' '-o' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o' '-c' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.']
+        ignore line: [Linking C executable cmTC_44e5d]
+        ignore line: [/home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_44e5d.dir/link.txt --verbose=1]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=/usr/bin/cc]
+        ignore line: [COLLECT_LTO_WRAPPER=/usr/lib/gcc/x86_64-linux-gnu/11/lto-wrapper]
+        ignore line: [OFFLOAD_TARGET_NAMES=nvptx-none:amdgcn-amdhsa]
+        ignore line: [OFFLOAD_TARGET_DEFAULT=1]
+        ignore line: [Target: x86_64-linux-gnu]
+        ignore line: [Configured with: ../src/configure -v --with-pkgversion='Ubuntu 11.4.0-1ubuntu1~22.04.3' --with-bugurl=file:///usr/share/doc/gcc-11/README.Bugs --enable-languages=c ada c++ go brig d fortran objc obj-c++ m2 --prefix=/usr --with-gcc-major-version-only --program-suffix=-11 --program-prefix=x86_64-linux-gnu- --enable-shared --enable-linker-build-id --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --libdir=/usr/lib --enable-nls --enable-bootstrap --enable-clocale=gnu --enable-libstdcxx-debug --enable-libstdcxx-time=yes --with-default-libstdcxx-abi=new --enable-gnu-unique-object --disable-vtable-verify --enable-plugin --enable-default-pie --with-system-zlib --enable-libphobos-checking=release --with-target-system-zlib=auto --enable-objc-gc=auto --enable-multiarch --disable-werror --enable-cet --with-arch-32=i686 --with-abi=m64 --with-multilib-list=m32 m64 mx32 --enable-multilib --with-tune=generic --enable-offload-targets=nvptx-none=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-nvptx/usr amdgcn-amdhsa=/build/gcc-11-0odw26/gcc-11-11.4.0/debian/tmp-gcn/usr --without-cuda-driver --enable-checking=release --build=x86_64-linux-gnu --host=x86_64-linux-gnu --target=x86_64-linux-gnu --with-build-config=bootstrap-lto-lean --enable-link-serialization=2]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) ]
+        ignore line: [COMPILER_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/]
+        ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/11/../../../:/lib/:/usr/lib/]
+        ignore line: [COLLECT_GCC_OPTIONS='-ffunction-sections' '-fdata-sections' '-fPIC' '-m64' '-w' '-v' '-o' 'cmTC_44e5d' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_44e5d.']
+        link line: [ /usr/lib/gcc/x86_64-linux-gnu/11/collect2 -plugin /usr/lib/gcc/x86_64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-1000005/ccPSn9cA.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_44e5d /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/11 -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o -lgcc --push-state --as-needed -lgcc_s --pop-state -lc -lgcc --push-state --as-needed -lgcc_s --pop-state /usr/lib/gcc/x86_64-linux-gnu/11/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crtn.o]
+          arg [/usr/lib/gcc/x86_64-linux-gnu/11/collect2] ==> ignore
+          arg [-plugin] ==> ignore
+          arg [/usr/lib/gcc/x86_64-linux-gnu/11/liblto_plugin.so] ==> ignore
+          arg [-plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/11/lto-wrapper] ==> ignore
+          arg [-plugin-opt=-fresolution=/tmp/claude-1000005/ccPSn9cA.res] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [-plugin-opt=-pass-through=-lc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc_s] ==> ignore
+          arg [--build-id] ==> ignore
+          arg [--eh-frame-hdr] ==> ignore
+          arg [-m] ==> ignore
+          arg [elf_x86_64] ==> ignore
+          arg [--hash-style=gnu] ==> ignore
+          arg [--as-needed] ==> ignore
+          arg [-dynamic-linker] ==> ignore
+          arg [/lib64/ld-linux-x86-64.so.2] ==> ignore
+          arg [-pie] ==> ignore
+          arg [-znow] ==> ignore
+          arg [-zrelro] ==> ignore
+          arg [-o] ==> ignore
+          arg [cmTC_44e5d] ==> ignore
+          arg [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o] ==> obj [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o]
+          arg [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o] ==> obj [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o]
+          arg [/usr/lib/gcc/x86_64-linux-gnu/11/crtbeginS.o] ==> obj [/usr/lib/gcc/x86_64-linux-gnu/11/crtbeginS.o]
+          arg [-L/usr/lib/gcc/x86_64-linux-gnu/11] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/11]
+          arg [-L/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu]
+          arg [-L/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib]
+          arg [-L/lib/x86_64-linux-gnu] ==> dir [/lib/x86_64-linux-gnu]
+          arg [-L/lib/../lib] ==> dir [/lib/../lib]
+          arg [-L/usr/lib/x86_64-linux-gnu] ==> dir [/usr/lib/x86_64-linux-gnu]
+          arg [-L/usr/lib/../lib] ==> dir [/usr/lib/../lib]
+          arg [-L/usr/lib/gcc/x86_64-linux-gnu/11/../../..] ==> dir [/usr/lib/gcc/x86_64-linux-gnu/11/../../..]
+          arg [-v] ==> ignore
+          arg [CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o] ==> ignore
+          arg [-lgcc] ==> lib [gcc]
+          arg [--push-state] ==> ignore
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--pop-state] ==> ignore
+          arg [-lc] ==> lib [c]
+          arg [-lgcc] ==> lib [gcc]
+          arg [--push-state] ==> ignore
+          arg [--as-needed] ==> ignore
+          arg [-lgcc_s] ==> lib [gcc_s]
+          arg [--pop-state] ==> ignore
+          arg [/usr/lib/gcc/x86_64-linux-gnu/11/crtendS.o] ==> obj [/usr/lib/gcc/x86_64-linux-gnu/11/crtendS.o]
+          arg [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crtn.o] ==> obj [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crtn.o]
+        ignore line: [collect2 version 11.4.0]
+        ignore line: [/usr/bin/ld -plugin /usr/lib/gcc/x86_64-linux-gnu/11/liblto_plugin.so -plugin-opt=/usr/lib/gcc/x86_64-linux-gnu/11/lto-wrapper -plugin-opt=-fresolution=/tmp/claude-1000005/ccPSn9cA.res -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lgcc_s --build-id --eh-frame-hdr -m elf_x86_64 --hash-style=gnu --as-needed -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -z now -z relro -o cmTC_44e5d /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o /usr/lib/gcc/x86_64-linux-gnu/11/crtbeginS.o -L/usr/lib/gcc/x86_64-linux-gnu/11 -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu -L/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib -L/lib/x86_64-linux-gnu -L/lib/../lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib/../lib -L/usr/lib/gcc/x86_64-linux-gnu/11/../../.. -v CMakeFiles/cmTC_44e5d.dir/CMakeCCompilerABI.c.o -lgcc --push-state --as-needed -lgcc_s --pop-state -lc -lgcc --push-state --as-needed -lgcc_s --pop-state /usr/lib/gcc/x86_64-linux-gnu/11/crtendS.o /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crtn.o]
+        linker tool for 'C': /usr/bin/ld
+        collapse obj [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o] ==> [/usr/lib/x86_64-linux-gnu/Scrt1.o]
+        collapse obj [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crti.o] ==> [/usr/lib/x86_64-linux-gnu/crti.o]
+        collapse obj [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/crtn.o] ==> [/usr/lib/x86_64-linux-gnu/crtn.o]
+        collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/11] ==> [/usr/lib/gcc/x86_64-linux-gnu/11]
+        collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu] ==> [/usr/lib/x86_64-linux-gnu]
+        collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/11/../../../../lib] ==> [/usr/lib]
+        collapse library dir [/lib/x86_64-linux-gnu] ==> [/lib/x86_64-linux-gnu]
+        collapse library dir [/lib/../lib] ==> [/lib]
+        collapse library dir [/usr/lib/x86_64-linux-gnu] ==> [/usr/lib/x86_64-linux-gnu]
+        collapse library dir [/usr/lib/../lib] ==> [/usr/lib]
+        collapse library dir [/usr/lib/gcc/x86_64-linux-gnu/11/../../..] ==> [/usr/lib]
+        implicit libs: [gcc;gcc_s;c;gcc;gcc_s]
+        implicit objs: [/usr/lib/x86_64-linux-gnu/Scrt1.o;/usr/lib/x86_64-linux-gnu/crti.o;/usr/lib/gcc/x86_64-linux-gnu/11/crtbeginS.o;/usr/lib/gcc/x86_64-linux-gnu/11/crtendS.o;/usr/lib/x86_64-linux-gnu/crtn.o]
+        implicit dirs: [/usr/lib/gcc/x86_64-linux-gnu/11;/usr/lib/x86_64-linux-gnu;/usr/lib;/lib/x86_64-linux-gnu;/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:13 (project)"
+    message: |
+      Running the C compiler's linker: "/usr/bin/ld" "-v"
+      GNU ld (GNU Binutils for Ubuntu) 2.38
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "compat/CMakeLists.txt:3 (check_include_file)"
+    checks:
+      - "Looking for getopt.h"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-baKVsY"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-baKVsY"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_GETOPT_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-baKVsY'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_69d66/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_69d66.dir/build.make CMakeFiles/cmTC_69d66.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-baKVsY'
+        Building C object CMakeFiles/cmTC_69d66.dir/CheckIncludeFile.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_69d66.dir/CheckIncludeFile.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-baKVsY/CheckIncludeFile.c
+        Linking C executable cmTC_69d66
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_69d66.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_69d66.dir/CheckIncludeFile.c.o -o cmTC_69d66
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-baKVsY'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "src/tools/idlpp/CMakeLists.txt:106 (check_include_file)"
+    checks:
+      - "Looking for stdint.h"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-nJ1REl"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-nJ1REl"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "idlpp_have_stdint_h"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-nJ1REl'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_7bc58/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_7bc58.dir/build.make CMakeFiles/cmTC_7bc58.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-nJ1REl'
+        Building C object CMakeFiles/cmTC_7bc58.dir/CheckIncludeFile.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_7bc58.dir/CheckIncludeFile.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-nJ1REl/CheckIncludeFile.c
+        Linking C executable cmTC_7bc58
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7bc58.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_7bc58.dir/CheckIncludeFile.c.o -o cmTC_7bc58
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-nJ1REl'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "src/tools/idlpp/CMakeLists.txt:107 (check_include_file)"
+    checks:
+      - "Looking for inttypes.h"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wp9SqB"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wp9SqB"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "idlpp_have_inttypes_h"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wp9SqB'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_10aa7/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_10aa7.dir/build.make CMakeFiles/cmTC_10aa7.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wp9SqB'
+        Building C object CMakeFiles/cmTC_10aa7.dir/CheckIncludeFile.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_10aa7.dir/CheckIncludeFile.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wp9SqB/CheckIncludeFile.c
+        Linking C executable cmTC_10aa7
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_10aa7.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_10aa7.dir/CheckIncludeFile.c.o -o cmTC_10aa7
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wp9SqB'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckTypeSize.cmake:462 (check_include_file)"
+      - "src/tools/idlpp/CMakeLists.txt:42 (check_type_size)"
+      - "src/tools/idlpp/CMakeLists.txt:108 (have_type)"
+    checks:
+      - "Looking for sys/types.h"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wY1NJv"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wY1NJv"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_SYS_TYPES_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wY1NJv'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_81a67/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_81a67.dir/build.make CMakeFiles/cmTC_81a67.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wY1NJv'
+        Building C object CMakeFiles/cmTC_81a67.dir/CheckIncludeFile.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_81a67.dir/CheckIncludeFile.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wY1NJv/CheckIncludeFile.c
+        Linking C executable cmTC_81a67
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_81a67.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_81a67.dir/CheckIncludeFile.c.o -o cmTC_81a67
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-wY1NJv'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckTypeSize.cmake:463 (check_include_file)"
+      - "src/tools/idlpp/CMakeLists.txt:42 (check_type_size)"
+      - "src/tools/idlpp/CMakeLists.txt:108 (have_type)"
+    checks:
+      - "Looking for stdint.h"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-RoEOEY"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-RoEOEY"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_STDINT_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-RoEOEY'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_cea27/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_cea27.dir/build.make CMakeFiles/cmTC_cea27.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-RoEOEY'
+        Building C object CMakeFiles/cmTC_cea27.dir/CheckIncludeFile.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_cea27.dir/CheckIncludeFile.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-RoEOEY/CheckIncludeFile.c
+        Linking C executable cmTC_cea27
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cea27.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_cea27.dir/CheckIncludeFile.c.o -o cmTC_cea27
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-RoEOEY'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckIncludeFile.cmake:174 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckTypeSize.cmake:464 (check_include_file)"
+      - "src/tools/idlpp/CMakeLists.txt:42 (check_type_size)"
+      - "src/tools/idlpp/CMakeLists.txt:108 (have_type)"
+    checks:
+      - "Looking for stddef.h"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-YDiWWJ"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-YDiWWJ"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_STDDEF_H"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-YDiWWJ'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_7f4a5/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_7f4a5.dir/build.make CMakeFiles/cmTC_7f4a5.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-YDiWWJ'
+        Building C object CMakeFiles/cmTC_7f4a5.dir/CheckIncludeFile.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_7f4a5.dir/CheckIncludeFile.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-YDiWWJ/CheckIncludeFile.c
+        Linking C executable cmTC_7f4a5
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7f4a5.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_7f4a5.dir/CheckIncludeFile.c.o -o cmTC_7f4a5
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-YDiWWJ'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckTypeSize.cmake:348 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckTypeSize.cmake:481 (__check_type_size_impl)"
+      - "src/tools/idlpp/CMakeLists.txt:42 (check_type_size)"
+      - "src/tools/idlpp/CMakeLists.txt:108 (have_type)"
+    checks:
+      - "Check size of intmax_t"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-7UKgtB"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-7UKgtB"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE__size"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-7UKgtB'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_904ca/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_904ca.dir/build.make CMakeFiles/cmTC_904ca.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-7UKgtB'
+        Building C object CMakeFiles/cmTC_904ca.dir/_size.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_904ca.dir/_size.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-7UKgtB/_size.c
+        Linking C executable cmTC_904ca
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_904ca.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_904ca.dir/_size.c.o -o cmTC_904ca
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-7UKgtB'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/tools/idlpp/CMakeLists.txt:51 (check_symbol_exists)"
+      - "src/tools/idlpp/CMakeLists.txt:110 (have_symbol)"
+    checks:
+      - "Looking for stpcpy"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-HLofmZ"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-HLofmZ"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "idlpp_have_stpcpy"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-HLofmZ'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_25d28/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_25d28.dir/build.make CMakeFiles/cmTC_25d28.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-HLofmZ'
+        Building C object CMakeFiles/cmTC_25d28.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_25d28.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-HLofmZ/CheckSymbolExists.c
+        Linking C executable cmTC_25d28
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_25d28.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_25d28.dir/CheckSymbolExists.c.o -o cmTC_25d28
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-HLofmZ'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/tools/idlpp/CMakeLists.txt:51 (check_symbol_exists)"
+      - "src/tools/idlpp/CMakeLists.txt:111 (have_symbol)"
+    checks:
+      - "Looking for strlcpy"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "idlpp_have_strlcpy"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_49b3a/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_49b3a.dir/build.make CMakeFiles/cmTC_49b3a.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0'
+        Building C object CMakeFiles/cmTC_49b3a.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_49b3a.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0/CheckSymbolExists.c
+        /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0/CheckSymbolExists.c: In function 'main':
+        /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0/CheckSymbolExists.c:8:19: error: 'strlcpy' undeclared (first use in this function); did you mean 'strncpy'?
+            8 |   return ((int*)(&strlcpy))[argc];
+              |                   ^~~~~~~
+              |                   strncpy
+        /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0/CheckSymbolExists.c:8:19: note: each undeclared identifier is reported only once for each function it appears in
+        gmake[1]: *** [CMakeFiles/cmTC_49b3a.dir/build.make:81: CMakeFiles/cmTC_49b3a.dir/CheckSymbolExists.c.o] Error 1
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sB7Fl0'
+        gmake: *** [Makefile:134: cmTC_49b3a/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/tools/idlpp/CMakeLists.txt:51 (check_symbol_exists)"
+      - "src/tools/idlpp/CMakeLists.txt:112 (have_symbol)"
+    checks:
+      - "Looking for strlcat"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "idlpp_have_strlcat"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_afff6/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_afff6.dir/build.make CMakeFiles/cmTC_afff6.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4'
+        Building C object CMakeFiles/cmTC_afff6.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_afff6.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4/CheckSymbolExists.c
+        /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4/CheckSymbolExists.c: In function 'main':
+        /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4/CheckSymbolExists.c:8:19: error: 'strlcat' undeclared (first use in this function); did you mean 'strncat'?
+            8 |   return ((int*)(&strlcat))[argc];
+              |                   ^~~~~~~
+              |                   strncat
+        /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4/CheckSymbolExists.c:8:19: note: each undeclared identifier is reported only once for each function it appears in
+        gmake[1]: *** [CMakeFiles/cmTC_afff6.dir/build.make:81: CMakeFiles/cmTC_afff6.dir/CheckSymbolExists.c.o] Error 1
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-BUTYE4'
+        gmake: *** [Makefile:134: cmTC_afff6/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckCompilerFlag.cmake:124 (cmake_check_compiler_flag)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/GenerateExportHeader.cmake:519 (check_compiler_flag)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/GenerateExportHeader.cmake:693 (_test_compiler_hidden_visibility)"
+      - "cmake/Modules/GenerateExportHeader.cmake:73 (_GENERATE_EXPORT_HEADER)"
+      - "src/tools/idlpp/CMakeLists.txt:155 (generate_export_header)"
+    checks:
+      - "Performing Test COMPILER_HAS_HIDDEN_VISIBILITY"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-w5lptp"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-w5lptp"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "COMPILER_HAS_HIDDEN_VISIBILITY"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-w5lptp'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_73db8/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_73db8.dir/build.make CMakeFiles/cmTC_73db8.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-w5lptp'
+        Building C object CMakeFiles/cmTC_73db8.dir/src.c.o
+        /usr/bin/cc -DCOMPILER_HAS_HIDDEN_VISIBILITY  -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE   -fvisibility=hidden -o CMakeFiles/cmTC_73db8.dir/src.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-w5lptp/src.c
+        Linking C executable cmTC_73db8
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_73db8.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_73db8.dir/src.c.o -o cmTC_73db8
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-w5lptp'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckCompilerFlag.cmake:124 (cmake_check_compiler_flag)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/GenerateExportHeader.cmake:520 (check_compiler_flag)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/GenerateExportHeader.cmake:693 (_test_compiler_hidden_visibility)"
+      - "cmake/Modules/GenerateExportHeader.cmake:73 (_GENERATE_EXPORT_HEADER)"
+      - "src/tools/idlpp/CMakeLists.txt:155 (generate_export_header)"
+    checks:
+      - "Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sMliok"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sMliok"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "COMPILER_HAS_HIDDEN_INLINE_VISIBILITY"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sMliok'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_265df/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_265df.dir/build.make CMakeFiles/cmTC_265df.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sMliok'
+        Building C object CMakeFiles/cmTC_265df.dir/src.c.o
+        /usr/bin/cc -DCOMPILER_HAS_HIDDEN_INLINE_VISIBILITY  -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE   -fvisibility-inlines-hidden -o CMakeFiles/cmTC_265df.dir/src.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sMliok/src.c
+        Linking C executable cmTC_265df
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_265df.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_265df.dir/src.c.o -o cmTC_265df
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-sMliok'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSourceCompiles.cmake:205 (cmake_check_source_compiles)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/GenerateExportHeader.cmake:488 (check_source_compiles)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/GenerateExportHeader.cmake:550 (_check_c_compiler_attribute)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/GenerateExportHeader.cmake:694 (_test_compiler_has_deprecated)"
+      - "cmake/Modules/GenerateExportHeader.cmake:73 (_GENERATE_EXPORT_HEADER)"
+      - "src/tools/idlpp/CMakeLists.txt:155 (generate_export_header)"
+    checks:
+      - "Performing Test COMPILER_HAS_DEPRECATED_ATTR"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-PGo5uy"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-PGo5uy"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "COMPILER_HAS_DEPRECATED_ATTR"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-PGo5uy'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_06407/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_06407.dir/build.make CMakeFiles/cmTC_06407.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-PGo5uy'
+        Building C object CMakeFiles/cmTC_06407.dir/src.c.o
+        /usr/bin/cc -DCOMPILER_HAS_DEPRECATED_ATTR  -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_06407.dir/src.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-PGo5uy/src.c
+        Linking C executable cmTC_06407
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_06407.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_06407.dir/src.c.o -o cmTC_06407
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-PGo5uy'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/ddsrt/CMakeLists.txt:177 (check_symbol_exists)"
+    checks:
+      - "Looking for gethostname"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-g1I3Ia"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-g1I3Ia"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "DDSRT_HAVE_GETHOSTNAME"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-g1I3Ia'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_921da/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_921da.dir/build.make CMakeFiles/cmTC_921da.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-g1I3Ia'
+        Building C object CMakeFiles/cmTC_921da.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_921da.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-g1I3Ia/CheckSymbolExists.c
+        Linking C executable cmTC_921da
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_921da.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_921da.dir/CheckSymbolExists.c.o -o cmTC_921da
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-g1I3Ia'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/ddsrt/CMakeLists.txt:178 (check_symbol_exists)"
+    checks:
+      - "Looking for inet_ntop"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-KKnOhR"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-KKnOhR"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "DDSRT_HAVE_INET_NTOP"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-KKnOhR'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_8bf7b/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_8bf7b.dir/build.make CMakeFiles/cmTC_8bf7b.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-KKnOhR'
+        Building C object CMakeFiles/cmTC_8bf7b.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_8bf7b.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-KKnOhR/CheckSymbolExists.c
+        Linking C executable cmTC_8bf7b
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8bf7b.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_8bf7b.dir/CheckSymbolExists.c.o -o cmTC_8bf7b
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-KKnOhR'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/ddsrt/CMakeLists.txt:179 (check_symbol_exists)"
+    checks:
+      - "Looking for inet_pton"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-TkASiO"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-TkASiO"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "DDSRT_HAVE_INET_PTON"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-TkASiO'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_59e56/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_59e56.dir/build.make CMakeFiles/cmTC_59e56.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-TkASiO'
+        Building C object CMakeFiles/cmTC_59e56.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_59e56.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-TkASiO/CheckSymbolExists.c
+        Linking C executable cmTC_59e56
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_59e56.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_59e56.dir/CheckSymbolExists.c.o -o cmTC_59e56
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-TkASiO'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/ddsrt/CMakeLists.txt:180 (check_symbol_exists)"
+    checks:
+      - "Looking for getaddrinfo"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-qnEpeg"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-qnEpeg"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "DDSRT_HAVE_GETADDRINFO"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-qnEpeg'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_89d95/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_89d95.dir/build.make CMakeFiles/cmTC_89d95.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-qnEpeg'
+        Building C object CMakeFiles/cmTC_89d95.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_89d95.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-qnEpeg/CheckSymbolExists.c
+        Linking C executable cmTC_89d95
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_89d95.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_89d95.dir/CheckSymbolExists.c.o -o cmTC_89d95
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-qnEpeg'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:193 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckSymbolExists.cmake:98 (__CHECK_SYMBOL_EXISTS_IMPL)"
+      - "src/ddsrt/CMakeLists.txt:181 (check_symbol_exists)"
+    checks:
+      - "Looking for gethostbyname_r"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-9IHZaS"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-9IHZaS"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "DDSRT_HAVE_GETHOSTBYNAME_R"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-9IHZaS'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_b3df9/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_b3df9.dir/build.make CMakeFiles/cmTC_b3df9.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-9IHZaS'
+        Building C object CMakeFiles/cmTC_b3df9.dir/CheckSymbolExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_b3df9.dir/CheckSymbolExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-9IHZaS/CheckSymbolExists.c
+        Linking C executable cmTC_b3df9
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b3df9.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_b3df9.dir/CheckSymbolExists.c.o -o cmTC_b3df9
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-9IHZaS'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckTypeSize.cmake:348 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckTypeSize.cmake:481 (__check_type_size_impl)"
+      - "src/ddsrt/CMakeLists.txt:186 (check_type_size)"
+    checks:
+      - "Check size of struct sockaddr_in6"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-WwWVrA"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-WwWVrA"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_SIZEOF_SOCKADDR_IN6"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-WwWVrA'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_18601/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_18601.dir/build.make CMakeFiles/cmTC_18601.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-WwWVrA'
+        Building C object CMakeFiles/cmTC_18601.dir/SIZEOF_SOCKADDR_IN6.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_18601.dir/SIZEOF_SOCKADDR_IN6.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-WwWVrA/SIZEOF_SOCKADDR_IN6.c
+        Linking C executable cmTC_18601
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_18601.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_18601.dir/SIZEOF_SOCKADDR_IN6.c.o -o cmTC_18601
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-WwWVrA'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake:104 (try_compile)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake:103 (cmake_check_source_compiles)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/FindThreads.cmake:160 (check_c_source_compiles)"
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/FindThreads.cmake:226 (_threads_check_libc)"
+      - "src/ddsrt/CMakeLists.txt:233 (find_package)"
+    checks:
+      - "Performing Test CMAKE_HAVE_LIBC_PTHREAD"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-XXP0LN"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-XXP0LN"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "CMAKE_HAVE_LIBC_PTHREAD"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-XXP0LN'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_cd655/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_cd655.dir/build.make CMakeFiles/cmTC_cd655.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-XXP0LN'
+        Building C object CMakeFiles/cmTC_cd655.dir/src.c.o
+        /usr/bin/cc -DCMAKE_HAVE_LIBC_PTHREAD  -ffunction-sections -fdata-sections -fPIC -m64 -w  -std=gnu99 -fPIE -o CMakeFiles/cmTC_cd655.dir/src.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-XXP0LN/src.c
+        Linking C executable cmTC_cd655
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_cd655.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w  CMakeFiles/cmTC_cd655.dir/src.c.o -o cmTC_cd655
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-XXP0LN'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/home/aeon/.local/lib/python3.10/site-packages/cmake/data/share/cmake-4.2/Modules/CheckLibraryExists.cmake:154 (try_compile)"
+      - "src/ddsrt/CMakeLists.txt:301 (check_library_exists)"
+    checks:
+      - "Looking for clock_gettime in c"
+    directories:
+      source: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-6HpukA"
+      binary: "/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-6HpukA"
+    cmakeVariables:
+      CMAKE_C_FLAGS: " -ffunction-sections -fdata-sections -fPIC -m64 -w"
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/aeon/repos/nano-ros/third-party/dds/cyclonedds/cmake/Modules"
+      CMAKE_POSITION_INDEPENDENT_CODE: "ON"
+    buildResult:
+      variable: "HAVE_CLOCK_GETTIME"
+      cached: true
+      stdout: |
+        Change Dir: '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-6HpukA'
+        
+        Run Build Command(s): /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E env VERBOSE=1 /home/aeon/repos/nano-ros/third-party/make/gmake -f Makefile cmTC_e67ce/fast
+        /home/aeon/repos/nano-ros/third-party/make/gmake  -f CMakeFiles/cmTC_e67ce.dir/build.make CMakeFiles/cmTC_e67ce.dir/build
+        gmake[1]: Entering directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-6HpukA'
+        Building C object CMakeFiles/cmTC_e67ce.dir/CheckFunctionExists.c.o
+        /usr/bin/cc   -ffunction-sections -fdata-sections -fPIC -m64 -w -DCHECK_FUNCTION_EXISTS=clock_gettime -std=gnu99 -fPIE -o CMakeFiles/cmTC_e67ce.dir/CheckFunctionExists.c.o -c /home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-6HpukA/CheckFunctionExists.c
+        Linking C executable cmTC_e67ce
+        /home/aeon/.local/lib/python3.10/site-packages/cmake/data/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e67ce.dir/link.txt --verbose=1
+        /usr/bin/cc  -ffunction-sections -fdata-sections -fPIC -m64 -w -DCHECK_FUNCTION_EXISTS=clock_gettime CMakeFiles/cmTC_e67ce.dir/CheckFunctionExists.c.o -o cmTC_e67ce  -lc
+        gmake[1]: Leaving directory '/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out/build/CMakeFiles/CMakeScratch/TryCompile-6HpukA'
+        
+      exitCode: 0
+...

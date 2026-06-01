@@ -17,13 +17,13 @@
 #include <nros/nros.hpp>
 #include <nros/log.hpp>
 
-int main() {
-    const char* locator = std::getenv("NROS_LOCATOR");
-    if (locator == nullptr) {
-        locator = "tcp/127.0.0.1:7447";
-    }
+int main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
 
-    auto init = nros::init(locator, 0);
+    // Phase 212.M.2 — `nros::init()` (no-arg) pulls locator + domain_id
+    // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
+    auto init = nros::init();
     if (!init.ok()) {
         std::fprintf(stderr, "nros::init failed: %d\n", init.raw());
         return 1;

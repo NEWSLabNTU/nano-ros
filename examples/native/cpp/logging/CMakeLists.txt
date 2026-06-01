@@ -4,12 +4,19 @@ project(cpp_logging VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Phase 88.13 — minimal C++ logging demo. Brings up a Node, fetches
-# its Logger via `node.get_logger()`, exercises every Phase-88 macro.
+# Phase 212.M.2 — Application pkg shape. Logging demo has no msg
+# bindings, so no `nros_find_interfaces` call.
 set(NANO_ROS_PLATFORM posix)
 set(NANO_ROS_RMW     zenoh)
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-add_executable(cpp_logging src/main.cpp)
-target_link_libraries(cpp_logging PRIVATE NanoRos::NanoRosCpp)
+set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
+add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
+
+include("${_NANO_ROS_ROOT}/cmake/NanoRosComponentRegister.cmake")
+
+nano_ros_application(
+    NAME cpp_logging
+    SOURCES src/main.cpp
+    DEPLOY native)
+
 nros_platform_link_app(cpp_logging)

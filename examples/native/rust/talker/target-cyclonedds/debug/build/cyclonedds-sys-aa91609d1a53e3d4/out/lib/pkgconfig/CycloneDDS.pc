@@ -1,0 +1,9 @@
+prefix=/home/aeon/repos/nano-ros/examples/native/rust/talker/target-cyclonedds/debug/build/cyclonedds-sys-aa91609d1a53e3d4/out
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: CycloneDDS
+Description: Eclipse Cyclone DDS library
+Version: 0.10.5
+Libs: -L${libdir} -lddsc
+Cflags: -I${includedir}

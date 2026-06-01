@@ -4,23 +4,25 @@ project(cpp_action_client LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Phase 118.B.3 — collapsed-shape C++ action-client. RMW selected at
-# cmake configure time via `-DNROS_RMW=<rmw>` (default zenoh).
+# Phase 212.M.2 — Application pkg shape. See talker/CMakeLists.txt for
+# the rationale on platform/RMW cache var ordering vs. the §212.L.9
+# cmake fn surface.
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
+    "Active RMW (zenoh|dds|xrce|cyclonedds).")
 set(NANO_ROS_RMW "${NROS_RMW}")
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
+set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
+add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
 
-find_package(std_msgs REQUIRED)
-find_package(example_interfaces REQUIRED)
+include("${_NANO_ROS_ROOT}/cmake/NanoRosComponentRegister.cmake")
 
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
+nano_ros_application(
+    NAME cpp_action_client
+    SOURCES src/main.cpp
+    DEPLOY native)
 
-add_executable(cpp_action_client src/main.cpp)
-target_link_libraries(cpp_action_client PRIVATE
-    example_interfaces::example_interfaces
-    NanoRos::NanoRosCpp)
+target_link_libraries(cpp_action_client PRIVATE example_interfaces__nano_ros_cpp)
 nros_platform_link_app(cpp_action_client)

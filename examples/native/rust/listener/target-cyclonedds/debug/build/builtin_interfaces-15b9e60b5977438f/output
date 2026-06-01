@@ -1,0 +1,6 @@
+cargo:rerun-if-changed=/home/aeon/repos/nano-ros/examples/native/rust/listener/build/nros_generator_rs/builtin_interfaces/src/cyclonedds/register.c
+cargo:rerun-if-changed=/home/aeon/repos/nano-ros/examples/native/rust/listener/build/nros_generator_rs/builtin_interfaces/src/cyclonedds/builtin_interfaces/msg/Duration.c
+cargo:rerun-if-changed=/home/aeon/repos/nano-ros/examples/native/rust/listener/build/nros_generator_rs/builtin_interfaces/src/cyclonedds/builtin_interfaces/msg/Time.c
+cargo:rustc-link-search=native=/home/aeon/repos/nano-ros/examples/native/rust/listener/target-cyclonedds/debug/build/builtin_interfaces-15b9e60b5977438f/out
+cargo:rustc-link-lib=static:+whole-archive,-bundle=builtin_interfaces_cyclonedds_descriptors
+cargo:include=/home/aeon/repos/nano-ros/examples/native/rust/listener/build/nros_generator_rs/builtin_interfaces/src/cyclonedds

@@ -8,7 +8,6 @@
 #define NROS_TRY_LOG(file, line, expr, ret) \
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 
-#include <nros/app_main.h>
 #include <nros/nros.hpp>
 
 // Generated C++ bindings for example_interfaces/action/Fibonacci
@@ -95,29 +94,12 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
 // Main
 // ----------------------------------------------------------------------------
 
-int nros_app_main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-
+int main(int argc, char** argv) {
     std::printf("nros C++ Action Server (Fibonacci)\n");
     std::printf("===================================\n");
 
-    // Get configuration from environment
-    const char* locator = std::getenv("NROS_LOCATOR");
-    if (!locator) {
-        locator = "tcp/127.0.0.1:7447";
-    }
-
-    uint8_t domain_id = 0;
-    const char* domain_str = std::getenv("ROS_DOMAIN_ID");
-    if (domain_str) {
-        domain_id = static_cast<uint8_t>(std::atoi(domain_str));
-    }
-
-    std::printf("Locator: %s\n", locator);
-    std::printf("Domain ID: %d\n", domain_id);
-
-    NROS_TRY_RET(nros::init(locator, domain_id), 1);
+    // Phase 212.M.2 — launch-aware init. Env overlay active today.
+    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_action_server"), 1);
@@ -148,4 +130,3 @@ int nros_app_main(int argc, char **argv) {
     return 0;
 }
 
-NROS_APP_MAIN_REGISTER_POSIX()

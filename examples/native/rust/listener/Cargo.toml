@@ -9,14 +9,9 @@ publish = false
 name = "listener"
 path = "src/main.rs"
 
-# Phase 170.A — listener logic lives in `lib.rs::run()`. The `rlib` lets
-# `src/main.rs` (the pure-cargo zenoh/xrce bin) call it; the `staticlib`
-# lets this dir's `CMakeLists.txt` link the Cyclone DDS variant
-# (`rust_main`) into a C `main`.
-[lib]
-name = "native_rs_listener"
-crate-type = ["staticlib", "rlib"]
-path = "src/lib.rs"
+# Phase 212.L.2 — Application pkg shape. Native-only deploy target.
+[package.metadata.nros.application]
+deploy = ["native"]
 
 [features]
 # Phase 118 — RMW selected at build time. Default is `rmw-zenoh`
