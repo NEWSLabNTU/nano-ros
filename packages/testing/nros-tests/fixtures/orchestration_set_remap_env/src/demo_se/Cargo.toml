@@ -1,0 +1,14 @@
+[package]
+name = "demo_se"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata]
+
+[package.metadata.nros]
+
+[package.metadata.nros.components.worker_a]
+
+[package.metadata.nros.components.worker_b]
+
+[package.metadata.ament]

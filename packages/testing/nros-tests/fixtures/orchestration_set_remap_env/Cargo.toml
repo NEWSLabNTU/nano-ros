@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["src/demo_se"]
+exclude = ["demo_se_bringup"]
+
+[workspace.metadata]
+
+[workspace.metadata.nros]
+default_system = "demo_se_bringup"

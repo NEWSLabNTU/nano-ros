@@ -9,8 +9,10 @@
 //! The launch file references a single `demo_pkg/talker` node; the fixture
 //! ships a pre-collected `record.json` (output of `play_launch_parser`) so the
 //! test does NOT depend on the parser binary being on `PATH`. The component's
-//! `source_metadata` is also pre-collected (`metadata/talker.json`), so the
-//! plan stage stands alone — the build stage is a separate 211 item.
+//! source metadata is also pre-collected (`_metadata/talker.json` — a sidecar
+//! preserved through the Phase 212.I migration since `nros migrate workspace`
+//! deletes the per-pkg `src/<pkg>/metadata/` dir), so the plan stage stands
+//! alone — the build stage is a separate 211 item.
 
 use std::{path::PathBuf, process::Command};
 
@@ -25,9 +27,10 @@ fn orchestration_plan_emits_expected_entities() {
     }
     let nros = nros_tests::nros_cli_bin_path().expect("require_nros_cli passed");
     let fixture = fixture_dir();
+    let system_toml = fixture.join("demo_pkg_bringup/system.toml");
     assert!(
-        fixture.join("nros.toml").is_file(),
-        "fixture missing nros.toml: {}",
+        system_toml.is_file(),
+        "fixture missing demo_pkg_bringup/system.toml: {}",
         fixture.display()
     );
     let record = fixture.join("record.json");
@@ -36,18 +39,26 @@ fn orchestration_plan_emits_expected_entities() {
         "fixture missing committed record.json: {}",
         record.display()
     );
+    let metadata = fixture.join("_metadata/talker.json");
+    assert!(
+        metadata.is_file(),
+        "fixture missing _metadata/talker.json: {}",
+        metadata.display()
+    );
 
     let out = tempfile::tempdir().expect("tempdir");
     let status = Command::new(&nros)
         .arg("plan")
         .arg("demo_pkg")
-        .arg("src/demo_pkg/launch/system.launch.xml")
+        .arg("demo_pkg_bringup/launch/system.launch.xml")
         .arg("--workspace")
         .arg(&fixture)
         .arg("--nros-toml")
-        .arg(fixture.join("nros.toml"))
+        .arg(&system_toml)
         .arg("--record")
         .arg(&record)
+        .arg("--metadata")
+        .arg(&metadata)
         .arg("--out-dir")
         .arg(out.path())
         .output()
@@ -66,8 +77,8 @@ fn orchestration_plan_emits_expected_entities() {
     )
     .expect("parse nros-plan.json");
 
-    // Components — fixture's `nros.toml` lists `components = ["demo_pkg"]`, so
-    // the plan must surface the talker component declared in component_nros.toml.
+    // Components — fixture's `system.toml` lists the `talker` component, so
+    // the plan must surface it (matched against `_metadata/talker.json`).
     let components = plan["components"].as_array().expect("components array");
     assert!(
         components
@@ -115,7 +126,7 @@ fn orchestration_plan_emits_expected_entities() {
 
     // Build target — fixture pins zenoh + x86_64 native; plan must propagate.
     let build = &plan["build"];
-    assert_eq!(build["rmw"], "zenoh", "rmw from nros.toml");
+    assert_eq!(build["rmw"], "zenoh", "rmw from system.toml");
     assert_eq!(
         build["target"], "x86_64-unknown-linux-gnu",
         "target from [deploy.native]"

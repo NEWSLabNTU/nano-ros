@@ -1,0 +1,13 @@
+[package]
+name = "demo_pkg"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata]
+
+[package.metadata.nros]
+
+[package.metadata.nros.component]
+default_namespace = "/"
+
+[package.metadata.ament]

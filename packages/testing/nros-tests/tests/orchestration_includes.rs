@@ -53,13 +53,15 @@ fn plan(record_name: &str, launch_name: &str) -> (std::process::Output, Option<s
     let result = Command::new(&nros)
         .arg("plan")
         .arg("demo_inc")
-        .arg(format!("src/demo_inc/launch/{launch_name}"))
+        .arg(format!("demo_inc_bringup/launch/{launch_name}"))
         .arg("--workspace")
         .arg(&fixture)
         .arg("--nros-toml")
-        .arg(fixture.join("nros.toml"))
+        .arg(fixture.join("demo_inc_bringup/system.toml"))
         .arg("--record")
         .arg(&record_path)
+        .arg("--metadata")
+        .arg(fixture.join("_metadata/leaf.json"))
         .arg("--out-dir")
         .arg(out.path())
         .output()
@@ -105,37 +107,64 @@ fn chain_3_levels_resolves_to_leaf() {
     assert_eq!(leaf["launch_name"], "/leaf_node", "wrong launch_name");
 }
 
-/// Stage the demo_inc workspace shape (package.xml + nros/components +
-/// metadata) into `dest`, then write the launch files for the scenario by
+/// Stage the demo_inc post-212 workspace shape (workspace + per-pkg
+/// Cargo.toml, package.xml, bringup `system.toml`, sidecar `_metadata/`)
+/// into a tempdir, then write the launch files for the scenario by
 /// invoking `write_launches` with the absolute launch dir. Returns the
 /// staged workspace root. Used by the cycle + depth-cap tests, which can't
 /// use the committed launch files: `play_launch_parser` doesn't expand
 /// `$(dirname)`, so each `<include file=…>` needs an absolute path that
 /// only exists at test time.
+///
+/// The staged tree mirrors the post-Phase-212.I migrated fixture:
+///   <tmp>/Cargo.toml                      (workspace)
+///   <tmp>/demo_inc_bringup/system.toml    (system + components)
+///   <tmp>/demo_inc_bringup/package.xml
+///   <tmp>/demo_inc_bringup/launch/<test launches written here too>
+///   <tmp>/src/demo_inc/Cargo.toml         (per-pkg, with [package.metadata.nros.component])
+///   <tmp>/src/demo_inc/package.xml
+///   <tmp>/src/demo_inc/launch/<entry written by write_launches>
+///   <tmp>/_metadata/leaf.json
 fn stage_demo_inc(write_launches: impl FnOnce(&Path)) -> tempfile::TempDir {
-    let src = fixture_dir().join("src/demo_inc");
+    let fixture = fixture_dir();
+    let src = fixture.join("src/demo_inc");
+    let bringup_src = fixture.join("demo_inc_bringup");
+    let metadata_src = fixture.join("_metadata");
+
     let tmp = tempfile::tempdir().expect("tempdir");
-    let dest_pkg = tmp.path().join("src/demo_inc");
+    let root = tmp.path();
+    let dest_pkg = root.join("src/demo_inc");
+    let dest_bringup = root.join("demo_inc_bringup");
+    let dest_metadata = root.join("_metadata");
+
     std::fs::create_dir_all(dest_pkg.join("launch")).unwrap();
-    std::fs::create_dir_all(dest_pkg.join("nros/components")).unwrap();
-    std::fs::create_dir_all(dest_pkg.join("metadata")).unwrap();
+    std::fs::create_dir_all(dest_bringup.join("launch")).unwrap();
+    std::fs::create_dir_all(&dest_metadata).unwrap();
+
+    // Workspace root Cargo.toml — straight copy from the migrated fixture.
+    std::fs::copy(fixture.join("Cargo.toml"), root.join("Cargo.toml")).unwrap();
+    // Per-pkg Cargo.toml + package.xml.
+    std::fs::copy(src.join("Cargo.toml"), dest_pkg.join("Cargo.toml")).unwrap();
     std::fs::copy(src.join("package.xml"), dest_pkg.join("package.xml")).unwrap();
-    for entry in std::fs::read_dir(src.join("nros/components"))
-        .unwrap()
-        .flatten()
-    {
-        let to = dest_pkg.join("nros/components").join(entry.file_name());
-        std::fs::copy(entry.path(), to).unwrap();
-    }
-    for entry in std::fs::read_dir(src.join("metadata")).unwrap().flatten() {
-        let to = dest_pkg.join("metadata").join(entry.file_name());
-        std::fs::copy(entry.path(), to).unwrap();
-    }
+    // Bringup pkg.
     std::fs::copy(
-        fixture_dir().join("nros.toml"),
-        tmp.path().join("nros.toml"),
+        bringup_src.join("system.toml"),
+        dest_bringup.join("system.toml"),
     )
     .unwrap();
+    std::fs::copy(
+        bringup_src.join("package.xml"),
+        dest_bringup.join("package.xml"),
+    )
+    .unwrap();
+    // _metadata sidecar (preserved across migrate; see fixture README).
+    for entry in std::fs::read_dir(&metadata_src).unwrap().flatten() {
+        let to = dest_metadata.join(entry.file_name());
+        std::fs::copy(entry.path(), to).unwrap();
+    }
+
+    // The cycle/depth tests write their entry launch under
+    // `src/demo_inc/launch/`; tolerate either layout.
     write_launches(&dest_pkg.join("launch"));
     tmp
 }
@@ -159,7 +188,7 @@ fn run_plan_live(
         .arg("--workspace")
         .arg(workspace)
         .arg("--nros-toml")
-        .arg(workspace.join("nros.toml"))
+        .arg(workspace.join("demo_inc_bringup/system.toml"))
         .arg("--out-dir")
         .arg(out.path());
     for (k, v) in env {
