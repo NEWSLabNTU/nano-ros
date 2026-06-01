@@ -7,29 +7,25 @@
 //!
 //! ## What this test gates
 //!
-//! 1. **Current planner shape (regression baseline).** The planner today
-//!    emits each `<composable_node>` as a *flat* `instances[*]` entry —
-//!    there is no `container_id` field grouping them under their parent
-//!    `<node_container>`. Production ROS (Nav2, Autoware, MoveIt) **relies**
-//!    on the container hosting many nodes in one process for intra-process
-//!    zero-copy; nano-ros doesn't yet model that grouping in the plan.
+//! 1. **Container + composable grouping.** Resolved upstream in `nros-cli`
+//!    planner `706023c`: the planner reads `record.container`, mints a
+//!    container instance with `kind = "container"`, and resolves each
+//!    `<composable_node>` child's `target_container_name` to the parent's
+//!    instance id (`container_id` field on the child + `kind =
+//!    "composable_node"`). Production ROS launches (Nav2, Autoware, MoveIt)
+//!    rely on this single-process composable container model for
+//!    intra-process zero-copy.
 //!
-//! 2. **Per-child fidelity.** Even without grouping, the planner must
-//!    propagate per-composable parameter overrides, remappings, and the
-//!    component / metadata cross-reference correctly. The test pins each.
-//!
-//! 3. **The 211.B planner-fix landing site.** When `nros-cli` learns to
-//!    emit `entities[*].container_id` + `entities[*].kind`, the post-fix
-//!    block (currently a `TODO`) flips to asserting the new shape. The
-//!    fixture stays valid; only the test's expected-shape changes.
+//! 2. **Per-child fidelity.** Each composable still propagates its own
+//!    parameter overrides, remappings, and component / metadata
+//!    cross-reference.
 //!
 //! ## What this test does NOT gate
 //!
 //! - The actual one-process-many-nodes runtime path. `Executor::open` +
 //!   `create_node(name)` already supports N nodes per process (Phase 172
 //!   W.5); a build-stage e2e that loads two composable libraries into
-//!   one process is part of 211.B's runtime sub-item, not 211.A's
-//!   plan-stage foundation.
+//!   one container binary is part of 211.B's runtime sub-item.
 
 use std::{path::PathBuf, process::Command};
 
@@ -80,17 +76,29 @@ fn composable_container_plan_shape() {
 
     let instances = plan["instances"].as_array().expect("instances array");
 
-    // ─── Current planner shape (regression baseline) ────────────────────────
+    // ─── Container + composable grouping ───────────────────────────────────
     //
-    // Two flat `instances[*]` entries — one per `<composable_node>`. The
-    // parent `<node_container>` is NOT emitted as its own instance today
-    // (it surfaces only as a phantom auto-synthesized `components[*]`
-    // entry referencing an in-out-dir metadata stub).
+    // 3 instances: the `<node_container>` (kind=container) plus the two
+    // `<composable_node>` children (kind=composable_node, container_id =
+    // parent's instance id). Phase 211.B planner change (nros-cli 706023c).
     assert_eq!(
         instances.len(),
-        2,
-        "expected 2 flat composable instances today, got {}: {instances:#?}",
+        3,
+        "expected container + 2 composables, got {}: {instances:#?}",
         instances.len()
+    );
+
+    let container = instances
+        .iter()
+        .find(|i| i["kind"] == "container")
+        .unwrap_or_else(|| panic!("no container instance: {instances:#?}"));
+    let container_id = container["id"]
+        .as_str()
+        .expect("container id is a string")
+        .to_string();
+    assert!(
+        container.get("container_id").is_none_or(|v| v.is_null()),
+        "container itself must NOT carry container_id: {container:#?}"
     );
 
     let by_component = |needle: &str| -> &serde_json::Value {
@@ -106,17 +114,16 @@ fn composable_container_plan_shape() {
     let talker = by_component("Talker");
     let listener = by_component("Listener");
 
-    // Neither composable carries a `container_id` field yet — that's the
-    // 211.B planner gap. When the planner learns the grouping, flip the
-    // `is_null` assertions below to `==` against the parent container id.
-    assert!(
-        talker.get("container_id").is_none_or(|v| v.is_null()),
-        "talker.container_id present (planner-fix landed? update assertions): {talker:#?}"
-    );
-    assert!(
-        listener.get("container_id").is_none_or(|v| v.is_null()),
-        "listener.container_id present (planner-fix landed? update assertions): {listener:#?}"
-    );
+    for (label, inst) in [("Talker", talker), ("Listener", listener)] {
+        assert_eq!(
+            inst["kind"], "composable_node",
+            "{label}: kind must be composable_node"
+        );
+        assert_eq!(
+            inst["container_id"], container_id,
+            "{label}: container_id must point at the parent container"
+        );
+    }
 
     // ─── Per-child fidelity ─────────────────────────────────────────────────
     //
@@ -156,11 +163,10 @@ fn composable_container_plan_shape() {
         "listener subscriber remap missing"
     );
 
-    // Components index — must carry an entry per composable class. The
-    // parent container's `exec="container"` ALSO appears as a phantom
-    // auto-synthesized component today (planner fills in metadata it can't
-    // find on disk); pinning the count would over-constrain a planner-fix
-    // that drops the phantom, so only assert the two real ones exist.
+    // Components index — carries an entry per composable class. The
+    // container's auto-synthesized component entry may or may not appear
+    // depending on metadata discovery; pinning the count would over-
+    // constrain, so only assert the two composable classes exist.
     let components = plan["components"].as_array().expect("components array");
     for needle in ["Talker", "Listener"] {
         assert!(
@@ -170,18 +176,4 @@ fn composable_container_plan_shape() {
             "components missing demo_container::{needle}: {components:#?}"
         );
     }
-
-    // ─── TODO 211.B planner-fix expected shape ─────────────────────────────
-    //
-    // Once `nros-cli` groups composables under their `<node_container>`,
-    // this block flips on. Pseudocode:
-    //
-    //     let container = instances.iter().find(|i| i["kind"] == "container")
-    //         .expect("container instance");
-    //     for child in [talker, listener] {
-    //         assert_eq!(child["kind"], "composable_node");
-    //         assert_eq!(child["container_id"], container["id"]);
-    //     }
-    //
-    // Leave as a comment until the planner change lands.
 }
