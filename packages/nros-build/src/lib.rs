@@ -26,6 +26,7 @@
 //! }
 //! ```
 
+pub mod cyclonedds;
 pub mod discovery;
 pub mod nros_bin;
 pub mod stamp;
