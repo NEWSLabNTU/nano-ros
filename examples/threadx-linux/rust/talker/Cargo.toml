@@ -1,36 +1,43 @@
 [package]
-name = "threadx-linux-talker"
+name = "threadx_linux_rs_talker"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "talker on Linux with ThreadX + NetX Duo (Phase 118 collapsed)"
+description = "ThreadX Linux talker — Phase 212.L Component pkg"
 
-[[bin]]
-name = "threadx-linux-talker"
-test = false
-bench = false
-
-[features]
-default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh"]
-rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "dep:critical-section", "nros/alloc"]
+# Phase 212.L.1 Component pkg shape — lib only, no [[bin]], no main.rs.
+# `nros::component!()` exports the register trampoline; the generated
+# runtime (driven by `nros codegen-system` via the H.4 ThreadX adapter
+# shim) owns `nros::init`, executor open, RMW registration, and the
+# spin loop.
+[lib]
+crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-threadx", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
 
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-threadx", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
-critical-section = { version = "1.2", default-features = false, features = ["std"], optional = true }
+[package.metadata.nros.component]
+class = "threadx_linux_rs_talker::Talker"
+name = "talker"
+default_namespace = "/"
+
+[package.metadata.nros.deploy.threadx-linux]
+board = "threadx-linux"
+rmw = "zenoh"
+domain_id = 0
+
+[package.metadata.ament]
+build_depend = ["std_msgs"]
+exec_depend = ["std_msgs"]
+
+[profile.release]
+opt-level = "s"
+lto = true
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
-# workspace root. Without it, cargo walks up + adopts the example into the
-# outer nano-ros workspace (in nested checkouts) or gets adopted by a user's
-# workspace `members` glob when they copy this example out, breaking the
-# README's "standalone copy-out template" promise. Canonical in-tree builds
-# also pass via the root `exclude = [...]` list (belt-and-braces).
+# workspace root (copy-out template promise + outer-workspace adoption guard).
 [workspace]
 
 # === BEGIN nros-managed [patch.crates-io] ===

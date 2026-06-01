@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>threadx_linux_listener</name>
+  <name>threadx_linux_rs_listener</name>
   <version>0.1.0</version>
   <description>ThreadX Linux listener example</description>
   <maintainer email="dev@example.com">Developer</maintainer>

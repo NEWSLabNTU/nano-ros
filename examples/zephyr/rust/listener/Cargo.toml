@@ -1,19 +1,25 @@
 # SPDX-License-Identifier: Apache-2.0
-# nros Zephyr listener (Rust) — Phase 168.3 collapsed shape.
+# nros Zephyr Listener Example (Rust) — Phase 212.M.3 Component pkg.
 #
-# Single dir, N RMW backends. Selection driven by Kconfig overlay
-# (prj-<rmw>.conf) → CMakeLists.txt → EXTRA_CARGO_ARGS=--features rmw-<x>.
+# Phase 212.L.1 shape — lib only, no `rust_main` entry. `nros::component!()`
+# exports the register trampoline; the generated runtime (driven by `nros
+# codegen-system` via the H.1 Zephyr adapter shim once L.7 self-pkg lands)
+# owns init, executor open, RMW registration, and the spin loop.
+#
+# RMW selection still flows through the Kconfig overlay (`prj-<rmw>.conf`)
+# → CMakeLists.txt EXTRA_CARGO_ARGS for now. After L.7 self-pkg lands,
+# `[package.metadata.nros.deploy.zephyr].rmw` becomes authoritative.
 
 [package]
 name = "nros_zephyr_listener"
 version = "0.1.0"
 edition = "2021"
-description = "nros listener for Zephyr RTOS (multi-RMW)"
+description = "nros listener for Zephyr RTOS (Component pkg, multi-RMW)"
 license = "MIT OR Apache-2.0"
 
 [lib]
 name = "rustapp"
-crate-type = ["staticlib"]
+crate-type = ["rlib", "staticlib"]
 
 [features]
 default = ["rmw-zenoh"]
@@ -36,6 +42,22 @@ std_msgs = { version = "*", default-features = false }
 
 [build-dependencies]
 zephyr-build = "0.1.0"
+
+# Phase 212.L.1 Component pkg metadata. `class` MUST match the
+# `<pkg-name>::<UserClass>` shape that `nros check` (L.4) enforces.
+[package.metadata.nros.component]
+class = "nros_zephyr_listener::Listener"
+name = "listener"
+default_namespace = "/"
+
+[package.metadata.nros.deploy.zephyr]
+board = "native_sim/native/64"
+rmw = "zenoh"
+domain_id = 0
+
+[package.metadata.ament]
+build_depend = ["std_msgs"]
+exec_depend = ["std_msgs"]
 
 [profile.release]
 opt-level = "s"

@@ -1,8 +1,0 @@
-# Phase 157 — NuttX external-app Make.defs for the CPP listener example.
-# Discovered by NuttX's apps/Makefile via the `apps/external/*/Make.defs`
-# glob. Sibling `integrations/nuttx/Make.defs` exposes nano-ros headers +
-# `libnros_cpp.a` via the parent CONFIG_NROS gate.
-
-ifneq ($(CONFIG_NROS_EXAMPLE_LISTENER_CPP),)
-CONFIGURED_APPS += $(APPDIR)/external/nano-ros-listener-cpp
-endif

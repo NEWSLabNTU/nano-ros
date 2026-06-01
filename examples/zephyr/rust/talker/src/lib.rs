@@ -1,116 +1,62 @@
-//! nros Zephyr Talker Example (Rust) — Phase 168.1 collapsed shape.
+//! Zephyr Talker — Phase 212.M.3 / Phase 212.L Component pkg.
 //!
-//! Single example, three RMW backends. Cargo features
-//! `rmw-zenoh` / `rmw-xrce` (mutually exclusive)
-//! select the backend at build time; CMakeLists.txt maps Kconfig
-//! `CONFIG_NROS_RMW_<X>=y` to the matching feature.
+//! Publishes `std_msgs/Int32` on `/chatter` once per second.
+//!
+//! Component pkg shape: `register()` declares node + publisher + timer;
+//! `ExecutableComponent::on_callback("on_tick")` runs the timer body
+//! (bump counter, publish). The generated runtime — emitted by
+//! `nros codegen-system` via the H.1 Zephyr adapter shim once the
+//! L.7 self-pkg case lands — owns `nros::init`, executor open, RMW
+//! registration, and the spin loop. The user authors *only* the
+//! declarative + body bits.
+//!
+//! RMW selection still flows through the Kconfig `prj-<rmw>.conf`
+//! overlay (vendor-native per L.12). After L.7 self-pkg lands,
+//! `[package.metadata.nros.deploy.zephyr].rmw` becomes authoritative.
 
 #![no_std]
 
-#[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cyclonedds")))]
-compile_error!("Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce | rmw-cyclonedds).");
-
-#[cfg(any(
-    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
-    all(feature = "rmw-zenoh", feature = "rmw-cyclonedds"),
-    all(feature = "rmw-xrce", feature = "rmw-cyclonedds"),
-))]
-compile_error!("rmw-zenoh / rmw-xrce / rmw-cyclonedds are mutually exclusive.");
-
-use log::{error, info};
-use nros::{Executor, ExecutorConfig, NodeError, TimerDuration};
+use nros::{
+    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
+    ExecutableComponent, NodeId, NodeOptions, TimerDuration,
+};
 use std_msgs::msg::Int32;
 
-fn register_rmw() -> Result<(), &'static str> {
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    #[cfg(feature = "rmw-xrce")]
-    {
-        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
-    }
-    #[cfg(feature = "rmw-cyclonedds")]
-    {
-        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
-    }
-    Ok(())
-}
+/// Talker component — counter state + chatter publish on every tick.
+pub struct Talker;
 
-#[cfg(feature = "rmw-zenoh")]
-fn make_config() -> ExecutorConfig<'static> {
-    ExecutorConfig::new("tcp/127.0.0.1:7456")
-}
+impl Component for Talker {
+    const NAME: &'static str = "talker";
 
-#[cfg(feature = "rmw-cyclonedds")]
-fn make_config() -> ExecutorConfig<'static> {
-    // Domain from Kconfig (CONFIG_NROS_DOMAIN_ID) — compile-time, embedded-style.
-    // Test fixtures build distinct domains per role-set via -DCONFIG_NROS_DOMAIN_ID
-    // so the native_sim Cyclone tests run in parallel (distinct RTPS ports).
-    ExecutorConfig::new("")
-        .domain_id(zephyr::kconfig::CONFIG_NROS_DOMAIN_ID as u32)
-        .node_name("cyclonedds_talker")
-}
-
-#[cfg(feature = "rmw-xrce")]
-fn make_config() -> ExecutorConfig<'static> {
-    use core::fmt::Write;
-    // Phase 120.2 — locator built from Kconfig at runtime so test
-    // fixtures can override the port per (variant, lang).
-    static mut LOCATOR: heapless::String<48> = heapless::String::new();
-    // SAFETY: single-threaded startup; this is the sole accessor of the
-    // `LOCATOR` static, and `from_utf8_unchecked` is fed bytes written here
-    // from formatted Kconfig string values (valid UTF-8).
-    unsafe {
-        let loc = core::ptr::addr_of_mut!(LOCATOR);
-        (*loc).clear();
-        let _ = write!(
-            *loc,
-            "{}:{}",
-            zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_ADDR,
-            zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_PORT
-        );
-        // LOCATOR is the only writer — borrow it as &'static str.
-        let s: &'static str = core::str::from_utf8_unchecked((*loc).as_bytes());
-        ExecutorConfig::new(s).node_name("xrce_talker")
+    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("talker"))?;
+        let _pub = node.create_publisher::<Int32>(EntityId::new("pub_chatter"), "/chatter")?;
+        let _timer = node.create_timer(
+            EntityId::new("timer_tick"),
+            CallbackId::new("on_tick"),
+            TimerDuration::from_millis(1000),
+        )?;
+        node.callback(CallbackId::new("on_tick"))
+            .publishes(EntityId::new("pub_chatter"))?;
+        Ok(())
     }
 }
 
-#[no_mangle]
-extern "C" fn rust_main() {
-    // SAFETY: installs the logger once during single-threaded startup, before
-    // any logging call.
-    unsafe {
-        zephyr::set_logger().ok();
+impl ExecutableComponent for Talker {
+    /// Monotonic counter — the next int32 to publish.
+    type State = i32;
+
+    fn init() -> Self::State {
+        0
     }
 
-    info!("nros Zephyr Talker");
-    info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
-
-    if let Err(e) = run() {
-        error!("Error: {:?}", e);
+    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+        if callback.as_str() == "on_tick" {
+            let msg = Int32 { data: *state };
+            let _ = ctx.publish::<Int32, 64>(EntityId::new("pub_chatter"), &msg);
+            *state = state.wrapping_add(1);
+        }
     }
 }
 
-fn run() -> Result<(), NodeError> {
-    let _ = nros::platform::zephyr::wait_for_network(2000);
-
-    register_rmw().expect("Failed to register RMW backend");
-
-    let config = make_config();
-    let mut executor: Executor = Executor::open(&config)?;
-
-    let mut node = executor.create_node("talker")?;
-    let publisher = node.create_publisher::<Int32>("/chatter")?;
-
-    let mut counter: i32 = 0;
-    executor.register_timer(TimerDuration::from_millis(1000), move || {
-        let _ = publisher.publish(&Int32 { data: counter });
-        info!("Published: {}", counter);
-        counter = counter.wrapping_add(1);
-    })?;
-
-    info!("Publishing messages...");
-
-    executor.spin(core::time::Duration::from_millis(10));
-}
+nros::component!(Talker);

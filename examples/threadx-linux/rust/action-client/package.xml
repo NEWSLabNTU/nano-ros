@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>threadx_linux_action_client</name>
+  <name>threadx_linux_rs_action_client</name>
   <version>0.1.0</version>
   <description>ThreadX Linux action client example</description>
   <maintainer email="dev@example.com">Developer</maintainer>

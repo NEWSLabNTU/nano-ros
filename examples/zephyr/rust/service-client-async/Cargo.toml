@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-# nros Zephyr service-client-async (Rust) — Phase 168.3 collapsed shape.
+# nros Zephyr Service Client Async Example (Rust) — Phase 212.M.3 deferred.
+#
+# Embassy-async driven; the Component / ExecutableComponent traits do not
+# yet model an async callback shape, so this example stays on the legacy
+# `rust_main` + `Executor` pattern until the async-Component seam ships
+# (follow-up wave; tracked alongside the imperative service-client call
+# seam in `nros::CallbackCtx`/`TickCtx`). All other Zephyr Rust examples
+# have migrated to the Phase 212.L.1 Component pkg shape.
 
 [package]
 name = "nros_zephyr_service_client_async"

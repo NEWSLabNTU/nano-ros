@@ -1,112 +1,49 @@
-//! nros Zephyr Listener Example (Rust) — Phase 168.3 collapsed shape.
+//! Zephyr Listener — Phase 212.M.3 / Phase 212.L Component pkg.
 //!
-//! Single example, two RMW backends. Cargo features `rmw-zenoh` /
-//! `rmw-xrce` (mutually exclusive) select the backend.
+//! Subscribes to `std_msgs/Int32` on `/chatter` and tracks the last seen
+//! value. The generated runtime — emitted by `nros codegen-system` via
+//! the H.1 Zephyr adapter shim once L.7 self-pkg lands — owns init,
+//! executor open, RMW registration, and the spin loop.
 
 #![no_std]
 
-#[cfg(not(any(
-    feature = "rmw-zenoh",
-    feature = "rmw-xrce",
-    feature = "rmw-cyclonedds"
-)))]
-compile_error!(
-    "Exactly one rmw-* feature must be enabled (rmw-zenoh | rmw-xrce | rmw-cyclonedds)."
-);
-
-#[cfg(any(
-    all(feature = "rmw-zenoh", feature = "rmw-xrce"),
-    all(feature = "rmw-zenoh", feature = "rmw-cyclonedds"),
-    all(feature = "rmw-xrce", feature = "rmw-cyclonedds"),
-))]
-compile_error!("rmw-zenoh / rmw-xrce / rmw-cyclonedds are mutually exclusive.");
-
-use log::{error, info};
-use nros::{Executor, ExecutorConfig, NodeError};
+use nros::{
+    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
+    ExecutableComponent, NodeId, NodeOptions,
+};
 use std_msgs::msg::Int32;
 
-fn register_rmw() -> Result<(), &'static str> {
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        nros_rmw_zenoh::register().map_err(|_| "zenoh register failed")?;
-    }
-    #[cfg(feature = "rmw-xrce")]
-    {
-        nros_rmw_xrce_cffi::register().map_err(|_| "xrce register failed")?;
-    }
-    #[cfg(feature = "rmw-cyclonedds")]
-    {
-        nros_rmw_cyclonedds_sys::register().map_err(|_| "cyclonedds register failed")?;
-    }
-    Ok(())
-}
+pub struct Listener;
 
-#[cfg(feature = "rmw-zenoh")]
-fn make_config() -> ExecutorConfig<'static> {
-    ExecutorConfig::new("tcp/127.0.0.1:7456")
-}
+impl Component for Listener {
+    const NAME: &'static str = "listener";
 
-#[cfg(feature = "rmw-cyclonedds")]
-fn make_config() -> ExecutorConfig<'static> {
-    // Domain from Kconfig (CONFIG_NROS_DOMAIN_ID) — compile-time, embedded-style.
-    // Test fixtures build distinct domains per role-set via -DCONFIG_NROS_DOMAIN_ID
-    // so the native_sim Cyclone tests run in parallel (distinct RTPS ports).
-    ExecutorConfig::new("")
-        .domain_id(zephyr::kconfig::CONFIG_NROS_DOMAIN_ID as u32)
-        .node_name("cyclonedds_listener")
-}
-
-#[cfg(feature = "rmw-xrce")]
-fn make_config() -> ExecutorConfig<'static> {
-    use core::fmt::Write;
-    static mut LOCATOR: heapless::String<48> = heapless::String::new();
-    // SAFETY: single-threaded startup; this is the sole accessor of the
-    // `LOCATOR` static, and `from_utf8_unchecked` is fed bytes written here
-    // from formatted Kconfig string values (valid UTF-8).
-    unsafe {
-        let loc = core::ptr::addr_of_mut!(LOCATOR);
-        (*loc).clear();
-        let _ = write!(
-            *loc,
-            "{}:{}",
-            zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_ADDR,
-            zephyr::kconfig::CONFIG_NROS_XRCE_AGENT_PORT
-        );
-        let s: &'static str = core::str::from_utf8_unchecked((*loc).as_bytes());
-        ExecutorConfig::new(s).node_name("xrce_listener")
+    fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
+        let mut node = ctx.create_node(NodeId::new("node"), NodeOptions::new("listener"))?;
+        let _sub = node.create_subscription::<Int32>(
+            EntityId::new("sub_chatter"),
+            CallbackId::new("on_chatter"),
+            "/chatter",
+        )?;
+        Ok(())
     }
 }
 
-#[no_mangle]
-extern "C" fn rust_main() {
-    // SAFETY: installs the logger once during single-threaded startup, before
-    // any logging call.
-    unsafe {
-        zephyr::set_logger().ok();
+impl ExecutableComponent for Listener {
+    /// Last value seen on `/chatter` (state shared across callback ticks).
+    type State = i32;
+
+    fn init() -> Self::State {
+        0
     }
-    info!("nros Zephyr Listener");
-    info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
-    if let Err(e) = run() {
-        error!("Error: {:?}", e);
+
+    fn on_callback(state: &mut Self::State, callback: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
+        if callback.as_str() == "on_chatter" {
+            if let Ok(msg) = ctx.message::<Int32>() {
+                *state = msg.data;
+            }
+        }
     }
 }
 
-fn run() -> Result<(), NodeError> {
-    let _ = nros::platform::zephyr::wait_for_network(2000);
-    register_rmw().expect("Failed to register RMW backend");
-
-    let config = make_config();
-    let mut executor: Executor = Executor::open(&config)?;
-    let nid = executor.node_builder("listener").build()?;
-
-    executor
-        .node_mut(nid)
-        .create_subscription::<Int32, _>("/chatter", move |msg: &Int32| {
-            // Canonical listener format (Phase 198.2): `Received: <value>` — one
-            // line per message, parsed by nros_tests::output::parse_listener.
-            info!("Received: {}", msg.data);
-        })?;
-
-    info!("Waiting for messages on /chatter...");
-    executor.spin(core::time::Duration::from_millis(1000));
-}
+nros::component!(Listener);
