@@ -43,6 +43,11 @@ members = [
     # `packages/dds/nros-rmw-cyclonedds/` CMake project or by the
     # Zephyr module's `CONFIG_NROS_RMW_CYCLONEDDS` branch.
     "packages/dds/nros-rmw-cyclonedds-sys",
+    # Phase 212.K.3 — pure-Rust port of
+    # `scripts/cyclonedds/msg_to_cyclone_idl.py`. Lands ahead of the
+    # Cyclone wrapper sys crate (212.K.2) so that path stays
+    # pure-cargo (no python build-dep).
+    "packages/codegen/nros-msg-to-idl",
     # Phase 169.4 — retired Rust DDS crates deleted.
     # Integration tests
     "packages/testing/nros-tests",
