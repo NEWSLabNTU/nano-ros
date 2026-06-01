@@ -99,7 +99,7 @@ forward-compat invariant the future registry depends on.
 | M2 | `source.lock` files list strategy — directory-tree Merkle hash over canonical-sorted relative paths (avoid per-file listing for large crates) | 211.4 |
 | M3 | External-dep-without-proofs policy: default to local axiomatization in `proofs/axioms/<dep>-axioms.mlw` with attestor field | 211.2 first instance |
 | M4 | Coq fallback workflow: `proofs/coq/<vc-id>.v` per stubborn VC; replayed via Why3's Coq driver | 211.4 if any VC needs it |
-| M7 | `creusot --no-prove` reference: upstream Creusot flag, not a new wcr command. Document only | 211.1 |
+| ~~M7~~ | ~~`creusot --no-prove` reference~~ → **resolved 2026-06-01**: Creusot 0.10 uses subcommand split, not a flag. `cargo creusot` = extract only; `cargo creusot prove` = full discharge; `cargo creusot prove --replay` = cached re-discharge. Documented in risk-register mitigation + U1 spike doc | resolved |
 | M8 | Extraction error vs VC failure: distinct exit codes (e.g. exit 2 = extraction error; exit 3 = VC failed) + distinct stderr messages | 211.4 |
 
 ### Forward-compat invariants — frozen in PoC, immutable through 211.8
@@ -276,7 +276,7 @@ tier           = 1                       # 0=provenance, 1=verified, 2=safety-is
 language       = "rust"
 
 [package.metadata.nros.proof.tools]
-extractor = "creusot-0.5.0"
+extractor = "creusot-0.10.0"
 verifier  = "why3-1.7.0"
 provers   = ["z3-4.13.0", "alt-ergo-2.5.4", "cvc5-1.1.2"]
 
@@ -289,8 +289,8 @@ axiom_deps = []                                         # author-maintained
 
 [package.metadata.nros.proof.spec_hashes]
 # Auto-populated by `wcr extract` from normalized extracted .mlw
-"Nros_core_result"  = "creusot-0.5.0/sha256:..."
-"Nros_core_message" = "creusot-0.5.0/sha256:..."
+"Nros_core_result"  = "creusot-0.10.0/sha256:..."
+"Nros_core_message" = "creusot-0.10.0/sha256:..."
 
 [package.metadata.nros.proof.attestation]
 provenance_file = "attestations/slsa.json"
@@ -329,7 +329,7 @@ Adding C later = adding files under `extracted/c/`, no schema migration.
 | Tool | PoC scaffold (211.1) | First stable (by 211.2 close) |
 |---|---|---|
 | `wcr` | 0.0.x | 0.1.0 |
-| Creusot | 0.5.0 | 0.5.0 |
+| Creusot | 0.10.0 | 0.10.0 |
 | Why3 | 1.7.0 | 1.7.0 |
 | Z3 | 4.13.x | 4.13.x |
 | Alt-Ergo | 2.5.x | 2.5.x |
@@ -687,7 +687,7 @@ Phase 211 closes when all of the following hold:
 
 | Risk | Phase | Likelihood | Impact | Mitigation |
 |---|---|---|---|---|
-| Creusot iteration too slow | 211.1 / 211.2 | Medium | High | Per-VC cache + `creusot --no-prove` syntax check; keep Verus fallback through 211.2 |
+| Creusot iteration too slow | 211.1 / 211.2 | Medium | High | Per-VC cache + `cargo creusot` (extract-only, no prover) for syntax-check dev loop + `cargo creusot prove --replay` for fast cached re-discharge; keep Verus fallback through 211.2 |
 | Annotation cost > 4× source effort | 211.2 / 211.7 | Medium | High | Scope to public API only; trusted-stub internal helpers |
 | Verus port debt (hard cases) | 211.6 | Medium | Medium | Time-box per item; accept trusted stubs with follow-ups |
 | HW axioms unmeasurable without per-board work | 211.7 / 211.9 | High | Medium | Synthetic bounds for QEMU; real HW only on characterized boards |
@@ -719,7 +719,7 @@ spec invalidation on every Creusot bump.
   → strip comments + Creusot-version attributes → deterministic reprint →
   SHA-256.
 - Spec hash includes Creusot version prefix
-  (`creusot-0.5.0/sha256:...`); `wcr verify` warns on Creusot mismatch
+  (`creusot-0.10.0/sha256:...`); `wcr verify` warns on Creusot mismatch
   instead of silently re-extracting.
 - Document Creusot-bump procedure: bump version in index → CI
   re-discharges every published bundle → consumer caches invalidate at
@@ -956,7 +956,7 @@ items below remain open as scoped backlog.
 | M4 | Coq fallback workflow. Bundle layout has no `proofs/coq/` for tactic scripts. Add `proofs/coq/<vc-id>.v` per stubborn VC; replay invokes Why3's Coq driver against the script | 211.4 |
 | M5 | Schema-version coexistence. Workspace with mixed v0.1 + v0.2 packages — does `wcr verify` accept? Propose: `wcr` supports last-N schema versions (N=3); workspace-level schema-version pinning in `wcr.toml` workspace section (post-PoC) | 211.8 |
 | M6 | Mixed-language packages (Rust + C source in one crate, e.g. `nros-c` wrapper). C4 hybrid doesn't address. Propose: Cargo.toml carries Rust proof metadata; sibling `wcr.toml` carries C proof metadata; both compose; `wcr manifest` merges | 211.8 |
-| M7 | `creusot --no-prove` syntax-check command — is it a Creusot upstream flag or wcr-wrapper? Upstream Creusot has `--no-prove` already. Reference explicitly in docs; not a new wcr command | 211.1 |
+| ~~M7~~ | ~~`creusot --no-prove` syntax-check command~~ → **resolved 2026-06-01**: prior assumption of a `--no-prove` flag was wrong. Creusot 0.10 (Feb 2026) uses a Cargo-subcommand split: `cargo creusot` runs the extract step only (Rust → Coma + Why3 obligation generation); `cargo creusot prove` invokes Why3find to discharge; `cargo creusot prove --replay` reuses the existing `proof.json` and skips proof search entirely. The dev iteration loop is `cargo creusot` (~ syntax-check), the cached re-run loop is `cargo creusot prove --replay`. No new wcr wrapper command needed; wcr-cli simply shells out to the right subcommand based on the user's intent (`wcr extract` → `cargo creusot`; `wcr verify` → `cargo creusot prove --replay` with extract-then-prove fallback) | resolved |
 | M8 | Extraction error vs VC failure distinction. `wcr verify` must differentiate "Creusot crashed" from "VC didn't discharge" with distinct exit codes + error messages | 211.4 |
 | M9 | WCET axiom source for 211.7 — aiT is commercial + per-board licensed. Alternative: `cargo-call-stack` for stack-depth (FOSS), OTAWA for WCET (FOSS), measurement-based for QEMU targets. Drop aiT mention; commit to OTAWA + cargo-call-stack + measurement | 211.7 |
 
@@ -981,7 +981,7 @@ items below remain open as scoped backlog.
 | N4 | Phase 211 does not state Miri's role. Add 1-line statement: Miri continues as orthogonal UB-detector under `test-miri` tier; not displaced | 211.6 |
 | N5 | Line 388 (Cyclone DDS RMW) — phrase as "nano-ros Rust shim around upstream Cyclone DDS C++; C portions of the shim deferred to cross-language post-PoC" | 211.7 prep |
 
-### Resolved by Pass A + F1 check (2026-06-01)
+### Resolved by Pass A + F1 + M7 (2026-06-01)
 
 | # | Issue | How |
 |---|---|---|
@@ -994,6 +994,7 @@ items below remain open as scoped backlog.
 | (add) | `wcr deps` not in CLI surface | Added to tool-layering diagram |
 | (add) | Theory naming convention undocumented | Added explicit convention table in Architecture section |
 | F1 | `wcr` name availability check | Confirmed available on crates.io + `github.com/NEWSLabNTU/wcr` + PyPI; npm overlap dormant + non-blocking. Adopted without fallback |
+| M7 | Creusot fast-iteration command | Subcommand split, not a flag. `cargo creusot` (extract only) / `cargo creusot prove` (full discharge) / `cargo creusot prove --replay` (cached re-run). Risk-register mitigation + U1 spike doc updated to use the correct surface. Pin bumped 0.5.0 → 0.10.0 throughout |
 
 ## Notes
 

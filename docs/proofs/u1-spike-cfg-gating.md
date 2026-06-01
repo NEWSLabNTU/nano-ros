@@ -25,7 +25,7 @@ dependencies. The macros expand to no-ops when invoked by stock
 ```toml
 # Cargo.toml
 [dependencies]
-creusot_contracts = "0.5"
+creusot_contracts = "0.10"
 ```
 
 ```rust
@@ -60,7 +60,7 @@ default = []
 proofs  = ["dep:creusot_contracts"]
 
 [dependencies]
-creusot_contracts = { version = "0.5", optional = true }
+creusot_contracts = { version = "0.10", optional = true }
 ```
 
 ```rust
@@ -113,6 +113,39 @@ the impl itself. Refactor risk (rename impl → forget to rename spec).
 Creusot extraction may need extra wiring to associate `add_spec` with
 `add`.
 
+## Dev-loop commands (Creusot 0.10+ surface, M7 resolution)
+
+Creusot 0.10 (Feb 2026) uses a Cargo subcommand split, not a single
+binary with mode flags. The three relevant invocations:
+
+| Command | What it does | When to use |
+|---|---|---|
+| `cargo creusot` | compile Rust → Coma + emit Why3 obligations; **does not run any prover** | dev iteration: confirms annotation syntax + extraction succeed, fast |
+| `cargo creusot prove` | invoke Why3find against the obligations; run Z3/Alt-Ergo/CVC5 | full verification run |
+| `cargo creusot prove --replay` | skip proof search; reuse the existing `proof.json` | cached re-discharge after `proof.json` was committed |
+| `cargo creusot -p <pkg>` / `cargo creusot prove -p <pkg>` | scope to one workspace member | targeted iteration |
+
+Dev workflow on a single crate:
+
+```
+edit src/lib.rs
+cargo creusot              # ~ syntax + extraction check, fast
+cargo creusot prove        # full discharge when ready to verify
+git add proofs/proof.json
+# later, after pulling:
+cargo creusot prove --replay   # re-verify quickly using the committed json
+```
+
+`wcr-cli` shells out to these subcommands transparently:
+
+- `wcr extract` → `cargo creusot`
+- `wcr verify` → `cargo creusot prove --replay`, falling back to
+  `cargo creusot prove` if the cache misses
+- `wcr replay` → `cargo creusot prove --replay`
+
+No new wcr-side "fast iteration" command needed; the Creusot CLI
+already provides the right granularity.
+
 ## Run matrix
 
 Executed at 211.1 day 3-5 once `cargo install creusot` succeeds.
@@ -126,7 +159,8 @@ Executed at 211.1 day 3-5 once `cargo install creusot` succeeds.
 | `cargo doc` | annotations rendered | hidden | impl + spec module both rendered |
 | `cargo build --release` size delta | ≤ 1 % | 0 % | 0 % |
 | Clean rebuild time delta | ≤ 2 % | 0 % | 0 % |
-| `wcr extract` (post-toolchain) | extracts annotated fns | extracts | extracts spec module |
+| `cargo creusot` (extract) | succeeds w/ annotations | succeeds with `--features proofs` | succeeds, extracts spec module |
+| `cargo creusot prove` (discharge) | succeeds | succeeds with `--features proofs` | succeeds |
 
 Size + time deltas measured with `cargo bloat` + `cargo build --timings`
 against a baseline of the same crate without `creusot_contracts` in any
@@ -139,9 +173,10 @@ form.
 - `cargo build` produces zero warnings.
 - Release binary size delta ≤ 1 % (`cargo bloat`).
 - Compile-time delta ≤ 2 % (timed clean builds).
-- `wcr extract` picks up annotations from a `cargo` invocation without
-  `--features proofs` set (i.e. the Creusot driver does its own
-  invocation independent of cargo features).
+- `cargo creusot` picks up annotations from a build without
+  `--features proofs` set (i.e. the Creusot driver runs the extract
+  step regardless of cargo feature state, treating contract macros
+  as live during its own pass).
 
 **Fall back to H2** if:
 
@@ -276,7 +311,7 @@ extract) are the upper-bound acceptances for picking H1 over H2/H3.
 
 ## Prior
 
-Creusot 0.5's contract macros are documented as inert outside the
+Creusot 0.10's contract macros are documented as inert outside the
 driver. Verus and Prusti hold this property. We estimate:
 
 - H1 holds: ~ 80 % probability
