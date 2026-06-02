@@ -28,6 +28,20 @@
 //! 212.M.5.a.1 per-pkg mangled symbol) so the build still links + runs.
 //! A separate `#[ignore]` test asserts the Corrosion-present path
 //! imports the Rust component crates.
+//
+// TODO(N.7 ThreadX migration): Phase 212.N.7 step-6 retired the
+// Rust-side `__nros_component_<pkg>_*` extern symbols (the
+// `nros::component!()` macro now emits one public `register(runtime)`
+// wrapper instead). The ThreadX C-side `system_main.c` baker
+// (`cmake/NanoRosThreadxSystemCodegen.cmake`) is untouched by that
+// retirement — it still emits `__nros_component_<pkg>_register` extern
+// declarations + weak stubs at the C layer, where the linker resolves
+// them against Corrosion-imported Rust staticlibs that re-expose those
+// symbols via per-fixture trampolines (see
+// `multi_pkg_workspace_threadx/src/<pkg>/src/lib.rs`). The assertions
+// below still match that C-side output verbatim. Re-audit when the
+// ThreadX Entry pkg migration lands and the C baker is replaced (or
+// rewired to call `<pkg>::register(runtime)` through Corrosion).
 
 use std::{
     fs,
