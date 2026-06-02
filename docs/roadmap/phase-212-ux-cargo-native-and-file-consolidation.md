@@ -1083,12 +1083,20 @@ canonical-shape regression test can run green tree-wide:
       `portable_atomic_util::Arc` on `riscv32imc` (and any target
       missing ptr atomics). Unblocked the M.7 ESP-IDF sweep that
       then shipped in `15a5e1717`.
-- [ ] **M-F.8 PX4 H.7 SITL board overlay** — see §212.H.7. Codegen
+- [x] **M-F.8 PX4 H.7 SITL board overlay** — see §212.H.7. Codegen
       emits `nros_<name>/` module dirs but PX4's `make px4_sitl_
       default --dry-run` doesn't pick them up without an enable
-      fragment in `boards/px4/sitl/*.px4board`. Either a
-      `--board-overlay <path>` codegen flag writing outside the
-      vendored PX4 tree, or operator-supplied overlay file.
+      fragment in `boards/px4/sitl/*.px4board`. **Landed via Option B**
+      (operator-supplied overlay file): `integrations/px4/sitl-overlay/
+      {nros.px4board.in,render-overlay.sh}` walks
+      `<px4>/src/modules/nros_*/` and emits one
+      `CONFIG_MODULES_NROS_<UPPER>=y` line per emitted module dir; the
+      operator appends the rendered fragment onto the SITL board file
+      of their choice. Stays out of the vendored PX4 tree by design.
+      The user incantation is documented in `integrations/px4/README.md`.
+      Option A (`--board-overlay <path>` codegen flag in the
+      `nros-cli` sibling repo) is left as a future TODO — folding step
+      3 into the existing `nros codegen-system --target px4` call.
 - [x] **M-F.9 `nros generate-rust` default output path mismatch** —
       tree-side reconciliation landed in `964914870`: 72 example
       `Cargo.toml`s + 1 just-recipe comment rewritten so every

@@ -1,0 +1,32 @@
+# Phase 212.M-F.8 — PX4 SITL board overlay for nano-ros component modules.
+#
+# `nros codegen-system --ahead-of-vendor --target px4` emits one
+# `nros_<name>/` module dir per component under `$PX4_AUTOPILOT_DIR/src/modules/`.
+# PX4's own SITL build (`make px4_sitl_default`) doesn't pick those up
+# unless the per-module Kconfig switch is flipped ON in a `.px4board`
+# fragment under `boards/px4/sitl/`.
+#
+# This file is a **template** — it's not consumed by PX4 directly. The
+# operator copies the rendered output of `render-overlay.sh` into the
+# PX4 tree (typically `boards/px4/sitl/default.px4board`, or a sibling
+# `nros.px4board` board variant).
+#
+# Lines below are KConfig-style assignments. The exact module switch
+# name comes from each per-component Kconfig the codegen emits:
+#
+#     menuconfig MODULES_NROS_<UPPER>
+#
+# (see `integrations/px4/module-template/component-skeleton/Kconfig`
+#  for the template the codegen renders against). To enable a module,
+# add a matching `CONFIG_MODULES_NROS_<UPPER>=y` line below.
+#
+# The placeholder gets expanded by `render-overlay.sh`, which walks
+# `$PX4_AUTOPILOT_DIR/src/modules/nros_*/` and emits one
+# `CONFIG_MODULES_NROS_<UPPER>=y` line per emitted module dir. The
+# operator then concatenates the rendered fragment onto the SITL
+# `.px4board` of their choice (PX4 reads `.px4board` files as a single
+# Kconfig defconfig — concatenation is the supported merge mechanism).
+
+# === BEGIN nano-ros component modules ===
+@NROS_MODULES_ENABLE@
+# === END nano-ros component modules ===
