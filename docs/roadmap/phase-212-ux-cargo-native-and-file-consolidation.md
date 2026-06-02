@@ -1678,27 +1678,41 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         `ComponentRegisterFn` aliases in `nros-platform` are
         unchanged); only the global-symbol surface is gone.
 - **Test fixture follow-up (N.7 closing sweep):**
-  - [ ] `phase212_m5a4_dispatch.rs` — directly references
-        `__nros_component_nros_tests_*` idents. Compile-time break
-        under step-6. Rewrite (or delete — the dispatch contract is
-        now exercised through the `register(runtime)` wrapper).
-  - [ ] `phase212_m5a1_macro_mangle.rs` — scans compiled binaries
-        for `__nros_component_*` symbols. Runtime break under
-        step-6. Same rewrite / delete decision.
-  - [ ] `phase212_h3_freertos.rs` — walks the (now-gone) BSP
-        build-script output tree and asserts `system_main.rs` +
-        `__nros_component_*` symbols. Rewrite to assert the new
-        Entry pkg shape (codegen-emitted `run_plan.rs` + Component
-        pkg `register` wrapper presence) or replace with a smoke
-        test that builds the migrated fixture.
-  - [ ] `phase212_h4_threadx.rs` — asserts the ThreadX C-side
-        `system_main.c` baker output. Untouched by N.7 (the M.5.a
-        baker on ThreadX is C, not Rust), but the assertions still
-        mention `__nros_component_*_register` — re-audit when the
-        ThreadX Entry pkg migration lands.
-  - [ ] `nros::component::component_register_symbol` helper — dead
-        public API after step-6 (no callers). Cleanup pass on the
-        next maintenance sweep.
+  - [x] `phase212_m5a4_dispatch.rs` — **rewritten** to go through the
+        macro-emitted `pub fn register(runtime)` wrapper instead of
+        the four `__nros_component_*` extern symbols. Builds + wraps
+        `ExecutorComponentRuntime` in a `RuntimeCtx::with_runtime`
+        and calls `talker_register(&mut ctx)`; same dispatch + cell
+        publisher-resolver coverage as the original. `nros-platform`
+        added as a gated dep under `component-runtime-test` (the
+        macro emit references `::nros_platform::RuntimeCtx`).
+  - [x] `phase212_m5a1_macro_mangle.rs` — **deleted**. The
+        duplicate-symbol contract it guarded is now structurally
+        impossible: step-6 dropped every global `extern "Rust"`
+        emit, so the macro emits ONE public `register` per Component
+        pkg, pkg-namespaced via the crate root. Rust's module system
+        enforces uniqueness; no test needed.
+  - [x] `phase212_h3_freertos.rs` — **rewritten** for the Entry pkg
+        shape. Same `thumbv7m-none-eabi` `cargo build -p firmware`
+        smoke; assertions moved from the BSP baker's
+        `system_main.rs` (+ `__nros_component_*` symbol presence) to
+        the `nros-build` codegen output: `$OUT_DIR/run_plan.rs` must
+        contain `<pkg>::register` per `<node>` in
+        `launch/system.launch.xml`. Accepts the placeholder-stub
+        fallback when `nros-build` is unreachable offline (build
+        smoke still verified).
+  - [x] `phase212_h4_threadx.rs` — **left in place** with a
+        `TODO(N.7 ThreadX migration)` block. The ThreadX C-side
+        `system_main.c` baker is untouched by N.7 (which scoped to
+        the Rust macro emit + FreeRTOS BSP) and still emits the
+        `__nros_component_<pkg>_register` extern declarations + weak
+        stubs at the C layer — the test's assertions still match
+        verbatim. Re-audit when the ThreadX Entry pkg migration
+        lands.
+  - [x] `nros::component::component_register_symbol` helper —
+        **deleted** from `packages/core/nros/src/component.rs`. The
+        re-exports in `nros::lib` and `nros::component_runtime` are
+        also gone. Zero live callers.
 - [x] **N.8 Board family + porting docs (book chapter)** —
       `book/src/porting/board-trait.md`: trait surface, lifecycle,
       transport-mixin selection, worked example for a new board
