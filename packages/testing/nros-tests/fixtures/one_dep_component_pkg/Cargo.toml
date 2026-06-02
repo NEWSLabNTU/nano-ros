@@ -1,0 +1,36 @@
+# Phase 212.M-F.13 path (b) fixture — single-`nros`-dep Component pkg.
+#
+# The whole point of this fixture is the [dependencies] table: ONLY
+# `nros`. No `nros-platform`. The `nros::component!()` macro expansion
+# must resolve `RuntimeCtx` / `RuntimeError` / the four `Component*Fn`
+# fn-pointer aliases through `nros::__macro_support::nros_platform` —
+# the re-export added by the M-F.13 path-(b) landing.
+#
+# Standalone `[workspace]` table keeps this crate out of the outer
+# fixture / nano-ros workspace (mirrors the multi_pkg_workspace_*
+# fixtures' pkg shape).
+#
+# The companion test `phase212_macro_one_dep` runs `cargo check` on
+# this fixture and asserts a clean build. If the macro re-export path
+# regresses (e.g. someone retargets back to bare `::nros_platform::`),
+# the check fails with `error[E0433]: failed to resolve: use of
+# unresolved module or unlinked crate 'nros_platform'` — exactly the
+# Phase 212.M-F.13 surface this guard protects.
+[workspace]
+
+[package]
+name = "one_dep_component_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# DELIBERATELY only `nros`. Do NOT add `nros-platform` here — the
+# whole point of the fixture is to prove the macro re-export path
+# (Phase 212.M-F.13 path (b)) keeps one-dep Component pkgs working.
+# Native `platform-posix` so the fixture can build on a stock host
+# toolchain (the test runs `cargo check` without cross-compiling).
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-posix", "ros-humble"] }
