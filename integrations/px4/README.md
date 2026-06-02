@@ -13,7 +13,7 @@ Same precedent as the PlatformIO adapter at `integrations/platformio/`.
 C++-only per Phase 115.K.4 (the PX4 surface collapsed to a single
 C++ uORB port; there is no Rust uORB on the SITL path).
 
-## User incantation (Phase 212.H.7)
+## User incantation (Phase 212.H.7 + M-F.8)
 
 ```bash
 # 1. Bake nano-ros component module dirs into the PX4 source tree.
@@ -29,13 +29,39 @@ nros codegen-system --ahead-of-vendor \
 #                                     ├── Kconfig          (per-module switch)
 #                                     └── <component>.cpp  (rendered body)
 
-# 3. Build SITL — PX4's own walker picks the new modules up.
+# 3. Render the SITL board overlay enabling those modules (Phase 212.M-F.8).
+#    PX4's SITL build won't pick the new module dirs up unless their
+#    Kconfig switches are flipped ON in a `.px4board` fragment under
+#    `boards/px4/sitl/`. The helper walks `<px4>/src/modules/nros_*/`
+#    and emits one `CONFIG_MODULES_NROS_<UPPER>=y` line per dir; append
+#    the rendered fragment onto the SITL board file of your choice
+#    (PX4 reads `.px4board` files as a single Kconfig defconfig, so
+#    concatenation is the supported merge):
+integrations/px4/sitl-overlay/render-overlay.sh \
+    --px4-dir $PX4_AUTOPILOT_DIR \
+    >> $PX4_AUTOPILOT_DIR/boards/px4/sitl/default.px4board
+
+# 4. Build SITL — PX4's own walker now picks the new modules up.
 make -C $PX4_AUTOPILOT_DIR px4_sitl_default
 ```
 
 `nros codegen-system --ahead-of-vendor --target px4` operates entirely
 **outside the nano-ros tree** — it writes into `$PX4_AUTOPILOT_DIR`
-directly, mirroring the PlatformIO `extra_script` path.
+directly, mirroring the PlatformIO `extra_script` path. The
+`render-overlay.sh` helper at `integrations/px4/sitl-overlay/`
+similarly never touches the vendored PX4 tree itself — it only reads
+from `<px4>/src/modules/` and emits a fragment the operator then
+appends to a `.px4board` of their choice.
+
+### TODO — future CLI-side automation
+
+Step 3 (overlay render) lives outside `nros` today because the
+codegen verb for the PX4 target landed in the standalone
+[`nros-cli`](https://github.com/NEWSLabNTU/nros-cli) repo as the
+single-purpose module-dir emit. A `--board-overlay <path>` flag on
+`nros codegen-system --target px4` would fold the overlay-render step
+into the same invocation (one tool, one walk). Tracked in Phase
+212.M-F.8; sibling-repo change.
 
 ## Legacy template (Phase 139.5) — `EXTERNAL_MODULES_LOCATION`
 
@@ -68,16 +94,20 @@ integrations/px4/
 │   │   ├── CMakeLists.txt               ← px4_add_module(MAIN @COMPONENT_NAME@)
 │   │   ├── Kconfig                      ← per-component Kconfig
 │   │   └── component.cpp.template       ← module body w/ placeholders
-│   └── src/                             ← legacy 139.5 layout
-│       ├── CMakeLists.txt
-│       └── modules/nano_ros_app/...
+│   ├── src/                             ← legacy 139.5 layout
+│   │   ├── CMakeLists.txt
+│   │   └── modules/nano_ros_app/...
+└── sitl-overlay/                        ← 212.M-F.8 SITL board overlay
+    ├── nros.px4board.in                 ← Kconfig defconfig template
+    └── render-overlay.sh                ← walks <px4>/src/modules/nros_*/
+                                          and renders the fragment
 ```
 
 ## LoC budget
 
-`tokei integrations/px4/module-template/` reports the entire shim
-≤200 LoC per the Phase 212 §H.8 budget (the component skeleton is
-≤80 LoC; the 139.5 legacy template another ~110).
+`tokei integrations/px4/` reports the entire shim ≤300 LoC per the
+Phase 212 §H.8 budget (the component skeleton ≤80 LoC; the 139.5
+legacy template another ~110; the M-F.8 SITL overlay another ~100).
 
 ## Reference
 
@@ -95,5 +125,8 @@ the post-codegen module-dir shape + the legacy
 PX4 has no central module registry. Downstreams either let
 `nros codegen-system --ahead-of-vendor` emit dirs into
 `$PX4_AUTOPILOT_DIR/src/modules/` per-build, or vendor the legacy
-template via git submodule / `cp -r`. See
-`docs/release/registry-publishing.md` for the cross-ecosystem comparison.
+template via git submodule / `cp -r`. In either path the SITL
+build still needs the `sitl-overlay/render-overlay.sh` step to
+flip the per-module Kconfig switches; see the M-F.8 user-incantation
+block above. `docs/release/registry-publishing.md` carries the
+cross-ecosystem comparison.
