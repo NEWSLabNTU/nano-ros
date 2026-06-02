@@ -469,6 +469,22 @@ pub use nros_node::{
 // transport-layer `TransportConfig` already re-exported above.
 pub use nros_platform::{BoardConfig, BoardTransportConfig};
 
+/// Implementation detail — used by `nros::component!()` macro expansion.
+///
+/// Re-exports `nros_platform` so the macro's emitted trampoline can
+/// reference `RuntimeCtx` / `RuntimeError` / the `Component*Fn`
+/// fn-pointer aliases without forcing every consumer Component pkg's
+/// `Cargo.toml` to carry an explicit `nros-platform` dep on top of
+/// `nros`. Phase 212.M-F.13 path (b).
+///
+/// Not part of the public API — paths under this module may change at
+/// any time. End users should depend on `nros` alone and invoke
+/// `nros::component!()`; the macro routes through here automatically.
+#[doc(hidden)]
+pub mod __macro_support {
+    pub use ::nros_platform;
+}
+
 // Phase 110.B / 110.G — scheduling-context API surface. Consumers
 // of the Phase 110 cyclic / TT scheduler need these types to
 // describe schedules and bind handles; re-exporting them here
