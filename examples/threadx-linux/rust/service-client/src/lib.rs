@@ -1,17 +1,18 @@
 //! ThreadX Linux Service Client — Phase 212.L Component pkg.
 //!
 //! Declares a service client for `example_interfaces/AddTwoInts` on
-//! `/add_two_ints`. The generated runtime owns init / executor / spin
-//! and is responsible for dispatching outbound calls (`tick`-driven in
-//! the executor seam). This Component pkg currently only declares the
-//! client surface — body-side call dispatch lands with W.5.6 plumbing.
+//! `/add_two_ints`. Phase 212.M-F.4.b transcription: one-shot
+//! `send_request` on the first `tick` call. Until the M-F.4.a
+//! `GenClientDispatch` reaches the installed nros-cli, the in-tree
+//! `UnsupportedClients` stub returns `ComponentError::Runtime`; the
+//! body still compiles + the seam is honest.
 
 #![no_std]
 
-use example_interfaces::srv::AddTwoInts;
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    Component, ComponentContext, ComponentResult, EntityId, NodeId, NodeOptions,
-    declarative_component,
+    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
+    ExecutableComponent, NodeId, NodeOptions, TickCtx,
 };
 
 pub struct ServiceClient;
@@ -28,7 +29,40 @@ impl Component for ServiceClient {
     }
 }
 
-declarative_component!(ServiceClient);
+pub struct State {
+    /// Set once the call has been sent — keeps `tick` idempotent.
+    sent: bool,
+}
+
+impl ExecutableComponent for ServiceClient {
+    type State = State;
+
+    fn init() -> Self::State {
+        State { sent: false }
+    }
+
+    fn on_callback(
+        _state: &mut Self::State,
+        _callback: CallbackId<'_>,
+        _ctx: &mut CallbackCtx<'_>,
+    ) {
+    }
+
+    fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
+        if state.sent {
+            return;
+        }
+        let req = AddTwoIntsRequest { a: 7, b: 35 };
+        let result: nros::ComponentResult<AddTwoIntsResponse> =
+            ctx.call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
+                EntityId::new("cli_add"),
+                &req,
+            );
+        if result.is_ok() {
+            state.sent = true;
+        }
+    }
+}
 
 nros::component!(ServiceClient);
 

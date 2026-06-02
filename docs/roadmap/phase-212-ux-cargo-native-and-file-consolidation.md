@@ -1026,12 +1026,27 @@ canonical-shape regression test can run green tree-wide:
         `generated_service_client_emits_gen_client_dispatch`
         integration test. Pending maintainer merge of the
         `phase-212-m-f-4-a-genclientdispatch` branch.
-      - [ ] **M-F.4.b** — Transcribe the per-lang client-side
-        examples (NuttX + ThreadX + Zephyr Rust × `service-client`
-        + `action-client`) from declarative-metadata-only no-op
-        bodies to real `ctx.call` / `ctx.send_goal` calls in the
-        `tick` hook. Unblocked once M-F.4.a merges into nros-cli
-        `main` and the installed CLI bumps.
+      - [x] **M-F.4.b** — Per-lang client-side example transcription
+        shipped 2026-06-02. All 6 wave-2 Component pkgs now carry a
+        real `tick` body invoking `ctx.call` / `ctx.send_goal`:
+        - service-client × {`qemu-arm-nuttx/rust`,
+          `threadx-linux/rust`, `zephyr/rust`} — timer fires →
+          `on_callback` flips `pending`/`counter`; `tick` drains the
+          flag, builds `AddTwoIntsRequest`, calls
+          `ctx.call::<Req, Resp, 64, 64>(...)`. Two of the three
+          (ThreadX, Zephyr) had no timer in registration — they use
+          a one-shot `sent` flag pattern on first tick.
+        - action-client × same three platforms — one-shot
+          `send_goal::<FibonacciGoal, 32>(...)` on first tick;
+          `sent` flag flipped only on `Ok`, so the next tick retries
+          until the M-F.4.a-shipped `GenClientDispatch` reaches the
+          installed CLI (today the in-tree `UnsupportedClients`
+          stub returns `ComponentError::Runtime` and the flag stays
+          false — honest behavior + stable source). Verified
+          `cargo check` on 4/6 (NuttX × 2 + ThreadX-Linux × 2);
+          Zephyr × 2 share the same template + are blocked on the
+          pre-existing `zephyr-build` crate-not-on-crates.io gap
+          (out of M-F.4.b scope).
       - [x] **M-F.4.c** — `nros-cpp` mirror shipped in `71ce0a7ba`.
         New FFI symbols `nros_cpp_tick_ctx_call_raw` +
         `nros_cpp_tick_ctx_send_goal_raw` (Rust impl at

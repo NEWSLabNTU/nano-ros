@@ -1,18 +1,21 @@
 //! Zephyr AddTwoInts service client — Phase 212.M.3 / Phase 212.L Component pkg.
 //!
-//! Declarative metadata: node + service client + driver timer. The
-//! component model expresses *what* entities exist; the imperative call
-//! sequencing (issue request → await reply) currently has no `TickCtx`
-//! seam — service-client invocation is a follow-up wave for the
-//! generated runtime. For now the body is a declarative no-op; codegen-
-//! system will own the call-loop once that seam lands.
+//! Declarative metadata: node + service client + driver timer.
+//!
+//! Phase 212.M-F.4.b transcription: timer fires → `on_callback` flips
+//! the state's `pending` flag + bumps the operand counter. Real call
+//! dispatch lives in `tick` (the only place `&mut Executor` is free —
+//! see `TickCtx` docs). Until `nros::TickCtx::call`'s underlying
+//! `ClientDispatch` impl ships in the installed nros-cli (M-F.4.a),
+//! the in-tree `UnsupportedClients` stub returns `ComponentError::
+//! Runtime`; the body still compiles + the seam is honest.
 
 #![no_std]
 
-use example_interfaces::srv::AddTwoInts;
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
     CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
-    ExecutableComponent, NodeId, NodeOptions, TimerDuration,
+    ExecutableComponent, NodeId, NodeOptions, TickCtx, TimerDuration,
 };
 
 pub struct AddTwoIntsClient;
@@ -34,23 +37,49 @@ impl Component for AddTwoIntsClient {
     }
 }
 
+pub struct State {
+    /// Set by `on_callback` when the timer fires; drained by `tick`
+    /// after dispatching the call.
+    pending: bool,
+    /// Monotonic counter used as the request operands.
+    counter: i64,
+}
+
 impl ExecutableComponent for AddTwoIntsClient {
-    /// Index into the canned test-case table for the next call.
-    type State = u8;
+    type State = State;
 
     fn init() -> Self::State {
-        0
+        State {
+            pending: false,
+            counter: 0,
+        }
     }
 
     fn on_callback(
-        _state: &mut Self::State,
-        _callback: CallbackId<'_>,
+        state: &mut Self::State,
+        callback: CallbackId<'_>,
         _ctx: &mut CallbackCtx<'_>,
     ) {
-        // The runtime-side service-client call seam is a follow-up wave
-        // (TickCtx today exposes publish + action ops only). Codegen-
-        // system will wire the imperative call loop here once the seam
-        // ships; the declarative metadata above is the stable contract.
+        if callback.as_str() == "issue_call" {
+            state.pending = true;
+            state.counter = state.counter.wrapping_add(1);
+        }
+    }
+
+    fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
+        if !state.pending {
+            return;
+        }
+        state.pending = false;
+        let req = AddTwoIntsRequest {
+            a: state.counter,
+            b: state.counter.wrapping_add(1),
+        };
+        let _: nros::ComponentResult<AddTwoIntsResponse> =
+            ctx.call::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
+                EntityId::new("client_add"),
+                &req,
+            );
     }
 }
 

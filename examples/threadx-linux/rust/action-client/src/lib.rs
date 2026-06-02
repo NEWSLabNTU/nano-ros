@@ -1,17 +1,20 @@
 //! ThreadX Linux Action Client — Phase 212.L Component pkg.
 //!
 //! Declares an `example_interfaces/Fibonacci` action client on
-//! `/fibonacci`. The Component pkg currently only declares the
-//! client surface — goal dispatch + result polling land with the
-//! W.5.6 client-side tick API. The generated runtime owns init /
-//! executor / spin.
+//! `/fibonacci`. Phase 212.M-F.4.b transcription: one-shot
+//! `send_goal` on the first `tick` call. Feedback + result
+//! callbacks land via `on_callback` once codegen wires the feedback-
+//! stream + result-subscriber + `GoalStatusArray` topics through
+//! to dispatch. The in-tree `UnsupportedClients` stub returns
+//! `ComponentError::Runtime` until the M-F.4.a `GenClientDispatch`
+//! reaches the installed nros-cli.
 
 #![no_std]
 
-use example_interfaces::action::Fibonacci;
+use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use nros::{
-    Component, ComponentContext, ComponentResult, EntityId, NodeId, NodeOptions,
-    declarative_component,
+    CallbackCtx, CallbackId, Component, ComponentContext, ComponentResult, EntityId,
+    ExecutableComponent, NodeId, NodeOptions, TickCtx,
 };
 
 pub struct ActionClient;
@@ -30,7 +33,38 @@ impl Component for ActionClient {
     }
 }
 
-declarative_component!(ActionClient);
+pub struct State {
+    /// Set once the goal has been sent — keeps `tick` idempotent.
+    sent: bool,
+}
+
+impl ExecutableComponent for ActionClient {
+    type State = State;
+
+    fn init() -> Self::State {
+        State { sent: false }
+    }
+
+    fn on_callback(
+        _state: &mut Self::State,
+        _callback: CallbackId<'_>,
+        _ctx: &mut CallbackCtx<'_>,
+    ) {
+    }
+
+    fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
+        if state.sent {
+            return;
+        }
+        let goal = FibonacciGoal { order: 10 };
+        if ctx
+            .send_goal::<FibonacciGoal, 32>(EntityId::new("cli_fib"), &goal)
+            .is_ok()
+        {
+            state.sent = true;
+        }
+    }
+}
 
 nros::component!(ActionClient);
 
