@@ -226,7 +226,7 @@ block the fast one.
 
 ## Shipped examples
 
-### `examples/native/rust/bridge/tt-zenoh-to-xrce/`
+### `examples/bridges/tt-zenoh-to-xrce/`
 
 Pure-Rust bridge. Zenoh ingress → XRCE-DDS egress under an
 ARINC-653-style time-triggered cyclic schedule. Read this

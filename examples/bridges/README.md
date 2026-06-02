@@ -6,11 +6,13 @@ session and republishing on a DDS session. Because a bridge spans
 transport slots, it does not belong to a single
 `<plat>/<lang>/<rmw>/<example>` cell and lives outside that tree.
 
-Current bridge examples live under the normal example tree when they
-also exercise a platform/language-specific feature.
+Bridge examples that *also* exercise a platform/language-specific
+feature may still live under the normal example tree; the canonical
+home for plain cross-RMW gateways is this sibling category.
 
 ## Contents
 
-- `../native/rust/bridge/tt-zenoh-to-xrce/` — POSIX Rust binary;
-  Zenoh subscriber, XRCE publisher. Demonstrates the multi-RMW
-  registry plus the Phase 110.G time-triggered scheduling path.
+- `tt-zenoh-to-xrce/` — POSIX Rust binary; Zenoh subscriber, XRCE
+  publisher. Demonstrates the multi-RMW registry plus the Phase 110.G
+  time-triggered scheduling path. Relocated 2026-06-02 from
+  `examples/native/rust/bridge/` per §212.L sibling-category rule.

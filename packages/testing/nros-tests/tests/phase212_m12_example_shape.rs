@@ -192,10 +192,10 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
         "stm32f4 Embassy variant — pre-212 shape, no package.xml; \
          falls under M-F.5 async-Component work",
     ),
-    (
-        "examples/native/rust/bridge/",
-        "Phase 110.G time-triggered bridge demo — pre-212 shape, not in M sweep",
-    ),
+    // `examples/native/rust/bridge/` UNMIGRATED entry retired 2026-06-02:
+    // the sole occupant (`tt-zenoh-to-xrce`) moved to `examples/bridges/`
+    // per §212.L sibling-category rule. `examples/bridges/` carries no
+    // `package.xml`, so discovery skips it without an explicit prefix.
     (
         "examples/templates/",
         "sibling category (Phase 131) — not a migrated example surface",

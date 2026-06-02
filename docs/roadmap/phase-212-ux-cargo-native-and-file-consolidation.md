@@ -946,7 +946,8 @@ A clean break — no transitional mixed-shape state allowed.
       threadx + threadx-linux/c + native/c (not in M sweep table),
       stm32f4 RTIC / Embassy variants, native/rust *-rtic + *-async
       + custom-* + lifecycle-node + serial-* (M.1 explicit deferrals),
-      native/rust/bridge (Phase 110.G TT demo), templates/. A
+      bridges/ (Phase 110.G TT demo — relocated 2026-06-02 from
+      native/rust/bridge/ per §212.L sibling-category rule), templates/. A
       `unmigrated_trees_status_surface` test prints the skip set so
       CI logs document each skip's rationale.
 

@@ -91,7 +91,7 @@ Phase 118.I blocks untriaged retired RMW roots.
 
 Examples that bridge two RMW backends; span the transport slot so they don't fit one platform cell. See [`book/src/user-guide/cross-backend-bridges.md`](../book/src/user-guide/cross-backend-bridges.md) for the model + build-knob walkthrough.
 
-- `native/rust/bridge/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
+- `bridges/tt-zenoh-to-xrce/` — Rust bridge, zenoh ↔ XRCE-DDS
 
 ### `templates/` — multi-platform copy-out recipes
 

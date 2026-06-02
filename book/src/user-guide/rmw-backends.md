@@ -144,7 +144,7 @@ each).
 A worked example lives at
 [`examples/bridges/native-rust-zenoh-to-dds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/native-rust-zenoh-to-dds);
 the time-triggered variant under
-[`examples/native/rust/bridge/tt-zenoh-to-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/bridge/tt-zenoh-to-xrce)
+[`examples/bridges/tt-zenoh-to-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/bridges/tt-zenoh-to-xrce)
 shows the same pattern under an ARINC-653-style cyclic schedule.
 
 Full walkthrough: [Cross-backend Bridges](./cross-backend-bridges.md).
