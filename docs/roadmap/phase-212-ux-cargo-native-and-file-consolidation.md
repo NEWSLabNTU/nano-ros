@@ -1325,6 +1325,83 @@ canonical-shape regression test can run green tree-wide:
       CPP)` (reads `package.xml` `<depend>` rows). Doc-only fix —
       the cmake function name stays as it is (honest descriptor of
       behaviour: find from package.xml, not generation).
+- [ ] **M-F.12 NuttX `gen-app-config.py` orphan after M-F.10
+      cleanup** (nano-ros) — Surfaced by §Acceptance "All 7 RTOS
+      adapters ship a working bringup fixture" audit
+      (`b0b9a365c`). M-F.10.5 deleted
+      `cmake/templates/nros_app_config.h.in` along with the cmake
+      codegen path, but `scripts/nuttx/gen-app-config.py` still
+      references the template, and `scripts/nuttx/stage-external-
+      apps.sh` invokes it during the H.2 build step. Result: the
+      H.2 build-step test `nuttx_qemu_arm_2_component_bringup_
+      builds` HARD FAILS on any host with NuttX provisioned.
+      **Resolution paths:**
+      - **(a)** Drop the legacy nuttx-examples staging loop from
+        `scripts/nuttx/stage-external-apps.sh` (lines 88–123 per
+        the audit). The Phase 212 bringup path under
+        `multi_pkg_workspace_nuttx/src/demo_bringup/` is the only
+        supported path post-212.M sweep, so the legacy loop is
+        dead weight.
+      - **(b)** Or re-introduce the template under a 212.M-aware
+        shape that matches the M-F.10 Path C contract (board-side
+        emission of `const nros_app_config_t NROS_APP_CONFIG`
+        rather than per-binary header bake).
+      Path (a) is the recommended fix — aligns with M-F.10's
+      direction of travel.
+      **Files:** `scripts/nuttx/stage-external-apps.sh`,
+      `scripts/nuttx/gen-app-config.py` (DELETE if (a)),
+      `examples/qemu-arm-nuttx/{c,cpp}/` (potentially retire).
+      **Acceptance:** `phase212_h2_nuttx::nuttx_qemu_arm_2_
+      component_bringup_builds` passes on a host with NuttX
+      provisioned. **Blocks:** §Acceptance "All 7 RTOS adapters
+      ship a working bringup fixture" flip.
+- [ ] **M-F.13 FreeRTOS fixture macro/dep mismatch after N.7
+      step-3.4** (nano-ros) — Surfaced by the same audit
+      (`b0b9a365c`). The `efa778162` (212.N.7 step-3.4) commit
+      changed `nros::component!()` to emit `::nros_platform::*`
+      references in the consumer pkg's generated trampoline, but
+      the fixture `multi_pkg_workspace_freertos/src/{talker,
+      listener}_pkg/Cargo.toml` only depends on `nros`, not
+      `nros_platform`. Result: the H.3 test
+      `freertos_qemu_mps2_an385_2_component_bringup_builds` HARD
+      FAILS in the worktree (with FreeRTOS toolchain present)
+      with `error[E0433]: failed to resolve: use of unresolved
+      module or unlinked crate 'nros_platform'`. ThreadX H.4
+      sidesteps this by hand-writing the FFI export (no
+      `nros::component!()` invocation) — that's why H.4 didn't
+      catch the same regression.
+      **Resolution paths:**
+      - **(a)** Add a direct `nros_platform = { path = ...,
+        default-features = false }` dep to every Phase 212
+        component-pkg fixture / example. Per-fixture churn,
+        forever recurring on every new component pkg user
+        writes — bad UX.
+      - **(b)** Re-export `nros_platform` through
+        `nros::__macro_support::nros_platform` inside
+        `packages/core/nros/src/lib.rs` AND retarget the macro
+        in `packages/core/nros-macros/src/lib.rs` to emit
+        `::nros::__macro_support::nros_platform::*` instead of
+        `::nros_platform::*`. One-shot fix; future component
+        pkgs Just Work with only `nros` as a dep.
+      Path (b) is the recommended fix — preserves the
+      `nros::component!()` macro UX contract (one dep =
+      `nros`).
+      **Files:** `packages/core/nros/src/lib.rs` (`pub mod
+      __macro_support { pub use nros_platform; }`),
+      `packages/core/nros-macros/src/lib.rs` (`::nros_platform`
+      → `::nros::__macro_support::nros_platform` in emitted
+      tokens), regression test in `packages/testing/nros-tests/
+      tests/phase212_macro_one_dep.rs` (NEW — assert a
+      fixture pkg with only `nros` as a dep compiles + the
+      generated trampoline resolves `nros_platform` references).
+      **Acceptance:** `phase212_h3_freertos::freertos_qemu_mps2_
+      an385_2_component_bringup_builds` passes; the new
+      `phase212_macro_one_dep` test passes. **Blocks:**
+      §Acceptance "All 7 RTOS adapters ship a working bringup
+      fixture" flip. **Coordination:** Touches
+      `packages/core/nros-macros/src/lib.rs` — the same file
+      N.7 step-3.4 just modified. Verify no in-flight N.7 work
+      is touching the macro output before landing.
 - **Tests** (per-wave, gated on SDK availability):
   - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
   - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
