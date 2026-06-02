@@ -31,16 +31,34 @@
 //! Once the build-glue carve-out lands:
 //!
 //! - `Config` — TOML-loaded network + zenoh config; overlays extend.
-//! - `run(Config, FnOnce(&Config) -> Result<(), E>)` — entry point.
-//!   Calls `tx_kernel_enter()` after stashing the user closure;
-//!   the ThreadX app thread invokes the closure once the kernel +
-//!   network are up.
+//! - [`run`] — legacy
+//!   `(Config, FnOnce(&Config) -> Result<(), E>) -> !` entry point
+//!   over the `nros-board-common` traits. Calls `tx_kernel_enter()`
+//!   after stashing the user closure; the ThreadX app thread invokes
+//!   the closure once the kernel + network are up.
+//! - [`run_entry`] — Phase 212.N.2 additive entry point over the new
+//!   [`nros_platform::board`] trait set
+//!   (`BoardInit` parameterless + `BoardPrint` + `BoardExit`
+//!   + `RuntimeCtx`). Shape:
+//!   `(Config, FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>) ->
+//!   Result<(), E>`. Per-board `impl BoardEntry` impls (landed in
+//!   212.N.3) delegate here.
 //! - `init_hardware()` — board-specific init (default no-op;
 //!   overlay re-exports a vendor version).
 //! - `#[no_mangle]` hooks the overlay implements:
 //!   - `nros_board_init_clocks()` — clock tree + pin mux.
 //!   - `nros_board_init_eth()` — NetX-Duo `NX_IP_DRIVER` binding.
 //!   - `nros_board_init_extra_drivers()` — sensors / displays.
+//!
+//! ## Phase 212.N status
+//!
+//! The legacy [`run`] (taking the `nros-board-common` traits + a
+//! `&Config` closure) and the new [`run_entry`] (taking the
+//! `nros_platform::board` traits + a `&mut RuntimeCtx` closure)
+//! coexist during the 212.N migration; per-board crates pick whichever
+//! entry point their `impl BoardEntry` / legacy `run` wrapper needs.
+//! Phase 212.N.7 retires the legacy shape and collapses to
+//! [`run_entry`] alone.
 //!
 //! ## SDK env-var contract
 //!
@@ -63,8 +81,10 @@
 
 #![no_std]
 
+mod entry;
 mod node;
 
+pub use entry::run_entry;
 pub use node::run;
 pub use nros_board_common::{BoardExit, BoardInit, BoardPrint, ThreadxConfig};
 

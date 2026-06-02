@@ -4,6 +4,25 @@
 
 **LIVE doc, WIP.** Audience = phase-212 implementers + reviewers. Expect open questions throughout, expect pushback. Decisions marked **LOCKED** are settled; **OPEN:** marks live debate.
 
+> **Revision 2026-06-02 — Entry pkg supersedes Bringup pkg.** The
+> "orchestration package" / "Bringup pkg" composition root described
+> through §3-§10 below is **retired** as of Phase 212.N: the **Entry
+> pkg** (per-board binary, owns `Cargo.toml` + `main.rs` + launch file
+> + deploy config) subsumes its role. Where this doc still says
+> "bringup pkg", read it as "Entry pkg" — the structural arguments
+> (per-system definition, no workspace-root `system.toml`, ROS muscle
+> memory) survive; what changes is that the composition root is a
+> normal compiled binary crate with a small `main.rs` calling
+> `<Board as BoardEntry>::run(setup)`, not a code-free declarative
+> directory. The retired `system.toml` is replaced by
+> `[package.metadata.nros.*]` tables in the Entry pkg's `Cargo.toml`.
+> See `book/src/user-guide/component-and-entry-pkg.md` for the
+> user-facing cookbook and `book/src/porting/board-trait.md` for the
+> Board trait family that the Entry pkg drives. A full rewrite of §4
+> + §5 + §7 to the Entry-pkg shape is tracked under Phase 212.N.8;
+> the sections below stay as the historical Path-A bringup-pkg
+> design until then.
+
 ---
 
 ## 2. Constraints (locked)

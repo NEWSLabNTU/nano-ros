@@ -29,6 +29,7 @@
 # User Guide
 
 - [Application Workflow](./user-guide/workflow.md)
+- [Component + Entry Pkg Cookbook](./user-guide/component-and-entry-pkg.md)
 - [Build as a CMake subdirectory](./getting-started/build-as-subdirectory.md)
 - [Message Generation](./user-guide/message-generation.md)
 - [Configuration](./user-guide/configuration.md)
@@ -59,6 +60,7 @@
 # Porting Guide
 
 - [Overview](./porting/overview.md)
+- [The `Board` Trait Family](./porting/board-trait.md)
 - [Custom Board Package](./porting/custom-board.md)
 - [Vendor Overlay Board Crate](./porting/vendor-overlay.md)
 - [Custom Platform](./porting/custom-platform.md)

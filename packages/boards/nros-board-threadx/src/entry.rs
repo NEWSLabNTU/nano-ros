@@ -1,0 +1,295 @@
+//! Phase 212.N.2 — `BoardEntry::run` shim for the ThreadX family.
+//!
+//! Adds an additive entry point built on the 212.N.1 trait set in
+//! `nros_platform::board` (`BoardInit` parameterless, `BoardPrint`,
+//! `BoardExit`, `RuntimeCtx`). Mirrors the legacy [`crate::run`]
+//! body — kernel-spawn shape: stash the user closure into static
+//! storage, push the network config + app callback through the C
+//! glue (`nros_threadx_set_config` + `nros_threadx_set_app_callback`),
+//! call `tx_kernel_enter()`, never return — but threads the new
+//! `RuntimeCtx` through the user setup callback instead of an opaque
+//! `&Config`.
+//!
+//! ## Why a free fn (not a blanket `impl BoardEntry`)
+//!
+//! The new [`nros_platform::BoardEntry`] trait is
+//!
+//! ```ignore
+//! fn run<F, E>(setup: F) -> Result<(), E>
+//!     where F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+//!           E: core::fmt::Debug;
+//! ```
+//!
+//! ThreadX bring-up needs a board `Config` (MAC / IP / netmask /
+//! gateway / interface) — that lives outside `RuntimeCtx` (codegen
+//! overlay knobs, not hardware config). The per-board crate
+//! (`nros-board-threadx-linux`, `nros-board-threadx-qemu-riscv64`)
+//! owns the `Config` source (TOML / `Config::default()`); it
+//! implements `BoardEntry` directly and delegates here:
+//!
+//! ```ignore
+//! impl BoardEntry for MyBoard {
+//!     fn run<F, E>(setup: F) -> Result<(), E>
+//!     where
+//!         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+//!         E: core::fmt::Debug,
+//!     {
+//!         let cfg = Config::default();
+//!         nros_board_threadx::run_entry::<MyBoard, Config, F, E>(cfg, setup)
+//!     }
+//! }
+//! ```
+//!
+//! 212.N.3 wires that into `nros-board-threadx-linux` +
+//! `nros-board-threadx-qemu-riscv64`; this file just provides the
+//! family-side helper. The legacy [`crate::run`] coexists during the
+//! 212.N transition.
+
+use core::ffi::c_void;
+
+use nros_board_common::ThreadxConfig;
+use nros_platform::{BoardExit, BoardInit, BoardPrint, RuntimeCtx};
+
+unsafe extern "C" {
+    fn nros_threadx_set_config(
+        ip: *const u8,
+        netmask: *const u8,
+        gateway: *const u8,
+        mac: *const u8,
+        interface_name: *const u8,
+    );
+
+    fn nros_threadx_set_app_callback(entry: unsafe extern "C" fn(*mut c_void), arg: *mut c_void);
+
+    #[link_name = "_tx_initialize_kernel_enter"]
+    fn tx_kernel_enter();
+
+    #[link_name = "_tx_thread_sleep"]
+    fn tx_thread_sleep(ticks: u32);
+}
+
+/// Wrapper passed through the ThreadX thread `void *` arg.
+struct AppContext<C, F> {
+    config: C,
+    closure: F,
+}
+
+/// Static storage for the 212.N.2 path's `AppContext`. Distinct from
+/// the legacy `node::run`'s `CTX_STORAGE` so both entry points can
+/// coexist during the 212.N migration; per-board overlays only ever
+/// link one path at a time, but keeping the statics separate avoids a
+/// type / generic-parameter clash if a future overlay accidentally
+/// pulls both. Sized for typical closure captures (Executor handle +
+/// a handful of node handles); asserted at runtime in `run_entry()`
+/// so overflow is caught loudly instead of corrupting adjacent
+/// memory.
+const CTX_STORAGE_SIZE: usize = 8192;
+static mut CTX_STORAGE: [u8; CTX_STORAGE_SIZE] = [0u8; CTX_STORAGE_SIZE];
+
+/// Static interface-name buffer for the C FFI's `interface_name`
+/// argument. Linux overlay copies its `Config::interface` here +
+/// appends NUL; bare-metal overlays leave it empty and pass `NULL`.
+const IFACE_BUF_SIZE: usize = 64;
+static mut IFACE_BUF: [u8; IFACE_BUF_SIZE] = [0u8; IFACE_BUF_SIZE];
+
+/// ThreadX task entry for the application closure (212.N flavour —
+/// hands the closure a `&mut RuntimeCtx<'_>` instead of `&Config`).
+///
+/// # Safety
+/// `arg` must point to a valid `AppContext<C, F>` written into
+/// `CTX_STORAGE` by `run_entry()`, surviving until the ThreadX
+/// kernel terminates.
+unsafe extern "C" fn app_task_entry_runtime<B, C, F, E>(arg: *mut c_void)
+where
+    B: BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
+    E: core::fmt::Debug,
+{
+    let ctx = unsafe { &*(arg as *const AppContext<C, F>) };
+
+    // Network stabilisation delay. Ticks at TX_TIMER_TICKS_PER_SECOND
+    // (100 by default) — 200 ticks ≈ 2 s, matching the legacy per-
+    // overlay wait in `node::app_task_entry`.
+    unsafe {
+        tx_thread_sleep(200);
+    }
+
+    // FnOnce — `core::ptr::read` because this task entry runs once.
+    let closure = unsafe { core::ptr::read(&ctx.closure) };
+
+    // 212.N.2: the user closure consumes `&mut RuntimeCtx`, not
+    // `&Config`. Codegen (212.N.4) will populate launch overlay
+    // params/remaps inside a `static` and pass the slices in here;
+    // for now the family driver hands a fresh `EMPTY` slot, which is
+    // the same shape the unit-test path uses.
+    let mut runtime = RuntimeCtx::EMPTY;
+
+    match closure(&mut runtime) {
+        Ok(()) => {
+            B::println(format_args!(""));
+            B::println(format_args!("Application completed successfully."));
+            B::println(format_args!(""));
+            B::println(format_args!("========================================"));
+            B::println(format_args!("  Done"));
+            B::println(format_args!("========================================"));
+            B::exit_success();
+        }
+        Err(e) => {
+            B::println(format_args!(""));
+            B::println(format_args!("Application error: {:?}", e));
+            B::exit_failure();
+        }
+    }
+}
+
+/// Phase 212.N.2 — family-driver entry point for ThreadX boards.
+///
+/// Mirrors the legacy [`crate::run`] body — stashes the user closure
+/// into static storage, registers the network config + app callback
+/// through the unified ThreadX C glue, calls `tx_kernel_enter()`,
+/// never returns — but routes through the 212.N.1
+/// `nros_platform::board` trait set + [`RuntimeCtx`].
+///
+/// Per-board crates (e.g. `nros-board-threadx-linux`,
+/// `nros-board-threadx-qemu-riscv64`) wire this into their
+/// `impl BoardEntry for Self::run` body in 212.N.3:
+///
+/// ```ignore
+/// impl nros_platform::board::BoardEntry for MyBoard {
+///     fn run<F, E>(setup: F) -> Result<(), E>
+///     where
+///         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+///         E: core::fmt::Debug,
+///     {
+///         let cfg = Config::default();
+///         nros_board_threadx::run_entry::<MyBoard, Config, F, E>(cfg, setup)
+///     }
+/// }
+/// ```
+///
+/// # Type parameters
+///
+/// - `B: BoardInit + BoardPrint + BoardExit` — per-board glue pulled
+///   from `nros_platform::board` (212.N.1 surface).
+/// - `C: ThreadxConfig` — board's config type, exposing
+///   `mac/ip/netmask/gateway/interface()` accessors. Stays as a
+///   separate generic (rather than folded onto `B::Config`) so the
+///   per-board overlay can keep its existing concrete `Config`
+///   struct unchanged during the 212.N migration.
+/// - `F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>` — user closure
+///   receiving the runtime context.
+/// - `E: core::fmt::Debug` — closure error type.
+///
+/// # Return
+///
+/// The signature is `Result<(), E>` to satisfy the
+/// [`nros_platform::BoardEntry::run`] trait contract, but in practice
+/// the kernel-spawn flow never returns to the caller — either
+/// `tx_kernel_enter()` runs forever and the app thread drives
+/// `exit_success` / `exit_failure`, or kernel entry itself returns
+/// (e.g. on the Linux ThreadX-sim port after a clean shutdown) and we
+/// `exit_failure` defensively. The `Ok(())` arm exists only so the
+/// function signature lines up with the trait; it is unreachable in
+/// a working build.
+pub fn run_entry<B, C, F, E>(config: C, setup: F) -> core::result::Result<(), E>
+where
+    B: BoardInit + BoardPrint + BoardExit,
+    C: ThreadxConfig,
+    F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
+    E: core::fmt::Debug,
+{
+    B::println(format_args!(""));
+    B::println(format_args!("========================================"));
+    B::println(format_args!("  nros ThreadX Platform"));
+    B::println(format_args!("========================================"));
+    B::println(format_args!(""));
+
+    let mac = config.mac();
+    let ip = config.ip();
+    B::println(format_args!("Initializing ThreadX + NetX..."));
+    B::println(format_args!(
+        "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+    ));
+    B::println(format_args!(
+        "  IP:  {}.{}.{}.{}",
+        ip[0], ip[1], ip[2], ip[3]
+    ));
+    if let Some(iface) = config.interface() {
+        B::println(format_args!("  IF:  {}", iface));
+    }
+
+    // Per-board pre-kernel init. New 212.N.1 `BoardInit::init_hardware`
+    // is parameterless — board crates read any needed config off
+    // their own `pub const` / `pub static` rather than a passed-in
+    // arg.
+    B::init_hardware();
+
+    // Static-storage placement of AppContext. Closure size is
+    // bounded by CTX_STORAGE_SIZE (8 KB) — asserted so overflow is
+    // caught loudly instead of corrupting adjacent memory.
+    let ctx_ptr = unsafe {
+        let size = core::mem::size_of::<AppContext<C, F>>();
+        let align = core::mem::align_of::<AppContext<C, F>>();
+        assert!(
+            size <= CTX_STORAGE_SIZE,
+            "AppContext too large for CTX_STORAGE — bump CTX_STORAGE_SIZE"
+        );
+        let storage_ptr = core::ptr::addr_of_mut!(CTX_STORAGE) as *mut u8;
+        let addr = storage_ptr as usize;
+        let aligned = (addr + align - 1) & !(align - 1);
+        let offset = aligned - addr;
+        assert!(
+            offset + size <= CTX_STORAGE_SIZE,
+            "AppContext alignment + size exceeds CTX_STORAGE"
+        );
+        let ptr = storage_ptr.add(offset) as *mut AppContext<C, F>;
+        core::ptr::write(
+            ptr,
+            AppContext {
+                config,
+                closure: setup,
+            },
+        );
+        ptr
+    };
+
+    // Materialise interface name into the static buffer (with NUL
+    // terminator) or pass NULL for bare-metal overlays.
+    let iface_ptr: *const u8 = unsafe {
+        let cfg = &(*ctx_ptr).config;
+        match cfg.interface() {
+            Some(iface) => {
+                let buf_ptr = core::ptr::addr_of_mut!(IFACE_BUF) as *mut u8;
+                let bytes = iface.as_bytes();
+                let n = bytes.len().min(IFACE_BUF_SIZE - 1);
+                core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf_ptr, n);
+                *buf_ptr.add(n) = 0;
+                buf_ptr as *const u8
+            }
+            None => core::ptr::null(),
+        }
+    };
+
+    unsafe {
+        let cfg = &(*ctx_ptr).config;
+        nros_threadx_set_config(
+            cfg.ip().as_ptr(),
+            cfg.netmask().as_ptr(),
+            cfg.gateway().as_ptr(),
+            cfg.mac().as_ptr(),
+            iface_ptr,
+        );
+        nros_threadx_set_app_callback(app_task_entry_runtime::<B, C, F, E>, ctx_ptr as *mut c_void);
+
+        // Enter the ThreadX kernel — does not return on a working
+        // bring-up.
+        tx_kernel_enter();
+    }
+
+    // Unreachable — kernel enter diverges on production paths.
+    // `exit_failure()` is `-> !`, so this satisfies the
+    // `Result<(), E>` signature without an explicit `Ok` arm.
+    B::exit_failure()
+}

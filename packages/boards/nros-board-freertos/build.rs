@@ -29,8 +29,10 @@
 //! discovery + `cargo:rustc-link-search` for any per-board search
 //! path the linker needs.
 
-use std::env;
-use std::path::{Path, PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -61,7 +63,12 @@ fn main() {
     // --- Build FreeRTOS kernel ---
     let mut freertos = cc::Build::new();
     configure_cflags(&mut freertos);
-    add_freertos_includes(&mut freertos, &freertos_dir, &port_dir, &freertos_config_dir);
+    add_freertos_includes(
+        &mut freertos,
+        &freertos_dir,
+        &port_dir,
+        &freertos_config_dir,
+    );
     // Phase 204.6 — right-size the FreeRTOS heap (heap_4 `ucHeap`, the dominant
     // bss; this is the only TU that sizes it). FreeRTOSConfig.h defaults to a
     // cyclone-safe 3 MiB. Two overrides, env wins:
@@ -73,9 +80,9 @@ fn main() {
     //      (verified on the qemu MPS2-AN385 talker). Still far below the cyclone
     //      DDS-discovery default. cyclone/xrce don't enable this feature on the
     //      base crate, so they keep the safe 3 MiB default; tune via the env.
-    let heap_kb = env::var("NROS_FREERTOS_HEAP_KB").ok().or_else(|| {
-        (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| "512".to_string())
-    });
+    let heap_kb = env::var("NROS_FREERTOS_HEAP_KB")
+        .ok()
+        .or_else(|| (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| "512".to_string()));
     if let Some(kb) = heap_kb {
         freertos.define("NROS_FREERTOS_HEAP_KB", kb.as_str());
     }
@@ -150,7 +157,12 @@ fn main() {
     let nros_platform_cffi_include = env_path("NROS_PLATFORM_CFFI_INCLUDE");
     let mut platform = cc::Build::new();
     configure_cflags(&mut platform);
-    add_freertos_includes(&mut platform, &freertos_dir, &port_dir, &freertos_config_dir);
+    add_freertos_includes(
+        &mut platform,
+        &freertos_dir,
+        &port_dir,
+        &freertos_config_dir,
+    );
     add_lwip_includes(&mut platform, &lwip_dir);
     platform.include(&nros_platform_cffi_include);
     platform.file(nros_platform_freertos_dir.join("platform.c"));

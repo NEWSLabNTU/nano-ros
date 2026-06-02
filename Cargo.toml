@@ -115,6 +115,13 @@ members = [
     "packages/xrce/nros-rmw-xrce-cffi-staticlib",
     # Phase 128.F — cross-RMW bridge primitives.
     "packages/bridge/nros-bridge",
+    # Phase 212.N.2 — direct-exec family driver (Cortex-M / esp-hal
+    # bare-metal). Per-board crates (mps2-an385, stm32f4, esp32) migrate
+    # onto it in 212.N.3 / N.7; until then the crate stands alone.
+    "packages/boards/nros-board-bare-metal",
+    # Phase 212.N.2 — POSIX family driver (hosted Linux/macOS).
+    # Per-board crates migrate onto it in 212.N.3.
+    "packages/boards/nros-board-posix",
 ]
 
 # Excluded from workspace — standalone packages and third-party forks
@@ -284,6 +291,13 @@ exclude = [
     # Phase 100.6 — AGX Orin SPE board crate. Excluded because it
     # links against NVIDIA's `tegra_aon_fsp.a`, which only exists on
     # an SDK-Manager-installed Orin SPE FSP tree at `$NV_SPE_FSP_DIR`.
+    # Phase 212.N.2 — Zephyr family driver (NetworkWait-only carve-out;
+    # Zephyr's Kconfig + DTS own BSP and the C `main()`, so a Rust
+    # staticlib can't implement the full Board surface). Standalone
+    # because the build needs ZEPHYR_BASE + a populated west workspace —
+    # not part of the host clippy lane. Build via `cd packages/boards/
+    # nros-board-zephyr && cargo check`.
+    "packages/boards/nros-board-zephyr",
     # Build via `cd packages/boards/nros-board-orin-spe && cargo build`
     # or `just orin_spe build` (Phase 100.7).
     "packages/boards/nros-board-orin-spe",

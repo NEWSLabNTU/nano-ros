@@ -25,17 +25,46 @@
 //! shrinks to a `pub struct MyBoard; impl BoardInit for MyBoard
 //! { ... }`. Today the per-board crate hand-rolls `Config`.
 //!
-//! ## Public contract (post-152.4.B)
+//! ## Public contract
+//!
+//! Two boot-driver shapes coexist during the 212.N migration:
+//!
+//! ### Legacy (152.4.B) — config-carrying
 //!
 //! - `Config` — TOML-loaded network + zenoh config.
-//! - `run(Config, FnOnce(&Config) -> Result<(), E>)` — entry point.
-//!   For NuttX this is a regular Rust `main` that initialises
-//!   nros + drops into the user closure; the NuttX kernel is
-//!   already up by the time `main` runs (NuttX init is the OS,
-//!   not something this crate boots).
-//! - `init_hardware()` — board-specific peripheral wakes
-//!   (sensors, displays, vendor-specific GPIO that NuttX's `apps/`
-//!   discovery doesn't auto-configure).
+//! - `run(Config, FnOnce(&Config) -> Result<(), E>) -> !` — entry
+//!   point. For NuttX this is a regular Rust `main` that initialises
+//!   nros + drops into the user closure; the NuttX kernel is already
+//!   up by the time `main` runs (NuttX init is the OS, not something
+//!   this crate boots). Diverges via `std::process::exit`.
+//! - `run_generic::<B>(cfg, f) -> !` — kernel-agnostic generic over
+//!   the legacy [`nros_board_common::BoardInit`] (which carries a
+//!   `type Config`).
+//! - `init_hardware()` — board-specific peripheral wakes (sensors,
+//!   displays, vendor-specific GPIO that NuttX's `apps/` discovery
+//!   doesn't auto-configure).
+//!
+//! ### Phase 212.N.2 — `BoardEntry`-shaped `run_entry`
+//!
+//! - [`run_entry`] (free fn) — mirrors the
+//!   [`nros_platform::BoardEntry::run`] signature so codegen-emitted
+//!   `main.rs` can call it without owning a [`Config`]. Parameterised
+//!   on a 212.N.1 [`nros_platform::BoardInit`] impl `B` whose
+//!   `init_hardware()` takes no argument (overlay state, if any,
+//!   lives in `B`'s impl block or in a separate per-board `Config`
+//!   the Entry pkg threads through the `setup` closure).
+//! - Returns the [`Result`] the closure produces. NuttX is hosted +
+//!   POSIX-shaped: `fn main` ends, libstd's runtime calls `exit(0)`.
+//!   That is the only family in 212.N.2 where `run_entry` does not
+//!   diverge — POSIX hands `exit_success` / `_failure` off to libc,
+//!   FreeRTOS / ThreadX never let `main` return at all, but NuttX's
+//!   shell dispatch reclaims the task on a normal return. Returning
+//!   the `Result` keeps it observable to a hosted test harness.
+//! - No transport-bringup / network-wait step. NuttX brings up
+//!   `eth0` (virtio-net etc.) during kernel boot before `main`
+//!   runs; `init_hardware` re-applies IP overrides (qemu-arm overlay
+//!   uses `SIOCSIFADDR`) and the 5 s sleep at the top of `run_entry`
+//!   covers the virtio-net link-up race documented in `node::run`.
 //!
 //! ## SDK env-var contract
 //!
@@ -112,4 +141,106 @@ where
             std::process::exit(1);
         }
     }
+}
+
+/// Phase 212.N.2 — `BoardEntry`-shaped NuttX entry point.
+///
+/// Mirrors the [`nros_platform::BoardEntry::run`] signature so the
+/// Phase 212.N.4 codegen-emitted Entry pkg `main.rs` can call into
+/// the NuttX family driver without owning a [`Config`]:
+///
+/// ```ignore
+/// use nros_board_nuttx::run_entry;
+/// use nros_board_nuttx_qemu_arm::QemuArmVirt;
+///
+/// fn main() -> Result<(), MyError> {
+///     run_entry::<QemuArmVirt, _, _>(|runtime| {
+///         // codegen-emitted (Phase 212.N.4)
+///         run_plan(runtime)
+///     })
+/// }
+/// ```
+///
+/// ## Lifecycle
+///
+/// 1. [`nros_platform::BoardInit::init_hardware`] (no-arg variant
+///    from the 212.N.1 trait family — distinct from the legacy
+///    [`nros_board_common::BoardInit::init_hardware`] which takes a
+///    `&Config`). Per-board overlay state, if any, lives inside `B`'s
+///    impl block.
+/// 2. 5-second NuttX virtio-net warm-up — kernel `NETINIT_*` runs
+///    synchronously before `main`, but link-up isn't atomic;
+///    `connect_timeout` doesn't observe a partially-up interface.
+///    Same magic number `run` / `run_generic` use.
+/// 3. Flush stdout (NuttX line-buffers around `write(2)`).
+/// 4. Build a [`nros_platform::RuntimeCtx`]. Today this is the
+///    [`nros_platform::RuntimeCtx::EMPTY`] placeholder; Phase 212.N.4
+///    codegen will populate `params` / `remaps` / `env` from the
+///    launch overlay + `--ros-args` CLI parsing.
+/// 5. Invoke `setup(&mut runtime)` and **return its result**.
+///
+/// ## Why this does not diverge
+///
+/// Sibling family drivers in 212.N.2 each diverge into
+/// `BoardExit::exit_*`:
+///
+/// - `nros-board-posix` calls `std::process::exit(0|1)` —
+///   libstd's runtime hands the integer to `_exit(2)`.
+/// - `nros-board-freertos` traps in an infinite loop — the FreeRTOS
+///   scheduler never permits `main` to return.
+/// - `nros-board-threadx` traps similarly — `tx_kernel_enter` never
+///   returns.
+///
+/// NuttX is the carve-out: the shell's task-dispatch loop spawns the
+/// application via `task_create` (or `nsh` builtin dispatch) and
+/// reclaims the task when its entry returns, exactly like a normal
+/// POSIX `main`. Returning the [`Result`] (rather than collapsing to
+/// `!` via `exit`) keeps the application status observable to a
+/// hosted test harness that wants to drive `run_entry` without
+/// killing the test process.
+///
+/// Production NuttX targets typically pair `run_entry` with the
+/// usual `fn main() -> Result<…>` shape; the libstd runtime's
+/// `lang_start` then maps `Ok(())` → exit-status-0 and `Err(_)` →
+/// exit-status-1 on return, so the user observes the same exit
+/// semantics as the diverging siblings.
+///
+/// ## SDK availability
+///
+/// Compiled only when `std` is reachable — gated on the same
+/// `reference-qemu-arm` / `target_os = "nuttx"` predicate as
+/// [`run_generic`] so a bare `cargo check` without a NuttX target
+/// + without the reference feature skips this body. The `run_entry`
+/// symbol therefore only exists in builds that can actually call it.
+#[cfg(any(feature = "reference-qemu-arm", target_os = "nuttx"))]
+pub fn run_entry<B, F, E>(setup: F) -> Result<(), E>
+where
+    B: nros_platform::BoardInit,
+    F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+    E: core::fmt::Debug,
+{
+    <B as nros_platform::BoardInit>::init_hardware();
+
+    // NuttX virtio-net needs a brief warm-up after kernel
+    // `NETINIT_*` before `connect()` succeeds. Magic number matches
+    // `run` / `run_generic`; future work could probe link state
+    // via `SIOCGIFFLAGS` instead.
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
+
+    let mut runtime = nros_platform::RuntimeCtx::EMPTY;
+    let result = setup(&mut runtime);
+
+    // Flush again — NuttX serial-console drivers tail-drop on FIFO
+    // exhaustion, so a closure printing the application's final
+    // status before returning can lose its last line otherwise.
+    let _ = std::io::stdout().flush();
+    if let Err(ref e) = result {
+        eprintln!("Application error: {:?}", e);
+        let _ = std::io::stderr().flush();
+    }
+
+    result
 }

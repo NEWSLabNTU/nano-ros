@@ -60,7 +60,6 @@ fn main() {
         })
         .unwrap_or_default();
 
-
     let threadx_port_dir = threadx_dir.join("ports").join(&port_subpath);
     assert!(
         threadx_port_dir.join("inc").exists(),

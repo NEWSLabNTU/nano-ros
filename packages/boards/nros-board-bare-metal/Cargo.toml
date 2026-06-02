@@ -1,0 +1,21 @@
+[package]
+name = "nros-board-bare-metal"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Phase 212.N.2 — direct-exec family driver for Cortex-M / esp-hal bare-metal boards (no kernel, no scheduler; user closure runs on the boot stack)"
+authors = ["nano-ros contributors"]
+repository = "https://github.com/NEWSLabNTU/nano-ros"
+keywords = ["nano-ros", "ros2", "bare-metal", "cortex-m", "embedded"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[lib]
+name = "nros_board_bare_metal"
+
+[dependencies]
+# Phase 212.N.1 — Board trait family (BoardEntry, BoardInit, BoardExit,
+# BoardPrint, RuntimeCtx). Trait surface only; no runtime deps pulled.
+nros-platform = { path = "../../core/nros-platform", default-features = false }
+
+[features]
+default = []

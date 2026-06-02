@@ -1,25 +1,54 @@
-//! Phase 152.1.B.5 — generic FreeRTOS `run<B>` lift.
+//! Phase 212.N.2 — `BoardEntry::run` shim for the FreeRTOS family.
 //!
-//! Lifted from `nros-board-mps2-an385-freertos`'s former
-//! `node.rs`. The board-specific divergence (semihosting print,
-//! QEMU semihosting exit, hardware init) is captured by the three
-//! traits in `nros_board_common::board_init`:
+//! Adds an additive entry point built on the 212.N.1 trait set in
+//! `nros_platform::board` (`BoardInit` parameterless, `BoardPrint`,
+//! `BoardExit`, `RuntimeCtx`). Mirrors the legacy
+//! [`crate::run`] body — kernel-spawn shape: allocate the app task,
+//! hand it the user closure, call `vTaskStartScheduler()`, never
+//! return — but threads the new `RuntimeCtx` through the user setup
+//! callback instead of an opaque `&Config`.
 //!
-//! - [`BoardInit`] — `init_hardware(&Config)`
-//! - [`BoardPrint`] — `println(format_args!(...))`
-//! - [`BoardExit`] — `exit_success / exit_failure`
+//! ## Why a free fn (not a blanket `impl BoardEntry`)
 //!
-//! Per-board overlays implement those traits + call
-//! `nros_board_freertos::run::<MyBoard, _, _>(config, f)` from
-//! their own `pub fn run` wrapper.
+//! The new [`nros_platform::BoardEntry`] trait is
+//!
+//! ```ignore
+//! fn run<F, E>(setup: F) -> Result<(), E>
+//!     where F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+//!           E: core::fmt::Debug;
+//! ```
+//!
+//! FreeRTOS bring-up needs a board [`Config`] (MAC / IP / netmask /
+//! gateway / task priorities + stack sizes) — that lives outside
+//! `RuntimeCtx` (codegen overlay knobs, not hardware config). The
+//! per-board crate (`nros-board-mps2-an385-freertos`, …) owns the
+//! `Config` source (TOML / `Config::default()`); it implements
+//! `BoardEntry` directly and delegates here:
+//!
+//! ```ignore
+//! impl BoardEntry for MyBoard {
+//!     fn run<F, E>(setup: F) -> Result<(), E>
+//!     where
+//!         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+//!         E: core::fmt::Debug,
+//!     {
+//!         let cfg = Config::default();
+//!         nros_board_freertos::run_entry::<MyBoard, F, E>(cfg, setup)
+//!     }
+//! }
+//! ```
+//!
+//! 212.N.3 wires that into `nros-board-mps2-an385-freertos`; this
+//! file just provides the family-side helper. The legacy
+//! [`crate::run`] coexists during the 212.N transition.
 
 use core::ffi::c_void;
 
-use nros_board_common::{BoardExit, BoardInit, BoardPrint};
+use nros_platform::{BoardExit, BoardInit, BoardPrint, RuntimeCtx};
 
 use crate::{
     Config,
-    error::{Error, Result},
+    error::{Error, Result as FrResult},
 };
 
 unsafe extern "C" {
@@ -57,15 +86,17 @@ struct AppContext<F> {
 
 static mut POLL_INTERVAL_MS: u32 = 5;
 
-/// FreeRTOS task entry for the application closure.
+/// FreeRTOS task entry for the application closure (212.N flavour —
+/// hands the closure a `&mut RuntimeCtx<'_>` instead of `&Config`).
 ///
 /// # Safety
 /// `arg` must point to a valid `AppContext<F>` allocated on the
-/// FreeRTOS heap by `run()`, surviving until the scheduler exits.
-unsafe extern "C" fn app_task_entry<B, F, E>(arg: *mut c_void)
+/// FreeRTOS heap by `run_entry()`, surviving until the scheduler
+/// exits.
+unsafe extern "C" fn app_task_entry_runtime<B, F, E>(arg: *mut c_void)
 where
     B: BoardPrint + BoardExit,
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
+    F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
     let ctx = unsafe { &mut *(arg as *mut AppContext<F>) };
@@ -77,9 +108,9 @@ where
     B::println(format_args!("Network ready."));
     B::println(format_args!(""));
 
-    // Seed the platform RNG. Without this, both listener and
-    // talker get identical xorshift output, causing duplicate
-    // zenoh session IDs and connection rejection.
+    // Seed the platform RNG. Mirrors the legacy `run<B>` body —
+    // without this, listener + talker get identical xorshift output
+    // and zenoh rejects the duplicate session IDs.
     {
         let ip = &ctx.config.ip;
         let mac = &ctx.config.mac;
@@ -143,8 +174,8 @@ where
         B::exit_failure();
     }
 
-    // Brief delay so the poll task can flush stale RX and TAP +
-    // bridge come up before TCP connections begin.
+    // Brief delay so the poll task can flush stale RX + bridge / TAP
+    // settle before TCP connections begin.
     unsafe {
         unsafe extern "C" {
             fn vTaskDelay(ticks: u32);
@@ -167,7 +198,14 @@ where
     // called once by FreeRTOS.
     let closure = unsafe { core::ptr::read(&ctx.closure) };
 
-    match closure(&ctx.config) {
+    // 212.N.2: the user closure consumes `&mut RuntimeCtx`, not
+    // `&Config`. Codegen (212.N.4) will populate launch overlay
+    // params/remaps inside a `static` and pass the slices in here;
+    // for now the family driver hands a fresh `EMPTY` slot, which
+    // is the same shape the unit-test path uses.
+    let mut runtime = RuntimeCtx::EMPTY;
+
+    match closure(&mut runtime) {
         Ok(()) => {
             unsafe {
                 nros_trace_trigger_and_dump();
@@ -204,7 +242,7 @@ unsafe extern "C" fn poll_task_entry(_arg: *mut c_void) {
     }
 }
 
-fn init_network(config: &Config) -> Result<()> {
+fn init_network(config: &Config) -> FrResult<()> {
     let ret = unsafe {
         nros_freertos_init_network(
             config.mac.as_ptr(),
@@ -219,21 +257,51 @@ fn init_network(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Generic FreeRTOS `run<B>` entry point.
+/// Phase 212.N.2 — family-driver entry point for FreeRTOS boards.
 ///
-/// Per-board overlays wrap this with a non-generic `pub fn run`
-/// so user code stays free of trait turbofish.
+/// Mirrors the legacy [`crate::run`] body — allocates an app task on
+/// the FreeRTOS heap, hands it the user closure, calls
+/// `vTaskStartScheduler()`, never returns — but routes through the
+/// 212.N.1 `nros_platform::board` trait set + [`RuntimeCtx`].
+///
+/// Per-board crates (e.g. `nros-board-mps2-an385-freertos`) wire
+/// this into their `impl BoardEntry for Self::run` body in 212.N.3:
+///
+/// ```ignore
+/// impl nros_platform::board::BoardEntry for MyBoard {
+///     fn run<F, E>(setup: F) -> Result<(), E>
+///     where
+///         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
+///         E: core::fmt::Debug,
+///     {
+///         let cfg = Config::default();
+///         nros_board_freertos::run_entry::<MyBoard, F, E>(cfg, setup)
+///     }
+/// }
+/// ```
 ///
 /// # Type parameters
 ///
-/// - `B: BoardInit<Config = Config> + BoardPrint + BoardExit` —
-///   per-board glue (hardware init, print, exit).
-/// - `F: FnOnce(&Config) -> Result<(), E>` — user closure.
-/// - `E: core::fmt::Debug` — error type the closure returns.
-pub fn run<B, F, E>(config: Config, f: F) -> !
+/// - `B: BoardInit + BoardPrint + BoardExit` — per-board glue
+///   pulled from `nros_platform::board` (212.N.1 surface).
+/// - `F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>` — user
+///   closure receiving the runtime context.
+/// - `E: core::fmt::Debug` — closure error type.
+///
+/// # Return
+///
+/// The signature is `Result<(), E>` to satisfy the
+/// [`nros_platform::BoardEntry::run`] trait contract, but in
+/// practice the kernel-spawn flow never returns to the caller —
+/// either the scheduler runs forever and the app task drives
+/// `exit_success` / `exit_failure`, or scheduler startup itself
+/// fails and we `exit_failure` defensively. The `Ok(())` arm exists
+/// only so the function signature lines up with the trait; it is
+/// unreachable in a working build.
+pub fn run_entry<B, F, E>(config: Config, setup: F) -> core::result::Result<(), E>
 where
-    B: BoardInit<Config = Config> + BoardPrint + BoardExit,
-    F: FnOnce(&Config) -> core::result::Result<(), E>,
+    B: BoardInit + BoardPrint + BoardExit,
+    F: FnOnce(&mut RuntimeCtx<'_>) -> core::result::Result<(), E>,
     E: core::fmt::Debug,
 {
     B::println(format_args!(""));
@@ -252,16 +320,18 @@ where
         config.ip[0], config.ip[1], config.ip[2], config.ip[3],
     ));
 
-    // Per-board pre-scheduler init (board crates may no-op).
-    B::init_hardware(&config);
+    // Per-board pre-scheduler init. New 212.N.1 `BoardInit::init_hardware`
+    // is parameterless — board crates read any needed config off their
+    // own `pub const` / `pub static` rather than a passed-in arg.
+    B::init_hardware();
 
     let app_pri = Config::to_freertos_priority(config.app_priority);
     let app_stack_words = config.app_stack_bytes / 4;
 
-    // Heap-allocate the app context: pre-scheduler MSP stack is
-    // reclaimed by FreeRTOS when vPortStartFirstTask() resets MSP
-    // to _estack. Local variables would be clobbered by the next
-    // exception that stacks on MSP.
+    // Heap-allocate the app context. Pre-scheduler MSP stack is
+    // reclaimed by FreeRTOS when `vPortStartFirstTask()` resets MSP
+    // to `_estack`, so locals would be clobbered by the next
+    // exception that stacks on MSP. (Same rationale as legacy `run`.)
     unsafe extern "C" {
         fn pvPortMalloc(size: u32) -> *mut c_void;
     }
@@ -269,13 +339,19 @@ where
         let size = core::mem::size_of::<AppContext<F>>() as u32;
         let ptr = pvPortMalloc(size) as *mut AppContext<F>;
         assert!(!ptr.is_null(), "Failed to allocate AppContext");
-        core::ptr::write(ptr, AppContext { config, closure: f });
+        core::ptr::write(
+            ptr,
+            AppContext {
+                config,
+                closure: setup,
+            },
+        );
         ptr
     };
 
     let ret = unsafe {
         nros_freertos_create_task(
-            app_task_entry::<B, F, E>,
+            app_task_entry_runtime::<B, F, E>,
             b"nros_app\0".as_ptr(),
             app_stack_words,
             ctx_ptr as *mut c_void,
@@ -291,6 +367,8 @@ where
         nros_freertos_start_scheduler();
     }
 
-    // Unreachable — scheduler never returns. Satisfies `-> !`.
+    // Unreachable — scheduler never returns. `exit_failure()`
+    // diverges (`-> !`), so this satisfies the `Result<(), E>`
+    // signature without an explicit `Ok` arm.
     B::exit_failure()
 }

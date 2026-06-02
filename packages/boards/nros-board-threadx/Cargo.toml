@@ -22,6 +22,11 @@ name = "nros_board_threadx"
 # 152.2.B.4 — `BoardInit` / `BoardPrint` / `BoardExit` /
 # `ThreadxConfig` traits the generic `run<B>` is generic over.
 nros-board-common = { path = "../nros-board-common", default-features = false }
+# 212.N.2 — new `BoardInit` / `BoardPrint` / `BoardExit` / `RuntimeCtx`
+# trait set in `nros_platform::board` the additive `run_entry` is
+# generic over. `nros-platform` is `no_std` + the `board` module has
+# no feature gates, so no platform-* feature is enabled here.
+nros-platform = { path = "../../core/nros-platform", default-features = false }
 nros-board-threadx-linux = { path = "../nros-board-threadx-linux", optional = true }
 nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64", optional = true }
 

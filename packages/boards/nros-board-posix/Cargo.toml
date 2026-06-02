@@ -1,0 +1,16 @@
+[package]
+name = "nros-board-posix"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Phase 212.N.2 — POSIX family driver implementing the `Board` trait surface from `nros-platform`."
+publish = false
+
+# Host-only crate. POSIX (Linux / macOS / BSD) lives under `std`, so
+# no `no_std` attribute and no per-target gating on `target_os` — the
+# whole point of this crate is to be the family driver for hosted
+# Unix targets.
+
+[dependencies]
+# Trait surface (BoardEntry, BoardInit, BoardPrint, BoardExit, RuntimeCtx).
+nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }

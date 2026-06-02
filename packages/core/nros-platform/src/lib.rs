@@ -39,6 +39,11 @@ pub use board::{
     Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
     NetworkWait, RuntimeCtx, TransportBringup,
 };
+// Phase 212.N.2 — `NetworkError` is the return type any external
+// `NetworkWait` impl carries, so it needs to be reachable at the
+// crate root. The `board` module stays private; this re-export keeps
+// the boundary clean.
+pub use board::network::NetworkError;
 
 // Phase 129.C.3.b — `NET_*` constants exported unconditionally
 // (see `resolve.rs`). `ConcretePlatform` keeps its feature gate

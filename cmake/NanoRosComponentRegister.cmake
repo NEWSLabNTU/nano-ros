@@ -1,4 +1,4 @@
-# cmake/NanoRosComponentRegister.cmake — Phase 212.L.9
+# cmake/NanoRosComponentRegister.cmake — Phase 212.L.9 / 212.N.6
 #
 # C++ cmake fn surface for the three Phase 212.L pkg shapes:
 #
@@ -9,11 +9,17 @@
 #         `NanoRos::NanoRosCpp`. Enforces L.4: CLASS must start with
 #         `${PROJECT_NAME}::`.
 #
-#   * `nano_ros_application(NAME <name> SOURCES <files...>
+#   * `nano_ros_entry(NAME <name> SOURCES <files...> [BOARD <board>]
 #       DEPLOY <target1> [<target2> ...])`
-#       — declares an Application pkg entity. Calls `add_executable`
-#         + links `NanoRos::NanoRosCpp`. L.2 rule: only "native"
-#         allowed in DEPLOY.
+#       — declares an Entry pkg entity. Renamed from
+#         `nano_ros_application` per Phase 212.L.9 / 212.N.6. Defined
+#         in `NanoRosEntry.cmake` (auto-included below); see that
+#         module for the body + the BOARD-arg semantics.
+#
+#   * `nano_ros_application(...)` — DEPRECATED 212.N.6 backward-compat
+#       shim. Emits a `MESSAGE(DEPRECATION …)` and forwards every
+#       argument to `nano_ros_entry`. The shim will be retired once
+#       the in-tree caller migration (212.N.7 wave) completes.
 #
 #   * `nano_ros_deploy(TARGET <name> RMW <rmw> DOMAIN_ID <n>
 #       [LOCATOR <uri>])`
@@ -23,7 +29,9 @@
 # `${CMAKE_BINARY_DIR}/nros-metadata.json` so `nros codegen-system`
 # can consume it at configure time. No sidecar TOML for C++ pkgs.
 #
-# Hard cap: ≤200 LoC (tokei gate per Phase 212.L.9 acceptance).
+# Hard cap: ≤200 LoC (tokei gate per Phase 212.L.9 acceptance) — the
+# N.6 body for the renamed fn lives in `NanoRosEntry.cmake` so this
+# file stays under the cap.
 
 if(DEFINED _NROS_COMPONENT_REGISTER_INCLUDED)
     return()
@@ -35,7 +43,7 @@ define_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON
     FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_component_register().")
 define_property(GLOBAL PROPERTY NROS_APPLICATIONS_JSON
     BRIEF_DOCS "Accumulated application JSON fragments"
-    FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_application().")
+    FULL_DOCS  "Phase 212.L.9 / 212.N.6 — appended by nano_ros_entry().")
 define_property(GLOBAL PROPERTY NROS_DEPLOY_TARGETS_JSON
     BRIEF_DOCS "Accumulated deploy_targets JSON fragments"
     FULL_DOCS  "Phase 212.L.9 — appended by nano_ros_deploy().")
@@ -122,44 +130,17 @@ function(nano_ros_component_register)
     _nros_metadata_emit()
 endfunction()
 
+# Phase 212.N.6 — backward-compat shim. `nano_ros_application` was
+# renamed to `nano_ros_entry` per L.9 + N.6; this shim forwards every
+# argument to the new fn and emits a DEPRECATION warning so callers
+# can be migrated incrementally (tracked under 212.N.7). Slated for
+# removal once the in-tree caller sweep lands.
 function(nano_ros_application)
-    cmake_parse_arguments(_NRA "" "NAME" "SOURCES;DEPLOY" ${ARGN})
-    foreach(_req NAME SOURCES DEPLOY)
-        if(NOT _NRA_${_req})
-            message(FATAL_ERROR
-                "nano_ros_application: ${_req} required")
-        endif()
-    endforeach()
-    # L.2: Application pkgs are NATIVE-ONLY.
-    foreach(_t IN LISTS _NRA_DEPLOY)
-        if(NOT _t STREQUAL "native")
-            message(FATAL_ERROR
-                "nano_ros_application: DEPLOY target '${_t}' rejected — "
-                "Application pkgs are native-only (Phase 212.L.2).")
-        endif()
-    endforeach()
-
-    if(NOT TARGET ${_NRA_NAME})
-        add_executable(${_NRA_NAME} ${_NRA_SOURCES})
-        if(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRosCpp)
-        endif()
-    endif()
-
-    _nros_json_strlist(_sources_json ${_NRA_SOURCES})
-    _nros_json_strlist(_deploy_json  ${_NRA_DEPLOY})
-    get_property(_acc GLOBAL PROPERTY NROS_APPLICATIONS_JSON)
-    if(_acc)
-        set(_sep ",")
-    else()
-        set(_sep "")
-    endif()
-    set(_entry
-"${_sep}\n    {\"name\": \"${_NRA_NAME}\", \"sources\": [${_sources_json}], \
-\"deploy\": [${_deploy_json}], \"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \
-\"lang\": \"cpp\"}")
-    set_property(GLOBAL APPEND_STRING PROPERTY NROS_APPLICATIONS_JSON "${_entry}")
-    _nros_metadata_emit()
+    message(DEPRECATION
+        "nano_ros_application is renamed to nano_ros_entry — use "
+        "nano_ros_entry(...) instead. The shim will be retired in a "
+        "future phase (212.N.7 caller migration).")
+    nano_ros_entry(${ARGV})
 endfunction()
 
 function(nano_ros_deploy)
@@ -188,3 +169,11 @@ function(nano_ros_deploy)
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_DEPLOY_TARGETS_JSON "${_entry}")
     _nros_metadata_emit()
 endfunction()
+
+# Phase 212.N.6 — pull in `nano_ros_entry`. The Entry module
+# back-includes this file (guarded) for the shared helpers
+# (`_nros_metadata_emit`, `_nros_json_strlist`) + GLOBAL property
+# definitions; doing the include LAST ensures those helpers are
+# already defined by the time NanoRosEntry's body runs, and that the
+# deprecation shim above can resolve `nano_ros_entry` at call time.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntry.cmake")

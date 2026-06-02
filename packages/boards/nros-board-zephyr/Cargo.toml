@@ -1,0 +1,21 @@
+# Phase 212.N.2 — Zephyr family driver crate.
+#
+# Empty `[workspace]` stub: this crate sits OUTSIDE the nano-ros
+# Cargo workspace (mirrors the other wave-2 family driver crates).
+# Built standalone via `cd packages/boards/nros-board-zephyr && cargo check`.
+[workspace]
+
+[package]
+name = "nros-board-zephyr"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Zephyr family driver crate for nros — NetworkWait-only impl (Zephyr owns main / BSP)."
+repository = "https://github.com/NEWSLabNTU/nano-ros"
+publish = false
+
+[lib]
+name = "nros_board_zephyr"
+
+[dependencies]
+nros-platform = { path = "../../core/nros-platform", default-features = false }
