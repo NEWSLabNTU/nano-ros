@@ -1743,24 +1743,93 @@ asymmetry rationale.
 
 - [ ] **Single-node Rust = `nros generate-rust && cargo build && cargo
       run` for ALL three RMWs** (zenoh, xrce, cyclonedds). No CMake step
-      required. (212.K Option B)
-- [ ] **Single-node C++ = `cmake -B build && cmake --build build`.**
+      required. (212.K Option B) — partial as of 2026-06-03 audit
+      (`phase-212-acceptance-build-path-coverage` branch). zenoh + xrce
+      are pure-cargo: `build_native_talker_rmw(Zenoh|Xrce)` →
+      `build_example_rmw` consumed by `rmw_interop`, `nano2nano`,
+      `qos`, `native_api` integration tests (all green at HEAD
+      `2560db3ce`). **cyclonedds is NOT pure-cargo:**
+      `build_native_talker_rmw(Cyclonedds)` routes through
+      `build_example_cmake_rmw` (CMake/Corrosion + idlc + descriptor
+      whole-archive), per Phase 175 + `examples/native/rust/talker/
+      CMakeLists.txt` — pure `cargo build --features rmw-cyclonedds`
+      can't link `nros_rmw_cyclonedds_register` (matches CLAUDE.md
+      "Phase 175" caveat). Gate test
+      `phase212_k4_cyclonedds_descriptors.rs` (2 tests) currently
+      FAILS at HEAD — the installed `nros` CLI lacks the
+      `codegen cyclonedds-descriptors` subcommand the test invokes
+      (`error: unrecognized subcommand 'cyclonedds-descriptors'`); the
+      subcommand needs to land in the standalone `nros-cli` repo and
+      a release bump in `scripts/install-nros.sh`. **Decision:** stays
+      open pending either (a) a pure-cargo cyclonedds register path
+      (Phase 212.K Option B follow-up) or (b) bullet wording revision
+      to acknowledge the CMake/Corrosion path for the cyclonedds cell.
+- [x] **Single-node C++ = `cmake -B build && cmake --build build`.**
       RMW selected via `-DNANO_ROS_RMW=…`. `nros_find_interfaces()`
       (package.xml-SSoT) runs codegen at configure. (existing path;
-      cmake-side codegen)
+      cmake-side codegen) Gated by `cmake_add_subdirectory.rs`
+      (`cmake_add_subdirectory_smoke` — POSIX + zenoh; main.c links
+      `NanoRos::NanoRos`; in-tree consumer shape end-to-end) and the
+      C++ prebuilt fixture loop consumed by `native_api.rs`
+      (`build_native_cpp_example_rmw` for `talker` / `listener` /
+      `service-*` / `action-*` under cyclonedds — the cmake fixture
+      build invokes `nros_find_interfaces()` at configure via
+      `cmake/NanoRosGenerateInterfaces.cmake`). `cmake_platform_matrix`
+      adds the per-platform RMW dispatch surface. Verified 2026-06-03
+      audit at HEAD `2560db3ce`.
 - [ ] **Multi-node Rust = `nros generate-rust && cargo build && cargo
       run -p <entry-pkg>`** — explicit codegen step + cargo builds +
       Entry pkg `build.rs` calls `nros-build::generate_run_plan` +
       user `main.rs` runs `Board::run`. No separate `nros plan` step
       for native; embedded Entry pkg still routes through
       `nros codegen-system` for vendor-toolchain integration. (212.B +
-      212.L Entry + 212.N)
-- [ ] **Multi-node C++ = `cmake -B build && cmake --build build &&
+      212.L Entry + 212.N) — open as of 2026-06-03 audit.
+      `examples/native/rust/entry-poc/` exists in the workspace (root
+      `Cargo.toml` member list) and depends on `nros-board-native` +
+      `nros-build` (`build.rs` calls `generate_run_plan`), but **no
+      integration test gates `cargo run -p entry-poc`**. `entry-poc`
+      is built transitively as part of `cargo build --workspace`;
+      nothing asserts the produced `./target/debug/entry-poc` runs the
+      `Board::run` lifecycle end-to-end. The Phase 212.N step-1 work
+      item records manual `cargo build && ./target/debug/entry-poc`
+      verification but the automated gate hasn't landed. **Gap:** add
+      a `phase212_n_entry_poc_runs.rs` integration test that builds
+      + spawns the binary + verifies lifecycle output, parallel to
+      `cmake_pure_cpp_multi_component_builds` below.
+- [x] **Multi-node C++ = `cmake -B build && cmake --build build &&
       ./build/<entry>`** — `nano_ros_entry()` cmake fn owns Entry-
-      pkg-side codegen at configure time. (212.D + 212.N)
+      pkg-side codegen at configure time. (212.D + 212.N) Gated by
+      `phase212_d_workspace_metadata::cmake_pure_cpp_multi_component_builds`
+      (passed at HEAD `2560db3ce`, 2026-06-03 audit). The test stages
+      the `multi_pkg_workspace_cpp` fixture (talker_pkg + listener_pkg
+      Components + `demo_entry` Entry calling `nano_ros_entry(NAME
+      demo_entry SOURCES src/main.cpp DEPLOY native)`), runs
+      `cmake configure → cmake --build`, asserts the Entry pkg binary
+      `build/src/demo_entry/demo_entry` exists. Sister test
+      `cmake_workspace_metadata_emits_components_cmake` (also green)
+      confirms `nros-metadata.json` carries the Entry pkg's class +
+      native deploy target → covers the configure-time codegen side of
+      the bullet. Fixture migrated to the §212.L cmake-fn shape by
+      §212.M.10.
 - [ ] **Mixed Rust+C++ workspace = `cmake -B build && cmake --build
       build`** with `corrosion_import_crate` bridging Rust components
-      into cmake's superbuild. (212.D + cross-language acceptance)
+      into cmake's superbuild. (212.D + cross-language acceptance) —
+      partial as of 2026-06-03 audit. Gate test
+      `phase212_d_workspace_metadata::cmake_mixed_corrosion_bridge_builds`
+      exists and exercises the `multi_pkg_workspace_mixed` fixture
+      (top-level cmake → `find_package(Corrosion)` →
+      `corrosion_import_crate(MANIFEST_PATH src/talker_pkg/Cargo.toml)`
+      → `add_subdirectory(src/listener_pkg)` → assert
+      `build/src/listener_pkg/listener` produced). The test
+      `nros_tests::skip!`s cleanly via `corrosion_available()` when
+      Corrosion isn't discoverable by `cmake --find-package`. At HEAD
+      `2560db3ce` on the audit host the test skips (Corrosion not
+      installed under `~/.nros/sdk/corrosion`). **Decision:** stays
+      open until either (a) Corrosion is added to the `default` SDK
+      tier so CI green-paths the test, or (b) the audit confirms a CI
+      lane where Corrosion is installed and the test transitions
+      skip → pass. Test + fixture + wire-up correct; only tooling
+      presence blocks the flip.
 - [ ] **Two pkg shapes work for both langs** — Component pkg
       (lib only — `impl Component` / `NROS_COMPONENT_REGISTER`,
       board-agnostic) + Entry pkg (board-aware `main.rs` /
