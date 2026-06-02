@@ -30,9 +30,26 @@ The split is asymmetric for Rust by design:
 
 Component packages declare themselves in their own native manifest
 (Cargo.toml `[package.metadata.nros.*]` tables for Rust; cmake fns
-`nano_ros_component_register` / `nano_ros_application` for C++).
-Multi-node systems live in a dedicated `<system>_bringup` package
-following standard ROS layout — Path A code-free shape.
+`nano_ros_component_register` / `nano_ros_entry` for C++).
+Multi-node systems compose nodes via a per-board **Entry package**
+that carries the launch file + a user-authored `main` calling into a
+codegen-emitted `run_plan()` fn (one Entry pkg per board target;
+launch file shared across boards via symlink / `<include>`).
+
+**Major design shift (locked 2026-06-02 after M.5.a + survey of
+Zephyr / ThreadX board shapes):** Phase 212 originally proposed
+auto-generating `main` per board inside a BSP crate's `build.rs`
+(M.5.a.1 - M.5.a.4 shipped this for FreeRTOS). Surveying Zephyr +
+ThreadX board reality showed the BSP main-codegen is wrong for two
+reasons: (1) Zephyr's `main()` is C, owned by Zephyr — Rust is a
+staticlib, no room for our generated entry; (2) every new board
+adding RTOS support would require an upstream contribution of a
+board-specific main-codegen template to nano-ros. The fix is **move
+codegen from BSP to Entry pkg**: nano-ros ships codegen + board
+library + family driver crates; user writes an Entry pkg (with
+`main.rs` + `build.rs` + launch file) per board they want to support.
+The result is a ROS 2-aligned model (rclcpp_components + executable
+split) with smaller maintainer surface and user-side board porting.
 
 ## Architecture
 
@@ -47,46 +64,87 @@ See companion design documents (live, expected to iterate):
 
 1. **Build-system-native.** Cargo + CMake stay user-facing. `nros` never
    has a `build` / `test` / `flash` / `monitor` verb.
-2. **Three pkg shapes** (§212.L):
-   - **Component pkg** — lib only. `nros::component!()` (Rust) or
-     `NROS_COMPONENT_REGISTER()` (C++). Codegen owns spin. Embedded-
-     deployable. Composable.
-   - **Application pkg** — user `main()`. Explicit spin control. Native
-     only (RTOS rejects arbitrary main). Two init flavours: launch-aware
-     (`nros::init_with_launch_auto()`) or launch-ignoring (`nros::init()`).
-   - **Bringup pkg** — Path A code-free. Carries `package.xml` +
-     `system.toml` + `launch/system.launch.xml`. NO `Cargo.toml`, NO
-     `CMakeLists.txt`, NO `src/`. Required for multi-node composition.
+2. **Two pkg shapes** (§212.L; was three before the 2026-06-02 redesign):
+   - **Component pkg** — board-agnostic node library. `nros::component!()`
+     (Rust) or `NROS_COMPONENT_REGISTER()` (C++). No `main`, no spin, no
+     board knowledge. Compiles into any binary that wants the node.
+   - **Entry pkg** — per-board binary. User-authored `main.rs` (or
+     `main.cpp`) calls `Board::run(closure)` where the closure invokes
+     codegen-emitted `run_plan(runtime)`. Build.rs reads launch file
+     + emits the run_plan via `nros-build` library (§212.N). One Entry
+     pkg per board target; launch file shared across boards via
+     symlink / `<include>`.
+   - **Bringup pkg — RETIRED.** Entry pkg subsumes its role
+     (deploy/domain/bridge config moves to Entry pkg's Cargo.toml;
+     launch file lives next to Entry pkg). Users wanting ROS 2 colcon-
+     convention `<system>_bringup/` pkg can author it as a launch-files
+     convenience dir, but nano-ros doesn't mandate it.
 3. **Per-pkg metadata location** (Option α, locked):
-   - Rust component/application: `Cargo.toml`
-     `[package.metadata.nros.{component,application,deploy.<target>,embedded}]`.
-   - C++ component/application: cmake fns (`nano_ros_component_register`,
-     `nano_ros_application`, `nano_ros_deploy`) write JSON to build dir
-     at configure time; codegen consumes.
-   - Bringup pkg (both langs): `system.toml` carries
-     `[deploy.<target>]` + `[[domain]]` + `[[bridge]]` + `[[remap]]`.
-     `system.toml` lives ONLY in bringup pkgs.
+   - Component pkg (Rust): `Cargo.toml`
+     `[package.metadata.nros.component]` w/ `class` + `name` (Phase
+     212.M.5.a.1 mangling reads these).
+   - Component pkg (C++): cmake fn `nano_ros_component_register(NAME …
+     CLASS … SOURCES … DEPLOY …)` writes JSON to build dir.
+   - Entry pkg (Rust): `Cargo.toml` `[package.metadata.nros.entry]` +
+     `[package.metadata.nros.deploy.<target>]` (board / rmw / domain_id
+     / locator) + optional `[[package.metadata.nros.domain]]` /
+     `[[package.metadata.nros.bridge]]`.
+   - Entry pkg (C++): cmake fn `nano_ros_entry(NAME … SOURCES … DEPLOY
+     … BOARD …)` + `nano_ros_deploy(...)`.
+   - `system.toml` — RETIRED (was bringup pkg only; bringup pkg
+     itself is retired).
 4. **Component class name** = `<pkg-dir-name>::<UserClass>` MANDATORY.
    The pkg dir name is the cargo `[package].name` (Rust) or top
    `project()` name (C++). Enforced by `nros check`.
 5. **Launch file policy**:
-   - REQUIRED in bringup pkg (`launch/system.launch.xml`).
-   - OPTIONAL elsewhere. When absent in a single-pkg, `nros plan` /
-     `nros codegen-system` / `nros launch` synthesise an implicit
-     launch (`<launch><node pkg=… exec=…/></launch>`) in-memory.
-   - Multiple files per pkg supported. Resolution: positional arg →
-     `<pkg-name>.launch.xml` → `system.launch.xml` → single file → synth.
-6. **Mixed Rust + C/C++** = cmake top-level via Corrosion bridge. Pure
+   - REQUIRED in Entry pkg (`<entry-pkg>/launch/system.launch.xml`
+     by default; multi-launch resolution per §212.L.6).
+   - OPTIONAL in single Component pkg case; `nros plan` /
+     `nros codegen-system` / `nros launch` / `nros-build`
+     synthesise an implicit launch (`<launch><node pkg=… exec=…/>
+     </launch>`) when absent.
+   - Multiple files per Entry pkg supported. Resolution: positional
+     arg → `<pkg-name>.launch.xml` → `system.launch.xml` → single
+     file → synth.
+6. **Board trait family** (`packages/boards/nros-board-common`):
+   - `Board: BoardInit + BoardPrint + BoardExit` core
+   - `BoardEntry: Board { fn run<F, E>(cfg, closure) -> ! }` (or `->
+     ()` for FSP-managed boards like orin-spe)
+   - `TransportBringup: Board { fn init_transports(cfg) }` (opt-in,
+     for boards where Rust drives transport bring-up — bare-metal
+     smoltcp, esp-hal WiFi)
+   - `NetworkWait: Board { fn wait_network(timeout_ms) }` (opt-in,
+     for boards w/ RTOS-owned network stack — FreeRTOS lwIP, ThreadX
+     NetX Duo, Zephyr conn_mgr)
+   - Family driver crates (`nros-board-{posix,freertos,threadx,
+     zephyr,nuttx,esp-idf,bare-metal}`) shipped by nano-ros.
+   - Per-board crates: tier-1 boards shipped by nano-ros (`nros-
+     board-{native,qemu-mps2-an385-freertos,threadx-linux,esp32-c3,
+     …}`). User-authored boards live in user workspace; no upstream
+     contribution required.
+7. **Codegen split:**
+   - `nros::component!()` macro emits 4 per-pkg mangled symbols
+     (`_register`, `_init`, `_dispatch`, `_tick`) — M.5.a.1
+   - `ExecutorComponentRuntime` runs spin + dispatches callbacks —
+     M.5.a.2
+   - `nros-build::generate_run_plan(launch_file, plan_json) → run_
+     plan.rs` (board-agnostic) — emitted into Entry pkg's `OUT_DIR`
+   - `nros-build::generate_single_node_main(Board)` — convenience
+     helper for single Component pkg case that synthesises both
+     `run_plan.rs` AND a thin `main.rs` (out-of-tree under
+     `target/`) so `cargo run` Just Works
+8. **Mixed Rust + C/C++** = cmake top-level via Corrosion bridge. Pure
    Rust = cargo top-level. Pure C/C++ = cmake top-level.
-7. **Embedded RTOS** = vendor SDK retains its native build tool. nano-ros
-   plugs into vendor's external-module hook + bakes the system spec into
-   compile-time C config via `nros codegen-system`. Bringup pkg never
-   reaches device.
-8. **Diagnostics passthrough.** Rustc errors stay rustc errors. cmake
-   errors stay cmake errors. `nros` errors only when `nros` owns the
-   action. No colcon-style `Failed <<<` aggregation.
-9. **No colcon as primary orchestrator.** Colcon stays AVAILABLE for
-   Autoware-style outer integration via two-graph seam at `nros plan`.
+9. **Embedded RTOS** = vendor SDK retains its native build tool. nano-
+   ros plugs into vendor's external-module hook + bakes the system
+   spec into compile-time C config via `nros codegen-system`. The
+   Entry pkg's build.rs (Rust) or cmake fn (C++) consumes the bake +
+   emits `run_plan`.
+10. **Diagnostics passthrough.** Rustc errors stay rustc errors. cmake
+    errors stay cmake errors. `nros` errors only when `nros` owns the
+    action. No colcon-style `Failed <<<` aggregation.
+11. **No colcon as primary orchestrator.** Colcon stays AVAILABLE for
+    Autoware-style outer integration via two-graph seam at `nros plan`.
 
 **Irreducible per-Component-pkg user-authored items (Rust):**
 - `Cargo.toml.[package].name` — pkg dir name
@@ -94,17 +152,23 @@ See companion design documents (live, expected to iterate):
 - `Cargo.toml.[package.metadata.nros.component].class = "<pkg>::<UserClass>"`
 - `Cargo.toml.[package.metadata.ament].{build_depend, exec_depend}` (non-cargo ROS deps)
 - `package.xml` (colcon parity)
-- `src/lib.rs` — `impl Component for UserClass` + `nros::component!(UserClass);`
-- `launch/*.launch.xml` — OPTIONAL (synth fallback)
+- `src/lib.rs` — `impl Component for UserClass` + `impl ExecutableComponent for UserClass` + `nros::component!(UserClass);`
+- NO `main.rs`. NO launch file. NO board awareness.
 
-**Irreducible per-Application-pkg user-authored items (Rust):**
-- `Cargo.toml.[package].name`
+**Irreducible per-Entry-pkg user-authored items (Rust):**
+- `Cargo.toml.[package].name` — pkg dir name
 - `Cargo.toml.[[bin]] name = "<pkg>"`
-- `Cargo.toml.[package.metadata.nros.application].deploy = ["native", …]`
-  (must NOT include RTOS targets)
+- `Cargo.toml.[dependencies]` listing every Component pkg as a path-dep
+- `Cargo.toml.[dependencies]` exactly one `nros-board-*` crate
+- `Cargo.toml.[package.metadata.nros.entry] deploy = "<board>"`
+- `Cargo.toml.[package.metadata.nros.deploy.<board>]` board / rmw /
+  domain_id / locator
 - `package.xml`
-- `src/main.rs` w/ `nros::init()` OR `nros::init_with_launch_auto()`
-- `launch/*.launch.xml` — OPTIONAL
+- `launch/system.launch.xml` — composition (params, remaps, env,
+  `<node>` rows)
+- `build.rs` — `nros_build::generate_run_plan(...)` (~3 LoC)
+- `src/main.rs` — `Board::run(|runtime| { apply_overlay(runtime)?;
+  run_plan(runtime)?; Ok(()) })` (~10-30 LoC)
 
 C++ analogues use cmake fns + identical `package.xml` + `src/*.{cpp,hpp}`.
 
@@ -511,6 +575,12 @@ Bringup) × (Rust / C++) and the single resolution pipeline that
 underlies `nros codegen-system`, `nros plan`, `nros launch`, and every
 RTOS adapter shim.
 
+**Revision (2026-06-02):** L.1-L.3 redefined per the Entry pkg
+redesign. The "Application pkg" of the 2026-05 draft (user main +
+launch-overlay init) is generalised + renamed **Entry pkg**.
+"Bringup pkg" is RETIRED — Entry pkg subsumes its role. The L.4-L.12
+sub-items that already shipped stay marked done.
+
 - [ ] **L.1 Component pkg shape** — Rust authors `Cargo.toml` (w/ `[lib]
       crate-type=["rlib","staticlib"]` + `[package.metadata.nros.
       component] class = "<pkg>::<UserClass>"`) + `package.xml` +
@@ -522,19 +592,46 @@ RTOS adapter shim.
       + optional launch. No user `main()` either language — codegen
       synthesises native `main` into `target/nros-system/<pkg>/` (out-
       of-tree) and `system_main.c` for embedded.
-- [ ] **L.2 Application pkg shape** — Rust authors `Cargo.toml` (`[[bin]
-      ] name = "<pkg>"` + `[package.metadata.nros.application].deploy
-      = ["native", …]`) + `package.xml` + `src/main.rs` w/ explicit
-      `nros::init()` OR `nros::init_with_launch_auto()` + optional
-      launch. C++ analogous (`nano_ros_application(NAME … SOURCES …
-      DEPLOY native)`). Application pkgs are NATIVE-ONLY; including any
-      RTOS in `deploy` is a `nros check` error.
-- [ ] **L.3 Bringup pkg shape (Path A)** — `package.xml` + `system.toml`
-      + `launch/system.launch.xml`. NO `Cargo.toml`, NO `CMakeLists.txt`,
-      NO `src/`. `system.toml` carries `[deploy.<target>]` +
-      `[[domain]]` + `[[bridge]]` + `[[remap]]`. Multi-node composition
-      via `<node pkg=…>` / `<include>` in launch.xml. Language-
-      independent.
+- [ ] **L.2 Entry pkg shape** — Rust authors `Cargo.toml` (`[[bin]]
+      name = "<pkg>"` + path-deps on Component pkgs + one
+      `nros-board-*` crate + `[package.metadata.nros.entry] deploy =
+      "<board>"` + `[package.metadata.nros.deploy.<board>]` (board /
+      rmw / domain_id / locator) + optional
+      `[[package.metadata.nros.{domain,bridge}]]`) + `package.xml` +
+      `launch/system.launch.xml` (composition: `<node pkg=… exec=…/>`
+      rows + `<param>` + `<set_remap>` + `<set_env>` + optional
+      `<include>`) + `build.rs` (~3 LoC: `nros_build::generate_run_
+      plan(...)`) + `src/main.rs` (~10-30 LoC: `Board::run(|runtime| {
+      apply_overlay(runtime)?; run_plan(runtime)?; Ok(()) })`). One
+      Entry pkg per board target the user wants to support; launch
+      file shared across boards via symlink / `<include>`.
+
+      C++ analogous: cmake fn `nano_ros_entry(NAME … SOURCES … DEPLOY
+      … BOARD …)` + `nano_ros_deploy(...)`.
+
+      Native-only entries (host POSIX, `cargo run` dev loop) use
+      `nros-board-posix`. RTOS Entry pkgs use the per-RTOS family
+      crate (`nros-board-freertos` etc.) + a per-board crate (or
+      user-authored crate for boards outside the tier-1 set).
+
+      Convenience: single Component pkg with `[package.metadata.nros.
+      entry] deploy = "native"` + `build.rs` calling
+      `nros_build::generate_single_node_main(Board::Native)`
+      synthesises both `run_plan.rs` AND a thin `main.rs` under
+      `OUT_DIR` so `cargo run` Just Works without a separate Entry
+      pkg dir. Embedded single-Component case still requires a
+      hand-written `main.rs` (board init non-trivial).
+
+- [ ] **L.3 Bringup pkg shape — RETIRED (2026-06-02)**. The Path A
+      code-free bringup pkg concept introduced in the 2026-05 draft
+      is subsumed by Entry pkg. Deploy / domain / bridge config
+      moves into Entry pkg's `Cargo.toml` `[package.metadata.nros.*]`
+      tables. The launch file lives next to Entry pkg. `system.toml`
+      is RETIRED as a Phase-212 artifact — `nros check` rejects it
+      everywhere. Users wanting ROS 2 colcon-convention
+      `<system>_bringup` pkg may author a launch-files convenience
+      dir / pkg w/o `Cargo.toml` themselves, but nano-ros tooling
+      does not produce or consume one.
 - [x] **L.4 `<pkg>::<Class>` enforcement** — `nros check` MUST reject a
       component pkg whose `class` field doesn't start with the pkg
       directory name (which equals `Cargo.toml::[package].name` for
@@ -565,20 +662,20 @@ RTOS adapter shim.
         single `<dir>/launch/*.launch.xml` → synth (only for non-Path-A).
       - `--exec <name>` skips exec disambiguation when multiple
         `[[bin]]` / `add_executable` candidates exist.
-- [ ] **L.7 `[workspace.metadata.nros]` schema + self-bringup
-      planner** — single field `default_system = "<pkg-name-or-
-      bringup-name>"`. Resolves either a Path A bringup pkg (has
-      `system.toml`, no Cargo.toml) OR a self-bringup component/
-      application pkg (has Cargo.toml w/ `[package.metadata.nros.
-      deploy.*]`). Loader handles both. **Self-bringup planner
-      support**: `nros plan <pkg-dir>` accepts a single-pkg dir
-      where the dir has `Cargo.toml` + `[package.metadata.nros.
-      {component,application}]` + `[package.metadata.nros.deploy.*]`
-      — pkg eats its own bringup role. Emit a one-component plan
-      from Cargo metadata; use the L.6 launch resolver (real or
-      synth) for the launch file. Same path for `nros codegen-
-      system`. Today's bringup-only resolution is the second case;
-      this adds the third. Tracked as M-F.2 below.
+- [ ] **L.7 `[workspace.metadata.nros]` schema + self-entry
+      planner** — single field `default_system = "<entry-pkg-name>"`
+      pointing at an Entry pkg (post-redesign — the Path A bringup
+      case is RETIRED per revised L.3). **Self-entry planner
+      support**: `nros plan <pkg-dir>` accepts a single Component
+      pkg dir where the dir has `Cargo.toml` + `[package.metadata.
+      nros.component]` + `[package.metadata.nros.entry] deploy =
+      "<board>"` — single Component pkg eats its own Entry role,
+      mostly for `cargo run` dev loop convenience. Emit a one-
+      component plan from Cargo metadata; use the L.6 launch
+      resolver (real or synth) for the launch file. Same path for
+      `nros codegen-system`. Tracked as M-F.2 below (still valid:
+      the planner code change is identical regardless of the
+      surface naming).
 - [x] **L.8 `[package.metadata.nros.deploy.<target>]` table (Option
       α)** — per-pkg deploy targets live in `Cargo.toml`
       `[package.metadata.nros.deploy.<target>]` (Rust) OR via
@@ -587,12 +684,13 @@ RTOS adapter shim.
       `nros check` rejects per-pkg `system.toml` outside bringup role.
 - [x] **L.9 C++ cmake fn surface** — `nano_ros_component_register(NAME
       <name> CLASS <UserClass> SOURCES … DEPLOY …)`,
-      `nano_ros_application(NAME <name> SOURCES … DEPLOY …)`,
-      `nano_ros_deploy(TARGET <name> RMW <rmw> DOMAIN_ID <n>
-      LOCATOR <uri>)`, `nano_ros_bridge(…)`, `nano_ros_domain(…)`.
-      All fns write metadata JSON to `${BUILD}/nros-metadata.json` so
-      `nros codegen-system` reads it at configure time. No sidecar
-      TOML for C++ pkgs.
+      `nano_ros_entry(NAME <name> SOURCES … BOARD <board> DEPLOY …)`
+      (renamed from `nano_ros_application` per Entry pkg redesign;
+      tracked in N.5 below), `nano_ros_deploy(TARGET <name> RMW <rmw>
+      DOMAIN_ID <n> LOCATOR <uri>)`, `nano_ros_bridge(…)`,
+      `nano_ros_domain(…)`. All fns write metadata JSON to
+      `${BUILD}/nros-metadata.json` so `nros codegen-system` reads it
+      at configure time. No sidecar TOML for C++ pkgs.
 - [x] **L.10 `nros::component!()` macro + Component / ExecutableComponent
       traits** — already shipped per Phase 172 W.3 (see
       `packages/core/nros-macros/src/lib.rs:156`). Macro emits the
@@ -864,6 +962,107 @@ canonical-shape regression test can run green tree-wide:
   cmd/check.rs` (M.11 lints), regression test under
   `packages/testing/nros-tests/tests/`.
 
+### 212.N — Component + Entry pkg taxonomy (platform-agnostic Board family)
+
+Lock the two-pkg user model (Component pkg + Entry pkg) introduced
+2026-06-02. Goal: codegen stays board-agnostic; user-authored Entry
+pkg (~30 LoC `main.rs`) owns board choice via the `Board` trait
+family — no per-board `system_main.rs` baker for the codegen path.
+Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
+
+- [ ] **N.1 `Board` trait family in `nros-platform`** — define
+      `Board: BoardInit + BoardPrint + BoardExit`. Compose mixins:
+      `TransportBringup: Board` (Ethernet / WiFi / CAN / serial /
+      USB CDC / IVC — board picks one or several at type-system
+      level), `NetworkWait: Board` (carrier / DHCP / link-up gate),
+      `BoardEntry: Board { fn run<F, E>(setup: F) -> Result<(), E>
+      where F: FnOnce(&mut RuntimeCtx) -> Result<(), E>; }`. The
+      `run` method owns board init + transport bringup + executor
+      lifecycle + clean exit. `setup` callback receives a
+      `RuntimeCtx` for overlay (params / remaps / env) plus the
+      generated `run_plan(runtime)` codegen call.
+- [ ] **N.2 Family driver crates** — `nros-board-{posix,freertos,
+      threadx,zephyr,nuttx,esp-idf,bare-metal}`. Each implements the
+      `Board` traits over its RTOS surface. Drives `nros::init` +
+      `Executor::spin` + transport bringup via the matching
+      `packages/drivers/` crates (`nros-smoltcp`, `cmsdk-uart`,
+      `virtio-net-netx`, `stm32f4-usart`, …). Zephyr is the carve-
+      out: Kconfig + DTS own BSP, the family crate implements only
+      `NetworkWait` over `<zephyr/net/net_if.h>` (Rust staticlib
+      can't take over `main`).
+- [ ] **N.3 Tier-1 per-board crates** — `nros-board-{native,qemu-
+      mps2-an385-freertos,qemu-arm-nuttx,threadx-linux,esp32-c3,
+      qemu-riscv64-threadx,orin-spe}`. Each thin shim plugs the
+      family crate plus the board's clock / pinmux / transport
+      choice. Users for boards outside this set author their own
+      `BoardEntry` impl in their Entry pkg (or a side crate) —
+      the family crate is the porting surface.
+- [ ] **N.4 `nros-build::generate_run_plan(launch_file)` codegen
+      library** — extract the launch → plan → `run_plan(runtime: &
+      mut RuntimeCtx) -> Result<(), Error>` Rust-fn emitter from
+      the per-board BSP baker into a standalone codegen library
+      consumed from Entry pkg `build.rs`. Reads the launch XML (or
+      `--launch <path>` arg), resolves component pkg metadata via
+      cargo-metadata, writes `$OUT_DIR/run_plan.rs` that the Entry
+      pkg `main.rs` `include!`s. The emitted fn is BOARD-AGNOSTIC
+      (board choice lives in user `main.rs`'s `Board::run` call).
+- [ ] **N.5 `nros-build::generate_single_node_main(Board)`
+      convenience** — for the L.7 single-Component-pkg case, emit
+      a thin `$OUT_DIR/main.rs` skeleton in addition to
+      `run_plan.rs` so `cargo run` Just Works without a separate
+      Entry pkg dir. Triggered when Cargo metadata declares
+      `[package.metadata.nros.entry] deploy = "<board>"` directly
+      on a Component pkg. Embedded boards still require a hand-
+      written Entry pkg (board init is non-trivial; convenience is
+      native-host only at first).
+- [ ] **N.6 Rename `nano_ros_application` → `nano_ros_entry`** —
+      cmake fn rename per L.9. Add `BOARD <board>` arg. Update every
+      existing caller (after wave-1 native/cpp sweep) — single
+      backward-compat shim emits a `MESSAGE(DEPRECATION …)` then
+      forwards.
+- [ ] **N.7 Migrate FreeRTOS BSP baker back to pure board init** —
+      retire the M.5.a baker's `__nros_component_*` symbol-walking
+      + `system_main.rs` synthesis. Once N.1–N.4 ship, FreeRTOS
+      Entry pkg user-authors `main.rs` w/ `Board::run`; BSP crate
+      shrinks to clock / lwIP init / one `extern "C" fn
+      ApplicationTask`. Same migration applies to every M.5.b
+      Component pkg: it sheds `nros::component!()` register-only
+      duties and gains a sibling Entry pkg per board target.
+- [ ] **N.8 Board family + porting docs (book chapter)** —
+      `book/src/porting/board-trait.md`: trait surface, lifecycle,
+      transport-mixin selection, worked example for a new board
+      (clock + UART + smoltcp). Add the Component + Entry pkg
+      cookbook to `book/src/user-guide/`. Update
+      `docs/design/multi-node-workspace-layout.md` to reflect the
+      Entry pkg as composition root (replacing Bringup pkg).
+- **Tests:**
+  - [ ] `posix_board_run_executes_run_plan` — host POSIX Entry pkg
+        from a 2-component launch XML reaches `run_plan` body +
+        spins.
+  - [ ] `freertos_board_run_executes_run_plan` — same fixture under
+        `nros-board-qemu-mps2-an385-freertos` reaches `run_plan` +
+        spins under QEMU.
+  - [ ] `single_node_native_convenience_generates_main` —
+        `generate_single_node_main` emits both files; `cargo run`
+        prints expected output.
+  - [ ] `entry_pkg_metadata_required_board` — Entry pkg without
+        `[package.metadata.nros.entry] deploy = "<board>"` →
+        `nros check` hard error.
+  - [ ] `board_agnostic_run_plan_links_against_any_board` — same
+        compiled `run_plan` rlib links under at least 2 distinct
+        Board impls (posix + freertos) in the test fixture.
+- **Files:** `packages/core/nros-platform/src/board/{mod,init,
+  print,exit,transport,network,entry}.rs` (NEW),
+  `packages/boards/nros-board-{posix,freertos,threadx,zephyr,nuttx,
+  esp-idf,bare-metal}/` (NEW family crates), `packages/boards/
+  nros-board-{native,qemu-mps2-an385-freertos,…}/` (NEW per-board
+  shims), `packages/codegen/nros-build/src/{run_plan,single_node}.
+  rs` (NEW codegen library; lives in standalone nros-cli repo per
+  CLAUDE.md `nros setup` provisioner), `cmake/NanoRosEntry.cmake`
+  (RENAMED), `book/src/porting/board-trait.md` (NEW),
+  `docs/design/multi-node-workspace-layout.md` (UPDATED for
+  Component + Entry pkg taxonomy).
+
 ## Acceptance
 
 Two-step Rust (codegen + build) is the canonical user surface;
@@ -877,28 +1076,46 @@ asymmetry rationale.
 - [ ] **Single-node C++ = `cmake -B build && cmake --build build`.**
       RMW selected via `-DNANO_ROS_RMW=…`. `nano_ros_generate_interfaces()`
       runs codegen at configure. (existing path; cmake-side codegen)
-- [ ] **Multi-node Rust = `nros generate-rust && cargo build && nros
-      plan && nros launch <bringup>`** — explicit codegen step + cargo
-      builds + nros owns plan + launch. (212.B + 212.J + 212.L Bringup)
-- [ ] **Multi-node C++ = `cmake -B build && cmake --build build && nros
-      launch <bringup>`** — `nano_ros_workspace_metadata()` does the
-      plan stage at configure time. (212.D + 212.J)
+- [ ] **Multi-node Rust = `nros generate-rust && cargo build && cargo
+      run -p <entry-pkg>`** — explicit codegen step + cargo builds +
+      Entry pkg `build.rs` calls `nros-build::generate_run_plan` +
+      user `main.rs` runs `Board::run`. No separate `nros plan` step
+      for native; embedded Entry pkg still routes through
+      `nros codegen-system` for vendor-toolchain integration. (212.B +
+      212.L Entry + 212.N)
+- [ ] **Multi-node C++ = `cmake -B build && cmake --build build &&
+      ./build/<entry>`** — `nano_ros_entry()` cmake fn owns Entry-
+      pkg-side codegen at configure time. (212.D + 212.N)
 - [ ] **Mixed Rust+C++ workspace = `cmake -B build && cmake --build
       build`** with `corrosion_import_crate` bridging Rust components
       into cmake's superbuild. (212.D + cross-language acceptance)
-- [ ] **Three pkg shapes work for both langs** — Component pkg
-      (lib only), Application pkg (user main), Bringup pkg (Path A
-      code-free). (212.L)
+- [ ] **Two pkg shapes work for both langs** — Component pkg
+      (lib only — `impl Component` / `NROS_COMPONENT_REGISTER`,
+      board-agnostic) + Entry pkg (board-aware `main.rs` /
+      `nano_ros_entry()` w/ `Board::run`). Bringup pkg RETIRED.
+      Single-Component-pkg convenience covered via L.7 self-entry
+      planner + N.5 `generate_single_node_main`. (212.L + 212.N)
 - [ ] **Per-pkg metadata in vendor manifest** — Rust uses Cargo.toml
-      `[package.metadata.nros.{component,application,deploy.<target>,
-      embedded}]`; C++ uses cmake fns (`nano_ros_component_register`,
-      `nano_ros_application`, `nano_ros_deploy`). No sidecar TOML for
-      C++. `system.toml` lives ONLY in Path A bringup pkgs. (212.L)
+      `[package.metadata.nros.{component,entry,deploy.<target>,
+      domain,bridge,embedded}]`; C++ uses cmake fns
+      (`nano_ros_component_register`, `nano_ros_entry`,
+      `nano_ros_deploy`). No sidecar TOML for any pkg. `system.toml`
+      RETIRED tree-wide. (212.L + 212.N)
+- [ ] **`Board` trait family ships tier-1 board crates** — posix +
+      qemu-mps2-an385-freertos + qemu-arm-nuttx + threadx-linux +
+      esp32-c3 + qemu-riscv64-threadx + orin-spe. Each entries-pkg
+      `main.rs` `Board::run` call links a working board impl. (212.N)
+- [ ] **`nros-build::generate_run_plan` codegen library exists** —
+      Entry pkg `build.rs` ~3 LoC, `main.rs` ~10-30 LoC, both
+      board-agnostic. Same `run_plan` rlib links under ≥2 distinct
+      Board impls. (212.N.4 + N.5)
 - [ ] **Component class follows `<pkg>::<UserClass>`** — pkg dir name
       MUST match the prefix. `nros check` enforces. (212.L.4)
-- [ ] **Launch file synthesis works for single-pkg** — Component pkg
-      w/o launch file gets an implicit one synthesised in-memory by
-      `nros plan` / `nros codegen-system` / `nros launch`. (212.L.6)
+- [ ] **Launch file synthesis works for single Component pkg** —
+      Component pkg w/ `[package.metadata.nros.entry]` self-entry
+      shape but no launch file gets an implicit one synthesised in-
+      memory by `nros plan` / `nros codegen-system` /
+      `generate_single_node_main`. (212.L.6 + L.7 + N.5)
 - [ ] **Multi-launch resolution works** — `<pkg>/launch/<pkg>.launch.
       xml` > `<pkg>/launch/system.launch.xml` > single file > synth.
       `--file <path>` override. (212.L.6)
@@ -957,9 +1174,10 @@ S = small (≤1d), M = medium (1–3d), L = large (≥1w).
 9. **212.I migration tooling (INTERNAL, hidden CLI)** (M) — shipped + I.3 fixture sweep done
 10. **212.J `nros launch`** (M) — shipped
 11. **212.K cyclonedds-sys + wrapper** (L) — shipped + K.4 Option B (codegen-driven descriptors) shipped
-12. **212.L Pkg shape + unified launch model** (L) — NEW; lock canonical shapes + lints + launch synth
-13. **212.M Example migration sweep + pre-212 cleanup** (L) — NEW; tree-wide sweep + lint enforcement
-14. **Acceptance verification + CI gates** (M)
+12. **212.L Pkg shape + unified launch model** (L) — IN PROGRESS; lock canonical shapes + lints + launch synth (Bringup pkg RETIRED 2026-06-02 per N redesign)
+13. **212.M Example migration sweep + pre-212 cleanup** (L) — IN PROGRESS; tree-wide sweep + lint enforcement
+14. **212.N Component + Entry pkg taxonomy (Board family)** (L) — NEW 2026-06-02; platform-agnostic Board trait + family + codegen lib split; N.7 retires M.5.a baker
+15. **Acceptance verification + CI gates** (M)
 
 ## Non-Goals
 
@@ -981,13 +1199,20 @@ build system to learn):
 - `nros-build` Rust build-dependency crate (retracted in 212.C —
   `nros generate-rust` is the explicit codegen step; cargo owns build)
 - A workspace-root `nros.toml` (per-pkg metadata lives in
-  `Cargo.toml` `[package.metadata.nros.*]` / cmake fns; bringup uses
-  `<bringup>/system.toml`)
+  `Cargo.toml` `[package.metadata.nros.*]` / cmake fns)
 - Per-component `component_nros.toml` (`[package.metadata.nros.component]`
   in `Cargo.toml` is the replacement)
-- Per-pkg `system.toml` OUTSIDE bringup role (deploy data lives in
-  `Cargo.toml` `[package.metadata.nros.deploy.<target>]` / cmake fns;
-  see §212.L.8)
+- ANY `system.toml` (RETIRED tree-wide 2026-06-02 with the Bringup pkg
+  retirement — deploy / domain / bridge data lives in Entry pkg
+  `Cargo.toml` `[package.metadata.nros.{deploy.<target>,domain,
+  bridge}]` / cmake fns; see §212.L.3 + N)
+- Bringup pkg (Path A code-free orchestration declaration) — RETIRED
+  2026-06-02; Entry pkg subsumes the role. Users wanting a ROS 2
+  colcon-convention `<system>_bringup` pkg may author one themselves
+  but nano-ros tooling does not produce or consume one.
+- Per-board `system_main.rs` baker codegen (retired by §212.N.7 once
+  the Board trait family ships; the M.5.a FreeRTOS baker is the
+  interim shape, not the destination)
 - Sidecar `nros-pkg.toml` for C++ pkgs (cmake fns are the C++ metadata
   surface; see §212.L.9)
 - Committed `metadata/*.json` (build artifact only, lives in
@@ -1013,13 +1238,21 @@ surface area (CLI help text, fixture trees, book docs).
   equivalent integration point without a build-dep crate (the
   retracted §212.C path). Two-step Rust is the honest answer; see
   §Goal.
-- Three pkg shapes (Component / Application / Bringup) replace the
-  pre-212 "every pkg has a Cargo.toml + nros.toml" model. The mental
-  cost of picking shape pays off in: lib-only components compose into
-  multi-component bringups + ship to RTOS; explicit-spin applications
-  keep rclcpp/rclpy-style control on native; Path A bringups stay
-  code-free orchestration declarations. See §212.L for the full
-  taxonomy.
+- Two pkg shapes (Component pkg + Entry pkg) replace the pre-212
+  "every pkg has a Cargo.toml + nros.toml" model AND replace the
+  2026-05 draft's three-pkg taxonomy. The mental cost of picking
+  shape pays off in: lib-only Component pkgs compose into multi-
+  component bringups + are BOARD-AGNOSTIC (ship native + every RTOS
+  unchanged); Entry pkgs own board choice via `Board::run` and the
+  composition root via the launch file. See §212.L + §212.N for the
+  full taxonomy + Board trait family. The earlier Bringup pkg
+  concept is retired; Path A code-free orchestration declarations
+  were folded into Entry pkg.
+- The Board trait family (§212.N.1) is the porting surface. Per-
+  board crates (~tier-1 list in §212.N.3) ship in-tree; out-of-tree
+  boards author their own `BoardEntry` impl in their Entry pkg
+  without contributing back. Codegen stays board-agnostic by
+  design — no per-board `system_main.rs` baker survives.
 - Live design documents in `docs/design/` continue to iterate after the
   phase lands. Treat the phase doc as the work breakdown; treat the
   design docs as the source of truth on shape decisions.
