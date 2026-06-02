@@ -1678,9 +1678,31 @@ asymmetry rationale.
 - [ ] **Multi-launch resolution works** — `<pkg>/launch/<pkg>.launch.
       xml` > `<pkg>/launch/system.launch.xml` > single file > synth.
       `--file <path>` override. (212.L.6)
-- [ ] **Every existing fixture migrated to the new shape** via the
+- [x] **Every existing fixture migrated to the new shape** via the
       §212.I.3 sweep (fixtures) + §212.M sweep (examples). No mixed-
-      shape tree allowed. (212.I + 212.M)
+      shape tree allowed. (212.I + 212.M). Gated by
+      `phase212_pre_212_files_forbidden.rs` (2/2 — both
+      `examples_tree_has_no_pre_212_files` + `nros_tests_fixtures_have_no_pre_212_files`
+      green) and `phase212_m12_example_shape.rs` (7/7 green) at HEAD
+      `c7ff133d9`. Audited 2026-06-02: every fixture leaf under
+      `packages/testing/nros-tests/fixtures/` is free of `nros.toml`,
+      `component_nros.toml`, `gen-app-config.py`, `app_config.h.in`,
+      and committed `metadata/*.json` (the `_metadata/` underscore-
+      prefixed sidecars under `orchestration_*/` are Phase 211
+      `nros plan --metadata` inputs, intentionally distinct from the
+      retired `metadata/*.json` build artifacts). `multi_pkg_workspace_*`
+      Cargo leaves carry `[package.metadata.nros.component]` /
+      `[package.metadata.nros.application]` where the codegen path
+      requires it; `orchestration_*` fixtures use the Phase 211
+      `_metadata/*.json` sidecar shape by design (no Phase 212.L
+      Cargo metadata required — they drive `nros plan` directly, not
+      the L/M codegen pipeline). Note that the canonical-shape walker
+      `phase212_m12_example_shape.rs` is scoped to `examples/` only;
+      fixtures get shape enforcement via the file-ban regression
+      `phase212_pre_212_files_forbidden.rs` instead of a per-leaf
+      `[package.metadata.nros.*]` lint, which is the appropriate scope
+      for these test fixtures (some carry deliberate alternate shapes
+      like the `orchestration_*` Phase 211 surface).
 - [ ] **All 7 RTOS adapters ship a working bringup fixture under the
       new shape** (Zephyr, NuttX, FreeRTOS, ThreadX, ESP-IDF, PlatformIO,
       PX4). (212.H + 212.M)
