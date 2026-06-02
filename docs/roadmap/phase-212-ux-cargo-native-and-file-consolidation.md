@@ -1295,15 +1295,23 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       choice. Users for boards outside this set author their own
       `BoardEntry` impl in their Entry pkg (or a side crate) —
       the family crate is the porting surface.
-- [ ] **N.4 `nros-build::generate_run_plan(launch_file)` codegen
-      library** — extract the launch → plan → `run_plan(runtime: &
-      mut RuntimeCtx) -> Result<(), Error>` Rust-fn emitter from
-      the per-board BSP baker into a standalone codegen library
-      consumed from Entry pkg `build.rs`. Reads the launch XML (or
-      `--launch <path>` arg), resolves component pkg metadata via
-      cargo-metadata, writes `$OUT_DIR/run_plan.rs` that the Entry
-      pkg `main.rs` `include!`s. The emitted fn is BOARD-AGNOSTIC
-      (board choice lives in user `main.rs`'s `Board::run` call).
+- [x] **N.4 `nros-build::generate_run_plan(launch_file)` codegen
+      library** — shipped in nros-cli `84988e8` (2026-06-02). New
+      `packages/nros-build/` crate exposes:
+      - `pub fn generate_run_plan(launch_file: impl Into<PathBuf>)
+        -> Result<PathBuf>` — Entry pkg `build.rs` 3-LoC entry.
+      - `pub fn generate_run_plan_with(opts: &Options) -> Result
+        <PathBuf>` — explicit-options form.
+      - `pub struct Options { pub fn from_env(launch_file) }` —
+        sources `OUT_DIR` etc. from cargo env.
+      - `pub mod emit` — internal emit primitives.
+      Follow-up `1011127` drops the in-crate `RuntimeError` def
+      (matches nano-ros `1c3f31080` no_std move): emit references
+      `::nros_platform::RuntimeError`. Already consumed by every
+      Entry pkg `build.rs` in `examples/*/rust/*_entry/` via
+      `nros-build = { git = "github.com/NEWSLabNTU/nros-cli",
+      branch = "main" }`. Board-agnostic emit (board choice lives
+      in user `main.rs`'s `Board::run` closure).
 - [ ] **N.5 `nros-build::generate_single_node_main(Board)`
       convenience** — for the L.7 single-Component-pkg case, emit
       a thin `$OUT_DIR/main.rs` skeleton in addition to
@@ -1313,6 +1321,27 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       on a Component pkg. Embedded boards still require a hand-
       written Entry pkg (board init is non-trivial; convenience is
       native-host only at first).
+
+      **Status:** non-blocking UX polish; defer post-Phase 212.
+      The explicit Entry pkg pattern (N.4 already shipped) handles
+      every single-node case today — users write a sibling
+      `<pkg>_entry/` dir (~3-LoC build.rs + ~10-LoC main.rs). N.5
+      would collapse that single dir for native-only single-
+      Component-pkg cases (getting-started demos, one-shot
+      iteration). Trade-offs:
+      - Pro: simpler "hello world" — single pkg + `cargo run`.
+      - Con: the same Cargo.toml must declare BOTH `[lib]` (for
+        the Component impl) AND `[[bin]]` pointing at the codegen-
+        emitted `$OUT_DIR/main.rs` — awkward + risks colliding
+        with user-supplied `src/main.rs`.
+      - Con: native-only asymmetry (embedded still requires
+        explicit Entry pkg) creates a two-pattern UX that learners
+        must reason about.
+      - Con: codegen-emitted `main.rs` paths in `[[bin]]` need
+        platform support that's still settling.
+      Revisit once the wave-4 Entry pkg pattern has soaked for a
+      release + a clean "single-pkg cargo run" UX story emerges
+      from real usage feedback.
 - [x] **N.6 Rename `nano_ros_application` → `nano_ros_entry`** —
       cmake fn rename per L.9. Add `BOARD <board>` arg. Update every
       existing caller (after wave-1 native/cpp sweep) — single
