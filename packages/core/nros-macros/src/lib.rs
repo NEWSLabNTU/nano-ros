@@ -3,7 +3,7 @@
 //! Provides `#[derive(RosMessage)]` and `#[derive(RosService)]` macros.
 
 use proc_macro::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::{DeriveInput, Fields, LitStr, Path, parse_macro_input};
 
 /// Sanitise a cargo package name into a C-identifier-safe symbol component.
@@ -201,9 +201,11 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 pub fn component(input: TokenStream) -> TokenStream {
     let component_ty = parse_macro_input!(input as Path);
 
-    // Phase 212.M.5.a.1 — mangle the exported register symbol by package
-    // so multiple Component pkg crates can link into one binary without
-    // duplicate-symbol errors.
+    // Phase 212.N.7 step-3.4 — the package-name string handed to
+    // `register_dispatch_slot_dyn` (diagnostics) +
+    // `RuntimeError::ComponentRegister` is the sanitised pkg-name used by
+    // the codegen-emitted `run_plan` to reference each Component pkg, so
+    // the two strings round-trip 1:1.
     //
     // `proc_macro::tracked_env::var` is still unstable, so we use plain
     // `std::env::var`. Cargo sets `CARGO_PKG_NAME` for every compilation
@@ -212,74 +214,19 @@ pub fn component(input: TokenStream) -> TokenStream {
     // it (none today); it keeps the macro robust against future hosts.
     let pkg_raw = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "unknown".to_string());
     let pkg_sym = sanitize_pkg_name_for_symbol(&pkg_raw);
-    let register_ident = format_ident!("__nros_component_{}_register", pkg_sym);
-    let init_ident = format_ident!("__nros_component_{}_init", pkg_sym);
-    let dispatch_ident = format_ident!("__nros_component_{}_dispatch", pkg_sym);
-    let tick_ident = format_ident!("__nros_component_{}_tick", pkg_sym);
-    let present_ident = format_ident!("__NROS_COMPONENT_{}_EXPORT_PRESENT", pkg_sym.to_uppercase());
-
-    // Phase 212.N.7 step-3.4 — the package-name string handed to
-    // `register_dispatch_slot_dyn` (diagnostics) + `RuntimeError::ComponentRegister`
-    // is the sanitised pkg-name used for symbol mangling. The codegen-emitted
-    // `run_plan` body references each Component pkg by its Cargo `name`
-    // (snake-cased the same way), so the two strings round-trip 1:1.
     let pkg_name_lit = pkg_sym.clone();
 
-    // Phase 212.M.5.a.4 — parallel `init` / `dispatch` / `tick` symbols so
-    // the BSP path can fire `ExecutableComponent::on_callback` /
-    // `ExecutableComponent::tick` bodies without knowing the concrete
-    // component type. State is `Box`-erased to `*mut ()` at the FFI
-    // boundary; `init` returns a leaked Box pointer that the BSP keeps
-    // alive for the lifetime of the firmware (no `drop` symbol because
-    // embedded slots never deallocate). The dispatch / tick fns cast
-    // back to the typed `State` inside the macro emit, where the type
-    // information is still in scope.
+    // Phase 212.N.7 step-6 — the legacy `#[unsafe(no_mangle)] extern
+    // "Rust" fn __nros_component_<pkg>_{register,init,dispatch,tick}`
+    // symbols and the `__NROS_COMPONENT_<PKG>_EXPORT_PRESENT` `#[used]`
+    // marker are gone. They existed for the Phase 212.M.5.a BSP baker
+    // (`freertos-qemu-mps2-an385-bsp` — retired in step-4), which
+    // walked the mangled names from a generated `system_main.rs`. The
+    // Phase 212.N Entry pkg path calls `<pkg>::register(runtime)`
+    // directly through the path API, so the four typed fns now live
+    // as local items inside the `register(runtime)` wrapper. The
+    // macro emits ONE public item: the wrapper itself.
     let expanded = quote! {
-        #[unsafe(no_mangle)]
-        pub extern "Rust" fn #register_ident(
-            context: &mut nros::ComponentContext<'_>
-        ) -> nros::ComponentResult<()> {
-            <#component_ty as nros::Component>::register(context)
-        }
-
-        #[unsafe(no_mangle)]
-        pub extern "Rust" fn #init_ident() -> *mut () {
-            let state: <#component_ty as nros::ExecutableComponent>::State =
-                <#component_ty as nros::ExecutableComponent>::init();
-            ::nros::__private_component_state_into_raw::<#component_ty>(state)
-        }
-
-        #[unsafe(no_mangle)]
-        pub unsafe extern "Rust" fn #dispatch_ident(
-            state: *mut (),
-            callback: ::nros::CallbackId<'_>,
-            ctx: &mut ::nros::CallbackCtx<'_>,
-        ) {
-            // SAFETY: `state` came from `#init_ident` and is the only
-            // pointer to this `State`; the runtime never dispatches
-            // concurrently against the same slot.
-            let s = unsafe {
-                &mut *(state as *mut <#component_ty as nros::ExecutableComponent>::State)
-            };
-            <#component_ty as nros::ExecutableComponent>::on_callback(s, callback, ctx);
-        }
-
-        #[unsafe(no_mangle)]
-        pub unsafe extern "Rust" fn #tick_ident(
-            state: *mut (),
-            ctx: &mut ::nros::TickCtx<'_>,
-        ) {
-            // SAFETY: same provenance as `#dispatch_ident`.
-            let s = unsafe {
-                &mut *(state as *mut <#component_ty as nros::ExecutableComponent>::State)
-            };
-            <#component_ty as nros::ExecutableComponent>::tick(s, ctx);
-        }
-
-        #[used]
-        #[unsafe(no_mangle)]
-        pub static #present_ident: u8 = 1;
-
         // Phase 212.N.7 step-3.4 — Entry-pkg-callable `register(runtime)`
         // wrapper. The codegen-emitted `run_plan(runtime)` body
         // (`nros-build::generate_run_plan`) dispatches one
@@ -287,39 +234,66 @@ pub fn component(input: TokenStream) -> TokenStream {
         // so every Component pkg whose `lib.rs` invokes `nros::component!()`
         // gets a stable per-pkg API here.
         //
-        // The four typed fn-pointers (`__nros_component_<pkg>_*`) are
-        // transmuted into the opaque `extern "Rust" fn()` aliases the
-        // platform-side trait surface holds; the impl side in
-        // `nros::component_runtime` transmutes them back to the typed
-        // signatures (`ComponentRegisterFn` etc., defined in `nros`).
-        //
-        // SAFETY: typed `extern "Rust" fn(args...) -> ret` and the
-        // zero-arg `extern "Rust" fn()` alias share the same ABI
-        // representation (one pointer); the transmute is purely a
-        // type-level reinterpretation. The impl-side transmute on the
-        // other side recovers the same typed signature before invoking
-        // — the round-trip is type-preserving so long as both sides agree
-        // on the typed signature, which they do (both live in `nros`).
+        // SAFETY (transmutes below): typed `fn(args...) -> ret` /
+        // `unsafe fn(args...) -> ret` and the zero-arg
+        // `extern "Rust" fn()` aliases share the same ABI representation
+        // (one pointer); the transmute is purely a type-level
+        // reinterpretation. The impl-side transmute on the other side
+        // (`nros::component_runtime`) recovers the same typed signature
+        // before invoking — the round-trip is type-preserving so long
+        // as both sides agree on the typed signature, which they do
+        // (both live in `nros`).
         pub fn register(
             runtime: &mut ::nros_platform::RuntimeCtx<'_>,
         ) -> ::core::result::Result<(), ::nros_platform::RuntimeError> {
+            // Phase 212.N.7 step-6 — local typed fn items, no
+            // `extern "Rust"` / no `#[unsafe(no_mangle)]`. The
+            // Entry-pkg path resolves them via the wrapper's
+            // `fn` coercion + transmute instead of a mangled
+            // global symbol.
+            fn r(ctx: &mut ::nros::ComponentContext<'_>) -> ::nros::ComponentResult<()> {
+                <#component_ty as ::nros::Component>::register(ctx)
+            }
+            fn i() -> *mut () {
+                let state: <#component_ty as ::nros::ExecutableComponent>::State =
+                    <#component_ty as ::nros::ExecutableComponent>::init();
+                ::nros::__private_component_state_into_raw::<#component_ty>(state)
+            }
+            unsafe fn d(
+                state: *mut (),
+                callback: ::nros::CallbackId<'_>,
+                ctx: &mut ::nros::CallbackCtx<'_>,
+            ) {
+                // SAFETY: `state` came from `i()` and is the only
+                // pointer to this `State`; the runtime never dispatches
+                // concurrently against the same slot.
+                let s = unsafe {
+                    &mut *(state as *mut <#component_ty as ::nros::ExecutableComponent>::State)
+                };
+                <#component_ty as ::nros::ExecutableComponent>::on_callback(s, callback, ctx);
+            }
+            unsafe fn t(state: *mut (), ctx: &mut ::nros::TickCtx<'_>) {
+                // SAFETY: same provenance as `d()`.
+                let s = unsafe {
+                    &mut *(state as *mut <#component_ty as ::nros::ExecutableComponent>::State)
+                };
+                <#component_ty as ::nros::ExecutableComponent>::tick(s, ctx);
+            }
+
             let register_opaque: ::nros_platform::ComponentRegisterFn = unsafe {
                 ::core::mem::transmute(
-                    #register_ident as fn(&mut ::nros::ComponentContext<'_>) -> ::nros::ComponentResult<()>,
+                    r as fn(&mut ::nros::ComponentContext<'_>) -> ::nros::ComponentResult<()>,
                 )
             };
             let init_opaque: ::nros_platform::ComponentInitFn =
-                unsafe { ::core::mem::transmute(#init_ident as fn() -> *mut ()) };
+                unsafe { ::core::mem::transmute(i as fn() -> *mut ()) };
             let dispatch_opaque: ::nros_platform::ComponentDispatchFn = unsafe {
                 ::core::mem::transmute(
-                    #dispatch_ident
-                        as unsafe fn(*mut (), ::nros::CallbackId<'_>, &mut ::nros::CallbackCtx<'_>),
+                    d as unsafe fn(*mut (), ::nros::CallbackId<'_>, &mut ::nros::CallbackCtx<'_>),
                 )
             };
             let tick_opaque: ::nros_platform::ComponentTickFn = unsafe {
-                ::core::mem::transmute(
-                    #tick_ident as unsafe fn(*mut (), &mut ::nros::TickCtx<'_>),
-                )
+                ::core::mem::transmute(t as unsafe fn(*mut (), &mut ::nros::TickCtx<'_>))
             };
             runtime
                 .runtime
