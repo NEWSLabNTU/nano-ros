@@ -1,7 +1,7 @@
 <package format="3">
-  <name>demo_bringup</name>
+  <name>demo_entry</name>
   <version>0.1.0</version>
-  <description>Phase 212.D pure-cpp fixture — bringup pkg.</description>
+  <description>Phase 212.M.10 fixture — Entry pkg (replaces retired Bringup pkg per §212.L.3).</description>
   <maintainer email="noreply@example.com">nano-ros</maintainer>
   <license>MIT</license>
   <exec_depend>talker_pkg</exec_depend>

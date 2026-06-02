@@ -1,17 +1,29 @@
-# Phase 212.D fixture — pure C/C++ multi-component workspace.
+# Phase 212.M.10 fixture — pure C/C++ workspace under the §212.L
+# Component pkg + Entry pkg taxonomy.
 #
-# Today's `nros plan` walks `src/<pkg>/component_nros.toml` per colcon
-# convention, so packages live under `src/`. The cmake function calls
-# `nros plan` against this layout at configure time and emits
-# `nros_components.cmake`.
+# Pre-212 sidecar TOML / `metadata/*.json` / `nros.toml` have all been
+# retired (§212.L Non-Goals). Component metadata is declared at
+# configure time via `nano_ros_component_register(...)`, the executable
+# via `nano_ros_entry(...)`, and per-deploy config via
+# `nano_ros_deploy(...)`. All three fns ship from `cmake/` and emit
+# `${CMAKE_BINARY_DIR}/nros-metadata.json` — no committed sidecar.
 #
-# The integration test rewrites @NANO_ROS_ROOT@ before invoking cmake.
+# `@NANO_ROS_ROOT@` is rewritten by the staging harness before configure
+# (see `tests/phase212_d_workspace_metadata.rs::stage_fixture`).
 cmake_minimum_required(VERSION 3.22)
 project(multi_pkg_workspace_cpp C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-include("@NANO_ROS_ROOT@/cmake/nano_ros_workspace_metadata.cmake")
-nano_ros_workspace_metadata(SYSTEM src/demo_bringup)
+include("@NANO_ROS_ROOT@/cmake/NanoRosComponentRegister.cmake")
 
+# Per-deploy config (§212.L — Entry pkgs are native-only at this surface).
+nano_ros_deploy(TARGET native RMW zenoh DOMAIN_ID 0)
+
+# Component pkgs — each its own `project()` so the L.4
+# `CLASS startswith ${PROJECT_NAME}::` rule resolves correctly.
 add_subdirectory(src/talker_pkg)
 add_subdirectory(src/listener_pkg)
+
+# Entry pkg — replaces the retired Bringup pkg per §212.L.3. Folds the
+# old launch.xml / system.toml deploy declaration into the cmake fn.
+add_subdirectory(src/demo_entry)

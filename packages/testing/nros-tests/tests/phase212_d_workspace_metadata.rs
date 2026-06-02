@@ -1,15 +1,26 @@
-//! Phase 212.D — `nano_ros_workspace_metadata()` cmake function tests.
+//! Phase 212.D / 212.M.10 — cmake-fn metadata tests.
+//!
+//! Originally covered the pre-212 `nano_ros_workspace_metadata()` fn
+//! (sidecar-TOML / `nros-plan.json` shape). §212.L retired that path
+//! in favour of `nano_ros_component_register(...)` / `nano_ros_entry(...)`
+//! / `nano_ros_deploy(...)`, which emit
+//! `${CMAKE_BINARY_DIR}/nros-metadata.json` directly. Phase 212.M.10
+//! migrated the `multi_pkg_workspace_cpp` fixture to the new shape and
+//! these assertions follow suit.
 //!
 //! Three coverage points:
-//! 1. `cmake_workspace_metadata_emits_components_cmake` — configure-time
-//!    invocation produces `${CMAKE_BINARY_DIR}/nros_components.cmake`
-//!    containing per-component marker targets parsed from `nros-plan.json`.
+//! 1. `cmake_workspace_metadata_emits_components_cmake` — configure
+//!    produces `${CMAKE_BINARY_DIR}/nros-metadata.json` containing the
+//!    expected component + application + deploy entries.
 //! 2. `cmake_pure_cpp_multi_component_builds` — `cmake --build` carries
-//!    a 2-component pure-C++ fixture to runnable binaries.
+//!    a 2-component pure-C++ fixture to a runnable Entry pkg binary.
 //! 3. `cmake_mixed_corrosion_bridge_builds` — same shape but talker is
 //!    Rust + Corrosion-bridged. `#[ignore]`d when Corrosion isn't
 //!    installed (Corrosion isn't a Phase 212 prerequisite; the fixture
-//!    is informational on hosts without it).
+//!    is informational on hosts without it). Also currently
+//!    `#[ignore]`d pending §212.M.10-equivalent migration of the
+//!    `multi_pkg_workspace_mixed` fixture (still on the pre-212
+//!    sidecar shape).
 //!
 //! All three skip cleanly via `nros_tests::skip!` if the `nros` CLI or
 //! `cmake` aren't available — mirrors `cmake_add_subdirectory_smoke`'s
@@ -130,26 +141,32 @@ fn cmake_workspace_metadata_emits_components_cmake() {
         String::from_utf8_lossy(&out.stderr)
     );
 
-    let components_cmake = build_dir.join("nros_components.cmake");
+    // §212.L.9 cmake fns emit a single metadata JSON at the build root.
+    let metadata = build_dir.join("nros-metadata.json");
     assert!(
-        components_cmake.is_file(),
-        "expected {} to be written by nano_ros_workspace_metadata()",
-        components_cmake.display()
+        metadata.is_file(),
+        "expected {} to be emitted by the §212.L cmake fns",
+        metadata.display()
     );
-    let body = fs::read_to_string(&components_cmake).expect("read components.cmake");
+    let body = fs::read_to_string(&metadata).expect("read nros-metadata.json");
     assert!(
-        body.contains("nros_component_talker_pkg_talker")
-            && body.contains("nros_component_listener_pkg_listener"),
-        "components.cmake missing expected component targets:\n{body}"
+        body.contains("\"name\": \"talker\"")
+            && body.contains("\"class\": \"talker_pkg::Talker\""),
+        "metadata missing talker component entry:\n{body}"
     );
     assert!(
-        body.contains("NROS_LANGUAGE \"cpp\""),
-        "components.cmake missing language property:\n{body}"
+        body.contains("\"name\": \"listener\"")
+            && body.contains("\"class\": \"listener_pkg::Listener\""),
+        "metadata missing listener component entry:\n{body}"
     );
-
-    // `nros plan` artifact survives at the documented location.
-    let plan_json = build_dir.join("nros-plan/nros-plan.json");
-    assert!(plan_json.is_file(), "missing {}", plan_json.display());
+    assert!(
+        body.contains("\"name\": \"demo_entry\""),
+        "metadata missing demo_entry application entry:\n{body}"
+    );
+    assert!(
+        body.contains("\"native\""),
+        "metadata missing native deploy target:\n{body}"
+    );
 }
 
 #[test]
@@ -187,17 +204,14 @@ fn cmake_pure_cpp_multi_component_builds() {
         String::from_utf8_lossy(&build.stderr)
     );
 
-    let talker = build_dir.join("src/talker_pkg/talker");
-    let listener = build_dir.join("src/listener_pkg/listener");
+    // §212.L taxonomy: Component pkgs build to STATIC libs and only the
+    // Entry pkg becomes an executable. The fixture's Entry pkg is
+    // `demo_entry` (§212.L.3 — replaces the retired Bringup pkg).
+    let demo_entry = build_dir.join("src/demo_entry/demo_entry");
     assert!(
-        talker.is_file(),
-        "missing talker binary at {}",
-        talker.display()
-    );
-    assert!(
-        listener.is_file(),
-        "missing listener binary at {}",
-        listener.display()
+        demo_entry.is_file(),
+        "missing Entry pkg binary at {}",
+        demo_entry.display()
     );
 }
 
