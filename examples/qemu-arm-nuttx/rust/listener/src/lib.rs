@@ -45,14 +45,3 @@ impl ExecutableComponent for Listener {
 }
 
 nros::component!(Listener);
-
-/// Phase 212.N.7 step-2 — codegen-facing `register` entry point.
-///
-/// See the `talker` Component pkg sibling for full docs. Generic over
-/// `R: ?Sized` so the Component pkg's Cargo.toml does not need a
-/// direct `nros-platform` dep; the Entry pkg monomorphises `R` to
-/// `nros_platform::RuntimeCtx<'_>`. Body is a no-op until the 212.N
-/// runtime plumbing lands.
-pub fn register<R: ?Sized>(_runtime: &mut R) -> Result<(), &'static str> {
-    Ok(())
-}

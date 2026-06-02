@@ -50,22 +50,3 @@ impl ExecutableComponent for FibonacciClient {
 }
 
 nros::component!(FibonacciClient);
-
-/// Phase 212.N.7 step-2 — Entry-pkg-facing register wrapper.
-///
-/// TODO stub: see `freertos_rs_talker::register` for the rationale.
-/// `RuntimeCtx` does not yet expose a `ComponentRuntime` sink, so the
-/// existing `<FibonacciClient as Component>::register(ctx)` machinery
-/// wired by `nros::component!(FibonacciClient)` cannot be driven from
-/// here. The live registration path remains the macro-emitted
-/// `nros_component_register` extern that the FreeRTOS BSP baker
-/// discovers at link time.
-///
-/// Generic over `R` to avoid adding an `nros-platform` direct dep —
-/// step-2 contract kept `Cargo.toml` untouched. Entry pkg passes
-/// `&mut nros_platform::RuntimeCtx<'_>`.
-pub fn register<R>(_runtime: &mut R) -> Result<(), &'static str> {
-    // TODO(212.N.7 step-3+): wire to <FibonacciClient as Component>::register
-    // once RuntimeCtx exposes a ComponentRuntime sink.
-    Ok(())
-}
