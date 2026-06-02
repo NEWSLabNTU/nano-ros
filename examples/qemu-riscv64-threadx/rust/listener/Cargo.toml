@@ -16,6 +16,11 @@ default = ["rmw-zenoh"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "dep:nros-platform-critical-section", "nros/alloc"]
 
+# Phase 212.L.2 — Application pkg shape. Single-board
+# embedded binary; deploy target matches the platform path.
+[package.metadata.nros.application]
+deploy = ["qemu-riscv64-threadx"]
+
 [dependencies]
 nros-board-threadx-qemu-riscv64 = { path = "../../../../packages/boards/nros-board-threadx-qemu-riscv64" }
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-threadx", "ros-humble"] }

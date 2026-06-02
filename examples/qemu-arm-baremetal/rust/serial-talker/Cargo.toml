@@ -14,6 +14,11 @@ bench = false
 [features]
 default = []
 
+# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
+# binary; deploy target matches the platform path it lives under.
+[package.metadata.nros.application]
+deploy = ["qemu-arm-baremetal"]
+
 [dependencies]
 # Board crate with serial transport (no ethernet)
 nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385", default-features = false, features = ["serial", "rmw-zenoh"] }

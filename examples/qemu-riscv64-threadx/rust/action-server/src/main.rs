@@ -26,7 +26,7 @@ fn register_rmw() -> Result<(), &'static str> {
 
 #[unsafe(no_mangle)]
 extern "C" fn main() -> ! {
-    run(Config::from_toml(include_str!("../nros.toml")), |config| {
+    run(Config { zenoh_locator: "tcp/10.0.2.2:7473", domain_id: 0, ..Default::default() }, |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("fibonacci_action_server");

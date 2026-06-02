@@ -26,7 +26,15 @@ use std_msgs::msg::Int32;
 
 #[nros_board_mps2_an385::entry]
 fn main() -> ! {
-    run(Config::from_toml(include_str!("../nros.toml")), |config| {
+    // Phase 212.M.10 — nros.toml retired; transcribe its fields here.
+    // Custom UART transport for XRCE: `custom://uart` locator routes
+    // through the board crate's xrce-transport shim (Phase 207.2).
+    let config = {
+        let mut cfg = Config::serial_default();
+        cfg.zenoh_locator = "custom://uart";
+        cfg
+    };
+    run(config, |config| {
         nros_log::register_logger(&LOGGER);
         nros_log::init(nros_log::sinks::default());
 

@@ -15,14 +15,8 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
 find_package(example_interfaces REQUIRED)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
-nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
 add_executable(riscv64_threadx_cpp_action_server src/main.cpp)
-target_include_directories(riscv64_threadx_cpp_action_server PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(riscv64_threadx_cpp_action_server PRIVATE
     example_interfaces::example_interfaces
     NanoRos::NanoRosCpp)

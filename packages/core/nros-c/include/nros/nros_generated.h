@@ -697,9 +697,9 @@ typedef enum nros_guard_condition_state_t {
  * Mirrors `nros_node::executor::sched_context::SchedClass`.
  */
 enum nros_sched_class_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint8_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   NROS_SCHED_CLASS_FIFO = 0,
   NROS_SCHED_CLASS_EDF = 1,
@@ -708,7 +708,11 @@ enum nros_sched_class_t
   NROS_SCHED_CLASS_TIME_TRIGGERED = 4,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum nros_sched_class_t nros_sched_class_t;
+#else
 typedef uint8_t nros_sched_class_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 /**
@@ -716,16 +720,20 @@ typedef uint8_t nros_sched_class_t;
  * Mirrors `nros_node::executor::sched_context::Priority`.
  */
 enum nros_sched_priority_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint8_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   NROS_SCHED_PRIORITY_CRITICAL = 0,
   NROS_SCHED_PRIORITY_NORMAL = 1,
   NROS_SCHED_PRIORITY_BEST_EFFORT = 2,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum nros_sched_priority_t nros_sched_priority_t;
+#else
 typedef uint8_t nros_sched_priority_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 /**
@@ -733,16 +741,20 @@ typedef uint8_t nros_sched_priority_t;
  * Mirrors `nros_node::executor::sched_context::DeadlinePolicy`.
  */
 enum nros_deadline_policy_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint8_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   NROS_DEADLINE_POLICY_RELEASED = 0,
   NROS_DEADLINE_POLICY_ACTIVATED = 1,
   NROS_DEADLINE_POLICY_INHERITED = 2,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum nros_deadline_policy_t nros_deadline_policy_t;
+#else
 typedef uint8_t nros_deadline_policy_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 typedef struct Option_LifecycleCallbackFnCtx Option_LifecycleCallbackFnCtx;

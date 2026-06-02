@@ -8,7 +8,6 @@
 
 #include <nros/app_main.h>
 #include <nros/nros.hpp>
-#include <nros/app_config.h>
 #include "std_msgs.hpp"
 
 int nros_app_main(int argc, char **argv) {
@@ -17,7 +16,7 @@ int nros_app_main(int argc, char **argv) {
 
     printf("nros C++ Talker (ThreadX RISC-V QEMU)\n");
 
-    NROS_TRY_RET(nros::init(NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
+    NROS_TRY_RET(nros::init("tcp/10.0.2.2:7653", 0), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_talker"), 1);

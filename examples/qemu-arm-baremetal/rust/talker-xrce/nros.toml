@@ -1,9 +1,0 @@
-# nano-ros config (direct mode). See
-# docs/design/configuration-and-transports.md.
-
-[node]
-domain_id = 0
-
-[[transport]]
-kind    = "custom"
-locator = "custom://uart"

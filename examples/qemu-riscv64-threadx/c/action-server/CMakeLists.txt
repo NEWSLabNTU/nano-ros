@@ -12,14 +12,8 @@ set(NANO_ROS_BOARD    riscv64-qemu)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_generate_interfaces(example_interfaces "action/Fibonacci.action" LANGUAGE C SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
-nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
 add_executable(riscv64_threadx_c_action_server src/main.c)
-target_include_directories(riscv64_threadx_c_action_server PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(riscv64_threadx_c_action_server PRIVATE
     example_interfaces__nano_ros_c
     NanoRos::NanoRos)

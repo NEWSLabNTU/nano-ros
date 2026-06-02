@@ -12,7 +12,6 @@
 #include <nros/node.h>
 #include <nros/publisher.h>
 
-#include <nros/app_config.h>
 #include "std_msgs.h"
 
 // ----------------------------------------------------------------------------
@@ -38,7 +37,7 @@ int nros_app_main(int argc, char **argv) {
 
     memset(&app, 0, sizeof(app));
 
-    NROS_CHECK_RET(nros_support_init(&app.support, NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
+    NROS_CHECK_RET(nros_support_init(&app.support, "tcp/10.0.2.2:7553", 0), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "c_talker", "/"), 1);
     NROS_CHECK_RET(nros_publisher_init(&app.publisher, &app.node,
                                    std_msgs_msg_int32_get_type_support(), "/chatter"), 1);

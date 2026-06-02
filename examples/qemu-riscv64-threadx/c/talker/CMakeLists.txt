@@ -14,10 +14,6 @@ set(NANO_ROS_BOARD    riscv64-qemu)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
-nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
 set(_app_sources src/main.c)
 if(NROS_RMW STREQUAL "cyclonedds")
@@ -25,8 +21,6 @@ if(NROS_RMW STREQUAL "cyclonedds")
 endif()
 
 add_executable(riscv64_threadx_c_talker ${_app_sources})
-target_include_directories(riscv64_threadx_c_talker PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(riscv64_threadx_c_talker PRIVATE
     std_msgs__nano_ros_c
     NanoRos::NanoRos)

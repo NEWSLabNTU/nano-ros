@@ -23,7 +23,14 @@ static LOGGER: Logger = Logger::new("talker");
 
 #[nros_board_mps2_an385::entry]
 fn main() -> ! {
-    run(Config::from_toml(include_str!("../nros.toml")), |config| {
+    run(Config {
+        mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
+        ip: [10, 0, 2, 10],
+        prefix: 24,
+        gateway: [10, 0, 2, 2],
+        zenoh_locator: "tcp/10.0.2.2:7450",
+        domain_id: 0,
+    }, |config| {
         nros_log::register_logger(&LOGGER);
         nros_log::init(nros_log::sinks::default());
 

@@ -8,7 +8,6 @@
 
 #include <nros/app_main.h>
 #include <nros/nros.hpp>
-#include <nros/app_config.h>
 #include "example_interfaces.hpp"
 
 using Fibonacci = example_interfaces::action::Fibonacci;
@@ -62,7 +61,7 @@ int nros_app_main(int argc, char **argv) {
     (void)argv;
 
     printf("nros C++ Action Server (ThreadX RISC-V)\n");
-    NROS_TRY_RET(nros::init(NROS_APP_CONFIG.zenoh.locator, NROS_APP_CONFIG.zenoh.domain_id), 1);
+    NROS_TRY_RET(nros::init("tcp/10.0.2.2:7673", 0), 1);
 
     nros::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_action_server"), 1);

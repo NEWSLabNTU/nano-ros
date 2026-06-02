@@ -22,6 +22,11 @@ link-tls = [
     "nros-rmw-zenoh/link-tls",
 ]
 
+# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
+# binary; deploy target matches the platform path it lives under.
+[package.metadata.nros.application]
+deploy = ["qemu-arm-baremetal"]
+
 [dependencies]
 # Board crate for hardware + network init
 nros-board-mps2-an385 = { path = "../../../../packages/boards/nros-board-mps2-an385" }

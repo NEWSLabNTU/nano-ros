@@ -12,14 +12,8 @@ set(NANO_ROS_BOARD    threadx-linux)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
-nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
 add_executable(threadx_c_listener src/main.c)
-target_include_directories(threadx_c_listener PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(threadx_c_listener PRIVATE
     std_msgs__nano_ros_c
     NanoRos::NanoRos)

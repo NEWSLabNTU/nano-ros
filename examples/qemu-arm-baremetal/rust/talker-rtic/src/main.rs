@@ -47,7 +47,14 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        let config = Config::from_toml(include_str!("../nros.toml"));
+        let config = Config {
+        mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
+        ip: [10, 0, 2, 10],
+        prefix: 24,
+        gateway: [10, 0, 2, 2],
+        zenoh_locator: "tcp/10.0.2.2:7450",
+        domain_id: 0,
+    };
         nros_board_mps2_an385::init_hardware(&config);
 
         Mono::start(cx.core.SYST, 25_000_000);

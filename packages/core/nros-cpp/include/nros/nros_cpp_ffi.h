@@ -64,9 +64,9 @@
  * `nros::SchedClass` mirror. Phase 110.B.
  */
 enum nros_cpp_sched_class_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint8_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   nros_cpp_sched_class_t_Fifo = 0,
   nros_cpp_sched_class_t_Edf = 1,
@@ -75,39 +75,51 @@ enum nros_cpp_sched_class_t
   nros_cpp_sched_class_t_TimeTriggered = 4,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum nros_cpp_sched_class_t nros_cpp_sched_class_t;
+#else
 typedef uint8_t nros_cpp_sched_class_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 /**
  * `nros::Priority` mirror. Phase 110.C.
  */
 enum nros_cpp_priority_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint8_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   nros_cpp_priority_t_Critical = 0,
   nros_cpp_priority_t_Normal = 1,
   nros_cpp_priority_t_BestEffort = 2,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum nros_cpp_priority_t nros_cpp_priority_t;
+#else
 typedef uint8_t nros_cpp_priority_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 /**
  * `nros::DeadlinePolicy` mirror. Phase 110.B.
  */
 enum nros_cpp_deadline_policy_t
-#ifdef __cplusplus
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
   : uint8_t
-#endif // __cplusplus
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
  {
   nros_cpp_deadline_policy_t_Released = 0,
   nros_cpp_deadline_policy_t_Activated = 1,
   nros_cpp_deadline_policy_t_Inherited = 2,
 };
 #ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum nros_cpp_deadline_policy_t nros_cpp_deadline_policy_t;
+#else
 typedef uint8_t nros_cpp_deadline_policy_t;
+#endif // __STDC_VERSION__ >= 202311L
 #endif // __cplusplus
 
 /**

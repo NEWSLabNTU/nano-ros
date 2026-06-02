@@ -16,6 +16,11 @@ bench = false
 [features]
 default = []
 
+# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
+# binary; deploy target matches the platform path it lives under.
+[package.metadata.nros.application]
+deploy = ["qemu-arm-baremetal"]
+
 [dependencies]
 # Board crate: serial UART + the XRCE custom-transport shim (Phase 207.2).
 # `xrce-transport` forwards through to `serial` (shares `UART_DEVICE` with

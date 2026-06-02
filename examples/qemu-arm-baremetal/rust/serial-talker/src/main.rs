@@ -27,7 +27,7 @@ use std_msgs::msg::Int32;
 
 #[nros_board_mps2_an385::entry]
 fn main() -> ! {
-    run(Config::from_toml(include_str!("../nros.toml")), |config| {
+    run(Config::serial_default(), |config| {
         nros_log::register_logger(&LOGGER);
         nros_log::init(nros_log::sinks::default());
 
