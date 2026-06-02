@@ -3,8 +3,21 @@ name = "talker_pkg"
 version = "0.1.0"
 edition = "2021"
 publish = false
+description = "Phase 212.M.10 mixed fixture — Rust Component pkg (Corrosion-bridged into C++ superbuild)."
 
 [lib]
 crate-type = ["staticlib", "rlib"]
+
+# Phase 212.L.1 Component pkg shape — `[package.metadata.nros.component]`
+# replaces the retired `component_nros.toml` sidecar + `metadata/*.json`.
+# `class` is the `<pkg>::<UserClass>` form (L.4 — pkg dir name = pkg name).
+[package.metadata.nros.component]
+class = "talker_pkg::Talker"
+name = "talker"
+default_namespace = "/"
+
+[package.metadata.ament]
+build_depend = []
+exec_depend = []
 
 [workspace]
