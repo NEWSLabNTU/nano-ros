@@ -24,10 +24,11 @@
 extern crate alloc;
 
 // Application modules
+mod board_entry;
 mod config;
-mod node;
 #[cfg(feature = "wifi")]
 pub mod network;
+mod node;
 
 // Re-export entry macro from esp-hal
 pub use esp_hal::main as entry;
@@ -42,6 +43,7 @@ pub use esp_bootloader_esp_idf;
 pub use nros_platform_esp32;
 
 // Re-export main types
+pub use board_entry::Esp32C3;
 pub use config::NodeConfig;
 #[cfg(feature = "wifi")]
 pub use config::{IpMode, WifiConfig};
@@ -60,10 +62,13 @@ pub use critical_section;
 ///
 /// Use with: `use nros_board_esp32::prelude::*;`
 pub mod prelude {
-    pub use crate::config::NodeConfig;
     #[cfg(feature = "wifi")]
     pub use crate::config::{IpMode, WifiConfig};
-    pub use crate::node::{init_hardware, run};
+    pub use crate::{
+        board_entry::Esp32C3,
+        config::NodeConfig,
+        node::{init_hardware, run},
+    };
     pub use esp_hal::main as entry;
     pub use nros_platform::BoardConfig;
     pub use nros_platform_esp32::timing::MonotonicClock;

@@ -37,6 +37,12 @@
 
 mod config;
 mod entry;
+// Phase 212.N.3 — new platform-level trait impls (`nros_platform::Board*`)
+// live in a sibling module so the legacy `nros_board_common::Board*` impls
+// above stay untouched. Both trait families coexist during the 212.N
+// transition; codegen-emitted Entry pkgs (212.N.4) consume the platform-level
+// path via `<QemuArmVirt as nros_platform::BoardEntry>::run`.
+mod entry_212n;
 mod node;
 
 pub use config::Config;

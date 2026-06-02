@@ -1,3 +1,12 @@
+# Phase 212.N.3 — empty `[workspace]` marker. The outer workspace's
+# `exclude = [...]` already lists this package so it builds
+# standalone (cf. `nros-board-zephyr`); the empty marker makes
+# `cargo check --offline` from this dir resolve to this package as
+# its own workspace root, which matters when the workspace `Cargo.toml`
+# isn't an ancestor (e.g. cargo invoked from a git worktree nested
+# under `.claude/worktrees/`).
+[workspace]
+
 [package]
 name = "nros-board-nuttx-qemu-arm"
 version = "0.1.0"
@@ -16,6 +25,20 @@ name = "nros_board_nuttx_qemu_arm"
 # `nros_board_nuttx` generic crate can drive boot via the
 # `run_generic<B: BoardInit>` shim.
 nros-board-common = { path = "../nros-board-common" }
+# Phase 212.N.3 — implements the new platform-level board trait
+# family (`nros_platform::{BoardInit, BoardPrint, BoardExit,
+# BoardEntry}`) so the per-board ZST can plug directly into
+# `nros_board_nuttx::run_entry::<Self, _, _>` from a codegen-emitted
+# Entry pkg `main.rs`.
+nros-platform = { path = "../../core/nros-platform", default-features = false }
+# Phase 212.N.3 — `BoardEntry::run` delegates to the NuttX family
+# driver's `run_entry`. We do NOT enable `reference-qemu-arm` here:
+# that feature flag pulls `nros-board-nuttx-qemu-arm` as an optional
+# dep of `nros-board-nuttx`, which IS this crate — cargo flags it as
+# a cyclic package dependency. The `run_entry` symbol is also gated
+# `target_os = "nuttx"`, which is the gate we rely on (matched by the
+# `BoardEntry` impl below).
+nros-board-nuttx = { path = "../nros-board-nuttx" }
 
 [build-dependencies]
 cc = "1"

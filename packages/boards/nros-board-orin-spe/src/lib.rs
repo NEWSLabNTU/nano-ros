@@ -73,6 +73,124 @@ impl nros_board_common::BoardInit for OrinSpe {
     }
 }
 
+// ─── Phase 212.N.3 — nros_platform::board trait impls ────────────────────
+//
+// Additive shim over the new 212.N.1 trait surface. The legacy
+// `nros_board_common::BoardInit` impl above stays untouched during
+// the transition.
+//
+// Orin SPE is a kernel-spawn board but with a twist: the FSP boots
+// the FreeRTOS scheduler **before** user code runs. `app_init` (the
+// FSP hook the firmware crate wraps as `nros_app_rust_entry`) is
+// already inside a FreeRTOS task by the time `BoardEntry::run`
+// fires. So unlike the generic `nros-board-freertos::run_entry`
+// (which calls `vTaskStartScheduler` and never returns), the SPE
+// `BoardEntry::run` body drives the user closure directly inside
+// the caller's task and diverges via `exit_success`/`exit_failure`
+// — both of which halt in `wfi` on real hardware.
+
+impl nros_platform::BoardInit for OrinSpe {
+    fn init_hardware() {
+        // Parameterless per the 212.N.1 contract. Delegates to
+        // `node::init_hardware` with `Config::default()` because
+        // the SPE's `init_hardware` body is a no-op anyway (FSP
+        // already brought up TCU / HSP / IVC carveout by the time
+        // user code runs). The arg exists only for API parity
+        // with other board crates.
+        init_hardware(&Config::default());
+    }
+}
+
+impl nros_platform::BoardPrint for OrinSpe {
+    fn println(args: core::fmt::Arguments<'_>) {
+        // Stage into the same 256-byte stack buffer the macro
+        // `println!` uses, then forward to FSP's TCU printf via
+        // `__fsp_println` so we keep one path for all output.
+        let mut buf = __PrintBuf::new();
+        let _ = core::fmt::Write::write_fmt(&mut buf, args);
+        __fsp_println(buf.as_str());
+    }
+}
+
+impl nros_platform::BoardExit for OrinSpe {
+    fn exit_success() -> ! {
+        // The SPE is the always-on safety core — there is no
+        // "exit cleanly to a host" path. Park in `wfi`. The FSP's
+        // idle hook keeps firing; the firmware's downstream
+        // watchdog logic decides whether to reset the SoC.
+        loop {
+            unsafe {
+                core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
+            }
+        }
+    }
+
+    fn exit_failure() -> ! {
+        loop {
+            unsafe {
+                core::arch::asm!("wfi", options(nomem, nostack, preserves_flags));
+            }
+        }
+    }
+}
+
+impl nros_platform::BoardEntry for OrinSpe {
+    /// Drive the boot → setup → exit flow on AGX Orin SPE.
+    ///
+    /// **Already inside a FreeRTOS task** when invoked — the FSP's
+    /// `app_init` hook spawns the task and trampolines into the
+    /// firmware's `nros_app_rust_entry`, which is where the Entry
+    /// pkg's `main`-equivalent calls `<OrinSpe as BoardEntry>::run`.
+    ///
+    /// Body shape (mirrors `nros-board-posix` but with the SPE
+    /// banner + the wfi-halt exit pair):
+    ///
+    /// 1. Print the same banner as the legacy `node::run`.
+    /// 2. [`nros_platform::BoardInit::init_hardware`] (no-op on SPE).
+    /// 3. Build [`nros_platform::RuntimeCtx::EMPTY`]; codegen
+    ///    (212.N.4, lives in standalone `nros-cli` repo per
+    ///    CLAUDE.md) will populate `params` / `remaps` later.
+    /// 4. Invoke `setup(&mut runtime)`.
+    /// 5. Diverge via `exit_success` / `exit_failure`.
+    ///
+    /// The legacy [`run`] free fn (which `xTaskCreate`s a fresh
+    /// task and returns into `app_init`) coexists during the
+    /// 212.N transition; existing firmware that calls `run()`
+    /// keeps working.
+    fn run<F, E>(setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        use nros_platform::{BoardExit, BoardInit, BoardPrint};
+
+        <Self as BoardPrint>::println(format_args!(""));
+        <Self as BoardPrint>::println(format_args!("========================================"));
+        <Self as BoardPrint>::println(format_args!("  nros-board-orin-spe (Cortex-R5F)"));
+        <Self as BoardPrint>::println(format_args!("========================================"));
+        <Self as BoardPrint>::println(format_args!(""));
+
+        <Self as BoardInit>::init_hardware();
+
+        let mut runtime = nros_platform::RuntimeCtx::EMPTY;
+        match setup(&mut runtime) {
+            Ok(()) => {
+                <Self as BoardPrint>::println(format_args!(""));
+                <Self as BoardPrint>::println(format_args!(
+                    "nros-board-orin-spe: application closure returned Ok."
+                ));
+                <Self as BoardExit>::exit_success();
+            }
+            Err(e) => {
+                <Self as BoardPrint>::println(format_args!(
+                    "nros-board-orin-spe: application error: {e:?}"
+                ));
+                <Self as BoardExit>::exit_failure();
+            }
+        }
+    }
+}
+
 /// Print to the SPE's TCU (Tegra Combined UART) via FSP's `printf`.
 ///
 /// On real hardware this writes to the shared SoC debug UART; on the
@@ -106,7 +224,10 @@ pub struct __PrintBuf {
 
 impl __PrintBuf {
     pub const fn new() -> Self {
-        Self { buf: [0; 256], len: 0 }
+        Self {
+            buf: [0; 256],
+            len: 0,
+        }
     }
 
     pub fn as_str(&self) -> &str {
@@ -156,7 +277,11 @@ pub fn __fsp_println(s: &str) {
     let bytes = s.as_bytes();
     if !bytes.is_empty() {
         unsafe {
-            tcu_print_msg(bytes.as_ptr() as *const core::ffi::c_char, bytes.len() as i32, false);
+            tcu_print_msg(
+                bytes.as_ptr() as *const core::ffi::c_char,
+                bytes.len() as i32,
+                false,
+            );
         }
     }
     const NL: &[u8] = b"\n";

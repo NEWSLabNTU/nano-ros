@@ -1,0 +1,18 @@
+[package]
+name = "nros-board-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Phase 212.N.3 — tier-1 per-board shim for hosted Linux/macOS, delegating to `nros-board-posix`."
+publish = false
+
+# Host-only shim. POSIX (Linux / macOS / BSD) hosts go through libstd,
+# so no `no_std` attribute and no per-target gating — this crate's
+# whole purpose is to expose a `NativeBoard` ZST that delegates every
+# `Board*` trait method to the `nros-board-posix` family driver.
+
+[dependencies]
+# Trait surface (BoardEntry, BoardInit, BoardPrint, BoardExit, RuntimeCtx).
+nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
+# Family driver this shim plugs.
+nros-board-posix = { version = "0.1.0", path = "../nros-board-posix" }

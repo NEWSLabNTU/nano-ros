@@ -20,7 +20,7 @@ unsafe extern "C" {
     fn xTaskCreate(
         entry: unsafe extern "C" fn(*mut c_void),
         name: *const core::ffi::c_char,
-        stack_depth: u32,  // in WORDS, not bytes
+        stack_depth: u32, // in WORDS, not bytes
         arg: *mut c_void,
         priority: u32,
         created_task: *mut *mut c_void,

@@ -37,8 +37,8 @@ extern crate zpico_sys;
 // the generic `nros-board-freertos` crate. The overlay only
 // implements the three `BoardInit` / `BoardPrint` / `BoardExit`
 // traits + provides a thin non-generic `run()` wrapper.
-use nros_board_freertos::{BoardExit, BoardInit, BoardPrint};
 pub use nros_board_freertos::Config;
+use nros_board_freertos::{BoardExit, BoardInit, BoardPrint};
 
 /// Per-board marker for trait dispatch into
 /// `nros_board_freertos::run::<Mps2An385, _, _>`.
@@ -191,4 +191,66 @@ pub fn exit_failure() -> ! {
     cortex_m_semihosting::debug::exit(cortex_m_semihosting::debug::EXIT_FAILURE);
     #[allow(clippy::empty_loop)]
     loop {}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 212.N.3 — additive impls of the new `nros_platform::board` traits.
+//
+// The legacy `nros_board_common::{BoardInit, BoardPrint, BoardExit}` impls
+// above stay in place during the 212.N transition. The new trait set lives
+// in `nros_platform::board::*` (parameterless `init_hardware`, identical
+// `BoardPrint::println` / `BoardExit::exit_*` shape) and is required by the
+// 212.N.2 family driver `nros_board_freertos::run_entry`.
+//
+// Bodies mirror the legacy impls so both entry surfaces (`run()` and
+// `<Mps2An385 as nros_platform::BoardEntry>::run`) share the same hardware
+// behaviour.
+// ---------------------------------------------------------------------------
+
+impl nros_platform::BoardInit for Mps2An385 {
+    fn init_hardware() {
+        // FreeRTOS network init requires the scheduler to be running
+        // (`tcpip_init` creates `tcpip_thread`). All meaningful init
+        // happens inside the app task created by the family driver;
+        // pre-scheduler init is a no-op on MPS2-AN385. Identical to the
+        // legacy `BoardInit::init_hardware(&Config)` body above.
+    }
+}
+
+impl nros_platform::BoardPrint for Mps2An385 {
+    fn println(args: core::fmt::Arguments<'_>) {
+        use core::fmt::Write;
+        if let Ok(mut stdout) = cortex_m_semihosting::hio::hstdout() {
+            let _ = writeln!(stdout, "{}", args);
+        }
+    }
+}
+
+impl nros_platform::BoardExit for Mps2An385 {
+    fn exit_success() -> ! {
+        exit_success()
+    }
+
+    fn exit_failure() -> ! {
+        exit_failure()
+    }
+}
+
+impl nros_platform::BoardEntry for Mps2An385 {
+    /// Drive boot → user-closure → exit via the family driver.
+    ///
+    /// The 212.N.1 `BoardEntry::run` signature takes only `setup`; the
+    /// FreeRTOS family driver `run_entry` needs a `Config` (MAC / IP /
+    /// task priorities). Bridge by constructing `Config::default()`
+    /// here — matches the legacy `run()` wrapper's call site.
+    fn run<F, E>(setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        // Mirror legacy `run()` — wire the semihosting log writer
+        // before any task spawns. Idempotent.
+        register_log_writer();
+        nros_board_freertos::run_entry::<Mps2An385, F, E>(Config::default(), setup)
+    }
 }

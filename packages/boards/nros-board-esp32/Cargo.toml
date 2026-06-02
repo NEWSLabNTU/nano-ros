@@ -12,6 +12,9 @@ name = "nros_board_esp32"
 # Unified platform primitives (clock, memory, random, sleep)
 nros-platform-esp32 = { path = "../../platforms/nros-platform-esp32" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32"] }
+# Phase 212.N.3 — direct-exec family driver (provides
+# `run_entry` + `DirectExec` marker for `BoardEntry::run`).
+nros-board-bare-metal = { path = "../nros-board-bare-metal" }
 # Phase 129.D — `zpico-platform-shim` retired. Symbols come
 # from `zpico-sys`'s default-on `platform-aliases` C TU.
 

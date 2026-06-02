@@ -30,9 +30,9 @@ use smoltcp::socket::dhcpv4;
 #[cfg(feature = "wifi")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use crate::config::NodeConfig;
 #[cfg(feature = "wifi")]
 use crate::config::IpMode;
+use crate::config::NodeConfig;
 use nros_platform_esp32::random;
 
 // NOTE: We intentionally do NOT define a `type Result<T>` alias in this module.
@@ -191,14 +191,23 @@ pub fn init_hardware(config: &NodeConfig) {
         let mac = wifi_dev.mac_address();
         let mac_addr = EthernetAddress::from_bytes(&mac);
         let iface_config = smoltcp::iface::Config::new(mac_addr.into());
-        let iface = Interface::new(iface_config, wifi_dev, smoltcp::time::Instant::from_millis(nros_platform_esp32::clock::clock_ms() as i64));
+        let iface = Interface::new(
+            iface_config,
+            wifi_dev,
+            smoltcp::time::Instant::from_millis(nros_platform_esp32::clock::clock_ms() as i64),
+        );
         unsafe { NET_IFACE.write(iface) };
         let sockets = unsafe { create_socket_set() };
         unsafe { NET_SOCKETS.write(sockets) };
 
         esp_println::println!(
             "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+            mac[0],
+            mac[1],
+            mac[2],
+            mac[3],
+            mac[4],
+            mac[5]
         );
 
         // Step 9: Configure IP (DHCP or static)
@@ -229,9 +238,7 @@ pub fn init_hardware(config: &NodeConfig) {
             // Register the network poll as the sleep callback so busy-wait
             // sleep polls the network stack to avoid missing packets during
             // zenoh-pico's connect handshake.
-            nros_platform_esp32::sleep::set_poll_callback(
-                crate::network::smoltcp_network_poll,
-            );
+            nros_platform_esp32::sleep::set_poll_callback(crate::network::smoltcp_network_poll);
         }
 
         // Prevent wifi_controller and radio_controller from being dropped
@@ -282,13 +289,16 @@ fn configure_ip(config: &NodeConfig, iface: &mut Interface, sockets: &mut Socket
             let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
 
             loop {
-                iface.poll(smoltcp::time::Instant::from_millis(nros_platform_esp32::clock::clock_ms() as i64), wifi_dev, sockets);
+                iface.poll(
+                    smoltcp::time::Instant::from_millis(
+                        nros_platform_esp32::clock::clock_ms() as i64
+                    ),
+                    wifi_dev,
+                    sockets,
+                );
 
                 // Check if we got an IP
-                if iface
-                    .ipv4_addr()
-                    .is_some_and(|ip| !ip.is_unspecified())
-                {
+                if iface.ipv4_addr().is_some_and(|ip| !ip.is_unspecified()) {
                     break;
                 }
 
@@ -310,9 +320,7 @@ fn configure_ip(config: &NodeConfig, iface: &mut Interface, sockets: &mut Socket
                 }
 
                 // Check timeout
-                let elapsed_ms = Instant::now()
-                    .duration_since_epoch()
-                    .as_millis()
+                let elapsed_ms = Instant::now().duration_since_epoch().as_millis()
                     - start.duration_since_epoch().as_millis();
                 if elapsed_ms > timeout_ms {
                     esp_println::println!("ERROR: DHCP timeout");
@@ -331,10 +339,7 @@ fn configure_ip(config: &NodeConfig, iface: &mut Interface, sockets: &mut Socket
             prefix,
             gateway,
         } => {
-            esp_println::println!(
-                "  IP: {}.{}.{}.{}/{}",
-                ip[0], ip[1], ip[2], ip[3], prefix
-            );
+            esp_println::println!("  IP: {}.{}.{}.{}/{}", ip[0], ip[1], ip[2], ip[3], prefix);
 
             let ip_addr = Ipv4Address::new(ip[0], ip[1], ip[2], ip[3]);
             iface.update_ip_addrs(|addrs| {
@@ -348,7 +353,10 @@ fn configure_ip(config: &NodeConfig, iface: &mut Interface, sockets: &mut Socket
                 let _ = iface.routes_mut().add_default_ipv4_route(gw);
                 esp_println::println!(
                     "  Gateway: {}.{}.{}.{}",
-                    gateway[0], gateway[1], gateway[2], gateway[3]
+                    gateway[0],
+                    gateway[1],
+                    gateway[2],
+                    gateway[3]
                 );
             }
         }

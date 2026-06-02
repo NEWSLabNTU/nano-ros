@@ -86,6 +86,66 @@ impl BoardExit for ThreadxLinux {
     }
 }
 
+// ── Phase 212.N.3 — `nros_platform::board` trait impls + `BoardEntry` ────
+//
+// Additive overlay on top of the legacy `nros_board_common::Board*`
+// impls above. The new 212.N.1 trait set lives in
+// `nros_platform::board::*` (`BoardInit` parameterless, `BoardPrint`,
+// `BoardExit`, plus the `BoardEntry` boot driver consumed by user
+// `main.rs`). The legacy traits stay for now (per CLAUDE.md /
+// `nros_platform::board` module docs — Phase 212.N.7 retires them).
+//
+// `BoardEntry::run` body delegates to the family driver in
+// `nros-board-threadx::run_entry::<ThreadxLinux, Config, F, E>`,
+// which mirrors the legacy `run` lifecycle (stash closure, register
+// network config + app callback, `tx_kernel_enter()`).
+
+impl nros_platform::BoardInit for ThreadxLinux {
+    // New 212.N.1 init is parameterless. The threadx-linux overlay's
+    // pre-kernel init is a no-op (see `node::init_hardware` — actual
+    // network bring-up runs in `tx_application_define()` after the
+    // kernel starts), so calling through to it with the default
+    // config is safe; the `_config: &Config` arg is ignored.
+    fn init_hardware() {
+        crate::node::init_hardware(&Config::default());
+    }
+}
+
+impl nros_platform::BoardPrint for ThreadxLinux {
+    fn println(args: core::fmt::Arguments<'_>) {
+        // Delegate to the legacy `BoardPrint` impl — same staging
+        // buffer + `nros_board_log` FFI path.
+        <Self as BoardPrint>::println(args);
+    }
+}
+
+impl nros_platform::BoardExit for ThreadxLinux {
+    fn exit_success() -> ! {
+        unsafe { libc_exit(0) }
+    }
+
+    fn exit_failure() -> ! {
+        unsafe { libc_exit(1) }
+    }
+}
+
+impl nros_platform::BoardEntry for ThreadxLinux {
+    fn run<F, E>(setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        // Refresh the platform log slot before kernel entry (mirrors
+        // the legacy `node::run` wrapper). The ThreadX-Linux kernel
+        // bring-up resets some C static state, so `node::run` also
+        // re-registers from inside the app thread; here we just seed
+        // the slot for any pre-kernel logging.
+        crate::node::register_log_writer_public();
+        let cfg = Config::default();
+        nros_board_threadx::run_entry::<ThreadxLinux, Config, F, E>(cfg, setup)
+    }
+}
+
 unsafe fn libc_exit(code: i32) -> ! {
     unsafe extern "C" {
         fn exit(status: i32) -> !;

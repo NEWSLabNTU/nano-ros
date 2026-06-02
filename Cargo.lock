@@ -1320,6 +1320,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-board-native"
+version = "0.1.0"
+dependencies = [
+ "nros-board-posix",
+ "nros-platform",
+]
+
+[[package]]
 name = "nros-board-posix"
 version = "0.1.0"
 dependencies = [

@@ -26,10 +26,7 @@ pub fn init_hardware(config: &Config) {
     // Writing to /dev/urandom re-seeds the xorshift128 state.
     {
         use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .write(true)
-            .open("/dev/urandom")
-        {
+        if let Ok(mut f) = std::fs::OpenOptions::new().write(true).open("/dev/urandom") {
             let _ = f.write_all(&config.ip);
         }
     }
@@ -67,16 +64,9 @@ fn apply_ip_config(config: &Config) {
         ifr_addr: sockaddr_in,
     }
     unsafe extern "C" {
-        fn socket(
-            domain: core::ffi::c_int,
-            ty: core::ffi::c_int,
-            proto: core::ffi::c_int,
-        ) -> RawFd;
-        fn ioctl(
-            fd: RawFd,
-            req: core::ffi::c_ulong,
-            ...
-        ) -> core::ffi::c_int;
+        fn socket(domain: core::ffi::c_int, ty: core::ffi::c_int, proto: core::ffi::c_int)
+        -> RawFd;
+        fn ioctl(fd: RawFd, req: core::ffi::c_ulong, ...) -> core::ffi::c_int;
         fn close(fd: RawFd) -> core::ffi::c_int;
     }
     const AF_INET: core::ffi::c_int = 2;

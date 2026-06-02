@@ -137,6 +137,55 @@ impl BoardExit for ThreadxQemuRiscv64 {
     }
 }
 
+// Phase 212.N.3 — 212.N.1 trait surface (`nros_platform::board::*`)
+// + `BoardEntry` delegating to the family driver
+// `nros_board_threadx::run_entry`. Additive to the legacy
+// `nros-board-common` impls above; both shapes coexist during the
+// 212.N migration.
+//
+// `BoardInit::init_hardware()` (212.N.1) is parameterless — the
+// existing `node::init_hardware` already ignores its `&Config` arg, so
+// the new impl just forwards through a default Config. `BoardPrint`
+// / `BoardExit` mirror the legacy bodies. `BoardEntry::run` constructs
+// `Config::default()` and hands it to `nros_board_threadx::run_entry`
+// (which threads the closure through ThreadX kernel startup +
+// `RuntimeCtx`).
+impl nros_platform::BoardInit for ThreadxQemuRiscv64 {
+    fn init_hardware() {
+        let cfg = Config::default();
+        node::init_hardware(&cfg);
+    }
+}
+
+impl nros_platform::BoardPrint for ThreadxQemuRiscv64 {
+    fn println(args: core::fmt::Arguments<'_>) {
+        use core::fmt::Write;
+        let mut w = UartWriter;
+        let _ = writeln!(w, "{}", args);
+    }
+}
+
+impl nros_platform::BoardExit for ThreadxQemuRiscv64 {
+    fn exit_success() -> ! {
+        exit_success()
+    }
+
+    fn exit_failure() -> ! {
+        exit_failure()
+    }
+}
+
+impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
+    fn run<F, E>(setup: F) -> Result<(), E>
+    where
+        F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+        E: core::fmt::Debug,
+    {
+        let cfg = Config::default();
+        nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(cfg, setup)
+    }
+}
+
 /// Print to QEMU UART console.
 ///
 /// Uses the 16550 UART at `0x10000000` (QEMU virt machine).

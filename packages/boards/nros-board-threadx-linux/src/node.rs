@@ -41,6 +41,14 @@ where
     })
 }
 
+/// Phase 212.N.3 — crate-internal accessor for the log-writer
+/// registration so the new `nros_platform::BoardEntry::run` impl can
+/// seed the platform log slot before kernel entry (same shape the
+/// legacy `run` wrapper already uses).
+pub(crate) fn register_log_writer_public() {
+    register_log_writer();
+}
+
 /// Phase 88 — register a stdout writer with `nros-platform-threadx`'s
 /// log fn-ptr slot. ThreadX-Linux runs ThreadX kernel as a POSIX
 /// process, so stderr is the natural sink. Called once from `run()`

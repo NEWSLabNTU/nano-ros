@@ -122,6 +122,8 @@ members = [
     # Phase 212.N.2 — POSIX family driver (hosted Linux/macOS).
     # Per-board crates migrate onto it in 212.N.3.
     "packages/boards/nros-board-posix",
+    # Phase 212.N.3 — tier-1 per-board shim plugging `nros-board-posix`.
+    "packages/boards/nros-board-native",
 ]
 
 # Excluded from workspace — standalone packages and third-party forks
