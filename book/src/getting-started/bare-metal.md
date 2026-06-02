@@ -104,13 +104,13 @@ just qemu zenohd &
 #    Or directly:
 #    zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
 
-# 2. Boot the talker in QEMU. The just recipe wraps qemu-system-arm
-#    with the LAN9118 wiring the example expects:
+# 2. Boot the talker in QEMU. The `just qemu talker` recipe wraps
+#    qemu-system-arm with the LAN9118 networking wiring the example
+#    expects — it's the only working invocation for this tutorial
+#    (the example's `.cargo/config.toml` runner is bare `-kernel`,
+#    no `-nic socket,model=lan9118,…`, so a plain `cargo run` boots
+#    QEMU without networking):
 just qemu talker
-# Or, in the Rust example dir (the `.cargo/config.toml` runner shells
-# out to the same qemu-system-arm flags):
-cd examples/qemu-arm-baremetal/rust/talker
-cargo run --release
 # Expected serial-over-semihosting output (per src/main.rs):
 #   Declaring publisher on /chatter (std_msgs/Int32)
 #   Publisher declared
@@ -121,7 +121,10 @@ cargo run --release
 # 3. Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32
+# Talker publishes best-effort; stock `ros2 topic echo` defaults to
+# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
+# Force best-effort to receive:
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
 QEMU exits via Ctrl-A x.

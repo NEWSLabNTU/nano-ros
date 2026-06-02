@@ -282,7 +282,10 @@ west build -t run
 # 3. Verify from stock ROS 2 in another terminal:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32
+# Talker publishes best-effort; stock `ros2 topic echo` defaults to
+# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
+# Force best-effort to receive:
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
 The Zephyr boot banner runs first, then nano-ros prints

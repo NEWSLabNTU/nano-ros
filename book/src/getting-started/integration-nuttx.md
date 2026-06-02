@@ -44,6 +44,9 @@ $NUTTX_APPS_DIR/                             # sibling: apps tree
 my_app/                                  # your application
 ├── package.xml
 ├── Cargo.toml | CMakeLists.txt
+├── generated/                           # Rust codegen — build.rs runs
+│                                        #   `nros generate-rust` on first
+│                                        #   `cargo build`; gitignored.
 └── src/main.{rs,c,cpp}
 ```
 
@@ -187,7 +190,10 @@ nsh> nuttx_c_talker            # C talker
 # 3. Verify from stock ROS 2 in another terminal:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32
+# Talker publishes best-effort; stock `ros2 topic echo` defaults to
+# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
+# Force best-effort to receive:
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
 **Readiness signal.** After typing the app's NSH command (e.g.

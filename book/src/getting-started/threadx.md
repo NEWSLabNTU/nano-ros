@@ -168,7 +168,10 @@ just threadx_riscv64 talker
 # Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32
+# Talker publishes best-effort; stock `ros2 topic echo` defaults to
+# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
+# Force best-effort to receive:
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
 For batch testing: `just threadx_linux test` runs every pubsub /

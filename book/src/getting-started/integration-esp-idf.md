@@ -100,7 +100,10 @@ idf.py -p /dev/ttyUSB0 flash monitor
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32
+# Talker publishes best-effort; stock `ros2 topic echo` defaults to
+# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
+# Force best-effort to receive:
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
 QEMU ESP32 testing path: see the `just esp_idf` recipes — they

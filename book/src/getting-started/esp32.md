@@ -58,7 +58,9 @@ examples/esp32/rust/talker/
 │                              # runner = espflash flash --monitor
 ├── nros.toml                  # wifi credentials + zenoh locator
 ├── package.xml
-├── generated/
+├── generated/                 # codegen output — build.rs runs
+│                              #   `nros generate-rust` on first
+│                              #   `cargo build`; gitignored.
 └── src/main.rs                # esp-hal init → nros_app_main
 ```
 
@@ -151,7 +153,10 @@ cargo run --release        # invokes `espflash flash --monitor`
 # Verify from stock ROS 2 on the same network:
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32
+# Talker publishes best-effort; stock `ros2 topic echo` defaults to
+# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
+# Force best-effort to receive:
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
 **Readiness signal.** Real hardware: after `espflash flash --monitor`,
