@@ -804,6 +804,29 @@ A clean break — no transitional mixed-shape state allowed.
             canonical-shape regression test (`phase212_m12_example_
             shape`) confirms the FreeRTOS tree carries no pre-212
             files + every example pkg classifies cleanly.
+- [x] **M.13 native/c sweep (informal — landed 2026-06-02)** — surfaced
+      by the M.12 walker as a gap (M.1+M.2 covered native/{rust,cpp}
+      only; native/c was unaddressed). Migrated all 10 examples
+      (`talker, listener, logging, service-{client,server},
+      action-{client,server}, custom-msg, custom-platform,
+      custom-transport-loopback`) to the §212.M.2 Application pkg shape,
+      C variant: added `package.xml` with `<build_type>cmake</build_type>`,
+      replaced `add_executable(...) + nros_generate_interfaces(...)`
+      chain with `nros_find_interfaces(LANGUAGE C SKIP_INSTALL)` +
+      `nano_ros_application(NAME ... SOURCES ... DEPLOY native)`,
+      enabled `LANGUAGES C CXX` (the codegen FFI glue needs CXX even
+      for C apps), kept `nros_platform_link_app(<target>)` for the
+      RMW register stub. Fixed two pre-existing source bugs surfaced
+      by the rebuild: `custom-platform/src/main.c` had `g_logger`
+      declared after its callback use site (moved to before the
+      callback); `custom-transport-loopback/src/main.c` called the
+      never-defined `nros_publisher_publish` (replaced with the typed
+      helper `std_msgs_msg_int32_publish`) and shipped a bare
+      `int main()` (replaced with `NROS_APP_MAIN_REGISTER_POSIX()`
+      macro emit). The `phase212_m12_example_shape` walker dropped
+      its `examples/native/c/` carve-out; `phase212_examples_
+      canonical_shape` reports zero `native/c/` violations. All 10
+      examples build clean via `cmake -B build && cmake --build build`.
 - [x] **M.6 ThreadX sweep** — `examples/threadx-linux/{rust,cpp}/*`
       (12 examples) → Component pkg shape + `nano_ros_component_
       register()` cmake fn + `nros_threadx_codegen_system(SYSTEM .)`

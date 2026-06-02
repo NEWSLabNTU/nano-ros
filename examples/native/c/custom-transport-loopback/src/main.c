@@ -166,7 +166,10 @@ static void timer_callback(nros_timer_t* timer, void* arg) {
     (void)timer;
     demo_ctx_t* ctx = (demo_ctx_t*)arg;
     ctx->message.data = ctx->tick++;
-    (void)nros_publisher_publish(ctx->publisher, &ctx->message);
+    // Phase 212.M native/c sweep — replace the never-defined
+    // `nros_publisher_publish` symbol with the canonical typed
+    // helper `std_msgs_msg_int32_publish` (same shape talker uses).
+    (void)std_msgs_msg_int32_publish(ctx->publisher, &ctx->message);
 }
 
 /* --------------------------------------------------------------
@@ -282,3 +285,11 @@ int nros_app_main(int argc, char** argv) {
 
     return fail;
 }
+
+// Phase 212.M native/c sweep — emit the POSIX `int main(int argc,
+// char** argv)` shim that forwards into `nros_app_main` (see
+// <nros/app_main.h>). Pre-212 example shipped a bare `main()` here;
+// the canonical shape uses the macro so the entry point is uniform
+// across the example matrix.
+NROS_APP_MAIN_REGISTER_POSIX()
+

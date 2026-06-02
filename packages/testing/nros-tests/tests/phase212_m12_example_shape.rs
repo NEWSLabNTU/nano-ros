@@ -179,10 +179,9 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
         "examples/threadx-linux/c/",
         "M.6 covered threadx-linux/{rust,cpp} only; c/ remains pre-212",
     ),
-    (
-        "examples/native/c/",
-        "M.1 + M.2 covered native/{rust,cpp}; native/c not in sweep table",
-    ),
+    // M.13 (informal — sweep landed 2026-06-02) covered native/c via
+    // package.xml + nano_ros_application() cmake fn. native/c is now
+    // canonical-shape. Carve-out retired.
     (
         "examples/stm32f4/",
         "stm32f4 RTIC / Embassy variants — not in M sweep table",

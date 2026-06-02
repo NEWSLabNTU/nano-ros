@@ -85,6 +85,13 @@ static struct {
 // Serialization buffer (statically allocated)
 static uint8_t g_serialize_buffer[64];
 
+// Phase 88.16.B — set after `nros_node_init`; used by post-init
+// diagnostics + the timer callback. NULL before init = `NROS_LOG_*`
+// silently drops. Moved here from after `main` (Phase 212.M native/c
+// sweep) so the C compiler sees the declaration before the callback's
+// use site.
+static nros_logger_t g_logger = NULL;
+
 // ============================================================================
 // Callbacks
 // ============================================================================
@@ -218,10 +225,6 @@ static void demo_guard_condition(void) {
 // ============================================================================
 // Main
 // ============================================================================
-
-// Phase 88.16.B — set after `nros_node_init`; used by post-init
-// diagnostics. NULL before init = `NROS_LOG_*` silently drops.
-static nros_logger_t g_logger = NULL;
 
 int nros_app_main(int argc, char** argv) {
     (void)argc;

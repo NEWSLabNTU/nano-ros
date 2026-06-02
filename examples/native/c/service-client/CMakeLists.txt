@@ -1,35 +1,29 @@
 cmake_minimum_required(VERSION 3.22)
-project(c_service_client LANGUAGES C)
+project(c_service_client LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Phase 118.B.2 — collapsed-shape C service-client. RMW selected at cmake
-# configure time via `-DNROS_RMW=<rmw>` (default zenoh).
+# Phase 212.M (native/c sweep) — Application pkg shape, C variant.
 set(NANO_ROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
+    "Active RMW (zenoh|cyclonedds|xrce).")
 set(NANO_ROS_RMW "${NROS_RMW}")
 
-# The Cyclone DDS backend is C++ (operator new/delete, std::nothrow). A C app
-# linking it gets LINKER_LANGUAGE CXX (set by nano_ros_link_rmw), which needs
-# CMAKE_CXX_LINK_EXECUTABLE — i.e. CXX enabled in *this* directory scope. The
-# nano-ros add_subdirectory enables CXX only in its own subtree, so enable it
-# here for the Cyclone RMW. (zenoh / xrce stay pure C.)
 if(NROS_RMW STREQUAL "cyclonedds")
     enable_language(CXX)
 endif()
 
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
+set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
+add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
+include("${_NANO_ROS_ROOT}/cmake/NanoRosComponentRegister.cmake")
 
-nros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
-nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
-nros_generate_interfaces(example_interfaces DEPENDENCIES builtin_interfaces SKIP_INSTALL)
+nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
+nano_ros_application(
+    NAME c_service_client
+    SOURCES src/main.c
+    DEPLOY native)
 
-
-add_executable(c_service_client src/main.c)
-target_link_libraries(c_service_client PRIVATE
-    example_interfaces__nano_ros_c
-    NanoRos::NanoRos)
+target_link_libraries(c_service_client PRIVATE example_interfaces__nano_ros_c)
 nros_platform_link_app(c_service_client)
