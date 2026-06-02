@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<!-- Phase 212.N.7 step-5 firmware launch file.
+
+     Mirrors the demo_bringup launch.xml — the codegen emits one
+     `<pkg>::register(runtime)?` call per `<node>` entry below. -->
+<launch>
+  <node pkg="talker_pkg"   exec="talker"   name="talker" />
+  <node pkg="listener_pkg" exec="listener" name="listener" />
+</launch>

@@ -2,8 +2,12 @@
 #
 # Mirrors `multi_pkg_workspace_cpp` shape but Path-A (Rust): two
 # component crates + a bringup pkg (declarative-only — no `Cargo.toml`)
-# + a `firmware/` bin crate that depends on
-# `freertos-qemu-mps2-an385-bsp` and ships the 5-line `main.rs`.
+# + a `firmware/` bin crate.
+#
+# Phase 212.N.7 step-5 — the `firmware/` bin is now an Entry pkg:
+# `<Mps2An385 as BoardEntry>::run` + codegen-emitted
+# `run_plan(runtime)` via `nros-build`. The M.5.a-shaped
+# `freertos-qemu-mps2-an385-bsp::nros_run()` dependency is gone.
 #
 # Phase 212.M.5.a.3 — talker_pkg / listener_pkg + firmware/ are each
 # their own workspace roots (mirrors the ThreadX H.4 fixture). The

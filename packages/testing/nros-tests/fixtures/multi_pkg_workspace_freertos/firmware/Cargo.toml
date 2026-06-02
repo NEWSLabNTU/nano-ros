@@ -1,13 +1,18 @@
-# Phase 212.H.3 firmware bin — depends on `freertos-qemu-mps2-an385-bsp`
-# and ships a 5-line `main.rs`. The empty `[workspace]` table makes
-# this its own workspace root so the embedded `thumbv7m-none-eabi`
-# target pinned in `.cargo/config.toml` doesn't leak onto the outer
-# fixture's host-target component crates.
+# Phase 212.N.7 step-5 firmware bin — Entry pkg shape.
+#
+# Replaces the M.5.a baker-driven `freertos-qemu-mps2-an385-bsp` /
+# `nros_run()` shape with the Phase 212.N Entry pkg form: `BoardEntry::run`
+# + codegen-emitted `run_plan(runtime)` from `nros-build`. The 5-line
+# `main.rs` body matches the wave-4 sibling Entry pkgs under
+# `examples/qemu-arm-freertos/rust/<name>_entry/`.
+#
+# The empty `[workspace]` table makes this its own workspace root so the
+# embedded `thumbv7m-none-eabi` target pinned in `.cargo/config.toml`
+# doesn't leak onto the outer fixture's host-target component crates.
 #
 # `@NANO_ROS_ROOT@` placeholders are rewritten by the integration
 # test's `stage_fixture` helper to the absolute path of the nano-ros
-# checkout. This lets the fixture live in the source tree without
-# committing absolute paths.
+# checkout.
 
 [workspace]
 
@@ -21,15 +26,24 @@ publish = false
 name = "firmware"
 path = "src/main.rs"
 
+[package.metadata.nros.entry]
+deploy = "freertos"
+
 [dependencies]
-freertos-qemu-mps2-an385-bsp = { path = "@NANO_ROS_ROOT@/packages/boards/freertos-qemu-mps2-an385-bsp", default-features = false, features = ["rmw-zenoh"] }
+# Phase 212.N.3 tier-1 per-board shim — `Mps2An385::run` provides the
+# `BoardEntry` lifecycle the Entry pkg invokes.
+nros-board-mps2-an385-freertos = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-mps2-an385-freertos", default-features = false, features = ["rmw-zenoh"] }
+# Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 
-# Phase 212.M.5.a.3 — link the component pkgs so their
-# `__nros_component_<pkg>_register` symbols (emitted by
-# `nros::component!()`) reach the final firmware. The BSP-baked
-# `system_main.rs` declares them `extern "Rust"` and packs them into
-# `NROS_REGISTER_FNS`; without these path deps the link step would
-# fail with `undefined reference to __nros_component_talker_pkg_register`.
+# Phase 212.N.7 step-5 — Component pkgs are linked here so the codegen
+# `run_plan(runtime)` body can call `<pkg>::register(runtime)` (the
+# wrapper emitted by `nros::component!()` since step-3.4).
 talker_pkg = { path = "../src/talker_pkg" }
 listener_pkg = { path = "../src/listener_pkg" }
+
+[build-dependencies]
+# Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from the
+# launch file + workspace cargo-metadata.
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }

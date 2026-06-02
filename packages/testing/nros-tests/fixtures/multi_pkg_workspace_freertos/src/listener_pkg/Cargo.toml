@@ -15,3 +15,8 @@ path = "src/lib.rs"
 
 [dependencies]
 nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }
+# Phase 212.N.7 step-3.4 — the `nros::component!()` macro emit references
+# `::nros_platform::RuntimeCtx` / `RuntimeError` inside the
+# `pub fn register(runtime)` wrapper, so each Component pkg needs an
+# explicit `nros-platform` dep.
+nros-platform = { path = "@NANO_ROS_ROOT@/packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
