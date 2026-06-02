@@ -303,11 +303,12 @@ exclude = [
     "packages/boards/nros-board-stm32f4",
     "packages/boards/nros-board-nuttx-qemu-arm",
     "packages/boards/nros-board-mps2-an385-freertos",
-    # Phase 212.H.3 — cargo-native FreeRTOS adapter (re-exports
-    # `nros-board-mps2-an385-freertos`, layers `nros codegen system`
-    # on top via `build.rs`). The cargo path IS the adapter; there is
-    # no separate `integrations/freertos/` shim directory.
-    "packages/boards/freertos-qemu-mps2-an385-bsp",
+    # Phase 212.N.7 step-4 — the `freertos-qemu-mps2-an385-bsp` baker
+    # crate is retired. Its `bake_system_main_rs` + `__nros_component_*`
+    # symbol-walking is gone (no in-tree consumers after step-5
+    # migrated the firmware fixture to the Entry pkg shape). FreeRTOS
+    # users now consume `nros-board-mps2-an385-freertos` directly via
+    # the `BoardEntry::run` trait surface.
     # Phase 149.1.A scaffolding — generic FreeRTOS+lwIP façade.
     # 149.1.B carves the kernel + lwIP build glue here.
     "packages/boards/nros-board-freertos",
