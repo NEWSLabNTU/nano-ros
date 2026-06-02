@@ -300,15 +300,20 @@ C/C++ users get the same uniform shape Rust users get via cargo metadata.
       `nano_ros_workspace_metadata(SYSTEM demo_bringup)` then
       `add_subdirectory(talker_pkg)` / `corrosion_import_crate(…)`.
 - **Tests:**
-  - [ ] `cmake_workspace_metadata_emits_components_cmake` — fixture
-        cmake project that calls `nano_ros_workspace_metadata` produces
-        the expected `nros_components.cmake` import.
-  - [ ] `cmake_pure_cpp_multi_component_builds` — fixture w/ 2 C++
-        components in 2 sibling pkgs + bringup pkg goes through
-        `cmake --build` to a runnable entry binary.
-  - [ ] `cmake_mixed_corrosion_bridge_builds` — fixture w/ 1 Rust + 1
-        C++ component compiles end-to-end through cmake-top corrosion
-        bridge.
+  - [x] `cmake_workspace_metadata_emits_components_cmake` — Landed:
+        test(212.D) `15de00e3c` (initial) → `f1977ba98` (212.M.10 fixture
+        migration to `nros-metadata.json` shape). Configure-step
+        emission asserted; verified green on 2026-06-02.
+  - [x] `cmake_pure_cpp_multi_component_builds` — Landed: test(212.D)
+        `15de00e3c` + `f1977ba98` (212.M.10 fixture migration to
+        Component/Entry pkg taxonomy + STATIC-lib Component shape).
+        End-to-end `cmake --build` → Entry pkg binary verified green
+        on 2026-06-02.
+  - [x] `cmake_mixed_corrosion_bridge_builds` — Landed: test(212.D)
+        `15de00e3c` (initial) → `e1b1b3bd6` (Corrosion in setup tier +
+        `#[ignore]` removed) → `3ac66dd33` (212.M.10 mixed-fixture
+        migration). Skips cleanly via `nros_tests::skip!` when
+        Corrosion is absent (`cmake --find-package Corrosion`).
 - **Files:** `cmake/nano_ros_workspace_metadata.cmake`,
   `packages/testing/nros-tests/fixtures/multi_pkg_workspace_cpp/`,
   `packages/testing/nros-tests/fixtures/multi_pkg_workspace_mixed/`.
