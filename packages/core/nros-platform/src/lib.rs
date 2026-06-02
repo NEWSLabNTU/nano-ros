@@ -30,7 +30,15 @@
 mod board;
 mod resolve;
 
-pub use board::{BoardConfig, BoardTransportConfig};
+// Phase 212.N.1 — the Board trait family lives in `board/` (was a
+// flat `board.rs`); `BoardConfig` + `BoardTransportConfig` stay at
+// the crate root for back-compat. New 212.N consumers reach the
+// full surface (`Board`, `BoardInit`, `BoardEntry`, …) through
+// `nros_platform::board::*`.
+pub use board::{
+    Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
+    NetworkWait, RuntimeCtx, TransportBringup,
+};
 
 // Phase 129.C.3.b — `NET_*` constants exported unconditionally
 // (see `resolve.rs`). `ConcretePlatform` keeps its feature gate
