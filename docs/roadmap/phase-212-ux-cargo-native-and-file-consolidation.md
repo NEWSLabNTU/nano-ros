@@ -1825,25 +1825,37 @@ asymmetry rationale.
       native deploy target → covers the configure-time codegen side of
       the bullet. Fixture migrated to the §212.L cmake-fn shape by
       §212.M.10.
-- [ ] **Mixed Rust+C++ workspace = `cmake -B build && cmake --build
+- [x] **Mixed Rust+C++ workspace = `cmake -B build && cmake --build
       build`** with `corrosion_import_crate` bridging Rust components
       into cmake's superbuild. (212.D + cross-language acceptance) —
-      partial as of 2026-06-03 audit. Gate test
+      Tooling presence gate closed 2026-06-03 by the
+      `phase-212-corrosion-default-tier` series (`feat(nros-sdk-index)`
+      + `feat(sdk-tier)` commits). Corrosion is now in the `default`
+      tier two ways:
+      (a) `just workspace install-corrosion` (called by `workspace`,
+      the first module in both `base` and `all` branches of
+      `justfile::_orchestrate`) installs `v0.5.1` to
+      `~/.nros/sdk/corrosion/` — stamp-file gated, idempotent;
+      (b) `[tool.corrosion]` in `nros-sdk-index.toml` pins the same
+      tag so `nros setup --tool corrosion
+      --prefix $HOME/.nros/sdk/corrosion` is the CLI-side equivalent
+      (`nros setup --list` now reports `[tool] corrosion 0.5.1-nros1`).
+      Gate test
       `phase212_d_workspace_metadata::cmake_mixed_corrosion_bridge_builds`
       exists and exercises the `multi_pkg_workspace_mixed` fixture
       (top-level cmake → `find_package(Corrosion)` →
       `corrosion_import_crate(MANIFEST_PATH src/talker_pkg/Cargo.toml)`
       → `add_subdirectory(src/listener_pkg)` → assert
-      `build/src/listener_pkg/listener` produced). The test
-      `nros_tests::skip!`s cleanly via `corrosion_available()` when
-      Corrosion isn't discoverable by `cmake --find-package`. At HEAD
-      `2560db3ce` on the audit host the test skips (Corrosion not
-      installed under `~/.nros/sdk/corrosion`). **Decision:** stays
-      open until either (a) Corrosion is added to the `default` SDK
-      tier so CI green-paths the test, or (b) the audit confirms a CI
-      lane where Corrosion is installed and the test transitions
-      skip → pass. Test + fixture + wire-up correct; only tooling
-      presence blocks the flip.
+      `build/src/listener_pkg/listener` produced). It still SKIPs (via
+      `nros_tests::skip!` + `corrosion_available()`) on a host that has
+      never run `just setup` (`base`, `all`, or the focused `just
+      workspace setup` / `nros setup --tool corrosion`); the SKIP is
+      the by-design "tier prerequisite missing" reporter, not a phase
+      bug. On any host where the `workspace` module has run (i.e. any
+      `just setup base|all` lane, including CI) the test transitions
+      SKIP → PASS. Acceptance flipped on that basis; the test +
+      fixture + wire-up were already correct, the change here is
+      purely tooling availability under the default tier.
 - [ ] **Two pkg shapes work for both langs** — Component pkg
       (lib only — `impl Component` / `NROS_COMPONENT_REGISTER`,
       board-agnostic) + Entry pkg (board-aware `main.rs` /
