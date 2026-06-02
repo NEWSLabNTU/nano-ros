@@ -565,6 +565,32 @@ fn pre_212_files_forbidden_in_migrated_examples() {
                 }
             }
         }
+        // M.10 list also names committed `metadata/*.json` (build
+        // artifacts the codegen path used to drop next to a pkg).
+        // They belong in `$OUT_DIR/nros-gen/` or `target/nros-metadata/`,
+        // never tracked next to a Cargo.toml. Aligns with sibling
+        // `phase212_examples_canonical_shape` test's same check.
+        let metadata_dir = dir.join("metadata");
+        if metadata_dir.is_dir() {
+            if let Ok(entries) = fs::read_dir(&metadata_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        == Some("json")
+                    {
+                        violations.push(format!(
+                            "{}/metadata/{} (build artifact must live in target/, not committed)",
+                            rel.to_string_lossy(),
+                            path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("?")
+                        ));
+                    }
+                }
+            }
+        }
     });
     assert!(
         violations.is_empty(),

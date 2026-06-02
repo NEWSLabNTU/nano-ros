@@ -829,24 +829,50 @@ A clean break — no transitional mixed-shape state allowed.
       stays as-is (the canonical PX4 surface per Phase 115.K.4).
       Multi-node PX4 case (H.7-shipped emit) operates on bringup pkgs
       writing into `$PX4_AUTOPILOT_DIR/src/modules/`.
-- [ ] **M.10 Pre-212 file cleanup** — enumerate + delete every
-      pre-212 file the migration sweep makes redundant:
-      - `nros.toml` (any location)
-      - `component_nros.toml` per-pkg
-      - `gen-app-config.py` per-example baker
-      - `app_config.h.in` / per-example `<nros/app_config.h>`
-        Kconfig-synthesis
-      - `nano_ros_read_config(nros.toml)` cmake fn (delete the fn
-        + every caller)
-      - Per-example committed `metadata/*.json`
-      - Phase 170.A `lib.rs::run()` + `main.rs::main(){run()}`
-        split files in `examples/native/rust/*` (Component pkg = lib
-        only; codegen synthesises main)
-      - Legacy `examples/native/rust/{talker,listener}/CMakeLists.
+- [~] **M.10 Pre-212 file cleanup** — partial close 2026-06-02 audit.
+      Per-file disposition (verified by `git ls-files` + the
+      `phase212_m12_example_shape` + `phase212_examples_canonical_
+      shape` lints):
+      - [x] `component_nros.toml` per-pkg — zero tracked instances.
+      - [x] `gen-app-config.py` per-example baker — zero tracked.
+      - [x] `app_config.h.in` / per-example `<nros/app_config.h>`
+        Kconfig-synthesis — zero tracked.
+      - [x] Per-example committed `metadata/*.json` — zero tracked.
+        Both M.12 walkers now ban regression
+        (`phase212_examples_canonical_shape` already enforced;
+        `phase212_m12_example_shape` extended in this audit to match).
+      - [x] Phase 170.A `lib.rs::run()` + `main.rs::main(){run()}`
+        split files in `examples/native/rust/*` — collapsed by M.1
+        (Application pkg shape uses `src/main.rs` only; no `lib.rs`
+        survivor).
+      - [x] Legacy `examples/native/rust/{talker,listener}/CMakeLists.
         txt` (Phase 175.A Cyclone CMake fallback — superseded by
-        Option B pure-cargo path)
-      - Stale `examples/native/rust/{talker,listener}/generated/`
-        dirs from pre-Option-B codegen runs
+        Option B pure-cargo path) — zero tracked.
+      - [x] Stale `examples/native/rust/{talker,listener}/generated/`
+        dirs from pre-Option-B codegen runs — never tracked
+        (per-dir `.gitignore` covers them).
+      - [ ] `nros.toml` (any location) — 39 tracked files remain in
+        UNMIGRATED trees: `qemu-arm-baremetal/rust/` (13),
+        `qemu-esp32-baremetal/rust/` (2), `qemu-riscv64-threadx/`
+        {c, cpp, rust} (6+6+6 = 18), `threadx-linux/c/` (6). These
+        are still active — the bare-metal board crates parse
+        them at runtime via `Config::from_toml`; threadx-linux/c
+        CMakeLists call `nano_ros_read_config`. Per-tree deletion
+        rolls into the corresponding future sweep (not in any
+        named M.x slot yet; candidate new waves M.13+).
+      - [ ] `nano_ros_read_config(nros.toml)` cmake fn (delete the
+        fn + every caller) — covered by M-F.10. 24 callers
+        remain (4 in `cmake/platform/*` + `cmake/NanoRosConfig.
+        cmake` + the defn at `packages/core/nros-c/cmake/
+        NanoRosReadConfig.cmake` + 19 in unmigrated example trees
+        threadx-linux/c + qemu-riscv64-threadx). Final pass after
+        the qemu-riscv64-threadx + threadx-linux/c sweeps retire
+        their callers.
+      Tools refresh: the sibling `phase212_examples_canonical_
+      shape.rs` lint test had a `toml::Value::FromStr`-shape bug
+      (rejected full Cargo.toml documents); fixed to use
+      `toml::from_str` in this audit so the lint reports honest
+      violations going forward.
 - [ ] **M.11 `nros check` lints (defensive)** — after the sweep, add
       lints so no contributor reintroduces a pre-212 shape:
       - L.4 (`<pkg>::<Class>` mismatch)

@@ -159,7 +159,12 @@ fn check_pkg_dir(examples_root: &Path, pkg_dir: &Path, violations: &mut Vec<Viol
             return;
         }
     };
-    let value: toml::Value = match text.parse() {
+    // toml 0.9: the `FromStr` impl on `toml::Value` is value-shaped
+    // (rejects top-level tables); use `toml::from_str` for full Cargo
+    // documents. See packages/testing/nros-tests/tests/phase212_m12_
+    // example_shape.rs for the sibling regression test that surfaced
+    // the same bug.
+    let value: toml::Value = match toml::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
             violations.push(Violation {
