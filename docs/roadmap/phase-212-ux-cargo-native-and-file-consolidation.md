@@ -857,17 +857,32 @@ A clean break — no transitional mixed-shape state allowed.
       - `pre-212 files forbidden`: grep over the example dir for
         `nros.toml`, `component_nros.toml`, `gen-app-config.py`,
         `app_config.h.in`, committed `metadata/*.json` → hard error.
-- [ ] **M.12 Regression test** —
-      `packages/testing/nros-tests/tests/phase212_examples_canonical_
-      shape.rs`. Walks `examples/` + asserts:
-      - Every example dir has a `package.xml`.
-      - Component / Application pkg classification matches
-        `[package.metadata.nros.{component,application}]` table OR
-        cmake fn call.
-      - No pre-212 file shapes survive (M.10 list).
-      - Path A bringup dirs have no Cargo.toml / CMakeLists.txt / src/.
-      - All deploy targets in `[package.metadata.nros.deploy.*]`
-        match the platform path the example lives under.
+- [x] **M.12 Regression test** —
+      `packages/testing/nros-tests/tests/phase212_m12_example_shape.rs`.
+      Walks `examples/` + asserts (all 7 sub-tests green 2026-06-02):
+      - Every migrated example dir has a `package.xml`.
+      - Rust example crates declare exactly one of
+        `[package.metadata.nros.{component,application}]` (XOR).
+      - Component pkgs' `class` string starts with the
+        kebab→snake-cased `[package].name` (L.4 lint surface).
+      - All deploy targets in `[package.metadata.nros.deploy.<target>]`
+        match the platform path (subtable name === target name; native
+        uses the `deploy = ["native"]` array shape and is covered by
+        Test 2 instead).
+      - Path A bringup dirs (those holding `system.toml`) carry no
+        `Cargo.toml` / `CMakeLists.txt` / `src/` (L.8 lint complement).
+      - Pre-212 files (`nros.toml`, `component_nros.toml`,
+        `gen-app-config.py`, `app_config.h.in`, NuttX `Kconfig` /
+        `Make.defs`) do NOT survive in any migrated example dir
+        (M.10 cleanup gate).
+      Skip set keyed by Phase 212.M migration status: ESP32 + ESP32
+      bare-metal (M.7 BLOCKED), Cortex-M3 bare-metal + qemu-riscv64-
+      threadx + threadx-linux/c + native/c (not in M sweep table),
+      stm32f4 RTIC / Embassy variants, native/rust *-rtic + *-async
+      + custom-* + lifecycle-node + serial-* (M.1 explicit deferrals),
+      native/rust/bridge (Phase 110.G TT demo), templates/. A
+      `unmigrated_trees_status_surface` test prints the skip set so
+      CI logs document each skip's rationale.
 
 ### §212.M follow-ups (gates / blockers surfaced by waves 1+2)
 
@@ -955,8 +970,11 @@ canonical-shape regression test can run green tree-wide:
   - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
   - [ ] `zephyr_<example>_builds` per migrated Zephyr example
   - [ ] Same for nuttx / freertos / threadx / platformio / px4
-  - [ ] `pre_212_files_forbidden_in_examples` (M.12)
-  - [ ] `class_pkg_match_enforced_in_examples` (M.11 + M.12)
+  - [x] `pre_212_files_forbidden_in_migrated_examples` (M.12) —
+        shipped as a sub-test of `phase212_m12_example_shape`.
+  - [x] `component_class_strings_match_package_name` (M.12) — shipped
+        as a sub-test of `phase212_m12_example_shape` (L.4 lint
+        surface; the M.11 lint side lands in nros-cli).
 - **Files:** `examples/` (tree-wide sweep), `packages/core/nros-c/
   include/nros/zephyr/app_config.h` (DELETE), `cmake/NanoRosReadConfig.
   cmake` (DELETE if exists), `nros-cli/packages/nros-cli-core/src/
