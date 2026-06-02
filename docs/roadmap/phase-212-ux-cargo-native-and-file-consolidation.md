@@ -1432,7 +1432,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       existing caller (after wave-1 native/cpp sweep) — single
       backward-compat shim emits a `MESSAGE(DEPRECATION …)` then
       forwards.
-- [ ] **N.7 Migrate FreeRTOS BSP baker back to pure board init** —
+- [x] **N.7 Migrate FreeRTOS BSP baker back to pure board init** —
       retire the M.5.a baker's `__nros_component_*` symbol-walking
       + `system_main.rs` synthesis. Once N.1–N.4 ship, FreeRTOS
       Entry pkg user-authors `main.rs` w/ `Board::run`; BSP crate
@@ -1461,7 +1461,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         re-exported at the crate root. `nros-build` stays a
         build-dep only; its emit template references
         `::nros_platform::RuntimeError`.
-  - [~] **step-3 RuntimeCtx ↔ ComponentRuntime bridge** — extend
+  - [x] **step-3 RuntimeCtx ↔ ComponentRuntime bridge** — extend
         `nros_platform::RuntimeCtx` with a `&mut dyn ComponentRuntime`
         slot populated by each `BoardEntry::run` impl before the setup
         closure fires. Update every Component pkg's `register(runtime)`
@@ -1496,8 +1496,8 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
 
       ### Path A sub-items
 
-      - [ ] **step-3.1 `ComponentRuntime` trait in
-            `nros-platform::board::runtime`** — object-safe, no_std.
+      - [x] **step-3.1 `ComponentRuntime` trait in
+            `nros-platform::board::runtime`** (commit `5d3f51fa9`) — object-safe, no_std.
             Two methods covering the registration + spin surfaces:
             ```rust
             pub trait ComponentRuntime {
@@ -1515,21 +1515,21 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
             Fn-pointer signatures (`ComponentRegisterFn` etc.) stay
             in `nros-platform` (already no_std, ABI-stable).
 
-      - [ ] **step-3.2 `RuntimeCtx` widens** — add
+      - [x] **step-3.2 `RuntimeCtx` widens** (commit `5d3f51fa9`) — add
             `runtime: &'a mut dyn ComponentRuntime` field +
             `RuntimeCtx::with_runtime(runtime, overlay)` ctor.
             Existing overlay accessors unchanged. Update entry-poc
             + 18 wave-4 Entry pkg main.rs files for the new ctor —
             mechanical sweep.
 
-      - [ ] **step-3.3 `ExecutorComponentRuntime` impls
-            `nros_platform::ComponentRuntime`** — one impl block in
+      - [x] **step-3.3 `ExecutorComponentRuntime` impls
+            `nros_platform::ComponentRuntime`** (commit `4834e98f0`) — one impl block in
             `packages/core/nros/src/component_runtime.rs`. Forwards
             to existing `register_dispatch_slot` + `spin_once`.
 
-      - [ ] **step-3.4 `nros::component!()` macro emits
+      - [x] **step-3.4 `nros::component!()` macro emits
             `pub fn register(runtime: &mut RuntimeCtx<'_>)`
-            wrapper** — replaces the hand-written generic-`R` stub
+            wrapper** (commit `efa778162`) — replaces the hand-written generic-`R` stub
             on 24 Component pkgs. Body:
             ```rust
             runtime.runtime.register_dispatch_slot_dyn(
@@ -1546,9 +1546,12 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
             pkg `Cargo.toml` (the wave-4 step-2 sweep deliberately
             omitted it).
 
-      - [ ] **step-3.5 Per-board `BoardEntry::run` impls** — seven
-            boards: native, mps2-an385-freertos, threadx-linux,
-            threadx-qemu-riscv64, nuttx, zephyr, esp32. Body shape:
+      - [~] **step-3.5 Per-board `BoardEntry::run` impls** (commit `fcca2f26e`) — 5/7 landed:
+            posix (native), mps2-an385-freertos, threadx (linux + qemu-riscv64),
+            nuttx. Carve-outs: `nros-board-bare-metal` (RMW-agnostic + no_std +
+            no-alloc; needs per-board override) and `nros-board-orin-spe`
+            (FSP-pre-task + IVC-only transport, separate design pass).
+            Body shape:
             ```rust
             Self::init_hardware(&cfg);
             /* kernel-specific app task spawn */
@@ -1565,7 +1568,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
             spins forever. Zephyr stays a NetworkWait-only carve-out
             (Kconfig drives its own entry).
 
-      - [ ] **step-3.6 Component pkg cleanup** — delete the
+      - [x] **step-3.6 Component pkg cleanup** (commit `92ba53fc7`) — deleted the
             hand-written `pub fn register<R>` stub from 24 Component
             pkg `src/lib.rs` files. The macro-emitted wrapper from
             step-3.4 replaces them.
