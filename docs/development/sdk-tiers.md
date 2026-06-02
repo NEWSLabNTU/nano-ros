@@ -27,9 +27,23 @@ tier. Valid tiers are `base` and `all`. Legacy aliases `minimal` and
 
 | Tier | Modules | Use case |
 |------|---------|----------|
-| `base` | `workspace`, `zenohd` | First-time users who want native nano-ros examples and standard ROS/zenoh workflows without every RTOS SDK |
+| `base` | `workspace` (incl. **Corrosion** → `~/.nros/sdk/corrosion/`, ninja, make, rust pinned toolchains), `zenohd` | First-time users who want native nano-ros examples and standard ROS/zenoh workflows without every RTOS SDK |
 | platform-specific | one module, e.g. `zephyr`, `nuttx`, `esp_idf`, `px4` | Developers focused on one target platform |
 | `all` | `workspace`, `verification`, `zenohd`, `qemu`, `freertos`, `nuttx`, `threadx_{linux,riscv64}`, `esp32`, `zephyr`, `xrce`, `rmw_zenoh`, `orin_spe`, `cyclonedds`, `platformio`, `esp_idf`, `px4` | Contributors preparing for `just build-test-fixtures` and `just test-all` |
+
+**Corrosion** (the CMake ↔ Rust/Cargo bridge `corrosion_import_crate()`
+uses) is installed by `just workspace install-corrosion` to
+`~/.nros/sdk/corrosion/` whenever the `workspace` module runs — i.e. on
+**every** tier (`base` and `all`), since `workspace` is the first
+module in both branches of `justfile::_orchestrate`. The pin is in
+`just/workspace.just::CORROSION_VERSION`; the SDK-index counterpart
+`[tool.corrosion]` in `nros-sdk-index.toml` pins the same tag so
+`nros setup --tool corrosion --prefix $HOME/.nros/sdk/corrosion`
+lands an equivalent install. Header/config-only at install time,
+well under the 500 MB / 5 min `default` tier policy, idempotent
+(stamp-file gated). Phase 212.D + H.4 mixed Rust+C++ workspace tests
+(`phase212_d_workspace_metadata::cmake_mixed_corrosion_bridge_builds`)
+green-path here once the workspace module runs.
 
 `all` is intentionally explicit because it pulls many submodules and
 installs large SDKs. A module never moves between tiers without bumping
