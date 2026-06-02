@@ -1100,31 +1100,134 @@ canonical-shape regression test can run green tree-wide:
       phase-210-ros-convention-codegen.md` documents the existing
       `nros ws sync` output — aligning that emit is a follow-up in
       the nros-cli repo (`github.com/NEWSLabNTU/nros-cli`).
-- [~] **M-F.10 `cmake/NanoRosReadConfig.cmake` deletion** (nano-ros) —
-      **partial close 2026-06-02**:
-      - The orphan duplicate file at
+- [~] **M-F.10 Retire cmake codegen of `nros/app_config.h`** (nano-ros) —
+      **partial close 2026-06-02**, **design locked 2026-06-02 as
+      Path C** (below).
+
+      ### Status
+
+      - [x] **M-F.10.0 — orphan deletion.** Deleted
         `packages/core/nros-c/cmake/NanoRosReadConfig.cmake` (260
-        LoC, never `include()`-ed anywhere) was deleted in this
-        audit.
-      - The leftover caller in
+        LoC duplicate, never `include()`-ed anywhere). Cleaned a
+        leftover stale-`nano_ros_read_config(...)` caller in
         `examples/qemu-riscv64-threadx/rust/talker/CMakeLists.txt`
-        (the M.10 sweep deleted its `nros.toml` but missed the
-        cmake-side `nano_ros_read_config(...)` +
-        `nano_ros_generate_config_header(...)` calls — they now
-        referenced a non-existent file) was retired; the cyclonedds
-        C side (`cyclonedds_app.c`) doesn't reference
-        `NROS_APP_CONFIG`, so the per-binary header was dead weight.
-      - The canonical defs of `nano_ros_read_config()` +
-        `nano_ros_generate_config_header()` in
-        `cmake/NanoRosConfig.cmake` plus the
-        `cmake/templates/nros_app_config.h.in` template STAY for now
-        — `packages/boards/nros-board-{mps2-an385-freertos,
-        threadx-linux,threadx-qemu-riscv64}/startup.c` still read
-        `NROS_APP_CONFIG.network.*` at runtime (the per-binary
-        generated header is their config-injection path). Final
-        retirement gated on refactoring those board startup paths
-        to accept a `Config` struct argument rather than read
-        global state from a per-binary header.
+        (M.10 sweep deleted its `nros.toml` but missed the cmake
+        side; the cyclonedds C path doesn't reference
+        `NROS_APP_CONFIG` so its per-binary header was dead weight).
+
+      ### Open — Path C (locked design)
+
+      Why not "refactor each board to take its own Config struct
+      across FFI" (the earlier Path A proposal)? It would break the
+      **universal `NROS_APP_CONFIG` user-facing read promise**:
+      today every example reads `NROS_APP_CONFIG.zenoh.locator` /
+      `.network.ip` / etc. with the same paths regardless of
+      board. Passing per-board Config structs across FFI = per-board
+      access types = porting between boards rewrites every read
+      line.
+
+      **Path C — preserve universal `nros_app_config_t` API; move
+      population from cmake codegen to source-side `extern`
+      definition.** Each example/board still exposes a uniform
+      `const nros_app_config_t NROS_APP_CONFIG = { ... };` symbol
+      — but the symbol is **author-emitted in source** rather
+      than cmake-emitted from `nros.toml`.
+
+      Board-specific fields outside the universal shape
+      (`uart_base`, interface name, scheduling knobs) stay in each
+      board crate's own Rust `Config` struct, NOT in
+      `nros_app_config_t`. Two-tier separation: universal contract
+      (`nros_app_config_t`) ↔ board-local extension (`<board>::Config`).
+
+      ### Path C work items
+
+      - [ ] **M-F.10.1 Header surface flip.** Modify
+        `packages/core/nros-c/include/nros/zephyr/app_config.h`'s
+        non-Zephyr branch: replace the `#error` stub with
+        `extern const nros_app_config_t NROS_APP_CONFIG;` (forward
+        declaration only). Header now only defines the struct
+        type + declares the symbol; no `static const` initialiser
+        baked in. Zephyr `__ZEPHYR__` Kconfig branch unchanged.
+
+      - [ ] **M-F.10.2 Board startup.c — no source changes.**
+        The 3 board crate startup.c files
+        (`nros-board-mps2-an385-freertos`, `nros-board-threadx-linux`,
+        `nros-board-threadx-qemu-riscv64`) ALREADY read
+        `NROS_APP_CONFIG.network.*` via `<nros/app_config.h>`. After
+        M-F.10.1 lands, that include resolves to the `extern`
+        declaration. The reads continue to work via linker symbol
+        resolution. Confirm with a single-example smoke build per
+        board.
+
+      - [ ] **M-F.10.3 Per-board NROS_APP_CONFIG emission.** Each
+        board crate exposes a helper that emits
+        `const nros_app_config_t NROS_APP_CONFIG = { ... };` from
+        its Rust `Config`. Two options (pick during impl):
+        - `build.rs` writes the symbol into a generated `.c` baked
+          into the board's staticlib.
+        - Rust side passes the Config into an `nros_set_app_config(
+          const nros_app_config_t*)` setter installed before
+          `nros_support_init`; startup.c reads through the setter.
+        Whichever lands, the user-facing read pattern
+        (`NROS_APP_CONFIG.network.ip`) stays unchanged.
+
+      - [ ] **M-F.10.4 Example sweep.** For C / C++ examples that
+        rely on the universal struct (today: every embedded
+        example that includes `<nros/app_config.h>` indirectly via
+        the board startup), confirm the symbol resolves. Native
+        examples already moved away from `NROS_APP_CONFIG` in the
+        M.13 native/c sweep (replaced with literal locator strings
+        at the call site) — no change needed.
+
+      - [ ] **M-F.10.5 cmake codegen retirement.** Once M-F.10.1–4
+        are green, delete:
+        - `cmake/NanoRosConfig.cmake` — the 2 fns
+          (`nano_ros_read_config()` +
+          `nano_ros_generate_config_header()`) plus the 3 internal
+          helpers (`_nros_ip_to_c` / `_nros_mac_to_c` /
+          `_nros_prefix_to_netmask`). 231 LoC.
+        - `cmake/templates/nros_app_config.h.in` — the codegen
+          template.
+        - Include directives for `NanoRosConfig.cmake` in
+          `cmake/platform/nano-ros-{freertos,nuttx,threadx,esp_idf}.cmake`
+          (4 files). The `Pulls in NanoRosReadConfig.cmake` doc
+          comment lines retire alongside.
+
+      - [ ] **M-F.10.6 Verification matrix.** Build-smoke per
+        board:
+        - FreeRTOS-MPS2 (any `examples/qemu-arm-freertos/c/talker`
+          variant).
+        - ThreadX-linux (`examples/threadx-linux/rust/talker` +
+          one cpp example).
+        - ThreadX-QEMU-RV64 (`examples/qemu-riscv64-threadx/c/talker`).
+        - Zephyr (unaffected — Kconfig branch handles its own
+          population).
+        Each must `cmake configure + build` clean without
+        `nano_ros_read_config` / `nano_ros_generate_config_header`
+        in the cmake fn surface.
+
+      ### Trade-offs
+
+      Pro: universal `NROS_APP_CONFIG.*` read promise preserved
+      across platforms; no cmake codegen / `nros.toml`
+      indirection; aligns with the M.10 sweep that already moved
+      Rust-side `Config` literals into source. Board-specific
+      fields stay in board crates (no over-sharing into the
+      universal struct).
+
+      Con: every embedded example/board now needs ONE explicit
+      `NROS_APP_CONFIG` definition site (today cmake codegen
+      wrote it for them). Mitigated by per-board build.rs / setter
+      pattern. Slight duplication (mitigation: per-board emission
+      helper). Path C is intentionally NOT changing the universal
+      contract — long-term we can replace `nros_app_config_t` with
+      board-extension presets, but that's beyond M-F.10's scope.
+
+      ### Effort estimate
+
+      ~ 1 day total — 30 min header surface + 1 hr per board (×3) +
+      mechanical 2 hr example sweep + 1 hr cmake retire + smoke
+      builds.
 - [x] **M-F.11 nano_ros_generate_interfaces vs nros_find_interfaces
       naming reconciliation** (phase doc + sibling design docs + book).
       Resolved by renaming references in the phase doc / design docs /
