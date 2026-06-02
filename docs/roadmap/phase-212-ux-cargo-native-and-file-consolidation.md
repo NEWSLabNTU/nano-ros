@@ -626,7 +626,50 @@ sub-items that already shipped stay marked done.
       + optional launch. No user `main()` either language — codegen
       synthesises native `main` into `target/nros-system/<pkg>/` (out-
       of-tree) and `system_main.c` for embedded.
-- [ ] **L.2 Entry pkg shape** — Rust authors `Cargo.toml` (`[[bin]]
+- [~] **L.2 Entry pkg shape** — partial close 2026-06-02 audit.
+
+      Core Rust Entry pkg infrastructure LANDED via Phase 212.N.7
+      step-1 → step-3 (`276663897` N.3 tier-1 per-board shims +
+      `f9ae826a4` step-2 18 Entry pkg siblings + N.7 step-3 chain
+      `5d3f51fa9` / `4834e98f0`). 19 entry pkg dirs ship across
+      `examples/native/rust/entry-poc/` +
+      `examples/{threadx-linux,qemu-arm-nuttx,qemu-arm-freertos}/
+      rust/<example>_entry/`. Each carries: `[[bin]]` + path-deps on
+      Component pkg + `nros-board-<board>` shim + `nros-platform` +
+      `[package.metadata.nros.entry] deploy = "<board>"` +
+      `build.rs` calling `nros_build::generate_run_plan(...)` +
+      `src/main.rs` (`Board::run(|runtime| { run_plan(runtime) })`)
+      + `package.xml` (added in this audit, `01d6662cc`).
+
+      Still pending for full close:
+      - `[package.metadata.nros.deploy.<board>]` subtable (board /
+        rmw / domain_id / locator) — spec calls for it, zero entry
+        pkgs ship it yet (step-2 entry pkgs only have
+        `[package.metadata.nros.entry] deploy = "<board>"`).
+        Follow-up step: bulk-add the deploy subtable to all 19
+        entry pkgs from each board's existing config-default
+        values.
+      - `launch/system.launch.xml` per Entry pkg — step-2 ships an
+        empty stub; build.rs codegen falls through to a stub
+        `Ok(())` body. The real launch composition (`<node pkg=…
+        exec=…/>` rows + params + remaps) is the N.4 codegen-driven
+        story.
+      - C++ analog cmake fn `nano_ros_entry(NAME … SOURCES … DEPLOY
+        … BOARD …)` — LANDED at `cmake/NanoRosEntry.cmake`
+        (post-N.6 rename of `application` → `entry`); back-compat
+        shim `nano_ros_application` still emits a deprecation
+        warning + forwards.
+      - `nros-board-posix` for native-only entries — spec calls for
+        this name; current native entry-poc uses `nros-board-native`
+        (per N.3). Naming may align in N.7 follow-up or spec name
+        bumps to match.
+      - `nros_build::generate_single_node_main(Board::Native)`
+        single-Component-pkg convenience — tracked as N.5
+        (separate work item, still `[ ]`).
+
+      Original spec lines retained for reference:
+
+      Rust authors `Cargo.toml` (`[[bin]]
       name = "<pkg>"` + path-deps on Component pkgs + one
       `nros-board-*` crate + `[package.metadata.nros.entry] deploy =
       "<board>"` + `[package.metadata.nros.deploy.<board>]` (board /
