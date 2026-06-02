@@ -204,7 +204,7 @@ pub use component::ComponentExecutorRuntime;
 #[cfg(feature = "alloc")]
 pub use component::component_register_symbol;
 pub use component::{
-    ActionExecutor, CallbackCtx, CallbackEffects, Component, ComponentActionClient,
+    ActionExecutor, CallbackCtx, CallbackEffects, ClientDispatch, Component, ComponentActionClient,
     ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentNodeRuntime,
     ComponentParameter, ComponentPublisher, ComponentResult, ComponentRuntime,
     ComponentRuntimeAdapter, ComponentRuntimeNode, ComponentServiceClient, ComponentServiceServer,
