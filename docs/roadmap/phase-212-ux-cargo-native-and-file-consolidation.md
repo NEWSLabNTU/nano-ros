@@ -975,24 +975,29 @@ The mechanical sweeps deliberately land ahead of some downstream
 infrastructure work. These follow-ups must close before the §212.M.12
 canonical-shape regression test can run green tree-wide:
 
-- [ ] **M-F.1 `ComponentMetadata` schema gap** (nros-cli). The
-      installed CLI's `[package.metadata.nros.component]` reader
-      rejects `class` / `name` fields and the `[package.metadata.
-      nros.deploy.<target>]` table (see §212.L.4 + L.8). Extend the
-      `ComponentMetadata` struct + add new `ApplicationMetadata` +
-      `DeployTargetMetadata` structs. Mutex `component` XOR
-      `application`. Strict `deny_unknown_fields`.
-- [ ] **M-F.2 L.7 self-bringup planner support** (nros-cli). Today
-      `nros plan` / `nros codegen-system` require either a Path A
-      bringup pkg (has `system.toml`, no `Cargo.toml`) or a
-      workspace pointer. Add a third resolution case: single-pkg
-      self-bringup — Component or Application pkg w/
-      `[package.metadata.nros.deploy.<target>]` AND no sibling
-      bringup pkg. Pkg eats its own bringup role. Plan emits a
-      one-component view from Cargo metadata directly. The L.6
-      launch resolver (`launch_synth::resolve_launch`) covers the
-      launch-file-absent case from §212.L.6 trigger condition 5.
-      Co-shipped with M-F.1.
+- [x] **M-F.1 `ComponentMetadata` schema gap** (nros-cli) — shipped
+      pre-redesign in nros-cli `5e810c0` (2026-06-02 03:50). Schema
+      adds `class` / `name` to `ComponentMetadata`, new
+      `ApplicationMetadata` (`deploy: Vec<String>` allow-list, native-
+      only enforced), `DeployTargetMetadata` per-target table.
+      `validate()` mutex on `component XOR components XOR
+      application`. `+12` unit tests (229 → 241). Post-redesign
+      Entry-pkg shape (`[package.metadata.nros.entry] deploy =
+      "<single-board>"`) is a DIFFERENT taxonomy not covered here —
+      folded into §212.N.4 (run_plan codegen lib reads Entry pkg
+      metadata) + §212.N.5 (single_node_main triggered by
+      `[package.metadata.nros.entry]` on a Component pkg).
+- [x] **M-F.2 L.7 self-bringup planner support** (nros-cli) — co-
+      shipped with M-F.1 in `5e810c0`. `nros plan` / `nros codegen-
+      system` accept the third resolution case (single Component or
+      Application pkg w/ `[deploy.*]` + no sibling bringup pkg eats
+      its own bringup role); `is_self_bringup_eligible` predicate +
+      `resolve_bringup` path-shaped hint mapping basename → bringup
+      key. New nano-ros integration test `phase212_l7_self_bringup`
+      3/3 green. Same caveat as M-F.1: the pre-redesign
+      `application`-shape pathway is the actual surface; the
+      Entry-pkg shape that supersedes it (2026-06-02 redesign) is
+      §212.N.4/N.5 territory.
 - [x] **M-F.3 Zephyr H.1 shim self-pkg case** (nano-ros) —
       Shipped in `843ffea74` (`feat(212.M-F.3+M-F.6): Zephyr shim
       self-pkg + FreeRTOS BSP probe fix`). The H.1 adapter
