@@ -41,7 +41,7 @@ branch as a doc nit rather than a real failure mode. Outer `Cargo.toml`'s
 `exclude = [...]` list stays in place — belt-and-suspenders, and removing
 the list would churn the workspace's own resolve.
 
-### F2 — `nros generate-rust` pre-step never named in embedded tutorials
+### F2 — `nros generate-rust` pre-step never named in embedded tutorials — closed
 
 **Symptom.** `bare-metal.md` (acc.5) — the example's `Cargo.toml` has
 `[patch.crates-io.std_msgs] path = "generated/std_msgs"`. `generated/`
@@ -99,7 +99,7 @@ auto-PATHs through the installer rather than only being a printed hint.
 
 ## Doc cleanup
 
-### F4 — Stale `Published: 1` caveat in `first-node-{c,cpp}.md`
+### F4 — Stale `Published: 1` caveat in `first-node-{c,cpp}.md` — closed
 
 Both tutorials carry a "C/C++ talkers currently pre-increment so their
 first banner is `Published: 1`" caveat. Post-208.D.9 (counter convention
@@ -108,7 +108,7 @@ and contradicts the rest of the page. Delete the paragraph.
 
 Hit by both acc.5 batch-1 reports.
 
-### F5 — `ros2 topic echo` QoS-mismatch hint missing from C/C++ tutorials
+### F5 — `ros2 topic echo` QoS-mismatch hint missing from C/C++ tutorials — closed
 
 `ros2 topic echo /chatter std_msgs/msg/Int32` (as written) silently
 delivers nothing — nano-ros publisher is BEST_EFFORT, stock
@@ -172,20 +172,20 @@ The page stays the standalone first-10-min landing under
 is unchanged; the cross-link at the bottom of the page still routes
 post-first-build issues there.
 
-### F7 — `installation.md` heads-up paragraph misses cyclonedds + `~/.nros/sdk`
+### F7 — `installation.md` heads-up paragraph misses cyclonedds + `~/.nros/sdk` — closed
 
 - Names zenoh + xrce daemons but not cyclonedds (in-process; a Pattern A
   reader on `--rmw cyclonedds` searches for an absent daemon).
 - `~/.nros/sdk` store path never named in prose; only `~/.nros/bin` is.
 
-### F8 — `bare-metal.md` `-nic socket,model=lan9118,…` not in runner
+### F8 — `bare-metal.md` `-nic socket,model=lan9118,…` not in runner — closed
 
 `.cargo/config.toml` runner is bare `-kernel`; L137 claims LAN9118
 wiring is configured. The `just qemu talker` recipe wraps the LAN9118
 flags; the bare `cargo run` doesn't. Either document that `just qemu
 talker` is the only working invocation, or extend the runner.
 
-### F9 — `freertos.md` Run flow needs an inline-zenohd fallback
+### F9 — `freertos.md` Run flow needs an inline-zenohd fallback — closed
 
 `just freertos zenohd` is now fixed (`build/zenohd/zenohd` → `zenohd`
 in the recipe), but the Run section in the doc still presents
@@ -194,7 +194,7 @@ zenohd-not-found situation (e.g. shim absent) has no hint that
 `zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting` is the
 underlying invocation.
 
-### F10 — `threadx.md` claims that don't hold
+### F10 — `threadx.md` claims that don't hold — closed
 
 - L11–13: claims nros-cpp doesn't target ThreadX, but `build-fixtures`
   builds `threadx_cpp_*` and `riscv64_threadx_cpp_*`.
