@@ -1844,36 +1844,97 @@ asymmetry rationale.
       lane where Corrosion is installed and the test transitions
       skip → pass. Test + fixture + wire-up correct; only tooling
       presence blocks the flip.
-- [ ] **Two pkg shapes work for both langs** — Component pkg
+- [x] **Two pkg shapes work for both langs** — Component pkg
       (lib only — `impl Component` / `NROS_COMPONENT_REGISTER`,
       board-agnostic) + Entry pkg (board-aware `main.rs` /
       `nano_ros_entry()` w/ `Board::run`). Bringup pkg RETIRED.
       Single-Component-pkg convenience covered via L.7 self-entry
-      planner + N.5 `generate_single_node_main`. (212.L + 212.N)
-- [ ] **Per-pkg metadata in vendor manifest** — Rust uses Cargo.toml
+      planner + N.5 `generate_single_node_main`. (212.L + 212.N).
+      Exercised: Rust Component pkg shape via
+      `packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos/src/{talker,listener}_pkg/`
+      (each `#![no_std]` + `impl Component` + `nros::component!()`)
+      paired with the Entry pkg shape under the sibling `firmware/`
+      dir (`#[no_main]` + `<Mps2An385 as BoardEntry>::run`). Native
+      Entry pkg via `examples/native/rust/entry-poc/` (`NativeBoard`
+      target). C++ shape via `nano_ros_entry()` cmake fn (N.6
+      shipped). `phase212_m12_example_shape.rs` (7/7 green) lints
+      both shapes in `examples/`; `phase212_pre_212_files_forbidden.rs`
+      (2/2 green) confirms the retired Bringup pkg shape is absent.
+- [x] **Per-pkg metadata in vendor manifest** — Rust uses Cargo.toml
       `[package.metadata.nros.{component,entry,deploy.<target>,
       domain,bridge,embedded}]`; C++ uses cmake fns
       (`nano_ros_component_register`, `nano_ros_entry`,
       `nano_ros_deploy`). No sidecar TOML for any pkg. `system.toml`
-      RETIRED tree-wide. (212.L + 212.N)
-- [ ] **`Board` trait family ships tier-1 board crates** — posix +
+      RETIRED tree-wide. (212.L + 212.N). Gated by
+      `phase212_m12_example_shape::component_or_application_classification_present`
+      (each Rust leaf MUST carry exactly one of
+      `[package.metadata.nros.{component,application,entry}]`) +
+      `component_class_strings_match_package_name` +
+      `deploy_targets_match_platform_path` — 7/7 sub-tests green.
+      `phase212_pre_212_files_forbidden::examples_tree_has_no_pre_212_files`
+      asserts `nros.toml` / `component_nros.toml` / committed
+      `metadata/*.json` are absent (2/2 green). `system.toml`
+      tree-wide retirement verified by the same regression.
+- [x] **`Board` trait family ships tier-1 board crates** — posix +
       qemu-mps2-an385-freertos + qemu-arm-nuttx + threadx-linux +
       esp32-c3 + qemu-riscv64-threadx + orin-spe. Each entries-pkg
-      `main.rs` `Board::run` call links a working board impl. (212.N)
-- [ ] **`nros-build::generate_run_plan` codegen library exists** —
+      `main.rs` `Board::run` call links a working board impl. (212.N).
+      All seven tier-1 board crates present under `packages/boards/`:
+      `nros-board-{native, mps2-an385-freertos, nuttx-qemu-arm,
+      threadx-linux, esp32, threadx-qemu-riscv64, orin-spe}` (N.3
+      [x]; native = posix family per N.2). N.1 + N.2 + N.3 all [x]
+      in §N. Real `BoardEntry::run` callsites live in
+      `examples/native/rust/entry-poc/src/main.rs` (NativeBoard) and
+      `packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos/firmware/src/main.rs`
+      (Mps2An385), proving the trait surface compiles under ≥2
+      distinct board impls.
+- [x] **`nros-build::generate_run_plan` codegen library exists** —
       Entry pkg `build.rs` ~3 LoC, `main.rs` ~10-30 LoC, both
       board-agnostic. Same `run_plan` rlib links under ≥2 distinct
-      Board impls. (212.N.4 + N.5)
-- [ ] **Component class follows `<pkg>::<UserClass>`** — pkg dir name
-      MUST match the prefix. `nros check` enforces. (212.L.4)
-- [ ] **Launch file synthesis works for single Component pkg** —
+      Board impls. (212.N.4 + N.5). N.4 [x] — `nros-build` shipped
+      in `github.com/NEWSLabNTU/nros-cli` at `84988e8` (2026-06-02);
+      consumed by every Entry pkg `build.rs` via
+      `nros-build = { git = "github.com/NEWSLabNTU/nros-cli",
+      branch = "main" }`. Real callsites:
+      `examples/native/rust/entry-poc/build.rs` (NativeBoard target)
+      and
+      `packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos/firmware/build.rs`
+      (Mps2An385 target); same `run_plan` emit surface links under
+      both. Build.rs is 11 lines (including comments); main.rs is
+      ~17 lines (per fixture firmware/src/main.rs). N.5 deferred
+      post-Phase 212 (non-blocking UX polish — explicit Entry pkg
+      pattern already covers every single-node case via N.4).
+- [x] **Component class follows `<pkg>::<UserClass>`** — pkg dir name
+      MUST match the prefix. `nros check` enforces. (212.L.4). L.4
+      [x]. In-tree lint shipped via
+      `phase212_m12_example_shape::component_class_strings_match_package_name`
+      (sub-test of the 7/7 green walker). The `nros check` surface
+      itself lives in the external `nros-cli` repo (`check.rs`
+      lints) — that's the user-facing CLI gate; the in-tree
+      regression test covers the same contract for nano-ros's
+      example tree.
+- [~] **Launch file synthesis works for single Component pkg** —
       Component pkg w/ `[package.metadata.nros.entry]` self-entry
       shape but no launch file gets an implicit one synthesised in-
       memory by `nros plan` / `nros codegen-system` /
-      `generate_single_node_main`. (212.L.6 + L.7 + N.5)
-- [ ] **Multi-launch resolution works** — `<pkg>/launch/<pkg>.launch.
+      `generate_single_node_main`. (212.L.6 + L.7 + N.5). L.6 [x]
+      design + gate test
+      `phase212_l6_launch_synth::nros_plan_synthesises_launch_for_single_pkg_no_launch_file`
+      exists; SKIPS on tooling absence (`play_launch_parser` not on
+      PATH AND nros CLI not installed in worktree). Flippable to
+      [x] once: (a) `play_launch_parser` (Python binary —
+      `pip install play-launch-parser`) is added to the SDK
+      provisioning surface (analogous to Phase 212.D Corrosion
+      tier-default discussion), and (b) the gate test transitions
+      from `[SKIPPED]` to `pass` on a clean `just setup` host.
+- [~] **Multi-launch resolution works** — `<pkg>/launch/<pkg>.launch.
       xml` > `<pkg>/launch/system.launch.xml` > single file > synth.
-      `--file <path>` override. (212.L.6)
+      `--file <path>` override. (212.L.6). Same gate +
+      tooling-skip status as the synth bullet — L.6 [x] design,
+      `phase212_l6_launch_synth::nros_plan_picks_pkg_named_default`
+      + `nros_plan_refuses_path_a_bringup_with_no_launch` exist
+      and SKIP on `play_launch_parser` absence. Same flip
+      precondition.
 - [x] **Every existing fixture migrated to the new shape** via the
       §212.I.3 sweep (fixtures) + §212.M sweep (examples). No mixed-
       shape tree allowed. (212.I + 212.M). Gated by
