@@ -117,6 +117,13 @@ impl ThreadxConfig for Config {
         &self.gateway
     }
     // No host interface — bare-metal NetX-Duo + virtio-net.
+
+    fn zenoh_locator(&self) -> &'static str {
+        self.zenoh_locator
+    }
+    fn domain_id(&self) -> u32 {
+        self.domain_id
+    }
 }
 
 impl BoardPrint for ThreadxQemuRiscv64 {

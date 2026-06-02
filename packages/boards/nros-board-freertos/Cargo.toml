@@ -27,6 +27,14 @@ nros-board-mps2-an385-freertos = { path = "../nros-board-mps2-an385-freertos", d
 # Phase 173.5 — `TransportConfig` trait the generator writes nros.toml
 # `[[transport]]` IP into. Trait-only; no_std, default-features off.
 nros-platform = { path = "../../core/nros-platform", default-features = false }
+# Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
+# the app task inside `run_entry` installs a live component runtime
+# sink on `RuntimeCtx` before invoking the user `setup` closure +
+# drops into a spin loop afterwards. `rmw-cffi` pulls the backend
+# registry; the actual RMW backend (`nros-rmw-zenoh`, ...) must be
+# linked by the per-board crate (`nros-board-mps2-an385-freertos`,
+# etc.) so `Executor::open` resolves a backend at boot.
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos"] }
 
 [build-dependencies]
 # 152.1.B.4 — generic build.rs compiles FreeRTOS kernel + lwIP +

@@ -30,6 +30,14 @@ nros-board-common = { path = "../nros-board-common" }
 # driver from inheriting a `platform-*` selection — the Entry pkg
 # pins the concrete platform.
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false, features = ["std"] }
+# Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
+# `run_entry` installs a live component runtime sink on `RuntimeCtx`
+# before invoking the user `setup` closure + spins forever
+# afterwards. NuttX ships `std`; the actual RMW backend
+# (`nros-rmw-zenoh`, ...) must be linked by the per-board overlay
+# (`nros-board-nuttx-qemu-arm`, ...) so `Executor::open` resolves a
+# backend at boot.
+nros = { path = "../../core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-nuttx"] }
 nros-board-nuttx-qemu-arm = { path = "../nros-board-nuttx-qemu-arm", optional = true }
 
 [features]

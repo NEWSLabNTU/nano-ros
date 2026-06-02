@@ -57,6 +57,12 @@ impl ThreadxConfig for Config {
     fn interface(&self) -> Option<&str> {
         Some(self.interface)
     }
+    fn zenoh_locator(&self) -> &'static str {
+        self.zenoh_locator
+    }
+    fn domain_id(&self) -> u32 {
+        self.domain_id
+    }
 }
 
 impl BoardPrint for ThreadxLinux {

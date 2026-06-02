@@ -198,27 +198,52 @@ where
     // called once by FreeRTOS.
     let closure = unsafe { core::ptr::read(&ctx.closure) };
 
-    // 212.N.2: the user closure consumes `&mut RuntimeCtx`, not
-    // `&Config`. Codegen (212.N.4) will populate launch overlay
-    // params/remaps inside a `static` and pass the slices in here;
-    // for now the family driver hands a fresh placeholder. Phase
-    // 212.N.7 step-3.5 will replace the `NullComponentRuntime`
-    // placeholder with a real `ExecutorComponentRuntime`.
-    let mut crt = ::nros_platform::NullComponentRuntime;
-    let mut runtime = RuntimeCtx::with_runtime(&mut crt);
-
-    match closure(&mut runtime) {
-        Ok(()) => {
+    // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
+    // `ExecutorComponentRuntime` so the codegen-emitted
+    // `run_plan(runtime)` body can register components against a
+    // live RMW session. Locator + domain_id come from `Config` (the
+    // FreeRTOS overlay's TOML / default), NOT env vars — embedded
+    // libc `getenv` has no host trampoline on QEMU. After the
+    // closure returns Ok, the app task drops into a spin loop; the
+    // scheduler never lets `main` return so the loop runs for the
+    // firmware lifetime.
+    let exec_cfg = ::nros::ExecutorConfig::new(ctx.config.zenoh_locator)
+        .domain_id(ctx.config.domain_id)
+        .node_name("nros_app");
+    let executor = match ::nros::Executor::open(&exec_cfg) {
+        Ok(e) => e,
+        Err(err) => {
             unsafe {
                 nros_trace_trigger_and_dump();
             }
             B::println(format_args!(""));
-            B::println(format_args!("Application completed successfully."));
+            B::println(format_args!("Executor::open failed: {:?}", err));
+            B::exit_failure();
+        }
+    };
+    let mut crt = ::nros::component_runtime::ExecutorComponentRuntime::from_executor(executor);
+    let mut runtime = RuntimeCtx::with_runtime(&mut crt);
+
+    match closure(&mut runtime) {
+        Ok(()) => {
             B::println(format_args!(""));
-            B::println(format_args!("========================================"));
-            B::println(format_args!("  Done"));
-            B::println(format_args!("========================================"));
-            B::exit_success();
+            B::println(format_args!(
+                "Application setup complete — entering spin loop."
+            ));
+            // Embedded spin: the FreeRTOS scheduler never returns from
+            // this task, so we loop forever. `spin_once` errors trip
+            // the trace dump + exit_failure (a working bring-up never
+            // gets here).
+            loop {
+                if let Err(err) = ::nros_platform::ComponentRuntime::spin_once(&mut crt, 10) {
+                    unsafe {
+                        nros_trace_trigger_and_dump();
+                    }
+                    B::println(format_args!(""));
+                    B::println(format_args!("spin_once error: {:?}", err));
+                    B::exit_failure();
+                }
+            }
         }
         Err(e) => {
             unsafe {

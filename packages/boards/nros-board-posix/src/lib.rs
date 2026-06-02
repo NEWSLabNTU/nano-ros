@@ -104,23 +104,33 @@ impl BoardExit for PosixBoard {
 
 impl BoardEntry for PosixBoard {
     /// Drive the boot → setup → exit flow. POSIX has no transport
-    /// bringup or network-wait step, so the body is the minimum the
-    /// trait surface documents:
+    /// bringup or network-wait step:
     ///
     /// 1. [`BoardInit::init_hardware`] (no-op).
-    /// 2. Build a [`RuntimeCtx`] via [`RuntimeCtx::with_runtime`].
-    ///    Today the runtime slot is a [`NullComponentRuntime`]
-    ///    placeholder; Phase 212.N.7 step-3.5 wires the real
-    ///    `ExecutorComponentRuntime` here, and Phase 212.N.4 codegen
-    ///    populates `params` / `remaps` / `env` from CLI args and the
-    ///    launch overlay.
-    /// 3. Invoke `setup(&mut ctx)`.
-    /// 4. Log the result via [`BoardPrint::println`].
-    /// 5. Diverge into [`BoardExit::exit_success`] or
+    /// 2. Open the live [`nros::Executor`] from the env-derived
+    ///    [`nros::ExecutorConfig`] (`ROS_DOMAIN_ID`, `NROS_LOCATOR`,
+    ///    `NROS_SESSION_MODE`) and wrap it in an
+    ///    [`nros::component_runtime::ExecutorComponentRuntime`] —
+    ///    Phase 212.N.7 step-3.5. The codegen-emitted
+    ///    `run_plan(runtime)` body now talks to a real executor.
+    /// 3. Build a [`RuntimeCtx`] backed by that runtime.
+    /// 4. Invoke `setup(&mut ctx)`.
+    /// 5. Log the result via [`BoardPrint::println`].
+    /// 6. Diverge into [`BoardExit::exit_success`] or
     ///    [`BoardExit::exit_failure`].
     ///
-    /// The executor open + spin happens *inside* `setup` — see the
-    /// crate-level docs for why this seam lives there.
+    /// Native (POSIX) does **not** enter an infinite spin loop after
+    /// `setup` returns — POSIX-shaped applications drive their own
+    /// spinning inside `setup` (e.g. a codegen `run_plan` that calls
+    /// `Executor::spin_blocking`, or an Entry pkg main that simply
+    /// exits when the closure finishes). The contract mirrors the
+    /// hosted nuttx carve-out and matches the existing
+    /// `nros-board-posix` doc comment ("the executor open + spin
+    /// happens *inside* `setup`"). The change here is that the open
+    /// step is now done **for** the closure rather than by it — the
+    /// `setup` body receives a live runtime sink through
+    /// `RuntimeCtx::runtime` and dispatches Component pkg `register`
+    /// calls into it.
     fn run<F, E>(setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
@@ -128,12 +138,49 @@ impl BoardEntry for PosixBoard {
     {
         <Self as BoardInit>::init_hardware();
 
-        // Phase 212.N.7 step-3.2 placeholder: `RuntimeCtx` now carries
-        // a `&mut dyn ComponentRuntime`. Step-3.5 swaps this for the
-        // real `ExecutorComponentRuntime`.
-        let mut crt = ::nros_platform::NullComponentRuntime;
-        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
-        match setup(&mut runtime) {
+        // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
+        // `ExecutorComponentRuntime` so the codegen-emitted
+        // `run_plan(runtime)` body can register components against a
+        // live RMW session. Env-derived config picks up
+        // `ROS_DOMAIN_ID` / `NROS_LOCATOR` / `NROS_SESSION_MODE` at
+        // runtime — the host-side carve-out from the embedded
+        // compile-time domain-id contract documented in CLAUDE.md.
+        //
+        // If executor open fails (no RMW backend linked, or the
+        // configured router/peer is unreachable), we fall back to
+        // [`nros_platform::NullComponentRuntime`] so the setup closure
+        // still runs. The fall-back errors loud on any
+        // `register_dispatch_slot_dyn` call — meaning a launch.xml
+        // with zero `<node>` entries (e.g. the Phase 212.N.7 step-1
+        // entry-poc) still reaches `exit_success()`, while a real
+        // workload that tries to register components fails fast with
+        // `RuntimeError::ComponentRegister` (no silent no-op).
+        let exec_cfg = ::nros::ExecutorConfig::from_env();
+        let mut crt_real: Option<::nros::component_runtime::ExecutorComponentRuntime> =
+            match ::nros::Executor::open(&exec_cfg) {
+                Ok(e) => {
+                    Some(::nros::component_runtime::ExecutorComponentRuntime::from_executor(e))
+                }
+                Err(err) => {
+                    <Self as BoardPrint>::println(format_args!(
+                        "nros: Executor::open failed ({err:?}); proceeding with NullComponentRuntime — \
+                     `run_plan` register calls will fail loud."
+                    ));
+                    None
+                }
+            };
+        let mut crt_null = ::nros_platform::NullComponentRuntime;
+        let result = match crt_real.as_mut() {
+            Some(crt) => {
+                let mut runtime = RuntimeCtx::with_runtime(crt);
+                setup(&mut runtime)
+            }
+            None => {
+                let mut runtime = RuntimeCtx::with_runtime(&mut crt_null);
+                setup(&mut runtime)
+            }
+        };
+        match result {
             Ok(()) => {
                 <Self as BoardPrint>::println(format_args!("nros: application complete"));
                 <Self as BoardExit>::exit_success();

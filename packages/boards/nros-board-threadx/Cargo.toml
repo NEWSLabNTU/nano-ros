@@ -27,6 +27,14 @@ nros-board-common = { path = "../nros-board-common", default-features = false }
 # generic over. `nros-platform` is `no_std` + the `board` module has
 # no feature gates, so no platform-* feature is enabled here.
 nros-platform = { path = "../../core/nros-platform", default-features = false }
+# Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
+# the app thread inside `run_entry` installs a live component runtime
+# sink on `RuntimeCtx` before invoking the user `setup` closure +
+# drops into a spin loop afterwards. `rmw-cffi` pulls the backend
+# registry; the actual RMW backend (`nros-rmw-zenoh`, ...) must be
+# linked by the per-board overlay so `Executor::open` resolves a
+# backend at boot.
+nros = { path = "../../core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-threadx"] }
 nros-board-threadx-linux = { path = "../nros-board-threadx-linux", optional = true }
 nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64", optional = true }
 

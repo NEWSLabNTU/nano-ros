@@ -1325,12 +1325,14 @@ version = "0.1.0"
 dependencies = [
  "nros-board-posix",
  "nros-platform",
+ "nros-rmw-zenoh",
 ]
 
 [[package]]
 name = "nros-board-posix"
 version = "0.1.0"
 dependencies = [
+ "nros",
  "nros-platform",
 ]
 

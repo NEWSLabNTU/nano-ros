@@ -37,4 +37,19 @@ pub trait ThreadxConfig {
     fn interface(&self) -> Option<&str> {
         None
     }
+
+    /// Phase 212.N.7 step-3.5 — locator + domain_id accessors so the
+    /// family-driver `run_entry` body can pass them to
+    /// `ExecutorConfig::new(...)` when opening the embedded
+    /// `Executor`. Defaults match the historical
+    /// `zenoh_locator = "tcp/127.0.0.1:7447"` / `domain_id = 0`
+    /// the per-board overlays carry. Override on a per-overlay
+    /// `Config` when the values come from a different source.
+    fn zenoh_locator(&self) -> &'static str {
+        "tcp/127.0.0.1:7447"
+    }
+
+    fn domain_id(&self) -> u32 {
+        0
+    }
 }

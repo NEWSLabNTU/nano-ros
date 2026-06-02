@@ -230,20 +230,44 @@ where
     use std::io::Write as _;
     let _ = std::io::stdout().flush();
 
-    // Phase 212.N.7 step-3.2 — placeholder runtime; step-3.5 wires
-    // the real `ExecutorComponentRuntime`.
-    let mut crt = nros_platform::NullComponentRuntime;
+    // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
+    // `ExecutorComponentRuntime` so the codegen-emitted
+    // `run_plan(runtime)` body can register components against a
+    // live RMW session. NuttX uses env-derived config (it ships
+    // `std` + libc `getenv`); ROS_DOMAIN_ID / NROS_LOCATOR /
+    // NROS_SESSION_MODE flow through `from_env`. Embedded NuttX is
+    // a hosted-POSIX-style target so the `from_env` path matches
+    // what the legacy `node::run` body did before this phase.
+    let exec_cfg = ::nros::ExecutorConfig::from_env();
+    let executor = match ::nros::Executor::open(&exec_cfg) {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("Executor::open failed: {:?}", err);
+            let _ = std::io::stderr().flush();
+            std::process::exit(1);
+        }
+    };
+    let mut crt = ::nros::component_runtime::ExecutorComponentRuntime::from_executor(executor);
     let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
-    let result = setup(&mut runtime);
+    let setup_result = setup(&mut runtime);
 
-    // Flush again — NuttX serial-console drivers tail-drop on FIFO
-    // exhaustion, so a closure printing the application's final
-    // status before returning can lose its last line otherwise.
     let _ = std::io::stdout().flush();
-    if let Err(ref e) = result {
+    if let Err(ref e) = setup_result {
         eprintln!("Application error: {:?}", e);
         let _ = std::io::stderr().flush();
+        return setup_result;
     }
 
-    result
+    // Phase 212.N.7 step-3.5 — embedded RTOS spin loop. NuttX is a
+    // shell-dispatched POSIX-style hosted env: returning would have
+    // the shell reclaim the task, so the application would stop
+    // dispatching component callbacks. Spin forever like the FreeRTOS
+    // / ThreadX siblings; the user terminates via signal or shell.
+    loop {
+        if let Err(err) = nros_platform::ComponentRuntime::spin_once(&mut crt, 10) {
+            eprintln!("spin_once error: {:?}", err);
+            let _ = std::io::stderr().flush();
+            std::process::exit(1);
+        }
+    }
 }

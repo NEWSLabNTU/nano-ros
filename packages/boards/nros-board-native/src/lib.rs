@@ -38,6 +38,14 @@
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 
+// Phase 212.N.7 step-3.5 — force-link the zenoh RMW backend so its
+// `.nros_rmw_init` linker-section ctor reaches the final binary.
+// Without this `extern crate _`, cargo drops the rlib at link time
+// (the rest of the crate never names a zenoh symbol), and
+// `Executor::open` (now invoked inside `PosixBoard::run`) finds no
+// backend on first call.
+extern crate nros_rmw_zenoh as _;
+
 use nros_board_posix::PosixBoard;
 use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx};
 
