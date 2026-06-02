@@ -21,10 +21,10 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/dds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake")
 
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
-nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
+# Phase 212.M.10 — `nros.toml` retired; the Config literal lives in
+# `src/lib.rs::start_from_reset()`. The Cyclone path here doesn't
+# reference `NROS_APP_CONFIG`, so the generated app_config.h was dead
+# weight + dropped along with the source-of-truth toml.
 
 corrosion_import_crate(
     MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
@@ -34,8 +34,6 @@ corrosion_import_crate(
     FEATURES rmw-cyclonedds)
 
 add_executable(riscv64_threadx_rust_talker_cyclonedds src/cyclonedds_app.c)
-target_include_directories(riscv64_threadx_rust_talker_cyclonedds PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
 target_link_libraries(riscv64_threadx_rust_talker_cyclonedds PRIVATE
     qemu_riscv64_threadx_talker
     std_msgs__nano_ros_c

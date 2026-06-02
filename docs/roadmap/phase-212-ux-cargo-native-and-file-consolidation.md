@@ -281,17 +281,21 @@ Replaced by:
 
 C/C++ users get the same uniform shape Rust users get via cargo metadata.
 
-- [ ] **D.1** — cmake function `nano_ros_workspace_metadata(SYSTEM <bringup-pkg>
+- [x] **D.1** — Landed: feat(212.D) `15de00e3c` — cmake nano_ros_workspace_metadata() + multi-pkg fixtures.
+      Original spec: — cmake function `nano_ros_workspace_metadata(SYSTEM <bringup-pkg>
       [WORKSPACE_ROOT <dir>])` in `cmake/nano_ros_workspace_metadata.cmake`.
       ≤150 LoC HARD cap.
-- [ ] **D.2** — Function shells `nros plan` at cmake configure time
+- [x] **D.2** — Landed: feat(212.D) `15de00e3c` — workspace_metadata() shells `nros plan`.
+      Original spec: — Function shells `nros plan` at cmake configure time
       with the bringup pkg path; emits `${CMAKE_BINARY_DIR}/nros_components.cmake`;
       `include()`s it so component targets are visible to cmake natively.
-- [ ] **D.3** — Cross-language interop: `corrosion_import_crate()`
+- [x] **D.3** — Landed: feat(212.D+H.4) `e1b1b3bd6` — Corrosion in setup tier.
+      Original spec: — Cross-language interop: `corrosion_import_crate()`
       already supported for Rust components; the function exposes both
       C++ and Rust component targets uniformly. The plan stage decides
       which language each component is in.
-- [ ] **D.4** — Documented user incantation: top-level `CMakeLists.txt`
+- [x] **D.4** — Landed: feat(212.D) `15de00e3c` — multi-pkg fixtures document the incantation.
+      Original spec: — Documented user incantation: top-level `CMakeLists.txt`
       has `add_subdirectory(<nano-ros-repo>)` then
       `nano_ros_workspace_metadata(SYSTEM demo_bringup)` then
       `add_subdirectory(talker_pkg)` / `corrosion_import_crate(…)`.
@@ -408,28 +412,36 @@ Each `integrations/<rtos>/` shell stays ≤200 LoC, matches the universal
 pattern from `docs/design/rtos-integration-pattern.md`, and consumes the
 baked tree from 212.E.
 
-- [ ] **H.1 Zephyr** — `zephyr/module.yml` + `zephyr/CMakeLists.txt`
+- [x] **H.1 Zephyr** — Landed: feat(212.H) `8278955b9` (sweep) + fix(212.H.1+H.5) `9abb85b28` + fix(212.H) `330450e82`.
+      Original spec: — `zephyr/module.yml` + `zephyr/CMakeLists.txt`
       provides `nros_system_generate()` cmake fn that shells `nros codegen
       system`. Today's `app_config.h` baker (per-example) retires.
-- [ ] **H.2 NuttX** — `integrations/nuttx/` provides
+- [x] **H.2 NuttX** — Landed: feat(212.H) `8278955b9` — RTOS adapter sweep (7 adapters consume codegen-system bake).
+      Original spec: — `integrations/nuttx/` provides
       `apps/external/<bringup>/` symlink + `Makefile context::` rule
       that runs `nros codegen system` then `NROS_CARGO_BUILD`.
-- [ ] **H.3 FreeRTOS** — per-board crate `freertos-<board>-bsp` runs
+- [x] **H.3 FreeRTOS** — Landed: feat(212.H) `8278955b9` — RTOS adapter sweep.
+      Original spec: — per-board crate `freertos-<board>-bsp` runs
       `nros codegen system` in `build.rs`, emits `nros_config_generated.h`.
       No separate `integrations/freertos/` directory needed (cargo path
       IS the adapter).
-- [ ] **H.4 ThreadX** — `cmake/platform/nano-ros-threadx.cmake` runs
+- [x] **H.4 ThreadX** — Landed: feat(212.D+H.4) `e1b1b3bd6` — Corrosion in setup tier + mixed-Rust tests.
+      Original spec: — `cmake/platform/nano-ros-threadx.cmake` runs
       `nros codegen system` at cmake configure time + uses Corrosion to
       import Rust component crates. No `integrations/threadx/`.
-- [ ] **H.5 ESP-IDF** — `integrations/esp-idf/` ESP-IDF component w/
+- [x] **H.5 ESP-IDF** — Landed: feat(212.H.5+H.7+H.8) `34db111ad` + fix(212.H.1+H.5) `9abb85b28`.
+      Original spec: — `integrations/esp-idf/` ESP-IDF component w/
       `idf_component_register` + `Kconfig.projbuild`; configure-time
       `add_subdirectory(<nano-ros-root>)` triggers `nros codegen system`.
-- [ ] **H.6 PlatformIO** — repo-root `library.json` + pre-build
+- [x] **H.6 PlatformIO** — Landed: feat(212.H) `8278955b9` — RTOS adapter sweep (PlatformIO covered).
+      Original spec: — repo-root `library.json` + pre-build
       `extra_script` that invokes `nros codegen system --ahead-of-vendor`.
-- [ ] **H.7 PX4** — `integrations/px4/` template that the codegen
+- [x] **H.7 PX4** — Landed: feat(212.H.5+H.7+H.8) `34db111ad` + feat(212.H) `8278955b9`.
+      Original spec: — `integrations/px4/` template that the codegen
       emits one module dir per component into; user runs PX4's
       `make px4_sitl` after `nros plan`.
-- [ ] **H.8 LoC audit** — each adapter shim ≤200 LoC verified by
+- [x] **H.8 LoC audit** — Landed: feat(212.H.5+H.7+H.8) `34db111ad` + test(212.I.3+212.H.8) `7e0e5cbce` (tokei budget gate).
+      Original spec: — each adapter shim ≤200 LoC verified by
       `tokei` in CI.
 - **Tests (one per RTOS, all gated on respective SDK availability):**
   - [ ] `zephyr_native_sim_2_component_bringup_builds_and_publishes`
@@ -470,7 +482,8 @@ lands and the migrate tests are demoted to historical.
         any more — see 212.G).
 - [x] **I.2** — Tool is idempotent (re-runnable on already-migrated
       trees w/o change) and reversible w/ `--dry-run`.
-- [ ] **I.3** — Every fixture under
+- [x] **I.3** — Landed: test(212.M.11+M.12) `d9dc99787` — canonical-shape walker covers `tests/fixtures/`.
+      Original spec: — Every fixture under
       `packages/testing/nros-tests/fixtures/orchestration_*` gets
       migrated in a single sweep after 212.B/C/F/G land. No mixed-shape
       transitional state in the tree.
@@ -526,25 +539,30 @@ install exists.
 Make `cargo build --features rmw-cyclonedds` work end-to-end without
 CMake on hosted targets (native, qemu native_sim).
 
-- [ ] **K.1** — `cyclonedds-sys` crate at
+- [x] **K.1** — Landed: feat(212.K.1+K.2+K.5) `11dc35f38` — pure-cargo cyclonedds for native Rust.
+      Original spec: — `cyclonedds-sys` crate at
       `packages/dds/cyclonedds-sys/` vendors Cyclone via the `cmake`
       build-script crate against `third-party/dds/cyclonedds` (pinned
       0.10.5). Forces `ENABLE_LTO=OFF`, `BUILD_IDLC=ON`. Separate host
       `idlc` build target. Exports `links = "ddsc"`, `cargo:idlc`,
       `cargo:include`.
-- [ ] **K.2** — `nros-rmw-cyclonedds-sys` wrapper crate at
+- [x] **K.2** — Landed: feat(212.K.1+K.2+K.5) `11dc35f38` + refactor `233520435` (drop hard-coded std_msgs/Int32).
+      Original spec: — `nros-rmw-cyclonedds-sys` wrapper crate at
       `packages/dds/nros-rmw-cyclonedds-sys/` runs `cc::Build::cpp(true)`
       over existing `packages/dds/nros-rmw-cyclonedds/src/*.cpp`. Bakes
       `rmw_dds_common_graph` descriptor via bundled host `idlc`. Emits
       `cargo:rustc-link-lib=static:+whole-archive,-bundle=nros_rmw_cyclonedds`
       + `dylib=stdc++`. Risk: HIGH (semi-internal Cyclone headers).
-- [ ] **K.3 (PRE-REQ)** — Port `scripts/cyclonedds/msg_to_cyclone_idl.py`
+- [x] **K.3 (PRE-REQ)** — Landed: feat(212.K.3) `802e13021` — msg_to_cyclone_idl.py ported to Rust crate.
+      Original spec: — Port `scripts/cyclonedds/msg_to_cyclone_idl.py`
       to Rust as a `nros-msg-to-idl` library + build-dep helper. Python
       build-dep is a regression for the pure-cargo promise.
-- [ ] **K.4** — Per-example descriptor codegen: extend `nros codegen`
+- [x] **K.4** — Landed: feat(212.K.4) `f5bf74901` + refactor `233520435` (drop hard-coded std_msgs/Int32).
+      Original spec: — Per-example descriptor codegen: extend `nros codegen`
       with `nros codegen cyclonedds-descriptors`. Emits a small Rust
       crate w/ the idlc C output + register TU; consumed via build-dep.
-- [ ] **K.5** — `examples/native/rust/{talker,listener}/Cargo.toml` get
+- [x] **K.5** — Landed: feat(212.K.1+K.2+K.5) `11dc35f38` — pure-cargo cyclonedds for native Rust.
+      Original spec: — `examples/native/rust/{talker,listener}/Cargo.toml` get
       a `rmw-cyclonedds` feature that pulls in the new sys crates. The
       CMakeLists path for cyclonedds is RETIRED; C++ examples retain
       their CMake path unchanged.
@@ -1055,12 +1073,31 @@ canonical-shape regression test can run green tree-wide:
       phase-210-ros-convention-codegen.md` documents the existing
       `nros ws sync` output — aligning that emit is a follow-up in
       the nros-cli repo (`github.com/NEWSLabNTU/nros-cli`).
-- [ ] **M-F.10 `cmake/NanoRosReadConfig.cmake` deletion** (nano-ros).
-      Lives at `packages/core/nros-c/cmake/NanoRosReadConfig.cmake`
-      (NOT `cmake/` as M.10 phase doc says — correct the path).
-      12+ live callers outside FreeRTOS (Zephyr / NuttX / native /
-      ThreadX-RV64 trees). Deferred to M.10 final-pass after every
-      wave retires its callers.
+- [~] **M-F.10 `cmake/NanoRosReadConfig.cmake` deletion** (nano-ros) —
+      **partial close 2026-06-02**:
+      - The orphan duplicate file at
+        `packages/core/nros-c/cmake/NanoRosReadConfig.cmake` (260
+        LoC, never `include()`-ed anywhere) was deleted in this
+        audit.
+      - The leftover caller in
+        `examples/qemu-riscv64-threadx/rust/talker/CMakeLists.txt`
+        (the M.10 sweep deleted its `nros.toml` but missed the
+        cmake-side `nano_ros_read_config(...)` +
+        `nano_ros_generate_config_header(...)` calls — they now
+        referenced a non-existent file) was retired; the cyclonedds
+        C side (`cyclonedds_app.c`) doesn't reference
+        `NROS_APP_CONFIG`, so the per-binary header was dead weight.
+      - The canonical defs of `nano_ros_read_config()` +
+        `nano_ros_generate_config_header()` in
+        `cmake/NanoRosConfig.cmake` plus the
+        `cmake/templates/nros_app_config.h.in` template STAY for now
+        — `packages/boards/nros-board-{mps2-an385-freertos,
+        threadx-linux,threadx-qemu-riscv64}/startup.c` still read
+        `NROS_APP_CONFIG.network.*` at runtime (the per-binary
+        generated header is their config-injection path). Final
+        retirement gated on refactoring those board startup paths
+        to accept a `Config` struct argument rather than read
+        global state from a per-binary header.
 - [x] **M-F.11 nano_ros_generate_interfaces vs nros_find_interfaces
       naming reconciliation** (phase doc + sibling design docs + book).
       Resolved by renaming references in the phase doc / design docs /
