@@ -29,14 +29,14 @@ use nros_platform::BoardEntry;
 //
 //   pub fn run_plan(
 //       runtime: &mut ::nros_platform::RuntimeCtx<'_>,
-//   ) -> Result<(), ::nros_build::RuntimeError>;
+//   ) -> Result<(), ::nros_platform::RuntimeError>;
 include!(concat!(env!("OUT_DIR"), "/run_plan.rs"));
 
 fn main() {
     // The body of `<BoardEntry as Trait>::run` owns init → executor
     // open → setup callback → spin → exit. Our setup just delegates
     // to the codegen-emitted `run_plan`.
-    let outcome: Result<(), nros_build::RuntimeError> =
+    let outcome: Result<(), nros_platform::RuntimeError> =
         <NativeBoard as BoardEntry>::run(|runtime| run_plan(runtime));
     if let Err(err) = outcome {
         eprintln!("entry-poc: run_plan failed: {err}");

@@ -12,7 +12,7 @@ use nros_platform::BoardEntry;
 //
 //   pub fn run_plan(
 //       runtime: &mut ::nros_platform::RuntimeCtx<'_>,
-//   ) -> Result<(), ::nros_build::RuntimeError>;
+//   ) -> Result<(), ::nros_platform::RuntimeError>;
 //
 // Step-2 ships an empty stub; the §212.N.4 follow-up wires the
 // sibling Component pkg's `register` into a real `run_plan` body
@@ -23,7 +23,7 @@ fn main() {
     // `<ThreadxLinux as BoardEntry>::run` owns the ThreadX kernel
     // bring-up + executor open + spin loop; our `setup` closure
     // delegates to the codegen-emitted `run_plan`.
-    let outcome: Result<(), nros_build::RuntimeError> =
+    let outcome: Result<(), nros_platform::RuntimeError> =
         <ThreadxLinux as BoardEntry>::run(|runtime| run_plan(runtime));
     if let Err(err) = outcome {
         // `BoardExit::exit_failure` is invoked by `BoardEntry::run`

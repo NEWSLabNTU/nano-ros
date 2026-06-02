@@ -16,7 +16,6 @@ deploy = "threadx-linux"
 [dependencies]
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
 threadx_linux_rs_action_client = { path = "../action-client" }
 
 [build-dependencies]

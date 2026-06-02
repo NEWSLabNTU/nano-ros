@@ -30,7 +30,7 @@
 //
 //   pub fn run_plan(
 //       runtime: &mut ::nros_platform::RuntimeCtx<'_>,
-//   ) -> Result<(), ::nros_build::RuntimeError>;
+//   ) -> Result<(), ::nros_platform::RuntimeError>;
 include!(concat!(env!("OUT_DIR"), "/run_plan.rs"));
 
 #[cfg(target_os = "nuttx")]
@@ -38,7 +38,7 @@ fn main() {
     use nros_board_nuttx_qemu_arm::QemuArmVirt;
     use nros_platform::BoardEntry;
 
-    let outcome: Result<(), nros_build::RuntimeError> =
+    let outcome: Result<(), nros_platform::RuntimeError> =
         <QemuArmVirt as BoardEntry>::run(|runtime| run_plan(runtime));
     if let Err(err) = outcome {
         // NuttX hosts `std`; eprintln routes through the NuttX serial

@@ -21,9 +21,6 @@ deploy = "threadx-linux"
 nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, …
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
-# Phase 212.N.4 codegen — Entry pkg `main.rs` re-exports `RuntimeError`
-# for the emitted `run_plan.rs` to depend on.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
 
 # Component pkg this Entry pkg wraps. The codegen-emitted `run_plan`
 # dispatches `threadx_linux_rs_listener::register(runtime)?` per launch

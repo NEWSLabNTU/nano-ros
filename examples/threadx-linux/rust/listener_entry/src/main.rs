@@ -12,7 +12,7 @@ use nros_platform::BoardEntry;
 include!(concat!(env!("OUT_DIR"), "/run_plan.rs"));
 
 fn main() {
-    let outcome: Result<(), nros_build::RuntimeError> =
+    let outcome: Result<(), nros_platform::RuntimeError> =
         <ThreadxLinux as BoardEntry>::run(|runtime| run_plan(runtime));
     if let Err(err) = outcome {
         eprintln!("threadx_linux_rs_listener_entry: run_plan failed: {err}");

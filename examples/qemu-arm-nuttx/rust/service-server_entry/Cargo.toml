@@ -15,7 +15,6 @@ path = "src/main.rs"
 [dependencies]
 nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
 
 # Sibling Component pkg dep deliberately omitted in step-2 — see the
 # talker_entry sibling Cargo.toml for rationale.

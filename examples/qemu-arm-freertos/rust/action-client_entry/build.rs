@@ -30,7 +30,7 @@ fn main() {
             let body = "// Placeholder — nros-build codegen unavailable.\n\
                         pub fn run_plan(\n    \
                             runtime: &mut ::nros_platform::RuntimeCtx<'_>,\n\
-                        ) -> ::core::result::Result<(), ::nros_build::RuntimeError> {\n    \
+                        ) -> ::core::result::Result<(), ::nros_platform::RuntimeError> {\n    \
                             let _ = runtime;\n    \
                             Ok(())\n\
                         }\n";

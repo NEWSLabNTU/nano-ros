@@ -78,3 +78,30 @@ impl<'a> Default for RuntimeCtx<'a> {
         Self::EMPTY
     }
 }
+
+/// Error returned by the codegen-emitted `run_plan(runtime)` body
+/// (Phase 212.N.4) and by Component pkg `register(runtime)` wrappers
+/// (Phase 212.N.7 step-2).
+///
+/// `no_std`-safe — variants are string-typed so embedded Entry pkgs
+/// don't need to pull `thiserror`/`anyhow` to print. The
+/// out-of-tree `nros-build` codegen library re-exports this type so
+/// emitted code references `::nros_platform::RuntimeError`, NOT
+/// `::nros_build::RuntimeError` — the embedded Entry pkg's runtime
+/// path then doesn't need `nros-build` as a runtime dep (build-dep
+/// only).
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum RuntimeError {
+    /// A component's `register(runtime)` call failed. The string
+    /// carries the component pkg name.
+    ComponentRegister(&'static str),
+}
+
+impl core::fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::ComponentRegister(msg) => write!(f, "component register failed: {msg}"),
+        }
+    }
+}

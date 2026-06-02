@@ -18,8 +18,6 @@ path = "src/main.rs"
 nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, …
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
-# Phase 212.N.4 — re-export `RuntimeError` for the emitted `run_plan.rs`.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
 # NOTE: sibling Component pkg dep deliberately NOT listed in step-2.
 # The launch file is empty so codegen emits an `Ok(())` body; the
 # Component pkg's `register()` wrapper is reached only when a

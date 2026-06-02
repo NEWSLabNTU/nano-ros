@@ -25,7 +25,7 @@ use nros_platform::BoardEntry;
 //
 //   pub fn run_plan(
 //       runtime: &mut ::nros_platform::RuntimeCtx<'_>,
-//   ) -> Result<(), ::nros_build::RuntimeError>;
+//   ) -> Result<(), ::nros_platform::RuntimeError>;
 include!(concat!(env!("OUT_DIR"), "/run_plan.rs"));
 
 #[unsafe(no_mangle)]
@@ -33,7 +33,7 @@ pub extern "C" fn main() -> i32 {
     // The body of `<BoardEntry as Trait>::run` owns init → executor
     // open → setup callback → spin → exit. Our setup just delegates
     // to the codegen-emitted `run_plan`.
-    let outcome: Result<(), nros_build::RuntimeError> =
+    let outcome: Result<(), nros_platform::RuntimeError> =
         <Mps2An385 as BoardEntry>::run(|runtime| run_plan(runtime));
     match outcome {
         Ok(()) => 0,

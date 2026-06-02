@@ -12,7 +12,7 @@ fn main() {
     use nros_board_nuttx_qemu_arm::QemuArmVirt;
     use nros_platform::BoardEntry;
 
-    let outcome: Result<(), nros_build::RuntimeError> =
+    let outcome: Result<(), nros_platform::RuntimeError> =
         <QemuArmVirt as BoardEntry>::run(|runtime| run_plan(runtime));
     if let Err(err) = outcome {
         eprintln!("nuttx_rs_service_client_entry: run_plan failed: {err:?}");

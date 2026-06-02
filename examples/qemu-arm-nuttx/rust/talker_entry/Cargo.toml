@@ -23,8 +23,6 @@ path = "src/main.rs"
 nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`.
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
-# Phase 212.N.4 — re-export `RuntimeError` for the emitted `run_plan.rs`.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
 
 # Sibling Component pkg dep deliberately NOT listed here — step-2
 # ships with an empty launch.xml, so codegen emits no
