@@ -1683,7 +1683,82 @@ asymmetry rationale.
       shape tree allowed. (212.I + 212.M)
 - [ ] **All 7 RTOS adapters ship a working bringup fixture under the
       new shape** (Zephyr, NuttX, FreeRTOS, ThreadX, ESP-IDF, PlatformIO,
-      PX4). (212.H + 212.M)
+      PX4). (212.H + 212.M) — partial as of 2026-06-02 audit
+      (`phase-212-acceptance-rtos-bringup-verify` branch). Adapter
+      shim files + bringup fixtures all exist (every
+      `multi_pkg_workspace_<rtos>/` dir present; every adapter shim
+      under the 200-LoC budget per §H.8). Per-adapter gate test
+      status:
+      - **Zephyr** — `phase212_h1_zephyr` SDK-skips cleanly without
+        `ZEPHYR_BASE`; fixture
+        `multi_pkg_workspace_zephyr/zephyr_app/` calls
+        `nros_system_generate(demo_bringup)`. Adapter shim
+        `zephyr/cmake/nros_system_generate.cmake` 131/200 LoC.
+      - **NuttX** — `phase212_h2_nuttx::template_files_exist_and_loc_under_budget`
+        passes; the build-step
+        `nuttx_qemu_arm_2_component_bringup_builds` HARD FAILS on
+        host w/ NuttX provisioned because
+        `scripts/nuttx/stage-external-apps.sh` invokes
+        `scripts/nuttx/gen-app-config.py`, which expects the
+        `cmake/templates/nros_app_config.h.in` template retired by
+        `f473b78b4` (212.M-F.10). Adapter dir
+        `integrations/nuttx/apps-external-template/` ships the
+        Make.defs + Makefile + Kconfig + README; fixture
+        `multi_pkg_workspace_nuttx/src/demo_bringup` exists. **Gap:**
+        either drop the legacy nuttx-examples staging from the
+        staging script (Phase 212.M sweep should retire the
+        `examples/qemu-arm-nuttx/{c,cpp}/...` loop on lines 88–123
+        once the Phase 212 bringup path is the only one), or
+        re-introduce the template under a 212.M-aware shape. Adapter
+        shim dir 137/200 LoC.
+      - **FreeRTOS** — `phase212_h3_freertos::freertos_qemu_mps2_an385_2_component_bringup_builds`
+        HARD FAILS in the worktree (FreeRTOS toolchain present): the
+        `efa778162` (212.N.7 step-3.4) macro change made
+        `nros::component!()` emit `::nros_platform::*` references in
+        the consumer pkg, but the fixture's
+        `multi_pkg_workspace_freertos/src/{talker,listener}_pkg/Cargo.toml`
+        only depends on `nros`, not `nros_platform`. The ThreadX-side
+        H.4 fixture sidesteps this by hand-writing the FFI export
+        (no `nros::component!()` invocation). **Gap:** either (a)
+        add a direct `nros_platform = { path = ..., default-features = false }`
+        dep to the FreeRTOS component-pkg fixtures, or (b) have the
+        macro reference `::nros::__macro_support::nros_platform` via
+        a re-export inside `packages/core/nros/src/lib.rs`. Adapter
+        is the BSP crate's `build.rs` (not a separate shim file —
+        per the H.8 LoC table — H.3 makes the cargo path itself
+        the adapter).
+      - **ThreadX** — `phase212_h4_threadx::threadx_linux_2_component_bringup_builds_and_publishes`
+        is `#[ignore]`'d on `212.M.10: nros plan does not yet read
+        [package.metadata.nros.component]` — `nros plan` (in the
+        out-of-tree `nros-cli`) still demands sidecar
+        `metadata/*.json`. Fixture
+        `multi_pkg_workspace_threadx/threadx_app/` exists and would
+        configure under the cmake helper. Adapter shim
+        `cmake/NanoRosThreadxSystemCodegen.cmake` 115/200 LoC.
+      - **ESP-IDF** — `phase212_h5_esp_idf::esp_idf_esp32c3_2_component_bringup_builds`
+        SDK-skips cleanly without `$IDF_PATH` + `idf.py`. Fixture
+        `multi_pkg_workspace_esp_idf/esp_idf_app/` exists. Adapter
+        shim `integrations/nano-ros/CMakeLists.txt` 78/200 LoC.
+      - **PlatformIO** — `phase212_h6_platformio::platformio_zephyr_framework_2_component_bringup_builds`
+        PASSES (3.36 s, hooks `pio run -e native`). Adapter shim
+        `integrations/platformio/nros_codegen.py` 46/200 LoC.
+      - **PX4** — `phase212_h7_px4::px4_sitl_2_component_module_builds`
+        is `#[ignore]`'d on 212.M.10 + M-F.8 (PX4 SITL board
+        overlay gap); fixture
+        `multi_pkg_workspace_px4/{talker,brake_arbiter}_pkg/` exists
+        as C++ pkgs but currently lacks the `demo_bringup/system.toml`
+        the H.7 emit driver expects (callout in the `#[ignore]`
+        reason). Adapter shim `integrations/px4/module-template/`
+        51/200 LoC.
+
+      Flippable to [x] once: (1) NuttX legacy-staging fix lands
+      (drop or replace `gen-app-config.py` invocation in
+      `scripts/nuttx/stage-external-apps.sh`); (2) FreeRTOS fixture
+      pkgs gain a direct `nros_platform` dep OR the macro emits a
+      re-exported path; (3) H.4 + H.7 `#[ignore]`'s drop (gated on
+      out-of-tree `nros-cli` 212.M.10 work + 212.M-F.8). Audit
+      verified via `cargo test -p nros-tests --test
+      phase212_h{1..8}_*` on `phase-212-acceptance-rtos-bringup-verify`.
 - [x] **Each adapter shim ≤200 LoC; cmake `nano_ros_workspace_metadata
       ()` ≤150 LoC.** CI gate via the in-process `tokei` crate
       (no `tokei` CLI install required — activated H.8 2026-06-02 in
