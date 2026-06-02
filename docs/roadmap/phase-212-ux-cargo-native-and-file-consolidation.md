@@ -760,7 +760,8 @@ A clean break — no transitional mixed-shape state allowed.
       listener,service-{client,server},action-{client,server}}/` (6
       examples) → Component pkg w/ `[package.metadata.nros.component]`
       + `[package.metadata.nros.deploy.zephyr]`. `service-client-async`
-      DEFERRED (no async-Component trait yet; Embassy). 12 Zephyr
+      (was: DEFERRED; dropped 2026-06-02 per M-F.5 — no async-Component
+      trait yet; Embassy variant retired, native tokio sibling kept). 12 Zephyr
       C+C++ examples DEFERRED — H.1 shim only resolves bringup pkgs
       with `system.toml`; the L.7 self-bringup case (Cargo.toml /
       CMakeLists.txt-driven, no separate `system.toml`) lives in
@@ -989,12 +990,16 @@ canonical-shape regression test can run green tree-wide:
       as declarative-metadata-only with no-op bodies. Real
       runtime-side client dispatch landed in W.5.6 (separate). Once
       shipped, transcribe client examples to use the real ops.
-- [ ] **M-F.5 Async-Component trait** (nros). `examples/zephyr/
-      rust/service-client-async/` uses Embassy. No async-Component
-      shape exists today. Decide: extend `Component`/`Executable
-      Component` w/ an async variant, or formally drop the
-      async-client demo from the example matrix. Deferred until
-      L-Wave / runtime authors pick the path.
+- [x] **M-F.5 Async-Component trait** (nros). `examples/zephyr/
+      rust/service-client-async/` used Embassy; no async-Component
+      shape exists today. Decision 2026-06-02: **drop the
+      async-client demo from the example matrix** (the simpler
+      resolution). Embassy variant deleted; native tokio sibling
+      (`examples/native/rust/service-client-async/`) retained as
+      the async-client reference. The async-`Component` /
+      `ExecutableComponent` trait extension itself remains
+      deferred until L-Wave / runtime authors pick the path; if
+      revived, re-introduce the Zephyr example then.
 - [x] **M-F.6 FreeRTOS BSP runtime gate (M.5.a)** — Closed by the
       M.5.a chain (`5f271ff9f` + `0aaef01d2` + `7087e8114` +
       `ce88408af`) plus the BSP probe fix in `843ffea74`. Per-board

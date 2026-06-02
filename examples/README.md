@@ -48,7 +48,7 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `threadx-linux`           | rust     | 6     | –    | (pending 171.C.3) | – |
 | `zephyr`                  | c        | 6     | 6    | 2 (pub/sub; service 171.0.a) | – |
 | `zephyr`                  | cpp      | 6     | 6    | 4+aemv8r (pub/sub+service) | – |
-| `zephyr`                  | rust     | 6+async | 6  | 4 (pub/sub+service) | – |
+| `zephyr`                  | rust     | 6     | 6    | 4 (pub/sub+service) | – |
 
 Gap themes — see `docs/roadmap/phase-118-example-matrix-coverage.md` for the
 plan that fills these:
@@ -79,6 +79,7 @@ spin up examples here without first lifting the underlying constraint.
 | `cyclonedds` on bare-metal (`qemu-arm-baremetal`, `qemu-esp32-baremetal`, `stm32f4`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M / esp-hal bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). Phase 212.M.7 moved `esp32` itself off bare-metal onto ESP-IDF; cyclonedds on `esp32` is no longer a blanket "won't lift", but the ESP-IDF cyclonedds bring-up has not been validated yet. | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. ESP-IDF cyclonedds is a separate bring-up effort tracked outside this matrix. |
 | `cyclonedds` on NuttX QEMU (`qemu-arm-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
 | pure-cargo `cyclonedds` Rust binaries on `native` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
+| `zephyr/rust/service-client-async` | Dropped 2026-06-02 per Phase 212.M-F.5 — the Embassy-driven async client has no `Component` / `ExecutableComponent` analogue today. The native tokio sibling (`examples/native/rust/service-client-async/`) remains as the async-client reference. | Decide on an async-`Component` trait (deferred until L-Wave / runtime authors pick the path), then re-introduce the example. |
 
 If you believe one of these cells should be filled, please open an issue
 referencing the gating phase before adding directories — the lint in

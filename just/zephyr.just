@@ -229,7 +229,7 @@ build-rust-examples:
     # Delegate each role to the maintained single-example builder
     # (`build-one` owns the west-invocation + workspace setup; run from
     # the repo root, so do NOT cd into the workspace here).
-    for ex in talker listener service-server service-client action-server action-client service-client-async; do
+    for ex in talker listener service-server service-client action-server action-client; do
         just zephyr build-one "rust/$ex" zenoh
     done
     echo "Zephyr Rust examples built successfully!"
@@ -484,7 +484,7 @@ build-fixtures:
                     esac
                     case "$case" in
                         talker|listener) variant_offset=0 ;;
-                        service-server|service-client|service-client-async) variant_offset=10 ;;
+                        service-server|service-client) variant_offset=10 ;;
                         action-server|action-client) variant_offset=20 ;;
                         *)
                             echo "Unknown Zephyr fixture role: $case" >&2
@@ -499,10 +499,8 @@ build-fixtures:
             done
         done
     done
-    # Extra Rust async fixture. Not part of the universal role set.
-    entries+=(
-      "native_sim/native/64|build-rs-service-client-async-zenoh|zephyr/rust/service-client-async|0||prj.conf;prj-zenoh.conf;$native_sim_nsos_conf"
-    )
+    # `service-client-async` zephyr/rust fixture dropped 2026-06-02
+    # per Phase 212.M-F.5 — pending async-`Component` trait decision.
 
     failures=()
     running=()
@@ -572,7 +570,7 @@ build-fixtures:
             esac
             case "$fixture_role" in
                 talker|listener) variant_offset=0 ;;
-                service-server|service-client|service-client-async) variant_offset=10 ;;
+                service-server|service-client) variant_offset=10 ;;
                 action-server|action-client) variant_offset=20 ;;
                 *)
                     echo "Unknown Zephyr fixture role in $src" >&2
@@ -601,7 +599,7 @@ build-fixtures:
             esac
             case "$fixture_role" in
                 talker|listener) variant_idx=0 ;;
-                service-server|service-client|service-client-async) variant_idx=1 ;;
+                service-server|service-client) variant_idx=1 ;;
                 action-server|action-client) variant_idx=2 ;;
                 *) echo "Unknown Zephyr fixture role in $src" >&2; exit 2 ;;
             esac

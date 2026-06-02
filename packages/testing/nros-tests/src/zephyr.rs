@@ -634,18 +634,14 @@ fn decode_alias(
         "zephyr-dds-rs-action-client" | "dds-rs-action-client" => {
             ("rust", "action-client", "cyclonedds", "")
         }
-        "zephyr-dds-rs-async-service-client" | "dds-rs-async-service-client" => {
-            ("rust", "service-client-async", "cyclonedds", "")
-        }
+        // `service-client-async` zephyr/rust example dropped 2026-06-02 per
+        // Phase 212.M-F.5 — pending async-`Component` trait decision.
         "zephyr-dds-rs-talker-a9" => ("rust", "talker", "cyclonedds", "-a9"),
         "zephyr-dds-rs-listener-a9" => ("rust", "listener", "cyclonedds", "-a9"),
         "zephyr-dds-rs-service-server-a9" => ("rust", "service-server", "cyclonedds", "-a9"),
         "zephyr-dds-rs-service-client-a9" => ("rust", "service-client", "cyclonedds", "-a9"),
         "zephyr-dds-rs-action-server-a9" => ("rust", "action-server", "cyclonedds", "-a9"),
         "zephyr-dds-rs-action-client-a9" => ("rust", "action-client", "cyclonedds", "-a9"),
-        "zephyr-dds-rs-async-service-client-a9" => {
-            ("rust", "service-client-async", "cyclonedds", "-a9")
-        }
         _ => return None,
     })
 }
