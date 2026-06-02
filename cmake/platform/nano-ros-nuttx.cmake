@@ -22,9 +22,6 @@
 #     CMakeLists.txt see the same function names regardless of
 #     consumption shape.
 #
-#   * Pulls in `NanoRosReadConfig.cmake` + `NanoRosLink.cmake` so
-#     in-tree consumers get `nano_ros_read_config()` /
-#     `nano_ros_generate_config_header()` / `nano_ros_link_rmw()`
 #     without an install step (Phase 140 removed the legacy install path). The
 #     latter is a no-op on NuttX (the FFI crate's Cargo.toml pulls
 #     the RMW staticlib in directly) — keeping the function defined
@@ -85,7 +82,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-nuttx.c
 # the same one-line shape across platforms — board overlay decides
 # whether the call is a no-op (NuttX) or a real link (FreeRTOS).
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosConfig.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # ---------------------------------------------------------------------------

@@ -10,20 +10,25 @@
  *
  * Two binding paths:
  *
- *   1. **CMake codegen** (FreeRTOS, NuttX, ThreadX, native) — examples
- *      call `nano_ros_generate_config_header()` to emit a per-binary
- *      `<build_dir>/include/nros/app_config.h` from a `config.toml`.
- *      That generated header takes precedence over this shipped file
- *      because the build dir is added before NanoRos's install include
- *      path.
+ *   1. **Board crate `build.rs` emission** (FreeRTOS, NuttX, ThreadX,
+ *      native — Path C post-Phase 212.M-F.10): each board crate's
+ *      `build.rs` writes a generated `nros_app_config_def.c` into
+ *      `$OUT_DIR/` defining `const nros_app_config_t NROS_APP_CONFIG`
+ *      with values from the board's Rust `Config` defaults. The C
+ *      definition lands in the board's staticlib; linker resolves
+ *      the `extern` declaration in this header against that symbol.
+ *      Pre-212.M-F.10 the same role was filled by the retired
+ *      `cmake/NanoRosConfig.cmake::nano_ros_generate_config_header()`
+ *      codegen path; Path C moved it to source-side emission.
  *
  *   2. **Zephyr Kconfig** (this file's `__ZEPHYR__` branch) — Kconfig
  *      values become `CONFIG_NROS_*` preprocessor macros. We synthesize
  *      `NROS_APP_CONFIG` from those at compile time, no codegen step.
  *
  * Out-of-tree consumers wanting a different binding path provide their
- * own `<nros/app_config.h>` earlier on the include path; this header is
- * the fallback.
+ * own definition site (a `.c` TU that defines `const nros_app_config_t
+ * NROS_APP_CONFIG = { ... };`) before this header's `extern` decl is
+ * resolved at link time.
  *
  * Copyright 2026 nros contributors
  * Licensed under Apache-2.0

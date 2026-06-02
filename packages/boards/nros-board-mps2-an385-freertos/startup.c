@@ -595,10 +595,13 @@ _Bool nros_platform_atomic_load_bool(const _Bool *ptr) {
 /* Replaces the Rust _start() → run() flow for pure C/C++ examples.
  *
  * Phase 112.D.3: all per-example knobs live in NROS_APP_CONFIG (typed
- * const struct emitted by `nano_ros_generate_config_header()`). The
- * old APP_IP / APP_MAC / APP_*_PRIORITY / APP_*_STACK_BYTES compile
- * defines are gone — startup.c is shared across every example via
- * `share/nano_ros/platform/freertos/startup.c`. */
+ * const struct). The old APP_IP / APP_MAC / APP_*_PRIORITY /
+ * APP_*_STACK_BYTES compile defines are gone — startup.c is shared
+ * across every example via `share/nano_ros/platform/freertos/
+ * startup.c`. Phase 212.M-F.10.3 (Path C, `991de6162`) replaced the
+ * retired cmake-codegen emission path with board-crate `build.rs`
+ * emission of the `const nros_app_config_t NROS_APP_CONFIG = { ... };`
+ * symbol into the board's staticlib. */
 #include <nros/app_config.h>
 
 extern void app_main(void);

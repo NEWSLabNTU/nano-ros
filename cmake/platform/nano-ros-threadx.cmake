@@ -24,9 +24,6 @@
 #     `netxduo`/`nsos_netx`, optional driver libs, and compose
 #     `threadx_platform` BEFORE this module wires it into the umbrella.
 #
-#   * Pulls in `NanoRosReadConfig.cmake` + `NanoRosLink.cmake` so
-#     in-tree consumers get `nano_ros_read_config()` /
-#     `nano_ros_generate_config_header()` / `nano_ros_link_rmw()`
 #     without an install step (Phase 140 removed the legacy install path).
 #
 #   * Defines `nros_platform_link_app(target)` — links
@@ -61,7 +58,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-threadx
 # ---------------------------------------------------------------------------
 # User-facing nano-ros helpers (config + link).
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosConfig.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # ---------------------------------------------------------------------------

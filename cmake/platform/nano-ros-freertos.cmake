@@ -26,9 +26,6 @@
 #     `nros_platform_*` ABI for FreeRTOS and is what
 #     `NanoRos::Platform` resolves to.
 #
-#   * Pulls in `NanoRosReadConfig.cmake` + `NanoRosLink.cmake` so
-#     in-tree consumers get `nano_ros_read_config()` /
-#     `nano_ros_generate_config_header()` / `nano_ros_link_rmw()`
 #     without an install step (Phase 140 removed the legacy install path).
 #
 #   * Defines `nros_platform_link_app(target)` — adds the board
@@ -61,7 +58,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/core/nros-c/cmake/nros-freerto
 # ---------------------------------------------------------------------------
 # User-facing nano-ros helpers (config + link).
 # ---------------------------------------------------------------------------
-include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosConfig.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # ---------------------------------------------------------------------------

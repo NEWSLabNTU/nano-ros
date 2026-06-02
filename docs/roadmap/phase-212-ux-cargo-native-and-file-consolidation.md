@@ -1113,7 +1113,7 @@ canonical-shape regression test can run green tree-wide:
       phase-210-ros-convention-codegen.md` documents the existing
       `nros ws sync` output — aligning that emit is a follow-up in
       the nros-cli repo (`github.com/NEWSLabNTU/nros-cli`).
-- [~] **M-F.10 Retire cmake codegen of `nros/app_config.h`** (nano-ros) —
+- [x] **M-F.10 Retire cmake codegen of `nros/app_config.h`** (nano-ros) —
       **partial close 2026-06-02**, **design locked 2026-06-02 as
       Path C** (below).
 
@@ -1154,7 +1154,7 @@ canonical-shape regression test can run green tree-wide:
 
       ### Path C work items
 
-      - [ ] **M-F.10.1 Header surface flip.** Modify
+      - [x] **M-F.10.1 Header surface flip.** Modify
         `packages/core/nros-c/include/nros/zephyr/app_config.h`'s
         non-Zephyr branch: replace the `#error` stub with
         `extern const nros_app_config_t NROS_APP_CONFIG;` (forward
@@ -1162,7 +1162,7 @@ canonical-shape regression test can run green tree-wide:
         type + declares the symbol; no `static const` initialiser
         baked in. Zephyr `__ZEPHYR__` Kconfig branch unchanged.
 
-      - [ ] **M-F.10.2 Board startup.c — no source changes.**
+      - [x] **M-F.10.2 Board startup.c — no source changes.**
         The 3 board crate startup.c files
         (`nros-board-mps2-an385-freertos`, `nros-board-threadx-linux`,
         `nros-board-threadx-qemu-riscv64`) ALREADY read
@@ -1172,7 +1172,7 @@ canonical-shape regression test can run green tree-wide:
         resolution. Confirm with a single-example smoke build per
         board.
 
-      - [ ] **M-F.10.3 Per-board NROS_APP_CONFIG emission.** Each
+      - [x] **M-F.10.3 Per-board NROS_APP_CONFIG emission.** Each
         board crate exposes a helper that emits
         `const nros_app_config_t NROS_APP_CONFIG = { ... };` from
         its Rust `Config`. Two options (pick during impl):
@@ -1184,7 +1184,7 @@ canonical-shape regression test can run green tree-wide:
         Whichever lands, the user-facing read pattern
         (`NROS_APP_CONFIG.network.ip`) stays unchanged.
 
-      - [ ] **M-F.10.4 Example sweep.** For C / C++ examples that
+      - [x] **M-F.10.4 Example sweep.** For C / C++ examples that
         rely on the universal struct (today: every embedded
         example that includes `<nros/app_config.h>` indirectly via
         the board startup), confirm the symbol resolves. Native
@@ -1192,7 +1192,7 @@ canonical-shape regression test can run green tree-wide:
         M.13 native/c sweep (replaced with literal locator strings
         at the call site) — no change needed.
 
-      - [ ] **M-F.10.5 cmake codegen retirement.** Once M-F.10.1–4
+      - [x] **M-F.10.5 cmake codegen retirement.** Once M-F.10.1–4
         are green, delete:
         - `cmake/NanoRosConfig.cmake` — the 2 fns
           (`nano_ros_read_config()` +
@@ -1206,7 +1206,7 @@ canonical-shape regression test can run green tree-wide:
           (4 files). The `Pulls in NanoRosReadConfig.cmake` doc
           comment lines retire alongside.
 
-      - [ ] **M-F.10.6 Verification matrix.** Build-smoke per
+      - [x] **M-F.10.6 Verification matrix.** Build-smoke per
         board:
         - FreeRTOS-MPS2 (any `examples/qemu-arm-freertos/c/talker`
           variant).

@@ -29,7 +29,6 @@ set(_NROS_PLATFORM_ESP_IDF_INCLUDED TRUE)
 set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast
     CACHE STRING "Default link features for the ESP-IDF platform")
 
-include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosConfig.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 
 # Codegen — the host nros CLI is invoked at build time (custom commands).
