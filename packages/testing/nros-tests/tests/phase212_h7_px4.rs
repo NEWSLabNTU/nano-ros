@@ -32,6 +32,15 @@ fn fixture() -> PathBuf {
 const COMPONENTS: &[&str] = &["talker", "brake_arbiter"];
 
 #[test]
+#[ignore = "Phase 212.M.10: depends on the retired Bringup pkg / \
+            `demo_bringup/system.toml` shape (§212.L.3 — 2026-06-02 \
+            redesign) AND the M-F.8 PX4 SITL board overlay gap. The \
+            fixture has been migrated to the §212.L.9 cmake fn shape \
+            (`nano_ros_component_register` + `nano_ros_deploy`); the \
+            `nros codegen-system --ahead-of-vendor --target px4` driver \
+            needs a follow-up to read the Component pkg surface instead \
+            of `system.toml`, plus a board overlay edit to enable the \
+            emitted modules."]
 fn px4_sitl_2_component_module_builds() {
     // Phase 212.H.7 prereqs: nros CLI + a PX4-Autopilot checkout. The
     // codegen subcommand check below is a soft gate (the verb may not

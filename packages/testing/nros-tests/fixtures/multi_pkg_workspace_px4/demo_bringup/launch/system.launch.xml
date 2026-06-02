@@ -1,4 +1,0 @@
-<launch>
-  <node pkg="talker_pkg"         exec="talker"         name="talker"         output="screen"/>
-  <node pkg="brake_arbiter_pkg"  exec="brake_arbiter"  name="brake_arbiter"  output="screen"/>
-</launch>
