@@ -1,0 +1,24 @@
+[workspace]
+
+[package]
+name = "nuttx_rs_action_server_entry"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 212.N.7 step-2 — Entry pkg for the NuttX QEMU ARM action-server Component pkg."
+
+[[bin]]
+name = "nuttx_rs_action_server_entry"
+path = "src/main.rs"
+
+[dependencies]
+nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+
+# Sibling Component pkg dep deliberately omitted in step-2 — see the
+# talker_entry sibling Cargo.toml for rationale.
+
+[build-dependencies]
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }

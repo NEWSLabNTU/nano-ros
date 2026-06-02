@@ -21,14 +21,10 @@ impl Component for AddTwoIntsClient {
     const NAME: &'static str = "add_two_ints_client";
 
     fn register(ctx: &mut ComponentContext<'_>) -> ComponentResult<()> {
-        let mut node = ctx.create_node(
-            NodeId::new("node"),
-            NodeOptions::new("add_two_ints_client"),
-        )?;
-        let _client = node.create_service_client::<AddTwoInts>(
-            EntityId::new("client_add"),
-            "/add_two_ints",
-        )?;
+        let mut node =
+            ctx.create_node(NodeId::new("node"), NodeOptions::new("add_two_ints_client"))?;
+        let _client =
+            node.create_service_client::<AddTwoInts>(EntityId::new("client_add"), "/add_two_ints")?;
         let _timer = node.create_timer(
             EntityId::new("timer_call"),
             CallbackId::new("issue_call"),
@@ -59,3 +55,14 @@ impl ExecutableComponent for AddTwoIntsClient {
 }
 
 nros::component!(AddTwoIntsClient);
+
+/// Phase 212.N.7 step-2 — codegen-facing `register` entry point.
+///
+/// See the `talker` Component pkg sibling for full docs. Generic over
+/// `R: ?Sized` so the Component pkg's Cargo.toml does not need a
+/// direct `nros-platform` dep; the Entry pkg monomorphises `R` to
+/// `nros_platform::RuntimeCtx<'_>`. Body is a no-op until the 212.N
+/// runtime plumbing lands.
+pub fn register<R: ?Sized>(_runtime: &mut R) -> Result<(), &'static str> {
+    Ok(())
+}

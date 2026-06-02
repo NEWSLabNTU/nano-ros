@@ -69,8 +69,7 @@ impl ExecutableComponent for FibonacciServer {
     fn tick(_state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         // Collect goal ids first — typed feedback / result calls borrow
         // `ctx` mutably so they can't run inside `visit`.
-        let mut goals: nros::heapless::Vec<(nros::GoalId, i32), 4> =
-            nros::heapless::Vec::new();
+        let mut goals: nros::heapless::Vec<(nros::GoalId, i32), 4> = nros::heapless::Vec::new();
         ctx.for_each_active_goal(
             EntityId::new("act_fib"),
             &mut |goal_id, _status: GoalStatus| {
@@ -105,3 +104,22 @@ impl ExecutableComponent for FibonacciServer {
 }
 
 nros::component!(FibonacciServer);
+
+/// Phase 212.N.7 step-2 — Entry-pkg-facing register wrapper.
+///
+/// TODO stub: see `freertos_rs_talker::register` for the rationale.
+/// `RuntimeCtx` does not yet expose a `ComponentRuntime` sink, so the
+/// existing `<FibonacciServer as Component>::register(ctx)` machinery
+/// wired by `nros::component!(FibonacciServer)` cannot be driven from
+/// here. The live registration path remains the macro-emitted
+/// `nros_component_register` extern that the FreeRTOS BSP baker
+/// discovers at link time.
+///
+/// Generic over `R` to avoid adding an `nros-platform` direct dep —
+/// step-2 contract kept `Cargo.toml` untouched. Entry pkg passes
+/// `&mut nros_platform::RuntimeCtx<'_>`.
+pub fn register<R>(_runtime: &mut R) -> Result<(), &'static str> {
+    // TODO(212.N.7 step-3+): wire to <FibonacciServer as Component>::register
+    // once RuntimeCtx exposes a ComponentRuntime sink.
+    Ok(())
+}

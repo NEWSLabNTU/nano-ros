@@ -1,0 +1,5 @@
+# Phase 212.N.7 step-2 — Entry pkg cargo config. Host target;
+# `nros-board-threadx-linux` build envs come from direnv.
+
+[build]
+target = "x86_64-unknown-linux-gnu"

@@ -1,0 +1,14 @@
+# Phase 212.N.7 step-2 — Entry pkg cargo config.
+#
+# Pins the host target to `x86_64-unknown-linux-gnu`. ThreadX-Linux
+# is a Linux-userspace simulation port (pthreads-backed ThreadX +
+# raw-socket NetX Duo), so the Entry pkg is a regular host binary —
+# no cross compile.
+#
+# Environment variables required by `nros-board-threadx-linux`'s
+# `build.rs` (THREADX_DIR / THREADX_CONFIG_DIR / NETX_DIR /
+# NETX_CONFIG_DIR / NSOS_NETX_DIR) come from direnv via
+# `scripts/sdk-env.sh`. Not duplicated here — single source.
+
+[build]
+target = "x86_64-unknown-linux-gnu"

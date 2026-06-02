@@ -1,0 +1,41 @@
+[package]
+name = "threadx_linux_rs_service_server_entry"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 212.N.7 step-2 — Entry pkg for ThreadX-Linux Rust service-server Component pkg."
+
+[[bin]]
+name = "threadx_linux_rs_service_server_entry"
+path = "src/main.rs"
+
+[package.metadata.nros.entry]
+deploy = "threadx-linux"
+
+[dependencies]
+nros-board-threadx-linux = { path = "../../../../packages/boards/nros-board-threadx-linux" }
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-threadx"] }
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+threadx_linux_rs_service_server = { path = "../service-server" }
+
+[build-dependencies]
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+
+[workspace]
+
+[patch.crates-io]
+builtin_interfaces = { path = "../service-server/generated/builtin_interfaces" }
+example_interfaces = { path = "../service-server/generated/example_interfaces" }
+
+nros = { path = "../../../../packages/core/nros" }
+nros-core = { path = "../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../packages/core/nros-serdes" }
+nros-platform = { path = "../../../../packages/core/nros-platform" }
+nros-platform-cffi = { path = "../../../../packages/core/nros-platform-cffi" }
+nros-node = { path = "../../../../packages/core/nros-node" }
+nros-rmw = { path = "../../../../packages/core/nros-rmw" }
+nros-rmw-cffi = { path = "../../../../packages/core/nros-rmw-cffi" }
+nros-log = { path = "../../../../packages/core/nros-log" }
+nros-macros = { path = "../../../../packages/core/nros-macros" }
+nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }

@@ -104,3 +104,27 @@ impl ExecutableComponent for FibonacciServer {
 }
 
 nros::component!(FibonacciServer);
+
+/// Phase 212.N.7 step-2 — codegen-facing `register` entry point.
+///
+/// Zephyr is the §212.N.2 carve-out: `nros-board-zephyr` is
+/// `NetworkWait`-only, and Kconfig + DTS own the C `main()` boot
+/// path (a Rust staticlib can't take over `main` on Zephyr). There
+/// is therefore **no Entry pkg sibling** for Zephyr Component pkgs;
+/// the existing `zephyr.exe`-from-`west build` shape stays.
+///
+/// This wrapper exists so a future Zephyr-side codegen layer can
+/// call `<this-pkg>::register(runtime)?` from inside the C
+/// `main()`'s `nros_app_rust_entry` hook — the same stable surface
+/// signature as the other §212.N.7 Component pkgs, just driven from
+/// C rather than a Rust Entry pkg.
+///
+/// The 212.N runtime plumbing that lets this function reach into
+/// the executor + register the [`FibonacciServer`] component lands
+/// in a follow-up step. For now the body is intentionally a no-op
+/// (the existing `nros::component!(FibonacciServer)` macro still
+/// owns the symbol-export path the M.5.b Zephyr baker consumes).
+pub fn register(runtime: &mut nros_platform::RuntimeCtx<'_>) -> Result<(), &'static str> {
+    let _ = runtime;
+    Ok(())
+}

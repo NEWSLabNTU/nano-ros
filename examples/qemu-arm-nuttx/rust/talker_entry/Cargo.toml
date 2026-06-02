@@ -1,0 +1,39 @@
+[workspace]
+
+[package]
+name = "nuttx_rs_talker_entry"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 212.N.7 step-2 — Entry pkg for the NuttX QEMU ARM talker Component pkg."
+
+[[bin]]
+name = "nuttx_rs_talker_entry"
+path = "src/main.rs"
+
+[dependencies]
+# Phase 212.N.3 tier-1 per-board shim — provides
+# `<QemuArmVirt as BoardEntry>::run` that owns init → executor open →
+# `setup(runtime)` → spin → exit. The `BoardEntry` impl is gated
+# `target_os = "nuttx"`; the rest (BoardInit/BoardPrint/BoardExit) is
+# unconditional, so this Entry pkg `cargo check`s on host without a
+# NuttX SDK and produces the real binary when cross-built for
+# `armv7a-nuttx-eabihf`.
+nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }
+# Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`.
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }
+# Phase 212.N.4 — re-export `RuntimeError` for the emitted `run_plan.rs`.
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+
+# Sibling Component pkg dep deliberately NOT listed here — step-2
+# ships with an empty launch.xml, so codegen emits no
+# `nuttx_rs_talker::register(runtime)?` calls and the dep would only
+# add weight. Matches the entry-poc pattern + the freertos / zephyr
+# wave-4 siblings (see tmp/wave4/N.7.qemu-arm-freertos.md choice 5).
+# Step-3+ adds the dep when launch.xml is populated.
+
+[build-dependencies]
+# Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from the
+# launch file + workspace cargo-metadata.
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }

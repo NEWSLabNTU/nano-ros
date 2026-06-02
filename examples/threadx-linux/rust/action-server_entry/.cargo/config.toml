@@ -1,0 +1,4 @@
+# Phase 212.N.7 step-2 — Entry pkg cargo config.
+
+[build]
+target = "x86_64-unknown-linux-gnu"

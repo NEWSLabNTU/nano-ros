@@ -69,8 +69,7 @@ impl ExecutableComponent for FibonacciServer {
     fn tick(_state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         // Collect goal ids to act on first; the typed feedback / result
         // calls borrow `ctx` mutably, so they can't run inside `visit`.
-        let mut goals: nros::heapless::Vec<(nros::GoalId, i32), 4> =
-            nros::heapless::Vec::new();
+        let mut goals: nros::heapless::Vec<(nros::GoalId, i32), 4> = nros::heapless::Vec::new();
         ctx.for_each_active_goal(
             EntityId::new("act_fib"),
             &mut |goal_id, _status: GoalStatus| {
@@ -105,3 +104,14 @@ impl ExecutableComponent for FibonacciServer {
 }
 
 nros::component!(FibonacciServer);
+
+/// Phase 212.N.7 step-2 — codegen-facing `register` entry point.
+///
+/// See the `talker` Component pkg sibling for full docs. Generic over
+/// `R: ?Sized` so the Component pkg's Cargo.toml does not need a
+/// direct `nros-platform` dep; the Entry pkg monomorphises `R` to
+/// `nros_platform::RuntimeCtx<'_>`. Body is a no-op until the 212.N
+/// runtime plumbing lands.
+pub fn register<R: ?Sized>(_runtime: &mut R) -> Result<(), &'static str> {
+    Ok(())
+}

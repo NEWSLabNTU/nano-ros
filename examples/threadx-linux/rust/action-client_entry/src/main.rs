@@ -1,0 +1,15 @@
+//! Phase 212.N.7 step-2 — ThreadX-Linux Rust action-client Entry pkg.
+
+use nros_board_threadx_linux::ThreadxLinux;
+use nros_platform::BoardEntry;
+
+include!(concat!(env!("OUT_DIR"), "/run_plan.rs"));
+
+fn main() {
+    let outcome: Result<(), nros_build::RuntimeError> =
+        <ThreadxLinux as BoardEntry>::run(|runtime| run_plan(runtime));
+    if let Err(err) = outcome {
+        eprintln!("threadx_linux_rs_action_client_entry: run_plan failed: {err}");
+        std::process::exit(1);
+    }
+}

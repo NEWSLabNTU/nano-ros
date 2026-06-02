@@ -1,0 +1,32 @@
+[workspace]
+
+[package]
+name = "freertos_rs_action_client_entry"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Phase 212.N.7 step-2 — FreeRTOS MPS2-AN385 Entry pkg for the `freertos_rs_action_client` Component pkg."
+
+[[bin]]
+name = "freertos_rs_action_client_entry"
+path = "src/main.rs"
+
+[dependencies]
+# Phase 212.N.3 tier-1 per-board shim. `Mps2An385::run` provides the
+# `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
+nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos" }
+# Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, …
+nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos"] }
+# Phase 212.N.4 — re-export `RuntimeError` for the emitted `run_plan.rs`.
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+# NOTE: sibling Component pkg dep deliberately NOT listed in step-2.
+# The launch file is empty so codegen emits an `Ok(())` body; the
+# Component pkg's `register()` wrapper is reached only when a
+# populated launch.xml lands in step-3+. Mirrors the entry-poc
+# convention of keeping the Entry-pkg dep graph minimal.
+
+[build-dependencies]
+# Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from the
+# launch file + workspace cargo-metadata.
+nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
