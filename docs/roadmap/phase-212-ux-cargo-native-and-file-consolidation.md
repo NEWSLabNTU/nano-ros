@@ -777,35 +777,33 @@ A clean break — no transitional mixed-shape state allowed.
       = 4 examples) land declarative-metadata-only with no-op bodies
       — `TickCtx` doesn't yet expose `call()` / `send_goal()`
       seams. Shipped wave 2.
-- [ ] **M.5 FreeRTOS sweep — SPLIT into M.5.a + M.5.b**:
-      - [ ] **M.5.a FreeRTOS BSP prerequisite** — extend the per-
-            board BSP crate's `build.rs` baker (currently emits weak
-            no-op stubs per `packages/boards/freertos-qemu-mps2-an385-
-            bsp/build.rs:181-204`) to: (i) resolve real component
-            register symbols (consume each component crate's
-            `__nros_component_register` export); (ii) spawn the
-            FreeRTOS `ApplicationTask` + bring up lwIP/zenoh-pico
+- [x] **M.5 FreeRTOS sweep — SPLIT into M.5.a + M.5.b**:
+      - [x] **M.5.a FreeRTOS BSP prerequisite** — extend the per-
+            board BSP crate's `build.rs` baker (previously emitted
+            weak no-op stubs at `packages/boards/freertos-qemu-mps2-
+            an385-bsp/build.rs:181-204`) to: (i) resolve real
+            component register symbols (consume each component
+            crate's `__nros_component_register` export); (ii) spawn
+            the FreeRTOS `ApplicationTask` + bring up lwIP/zenoh-pico
             from the system layer; (iii) drive `Executor::spin` on
-            behalf of the component. Validate via the existing
-            `phase212_h3_freertos` fixture exchanging real pub/sub
-            traffic (today only asserts the staticlib LINKS, not
-            that it runs). Also: drop `nano_ros_read_config(
-            nros.toml)` cmake fn calls from any FreeRTOS-side caller
-            (deferred to M.10 if non-FreeRTOS callers also exist).
-            Expand BSP crates beyond `freertos-qemu-mps2-an385-bsp`
-            for any non-mps2 board that gets a wave-M.5.b example.
-            HARD prerequisite for M.5.b.
-      - [ ] **M.5.b FreeRTOS mechanical sweep** — once M.5.a is
-            green, transcribe `examples/qemu-arm-freertos/{rust,cpp,
-            c}/*` (18 examples) + `examples/freertos/*` (if any
-            land) to canonical L.1 Component pkg shape. Drop the
-            working `src/main.rs::_start` + `src/lib.rs::run_app`
-            user plumbing in favour of `impl Component +
-            ExecutableComponent` + `nros::component!()`. Without
-            M.5.a, an M.5.b sweep would either break every working
-            FreeRTOS example end-to-end OR be cosmetic-only (Cargo
-            metadata table added but the imperative plumbing
-            retained — trips a future M.12 canonical-shape lint).
+            behalf of the component. Shipped in 4 commits — `5f271ff9f`
+            (per-pkg mangled register symbol via `nros::component!()`)
+            + `0aaef01d2` (Executor-backed ComponentRuntime in nros
+            crate) + `7087e8114` (BSP baker emits real
+            `system_main.rs`) + `ce88408af` (callback dispatch through
+            BSP path). `phase212_h3_freertos` fixture remains the
+            runtime gate. Dropping `nano_ros_read_config(nros.toml)`
+            from FreeRTOS-side callers + expanding BSP crates to
+            non-mps2 boards roll into M.10 / future M-wave work.
+      - [x] **M.5.b FreeRTOS mechanical sweep** — `examples/qemu-arm-
+            freertos/{rust,cpp,c}/*` transcribed to canonical L.1
+            Component pkg shape. Imperative `src/main.rs::_start` +
+            `src/lib.rs::run_app` plumbing replaced by
+            `impl Component + ExecutableComponent` +
+            `nros::component!()`. Shipped in `8bd016d66`. M.12
+            canonical-shape regression test (`phase212_m12_example_
+            shape`) confirms the FreeRTOS tree carries no pre-212
+            files + every example pkg classifies cleanly.
 - [x] **M.6 ThreadX sweep** — `examples/threadx-linux/{rust,cpp}/*`
       (12 examples) → Component pkg shape + `nano_ros_component_
       register()` cmake fn + `nros_threadx_codegen_system(SYSTEM .)`
@@ -908,13 +906,14 @@ canonical-shape regression test can run green tree-wide:
       launch resolver (`launch_synth::resolve_launch`) covers the
       launch-file-absent case from §212.L.6 trigger condition 5.
       Co-shipped with M-F.1.
-- [ ] **M-F.3 Zephyr H.1 shim self-pkg case** (nano-ros). The H.1
-      adapter `zephyr/cmake/nros_system_generate.cmake` only resolves
-      sibling Path A bringup pkgs (`IS_DIRECTORY … AND EXISTS
-      "${_abs}/system.toml"`). After M-F.1+M-F.2 land, extend the
-      shim's `_nros_system_resolve_bringup()` helper to also accept
-      a self-pkg dir (Cargo.toml / CMakeLists.txt-driven). Unblocks
-      M.3 C+C++ Zephyr sweep + any single-pkg Zephyr Rust example.
+- [x] **M-F.3 Zephyr H.1 shim self-pkg case** (nano-ros) —
+      Shipped in `843ffea74` (`feat(212.M-F.3+M-F.6): Zephyr shim
+      self-pkg + FreeRTOS BSP probe fix`). The H.1 adapter
+      `zephyr/cmake/nros_system_generate.cmake`'s
+      `_nros_system_resolve_bringup()` helper now accepts a self-pkg
+      dir (Cargo.toml / CMakeLists.txt-driven) in addition to the
+      Path A bringup case. Unblocks Zephyr single-pkg Rust examples;
+      M.3 C+C++ Zephyr sweep remains its own wave.
 - [ ] **M-F.4 `TickCtx` client API gap** (nros / nros-cpp). The
       Phase 172 W.3 `ExecutableComponent::tick()` Context exposes
       publish + action-server ops but no service-client `call()` /
@@ -929,15 +928,19 @@ canonical-shape regression test can run green tree-wide:
       Component` w/ an async variant, or formally drop the
       async-client demo from the example matrix. Deferred until
       L-Wave / runtime authors pick the path.
-- [ ] **M-F.6 FreeRTOS BSP runtime gate (M.5.a)** — see M.5
-      split above. The per-board BSP `build.rs` baker currently
-      emits weak no-op stubs; needs to spawn ApplicationTask + run
-      Executor::spin before M.5.b sweep is sound.
-- [ ] **M-F.7 H.5 ESP-IDF cross-compile gate** — see M.7. nros-node
-      `executor/spin.rs` `alloc::sync::Arc` ptr-atomics gap on
-      `riscv32imc`. Swap to `portable_atomic_util::Arc` (or
-      critical-section + portable-atomic single-core flags). Unblocks
-      M.7 ESP-IDF sweep.
+- [x] **M-F.6 FreeRTOS BSP runtime gate (M.5.a)** — Closed by the
+      M.5.a chain (`5f271ff9f` + `0aaef01d2` + `7087e8114` +
+      `ce88408af`) plus the BSP probe fix in `843ffea74`. Per-board
+      BSP `build.rs` baker now spawns `ApplicationTask` + drives
+      `Executor::spin`. Sound prerequisite for the M.5.b sweep that
+      subsequently landed in `8bd016d66`.
+- [x] **M-F.7 H.5 ESP-IDF cross-compile gate** — Closed in
+      `e4204459a` (`fix(212.M.7): swap alloc::sync::Arc →
+      portable_atomic_util::Arc on no_std RTOS wake path`). nros-node
+      `executor/spin.rs` now routes through
+      `portable_atomic_util::Arc` on `riscv32imc` (and any target
+      missing ptr atomics). Unblocked the M.7 ESP-IDF sweep that
+      then shipped in `15a5e1717`.
 - [ ] **M-F.8 PX4 H.7 SITL board overlay** — see §212.H.7. Codegen
       emits `nros_<name>/` module dirs but PX4's `make px4_sitl_
       default --dry-run` doesn't pick them up without an enable
