@@ -1102,6 +1102,7 @@ dependencies = [
  "nros-rmw-cffi",
  "nros-serdes",
  "paste",
+ "portable-atomic-util",
 ]
 
 [[package]]
@@ -1113,6 +1114,7 @@ name = "nros-board-common"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "nros-build-paths",
  "serde",
  "toml 0.8.23",
 ]
@@ -1135,6 +1137,10 @@ dependencies = [
  "portable-atomic",
  "smoltcp",
 ]
+
+[[package]]
+name = "nros-build-paths"
+version = "0.1.0"
 
 [[package]]
 name = "nros-core"
@@ -2089,5 +2095,6 @@ dependencies = [
  "cbindgen",
  "cc",
  "nros-board-common",
+ "nros-build-paths",
  "pkg-config",
 ]

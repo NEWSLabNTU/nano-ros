@@ -28,7 +28,18 @@ nros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
-    run(Config::from_toml(include_str!("../nros.toml")), |config| {
+    // Phase 212.M.10 — build-time Config literal supersedes the
+    // pre-212 `Config::from_toml(include_str!(...))` sidecar.
+    // Transcribed verbatim from the retired `nros.toml`.
+    let config = Config {
+        mac_addr: [0x02, 0x00, 0x00, 0x00, 0x00, 0x02],
+        ip: [10, 0, 2, 51],
+        prefix: 24,
+        gateway: [10, 0, 2, 2],
+        zenoh_locator: "tcp/10.0.2.2:7454",
+        domain_id: 0,
+    };
+    run(config, |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("listener")

@@ -11,6 +11,11 @@ name = "esp32-qemu-talker"
 test = false
 bench = false
 
+# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
+# binary; deploy target matches the platform path it lives under.
+[package.metadata.nros.application]
+deploy = ["qemu-esp32-baremetal"]
+
 [dependencies]
 # Platform crate - all you need for ESP32-C3 QEMU + OpenETH + zenoh
 nros-board-esp32-qemu = { path = "../../../../packages/boards/nros-board-esp32-qemu" }

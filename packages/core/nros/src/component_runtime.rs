@@ -89,6 +89,11 @@ use crate::{
     },
 };
 
+// Phase 212.M.10 — `component_register_symbol` is gated on
+// `feature = "alloc"` (it returns an owned `String`). This re-export
+// would otherwise unresolve on `rmw-cffi` + `platform-bare-metal`
+// configs that don't pull `alloc` (e.g. esp32-qemu).
+#[cfg(feature = "alloc")]
 pub use crate::component::component_register_symbol;
 
 // =============================================================================

@@ -1102,6 +1102,7 @@ dependencies = [
  "nros-rmw-cffi",
  "nros-serdes",
  "paste",
+ "portable-atomic-util",
 ]
 
 [[package]]
