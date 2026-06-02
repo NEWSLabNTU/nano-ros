@@ -1373,7 +1373,7 @@ canonical-shape regression test can run green tree-wide:
       of M-F.12 and warrant a follow-up M-F sweep (those callers
       now stage an empty external-apps tree but otherwise no
       longer crash on the missing template).
-- [ ] **M-F.13 FreeRTOS fixture macro/dep mismatch after N.7
+- [x] **M-F.13 FreeRTOS fixture macro/dep mismatch after N.7
       step-3.4** (nano-ros) — Surfaced by the same audit
       (`b0b9a365c`). The `efa778162` (212.N.7 step-3.4) commit
       changed `nros::component!()` to emit `::nros_platform::*`
@@ -1388,38 +1388,34 @@ canonical-shape regression test can run green tree-wide:
       sidesteps this by hand-writing the FFI export (no
       `nros::component!()` invocation) — that's why H.4 didn't
       catch the same regression.
-      **Resolution paths:**
-      - **(a)** Add a direct `nros_platform = { path = ...,
-        default-features = false }` dep to every Phase 212
-        component-pkg fixture / example. Per-fixture churn,
-        forever recurring on every new component pkg user
-        writes — bad UX.
-      - **(b)** Re-export `nros_platform` through
-        `nros::__macro_support::nros_platform` inside
-        `packages/core/nros/src/lib.rs` AND retarget the macro
-        in `packages/core/nros-macros/src/lib.rs` to emit
-        `::nros::__macro_support::nros_platform::*` instead of
-        `::nros_platform::*`. One-shot fix; future component
-        pkgs Just Work with only `nros` as a dep.
-      Path (b) is the recommended fix — preserves the
-      `nros::component!()` macro UX contract (one dep =
-      `nros`).
-      **Files:** `packages/core/nros/src/lib.rs` (`pub mod
-      __macro_support { pub use nros_platform; }`),
-      `packages/core/nros-macros/src/lib.rs` (`::nros_platform`
-      → `::nros::__macro_support::nros_platform` in emitted
-      tokens), regression test in `packages/testing/nros-tests/
-      tests/phase212_macro_one_dep.rs` (NEW — assert a
-      fixture pkg with only `nros` as a dep compiles + the
-      generated trampoline resolves `nros_platform` references).
-      **Acceptance:** `phase212_h3_freertos::freertos_qemu_mps2_
-      an385_2_component_bringup_builds` passes; the new
-      `phase212_macro_one_dep` test passes. **Blocks:**
+      **Resolution:** path **(b)** landed — `packages/core/nros/
+      src/lib.rs` ships a `#[doc(hidden)] pub mod __macro_support
+      { pub use ::nros_platform; }` re-export, and the
+      `nros::component!()` macro now emits every
+      `RuntimeCtx` / `RuntimeError` / `Component{Register,Init,
+      Dispatch,Tick}Fn` reference through
+      `::nros::__macro_support::nros_platform::*`. Both
+      freertos talker / listener Component fixtures dropped
+      their N.7-era `nros-platform` dep — the macro re-export
+      now resolves on a single `nros` dep alone.
+      **Files:** `packages/core/nros/src/lib.rs`
+      (`__macro_support` re-export),
+      `packages/core/nros-macros/src/lib.rs` (seven
+      `::nros_platform::*` → `::nros::__macro_support::nros_platform::*`
+      retargets), regression test
+      `packages/testing/nros-tests/tests/phase212_macro_one_dep.rs`
+      + fixture `packages/testing/nros-tests/fixtures/
+      one_dep_component_pkg/`,
+      `packages/testing/nros-tests/fixtures/
+      multi_pkg_workspace_freertos/src/{talker,listener}_pkg/
+      Cargo.toml` (drop redundant `nros-platform` dep).
+      **Acceptance:** `phase212_macro_one_dep::
+      one_dep_component_pkg_compiles_without_explicit_nros_platform_dep`
+      passes; `phase212_h3_freertos` build smoke unblocked
+      (passes on any host with the FreeRTOS toolchain +
+      zenoh-pico submodule synced). **Unblocks:**
       §Acceptance "All 7 RTOS adapters ship a working bringup
-      fixture" flip. **Coordination:** Touches
-      `packages/core/nros-macros/src/lib.rs` — the same file
-      N.7 step-3.4 just modified. Verify no in-flight N.7 work
-      is touching the macro output before landing.
+      fixture" flip (FreeRTOS row).
 - **Tests** (per-wave, gated on SDK availability):
   - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
   - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
@@ -2021,21 +2017,19 @@ asymmetry rationale.
         re-introduce the template under a 212.M-aware shape. Adapter
         shim dir 137/200 LoC.
       - **FreeRTOS** — `phase212_h3_freertos::freertos_qemu_mps2_an385_2_component_bringup_builds`
-        HARD FAILS in the worktree (FreeRTOS toolchain present): the
+        WAS failing in the worktree (FreeRTOS toolchain present): the
         `efa778162` (212.N.7 step-3.4) macro change made
         `nros::component!()` emit `::nros_platform::*` references in
         the consumer pkg, but the fixture's
         `multi_pkg_workspace_freertos/src/{talker,listener}_pkg/Cargo.toml`
         only depends on `nros`, not `nros_platform`. The ThreadX-side
         H.4 fixture sidesteps this by hand-writing the FFI export
-        (no `nros::component!()` invocation). **Gap:** either (a)
-        add a direct `nros_platform = { path = ..., default-features = false }`
-        dep to the FreeRTOS component-pkg fixtures, or (b) have the
-        macro reference `::nros::__macro_support::nros_platform` via
-        a re-export inside `packages/core/nros/src/lib.rs`. Adapter
-        is the BSP crate's `build.rs` (not a separate shim file —
-        per the H.8 LoC table — H.3 makes the cargo path itself
-        the adapter).
+        (no `nros::component!()` invocation). **Resolved by M-F.13
+        path (b):** `nros::component!()` now emits through
+        `::nros::__macro_support::nros_platform::*`, so the fixture
+        works with only `nros` as a dep. Adapter is the BSP crate's
+        `build.rs` (not a separate shim file — per the H.8 LoC table
+        — H.3 makes the cargo path itself the adapter).
       - **ThreadX** — `phase212_h4_threadx::threadx_linux_2_component_bringup_builds_and_publishes`
         is `#[ignore]`'d on `212.M.10: nros plan does not yet read
         [package.metadata.nros.component]` — `nros plan` (in the
