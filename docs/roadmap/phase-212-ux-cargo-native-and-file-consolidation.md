@@ -1569,23 +1569,56 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
             hand-written `pub fn register<R>` stub from 24 Component
             pkg `src/lib.rs` files. The macro-emitted wrapper from
             step-3.4 replaces them.
-  - [ ] **step-4 retire `bake_system_main_rs` + symbol-walking** —
-        `packages/boards/freertos-qemu-mps2-an385-bsp/build.rs` drops
-        the baker fn; `src/lib.rs::nros_run` is rewritten to depend
-        only on board init (clock + lwIP + `ApplicationTask`). The
-        `__nros_component_*_register` / `_init` / `_dispatch` /
-        `_tick` extern decls and the `NROS_*_FNS` slices are
-        deleted. Same deletion pattern in the other M.5.a board
-        BSPs once the FreeRTOS path lands.
-  - [ ] **step-5 firmware bin migration** — the
-        `multi_pkg_workspace_freertos/firmware` test fixture (+
-        the threadx, nuttx siblings) switches from BSP `nros_run()`
-        to a real Entry pkg `main.rs` (`<Board as BoardEntry>::run`
-        + `include!(...run_plan.rs)`).
-  - [ ] **step-6 `nros::component!()` macro cleanup** — drop the
-        `__nros_component_*` symbol emission once no consumer walks
-        them. The macro keeps the typed `Component` impl and the
-        `register(runtime)` wrapper.
+  - [x] **step-4 retire `bake_system_main_rs` + symbol-walking** —
+        the entire `packages/boards/freertos-qemu-mps2-an385-bsp/`
+        crate is deleted. With step-5 (below) migrating the last
+        in-tree consumer to the BoardEntry path, the baker shim has
+        no callers left. Workspace member entry stripped from the
+        root `Cargo.toml`. No other M.5.a board BSPs exist (ThreadX
+        / NuttX never grew the Rust-side baker layer).
+  - [x] **step-5 firmware bin migration** — the
+        `multi_pkg_workspace_freertos/firmware` test fixture
+        switches from `freertos-qemu-mps2-an385-bsp::nros_run()` to
+        the Phase 212.N Entry pkg shape (`<Mps2An385 as
+        BoardEntry>::run` + codegen-emitted `run_plan(runtime)` via
+        `nros-build`). Added `launch/system.launch.xml` mirroring the
+        fixture's `demo_bringup` launch file. The threadx / nuttx
+        siblings have no `firmware/` sub-package (they use a
+        different shape — `threadx_app/` / `nuttx_app_glue/` are
+        already non-baker) and need no migration. `[package.metadata
+        .nros.entry] deploy = "freertos"` added to the firmware's
+        `Cargo.toml`.
+  - [x] **step-6 `nros::component!()` macro cleanup** — the four
+        `__nros_component_<pkg>_*` extern symbols + the
+        `__NROS_COMPONENT_<PKG>_EXPORT_PRESENT` `#[used]` marker are
+        gone. The macro now emits ONE public item: the
+        `pub fn register(runtime)` wrapper from step-3.4. The four
+        typed fns live as local items inside that wrapper. Same
+        transmute-through-opaque-fn-ptr shape (the
+        `ComponentRegisterFn` aliases in `nros-platform` are
+        unchanged); only the global-symbol surface is gone.
+- **Test fixture follow-up (N.7 closing sweep):**
+  - [ ] `phase212_m5a4_dispatch.rs` — directly references
+        `__nros_component_nros_tests_*` idents. Compile-time break
+        under step-6. Rewrite (or delete — the dispatch contract is
+        now exercised through the `register(runtime)` wrapper).
+  - [ ] `phase212_m5a1_macro_mangle.rs` — scans compiled binaries
+        for `__nros_component_*` symbols. Runtime break under
+        step-6. Same rewrite / delete decision.
+  - [ ] `phase212_h3_freertos.rs` — walks the (now-gone) BSP
+        build-script output tree and asserts `system_main.rs` +
+        `__nros_component_*` symbols. Rewrite to assert the new
+        Entry pkg shape (codegen-emitted `run_plan.rs` + Component
+        pkg `register` wrapper presence) or replace with a smoke
+        test that builds the migrated fixture.
+  - [ ] `phase212_h4_threadx.rs` — asserts the ThreadX C-side
+        `system_main.c` baker output. Untouched by N.7 (the M.5.a
+        baker on ThreadX is C, not Rust), but the assertions still
+        mention `__nros_component_*_register` — re-audit when the
+        ThreadX Entry pkg migration lands.
+  - [ ] `nros::component::component_register_symbol` helper — dead
+        public API after step-6 (no callers). Cleanup pass on the
+        next maintenance sweep.
 - [x] **N.8 Board family + porting docs (book chapter)** —
       `book/src/porting/board-trait.md`: trait surface, lifecycle,
       transport-mixin selection, worked example for a new board
