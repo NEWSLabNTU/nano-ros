@@ -827,6 +827,24 @@ A clean break — no transitional mixed-shape state allowed.
       its `examples/native/c/` carve-out; `phase212_examples_
       canonical_shape` reports zero `native/c/` violations. All 10
       examples build clean via `cmake -B build && cmake --build build`.
+- [x] **M.13.b stm32f4/rust application metadata (landed 2026-06-02)** —
+      strict canonical-shape lint flagged 7 `stm32f4/rust/` examples
+      (talker + 6 RTIC variants) missing
+      `[package.metadata.nros.application]`. Added the table with
+      `deploy = ["stm32f4"]` to each, mirroring the M.11 native/rust
+      sweep + the e6f4cb346 esp32-baremetal pattern. The Embassy
+      variant (`stm32f4/rust/talker-embassy`) stays carved out
+      pending M-F.5 async-Component work — it has no `package.xml`
+      yet. `phase212_examples_canonical_shape` reports zero
+      `stm32f4/` violations after this sweep. The
+      `phase212_m12_example_shape` walker promoted
+      `examples/stm32f4/rust/` into `MIGRATED_PREFIXES` and narrowed
+      the `UNMIGRATED_PREFIXES` carve-out from the entire `stm32f4/`
+      tree to just `stm32f4/rust/talker-embassy/`. Also fixed a
+      trailing-slash mismatch bug in the walker's `is_migrated()`
+      that prevented per-leaf un-migration carve-outs from being
+      recognised; now uses a normalised prefix-with-trailing-slash
+      match.
 - [x] **M.6 ThreadX sweep** — `examples/threadx-linux/{rust,cpp}/*`
       (12 examples) → Component pkg shape + `nano_ros_component_
       register()` cmake fn + `nros_threadx_codegen_system(SYSTEM .)`

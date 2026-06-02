@@ -9,6 +9,11 @@ description = "Simplified nros talker example for STM32F4 using BSP"
 name = "stm32f4-bsp-talker"
 path = "src/main.rs"
 
+# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
+# binary; deploy target matches the platform path it lives under.
+[package.metadata.nros.application]
+deploy = ["stm32f4"]
+
 [dependencies]
 # Platform crate handles all hardware setup
 nros-board-stm32f4 = { path = "../../../../packages/boards/nros-board-stm32f4" }

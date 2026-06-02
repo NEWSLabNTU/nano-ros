@@ -9,6 +9,12 @@ description = "RTIC action client example for nros on STM32F4"
 name = "stm32f4-rtic-action-client"
 path = "src/main.rs"
 
+# Phase 212.L.2 — Application pkg shape. Single-board bare-metal
+# binary (RTIC variant); deploy target matches the platform path
+# it lives under.
+[package.metadata.nros.application]
+deploy = ["stm32f4"]
+
 [dependencies]
 # Platform crate handles all hardware setup
 nros-board-stm32f4 = { path = "../../../../packages/boards/nros-board-stm32f4" }

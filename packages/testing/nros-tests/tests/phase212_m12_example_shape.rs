@@ -137,9 +137,11 @@ const MIGRATED_PREFIXES: &[&str] = &[
     // is_migrated() filter below carves it out.
     "examples/threadx-linux/rust/",
     "examples/threadx-linux/cpp/",
-    // stm32f4 — NOT in M sweep table; none of the *-rtic / embassy
-    // variants carry [package.metadata.nros.*]. Listed in
-    // UNMIGRATED_PREFIXES below.
+    // stm32f4/rust/{talker, *-rtic} migrated 2026-06-02 — they
+    // carry [package.metadata.nros.application] deploy = ["stm32f4"]
+    // (M.11-equivalent sweep). The Embassy variant stays carved out
+    // in UNMIGRATED_PREFIXES below pending M-F.5 async-Component work.
+    "examples/stm32f4/rust/",
 ];
 
 /// Suffix patterns inside an otherwise-migrated tree that are NOT
@@ -182,9 +184,13 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
     // M.13 (informal — sweep landed 2026-06-02) covered native/c via
     // package.xml + nano_ros_application() cmake fn. native/c is now
     // canonical-shape. Carve-out retired.
+    // stm32f4/rust/{talker, *-rtic} migrated 2026-06-02 by adding
+    // [package.metadata.nros.application] deploy = ["stm32f4"].
+    // Carve-out narrowed to the Embassy variant only.
     (
-        "examples/stm32f4/",
-        "stm32f4 RTIC / Embassy variants — not in M sweep table",
+        "examples/stm32f4/rust/talker-embassy/",
+        "stm32f4 Embassy variant — pre-212 shape, no package.xml; \
+         falls under M-F.5 async-Component work",
     ),
     (
         "examples/native/rust/bridge/",
@@ -199,14 +205,17 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
 fn is_migrated(rel: &Path) -> bool {
     let s = rel.to_string_lossy();
     let s = s.as_ref();
-    // Explicit un-migrated overrides take precedence.
+    // Explicit un-migrated overrides take precedence. Match accepts
+    // both `<rel>` and `<rel>/...` forms; trailing slashes in the
+    // prefix table are normalised away.
     for (prefix, _reason) in UNMIGRATED_PREFIXES {
-        if s.starts_with(prefix.trim_start_matches("examples/"))
-            || s.starts_with(prefix)
-            || s.contains(&format!("/{}", prefix.trim_start_matches("examples/")))
+        let p = prefix.trim_end_matches('/');
+        let p_no_examples = p.trim_start_matches("examples/");
+        if s == p
+            || s == p_no_examples
+            || s.starts_with(&format!("{p}/"))
+            || s.starts_with(&format!("{p_no_examples}/"))
         {
-            // Match exactly the trees the prefix names, accepting both
-            // `examples/x` and `x` (we feed relative-to-repo paths in).
             return false;
         }
     }
