@@ -1684,21 +1684,24 @@ asymmetry rationale.
 - [ ] **All 7 RTOS adapters ship a working bringup fixture under the
       new shape** (Zephyr, NuttX, FreeRTOS, ThreadX, ESP-IDF, PlatformIO,
       PX4). (212.H + 212.M)
-- [ ] **Each adapter shim ≤200 LoC; cmake `nano_ros_workspace_metadata
+- [x] **Each adapter shim ≤200 LoC; cmake `nano_ros_workspace_metadata
       ()` ≤150 LoC.** CI gate via the in-process `tokei` crate
-      (no `tokei` CLI install required — activated H.8 2026-06-02).
-      (`nros-build` budget bullet retired with 212.C.)
-- [ ] **No `nros build` / `nros test` / `nros flash` / `nros monitor`
+      (no `tokei` CLI install required — activated H.8 2026-06-02 in
+      `c7ff133d9`). Gate test `phase212_h8_loc_budgets.rs` passes 2/2
+      (cmake 101/150, all 6 adapter shims ≤137/200). (`nros-build`
+      budget bullet retired with 212.C.)
+- [x] **No `nros build` / `nros test` / `nros flash` / `nros monitor`
       / `nros sign` / `nros emit` verbs.** Phase-doc grep checked in CI
-      via `phase212_non_goals_grep.rs`. (Non-Goals)
+      via `phase212_non_goals_grep.rs` (5/5 passing). (Non-Goals)
 - [ ] **A failing rustc / cmake / clang diagnostic in any test fixture
       reaches the user's terminal verbatim** — no aggregation, no
       truncation. CI test injects a synthetic compile error and greps for
       the original message.
-- [ ] **Pre-212 files forbidden in the tree** — `nros.toml`,
+- [x] **Pre-212 files forbidden in the tree** — `nros.toml`,
       `component_nros.toml`, `gen-app-config.py`, `app_config.h.in`
       per-example bakers, committed `metadata/*.json`. Regression test
-      grep-asserts. (212.M.10 + M.11)
+      `phase212_pre_212_files_forbidden.rs` grep-asserts (2/2 passing).
+      (212.M.10 + M.11)
 
 ## Test infrastructure
 
