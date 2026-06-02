@@ -201,8 +201,9 @@ pub use nros_core::heapless;
 #[cfg(feature = "rmw-cffi")]
 pub use component::ComponentExecutorRuntime;
 // Phase 212.M.5.a.2 — executor-backed runtime entry points.
-#[cfg(feature = "alloc")]
-pub use component::component_register_symbol;
+// (`component_register_symbol` retired in the Phase 212.N.7 closing
+// sweep — the helper had no live callers after the BSP baker + macro
+// extern emit were deleted.)
 pub use component::{
     ActionExecutor, CallbackCtx, CallbackEffects, ClientDispatch, Component, ComponentActionClient,
     ComponentActionServer, ComponentContext, ComponentError, ComponentNode, ComponentNodeRuntime,

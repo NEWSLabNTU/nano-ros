@@ -90,12 +90,9 @@ use crate::{
     },
 };
 
-// Phase 212.M.10 — `component_register_symbol` is gated on
-// `feature = "alloc"` (it returns an owned `String`). This re-export
-// would otherwise unresolve on `rmw-cffi` + `platform-bare-metal`
-// configs that don't pull `alloc` (e.g. esp32-qemu).
-#[cfg(feature = "alloc")]
-pub use crate::component::component_register_symbol;
+// Phase 212.N.7 closing sweep — `component_register_symbol` retired
+// (no live callers after the BSP baker + macro extern emit were
+// removed). The former re-export here is gone.
 
 // =============================================================================
 // Public types
@@ -292,11 +289,7 @@ impl ClientDispatch for UnsupportedClients {
     ) -> ComponentResult<usize> {
         Err(ComponentError::Runtime)
     }
-    fn send_goal_raw(
-        &mut self,
-        _action_entity: &str,
-        _goal_cdr: &[u8],
-    ) -> ComponentResult<GoalId> {
+    fn send_goal_raw(&mut self, _action_entity: &str, _goal_cdr: &[u8]) -> ComponentResult<GoalId> {
         Err(ComponentError::Runtime)
     }
 }

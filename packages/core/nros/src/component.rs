@@ -13,33 +13,13 @@ use crate::{
     heapless::Vec,
 };
 
-/// Build the per-pkg mangled register symbol name exported by
-/// [`nros::component!`](crate::component!).
-///
-/// Phase 212.M.5.a.1 — the symbol scheme is `__nros_component_<pkg>_register`
-/// where `<pkg>` is the cargo package name with every non
-/// `[A-Za-z0-9_]` byte replaced by `_`. The bare-name
-/// `COMPONENT_EXPORT_SYMBOL` constant is retired: multiple Component pkg
-/// crates can link into one binary so there is no single canonical
-/// symbol — codegen + the metadata tool resolve per pkg.
-///
-/// `alloc` only — the host-side metadata tool is the consumer and is
-/// always `std`. Embedded targets never need to construct this name at
-/// runtime (the codegen-emitted main calls the symbol by literal).
-#[cfg(feature = "alloc")]
-pub fn component_register_symbol(pkg: &str) -> alloc::string::String {
-    let mut out = alloc::string::String::with_capacity(pkg.len() + 24);
-    out.push_str("__nros_component_");
-    for c in pkg.chars() {
-        if c.is_ascii_alphanumeric() || c == '_' {
-            out.push(c);
-        } else {
-            out.push('_');
-        }
-    }
-    out.push_str("_register");
-    out
-}
+// Phase 212.N.7 step-6 closing sweep — `component_register_symbol`
+// removed. It built the legacy `__nros_component_<pkg>_register`
+// symbol name for the M.5.a BSP baker to look up by literal. step-6
+// retired the macro emit + step-4 deleted the FreeRTOS BSP baker
+// crate that was the sole live consumer. The Phase 212.N Entry pkg
+// path calls `<pkg>::register(runtime)` through the path API, so this
+// helper has no live callers.
 
 /// Clear diagnostic for packages missing [`nros::component!`](crate::component!).
 pub const MISSING_COMPONENT_EXPORT_ERROR: &str = "package has no exported nros component";
@@ -1011,11 +991,7 @@ pub trait ClientDispatch {
     /// CDR `goal_cdr`; return the assigned [`GoalId`] (server-stamped on
     /// the goal-accept response). Result + feedback streams arrive via
     /// callback dispatch — not this method.
-    fn send_goal_raw(
-        &mut self,
-        action_entity: &str,
-        goal_cdr: &[u8],
-    ) -> ComponentResult<GoalId>;
+    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> ComponentResult<GoalId>;
 }
 
 /// Context handed to [`ExecutableComponent::tick`] (W.5.6 + M-F.4): the per-spin
@@ -1140,17 +1116,17 @@ impl<'a> TickCtx<'a> {
         request: &Req,
     ) -> ComponentResult<Resp> {
         let mut req_buf = [0u8; REQ_N];
-        let mut writer = crate::CdrWriter::new_with_header(&mut req_buf)
-            .map_err(|_| ComponentError::Runtime)?;
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut req_buf).map_err(|_| ComponentError::Runtime)?;
         request
             .serialize(&mut writer)
             .map_err(|_| ComponentError::Runtime)?;
         let req_len = writer.position();
 
         let mut resp_buf = [0u8; RESP_N];
-        let resp_len = self
-            .clients
-            .call_raw(service.as_str(), &req_buf[..req_len], &mut resp_buf)?;
+        let resp_len =
+            self.clients
+                .call_raw(service.as_str(), &req_buf[..req_len], &mut resp_buf)?;
 
         let mut reader = crate::CdrReader::new_with_header(&resp_buf[..resp_len])
             .map_err(|_| ComponentError::Runtime)?;
@@ -1772,11 +1748,7 @@ mod tests {
             ) -> ComponentResult<usize> {
                 Err(ComponentError::Runtime)
             }
-            fn send_goal_raw(
-                &mut self,
-                _action: &str,
-                _goal: &[u8],
-            ) -> ComponentResult<GoalId> {
+            fn send_goal_raw(&mut self, _action: &str, _goal: &[u8]) -> ComponentResult<GoalId> {
                 Err(ComponentError::Runtime)
             }
         }
