@@ -976,21 +976,71 @@ pub trait ActionExecutor {
     fn for_each_active_goal(&self, action_entity: &str, visit: &mut dyn FnMut(&GoalId, GoalStatus));
 }
 
-/// Context handed to [`ExecutableComponent::tick`] (W.5.6): the per-spin hook
-/// that runs *between* callback dispatch, where the executor is free. Exposes the
-/// immediate publish path (like `CallbackCtx`) plus the executor-backed action
-/// ops (complete goal / publish feedback) that a callback can't perform.
+/// Executor-backed CLIENT operations a [`TickCtx`] drives (Phase 212.M-F.4).
+///
+/// Service-client `call` + action-client `send_goal` need `&mut Executor`
+/// (the W.5.6 client handles live on the executor), which a mid-spin
+/// callback can't hold. They run from [`ExecutableComponent::tick`], between
+/// spins. The generated runtime impls this over the real executor + the
+/// service/action client handles (resolved by stable client entity id); the
+/// component never sees the executor directly. Kept as a trait so [`TickCtx`]
+/// stays `no_std` + free of the `rmw-cffi`-gated `Executor` type.
+///
+/// Mirrors the sibling [`ActionExecutor`] (server-side ops). Splitting
+/// client vs server keeps each trait small + lets the codegen-side
+/// `GenClientDispatch` impl resolve client handles independently from
+/// server handles.
+pub trait ClientDispatch {
+    /// Issue a service-client request on `service_entity` carrying CDR
+    /// `request_cdr`; block on the reply, write the response CDR into
+    /// `response_buf`, return the response length in bytes.
+    ///
+    /// The synchronous block model matches the existing
+    /// `ServiceClientTrait::call_raw` surface in nros-node — the tick
+    /// hook drives the executor between callback dispatch, so a blocked
+    /// `call_raw` does not starve other callbacks (each tick yields back
+    /// to the runtime after returning).
+    fn call_raw(
+        &mut self,
+        service_entity: &str,
+        request_cdr: &[u8],
+        response_buf: &mut [u8],
+    ) -> ComponentResult<usize>;
+
+    /// Send an action-client goal request on `action_entity` carrying
+    /// CDR `goal_cdr`; return the assigned [`GoalId`] (server-stamped on
+    /// the goal-accept response). Result + feedback streams arrive via
+    /// callback dispatch — not this method.
+    fn send_goal_raw(
+        &mut self,
+        action_entity: &str,
+        goal_cdr: &[u8],
+    ) -> ComponentResult<GoalId>;
+}
+
+/// Context handed to [`ExecutableComponent::tick`] (W.5.6 + M-F.4): the per-spin
+/// hook that runs *between* callback dispatch, where the executor is free.
+/// Exposes the immediate publish path (like `CallbackCtx`) plus executor-backed
+/// action-server ops (complete goal / publish feedback) AND executor-backed
+/// client-side ops (service `call` / action-client `send_goal`). Callbacks
+/// can't perform any of these since they don't hold the executor.
 pub struct TickCtx<'a> {
     publishers: &'a dyn PublisherResolver,
     actions: &'a mut dyn ActionExecutor,
+    clients: &'a mut dyn ClientDispatch,
 }
 
 impl<'a> TickCtx<'a> {
     /// Build a tick context (called by the generated runtime each spin).
-    pub fn new(publishers: &'a dyn PublisherResolver, actions: &'a mut dyn ActionExecutor) -> Self {
+    pub fn new(
+        publishers: &'a dyn PublisherResolver,
+        actions: &'a mut dyn ActionExecutor,
+        clients: &'a mut dyn ClientDispatch,
+    ) -> Self {
         Self {
             publishers,
             actions,
+            clients,
         }
     }
 
@@ -1065,6 +1115,74 @@ impl<'a> TickCtx<'a> {
         let len = writer.position();
         self.actions
             .publish_feedback_raw(action.as_str(), goal_id, &buf[..len])
+    }
+
+    /// Issue a service-client raw-CDR request and block on the reply
+    /// (M-F.4 — tick-only). Writes the response CDR into `response_buf`
+    /// and returns the response length in bytes.
+    pub fn call_raw(
+        &mut self,
+        service: EntityId<'_>,
+        request_cdr: &[u8],
+        response_buf: &mut [u8],
+    ) -> ComponentResult<usize> {
+        self.clients
+            .call_raw(service.as_str(), request_cdr, response_buf)
+    }
+
+    /// Issue a typed service-client request and decode the reply
+    /// (M-F.4 — tick-only). `REQ_N` / `RESP_N` stack-size the request /
+    /// response CDR buffers; size them via
+    /// `<<Req as RosMessage>::SerializedSize as nros::SerializedSize>::SIZE`.
+    pub fn call<Req: RosMessage, Resp: RosMessage, const REQ_N: usize, const RESP_N: usize>(
+        &mut self,
+        service: EntityId<'_>,
+        request: &Req,
+    ) -> ComponentResult<Resp> {
+        let mut req_buf = [0u8; REQ_N];
+        let mut writer = crate::CdrWriter::new_with_header(&mut req_buf)
+            .map_err(|_| ComponentError::Runtime)?;
+        request
+            .serialize(&mut writer)
+            .map_err(|_| ComponentError::Runtime)?;
+        let req_len = writer.position();
+
+        let mut resp_buf = [0u8; RESP_N];
+        let resp_len = self
+            .clients
+            .call_raw(service.as_str(), &req_buf[..req_len], &mut resp_buf)?;
+
+        let mut reader = crate::CdrReader::new_with_header(&resp_buf[..resp_len])
+            .map_err(|_| ComponentError::Runtime)?;
+        Resp::deserialize(&mut reader).map_err(|_| ComponentError::Runtime)
+    }
+
+    /// Send a raw-CDR action-client goal and return the assigned
+    /// [`GoalId`] (M-F.4 — tick-only). Result + feedback streams arrive
+    /// via callback dispatch; this method only kicks off the request.
+    pub fn send_goal_raw(
+        &mut self,
+        action: EntityId<'_>,
+        goal_cdr: &[u8],
+    ) -> ComponentResult<GoalId> {
+        self.clients.send_goal_raw(action.as_str(), goal_cdr)
+    }
+
+    /// Send a typed action-client goal and return the assigned
+    /// [`GoalId`] (M-F.4 — tick-only). `N` stack-sizes the goal CDR
+    /// buffer.
+    pub fn send_goal<G: RosMessage, const N: usize>(
+        &mut self,
+        action: EntityId<'_>,
+        goal: &G,
+    ) -> ComponentResult<GoalId> {
+        let mut buf = [0u8; N];
+        let mut writer =
+            crate::CdrWriter::new_with_header(&mut buf).map_err(|_| ComponentError::Runtime)?;
+        goal.serialize(&mut writer)
+            .map_err(|_| ComponentError::Runtime)?;
+        let len = writer.position();
+        self.clients.send_goal_raw(action.as_str(), &buf[..len])
     }
 }
 
@@ -1644,6 +1762,25 @@ mod tests {
             }
         }
 
+        struct RecClients;
+        impl ClientDispatch for RecClients {
+            fn call_raw(
+                &mut self,
+                _service: &str,
+                _req: &[u8],
+                _resp: &mut [u8],
+            ) -> ComponentResult<usize> {
+                Err(ComponentError::Runtime)
+            }
+            fn send_goal_raw(
+                &mut self,
+                _action: &str,
+                _goal: &[u8],
+            ) -> ComponentResult<GoalId> {
+                Err(ComponentError::Runtime)
+            }
+        }
+
         let pubs = RecPub {
             published: Cell::new(false),
         };
@@ -1652,10 +1789,11 @@ mod tests {
             fed: false,
             visited: 0,
         };
+        let mut clients = RecClients;
         let goal = GoalId::zero();
         let mut seen = 0usize;
         {
-            let mut ctx = TickCtx::new(&pubs, &mut acts);
+            let mut ctx = TickCtx::new(&pubs, &mut acts, &mut clients);
             ctx.publish::<TestMsg, 64>(EntityId::new("pub_x"), &TestMsg)
                 .unwrap();
             // Discover the active goal the way a real tick body does, then act on it.

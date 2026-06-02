@@ -983,14 +983,38 @@ canonical-shape regression test can run green tree-wide:
       dir (Cargo.toml / CMakeLists.txt-driven) in addition to the
       Path A bringup case. Unblocks Zephyr single-pkg Rust examples;
       M.3 C+C++ Zephyr sweep remains its own wave.
-- [ ] **M-F.4 `TickCtx` client API gap** (nros / nros-cpp). The
-      Phase 172 W.3 `ExecutableComponent::tick()` Context exposes
-      publish + action-server ops but no service-client `call()` /
-      action-client `send_goal()` seams. Wave-2 NuttX + ThreadX +
-      Zephyr Rust sweeps landed the 4 client-side examples per lang
-      as declarative-metadata-only with no-op bodies. Real
-      runtime-side client dispatch landed in W.5.6 (separate). Once
-      shipped, transcribe client examples to use the real ops.
+- [~] **M-F.4 `TickCtx` client API gap** — substrate landed
+      2026-06-02. `nros::component::ClientDispatch` trait (sibling
+      to `ActionExecutor`) defines `call_raw` (service-client) +
+      `send_goal_raw` (action-client). `TickCtx` carries
+      `&'a mut dyn ClientDispatch` and exposes typed wrappers:
+      `call<Req, Resp, REQ_N, RESP_N>` + `call_raw` +
+      `send_goal<G, N>` + `send_goal_raw`. `UnsupportedClients`
+      stub in the in-tree `ExecutorComponentRuntime` returns
+      `ComponentError::Runtime` for all client ops; replaced by
+      the codegen-emitted `GenClientDispatch` impl in nros-cli.
+      Remaining sub-items:
+      - [ ] **M-F.4.a** — `nros-cli`'s `GenActionExec` sibling
+        `GenClientDispatch` resolves service-client +
+        action-client handles by stable entity id on the live
+        executor (mirrors W.5.6's `GenActionExec`); pushes a
+        tick closure into `thread_local! TICK_ENTRIES` that
+        carries client handles alongside the existing server
+        handles. Code-shape parity with W.5.6.
+      - [ ] **M-F.4.b** — Transcribe the per-lang client-side
+        examples (NuttX + ThreadX + Zephyr Rust × `service-client`
+        + `action-client`) from declarative-metadata-only no-op
+        bodies to real `ctx.call` / `ctx.send_goal` calls in the
+        `tick` hook. Unblocked when M-F.4.a ships in the
+        installed nros-cli.
+      - [ ] **M-F.4.c** — `nros-cpp` mirror: add `ClientDispatch`
+        + `TickCtx::call` / `send_goal` to the C++ component
+        runtime FFI surface (sibling to the existing action-server
+        FFI added in W.5.6).
+      Wave-2 client examples (nuttx_rs_*, threadx_*, zephyr_rs_*
+      service-/action-client) keep no-op bodies + the
+      `_state, _ctx` ABI; the substrate trait gives them somewhere
+      to land once M-F.4.a + M-F.4.c plumb the runtime side.
 - [x] **M-F.5 Async-Component trait** (nros). `examples/zephyr/
       rust/service-client-async/` used Embassy; no async-Component
       shape exists today. Decision 2026-06-02: **drop the

@@ -81,8 +81,9 @@ use portable_atomic_util::Arc;
 use crate::{
     EmbeddedRawPublisher, Executor, GoalId, GoalStatus,
     component::{
-        ActionExecutor, CallbackCtx, ComponentContext, ComponentError, ComponentResult,
-        ComponentRuntime, ExecutableComponent, NodeOptions, PublisherResolver, TickCtx,
+        ActionExecutor, CallbackCtx, ClientDispatch, ComponentContext, ComponentError,
+        ComponentResult, ComponentRuntime, ExecutableComponent, NodeOptions, PublisherResolver,
+        TickCtx,
     },
     component_metadata::{
         CallbackEffectKind, CallbackId, EntityId, EntityKind, EntityMetadata, NodeId as MetaNodeId,
@@ -274,6 +275,32 @@ impl ActionExecutor for UnsupportedActions {
     }
 }
 
+/// Tick-side `ClientDispatch` stub (Phase 212.M-F.4). Mirrors the
+/// `UnsupportedActions` shape — every method returns
+/// `ComponentError::Runtime`. Real client-side dispatch is wired by the
+/// codegen-emitted `GenClientDispatch` impl (nros-cli) which resolves
+/// service / action-client handles on the live executor. The in-tree
+/// BSP runtime keeps this stub until the codegen plumbing reaches it.
+struct UnsupportedClients;
+
+impl ClientDispatch for UnsupportedClients {
+    fn call_raw(
+        &mut self,
+        _service_entity: &str,
+        _request_cdr: &[u8],
+        _response_buf: &mut [u8],
+    ) -> ComponentResult<usize> {
+        Err(ComponentError::Runtime)
+    }
+    fn send_goal_raw(
+        &mut self,
+        _action_entity: &str,
+        _goal_cdr: &[u8],
+    ) -> ComponentResult<GoalId> {
+        Err(ComponentError::Runtime)
+    }
+}
+
 // =============================================================================
 // ExecutorComponentRuntime
 // =============================================================================
@@ -447,7 +474,8 @@ impl ExecutorComponentRuntime {
                 cell: cell.as_ref(),
             };
             let mut actions = UnsupportedActions;
-            let mut ctx = TickCtx::new(&resolver, &mut actions);
+            let mut clients = UnsupportedClients;
+            let mut ctx = TickCtx::new(&resolver, &mut actions, &mut clients);
             if let Ok(mut slot) = cell.slot.try_borrow_mut() {
                 slot.tick(&mut ctx);
             }
