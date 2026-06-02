@@ -813,15 +813,15 @@ A clean break — no transitional mixed-shape state allowed.
       currently blocked at the `nros plan` "missing-source-metadata"
       step — upstream CLI work, fixed by the schema gap + L.7
       planner work below. Shipped wave 2.
-- [ ] **M.7 ESP-IDF / ESP32 sweep (BLOCKED)** — `examples/esp32/{
-      rust,c,cpp}/*`. Currently sidesteps ESP-IDF (plain `cargo build`
-      under `platform-bare-metal`). Migration = move under ESP-IDF
-      `idf.py` workflow via `integrations/nano-ros` ESP-IDF component
-      (H.5 carve-out shipped). **BLOCKED** on H.5 deeper gap: nros-
-      node `executor/spin.rs` uses `alloc::sync::Arc` directly on
-      `target_has_atomic = "ptr"`-gated branches; esp32c3's `riscv32imc`
-      lacks ptr atomics. Fix path: swap to `portable_atomic_util::Arc`.
-      Unblocks M.7.
+- [x] **M.7 ESP-IDF / ESP32 sweep** — `examples/esp32/rust/{talker,
+      listener}/` migrated to ESP-IDF idf.py workflow via
+      `integrations/nano-ros` ESP-IDF component (`d94371fa2`). The
+      M-F.7 Arc / portable-atomic gate closed in `15a5e1717` (Arc
+      swap + `portable_atomic_unsafe_assume_single_core` cfg +
+      ESP-IDF FreeRTOS critical-section wrap + xrce-cffi-staticlib
+      panic-halt feature). `phase212_m7_esp32_{talker,listener}`
+      tests added; `phase212_h5_esp_idf` green. No `c`/`cpp` esp32
+      examples in tree (CLAUDE.md carve-out preserved).
 - [ ] **M.8 PlatformIO sweep** — `examples/platformio/*` (when any
       land). H.6 extra_script handles framework-agnostic codegen via
       `nros codegen-system --ahead-of-vendor --framework <f>`.
@@ -873,14 +873,14 @@ A clean break — no transitional mixed-shape state allowed.
       (rejected full Cargo.toml documents); fixed to use
       `toml::from_str` in this audit so the lint reports honest
       violations going forward.
-- [ ] **M.11 `nros check` lints (defensive)** — after the sweep, add
-      lints so no contributor reintroduces a pre-212 shape:
-      - L.4 (`<pkg>::<Class>` mismatch)
-      - L.8 (per-pkg `system.toml` outside bringup)
-      - L.11 (`.cargo/config.toml` `[patch.crates-io]`)
-      - `pre-212 files forbidden`: grep over the example dir for
-        `nros.toml`, `component_nros.toml`, `gen-app-config.py`,
-        `app_config.h.in`, committed `metadata/*.json` → hard error.
+- [x] **M.11 `nros check` lints (defensive)** — in-tree tree-walker
+      slice landed via `d9dc99787`: `phase212_examples_canonical_
+      shape` (76 violations at landing time — sweep-side gap) +
+      `phase212_pre_212_files_forbidden` (41 examples + 18 fixtures
+      hits). Both grep-assert the §212.L pkg taxonomy + pre-212
+      file ban; both fail loud with a deduped punch list, no
+      `#[ignore]`. The CLI-side `nros check` slot for L.4 / L.8 /
+      L.11 lints is the matching nros-cli follow-up.
 - [x] **M.12 Regression test** —
       `packages/testing/nros-tests/tests/phase212_m12_example_shape.rs`.
       Walks `examples/` + asserts (all 7 sub-tests green 2026-06-02):
@@ -973,14 +973,17 @@ canonical-shape regression test can run green tree-wide:
       fragment in `boards/px4/sitl/*.px4board`. Either a
       `--board-overlay <path>` codegen flag writing outside the
       vendored PX4 tree, or operator-supplied overlay file.
-- [ ] **M-F.9 `nros generate-rust` default output path mismatch**
-      (nros-cli). Auto-managed `[patch.crates-io]` blocks in every
-      example's Cargo.toml point at `build/nros_generator_rs/<pkg>/`
-      but `nros generate-rust` defaults output to `generated/`.
-      Either rename the default OR teach `nros ws sync` to write
-      the patch-table at `generated/`. Cosmetic mismatch — both
-      paths work today as long as you pass `-o build/nros_generator
-      _rs` explicitly. Surfaced repeatedly across wave 1+2 sweeps.
+- [x] **M-F.9 `nros generate-rust` default output path mismatch** —
+      tree-side reconciliation landed in `964914870`: 72 example
+      `Cargo.toml`s + 1 just-recipe comment rewritten so every
+      `[patch.crates-io]` block points at `generated/<pkg>` to match
+      the `nros generate-rust` no-`-o`-flag default. Examples now
+      build with a plain `nros generate-rust && cargo build`.
+      `examples/esp32/` was skipped by the parallel agent (the
+      sibling M.7 sweep had owned-rewrite scope); `docs/roadmap/
+      phase-210-ros-convention-codegen.md` documents the existing
+      `nros ws sync` output — aligning that emit is a follow-up in
+      the nros-cli repo (`github.com/NEWSLabNTU/nros-cli`).
 - [ ] **M-F.10 `cmake/NanoRosReadConfig.cmake` deletion** (nano-ros).
       Lives at `packages/core/nros-c/cmake/NanoRosReadConfig.cmake`
       (NOT `cmake/` as M.10 phase doc says — correct the path).
@@ -1018,17 +1021,21 @@ pkg (~30 LoC `main.rs`) owns board choice via the `Board` trait
 family — no per-board `system_main.rs` baker for the codegen path.
 Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
 
-- [ ] **N.1 `Board` trait family in `nros-platform`** — define
-      `Board: BoardInit + BoardPrint + BoardExit`. Compose mixins:
-      `TransportBringup: Board` (Ethernet / WiFi / CAN / serial /
-      USB CDC / IVC — board picks one or several at type-system
-      level), `NetworkWait: Board` (carrier / DHCP / link-up gate),
-      `BoardEntry: Board { fn run<F, E>(setup: F) -> Result<(), E>
-      where F: FnOnce(&mut RuntimeCtx) -> Result<(), E>; }`. The
-      `run` method owns board init + transport bringup + executor
-      lifecycle + clean exit. `setup` callback receives a
+- [x] **N.1 `Board` trait family in `nros-platform`** — landed via
+      `1e4e0df92`. Spec: `Board: BoardInit + BoardPrint + BoardExit`.
+      Compose mixins: `TransportBringup: Board` (Ethernet / WiFi /
+      CAN / serial / USB CDC / IVC — board picks one or several at
+      type-system level), `NetworkWait: Board` (carrier / DHCP /
+      link-up gate), `BoardEntry: Board { fn run<F, E>(setup: F) ->
+      Result<(), E> where F: FnOnce(&mut RuntimeCtx) -> Result<(),
+      E>; }`. The `run` method owns board init + transport bringup +
+      executor lifecycle + clean exit. `setup` callback receives a
       `RuntimeCtx` for overlay (params / remaps / env) plus the
-      generated `run_plan(runtime)` codegen call.
+      generated `run_plan(runtime)` codegen call. Trait surface in
+      `packages/core/nros-platform`. N.2 family driver crates + N.3
+      tier-1 per-board crates + N.4 codegen library extraction are
+      the open follow-ups (other agents own the `nros-cli` codegen-
+      side work).
 - [ ] **N.2 Family driver crates** — `nros-board-{posix,freertos,
       threadx,zephyr,nuttx,esp-idf,bare-metal}`. Each implements the
       `Board` traits over its RTOS surface. Drives `nros::init` +
