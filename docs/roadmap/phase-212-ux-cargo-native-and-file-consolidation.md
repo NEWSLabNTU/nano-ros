@@ -1083,7 +1083,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       tier-1 per-board crates + N.4 codegen library extraction are
       the open follow-ups (other agents own the `nros-cli` codegen-
       side work).
-- [ ] **N.2 Family driver crates** — `nros-board-{posix,freertos,
+- [x] **N.2 Family driver crates** — `nros-board-{posix,freertos,
       threadx,zephyr,nuttx,esp-idf,bare-metal}`. Each implements the
       `Board` traits over its RTOS surface. Drives `nros::init` +
       `Executor::spin` + transport bringup via the matching
@@ -1092,7 +1092,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       out: Kconfig + DTS own BSP, the family crate implements only
       `NetworkWait` over `<zephyr/net/net_if.h>` (Rust staticlib
       can't take over `main`).
-- [ ] **N.3 Tier-1 per-board crates** — `nros-board-{native,qemu-
+- [x] **N.3 Tier-1 per-board crates** — `nros-board-{native,qemu-
       mps2-an385-freertos,qemu-arm-nuttx,threadx-linux,esp32-c3,
       qemu-riscv64-threadx,orin-spe}`. Each thin shim plugs the
       family crate plus the board's clock / pinmux / transport
@@ -1117,7 +1117,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       on a Component pkg. Embedded boards still require a hand-
       written Entry pkg (board init is non-trivial; convenience is
       native-host only at first).
-- [ ] **N.6 Rename `nano_ros_application` → `nano_ros_entry`** —
+- [x] **N.6 Rename `nano_ros_application` → `nano_ros_entry`** —
       cmake fn rename per L.9. Add `BOARD <board>` arg. Update every
       existing caller (after wave-1 native/cpp sweep) — single
       backward-compat shim emits a `MESSAGE(DEPRECATION …)` then
@@ -1130,7 +1130,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       ApplicationTask`. Same migration applies to every M.5.b
       Component pkg: it sheds `nros::component!()` register-only
       duties and gains a sibling Entry pkg per board target.
-- [ ] **N.8 Board family + porting docs (book chapter)** —
+- [x] **N.8 Board family + porting docs (book chapter)** —
       `book/src/porting/board-trait.md`: trait surface, lifecycle,
       transport-mixin selection, worked example for a new board
       (clock + UART + smoltcp). Add the Component + Entry pkg
