@@ -218,6 +218,13 @@ pub fn component(input: TokenStream) -> TokenStream {
     let tick_ident = format_ident!("__nros_component_{}_tick", pkg_sym);
     let present_ident = format_ident!("__NROS_COMPONENT_{}_EXPORT_PRESENT", pkg_sym.to_uppercase());
 
+    // Phase 212.N.7 step-3.4 — the package-name string handed to
+    // `register_dispatch_slot_dyn` (diagnostics) + `RuntimeError::ComponentRegister`
+    // is the sanitised pkg-name used for symbol mangling. The codegen-emitted
+    // `run_plan` body references each Component pkg by its Cargo `name`
+    // (snake-cased the same way), so the two strings round-trip 1:1.
+    let pkg_name_lit = pkg_sym.clone();
+
     // Phase 212.M.5.a.4 — parallel `init` / `dispatch` / `tick` symbols so
     // the BSP path can fire `ExecutableComponent::on_callback` /
     // `ExecutableComponent::tick` bodies without knowing the concrete
@@ -272,6 +279,59 @@ pub fn component(input: TokenStream) -> TokenStream {
         #[used]
         #[unsafe(no_mangle)]
         pub static #present_ident: u8 = 1;
+
+        // Phase 212.N.7 step-3.4 — Entry-pkg-callable `register(runtime)`
+        // wrapper. The codegen-emitted `run_plan(runtime)` body
+        // (`nros-build::generate_run_plan`) dispatches one
+        // `<pkg>::register(runtime)?` call per launch-XML `<node>` entry,
+        // so every Component pkg whose `lib.rs` invokes `nros::component!()`
+        // gets a stable per-pkg API here.
+        //
+        // The four typed fn-pointers (`__nros_component_<pkg>_*`) are
+        // transmuted into the opaque `extern "Rust" fn()` aliases the
+        // platform-side trait surface holds; the impl side in
+        // `nros::component_runtime` transmutes them back to the typed
+        // signatures (`ComponentRegisterFn` etc., defined in `nros`).
+        //
+        // SAFETY: typed `extern "Rust" fn(args...) -> ret` and the
+        // zero-arg `extern "Rust" fn()` alias share the same ABI
+        // representation (one pointer); the transmute is purely a
+        // type-level reinterpretation. The impl-side transmute on the
+        // other side recovers the same typed signature before invoking
+        // — the round-trip is type-preserving so long as both sides agree
+        // on the typed signature, which they do (both live in `nros`).
+        pub fn register(
+            runtime: &mut ::nros_platform::RuntimeCtx<'_>,
+        ) -> ::core::result::Result<(), ::nros_platform::RuntimeError> {
+            let register_opaque: ::nros_platform::ComponentRegisterFn = unsafe {
+                ::core::mem::transmute(
+                    #register_ident as fn(&mut ::nros::ComponentContext<'_>) -> ::nros::ComponentResult<()>,
+                )
+            };
+            let init_opaque: ::nros_platform::ComponentInitFn =
+                unsafe { ::core::mem::transmute(#init_ident as fn() -> *mut ()) };
+            let dispatch_opaque: ::nros_platform::ComponentDispatchFn = unsafe {
+                ::core::mem::transmute(
+                    #dispatch_ident
+                        as unsafe fn(*mut (), ::nros::CallbackId<'_>, &mut ::nros::CallbackCtx<'_>),
+                )
+            };
+            let tick_opaque: ::nros_platform::ComponentTickFn = unsafe {
+                ::core::mem::transmute(
+                    #tick_ident as unsafe fn(*mut (), &mut ::nros::TickCtx<'_>),
+                )
+            };
+            runtime
+                .runtime
+                .register_dispatch_slot_dyn(
+                    register_opaque,
+                    init_opaque,
+                    dispatch_opaque,
+                    tick_opaque,
+                    #pkg_name_lit,
+                )
+                .map_err(|_| ::nros_platform::RuntimeError::ComponentRegister(#pkg_name_lit))
+        }
     };
 
     TokenStream::from(expanded)
