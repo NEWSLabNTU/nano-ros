@@ -1321,6 +1321,53 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       ApplicationTask`. Same migration applies to every M.5.b
       Component pkg: it sheds `nros::component!()` register-only
       duties and gains a sibling Entry pkg per board target.
+  - [x] **step-1 entry-poc** (commit `82407c40c` family) — native
+        Entry pkg with empty launch.xml validates the Phase 212.N
+        shape end-to-end. `cargo build && ./target/debug/entry-poc`
+        prints `nros: application complete` exits 0.
+  - [x] **step-2 wave-4 Component pkg `register(runtime)` wrappers
+        + 18 sibling Entry pkgs** (commit `f9ae826a4`) — every
+        FreeRTOS / NuttX / threadx-linux Rust example gains a
+        sibling `*_entry/` Entry pkg crate, and every M.5.b Component
+        pkg exposes a `pub fn register<R>(runtime: &mut R)` no-op
+        wrapper. The codegen-emitted `run_plan(runtime)` body invokes
+        these wrappers; the wrappers are stubs because `RuntimeCtx`
+        doesn't yet expose a `ComponentRuntime` sink.
+  - [x] **step-2.5 `RuntimeError` moved to `nros-platform`
+        (no_std)** (commits `ee4a545cf` + nros-cli `1011127`) — was
+        a step-3 prerequisite: embedded Entry pkgs can't depend on
+        `nros-build` at runtime (its `cargo_metadata` /
+        `serde_json` / `thiserror` graph is std-only). Now lives in
+        `packages/core/nros-platform/src/board/runtime.rs` and is
+        re-exported at the crate root. `nros-build` stays a
+        build-dep only; its emit template references
+        `::nros_platform::RuntimeError`.
+  - [ ] **step-3 RuntimeCtx ↔ ComponentRuntime bridge** — extend
+        `nros_platform::RuntimeCtx` with a `&mut dyn ComponentRuntime`
+        slot populated by each `BoardEntry::run` impl before the setup
+        closure fires. Update every Component pkg's `register(runtime)`
+        wrapper to materialise its component via the runtime instead
+        of the no-op stub (call into `<Component as Component>::register`
+        through the sink). Cross-cuts seven `BoardEntry` impls (native,
+        freertos, threadx-{linux,riscv64}, nuttx, zephyr, esp32) plus
+        every wave-4 Component pkg.
+  - [ ] **step-4 retire `bake_system_main_rs` + symbol-walking** —
+        `packages/boards/freertos-qemu-mps2-an385-bsp/build.rs` drops
+        the baker fn; `src/lib.rs::nros_run` is rewritten to depend
+        only on board init (clock + lwIP + `ApplicationTask`). The
+        `__nros_component_*_register` / `_init` / `_dispatch` /
+        `_tick` extern decls and the `NROS_*_FNS` slices are
+        deleted. Same deletion pattern in the other M.5.a board
+        BSPs once the FreeRTOS path lands.
+  - [ ] **step-5 firmware bin migration** — the
+        `multi_pkg_workspace_freertos/firmware` test fixture (+
+        the threadx, nuttx siblings) switches from BSP `nros_run()`
+        to a real Entry pkg `main.rs` (`<Board as BoardEntry>::run`
+        + `include!(...run_plan.rs)`).
+  - [ ] **step-6 `nros::component!()` macro cleanup** — drop the
+        `__nros_component_*` symbol emission once no consumer walks
+        them. The macro keeps the typed `Component` impl and the
+        `register(runtime)` wrapper.
 - [x] **N.8 Board family + porting docs (book chapter)** —
       `book/src/porting/board-trait.md`: trait surface, lifecycle,
       transport-mixin selection, worked example for a new board
