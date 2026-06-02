@@ -53,7 +53,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-CODEGEN="${CODEGEN_ARG:-${NROS_CODEGEN:-${NROS_CLI:-$(command -v nros 2>/dev/null || echo "${NROS_HOME:-$HOME/.nros}/bin/nros")}}}"
+# Phase 212.M-F.12 — the legacy Phase 157.C per-example staging loop
+# is gone, so the `[nros-codegen-binary]` positional / NROS_CODEGEN /
+# NROS_CLI env-vars are no longer consumed here. The argument is
+# still parsed (compat with `just nuttx build-fixtures-make` callers
+# that pass it) but otherwise ignored.
+: "${CODEGEN_ARG:=}"
 
 if [ ! -f "$NUTTX_APPS_DIR/Make.defs" ]; then
     echo "error: $NUTTX_APPS_DIR doesn't look like a NuttX apps tree (no Make.defs)" >&2
@@ -70,98 +75,26 @@ install -m 0644 "$INTEGRATION/external-Make.defs.in" "$EXT/Make.defs"
 # Integration shell.
 ln -sfn "$INTEGRATION" "$EXT/nano-ros"
 
-# Each example as a sibling under apps/external/.
-# Phase 157.C.9 — each example's `main.{c,cpp}` includes
-# `<nros/app_config.h>`. The cmake path generates it via
-# `nano_ros_generate_config_header()`; the NuttX make path
-# doesn't run cmake, so we generate the header here at staging
-# time from the example's config.toml. The make build's CFLAGS
-# additions for `<NANO_ROS_ROOT>/<example>/generated/include`
-# (added by the per-example Makefile in 157.A) pick it up.
-# Phase 157.C.17 — also accumulate cpp FFI staticlib paths into
-# a central Make fragment that the integration shell's Make.defs
-# `-include`s. Per-example EXTRA_LIBS additions don't propagate
-# to the kernel link; only the shell's Make.defs does.
-shell_extras="$EXT/nano-ros/extra_libs.mk"
-: > "$shell_extras"
-staged_dirs=()
-for lang in c cpp; do
-    for example in talker listener service-server service-client action-server action-client; do
-        src="$ROOT/examples/qemu-arm-nuttx/$lang/$example"
-        dst="$EXT/nano-ros-$example-$lang"
-        if [ -d "$src" ]; then
-            ln -sfn "$src" "$dst"
-            staged_dirs+=("nano-ros-$example-$lang")
-            # Generate per-example app_config.h unconditionally — the cpp
-            # examples `#include <nros/app_config.h>` regardless of whether a
-            # config.toml exists, and gen-app-config.py emits the cmake-path
-            # defaults when config.toml is absent. (Was gated on config.toml,
-            # so config-less cpp examples failed: "nros/app_config.h: No such
-            # file" under the make/Application.mk path.)
-            python3 "$ROOT/scripts/nuttx/gen-app-config.py" \
-                "$src/config.toml" \
-                "$src/generated/include/nros/app_config.h"
-            # Run nros-codegen for message dependencies (parses
-            # nros_generate_interfaces() calls from the example's
-            # CMakeLists.txt). Skips gracefully if AMENT_PREFIX_PATH
-            # is unset / interfaces can't be resolved.
-            python3 "$ROOT/scripts/nuttx/gen-interfaces.py" "$src" "$CODEGEN" || true
-            # Persist the staticlibs the cmake/Corrosion build produced into
-            # generated/ffi/extra_libs.mk so the example's Makefile (which
-            # `-include`s this fragment) can append them to EXTRA_LIBS and the
-            # make/Application.mk link resolves the nros C/C++ API.
-            #
-            # Required for BOTH c and cpp: libnros_c.a (the nros C API) plus
-            # its auxiliary side-staticlibs (`nros_c_weak_stubs`,
-            # `nros_c_log_fmt`) and the per-board `nros_platform_nuttx.a`.
-            # Additionally for cpp: libnros_cpp.a (the C++ wrapper) plus the
-            # per-package `nano_ros_cpp_ffi_<pkg>` staticlib crates (Phase
-            # 157.C.16 — cmake's nros_generate_interfaces equivalent for the
-            # cpp ABI bridge).
-            extras_mk="$src/generated/ffi/extra_libs.mk"
-            mkdir -p "$(dirname "$extras_mk")"
-            : > "$extras_mk"
-            nros_target_dir="$src/build-zenoh/cargo-target/armv7a-nuttx-eabihf/release"
-            if [ -d "$nros_target_dir" ]; then
-                # libnros_c.a — the C API.
-                if [ -f "$nros_target_dir/deps/libnros_c.a" ]; then
-                    printf 'EXTRA_LIBS += %s\n' "$nros_target_dir/deps/libnros_c.a" >> "$extras_mk"
-                fi
-                # cpp wrapper.
-                if [ "$lang" = "cpp" ]; then
-                    for libcpp in "$nros_target_dir"/deps/libnros_cpp-*.a; do
-                        [ -f "$libcpp" ] && \
-                            printf 'EXTRA_LIBS += %s\n' "$libcpp" >> "$extras_mk"
-                    done
-                fi
-                # Auxiliary side-staticlibs (paths carry a build-script hash).
-                for pat in "$nros_target_dir"/build/nros-c-*/out/libnros_c_weak_stubs.a \
-                           "$nros_target_dir"/build/nros-c-*/out/libnros_c_log_fmt.a \
-                           "$nros_target_dir"/build/nros-board-nuttx-qemu-arm-*/out/libnros_platform_nuttx.a; do
-                    for resolved in $pat; do
-                        [ -f "$resolved" ] && \
-                            printf 'EXTRA_LIBS += %s\n' "$resolved" >> "$extras_mk"
-                    done
-                done
-            fi
-            # Per-package cpp FFI staticlibs (existing mechanism).
-            if [ "$lang" = "cpp" ]; then
-                python3 "$ROOT/scripts/nuttx/gen-cpp-ffi-crates.py" "$src" "$CODEGEN" \
-                    | while read -r lib_path; do
-                        printf 'EXTRA_LIBS += %s\n' "$lib_path" >> "$extras_mk"
-                    done
-            fi
-        else
-            echo "  [skip] $src missing"
-        fi
-    done
-done
-
 # Top-level apps/external/Kconfig — enumerate sub-app Kconfigs
 # explicitly. NuttX's bundled kconfig-conf doesn't support the
 # `osource` glob directive (post-v4.18 kconfig), so generate a
 # Kconfig file with explicit source statements for the integration
-# shell + every staged example.
+# shell. Phase 212.H.2 `--bringup <dir>` (below) appends a bringup
+# row when supplied.
+#
+# Phase 212.M-F.12 — the legacy Phase 157.C nuttx-examples staging
+# loop (per-example symlinks under `examples/qemu-arm-nuttx/{c,cpp}/`
+# + per-example `gen-app-config.py` / `gen-interfaces.py` /
+# `gen-cpp-ffi-crates.py` runs + cpp-FFI staticlib accumulation)
+# was retired here. M-F.10.5 deleted the
+# `cmake/templates/nros_app_config.h.in` template the per-example
+# baker required, and the Phase 212 multi-pkg workspace path
+# (`--bringup`) supersedes the per-example shape. Carving the loop
+# out also unblocks `phase212_h2_nuttx::nuttx_qemu_arm_2_component_
+# bringup_builds` on hosts with NuttX provisioned. The legacy
+# `nuttx_make_e2e` smoke + `just nuttx build-fixtures-make` recipe
+# remain in-tree pending a follow-up sweep that retires them in
+# concert.
 {
     echo "# Phase 157.C — apps/external/Kconfig (generated by"
     echo "# scripts/nuttx/stage-external-apps.sh). DO NOT EDIT."
@@ -169,39 +102,9 @@ done
     echo "menu \"External Modules\""
     echo ""
     echo "source \"\$APPSDIR/external/nano-ros/Kconfig\""
-    for dir in "${staged_dirs[@]}"; do
-        echo "source \"\$APPSDIR/external/$dir/Kconfig\""
-    done
     echo ""
     echo "endmenu"
 } > "$EXT/Kconfig"
-
-# Phase 157.C.17 — collect cpp FFI staticlib paths across every
-# cpp example into the shell-level extras_mk, deduped by lib
-# basename. Each cpp example's gen-cpp-ffi-crates.py emits one
-# `lib<crate>.a` per resolved package; multiple examples sharing
-# package deps (e.g. talker + listener both need std_msgs +
-# builtin_interfaces) produce SEPARATE staticlibs that all
-# define the same `nros_cpp_*` symbols → "multiple definition"
-# at kernel link. Pick one path per unique basename (last writer
-# wins — prefer the example with the longest dep chain since its
-# staticlibs include!() the most ffi.rs files).
-declare -A seen_basename
-declare -A path_for_basename
-for example_extras in $(ls -t "$ROOT"/examples/qemu-arm-nuttx/cpp/*/generated/ffi/extra_libs.mk 2>/dev/null); do
-    while IFS= read -r line; do
-        # Line shape: `EXTRA_LIBS += <abs-path>`
-        lib_path="${line##*= }"
-        base="$(basename "$lib_path")"
-        if [ -z "${seen_basename[$base]:-}" ]; then
-            seen_basename[$base]=1
-            path_for_basename[$base]="$lib_path"
-        fi
-    done < "$example_extras"
-done
-for base in "${!path_for_basename[@]}"; do
-    printf 'EXTRA_LIBS += %s\n' "${path_for_basename[$base]}" >> "$shell_extras"
-done
 
 # Phase 212.H.2 — optional `--bringup <dir>` staging. Symlinks (or
 # copies) the bringup workspace next to the apps/external/ tree and

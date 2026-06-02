@@ -1325,7 +1325,7 @@ canonical-shape regression test can run green tree-wide:
       CPP)` (reads `package.xml` `<depend>` rows). Doc-only fix —
       the cmake function name stays as it is (honest descriptor of
       behaviour: find from package.xml, not generation).
-- [ ] **M-F.12 NuttX `gen-app-config.py` orphan after M-F.10
+- [x] **M-F.12 NuttX `gen-app-config.py` orphan after M-F.10
       cleanup** (nano-ros) — Surfaced by §Acceptance "All 7 RTOS
       adapters ship a working bringup fixture" audit
       (`b0b9a365c`). M-F.10.5 deleted
@@ -1355,6 +1355,24 @@ canonical-shape regression test can run green tree-wide:
       component_bringup_builds` passes on a host with NuttX
       provisioned. **Blocks:** §Acceptance "All 7 RTOS adapters
       ship a working bringup fixture" flip.
+      **Resolution (path (a), see commit):** the legacy
+      Phase 157.C per-example staging loop (lines 73–204) was
+      dropped from `scripts/nuttx/stage-external-apps.sh`;
+      `scripts/nuttx/gen-app-config.py` deleted (no callers
+      remain). The `--bringup <dir>` path (Phase 212.H.2) is the
+      only surviving staging branch. Verified
+      `phase212_h2_nuttx::nuttx_qemu_arm_2_component_bringup_
+      builds` passes on this host (NuttX provisioned) with
+      `[SKIPPED build step]` for the `nros codegen-system` verb
+      (Phase 212.E). Lints `phase212_m12_example_shape` +
+      `phase212_pre_212_files_forbidden` + `phase212_examples_
+      canonical_shape` stay green. Per-commit guardrails:
+      `examples/qemu-arm-nuttx/{c,cpp}/` retention + the legacy
+      `nuttx_make_e2e` smoke + `just nuttx build-fixtures-make`
+      recipe were intentionally NOT touched — they are downstream
+      of M-F.12 and warrant a follow-up M-F sweep (those callers
+      now stage an empty external-apps tree but otherwise no
+      longer crash on the missing template).
 - [ ] **M-F.13 FreeRTOS fixture macro/dep mismatch after N.7
       step-3.4** (nano-ros) — Surfaced by the same audit
       (`b0b9a365c`). The `efa778162` (212.N.7 step-3.4) commit
