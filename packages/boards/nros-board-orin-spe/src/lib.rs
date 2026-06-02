@@ -147,7 +147,7 @@ impl nros_platform::BoardEntry for OrinSpe {
     ///
     /// 1. Print the same banner as the legacy `node::run`.
     /// 2. [`nros_platform::BoardInit::init_hardware`] (no-op on SPE).
-    /// 3. Build [`nros_platform::RuntimeCtx::EMPTY`]; codegen
+    /// 3. Build [`nros_platform::RuntimeCtx`] via `with_runtime`; codegen
     ///    (212.N.4, lives in standalone `nros-cli` repo per
     ///    CLAUDE.md) will populate `params` / `remaps` later.
     /// 4. Invoke `setup(&mut runtime)`.
@@ -172,7 +172,10 @@ impl nros_platform::BoardEntry for OrinSpe {
 
         <Self as BoardInit>::init_hardware();
 
-        let mut runtime = nros_platform::RuntimeCtx::EMPTY;
+        // Phase 212.N.7 step-3.2 — placeholder runtime; step-3.5 wires
+        // the real `ExecutorComponentRuntime`.
+        let mut crt = nros_platform::NullComponentRuntime;
+        let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
         match setup(&mut runtime) {
             Ok(()) => {
                 <Self as BoardPrint>::println(format_args!(""));

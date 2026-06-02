@@ -10,6 +10,12 @@
 //! - **env** — environment-style key/value pairs (POSIX `getenv`
 //!   shape) accessible from no_std boards via this struct rather
 //!   than a `libc::getenv` call.
+//! - **runtime** — `&mut dyn ComponentRuntime` sink the
+//!   codegen-emitted `run_plan(runtime)` body forwards each Component
+//!   pkg's `register(runtime)` call into (Phase 212.N.7 step-3.2).
+//!   Populated by each `BoardEntry::run` impl after opening its
+//!   executor; defaults to a no-op sink when constructed via
+//!   [`RuntimeCtx::with_runtime`].
 //!
 //! ## no_std-safe shape
 //!
@@ -21,11 +27,106 @@
 //! variant on the heap; the trait surface is slice-based so
 //! both shapes work.
 
+/// Per-Component pkg `register` fn pointer (Phase 212.N.7 step-3.1).
+///
+/// Real signature lives in `nros::ComponentRegisterFn` (see
+/// `packages/core/nros/src/component_runtime.rs`). The platform
+/// layer treats it as an opaque pointer so `nros-platform` does not
+/// need to depend on `nros` (that would invert the dep graph). The
+/// `ExecutorComponentRuntime` impl in `nros` `transmute`s back to
+/// the typed signature at the FFI boundary.
+///
+/// `extern "Rust" fn()` is the smallest concrete `fn` type
+/// (zero-arg, no return). Coercing the real typed fn pointer to
+/// this anchor requires `core::mem::transmute` — non-`as`. The
+/// macro emit (Phase 212.N.7 step-3.4) carries the transmute so
+/// individual Component pkgs never spell it.
+pub type ComponentRegisterFn = extern "Rust" fn();
+
+/// Per-Component pkg `init` fn pointer (Phase 212.N.7 step-3.1).
+///
+/// See [`ComponentRegisterFn`] for the opaque-pointer rationale.
+pub type ComponentInitFn = extern "Rust" fn();
+
+/// Per-Component pkg `dispatch` fn pointer (Phase 212.N.7 step-3.1).
+///
+/// See [`ComponentRegisterFn`] for the opaque-pointer rationale.
+pub type ComponentDispatchFn = extern "Rust" fn();
+
+/// Per-Component pkg `tick` fn pointer (Phase 212.N.7 step-3.1).
+///
+/// See [`ComponentRegisterFn`] for the opaque-pointer rationale.
+pub type ComponentTickFn = extern "Rust" fn();
+
+/// Component runtime sink the codegen-emitted `run_plan(runtime)`
+/// body talks to (Phase 212.N.7 step-3.1).
+///
+/// Object-safe + `no_std`. The concrete impl
+/// (`ExecutorComponentRuntime` in `nros`) owns the live executor;
+/// `BoardEntry::run` installs it on the per-boot
+/// [`RuntimeCtx::runtime`] slot before invoking the user `setup`
+/// closure.
+///
+/// The fn-pointer parameters are the opaque
+/// [`ComponentRegisterFn`] / [`ComponentInitFn`] /
+/// [`ComponentDispatchFn`] / [`ComponentTickFn`] aliases — the
+/// real-typed counterparts live in `nros`. The implementor
+/// `mem::transmute`s back at the call site (see
+/// `impl nros_platform::ComponentRuntime for ExecutorComponentRuntime`
+/// in `packages/core/nros/src/component_runtime.rs`).
+pub trait ComponentRuntime {
+    /// Register a single Component pkg by its four `extern "Rust"` fn
+    /// pointers + a static name for diagnostics. Returns `Err(())`
+    /// when the executor rejects the registration (no detail surfaces
+    /// across the trait — Component pkgs map this back to
+    /// [`RuntimeError::ComponentRegister`] with the pkg name).
+    fn register_dispatch_slot_dyn(
+        &mut self,
+        register: ComponentRegisterFn,
+        init: ComponentInitFn,
+        dispatch: ComponentDispatchFn,
+        tick: ComponentTickFn,
+        name: &'static str,
+    ) -> Result<(), ()>;
+
+    /// Drive the underlying executor for at most `timeout_ms`
+    /// milliseconds. `Ok(())` on a clean spin (including timeout);
+    /// `Err(())` if the executor surfaces a spin error.
+    fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
+}
+
+/// No-op [`ComponentRuntime`] for tests / placeholders. Every call
+/// returns `Err(())` so callers that depend on a populated runtime
+/// fail loud rather than silently no-op.
+///
+/// `BoardEntry::run` impls replace this with a real
+/// `ExecutorComponentRuntime`-backed sink before invoking the user
+/// `setup` closure.
+#[derive(Debug, Default)]
+pub struct NullComponentRuntime;
+
+impl ComponentRuntime for NullComponentRuntime {
+    fn register_dispatch_slot_dyn(
+        &mut self,
+        _register: ComponentRegisterFn,
+        _init: ComponentInitFn,
+        _dispatch: ComponentDispatchFn,
+        _tick: ComponentTickFn,
+        _name: &'static str,
+    ) -> Result<(), ()> {
+        Err(())
+    }
+
+    fn spin_once(&mut self, _timeout_ms: u32) -> Result<(), ()> {
+        Err(())
+    }
+}
+
 /// Runtime context handed to `BoardEntry::run(setup)`.
 ///
-/// All three slices may be empty. A board's launch overlay typically
-/// populates `params` + `remaps`; `env` is rarely set on embedded.
-#[derive(Debug)]
+/// All three overlay slices may be empty. A board's launch overlay
+/// typically populates `params` + `remaps`; `env` is rarely set on
+/// embedded.
 pub struct RuntimeCtx<'a> {
     /// `<param name=… value=…/>` from launch XML, or
     /// `-p name:=value` CLI overrides.
@@ -37,17 +138,64 @@ pub struct RuntimeCtx<'a> {
     /// Environment-style key/value pairs (mostly POSIX). Empty on
     /// embedded boards.
     pub env: &'a [(&'a str, &'a str)],
+
+    /// Component runtime sink. `BoardEntry::run` populates this with
+    /// the live `ExecutorComponentRuntime`-backed impl before invoking
+    /// the user `setup` closure. The codegen-emitted
+    /// `run_plan(runtime)` body calls
+    /// `runtime.runtime.register_dispatch_slot_dyn(...)` once per
+    /// Component pkg.
+    ///
+    /// Defaults to a [`NullComponentRuntime`] when the context is
+    /// built via [`RuntimeCtx::with_runtime`]. That sink errors
+    /// every call so test fixtures that forget to wire a real runtime
+    /// fail loud.
+    pub runtime: &'a mut dyn ComponentRuntime,
+}
+
+impl core::fmt::Debug for RuntimeCtx<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RuntimeCtx")
+            .field("params", &self.params)
+            .field("remaps", &self.remaps)
+            .field("env", &self.env)
+            .field("runtime", &"<dyn ComponentRuntime>")
+            .finish()
+    }
 }
 
 impl<'a> RuntimeCtx<'a> {
-    /// An empty `RuntimeCtx` — no params, no remaps, no env. Useful
-    /// as a placeholder when running a launch-less single-node
-    /// example, or in unit tests.
-    pub const EMPTY: Self = Self {
-        params: &[],
-        remaps: &[],
-        env: &[],
-    };
+    /// Build a [`RuntimeCtx`] with no params / remaps / env and the
+    /// given runtime sink. The common shape `BoardEntry::run`
+    /// constructs after opening its executor.
+    ///
+    /// For test fixtures that don't need a populated runtime, pass a
+    /// `&mut NullComponentRuntime` — every call against the sink
+    /// returns `Err(())`, surfacing the missing wiring.
+    pub fn with_runtime(runtime: &'a mut dyn ComponentRuntime) -> Self {
+        Self {
+            params: &[],
+            remaps: &[],
+            env: &[],
+            runtime,
+        }
+    }
+
+    /// Build a [`RuntimeCtx`] with explicit overlay slices + runtime
+    /// sink (Phase 212.N.7 step-3.2).
+    pub fn new(
+        runtime: &'a mut dyn ComponentRuntime,
+        params: &'a [(&'a str, &'a str)],
+        remaps: &'a [(&'a str, &'a str)],
+        env: &'a [(&'a str, &'a str)],
+    ) -> Self {
+        Self {
+            params,
+            remaps,
+            env,
+            runtime,
+        }
+    }
 
     /// Lookup a param by name; first match wins. Linear scan
     /// because the slice is typically small (≤ a dozen entries).
@@ -70,12 +218,6 @@ impl<'a> RuntimeCtx<'a> {
     /// Lookup an env entry by name.
     pub fn env_var(&self, name: &str) -> Option<&'a str> {
         self.env.iter().find(|(k, _)| *k == name).map(|(_, v)| *v)
-    }
-}
-
-impl<'a> Default for RuntimeCtx<'a> {
-    fn default() -> Self {
-        Self::EMPTY
     }
 }
 

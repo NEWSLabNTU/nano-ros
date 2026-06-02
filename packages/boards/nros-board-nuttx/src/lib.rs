@@ -174,7 +174,7 @@ where
 ///    Same magic number `run` / `run_generic` use.
 /// 3. Flush stdout (NuttX line-buffers around `write(2)`).
 /// 4. Build a [`nros_platform::RuntimeCtx`]. Today this is the
-///    [`nros_platform::RuntimeCtx::EMPTY`] placeholder; Phase 212.N.4
+///    [`nros_platform::RuntimeCtx::with_runtime`] placeholder; Phase 212.N.4
 ///    codegen will populate `params` / `remaps` / `env` from the
 ///    launch overlay + `--ros-args` CLI parsing.
 /// 5. Invoke `setup(&mut runtime)` and **return its result**.
@@ -230,7 +230,10 @@ where
     use std::io::Write as _;
     let _ = std::io::stdout().flush();
 
-    let mut runtime = nros_platform::RuntimeCtx::EMPTY;
+    // Phase 212.N.7 step-3.2 — placeholder runtime; step-3.5 wires
+    // the real `ExecutorComponentRuntime`.
+    let mut crt = nros_platform::NullComponentRuntime;
+    let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
     let result = setup(&mut runtime);
 
     // Flush again — NuttX serial-console drivers tail-drop on FIFO

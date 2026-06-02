@@ -115,7 +115,7 @@ pub trait DirectExec: BoardInit + BoardPrint + BoardExit {}
 ///
 /// 1. [`BoardInit::init_hardware`] — clock tree, pin mux, peripheral
 ///    wakes (per-board HAL calls).
-/// 2. Build [`RuntimeCtx::EMPTY`] on the boot stack as a placeholder.
+/// 2. Build [`RuntimeCtx`] via [`RuntimeCtx::with_runtime`] on the boot stack as a placeholder.
 ///    The 212.N.4 codegen will pass a populated `RuntimeCtx` via a
 ///    different entry point once launch overlays are wired.
 /// 3. Invoke the user `setup` closure with `&mut RuntimeCtx`.
@@ -139,9 +139,13 @@ where
     // 1. Hardware init (per-board HAL).
     B::init_hardware();
 
-    // 2. Boot-stack RuntimeCtx placeholder. 212.N.4 codegen will hand
-    //    a populated `RuntimeCtx` in via a different entry point.
-    let mut ctx = RuntimeCtx::EMPTY;
+    // 2. Boot-stack RuntimeCtx placeholder. 212.N.7 step-3.5 swaps
+    //    this for the real `ExecutorComponentRuntime`; today the
+    //    runtime slot is `NullComponentRuntime` (every register call
+    //    errors loud). 212.N.4 codegen will hand a populated
+    //    `RuntimeCtx` in via a different entry point.
+    let mut crt = ::nros_platform::NullComponentRuntime;
+    let mut ctx = RuntimeCtx::with_runtime(&mut crt);
 
     // 3. User closure on the boot stack.
     match setup(&mut ctx) {

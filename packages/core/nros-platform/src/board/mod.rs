@@ -60,7 +60,10 @@ pub use exit::BoardExit;
 pub use init::BoardInit;
 pub use network::NetworkWait;
 pub use print::BoardPrint;
-pub use runtime::{RuntimeCtx, RuntimeError};
+pub use runtime::{
+    ComponentDispatchFn, ComponentInitFn, ComponentRegisterFn, ComponentRuntime, ComponentTickFn,
+    NullComponentRuntime, RuntimeCtx, RuntimeError,
+};
 pub use transport::TransportBringup;
 
 /// Super-trait every board impl carries (mirrors

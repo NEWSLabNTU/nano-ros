@@ -121,9 +121,11 @@ where
     // 212.N.2: the user closure consumes `&mut RuntimeCtx`, not
     // `&Config`. Codegen (212.N.4) will populate launch overlay
     // params/remaps inside a `static` and pass the slices in here;
-    // for now the family driver hands a fresh `EMPTY` slot, which is
-    // the same shape the unit-test path uses.
-    let mut runtime = RuntimeCtx::EMPTY;
+    // for now the family driver hands a fresh placeholder. Phase
+    // 212.N.7 step-3.5 will replace the `NullComponentRuntime`
+    // placeholder with a real `ExecutorComponentRuntime`.
+    let mut crt = ::nros_platform::NullComponentRuntime;
+    let mut runtime = RuntimeCtx::with_runtime(&mut crt);
 
     match closure(&mut runtime) {
         Ok(()) => {

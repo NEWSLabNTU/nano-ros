@@ -108,8 +108,10 @@ impl BoardEntry for PosixBoard {
     /// trait surface documents:
     ///
     /// 1. [`BoardInit::init_hardware`] (no-op).
-    /// 2. Build a [`RuntimeCtx`]. Today we hand `setup` the
-    ///    [`RuntimeCtx::EMPTY`] placeholder; Phase 212.N.4 codegen
+    /// 2. Build a [`RuntimeCtx`] via [`RuntimeCtx::with_runtime`].
+    ///    Today the runtime slot is a [`NullComponentRuntime`]
+    ///    placeholder; Phase 212.N.7 step-3.5 wires the real
+    ///    `ExecutorComponentRuntime` here, and Phase 212.N.4 codegen
     ///    populates `params` / `remaps` / `env` from CLI args and the
     ///    launch overlay.
     /// 3. Invoke `setup(&mut ctx)`.
@@ -126,7 +128,11 @@ impl BoardEntry for PosixBoard {
     {
         <Self as BoardInit>::init_hardware();
 
-        let mut runtime = RuntimeCtx::EMPTY;
+        // Phase 212.N.7 step-3.2 placeholder: `RuntimeCtx` now carries
+        // a `&mut dyn ComponentRuntime`. Step-3.5 swaps this for the
+        // real `ExecutorComponentRuntime`.
+        let mut crt = ::nros_platform::NullComponentRuntime;
+        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
         match setup(&mut runtime) {
             Ok(()) => {
                 <Self as BoardPrint>::println(format_args!("nros: application complete"));
