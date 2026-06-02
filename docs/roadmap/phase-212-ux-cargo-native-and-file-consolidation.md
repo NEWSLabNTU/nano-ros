@@ -1342,7 +1342,7 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         re-exported at the crate root. `nros-build` stays a
         build-dep only; its emit template references
         `::nros_platform::RuntimeError`.
-  - [ ] **step-3 RuntimeCtx ↔ ComponentRuntime bridge** — extend
+  - [~] **step-3 RuntimeCtx ↔ ComponentRuntime bridge** — extend
         `nros_platform::RuntimeCtx` with a `&mut dyn ComponentRuntime`
         slot populated by each `BoardEntry::run` impl before the setup
         closure fires. Update every Component pkg's `register(runtime)`
@@ -1350,7 +1350,106 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
         of the no-op stub (call into `<Component as Component>::register`
         through the sink). Cross-cuts seven `BoardEntry` impls (native,
         freertos, threadx-{linux,riscv64}, nuttx, zephyr, esp32) plus
-        every wave-4 Component pkg.
+        every wave-4 Component pkg. **Design locked 2026-06-02 as
+        Path A (BoardEntry owns executor + runtime slot)**.
+
+      ### Design — Path A (locked)
+
+      `BoardEntry::run` opens the `Executor`, builds an
+      `ExecutorComponentRuntime`, installs it into `RuntimeCtx`,
+      calls the user `setup` closure (= codegen-emitted
+      `run_plan(runtime)`), then spins until halt. User `main.rs`
+      stays 5 lines. Spin loop hidden per platform.
+
+      Rejected: Path B (setup callback owns executor + spin) —
+      defeats the trait abstraction, forces every user `main.rs`
+      to know executor lifecycle.
+
+      **Customisation escape hatches** (Path A's answer to per-user
+      orchestration):
+      - **Override `OUT_DIR`** — point `nros-build` at a checked-in
+        dir, edit the emitted `run_plan.rs` by hand.
+      - **Skip `build.rs` entirely** — hand-write `main.rs` that
+        calls `runtime.runtime.register_dispatch_slot_dyn(...)` per
+        component directly. The `BoardEntry::run` setup closure is
+        an arbitrary `FnOnce`; the codegen path is one shape among
+        many.
+
+      ### Path A sub-items
+
+      - [ ] **step-3.1 `ComponentRuntime` trait in
+            `nros-platform::board::runtime`** — object-safe, no_std.
+            Two methods covering the registration + spin surfaces:
+            ```rust
+            pub trait ComponentRuntime {
+                fn register_dispatch_slot_dyn(
+                    &mut self,
+                    register: ComponentRegisterFn,
+                    init: ComponentInitFn,
+                    dispatch: ComponentDispatchFn,
+                    tick: ComponentTickFn,
+                    name: &'static str,
+                ) -> Result<(), ()>;
+                fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()>;
+            }
+            ```
+            Fn-pointer signatures (`ComponentRegisterFn` etc.) stay
+            in `nros-platform` (already no_std, ABI-stable).
+
+      - [ ] **step-3.2 `RuntimeCtx` widens** — add
+            `runtime: &'a mut dyn ComponentRuntime` field +
+            `RuntimeCtx::with_runtime(runtime, overlay)` ctor.
+            Existing overlay accessors unchanged. Update entry-poc
+            + 18 wave-4 Entry pkg main.rs files for the new ctor —
+            mechanical sweep.
+
+      - [ ] **step-3.3 `ExecutorComponentRuntime` impls
+            `nros_platform::ComponentRuntime`** — one impl block in
+            `packages/core/nros/src/component_runtime.rs`. Forwards
+            to existing `register_dispatch_slot` + `spin_once`.
+
+      - [ ] **step-3.4 `nros::component!()` macro emits
+            `pub fn register(runtime: &mut RuntimeCtx<'_>)`
+            wrapper** — replaces the hand-written generic-`R` stub
+            on 24 Component pkgs. Body:
+            ```rust
+            runtime.runtime.register_dispatch_slot_dyn(
+                __nros_component_<pkg>_register,
+                __nros_component_<pkg>_init,
+                __nros_component_<pkg>_dispatch,
+                __nros_component_<pkg>_tick,
+                "<pkg>",
+            ).map_err(|_| RuntimeError::ComponentRegister("<pkg>"))
+            ```
+            Legacy `__nros_component_*` externs stay (step-4 / step-6
+            retire them). Macro expansion site needs
+            `nros_platform` ident in scope — add to every Component
+            pkg `Cargo.toml` (the wave-4 step-2 sweep deliberately
+            omitted it).
+
+      - [ ] **step-3.5 Per-board `BoardEntry::run` impls** — seven
+            boards: native, mps2-an385-freertos, threadx-linux,
+            threadx-qemu-riscv64, nuttx, zephyr, esp32. Body shape:
+            ```rust
+            Self::init_hardware(&cfg);
+            /* kernel-specific app task spawn */
+            let exec = Executor::open(&exec_cfg)?;
+            let mut crt = ExecutorComponentRuntime::from_executor(exec);
+            let mut rt = RuntimeCtx::with_runtime(&mut crt, overlay);
+            setup(&mut rt)?;
+            loop {
+                crt.spin_once(10)?;
+            }
+            ```
+            Spin policy: BoardEntry always spins until error / halt
+            flag. Native uses ctrl-C to set halt flag; embedded
+            spins forever. Zephyr stays a NetworkWait-only carve-out
+            (Kconfig drives its own entry).
+
+      - [ ] **step-3.6 Component pkg cleanup** — delete the
+            hand-written `pub fn register<R>` stub from 24 Component
+            pkg `src/lib.rs` files. The macro-emitted wrapper from
+            step-3.4 replaces them.
   - [ ] **step-4 retire `bake_system_main_rs` + symbol-walking** —
         `packages/boards/freertos-qemu-mps2-an385-bsp/build.rs` drops
         the baker fn; `src/lib.rs::nros_run` is rewritten to depend
