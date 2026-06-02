@@ -807,7 +807,7 @@ pub struct Executor {
             feature = "platform-threadx",
         )
     ))]
-    pub(crate) wake_flag_alloc: alloc::sync::Arc<core::sync::atomic::AtomicBool>,
+    pub(crate) wake_flag_alloc: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
     #[cfg(all(
         feature = "alloc",
         not(feature = "std"),
@@ -819,7 +819,7 @@ pub struct Executor {
             feature = "platform-threadx",
         )
     ))]
-    pub(crate) node_wake_alloc: Option<alloc::sync::Arc<super::node_wake::NodeWake>>,
+    pub(crate) node_wake_alloc: Option<portable_atomic_util::Arc<super::node_wake::NodeWake>>,
     #[cfg(all(
         feature = "alloc",
         not(feature = "std"),
@@ -831,7 +831,7 @@ pub struct Executor {
             feature = "platform-threadx",
         )
     ))]
-    pub(crate) wake_ctx_alloc: Option<alloc::sync::Arc<super::wake_alloc::WakeCtxAlloc>>,
+    pub(crate) wake_ctx_alloc: Option<portable_atomic_util::Arc<super::wake_alloc::WakeCtxAlloc>>,
     #[cfg(all(
         feature = "alloc",
         not(feature = "std"),
@@ -961,7 +961,7 @@ impl Executor {
                     feature = "platform-threadx",
                 )
             ))]
-            wake_flag_alloc: alloc::sync::Arc::new(core::sync::atomic::AtomicBool::new(false)),
+            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
             #[cfg(all(
                 feature = "alloc",
                 not(feature = "std"),
@@ -973,7 +973,7 @@ impl Executor {
                     feature = "platform-threadx",
                 )
             ))]
-            node_wake_alloc: super::node_wake::NodeWake::new().map(alloc::sync::Arc::new),
+            node_wake_alloc: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
             #[cfg(all(
                 feature = "alloc",
                 not(feature = "std"),
@@ -1102,7 +1102,7 @@ impl Executor {
                     feature = "platform-threadx",
                 )
             ))]
-            wake_flag_alloc: alloc::sync::Arc::new(core::sync::atomic::AtomicBool::new(false)),
+            wake_flag_alloc: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
             #[cfg(all(
                 feature = "alloc",
                 not(feature = "std"),
@@ -1114,7 +1114,7 @@ impl Executor {
                     feature = "platform-threadx",
                 )
             ))]
-            node_wake_alloc: super::node_wake::NodeWake::new().map(alloc::sync::Arc::new),
+            node_wake_alloc: super::node_wake::NodeWake::new().map(portable_atomic_util::Arc::new),
             #[cfg(all(
                 feature = "alloc",
                 not(feature = "std"),
@@ -1662,13 +1662,13 @@ impl Executor {
         // `if let Some(wake) = self.node_wake.as_ref()` predicate.
         let node_wake = self.node_wake_alloc.as_ref()?;
         if self.wake_ctx_alloc.is_none() {
-            self.wake_ctx_alloc = Some(alloc::sync::Arc::new(super::wake_alloc::WakeCtxAlloc {
-                flag: alloc::sync::Arc::clone(&self.wake_flag_alloc),
-                node_wake: alloc::sync::Arc::clone(node_wake),
+            self.wake_ctx_alloc = Some(portable_atomic_util::Arc::new(super::wake_alloc::WakeCtxAlloc {
+                flag: portable_atomic_util::Arc::clone(&self.wake_flag_alloc),
+                node_wake: portable_atomic_util::Arc::clone(node_wake),
             }));
         }
         let arc = self.wake_ctx_alloc.as_ref().expect("just set");
-        Some(alloc::sync::Arc::as_ptr(arc) as *mut core::ffi::c_void)
+        Some(portable_atomic_util::Arc::as_ptr(arc) as *mut core::ffi::c_void)
     }
 
     #[cfg(all(
@@ -3500,7 +3500,7 @@ impl Executor {
         let primary_drive_timeout_ms = {
             let was_woken_alloc = self
                 .wake_flag_alloc
-                .swap(false, core::sync::atomic::Ordering::SeqCst);
+                .swap(false, portable_atomic::Ordering::SeqCst);
             if !was_woken_alloc
                 && self.has_async_wake_alloc
                 && let Some(wake) = self.node_wake_alloc.as_ref()
@@ -3510,7 +3510,7 @@ impl Executor {
                 // mirroring the std-RTOS path's post-wait swap.
                 let _ = self
                     .wake_flag_alloc
-                    .swap(false, core::sync::atomic::Ordering::SeqCst);
+                    .swap(false, portable_atomic::Ordering::SeqCst);
                 0
             } else {
                 timeout_ms

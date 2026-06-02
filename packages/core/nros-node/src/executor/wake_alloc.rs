@@ -39,8 +39,8 @@
 ))]
 #![allow(dead_code)]
 
-use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, Ordering};
+use portable_atomic_util::Arc;
 
 use super::node_wake::NodeWake;
 
