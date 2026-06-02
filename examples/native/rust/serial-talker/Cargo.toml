@@ -5,6 +5,11 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
 
+# Phase 212.L.2 — Application pkg shape. Native-only deploy target.
+# `nros check` rejects any RTOS in this list.
+[package.metadata.nros.application]
+deploy = ["native"]
+
 [[bin]]
 name = "xrce-serial-talker"
 path = "src/main.rs"

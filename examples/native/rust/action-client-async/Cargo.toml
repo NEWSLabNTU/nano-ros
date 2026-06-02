@@ -5,6 +5,11 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Example async action client using nros with tokio background spin and StreamExt"
 
+# Phase 212.L.2 — Application pkg shape. Native-only deploy target.
+# `nros check` rejects any RTOS in this list.
+[package.metadata.nros.application]
+deploy = ["native"]
+
 [dependencies]
 nros = { path = "../../../../packages/core/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix", "stream"] }
 # Phase 115.L.5 — pull the cffi shim that exposes the zenoh-pico backend

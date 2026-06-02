@@ -6,6 +6,11 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "Native talker using RTIC-pattern API (zero callbacks, spin_once(0), manual publish)"
 
+# Phase 212.L.2 — Application pkg shape. Native-only deploy target.
+# `nros check` rejects any RTOS in this list.
+[package.metadata.nros.application]
+deploy = ["native"]
+
 [[bin]]
 name = "rtic-talker"
 path = "src/main.rs"
