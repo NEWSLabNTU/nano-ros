@@ -93,14 +93,36 @@ static const nros_app_config_t NROS_APP_CONFIG = {
 };
 
 #else /* !__ZEPHYR__ */
-/* Non-Zephyr fallback: this header expects to be shadowed by a
- * cmake-generated per-example app_config.h. If you reach this branch,
- * it means `nano_ros_generate_config_header()` wasn't called or the
- * build directory isn't on the include path before NanoRos's install
- * include dir. */
-#error "<nros/app_config.h>: per-example codegen missing. " \
-       "Call `nano_ros_generate_config_header()` in your CMakeLists.txt " \
-       "or `#include` your own configuration header before this one."
+/* Phase 212.M-F.10 Path C — non-Zephyr branch.
+ *
+ * The universal `NROS_APP_CONFIG` read promise is preserved across
+ * platforms (every example reads `NROS_APP_CONFIG.zenoh.locator` /
+ * `.network.ip` / etc. with the same field paths). What moved in
+ * M-F.10 is who POPULATES the symbol:
+ *
+ *   - Before: per-binary `app_config.h` was emitted by the cmake
+ *     codegen `nano_ros_generate_config_header()` from a per-example
+ *     `nros.toml`, baking a TU-local `static const` at every include
+ *     site.
+ *
+ *   - After: each board crate's `build.rs` emits a one-shot
+ *     `const nros_app_config_t NROS_APP_CONFIG = { ... };` translation
+ *     unit (from the board's default Rust `Config`) baked into the
+ *     board's staticlib. This header declares the symbol as `extern`
+ *     so any TU that includes `<nros/app_config.h>` and references
+ *     `NROS_APP_CONFIG.*` resolves it at link time against that
+ *     board-emitted definition.
+ *
+ * During the M-F.10.3 → M-F.10.5 transition the legacy cmake codegen
+ * path may still emit a per-binary header earlier on the include
+ * path; that header carries its own `static const` initialiser and
+ * shadows this `extern` declaration. The two paths coexist until
+ * M-F.10.5 retires the codegen.
+ *
+ * Out-of-tree consumers that want their own population path can drop
+ * a `<nros/app_config.h>` earlier on the include path (same escape
+ * hatch as before). */
+extern const nros_app_config_t NROS_APP_CONFIG;
 #endif /* __ZEPHYR__ */
 
 #endif /* NROS_APP_CONFIG_H */
