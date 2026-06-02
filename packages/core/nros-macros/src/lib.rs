@@ -243,9 +243,16 @@ pub fn component(input: TokenStream) -> TokenStream {
         // before invoking — the round-trip is type-preserving so long
         // as both sides agree on the typed signature, which they do
         // (both live in `nros`).
+        //
+        // Phase 212.M-F.13 path (b): emit references go through
+        // `::nros::__macro_support::nros_platform::*` rather than the
+        // bare `::nros_platform::*` path so Component pkgs only need
+        // a single `nros` dep in their `Cargo.toml`. The
+        // `__macro_support` module is a `#[doc(hidden)]` re-export
+        // alias maintained by `packages/core/nros/src/lib.rs`.
         pub fn register(
-            runtime: &mut ::nros_platform::RuntimeCtx<'_>,
-        ) -> ::core::result::Result<(), ::nros_platform::RuntimeError> {
+            runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>,
+        ) -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError> {
             // Phase 212.N.7 step-6 — local typed fn items, no
             // `extern "Rust"` / no `#[unsafe(no_mangle)]`. The
             // Entry-pkg path resolves them via the wrapper's
@@ -280,19 +287,19 @@ pub fn component(input: TokenStream) -> TokenStream {
                 <#component_ty as ::nros::ExecutableComponent>::tick(s, ctx);
             }
 
-            let register_opaque: ::nros_platform::ComponentRegisterFn = unsafe {
+            let register_opaque: ::nros::__macro_support::nros_platform::ComponentRegisterFn = unsafe {
                 ::core::mem::transmute(
                     r as fn(&mut ::nros::ComponentContext<'_>) -> ::nros::ComponentResult<()>,
                 )
             };
-            let init_opaque: ::nros_platform::ComponentInitFn =
+            let init_opaque: ::nros::__macro_support::nros_platform::ComponentInitFn =
                 unsafe { ::core::mem::transmute(i as fn() -> *mut ()) };
-            let dispatch_opaque: ::nros_platform::ComponentDispatchFn = unsafe {
+            let dispatch_opaque: ::nros::__macro_support::nros_platform::ComponentDispatchFn = unsafe {
                 ::core::mem::transmute(
                     d as unsafe fn(*mut (), ::nros::CallbackId<'_>, &mut ::nros::CallbackCtx<'_>),
                 )
             };
-            let tick_opaque: ::nros_platform::ComponentTickFn = unsafe {
+            let tick_opaque: ::nros::__macro_support::nros_platform::ComponentTickFn = unsafe {
                 ::core::mem::transmute(t as unsafe fn(*mut (), &mut ::nros::TickCtx<'_>))
             };
             runtime
@@ -304,7 +311,7 @@ pub fn component(input: TokenStream) -> TokenStream {
                     tick_opaque,
                     #pkg_name_lit,
                 )
-                .map_err(|_| ::nros_platform::RuntimeError::ComponentRegister(#pkg_name_lit))
+                .map_err(|_| ::nros::__macro_support::nros_platform::RuntimeError::ComponentRegister(#pkg_name_lit))
         }
     };
 
