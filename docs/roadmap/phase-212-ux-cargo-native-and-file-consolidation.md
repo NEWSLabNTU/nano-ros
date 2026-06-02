@@ -23,7 +23,8 @@ The split is asymmetric for Rust by design:
   codegen implicit, and entangling cargo with nros's codegen state was
   judged worse than the extra step.
 - **C++:** `cmake -B build && cmake --build build` — one step. The cmake
-  fn `nano_ros_generate_interfaces()` runs codegen at configure time.
+  fn `nros_find_interfaces()` (reads `package.xml` `<depend>` rows) runs
+  codegen at configure time.
 - **Embedded:** vendor tool drives. Adapter shim shells
   `nros codegen-system` at configure time (Zephyr cmake fn, NuttX
   Makefile rule, ESP-IDF component, PIO pre-script, …).
@@ -269,8 +270,8 @@ Dropped:
 
 Replaced by:
 - `nros generate-rust` as the canonical explicit codegen step (Rust)
-- `nano_ros_generate_interfaces()` cmake fn as the cmake configure-time
-  codegen step (C++)
+- `nros_find_interfaces()` cmake fn as the cmake configure-time
+  codegen step (C++) — reads `package.xml` `<depend>` rows as SSoT
 - Cyclone descriptor codegen migrated to inside `nros generate-rust`
   emit pipeline (Option B, commit `5c6aeab`); generated crates carry a
   thin self-contained `build.rs` that cc-compiles the emitted .c files
@@ -750,7 +751,8 @@ A clean break — no transitional mixed-shape state allowed.
 - [x] **M.2 native/cpp sweep** — `examples/native/cpp/*` (8 examples)
       → Application pkg with `nano_ros_application()` + `nros_find_
       interfaces(LANGUAGE CPP SKIP_INSTALL)`. Note: phase doc named
-      a fn `nano_ros_generate_interfaces(LANGUAGE CPP PACKAGES …)`
+      a fn `nros_find_interfaces(LANGUAGE CPP)` (reads `package.xml`
+      `<depend>` rows)
       that doesn't exist in tree; the real cmake fn is
       `nros_find_interfaces(LANGUAGE CPP)` which reads `package.xml`
       `<depend>` rows — same SSoT intent. Shipped wave 1.
@@ -941,14 +943,13 @@ canonical-shape regression test can run green tree-wide:
       12+ live callers outside FreeRTOS (Zephyr / NuttX / native /
       ThreadX-RV64 trees). Deferred to M.10 final-pass after every
       wave retires its callers.
-- [ ] **M-F.11 nano_ros_generate_interfaces vs nros_find_interfaces
-      naming reconciliation** (phase doc + cmake). Phase doc §212.L.9
-      + acceptance bullets reference a fn named `nano_ros_generate_
-      interfaces(LANGUAGE CPP PACKAGES …)` that doesn't exist in
-      tree. The real shipping fn is `nros_find_interfaces(LANGUAGE
-      CPP)` reading `package.xml` `<depend>` rows. Either rename the
-      fn to match the spec OR update the phase doc to name the
-      actual surface. Both have identical intent (pkg.xml as SSoT).
+- [x] **M-F.11 nano_ros_generate_interfaces vs nros_find_interfaces
+      naming reconciliation** (phase doc + sibling design docs + book).
+      Resolved by renaming references in the phase doc / design docs /
+      book to the actual shipping fn `nros_find_interfaces(LANGUAGE
+      CPP)` (reads `package.xml` `<depend>` rows). Doc-only fix —
+      the cmake function name stays as it is (honest descriptor of
+      behaviour: find from package.xml, not generation).
 - **Tests** (per-wave, gated on SDK availability):
   - [ ] `native_rust_talker_listener_e2e_<rmw>` per RMW
   - [ ] `native_cpp_talker_listener_e2e_<rmw>` per RMW
@@ -1074,8 +1075,9 @@ asymmetry rationale.
       run` for ALL three RMWs** (zenoh, xrce, cyclonedds). No CMake step
       required. (212.K Option B)
 - [ ] **Single-node C++ = `cmake -B build && cmake --build build`.**
-      RMW selected via `-DNANO_ROS_RMW=…`. `nano_ros_generate_interfaces()`
-      runs codegen at configure. (existing path; cmake-side codegen)
+      RMW selected via `-DNANO_ROS_RMW=…`. `nros_find_interfaces()`
+      (package.xml-SSoT) runs codegen at configure. (existing path;
+      cmake-side codegen)
 - [ ] **Multi-node Rust = `nros generate-rust && cargo build && cargo
       run -p <entry-pkg>`** — explicit codegen step + cargo builds +
       Entry pkg `build.rs` calls `nros-build::generate_run_plan` +

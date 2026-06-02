@@ -108,7 +108,7 @@ set(NANO_ROS_RMW      zenoh CACHE STRING "")
 add_subdirectory($ENV{NANO_ROS_DIR} nano_ros)
 
 add_executable(my_talker src/main.cpp)
-nano_ros_generate_interfaces(my_talker_msgs LANGUAGE CPP PACKAGES std_msgs)
+nros_find_interfaces(LANGUAGE CPP)  # reads package.xml <depend> rows
 target_link_libraries(my_talker PRIVATE NanoRos::NanoRos my_talker_msgs)
 nros_platform_link_app(my_talker)
 ```
@@ -270,7 +270,7 @@ add_subdirectory(listener_pkg)
 ```cmake
 # talker_pkg/CMakeLists.txt — no project(), no add_subdirectory(nano_ros)
 add_executable(talker src/talker.cpp)
-nano_ros_generate_interfaces(talker PACKAGES std_msgs LANGUAGE CPP)
+nros_find_interfaces(LANGUAGE CPP)  # reads package.xml <depend> rows
 target_link_libraries(talker PRIVATE NanoRos::NanoRos)
 nros_platform_link_app(talker)
 ```

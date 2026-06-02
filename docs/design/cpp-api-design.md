@@ -760,17 +760,16 @@ instead.
 ### CMake code generation
 
 Message bindings are generated via CMake, using the same pipeline as
-the existing C code generation. The `nano_ros_generate_interfaces()`
-function is extended with a `LANGUAGE CPP` option:
+the existing C code generation. The `nros_find_interfaces()` function
+takes a `LANGUAGE CPP` option and reads dependent packages from
+`package.xml` `<depend>` rows (no explicit PACKAGES arg — `package.xml`
+is the SSoT):
 
 ```cmake
 # In the example's CMakeLists.txt:
-nano_ros_generate_interfaces(my_example
-    PACKAGES std_msgs geometry_msgs
-    LANGUAGE CPP                          # Generate C++ headers + Rust FFI
-)
+nros_find_interfaces(LANGUAGE CPP)  # reads <depend> rows from package.xml
 
-# Creates target: my_example__nano_ros_cpp
+# Generates one `<pkg>__nano_ros_cpp` target per resolved <depend> row.
 # Includes: ${CMAKE_CURRENT_BINARY_DIR}/generated/cpp/
 # Links:    Rust FFI static library with type-specific functions
 ```
