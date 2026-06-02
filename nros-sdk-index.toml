@@ -127,6 +127,29 @@ ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
 configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DBUILD_IDLC=ON -DBUILD_TESTING=OFF -DBUILD_DDSPERF=OFF"
 install = "cmake --build build --parallel $(nproc) --target install"
 
+# Corrosion — the CMake ↔ Rust/Cargo bridge that `corrosion_import_crate()`
+# in mixed-language workspaces (Phase 212 — `cmake/NanoRosThreadxSystemCodegen.cmake`,
+# `multi_pkg_workspace_mixed` fixture, examples/native/rust talker/listener
+# CycloneDDS path) depends on. Header/config-only at install time: a small
+# CMake superproject staged into `~/.nros/sdk/corrosion/share/corrosion/`
+# (well under the 500 MB / 5 min `default` tier policy in
+# `docs/development/sdk-tiers.md`, idempotent — `just workspace install-corrosion`
+# already gates on a `.installed-version` stamp). Source-built only — upstream
+# `corrosion-rs/corrosion` releases ship source tarballs, not prebuilt binaries
+# we mirror, so no `dist.<host>` rows. Pinned to the same `v0.5.1` tag the
+# `just workspace install-corrosion` recipe uses, so a `nros setup --tool corrosion`
+# and a `just workspace install-corrosion` land the same Corrosion version at the
+# same prefix. The Phase 212 `cmake_mixed_corrosion_bridge_builds` test (and the
+# `just workspace doctor` check) both expect `~/.nros/sdk/corrosion/`.
+[tool.corrosion]
+version = "0.5.1-nros1"
+upstream = "v0.5.1" # = source.ref (corrosion-rs/corrosion release tag)
+[tool.corrosion.source]
+git = "https://github.com/corrosion-rs/corrosion"
+ref = "v0.5.1"
+configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DCORROSION_BUILD_TESTS=OFF"
+install = "cmake --build build --parallel $(nproc) --target install"
+
 # Phase 197.3 — Espressif's QEMU fork (provides the `esp32c3` machine the ESP32
 # emulator tests need; stock qemu-system-riscv32 only knows `virt`). Source-built
 # only (not hosted) — `just esp32 setup` → `nros setup --tool esp32-qemu`.
