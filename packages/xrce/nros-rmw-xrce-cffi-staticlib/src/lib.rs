@@ -11,6 +11,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "panic-halt")]
+use panic_halt as _;
+
 // Force the linker to retain the cffi register entry. The actual
 // symbol is `#[unsafe(no_mangle)] extern "C"` inside
 // `nros-rmw-xrce-cffi`'s vtable.c; pulling its Rust-side `register()`

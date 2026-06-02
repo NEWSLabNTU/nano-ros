@@ -73,8 +73,10 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String, sync::Arc, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{cell::RefCell, marker::PhantomData, time::Duration};
+
+use portable_atomic_util::Arc;
 
 use crate::{
     EmbeddedRawPublisher, Executor, GoalId, GoalStatus,

@@ -57,6 +57,12 @@ if(NOT DEFINED Rust_CARGO_TARGET OR Rust_CARGO_TARGET STREQUAL "")
     endif()
 endif()
 
+# Phase 212.M.7 — the `--cfg=portable_atomic_unsafe_assume_single_core`
+# flag required by riscv32imc (esp32c3 / esp32c2) lives in workspace
+# `.cargo/config.toml` under `[target.riscv32imc-unknown-none-elf]` so it
+# reaches every transitive crate (`portable-atomic` itself + every
+# consumer). See that file for the rationale + safety constraint.
+
 # --- Phase 212.H.5 codegen-system bake ----------------------------------
 # Where the user workspace + bringup pkg live. `NROS_WORKSPACE_DIR` is
 # typically the parent of the IDF project (`${CMAKE_SOURCE_DIR}/..`);

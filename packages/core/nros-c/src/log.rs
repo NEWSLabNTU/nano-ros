@@ -83,7 +83,7 @@ pub unsafe extern "C" fn nros_log_emit(
     logger.dispatch(&record);
 }
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use portable_atomic::{AtomicBool, Ordering};
 static DEFAULT_SINKS_INSTALLED: AtomicBool = AtomicBool::new(false);
 
 fn ensure_default_sinks() {

@@ -33,9 +33,16 @@ default = []
 # the top-level binary via `panic-halt` / `panic-probe`).
 std = ["nros-rmw-xrce-cffi/std"]
 linkme-register = ["nros-rmw-xrce-cffi/linkme-register"]
+# Phase 212.M.7 — ESP-IDF integration links this staticlib into a C
+# binary (app_main.c) which carries no Rust-side panic handler. Opt
+# into a `panic-halt` strategy so compile-time panic resolution
+# succeeds. Off by default on Zephyr / FreeRTOS where the top-level
+# Rust binary supplies its own panic handler.
+panic-halt = ["dep:panic-halt"]
 
 [dependencies]
 nros-rmw-xrce-cffi = { workspace = true, default-features = false }
+panic-halt = { version = "1", optional = true }
 
 [lints]
 workspace = true

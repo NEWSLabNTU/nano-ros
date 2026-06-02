@@ -168,6 +168,12 @@ nros-bridge = { version = "0.1.0", path = "../../bridge/nros-bridge", default-fe
 nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
 nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
 nros-serdes = { version = "0.1.0", path = "../nros-serdes", default-features = false }
+# Phase 212.M.7 — Arc that works on targets lacking ptr atomics
+# (riscv32imc / esp32c3 under ESP-IDF). `alloc::sync::Arc` is gated
+# behind `target_has_atomic = "ptr"`; `portable_atomic_util::Arc`
+# uses the portable-atomic polyfill (consumer brings a
+# `critical-section` impl on no-atomic targets).
+portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"] }
 paste = "1"
 
 [dev-dependencies]

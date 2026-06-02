@@ -18,3 +18,16 @@ incremental = true
 debug = 1
 lto = "off"
 panic = "abort"
+
+# Phase 212.M.7 — riscv32imc (esp32c3 / esp32c2 under ESP-IDF) has no
+# hardware atomics. `portable-atomic` requires either a critical-section
+# impl or the `portable_atomic_unsafe_assume_single_core` cfg on such
+# targets. esp32c3 / esp32c2 are officially single-core RISC-V SoCs so
+# the cfg is correct (matches esp-hal convention). SAFE ONLY on single-
+# hart targets — do not propagate to riscv32imac (esp32c6 / esp32h2 /
+# esp32p4) where atomics exist OR to a multi-core SoC.
+[target.riscv32imc-unknown-none-elf]
+rustflags = [
+  "-C", "symbol-mangling-version=v0",
+  "--cfg=portable_atomic_unsafe_assume_single_core",
+]

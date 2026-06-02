@@ -137,6 +137,14 @@ panic-halt = { version = "1", optional = true }
 # on real Cortex-M Zephyr; native_sim x86 needs to fall back to
 # DDS[std]'s restore-state-bool.
 critical-section = { version = "1.1", optional = true }
+# Phase 212.M.7 — riscv32imc (esp32c3 under ESP-IDF) has no hardware
+# atomics. `core::sync::atomic::AtomicBool::compare_exchange` is gated
+# behind `target_has_atomic = "ptr"` and unresolved on that target.
+# `portable_atomic::AtomicBool` polyfills via the
+# `portable_atomic_unsafe_assume_single_core` cfg (set by the ESP-IDF
+# integration shell on single-core riscv targets) or a `critical-
+# section` impl.
+portable-atomic = { version = "1", default-features = false }
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 critical-section = { version = "1.1", optional = true, features = ["restore-state-u32"] }

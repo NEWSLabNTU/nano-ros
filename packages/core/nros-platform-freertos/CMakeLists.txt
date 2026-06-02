@@ -52,8 +52,28 @@ endif()
 
 add_library(nros_platform_freertos STATIC ${_nros_freertos_sources})
 target_include_directories(nros_platform_freertos PUBLIC ${NROS_PLATFORM_CFFI_INCLUDE})
-target_compile_options(nros_platform_freertos PRIVATE
-    -Wall -Wextra -Wpedantic -Werror)
+# Phase 212.M.7 — ESP-IDF's vendor headers (`lwip/netdb.h`,
+# `freertos/portmacro.h`, soc `REG_READ` macro) use GCC extensions
+# (`#include_next`, statement-expressions). They're transitively
+# included by our `net.c` and `cyclonedds_compat.c`, so the
+# `-Wpedantic -Werror` combo trips on vendor code. Drop pedantic
+# when the IDF integration is active; keep the strict flags on
+# stand-alone FreeRTOS builds where our own code is the only TU.
+#
+# Also: ESP-IDF lays FreeRTOS headers out as `freertos/FreeRTOS.h`
+# whereas vanilla FreeRTOS publishes `FreeRTOS.h` at the kernel
+# include root. Add the IDF `FreeRTOS-Kernel/include/freertos`
+# directory as a PRIVATE include so the same `#include <FreeRTOS.h>`
+# in our C source resolves under either layout.
+if(DEFINED IDF_TARGET)
+    target_compile_options(nros_platform_freertos PRIVATE
+        -Wall -Wextra -Werror)
+    target_include_directories(nros_platform_freertos PRIVATE
+        "$ENV{IDF_PATH}/components/freertos/FreeRTOS-Kernel/include/freertos")
+else()
+    target_compile_options(nros_platform_freertos PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+endif()
 
 # Pull FreeRTOS headers + FreeRTOSConfig from the parent build's
 # imported targets. Both targets are expected to exist; we don't

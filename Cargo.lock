@@ -1287,6 +1287,7 @@ dependencies = [
  "nros-rmw-cffi",
  "nros-serdes",
  "paste",
+ "portable-atomic-util",
 ]
 
 [[package]]
@@ -1350,6 +1351,7 @@ dependencies = [
  "nros-sizes-build",
  "panic-halt",
  "paste",
+ "portable-atomic",
 ]
 
 [[package]]
@@ -1609,6 +1611,7 @@ name = "nros-rmw-xrce-cffi-staticlib"
 version = "0.1.0"
 dependencies = [
  "nros-rmw-xrce-cffi",
+ "panic-halt",
 ]
 
 [[package]]

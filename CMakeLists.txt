@@ -215,6 +215,14 @@ elseif(NANO_ROS_RMW STREQUAL "xrce")
     if(NANO_ROS_PLATFORM STREQUAL "posix")
         list(APPEND _xrce_features std)
     endif()
+    # Phase 212.M.7 — ESP-IDF integration links the staticlib into the
+    # C `app_main.c` binary which carries no Rust-side panic_handler.
+    # Opt the staticlib's `panic-halt` strategy in so compile-time
+    # panic resolution succeeds. Other RTOS targets supply panic from
+    # the top-level Rust binary and keep the staticlib lean.
+    if(NANO_ROS_PLATFORM STREQUAL "esp_idf")
+        list(APPEND _xrce_features panic-halt)
+    endif()
     corrosion_import_crate(
         MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml"
         CRATES        nros-rmw-xrce-cffi-staticlib

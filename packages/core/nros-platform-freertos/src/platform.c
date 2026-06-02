@@ -628,13 +628,26 @@ size_t nros_platform_wake_storage_align(void) {
  * Token is unused (returns 0); FreeRTOS's port layer handles the
  * restore posture internally. */
 uint32_t nros_platform_critical_section_acquire(void) {
+    /* ESP-IDF's FreeRTOS port redefines `taskENTER_CRITICAL` to take
+     * a `portMUX_TYPE *` arg (SMP-aware). The vanilla zero-arg form
+     * doesn't compile under IDF. Drop to the underlying
+     * `vPortEnterCritical()` primitive which is portable across
+     * vanilla and IDF FreeRTOS. */
+#if defined(ESP_PLATFORM)
+    vPortEnterCritical();
+#else
     taskENTER_CRITICAL();
+#endif
     return 0;
 }
 
 void nros_platform_critical_section_release(uint32_t token) {
     (void) token;
+#if defined(ESP_PLATFORM)
+    vPortExitCritical();
+#else
     taskEXIT_CRITICAL();
+#endif
 }
 
 /* ============================================================

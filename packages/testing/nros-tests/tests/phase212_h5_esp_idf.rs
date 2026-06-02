@@ -56,24 +56,6 @@ fn stage_fixture() -> (tempfile::TempDir, PathBuf) {
 }
 
 #[test]
-#[ignore = "Phase 212.H.5 — the integration shell now carves an `esp_idf` \
-            platform out (validator + cmake/platform/nano-ros-esp_idf.cmake, \
-            NANO_ROS_BOARD bypass), and the cmake configure runs end-to-end \
-            (codegen-system bake lands; Corrosion picks up Rust_CARGO_TARGET \
-            for the IDF SoC, e.g. riscv32imc-unknown-none-elf for esp32c3). \
-            Cross-compile then trips a DEEPER gap in nros-node: the \
-            `alloc + not(std) + rmw-cffi + platform-freertos` branch of \
-            executor/spin.rs uses `alloc::sync::Arc` directly (e.g. \
-            wake_flag_alloc / wake_ctx_alloc), which stdlib gates behind \
-            `target_has_atomic = \"ptr\"` — esp32c3's riscv32imc lacks ptr \
-            atomics. The existing examples/esp32/rust/talker dodges this by \
-            building under `platform-bare-metal` instead. Resolving for an \
-            ESP-IDF + FreeRTOS combo requires swapping those Arcs over to \
-            `portable_atomic_util::Arc` on atomic-free targets (nros-node \
-            change), or sourcing critical-section + portable-atomic \
-            unsafe-assume-single-core flags through the IDF integration. \
-            Un-ignore once nros-node's wake-alloc Arcs go through \
-            portable-atomic-util."]
 fn esp_idf_esp32c3_2_component_bringup_builds() {
     // Phase 212.H.5 prereqs: nros CLI + a usable ESP-IDF installation.
     if !nros_tests::require_nros_cli() {
