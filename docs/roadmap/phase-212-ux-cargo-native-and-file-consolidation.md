@@ -457,7 +457,15 @@ baked tree from 212.E.
   - [ ] `esp_idf_esp32c3_2_component_bringup_builds`
   - [ ] `platformio_zephyr_framework_2_component_bringup_builds`
   - [ ] `px4_sitl_2_component_module_builds`
-  - [ ] `rtos_adapter_loc_budget_under_200` — `tokei` budget gate.
+  - [x] `rtos_adapter_loc_budget_under_200` — `tokei` budget gate.
+        Activated test(212.H.8) `649b0deb9` — replaced the
+        `tokei` CLI shell-out with an in-process `tokei` crate dep
+        (`tokei = { version = "14", default-features = false }`), so
+        the gate runs on a stock dev machine without `cargo install
+        tokei`. Current measured counts (all under their 200-LoC
+        budget): zephyr=131, nuttx=137, threadx=115, esp-idf=78,
+        platformio=46, px4=51; `cmake/nano_ros_workspace_metadata
+        .cmake`=101/150.
 - **Files:**
   `zephyr/module.yml`, `zephyr/CMakeLists.txt`,
   `integrations/{nuttx,esp-idf,platformio,px4}/`,
@@ -1677,8 +1685,9 @@ asymmetry rationale.
       new shape** (Zephyr, NuttX, FreeRTOS, ThreadX, ESP-IDF, PlatformIO,
       PX4). (212.H + 212.M)
 - [ ] **Each adapter shim ≤200 LoC; cmake `nano_ros_workspace_metadata
-      ()` ≤150 LoC.** CI gate via `tokei`. (`nros-build` budget bullet
-      retired with 212.C.)
+      ()` ≤150 LoC.** CI gate via the in-process `tokei` crate
+      (no `tokei` CLI install required — activated H.8 2026-06-02).
+      (`nros-build` budget bullet retired with 212.C.)
 - [ ] **No `nros build` / `nros test` / `nros flash` / `nros monitor`
       / `nros sign` / `nros emit` verbs.** Phase-doc grep checked in CI
       via `phase212_non_goals_grep.rs`. (Non-Goals)

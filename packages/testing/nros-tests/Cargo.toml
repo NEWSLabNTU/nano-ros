@@ -23,6 +23,12 @@ serde_json = "1.0"
 # example's `Cargo.toml`. Both 212.M.11 sibling + 212.M.12 sibling tests
 # consume the same dep.
 toml = "0.9"
+# Phase 212.H.8 — in-process LoC counter for the adapter-shim +
+# workspace-metadata budget gates. Replaces the previous shell-out to
+# the `tokei` CLI binary so the test runs on a stock dev machine without
+# `cargo install tokei`. `default-features = false` drops the CLI bits
+# (clap/colored/env_logger) — we only need the library.
+tokei = { version = "14", default-features = false }
 
 # Async support for waiting
 parking_lot = "0.12"

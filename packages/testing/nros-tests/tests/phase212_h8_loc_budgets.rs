@@ -6,15 +6,27 @@
 //!   * each RTOS adapter shim ≤ 200 LoC
 //!   * cmake `nano_ros_workspace_metadata()` ≤ 150 LoC
 //!
-//! Each gate calls the `tokei` binary and asserts on the `code` count —
-//! comments + blanks do not count toward the budget. The `tokei` binary
-//! is the canonical measurement tool the Phase 212 docs name
-//! explicitly, so we shell out rather than pulling a fresh crate dep.
+//! Each gate measures the `code` line count under a path — comments +
+//! blanks do not count toward the budget.
 //!
-//! Skip discipline: `tokei` IS the measurement, so if it is missing the
-//! gate cannot run; we `nros_tests::skip!` (which panics with the
-//! `[SKIPPED]` prefix the CI runner recognises). Every other failure
-//! path is a hard `assert!` — silent early-return is forbidden.
+//! ## Why the `tokei` crate, not the `tokei` CLI
+//!
+//! The earlier revision of this test shelled out to a `tokei` binary
+//! on `$PATH`. That binary isn't installed on a stock dev machine
+//! (and isn't in our toolchain-tier provisioner), so every CI / dev
+//! run hit the `nros_tests::skip!` branch and the gate effectively
+//! never ran. Phase 212.H.8 activation pulls `tokei` in as a Rust
+//! dev-dependency (`tokei = { version = "14", default-features = false }`
+//! in `Cargo.toml` — `default-features = false` drops the CLI's
+//! clap/colored/env_logger tree, leaving only the counter library).
+//! All counting is now in-process and deterministic; no external
+//! install, no skip path.
+//!
+//! Counts match the CLI's `Total.code` exactly because we drive the
+//! same `tokei::Languages::get_statistics()` entry point the CLI does.
+//!
+//! Skip discipline: there is no skip path. Every failure mode is a
+//! hard `assert!` — silent early-return is forbidden.
 //!
 //! ## Adapter shim path mapping (verified 2026-06-01)
 //!
@@ -33,12 +45,10 @@
 //! When you re-home one of these, update the table AND the `SHIMS`
 //! const below — the test reads the table for its assertion loop.
 
-use std::{
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-};
+use std::path::{Path, PathBuf};
 
 use nros_tests::project_root;
+use tokei::{Config, Languages};
 
 const BUDGET_WORKSPACE_METADATA: u64 = 150;
 const BUDGET_ADAPTER_SHIM: u64 = 200;
@@ -60,11 +70,12 @@ const SHIMS: &[(&str, &str)] = &[
 /// language tokei recognises. `path` may be a single file or a
 /// directory; tokei recurses on dirs.
 ///
-/// `lang_filter` optionally restricts to one language (e.g. `"Rust"`)
-/// for single-language gates. `None` sums across all languages — used
-/// for adapter shims so a mixed Makefile / CMake / Kconfig directory
-/// still totals one budget.
-fn tokei_code_loc(path: &Path, lang_filter: Option<&str>) -> u64 {
+/// Counts comments + blanks-excluded `code` lines only — the same
+/// figure the `tokei` CLI prints in the `Code` column / `Total.code`
+/// JSON field. We drive the library entry-point directly so there's
+/// no process spawn and no need for an external `tokei` binary on
+/// `$PATH`.
+fn tokei_code_loc(path: &Path) -> u64 {
     assert!(
         path.exists(),
         "tokei target missing — adapter shim moved? update the SHIMS table in \
@@ -72,50 +83,18 @@ fn tokei_code_loc(path: &Path, lang_filter: Option<&str>) -> u64 {
         path.display()
     );
 
-    let mut cmd = Command::new("tokei");
-    cmd.arg("--output").arg("json");
-    if let Some(lang) = lang_filter {
-        cmd.arg("--types").arg(lang);
-    }
-    cmd.arg(path);
-
-    let out = match cmd.stderr(Stdio::piped()).output() {
-        Ok(o) => o,
-        Err(e) => nros_tests::skip!("tokei not on PATH ({e}) — install via `cargo install tokei`"),
-    };
-    assert!(
-        out.status.success(),
-        "tokei failed on {}: {}",
-        path.display(),
-        String::from_utf8_lossy(&out.stderr)
-    );
-
-    let parsed: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .unwrap_or_else(|e| panic!("tokei JSON parse failed on {}: {e}", path.display()));
-
-    // Prefer the top-level `Total.code` aggregate — present whenever
-    // tokei finds at least one recognised file. Falls back to summing
-    // the per-language `code` fields (tokei has historically emitted
-    // both shapes; the manual sum keeps us robust).
-    if let Some(code) = parsed
-        .get("Total")
-        .and_then(|t| t.get("code"))
-        .and_then(|c| c.as_u64())
-    {
-        return code;
-    }
+    let config = Config::default();
+    let mut languages = Languages::new();
+    // `get_statistics` accepts paths as `AsRef<Path>` and ignored
+    // patterns as `AsRef<str>` — pass empty ignore list, the library
+    // already skips hidden/vcs dirs by default.
+    let path_arg: [&Path; 1] = [path];
+    let ignored: [&str; 0] = [];
+    languages.get_statistics(&path_arg, &ignored, &config);
 
     let mut total: u64 = 0;
-    let obj = parsed
-        .as_object()
-        .unwrap_or_else(|| panic!("tokei JSON not an object for {}", path.display()));
-    for (key, val) in obj {
-        if key == "Total" {
-            continue;
-        }
-        if let Some(code) = val.get("code").and_then(|c| c.as_u64()) {
-            total += code;
-        }
+    for (_lang_type, lang) in &languages {
+        total += lang.code as u64;
     }
     total
 }
@@ -123,9 +102,7 @@ fn tokei_code_loc(path: &Path, lang_filter: Option<&str>) -> u64 {
 #[test]
 fn cmake_workspace_metadata_under_150_loc() {
     let file = project_root().join("cmake/nano_ros_workspace_metadata.cmake");
-    // Single file — tokei still emits Total.code, no language filter
-    // needed (CMake is the only language inside).
-    let code = tokei_code_loc(&file, None);
+    let code = tokei_code_loc(&file);
     assert!(
         code <= BUDGET_WORKSPACE_METADATA,
         "Phase 212 acceptance budget violated: \
@@ -146,7 +123,7 @@ fn rtos_adapter_shims_under_200_loc_each() {
         // Sum across every language tokei recognises — adapter shim
         // dirs (nuttx, px4) mix CMake + Makefile + Kconfig + C++ +
         // Python, and the 200-LoC budget covers them as one unit.
-        let code = tokei_code_loc(&abs, None);
+        let code = tokei_code_loc(&abs);
         reports.push((label.to_string(), code));
         if code > BUDGET_ADAPTER_SHIM {
             violations.push(format!(
