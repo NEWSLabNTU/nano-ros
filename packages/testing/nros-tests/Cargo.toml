@@ -83,6 +83,12 @@ nros-log = { path = "../../core/nros-log" }
 # `init` module is platform/RMW-independent (no backend pulled), so we
 # depend on it with only `std`.
 nros = { path = "../../core/nros", default-features = false, features = ["std"] }
+# Phase 212.N.7 — the `nros::component!()` macro emits a
+# `pub fn register(runtime: &mut ::nros_platform::RuntimeCtx<'_>)`
+# wrapper. Tests that invoke that wrapper directly need `nros-platform`
+# nameable in scope; gated on `component-runtime-test` because only the
+# m5a4 dispatch suite touches it today.
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-posix"], optional = true }
 
 [features]
 default = []
@@ -118,6 +124,7 @@ component-runtime-test = [
     "trigger-test",
     "nros/rmw-cffi",
     "nros/platform-posix",
+    "dep:nros-platform",
 ]
 
 # Phase 124.A.8.b — zero-copy loan E2E via real zenoh-pico backend.

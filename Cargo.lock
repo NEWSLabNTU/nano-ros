@@ -2071,6 +2071,7 @@ dependencies = [
  "nros-core",
  "nros-log",
  "nros-node",
+ "nros-platform",
  "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-zenoh",

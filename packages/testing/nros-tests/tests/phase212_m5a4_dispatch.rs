@@ -1,32 +1,25 @@
-//! Phase 212.M.5.a.4 — BSP dispatch path integration.
+//! Phase 212.M.5.a.4 / N.7 — component dispatch path integration.
 //!
-//! M.5.a.4 lifts the BSP-path callback gap M.5.a.2 documented: the
-//! `nros::component!()` macro now emits parallel `_init` / `_dispatch`
-//! / `_tick` extern symbols alongside `_register`, and
-//! `ExecutorComponentRuntime::register_dispatch_slot` pairs them into
-//! a `BspDispatchSlot` so the BSP-launched component's `on_callback`
-//! body fires from the spin loop — same as the typed
-//! `register_component::<C>()` path, just type-erased through
-//! `*mut ()`.
+//! Originally the test exercised the BSP-baker fn-pointer ABI: the
+//! `nros::component!()` macro emitted four `__nros_component_<pkg>_*`
+//! externs and the test called `register_dispatch_slot(...)` with those
+//! symbols directly. Phase 212.N.7 step-6 dropped the global symbols —
+//! the macro now emits ONE public item, `pub fn register(runtime)`, and
+//! the four typed fns live as local items inside it. The
+//! Component-pkg-facing entry point is `<pkg>::register(&mut RuntimeCtx)`.
 //!
-//! Coverage:
-//!
-//! * `bsp_dispatch_fires_timer_callback` — register a Talker through
-//!   the BSP fn-pointer ABI; spin; assert the `on_callback` body
-//!   mutated state.
-//! * `bsp_dispatch_publisher_resolves` — same path; assert
-//!   `CallbackCtx::publish` (which depends on the per-cell resolver
-//!   being wired) returns `Ok` from the dispatched body.
+//! This rewrite preserves the original coverage (callback fires + the
+//! publisher resolver routes the dispatched publish) by going through
+//! the new path: build a real `ExecutorComponentRuntime`, wrap it in a
+//! `RuntimeCtx`, invoke the macro-emitted `register(runtime)` wrapper,
+//! then spin. Same end-state asserts as before.
 
 #![cfg(feature = "component-runtime-test")]
 
 use nros_rmw_zenoh as _;
 
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicU32, Ordering},
-    },
+    sync::atomic::{AtomicU32, Ordering},
     time::Duration,
 };
 
@@ -36,6 +29,7 @@ use nros::{
     component::{Component, ExecutableComponent, NodeOptions},
     component_metadata::{CallbackId, EntityId, NodeId as MetaNodeId},
 };
+use nros_platform::RuntimeCtx;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
 
@@ -66,7 +60,7 @@ impl nros::RosMessage for TestMsg {
 }
 
 // =============================================================================
-// Talker — one publisher + one 100 ms timer. The dispatched
+// Talker — one publisher + one 50 ms timer. The dispatched
 // `on_callback` body mutates a shared counter and publishes through
 // `CallbackCtx::publish` so we exercise both the state-erasure path
 // AND the per-cell publisher resolver.
@@ -111,20 +105,19 @@ impl ExecutableComponent for Talker {
     fn tick(_state: &mut Self::State, _ctx: &mut TickCtx<'_>) {}
 }
 
+// Phase 212.N.7 step-3.4 — the macro emits a single `pub fn register`
+// wrapper at this file's scope. Bind it to a distinct local name so we
+// can call it without conflicting with `Component::register` (the
+// declarative-side method bound on the `Talker` type above).
 nros::component!(Talker);
-
-// The `nros::component!` macro emits four `__nros_component_<pkg>_*`
-// symbols at top-level. Because this integration test compiles
-// under `nros-tests`, the sanitised pkg suffix is `nros_tests`. We
-// reference the locally defined symbols directly (declaring them
-// again as `extern "Rust"` would E0428 against the macro emit).
+use self::register as talker_register;
 
 // =============================================================================
 // Tests
 // =============================================================================
 
 #[rstest]
-fn bsp_dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
+fn dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
@@ -133,26 +126,26 @@ fn bsp_dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
 
     let locator = zenohd_unique.locator();
     let cfg = ExecutorConfig::new(&locator)
-        .node_name("m5a4_bsp_dispatch")
+        .node_name("m5a4_dispatch")
         .domain_id(180);
     let executor = Executor::open(&cfg).expect("Executor::open failed");
     let mut runtime = ExecutorComponentRuntime::from_executor(executor);
 
-    // Phase 212.M.5.a.4 — register through the BSP-shape API. This is
-    // the exact same shape the FreeRTOS BSP baker uses
-    // (`register_dispatch_slot` paired with the four mangled symbols).
-    runtime
-        .register_dispatch_slot(
-            __nros_component_nros_tests_register,
-            __nros_component_nros_tests_init,
-            __nros_component_nros_tests_dispatch,
-            __nros_component_nros_tests_tick,
-        )
-        .expect("register_dispatch_slot");
+    // Phase 212.N.7 — register through the new `pub fn register(runtime)`
+    // wrapper emitted by `nros::component!(Talker)`. The wrapper
+    // transmutes the four typed local fns to the platform-layer opaque
+    // aliases and forwards to `ExecutorComponentRuntime::register_dispatch_slot_dyn`
+    // (the impl in `component_runtime.rs` transmutes them back). Same
+    // dispatch path the previous test exercised via the four globally
+    // mangled symbols — now via the wrapper-emitted local fns.
+    {
+        let mut ctx = RuntimeCtx::with_runtime(&mut runtime);
+        talker_register(&mut ctx).expect("component register");
+    }
 
     assert_eq!(runtime.component_count(), 1);
 
-    // Spin for ~250 ms. The 50 ms-period timer must fire ≥ 2× and the
+    // Spin for ~300 ms. The 50 ms-period timer must fire ≥ 2× and the
     // dispatched body must run.
     for _ in 0..15 {
         std::thread::sleep(Duration::from_millis(20));
@@ -165,7 +158,7 @@ fn bsp_dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
     let errs = TALKER_PUB_ERRORS.load(Ordering::SeqCst);
     assert!(
         fires >= 2,
-        "BSP-path on_callback fired {fires} times — expected ≥ 2 over 300 ms"
+        "on_callback fired {fires} times — expected ≥ 2 over 300 ms"
     );
     assert_eq!(
         errs, 0,
@@ -174,7 +167,7 @@ fn bsp_dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
 }
 
 #[rstest]
-fn bsp_dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
+fn dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
         nros_tests::skip!("zenohd not found");
     }
@@ -187,14 +180,11 @@ fn bsp_dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
         .domain_id(181);
     let executor = Executor::open(&cfg).expect("Executor::open failed");
     let mut runtime = ExecutorComponentRuntime::from_executor(executor);
-    runtime
-        .register_dispatch_slot(
-            __nros_component_nros_tests_register,
-            __nros_component_nros_tests_init,
-            __nros_component_nros_tests_dispatch,
-            __nros_component_nros_tests_tick,
-        )
-        .expect("register_dispatch_slot");
+
+    {
+        let mut ctx = RuntimeCtx::with_runtime(&mut runtime);
+        talker_register(&mut ctx).expect("component register");
+    }
 
     // Drive the spin long enough for at least one timer fire.
     for _ in 0..10 {
@@ -209,10 +199,6 @@ fn bsp_dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
     assert!(fires >= 1, "expected ≥ 1 timer fire (got {fires})");
     assert_eq!(
         errs, 0,
-        "publisher resolver must route the BSP-dispatched publish (errs = {errs})"
+        "publisher resolver must route the dispatched publish (errs = {errs})"
     );
-    // Silence the unused-warning on the Arc/Ordering imports under
-    // `--no-default-features` builds that still want this test file
-    // to compile.
-    let _ = Arc::new(AtomicU32::new(0));
 }
