@@ -7,7 +7,8 @@
 //!   SSoT for codegen / bringup verb).
 //! * **Component XOR Application classification** — every example
 //!   Rust crate carries exactly one of `[package.metadata.nros.
-//!   component]` or `[package.metadata.nros.application]`.
+//!   component]`, `[package.metadata.nros.application]`, or
+//!   `[package.metadata.nros.entry]` (Phase 212.N.6 rename).
 //! * **`<pkg>::<Class>` class string** — Component pkgs' `class` field
 //!   starts with the Cargo `[package].name`-mangled identifier so
 //!   codegen + humans land in the same crate (L.4 lint).
@@ -252,6 +253,7 @@ fn rel_to_project(p: &Path) -> PathBuf {
 struct ProofKindClassification {
     is_component: bool,
     is_application: bool,
+    is_entry: bool,
     component_class: Option<String>,
     deploy_targets: BTreeSet<String>,
     package_name: Option<String>,
@@ -278,6 +280,7 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
 
     let component = nros.and_then(|n| n.get("component"));
     let application = nros.and_then(|n| n.get("application"));
+    let entry = nros.and_then(|n| n.get("entry"));
 
     let component_class = component
         .and_then(|c| c.get("class"))
@@ -296,6 +299,7 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
     Ok(ProofKindClassification {
         is_component: component.is_some(),
         is_application: application.is_some(),
+        is_entry: entry.is_some(),
         component_class,
         deploy_targets,
         package_name,
@@ -393,10 +397,17 @@ fn component_or_application_classification_present() {
                 continue;
             }
         };
-        match (cls.is_component, cls.is_application) {
-            (true, true) => bad.push((rel, "declares BOTH component and application")),
-            (false, false) => bad.push((rel, "declares NEITHER component nor application")),
-            _ => {}
+        // Phase 212.N.6 added `[package.metadata.nros.entry]` as the
+        // renamed-from-application shape for Entry pkgs (post-N.7).
+        // Component pkgs use `[...component]`; Application/Entry pkgs
+        // pick exactly one of `[...application]` / `[...entry]`.
+        let kinds = (cls.is_component as u8)
+            + (cls.is_application as u8)
+            + (cls.is_entry as u8);
+        match kinds {
+            0 => bad.push((rel, "declares NEITHER component nor application/entry")),
+            1 => {}
+            _ => bad.push((rel, "declares MORE than one of component/application/entry")),
         }
     }
     assert!(

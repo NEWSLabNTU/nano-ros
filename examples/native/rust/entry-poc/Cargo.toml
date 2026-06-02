@@ -12,6 +12,9 @@ description = "Phase 212.N.7 step-1 — proof-of-concept Entry pkg consuming `nr
 name = "entry-poc"
 path = "src/main.rs"
 
+[package.metadata.nros.entry]
+deploy = "native"
+
 [dependencies]
 # Phase 212.N.3 tier-1 per-board shim. `NativeBoard::run` provides the
 # `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.

@@ -12,6 +12,9 @@ description = "Phase 212.N.7 step-2 — Entry pkg for the NuttX QEMU ARM listene
 name = "nuttx_rs_listener_entry"
 path = "src/main.rs"
 
+[package.metadata.nros.entry]
+deploy = "nuttx"
+
 [dependencies]
 nros-board-nuttx-qemu-arm = { path = "../../../../packages/boards/nros-board-nuttx-qemu-arm" }
 nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false }

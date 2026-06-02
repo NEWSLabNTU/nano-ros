@@ -566,10 +566,13 @@ CMake on hosted targets (native, qemu native_sim).
       a `rmw-cyclonedds` feature that pulls in the new sys crates. The
       CMakeLists path for cyclonedds is RETIRED; C++ examples retain
       their CMake path unchanged.
-- [ ] **K.6** — Fallback acceptance: if the sys-crate wrapper proves
-      too brittle across Cyclone bumps, retain the CMake path for
-      cyclonedds AS the canonical Rust+Cyclone build. Don't force a
-      Rust-only path against upstream churn.
+- [x] **K.6 — NOT TRIGGERED** (2026-06-02). K.1–K.5 landed (commits
+      `11dc35f38` + `802e13021` + `f5bf74901` + `233520435` + revert
+      `8557f73b6`). The pure-cargo Cyclone-Rust path proved sound;
+      no Cyclone bump in the M / N waves has invalidated it. K.6
+      was a fallback conditional on sys-crate brittleness — that
+      condition didn't fire. Re-opens only if a future Cyclone bump
+      breaks the sys-crate wrapper.
 - **Tests:**
   - [ ] `cyclonedds_sys_builds_native` — `cargo build -p cyclonedds-sys`
         on native_sim succeeds; `libddsc.a` linked.
@@ -600,7 +603,19 @@ launch-overlay init) is generalised + renamed **Entry pkg**.
 "Bringup pkg" is RETIRED — Entry pkg subsumes its role. The L.4-L.12
 sub-items that already shipped stay marked done.
 
-- [ ] **L.1 Component pkg shape** — Rust authors `Cargo.toml` (w/ `[lib]
+- [x] **L.1 Component pkg shape** — landed in essentials (2026-06-02
+      audit). Rust side: `nros::component!()` macro + `Component` /
+      `ExecutableComponent` traits ship via Phase 172 W.3 + Phase
+      212.M.5.a chain (`5f271ff9f` per-pkg mangled register symbol,
+      `0aaef01d2` Executor-backed ComponentRuntime). C++ side: cmake
+      `nano_ros_component_register(NAME … CLASS … SOURCES … DEPLOY …)`
+      ships via `8278955b9` + L.9 (`aa89e0465`). Adoption across the
+      example matrix: M.3 (Zephyr/rust), M.4 (NuttX), M.5.b (FreeRTOS),
+      M.6 (ThreadX-linux), M.13 (native/c) — all migrated. Spec text
+      below is the locked Path-A description; future tweaks land as
+      L.x sub-items.
+
+      Rust authors `Cargo.toml` (w/ `[lib]
       crate-type=["rlib","staticlib"]` + `[package.metadata.nros.
       component] class = "<pkg>::<UserClass>"`) + `package.xml` +
       `src/lib.rs` (`impl Component for UserClass` + `nros::component!(
@@ -641,7 +656,7 @@ sub-items that already shipped stay marked done.
       pkg dir. Embedded single-Component case still requires a
       hand-written `main.rs` (board init non-trivial).
 
-- [ ] **L.3 Bringup pkg shape — RETIRED (2026-06-02)**. The Path A
+- [x] **L.3 Bringup pkg shape — RETIRED (2026-06-02)**. The Path A
       code-free bringup pkg concept introduced in the 2026-05 draft
       is subsumed by Entry pkg. Deploy / domain / bridge config
       moves into Entry pkg's `Cargo.toml` `[package.metadata.nros.*]`
@@ -882,13 +897,19 @@ A clean break — no transitional mixed-shape state allowed.
       panic-halt feature). `phase212_m7_esp32_{talker,listener}`
       tests added; `phase212_h5_esp_idf` green. No `c`/`cpp` esp32
       examples in tree (CLAUDE.md carve-out preserved).
-- [ ] **M.8 PlatformIO sweep** — `examples/platformio/*` (when any
-      land). H.6 extra_script handles framework-agnostic codegen via
-      `nros codegen-system --ahead-of-vendor --framework <f>`.
-- [ ] **M.9 PX4 sweep** — `examples/px4/cpp/uorb/nros-register-check/`
-      stays as-is (the canonical PX4 surface per Phase 115.K.4).
-      Multi-node PX4 case (H.7-shipped emit) operates on bringup pkgs
-      writing into `$PX4_AUTOPILOT_DIR/src/modules/`.
+- [x] **M.8 PlatformIO sweep — DEFERRED-pending-examples** (2026-06-02).
+      Zero `examples/platformio/*` in tree today; nothing to sweep.
+      H.6 extra_script (`8278955b9`, `34db111ad`) already handles
+      framework-agnostic codegen via `nros codegen-system
+      --ahead-of-vendor --framework <f>`. Re-opens automatically the
+      day someone lands a first PlatformIO example.
+- [x] **M.9 PX4 sweep — STAYS-AS-IS** (2026-06-02) per Phase
+      115.K.4. `examples/px4/cpp/uorb/nros-register-check/` is the
+      canonical PX4 surface (one example, uORB-only, never
+      Component-pkg-shaped). Multi-node PX4 case rides H.7's emit
+      (`34db111ad`) which operates on bringup pkgs writing into
+      `$PX4_AUTOPILOT_DIR/src/modules/` — no example-tree sweep
+      required.
 - [~] **M.10 Pre-212 file cleanup** — partial close 2026-06-02 audit.
       Per-file disposition (verified by `git ls-files` + the
       `phase212_m12_example_shape` + `phase212_examples_canonical_

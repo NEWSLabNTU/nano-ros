@@ -12,6 +12,9 @@ description = "Phase 212.N.7 step-2 — FreeRTOS MPS2-AN385 Entry pkg for the `f
 name = "freertos_rs_talker_entry"
 path = "src/main.rs"
 
+[package.metadata.nros.entry]
+deploy = "freertos"
+
 [dependencies]
 # Phase 212.N.3 tier-1 per-board shim. `Mps2An385::run` provides the
 # `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
