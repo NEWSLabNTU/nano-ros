@@ -1,30 +1,26 @@
 cmake_minimum_required(VERSION 3.22)
-project(freertos_cpp_service_server VERSION 0.1.0 LANGUAGES C CXX ASM)
+project(freertos_cpp_service_server VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Phase 144.5 — consume nano-ros via add_subdirectory(<repo-root>).
-# Five levels up from examples/qemu-arm-freertos/<lang>/<rmw>/<example>/.
 set(NANO_ROS_PLATFORM freertos)
-set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
+set(NROS_RMW "zenoh" CACHE STRING "Active RMW.")
 set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    mps2-an385-freertos)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/compat/NrosRclcppCompat.cmake")
-find_package(example_interfaces REQUIRED)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
-nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosComponentRegister.cmake")
+nros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE CPP SKIP_INSTALL)
 
-add_executable(freertos_cpp_service_server src/main.cpp)
-target_include_directories(freertos_cpp_service_server PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
-target_link_libraries(freertos_cpp_service_server PRIVATE
-    example_interfaces::example_interfaces
-    NanoRos::NanoRosCpp)
-nros_platform_link_app(freertos_cpp_service_server)
-nano_ros_link_rmw(freertos_cpp_service_server RMW "${NROS_RMW}")
+nano_ros_component_register(
+    NAME    service_server
+    CLASS   freertos_cpp_service_server::AddTwoIntsServer
+    SOURCES src/AddTwoIntsServer.cpp ${example_interfaces_GENERATED_SOURCES}
+    DEPLOY  freertos)
+
+nano_ros_deploy(
+    TARGET     freertos
+    RMW        ${NROS_RMW}
+    DOMAIN_ID  0
+    LOCATOR    "tcp/10.0.2.2:7447")

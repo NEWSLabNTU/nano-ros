@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>freertos_c_service_server</name>
+  <version>0.1.0</version>
+  <description>FreeRTOS QEMU MPS2-AN385 C AddTwoInts service server — Phase 212.L Component pkg</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+
+  <depend>example_interfaces</depend>
+</package>

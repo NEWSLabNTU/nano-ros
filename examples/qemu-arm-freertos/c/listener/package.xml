@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>freertos_c_listener</name>
+  <version>0.1.0</version>
+  <description>FreeRTOS QEMU MPS2-AN385 C listener — Phase 212.L Component pkg</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+
+  <depend>std_msgs</depend>
+</package>

@@ -1,7 +1,5 @@
-/target/
-/target-zenoh/
-/target-dds/
-/build-cyclonedds/
-/generated/
-/Cargo.lock
+/target*/
 /build/
+/build-*/
+/Cargo.lock
+/generated/

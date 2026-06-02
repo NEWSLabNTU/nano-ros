@@ -1,29 +1,33 @@
 cmake_minimum_required(VERSION 3.22)
-project(freertos_c_talker VERSION 0.1.0 LANGUAGES C CXX ASM)
+# Phase 212.L Component pkg — class prefix must equal PROJECT_NAME (L.4).
+project(freertos_c_talker VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Phase 144.5 — consume nano-ros via add_subdirectory(<repo-root>).
-# Five levels up from examples/qemu-arm-freertos/<lang>/<rmw>/<example>/.
+# Phase 144 — consume nano-ros via add_subdirectory(<repo-root>).
 set(NANO_ROS_PLATFORM freertos)
 set(NROS_RMW "zenoh" CACHE STRING
-    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
+    "Active RMW (zenoh|xrce|cyclonedds) — selects the backend linked into this example.")
 set(NANO_ROS_RMW "${NROS_RMW}")
 set(NANO_ROS_BOARD    mps2-an385-freertos)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosComponentRegister.cmake")
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
-nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/nros.toml")
-nano_ros_generate_config_header(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nros.toml"
-    "${CMAKE_CURRENT_BINARY_DIR}/include/nros/app_config.h")
 
-add_executable(freertos_c_talker src/main.c)
-target_include_directories(freertos_c_talker PRIVATE
-    "${CMAKE_CURRENT_BINARY_DIR}/include")
-target_link_libraries(freertos_c_talker PRIVATE
-    std_msgs__nano_ros_c
-    NanoRos::NanoRos)
-nros_platform_link_app(freertos_c_talker)
-nano_ros_link_rmw(freertos_c_talker RMW "${NROS_RMW}")
+# Phase 212.L.9 — declarative Component pkg shape. No add_executable
+# here, no `main()`; the BSP-generated runtime (M.5.a.3+4) owns the
+# entry point, executor init, and the spin loop.
+nano_ros_component_register(
+    NAME    talker
+    CLASS   freertos_c_talker::Talker
+    SOURCES src/Talker.c ${std_msgs_GENERATED_SOURCES}
+    DEPLOY  freertos)
+
+# Per-target deploy config (Phase 212.L.8).
+nano_ros_deploy(
+    TARGET     freertos
+    RMW        ${NROS_RMW}
+    DOMAIN_ID  0
+    LOCATOR    "tcp/10.0.2.2:7447")

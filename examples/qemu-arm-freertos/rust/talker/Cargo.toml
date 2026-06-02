@@ -1,55 +1,43 @@
 [package]
-name = "qemu-freertos-talker"
+name = "freertos_rs_talker"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Talker example on QEMU MPS2-AN385 with FreeRTOS + lwIP (Phase 118 collapsed)"
+description = "FreeRTOS QEMU MPS2-AN385 talker — Phase 212.L Component pkg"
 
-[[bin]]
-name = "qemu-freertos-talker"
-test = false
-bench = false
-
-# Phase 175.B — the CycloneDDS FreeRTOS path is CMake-driven because
-# the backend is C++ plus cmake-time idlc descriptors. The `rlib`
-# keeps the existing pure-cargo `_start` binary path intact; the
-# `staticlib` exposes `app_main` for the C startup used by CMake.
+# Phase 212.L.1 Component pkg shape — lib only, no [[bin]], no main.rs.
+# `nros::component!()` exports the register / init / dispatch / tick
+# trampolines; the BSP's generated runtime (M.5.a.4) owns the executor
+# + spin loop.
 [lib]
-name = "qemu_freertos_talker"
-crate-type = ["staticlib", "rlib"]
-path = "src/lib.rs"
-
-[features]
-# Phase 118 — RMW selected at build time. Default is `rmw-zenoh` so
-# `cargo build` Just Works for the docs-first path. The board crate's
-# zenoh-pico default features are gated under `rmw-zenoh`; rmw-cyclonedds
-# disables them via the optional dep stanza below.
-default = ["rmw-zenoh"]
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-mps2-an385-freertos/rmw-zenoh"]
-rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys", "dep:nros-platform-critical-section"]
+crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-# Board crate — default features include zenoh-pico glue; `rmw-cyclonedds`
-# leans on the non-zenoh init paths only.
-nros-board-mps2-an385-freertos = { path = "../../../../packages/boards/nros-board-mps2-an385-freertos", default-features = false }
-nros = { path = "../../../../packages/core/nros", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
-nros-platform = { path = "../../../../packages/core/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+nros = { path = "../../../../packages/core/nros", default-features = false, features = ["alloc", "rmw-cffi", "platform-freertos", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
-panic-semihosting = { version = "0.6", features = ["exit"] }
 
-# Optional RMW deps — exactly one is enabled by the corresponding feature.
-nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh", features = ["platform-freertos", "ros-humble"], optional = true }
-nros-rmw-cyclonedds-sys   = { path = "../../../../packages/dds/nros-rmw-cyclonedds-sys", default-features = false, optional = true }
-# Only needed by the CycloneDDS path — registers `critical_section::Impl`.
-nros-platform-critical-section = { path = "../../../../packages/core/nros-platform-critical-section", optional = true }
+[package.metadata.nros.component]
+class = "freertos_rs_talker::Talker"
+name = "talker"
+default_namespace = "/"
 
-# Phase 208.F1 — empty `[workspace]` table makes this example a standalone
-# workspace root. Without it, cargo walks up + adopts the example into the
-# outer nano-ros workspace (in nested checkouts) or gets adopted by a user's
-# workspace `members` glob when they copy this example out, breaking the
-# README's "standalone copy-out template" promise. Canonical in-tree builds
-# also pass via the root `exclude = [...]` list (belt-and-braces).
+[package.metadata.nros.deploy.freertos]
+board = "qemu-mps2-an385"
+rmw = "zenoh"
+domain_id = 0
+locator = "tcp/10.0.2.2:7447"
+
+[package.metadata.ament]
+build_depend = ["std_msgs"]
+exec_depend = ["std_msgs"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+# Phase 208.F1 — empty `[workspace]` table keeps this example standalone
+# (copy-out template promise + outer-workspace adoption guard).
 [workspace]
 
 # === BEGIN nros-managed [patch.crates-io] ===
@@ -72,5 +60,3 @@ nros-log = { path = "../../../../packages/core/nros-log" }
 nros-macros = { path = "../../../../packages/core/nros-macros" }
 nros-rmw-zenoh = { path = "../../../../packages/zpico/nros-rmw-zenoh" }
 # === END nros-managed [patch.crates-io] ===
-
-
