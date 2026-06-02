@@ -38,6 +38,7 @@
 #include "nros/polling_action_client.hpp"
 #include "nros/parameter.hpp"
 #include "nros/component.hpp"
+#include "nros/tick_ctx.hpp"
 
 namespace nros {
 

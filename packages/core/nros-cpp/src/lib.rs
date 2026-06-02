@@ -202,6 +202,15 @@ mod action;
 // rmw-* gate) because the registration is platform-side, not RMW-side.
 mod transport;
 
+// ── Tick-time client dispatch (Phase 212.M-F.4.c) ──
+//
+// Mirror of the Rust substrate's `TickCtx::call_raw` /
+// `TickCtx::send_goal_raw` seams added in Phase 212.M-F.4 (`d15565efe`).
+// Always-on (no rmw-cffi gate) because the stub error path is independent
+// of any RMW backend — the symbols exist + return `NROS_CPP_RET_ERROR`
+// until the codegen-side `GenClientDispatch` impl lands (M-F.4.a).
+mod tick_ctx;
+
 // ============================================================================
 // Error codes (mirror nros-c for consistency)
 // ============================================================================

@@ -1758,6 +1758,68 @@ nros_cpp_ret_t nros_cpp_clear_custom_transport(void);
  */
 nros_cpp_ret_t nros_cpp_has_custom_transport(void);
 
+/**
+ * Issue a service-client raw-CDR request from a tick body and block on
+ * the reply (Phase 212.M-F.4.c).
+ *
+ * Mirrors `nros::TickCtx::call_raw` (Rust). The C++ side passes the
+ * opaque per-tick handle it received from the generated runtime as
+ * `tick_ctx`, plus the request CDR bytes + a response buffer the runtime
+ * will fill with the reply CDR. On success `*response_len_out` carries
+ * the response length in bytes; on error it is left untouched.
+ *
+ * # Parameters
+ * * `tick_ctx` — opaque per-tick context handle. Provided by the
+ *   generated runtime (M-F.4.a, not yet shipped); pass any non-null
+ *   pointer for forward-compat smoke tests — the call will still fail
+ *   with `NROS_CPP_RET_ERROR` until the runtime backs the handle.
+ * * `service_entity` — stable entity id of the service client (NUL-term).
+ * * `service_entity_len` — `service_entity` byte length (excluding NUL).
+ * * `request_cdr` / `request_len` — request CDR bytes.
+ * * `response_buf` / `response_buf_cap` — caller-owned reply buffer.
+ * * `response_len_out` — out-param: response length on success.
+ *
+ * # Safety
+ * All non-NULL pointers must be valid for the indicated lengths. NULL
+ * `service_entity`, NULL `request_cdr` with non-zero `request_len`,
+ * NULL `response_buf` with non-zero `response_buf_cap`, or NULL
+ * `response_len_out` all yield `NROS_CPP_RET_INVALID_ARGUMENT`.
+ */
+nros_cpp_ret_t nros_cpp_tick_ctx_call_raw(void *tick_ctx,
+                                          const uint8_t *service_entity,
+                                          size_t service_entity_len,
+                                          const uint8_t *request_cdr,
+                                          size_t request_len,
+                                          uint8_t *response_buf,
+                                          size_t response_buf_cap,
+                                          size_t *response_len_out);
+
+/**
+ * Kick an action-client goal from a tick body (Phase 212.M-F.4.c).
+ *
+ * Mirrors `nros::TickCtx::send_goal_raw` (Rust). The server-side
+ * accept stamps the assigned [`GoalId`]; this call returns that id in
+ * `goal_id_out` (16 bytes). Result + feedback streams arrive via
+ * callback dispatch — not this method.
+ *
+ * # Parameters
+ * * `tick_ctx` — opaque per-tick context handle (see `call_raw`).
+ * * `action_entity` / `action_entity_len` — stable action-client entity id.
+ * * `goal_cdr` / `goal_len` — goal request CDR bytes.
+ * * `goal_id_out` — 16-byte buffer; receives the server-stamped goal id.
+ *
+ * # Safety
+ * All non-NULL pointers must be valid for the indicated lengths. NULL
+ * `action_entity`, NULL `goal_cdr` with non-zero `goal_len`, or NULL
+ * `goal_id_out` yield `NROS_CPP_RET_INVALID_ARGUMENT`.
+ */
+nros_cpp_ret_t nros_cpp_tick_ctx_send_goal_raw(void *tick_ctx,
+                                               const uint8_t *action_entity,
+                                               size_t action_entity_len,
+                                               const uint8_t *goal_cdr,
+                                               size_t goal_len,
+                                               uint8_t (*goal_id_out)[16]);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
