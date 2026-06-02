@@ -6,12 +6,12 @@ domain_id = 0
 
 [[component]]
 pkg  = "talker_pkg"
-class = "talker_pkg::talker"
+class = "talker_pkg::Talker"
 name = "talker"
 
 [[component]]
 pkg  = "listener_pkg"
-class = "listener_pkg::listener"
+class = "listener_pkg::Listener"
 name = "listener"
 
 [deploy.threadx-linux]
