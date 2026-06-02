@@ -484,6 +484,63 @@ impl ExecutorComponentRuntime {
 }
 
 // =============================================================================
+// Phase 212.N.7 step-3.3 — bridge to platform-side `ComponentRuntime`.
+// =============================================================================
+//
+// `nros_platform::ComponentRuntime` is the codegen-emitted
+// `run_plan(runtime)` body's sink: object-safe + `no_std`. The
+// platform layer holds the four per-pkg fn pointers as opaque
+// `extern "Rust" fn()` aliases (see
+// `packages/core/nros-platform/src/board/runtime.rs`). This impl
+// transmutes them back to the typed signatures defined in
+// `crate::component_runtime` before forwarding to
+// [`ExecutorComponentRuntime::register_dispatch_slot`].
+//
+// Why the transmute? `nros-platform` must not depend on `nros`
+// (that would invert the dep graph). The typed fn-pointer
+// signatures live in `nros` because they reference
+// `ComponentContext`, `CallbackCtx`, `TickCtx`, `CallbackId` —
+// nros-only types. The platform-layer aliases anchor at the
+// smallest concrete fn type so the macro emit (Phase 212.N.7
+// step-3.4) can `mem::transmute` typed fn pointers into the
+// opaque alias at the Component-pkg call site.
+
+impl ::nros_platform::ComponentRuntime for ExecutorComponentRuntime {
+    fn register_dispatch_slot_dyn(
+        &mut self,
+        register: ::nros_platform::ComponentRegisterFn,
+        init: ::nros_platform::ComponentInitFn,
+        dispatch: ::nros_platform::ComponentDispatchFn,
+        tick: ::nros_platform::ComponentTickFn,
+        _name: &'static str,
+    ) -> Result<(), ()> {
+        // SAFETY: the four opaque `extern "Rust" fn()` aliases at the
+        // platform layer were produced by `mem::transmute` from the
+        // typed fn-pointer signatures defined in `component_runtime`
+        // (the `nros::component!()` macro emit, Phase 212.N.7
+        // step-3.4, carries the transmute on the Component-pkg side).
+        // We transmute back here at the impl boundary.
+        //
+        // `extern "Rust" fn()` and `fn(...) -> ...` share the same
+        // ABI representation (one pointer); the transmute is purely a
+        // type-level reinterpretation of the call site's argument
+        // list. The `_name` arg is currently unused — kept on the
+        // trait for diagnostics once `ExecutorError::Component`
+        // surfaces the pkg name.
+        let register_fn: ComponentRegisterFn = unsafe { core::mem::transmute(register) };
+        let init_fn: ComponentInitFn = unsafe { core::mem::transmute(init) };
+        let dispatch_fn: ComponentDispatchFn = unsafe { core::mem::transmute(dispatch) };
+        let tick_fn: ComponentTickFn = unsafe { core::mem::transmute(tick) };
+        self.register_dispatch_slot(register_fn, init_fn, dispatch_fn, tick_fn)
+            .map_err(|_| ())
+    }
+
+    fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()> {
+        Self::spin_once(self, Duration::from_millis(timeout_ms.into())).map_err(|_| ())
+    }
+}
+
+// =============================================================================
 // Internal sink — bridges `ComponentRuntime` declarations onto the
 // live executor.
 // =============================================================================
