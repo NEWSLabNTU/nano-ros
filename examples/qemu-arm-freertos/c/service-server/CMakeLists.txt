@@ -13,7 +13,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 nros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE C SKIP_INSTALL)
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    service_server
     CLASS   freertos_c_service_server::AddTwoIntsServer
     SOURCES src/AddTwoIntsServer.c ${example_interfaces_GENERATED_SOURCES}

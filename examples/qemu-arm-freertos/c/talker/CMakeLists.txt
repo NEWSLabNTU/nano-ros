@@ -19,7 +19,7 @@ nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
 # Phase 212.L.9 — declarative Component pkg shape. No add_executable
 # here, no `main()`; the BSP-generated runtime (M.5.a.3+4) owns the
 # entry point, executor init, and the spin loop.
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    talker
     CLASS   freertos_c_talker::Talker
     SOURCES src/Talker.c ${std_msgs_GENERATED_SOURCES}

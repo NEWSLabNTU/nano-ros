@@ -13,7 +13,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../cmake/NanoRosNodeRegister.cmake")
 nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    listener
     CLASS   nuttx_c_listener::Listener
     SOURCES src/Listener.c ${std_msgs_GENERATED_SOURCES}

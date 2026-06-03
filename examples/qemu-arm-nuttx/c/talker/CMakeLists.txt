@@ -20,7 +20,7 @@ nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C SKIP_INSTALL)
 # here, no `main()`; the generated runtime (emitted by `nros codegen-
 # system` via the integrations/nuttx H.2 adapter shim) owns the entry
 # point, executor init, and the spin loop.
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    talker
     CLASS   nuttx_c_talker::Talker
     SOURCES src/Talker.c ${std_msgs_GENERATED_SOURCES}

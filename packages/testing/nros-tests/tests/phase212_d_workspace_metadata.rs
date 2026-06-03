@@ -2,7 +2,7 @@
 //!
 //! Originally covered the pre-212 `nano_ros_workspace_metadata()` fn
 //! (sidecar-TOML / `nros-plan.json` shape). §212.L retired that path
-//! in favour of `nano_ros_component_register(...)` / `nano_ros_entry(...)`
+//! in favour of `nano_ros_node_register(...)` / `nano_ros_entry(...)`
 //! / `nano_ros_deploy(...)`, which emit
 //! `${CMAKE_BINARY_DIR}/nros-metadata.json` directly. Phase 212.M.10
 //! migrated the `multi_pkg_workspace_cpp` fixture to the new shape and
