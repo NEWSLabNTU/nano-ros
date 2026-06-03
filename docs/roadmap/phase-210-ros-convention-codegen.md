@@ -398,31 +398,27 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
       "Exit non-zero if any patch block is missing or stale (CI hook;
       also used by `nros ws status`)" — verified 2026-06-03 via
       `nros ws sync --help`).
-- [~] Editing any `*.msg` file → `nros ws sync` regenerates ONLY the
+- [x] Editing any `*.msg` file → `nros ws sync` regenerates ONLY the
       affected crate (mtime check) + leaves the patch block untouched (no
-      churn). **Partial close 2026-06-03** (Z.4 audit):
-      - **Patch-block-untouched** half is MET. Verified against a
-        `cp -r examples/templates/local-msg-package /tmp/lmp-test`
-        copy: pre-sync the BEGIN/END nros-managed patch block
-        md5-hashes to `661760a75c08eb89d86e4b20e48e266e`; editing
+      churn). **Full close 2026-06-03** (Z.4 audit + Z.6 mtime guard
+      landing):
+      - **Patch-block-untouched** half MET — verified against
+        `cp -r examples/templates/local-msg-package /tmp/lmp-test`:
+        pre-sync the BEGIN/END nros-managed patch block md5-hashes to
+        `661760a75c08eb89d86e4b20e48e266e`; editing
         `src/local_msgs/msg/Greeting.msg` (added `string new_field`)
-        + re-running `nros ws sync` leaves the block byte-identical
-        (post-sync md5 unchanged).
-      - **mtime-check half is NOT met**: `nros ws sync --verbose`
-        emits a `codegen <pkg>` line for every workspace + AMENT pkg
-        regardless of which `*.msg` changed (e.g. editing
-        `local_msgs/msg/Greeting.msg` still prints `codegen std_msgs`,
-        `codegen builtin_interfaces`, `codegen extra_msgs`, etc.).
-        The codegen step does re-emit the changed crate's Rust
-        sources (`generated/local_msgs/src/msg/greeting.rs` gains
-        `pub new_field: heapless::String<256>`), but the per-pkg
-        skip-on-unchanged-mtime optimisation isn't implemented.
-        Follow-up: add an `mtime(highest *.msg) > mtime(generated
-        Cargo.toml)` guard inside `nros ws sync`'s per-pkg loop
-        before invoking the codegen. Not a correctness gap (output
-        is identical when content is identical), only a churn
-        gap — large workspaces re-codegen every pkg on every
-        invocation today.
+        + re-running `nros ws sync` leaves the block byte-identical.
+      - **mtime-check half MET** post-Z.6 — nros-cli `ee800694c`
+        (`feat(210.D): per-pkg mtime guard in `nros ws sync``)
+        added `pkg_is_up_to_date()` + `touch_witness()` to the
+        per-pkg loop in `cmd/ws.rs`. Idle-re-sync prints zero
+        `codegen <pkg>` lines; editing a single `.msg` regenerates
+        ONLY that pkg's crate (plus any workspace dep that transitively
+        consumes it — verified by the `sync_regenerates_after_dep_msg_edit`
+        regression test). AMENT pkgs cache forever until their
+        `share_dir` mtime moves forward (which it does on ROS
+        upgrade). New `--force` flag bypasses both guards for
+        toolchain bumps.
 - [x] In a Cargo workspace (real `[workspace] members = [...]` at umbrella
       Cargo.toml), `nros ws sync` writes the patch block to the umbrella,
       NOT to the member pkg. **Verified 2026-06-03** (Z.4 audit) via a
