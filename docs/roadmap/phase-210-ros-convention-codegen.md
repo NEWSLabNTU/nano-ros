@@ -70,12 +70,17 @@ Open (concrete acceptance below):
 * 210.D.2 — convert `examples/native/rust/talker`. Deferred → 210.E.3.d
   (whole rust-example fleet migration; talker is multi-RMW with a cmake
   cyclone variant on top, safer to migrate as one unit).
-* 210.E.3.c — Zephyr cpp examples. DEFERRED with concrete blocker:
-  Zephyr's cmake context uses `find_package(Zephyr)` + zephyr_library
-  aggregation, NOT `add_subdirectory(nano-ros)`. NrosRclcppCompat's
-  sanity check fires FATAL_ERROR (no `NanoRos::NanoRosCpp` target).
-  Fix needs cache-the-NROS_REPO_DIR + alias-zephyr-lib-nros work
-  (partially explored in 209.G iter 2). Real follow-up.
+* 210.E.3.c — Zephyr cpp examples. **DONE.** `zephyr/CMakeLists.txt`
+  promotes `NROS_REPO_DIR` to `CACHE PATH` so the app's
+  `include("${NROS_REPO_DIR}/cmake/compat/NrosRclcppCompat.cmake")`
+  resolves; `cmake/compat/NrosRclcppCompat.cmake` aliases the Zephyr
+  `zephyr_library_named(nros)` target to `NanoRos::NanoRosCpp` when
+  `CONFIG_NROS_CPP_API` is set + skips the auto-`-include` of
+  `nros/rclcpp_compat.hpp` (Zephyr libstdc++ subset can't pull
+  `<memory>`/`<string>`). All 6 zephyr cpp examples (talker / listener
+  / service-{server,client} / action-{server,client}) use the
+  canonical `find_package(<msg_pkg>) + ament_target_dependencies`
+  shape.
 * 210.E.3.d — Rust example migration (D.2 talker + others). DEFERRED.
   Talker is multi-RMW with cmake-cyclonedds; needs a dedicated rust-
   migration plan. `nros ws sync` single-pkg-mode is in place for the
@@ -425,20 +430,26 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
             - threadx-linux           configure ✓ build ✓
         Pre-existing FAILs reproduce on unmigrated CMakeLists too —
         unrelated to find_package migration; tracked separately.
-      * **210.E.3.c — Zephyr fixtures.** DEFERRED (real blocker).
-        Investigated 2026-05-31: Zephyr's cmake context has
-        `find_package(Zephyr)` before `project()` — the nros zephyr
-        module auto-pulls `NanoRos` via `zephyr_library_named(nros)`,
-        NOT via `add_subdirectory(nano-ros)`. So:
-            1. `NanoRos::NanoRosCpp` target doesn't exist —
-               NrosRclcppCompat's sanity check fires FATAL_ERROR.
-            2. `NROS_REPO_DIR` is set in the module but NOT cached, so
-               the example's `include("${NROS_REPO_DIR}/cmake/compat/
-               NrosRclcppCompat.cmake")` resolves to `/cmake/compat/...`.
-        Both fixable (cache NROS_REPO_DIR + alias zephyr_library `nros`
-        → `NanoRos::NanoRosCpp` inside NrosRclcppCompat when CONFIG_NROS
-        is set — work pattern partially explored in 209.G iter 2 then
-        reverted). Real follow-up phase, not a same-day swap.
+      * **210.E.3.c — Zephyr fixtures.** **DONE 2026-06-03.** Both
+        prerequisites landed:
+            1. `zephyr/CMakeLists.txt:25` promotes `NROS_REPO_DIR`
+               to `CACHE PATH` so the example's
+               `include("${NROS_REPO_DIR}/cmake/compat/
+               NrosRclcppCompat.cmake")` resolves at app-config
+               time.
+            2. `cmake/compat/NrosRclcppCompat.cmake:82-84` aliases
+               the Zephyr `zephyr_library_named(nros)` target to
+               `NanoRos::NanoRosCpp` when `CONFIG_NROS_CPP_API` is
+               set; the sibling `_NROS_COMPAT_ON_ZEPHYR` branch
+               (lines 130+) skips the auto-`-include` of
+               `nros/rclcpp_compat.hpp` since Zephyr libstdc++
+               subset can't pull `<memory>`/`<string>` — users opt
+               in manually if they really port rclcpp source.
+        All 6 zephyr cpp examples (talker / listener / service-
+        {server,client} / action-{server,client}) carry the canonical
+        `find_package(<msg_pkg>) + ament_target_dependencies` shape.
+        Zephyr cpp/cyclonedds/talker-aemv8r carve-out preserved
+        per CLAUDE.md.
       * **210.E.3.d — Rust examples (`.cargo/config.toml [patch.crates-io]`
         deprecation + talker D.2 migration).** DEFERRED. Touches every
         rust example. Talker is multi-RMW with a cmake-cyclonedds
