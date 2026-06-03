@@ -631,6 +631,225 @@ CMake on hosted targets (native, qemu native_sim).
       was a fallback conditional on sys-crate brittleness — that
       condition didn't fire. Re-opens only if a future Cyclone bump
       breaks the sys-crate wrapper.
+
+#### 212.K.7 — RMW-agnostic msg crates via runtime introspection (DESIGN REVISION)
+
+**Filed 2026-06-03.** K.1-K.5 wired `cyclonedds = ["dep:cyclonedds-sys"]`
+as a Cargo FEATURE on every generated msg crate (the path the
+`std_msgs/cyclonedds` ref in `examples/native/rust/talker/Cargo.toml`
+assumes exists). K.4's codegen step that emits this feature on the
+msg crate never landed — only the consumer manifests + the per-app
+descriptor crate. Result: cargo resolver rejects every native rust
+example with the cyclonedds feature ref (`failed to select a version
+for std_msgs ... package depends on std_msgs with feature cyclonedds
+but std_msgs does not have that feature`). Reproduces against BOTH
+the installed `nros 0.2.0` `generate-rust` AND `cargo_nano_ros::
+generate_from_package_xml` library (the underlying codegen).
+
+But the bigger problem: **even when the feature WAS emitted, the
+design was wrong.** A msg pkg is a wire-format data type — it should
+not depend on which RMW transports the bytes. User Cargo.toml should
+be:
+
+```toml
+[dependencies]
+std_msgs = "*"                                       # plain. data only.
+nros = { features = ["rmw-cyclonedds"] }             # RMW choice lives here
+```
+
+NO `features = ["cyclonedds"]` on the msg crate. NO `std_msgs-cyclonedds`
+sidecar that the user has to list. Transport choice and message
+schema are orthogonal concerns; the manifest should reflect that.
+
+##### Upstream alignment
+
+rclcpp + rclrs both ship msg pkgs RMW-agnostic; user manifests have
+plain `<pkg> = "*"`. Verified 2026-06-03:
+
+* **rclcpp (Humble)**: `/opt/ros/humble/lib/libstd_msgs__*` ships
+  generator + introspection + fastrtps typesupport libs. **No
+  `libstd_msgs__rosidl_typesupport_cyclonedds*` exists.** `ldd
+  librmw_cyclonedds_cpp.so` shows it links `librosidl_typesupport_
+  introspection_{c,cpp}.so` — Cyclone uses the per-msg generic
+  introspection metadata at runtime to build `dds_topic_descriptor_t`
+  via Cyclone's dynamic-type API. No per-msg Cyclone-specific code.
+* **rclrs (ros2-rust)**: `rclrs_example_msgs` is a stock
+  `ament_cmake` rosidl pkg (`member_of_group =
+  rosidl_interface_packages`). Consumer Cargo.toml says
+  `example_interfaces = "*"` plain — no features, no per-RMW
+  variant. RMW choice picked at runtime via `RMW_IMPLEMENTATION`
+  env var (dlopen).
+
+Both upstream client libs let Cyclone build descriptors at runtime
+from generic introspection metadata. Per-msg Cyclone-specific code
+only exists for FastRTPS (perf-driven choice); Cyclone + Connext
+don't need it.
+
+##### nano-ros rework (212.K.7)
+
+Drop the `cyclonedds` Cargo feature from every generated msg crate.
+Move Cyclone descriptor construction into `nros-rmw-cyclonedds` as a
+**runtime registry**: on first `create_publisher<M>()` /
+`create_subscription<M>()`, walk `M`'s static field schema (already
+present in `nros-serdes` for CDR) → call Cyclone's dynamic-type API
+to build a `ddsi_sertype` → cache in a bounded registry → register
+with Cyclone DDS. Same pattern as upstream rmw_cyclonedds_cpp; same
+nano-ros-Rust-side cost (zero alloc, bounded memory).
+
+##### `no_std` + alloc-free contract per layer
+
+| Layer | `no_std`? | Rust `alloc`? | Notes |
+|---|---|---|---|
+| Generated msg crates (`std_msgs`, …) | ✅ yes (UNCHANGED) | ✅ none | No Cyclone code in msg crate. Plain `std_msgs = "*"`. |
+| `nros-serdes` (field schema, CDR walker) | ✅ yes (UNCHANGED) | ✅ none | Promotes `const FIELDS: &'static [Field]` per type. Already there. |
+| `nros-rmw-cyclonedds` Rust shim | ✅ yes (REQUIRED) | ✅ none (REQUIRED) | Bounded `heapless::FnvIndexMap<TypeId, NonNull<ddsi_sertype>, MAX_TYPES>` registry; lookup is `critical_section::with` + hashmap O(1); first-use builds Cyclone descriptor via dynamic-type C API. |
+| Cyclone DDS C lib (`libddsc`) | n/a (C) | n/a (C) | Allocates descriptors from Cyclone's own `ddsrt_*` heap. Phase 177.22 already wires this to `kEmbeddedCycloneConfig` on FreeRTOS+ThreadX (one fixed pool sized at boot). Pre-budgetable. |
+| Per-app Cargo.toml | n/a | n/a | `nros = { features = ["rmw-cyclonedds"] }` selects the RMW; no msg-crate features needed. |
+
+Registry sizing: `NROS_CYCLONEDDS_MAX_TYPES` (default 32) via
+`nros-sizes` build-time probe (same mechanism as `EXECUTOR_OPAQUE_U64S`).
+Cost: `MAX_TYPES * (sizeof(u64) + sizeof(*const ()))` = 16 bytes ×
+MAX_TYPES; default 512 bytes static. Overflow = compile-time panic
+via `const _: () = assert!(size_of::<Registry>() <= STORAGE_SIZE …)`.
+
+Multi-thread guard: `critical_section::Mutex` on single-task
+(FreeRTOS/bare-metal/embedded ThreadX); `spin::Mutex` on
+multi-thread (POSIX/Zephyr) — same selection pattern as the existing
+`nros-platform` mutex layer.
+
+##### Work items
+
+- [ ] **K.7.1** — **Drop the `cyclonedds` Cargo feature** from every
+      generated msg crate. Update `rosidl-codegen` / `cargo-nano-ros`
+      templates to NOT emit a `cyclonedds` feature; UNGATE the
+      `cyclonedds-sys = "*"` dep that lived behind it (it was never
+      reachable; the dep stays for nros-rmw-cyclonedds path
+      independent of msg crate). Re-run `nros generate-rust` on
+      every in-tree example after the template change so the
+      committed `<example>/generated/<pkg>/Cargo.toml` files
+      regenerate clean. **Files:**
+      `nros-cli/packages/rosidl-codegen/src/cargo_toml_emit.rs` (or
+      wherever the feature emit lives) + every `examples/*/rust/*/
+      generated/<pkg>/`.
+
+- [ ] **K.7.2** — **Drop `std_msgs/cyclonedds` (and any
+      `<pkg>/cyclonedds`) feature ref** from every consumer Cargo.toml
+      in the tree. Grep target:
+      `git grep -E '"[a-z_]+_msgs?/cyclonedds"'`. Each match is
+      under a `rmw-cyclonedds = [...]` feature list and gets pruned
+      to:
+      ```toml
+      rmw-cyclonedds = [
+          "dep:nros-rmw-cyclonedds-sys",
+          "nros-rmw-cyclonedds-sys/vendored",
+          # std_msgs/cyclonedds dropped — K.7 runtime registry handles
+          # cyclonedds descriptor wiring inside nros-rmw-cyclonedds.
+      ]
+      ```
+      Restores `cargo build` on every affected example.
+
+- [ ] **K.7.3** — **Promote `nros-serdes` field schema as a public
+      no_std API.** Today `Field` / `FieldType` are used internally
+      by the CDR walker; need `pub trait Message { const TYPE_NAME:
+      &'static str; const FIELDS: &'static [Field]; }` (or extend
+      existing trait) — exposed in the crate root, `#![no_std]`-
+      compatible, all `&'static` / `Copy`. If `FieldType` enum
+      doesn't already cover Cyclone's needs (sequence-of-string,
+      array-of-nested-struct, …), add the missing variants. **Files:**
+      `packages/core/nros-serdes/src/schema.rs` (or equivalent).
+
+- [ ] **K.7.4** — **Cyclone descriptor builder** in
+      `nros-rmw-cyclonedds`. `unsafe fn
+      build_sertype_from_fields(name: &'static str, fields: &'static
+      [Field]) -> *mut ddsi_sertype` — walks the static schema,
+      calls Cyclone's `ddsi_dynamic_type_*` C API per field (Cyclone
+      allocates internally from ddsrt). Returns the sertype pointer
+      for caching. **Files:**
+      `packages/dds/nros-rmw-cyclonedds/src/dynamic_type.rs` (NEW).
+
+- [ ] **K.7.5** — **Bounded type registry** inside
+      `nros-rmw-cyclonedds`. `heapless::FnvIndexMap<u64,
+      NonNull<ddsi_sertype>, MAX_TYPES>` keyed by `TypeId`-hash
+      (compile-time-stable hash of `M::TYPE_NAME`). Wrapped in
+      `critical_section::Mutex` / `spin::Mutex` (platform-selected).
+      `register_or_lookup::<M>()` returns the cached pointer; first
+      call builds via K.7.4 + inserts. **Files:**
+      `packages/dds/nros-rmw-cyclonedds/src/type_registry.rs` (NEW).
+      Sizing knob: `NROS_CYCLONEDDS_MAX_TYPES` via `nros-sizes`
+      probe; default 32. Overflow = compile-time `const _: () =
+      assert!(...)` from a `nros-sizes-build` hook (mirrors
+      `EXECUTOR_OPAQUE_U64S` pattern).
+
+- [ ] **K.7.6** — **Wire the registry into pub/sub paths**. Hook
+      `CyclonePublisher<M>::new` / `CycloneSubscription<M>::new` to
+      call `register_or_lookup::<M>()` before
+      `dds_create_topic_sertype` / `dds_create_reader`. Same shape
+      for service / action paths. **Files:**
+      `packages/dds/nros-rmw-cyclonedds/src/{publisher,subscription,
+      service,action}.rs`.
+
+- [ ] **K.7.7** — **Migrate every affected example.** Restore
+      `cargo build` on:
+      * `examples/native/rust/talker` (default `rmw-zenoh` build is
+        blocked today; cyclonedds variant works via cmake path).
+      * `examples/native/rust/listener` (same shape).
+      * Any other 212.M-swept rust example carrying a
+        `<pkg>/cyclonedds` feature ref (grep audit per K.7.2).
+      Acceptance: `cargo build` succeeds with default features +
+      `cargo build --features rmw-cyclonedds` succeeds and runs an
+      end-to-end exchange with `zenohd` / Cyclone router.
+
+- [ ] **K.7.8** — **`nros-rmw-cyclonedds` registry tests.**
+      * `bounded_registry_overflow_panics_at_compile_time` — exceed
+        `NROS_CYCLONEDDS_MAX_TYPES` during a fixture build; verify
+        the `const _: () = assert!(...)` fires.
+      * `first_use_registers_subsequent_hits_cache` — twin
+        `create_publisher<M>()` calls; first triggers Cyclone
+        descriptor build, second is a hashmap-hit; cache-hit count
+        observed via `#[cfg(test)]` counter.
+      * `multi_thread_first_use_race` (POSIX): N threads call
+        `register_or_lookup::<M>()` concurrently; exactly one
+        Cyclone descriptor allocation.
+      * `nostd_alloc_free_link_smoke` — link a bare-metal
+        `nros-rmw-cyclonedds` consumer w/ `#![no_std] +
+        #![cfg(not(feature = "alloc"))]`; no
+        `alloc::alloc::alloc` symbol resolves from the Rust side.
+
+- [ ] **K.7.9** — **Doc updates.** Append a "Why msg crates are
+      RMW-agnostic" subsection to
+      `book/src/getting-started/your-own-msg-package.md` and to
+      `book/src/internals/rmw-backends.md`. Cross-link to upstream
+      rclcpp + rclrs precedent. Document the
+      `NROS_CYCLONEDDS_MAX_TYPES` sizing knob in
+      `docs/reference/environment-variables.md`.
+
+##### Acceptance for K.7
+
+- [ ] No `cyclonedds` feature on any generated msg crate in tree.
+- [ ] No `<pkg>/cyclonedds` feature ref in any consumer Cargo.toml in tree.
+- [ ] `cargo build` from a clean tree on every native rust example
+      succeeds (no resolver feature error).
+- [ ] `cargo build --features rmw-cyclonedds` runs end-to-end
+      pub/sub exchange (existing K.5 test reactivated).
+- [ ] `nros-rmw-cyclonedds` declares `#![no_std]`; `cargo check
+      --no-default-features` succeeds; bare-metal link smoke
+      (K.7.8) confirms zero Rust-side `alloc` symbols.
+- [ ] User-facing Cargo.toml shape proven by the
+      `examples/templates/local-msg-package` fixture extending to a
+      `rmw-cyclonedds` variant — plain `std_msgs = "*"`, no msg-crate
+      features, RMW selected via `nros` feature only.
+
+##### Cross-refs
+
+* Motivating breakage: `examples/native/rust/talker` cargo resolver
+  failure surfaced 2026-06-03 during Phase 210.D.1 + ws-writer post-
+  merge sweep (commit `89671ff04`).
+* Upstream pattern: rclcpp `rmw_cyclonedds_cpp` introspection
+  typesupport + rclrs's plain `<pkg> = "*"` consumer manifest.
+* Memory-sizing pattern: `nros-sizes` opaque-storage probes
+  (Phase 118.B / 87.6) — identical knob shape.
+* Cyclone heap pre-budgeting: Phase 177.22 (`kEmbeddedCycloneConfig`
+  ddsrt heap wiring on FreeRTOS + ThreadX).
 - **Tests:**
   - [ ] `cyclonedds_sys_builds_native` — `cargo build -p cyclonedds-sys`
         on native_sim succeeds; `libddsc.a` linked.
