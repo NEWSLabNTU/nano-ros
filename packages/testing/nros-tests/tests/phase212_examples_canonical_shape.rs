@@ -207,26 +207,40 @@ fn check_pkg_dir(examples_root: &Path, pkg_dir: &Path, violations: &mut Vec<Viol
         }
     };
 
+    // Phase 212.N.12 — `node` is the canonical spelling for the
+    // single-shape Node pkg surface (renamed from `component`); the
+    // sibling `phase212_m12_example_shape.rs::component_or_application_
+    // classification_present` test accepts the same alias set. The
+    // pre-N.12 `component` spelling is kept for back-compat. See
+    // `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
+    // §212.N (rename wave — `[package.metadata.nros.component]` →
+    // `[package.metadata.nros.node]` landed in 9bef3ff0c).
     let has_component = nros_meta.get("component").is_some();
+    let has_node = nros_meta.get("node").is_some();
     let has_entry = nros_meta.get("entry").is_some();
     // Pre-rename `application` is still accepted by the §212.M sweep
     // (renamed to `entry` per §212.N.5; both shapes valid until M.10
     // completes).
     let has_application = nros_meta.get("application").is_some();
 
-    if !(has_component || has_entry || has_application) {
+    if !(has_component || has_node || has_entry || has_application) {
         violations.push(Violation {
             dir: rel.clone(),
             reason: "Cargo.toml carries `[package.metadata.nros]` but lacks `component` / \
-                     `entry` / `application` subtable (§212.L canonical shapes)"
+                     `node` / `entry` / `application` subtable (§212.L canonical shapes \
+                     + §212.N.12 rename)"
                 .into(),
         });
         return;
     }
 
     // §212.L.4 — `class = "<pkg>::<Class>"` prefix rule.
-    if has_component {
-        let component = nros_meta.get("component").unwrap();
+    // Applies to both `[...component]` (pre-N.12) and `[...node]` (post-N.12).
+    if has_component || has_node {
+        let component = nros_meta
+            .get("node")
+            .or_else(|| nros_meta.get("component"))
+            .unwrap();
         let class = component.get("class").and_then(|v| v.as_str());
         match (class, pkg_name.as_deref()) {
             (Some(c), Some(p)) => {
@@ -319,8 +333,8 @@ fn examples_tree_uses_canonical_shape() {
              `gen-app-config.py`, `app_config.h.in`)\n  \
              - No committed `metadata/*.json` (build artifact only; lives in \
              $OUT_DIR/nros-gen/ or target/nros-metadata/)\n  \
-             - Cargo.toml carries `[package.metadata.nros.{{component,entry,\
-             application}}]`, and for `component`: `class = \"<pkg-name>::<Class>\"`",
+             - Cargo.toml carries `[package.metadata.nros.{{component,node,entry,\
+             application}}]`, and for `component`/`node`: `class = \"<pkg-name>::<Class>\"`",
             violations.len(),
             flagged_dirs.len(),
             all.len(),
