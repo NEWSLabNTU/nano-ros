@@ -184,11 +184,14 @@ fn nuttx_qemu_arm_2_component_bringup_builds() {
         return;
     }
 
-    // Real build: best-effort. NuttX kernel configure is owned by
-    // `just nuttx build-fixtures-make`; replicating it would duplicate
-    // hundreds of LoC. Defer the full kernel link to that recipe and
-    // verify only that `make context` against the staged shell drives
-    // the codegen + cargo-build pipeline without erroring.
+    // Real build: best-effort. NuttX kernel configure is heavy
+    // (defconfig copy + olddefconfig + kconfig-tweak NROS knobs);
+    // replicating it would duplicate hundreds of LoC and is out of
+    // scope for this build-shape audit (the legacy
+    // `build-fixtures-make` recipe that owned it was retired under
+    // Phase 212.M-F.16). Verify only that `make context` against the
+    // staged shell drives the codegen + cargo-build pipeline without
+    // erroring.
     let nuttx_dir = std::env::var("NUTTX_DIR").expect("NUTTX_DIR set above");
     let make_out = Command::new("make")
         .arg("-C")
