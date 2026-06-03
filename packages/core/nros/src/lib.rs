@@ -507,7 +507,8 @@ pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    LoanError, Node, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec, RawActiveGoal,
+    LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec,
+    RawActiveGoal,
     RawSubscription, RecvView, SessionSpec, Subscription,
 };
 
@@ -633,7 +634,7 @@ pub mod prelude {
     // Re-export RMW-dependent executor + handle types
     #[cfg(feature = "rmw-cffi")]
     pub use crate::{
-        EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, Node, Promise,
+        EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, NodeHandle, Promise,
         Subscription,
     };
 

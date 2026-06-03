@@ -20,14 +20,14 @@ use super::{
 // ============================================================================
 
 /// Backend-agnostic node — borrows the session to create typed entities.
-pub struct Node<'a> {
+pub struct NodeHandle<'a> {
     name: heapless::String<64>,
     namespace: heapless::String<64>,
     session: &'a mut session::ConcreteSession,
     domain_id: u32,
 }
 
-impl<'a> Node<'a> {
+impl<'a> NodeHandle<'a> {
     /// Create a new node (called by Executor::create_node).
     pub(crate) fn new(
         name: heapless::String<64>,
@@ -967,7 +967,7 @@ impl<'a> Node<'a> {
 /// Publisher builder — `node.publisher(topic)`. Choose `.typed::<M>()` or
 /// `.generic(type, hash)`, optionally `.qos(..)`, then `.build()`.
 pub struct PublisherBuilder<'n, 'a, 't> {
-    node: &'n mut Node<'a>,
+    node: &'n mut NodeHandle<'a>,
     topic: &'t str,
     qos: QosSettings,
 }
@@ -1008,7 +1008,7 @@ impl<'n, 'a, 't> PublisherBuilder<'n, 'a, 't> {
 
 /// Typed publisher builder (`.typed::<M>()`).
 pub struct TypedPublisherBuilder<'n, 'a, 't, M> {
-    node: &'n mut Node<'a>,
+    node: &'n mut NodeHandle<'a>,
     topic: &'t str,
     qos: QosSettings,
     _phantom: PhantomData<M>,
@@ -1028,7 +1028,7 @@ impl<'n, 'a, 't, M: RosMessage> TypedPublisherBuilder<'n, 'a, 't, M> {
 
 /// Generic (type-erased) publisher builder (`.generic(type, hash)`).
 pub struct GenericPublisherBuilder<'n, 'a, 't> {
-    node: &'n mut Node<'a>,
+    node: &'n mut NodeHandle<'a>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
@@ -1721,7 +1721,7 @@ mod builder_tests {
     #[test]
     fn publisher_builder_typed_and_generic() {
         let mut session = MockSession::new();
-        let mut node = Node::new(s("n"), s("/"), &mut session, 0);
+        let mut node = NodeHandle::new(s("n"), s("/"), &mut session, 0);
 
         // typed: node.publisher(t).typed::<M>().qos(..).build()
         let _typed = node

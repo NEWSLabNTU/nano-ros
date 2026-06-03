@@ -29,7 +29,7 @@ use super::{
         sub_buffered_raw_try_process, sub_buffered_try_process, sub_info_has_data,
         sub_info_pre_sample, sub_info_try_process, timer_try_process,
     },
-    node::Node,
+    node::NodeHandle,
     spsc_ring::SpscRing,
     triple_buffer::TripleBuffer,
     types::{
@@ -1799,7 +1799,7 @@ impl Executor {
     pub fn with_node_try<R>(
         &mut self,
         id: super::node_record::NodeId,
-        f: impl FnOnce(&mut Node<'_>) -> Result<R, NodeError>,
+        f: impl FnOnce(&mut NodeHandle<'_>) -> Result<R, NodeError>,
     ) -> Result<R, NodeError> {
         self.with_node(id, f)?
     }
@@ -1807,7 +1807,7 @@ impl Executor {
     pub fn with_node<R>(
         &mut self,
         id: super::node_record::NodeId,
-        f: impl FnOnce(&mut Node<'_>) -> R,
+        f: impl FnOnce(&mut NodeHandle<'_>) -> R,
     ) -> Result<R, NodeError> {
         let (name, ns, session_idx) = {
             let r = self
@@ -1822,7 +1822,7 @@ impl Executor {
         // SAFETY: short-lived scoped reference. `Node::new` takes
         // `&mut ConcreteSession`; lifetime is bound to this fn's
         // body via the closure's borrow of `node`.
-        let mut node = Node::new(name, ns, session, 0);
+        let mut node = NodeHandle::new(name, ns, session, 0);
         Ok(f(&mut node))
     }
 
@@ -1840,7 +1840,7 @@ impl Executor {
     }
 
     /// Create a node on this executor.
-    pub fn create_node(&mut self, name: &str) -> Result<Node<'_>, NodeError> {
+    pub fn create_node(&mut self, name: &str) -> Result<NodeHandle<'_>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
@@ -1850,7 +1850,7 @@ impl Executor {
             .push_str(name)
             .map_err(|_| NodeError::NameTooLong)?;
 
-        Ok(Node::new(
+        Ok(NodeHandle::new(
             node_name,
             self.namespace.clone(),
             &mut self.session,
@@ -1870,7 +1870,7 @@ impl Executor {
     /// extra session lookup and serves no purpose when only one
     /// backend is registered.
     #[cfg(feature = "rmw-cffi")]
-    pub fn create_node_on(&mut self, name: &str, rmw: &str) -> Result<Node<'_>, NodeError> {
+    pub fn create_node_on(&mut self, name: &str, rmw: &str) -> Result<NodeHandle<'_>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
@@ -1887,7 +1887,7 @@ impl Executor {
         let session = self
             .session_at_mut(session_idx)
             .ok_or(NodeError::NodeTableFull)?;
-        Ok(Node::new(node_name, namespace, session, 0))
+        Ok(NodeHandle::new(node_name, namespace, session, 0))
     }
 
     /// Drive transport I/O (poll network, dispatch callbacks).

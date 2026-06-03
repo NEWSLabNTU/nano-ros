@@ -156,7 +156,8 @@ pub use executor::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream,
-    LoanError, Node, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec, RawActiveGoal,
+    LoanError, NodeHandle, Promise, PublishLoan, RawActionClientSpec, RawActionServerSpec,
+    RawActiveGoal,
     RawServiceClient, RawServiceServer, RawSubscription, RecvView, Subscription,
 };
 

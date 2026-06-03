@@ -76,7 +76,7 @@ pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
 #[cfg(any(has_rmw, test))]
 pub use handles::*;
 #[cfg(any(has_rmw, test))]
-pub use node::Node;
+pub use node::NodeHandle;
 #[cfg(any(has_rmw, test))]
 pub use node_record::{NodeBuilder, NodeId, NodeRecord};
 #[cfg(any(has_rmw, test))]
