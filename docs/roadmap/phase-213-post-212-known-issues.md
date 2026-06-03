@@ -212,26 +212,39 @@ different subsets. Suggested partition (3 machines, 6 pkgs each):
 - Slot B: `examples/qemu-arm-nuttx/rust/*_entry/` (6 pkgs)
 - Slot C: `examples/threadx-linux/rust/*_entry/` (6 pkgs)
 
-- [ ] **213.C.1** — Migrate FreeRTOS Entry pkgs.
-      **Files**: `examples/qemu-arm-freertos/rust/*_entry/` (6).
-      **Acceptance**: each pkg's `cargo build` clean against the
-      `thumbv7m-none-eabi` toolchain (skip if SDK absent); `main.rs`
-      is one line.
+- [x] **213.C.1** — Migrated FreeRTOS Entry pkgs (commit `cf2585793`
+      + follow-up adds sibling `lib.rs` re-export).
 
-- [x] **213.C.2** — Migrate NuttX Entry pkgs.
-      **Files**: `examples/qemu-arm-nuttx/rust/*_entry/` (6).
-      **Acceptance**: same as 213.C.1.
+- [x] **213.C.2** — Migrated NuttX Entry pkgs (commit `70098e716`
+      + drive-by macro fix `QemuArmNuttx` → `QemuArmVirt` + follow-up
+      adds sibling `lib.rs` re-export).
 
-- [ ] **213.C.3** — Migrate threadx-linux Entry pkgs.
-      **Files**: `examples/threadx-linux/rust/*_entry/` (6).
-      **Acceptance**: same as 213.C.1.
+- [x] **213.C.3** — Migrated threadx-linux Entry pkgs (commit
+      `5d7725bdb` — already shipped sibling `lib.rs`).
 
-- [ ] **213.C.4** — entry-poc reference doc update. After C.1-C.3,
-      flip `book/src/user-guide/component-and-entry-pkg.md` (or
-      equivalent) example tree to show the macro shape instead of
-      `build.rs + include!()`.
-      **Acceptance**: chapter prose mentions `nros::main!()` first;
-      `build.rs + include!()` documented as an escape hatch only.
+- [x] **213.C.4** — Book chapter `book/src/user-guide/
+      component-and-entry-pkg.md` already documents the N.9 macro
+      shape (landed with Phase 212.N.9); confirmed verbatim at the
+      213.C close. `build.rs + include!()` is documented as escape
+      hatch only.
+
+- [x] **213.C follow-up: macro no_std-safe emit** — `nros::main!()`
+      emit pre-fix referenced `std::eprintln!` + `std::process::exit`
+      which broke `#![no_std]` Entry pkgs (surfaced by C.1 audit).
+      Fix: emit splits into two cfg-gated entry shapes —
+      `#[cfg(not(target_os = "none"))] fn main()` (hosted) +
+      `#[cfg(target_os = "none")] #[unsafe(no_mangle)] pub extern "C"
+      fn main() -> i32` (embedded). Shared body factored into
+      `__nros_entry_run() -> Result<...>`.
+
+- [x] **213.C follow-up: sibling lib.rs + dep on all 12 wave-4
+      Entry pkgs** — `nros::main!()` Form-1 emits
+      `::<this_crate>::register(runtime)?`; without a lib target
+      exposing `register`, every Entry pkg fails to compile with
+      `E0433`. Added `src/lib.rs` re-exporting the sibling Node pkg's
+      `register` + the sibling Node pkg as a `[dependencies]` entry
+      across the 12 FreeRTOS + NuttX Entry pkgs (C.3's threadx-linux
+      slot already shipped this).
 
 ---
 

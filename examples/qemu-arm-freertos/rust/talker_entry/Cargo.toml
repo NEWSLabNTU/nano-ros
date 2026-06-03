@@ -16,6 +16,7 @@ path = "src/main.rs"
 deploy = "freertos"
 
 [dependencies]
+freertos_rs_talker = { path = "../talker" }
 # Phase 213.C.1 — `nros::main!()` proc-macro lives here.
 nros = { path = "../../../../packages/core/nros" }
 # Phase 212.N.3 tier-1 per-board shim. `Mps2An385::run` provides the

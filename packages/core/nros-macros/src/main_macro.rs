@@ -458,8 +458,17 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // when any tracked file changes.
         #( #tracked_consts )*
 
-        fn main() {
-            let outcome = <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
+        // Phase 213.C follow-up — emit two cfg-gated entry shapes so
+        // both hosted (POSIX / NuttX / threadx-linux) and embedded
+        // (FreeRTOS / bare-metal `target_os = "none"`) targets resolve
+        // a working `main`. The shared body is factored into a private
+        // `__nros_entry_run` returning `Result` so neither arm
+        // duplicates the closure logic.
+        fn __nros_entry_run() -> ::core::result::Result<
+            (),
+            ::nros::__macro_support::nros_platform::RuntimeError,
+        > {
+            <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::run(
                 |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                     -> ::core::result::Result<
                         (),
@@ -469,10 +478,23 @@ fn build_main(args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     #( #register_calls )*
                     ::core::result::Result::Ok(())
                 },
-            );
-            if let ::core::result::Result::Err(e) = outcome {
+            )
+        }
+
+        #[cfg(not(target_os = "none"))]
+        fn main() {
+            if let ::core::result::Result::Err(e) = __nros_entry_run() {
                 ::std::eprintln!("{}: {}", ::core::env!("CARGO_PKG_NAME"), e);
                 ::std::process::exit(1);
+            }
+        }
+
+        #[cfg(target_os = "none")]
+        #[unsafe(no_mangle)]
+        pub extern "C" fn main() -> i32 {
+            match __nros_entry_run() {
+                ::core::result::Result::Ok(()) => 0,
+                ::core::result::Result::Err(_) => 1,
             }
         }
     };
