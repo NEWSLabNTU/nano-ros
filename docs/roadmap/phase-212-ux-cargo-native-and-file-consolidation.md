@@ -899,86 +899,165 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       `examples/native/rust/{action-server,action-client}/src/main.rs`).
       Commit: `705e1b245`.
 
-- [ ] **K.7.4.d** — **Retire the per-action manual publisher fast
+- [x] **K.7.4.d** — **Retire the per-action manual publisher fast
       paths; route through Cyclone's standard typed-sample
-      `dds_write`.** Action e2e blocker surfaced 2026-06-03
-      immediately after K.7.4.c landed at `705e1b245`. With the
-      dynamic descriptor registered, the native rust action server
-      survives `create_action_server` + accepts goal requests, but
-      segfaults inside
+      `dds_write`.** Landed at the K.7.4.d feature commit on
+      branch `phase-212-k74d-typed-sample-publishers`. Action e2e
+      blocker surfaced 2026-06-03 immediately after K.7.4.c landed
+      at `705e1b245`. With the dynamic descriptor registered, the
+      native rust action server survived `create_action_server` +
+      accepted goal requests, but segfaulted inside
       `packages/dds/nros-rmw-cyclonedds/src/publisher.cpp::publish_goal_status_array`
-      (line 223) when `memcpy(goal_id + uuid_off, ...)` writes through
-      a `uuid_off = ops[19]` offset that presupposes the byte-for-byte
+      (line 223) when `memcpy(goal_id + uuid_off, ...)` wrote through
+      a `uuid_off = ops[19]` offset that presupposed the byte-for-byte
       idlc-emitted op-stream shape. The dynamic builder emits a
       structurally identical-but-shifted op-stream (different ordering
       of nested-body emission relative to top-level fields), so the
       hardcoded `ops[1]/ops[6]/ops[9]/ops[12]/ops[19]/ops[23]/ops[25]`
-      slot reads point at the wrong words. Same shape problem in
+      slot reads pointed at the wrong words. Same shape problem in
       `publish_fibonacci_feedback`.
 
-      **Path B chosen** (idlc byte-for-byte alignment rejected as
-      brittle — would re-couple the dynamic builder to a moving
-      upstream target and defeat the K.7.4.b layering): replace the
-      two manual ops-walking publishers with Cyclone's generic
+      **Outcome**: native rust Fibonacci action server now drives a
+      full goal→accept→11×feedback→complete loop on Cyclone loopback
+      under `ROS_DOMAIN_ID=80` with **no segfault**. Server log:
+      `Received goal request: order=10` → `Goal accepted: 01000000-…`
+      → 11 × `Feedback: [0]` … `[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`
+      → `Goal completed`. The status-array publisher (the original
+      segfault site) and the FibonacciFeedback publisher both flow
+      through the generic typed-sample path the rest of the backend
+      already uses for pub/sub, with NO hardcoded opcode-word reads
+      remaining in either `publisher.cpp` or `subscriber.cpp`.
+
+      A separate, pre-existing **service-reply decode** bug surfaces
+      on the *client* side ("Goal was rejected by the server" returned
+      instantly despite the server sending an acceptance reply); the
+      same symptom reproduces on `main` *before* K.7.4.d landed, so
+      it is NOT a K.7.4.d regression — it is a leftover service /
+      action goal-reply CDR-decode mismatch tracked separately. Filed
+      as a K.7.4.e follow-up (below).
+
+      **Path B implemented** (idlc byte-for-byte alignment rejected
+      as brittle — would re-couple the dynamic builder to a moving
+      upstream target and defeat the K.7.4.b layering): replaced
+      the two manual ops-walking publishers with Cyclone's generic
       typed-sample `dds_write` path that the rest of the backend
       already uses for non-action topics. Walker is K.7.4.b's
-      descriptor, not hand-rolled. Approach:
+      descriptor, not hand-rolled. Implementation:
 
-      1. Build the typed sample in C++ from the Rust-supplied flat
-         payload bytes by calling Cyclone's
-         `dds_stream_read_sample` (which is the inverse of
-         `dds_stream_write_sample`) against the registered
-         `dds_topic_descriptor_t *` — yields a properly-shaped C
-         struct in ddsrt-allocated memory.
-      2. Call `dds_write` on that struct. Cyclone re-serializes it
-         using the same descriptor, so the on-wire bytes round-trip
-         to whatever the receiver expects.
-      3. Free via `dds_stream_free_sample` (matches the receive
-         path's deallocation already in tree).
+      1. `publisher_publish_raw` parses the encapsulation byte
+         identifier (`cdr_xcdr_version`), copies the post-header
+         body into a ddsrt-allocated scratch buffer.
+      2. For `_FeedbackMessage_` types, the new
+         `strip_feedback_goal_id_prefix` helper splices out the
+         4-byte `[u32=16]` length prefix Rust ships before the
+         16-byte UUID (Rust treats UUID as `sequence<octet>`, but
+         the Cyclone IDL `Fibonacci_FeedbackMessage_ { octet
+         goal_id[16]; … }` expects the 16 bytes inline). The
+         receive-side mirror sits in
+         `subscriber.cpp::insert_goal_id_len_at` (predates this
+         commit; the round-trip is now symmetric).
+      3. For `GoalStatusArray_` types the matched-writer wait that
+         used to live in the manual fast path is preserved (VOLATILE
+         QoS on the status topic drops writes before the action
+         client's status reader matches; same gate as Phase 171.0.a's
+         service-request matched-status wait).
+      4. `dds_istream_init` + `dds_stream_read_sample` walks the
+         registered descriptor's `m_ops` to fill a typed sample of
+         `desc->m_size`, then `dds_write` re-serialises through the
+         same descriptor for wire-compat with whatever receiver
+         decodes the topic.
+      5. `dds_stream_free_sample` + `ddsrt_free` for cleanup. All
+         allocations via `ddsrt_*`; no libc `malloc`/`free` (Phase
+         177.22).
 
-      **CDR header bridging** (Phase 171.0.b precedent): Rust ships
-      a CDR-encoded buffer that starts with the 4-byte encapsulation
-      header; Cyclone's typed-sample API expects the body only.
-      Strip the 4-byte header before `dds_stream_read_sample`,
-      re-prepend before `dds_write` if Cyclone doesn't put it back
-      (it usually does — verify against the existing non-action
-      publisher path). The K.7 service request-path fix
-      (`7d7d04e16`) added analogous header handling for service
-      Request/Reply; mirror the predicate-and-shift pattern.
+      Deleted: `publish_goal_status_array`,
+      `publish_fibonacci_feedback`, `parse_sequence_int32`,
+      `type_contains` (sole consumer), `DdsSequenceInt32` /
+      `DdsSequenceStruct` reinterpret-cast helpers, `kCdrLeHeader`
+      constant. No new hardcoded opcode-word index reads survive
+      in `publisher.cpp` or `subscriber.cpp`.
 
-      Scope: 2 fns in `publisher.cpp` (`publish_goal_status_array`,
-      `publish_fibonacci_feedback`) + matching deletes of the
-      hardcoded ops-offset lookups. Maybe a third helper for
-      structured feedback in `subscriber.cpp` if symmetric. Keep
-      `descriptors.cpp` unchanged (registry side already correct).
+      **Test**: `tests/feedback_roundtrip.cpp` builds a
+      Fibonacci-shaped `FeedbackMessage_` descriptor via the K.7.4.b
+      dynamic bridge, publishes a hand-crafted nano-ros runtime
+      payload (`[4 enc][4 u32=16][16 uuid][4 seq_len=3][3 int32]`),
+      asserts the subscriber takes back the same enc header, the
+      re-inserted `[4 u32=16]` UUID length prefix, the 16 raw UUID
+      bytes, and the int32 sequence values. Wired in
+      `tests/CMakeLists.txt`.
+
+      **Subscriber side**: NO changes required. The existing
+      `subscriber_try_recv_raw` + `subscriber_try_recv_sequence`
+      already drive the generic
+      `dds_take` → `dds_stream_write_sample` → re-prepend encap
+      header path (with the `_FeedbackMessage_` UUID-length-prefix
+      re-insertion via `insert_goal_id_len_at`). The publisher's
+      strip is now symmetric with that insert.
 
       **Acceptance**:
-      * Native rust Fibonacci action server +
-        `examples/native/rust/action-client` exchange goal → accept
-        → feedback → result on `ROS_DOMAIN_ID=80` with no segfault.
-      * `just cyclonedds test` stays 14/14.
-      * K.7.7 pub/sub + K.7.7.b service e2e + K.7.8 hardening
-        regressions clean.
-      * No new hardcoded opcode-word index reads anywhere in
-        `publisher.cpp` or `subscriber.cpp`.
+      * Native rust Fibonacci action server completes a full
+        goal → accept → 11×feedback → complete loop on
+        `ROS_DOMAIN_ID=80` with no segfault. ✓
+      * `just cyclonedds test` 15/15 (the new
+        `feedback_roundtrip` test brings the total from 14 → 15). ✓
+      * `cargo test -p nros-rmw-cyclonedds --no-default-features`
+        + `--features bridge-stub,std` clean (3 / 13 / 5 / 3 / 0
+        pass). ✓
+      * `cargo build -p nros-rmw-cyclonedds --target
+        thumbv7m-none-eabi --no-default-features` clean. ✓
+      * `tests/alloc_free_audit.sh` (K.7.8 hardening) clean. ✓
+      * `cargo test -p nros-node --features rmw-cyclonedds --lib`
+        → 149 pass. ✓
+      * Pub/sub e2e (`examples/native/rust/{talker,listener}`,
+        `ROS_DOMAIN_ID=79`) exchanges Int32 0..6 cleanly. ✓
+      * Service e2e (`examples/native/rust/{service-server,
+        service-client}`, `ROS_DOMAIN_ID=78`) 4/4 calls succeed. ✓
 
       **Files**:
-      * `packages/dds/nros-rmw-cyclonedds/src/publisher.cpp`
-        (`publish_goal_status_array`, `publish_fibonacci_feedback`,
-        + any shared ops-walking helpers they were the sole
-        consumers of).
-      * Possibly `packages/dds/nros-rmw-cyclonedds/src/subscriber.cpp`
-        if a symmetric typed-sample path is needed for the receive
-        side.
-      * New tests under `packages/dds/nros-rmw-cyclonedds/tests/`
-        proving the round-trip on a hand-rolled
-        `GoalStatusArray`-shaped fixture without going through a
-        full action-server boot.
+      * `packages/dds/nros-rmw-cyclonedds/src/publisher.cpp` —
+        deleted both manual fast paths + their helpers; added
+        `strip_feedback_goal_id_prefix` + reshaped
+        `publisher_publish_raw` around `ddsrt`-allocated body
+        scratch + the generic typed-sample path.
+      * `packages/dds/nros-rmw-cyclonedds/tests/feedback_roundtrip.cpp`
+        — new typed-sample round-trip fixture.
+      * `packages/dds/nros-rmw-cyclonedds/tests/CMakeLists.txt`
+        — wire in the new test.
 
       **Cross-refs**: Phase 171.0.b (CDR header bridging for service
       paths); commit `7d7d04e16` (service Req/Reply header
       injection in `build_raw`). Both establish the predicate-and-
-      shift pattern this work should mirror.
+      shift pattern this work mirrors.
+
+- [ ] **K.7.4.e** — **Fix the action-client service-reply decode
+      mismatch.** Surfaced during K.7.4.d e2e validation
+      2026-06-03: with the publisher segfault gone the native rust
+      `action-client` now reaches the goal-reply wait, but
+      misinterprets the server's `accepted=true` reply as a
+      rejection (the client log emits `Goal was rejected by the
+      server` instantly, before the reply could plausibly arrive).
+      The server-side acceptance path is correct
+      (`accept_goal` → `send_reply` → `publish_status_array`
+      → 11×feedback → `complete_goal` all log cleanly); the bug is
+      on the *reply* decode side in either
+      `service.cpp::try_recv_reply_raw` (Cyclone takes the typed
+      response, re-serialises, strips the 16-byte
+      `rmw_writer_guid + rmw_sequence_number` header, hands the
+      remainder to the runtime) or
+      `handles.rs::parse_goal_accepted` (reads `u8 accepted` after
+      the 4-byte encap header). Reproduces on `main` *without*
+      K.7.4.d — confirmed pre-existing, NOT a K.7.4.d regression.
+      Likely a CDR-alignment mismatch: the IDL
+      `Fibonacci_SendGoal_Response_ { uint64 rmw_writer_guid;
+      int64 rmw_sequence_number; boolean accepted; int32 stamp_sec;
+      uint32 stamp_nanosec; }` aligns `accepted` after a 16-byte
+      header, but Rust's `parse_goal_accepted` reads `accepted` at
+      the post-encap offset 0 expecting the service layer to have
+      already stripped the rmw header.
+      **Files**: `packages/dds/nros-rmw-cyclonedds/src/service.cpp`
+      (`try_recv_reply_raw` + the
+      `_SendGoal_Response_` / `_GetResult_Response_` handling),
+      `packages/core/nros-node/src/executor/handles.rs::parse_goal_accepted`.
 
 - [x] **K.7.5** — **Bounded type registry** inside
       `nros-rmw-cyclonedds`. Landed `bb2d23002` —

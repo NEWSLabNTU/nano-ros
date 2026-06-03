@@ -1,8 +1,24 @@
-// Publisher path — Phase 117.6 + 117.6.B.
+// Publisher path — Phase 117.6 + 117.6.B + Phase 212.K.7.4.d.
 //
 // Entity creation: registry lookup → topic + writer + QoS.
 // Data path: CDR bytes from runtime → dds_stream_read_sample into
 // typed buffer → dds_write (Cyclone re-serialises) → wire.
+//
+// Phase 212.K.7.4.d retired the per-action manual ops-walking fast
+// paths (`publish_goal_status_array` + `publish_fibonacci_feedback`).
+// Those hardcoded `desc->m_ops[N]` offset reads under the assumption
+// the descriptor was produced by the idlc static codegen; the K.7.4.b
+// dynamic bridge emits structurally-identical-but-shifted op streams,
+// so the hardcoded slot reads pointed at the wrong words and the
+// server segfaulted on `memcpy(goal_id + uuid_off, ...)`. Both
+// `GoalStatusArray_` and `_FeedbackMessage_` now flow through the
+// same generic typed-sample path the rest of the backend uses, with
+// one narrow wire-format adapter for the `_FeedbackMessage_` types
+// (Rust serialises the action `goal_id` field with a `[4 u32=16]`
+// length prefix as if it were a `sequence<octet>`, but the Cyclone
+// IDL `Fibonacci_FeedbackMessage_ { octet goal_id[16]; … }` expects
+// the 16 raw bytes inline). The receive side mirror is in
+// `subscriber.cpp::insert_goal_id_len_at` (predates this commit).
 //
 // See `src/sertype_min.hpp` for the rationale behind the round-trip
 // approach (Cyclone 0.10.5 doesn't expose the writer's internal
@@ -28,8 +44,6 @@
 namespace nros_rmw_cyclonedds {
 
 namespace {
-
-constexpr uint8_t kCdrLeHeader[4] = {0x00, 0x01, 0x00, 0x00};
 
 struct PubState {
     dds_entity_t topic{0};
@@ -71,11 +85,6 @@ bool type_ends_with(const dds_topic_descriptor_t* desc, const char* suffix) {
     return len >= slen && std::strcmp(desc->m_typename + len - slen, suffix) == 0;
 }
 
-bool type_contains(const dds_topic_descriptor_t* desc, const char* needle) {
-    return desc != nullptr && desc->m_typename != nullptr && needle != nullptr &&
-           std::strstr(desc->m_typename, needle) != nullptr;
-}
-
 bool writer_matched(dds_entity_t writer) {
     dds_publication_matched_status_t status{};
     return dds_get_publication_matched_status(writer, &status) == DDS_RETCODE_OK &&
@@ -90,156 +99,31 @@ nros_rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) 
     return NROS_RMW_RET_TIMEOUT;
 }
 
-struct DdsSequenceInt32 {
-    uint32_t _maximum;
-    uint32_t _length;
-    int32_t* _buffer;
-    bool _release;
-};
-
-struct DdsSequenceStruct {
-    uint32_t _maximum;
-    uint32_t _length;
-    void* _buffer;
-    bool _release;
-};
-
-bool parse_sequence_int32(const uint8_t* cdr, size_t cdr_len, size_t* pos, DdsSequenceInt32* out) {
-    if (cdr == nullptr || pos == nullptr || out == nullptr || *pos + 4 > cdr_len) {
+// Phase 212.K.7.4.d — adapter for `_FeedbackMessage_` types only.
+//
+// The Rust side serialises the action `goal_id` field as
+//   [4 u32=16] [16 raw uuid bytes]
+// (the runtime's `write_goal_id` in `action_core.rs` treats UUID as
+// a `sequence<octet>` rather than the fixed `octet[16]` the Cyclone
+// IDL declares). Strip the extra 4-byte length prefix so the body
+// matches the IDL layout `dds_stream_read_sample` expects.
+//
+// `body` points to the post-encap-header payload; `body_len` is its
+// length. On success the prefix bytes are removed in-place by
+// memmove and `*body_len` is decremented. Returns false on a
+// malformed input (too short, or the length prefix isn't 16).
+bool strip_feedback_goal_id_prefix(uint8_t* body, size_t* body_len) {
+    if (body == nullptr || body_len == nullptr || *body_len < 4 + 16) {
         return false;
     }
-    uint32_t count = 0;
-    std::memcpy(&count, cdr + *pos, sizeof(count));
-    *pos += 4;
-    if (count > (cdr_len - *pos) / sizeof(int32_t)) return false;
-
-    out->_maximum = count;
-    out->_length = count;
-    out->_release = count > 0;
-    out->_buffer = nullptr;
-    if (count > 0) {
-        out->_buffer = static_cast<int32_t*>(dds_alloc(count * sizeof(int32_t)));
-        if (out->_buffer == nullptr) return false;
-        std::memcpy(out->_buffer, cdr + *pos, count * sizeof(int32_t));
-    }
-    *pos += count * sizeof(int32_t);
-    return true;
-}
-
-nros_rmw_ret_t publish_fibonacci_feedback(dds_entity_t writer, const dds_topic_descriptor_t* desc,
-                                          const uint8_t* data, size_t len) {
-    if (desc == nullptr || desc->m_ops == nullptr || data == nullptr || len < 4 + 4 + 16 + 4 + 4) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-
-    const uint32_t* ops = desc->m_ops;
-    const uint32_t goal_id_off = ops[1];
-    const uint32_t feedback_off = ops[4];
-    const uint32_t sequence_off = ops[8];
-
-    size_t pos = 4;
     uint32_t uuid_len = 0;
-    std::memcpy(&uuid_len, data + pos, sizeof(uuid_len));
-    pos += 4;
-    if (uuid_len != 16 || pos + 16 > len) return NROS_RMW_RET_INVALID_ARGUMENT;
-
-    auto* sample = static_cast<uint8_t*>(ddsrt_calloc(1, desc->m_size));
-    if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
-    std::memcpy(sample + goal_id_off, data + pos, 16);
-    pos += 16;
-    if (pos + sizeof(kCdrLeHeader) <= len &&
-        std::memcmp(data + pos, kCdrLeHeader, sizeof(kCdrLeHeader)) == 0) {
-        pos += sizeof(kCdrLeHeader);
+    std::memcpy(&uuid_len, body, sizeof(uuid_len));
+    if (uuid_len != 16) {
+        return false;
     }
-
-    auto* sequence = reinterpret_cast<DdsSequenceInt32*>(sample + feedback_off + sequence_off);
-    if (!parse_sequence_int32(data, len, &pos, sequence)) {
-        ddsrt_free(sample);
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-
-    const uint64_t deadline = platform_now_ms() + 2000;
-    if (wait_for_writer_match(writer, deadline) != NROS_RMW_RET_OK) {
-        dds_stream_free_sample(sample, desc->m_ops);
-        ddsrt_free(sample);
-        return NROS_RMW_RET_OK;
-    }
-    dds_return_t r = dds_write(writer, sample);
-    dds_stream_free_sample(sample, desc->m_ops);
-    ddsrt_free(sample);
-    return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
-}
-
-nros_rmw_ret_t publish_goal_status_array(dds_entity_t writer, const dds_topic_descriptor_t* desc,
-                                         const uint8_t* data, size_t len) {
-    if (desc == nullptr || desc->m_ops == nullptr || data == nullptr || len < 8) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-
-    const uint32_t* ops = desc->m_ops;
-    const uint32_t list_off = ops[1];
-    const uint32_t elem_size = ops[2];
-    const uint32_t goal_info_off = ops[6];
-    const uint32_t status_off = ops[9];
-    const uint32_t goal_id_off = ops[12];
-    const uint32_t stamp_off = ops[15];
-    const uint32_t uuid_off = ops[19];
-    const uint32_t stamp_sec_off = ops[23];
-    const uint32_t stamp_nsec_off = ops[25];
-
-    size_t pos = 4;
-    uint32_t count = 0;
-    std::memcpy(&count, data + pos, sizeof(count));
-    pos += 4;
-    if (count > (len - pos) / 25u) return NROS_RMW_RET_INVALID_ARGUMENT;
-
-    auto* sample = static_cast<uint8_t*>(ddsrt_calloc(1, desc->m_size));
-    if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
-    auto* list = reinterpret_cast<DdsSequenceStruct*>(sample + list_off);
-    list->_maximum = count;
-    list->_length = count;
-    list->_release = count > 0;
-    list->_buffer = nullptr;
-    if (count > 0) {
-        list->_buffer = dds_alloc(count * elem_size);
-        if (list->_buffer == nullptr) {
-            ddsrt_free(sample);
-            return NROS_RMW_RET_BAD_ALLOC;
-        }
-        std::memset(list->_buffer, 0, count * elem_size);
-    }
-
-    auto* items = static_cast<uint8_t*>(list->_buffer);
-    for (uint32_t i = 0; i < count; ++i) {
-        if (pos + 16 + 4 + 4 + 1 > len) {
-            dds_stream_free_sample(sample, desc->m_ops);
-            ddsrt_free(sample);
-            return NROS_RMW_RET_INVALID_ARGUMENT;
-        }
-        uint8_t* item = items + i * elem_size;
-        uint8_t* goal_info = item + goal_info_off;
-        uint8_t* goal_id = goal_info + goal_id_off;
-        uint8_t* stamp = goal_info + stamp_off;
-        std::memcpy(goal_id + uuid_off, data + pos, 16);
-        pos += 16;
-        std::memcpy(stamp + stamp_sec_off, data + pos, 4);
-        pos += 4;
-        std::memcpy(stamp + stamp_nsec_off, data + pos, 4);
-        pos += 4;
-        item[status_off] = data[pos];
-        pos += 1;
-    }
-
-    const uint64_t deadline = platform_now_ms() + 2000;
-    if (wait_for_writer_match(writer, deadline) != NROS_RMW_RET_OK) {
-        dds_stream_free_sample(sample, desc->m_ops);
-        ddsrt_free(sample);
-        return NROS_RMW_RET_OK;
-    }
-    dds_return_t r = dds_write(writer, sample);
-    dds_stream_free_sample(sample, desc->m_ops);
-    ddsrt_free(sample);
-    return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
+    std::memmove(body, body + 4, *body_len - 4);
+    *body_len -= 4;
+    return true;
 }
 
 } // namespace
@@ -310,7 +194,7 @@ nros_rmw_ret_t publisher_create(nros_rmw_session_t* session, const char* topic_n
     }
 
     out->backend_data = state;
-    graph_track_writer(session_graph(session), writer);  // Phase 177.36
+    graph_track_writer(session_graph(session), writer); // Phase 177.36
     return NROS_RMW_RET_OK;
 }
 
@@ -335,33 +219,57 @@ nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint
         return NROS_RMW_RET_ERROR;
     }
     const dds_topic_descriptor_t* desc = state->desc;
-    const uint8_t* read_data = data;
-    size_t read_len = len;
-    if (type_ends_with(desc, "_FeedbackMessage_")) {
-        if (!type_contains(desc, "Fibonacci_FeedbackMessage_")) {
-            return NROS_RMW_RET_OK;
-        }
-        return publish_fibonacci_feedback(state->writer, desc, data, len);
+
+    // Parse encapsulation, copy the payload bytes after the 4-byte
+    // header into a mutable scratch buffer (so we can splice out the
+    // `_FeedbackMessage_` goal_id length prefix in place if needed).
+    uint32_t xcdrv = cdr_xcdr_version(data);
+    size_t body_len = len - 4;
+    auto* body = static_cast<uint8_t*>(ddsrt_malloc(body_len > 0 ? body_len : 1));
+    if (body == nullptr) {
+        return NROS_RMW_RET_BAD_ALLOC;
     }
-    if (type_ends_with(desc, "::GoalStatusArray_")) {
-        return publish_goal_status_array(state->writer, desc, data, len);
+    if (body_len > 0) {
+        std::memcpy(body, data + 4, body_len);
     }
 
-    // Parse encapsulation, locate payload bytes after the 4-byte
-    // header.
-    uint32_t xcdrv = cdr_xcdr_version(read_data);
-    const uint8_t* payload = read_data + 4;
-    uint32_t paylen = static_cast<uint32_t>(read_len - 4);
+    // Phase 212.K.7.4.d — Rust serialises `goal_id` in `*_FeedbackMessage_`
+    // with a `[4 u32=16]` length prefix (sequence-style), but the Cyclone
+    // IDL declares `octet goal_id[16]` (fixed array). Strip the prefix
+    // so the body matches what `dds_stream_read_sample` expects. The
+    // receive-side mirror sits in `subscriber.cpp::insert_goal_id_len_at`.
+    if (type_ends_with(desc, "_FeedbackMessage_")) {
+        if (!strip_feedback_goal_id_prefix(body, &body_len)) {
+            ddsrt_free(body);
+            return NROS_RMW_RET_INVALID_ARGUMENT;
+        }
+    }
+
+    // For action status (e.g. `GoalStatusArray_`) the publisher only
+    // emits valid wire data once at least one reader has matched (the
+    // action client's status sub). Without this gate the first
+    // `dds_write` lands in an empty pub-set under VOLATILE QoS and is
+    // silently dropped (Phase 171.0.a established the matched-status
+    // gate for the service request path; the action status topic has
+    // the same dependency).
+    if (type_ends_with(desc, "::GoalStatusArray_")) {
+        const uint64_t deadline = platform_now_ms() + 2000;
+        if (wait_for_writer_match(state->writer, deadline) != NROS_RMW_RET_OK) {
+            ddsrt_free(body);
+            return NROS_RMW_RET_OK;
+        }
+    }
 
     // Allocate + zero typed sample buffer of the descriptor's static
     // size. `dds_stream_read_sample` walks the ops and fills it.
     void* sample = ddsrt_calloc(1, desc->m_size);
     if (sample == nullptr) {
+        ddsrt_free(body);
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
     dds_istream_t is;
-    dds_istream_init(&is, paylen, payload, xcdrv);
+    dds_istream_init(&is, static_cast<uint32_t>(body_len), body, xcdrv);
     dds_stream_read_sample(&is, sample, state->st->as_sertype());
     dds_istream_fini(&is);
 
@@ -369,6 +277,7 @@ nros_rmw_ret_t publisher_publish_raw(nros_rmw_publisher_t* publisher, const uint
 
     dds_stream_free_sample(sample, desc->m_ops);
     ddsrt_free(sample);
+    ddsrt_free(body);
 
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }

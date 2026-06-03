@@ -245,6 +245,29 @@ add_test(
 set_tests_properties(nros_rmw_cyclonedds_dynamic_bridge_seq_nested
     PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
 
+# Phase 212.K.7.4.d — typed-sample publisher round-trip for the
+# `_FeedbackMessage_` wire-format adapter. Builds a Fibonacci-shaped
+# FeedbackMessage descriptor via the dynamic bridge, publishes a
+# hand-crafted nano-ros runtime payload, asserts the subscriber takes
+# back the same UUID + sequence body.
+add_executable(nros_rmw_cyclonedds_feedback_roundtrip
+    feedback_roundtrip.cpp
+)
+target_link_libraries(nros_rmw_cyclonedds_feedback_roundtrip
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_feedback_roundtrip
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+)
+add_test(
+    NAME nros_rmw_cyclonedds_feedback_roundtrip
+    COMMAND nros_rmw_cyclonedds_feedback_roundtrip
+)
+set_tests_properties(nros_rmw_cyclonedds_feedback_roundtrip
+    PROPERTIES ENVIRONMENT "${_nros_rmw_test_env}")
+
 # Phase 117.X.2: topic-prefix helper unit test (no DDS interaction).
 add_executable(nros_rmw_cyclonedds_topic_prefix_test
     topic_prefix_test.cpp
