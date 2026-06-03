@@ -1037,20 +1037,47 @@ lands.
 
 **Work Items:**
 
-- [ ] **214.O.1 Enumerate + fix the 24 canonical-shape violators**
-      — run the test in verbose mode to dump the violator list, then
-      either restructure or document the carve-out (the test allows
-      a small list of legitimate exceptions, e.g. `examples/zephyr/
-      cpp/cyclonedds/talker-aemv8r/`).
-      **Acceptance**: `just native test --test
-      phase212_examples_canonical_shape` passes.
+- [x] **214.O.1 Enumerate + fix the 24 canonical-shape violators**
+      — verbose run enumerated 24 violators, all sharing one root
+      cause: Rust examples on the post-Phase 212.N.12 metadata shape
+      use `[package.metadata.nros.node]` (the renamed-from-component
+      Node pkg surface, landed in `9bef3ff0c`) but the lint was
+      still checking for `[package.metadata.nros.{component,entry,
+      application}]` only. The sibling `phase212_m12_example_shape::
+      component_or_application_classification_present` already
+      accepts both spellings (it added `node` per N.12); brought
+      this lint into agreement: accept `node` in the present-shape
+      check and apply the same L.4 `class = "<pkg>::<Class>"` prefix
+      check to both `component` and `node` tables. All 24 violators
+      cleared without touching any example Cargo.toml. Breakdown
+      (6 each, all "missing `component`/`node`/`entry`/`application`
+      subtable" pre-fix): qemu-arm-freertos/rust + qemu-arm-nuttx/
+      rust + threadx-linux/rust + zephyr/rust × {action-client,
+      action-server,listener,service-client,service-server,talker}.
+      Carve-outs unchanged (`examples/zephyr/cpp/cyclonedds/talker-
+      aemv8r/`, `examples/bridges/`, `examples/templates/`).
+      Landed `4ae251d9f` (commit body has the per-platform enum).
+      **Acceptance**: `cargo test -p nros-tests --test
+      phase212_examples_canonical_shape` passes — 1 passed; 0
+      failed (was 1 failed; 24 violations enumerated).
 
-- [ ] **214.O.2 `qemu_patched_binary` skip-then-test reshape** —
-      restructure the three test bodies so the SDK-missing skip
-      happens before any assertion. (They already call
-      `nros_tests::skip!` early; the FAIL is because skip!
-      itself panics — same R-class issue. May be no-op once R
-      lands.)
+- [x] **214.O.2 `qemu_patched_binary` skip-then-test reshape** —
+      extracted `require_patched_qemu() -> PathBuf` helper that
+      either returns the absolute, existing patched binary path or
+      `nros_tests::skip!`s with the canonical "run `just qemu setup-
+      qemu`" hint. Every test body now opens with `let path =
+      require_patched_qemu();` and proceeds unconditionally — no
+      more in-body `if !path.is_absolute() { skip!(…) } if !path.
+      exists() { skip!(…) }` duplication, intent matches the Phase
+      212.H test gate pattern. No behaviour change (the skip path
+      still panics with `[SKIPPED] …` so a missing patched binary
+      still surfaces as a Cargo FAIL until Track R rewrites JUnit
+      XML), but the test source is unambiguous about which path
+      runs the assert. Landed `ef6ca960e`.
+      **Acceptance**: `cargo test -p nros-tests --test
+      qemu_patched_binary` → 3 passed; 0 failed (patched binary
+      present locally); simulated-missing path emits 3 `[SKIPPED]`
+      panics (same as before — Track R-class issue).
 
 ---
 
