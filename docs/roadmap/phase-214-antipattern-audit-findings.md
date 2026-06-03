@@ -348,68 +348,108 @@ recipe — orchestration only), `esp_idf`, `platformio`, `px4`, `docker`,
 
 ---
 
-## Track F — Workspace feature unification leaks `std` to embedded
+## Track F — Workspace feature unification leaks `std` to embedded (RE-SCOPED 2026-06-04)
 
-**Scope**: CRITICAL. Blocks `just check-workspace-embedded` (and any
-embedded CI lane that builds the workspace). Standalone
+**Scope**: CRITICAL. Blocks `just check-workspace-embedded`. Standalone
 `cargo check -p nros-serdes --no-default-features --target
-thumbv7em-none-eabihf` passes; the failure is purely unification.
+thumbv7em-none-eabihf` passes; the failure is workspace-wide unification.
+
+**Re-scope note (2026-06-04).** Original Track F mis-diagnosed the leak
+as a dev-dep boundary issue. A wave-1 implementation agent reproduced
++ traced + escalated: with dev-deps explicitly stripped (`cargo tree
+--edges=normal,build`), the std + posix-c-port activations are STILL
+present, sourced from **`[dependencies]` of host-only workspace
+members**:
+
+```
+nros-serdes ← nros-core ← nros-node feature "std"
+    ← [normal dep] nros-board-posix (packages/boards/nros-board-posix/Cargo.toml:24)
+nros-platform-cffi feature "posix-c-port"
+    ← nros-platform feature "platform-posix"
+        ← [normal dep] nros-board-posix (line 24)
+        ← [normal dep] nros-board-native (packages/boards/nros-board-native/Cargo.toml:24, via nros-rmw-zenoh)
+```
+
+`nros-board-{posix,native,nuttx}` + `nros-msg-to-idl` are host/codegen-only
+crates with unconditional `[dependencies]` activating `nros/std` +
+`nros/platform-posix`. Workspace feature unification with
+resolver=2 narrows by target compatibility but does NOT exclude
+`--workspace` members from compilation. Every member still gets
+checked; every member's normal `[dependencies]` flow through
+unification into shared deps like `nros-serdes`. The dev-dep leak
+the original spec flagged exists but is secondary — even fully
+removed, the host-board normal deps still poison the embedded build.
 
 **Owns:**
-* `packages/core/nros-node/Cargo.toml` (`[dev-dependencies]` section
-  only — `nros-platform-cffi` dev-dep is the unification source)
-* `packages/core/nros-platform-cffi/Cargo.toml` (`posix-c-port`
-  feature wiring of `nros-log` as a dev-dep — same unification
-  vector)
-* `packages/core/nros-rmw-cffi/Cargo.toml` (sibling check — `std`
-  feature must not auto-enable via dev-deps)
-* `justfile` (the `check-workspace-embedded` recipe — adjusting
-  excludes if a refactor demands them)
-* Does NOT own `nros-serdes/lib.rs` or its `Cargo.toml` (the leaf
-  is correct; fix is upstream).
+* `packages/boards/nros-board-posix/Cargo.toml` (target-gate normal deps)
+* `packages/boards/nros-board-native/Cargo.toml` (same)
+* `packages/boards/nros-board-nuttx/Cargo.toml` (same — host-only codegen)
+* `packages/core/nros-msg-to-idl/Cargo.toml` (same — host-only codegen)
+* `justfile` (`check-workspace-embedded` recipe — only if Path A taken)
+* Does NOT own `nros-serdes/lib.rs` (leaf is correct).
 
-**Architecture**: cargo workspace feature unification activates the
-union of every feature set requested across the resolution graph,
-including dev-deps. `cargo tree -i nros-serdes -e features
---target thumbv7em-none-eabihf --no-default-features --workspace`
-shows the path:
+**Architecture**: two viable fixes — Path B preferred.
+
+**Path A — exclude host-only members from the embedded recipe**:
+extend `justfile:1123` with `--exclude nros-board-posix --exclude
+nros-board-native --exclude nros-board-nuttx --exclude nros-msg-to-idl`.
+Small + honest about scope ("these are host-only, won't compile on
+embedded ever"). Downside: creates blind spots — those crates aren't
+re-checked under any embedded lane, so a future maintainer accidentally
+adding embedded-incompatible code to one of them slips through.
+
+**Path B (PREFERRED) — target-gate the host board crates' deps**:
+split each host-only crate's `[dependencies]` into a target-cfg block:
+```toml
+[target.'cfg(not(target_os = "none"))'.dependencies]
+nros = { workspace = true, features = ["std", "rmw-cffi", "platform-posix"] }
 ```
-nros-serdes  ← nros-core (feature "std")
-  ← nros-node (feature "std")
-    ← [dev-dependencies] nros-platform-cffi (feature "posix-c-port")
-      ← [dev-dependencies] nros-log
-```
-So a workspace clippy / build under `--no-default-features` still
-pulls `nros-node/std` via the dev-dep cycle, which then enables
-`nros-serdes/std`, which then asks for `extern crate std` —
-unsupported on thumb.
+Cargo permits this on `[target.<cfg>.dependencies]` for normal deps.
+Workspace stays whole; embedded check correctly sees the host-only
+crate as having no deps under thumb (so its lib doesn't compile
+either; cargo skips it). No exclusions needed; no blind spots.
+
+After applying Path B, expect a clippy-lint fail elsewhere
+(`nros-platform/src/board/runtime.rs:95` `result_unit_err`,
+`nros-platform/src/lib.rs:213`) — those are pre-existing lints,
+separate cleanup; surface them under a sibling track if they don't
+fold cleanly.
 
 **Work Items:**
 
-- [ ] **214.F.1 Move heavy dev-deps to a sibling test-only crate** —
-      the canonical cargo workaround for cross-target unification of
-      dev-deps is to relocate them into a sibling crate that lives
-      outside the workspace member list (or behind a non-default
-      feature gate). Move `nros-platform-cffi` out of
-      `nros-node/[dev-dependencies]` and into a new
-      `packages/core/nros-node-tests/` crate that depends on
-      `nros-node` normally and exercises the platform-cffi path.
+- [ ] **214.F.1 Target-gate host-only crate deps (Path B)** — add
+      `[target.'cfg(not(target_os = "none"))'.dependencies]` blocks
+      to `nros-board-{posix,native,nuttx}` + `nros-msg-to-idl`,
+      moving every `[dependencies]` entry that pulls `nros/std` or
+      `nros/platform-posix` into the host-cfg'd block. Leave anything
+      no_std-friendly in the unconditional `[dependencies]` (likely
+      nothing — these crates are host-only).
       **Acceptance**: `cargo tree -i nros-serdes --target
-      thumbv7em-none-eabihf --no-default-features --workspace` no
-      longer shows a `std` activation path through dev-deps.
-      `just check-workspace-embedded` passes clean.
+      thumbv7em-none-eabihf --no-default-features --workspace
+      --edges=normal,build` shows NO `std` activation path from any
+      board crate. `just check-workspace-embedded` advances past the
+      std/posix-c errors. (Pre-existing clippy lints in
+      `nros-platform` may surface — file under sibling track.)
 
-- [ ] **214.F.2 Same treatment for `nros-rmw-cffi` dev-deps** — same
-      smell in `nros-rmw-cffi/Cargo.toml`. Relocate sibling test
-      utilities to keep the production crate's dev-deps minimal.
-      **Acceptance**: no dev-dep entry in `nros-rmw-cffi/Cargo.toml`
-      transitively activates `std` on a leaf `no_std` crate.
+- [ ] **214.F.1.fallback Path A — recipe excludes** — if Path B
+      breaks `just check-workspace` (host build) by making host-only
+      crates uncompilable under host targets too (shouldn't happen,
+      but verify), revert to adding `--exclude` flags in
+      `check-workspace-embedded`. Smaller change; less rigorous.
 
-- [ ] **214.F.3 CI guard against future dev-dep unification regressions**
+- [ ] **214.F.2 Address residual dev-dep unification** — once Path B
+      removes the dominant leak source, the residual dev-dep leak
+      (the doc's original framing) may still trip under different
+      feature combos. Re-run the cargo-tree audit AFTER F.1 lands;
+      if any std path still shows up, apply the sibling-test-crate
+      carve-out the original spec described.
+      **Acceptance**: `cargo tree -i nros-serdes …` is std-free.
+
+- [ ] **214.F.3 CI guard against future feature unification regressions**
       — add a smoke test that runs `cargo tree -i nros-serdes
       --target thumbv7em-none-eabihf --no-default-features
       --workspace` and asserts the output is missing the substring
-      "feature \"std\"". Wire into `just check-workspace-embedded`.
+      `feature "std"`. Wire into `just check-workspace-embedded`.
 
 ---
 
