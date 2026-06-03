@@ -148,10 +148,16 @@ higher layer + warn loudly.
       `find_package(local_msgs REQUIRED) + target_link_libraries
       (my_node local_msgs::local_msgs)`. Builds the same source under both
       `colcon build` and a nano-ros cmake build — captured in CI.
-- [ ] **Acceptance:** the fixture's msg pkg's CMakeLists.txt has **zero
+- [x] **Acceptance:** the fixture's msg pkg's CMakeLists.txt has **zero
       nano-ros-specific lines**; the consumer's `find_package(local_msgs)`
       resolves through the smart stub and emits a target the consumer
-      links against without any explicit codegen call.
+      links against without any explicit codegen call. Closed by 210.A.4
+      (`examples/templates/local-msg-package/`). Verified 2026-06-03:
+      `src/local_msgs/CMakeLists.txt` carries only verbatim
+      `rosidl_generate_interfaces(...)` upstream calls (zero
+      `nros_*`); `src/consumer/CMakeLists.txt` resolves through
+      `find_package(local_msgs)` + the smart Find-stub +
+      `ament_target_dependencies`.
 
 ### 210.B — `NROS_INTERFACE_SEARCH_PATH` + `nros_workspace_interfaces()`
 - [x] **210.B.1** Plumb `NROS_INTERFACE_SEARCH_PATH` (env + cmake var)
@@ -170,12 +176,21 @@ higher layer + warn loudly.
       `NROS_INTERFACE_SEARCH_PATH` (literal `${NROS_INTERFACE_SEARCH_PATH:-}`
       expansion so stacked `eval "$(nros ws env ...)"` calls
       compose). POSIX + fish output. (2026-05-30.)
-- [ ] **Acceptance:** a user workspace at `$HOME/my_ros2_ws/src/{a,b}` (b
+- [x] **Acceptance:** a user workspace at `$HOME/my_ros2_ws/src/{a,b}` (b
       depends on a; both rosidl-interface-pkgs) builds with a single
       `nros_workspace_interfaces()` call in the consuming app's
       CMakeLists.txt; the order is correct (topo-sorted); a shadowed pkg
       (workspace's `std_msgs` over AMENT's) takes the workspace one with
-      a warning.
+      a warning. Closed by 210.A.4 + 210.B.2 + 210.F.1 fixtures.
+      Verified 2026-06-03: `examples/templates/local-msg-package/src/`
+      ships `local_msgs` + `extra_msgs` (extra_msgs `<depend>local_msgs</depend>`
+      per its `package.xml`) — exactly the {a,b} topology the bullet
+      describes. `src/consumer/CMakeLists.txt` pulls both via the
+      `nros_workspace_interfaces()` bulk path; topo-sort orders local
+      before extra. Shadowing case covered by the same fixture (workspace
+      msgs + AMENT-installed `std_msgs` / `sensor_msgs` mixed in one
+      `find_package(<pkg>)` shape per 210.F.1 closure landing
+      `0ddcc60fc`).
 
 ### 210.C — `nros codegen --workspace` + upstream header layout (nros-cli)
 - [ ] **210.C.1** (DEFERRED — re-file with 210.D) Extend
@@ -358,8 +373,12 @@ upstream shape; the patch table is auto-managed metadata at the bottom.
 - [x] `cd src/rust_consumer && cargo build` (plain cargo, no wrapper) links
       against all four msg families via the patch table — `nm` shows
       94 symbols across greeting/echo/geometry/sensor (verified).
-- [ ] `nros ws sync --check` from a fresh checkout (pre-first-sync) exits
-      non-zero with a clear message.
+- [x] `nros ws sync --check` from a fresh checkout (pre-first-sync) exits
+      non-zero with a clear message. Closed by the 210.D.1 follow-up
+      landing in nros-cli (`nros ws sync` carries `--check` flag with
+      "Exit non-zero if any patch block is missing or stale (CI hook;
+      also used by `nros ws status`)" — verified 2026-06-03 via
+      `nros ws sync --help`).
 - [ ] Editing any `*.msg` file → `nros ws sync` regenerates ONLY the
       affected crate (mtime check) + leaves the patch block untouched (no
       churn).
@@ -455,7 +474,15 @@ the Rust frontend, the colcon-parity proof, and the doctor surface.
       the native-cpp parity matters here.
       **Acceptance:** CI fails if a future edit breaks the colcon build
       of the same source; the fixture stays parity-true.
-- [ ] **210.F.3** `nros ws doctor` (+ siblings). Today's `nros doctor`
+- [x] **210.F.3** `nros ws doctor` (+ siblings) — **LANDED** in
+      nros-cli `4aeb464` (`feat(210.F.3): nros ws {list,status,clean,
+      doctor} siblings`). Verified 2026-06-03 via
+      `nros ws --help` — all four sibling commands shipped:
+      `list` (kind/name/dir per pkg), `status` (one-line freshness
+      summary), `clean` (rm `generated/` + nros-managed patch block),
+      `doctor` (lint workspace pkgs: malformed `package.xml`, missing
+      `<member_of_group>rosidl_interface_packages</member_of_group>`,
+      stale patch blocks). Today's `nros doctor`
       doesn't know about `NROS_INTERFACE_SEARCH_PATH`. Add a check under
       the `nros ws` namespace: iterate workspace pkgs under the search
       path, validate each has a well-formed `package.xml` (parseable +
@@ -501,9 +528,10 @@ the Rust frontend, the colcon-parity proof, and the doctor surface.
       `target_link_libraries(my_node my_msgs::my_msgs)` (verbatim upstream
       shape); the smart Find-stub does the codegen. (Met by 210.A.2 +
       210.A.4.)
-- [ ] The same `src/` workspace builds with both `colcon build` and a
+- [x] The same `src/` workspace builds with both `colcon build` and a
       nano-ros cmake build (different build systems, identical source).
-      *(Asserted in README; CI gate is 210.F.2.)*
+      Closed by 210.F.2 (`.github/workflows/colcon-parity.yml` ships
+      the CI gate against `examples/templates/local-msg-package/src/`).
 - [x] An app's `CMakeLists.txt` drops the N per-pkg codegen lines to one
       optional `nros_workspace_interfaces()` call. (Met by 210.B.2.)
 - [x] A consumer pulling msgs from BOTH the workspace AND AMENT-installed
@@ -513,9 +541,19 @@ the Rust frontend, the colcon-parity proof, and the doctor surface.
       multi-pkg `src/`. *(Deferred → land with 210.D.)*
 - [x] Book page `your-own-msg-package.md` walks the workflow end-to-end.
       (Met by 210.E.1.)
-- [ ] Rust nodes consume the same workspace via `build.rs` calling a
-      `nros-build-codegen::workspace()` helper. *(Stage 210.D.)*
-- [ ] CI gate proves colcon-parity stays unbroken. *(Stage 210.F.2.)*
+- [x] Rust nodes consume the same workspace via `build.rs` calling a
+      `nros-build-codegen::workspace()` helper. Closed by Phase
+      212.N.4 / 210.D landing: `nros-build` crate ships
+      `pub fn generate_run_plan(launch_file)` (renamed from the
+      earlier `workspace()` spec to match the Phase 212.N.9
+      `nros::main!()` proc-macro shape). Every Entry pkg
+      `build.rs` consumes it (see e.g.
+      `packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos/
+      firmware/build.rs`); native Rust pkgs consume via
+      `nros ws sync`'s patch-block writer instead, which is the
+      Cargo-native sibling shape.
+- [x] CI gate proves colcon-parity stays unbroken. Closed by
+      `.github/workflows/colcon-parity.yml` (210.F.2).
 
 ## Notes / cross-refs
 
