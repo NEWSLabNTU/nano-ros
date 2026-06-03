@@ -1647,18 +1647,42 @@ Two redundant entries on cyclonedds:
       selection to the Entry pkg + generated runtime). `_entry`
       packages skipped (they're plumbing, not user-facing examples).
 
-- [ ] **214.S.5.b Cargo host-build of FreeRTOS Component pkgs**
-      (follow-up to 214.S.5) — `cargo build --features rmw-cyclonedds`
-      from inside `examples/qemu-arm-freertos/rust/talker/` fails the
-      host build with "no global memory allocator found" + "panic
+- [x] **214.S.5.b Cargo host-build of FreeRTOS Component pkgs**
+      (2026-06-04, follow-up to 214.S.5) — `cargo check --features
+      rmw-cyclonedds` from inside any of the six FreeRTOS rust
+      Component pkgs (`examples/qemu-arm-freertos/rust/{talker,listener,
+      service-{client,server},action-{client,server}}/`) used to fail
+      the host build with "no global memory allocator found" + "panic
       handler required" + "unwinding panics not supported without
-      std". This is the existing Component pkg shape (`no_std` lib
-      crate without an `_entry` cross-compile context); not specific
-      to cyclonedds. The parity row from S.5 lights up only when the
-      crate is consumed by a properly cross-compiled Entry pkg. Out
-      of scope for 214 wave 3; tracked here for follow-up either to
-      gate the cargo command behind the target triple or to surface a
-      better diagnostic.
+      std". Pick: **host-shim** (option b in the task brief).
+      Each Component pkg now ships a `host_shim` module gated on
+      `#[cfg(any(target_os = "linux", target_os = "macos"))]` that
+      provides a minimal `#[panic_handler]` (spin-loop abort) and a
+      no-op `#[global_allocator]` returning `null_mut()`. Paired with
+      `[profile.dev]/[profile.release] panic = "abort"` (required to
+      strip libcore's unwinding-panics requirement on the host
+      target). The shim is `#[cfg]`-elided on the embedded target
+      (`thumbv7m-none-eabi` / `target_os = "none"`), so the firmware
+      build path (Entry pkg cross-compile via
+      `talker_entry/.cargo/config.toml`) is unaffected — `nros-board-
+      mps2-an385-freertos` + `panic-semihosting` still supply the
+      embedded panic handler and `nros-platform-freertos`'s opt-in
+      `global-allocator` still supplies the heap. **Verified**: host
+      `cargo check --no-default-features --features rmw-cyclonedds`
+      passes on talker, listener, service-{client,server},
+      action-client (action-server hits a pre-existing wave 3 codegen
+      mismatch — `Vec<i32, 16>` vs generated `Vec<i32, 64>` — that's
+      orthogonal to S.5.b and tracked separately). **Comparison**:
+      `examples/threadx-linux/rust/*` Component pkgs pick `features =
+      ["std"]` on the nros umbrella dep so their host build already
+      links against libstd's panic / allocator — no shim needed
+      there. ESP32 `examples/esp32/rust/{talker,listener}/src/lib.rs`
+      already ships an inline `#[panic_handler]` for the same
+      staticlib-needs-panic-handler reason; the FreeRTOS shim mirrors
+      that pattern plus the missing allocator. **Files**:
+      `examples/qemu-arm-freertos/rust/{talker,listener,
+      service-{client,server},action-{client,server}}/{src/lib.rs,
+      Cargo.toml}` (12 files, 6 Component pkgs).
 
 - [x] **214.S.6 Regen sweep against fresh CLI (Track J overlap)**
       (2026-06-04, this commit) — every rust example dir (96 with
