@@ -237,17 +237,13 @@ build-fixtures-make:
         ( cd "$nuttx_dir" && make olddefconfig >/dev/null )
     fi
     # Phase 184.4 — build the host nros-codegen first, mirroring the cmake
-    # `build-fixtures` path above. The staging scripts (gen-interfaces.py +
-    # gen-cpp-ffi-crates.py) need it to (re)generate the C/C++ bindings AND the
-    # per-package `nano_ros_cpp_ffi_<pkg>` staticlibs that the external-app link
-    # pulls in via generated/ffi/extra_libs.mk. Without it gen-cpp-ffi prints
-    # "nros-codegen not at ...; skipping" → empty extra_libs.mk → the kernel
-    # link fails with `undefined reference to nros_cpp_{serialize,deserialize,
-    # publish}_<pkg>_<msg>`. `just clean` removes the codegen build, so this
-    # must run every time, not just on first setup. Export NROS_CODEGEN at the
-    # active profile dir so stage-external-apps.sh (and the per-example
-    # gen-cpp-ffi invocation) use the freshly-built binary, not the stale
-    # `release/` default.
+    # `build-fixtures` path above. Historical per-example staging scripts
+    # (now retired under Phase 212.M-F.16) used it to (re)generate per-package
+    # `nano_ros_cpp_ffi_<pkg>` staticlibs that the external-app link pulls in
+    # via generated/ffi/extra_libs.mk. `just clean` removes the codegen build,
+    # so this must run every time, not just on first setup. Export NROS_CODEGEN
+    # at the active profile dir so stage-external-apps.sh uses the freshly-built
+    # binary, not the stale `release/` default.
     source scripts/build/cargo.sh
     echo "Building host nros-codegen for staging..."
     nros_cargo_ensure_codegen_c
