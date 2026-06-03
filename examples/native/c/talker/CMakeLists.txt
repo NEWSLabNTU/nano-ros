@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-# `nano_ros_application()` + the codegen target_link_libraries chain
+# `nano_ros_entry()` + the codegen target_link_libraries chain
 # pull in C++ pieces (cbindgen-generated FFI glue, Cyclone optional
 # branch); enable both languages so the cmake fns don't trip on
 # missing CXX feature detection.
@@ -13,7 +13,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 #   * `package.xml`            — pkg identity + msg dep declaration
 #   * `nros_find_interfaces`   — reads package.xml, generates the
 #                                C-side msg bindings closure
-#   * `nano_ros_application()` — declares the exec entity + appends
+#   * `nano_ros_entry()` — declares the exec entity + appends
 #                                metadata for `nros codegen-system`
 #
 # RMW selected at cmake configure time via `-DNROS_RMW=<rmw>` (default
@@ -37,7 +37,7 @@ set(_NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
 add_subdirectory("${_NANO_ROS_ROOT}" nano_ros)
 
 # `NanoRosNodeRegister.cmake` ships the §212.L.9 cmake fns
-# (`nano_ros_application`, `nano_ros_component_register`,
+# (`nano_ros_entry`, `nano_ros_component_register`,
 # `nano_ros_deploy`). Per-example include matches the §212.M.2 pattern.
 include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 
@@ -47,7 +47,7 @@ include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 # pre-212 shape used.
 nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
-nano_ros_application(
+nano_ros_entry(
     NAME c_talker
     SOURCES src/main.c
     DEPLOY native)

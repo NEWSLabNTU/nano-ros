@@ -20,7 +20,7 @@ include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 
 nros_find_interfaces(LANGUAGE C SKIP_INSTALL)
 
-nano_ros_application(
+nano_ros_entry(
     NAME c_service_server
     SOURCES src/main.c
     DEPLOY native)

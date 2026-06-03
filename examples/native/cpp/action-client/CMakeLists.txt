@@ -19,7 +19,7 @@ include("${_NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
 
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
-nano_ros_application(
+nano_ros_entry(
     NAME cpp_action_client
     SOURCES src/main.cpp
     DEPLOY native)
