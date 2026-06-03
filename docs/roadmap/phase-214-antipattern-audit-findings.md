@@ -923,12 +923,47 @@ semantics).
 
 **Work Items:**
 
-- [ ] **214.N.1 Survey installed `nros` verb set vs phase212 tests
+- [x] **214.N.1 Survey installed `nros` verb set vs phase212 tests
       — diff matrix** — for each failing test, identify which `nros`
       subcommand+arg shape it asserts, and confirm presence/absence
       in `nros 0.2.0 --help`. Output: matrix CSV.
       **Acceptance**: every failing phase212 test maps to either
-      a missing-verb row or a behaviour-drift row.
+      a missing-verb row or a behaviour-drift row. **Landed**: the
+      pinned release `0.3.7` is missing the `launch`, `migrate`, and
+      `codegen-system` verbs entirely (added on nros-cli `main` after
+      the tag); a source-build via Path B
+      (`NROS_FROM_SOURCE=~/repos/nros-cli scripts/install-nros.sh`)
+      surfaces all three. Matrix below (post Path B install):
+
+      | Test | `nros` verbs asserted | Verb present (main) | Outcome |
+      | ---- | ---- | ---- | ---- |
+      | `phase212_l_check_lints` (5) | `check --workspace` | yes | PASS |
+      | `phase212_g_check_exec_depend_drift` (3) | `check --bringup` | yes | PASS |
+      | `phase212_i_migrate_workspace::migrate_dry_run_writes_no_files` | `migrate workspace --dry-run` | yes | PASS |
+      | `phase212_i_migrate_workspace::migrate_idempotent_without_force_is_noop` | `migrate workspace` | yes | PASS |
+      | `phase212_i_migrate_workspace::migrate_workspace_e2e` | `migrate workspace` (post-spec `[package.metadata.nros.component]` sub-table) | yes (verb) / no (sub-table semantic) | **drift → skip-gate (N.3)** |
+      | `phase212_j_launch::nros_launch_spawns_components` | `launch --foreground` | yes | PASS |
+      | `phase212_j_launch::nros_launch_detach_returns_pid_file` | `launch --detach` (asserts `<ws>/target/nros/<bringup>.pid`; main writes `<ws>/.nros/launch/<bringup>.pids`) | yes (verb) / no (path semantic) | **drift → skip-gate (N.3)** |
+      | `phase212_l7_self_bringup` (2) | `plan`, `codegen-system` | yes | PASS or [SKIPPED] (no `play_launch_parser`) |
+      | `phase212_f3_dirwalk_discovery` (2) | `plan` (needs `play_launch_parser`) | yes | unguarded precondition → **skip-gate (N.3)** |
+      | `phase212_f_bringup_scaffold` (2) | `new system`, `check --bringup` | yes | PASS |
+      | `phase212_l6_launch_synth` (4) | `plan` (needs `play_launch_parser`) | yes | PASS or [SKIPPED] (no `play_launch_parser`) |
+      | `phase212_h1_zephyr` | `codegen-system` (via shim) | yes | TIMEOUT (zephyr build > 60s nextest cap; out of N's scope) |
+      | `phase212_mf3_zephyr_self_pkg` (2) | `codegen-system` (via shim) | yes | TIMEOUT (same as above) |
+      | `orchestration_composable` | `plan` | yes | PASS |
+      | `orchestration_set_remap_env` (3) | `plan` | yes | PASS |
+      | `orchestration_includes` (3) | `plan` (needs `play_launch_parser`) | yes | PASS or [SKIPPED] (no `play_launch_parser`) |
+
+      Verb presence matrix in `~/.nros/bin/nros` (`0.3.7` release vs source-build of `main` @ `1c92310`):
+
+      | Verb | release 0.3.7 | main 1c92310 |
+      | ---- | ---- | ---- |
+      | `check` | ✓ | ✓ |
+      | `plan` | ✓ | ✓ |
+      | `codegen-system` | ✗ | ✓ |
+      | `launch` | ✗ | ✓ |
+      | `migrate` | ✗ | ✓ |
+      | `new system` | ✓ | ✓ |
 
 - [ ] **214.N.2 Bump nros-cli pin** — once Track I lands, the same
       bump probably covers most of N. Re-run the failing tests.
