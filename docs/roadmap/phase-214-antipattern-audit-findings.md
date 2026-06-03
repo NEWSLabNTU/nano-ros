@@ -27,9 +27,30 @@ across 10 audit axes. Tracks group them by file-ownership disjoint-ness:
 | **C — Magic numbers + duplicated defaults** | scattered timeout/MTU/buffer-size literals across 5+ build.rs | scattered | LOW-MED |
 | **D — Unsafe doc + audit** | 6 `unsafe fn` missing `# Safety` paragraphs + 1 lifetime transmute hardening | 8 files | LOW |
 | **E — Misc hardening** | Orin SPE `i32` cast bounds-check, dual-transport `compile_error!` guard | 2 files | LOW |
+| **F — Workspace feature unification leak** | dev-deps of `nros-node` force `nros-serdes/std` under `--workspace --target thumbv7em-none-eabihf` | `nros-node` Cargo.toml dev-deps | CRITICAL |
+| **G — zpico-sys platform_aliases.c link** | `cargo test --workspace` link fails: `_z_mutex_rec_unlock` → `nros_platform_mutex_rec_unlock` undefined on POSIX without zenoh-pico in the C side | `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` + build.rs | HIGH |
+| **H — Native test fixture prebuild precondition** | 38+ native tests panic with `Test fixture binary not prebuilt — Run just build-test-fixtures first`; `just native test` does not run `build-fixtures` itself | `just native test` recipe, harness binary-resolution code | HIGH |
+| **I — `nros ws sync` subcommand unavailable** | installed `nros` 0.2.0 lacks the `ws` verb that freertos / qemu-baremetal / threadx-linux / native / zephyr build recipes invoke | `just/{freertos,qemu-baremetal,threadx-linux,native,zephyr}.just` + nros-cli release pin | HIGH |
+| **J — Generated `RosAction` codegen drift** | cached `examples/<plat>/rust/<rtic*>/generated/example_interfaces/src/action/fibonacci.rs` lacks 5 envelope assoc-types added to the trait | qemu-arm-baremetal rtic examples, qemu-riscv64-threadx rust examples (in `generated/`, gitignored — fix is a regen sweep) | HIGH |
+| **K — Stale Zephyr fixture cache** | every Zephyr test fails with `Zephyr fixture binary is stale: …/nano-ros-workspace/build-*` because `just zephyr test` does not run `build-fixtures` itself | `just zephyr test` recipe | HIGH |
+| **L — `integrations/<rtos>/` shells missing** | `zephyr_integration_shell_smoke`, `esp_idf_integration_shell_smoke`, `platformio_integration_shell_smoke` all fail because `integrations/{zephyr,esp-idf,platformio}/` either don't exist or lack manifest files | `integrations/` tree + integration tests | HIGH |
+| **M — NuttX armv7a-nuttx-eabi libc shim incomplete** | `_SC_HOST_NAME_MAX` missing → stdlib `hostname/unix.rs:8` fails to compile against `libc` shipped for `armv7a-nuttx-eabi` (nightly-2026-04-11 toolchain regression) | `target/armv7a-nuttx-eabi` libc target spec / std build script | MED |
+| **N — `nros` CLI lints / verbs drift vs tests** | `phase212_l_check_lints`, `phase212_g_check_exec_depend_drift`, `phase212_i_migrate_workspace`, `phase212_j_launch`, `phase212_l7_self_bringup`, `phase212_f3_dirwalk_discovery`, `phase212_f_bringup_scaffold`, `phase212_h1_zephyr`, `phase212_mf3_zephyr_self_pkg`, `orchestration_{composable,set_remap_env,includes}` — installed `nros` 0.2.0 lacks newer lints / `codegen-system` / `migrate` / `launch` / planning behaviours these tests assert | nros-cli release pin + the listed test files (skip-vs-fail policy) | MED |
+| **O — Examples canonical-shape regression + qemu-patched binary skip noise** | `examples_tree_uses_canonical_shape` reports 24 violations; `qemu_patched_binary` tests use `skip!` for SDK-missing path which still counts as FAIL in nextest junit | `examples/**/package.xml`, `packages/testing/nros-tests/tests/{phase212_examples_canonical_shape,qemu_patched_binary}.rs` | MED |
+| **P — Embedded cyclonedds e2e listener loss** | `just freertos test` `test_freertos_rust_cyclonedds_local_pubsub_e2e` and `just native test` `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` both report `Listener: expected at least 1 received messages, got 0` after the e2e harness runs to completion | embedded ddsrt runtime + the two e2e tests | MED |
+| **Q — `just <plat> test` does not gate on build-fixtures** | Every per-platform `test` recipe (native, qemu, freertos, nuttx, threadx_linux, threadx_riscv64, zephyr, esp32) lets the test harness explode with "fixture not built" instead of running the matching `build-fixtures` first OR failing fast with a single clear `[PREREQ]` message | each `just/<plat>.just` test recipe head | MED |
+| **R — Test runner classifies `skip!` panic as FAIL** | `nros_tests::skip!` panics with `[SKIPPED] …` (the CLAUDE.md-blessed contract) but nextest junit counts the test as `<failure>`; the wrapper script's "Real failures" tally helps but only after the fact | `packages/testing/nros-tests/src/lib.rs::skip!` + nextest filter glue | LOW |
 
-Tracks A, C, D, E live in nano-ros. Track B lives in nros-cli (codegen
-emit fix) followed by a nano-ros regen sweep.
+Tracks A–E are the original static-audit findings; **F–R are the
+runtime test-suite sweep findings added 2026-06-04** from running
+`just <plat> test` across every in-scope platform. Each new track has
+disjoint file ownership for parallel dispatch.
+
+Tracks A, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R live in
+nano-ros. Track B lives in nros-cli (codegen emit fix) followed by a
+nano-ros regen sweep. Tracks I and N point at the installed nros-cli
+release pin — fixes for those land in `nros-cli` first, then this repo
+bumps `scripts/install-nros.sh`.
 
 ---
 
@@ -260,7 +281,663 @@ lifetime transmute footgun. All in board crates / nros-node.
       `nros-node`.
 - [ ] Track E: Orin SPE bounds-check added + dual-transport
       `compile_error!` guards in place.
+- [ ] Track F: `just check-workspace-embedded` clean; no dev-dep
+      forces `nros-serdes/std` on thumb targets.
+- [ ] Track G: `just test-unit` workspace cargo-test link succeeds
+      without an unguarded `nros_platform_*` alias avalanche.
+- [ ] Track H: `just native test` from clean workspace runs without
+      "Test fixture binary not prebuilt" cascade.
+- [ ] Track I: `nros ws sync` available in the pinned CLI; the 5
+      caller recipes don't trip on "unrecognized subcommand 'ws'".
+- [ ] Track J: cached `RosAction` generated trees regen-clean against
+      the 8-assoc-type trait.
+- [ ] Track K: `just zephyr test` from clean workspace passes the
+      26 fixture-dependent tests.
+- [ ] Track L: `integrations/{zephyr,esp-idf,platformio}/` shells
+      restored or test-gated; no bare-FAIL on missing manifests.
+- [ ] Track M: `just nuttx build-fixtures` succeeds on the pinned
+      nightly + libc combo.
+- [ ] Track N: phase212 / orchestration tests pass or
+      explicitly `skip!` against the installed CLI version.
+- [ ] Track O: `examples_tree_uses_canonical_shape` passes; the
+      24 violators triaged.
+- [ ] Track P: both embedded cyclonedds e2e tests receive ≥1
+      message over 3 reruns.
+- [ ] Track Q: every per-platform `test` recipe sequences
+      `build-fixtures` first (umbrella for H and K).
+- [ ] Track R: `[SKIPPED]` panics no longer count as
+      failures in the tally script's output.
 - [ ] Phase doc retired to `archived/` when all checkboxes flip.
+
+---
+
+## Tracks F–R — Platform Test Sweep Findings (2026-06-04)
+
+**Discovery method**: ran `just <plat> test` per in-scope platform on a
+fresh checkout off `origin/main` (worktree
+`agent-ac4d7f17203213e70`, branch `phase-214-platform-test-sweep`).
+Each capped at 600s wall-clock; logs preserved at
+`/tmp/214sweep-<plat>.log` (untracked).
+
+**Per-platform sweep table:**
+
+| platform | result | first-fail surface | track(s) implicated |
+|---|---|---|---|
+| `cyclonedds` | PASS | — | — |
+| `orin_spe` | PASS | — | — |
+| `native` | FAIL | 38 tests panic with "Test fixture binary not prebuilt"; 10 phase212 / orchestration tests; cyclonedds_ros2 + qemu_patched_binary | F, H, I, N, O, P, Q, R |
+| `qemu` | FAIL | `build-fixtures` → codegen error: `RosAction` trait missing 5 assoc types in cached `example_interfaces/fibonacci.rs` | J, Q |
+| `freertos` | FAIL | `build-examples` → `nros ws sync` subcommand unrecognized | I, P, Q |
+| `nuttx` | FAIL | `build-fixtures` → std build fails on `_SC_HOST_NAME_MAX` for `armv7a-nuttx-eabi` libc | M, Q |
+| `threadx_linux` | FAIL | `build-examples` → `nros ws sync` subcommand unrecognized (then per-pkg feature errors) | I, Q |
+| `threadx_riscv64` | FAIL | `build-examples` → same `RosAction` codegen drift as qemu | J, P, Q |
+| `zephyr` | FAIL | 26 tests fail with `Zephyr fixture binary is stale: …/nano-ros-workspace/build-*` | I, K, L, Q |
+| `xrce` | FAIL | 10/10 tests `[SKIPPED]` (XRCE Agent not provisioned) but reported as failures | R |
+| `esp32` | FAIL | 6 pass, 1 fail (`test_native_to_esp32` — native talker fixture not prebuilt) | H, Q |
+
+In-scope but not run (need license-gated or experimental SDK):
+`stm32f4` (no `test` recipe — only `build`), `rmw_zenoh` (no `test`
+recipe — orchestration only), `esp_idf`, `platformio`, `px4`, `docker`,
+`zenohd`.
+
+**Workspace-level reproductions (gated separately from per-plat sweep):**
+| recipe | result | track |
+|---|---|---|
+| `just check-workspace-embedded` | FAIL — `nros-serdes/std` activated via dev-deps unification | **F** |
+| `just test-unit` | FAIL — `nros-rmw-zenoh` lib test link: `nros_platform_*` symbols undefined (16+ symbols, from `platform_aliases.c`) | **G** |
+
+---
+
+## Track F — Workspace feature unification leaks `std` to embedded
+
+**Scope**: CRITICAL. Blocks `just check-workspace-embedded` (and any
+embedded CI lane that builds the workspace). Standalone
+`cargo check -p nros-serdes --no-default-features --target
+thumbv7em-none-eabihf` passes; the failure is purely unification.
+
+**Owns:**
+* `packages/core/nros-node/Cargo.toml` (`[dev-dependencies]` section
+  only — `nros-platform-cffi` dev-dep is the unification source)
+* `packages/core/nros-platform-cffi/Cargo.toml` (`posix-c-port`
+  feature wiring of `nros-log` as a dev-dep — same unification
+  vector)
+* `packages/core/nros-rmw-cffi/Cargo.toml` (sibling check — `std`
+  feature must not auto-enable via dev-deps)
+* `justfile` (the `check-workspace-embedded` recipe — adjusting
+  excludes if a refactor demands them)
+* Does NOT own `nros-serdes/lib.rs` or its `Cargo.toml` (the leaf
+  is correct; fix is upstream).
+
+**Architecture**: cargo workspace feature unification activates the
+union of every feature set requested across the resolution graph,
+including dev-deps. `cargo tree -i nros-serdes -e features
+--target thumbv7em-none-eabihf --no-default-features --workspace`
+shows the path:
+```
+nros-serdes  ← nros-core (feature "std")
+  ← nros-node (feature "std")
+    ← [dev-dependencies] nros-platform-cffi (feature "posix-c-port")
+      ← [dev-dependencies] nros-log
+```
+So a workspace clippy / build under `--no-default-features` still
+pulls `nros-node/std` via the dev-dep cycle, which then enables
+`nros-serdes/std`, which then asks for `extern crate std` —
+unsupported on thumb.
+
+**Work Items:**
+
+- [ ] **214.F.1 Move heavy dev-deps to a sibling test-only crate** —
+      the canonical cargo workaround for cross-target unification of
+      dev-deps is to relocate them into a sibling crate that lives
+      outside the workspace member list (or behind a non-default
+      feature gate). Move `nros-platform-cffi` out of
+      `nros-node/[dev-dependencies]` and into a new
+      `packages/core/nros-node-tests/` crate that depends on
+      `nros-node` normally and exercises the platform-cffi path.
+      **Acceptance**: `cargo tree -i nros-serdes --target
+      thumbv7em-none-eabihf --no-default-features --workspace` no
+      longer shows a `std` activation path through dev-deps.
+      `just check-workspace-embedded` passes clean.
+
+- [ ] **214.F.2 Same treatment for `nros-rmw-cffi` dev-deps** — same
+      smell in `nros-rmw-cffi/Cargo.toml`. Relocate sibling test
+      utilities to keep the production crate's dev-deps minimal.
+      **Acceptance**: no dev-dep entry in `nros-rmw-cffi/Cargo.toml`
+      transitively activates `std` on a leaf `no_std` crate.
+
+- [ ] **214.F.3 CI guard against future dev-dep unification regressions**
+      — add a smoke test that runs `cargo tree -i nros-serdes
+      --target thumbv7em-none-eabihf --no-default-features
+      --workspace` and asserts the output is missing the substring
+      "feature \"std\"". Wire into `just check-workspace-embedded`.
+
+---
+
+## Track G — `zpico-sys` aliases reference missing `nros_platform_*`
+
+**Scope**: HIGH. Blocks `just test-unit` workspace build. Standalone
+`cargo test --no-run -p nros-rmw-zenoh --lib` compiles clean — the
+failure only surfaces when the workspace pool unifies feature flags
+and the alias TU gets linked into a test that didn't ask for the
+companion `nros-platform-*` symbol providers.
+
+**Owns:**
+* `packages/zpico/zpico-sys/c/zpico/platform_aliases.c` (the 16+
+  `_z_*` forwarders — gate them behind `#ifdef NROS_PLATFORM_<X>`
+  matching the providing crate)
+* `packages/zpico/zpico-sys/build.rs` (the `cc::Build` that compiles
+  `platform_aliases.c` — set the matching `define`s only when the
+  feature combo guarantees a provider)
+* Does NOT own `nros-platform-posix` / `nros-platform-cffi` symbol
+  definitions (those are correct; the alias TU is over-eager).
+
+**Architecture**: `platform_aliases.c` forwards every `_z_*`
+zenoh-pico symbol the platform shim used to provide directly
+(Phase 129 retirement: `zpico-platform-shim` was deleted in favour
+of C alias TUs). Today the file emits `_z_task_join`,
+`_z_mutex_rec_*`, etc., unconditionally — but the workspace test
+build for `nros-rmw-zenoh` doesn't link a `nros-platform-*` provider
+crate, so each `_z_*` alias becomes an undefined `nros_platform_*`
+symbol at lld time.
+
+**Work Items:**
+
+- [ ] **214.G.1 Gate alias emission on a `NROS_PLATFORM_PRESENT`
+      define** — guard each alias group in `platform_aliases.c` with
+      `#ifdef NROS_PLATFORM_FORWARDERS_PRESENT` (or per-symbol
+      gates: `NROS_PLATFORM_HAS_MUTEX_REC` etc.). `zpico-sys/build.rs`
+      emits the define only when a known provider crate is in the
+      build (detect via build-script env-var the provider crate sets,
+      e.g. `DEP_NROS_PLATFORM_POSIX_PRESENT=1`).
+      **Acceptance**: `cargo test --no-run --workspace --profile
+      nros-fast-release` link succeeds. Standalone library builds
+      (no provider crate) still compile, and the missing aliases
+      surface as a single named link-error rather than an avalanche.
+
+- [ ] **214.G.2 Test recipe coverage** — add a workspace-level
+      `cargo test --no-run --workspace --no-default-features` smoke
+      to `just check` so this regression class is caught at check time
+      rather than at `test-unit` time.
+      **Acceptance**: `just check` rejects an unguarded alias
+      reintroduction.
+
+---
+
+## Track H — Native test fixture prebuild precondition
+
+**Scope**: HIGH. 38 native tests cascade-fail with a single root
+cause: the harness calls `nros_tests::fixtures::binaries::*` to
+locate `examples/native/rust/talker/target/nros-fast-release/talker`
+(and siblings), but `just native test` doesn't run
+`build-test-fixtures` first.
+
+**Owns:**
+* `just/native.just` (the `test` and `test-all` recipes)
+* `packages/testing/nros-tests/src/fixtures/binaries/mod.rs:979`
+  (the panic site — the BuildFailed error message itself is fine,
+  the wrapping recipe just needs to invoke the prereq)
+* Does NOT own any production code; this is purely orchestration.
+
+**Architecture**: the harness chose "fail loudly when fixture not
+prebuilt" (Phase 181 `nros_tests` convention) over silent rebuild
+to keep test runs deterministic. The contract is that the platform
+recipe sequences `build-fixtures → test`. `just native test` skipped
+that.
+
+**Work Items:**
+
+- [ ] **214.H.1 `just native test` runs `build-test-fixtures` first**
+      — add `just build-test-fixtures` (or the narrower
+      `build-fixture-rust` + `build-fixture-extras`) as a recipe
+      dependency of `just native test`. Match the pattern already
+      used by `just cyclonedds test` (which auto-builds its
+      backend).
+      **Acceptance**: a fresh `just native test` from a clean clone
+      passes the 38 fixture-dependent tests without a separate
+      manual prebuild step.
+
+- [ ] **214.H.2 Same audit for every `just <plat> test`** — see
+      Track Q for the umbrella; H.2 is the per-recipe survey.
+
+---
+
+## Track I — `nros ws sync` subcommand unavailable
+
+**Scope**: HIGH. Installed `nros` 0.2.0 (the version
+`scripts/install-nros.sh` pins) does not implement the `ws`
+subcommand, but five just-modules invoke `nros ws sync …` as a
+pre-build codegen step.
+
+**Owns (callsites — gated `nros` invocations only):**
+* `just/freertos.just:75,162`
+* `just/qemu-baremetal.just:74,92,144`
+* `just/native.just:126,159`
+* `just/zephyr.just:176,353`
+* `scripts/build/fixtures-build.sh:87`
+* Does NOT own the `nros` CLI implementation (lives in
+  `github.com/NEWSLabNTU/nros-cli`); the fix on this side is to
+  bump `scripts/install-nros.sh`'s pin (or fall back to a sibling
+  verb) once nros-cli ships `ws sync`.
+
+**Architecture**: Phase 210.E.3.d.native introduced
+`nros ws sync <example-dir>` as the pre-cargo codegen call that
+writes the patch table + msg bindings into the per-example
+`generated/` tree. The shipped 0.2.0 nros release predates this.
+
+**Work Items:**
+
+- [ ] **214.I.1 Bump `scripts/install-nros.sh` to a nros-cli release
+      that ships `ws sync`** — verify against
+      `github.com/NEWSLabNTU/nros-cli` Releases, pin the new tag,
+      re-run `just freertos test` clean.
+      **Acceptance**: `nros ws sync --help` resolves on the pinned
+      binary. The five caller recipes succeed.
+
+- [ ] **214.I.2 Fall-back guard at each callsite** — wrap each
+      `nros ws sync` invocation with a guard that probes
+      `nros help ws` and emits a `[PREREQ]` skip message naming the
+      missing verb if absent, instead of letting the build cascade
+      into "unrecognized subcommand 'ws'" noise.
+      **Acceptance**: pre-pin run gives one clean diagnostic per
+      recipe, not a 50-line cargo stack trace.
+
+---
+
+## Track J — `RosAction` codegen drift in cached `generated/`
+
+**Scope**: HIGH. `pub trait RosAction` in
+`packages/core/nros-core/src/action.rs:53` now requires 5 envelope
+assoc-types (`SendGoalRequest`, `SendGoalResponse`,
+`GetResultRequest`, `GetResultResponse`, `FeedbackMessage`), but
+the cached `generated/` tree in the rtic / threadx-rv64 rust action
+examples still uses the 3-type shape from before the trait
+expansion.
+
+**Owns:**
+* `examples/qemu-arm-baremetal/rust/action-{client,server}-rtic/generated/example_interfaces/**`
+* `examples/qemu-arm-baremetal/rust/service-server-rtic/generated/example_interfaces/**`
+* `examples/qemu-riscv64-threadx/rust/action-{client,server}/generated/example_interfaces/**`
+* Does NOT own `packages/core/nros-core/src/action.rs` (the trait is
+  already correct) — the fix is regen, not trait surgery.
+* Does NOT own nros-cli codegen logic (cli already emits the right
+  shape — verify via fresh regen).
+
+**Architecture**: each example's `build.rs` triggers `nros generate
+rust` writing into `generated/`, which is gitignored. If the cache
+was populated before the trait extension landed, stale output sits
+around until next clean regen. Confirmed for the 5 example dirs
+above.
+
+**Work Items:**
+
+- [ ] **214.J.1 Regen the stale `generated/` trees** — `rm -rf
+      examples/qemu-arm-baremetal/rust/*rtic/generated/
+      examples/qemu-riscv64-threadx/rust/action-*/generated/`
+      followed by `just qemu build` and `just threadx_riscv64 build`.
+      Verification only — no source edit.
+      **Acceptance**: `grep -nE 'type SendGoalRequest' examples/
+      qemu-arm-baremetal/rust/action-server-rtic/generated/
+      example_interfaces/src/action/fibonacci.rs` returns a match.
+
+- [ ] **214.J.2 build.rs should check trait surface vs cached
+      output** — add a quick generation-stamp check (write a hash of
+      the trait surface alongside the generated file; rebuild if
+      mismatched). Avoids future silent staleness.
+      **Acceptance**: touching the `RosAction` trait forces a
+      `generated/` rebuild on next `cargo build` without manual
+      `clean-bindings`.
+
+---
+
+## Track K — Stale Zephyr fixture cache
+
+**Scope**: HIGH. 26 of 44 zephyr tests fail with `Zephyr fixture
+binary is stale: /home/aeon/repos/nano-ros-workspace/build-*` —
+`just zephyr test` does not invoke `just zephyr build-fixtures`
+first.
+
+**Owns:**
+* `just/zephyr.just` (the `test` and `test-all` recipes only)
+* `packages/testing/nros-tests/src/zephyr.rs` (the staleness check —
+  message already clear; no edit needed)
+* Does NOT own per-test source or the underlying Zephyr build
+  scripts.
+
+**Architecture**: Zephyr build artifacts live in the sibling
+`../nano-ros-workspace/build-*/zephyr/zephyr/zephyr.elf` tree (out
+of the cargo target dir). The harness's staleness predicate checks
+mtime of the elf against the source tree; missing elf → stale
+error.
+
+**Work Items:**
+
+- [ ] **214.K.1 `just zephyr test` runs `build-fixtures` first** —
+      same pattern as Track H, narrowed to the zephyr build matrix.
+      Consider both `build-fixtures` (full) and a narrower `build-
+      examples-test-only` if full takes too long.
+      **Acceptance**: fresh `just zephyr test` from a clean workspace
+      passes the 26 fixture-dependent tests without a manual
+      prebuild.
+
+---
+
+## Track L — `integrations/<rtos>/` shells missing
+
+**Scope**: HIGH. Three integration-smoke tests fail because the
+asserted shell files don't exist:
+- `integrations/zephyr/module.yml`
+- `integrations/esp-idf/idf_component.yml` + `CMakeLists.txt` +
+  `Kconfig.projbuild`
+- `integrations/platformio/library.json` + `library.properties` +
+  `examples/talker/platformio.ini`
+
+**Owns:**
+* `integrations/{zephyr,esp-idf,platformio}/**` (create or restore)
+* `packages/testing/nros-tests/tests/integration_{zephyr,esp_idf,
+  platformio}.rs` (read-only — checks the contract; no edit
+  expected unless contract changes)
+* Does NOT own per-platform build scripts under `just/`.
+
+**Architecture**: Phase 139 created `integrations/<rtos>/` shells as
+the cross-RTOS consumption surface (each shell re-exports the root
+CMake under that RTOS's native package manager). The current tree
+ships some but not these three. Either the tests were written
+ahead of shell creation, or the shells were deleted in a recent
+cleanup. Diff against the Phase 139 archive doc to figure out which.
+
+**Work Items:**
+
+- [ ] **214.L.1 Inventory `integrations/` tree** — `find
+      integrations/ -maxdepth 2 -type f` vs the contract in the
+      three failing tests. Diff against
+      `docs/roadmap/archived/phase-139-*.md` to identify whether the
+      missing files are deletions or never-shipped.
+      **Acceptance**: a written inventory pinned to each test's
+      expected files.
+
+- [ ] **214.L.2 Restore or skip-gate** — for each missing shell:
+      either restore the manifest files from git history (if a
+      deletion) or change the integration test to gate on shell
+      presence with `nros_tests::skip!` (if intentionally deferred).
+      Do NOT silently drop the test.
+      **Acceptance**: `just native test --test integration_zephyr
+      --test integration_esp_idf --test integration_platformio`
+      either passes or skips with a clear `[SKIPPED]` reason; no
+      bare-FAIL.
+
+---
+
+## Track M — NuttX `armv7a-nuttx-eabi` libc missing `_SC_HOST_NAME_MAX`
+
+**Scope**: MED. Blocks `just nuttx test` at the std-build step.
+`_SC_HOST_NAME_MAX` was added to upstream Rust std in
+`hostname/unix.rs:8` but the `libc` shim crate's `armv7a-nuttx-eabi`
+target spec hasn't been updated. `arm-none-eabi-gcc` is present and
+the rest of the toolchain works.
+
+**Owns:**
+* `target/armv7a-nuttx-eabi/std/src/sys/net/hostname/unix.rs` (if
+  fixed via std patch — unlikely we own this)
+* `packages/drivers/nuttx-sys/` libc shim or wherever the
+  nuttx-specific `_SC_*` constants are defined (search needed —
+  may need a vendor patch to upstream `libc` crate)
+* `rust-toolchain.toml` (nuttx nightly pin — bumping past the
+  hostname-feature commit OR pinning back to a pre-hostname
+  nightly could be the easier route)
+* Does NOT own `examples/qemu-arm-nuttx/**` source.
+
+**Architecture**: `hostname/unix.rs` is in the Rust stdlib (build
+of `std` for `armv7a-nuttx-eabi` requires libc::_SC_HOST_NAME_MAX).
+Three remedies in increasing cost: (1) bump the upstream `libc`
+crate's nuttx target to expose the const; (2) bump or pin the
+nightly toolchain to a version whose std doesn't reference the
+const yet; (3) carry a local libc patch.
+
+**Work Items:**
+
+- [ ] **214.M.1 Reproduce + diagnose remedy path** — try
+      `rustup install nightly-2026-03-15` (or any commit before the
+      hostname commit) and `RUSTC_BOOTSTRAP=1 cargo build`. If that
+      passes, the toolchain pin is the lever.
+      **Acceptance**: documented remedy with a concrete bump.
+
+- [ ] **214.M.2 Land remedy** — either bump
+      `rust-toolchain.toml` to the working nightly OR submit a
+      libc PR + carry it via `[patch.crates-io]` until merged.
+      **Acceptance**: `just nuttx build-fixtures` succeeds.
+
+---
+
+## Track N — `nros` CLI lints / verbs drift vs phase212 tests
+
+**Scope**: MED. ~20 phase212 / orchestration tests fail because the
+installed `nros` 0.2.0 lacks newer behaviour the tests assert
+(`codegen-system` verb, refined `check` lints, refined `plan` /
+`launch` / `migrate` semantics, `composable` container shape).
+
+**Owns:**
+* `scripts/install-nros.sh` (the version pin — single source)
+* The listed test files (read-only contract; no edit unless the
+  test is wrong, in which case open a separate PR):
+  - `packages/testing/nros-tests/tests/phase212_l_check_lints.rs`
+  - `packages/testing/nros-tests/tests/phase212_g_check_exec_depend_drift.rs`
+  - `packages/testing/nros-tests/tests/phase212_i_migrate_workspace.rs`
+  - `packages/testing/nros-tests/tests/phase212_j_launch.rs`
+  - `packages/testing/nros-tests/tests/phase212_l7_self_bringup.rs`
+  - `packages/testing/nros-tests/tests/phase212_f3_dirwalk_discovery.rs`
+  - `packages/testing/nros-tests/tests/phase212_f_bringup_scaffold.rs`
+  - `packages/testing/nros-tests/tests/phase212_l6_launch_synth.rs`
+  - `packages/testing/nros-tests/tests/phase212_h1_zephyr.rs`
+  - `packages/testing/nros-tests/tests/phase212_mf3_zephyr_self_pkg.rs`
+  - `packages/testing/nros-tests/tests/orchestration_composable.rs`
+  - `packages/testing/nros-tests/tests/orchestration_set_remap_env.rs`
+  - `packages/testing/nros-tests/tests/orchestration_includes.rs`
+* Does NOT own nros-cli source (lives in `nros-cli` repo).
+* Out-of-scope per task constraint: do not modify nros-cli.
+
+**Architecture**: Phase 212 / 210.E added many `nros` subcommands
+(`codegen-system`, `migrate`, `launch`, refined `check`, refined
+`plan` synth modes). The nano-ros tests assume their presence;
+the shipped CLI release pin is behind. Same root cause as Track I;
+separate track because the file ownership and remedy granularity
+are distinct (I = build-time verb call gating, N = test-time verb
+semantics).
+
+**Work Items:**
+
+- [ ] **214.N.1 Survey installed `nros` verb set vs phase212 tests
+      — diff matrix** — for each failing test, identify which `nros`
+      subcommand+arg shape it asserts, and confirm presence/absence
+      in `nros 0.2.0 --help`. Output: matrix CSV.
+      **Acceptance**: every failing phase212 test maps to either
+      a missing-verb row or a behaviour-drift row.
+
+- [ ] **214.N.2 Bump nros-cli pin** — once Track I lands, the same
+      bump probably covers most of N. Re-run the failing tests.
+      Remaining real fails after the bump need per-test triage.
+      **Acceptance**: post-bump, `cargo nextest run -p nros-tests
+      --test phase212_l_check_lints` etc. passes or surfaces a
+      semantic mismatch that needs a follow-up.
+
+- [ ] **214.N.3 Skip-gate behaviour-drift tests on outdated CLI** —
+      for tests that exercise behaviour the installed CLI doesn't
+      yet have, add `if installed_nros_version() < "X.Y.Z" {
+      nros_tests::skip!(...) }` rather than letting them FAIL.
+      Match the pattern already used by `phase212_h1_zephyr.rs:84`:
+      `nros codegen-system verb unavailable — Phase 212.E not landed
+      in installed CLI`.
+      **Acceptance**: pre-bump runs SKIP cleanly; post-bump runs
+      flip to PASS.
+
+---
+
+## Track O — Examples canonical-shape regression + qemu-patched skip noise
+
+**Scope**: MED. Two distinct LOW-cost cleanups grouped for parallel
+dispatch:
+
+**Owns:**
+* O.1 — `examples/**/package.xml`, `examples/**/Cargo.toml`,
+  `examples/**/CMakeLists.txt` (the 24 violators that
+  `examples_tree_uses_canonical_shape` enumerates)
+* O.2 — `packages/testing/nros-tests/tests/qemu_patched_binary.rs`
+  (lines 23, 54, 70 — the skip!-then-assert pattern)
+* Does NOT own nros-cli or the canonical-shape lint logic.
+
+**Architecture**: the canonical-shape test (Phase 212.M.11) is a
+regression lint: every `examples/<plat>/<lang>/<example>/` dir must
+match the collapsed shape. 24 violations indicate either new
+examples landed without the lint applied, or the lint became
+stricter. The qemu_patched_binary nuisance is the Track R class
+applied to a single test file — skips show up as FAIL until R
+lands.
+
+**Work Items:**
+
+- [ ] **214.O.1 Enumerate + fix the 24 canonical-shape violators**
+      — run the test in verbose mode to dump the violator list, then
+      either restructure or document the carve-out (the test allows
+      a small list of legitimate exceptions, e.g. `examples/zephyr/
+      cpp/cyclonedds/talker-aemv8r/`).
+      **Acceptance**: `just native test --test
+      phase212_examples_canonical_shape` passes.
+
+- [ ] **214.O.2 `qemu_patched_binary` skip-then-test reshape** —
+      restructure the three test bodies so the SDK-missing skip
+      happens before any assertion. (They already call
+      `nros_tests::skip!` early; the FAIL is because skip!
+      itself panics — same R-class issue. May be no-op once R
+      lands.)
+
+---
+
+## Track P — Embedded cyclonedds e2e listener loses messages
+
+**Scope**: MED. Two e2e tests run to completion (build, boot, no
+crash) but the listener side reports `expected at least 1 received
+messages, got 0`:
+- `nros-tests::freertos_qemu::test_freertos_rust_cyclonedds_local_pubsub_e2e`
+- `nros-tests::threadx_riscv64_qemu::test_threadx_riscv64_cyclonedds_two_qemu_pubsub`
+
+The native cyclonedds test plane (Track P sibling) passes via
+`just cyclonedds test`, so the issue is embedded-side cyclonedds
+data-plane.
+
+**Owns:**
+* `packages/dds/nros-rmw-cyclonedds/src/session.cpp` (the embedded
+  Cyclone config + ddsrt initialisation — `kEmbeddedCycloneConfig`)
+* `packages/dds/nros-rmw-cyclonedds/src/publisher.cpp` / `subscription.cpp`
+  (embedded-only write/read paths)
+* `examples/qemu-arm-freertos/rust/{talker,listener}/` cyclonedds
+  variant (the fixtures)
+* `examples/qemu-riscv64-threadx/rust/{talker,listener}/` cyclonedds
+  variant
+* `packages/testing/nros-tests/tests/{freertos_qemu,threadx_riscv64_qemu}.rs`
+  (the e2e harnesses — message-count assertion + serial trace
+  scraping)
+* Does NOT own native cyclonedds backend (`just cyclonedds test`
+  passing pins that surface).
+
+**Architecture**: Phase 177.22 wired the embedded ddsrt heap +
+disabled the optional `opt_size_xcdr1/2` precompute on ThreadX +
+disabled multicast on ThreadX. The remaining failure mode is most
+likely a discovery/reader-matching timing issue specific to embedded
+slirp+icount QEMU runs; it does not affect host loopback.
+
+**Work Items:**
+
+- [ ] **214.P.1 Repro + serial trace diff** — capture serial logs
+      from both QEMUs, identify whether the listener cyclone reader
+      ever discovers the talker writer (matched-publication
+      callback). If discovery is silent, the issue is SPDP/SEDP
+      timing.
+      **Acceptance**: a captured trace + a one-paragraph diagnosis
+      pinned to a sub-system (discovery vs reliability vs
+      serialization).
+
+- [ ] **214.P.2 Apply discovery-pause workaround OR fix the
+      underlying issue** — depends on P.1 outcome.
+      **Acceptance**: both tests publish→receive at least one
+      message over 3 reruns.
+
+---
+
+## Track Q — `just <plat> test` must gate on `build-fixtures`
+
+**Scope**: MED. Umbrella for H + K + the equivalent pattern across
+every per-platform recipe. Today: native, qemu, freertos, nuttx,
+threadx_linux, threadx_riscv64, zephyr, esp32 all let the test
+harness explode on missing fixtures.
+
+**Owns:**
+* `just/native.just`, `just/qemu-baremetal.just`, `just/freertos.just`,
+  `just/nuttx.just`, `just/threadx-linux.just`,
+  `just/threadx-riscv64.just`, `just/zephyr.just`, `just/esp32.just`
+  (the `test` and `test-all` recipe heads only)
+* Does NOT own the harness or fixture build scripts (those are
+  fine).
+
+**Architecture**: `nros_tests::fixtures::binaries::*` deliberately
+fails-loud rather than silently rebuilding (Phase 181 contract).
+Each platform recipe's responsibility is to sequence
+`build-fixtures → test`. Cyclonedds already does this; the others
+don't.
+
+**Work Items:**
+
+- [ ] **214.Q.1 Add `build-fixtures` as prereq on every `test`
+      recipe** — mechanical sweep across the 8 platform modules.
+      Use `just`'s `dep` syntax (`test: build-fixtures` head form)
+      so a `--dry-run` invocation also reflects the dependency.
+      **Acceptance**: `just native test` from a clean workspace
+      passes the fixture-dependent tests in one invocation;
+      similarly for the other 7 platforms.
+
+- [ ] **214.Q.2 Document the contract** — one paragraph in
+      `docs/development/test-harness.md` (create if absent) stating
+      "per-plat `test` always sequences `build-fixtures` first; the
+      harness fails loud on missing fixtures rather than rebuilding".
+
+---
+
+## Track R — Test runner classifies `skip!` panic as FAIL
+
+**Scope**: LOW. `nros_tests::skip!` panics with `[SKIPPED] …` (the
+CLAUDE.md-blessed contract — bare `eprintln+return` is banned).
+Nextest's junit output records each panicked test as `<failure>`,
+which is technically correct (a panic IS a failure) but downstream
+tally scripts read the `<failure>` count and report a CI red even
+when every "failure" is actually a `[SKIPPED]`.
+
+**Owns:**
+* `packages/testing/nros-tests/src/lib.rs` (the `skip!` macro at
+  `:51` — the panic message format)
+* `scripts/test/*.sh` or wherever the "Real failures: X / Y total
+  failures" tally lives (search needed)
+* `.config/nextest.toml` (if a nextest filter / classifier can be
+  declared to flip `<failure>` → some other status on `[SKIPPED]`)
+* Does NOT own per-test source.
+
+**Architecture**: nextest distinguishes pass/fail/skip but the
+"skip" channel is for the `#[ignore]` attribute, not for runtime
+skipping. Two remediation paths: (a) write a junit post-processor
+that rewrites `<failure>` to `<skipped>` when the message starts
+with `[SKIPPED]`; (b) lobby nextest for a built-in "runtime-skip"
+marker.
+
+**Work Items:**
+
+- [ ] **214.R.1 JUnit post-processor `skip!` rewrite** — small
+      script that reads `target/nextest/default/junit.xml`,
+      rewrites every `<failure message="[SKIPPED] …">` to
+      `<skipped …>`, drops the testcase from the failure count.
+      Hook into the platform recipes' tail.
+      **Acceptance**: `xrce test` (10/10 SKIPPED-as-FAIL today)
+      reports 0 failures post-rewrite.
+
+- [ ] **214.R.2 Document tally semantics** — explain in
+      `docs/development/test-harness.md` that `[SKIPPED]` failures
+      are not regressions; the tally script is the source of truth.
 
 ---
 
@@ -284,5 +961,36 @@ emit is the canonical move; the regen sweep is the verification.
 - Machine 3: Track C (4 commits, each a small build.rs edit).
 - Machine 4: Track D (one mechanical sweep + one harden).
 - Machine 5: Track E (two small one-offs).
+- Machine 6: Track F (`nros-node/Cargo.toml` dev-deps + sibling
+  test crate carve-out).
+- Machine 7: Track G (`zpico-sys/c/zpico/platform_aliases.c` +
+  `build.rs` gate).
+- Machine 8: Track H + Q (recipe-only sweep — `just/<plat>.just`
+  test-recipe heads; H is the native carve-out, Q is the umbrella
+  across all 8 platforms — combine into one wave since the same
+  files get touched).
+- Machine 9: Track I + N (nros-cli pin bump + test skip-gating;
+  I is build-time, N is test-time, same upstream remedy).
+- Machine 10: Track J (regen-only — no source edit; verifies in
+  `examples/qemu-arm-baremetal/rust/*rtic/generated/` + threadx-rv64).
+- Machine 11: Track K (already covered by Q.1's zephyr arm if Q.1
+  lands first; otherwise standalone).
+- Machine 12: Track L (`integrations/{zephyr,esp-idf,platformio}/`
+  inventory + restore).
+- Machine 13: Track M (NuttX toolchain pin investigation +
+  remedy).
+- Machine 14: Track O (`examples/**/package.xml` canonical-shape
+  fixups; orthogonal from everything else).
+- Machine 15: Track P (embedded cyclonedds runtime —
+  `packages/dds/nros-rmw-cyclonedds/src/` + two e2e tests).
+- Machine 16: Track R (`packages/testing/nros-tests/src/lib.rs`
+  `skip!` macro + junit post-processor — purely test-infra).
 
-5 tracks, fully parallel.
+**Safe parallel wave count**: ~14 simultaneous agents (collapse
+H + Q onto the same machine; collapse K into Q.1; collapse I + N
+since they share the nros-cli pin remedy).
+Original 5 tracks + 13 new tracks. The pre-existing 5 (A–E) remain
+disjoint from F–R. Within the new tracks, the only multi-track
+collision risk is H/Q (both touch `just/<plat>.just` heads — H is
+the native subset of Q) and I/N (both bump the nros-cli pin) —
+serialise within each pair, parallel across.
