@@ -4,7 +4,7 @@
  * Phase 152.1.B.1 — extracted from build.rs's `STARTUP_C` const.
  * Contains:
  *   - Cortex-M3 vector table (`isr_vector`)
- *   - `Reset_Handler` (data copy + bss zero + jump to Rust `_start`)
+ *   - `Reset_Handler` (data copy + bss zero + jump to Rust `main`)
  *   - `Default_Handler` (infinite loop for unhandled IRQs)
  *   - Low-level LAN9118 register-poking diagnostic
  *     (`nros_freertos_diag_network`)
@@ -47,8 +47,19 @@ void SysTick_Handler(void);  /* defined in freertos_hooks.c */
 extern void xPortPendSVHandler(void);
 extern void vPortSVCHandler(void);
 
-/* Rust entry point (provided by the example's #[no_mangle] main or entry) */
-extern void _start(void);
+/* Rust entry point.
+ *
+ * Phase 212.M-F.15 — the firmware binary's entry point is the standard
+ * `#[unsafe(no_mangle)] pub extern "C" fn main() -> i32` symbol emitted
+ * by the Phase 212.N Entry pkg shape (`<Board as BoardEntry>::run(...)`
+ * → see `examples/qemu-arm-freertos/rust/*_entry/src/main.rs`). The
+ * legacy `_start` shape used by the pre-N.7 M.5.a baker fixture was
+ * retired together with the `freertos-qemu-mps2-an385-bsp` crate
+ * (commit `d99386173`); calling `_start` from `Reset_Handler` left a
+ * `rust-lld: error: undefined symbol: _start` regression that this
+ * Phase 212.M-F.15 fix closes.
+ */
+extern int main(void);
 
 /* Semihosting helper exported by freertos_hooks.c */
 extern void semihosting_write0(const char *s);
@@ -129,8 +140,13 @@ void Reset_Handler(void) {
     while (dst < &_ebss) {
         *dst++ = 0;
     }
-    /* Jump to Rust entry */
-    _start();
+    /* Jump to Rust entry. `main` returns `i32`; ignore the value here
+     * — `BoardEntry::run` is divergent in practice (FreeRTOS scheduler
+     * never returns under normal operation; `exit_success`/`failure`
+     * trigger semihosting exit). The trailing `for(;;)` keeps the
+     * Cortex-M3 from executing garbage instructions if we ever do
+     * fall through. */
+    (void)main();
     for (;;) {}
 }
 
