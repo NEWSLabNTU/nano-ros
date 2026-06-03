@@ -88,14 +88,34 @@ pub unsafe fn make_waker(state: *const CWakeState) -> Waker {
 
 static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop_fn);
 
+/// # Safety
+///
+/// Invoked by the `RawWakerVTable` clone slot. `data` is the pointer
+/// passed to [`make_waker`] (i.e. a `*const CWakeState`); the runtime
+/// upholds [`make_waker`]'s contract (stable address, valid for the
+/// Waker's lifetime), so cloning is a trivial pointer copy.
 unsafe fn clone(data: *const ()) -> RawWaker {
     RawWaker::new(data, &VTABLE)
 }
 
+/// # Safety
+///
+/// Invoked by the `RawWakerVTable` wake slot. `data` must be the
+/// `*const CWakeState` originally supplied to [`make_waker`] and must
+/// still point at a valid, stable-address `CWakeState`. Delegates to
+/// [`wake_by_ref`].
 unsafe fn wake(data: *const ()) {
     unsafe { wake_by_ref(data) };
 }
 
+/// # Safety
+///
+/// Invoked by the `RawWakerVTable` wake-by-ref slot. `data` must be a
+/// live `*const CWakeState` as established by [`make_waker`].
+/// Dereferences the state and, if a callback is set, calls
+/// `fn_ptr(ctx)` — so `ctx` must satisfy the FFI contract documented
+/// on [`CWakeState`] (outlive every wake invocation, be safe to read
+/// from the dispatching thread).
 unsafe fn wake_by_ref(data: *const ()) {
     let state = unsafe { &*(data as *const CWakeState) };
     if let Some(f) = state.fn_ptr {
@@ -103,6 +123,12 @@ unsafe fn wake_by_ref(data: *const ()) {
     }
 }
 
+/// # Safety
+///
+/// Invoked by the `RawWakerVTable` drop slot. The `CWakeState` is
+/// owned by the C caller, so this intentionally does nothing —
+/// callers do not need to uphold any invariant beyond passing the
+/// original `data` pointer.
 unsafe fn drop_fn(_data: *const ()) {
     // `CWakeState` is owned by the caller; we never free.
 }

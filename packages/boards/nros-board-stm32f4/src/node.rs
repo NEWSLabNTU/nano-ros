@@ -279,7 +279,13 @@ impl nros_board_common::BoardExit for Stm32F4 {
 ///
 /// # Safety
 ///
-/// Must be called only once at startup. Accesses static mutable buffers.
+/// Must be called exactly once at startup, before any other nros or
+/// peripheral access. Consumes the PAC + core peripherals (caller must
+/// not have taken them elsewhere), reconfigures `RCC` clocks, enables
+/// the DWT cycle counter, and — under `feature = "ethernet"` — writes
+/// the `RX_RING` / `TX_RING` / `ETH_DMA` / `NET_IFACE` / `NET_SOCKETS`
+/// statics. A second call would alias those static mutable buffers and
+/// re-clock a live system.
 #[allow(static_mut_refs)]
 unsafe fn setup_hardware(
     config: &Config,
@@ -414,9 +420,17 @@ unsafe fn setup_hardware(
 ///
 /// # Safety
 ///
-/// Must be called only once at startup. Writes the `ETH_DMA` /
-/// `NET_IFACE` / `NET_SOCKETS` statics and publishes raw pointers to
-/// them for the poll callback.
+/// Must be called exactly once, from inside [`setup_hardware`] after
+/// the Ethernet MAC has been brought up. Writes the `ETH_DMA` /
+/// `NET_IFACE` / `NET_SOCKETS` statics (`MaybeUninit::write` on
+/// uninitialised storage), then publishes raw `*mut` pointers into
+/// them via `crate::network::set_network_state` and the smoltcp /
+/// sleep poll callbacks — those pointers must remain valid for the
+/// lifetime of the program, so the statics must not be moved or
+/// re-initialised afterwards. Calls `nros_smoltcp::get_socket_storage`
+/// which itself hands out an aliasable `&'static mut`, so a second
+/// invocation would alias both the local statics and that backing
+/// storage.
 #[cfg(feature = "ethernet")]
 #[allow(static_mut_refs)]
 unsafe fn setup_network(

@@ -51,6 +51,12 @@ static mut NET_IFACE: MaybeUninit<Interface> = MaybeUninit::uninit();
 static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 
 /// Helper to create a socket set with pre-allocated storage
+///
+/// # Safety
+///
+/// Must be called at most once during board init. `nros_smoltcp::get_socket_storage`
+/// hands out an aliasable `&'static mut [SocketStorage<'static>]`; calling this
+/// twice would produce two mutable references to the same backing storage.
 #[cfg(feature = "ethernet")]
 unsafe fn create_socket_set() -> SocketSet<'static> {
     let storage = unsafe { nros_smoltcp::get_socket_storage() };

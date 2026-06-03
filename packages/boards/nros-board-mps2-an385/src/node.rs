@@ -59,6 +59,12 @@ pub(crate) static mut UART_DEVICE: MaybeUninit<cmsdk_uart::CmsdkUart> = MaybeUni
 // so the two paths (legacy `SerialPort` and new `PlatformSerial`)
 // share state. Single-port; `handle == 0` is the live UART.
 
+/// # Safety
+///
+/// Called via the `PlatformSerial` C vtable. `_path` is ignored — this
+/// board has a single fixed UART so any value (including null) is
+/// accepted. Must only be invoked after `init_serial` has registered
+/// `UART_DEVICE`.
 #[cfg(feature = "serial")]
 #[allow(static_mut_refs)]
 unsafe fn plat_serial_open(_path: *const u8) -> u8 {
@@ -66,16 +72,36 @@ unsafe fn plat_serial_open(_path: *const u8) -> u8 {
     // no-op that returns the fixed handle.
     0
 }
+/// # Safety
+///
+/// No-op close called via the `PlatformSerial` C vtable. `_h` is
+/// ignored; the UART is owned by the board crate for the lifetime of
+/// the program so there is nothing to tear down per-session.
 #[cfg(feature = "serial")]
 unsafe fn plat_serial_close(_h: u8) {
     // No-op: the UART is torn down with the board crate, not per-session.
 }
+/// # Safety
+///
+/// Stub that reports "reconfigure unsupported" (`-1`) via the
+/// `PlatformSerial` C vtable. Arguments are ignored; no hardware is
+/// touched so the caller need not uphold any extra invariant.
 #[cfg(feature = "serial")]
 unsafe fn plat_serial_configure(_h: u8, _baudrate: u32) -> i8 {
     // Baud rate was set by CmsdkUart::new + enable during init_serial.
     // Runtime reconfiguration not supported for this board.
     -1
 }
+/// # Safety
+///
+/// Called via the `PlatformSerial` C vtable. The caller must ensure:
+/// * `buf` is non-null and points at `len` writable bytes;
+/// * `init_serial` has run so `UART_DEVICE` is initialised;
+/// * no other thread is concurrently reading from `UART_DEVICE` (the
+///   driver is `!Sync`; this board is single-core / single-task at the
+///   RMW transport level).
+///
+/// Returns `usize::MAX` if `h` is not the live handle (`0`).
 #[cfg(feature = "serial")]
 #[allow(static_mut_refs)]
 unsafe fn plat_serial_read(h: u8, buf: *mut u8, len: usize, _timeout_ms: u32) -> usize {
@@ -88,6 +114,14 @@ unsafe fn plat_serial_read(h: u8, buf: *mut u8, len: usize, _timeout_ms: u32) ->
         UART_DEVICE.assume_init_mut().read(slice)
     }
 }
+/// # Safety
+///
+/// Called via the `PlatformSerial` C vtable. The caller must ensure:
+/// * `buf` is non-null and points at `len` readable bytes;
+/// * `init_serial` has run so `UART_DEVICE` is initialised;
+/// * no other thread is concurrently writing to `UART_DEVICE`.
+///
+/// Returns `usize::MAX` if `h` is not the live handle (`0`).
 #[cfg(feature = "serial")]
 #[allow(static_mut_refs)]
 unsafe fn plat_serial_write(h: u8, buf: *const u8, len: usize) -> usize {
@@ -149,6 +183,12 @@ fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
 
 #[cfg(feature = "ethernet")]
 /// Helper to create a socket set with pre-allocated storage
+///
+/// # Safety
+///
+/// Must be called at most once during board init. `nros_smoltcp::get_socket_storage`
+/// returns an aliasable `&'static mut` slice; a second call would alias
+/// the same backing storage.
 unsafe fn create_socket_set() -> SocketSet<'static> {
     let storage = unsafe { nros_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
