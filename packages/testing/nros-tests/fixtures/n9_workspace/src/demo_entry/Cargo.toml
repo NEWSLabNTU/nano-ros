@@ -1,0 +1,37 @@
+[package]
+name = "demo_entry"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "demo_entry"
+path = "src/main.rs"
+
+# Phase 212.N.9 — single-node form-1 fallback. `nros::main!()` with
+# no args reads `deploy = "native"` here and maps to
+# `::nros_board_native::NativeBoard`.
+[package.metadata.nros.entry]
+deploy = "native"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# DELIBERATE single-dep on `nros`. The `nros::main!()` macro emit
+# must resolve `BoardEntry` / `RuntimeCtx` / `RuntimeError` through
+# `nros::__macro_support::nros_platform`.
+nros = { path = "@NANO_ROS_ROOT@/packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+# Board crate — supplies the `NativeBoard` ZST referenced by the
+# macro-emitted `<Board as BoardEntry>::run(...)` call. Forms 2/3/4
+# would override it via `board = ...`.
+nros-board-native = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-native" }
+# Form-3/4 with `launch = "demo_bringup"` resolves the talker pkg
+# via the workspace pkg-index. The bin target must link against the
+# talker_pkg rlib so `::talker_pkg::register(runtime)?;` compiles.
+talker_pkg = { path = "../talker_pkg" }

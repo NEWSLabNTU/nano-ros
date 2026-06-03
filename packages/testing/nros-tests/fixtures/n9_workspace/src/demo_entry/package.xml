@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>demo_entry</name>
+  <version>0.1.0</version>
+  <description>Phase 212.N.9 fixture — Entry pkg consuming `nros::main!()`.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <exec_depend>demo_bringup</exec_depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

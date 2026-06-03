@@ -1,0 +1,24 @@
+# Phase 212.N.9 fixture — `nros::main!()` proc-macro round-trip.
+#
+# A minimum-viable colcon-style workspace:
+#   src/talker_pkg/    — single Rust Node pkg.
+#   src/demo_bringup/  — bringup pkg with `launch/system.launch.xml`
+#                        spawning the talker.
+#   src/demo_entry/    — Rust Entry pkg whose `src/main.rs` is a
+#                        one-liner `nros::main!(launch = "demo_bringup");`.
+#
+# The companion test (`phase212_n9_main_macro_forms.rs`) stages this
+# fixture into a tempdir + rewrites `@NANO_ROS_ROOT@` to absolute path
+# `=` deps, then runs `cargo check` against four variants of the Entry
+# pkg's `main.rs` (one per `nros::main!()` form). All four must
+# compile.
+
+[workspace]
+members = [
+    "src/talker_pkg",
+    "src/demo_entry",
+]
+# `demo_bringup` is metadata-only (package.xml + launch.xml + system.toml);
+# no Rust targets, no Cargo.toml. The pkg-index walks `package.xml`
+# anywhere under the workspace root.
+resolver = "2"

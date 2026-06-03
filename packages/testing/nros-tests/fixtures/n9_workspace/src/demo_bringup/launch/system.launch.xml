@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<!-- Phase 212.N.9 fixture — minimal 1-node launch. -->
+<launch>
+    <node pkg="talker_pkg" exec="talker"/>
+</launch>

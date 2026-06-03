@@ -1,0 +1,7 @@
+# Phase 212.N.9 — bringup pkg system descriptor.
+#
+# `default_launch` is the launch file `nros::main!(launch = "demo_bringup")`
+# picks when no explicit `:filename` is supplied.
+
+[system]
+default_launch = "system.launch.xml"

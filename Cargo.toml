@@ -383,6 +383,12 @@ exclude = [
     "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr",
     "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr/talker_pkg",
     "packages/testing/nros-tests/fixtures/multi_pkg_workspace_zephyr/listener_pkg",
+    # Phase 212.N.9 fixture — its own `[workspace]` root + `@NANO_ROS_ROOT@`
+    # path-dep placeholders. Listed here so the outer workspace walker
+    # doesn't try to absorb its members at codebase scan time.
+    "packages/testing/nros-tests/fixtures/n9_workspace",
+    "packages/testing/nros-tests/fixtures/n9_workspace/src/talker_pkg",
+    "packages/testing/nros-tests/fixtures/n9_workspace/src/demo_entry",
 ]
 
 [workspace.package]

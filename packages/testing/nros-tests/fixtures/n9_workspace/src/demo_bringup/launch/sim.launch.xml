@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<!-- Phase 212.N.9 fixture — alternate launch (form-4 explicit-file test). -->
+<launch>
+    <arg name="use_sim" default="false"/>
+    <node pkg="talker_pkg" exec="talker"/>
+</launch>
