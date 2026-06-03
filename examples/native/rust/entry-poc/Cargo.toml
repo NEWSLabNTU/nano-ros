@@ -6,23 +6,36 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Phase 212.N.7 step-1 — proof-of-concept Entry pkg consuming `nros-board-native` + the codegen-emitted `run_plan(runtime)`."
+description = "Phase 212.N.9 — minimal Entry pkg: one-line `main.rs` via `nros::main!()`."
 
 [[bin]]
 name = "entry-poc"
 path = "src/main.rs"
 
+# Companion lib for Form-1 self-bringup. `nros::main!()` with no args
+# emits `::entry_poc::register(runtime)?;` — that symbol lives here.
+[lib]
+path = "src/lib.rs"
+
 [package.metadata.nros.entry]
 deploy = "native"
 
 [dependencies]
-# Phase 212.N.3 tier-1 per-board shim. `NativeBoard::run` provides the
-# `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
+# Phase 212.N.9 — `nros::main!()` proc-macro reaches `BoardEntry` /
+# `RuntimeCtx` / `RuntimeError` through `nros::__macro_support::
+# nros_platform` (the M-F.13 re-export), so `nros` is the only direct
+# library dep the Entry pkg needs at expansion time.
+nros = { path = "../../../../packages/core/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "platform-posix",
+    "ros-humble",
+] }
+# Board crate — `NativeBoard` ZST referenced by the macro-emitted
+# `<NativeBoard as BoardEntry>::run(...)` call. Sourced from the
+# `[package.metadata.nros.entry] deploy = "native"` lookup.
 nros-board-native = { path = "../../../../packages/boards/nros-board-native" }
-# Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
-nros-platform = { path = "../../../../packages/core/nros-platform", features = ["std"] }
 
-[build-dependencies]
-# Phase 212.N.4 codegen library — emits `$OUT_DIR/run_plan.rs` from the
-# launch file + workspace cargo-metadata.
-nros-build = { git = "https://github.com/NEWSLabNTU/nros-cli.git", branch = "main" }
+# No `[build-dependencies]` — Phase 212.N.9 retires the
+# `build.rs + include!(env!("OUT_DIR")/run_plan.rs)` shape; the macro
+# runs at expansion time, no codegen step.
