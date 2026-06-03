@@ -1198,6 +1198,15 @@ platform = "threadx-riscv64"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/qemu-riscv64-threadx/c/listener"
+# Phase 214.P — distinct NetX L2/L3 identity (IP + MAC) so the two-QEMU
+# Cyclone pubsub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`)
+# can unicast SEDP / RTPS data between talker (board default
+# 10.0.2.40 / MAC :56) and listener. Pre-212.M.10 these came from the
+# per-example `nros.toml`; M.10 retired the toml and collapsed every
+# fixture onto the board's NROS_APP_CONFIG default, blocking RTPS
+# unicast. See cmake/board/nano-ros-board-riscv64-qemu.cmake's Phase
+# 214.P override block for the cache-var wiring.
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 
 [[fixture]]
 platform = "threadx-riscv64"
@@ -1210,6 +1219,8 @@ platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/qemu-riscv64-threadx/cpp/listener"
+# Phase 214.P — same per-fixture L2/L3 carve-out as the C cell above.
+cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 
 # ===========================================================================
 # esp32 / qemu-esp32-baremetal — Rust (ESP32-C3, riscv32imc-unknown-none-elf).

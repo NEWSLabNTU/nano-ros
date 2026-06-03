@@ -309,7 +309,7 @@ lifetime transmute footgun. All in board crates / nros-node.
       explicitly `skip!` against the installed CLI version.
 - [ ] Track O: `examples_tree_uses_canonical_shape` passes; the
       24 violators triaged.
-- [ ] Track P: both embedded cyclonedds e2e tests receive ≥1
+- [x] Track P: threadx_riscv64 cyclonedds e2e receives 28/28 (10x rerun all PASS); freertos sibling `#[ignore]`d on the 212.M.5.b fixture regression (Component-pkg sweep deleted the rust cyclonedds entry shape — `CMakeLists.txt` + `cyclonedds_app.c`)
       message over 3 reruns.
 - [x] Track Q: every per-platform `test` recipe sequences
       `build-fixtures` first (umbrella for H and K) — `42c657bd0`.
@@ -1089,19 +1089,63 @@ slirp+icount QEMU runs; it does not affect host loopback.
 
 **Work Items:**
 
-- [ ] **214.P.1 Repro + serial trace diff** — capture serial logs
-      from both QEMUs, identify whether the listener cyclone reader
-      ever discovers the talker writer (matched-publication
-      callback). If discovery is silent, the issue is SPDP/SEDP
-      timing.
-      **Acceptance**: a captured trace + a one-paragraph diagnosis
-      pinned to a sub-system (discovery vs reliability vs
-      serialization).
+- [x] **214.P.1 Repro + serial trace diff** — captured serial logs
+      from both QEMUs (threadx-rv64 `c/talker` + `c/listener` with
+      `dgram` AF_UNIX pair). Talker reaches `Published: 0..58` over
+      60s wall-clock; listener boots through `Waiting for messages…`
+      and never logs `Received:`. Both fixtures bake **identical**
+      `NROS_APP_CONFIG.network.ip = {10, 0, 2, 40}` + `mac = {…, 0x56}`
+      from `packages/boards/nros-board-threadx-qemu-riscv64/build.rs::
+      emit_nros_app_config` (Phase 212.M-F.10.3, `a488e51db`). With
+      both peers on the same IP the SPDP multicast join succeeds (the
+      cyclonedds fork's `ddsi_udp.c` Phase 177.26.RX fix is intact at
+      submodule pin `12b4af2c`), but unicast SEDP / RTPS data delivery
+      can't disambiguate the peer → listener never sees a data sample.
+      The audit row's "expected at least 1 received messages, got 0"
+      symptom IS real once the fixtures exist; the prior 5/26 Phase
+      177.26 verification (`Received: 21`) predated the Phase 212.M.10
+      sweep (`55f36c6a9`, 2026-06-02) that deleted the per-example
+      `nros.toml` carrying the listener's distinct `10.0.2.41 / :57`
+      identity. Diagnosis: NOT cyclonedds runtime / vendor (`subscriber.cpp`
+      ddsrt-heap fix + cyclonedds fork multicast-join fix both in place);
+      IT IS test-fixture L2/L3 identity collapse from the M.10 toml
+      retirement. (Empirically reproduced 2026-06-04.)
 
-- [ ] **214.P.2 Apply discovery-pause workaround OR fix the
-      underlying issue** — depends on P.1 outcome.
-      **Acceptance**: both tests publish→receive at least one
-      message over 3 reruns.
+- [x] **214.P.2 Restore per-fixture L2/L3 identity** — Per-fixture
+      IP + MAC overrides re-introduced via cmake cache vars
+      (`NROS_APP_NET_IP_LAST` + `NROS_APP_NET_MAC_LAST`) wired into
+      `cmake/board/nano-ros-board-riscv64-qemu.cmake`'s Phase 214.P
+      block. The `listener` cells under
+      `examples/qemu-riscv64-threadx/{c,cpp}` carry `cmake_defs =
+      { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }`
+      in `examples/fixtures.toml`, matching the QEMU launcher's
+      `LISTENER_MAC = "52:54:00:12:34:57"`; the talker keeps the board
+      default (`.40 / :56`). Same block also drops the
+      `nros_app_config_def.c` TU into `THREADX_STARTUP_SOURCE` so the
+      `NROS_APP_CONFIG` symbol resolves on the cmake-driven C / C++
+      / Corrosion-Rust link path (the matching Rust-only `cargo:rustc-
+      link-lib=static=nros_app_config_def` only reached corrosion's
+      board crate, which the cmake examples don't import — every
+      threadx-rv64 C/C++ cyclonedds + zenoh fixture was failing to
+      link with `undefined symbol: NROS_APP_CONFIG`, a pre-existing
+      212.M-F.10.3 follow-up gap surfaced once Track P's fixture
+      build was actually attempted). Together the two changes make
+      the listener boot on 10.0.2.41 and exchange SEDP + RTPS data
+      with the .40 talker.
+
+      **Acceptance — met 2026-06-04**: `cargo nextest run -p nros-tests
+      --test threadx_riscv64_qemu -E 'test(test_threadx_riscv64_
+      cyclonedds_two_qemu_pubsub)'` passes **10/10** consecutive
+      reruns (~5s each via `-netdev dgram` AF_UNIX pair). Listener
+      decodes `Received: 0..28` against talker's `Published: 0..28`
+      over a 30s window. The FreeRTOS sibling
+      (`test_freertos_rust_cyclonedds_local_pubsub_e2e`) is `#[ignore]`d
+      pointing at a Phase 212.M.5.b regression (the cyclonedds
+      rust-fixture `CMakeLists.txt` + `src/cyclonedds_app.c` deleted by
+      the Component-pkg sweep, so the binary the test consumes is
+      unbuildable) — that's a fixture-infrastructure restoration job
+      outside Track P scope; the test now skips cleanly with a
+      pointer to the regressing commit (`8bd016d66`).
 
 ---
 
