@@ -897,30 +897,88 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       from `main()` (the `RosAction` trait does not yet surface the
       cancel-sub-service / status-publisher types — see
       `examples/native/rust/{action-server,action-client}/src/main.rs`).
-      Commit: `<filled after commit>`.
+      Commit: `705e1b245`.
 
-- [ ] **K.7.4.c.followup** — **Reshape the cyclonedds publisher fast
-      paths to work against the dynamic-builder descriptor layout.**
-      Surfaced 2026-06-03 immediately after K.7.4.c landed. With the
+- [ ] **K.7.4.d** — **Retire the per-action manual publisher fast
+      paths; route through Cyclone's standard typed-sample
+      `dds_write`.** Action e2e blocker surfaced 2026-06-03
+      immediately after K.7.4.c landed at `705e1b245`. With the
       dynamic descriptor registered, the native rust action server
-      survives `create_action_server` and accepts goal requests, but
+      survives `create_action_server` + accepts goal requests, but
       segfaults inside
       `packages/dds/nros-rmw-cyclonedds/src/publisher.cpp::publish_goal_status_array`
-      (line 223) when it memcpys into hardcoded
-      `goal_id_off = ops[12]` / `uuid_off = ops[19]` offsets that
-      presuppose the byte-for-byte idlc-emitted op-stream shape. The
-      dynamic builder produces a structurally identical-but-shifted
-      op-stream (different ordering of nested-body emission relative to
-      top-level fields). Two fix paths: (a) tighten the dynamic
-      builder to emit ops in the exact same word positions as idlc,
-      OR (b) replace the manual `publish_goal_status_array` /
-      `publish_fibonacci_feedback` walkers with Cyclone's standard
-      `dds_write`-on-`dds_stream_read_sample`-built typed sample (the
-      generic path already used for non-action topics). Path (b) is
-      more general but requires careful CDR header bridging similar
-      to Phase 171.0.b. **Acceptance**: native rust Fibonacci action
-      goal→accept→feedback→result e2e on `ROS_DOMAIN_ID=80` without
-      segfault.
+      (line 223) when `memcpy(goal_id + uuid_off, ...)` writes through
+      a `uuid_off = ops[19]` offset that presupposes the byte-for-byte
+      idlc-emitted op-stream shape. The dynamic builder emits a
+      structurally identical-but-shifted op-stream (different ordering
+      of nested-body emission relative to top-level fields), so the
+      hardcoded `ops[1]/ops[6]/ops[9]/ops[12]/ops[19]/ops[23]/ops[25]`
+      slot reads point at the wrong words. Same shape problem in
+      `publish_fibonacci_feedback`.
+
+      **Path B chosen** (idlc byte-for-byte alignment rejected as
+      brittle — would re-couple the dynamic builder to a moving
+      upstream target and defeat the K.7.4.b layering): replace the
+      two manual ops-walking publishers with Cyclone's generic
+      typed-sample `dds_write` path that the rest of the backend
+      already uses for non-action topics. Walker is K.7.4.b's
+      descriptor, not hand-rolled. Approach:
+
+      1. Build the typed sample in C++ from the Rust-supplied flat
+         payload bytes by calling Cyclone's
+         `dds_stream_read_sample` (which is the inverse of
+         `dds_stream_write_sample`) against the registered
+         `dds_topic_descriptor_t *` — yields a properly-shaped C
+         struct in ddsrt-allocated memory.
+      2. Call `dds_write` on that struct. Cyclone re-serializes it
+         using the same descriptor, so the on-wire bytes round-trip
+         to whatever the receiver expects.
+      3. Free via `dds_stream_free_sample` (matches the receive
+         path's deallocation already in tree).
+
+      **CDR header bridging** (Phase 171.0.b precedent): Rust ships
+      a CDR-encoded buffer that starts with the 4-byte encapsulation
+      header; Cyclone's typed-sample API expects the body only.
+      Strip the 4-byte header before `dds_stream_read_sample`,
+      re-prepend before `dds_write` if Cyclone doesn't put it back
+      (it usually does — verify against the existing non-action
+      publisher path). The K.7 service request-path fix
+      (`7d7d04e16`) added analogous header handling for service
+      Request/Reply; mirror the predicate-and-shift pattern.
+
+      Scope: 2 fns in `publisher.cpp` (`publish_goal_status_array`,
+      `publish_fibonacci_feedback`) + matching deletes of the
+      hardcoded ops-offset lookups. Maybe a third helper for
+      structured feedback in `subscriber.cpp` if symmetric. Keep
+      `descriptors.cpp` unchanged (registry side already correct).
+
+      **Acceptance**:
+      * Native rust Fibonacci action server +
+        `examples/native/rust/action-client` exchange goal → accept
+        → feedback → result on `ROS_DOMAIN_ID=80` with no segfault.
+      * `just cyclonedds test` stays 14/14.
+      * K.7.7 pub/sub + K.7.7.b service e2e + K.7.8 hardening
+        regressions clean.
+      * No new hardcoded opcode-word index reads anywhere in
+        `publisher.cpp` or `subscriber.cpp`.
+
+      **Files**:
+      * `packages/dds/nros-rmw-cyclonedds/src/publisher.cpp`
+        (`publish_goal_status_array`, `publish_fibonacci_feedback`,
+        + any shared ops-walking helpers they were the sole
+        consumers of).
+      * Possibly `packages/dds/nros-rmw-cyclonedds/src/subscriber.cpp`
+        if a symmetric typed-sample path is needed for the receive
+        side.
+      * New tests under `packages/dds/nros-rmw-cyclonedds/tests/`
+        proving the round-trip on a hand-rolled
+        `GoalStatusArray`-shaped fixture without going through a
+        full action-server boot.
+
+      **Cross-refs**: Phase 171.0.b (CDR header bridging for service
+      paths); commit `7d7d04e16` (service Req/Reply header
+      injection in `build_raw`). Both establish the predicate-and-
+      shift pattern this work should mirror.
 
 - [x] **K.7.5** — **Bounded type registry** inside
       `nros-rmw-cyclonedds`. Landed `bb2d23002` —
