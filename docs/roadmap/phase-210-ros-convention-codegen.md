@@ -560,7 +560,7 @@ the Rust frontend, the colcon-parity proof, and the doctor surface.
       correct kind tag (msg/app); a deliberately broken `package.xml`
       makes it fail loudly. `nros ws status` prints a one-line summary
       with up-to-date vs stale counts.
-- [ ] **210.F.4** Shadowing matrix verification. When a workspace pkg
+- [x] **210.F.4** Shadowing matrix verification. When a workspace pkg
       name collides with an AMENT-installed pkg (e.g. workspace
       `std_msgs` over `/opt/ros/.../std_msgs`), the workspace one
       should win + emit a `STATUS` line. The cmake-side smart Find-stub
@@ -572,6 +572,21 @@ the Rust frontend, the colcon-parity proof, and the doctor surface.
       contract in `book/src/getting-started/your-own-msg-package.md`.
       **Acceptance:** the workspace `std_msgs` is the one linked into
       the consumer's binary (verified via `nm | grep std_msgs_...`).
+      **Landed 2026-06-03** — fixture at
+      `examples/templates/workspace-shadowing/` (`9d67bb541`):
+      workspace `src/std_msgs/` carries `Marker.msg` (unique field
+      `string shadowed_marker`), upstream AMENT `std_msgs` ships no
+      `Marker.msg` → consumer's `#include "std_msgs/msg/marker.hpp"`
+      only links when the workspace copy wins. Regression at
+      `packages/testing/nros-tests/tests/phase210_f4_shadowing.rs`
+      (`a41bb8206`) drives cmake configure + build + `nm -C` grep
+      for `nros_cpp_serialize_std_msgs_msg_marker` +
+      `std_msgs::msg::Marker` symbols; PASSED in 62.86s with
+      `/opt/ros/humble` sourced. Book chapter
+      `book/src/getting-started/your-own-msg-package.md` §Shadowing
+      contract (`2a6127579`) documents the layer order +
+      `message(STATUS nros: find_package(<pkg>) -> ...)` signal +
+      the compile-time fail-safe + the fixture as the reference.
 
 ## Acceptance criteria
 
