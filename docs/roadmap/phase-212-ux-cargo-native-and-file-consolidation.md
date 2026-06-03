@@ -1939,28 +1939,36 @@ asymmetry rationale.
       lints) — that's the user-facing CLI gate; the in-tree
       regression test covers the same contract for nano-ros's
       example tree.
-- [~] **Launch file synthesis works for single Component pkg** —
+- [x] **Launch file synthesis works for single Component pkg** —
       Component pkg w/ `[package.metadata.nros.entry]` self-entry
       shape but no launch file gets an implicit one synthesised in-
       memory by `nros plan` / `nros codegen-system` /
       `generate_single_node_main`. (212.L.6 + L.7 + N.5). L.6 [x]
       design + gate test
       `phase212_l6_launch_synth::nros_plan_synthesises_launch_for_single_pkg_no_launch_file`
-      exists; SKIPS on tooling absence (`play_launch_parser` not on
-      PATH AND nros CLI not installed in worktree). Flippable to
-      [x] once: (a) `play_launch_parser` (Python binary —
-      `pip install play-launch-parser`) is added to the SDK
-      provisioning surface (analogous to Phase 212.D Corrosion
-      tier-default discussion), and (b) the gate test transitions
-      from `[SKIPPED]` to `pass` on a clean `just setup` host.
-- [~] **Multi-launch resolution works** — `<pkg>/launch/<pkg>.launch.
+      transitions SKIP -> PASS on any host that has run `just setup`
+      (`base` or `all`). Tooling closure landed this branch:
+      `[tool.play_launch_parser]` in `nros-sdk-index.toml` pins the
+      Rust binary's source SHA (no PyPI / no upstream tags — the
+      earlier `pip install` framing was inaccurate; play_launch_parser
+      is a Rust workspace at `jerry73204/play_launch_parser`, built
+      via `cargo install --path crates/play_launch_parser`), and
+      `just workspace install-play-launch-parser` (called from the
+      `workspace` module — first in both `base` and `all` branches
+      of `justfile::_orchestrate`) drops it at
+      `~/.nros/sdk/play_launch_parser/bin/play_launch_parser` with
+      `.envrc` putting that on PATH. The SKIP that remains on a host
+      that has *never* run `just setup` is the by-design "tier
+      prerequisite missing" reporter, not a phase bug.
+- [x] **Multi-launch resolution works** — `<pkg>/launch/<pkg>.launch.
       xml` > `<pkg>/launch/system.launch.xml` > single file > synth.
-      `--file <path>` override. (212.L.6). Same gate +
-      tooling-skip status as the synth bullet — L.6 [x] design,
-      `phase212_l6_launch_synth::nros_plan_picks_pkg_named_default`
-      + `nros_plan_refuses_path_a_bringup_with_no_launch` exist
-      and SKIP on `play_launch_parser` absence. Same flip
-      precondition.
+      `--file <path>` override. (212.L.6). Same gate closure as the
+      synth bullet — `phase212_l6_launch_synth::nros_plan_picks_pkg_named_default`
+      + `nros_plan_refuses_path_a_bringup_with_no_launch` transition
+      SKIP -> PASS on any host where the `workspace` module has run
+      (closure via `[tool.play_launch_parser]` in
+      `nros-sdk-index.toml` + `just workspace install-play-launch-
+      parser` + `.envrc` PATH guard, same branch as the synth bullet).
 - [x] **Every existing fixture migrated to the new shape** via the
       §212.I.3 sweep (fixtures) + §212.M sweep (examples). No mixed-
       shape tree allowed. (212.I + 212.M). Gated by
