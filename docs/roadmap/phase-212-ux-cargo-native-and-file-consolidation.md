@@ -1879,7 +1879,8 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       (NEW), `nros-cli/packages/nros-build/src/{pkg_index,
       launch_parser}.rs` (NEW shared codegen library), Entry-pkg
       `Cargo.toml` sweep (drop build-dep).
-- [ ] **N.10 Workspace pkg-index + `$(find <pkg>)` resolver**
+- [x] **N.10 Workspace pkg-index + `$(find <pkg>)` resolver**
+      (landed nros-cli `de165c8` 2026-06-03; 8 tests pass).
       (2026-06-03 design lock §11.4). Language-agnostic build-time
       mechanism shared by N.9 (Rust proc-macro) and the future C++
       cmake fn `nros_entry(...)`. Algorithm:
@@ -1896,8 +1897,10 @@ Replaces the M.5.a FreeRTOS BSP baker as the long-term shape.
       Identical algorithm runs from Rust (proc-macro) AND from cmake
       (configure-time fn). **Files:** `nros-cli/packages/nros-build/
       src/pkg_index.rs` (NEW).
-- [ ] **N.11 ROS 2 launch.xml parser (v1 tag set)** (2026-06-03
-      design lock §11.5). Copy-paste compatibility with nav2 /
+- [x] **N.11 ROS 2 launch.xml parser (v1 tag set)** (landed nros-cli
+      `6b69d6e` 2026-06-03; 10 tests pass including nav2 launch.xml
+      smoke).
+      (2026-06-03 design lock §11.5). Copy-paste compatibility with nav2 /
       Autoware / turtlebot3 launch.xml files. Tag set:
       `<launch>`, `<arg>`, `<node>`, `<param>`, `<remap>`,
       `<group>`, `<include>`. Substitutions: `$(find <pkg>)`,
