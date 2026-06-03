@@ -1,7 +1,7 @@
 # Phase 212.M.10 fixture — talker component pkg (PX4 host-compile shape).
 #
 # Per §212.L.9 the C++ pkg metadata surface is the cmake fn pair
-# `nano_ros_component_register` + `nano_ros_deploy` — sidecar
+# `nano_ros_node_register` + `nano_ros_deploy` — sidecar
 # `component_nros.toml` is forbidden (§Non-Goals + §212.M.10).
 #
 # PX4 itself is uORB-only (Phase 115.K.4 collapsed uORB to C++) and
@@ -23,7 +23,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # so the repo root is six levels up.
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../cmake/NanoRosNodeRegister.cmake")
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    talker
     CLASS   talker_pkg::talker
     SOURCES src/talker.cpp

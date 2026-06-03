@@ -2,7 +2,7 @@
 #
 # Pre-212 used `component_nros.toml` + a hand `metadata/listener.json`
 # sidecar; both are RETIRED per §212.L. The shape now is in-cmake:
-# `nano_ros_component_register(NAME ... CLASS ... SOURCES ... DEPLOY)`
+# `nano_ros_node_register(NAME ... CLASS ... SOURCES ... DEPLOY)`
 # writes a JSON fragment to the build dir under
 # `nros-metadata.json` (consumed by `nros codegen-system`).
 #
@@ -16,7 +16,7 @@
 # Sub-`project()` rescopes the L.4 check to the pkg dir name.
 project(listener_pkg VERSION 0.1.0 LANGUAGES CXX)
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME    listener
     CLASS   listener_pkg::Listener
     SOURCES src/listener.cpp

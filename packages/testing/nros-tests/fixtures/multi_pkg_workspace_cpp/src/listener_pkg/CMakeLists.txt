@@ -4,7 +4,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(listener_pkg CXX)
 
-nano_ros_component_register(
+nano_ros_node_register(
     NAME listener
     CLASS listener_pkg::Listener
     SOURCES src/listener.cpp

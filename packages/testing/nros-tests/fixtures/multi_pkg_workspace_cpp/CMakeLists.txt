@@ -3,7 +3,7 @@
 #
 # Pre-212 sidecar TOML / `metadata/*.json` / `nros.toml` have all been
 # retired (§212.L Non-Goals). Component metadata is declared at
-# configure time via `nano_ros_component_register(...)`, the executable
+# configure time via `nano_ros_node_register(...)`, the executable
 # via `nano_ros_entry(...)`, and per-deploy config via
 # `nano_ros_deploy(...)`. All three fns ship from `cmake/` and emit
 # `${CMAKE_BINARY_DIR}/nros-metadata.json` — no committed sidecar.

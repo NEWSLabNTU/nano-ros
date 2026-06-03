@@ -8,7 +8,7 @@
 # Component pkg shape is now in-manifest:
 # - Rust (`talker_pkg`) — `[package.metadata.nros.component]` in
 #   `src/talker_pkg/Cargo.toml`.
-# - C++ (`listener_pkg`) — `nano_ros_component_register(NAME ... CLASS
+# - C++ (`listener_pkg`) — `nano_ros_node_register(NAME ... CLASS
 #   ... SOURCES ... DEPLOY ...)` in `src/listener_pkg/CMakeLists.txt`,
 #   plus `nano_ros_deploy(...)` for the deploy/domain config (replaces
 #   the retired bringup pkg's `system.toml`).
@@ -21,7 +21,7 @@ cmake_minimum_required(VERSION 3.22)
 project(multi_pkg_workspace_mixed C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Pull in the §212.L.9 cmake fn surface (nano_ros_component_register,
+# Pull in the §212.L.9 cmake fn surface (nano_ros_node_register,
 # nano_ros_deploy, nano_ros_entry) from the workspace root. The
 # integration test rewrites @NANO_ROS_ROOT@ at stage time.
 include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
