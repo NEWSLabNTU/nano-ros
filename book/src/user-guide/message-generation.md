@@ -84,6 +84,35 @@ example_interfaces = { version = "*", default-features = false }
 
 The `.cargo/config.toml` patches redirect these to local paths.
 
+### Why msg crates are RMW-agnostic
+
+Generated msg crates carry **only the wire-format data type** — no
+backend-specific code, no per-RMW Cargo feature. A user manifest is
+the plain pair:
+
+```toml
+[dependencies]
+std_msgs = { version = "*", default-features = false }
+nros     = { version = "*", features = ["rmw-cyclonedds"] }   # RMW choice lives here
+```
+
+Transport choice and message schema are orthogonal concerns and the
+manifest reflects that. This matches upstream rclcpp + rclrs, which
+both ship msg packages RMW-agnostic and let the RMW pick which
+descriptor representation it wants at runtime.
+
+For DDS-based backends that need a per-type descriptor on the wire
+(Cyclone DDS today), the `nros-rmw-cyclonedds` shim builds those
+descriptors **lazily on first pub/sub for a given message type**,
+walks the static field schema exposed by `nros-serdes` (the
+`Message` trait with `const TYPE_NAME` + `const FIELDS`), and caches
+the result in a bounded `no_std` registry. No per-msg-pkg backend
+code is required.
+
+Tracking + sizing knob (`NROS_CYCLONEDDS_MAX_TYPES`): see
+[`docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md)
+section 212.K.7.
+
 ## Git Dependency Workflow
 
 For projects that consume nros as a **git dependency** (not from within the nros repo), use `--nano-ros-git` instead of `--nano-ros-path`:

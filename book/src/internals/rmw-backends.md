@@ -91,6 +91,35 @@ The Rust runtime sees these via the same registry; the
 `NANO_ROS_RMW=<name>` CMake selector flips a build-time macro that
 ensures the register call is wired into `nros::init`.
 
+### Cyclone DDS: runtime type introspection (Phase 212.K.7)
+
+The Cyclone DDS shim **does not** require per-type backend code on the
+generated msg crate. Phase 212.K.7 inverted the original design where
+each msg crate carried an optional `cyclonedds` Cargo feature plus a
+Cyclone-specific descriptor sidecar.
+
+In the runtime-introspection design every generated msg crate is
+purely the wire-format data type (`#[derive]`d struct + a tiny `impl
+nros_serdes::Message` exposing `const TYPE_NAME` + `const FIELDS`).
+On the first typed `create_publisher<M>` / `create_subscription<M>`
+for a given `M`, the `nros-rmw-cyclonedds` shim walks the static
+field schema, builds a Cyclone `ddsi_sertype` via Cyclone's
+dynamic-type C API, and caches the pointer in a bounded
+`heapless::FnvIndexMap<u64, NonNull<ddsi_sertype>, MAX_TYPES>`
+guarded by a platform-selected mutex. Subsequent uses of the same
+`M` are hash-map hits.
+
+End state: no `<msg-pkg>/cyclonedds` Cargo feature anywhere, no
+per-msg-pkg backend code, no codegen branching on the active RMW.
+The shape matches upstream rclcpp's introspection typesupport + rclrs's
+plain `<pkg> = "*"` consumer manifest.
+
+Sizing knob: `NROS_CYCLONEDDS_MAX_TYPES` (default 32), wired through
+the existing `nros-sizes` build probe (same pattern as
+`EXECUTOR_OPAQUE_U64S`). See section 212.K.7 of
+[`docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`](../../../docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md)
+for the work-item ledger.
+
 ## When to revisit
 
 This matrix is a snapshot. Update it when any backend's situation

@@ -689,6 +689,23 @@ CMake on hosted targets (native, qemu native_sim).
 
 #### 212.K.7 — RMW-agnostic msg crates via runtime introspection (DESIGN REVISION)
 
+**Status (2026-06-03).** Bulk of K.7 has landed: K.7.1 (codegen template
+drops `cyclonedds` feature, nros-cli `e9226b6`), K.7.2 (consumer
+Cargo.toml grep sweep, `1fb985560`), K.7.3 (`nros-serdes` public field
+schema + `Message` trait, `a9fff3306`), and K.7.4 + K.7.5 + K.7.6
+(runtime descriptor builder + bounded heapless type registry + Rust
+shim register hook in `nros-rmw-cyclonedds`, `bb2d23002`) are all in
+tree. Remaining: **K.7.1.b** (codegen also emits an `impl
+nros_serdes::Message for <Msg>` per generated msg crate — without it
+the registry has nothing to walk on real generated types), **K.7.4.b**
+(replace the K.7.4 `UnsupportedFieldType` stub with a real Cyclone
+dynamic-type C++ bridge), **K.7.6.b** (call `register::<M>()` from the
+nros-node Rust pub/sub/service/action creators, not just the shim
+plumbing), **K.7.7** (migrate examples — gated on K.7.1.b shipping so
+the regenerated `generated/<pkg>/` trees carry `impl Message`),
+**K.7.8** (registry race + bare-metal link smoke + alloc-free audit —
+gated on K.7.6.b so a real call path exists). K.7.9 is this commit.
+
 **Filed 2026-06-03.** K.1-K.5 wired `cyclonedds = ["dep:cyclonedds-sys"]`
 as a Cargo FEATURE on every generated msg crate (the path the
 `std_msgs/cyclonedds` ref in `examples/native/rust/talker/Cargo.toml`
@@ -774,25 +791,32 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
 
 ##### Work items
 
-- [ ] **K.7.1** — **Drop the `cyclonedds` Cargo feature** from every
-      generated msg crate. Update `rosidl-codegen` / `cargo-nano-ros`
-      templates to NOT emit a `cyclonedds` feature; UNGATE the
-      `cyclonedds-sys = "*"` dep that lived behind it (it was never
-      reachable; the dep stays for nros-rmw-cyclonedds path
-      independent of msg crate). Re-run `nros generate-rust` on
-      every in-tree example after the template change so the
-      committed `<example>/generated/<pkg>/Cargo.toml` files
-      regenerate clean. **Files:**
-      `nros-cli/packages/rosidl-codegen/src/cargo_toml_emit.rs` (or
-      wherever the feature emit lives) + every `examples/*/rust/*/
-      generated/<pkg>/`.
+- [x] **K.7.1** — **Drop the `cyclonedds` Cargo feature** from every
+      generated msg crate. Landed in nros-cli main `e9226b6` — the
+      codegen template no longer emits a `cyclonedds` feature; the
+      `cyclonedds-sys = "*"` dep that lived behind it is ungated (it
+      was never reachable; the dep stays for nros-rmw-cyclonedds path
+      independent of msg crate). In-tree `examples/*/rust/*/
+      generated/<pkg>/` regeneration is a follow-on (K.7.7), and is
+      gated on K.7.1.b below so the regenerated trees also carry the
+      `impl Message` emit. **Files:** nros-cli
+      `packages/rosidl-codegen/src/cargo_toml_emit.rs`.
 
-- [ ] **K.7.2** — **Drop `std_msgs/cyclonedds` (and any
+- [ ] **K.7.1.b** — **Codegen emits `impl nros_serdes::Message for
+      <Msg>`** alongside the generated struct per msg crate. K.7.3
+      promotes the trait; K.7.4–K.7.6 build, cache and look up a
+      Cyclone sertype keyed on it; but no in-tree msg type actually
+      implements `Message` yet, so the registry has nothing to walk
+      on real generated types. Land in nros-cli, then re-run
+      `nros generate-rust` per K.7.7. **Files:** nros-cli
+      `packages/rosidl-codegen/src/rust_msg_emit.rs` (or equivalent).
+
+- [x] **K.7.2** — **Drop `std_msgs/cyclonedds` (and any
       `<pkg>/cyclonedds`) feature ref** from every consumer Cargo.toml
-      in the tree. Grep target:
-      `git grep -E '"[a-z_]+_msgs?/cyclonedds"'`. Each match is
-      under a `rmw-cyclonedds = [...]` feature list and gets pruned
-      to:
+      in the tree. Landed `1fb985560` — talker + listener consumer
+      manifests pruned. Grep audit (`git grep -E
+      '"[a-z_]+_msgs?/cyclonedds"'`) returns clean on the worktree.
+      Each pruned `rmw-cyclonedds = [...]` list now reads:
       ```toml
       rmw-cyclonedds = [
           "dep:nros-rmw-cyclonedds-sys",
@@ -801,50 +825,72 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
           # cyclonedds descriptor wiring inside nros-rmw-cyclonedds.
       ]
       ```
-      Restores `cargo build` on every affected example.
+      Cargo resolver no longer rejects native rust examples on the
+      missing-feature error.
 
-- [ ] **K.7.3** — **Promote `nros-serdes` field schema as a public
-      no_std API.** Today `Field` / `FieldType` are used internally
-      by the CDR walker; need `pub trait Message { const TYPE_NAME:
-      &'static str; const FIELDS: &'static [Field]; }` (or extend
-      existing trait) — exposed in the crate root, `#![no_std]`-
-      compatible, all `&'static` / `Copy`. If `FieldType` enum
-      doesn't already cover Cyclone's needs (sequence-of-string,
-      array-of-nested-struct, …), add the missing variants. **Files:**
-      `packages/core/nros-serdes/src/schema.rs` (or equivalent).
+- [x] **K.7.3** — **Promote `nros-serdes` field schema as a public
+      no_std API.** Landed `a9fff3306` — `Field`, `FieldType`,
+      `NestedType`, and `pub trait Message { const TYPE_NAME:
+      &'static str; const FIELDS: &'static [Field]; }` are now the
+      public schema surface, `#![no_std]`-compatible, all `&'static`
+      / `Copy`. `FieldType` covers Cyclone's needs (primitive,
+      string, sequence, array, nested struct). **Files:**
+      `packages/core/nros-serdes/src/schema.rs`.
 
-- [ ] **K.7.4** — **Cyclone descriptor builder** in
-      `nros-rmw-cyclonedds`. `unsafe fn
-      build_sertype_from_fields(name: &'static str, fields: &'static
-      [Field]) -> *mut ddsi_sertype` — walks the static schema,
-      calls Cyclone's `ddsi_dynamic_type_*` C API per field (Cyclone
-      allocates internally from ddsrt). Returns the sertype pointer
-      for caching. **Files:**
-      `packages/dds/nros-rmw-cyclonedds/src/dynamic_type.rs` (NEW).
+- [x] **K.7.4** — **Cyclone descriptor builder** in
+      `nros-rmw-cyclonedds`. Landed `bb2d23002` — `unsafe fn
+      build_sertype_from_fields(name, fields) -> Result<*mut
+      ddsi_sertype, _>` walks the static schema. The Rust side is
+      complete; the C++ Cyclone dynamic-type bridge is the
+      `UnsupportedFieldType` stub for now and tracked separately as
+      K.7.4.b. **Files:**
+      `packages/dds/nros-rmw-cyclonedds/src/dynamic_type.rs`.
 
-- [ ] **K.7.5** — **Bounded type registry** inside
-      `nros-rmw-cyclonedds`. `heapless::FnvIndexMap<u64,
-      NonNull<ddsi_sertype>, MAX_TYPES>` keyed by `TypeId`-hash
-      (compile-time-stable hash of `M::TYPE_NAME`). Wrapped in
-      `critical_section::Mutex` / `spin::Mutex` (platform-selected).
+- [ ] **K.7.4.b** — **Real Cyclone DDS dynamic-type C++ bridge**
+      replacing the K.7.4 `UnsupportedFieldType` stub. Wire
+      `build_sertype_from_fields` into Cyclone's
+      `ddsi_dynamic_type_*` C API per field so the cached pointer is
+      a real `ddsi_sertype *`. Cyclone allocates the descriptor
+      internally from ddsrt; the embedded heap budgeting from
+      Phase 177.22 already covers it. **Files:**
+      `packages/dds/nros-rmw-cyclonedds/src/dynamic_type.rs` +
+      a new C++ bridge TU under `packages/dds/nros-rmw-cyclonedds/
+      src/cxx/`.
+
+- [x] **K.7.5** — **Bounded type registry** inside
+      `nros-rmw-cyclonedds`. Landed `bb2d23002` —
+      `heapless::FnvIndexMap<u64, NonNull<ddsi_sertype>, MAX_TYPES>`
+      keyed by a compile-time-stable hash of `M::TYPE_NAME`, wrapped
+      in a platform-selected mutex (`critical_section::Mutex` on
+      single-task RTOS, `spin::Mutex` on multi-thread).
       `register_or_lookup::<M>()` returns the cached pointer; first
-      call builds via K.7.4 + inserts. **Files:**
-      `packages/dds/nros-rmw-cyclonedds/src/type_registry.rs` (NEW).
-      Sizing knob: `NROS_CYCLONEDDS_MAX_TYPES` via `nros-sizes`
-      probe; default 32. Overflow = compile-time `const _: () =
-      assert!(...)` from a `nros-sizes-build` hook (mirrors
-      `EXECUTOR_OPAQUE_U64S` pattern).
+      call builds via K.7.4 + inserts. Sizing knob
+      `NROS_CYCLONEDDS_MAX_TYPES` (default 32) is wired via the
+      `nros-sizes` build probe; overflow trips a compile-time
+      `const _: () = assert!(...)`. **Files:**
+      `packages/dds/nros-rmw-cyclonedds/src/type_registry.rs`.
 
-- [ ] **K.7.6** — **Wire the registry into pub/sub paths**. Hook
-      `CyclonePublisher<M>::new` / `CycloneSubscription<M>::new` to
-      call `register_or_lookup::<M>()` before
-      `dds_create_topic_sertype` / `dds_create_reader`. Same shape
-      for service / action paths. **Files:**
-      `packages/dds/nros-rmw-cyclonedds/src/{publisher,subscription,
-      service,action}.rs`.
+- [x] **K.7.6** — **Wire the registry into the Rust shim**. Landed
+      `bb2d23002` — the `nros_rmw_cyclonedds_register` entry point
+      now plumbs `register_or_lookup::<M>()` through the shim's
+      pub/sub vtable slots. The Cyclone C++ pub/sub creator paths
+      that consume the resulting sertype are stubbed via the K.7.4.b
+      bridge; the nros-node Rust creator hook is K.7.6.b. **Files:**
+      `packages/dds/nros-rmw-cyclonedds/src/lib.rs` +
+      `src/{publisher,subscription}.rs`.
 
-- [ ] **K.7.7** — **Migrate every affected example.** Restore
-      `cargo build` on:
+- [ ] **K.7.6.b** — **Wire `register::<M>()` into nros-node Rust
+      pub/sub/service/action creators**. K.7.6 only plumbs the shim;
+      `nros-node`'s typed `create_publisher<M>` / `create_subscription
+      <M>` / `create_service<S>` / `create_action_*<A>` callsites
+      still need to call into the Cyclone registry on first use of a
+      given message type. **Files:**
+      `packages/core/nros-node/src/{publisher,subscription,service,
+      action}.rs`.
+
+- [ ] **K.7.7** — **Migrate every affected example.** Gated on
+      K.7.1.b so the regenerated `generated/<pkg>/` trees carry
+      `impl Message`. Restore `cargo build` on:
       * `examples/native/rust/talker` (default `rmw-zenoh` build is
         blocked today; cyclonedds variant works via cmake path).
       * `examples/native/rust/listener` (same shape).
@@ -854,7 +900,8 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       `cargo build --features rmw-cyclonedds` succeeds and runs an
       end-to-end exchange with `zenohd` / Cyclone router.
 
-- [ ] **K.7.8** — **`nros-rmw-cyclonedds` registry tests.**
+- [ ] **K.7.8** — **`nros-rmw-cyclonedds` registry tests.** Gated on
+      K.7.6.b so a real typed-creator call path exists to exercise.
       * `bounded_registry_overflow_panics_at_compile_time` — exceed
         `NROS_CYCLONEDDS_MAX_TYPES` during a fixture build; verify
         the `const _: () = assert!(...)` fires.
@@ -870,13 +917,18 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
         #![cfg(not(feature = "alloc"))]`; no
         `alloc::alloc::alloc` symbol resolves from the Rust side.
 
-- [ ] **K.7.9** — **Doc updates.** Append a "Why msg crates are
-      RMW-agnostic" subsection to
-      `book/src/getting-started/your-own-msg-package.md` and to
-      `book/src/internals/rmw-backends.md`. Cross-link to upstream
-      rclcpp + rclrs precedent. Document the
-      `NROS_CYCLONEDDS_MAX_TYPES` sizing knob in
-      `docs/reference/environment-variables.md`.
+- [x] **K.7.9** — **Doc updates.** Status block + per-item commit
+      hashes landed at the top of this section; runtime-introspection
+      paragraph added to `book/src/user-guide/message-generation.md`
+      and `book/src/internals/rmw-backends.md`, cross-linking
+      upstream rclcpp + rclrs precedent. `NROS_CYCLONEDDS_MAX_TYPES`
+      sizing-knob note added to
+      `docs/reference/cyclonedds-known-limitations.md`. (The
+      separate `book/src/getting-started/your-own-msg-package.md`
+      page in the original K.7.9 plan does not exist in the current
+      tree — `book/src/user-guide/message-generation.md` is the
+      canonical msg-pkg-authoring surface and absorbed the
+      "Why msg crates are RMW-agnostic" note instead.)
 
 ##### Acceptance for K.7
 

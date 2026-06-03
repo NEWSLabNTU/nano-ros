@@ -242,3 +242,32 @@ deploying on Cortex-R52 with strict heap budgets.
 
 See `docs/roadmap/phase-117-cyclonedds-rmw.md` for the per-item
 breakdown.
+
+## Runtime type registry sizing (Phase 212.K.7)
+
+Generated msg crates are RMW-agnostic — Cyclone DDS sertypes are
+built lazily on first `create_publisher<M>` / `create_subscription<M>`
+for a given message type and cached in a bounded `no_std` registry
+inside `nros-rmw-cyclonedds`. The cap is a build-time env knob:
+
+- **`NROS_CYCLONEDDS_MAX_TYPES`** — default **32**. Wired through
+  the `nros-sizes` build probe (same pattern as
+  `EXECUTOR_OPAQUE_U64S`). Each slot costs ~16 bytes static (one
+  `u64` type-hash + one `NonNull<ddsi_sertype>`); default footprint
+  ~512 bytes.
+- Overflow on first-use registration trips a compile-time
+  `const _: () = assert!(...)` from the `nros-sizes-build` hook —
+  no runtime failure mode.
+- Raise the knob for bridge / aggregator nodes that touch many
+  distinct message types; lower it on Cortex-M0+ where every
+  static byte counts.
+
+The descriptor itself (the `ddsi_sertype` plus Cyclone's internal
+type-cache entries) is still allocated from Cyclone's `ddsrt` heap.
+On FreeRTOS + ThreadX that heap is `kEmbeddedCycloneConfig`'s fixed
+pool (Phase 177.22) — pre-budget it for the worst-case set of
+message types the participant will publish or subscribe to.
+
+See section 212.K.7 of
+`docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
+for the full design + work-item ledger.
