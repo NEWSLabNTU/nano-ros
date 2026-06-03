@@ -193,6 +193,7 @@ unsafe extern "C" {
 #[cfg(any(test, feature = "bridge-stub"))]
 pub mod test_stub {
     use core::{
+        cell::UnsafeCell,
         ffi::{c_char, c_int, c_void},
         sync::atomic::{AtomicI32, AtomicUsize, Ordering},
     };
@@ -207,6 +208,29 @@ pub mod test_stub {
     /// tests assert the registry's cache-hit behaviour.
     pub static BUILD_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+    /// Captures the last `(offset, kind)` pair per top-level field passed
+    /// to the bridge builder (Phase 212.K.7.4.e — lets unit tests assert
+    /// that service request/reply types get the CDR-walk-order synthetic
+    /// offsets that match the runtime memcpy paths in
+    /// `service.cpp::{write_typed, take_typed_wire}`).
+    pub const LAST_FIELDS_CAP: usize = 16;
+    pub static LAST_FIELD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+    /// Sync newtype around `UnsafeCell<(u32, u32)>`. Captures per-field
+    /// `(offset, kind)` from the bridge stub. Single-threaded tests only;
+    /// writers are serialised by `BUILD_COUNTER` so readers (in the test
+    /// body after `build_raw` returns) observe stable values.
+    #[repr(transparent)]
+    pub struct FieldCapture(pub UnsafeCell<(u32, u32)>);
+
+    // SAFETY: see `FieldCapture` doc comment — single-threaded test use only.
+    unsafe impl Sync for FieldCapture {}
+
+    /// `(offset, kind)` per captured field. Tests inspect after the
+    /// corresponding `build_raw` call returns.
+    pub static LAST_FIELDS: [FieldCapture; LAST_FIELDS_CAP] =
+        [const { FieldCapture(UnsafeCell::new((0u32, 0u32))) }; LAST_FIELDS_CAP];
+
     /// Pretend-descriptor pool. We hand out unique non-NULL pointers
     /// (the index of `STUB_DESCRIPTORS`) so the registry can store +
     /// retrieve them without aliasing the same value.
@@ -215,8 +239,8 @@ pub mod test_stub {
     #[unsafe(no_mangle)]
     extern "C" fn nros_cyclonedds_build_descriptor_from_schema(
         _type_name: *const c_char,
-        _fields: *const NrosFieldDescriptor,
-        _field_count: u32,
+        fields: *const NrosFieldDescriptor,
+        field_count: u32,
         _kinds: *const NrosFieldKindDescriptor,
         _kind_count: u32,
         out_err: *mut c_int,
@@ -227,6 +251,20 @@ pub mod test_stub {
                 unsafe { *out_err = forced };
             }
             return core::ptr::null();
+        }
+        // Capture field (offset, kind) for inspection by tests.
+        if !fields.is_null() {
+            let cap = LAST_FIELDS_CAP.min(field_count as usize);
+            LAST_FIELD_COUNT.store(cap, Ordering::SeqCst);
+            for (i, slot) in LAST_FIELDS.iter().enumerate().take(cap) {
+                // SAFETY: caller guarantees `fields` is valid for
+                // `field_count` reads. Stub only writes into
+                // `LAST_FIELDS` from one thread per call.
+                let f = unsafe { &*fields.add(i) };
+                unsafe {
+                    *slot.0.get() = (f.offset, f.kind);
+                }
+            }
         }
         let idx = BUILD_COUNTER.fetch_add(1, Ordering::SeqCst);
         // Hand back a stable, unique non-NULL pointer per call (bounded

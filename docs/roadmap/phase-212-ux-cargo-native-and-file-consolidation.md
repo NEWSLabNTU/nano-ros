@@ -1029,35 +1029,50 @@ multi-thread (POSIX/Zephyr) — same selection pattern as the existing
       injection in `build_raw`). Both establish the predicate-and-
       shift pattern this work mirrors.
 
-- [ ] **K.7.4.e** — **Fix the action-client service-reply decode
-      mismatch.** Surfaced during K.7.4.d e2e validation
-      2026-06-03: with the publisher segfault gone the native rust
-      `action-client` now reaches the goal-reply wait, but
-      misinterprets the server's `accepted=true` reply as a
-      rejection (the client log emits `Goal was rejected by the
-      server` instantly, before the reply could plausibly arrive).
-      The server-side acceptance path is correct
-      (`accept_goal` → `send_reply` → `publish_status_array`
-      → 11×feedback → `complete_goal` all log cleanly); the bug is
-      on the *reply* decode side in either
-      `service.cpp::try_recv_reply_raw` (Cyclone takes the typed
-      response, re-serialises, strips the 16-byte
-      `rmw_writer_guid + rmw_sequence_number` header, hands the
-      remainder to the runtime) or
-      `handles.rs::parse_goal_accepted` (reads `u8 accepted` after
-      the 4-byte encap header). Reproduces on `main` *without*
-      K.7.4.d — confirmed pre-existing, NOT a K.7.4.d regression.
-      Likely a CDR-alignment mismatch: the IDL
-      `Fibonacci_SendGoal_Response_ { uint64 rmw_writer_guid;
-      int64 rmw_sequence_number; boolean accepted; int32 stamp_sec;
-      uint32 stamp_nanosec; }` aligns `accepted` after a 16-byte
-      header, but Rust's `parse_goal_accepted` reads `accepted` at
-      the post-encap offset 0 expecting the service layer to have
-      already stripped the rmw header.
-      **Files**: `packages/dds/nros-rmw-cyclonedds/src/service.cpp`
-      (`try_recv_reply_raw` + the
-      `_SendGoal_Response_` / `_GetResult_Response_` handling),
-      `packages/core/nros-node/src/executor/handles.rs::parse_goal_accepted`.
+- [x] **K.7.4.e** — **Fix the action-client service-reply decode
+      mismatch.** Landed 2026-06-03 (this branch). Root cause was
+      neither `service.cpp::try_recv_reply_raw` nor
+      `handles.rs::parse_goal_accepted` — both were correct. The bug
+      was in `DescriptorBuilder::build_raw` at
+      `packages/dds/nros-rmw-cyclonedds/src/dynamic_type.rs`. Codegen
+      emits service request/reply envelope structs (e.g.
+      `Fibonacci_SendGoal_Response { accepted: bool, stamp: Time }`)
+      without `#[repr(C)]`, so Rust's default `repr(Rust)` is free to
+      reorder fields for size — `stamp` (align 4, size 8) lands at
+      struct offset 0 and `accepted` (align 1) at offset 8. The
+      builder forwarded those reordered `offset_of!` values to the
+      Cyclone descriptor (shifted by 16 for the `cdds_request_header_t`
+      prefix), so Cyclone read `accepted` from sample[24] (zero) and
+      wrote CDR offset 16 = 0. The wire ended up with `accepted=00` and
+      a bogus stamp.sec=1; `parse_goal_accepted` correctly read `00`
+      and reported "rejected".
+
+      Fix: `build_raw` now ignores the codegen-supplied per-field
+      `offset` for service request/reply types (the predicate
+      `is_service_request_or_reply`) and computes synthetic
+      CDR-walk-order offsets starting at `SERVICE_HEADER_BYTES`. This
+      matches the layout the runtime memcpy paths in
+      `service.cpp::{write_typed, take_typed_wire}` already assume.
+      Plain pub/sub message types keep using their `offset_of!`
+      values (K.7.7 e2e proves the pattern works there even with
+      `repr(Rust)` codegen). New unit tests:
+      `service_response_uses_cdr_walk_order_offsets` (asserts
+      `accepted` at descriptor offset 16, `stamp` at 20 even when
+      Rust offsets are reordered) +
+      `plain_message_keeps_codegen_offsets` (regression guard for
+      the non-service path).
+
+      E2E verified: native rust action-server + action-client on
+      `ROS_DOMAIN_ID=80` runs goal → accept → 11×feedback → final
+      sequence. Client exit 0. Service e2e 4/4 + pub/sub e2e 7/7
+      still pass. 15/15 cyclonedds C++ tests pass.
+
+      **Files**: `packages/dds/nros-rmw-cyclonedds/src/dynamic_type.rs`
+      (synthetic offsets + `cdr_size_of`/`cdr_align_of`/
+      `cdr_struct_{size,align}` helpers + two regression tests),
+      `packages/dds/nros-rmw-cyclonedds/src/bridge.rs` (test_stub
+      `LAST_FIELDS` capture so the regression tests can inspect the
+      offsets the builder hands to the bridge).
 
 - [x] **K.7.5** — **Bounded type registry** inside
       `nros-rmw-cyclonedds`. Landed `bb2d23002` —

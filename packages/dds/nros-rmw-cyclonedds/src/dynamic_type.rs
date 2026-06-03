@@ -258,10 +258,36 @@ impl DescriptorBuilder {
             }
         }
 
-        // 2. Caller-supplied user fields — shifted by SERVICE_HEADER_BYTES
-        //    when the header was prepended so they sit after the header in
-        //    the typed sample.
-        let user_offset_shift = if prepend_header {
+        // 2. Caller-supplied user fields. For service request/reply types
+        //    we override the codegen-supplied `f.offset` with synthetic
+        //    CDR-walk-order offsets (Phase 212.K.7.4.e).
+        //
+        //    Why: codegen-generated envelope structs (e.g.
+        //    `Fibonacci_SendGoal_Response { accepted: bool, stamp: Time }`)
+        //    are emitted without `#[repr(C)]`. Rust's default `repr(Rust)`
+        //    is free to reorder fields for size — so `offset_of!(.., accepted)`
+        //    can land at 8 (after `stamp`) instead of 0. The runtime wire
+        //    framing for `_SendGoal_*` / `_GetResult_*` in
+        //    `service.cpp::{write_typed, take_typed_wire}` uses raw memcpy
+        //    between the wire CDR (post-encap, post-header) and the typed
+        //    sample, treating the sample as CDR-ordered. That contract
+        //    breaks when Cyclone reads/writes fields at the
+        //    Rust-reordered positions.
+        //
+        //    For service request/reply types the sample memory is
+        //    bridge-internal (the runtime only ever sees the wire CDR), so
+        //    we're free to pick a layout. Using CDR-walk-order offsets
+        //    matches the memcpy paths and round-trips correctly through
+        //    `dds_stream_{read,write}_sample`. The 16-byte header sits at
+        //    offsets 0/8 (already CDR-aligned) so user fields start at 16.
+        //
+        //    For non-service types (plain pub/sub) we keep the codegen
+        //    offsets — those exercise the regular `write_typed` /
+        //    `take_typed_wire` paths that round-trip via Cyclone CDR
+        //    only; consistency between read and write is all that
+        //    matters, and the existing K.7.7 pub/sub e2e proves the
+        //    pattern works there even with `repr(Rust)` codegen.
+        let mut cdr_cursor = if prepend_header {
             SERVICE_HEADER_BYTES
         } else {
             0
@@ -270,9 +296,18 @@ impl DescriptorBuilder {
             let slot = header_field_count + i;
             copy_to_buf(f.name, &mut field_names[slot])?;
             let kind_idx = walker.push_field_type(&f.ty, &mut nested_names, 0)? as u32;
+            let synthetic_offset = if prepend_header {
+                let align = cdr_align_of(&f.ty);
+                cdr_cursor = (cdr_cursor + align - 1) & !(align - 1);
+                let start = cdr_cursor;
+                cdr_cursor = cdr_cursor.saturating_add(cdr_size_of(&f.ty));
+                start
+            } else {
+                f.offset
+            };
             field_descs[slot] = NrosFieldDescriptor {
                 name: field_names[slot].as_ptr() as *const c_char,
-                offset: (f.offset + user_offset_shift) as u32,
+                offset: synthetic_offset as u32,
                 kind: kind_idx,
             };
         }
@@ -294,6 +329,88 @@ impl DescriptorBuilder {
         }
         Ok(descriptor)
     }
+}
+
+// ── CDR layout helpers (Phase 212.K.7.4.e) ─────────────────────────────
+//
+// Compute the CDR-walk-order (size, alignment) for a `FieldType` so
+// `build_raw` can lay out the bridge-internal typed sample in CDR order
+// for service request/reply types whose Rust struct codegen lacks
+// `#[repr(C)]` and may therefore reorder fields.
+//
+// These mirror Cyclone's `primitive_size_align` in
+// `bridge/dynamic_type_builder.cpp` plus the conservative
+// placeholders used there for nested / sequence / string fields:
+//   * Nested struct: 16 B / align 8 (placeholder — matches the bridge's
+//     `compute_struct_size` branch).
+//   * Sequence / bounded sequence / string / bounded string: 16 B /
+//     align 8 (matches `kSeqSize`/`kStringSize` in the bridge).
+//   * Array `T[N]`: N * size_of(T), aligned to align_of(T).
+
+const fn cdr_size_of(ty: &FieldType) -> usize {
+    match ty {
+        FieldType::Bool | FieldType::Uint8 | FieldType::Int8 => 1,
+        FieldType::Uint16 | FieldType::Int16 => 2,
+        FieldType::Uint32 | FieldType::Int32 | FieldType::Float32 => 4,
+        FieldType::Uint64 | FieldType::Int64 | FieldType::Float64 => 8,
+        FieldType::String
+        | FieldType::BoundedString(_)
+        | FieldType::WString
+        | FieldType::BoundedWString(_)
+        | FieldType::Sequence(_)
+        | FieldType::BoundedSequence(_, _) => 16,
+        FieldType::Nested(n) => cdr_struct_size(n),
+        FieldType::Array(n, inner) => *n * cdr_size_of(inner),
+    }
+}
+
+const fn cdr_align_of(ty: &FieldType) -> usize {
+    match ty {
+        FieldType::Bool | FieldType::Uint8 | FieldType::Int8 => 1,
+        FieldType::Uint16 | FieldType::Int16 => 2,
+        FieldType::Uint32 | FieldType::Int32 | FieldType::Float32 => 4,
+        FieldType::Uint64 | FieldType::Int64 | FieldType::Float64 => 8,
+        FieldType::String
+        | FieldType::BoundedString(_)
+        | FieldType::WString
+        | FieldType::BoundedWString(_)
+        | FieldType::Sequence(_)
+        | FieldType::BoundedSequence(_, _) => 8,
+        FieldType::Nested(n) => cdr_struct_align(n),
+        FieldType::Array(_, inner) => cdr_align_of(inner),
+    }
+}
+
+const fn cdr_struct_align(n: &NestedType) -> usize {
+    let mut max_align = 1usize;
+    let mut i = 0;
+    while i < n.fields.len() {
+        let a = cdr_align_of(&n.fields[i].ty);
+        if a > max_align {
+            max_align = a;
+        }
+        i += 1;
+    }
+    max_align
+}
+
+const fn cdr_struct_size(n: &NestedType) -> usize {
+    let mut cursor = 0usize;
+    let mut max_align = 1usize;
+    let mut i = 0;
+    while i < n.fields.len() {
+        let a = cdr_align_of(&n.fields[i].ty);
+        let s = cdr_size_of(&n.fields[i].ty);
+        if a > max_align {
+            max_align = a;
+        }
+        // align cursor up to `a`.
+        cursor = (cursor + a - 1) & !(a - 1);
+        cursor = cursor + s;
+        i += 1;
+    }
+    // pad up to struct alignment.
+    (cursor + max_align - 1) & !(max_align - 1)
 }
 
 // ── Service request / reply CDR header (Phase 212.K.7) ─────────────────
@@ -796,6 +913,143 @@ mod tests {
             ty: FieldType::Int32,
             offset: 0,
         }];
+    }
+
+    /// Phase 212.K.7.4.e — codegen-emitted service request/reply types
+    /// like `Fibonacci_SendGoal_Response { accepted: bool, stamp: Time }`
+    /// are NOT `#[repr(C)]`; Rust's default `repr(Rust)` reorders fields
+    /// for size — `offset_of!(.., accepted)` lands at 8, not 0. The
+    /// runtime memcpy paths in `service.cpp::{write_typed,
+    /// take_typed_wire}` for `_SendGoal_*` / `_GetResult_*` treat the
+    /// typed sample as CDR-ordered, so the descriptor MUST place
+    /// `accepted` at the post-header CDR position (16), not whatever
+    /// Rust picked.
+    ///
+    /// This test mirrors the codegen output exactly (mis-ordered Rust
+    /// offsets) and asserts `build_raw` overrides them with
+    /// CDR-walk-order synthetic offsets (16 for `accepted`, 20 for
+    /// `stamp`). Pre-K.7.4.e it would report (24, 16) — Rust's
+    /// reordered struct shifted by 16.
+    #[test]
+    fn service_response_uses_cdr_walk_order_offsets() {
+        use crate::bridge::test_stub::{LAST_FIELD_COUNT, LAST_FIELDS};
+        use core::sync::atomic::Ordering;
+
+        // Mirror the `Time` nested struct (matches builtin_interfaces/msg/Time).
+        static TIME_FIELDS: &[Field] = &[
+            Field {
+                name: "sec\0",
+                ty: FieldType::Int32,
+                offset: 0,
+            },
+            Field {
+                name: "nanosec\0",
+                ty: FieldType::Uint32,
+                offset: 4,
+            },
+        ];
+        static TIME_NESTED: NestedType = NestedType {
+            type_name: "builtin_interfaces/msg/Time",
+            fields: TIME_FIELDS,
+        };
+
+        // Mirror `Fibonacci_SendGoal_Response { accepted: bool, stamp: Time }`
+        // codegen output: declaration order [accepted, stamp], but Rust's
+        // `repr(Rust)` reorders `stamp` (align 4, size 8) before `accepted`
+        // (align 1) → offsets (8, 0). We feed those reordered offsets to
+        // build_raw; the K.7.4.e synthetic-offset logic must ignore them.
+        static REORDERED_FIELDS: &[Field] = &[
+            Field {
+                name: "accepted\0",
+                ty: FieldType::Bool,
+                offset: 8, // Rust's `repr(Rust)` reordered position.
+            },
+            Field {
+                name: "stamp\0",
+                ty: FieldType::Nested(&TIME_NESTED),
+                offset: 0, // Rust's `repr(Rust)` reordered position.
+            },
+        ];
+
+        // Build a Response-suffixed descriptor.
+        let ptr = DescriptorBuilder::build_raw(
+            "example_interfaces/srv/Fake_SendGoal_Response",
+            REORDERED_FIELDS,
+        )
+        .expect("build send_goal response");
+        assert!(!ptr.is_null());
+
+        // 2 header fields + 2 user fields = 4 captured.
+        let n = LAST_FIELD_COUNT.load(Ordering::SeqCst);
+        assert_eq!(n, 4, "expected 2 header + 2 user fields");
+
+        // SAFETY: the bridge stub has returned, so the slots are no
+        // longer being written.
+        let captured: [(u32, u32); 4] = unsafe {
+            [
+                *LAST_FIELDS[0].0.get(),
+                *LAST_FIELDS[1].0.get(),
+                *LAST_FIELDS[2].0.get(),
+                *LAST_FIELDS[3].0.get(),
+            ]
+        };
+
+        // Header: (offset 0, kind=Uint64), (offset 8, kind=Int64).
+        assert_eq!(captured[0].0, 0, "header[0] guid offset");
+        assert_eq!(captured[1].0, 8, "header[1] seq offset");
+
+        // User: regardless of the (wrong) Rust offsets we fed in,
+        // the K.7.4.e fix must place `accepted` at CDR offset 16 and
+        // `stamp` aligned-to-4 right after = 20.
+        assert_eq!(
+            captured[2].0, 16,
+            "accepted MUST land at post-header CDR offset 16 (got {})",
+            captured[2].0
+        );
+        assert_eq!(
+            captured[3].0, 20,
+            "stamp MUST land at CDR-walk-aligned offset 20 (got {})",
+            captured[3].0
+        );
+    }
+
+    /// Plain (non-service) message types must keep using the
+    /// codegen-supplied `offset_of!` values — those go through the
+    /// regular `dds_stream_{read,write}_sample` round-trip in
+    /// `service.cpp::{write_typed, take_typed_wire}` where consistency
+    /// (not CDR-ordering) is all that's required, and the existing K.7.7
+    /// pub/sub e2e proves the pattern works.
+    #[test]
+    fn plain_message_keeps_codegen_offsets() {
+        use crate::bridge::test_stub::{LAST_FIELD_COUNT, LAST_FIELDS};
+        use core::sync::atomic::Ordering;
+
+        // A two-primitive message with a deliberately quirky `offset` to
+        // prove we pass it through untouched.
+        static FIELDS: &[Field] = &[
+            Field {
+                name: "x\0",
+                ty: FieldType::Int32,
+                offset: 12,
+            },
+            Field {
+                name: "y\0",
+                ty: FieldType::Int64,
+                offset: 0,
+            },
+        ];
+
+        let ptr =
+            DescriptorBuilder::build_raw("test_msgs/msg/Plain", FIELDS).expect("build plain msg");
+        assert!(!ptr.is_null());
+
+        let n = LAST_FIELD_COUNT.load(Ordering::SeqCst);
+        assert_eq!(n, 2, "plain msg has no header injection");
+        // SAFETY: see above.
+        let captured: [(u32, u32); 2] =
+            unsafe { [*LAST_FIELDS[0].0.get(), *LAST_FIELDS[1].0.get()] };
+        assert_eq!(captured[0].0, 12, "plain msg x kept codegen offset");
+        assert_eq!(captured[1].0, 0, "plain msg y kept codegen offset");
     }
 
     #[test]
